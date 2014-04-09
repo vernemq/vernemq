@@ -1,0 +1,14 @@
+{application, emqttd,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { emqttd_app, []}},
+  {env, [
+    {auth_providers, [emqttd_auth]}
+    ]}
+ ]}.
