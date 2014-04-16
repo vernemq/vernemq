@@ -23,7 +23,11 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
+    NrOfBuffers = erlang:system_info(schedulers_online),
+    EMQTTDir = "EMQTT."++atom_to_list(node()),
+    filelib:ensure_dir(EMQTTDir),
     {ok, { {one_for_one, 5, 10}, [
             ?CHILD(emqttd_connection_reg, worker, []),
-            ?CHILD(eqdsk_queue, worker, ["queues", "store_and_forward"])]} }.
+            ?CHILD(emqttd_msg_store, worker, [filename:join(EMQTTDir, "store")]),
+            ?CHILD(emqttd_buffer_sup, supervisor, [filename:join(EMQTTDir, "buffer"), NrOfBuffers])]} }.
 
