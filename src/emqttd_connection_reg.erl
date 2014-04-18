@@ -22,7 +22,6 @@
          unsubscribe/2,
          publish/3,
          route/3,
-         send_to_client/4,
          match/1,
          register_client/2,
          disconnect_client/1,
@@ -61,13 +60,13 @@ register_client(ClientId, CleanSession) ->
         [] ->
             ok
     end,
-    gen_server:cast(?MODULE, {register_client, CleanSession, ClientId, self()}).
+    gen_server:call(?MODULE, {register_client, CleanSession, ClientId, self()}).
 
 cleanup_client(ClientId) ->
     gen_server:call(?MODULE, {cleanup_client, ClientId}).
 
 disconnect_client(ClientPid) when is_pid(ClientPid) ->
-    gen_server:cast(?MODULE, {disconnect_client, ClientPid});
+    emqttd_handler_fsm:disconnect(ClientPid);
 disconnect_client(ClientId) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} -> disconnect_client(ClientPid);
@@ -103,7 +102,7 @@ route(Topic, RoutingKey, Payload) ->
     lists:foldl(fun(#subscriber{qos=Qos, client=ClientId}, Acc) ->
                         case get_client_pid(ClientId) of
                             {ok, ClientPid} ->
-                                send_to_client(ClientPid, RoutingKey, Payload, Qos),
+                                emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, Qos, false),
                                 Acc;
                             {error, not_found} when Qos > 0 ->
                                 [{ClientId, Qos}|Acc];
@@ -113,9 +112,6 @@ route(Topic, RoutingKey, Payload) ->
                 end, [], mnesia:dirty_read(subscriber, Topic)),
     io:format("unroutable client ~p~n", [UnroutableClients]),
     emqttd_msg_store:persist_for_later(UnroutableClients, RoutingKey, Payload).
-
-send_to_client(ClientPid, RoutingKey, Payload, Qos) ->
-    ClientPid ! {route, RoutingKey, Payload, Qos}.
 
 match(Topic) when is_list(Topic) ->
     TrieNodes = mnesia:async_dirty(fun trie_match/1, [emqtt_topic:words(Topic)]),
@@ -157,6 +153,19 @@ init([]) ->
     end,
     {ok, #state{}}.
 
+handle_call({register_client, CleanSession, ClientId, Pid}, _From, State) ->
+    case mnesia:transaction(
+           fun() ->
+                   mnesia:write(#client{id=ClientId, node=node(), pid=Pid})
+           end) of
+        {atomic, _} ->
+            monitor(process, Pid),
+            cleanup_client(CleanSession, ClientId),
+            emqttd_msg_store:deliver_from_store(ClientId, Pid);
+        {aborted, Reason} ->
+            io:format("can't write to client table: ~p~n", [Reason])
+    end,
+    {reply, ok, State};
 handle_call({subscribe, {Topic, Qos}, ClientId, ClientPid}, _From, State) ->
     case mnesia:transaction(fun subscriber_add/3, [Topic, Qos, ClientId]) of
         {atomic, _} ->
@@ -176,24 +185,6 @@ handle_call({unsubscribe, Topic, ClientId}, _From, State) ->
 handle_call(Req, _From, State) ->
     {stop, {badreq, Req}, State}.
 
-
-handle_cast({register_client, CleanSession, ClientId, Pid} , State) ->
-    case mnesia:transaction(
-           fun() ->
-                   mnesia:write(#client{id=ClientId, node=node(), pid=Pid})
-           end) of
-        {atomic, _} ->
-            monitor(process, Pid),
-            cleanup_client(CleanSession, ClientId),
-            emqttd_msg_store:deliver_from_store(ClientId, Pid);
-        {aborted, Reason} ->
-            io:format("can't write to client table: ~p~n", [Reason])
-    end,
-    {noreply, State};
-
-handle_cast({disconnect_client, ClientPid}, State) ->
-    ClientPid ! disconnect,
-    {noreply, State};
 
 handle_cast(Msg, State) ->
     {stop, {badmsg, Msg}, State}.
