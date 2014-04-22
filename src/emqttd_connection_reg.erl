@@ -46,55 +46,95 @@ topics() ->
     mnesia:dirty_all_keys(topic).
 
 subscribe(ClientId, Topic, Qos) ->
-    gen_server:call(?MODULE, {subscribe, {Topic, Qos}, ClientId, self()}).
-
-unsubscribe(ClientId, Topic) when is_list(Topic) ->
-    gen_server:call(?MODULE, {unsubscribe, Topic, ClientId}).
-
-register_client(ClientId, CleanSession) ->
-    case mnesia:dirty_read(client, ClientId) of
-        [#client{node=Node, pid=ClientPid}] when Node == node() ->
-            disconnect_client(ClientPid);
-        [#client{node=Node, pid=ClientPid}] ->
-            rpc:call(Node, ?MODULE, disconnect_client, [ClientPid]);
-        [] ->
-            ok
-    end,
-    gen_server:call(?MODULE, {register_client, CleanSession, ClientId, self()}).
-
-cleanup_client(ClientId) ->
-    gen_server:call(?MODULE, {cleanup_client, ClientId}).
-
-disconnect_client(ClientPid) when is_pid(ClientPid) ->
-    emqttd_handler_fsm:disconnect(ClientPid);
-disconnect_client(ClientId) ->
-    case get_client_pid(ClientId) of
-        {ok, ClientPid} -> disconnect_client(ClientPid);
-        E -> E
+    case emqttd_node_watcher:ready() of
+        true ->
+            gen_server:call(?MODULE, {subscribe, {Topic, Qos}, ClientId, self()});
+        false ->
+            {error, maybe_cluster_split}
     end.
 
-get_client_pid(ClientId) ->
-    case mnesia:dirty_read(client, ClientId) of
-        [#client{node=Node, pid=ClientPid}] when Node == node() ->
-            {ok, ClientPid};
-        _ ->
-            {error, not_found}
+unsubscribe(ClientId, Topic) when is_list(Topic) ->
+    case emqttd_node_watcher:ready() of
+        true ->
+            gen_server:call(?MODULE, {unsubscribe, Topic, ClientId});
+        false ->
+            {error, maybe_cluster_split}
+    end.
+
+register_client(ClientId, CleanSession) ->
+    %% only allow to register new clients if we are not
+    %% in a split brain situation
+    %%
+    %% TODO: check if we can stil register a new client
+    %%       that has CleanSession == FALSE, within a
+    %%       split-brain situation, if it used to be
+    %%       registered on Node == node()
+    case emqttd_node_watcher:ready() of
+        true ->
+            case mnesia:dirty_read(client, ClientId) of
+                [#client{node=Node, pid=ClientPid}] when Node == node() ->
+                    disconnect_client(ClientPid);
+                [#client{node=Node, pid=ClientPid}] ->
+                    rpc:call(Node, ?MODULE, disconnect_client, [ClientPid]);
+                [] ->
+                    ok
+            end,
+            gen_server:call(?MODULE, {register_client, CleanSession, ClientId, self()});
+        false ->
+            {error, maybe_cluster_split}
     end.
 
 %publish to cluster node.
-publish(RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_binary(Payload) ->
+publish(RoutingKey, Payload, true) ->
+    case emqttd_node_watcher:ready() of
+        true ->
+            publish_(RoutingKey, Payload, true);
+        false ->
+            %% we cannot store the retained Message, because
+            %% we cannot tell the other cluster nodes to reset
+            %% a possibly already retained message.
+            {error, maybe_cluster_split}
+    end;
+publish(RoutingKey, Payload, false) ->
+    publish_(RoutingKey, Payload, false).
+
+publish_(RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_binary(Payload) ->
     case IsRetain of
         true ->
             emqttd_msg_store:persist_retain_msg(RoutingKey, Payload);
         _ ->
             ignore
     end,
+    ClusterNodes = emqttd_node_watcher:which_nodes(),
     lists:foreach(fun(#topic{name=Name, node=Node}) ->
                           case Node == node() of
                               true -> route(Name, RoutingKey, Payload);
-                              false -> rpc:call(Node, ?MODULE, route, [Name, RoutingKey, Payload])
+                              false ->
+                                  case lists:keyfind(Node, 1, ClusterNodes) of
+                                      false ->
+                                          io:format("!!! ROUTE to non configured Cluster Node ~p: RoutingKey: ~p Topic: ~p~n", [Node, RoutingKey, Name]);
+                                      {Node, true} ->
+                                          rpc:call(Node, ?MODULE, route, [Name, RoutingKey, Payload]);
+                                      {Node, false} ->
+                                          io:format("!!! ROUTE to unavailable Cluster Node ~p: RoutingKey: ~p Topic: ~p~n", [Node, RoutingKey, Name])
+                                  end
                           end
                   end, match(RoutingKey)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% RPC Callbacks / Maintenance
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+cleanup_client(ClientId) ->
+    gen_server:call(?MODULE, {cleanup_client, ClientId}).
+
+disconnect_client(ClientPid) when is_pid(ClientPid) ->
+    emqttd_handler_fsm:disconnect(ClientPid);
+
+disconnect_client(ClientId) ->
+    case get_client_pid(ClientId) of
+        {ok, ClientPid} -> disconnect_client(ClientPid);
+        E -> E
+    end.
 
 %route locally, should only be called by publish
 route(Topic, RoutingKey, Payload) ->
@@ -109,7 +149,7 @@ route(Topic, RoutingKey, Payload) ->
                             {error, not_found} ->
                                 Acc
                         end
-                end, [], mnesia:dirty_read(subscriber, Topic)),
+                end, [], ets:lookup(subscriber, Topic)),
     io:format("unroutable client ~p~n", [UnroutableClients]),
     emqttd_msg_store:persist_for_later(UnroutableClients, RoutingKey, Payload).
 
@@ -140,17 +180,7 @@ init([]) ->
                                 {ram_copies, [node()]},
                                 {attributes, record_info(fields, topic)}]),
     mnesia:add_table_copy(topic, node(), ram_copies),
-
-    case mnesia:create_table(subscriber, [
-                                     {type, bag},
-                                     {record_name, subscriber},
-                                     {disc_copies, [node()]},
-                                     {attributes, record_info(fields, subscriber)}]) of
-        {atomic, ok} ->
-            mnesia:add_table_copy(subscriber, node(), ram_copies);
-        {aborted, {already_exists, subscriber}} ->
-            mnesia:add_table_copy(subscriber, node(), ram_copies)
-    end,
+    ets:new(subscriber, [{read_concurrency, true}, public, bag, named_table, {keypos, 2}]),
     {ok, #state{}}.
 
 handle_call({register_client, CleanSession, ClientId, Pid}, _From, State) ->
@@ -160,15 +190,22 @@ handle_call({register_client, CleanSession, ClientId, Pid}, _From, State) ->
            end) of
         {atomic, _} ->
             monitor(process, Pid),
+            %% this will also cleanup the message store
             cleanup_client(CleanSession, ClientId),
-            emqttd_msg_store:deliver_from_store(ClientId, Pid);
+            case CleanSession of
+                false ->
+                    emqttd_msg_store:deliver_from_store(ClientId, Pid);
+                true ->
+                    ok
+            end;
         {aborted, Reason} ->
             io:format("can't write to client table: ~p~n", [Reason])
     end,
     {reply, ok, State};
 handle_call({subscribe, {Topic, Qos}, ClientId, ClientPid}, _From, State) ->
-    case mnesia:transaction(fun subscriber_add/3, [Topic, Qos, ClientId]) of
+    case mnesia:transaction(fun subscriber_add/1, [Topic]) of
         {atomic, _} ->
+            ets:insert(subscriber, #subscriber{topic=Topic, qos=Qos, client=ClientId}),
             ok = emqttd_msg_store:deliver_retained(ClientPid, Topic, Qos),
             {reply, ok, State};
         {aborted, Reason} ->
@@ -179,7 +216,8 @@ handle_call({cleanup_client, ClientId}, _From, State) ->
     {reply, cleanup_client(true, ClientId), State};
 
 handle_call({unsubscribe, Topic, ClientId}, _From, State) ->
-    try_remove_subscriber(Topic, ClientId),
+    ets:match_delete(subscriber, #subscriber{topic=Topic, client=ClientId, _='_'}),
+    try_remove_subscriber(Topic),
     {reply, ok, State};
 
 handle_call(Req, _From, State) ->
@@ -212,38 +250,41 @@ code_change(_OldVsn, State, _Extra) ->
 %% ------------------------------------------------------------------------
 %% internal functions
 %% ------------------------------------------------------------------------
+get_client_pid(ClientId) ->
+    case mnesia:dirty_read(client, ClientId) of
+        [#client{node=Node, pid=ClientPid}] when Node == node() ->
+            {ok, ClientPid};
+        _ ->
+            {error, not_found}
+    end.
+
 cleanup_client(false, _) -> ok;
 cleanup_client(true, ClientId) ->
     emqttd_msg_store:clean_session(ClientId),
-    case mnesia:dirty_match_object(#subscriber{client=ClientId, _='_'}) of
+    case ets:match_object(subscriber, #subscriber{client=ClientId, _='_'}) of
         [] -> ignore;
         Subs ->
-            [try_remove_subscriber(Topic, ClientId) || #subscriber{topic=Topic} <- Subs]
+            [try_remove_subscriber(Topic) || #subscriber{topic=Topic} <- Subs]
     end.
 
-try_remove_subscriber(Name, ClientId) ->
-    mnesia:transaction(
-      fun() ->
-              case mnesia:match_object(#subscriber{topic=Name, client=ClientId, _='_'}) of
-                  [] -> ignore;
-                  Objs -> [mnesia:delete_object(Obj) || Obj <- Objs]
-              end,
-              case mnesia:read(subscriber, Name) of
-                  [] ->
-                      Topic = emqtt_topic:new(Name),
-                      mnesia:delete_object(Topic),
-                      case mnesia:read(topic, Name) of
-                          [] -> trie_delete(Name);
-                          _ -> ignore
-                      end;
-                  _ ->
-                      ok
-              end
-      end
-     ).
+try_remove_subscriber(Name) ->
+    case ets:member(subscriber, Name) of
+        false ->
+            Topic = emqtt_topic:new(Name),
+            Fun = fun() ->
+                          mnesia:delete_object(topic, Topic),
+                          case mnesia:read(topic, Topic) of
+                              [] -> trie_delete(Name);
+                              _ -> ignore
+                          end
+                  end,
+            mnesia:transaction(Fun);
+        true ->
+            ok
+    end.
 
-subscriber_add(Topic, Qos, ClientId) ->
-    mnesia:write(#subscriber{topic=Topic, qos=Qos, client=ClientId}),
+
+subscriber_add(Topic) ->
     mnesia:write(emqtt_topic:new(Topic)),
     case mnesia:read(trie_node, Topic) of
         [TrieNode=#trie_node{topic=undefined}] ->

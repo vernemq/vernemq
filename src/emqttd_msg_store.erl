@@ -40,6 +40,7 @@ persist_for_later(UnroutableClients, RoutingKey, Payload) ->
     gen_server:call(?MODULE, {persist, UnroutableClients, RoutingKey, Payload}).
 
 deliver_from_store(ClientId, ClientPid) ->
+    [rpc:call(N, ?MODULE, deliver_from_store, [ClientId, ClientPid]) || N <- nodes()],
     gen_server:call(?MODULE, {deliver, ClientId, ClientPid}).
 
 deliver_retained(ClientPid, Topic, QoS) ->

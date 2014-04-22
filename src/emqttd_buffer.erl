@@ -40,7 +40,7 @@ handle_call({store_and_forward, ClientId, {RoutingKey, Payload, IsRetain} = Item
     #state{store=MsgStore} = State,
     BClientId = list_to_binary(ClientId),
     ok = bitcask:put(MsgStore, BClientId, term_to_binary(Item)),
-    emqttd_connection_reg:publish(RoutingKey, Payload, IsRetain),
+    emqttd_trie:publish(RoutingKey, Payload, IsRetain),
     ok = bitcask:delete(MsgStore, BClientId),
     {reply, ok, State};
 
@@ -56,7 +56,7 @@ handle_call({release_and_forward, ClientId, MessageId}, _From, State) ->
     case bitcask:get(MsgStore, ItemId) of
         {ok, BItem} ->
             {RoutingKey, Payload, IsRetain} = binary_to_term(BItem),
-            emqttd_connection_reg:publish(RoutingKey, Payload, IsRetain),
+            emqttd_trie:publish(RoutingKey, Payload, IsRetain),
             ok = bitcask:delete(MsgStore, ItemId);
         _ ->
             ignore_not_found
@@ -70,7 +70,7 @@ handle_info(timeout, State) ->
     #state{store=MsgStore} = State,
     bitcask:fold(MsgStore, fun(ItemId, BItem, Acc) ->
                                    {RoutingKey, Payload, IsRetain} = binary_to_term(BItem),
-                                   emqttd_connection_reg:publish(RoutingKey, Payload, IsRetain),
+                                   emqttd_trie:publish(RoutingKey, Payload, IsRetain),
                                    ok = bitcask:delete(MsgStore, ItemId),
                                    Acc
                            end, []),

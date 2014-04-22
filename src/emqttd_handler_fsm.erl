@@ -126,7 +126,7 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
         true ->
             case auth_user(Peer, Id, User, Password, AuthProviders) of
                 ok ->
-                    emqttd_connection_reg:register_client(Id, CleanSession),
+                    emqttd_trie:register_client(Id, CleanSession),
                     {next_state, connected,
                         send_connack(?CONNACK_ACCEPT, State#state{
                                                     client_id=Id,
@@ -187,10 +187,17 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
     {next_state, connected, State#state{waiting_acks=lists:keydelete(MessageId, 1, WAcks)}};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, retain=1}, Var, <<>>, State) ->
-    #mqtt_frame_publish{topic_name=Topic} = Var,
+    #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
     %% delete retained msg
-    emqttd_msg_store:reset_retained_msg(Topic),
-    {next_state, connected, State};
+    NewState =
+    case emqttd_node_watcher:ready() of
+        true ->
+            emqttd_msg_store:reset_retained_msg(Topic),
+            send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State);
+        false ->
+            State
+    end,
+    {next_state, connected, NewState};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, qos=QoS, retain=IsRetain}, Var, Payload, State) ->
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
@@ -335,7 +342,7 @@ dispatch_publish(2, MessageId, Topic, Payload, IsRetain, State) ->
 
 dispatch_publish_qos0(MessageId, Topic, Payload, IsRetain, State) ->
     io:format("dispatch direct ~p ~p ~p~n", [MessageId, Topic, Payload]),
-    emqttd_connection_reg:publish(Topic, Payload, IsRetain),
+    emqttd_trie:publish(Topic, Payload, IsRetain),
     State.
 
 dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
@@ -348,12 +355,12 @@ dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
 
 subscribe(_, [], Acc) -> lists:reverse(Acc);
 subscribe(ClientId, [#mqtt_topic{name=Name, qos=QoS}|Rest], Acc) ->
-    emqttd_connection_reg:subscribe(ClientId, Name, QoS),
+    emqttd_trie:subscribe(ClientId, Name, QoS),
     subscribe(ClientId, Rest, [QoS|Acc]).
 
 unsubscribe(_, []) -> ok;
 unsubscribe(ClientId, [#mqtt_topic{name=Name}|Rest]) ->
-    emqttd_connection_reg:unsubscribe(ClientId, Name),
+    emqttd_trie:unsubscribe(ClientId, Name),
     unsubscribe(ClientId, Rest).
 
 get_msg_id(0, State) ->
@@ -378,6 +385,7 @@ send_publish_frame(Transport, Socket, OutgoingMsgId, Frame, QoS, State) ->
             %% reconnects.
             #mqtt_frame{variable=#mqtt_frame_publish{topic_name=Topic},
                         payload=Payload} = Frame,
+            %% save to call even in a split brain situation
             emqttd_msg_store:persist_for_later([State#state.client_id], Topic, Payload),
             {error, Reason};
         {error, Reason} ->
