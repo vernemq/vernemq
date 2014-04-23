@@ -76,7 +76,9 @@ handle_info(timeout, State) ->
                            end, []),
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    #state{store=MsgStore} = State,
+    bitcask:close(MsgStore),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

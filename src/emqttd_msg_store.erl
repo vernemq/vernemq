@@ -5,11 +5,8 @@
          persist_for_later/3,
          deliver_from_store/2,
          deliver_retained/3,
-         get_retained/1,
          clean_session/1,
-         remove_session/1,
          persist_retain_msg/2,
-         remove_retained_msg/1,
          reset_retained_msg/1
          ]).
 -export([init/1,
@@ -40,45 +37,23 @@ persist_for_later(UnroutableClients, RoutingKey, Payload) ->
     gen_server:call(?MODULE, {persist, UnroutableClients, RoutingKey, Payload}).
 
 deliver_from_store(ClientId, ClientPid) ->
-    [rpc:call(N, ?MODULE, deliver_from_store, [ClientId, ClientPid]) || N <- nodes()],
     gen_server:call(?MODULE, {deliver, ClientId, ClientPid}).
 
 deliver_retained(ClientPid, Topic, QoS) ->
-    RetainedMsgs =
-    lists:flatten([get_retained(Topic) |
-                   [rpc:call(N, ?MODULE, get_retained, [Topic]) || N <- nodes()]]),
+    RetainedMsgs = gen_server:call(?MODULE, {get_retained, Topic}),
     [emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, true)
-     || {{RoutingKey, _}, Payload} <- remove_older_duplicated(RetainedMsgs)],
+     || {{RoutingKey, _}, Payload} <- RetainedMsgs],
     ok.
 
 clean_session(ClientId) ->
-    [rpc:call(N, ?MODULE, remove_session, [ClientId]) || N <- nodes()],
-    remove_session(1),
+    gen_server:call(?MODULE, {remove_session, ClientId}),
     ok.
 
 persist_retain_msg(RoutingKey, Msg) ->
-    [rpc:call(Node, ?MODULE, remove_retained_msg, [RoutingKey]) || Node <- nodes()],
     gen_server:call(?MODULE, {persist_retain_msg, RoutingKey, Msg}).
 
 reset_retained_msg(RoutingKey) ->
-    [rpc:call(Node, ?MODULE, remove_retained_msg, [RoutingKey]) || Node <- nodes()],
     gen_server:call(?MODULE, {reset_retained_msg, RoutingKey}).
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% RPC API FUNCTIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-get_retained(Topic) ->
-    %% should only be called through RPC or deliver_retained
-    gen_server:call(?MODULE, {get_retained, Topic}).
-
-remove_session(ClientId) ->
-    %% should only be called through RPC or clean_session/1
-    gen_server:call(?MODULE, {remove_session, ClientId}).
-
-remove_retained_msg(RoutingKey) ->
-    %% should only be called through RPC
-    gen_server:call(?MODULE, {remove_retained_msg, RoutingKey}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
@@ -173,19 +148,11 @@ handle_call({reset_retained_msg, RoutingKey}, _From, State) ->
     case ets:lookup(?MSG_RETAIN_TABLE, {retain, RoutingKey}) of
         [] ->
             ok;
-        [{_, MsgRef, _}] ->
+        [{_, _, MsgRef, _}] ->
             ok = bitcask:delete(MsgStore, MsgRef),
             true = ets:delete(?MSG_RETAIN_TABLE, {retain, RoutingKey})
     end,
-    {reply, ok, State};
-
-handle_call({remove_retained_msg, RoutingKey}, _From, State) ->
-    #state{store=MsgStore} = State,
-    MsgRef = crypto:hash(md5, [RoutingKey]),
-    ok = bitcask:delete(MsgStore, MsgRef),
-    true = ets:delete(?MSG_RETAIN_TABLE, {retain, RoutingKey}),
     {reply, ok, State}.
-
 
 handle_cast(_Req, State) ->
     {noreply, State}.
@@ -193,7 +160,9 @@ handle_cast(_Req, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    #state{store=MsgStore} = State,
+    bitcask:close(MsgStore),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -206,12 +175,3 @@ maybe_delete_from_msg_store(MsgStore, MsgRef) ->
         _ ->
             ok
     end.
-
-remove_older_duplicated(List) ->
-    remove_older_duplicated(lists:reverse(lists:usort(List)), []).
-% reversed usorted list
-remove_older_duplicated([{{R, T1},_} = Obj, {R, T2} | Rest], Acc) when T1 > T2 ->
-    remove_older_duplicated(Rest, [Obj|Acc]);
-remove_older_duplicated([Obj|Rest], Acc) ->
-    remove_older_duplicated(Rest, [Obj|Acc]);
-remove_older_duplicated([], Acc) -> Acc.

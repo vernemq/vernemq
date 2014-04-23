@@ -51,7 +51,12 @@ start_link(Nodes, SubscriptionDir) ->
     locks_leader:start_link(?MODULE, ?MODULE, [Nodes, SubscriptionDir], []).
 
 subscribe(ClientId, Topic, QoS) ->
-    locks_leader:leader_call(?MODULE, {subscribe, node(), ClientId, Topic, QoS}).
+    case locks_leader:leader_call(?MODULE, {subscribe, node(), ClientId, Topic, QoS}) of
+        ok ->
+            emqttd_msg_store:deliver_retained(self(), Topic, QoS);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 unsubscribe(ClientId, Topic) ->
     locks_leader:leader_call(?MODULE, {unsubscribe, ClientId, Topic}).
@@ -73,14 +78,30 @@ which_nodes() ->
 register_client(ClientId, CleanSession) ->
     locks_leader:leader_call(?MODULE, {register_client, node(), CleanSession, ClientId, self()}).
 
+%% delete retained message
+publish(RoutingKey, <<>>, true) ->
+    locks_leader:leader_call(?MODULE, {reset_retain_msg, RoutingKey});
+
 %publish to cluster node.
 publish(RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_binary(Payload) ->
     case IsRetain of
         true ->
-            emqttd_msg_store:persist_retain_msg(RoutingKey, Payload);
-        _ ->
-            ignore
-    end,
+            case locks_leader:leader_call(?MODULE, {retain_msg, RoutingKey, Payload}) of
+                ok ->
+                    publish_(RoutingKey, Payload);
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        false ->
+            case ets:lookup(emqttd_status, ready) of
+                [{ready, true}] ->
+                    publish_(RoutingKey, Payload);
+                _ ->
+                    {error, maybe_net_split}
+            end
+    end.
+
+publish_(RoutingKey, Payload) ->
     lists:foreach(
       fun(#topic{name=Name, node=Node}) ->
               case Node == node() of
@@ -140,6 +161,7 @@ init([Nodes, SubscriptionDir]) ->
     ets:new(emqttd_trie_node, [named_table, public, {read_concurrency, true}, {keypos, 2}]),
     ets:new(emqttd_trie_topic, [named_table, public, bag, {read_concurrency, true}, {keypos, 2}]),
     ets:new(emqttd_subscriber, [{read_concurrency, true}, public, bag, named_table, {keypos, 2}]),
+    ets:new(emqttd_status, [{read_concurrency, true}, public, named_table]),
 
     Subscriptions = bitcask:open(SubscriptionDir, [read_write]),
     bitcask:fold(Subscriptions,
@@ -385,6 +407,24 @@ handle_leader_call({cleanup, ClientId}, _From, State, _I) ->
             {reply, cleanup_client(State#st.subs, true, ClientId), {sync, {cleanup, ClientId}}, State};
         false ->
             {reply, {error, maybe_net_split}, State}
+    end;
+
+handle_leader_call({retain_msg, RoutingKey, Payload}, _From, State, _I) ->
+    case State#st.ready of
+        true ->
+            ok = emqttd_msg_store:persist_retain_msg(RoutingKey, Payload),
+            {reply, ok, {sync, {retain_msg, RoutingKey, Payload}}, State};
+        false ->
+            {reply, {error, maybe_net_split}, State}
+    end;
+
+handle_leader_call({reset_retain_msg, RoutingKey}, _From, State, _I) ->
+    case State#st.ready of
+        true ->
+            ok = emqttd_msg_store:reset_retained_msg(RoutingKey),
+            {reply, ok, {sync, {reset_retain_msg, RoutingKey}}, State};
+        false ->
+            {reply, {error, maybe_net_split}, State}
     end.
 
 
@@ -453,6 +493,14 @@ from_leader({sync, {register_client, Node, CleanSession, ClientId, Pid}}, S, _I)
 
 from_leader({sync, {cleanup, ClientId}}, S, _I) ->
     cleanup_client(S#st.subs, true, ClientId),
+    {ok, S};
+
+from_leader({sync, {retain_msg, RoutingKey, Payload}}, S, _I) ->
+    ok = emqttd_msg_store:persist_retain_msg(RoutingKey, Payload),
+    {ok, S};
+
+from_leader({sync, {reset_retain_msg, RoutingKey}}, S, _I) ->
+    emqttd_msg_store:reset_retained_msg(RoutingKey),
     {ok, S}.
 
 %% @spec handle_call(Request::term(), From::callerRef(), State::state(),
@@ -555,7 +603,7 @@ handle_cast(_Msg, S, _I) ->
 handle_info(check_connectivity, S, _I) ->
     [node_alive(Node) || {Node, false} <- S#st.nodes],
     erlang:send_after(5000, self(), check_connectivity),
-    {noreply, S};
+    {noreply, S#st{ready=ready(S#st.nodes)}};
 
 handle_info({'DOWN', _, process, ClientPid, _}, State, _I) ->
     case ets:match_object(emqttd_client, #client{pid=ClientPid, _='_'}) of
@@ -593,7 +641,9 @@ terminate(_Reason, S) ->
 
 
 ready(Nodes) ->
-    [ok || {_,false} <- Nodes] == [].
+    Ready = [ok || {_,false} <- Nodes] == [],
+    ets:insert(emqttd_status, {ready, Ready}),
+    Ready.
 
 node_alive(Node) ->
     net_adm:ping(Node) == pong.

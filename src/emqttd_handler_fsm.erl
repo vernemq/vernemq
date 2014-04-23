@@ -188,15 +188,9 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, retain=1}, Var, <<>>, State) ->
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
-    %% delete retained msg
-    NewState =
-    case emqttd_node_watcher:ready() of
-        true ->
-            emqttd_msg_store:reset_retained_msg(Topic),
-            send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State);
-        false ->
-            State
-    end,
+    %% delete retained msg,
+    emqttd_trie:publish(Topic, <<>>, true),
+    NewState = send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
     {next_state, connected, NewState};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, qos=QoS, retain=IsRetain}, Var, Payload, State) ->

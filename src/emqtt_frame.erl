@@ -211,19 +211,88 @@ serialise_variable(#mqtt_frame_fixed   { type       = ?PUBACK } = Fixed,
     serialise_fixed(Fixed, MessageIdBin, PayloadBin);
 
 serialise_variable(#mqtt_frame_fixed { type = ?PUBREC } = Fixed,
-			  	   #mqtt_frame_publish{ message_id = MsgId},
-				   PayloadBin) ->
+                   #mqtt_frame_publish{ message_id = MsgId},
+                   PayloadBin) ->
     serialise_fixed(Fixed, <<MsgId:16/big>>, PayloadBin);
 
 serialise_variable(#mqtt_frame_fixed { type = ?PUBREL } = Fixed,
-			  	   #mqtt_frame_publish{ message_id = MsgId},
-				   PayloadBin) ->
+                   #mqtt_frame_publish{ message_id = MsgId},
+                   PayloadBin) ->
     serialise_fixed(Fixed, <<MsgId:16/big>>, PayloadBin);
 
 serialise_variable(#mqtt_frame_fixed { type = ?PUBCOMP } = Fixed,
-			  	   #mqtt_frame_publish{ message_id = MsgId},
-				   PayloadBin) ->
+                   #mqtt_frame_publish{ message_id = MsgId},
+                   PayloadBin) ->
     serialise_fixed(Fixed, <<MsgId:16/big>>, PayloadBin);
+
+serialise_variable(#mqtt_frame_fixed { type = ?SUBSCRIBE } = Fixed,
+                   #mqtt_frame_subscribe { message_id = MessageId,
+                                           topic_table = TopicTable },
+                   _) ->
+    MessageIdBin = <<MessageId:16/big>>,
+
+    F = fun(#mqtt_topic{name=Topic, qos=Qos}, BinList) ->
+                [serialise_utf(Topic), <<Qos:8/integer>> | BinList]
+        end,
+    PayloadBin = list_to_binary(lists:foldl(F, [], TopicTable)),
+    serialise_fixed(Fixed, MessageIdBin, PayloadBin);
+
+serialise_variable(#mqtt_frame_fixed { type = ?CONNECT } = Fixed,
+                   #mqtt_frame_connect{ proto_ver = ProtoVer,
+                                        username = Username,
+                                        password = Password,
+                                        will_retain = WillRetain,
+                                        will_qos = WillQos,
+                                        will_flag = WillFlag,
+                                        clean_sess = CleanSess,
+                                        keep_alive = KeepAlive,
+                                        client_id = ClientId,
+                                        will_topic = WillTopic,
+                                        will_msg = WillMsg},
+                   <<>>) ->
+    ProtoName = <<"MQIsdp">>,
+    UsernameFlag = case Username of
+                       undefined -> false;
+                       U when is_binary(U) -> true
+                   end,
+
+    PasswordFlag = case Password of
+                       undefined -> false;
+                       P when is_binary(P) -> true
+                   end,
+
+    Bin = <<(byte_size(ProtoName)):16/big-unsigned-integer,
+            ProtoName/binary,
+            ProtoVer:8/unsigned-integer,
+            (opt(UsernameFlag)):1/integer,
+            (opt(PasswordFlag)):1/integer,
+            (opt(WillRetain)):1/integer,
+            (opt(WillQos)):2/integer,
+            (opt(WillFlag)):1/integer,
+            (opt(CleanSess)):1/integer,
+            0:1,
+            KeepAlive:16/big-unsigned-integer>>,
+
+    Payloads1 = [serialise_utf(ClientId)],
+    Payloads2 = case WillFlag of
+                    true -> [serialise_utf(WillTopic) | Payloads1];
+                    _ -> Payloads1
+                end,
+    Payloads3 = case WillFlag of
+                    true -> [serialise_utf(WillMsg) | Payloads2];
+                    _ -> Payloads2
+                end,
+    Payloads4 = case UsernameFlag of
+                    true -> [serialise_utf(Username) | Payloads3];
+                    _ -> Payloads3
+                end,
+    Payloads5 = case PasswordFlag of
+                    true -> [serialise_utf(Password) | Payloads4];
+                    _ -> Payloads4
+                end,
+
+    PayloadBin = list_to_binary(lists:reverse(Payloads5)),
+    serialise_fixed(Fixed, Bin, PayloadBin);
 
 serialise_variable(#mqtt_frame_fixed {} = Fixed,
                    undefined,
