@@ -1,7 +1,6 @@
 -module(emqttd_sup).
 
 -behaviour(supervisor).
-
 %% API
 -export([start_link/0]).
 
@@ -23,7 +22,7 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    NrOfBuffers = erlang:system_info(schedulers_online),
+    NrOfBuffers = 12,
     EMQTTDir = "EMQTT."++atom_to_list(node()),
     filelib:ensure_dir(EMQTTDir),
     {ok, { {one_for_one, 5, 10}, [

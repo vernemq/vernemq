@@ -71,6 +71,7 @@ handle_info(timeout, State) ->
     bitcask:fold(MsgStore, fun(ItemId, BItem, Acc) ->
                                    {RoutingKey, Payload, IsRetain} = binary_to_term(BItem),
                                    emqttd_trie:publish(RoutingKey, Payload, IsRetain),
+                                   io:format("publish from old buffer ~p ~n", [RoutingKey]),
                                    ok = bitcask:delete(MsgStore, ItemId),
                                    Acc
                            end, []),

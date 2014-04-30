@@ -13,12 +13,12 @@
 %%   Common set of valid replies from most callback functions.
 %%
 -module(emqttd_trie).
--include("emqtt_internal.hrl").
+-include_lib("emqtt_commons/include/emqtt_internal.hrl").
 
 -behaviour(locks_leader).
 
 -export([start_link/2,
-         subscribe/3,
+         subscribe/2,
          unsubscribe/2,
          add_node/1,
          del_node/1,
@@ -50,20 +50,6 @@
 start_link(Nodes, SubscriptionDir) ->
     locks_leader:start_link(?MODULE, ?MODULE, [Nodes, SubscriptionDir], []).
 
-subscribe(ClientId, Topic, QoS) ->
-    case locks_leader:leader_call(?MODULE, {subscribe, node(), ClientId, Topic, QoS}) of
-        ok ->
-            emqttd_msg_store:deliver_retained(self(), Topic, QoS);
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-unsubscribe(ClientId, Topic) ->
-    locks_leader:leader_call(?MODULE, {unsubscribe, ClientId, Topic}).
-
-get_subscriptions() ->
-    locks_leader:call(?MODULE, get_subscriptions).
-
 add_node(Node) when is_atom(Node) ->
     locks_leader:leader_call(?MODULE, {add_node, Node}).
 
@@ -73,44 +59,98 @@ del_node(Node) when is_atom(Node) ->
 which_nodes() ->
     gen_server:call(?MODULE, which_nodes).
 
+subscribe(ClientId, Topics) ->
+    case ets:lookup(emqttd_status, ready) of
+        [{ready, true}] ->
+            locks_leader:leader_call(?MODULE, {subscribe, node(), self(), ClientId, Topics});
+        _ ->
+            {error, not_ready}
+    end.
 
+unsubscribe(ClientId, Topics) ->
+    case ets:lookup(emqttd_status, ready) of
+        [{ready, true}] ->
+            locks_leader:leader_call(?MODULE, {unsubscribe, ClientId, Topics});
+        _ ->
+            {error, not_ready}
+    end.
+
+get_subscriptions() ->
+    locks_leader:call(?MODULE, get_subscriptions).
 
 register_client(ClientId, CleanSession) ->
-    locks_leader:leader_call(?MODULE, {register_client, node(), CleanSession, ClientId, self()}).
+    case ets:lookup(emqttd_status, ready) of
+        [{ready, true}] ->
+            locks_leader:leader_call(?MODULE, {register_client, node(), CleanSession, ClientId, self()});
+        _ ->
+            {error, not_ready}
+    end.
 
 %% delete retained message
 publish(RoutingKey, <<>>, true) ->
-    locks_leader:leader_call(?MODULE, {reset_retain_msg, RoutingKey});
+    case ets:lookup(emqttd_status, ready) of
+        [{ready, true}] ->
+            locks_leader:leader_call(?MODULE, {reset_retain_msg, RoutingKey});
+        _ ->
+            {error, not_ready}
+    end;
 
 %publish to cluster node.
 publish(RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_binary(Payload) ->
-    case IsRetain of
-        true ->
+    publish_(RoutingKey, Payload, IsRetain).
+
+publish_(RoutingKey, Payload, true) ->
+    case ets:lookup(emqttd_status, ready) of
+        [{ready, true}] ->
             case locks_leader:leader_call(?MODULE, {retain_msg, RoutingKey, Payload}) of
                 ok ->
-                    publish_(RoutingKey, Payload);
-                {error, Reason} ->
-                    {error, Reason}
+                    lists:foreach(
+                      fun(#topic{name=Name, node=Node}) ->
+                              case Node == node() of
+                                  true ->
+                                      route(Name, RoutingKey, Payload);
+                                  false ->
+                                      rpc:call(Node, ?MODULE, route, [Name, RoutingKey, Payload])
+                              end
+                      end, match(RoutingKey));
+                Error ->
+                    Error
             end;
+        _ ->
+            {error, not_ready}
+    end;
+publish_(RoutingKey, Payload, false) ->
+    MatchedTopics = match(RoutingKey),
+    case check_single_node(node(), MatchedTopics, length(MatchedTopics)) of
+        true ->
+            %% in case we have only subscriptions on one single node
+            %% we can deliver the messages even in case of network partitions
+            lists:foreach(fun(#topic{name=Name}) ->
+                                  route(Name, RoutingKey, Payload)
+                          end, MatchedTopics);
         false ->
             case ets:lookup(emqttd_status, ready) of
                 [{ready, true}] ->
-                    publish_(RoutingKey, Payload);
+                    lists:foreach(
+                      fun(#topic{name=Name, node=Node}) ->
+                              case Node == node() of
+                                  true ->
+                                      route(Name, RoutingKey, Payload);
+                                  false ->
+                                      rpc:call(Node, ?MODULE, route, [Name, RoutingKey, Payload])
+                              end
+                      end, MatchedTopics);
                 _ ->
-                    {error, maybe_net_split}
+                    {error, not_ready}
             end
     end.
 
-publish_(RoutingKey, Payload) ->
-    lists:foreach(
-      fun(#topic{name=Name, node=Node}) ->
-              case Node == node() of
-                  true ->
-                      route(Name, RoutingKey, Payload);
-                  false ->
-                      rpc:call(Node, ?MODULE, route, [Name, RoutingKey, Payload])
-              end
-      end, match(RoutingKey)).
+check_single_node(Node, [#topic{node=Node}|Rest], Acc) ->
+    check_single_node(Node, Rest, Acc -1);
+check_single_node(Node, [_|Rest], Acc) ->
+    check_single_node(Node, Rest, Acc);
+check_single_node(_, [], 0) -> true;
+check_single_node(_, [], _) -> false.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% RPC Callbacks / Maintenance
@@ -140,12 +180,12 @@ route(Topic, RoutingKey, Payload) ->
                                 Acc
                         end
                 end, [], ets:lookup(emqttd_subscriber, Topic)),
-    io:format("unroutable client ~p~n", [UnroutableClients]),
+    %io:format("unroutable client ~p~n", [UnroutableClients]),
     emqttd_msg_store:persist_for_later(UnroutableClients, RoutingKey, Payload).
 
 match(Topic) when is_list(Topic) ->
     TrieNodes = trie_match(emqtt_topic:words(Topic)),
-    Names = [Name || #trie_node{topic=Name} <- TrieNodes, Name=/= undefined],
+    Names = [Name || #trie_node{topic=Name} <- TrieNodes, Name =/= undefined],
     lists:flatten([ets:lookup(emqttd_trie_topic, Name) || Name <- Names]).
 
 %% @spec init(Arg::term()) -> {ok, State}
@@ -325,7 +365,7 @@ handle_DOWN(Pid, S, _I) ->
     NodeName = node(Pid),
     NewNodes = lists:keyreplace(NodeName, 1, S#st.nodes, {NodeName, false}),
     io:fwrite("handle_DOWN(~p,Dict,E)~n", [NodeName]),
-    {ok, NewNodes, S#st{nodes=NewNodes, ready=ready(NewNodes)}}.
+    {ok, {sync, {node_sync, NewNodes}}, S#st{nodes=NewNodes, ready=ready(NewNodes)}}.
 
 %% @spec handle_leader_call(Msg::term(), From::callerRef(), State::state(),
 %%                          I::info()) ->
@@ -343,26 +383,6 @@ handle_DOWN(Pid, S, _I) ->
 %%
 %% If the return value includes a `Broadcast' object, it will be sent to all
 %% candidates, and they will receive it in the function {@link from_leader/3}.
-handle_leader_call({subscribe, Node, ClientId, Topic, QoS}, _From, State, _I) ->
-    case State#st.ready of
-        true ->
-            add_topic(State#st.subs, Node, ClientId, Topic, QoS),
-            {reply, ok, {sync, {subscribe, Node, ClientId, Topic, QoS}}, State};
-        false ->
-            %% trading availability for CP,
-            {reply, {error, maybe_net_split}, State}
-    end;
-
-handle_leader_call({unsubscribe, ClientId, Topic}, _From, State, _I) ->
-    case State#st.ready of
-        true ->
-            del_topic(State#st.subs, ClientId, Topic),
-            {reply, ok, {sync, {unsubscribe, ClientId, Topic}}, State};
-        false ->
-            %% trading availability for CP,
-            {reply, {error, maybe_net_split}, State}
-    end;
-
 handle_leader_call({add_node, Node}, _From, #st{nodes=Nodes} = State, _I) ->
     NewNodes =
     case lists:keyfind(Node, 1, Nodes) of
@@ -377,58 +397,118 @@ handle_leader_call({del_node, Node}, _From, #st{nodes=Nodes} = State, _I) ->
     NewNodes = lists:keydelete(Node, 1, Nodes),
     {reply, ok, {sync, {node_sync, NewNodes}}, State#st{nodes=NewNodes}};
 
-handle_leader_call({register_client, Node, CleanSession, ClientId, Pid}, _From, State, _I) ->
-    case State#st.ready of
+
+handle_leader_call({subscribe, Node, ClientPid, ClientId, Topics}, _From, #st{ready=true} = State, I) ->
+    case locks_leader:ask_candidates({subscribe, Node, ClientId, Topics}, I) of
+        {_, []} ->
+            lists:foreach(fun({Topic, QoS}) ->
+                                  emqttd_msg_store:deliver_retained(ClientPid, Topic, QoS),
+                                  add_topic(State#st.subs, Node, ClientId, Topic, QoS)
+                          end, Topics),
+            {reply, ok, State};
+        {Good, Bad} ->
+            %% REVERT the subscriptions
+            case locks_leader:ask_candidates({unsubscribe, ClientId, [T || {T, _} <- Topics]}, I) of
+                {Good, Bad} ->
+                    %% consistently reverted subscribe ... done
+                    NewNodes =
+                    lists:foldl(fun({Pid, _E}, OldNodes) ->
+                                        NodeName = node(Pid),
+                                        lists:keyreplace(NodeName, 1, OldNodes, {NodeName, false})
+                                end, State#st.nodes, Bad),
+                    {reply, {error, cant_subscribe}, {sync, {node_sync, NewNodes}},
+                     State#st{nodes=NewNodes, ready=ready(NewNodes)}};
+                {_, NewBad} ->
+                    %% couldn't revert.
+                    %% TODO: log the inconsistency!!!
+                    NewNodes =
+                    lists:foldl(fun({Pid, _E}, OldNodes) ->
+                                        NodeName = node(Pid),
+                                        lists:keyreplace(NodeName, 1, OldNodes, {NodeName, false})
+                                end, State#st.nodes, NewBad),
+                    {reply, {error, cant_subscribe}, {sync, {node_sync, NewNodes}},
+                     State#st{nodes=NewNodes, ready=ready(NewNodes)}}
+            end
+    end;
+
+handle_leader_call({unsubscribe, ClientId, Topics}, _From, #st{ready=true} = State, I) ->
+    case locks_leader:ask_candidates({unsubscribe, ClientId, Topics}, I) of
+        {_, []} ->
+            lists:foreach(fun(Topic) ->
+                                  del_topic(State#st.subs, ClientId, Topic)
+                          end, Topics),
+            {reply, ok, State};
+        {Good, Bad} ->
+            %% REVERT the unsubscriptions
+            TTopics = lists:foldl(
+                        fun(T, Acc) ->
+                                case get_topic_val(State#st.subs, ClientId, T) of
+                                    {ok, {_, Node, QoS}} ->
+                                        case lists:keyfind(Node, 1, Acc) of
+                                            false ->
+                                                [{Node, [{T, QoS}]}|Acc];
+                                            {_, NTopics} ->
+                                                lists:keyreplace(Node, 1, Acc,
+                                                                 {Node, [{T, QoS}|NTopics]})
+                                        end;
+                                    not_found ->
+                                        Acc
+                                end
+                        end, [], Topics),
+            lists:foreach(
+              fun({Node, NodeTopics}) ->
+                      case locks_leader:ask_candidates({subscribe, Node, ClientId, NodeTopics}) of
+                          {Good, Bad} ->
+                              %% Consistently reverted unsubscribe
+                              ok;
+                          {_, _NewBad} ->
+                              %% couldn't revert.
+                              %% TODO: log the inconsistency!!!
+                              ok
+                      end
+              end, TTopics),
+            NewNodes =
+            lists:foldl(fun({Pid, _E}, OldNodes) ->
+                                NodeName = node(Pid),
+                                lists:keyreplace(NodeName, 1, OldNodes, {NodeName, false})
+                        end, State#st.nodes, Bad),
+            {reply, {error, cant_unsubscribe}, {sync, {node_sync, NewNodes}},
+             State#st{nodes=NewNodes, ready=ready(NewNodes)}}
+    end;
+
+handle_leader_call({register_client, Node, CleanSession, ClientId, Pid}, _From, #st{ready=true} = State, _I) ->
+    case Node == node() of
         true ->
-            case Node == node() of
-                true ->
-                    disconnect_client(ClientId), %% disconnect in case we already have such a client id
-                    ets:insert(emqttd_client, #client{id=ClientId, node=Node, pid=Pid}),
-                    monitor(process, Pid);
-                false ->
-                    ok
-            end,
+            disconnect_client(ClientId), %% disconnect in case we already have such a client id
+            ets:insert(emqttd_client, #client{id=ClientId, node=Node, pid=Pid}),
+            monitor(process, Pid);
+        false ->
+            ok
+    end,
+    case CleanSession of
+        false ->
+            emqttd_msg_store:deliver_from_store(ClientId, Pid);
+        true ->
             %% this will also cleanup the message store
-            cleanup_client(State#st.subs, CleanSession, ClientId),
-            case CleanSession of
-                false ->
-                    emqttd_msg_store:deliver_from_store(ClientId, Pid);
-                true ->
-                    ok
-            end,
-            {reply, ok, {sync, {register_client, Node, CleanSession, ClientId, Pid}}, State};
-        false ->
-            {reply, {error, maybe_net_split}, State}
-    end;
+            cleanup_client(State#st.subs, ClientId)
+    end,
+    {reply, ok, {register_client, Node, CleanSession, ClientId, Pid}, State};
 
-handle_leader_call({cleanup, ClientId}, _From, State, _I) ->
-    case State#st.ready of
-        true ->
-            {reply, cleanup_client(State#st.subs, true, ClientId), {sync, {cleanup, ClientId}}, State};
-        false ->
-            {reply, {error, maybe_net_split}, State}
-    end;
+handle_leader_call({cleanup, ClientId}, _From, #st{ready=true} = State, _I) ->
+    %% this will also cleanup the message store
+    cleanup_client(State#st.subs, ClientId),
+    {reply, ok, {cleanup, ClientId}, State};
 
-handle_leader_call({retain_msg, RoutingKey, Payload}, _From, State, _I) ->
-    case State#st.ready of
-        true ->
-            ok = emqttd_msg_store:persist_retain_msg(RoutingKey, Payload),
-            {reply, ok, {sync, {retain_msg, RoutingKey, Payload}}, State};
-        false ->
-            {reply, {error, maybe_net_split}, State}
-    end;
+handle_leader_call({retain_msg, RoutingKey, Payload}, _From, #st{ready=true} = State, _I) ->
+    ok = emqttd_msg_store:persist_retain_msg(RoutingKey, Payload),
+    {reply, ok, {retain_msg, RoutingKey, Payload}, State};
 
-handle_leader_call({reset_retain_msg, RoutingKey}, _From, State, _I) ->
-    case State#st.ready of
-        true ->
-            ok = emqttd_msg_store:reset_retained_msg(RoutingKey),
-            {reply, ok, {sync, {reset_retain_msg, RoutingKey}}, State};
-        false ->
-            {reply, {error, maybe_net_split}, State}
-    end.
+handle_leader_call({reset_retain_msg, RoutingKey}, _From, #st{ready=true} = State, _I) ->
+    ok = emqttd_msg_store:reset_retained_msg(RoutingKey),
+    {reply, ok, {reset_retain_msg, RoutingKey}, State};
 
-
-
+handle_leader_call(_, _From, #st{ready=false} = State, _I) ->
+    {reply, {error, maybe_net_split}, State}.
 
 %% @spec handle_leader_cast(Msg::term(), State::term(), I::info()) ->
 %%   commonReply()
@@ -447,13 +527,6 @@ handle_leader_cast(_Msg, S, _I) ->
 %%
 %% @doc Called by each candidate in response to a message from the leader.
 %% @end
-from_leader({sync, {subscribe, Node, ClientId, Topic, QoS}}, State, _I) ->
-    add_topic(State#st.subs, Node, ClientId, Topic, QoS),
-    {ok, State};
-from_leader({sync, {unsubscribe, ClientId, Topic}}, State, _I) ->
-    del_topic(State#st.subs, ClientId, Topic),
-    {ok, State};
-
 from_leader({sync, {node_sync, Nodes}}, #st{nodes=OldNodes} = S, _I) ->
     Member = lists:member(node(), Nodes),
     case lists:member(node(), OldNodes) of
@@ -472,7 +545,7 @@ from_leader({sync, {node_sync, Nodes}}, #st{nodes=OldNodes} = S, _I) ->
     end,
     {ok, S#st{nodes=Nodes, ready=ready(Nodes)}};
 
-from_leader({sync, {register_client, Node, CleanSession, ClientId, Pid}}, S, _I) ->
+from_leader({register_client, Node, CleanSession, ClientId, Pid}, S, _I) ->
     case Node == node() of
         true ->
             disconnect_client(ClientId), %% disconnect in case we already have such a client id
@@ -481,25 +554,25 @@ from_leader({sync, {register_client, Node, CleanSession, ClientId, Pid}}, S, _I)
         false ->
             ok
     end,
-    %% this will also cleanup the message store
-    cleanup_client(S#st.subs, CleanSession, ClientId),
     case CleanSession of
         false ->
             emqttd_msg_store:deliver_from_store(ClientId, Pid);
         true ->
-            ok
+            %% this will also cleanup the message store
+            cleanup_client(S#st.subs, ClientId)
     end,
     {ok, S};
 
-from_leader({sync, {cleanup, ClientId}}, S, _I) ->
-    cleanup_client(S#st.subs, true, ClientId),
+from_leader({cleanup, ClientId}, S, _I) ->
+    %% this will also cleanup the message store
+    cleanup_client(S#st.subs, ClientId),
     {ok, S};
 
-from_leader({sync, {retain_msg, RoutingKey, Payload}}, S, _I) ->
+from_leader({retain_msg, RoutingKey, Payload}, S, _I) ->
     ok = emqttd_msg_store:persist_retain_msg(RoutingKey, Payload),
     {ok, S};
 
-from_leader({sync, {reset_retain_msg, RoutingKey}}, S, _I) ->
+from_leader({reset_retain_msg, RoutingKey}, S, _I) ->
     emqttd_msg_store:reset_retained_msg(RoutingKey),
     {ok, S}.
 
@@ -533,6 +606,17 @@ handle_call({find_unknowns, Bloom}, _From, S, _I) ->
               end
       end, [], bitcask:list_keys(S#st.subs)),
     {reply, Unknowns, S};
+
+handle_call({subscribe, Node, ClientId, Topics}, _From, State, _I) ->
+    lists:foreach(fun({Topic, QoS}) ->
+                          add_topic(State#st.subs, Node, ClientId, Topic, QoS)
+                  end, Topics),
+    {reply, ok, State};
+handle_call({unsubscribe, ClientId, Topics}, _From, State, _I) ->
+    lists:foreach(fun(Topic) ->
+                          del_topic(State#st.subs, ClientId, Topic)
+                  end, Topics),
+    {reply, ok, State};
 
 
 handle_call({replicate, KVPairs}, _From, S, _I) ->
@@ -575,7 +659,9 @@ handle_call(which_nodes, _From, S, _I) ->
     {reply, S#st.nodes, S};
 
 handle_call({cleanup_client, ClientId}, _From, State, _I) ->
-    {reply, cleanup_client(State#st.subs, true, ClientId), State}.
+    %% this will also cleanup the message store
+    cleanup_client(State#st.subs, ClientId),
+    {reply, ok, State}.
 
 
 
@@ -655,6 +741,9 @@ merge_nodes(Nodes, I) ->
                 [Nodes2|Acc]
         end, [Nodes], Good))).
 
+
+get_topic_val(St, ClientId, Topic) when is_list(Topic) ->
+    bitcask:get(St, term_to_binary({ClientId, list_to_binary(Topic)})).
 
 add_topic(St, Node, ClientId, Topic, QoS) when is_list(Topic) ->
     ok = bitcask:put(St, term_to_binary({ClientId, list_to_binary(Topic)}), term_to_binary({now(), Node, QoS})),
@@ -778,8 +867,7 @@ get_client_pid(ClientId) ->
     end.
 
 
-cleanup_client(_, false, _) -> ok;
-cleanup_client(St, true, ClientId) ->
+cleanup_client(St, ClientId) ->
     emqttd_msg_store:clean_session(ClientId),
     case ets:match_object(emqttd_subscriber, #subscriber{client=ClientId, _='_'}) of
         [] -> ignore;

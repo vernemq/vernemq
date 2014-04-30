@@ -5,9 +5,11 @@
          persist_for_later/3,
          deliver_from_store/2,
          deliver_retained/3,
+         get_retained/1,
          clean_session/1,
          persist_retain_msg/2,
-         reset_retained_msg/1
+         reset_retained_msg/1,
+         move_all/1
          ]).
 -export([init/1,
          handle_call/3,
@@ -45,6 +47,9 @@ deliver_retained(ClientPid, Topic, QoS) ->
      || {{RoutingKey, _}, Payload} <- RetainedMsgs],
     ok.
 
+get_retained(Topic) ->
+    gen_server:call(?MODULE, {get_retained, Topic}).
+
 clean_session(ClientId) ->
     gen_server:call(?MODULE, {remove_session, ClientId}),
     ok.
@@ -54,6 +59,9 @@ persist_retain_msg(RoutingKey, Msg) ->
 
 reset_retained_msg(RoutingKey) ->
     gen_server:call(?MODULE, {reset_retained_msg, RoutingKey}).
+
+move_all(Node) ->
+    gen_server:call(?MODULE, {move_all, Node}, infinity).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
@@ -108,14 +116,36 @@ handle_call({persist_retain_msg, RoutingKey, Message}, _From, State) ->
 handle_call({deliver, ClientId, ClientPid}, _From, State) ->
     #state{store=MsgStore} = State,
     lists:foreach(fun({_, QoS, MsgRef, IndexRef} = Obj) ->
-                          {ok, <<RLen:16, RoutingKey:RLen/binary,
-                                 Payload/binary>>} = bitcask:get(MsgStore, MsgRef),
-                          emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false),
-                          true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
-                          ok = bitcask:delete(MsgStore, IndexRef),
-                          maybe_delete_from_msg_store(MsgStore, MsgRef)
+                          case bitcask:get(MsgStore, MsgRef) of
+                              {ok, <<RLen:16, RoutingKey:RLen/binary,
+                                     Payload/binary>>} ->
+                                  emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false),
+                                  true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
+                                  ok = bitcask:delete(MsgStore, IndexRef),
+                                  maybe_delete_from_msg_store(MsgStore, MsgRef);
+                              notfound ->
+                                  %% inconsistency!!!
+                                  %% TODO: log inconsistency
+                                  true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
+                                  bitcask:delete(MsgStore, IndexRef)
+                          end
                   end, ets:lookup(?MSG_INDEX_TABLE, {client, ClientId})),
     {reply, ok, State};
+
+handle_call({move_all, Node}, _From, State) ->
+    %% At this point we should not take any new messages
+    #state{store=MsgStore} = State,
+    bitcask:fold(MsgStore,
+                 fun
+                     (<<?MSG_ITEM, _/binary>> = MsgRef, <<L:16, BRoutingKey:L/binary, Payload/binary>>, _) ->
+                          Clients = [{ClientId, QoS} || {{client, ClientId}, QoS, _, _} <- ets:match(?MSG_INDEX_TABLE, {'_', '_', MsgRef, '_'})],
+                          ok = rpc:call(Node, ?MODULE, persist_for_later,
+                                        [Clients, binary_to_list(BRoutingKey), Payload]);
+                     (_, _, _) ->
+                         ok
+                 end, []),
+    {reply, ok, State};
+
 
 handle_call({get_retained, SubTopic}, _From, State) ->
     #state{store=MsgStore} = State,

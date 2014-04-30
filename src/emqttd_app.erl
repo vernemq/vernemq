@@ -11,8 +11,16 @@
 
 start(_StartType, _StartArgs) ->
     {ok, AuthProviders} = application:get_env(auth_providers),
+    Port =
+    case proplists:get_value(emqttd_port, init:get_arguments()) of
+        [StringPort] -> list_to_integer(StringPort);
+        [] -> case application:get_env(emqttd_port) of
+                  {ok, P} -> P;
+                  _ -> 1883
+              end
+    end,
     {ok, _} = ranch:start_listener(tcp_mqtt, 1,
-                                   ranch_tcp, [{port, 1883}], emqttd_handler_fsm,
+                                   ranch_tcp, [{port, Port}], emqttd_handler_fsm,
                                    [{auth_providers, AuthProviders}]),
     emqttd_sup:start_link().
 
