@@ -25,21 +25,27 @@
 -define(CLOSE_AFTER, 5000).
 
 -record(state, {
-
+                %% parser requirements
+                buffer= <<>>,
                 parser_state=emqtt_frame:initial_state(),
-                peer,
-                client_id,
-                username,
+                %% networking requirements
                 socket,
                 transport,
-                auth_providers,
+                %% mqtt layer requirements
                 next_msg_id=1,
-                connection_attempted=false,
+                client_id,
                 will_topic,
                 will_msg,
                 will_qos,
                 waiting_acks=dict:new(),
-                buffer= <<>>}).
+                %% statemachine requirements
+                connection_attempted=false,
+                %% auth backend requirement
+                peer,
+                username,
+                auth_providers
+
+         }).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
@@ -100,7 +106,7 @@ connected({retry, MessageId}, State) ->
             emqtt_frame:serialise(Frame#mqtt_frame{fixed=Fixed#mqtt_frame_fixed{dup=true}});
         {BinFrame, _} -> BinFrame
     end,
-    io:format("[~p] send_bin ~p ~p~n", [self(), retry, byte_size(Bin)]),
+    % io:format("[~p] send_bin ~p ~p~n", [self(), retry, byte_size(Bin)]),
     send_bin(Transport, Socket, Bin),
     Ref = gen_fsm:send_event_after(10000, {retry, MessageId}),
     {next_state, connected, State#state{

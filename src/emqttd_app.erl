@@ -14,7 +14,7 @@ start(_StartType, _StartArgs) ->
     Port =
     case proplists:get_value(emqttd_port, init:get_arguments()) of
         [StringPort] -> list_to_integer(StringPort);
-        [] -> case application:get_env(emqttd_port) of
+        undefined -> case application:get_env(emqttd_port) of
                   {ok, P} -> P;
                   _ -> 1883
               end
