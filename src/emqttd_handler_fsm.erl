@@ -43,7 +43,8 @@
                 %% auth backend requirement
                 peer,
                 username,
-                auth_providers
+                auth_providers,
+                msg_log_handler
 
          }).
 
@@ -187,7 +188,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
                              variable=#mqtt_frame_publish{message_id=MessageId},
                              payload= <<>>},
     Bin = emqtt_frame:serialise(PubRelFrame),
-    io:format("[~p] send_bin ~p ~p~n", [self(), pubrel, byte_size(Bin)]),
+    % io:format("[~p] send_bin ~p ~p~n", [self(), pubrel, byte_size(Bin)]),
     send_bin(Transport, Socket, Bin),
     NewRef = gen_fsm:send_event_after(10000, {retry, MessageId}),
     {next_state, connected, State#state{
@@ -278,9 +279,19 @@ init([Ref, Socket, Transport, Opts]) ->
                                     {active, once}]),
     {ok, Peer} = Transport:peername(Socket),
     {_, AuthProviders} = lists:keyfind(auth_providers, 1, Opts),
+    MsgLogHandler =
+    case lists:keyfind(msg_log_handler, 1, Opts) of
+        {_, undefined} ->
+            fun(_,_,_) -> ok end;
+        {_, Mod} when is_atom(Mod) ->
+            fun(ClientId, Topic, Msg) -> apply(Mod, handle, [self(), ClientId, Topic, Msg]) end
+    end,
+
+    {_, MsgLogHandler} =
     gen_fsm:enter_loop(?MODULE, [], wait_for_connect,
                        #state{socket=Socket, transport=Transport, peer=Peer,
-                              auth_providers=AuthProviders}, ?CLOSE_AFTER).
+                              auth_providers=AuthProviders,
+                              msg_log_handler=MsgLogHandler}, ?CLOSE_AFTER).
 
 handle_sync_event(_Event, _From, StateName, State) ->
     {reply, ok, StateName, State}.
@@ -379,11 +390,16 @@ maybe_publish_last_will(#state{will_qos=QoS, will_topic=Topic,
     dispatch_publish(QoS, MsgId, Topic, Msg, false, NewState).
 
 
-dispatch_publish(0, MessageId, Topic, Payload, IsRetain, State) ->
+dispatch_publish(Qos, MessageId, Topic, Payload, IsRetain, State) ->
+    #state{client_id=ClientId, msg_log_handler=MsgLogHandler} = State,
+    MsgLogHandler(ClientId, Topic, Payload),
+    dispatch_publish_(Qos, MessageId, Topic, Payload, IsRetain, State).
+
+dispatch_publish_(0, MessageId, Topic, Payload, IsRetain, State) ->
     dispatch_publish_qos0(MessageId, Topic, Payload, IsRetain, State);
-dispatch_publish(1, MessageId, Topic, Payload, IsRetain, State) ->
+dispatch_publish_(1, MessageId, Topic, Payload, IsRetain, State) ->
     dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State);
-dispatch_publish(2, MessageId, Topic, Payload, IsRetain, State) ->
+dispatch_publish_(2, MessageId, Topic, Payload, IsRetain, State) ->
     dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State).
 
 dispatch_publish_qos0(_MessageId, Topic, Payload, IsRetain, State) ->
