@@ -9,7 +9,7 @@
                   ranch,
                   emqtt_commons,
                   bitcask,
-                  locks
+                  mnesia_cluster
                  ]},
   {mod, { emqttd_app, []}},
   {env, [

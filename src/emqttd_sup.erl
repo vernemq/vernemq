@@ -26,7 +26,7 @@ init([]) ->
     EMQTTDir = "EMQTT."++atom_to_list(node()),
     filelib:ensure_dir(EMQTTDir),
     {ok, { {one_for_one, 5, 10}, [
-            ?CHILD(emqttd_trie, worker, [[node()], filename:join(EMQTTDir, "subs")]),
+            ?CHILD(emqttd_trie, worker, []),
             ?CHILD(emqttd_msg_store, worker, [filename:join(EMQTTDir, "store")]),
             ?CHILD(emqttd_buffer_sup, supervisor, [filename:join(EMQTTDir, "buffer"), NrOfBuffers])]} }.
 
