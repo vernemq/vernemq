@@ -4,7 +4,7 @@
 -include_lib("emqtt_commons/include/emqtt_frame.hrl").
 
 -export([start_link/4,
-         deliver/5,
+         deliver/6,
          disconnect/1]).
 
 -export([init/1,
@@ -54,8 +54,8 @@
 start_link(Ref, Socket, Transport, Opts) ->
     proc_lib:start_link(?MODULE, init, [[Ref, Socket, Transport, Opts]]).
 
-deliver(FsmPid, Topic, Payload, QoS, IsRetained) ->
-    gen_fsm:send_event(FsmPid, {deliver, Topic, Payload, QoS, IsRetained}).
+deliver(FsmPid, Topic, Payload, QoS, IsRetained, Ref) ->
+    gen_fsm:send_event(FsmPid, {deliver, Topic, Payload, QoS, IsRetained, Ref}).
 
 disconnect(FsmPid) ->
     gen_fsm:sync_send_event(FsmPid, disconnect).
@@ -73,7 +73,7 @@ connection_attempted(timeout, State) ->
 connected(timeout, State) ->
     {next_state, connected, State};
 
-connected({deliver, Topic, Payload, QoS, _IsRetained}, State) ->
+connected({deliver, Topic, Payload, QoS, _IsRetained, MsgStoreRef}, State) ->
     #state{transport=Transport, socket=Socket, waiting_acks=WAcks} = State,
     {OutgoingMsgId, State1} = get_msg_id(QoS, State),
     Frame = #mqtt_frame{
@@ -96,22 +96,24 @@ connected({deliver, Topic, Payload, QoS, _IsRetained}, State) ->
         NewState when QoS > 0 ->
             % io:format("[~p] in deliver ~p ~p~n", [self(), Topic, byte_size(Payload)]),
             Ref = gen_fsm:send_event_after(10000, {retry, OutgoingMsgId}),
-            {next_state, connected, NewState#state{waiting_acks=dict:store(OutgoingMsgId, {Frame, Ref}, WAcks)}}
+            {next_state, connected, NewState#state{waiting_acks=dict:store(OutgoingMsgId, {Frame, Ref, MsgStoreRef}, WAcks)}}
     end;
 
 connected({retry, MessageId}, State) ->
     #state{transport=Transport, socket=Socket, waiting_acks=WAcks} = State,
-    Bin =
+    {Bin, _, MsgStoreRef} =
     case dict:fetch(MessageId, WAcks) of
-        {#mqtt_frame{fixed=Fixed} = Frame, _} ->
-            emqtt_frame:serialise(Frame#mqtt_frame{fixed=Fixed#mqtt_frame_fixed{dup=true}});
-        {BinFrame, _} -> BinFrame
+        {#mqtt_frame{fixed=Fixed} = Frame, _, _} = Item ->
+            NewBin = emqtt_frame:serialise(Frame#mqtt_frame{
+                                             fixed=Fixed#mqtt_frame_fixed{dup=true}}),
+            setelement(1, Item, NewBin);
+        Item -> Item
     end,
     % io:format("[~p] send_bin ~p ~p~n", [self(), retry, byte_size(Bin)]),
     send_bin(Transport, Socket, Bin),
     Ref = gen_fsm:send_event_after(10000, {retry, MessageId}),
     {next_state, connected, State#state{
-                              waiting_acks=dict:store(MessageId, {Bin, Ref}, WAcks)}}.
+                              waiting_acks=dict:store(MessageId, {Bin, Ref, MsgStoreRef}, WAcks)}}.
 
 connected(disconnect, _From, State) ->
     io:format("[~p] stop due to ~p~n", [self(), disconnect]),
@@ -170,10 +172,13 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
     % io:format("got PUBACK ~p ~p~n", [MessageId, now()]),
     %io:format("lists keyfind ~p in ~p~n", [MessageId, WAcks]),
     case dict:find(MessageId, WAcks) of
-        {ok, {_, Ref}} ->
+        {ok, {_, Ref, MsgStoreRef}} ->
             gen_fsm:cancel_timer(Ref),
+            io:format("deref4~n"),
+            emqttd_msg_store:deref(MsgStoreRef),
             {next_state, connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
         error ->
+            io:format("got error~n"),
             {next_state, connected, State}
     end;
 
@@ -181,7 +186,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
     #state{waiting_acks=WAcks, transport=Transport, socket=Socket} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
-    {_, Ref} = dict:fetch(MessageId, WAcks),
+    {_, Ref, MsgStoreRef} = dict:fetch(MessageId, WAcks),
     gen_fsm:cancel_timer(Ref), % cancel republish timer
     PubRelFrame =#mqtt_frame{
                              fixed=#mqtt_frame_fixed{type=?PUBREL, qos=1},
@@ -191,14 +196,19 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
     % io:format("[~p] send_bin ~p ~p~n", [self(), pubrel, byte_size(Bin)]),
     send_bin(Transport, Socket, Bin),
     NewRef = gen_fsm:send_event_after(10000, {retry, MessageId}),
+    io:format("deref2~n"),
+    emqttd_msg_store:deref(MsgStoreRef),
     {next_state, connected, State#state{
-                              waiting_acks=dict:store(MessageId, {PubRelFrame, NewRef}, WAcks)}};
+                              waiting_acks=dict:store(MessageId,
+                                                      {PubRelFrame, NewRef, undefined}, WAcks)}};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL}, Var, _, State) ->
-    #state{client_id=ClientId} = State,
+    #state{waiting_acks=WAcks} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
-    ok = emqttd_buffer:release_and_forward(ClientId, MessageId),
+    {MsgRef, IsRetain} = dict:fetch({qos2, MessageId}, WAcks),
+    {ok, {RoutingKey, Payload}} = emqttd_msg_store:retrieve(MsgRef),
+    emqttd_trie:publish(MsgRef, RoutingKey, Payload, IsRetain),
     NewState = send_frame(?PUBCOMP, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
     {next_state, connected, NewState};
 
@@ -206,7 +216,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
     #state{waiting_acks=WAcks} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
-    {_, Ref} = dict:fetch(MessageId, WAcks),
+    {_, Ref, undefined} = dict:fetch(MessageId, WAcks),
     gen_fsm:cancel_timer(Ref), % cancel rpubrel timer
     {next_state, connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
 
@@ -338,12 +348,17 @@ handle_input(Input, StateName, State) ->
 process_bytes(Bytes, StateName, #state{parser_state=ParserState} = State) ->
     case emqtt_frame:parse(Bytes, ParserState) of
         {more, NewParserState} ->
+            #state{transport=Transport, socket=Socket} = State,
+            Transport:setopts(Socket, [{active, once}]),
             {next_state, StateName, State#state{parser_state=NewParserState}};
         {ok, #mqtt_frame{fixed=Fixed, variable=Variable, payload=Payload}, Rest} ->
-            {next_state, NextStateName, NewState}
-            = handle_frame(StateName, Fixed, Variable, Payload, State),
-            PS = emqtt_frame:initial_state(),
-            process_bytes(Rest, NextStateName, NewState#state{parser_state=PS});
+            case handle_frame(StateName, Fixed, Variable, Payload, State) of
+                {next_state, NextStateName, NewState} ->
+                    PS = emqtt_frame:initial_state(),
+                    process_bytes(Rest, NextStateName, NewState#state{parser_state=PS});
+                Ret ->
+                    Ret
+            end;
         {error, Reason} ->
             io:format("parse error ~p~n", [Reason]),
             {next_state, StateName, State#state{buffer= <<>>,
@@ -404,17 +419,22 @@ dispatch_publish_(2, MessageId, Topic, Payload, IsRetain, State) ->
 
 dispatch_publish_qos0(_MessageId, Topic, Payload, IsRetain, State) ->
     %io:format("dispatch0  ~p ~p ~p~n", [_MessageId, Topic, self()]),
-    emqttd_trie:publish(Topic, Payload, IsRetain),
+    emqttd_trie:publish(undefined, Topic, Payload, IsRetain),
     State.
 
 dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
     %io:format("dispatch1  ~p ~p ~p~n", [MessageId, Topic, self()]),
-    ok = emqttd_buffer:store_and_forward(State#state.client_id, Topic, Payload, IsRetain),
-    send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State).
+    MsgRef = emqttd_msg_store:store(Topic, Payload),
+    emqttd_trie:publish(MsgRef, Topic, Payload, IsRetain),
+    NewState = send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
+    io:format("deref3~n"),
+    emqttd_msg_store:deref(MsgRef),
+    NewState.
 
-dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
-    ok = emqttd_buffer:store(State#state.client_id, MessageId, Topic, Payload, IsRetain),
-    send_frame(?PUBREC, #mqtt_frame_publish{message_id=MessageId}, <<>>, State).
+dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, #state{waiting_acks=WAcks} = State) ->
+    MsgRef = emqttd_msg_store:store(Topic, Payload),
+    NewState = State#state{waiting_acks=dict:store({qos2, MessageId}, {MsgRef, IsRetain}, WAcks)},
+    send_frame(?PUBREC, #mqtt_frame_publish{message_id=MessageId}, <<>>, NewState).
 
 get_msg_id(0, State) ->
     {undefined, State};

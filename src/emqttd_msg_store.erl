@@ -2,14 +2,14 @@
 -behaviour(gen_server).
 
 -export([start_link/1,
-         persist_for_later/3,
+         store/2, store/3,
+         retrieve/1,
+         deref/1,
          deliver_from_store/2,
          deliver_retained/3,
-         get_retained/1,
          clean_session/1,
-         persist_retain_msg/2,
-         reset_retained_msg/1,
-         move_all/1
+         retain_action/3,
+         defer_deliver/3
          ]).
 -export([init/1,
          handle_call/3,
@@ -34,155 +34,176 @@
 start_link(MsgStoreDir) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [MsgStoreDir], []).
 
-persist_for_later([], _, _) -> ok;
-persist_for_later(UnroutableClients, RoutingKey, Payload) ->
-    gen_server:call(?MODULE, {persist, UnroutableClients, RoutingKey, Payload}).
+store(RoutingKey, Payload) ->
+    store(RoutingKey, Payload, false).
+
+store(RoutingKey, Payload, IsRetain) ->
+    MsgId = crypto:hash(md5, term_to_binary(now())),
+    store(MsgId, RoutingKey, Payload, IsRetain).
+
+store(undefined, RoutingKey, Payload, IsRetain) ->
+    store(RoutingKey, Payload, IsRetain);
+store(MsgId, RoutingKey, Payload, IsRetain) ->
+    case update_msg_cache(MsgId, {RoutingKey, Payload}) of
+        new_cache_item ->
+            gen_server:cast(?MODULE, {write, MsgId, IsRetain});
+        new_ref_count ->
+            ok
+    end,
+    MsgId.
+
+retrieve(MsgId) ->
+    case ets:lookup(emqttd_msg_cache, MsgId) of
+        [{_, Msg, _}] -> {ok, Msg};
+        [] -> {error, not_found}
+    end.
+
+deref(MsgId) ->
+    try
+        case ets:update_counter(emqttd_msg_cache, MsgId, {3, -1}) of
+            0 ->
+                ets:delete(emqttd_msg_cache, MsgId),
+                gen_server:cast(?MODULE, {delete, MsgId});
+            N ->
+                {ok, N}
+        end
+    catch error:badarg -> {error, not_found}
+    end.
+
 
 deliver_from_store(ClientId, ClientPid) ->
     gen_server:call(?MODULE, {deliver, ClientId, ClientPid}).
 
 deliver_retained(ClientPid, Topic, QoS) ->
-    RetainedMsgs = gen_server:call(?MODULE, {get_retained, Topic}),
-    [emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, true)
-     || {{RoutingKey, _}, Payload} <- RetainedMsgs],
+    Words = emqtt_topic:words(Topic),
+    RetainedMessages =
+    ets:foldl(fun({RoutingKey, MsgId}, Acc) ->
+                      RWords = emqtt_topic:words(RoutingKey),
+                      case emqtt_topic:match(RWords, Words) of
+                          true ->
+                              {ok, {RoutingKey, Payload}} = retrieve(MsgId),
+                              [{MsgId, RoutingKey, Payload}|Acc];
+                          false ->
+                              Acc
+                      end
+              end, [], ?MSG_RETAIN_TABLE),
+    [emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, true, MsgId)
+     || {MsgId, RoutingKey, Payload} <- RetainedMessages],
     ok.
-
-get_retained(Topic) ->
-    gen_server:call(?MODULE, {get_retained, Topic}).
 
 clean_session(ClientId) ->
     gen_server:call(?MODULE, {remove_session, ClientId}),
     ok.
 
-persist_retain_msg(RoutingKey, Msg) ->
-    gen_server:call(?MODULE, {persist_retain_msg, RoutingKey, Msg}).
+retain_action(_MsgId, RoutingKey, <<>>) ->
+    gen_server:call(?MODULE, {reset_retained_msg, RoutingKey});
 
-reset_retained_msg(RoutingKey) ->
-    gen_server:call(?MODULE, {reset_retained_msg, RoutingKey}).
+retain_action(MsgId, RoutingKey, Payload) ->
+    NewMsgId = store(MsgId, RoutingKey, Payload, true),
+    gen_server:call(?MODULE, {persist_retain_msg, RoutingKey, NewMsgId}).
 
-move_all(Node) ->
-    gen_server:call(?MODULE, {move_all, Node}, infinity).
+defer_deliver(ClientId, Qos, MsgId) ->
+    ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgId}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init([MsgStoreDir]) ->
     filelib:ensure_dir(MsgStoreDir),
-    ets:new(?MSG_INDEX_TABLE, [{read_concurrency, true}, named_table, bag]),
-    ets:new(?MSG_RETAIN_TABLE, [{read_concurrency, true}, named_table]),
+    ets:new(?MSG_INDEX_TABLE, [public, {read_concurrency, true}, named_table, bag]),
+    ets:new(?MSG_RETAIN_TABLE, [public, {read_concurrency, true}, named_table]),
+    ets:new(emqttd_msg_cache, [public, named_table]),
     MsgStore = bitcask:open(MsgStoreDir, [read_write]),
+    ToDelete =
     bitcask:fold(MsgStore,
                  fun
-                     (<<?INDEX_ITEM, IndexRef:16/binary, BClientId/binary>>, <<QoS, MsgRef/binary>>, _) ->
-                         true = ets:insert(?MSG_INDEX_TABLE, {{client, binary_to_list(BClientId)}, QoS, MsgRef, IndexRef});
-                     (<<?MSG_ITEM, _/binary>>, _, _) ->
-                         ok;
-                     (<<?RETAIN_ITEM, _/binary>> = MsgRef, V, _) ->
-                         {Ts, RoutingKey, Message} = binary_to_term(V),
-                         true = ets:insert(?MSG_RETAIN_TABLE, {{retain, RoutingKey}, Ts, MsgRef, crypto:hash(md5, Message)})
+                     (<<?MSG_ITEM, MsgId/binary>> = Key, Val, Acc) ->
+                         <<L:16, BRoutingKey:L/binary, Payload/binary>> = Val,
+                         RoutingKey = binary_to_list(BRoutingKey),
+                         case emqttd_trie:subscriptions(RoutingKey) of
+                             [] -> %% weird
+                                [Key|Acc];
+                             _Subs ->
+                                 emqttd_trie:publish(MsgId, RoutingKey, Payload, false),
+                                 Acc
+                         end;
+                     (<<?RETAIN_ITEM, BRoutingKey/binary>> = Key, MsgId, Acc) ->
+                         case bitcask:get(MsgStore, <<?MSG_ITEM, MsgId/binary>>) of
+                             {ok, <<_:16, BRoutingKey, _/binary>>} ->
+                                 RoutingKey = binary_to_list(BRoutingKey),
+                                 true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, MsgId}),
+                                 Acc;
+                             E ->
+                                 io:format("inconsistency ~p~n", [{MsgId, E}]),
+                                 [Key|Acc]
+                         end
                  end, []),
+    ok = lists:foreach(fun(Key) -> bitcask:delete(MsgStore, Key) end, ToDelete),
     {ok, #state{store=MsgStore}}.
 
-handle_call({persist, Clients, RoutingKey, Payload}, _From, State) ->
-    #state{store=MsgStore} = State,
-    MsgRef = <<?MSG_ITEM, (crypto:hash(md5, [RoutingKey, Payload]))/binary>>,
-    BRoutingKey = list_to_binary(RoutingKey),
-    ok = bitcask:put(MsgStore, MsgRef, <<(byte_size(BRoutingKey)):16, BRoutingKey/binary, Payload/binary>>),
-    lists:foreach(fun({ClientId, QoS}) ->
-                          BClientId = list_to_binary(ClientId),
-                          UniqueId = crypto:hash(md5, [ClientId, term_to_binary(now())]),
-                          IndexRef = <<?INDEX_ITEM, UniqueId/binary, BClientId/binary>>,
-                          IndexItem = <<QoS, MsgRef/binary>>,
-                          ok = bitcask:put(MsgStore, IndexRef, IndexItem),
-                          true = ets:insert(?MSG_INDEX_TABLE, {{client, ClientId}, QoS, MsgRef, IndexRef})
-                  end, Clients),
-    {reply, ok, State};
 
-handle_call({persist_retain_msg, RoutingKey, Message}, _From, State) ->
+
+
+
+handle_call({persist_retain_msg, RoutingKey, MsgId}, _From, State) ->
     #state{store=MsgStore} = State,
-    Md5Msg = crypto:hash(md5, Message),
-    MsgRef = <<?RETAIN_ITEM, (crypto:hash(md5, RoutingKey))/binary>>,
-    case ets:lookup(?MSG_RETAIN_TABLE, {retain, RoutingKey}) of
-        [{_, _, MsgRef, Md5Msg}] ->
+    BRoutingKey = list_to_binary(RoutingKey),
+    MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
+    case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
+        [{_, MsgId}] ->
             %% same msg already retained
             ok;
         _ ->
-            Ts = now(),
-            ok = bitcask:put(MsgStore, MsgRef, term_to_binary({Ts, RoutingKey, Message})),
-            true = ets:insert(?MSG_RETAIN_TABLE, {{retain, RoutingKey}, Ts, MsgRef, Md5Msg})
+            ok = bitcask:put(MsgStore, MsgRef, MsgId),
+            true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, MsgId})
     end,
     {reply, ok, State};
 
 handle_call({deliver, ClientId, ClientPid}, _From, State) ->
-    #state{store=MsgStore} = State,
-    lists:foreach(fun({_, QoS, MsgRef, IndexRef} = Obj) ->
-                          case bitcask:get(MsgStore, MsgRef) of
-                              {ok, <<RLen:16, RoutingKey:RLen/binary,
-                                     Payload/binary>>} ->
-                                  emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false),
-                                  true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
-                                  ok = bitcask:delete(MsgStore, IndexRef),
-                                  maybe_delete_from_msg_store(MsgStore, MsgRef);
-                              notfound ->
-                                  %% inconsistency!!!
-                                  %% TODO: log inconsistency
-                                  true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
-                                  bitcask:delete(MsgStore, IndexRef)
-                          end
-                  end, ets:lookup(?MSG_INDEX_TABLE, {client, ClientId})),
+    lists:foreach(fun({_, QoS, MsgId} = Obj) ->
+                          {ok, {RoutingKey, Payload}} = retrieve(MsgId),
+                          emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false, MsgId),
+                          ets:delete_object(?MSG_INDEX_TABLE, Obj)
+                  end, ets:lookup(?MSG_INDEX_TABLE, ClientId)),
     {reply, ok, State};
-
-handle_call({move_all, Node}, _From, State) ->
-    %% At this point we should not take any new messages
-    #state{store=MsgStore} = State,
-    bitcask:fold(MsgStore,
-                 fun
-                     (<<?MSG_ITEM, _/binary>> = MsgRef, <<L:16, BRoutingKey:L/binary, Payload/binary>>, _) ->
-                          Clients = [{ClientId, QoS} || {{client, ClientId}, QoS, _, _} <- ets:match(?MSG_INDEX_TABLE, {'_', '_', MsgRef, '_'})],
-                          ok = rpc:call(Node, ?MODULE, persist_for_later,
-                                        [Clients, binary_to_list(BRoutingKey), Payload]);
-                     (_, _, _) ->
-                         ok
-                 end, []),
-    {reply, ok, State};
-
-
-handle_call({get_retained, SubTopic}, _From, State) ->
-    #state{store=MsgStore} = State,
-    Words = emqtt_topic:words(SubTopic),
-    RetainedMessages =
-    ets:foldl(fun({{retain, RoutingKey}, _Ts, MsgRef, _Md5Msg}, Acc) ->
-                      RWords = emqtt_topic:words(RoutingKey),
-                      case emqtt_topic:match(RWords, Words) of
-                          true ->
-                              {ok, Item} = bitcask:get(MsgStore, MsgRef),
-                              {Ts, RoutingKey, Payload} = binary_to_term(Item),
-                              [{{RoutingKey, Ts}, Payload}|Acc];
-                          false ->
-                              Acc
-                      end
-              end, [], ?MSG_RETAIN_TABLE),
-    {reply, RetainedMessages, State};
 
 handle_call({remove_session, ClientId}, _From, State) ->
-    #state{store=MsgStore} = State,
-    lists:foreach(fun({_, _, MsgRef, IndexRef} = Obj) ->
+    lists:foreach(fun({_, _, MsgId} = Obj) ->
                           true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
-                          ok = bitcask:delete(MsgStore, IndexRef),
-                          maybe_delete_from_msg_store(MsgStore, MsgRef)
-                  end, ets:lookup(?MSG_INDEX_TABLE, {client, ClientId})),
+                          deref(MsgId)
+                  end, ets:lookup(?MSG_INDEX_TABLE, ClientId)),
     {reply, ok, State};
 
 handle_call({reset_retained_msg, RoutingKey}, _From, State) ->
     #state{store=MsgStore} = State,
-    case ets:lookup(?MSG_RETAIN_TABLE, {retain, RoutingKey}) of
+    case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
         [] ->
             ok;
-        [{_, _, MsgRef, _}] ->
+        [{_, MsgId}] ->
+            BRoutingKey = list_to_binary(RoutingKey),
+            MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
             ok = bitcask:delete(MsgStore, MsgRef),
-            true = ets:delete(?MSG_RETAIN_TABLE, {retain, RoutingKey})
+            deref(MsgId),
+            true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey)
     end,
     {reply, ok, State}.
+
+handle_cast({write, MsgId}, State) ->
+    #state{store=MsgStore} = State,
+    [{_, {RoutingKey, Payload}, _}] = ets:lookup(emqttd_msg_cache, MsgId),
+    MsgRef = <<?MSG_ITEM, MsgId/binary>>,
+    BRoutingKey = list_to_binary(RoutingKey),
+    ok = bitcask:put(MsgStore, MsgRef, <<(byte_size(BRoutingKey)):16, BRoutingKey/binary, Payload/binary>>),
+    {noreply, State};
+
+handle_cast({delete, MsgId}, State) ->
+    #state{store=MsgStore} = State,
+    MsgRef = <<?MSG_ITEM, MsgId/binary>>,
+    ok = bitcask:delete(MsgStore, MsgRef),
+    {noreply, State};
+
+
+
 
 handle_cast(_Req, State) ->
     {noreply, State}.
@@ -198,10 +219,22 @@ terminate(_Reason, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-maybe_delete_from_msg_store(MsgStore, MsgRef) ->
-    case ets:match_object(?MSG_INDEX_TABLE, {'_', '_', MsgRef, '_'}) of
-        [] ->
-            bitcask:delete(MsgStore, MsgRef);
-        _ ->
-            ok
+safe_ets_update_counter(Tab, Key, UpdateOp, SuccessFun, FailThunk) ->
+    try
+        SuccessFun(ets:update_counter(Tab, Key, UpdateOp))
+    catch error:badarg -> FailThunk()
     end.
+
+update_msg_cache(MsgId, Msg) ->
+    update_msg_cache(MsgId, Msg, 1).
+
+update_msg_cache(MsgId, Msg, Diff) when Diff >= 1 ->
+    case ets:insert_new(emqttd_msg_cache, {MsgId, Msg, Diff}) of
+        true -> new_cache_item;
+        false ->
+            safe_ets_update_counter(
+              emqttd_msg_cache, MsgId, {3, +Diff}, fun(_) -> new_ref_count end,
+              fun() -> update_msg_cache(MsgId, Msg, Diff) end)
+    end.
+
+
