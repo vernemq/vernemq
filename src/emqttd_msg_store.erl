@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([start_link/1,
-         store/2, store/3,
+         store/2, store/3, store/4,
          retrieve/1,
          deref/1,
          deliver_from_store/2,
@@ -44,7 +44,7 @@ store(RoutingKey, Payload, IsRetain) ->
 store(undefined, RoutingKey, Payload, IsRetain) ->
     store(RoutingKey, Payload, IsRetain);
 store(MsgId, RoutingKey, Payload, IsRetain) ->
-    case update_msg_cache(MsgId, {RoutingKey, Payload}) of
+    case update_msg_cache(MsgId, {ensure_list(RoutingKey), Payload}) of
         new_cache_item ->
             gen_server:cast(?MODULE, {write, MsgId, IsRetain});
         new_ref_count ->
@@ -81,8 +81,12 @@ deliver_retained(ClientPid, Topic, QoS) ->
                       RWords = emqtt_topic:words(RoutingKey),
                       case emqtt_topic:match(RWords, Words) of
                           true ->
-                              {ok, {RoutingKey, Payload}} = retrieve(MsgId),
-                              [{MsgId, RoutingKey, Payload}|Acc];
+                              case retrieve(MsgId) of
+                                  {ok, {RoutingKey, Payload}} ->
+                                      [{MsgId, RoutingKey, Payload}|Acc];
+                                  {error, not_found} ->
+                                      Acc
+                              end;
                           false ->
                               Acc
                       end
@@ -130,8 +134,7 @@ init([MsgStoreDir]) ->
                      (<<?RETAIN_ITEM, BRoutingKey/binary>> = Key, MsgId, Acc) ->
                          case bitcask:get(MsgStore, <<?MSG_ITEM, MsgId/binary>>) of
                              {ok, <<_:16, BRoutingKey, _/binary>>} ->
-                                 RoutingKey = binary_to_list(BRoutingKey),
-                                 true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, MsgId}),
+                                 true = ets:insert(?MSG_RETAIN_TABLE, {ensure_list(BRoutingKey), MsgId}),
                                  Acc;
                              E ->
                                  io:format("inconsistency ~p~n", [{MsgId, E}]),
@@ -161,9 +164,13 @@ handle_call({persist_retain_msg, RoutingKey, MsgId}, _From, State) ->
 
 handle_call({deliver, ClientId, ClientPid}, _From, State) ->
     lists:foreach(fun({_, QoS, MsgId} = Obj) ->
-                          {ok, {RoutingKey, Payload}} = retrieve(MsgId),
-                          emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false, MsgId),
-                          ets:delete_object(?MSG_INDEX_TABLE, Obj)
+                          case retrieve(MsgId) of
+                              {ok, {RoutingKey, Payload}} ->
+                                  emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false, MsgId),
+                                  ets:delete_object(?MSG_INDEX_TABLE, Obj);
+                              {error, not_found} ->
+                                  ok
+                          end
                   end, ets:lookup(?MSG_INDEX_TABLE, ClientId)),
     {reply, ok, State};
 
@@ -238,3 +245,6 @@ update_msg_cache(MsgId, Msg, Diff) when Diff >= 1 ->
     end.
 
 
+
+ensure_list(B) when is_binary(B) -> binary_to_list(B);
+ensure_list(L) when is_list(L) -> L.

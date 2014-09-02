@@ -8,7 +8,7 @@
          unsubscribe/2,
          subscriptions/1,
          publish/4,
-         route/4,
+         route/5,
          register_client/2,
          disconnect_client/1,
          cleanup_client/1,
@@ -74,7 +74,7 @@ register_client(ClientId, CleanSession) ->
 publish(MsgId, RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_binary(Payload) ->
     publish_(MsgId, RoutingKey, Payload, IsRetain).
 
-publish_(MsgId, RoutingKey, Payload, true) ->
+publish_(MsgId, RoutingKey, Payload, IsRetain = true) ->
     case is_ready() of
         true ->
             case emqttd_msg_store:retain_action(MsgId, RoutingKey, Payload) of
@@ -83,9 +83,9 @@ publish_(MsgId, RoutingKey, Payload, true) ->
                       fun(#topic{name=Name, node=Node}) ->
                               case Node == node() of
                                   true ->
-                                      route(MsgId, Name, RoutingKey, Payload);
+                                      route(MsgId, Name, RoutingKey, Payload, IsRetain);
                                   false ->
-                                      rpc:call(Node, ?MODULE, route, [MsgId, Name, RoutingKey, Payload])
+                                      rpc:call(Node, ?MODULE, route, [MsgId, Name, RoutingKey, Payload, IsRetain])
                               end
                       end, match(RoutingKey));
                 Error ->
@@ -94,14 +94,14 @@ publish_(MsgId, RoutingKey, Payload, true) ->
         false ->
             {error, not_ready}
     end;
-publish_(MsgId, RoutingKey, Payload, false) ->
+publish_(MsgId, RoutingKey, Payload, IsRetain = false) ->
     MatchedTopics = match(RoutingKey),
     case check_single_node(node(), MatchedTopics, length(MatchedTopics)) of
         true ->
             %% in case we have only subscriptions on one single node
             %% we can deliver the messages even in case of network partitions
             lists:foreach(fun(#topic{name=Name}) ->
-                                  route(MsgId, Name, RoutingKey, Payload)
+                                  route(MsgId, Name, RoutingKey, Payload, IsRetain)
                           end, MatchedTopics);
         false ->
             case is_ready() of
@@ -110,9 +110,9 @@ publish_(MsgId, RoutingKey, Payload, false) ->
                       fun(#topic{name=Name, node=Node}) ->
                               case Node == node() of
                                   true ->
-                                      route(MsgId, Name, RoutingKey, Payload);
+                                      route(MsgId, Name, RoutingKey, Payload, IsRetain);
                                   false ->
-                                      rpc:call(Node, ?MODULE, route, [MsgId, Name, RoutingKey, Payload])
+                                      rpc:call(Node, ?MODULE, route, [MsgId, Name, RoutingKey, Payload, IsRetain])
                               end
                       end, MatchedTopics);
                 false ->
@@ -142,10 +142,10 @@ disconnect_client(ClientId) ->
         E -> E
     end.
 %route locally, should only be called by publish
-route(MsgId, Topic, RoutingKey, Payload) ->
+route(MsgId, Topic, RoutingKey, Payload, IsRetain) ->
     lists:foreach(fun
                     (#subscriber{qos=Qos, client=ClientId}) when Qos > 0 ->
-                          MaybeNewMsgId = emqttd_msg_store:store(MsgId, RoutingKey, Payload),
+                          MaybeNewMsgId = emqttd_msg_store:store(MsgId, RoutingKey, Payload, IsRetain),
                           deliver(ClientId, RoutingKey, Payload, Qos, MaybeNewMsgId);
                     (#subscriber{qos=0, client=ClientId}) ->
                           deliver(ClientId, RoutingKey, Payload, 0, undefined)
