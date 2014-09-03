@@ -13,7 +13,10 @@ init(Ref, Socket, Transport, Opts) ->
     ok = Transport:setopts(Socket, [{nodelay, true},
                                     {packet, raw},
                                     {active, once}]),
-    loop(Socket, Transport, emqttd_fsm:init(Socket, Transport, Opts)).
+    {ok, Peer} = Transport:peername(Socket),
+    loop(Socket, Transport, emqttd_fsm:init(Peer, fun(Bin) ->
+                                                    Transport:send(Socket, Bin)
+                                            end, Opts)).
 
 loop(Socket, Transport, stop) ->
     Transport:close(Socket);
