@@ -91,7 +91,7 @@ deliver_retained(ClientPid, Topic, QoS) ->
                               Acc
                       end
               end, [], ?MSG_RETAIN_TABLE),
-    [emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, true, MsgId)
+    [emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, true, MsgId)
      || {MsgId, RoutingKey, Payload} <- RetainedMessages],
     ok.
 
@@ -100,14 +100,23 @@ clean_session(ClientId) ->
     ok.
 
 retain_action(_MsgId, RoutingKey, <<>>) ->
-    gen_server:call(?MODULE, {reset_retained_msg, RoutingKey});
+    multi_call({reset_retained_msg, RoutingKey});
 
 retain_action(MsgId, RoutingKey, Payload) ->
     NewMsgId = store(MsgId, RoutingKey, Payload, true),
-    gen_server:call(?MODULE, {persist_retain_msg, RoutingKey, NewMsgId}).
+    multi_call({persist_retain_msg, RoutingKey, NewMsgId}).
 
 defer_deliver(ClientId, Qos, MsgId) ->
     ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgId}).
+
+multi_call(Req) ->
+    Nodes = emqttd_cluster:nodes(),
+    case gen_server:multi_call(Nodes, ?MODULE, Req) of
+        {_, []} ->
+            ok;
+        _ ->
+            {error, not_ready}
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
@@ -166,7 +175,7 @@ handle_call({deliver, ClientId, ClientPid}, _From, State) ->
     lists:foreach(fun({_, QoS, MsgId} = Obj) ->
                           case retrieve(MsgId) of
                               {ok, {RoutingKey, Payload}} ->
-                                  emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false, MsgId),
+                                  emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false, MsgId),
                                   ets:delete_object(?MSG_INDEX_TABLE, Obj);
                               {error, not_found} ->
                                   ok

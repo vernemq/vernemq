@@ -1,25 +1,15 @@
--module(emqttd_handler_fsm).
--behaviour(gen_fsm).
--behaviour(ranch_protocol).
+-module(emqttd_fsm).
 -include_lib("emqtt_commons/include/emqtt_frame.hrl").
 
--export([start_link/4,
-         deliver/6,
+-export([deliver/6,
          disconnect/1]).
 
--export([init/1,
-         handle_sync_event/4,
-         handle_event/3,
-         handle_info/3,
-         terminate/3,
-         code_change/4
+-export([init/3,
+         handle_fsm_msg/2,
+         handle_input/2,
+         handle_close/1,
+         handle_error/2
         ]).
-
--export([wait_for_connect/2,
-        connection_attempted/2,
-        connected/2,
-        connected/3]).
-
 
 
 -define(CLOSE_AFTER, 5000).
@@ -51,29 +41,51 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-start_link(Ref, Socket, Transport, Opts) ->
-    proc_lib:start_link(?MODULE, init, [[Ref, Socket, Transport, Opts]]).
-
 deliver(FsmPid, Topic, Payload, QoS, IsRetained, Ref) ->
-    gen_fsm:send_event(FsmPid, {deliver, Topic, Payload, QoS, IsRetained, Ref}).
+    FsmPid ! {deliver, Topic, Payload, QoS, IsRetained, Ref}.
 
 disconnect(FsmPid) ->
-    gen_fsm:sync_send_event(FsmPid, disconnect).
+    FsmPid ! disconnect.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% STATE FUNCTIONS
+%%% FSM FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-wait_for_connect(timeout, State) ->
+init(Socket, Transport, Opts) ->
+    {ok, Peer} = Transport:peername(Socket),
+    {_, AuthProviders} = lists:keyfind(auth_providers, 1, Opts),
+    MsgLogHandler =
+    case lists:keyfind(msg_log_handler, 1, Opts) of
+        {_, undefined} ->
+            fun(_,_,_) -> ok end;
+        {_, Mod} when is_atom(Mod) ->
+            fun(ClientId, Topic, Msg) -> apply(Mod, handle, [self(), ClientId, Topic, Msg]) end
+    end,
+    erlang:send_after(?CLOSE_AFTER, self(), timeout),
+    ret({wait_for_connect, #state{socket=Socket, transport=Transport, peer=Peer,
+                              auth_providers=AuthProviders,
+                              msg_log_handler=MsgLogHandler}}).
+
+handle_input(Data, {StateName, State}) ->
+    #state{buffer=Buffer} = State,
+    ret(process_bytes(<<Buffer/binary, Data/binary>>, StateName, State)).
+
+handle_close({_StateName, State}) ->
+    io:format("[~p] stop due to ~p~n", [self(), tcp_closed]),
+    ret({stop, normal, State}).
+
+handle_error(Reason, {_StateName, State}) ->
+    io:format("[~p] stop due to ~p~n", [self(), Reason]),
+    ret({stop, normal, State}).
+
+handle_fsm_msg(timeout, {wait_for_connect, State}) ->
     io:format("[~p] stop due to timeout~n", [self()]),
-    {stop, normal, State}.
-
-connection_attempted(timeout, State) ->
-    {next_state, wait_for_connect, State, ?CLOSE_AFTER}.
-
-connected(timeout, State) ->
-    {next_state, connected, State};
-
-connected({deliver, Topic, Payload, QoS, _IsRetained, MsgStoreRef}, State) ->
+    ret({stop, normal, State});
+handle_fsm_msg(timeout, {connection_attempted, State}) ->
+    erlang:send_after(?CLOSE_AFTER, self(), timeout),
+    ret({wait_for_connect, State});
+handle_fsm_msg(timeout, {connected, State}) ->
+    ret({connected, State});
+handle_fsm_msg({deliver, Topic, Payload, QoS, _IsRetained, MsgStoreRef}, {connected, State}) ->
     #state{transport=Transport, socket=Socket, waiting_acks=WAcks} = State,
     {OutgoingMsgId, State1} = get_msg_id(QoS, State),
     Frame = #mqtt_frame{
@@ -89,17 +101,14 @@ connected({deliver, Topic, Payload, QoS, _IsRetained, MsgStoreRef}, State) ->
     case send_publish_frame(Transport, Socket, OutgoingMsgId, Frame, QoS, State1) of
         {error, Reason} ->
             io:format("[~p] stop due to ~p~n", [self(), Reason]),
-            {stop, normal, State};
+            ret({stop, normal, State1});
         NewState when QoS == 0 ->
-            % io:format("[~p] in deliver ~p ~p~n", [self(), Topic, byte_size(Payload)]),
-            {next_state, connected, NewState};
+            ret({connected, NewState});
         NewState when QoS > 0 ->
-            % io:format("[~p] in deliver ~p ~p~n", [self(), Topic, byte_size(Payload)]),
-            Ref = gen_fsm:send_event_after(10000, {retry, OutgoingMsgId}),
-            {next_state, connected, NewState#state{waiting_acks=dict:store(OutgoingMsgId, {Frame, Ref, MsgStoreRef}, WAcks)}}
+            Ref = erlang:send_after(10000, self(), {retry, OutgoingMsgId}),
+            ret({connected, NewState#state{waiting_acks=dict:store(OutgoingMsgId, {Frame, Ref, MsgStoreRef}, WAcks)}})
     end;
-
-connected({retry, MessageId}, State) ->
+handle_fsm_msg({retry, MessageId}, {connected, State}) ->
     #state{transport=Transport, socket=Socket, waiting_acks=WAcks} = State,
     {Bin, _, MsgStoreRef} =
     case dict:fetch(MessageId, WAcks) of
@@ -109,23 +118,41 @@ connected({retry, MessageId}, State) ->
             setelement(1, Item, NewBin);
         Item -> Item
     end,
-    % io:format("[~p] send_bin ~p ~p~n", [self(), retry, byte_size(Bin)]),
     send_bin(Transport, Socket, Bin),
-    Ref = gen_fsm:send_event_after(10000, {retry, MessageId}),
-    {next_state, connected, State#state{
-                              waiting_acks=dict:store(MessageId, {Bin, Ref, MsgStoreRef}, WAcks)}}.
-
-connected(disconnect, _From, State) ->
+    Ref = erlang:send_after(10000, self(), {retry, MessageId}),
+    ret({connected, State#state{
+                  waiting_acks=dict:store(MessageId, {Bin, Ref, MsgStoreRef}, WAcks)}});
+handle_fsm_msg(disconnect, {connected, State}) ->
     io:format("[~p] stop due to ~p~n", [self(), disconnect]),
-    {stop, normal, ok, State}.
+    ret({stop, normal, State});
 
+handle_fsm_msg({unhandled_transport_error, Reason}, {_, State}) ->
+    io:format("[~p] stop due to ~p~n", [self(), {unhandled_transport_error, Reason}]),
+    ret({stop, normal, State}).
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% INTERNALS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+process_bytes(Bytes, StateName, #state{parser_state=ParserState} = State) ->
+    case emqtt_frame:parse(Bytes, ParserState) of
+        {more, NewParserState} ->
+            #state{transport=Transport, socket=Socket} = State,
+            Transport:setopts(Socket, [{active, once}]),
+            {StateName, State#state{parser_state=NewParserState}};
+        {ok, #mqtt_frame{fixed=Fixed, variable=Variable, payload=Payload}, Rest} ->
+            case handle_frame(StateName, Fixed, Variable, Payload, State) of
+                {NextStateName, NewState} ->
+                    PS = emqtt_frame:initial_state(),
+                    process_bytes(Rest, NextStateName, NewState#state{parser_state=PS});
+                Ret ->
+                    Ret
+            end;
+        {error, Reason} ->
+            io:format("parse error ~p~n", [Reason]),
+            {StateName, State#state{buffer= <<>>,
+                                    parser_state=emqtt_frame:initial_state()}}
+    end.
 
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% NETWORK HANDLER FUNCTIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
     #state{peer=Peer, auth_providers=AuthProviders} = State,
     #mqtt_frame_connect{
@@ -144,7 +171,7 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
                 ok ->
                     case emqttd_trie:register_client(Id, CleanSession) of
                         ok ->
-                            {next_state, connected,
+                            {connected,
                              send_connack(?CONNACK_ACCEPT, State#state{
                                                              client_id=Id,
                                                              username=User,
@@ -152,34 +179,31 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
                                                              will_topic=WillTopic,
                                                              will_msg=WillMsg})};
                         {error, _Reason} ->
-                            {next_state, connection_attempted, send_connack(?CONNACK_SERVER, State)}
+                            {connection_attempted, send_connack(?CONNACK_SERVER, State)}
                     end;
                 {error, unknown} ->
-                    {next_state, connection_attempted, send_connack(?CONNACK_INVALID_ID, State)};
+                    {connection_attempted, send_connack(?CONNACK_INVALID_ID, State)};
                 {error, invalid_credentials} ->
-                    {next_state, connection_attempted, send_connack(?CONNACK_CREDENTIALS, State)};
+                    {connection_attempted, send_connack(?CONNACK_CREDENTIALS, State)};
                 {error, not_authorized} ->
-                    {next_state, connection_attempted, send_connack(?CONNACK_AUTH, State)}
+                    {connection_attempted, send_connack(?CONNACK_AUTH, State)}
             end;
         false ->
-            {next_state, connection_attempted, send_connack(?CONNACK_PROTO_VER, State)}
+            {connection_attempted, send_connack(?CONNACK_PROTO_VER, State)}
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
     #state{waiting_acks=WAcks} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos1 flow
-    % io:format("got PUBACK ~p ~p~n", [MessageId, now()]),
-    %io:format("lists keyfind ~p in ~p~n", [MessageId, WAcks]),
     case dict:find(MessageId, WAcks) of
         {ok, {_, Ref, MsgStoreRef}} ->
-            gen_fsm:cancel_timer(Ref),
-            io:format("deref4~n"),
+            erlang:cancel_timer(Ref),
             emqttd_msg_store:deref(MsgStoreRef),
-            {next_state, connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
+            {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
         error ->
             io:format("got error~n"),
-            {next_state, connected, State}
+            {connected, State}
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
@@ -187,18 +211,16 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
     {_, Ref, MsgStoreRef} = dict:fetch(MessageId, WAcks),
-    gen_fsm:cancel_timer(Ref), % cancel republish timer
+    erlang:cancel_timer(Ref), % cancel republish timer
     PubRelFrame =#mqtt_frame{
                              fixed=#mqtt_frame_fixed{type=?PUBREL, qos=1},
                              variable=#mqtt_frame_publish{message_id=MessageId},
                              payload= <<>>},
     Bin = emqtt_frame:serialise(PubRelFrame),
-    % io:format("[~p] send_bin ~p ~p~n", [self(), pubrel, byte_size(Bin)]),
     send_bin(Transport, Socket, Bin),
-    NewRef = gen_fsm:send_event_after(10000, {retry, MessageId}),
-    io:format("deref2~n"),
+    NewRef = erlang:send_after(10000, self(), {retry, MessageId}),
     emqttd_msg_store:deref(MsgStoreRef),
-    {next_state, connected, State#state{
+    {connected, State#state{
                               waiting_acks=dict:store(MessageId,
                                                       {PubRelFrame, NewRef, undefined}, WAcks)}};
 
@@ -210,15 +232,15 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL}, Var, _, State) ->
     {ok, {RoutingKey, Payload}} = emqttd_msg_store:retrieve(MsgRef),
     emqttd_trie:publish(MsgRef, RoutingKey, Payload, IsRetain),
     NewState = send_frame(?PUBCOMP, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
-    {next_state, connected, NewState};
+    {connected, NewState};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
     #state{waiting_acks=WAcks} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
     {_, Ref, undefined} = dict:fetch(MessageId, WAcks),
-    gen_fsm:cancel_timer(Ref), % cancel rpubrel timer
-    {next_state, connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
+    erlang:cancel_timer(Ref), % cancel rpubrel timer
+    {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, retain=1}, Var, <<>>, State) ->
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
@@ -226,17 +248,16 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, retain=1}, Var, <<>>, S
     case emqttd_trie:publish(Topic, <<>>, true) of
         ok ->
             NewState = send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
-            {next_state, connected, NewState};
+            {connected, NewState};
         {error, _Reason} ->
             %% we can't delete the retained message, due to a network split,
             %% if the client uses QoS 1 it will retry this message.
-            {next_state, connected, State}
+            {connected, State}
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, qos=QoS, retain=IsRetain}, Var, Payload, State) ->
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
-    % io:format("got PUBLISH ~p ~p~n", [MessageId, now()]),
-    {next_state, connected, dispatch_publish(QoS, MessageId, Topic, Payload, IsRetain, State)};
+    {connected, dispatch_publish(QoS, MessageId, Topic, Payload, IsRetain, State)};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
@@ -245,10 +266,10 @@ handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
         ok ->
             {_, QoSs} = lists:unzip(TTopics),
             NewState = send_frame(?SUBACK, #mqtt_frame_suback{message_id=MessageId, qos_table=QoSs}, <<>>, State),
-            {next_state, connected, NewState};
+            {connected, NewState};
         {error, _Reason} ->
             %% cant subscribe due to netsplit, Subscribe uses QoS 1 so the client will retry
-            {next_state, connected, State}
+            {connected, State}
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
@@ -257,113 +278,29 @@ handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
     case emqttd_trie:unsubscribe(State#state.client_id, TTopics) of
         ok ->
             NewState = send_frame(?UNSUBACK, #mqtt_frame_suback{message_id=MessageId}, <<>>, State),
-            {next_state, connected, NewState};
+            {connected, NewState};
         {error, _Reason} ->
             %% cant unsubscribe due to netsplit, Unsubscribe uses QoS 1 so the client will retry
-            {next_state, connected, State}
+            {connected, State}
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PINGREQ}, _, _, State) ->
     NewState = send_frame(?PINGRESP, undefined, <<>>, State),
-    {next_state, connected, NewState};
+    {connected, NewState};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?DISCONNECT}, _, _, State) ->
     {stop, normal, State}.
 
-handle_closed(_StateName, State) ->
-    io:format("[~p] stop due to ~p~n", [self(), tcp_closed]),
-    {stop, normal, State}.
 
-handle_error(_StateName, Reason, State) ->
-    io:format("[~p] stop due to ~p~n", [self(), Reason]),
-    {stop, Reason, State}.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% GEN_FSM CALLBACKS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-init([Ref, Socket, Transport, Opts]) ->
-    ok = proc_lib:init_ack({ok, self()}),
-    ok = ranch:accept_ack(Ref),
-    ok = Transport:setopts(Socket, [{nodelay, true},
-                                    {packet, raw},
-                                    {active, once}]),
-    {ok, Peer} = Transport:peername(Socket),
-    {_, AuthProviders} = lists:keyfind(auth_providers, 1, Opts),
-    MsgLogHandler =
-    case lists:keyfind(msg_log_handler, 1, Opts) of
-        {_, undefined} ->
-            fun(_,_,_) -> ok end;
-        {_, Mod} when is_atom(Mod) ->
-            fun(ClientId, Topic, Msg) -> apply(Mod, handle, [self(), ClientId, Topic, Msg]) end
-    end,
-
-    {_, MsgLogHandler} =
-    gen_fsm:enter_loop(?MODULE, [], wait_for_connect,
-                       #state{socket=Socket, transport=Transport, peer=Peer,
-                              auth_providers=AuthProviders,
-                              msg_log_handler=MsgLogHandler}, ?CLOSE_AFTER).
-
-handle_sync_event(_Event, _From, StateName, State) ->
-    {reply, ok, StateName, State}.
-
-handle_event({unhandled_transport_error, Reason}, _StateName, State) ->
-    io:format("[~p] stop due to ~p~n", [self(), Reason]),
-    {stop, normal, State};
-handle_event(_Event, StateName, State) ->
-    {next_state, StateName, State}.
-
-handle_info({tcp, _Socket, Data}, StateName, State) ->
-    handle_input(Data, StateName, State);
-handle_info({ssl, _Socket, Data}, StateName, State) ->
-    handle_input(Data, StateName, State);
-handle_info({tcp_closed, _Socket}, StateName, State) ->
-    handle_closed(StateName, State);
-handle_info({ssl_closed, _Socket}, StateName, State) ->
-    handle_closed(StateName, State);
-handle_info({tcp_error, _Socket, Reason}, StateName, State) ->
-    handle_error(StateName, Reason, State);
-handle_info({ssl_error, _Socket, Reason}, StateName, State) ->
-    handle_error(StateName, Reason, State);
-handle_info(_Info, StateName, State) ->
-    {next_state, StateName, State}.
-
-
-terminate(_Reason, _StateName, State) ->
-    #state{peer=_Peer, socket=Socket, transport=Transport} = State,
-    Transport:close(Socket),
+ret({stop, _Reason, State}) ->
     maybe_publish_last_will(State),
-    ok.
+    stop;
+ret({_, _} = R) -> R.
 
-code_change(_OldVsn, StateName, State, _Extra) ->
-    {ok, StateName, State}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-handle_input(Input, StateName, State) ->
-    #state{transport=Transport, socket=Socket, buffer=Buffer} = State,
-    Transport:setopts(Socket, [{active, once}]),
-    process_bytes(<<Buffer/binary, Input/binary>>, StateName, State).
-
-process_bytes(Bytes, StateName, #state{parser_state=ParserState} = State) ->
-    case emqtt_frame:parse(Bytes, ParserState) of
-        {more, NewParserState} ->
-            #state{transport=Transport, socket=Socket} = State,
-            Transport:setopts(Socket, [{active, once}]),
-            {next_state, StateName, State#state{parser_state=NewParserState}};
-        {ok, #mqtt_frame{fixed=Fixed, variable=Variable, payload=Payload}, Rest} ->
-            case handle_frame(StateName, Fixed, Variable, Payload, State) of
-                {next_state, NextStateName, NewState} ->
-                    PS = emqtt_frame:initial_state(),
-                    process_bytes(Rest, NextStateName, NewState#state{parser_state=PS});
-                Ret ->
-                    Ret
-            end;
-        {error, Reason} ->
-            io:format("parse error ~p~n", [Reason]),
-            {next_state, StateName, State#state{buffer= <<>>,
-                                                parser_state=emqtt_frame:initial_state()}}
-    end.
 
 check_version(?MQTT_PROTO_MAJOR) -> true;
 check_version(_) -> false.
@@ -392,8 +329,6 @@ send_frame(Type, DUP, Variable, Payload, #state{socket=Socket, transport=Transpo
                              variable=Variable,
                              payload=Payload
                             }),
-    % io:format("send ~p~n", [Bin]),
-    % io:format("[~p] senda_bin ~p ~p~n", [self(), Type, byte_size(Bin)]),
     send_bin(Transport, Socket, Bin),
     State.
 
@@ -418,16 +353,13 @@ dispatch_publish_(2, MessageId, Topic, Payload, IsRetain, State) ->
     dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State).
 
 dispatch_publish_qos0(_MessageId, Topic, Payload, IsRetain, State) ->
-    %io:format("dispatch0  ~p ~p ~p~n", [_MessageId, Topic, self()]),
     emqttd_trie:publish(undefined, Topic, Payload, IsRetain),
     State.
 
 dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
-    %io:format("dispatch1  ~p ~p ~p~n", [MessageId, Topic, self()]),
     MsgRef = emqttd_msg_store:store(Topic, Payload),
     emqttd_trie:publish(MsgRef, Topic, Payload, IsRetain),
     NewState = send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
-    io:format("deref3~n"),
     emqttd_msg_store:deref(MsgRef),
     NewState.
 
@@ -445,7 +377,6 @@ get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
 
 send_publish_frame(Transport, Socket, _OutgoingMsgId, Frame, QoS, State) ->
     Bin = emqtt_frame:serialise(Frame),
-    % io:format("[~p] send_pub ~p~n", [self(), byte_size(Bin)]),
     case Transport:send(Socket, Bin) of
         ok ->
             State;
@@ -467,5 +398,6 @@ send_bin(Transport, Socket, Bin) ->
         ok ->
             ok;
         {error, Reason} ->
-            gen_fsm:send_all_state_event(self(), {unhandled_transport_error, Reason})
+            self() ! {unhandled_transport_error, Reason}
     end.
+

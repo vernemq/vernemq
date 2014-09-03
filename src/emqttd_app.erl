@@ -21,7 +21,7 @@ start(_StartType, _StartArgs) ->
     end,
     {ok, MsgLogHandler} = application:get_env(msg_log_handler),
     {ok, _} = ranch:start_listener(tcp_mqtt, 1,
-                                   ranch_tcp, [{port, Port}], emqttd_handler_fsm,
+                                   ranch_tcp, [{port, Port}], emqttd_tcp,
                                    [{auth_providers, AuthProviders},
                                     {msg_log_handler, MsgLogHandler}]),
     emqttd_sup:start_link().

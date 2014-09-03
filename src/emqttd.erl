@@ -5,8 +5,8 @@ start() ->
     application:load(mnesia_cluster),
     application:set_env(mnesia_cluster, table_definition_mod,
                         {emqttd_trie, emqttd_table_defs, []}),
-    application:set_env(mnesia_cluster, cluster_monitor_callbacks, [emqttd_trie]),
-    application:set_env(mnesia_cluster, app_process, emqttd_trie),
+    application:set_env(mnesia_cluster, cluster_monitor_callbacks, [emqttd_cluster]),
+    application:set_env(mnesia_cluster, app_process, emqttd_cluster),
     application:ensure_all_started(emqttd).
 
 stop() ->

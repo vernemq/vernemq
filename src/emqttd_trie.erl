@@ -21,9 +21,7 @@
 	 terminate/2,
 	 code_change/3]).
 
--export([emqttd_table_defs/0,
-         on_node_up/1,
-         on_node_down/1]).
+-export([emqttd_table_defs/0]).
 
 -record(st, {}).
 -record(client, {id, node, pid}).
@@ -55,70 +53,56 @@ subscriptions(RoutingKey) ->
 
 
 register_client(ClientId, CleanSession) ->
-    case is_ready() of
-        true ->
-            Nodes = [Node || [{Node, true}]
-                             <- ets:match(emqttd_status, '$1'), Node /= ready],
-            Req = {register_client, node(), CleanSession, ClientId, self()},
-            case gen_server:multi_call(Nodes, ?MODULE, Req) of
-                {_, []} ->
-                    ok;
-                _ ->
-                    {error, not_ready}
-            end;
-        false ->
+    emqttd_cluster:if_ready(fun register_client_/2, [ClientId, CleanSession]).
+
+register_client_(ClientId, CleanSession) ->
+    Nodes = emqttd_cluster:nodes(),
+    Req = {register_client, node(), CleanSession, ClientId, self()},
+    case gen_server:multi_call(Nodes, ?MODULE, Req) of
+        {_, []} ->
+            ok;
+        _ ->
             {error, not_ready}
     end.
 
 %publish to cluster node.
 publish(MsgId, RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_binary(Payload) ->
-    publish_(MsgId, RoutingKey, Payload, IsRetain).
-
-publish_(MsgId, RoutingKey, Payload, IsRetain = true) ->
-    case is_ready() of
-        true ->
-            case emqttd_msg_store:retain_action(MsgId, RoutingKey, Payload) of
-                ok ->
-                    lists:foreach(
-                      fun(#topic{name=Name, node=Node}) ->
-                              case Node == node() of
-                                  true ->
-                                      route(MsgId, Name, RoutingKey, Payload, IsRetain);
-                                  false ->
-                                      rpc:call(Node, ?MODULE, route, [MsgId, Name, RoutingKey, Payload, IsRetain])
-                              end
-                      end, match(RoutingKey));
-                Error ->
-                    Error
-            end;
-        false ->
-            {error, not_ready}
-    end;
-publish_(MsgId, RoutingKey, Payload, IsRetain = false) ->
     MatchedTopics = match(RoutingKey),
-    case check_single_node(node(), MatchedTopics, length(MatchedTopics)) of
+    case IsRetain of
         true ->
-            %% in case we have only subscriptions on one single node
-            %% we can deliver the messages even in case of network partitions
-            lists:foreach(fun(#topic{name=Name}) ->
-                                  route(MsgId, Name, RoutingKey, Payload, IsRetain)
-                          end, MatchedTopics);
+            emqttd_cluster:if_ready(fun publish_/5, [MsgId, RoutingKey, Payload, IsRetain, MatchedTopics]);
         false ->
-            case is_ready() of
+            case check_single_node(node(), MatchedTopics, length(MatchedTopics)) of
                 true ->
-                    lists:foreach(
-                      fun(#topic{name=Name, node=Node}) ->
-                              case Node == node() of
-                                  true ->
-                                      route(MsgId, Name, RoutingKey, Payload, IsRetain);
-                                  false ->
-                                      rpc:call(Node, ?MODULE, route, [MsgId, Name, RoutingKey, Payload, IsRetain])
-                              end
-                      end, MatchedTopics);
+                    %% in case we have only subscriptions on one single node
+                    %% we can deliver the messages even in case of network partitions
+                    lists:foreach(fun(#topic{name=Name}) ->
+                                          route(MsgId, Name, RoutingKey, Payload, IsRetain)
+                                  end, MatchedTopics);
                 false ->
-                    {error, not_ready}
+                    emqttd_cluster:if_ready(fun publish__/5, [MsgId, RoutingKey, Payload, IsRetain, MatchedTopics])
             end
     end.
+
+publish_(MsgId, RoutingKey, Payload, IsRetain = true, MatchedTopics) ->
+    case emqttd_msg_store:retain_action(MsgId, RoutingKey, Payload) of
+        ok ->
+            publish__(MsgId, RoutingKey, Payload, IsRetain, MatchedTopics);
+        Error ->
+            Error
+    end.
+
+publish__(MsgId, RoutingKey, Payload, IsRetain, MatchedTopics) ->
+    lists:foreach(
+      fun(#topic{name=Name, node=Node}) ->
+              case Node == node() of
+                  true ->
+                      route(MsgId, Name, RoutingKey, Payload, IsRetain);
+                  false ->
+                      rpc:call(Node, ?MODULE, route, [MsgId, Name, RoutingKey, Payload, IsRetain])
+              end
+      end, MatchedTopics).
+
 
 check_single_node(Node, [#topic{node=Node}|Rest], Acc) ->
     check_single_node(Node, Rest, Acc -1);
@@ -134,7 +118,7 @@ cleanup_client(ClientId) ->
     gen_server:call(?MODULE, {cleanup_client, ClientId}).
 
 disconnect_client(ClientPid) when is_pid(ClientPid) ->
-    emqttd_handler_fsm:disconnect(ClientPid);
+    emqttd_fsm:disconnect(ClientPid);
 
 disconnect_client(ClientId) ->
     case get_client_pid(ClientId) of
@@ -154,7 +138,7 @@ route(MsgId, Topic, RoutingKey, Payload, IsRetain) ->
 deliver(ClientId, RoutingKey, Payload, Qos, Ref) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
-            emqttd_handler_fsm:deliver(ClientPid, RoutingKey, Payload, Qos, false, Ref);
+            emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, Qos, false, Ref);
         _ when Qos > 0 ->
             emqttd_msg_store:defer_deliver(ClientId, Qos, Ref),
             ok;
@@ -192,49 +176,13 @@ emqttd_table_defs() ->
         {match, #subscriber{_='_'}}]}
 ].
 
-on_node_up(Node) ->
-    wait_for_table(fun() ->
-                           Nodes = mnesia_cluster_utils:cluster_nodes(all),
-                           ets:insert(emqttd_status, {Node, true}),
-                           update_ready(Nodes)
-                   end).
-
-on_node_down(Node) ->
-    wait_for_table(fun() ->
-                           Nodes = mnesia_cluster_utils:cluster_nodes(all),
-                           ets:delete(emqttd_status, Node),
-                           update_ready(Nodes)
-                   end).
-
-update_ready(Nodes) ->
-    SortedNodes = lists:sort(Nodes),
-    IsReady = lists:sort([Node || [{Node, true}]
-                                    <- ets:match(emqttd_status, '$1'),
-                                    Node /= ready]) == SortedNodes,
-    ets:insert(emqttd_status, {ready, IsReady}).
-
-is_ready() ->
-    ets:lookup(emqttd_status, ready) == [{ready, true}].
-
-wait_for_table(Fun) ->
-    case lists:member(emqttd_status, ets:all()) of
-        true -> Fun();
-        false -> timer:sleep(100)
-    end.
-
 
 call(Msg) ->
-    case is_ready() of
-        true ->
-            gen_server:call(?MODULE, Msg);
-        false ->
-            {error, not_ready}
-    end.
+    emqttd_cluster:if_ready(gen_server, call, [?MODULE, Msg]).
 
 init([]) ->
     io:fwrite("init([])~n"),
     ets:new(emqttd_client, [named_table, public, {read_concurrency, true}, {keypos, 2}]),
-    ets:new(emqttd_status, [{read_concurrency, true}, public, named_table]),
 
     {ok, #st{}}.
 
