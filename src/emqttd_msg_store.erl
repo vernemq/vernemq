@@ -2,13 +2,14 @@
 -behaviour(gen_server).
 
 -export([start_link/1,
-         store/2, store/3, store/4,
+         store/2, store/3,
+         in_flight/0,
          retrieve/1,
          deref/1,
          deliver_from_store/2,
          deliver_retained/3,
          clean_session/1,
-         retain_action/3,
+         retain_action/2,
          defer_deliver/3
          ]).
 -export([init/1,
@@ -18,15 +19,17 @@
          terminate/2,
          code_change/3]).
 
+-export([retain_action_/3]). %% RPC Calls
+
 
 -record(state, {store}).
-%-record(msg_idx_item, {id, node, qos, msg_ref, idx_ref}).
 
 -define(MSG_ITEM, 0).
 -define(INDEX_ITEM, 1).
 -define(RETAIN_ITEM, 2).
 -define(MSG_INDEX_TABLE, emqttd_msg_index).
 -define(MSG_RETAIN_TABLE, emqttd_msg_retain).
+-define(MSG_CACHE_TABLE, emqttd_msg_cache).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
@@ -35,35 +38,43 @@ start_link(MsgStoreDir) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [MsgStoreDir], []).
 
 store(RoutingKey, Payload) ->
-    store(RoutingKey, Payload, false).
-
-store(RoutingKey, Payload, IsRetain) ->
     MsgId = crypto:hash(md5, term_to_binary(now())),
-    store(MsgId, RoutingKey, Payload, IsRetain).
+    store(MsgId, RoutingKey, Payload).
 
-store(undefined, RoutingKey, Payload, IsRetain) ->
-    store(RoutingKey, Payload, IsRetain);
-store(MsgId, RoutingKey, Payload, IsRetain) ->
+store(undefined, RoutingKey, Payload) ->
+    store(RoutingKey, Payload);
+store(MsgId, RoutingKey, Payload) ->
+    ets:update_counter(?MSG_CACHE_TABLE, in_flight, {2, 1}),
     case update_msg_cache(MsgId, {ensure_list(RoutingKey), Payload}) of
         new_cache_item ->
-            gen_server:cast(?MODULE, {write, MsgId, IsRetain});
+            MsgRef = <<?MSG_ITEM, MsgId/binary>>,
+            BRoutingKey = list_to_binary(RoutingKey),
+            Val = <<(byte_size(BRoutingKey)):16, BRoutingKey/binary, Payload/binary>>,
+            gen_server:cast(?MODULE, {write, MsgRef, Val});
         new_ref_count ->
             ok
     end,
     MsgId.
 
+in_flight() ->
+    [{in_flight, InFlight}] = ets:lookup(?MSG_CACHE_TABLE, in_flight),
+    NrOfDeferedMsgs = ets:info(?MSG_INDEX_TABLE, size),
+    InFlight - NrOfDeferedMsgs.
+
 retrieve(MsgId) ->
-    case ets:lookup(emqttd_msg_cache, MsgId) of
+    case ets:lookup(?MSG_CACHE_TABLE, MsgId) of
         [{_, Msg, _}] -> {ok, Msg};
         [] -> {error, not_found}
     end.
 
 deref(MsgId) ->
     try
-        case ets:update_counter(emqttd_msg_cache, MsgId, {3, -1}) of
+        ets:update_counter(?MSG_CACHE_TABLE, in_flight, {2, -1}),
+        case ets:update_counter(?MSG_CACHE_TABLE, MsgId, {3, -1}) of
             0 ->
-                ets:delete(emqttd_msg_cache, MsgId),
-                gen_server:cast(?MODULE, {delete, MsgId});
+                ets:delete(?MSG_CACHE_TABLE, MsgId),
+                MsgRef = <<?MSG_ITEM, MsgId/binary>>,
+                gen_server:cast(?MODULE, {delete, MsgRef});
             N ->
                 {ok, N}
         end
@@ -72,60 +83,94 @@ deref(MsgId) ->
 
 
 deliver_from_store(ClientId, ClientPid) ->
-    gen_server:call(?MODULE, {deliver, ClientId, ClientPid}).
+    lists:foreach(fun({_, QoS, MsgId} = Obj) ->
+                          case retrieve(MsgId) of
+                              {ok, {RoutingKey, Payload}} ->
+                                  emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false, MsgId);
+                              {error, not_found} ->
+                                  %% TODO: this happens,, ??
+                                  ok
+                          end,
+                          ets:delete_object(?MSG_INDEX_TABLE, Obj)
+                  end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
 
 deliver_retained(ClientPid, Topic, QoS) ->
     Words = emqtt_topic:words(Topic),
-    RetainedMessages =
-    ets:foldl(fun({RoutingKey, MsgId}, Acc) ->
+    ets:foldl(fun({RoutingKey, Payload, _}, Acc) ->
                       RWords = emqtt_topic:words(RoutingKey),
                       case emqtt_topic:match(RWords, Words) of
                           true ->
-                              case retrieve(MsgId) of
-                                  {ok, {RoutingKey, Payload}} ->
-                                      [{MsgId, RoutingKey, Payload}|Acc];
-                                  {error, not_found} ->
-                                      Acc
-                              end;
+                              MsgId = store(RoutingKey, Payload),
+                              emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, QoS,
+                                                 true, MsgId);
                           false ->
                               Acc
                       end
               end, [], ?MSG_RETAIN_TABLE),
-    [emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, true, MsgId)
-     || {MsgId, RoutingKey, Payload} <- RetainedMessages],
     ok.
 
 clean_session(ClientId) ->
-    gen_server:call(?MODULE, {remove_session, ClientId}),
-    ok.
+    lists:foreach(fun({_, _, MsgId} = Obj) ->
+                          true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
+                          deref(MsgId)
+                  end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
 
-retain_action(_MsgId, RoutingKey, <<>>) ->
-    multi_call({reset_retained_msg, RoutingKey});
+retain_action(RoutingKey, Payload) ->
+    Nodes = emqttd_cluster:nodes(),
+    Now = now(),
+    lists:foreach(fun(Node) when Node == node() ->
+                          retain_action_(Now, RoutingKey, Payload);
+                     (Node) ->
+                          rpc:call(Node, ?MODULE, retain_action_, [Now, RoutingKey, Payload])
+                  end, Nodes).
 
-retain_action(MsgId, RoutingKey, Payload) ->
-    NewMsgId = store(MsgId, RoutingKey, Payload, true),
-    multi_call({persist_retain_msg, RoutingKey, NewMsgId}).
+retain_action_(TS, RoutingKey, <<>>) ->
+    %% retain-delete action
+    case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
+        [{_, _, TSOld}] when TS > TSOld ->
+            BRoutingKey = list_to_binary(RoutingKey),
+            MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
+            gen_server:cast(?MODULE, {delete, MsgRef}),
+            true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey),
+            ok;
+        _ ->
+            %% the retain-delete action is older than
+            %% the stored retain message --> ignore
+            ok
+    end;
+retain_action_(TS, RoutingKey, Payload) ->
+    %% retain-insert action
+    BRoutingKey = list_to_binary(RoutingKey),
+    MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
+    case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
+        [] ->
+            gen_server:cast(?MODULE, {write, MsgRef, term_to_binary({Payload, TS})}),
+            true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, Payload, TS}),
+            ok;
+        [{_, _, TSOld}] when TS > TSOld ->
+            %% in case of a race between retain-insert actions
+            gen_server:cast(?MODULE, {write, MsgRef, term_to_binary({Payload, TS})}),
+            true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, Payload, TS}),
+            ok;
+        _ ->
+            ok
+    end.
 
 defer_deliver(ClientId, Qos, MsgId) ->
     ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgId}).
-
-multi_call(Req) ->
-    Nodes = emqttd_cluster:nodes(),
-    case gen_server:multi_call(Nodes, ?MODULE, Req) of
-        {_, []} ->
-            ok;
-        _ ->
-            {error, not_ready}
-    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init([MsgStoreDir]) ->
     filelib:ensure_dir(MsgStoreDir),
-    ets:new(?MSG_INDEX_TABLE, [public, {read_concurrency, true}, named_table, bag]),
-    ets:new(?MSG_RETAIN_TABLE, [public, {read_concurrency, true}, named_table]),
-    ets:new(emqttd_msg_cache, [public, named_table]),
+    TableOpts = [public, named_table,
+                 {read_concurrency, true},
+                 {write_concurrency, true}],
+    ets:new(?MSG_INDEX_TABLE, [bag|TableOpts]),
+    ets:new(?MSG_RETAIN_TABLE, TableOpts),
+    ets:new(?MSG_CACHE_TABLE, TableOpts),
+    ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
     MsgStore = bitcask:open(MsgStoreDir, [read_write]),
     ToDelete =
     bitcask:fold(MsgStore,
@@ -140,88 +185,25 @@ init([MsgStoreDir]) ->
                                  emqttd_reg:publish(MsgId, RoutingKey, Payload, false),
                                  Acc
                          end;
-                     (<<?RETAIN_ITEM, BRoutingKey/binary>> = Key, MsgId, Acc) ->
-                         case bitcask:get(MsgStore, <<?MSG_ITEM, MsgId/binary>>) of
-                             {ok, <<_:16, BRoutingKey, _/binary>>} ->
-                                 true = ets:insert(?MSG_RETAIN_TABLE, {ensure_list(BRoutingKey), MsgId}),
-                                 Acc;
-                             E ->
-                                 io:format("inconsistency ~p~n", [{MsgId, E}]),
-                                 [Key|Acc]
-                         end
+                     (<<?RETAIN_ITEM, BRoutingKey/binary>>, Val, Acc) ->
+                         {Payload, TS} = binary_to_term(Val),
+                         true = ets:insert(?MSG_RETAIN_TABLE, {ensure_list(BRoutingKey), Payload, TS}),
+                         Acc
                  end, []),
     ok = lists:foreach(fun(Key) -> bitcask:delete(MsgStore, Key) end, ToDelete),
     {ok, #state{store=MsgStore}}.
 
+handle_call(_Req, _From, State) ->
+    {reply, {error, not_implemented}, State}.
 
-
-
-
-handle_call({persist_retain_msg, RoutingKey, MsgId}, _From, State) ->
+handle_cast({write, Key, Val}, State) ->
     #state{store=MsgStore} = State,
-    BRoutingKey = list_to_binary(RoutingKey),
-    MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
-    case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
-        [{_, MsgId}] ->
-            %% same msg already retained
-            ok;
-        _ ->
-            ok = bitcask:put(MsgStore, MsgRef, MsgId),
-            true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, MsgId})
-    end,
-    {reply, ok, State};
-
-handle_call({deliver, ClientId, ClientPid}, _From, State) ->
-    lists:foreach(fun({_, QoS, MsgId} = Obj) ->
-                          case retrieve(MsgId) of
-                              {ok, {RoutingKey, Payload}} ->
-                                  emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false, MsgId),
-                                  ets:delete_object(?MSG_INDEX_TABLE, Obj);
-                              {error, not_found} ->
-                                  ok
-                          end
-                  end, ets:lookup(?MSG_INDEX_TABLE, ClientId)),
-    {reply, ok, State};
-
-handle_call({remove_session, ClientId}, _From, State) ->
-    lists:foreach(fun({_, _, MsgId} = Obj) ->
-                          true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
-                          deref(MsgId)
-                  end, ets:lookup(?MSG_INDEX_TABLE, ClientId)),
-    {reply, ok, State};
-
-handle_call({reset_retained_msg, RoutingKey}, _From, State) ->
-    #state{store=MsgStore} = State,
-    case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
-        [] ->
-            ok;
-        [{_, MsgId}] ->
-            BRoutingKey = list_to_binary(RoutingKey),
-            MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
-            ok = bitcask:delete(MsgStore, MsgRef),
-            deref(MsgId),
-            true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey)
-    end,
-    {reply, ok, State}.
-
-handle_cast({write, MsgId}, State) ->
-    #state{store=MsgStore} = State,
-    [{_, {RoutingKey, Payload}, _}] = ets:lookup(emqttd_msg_cache, MsgId),
-    MsgRef = <<?MSG_ITEM, MsgId/binary>>,
-    BRoutingKey = list_to_binary(RoutingKey),
-    ok = bitcask:put(MsgStore, MsgRef, <<(byte_size(BRoutingKey)):16, BRoutingKey/binary, Payload/binary>>),
+    ok = bitcask:put(MsgStore, Key, Val),
     {noreply, State};
 
-handle_cast({delete, MsgId}, State) ->
+handle_cast({delete, MsgRef}, State) ->
     #state{store=MsgStore} = State,
-    MsgRef = <<?MSG_ITEM, MsgId/binary>>,
     ok = bitcask:delete(MsgStore, MsgRef),
-    {noreply, State};
-
-
-
-
-handle_cast(_Req, State) ->
     {noreply, State}.
 
 handle_info(_Info, State) ->
@@ -245,11 +227,11 @@ update_msg_cache(MsgId, Msg) ->
     update_msg_cache(MsgId, Msg, 1).
 
 update_msg_cache(MsgId, Msg, Diff) when Diff >= 1 ->
-    case ets:insert_new(emqttd_msg_cache, {MsgId, Msg, Diff}) of
+    case ets:insert_new(?MSG_CACHE_TABLE, {MsgId, Msg, Diff}) of
         true -> new_cache_item;
         false ->
             safe_ets_update_counter(
-              emqttd_msg_cache, MsgId, {3, +Diff}, fun(_) -> new_ref_count end,
+              ?MSG_CACHE_TABLE, MsgId, {3, +Diff}, fun(_) -> new_ref_count end,
               fun() -> update_msg_cache(MsgId, Msg, Diff) end)
     end.
 

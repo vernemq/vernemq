@@ -65,12 +65,34 @@ register_client_(ClientId, CleanSession) ->
             {error, not_ready}
     end.
 
-%publish to cluster node.
+
 publish(MsgId, RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_binary(Payload) ->
+    Ref = make_ref(),
+    Caller = {self(), Ref},
+    ReqF = fun() ->
+                   exit({Ref, publish(MsgId, RoutingKey, Payload, IsRetain, Caller)})
+           end,
+    try spawn_monitor(ReqF) of
+        {_, MRef} ->
+            receive
+                Ref ->
+                    erlang:demonitor(MRef, [flush]),
+                    ok;
+                {'DOWN', MRef, process, Reason} ->
+                    {error, Reason}
+            end
+    catch
+        error: system_limit = E ->
+            {error, E}
+    end.
+
+
+%publish to cluster node.
+publish(MsgId, RoutingKey, Payload, IsRetain, Caller) ->
     MatchedTopics = match(RoutingKey),
     case IsRetain of
         true ->
-            emqttd_cluster:if_ready(fun publish_/5, [MsgId, RoutingKey, Payload, IsRetain, MatchedTopics]);
+            emqttd_cluster:if_ready(fun publish_/6, [MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller]);
         false ->
             case check_single_node(node(), MatchedTopics, length(MatchedTopics)) of
                 true ->
@@ -78,21 +100,26 @@ publish(MsgId, RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_bi
                     %% we can deliver the messages even in case of network partitions
                     lists:foreach(fun(#topic{name=Name}) ->
                                           route(MsgId, Name, RoutingKey, Payload, IsRetain)
-                                  end, MatchedTopics);
+                                  end, MatchedTopics),
+                    {CallerPid, CallerRef} = Caller,
+                    CallerPid ! CallerRef,
+                    ok;
                 false ->
-                    emqttd_cluster:if_ready(fun publish__/5, [MsgId, RoutingKey, Payload, IsRetain, MatchedTopics])
+                    emqttd_cluster:if_ready(fun publish__/6, [MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller])
             end
     end.
 
-publish_(MsgId, RoutingKey, Payload, IsRetain = true, MatchedTopics) ->
-    case emqttd_msg_store:retain_action(MsgId, RoutingKey, Payload) of
+publish_(MsgId, RoutingKey, Payload, IsRetain = true, MatchedTopics, Caller) ->
+    case emqttd_msg_store:retain_action(RoutingKey, Payload) of
         ok ->
-            publish__(MsgId, RoutingKey, Payload, IsRetain, MatchedTopics);
+            publish__(MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller);
         Error ->
             Error
     end.
 
-publish__(MsgId, RoutingKey, Payload, IsRetain, MatchedTopics) ->
+publish__(MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller) ->
+    {CallerPid, CallerRef} = Caller,
+    CallerPid ! CallerRef,
     lists:foreach(
       fun(#topic{name=Name, node=Node}) ->
               case Node == node() of
@@ -126,15 +153,18 @@ disconnect_client(ClientId) ->
         E -> E
     end.
 %route locally, should only be called by publish
-route(MsgId, Topic, RoutingKey, Payload, IsRetain) ->
+route(MsgId, Topic, RoutingKey, Payload, _IsRetain) ->
     lists:foreach(fun
                     (#subscriber{qos=Qos, client=ClientId}) when Qos > 0 ->
-                          MaybeNewMsgId = emqttd_msg_store:store(MsgId, RoutingKey, Payload, IsRetain),
+                          MaybeNewMsgId = emqttd_msg_store:store(MsgId, RoutingKey, Payload),
                           deliver(ClientId, RoutingKey, Payload, Qos, MaybeNewMsgId);
                     (#subscriber{qos=0, client=ClientId}) ->
                           deliver(ClientId, RoutingKey, Payload, 0, undefined)
                 end, mnesia:dirty_read(emqttd_subscriber, Topic)).
 
+deliver(_, _, <<>>, _, Ref) ->
+    %% <<>> --> retain-delete action, we don't deliver the empty frame
+    emqttd_msg_store:deref(Ref);
 deliver(ClientId, RoutingKey, Payload, Qos, Ref) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
@@ -206,7 +236,7 @@ handle_call({subscribe, ClientPid, ClientId, Topics}, _From, State) ->
 
 handle_call({unsubscribe, ClientId, Topics}, _From, State) ->
     lists:foreach(fun(Topic) ->
-                          {atomic, _} = mnesia:transaction(fun del_subscriber/2, [Topic, ClientId])
+                          {atomic, _} = del_subscriber(Topic, ClientId)
                   end, Topics),
     {reply, ok, State};
 
@@ -271,13 +301,15 @@ add_subscriber(Topic, Qos, ClientId) ->
 
 
 del_subscriber(Topic, ClientId) ->
-    Objs = mnesia:match_object(emqttd_subscriber, #subscriber{topic=Topic, client=ClientId, _='_'}, read),
-    lists:foreach(fun(Obj) ->
-                          mnesia:delete_object(emqttd_subscriber, Obj, write)
-                  end, Objs),
-    del_topic(Topic).
+    mnesia:transaction(
+      fun() ->
+              Objs = mnesia:match_object(emqttd_subscriber, #subscriber{topic=Topic, client=ClientId, _='_'}, read),
+              lists:foreach(fun(#subscriber{topic=T} = Obj) ->
+                                    mnesia:delete_object(emqttd_subscriber, Obj, write),
+                                    del_topic(T)
+                            end, Objs)
+      end).
 
-del_topic('_') -> ok;
 del_topic(Topic) ->
     case mnesia:read(emqttd_subscriber, Topic) of
         [] ->
@@ -370,4 +402,4 @@ get_client_pid(ClientId) ->
 
 cleanup_client_(ClientId) ->
     emqttd_msg_store:clean_session(ClientId),
-    {atomic, _} = mnesia:transaction(fun del_subscriber/2, ['_', ClientId]).
+    {atomic, ok} = del_subscriber('_', ClientId).

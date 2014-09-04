@@ -228,6 +228,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL}, Var, _, State) ->
     {ok, {RoutingKey, Payload}} = emqttd_msg_store:retrieve(MsgRef),
     emqttd_reg:publish(MsgRef, RoutingKey, Payload, IsRetain),
     NewState = send_frame(?PUBCOMP, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
+    emqttd_msg_store:deref(MsgRef),
     {connected, NewState};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
