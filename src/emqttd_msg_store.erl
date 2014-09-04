@@ -133,11 +133,11 @@ init([MsgStoreDir]) ->
                      (<<?MSG_ITEM, MsgId/binary>> = Key, Val, Acc) ->
                          <<L:16, BRoutingKey:L/binary, Payload/binary>> = Val,
                          RoutingKey = binary_to_list(BRoutingKey),
-                         case emqttd_trie:subscriptions(RoutingKey) of
+                         case emqttd_reg:subscriptions(RoutingKey) of
                              [] -> %% weird
                                 [Key|Acc];
                              _Subs ->
-                                 emqttd_trie:publish(MsgId, RoutingKey, Payload, false),
+                                 emqttd_reg:publish(MsgId, RoutingKey, Payload, false),
                                  Acc
                          end;
                      (<<?RETAIN_ITEM, BRoutingKey/binary>> = Key, MsgId, Acc) ->

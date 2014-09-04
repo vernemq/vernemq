@@ -165,7 +165,7 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
         true ->
             case auth_user(Peer, Id, User, Password, AuthProviders) of
                 ok ->
-                    case emqttd_trie:register_client(Id, CleanSession) of
+                    case emqttd_reg:register_client(Id, CleanSession) of
                         ok ->
                             {connected,
                              send_connack(?CONNACK_ACCEPT, State#state{
@@ -226,7 +226,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL}, Var, _, State) ->
     %% qos2 flow
     {MsgRef, IsRetain} = dict:fetch({qos2, MessageId}, WAcks),
     {ok, {RoutingKey, Payload}} = emqttd_msg_store:retrieve(MsgRef),
-    emqttd_trie:publish(MsgRef, RoutingKey, Payload, IsRetain),
+    emqttd_reg:publish(MsgRef, RoutingKey, Payload, IsRetain),
     NewState = send_frame(?PUBCOMP, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
     {connected, NewState};
 
@@ -241,7 +241,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, retain=1}, Var, <<>>, State) ->
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
     %% delete retained msg,
-    case emqttd_trie:publish(Topic, <<>>, true) of
+    case emqttd_reg:publish(Topic, <<>>, true) of
         ok ->
             NewState = send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
             {connected, NewState};
@@ -258,7 +258,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, qos=QoS, retain=IsRetai
 handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
     TTopics = [{Name, QoS} || #mqtt_topic{name=Name, qos=QoS} <- Topics],
-    case emqttd_trie:subscribe(State#state.client_id, TTopics) of
+    case emqttd_reg:subscribe(State#state.client_id, TTopics) of
         ok ->
             {_, QoSs} = lists:unzip(TTopics),
             NewState = send_frame(?SUBACK, #mqtt_frame_suback{message_id=MessageId, qos_table=QoSs}, <<>>, State),
@@ -271,7 +271,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
 handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
     TTopics = [Name || #mqtt_topic{name=Name} <- Topics],
-    case emqttd_trie:unsubscribe(State#state.client_id, TTopics) of
+    case emqttd_reg:unsubscribe(State#state.client_id, TTopics) of
         ok ->
             NewState = send_frame(?UNSUBACK, #mqtt_frame_suback{message_id=MessageId}, <<>>, State),
             {connected, NewState};
@@ -349,12 +349,12 @@ dispatch_publish_(2, MessageId, Topic, Payload, IsRetain, State) ->
     dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State).
 
 dispatch_publish_qos0(_MessageId, Topic, Payload, IsRetain, State) ->
-    emqttd_trie:publish(undefined, Topic, Payload, IsRetain),
+    emqttd_reg:publish(undefined, Topic, Payload, IsRetain),
     State.
 
 dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
     MsgRef = emqttd_msg_store:store(Topic, Payload),
-    emqttd_trie:publish(MsgRef, Topic, Payload, IsRetain),
+    emqttd_reg:publish(MsgRef, Topic, Payload, IsRetain),
     NewState = send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
     emqttd_msg_store:deref(MsgRef),
     NewState.

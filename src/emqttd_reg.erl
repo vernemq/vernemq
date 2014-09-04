@@ -1,4 +1,4 @@
--module(emqttd_trie).
+-module(emqttd_reg).
 -include_lib("emqtt_commons/include/emqtt_internal.hrl").
 
 -behaviour(gen_server).

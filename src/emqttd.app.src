@@ -17,10 +17,12 @@
       {auth_providers, [emqttd_auth]},
       {msg_log_handler, emqttd_test_msg_log_handler},
       {mqtt_endpoints, [
-          {{127,0,0,1}, 1883, 1}
+         %% Ip Address,     Port,       NrOfAcceptors
+          {{127,0,0,1},     1883,                   1   }
           ]},
       {mqttws_endpoints, [
-          {{127,0,0,1}, 8080, 10}
+         %% Ip Address,     Port,       NrOfAcceptors
+          {{127,0,0,1},     8080,                  10   }
           ]}
       ]}
 
