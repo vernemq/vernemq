@@ -1,4 +1,4 @@
-{application, emqttd,
+{application, emqttd_server,
  [
   {description, ""},
   {vsn, "1"},

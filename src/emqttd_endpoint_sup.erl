@@ -19,6 +19,7 @@
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
+-define(APP, emqttd_server).
 
 %%%===================================================================
 %%% API functions
@@ -61,14 +62,14 @@ add_ws_endpoint(Endpoint) ->
 %%--------------------------------------------------------------------
 init([]) ->
     MQTTEndpoints =
-    case application:get_env(emqttd, mqtt_endpoints) of
+    case application:get_env(?APP, mqtt_endpoints) of
         {ok, Endpoints} ->
             generate_childspecs(Endpoints, ranch_tcp, emqttd_tcp, handler_opts(mqtt));
         _ ->
             []
     end,
     MQTTWSEndpoints =
-    case application:get_env(emqttd, mqttws_endpoints) of
+    case application:get_env(?APP, mqttws_endpoints) of
         {ok, EndpointsWS} ->
             generate_childspecs(EndpointsWS, ranch_tcp, cowboy_protocol, handler_opts(mqttws));
         _ ->
@@ -95,8 +96,8 @@ handler_opts(mqttws) ->
     [{env, [{dispatch, Dispatch}]}];
 
 handler_opts(mqtt) ->
-    {ok, AuthProviders} = application:get_env(emqttd, auth_providers),
-    {ok, MsgLogHandler} = application:get_env(emqttd, msg_log_handler),
+    {ok, AuthProviders} = application:get_env(?APP, auth_providers),
+    {ok, MsgLogHandler} = application:get_env(?APP, msg_log_handler),
     [{auth_providers, AuthProviders},
      {msg_log_handler, MsgLogHandler}].
 
