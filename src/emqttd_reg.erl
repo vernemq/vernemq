@@ -1,10 +1,7 @@
 -module(emqttd_reg).
 -include_lib("emqtt_commons/include/emqtt_internal.hrl").
 
--behaviour(gen_server).
-
--export([start_link/0,
-         subscribe/2,
+-export([subscribe/2,
          unsubscribe/2,
          subscriptions/1,
          publish/4,
@@ -14,26 +11,36 @@
          cleanup_client/1,
          match/1]).
 
--export([init/1,
-	 handle_call/3,
-	 handle_cast/2,
-	 handle_info/2,
-	 terminate/2,
-	 code_change/3]).
-
 -export([emqttd_table_defs/0]).
 
--record(st, {}).
--record(client, {id, node, pid}).
-
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
 subscribe(ClientId, Topics) ->
-    call({subscribe, self(), ClientId, Topics}).
+    emqttd_cluster:if_ready(fun subscribe_/2, [ClientId, Topics]).
+
+subscribe_(ClientId, Topics) ->
+    Errors =
+    lists:foldl(fun({Topic, Qos}, Errors) ->
+                        case mnesia:transaction(fun add_subscriber/3, [Topic, Qos, ClientId]) of
+                            {atomic, _} ->
+                                emqttd_msg_store:deliver_retained(self(), Topic, Qos),
+                                Errors;
+                            {aborted, Reason} ->
+                                [Reason|Errors]
+                        end
+                end, [], Topics),
+    case Errors of
+        [] ->
+            ok;
+        Errors ->
+            {error, Errors}
+    end.
 
 unsubscribe(ClientId, Topics) ->
-    call({unsubscribe, ClientId, Topics}).
+    emqttd_cluster:if_ready(fun unsubscribe_/2, [ClientId, Topics]).
+
+unsubscribe_(ClientId, Topics) ->
+    lists:foreach(fun(Topic) ->
+                          {atomic, _} = del_subscriber(Topic, ClientId)
+                  end, Topics).
 
 subscriptions(RoutingKey) ->
     lists:foldl(
@@ -57,13 +64,22 @@ register_client(ClientId, CleanSession) ->
 
 register_client_(ClientId, CleanSession) ->
     Nodes = emqttd_cluster:nodes(),
-    Req = {register_client, node(), CleanSession, ClientId, self()},
-    case gen_server:multi_call(Nodes, ?MODULE, Req) of
-        {_, []} ->
-            ok;
-        _ ->
-            {error, not_ready}
-    end.
+    lists:foreach(fun(Node) when Node == node() ->
+                          register_client__(self(), ClientId, CleanSession);
+                     (Node) ->
+                          rpc:call(Node, ?MODULE, register_client__, [self(), ClientId, CleanSession])
+                  end, Nodes).
+
+register_client__(ClientPid, ClientId, CleanSession) ->
+    disconnect_client(ClientId), %% disconnect in case we already have such a client id
+    case CleanSession of
+        false ->
+            emqttd_msg_store:deliver_from_store(ClientId, ClientPid);
+        true ->
+            %% this will also cleanup the message store
+            cleanup_client_(ClientId)
+    end,
+    gproc:add_local_name({?MODULE, ClientId}).
 
 
 publish(MsgId, RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_binary(Payload) ->
@@ -206,84 +222,6 @@ emqttd_table_defs() ->
         {match, #subscriber{_='_'}}]}
 ].
 
-
-call(Msg) ->
-    emqttd_cluster:if_ready(gen_server, call, [?MODULE, Msg]).
-
-init([]) ->
-    io:fwrite("init([])~n"),
-    ets:new(emqttd_client, [named_table, public, {read_concurrency, true}, {keypos, 2}]),
-
-    {ok, #st{}}.
-
-handle_call({subscribe, ClientPid, ClientId, Topics}, _From, State) ->
-    Errors =
-    lists:foldl(fun({Topic, Qos}, Errors) ->
-                        case mnesia:transaction(fun add_subscriber/3, [Topic, Qos, ClientId]) of
-                            {atomic, _} ->
-                                emqttd_msg_store:deliver_retained(ClientPid, Topic, Qos),
-                                Errors;
-                            {aborted, Reason} ->
-                                [Reason|Errors]
-                        end
-                end, [], Topics),
-    case Errors of
-        [] ->
-            {reply, ok, State};
-        Errors ->
-            {reply, {error, Errors}, State}
-    end;
-
-handle_call({unsubscribe, ClientId, Topics}, _From, State) ->
-    lists:foreach(fun(Topic) ->
-                          {atomic, _} = del_subscriber(Topic, ClientId)
-                  end, Topics),
-    {reply, ok, State};
-
-handle_call({register_client, Node, CleanSession, ClientId, Pid}, _From, State) ->
-    disconnect_client(ClientId), %% disconnect in case we already have such a client id
-    case Node == node() of
-        true ->
-            ets:insert(emqttd_client, #client{id=ClientId, node=Node, pid=Pid}),
-            monitor(process, Pid);
-        false ->
-            ok
-    end,
-    case CleanSession of
-        false ->
-            emqttd_msg_store:deliver_from_store(ClientId, Pid);
-        true ->
-            %% this will also cleanup the message store
-            cleanup_client_(ClientId)
-    end,
-    {reply, ok, State};
-
-handle_call({cleanup, ClientId}, _From, State) ->
-    %% this will also cleanup the message store
-    cleanup_client_(ClientId),
-    {reply, ok, State}.
-
-handle_cast(_Msg, S) ->
-    {noreply, S}.
-
-handle_info({'DOWN', _, process, ClientPid, _}, State) ->
-    case ets:match_object(emqttd_client, #client{pid=ClientPid, _='_'}) of
-        [] -> ignore;
-        [#client{id=ClientId}] ->
-            ets:delete(emqttd_client, ClientId)
-    end,
-    {noreply, State};
-
-handle_info(_Msg, S) ->
-    {noreply, S}.
-
-code_change(_FromVsn, S, _Extra) ->
-    {ok, S}.
-
-terminate(_Reason, _S) ->
-    ok.
-
-
 add_subscriber(Topic, Qos, ClientId) ->
     mnesia:write(emqttd_subscriber, #subscriber{topic=Topic, qos=Qos, client=ClientId}, write),
     mnesia:write(emqttd_trie_topic, emqtt_topic:new(Topic), write),
@@ -392,13 +330,12 @@ trie_delete_path([{NodeId, Word, _}|RestPath]) ->
 
 
 get_client_pid(ClientId) ->
-    case ets:lookup(emqttd_client, ClientId) of
-        [#client{node=Node, pid=ClientPid}] when Node == node() ->
-            {ok, ClientPid};
-        _ ->
-            {error, not_found}
+    case gproc:lookup_local_name({?MODULE, ClientId}) of
+        undefined ->
+            {error, not_found};
+        ClientPid ->
+            {ok, ClientPid}
     end.
-
 
 cleanup_client_(ClientId) ->
     emqttd_msg_store:clean_session(ClientId),

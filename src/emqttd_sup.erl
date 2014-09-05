@@ -26,7 +26,6 @@ init([]) ->
     filelib:ensure_dir(EMQTTDir),
     {ok, { {one_for_one, 5, 10}, [
             ?CHILD(emqttd_endpoint_sup, supervisor, []),
-            ?CHILD(emqttd_reg, worker, []),
             ?CHILD(emqttd_cluster, worker, []),
             ?CHILD(emqttd_msg_store, worker, [filename:join(EMQTTDir, "store")])
                                  ]} }.
