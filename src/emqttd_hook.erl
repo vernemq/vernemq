@@ -30,11 +30,11 @@ start(App) ->
                   <- M:module_info(attributes)]
       end, Modules),
     lists:foreach(
-     fun(M) ->
+      fun(M) ->
               [add(Name, ets:info(?TABLE, size), MFA)
                || {register_hook, [{Name, MFA}]}
                   <- M:module_info(attributes)]
-     end, Modules).
+      end, Modules).
 
 -spec stop() -> ok.
 stop() ->
@@ -80,7 +80,8 @@ verify_add(Name, Type, Arity, ListOfHook, {Priority, MFA} = Hook) ->
             case lists:keymember(MFA, 2, ListOfHook) of
                 false ->
                     NewListOfHook = lists:merge(ListOfHook, [Hook]),
-                    true = ets:insert(?TABLE, {Name, Type, Arity, NewListOfHook}),
+                    true = ets:insert(?TABLE, {Name, Type, Arity,
+                                               NewListOfHook}),
                     ok;
                 true ->
                     {error, duplicate_mfa}
@@ -96,18 +97,14 @@ delete(Name, Type, Priority, {Module, Function, Arity}) ->
             error({missing_declare, Name});
         [{Name, Type, Arity, ListOfHook}] ->
             Hook = {Priority, {Module, Function, Arity}},
-            case lists:member(Hook, ListOfHook) of
-                true ->
-                    case lists:delete(Hook, ListOfHook) of
-                        [] ->
-                            true = ets:delete(?TABLE, Name),
-                            ok;
-                        NewListOfHook ->
-                            true = ets:insert(?TABLE, {Name, Type, Arity, NewListOfHook}),
-                            ok
-                    end;
-                false ->
-                    error({missing_hook, Hook})
+            case lists:delete(Hook, ListOfHook) of
+                [] ->
+                    true = ets:delete(?TABLE, Name),
+                    ok;
+                NewListOfHook ->
+                    true = ets:insert(?TABLE, {Name, Type, Arity,
+                                               NewListOfHook}),
+                    ok
             end
     end.
 
@@ -118,12 +115,7 @@ all(Name, Args) ->
             error({missing_declare, Name});
         [{Name, all, _Arity, ListOfHook}] ->
             F = fun({_, {Module, Function, Arity}}) ->
-                        try
-                            apply(Module, Function, Args)
-                        catch
-                            _Class:Reason ->
-                                error({invalid_apply, {Module, Function, Arity}, Reason})
-                        end
+                        try_apply(Module, Function, Args, Arity)
                 end,
             lists:map(F, ListOfHook)
     end.
@@ -140,16 +132,11 @@ only(Name, Args) ->
 only0([], _Args) ->
     not_found;
 only0([{_Priority, {Module, Function, Arity}}|Rest], Args) ->
-    try
-        case apply(Module, Function, Args) of
-            next ->
-                only0(Rest, Args);
-            Value ->
-                Value
-        end
-    catch
-        _Class:Reason ->
-            error({invalid_apply, {Module, Function, Arity}, Reason})
+    case try_apply(Module, Function, Args, Arity) of
+        next ->
+            only0(Rest, Args);
+        Value ->
+            Value
     end.
 
 -spec every(atom(), value(), args()) -> any().
@@ -162,12 +149,16 @@ every(Name, Value, Args) ->
     end.
 
 every0(Value, Args, ListOfHook) ->
-    F = fun({_Priority, {Module, Function, _Arity} = MFA}, Acc) ->
-                try
-                    apply(Module, Function, [Acc|Args])
-                catch
-                    _Class:Reason ->
-                        error({invalid_apply, MFA, Reason})
-                end
+    F = fun({_Priority, {Module, Function, Arity}}, Acc) ->
+                try_apply(Module, Function, [Acc|Args], Arity)
         end,
     lists:foldl(F, Value, ListOfHook).
+
+try_apply(Module, Function, Args, Arity) ->
+    try
+        apply(Module, Function, Args)
+    catch
+        _Class:Reason ->
+            error({invalid_apply, {Module, Function, Arity},
+                   Reason})
+    end.

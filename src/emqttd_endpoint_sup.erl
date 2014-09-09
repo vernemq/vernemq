@@ -36,11 +36,15 @@ start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 add_endpoint(Endpoint) ->
-    [ChildSpec] = generate_childspecs([Endpoint], ranch_tcp, emqttd_tcp, handler_opts(mqtt)),
+    [ChildSpec] = generate_childspecs([Endpoint], ranch_tcp,
+                                      emqttd_tcp,
+                                      handler_opts(mqtt)),
     supervisor:start_child(?SERVER, ChildSpec).
 
 add_ws_endpoint(Endpoint) ->
-    [ChildSpec] = generate_childspecs([Endpoint], ranch_tcp, cowboy_protocol, handler_opts(mqttws)),
+    [ChildSpec] = generate_childspecs([Endpoint], ranch_tcp,
+                                      cowboy_protocol,
+                                      handler_opts(mqttws)),
     supervisor:start_child(?SERVER, ChildSpec).
 
 %%%===================================================================
@@ -64,14 +68,16 @@ init([]) ->
     MQTTEndpoints =
     case application:get_env(?APP, mqtt_endpoints) of
         {ok, Endpoints} ->
-            generate_childspecs(Endpoints, ranch_tcp, emqttd_tcp, handler_opts(mqtt));
+            generate_childspecs(Endpoints, ranch_tcp,
+                                emqttd_tcp, handler_opts(mqtt));
         _ ->
             []
     end,
     MQTTWSEndpoints =
     case application:get_env(?APP, mqttws_endpoints) of
         {ok, EndpointsWS} ->
-            generate_childspecs(EndpointsWS, ranch_tcp, cowboy_protocol, handler_opts(mqttws));
+            generate_childspecs(EndpointsWS, ranch_tcp,
+                                cowboy_protocol, handler_opts(mqttws));
         _ ->
             []
     end,
@@ -88,11 +94,12 @@ generate_childspecs(Endpoints, Transport, Protocol, Opts) ->
      || {Ip, Port, NrOfAcceptors} <- Endpoints].
 
 handler_opts(mqttws) ->
-    Dispatch = cowboy_router:compile([
-                                      {'_', [
-                                             {"/mqtt", emqttd_ws, handler_opts(mqtt)}
-                                            ]}
-                                     ]),
+    Dispatch = cowboy_router:compile(
+                 [
+                  {'_', [
+                         {"/mqtt", emqttd_ws, handler_opts(mqtt)}
+                        ]}
+                 ]),
     [{env, [{dispatch, Dispatch}]}];
 
 handler_opts(mqtt) ->

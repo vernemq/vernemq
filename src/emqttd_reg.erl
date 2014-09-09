@@ -25,17 +25,7 @@ subscribe_(User, ClientId, Topics) ->
     case emqttd_hook:only(auth_on_subscribe, [User, ClientId, Topics]) of
         ok ->
             emqttd_hook:all(on_subscribe, [User, ClientId, Topics]),
-            Errors =
-            lists:foldl(fun({Topic, Qos}, Errors) ->
-                                case mnesia:transaction(fun add_subscriber/3, [Topic, Qos, ClientId]) of
-                                    {atomic, _} ->
-                                        emqttd_msg_store:deliver_retained(self(), Topic, Qos),
-                                        Errors;
-                                    {aborted, Reason} ->
-                                        [Reason|Errors]
-                                end
-                        end, [], Topics),
-            case Errors of
+            case subscribe_tx(ClientId, Topics, []) of
                 [] ->
                     ok;
                 Errors ->
@@ -43,6 +33,16 @@ subscribe_(User, ClientId, Topics) ->
             end;
         not_found ->
             {error, not_allowed}
+    end.
+
+subscribe_tx(_, [], Errors) -> Errors;
+subscribe_tx(ClientId, [{Topic, Qos}|Rest], Errors) ->
+    case mnesia:transaction(fun add_subscriber/3, [Topic, Qos, ClientId]) of
+        {atomic, _} ->
+            emqttd_msg_store:deliver_retained(self(), Topic, Qos),
+            subscribe_tx(ClientId, Rest, Errors);
+        {aborted, Reason} ->
+            subscribe_tx(ClientId, Rest, [Reason|Errors])
     end.
 
 unsubscribe(User, ClientId, Topics) ->
@@ -56,20 +56,23 @@ unsubscribe_(User, ClientId, Topics) ->
     ok.
 
 subscriptions(RoutingKey) ->
-    lists:foldl(
-      fun(#topic{name=Topic, node=Node}, Acc) ->
-              case Node == node() of
-                  true ->
-                      lists:foldl(fun
-                                      (#subscriber{client=ClientId, qos=Qos}, Acc1) when Qos > 0 ->
-                                          [{ClientId, Qos}|Acc1];
-                                      (_, Acc1) ->
-                                          Acc1
-                                  end, Acc, mnesia:dirty_read(emqttd_subscriber, Topic));
-                  false ->
-                      Acc
-              end
-      end, [], match(RoutingKey)).
+    subscriptions(match(RoutingKey), []).
+
+subscriptions([], Acc) -> Acc;
+subscriptions([#topic{name=Topic, node=Node}|Rest], Acc) when Node == node() ->
+    subscriptions(Rest,
+                  lists:foldl(
+                    fun
+                        (#subscriber{client=ClientId, qos=Qos}, Acc1) when Qos > 0 ->
+                            [{ClientId, Qos}|Acc1];
+                              (_, Acc1) ->
+                            Acc1
+                    end, Acc, mnesia:dirty_read(emqttd_subscriber, Topic)));
+subscriptions([_|Rest], Acc) ->
+    subscriptions(Rest, Acc).
+
+
+
 
 
 register_client(ClientId, CleanSession) ->
@@ -182,6 +185,7 @@ disconnect_client(ClientId) ->
         {ok, ClientPid} -> disconnect_client(ClientPid);
         E -> E
     end.
+
 %route locally, should only be called by publish
 route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, _IsRetain) ->
     Subscribers = mnesia:dirty_read(emqttd_subscriber, Topic),

@@ -15,16 +15,22 @@ register_hooks() ->
 
 
 auth_on_register(SrcIp, ClientId, User, Password) ->
-    io:format("[~p] auth client ~p from ~p with username ~p and password ~p~n", [self(), ClientId, SrcIp, User, Password]),
+    io:format("[~p] auth client ~p from ~p
+              with username ~p and password ~p~n",
+              [self(), ClientId, SrcIp, User, Password]),
     %% return {error, not_authorized} --> error msg is sent to client
     %% return {error, invalid_credentials} --> error msg is sent to client
     %% return next --> next auth handler is tried
     ok.
 
 auth_on_subscribe(User, ClientId, Topics) ->
-    io:format("[~p] auth client subscriptions ~p from ~p with username ~p~n", [self(), Topics, ClientId, User]),
+    io:format("[~p] auth client subscriptions ~p
+              from ~p with username ~p~n",
+              [self(), Topics, ClientId, User]),
     ok.
 
 auth_on_publish(User, ClientId, MsgRef, Topic, _Payload, _IsRetain) ->
-   io:format("[~p] auth client publish ~p with topic ~p from ~p with username ~p~n", [self(), MsgRef, Topic, ClientId, User]),
+   io:format("[~p] auth client publish ~p with
+             topic ~p from ~p with username ~p~n",
+             [self(), MsgRef, Topic, ClientId, User]),
   ok.

@@ -31,9 +31,9 @@
 -define(MSG_RETAIN_TABLE, emqttd_msg_retain).
 -define(MSG_CACHE_TABLE, emqttd_msg_cache).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 start_link(MsgStoreDir) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [MsgStoreDir], []).
 
@@ -85,7 +85,9 @@ deliver_from_store(ClientId, ClientPid) ->
     lists:foreach(fun({_, QoS, MsgId} = Obj) ->
                           case retrieve(MsgId) of
                               {ok, {RoutingKey, Payload}} ->
-                                  emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, QoS, false, MsgId);
+                                  emqttd_fsm:deliver(ClientPid, RoutingKey,
+                                                     Payload, QoS,
+                                                     false, MsgId);
                               {error, not_found} ->
                                   %% TODO: this happens,, ??
                                   ok
@@ -99,9 +101,10 @@ deliver_retained(ClientPid, Topic, QoS) ->
                       RWords = emqtt_topic:words(RoutingKey),
                       case emqtt_topic:match(RWords, Words) of
                           true ->
-                              MsgId = store(User, ClientId, RoutingKey, Payload),
-                              emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, QoS,
-                                                 true, MsgId);
+                              MsgId = store(User, ClientId,
+                                            RoutingKey, Payload),
+                              emqttd_fsm:deliver(ClientPid, RoutingKey,
+                                                 Payload, QoS, true, MsgId);
                           false ->
                               Acc
                       end
@@ -118,9 +121,11 @@ retain_action(User, ClientId, RoutingKey, Payload) ->
     Nodes = emqttd_cluster:nodes(),
     Now = now(),
     lists:foreach(fun(Node) when Node == node() ->
-                          retain_action_(User, ClientId, Now, RoutingKey, Payload);
+                          retain_action_(User, ClientId, Now,
+                                         RoutingKey, Payload);
                      (Node) ->
-                          rpc:call(Node, ?MODULE, retain_action_, [User, ClientId, Now, RoutingKey, Payload])
+                          rpc:call(Node, ?MODULE, retain_action_,
+                                   [User, ClientId, Now, RoutingKey, Payload])
                   end, Nodes).
 
 retain_action_(_User, _ClientId, TS, RoutingKey, <<>>) ->
@@ -143,13 +148,19 @@ retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
     MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
     case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
         [] ->
-            gen_server:cast(?MODULE, {write, MsgRef, term_to_binary({User, ClientId, Payload, TS})}),
-            true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User, ClientId, Payload, TS}),
+            gen_server:cast(?MODULE, {write, MsgRef,
+                                      term_to_binary({User, ClientId,
+                                                      Payload, TS})}),
+            true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User,
+                                                  ClientId, Payload, TS}),
             ok;
         [{_, _, _, _, TSOld}] when TS > TSOld ->
             %% in case of a race between retain-insert actions
-            gen_server:cast(?MODULE, {write, MsgRef, term_to_binary({User, ClientId, Payload, TS})}),
-            true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User, ClientId, Payload, TS}),
+            gen_server:cast(?MODULE, {write, MsgRef,
+                                      term_to_binary({User, ClientId,
+                                                      Payload, TS})}),
+            true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User,
+                                                  ClientId, Payload, TS}),
             ok;
         _ ->
             ok
@@ -158,9 +169,9 @@ retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
 defer_deliver(ClientId, Qos, MsgId) ->
     ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgId}).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init([MsgStoreDir]) ->
     filelib:ensure_dir(MsgStoreDir),
     TableOpts = [public, named_table,
@@ -175,17 +186,21 @@ init([MsgStoreDir]) ->
     bitcask:fold(MsgStore,
                  fun
                      (<<?MSG_ITEM, MsgId/binary>> = Key, Val, Acc) ->
-                         {User, ClientId, RoutingKey, Payload} = binary_to_term(Val),
+                         {User, ClientId,
+                          RoutingKey, Payload} = binary_to_term(Val),
                          case emqttd_reg:subscriptions(RoutingKey) of
                              [] -> %% weird
                                 [Key|Acc];
                              _Subs ->
-                                 emqttd_reg:publish(User, ClientId, MsgId, RoutingKey, Payload, false),
+                                 emqttd_reg:publish(User, ClientId, MsgId,
+                                                    RoutingKey, Payload, false),
                                  Acc
                          end;
                      (<<?RETAIN_ITEM, BRoutingKey/binary>>, Val, Acc) ->
                          {User, ClientId, Payload, TS} = binary_to_term(Val),
-                         true = ets:insert(?MSG_RETAIN_TABLE, {ensure_list(BRoutingKey), User, ClientId, Payload, TS}),
+                         true = ets:insert(?MSG_RETAIN_TABLE,
+                                           {ensure_list(BRoutingKey), User,
+                                            ClientId, Payload, TS}),
                          Acc
                  end, []),
     ok = lists:foreach(fun(Key) -> bitcask:delete(MsgStore, Key) end, ToDelete),
