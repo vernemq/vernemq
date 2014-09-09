@@ -1,11 +1,11 @@
 -module(emqttd_reg).
 -include_lib("emqtt_commons/include/emqtt_internal.hrl").
 
--export([subscribe/2,
-         unsubscribe/2,
+-export([subscribe/3,
+         unsubscribe/3,
          subscriptions/1,
-         publish/4,
-         route/5,
+         publish/6,
+         route/7,
          register_client/2,
          disconnect_client/1,
          cleanup_client/1,
@@ -13,34 +13,47 @@
 
 -export([emqttd_table_defs/0]).
 
-subscribe(ClientId, Topics) ->
-    emqttd_cluster:if_ready(fun subscribe_/2, [ClientId, Topics]).
+-hook({auth_on_subscribe, only, 3}).
+-hook({on_subscribe, all, 3}).
+-hook({on_unsubscribe, all, 3}).
+-hook({filter_subscribers, every, 5}).
 
-subscribe_(ClientId, Topics) ->
-    Errors =
-    lists:foldl(fun({Topic, Qos}, Errors) ->
-                        case mnesia:transaction(fun add_subscriber/3, [Topic, Qos, ClientId]) of
-                            {atomic, _} ->
-                                emqttd_msg_store:deliver_retained(self(), Topic, Qos),
-                                Errors;
-                            {aborted, Reason} ->
-                                [Reason|Errors]
-                        end
-                end, [], Topics),
-    case Errors of
-        [] ->
-            ok;
-        Errors ->
-            {error, Errors}
+subscribe(User, ClientId, Topics) ->
+    emqttd_cluster:if_ready(fun subscribe_/3, [User, ClientId, Topics]).
+
+subscribe_(User, ClientId, Topics) ->
+    case emqttd_hook:only(auth_on_subscribe, [User, ClientId, Topics]) of
+        ok ->
+            emqttd_hook:all(on_subscribe, [User, ClientId, Topics]),
+            Errors =
+            lists:foldl(fun({Topic, Qos}, Errors) ->
+                                case mnesia:transaction(fun add_subscriber/3, [Topic, Qos, ClientId]) of
+                                    {atomic, _} ->
+                                        emqttd_msg_store:deliver_retained(self(), Topic, Qos),
+                                        Errors;
+                                    {aborted, Reason} ->
+                                        [Reason|Errors]
+                                end
+                        end, [], Topics),
+            case Errors of
+                [] ->
+                    ok;
+                Errors ->
+                    {error, Errors}
+            end;
+        not_found ->
+            {error, not_allowed}
     end.
 
-unsubscribe(ClientId, Topics) ->
-    emqttd_cluster:if_ready(fun unsubscribe_/2, [ClientId, Topics]).
+unsubscribe(User, ClientId, Topics) ->
+    emqttd_cluster:if_ready(fun unsubscribe_/3, [User, ClientId, Topics]).
 
-unsubscribe_(ClientId, Topics) ->
+unsubscribe_(User, ClientId, Topics) ->
     lists:foreach(fun(Topic) ->
                           {atomic, _} = del_subscriber(Topic, ClientId)
-                  end, Topics).
+                  end, Topics),
+    emqttd_hook:all(on_unsubscribe, [User, ClientId, Topics]),
+    ok.
 
 subscriptions(RoutingKey) ->
     lists:foldl(
@@ -82,11 +95,12 @@ register_client__(ClientPid, ClientId, CleanSession) ->
     gproc:add_local_name({?MODULE, ClientId}).
 
 
-publish(MsgId, RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_binary(Payload) ->
+publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain)
+  when is_list(RoutingKey) and is_binary(Payload) ->
     Ref = make_ref(),
     Caller = {self(), Ref},
     ReqF = fun() ->
-                   exit({Ref, publish(MsgId, RoutingKey, Payload, IsRetain, Caller)})
+                   exit({Ref, publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, Caller)})
            end,
     try spawn_monitor(ReqF) of
         {_, MRef} ->
@@ -104,45 +118,45 @@ publish(MsgId, RoutingKey, Payload, IsRetain) when is_list(RoutingKey) and is_bi
 
 
 %publish to cluster node.
-publish(MsgId, RoutingKey, Payload, IsRetain, Caller) ->
+publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, Caller) ->
     MatchedTopics = match(RoutingKey),
     case IsRetain of
         true ->
-            emqttd_cluster:if_ready(fun publish_/6, [MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller]);
+            emqttd_cluster:if_ready(fun publish_/8, [User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller]);
         false ->
             case check_single_node(node(), MatchedTopics, length(MatchedTopics)) of
                 true ->
                     %% in case we have only subscriptions on one single node
                     %% we can deliver the messages even in case of network partitions
                     lists:foreach(fun(#topic{name=Name}) ->
-                                          route(MsgId, Name, RoutingKey, Payload, IsRetain)
+                                          route(User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain)
                                   end, MatchedTopics),
                     {CallerPid, CallerRef} = Caller,
                     CallerPid ! CallerRef,
                     ok;
                 false ->
-                    emqttd_cluster:if_ready(fun publish__/6, [MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller])
+                    emqttd_cluster:if_ready(fun publish__/8, [User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller])
             end
     end.
 
-publish_(MsgId, RoutingKey, Payload, IsRetain = true, MatchedTopics, Caller) ->
-    case emqttd_msg_store:retain_action(RoutingKey, Payload) of
+publish_(User, ClientId, MsgId, RoutingKey, Payload, IsRetain = true, MatchedTopics, Caller) ->
+    case emqttd_msg_store:retain_action(User, ClientId, RoutingKey, Payload) of
         ok ->
-            publish__(MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller);
+            publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller);
         Error ->
             Error
     end.
 
-publish__(MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller) ->
+publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller) ->
     {CallerPid, CallerRef} = Caller,
     CallerPid ! CallerRef,
     lists:foreach(
       fun(#topic{name=Name, node=Node}) ->
               case Node == node() of
                   true ->
-                      route(MsgId, Name, RoutingKey, Payload, IsRetain);
+                      route(User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain);
                   false ->
-                      rpc:call(Node, ?MODULE, route, [MsgId, Name, RoutingKey, Payload, IsRetain])
+                      rpc:call(Node, ?MODULE, route, [User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain])
               end
       end, MatchedTopics).
 
@@ -169,14 +183,16 @@ disconnect_client(ClientId) ->
         E -> E
     end.
 %route locally, should only be called by publish
-route(MsgId, Topic, RoutingKey, Payload, _IsRetain) ->
+route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, _IsRetain) ->
+    Subscribers = mnesia:dirty_read(emqttd_subscriber, Topic),
+    FilteredSubscribers = emqttd_hook:every(filter_subscribers, Subscribers, [SendingUser, SendingClientId, MsgId, RoutingKey, Payload]),
     lists:foreach(fun
                     (#subscriber{qos=Qos, client=ClientId}) when Qos > 0 ->
-                          MaybeNewMsgId = emqttd_msg_store:store(MsgId, RoutingKey, Payload),
+                          MaybeNewMsgId = emqttd_msg_store:store(SendingUser, SendingClientId, MsgId, RoutingKey, Payload),
                           deliver(ClientId, RoutingKey, Payload, Qos, MaybeNewMsgId);
                     (#subscriber{qos=0, client=ClientId}) ->
                           deliver(ClientId, RoutingKey, Payload, 0, undefined)
-                end, mnesia:dirty_read(emqttd_subscriber, Topic)).
+                end, FilteredSubscribers).
 
 deliver(_, _, <<>>, _, Ref) ->
     %% <<>> --> retain-delete action, we don't deliver the empty frame

@@ -12,6 +12,8 @@ start() ->
     application:set_env(mnesia_cluster, app_process, emqttd_cluster),
     application:ensure_all_started(emqttd_server),
 
+    emqttd_auth:register_hooks(),
+
     case proplists:get_value(emqttd_port, init:get_arguments()) of
         [StringPort] ->
             Endpoint = {?LOCALHOST, list_to_integer(StringPort), ?DEFAULT_NR_OF_ACCEPTORS},

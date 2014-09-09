@@ -32,10 +32,14 @@
                 %% auth backend requirement
                 peer,
                 username,
-                auth_providers,
                 msg_log_handler
 
          }).
+
+-hook({auth_on_publish, only, 6}).
+-hook({on_publish, all, 6}).
+-hook({auth_on_register, only, 4}).
+-hook({on_register, all, 4}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
@@ -50,7 +54,6 @@ disconnect(FsmPid) ->
 %%% FSM FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init(Peer, SendFun, Opts) ->
-    {_, AuthProviders} = lists:keyfind(auth_providers, 1, Opts),
     MsgLogHandler =
     case lists:keyfind(msg_log_handler, 1, Opts) of
         {_, undefined} ->
@@ -60,7 +63,6 @@ init(Peer, SendFun, Opts) ->
     end,
     erlang:send_after(?CLOSE_AFTER, self(), timeout),
     ret({wait_for_connect, #state{peer=Peer, send_fun=SendFun,
-                              auth_providers=AuthProviders,
                               msg_log_handler=MsgLogHandler}}).
 
 handle_input(Data, {StateName, State}) ->
@@ -150,7 +152,7 @@ process_bytes(Bytes, StateName, #state{parser_state=ParserState} = State) ->
     end.
 
 handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
-    #state{peer=Peer, auth_providers=AuthProviders} = State,
+    #state{peer=Peer} = State,
     #mqtt_frame_connect{
        client_id=Id,
        username=User,
@@ -163,10 +165,13 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
 
     case check_version(Version) of
         true ->
-            case auth_user(Peer, Id, User, Password, AuthProviders) of
+            %% auth_on_register hook must return either:
+            %%  ok | next | {error, invalid_credentials | not_authorized}
+            case emqttd_hook:only(auth_on_register, [Peer, Id, User, Password]) of
                 ok ->
                     case emqttd_reg:register_client(Id, CleanSession) of
                         ok ->
+                            emqttd_hook:all(on_register, [Peer, Id, User, Password]),
                             {connected,
                              send_connack(?CONNACK_ACCEPT, State#state{
                                                              client_id=Id,
@@ -177,7 +182,9 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
                         {error, _Reason} ->
                             {connection_attempted, send_connack(?CONNACK_SERVER, State)}
                     end;
-                {error, unknown} ->
+                not_found ->
+                    % returned when no hook on_register hook was
+                    % able to authenticate user
                     {connection_attempted, send_connack(?CONNACK_INVALID_ID, State)};
                 {error, invalid_credentials} ->
                     {connection_attempted, send_connack(?CONNACK_CREDENTIALS, State)};
@@ -221,12 +228,12 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
                                                       {PubRelFrame, NewRef, undefined}, WAcks)}};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL}, Var, _, State) ->
-    #state{waiting_acks=WAcks} = State,
+    #state{username=User, client_id=ClientId, waiting_acks=WAcks} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
     {MsgRef, IsRetain} = dict:fetch({qos2, MessageId}, WAcks),
     {ok, {RoutingKey, Payload}} = emqttd_msg_store:retrieve(MsgRef),
-    emqttd_reg:publish(MsgRef, RoutingKey, Payload, IsRetain),
+    publish(User, ClientId, MsgRef, RoutingKey, Payload, IsRetain),
     NewState = send_frame(?PUBCOMP, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
     emqttd_msg_store:deref(MsgRef),
     {connected, NewState};
@@ -240,9 +247,10 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
     {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, retain=1}, Var, <<>>, State) ->
+    #state{username=User, client_id=ClientId} = State,
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
     %% delete retained msg,
-    case emqttd_reg:publish(Topic, <<>>, true) of
+    case emqttd_reg:publish(User, ClientId, undefined, Topic, <<>>, true) of
         ok ->
             NewState = send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
             {connected, NewState};
@@ -257,9 +265,10 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, qos=QoS, retain=IsRetai
     {connected, dispatch_publish(QoS, MessageId, Topic, Payload, IsRetain, State)};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
+    #state{client_id=Id, username=User} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
     TTopics = [{Name, QoS} || #mqtt_topic{name=Name, qos=QoS} <- Topics],
-    case emqttd_reg:subscribe(State#state.client_id, TTopics) of
+    case emqttd_reg:subscribe(User, Id, TTopics) of
         ok ->
             {_, QoSs} = lists:unzip(TTopics),
             NewState = send_frame(?SUBACK, #mqtt_frame_suback{message_id=MessageId, qos_table=QoSs}, <<>>, State),
@@ -270,9 +279,10 @@ handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
+    #state{client_id=Id, username=User} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
     TTopics = [Name || #mqtt_topic{name=Name} <- Topics],
-    case emqttd_reg:unsubscribe(State#state.client_id, TTopics) of
+    case emqttd_reg:unsubscribe(User, Id, TTopics) of
         ok ->
             NewState = send_frame(?UNSUBACK, #mqtt_frame_suback{message_id=MessageId}, <<>>, State),
             {connected, NewState};
@@ -301,18 +311,6 @@ ret({_, _} = R) -> R.
 
 check_version(?MQTT_PROTO_MAJOR) -> true;
 check_version(_) -> false.
-
-auth_user(_, _, _, _, []) -> {error, unknown};
-auth_user(SrcIp, Id, User, Password, [AuthProvider|AuthProviders]) ->
-    case apply(AuthProvider, authenticate, [SrcIp, Id, User, Password]) of
-        ok ->
-            ok;
-        {error, unknown} ->
-            % loop through Auth Providers
-            auth_user(SrcIp, Id, User, Password, AuthProviders);
-        {error, Reason} ->
-            {error, Reason}
-    end.
 
 send_connack(ReturnCode, State) ->
     send_frame(?CONNACK, #mqtt_frame_connack{return_code=ReturnCode}, <<>>, State).
@@ -350,18 +348,21 @@ dispatch_publish_(2, MessageId, Topic, Payload, IsRetain, State) ->
     dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State).
 
 dispatch_publish_qos0(_MessageId, Topic, Payload, IsRetain, State) ->
-    emqttd_reg:publish(undefined, Topic, Payload, IsRetain),
+    #state{username=User, client_id=ClientId} = State,
+    publish(User, ClientId, undefined, Topic, Payload, IsRetain),
     State.
 
 dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
-    MsgRef = emqttd_msg_store:store(Topic, Payload),
-    emqttd_reg:publish(MsgRef, Topic, Payload, IsRetain),
+    #state{username=User, client_id=ClientId} = State,
+    MsgRef = emqttd_msg_store:store(User, ClientId, Topic, Payload),
+    publish(User, ClientId, MsgRef, Topic, Payload, IsRetain),
     NewState = send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId}, <<>>, State),
     emqttd_msg_store:deref(MsgRef),
     NewState.
 
 dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, #state{waiting_acks=WAcks} = State) ->
-    MsgRef = emqttd_msg_store:store(Topic, Payload),
+    #state{username=User, client_id=ClientId} = State,
+    MsgRef = emqttd_msg_store:store(User, ClientId, Topic, Payload),
     NewState = State#state{waiting_acks=dict:store({qos2, MessageId}, {MsgRef, IsRetain}, WAcks)},
     send_frame(?PUBREC, #mqtt_frame_publish{message_id=MessageId}, <<>>, NewState).
 
@@ -389,3 +390,14 @@ send_publish_frame(_OutgoingMsgId, Frame, QoS, #state{send_fun=SendFun} = State)
             {error, Reason}
     end.
 
+publish(User, ClientId, MsgRef, Topic, Payload, IsRetain) ->
+    %% auth_on_publish hook must return either:
+    %% next | ok
+    case emqttd_hook:only(auth_on_publish, [User, ClientId, MsgRef, Topic, Payload, IsRetain]) of
+        not_found ->
+            {error, not_allowed};
+        ok ->
+            R = emqttd_reg:publish(User, ClientId, MsgRef, Topic, Payload, IsRetain),
+            emqttd_hook:all(on_publish, [User, ClientId, MsgRef, Topic, Payload, IsRetain]),
+            R
+    end.

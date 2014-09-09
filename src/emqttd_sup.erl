@@ -22,6 +22,8 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
+    emqttd_hook:start(emqttd_server),
+
     EMQTTDir = "EMQTT."++atom_to_list(node()),
     filelib:ensure_dir(EMQTTDir),
     {ok, { {one_for_one, 5, 10}, [
