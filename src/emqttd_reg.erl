@@ -5,11 +5,13 @@
          unsubscribe/3,
          subscriptions/1,
          publish/6,
-         route/7,
          register_client/2,
          disconnect_client/1,
          cleanup_client/1,
          match/1]).
+
+-export([register_client__/3,
+         route/7]).
 
 -export([emqttd_table_defs/0]).
 
