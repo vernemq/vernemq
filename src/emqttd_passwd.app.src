@@ -1,0 +1,16 @@
+{application, emqttd_passwd,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  crypto
+                 ]},
+  {mod, { emqttd_passwd_app, []}},
+  {env, [
+      {file, "priv/test.passwd"},
+      {interval, 5000}
+    ]}
+ ]}.
