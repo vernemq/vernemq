@@ -80,7 +80,8 @@ age_entries() ->
     iterate(fun(K) -> ets:update_element(?TABLE, K, {4,2}) end).
 
 del_aged_entries() ->
-    ets:match_delete(?TABLE, {'_', '_', '_', 2}).
+    ets:match_delete(?TABLE, {'_', '_', '_', 2}),
+    ok.
 
 iterate(Fun) ->
     iterate(Fun, ets:first(?TABLE)).
