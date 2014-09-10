@@ -1,0 +1,15 @@
+{application, emqttd_acl,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { emqttd_acl_app, []}},
+  {env, [
+      {file, "priv/test.acl"},
+      {interval, 5000}
+    ]}
+ ]}.
