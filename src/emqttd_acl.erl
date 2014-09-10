@@ -30,7 +30,7 @@ init() ->
                   end, ?TABLES).
 
 auth_on_subscribe(_, _, []) -> ok;
-auth_on_subscribe(User, ClientId, [Topic|Rest]) ->
+auth_on_subscribe(User, ClientId, [{Topic, _Qos}|Rest]) ->
     case check(read, Topic, User, ClientId) of
         true ->
             auth_on_subscribe(User, ClientId, Rest);
@@ -128,9 +128,7 @@ check_pattern_acl(Type, TIn, User, ClientId) ->
     {Tbl, _} = t(Type, pattern, TIn),
     iterate_until_true(Tbl, fun(P) ->
                                     T = topic(User, ClientId, P),
-                                    W = words(T),
-                                    io:format("Topic ~p Words ~p, In ~p~n", [T, W, TIn]),
-                                    match(TIn, W)
+                                    match(TIn, words(T))
                             end).
 
 topic(User, ClientId, Topic) ->
