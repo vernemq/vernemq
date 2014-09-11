@@ -80,9 +80,13 @@ init([]) ->
 generate_childspecs(NrOfAcceptors, Listeners, Transport, Protocol, Opts) ->
     [ranch:child_spec(list_to_atom("mqtt_"++integer_to_list(Port)),
                       NrOfAcceptors, Transport,
-                      [{ip, Ip}, {port, Port}, {max_connections, MaxConnections}],
+                      [{ip, case is_list(Addr) of
+                                true -> {ok, Ip} = inet:parse_address(Addr),
+                                        Ip;
+                                false -> Addr
+                            end }, {port, Port}, {max_connections, MaxConnections}],
                       Protocol, Opts)
-     || {{Ip, Port}, MaxConnections} <- Listeners].
+     || {{Addr, Port}, MaxConnections} <- Listeners].
 
 handler_opts(mqttws) ->
     Dispatch = cowboy_router:compile(

@@ -23,7 +23,7 @@ start_link() ->
 
 init([]) ->
     emqttd_hook:start(emqttd_server),
-    [emqttd_hook:start(A) || {A, _, _}<- application:which_applications(),
+    [emqttd_hook:start(A) || {A, _, _}<- application:loaded_applications(),
                              A /= emqttd_server],
 
     EMQTTDir = "EMQTT."++atom_to_list(node()),

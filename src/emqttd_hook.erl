@@ -23,18 +23,27 @@ start(App) ->
                            [set, public, named_table, {read_concurrency, true}])
     end,
     {ok, Modules} = application:get_key(App, modules),
-    lists:foreach(
-      fun(M) ->
-              [declare(Name, Type, Arity)
+    Declarations =
+    lists:foldl(
+      fun(M, Acc) ->
+              [[begin declare(Name, Type, Arity), {M, Name, Arity} end
                || {hook, [{Name, Type, Arity}]}
-                  <- M:module_info(attributes)]
-      end, Modules),
-    lists:foreach(
-      fun(M) ->
-              [add(Name, ets:info(?TABLE, size), MFA)
+                  <- M:module_info(attributes)] | Acc]
+      end, [], Modules),
+    Registrations =
+    lists:foldl(
+      fun(M, Acc) ->
+              [[begin add(Name, ets:info(?TABLE, size), MFA), {M, Name, MFA} end
                || {register_hook, [{Name, MFA}]}
-                  <- M:module_info(attributes)]
-      end, Modules).
+                  <- M:module_info(attributes)] | Acc]
+      end, [], Modules),
+    case {lists:flatten(Declarations), lists:flatten(Registrations)} of
+        {[],[]} ->
+            ok;
+        {FDeclarations, FRegistrations} ->
+            error_logger:info_msg("App ~p registered ~p hook-points, and registered ~p hooks~n", [App, FDeclarations, FRegistrations])
+    end.
+
 
 -spec stop() -> ok.
 stop() ->
