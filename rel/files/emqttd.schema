@@ -1,0 +1,330 @@
+%%-*- mode: erlang -*
+%% ex: ft=erlang
+
+%% @doc listener.max_connections is an integer or 'infinity' defining 
+%% the number of concurrent connections. This option can be overridden
+%% by either specifying on the protocol level:
+%%
+%%     - listener.tcp.max_connections
+%%     - listener.ssl.max_connections
+%%     - listener.websocket.max_connections 
+%%
+%% or on the listener level:
+%%
+%%     - listener.tcp.max_connections.my_tcp_listener
+%%     - listener.ssl.max_connections.my_ssl_listener
+%%     - listener.websocket.max_connections .my_websocket_listener
+{mapping, "listener.max_connections", "emqttd_server.listeners", [
+                                                                  {default, {{max_connections}} },
+                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                 ]}. 
+%% @see listener.max_connections
+{mapping, "listener.tcp.max_connections", "emqttd_server.listeners", [
+                                                                  {default, {{max_connections}} },
+                                                                  {commented, {{max_connections}} },
+                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                 ]}. 
+
+%% @see listener.max_connections
+{mapping, "listener.tcp.max_connections.$name", "emqttd_server.listeners", [
+                                                                  {default, {{max_connections}} },
+                                                                  {commented, {{max_connections}} },
+                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                 ]}. 
+
+%% @see listener.max_connections
+{mapping, "listener.ssl.max_connections", "emqttd_server.listeners", [
+                                                                  {default, {{max_connections}} },
+                                                                  {commented, {{max_connections}} },
+                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                 ]}. 
+
+%% @see listener.max_connections
+{mapping, "listener.ssl.max_connections.$name", "emqttd_server.listeners", [
+                                                                  {default, {{max_connections}} },
+                                                                  {commented, {{max_connections}} },
+                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                 ]}. 
+
+%% @see listener.max_connections
+{mapping, "listener.websocket.max_connections", "emqttd_server.listeners", [
+                                                                  {default, {{max_connections}} },
+                                                                  {commented, {{max_connections}} },
+                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                 ]}. 
+
+%% @see listener.max_connections
+{mapping, "listener.websocket.max_connections.$name", "emqttd_server.listeners", [
+                                                                  {default, {{max_connections}} },
+                                                                  {commented, {{max_connections}} },
+                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                 ]}. 
+%% @doc listener.tcp.<name> is an IP address and TCP port that 
+%% the broker will bind.
+{mapping, "listener.tcp.$name", "emqttd_server.listeners", [
+                                                      {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
+                                                      {datatype, ip},
+                                                      {include_default, "default"}
+                                                     ]}.
+
+%% @doc listener.websocket.<name> is an IP address and TCP port that 
+%% the broker will bind to the Websocket Handler.
+{mapping, "listener.websocket.$name", "emqttd_server.listeners", [
+                                                      {default, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
+                                                      {datatype, ip},
+                                                      {include_default, "default"}
+                                                     ]}.
+
+%% @doc listener.ssl.<name> is an IP address and TCP port that 
+%% the broker will bind using SSL.
+{mapping, "listener.ssl.$name", "emqttd_server.listeners", [
+                                                      {commented, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
+                                                      {datatype, ip},
+                                                      {include_default, "default"}
+                                                     ]}.
+
+{translation, "emqttd_server.listeners", 
+ fun(Conf) ->
+         MaxConnectionsDefault = 
+         case cuttlefish:conf_get("listener.max_connections", Conf) of
+             infinity ->
+                 infinity;
+             Int1 when is_integer(Int1) -> 
+                 Int1;
+             _ ->
+                 cuttlefish:invalid("should be an integer")
+         end,
+
+         F = fun(Prefix1, Prefix2) ->
+                     Default = 
+                     case cuttlefish:conf_get(Prefix1++".max_connections", Conf, MaxConnectionsDefault) of
+                         infinity ->
+                             infinity;
+                         Int2 when is_integer(Int2) -> 
+                             Int2
+                     end,
+                     [case cuttlefish:conf_get(Prefix2++"."++lists:last(V), Conf, Default) of
+                          infinity ->
+                              {IP, infinity};
+                          Int3 when is_integer(Int3) ->
+                              {IP, Int3}
+                      end || {V, IP} <- cuttlefish_variable:filter_by_prefix(Prefix1, Conf), lists:last(V) /= "max_connections"]
+             end,
+
+         TCP = F("listener.tcp", "listener.tcp.max_connections"), 
+         SSL = F("listener.ssl", "listener.ssl.max_connections"), 
+         WEBSOCKET = F("listener.websocket", "listener.websocket.max_connections"), 
+         {TCP, SSL, WEBSOCKET}
+ end
+}.
+
+%% @doc Set the nr of acceptors waiting to concurrently accept new connections.
+{mapping, "nr_of_acceptors", "emqttd_server.nr_of_acceptors", [
+                                                                {default, 10},
+                                                                {datatype, integer}
+                                                              ]}.
+
+%% @doc Set the path to an access control list file. 
+{mapping, "acl_file", "emqttd_acl.file", [
+                                          {default, "{{platform_etc_dir}}/emqttd.acl"},
+                                          {datatype, file}
+                                         ]}.
+
+%% @doc Set the path to a password file. 
+{mapping, "password_file", "emqttd_passwd.file", [
+                                                  {default, "{{platform_etc_dir}}/emqttd.passwd"},
+                                                  {datatype, file}
+                                                 ]}.
+
+%% @doc Allow anonymous users to connect, default is 'off'
+{mapping, "allow_anonymous", "emqttd_passwd.allow_anonymous", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+
+
+{mapping, "table_definition_mod", "mnesia_cluster.table_definition_mod", [
+                                                                          {default, "{emqttd_reg,emqttd_table_defs,[]}"},
+                                                                          {datatype, string},
+                                                                          hidden
+                                                                         ]}. 
+
+{mapping, "cluster_monitor_callbacks", "mnesia_cluster.cluster_monitor_callbacks", [
+                                                                          {default, "[emqttd_cluster]"},
+                                                                          {datatype, string},
+                                                                          hidden
+                                                                         ]}. 
+
+{mapping, "app_process", "mnesia_cluster.app_process", [
+                                                                          {default, emqttd_cluster},
+                                                                          {datatype, atom},
+                                                                          hidden
+                                                                         ]}. 
+
+{translation, "mnesia_cluster.table_definition_mod", 
+ fun(Conf) ->
+         S = cuttlefish:conf_get("table_definition_mod", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.
+
+{translation, "mnesia_cluster.cluster_monitor_callbacks", 
+ fun(Conf) ->
+         S = cuttlefish:conf_get("cluster_monitor_callbacks", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.
+
+
+%% @doc Where to emit the default log messages (typically at 'info'
+%% severity):
+%%      off: disabled
+%%     file: the file specified by log.console.file
+%%  console: to standard output (seen when using `emqttd attach-direct`)
+%%     both: log.console.file and standard out.
+{mapping, "log.console", "lager.handlers", [
+                                            {default, {{console_log_default}} },
+                                            {datatype, {enum, [off, file, console, both]}}
+                                           ]}.
+%% @doc The severity level of the console log, default is 'info'.
+{mapping, "log.console.level", "lager.handlers", [
+                                                  {default, info},
+                                                  {datatype, {enum, [debug, info, warning, error]}}
+                                                 ]}.
+%% @doc When 'log.console' is set to 'file' or 'both', the file where
+%% console messages will be logged.
+{mapping, "log.console.file", "lager.handlers", [
+                                                 {default, "{{platform_log_dir}}/console.log"},
+                                                 {datatype, file}
+                                                ]}.
+%% @doc The file where error messages will be logged.
+{mapping, "log.error.file", "lager.handlers", [
+                                               {default, "{{platform_log_dir}}/error.log"},
+                                               {datatype, file}
+                                              ]}.
+%% @doc When set to 'on', enables log output to syslog.
+{mapping, "log.syslog", "lager.handlers", [
+                                           {default, off},
+                                           {datatype, flag}
+                                          ]}.
+{translation,
+ "lager.handlers",
+ fun(Conf) ->
+         SyslogHandler = [{lager_syslog_backend, ["emqttd", daemon, info]} ||
+                          cuttlefish:conf_get("log.syslog", Conf)],
+         ErrorHandler = case cuttlefish:conf_get("log.error.file", Conf) of
+                            undefined -> [];
+                            ErrorFilename -> [{lager_file_backend, [{file, ErrorFilename},
+                                                                    {level, error},
+                                                                    {size, 10485760},
+                                                                    {date, "$D0"},
+                                                                    {count, 5}]}]
+                        end,
+         ConsoleLogLevel = cuttlefish:conf_get("log.console.level", Conf),
+         ConsoleLogFile = cuttlefish:conf_get("log.console.file", Conf),
+         ConsoleHandler = {lager_console_backend, ConsoleLogLevel},
+         ConsoleFileHandler = {lager_file_backend, [{file, ConsoleLogFile},
+                                                    {level, ConsoleLogLevel},
+                                                    {size, 10485760},
+                                                    {date, "$D0"},
+                                                    {count, 5}]},
+         ConsoleHandlers = case cuttlefish:conf_get("log.console", Conf) of
+                               off -> [];
+                               file -> [ConsoleFileHandler];
+                               console -> [ConsoleHandler];
+                               both -> [ConsoleHandler, ConsoleFileHandler];
+                               _ -> []
+                           end,
+         SyslogHandler ++ ConsoleHandlers ++ ErrorHandler
+ end
+}.
+%% @doc Whether to enable Erlang's built-in error logger.
+{mapping, "sasl", "sasl.sasl_error_logger", [
+                                             {default, off},
+                                             {datatype, flag},
+                                             hidden
+                                            ]}.
+%% @doc Whether to enable the crash log.
+{mapping, "log.crash", "lager.crash_log", [
+                                           {default, on},
+                                           {datatype, flag}
+                                          ]}.
+%% @doc If the crash log is enabled, the file where its messages will
+%% be written.
+{mapping, "log.crash.file", "lager.crash_log", [
+                                                {default, "{{platform_log_dir}}/crash.log"},
+                                                {datatype, file}
+                                               ]}.
+{translation,
+ "lager.crash_log",
+ fun(Conf) ->
+         case cuttlefish:conf_get("log.crash", Conf) of
+             false -> undefined;
+             _ ->
+                 cuttlefish:conf_get("log.crash.file", Conf, "{{platform_log_dir}}/crash.log")
+         end
+ end}.
+%% @doc Maximum size in bytes of individual messages in the crash log
+{mapping, "log.crash.maximum_message_size", "lager.crash_log_msg_size", [
+                                                                         {default, "64KB"},
+                                                                         {datatype, bytesize}
+                                                                        ]}.
+%% @doc Maximum size of the crash log in bytes, before it is rotated
+{mapping, "log.crash.size", "lager.crash_log_size", [
+                                                     {default, "10MB"},
+                                                     {datatype, bytesize}
+                                                    ]}.
+%% @doc The schedule on which to rotate the crash log. For more
+%% information see:
+%% https://github.com/basho/lager/blob/master/README.md#internal-log-rotation
+{mapping, "log.crash.rotation", "lager.crash_log_date", [
+                                                         {default, "$D0"}
+                                                        ]}.
+%% @doc The number of rotated crash logs to keep. When set to
+%% 'current', only the current open log file is kept.
+{mapping, "log.crash.rotation.keep", "lager.crash_log_count", [
+                                                               {default, 5},
+                                                               {datatype, [integer, {atom, current}]},
+                                                               {validators, ["rotation_count"]}
+                                                              ]}.
+{validator,
+ "rotation_count",
+ "must be 'current' or a positive integer",
+ fun(current) -> true;
+    (Int) when is_integer(Int) andalso Int >= 0 -> true;
+    (_) -> false
+ end}.
+{translation,
+ "lager.crash_log_count",
+ fun(Conf) ->
+         case cuttlefish:conf_get("log.crash.rotation.keep", Conf) of
+             current -> 0;
+             Int -> Int
+         end
+ end}.
+%% @doc Whether to redirect error_logger messages into lager -
+%% defaults to true
+{mapping, "log.error.redirect", "lager.error_logger_redirect", [
+                                                                {default, on},
+                                                                {datatype, flag},
+                                                                hidden
+                                                               ]}.
+%% @doc Maximum number of error_logger messages to handle in a second
+{mapping, "log.error.messages_per_second", "lager.error_logger_hwm", [
+                                                                      {default, 100},
+                                                                      {datatype, integer},
+                                                                      hidden
+                                                                     ]}.
+%% @doc Cookie for distributed node communication. All nodes in the
+%% same cluster should use the same cookie or they will not be able to
+%% communicate.
+{mapping, "distributed_cookie", "vm_args.-setcookie", [
+                                                       {default, "emqttd"}
+                                                      ]}.
+%% override zdbbl from 1mb to 32mb
+{mapping, "erlang.distribution_buffer_size", "vm_args.+zdbbl", [
+                                                                {default, "32MB"},
+                                                                merge
+                                                               ]}.
