@@ -12,8 +12,8 @@
 
 %% API
 -export([start_link/0,
-         add_endpoint/1,
-         add_ws_endpoint/1]).
+         add_endpoint/4,
+         add_ws_endpoint/4]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -35,14 +35,14 @@
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-add_endpoint(Endpoint) ->
-    [ChildSpec] = generate_childspecs([Endpoint], ranch_tcp,
+add_endpoint(Ip, Port, MaxConnections, NrOfAcceptors) ->
+    [ChildSpec] = generate_childspecs(NrOfAcceptors, [{{Ip,Port}, MaxConnections}], ranch_tcp,
                                       emqttd_tcp,
                                       handler_opts(mqtt)),
     supervisor:start_child(?SERVER, ChildSpec).
 
-add_ws_endpoint(Endpoint) ->
-    [ChildSpec] = generate_childspecs([Endpoint], ranch_tcp,
+add_ws_endpoint(Ip, Port, MaxConnections, NrOfAcceptors) ->
+    [ChildSpec] = generate_childspecs(NrOfAcceptors, [{{Ip,Port}, MaxConnections}], ranch_tcp,
                                       cowboy_protocol,
                                       handler_opts(mqttws)),
     supervisor:start_child(?SERVER, ChildSpec).
@@ -65,33 +65,24 @@ add_ws_endpoint(Endpoint) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    MQTTEndpoints =
-    case application:get_env(?APP, mqtt_endpoints) of
-        {ok, Endpoints} ->
-            generate_childspecs(Endpoints, ranch_tcp,
-                                emqttd_tcp, handler_opts(mqtt));
-        _ ->
-            []
-    end,
-    MQTTWSEndpoints =
-    case application:get_env(?APP, mqttws_endpoints) of
-        {ok, EndpointsWS} ->
-            generate_childspecs(EndpointsWS, ranch_tcp,
-                                cowboy_protocol, handler_opts(mqttws));
-        _ ->
-            []
-    end,
-    {ok, { {one_for_one, 5, 10}, MQTTEndpoints ++ MQTTWSEndpoints}}.
+    {ok, NrOfAcceptors} = application:get_env(?APP, nr_of_acceptors),
+    {ok, {TCPListeners, _SSLListeners, WSListeners}} = application:get_env(?APP, listeners),
+
+    MQTTEndpoints = generate_childspecs(NrOfAcceptors, TCPListeners, ranch_tcp, emqttd_tcp, handler_opts(mqtt)),
+    %MQTTSEndpoints = generate_childspecs(NrOfAcceptors, SSLListeners, ranch_tcp, emqttd_tcp, handler_opts(mqtt)),
+    MQTTSEndpoints = [],
+    MQTTWSEndpoints = generate_childspecs(NrOfAcceptors, WSListeners, ranch_tcp, cowboy_protocol, handler_opts(mqttws)),
+    {ok, { {one_for_one, 5, 10}, MQTTEndpoints ++ MQTTSEndpoints ++ MQTTWSEndpoints}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-generate_childspecs(Endpoints, Transport, Protocol, Opts) ->
+generate_childspecs(NrOfAcceptors, Listeners, Transport, Protocol, Opts) ->
     [ranch:child_spec(list_to_atom("mqtt_"++integer_to_list(Port)),
                       NrOfAcceptors, Transport,
-                      [{ip, Ip}, {port, Port}],
+                      [{ip, Ip}, {port, Port}, {max_connections, MaxConnections}],
                       Protocol, Opts)
-     || {Ip, Port, NrOfAcceptors} <- Endpoints].
+     || {{Ip, Port}, MaxConnections} <- Listeners].
 
 handler_opts(mqttws) ->
     Dispatch = cowboy_router:compile(

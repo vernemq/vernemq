@@ -17,17 +17,14 @@ start() ->
 
     case proplists:get_value(emqttd_port, init:get_arguments()) of
         [StringPort] ->
-            Endpoint = {?LOCALHOST, list_to_integer(StringPort),
-                        ?DEFAULT_NR_OF_ACCEPTORS},
-            emqttd_endpoint_sup:add_endpoint(Endpoint);
+            emqttd_endpoint_sup:add_endpoint(?LOCALHOST, list_to_integer(StringPort), 1024, ?DEFAULT_NR_OF_ACCEPTORS);
         undefined ->
             ok
     end,
     case proplists:get_value(emqttd_ws_port,
                              init:get_arguments()) of
         [StringPortWS] ->
-            EndpointWS = {?LOCALHOST, list_to_integer(StringPortWS), ?DEFAULT_NR_OF_ACCEPTORS},
-            emqttd_endpoint_sup:add_ws_endpoint(EndpointWS);
+            emqttd_endpoint_sup:add_ws_endpoint(?LOCALHOST, list_to_integer(StringPortWS), 1024, ?DEFAULT_NR_OF_ACCEPTORS);
         undefined ->
             ok
     end.
