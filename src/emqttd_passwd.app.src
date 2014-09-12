@@ -11,6 +11,7 @@
   {mod, { emqttd_passwd_app, []}},
   {env, [
       {file, "priv/test.passwd"},
+      {allow_anonymous, false},
       {interval, 5000}
     ]}
  ]}.

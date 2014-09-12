@@ -48,7 +48,8 @@ start_link() ->
 init([]) ->
     {ok, File} = application:get_env(?APP, file),
     {ok, Interval} = application:get_env(?APP, interval),
-    ok = emqttd_passwd:init(),
+    {ok, AllowAnonymous} = application:get_env(?APP, allow_anonymous),
+    ok = emqttd_passwd:init(AllowAnonymous),
     ok = emqttd_passwd:load_from_file(File),
     erlang:send_after(Interval, self(), reload),
     {ok, #state{file=File, interval=Interval}}.

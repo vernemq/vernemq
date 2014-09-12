@@ -1,6 +1,6 @@
 -module(emqttd_passwd).
 
--export([init/0,
+-export([init/1,
          check/2,
          hash/1, hash/2,
          load_from_file/1,
@@ -12,8 +12,9 @@
 
 -register_hook({auth_on_register, {?MODULE, auth_on_register, 4}}).
 
-init() ->
+init(AllowAnonymous) ->
     ets:new(?TABLE, [public, named_table, {read_concurrency, true}]),
+    ets:insert(?TABLE, {anonymous, AllowAnonymous}),
     ok.
 
 load_from_file(File) ->
@@ -43,6 +44,10 @@ load_from_list(List) ->
     parse_passwd_line(F(F, read)),
     del_aged_entries().
 
+check(undefined, _) ->
+    %% check if we allow anonymous connections
+    [{_, Res}] = ets:lookup(?TABLE, anonymous),
+    Res;
 check(User, Password) ->
     case ets:lookup(?TABLE, ensure_binary(User)) of
         [{_, SaltB64, EncPassword, _}] ->
@@ -86,6 +91,8 @@ del_aged_entries() ->
 iterate(Fun) ->
     iterate(Fun, ets:first(?TABLE)).
 iterate(_, '$end_of_table') -> ok;
+iterate(Fun, anonymous) ->
+    iterate(Fun, ets:next(?TABLE, anonymous));
 iterate(Fun, K) ->
     Fun(K),
     iterate(Fun, ets:next(?TABLE, K)).
