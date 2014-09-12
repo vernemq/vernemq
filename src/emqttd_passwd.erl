@@ -50,23 +50,23 @@ check(undefined, _) ->
         [{_, false}] ->
             {error, not_authorized};
         [{_, true}] ->
-            true
+            ok
     end;
+check(_, undefined) ->
+    {error, invalid_credentials};
 check(User, Password) ->
     case ets:lookup(?TABLE, ensure_binary(User)) of
         [{_, SaltB64, EncPassword, _}] ->
-            hash(Password, base64:decode(SaltB64)) == EncPassword;
+            case hash(Password, base64:decode(SaltB64)) == EncPassword of
+                true -> ok;
+                false -> {error, invalid_credentials}
+            end;
         [] ->
-            {error, not_found}
+            next
     end.
 
 auth_on_register(_Peer, _ClientId, User, Password) ->
-    case check(User, Password) of
-        true -> ok;
-        false -> {error, invalid_credentials};
-        {error, not_authorized} -> {error, not_authorized};
-        {error, not_found} -> next
-    end.
+    check(User, Password).
 
 parse_passwd_line({F, eof}) ->
     F(F,close),
