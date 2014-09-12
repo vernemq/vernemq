@@ -153,46 +153,39 @@
 %%     - listener.tcp.mountpoint.my_tcp_listener
 %%     - listener.ssl.mountpoint.my_ssl_listener
 %%     - listener.websocket.mountpoint.my_ssl_listener
-{mapping, "listener.mountpoint", "emqttd_server.listeners", [
-                                                                      {default, ""},
-                                                                      {datatype, string}
-                                                                 ]}. 
+{mapping, "listener.mountpoint", "emqttd_server.listeners", [{default, "off"},
+                                                             {datatype, string}
+                                                            ]}. 
 {mapping, "listener.tcp.mountpoint", "emqttd_server.listeners", [
-                                                                      {default, "example"},
-                                                                      {datatype, string},
-                                                                      hidden
-                                                                 ]}. 
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
 
 {mapping, "listener.tcp.mountpoint.$name", "emqttd_server.listeners", [
-                                                                      {default, "example"},
-                                                                      {datatype, string},
-                                                                      {include_default, "default"},
-                                                                      hidden
-                                                                 ]}. 
+                                                                       {datatype, string},
+                                                                       {include_default, "default"},
+                                                                       hidden
+                                                                      ]}. 
 {mapping, "listener.ssl.mountpoint", "emqttd_server.listeners", [
-                                                                      {default, "example"},
-                                                                      {datatype, string},
-                                                                      hidden
-                                                                 ]}. 
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
 
 {mapping, "listener.ssl.mountpoint.$name", "emqttd_server.listeners", [
-                                                                      {default, "example"},
-                                                                      {datatype, string},
-                                                                      {include_default, "default"},
-                                                                      hidden
-                                                                 ]}. 
+                                                                       {datatype, string},
+                                                                       {include_default, "default"},
+                                                                       hidden
+                                                                      ]}. 
 {mapping, "listener.websocket.mountpoint", "emqttd_server.listeners", [
-                                                                      {default, "example"},
-                                                                      {datatype, string},
-                                                                      hidden
-                                                                 ]}. 
+                                                                       {datatype, string},
+                                                                       hidden
+                                                                      ]}. 
 
 {mapping, "listener.websocket.mountpoint.$name", "emqttd_server.listeners", [
-                                                                     {default, "example"},
-                                                                      {datatype, string},
-                                                                      {include_default, "default"},
-                                                                      hidden
-                                                                 ]}. 
+                                                                             {datatype, string},
+                                                                             {include_default, "default"},
+                                                                             hidden
+                                                                            ]}. 
 
 {translation, "emqttd_server.listeners", 
  fun(Conf) ->
@@ -202,7 +195,8 @@
                                   _ -> cuttlefish:invalid("should be an integer")
                               end
                   end,
-         StrVal = fun(Val2) -> case Val2 of
+         MPVal = fun(Val2) -> case Val2 of
+                                  "off" -> "";
                                   S when is_list(S) -> S;
                                   _ -> cuttlefish:invalid("should be a string")
                               end
@@ -235,9 +229,9 @@
          {SSLIPs, SSLNrOfAcceptors} = lists:unzip(F("listener.ssl", "nr_of_acceptors", InfIntVal)),
          {WSIPs, WSNrOfAcceptors} = lists:unzip(F("listener.websocket", "nr_of_acceptors", InfIntVal)),
 
-         {TCPIPs, TCPMountPoint} = lists:unzip(F("listener.tcp", "mountpoint", StrVal)),
-         {SSLIPs, SSLMountPoint} = lists:unzip(F("listener.ssl", "mountpoint", StrVal)),
-         {WSIPs, WSMountPoint} = lists:unzip(F("listener.websocket", "mountpoint", StrVal)),
+         {TCPIPs, TCPMountPoint} = lists:unzip(F("listener.tcp", "mountpoint", MPVal)),
+         {SSLIPs, SSLMountPoint} = lists:unzip(F("listener.ssl", "mountpoint", MPVal)),
+         {WSIPs, WSMountPoint} = lists:unzip(F("listener.websocket", "mountpoint", MPVal)),
 
          TCP = lists:zip(TCPIPs, lists:zip3(TCPMaxConns, TCPNrOfAcceptors, TCPMountPoint)),
          SSL = lists:zip(SSLIPs, lists:zip3(SSLMaxConns, SSLNrOfAcceptors, SSLMountPoint)),
