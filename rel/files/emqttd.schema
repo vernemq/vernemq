@@ -18,111 +18,234 @@
                                                                   {default, {{max_connections}} },
                                                                   {datatype, [integer, {atom, infinity}]}
                                                                  ]}. 
-%% @see listener.max_connections
 {mapping, "listener.tcp.max_connections", "emqttd_server.listeners", [
                                                                   {default, {{max_connections}} },
                                                                   {commented, {{max_connections}} },
-                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                  hidden
                                                                  ]}. 
 
-%% @see listener.max_connections
 {mapping, "listener.tcp.max_connections.$name", "emqttd_server.listeners", [
                                                                   {default, {{max_connections}} },
                                                                   {commented, {{max_connections}} },
-                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                  hidden
                                                                  ]}. 
 
-%% @see listener.max_connections
 {mapping, "listener.ssl.max_connections", "emqttd_server.listeners", [
                                                                   {default, {{max_connections}} },
                                                                   {commented, {{max_connections}} },
-                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                  hidden
                                                                  ]}. 
 
-%% @see listener.max_connections
 {mapping, "listener.ssl.max_connections.$name", "emqttd_server.listeners", [
                                                                   {default, {{max_connections}} },
                                                                   {commented, {{max_connections}} },
-                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                  hidden
                                                                  ]}. 
 
-%% @see listener.max_connections
 {mapping, "listener.websocket.max_connections", "emqttd_server.listeners", [
                                                                   {default, {{max_connections}} },
                                                                   {commented, {{max_connections}} },
-                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                  hidden
                                                                  ]}. 
 
-%% @see listener.max_connections
 {mapping, "listener.websocket.max_connections.$name", "emqttd_server.listeners", [
                                                                   {default, {{max_connections}} },
                                                                   {commented, {{max_connections}} },
-                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                  hidden
                                                                  ]}. 
 %% @doc listener.tcp.<name> is an IP address and TCP port that 
-%% the broker will bind.
+%% the broker will bind. You can define multiple listeners e.g:
+%% - listener.tcp.default = 127.0.0.1:1883
+%% - listener.tcp.internal = 127.0.0.1:10883
+%% - listener.tcp.my_other_listener = 127.0.0.1:10884
+%% This also works for SSL listeners and Websocket handlers:
+%% - listener.ssl.default = 127.0.0.1:8883
+%% - listener.websocket.default = 127.0.0.1:800 
 {mapping, "listener.tcp.$name", "emqttd_server.listeners", [
                                                       {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
                                                       {datatype, ip},
                                                       {include_default, "default"}
                                                      ]}.
 
-%% @doc listener.websocket.<name> is an IP address and TCP port that 
-%% the broker will bind to the Websocket Handler.
 {mapping, "listener.websocket.$name", "emqttd_server.listeners", [
                                                       {default, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
                                                       {datatype, ip},
                                                       {include_default, "default"}
                                                      ]}.
 
-%% @doc listener.ssl.<name> is an IP address and TCP port that 
-%% the broker will bind using SSL.
 {mapping, "listener.ssl.$name", "emqttd_server.listeners", [
                                                       {commented, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
                                                       {datatype, ip},
                                                       {include_default, "default"}
                                                      ]}.
 
-{translation, "emqttd_server.listeners", 
- fun(Conf) ->
-         MaxConnectionsDefault = 
-         case cuttlefish:conf_get("listener.max_connections", Conf) of
-             infinity ->
-                 infinity;
-             Int1 when is_integer(Int1) -> 
-                 Int1;
-             _ ->
-                 cuttlefish:invalid("should be an integer")
-         end,
-
-         F = fun(Prefix1, Prefix2) ->
-                     Default = 
-                     case cuttlefish:conf_get(Prefix1++".max_connections", Conf, MaxConnectionsDefault) of
-                         infinity ->
-                             infinity;
-                         Int2 when is_integer(Int2) -> 
-                             Int2
-                     end,
-                     [case cuttlefish:conf_get(Prefix2++"."++lists:last(V), Conf, Default) of
-                          infinity ->
-                              {IP, infinity};
-                          Int3 when is_integer(Int3) ->
-                              {IP, Int3}
-                      end || {V, IP} <- cuttlefish_variable:filter_by_prefix(Prefix1, Conf), lists:last(V) /= "max_connections"]
-             end,
-
-         TCP = F("listener.tcp", "listener.tcp.max_connections"), 
-         SSL = F("listener.ssl", "listener.ssl.max_connections"), 
-         WEBSOCKET = F("listener.websocket", "listener.websocket.max_connections"), 
-         {TCP, SSL, WEBSOCKET}
- end
-}.
-
 %% @doc Set the nr of acceptors waiting to concurrently accept new connections.
-{mapping, "nr_of_acceptors", "emqttd_server.nr_of_acceptors", [
+%% This can be specified either on the protocol level:
+%%
+%%     - listener.tcp.nr_of_acceptors
+%%     - listener.ssl.nr_of_acceptors
+%%     - listener.websocket.nr_of_acceptors 
+%%
+%% or on the listener level:
+%%
+%%     - listener.tcp.nr_of_acceptors.my_tcp_listener
+%%     - listener.ssl.nr_of_acceptors.my_ssl_listener
+%%     - listener.websocket.nr_of_acceptors.my_ssl_listener
+{mapping, "listener.nr_of_acceptors", "emqttd_server.listeners", [
                                                                 {default, 10},
                                                                 {datatype, integer}
                                                               ]}.
+
+{mapping, "listener.tcp.nr_of_acceptors", "emqttd_server.listeners", [
+                                                                      {default, 10},
+                                                                      {datatype, integer},
+                                                                      hidden
+                                                                 ]}. 
+
+{mapping, "listener.tcp.nr_of_acceptors.$name", "emqttd_server.listeners", [
+                                                                      {default, 10},
+                                                                      {datatype, integer},
+                                                                      {include_default, "default"},
+                                                                      hidden
+                                                                 ]}. 
+
+{mapping, "listener.ssl.nr_of_acceptors", "emqttd_server.listeners", [
+                                                                      {default, 10},
+                                                                      {datatype, integer},
+                                                                      hidden
+                                                                 ]}. 
+
+{mapping, "listener.ssl.nr_of_acceptors.$name", "emqttd_server.listeners", [
+                                                                      {default, 10},
+                                                                      {datatype, integer},
+                                                                      {include_default, "default"},
+                                                                      hidden
+                                                                 ]}. 
+
+{mapping, "listener.websocket.nr_of_acceptors", "emqttd_server.listeners", [
+                                                                      {default, 10},
+                                                                      {datatype, integer},
+                                                                      hidden
+                                                                 ]}. 
+
+{mapping, "listener.websocket.nr_of_acceptors.$name", "emqttd_server.listeners", [
+                                                                      {default, 10},
+                                                                      {datatype, integer},
+                                                                      {include_default, "default"},
+                                                                      hidden
+                                                                 ]}. 
+
+
+%% @doc Set the mountpoint on the protocol level or on the listener level
+%%
+%%     - listener.tcp.mountpoint
+%%     - listener.ssl.mountpoint
+%%     - listener.websocket.mountpoint 
+%%
+%% or on the listener level:
+%%
+%%     - listener.tcp.mountpoint.my_tcp_listener
+%%     - listener.ssl.mountpoint.my_ssl_listener
+%%     - listener.websocket.mountpoint.my_ssl_listener
+{mapping, "listener.mountpoint", "emqttd_server.listeners", [
+                                                                      {default, ""},
+                                                                      {datatype, string}
+                                                                 ]}. 
+{mapping, "listener.tcp.mountpoint", "emqttd_server.listeners", [
+                                                                      {default, "example"},
+                                                                      {datatype, string},
+                                                                      hidden
+                                                                 ]}. 
+
+{mapping, "listener.tcp.mountpoint.$name", "emqttd_server.listeners", [
+                                                                      {default, "example"},
+                                                                      {datatype, string},
+                                                                      {include_default, "default"},
+                                                                      hidden
+                                                                 ]}. 
+{mapping, "listener.ssl.mountpoint", "emqttd_server.listeners", [
+                                                                      {default, "example"},
+                                                                      {datatype, string},
+                                                                      hidden
+                                                                 ]}. 
+
+{mapping, "listener.ssl.mountpoint.$name", "emqttd_server.listeners", [
+                                                                      {default, "example"},
+                                                                      {datatype, string},
+                                                                      {include_default, "default"},
+                                                                      hidden
+                                                                 ]}. 
+{mapping, "listener.websocket.mountpoint", "emqttd_server.listeners", [
+                                                                      {default, "example"},
+                                                                      {datatype, string},
+                                                                      hidden
+                                                                 ]}. 
+
+{mapping, "listener.websocket.mountpoint.$name", "emqttd_server.listeners", [
+                                                                     {default, "example"},
+                                                                      {datatype, string},
+                                                                      {include_default, "default"},
+                                                                      hidden
+                                                                 ]}. 
+
+{translation, "emqttd_server.listeners", 
+ fun(Conf) ->
+         InfIntVal = fun(Val1) -> case Val1 of
+                                  infinity -> infinity;
+                                  Int when is_integer(Int) -> Int;
+                                  _ -> cuttlefish:invalid("should be an integer")
+                              end
+                  end,
+         StrVal = fun(Val2) -> case Val2 of
+                                  S when is_list(S) -> S;
+                                  _ -> cuttlefish:invalid("should be a string")
+                              end
+                  end,
+
+         AllNotAddr = ["max_connections", "nr_of_acceptors", "mountpoint"],
+
+         F = fun(Prefix, Suffix, Validator) ->
+                     Prefix2 = lists:flatten([Prefix, ".", Suffix]),
+                     %% get default from root of the tree
+                     Default1 = Validator(cuttlefish:conf_get(lists:flatten(["listener.", Suffix]), Conf)),
+                     %% get the protocol specific default
+                     Default2 = Validator(cuttlefish:conf_get(Prefix2, Conf, Default1)),
+                     %% get the name value pairs
+                     [begin
+                          Name = lists:last(Tmp),
+                          Prefix3 = lists:flatten([Prefix2, ".", Name]),
+                          Val = Validator(cuttlefish:conf_get(Prefix3, Conf, Default2)),
+                          {AddrPort, Val}
+                      end 
+                      || {Tmp, AddrPort} <- cuttlefish_variable:filter_by_prefix(Prefix, Conf), 
+                         not lists:member(lists:last(Tmp), AllNotAddr)]
+             end,
+
+         {TCPIPs, TCPMaxConns} = lists:unzip(F("listener.tcp", "max_connections", InfIntVal)),
+         {SSLIPs, SSLMaxConns} = lists:unzip(F("listener.ssl", "max_connections", InfIntVal)),
+         {WSIPs, WSMaxConns} = lists:unzip(F("listener.websocket", "max_connections", InfIntVal)),
+         
+         {TCPIPs, TCPNrOfAcceptors} = lists:unzip(F("listener.tcp", "nr_of_acceptors", InfIntVal)),
+         {SSLIPs, SSLNrOfAcceptors} = lists:unzip(F("listener.ssl", "nr_of_acceptors", InfIntVal)),
+         {WSIPs, WSNrOfAcceptors} = lists:unzip(F("listener.websocket", "nr_of_acceptors", InfIntVal)),
+
+         {TCPIPs, TCPMountPoint} = lists:unzip(F("listener.tcp", "mountpoint", StrVal)),
+         {SSLIPs, SSLMountPoint} = lists:unzip(F("listener.ssl", "mountpoint", StrVal)),
+         {WSIPs, WSMountPoint} = lists:unzip(F("listener.websocket", "mountpoint", StrVal)),
+
+         TCP = lists:zip(TCPIPs, lists:zip3(TCPMaxConns, TCPNrOfAcceptors, TCPMountPoint)),
+         SSL = lists:zip(SSLIPs, lists:zip3(SSLMaxConns, SSLNrOfAcceptors, SSLMountPoint)),
+         WEBSOCKET = lists:zip(WSIPs, lists:zip3(WSMaxConns, WSNrOfAcceptors, WSMountPoint)),
+
+         {TCP, SSL, WEBSOCKET}
+ end
+}.
 
 %% @doc Set the path to an access control list file. 
 {mapping, "acl_file", "emqttd_acl.file", [
