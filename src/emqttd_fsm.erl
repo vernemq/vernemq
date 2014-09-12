@@ -186,22 +186,25 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
        will_topic=WillTopic,
        will_msg=WillMsg} = Var,
 
+    ClientId = get_random_clientid_if_empty(Id),
+    io:format("--- Version ~p~n", [Version]),
     case check_version(Version) of
         true ->
             %% auth_on_register hook must return either:
             %%  ok | next | {error, invalid_credentials | not_authorized}
+            User1 = case User of "" -> undefined; _ -> User end,
             case emqttd_hook:only(auth_on_register,
-                                  [Peer, Id, User, Password]) of
+                                  [Peer, ClientId, User1, Password]) of
                 ok ->
-                    case emqttd_reg:register_client(Id, CleanSession) of
+                    case emqttd_reg:register_client(ClientId, CleanSession) of
                         ok ->
                             emqttd_hook:all(on_register,
-                                            [Peer, Id, User, Password]),
+                                            [Peer, ClientId, User, Password]),
                             {connected,
                              send_connack(?CONNACK_ACCEPT,
                                           State#state{
-                                            client_id=Id,
-                                            username=User,
+                                            client_id=ClientId,
+                                            username=User1,
                                             will_qos=WillQoS,
                                             will_topic=combine_mp(MountPoint, WillTopic),
                                             will_msg=WillMsg})};
@@ -358,7 +361,8 @@ ret({_, _} = R) -> R.
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-check_version(?MQTT_PROTO_MAJOR) -> true;
+check_version(3) -> true;
+check_version(4) -> true;
 check_version(_) -> false.
 
 send_connack(ReturnCode, State) ->
@@ -469,4 +473,7 @@ clean_mp("", Topic) -> Topic;
 clean_mp(MountPoint, MountedTopic) ->
     lists:sublist(MountedTopic, length(MountPoint) + 1, length(MountedTopic)).
 
+get_random_clientid_if_empty("") ->
+    lists:flatten(["anon-", base64:encode_to_string(crypto:rand_bytes(20))]);
+get_random_clientid_if_empty(Id) -> Id.
 
