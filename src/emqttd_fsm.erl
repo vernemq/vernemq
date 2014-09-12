@@ -225,7 +225,12 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
                     {connection_attempted,
                      send_connack(?CONNACK_AUTH, State)}
             end;
+        {error, dont_reply} ->
+            %% TODO: maybe log
+            {stop, normal, State};
+
         {error, ProtoErr} ->
+            io:format("--- check version err ~p~n", [{Id,Version, ProtoErr}]),
             {connection_attempted,
              send_connack(ProtoErr, State)}
     end;
@@ -361,15 +366,16 @@ ret({_, _} = R) -> R.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+check_version(_, missing, _) -> {error, dont_reply};
+check_version(_, empty, 4) -> {ok, random_client_id()};
+check_version(_, empty, 3) -> {error, ?CONNACK_INVALID_ID};
 check_version(MaxClientIdSize, Id, Version) when length(Id) =< MaxClientIdSize ->
     case {Id, Version} of
-        {"", 4} -> {ok, random_client_id()};
-        {"", 3} -> {error, ?CONNACK_INVALID_ID};
         {_, 4} -> {ok, Id};
         {_, 3} -> {ok, Id};
         _ -> {error, ?CONNACK_PROTO_VER}
     end;
-check_version(_,_,_) ->
+check_version(_,_,_) -> %% invalid size
     {error, ?CONNACK_INVALID_ID}.
 
 send_connack(ReturnCode, State) ->
