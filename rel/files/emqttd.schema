@@ -259,6 +259,14 @@
                                                                {datatype, flag}
                                                               ]}.
 
+%% @doc Set the max size for client ids, MQTT v3.1 specifies the
+%% limit of 23 characterd
+{mapping, "max_client_id_size", "emqttd_server.max_client_id_size", [
+                                                               {default, 23},
+                                                               {commented, 23},
+                                                               {datatype, integer}
+                                                              ]}.
+
 
 {mapping, "table_definition_mod", "mnesia_cluster.table_definition_mod", [
                                                                           {default, "{emqttd_reg,emqttd_table_defs,[]}"},
