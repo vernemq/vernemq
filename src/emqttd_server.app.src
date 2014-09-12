@@ -15,13 +15,11 @@
                  ]},
   {mod, { emqttd_app, []}},
   {env, [
-      {auth_providers, [emqttd_auth]},
       {msg_log_handler, emqttd_test_msg_log_handler},
-      {nr_of_acceptors, 10},
       {listeners, {
-                      [{{{127,0,0,1}, 1883}, infinity}],
+                      [{{{127,0,0,1}, 1883}, {infinity, 10, ""}}],
                       [],
-                      [{{{127,0,0,1}, 8080}, 1000}]
+                      [{{{127,0,0,1}, 8080}, {1000, 10, ""}}]
                   }}
       ]}
 

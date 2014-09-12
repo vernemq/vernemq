@@ -12,8 +12,8 @@
 
 %% API
 -export([start_link/0,
-         add_endpoint/4,
-         add_ws_endpoint/4]).
+         add_endpoint/5,
+         add_ws_endpoint/5]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -35,16 +35,14 @@
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-add_endpoint(Ip, Port, MaxConnections, NrOfAcceptors) ->
-    [ChildSpec] = generate_childspecs(NrOfAcceptors, [{{Ip,Port}, MaxConnections}], ranch_tcp,
-                                      emqttd_tcp,
-                                      handler_opts(mqtt)),
+add_endpoint(Ip, Port, MaxConnections, NrOfAcceptors, MountPoint) ->
+    [ChildSpec] = generate_childspecs([{{Ip,Port}, {MaxConnections, NrOfAcceptors, MountPoint}}], ranch_tcp,
+                                      emqttd_tcp),
     supervisor:start_child(?SERVER, ChildSpec).
 
-add_ws_endpoint(Ip, Port, MaxConnections, NrOfAcceptors) ->
-    [ChildSpec] = generate_childspecs(NrOfAcceptors, [{{Ip,Port}, MaxConnections}], ranch_tcp,
-                                      cowboy_protocol,
-                                      handler_opts(mqttws)),
+add_ws_endpoint(Ip, Port, MaxConnections, NrOfAcceptors, MountPoint) ->
+    [ChildSpec] = generate_childspecs([{{Ip,Port}, {MaxConnections, NrOfAcceptors, MountPoint}}], ranch_tcp,
+                                      cowboy_protocol),
     supervisor:start_child(?SERVER, ChildSpec).
 
 %%%===================================================================
@@ -65,19 +63,18 @@ add_ws_endpoint(Ip, Port, MaxConnections, NrOfAcceptors) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, NrOfAcceptors} = application:get_env(?APP, nr_of_acceptors),
     {ok, {TCPListeners, _SSLListeners, WSListeners}} = application:get_env(?APP, listeners),
 
-    MQTTEndpoints = generate_childspecs(NrOfAcceptors, TCPListeners, ranch_tcp, emqttd_tcp, handler_opts(mqtt)),
+    MQTTEndpoints = generate_childspecs(TCPListeners, ranch_tcp, emqttd_tcp),
     %MQTTSEndpoints = generate_childspecs(NrOfAcceptors, SSLListeners, ranch_tcp, emqttd_tcp, handler_opts(mqtt)),
     MQTTSEndpoints = [],
-    MQTTWSEndpoints = generate_childspecs(NrOfAcceptors, WSListeners, ranch_tcp, cowboy_protocol, handler_opts(mqttws)),
+    MQTTWSEndpoints = generate_childspecs(WSListeners, ranch_tcp, cowboy_protocol),
     {ok, { {one_for_one, 5, 10}, MQTTEndpoints ++ MQTTSEndpoints ++ MQTTWSEndpoints}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-generate_childspecs(NrOfAcceptors, Listeners, Transport, Protocol, Opts) ->
+generate_childspecs(Listeners, Transport, Protocol) ->
     [ranch:child_spec(list_to_atom("mqtt_"++integer_to_list(Port)),
                       NrOfAcceptors, Transport,
                       [{ip, case is_list(Addr) of
@@ -85,23 +82,22 @@ generate_childspecs(NrOfAcceptors, Listeners, Transport, Protocol, Opts) ->
                                         Ip;
                                 false -> Addr
                             end }, {port, Port}, {max_connections, MaxConnections}],
-                      Protocol, Opts)
-     || {{Addr, Port}, MaxConnections} <- Listeners].
+                      Protocol, handler_opts(Protocol, [{mountpoint, MountPoint}]))
+     || {{Addr, Port}, {MaxConnections, NrOfAcceptors, MountPoint}} <- Listeners].
 
-handler_opts(mqttws) ->
+handler_opts(cowboy_protocol, Opts) ->
     Dispatch = cowboy_router:compile(
                  [
                   {'_', [
-                         {"/mqtt", emqttd_ws, handler_opts(mqtt)}
+                         {"/mqtt", emqttd_ws, handler_opts(emqttd_tcp, Opts)}
                         ]}
                  ]),
     [{env, [{dispatch, Dispatch}]}];
 
-handler_opts(mqtt) ->
-    {ok, AuthProviders} = application:get_env(?APP, auth_providers),
+handler_opts(emqttd_tcp, Opts) ->
     {ok, MsgLogHandler} = application:get_env(?APP, msg_log_handler),
-    [{auth_providers, AuthProviders},
-     {msg_log_handler, MsgLogHandler}].
+    [{msg_log_handler, MsgLogHandler}|Opts].
+
 
 
 

@@ -32,7 +32,8 @@
                 %% auth backend requirement
                 peer,
                 username,
-                msg_log_handler
+                msg_log_handler,
+                mountpoint=""
 
          }).
 
@@ -54,6 +55,7 @@ disconnect(FsmPid) ->
 %%% FSM FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init(Peer, SendFun, Opts) ->
+    {_,MountPoint} = lists:keyfind(mountpoint, 1, Opts),
     MsgLogHandler =
     case lists:keyfind(msg_log_handler, 1, Opts) of
         {_, undefined} ->
@@ -66,7 +68,8 @@ init(Peer, SendFun, Opts) ->
     end,
     erlang:send_after(?CLOSE_AFTER, self(), timeout),
     ret({wait_for_connect, #state{peer=Peer, send_fun=SendFun,
-                              msg_log_handler=MsgLogHandler}}).
+                                  msg_log_handler=MsgLogHandler,
+                                  mountpoint=MountPoint}}).
 
 handle_input(Data, {StateName, State}) ->
     #state{buffer=Buffer} = State,
@@ -90,7 +93,7 @@ handle_fsm_msg(timeout, {connected, State}) ->
     ret({connected, State});
 handle_fsm_msg({deliver, Topic, Payload, QoS, _IsRetained,
                 MsgStoreRef}, {connected, State}) ->
-    #state{waiting_acks=WAcks} = State,
+    #state{waiting_acks=WAcks, mountpoint=MountPoint} = State,
     {OutgoingMsgId, State1} = get_msg_id(QoS, State),
     Frame = #mqtt_frame{
                fixed=#mqtt_frame_fixed{
@@ -98,7 +101,7 @@ handle_fsm_msg({deliver, Topic, Payload, QoS, _IsRetained,
                         qos=QoS
                        },
                variable=#mqtt_frame_publish{
-                           topic_name=Topic,
+                           topic_name=clean_mp(MountPoint, Topic),
                            message_id=OutgoingMsgId},
                payload=Payload
               },
@@ -172,7 +175,7 @@ process_bytes(Bytes, StateName, State) ->
     end.
 
 handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
-    #state{peer=Peer} = State,
+    #state{peer=Peer, mountpoint=MountPoint} = State,
     #mqtt_frame_connect{
        client_id=Id,
        username=User,
@@ -200,7 +203,7 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
                                             client_id=Id,
                                             username=User,
                                             will_qos=WillQoS,
-                                            will_topic=WillTopic,
+                                            will_topic=combine_mp(MountPoint, WillTopic),
                                             will_msg=WillMsg})};
                         {error, _Reason} ->
                             {connection_attempted,
@@ -280,10 +283,10 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, retain=1},
              Var, <<>>, State) ->
-    #state{username=User, client_id=ClientId} = State,
+    #state{username=User, client_id=ClientId, mountpoint=MountPoint} = State,
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
     %% delete retained msg,
-    case emqttd_reg:publish(User, ClientId, undefined, Topic, <<>>, true) of
+    case emqttd_reg:publish(User, ClientId, undefined, combine_mp(MountPoint, Topic), <<>>, true) of
         ok ->
             NewState = send_frame(?PUBACK,
                                   #mqtt_frame_publish{message_id=MessageId},
@@ -299,14 +302,15 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
                                           qos=QoS,
                                           retain=IsRetain},
              Var, Payload, State) ->
+    #state{mountpoint=MountPoint} = State,
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
-    {connected, dispatch_publish(QoS, MessageId, Topic, Payload,
+    {connected, dispatch_publish(QoS, MessageId, combine_mp(MountPoint, Topic), Payload,
                                  IsRetain, State)};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
-    #state{client_id=Id, username=User} = State,
+    #state{client_id=Id, username=User, mountpoint=MountPoint} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
-    TTopics = [{Name, QoS} || #mqtt_topic{name=Name, qos=QoS} <- Topics],
+    TTopics = [{combine_mp(MountPoint, Name), QoS} || #mqtt_topic{name=Name, qos=QoS} <- Topics],
     case emqttd_reg:subscribe(User, Id, TTopics) of
         ok ->
             {_, QoSs} = lists:unzip(TTopics),
@@ -321,9 +325,9 @@ handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
-    #state{client_id=Id, username=User} = State,
+    #state{client_id=Id, username=User, mountpoint=MountPoint} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
-    TTopics = [Name || #mqtt_topic{name=Name} <- Topics],
+    TTopics = [combine_mp(MountPoint, Name) || #mqtt_topic{name=Name} <- Topics],
     case emqttd_reg:unsubscribe(User, Id, TTopics) of
         ok ->
             NewState = send_frame(?UNSUBACK, #mqtt_frame_suback{
@@ -456,3 +460,13 @@ publish(User, ClientId, MsgRef, Topic, Payload, IsRetain) ->
                                          Topic, Payload, IsRetain]),
             R
     end.
+
+combine_mp("", Topic) -> Topic;
+combine_mp(MountPoint, Topic) ->
+    lists:flatten([MountPoint, "/", string:strip(Topic, left, $/)]).
+
+clean_mp("", Topic) -> Topic;
+clean_mp(MountPoint, MountedTopic) ->
+    lists:sublist(MountedTopic, length(MountPoint) + 1, length(MountedTopic)).
+
+
