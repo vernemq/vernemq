@@ -46,8 +46,12 @@ load_from_list(List) ->
 
 check(undefined, _) ->
     %% check if we allow anonymous connections
-    [{_, Res}] = ets:lookup(?TABLE, anonymous),
-    Res;
+    case ets:lookup(?TABLE, anonymous) of
+        [{_, false}] ->
+            {error, not_authorized};
+        [{_, true}] ->
+            ok
+    end;
 check(User, Password) ->
     case ets:lookup(?TABLE, ensure_binary(User)) of
         [{_, SaltB64, EncPassword, _}] ->
@@ -60,6 +64,7 @@ auth_on_register(_Peer, _ClientId, User, Password) ->
     case check(User, Password) of
         true -> ok;
         false -> {error, invalid_credentials};
+        {error, not_authorized} -> {error, not_authorized};
         {error, not_found} -> next
     end.
 
