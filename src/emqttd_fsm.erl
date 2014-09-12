@@ -186,10 +186,8 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
        will_topic=WillTopic,
        will_msg=WillMsg} = Var,
 
-    ClientId = get_random_clientid_if_empty(Id),
-    io:format("--- Version ~p~n", [Version]),
-    case check_version(Version) of
-        true ->
+    case check_version(Id, Version) of
+        {ok, ClientId} ->
             %% auth_on_register hook must return either:
             %%  ok | next | {error, invalid_credentials | not_authorized}
             User1 = case User of "" -> undefined; _ -> User end,
@@ -224,9 +222,9 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
                     {connection_attempted,
                      send_connack(?CONNACK_AUTH, State)}
             end;
-        false ->
+        {error, ProtoErr} ->
             {connection_attempted,
-             send_connack(?CONNACK_PROTO_VER, State)}
+             send_connack(ProtoErr, State)}
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
@@ -360,10 +358,14 @@ ret({_, _} = R) -> R.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-check_version(3) -> true;
-check_version(4) -> true;
-check_version(_) -> false.
+check_version(Id, Version) ->
+    case {Id, Version} of
+        {"", 4} -> {ok, random_client_id()};
+        {"", 3} -> {error, ?CONNACK_INVALID_ID};
+        {_, 4} -> {ok, Id};
+        {_, 3} -> {ok, Id};
+        _ -> {error, ?CONNACK_PROTO_VER}
+    end.
 
 send_connack(ReturnCode, State) ->
     send_frame(?CONNACK, #mqtt_frame_connack{return_code=ReturnCode},
@@ -473,7 +475,6 @@ clean_mp("", Topic) -> Topic;
 clean_mp(MountPoint, MountedTopic) ->
     lists:sublist(MountedTopic, length(MountPoint) + 1, length(MountedTopic)).
 
-get_random_clientid_if_empty("") ->
-    lists:flatten(["anon-", base64:encode_to_string(crypto:rand_bytes(20))]);
-get_random_clientid_if_empty(Id) -> Id.
+random_client_id() ->
+    lists:flatten(["anon-", base64:encode_to_string(crypto:rand_bytes(20))]).
 
