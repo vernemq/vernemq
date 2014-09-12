@@ -16,6 +16,7 @@
   {mod, { emqttd_app, []}},
   {env, [
       {msg_log_handler, emqttd_test_msg_log_handler},
+      {max_client_id_size, 23},
       {listeners, {
                       [{{{127,0,0,1}, 1883}, {infinity, 10, ""}}],
                       [],

@@ -96,7 +96,8 @@ handler_opts(cowboy_protocol, Opts) ->
 
 handler_opts(emqttd_tcp, Opts) ->
     {ok, MsgLogHandler} = application:get_env(?APP, msg_log_handler),
-    [{msg_log_handler, MsgLogHandler}|Opts].
+    {ok, MaxClientIdSize} = application:get_env(?APP, max_client_id_size),
+    [{msg_log_handler, MsgLogHandler}, {max_client_id_size, MaxClientIdSize}|Opts].
 
 
 

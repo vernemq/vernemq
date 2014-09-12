@@ -23,6 +23,7 @@
                 %% mqtt layer requirements
                 next_msg_id=1,
                 client_id,
+                max_client_id_size=23,
                 will_topic,
                 will_msg,
                 will_qos,
@@ -56,6 +57,7 @@ disconnect(FsmPid) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init(Peer, SendFun, Opts) ->
     {_,MountPoint} = lists:keyfind(mountpoint, 1, Opts),
+    {_,MaxClientIdSize} = lists:keyfind(max_client_id_size, 1, Opts),
     MsgLogHandler =
     case lists:keyfind(msg_log_handler, 1, Opts) of
         {_, undefined} ->
@@ -69,7 +71,8 @@ init(Peer, SendFun, Opts) ->
     erlang:send_after(?CLOSE_AFTER, self(), timeout),
     ret({wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   msg_log_handler=MsgLogHandler,
-                                  mountpoint=MountPoint}}).
+                                  mountpoint=MountPoint,
+                                  max_client_id_size=MaxClientIdSize}}).
 
 handle_input(Data, {StateName, State}) ->
     #state{buffer=Buffer} = State,
@@ -175,7 +178,7 @@ process_bytes(Bytes, StateName, State) ->
     end.
 
 handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
-    #state{peer=Peer, mountpoint=MountPoint} = State,
+    #state{peer=Peer, mountpoint=MountPoint, max_client_id_size=MaxClientIdSize} = State,
     #mqtt_frame_connect{
        client_id=Id,
        username=User,
@@ -186,7 +189,7 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
        will_topic=WillTopic,
        will_msg=WillMsg} = Var,
 
-    case check_version(Id, Version) of
+    case check_version(MaxClientIdSize, Id, Version) of
         {ok, ClientId} ->
             %% auth_on_register hook must return either:
             %%  ok | next | {error, invalid_credentials | not_authorized}
@@ -358,14 +361,16 @@ ret({_, _} = R) -> R.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-check_version(Id, Version) ->
+check_version(MaxClientIdSize, Id, Version) when length(Id) =< MaxClientIdSize ->
     case {Id, Version} of
         {"", 4} -> {ok, random_client_id()};
         {"", 3} -> {error, ?CONNACK_INVALID_ID};
         {_, 4} -> {ok, Id};
         {_, 3} -> {ok, Id};
         _ -> {error, ?CONNACK_PROTO_VER}
-    end.
+    end;
+check_version(_,_,_) ->
+    {error, ?CONNACK_INVALID_ID}.
 
 send_connack(ReturnCode, State) ->
     send_frame(?CONNACK, #mqtt_frame_connack{return_code=ReturnCode},
