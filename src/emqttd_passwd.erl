@@ -50,7 +50,7 @@ check(undefined, _) ->
         [{_, false}] ->
             {error, not_authorized};
         [{_, true}] ->
-            ok
+            true
     end;
 check(User, Password) ->
     case ets:lookup(?TABLE, ensure_binary(User)) of
