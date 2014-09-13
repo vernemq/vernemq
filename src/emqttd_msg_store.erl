@@ -10,7 +10,8 @@
          deliver_retained/3,
          clean_session/1,
          retain_action/4,
-         defer_deliver/3
+         defer_deliver/3,
+         clean_all/1
          ]).
 -export([init/1,
          handle_call/3,
@@ -168,6 +169,44 @@ retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
 
 defer_deliver(ClientId, Qos, MsgId) ->
     ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgId}).
+
+
+clean_all([]) ->
+    %% called using emqttd-admin, mainly for test purposes
+    %% you don't want to call this during production
+    clean_retain(),
+    clean_cache(),
+    clean_index().
+
+clean_retain() ->
+    clean_retain(ets:last(?MSG_RETAIN_TABLE)).
+clean_retain('$end_of_table') -> ok;
+clean_retain(RoutingKey) ->
+    BRoutingKey = list_to_binary(RoutingKey),
+    MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
+    gen_server:cast(?MODULE, {delete, MsgRef}),
+    true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey),
+    clean_retain(ets:last(?MSG_RETAIN_TABLE)).
+
+clean_cache() ->
+    clean_cache(ets:last(?MSG_CACHE_TABLE)).
+clean_cache('$end_of_table') ->
+    ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
+    ok;
+clean_cache(in_flight) ->
+    ets:delete(?MSG_CACHE_TABLE, in_flight),
+    clean_cache(ets:last(?MSG_CACHE_TABLE));
+clean_cache(MsgId) ->
+    MsgRef = <<?MSG_ITEM, MsgId/binary>>,
+    gen_server:cast(?MODULE, {delete, MsgRef}),
+    true = ets:delete(?MSG_CACHE_TABLE, MsgId),
+    clean_cache(ets:last(?MSG_CACHE_TABLE)).
+
+clean_index() ->
+    ets:delete_all_objects(?MSG_INDEX_TABLE).
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS

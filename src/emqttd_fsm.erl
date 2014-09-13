@@ -94,14 +94,15 @@ handle_fsm_msg(timeout, {connection_attempted, State}) ->
     ret({wait_for_connect, State});
 handle_fsm_msg(timeout, {connected, State}) ->
     ret({connected, State});
-handle_fsm_msg({deliver, Topic, Payload, QoS, _IsRetained,
+handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained,
                 MsgStoreRef}, {connected, State}) ->
     #state{waiting_acks=WAcks, mountpoint=MountPoint} = State,
     {OutgoingMsgId, State1} = get_msg_id(QoS, State),
     Frame = #mqtt_frame{
                fixed=#mqtt_frame_fixed{
                         type=?PUBLISH,
-                        qos=QoS
+                        qos=QoS,
+                        retain=IsRetained
                        },
                variable=#mqtt_frame_publish{
                            topic_name=clean_mp(MountPoint, Topic),
