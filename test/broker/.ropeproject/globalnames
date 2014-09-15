@@ -1,7 +1,22 @@
-€}q(U#01-connect-uname-no-password-denied]q(Ucmd_subfolderqUconnack_packetqUsockqUrcqUconnect_packetqU	keepaliveqeU01-connect-invalid-protonum]q	(hhhhhheU03-publish-c2b-disconnect-qos2]q
-(hUpubrel_dup_packetqUpublish_packetqhUpuback2_packetqhUpubrel_packetqhUmidqUpublish_dup_packetqUpublish2_packetqhUpubrec_packetqUpubcomp_packetqhUsubscribe_packetqUsuback_packetqeU01-connect-invalid-id-0-311]q(hhhhhheU03-publish-qos1]q(hUpuback_packetqhhhhhhheU	mosq_test]q(Ugen_subscribeqUremaining_lengthqUgen_connackqUgen_unsubscribeqUgen_disconnectqUgen_pubcompqUgen_unsubackq Ugen_connectq!Upack_remaining_lengthq"U
-gen_pubackq#Ugen_pingreqq$U
-gen_subackq%Ugen_publishq&Uexpect_packetq'U	to_stringq(Upacket_matchesq)U
-gen_pubrelq*Udo_client_connectq+U
-gen_pubrecq,Ugen_pingrespq-eU!01-connect-uname-password-success]q.(hhhhhheU01-connect-success]q/(hhhhhheU03-publish-b2c-timeout-qos1]q0(hhhhhhhhUpubq1hhhheU02-subscribe-qos2]q2(hhhhhhhhheU02-subscribe-qos0]q3(hhhhhhhhheU02-subscribe-qos1]q4(hhhhhhhhheU02-subpub-qos2]q5(hhhhhhUpubrec_packet2q6hhhhUpubcomp_packet2q7Upublish_packet2q8hhhUpubrel_packet2q9eU02-subpub-qos0]q:(hhhhhhhhhheU02-subpub-qos1]q;(hhhhhhhhhhh8heU03-pattern-matching-helper]q<(hhhhhhheU03-publish-b2c-disconnect-qos2]q=(hhhhhhhhhhhhhUhrcq>h1hhhheU03-publish-b2c-disconnect-qos1]q?(hhhhhhhhhhh1hhhheU03-publish-c2b-timeout-qos2]q@(hhhhhhhhhhheU03-pattern-matching]qA(hUpattern_testqBeU03-publish-qos2]qC(hhhhhhhhhhheU02-unsubscribe-qos1]qD(hUunsuback_packetqEUunsubscribe_packetqFhhhhhheU02-unsubscribe-qos0]qG(hhEhFhhhhhheU02-unsubscribe-qos2]qH(hhEhFhhhhhheU03-publish-b2c-timeout-qos2]qI(hhhhhhhhhhhh1hhhheUemqttd]qJ(UBINqKUCONFIG_FILEqLUstopqMUstartqNU
-node_aliveqOUBROKER_PATHqPUFNULLqQUensure_aliveqReU 01-connect-uname-password-denied]qS(hhhhhheU01-connect-invalid-id-missing]qT(hhhhheu.
+€}q(U#01-connect-uname-no-password-denied]q(Ucmd_subfolderqUconnack_packetqUsockqUrcqUconnect_packetqU	keepaliveqeU04-retain-qos1-qos0]q	(hUsubscribe_packetq
+Upuback_packetqUmidqhhhUpublish_packetqhUsuback_packetqUpublish0_packetqheU01-connect-invalid-protonum]q(hhhhhheU03-publish-c2b-disconnect-qos2]q(hUpubrel_dup_packetqhhUpuback2_packetqhUpubrel_packetqhhUpublish_dup_packetqUpublish2_packetqhUpubrec_packetqUpubcomp_packetqhh
+heU01-connect-invalid-id-0-311]q(hhhhhheU04-retain-qos0]q(hh
+hhhhhhhheU04-retain-qos0-fresh]q(hh
+hhhhhhhUpublish_fresh_packetqheU03-publish-qos1]q(hhhhhhhhheU	mosq_test]q(Ugen_subscribeqUremaining_lengthq Ugen_connackq!Ugen_unsubscribeq"Ugen_disconnectq#Ugen_pubcompq$Ugen_unsubackq%Ugen_connectq&Upack_remaining_lengthq'U
+gen_pubackq(Ugen_pingreqq)U
+gen_subackq*Ugen_publishq+Uexpect_packetq,U	to_stringq-Upacket_matchesq.U
+gen_pubrelq/Udo_client_connectq0U
+gen_pubrecq1Ugen_pingrespq2eU!01-connect-uname-password-success]q3(hhhhhheU01-connect-success]q4(hhhhhheU03-publish-b2c-timeout-qos1]q5(hhh
+hhhhhUpubq6hhhheU02-subscribe-qos2]q7(hh
+hhhhhhheU02-subscribe-qos0]q8(hh
+hhhhhhheU02-subscribe-qos1]q9(hh
+hhhhhhheU02-subpub-qos2]q:(hhhhhhUpubrec_packet2q;hhhhUpubcomp_packet2q<Upublish_packet2q=hh
+hUpubrel_packet2q>eU02-subpub-qos0]q?(hh
+hhhhhhhheU02-subpub-qos1]q@(hh
+hhhhhhhhh=heU03-pattern-matching-helper]qA(hhhhhhheU03-publish-b2c-disconnect-qos2]qB(hhhhhhhhhhhhhUhrcqCh6hhh
+heU04-retain-qos0-repeated]qD(hh
+Uunsuback_packetqEUunsubscribe_packetqFhhhhhhhU	unsub_midqGheU03-publish-b2c-disconnect-qos1]qH(hhhhhhhhhhh6hhh
+heU03-publish-c2b-timeout-qos2]qI(hhhhhhhhhhheU03-pattern-matching]qJ(hUpattern_testqKeU03-publish-qos2]qL(hhhhhhhhhhheU02-unsubscribe-qos1]qM(hhEhFhhhhhheU02-unsubscribe-qos0]qN(hhEhFhhhhhheU02-unsubscribe-qos2]qO(hhEhFhhhhhheU04-retain-qos0-clear]qP(hhUretain_clear_packetqQUmid_subqRhhFhhU	mid_unsubqShEhh
+Uretain_clearqThheU03-publish-b2c-timeout-qos2]qU(hhhhhhhhhhhh6hhh
+heUemqttd]qV(UBINqWUCONFIG_FILEqXUstopqYUstartqZU
+node_aliveq[UBROKER_PATHq\UFNULLq]Uensure_aliveq^eU 01-connect-uname-password-denied]q_(hhhhhheU01-connect-invalid-id-missing]q`(hhhhheu.
