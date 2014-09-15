@@ -88,6 +88,9 @@ SEQ = $(shell awk 'BEGIN { for (i = 1; i < '$(DEVNODES)'; i++) printf("%i ", i);
 $(eval stagedevrel : $(foreach n,$(SEQ),stagedev$(n)))
 $(eval devrel : $(foreach n,$(SEQ),dev$(n)))
 
+broker_test: all
+	(cd rel && ../rebar generate target_dir=../test/emqttd overlay_vars=vars/test_vars.config)
+
 dev% : all
 	mkdir -p dev
 	rel/gen_dev $@ rel/vars/dev_vars.config.src rel/vars/$@_vars.config

@@ -266,6 +266,13 @@
                                                                {commented, 23},
                                                                {datatype, integer}
                                                               ]}.
+%% @doc Set the time in seconds after a QoS=1 or QoS=2 message has been sent
+%% that emqttd will wait before retrying when no response is received.
+{mapping, "retry_interval", "emqttd_server.retry_interval", [
+                                                             {default, 20},
+                                                             {commented, 20},
+                                                             {datatype, integer}
+                                                            ]}.
 
 
 {mapping, "table_definition_mod", "mnesia_cluster.table_definition_mod", [

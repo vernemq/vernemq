@@ -1,0 +1,7 @@
+deps/*
+rel/emqttd
+rel/vars/dev*_vars.config
+dev/
+ebin/
+test/emqttd
+*.pyc
