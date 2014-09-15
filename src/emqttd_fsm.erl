@@ -1,7 +1,8 @@
 -module(emqttd_fsm).
 -include_lib("emqtt_commons/include/emqtt_frame.hrl").
 
--export([deliver/6,
+-export([deliver/7,
+         deliver_bin/2,
          disconnect/1]).
 
 -export([init/3,
@@ -34,7 +35,8 @@
                 peer,
                 username,
                 msg_log_handler,
-                mountpoint=""
+                mountpoint="",
+                retry_interval=20000
 
          }).
 
@@ -46,8 +48,11 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-deliver(FsmPid, Topic, Payload, QoS, IsRetained, Ref) ->
-    FsmPid ! {deliver, Topic, Payload, QoS, IsRetained, Ref}.
+deliver(FsmPid, Topic, Payload, QoS, IsRetained, IsDup, Ref) ->
+    FsmPid ! {deliver, Topic, Payload, QoS, IsRetained, IsDup, Ref}.
+
+deliver_bin(FsmPid, Term) ->
+    FsmPid ! {deliver_bin, Term}.
 
 disconnect(FsmPid) ->
     FsmPid ! disconnect.
@@ -58,6 +63,7 @@ disconnect(FsmPid) ->
 init(Peer, SendFun, Opts) ->
     {_,MountPoint} = lists:keyfind(mountpoint, 1, Opts),
     {_,MaxClientIdSize} = lists:keyfind(max_client_id_size, 1, Opts),
+    {_,RetryInterval} = lists:keyfind(retry_interval, 1, Opts),
     MsgLogHandler =
     case lists:keyfind(msg_log_handler, 1, Opts) of
         {_, undefined} ->
@@ -72,7 +78,9 @@ init(Peer, SendFun, Opts) ->
     ret({wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   msg_log_handler=MsgLogHandler,
                                   mountpoint=MountPoint,
-                                  max_client_id_size=MaxClientIdSize}}).
+                                  max_client_id_size=MaxClientIdSize,
+                                  retry_interval=1000 * RetryInterval
+                                  }}).
 
 handle_input(Data, {StateName, State}) ->
     #state{buffer=Buffer} = State,
@@ -94,15 +102,16 @@ handle_fsm_msg(timeout, {connection_attempted, State}) ->
     ret({wait_for_connect, State});
 handle_fsm_msg(timeout, {connected, State}) ->
     ret({connected, State});
-handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained,
+handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained, IsDup,
                 MsgStoreRef}, {connected, State}) ->
-    #state{waiting_acks=WAcks, mountpoint=MountPoint} = State,
+    #state{waiting_acks=WAcks, mountpoint=MountPoint, retry_interval=RetryInterval} = State,
     {OutgoingMsgId, State1} = get_msg_id(QoS, State),
     Frame = #mqtt_frame{
                fixed=#mqtt_frame_fixed{
                         type=?PUBLISH,
                         qos=QoS,
-                        retain=IsRetained
+                        retain=IsRetained,
+                        dup=IsDup
                        },
                variable=#mqtt_frame_publish{
                            topic_name=clean_mp(MountPoint, Topic),
@@ -116,32 +125,41 @@ handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained,
         NewState when QoS == 0 ->
             ret({connected, NewState});
         NewState when QoS > 0 ->
-            Ref = erlang:send_after(10000, self(), {retry, OutgoingMsgId}),
+            Ref = erlang:send_after(RetryInterval, self(), {retry, OutgoingMsgId}),
             ret({connected, NewState#state{
                               waiting_acks=dict:store(OutgoingMsgId,
-                                                      {Frame,
+                                                      {QoS, Frame,
                                                        Ref,
                                                        MsgStoreRef},
                                                       WAcks)}})
     end;
+handle_fsm_msg({deliver_bin, {MsgId, QoS, Bin}}, {connected, State}) ->
+    #state{send_fun=SendFun, waiting_acks=WAcks, retry_interval=RetryInterval} = State,
+    SendFun(Bin),
+    Ref = erlang:send_after(RetryInterval, self(), {retry, MsgId}),
+    ret({connected, State#state{
+                  waiting_acks=dict:store(MsgId,
+                                          {QoS, Bin, Ref, undefined},
+                                          WAcks)}});
+
 handle_fsm_msg({retry, MessageId}, {connected, State}) ->
-    #state{send_fun=SendFun, waiting_acks=WAcks} = State,
-    {Bin, _, MsgStoreRef} =
+    #state{send_fun=SendFun, waiting_acks=WAcks, retry_interval=RetryInterval} = State,
+    {QoS, Bin, _, MsgStoreRef} =
     case dict:fetch(MessageId, WAcks) of
-        {#mqtt_frame{fixed=Fixed} = Frame, _, _} = Item ->
+        {_, #mqtt_frame{fixed=Fixed} = Frame, _, _} = Item ->
             NewBin = emqtt_frame:serialise(
                        Frame#mqtt_frame{
                          fixed=Fixed#mqtt_frame_fixed{
                                  dup=true
                                 }}),
-            setelement(1, Item, NewBin);
+            setelement(2, Item, NewBin);
         Item -> Item
     end,
     SendFun(Bin),
-    Ref = erlang:send_after(10000, self(), {retry, MessageId}),
+    Ref = erlang:send_after(RetryInterval, self(), {retry, MessageId}),
     ret({connected, State#state{
                   waiting_acks=dict:store(MessageId,
-                                          {Bin, Ref, MsgStoreRef},
+                                          {QoS, Bin, Ref, MsgStoreRef},
                                           WAcks)}});
 handle_fsm_msg(disconnect, {connected, State}) ->
     io:format("[~p] stop due to ~p~n", [self(), disconnect]),
@@ -241,7 +259,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos1 flow
     case dict:find(MessageId, WAcks) of
-        {ok, {_, Ref, MsgStoreRef}} ->
+        {ok, {_, _, Ref, MsgStoreRef}} ->
             erlang:cancel_timer(Ref),
             emqttd_msg_store:deref(MsgStoreRef),
             {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
@@ -251,10 +269,10 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
-    #state{waiting_acks=WAcks, send_fun=SendFun} = State,
+    #state{waiting_acks=WAcks, send_fun=SendFun, retry_interval=RetryInterval} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
-    {_, Ref, MsgStoreRef} = dict:fetch(MessageId, WAcks),
+    {_, _, Ref, MsgStoreRef} = dict:fetch(MessageId, WAcks),
     erlang:cancel_timer(Ref), % cancel republish timer
     PubRelFrame =#mqtt_frame{
                              fixed=#mqtt_frame_fixed{type=?PUBREL, qos=1},
@@ -262,32 +280,39 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
                              payload= <<>>},
     Bin = emqtt_frame:serialise(PubRelFrame),
     SendFun(Bin),
-    NewRef = erlang:send_after(10000, self(), {retry, MessageId}),
+    NewRef = erlang:send_after(RetryInterval, self(), {retry, MessageId}),
     emqttd_msg_store:deref(MsgStoreRef),
     {connected, State#state{
                   waiting_acks=dict:store(MessageId,
-                                          {PubRelFrame,
+                                          {2, PubRelFrame,
                                            NewRef,
                                            undefined}, WAcks)}};
 
-handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL}, Var, _, State) ->
+handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup}, Var, _, State) ->
     #state{username=User, client_id=ClientId, waiting_acks=WAcks} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
-    {MsgRef, IsRetain} = dict:fetch({qos2, MessageId}, WAcks),
-    {ok, {RoutingKey, Payload}} = emqttd_msg_store:retrieve(MsgRef),
-    publish(User, ClientId, MsgRef, RoutingKey, Payload, IsRetain),
-    NewState = send_frame(?PUBCOMP,
-                          #mqtt_frame_publish{message_id=MessageId},
-                          <<>>, State),
-    emqttd_msg_store:deref(MsgRef),
-    {connected, NewState};
+    NewState =
+    case dict:find({qos2, MessageId} , WAcks) of
+        {ok, {_, _, TRef, {MsgRef, IsRetain}}} ->
+            erlang:cancel_timer(TRef),
+            {ok, {RoutingKey, Payload}} = emqttd_msg_store:retrieve(MsgRef),
+            publish(User, ClientId, MsgRef, RoutingKey, Payload, IsRetain),
+            emqttd_msg_store:deref(MsgRef),
+            State#state{waiting_acks=dict:erase({qos2, MessageId}, WAcks)};
+        error when IsDup ->
+            %% already delivered, Client expects a PUBCOMP
+            State
+    end,
+    {connected, send_frame(?PUBCOMP,#mqtt_frame_publish{
+                                       message_id=MessageId
+                                      }, <<>>, NewState)};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
     #state{waiting_acks=WAcks} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
-    {_, Ref, undefined} = dict:fetch(MessageId, WAcks),
+    {_, _, Ref, undefined} = dict:fetch(MessageId, WAcks),
     erlang:cancel_timer(Ref), % cancel rpubrel timer
     {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
 
@@ -359,6 +384,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?DISCONNECT}, _, _, State) ->
 
 
 ret({stop, _Reason, State}) ->
+    handle_waiting_acks(State),
     maybe_publish_last_will(State),
     stop;
 ret({_, _} = R) -> R.
@@ -430,13 +456,19 @@ dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
     NewState.
 
 dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
-    #state{username=User, client_id=ClientId, waiting_acks=WAcks} = State,
+    #state{username=User, client_id=ClientId, waiting_acks=WAcks,
+           retry_interval=RetryInterval, send_fun=SendFun} = State,
     MsgRef = emqttd_msg_store:store(User, ClientId, Topic, Payload),
-    NewState = State#state{waiting_acks=dict:store(
-                                          {qos2, MessageId},
-                                          {MsgRef, IsRetain}, WAcks)},
-    send_frame(?PUBREC, #mqtt_frame_publish{message_id=MessageId},
-               <<>>, NewState).
+    Ref = erlang:send_after(RetryInterval, self(), {retry, {qos2, MessageId}}),
+    Bin = emqtt_frame:serialise(#mqtt_frame{
+                             fixed=#mqtt_frame_fixed{type=?PUBREC},
+                             variable=#mqtt_frame_publish{message_id=MessageId},
+                             payload= <<>>
+                            }),
+    SendFun(Bin),
+    State#state{waiting_acks=dict:store(
+                               {qos2, MessageId},
+                               {2, Bin, Ref, {MsgRef, IsRetain}}, WAcks)}.
 
 get_msg_id(0, State) ->
     {undefined, State};
@@ -490,3 +522,25 @@ clean_mp(MountPoint, MountedTopic) ->
 random_client_id() ->
     lists:flatten(["anon-", base64:encode_to_string(crypto:rand_bytes(20))]).
 
+handle_waiting_acks(State) ->
+    #state{client_id=ClientId, waiting_acks=WAcks} = State,
+    dict:fold(fun ({qos2, _}, _, Acc) ->
+                      Acc;
+                  (MsgId, {QoS, #mqtt_frame{fixed=Fixed} = Frame, TRef, undefined}, Acc) ->
+                      %% unacked PUBREL Frame
+                      erlang:cancel_timer(TRef),
+                      Bin = emqtt_frame:serialise(
+                              Frame#mqtt_frame{
+                                fixed=Fixed#mqtt_frame_fixed{
+                                        dup=true}}),
+                      emqttd_msg_store:defer_deliver_uncached(ClientId, {MsgId, QoS, Bin}),
+                      Acc;
+                  (MsgId, {QoS, Bin, TRef, undefined}, Acc) ->
+                      erlang:cancel_timer(TRef),
+                      emqttd_msg_store:defer_deliver_uncached(ClientId, {MsgId, QoS, Bin}),
+                      Acc;
+                  (_MsgId, {QoS, _Frame, TRef, MsgStoreRef}, Acc) ->
+                      erlang:cancel_timer(TRef),
+                      emqttd_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
+                      Acc
+              end, [], WAcks).

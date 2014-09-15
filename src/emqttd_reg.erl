@@ -99,7 +99,6 @@ register_client__(ClientPid, ClientId, CleanSession) ->
     end,
     gproc:add_local_name({?MODULE, ClientId}).
 
-
 publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain)
   when is_list(RoutingKey) and is_binary(Payload) ->
     Ref = make_ref(),
@@ -183,10 +182,22 @@ disconnect_client(ClientPid) when is_pid(ClientPid) ->
     emqttd_fsm:disconnect(ClientPid);
 
 disconnect_client(ClientId) ->
+    wait_until_unregistered(ClientId, false).
+
+wait_until_unregistered(ClientId, DisconnectRequested) ->
     case get_client_pid(ClientId) of
-        {ok, ClientPid} -> disconnect_client(ClientPid);
+        {ok, ClientPid} ->
+            case is_process_alive(ClientPid) of
+                true when not DisconnectRequested->
+                    disconnect_client(ClientPid),
+                    wait_until_unregistered(ClientId, true);
+                _ ->
+                    timer:sleep(100),
+                    wait_until_unregistered(ClientId, DisconnectRequested)
+            end;
         E -> E
     end.
+
 
 %route locally, should only be called by publish
 route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, _IsRetain) ->
@@ -206,7 +217,7 @@ deliver(_, _, <<>>, _, Ref) ->
 deliver(ClientId, RoutingKey, Payload, Qos, Ref) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
-            emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, Qos, false, Ref);
+            emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, Qos, false, false, Ref);
         _ when Qos > 0 ->
             emqttd_msg_store:defer_deliver(ClientId, Qos, Ref),
             ok;

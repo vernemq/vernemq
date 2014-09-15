@@ -17,6 +17,7 @@
   {env, [
       {msg_log_handler, emqttd_test_msg_log_handler},
       {max_client_id_size, 23},
+      {retry_interval, 20},
       {listeners, {
                       [{{{127,0,0,1}, 1883}, {infinity, 10, ""}}],
                       [],

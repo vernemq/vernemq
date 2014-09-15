@@ -11,6 +11,7 @@
          clean_session/1,
          retain_action/4,
          defer_deliver/3,
+         defer_deliver_uncached/2,
          clean_all/1
          ]).
 -export([init/1,
@@ -83,12 +84,15 @@ deref(MsgId) ->
 
 
 deliver_from_store(ClientId, ClientPid) ->
-    lists:foreach(fun({_, QoS, MsgId} = Obj) ->
+    lists:foreach(fun ({_, {uncached, Term}} = Obj) ->
+                          emqttd_fsm:deliver_bin(ClientPid, Term),
+                          ets:delete_object(?MSG_INDEX_TABLE, Obj);
+                      ({_, QoS, MsgId} = Obj) ->
                           case retrieve(MsgId) of
                               {ok, {RoutingKey, Payload}} ->
                                   emqttd_fsm:deliver(ClientPid, RoutingKey,
                                                      Payload, QoS,
-                                                     false, MsgId);
+                                                     false, true, MsgId);
                               {error, not_found} ->
                                   %% TODO: this happens,, ??
                                   ok
@@ -105,7 +109,7 @@ deliver_retained(ClientPid, Topic, QoS) ->
                               MsgId = store(User, ClientId,
                                             RoutingKey, Payload),
                               emqttd_fsm:deliver(ClientPid, RoutingKey,
-                                                 Payload, QoS, true, MsgId);
+                                                 Payload, QoS, true, false, MsgId);
                           false ->
                               Acc
                       end
@@ -113,7 +117,9 @@ deliver_retained(ClientPid, Topic, QoS) ->
     ok.
 
 clean_session(ClientId) ->
-    lists:foreach(fun({_, _, MsgId} = Obj) ->
+    lists:foreach(fun ({_, {uncached, _}}) ->
+                          ok;
+                      ({_, _, MsgId} = Obj) ->
                           true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
                           deref(MsgId)
                   end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
@@ -167,6 +173,8 @@ retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
             ok
     end.
 
+defer_deliver_uncached(ClientId, Term) ->
+    ets:insert(?MSG_INDEX_TABLE, {ClientId, {uncached, Term}}).
 defer_deliver(ClientId, Qos, MsgId) ->
     ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgId}).
 
