@@ -11,6 +11,7 @@
          clean_session/1,
          retain_action/4,
          defer_deliver/3,
+         defer_deliver/4,
          defer_deliver_uncached/2,
          clean_all/1
          ]).
@@ -87,12 +88,12 @@ deliver_from_store(ClientId, ClientPid) ->
     lists:foreach(fun ({_, {uncached, Term}} = Obj) ->
                           emqttd_fsm:deliver_bin(ClientPid, Term),
                           ets:delete_object(?MSG_INDEX_TABLE, Obj);
-                      ({_, QoS, MsgId} = Obj) ->
+                      ({_, QoS, MsgId, DeliverAsDup} = Obj) ->
                           case retrieve(MsgId) of
                               {ok, {RoutingKey, Payload}} ->
                                   emqttd_fsm:deliver(ClientPid, RoutingKey,
                                                      Payload, QoS,
-                                                     false, true, MsgId);
+                                                     false, DeliverAsDup, MsgId);
                               {error, not_found} ->
                                   %% TODO: this happens,, ??
                                   ok
@@ -119,7 +120,7 @@ deliver_retained(ClientPid, Topic, QoS) ->
 clean_session(ClientId) ->
     lists:foreach(fun ({_, {uncached, _}}) ->
                           ok;
-                      ({_, _, MsgId} = Obj) ->
+                      ({_, _, MsgId, _} = Obj) ->
                           true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
                           deref(MsgId)
                   end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
@@ -176,7 +177,9 @@ retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
 defer_deliver_uncached(ClientId, Term) ->
     ets:insert(?MSG_INDEX_TABLE, {ClientId, {uncached, Term}}).
 defer_deliver(ClientId, Qos, MsgId) ->
-    ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgId}).
+    defer_deliver(ClientId, Qos, MsgId, false).
+defer_deliver(ClientId, Qos, MsgId, DeliverAsDup) ->
+    ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgId, DeliverAsDup}).
 
 
 clean_all([]) ->

@@ -541,6 +541,6 @@ handle_waiting_acks(State) ->
                       Acc;
                   (_MsgId, {QoS, _Frame, TRef, MsgStoreRef}, Acc) ->
                       erlang:cancel_timer(TRef),
-                      emqttd_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
+                      emqttd_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef, true),
                       Acc
               end, [], WAcks).
