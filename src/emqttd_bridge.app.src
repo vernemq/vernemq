@@ -1,0 +1,12 @@
+{application, emqttd_bridge,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { emqttd_bridge_app, []}},
+  {env, []}
+ ]}.
