@@ -5,8 +5,14 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  emqtt_client
                  ]},
   {mod, { emqttd_bridge_app, []}},
-  {env, []}
+  {env, [
+        {registry_mfa, {emqttd_reg, direct_plugin_exports, [emqttd_bridge]}},
+        {config, [
+            %% {Topic, Direction, QoS, LocalPrefix, RemotePrefix}
+        ]}
+    ]}
  ]}.
