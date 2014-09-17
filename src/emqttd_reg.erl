@@ -15,6 +15,8 @@
 
 -export([emqttd_table_defs/0]).
 
+-export([direct_plugin_exports/1]).
+
 -hook({auth_on_subscribe, only, 3}).
 -hook({on_subscribe, all, 3}).
 -hook({on_unsubscribe, all, 3}).
@@ -254,6 +256,51 @@ emqttd_table_defs() ->
         {disc_copies, [node()]},
         {match, #subscriber{_='_'}}]}
 ].
+
+wait_til_ready() ->
+    case emqttd_cluster:if_ready(fun() -> true end, []) of
+        true ->
+            ok;
+        {error, not_ready} ->
+            timer:sleep(100),
+            wait_til_ready()
+    end.
+
+direct_plugin_exports(Mod) ->
+    ClientId = fun(T) ->
+                       base64:encode_to_string(
+                         integer_to_binary(
+                           erlang:phash2(T)
+                          )
+                        )
+               end,
+
+    RegisterFun =
+    fun() ->
+            wait_til_ready(),
+            CallingPid = self(),
+            true = register_client__(CallingPid, ClientId(CallingPid), true),
+            ok
+    end,
+
+    PublishFun =
+    fun(Topic, Payload) ->
+            wait_til_ready(),
+            CallingPid = self(),
+            User = {plugin, Mod, CallingPid},
+            ok = publish(User, ClientId(CallingPid), undefined, Topic, Payload, false),
+            ok
+    end,
+
+    SubscribeFun =
+    fun(Topic) ->
+            wait_til_ready(),
+            CallingPid = self(),
+            User = {plugin, Mod, CallingPid},
+            ok = subscribe(User, ClientId(CallingPid), [{Topic, 0}]),
+            ok
+    end,
+    {RegisterFun, PublishFun, SubscribeFun}.
 
 add_subscriber(Topic, Qos, ClientId) ->
     mnesia:write(emqttd_subscriber, #subscriber{topic=Topic, qos=Qos, client=ClientId}, write),
