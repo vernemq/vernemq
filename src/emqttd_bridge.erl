@@ -21,7 +21,7 @@
          on_publish/3]).
 
 
--record(state, {config=[], publish_fun, subscribe_fun}).
+-record(state, {config=[], subscriptions=[], publish_fun, subscribe_fun}).
 
 %%%===================================================================
 %%% API
@@ -35,20 +35,20 @@ start_link(RegistryMFA, BridgeConfig, ClientOpts) ->
 %%%===================================================================
 on_connect(State) ->
     #state{config=Config, subscribe_fun=SubscribeFun} = State,
-    Config2 =
-    lists:foldl(fun({Topic, Direction, QoS, LocalPrefix, RemotePrefix}) ->
-                        LocalTopic = lists:flatten([LocalPrefix, Topic]),
-                        RemoteTopic = lists:flatten([RemotePrefix, Topic]),
+    Subscriptions =
+    lists:foldl(fun({Topic, Direction, QoS, LocalPrefix, RemotePrefix}, Acc) ->
                         case Direction of
                             in ->
+                                RemoteTopic = lists:flatten([LocalPrefix, Topic]),
                                 gen_emqtt:subscribe(self(), RemoteTopic, QoS),
-                                {{in, RemoteTopic}, LocalTopic};
+                                [{{in, RemoteTopic}, LocalPrefix}|Acc];
                             out ->
+                                LocalTopic = lists:flatten([RemotePrefix, Topic]),
                                 ok = SubscribeFun(LocalTopic),
-                                {{out, LocalTopic}, QoS, RemoteTopic}
+                                [{{out, LocalTopic}, QoS, RemotePrefix}|Acc]
                         end
                 end, [], Config),
-    {ok, State#state{config=Config2}}.
+    {ok, State#state{subscriptions=Subscriptions}}.
 
 on_connect_error(Reason, State) ->
     io:format("--- error ~p~n", [Reason]),
@@ -63,11 +63,11 @@ on_subscribe(_Topics, State) ->
 on_unsubscribe(_Topics, State) ->
     {ok, State}.
 
-on_publish(Topic, Payload, #state{config=Config, publish_fun=PublishFun} = State) ->
+on_publish(Topic, Payload, #state{subscriptions=Subscriptions, publish_fun=PublishFun} = State) ->
     io:format("--- publish ~p ~p~n", [Topic, Payload]),
-    case lists:keyfind({in, Topic}, 1, Config) of
-        {_, LocalTopic} ->
-            ok = PublishFun(LocalTopic, Payload);
+    case lists:keyfind({in, Topic}, 1, Subscriptions) of
+        {_, LocalPrefix} ->
+            ok = PublishFun(lists:flatten([LocalPrefix, Topic]), Payload);
         _ ->
             ignore
     end,
@@ -90,16 +90,22 @@ handle_call(_Req, _From, State) ->
 
 handle_cast(_Req, State) ->
     {noreply, State}.
-
 handle_info({deliver, Topic, Payload, 0, _IsRetained, _IsDup, _Ref},
-            #state{config=Config} = State) ->
-    io:format("--- deliver ~p ~p~n", [Topic, Payload]),
-    case lists:keyfind({out, Topic}, 1, Config) of
-        {_, QoS, RemoteTopic} ->
-            ok = gen_emqtt:publish(self(), RemoteTopic, Payload, QoS);
-        _ ->
-            ignore
-    end,
+            #state{subscriptions=Subscriptions} = State) ->
+    Words = emqtt_topic:words(Topic),
+    lists:foreach(
+      fun({{out, T}, QoS, RemotePrefix}) ->
+              TWords = emqtt_topic:words(T),
+              case emqtt_topic:match(Words, TWords) of
+                  true ->
+                      io:format("--- deliver ~p ~p~n", [Topic, Payload]),
+                      ok = gen_emqtt:publish(self(), lists:flatten([RemotePrefix, Topic]) , Payload, QoS);
+                  false ->
+                      ok
+              end;
+         (_) ->
+              ok
+      end, Subscriptions),
     {noreply, State}.
 
 terminate(_Reason, _State) ->

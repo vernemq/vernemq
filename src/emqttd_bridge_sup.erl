@@ -9,7 +9,7 @@
 -export([init/1]).
 
 %% Helper macro for declaring children of supervisor
--define(CHILD(I, Type, Args), {I, {I, start_link, [Args]}, permanent, 5000, Type, [I]}).
+-define(CHILD(Id, Mod, Type, Args), {Id, {Mod, start_link, Args}, permanent, 5000, Type, [Mod]}).
 
 %% ===================================================================
 %% API functions
@@ -24,9 +24,19 @@ start_link() ->
 
 init([]) ->
     {ok, RegistryMFA} = application:get_env(emqttd_bridge, registry_mfa),
-    {ok, Configs} = application:get_env(emqttd_bridge, config),
+    {ok, {TCPConfig, _SSLConfig}} = application:get_env(emqttd_bridge, config),
     ChildSpecs =
-    [?CHILD({?MODULE, Name}, worker, [RegistryMFA, BridgeConfig, ClientOpts])
-     || {Name, {BridgeConfig, ClientOpts}} <- Configs],
+    [begin
+         ClientOpts = [{host, Host},
+                       {port, Port},
+                       {username, UserName},
+                       {password, Password},
+                       {client, ClientId},
+                       {clean_session, CleanSession},
+                       {keepalive_interval, KeepAliveTime}],
+         ?CHILD(list_to_atom(lists:flatten(["emqttd_bridge-", Host, ":", integer_to_list(Port)])),
+                emqttd_bridge, worker, [RegistryMFA, Topics, ClientOpts])
+     end || {{Host, Port}, {CleanSession, ClientId, KeepAliveTime, UserName, Password, Topics}}
+        <- TCPConfig],
     {ok, { {one_for_one, 5, 10}, ChildSpecs} }.
 

@@ -11,8 +11,14 @@
   {mod, { emqttd_bridge_app, []}},
   {env, [
         {registry_mfa, {emqttd_reg, direct_plugin_exports, [emqttd_bridge]}},
-        {config, [
-            %% {Topic, Direction, QoS, LocalPrefix, RemotePrefix}
-        ]}
+        {config, { 
+            %% TCP Bridges
+            [
+                %% {{StrIp, Port}, {CleanSession, ClientId, KeepAliveTime, UserName, Password, TopicList}}
+            %% --- > TopicList = [{Pattern, Direction, QoS, LocalPrefix, RemotePrefix}|...]
+                ],
+            %% SSL Bridges
+            []
+        }}
     ]}
  ]}.
