@@ -14,7 +14,7 @@
         {config, { 
             %% TCP Bridges
             [
-                %% {{StrIp, Port}, {CleanSession, ClientId, KeepAliveTime, UserName, Password, TopicList}}
+                %% {{StrIp, Port}, {CleanSession, ClientId, KeepAliveTime, RestartTimeout, UserName, Password, TryPrivate, TopicList}}
             %% --- > TopicList = [{Pattern, Direction, QoS, LocalPrefix, RemotePrefix}|...]
                 ],
             %% SSL Bridges

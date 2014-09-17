@@ -45,7 +45,13 @@ on_connect(State) ->
                             out ->
                                 LocalTopic = lists:flatten([RemotePrefix, Topic]),
                                 ok = SubscribeFun(LocalTopic),
-                                [{{out, LocalTopic}, QoS, RemotePrefix}|Acc]
+                                [{{out, LocalTopic}, QoS, RemotePrefix}|Acc];
+                            both ->
+                                RemoteTopic = lists:flatten([LocalPrefix, Topic]),
+                                gen_emqtt:subscribe(self(), RemoteTopic, QoS),
+                                LocalTopic = lists:flatten([RemotePrefix, Topic]),
+                                ok = SubscribeFun(LocalTopic),
+                                [{{in, RemoteTopic}, LocalPrefix}, {{out, LocalTopic}, QoS, RemotePrefix}|Acc]
                         end
                 end, [], Config),
     {ok, State#state{subscriptions=Subscriptions}}.

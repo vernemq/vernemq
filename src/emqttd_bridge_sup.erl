@@ -33,10 +33,17 @@ init([]) ->
                        {password, Password},
                        {client, ClientId},
                        {clean_session, CleanSession},
-                       {keepalive_interval, KeepAliveTime}],
+                       {keepalive_interval, KeepAliveTime},
+                       {reconnect_timeout, RestartTimeout}
+                       |case TryPrivate of
+                            true ->
+                                [{proto_version, 131}]; %% non-spec
+                            false ->
+                                []
+                        end],
          ?CHILD(list_to_atom(lists:flatten(["emqttd_bridge-", Host, ":", integer_to_list(Port)])),
                 emqttd_bridge, worker, [RegistryMFA, Topics, ClientOpts])
-     end || {{Host, Port}, {CleanSession, ClientId, KeepAliveTime, UserName, Password, Topics}}
+     end || {{Host, Port}, {CleanSession, ClientId, KeepAliveTime, RestartTimeout, UserName, Password, TryPrivate, Topics}}
         <- TCPConfig],
     {ok, { {one_for_one, 5, 10}, ChildSpecs} }.
 
