@@ -268,10 +268,10 @@
                                                       ]}. 
 
 {mapping, "bridge.tcp.$name.client_id", "emqttd_bridge.config", [
-                                                       {default, "br0.localhost"},
+                                                       {default, "auto"},
                                                        {datatype, string},
                                                        {include_default, "br0"},
-                                                       {commented, "br0.localhost"}
+                                                       {commented, "auto"}
                                                       ]}. 
 
 {mapping, "bridge.tcp.$name.keepalive_interval", "emqttd_bridge.config", [
@@ -298,6 +298,20 @@
                                                        {include_default, "1"}
                                                       ]}. 
 
+{mapping, "bridge.tcp.$name.restart_timeout", "emqttd_bridge.config", [
+                                                                       {datatype, integer},
+                                                                       {default, 10},
+                                                                       {include_default, "br0"},
+                                                                       {commented, 10}
+                                                                      ]}.
+
+{mapping, "bridge.tcp.$name.try_private", "emqttd_bridge.config", [
+                                                                       {datatype, flag},
+                                                                       {default, on},
+                                                                       {include_default, "br0"},
+                                                                       {commented, on}
+                                                                      ]}.
+
 {mapping, "bridge.registry_mfa", "emqttd_bridge.registry_mfa", 
  [
   {default, "{emqttd_reg,direct_plugin_exports,[emqttd_bridge]}"},
@@ -315,15 +329,23 @@
 
 {translation, "emqttd_bridge.config", 
  fun(Conf) ->
-         BoolVal = fun(B) when is_boolean(B) -> B end,
-         StringVal = fun(S) when is_list(S) -> S; 
-                        (undefined) -> undefined end,
-         IntVal = fun(I) when is_integer(I) -> I end,
+         BoolVal = fun(_, B) when is_boolean(B) -> B end,
+         StringVal = fun(_, S) when is_list(S) -> S; 
+                        (_, undefined) -> undefined end,
+         IntVal = fun(_, I) when is_integer(I) -> I;
+                     (_, undefined) -> undefined end,
+         ClientIdVal = fun(Name, "auto") -> 
+                               {ok, HostName} = inet:gethostname(),
+                               lists:flatten([HostName, ".", Name]);
+                          (_, L) when is_list(L) -> L
+                       end,
+
          TopicVal = fun
-                        (TopicString) when is_list(TopicString) ->
+                        (_, TopicString) when is_list(TopicString) ->
+                            TTopicString = re:replace(TopicString, "\\*", "#", [{return, list}]),
                             Directions = ["out", "in", "both"],
                             QoSs = ["0", "1", "2"],
-                            [Pattern|Rest0] = string:tokens(TopicString, " "),
+                            [Pattern|Rest0] = string:tokens(TTopicString, " "),
                             case Rest0 of
                                 [MaybeDirection|Rest1] ->
                                     {Direction, Rest2} =
@@ -356,7 +378,7 @@
                                 [] ->
                                     {Pattern, out, 0, "", ""}
                             end;
-                        (_) ->
+                        (_, _) ->
                             cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
                     end,
 
@@ -373,10 +395,10 @@
                                             ), 
                                        cuttlefish:conf_get(P, Conf, undefined)
                                    end || I <- lists:seq(1,100)],
-                                  {AddrPort, [Validator(C) || C <- BrConfigs, C /= undefined]};
+                                  {AddrPort, [Validator(Name, C) || C <- BrConfigs, C /= undefined]};
                               false ->
                                   Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
-                                  Val = Validator(cuttlefish:conf_get(Prefix4, Conf, undefined)),
+                                  Val = Validator(Name, cuttlefish:conf_get(Prefix4, Conf, undefined)),
                                   {AddrPort, Val}
                           end
                       end 
@@ -386,18 +408,34 @@
                                                             end, Conf)]
              end,
 
+         MZip = fun([H|_] = ListOfLists) ->
+                        Size = length(H), %% get default size
+                        ListOfLists = [L || L <- ListOfLists, length(L) == Size],
+                        [list_to_tuple(
+                           lists:reverse(
+                             lists:foldl(
+                               fun(L, Acc) ->
+                                       [lists:nth(I, L)|Acc]
+                               end, [], ListOfLists)))
+                         || I <- lists:seq(1, Size)]
+                end,
+
          {TCPIPs, TCPCleanSessions} = lists:unzip(F("bridge.tcp", "cleansession", BoolVal)),
-         {TCPIPs, TCPClientIds} = lists:unzip(F("bridge.tcp", "client_id", StringVal)),
+         {TCPIPs, TCPClientIds} = lists:unzip(F("bridge.tcp", "client_id", ClientIdVal)),
          {TCPIPs, TCPKeepAlive} = lists:unzip(F("bridge.tcp", "keepalive_interval", IntVal)),
          {TCPIPs, TCPUserNames} = lists:unzip(F("bridge.tcp", "username", StringVal)),
          {TCPIPs, TCPPasswords} = lists:unzip(F("bridge.tcp", "password", StringVal)),
+         {TCPIPs, TCPRestartTimeouts} = lists:unzip(F("bridge.tcp", "restart_timeout", IntVal)),
+         {TCPIPs, TCPTryPrivates} = lists:unzip(F("bridge.tcp", "try_private", BoolVal)),
          {TCPIPs, TCPTopics} = lists:unzip(lists:usort(F("bridge.tcp", "topic", TopicVal))),
-         TCP = lists:zip(TCPIPs, 
-                         lists:zipwith(fun({A,B,C},{D,E,F1}) ->
-                                               {A,B,C,D,E,F1}
-                                       end, 
-                                       lists:zip3(TCPCleanSessions, TCPClientIds, TCPKeepAlive),
-                                       lists:zip3(TCPUserNames, TCPPasswords, TCPTopics))),
+         TCP = lists:zip(TCPIPs, MZip([TCPCleanSessions, 
+                                       TCPClientIds, 
+                                       TCPKeepAlive, 
+                                       TCPRestartTimeouts,
+                                       TCPUserNames, 
+                                       TCPPasswords,
+                                       TCPTryPrivates,
+                                       TCPTopics])), 
          {TCP, []}
  end
 }.
