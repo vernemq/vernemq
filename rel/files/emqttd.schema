@@ -11,9 +11,9 @@
 %%
 %% or on the listener level:
 %%
-%%     - listener.tcp.max_connections.my_tcp_listener
-%%     - listener.ssl.max_connections.my_ssl_listener
-%%     - listener.websocket.max_connections .my_websocket_listener
+%%     - listener.tcp.my_tcp_listener.max_connections
+%%     - listener.ssl.my_ssl_listener.max_connections
+%%     - listener.websocket.my_websocket_listener.max_connections
 {mapping, "listener.max_connections", "emqttd_server.listeners", [
                                                                   {default, {{max_connections}} },
                                                                   {datatype, [integer, {atom, infinity}]}
@@ -25,7 +25,7 @@
                                                                   hidden
                                                                  ]}. 
 
-{mapping, "listener.tcp.max_connections.$name", "emqttd_server.listeners", [
+{mapping, "listener.tcp.$name.max_connections", "emqttd_server.listeners", [
                                                                   {default, {{max_connections}} },
                                                                   {commented, {{max_connections}} },
                                                                   {datatype, [integer, {atom, infinity}]},
@@ -39,7 +39,7 @@
                                                                   hidden
                                                                  ]}. 
 
-{mapping, "listener.ssl.max_connections.$name", "emqttd_server.listeners", [
+{mapping, "listener.ssl.$name.max_connections", "emqttd_server.listeners", [
                                                                   {default, {{max_connections}} },
                                                                   {commented, {{max_connections}} },
                                                                   {datatype, [integer, {atom, infinity}]},
@@ -53,7 +53,7 @@
                                                                   hidden
                                                                  ]}. 
 
-{mapping, "listener.websocket.max_connections.$name", "emqttd_server.listeners", [
+{mapping, "listener.websocket.$name.max_connections", "emqttd_server.listeners", [
                                                                   {default, {{max_connections}} },
                                                                   {commented, {{max_connections}} },
                                                                   {datatype, [integer, {atom, infinity}]},
@@ -94,9 +94,9 @@
 %%
 %% or on the listener level:
 %%
-%%     - listener.tcp.nr_of_acceptors.my_tcp_listener
-%%     - listener.ssl.nr_of_acceptors.my_ssl_listener
-%%     - listener.websocket.nr_of_acceptors.my_ssl_listener
+%%     - listener.tcp.my_tcp_listener.nr_of_acceptors
+%%     - listener.ssl.my_ssl_listener.nr_of_acceptors
+%%     - listener.websocket.my_websocket_listener.nr_of_acceptors
 {mapping, "listener.nr_of_acceptors", "emqttd_server.listeners", [
                                                                 {default, 10},
                                                                 {datatype, integer}
@@ -108,7 +108,7 @@
                                                                       hidden
                                                                  ]}. 
 
-{mapping, "listener.tcp.nr_of_acceptors.$name", "emqttd_server.listeners", [
+{mapping, "listener.tcp.$name.nr_of_acceptors", "emqttd_server.listeners", [
                                                                       {default, 10},
                                                                       {datatype, integer},
                                                                       {include_default, "default"},
@@ -121,7 +121,7 @@
                                                                       hidden
                                                                  ]}. 
 
-{mapping, "listener.ssl.nr_of_acceptors.$name", "emqttd_server.listeners", [
+{mapping, "listener.ssl.$name.nr_of_acceptors", "emqttd_server.listeners", [
                                                                       {default, 10},
                                                                       {datatype, integer},
                                                                       {include_default, "default"},
@@ -134,7 +134,7 @@
                                                                       hidden
                                                                  ]}. 
 
-{mapping, "listener.websocket.nr_of_acceptors.$name", "emqttd_server.listeners", [
+{mapping, "listener.websocket.$name.nr_of_acceptors", "emqttd_server.listeners", [
                                                                       {default, 10},
                                                                       {datatype, integer},
                                                                       {include_default, "default"},
@@ -150,9 +150,9 @@
 %%
 %% or on the listener level:
 %%
-%%     - listener.tcp.mountpoint.my_tcp_listener
-%%     - listener.ssl.mountpoint.my_ssl_listener
-%%     - listener.websocket.mountpoint.my_ssl_listener
+%%     - listener.tcp.my_tcp_listener.mountpoint
+%%     - listener.ssl.my_ssl_listener.mountpoint
+%%     - listener.websocket.my_ssl_listener.mountpoint
 {mapping, "listener.mountpoint", "emqttd_server.listeners", [{default, "off"},
                                                              {datatype, string}
                                                             ]}. 
@@ -161,7 +161,7 @@
                                                                  hidden
                                                                 ]}. 
 
-{mapping, "listener.tcp.mountpoint.$name", "emqttd_server.listeners", [
+{mapping, "listener.tcp.$name.mountpoint", "emqttd_server.listeners", [
                                                                        {datatype, string},
                                                                        {include_default, "default"},
                                                                        hidden
@@ -171,7 +171,7 @@
                                                                  hidden
                                                                 ]}. 
 
-{mapping, "listener.ssl.mountpoint.$name", "emqttd_server.listeners", [
+{mapping, "listener.ssl.$name.mountpoint", "emqttd_server.listeners", [
                                                                        {datatype, string},
                                                                        {include_default, "default"},
                                                                        hidden
@@ -181,7 +181,7 @@
                                                                        hidden
                                                                       ]}. 
 
-{mapping, "listener.websocket.mountpoint.$name", "emqttd_server.listeners", [
+{mapping, "listener.websocket.$name.mountpoint", "emqttd_server.listeners", [
                                                                              {datatype, string},
                                                                              {include_default, "default"},
                                                                              hidden
@@ -202,8 +202,6 @@
                               end
                   end,
 
-         AllNotAddr = ["max_connections", "nr_of_acceptors", "mountpoint"],
-
          F = fun(Prefix, Suffix, Validator) ->
                      Prefix2 = lists:flatten([Prefix, ".", Suffix]),
                      %% get default from root of the tree
@@ -211,14 +209,16 @@
                      %% get the protocol specific default
                      Default2 = Validator(cuttlefish:conf_get(Prefix2, Conf, Default1)),
                      %% get the name value pairs
+                     Prefix3 = lists:flatten([Prefix, ".$name"]),
                      [begin
-                          Name = lists:last(Tmp),
-                          Prefix3 = lists:flatten([Prefix2, ".", Name]),
-                          Val = Validator(cuttlefish:conf_get(Prefix3, Conf, Default2)),
+                          Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
+                          Val = Validator(cuttlefish:conf_get(Prefix4, Conf, Default2)),
                           {AddrPort, Val}
                       end 
-                      || {Tmp, AddrPort} <- cuttlefish_variable:filter_by_prefix(Prefix, Conf), 
-                         not lists:member(lists:last(Tmp), AllNotAddr)]
+                      || {[_, _, Name], AddrPort} <- lists:filter(
+                                                            fun({K, _V}) ->
+                                                                    cuttlefish_variable:is_fuzzy_match(K, string:tokens(Prefix3, "."))
+                                                            end, Conf)]
              end,
 
          {TCPIPs, TCPMaxConns} = lists:unzip(F("listener.tcp", "max_connections", InfIntVal)),
@@ -238,6 +238,167 @@
          WEBSOCKET = lists:zip(WSIPs, lists:zip3(WSMaxConns, WSNrOfAcceptors, WSMountPoint)),
 
          {TCP, SSL, WEBSOCKET}
+ end
+}.
+
+%% @doc Set the mountpoint on the protocol level or on the listener level
+%%
+%%     - listener.tcp.mountpoint
+%%     - listener.ssl.mountpoint
+%%     - listener.websocket.mountpoint 
+%%
+%% or on the listener level:
+%%
+%%     - listener.tcp.my_tcp_listener.mountpoint
+%%     - listener.ssl.my_ssl_listener.mountpoint
+%%     - listener.websocket.my_ssl_listener.mountpoint
+
+{mapping, "bridge.tcp.$name", "emqttd_bridge.config", [
+                                                       {default, {"127.0.0.1", 1889}},
+                                                       {datatype, ip},
+                                                       {include_default, "br0"},
+                                                       {commented, "127.0.0.1:1889"}
+                                                      ]}. 
+
+{mapping, "bridge.tcp.$name.cleansession", "emqttd_bridge.config", [
+                                                       {default, off},
+                                                       {datatype, flag},
+                                                       {include_default, "br0"},
+                                                       {commented, off}
+                                                      ]}. 
+
+{mapping, "bridge.tcp.$name.client_id", "emqttd_bridge.config", [
+                                                       {default, "br0.localhost"},
+                                                       {datatype, string},
+                                                       {include_default, "br0"},
+                                                       {commented, "br0.localhost"}
+                                                      ]}. 
+
+{mapping, "bridge.tcp.$name.keepalive_interval", "emqttd_bridge.config", [
+                                                       {default, 60},
+                                                       {datatype, integer},
+                                                       {include_default, "br0"},
+                                                       {commented, 60}
+                                                      ]}. 
+
+{mapping, "bridge.tcp.$name.username", "emqttd_bridge.config", [
+                                                       {datatype, string},
+                                                       {include_default, "br0"},
+                                                       {commented, "my_remote_user"}
+                                                      ]}. 
+
+{mapping, "bridge.tcp.$name.password", "emqttd_bridge.config", [
+                                                       {datatype, string},
+                                                       {include_default, "br0"},
+                                                       {commented, "my_remote_password"}
+                                                      ]}. 
+
+{mapping, "bridge.tcp.$name.topic.$topic_id", "emqttd_bridge.config", [
+                                                       {datatype, string},
+                                                       {include_default, "1"}
+                                                      ]}. 
+
+{mapping, "bridge.registry_mfa", "emqttd_bridge.registry_mfa", 
+ [
+  {default, "{emqttd_reg,direct_plugin_exports,[emqttd_bridge]}"},
+  {datatype, string},
+  hidden
+ ]}. 
+
+{translation, "emqttd_bridge.registry_mfa", 
+ fun(Conf) ->
+         S = cuttlefish:conf_get("bridge.registry_mfa", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.
+
+{translation, "emqttd_bridge.config", 
+ fun(Conf) ->
+         BoolVal = fun(B) when is_boolean(B) -> B end,
+         StringVal = fun(S) when is_list(S) -> S; 
+                        (undefined) -> undefined end,
+         IntVal = fun(I) when is_integer(I) -> I end,
+         TopicVal = fun
+                        (TopicString) when is_list(TopicString) ->
+                            Directions = ["out", "in", "both"],
+                            QoSs = ["0", "1", "2"],
+                            [Pattern|Rest0] = string:tokens(TopicString, " "),
+                            case Rest0 of
+                                [MaybeDirection|Rest1] ->
+                                    {Direction, Rest2} =
+                                    case lists:member(MaybeDirection, Directions) of
+                                        true -> 
+                                            {list_to_atom(MaybeDirection), Rest1};
+                                        false ->
+                                            {out, Rest0}
+                                    end,
+                                    {QoS, Rest3} =
+                                    case Rest2 of
+                                        [] ->
+                                            {0, []};
+                                        [MaybeQoS|Rest4] ->
+                                            case lists:member(MaybeQoS, QoSs) of
+                                                true ->
+                                                    {list_to_integer(MaybeQoS), Rest4};
+                                                false ->
+                                                    {0, Rest4}
+                                            end
+                                    end,
+                                    case Rest3 of
+                                        [] ->
+                                            {Pattern, Direction, QoS, "", ""};
+                                        [LocalPrefix, RemotePrefix] ->
+                                            {Pattern, Direction, QoS, LocalPrefix, RemotePrefix};
+                                        _ ->
+                                            cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
+                                    end;
+                                [] ->
+                                    {Pattern, out, 0, "", ""}
+                            end;
+                        (_) ->
+                            cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
+                    end,
+
+         F = fun(Prefix, Suffix, Validator) ->
+                     %% get the name value pairs
+                     Prefix3 = lists:flatten([Prefix, ".$name"]),
+                     [begin
+                          case lists:prefix("topic", Suffix) of
+                              true ->
+                                  BrConfigs =
+                                  [begin
+                                       P = lists:flatten(
+                                             [Prefix, ".", Name, ".topic.", integer_to_list(I)]
+                                            ), 
+                                       cuttlefish:conf_get(P, Conf, undefined)
+                                   end || I <- lists:seq(1,100)],
+                                  {AddrPort, [Validator(C) || C <- BrConfigs, C /= undefined]};
+                              false ->
+                                  Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
+                                  Val = Validator(cuttlefish:conf_get(Prefix4, Conf, undefined)),
+                                  {AddrPort, Val}
+                          end
+                      end 
+                      || {[_, _, Name], AddrPort} <- lists:filter(
+                                                            fun({K, _V}) ->
+                                                                    cuttlefish_variable:is_fuzzy_match(K, string:tokens(Prefix3, "."))
+                                                            end, Conf)]
+             end,
+
+         {TCPIPs, TCPCleanSessions} = lists:unzip(F("bridge.tcp", "cleansession", BoolVal)),
+         {TCPIPs, TCPClientIds} = lists:unzip(F("bridge.tcp", "client_id", StringVal)),
+         {TCPIPs, TCPKeepAlive} = lists:unzip(F("bridge.tcp", "keepalive_interval", IntVal)),
+         {TCPIPs, TCPUserNames} = lists:unzip(F("bridge.tcp", "username", StringVal)),
+         {TCPIPs, TCPPasswords} = lists:unzip(F("bridge.tcp", "password", StringVal)),
+         {TCPIPs, TCPTopics} = lists:unzip(lists:usort(F("bridge.tcp", "topic", TopicVal))),
+         TCP = lists:zip(TCPIPs, 
+                         lists:zipwith(fun({A,B,C},{D,E,F1}) ->
+                                               {A,B,C,D,E,F1}
+                                       end, 
+                                       lists:zip3(TCPCleanSessions, TCPClientIds, TCPKeepAlive),
+                                       lists:zip3(TCPUserNames, TCPPasswords, TCPTopics))),
+         {TCP, []}
  end
 }.
 
@@ -308,6 +469,9 @@
          {ok, Term} = erl_parse:parse_term(T),
          Term
  end}.
+
+
+
 
 
 %% @doc Where to emit the default log messages (typically at 'info'

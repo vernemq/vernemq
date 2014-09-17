@@ -3,41 +3,52 @@ import os
 import filecmp
 from shutil import move, copyfile
 
-BROKER_PATH = "../emqttd"
-CONFIG_FILE = BROKER_PATH + "/etc/emqttd.conf"
-BIN = BROKER_PATH + "/bin/emqttd"
-ADM_BIN = BROKER_PATH + "/bin/emqttd-admin"
+BROKER_PATH = "../emqttd1"
 
 FNULL = open(os.devnull, 'w')
 
 
-def start(config_file):
-    call([ADM_BIN, "clean"])
-    ensure_alive(config_file)
+def config_file(broker_path):
+    return broker_path + "/etc/emqttd.conf"
+
+def bin(broker_path):
+    return broker_path + "/bin/emqttd"
+
+def adm(broker_path):
+    return broker_path + "/bin/emqttd-admin"
 
 
-def stop():
+def start(config_file, broker_path=BROKER_PATH):
+    call([adm(broker_path), "clean"])
+    ensure_alive(config_file, broker_path)
+
+
+def stop(broker_path=BROKER_PATH):
     pass
 
+def hard_stop(broker_path=BROKER_PATH):
+    call([bin(broker_path), "stop"])
 
-def node_alive():
-    if call([BIN, "ping"], stdout=FNULL) is 0:
+
+
+def node_alive(broker_path):
+    if call([bin(broker_path), "ping"], stdout=FNULL) is 0:
         return True
     else:
         return False
 
 
-def ensure_alive(config_file):
-    is_alive = node_alive(),
-    if filecmp.cmp(config_file, CONFIG_FILE):
-        if is_alive:
-            # same conig file and node is alive
-            return
-        else:
-            call([BIN, "start"])
-            return
-    elif is_alive:
-        call([BIN, "stop"])
+def ensure_alive(conf_file, broker_path):
+    if not filecmp.cmp(conf_file, config_file(broker_path)):
+        copyfile(conf_file, config_file(broker_path))
 
-    copyfile(config_file, CONFIG_FILE)
-    call([BIN, "start"])
+    start_(broker_path)
+
+def start_(broker_path):
+    print "start broker %s" % broker_path
+    if call([bin(broker_path), "start"]) is 0:
+        if node_alive(broker_path):
+            return True
+        else:
+            print "can't start broker on %s" % broker_path
+            return False

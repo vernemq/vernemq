@@ -89,7 +89,8 @@ $(eval stagedevrel : $(foreach n,$(SEQ),stagedev$(n)))
 $(eval devrel : $(foreach n,$(SEQ),dev$(n)))
 
 broker_test: all
-	(cd rel && ../rebar generate target_dir=../test/emqttd overlay_vars=vars/test_vars.config)
+	(cd rel && ../rebar generate target_dir=../test/emqttd1 overlay_vars=vars/test_vars.config)
+	(cd rel && ../rebar generate target_dir=../test/emqttd2 overlay_vars=vars/test_vars.config)
 
 dev% : all
 	mkdir -p dev
