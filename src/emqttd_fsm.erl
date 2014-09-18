@@ -204,70 +204,14 @@ process_bytes(Bytes, StateName, State) ->
                           parser_state=emqtt_frame:initial_state()}}
     end.
 
-handle_frame(wait_for_connect, _, #mqtt_frame_connect{} = Var, _, State) ->
-    #state{peer=Peer, mountpoint=MountPoint, max_client_id_size=MaxClientIdSize} = State,
-    #mqtt_frame_connect{
-       client_id=Id,
-       username=User,
-       password=Password,
-       proto_ver=Version,
-       clean_sess=CleanSession,
-       keep_alive=KeepAlive,
-       will_qos=WillQoS,
-       will_topic=WillTopic,
-       will_msg=WillMsg} = Var,
 
-    case check_version(MaxClientIdSize, Id, Version) of
-        {ok, ClientId} ->
-            %% auth_on_register hook must return either:
-            %%  ok | next | {error, invalid_credentials | not_authorized}
-            User1 = case User of "" -> undefined; _ -> User end,
-            case emqttd_hook:only(auth_on_register,
-                                  [Peer, ClientId, User1, Password]) of
-                ok ->
-                    case emqttd_reg:register_client(ClientId, CleanSession) of
-                        ok ->
-                            emqttd_hook:all(on_register,
-                                            [Peer, ClientId, User, Password]),
-                            {connected,
-                             send_connack(?CONNACK_ACCEPT,
-                                          State#state{
-                                            client_id=ClientId,
-                                            username=User1,
-                                            will_qos=WillQoS,
-                                            will_topic=combine_mp(MountPoint, WillTopic),
-                                            will_msg=WillMsg,
-                                            keep_alive=KeepAlive * 1000,
-                                            keep_alive_timer =
-                                                send_after(
-                                                  KeepAlive * 1000,
-                                                  disconnect)
-                                           })};
-                        {error, _Reason} ->
-                            {connection_attempted,
-                             send_connack(?CONNACK_SERVER, State)}
-                    end;
-                not_found ->
-                    % returned when no hook on_register hook was
-                    % able to authenticate user
-                    {connection_attempted,
-                     send_connack(?CONNACK_INVALID_ID, State)};
-                {error, invalid_credentials} ->
-                    {connection_attempted,
-                     send_connack(?CONNACK_CREDENTIALS, State)};
-                {error, not_authorized} ->
-                    {connection_attempted,
-                     send_connack(?CONNACK_AUTH, State)}
-            end;
-        {error, dont_reply} ->
-            %% TODO: maybe log
-            {stop, normal, State};
 
-        {error, ProtoErr} ->
-            io:format("--- check version err ~p~n", [{Id,Version, ProtoErr}]),
-            {connection_attempted,
-             send_connack(ProtoErr, State)}
-    end;
+
+
+
+handle_frame(wait_for_connect, _, #mqtt_frame_connect{keep_alive=KeepAlive} = Var, _, State) ->
+    check_connect(Var, State#state{keep_alive=KeepAlive * 1000});
+
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
     #state{waiting_acks=WAcks} = State,
@@ -408,18 +352,75 @@ ret({_, _} = R) -> R.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-check_version(_, missing, _) -> {error, dont_reply};
-check_version(_, empty, 4) -> {ok, random_client_id()};
-check_version(_, empty, 3) -> {error, ?CONNACK_INVALID_ID};
-check_version(MaxClientIdSize, Id, Version) when length(Id) =< MaxClientIdSize ->
-    case {Id, Version} of
-        {_, 4} -> {ok, Id};
-        {_, 3} -> {ok, Id};
-        {_, 131} -> {ok, Id}; % 128 + 3   used for connecting bridges
-        _ -> {error, ?CONNACK_PROTO_VER}
+check_connect(F, State) ->
+    check_client_id(F, State).
+
+check_client_id(#mqtt_frame_connect{client_id=missing}, State) ->
+    {stop, normal, State};
+check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=4} = F, State) ->
+    check_user(F, State#state{client_id=random_client_id()});
+check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=3}, State) ->
+    {connection_attempted,
+     send_connack(?CONNACK_INVALID_ID, State)};
+check_client_id(#mqtt_frame_connect{client_id=Id, proto_ver=V} = F,
+                #state{max_client_id_size=S} = State) when length(Id) =< S ->
+    case lists:member(V, [3,4,131]) of
+        true ->
+            check_user(F, State#state{client_id=Id});
+        false ->
+            {connection_attempted,
+             send_connack(?CONNACK_PROTO_VER, State)}
     end;
-check_version(_,_,_) -> %% invalid size
-    {error, ?CONNACK_INVALID_ID}.
+check_client_id(_, State) ->
+    {connection_attempted,
+     send_connack(?CONNACK_INVALID_ID, State)}.
+
+check_user(#mqtt_frame_connect{username=""} = F, State) ->
+    check_user(F#mqtt_frame_connect{username=undefined, password=undefined}, State);
+check_user(#mqtt_frame_connect{username=User, password=Password,
+                               client_id=ClientId, clean_sess=CleanSession} = F, State) ->
+    #state{peer=Peer} = State,
+    case emqttd_hook:only(auth_on_register, [Peer, ClientId, User, Password]) of
+        ok ->
+            case emqttd_reg:register_client(ClientId, CleanSession) of
+                ok ->
+                    emqttd_hook:all(on_register, [Peer, ClientId, User, Password]),
+                    check_will(F, State#state{username=User});
+                {error, _Reason} ->
+                    {connection_attempted,
+                     send_connack(?CONNACK_SERVER, State)}
+            end;
+        not_found ->
+            % returned when no hook on_register hook was
+            % able to authenticate user
+            {connection_attempted,
+             send_connack(?CONNACK_INVALID_ID, State)};
+        {error, invalid_credentials} ->
+            {connection_attempted,
+             send_connack(?CONNACK_CREDENTIALS, State)};
+        {error, not_authorized} ->
+            {connection_attempted,
+             send_connack(?CONNACK_AUTH, State)}
+    end.
+
+check_will(#mqtt_frame_connect{will_topic=undefined}, #state{keep_alive=KeepAlive} = State) ->
+    {connected, send_connack(?CONNACK_ACCEPT, State#state{
+                                    keep_alive_timer=send_after(KeepAlive, disconnect)})};
+check_will(#mqtt_frame_connect{will_topic=""}, State) ->
+    {stop, normal, State}; %% null topic
+check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos}, State) ->
+    #state{mountpoint=MountPoint, username=User, client_id=ClientId, keep_alive=KeepAlive} = State,
+    LWTopic = combine_mp(MountPoint, Topic),
+    case emqttd_hook:only(auth_on_publish, [User, ClientId, last_will, LWTopic, Msg, false]) of
+        ok ->
+            {connected, send_connack(?CONNACK_ACCEPT,
+                         State#state{will_qos=Qos,
+                                     will_topic=LWTopic,
+                                     will_msg=Msg,
+                                     keep_alive_timer=send_after(KeepAlive, disconnect)})};
+        _ ->
+            {connection_attempted, send_connack(?CONNACK_AUTH, State)}
+    end.
 
 send_connack(ReturnCode, State) ->
     send_frame(?CONNACK, #mqtt_frame_connack{return_code=ReturnCode},
