@@ -13,7 +13,8 @@
 -export([register_client__/3,
          route/7]).
 
--export([emqttd_table_defs/0]).
+-export([emqttd_table_defs/0,
+         reset_all_tables/1]).
 
 -export([direct_plugin_exports/1]).
 
@@ -202,21 +203,21 @@ wait_until_unregistered(ClientId, DisconnectRequested) ->
 
 
 %route locally, should only be called by publish
-route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, _IsRetain) ->
+route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, IsRetain) ->
     Subscribers = mnesia:dirty_read(emqttd_subscriber, Topic),
     FilteredSubscribers = emqttd_hook:every(filter_subscribers, Subscribers, [SendingUser, SendingClientId, MsgId, RoutingKey, Payload]),
     lists:foreach(fun
                     (#subscriber{qos=Qos, client=ClientId}) when Qos > 0 ->
                           MaybeNewMsgId = emqttd_msg_store:store(SendingUser, SendingClientId, MsgId, RoutingKey, Payload),
-                          deliver(ClientId, RoutingKey, Payload, Qos, MaybeNewMsgId);
+                          deliver(ClientId, RoutingKey, Payload, Qos, MaybeNewMsgId, IsRetain);
                     (#subscriber{qos=0, client=ClientId}) ->
-                          deliver(ClientId, RoutingKey, Payload, 0, undefined)
+                          deliver(ClientId, RoutingKey, Payload, 0, undefined, IsRetain)
                 end, FilteredSubscribers).
 
-deliver(_, _, <<>>, _, Ref) ->
+deliver(_, _, <<>>, _, Ref, true) ->
     %% <<>> --> retain-delete action, we don't deliver the empty frame
     emqttd_msg_store:deref(Ref);
-deliver(ClientId, RoutingKey, Payload, Qos, Ref) ->
+deliver(ClientId, RoutingKey, Payload, Qos, Ref, _IsRetain) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
             emqttd_fsm:deliver(ClientPid, RoutingKey, Payload, Qos, false, false, Ref);
@@ -256,6 +257,18 @@ emqttd_table_defs() ->
         {disc_copies, [node()]},
         {match, #subscriber{_='_'}}]}
 ].
+
+
+reset_all_tables([]) ->
+    %% called using emqttd-admin, mainly for test purposes
+    %% you don't want to call this during production
+    [reset_table(T) || {T,_}<- emqttd_table_defs()].
+
+reset_table(Tab) ->
+    lists:foreach(fun(Key) ->
+                          mnesia:dirty_delete(Tab, Key)
+                  end, mnesia:dirty_all_keys(Tab)).
+
 
 wait_til_ready() ->
     case emqttd_cluster:if_ready(fun() -> true end, []) of
