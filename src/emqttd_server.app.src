@@ -19,9 +19,13 @@
       {max_client_id_size, 23},
       {retry_interval, 20},
       {listeners, {
-                      [{{{127,0,0,1}, 1883}, {infinity, 10, ""}}],
+                      [{{{127,0,0,1}, 1883}, [{max_connections, infinity}, 
+                                              {nr_of_acceptors, 10}, 
+                                              {mountpoint, ""}]}],
                       [],
-                      [{{{127,0,0,1}, 8080}, {1000, 10, ""}}]
+                      [{{{127,0,0,1}, 8080}, [{max_connections, 1000}, 
+                                              {nr_of_acceptors, 10}, 
+                                              {mountpoint, ""}]}]
                   }}
       ]}
 

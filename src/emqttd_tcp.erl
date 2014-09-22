@@ -1,5 +1,6 @@
 -module(emqttd_tcp).
 -behaviour(ranch_protocol).
+-include_lib("public_key/include/public_key.hrl").
 
 -export([start_link/4]).
 -export([init/4]).
@@ -13,10 +14,24 @@ init(Ref, Socket, Transport, Opts) ->
     ok = Transport:setopts(Socket, [{nodelay, true},
                                     {packet, raw},
                                     {active, once}]),
+    NewOpts =
+    case Transport of
+        ranch_ssl ->
+            case proplists:get_value(use_identity_as_username, Opts) of
+                true ->
+                    [{preauth, socket_to_common_name(Socket)}|Opts];
+                false ->
+                    Opts
+            end;
+        _ ->
+            Opts
+    end,
+
+
     {ok, Peer} = Transport:peername(Socket),
     loop(Socket, Transport, emqttd_fsm:init(Peer, fun(Bin) ->
                                                     Transport:send(Socket, Bin)
-                                            end, Opts)).
+                                            end, NewOpts)).
 
 loop(Socket, Transport, stop) ->
     Transport:close(Socket);
@@ -42,4 +57,21 @@ loop(Socket, Transport, FSMState) ->
                  emqttd_fsm:handle_fsm_msg(Msg, FSMState))
     end.
 
+socket_to_common_name(Socket) ->
+    case ssl:peercert(Socket) of
+        {error, no_peercert} ->
+            undefined;
+        {ok, Cert} ->
+            OTPCert = public_key:pkix_decode_cert(Cert, otp),
+            TBSCert = OTPCert#'OTPCertificate'.tbsCertificate,
+            Subject = TBSCert#'OTPTBSCertificate'.subject,
+            extract_cn(Subject)
+    end.
 
+extract_cn({rdnSequence, List}) ->
+    extract_cn2(List).
+extract_cn2([[#'AttributeTypeAndValue'{type=?'id-at-commonName', value={utf8String, CN}}]|_]) ->
+    unicode:characters_to_list(CN);
+extract_cn2([_|Rest]) ->
+    extract_cn2(Rest);
+extract_cn2([]) -> undefined.

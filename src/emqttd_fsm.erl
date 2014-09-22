@@ -66,6 +66,11 @@ init(Peer, SendFun, Opts) ->
     {_,MountPoint} = lists:keyfind(mountpoint, 1, Opts),
     {_,MaxClientIdSize} = lists:keyfind(max_client_id_size, 1, Opts),
     {_,RetryInterval} = lists:keyfind(retry_interval, 1, Opts),
+    PreAuthUser =
+    case lists:keyfind(preauth, 1, Opts) of
+        false -> undefined;
+        {_, PreAuth} -> {preauth, PreAuth}
+    end,
     MsgLogHandler =
     case lists:keyfind(msg_log_handler, 1, Opts) of
         {_, undefined} ->
@@ -80,6 +85,7 @@ init(Peer, SendFun, Opts) ->
     ret({wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   msg_log_handler=MsgLogHandler,
                                   mountpoint=MountPoint,
+                                  username=PreAuthUser,
                                   max_client_id_size=MaxClientIdSize,
                                   retry_interval=1000 * RetryInterval
                                   }}).
@@ -355,6 +361,21 @@ ret({_, _} = R) -> R.
 check_connect(F, State) ->
     check_client_id(F, State).
 
+check_client_id(#mqtt_frame_connect{}, #state{username={preauth, undefined}} = State) ->
+    %% No common name found in client certificate
+    {connection_attempted,
+     send_connack(?CONNACK_CREDENTIALS, State)};
+check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
+                #state{username={preauth, ClientId}, peer=Peer} = State) ->
+    %% User preauthenticated using e.g. SSL client certificate
+    case emqttd_reg:register_client(ClientId, CleanSession) of
+        ok ->
+            emqttd_hook:all(on_register, [Peer, ClientId, undefined, undefined]),
+            check_will(F, State);
+        {error, _Reason} ->
+            {connection_attempted,
+             send_connack(?CONNACK_SERVER, State)}
+    end;
 check_client_id(#mqtt_frame_connect{client_id=missing}, State) ->
     {stop, normal, State};
 check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=4} = F, State) ->
