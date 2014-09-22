@@ -7,11 +7,24 @@ def expect_packet(sock, name, expected):
     else:
         rlen = 1
 
-    packet_recvd = sock.recv(rlen)
+    # changed from the original code to
+    # read multiple times, we run into
+    # test errors in test suite 08, where
+    # our server implementation sent more and
+    # larger SSL responses due to stronger
+    # ciphers applied.
+    packet_recvd = ""
+    max_reads = 5
+    while len(packet_recvd) < rlen or max_reads is 0:
+        packet_recvd = packet_recvd + sock.recv(rlen)
+        max_reads = max_reads -1
+
     return packet_matches(name, packet_recvd, expected)
 
 def packet_matches(name, recvd, expected):
     if recvd != expected:
+        import binascii
+        print "rec %s exp %s" % (binascii.hexlify(recvd), binascii.hexlify(expected))
         print("FAIL: Received incorrect "+name+".")
         try:
             print("Received: "+to_string(recvd))
