@@ -190,7 +190,7 @@
                                                                       ]}. 
 
 {mapping, "listener.ssl.cafile", "emqttd_server.listeners", [
-                                                             {default, "{{platform_etc_dir}}/cacerts.pem"},
+                                                             {default, ""},
                                                              {datatype, file},
                                                              {commented, "{{platform_etc_dir}}/cacerts.pem"}
                                                             ]}. 
@@ -202,7 +202,7 @@
                                                                   ]}. 
 
 {mapping, "listener.ssl.certfile", "emqttd_server.listeners", [
-                                                               {default, "{{platform_etc_dir}}/cert.pem"},
+                                                               {default, ""},
                                                                {datatype, file},
                                                                {commented, "{{platform_etc_dir}}/cert.pem"}
                                                               ]}. 
@@ -232,7 +232,7 @@
                                                                     hidden
                                                                    ]}. 
 {mapping, "listener.ssl.keyfile", "emqttd_server.listeners", [
-                                                              {default, "{{platform_etc_dir}}/key.pem"},
+                                                              {default, ""},
                                                               {datatype, file},
                                                               {commented, "{{platform_etc_dir}}/key.pem"}
                                                              ]}. 
