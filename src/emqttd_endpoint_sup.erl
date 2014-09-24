@@ -92,8 +92,10 @@ generate_childspecs(Listeners, Transport, Protocol) ->
                        {max_connections, proplists:get_value(max_connections, Opts)} |
                        case Transport of
                            ranch_ssl ->
-                               CACerts = load_cert(proplists:get_value(cafile, Opts)),
-                               [{cacerts, CACerts},
+                               [{cacerts, case proplists:get_value(cafile, Opts) of
+                                              undefined -> undefined;
+                                              CAFile -> load_cert(CAFile)
+                                          end},
                                 {certfile, proplists:get_value(certfile, Opts)},
                                 {keyfile, proplists:get_value(keyfile, Opts)},
                                 {ciphers, ciphersuite_transform(
@@ -108,6 +110,14 @@ generate_childspecs(Listeners, Transport, Protocol) ->
                                              true -> verify_peer;
                                              _ -> verify_none
                                          end},
+                                %{psk_identity, proplists:get_value(psk_hint, Opts)},
+                                %{user_lookup_fun, case proplists:get_value(psk_hint, Opts) of
+                                %                      undefined -> undefined;
+                                %                      _ ->
+                                %                          {fun(psk, _PSKIdent, _) ->
+                                %                                   {ok, <<"deadbeef">>}
+                                %                           end, []}
+                                %                  end},
                                 {verify_fun, {fun verify_ssl_peer/3, proplists:get_value(crlfile, Opts, no_crl)}},
                                 {versions, [proplists:get_value(tls_version, Opts, 'tlsv1.2')]}
                                ];
@@ -253,15 +263,20 @@ verify_ssl_peer(Cert, valid_peer, UserState) ->
 
 
 load_cert(Cert) ->
-    {ok, Bin} = file:read_file(Cert),
-    case filename:extension(Cert) of
-        ".der" ->
-            %% no decoding necessary
-            [Bin];
-        _ ->
-            %% assume PEM otherwise
-            Contents = public_key:pem_decode(Bin),
-            [DER || {Type, DER, Cipher} <- Contents, Type == 'Certificate', Cipher == 'not_encrypted']
+    case file:read_file(Cert) of
+        {error, Reason} ->
+            error_logger:warning_msg("can't load certificate ~p due to Error: ~p", [Cert, Reason]),
+            undefined;
+        {ok, Bin} ->
+            case filename:extension(Cert) of
+                ".der" ->
+                    %% no decoding necessary
+                    [Bin];
+                _ ->
+                    %% assume PEM otherwise
+                    Contents = public_key:pem_decode(Bin),
+                    [DER || {Type, DER, Cipher} <- Contents, Type == 'Certificate', Cipher == 'not_encrypted']
+            end
     end.
 
 %check_crl(Cert, State) ->

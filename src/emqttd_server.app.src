@@ -6,6 +6,7 @@
   {applications, [
                   kernel,
                   stdlib,
+                  ssl,
                   gproc,
                   ranch,
                   cowboy,
