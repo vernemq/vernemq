@@ -12,11 +12,18 @@
   {env, [
         {registry_mfa, {emqttd_reg, direct_plugin_exports, [emqttd_bridge]}},
         {config, { 
-            %% TCP Bridges
             [
-                %% {{StrIp, Port}, {CleanSession, ClientId, KeepAliveTime, RestartTimeout, UserName, Password, TryPrivate, TopicList}}
-            %% --- > TopicList = [{Pattern, Direction, QoS, LocalPrefix, RemotePrefix}|...]
-                ],
+            %% TCP Bridges
+                %% {{StrIp, Port}, [{clean_session, true|false},
+                %%                  {client_id, "my_client_id"},
+                %%                  {keepalive_interval, 60},       % seconds
+                %%                  {restart_timeout, 10},          % seconds
+                %%                  {username, "my_username"}, 
+                %%                  {password, "my_password"},
+                %%                  {try_private, true|false},      % send 'MQIsdp' instead of 'MQIsdp131'
+                %%                  {topics, [{Pattern, Direction, QoS, LocalPrefix, RemotePrefix}|...]}
+                %%   ]}
+            ],
             %% SSL Bridges
             []
         }}
