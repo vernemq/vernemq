@@ -4,6 +4,7 @@
 
 %% API
 -export([start_link/0]).
+-export([change_config_now/3]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -22,18 +23,71 @@ start_link() ->
 %% Supervisor callbacks
 %% ===================================================================
 
+change_config_now(_New, Changed, _Deleted) ->
+    {OldConfig, NewConfig} = proplists:get_value(config, Changed, {[],[]}),
+    {OldTCP, OldSSL} = OldConfig,
+    {NewTCP, NewSSL} = NewConfig,
+    maybe_change_bridge(tcp, OldTCP, NewTCP),
+    maybe_change_bridge(ssl, OldSSL, NewSSL),
+    maybe_new_bridge(tcp, OldTCP, NewTCP),
+    maybe_new_bridge(ssl, OldTCP, NewTCP).
+
+maybe_change_bridge(_, Old, New) when Old == New -> ok;
+maybe_change_bridge(Transport, Old, New) ->
+    {ok, RegistryMFA} = application:get_env(emqttd_bridge, registry_mfa),
+    lists:foreach(
+      fun({{Host, Port} = IpAddr, Opts}) ->
+              case proplists:get_value(IpAddr, New) of
+                  undefined ->
+                      %% delete bridge
+                      supervisor:terminate_child(?MODULE, ref(Host, Port));
+                  Opts -> ok; %% no change
+                  NewOpts ->
+                      Ref = ref(Host, Port),
+                      supervisor:terminate_child(?MODULE, Ref),
+                      {ok, _Pid} = supervisor:start_child(
+                                     ?MODULE,
+                                     ?CHILD(Ref, emqttd_bridge, worker,
+                                            [RegistryMFA,
+                                             proplists:get_value(topics, NewOpts),
+                                             client_opts(Transport, Host, Port, NewOpts)]))
+              end
+      end, Old).
+
+maybe_new_bridge(Transport, Old, New) ->
+    {ok, RegistryMFA} = application:get_env(emqttd_bridge, registry_mfa),
+    lists:foreach(
+      fun({{Host, Port} = IpAddr, Opts}) ->
+              case proplists:get_value(IpAddr, Old) of
+                  undefined ->
+                      %% start new bridge
+                      Ref = ref(Host, Port),
+                      {ok, _Pid} = supervisor:start_child(
+                                     ?MODULE,
+                                     ?CHILD(Ref, emqttd_bridge, worker,
+                                            [RegistryMFA,
+                                             proplists:get_value(topics, Opts),
+                                             client_opts(Transport, Host, Port, Opts)]));
+                  _ ->
+                      ok
+              end
+      end, New).
+
+
+
+ref(Host, Port) ->
+    {emqttd_bridge, Host, Port}.
+
 init([]) ->
     {ok, RegistryMFA} = application:get_env(emqttd_bridge, registry_mfa),
     {ok, {TCPConfig, SSLConfig}} = application:get_env(emqttd_bridge, config),
     TCPChildSpecs =
-    [?CHILD(list_to_atom(lists:flatten(["emqttd_bridge-", Host, ":", integer_to_list(Port)])),
-            emqttd_bridge, worker, [RegistryMFA,
+    [?CHILD(ref(Host, Port), emqttd_bridge, worker, [RegistryMFA,
                                     proplists:get_value(topics, Opts),
                                     client_opts(tcp, Host, Port, Opts)])
      || {{Host, Port}, Opts} <- TCPConfig],
     SSLChildSpecs =
-    [?CHILD(list_to_atom(lists:flatten(["emqttd_bridge-", Host, ":", integer_to_list(Port)])),
-            emqttd_bridge, worker, [RegistryMFA,
+    [?CHILD(ref(Host, Port), emqttd_bridge, worker, [RegistryMFA,
                                     proplists:get_value(topics, Opts),
                                     client_opts(ssl, Host, Port, Opts)])
      || {{Host, Port}, Opts} <- SSLConfig],
