@@ -3,13 +3,7 @@
 
 all :
 
-clean : 
-	$(MAKE) -C c clean
-
-test-compile : 
-	$(MAKE) -C c
-
-test : test-compile 01 02 03 04 05 06 07 08 09 10
+test : 01 02 03 04 05 06 07 08 09 10
 
 01 :
 	./01-connect-success.py

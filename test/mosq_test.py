@@ -15,7 +15,7 @@ def expect_packet(sock, name, expected):
     # ciphers applied.
     packet_recvd = ""
     max_reads = 5
-    while len(packet_recvd) < rlen or max_reads is 0:
+    while len(packet_recvd) < rlen and max_reads >= 0:
         packet_recvd = packet_recvd + sock.recv(rlen)
         max_reads = max_reads -1
 
