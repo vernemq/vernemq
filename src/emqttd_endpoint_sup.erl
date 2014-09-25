@@ -11,12 +11,12 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0,
-         add_endpoint/5,
-         add_ws_endpoint/5]).
+-export([start_link/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
+
+-export([change_config_now/3]).
 
 -define(SERVER, ?MODULE).
 -define(APP, emqttd_server).
@@ -37,19 +37,46 @@
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-add_endpoint(Ip, Port, MaxConnections, NrOfAcceptors, MountPoint) ->
-    [ChildSpec] = generate_childspecs([{{Ip,Port}, [{max_connections, MaxConnections},
-                                                    {nr_of_acceptors, NrOfAcceptors},
-                                                    {mountpoint, MountPoint}] }], ranch_tcp,
-                                      emqttd_tcp),
-    supervisor:start_child(?SERVER, ChildSpec).
+change_config_now(_New, Changed, _Deleted) ->
+    %% we are only interested if the config changes
+    {OldListeners, NewListeners} = proplists:get_value(listeners, Changed, {[],[]}),
+    {OldTCP, OldSSL, OldWS} = OldListeners,
+    {NewTcp, NewSSL, NewWS} = NewListeners,
+    maybe_change_listener(ranch_tcp, OldTCP, NewTcp),
+    maybe_change_listener(ranch_ssl, OldSSL, NewSSL),
+    maybe_change_listener(ranch_tcp, OldWS, NewWS),
+    maybe_new_listener(ranch_tcp, emqttd_tcp, OldTCP, NewTcp),
+    maybe_new_listener(ranch_ssl, emqttd_tcp, OldSSL, NewSSL),
+    maybe_new_listener(ranch_tcp, cowboy_protocol, OldWS, NewWS).
 
-add_ws_endpoint(Ip, Port, MaxConnections, NrOfAcceptors, MountPoint) ->
-    [ChildSpec] = generate_childspecs([{{Ip,Port}, [{max_connections, MaxConnections},
-                                                    {nr_of_acceptors, NrOfAcceptors},
-                                                    {mountpoint, MountPoint}] }], ranch_tcp,
-                                      cowboy_protocol),
-    supervisor:start_child(?SERVER, ChildSpec).
+maybe_change_listener(_, Old, New) when Old == New -> ok;
+maybe_change_listener(Transport, Old, New) ->
+    lists:foreach(
+      fun({{_,Port} = IpAddr, Opts}) ->
+              case proplists:get_value(IpAddr, New) of
+                  undefined ->
+                      %% delete listener
+                      ranch:stop_listener(listener_name(Port));
+                  Opts -> ok; %% no change;
+                  NewOpts ->
+                      %% New Opts for existing listener
+                      %% teardown listener and restart
+                      %% TODO: improve!
+                      ok = ranch:set_protocol_options(listener_name(Port), transport_opts(Transport, NewOpts))
+              end
+      end, Old).
+
+maybe_new_listener(Transport, Protocol, Old, New) ->
+    lists:foreach(
+      fun({{Addr, Port} = IpAddr, Opts}) ->
+              case proplists:get_value(IpAddr, Old) of
+                  undefined ->
+                      %% start new listener
+                      start_listener(Transport, Protocol, Addr, Port, Opts);
+                  _ ->
+                      ok
+              end
+      end, New).
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -70,63 +97,67 @@ add_ws_endpoint(Ip, Port, MaxConnections, NrOfAcceptors, MountPoint) ->
 %%--------------------------------------------------------------------
 init([]) ->
     {ok, {TCPListeners, SSLListeners, WSListeners}} = application:get_env(?APP, listeners),
-    MQTTEndpoints = generate_childspecs(TCPListeners, ranch_tcp, emqttd_tcp),
-    MQTTSEndpoints = generate_childspecs(SSLListeners, ranch_ssl, emqttd_tcp),
-    MQTTWSEndpoints = generate_childspecs(WSListeners, ranch_tcp, cowboy_protocol),
+    start_listeners(TCPListeners, ranch_tcp, emqttd_tcp),
+    start_listeners(SSLListeners, ranch_ssl, emqttd_tcp),
+    start_listeners(WSListeners, ranch_tcp, cowboy_protocol),
     CRLSrv = [{emqttd_crl_srv,
                {emqttd_crl_srv, start_link, []},
                permanent, 5000, worker, [emqttd_crl_srv]}],
-    {ok, { {one_for_one, 5, 10}, CRLSrv ++ MQTTEndpoints ++ MQTTSEndpoints ++ MQTTWSEndpoints}}.
+    {ok, { {one_for_one, 5, 10}, CRLSrv}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-generate_childspecs(Listeners, Transport, Protocol) ->
-    [ranch:child_spec(list_to_atom("mqtt_"++integer_to_list(Port)),
-                      proplists:get_value(nr_of_acceptors, Opts), Transport,
-                      [{ip, case is_list(Addr) of
-                                true -> {ok, Ip} = inet:parse_address(Addr),
-                                        Ip;
-                                false -> Addr
-                            end }, {port, Port},
-                       {max_connections, proplists:get_value(max_connections, Opts)} |
-                       case Transport of
-                           ranch_ssl ->
-                               [{cacerts, case proplists:get_value(cafile, Opts) of
-                                              undefined -> undefined;
-                                              CAFile -> load_cert(CAFile)
-                                          end},
-                                {certfile, proplists:get_value(certfile, Opts)},
-                                {keyfile, proplists:get_value(keyfile, Opts)},
-                                {ciphers, ciphersuite_transform(
-                                            proplists:get_value(support_elliptic_curves, Opts, true),
-                                            proplists:get_value(ciphers, Opts, [])
-                                           )},
-                                {fail_if_no_peer_cert, proplists:get_value(require_certificate, Opts, false)},
-                                {verify, case
-                                             proplists:get_value(require_certificate, Opts) or
-                                             proplists:get_value(use_identity_as_username, Opts)
-                                         of
-                                             true -> verify_peer;
-                                             _ -> verify_none
-                                         end},
-                                %{psk_identity, proplists:get_value(psk_hint, Opts)},
-                                %{user_lookup_fun, case proplists:get_value(psk_hint, Opts) of
-                                %                      undefined -> undefined;
-                                %                      _ ->
-                                %                          {fun(psk, _PSKIdent, _) ->
-                                %                                   {ok, <<"deadbeef">>}
-                                %                           end, []}
-                                %                  end},
-                                {verify_fun, {fun verify_ssl_peer/3, proplists:get_value(crlfile, Opts, no_crl)}},
-                                {versions, [proplists:get_value(tls_version, Opts, 'tlsv1.2')]}
-                               ];
-                           _ ->
-                               []
-                       end
-                      ],
-                      Protocol, handler_opts(Protocol, Opts))
-     || {{Addr, Port}, Opts} <- Listeners].
+start_listeners(Listeners, Transport, Protocol) ->
+    [start_listener(Transport, Protocol, Addr, Port, Opts) || {{Addr, Port}, Opts} <- Listeners].
+
+start_listener(Transport, Protocol, Addr, Port, Opts) ->
+    Ref = listener_name(Port),
+    NrOfAcceptors = proplists:get_value(nr_of_acceptors, Opts),
+    {ok, _Pid} = ranch:start_listener(Ref, NrOfAcceptors, Transport,
+                                      [{ip, case is_list(Addr) of
+                                                true -> {ok, Ip} = inet:parse_address(Addr),
+                                                        Ip;
+                                                false -> Addr
+                                            end }, {port, Port},
+                                       {max_connections, proplists:get_value(max_connections, Opts)}
+                                       | transport_opts(Transport, Opts)],
+                                      Protocol, handler_opts(Protocol, Opts)).
+
+listener_name(Port) ->
+    list_to_atom("mqtt_" ++ integer_to_list(Port)).
+
+transport_opts(ranch_ssl, Opts) ->
+    [{cacerts, case proplists:get_value(cafile, Opts) of
+                   undefined -> undefined;
+                   CAFile -> load_cert(CAFile)
+               end},
+     {certfile, proplists:get_value(certfile, Opts)},
+     {keyfile, proplists:get_value(keyfile, Opts)},
+     {ciphers, ciphersuite_transform(
+                 proplists:get_value(support_elliptic_curves, Opts, true),
+                 proplists:get_value(ciphers, Opts, [])
+                )},
+     {fail_if_no_peer_cert, proplists:get_value(require_certificate, Opts, false)},
+     {verify, case
+                  proplists:get_value(require_certificate, Opts) or
+                  proplists:get_value(use_identity_as_username, Opts)
+              of
+                  true -> verify_peer;
+                  _ -> verify_none
+              end},
+     %{psk_identity, proplists:get_value(psk_hint, Opts)},
+     %{user_lookup_fun, case proplists:get_value(psk_hint, Opts) of
+     %                      undefined -> undefined;
+     %                      _ ->
+     %                          {fun(psk, _PSKIdent, _) ->
+     %                                   {ok, <<"deadbeef">>}
+     %                           end, []}
+     %                  end},
+     {verify_fun, {fun verify_ssl_peer/3, proplists:get_value(crlfile, Opts, no_crl)}},
+     {versions, [proplists:get_value(tls_version, Opts, 'tlsv1.2')]}
+    ];
+transport_opts(ranch_tcp, _Opts) -> [].
 
 handler_opts(cowboy_protocol, Opts) ->
     Dispatch = cowboy_router:compile(
@@ -278,158 +309,3 @@ load_cert(Cert) ->
                     [DER || {Type, DER, Cipher} <- Contents, Type == 'Certificate', Cipher == 'not_encrypted']
             end
     end.
-
-%check_crl(Cert, State) ->
-%    %% pull the CRL distribution point(s) out of the certificate, if any
-%    case pubkey_cert:select_extension(
-%           ?'id-ce-cRLDistributionPoints',
-%           pubkey_cert:extensions_list(Cert#'OTPCertificate'.tbsCertificate#'OTPTBSCertificate'.extensions)) of
-%        undefined ->
-%            %% fail; we can't validate if there's no CRL
-%            no_crl;
-%        CRLExtension ->
-%            CRLDistPoints = CRLExtension#'Extension'.extnValue,
-%            DPointsAndCRLs = lists:foldl(fun(Point, Acc) ->
-%                                                 %% try to read the CRL over http or from a
-%                                                 %% local file
-%                                                 case fetch_point(Point) of
-%                                                     not_available ->
-%                                                         Acc;
-%                                                     Res ->
-%                                                         [{Point, Res} | Acc]
-%                                                 end
-%                                         end, [], CRLDistPoints),
-%            public_key:pkix_crls_validate(Cert,
-%                                          DPointsAndCRLs,
-%                                          [{issuer_fun,
-%                                            {fun issuer_function/4, State}}])
-%    end.
-%%% @doc Given a list of distribution points for CRLs, certificates and
-%%% both trusted and intermediary certificates, attempt to build and
-%%% authority chain back via build_chain to verify that it is valid.
-%%%
-%issuer_function(_DP, CRL, _Issuer, {TrustedCAs, IntermediateCerts}) ->
-%    %% XXX the 'Issuer' we get passed here is the AuthorityKeyIdentifier,
-%    %% which we are not currently smart enough to understand
-%    %% Read the CA certs out of the file
-%    Certs = [public_key:pkix_decode_cert(DER, otp) || DER <- TrustedCAs],
-%    %% get the real issuer out of the CRL
-%    Issuer = public_key:pkix_normalize_name(
-%               pubkey_cert_records:transform(
-%                 CRL#'CertificateList'.tbsCertList#'TBSCertList'.issuer, decode)),
-%    %% assume certificates are ordered from root to tip
-%    case find_issuer(Issuer, IntermediateCerts ++ Certs) of
-%        undefined ->
-%            error;
-%        IssuerCert ->
-%            case build_chain({public_key:pkix_encode('OTPCertificate',
-%                                                     IssuerCert,
-%                                                     otp),
-%                              IssuerCert}, IntermediateCerts, Certs, []) of
-%                undefined ->
-%                    error;
-%                {OTPCert, Path} ->
-%                    {ok, OTPCert, Path}
-%            end
-%    end.
-%
-%%% @doc Attempt to build authority chain back using intermediary
-%%% certificates, falling back on trusted certificates if the
-%%% intermediary chain of certificates does not fully extend to the
-%%% root.
-%%%
-%%% Returns: {RootCA :: #OTPCertificate{}, Chain :: [der_encoded()]}
-%%%
-%build_chain({DER, Cert}, IntCerts, TrustedCerts, Acc) ->
-%    %% check if this cert is self-signed, if it is, we've reached the
-%    %% root of the chain
-%    Issuer = public_key:pkix_normalize_name(
-%               Cert#'OTPCertificate'.tbsCertificate#'OTPTBSCertificate'.issuer),
-%    Subject = public_key:pkix_normalize_name(
-%                Cert#'OTPCertificate'.tbsCertificate#'OTPTBSCertificate'.subject),
-%    case Issuer == Subject of
-%        true ->
-%            case find_issuer(Issuer, TrustedCerts) of
-%                undefined ->
-%                    io:format("self-signed certificate is NOT trusted~n"),
-%                    undefined;
-%                TrustedCert ->
-%                    %% return the cert from the trusted list, to prevent
-%                    %% issuer spoofing
-%                    {TrustedCert,
-%                     [public_key:pkix_encode(
-%                        'OTPCertificate', TrustedCert, otp)|Acc]}
-%            end;
-%        false ->
-%            Match = lists:foldl(
-%                      fun(C, undefined) ->
-%                              S = public_key:pkix_normalize_name(C#'OTPCertificate'.tbsCertificate#'OTPTBSCertificate'.subject),
-%                              %% compare the subject to the current issuer
-%                              case Issuer == S of
-%                                  true ->
-%                                      %% we've found our man
-%                                      {public_key:pkix_encode('OTPCertificate', C, otp), C};
-%                                  false ->
-%                                      undefined
-%                              end;
-%                         (_E, A) ->
-%                              %% already matched
-%                              A
-%                      end, undefined, IntCerts),
-%            case Match of
-%                undefined when IntCerts /= TrustedCerts ->
-%                    %% continue the chain by using the trusted CAs
-%                    io:format("Ran out of intermediate certs, switching to trusted certs~n"),
-%                    build_chain({DER, Cert}, TrustedCerts, TrustedCerts, Acc);
-%                undefined ->
-%                    io:format("Can't construct chain of trust beyond ~p~n",
-%                              [get_common_name(Cert)]),
-%                    %% can't find the current cert's issuer
-%                    undefined;
-%                Match ->
-%                    build_chain(Match, IntCerts, TrustedCerts, [DER|Acc])
-%            end
-%    end.
-%%% @doc Given a certificate and a list of trusted or intermediary
-%%% certificates, attempt to find a match in the list or bail with
-%%% undefined.
-%find_issuer(Issuer, Certs) ->
-%    lists:foldl(
-%      fun(OTPCert, undefined) ->
-%              %% check if this certificate matches the issuer
-%              Normal = public_key:pkix_normalize_name(
-%                         OTPCert#'OTPCertificate'.tbsCertificate#'OTPTBSCertificate'.subject),
-%              case Normal == Issuer of
-%                  true ->
-%                      OTPCert;
-%                  false ->
-%                      undefined
-%              end;
-%         (_E, Acc) ->
-%              %% already found a match
-%              Acc
-%      end, undefined, Certs).
-%
-%get_crl(File) ->
-%    {ok, Bin} = file:read_file(File),
-%    %% assume PEM
-%    [{'CertificateList', DER, _}=CertList] = public_key:pem_decode(Bin),
-%    {DER, public_key:pem_entry_decode(CertList)}.
-%
-%
-%%% get the common name attribute out of an OTPCertificate record
-%get_common_name(OTPCert) ->
-%    %% You'd think there'd be an easier way than this giant mess, but I
-%    %% couldn't find one.
-%    {rdnSequence, Subject} = OTPCert#'OTPCertificate'.tbsCertificate#'OTPTBSCertificate'.subject,
-%    case [Attribute#'AttributeTypeAndValue'.value || [Attribute] <- Subject,
-%                                                     Attribute#'AttributeTypeAndValue'.type == ?'id-at-commonName'] of
-%        [Att] ->
-%            case Att of
-%                {teletexString, Str} -> Str;
-%                {printableString, Str} -> Str;
-%                {utf8String, Bin} -> binary_to_list(Bin)
-%            end;
-%        _ ->
-%            unknown
-%    end.
