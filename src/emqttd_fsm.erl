@@ -415,7 +415,7 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
             % returned when no hook on_register hook was
             % able to authenticate user
             {connection_attempted,
-             send_connack(?CONNACK_INVALID_ID, State)};
+             send_connack(?CONNACK_CREDENTIALS, State)};
         {error, invalid_credentials} ->
             {connection_attempted,
              send_connack(?CONNACK_CREDENTIALS, State)};
