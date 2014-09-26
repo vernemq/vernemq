@@ -52,17 +52,17 @@ change_config_now(_New, Changed, _Deleted) ->
 maybe_change_listener(_, Old, New) when Old == New -> ok;
 maybe_change_listener(Transport, Old, New) ->
     lists:foreach(
-      fun({{_,Port} = IpAddr, Opts}) ->
+      fun({{Ip,Port} = IpAddr, Opts}) ->
               case proplists:get_value(IpAddr, New) of
                   undefined ->
                       %% delete listener
-                      ranch:stop_listener(listener_name(Port));
+                      ranch:stop_listener(listener_name(Ip, Port));
                   Opts -> ok; %% no change;
                   NewOpts ->
                       %% New Opts for existing listener
                       %% teardown listener and restart
                       %% TODO: improve!
-                      ok = ranch:set_protocol_options(listener_name(Port), transport_opts(Transport, NewOpts))
+                      ok = ranch:set_protocol_options(listener_name(Ip, Port), transport_opts(Transport, NewOpts))
               end
       end, Old).
 
@@ -112,7 +112,7 @@ start_listeners(Listeners, Transport, Protocol) ->
     [start_listener(Transport, Protocol, Addr, Port, Opts) || {{Addr, Port}, Opts} <- Listeners].
 
 start_listener(Transport, Protocol, Addr, Port, Opts) ->
-    Ref = listener_name(Port),
+    Ref = listener_name(Addr, Port),
     NrOfAcceptors = proplists:get_value(nr_of_acceptors, Opts),
     {ok, _Pid} = ranch:start_listener(Ref, NrOfAcceptors, Transport,
                                       [{ip, case is_list(Addr) of
@@ -124,8 +124,8 @@ start_listener(Transport, Protocol, Addr, Port, Opts) ->
                                        | transport_opts(Transport, Opts)],
                                       Protocol, handler_opts(Protocol, Opts)).
 
-listener_name(Port) ->
-    list_to_atom("mqtt_" ++ integer_to_list(Port)).
+listener_name(Ip, Port) ->
+    {emqttd_listener, Ip, Port}.
 
 transport_opts(ranch_ssl, Opts) ->
     [{cacerts, case proplists:get_value(cafile, Opts) of
