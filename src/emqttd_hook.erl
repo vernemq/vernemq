@@ -2,7 +2,7 @@
 
 -export([start/1, stop/0]).
 -export([declare/3]).
--export([add/3, delete/4]).
+-export([add/2, delete/4]).
 -export([all/2, only/2, every/3]).
 
 -define(TABLE, ?MODULE).
@@ -33,7 +33,7 @@ start(App) ->
     Registrations =
     lists:foldl(
       fun(M, Acc) ->
-              [[begin add(Name, ets:info(?TABLE, size), MFA), {M, Name, MFA} end
+              [[begin add(Name, MFA), {M, Name, MFA} end
                || {register_hook, [{Name, MFA}]}
                   <- M:module_info(attributes)] | Acc]
       end, [], Modules),
@@ -60,18 +60,18 @@ declare(Name, Type, Arity) ->
             {error, duplicate_name}
     end.
 
--spec add(name(), priority(), mfa()) -> ok | no_return().
-add(Name, Priority, {Module, Function, Arity}) ->
+-spec add(name(), mfa()) -> ok | no_return().
+add(Name, {Module, Function, Arity}) ->
     try
         ListOfTuple = apply(Module, module_info, [exports]),
         case lists:member({Function, Arity}, ListOfTuple) of
             true ->
-                Hook = {Priority, {Module, Function, Arity}},
+                Hook = {Module, Function, Arity},
                 case ets:lookup(?TABLE, Name) of
                     [] ->
                         error({missing_declare, Name});
                     [{Name, Type, Arity, ListOfHook}] ->
-                        verify_add(Name, Type, Arity, ListOfHook, Hook);
+                        verify_add(Name, Type, Arity, ListOfHook, {length(ListOfHook), Hook});
                     [{_Name, Type, _Arity, _ListOfHook}] ->
                         error({invalid_arity, Name, Type, Hook})
                 end;
