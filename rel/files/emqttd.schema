@@ -837,7 +837,41 @@
  end}.
 
 
+{mapping, "auth_plugin.on_publish.$name", "emqttd_lua.on_publish", [
+                                                                    {default, ""},
+                                                                    {datatype, file},
+                                                                    hidden
+                                                                   ]}.
 
+{mapping, "auth_plugin.on_subscribe.$name", "emqttd_lua.on_subscribe", [
+                                                                    {default, ""},
+                                                                    {datatype, file},
+                                                                    hidden
+                                                                   ]}.
+
+{mapping, "auth_plugin.on_register.$name", "emqttd_lua.on_register", [
+                                                                    {default, ""},
+                                                                    {datatype, file},
+                                                                    hidden
+                                                                   ]}.
+
+{translation, "emqttd_lua.on_publish",
+ fun(Conf) ->
+      Scripts = cuttlefish_variable:filter_by_prefix("auth_plugin.on_publish", Conf),
+      [ Script || {_, Script} <- Scripts]
+  end}.
+
+{translation, "emqttd_lua.on_subscribe",
+ fun(Conf) ->
+      Scripts = cuttlefish_variable:filter_by_prefix("auth_plugin.on_subscribe", Conf),
+      [ Script || {_, Script} <- Scripts]
+  end}.
+
+{translation, "emqttd_lua.on_register",
+ fun(Conf) ->
+      Scripts = cuttlefish_variable:filter_by_prefix("auth_plugin.on_register", Conf),
+      [ Script || {_, Script} <- Scripts]
+  end}.
 
 
 %% @doc Where to emit the default log messages (typically at 'info'

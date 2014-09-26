@@ -22,7 +22,7 @@ cd $RUNNER_BASE_DIR
 SCRIPT=`basename $0`
 
 usage() {
-    echo "Usage: $SCRIPT { clean-msg-store | clean-registry }"
+    echo "Usage: $SCRIPT { clean-msg-store | clean-registry | reload-config }"
 }
 
 case "$1" in
@@ -33,5 +33,10 @@ case "$1" in
     clean-registry)
         node_up_check
         $NODETOOL rpc emqttd_reg reset_all_tables
+        ;;
+    reload-config)
+        node_up_check
+        $ERTS_PATH/escript $ERTS_PATH/cuttlefish -e $RUNNER_ETC_DIR -s $RUNNER_LIB_DIR -d ./data/generated.configs -c $RUNNER_ETC_DIR/emqttd.conf
+        $NODETOOL rpc emqttd_config_reloader reload_all
         ;;
 esac

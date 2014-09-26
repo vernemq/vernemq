@@ -27,6 +27,8 @@ suback_packet = mosq_test.gen_suback(mid, 0)
 
 publish_packet = mosq_test.gen_publish("bridge/ssl/test", qos=0, payload="message")
 
+emqttd.start('08-ssl-bridge.conf')
+
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 ssock = ssl.wrap_socket(sock, ca_certs="../ssl/all-ca.crt", keyfile="../ssl/server.key", certfile="../ssl/server.crt", server_side=True, ssl_version=ssl.PROTOCOL_TLSv1)
@@ -34,7 +36,6 @@ ssock.settimeout(20)
 ssock.bind(('', 1888))
 ssock.listen(5)
 
-emqttd.start('08-ssl-bridge.conf')
 
 try:
     time.sleep(0.5)

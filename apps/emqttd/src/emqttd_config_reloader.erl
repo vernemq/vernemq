@@ -1,7 +1,16 @@
 -module(emqttd_config_reloader).
 
--export([reload_app_conf/1]).
+-export([reload_all/1,
+         reload_app_conf/1]).
 -define(CONF_PATH, "data/generated.configs").
+
+reload_all([]) ->
+    %% called from emqttd-admin script
+    reload_app_conf(emqttd_acl),
+    reload_app_conf(emqttd_passwd),
+    reload_app_conf(emqttd_lua),
+    reload_app_conf(emqttd_bridge),
+    reload_app_conf(emqttd_server).
 
 reload_app_conf(Application) ->
     case config_diff(Application) of

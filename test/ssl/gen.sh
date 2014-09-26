@@ -12,9 +12,9 @@ for a in root signing; do
 done
 rm -rf certs
 
-BASESUBJ="/C=GB/ST=Derbyshire/L=Derby/O=Mosquitto Project/OU=Testing"
-SBASESUBJ="/C=GB/ST=Nottinghamshire/L=Nottingham/O=Server/OU=Production"
-BBASESUBJ="/C=GB/ST=Nottinghamshire/L=Nottingham/O=Server/OU=Bridge"
+BASESUBJ="/C=CH/ST=Basel-Town/L=Basel/O=Erlio MQTT Project/OU=Testing"
+SBASESUBJ="/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production"
+BBASESUBJ="/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Bridge"
 
 # The root CA
 openssl genrsa -out test-root-ca.key 1024
