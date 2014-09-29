@@ -1,4 +1,4 @@
--module(emqttd_fsm).
+-module(vmq_fsm).
 -include_lib("emqtt_commons/include/emqtt_frame.hrl").
 
 -export([deliver/7,
@@ -158,7 +158,7 @@ handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained, IsDup,
               },
     case send_publish_frame(Frame, State1) of
         {error, Reason} when QoS > 0 ->
-            emqttd_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
+            vmq_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
             io:format("[~p] stop due to ~p, deliver when client reconnects~n", [self(), Reason]),
             ret({stop, normal, State1});
         {error, Reason} ->
@@ -178,7 +178,7 @@ handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained, IsDup,
 handle_fsm_msg({deliver_bin, {MsgId, QoS, Bin}}, {connected, State}) ->
     #state{send_fun=SendFun, waiting_acks=WAcks, retry_interval=RetryInterval} = State,
     SendFun(Bin),
-    emqttd_systree:incr_messages_sent(),
+    vmq_systree:incr_messages_sent(),
     Ref = send_after(RetryInterval, {retry, MsgId}),
     ret({connected, State#state{
                   waiting_acks=dict:store(MsgId,
@@ -199,7 +199,7 @@ handle_fsm_msg({retry, MessageId}, {connected, State}) ->
         Item -> Item
     end,
     SendFun(Bin),
-    emqttd_systree:incr_messages_sent(),
+    vmq_systree:incr_messages_sent(),
     Ref = send_after(RetryInterval, {retry, MessageId}),
     ret({connected, State#state{
                   waiting_acks=dict:store(MessageId,
@@ -226,7 +226,7 @@ process_bytes(Bytes, StateName, State) ->
             {StateName, State#state{parser_state=NewParserState}};
         {ok, #mqtt_frame{fixed=Fixed, variable=Variable,
                          payload=Payload}, Rest} ->
-            emqttd_systree:incr_messages_received(),
+            vmq_systree:incr_messages_received(),
             case handle_frame(StateName, Fixed, Variable,
                               Payload, State) of
                 {NextStateName, #state{keep_alive=KeepAlive} = NewState} ->
@@ -254,12 +254,12 @@ process_bytes(Bytes, StateName, State) ->
     {statename(), #state{}} | {stop, atom(), #state{}}.
 
 handle_frame(wait_for_connect, _, #mqtt_frame_connect{keep_alive=KeepAlive} = Var, _, State) ->
-    emqttd_systree:incr_connect_received(),
+    vmq_systree:incr_connect_received(),
     Ret = check_connect(Var, State#state{keep_alive=KeepAlive * 1000}),
     case Ret of
         {connected, _} ->
-            emqttd_systree:decr_inactive_clients(),
-            emqttd_systree:incr_active_clients();
+            vmq_systree:decr_inactive_clients(),
+            vmq_systree:incr_active_clients();
         _ ->
             ok
     end,
@@ -272,7 +272,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
     case dict:find(MessageId, WAcks) of
         {ok, {_, _, Ref, MsgStoreRef}} ->
             cancel_timer(Ref),
-            emqttd_msg_store:deref(MsgStoreRef),
+            vmq_msg_store:deref(MsgStoreRef),
             {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
         error ->
             io:format("got error~n"),
@@ -291,9 +291,9 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
                              payload= <<>>},
     Bin = emqtt_frame:serialise(PubRelFrame),
     SendFun(Bin),
-    emqttd_systree:incr_messages_sent(),
+    vmq_systree:incr_messages_sent(),
     NewRef = send_after(RetryInterval, {retry, MessageId}),
-    emqttd_msg_store:deref(MsgStoreRef),
+    vmq_msg_store:deref(MsgStoreRef),
     {connected, State#state{
                   waiting_acks=dict:store(MessageId,
                                           {2, PubRelFrame,
@@ -308,9 +308,9 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup}, Var, _, Stat
     case dict:find({qos2, MessageId} , WAcks) of
         {ok, {_, _, TRef, {MsgRef, IsRetain}}} ->
             cancel_timer(TRef),
-            {ok, {RoutingKey, Payload}} = emqttd_msg_store:retrieve(MsgRef),
+            {ok, {RoutingKey, Payload}} = vmq_msg_store:retrieve(MsgRef),
             publish(User, ClientId, MsgRef, RoutingKey, Payload, IsRetain),
-            emqttd_msg_store:deref(MsgRef),
+            vmq_msg_store:deref(MsgRef),
             State#state{waiting_acks=dict:erase({qos2, MessageId}, WAcks)};
         error when IsDup ->
             %% already delivered, Client expects a PUBCOMP
@@ -334,7 +334,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
              Var, Payload, State) ->
     #state{mountpoint=MountPoint} = State,
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
-    emqttd_systree:incr_publishes_received(),
+    vmq_systree:incr_publishes_received(),
     {connected, dispatch_publish(QoS, MessageId, combine_mp(MountPoint, Topic), Payload,
                                  IsRetain, State)};
 
@@ -342,7 +342,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
     #state{client_id=Id, username=User, mountpoint=MountPoint} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
     TTopics = [{combine_mp(MountPoint, Name), QoS} || #mqtt_topic{name=Name, qos=QoS} <- Topics],
-    case emqttd_reg:subscribe(User, Id, TTopics) of
+    case vmq_reg:subscribe(User, Id, TTopics) of
         ok ->
             {_, QoSs} = lists:unzip(TTopics),
             NewState = send_frame(?SUBACK, #mqtt_frame_suback{
@@ -359,7 +359,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
     #state{client_id=Id, username=User, mountpoint=MountPoint} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
     TTopics = [combine_mp(MountPoint, Name) || #mqtt_topic{name=Name} <- Topics],
-    case emqttd_reg:unsubscribe(User, Id, TTopics) of
+    case vmq_reg:unsubscribe(User, Id, TTopics) of
         ok ->
             NewState = send_frame(?UNSUBACK, #mqtt_frame_suback{
                                                 message_id=MessageId
@@ -383,8 +383,8 @@ handle_frame(connected, #mqtt_frame_fixed{type=?DISCONNECT}, _, _, State) ->
 ret({stop, _Reason, State}) ->
     handle_waiting_acks(State),
     maybe_publish_last_will(State),
-    emqttd_systree:decr_active_clients(),
-    emqttd_systree:incr_inactive_clients(),
+    vmq_systree:decr_active_clients(),
+    vmq_systree:incr_inactive_clients(),
     stop;
 ret({_, _} = R) -> R.
 
@@ -404,9 +404,9 @@ check_client_id(#mqtt_frame_connect{}, #state{username={preauth, undefined}} = S
 check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
                 #state{username={preauth, ClientId}, peer=Peer} = State) ->
     %% User preauthenticated using e.g. SSL client certificate
-    case emqttd_reg:register_client(ClientId, CleanSession) of
+    case vmq_reg:register_client(ClientId, CleanSession) of
         ok ->
-            emqttd_hook:all(on_register, [Peer, ClientId, undefined, undefined]),
+            vmq_hook:all(on_register, [Peer, ClientId, undefined, undefined]),
             check_will(F, State);
         {error, _Reason} ->
             {connection_attempted,
@@ -438,11 +438,11 @@ check_user(#mqtt_frame_connect{username=""} = F, State) ->
 check_user(#mqtt_frame_connect{username=User, password=Password,
                                client_id=ClientId, clean_sess=CleanSession} = F, State) ->
     #state{peer=Peer} = State,
-    case emqttd_hook:only(auth_on_register, [Peer, ClientId, User, Password]) of
+    case vmq_hook:only(auth_on_register, [Peer, ClientId, User, Password]) of
         ok ->
-            case emqttd_reg:register_client(ClientId, CleanSession) of
+            case vmq_reg:register_client(ClientId, CleanSession) of
                 ok ->
-                    emqttd_hook:all(on_register, [Peer, ClientId, User, Password]),
+                    vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
                     check_will(F, State#state{username=User});
                 {error, _Reason} ->
                     {connection_attempted,
@@ -470,7 +470,7 @@ check_will(#mqtt_frame_connect{will_topic=""}, State) ->
 check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos}, State) ->
     #state{mountpoint=MountPoint, username=User, client_id=ClientId, keep_alive=KeepAlive} = State,
     LWTopic = combine_mp(MountPoint, Topic),
-    case emqttd_hook:only(auth_on_publish, [User, ClientId, last_will, LWTopic, Msg, false]) of
+    case vmq_hook:only(auth_on_publish, [User, ClientId, last_will, LWTopic, Msg, false]) of
         ok ->
             {connected, send_connack(?CONNACK_ACCEPT,
                          State#state{will_qos=Qos,
@@ -497,7 +497,7 @@ send_frame(Type, DUP, Variable, Payload, #state{send_fun=SendFun} = State) ->
                              payload=Payload
                             }),
     SendFun(Bin),
-    emqttd_systree:incr_messages_sent(),
+    vmq_systree:incr_messages_sent(),
     State.
 
 
@@ -532,18 +532,18 @@ dispatch_publish_qos0(_MessageId, Topic, Payload, IsRetain, State) ->
 -spec dispatch_publish_qos1(msg_id(), topic(), payload(), flag(), #state{}) -> #state{}.
 dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
     #state{username=User, client_id=ClientId} = State,
-    MsgRef = emqttd_msg_store:store(User, ClientId, Topic, Payload),
+    MsgRef = vmq_msg_store:store(User, ClientId, Topic, Payload),
     publish(User, ClientId, MsgRef, Topic, Payload, IsRetain),
     NewState = send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId},
                           <<>>, State),
-    emqttd_msg_store:deref(MsgRef),
+    vmq_msg_store:deref(MsgRef),
     NewState.
 
 -spec dispatch_publish_qos2(msg_id(), topic(), payload(), flag(), #state{}) -> #state{}.
 dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
     #state{username=User, client_id=ClientId, waiting_acks=WAcks,
            retry_interval=RetryInterval, send_fun=SendFun} = State,
-    MsgRef = emqttd_msg_store:store(User, ClientId, Topic, Payload),
+    MsgRef = vmq_msg_store:store(User, ClientId, Topic, Payload),
     Ref = send_after(RetryInterval, {retry, {qos2, MessageId}}),
     Bin = emqtt_frame:serialise(#mqtt_frame{
                              fixed=#mqtt_frame_fixed{type=?PUBREC},
@@ -551,7 +551,7 @@ dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
                              payload= <<>>
                             }),
     SendFun(Bin),
-    emqttd_systree:incr_messages_sent(),
+    vmq_systree:incr_messages_sent(),
     State#state{waiting_acks=dict:store(
                                {qos2, MessageId},
                                {2, Bin, Ref, {MsgRef, IsRetain}}, WAcks)}.
@@ -570,8 +570,8 @@ send_publish_frame(Frame, State) ->
     Bin = emqtt_frame:serialise(Frame),
     case SendFun(Bin) of
         ok ->
-            emqttd_systree:incr_publishes_sent(),
-            emqttd_systree:incr_messages_sent(),
+            vmq_systree:incr_publishes_sent(),
+            vmq_systree:incr_messages_sent(),
             State;
         {error, Reason} ->
             {error, Reason}
@@ -582,14 +582,14 @@ send_publish_frame(Frame, State) ->
 publish(User, ClientId, MsgRef, Topic, Payload, IsRetain) ->
     %% auth_on_publish hook must return either:
     %% next | ok
-    case emqttd_hook:only(auth_on_publish, [User, ClientId, MsgRef, Topic,
+    case vmq_hook:only(auth_on_publish, [User, ClientId, MsgRef, Topic,
                                             Payload, IsRetain]) of
         not_found ->
             {error, not_allowed};
         ok ->
-            R = emqttd_reg:publish(User, ClientId, MsgRef, Topic,
+            R = vmq_reg:publish(User, ClientId, MsgRef, Topic,
                                    Payload, IsRetain),
-            emqttd_hook:all(on_publish, [User, ClientId, MsgRef,
+            vmq_hook:all(on_publish, [User, ClientId, MsgRef,
                                          Topic, Payload, IsRetain]),
             R
     end.
@@ -620,15 +620,15 @@ handle_waiting_acks(State) ->
                               Frame#mqtt_frame{
                                 fixed=Fixed#mqtt_frame_fixed{
                                         dup=true}}),
-                      emqttd_msg_store:defer_deliver_uncached(ClientId, {MsgId, QoS, Bin}),
+                      vmq_msg_store:defer_deliver_uncached(ClientId, {MsgId, QoS, Bin}),
                       Acc;
                   (MsgId, {QoS, Bin, TRef, undefined}, Acc) ->
                       cancel_timer(TRef),
-                      emqttd_msg_store:defer_deliver_uncached(ClientId, {MsgId, QoS, Bin}),
+                      vmq_msg_store:defer_deliver_uncached(ClientId, {MsgId, QoS, Bin}),
                       Acc;
                   (_MsgId, {QoS, _Frame, TRef, MsgStoreRef}, Acc) ->
                       cancel_timer(TRef),
-                      emqttd_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef, true),
+                      vmq_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef, true),
                       Acc
               end, [], WAcks).
 

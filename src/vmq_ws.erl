@@ -1,4 +1,4 @@
--module(emqttd_ws).
+-module(vmq_ws).
 -behaviour(cowboy_websocket_handler).
 
 -export([init/3]).
@@ -17,20 +17,20 @@ init({tcp, http}, _Req, _Opts) ->
 websocket_init(_TransportName, Req, Opts) ->
     Self = self(),
     {Ip, _Port} = cowboy_req:peer(Req),
-    State = emqttd_fsm:init(Ip, fun(Bin) ->
-                                        emqttd_systree:incr_bytes_sent(byte_size(Bin)),
+    State = vmq_fsm:init(Ip, fun(Bin) ->
+                                        vmq_systree:incr_bytes_sent(byte_size(Bin)),
                                         send(Self, {reply, Bin})
                                 end, Opts),
     case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req) of
         {ok, undefined, Req2} ->
-            emqttd_systree:incr_socket_count(),
+            vmq_systree:incr_socket_count(),
             {ok, Req2, State};
         {ok, Subprotocols, Req2} ->
             case lists:member(?SUBPROTO, Subprotocols) of
                 true ->
                     Req3 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>,
                                                       <<"mqttv3.1">>, Req2),
-                    emqttd_systree:incr_socket_count(),
+                    vmq_systree:incr_socket_count(),
                     {ok, Req3, State};
                 false ->
                     {shutdown, Req2}
@@ -39,8 +39,8 @@ websocket_init(_TransportName, Req, Opts) ->
 
 -spec websocket_handle({binary, binary()} | any(), cowboy_req:req(), any()) -> {ok | shutdown, cowboy_req:req(), any()}.
 websocket_handle({binary, Data}, Req, FSMState) ->
-    emqttd_systree:incr_bytes_received(byte_size(Data)),
-    case emqttd_fsm:handle_input(Data, FSMState) of
+    vmq_systree:incr_bytes_received(byte_size(Data)),
+    case vmq_fsm:handle_input(Data, FSMState) of
         stop ->
             {shutdown, Req, FSMState};
         NewFSMState ->
@@ -54,7 +54,7 @@ websocket_handle(_Data, Req, State) ->
 websocket_info({reply, Data}, Req, State) ->
     {reply, {binary, Data}, Req, State};
 websocket_info(Info, Req, FSMState) ->
-    case emqttd_fsm:handle_fsm_msg(Info, FSMState) of
+    case vmq_fsm:handle_fsm_msg(Info, FSMState) of
         stop ->
             {shutdown, Req, FSMState};
         NewFSMState ->
@@ -65,8 +65,8 @@ websocket_info(Info, Req, FSMState) ->
 
 -spec websocket_terminate(_, cowboy_req:req(), any()) -> ok.
 websocket_terminate(_Reason, _Req, FSMState) ->
-    emqttd_fsm:handle_close(FSMState),
-    emqttd_systree:decr_socket_count(),
+    vmq_fsm:handle_close(FSMState),
+    vmq_systree:decr_socket_count(),
     ok.
 
 

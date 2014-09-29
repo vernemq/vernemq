@@ -1,4 +1,4 @@
--module(emqttd_msg_store).
+-module(vmq_msg_store).
 -behaviour(gen_server).
 -include_lib("emqtt_commons/include/types.hrl").
 
@@ -31,9 +31,9 @@
 -define(MSG_ITEM, 0).
 -define(INDEX_ITEM, 1).
 -define(RETAIN_ITEM, 2).
--define(MSG_INDEX_TABLE, emqttd_msg_index).
--define(MSG_RETAIN_TABLE, emqttd_msg_retain).
--define(MSG_CACHE_TABLE, emqttd_msg_cache).
+-define(MSG_INDEX_TABLE, vmq_msg_index).
+-define(MSG_RETAIN_TABLE, vmq_msg_retain).
+-define(MSG_CACHE_TABLE, vmq_msg_cache).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
@@ -94,12 +94,12 @@ deref(MsgRef) ->
 -spec deliver_from_store(client_id(),pid()) -> 'ok'.
 deliver_from_store(ClientId, ClientPid) ->
     lists:foreach(fun ({_, {uncached, Term}} = Obj) ->
-                          emqttd_fsm:deliver_bin(ClientPid, Term),
+                          vmq_fsm:deliver_bin(ClientPid, Term),
                           ets:delete_object(?MSG_INDEX_TABLE, Obj);
                       ({_, QoS, MsgRef, DeliverAsDup} = Obj) ->
                           case retrieve(MsgRef) of
                               {ok, {RoutingKey, Payload}} ->
-                                  emqttd_fsm:deliver(ClientPid, RoutingKey,
+                                  vmq_fsm:deliver(ClientPid, RoutingKey,
                                                      Payload, QoS,
                                                      false, DeliverAsDup, MsgRef);
                               {error, not_found} ->
@@ -118,7 +118,7 @@ deliver_retained(ClientPid, Topic, QoS) ->
                           true ->
                               MsgRef = store(User, ClientId,
                                             RoutingKey, Payload),
-                              emqttd_fsm:deliver(ClientPid, RoutingKey,
+                              vmq_fsm:deliver(ClientPid, RoutingKey,
                                                  Payload, QoS, true, false, MsgRef);
                           false ->
                               Acc
@@ -137,7 +137,7 @@ clean_session(ClientId) ->
 
 -spec retain_action(username(),client_id(),routing_key(),payload()) -> 'ok'.
 retain_action(User, ClientId, RoutingKey, Payload) ->
-    Nodes = emqttd_cluster:nodes(),
+    Nodes = vmq_cluster:nodes(),
     Now = now(),
     lists:foreach(fun(Node) when Node == node() ->
                           retain_action_(User, ClientId, Now,
@@ -156,7 +156,7 @@ retain_action_(_User, _ClientId, TS, RoutingKey, <<>>) ->
             MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
             gen_server:cast(?MODULE, {delete, MsgRef}),
             true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey),
-            emqttd_systree:decr_retained_count(),
+            vmq_systree:decr_retained_count(),
             ok;
         _ ->
             %% the retain-delete action is older than
@@ -174,7 +174,7 @@ retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
                                                       Payload, TS})}),
             true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User,
                                                   ClientId, Payload, TS}),
-            emqttd_systree:incr_retained_count(),
+            vmq_systree:incr_retained_count(),
             ok;
         [{_, _, _, _, TSOld}] when TS > TSOld ->
             %% in case of a race between retain-insert actions
@@ -203,7 +203,7 @@ defer_deliver(ClientId, Qos, MsgRef, DeliverAsDup) ->
 
 -spec clean_all([]) -> 'true'.
 clean_all([]) ->
-    %% called using emqttd-admin, mainly for test purposes
+    %% called using vmq-admin, mainly for test purposes
     %% you don't want to call this during production
     clean_retain(),
     clean_cache(),
@@ -266,11 +266,11 @@ init([MsgStoreDir]) ->
                      (<<?MSG_ITEM, MsgRef/binary>> = Key, Val, Acc) ->
                          {User, ClientId,
                           RoutingKey, Payload} = binary_to_term(Val),
-                         case emqttd_reg:subscriptions(RoutingKey) of
+                         case vmq_reg:subscriptions(RoutingKey) of
                              [] -> %% weird
                                 [Key|Acc];
                              _Subs ->
-                                 emqttd_reg:publish(User, ClientId, MsgRef,
+                                 vmq_reg:publish(User, ClientId, MsgRef,
                                                     RoutingKey, Payload, false),
                                  Acc
                          end;
@@ -313,7 +313,7 @@ terminate(_Reason, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
--spec safe_ets_update_counter('emqttd_msg_cache',_,{3,1},fun((_) -> 'new_ref_count'),fun(() -> 'new_cache_item' | 'new_ref_count')) -> 'new_cache_item' | 'new_ref_count'.
+-spec safe_ets_update_counter('vmq_msg_cache',_,{3,1},fun((_) -> 'new_ref_count'),fun(() -> 'new_cache_item' | 'new_ref_count')) -> 'new_cache_item' | 'new_ref_count'.
 safe_ets_update_counter(Tab, Key, UpdateOp, SuccessFun, FailThunk) ->
     try
         SuccessFun(ets:update_counter(Tab, Key, UpdateOp))

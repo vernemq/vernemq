@@ -1,4 +1,4 @@
--module(emqttd_systree).
+-module(vmq_systree).
 
 -behaviour(gen_server).
 
@@ -35,7 +35,7 @@
          code_change/3]).
 
 -record(state, {interval=60000}).
--define(TABLE, emqttd_systree).
+-define(TABLE, vmq_systree).
 
 %%%===================================================================
 %%% API

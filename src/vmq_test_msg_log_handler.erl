@@ -1,4 +1,4 @@
--module(emqttd_test_msg_log_handler).
+-module(vmq_test_msg_log_handler).
 
 -export([handle/4]).
 

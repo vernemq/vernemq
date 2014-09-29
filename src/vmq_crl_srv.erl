@@ -1,4 +1,4 @@
--module(emqttd_crl_srv).
+-module(vmq_crl_srv).
 -include_lib("public_key/include/public_key.hrl").
 
 -behaviour(gen_server).

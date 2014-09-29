@@ -1,4 +1,4 @@
--module(emqttd_sup).
+-module(vmq_sup).
 
 -behaviour(supervisor).
 %% API
@@ -24,17 +24,17 @@ start_link() ->
 
 -spec init([]) -> {'ok',{{'one_for_one',5,10},[{atom(),{atom(),atom(),list()},permanent,pos_integer(),worker,[atom()]}]}}.
 init([]) ->
-    %% we make sure the hooks for emqttd_server are registered first
-    emqttd_hook:start(emqttd_server),
-    [emqttd_hook:start(A) || {A, _, _}<- application:loaded_applications(),
-                             A /= emqttd_server],
+    %% we make sure the hooks for vmq_server are registered first
+    vmq_hook:start(vmq_server),
+    [vmq_hook:start(A) || {A, _, _}<- application:loaded_applications(),
+                             A /= vmq_server],
 
     EMQTTDir = "EMQTT."++atom_to_list(node()),
     filelib:ensure_dir(EMQTTDir),
     {ok, { {one_for_one, 5, 10}, [
-            ?CHILD(emqttd_endpoint_sup, supervisor, []),
-            ?CHILD(emqttd_cluster, worker, []),
-            ?CHILD(emqttd_systree, worker, [60000]),
-            ?CHILD(emqttd_msg_store, worker, [filename:join(EMQTTDir, "store")])
+            ?CHILD(vmq_endpoint_sup, supervisor, []),
+            ?CHILD(vmq_cluster, worker, []),
+            ?CHILD(vmq_systree, worker, [60000]),
+            ?CHILD(vmq_msg_store, worker, [filename:join(EMQTTDir, "store")])
                                  ]} }.
 

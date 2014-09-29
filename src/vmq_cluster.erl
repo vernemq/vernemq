@@ -1,4 +1,4 @@
--module(emqttd_cluster).
+-module(vmq_cluster).
 
 -behaviour(gen_server).
 
@@ -42,13 +42,13 @@ start_link() ->
 -spec nodes() -> [any()].
 nodes() ->
     [Node || [{Node, true}]
-             <- ets:match(emqttd_status, '$1'), Node /= ready].
+             <- ets:match(vmq_status, '$1'), Node /= ready].
 
 -spec on_node_up(_) -> 'ok' | 'true'.
 on_node_up(Node) ->
     wait_for_table(fun() ->
                            Nodes = mnesia_cluster_utils:cluster_nodes(all),
-                           ets:insert(emqttd_status, {Node, true}),
+                           ets:insert(vmq_status, {Node, true}),
                            update_ready(Nodes)
                    end).
 
@@ -56,13 +56,13 @@ on_node_up(Node) ->
 on_node_down(Node) ->
     wait_for_table(fun() ->
                            Nodes = mnesia_cluster_utils:cluster_nodes(all),
-                           ets:delete(emqttd_status, Node),
+                           ets:delete(vmq_status, Node),
                            update_ready(Nodes)
                    end).
 
 -spec wait_for_table(fun(() -> 'true')) -> 'ok' | 'true'.
 wait_for_table(Fun) ->
-    case lists:member(emqttd_status, ets:all()) of
+    case lists:member(vmq_status, ets:all()) of
         true -> Fun();
         false -> timer:sleep(100)
     end.
@@ -71,13 +71,13 @@ wait_for_table(Fun) ->
 update_ready(Nodes) ->
     SortedNodes = lists:sort(Nodes),
     IsReady = lists:sort([Node || [{Node, true}]
-                                  <- ets:match(emqttd_status, '$1'),
+                                  <- ets:match(vmq_status, '$1'),
                                   Node /= ready]) == SortedNodes,
-    ets:insert(emqttd_status, {ready, IsReady}).
+    ets:insert(vmq_status, {ready, IsReady}).
 
 -spec is_ready() -> boolean().
 is_ready() ->
-    ets:lookup(emqttd_status, ready) == [{ready, true}].
+    ets:lookup(vmq_status, ready) == [{ready, true}].
 
 -spec if_ready(_,_) -> any().
 if_ready(Fun, Args) ->
@@ -113,7 +113,7 @@ if_ready(Mod, Fun, Args) ->
 %%--------------------------------------------------------------------
 -spec init([]) -> {'ok',#state{}}.
 init([]) ->
-    ets:new(emqttd_status, [{read_concurrency, true}, public, named_table]),
+    ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------

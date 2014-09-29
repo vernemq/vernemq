@@ -1,4 +1,4 @@
--module(emqttd_app).
+-module(vmq_app).
 
 -behaviour(application).
 
@@ -10,7 +10,7 @@
 
 -spec start(_,_) -> 'ignore' | {'error',_} | {'ok',pid()}.
 start(_StartType, _StartArgs) ->
-    emqttd_sup:start_link().
+    vmq_sup:start_link().
 
 -spec stop(_) -> 'ok'.
 stop(_State) ->

@@ -1,4 +1,4 @@
--module(emqttd_tcp).
+-module(vmq_tcp).
 -behaviour(ranch_protocol).
 -include_lib("public_key/include/public_key.hrl").
 
@@ -31,10 +31,10 @@ init(Ref, Socket, Transport, Opts) ->
 
 
     {ok, Peer} = Transport:peername(Socket),
-    emqttd_systree:incr_socket_count(),
-    loop(Socket, Transport, emqttd_fsm:init(Peer,
+    vmq_systree:incr_socket_count(),
+    loop(Socket, Transport, vmq_fsm:init(Peer,
                                             fun(Bin) ->
-                                                    emqttd_systree:incr_bytes_sent(byte_size(Bin)),
+                                                    vmq_systree:incr_bytes_sent(byte_size(Bin)),
                                                     Transport:send(Socket, Bin)
                                             end, NewOpts)).
 
@@ -45,28 +45,28 @@ loop(Socket, Transport, FSMState) ->
     Transport:setopts(Socket, [{active, once}]),
     receive
         {tcp, Socket, Data} ->
-            emqttd_systree:incr_bytes_received(byte_size(Data)),
+            vmq_systree:incr_bytes_received(byte_size(Data)),
             loop(Socket, Transport,
-                 emqttd_fsm:handle_input(Data, FSMState));
+                 vmq_fsm:handle_input(Data, FSMState));
         {ssl, Socket, Data} ->
-            emqttd_systree:incr_bytes_received(byte_size(Data)),
+            vmq_systree:incr_bytes_received(byte_size(Data)),
             loop(Socket, Transport,
-                 emqttd_fsm:handle_input(Data, FSMState));
+                 vmq_fsm:handle_input(Data, FSMState));
         {tcp_closed, Socket} ->
-            emqttd_systree:decr_socket_count(),
-            emqttd_fsm:handle_close(FSMState);
+            vmq_systree:decr_socket_count(),
+            vmq_fsm:handle_close(FSMState);
         {ssl_closed, Socket} ->
-            emqttd_systree:decr_socket_count(),
-            emqttd_fsm:handle_close(FSMState);
+            vmq_systree:decr_socket_count(),
+            vmq_fsm:handle_close(FSMState);
         {tcp_error, Socket, Reason} ->
-            emqttd_systree:decr_socket_count(),
-            emqttd_fsm:handle_error(Reason, FSMState);
+            vmq_systree:decr_socket_count(),
+            vmq_fsm:handle_error(Reason, FSMState);
         {ssl_error, Socket, Reason} ->
-            emqttd_systree:decr_socket_count(),
-            emqttd_fsm:handle_error(Reason, FSMState);
+            vmq_systree:decr_socket_count(),
+            vmq_fsm:handle_error(Reason, FSMState);
         Msg ->
             loop(Socket, Transport,
-                 emqttd_fsm:handle_fsm_msg(Msg, FSMState))
+                 vmq_fsm:handle_fsm_msg(Msg, FSMState))
     end.
 
 -spec socket_to_common_name({'sslsocket',_,pid() | {port(),_}}) -> 'undefined' | [any()] | {'error',[any()],binary() | maybe_improper_list(binary() | maybe_improper_list(any(),binary() | []) | char(),binary() | [])} | {'incomplete',[any()],binary()}.

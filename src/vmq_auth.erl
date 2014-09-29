@@ -1,4 +1,4 @@
--module(emqttd_auth).
+-module(vmq_auth).
 -export([register_hooks/0]).
 -export([auth_on_register/4,
          auth_on_subscribe/3,
@@ -10,9 +10,9 @@ register_hooks() ->
 %%  -register_hook({auth_on_register, {?MODULE, auth_on_register, 4}}).
 %%  -register_hook({auth_on_subscribe, {?MODULE, auth_on_subscribe, 3}}).
 %%  -register_hook({auth_on_publish, {?MODULE, auth_on_publish, 6}}).
-    emqttd_hook:add(auth_on_register, {?MODULE, auth_on_register, 4}),
-    emqttd_hook:add(auth_on_subscribe, {?MODULE, auth_on_subscribe, 3}),
-    emqttd_hook:add(auth_on_publish, {?MODULE, auth_on_publish, 6}).
+    vmq_hook:add(auth_on_register, {?MODULE, auth_on_register, 4}),
+    vmq_hook:add(auth_on_subscribe, {?MODULE, auth_on_subscribe, 3}),
+    vmq_hook:add(auth_on_publish, {?MODULE, auth_on_publish, 6}).
 
 
 -spec auth_on_register(_,_,_,_) -> 'ok'.

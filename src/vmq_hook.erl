@@ -1,4 +1,4 @@
--module(emqttd_hook).
+-module(vmq_hook).
 
 -export([start/1, stop/0]).
 -export([declare/3]).

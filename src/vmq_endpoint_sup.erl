@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 2014-09-03 15:49:38.393546
 %%%-------------------------------------------------------------------
--module(emqttd_endpoint_sup).
+-module(vmq_endpoint_sup).
 -include_lib("public_key/include/public_key.hrl").
 -behaviour(supervisor).
 
@@ -19,7 +19,7 @@
 -export([change_config_now/3]).
 
 -define(SERVER, ?MODULE).
--define(APP, emqttd_server).
+-define(APP, vmq_server).
 
 -define(SSL_EC, []).
 
@@ -44,8 +44,8 @@ change_config_now(_New, Changed, _Deleted) ->
     maybe_change_listener(ranch_tcp, OldTCP, NewTcp),
     maybe_change_listener(ranch_ssl, OldSSL, NewSSL),
     maybe_change_listener(ranch_tcp, OldWS, NewWS),
-    maybe_new_listener(ranch_tcp, emqttd_tcp, OldTCP, NewTcp),
-    maybe_new_listener(ranch_ssl, emqttd_tcp, OldSSL, NewSSL),
+    maybe_new_listener(ranch_tcp, vmq_tcp, OldTCP, NewTcp),
+    maybe_new_listener(ranch_ssl, vmq_tcp, OldSSL, NewSSL),
     maybe_new_listener(ranch_tcp, cowboy_protocol, OldWS, NewWS).
 
 -spec maybe_change_listener('ranch_ssl' | 'ranch_tcp',_,_) -> 'ok'.
@@ -66,7 +66,7 @@ maybe_change_listener(Transport, Old, New) ->
               end
       end, Old).
 
--spec maybe_new_listener('ranch_ssl' | 'ranch_tcp','cowboy_protocol' | 'emqttd_tcp',_,[any()]) -> 'ok'.
+-spec maybe_new_listener('ranch_ssl' | 'ranch_tcp','cowboy_protocol' | 'vmq_tcp',_,[any()]) -> 'ok'.
 maybe_new_listener(Transport, Protocol, Old, New) ->
     lists:foreach(
       fun({{Addr, Port} = IpAddr, Opts}) ->
@@ -94,22 +94,22 @@ maybe_new_listener(Transport, Protocol, Old, New) ->
 -spec init([]) -> {'ok',{{'one_for_one',5,10},[{atom(),{atom(),atom(),list()},permanent,pos_integer(),worker,[atom()]}]}}.
 init([]) ->
     {ok, {TCPListeners, SSLListeners, WSListeners}} = application:get_env(?APP, listeners),
-    start_listeners(TCPListeners, ranch_tcp, emqttd_tcp),
-    start_listeners(SSLListeners, ranch_ssl, emqttd_tcp),
+    start_listeners(TCPListeners, ranch_tcp, vmq_tcp),
+    start_listeners(SSLListeners, ranch_ssl, vmq_tcp),
     start_listeners(WSListeners, ranch_tcp, cowboy_protocol),
-    CRLSrv = [{emqttd_crl_srv,
-               {emqttd_crl_srv, start_link, []},
-               permanent, 5000, worker, [emqttd_crl_srv]}],
+    CRLSrv = [{vmq_crl_srv,
+               {vmq_crl_srv, start_link, []},
+               permanent, 5000, worker, [vmq_crl_srv]}],
     {ok, { {one_for_one, 5, 10}, CRLSrv}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
--spec start_listeners([any()],'ranch_ssl' | 'ranch_tcp','cowboy_protocol' | 'emqttd_tcp') -> [{'ok',pid()}].
+-spec start_listeners([any()],'ranch_ssl' | 'ranch_tcp','cowboy_protocol' | 'vmq_tcp') -> [{'ok',pid()}].
 start_listeners(Listeners, Transport, Protocol) ->
     [start_listener(Transport, Protocol, Addr, Port, Opts) || {{Addr, Port}, Opts} <- Listeners].
 
--spec start_listener('ranch_ssl' | 'ranch_tcp','cowboy_protocol' | 'emqttd_tcp',string() | inet:ip_address(), inet:port_number(),[any()]) -> {'ok',pid()}.
+-spec start_listener('ranch_ssl' | 'ranch_tcp','cowboy_protocol' | 'vmq_tcp',string() | inet:ip_address(), inet:port_number(),[any()]) -> {'ok',pid()}.
 start_listener(Transport, Protocol, Addr, Port, Opts) ->
     Ref = listener_name(Addr, Port),
     NrOfAcceptors = proplists:get_value(nr_of_acceptors, Opts),
@@ -123,9 +123,9 @@ start_listener(Transport, Protocol, Addr, Port, Opts) ->
                                        | transport_opts(Transport, Opts)],
                                       Protocol, handler_opts(Protocol, Opts)).
 
--spec listener_name(string() | inet:ip_address(),inet:port_number()) -> {'emqttd_listener',inet:ip_address(),inet:port_number()}.
+-spec listener_name(string() | inet:ip_address(),inet:port_number()) -> {'vmq_listener',inet:ip_address(),inet:port_number()}.
 listener_name(Ip, Port) ->
-    {emqttd_listener, Ip, Port}.
+    {vmq_listener, Ip, Port}.
 
 -spec transport_opts('ranch_ssl' | 'ranch_tcp',_) -> [{atom(), any()}].
 transport_opts(ranch_ssl, Opts) ->
@@ -160,16 +160,16 @@ transport_opts(ranch_ssl, Opts) ->
     ];
 transport_opts(ranch_tcp, _Opts) -> [].
 
--spec handler_opts('cowboy_protocol' | 'emqttd_tcp' | emqttd_ssl,[any()]) -> [any(),...].
+-spec handler_opts('cowboy_protocol' | 'vmq_tcp' | vmq_ssl,[any()]) -> [any(),...].
 handler_opts(cowboy_protocol, Opts) ->
     Dispatch = cowboy_router:compile(
                  [
                   {'_', [
-                         {"/mqtt", emqttd_ws, handler_opts(emqttd_tcp, Opts)}
+                         {"/mqtt", vmq_ws, handler_opts(vmq_tcp, Opts)}
                         ]}
                  ]),
     [{env, [{dispatch, Dispatch}]}];
-handler_opts(emqttd_tcp, Opts) ->
+handler_opts(vmq_tcp, Opts) ->
     {ok, MsgLogHandler} = application:get_env(?APP, msg_log_handler),
     {ok, MaxClientIdSize} = application:get_env(?APP, max_client_id_size),
     {ok, RetryInterval} = application:get_env(?APP, retry_interval),
@@ -177,8 +177,8 @@ handler_opts(emqttd_tcp, Opts) ->
      {max_client_id_size, MaxClientIdSize},
      {retry_interval, RetryInterval}
      |Opts];
-handler_opts(emqttd_ssl, Opts) ->
-    TCPOpts = handler_opts(emqttd_tcp, Opts),
+handler_opts(vmq_ssl, Opts) ->
+    TCPOpts = handler_opts(vmq_tcp, Opts),
     UseIdentityAsUserName = proplists:get_value(use_identity_as_username, Opts, false),
     case proplists:get_value(psk_hint, Opts) of
         undefined ->
@@ -288,7 +288,7 @@ verify_ssl_peer(Cert, valid_peer, UserState) ->
                 no_crl ->
                     {valid, UserState};
                 CrlFile ->
-                    case emqttd_crl_srv:check_crl(CrlFile, Cert) of
+                    case vmq_crl_srv:check_crl(CrlFile, Cert) of
                         true ->
                             {valid, UserState};
                         false ->
