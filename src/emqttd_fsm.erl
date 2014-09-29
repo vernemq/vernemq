@@ -109,7 +109,7 @@ init(Peer, SendFun, Opts) ->
     send_after(?CLOSE_AFTER, timeout),
     ret({wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   msg_log_handler=MsgLogHandler,
-                                  mountpoint=MountPoint,
+                                  mountpoint=string:strip(MountPoint, right, $/),
                                   username=PreAuthUser,
                                   max_client_id_size=MaxClientIdSize,
                                   retry_interval=1000 * RetryInterval
@@ -315,23 +315,6 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
     {_, _, Ref, undefined} = dict:fetch(MessageId, WAcks),
     cancel_timer(Ref), % cancel rpubrel timer
     {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
-
-%handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, retain=true},
-%             Var, <<>>, State) ->
-%    #state{username=User, client_id=ClientId, mountpoint=MountPoint} = State,
-%    #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
-%    %% delete retained msg,
-%    case emqttd_reg:publish(User, ClientId, undefined, combine_mp(MountPoint, Topic), <<>>, true) of
-%        ok ->
-%            NewState = send_frame(?PUBACK,
-%                                  #mqtt_frame_publish{message_id=MessageId},
-%                                  <<>>, State),
-%            {connected, NewState};
-%        {error, _Reason} ->
-%            %% we can't delete the retained message, due to a network split,
-%            %% if the client uses QoS 1 it will retry this message.
-%            {connected, State}
-%    end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
                                           qos=QoS,
