@@ -178,6 +178,7 @@ handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained, IsDup,
 handle_fsm_msg({deliver_bin, {MsgId, QoS, Bin}}, {connected, State}) ->
     #state{send_fun=SendFun, waiting_acks=WAcks, retry_interval=RetryInterval} = State,
     SendFun(Bin),
+    emqttd_systree:incr_messages_sent(),
     Ref = send_after(RetryInterval, {retry, MsgId}),
     ret({connected, State#state{
                   waiting_acks=dict:store(MsgId,
@@ -198,6 +199,7 @@ handle_fsm_msg({retry, MessageId}, {connected, State}) ->
         Item -> Item
     end,
     SendFun(Bin),
+    emqttd_systree:incr_messages_sent(),
     Ref = send_after(RetryInterval, {retry, MessageId}),
     ret({connected, State#state{
                   waiting_acks=dict:store(MessageId,
@@ -224,6 +226,7 @@ process_bytes(Bytes, StateName, State) ->
             {StateName, State#state{parser_state=NewParserState}};
         {ok, #mqtt_frame{fixed=Fixed, variable=Variable,
                          payload=Payload}, Rest} ->
+            emqttd_systree:incr_messages_received(),
             case handle_frame(StateName, Fixed, Variable,
                               Payload, State) of
                 {NextStateName, #state{keep_alive=KeepAlive} = NewState} ->
@@ -251,8 +254,16 @@ process_bytes(Bytes, StateName, State) ->
     {statename(), #state{}} | {stop, atom(), #state{}}.
 
 handle_frame(wait_for_connect, _, #mqtt_frame_connect{keep_alive=KeepAlive} = Var, _, State) ->
-    check_connect(Var, State#state{keep_alive=KeepAlive * 1000});
-
+    emqttd_systree:incr_connect_received(),
+    Ret = check_connect(Var, State#state{keep_alive=KeepAlive * 1000}),
+    case Ret of
+        {connected, _} ->
+            emqttd_systree:decr_inactive_clients(),
+            emqttd_systree:incr_active_clients();
+        _ ->
+            ok
+    end,
+    Ret;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
     #state{waiting_acks=WAcks} = State,
@@ -280,6 +291,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
                              payload= <<>>},
     Bin = emqtt_frame:serialise(PubRelFrame),
     SendFun(Bin),
+    emqttd_systree:incr_messages_sent(),
     NewRef = send_after(RetryInterval, {retry, MessageId}),
     emqttd_msg_store:deref(MsgStoreRef),
     {connected, State#state{
@@ -322,6 +334,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
              Var, Payload, State) ->
     #state{mountpoint=MountPoint} = State,
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
+    emqttd_systree:incr_publishes_received(),
     {connected, dispatch_publish(QoS, MessageId, combine_mp(MountPoint, Topic), Payload,
                                  IsRetain, State)};
 
@@ -370,6 +383,8 @@ handle_frame(connected, #mqtt_frame_fixed{type=?DISCONNECT}, _, _, State) ->
 ret({stop, _Reason, State}) ->
     handle_waiting_acks(State),
     maybe_publish_last_will(State),
+    emqttd_systree:decr_active_clients(),
+    emqttd_systree:incr_inactive_clients(),
     stop;
 ret({_, _} = R) -> R.
 
@@ -482,6 +497,7 @@ send_frame(Type, DUP, Variable, Payload, #state{send_fun=SendFun} = State) ->
                              payload=Payload
                             }),
     SendFun(Bin),
+    emqttd_systree:incr_messages_sent(),
     State.
 
 
@@ -535,6 +551,7 @@ dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
                              payload= <<>>
                             }),
     SendFun(Bin),
+    emqttd_systree:incr_messages_sent(),
     State#state{waiting_acks=dict:store(
                                {qos2, MessageId},
                                {2, Bin, Ref, {MsgRef, IsRetain}}, WAcks)}.
@@ -553,6 +570,8 @@ send_publish_frame(Frame, State) ->
     Bin = emqtt_frame:serialise(Frame),
     case SendFun(Bin) of
         ok ->
+            emqttd_systree:incr_publishes_sent(),
+            emqttd_systree:incr_messages_sent(),
             State;
         {error, Reason} ->
             {error, Reason}

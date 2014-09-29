@@ -156,6 +156,7 @@ retain_action_(_User, _ClientId, TS, RoutingKey, <<>>) ->
             MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
             gen_server:cast(?MODULE, {delete, MsgRef}),
             true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey),
+            emqttd_systree:decr_retained_count(),
             ok;
         _ ->
             %% the retain-delete action is older than
@@ -173,6 +174,7 @@ retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
                                                       Payload, TS})}),
             true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User,
                                                   ClientId, Payload, TS}),
+            emqttd_systree:incr_retained_count(),
             ok;
         [{_, _, _, _, TSOld}] when TS > TSOld ->
             %% in case of a race between retain-insert actions

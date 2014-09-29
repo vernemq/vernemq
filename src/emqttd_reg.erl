@@ -49,6 +49,7 @@ subscribe_tx(_, [], Errors) -> Errors;
 subscribe_tx(ClientId, [{Topic, Qos}|Rest], Errors) ->
     case mnesia:transaction(fun add_subscriber/3, [Topic, Qos, ClientId]) of
         {atomic, _} ->
+            emqttd_systree:incr_subscription_count(),
             emqttd_msg_store:deliver_retained(self(), Topic, Qos),
             subscribe_tx(ClientId, Rest, Errors);
         {aborted, Reason} ->
@@ -62,7 +63,8 @@ unsubscribe(User, ClientId, Topics) ->
 -spec unsubscribe_(username() | plugin_id(),client_id(),[topic()]) -> 'ok'.
 unsubscribe_(User, ClientId, Topics) ->
     lists:foreach(fun(Topic) ->
-                          {atomic, _} = del_subscriber(Topic, ClientId)
+                          {atomic, _} = del_subscriber(Topic, ClientId),
+                          emqttd_systree:decr_subscription_count()
                   end, Topics),
     emqttd_hook:all(on_unsubscribe, [User, ClientId, Topics]),
     ok.
