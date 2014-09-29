@@ -1,4 +1,4 @@
--module(emqttd_passwd_reloader).
+-module(vmq_passwd_reloader).
 
 -behaviour(gen_server).
 
@@ -16,7 +16,7 @@
          code_change/3]).
 
 -record(state, {file, interval, timer}).
--define(APP, emqttd_passwd).
+-define(APP, vmq_passwd).
 
 %%%===================================================================
 %%% API
@@ -98,7 +98,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(reload, #state{file=File, interval=Interval} = State) ->
-    ok = emqttd_passwd:load_from_file(File),
+    ok = vmq_passwd:load_from_file(File),
     erlang:send_after(Interval, self(), reload),
     {noreply, State}.
 
@@ -138,7 +138,7 @@ init_state(State) ->
     {ok, File} = application:get_env(?APP, file),
     {ok, Interval} = application:get_env(?APP, interval),
     {ok, AllowAnonymous} = application:get_env(?APP, allow_anonymous),
-    ok = emqttd_passwd:init(AllowAnonymous),
-    ok = emqttd_passwd:load_from_file(File),
+    ok = vmq_passwd:init(AllowAnonymous),
+    ok = vmq_passwd:load_from_file(File),
     NewTRef = erlang:send_after(Interval, self(), reload),
     State#state{file=File, interval=Interval, timer=NewTRef}.

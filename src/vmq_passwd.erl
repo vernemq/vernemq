@@ -1,4 +1,4 @@
--module(emqttd_passwd).
+-module(vmq_passwd).
 
 -export([init/1,
          check/2,
@@ -33,17 +33,17 @@ load_from_file(File) ->
 
 load_from_list(List) ->
     age_entries(),
-    put(emqttd_passwd_list, List),
+    put(vmq_passwd_list, List),
     F = fun(FF, read) ->
-                case get(emqttd_passwd_list) of
+                case get(vmq_passwd_list) of
                     [I|Rest] ->
-                        put(emqttd_passwd_list, Rest),
+                        put(vmq_passwd_list, Rest),
                         {FF, I};
                     [] ->
                         {FF, eof}
                 end;
            (_, close) ->
-                put(emqttd_passwd_list, undefined),
+                put(vmq_passwd_list, undefined),
                 ok
         end,
     parse_passwd_line(F(F, read)),

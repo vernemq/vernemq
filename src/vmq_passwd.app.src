@@ -1,4 +1,4 @@
-{application, emqttd_passwd,
+{application, vmq_passwd,
  [
   {description, ""},
   {vsn, "1"},
@@ -8,7 +8,7 @@
                   stdlib,
                   crypto
                  ]},
-  {mod, { emqttd_passwd_app, []}},
+  {mod, { vmq_passwd_app, []}},
   {env, [
       {file, "priv/test.passwd"},
       {allow_anonymous, false},

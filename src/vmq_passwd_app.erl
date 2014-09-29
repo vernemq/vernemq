@@ -1,4 +1,4 @@
--module(emqttd_passwd_app).
+-module(vmq_passwd_app).
 
 -behaviour(application).
 
@@ -10,7 +10,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    emqttd_passwd_sup:start_link().
+    vmq_passwd_sup:start_link().
 
 stop(_State) ->
     ok.

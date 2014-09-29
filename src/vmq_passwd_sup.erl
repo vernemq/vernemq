@@ -1,4 +1,4 @@
--module(emqttd_passwd_sup).
+-module(vmq_passwd_sup).
 
 -behaviour(supervisor).
 
@@ -23,5 +23,5 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok, { {one_for_one, 5, 10}, [?CHILD(emqttd_passwd_reloader, worker)]} }.
+    {ok, { {one_for_one, 5, 10}, [?CHILD(vmq_passwd_reloader, worker)]} }.
 
