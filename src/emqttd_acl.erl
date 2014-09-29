@@ -26,7 +26,11 @@
 
 init() ->
     lists:foreach(fun(T) ->
-                          ets:new(T, ?TABLE_OPTS)
+                          case lists:member(T, ets:all()) of
+                              true -> ok;
+                              false ->
+                                  ets:new(T, ?TABLE_OPTS)
+                          end
                   end, ?TABLES).
 
 auth_on_subscribe(_, _, []) -> ok;
