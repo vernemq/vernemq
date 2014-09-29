@@ -12,7 +12,7 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 rc = 1
 mid = 3265
@@ -31,7 +31,7 @@ pubrel_packet = mosq_test.gen_pubrel(mid)
 pubrel_dup_packet = mosq_test.gen_pubrel(mid, dup=True)
 pubcomp_packet = mosq_test.gen_pubcomp(mid)
 
-emqttd.start('03-publish-b2c-timeout-qos2.conf')
+vmq.start('03-publish-b2c-timeout-qos2.conf')
 
 try:
     time.sleep(0.5)
@@ -61,7 +61,7 @@ try:
 
     sock.close()
 finally:
-    emqttd.stop()
+    vmq.stop()
 
 exit(rc)
 

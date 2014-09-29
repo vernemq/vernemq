@@ -13,7 +13,7 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 rc = 1
 keepalive = 60
@@ -27,7 +27,7 @@ suback_packet = mosq_test.gen_suback(mid, 0)
 
 publish_packet = mosq_test.gen_publish("bridge/ssl/test", qos=0, payload="message")
 
-emqttd.start('08-ssl-bridge.conf')
+vmq.start('08-ssl-bridge.conf')
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -62,7 +62,7 @@ finally:
     except NameError:
         pass
 
-    emqttd.hard_stop()
+    vmq.hard_stop()
     ssock.close()
 
 exit(rc)

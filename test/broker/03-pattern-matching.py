@@ -10,7 +10,7 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 def pattern_test(sub_topic, pub_topic):
     rc = 1
@@ -29,7 +29,7 @@ def pattern_test(sub_topic, pub_topic):
     unsubscribe_packet = mosq_test.gen_unsubscribe(mid, sub_topic)
     unsuback_packet = mosq_test.gen_unsuback(mid)
 
-    emqttd.start('default.conf')
+    vmq.start('default.conf')
 
     try:
         time.sleep(0.5)
@@ -53,7 +53,7 @@ def pattern_test(sub_topic, pub_topic):
 
         sock.close()
     finally:
-        emqttd.stop()
+        vmq.stop()
 
     return rc
 

@@ -14,7 +14,7 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 rc = 1
 keepalive = 60
@@ -27,12 +27,12 @@ suback_packet = mosq_test.gen_suback(mid, 0)
 publish_packet = mosq_test.gen_publish("bridge/reconnect", qos=0, payload="bridge-reconnect-message")
 
 
-emqttd.start('default.conf')
+vmq.start('default.conf')
 time.sleep(0.5)
-emqttd.start('06-bridge-reconnect-local-out.conf', broker_path="../emqttd2")
+vmq.start('06-bridge-reconnect-local-out.conf', broker_path="../vmq2")
 time.sleep(0.5)
-emqttd.hard_stop("../emqttd2")
-emqttd.start('06-bridge-reconnect-local-out.conf', broker_path="../emqttd2")
+vmq.hard_stop("../vmq2")
+vmq.start('06-bridge-reconnect-local-out.conf', broker_path="../vmq2")
 time.sleep(5)
 
 pub = None
@@ -54,8 +54,8 @@ try:
                 rc = 0
     sock.close()
 finally:
-    emqttd.hard_stop("../emqttd2")
-    emqttd.hard_stop()
+    vmq.hard_stop("../vmq2")
+    vmq.hard_stop()
 
 exit(rc)
 

@@ -11,7 +11,7 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 rc = 1
 mid = 530
@@ -34,7 +34,7 @@ pubrec_packet2 = mosq_test.gen_pubrec(mid)
 pubrel_packet2 = mosq_test.gen_pubrel(mid)
 pubcomp_packet2 = mosq_test.gen_pubcomp(mid)
 
-emqttd.start('default.conf')
+vmq.start('default.conf')
 
 try:
     time.sleep(0.5)
@@ -58,7 +58,7 @@ try:
 
     sock.close()
 finally:
-    emqttd.stop()
+    vmq.stop()
 
 exit(rc)
 

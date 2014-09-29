@@ -10,14 +10,14 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 rc = 1
 keepalive = 60
 connect_packet = mosq_test.gen_connect("will-null-topic", keepalive=keepalive, will_topic="", will_payload=struct.pack("!4sB7s", "will", 0, "message"))
 connack_packet = mosq_test.gen_connack(rc=2)
 
-emqttd.start('default.conf')
+vmq.start('default.conf')
 
 try:
     time.sleep(0.5)
@@ -26,6 +26,6 @@ try:
     rc = 0
     sock.close()
 finally:
-    emqttd.stop()
+    vmq.stop()
 
 exit(rc)

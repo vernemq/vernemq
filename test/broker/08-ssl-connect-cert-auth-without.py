@@ -20,14 +20,14 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 rc = 1
 keepalive = 10
 connect_packet = mosq_test.gen_connect("connect-cert-test", keepalive=keepalive)
 connack_packet = mosq_test.gen_connack(rc=0)
 
-emqttd.start('08-ssl-connect-cert-auth-without.conf')
+vmq.start('08-ssl-connect-cert-auth-without.conf')
 
 time.sleep(0.5)
 
@@ -43,6 +43,6 @@ except socket.error as err:
     if err.errno == errno.ECONNRESET:
         rc = 0
 
-emqttd.stop()
+vmq.stop()
 
 exit(rc)

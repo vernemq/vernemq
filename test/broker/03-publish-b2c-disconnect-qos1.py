@@ -11,7 +11,7 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 rc = 1
 mid = 3265
@@ -31,7 +31,7 @@ mid = 3266
 publish2_packet = mosq_test.gen_publish("qos1/outgoing", qos=1, mid=mid, payload="outgoing-message")
 puback2_packet = mosq_test.gen_puback(mid)
 
-emqttd.start('03-publish-b2c-disconnect-qos1.conf')
+vmq.start('03-publish-b2c-disconnect-qos1.conf')
 
 try:
     time.sleep(0.5)
@@ -63,7 +63,7 @@ try:
 
     sock.close()
 finally:
-    emqttd.stop()
+    vmq.stop()
 
 exit(rc)
 

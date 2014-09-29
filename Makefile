@@ -1,4 +1,4 @@
-REPO            ?= emqttd
+REPO            ?= vernemq
 PKG_REVISION    ?= $(shell git describe --tags)
 PKG_BUILD        = 1
 BASE_DIR         = $(shell pwd)
@@ -66,7 +66,7 @@ test: deps compile testclean
 rel: deps compile generate
 
 relclean:
-	rm -rf rel/emqttd
+	rm -rf rel/vernemq
 
 ##
 ## Developer targets
@@ -89,8 +89,8 @@ $(eval stagedevrel : $(foreach n,$(SEQ),stagedev$(n)))
 $(eval devrel : $(foreach n,$(SEQ),dev$(n)))
 
 broker_test: all
-	(cd rel && ../rebar generate target_dir=../test/emqttd1 overlay_vars=vars/test_vars.config)
-	(cd rel && ../rebar generate target_dir=../test/emqttd2 overlay_vars=vars/test_vars.config)
+	(cd rel && ../rebar generate target_dir=../test/vernemq1 overlay_vars=vars/test_vars.config)
+	(cd rel && ../rebar generate target_dir=../test/vernemq2 overlay_vars=vars/test_vars.config)
 
 dev% : all
 	mkdir -p dev
@@ -104,7 +104,7 @@ devclean: clean
 	rm -rf dev
 
 stage : rel
-	$(foreach dep,$(wildcard deps/*), rm -rf rel/emqttd/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/emqttd/lib;)
+	$(foreach dep,$(wildcard deps/*), rm -rf rel/vernemq/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/vernemq/lib;)
 
 
 APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \
@@ -141,8 +141,8 @@ cleanplt:
 depgraph: graphviz
 	@echo "Note: If you have nothing in deps/ this might be boring"
 	@echo "Creating dependency graph..."
-	@misc/mapdeps.erl | dot -Tpng -oemqttd.png
-	@echo "Dependency graph created as emqttd.png"
+	@misc/mapdeps.erl | dot -Tpng -overnemq.png
+	@echo "Dependency graph created as vernemq.png"
 graphviz:
 	$(if $(shell which dot),,$(error "To make the depgraph, you need graphviz installed"))
 
@@ -151,9 +151,9 @@ graphviz:
 ##
 
 # Tag from git with style <tagname>-<commits_since_tag>-<current_commit_hash>
-# Ex: When on a tag:            emqttd-1.0.3   (no commits since tag)
-#     For most normal Commits:  emqttd-1.1.0pre1-27-g1170096
-#                                 Last tag:          emqttd-1.1.0pre1
+# Ex: When on a tag:            vernemq-1.0.3   (no commits since tag)
+#     For most normal Commits:  vernemq-1.1.0pre1-27-g1170096
+#                                 Last tag:          vernemq-1.1.0pre1
 #                                 Commits since tag: 27
 #                                 Hash of commit:    g1170096
 REPO_TAG 	:= $(shell git describe --tags)
@@ -191,7 +191,7 @@ archive = if [ "$(1)" = "deps/eleveldb" ]; then \
 
 # Checkout tag, fetch deps (so we don't have to do it multiple times) and collect
 # the version of all the dependencies into the MANIFEST_FILE
-CLONEDIR ?= emqttd-clone
+CLONEDIR ?= vernemq-clone
 MANIFEST_FILE ?= dependency_manifest.git
 get_dist_deps = mkdir distdir && \
                 git clone . distdir/$(CLONEDIR) && \

@@ -12,7 +12,7 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 rc = 1
 keepalive = 60
@@ -28,7 +28,7 @@ unsub_mid = 13
 unsubscribe_packet = mosq_test.gen_unsubscribe(unsub_mid, "retain/qos0/test/")
 unsuback_packet = mosq_test.gen_unsuback(unsub_mid)
 
-emqttd.start('default.conf')
+vmq.start('default.conf')
 
 try:
     time.sleep(0.5)
@@ -49,6 +49,6 @@ try:
                         rc = 0
     sock.close()
 finally:
-    emqttd.stop()
+    vmq.stop()
 
 exit(rc)

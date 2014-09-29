@@ -10,7 +10,7 @@ cmd_subfolder = os.path.realpath(os.path.abspath(os.path.join(os.path.split(insp
 if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
-import emqttd
+import vmq
 import mosq_test
 
 rc = 1
@@ -18,7 +18,7 @@ keepalive = 10
 connect_packet = mosq_test.gen_connect("connect-anon-test", keepalive=keepalive)
 connack_packet = mosq_test.gen_connack(rc=5)
 
-emqttd.start('01-connect-anon-denied.conf')
+vmq.start('01-connect-anon-denied.conf')
 
 try:
     time.sleep(0.5)
@@ -27,6 +27,6 @@ try:
     sock.close()
     rc = 0
 finally:
-    emqttd.stop()
+    vmq.stop()
 
 exit(rc)

@@ -14,7 +14,7 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 rc = 1
 keepalive = 60
@@ -41,7 +41,7 @@ ssock.settimeout(40)
 ssock.bind(('', 1890))
 ssock.listen(5)
 
-emqttd.start('06-bridge-br2b-disconnect-qos1.conf')
+vmq.start('06-bridge-br2b-disconnect-qos1.conf')
 
 try:
     time.sleep(0.5)
@@ -81,7 +81,7 @@ finally:
     except NameError:
         pass
 
-    emqttd.hard_stop()
+    vmq.hard_stop()
     ssock.close()
 
 exit(rc)

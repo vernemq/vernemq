@@ -16,14 +16,14 @@ if cmd_subfolder not in sys.path:
     sys.path.insert(0, cmd_subfolder)
 
 import mosq_test
-import emqttd
+import vmq
 
 rc = 1
 keepalive = 10
 connect_packet = mosq_test.gen_connect("connect-revoked-test", keepalive=keepalive)
 connack_packet = mosq_test.gen_connack(rc=0)
 
-emqttd.start('08-ssl-connect-cert-auth-revoked.conf')
+vmq.start('08-ssl-connect-cert-auth-revoked.conf')
 
 try:
     time.sleep(0.5)
@@ -37,11 +37,11 @@ try:
         if err.errno == 1 and "certificate revoked" in err.strerror:
             rc = 0
         else:
-            emqttd.stop()
+            vmq.stop()
             print(err.strerror)
             raise ValueError(err.errno)
 
 finally:
-    emqttd.stop()
+    vmq.stop()
 
 exit(rc)
