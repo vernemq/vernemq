@@ -99,7 +99,7 @@ client_opts(tcp, Host, Port, Opts) ->
      {username, proplists:get_value(username, Opts)},
      {password, proplists:get_value(password, Opts)},
      {client,   proplists:get_value(client_id, Opts)},
-     {clean_session, proplists:get_value(clean_session, Opts)},
+     {clean_session, proplists:get_value(cleansession, Opts, false)},
      {keepalive_interval, proplists:get_value(keepalive_interval, Opts)},
      {reconnect_timeout, proplists:get_value(restart_timeout, Opts)},
      {transport, {gen_tcp, []}}
