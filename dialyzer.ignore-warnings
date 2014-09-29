@@ -1,0 +1,35 @@
+leexinc.hrl:49: The pattern <Rest, Line, {'token', T, Push}, Ts> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]},[{_,_} | {'NAME',_,_} | {'NUMBER',_,_} | {'STRING',_,binary()}]>
+leexinc.hrl:52: The pattern <Rest, Line, {'end_token', T}, Ts> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]},[{_,_} | {'NAME',_,_} | {'NUMBER',_,_} | {'STRING',_,binary()}]>
+leexinc.hrl:54: The pattern <Rest, Line, {'end_token', T, Push}, Ts> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]},[{_,_} | {'NAME',_,_} | {'NUMBER',_,_} | {'STRING',_,binary()}]>
+leexinc.hrl:59: The pattern <Rest, Line, {'skip_token', Push}, Ts> can never match the type <_,_,'error' | {'error',[1..255,...]},[{_,_} | {'NAME',_,_} | {'NUMBER',_,_} | {'STRING',_,binary()}]>
+leexinc.hrl:118: The pattern <Rest, Line, {'token', T, Push}> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]}>
+leexinc.hrl:121: The pattern <Rest, Line, {'end_token', T}> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]}>
+leexinc.hrl:123: The pattern <Rest, Line, {'end_token', T, Push}> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]}>
+leexinc.hrl:128: The pattern <Rest, Line, {'skip_token', Push}> can never match the type <_,_,'error' | {'error',[1..255,...]}>
+leexinc.hrl:192: The pattern <Rest, Line, {'token', T, Push}, Ts> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]},_>
+leexinc.hrl:195: The pattern <Rest, Line, {'end_token', T}, Ts> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]},_>
+leexinc.hrl:197: The pattern <Rest, Line, {'end_token', T, Push}, Ts> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]},_>
+leexinc.hrl:202: The pattern <Rest, Line, {'skip_token', Push}, Ts> can never match the type <_,_,'error' | {'error',[1..255,...]},_>
+leexinc.hrl:243: The pattern <Rest, Line, {'token', _T, Push}, Error> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]},_>
+leexinc.hrl:246: The pattern <Rest, Line, {'end_token', _T}, Error> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]},_>
+leexinc.hrl:248: The pattern <Rest, Line, {'end_token', _T, Push}, Error> can never match the type <_,_,'error' | 'skip_token' | {'error',[1..255,...]},_>
+leexinc.hrl:253: The pattern <Rest, Line, {'skip_token', Push}, Error> can never match the type <_,_,'error' | {'error',[1..255,...]},_>
+leexinc.hrl:260: Function yyrev/2 will never be called
+bitcask_nifs.erl:166: The pattern {'error', 'iteration_in_process'} can never match the type 'already_exists' | 'ok'
+bitcask_nifs.erl:168: Guard test Reps::0 > 0 can never succeed
+bitcask_nifs.erl:175: Function put_retries/1 will never be called
+gen_leader.erl:913: The call sys:handle_debug(Debug::any(),{'gen_leader', 'print_event'},atom(),{'in',_}) breaks the contract (Debug,FormFunc,Extra,Event) -> [dbg_opt()] when is_subtype(Debug,[dbg_opt()]), is_subtype(FormFunc,dbg_fun()), is_subtype(Extra,term()), is_subtype(Event,system_event())
+gen_leader.erl:1100: The call sys:handle_debug(Debug::any(),{'gen_leader', 'print_event'},atom(),Event::{'$leader_cast',_} | {'noreply',_} | {'ok',_} | {'out',_,_,_}) breaks the contract (Debug,FormFunc,Extra,Event) -> [dbg_opt()] when is_subtype(Debug,[dbg_opt()]), is_subtype(FormFunc,dbg_fun()), is_subtype(Extra,term()), is_subtype(Event,system_event())
+gproc_dist.erl:23: Callback info about the gen_leader behaviour is not available
+luerl_comp.erl:180: The pattern {'ok', C1, Ws} can never match the type {'ok',#code{code::#lit{} | #single{e::{_,_,_} | {_,_,_,_} | {_,_,_,_,_,_,_,_,_,_,_}} | #tc{fs::[any()]} | #var{} | #dot{e::{_,_,_},r::{_,_,_} | {_,_,_,_}} | #op{as::[any()]} | #fdef{ps::[any()],ss::[any()],vars::{_,_,_,_,_}}}}
+luerl_comp.erl:181: The pattern {'error', Es} can never match the type {'ok',#code{code::#lit{} | #single{e::{_,_,_} | {_,_,_,_} | {_,_,_,_,_,_,_,_,_,_,_}} | #tc{fs::[any()]} | #var{} | #dot{e::{_,_,_},r::{_,_,_} | {_,_,_,_}} | #op{as::[any()]} | #fdef{ps::[any()],ss::[any()],vars::{_,_,_,_,_}}}}
+luerl_comp.erl:184: Function do_comp_locf/1 will never be called
+luerl_comp.erl:194: The pattern {'ok', C1, Ws} can never match the type {'ok',#code{code::#gvar{} | #lit{} | #single{e::{_,_} | {_,_,_} | {_,_,_,_} | {_,_,_,_,_,_,_,_,_,_,_}} | #tc{fs::[any()]} | #dot{e::{_,_} | {_,_,_} | {_,_,_,_},r::{_,_,_} | {_,_,_,_}} | #evar{d::pos_integer()} | #lvar{d::pos_integer()} | #op{as::[any()]} | #fdef{vars::{_,_,_,_,_}}}}
+luerl_comp.erl:195: The pattern {'error', Es} can never match the type {'ok',#code{code::#gvar{} | #lit{} | #single{e::{_,_} | {_,_,_} | {_,_,_,_} | {_,_,_,_,_,_,_,_,_,_,_}} | #tc{fs::[any()]} | #dot{e::{_,_} | {_,_,_} | {_,_,_,_},r::{_,_,_} | {_,_,_,_}} | #evar{d::pos_integer()} | #lvar{d::pos_integer()} | #op{as::[any()]} | #fdef{vars::{_,_,_,_,_}}}}
+luerl_comp.erl:201: The pattern {'ok', C1, Ws} can never match the type {'ok',#code{code::['get_key' | 'multiple' | 'push' | 'single' | 'swap' | {_,_} | {_,_,_} | {_,_,_,_,_},...]}}
+luerl_comp.erl:202: The pattern {'error', Es} can never match the type {'ok',#code{code::['get_key' | 'multiple' | 'push' | 'single' | 'swap' | {_,_} | {_,_,_} | {_,_,_,_,_},...]}}
+luerl_comp.erl:208: The pattern {'ok', C1, Ws} can never match the type {'ok',#code{code::[any()]}}
+luerl_comp.erl:209: The pattern {'error', Es} can never match the type {'ok',#code{code::[any()]}}
+luerl_emul.erl:344: Function itrace_do/1 will never be called
+luerl_emul.erl:538: Function pop_args/3 will never be called
+syslog.erl:143: The inferred return type of code_change/3 ('ok') has nothing in common with {'error',_} | {'ok',_}, which is the expected return type for the callback of gen_server behaviour
