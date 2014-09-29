@@ -1,5 +1,6 @@
 -module(emqttd_msg_store).
 -behaviour(gen_server).
+-include_lib("emqtt_commons/include/types.hrl").
 
 -export([start_link/1,
          store/4, store/5,
@@ -37,46 +38,52 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec start_link(string()) -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link(MsgStoreDir) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [MsgStoreDir], []).
 
+-spec store(username(),client_id(),routing_key(),payload()) -> msg_ref().
 store(User, ClientId, RoutingKey, Payload) ->
-    MsgId = crypto:hash(md5, term_to_binary(now())),
-    store(User, ClientId, MsgId, RoutingKey, Payload).
+    MsgRef = crypto:hash(md5, term_to_binary(now())),
+    store(User, ClientId, MsgRef, RoutingKey, Payload).
 
+-spec store(username(),client_id(),undefined | msg_ref(),routing_key(),payload()) -> msg_ref().
 store(User, ClientId, undefined, RoutingKey, Payload) ->
     store(User, ClientId, RoutingKey, Payload);
-store(User, ClientId, MsgId, RoutingKey, Payload) ->
+store(User, ClientId, MsgRef, RoutingKey, Payload) when is_binary(MsgRef) ->
     ets:update_counter(?MSG_CACHE_TABLE, in_flight, {2, 1}),
-    case update_msg_cache(MsgId, {ensure_list(RoutingKey), Payload}) of
+    case update_msg_cache(MsgRef, {RoutingKey, Payload}) of
         new_cache_item ->
-            MsgRef = <<?MSG_ITEM, MsgId/binary>>,
+            MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
             Val = term_to_binary({User, ClientId, RoutingKey, Payload}),
-            gen_server:cast(?MODULE, {write, MsgRef, Val});
+            gen_server:cast(?MODULE, {write, MsgRef1, Val});
         new_ref_count ->
             ok
     end,
-    MsgId.
+    MsgRef.
 
+-spec in_flight() -> non_neg_integer().
 in_flight() ->
     [{in_flight, InFlight}] = ets:lookup(?MSG_CACHE_TABLE, in_flight),
     NrOfDeferedMsgs = ets:info(?MSG_INDEX_TABLE, size),
     InFlight - NrOfDeferedMsgs.
 
-retrieve(MsgId) ->
-    case ets:lookup(?MSG_CACHE_TABLE, MsgId) of
+-spec retrieve(msg_ref()) -> {'error','not_found'} | {'ok', {routing_key(), payload()}}.
+retrieve(MsgRef) ->
+    case ets:lookup(?MSG_CACHE_TABLE, MsgRef) of
         [{_, Msg, _}] -> {ok, Msg};
         [] -> {error, not_found}
     end.
 
-deref(MsgId) ->
+-spec deref(msg_ref()) -> 'ok' | {'error','not_found'} | {'ok',pos_integer()}.
+deref(MsgRef) ->
     try
         ets:update_counter(?MSG_CACHE_TABLE, in_flight, {2, -1}),
-        case ets:update_counter(?MSG_CACHE_TABLE, MsgId, {3, -1}) of
+        case ets:update_counter(?MSG_CACHE_TABLE, MsgRef, {3, -1}) of
             0 ->
-                ets:delete(?MSG_CACHE_TABLE, MsgId),
-                MsgRef = <<?MSG_ITEM, MsgId/binary>>,
-                gen_server:cast(?MODULE, {delete, MsgRef});
+                ets:delete(?MSG_CACHE_TABLE, MsgRef),
+                MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
+                gen_server:cast(?MODULE, {delete, MsgRef1});
             N ->
                 {ok, N}
         end
@@ -84,16 +91,17 @@ deref(MsgId) ->
     end.
 
 
+-spec deliver_from_store(client_id(),pid()) -> 'ok'.
 deliver_from_store(ClientId, ClientPid) ->
     lists:foreach(fun ({_, {uncached, Term}} = Obj) ->
                           emqttd_fsm:deliver_bin(ClientPid, Term),
                           ets:delete_object(?MSG_INDEX_TABLE, Obj);
-                      ({_, QoS, MsgId, DeliverAsDup} = Obj) ->
-                          case retrieve(MsgId) of
+                      ({_, QoS, MsgRef, DeliverAsDup} = Obj) ->
+                          case retrieve(MsgRef) of
                               {ok, {RoutingKey, Payload}} ->
                                   emqttd_fsm:deliver(ClientPid, RoutingKey,
                                                      Payload, QoS,
-                                                     false, DeliverAsDup, MsgId);
+                                                     false, DeliverAsDup, MsgRef);
                               {error, not_found} ->
                                   %% TODO: this happens,, ??
                                   ok
@@ -101,30 +109,33 @@ deliver_from_store(ClientId, ClientPid) ->
                           ets:delete_object(?MSG_INDEX_TABLE, Obj)
                   end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
 
+-spec deliver_retained(pid(),topic(),qos()) -> 'ok'.
 deliver_retained(ClientPid, Topic, QoS) ->
     Words = emqtt_topic:words(Topic),
     ets:foldl(fun({RoutingKey, User, ClientId, Payload, _}, Acc) ->
                       RWords = emqtt_topic:words(RoutingKey),
                       case emqtt_topic:match(RWords, Words) of
                           true ->
-                              MsgId = store(User, ClientId,
+                              MsgRef = store(User, ClientId,
                                             RoutingKey, Payload),
                               emqttd_fsm:deliver(ClientPid, RoutingKey,
-                                                 Payload, QoS, true, false, MsgId);
+                                                 Payload, QoS, true, false, MsgRef);
                           false ->
                               Acc
                       end
               end, [], ?MSG_RETAIN_TABLE),
     ok.
 
+-spec clean_session(client_id()) -> 'ok'.
 clean_session(ClientId) ->
     lists:foreach(fun ({_, {uncached, _}}) ->
                           ok;
-                      ({_, _, MsgId, _} = Obj) ->
+                      ({_, _, MsgRef, _} = Obj) ->
                           true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
-                          deref(MsgId)
+                          deref(MsgRef)
                   end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
 
+-spec retain_action(username(),client_id(),routing_key(),payload()) -> 'ok'.
 retain_action(User, ClientId, RoutingKey, Payload) ->
     Nodes = emqttd_cluster:nodes(),
     Now = now(),
@@ -136,6 +147,7 @@ retain_action(User, ClientId, RoutingKey, Payload) ->
                                    [User, ClientId, Now, RoutingKey, Payload])
                   end, Nodes).
 
+-spec retain_action_(username(),client_id(),erlang:timestamp(),routing_key(),payload()) -> 'ok'.
 retain_action_(_User, _ClientId, TS, RoutingKey, <<>>) ->
     %% retain-delete action
     case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
@@ -174,14 +186,20 @@ retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
             ok
     end.
 
+-spec defer_deliver_uncached(client_id(),any()) -> 'true'.
 defer_deliver_uncached(ClientId, Term) ->
     ets:insert(?MSG_INDEX_TABLE, {ClientId, {uncached, Term}}).
-defer_deliver(ClientId, Qos, MsgId) ->
-    defer_deliver(ClientId, Qos, MsgId, false).
-defer_deliver(ClientId, Qos, MsgId, DeliverAsDup) ->
-    ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgId, DeliverAsDup}).
+
+-spec defer_deliver(client_id(),qos(),msg_ref()) -> 'true'.
+defer_deliver(ClientId, Qos, MsgRef) ->
+    defer_deliver(ClientId, Qos, MsgRef, false).
+
+-spec defer_deliver(client_id(),qos(),msg_ref(),boolean()) -> 'true'.
+defer_deliver(ClientId, Qos, MsgRef, DeliverAsDup) ->
+    ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgRef, DeliverAsDup}).
 
 
+-spec clean_all([]) -> 'true'.
 clean_all([]) ->
     %% called using emqttd-admin, mainly for test purposes
     %% you don't want to call this during production
@@ -189,8 +207,11 @@ clean_all([]) ->
     clean_cache(),
     clean_index().
 
+-spec clean_retain() -> 'ok'.
 clean_retain() ->
     clean_retain(ets:last(?MSG_RETAIN_TABLE)).
+
+-spec clean_retain('$end_of_table' | routing_key()) -> ok.
 clean_retain('$end_of_table') -> ok;
 clean_retain(RoutingKey) ->
     BRoutingKey = list_to_binary(RoutingKey),
@@ -199,20 +220,24 @@ clean_retain(RoutingKey) ->
     true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey),
     clean_retain(ets:last(?MSG_RETAIN_TABLE)).
 
+-spec clean_cache() -> 'ok'.
 clean_cache() ->
     clean_cache(ets:last(?MSG_CACHE_TABLE)).
+
+-spec clean_cache('$end_of_table' | 'in_flight' | msg_ref()) -> 'ok'.
 clean_cache('$end_of_table') ->
     ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
     ok;
 clean_cache(in_flight) ->
     ets:delete(?MSG_CACHE_TABLE, in_flight),
     clean_cache(ets:last(?MSG_CACHE_TABLE));
-clean_cache(MsgId) ->
-    MsgRef = <<?MSG_ITEM, MsgId/binary>>,
-    gen_server:cast(?MODULE, {delete, MsgRef}),
-    true = ets:delete(?MSG_CACHE_TABLE, MsgId),
+clean_cache(MsgRef) ->
+    MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
+    gen_server:cast(?MODULE, {delete, MsgRef1}),
+    true = ets:delete(?MSG_CACHE_TABLE, MsgRef),
     clean_cache(ets:last(?MSG_CACHE_TABLE)).
 
+-spec clean_index() -> 'true'.
 clean_index() ->
     ets:delete_all_objects(?MSG_INDEX_TABLE).
 
@@ -222,6 +247,7 @@ clean_index() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec init([string()]) -> {'ok',#state{store::reference()}}.
 init([MsgStoreDir]) ->
     filelib:ensure_dir(MsgStoreDir),
     TableOpts = [public, named_table,
@@ -235,30 +261,32 @@ init([MsgStoreDir]) ->
     ToDelete =
     bitcask:fold(MsgStore,
                  fun
-                     (<<?MSG_ITEM, MsgId/binary>> = Key, Val, Acc) ->
+                     (<<?MSG_ITEM, MsgRef/binary>> = Key, Val, Acc) ->
                          {User, ClientId,
                           RoutingKey, Payload} = binary_to_term(Val),
                          case emqttd_reg:subscriptions(RoutingKey) of
                              [] -> %% weird
                                 [Key|Acc];
                              _Subs ->
-                                 emqttd_reg:publish(User, ClientId, MsgId,
+                                 emqttd_reg:publish(User, ClientId, MsgRef,
                                                     RoutingKey, Payload, false),
                                  Acc
                          end;
                      (<<?RETAIN_ITEM, BRoutingKey/binary>>, Val, Acc) ->
                          {User, ClientId, Payload, TS} = binary_to_term(Val),
                          true = ets:insert(?MSG_RETAIN_TABLE,
-                                           {ensure_list(BRoutingKey), User,
+                                           {binary_to_list(BRoutingKey), User,
                                             ClientId, Payload, TS}),
                          Acc
                  end, []),
     ok = lists:foreach(fun(Key) -> bitcask:delete(MsgStore, Key) end, ToDelete),
     {ok, #state{store=MsgStore}}.
 
+-spec handle_call(_,_,_) -> {'reply',{'error','not_implemented'},_}.
 handle_call(_Req, _From, State) ->
     {reply, {error, not_implemented}, State}.
 
+-spec handle_cast({'delete',msg_ref()} | {'write',binary(),binary()},#state{store::reference()}) -> {'noreply',#state{store::reference()}}.
 handle_cast({write, Key, Val}, State) ->
     #state{store=MsgStore} = State,
     ok = bitcask:put(MsgStore, Key, Val),
@@ -269,36 +297,33 @@ handle_cast({delete, MsgRef}, State) ->
     ok = bitcask:delete(MsgStore, MsgRef),
     {noreply, State}.
 
+-spec handle_info(_,_) -> {'noreply',_}.
 handle_info(_Info, State) ->
     {noreply, State}.
 
+-spec terminate(_,#state{store::reference()}) -> 'ok'.
 terminate(_Reason, State) ->
     #state{store=MsgStore} = State,
     bitcask:close(MsgStore),
     ok.
 
+-spec code_change(_,_,_) -> {'ok',_}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+-spec safe_ets_update_counter('emqttd_msg_cache',_,{3,1},fun((_) -> 'new_ref_count'),fun(() -> 'new_cache_item' | 'new_ref_count')) -> 'new_cache_item' | 'new_ref_count'.
 safe_ets_update_counter(Tab, Key, UpdateOp, SuccessFun, FailThunk) ->
     try
         SuccessFun(ets:update_counter(Tab, Key, UpdateOp))
     catch error:badarg -> FailThunk()
     end.
 
-update_msg_cache(MsgId, Msg) ->
-    update_msg_cache(MsgId, Msg, 1).
-
-update_msg_cache(MsgId, Msg, Diff) when Diff >= 1 ->
-    case ets:insert_new(?MSG_CACHE_TABLE, {MsgId, Msg, Diff}) of
+-spec update_msg_cache(msg_ref(),{routing_key(),payload()}) -> 'new_cache_item' | 'new_ref_count'.
+update_msg_cache(MsgRef, Msg) ->
+    case ets:insert_new(?MSG_CACHE_TABLE, {MsgRef, Msg, 1}) of
         true -> new_cache_item;
         false ->
             safe_ets_update_counter(
-              ?MSG_CACHE_TABLE, MsgId, {3, +Diff}, fun(_) -> new_ref_count end,
-              fun() -> update_msg_cache(MsgId, Msg, Diff) end)
+              ?MSG_CACHE_TABLE, MsgRef, {3, +1}, fun(_) -> new_ref_count end,
+              fun() -> update_msg_cache(MsgRef, Msg) end)
     end.
-
-
-
-ensure_list(B) when is_binary(B) -> binary_to_list(B);
-ensure_list(L) when is_list(L) -> L.

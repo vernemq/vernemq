@@ -17,30 +17,48 @@
 
 -record(state, {
                 %% parser requirements
-                buffer= <<>>,
-                parser_state=emqtt_frame:initial_state(),
+                buffer= <<>>                                :: binary(),
+                parser_state=emqtt_frame:initial_state()    :: none | fun((_) -> any()),
                 %% networking requirements
-                send_fun,
+                send_fun                                    :: function(),
                 %% mqtt layer requirements
-                next_msg_id=1,
-                client_id,
-                max_client_id_size=23,
-                will_topic,
-                will_msg,
-                will_qos,
-                waiting_acks=dict:new(),
+                next_msg_id=1                               :: msg_id(),
+                client_id                                   :: client_id(),
+                max_client_id_size=23                       :: non_neg_integer(),
+                will_topic                                  :: topic(),
+                will_msg                                    :: payload(),
+                will_qos                                    :: qos(),
+                waiting_acks=dict:new()                     :: dict(),
                 %% statemachine requirements
-                connection_attempted=false,
+                connection_attempted=false                  :: boolean(),
                 %% auth backend requirement
-                peer,
-                username,
-                msg_log_handler,
-                mountpoint="",
-                retry_interval=20000,
-                keep_alive,
-                keep_alive_timer
+                peer                                        :: {inet:ip_address(), inet:port_number()},
+                username                                    :: username() | {preauth, string() | undefined},
+                msg_log_handler                             :: fun((client_id(), topic(), payload()) -> any()),
+                mountpoint=""                               :: string(),
+                retry_interval=20000                        :: pos_integer(),
+                keep_alive                                  :: pos_integer(),
+                keep_alive_timer                            :: undefined | reference()
 
          }).
+
+-type statename() :: atom().
+-type retval() :: {statename(), #state{}} | stop.
+-type retval2() :: {statename(), #state{}} | {stop, atom(), #state{}}.
+-type fsm_msg() :: disconnect
+                 | timeout
+                 | {deliver, topic(), payload(), qos(), flag(), flag(), msg_ref()}
+                 | {deliver_bin, {msg_id(), qos(), binary()}}
+                 | {retry, msg_id()}
+                 | {unhandled_transport_error, atom()}.
+
+-type mqtt_variable_ping() :: undefined.
+-type mqtt_variable() :: #mqtt_frame_connect{}
+                       | #mqtt_frame_connack{}
+                       | #mqtt_frame_publish{}
+                       | #mqtt_frame_subscribe{}
+                       | #mqtt_frame_suback{}
+                       | mqtt_variable_ping().
 
 -hook({auth_on_publish, only, 6}).
 -hook({on_publish, all, 6}).
@@ -50,18 +68,25 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec deliver(pid(),topic(),payload(),qos(),flag(), flag(), msg_ref()) -> ok.
 deliver(FsmPid, Topic, Payload, QoS, IsRetained, IsDup, Ref) ->
-    FsmPid ! {deliver, Topic, Payload, QoS, IsRetained, IsDup, Ref}.
+    FsmPid ! {deliver, Topic, Payload, QoS, IsRetained, IsDup, Ref},
+    ok.
 
+-spec deliver_bin(pid(), {msg_id(), qos(), binary()}) -> ok.
 deliver_bin(FsmPid, Term) ->
-    FsmPid ! {deliver_bin, Term}.
+    FsmPid ! {deliver_bin, Term},
+    ok.
 
+-spec disconnect(pid()) -> ok.
 disconnect(FsmPid) ->
-    FsmPid ! disconnect.
+    FsmPid ! disconnect,
+    ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% FSM FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec init({inet:ip_address(), inet:port_number()},function(),[{atom(), any()}]) -> retval().
 init(Peer, SendFun, Opts) ->
     {_,MountPoint} = lists:keyfind(mountpoint, 1, Opts),
     {_,MaxClientIdSize} = lists:keyfind(max_client_id_size, 1, Opts),
@@ -90,18 +115,22 @@ init(Peer, SendFun, Opts) ->
                                   retry_interval=1000 * RetryInterval
                                   }}).
 
+-spec handle_input(binary(),{statename(), #state{}}) -> retval().
 handle_input(Data, {StateName, State}) ->
     #state{buffer=Buffer} = State,
     ret(process_bytes(<<Buffer/binary, Data/binary>>, StateName, State)).
 
+-spec handle_close({statename(),#state{}}) -> retval().
 handle_close({_StateName, State}) ->
     io:format("[~p] stop due to ~p~n", [self(), tcp_closed]),
     ret({stop, normal, State}).
 
+-spec handle_error(atom(),{statename(),#state{}}) -> retval().
 handle_error(Reason, {_StateName, State}) ->
     io:format("[~p] stop due to ~p~n", [self(), Reason]),
     ret({stop, normal, State}).
 
+-spec handle_fsm_msg(fsm_msg(), {statename(), #state{}}) -> retval().
 handle_fsm_msg(timeout, {wait_for_connect, State}) ->
     io:format("[~p] stop due to timeout~n", [self()]),
     ret({stop, normal, State});
@@ -112,7 +141,8 @@ handle_fsm_msg(timeout, {connected, State}) ->
     ret({connected, State});
 handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained, IsDup,
                 MsgStoreRef}, {connected, State}) ->
-    #state{waiting_acks=WAcks, mountpoint=MountPoint, retry_interval=RetryInterval} = State,
+    #state{client_id=ClientId, waiting_acks=WAcks, mountpoint=MountPoint,
+           retry_interval=RetryInterval} = State,
     {OutgoingMsgId, State1} = get_msg_id(QoS, State),
     Frame = #mqtt_frame{
                fixed=#mqtt_frame_fixed{
@@ -126,7 +156,11 @@ handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained, IsDup,
                            message_id=OutgoingMsgId},
                payload=Payload
               },
-    case send_publish_frame(OutgoingMsgId, Frame, QoS, State1) of
+    case send_publish_frame(Frame, State1) of
+        {error, Reason} when QoS > 0 ->
+            emqttd_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
+            io:format("[~p] stop due to ~p, deliver when client reconnects~n", [self(), Reason]),
+            ret({stop, normal, State1});
         {error, Reason} ->
             io:format("[~p] stop due to ~p~n", [self(), Reason]),
             ret({stop, normal, State1});
@@ -181,6 +215,8 @@ handle_fsm_msg({unhandled_transport_error, Reason}, {_, State}) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNALS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec process_bytes(bitstring(), statename(), #state{}) ->
+    {statename(), #state{}} | {stop, normal, #state{}}.
 process_bytes(Bytes, StateName, State) ->
     #state{parser_state=ParserState, keep_alive_timer=KARef} = State,
     case emqtt_frame:parse(Bytes, ParserState) of
@@ -190,7 +226,7 @@ process_bytes(Bytes, StateName, State) ->
                          payload=Payload}, Rest} ->
             case handle_frame(StateName, Fixed, Variable,
                               Payload, State) of
-                {#state{keep_alive=KeepAlive} = NextStateName, NewState} ->
+                {NextStateName, #state{keep_alive=KeepAlive} = NewState} ->
                     cancel_timer(KARef),
                     PS = emqtt_frame:initial_state(),
                     process_bytes(Rest, NextStateName,
@@ -211,9 +247,8 @@ process_bytes(Bytes, StateName, State) ->
     end.
 
 
-
-
-
+-spec handle_frame(statename(), #mqtt_frame_fixed{}, mqtt_variable(), payload(), #state{}) ->
+    {statename(), #state{}} | {stop, atom(), #state{}}.
 
 handle_frame(wait_for_connect, _, #mqtt_frame_connect{keep_alive=KeepAlive} = Var, _, State) ->
     check_connect(Var, State#state{keep_alive=KeepAlive * 1000});
@@ -281,22 +316,22 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
     cancel_timer(Ref), % cancel rpubrel timer
     {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
 
-handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, retain=1},
-             Var, <<>>, State) ->
-    #state{username=User, client_id=ClientId, mountpoint=MountPoint} = State,
-    #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
-    %% delete retained msg,
-    case emqttd_reg:publish(User, ClientId, undefined, combine_mp(MountPoint, Topic), <<>>, true) of
-        ok ->
-            NewState = send_frame(?PUBACK,
-                                  #mqtt_frame_publish{message_id=MessageId},
-                                  <<>>, State),
-            {connected, NewState};
-        {error, _Reason} ->
-            %% we can't delete the retained message, due to a network split,
-            %% if the client uses QoS 1 it will retry this message.
-            {connected, State}
-    end;
+%handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH, retain=true},
+%             Var, <<>>, State) ->
+%    #state{username=User, client_id=ClientId, mountpoint=MountPoint} = State,
+%    #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
+%    %% delete retained msg,
+%    case emqttd_reg:publish(User, ClientId, undefined, combine_mp(MountPoint, Topic), <<>>, true) of
+%        ok ->
+%            NewState = send_frame(?PUBACK,
+%                                  #mqtt_frame_publish{message_id=MessageId},
+%                                  <<>>, State),
+%            {connected, NewState};
+%        {error, _Reason} ->
+%            %% we can't delete the retained message, due to a network split,
+%            %% if the client uses QoS 1 it will retry this message.
+%            {connected, State}
+%    end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
                                           qos=QoS,
@@ -348,6 +383,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?DISCONNECT}, _, _, State) ->
     {stop, normal, State}.
 
 
+-spec ret({_,_} | {'stop','normal',#state{}}) -> 'stop' | {_,_}.
 ret({stop, _Reason, State}) ->
     handle_waiting_acks(State),
     maybe_publish_last_will(State),
@@ -358,9 +394,11 @@ ret({_, _} = R) -> R.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec check_connect(#mqtt_frame_connect{}, #state{}) -> retval2().
 check_connect(F, State) ->
     check_client_id(F, State).
 
+-spec check_client_id(#mqtt_frame_connect{}, #state{}) -> retval2().
 check_client_id(#mqtt_frame_connect{}, #state{username={preauth, undefined}} = State) ->
     %% No common name found in client certificate
     {connection_attempted,
@@ -396,6 +434,7 @@ check_client_id(_, State) ->
     {connection_attempted,
      send_connack(?CONNACK_INVALID_ID, State)}.
 
+-spec check_user(#mqtt_frame_connect{}, #state{}) -> retval2().
 check_user(#mqtt_frame_connect{username=""} = F, State) ->
     check_user(F#mqtt_frame_connect{username=undefined, password=undefined}, State);
 check_user(#mqtt_frame_connect{username=User, password=Password,
@@ -424,6 +463,7 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
              send_connack(?CONNACK_AUTH, State)}
     end.
 
+-spec check_will(#mqtt_frame_connect{}, #state{}) -> retval2().
 check_will(#mqtt_frame_connect{will_topic=undefined}, #state{keep_alive=KeepAlive} = State) ->
     {connected, send_connack(?CONNACK_ACCEPT, State#state{
                                     keep_alive_timer=send_after(KeepAlive, disconnect)})};
@@ -443,10 +483,12 @@ check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos}, St
             {connection_attempted, send_connack(?CONNACK_AUTH, State)}
     end.
 
+-spec send_connack(non_neg_integer(), #state{}) -> #state{}.
 send_connack(ReturnCode, State) ->
     send_frame(?CONNACK, #mqtt_frame_connack{return_code=ReturnCode},
                <<>>, State).
 
+-spec send_frame(non_neg_integer(),mqtt_variable(),payload(),#state{}) -> #state{}.
 send_frame(Type, Variable, Payload, State) ->
     send_frame(Type, false, Variable, Payload, State).
 
@@ -460,6 +502,7 @@ send_frame(Type, DUP, Variable, Payload, #state{send_fun=SendFun} = State) ->
     State.
 
 
+-spec maybe_publish_last_will(#state{}) -> #state{}.
 maybe_publish_last_will(#state{will_topic=undefined} = State) -> State;
 maybe_publish_last_will(#state{will_qos=QoS, will_topic=Topic,
                                will_msg=Msg } = State) ->
@@ -467,11 +510,13 @@ maybe_publish_last_will(#state{will_qos=QoS, will_topic=Topic,
     dispatch_publish(QoS, MsgId, Topic, Msg, false, NewState).
 
 
+-spec dispatch_publish(qos(), msg_id(), topic(), payload(), flag(), #state{}) -> #state{}.
 dispatch_publish(Qos, MessageId, Topic, Payload, IsRetain, State) ->
     #state{client_id=ClientId, msg_log_handler=MsgLogHandler} = State,
     MsgLogHandler(ClientId, Topic, Payload),
     dispatch_publish_(Qos, MessageId, Topic, Payload, IsRetain, State).
 
+-spec dispatch_publish_(qos(), msg_id(), topic(), payload(), flag(), #state{}) -> #state{}.
 dispatch_publish_(0, MessageId, Topic, Payload, IsRetain, State) ->
     dispatch_publish_qos0(MessageId, Topic, Payload, IsRetain, State);
 dispatch_publish_(1, MessageId, Topic, Payload, IsRetain, State) ->
@@ -479,11 +524,13 @@ dispatch_publish_(1, MessageId, Topic, Payload, IsRetain, State) ->
 dispatch_publish_(2, MessageId, Topic, Payload, IsRetain, State) ->
     dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State).
 
+-spec dispatch_publish_qos0(msg_id(), topic(), payload(), flag(), #state{}) -> #state{}.
 dispatch_publish_qos0(_MessageId, Topic, Payload, IsRetain, State) ->
     #state{username=User, client_id=ClientId} = State,
     publish(User, ClientId, undefined, Topic, Payload, IsRetain),
     State.
 
+-spec dispatch_publish_qos1(msg_id(), topic(), payload(), flag(), #state{}) -> #state{}.
 dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
     #state{username=User, client_id=ClientId} = State,
     MsgRef = emqttd_msg_store:store(User, ClientId, Topic, Payload),
@@ -493,6 +540,7 @@ dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
     emqttd_msg_store:deref(MsgRef),
     NewState.
 
+-spec dispatch_publish_qos2(msg_id(), topic(), payload(), flag(), #state{}) -> #state{}.
 dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
     #state{username=User, client_id=ClientId, waiting_acks=WAcks,
            retry_interval=RetryInterval, send_fun=SendFun} = State,
@@ -508,6 +556,7 @@ dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
                                {qos2, MessageId},
                                {2, Bin, Ref, {MsgRef, IsRetain}}, WAcks)}.
 
+-spec get_msg_id(qos(),#state{}) -> {msg_id(), #state{}}.
 get_msg_id(0, State) ->
     {undefined, State};
 get_msg_id(_, #state{next_msg_id=65535} = State) ->
@@ -515,25 +564,19 @@ get_msg_id(_, #state{next_msg_id=65535} = State) ->
 get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
     {MsgId, State#state{next_msg_id=MsgId + 1}}.
 
-send_publish_frame(_OutgoingMsgId, Frame, QoS, State) ->
+-spec send_publish_frame(#mqtt_frame{}, #state{}) -> #state{} | {error, atom()}.
+send_publish_frame(Frame, State) ->
     #state{send_fun=SendFun} = State,
     Bin = emqtt_frame:serialise(Frame),
     case SendFun(Bin) of
         ok ->
             State;
-        {error, Reason} when QoS > 0 ->
-            %% we cant send, process will die, store msg so we can
-            %% retry when client reconnects.
-            #mqtt_frame{variable=#mqtt_frame_publish{topic_name=Topic},
-                        payload=Payload} = Frame,
-            %% save to call even in a split brain situation
-            emqttd_msg_store:persist_for_later([{State#state.client_id, QoS}],
-                                               Topic, Payload),
-            {error, Reason};
         {error, Reason} ->
             {error, Reason}
     end.
 
+-spec publish(username(), client_id(), undefined | msg_ref(), topic(), payload(), flag()) ->
+    ok | {error,atom()}.
 publish(User, ClientId, MsgRef, Topic, Payload, IsRetain) ->
     %% auth_on_publish hook must return either:
     %% next | ok
@@ -549,17 +592,21 @@ publish(User, ClientId, MsgRef, Topic, Payload, IsRetain) ->
             R
     end.
 
+-spec combine_mp(_,'undefined' | string()) -> 'undefined' | [any()].
 combine_mp("", Topic) -> Topic;
 combine_mp(MountPoint, Topic) ->
     lists:flatten([MountPoint, "/", string:strip(Topic, left, $/)]).
 
+-spec clean_mp([any()],_) -> any().
 clean_mp("", Topic) -> Topic;
 clean_mp(MountPoint, MountedTopic) ->
     lists:sublist(MountedTopic, length(MountPoint) + 1, length(MountedTopic)).
 
+-spec random_client_id() -> string().
 random_client_id() ->
     lists:flatten(["anon-", base64:encode_to_string(crypto:rand_bytes(20))]).
 
+-spec handle_waiting_acks(#state{}) -> dict().
 handle_waiting_acks(State) ->
     #state{client_id=ClientId, waiting_acks=WAcks} = State,
     dict:fold(fun ({qos2, _}, _, Acc) ->
@@ -583,8 +630,10 @@ handle_waiting_acks(State) ->
                       Acc
               end, [], WAcks).
 
+-spec send_after(non_neg_integer(), any()) -> reference().
 send_after(Time, Msg) ->
     erlang:send_after(Time, self(), Msg).
 
+-spec cancel_timer('undefined' | reference()) -> 'ok'.
 cancel_timer(undefined) -> ok;
-cancel_timer(TRef) -> erlang:cancel_timer(TRef).
+cancel_timer(TRef) -> erlang:cancel_timer(TRef), ok.

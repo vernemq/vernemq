@@ -14,6 +14,7 @@
 
 
 -spec start(atom()) -> ok .
+
 start(App) ->
     case lists:member(?TABLE, ets:all()) of
         true ->
@@ -46,11 +47,13 @@ start(App) ->
 
 
 -spec stop() -> ok.
+
 stop() ->
     true = ets:delete(?TABLE),
     ok.
 
 -spec declare(atom(), type(), arity()) -> ok.
+
 declare(Name, Type, Arity) ->
     case ets:lookup(?TABLE, Name) of
         [] ->
@@ -61,6 +64,7 @@ declare(Name, Type, Arity) ->
     end.
 
 -spec add(name(), mfa()) -> ok | no_return().
+
 add(Name, {Module, Function, Arity}) ->
     try
         ListOfTuple = apply(Module, module_info, [exports]),
@@ -83,6 +87,7 @@ add(Name, {Module, Function, Arity}) ->
             error({undef_module, Module})
     end.
 
+-spec verify_add(_,_,_,[any()],{non_neg_integer(),{atom() | tuple(),_,_}}) -> 'ok' | {'error','duplicate_mfa' | 'duplicate_priority'}.
 verify_add(Name, Type, Arity, ListOfHook, {Priority, MFA} = Hook) ->
     case lists:keymember(Priority, 1, ListOfHook) of
         false ->
@@ -100,6 +105,7 @@ verify_add(Name, Type, Arity, ListOfHook, {Priority, MFA} = Hook) ->
     end.
 
 -spec delete(name(), type(), priority(), mfa()) -> ok.
+
 delete(Name, Type, Priority, {Module, Function, Arity}) ->
     case ets:lookup(?TABLE, Name) of
         [] ->
@@ -118,6 +124,7 @@ delete(Name, Type, Priority, {Module, Function, Arity}) ->
     end.
 
 -spec all(atom(), args()) -> [any()].
+
 all(Name, Args) ->
     case ets:lookup(?TABLE, Name) of
         [] ->
@@ -130,6 +137,7 @@ all(Name, Args) ->
     end.
 
 -spec only(atom(), args()) -> not_found | any().
+
 only(Name, Args) ->
     case ets:lookup(?TABLE, Name) of
         [] ->
@@ -138,6 +146,7 @@ only(Name, Args) ->
             only0(ListOfHook, Args)
     end.
 
+-spec only0(maybe_improper_list(),_) -> any().
 only0([], _Args) ->
     not_found;
 only0([{_Priority, {Module, Function, Arity}}|Rest], Args) ->
@@ -149,6 +158,7 @@ only0([{_Priority, {Module, Function, Arity}}|Rest], Args) ->
     end.
 
 -spec every(atom(), value(), args()) -> any().
+
 every(Name, Value, Args) ->
     case ets:lookup(?TABLE, Name) of
         [] ->
@@ -157,12 +167,14 @@ every(Name, Value, Args) ->
             every0(Value, Args, ListOfHook)
     end.
 
+-spec every0(_,_,[any()]) -> any().
 every0(Value, Args, ListOfHook) ->
     F = fun({_Priority, {Module, Function, Arity}}, Acc) ->
                 try_apply(Module, Function, [Acc|Args], Arity)
         end,
     lists:foldl(F, Value, ListOfHook).
 
+-spec try_apply(atom() | tuple(),atom(),[any()],_) -> any().
 try_apply(Module, Function, Args, Arity) ->
     try
         apply(Module, Function, Args)

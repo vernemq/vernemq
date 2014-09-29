@@ -9,12 +9,15 @@
 
 -define(SUBPROTO, <<"mqttv3.1">>).
 
+-spec init({'tcp','http'},_,_) -> {'upgrade','protocol','cowboy_websocket'}.
 init({tcp, http}, _Req, _Opts) ->
     {upgrade, protocol, cowboy_websocket}.
 
+-spec websocket_init(_,cowboy_req:req(),maybe_improper_list()) -> {'shutdown',cowboy_req:req()} | {'ok',cowboy_req:req(),'stop' | {_,_}}.
 websocket_init(_TransportName, Req, Opts) ->
     Self = self(),
-    State = emqttd_fsm:init("ws peer", fun(Bin) -> send(Self, {reply, Bin}) end, Opts),
+    {Ip, _Port} = cowboy_req:peer(Req),
+    State = emqttd_fsm:init(Ip, fun(Bin) -> send(Self, {reply, Bin}) end, Opts),
     case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req) of
         {ok, undefined, Req2} ->
             {ok, Req2, State};
@@ -29,6 +32,7 @@ websocket_init(_TransportName, Req, Opts) ->
             end
     end.
 
+-spec websocket_handle({binary, binary()} | any(), cowboy_req:req(), any()) -> {ok | shutdown, cowboy_req:req(), any()}.
 websocket_handle({binary, Data}, Req, FSMState) ->
     case emqttd_fsm:handle_input(Data, FSMState) of
         stop ->
@@ -40,6 +44,7 @@ websocket_handle({binary, Data}, Req, FSMState) ->
 websocket_handle(_Data, Req, State) ->
     {ok, Req, State}.
 
+-spec websocket_info({reply, binary()} | any(), cowboy_req:req(), any()) -> {ok | shutdown, cowboy_req:req(), any()}.
 websocket_info({reply, Data}, Req, State) ->
     {reply, {binary, Data}, Req, State};
 websocket_info(Info, Req, FSMState) ->
@@ -52,11 +57,13 @@ websocket_info(Info, Req, FSMState) ->
 
 
 
+-spec websocket_terminate(_, cowboy_req:req(), any()) -> ok.
 websocket_terminate(_Reason, _Req, FSMState) ->
     emqttd_fsm:handle_close(FSMState),
     ok.
 
 
+-spec send(pid(),{'reply',_}) -> 'ok' | {'error','process_not_alive'}.
 send(Pid, Msg) ->
     case is_process_alive(Pid) of
         true ->

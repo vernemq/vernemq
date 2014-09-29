@@ -14,6 +14,7 @@
 %% API functions
 %% ===================================================================
 
+-spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
@@ -21,7 +22,9 @@ start_link() ->
 %% Supervisor callbacks
 %% ===================================================================
 
+-spec init([]) -> {'ok',{{'one_for_one',5,10},[{atom(),{atom(),atom(),list()},permanent,pos_integer(),worker,[atom()]}]}}.
 init([]) ->
+    %% we make sure the hooks for emqttd_server are registered first
     emqttd_hook:start(emqttd_server),
     [emqttd_hook:start(A) || {A, _, _}<- application:loaded_applications(),
                              A /= emqttd_server],

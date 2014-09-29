@@ -22,9 +22,11 @@
 %%% API
 %%%===================================================================
 
+-spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+-spec check_crl(_,#'OTPCertificate'{tbsCertificate::#'OTPTBSCertificate'{}}) -> boolean().
 check_crl(File, #'OTPCertificate'{tbsCertificate=TBSCert} = Cert) ->
     SerialNr = TBSCert#'OTPTBSCertificate'.serialNumber,
     case ets:lookup(?TAB, File) of
@@ -42,10 +44,12 @@ check_crl(File, #'OTPCertificate'{tbsCertificate=TBSCert} = Cert) ->
 %%% gen_server callbacks
 %%%===================================================================
 
+-spec init([]) -> {'ok',#state{refs::[]}}.
 init([]) ->
     ets:new(?TAB, [public, named_table, {read_concurrency, true}]),
     {ok, #state{}}.
 
+-spec handle_call({'add_crl',atom() | binary() | [atom() | [any()] | char()]},_,_) -> {'reply','ok',_}.
 handle_call({add_crl, File}, _From, State) ->
     {ok, Bin} = file:read_file(File),
     Serials =
@@ -58,15 +62,19 @@ handle_call({add_crl, File}, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
+-spec handle_cast(_,_) -> {'noreply',_}.
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+-spec handle_info(_,_) -> {'noreply',_}.
 handle_info(_Info, State) ->
     {noreply, State}.
 
+-spec terminate(_,_) -> 'ok'.
 terminate(_Reason, _State) ->
     ok.
 
+-spec code_change(_,_,_) -> {'ok',_}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 

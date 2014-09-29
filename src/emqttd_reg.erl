@@ -1,5 +1,6 @@
 -module(emqttd_reg).
 -include_lib("emqtt_commons/include/emqtt_internal.hrl").
+-include_lib("emqtt_commons/include/types.hrl").
 
 -export([subscribe/3,
          unsubscribe/3,
@@ -7,7 +8,6 @@
          publish/6,
          register_client/2,
          disconnect_client/1,
-         cleanup_client/1,
          match/1]).
 
 -export([register_client__/3,
@@ -23,9 +23,13 @@
 -hook({on_unsubscribe, all, 3}).
 -hook({filter_subscribers, every, 5}).
 
+-spec subscribe(username() | plugin_id(),client_id(),[{topic(), qos()}]) ->
+    ok | {error, not_allowed | [any(),...]}.
 subscribe(User, ClientId, Topics) ->
     emqttd_cluster:if_ready(fun subscribe_/3, [User, ClientId, Topics]).
 
+-spec subscribe_(username() | plugin_id(),client_id(),[{topic(), qos()}]) ->
+    'ok' | {'error','not_allowed' | [any(),...]}.
 subscribe_(User, ClientId, Topics) ->
     case emqttd_hook:only(auth_on_subscribe, [User, ClientId, Topics]) of
         ok ->
@@ -40,6 +44,7 @@ subscribe_(User, ClientId, Topics) ->
             {error, not_allowed}
     end.
 
+-spec subscribe_tx(client_id(),[{topic(),qos()}],[any()]) -> [any()].
 subscribe_tx(_, [], Errors) -> Errors;
 subscribe_tx(ClientId, [{Topic, Qos}|Rest], Errors) ->
     case mnesia:transaction(fun add_subscriber/3, [Topic, Qos, ClientId]) of
@@ -50,9 +55,11 @@ subscribe_tx(ClientId, [{Topic, Qos}|Rest], Errors) ->
             subscribe_tx(ClientId, Rest, [Reason|Errors])
     end.
 
+-spec unsubscribe(username() | plugin_id(),client_id(),[topic()]) -> any().
 unsubscribe(User, ClientId, Topics) ->
     emqttd_cluster:if_ready(fun unsubscribe_/3, [User, ClientId, Topics]).
 
+-spec unsubscribe_(username() | plugin_id(),client_id(),[topic()]) -> 'ok'.
 unsubscribe_(User, ClientId, Topics) ->
     lists:foreach(fun(Topic) ->
                           {atomic, _} = del_subscriber(Topic, ClientId)
@@ -60,9 +67,11 @@ unsubscribe_(User, ClientId, Topics) ->
     emqttd_hook:all(on_unsubscribe, [User, ClientId, Topics]),
     ok.
 
+-spec subscriptions(routing_key()) -> [{client_id(), qos()}].
 subscriptions(RoutingKey) ->
     subscriptions(match(RoutingKey), []).
 
+-spec subscriptions([#topic{}],_) -> [{client_id(), qos()}].
 subscriptions([], Acc) -> Acc;
 subscriptions([#topic{name=Topic, node=Node}|Rest], Acc) when Node == node() ->
     subscriptions(Rest,
@@ -76,13 +85,11 @@ subscriptions([#topic{name=Topic, node=Node}|Rest], Acc) when Node == node() ->
 subscriptions([_|Rest], Acc) ->
     subscriptions(Rest, Acc).
 
-
-
-
-
+-spec register_client(client_id(),flag()) -> ok | {error, not_ready}.
 register_client(ClientId, CleanSession) ->
     emqttd_cluster:if_ready(fun register_client_/2, [ClientId, CleanSession]).
 
+-spec register_client_(client_id(),flag()) -> 'ok'.
 register_client_(ClientId, CleanSession) ->
     Nodes = emqttd_cluster:nodes(),
     lists:foreach(fun(Node) when Node == node() ->
@@ -91,6 +98,7 @@ register_client_(ClientId, CleanSession) ->
                           rpc:call(Node, ?MODULE, register_client__, [self(), ClientId, CleanSession])
                   end, Nodes).
 
+-spec register_client__(pid(),client_id(),flag()) -> ok.
 register_client__(ClientPid, ClientId, CleanSession) ->
     disconnect_client(ClientId), %% disconnect in case we already have such a client id
     case CleanSession of
@@ -100,8 +108,11 @@ register_client__(ClientPid, ClientId, CleanSession) ->
             %% this will also cleanup the message store
             cleanup_client_(ClientId)
     end,
-    gproc:add_local_name({?MODULE, ClientId}).
+    gproc:add_local_name({?MODULE, ClientId}),
+    ok.
 
+-spec publish(username() | plugin_id(),client_id(), undefined | msg_ref(),
+              routing_key(),binary(),flag()) -> 'ok' | {'error',_}.
 publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain)
   when is_list(RoutingKey) and is_binary(Payload) ->
     Ref = make_ref(),
@@ -125,6 +136,8 @@ publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain)
 
 
 %publish to cluster node.
+-spec publish(username() | plugin_id(),client_id(),msg_id(),
+              routing_key(),payload(),flag(),{pid(),reference()}) -> ok | {error, _}.
 publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, Caller) ->
     MatchedTopics = match(RoutingKey),
     case IsRetain of
@@ -146,14 +159,14 @@ publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, Caller) ->
             end
     end.
 
+-spec publish_(username() | plugin_id(),client_id(),msg_id(),
+               routing_key(),payload(),'true',[#topic{}],{pid(), reference()}) -> 'ok'.
 publish_(User, ClientId, MsgId, RoutingKey, Payload, IsRetain = true, MatchedTopics, Caller) ->
-    case emqttd_msg_store:retain_action(User, ClientId, RoutingKey, Payload) of
-        ok ->
-            publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller);
-        Error ->
-            Error
-    end.
+    ok = emqttd_msg_store:retain_action(User, ClientId, RoutingKey, Payload),
+    publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller).
 
+-spec publish__(username() | plugin_id(),client_id(),msg_id(),
+                routing_key(),payload(),flag(),[#topic{}],{pid(), reference()}) -> 'ok'.
 publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller) ->
     {CallerPid, CallerRef} = Caller,
     CallerPid ! CallerRef,
@@ -168,6 +181,7 @@ publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, C
       end, MatchedTopics).
 
 
+-spec check_single_node(atom(),[#topic{}],integer()) -> boolean().
 check_single_node(Node, [#topic{node=Node}|Rest], Acc) ->
     check_single_node(Node, Rest, Acc -1);
 check_single_node(Node, [_|Rest], Acc) ->
@@ -178,15 +192,14 @@ check_single_node(_, [], _) -> false.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% RPC Callbacks / Maintenance
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-cleanup_client(ClientId) ->
-    gen_server:call(?MODULE, {cleanup_client, ClientId}).
-
+-spec disconnect_client(client_id() | pid()) -> 'ok' | {'error','not_found'}.
 disconnect_client(ClientPid) when is_pid(ClientPid) ->
-    emqttd_fsm:disconnect(ClientPid);
-
+    emqttd_fsm:disconnect(ClientPid),
+    ok;
 disconnect_client(ClientId) ->
     wait_until_unregistered(ClientId, false).
 
+-spec wait_until_unregistered(client_id(),boolean()) -> {'error','not_found'}.
 wait_until_unregistered(ClientId, DisconnectRequested) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
@@ -203,6 +216,8 @@ wait_until_unregistered(ClientId, DisconnectRequested) ->
 
 
 %route locally, should only be called by publish
+-spec route(username() | plugin_id(),client_id(),msg_id(),topic(),
+            routing_key(),payload(),flag()) -> 'ok'.
 route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, IsRetain) ->
     Subscribers = mnesia:dirty_read(emqttd_subscriber, Topic),
     FilteredSubscribers = emqttd_hook:every(filter_subscribers, Subscribers, [SendingUser, SendingClientId, MsgId, RoutingKey, Payload]),
@@ -214,9 +229,12 @@ route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, IsRetain)
                           deliver(ClientId, RoutingKey, Payload, 0, undefined, IsRetain)
                 end, FilteredSubscribers).
 
+-spec deliver(client_id(),routing_key(),payload(),
+              qos(),msg_ref(),flag()) -> 'ok' | {'error','not_found'}.
 deliver(_, _, <<>>, _, Ref, true) ->
     %% <<>> --> retain-delete action, we don't deliver the empty frame
-    emqttd_msg_store:deref(Ref);
+    emqttd_msg_store:deref(Ref),
+    ok;
 deliver(ClientId, RoutingKey, Payload, Qos, Ref, _IsRetain) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
@@ -224,14 +242,17 @@ deliver(ClientId, RoutingKey, Payload, Qos, Ref, _IsRetain) ->
         _ when Qos > 0 ->
             emqttd_msg_store:defer_deliver(ClientId, Qos, Ref),
             ok;
-        _ -> ok
+        _ ->
+            ok
     end.
 
+-spec match(routing_key()) -> [#topic{}].
 match(Topic) when is_list(Topic) ->
     TrieNodes = mnesia:async_dirty(fun trie_match/1, [emqtt_topic:words(Topic)]),
     Names = [Name || #trie_node{topic=Name} <- TrieNodes, Name=/= undefined],
     lists:flatten([mnesia:dirty_read(emqttd_trie_topic, Name) || Name <- Names]).
 
+-spec emqttd_table_defs() -> [{atom(), [{atom(), any()}]}].
 emqttd_table_defs() ->
     [
      {emqttd_trie,[
@@ -259,17 +280,21 @@ emqttd_table_defs() ->
 ].
 
 
+-spec reset_all_tables([]) -> ok.
 reset_all_tables([]) ->
     %% called using emqttd-admin, mainly for test purposes
     %% you don't want to call this during production
-    [reset_table(T) || {T,_}<- emqttd_table_defs()].
+    [reset_table(T) || {T,_}<- emqttd_table_defs()],
+    ok.
 
+-spec reset_table(atom()) -> ok.
 reset_table(Tab) ->
     lists:foreach(fun(Key) ->
                           mnesia:dirty_delete(Tab, Key)
                   end, mnesia:dirty_all_keys(Tab)).
 
 
+-spec wait_til_ready() -> 'ok'.
 wait_til_ready() ->
     case emqttd_cluster:if_ready(fun() -> true end, []) of
         true ->
@@ -279,7 +304,11 @@ wait_til_ready() ->
             wait_til_ready()
     end.
 
+-spec direct_plugin_exports(module()) -> {function(), function(), function()}.
 direct_plugin_exports(Mod) ->
+    %% This Function exports a generic Register, Publish, and Subscribe
+    %% Fun, that a plugin can use if needed. Currently all functions
+    %% block until the cluster is ready.
     ClientId = fun(T) ->
                        base64:encode_to_string(
                          integer_to_binary(
@@ -292,8 +321,7 @@ direct_plugin_exports(Mod) ->
     fun() ->
             wait_til_ready(),
             CallingPid = self(),
-            true = register_client__(CallingPid, ClientId(CallingPid), true),
-            ok
+            register_client__(CallingPid, ClientId(CallingPid), true)
     end,
 
     PublishFun =
@@ -315,6 +343,7 @@ direct_plugin_exports(Mod) ->
     end,
     {RegisterFun, PublishFun, SubscribeFun}.
 
+-spec add_subscriber(topic(),qos(),client_id()) -> ok | ignore | abort.
 add_subscriber(Topic, Qos, ClientId) ->
     mnesia:write(emqttd_subscriber, #subscriber{topic=Topic, qos=Qos, client=ClientId}, write),
     mnesia:write(emqttd_trie_topic, emqtt_topic:new(Topic), write),
@@ -331,6 +360,7 @@ add_subscriber(Topic, Qos, ClientId) ->
     end.
 
 
+-spec del_subscriber(topic() | '_' ,client_id()) -> {'aborted',_} | {'atomic',ok}.
 del_subscriber(Topic, ClientId) ->
     mnesia:transaction(
       fun() ->
@@ -341,6 +371,7 @@ del_subscriber(Topic, ClientId) ->
                             end, Objs)
       end).
 
+-spec del_topic(topic()) -> any().
 del_topic(Topic) ->
     case mnesia:read(emqttd_subscriber, Topic) of
         [] ->
@@ -354,6 +385,7 @@ del_topic(Topic) ->
             ok
     end.
 
+-spec trie_delete(maybe_improper_list()) -> any().
 trie_delete(Topic) ->
     case mnesia:read(emqttd_trie_node, Topic) of
         [#trie_node{edge_count=0}] ->
@@ -365,9 +397,11 @@ trie_delete(Topic) ->
             ignore
     end.
 
+-spec trie_match(maybe_improper_list()) -> any().
 trie_match(Words) ->
     trie_match(root, Words, []).
 
+-spec trie_match(_,maybe_improper_list(),_) -> any().
 trie_match(NodeId, [], ResAcc) ->
     mnesia:read(emqttd_trie_node, NodeId) ++ 'trie_match_#'(NodeId, ResAcc);
 
@@ -380,6 +414,7 @@ trie_match(NodeId, [W|Words], ResAcc) ->
               end
       end, 'trie_match_#'(NodeId, ResAcc), [W, "+"]).
 
+-spec 'trie_match_#'(_,_) -> any().
 'trie_match_#'(NodeId, ResAcc) ->
     case mnesia:read(emqttd_trie, #trie_edge{node_id=NodeId, word="#"}) of
         [#trie{node_id=ChildId}] ->
@@ -388,6 +423,7 @@ trie_match(NodeId, [W|Words], ResAcc) ->
             ResAcc
     end.
 
+-spec trie_add_path({'root' | [any()],[any()],[any()]}) -> any().
 trie_add_path({Node, Word, Child}) ->
     Edge = #trie_edge{node_id=Node, word=Word},
     case mnesia:read(emqttd_trie_node, Node) of
@@ -404,6 +440,7 @@ trie_add_path({Node, Word, Child}) ->
             mnesia:write(emqttd_trie, #trie{edge=Edge, node_id=Child}, write)
     end.
 
+-spec trie_delete_path([{'root' | [any()],[any()],[any()]}]) -> any().
 trie_delete_path([]) ->
     ok;
 trie_delete_path([{NodeId, Word, _}|RestPath]) ->
@@ -422,6 +459,7 @@ trie_delete_path([{NodeId, Word, _}|RestPath]) ->
     end.
 
 
+-spec get_client_pid(_) -> {'error','not_found'} | {'ok',_}.
 get_client_pid(ClientId) ->
     case gproc:lookup_local_name({?MODULE, ClientId}) of
         undefined ->
@@ -430,6 +468,7 @@ get_client_pid(ClientId) ->
             {ok, ClientPid}
     end.
 
+-spec cleanup_client_(client_id()) -> {'atomic','ok'}.
 cleanup_client_(ClientId) ->
     emqttd_msg_store:clean_session(ClientId),
     {atomic, ok} = del_subscriber('_', ClientId).

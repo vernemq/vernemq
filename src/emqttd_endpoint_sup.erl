@@ -30,13 +30,12 @@
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the supervisor
-%%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
-%% @end
 %%--------------------------------------------------------------------
+-spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
+-spec change_config_now(_,[any()],_) -> 'ok'.
 change_config_now(_New, Changed, _Deleted) ->
     %% we are only interested if the config changes
     {OldListeners, NewListeners} = proplists:get_value(listeners, Changed, {[],[]}),
@@ -49,6 +48,7 @@ change_config_now(_New, Changed, _Deleted) ->
     maybe_new_listener(ranch_ssl, emqttd_tcp, OldSSL, NewSSL),
     maybe_new_listener(ranch_tcp, cowboy_protocol, OldWS, NewWS).
 
+-spec maybe_change_listener('ranch_ssl' | 'ranch_tcp',_,_) -> 'ok'.
 maybe_change_listener(_, Old, New) when Old == New -> ok;
 maybe_change_listener(Transport, Old, New) ->
     lists:foreach(
@@ -66,6 +66,7 @@ maybe_change_listener(Transport, Old, New) ->
               end
       end, Old).
 
+-spec maybe_new_listener('ranch_ssl' | 'ranch_tcp','cowboy_protocol' | 'emqttd_tcp',_,[any()]) -> 'ok'.
 maybe_new_listener(Transport, Protocol, Old, New) ->
     lists:foreach(
       fun({{Addr, Port} = IpAddr, Opts}) ->
@@ -89,12 +90,8 @@ maybe_new_listener(Transport, Protocol, Old, New) ->
 %% this function is called by the new process to find out about
 %% restart strategy, maximum restart frequency and child
 %% specifications.
-%%
-%% @spec init(Args) -> {ok, {SupFlags, [ChildSpec]}} |
-%%                     ignore |
-%%                     {error, Reason}
-%% @end
 %%--------------------------------------------------------------------
+-spec init([]) -> {'ok',{{'one_for_one',5,10},[{atom(),{atom(),atom(),list()},permanent,pos_integer(),worker,[atom()]}]}}.
 init([]) ->
     {ok, {TCPListeners, SSLListeners, WSListeners}} = application:get_env(?APP, listeners),
     start_listeners(TCPListeners, ranch_tcp, emqttd_tcp),
@@ -108,9 +105,11 @@ init([]) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+-spec start_listeners([any()],'ranch_ssl' | 'ranch_tcp','cowboy_protocol' | 'emqttd_tcp') -> [{'ok',pid()}].
 start_listeners(Listeners, Transport, Protocol) ->
     [start_listener(Transport, Protocol, Addr, Port, Opts) || {{Addr, Port}, Opts} <- Listeners].
 
+-spec start_listener('ranch_ssl' | 'ranch_tcp','cowboy_protocol' | 'emqttd_tcp',string() | inet:ip_address(), inet:port_number(),[any()]) -> {'ok',pid()}.
 start_listener(Transport, Protocol, Addr, Port, Opts) ->
     Ref = listener_name(Addr, Port),
     NrOfAcceptors = proplists:get_value(nr_of_acceptors, Opts),
@@ -124,9 +123,11 @@ start_listener(Transport, Protocol, Addr, Port, Opts) ->
                                        | transport_opts(Transport, Opts)],
                                       Protocol, handler_opts(Protocol, Opts)).
 
+-spec listener_name(string() | inet:ip_address(),inet:port_number()) -> {'emqttd_listener',inet:ip_address(),inet:port_number()}.
 listener_name(Ip, Port) ->
     {emqttd_listener, Ip, Port}.
 
+-spec transport_opts('ranch_ssl' | 'ranch_tcp',_) -> [{atom(), any()}].
 transport_opts(ranch_ssl, Opts) ->
     [{cacerts, case proplists:get_value(cafile, Opts) of
                    undefined -> undefined;
@@ -159,6 +160,7 @@ transport_opts(ranch_ssl, Opts) ->
     ];
 transport_opts(ranch_tcp, _Opts) -> [].
 
+-spec handler_opts('cowboy_protocol' | 'emqttd_tcp' | emqttd_ssl,[any()]) -> [any(),...].
 handler_opts(cowboy_protocol, Opts) ->
     Dispatch = cowboy_router:compile(
                  [
@@ -167,7 +169,6 @@ handler_opts(cowboy_protocol, Opts) ->
                         ]}
                  ]),
     [{env, [{dispatch, Dispatch}]}];
-
 handler_opts(emqttd_tcp, Opts) ->
     {ok, MsgLogHandler} = application:get_env(?APP, msg_log_handler),
     {ok, MaxClientIdSize} = application:get_env(?APP, max_client_id_size),
@@ -176,7 +177,6 @@ handler_opts(emqttd_tcp, Opts) ->
      {max_client_id_size, MaxClientIdSize},
      {retry_interval, RetryInterval}
      |Opts];
-
 handler_opts(emqttd_ssl, Opts) ->
     TCPOpts = handler_opts(emqttd_tcp, Opts),
     UseIdentityAsUserName = proplists:get_value(use_identity_as_username, Opts, false),
@@ -189,13 +189,14 @@ handler_opts(emqttd_ssl, Opts) ->
              |TCPOpts]
     end.
 
-
+-spec ciphersuite_transform(boolean(), string()) -> [{atom(), atom(), atom()}].
 ciphersuite_transform(SupportEC, []) ->
     unbroken_cipher_suites(all_ciphers(SupportEC));
 ciphersuite_transform(_, CiphersString) when is_list(CiphersString) ->
     Ciphers = string:tokens(CiphersString, ":"),
     unbroken_cipher_suites(ciphersuite_transform_(Ciphers, [])).
 
+-spec ciphersuite_transform_([string()], [{atom(), atom(), atom()}]) -> [{atom(), atom(), atom()}].
 ciphersuite_transform_([CipherString|Rest], Acc) ->
     Cipher = string:tokens(CipherString, "-"),
     case cipher_ex_transform(Cipher) of
@@ -207,6 +208,7 @@ ciphersuite_transform_([CipherString|Rest], Acc) ->
     end;
 ciphersuite_transform_([], Acc) -> Acc.
 
+-spec cipher_ex_transform([string()]) -> {ok, {atom(), atom(), atom()}} | {error, unknown_keyexchange | unknown_cipher | unknown_cipher}.
 cipher_ex_transform(["ECDH", "ANON"|Rest]) -> cipher_ci_transform(ecdh_anon, Rest);
 cipher_ex_transform(["ECDH", "ECDSA"|Rest]) -> cipher_ci_transform(ecdh_ecdsa, Rest);
 cipher_ex_transform(["ECDHE", "ECDSA"|Rest]) -> cipher_ci_transform(ecdhe_ecdsa, Rest);
@@ -223,8 +225,9 @@ cipher_ex_transform(["SRP", "RSA"|Rest]) -> cipher_ci_transform(srp_rsa, Rest);
 cipher_ex_transform(["RSA"|Rest]) -> cipher_ci_transform(rsa, Rest);
 cipher_ex_transform(["PSK"|Rest]) -> cipher_ci_transform(psk, Rest);
 cipher_ex_transform([_|Rest]) -> cipher_ex_transform(Rest);
-cipher_ex_transform([]) -> {unknown_keyexchange}.
+cipher_ex_transform([]) -> {error, unknown_keyexchange}.
 
+-spec cipher_ci_transform(atom(), [string()]) -> {ok, {atom(), atom(), atom()}} | {error, unknown_hash | unknown_cipher}.
 cipher_ci_transform(KeyEx, ["3DES", "EDE", "CBC"|Rest]) ->
     cipher_hash_transform(KeyEx, '3des_ede_cbc', Rest);
 cipher_ci_transform(KeyEx, ["AES128", "CBC"|Rest]) ->
@@ -239,6 +242,7 @@ cipher_ci_transform(KeyEx, [_|Rest]) ->
     cipher_ci_transform(KeyEx, Rest);
 cipher_ci_transform(_, []) -> {error, unknown_cipher}.
 
+-spec cipher_hash_transform(atom(), atom(), [string()]) -> {ok, {atom(), atom(), atom()}} | {error, unknown_hash}.
 cipher_hash_transform(KeyEx, Cipher, ["MD5"]) -> {ok, {KeyEx, Cipher, md5}};
 cipher_hash_transform(KeyEx, Cipher, ["SHA"]) -> {ok, {KeyEx, Cipher, sha}};
 cipher_hash_transform(KeyEx, Cipher, ["SHA256"]) -> {ok, {KeyEx, Cipher, sha256}};
@@ -247,6 +251,7 @@ cipher_hash_transform(KeyEx, Cipher, [_|Rest]) ->
     cipher_hash_transform(KeyEx, Cipher, Rest);
 cipher_hash_transform(_, _, []) -> {error, unknown_hash}.
 
+-spec all_ciphers(boolean()) -> [{atom(), atom(), atom()}].
 all_ciphers(UseEc) ->
     ECExchanges = [ecdh_anon, ecdh_ecdsa, ecdhe_ecdsa, ecdh_rsa, ecdhe_rsa],
     [CS || {Ex, _, _} = CS <- ssl:cipher_suites(), case UseEc of
@@ -255,6 +260,7 @@ all_ciphers(UseEc) ->
                                                            not lists:member(Ex, ECExchanges)
                                                    end].
 
+-spec unbroken_cipher_suites([atom()]) -> [{atom(), atom(), atom()}].
 unbroken_cipher_suites(CipherSuites) ->
     %% from ranch
     case proplists:get_value(ssl_app, ssl:versions()) of
@@ -266,6 +272,7 @@ unbroken_cipher_suites(CipherSuites) ->
             CipherSuites
     end.
 
+-spec verify_ssl_peer(_,'valid' | 'valid_peer' | {'bad_cert',_} | {'extension',_},_) -> {'fail','is_self_signed' | {'bad_cert',_}} | {'unknown',_} | {'valid',_}.
 verify_ssl_peer(_, {bad_cert, _} = Reason, _) ->
     {fail, Reason};
 verify_ssl_peer(_,{extension, _}, UserState) ->
@@ -285,14 +292,13 @@ verify_ssl_peer(Cert, valid_peer, UserState) ->
                         true ->
                             {valid, UserState};
                         false ->
-                            {fail, {bad_cert, cert_revoked}};
-                        {error, Reason} ->
-                            {fail, Reason}
+                            {fail, {bad_cert, cert_revoked}}
                     end
             end
     end.
 
 
+-spec load_cert(string()) -> [binary()].
 load_cert(Cert) ->
     case file:read_file(Cert) of
         {error, Reason} ->

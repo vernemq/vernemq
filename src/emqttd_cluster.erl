@@ -35,13 +35,16 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+-spec nodes() -> [any()].
 nodes() ->
     [Node || [{Node, true}]
              <- ets:match(emqttd_status, '$1'), Node /= ready].
 
+-spec on_node_up(_) -> 'ok' | 'true'.
 on_node_up(Node) ->
     wait_for_table(fun() ->
                            Nodes = mnesia_cluster_utils:cluster_nodes(all),
@@ -49,6 +52,7 @@ on_node_up(Node) ->
                            update_ready(Nodes)
                    end).
 
+-spec on_node_down(_) -> 'ok' | 'true'.
 on_node_down(Node) ->
     wait_for_table(fun() ->
                            Nodes = mnesia_cluster_utils:cluster_nodes(all),
@@ -56,12 +60,14 @@ on_node_down(Node) ->
                            update_ready(Nodes)
                    end).
 
+-spec wait_for_table(fun(() -> 'true')) -> 'ok' | 'true'.
 wait_for_table(Fun) ->
     case lists:member(emqttd_status, ets:all()) of
         true -> Fun();
         false -> timer:sleep(100)
     end.
 
+-spec update_ready([any()]) -> 'true'.
 update_ready(Nodes) ->
     SortedNodes = lists:sort(Nodes),
     IsReady = lists:sort([Node || [{Node, true}]
@@ -69,9 +75,11 @@ update_ready(Nodes) ->
                                   Node /= ready]) == SortedNodes,
     ets:insert(emqttd_status, {ready, IsReady}).
 
+-spec is_ready() -> boolean().
 is_ready() ->
     ets:lookup(emqttd_status, ready) == [{ready, true}].
 
+-spec if_ready(_,_) -> any().
 if_ready(Fun, Args) ->
     case is_ready() of
         true ->
@@ -79,6 +87,7 @@ if_ready(Fun, Args) ->
         false ->
             {error, not_ready}
     end.
+-spec if_ready(_,_,_) -> any().
 if_ready(Mod, Fun, Args) ->
     case is_ready() of
         true ->
@@ -102,6 +111,7 @@ if_ready(Mod, Fun, Args) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
+-spec init([]) -> {'ok',#state{}}.
 init([]) ->
     ets:new(emqttd_status, [{read_concurrency, true}, public, named_table]),
     {ok, #state{}}.
@@ -120,6 +130,7 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_call(_,_,_) -> {'reply','ok',_}.
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -134,6 +145,7 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_cast(_,_) -> {'noreply',_}.
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -147,6 +159,7 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-spec handle_info(_,_) -> {'noreply',_}.
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -161,6 +174,7 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
+-spec terminate(_,_) -> 'ok'.
 terminate(_Reason, _State) ->
     ok.
 
@@ -172,6 +186,7 @@ terminate(_Reason, _State) ->
 %% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
 %% @end
 %%--------------------------------------------------------------------
+-spec code_change(_,_,_) -> {'ok',_}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
