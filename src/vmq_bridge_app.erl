@@ -1,4 +1,4 @@
--module(emqttd_bridge_app).
+-module(vmq_bridge_app).
 
 -behaviour(application).
 
@@ -10,7 +10,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    emqttd_bridge_sup:start_link().
+    vmq_bridge_sup:start_link().
 
 stop(_State) ->
     ok.

@@ -1,4 +1,4 @@
--module(emqttd_bridge).
+-module(vmq_bridge).
 
 -behaviour(gen_emqtt).
 
