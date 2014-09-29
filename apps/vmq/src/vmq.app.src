@@ -1,0 +1,12 @@
+{application, vmq,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { vmq_app, []}},
+  {env, []}
+ ]}.

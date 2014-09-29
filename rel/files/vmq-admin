@@ -1,0 +1,42 @@
+#!/bin/sh
+# -*- tab-width:4;indent-tabs-mode:nil -*-
+# ex: ts=4 sw=4 et
+
+# Pull environment for this install
+. "{{runner_base_dir}}/lib/env.sh"
+
+# Make sure the user running this script is the owner and/or su to that user
+check_user "$@"
+ES=$?
+if [ "$ES" -ne 0 ]; then
+    exit $ES
+fi
+
+# Keep track of where script was invoked
+ORIGINAL_DIR=$(pwd)
+
+# Make sure CWD is set to runner run dir
+cd $RUNNER_BASE_DIR
+
+# Identify the script name
+SCRIPT=`basename $0`
+
+usage() {
+    echo "Usage: $SCRIPT { clean-msg-store | clean-registry | reload-config }"
+}
+
+case "$1" in
+    clean-msg-store)
+        node_up_check
+        $NODETOOL rpc vmq_msg_store clean_all
+        ;;
+    clean-registry)
+        node_up_check
+        $NODETOOL rpc vmq_reg reset_all_tables
+        ;;
+    reload-config)
+        node_up_check
+        $ERTS_PATH/escript $ERTS_PATH/cuttlefish -e $RUNNER_ETC_DIR -s $RUNNER_LIB_DIR -d ./data/generated.configs -c $RUNNER_ETC_DIR/vmq.conf
+        $NODETOOL rpc vmq_config_reloader reload_all
+        ;;
+esac
