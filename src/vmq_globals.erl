@@ -2,7 +2,7 @@
 %% @copyright 2010 Mochi Media, Inc.
 %% @doc Abuse module constant pools as a "read-only shared heap" (since erts 5.6)
 %%      <a href="http://www.erlang.org/pipermail/erlang-questions/2009-March/042503.html">[1]</a>.
--module(emqttd_globals).
+-module(vmq_globals).
 -author("Bob Ippolito <bob@mochimedia.com>").
 -export([get/1, get/2, put/2, delete/1]).
 
@@ -44,7 +44,7 @@ delete(_K, Mod) ->
 
 -spec key_to_module(atom()) -> atom().
 key_to_module(K) ->
-    list_to_atom("emqttd_globals:" ++ atom_to_list(K)).
+    list_to_atom("vmq_globals:" ++ atom_to_list(K)).
 
 -spec compile(atom(), any()) -> binary().
 compile(Module, T) ->

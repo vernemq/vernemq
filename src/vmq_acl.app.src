@@ -1,4 +1,4 @@
-{application, emqttd_acl,
+{application, vmq_acl,
  [
   {description, ""},
   {vsn, "1"},
@@ -7,7 +7,7 @@
                   kernel,
                   stdlib
                  ]},
-  {mod, { emqttd_acl_app, []}},
+  {mod, { vmq_acl_app, []}},
   {env, [
       {file, "priv/test.acl"},
       {interval, 5000}

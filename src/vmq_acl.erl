@@ -1,4 +1,4 @@
--module(emqttd_acl).
+-module(vmq_acl).
 
 -export([init/0,
          load_from_file/1,
@@ -15,12 +15,12 @@
 
 -define(INIT_ACL, {[],[],[],[],[],[]}).
 -define(TABLES, [
-                 emqttd_acl_read_pattern,
-                 emqttd_acl_write_pattern,
-                 emqttd_acl_read_all,
-                 emqttd_acl_write_all,
-                 emqttd_acl_read_user,
-                 emqttd_acl_write_user
+                 vmq_acl_read_pattern,
+                 vmq_acl_write_pattern,
+                 vmq_acl_read_all,
+                 vmq_acl_write_all,
+                 vmq_acl_read_user,
+                 vmq_acl_write_user
                 ]).
 -define(TABLE_OPTS, [public, named_table, {read_concurrency, true}]).
 
@@ -60,17 +60,17 @@ load_from_file(File) ->
     del_aged_entries().
 
 load_from_list(List) ->
-    put(emqttd_acl_list, List),
+    put(vmq_acl_list, List),
     F = fun(FF, read) ->
-                case get(emqttd_acl_list) of
+                case get(vmq_acl_list) of
                     [I|Rest] ->
-                        put(emqttd_acl_list, Rest),
+                        put(vmq_acl_list, Rest),
                         {FF, I};
                     [] ->
                         {FF, eof}
                 end;
            (_, close) ->
-                put(emqttd_acl_list, undefined),
+                put(vmq_acl_list, undefined),
                 ok
         end,
     age_entries(),
@@ -152,12 +152,12 @@ in(Type, User, Topic) ->
     {Tbl, Obj} = t(Type, User, Topic),
     ets:insert(Tbl, Obj).
 
-t(read, all, Topic) -> {emqttd_acl_read_all, {Topic, 1}};
-t(write, all, Topic) ->  {emqttd_acl_write_all, {Topic, 1}};
-t(read, pattern, Topic) ->  {emqttd_acl_read_pattern, {Topic, 1}};
-t(write, pattern, Topic) -> {emqttd_acl_write_pattern, {Topic, 1}};
-t(read, User, Topic) -> {emqttd_acl_read_user, {{User, Topic}, 1}};
-t(write, User, Topic) -> {emqttd_acl_write_user, {{User, Topic}, 1}}.
+t(read, all, Topic) -> {vmq_acl_read_all, {Topic, 1}};
+t(write, all, Topic) ->  {vmq_acl_write_all, {Topic, 1}};
+t(read, pattern, Topic) ->  {vmq_acl_read_pattern, {Topic, 1}};
+t(write, pattern, Topic) -> {vmq_acl_write_pattern, {Topic, 1}};
+t(read, User, Topic) -> {vmq_acl_read_user, {{User, Topic}, 1}};
+t(write, User, Topic) -> {vmq_acl_write_user, {{User, Topic}, 1}}.
 
 iterate_until_true(T, Fun) when is_atom(T) ->
     iterate_ets_until_true(T, ets:first(T), Fun);

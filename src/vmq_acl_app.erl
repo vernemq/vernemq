@@ -1,4 +1,4 @@
--module(emqttd_acl_app).
+-module(vmq_acl_app).
 
 -behaviour(application).
 
@@ -10,7 +10,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    emqttd_acl_sup:start_link().
+    vmq_acl_sup:start_link().
 
 stop(_State) ->
     ok.

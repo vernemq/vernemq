@@ -1,4 +1,4 @@
--module(emqttd_acl_reloader).
+-module(vmq_acl_reloader).
 
 -behaviour(gen_server).
 
@@ -15,7 +15,7 @@
          code_change/3]).
 
 -record(state, {file, interval, timer}).
--define(APP, emqttd_acl).
+-define(APP, vmq_acl).
 
 %%%===================================================================
 %%% API
@@ -99,7 +99,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(reload, #state{file=File, interval=Interval} = State) ->
-    ok = emqttd_acl:load_from_file(File),
+    ok = vmq_acl:load_from_file(File),
     erlang:send_after(Interval, self(), reload),
     {noreply, State}.
 
@@ -138,7 +138,7 @@ init_state(State) ->
     end,
     {ok, File} = application:get_env(?APP, file),
     {ok, Interval} = application:get_env(?APP, interval),
-    ok = emqttd_acl:init(),
-    ok = emqttd_acl:load_from_file(File),
+    ok = vmq_acl:init(),
+    ok = vmq_acl:load_from_file(File),
     NewTRef = erlang:send_after(Interval, self(), reload),
     State#state{file=File, interval=Interval, timer=NewTRef}.
