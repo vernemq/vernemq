@@ -5,6 +5,8 @@
 %% API
 -export([start_link/0]).
 
+-export([change_config_now/3]).
+
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -13,7 +15,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {file, interval}).
+-record(state, {file, interval, timer}).
 -define(APP, emqttd_passwd).
 
 %%%===================================================================
@@ -30,6 +32,10 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+change_config_now([], {[],[]}, []) ->
+    ok;
+change_config_now(_New, _Changed, _Deleted) ->
+    gen_server:cast(?MODULE, config_changed).
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -46,13 +52,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, File} = application:get_env(?APP, file),
-    {ok, Interval} = application:get_env(?APP, interval),
-    {ok, AllowAnonymous} = application:get_env(?APP, allow_anonymous),
-    ok = emqttd_passwd:init(AllowAnonymous),
-    ok = emqttd_passwd:load_from_file(File),
-    erlang:send_after(Interval, self(), reload),
-    {ok, #state{file=File, interval=Interval}}.
+    {ok, init_state(#state{})}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -82,6 +82,8 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast(config_changed, State) ->
+    {noreply, init_state(State)};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -128,3 +130,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+init_state(State) ->
+    case State#state.timer of
+        undefined -> undefined;
+        TRef -> erlang:cancel_timer(TRef)
+    end,
+    {ok, File} = application:get_env(?APP, file),
+    {ok, Interval} = application:get_env(?APP, interval),
+    {ok, AllowAnonymous} = application:get_env(?APP, allow_anonymous),
+    ok = emqttd_passwd:init(AllowAnonymous),
+    ok = emqttd_passwd:load_from_file(File),
+    NewTRef = erlang:send_after(Interval, self(), reload),
+    State#state{file=File, interval=Interval, timer=NewTRef}.

@@ -13,7 +13,12 @@
 -register_hook({auth_on_register, {?MODULE, auth_on_register, 4}}).
 
 init(AllowAnonymous) ->
-    ets:new(?TABLE, [public, named_table, {read_concurrency, true}]),
+    case lists:member(?TABLE, ets:all()) of
+        true ->
+            ok;
+        false ->
+            ets:new(?TABLE, [public, named_table, {read_concurrency, true}])
+    end,
     ets:insert(?TABLE, {anonymous, AllowAnonymous}),
     ok.
 
