@@ -415,7 +415,8 @@ check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
 check_client_id(#mqtt_frame_connect{client_id=missing}, State) ->
     {stop, normal, State};
 check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=4} = F, State) ->
-    check_user(F, State#state{client_id=random_client_id()});
+    RandomClientId = random_client_id(),
+    check_user(F#mqtt_frame_connect{client_id=RandomClientId}, State#state{client_id=RandomClientId});
 check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=3}, State) ->
     {connection_attempted,
      send_connack(?CONNACK_INVALID_ID, State)};
