@@ -53,16 +53,12 @@ loop(Socket, Transport, FSMState) ->
             loop(Socket, Transport,
                  vmq_fsm:handle_input(Data, FSMState));
         {tcp_closed, Socket} ->
-            vmq_systree:decr_socket_count(),
             vmq_fsm:handle_close(FSMState);
         {ssl_closed, Socket} ->
-            vmq_systree:decr_socket_count(),
             vmq_fsm:handle_close(FSMState);
         {tcp_error, Socket, Reason} ->
-            vmq_systree:decr_socket_count(),
             vmq_fsm:handle_error(Reason, FSMState);
         {ssl_error, Socket, Reason} ->
-            vmq_systree:decr_socket_count(),
             vmq_fsm:handle_error(Reason, FSMState);
         Msg ->
             loop(Socket, Transport,

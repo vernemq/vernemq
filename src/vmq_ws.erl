@@ -66,7 +66,6 @@ websocket_info(Info, Req, FSMState) ->
 -spec websocket_terminate(_, cowboy_req:req(), any()) -> ok.
 websocket_terminate(_Reason, _Req, FSMState) ->
     vmq_fsm:handle_close(FSMState),
-    vmq_systree:decr_socket_count(),
     ok.
 
 

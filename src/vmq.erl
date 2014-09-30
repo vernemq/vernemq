@@ -1,9 +1,6 @@
 -module(vmq).
 -export([start/0, stop/0]).
 
--define(DEFAULT_NR_OF_ACCEPTORS, 10).
--define(LOCALHOST, {127, 0, 0, 1}).
-
 -spec start() -> 'ok'.
 start() ->
     application:load(mnesia_cluster),
@@ -22,8 +19,8 @@ stop() ->
     application:stop(vmq_server),
     application:stop(emqtt_commons),
     application:stop(mnesia_cluster),
-    application:stop(locks),
     application:stop(mnesia),
+    application:stop(gproc),
     application:stop(bitcask),
     application:stop(ranch).
 
