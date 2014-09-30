@@ -1,7 +1,7 @@
 deps/*
-rel/emqttd
+rel/vernemq
 rel/vars/dev*_vars.config
 dev/
 ebin/
-test/emqttd
+test/vernemq*
 *.pyc

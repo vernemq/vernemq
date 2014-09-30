@@ -36,7 +36,7 @@ case "$1" in
         ;;
     reload-config)
         node_up_check
-        $ERTS_PATH/escript $ERTS_PATH/cuttlefish -e $RUNNER_ETC_DIR -s $RUNNER_LIB_DIR -d ./data/generated.configs -c $RUNNER_ETC_DIR/vmq.conf
+        $ERTS_PATH/escript $ERTS_PATH/cuttlefish -e $RUNNER_ETC_DIR -s $RUNNER_LIB_DIR -d ./data/generated.configs -c $RUNNER_ETC_DIR/vernemq.conf
         $NODETOOL rpc vmq_config_reloader reload_all
         ;;
 esac

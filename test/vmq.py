@@ -3,21 +3,21 @@ import os
 import filecmp
 from shutil import copyfile
 
-BROKER_PATH = "../emqttd1"
+BROKER_PATH = "../vernemq1"
 
 FNULL = open(os.devnull, 'w')
 
 
 def config_file(broker_path):
-    return broker_path + "/etc/emqttd.conf"
+    return broker_path + "/etc/vernemq.conf"
 
 
 def bin(broker_path):
-    return broker_path + "/bin/emqttd"
+    return broker_path + "/bin/vernemq"
 
 
 def adm(broker_path):
-    return broker_path + "/bin/emqttd-admin"
+    return broker_path + "/bin/vmq-admin"
 
 
 def start(config_file, broker_path=BROKER_PATH):

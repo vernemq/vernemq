@@ -29,10 +29,10 @@ publish_packet = mosq_test.gen_publish("bridge/reconnect", qos=0, payload="bridg
 
 vmq.start('default.conf')
 time.sleep(0.5)
-vmq.start('06-bridge-reconnect-local-out.conf', broker_path="../vmq2")
+vmq.start('06-bridge-reconnect-local-out.conf', broker_path="../vernemq2")
 time.sleep(0.5)
-vmq.hard_stop("../vmq2")
-vmq.start('06-bridge-reconnect-local-out.conf', broker_path="../vmq2")
+vmq.hard_stop("../vernemq2")
+vmq.start('06-bridge-reconnect-local-out.conf', broker_path="../vernemq2")
 time.sleep(5)
 
 pub = None
@@ -54,7 +54,7 @@ try:
                 rc = 0
     sock.close()
 finally:
-    vmq.hard_stop("../vmq2")
+    vmq.hard_stop("../vernemq2")
     vmq.hard_stop()
 
 exit(rc)

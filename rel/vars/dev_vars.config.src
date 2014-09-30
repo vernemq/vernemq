@@ -43,4 +43,4 @@
 %% cuttlefish
 %%
 {cuttlefish,            "on"}.
-{cuttlefish_conf,       "vmq.conf"}.
+{cuttlefish_conf,       "vernemq.conf"}.
