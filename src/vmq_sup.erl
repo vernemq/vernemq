@@ -33,8 +33,10 @@ init([]) ->
     filelib:ensure_dir(EMQTTDir),
     {ok, { {one_for_one, 5, 10}, [
             ?CHILD(vmq_endpoint_sup, supervisor, []),
+            ?CHILD(vmq_reg, worker, []),
+            ?CHILD(vmq_session_expirer, worker, []),
             ?CHILD(vmq_cluster, worker, []),
-            ?CHILD(vmq_systree, worker, [60000]),
+            ?CHILD(vmq_systree, worker, []),
             ?CHILD(vmq_msg_store, worker, [filename:join(EMQTTDir, "store")])
                                  ]} }.
 

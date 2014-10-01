@@ -5,6 +5,8 @@
 -export([start_link/1,
          store/4, store/5,
          in_flight/0,
+         retained/0,
+         stored/0,
          retrieve/1,
          deref/1,
          deliver_from_store/2,
@@ -67,6 +69,16 @@ in_flight() ->
     [{in_flight, InFlight}] = ets:lookup(?MSG_CACHE_TABLE, in_flight),
     NrOfDeferedMsgs = ets:info(?MSG_INDEX_TABLE, size),
     InFlight - NrOfDeferedMsgs.
+
+-spec retained() -> non_neg_integer().
+retained() ->
+    ets:info(?MSG_RETAIN_TABLE, size).
+
+-spec stored() -> non_neg_integer().
+stored() ->
+    ets:info(?MSG_CACHE_TABLE, size) -1.
+
+
 
 -spec retrieve(msg_ref()) -> {'error','not_found'} | {'ok', {routing_key(), payload()}}.
 retrieve(MsgRef) ->
@@ -156,7 +168,6 @@ retain_action_(_User, _ClientId, TS, RoutingKey, <<>>) ->
             MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
             gen_server:cast(?MODULE, {delete, MsgRef}),
             true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey),
-            vmq_systree:decr_retained_count(),
             ok;
         _ ->
             %% the retain-delete action is older than
@@ -174,7 +185,6 @@ retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
                                                       Payload, TS})}),
             true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User,
                                                   ClientId, Payload, TS}),
-            vmq_systree:incr_retained_count(),
             ok;
         [{_, _, _, _, TSOld}] when TS > TSOld ->
             %% in case of a race between retain-insert actions

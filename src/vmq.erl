@@ -20,7 +20,6 @@ stop() ->
     application:stop(emqtt_commons),
     application:stop(mnesia_cluster),
     application:stop(mnesia),
-    application:stop(gproc),
     application:stop(bitcask),
     application:stop(ranch).
 

@@ -2,13 +2,23 @@
 -include_lib("emqtt_commons/include/emqtt_internal.hrl").
 -include_lib("emqtt_commons/include/types.hrl").
 
--export([subscribe/3,
+-export([start_link/0,
+         subscribe/3,
          unsubscribe/3,
          subscriptions/1,
          publish/6,
          register_client/2,
          disconnect_client/1,
-         match/1]).
+         match/1,
+         remove_expired_clients/1,
+         total_clients/0]).
+
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
 
 -export([register_client__/3,
          route/7]).
@@ -22,6 +32,12 @@
 -hook({on_subscribe, all, 3}).
 -hook({on_unsubscribe, all, 3}).
 -hook({filter_subscribers, every, 5}).
+
+-record(session, {client_id, node, pid, monitor, last_seen, clean}).
+
+-spec start_link() -> {ok, pid()} | ignore | {error, atom()}.
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec subscribe(username() | plugin_id(),client_id(),[{topic(), qos()}]) ->
     ok | {error, not_allowed | [any(),...]}.
@@ -100,7 +116,7 @@ register_client_(ClientId, CleanSession) ->
                           rpc:call(Node, ?MODULE, register_client__, [self(), ClientId, CleanSession])
                   end, Nodes).
 
--spec register_client__(pid(),client_id(),flag()) -> ok.
+-spec register_client__(pid(),client_id(),flag()) -> ok | {error, timeout}.
 register_client__(ClientPid, ClientId, CleanSession) ->
     disconnect_client(ClientId), %% disconnect in case we already have such a client id
     case CleanSession of
@@ -110,8 +126,7 @@ register_client__(ClientPid, ClientId, CleanSession) ->
             %% this will also cleanup the message store
             cleanup_client_(ClientId)
     end,
-    gproc:add_local_name({?MODULE, ClientId}),
-    ok.
+    gen_server:call(?MODULE, {register, self(), ClientId, CleanSession}).
 
 -spec publish(username() | plugin_id(),client_id(), undefined | msg_ref(),
               routing_key(),binary(),flag()) -> 'ok' | {'error',_}.
@@ -278,7 +293,12 @@ vmq_table_defs() ->
         {type, bag},
         {attributes, record_info(fields, subscriber)},
         {disc_copies, [node()]},
-        {match, #subscriber{_='_'}}]}
+        {match, #subscriber{_='_'}}]},
+     {vmq_session, [
+        {record_name, session},
+        {attributes, record_info(fields, session)},
+        {disc_copies, [node()]},
+        {match, #session{_='_'}}]}
 ].
 
 
@@ -364,14 +384,15 @@ add_subscriber(Topic, Qos, ClientId) ->
 
 -spec del_subscriber(topic() | '_' ,client_id()) -> {'aborted',_} | {'atomic',ok}.
 del_subscriber(Topic, ClientId) ->
-    mnesia:transaction(
-      fun() ->
-              Objs = mnesia:match_object(vmq_subscriber, #subscriber{topic=Topic, client=ClientId, _='_'}, read),
-              lists:foreach(fun(#subscriber{topic=T} = Obj) ->
-                                    mnesia:delete_object(vmq_subscriber, Obj, write),
-                                    del_topic(T)
-                            end, Objs)
-      end).
+    mnesia:transaction(fun del_subscriber_tx/2, [Topic, ClientId]).
+
+-spec del_subscriber_tx(topic() | '_' ,client_id()) -> ok.
+del_subscriber_tx(Topic, ClientId) ->
+    Objs = mnesia:match_object(vmq_subscriber, #subscriber{topic=Topic, client=ClientId, _='_'}, read),
+    lists:foreach(fun(#subscriber{topic=T} = Obj) ->
+                          mnesia:delete_object(vmq_subscriber, Obj, write),
+                          del_topic(T)
+                  end, Objs).
 
 -spec del_topic(topic()) -> any().
 del_topic(Topic) ->
@@ -463,14 +484,123 @@ trie_delete_path([{NodeId, Word, _}|RestPath]) ->
 
 -spec get_client_pid(_) -> {'error','not_found'} | {'ok',_}.
 get_client_pid(ClientId) ->
-    case gproc:lookup_local_name({?MODULE, ClientId}) of
-        undefined ->
-            {error, not_found};
-        ClientPid ->
-            {ok, ClientPid}
+    case mnesia:dirty_read(vmq_session, ClientId) of
+        [#session{pid=Pid}] when is_pid(Pid) ->
+            {ok, Pid};
+        _ ->
+            {error, not_found}
     end.
 
 -spec cleanup_client_(client_id()) -> {'atomic','ok'}.
 cleanup_client_(ClientId) ->
     vmq_msg_store:clean_session(ClientId),
     {atomic, ok} = del_subscriber('_', ClientId).
+
+-spec remove_expired_clients(pos_integer()) -> ok.
+remove_expired_clients(ExpiredSinceSeconds) ->
+    ExpiredSince = epoch() - ExpiredSinceSeconds,
+    Node = node(),
+    MaybeCleanups= mnesia:dirty_select(vmq_session, [{#session{last_seen='$1',node=Node,
+                                                               client_id='$2', pid='$3', _='_'},
+                                                      [{'<', '$1', ExpiredSince}], [['$2', '$3']]}]),
+    Cleanups = [ClientId || [ClientId, Pid] <- MaybeCleanups,
+                            (Pid == undefined) orelse (is_process_alive(Pid) == false)],
+    lists:foreach(fun(ClientId) ->
+                          {atomic, ok} = cleanup_client_(ClientId),
+                          {atomic, ok} = mnesia:transaction(
+                                           fun() ->
+                                                   mnesia:delete({vmq_session, ClientId})
+                                           end),
+                          vmq_systree:incr_expired_clients(),
+                          vmq_systree:decr_inactive_clients()
+                  end, Cleanups).
+
+-spec total_clients() -> non_neg_integer().
+total_clients() ->
+    mnesia:table_info(vmq_session, size).
+
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% GEN_SERVER CALLBACKS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec init([any()]) -> {ok, []}.
+init([]) ->
+    {ok, []}.
+
+-spec handle_call(_, _, []) -> {reply, ok, []}.
+handle_call({register, ClientPid, ClientId, CleanSession}, _From, State) ->
+    case is_process_alive(ClientPid) of
+        true ->
+            MRef = monitor(process, ClientPid),
+            Session = #session{client_id=ClientId, node=node(), pid=ClientPid,
+                               monitor=MRef, last_seen=epoch(), clean=CleanSession},
+            {atomic, Ret} = mnesia:transaction(
+                            fun() ->
+                                    Ret = case mnesia:read(vmq_session, ClientId) of
+                                        [] ->
+                                            new_client;
+                                        _ ->
+                                            %% persisted client reconnected
+                                            known_client
+                                    end,
+                                    mnesia:write(vmq_session, Session, write),
+                                    Ret
+                            end
+                           ),
+            case Ret of
+                known_client ->
+                    vmq_systree:decr_inactive_clients();
+                _ ->
+                    ok
+            end,
+            vmq_systree:incr_active_clients();
+        false ->
+            ignore
+    end,
+    {reply, ok, State}.
+
+-spec handle_cast(_, []) -> {noreply, []}.
+handle_cast(_Req, State) ->
+    {noreply, State}.
+
+-spec handle_info(_, []) -> {noreply, []}.
+handle_info({'DOWN', MRef, process, _Pid, _Reason}, State) ->
+    {atomic, Ret} = mnesia:transaction(
+                     fun() ->
+                             [#session{client_id=ClientId, clean=CleanSession} = Obj]
+                             = mnesia:match_object(vmq_session, #session{monitor=MRef, _='_'}, read),
+                             case CleanSession of
+                                 true ->
+                                     mnesia:delete({vmq_session, ClientId}),
+                                     del_subscriber_tx('_', ClientId),
+                                     {clean, ClientId};
+                                 false ->
+                                     mnesia:write(vmq_session, Obj#session{pid=undefined,
+                                                                           monitor=undefined,
+                                                                           last_seen=epoch()}, write),
+                                     {dont_clean, ClientId}
+                             end
+                     end),
+    case Ret of
+        {clean, ClientId} ->
+            vmq_msg_store:clean_session(ClientId);
+        {dont_clean, _ClientId} ->
+            vmq_systree:incr_inactive_clients()
+    end,
+    vmq_systree:decr_active_clients(),
+    {noreply, State}.
+
+-spec terminate(_, []) -> ok.
+terminate(_Reason, _State) ->
+    ok.
+
+-spec code_change(_, _, _) -> {ok, _}.
+code_change(_OldVSN, State, _Extra) ->
+    {ok, State}.
+
+epoch() ->
+    {Mega, Sec, _} = os:timestamp(),
+    (Mega * 1000000 + Sec).
