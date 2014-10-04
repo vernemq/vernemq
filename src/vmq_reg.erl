@@ -21,7 +21,7 @@
          code_change/3]).
 
 -export([register_client__/3,
-         route/7]).
+         route/6]).
 
 -export([vmq_table_defs/0,
          reset_all_tables/1]).
@@ -118,15 +118,15 @@ register_client_(ClientId, CleanSession) ->
 
 -spec register_client__(pid(),client_id(),flag()) -> ok | {error, timeout}.
 register_client__(ClientPid, ClientId, CleanSession) ->
-    disconnect_client(ClientId), %% disconnect in case we already have such a client id
-    case CleanSession of
-        false ->
-            vmq_msg_store:deliver_from_store(ClientId, ClientPid);
-        true ->
+    case gen_server:call(?MODULE, {register, self(), ClientId, CleanSession}) of
+        ok when CleanSession ->
             %% this will also cleanup the message store
-            cleanup_client_(ClientId)
-    end,
-    gen_server:call(?MODULE, {register, self(), ClientId, CleanSession}).
+            cleanup_client_(ClientId);
+        ok ->
+            vmq_msg_store:deliver_from_store(ClientId, ClientPid);
+        {error, not_alive} ->
+            ok
+    end.
 
 -spec publish(username() | plugin_id(),client_id(), undefined | msg_ref(),
               routing_key(),binary(),flag()) -> 'ok' | {'error',_}.
@@ -166,34 +166,34 @@ publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, Caller) ->
                     %% in case we have only subscriptions on one single node
                     %% we can deliver the messages even in case of network partitions
                     lists:foreach(fun(#topic{name=Name}) ->
-                                          route(User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain)
+                                          route(User, ClientId, MsgId, Name, RoutingKey, Payload)
                                   end, MatchedTopics),
                     {CallerPid, CallerRef} = Caller,
                     CallerPid ! CallerRef,
                     ok;
                 false ->
-                    vmq_cluster:if_ready(fun publish__/8, [User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller])
+                    vmq_cluster:if_ready(fun publish__/7, [User, ClientId, MsgId, RoutingKey, Payload, MatchedTopics, Caller])
             end
     end.
 
 -spec publish_(username() | plugin_id(),client_id(),msg_id(),
                routing_key(),payload(),'true',[#topic{}],{pid(), reference()}) -> 'ok'.
-publish_(User, ClientId, MsgId, RoutingKey, Payload, IsRetain = true, MatchedTopics, Caller) ->
+publish_(User, ClientId, MsgId, RoutingKey, Payload, _IsRetain = true, MatchedTopics, Caller) ->
     ok = vmq_msg_store:retain_action(User, ClientId, RoutingKey, Payload),
-    publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller).
+    publish__(User, ClientId, MsgId, RoutingKey, Payload, MatchedTopics, Caller).
 
 -spec publish__(username() | plugin_id(),client_id(),msg_id(),
-                routing_key(),payload(),flag(),[#topic{}],{pid(), reference()}) -> 'ok'.
-publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller) ->
+                routing_key(),payload(),[#topic{}],{pid(), reference()}) -> 'ok'.
+publish__(User, ClientId, MsgId, RoutingKey, Payload, MatchedTopics, Caller) ->
     {CallerPid, CallerRef} = Caller,
     CallerPid ! CallerRef,
     lists:foreach(
       fun(#topic{name=Name, node=Node}) ->
               case Node == node() of
                   true ->
-                      route(User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain);
+                      route(User, ClientId, MsgId, Name, RoutingKey, Payload);
                   false ->
-                      rpc:call(Node, ?MODULE, route, [User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain])
+                      rpc:call(Node, ?MODULE, route, [User, ClientId, MsgId, Name, RoutingKey, Payload])
               end
       end, MatchedTopics).
 
@@ -234,25 +234,27 @@ wait_until_unregistered(ClientId, DisconnectRequested) ->
 
 %route locally, should only be called by publish
 -spec route(username() | plugin_id(),client_id(),msg_id(),topic(),
-            routing_key(),payload(),flag()) -> 'ok'.
-route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, IsRetain) ->
+            routing_key(),payload()) -> 'ok'.
+route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload) ->
     Subscribers = mnesia:dirty_read(vmq_subscriber, Topic),
-    FilteredSubscribers = vmq_hook:every(filter_subscribers, Subscribers, [SendingUser, SendingClientId, MsgId, RoutingKey, Payload]),
+    FilteredSubscribers = vmq_hook:every(filter_subscribers, Subscribers,
+                                         [SendingUser, SendingClientId,
+                                          MsgId, RoutingKey, Payload]),
     lists:foreach(fun
                     (#subscriber{qos=Qos, client=ClientId}) when Qos > 0 ->
                           MaybeNewMsgId = vmq_msg_store:store(SendingUser, SendingClientId, MsgId, RoutingKey, Payload),
-                          deliver(ClientId, RoutingKey, Payload, Qos, MaybeNewMsgId, IsRetain);
+                          deliver(ClientId, RoutingKey, Payload, Qos, MaybeNewMsgId);
                     (#subscriber{qos=0, client=ClientId}) ->
-                          deliver(ClientId, RoutingKey, Payload, 0, undefined, IsRetain)
+                          deliver(ClientId, RoutingKey, Payload, 0, undefined)
                 end, FilteredSubscribers).
 
 -spec deliver(client_id(),routing_key(),payload(),
-              qos(),msg_ref(),flag()) -> 'ok' | {'error','not_found'}.
-deliver(_, _, <<>>, _, Ref, true) ->
+              qos(),msg_ref()) -> 'ok' | {'error','not_found'}.
+deliver(_, _, <<>>, _, Ref) ->
     %% <<>> --> retain-delete action, we don't deliver the empty frame
     vmq_msg_store:deref(Ref),
     ok;
-deliver(ClientId, RoutingKey, Payload, Qos, Ref, _IsRetain) ->
+deliver(ClientId, RoutingKey, Payload, Qos, Ref) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
             vmq_fsm:deliver(ClientPid, RoutingKey, Payload, Qos, false, false, Ref);
@@ -311,9 +313,14 @@ reset_all_tables([]) ->
 
 -spec reset_table(atom()) -> ok.
 reset_table(Tab) ->
-    lists:foreach(fun(Key) ->
-                          mnesia:dirty_delete(Tab, Key)
-                  end, mnesia:dirty_all_keys(Tab)).
+    Keys = mnesia:dirty_all_keys(Tab),
+    mnesia:transaction(
+      fun() ->
+              lists:foreach(fun(Key) ->
+                                    mnesia:dirty_delete(Tab, Key)
+                            end, Keys)
+      end).
+
 
 
 -spec wait_til_ready() -> 'ok'.
@@ -528,24 +535,49 @@ total_clients() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec init([any()]) -> {ok, []}.
 init([]) ->
+    Node = node(),
+    {atomic, ok} =
+    mnesia:transaction(
+      fun() ->
+              MatchHead = #session{
+                             node=Node, pid='$1',
+                             _='_'},
+              Guard = {'/=', '$1', undefined},
+              Result = '$_',
+              Sessions = mnesia:select(vmq_session, [{MatchHead, [Guard], [Result]}]),
+              lists:foreach(fun(#session{pid=Pid}=Obj) ->
+                                    case is_process_alive(Pid) of
+                                        true ->
+                                            ok;
+                                        false ->
+                                            mnesia:write(vmq_session, Obj#session{pid=undefined, monitor=undefined}, write)
+                                    end
+                            end, Sessions)
+      end),
     {ok, []}.
 
--spec handle_call(_, _, []) -> {reply, ok, []}.
+-spec handle_call(_, _, []) -> {reply, ok | {error, not_alive}, []}.
 handle_call({register, ClientPid, ClientId, CleanSession}, _From, State) ->
+    Reply =
     case is_process_alive(ClientPid) of
         true ->
-            MRef = monitor(process, ClientPid),
-            Session = #session{client_id=ClientId, node=node(), pid=ClientPid,
-                               monitor=MRef, last_seen=epoch(), clean=CleanSession},
             {atomic, Ret} = mnesia:transaction(
                             fun() ->
                                     Ret = case mnesia:read(vmq_session, ClientId) of
-                                        [] ->
-                                            new_client;
-                                        _ ->
-                                            %% persisted client reconnected
-                                            known_client
-                                    end,
+                                              [] ->
+                                                  new_client;
+                                              [#session{pid=OldPid, monitor=OldRef}]
+                                                when is_pid(OldPid) and is_reference(OldRef) ->
+                                                  demonitor(OldRef, [flush]),
+                                                  disconnect_client(OldPid),
+                                                  known_client;
+                                              [_] ->
+                                                  %% persisted client reconnected
+                                                  known_client
+                                          end,
+                                    MRef = monitor(process, ClientPid),
+                                    Session = #session{client_id=ClientId, node=node(), pid=ClientPid,
+                                                       monitor=MRef, last_seen=epoch(), clean=CleanSession},
                                     mnesia:write(vmq_session, Session, write),
                                     Ret
                             end
@@ -556,11 +588,12 @@ handle_call({register, ClientPid, ClientId, CleanSession}, _From, State) ->
                 _ ->
                     ok
             end,
-            vmq_systree:incr_active_clients();
+            vmq_systree:incr_active_clients(),
+            ok;
         false ->
-            ignore
+            {error, not_alive}
     end,
-    {reply, ok, State}.
+    {reply, Reply, State}.
 
 -spec handle_cast(_, []) -> {noreply, []}.
 handle_cast(_Req, State) ->
@@ -570,25 +603,27 @@ handle_cast(_Req, State) ->
 handle_info({'DOWN', MRef, process, _Pid, _Reason}, State) ->
     {atomic, Ret} = mnesia:transaction(
                      fun() ->
-                             [#session{client_id=ClientId, clean=CleanSession} = Obj]
-                             = mnesia:match_object(vmq_session, #session{monitor=MRef, _='_'}, read),
-                             case CleanSession of
-                                 true ->
+                             case mnesia:match_object(vmq_session, #session{monitor=MRef, _='_'}, read) of
+                                 [#session{client_id=ClientId, clean=true}] ->
                                      mnesia:delete({vmq_session, ClientId}),
                                      del_subscriber_tx('_', ClientId),
                                      {clean, ClientId};
-                                 false ->
+                                 [#session{client_id=ClientId, clean=false} = Obj] ->
                                      mnesia:write(vmq_session, Obj#session{pid=undefined,
                                                                            monitor=undefined,
                                                                            last_seen=epoch()}, write),
-                                     {dont_clean, ClientId}
+                                     {dont_clean, ClientId};
+                                 [] ->
+                                     {error, not_found}
                              end
                      end),
     case Ret of
         {clean, ClientId} ->
             vmq_msg_store:clean_session(ClientId);
         {dont_clean, _ClientId} ->
-            vmq_systree:incr_inactive_clients()
+            vmq_systree:incr_inactive_clients();
+        {error, not_found} ->
+            io:format(user, "got DOWN event from ~p ~p ~p, but no matching session found", [_Pid, MRef, _Reason])
     end,
     vmq_systree:decr_active_clients(),
     {noreply, State}.

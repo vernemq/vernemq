@@ -15,6 +15,7 @@
                  ]},
   {mod, { vmq_app, []}},
   {env, [
+      {allow_anonymous, false},
       {msg_log_handler, vmq_test_msg_log_handler},
       {max_client_id_size, 23},
       {retry_interval, 20},

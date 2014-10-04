@@ -446,8 +446,31 @@ check_user(#mqtt_frame_connect{username=""} = F, State) ->
 check_user(#mqtt_frame_connect{username=User, password=Password,
                                client_id=ClientId, clean_sess=CleanSession} = F, State) ->
     #state{peer=Peer} = State,
-    case vmq_hook:only(auth_on_register, [Peer, ClientId, User, Password]) of
-        ok ->
+    case vmq_config:get_env(allow_anonymous, false) of
+        false ->
+            case vmq_hook:only(auth_on_register, [Peer, ClientId, User, Password]) of
+                ok ->
+                    case vmq_reg:register_client(ClientId, CleanSession) of
+                        ok ->
+                            vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
+                            check_will(F, State#state{username=User});
+                        {error, _Reason} ->
+                            {connection_attempted,
+                             send_connack(?CONNACK_SERVER, State)}
+                    end;
+                not_found ->
+                    % returned when no hook on_register hook was
+                    % able to authenticate user
+                    {connection_attempted,
+                     send_connack(?CONNACK_AUTH, State)};
+                {error, invalid_credentials} ->
+                    {connection_attempted,
+                     send_connack(?CONNACK_CREDENTIALS, State)};
+                {error, not_authorized} ->
+                    {connection_attempted,
+                     send_connack(?CONNACK_AUTH, State)}
+            end;
+        true ->
             case vmq_reg:register_client(ClientId, CleanSession) of
                 ok ->
                     vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
@@ -455,18 +478,7 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                 {error, _Reason} ->
                     {connection_attempted,
                      send_connack(?CONNACK_SERVER, State)}
-            end;
-        not_found ->
-            % returned when no hook on_register hook was
-            % able to authenticate user
-            {connection_attempted,
-             send_connack(?CONNACK_CREDENTIALS, State)};
-        {error, invalid_credentials} ->
-            {connection_attempted,
-             send_connack(?CONNACK_CREDENTIALS, State)};
-        {error, not_authorized} ->
-            {connection_attempted,
-             send_connack(?CONNACK_AUTH, State)}
+            end
     end.
 
 -spec check_will(#mqtt_frame_connect{}, #state{}) -> retval2().
@@ -664,7 +676,7 @@ cancel_timer(TRef) -> erlang:cancel_timer(TRef), ok.
 
 -spec check_in_flight() -> boolean().
 check_in_flight() ->
-    case application:get_env(vmq_server, max_inflight_messages, 20) of
+    case vmq_config:get_env(max_inflight_messages, 20) of
         0 -> true;
         V ->
             vmq_msg_store:in_flight() < V
@@ -672,7 +684,7 @@ check_in_flight() ->
 
 -spec valid_msg_size(binary()) -> boolean().
 valid_msg_size(Payload) ->
-    case application:get_env(vmq_server, message_size_limit, 0) of
+    case vmq_config:get_env(message_size_limit, 0) of
         0 -> true;
         S when byte_size(Payload) =< S -> true;
         _ -> false

@@ -228,7 +228,7 @@ clean_retain('$end_of_table') -> ok;
 clean_retain(RoutingKey) ->
     BRoutingKey = list_to_binary(RoutingKey),
     MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
-    gen_server:cast(?MODULE, {delete, MsgRef}),
+    gen_server:call(?MODULE, {delete, MsgRef}),
     true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey),
     clean_retain(ets:last(?MSG_RETAIN_TABLE)).
 
@@ -245,7 +245,7 @@ clean_cache(in_flight) ->
     clean_cache(ets:last(?MSG_CACHE_TABLE));
 clean_cache(MsgRef) ->
     MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
-    gen_server:cast(?MODULE, {delete, MsgRef1}),
+    gen_server:call(?MODULE, {delete, MsgRef1}),
     true = ets:delete(?MSG_CACHE_TABLE, MsgRef),
     clean_cache(ets:last(?MSG_CACHE_TABLE)).
 
@@ -294,7 +294,13 @@ init([MsgStoreDir]) ->
     ok = lists:foreach(fun(Key) -> bitcask:delete(MsgStore, Key) end, ToDelete),
     {ok, #state{store=MsgStore}}.
 
--spec handle_call(_,_,_) -> {'reply',{'error','not_implemented'},_}.
+-spec handle_call(_,_,_) -> {'reply',ok | {'error','not_implemented'},_}.
+handle_call({delete, MsgRef}, _From, State) ->
+    %% Synchronized Delete, clean_all (for testing purposes) is currently the only user
+    #state{store=MsgStore} = State,
+    ok = bitcask:delete(MsgStore, MsgRef),
+    {reply, ok, State};
+
 handle_call(_Req, _From, State) ->
     {reply, {error, not_implemented}, State}.
 

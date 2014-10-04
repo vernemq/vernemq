@@ -32,6 +32,7 @@ init([]) ->
     EMQTTDir = "EMQTT."++atom_to_list(node()),
     filelib:ensure_dir(EMQTTDir),
     {ok, { {one_for_one, 5, 10}, [
+            ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_endpoint_sup, supervisor, []),
             ?CHILD(vmq_reg, worker, []),
             ?CHILD(vmq_session_expirer, worker, []),
