@@ -5,7 +5,8 @@
 -define(listener(Port), {{{127,0,0,1}, Port}, [{max_connections, infinity},
                                                {nr_of_acceptors, 10},
                                                {mountpoint, ""}]}).
--export([hook_uname_no_password_denied/4,
+-export([hook_empty_client_id_proto_4/4,
+         hook_uname_no_password_denied/4,
          hook_uname_password_denied/4,
          hook_uname_password_success/4]).
 
@@ -66,14 +67,16 @@ anon_success(_) ->
 
 invalid_id_0(_) ->
     Connect = packet:gen_connect("", [{keepalive,10}]),
-    Connack = packet:gen_connack(5),
+    Connack = packet:gen_connack(2),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 invalid_id_0_311(_) ->
     Connect = packet:gen_connect("", [{keepalive,10},{proto_ver,4}]),
-    Connack = packet:gen_connack(5),
+    Connack = packet:gen_connack(0),
+    vmq_hook:add(auth_on_register, {?MODULE, hook_empty_client_id_proto_4, 4}),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    vmq_hook:delete(auth_on_register, only, 1, {?MODULE, hook_empty_client_id_proto_4, 4}),
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 invalid_id_missing(_) ->
@@ -129,7 +132,8 @@ uname_password_success(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_uname_no_password_denied(_,"connect-uname-test-", "user", "") -> {error, invalid_credentials}.
+hook_empty_client_id_proto_4(_, _RandomId, undefined, undefined) -> ok.
+hook_uname_no_password_denied(_,"connect-uname-test-", "user", undefined) -> {error, invalid_credentials}.
 hook_uname_password_denied(_,"connect-uname-pwd-test", "user", "password9") -> {error, invalid_credentials}.
 hook_uname_password_success(_,"connect-uname-pwd-test", "user", "password9") -> ok.
 
