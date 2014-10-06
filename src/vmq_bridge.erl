@@ -104,7 +104,6 @@ handle_info({deliver, Topic, Payload, 0, _IsRetained, _IsDup, _Ref},
               TWords = emqtt_topic:words(T),
               case emqtt_topic:match(Words, TWords) of
                   true ->
-                      io:format("--- deliver ~p ~p~n", [Topic, Payload]),
                       ok = gen_emqtt:publish(self(), lists:flatten([RemotePrefix, Topic]) , Payload, QoS);
                   false ->
                       ok

@@ -94,6 +94,7 @@ init([]) ->
     {ok, { {one_for_one, 5, 10}, TCPChildSpecs ++ SSLChildSpecs} }.
 
 client_opts(tcp, Host, Port, Opts) ->
+    OOpts =
     [{host, Host},
      {port, Port},
      {username, proplists:get_value(username, Opts)},
@@ -103,12 +104,13 @@ client_opts(tcp, Host, Port, Opts) ->
      {keepalive_interval, proplists:get_value(keepalive_interval, Opts)},
      {reconnect_timeout, proplists:get_value(restart_timeout, Opts)},
      {transport, {gen_tcp, []}}
-     |case proplists:get_value(try_private, Opts) of
+     |case proplists:get_value(try_private, Opts, true) of
           true ->
               [{proto_version, 131}]; %% non-spec
           false ->
               []
-      end];
+      end],
+    [P || {_, V}=P <- OOpts, V /= undefined];
 client_opts(ssl, Host, Port, Opts) ->
     TCPOpts = client_opts(tcp, Host, Port, Opts),
     SSLOpts = [{certfile, proplists:get_value(certfile, Opts)},
