@@ -33,7 +33,7 @@ check_crl(File, #'OTPCertificate'{tbsCertificate=TBSCert} = Cert) ->
         [{_, Serials}] ->
             not lists:member(SerialNr, Serials);
         [] ->
-            %% no clr loaded
+            %% no crl loaded
             gen_server:call(?MODULE, {add_crl, File}),
             check_crl(File, Cert)
     end.

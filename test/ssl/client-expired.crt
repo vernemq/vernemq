@@ -1,0 +1,61 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 3 (0x3)
+    Signature Algorithm: sha256WithRSAEncryption
+        Issuer: C=CH, ST=Basel-Town, O=Erlio MQTT Project, OU=Testing, CN=Signing CA
+        Validity
+            Not Before: Aug 20 00:00:00 2012 GMT
+            Not After : Aug 21 00:00:00 2012 GMT
+        Subject: C=CH, ST=Basel-Town, L=Basel, O=Server, OU=Production, CN=test client expired
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (1024 bit)
+                Modulus:
+                    00:b6:99:62:3b:5e:9a:87:2e:61:00:3a:67:2e:c1:
+                    9d:36:56:89:b1:ad:f7:78:01:ed:d1:ca:e8:73:fc:
+                    8a:93:06:be:ac:12:1e:70:fc:17:2c:28:d8:3a:b5:
+                    5f:f5:f3:09:7c:b6:b4:e7:aa:d0:3a:b9:e6:cd:15:
+                    01:ae:38:a9:37:01:53:2f:90:d0:4a:c3:7b:78:5e:
+                    74:ce:8d:a8:92:9b:b3:87:15:69:35:01:ff:03:96:
+                    91:82:29:d4:8f:25:97:5a:4c:f3:1b:89:dc:8e:c1:
+                    de:9c:38:be:e5:d8:47:25:bb:7b:e3:cc:85:e8:c5:
+                    a2:7e:3d:ee:c8:be:13:5f:47
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            Netscape Comment: 
+                OpenSSL Generated Certificate
+            X509v3 Subject Key Identifier: 
+                AE:32:3C:A9:84:89:45:48:40:D1:74:78:F6:75:38:43:9E:32:1E:42
+            X509v3 Authority Key Identifier: 
+                keyid:29:3D:44:16:CF:33:33:CD:2D:60:DF:4D:A7:17:D0:0B:D4:E1:23:C0
+
+    Signature Algorithm: sha256WithRSAEncryption
+         93:f9:e3:7e:b7:ac:01:f6:88:43:7e:84:3f:8e:79:89:13:eb:
+         ea:87:5d:ab:7e:0f:a6:7f:8c:6d:df:d4:d9:a8:8a:86:51:6c:
+         bc:40:e8:a6:6c:14:32:79:11:4e:42:b5:00:fe:54:a3:42:9e:
+         fa:d8:a4:62:47:d4:d4:5c:29:97:b8:29:f7:3c:19:e3:a8:ef:
+         ff:06:db:14:1a:c8:b7:1a:59:ff:45:64:e2:20:03:11:05:f2:
+         d9:45:08:d8:28:7a:33:fe:08:d3:95:6c:b8:1e:ea:72:28:80:
+         15:83:e6:4c:cf:77:d4:7b:7e:62:9c:df:c8:48:fb:92:dd:e5:
+         d7:3f
+-----BEGIN CERTIFICATE-----
+MIICzTCCAjagAwIBAgIBAzANBgkqhkiG9w0BAQsFADBmMQswCQYDVQQGEwJDSDET
+MBEGA1UECAwKQmFzZWwtVG93bjEbMBkGA1UECgwSRXJsaW8gTVFUVCBQcm9qZWN0
+MRAwDgYDVQQLDAdUZXN0aW5nMRMwEQYDVQQDDApTaWduaW5nIENBMB4XDTEyMDgy
+MDAwMDAwMFoXDTEyMDgyMTAwMDAwMFowdjELMAkGA1UEBhMCQ0gxEzARBgNVBAgM
+CkJhc2VsLVRvd24xDjAMBgNVBAcMBUJhc2VsMQ8wDQYDVQQKDAZTZXJ2ZXIxEzAR
+BgNVBAsMClByb2R1Y3Rpb24xHDAaBgNVBAMME3Rlc3QgY2xpZW50IGV4cGlyZWQw
+gZ8wDQYJKoZIhvcNAQEBBQADgY0AMIGJAoGBALaZYjtemocuYQA6Zy7BnTZWibGt
+93gB7dHK6HP8ipMGvqwSHnD8Fywo2Dq1X/XzCXy2tOeq0Dq55s0VAa44qTcBUy+Q
+0ErDe3hedM6NqJKbs4cVaTUB/wOWkYIp1I8ll1pM8xuJ3I7B3pw4vuXYRyW7e+PM
+hejFon497si+E19HAgMBAAGjezB5MAkGA1UdEwQCMAAwLAYJYIZIAYb4QgENBB8W
+HU9wZW5TU0wgR2VuZXJhdGVkIENlcnRpZmljYXRlMB0GA1UdDgQWBBSuMjyphIlF
+SEDRdHj2dThDnjIeQjAfBgNVHSMEGDAWgBQpPUQWzzMzzS1g302nF9AL1OEjwDAN
+BgkqhkiG9w0BAQsFAAOBgQCT+eN+t6wB9ohDfoQ/jnmJE+vqh12rfg+mf4xt39TZ
+qIqGUWy8QOimbBQyeRFOQrUA/lSjQp762KRiR9TUXCmXuCn3PBnjqO//BtsUGsi3
+Gln/RWTiIAMRBfLZRQjYKHoz/gjTlWy4HupyKIAVg+ZMz3fUe35inN/ISPuS3eXX
+Pw==
+-----END CERTIFICATE-----

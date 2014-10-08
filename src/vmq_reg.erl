@@ -21,7 +21,7 @@
          code_change/3]).
 
 -export([register_client__/3,
-         route/6]).
+         route/7]).
 
 -export([vmq_table_defs/0,
          reset_all_tables/1]).
@@ -118,7 +118,7 @@ register_client_(ClientId, CleanSession) ->
 
 -spec register_client__(pid(),client_id(),flag()) -> ok | {error, timeout}.
 register_client__(ClientPid, ClientId, CleanSession) ->
-    case gen_server:call(?MODULE, {register, self(), ClientId, CleanSession}) of
+    case gen_server:cast(?MODULE, {register, self(), ClientId, CleanSession}) of
         ok when CleanSession ->
             %% this will also cleanup the message store
             cleanup_client_(ClientId);
@@ -166,34 +166,34 @@ publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, Caller) ->
                     %% in case we have only subscriptions on one single node
                     %% we can deliver the messages even in case of network partitions
                     lists:foreach(fun(#topic{name=Name}) ->
-                                          route(User, ClientId, MsgId, Name, RoutingKey, Payload)
+                                          route(User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain)
                                   end, MatchedTopics),
                     {CallerPid, CallerRef} = Caller,
                     CallerPid ! CallerRef,
                     ok;
                 false ->
-                    vmq_cluster:if_ready(fun publish__/7, [User, ClientId, MsgId, RoutingKey, Payload, MatchedTopics, Caller])
+                    vmq_cluster:if_ready(fun publish__/8, [User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller])
             end
     end.
 
 -spec publish_(username() | plugin_id(),client_id(),msg_id(),
                routing_key(),payload(),'true',[#topic{}],{pid(), reference()}) -> 'ok'.
-publish_(User, ClientId, MsgId, RoutingKey, Payload, _IsRetain = true, MatchedTopics, Caller) ->
+publish_(User, ClientId, MsgId, RoutingKey, Payload, IsRetain = true, MatchedTopics, Caller) ->
     ok = vmq_msg_store:retain_action(User, ClientId, RoutingKey, Payload),
-    publish__(User, ClientId, MsgId, RoutingKey, Payload, MatchedTopics, Caller).
+    publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller).
 
 -spec publish__(username() | plugin_id(),client_id(),msg_id(),
-                routing_key(),payload(),[#topic{}],{pid(), reference()}) -> 'ok'.
-publish__(User, ClientId, MsgId, RoutingKey, Payload, MatchedTopics, Caller) ->
+                routing_key(),payload(),flag(),[#topic{}],{pid(), reference()}) -> 'ok'.
+publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller) ->
     {CallerPid, CallerRef} = Caller,
     CallerPid ! CallerRef,
     lists:foreach(
       fun(#topic{name=Name, node=Node}) ->
               case Node == node() of
                   true ->
-                      route(User, ClientId, MsgId, Name, RoutingKey, Payload);
+                      route(User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain);
                   false ->
-                      rpc:call(Node, ?MODULE, route, [User, ClientId, MsgId, Name, RoutingKey, Payload])
+                      rpc:call(Node, ?MODULE, route, [User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain])
               end
       end, MatchedTopics).
 
@@ -234,8 +234,8 @@ wait_until_unregistered(ClientId, DisconnectRequested) ->
 
 %route locally, should only be called by publish
 -spec route(username() | plugin_id(),client_id(),msg_id(),topic(),
-            routing_key(),payload()) -> 'ok'.
-route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload) ->
+            routing_key(),payload(),flag()) -> 'ok'.
+route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, IsRetain) ->
     Subscribers = mnesia:dirty_read(vmq_subscriber, Topic),
     FilteredSubscribers = vmq_hook:every(filter_subscribers, Subscribers,
                                          [SendingUser, SendingClientId,
@@ -243,18 +243,18 @@ route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload) ->
     lists:foreach(fun
                     (#subscriber{qos=Qos, client=ClientId}) when Qos > 0 ->
                           MaybeNewMsgId = vmq_msg_store:store(SendingUser, SendingClientId, MsgId, RoutingKey, Payload),
-                          deliver(ClientId, RoutingKey, Payload, Qos, MaybeNewMsgId);
+                          deliver(ClientId, RoutingKey, Payload, IsRetain, Qos, MaybeNewMsgId);
                     (#subscriber{qos=0, client=ClientId}) ->
-                          deliver(ClientId, RoutingKey, Payload, 0, undefined)
+                          deliver(ClientId, RoutingKey, Payload, IsRetain, 0, undefined)
                 end, FilteredSubscribers).
 
--spec deliver(client_id(),routing_key(),payload(),
+-spec deliver(client_id(),routing_key(),payload(),flag(),
               qos(),msg_ref()) -> 'ok' | {'error','not_found'}.
-deliver(_, _, <<>>, _, Ref) ->
+deliver(_, _, <<>>, true, _, Ref) ->
     %% <<>> --> retain-delete action, we don't deliver the empty frame
     vmq_msg_store:deref(Ref),
     ok;
-deliver(ClientId, RoutingKey, Payload, Qos, Ref) ->
+deliver(ClientId, RoutingKey, Payload, _, Qos, Ref) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
             vmq_fsm:deliver(ClientPid, RoutingKey, Payload, Qos, false, false, Ref);
@@ -596,6 +596,40 @@ handle_call({register, ClientPid, ClientId, CleanSession}, _From, State) ->
     {reply, Reply, State}.
 
 -spec handle_cast(_, []) -> {noreply, []}.
+handle_cast({register, ClientPid, ClientId, CleanSession}, State) ->
+    case is_process_alive(ClientPid) of
+        true ->
+            {atomic, Ret} = mnesia:transaction(
+                            fun() ->
+                                    case mnesia:read(vmq_session, ClientId) of
+                                        [] ->
+                                            new_client;
+                                        [#session{pid=OldPid, monitor=OldRef}]
+                                          when is_pid(OldPid) and is_reference(OldRef) ->
+                                            demonitor(OldRef, [flush]),
+                                            disconnect_client(OldPid),
+                                            known_client;
+                                        [_] ->
+                                            %% persisted client reconnected
+                                            known_client
+                                    end,
+                                    MRef = monitor(process, ClientPid),
+                                    Session = #session{client_id=ClientId, node=node(), pid=ClientPid,
+                                                       monitor=MRef, last_seen=epoch(), clean=CleanSession},
+                                    mnesia:write(vmq_session, Session, write)
+                            end
+                           ),
+            case Ret of
+                known_client ->
+                    vmq_systree:decr_inactive_clients();
+                _ ->
+                    ok
+            end,
+            vmq_systree:incr_active_clients();
+        false ->
+            ok
+    end,
+    {noreply, State};
 handle_cast(_Req, State) ->
     {noreply, State}.
 

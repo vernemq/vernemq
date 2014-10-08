@@ -19,7 +19,7 @@ init(Ref, Socket, Transport, Opts) ->
     NewOpts =
     case Transport of
         ranch_ssl ->
-            case proplists:get_value(use_identity_as_username, Opts) of
+            case proplists:get_value(use_identity_as_username, Opts, false) of
                 true ->
                     [{preauth, socket_to_common_name(Socket)}|Opts];
                 false ->

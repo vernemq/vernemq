@@ -141,8 +141,8 @@ transport_opts(ranch_ssl, Opts) ->
                 )},
      {fail_if_no_peer_cert, proplists:get_value(require_certificate, Opts, false)},
      {verify, case
-                  proplists:get_value(require_certificate, Opts) or
-                  proplists:get_value(use_identity_as_username, Opts)
+                  proplists:get_value(require_certificate, Opts, false) or
+                  proplists:get_value(use_identity_as_username, Opts, false)
               of
                   true -> verify_peer;
                   _ -> verify_none
@@ -203,7 +203,7 @@ ciphersuite_transform_([CipherString|Rest], Acc) ->
         {ok, CipherSuite} ->
             ciphersuite_transform_(Rest, [CipherSuite|Acc]);
         {error, Reason} ->
-            error_logger:warning_msg("error parsing ciphersuite ~p, ~p~n", [CipherString, Reason]),
+            lager:error("error parsing ciphersuite ~p, ~p~n", [CipherString, Reason]),
             ciphersuite_transform_(Rest, Acc)
     end;
 ciphersuite_transform_([], Acc) -> Acc.
@@ -302,7 +302,7 @@ verify_ssl_peer(Cert, valid_peer, UserState) ->
 load_cert(Cert) ->
     case file:read_file(Cert) of
         {error, Reason} ->
-            error_logger:warning_msg("can't load certificate ~p due to Error: ~p", [Cert, Reason]),
+            lager:error("can't load certificate ~p due to Error: ~p", [Cert, Reason]),
             undefined;
         {ok, Bin} ->
             case filename:extension(Cert) of

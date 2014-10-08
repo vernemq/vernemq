@@ -170,16 +170,25 @@ every(Name, Value, Args) ->
 -spec every0(_,_,[any()]) -> any().
 every0(Value, Args, ListOfHook) ->
     F = fun({_Priority, {Module, Function, Arity}}, Acc) ->
-                try_apply(Module, Function, [Acc|Args], Arity)
+                try_apply_exit(Module, Function, [Acc|Args], Arity)
         end,
     lists:foldl(F, Value, ListOfHook).
 
--spec try_apply(atom() | tuple(),atom(),[any()],_) -> any().
-try_apply(Module, Function, Args, Arity) ->
+-spec try_apply_exit(atom() | tuple(),atom(),[any()],_) -> any().
+try_apply_exit(Module, Function, Args, Arity) ->
     try
         apply(Module, Function, Args)
     catch
         _Class:Reason ->
             error({invalid_apply, {Module, Function, Arity},
                    Reason})
+    end.
+
+-spec try_apply(atom() | tuple(),atom(),[any()],_) -> any().
+try_apply(Module, Function, Args, _Arity) ->
+    try
+        apply(Module, Function, Args)
+    catch
+        _Class:_Reason ->
+            next
     end.

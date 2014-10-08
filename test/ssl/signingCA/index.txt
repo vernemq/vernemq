@@ -1,0 +1,4 @@
+V	190924205114Z		01	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=localhost
+V	190924205117Z		02	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=test client
+V	120821000000Z		03	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=test client expired
+R	190924205120Z	140925205122Z	04	unknown	/C=CH/ST=Basel-Town/L=Basel/O=Server/OU=Production/CN=test client revoked

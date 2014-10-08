@@ -188,24 +188,30 @@ handle_fsm_msg({deliver_bin, {MsgId, QoS, Bin}}, {connected, State}) ->
 
 handle_fsm_msg({retry, MessageId}, {connected, State}) ->
     #state{send_fun=SendFun, waiting_acks=WAcks, retry_interval=RetryInterval} = State,
-    {QoS, Bin, _, MsgStoreRef} =
-    case dict:fetch(MessageId, WAcks) of
-        {_, #mqtt_frame{fixed=Fixed} = Frame, _, _} = Item ->
-            NewBin = emqtt_frame:serialise(
-                       Frame#mqtt_frame{
-                         fixed=Fixed#mqtt_frame_fixed{
-                                 dup=true
-                                }}),
-            setelement(2, Item, NewBin);
-        Item -> Item
+    NewState =
+    case dict:find(MessageId, WAcks) of
+        error ->
+            State;
+        {ok, Item} ->
+            {QoS, Bin, _, MsgStoreRef} =
+            case Item of
+                {_, #mqtt_frame{fixed=Fixed} = Frame, _, _} = Item ->
+                    NewBin = emqtt_frame:serialise(
+                               Frame#mqtt_frame{
+                                 fixed=Fixed#mqtt_frame_fixed{
+                                         dup=true
+                                        }}),
+                    setelement(2, Item, NewBin);
+                _ -> Item
+            end,
+            SendFun(Bin),
+            vmq_systree:incr_messages_sent(),
+            Ref = send_after(RetryInterval, {retry, MessageId}),
+            State#state{waiting_acks=dict:store(MessageId,
+                                                {QoS, Bin, Ref, MsgStoreRef},
+                                                WAcks)}
     end,
-    SendFun(Bin),
-    vmq_systree:incr_messages_sent(),
-    Ref = send_after(RetryInterval, {retry, MessageId}),
-    ret({connected, State#state{
-                  waiting_acks=dict:store(MessageId,
-                                          {QoS, Bin, Ref, MsgStoreRef},
-                                          WAcks)}});
+    ret({connected, NewState});
 handle_fsm_msg(disconnect, {connected, State}) ->
     io:format("[~p] stop due to ~p~n", [self(), disconnect]),
     ret({stop, normal, State});
@@ -259,6 +265,9 @@ handle_frame(wait_for_connect, _, #mqtt_frame_connect{keep_alive=KeepAlive} = Va
     %% the client is allowed "grace" of a half a time period
     KKeepAlive = (KeepAlive + (KeepAlive div 2)) * 1000,
     check_connect(Var, State#state{keep_alive=KKeepAlive});
+handle_frame(wait_for_connect, _, _, _, #state{retry_interval=RetryInterval} = State) ->
+    %% drop frame
+    {wait_for_connect, State#state{keep_alive=RetryInterval}};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
     #state{waiting_acks=WAcks} = State,
@@ -485,7 +494,9 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
 check_will(#mqtt_frame_connect{will_topic=undefined}, State) ->
     {connected, send_connack(?CONNACK_ACCEPT, State)};
 check_will(#mqtt_frame_connect{will_topic=""}, State) ->
-    {stop, normal, State}; %% null topic
+    %% null topic.... Mosquitto sends a CONNACK_INVALID_ID...
+    {connection_attempted,
+     send_connack(?CONNACK_INVALID_ID, State)};
 check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos}, State) ->
     #state{mountpoint=MountPoint, username=User, client_id=ClientId} = State,
     LWTopic = combine_mp(MountPoint, Topic),

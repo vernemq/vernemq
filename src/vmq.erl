@@ -21,8 +21,16 @@ start() ->
 stop() ->
     application:stop(vmq_server),
     application:stop(mnesia_cluster),
-    application:stop(mnesia),
-    application:stop(bitcask),
+    application:stop(ranch),
+    application:stop(emqtt_commons),
+    application:stop(cowlib),
+    application:stop(vmq_server),
+    application:stop(asn1),
+    application:stop(public_key),
     application:stop(cowboy),
-    application:stop(ranch).
+    application:stop(bitcask),
+    application:stop(mnesia),
+    application:stop(crypto),
+    application:stop(ssl),
+    application:stop(lager).
 

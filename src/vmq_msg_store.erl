@@ -46,7 +46,7 @@ start_link(MsgStoreDir) ->
 
 -spec store(username(),client_id(),routing_key(),payload()) -> msg_ref().
 store(User, ClientId, RoutingKey, Payload) ->
-    MsgRef = crypto:hash(md5, term_to_binary(now())),
+    MsgRef = crypto:hash(md5, term_to_binary(os:timestamp())),
     store(User, ClientId, MsgRef, RoutingKey, Payload).
 
 -spec store(username(),client_id(),undefined | msg_ref(),routing_key(),payload()) -> msg_ref().
@@ -150,7 +150,7 @@ clean_session(ClientId) ->
 -spec retain_action(username(),client_id(),routing_key(),payload()) -> 'ok'.
 retain_action(User, ClientId, RoutingKey, Payload) ->
     Nodes = vmq_cluster:nodes(),
-    Now = now(),
+    Now = os:timestamp(),
     lists:foreach(fun(Node) when Node == node() ->
                           retain_action_(User, ClientId, Now,
                                          RoutingKey, Payload);
