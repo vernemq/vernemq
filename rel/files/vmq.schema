@@ -781,7 +781,7 @@
                                                  ]}.
 
 %% @doc Allow anonymous users to connect, default is 'off'
-{mapping, "allow_anonymous", "vmq_passwd.allow_anonymous", [
+{mapping, "allow_anonymous", "vmq_server.allow_anonymous", [
                                                                {default, off},
                                                                {datatype, flag}
                                                               ]}.
@@ -801,6 +801,58 @@
                                                              {datatype, integer}
                                                             ]}.
 
+%% @doc This option allows persistent clients (those with clean session set to 
+%% false) to be removed if they do not reconnect within a certain time frame. 
+%% This is a non-standard option. As far as the MQTT spec is concerned, 
+%% persistent clients persist forever.
+%% The expiration period should be an integer followed by one of 'd', 'w', 'm', 'y' for 
+%% day, week, month, and year.
+{mapping, "persistent_client_expiration", "vmq_server.persistent_client_expiration", [
+                                                                                      {default, "never"},
+                                                                                      {commented, "1w"},
+                                                                                      {datatype, string},
+                                                                                      {validators, ["persistent_client_expiration"]}
+                                                                                     ]}.
+{validator, "persistent_client_expiration",
+ "must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year",
+ fun("never") -> true;
+    (V) ->
+         [Entity|Rest] = lists:reverse(V),
+         case lists:member(Entity, ["h","d","w","m","y"]) of
+             true ->
+                 list_to_integer(lists:reverse(Rest)) > 0;
+             false ->
+                 false
+         end
+ end}.
+
+%% @doc The integer number of seconds between updates of the $SYS subscription hierarchy, 
+%% which provides status information about the broker. If unset, defaults to 10 seconds. 
+%% Set to 0 to disable publishing the $SYS hierarchy completely.
+{mapping, "sys_interval", "vmq_server.sys_interval", [
+                                                      {default, 10},
+                                                      {datatype, integer},
+                                                      {commented, 10}
+                                                     ]}.
+
+%% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being 
+%% transmitted simultaneously. This includes messages currently going through handshakes 
+%% and messages that are being retried. Defaults to 20. Set to 0 for no maximum. If set 
+%% to 1, this will guarantee in-order delivery of messages.
+{mapping, "max_inflight_messages", "vmq_server.max_inflight_messages", [
+                                                                        {default, 20},
+                                                                        {datatype, integer},
+                                                                        {commented, 20}
+                                                                       ]}.
+%% @doc This option sets the maximum publish payload size that the broker will allow. 
+%% Received messages that exceed this size will not be accepted by the broker. The 
+%% default value is 0, which means that all valid MQTT messages are accepted. MQTT 
+%% imposes a maximum payload size of 268435455 bytes.
+{mapping, "message_size_limit", "vmq_server.message_size_limit", [
+                                                                    {default, 0},
+                                                                    {datatype, integer},
+                                                                    {commented, 0}
+                                                                 ]}.
 
 {mapping, "table_definition_mod", "mnesia_cluster.table_definition_mod", [
                                                                           {default, "{vmq_reg,vmq_table_defs,[]}"},
