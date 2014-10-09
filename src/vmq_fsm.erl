@@ -142,39 +142,46 @@ handle_fsm_msg(timeout, {connected, State}) ->
     ret({connected, State});
 handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained, IsDup,
                 MsgStoreRef}, {connected, State}) ->
-    #state{client_id=ClientId, waiting_acks=WAcks, mountpoint=MountPoint,
-           retry_interval=RetryInterval} = State,
-    {OutgoingMsgId, State1} = get_msg_id(QoS, State),
-    Frame = #mqtt_frame{
-               fixed=#mqtt_frame_fixed{
-                        type=?PUBLISH,
-                        qos=QoS,
-                        retain=IsRetained,
-                        dup=IsDup
-                       },
-               variable=#mqtt_frame_publish{
-                           topic_name=clean_mp(MountPoint, Topic),
-                           message_id=OutgoingMsgId},
-               payload=Payload
-              },
-    case send_publish_frame(Frame, State1) of
-        {error, Reason} when QoS > 0 ->
-            vmq_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
-            io:format("[~p] stop due to ~p, deliver when client reconnects~n", [self(), Reason]),
-            ret({stop, normal, State1});
-        {error, Reason} ->
-            io:format("[~p] stop due to ~p~n", [self(), Reason]),
-            ret({stop, normal, State1});
-        NewState when QoS == 0 ->
-            ret({connected, NewState});
-        NewState when QoS > 0 ->
-            Ref = send_after(RetryInterval, {retry, OutgoingMsgId}),
-            ret({connected, NewState#state{
-                              waiting_acks=dict:store(OutgoingMsgId,
-                                                      {QoS, Frame,
-                                                       Ref,
-                                                       MsgStoreRef},
-                                                      WAcks)}})
+    case check_in_flight(State) of
+        true ->
+            #state{client_id=ClientId, waiting_acks=WAcks, mountpoint=MountPoint,
+                   retry_interval=RetryInterval} = State,
+            {OutgoingMsgId, State1} = get_msg_id(QoS, State),
+            Frame = #mqtt_frame{
+                       fixed=#mqtt_frame_fixed{
+                                type=?PUBLISH,
+                                qos=QoS,
+                                retain=IsRetained,
+                                dup=IsDup
+                               },
+                       variable=#mqtt_frame_publish{
+                                   topic_name=clean_mp(MountPoint, Topic),
+                                   message_id=OutgoingMsgId},
+                       payload=Payload
+                      },
+            case send_publish_frame(Frame, State1) of
+                {error, Reason} when QoS > 0 ->
+                    vmq_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
+                    io:format("[~p] stop due to ~p, deliver when client reconnects~n", [self(), Reason]),
+                    ret({stop, normal, State1});
+                {error, Reason} ->
+                    io:format("[~p] stop due to ~p~n", [self(), Reason]),
+                    ret({stop, normal, State1});
+                NewState when QoS == 0 ->
+                    ret({connected, NewState});
+                NewState when QoS > 0 ->
+                    Ref = send_after(RetryInterval, {retry, OutgoingMsgId}),
+                    ret({connected, NewState#state{
+                                      waiting_acks=dict:store(OutgoingMsgId,
+                                                              {QoS, Frame,
+                                                               Ref,
+                                                               MsgStoreRef},
+                                                              WAcks)}})
+            end;
+        false->
+            %% drop
+            vmq_systree:incr_publishes_dropped(),
+            ret({connected, State})
     end;
 handle_fsm_msg({deliver_bin, {MsgId, QoS, Bin}}, {connected, State}) ->
     #state{send_fun=SendFun, waiting_acks=WAcks, retry_interval=RetryInterval} = State,
@@ -566,7 +573,7 @@ dispatch_publish_qos0(_MessageId, Topic, Payload, IsRetain, State) ->
 
 -spec dispatch_publish_qos1(msg_id(), topic(), payload(), flag(), #state{}) -> #state{}.
 dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
-    case check_in_flight() of
+    case check_in_flight(State) of
         true ->
             #state{username=User, client_id=ClientId} = State,
             MsgRef = vmq_msg_store:store(User, ClientId, Topic, Payload),
@@ -576,12 +583,14 @@ dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
             vmq_msg_store:deref(MsgRef),
             NewState;
         false ->
+            %% drop
+            vmq_systree:incr_publishes_dropped(),
             State
     end.
 
 -spec dispatch_publish_qos2(msg_id(), topic(), payload(), flag(), #state{}) -> #state{}.
 dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
-    case check_in_flight() of
+    case check_in_flight(State) of
         true ->
             #state{username=User, client_id=ClientId, waiting_acks=WAcks,
                    retry_interval=RetryInterval, send_fun=SendFun} = State,
@@ -598,6 +607,8 @@ dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
                                        {qos2, MessageId},
                                        {2, Bin, Ref, {MsgRef, IsRetain}}, WAcks)};
         false ->
+            %% drop
+            vmq_systree:incr_publishes_dropped(),
             State
     end.
 
@@ -685,12 +696,12 @@ send_after(Time, Msg) ->
 cancel_timer(undefined) -> ok;
 cancel_timer(TRef) -> erlang:cancel_timer(TRef), ok.
 
--spec check_in_flight() -> boolean().
-check_in_flight() ->
+-spec check_in_flight(#state{}) -> boolean().
+check_in_flight(#state{waiting_acks=WAcks}) ->
     case vmq_config:get_env(max_inflight_messages, 20) of
         0 -> true;
         V ->
-            vmq_msg_store:in_flight() < V
+            dict:size(WAcks) < V
     end.
 
 -spec valid_msg_size(binary()) -> boolean().
