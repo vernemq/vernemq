@@ -10,12 +10,16 @@ open(Args) ->
     MsgStoreDir =
     case Args of
         [] ->
-            EMQTTDir = filename:join("EMQTT."++atom_to_list(node()), "store"),
+            EMQTTDir = filename:join("VERNEMQ."++atom_to_list(node()), "store"),
             ok = filelib:ensure_dir(EMQTTDir),
             EMQTTDir;
         [Dir] when is_list(Dir) ->
-            true = filelib:is_dir(Dir),
-            Dir
+            case filelib:is_dir(Dir) of
+                true -> Dir;
+                false ->
+                    error_logger:error_msg("Directory ~p is not available!!! We stop here!!!", [Dir]),
+                    exit(msg_store_directory_not_available)
+            end
     end,
     MsgStore = bitcask:open(MsgStoreDir, [read_write]),
     MsgStore.
