@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 -include_lib("emqtt_commons/include/types.hrl").
 
--export([start_link/1,
+-export([start_link/0,
          store/4, store/5,
          in_flight/0,
          retained/0,
@@ -27,6 +27,7 @@
 
 -export([retain_action_/5]). %% RPC Calls
 
+-export([behaviour_info/1]).
 
 -record(state, {store}).
 
@@ -40,9 +41,9 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec start_link(string()) -> 'ignore' | {'error',_} | {'ok',pid()}.
-start_link(MsgStoreDir) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [MsgStoreDir], []).
+-spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec store(username(),client_id(),routing_key(),payload()) -> msg_ref().
 store(User, ClientId, RoutingKey, Payload) ->
@@ -254,14 +255,23 @@ clean_index() ->
     ets:delete_all_objects(?MSG_INDEX_TABLE).
 
 
+behaviour_info(callbacks) ->
+    [{open, 1},
+     {fold,3},
+     {delete,2},
+     {insert,3},
+     {close,1}];
+behaviour_info(_Other) ->
+    undefined.
+
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec init([string()]) -> {'ok',#state{store::reference()}}.
-init([MsgStoreDir]) ->
-    filelib:ensure_dir(MsgStoreDir),
+-spec init([string()]) -> {'ok',#state{store::{atom(), reference()}}}.
+init([]) ->
+    {MsgStoreImpl, MsgStoreImplArgs} = vmq_config:get_env(msg_store, {vmq_ets_store, []}),
     TableOpts = [public, named_table,
                  {read_concurrency, true},
                  {write_concurrency, true}],
@@ -269,9 +279,9 @@ init([MsgStoreDir]) ->
     ets:new(?MSG_RETAIN_TABLE, TableOpts),
     ets:new(?MSG_CACHE_TABLE, TableOpts),
     ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
-    MsgStore = bitcask:open(MsgStoreDir, [read_write]),
+    MsgStore = MsgStoreImpl:open(MsgStoreImplArgs),
     ToDelete =
-    bitcask:fold(MsgStore,
+    MsgStoreImpl:fold(MsgStore,
                  fun
                      (<<?MSG_ITEM, MsgRef/binary>> = Key, Val, Acc) ->
                          {User, ClientId,
@@ -291,38 +301,38 @@ init([MsgStoreDir]) ->
                                             ClientId, Payload, TS}),
                          Acc
                  end, []),
-    ok = lists:foreach(fun(Key) -> bitcask:delete(MsgStore, Key) end, ToDelete),
-    {ok, #state{store=MsgStore}}.
+    ok = lists:foreach(fun(Key) -> MsgStoreImpl:delete(MsgStore, Key) end, ToDelete),
+    {ok, #state{store={MsgStoreImpl, MsgStore}}}.
 
 -spec handle_call(_,_,_) -> {'reply',ok | {'error','not_implemented'},_}.
 handle_call({delete, MsgRef}, _From, State) ->
     %% Synchronized Delete, clean_all (for testing purposes) is currently the only user
-    #state{store=MsgStore} = State,
-    ok = bitcask:delete(MsgStore, MsgRef),
+    #state{store={MsgStoreImpl, MsgStore}} = State,
+    ok = MsgStoreImpl:delete(MsgStore, MsgRef),
     {reply, ok, State};
 
 handle_call(_Req, _From, State) ->
     {reply, {error, not_implemented}, State}.
 
--spec handle_cast({'delete',msg_ref()} | {'write',binary(),binary()},#state{store::reference()}) -> {'noreply',#state{store::reference()}}.
+-spec handle_cast({'delete',msg_ref()} | {'write',binary(),binary()}, #state{}) -> {'noreply',#state{}}.
 handle_cast({write, Key, Val}, State) ->
-    #state{store=MsgStore} = State,
-    ok = bitcask:put(MsgStore, Key, Val),
+    #state{store={MsgStoreImpl, MsgStore}} = State,
+    ok = MsgStoreImpl:insert(MsgStore, Key, Val),
     {noreply, State};
 
 handle_cast({delete, MsgRef}, State) ->
-    #state{store=MsgStore} = State,
-    ok = bitcask:delete(MsgStore, MsgRef),
+    #state{store={MsgStoreImpl, MsgStore}} = State,
+    ok = MsgStoreImpl:delete(MsgStore, MsgRef),
     {noreply, State}.
 
 -spec handle_info(_,_) -> {'noreply',_}.
 handle_info(_Info, State) ->
     {noreply, State}.
 
--spec terminate(_,#state{store::reference()}) -> 'ok'.
+-spec terminate(_,#state{}) -> 'ok'.
 terminate(_Reason, State) ->
-    #state{store=MsgStore} = State,
-    bitcask:close(MsgStore),
+    #state{store={MsgStoreImpl, MsgStore}} = State,
+    MsgStoreImpl:close(MsgStore),
     ok.
 
 -spec code_change(_,_,_) -> {'ok',_}.

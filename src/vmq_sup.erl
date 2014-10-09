@@ -28,9 +28,6 @@ init([]) ->
     vmq_hook:start(vmq_server),
     [vmq_hook:start(A) || {A, _, _}<- application:loaded_applications(),
                              A /= vmq_server],
-
-    EMQTTDir = "EMQTT."++atom_to_list(node()),
-    filelib:ensure_dir(EMQTTDir),
     {ok, { {one_for_one, 5, 10}, [
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_endpoint_sup, supervisor, []),
@@ -38,6 +35,6 @@ init([]) ->
             ?CHILD(vmq_session_expirer, worker, []),
             ?CHILD(vmq_cluster, worker, []),
             ?CHILD(vmq_systree, worker, []),
-            ?CHILD(vmq_msg_store, worker, [filename:join(EMQTTDir, "store")])
+            ?CHILD(vmq_msg_store, worker, [])
                                  ]} }.
 
