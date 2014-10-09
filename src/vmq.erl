@@ -3,6 +3,7 @@
 
 -spec start() -> 'ok'.
 start_no_auth() ->
+    application:set_env(vmq_server, hipe_compile, false),
     application:load(mnesia_cluster),
     application:set_env(mnesia_cluster, table_definition_mod,
                         {vmq_reg, vmq_table_defs, []}),
