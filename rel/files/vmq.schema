@@ -853,6 +853,34 @@
                                                                     {datatype, integer},
                                                                     {commented, 0}
                                                                  ]}.
+%% @doc This option controls which msg store backend is used. Per default the 
+%% bitcask backend is used, which saves every update to disk. If the bitcask
+%% backend is disabled ('off') the messages are stored in memory.
+{mapping, "msg_store.bitcask_backend", "vmq_server.msg_store", [
+                                                    {default, on},
+                                                    {datatype, flag},
+                                                    {commented, on}
+                                                   ]}.
+
+{mapping, "msg_store.bitcask_backend.directory", "vmq_server.msg_store", [
+                                                    {default, "."},
+                                                    {datatype, directory},
+                                                    {commented, "."}
+                                                   ]}.
+
+{translation, "vmq_server.msg_store", 
+ fun(Conf) ->
+         UseBitCask = cuttlefish:conf_get("msg_store.bitcask_backend", Conf),
+         case UseBitCask of
+             true ->
+                 case cuttlefish:conf_get("msg_store.bitcask_backend.directory", Conf) of
+                     "." -> {vmq_bitcask_store, []};
+                     Dir -> {vmq_bitcask_store, [Dir]}
+                 end;
+             false  ->
+                 {vmq_ets_store, []}
+         end
+ end}.
 
 {mapping, "table_definition_mod", "mnesia_cluster.table_definition_mod", [
                                                                           {default, "{vmq_reg,vmq_table_defs,[]}"},
