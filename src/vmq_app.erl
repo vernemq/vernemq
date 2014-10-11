@@ -9,7 +9,7 @@
 %% IO-bound so we can go faster if we parallelise a bit more. In
 %% practice 2 processes seems just as fast as any other number > 1,
 %% and keeps the progress bar realistic-ish.
--define(HIPE_PROCESSES, 2).
+-define(HIPE_PROCESSES, 1).
 
 %% ===================================================================
 %% Application callbacks
@@ -52,12 +52,13 @@ hipe_compile() ->
     {ok, HipeModulesAll} = application:get_env(vmq_server, hipe_modules),
     HipeModules = [HM || HM <- HipeModulesAll, code:which(HM) =/= non_existing],
     Count = length(HipeModules),
-    io:format("~nHiPE compiling:  |~s|~n                 |",
-              [string:copies("-", Count)]),
+   % io:format("~nHiPE compiling:  |~s|~n                 |",
+   %           [string:copies("-", Count)]),
     T1 = erlang:now(),
     PidMRefs = [spawn_monitor(fun () -> [begin
-                                             {ok, M} = hipe:c(M, [o1]),
-                                             io:format("#")
+                                             io:format(user, "hipe:c ~p..", [M]),
+                                             {ok, M} = hipe:c(M, [o3]),
+                                             io:format(user, "ok~n", [])
                                          end || M <- Ms]
                               end) ||
                    Ms <- split(HipeModules, ?HIPE_PROCESSES)],
