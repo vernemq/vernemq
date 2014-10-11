@@ -77,7 +77,7 @@ do_client_connect(ConnectPacket, ConnackPacket, Opts) ->
     Port = proplists:get_value(port, Opts, 1888),
     Timeout = proplists:get_value(timeout, Opts, 60000),
     ConnackError = proplists:get_value(connack_error, Opts, "connack"),
-    case gen_tcp:connect(Host, Port, [binary, {active, false}, {packet, raw}], Timeout) of
+    case gen_tcp:connect(Host, Port, [binary, {reuseaddr, true},{active, false}, {packet, raw}], Timeout) of
         {ok, Socket} ->
             gen_tcp:send(Socket, ConnectPacket),
             case expect_packet(Socket, ConnackError, ConnackPacket) of
