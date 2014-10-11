@@ -199,23 +199,17 @@ handle_fsm_msg({retry, MessageId}, {connected, State}) ->
     case dict:find(MessageId, WAcks) of
         error ->
             State;
-        {ok, Item} ->
-            {QoS, Bin, _, MsgStoreRef} =
-            case Item of
-                {_, #mqtt_frame{fixed=Fixed} = Frame, _, _} = Item ->
-                    NewBin = emqtt_frame:serialise(
-                               Frame#mqtt_frame{
-                                 fixed=Fixed#mqtt_frame_fixed{
-                                         dup=true
-                                        }}),
-                    setelement(2, Item, NewBin);
-                _ -> Item
-            end,
+        {ok, {QoS, #mqtt_frame{fixed=Fixed} = Frame, _, MsgStoreRef}} ->
+            Bin = emqtt_frame:serialise(
+                    Frame#mqtt_frame{
+                      fixed=Fixed#mqtt_frame_fixed{
+                              dup=true
+                             }}),
             SendFun(Bin),
             vmq_systree:incr_messages_sent(),
             Ref = send_after(RetryInterval, {retry, MessageId}),
             State#state{waiting_acks=dict:store(MessageId,
-                                                {QoS, Bin, Ref, MsgStoreRef},
+                                                {QoS, Frame, Ref, MsgStoreRef},
                                                 WAcks)}
     end,
     ret({connected, NewState});
@@ -420,8 +414,9 @@ check_connect(F, State) ->
     check_client_id(F, State).
 
 -spec check_client_id(#mqtt_frame_connect{}, #state{}) -> retval2().
-check_client_id(#mqtt_frame_connect{}, #state{username={preauth, undefined}} = State) ->
+check_client_id(#mqtt_frame_connect{}, #state{username={preauth, undefined}, peer=Peer} = State) ->
     %% No common name found in client certificate
+    lager:error("can't authenticate ssl client ~p due to no_common_name_found", [Peer]),
     {connection_attempted,
      send_connack(?CONNACK_CREDENTIALS, State)};
 check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
@@ -431,7 +426,8 @@ check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
         ok ->
             vmq_hook:all(on_register, [Peer, ClientId, undefined, undefined]),
             check_will(F, State#state{clean_session=CleanSession});
-        {error, _Reason} ->
+        {error, Reason} ->
+            lager:error("can't register client ~p due to ~p", [ClientId, Reason]),
             {connection_attempted,
              send_connack(?CONNACK_SERVER, State)}
     end;
@@ -441,6 +437,7 @@ check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=4} = F, State) ->
     RandomClientId = random_client_id(),
     check_user(F#mqtt_frame_connect{client_id=RandomClientId}, State#state{client_id=RandomClientId});
 check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=3}, State) ->
+    lager:error("empty protocol version not allowed in mqttv3 ~p", [State#state.client_id]),
     {connection_attempted,
      send_connack(?CONNACK_INVALID_ID, State)};
 check_client_id(#mqtt_frame_connect{client_id=Id, proto_ver=V} = F,
@@ -449,10 +446,12 @@ check_client_id(#mqtt_frame_connect{client_id=Id, proto_ver=V} = F,
         true ->
             check_user(F, State#state{client_id=Id});
         false ->
+            lager:error("invalid protocol version for ~p ~p", [Id, V]),
             {connection_attempted,
              send_connack(?CONNACK_PROTO_VER, State)}
     end;
-check_client_id(_, State) ->
+check_client_id(#mqtt_frame_connect{client_id=Id}, State) ->
+    lager:error("invalid client id ~p", [Id]),
     {connection_attempted,
      send_connack(?CONNACK_INVALID_ID, State)}.
 
@@ -470,19 +469,23 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                         ok ->
                             vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
                             check_will(F, State#state{username=User});
-                        {error, _Reason} ->
+                        {error, Reason} ->
+                            lager:error("can't register client ~p due to ", [ClientId, Reason]),
                             {connection_attempted,
                              send_connack(?CONNACK_SERVER, State)}
                     end;
                 not_found ->
                     % returned when no hook on_register hook was
                     % able to authenticate user
+                    lager:error("can't authenticate client ~p due to not_found", [ClientId]),
                     {connection_attempted,
                      send_connack(?CONNACK_AUTH, State)};
                 {error, invalid_credentials} ->
+                    lager:error("can't authenticate client ~p due to invalid_credentials", [ClientId]),
                     {connection_attempted,
                      send_connack(?CONNACK_CREDENTIALS, State)};
                 {error, not_authorized} ->
+                    lager:error("can't authenticate client ~p due to not_authorized", [ClientId]),
                     {connection_attempted,
                      send_connack(?CONNACK_AUTH, State)}
             end;
@@ -491,7 +494,8 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                 ok ->
                     vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
                     check_will(F, State#state{username=User});
-                {error, _Reason} ->
+                {error, Reason} ->
+                    lager:error("can't register client ~p due to reason", [ClientId, Reason]),
                     {connection_attempted,
                      send_connack(?CONNACK_SERVER, State)}
             end
@@ -502,6 +506,7 @@ check_will(#mqtt_frame_connect{will_topic=undefined}, State) ->
     {connected, send_connack(?CONNACK_ACCEPT, State)};
 check_will(#mqtt_frame_connect{will_topic=""}, State) ->
     %% null topic.... Mosquitto sends a CONNACK_INVALID_ID...
+    lager:error("invalid last will topic for client ~p", [State#state.client_id]),
     {connection_attempted,
      send_connack(?CONNACK_INVALID_ID, State)};
 check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos}, State) ->
@@ -516,10 +521,12 @@ check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos}, St
                                                          will_topic=LWTopic,
                                                          will_msg=Msg})};
                 false ->
+                    lager:error("last will message has invalid size for client ~p", [ClientId]),
                     {connection_attempted,
                      send_connack(?CONNACK_SERVER, State)}
             end;
         _ ->
+            lager:error("can't authenticate last will for client ~p", [ClientId]),
             {connection_attempted, send_connack(?CONNACK_AUTH, State)}
     end.
 
