@@ -103,28 +103,64 @@ subscriptions([#topic{name=Topic, node=Node}|Rest], Acc) when Node == node() ->
 subscriptions([_|Rest], Acc) ->
     subscriptions(Rest, Acc).
 
--spec register_client(client_id(),flag()) -> ok | {error, not_ready}.
+-spec register_client(client_id(),flag()) -> ok | {error, _}.
 register_client(ClientId, CleanSession) ->
     vmq_cluster:if_ready(fun register_client_/2, [ClientId, CleanSession]).
 
 -spec register_client_(client_id(),flag()) -> 'ok'.
 register_client_(ClientId, CleanSession) ->
+    make_request(fun register_client_/4, [self(), ClientId, CleanSession]).
+
+register_client_(Caller, ClientPid, ClientId, CleanSession) ->
     Nodes = vmq_cluster:nodes(),
     lists:foreach(fun(Node) when Node == node() ->
-                          register_client__(self(), ClientId, CleanSession);
+                          register_client__(ClientPid, ClientId, CleanSession);
                      (Node) ->
-                          rpc:call(Node, ?MODULE, register_client__, [self(), ClientId, CleanSession])
-                  end, Nodes).
+                          rpc:call(Node, ?MODULE, register_client__, [ClientPid, ClientId, CleanSession])
+                  end, Nodes),
+    {CallerPid, CallerRef} = Caller,
+    CallerPid ! CallerRef.
 
 -spec register_client__(pid(),client_id(),flag()) -> ok | {error, timeout}.
 register_client__(ClientPid, ClientId, CleanSession) ->
-    case gen_server:cast(?MODULE, {register, self(), ClientId, CleanSession}) of
-        ok when CleanSession ->
-            %% this will also cleanup the message store
-            cleanup_client_(ClientId);
-        ok ->
-            vmq_msg_store:deliver_from_store(ClientId, ClientPid);
-        {error, not_alive} ->
+    {Ret, MaybeMonitor} =
+    case mnesia:dirty_read(vmq_session, ClientId) of
+        [] ->
+            {new_client, undefined};
+        [#session{pid=OldPid, monitor=OldRef, last_seen=LastSeen}]
+          when is_pid(OldPid) and is_reference(OldRef) ->
+            case epoch() of
+                LastSeen ->
+                    %% multiple connects in same second
+                    timer:sleep(1000);
+                _ ->
+                    ok
+            end,
+            disconnect_client(OldPid),
+            {known_client, OldRef};
+        [_] ->
+            %% persisted client reconnected
+            {known_client, undefined}
+    end,
+    case is_process_alive(ClientPid) of
+        true ->
+            ok = gen_server:call(?MODULE, {register, ClientPid, ClientId, CleanSession, MaybeMonitor}),
+            case Ret of
+                known_client ->
+                    case CleanSession of
+                        true ->
+                            %% this will also cleanup the message store
+                            cleanup_client_(ClientId);
+                        false ->
+                            vmq_msg_store:deliver_from_store(ClientId, ClientPid)
+                    end,
+                    vmq_systree:decr_inactive_clients();
+                _ ->
+                    ok
+            end,
+            vmq_systree:incr_active_clients(),
+            ok;
+        false ->
             ok
     end.
 
@@ -132,10 +168,13 @@ register_client__(ClientPid, ClientId, CleanSession) ->
               routing_key(),binary(),flag()) -> 'ok' | {'error',_}.
 publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain)
   when is_list(RoutingKey) and is_binary(Payload) ->
+    make_request(fun publish/7, [User, ClientId, MsgId, RoutingKey, Payload, IsRetain]).
+
+make_request(Fun, Args) when is_function(Fun), is_list(Args) ->
     Ref = make_ref(),
     Caller = {self(), Ref},
     ReqF = fun() ->
-                   exit({Ref, publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, Caller)})
+                   exit({Ref, apply(Fun, [Caller|Args])})
            end,
     try spawn_monitor(ReqF) of
         {_, MRef} ->
@@ -151,11 +190,10 @@ publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain)
             {error, E}
     end.
 
-
 %publish to cluster node.
--spec publish(username() | plugin_id(),client_id(),msg_id(),
-              routing_key(),payload(),flag(),{pid(),reference()}) -> ok | {error, _}.
-publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, Caller) ->
+-spec publish({pid(), reference()}, username() | plugin_id(),client_id(),msg_id(),
+              routing_key(),payload(),flag()) -> ok | {error, _}.
+publish(Caller, User, ClientId, MsgId, RoutingKey, Payload, IsRetain) ->
     MatchedTopics = match(RoutingKey),
     case IsRetain of
         true ->
@@ -556,80 +594,26 @@ init([]) ->
       end),
     {ok, []}.
 
--spec handle_call(_, _, []) -> {reply, ok | {error, not_alive}, []}.
-handle_call({register, ClientPid, ClientId, CleanSession}, _From, State) ->
-    Reply =
-    case is_process_alive(ClientPid) of
-        true ->
-            {atomic, Ret} = mnesia:transaction(
-                            fun() ->
-                                    Ret = case mnesia:read(vmq_session, ClientId) of
-                                              [] ->
-                                                  new_client;
-                                              [#session{pid=OldPid, monitor=OldRef}]
-                                                when is_pid(OldPid) and is_reference(OldRef) ->
-                                                  demonitor(OldRef, [flush]),
-                                                  disconnect_client(OldPid),
-                                                  known_client;
-                                              [_] ->
-                                                  %% persisted client reconnected
-                                                  known_client
-                                          end,
-                                    MRef = monitor(process, ClientPid),
-                                    Session = #session{client_id=ClientId, node=node(), pid=ClientPid,
-                                                       monitor=MRef, last_seen=epoch(), clean=CleanSession},
-                                    mnesia:write(vmq_session, Session, write),
-                                    Ret
-                            end
-                           ),
-            case Ret of
-                known_client ->
-                    vmq_systree:decr_inactive_clients();
-                _ ->
-                    ok
-            end,
-            vmq_systree:incr_active_clients(),
+-spec handle_call(_, _, []) -> {reply, ok, []}.
+handle_call({register, ClientPid, ClientId, CleanSession, MaybeMonitor}, _From, State) ->
+
+    case MaybeMonitor of
+        undefined ->
             ok;
-        false ->
-            {error, not_alive}
+        _ ->
+            demonitor(MaybeMonitor, [flush])
     end,
-    {reply, Reply, State}.
+    MRef = monitor(process, ClientPid),
+    {atomic, _} = mnesia:transaction(
+                    fun() ->
+                            Session = #session{client_id=ClientId, node=node(), pid=ClientPid,
+                                               monitor=MRef, last_seen=epoch(), clean=CleanSession},
+                            mnesia:write(vmq_session, Session, write)
+                    end
+                   ),
+    {reply, ok, State}.
 
 -spec handle_cast(_, []) -> {noreply, []}.
-handle_cast({register, ClientPid, ClientId, CleanSession}, State) ->
-    case is_process_alive(ClientPid) of
-        true ->
-            {atomic, Ret} = mnesia:transaction(
-                            fun() ->
-                                    case mnesia:read(vmq_session, ClientId) of
-                                        [] ->
-                                            new_client;
-                                        [#session{pid=OldPid, monitor=OldRef}]
-                                          when is_pid(OldPid) and is_reference(OldRef) ->
-                                            demonitor(OldRef, [flush]),
-                                            disconnect_client(OldPid),
-                                            known_client;
-                                        [_] ->
-                                            %% persisted client reconnected
-                                            known_client
-                                    end,
-                                    MRef = monitor(process, ClientPid),
-                                    Session = #session{client_id=ClientId, node=node(), pid=ClientPid,
-                                                       monitor=MRef, last_seen=epoch(), clean=CleanSession},
-                                    mnesia:write(vmq_session, Session, write)
-                            end
-                           ),
-            case Ret of
-                known_client ->
-                    vmq_systree:decr_inactive_clients();
-                _ ->
-                    ok
-            end,
-            vmq_systree:incr_active_clients();
-        false ->
-            ok
-    end,
-    {noreply, State};
 handle_cast(_Req, State) ->
     {noreply, State}.
 
