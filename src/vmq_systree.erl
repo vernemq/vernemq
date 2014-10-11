@@ -54,19 +54,19 @@ incr_bytes_sent(V) ->
     incr_item(local_bytes_sent, V).
 
 incr_active_clients() ->
-    update_item(local_active_clients, {2, 1}).
+    update_item({local_active_clients, counter}, {2, 1}).
 
 incr_expired_clients() ->
-    update_item(local_expired_clients, {2, 1}).
+    update_item({local_expired_clients, counter}, {2, 1}).
 
 decr_active_clients() ->
-    update_item(local_active_clients, {2,-1, 0, 0}).
+    update_item({local_active_clients, counter}, {2,-1, 0, 0}).
 
 incr_inactive_clients() ->
-    update_item(local_inactive_clients, {2, 1}).
+    update_item({local_inactive_clients, counter}, {2, 1}).
 
 decr_inactive_clients() ->
-    update_item(local_inactive_clients, {2, -1, 0, 0}).
+    update_item({local_inactive_clients, counter}, {2, -1, 0, 0}).
 
 incr_messages_received() ->
     incr_item(local_messages_received).
@@ -84,10 +84,10 @@ incr_publishes_sent() ->
     incr_item(local_publishes_sent).
 
 incr_subscription_count() ->
-    update_item(local_subscription_count, {2, 1}).
+    update_item({local_subscription_count, counter}, {2, 1}).
 
 decr_subscription_count() ->
-    update_item(local_subscription_count, {2, -1, 0, 0}).
+    update_item({local_subscription_count, counter}, {2, -1, 0, 0}).
 
 incr_socket_count() ->
     incr_item(local_socket_count).
@@ -314,8 +314,8 @@ update_item(Key, UpdateOp) ->
 averages([], Acc) -> Acc;
 averages([{Key, counter}|Rest], Acc) ->
     %% nothing to move, but we accumulate the item
-    [Item] = ets:lookup(?TABLE, {Key, counter}),
-    averages(Rest, [Item|Acc]);
+    [{_, Val}] = ets:lookup(?TABLE, {Key, counter}),
+    averages(Rest, [{Key, Val}|Acc]);
 averages([{Key, mavg}|Rest], Acc) ->
     [{_, Count, _}] = ets:lookup(?TABLE, {Key, total}),
     Item = {Key, Count,
