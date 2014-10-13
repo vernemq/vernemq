@@ -47,7 +47,7 @@
       {msg_store, {vmq_bitcask_store, []}},
       {listeners, {
                       [{{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
-                                              {nr_of_acceptors, 10}, 
+                                              {nr_of_acceptors, 100}, 
                                               {mountpoint, ""}]}],
                       [],
                       [{{{127,0,0,1}, 8080}, [{max_connections, 1000}, 
