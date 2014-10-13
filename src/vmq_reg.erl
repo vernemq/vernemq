@@ -8,6 +8,7 @@
          subscriptions/1,
          publish/6,
          register_client/2,
+         unregister_client/2,
          disconnect_client/1,
          match/1,
          remove_expired_clients/1,
@@ -109,17 +110,12 @@ register_client(ClientId, CleanSession) ->
 
 -spec register_client_(client_id(),flag()) -> 'ok'.
 register_client_(ClientId, CleanSession) ->
-    make_request(fun register_client_/4, [self(), ClientId, CleanSession]).
-
-register_client_(Caller, ClientPid, ClientId, CleanSession) ->
     Nodes = vmq_cluster:nodes(),
     lists:foreach(fun(Node) when Node == node() ->
-                          register_client__(ClientPid, ClientId, CleanSession);
+                          ok = register_client__(self(), ClientId, CleanSession);
                      (Node) ->
-                          rpc:call(Node, ?MODULE, register_client__, [ClientPid, ClientId, CleanSession])
-                  end, Nodes),
-    {CallerPid, CallerRef} = Caller,
-    CallerPid ! CallerRef.
+                          rpc:call(Node, ?MODULE, register_client__, [self(), ClientId, CleanSession])
+                  end, Nodes).
 
 -spec register_client__(pid(),client_id(),flag()) -> ok | {error, timeout}.
 register_client__(ClientPid, ClientId, CleanSession) ->
@@ -144,24 +140,68 @@ register_client__(ClientPid, ClientId, CleanSession) ->
     end,
     case is_process_alive(ClientPid) of
         true ->
-            ok = gen_server:call(?MODULE, {register, ClientPid, ClientId, CleanSession, MaybeMonitor}),
+            MRef = gen_server:call(?MODULE, {monitor, ClientPid, MaybeMonitor}, infinity),
+            {atomic, _} =
+            mnesia:transaction(
+              fun() ->
+                      Session = #session{client_id=ClientId, node=node(), pid=ClientPid,
+                                         monitor=MRef, last_seen=epoch(), clean=CleanSession},
+                      mnesia:write(vmq_session, Session, write),
+                      case CleanSession of
+                          true ->
+                              del_subscriber_tx('_', ClientId);
+                          _ ->
+                              ok
+                      end
+              end),
+            case CleanSession of
+                true ->
+                    vmq_msg_store:clean_session(ClientId);
+                false ->
+                    vmq_msg_store:deliver_from_store(ClientId, ClientPid)
+            end,
             case Ret of
                 known_client ->
-                    case CleanSession of
-                        true ->
-                            %% this will also cleanup the message store
-                            cleanup_client_(ClientId);
-                        false ->
-                            vmq_msg_store:deliver_from_store(ClientId, ClientPid)
-                    end,
                     vmq_systree:decr_inactive_clients();
                 _ ->
                     ok
             end,
-            vmq_systree:incr_active_clients(),
             ok;
         false ->
+            lager:warning("Client ~p died during registering~n", [ClientPid]),
             ok
+    end.
+
+-spec unregister_client(client_id(),flag()) -> ok | {error, _}.
+unregister_client(ClientId, CleanSession) ->
+    vmq_cluster:if_ready(fun unregister_client_/2, [ClientId, CleanSession]).
+
+-spec unregister_client_(client_id(),flag()) -> 'ok'.
+unregister_client_(ClientId, CleanSession) ->
+    case mnesia:dirty_read(vmq_session, ClientId) of
+        [] ->
+            {error, not_found};
+        [#session{monitor=Ref} = Obj] ->
+            ok = gen_server:call(?MODULE, {demonitor, Ref}, infinity),
+            {atomic, _} = mnesia:transaction(fun() -> unregister_client_tx(Obj) end),
+            case CleanSession of
+                true ->
+                    vmq_msg_store:clean_session(ClientId);
+                false ->
+                    vmq_systree:incr_inactive_clients()
+            end,
+            ok
+    end.
+
+unregister_client_tx(#session{client_id=ClientId, clean=CleanSession} = Obj) ->
+    case CleanSession of
+        true ->
+            mnesia:delete({vmq_session, ClientId}),
+            del_subscriber_tx('_', ClientId);
+        false ->
+            mnesia:write(vmq_session, Obj#session{pid=undefined,
+                                                  monitor=undefined,
+                                                  last_seen=epoch()}, write)
     end.
 
 -spec publish(username() | plugin_id(),client_id(), undefined | msg_ref(),
@@ -249,7 +289,7 @@ check_single_node(_, [], _) -> false.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec disconnect_client(client_id() | pid()) -> 'ok' | {'error','not_found'}.
 disconnect_client(ClientPid) when is_pid(ClientPid) ->
-    vmq_fsm:disconnect(ClientPid),
+    vmq_session:disconnect(ClientPid),
     ok;
 disconnect_client(ClientId) ->
     wait_until_unregistered(ClientId, false).
@@ -295,7 +335,7 @@ deliver(_, _, <<>>, true, _, Ref) ->
 deliver(ClientId, RoutingKey, Payload, _, Qos, Ref) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
-            vmq_fsm:deliver(ClientPid, RoutingKey, Payload, Qos, false, false, Ref);
+            vmq_session:deliver(ClientPid, RoutingKey, Payload, Qos, false, false, Ref);
         _ when Qos > 0 ->
             vmq_msg_store:defer_deliver(ClientId, Qos, Ref),
             ok;
@@ -565,6 +605,16 @@ total_clients() ->
     mnesia:table_info(vmq_session, size).
 
 
+message_queue_monitor() ->
+    {messages, Messages} = erlang:process_info(whereis(vmq_reg), messages),
+    case length(Messages) of
+        L when L > 100 ->
+            lager:warning("vmq_reg overloaded ~p messages waiting", [L]);
+        _ ->
+            ok
+    end,
+    timer:sleep(1000),
+    message_queue_monitor().
 
 
 
@@ -574,6 +624,8 @@ total_clients() ->
 -spec init([any()]) -> {ok, []}.
 init([]) ->
     Node = node(),
+    spawn_link(fun() -> message_queue_monitor() end),
+
     {atomic, ok} =
     mnesia:transaction(
       fun() ->
@@ -595,8 +647,7 @@ init([]) ->
     {ok, []}.
 
 -spec handle_call(_, _, []) -> {reply, ok, []}.
-handle_call({register, ClientPid, ClientId, CleanSession, MaybeMonitor}, _From, State) ->
-
+handle_call({monitor, ClientPid, MaybeMonitor}, _From, State) ->
     case MaybeMonitor of
         undefined ->
             ok;
@@ -604,13 +655,14 @@ handle_call({register, ClientPid, ClientId, CleanSession, MaybeMonitor}, _From, 
             demonitor(MaybeMonitor, [flush])
     end,
     MRef = monitor(process, ClientPid),
-    {atomic, _} = mnesia:transaction(
-                    fun() ->
-                            Session = #session{client_id=ClientId, node=node(), pid=ClientPid,
-                                               monitor=MRef, last_seen=epoch(), clean=CleanSession},
-                            mnesia:write(vmq_session, Session, write)
-                    end
-                   ),
+    {reply, MRef, State};
+handle_call({demonitor, MaybeMonitor}, _From, State) ->
+    case MaybeMonitor of
+        undefined ->
+            ok;
+        _ ->
+            demonitor(MaybeMonitor, [flush])
+    end,
     {reply, ok, State}.
 
 -spec handle_cast(_, []) -> {noreply, []}.
@@ -619,31 +671,25 @@ handle_cast(_Req, State) ->
 
 -spec handle_info(_, []) -> {noreply, []}.
 handle_info({'DOWN', MRef, process, _Pid, _Reason}, State) ->
+    %% should only happen if a session does not propperly unregister
     {atomic, Ret} = mnesia:transaction(
                      fun() ->
                              case mnesia:match_object(vmq_session, #session{monitor=MRef, _='_'}, read) of
-                                 [#session{client_id=ClientId, clean=true}] ->
-                                     mnesia:delete({vmq_session, ClientId}),
-                                     del_subscriber_tx('_', ClientId),
-                                     {clean, ClientId};
-                                 [#session{client_id=ClientId, clean=false} = Obj] ->
-                                     mnesia:write(vmq_session, Obj#session{pid=undefined,
-                                                                           monitor=undefined,
-                                                                           last_seen=epoch()}, write),
-                                     {dont_clean, ClientId};
+                                 [#session{client_id=ClientId, clean=CleanSession} = Obj] ->
+                                     unregister_client_tx(Obj),
+                                     {ok, {CleanSession, ClientId}};
                                  [] ->
                                      {error, not_found}
                              end
                      end),
     case Ret of
-        {clean, ClientId} ->
+        {ok, {true, ClientId}} ->
             vmq_msg_store:clean_session(ClientId);
-        {dont_clean, _ClientId} ->
+        {ok, {false, _ClientId}} ->
             vmq_systree:incr_inactive_clients();
         {error, not_found} ->
             io:format(user, "got DOWN event from ~p ~p ~p, but no matching session found", [_Pid, MRef, _Reason])
     end,
-    vmq_systree:decr_active_clients(),
     {noreply, State}.
 
 -spec terminate(_, []) -> ok.

@@ -1,9 +1,16 @@
 -module(vmq_tcp).
 -behaviour(ranch_protocol).
 -include_lib("public_key/include/public_key.hrl").
+-include_lib("emqtt_commons/include/emqtt_frame.hrl").
 
 -export([start_link/4]).
 -export([init/4]).
+
+-record(st, {socket, writer,
+             transport, buffer= <<>>,
+             parser_state=emqtt_frame:initial_state(),
+             session, session_monitor,
+             proto_tag}).
 
 -spec start_link(_,_,_,_) -> {'ok',pid()}.
 start_link(Ref, Socket, Transport, Opts) ->
@@ -13,6 +20,7 @@ start_link(Ref, Socket, Transport, Opts) ->
 -spec init(_,_,atom() | tuple(),maybe_improper_list()) -> any().
 init(Ref, Socket, Transport, Opts) ->
     ok = ranch:accept_ack(Ref),
+    ok = tune_buffer_size(Transport, Socket),
     ok = Transport:setopts(Socket, [{nodelay, true},
                                     {packet, raw},
                                     {active, once}]),
@@ -29,40 +37,79 @@ init(Ref, Socket, Transport, Opts) ->
             Opts
     end,
 
+    {ok, WriterPid} = vmq_writer:start_link(Transport, Socket, self()),
+
 
     {ok, Peer} = Transport:peername(Socket),
     vmq_systree:incr_socket_count(),
-    loop(Socket, Transport, vmq_fsm:init(Peer,
-                                            fun(Bin) ->
-                                                    vmq_systree:incr_bytes_sent(byte_size(Bin)),
-                                                    Transport:send(Socket, Bin)
-                                            end, NewOpts)).
+    {ok, SessionPid} = vmq_session:start(self(), Peer,
+                                         fun(Frame) ->
+                                                 vmq_writer:send(WriterPid, Frame),
+                                                 ok
+                                         end, NewOpts),
+    MRef = monitor(process, SessionPid),
+    loop(#st{socket=Socket,
+             writer=WriterPid,
+             transport=Transport,
+             session=SessionPid,
+             session_monitor=MRef,
+             proto_tag=proto_tag(Transport)}).
 
--spec loop(_,atom() | tuple(),'stop' | {_,_}) -> any().
-loop(Socket, Transport, stop) ->
-    Transport:close(Socket);
-loop(Socket, Transport, FSMState) ->
+loop(#st{buffer=Buffer, socket=Socket, transport=Transport,
+            session=SessionPid, parser_state=ParserState,
+            proto_tag={Proto, ProtoClosed, ProtoError}} = State) ->
     Transport:setopts(Socket, [{active, once}]),
     receive
-        {tcp, Socket, Data} ->
+        {inet_reply, _, ok} ->
+            loop(State);
+        {inet_reply, _, Status} ->
+            teardown(State, Status);
+        {vmq_writer, exit, Reason} ->
+            teardown(State, Reason);
+        {Proto, Socket, Data} ->
+            NewParserState = process_bytes(SessionPid, <<Buffer/binary, Data/binary>>, ParserState),
             vmq_systree:incr_bytes_received(byte_size(Data)),
-            loop(Socket, Transport,
-                 vmq_fsm:handle_input(Data, FSMState));
-        {ssl, Socket, Data} ->
-            vmq_systree:incr_bytes_received(byte_size(Data)),
-            loop(Socket, Transport,
-                 vmq_fsm:handle_input(Data, FSMState));
-        {tcp_closed, Socket} ->
-            vmq_fsm:handle_close(FSMState);
-        {ssl_closed, Socket} ->
-            vmq_fsm:handle_close(FSMState);
-        {tcp_error, Socket, Reason} ->
-            vmq_fsm:handle_error(Reason, FSMState);
-        {ssl_error, Socket, Reason} ->
-            vmq_fsm:handle_error(Reason, FSMState);
-        Msg ->
-            loop(Socket, Transport,
-                 vmq_fsm:handle_fsm_msg(Msg, FSMState))
+            loop(State#st{parser_state=NewParserState});
+        {ProtoClosed, Socket} ->
+            teardown(State, tcp_closed);
+        {ProtoError, Socket, Reason} ->
+            teardown(State, Reason);
+        {'DOWN', _, process, _Pid, Reason} ->
+            %% Session stopped
+            teardown(State#st{session_monitor=undefined}, Reason)
+    end.
+
+teardown(#st{session=SessionPid, session_monitor=MRef,
+             writer=WriterPid, transport=Transport, socket=Socket}, Reason) ->
+    lager:info("[~p] stop session due to ~p", [SessionPid, Reason]),
+    case MRef of
+        undefined -> ok;
+        _ -> demonitor(MRef, [flush])
+    end,
+    case is_process_alive(SessionPid) of
+        true ->
+            vmq_session:stop(SessionPid);
+        false ->
+            ok
+    end,
+    case is_process_alive(WriterPid) of
+        true -> vmq_writer:flush(WriterPid);
+        false -> ok
+    end,
+    Transport:close(Socket).
+
+
+process_bytes(SessionPid, Bytes, ParserState) ->
+    case emqtt_frame:parse(Bytes, ParserState) of
+        {more, NewParserState} ->
+            NewParserState;
+        {ok, #mqtt_frame{} = Frame, Rest} ->
+            vmq_systree:incr_messages_received(),
+            vmq_session:in(SessionPid, Frame),
+            process_bytes(SessionPid, Rest, emqtt_frame:initial_state());
+        {error, Reason} ->
+            io:format("parse error ~p~n", [Reason]),
+            emqtt_frame:initial_state()
     end.
 
 -spec socket_to_common_name({'sslsocket',_,pid() | {port(),_}}) -> 'undefined' | [any()] | {'error',[any()],binary() | maybe_improper_list(binary() | maybe_improper_list(any(),binary() | []) | char(),binary() | [])} | {'incomplete',[any()],binary()}.
@@ -86,3 +133,18 @@ extract_cn2([[#'AttributeTypeAndValue'{type=?'id-at-commonName', value={utf8Stri
 extract_cn2([_|Rest]) ->
     extract_cn2(Rest);
 extract_cn2([]) -> undefined.
+
+tune_buffer_size(ranch_tcp, Sock) ->
+    tune_buffer_size_(inet, Sock);
+tune_buffer_size(ranch_ssl, Sock) ->
+    tune_buffer_size_(ssl, Sock).
+
+tune_buffer_size_(T, Sock) ->
+    case T:getopts(Sock, [sndbuf, recbuf, buffer]) of
+        {ok, BufSizes} -> BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
+                          T:setopts(Sock, [{buffer, BufSz}]);
+        Error -> Error
+    end.
+
+proto_tag(ranch_tcp) -> {tcp, tcp_closed, tcp_error};
+proto_tag(ranch_ssl) -> {ssl, ssl_closed, ssl_error}.

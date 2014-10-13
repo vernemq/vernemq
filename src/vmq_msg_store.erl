@@ -59,7 +59,7 @@ store(User, ClientId, MsgRef, RoutingKey, Payload) when is_binary(MsgRef) ->
         new_cache_item ->
             MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
             Val = term_to_binary({User, ClientId, RoutingKey, Payload}),
-            gen_server:cast(?MODULE, {write, MsgRef1, Val});
+            gen_server:call(?MODULE, {write, MsgRef1, Val}, infinity);
         new_ref_count ->
             ok
     end,
@@ -107,12 +107,12 @@ deref(MsgRef) ->
 -spec deliver_from_store(client_id(),pid()) -> 'ok'.
 deliver_from_store(ClientId, ClientPid) ->
     lists:foreach(fun ({_, {uncached, Term}} = Obj) ->
-                          vmq_fsm:deliver_bin(ClientPid, Term),
+                          vmq_session:deliver_bin(ClientPid, Term),
                           ets:delete_object(?MSG_INDEX_TABLE, Obj);
                       ({_, QoS, MsgRef, DeliverAsDup} = Obj) ->
                           case retrieve(MsgRef) of
                               {ok, {RoutingKey, Payload}} ->
-                                  vmq_fsm:deliver(ClientPid, RoutingKey,
+                                  vmq_session:deliver(ClientPid, RoutingKey,
                                                      Payload, QoS,
                                                      false, DeliverAsDup, MsgRef);
                               {error, not_found} ->
@@ -131,7 +131,7 @@ deliver_retained(ClientPid, Topic, QoS) ->
                           true ->
                               MsgRef = store(User, ClientId,
                                             RoutingKey, Payload),
-                              vmq_fsm:deliver(ClientPid, RoutingKey,
+                              vmq_session:deliver(ClientPid, RoutingKey,
                                                  Payload, QoS, true, false, MsgRef);
                           false ->
                               Acc
@@ -181,17 +181,17 @@ retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
     MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
     case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
         [] ->
-            gen_server:cast(?MODULE, {write, MsgRef,
+            gen_server:call(?MODULE, {write, MsgRef,
                                       term_to_binary({User, ClientId,
-                                                      Payload, TS})}),
+                                                      Payload, TS})}, infinity),
             true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User,
                                                   ClientId, Payload, TS}),
             ok;
         [{_, _, _, _, TSOld}] when TS > TSOld ->
             %% in case of a race between retain-insert actions
-            gen_server:cast(?MODULE, {write, MsgRef,
+            gen_server:call(?MODULE, {write, MsgRef,
                                       term_to_binary({User, ClientId,
-                                                      Payload, TS})}),
+                                                      Payload, TS})}, infinity),
             true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User,
                                                   ClientId, Payload, TS}),
             ok;
@@ -229,7 +229,7 @@ clean_retain('$end_of_table') -> ok;
 clean_retain(RoutingKey) ->
     BRoutingKey = list_to_binary(RoutingKey),
     MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
-    gen_server:call(?MODULE, {delete, MsgRef}),
+    gen_server:call(?MODULE, {delete, MsgRef}, infinity),
     true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey),
     clean_retain(ets:last(?MSG_RETAIN_TABLE)).
 
@@ -246,7 +246,7 @@ clean_cache(in_flight) ->
     clean_cache(ets:last(?MSG_CACHE_TABLE));
 clean_cache(MsgRef) ->
     MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
-    gen_server:call(?MODULE, {delete, MsgRef1}),
+    gen_server:call(?MODULE, {delete, MsgRef1}, infinity),
     true = ets:delete(?MSG_CACHE_TABLE, MsgRef),
     clean_cache(ets:last(?MSG_CACHE_TABLE)).
 
@@ -309,6 +309,10 @@ handle_call({delete, MsgRef}, _From, State) ->
     %% Synchronized Delete, clean_all (for testing purposes) is currently the only user
     #state{store={MsgStoreImpl, MsgStore}} = State,
     ok = MsgStoreImpl:delete(MsgStore, MsgRef),
+    {reply, ok, State};
+handle_call({write, Key, Val}, _From, State) ->
+    #state{store={MsgStoreImpl, MsgStore}} = State,
+    ok = MsgStoreImpl:insert(MsgStore, Key, Val),
     {reply, ok, State};
 
 handle_call(_Req, _From, State) ->

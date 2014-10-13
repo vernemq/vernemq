@@ -8,8 +8,6 @@
 
 -export([incr_bytes_received/1,
          incr_bytes_sent/1,
-         incr_active_clients/0,
-         decr_active_clients/0,
          incr_inactive_clients/0,
          decr_inactive_clients/0,
          incr_expired_clients/0,
@@ -53,14 +51,8 @@ incr_bytes_received(V) ->
 incr_bytes_sent(V) ->
     incr_item(local_bytes_sent, V).
 
-incr_active_clients() ->
-    update_item({local_active_clients, counter}, {2, 1}).
-
 incr_expired_clients() ->
     update_item({local_expired_clients, counter}, {2, 1}).
-
-decr_active_clients() ->
-    update_item({local_active_clients, counter}, {2,-1, 0, 0}).
 
 incr_inactive_clients() ->
     update_item({local_inactive_clients, counter}, {2, 1}).
@@ -98,7 +90,7 @@ incr_connect_received() ->
 items() ->
     [{local_bytes_received,     mavg},
      {local_bytes_sent,         mavg},
-     {local_active_clients,     counter},
+     {local_active_clients,     gauge},
      {local_inactive_clients,   counter},
      {local_expired_clients,    counter},
      {local_messages_received,  mavg},
@@ -173,7 +165,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 publish([]) -> ok;
-publish([{local_active_clients, V}|Rest]) ->
+publish([{local_active_clients, gauge}|Rest]) ->
+    Res = supervisor:count_children(vmq_session_sup),
+    V = proplists:get_value(active, Res),
     publish("clients/active", V),
     publish(Rest);
 publish([{local_inactive_clients, V}|Rest]) ->

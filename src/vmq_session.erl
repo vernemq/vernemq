@@ -1,16 +1,25 @@
--module(vmq_fsm).
+-module(vmq_session).
+-behaviour(gen_fsm).
 -include_lib("emqtt_commons/include/emqtt_frame.hrl").
 
--export([deliver/7,
+-export([start/4,
+         stop/1,
+         start_link/4,
+         deliver/7,
+         in/2,
          deliver_bin/2,
          disconnect/1]).
 
--export([init/3,
-         handle_fsm_msg/2,
-         handle_input/2,
-         handle_close/1,
-         handle_error/2
-        ]).
+-export([init/1,
+         handle_event/3,
+         handle_sync_event/4,
+         handle_info/3,
+         terminate/3,
+         code_change/4]).
+
+-export([wait_for_connect/2,
+         connection_attempted/2,
+         connected/2]).
 
 
 -define(CLOSE_AFTER, 5000).
@@ -44,14 +53,6 @@
          }).
 
 -type statename() :: atom().
--type retval() :: {statename(), #state{}} | stop.
--type retval2() :: {statename(), #state{}} | {stop, atom(), #state{}}.
--type fsm_msg() :: disconnect
-                 | timeout
-                 | {deliver, topic(), payload(), qos(), flag(), flag(), msg_ref()}
-                 | {deliver_bin, {msg_id(), qos(), binary()}}
-                 | {retry, msg_id()}
-                 | {unhandled_transport_error, atom()}.
 
 -type mqtt_variable_ping() :: undefined.
 -type mqtt_variable() :: #mqtt_frame_connect{}
@@ -69,79 +70,45 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+start(ReaderPid, Peer, SendFun, Opts) ->
+    supervisor:start_child(vmq_session_sup, [ReaderPid, Peer, SendFun, Opts]).
+
+stop(FsmPid) ->
+    supervisor:terminate_child(vmq_session_sup, FsmPid).
+
+start_link(ReaderPid, Peer, SendFun, Opts) ->
+    gen_fsm:start_link(?MODULE, [ReaderPid, Peer, SendFun, Opts], []).
+
 -spec deliver(pid(),topic(),payload(),qos(),flag(), flag(), msg_ref()) -> ok.
 deliver(FsmPid, Topic, Payload, QoS, IsRetained, IsDup, Ref) ->
-    FsmPid ! {deliver, Topic, Payload, QoS, IsRetained, IsDup, Ref},
-    ok.
+    gen_fsm:send_event(FsmPid, {deliver, Topic, Payload, QoS, IsRetained, IsDup, Ref}).
 
 -spec deliver_bin(pid(), {msg_id(), qos(), binary()}) -> ok.
 deliver_bin(FsmPid, Term) ->
-    FsmPid ! {deliver_bin, Term},
-    ok.
+    gen_fsm:send_event(FsmPid, {deliver_bin, Term}).
 
 -spec disconnect(pid()) -> ok.
 disconnect(FsmPid) ->
-    FsmPid ! disconnect,
-    ok.
+    gen_fsm:send_event(FsmPid, disconnect).
+
+in(FsmPid, Event) ->
+    gen_fsm:send_all_state_event(FsmPid, {input, Event}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% FSM FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec init({inet:ip_address(), inet:port_number()},function(),[{atom(), any()}]) -> retval().
-init(Peer, SendFun, Opts) ->
-    {_,MountPoint} = lists:keyfind(mountpoint, 1, Opts),
-    {_,MaxClientIdSize} = lists:keyfind(max_client_id_size, 1, Opts),
-    {_,RetryInterval} = lists:keyfind(retry_interval, 1, Opts),
-    PreAuthUser =
-    case lists:keyfind(preauth, 1, Opts) of
-        false -> undefined;
-        {_, PreAuth} -> {preauth, PreAuth}
-    end,
-    MsgLogHandler =
-    case lists:keyfind(msg_log_handler, 1, Opts) of
-        {_, undefined} ->
-            fun(_, _, _) -> ok end;
-        {_, Mod} when is_atom(Mod) ->
-            fun(ClientId, Topic, Msg) ->
-                    Args = [self(), ClientId, Topic, Msg],
-                    apply(Mod, handle, Args)
-            end
-    end,
-    send_after(?CLOSE_AFTER, timeout),
-    ret({wait_for_connect, #state{peer=Peer, send_fun=SendFun,
-                                  msg_log_handler=MsgLogHandler,
-                                  mountpoint=string:strip(MountPoint, right, $/),
-                                  username=PreAuthUser,
-                                  max_client_id_size=MaxClientIdSize,
-                                  retry_interval=1000 * RetryInterval
-                                  }}).
 
--spec handle_input(binary(),{statename(), #state{}}) -> retval().
-handle_input(Data, {StateName, State}) ->
-    #state{buffer=Buffer} = State,
-    ret(process_bytes(<<Buffer/binary, Data/binary>>, StateName, State)).
-
--spec handle_close({statename(),#state{}}) -> retval().
-handle_close({_StateName, State}) ->
-    io:format("[~p] stop due to ~p~n", [self(), tcp_closed]),
-    ret({stop, normal, State}).
-
--spec handle_error(atom(),{statename(),#state{}}) -> retval().
-handle_error(Reason, {_StateName, State}) ->
-    io:format("[~p] stop due to ~p~n", [self(), Reason]),
-    ret({stop, normal, State}).
-
--spec handle_fsm_msg(fsm_msg(), {statename(), #state{}}) -> retval().
-handle_fsm_msg(timeout, {wait_for_connect, State}) ->
+wait_for_connect(timeout, State) ->
     io:format("[~p] stop due to timeout~n", [self()]),
-    ret({stop, normal, State});
-handle_fsm_msg(timeout, {connection_attempted, State}) ->
-    send_after(?CLOSE_AFTER, timeout),
-    ret({wait_for_connect, State});
-handle_fsm_msg(timeout, {connected, State}) ->
-    ret({connected, State});
-handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained, IsDup,
-                MsgStoreRef}, {connected, State}) ->
+    {stop, normal, State}.
+
+connection_attempted(timeout, State) ->
+    {next_state, wait_for_connect, State, ?CLOSE_AFTER}.
+
+connected(timeout, State) ->
+    % ignore
+    {next_state, connected, State};
+connected({deliver, Topic, Payload, QoS, IsRetained, IsDup, MsgStoreRef}, State) ->
     case check_in_flight(State) of
         true ->
             #state{client_id=ClientId, waiting_acks=WAcks, mountpoint=MountPoint,
@@ -163,101 +130,141 @@ handle_fsm_msg({deliver, Topic, Payload, QoS, IsRetained, IsDup,
                 {error, Reason} when QoS > 0 ->
                     vmq_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
                     io:format("[~p] stop due to ~p, deliver when client reconnects~n", [self(), Reason]),
-                    ret({stop, normal, State1});
+                    {stop, normal, State1};
                 {error, Reason} ->
                     io:format("[~p] stop due to ~p~n", [self(), Reason]),
-                    ret({stop, normal, State1});
+                    {stop, normal, State1};
                 NewState when QoS == 0 ->
-                    ret({connected, NewState});
+                    {next_state, connected, NewState};
                 NewState when QoS > 0 ->
                     Ref = send_after(RetryInterval, {retry, OutgoingMsgId}),
-                    ret({connected, NewState#state{
-                                      waiting_acks=dict:store(OutgoingMsgId,
-                                                              {QoS, Frame,
-                                                               Ref,
-                                                               MsgStoreRef},
-                                                              WAcks)}})
+                    {next_state, connected, NewState#state{
+                                              waiting_acks=dict:store(OutgoingMsgId,
+                                                                      {QoS, Frame,
+                                                                       Ref,
+                                                                       MsgStoreRef},
+                                                                      WAcks)}}
             end;
         false->
             %% drop
             vmq_systree:incr_publishes_dropped(),
-            ret({connected, State})
+            case QoS > 0 of
+                true ->
+                    vmq_msg_store:deref(MsgStoreRef);
+                false ->
+                    ok
+            end,
+            {next_state, connected, State}
     end;
-handle_fsm_msg({deliver_bin, {MsgId, QoS, Bin}}, {connected, State}) ->
+connected({deliver_bin, {MsgId, QoS, Bin}},State) ->
     #state{send_fun=SendFun, waiting_acks=WAcks, retry_interval=RetryInterval} = State,
     SendFun(Bin),
     vmq_systree:incr_messages_sent(),
     Ref = send_after(RetryInterval, {retry, MsgId}),
-    ret({connected, State#state{
+    {next_state, connected, State#state{
                   waiting_acks=dict:store(MsgId,
                                           {QoS, Bin, Ref, undefined},
-                                          WAcks)}});
+                                          WAcks)}};
 
-handle_fsm_msg({retry, MessageId}, {connected, State}) ->
+connected({retry, MessageId}, State) ->
     #state{send_fun=SendFun, waiting_acks=WAcks, retry_interval=RetryInterval} = State,
     NewState =
     case dict:find(MessageId, WAcks) of
         error ->
             State;
         {ok, {QoS, #mqtt_frame{fixed=Fixed} = Frame, _, MsgStoreRef}} ->
-            Bin = emqtt_frame:serialise(
-                    Frame#mqtt_frame{
+            SendFun(Frame#mqtt_frame{
                       fixed=Fixed#mqtt_frame_fixed{
                               dup=true
                              }}),
-            SendFun(Bin),
             vmq_systree:incr_messages_sent(),
             Ref = send_after(RetryInterval, {retry, MessageId}),
             State#state{waiting_acks=dict:store(MessageId,
                                                 {QoS, Frame, Ref, MsgStoreRef},
                                                 WAcks)}
     end,
-    ret({connected, NewState});
-handle_fsm_msg(disconnect, {connected, State}) ->
-    io:format("[~p] stop due to ~p~n", [self(), disconnect]),
-    ret({stop, normal, State});
+    {next_state, connected, NewState};
 
-handle_fsm_msg({unhandled_transport_error, Reason}, {_, State}) ->
-    io:format("[~p] stop due to ~p~n",
-              [self(), {unhandled_transport_error, Reason}]),
-    ret({stop, normal, State}).
+connected(keepalive_expired, State) ->
+    io:format("[~p] stop due to ~p~n", [self(), keepalive_expired]),
+    {stop, normal, State};
+
+connected(disconnect, State) ->
+    io:format("[~p] stop due to ~p~n", [self(), disconnect]),
+    {stop, normal, State}.
+
+init([ReaderPid, Peer, SendFun, Opts]) ->
+    {_,MountPoint} = lists:keyfind(mountpoint, 1, Opts),
+    {_,MaxClientIdSize} = lists:keyfind(max_client_id_size, 1, Opts),
+    {_,RetryInterval} = lists:keyfind(retry_interval, 1, Opts),
+    PreAuthUser =
+    case lists:keyfind(preauth, 1, Opts) of
+        false -> undefined;
+        {_, PreAuth} -> {preauth, PreAuth}
+    end,
+    MsgLogHandler =
+    case lists:keyfind(msg_log_handler, 1, Opts) of
+        {_, undefined} ->
+            fun(_, _, _) -> ok end;
+        {_, Mod} when is_atom(Mod) ->
+            fun(ClientId, Topic, Msg) ->
+                    Args = [self(), ClientId, Topic, Msg],
+                    apply(Mod, handle, Args)
+            end
+    end,
+    process_flag(trap_exit, true),
+    monitor(process, ReaderPid),
+    {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
+                                  msg_log_handler=MsgLogHandler,
+                                  mountpoint=string:strip(MountPoint, right, $/),
+                                  username=PreAuthUser,
+                                  max_client_id_size=MaxClientIdSize,
+                                  retry_interval=1000 * RetryInterval
+                                  }, ?CLOSE_AFTER}.
+
+
+handle_event({input, #mqtt_frame{fixed=#mqtt_frame_fixed{type=?DISCONNECT}}}, _, State) ->
+    {stop, normal, State};
+handle_event({input, Frame}, StateName, #state{keep_alive_timer=KARef} = State) ->
+    #mqtt_frame{fixed=Fixed,
+                variable=Variable,
+                payload=Payload} = Frame,
+    cancel_timer(KARef),
+    vmq_systree:incr_messages_received(),
+    case handle_frame(StateName, Fixed, Variable, Payload, State) of
+        {NextStateName, #state{keep_alive=KeepAlive} = NewState} ->
+            {next_state, NextStateName,
+             NewState#state{keep_alive_timer=gen_fsm:send_event_after(KeepAlive, keepalive_expired)}};
+        Ret -> Ret
+    end.
+
+handle_sync_event(Req, _From, _StateName, State) ->
+    {stop, {error, {unknown_req, Req}}, State}.
+
+handle_info({'DOWN', _, process, Pid, Reason}, _StateName, State) ->
+    lager:info("Reader Proc ~p of ~p went down, die too", [Pid, self()]),
+    {stop, Reason, State} .
+
+terminate(_Reason, connected, State) ->
+    #state{client_id=ClientId, clean_session=CleanSession} = State,
+    case CleanSession of
+        true ->
+            ok;
+        false ->
+            handle_waiting_acks(State)
+    end,
+    maybe_publish_last_will(State),
+    vmq_reg:unregister_client(ClientId, CleanSession),
+    ok;
+terminate(_Reason, _, _) ->
+    ok.
+
+code_change(_OldVsn, StateName, State, _Extra) ->
+    {ok, StateName, State}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNALS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec process_bytes(bitstring(), statename(), #state{}) ->
-    {statename(), #state{}} | {stop, normal, #state{}}.
-process_bytes(Bytes, StateName, State) ->
-    #state{parser_state=ParserState, keep_alive_timer=KARef} = State,
-    case emqtt_frame:parse(Bytes, ParserState) of
-        {more, NewParserState} ->
-            {StateName, State#state{parser_state=NewParserState}};
-        {ok, #mqtt_frame{fixed=Fixed, variable=Variable,
-                         payload=Payload}, Rest} ->
-            vmq_systree:incr_messages_received(),
-            case handle_frame(StateName, Fixed, Variable,
-                              Payload, State) of
-                {NextStateName, #state{keep_alive=KeepAlive} = NewState} ->
-                    cancel_timer(KARef),
-                    PS = emqtt_frame:initial_state(),
-                    process_bytes(Rest, NextStateName,
-                                  NewState#state{
-                                    parser_state=PS,
-                                    keep_alive_timer=send_after(
-                                                       KeepAlive,
-                                                       disconnect)
-                                   });
-                Ret ->
-                    Ret
-            end;
-        {error, Reason} ->
-            io:format("parse error ~p~n", [Reason]),
-            {StateName, State#state{
-                          buffer= <<>>,
-                          parser_state=emqtt_frame:initial_state()}}
-    end.
-
-
 -spec handle_frame(statename(), #mqtt_frame_fixed{}, mqtt_variable(), payload(), #state{}) ->
     {statename(), #state{}} | {stop, atom(), #state{}}.
 
@@ -280,7 +287,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
             vmq_msg_store:deref(MsgStoreRef),
             {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
         error ->
-            io:format("got error~n"),
+            %io:format("got error~n"),
             {connected, State}
     end;
 
@@ -294,8 +301,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
                              fixed=#mqtt_frame_fixed{type=?PUBREL, qos=1},
                              variable=#mqtt_frame_publish{message_id=MessageId},
                              payload= <<>>},
-    Bin = emqtt_frame:serialise(PubRelFrame),
-    SendFun(Bin),
+    SendFun(PubRelFrame),
     vmq_systree:incr_messages_sent(),
     NewRef = send_after(RetryInterval, {retry, MessageId}),
     vmq_msg_store:deref(MsgStoreRef),
@@ -387,33 +393,14 @@ handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PINGREQ}, _, _, State) ->
     NewState = send_frame(?PINGRESP, undefined, <<>>, State),
-    {connected, NewState};
-
-handle_frame(connected, #mqtt_frame_fixed{type=?DISCONNECT}, _, _, State) ->
-    {stop, normal, State}.
-
-
--spec ret({_,_} | {'stop','normal',#state{}}) -> 'stop' | {_,_}.
-ret({stop, _Reason, State}) ->
-    case State#state.clean_session of
-        true ->
-            ok;
-        false ->
-            handle_waiting_acks(State)
-    end,
-    maybe_publish_last_will(State),
-    stop;
-ret({_, _} = R) -> R.
-
+    {connected, NewState}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec check_connect(#mqtt_frame_connect{}, #state{}) -> retval2().
 check_connect(F, State) ->
     check_client_id(F, State).
 
--spec check_client_id(#mqtt_frame_connect{}, #state{}) -> retval2().
 check_client_id(#mqtt_frame_connect{}, #state{username={preauth, undefined}, peer=Peer} = State) ->
     %% No common name found in client certificate
     lager:error("can't authenticate ssl client ~p due to no_common_name_found", [Peer]),
@@ -455,7 +442,6 @@ check_client_id(#mqtt_frame_connect{client_id=Id}, State) ->
     {connection_attempted,
      send_connack(?CONNACK_INVALID_ID, State)}.
 
--spec check_user(#mqtt_frame_connect{}, #state{}) -> retval2().
 check_user(#mqtt_frame_connect{username=""} = F, State) ->
     check_user(F#mqtt_frame_connect{username=undefined, password=undefined}, State);
 check_user(#mqtt_frame_connect{username=User, password=Password,
@@ -501,7 +487,6 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
             end
     end.
 
--spec check_will(#mqtt_frame_connect{}, #state{}) -> retval2().
 check_will(#mqtt_frame_connect{will_topic=undefined}, State) ->
     {connected, send_connack(?CONNACK_ACCEPT, State)};
 check_will(#mqtt_frame_connect{will_topic=""}, State) ->
@@ -540,12 +525,11 @@ send_frame(Type, Variable, Payload, State) ->
     send_frame(Type, false, Variable, Payload, State).
 
 send_frame(Type, DUP, Variable, Payload, #state{send_fun=SendFun} = State) ->
-    Bin = emqtt_frame:serialise(#mqtt_frame{
-                             fixed=#mqtt_frame_fixed{type=Type, dup=DUP},
-                             variable=Variable,
-                             payload=Payload
-                            }),
-    SendFun(Bin),
+    SendFun(#mqtt_frame{
+               fixed=#mqtt_frame_fixed{type=Type, dup=DUP},
+               variable=Variable,
+               payload=Payload
+              }),
     vmq_systree:incr_messages_sent(),
     State.
 
@@ -603,16 +587,16 @@ dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
                    retry_interval=RetryInterval, send_fun=SendFun} = State,
             MsgRef = vmq_msg_store:store(User, ClientId, Topic, Payload),
             Ref = send_after(RetryInterval, {retry, {qos2, MessageId}}),
-            Bin = emqtt_frame:serialise(#mqtt_frame{
-                                           fixed=#mqtt_frame_fixed{type=?PUBREC},
-                                           variable=#mqtt_frame_publish{message_id=MessageId},
-                                           payload= <<>>
-                                          }),
-            SendFun(Bin),
+            Frame = #mqtt_frame{
+                       fixed=#mqtt_frame_fixed{type=?PUBREC},
+                       variable=#mqtt_frame_publish{message_id=MessageId},
+                       payload= <<>>
+                      },
+            SendFun(Frame),
             vmq_systree:incr_messages_sent(),
             State#state{waiting_acks=dict:store(
                                        {qos2, MessageId},
-                                       {2, Bin, Ref, {MsgRef, IsRetain}}, WAcks)};
+                                       {2, Frame, Ref, {MsgRef, IsRetain}}, WAcks)};
         false ->
             %% drop
             vmq_systree:incr_publishes_dropped(),
@@ -630,8 +614,7 @@ get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
 -spec send_publish_frame(#mqtt_frame{}, #state{}) -> #state{} | {error, atom()}.
 send_publish_frame(Frame, State) ->
     #state{send_fun=SendFun} = State,
-    Bin = emqtt_frame:serialise(Frame),
-    case SendFun(Bin) of
+    case SendFun(Frame) of
         ok ->
             vmq_systree:incr_publishes_sent(),
             vmq_systree:incr_messages_sent(),
@@ -697,11 +680,11 @@ handle_waiting_acks(State) ->
 
 -spec send_after(non_neg_integer(), any()) -> reference().
 send_after(Time, Msg) ->
-    erlang:send_after(Time, self(), Msg).
+    gen_fsm:send_event_after(Time, Msg).
 
 -spec cancel_timer('undefined' | reference()) -> 'ok'.
 cancel_timer(undefined) -> ok;
-cancel_timer(TRef) -> erlang:cancel_timer(TRef), ok.
+cancel_timer(TRef) -> gen_fsm:cancel_timer(TRef), ok.
 
 -spec check_in_flight(#state{}) -> boolean().
 check_in_flight(#state{waiting_acks=WAcks}) ->
