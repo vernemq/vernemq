@@ -1,0 +1,3 @@
+-include_lib("emqtt_commons/include/emqtt_frame.hrl").
+-include_lib("emqtt_commons/include/emqtt_internal.hrl").
+-type plugin_id()       :: {plugin, atom(), pid()}.
