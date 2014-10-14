@@ -6,7 +6,7 @@
   {applications, [
                   kernel,
                   stdlib,
-                  emqtt_client
+                  emqtt_commons
                  ]},
   {mod, { vmq_bridge_app, []}},
   {env, [

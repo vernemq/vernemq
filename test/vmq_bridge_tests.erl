@@ -1,3 +1,17 @@
+%% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
+%% 
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%% 
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%% 
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+
 -module(vmq_bridge_tests).
 -include_lib("eunit/include/eunit.hrl").
 
@@ -11,12 +25,12 @@ subscribe_test_() ->
     [
     {"Broker to Bridge Disconnect QoS1",
       ?setup(fun b2br_disconnect_qos1/1)}
-    ,{"Broker to Bridge Disconnect QoS2",
-      ?setup(fun b2br_disconnect_qos2/1)}
-    ,{"Broker to Bridge Disconnect QoS1 adv",
-      ?setup(fun br2b_disconnect_qos1/1)}
-    ,{"Broker to Bridge Disconnect QoS2 adv",
-      ?setup(fun br2b_disconnect_qos2/1)}
+     ,{"Broker to Bridge Disconnect QoS2",
+       ?setup(fun b2br_disconnect_qos2/1)}
+     ,{"Broker to Bridge Disconnect QoS1 adv",
+       ?setup(fun br2b_disconnect_qos1/1)}
+     ,{"Broker to Bridge Disconnect QoS2 adv",
+       ?setup(fun br2b_disconnect_qos2/1)}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -131,7 +145,6 @@ br2b_disconnect_qos1(_) ->
     BridgeProc =
     receive
         {subscribe, Pid} ->
-            io:format(user, "... ~p ~p~n", [Pid, is_process_alive(Pid)]),
             Pid
     end,
     ok = packet:expect_packet(Bridge, "subscribe", Subscribe),
@@ -172,7 +185,6 @@ br2b_disconnect_qos2(_) ->
     BridgeProc =
     receive
         {subscribe, Pid} ->
-            io:format(user, "... ~p ~p~n", [Pid, is_process_alive(Pid)]),
             Pid
     end,
     ok = packet:expect_packet(Bridge, "subscribe", Subscribe),

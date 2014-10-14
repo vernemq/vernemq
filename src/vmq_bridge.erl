@@ -1,11 +1,11 @@
 %% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
-%% 
+%%
 %%     http://www.apache.org/licenses/LICENSE-2.0
-%% 
+%%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -70,8 +70,7 @@ on_connect(State) ->
                 end, [], Config),
     {ok, State#state{subscriptions=Subscriptions}}.
 
-on_connect_error(Reason, State) ->
-    io:format("--- error ~p~n", [Reason]),
+on_connect_error(_Reason, State) ->
     {ok, State}.
 
 on_disconnect(State) ->
@@ -84,7 +83,6 @@ on_unsubscribe(_Topics, State) ->
     {ok, State}.
 
 on_publish(Topic, Payload, #state{subscriptions=Subscriptions, publish_fun=PublishFun} = State) ->
-    io:format("--- publish ~p ~p~n", [Topic, Payload]),
     case lists:keyfind({in, Topic}, 1, Subscriptions) of
         {_, LocalPrefix} ->
             ok = PublishFun(lists:flatten([LocalPrefix, Topic]), Payload);
