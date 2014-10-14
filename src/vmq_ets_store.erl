@@ -7,10 +7,13 @@
          close/1]).
 
 open(_Args) ->
-    ets:new(?MODULE, [set, named_table]).
+    T = ets:new(?MODULE, [set, named_table]),
+    {ok, T}.
 
 fold(MsgStoreRef, Fun, Acc) ->
-    ets:foldl(Fun, Acc, MsgStoreRef).
+    ets:foldl(fun({K,V}, A) ->
+                      Fun(K, V, A)
+              end, Acc, MsgStoreRef).
 
 delete(MsgStoreRef, Key) ->
     true = ets:delete(MsgStoreRef, Key),

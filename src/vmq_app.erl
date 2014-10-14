@@ -9,13 +9,13 @@
 %% IO-bound so we can go faster if we parallelise a bit more. In
 %% practice 2 processes seems just as fast as any other number > 1,
 %% and keeps the progress bar realistic-ish.
--define(HIPE_PROCESSES, 1).
+-define(HIPE_PROCESSES, 2).
 
 %% ===================================================================
 %% Application callbacks
 %% ===================================================================
 
--spec start(_,_) -> 'ignore' | {'error',_} | {'ok',pid()}.
+-spec start(_,_) -> {'error',_} | {'ok',pid()} | {'ok', pid(), _}.
 start(_StartType, _StartArgs) ->
     Success = maybe_hipe_compile(),
     warn_if_hipe_compilation_failed(Success),
@@ -42,7 +42,7 @@ maybe_hipe_compile() ->
 warn_if_hipe_compilation_failed(true) ->
     ok;
 warn_if_hipe_compilation_failed(false) ->
-    error_logger:warning_msg(
+    io:format(
       "Not HiPE compiling: HiPE not found in this Erlang installation.~n").
 
 %% HiPE compilation happens before we have log handlers and can take a
@@ -52,13 +52,11 @@ hipe_compile() ->
     {ok, HipeModulesAll} = application:get_env(vmq_server, hipe_modules),
     HipeModules = [HM || HM <- HipeModulesAll, code:which(HM) =/= non_existing],
     Count = length(HipeModules),
-   % io:format("~nHiPE compiling:  |~s|~n                 |",
-   %           [string:copies("-", Count)]),
+    io:format("~nHiPE compiling:  |~s|~n                 |",
+              [string:copies("-", Count)]),
     T1 = erlang:now(),
     PidMRefs = [spawn_monitor(fun () -> [begin
-                                             io:format(user, "hipe:c ~p..", [M]),
-                                             {ok, M} = hipe:c(M, [o3]),
-                                             io:format(user, "ok~n", [])
+                                             {ok, M} = hipe:c(M, [o3])
                                          end || M <- Ms]
                               end) ||
                    Ms <- split(HipeModules, ?HIPE_PROCESSES)],

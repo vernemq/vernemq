@@ -81,7 +81,8 @@ websocket_terminate(_Reason, _Req, #st{session=SessionPid, session_monitor=MRef}
 
 start_session(Req, Opts) ->
     Self = self(),
-    {ok, SessionPid} = vmq_session:start(self(), cowboy_req:peer(Req),
+    {Peer, _} = cowboy_req:peer(Req),
+    {ok, SessionPid} = vmq_session:start(self(), Peer,
                               fun(Frame) ->
                                         send(Self, {reply, Frame})
                                 end, Opts),

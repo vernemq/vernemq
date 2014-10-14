@@ -27,9 +27,14 @@
 
 -export([retain_action_/5]). %% RPC Calls
 
--export([behaviour_info/1]).
-
 -record(state, {store}).
+
+
+-callback open(Args :: term()) -> {ok, term()} | {error, term()}.
+-callback fold(term(), fun((binary(), binary(), any()) -> any()), any()) -> any() | {error, any()}.
+-callback delete(term(), binary()) -> ok.
+-callback insert(term(), binary(), binary()) -> ok | {error, any()}.
+-callback close(term()) -> ok.
 
 -define(MSG_ITEM, 0).
 -define(INDEX_ITEM, 1).
@@ -255,16 +260,6 @@ clean_index() ->
     ets:delete_all_objects(?MSG_INDEX_TABLE).
 
 
-behaviour_info(callbacks) ->
-    [{open, 1},
-     {fold,3},
-     {delete,2},
-     {insert,3},
-     {close,1}];
-behaviour_info(_Other) ->
-    undefined.
-
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
@@ -279,19 +274,27 @@ init([]) ->
     ets:new(?MSG_RETAIN_TABLE, TableOpts),
     ets:new(?MSG_CACHE_TABLE, TableOpts),
     ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
-    MsgStore = MsgStoreImpl:open(MsgStoreImplArgs),
+    {ok, MsgStore} = MsgStoreImpl:open(MsgStoreImplArgs),
     ToDelete =
     MsgStoreImpl:fold(MsgStore,
                  fun
                      (<<?MSG_ITEM, MsgRef/binary>> = Key, Val, Acc) ->
-                         {User, ClientId,
-                          RoutingKey, Payload} = binary_to_term(Val),
+                         {_, _, RoutingKey, Payload} = binary_to_term(Val),
                          case vmq_reg:subscriptions(RoutingKey) of
                              [] -> %% weird
                                 [Key|Acc];
-                             _Subs ->
-                                 vmq_reg:publish(User, ClientId, MsgRef,
-                                                    RoutingKey, Payload, false),
+                             Subs ->
+                                 lists:foreach(
+                                   fun({ClientId, QoS}) ->
+                                           %% Increment in_flight counter
+                                           ets:update_counter(?MSG_CACHE_TABLE, in_flight, {2, 1}),
+                                           %% add to cache
+                                           update_msg_cache(MsgRef, {RoutingKey, Payload}),
+                                           %% defer deliver expects the Message
+                                           %% to be already cached and just adds
+                                           %% the proper index item
+                                           defer_deliver(ClientId, QoS, MsgRef, true)
+                                   end, Subs),
                                  Acc
                          end;
                      (<<?RETAIN_ITEM, BRoutingKey/binary>>, Val, Acc) ->

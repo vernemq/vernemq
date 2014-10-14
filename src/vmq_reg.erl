@@ -168,7 +168,7 @@ register_client__(ClientPid, ClientId, CleanSession) ->
             end,
             ok;
         false ->
-            lager:warning("Client ~p died during registering~n", [ClientPid]),
+            lager:warning("Client ~p died during registration~n", [ClientPid]),
             ok
     end.
 
@@ -392,12 +392,13 @@ reset_all_tables([]) ->
 -spec reset_table(atom()) -> ok.
 reset_table(Tab) ->
     Keys = mnesia:dirty_all_keys(Tab),
-    mnesia:transaction(
-      fun() ->
-              lists:foreach(fun(Key) ->
-                                    mnesia:dirty_delete(Tab, Key)
-                            end, Keys)
-      end).
+    {atomic, ok} = mnesia:transaction(
+                     fun() ->
+                             lists:foreach(fun(Key) ->
+                                                   mnesia:dirty_delete(Tab, Key)
+                                           end, Keys)
+                     end),
+    ok.
 
 
 

@@ -31,6 +31,7 @@
 
 -record(state, {interval=10000, ref}).
 -define(TABLE, vmq_systree).
+-define(CLIENT_ID, "systree_client_9876"). %% only used internally
 
 %%%===================================================================
 %%% API
@@ -251,7 +252,7 @@ publish([_|Rest]) ->
 
 publish(Topic, Val) ->
     TTopic = lists:flatten(["$SYS/", atom_to_list(node()), "/", Topic]),
-    vmq_reg:publish(undefined, undefined, undefined,
+    vmq_reg:publish({plugin, ?MODULE, self()}, ?CLIENT_ID, undefined,
                     TTopic, erlang:integer_to_binary(Val), false).
 
 init_table([]) -> ok;

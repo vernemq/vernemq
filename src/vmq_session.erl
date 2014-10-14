@@ -24,10 +24,17 @@
 
 -define(CLOSE_AFTER, 5000).
 
+-type proplist() :: [{atom(), any()}].
+-type statename() :: atom().
+-type peer() :: {inet:ip_address(), inet:port_number()}.
+-type mqtt_variable_ping() :: undefined.
+-type mqtt_variable() :: #mqtt_frame_connect{}
+                       | #mqtt_frame_connack{}
+                       | #mqtt_frame_publish{}
+                       | #mqtt_frame_subscribe{}
+                       | #mqtt_frame_suback{}
+                       | mqtt_variable_ping().
 -record(state, {
-                %% parser requirements
-                buffer= <<>>                                :: binary(),
-                parser_state=emqtt_frame:initial_state()    :: none | fun((_) -> any()),
                 %% networking requirements
                 send_fun                                    :: function(),
                 %% mqtt layer requirements
@@ -41,7 +48,7 @@
                 %% statemachine requirements
                 connection_attempted=false                  :: boolean(),
                 %% auth backend requirement
-                peer                                        :: {inet:ip_address(), inet:port_number()},
+                peer                                        :: peer(),
                 username                                    :: username() | {preauth, string() | undefined},
                 msg_log_handler                             :: fun((client_id(), topic(), payload()) -> any()),
                 mountpoint=""                               :: string(),
@@ -52,16 +59,6 @@
 
          }).
 
--type statename() :: atom().
-
--type mqtt_variable_ping() :: undefined.
--type mqtt_variable() :: #mqtt_frame_connect{}
-                       | #mqtt_frame_connack{}
-                       | #mqtt_frame_publish{}
-                       | #mqtt_frame_subscribe{}
-                       | #mqtt_frame_suback{}
-                       | mqtt_variable_ping().
-
 -hook({auth_on_publish, only, 6}).
 -hook({on_publish, all, 6}).
 -hook({auth_on_register, only, 4}).
@@ -70,12 +67,15 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+-spec start(pid(), peer(), function(), proplist()) -> {ok, pid()}.
 start(ReaderPid, Peer, SendFun, Opts) ->
     supervisor:start_child(vmq_session_sup, [ReaderPid, Peer, SendFun, Opts]).
 
+-spec stop(pid()) -> ok.
 stop(FsmPid) ->
     supervisor:terminate_child(vmq_session_sup, FsmPid).
 
+-spec start_link(pid(), peer(), function(), proplist()) -> {ok, pid()}.
 start_link(ReaderPid, Peer, SendFun, Opts) ->
     gen_fsm:start_link(?MODULE, [ReaderPid, Peer, SendFun, Opts], []).
 
@@ -91,20 +91,29 @@ deliver_bin(FsmPid, Term) ->
 disconnect(FsmPid) ->
     gen_fsm:send_event(FsmPid, disconnect).
 
+-spec in(pid(), #mqtt_frame{}) ->  ok.
 in(FsmPid, Event) ->
     gen_fsm:send_all_state_event(FsmPid, {input, Event}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% FSM FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+-spec wait_for_connect(timeout, #state{}) -> {stop, normal, #state{}}.
 wait_for_connect(timeout, State) ->
     io:format("[~p] stop due to timeout~n", [self()]),
     {stop, normal, State}.
 
+-spec connection_attempted(timeout, #state{}) -> {next_state, wait_for_connect, #state{}, ?CLOSE_AFTER}.
 connection_attempted(timeout, State) ->
     {next_state, wait_for_connect, State, ?CLOSE_AFTER}.
 
+-spec connected(timeout
+                | disconnect
+                | keepalive_expired
+                | {retry, msg_id()}
+                | {deliver_bin, {msg_id(), qos(), payload()}}
+                | {deliver, topic(), payload(), qos(), flag(), flag(), binary()}, #state{}) ->
+    {next_state, connected, #state{}} | {stop, normal, #state{}}.
 connected(timeout, State) ->
     % ignore
     {next_state, connected, State};
@@ -193,6 +202,7 @@ connected(disconnect, State) ->
     io:format("[~p] stop due to ~p~n", [self(), disconnect]),
     {stop, normal, State}.
 
+-spec init(_) -> {ok, wait_for_connect, #state{}, ?CLOSE_AFTER}.
 init([ReaderPid, Peer, SendFun, Opts]) ->
     {_,MountPoint} = lists:keyfind(mountpoint, 1, Opts),
     {_,MaxClientIdSize} = lists:keyfind(max_client_id_size, 1, Opts),
@@ -222,7 +232,8 @@ init([ReaderPid, Peer, SendFun, Opts]) ->
                                   retry_interval=1000 * RetryInterval
                                   }, ?CLOSE_AFTER}.
 
-
+-spec handle_event({input, #mqtt_frame{}}, _, #state{}) ->
+    {stop, normal, #state{}} | {next_state, statename(), #state{}}.
 handle_event({input, #mqtt_frame{fixed=#mqtt_frame_fixed{type=?DISCONNECT}}}, _, State) ->
     {stop, normal, State};
 handle_event({input, Frame}, StateName, #state{keep_alive_timer=KARef} = State) ->
@@ -238,13 +249,16 @@ handle_event({input, Frame}, StateName, #state{keep_alive_timer=KARef} = State) 
         Ret -> Ret
     end.
 
+-spec handle_sync_event(_, _, _, #state{}) -> {stop, {error, {unknown_req, _}}, #state{}}.
 handle_sync_event(Req, _From, _StateName, State) ->
     {stop, {error, {unknown_req, Req}}, State}.
 
+-spec handle_info({'DOWN', _, process, pid(), any()}, statename(), #state{}) -> {stop, any(), #state{}}.
 handle_info({'DOWN', _, process, Pid, Reason}, _StateName, State) ->
     lager:info("Reader Proc ~p of ~p went down, die too", [Pid, self()]),
     {stop, Reason, State} .
 
+-spec terminate(any(), statename(), #state{}) -> ok.
 terminate(_Reason, connected, State) ->
     #state{client_id=ClientId, clean_session=CleanSession} = State,
     case CleanSession of

@@ -147,20 +147,12 @@ transport_opts(ranch_ssl, Opts) ->
                   true -> verify_peer;
                   _ -> verify_none
               end},
-     %{psk_identity, proplists:get_value(psk_hint, Opts)},
-     %{user_lookup_fun, case proplists:get_value(psk_hint, Opts) of
-     %                      undefined -> undefined;
-     %                      _ ->
-     %                          {fun(psk, _PSKIdent, _) ->
-     %                                   {ok, <<"deadbeef">>}
-     %                           end, []}
-     %                  end},
      {verify_fun, {fun verify_ssl_peer/3, proplists:get_value(crlfile, Opts, no_crl)}},
      {versions, [proplists:get_value(tls_version, Opts, 'tlsv1.2')]}
     ];
 transport_opts(ranch_tcp, _Opts) -> [].
 
--spec handler_opts('cowboy_protocol' | 'vmq_tcp' | vmq_ssl,[any()]) -> [any(),...].
+-spec handler_opts('cowboy_protocol' | 'vmq_tcp', [any()]) -> [any(),...].
 handler_opts(cowboy_protocol, Opts) ->
     Dispatch = cowboy_router:compile(
                  [
@@ -176,18 +168,7 @@ handler_opts(vmq_tcp, Opts) ->
     [{msg_log_handler, MsgLogHandler},
      {max_client_id_size, MaxClientIdSize},
      {retry_interval, RetryInterval}
-     |Opts];
-handler_opts(vmq_ssl, Opts) ->
-    TCPOpts = handler_opts(vmq_tcp, Opts),
-    UseIdentityAsUserName = proplists:get_value(use_identity_as_username, Opts, false),
-    case proplists:get_value(psk_hint, Opts) of
-        undefined ->
-            [{use_identity_as_username, UseIdentityAsUserName}|TCPOpts];
-        PskHint ->
-            [{psk_hin, PskHint},
-             {use_identity_as_username, UseIdentityAsUserName}
-             |TCPOpts]
-    end.
+     |Opts].
 
 -spec ciphersuite_transform(boolean(), string()) -> [{atom(), atom(), atom()}].
 ciphersuite_transform(SupportEC, []) ->

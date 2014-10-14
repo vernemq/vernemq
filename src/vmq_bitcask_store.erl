@@ -21,8 +21,10 @@ open(Args) ->
                     exit(msg_store_directory_not_available)
             end
     end,
-    MsgStore = bitcask:open(MsgStoreDir, [read_write]),
-    MsgStore.
+    case bitcask:open(MsgStoreDir, [read_write]) of
+        {error, Reason} -> {error, Reason};
+        Ref -> {ok, Ref}
+    end.
 
 fold(MsgStoreRef, Fun, Acc) ->
     bitcask:fold(MsgStoreRef, Fun, Acc).
