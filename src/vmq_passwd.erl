@@ -1,6 +1,6 @@
 -module(vmq_passwd).
 
--export([init/1,
+-export([init/0,
          check/2,
          hash/1, hash/2,
          load_from_file/1,
@@ -12,14 +12,13 @@
 
 -register_hook({auth_on_register, {?MODULE, auth_on_register, 4}}).
 
-init(AllowAnonymous) ->
+init() ->
     case lists:member(?TABLE, ets:all()) of
         true ->
             ok;
         false ->
             ets:new(?TABLE, [public, named_table, {read_concurrency, true}])
     end,
-    ets:insert(?TABLE, {anonymous, AllowAnonymous}),
     ok.
 
 load_from_file(File) ->
@@ -50,13 +49,7 @@ load_from_list(List) ->
     del_aged_entries().
 
 check(undefined, _) ->
-    %% check if we allow anonymous connections
-    case ets:lookup(?TABLE, anonymous) of
-        [{_, false}] ->
-            {error, not_authorized};
-        [{_, true}] ->
-            ok
-    end;
+    {error, not_authorized};
 check(_, undefined) ->
     {error, invalid_credentials};
 check(User, Password) ->
@@ -101,8 +94,6 @@ del_aged_entries() ->
 iterate(Fun) ->
     iterate(Fun, ets:first(?TABLE)).
 iterate(_, '$end_of_table') -> ok;
-iterate(Fun, anonymous) ->
-    iterate(Fun, ets:next(?TABLE, anonymous));
 iterate(Fun, K) ->
     Fun(K),
     iterate(Fun, ets:next(?TABLE, K)).

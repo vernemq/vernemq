@@ -137,8 +137,7 @@ init_state(State) ->
     end,
     {ok, File} = application:get_env(?APP, file),
     {ok, Interval} = application:get_env(?APP, interval),
-    {ok, AllowAnonymous} = application:get_env(?APP, allow_anonymous),
-    ok = vmq_passwd:init(AllowAnonymous),
+    ok = vmq_passwd:init(),
     ok = vmq_passwd:load_from_file(File),
     NewTRef = erlang:send_after(Interval, self(), reload),
     State#state{file=File, interval=Interval, timer=NewTRef}.
