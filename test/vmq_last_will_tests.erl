@@ -32,12 +32,12 @@ setup() ->
     application:set_env(vmq_server, listeners,
                         {[?listener(1888)],[],[]}),
     application:set_env(vmq_server, retry_interval, 10),
-    vmq:start_no_auth(),
+    vmq_server:start_no_auth(),
     vmq_msg_store:clean_all([]),
     vmq_reg:reset_all_tables([]),
     wait_til_ready().
 teardown(_) ->
-    vmq:stop().
+    vmq_server:stop().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests

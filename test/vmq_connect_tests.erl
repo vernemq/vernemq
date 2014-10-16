@@ -44,9 +44,9 @@ setup() ->
     application:set_env(vmq_server, allow_anonymous, false),
     application:set_env(vmq_server, listeners,
                         {[?listener(1888)],[],[]}),
-    vmq:start_no_auth(),
+    vmq_server:start_no_auth(),
     wait_til_ready().
-teardown(_) -> vmq:stop().
+teardown(_) -> vmq_server:stop().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests

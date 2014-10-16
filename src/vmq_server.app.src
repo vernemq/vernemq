@@ -14,7 +14,7 @@
                   bitcask,
                   mnesia_cluster
                  ]},
-  {mod, { vmq_app, []}},
+  {mod, { vmq_server_app, []}},
   {env, [
       {hipe_compile, false},
       {hipe_modules, [

@@ -43,7 +43,7 @@ setup() ->
     application:set_env(vmq_server, allow_anonymous, true),
     application:set_env(vmq_server, listeners,
                         {[],[?listener(1888)],[]}),
-    vmq:start_no_auth(),
+    vmq_server:start_no_auth(),
     wait_til_ready().
 
 setup_c() ->
@@ -60,7 +60,7 @@ setup_c() ->
                                                     {tls_version, 'tlsv1.2'},
                                                     {require_certificate, true}]}
                             ], []}),
-    vmq:start_no_auth(),
+    vmq_server:start_no_auth(),
     wait_til_ready().
 
 setup_r() ->
@@ -78,7 +78,7 @@ setup_r() ->
                                                     {require_certificate, true},
                                                     {crlfile, "../test/ssl/crl.pem"}]}
                             ], []}),
-    vmq:start_no_auth(),
+    vmq_server:start_no_auth(),
     wait_til_ready().
 
 setup_i() ->
@@ -95,11 +95,11 @@ setup_i() ->
                                                     {require_certificate, true},
                                                     {use_identity_as_username, true}]}
                             ], []}),
-    vmq:start_no_auth(),
+    vmq_server:start_no_auth(),
     wait_til_ready().
 
 teardown(_) ->
-    vmq:stop().
+    vmq_server:stop().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
