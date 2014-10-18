@@ -1,0 +1,5 @@
+%% @doc Set the path to an access control list file. 
+{mapping, "acl_file", "vmq_acl.file", [
+                                          {default, "{{platform_etc_dir}}/vmq.acl"},
+                                          {datatype, file}
+                                         ]}.
