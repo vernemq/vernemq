@@ -24,7 +24,7 @@ setup() ->
     application:load(vmq_server),
     application:set_env(vmq_server, allow_anonymous, true),
     application:set_env(vmq_server, listeners,
-                        {[?listener(1888)],[],[]}),
+                        {[?listener(1888)],[],[],[]}),
     application:set_env(vmq_server, retry_interval, 10),
     vmq_server:start_no_auth(),
     vmq_msg_store:clean_all([]),

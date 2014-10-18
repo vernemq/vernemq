@@ -59,7 +59,7 @@ setup_c() ->
                                                     {keyfile, "../test/ssl/server.key"},
                                                     {tls_version, 'tlsv1.2'},
                                                     {require_certificate, true}]}
-                            ], []}),
+                            ], [], []}),
     vmq_server:start_no_auth(),
     wait_til_ready().
 

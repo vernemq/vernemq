@@ -1,0 +1,744 @@
+%%-*- mode: erlang -*
+%% ex: ft=erlang
+
+%% @doc listener.max_connections is an integer or 'infinity' defining 
+%% the number of concurrent connections. This option can be overridden
+%% by either specifying on the protocol level:
+%%
+%%     - listener.tcp.max_connections
+%%     - listener.ssl.max_connections
+%%     - listener.ws.max_connections 
+%%     - listener.wss.max_connections 
+%%
+%% or on the listener level:
+%%
+%%     - listener.tcp.my_tcp_listener.max_connections
+%%     - listener.ssl.my_ssl_listener.max_connections
+%%     - listener.ws.my_ws_listener.max_connections
+%%     - listener.wss.my_wss_listener.max_connections
+{mapping, "listener.max_connections", "vmq_server.listeners", [
+                                                                  {default, {{max_connections}} },
+                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                 ]}. 
+
+{mapping, "listener.tcp.max_connections", "vmq_server.listeners", [
+                                                                      {default, -1},
+                                                                      {datatype, [integer, {atom, infinity}]},
+                                                                      hidden
+                                                                     ]}. 
+
+{mapping, "listener.tcp.$name.max_connections", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, [integer, {atom, infinity}]},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.ssl.max_connections", "vmq_server.listeners", [
+                                                                      {default, -1},
+                                                                      {datatype, [integer, {atom, infinity}]},
+                                                                      hidden
+                                                                     ]}. 
+
+{mapping, "listener.ssl.$name.max_connections", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, [integer, {atom, infinity}]},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.ws.max_connections", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, [integer, {atom, infinity}]},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.ws.$name.max_connections", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                                 ]}. 
+{mapping, "listener.wss.max_connections", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, [integer, {atom, infinity}]},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.wss.$name.max_connections", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                                 ]}. 
+%% @doc listener.tcp.<name> is an IP address and TCP port that 
+%% the broker will bind. You can define multiple listeners e.g:
+%% - listener.tcp.default = 127.0.0.1:1883
+%% - listener.tcp.internal = 127.0.0.1:10883
+%% - listener.tcp.my_other_listener = 127.0.0.1:10884
+%% This also works for SSL listeners and ws handlers:
+%% - listener.ssl.default = 127.0.0.1:8883
+%% - listener.ws.default = 127.0.0.1:800 
+%% - listener.wss.default = 127.0.0.1:880 
+{mapping, "listener.tcp.$name", "vmq_server.listeners", [
+                                                            {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
+                                                            {datatype, ip},
+                                                            {include_default, "default"}
+                                                           ]}.
+
+{mapping, "listener.ws.$name", "vmq_server.listeners", [
+                                                                  {default, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
+                                                                  {commented, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
+                                                                  {datatype, ip},
+                                                                  {include_default, "default"}
+                                                                 ]}.
+
+{mapping, "listener.wss.$name", "vmq_server.listeners", [
+                                                                  {default, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
+                                                                  {commented, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
+                                                                  {datatype, ip},
+                                                                  {include_default, "default"}
+                                                                 ]}.
+
+{mapping, "listener.ssl.$name", "vmq_server.listeners", [
+                                                            {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
+                                                            {commented, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
+                                                            {datatype, ip},
+                                                            {include_default, "default"}
+                                                           ]}.
+
+%% @doc Set the nr of acceptors waiting to concurrently accept new connections.
+%% This can be specified either on the protocol level:
+%%
+%%     - listener.tcp.nr_of_acceptors
+%%     - listener.ssl.nr_of_acceptors
+%%     - listener.ws.nr_of_acceptors 
+%%     - listener.wss.nr_of_acceptors 
+%%
+%% or on the listener level:
+%%
+%%     - listener.tcp.my_tcp_listener.nr_of_acceptors
+%%     - listener.ssl.my_ssl_listener.nr_of_acceptors
+%%     - listener.ws.my_ws_listener.nr_of_acceptors
+%%     - listener.wss.my_wss_listener.nr_of_acceptors
+{mapping, "listener.nr_of_acceptors", "vmq_server.listeners", [
+                                                                  {default, {{ max_nr_of_acceptors}} },
+                                                                  {datatype, integer}
+                                                                 ]}.
+
+{mapping, "listener.tcp.nr_of_acceptors", "vmq_server.listeners", [
+                                                                      {default, -1},
+                                                                      {datatype, integer},
+                                                                      hidden
+                                                                     ]}. 
+
+{mapping, "listener.tcp.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, integer},
+                                                                            {include_default, "default"},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.ssl.nr_of_acceptors", "vmq_server.listeners", [
+                                                                      {default, -1},
+                                                                      {datatype, integer},
+                                                                      hidden
+                                                                     ]}. 
+
+{mapping, "listener.ssl.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, integer},
+                                                                            {include_default, "default"},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.ws.nr_of_acceptors", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, integer},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.ws.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, integer},
+                                                                                  {include_default, "default"},
+                                                                                  hidden
+                                                                                 ]}. 
+{mapping, "listener.wss.nr_of_acceptors", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, integer},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.wss.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, integer},
+                                                                                  {include_default, "default"},
+                                                                                  hidden
+                                                                                 ]}. 
+
+
+%% @doc Set the mountpoint on the protocol level or on the listener level
+%%
+%%     - listener.tcp.mountpoint
+%%     - listener.ssl.mountpoint
+%%     - listener.ws.mountpoint 
+%%     - listener.wss.mountpoint 
+%%
+%% or on the listener level:
+%%
+%%     - listener.tcp.my_tcp_listener.mountpoint
+%%     - listener.ssl.my_ssl_listener.mountpoint
+%%     - listener.ws.my_ws_listener.mountpoint
+%%     - listener.wss.my_wss_listener.mountpoint
+{mapping, "listener.mountpoint", "vmq_server.listeners", [{default, "off"},
+                                                             {datatype, string}
+                                                            ]}. 
+{mapping, "listener.tcp.mountpoint", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
+
+{mapping, "listener.tcp.$name.mountpoint", "vmq_server.listeners", [
+                                                                       {default, ""},
+                                                                       {datatype, string},
+                                                                       hidden
+                                                                      ]}. 
+
+{mapping, "listener.ws.mountpoint", "vmq_server.listeners", [
+                                                                       {default, ""},
+                                                                       {datatype, string},
+                                                                       hidden
+                                                                      ]}. 
+
+{mapping, "listener.ws.$name.mountpoint", "vmq_server.listeners", [
+                                                                             {default, ""},
+                                                                             {datatype, string},
+                                                                             hidden
+                                                                            ]}. 
+{mapping, "listener.wss.mountpoint", "vmq_server.listeners", [
+                                                                       {default, ""},
+                                                                       {datatype, string},
+                                                                       hidden
+                                                                      ]}. 
+
+{mapping, "listener.wss.$name.mountpoint", "vmq_server.listeners", [
+                                                                             {default, ""},
+                                                                             {datatype, string},
+                                                                             hidden
+                                                                            ]}. 
+
+{mapping, "listener.wss.mountpoint", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
+
+{mapping, "listener.wss.$name.mountpoint", "vmq_server.listeners", [
+                                                                       {default, ""},
+                                                                       {datatype, string},
+                                                                       hidden
+                                                                      ]}. 
+
+{mapping, "listener.wss.cafile", "vmq_server.listeners", [
+                                                             {default, ""},
+                                                             {datatype, file},
+                                                             {commented, "{{platform_etc_dir}}/cacerts.pem"}
+                                                            ]}. 
+
+{mapping, "listener.wss.$name.cafile", "vmq_server.listeners", [
+                                                                   {default, ""},
+                                                                   {datatype, string},
+                                                                   hidden
+                                                                  ]}. 
+
+{mapping, "listener.wss.certfile", "vmq_server.listeners", [
+                                                               {default, ""},
+                                                               {datatype, file},
+                                                               {commented, "{{platform_etc_dir}}/cert.pem"}
+                                                              ]}. 
+{mapping, "listener.wss.$name.certfile", "vmq_server.listeners", [
+                                                                     {default, ""},
+                                                                     {datatype, file},
+                                                                     hidden
+                                                                    ]}. 
+{mapping, "listener.wss.ciphers", "vmq_server.listeners", [
+                                                              {default, ""},
+                                                              {datatype, string},
+                                                              hidden
+                                                             ]}. 
+{mapping, "listener.wss.$name.ciphers", "vmq_server.listeners", [
+                                                              {default, ""},
+                                                                    {datatype, string},
+                                                                    hidden
+                                                                   ]}. 
+{mapping, "listener.wss.crlfile", "vmq_server.listeners", [
+                                                              {default, ""},
+                                                              {datatype, string},
+                                                              {commented, ""}
+                                                             ]}. 
+{mapping, "listener.wss.$name.crlfile", "vmq_server.listeners", [
+                                                                    {default, ""},
+                                                                    {datatype, string},
+                                                                    hidden
+                                                                   ]}. 
+{mapping, "listener.wss.keyfile", "vmq_server.listeners", [
+                                                              {default, ""},
+                                                              {datatype, file},
+                                                              {commented, "{{platform_etc_dir}}/key.pem"}
+                                                             ]}. 
+{mapping, "listener.wss.$name.keyfile", "vmq_server.listeners", [
+                                                                    {default, ""},
+                                                                    {datatype, file},
+                                                                    hidden
+                                                                   ]}. 
+{mapping, "listener.wss.require_certificate", "vmq_server.listeners", [
+                                                                          {default, off},
+                                                                          {datatype, flag},
+                                                                          {commented, off}
+                                                                         ]}. 
+{mapping, "listener.wss.$name.require_certificate", "vmq_server.listeners", [
+                                                                                {datatype, flag},
+                                                                                hidden
+                                                                               ]}. 
+{mapping, "listener.wss.tls_version", "vmq_server.listeners", [
+                                                                  {default, 'tlsv1.2'},
+                                                                  {datatype, atom},
+                                                                  {commented, 'tlsv1.2'}
+                                                                 ]}. 
+{mapping, "listener.wss.$name.tls_version", "vmq_server.listeners", [
+                                                                        {datatype, atom},
+                                                                        hidden
+                                                                       ]}. 
+{mapping, "listener.wss.use_identity_as_username", "vmq_server.listeners", [
+                                                                               {default, off},
+                                                                               {datatype, flag},
+                                                                               {commented, off}
+                                                                              ]}. 
+{mapping, "listener.wss.$name.use_identity_as_username", "vmq_server.listeners", [
+                                                                                     {datatype, flag},
+                                                                                     hidden
+                                                                                    ]}. 
+{mapping, "listener.wss.psk_hint", "vmq_server.listeners", [
+                                                               {default, ""},
+                                                               {datatype, string},
+                                                               {commented, ""}
+                                                              ]}. 
+{mapping, "listener.wss.$name.psk_hint", "vmq_server.listeners", [
+                                                                     {datatype, string},
+                                                                     hidden
+                                                                    ]}. 
+{mapping, "listener.wss.support_elliptic_curves", "vmq_server.listeners", [
+                                                               {default, on},
+                                                               {datatype, flag},
+                                                               hidden
+                                                              ]}. 
+{mapping, "listener.wss.$name.support_elliptic_curves", "vmq_server.listeners", [
+                                                                     {datatype, flag},
+                                                                     hidden
+                                                                    ]}. 
+
+
+{mapping, "listener.ssl.mountpoint", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
+
+{mapping, "listener.ssl.$name.mountpoint", "vmq_server.listeners", [
+                                                                       {default, ""},
+                                                                       {datatype, string},
+                                                                       hidden
+                                                                      ]}. 
+
+{mapping, "listener.ssl.cafile", "vmq_server.listeners", [
+                                                             {default, ""},
+                                                             {datatype, file},
+                                                             {commented, "{{platform_etc_dir}}/cacerts.pem"}
+                                                            ]}. 
+
+{mapping, "listener.ssl.$name.cafile", "vmq_server.listeners", [
+                                                                   {default, ""},
+                                                                   {datatype, string},
+                                                                   hidden
+                                                                  ]}. 
+
+{mapping, "listener.ssl.certfile", "vmq_server.listeners", [
+                                                               {default, ""},
+                                                               {datatype, file},
+                                                               {commented, "{{platform_etc_dir}}/cert.pem"}
+                                                              ]}. 
+{mapping, "listener.ssl.$name.certfile", "vmq_server.listeners", [
+                                                                     {default, ""},
+                                                                     {datatype, file},
+                                                                     hidden
+                                                                    ]}. 
+{mapping, "listener.ssl.ciphers", "vmq_server.listeners", [
+                                                              {default, ""},
+                                                              {datatype, string},
+                                                              hidden
+                                                             ]}. 
+{mapping, "listener.ssl.$name.ciphers", "vmq_server.listeners", [
+                                                              {default, ""},
+                                                                    {datatype, string},
+                                                                    hidden
+                                                                   ]}. 
+{mapping, "listener.ssl.crlfile", "vmq_server.listeners", [
+                                                              {default, ""},
+                                                              {datatype, string},
+                                                              {commented, ""}
+                                                             ]}. 
+{mapping, "listener.ssl.$name.crlfile", "vmq_server.listeners", [
+                                                                    {default, ""},
+                                                                    {datatype, string},
+                                                                    hidden
+                                                                   ]}. 
+{mapping, "listener.ssl.keyfile", "vmq_server.listeners", [
+                                                              {default, ""},
+                                                              {datatype, file},
+                                                              {commented, "{{platform_etc_dir}}/key.pem"}
+                                                             ]}. 
+{mapping, "listener.ssl.$name.keyfile", "vmq_server.listeners", [
+                                                                    {default, ""},
+                                                                    {datatype, file},
+                                                                    hidden
+                                                                   ]}. 
+{mapping, "listener.ssl.require_certificate", "vmq_server.listeners", [
+                                                                          {default, off},
+                                                                          {datatype, flag},
+                                                                          {commented, off}
+                                                                         ]}. 
+{mapping, "listener.ssl.$name.require_certificate", "vmq_server.listeners", [
+                                                                                {datatype, flag},
+                                                                                hidden
+                                                                               ]}. 
+{mapping, "listener.ssl.tls_version", "vmq_server.listeners", [
+                                                                  {default, 'tlsv1.2'},
+                                                                  {datatype, atom},
+                                                                  {commented, 'tlsv1.2'}
+                                                                 ]}. 
+{mapping, "listener.ssl.$name.tls_version", "vmq_server.listeners", [
+                                                                        {datatype, atom},
+                                                                        hidden
+                                                                       ]}. 
+{mapping, "listener.ssl.use_identity_as_username", "vmq_server.listeners", [
+                                                                               {default, off},
+                                                                               {datatype, flag},
+                                                                               {commented, off}
+                                                                              ]}. 
+{mapping, "listener.ssl.$name.use_identity_as_username", "vmq_server.listeners", [
+                                                                                     {datatype, flag},
+                                                                                     hidden
+                                                                                    ]}. 
+{mapping, "listener.ssl.psk_hint", "vmq_server.listeners", [
+                                                               {default, ""},
+                                                               {datatype, string},
+                                                               {commented, ""}
+                                                              ]}. 
+{mapping, "listener.ssl.$name.psk_hint", "vmq_server.listeners", [
+                                                                     {datatype, string},
+                                                                     hidden
+                                                                    ]}. 
+{mapping, "listener.ssl.support_elliptic_curves", "vmq_server.listeners", [
+                                                               {default, on},
+                                                               {datatype, flag},
+                                                               hidden
+                                                              ]}. 
+{mapping, "listener.ssl.$name.support_elliptic_curves", "vmq_server.listeners", [
+                                                                     {datatype, flag},
+                                                                     hidden
+                                                                    ]}. 
+
+
+{translation, "vmq_server.listeners", 
+ fun(Conf) ->
+         %% cuttlefish messes up with the tree-like configuration style if
+         %% it cannot find either configured values or defaults in the 
+         %% more specific leafs of the tree. That's why we always provide
+         %% a default value and take care of them by ourselfs.
+         InfIntVal = fun(Name, Val1, Def) -> 
+                             case Val1 of
+                                 infinity -> infinity;
+                                 undefined -> Def;
+                                 -1 -> Def;
+                                 Int when is_integer(Int) -> Int;
+                                 _ -> cuttlefish:invalid(Name ++ "  should be an integer")
+                             end
+                     end,
+         MPVal = fun(Name, Val2, Def) -> case Val2 of
+                                             "off" -> "";
+                                             "" -> Def;
+                                             S when is_list(S) -> S;
+                                             _ -> cuttlefish:invalid(Name ++ "should be a string")
+                                         end
+                 end,
+
+         StrVal = fun(_, "", Def) -> Def;
+                     (_, S, _) when is_list(S) -> S;
+                     (_, undefined, Def) -> Def end,
+         BoolVal = fun(_, B, _) when is_boolean(B) -> B;
+                      (_, undefined, Def) -> Def end,
+         AtomVal = fun(_, A, _) when is_atom(A) -> A end,
+
+
+         Mappings = ["max_connections", "nr_of_acceptors", "mountpoint"],
+                    %% SSL specific
+         SSLMapps = ["cafile", "capath", "certfile", "ciphers", "crlfile",
+                     "keyfile", "require_certificate", "tls_version",
+                     "use_identity_as_username", "psk_hint", "support_elliptic_curves"],
+         F = fun(Prefix, Suffix, Val) ->
+                     %% get default from root of the tree
+                     Default1 =
+                     case lists:member(Suffix, SSLMapps) of
+                         true -> 
+                             undefined;
+                         false ->
+                            cuttlefish:conf_get(lists:flatten(["listener.", Suffix]), Conf)
+                     end,
+                     Default2 = cuttlefish:conf_get(lists:flatten([Prefix, ".", Suffix]), Conf, Default1),
+                     %% get the name value pairs
+                     Prefix3 = lists:flatten([Prefix, ".$name"]),
+                     [begin
+                          Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
+                          V = Val(Name, cuttlefish:conf_get(Prefix4, Conf, Default2), 
+                                  Val(Name, Default2, 
+                                      Val(Name, Default1, undefined))),
+                          {AddrPort, {list_to_atom(Suffix), V}}
+                      end 
+                      || {[_, _, Name], AddrPort} <- lists:filter(
+                                                            fun({K, _V}) ->
+                                                                    cuttlefish_variable:is_fuzzy_match(K, string:tokens(Prefix3, "."))
+                                                            end, Conf), not lists:member(Name, Mappings ++ SSLMapps)]
+             end,
+
+         MZip = fun([H|_] = ListOfLists) ->
+                        Size = length(H), %% get default size
+                        ListOfLists = [L || L <- ListOfLists, length(L) == Size],
+                        [
+                           lists:reverse(
+                             lists:foldl(
+                               fun(L, Acc) ->
+                                       [lists:nth(I, L)|Acc]
+                               end, [], ListOfLists))
+                         || I <- lists:seq(1, Size)]
+                end,
+
+         {TCPIPs, TCPMaxConns} = lists:unzip(F("listener.tcp", "max_connections", InfIntVal)),
+         {SSLIPs, SSLMaxConns} = lists:unzip(F("listener.ssl", "max_connections", InfIntVal)),
+         {WSIPs, WSMaxConns} = lists:unzip(F("listener.ws", "max_connections", InfIntVal)),
+         {WS_SSLIPs, WS_SSLMaxConns} = lists:unzip(F("listener.wss", "max_connections", InfIntVal)),
+         
+         {TCPIPs, TCPNrOfAcceptors} = lists:unzip(F("listener.tcp", "nr_of_acceptors", InfIntVal)),
+         {SSLIPs, SSLNrOfAcceptors} = lists:unzip(F("listener.ssl", "nr_of_acceptors", InfIntVal)),
+         {WSIPs, WSNrOfAcceptors} = lists:unzip(F("listener.ws", "nr_of_acceptors", InfIntVal)),
+         {WS_SSLIPs, WS_SSLNrOfAcceptors} = lists:unzip(F("listener.wss", "nr_of_acceptors", InfIntVal)),
+
+         {TCPIPs, TCPMountPoint} = lists:unzip(F("listener.tcp", "mountpoint", MPVal)),
+         {SSLIPs, SSLMountPoint} = lists:unzip(F("listener.ssl", "mountpoint", MPVal)),
+         {WSIPs, WSMountPoint} = lists:unzip(F("listener.ws", "mountpoint", MPVal)),
+         {WS_SSLIPs, WS_SSLMountPoint} = lists:unzip(F("listener.wss", "mountpoint", MPVal)),
+
+         % SSL
+         {SSLIPs, SSLCAFiles} = lists:unzip(F("listener.ssl", "cafile", StrVal)),
+         {SSLIPs, SSLCAPaths} = lists:unzip(F("listener.ssl", "capath", StrVal)),
+         {SSLIPs, SSLCertFiles} = lists:unzip(F("listener.ssl", "certfile", StrVal)),
+         {SSLIPs, SSLCiphers} = lists:unzip(F("listener.ssl", "ciphers", StrVal)),
+         {SSLIPs, SSLCrlFiles} = lists:unzip(F("listener.ssl", "crlfile", StrVal)),
+         {SSLIPs, SSLKeyFiles} = lists:unzip(F("listener.ssl", "keyfile", StrVal)),
+         {SSLIPs, SSLRequireCerts} = lists:unzip(F("listener.ssl", "require_certificate", BoolVal)),
+         {SSLIPs, SSLVersions} = lists:unzip(F("listener.ssl", "tls_version", AtomVal)),
+         {SSLIPs, SSLUseIdents} = lists:unzip(F("listener.ssl", "use_identity_as_username", BoolVal)),
+         {SSLIPs, SSLPSKHints} = lists:unzip(F("listener.ssl", "psk_hint", StrVal)),
+         {SSLIPs, SSLECSupport} = lists:unzip(F("listener.ssl", "support_elliptic_curves", BoolVal)),
+
+         % WSS
+         {WS_SSLIPs, WS_SSLCAFiles} = lists:unzip(F("listener.wss", "cafile", StrVal)),
+         {WS_SSLIPs, WS_SSLCAPaths} = lists:unzip(F("listener.wss", "capath", StrVal)),
+         {WS_SSLIPs, WS_SSLCertFiles} = lists:unzip(F("listener.wss", "certfile", StrVal)),
+         {WS_SSLIPs, WS_SSLCiphers} = lists:unzip(F("listener.wss", "ciphers", StrVal)),
+         {WS_SSLIPs, WS_SSLCrlFiles} = lists:unzip(F("listener.wss", "crlfile", StrVal)),
+         {WS_SSLIPs, WS_SSLKeyFiles} = lists:unzip(F("listener.wss", "keyfile", StrVal)),
+         {WS_SSLIPs, WS_SSLRequireCerts} = lists:unzip(F("listener.wss", "require_certificate", BoolVal)),
+         {WS_SSLIPs, WS_SSLVersions} = lists:unzip(F("listener.wss", "tls_version", AtomVal)),
+         {WS_SSLIPs, WS_SSLUseIdents} = lists:unzip(F("listener.wss", "use_identity_as_username", BoolVal)),
+         {WS_SSLIPs, WS_SSLPSKHints} = lists:unzip(F("listener.wss", "psk_hint", StrVal)),
+         {WS_SSLIPs, WS_SSLECSupport} = lists:unzip(F("listener.wss", "support_elliptic_curves", BoolVal)),
+         TCP = lists:zip(TCPIPs, MZip([TCPMaxConns, 
+                                       TCPNrOfAcceptors, 
+                                       TCPMountPoint])),
+         WS = lists:zip(WSIPs, MZip([WSMaxConns, 
+                                     WSNrOfAcceptors, 
+                                     WSMountPoint])),
+         SSL = lists:zip(SSLIPs, MZip([SSLMaxConns, 
+                                       SSLNrOfAcceptors,
+                                       SSLMountPoint,
+                                       SSLCAFiles, 
+                                       SSLCAPaths, 
+                                       SSLCertFiles, 
+                                       SSLCiphers, 
+                                       SSLCrlFiles, 
+                                       SSLKeyFiles, 
+                                       SSLRequireCerts, 
+                                       SSLVersions, 
+                                       SSLUseIdents, 
+                                       SSLPSKHints,
+                                       SSLECSupport])),
+         WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns, 
+                                       WS_SSLNrOfAcceptors,
+                                       WS_SSLMountPoint,
+                                       WS_SSLCAFiles, 
+                                       WS_SSLCAPaths, 
+                                       WS_SSLCertFiles, 
+                                       WS_SSLCiphers, 
+                                       WS_SSLCrlFiles, 
+                                       WS_SSLKeyFiles, 
+                                       WS_SSLRequireCerts, 
+                                       WS_SSLVersions, 
+                                       WS_SSLUseIdents, 
+                                       WS_SSLPSKHints,
+                                       WS_SSLECSupport])),
+         DropUndef = fun(L) ->
+                             [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
+                     end,
+         {DropUndef(TCP), DropUndef(SSL), DropUndef(WS)}
+ end
+}.
+         DropUndef = fun(L) ->
+                             [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
+                     end,
+         {DropUndef(TCP), DropUndef(SSL), DropUndef(WS), DropUndef(WSS)}
+ end
+}.
+
+%% @doc Allow anonymous users to connect, default is 'off'
+{mapping, "allow_anonymous", "vmq_server.allow_anonymous", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+
+%% @doc Set the max size for client ids, MQTT v3.1 specifies the
+%% limit of 23 characterd
+{mapping, "max_client_id_size", "vmq_server.max_client_id_size", [
+                                                               {default, 23},
+                                                               {commented, 23},
+                                                               {datatype, integer}
+                                                              ]}.
+%% @doc Set the time in seconds after a QoS=1 or QoS=2 message has been sent
+%% that vmq will wait before retrying when no response is received.
+{mapping, "retry_interval", "vmq_server.retry_interval", [
+                                                             {default, 20},
+                                                             {commented, 20},
+                                                             {datatype, integer}
+                                                            ]}.
+
+%% @doc This option allows persistent clients (those with clean session set to 
+%% false) to be removed if they do not reconnect within a certain time frame. 
+%% This is a non-standard option. As far as the MQTT spec is concerned, 
+%% persistent clients persist forever.
+%% The expiration period should be an integer followed by one of 'd', 'w', 'm', 'y' for 
+%% day, week, month, and year.
+{mapping, "persistent_client_expiration", "vmq_server.persistent_client_expiration", [
+                                                                                      {default, "never"},
+                                                                                      {commented, "1w"},
+                                                                                      {datatype, string},
+                                                                                      {validators, ["persistent_client_expiration"]}
+                                                                                     ]}.
+{validator, "persistent_client_expiration",
+ "must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year",
+ fun("never") -> true;
+    (V) ->
+         [Entity|Rest] = lists:reverse(V),
+         case lists:member(Entity, ["h","d","w","m","y"]) of
+             true ->
+                 list_to_integer(lists:reverse(Rest)) > 0;
+             false ->
+                 false
+         end
+ end}.
+
+%% @doc The integer number of seconds between updates of the $SYS subscription hierarchy, 
+%% which provides status information about the broker. If unset, defaults to 10 seconds. 
+%% Set to 0 to disable publishing the $SYS hierarchy completely.
+{mapping, "sys_interval", "vmq_server.sys_interval", [
+                                                      {default, 10},
+                                                      {datatype, integer},
+                                                      {commented, 10}
+                                                     ]}.
+
+%% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being 
+%% transmitted simultaneously. This includes messages currently going through handshakes 
+%% and messages that are being retried. Defaults to 20. Set to 0 for no maximum. If set 
+%% to 1, this will guarantee in-order delivery of messages.
+{mapping, "max_inflight_messages", "vmq_server.max_inflight_messages", [
+                                                                        {default, 20},
+                                                                        {datatype, integer},
+                                                                        {commented, 20}
+                                                                       ]}.
+%% @doc This option sets the maximum publish payload size that the broker will allow. 
+%% Received messages that exceed this size will not be accepted by the broker. The 
+%% default value is 0, which means that all valid MQTT messages are accepted. MQTT 
+%% imposes a maximum payload size of 268435455 bytes.
+{mapping, "message_size_limit", "vmq_server.message_size_limit", [
+                                                                    {default, 0},
+                                                                    {datatype, integer},
+                                                                    {commented, 0}
+                                                                 ]}.
+%% @doc This option controls which msg store backend is used. Per default the 
+%% bitcask backend is used, which saves every update to disk. If the bitcask
+%% backend is disabled ('off') the messages are stored in memory.
+{mapping, "msg_store.bitcask_backend", "vmq_server.msg_store", [
+                                                    {default, on},
+                                                    {datatype, flag},
+                                                    {commented, on}
+                                                   ]}.
+
+{mapping, "msg_store.bitcask_backend.directory", "vmq_server.msg_store", [
+                                                    {default, "."},
+                                                    {datatype, directory},
+                                                    {commented, "."}
+                                                   ]}.
+
+{translation, "vmq_server.msg_store", 
+ fun(Conf) ->
+         UseBitCask = cuttlefish:conf_get("msg_store.bitcask_backend", Conf),
+         case UseBitCask of
+             true ->
+                 case cuttlefish:conf_get("msg_store.bitcask_backend.directory", Conf) of
+                     "." -> {vmq_bitcask_store, []};
+                     Dir -> {vmq_bitcask_store, [Dir]}
+                 end;
+             false  ->
+                 {vmq_ets_store, []}
+         end
+ end}.
+
+{mapping, "table_definition_mod", "mnesia_cluster.table_definition_mod", [
+                                                                          {default, "{vmq_reg,vmq_table_defs,[]}"},
+                                                                          {datatype, string},
+                                                                          hidden
+                                                                         ]}. 
+
+{mapping, "cluster_monitor_callbacks", "mnesia_cluster.cluster_monitor_callbacks", [
+                                                                          {default, "[vmq_cluster]"},
+                                                                          {datatype, string},
+                                                                          hidden
+                                                                         ]}. 
+
+{mapping, "app_process", "mnesia_cluster.app_process", [
+                                                                          {default, vmq_cluster},
+                                                                          {datatype, atom},
+                                                                          hidden
+                                                                         ]}. 
+
+{translation, "mnesia_cluster.table_definition_mod", 
+ fun(Conf) ->
+         S = cuttlefish:conf_get("table_definition_mod", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.
+
+{translation, "mnesia_cluster.cluster_monitor_callbacks", 
+ fun(Conf) ->
+         S = cuttlefish:conf_get("cluster_monitor_callbacks", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.

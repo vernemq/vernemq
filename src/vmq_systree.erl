@@ -1,11 +1,11 @@
 %% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
-%% 
+%%
 %%     http://www.apache.org/licenses/LICENSE-2.0
-%% 
+%%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,7 +18,8 @@
 
 %% API
 -export([start_link/0,
-         change_config_now/3]).
+         change_config_now/3,
+         summary/0]).
 
 -export([incr_bytes_received/1,
          incr_bytes_sent/1,
@@ -175,6 +176,79 @@ terminate(_Reason, _State) ->
 -spec code_change(_,_,_) -> {'ok',_}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+
+summary() ->
+    Snapshots = averages(items(), []),
+    summary(Snapshots, []).
+
+summary([], Acc) -> Acc;
+summary([{local_active_clients, gauge}|Rest], Acc) ->
+    Res = supervisor:count_children(vmq_session_sup),
+    V = proplists:get_value(active, Res),
+    summary(Rest, [{active_clients, V}|Acc]);
+summary([{local_inactive_clients, V}|Rest], Acc) ->
+    summary(Rest, [{inactive_clients, V}|Acc]);
+summary([{local_subscription_count, V}|Rest], Acc) ->
+    summary(Rest, [{subscription_count, V}|Acc]);
+summary([{local_bytes_received, All, Min1, Min5, Min15}|Rest], Acc) ->
+    summary(Rest, [{total_bytes_received, All},
+                   {bytes_recv_avg_1min, Min1},
+                   {bytes_recv_avg_5min, Min5 div 5},
+                   {bytes_recv_avg_15min, Min15 div 15}|Acc]);
+summary([{local_bytes_sent, All, Min1, Min5, Min15}|Rest], Acc) ->
+    summary(Rest, [{total_bytes_sent, All},
+                   {bytes_send_avg_1min, Min1},
+                   {bytes_send_avg_5min, Min5 div 5},
+                   {bytes_send_avg_15min, Min15 div 15}|Acc]);
+summary([{local_messages_received, All, Min1, Min5, Min15}|Rest], Acc) ->
+    summary(Rest, [{total_messages_received, All},
+                   {messages_recv_avg_1min, Min1},
+                   {messages_recv_avg_5min, Min5 div 5},
+                   {messages_recv_avg_15min, Min15 div 15}|Acc]);
+summary([{local_messages_sent, All, Min1, Min5, Min15}|Rest], Acc) ->
+    summary(Rest, [{total_messages_sent, All},
+                   {messages_send_avg_1min, Min1},
+                   {messages_send_avg_5min, Min5 div 5},
+                   {messages_send_avg_15min, Min15 div 15}|Acc]);
+summary([{local_publishes_received, All, Min1, Min5, Min15}|Rest], Acc) ->
+    summary(Rest, [{total_publishes_received, All},
+                   {publishes_recv_avg_1min, Min1},
+                   {publishes_recv_avg_5min, Min5 div 5},
+                   {publishes_recv_avg_15min, Min15 div 15}|Acc]);
+summary([{local_publishes_sent, All, Min1, Min5, Min15}|Rest], Acc) ->
+    summary(Rest, [{total_publishes_sent, All},
+                   {publishes_send_avg_1min, Min1},
+                   {publishes_send_avg_5min, Min5 div 5},
+                   {publishes_send_avg_15min, Min15 div 15}|Acc]);
+summary([{local_publishes_dropped, All, Min1, Min5, Min15}|Rest], Acc) ->
+    summary(Rest, [{total_publishes_dropped, All},
+                   {publishes_drop_avg_1min, Min1},
+                   {publishes_drop_avg_5min, Min5 div 5},
+                   {publishes_drop_avg_15min, Min15 div 15}|Acc]);
+summary([{local_connect_received, _All, Min1, Min5, Min15}|Rest], Acc) ->
+    summary(Rest, [{connect_recv_avg_1min, Min1},
+                   {connect_recv_avg_5min, Min5 div 5},
+                   {connect_recv_avg_15min, Min15 div 15}|Acc]);
+summary([{local_socket_count, _All, Min1, Min5, Min15}|Rest], Acc) ->
+    summary(Rest, [{socket_count_avg_1min, Min1},
+                   {socket_count_avg_5min, Min5 div 5},
+                   {socket_count_avg_15min, Min15 div 15}|Acc]);
+summary([{global_clients_total, gauge}|Rest], Acc) ->
+    Total = vmq_reg:total_clients(),
+    summary(Rest, [{total_clients, Total}|Acc]);
+summary([{local_inflight_count, gauge}|Rest], Acc) ->
+    V = vmq_msg_store:in_flight(),
+    summary(Rest, [{inflight, V}|Acc]);
+summary([{local_retained_count, gauge}|Rest], Acc) ->
+    V = vmq_msg_store:retained(),
+    summary(Rest, [{retained, V}|Acc]);
+summary([{local_stored_count, gauge}|Rest], Acc) ->
+    V = vmq_msg_store:stored(),
+    summary(Rest, [{stored, V}|Acc]);
+summary([_|Rest], Acc) ->
+    summary(Rest, Acc).
+
 
 %%%===================================================================
 %%% Internal functions
@@ -334,6 +408,7 @@ averages([{Key, mavg}|Rest], Acc) ->
     averages(Rest, [Item|Acc]);
 averages([{Key, gauge}|Rest], Acc) ->
     averages(Rest, [{Key, gauge}|Acc]).
+
 
 
 sum(Key) ->

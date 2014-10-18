@@ -45,14 +45,16 @@ start_link() ->
 change_config_now(_New, Changed, _Deleted) ->
     %% we are only interested if the config changes
     {OldListeners, NewListeners} = proplists:get_value(listeners, Changed, {[],[]}),
-    {OldTCP, OldSSL, OldWS} = OldListeners,
-    {NewTcp, NewSSL, NewWS} = NewListeners,
+    {OldTCP, OldSSL, OldWS, OldWSS} = OldListeners,
+    {NewTcp, NewSSL, NewWS, NewWSS} = NewListeners,
     maybe_change_listener(ranch_tcp, OldTCP, NewTcp),
     maybe_change_listener(ranch_ssl, OldSSL, NewSSL),
     maybe_change_listener(ranch_tcp, OldWS, NewWS),
+    maybe_change_listener(ranch_tcp, OldWSS, NewWSS),
     maybe_new_listener(ranch_tcp, vmq_tcp, OldTCP, NewTcp),
     maybe_new_listener(ranch_ssl, vmq_tcp, OldSSL, NewSSL),
-    maybe_new_listener(ranch_tcp, cowboy_protocol, OldWS, NewWS).
+    maybe_new_listener(ranch_tcp, cowboy_protocol, OldWS, NewWS),
+    maybe_new_listener(ranch_ssl, cowboy_protocol, OldWSS, NewWSS).
 
 -spec maybe_change_listener('ranch_ssl' | 'ranch_tcp',_,_) -> 'ok'.
 maybe_change_listener(_, Old, New) when Old == New -> ok;
@@ -99,10 +101,11 @@ maybe_new_listener(Transport, Protocol, Old, New) ->
 %%--------------------------------------------------------------------
 -spec init([]) -> {'ok',{{'one_for_one',5,10},[{atom(),{atom(),atom(),list()},permanent,pos_integer(),worker,[atom()]}]}}.
 init([]) ->
-    {ok, {TCPListeners, SSLListeners, WSListeners}} = application:get_env(?APP, listeners),
+    {ok, {TCPListeners, SSLListeners, WSListeners, WSSListeners}} = application:get_env(?APP, listeners),
     start_listeners(TCPListeners, ranch_tcp, vmq_tcp),
     start_listeners(SSLListeners, ranch_ssl, vmq_tcp),
     start_listeners(WSListeners, ranch_tcp, cowboy_protocol),
+    start_listeners(WSSListeners, ranch_ssl, cowboy_protocol),
     CRLSrv = [{vmq_crl_srv,
                {vmq_crl_srv, start_link, []},
                permanent, 5000, worker, [vmq_crl_srv]}],
