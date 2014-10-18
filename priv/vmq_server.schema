@@ -597,12 +597,6 @@
          DropUndef = fun(L) ->
                              [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
                      end,
-         {DropUndef(TCP), DropUndef(SSL), DropUndef(WS)}
- end
-}.
-         DropUndef = fun(L) ->
-                             [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
-                     end,
          {DropUndef(TCP), DropUndef(SSL), DropUndef(WS), DropUndef(WSS)}
  end
 }.
