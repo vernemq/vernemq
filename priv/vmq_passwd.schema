@@ -1,0 +1,5 @@
+%% @doc Set the path to a password file. 
+{mapping, "password_file", "vmq_passwd.file", [
+                                                  {default, "{{platform_etc_dir}}/vmq.passwd"},
+                                                  {datatype, file}
+                                                 ]}.
