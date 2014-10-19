@@ -1,0 +1,49 @@
+EXOMETER-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE, NOTIFICATION-TYPE, Integer32, snmpModules, experimental FROM SNMPv2-SMI
+    MODULE-COMPLIANCE, OBJECT-GROUP, NOTIFICATION-GROUP FROM SNMPv2-CONF
+    DisplayString FROM SNMPv2-TC
+    RowStatus FROM STANDARD-MIB;
+
+exometerMIB MODULE-IDENTITY
+	LAST-UPDATED "201401190525Z"
+	ORGANIZATION "Feuerlabs"
+	CONTACT-INFO "TODO" 
+
+	DESCRIPTION 
+		"This MIB module allows management of Exometer."
+	REVISION  "201401190525Z"
+	DESCRIPTION 
+		"The initial version"
+	::= { snmpModules 1 }
+
+exometer OBJECT IDENTIFIER ::= { experimental 7 }
+
+exometerHearbeatInterval OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-write
+    STATUS  current
+    DESCRIPTION
+        "The interval after which exometer sends a new heartbeat notification in seconds."
+    ::= { exometer 1 }
+
+exometerHeartbeat NOTIFICATION-TYPE
+    STATUS current
+    DESCRIPTION
+        "TODO"
+    ::= { exometer 2 }
+
+exometerConfiguration OBJECT-GROUP
+    OBJECTS { exometerHearbeatInterval } 
+    STATUS current
+    DESCRIPTION "TODO"
+    ::= { exometer 3 } 
+
+exometerNotifications NOTIFICATION-GROUP
+    NOTIFICATIONS { exometerHeartbeat } 
+    STATUS current
+    DESCRIPTION "TODO "
+    ::= { exometer 4 } 
+
+END

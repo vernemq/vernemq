@@ -1,0 +1,14 @@
+{application, vmq_exo,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { vmq_exo_app, []}},
+  {env, [
+    {exometer_predefined, {apply, vmq_exo, entries, []}}
+   ]}
+ ]}.
