@@ -1,11 +1,11 @@
 %% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
-%% 
+%%
 %%     http://www.apache.org/licenses/LICENSE-2.0
-%% 
+%%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -65,13 +65,18 @@ auth_on_publish(User, ClientId, _, Topic, _, _) ->
     end.
 
 load_from_file(File) ->
-    {ok, Fd} = file:open(File, [read, binary]),
-    F = fun(FF, read) -> {FF, rl(Fd)};
-           (_, close) -> file:close(Fd)
-        end,
-    age_entries(),
-    parse_acl_line(F(F,read), all),
-    del_aged_entries().
+    case file:open(File, [read, binary]) of
+        {ok, Fd} ->
+            F = fun(FF, read) -> {FF, rl(Fd)};
+                   (_, close) -> file:close(Fd)
+                end,
+            age_entries(),
+            parse_acl_line(F(F,read), all),
+            del_aged_entries();
+        {error, Reason} ->
+            error_logger:error_msg("can't load acl file ~p due to ~p", [File, Reason]),
+            ok
+    end.
 
 load_from_list(List) ->
     put(vmq_acl_list, List),
