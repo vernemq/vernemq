@@ -33,3 +33,8 @@ luerl_comp.erl:209: The pattern {'error', Es} can never match the type {'ok',#co
 luerl_emul.erl:344: Function itrace_do/1 will never be called
 luerl_emul.erl:538: Function pop_args/3 will never be called
 syslog.erl:143: The inferred return type of code_change/3 ('ok') has nothing in common with {'error',_} | {'ok',_}, which is the expected return type for the callback of gen_server behaviour
+meck_code_gen.erl:193: The pattern <Mod, Func, Args, [{'meck_code_gen', 'exec', _AriOrArgs} | Stack]> can never match the type <atom(),atom(),[any()],[{atom() | tuple(),atom(),[any()] | byte(),[any()]},...]>
+meck_cover.erl:31: Call to missing or unexported function cover:compile_beam/2
+meck_cover.erl:99: Call to missing or unexported function cover:get_term/1
+meck_cover.erl:110: Call to missing or unexported function cover:write/2
+meck_proc.erl:77: Invalid type specification for function meck_proc:start/2. The success typing is (atom(),[any()]) -> 'ok'
