@@ -257,9 +257,11 @@ handle_event({input, Frame}, StateName, #state{keep_alive_timer=KARef} = State) 
     cancel_timer(KARef),
     vmq_systree:incr_messages_received(),
     case handle_frame(StateName, Fixed, Variable, Payload, State) of
-        {NextStateName, #state{keep_alive=KeepAlive} = NewState} ->
-            {next_state, NextStateName,
+        {connected, #state{keep_alive=KeepAlive} = NewState} ->
+            {next_state, connected,
              NewState#state{keep_alive_timer=gen_fsm:send_event_after(KeepAlive, keepalive_expired)}};
+        {NextStateName, NewState} ->
+            {next_state, NextStateName, NewState};
         Ret -> Ret
     end.
 
