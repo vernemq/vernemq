@@ -5,7 +5,8 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  exometer
                  ]},
   {mod, { vmq_exo_app, []}},
   {env, [
