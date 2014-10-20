@@ -608,7 +608,7 @@
                                                               ]}.
 
 %% @doc Set the max size for client ids, MQTT v3.1 specifies the
-%% limit of 23 characterd
+%% limit of 23 characters
 {mapping, "max_client_id_size", "vmq_server.max_client_id_size", [
                                                                {default, 23},
                                                                {commented, 23},
@@ -720,6 +720,12 @@
                                                                           {datatype, atom},
                                                                           hidden
                                                                          ]}. 
+% vmq_server uses unsplit to handle merges after partition
+{mapping, "cluster_partition_handling", "mnesia_cluster.cluster_partition_handling", [
+                                                                                      {default, ignore},
+                                                                                      {datatype, atom},
+                                                                                      hidden
+                                                                                     ]}.
 
 {translation, "mnesia_cluster.table_definition_mod", 
  fun(Conf) ->

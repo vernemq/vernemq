@@ -12,6 +12,7 @@
                   cowboy,
                   emqtt_commons,
                   bitcask,
+                  unsplit,
                   mnesia_cluster
                  ]},
   {mod, { vmq_server_app, []}},

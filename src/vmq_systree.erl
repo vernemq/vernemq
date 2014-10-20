@@ -241,7 +241,7 @@ summary([{local_inflight_count, gauge}|Rest], Acc) ->
     V = vmq_msg_store:in_flight(),
     summary(Rest, [{inflight, V}|Acc]);
 summary([{local_retained_count, gauge}|Rest], Acc) ->
-    V = vmq_msg_store:retained(),
+    V = vmq_reg:retained(),
     summary(Rest, [{retained, V}|Acc]);
 summary([{local_stored_count, gauge}|Rest], Acc) ->
     V = vmq_msg_store:stored(),
@@ -330,7 +330,7 @@ publish([{local_inflight_count, gauge}|Rest]) ->
     publish("messages/inflight", vmq_msg_store:in_flight()),
     publish(Rest);
 publish([{local_retained_count, gauge}|Rest]) ->
-    publish("retained messages/count", vmq_msg_store:retained()),
+    publish("retained messages/count", vmq_reg:retained()),
     publish(Rest);
 publish([{local_stored_count, gauge}|Rest]) ->
     publish("messages/stored", vmq_msg_store:stored()),

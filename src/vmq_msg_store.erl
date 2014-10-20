@@ -19,14 +19,11 @@
 -export([start_link/0,
          store/4, store/5,
          in_flight/0,
-         retained/0,
          stored/0,
          retrieve/1,
          deref/1,
          deliver_from_store/2,
-         deliver_retained/3,
          clean_session/1,
-         retain_action/4,
          defer_deliver/3,
          defer_deliver/4,
          defer_deliver_uncached/2,
@@ -39,8 +36,6 @@
          terminate/2,
          code_change/3]).
 
--export([retain_action_/5]). %% RPC Calls
-
 -record(state, {store}).
 
 
@@ -52,9 +47,7 @@
 
 -define(MSG_ITEM, 0).
 -define(INDEX_ITEM, 1).
--define(RETAIN_ITEM, 2).
 -define(MSG_INDEX_TABLE, vmq_msg_index).
--define(MSG_RETAIN_TABLE, vmq_msg_retain).
 -define(MSG_CACHE_TABLE, vmq_msg_cache).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -89,10 +82,6 @@ in_flight() ->
     [{in_flight, InFlight}] = ets:lookup(?MSG_CACHE_TABLE, in_flight),
     NrOfDeferedMsgs = ets:info(?MSG_INDEX_TABLE, size),
     InFlight - NrOfDeferedMsgs.
-
--spec retained() -> non_neg_integer().
-retained() ->
-    ets:info(?MSG_RETAIN_TABLE, size).
 
 -spec stored() -> non_neg_integer().
 stored() ->
@@ -141,23 +130,6 @@ deliver_from_store(ClientId, ClientPid) ->
                           ets:delete_object(?MSG_INDEX_TABLE, Obj)
                   end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
 
--spec deliver_retained(pid(),topic(),qos()) -> 'ok'.
-deliver_retained(ClientPid, Topic, QoS) ->
-    Words = emqtt_topic:words(Topic),
-    ets:foldl(fun({RoutingKey, User, ClientId, Payload, _}, Acc) ->
-                      RWords = emqtt_topic:words(RoutingKey),
-                      case emqtt_topic:match(RWords, Words) of
-                          true ->
-                              MsgRef = store(User, ClientId,
-                                            RoutingKey, Payload),
-                              vmq_session:deliver(ClientPid, RoutingKey,
-                                                 Payload, QoS, true, false, MsgRef);
-                          false ->
-                              Acc
-                      end
-              end, [], ?MSG_RETAIN_TABLE),
-    ok.
-
 -spec clean_session(client_id()) -> 'ok'.
 clean_session(ClientId) ->
     lists:foreach(fun ({_, {uncached, _}}) ->
@@ -166,57 +138,6 @@ clean_session(ClientId) ->
                           true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
                           deref(MsgRef)
                   end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
-
--spec retain_action(username(),client_id(),routing_key(),payload()) -> 'ok'.
-retain_action(User, ClientId, RoutingKey, Payload) ->
-    Nodes = vmq_cluster:nodes(),
-    Now = os:timestamp(),
-    lists:foreach(fun(Node) when Node == node() ->
-                          retain_action_(User, ClientId, Now,
-                                         RoutingKey, Payload);
-                     (Node) ->
-                          rpc:call(Node, ?MODULE, retain_action_,
-                                   [User, ClientId, Now, RoutingKey, Payload])
-                  end, Nodes).
-
--spec retain_action_(username(),client_id(),erlang:timestamp(),routing_key(),payload()) -> 'ok'.
-retain_action_(_User, _ClientId, TS, RoutingKey, <<>>) ->
-    %% retain-delete action
-    case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
-        [{_, _, _, _, TSOld}] when TS > TSOld ->
-            BRoutingKey = list_to_binary(RoutingKey),
-            MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
-            gen_server:cast(?MODULE, {delete, MsgRef}),
-            true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey),
-            ok;
-        _ ->
-            %% the retain-delete action is older than
-            %% the stored retain message --> ignore
-            ok
-    end;
-retain_action_(User, ClientId, TS, RoutingKey, Payload) ->
-    %% retain-insert action
-    BRoutingKey = list_to_binary(RoutingKey),
-    MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
-    case ets:lookup(?MSG_RETAIN_TABLE, RoutingKey) of
-        [] ->
-            gen_server:call(?MODULE, {write, MsgRef,
-                                      term_to_binary({User, ClientId,
-                                                      Payload, TS})}, infinity),
-            true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User,
-                                                  ClientId, Payload, TS}),
-            ok;
-        [{_, _, _, _, TSOld}] when TS > TSOld ->
-            %% in case of a race between retain-insert actions
-            gen_server:call(?MODULE, {write, MsgRef,
-                                      term_to_binary({User, ClientId,
-                                                      Payload, TS})}, infinity),
-            true = ets:insert(?MSG_RETAIN_TABLE, {RoutingKey, User,
-                                                  ClientId, Payload, TS}),
-            ok;
-        _ ->
-            ok
-    end.
 
 -spec defer_deliver_uncached(client_id(),any()) -> 'true'.
 defer_deliver_uncached(ClientId, Term) ->
@@ -235,22 +156,8 @@ defer_deliver(ClientId, Qos, MsgRef, DeliverAsDup) ->
 clean_all([]) ->
     %% called using vmq-admin, mainly for test purposes
     %% you don't want to call this during production
-    clean_retain(),
     clean_cache(),
     clean_index().
-
--spec clean_retain() -> 'ok'.
-clean_retain() ->
-    clean_retain(ets:last(?MSG_RETAIN_TABLE)).
-
--spec clean_retain('$end_of_table' | routing_key()) -> ok.
-clean_retain('$end_of_table') -> ok;
-clean_retain(RoutingKey) ->
-    BRoutingKey = list_to_binary(RoutingKey),
-    MsgRef = <<?RETAIN_ITEM, BRoutingKey/binary>>,
-    gen_server:call(?MODULE, {delete, MsgRef}, infinity),
-    true = ets:delete(?MSG_RETAIN_TABLE, RoutingKey),
-    clean_retain(ets:last(?MSG_RETAIN_TABLE)).
 
 -spec clean_cache() -> 'ok'.
 clean_cache() ->
@@ -285,7 +192,6 @@ init([]) ->
                  {read_concurrency, true},
                  {write_concurrency, true}],
     ets:new(?MSG_INDEX_TABLE, [bag|TableOpts]),
-    ets:new(?MSG_RETAIN_TABLE, TableOpts),
     ets:new(?MSG_CACHE_TABLE, TableOpts),
     ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
     {ok, MsgStore} = MsgStoreImpl:open(MsgStoreImplArgs),
@@ -310,13 +216,7 @@ init([]) ->
                                            defer_deliver(ClientId, QoS, MsgRef, true)
                                    end, Subs),
                                  Acc
-                         end;
-                     (<<?RETAIN_ITEM, BRoutingKey/binary>>, Val, Acc) ->
-                         {User, ClientId, Payload, TS} = binary_to_term(Val),
-                         true = ets:insert(?MSG_RETAIN_TABLE,
-                                           {binary_to_list(BRoutingKey), User,
-                                            ClientId, Payload, TS}),
-                         Acc
+                         end
                  end, []),
     ok = lists:foreach(fun(Key) -> MsgStoreImpl:delete(MsgStore, Key) end, ToDelete),
     {ok, #state{store={MsgStoreImpl, MsgStore}}}.

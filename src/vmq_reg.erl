@@ -25,7 +25,8 @@
          disconnect_client/1,
          match/1,
          remove_expired_clients/1,
-         total_clients/0]).
+         total_clients/0,
+         retained/0]).
 
 -export([init/1,
          handle_call/3,
@@ -47,7 +48,13 @@
 -hook({on_unsubscribe, all, 3}).
 -hook({filter_subscribers, every, 5}).
 
--record(session, {client_id, node, pid, monitor, last_seen, clean}).
+-record(topic, {name, node}).
+-record(trie, {edge, node_id, vclock=unsplit_vclock:fresh()}).
+-record(trie_node, {node_id, edge_count=0, topic, vclock=unsplit_vclock:fresh()}).
+-record(trie_edge, {node_id, word}).
+-record(subscriber, {topic, qos, client}).
+-record(session, {client_id, node, pid, monitor, last_seen, clean, vclock=unsplit_vclock:fresh()}).
+-record(retain, {words, routing_key, payload, vclock=unsplit_vclock:fresh()}).
 
 -spec start_link() -> {ok, pid()} | ignore | {error, atom()}.
 start_link() ->
@@ -80,7 +87,7 @@ subscribe_tx(ClientId, [{Topic, Qos}|Rest], Errors) ->
     case mnesia:transaction(fun add_subscriber/3, [Topic, Qos, ClientId]) of
         {atomic, _} ->
             vmq_systree:incr_subscription_count(),
-            vmq_msg_store:deliver_retained(self(), Topic, Qos),
+            deliver_retained(self(), Topic, Qos),
             subscribe_tx(ClientId, Rest, Errors);
         {aborted, Reason} ->
             subscribe_tx(ClientId, Rest, [Reason|Errors])
@@ -187,10 +194,6 @@ register_client__(ClientPid, ClientId, CleanSession) ->
 
 -spec unregister_client(client_id(),flag()) -> ok | {error, _}.
 unregister_client(ClientId, CleanSession) ->
-    vmq_cluster:if_ready(fun unregister_client_/2, [ClientId, CleanSession]).
-
--spec unregister_client_(client_id(),flag()) -> 'ok'.
-unregister_client_(ClientId, CleanSession) ->
     case mnesia:dirty_read(vmq_session, ClientId) of
         [] ->
             {error, not_found};
@@ -206,7 +209,7 @@ unregister_client_(ClientId, CleanSession) ->
             ok
     end.
 
-unregister_client_tx(#session{client_id=ClientId, clean=CleanSession} = Obj) ->
+unregister_client_tx(#session{client_id=ClientId, clean=CleanSession, vclock=VClock} = Obj) ->
     case CleanSession of
         true ->
             mnesia:delete({vmq_session, ClientId}),
@@ -214,7 +217,8 @@ unregister_client_tx(#session{client_id=ClientId, clean=CleanSession} = Obj) ->
         false ->
             mnesia:write(vmq_session, Obj#session{pid=undefined,
                                                   monitor=undefined,
-                                                  last_seen=epoch()}, write)
+                                                  last_seen=epoch(),
+                                                  vclock=unsplit_vclock:increment(node(), VClock)}, write)
     end.
 
 -spec publish(username() | plugin_id(),client_id(), undefined | msg_ref(),
@@ -270,7 +274,7 @@ publish(Caller, User, ClientId, MsgId, RoutingKey, Payload, IsRetain) ->
 -spec publish_(username() | plugin_id(),client_id(),msg_id(),
                routing_key(),payload(),'true',[#topic{}],{pid(), reference()}) -> 'ok'.
 publish_(User, ClientId, MsgId, RoutingKey, Payload, IsRetain = true, MatchedTopics, Caller) ->
-    ok = vmq_msg_store:retain_action(User, ClientId, RoutingKey, Payload),
+    ok = retain_action(RoutingKey, Payload),
     publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics, Caller).
 
 -spec publish__(username() | plugin_id(),client_id(),msg_id(),
@@ -296,6 +300,52 @@ check_single_node(Node, [_|Rest], Acc) ->
     check_single_node(Node, Rest, Acc);
 check_single_node(_, [], 0) -> true;
 check_single_node(_, [], _) -> false.
+
+-spec retain_action(routing_key(),payload()) -> 'ok'.
+retain_action(RoutingKey, <<>>) ->
+    %% retain-delete action
+    Words = emqtt_topic:words(RoutingKey),
+    {atomic, ok} = mnesia:transaction(fun() ->
+                               mnesia:delete({vmq_retain, Words})
+                       end),
+    ok;
+retain_action(RoutingKey, Payload) ->
+    %% retain-insert action
+    Words = emqtt_topic:words(RoutingKey),
+    {atomic, ok} = mnesia:transaction(
+                     fun() ->
+                             case mnesia:read(vmq_retain, Words) of
+                                 [] ->
+                                     mnesia:write(vmq_retain, #retain{words=Words, routing_key=RoutingKey,
+                                                                      payload=Payload}, write);
+                                 [#retain{vclock=VClock} = Old] ->
+                                     mnesia:write(vmq_retain, Old#retain{payload=Payload,
+                                                                         vclock=unsplit_vclock:increment(node(), VClock)
+                                                                        }, write)
+                             end
+                     end),
+    ok.
+
+-spec deliver_retained(pid(),topic(),qos()) -> 'ok'.
+deliver_retained(ClientPid, Topic, QoS) ->
+    Words = [case W of
+                 "+" -> '_';
+                 _ -> W
+             end || W <- emqtt_topic:words(Topic)],
+    NewWords =
+    case lists:reverse(Words) of
+        ["#"|Tail] -> lists:reverse(Tail) ++ '_' ;
+        _ -> Words
+    end,
+    RetainedMsgs = mnesia:dirty_match_object(vmq_retain,
+                                             #retain{words=NewWords, routing_key='_',
+                                                     payload='_', vclock='_'}),
+    lists:foreach(
+      fun(#retain{routing_key=RoutingKey, payload=Payload}) ->
+              MsgRef = vmq_msg_store:store(undefined, undefined, RoutingKey, Payload),
+              vmq_session:deliver(ClientPid, RoutingKey,
+                                  Payload, QoS, true, false, MsgRef)
+      end, RetainedMsgs).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% RPC Callbacks / Maintenance
@@ -369,30 +419,49 @@ vmq_table_defs() ->
        {record_name, trie},
        {attributes, record_info(fields, trie)},
        {disc_copies, [node()]},
-       {match, #trie{_='_'}}]},
+       {match, #trie{_='_'}},
+       unsplit_vclock_props(#trie.vclock)]},
      {vmq_trie_node,[
        {record_name, trie_node},
        {attributes, record_info(fields, trie_node)},
        {disc_copies, [node()]},
-       {match, #trie_node{_='_'}}]},
+       {match, #trie_node{_='_'}},
+       unsplit_vclock_props(#trie_node.vclock)]},
      {vmq_trie_topic,[
        {record_name, topic},
        {type, bag},
        {attributes, record_info(fields, topic)},
        {disc_copies, [node()]},
-       {match, #topic{_='_'}}]},
+       {match, #topic{_='_'}},
+       unsplit_bag_props()]},
      {vmq_subscriber,[
         {record_name, subscriber},
         {type, bag},
         {attributes, record_info(fields, subscriber)},
         {disc_copies, [node()]},
-        {match, #subscriber{_='_'}}]},
+        {match, #subscriber{_='_'}},
+        unsplit_bag_props()]},
      {vmq_session, [
         {record_name, session},
         {attributes, record_info(fields, session)},
         {disc_copies, [node()]},
-        {match, #session{_='_'}}]}
+        {match, #session{_='_'}},
+        unsplit_vclock_props(#session.vclock)]},
+     {vmq_retain, [
+        {record_name, retain},
+        {attributes, record_info(fields, retain)},
+        {disc_copies, [node()]},
+        {match, #retain{_='_'}},
+        unsplit_vclock_props(#retain.vclock)]}
 ].
+
+unsplit_bag_props() ->
+    {user_properties,
+     [{unsplit_method, {unsplit_lib, bag, []}}]}.
+
+unsplit_vclock_props(Pos) ->
+    {user_properties,
+     [{unsplit_method, {unsplit_lib, vclock, [Pos]}}]}.
 
 
 -spec reset_all_tables([]) -> ok.
@@ -469,8 +538,9 @@ add_subscriber(Topic, Qos, ClientId) ->
     mnesia:write(vmq_subscriber, #subscriber{topic=Topic, qos=Qos, client=ClientId}, write),
     mnesia:write(vmq_trie_topic, emqtt_topic:new(Topic), write),
     case mnesia:read(vmq_trie_node, Topic) of
-        [TrieNode=#trie_node{topic=undefined}] ->
-            mnesia:write(vmq_trie_node, TrieNode#trie_node{topic=Topic}, write);
+        [TrieNode=#trie_node{topic=undefined, vclock=VClock}] ->
+            mnesia:write(vmq_trie_node, TrieNode#trie_node{topic=Topic,
+                                                           vclock=unsplit_vclock:increment(node(), VClock)}, write);
         [#trie_node{topic=Topic}] ->
             ignore;
         [] ->
@@ -513,8 +583,10 @@ trie_delete(Topic) ->
         [#trie_node{edge_count=0}] ->
             mnesia:delete({vmq_trie_node, Topic}),
             trie_delete_path(lists:reverse(emqtt_topic:triples(Topic)));
-        [TrieNode] ->
-            mnesia:write(vmq_trie_node, TrieNode#trie_node{topic=Topic}, write);
+        [#trie_node{vclock=VClock} = TrieNode] ->
+            mnesia:write(vmq_trie_node, TrieNode#trie_node{topic=Topic,
+                                                           vclock=unsplit_vclock:increment(node(), VClock)},
+                         write);
         [] ->
             ignore
     end.
@@ -549,10 +621,12 @@ trie_match(NodeId, [W|Words], ResAcc) ->
 trie_add_path({Node, Word, Child}) ->
     Edge = #trie_edge{node_id=Node, word=Word},
     case mnesia:read(vmq_trie_node, Node) of
-        [TrieNode = #trie_node{edge_count=Count}] ->
+        [TrieNode = #trie_node{edge_count=Count, vclock=VClock}] ->
             case mnesia:read(vmq_trie, Edge) of
                 [] ->
-                    mnesia:write(vmq_trie_node, TrieNode#trie_node{edge_count=Count+1}, write),
+                    mnesia:write(vmq_trie_node, TrieNode#trie_node{edge_count=Count+1,
+                                                                   vclock=unsplit_vclock:increment(node(), VClock)
+                                                                  }, write),
                     mnesia:write(vmq_trie, #trie{edge=Edge, node_id=Child}, write);
                 [_] ->
                     ok
@@ -572,10 +646,14 @@ trie_delete_path([{NodeId, Word, _}|RestPath]) ->
         [#trie_node{edge_count=1, topic=undefined}] ->
             mnesia:delete({vmq_trie_node, NodeId}),
             trie_delete_path(RestPath);
-        [TrieNode=#trie_node{edge_count=1, topic=_}] ->
-            mnesia:write(vmq_trie_node, TrieNode#trie_node{edge_count=0}, write);
-        [TrieNode=#trie_node{edge_count=Count}] ->
-            mnesia:write(vmq_trie_node, TrieNode#trie_node{edge_count=Count-1}, write);
+        [TrieNode=#trie_node{edge_count=1, topic=_, vclock=VClock}] ->
+            mnesia:write(vmq_trie_node, TrieNode#trie_node{edge_count=0,
+                                                           vclock=unsplit_vclock:increment(node(), VClock)
+                                                          }, write);
+        [TrieNode=#trie_node{edge_count=Count, vclock=VClock}] ->
+            mnesia:write(vmq_trie_node, TrieNode#trie_node{edge_count=Count-1,
+                                                           vclock=unsplit_vclock:increment(node(), VClock)
+                                                          }, write);
         [] ->
             throw({notfound, NodeId})
     end.
@@ -618,6 +696,10 @@ remove_expired_clients(ExpiredSinceSeconds) ->
 total_clients() ->
     mnesia:table_info(vmq_session, size).
 
+-spec retained() -> non_neg_integer().
+retained() ->
+    mnesia:table_info(vmq_retain, size).
+
 
 message_queue_monitor() ->
     {messages, Messages} = erlang:process_info(whereis(vmq_reg), messages),
@@ -649,12 +731,15 @@ init([]) ->
               Guard = {'/=', '$1', undefined},
               Result = '$_',
               Sessions = mnesia:select(vmq_session, [{MatchHead, [Guard], [Result]}]),
-              lists:foreach(fun(#session{pid=Pid}=Obj) ->
+              lists:foreach(fun(#session{pid=Pid, vclock=VClock}=Obj) ->
                                     case is_process_alive(Pid) of
                                         true ->
                                             ok;
                                         false ->
-                                            mnesia:write(vmq_session, Obj#session{pid=undefined, monitor=undefined}, write)
+                                            mnesia:write(vmq_session,
+                                                         Obj#session{pid=undefined,
+                                                                     monitor=undefined,
+                                                                     vclock=unsplit_vclock:increment(node(), VClock)}, write)
                                     end
                             end, Sessions)
       end),
