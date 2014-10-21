@@ -19,6 +19,8 @@
          subscribe/3,
          unsubscribe/3,
          subscriptions/1,
+         subscriptions_for_client/1,
+         get_client_pid/1,
          publish/6,
          register_client/2,
          unregister_client/2,
@@ -123,6 +125,11 @@ subscriptions([#topic{name=Topic, node=Node}|Rest], Acc) when Node == node() ->
                     end, Acc, mnesia:dirty_read(vmq_subscriber, Topic)));
 subscriptions([_|Rest], Acc) ->
     subscriptions(Rest, Acc).
+
+subscriptions_for_client(ClientId) ->
+    Res = mnesia:dirty_match_object(vmq_subscriber,
+                              #subscriber{client=ClientId, _='_'}),
+    [{T, Q} || #subscriber{topic=T, qos=Q} <- Res].
 
 -spec register_client(client_id(),flag()) -> ok | {error, _}.
 register_client(ClientId, CleanSession) ->

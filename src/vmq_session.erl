@@ -22,7 +22,10 @@
          deliver/7,
          in/2,
          deliver_bin/2,
-         disconnect/1]).
+         disconnect/1,
+         get_info/2,
+         list_sessions/1,
+         list_sessions_/1]).
 
 -export([init/1,
          handle_event/3,
@@ -69,7 +72,11 @@
                 retry_interval=20000                        :: pos_integer(),
                 keep_alive                                  :: pos_integer(),
                 keep_alive_timer                            :: undefined | reference(),
-                clean_session=false                         :: flag()
+                clean_session=false                         :: flag(),
+                proto_ver                                   :: pos_integer(),
+                recv_cnt=0                                  :: pos_integer(),
+                send_cnt=0                                  :: pos_integer()
+
 
          }).
 
@@ -108,6 +115,39 @@ disconnect(FsmPid) ->
 -spec in(pid(), #mqtt_frame{}) ->  ok.
 in(FsmPid, Event) ->
     gen_fsm:send_all_state_event(FsmPid, {input, Event}).
+
+-spec get_info(string() | pid(), [atom()]) -> proplist().
+get_info(ClientId, InfoItems) when is_list(ClientId) ->
+    case vmq_reg:get_client_pid(ClientId) of
+        {ok, Pid} -> get_info(Pid, InfoItems);
+        E -> E
+    end;
+get_info(FsmPid, InfoItems) when is_pid(FsmPid) ->
+    AInfoItems =
+    [case I of
+         _ when is_list(I) ->
+             try list_to_existing_atom(I)
+             catch
+                 _:_ -> undefined
+             end;
+         _ when is_atom(I) -> I
+     end || I <- InfoItems],
+    gen_fsm:sync_send_all_state_event(FsmPid, {get_info, AInfoItems}).
+
+-spec list_sessions([atom()|string()]) -> proplist().
+list_sessions(InfoItems) ->
+    Nodes = vmq_cluster:nodes(),
+    lists:foldl(fun(Node, Acc) when Node == node() ->
+                        [{Node, list_sessions_(InfoItems)}|Acc];
+                   (Node, Acc) ->
+                        Res = rpc:call(Node, ?MODULE, list_sessions_, [InfoItems]),
+                        [{Node, Res}|Acc]
+                end, [], Nodes).
+
+list_sessions_(InfoItems) ->
+    [get_info(Child, InfoItems)
+     || {_, Child, _, _} <- supervisor:which_children(vmq_session_sup),
+     Child /= restarting].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% FSM FUNCTIONS
@@ -180,17 +220,20 @@ connected({deliver, Topic, Payload, QoS, IsRetained, IsDup, MsgStoreRef}, State)
             {next_state, connected, State}
     end;
 connected({deliver_bin, {MsgId, QoS, Bin}},State) ->
-    #state{send_fun=SendFun, waiting_acks=WAcks, retry_interval=RetryInterval} = State,
+    #state{send_fun=SendFun, waiting_acks=WAcks,
+           retry_interval=RetryInterval, send_cnt=SendCnt} = State,
     SendFun(Bin),
     vmq_systree:incr_messages_sent(),
     Ref = send_after(RetryInterval, {retry, MsgId}),
     {next_state, connected, State#state{
-                  waiting_acks=dict:store(MsgId,
+                              send_cnt=SendCnt + 1,
+                              waiting_acks=dict:store(MsgId,
                                           {QoS, Bin, Ref, undefined},
                                           WAcks)}};
 
 connected({retry, MessageId}, State) ->
-    #state{send_fun=SendFun, waiting_acks=WAcks, retry_interval=RetryInterval} = State,
+    #state{send_fun=SendFun, waiting_acks=WAcks,
+           retry_interval=RetryInterval, send_cnt=SendCnt} = State,
     NewState =
     case dict:find(MessageId, WAcks) of
         error ->
@@ -202,9 +245,11 @@ connected({retry, MessageId}, State) ->
                              }}),
             vmq_systree:incr_messages_sent(),
             Ref = send_after(RetryInterval, {retry, MessageId}),
-            State#state{waiting_acks=dict:store(MessageId,
-                                                {QoS, Frame, Ref, MsgStoreRef},
-                                                WAcks)}
+            State#state{
+              send_cnt=SendCnt + 1,
+              waiting_acks=dict:store(MessageId,
+                                      {QoS, Frame, Ref, MsgStoreRef},
+                                      WAcks)}
     end,
     {next_state, connected, NewState};
 
@@ -250,22 +295,27 @@ init([ReaderPid, Peer, SendFun, Opts]) ->
     {stop, normal, #state{}} | {next_state, statename(), #state{}}.
 handle_event({input, #mqtt_frame{fixed=#mqtt_frame_fixed{type=?DISCONNECT}}}, _, State) ->
     {stop, normal, State};
-handle_event({input, Frame}, StateName, #state{keep_alive_timer=KARef} = State) ->
+handle_event({input, Frame}, StateName, State) ->
+    #state{keep_alive_timer=KARef, recv_cnt=RecvCnt} = State,
     #mqtt_frame{fixed=Fixed,
                 variable=Variable,
                 payload=Payload} = Frame,
     cancel_timer(KARef),
     vmq_systree:incr_messages_received(),
-    case handle_frame(StateName, Fixed, Variable, Payload, State) of
+    case handle_frame(StateName, Fixed, Variable, Payload,
+                      State#state{recv_cnt=RecvCnt + 1}) of
         {connected, #state{keep_alive=KeepAlive} = NewState} ->
             {next_state, connected,
              NewState#state{keep_alive_timer=gen_fsm:send_event_after(KeepAlive, keepalive_expired)}};
         {NextStateName, NewState} ->
-            {next_state, NextStateName, NewState};
+            {next_state, NextStateName, NewState, ?CLOSE_AFTER};
         Ret -> Ret
     end.
 
--spec handle_sync_event(_, _, _, #state{}) -> {stop, {error, {unknown_req, _}}, #state{}}.
+-spec handle_sync_event(_, _, _, #state{}) -> {reply, _, statename(), #state{}} | {stop, {error, {unknown_req, _}}, #state{}}.
+handle_sync_event({get_info, Items}, _From, StateName, State) ->
+    Reply = get_info_items(Items, StateName, State),
+    {reply, Reply, StateName, State};
 handle_sync_event(Req, _From, _StateName, State) ->
     {stop, {error, {unknown_req, Req}}, State}.
 
@@ -322,7 +372,8 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
-    #state{waiting_acks=WAcks, send_fun=SendFun, retry_interval=RetryInterval} = State,
+    #state{waiting_acks=WAcks, send_fun=SendFun,
+           retry_interval=RetryInterval, send_cnt=SendCnt} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
     {_, _, Ref, MsgStoreRef} = dict:fetch(MessageId, WAcks),
@@ -336,6 +387,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
     NewRef = send_after(RetryInterval, {retry, MessageId}),
     vmq_msg_store:deref(MsgStoreRef),
     {connected, State#state{
+                  send_cnt=SendCnt + 1,
                   waiting_acks=dict:store(MessageId,
                                           {2, PubRelFrame,
                                            NewRef,
@@ -428,8 +480,8 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PINGREQ}, _, _, State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-check_connect(F, State) ->
-    check_client_id(F, State).
+check_connect(#mqtt_frame_connect{proto_ver=Ver} = F, State) ->
+    check_client_id(F, State#state{proto_ver=Ver}).
 
 check_client_id(#mqtt_frame_connect{}, #state{username={preauth, undefined}, peer=Peer} = State) ->
     %% No common name found in client certificate
@@ -554,14 +606,15 @@ send_connack(ReturnCode, State) ->
 send_frame(Type, Variable, Payload, State) ->
     send_frame(Type, false, Variable, Payload, State).
 
-send_frame(Type, DUP, Variable, Payload, #state{send_fun=SendFun} = State) ->
+send_frame(Type, DUP, Variable, Payload,
+           #state{send_fun=SendFun, send_cnt=SendCnt} = State) ->
     SendFun(#mqtt_frame{
                fixed=#mqtt_frame_fixed{type=Type, dup=DUP},
                variable=Variable,
                payload=Payload
               }),
     vmq_systree:incr_messages_sent(),
-    State.
+    State#state{send_cnt=SendCnt + 1}.
 
 
 -spec maybe_publish_last_will(#state{}) -> #state{}.
@@ -613,8 +666,9 @@ dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
 dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
     case check_in_flight(State) of
         true ->
-            #state{username=User, client_id=ClientId, waiting_acks=WAcks,
-                   retry_interval=RetryInterval, send_fun=SendFun} = State,
+            #state{username=User, client_id=ClientId,
+                   waiting_acks=WAcks, retry_interval=RetryInterval,
+                   send_fun=SendFun, send_cnt=SendCnt} = State,
             MsgRef = vmq_msg_store:store(User, ClientId, Topic, Payload),
             Ref = send_after(RetryInterval, {retry, {qos2, MessageId}}),
             Frame = #mqtt_frame{
@@ -624,9 +678,11 @@ dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
                       },
             SendFun(Frame),
             vmq_systree:incr_messages_sent(),
-            State#state{waiting_acks=dict:store(
-                                       {qos2, MessageId},
-                                       {2, Frame, Ref, {MsgRef, IsRetain}}, WAcks)};
+            State#state{
+              send_cnt=SendCnt + 1,
+              waiting_acks=dict:store(
+                             {qos2, MessageId},
+                             {2, Frame, Ref, {MsgRef, IsRetain}}, WAcks)};
         false ->
             %% drop
             vmq_systree:incr_publishes_dropped(),
@@ -643,12 +699,12 @@ get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
 
 -spec send_publish_frame(#mqtt_frame{}, #state{}) -> #state{} | {error, atom()}.
 send_publish_frame(Frame, State) ->
-    #state{send_fun=SendFun} = State,
+    #state{send_fun=SendFun, send_cnt=SendCnt} = State,
     case SendFun(Frame) of
         ok ->
             vmq_systree:incr_publishes_sent(),
             vmq_systree:incr_messages_sent(),
-            State;
+            State#state{send_cnt=SendCnt + 1};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -731,3 +787,59 @@ valid_msg_size(Payload) ->
         S when byte_size(Payload) =< S -> true;
         _ -> false
     end.
+
+get_info_items([], StateName, State) ->
+    DefaultItems = [pid, client_id, user, peer_host, peer_port, state],
+    get_info_items(DefaultItems, StateName, State);
+get_info_items(Items, StateName, State) ->
+    get_info_items(Items, StateName, State, []).
+
+get_info_items([pid|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, [{pid, self()}|Acc]);
+get_info_items([client_id|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, [{client_id, State#state.client_id}|Acc]);
+get_info_items([user|Rest], StateName, State, Acc) ->
+    User =
+    case State#state.username of
+        {preauth, UserName} -> UserName;
+        UserName -> UserName
+    end,
+    get_info_items(Rest, StateName, State, [{user, User}|Acc]);
+get_info_items([node|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, [{node, node()}|Acc]);
+get_info_items([peer_port|Rest], StateName, State, Acc) ->
+    {_PeerIp, PeerPort} = State#state.peer,
+    get_info_items(Rest, StateName, State, [{peer_port, PeerPort}|Acc]);
+get_info_items([peer_host|Rest], StateName, State, Acc) ->
+    {PeerIp, _} = State#state.peer,
+    Host =
+    case inet:gethostbyaddr(PeerIp) of
+        {ok, {hostent, HostName, _, inet, _, _}} ->  HostName;
+        _ -> PeerIp
+    end,
+    get_info_items(Rest, StateName, State, [{peer_host, Host}|Acc]);
+get_info_items([protocol|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, [{protocol, State#state.proto_ver}|Acc]);
+get_info_items([state|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, [{state, StateName}|Acc]);
+get_info_items([mountpoint|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, [{mountpoint, State#state.mountpoint}|Acc]);
+get_info_items([timeout|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, [{timeout, State#state.keep_alive}|Acc]);
+get_info_items([retry_timeout|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, [{timeout, State#state.retry_interval}|Acc]);
+get_info_items([recv_cnt|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, [{recv_cnt, State#state.recv_cnt}|Acc]);
+get_info_items([send_cnt|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, [{send_cnt, State#state.send_cnt}|Acc]);
+get_info_items([waiting_acks|Rest], StateName, State, Acc) ->
+    Size = dict:size(State#state.waiting_acks),
+    get_info_items(Rest, StateName, State, [{waiting_acks, Size}|Acc]);
+get_info_items([subscriptions|Rest], StateName, State, Acc) ->
+    Subscriptions = vmq_reg:subscriptions_for_client(State#state.client_id),
+    get_info_items(Rest, StateName, State, [{subscriptions, Subscriptions}|Acc]);
+get_info_items([_|Rest], StateName, State, Acc) ->
+    get_info_items(Rest, StateName, State, Acc);
+get_info_items([], _, _, Acc) -> Acc.
+
+
