@@ -111,12 +111,13 @@ connect_no_auth(_) ->
                               [binary, {active, false}, {packet, raw},
                                {cacertfile, "../test/ssl/test-root-ca.crt"},
                                {versions, [tlsv1]}]),
+    io:format(user, "opts ~p~n", [ssl:getopts(SSock, [cipher, ciphers, version, versions])]),
     ok = ssl:send(SSock, Connect),
     ok = packet:expect_packet(ssl, SSock, "connack", Connack),
     ?_assertEqual(ok, ssl:close(SSock)).
 
 connect_no_auth_wrong_ca(_) ->
-    ?_assertEqual({error,{tls_alert,"unknown ca"}},
+    assert_error_or_closed({error,{tls_alert,"unknown ca"}},
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
@@ -137,14 +138,14 @@ connect_cert_auth(_) ->
     ?_assertEqual(ok, ssl:close(SSock)).
 
 connect_cert_auth_without(_) ->
-    ?_assertEqual({error,{tls_alert,"handshake failure"}},
+    assert_error_or_closed({error,{tls_alert,"handshake failure"}},
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
                                {cacertfile, "../test/ssl/test-root-ca.crt"}])).
 
 connect_cert_auth_expired(_) ->
-    ?_assertEqual({error,{tls_alert,"certificate expired"}},
+    assert_error_or_closed({error,{tls_alert,"certificate expired"}},
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
@@ -153,7 +154,7 @@ connect_cert_auth_expired(_) ->
                                {keyfile, "../test/ssl/client.key"}])).
 
 connect_cert_auth_revoked(_) ->
-    ?_assertEqual({error,{tls_alert,"certificate revoked"}},
+    assert_error_or_closed({error,{tls_alert,"certificate revoked"}},
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
@@ -188,7 +189,7 @@ connect_identity(_) ->
     ?_assertEqual(ok, ssl:close(SSock)).
 
 connect_no_identity(_) ->
-    ?_assertEqual({error,{tls_alert,"handshake failure"}},
+    assert_error_or_closed({error,{tls_alert,"handshake failure"}},
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
@@ -204,3 +205,10 @@ wait_til_ready(false, I) when I > 0 ->
     timer:sleep(5),
     wait_til_ready(vmq_cluster:is_ready(), I - 1);
 wait_til_ready(_, _) -> exit(not_ready).
+
+assert_error_or_closed(Error, Val) ->
+    ?_assertEqual(case Val of
+                      {error, closed} -> true;
+                      Error -> true;
+                      Other -> Other
+                  end, true).

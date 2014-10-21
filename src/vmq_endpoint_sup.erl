@@ -158,6 +158,15 @@ transport_opts(ranch_ssl, Opts) ->
               end},
      {verify_fun, {fun verify_ssl_peer/3, proplists:get_value(crlfile, Opts, no_crl)}},
      {versions, [proplists:get_value(tls_version, Opts, 'tlsv1.2')]}
+     |
+     case support_partial_chain() of
+         true ->
+             [{partial_chain, fun([DerCert|_]) ->
+                                      {trusted_ca, DerCert}
+                              end}];
+         false ->
+             []
+     end
     ];
 transport_opts(ranch_tcp, _Opts) -> [].
 
@@ -305,3 +314,12 @@ load_cert(Cert) ->
                     [DER || {Type, DER, Cipher} <- Contents, Type == 'Certificate', Cipher == 'not_encrypted']
             end
     end.
+
+-spec support_partial_chain() -> boolean().
+support_partial_chain() ->
+    {ok, VSN} = application:get_key(ssl, vsn),
+    VSNTuple = list_to_tuple(
+                 [list_to_integer(T)
+                  || T <- string:tokens(VSN, ".")]),
+    VSNTuple >= {5,3,6}.
+
