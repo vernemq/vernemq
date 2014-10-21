@@ -26,7 +26,8 @@ usage() {
     echo "                      start-app | stop-app | "
     echo "                      cluster-reset | cluster-force-reset | cluster-join | "
     echo "                      cluster-status | cluster-change-node-type | "
-    echo "                      cluster-forget-node | cluster-update-discovery-node"
+    echo "                      cluster-forget-node | cluster-update-discovery-node |"
+    echo "                      list-sessions | session-info"
     echo "}"
 }
 
@@ -115,6 +116,20 @@ case "$1" in
             $NODETOOL rpc vmq_app_utils upgrade
         fi
         ;;
+    list-sessions)
+        node_up_check
+        $NODETOOL rpc vmq_app_utils list_sessions "$@"
+        ;;
+    session-info)
+        if [ $# -ge 2 ]; then
+            node_up_check
+            $NODETOOL rpc vmq_app_utils session_info "$@"
+        else
+            echo "Usage: $SCRIPT session-info <client-id> [info-items ...]"
+            exit 1
+        fi
+        ;;
+
     *)
         usage
         ;;

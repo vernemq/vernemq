@@ -16,6 +16,9 @@
 
 -export([upgrade/1]).
 
+-export([list_sessions/1,
+         session_info/1]).
+
 ensure_all_started(App) ->
     application:ensure_all_started(App).
 
@@ -124,4 +127,12 @@ upgrade([]) ->
     io:format("run with --upgrade-now to perform the upgrade~n");
 upgrade(["--upgrade-now"]) ->
     Ret = vmq_updo:run(),
+    io:format("~p~n", [Ret]).
+
+list_sessions([_|InfoItems]) ->
+    Ret = vmq_session:list_sessions(InfoItems),
+    io:format("~p~n", [Ret]).
+
+session_info([_, ClientId|InfoItems]) ->
+    Ret = vmq_session:get_info(ClientId, InfoItems),
     io:format("~p~n", [Ret]).
