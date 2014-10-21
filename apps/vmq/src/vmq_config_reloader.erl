@@ -8,7 +8,8 @@ reload_all([]) ->
     %% called from vmq-admin script
     reload_app_conf(vmq_acl),
     reload_app_conf(vmq_passwd),
-    reload_app_conf(vmq_lua),
+    %reload_app_conf(vmq_lua),
+    reload_app_conf(vmq_exo),
     reload_app_conf(vmq_bridge),
     reload_app_conf(vmq_server).
 
