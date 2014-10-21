@@ -1,6 +1,13 @@
 -module(vmq_exo).
 -export([entries/0,
-         subscribers/3]).
+         subscribers/3,
+         change_config_now/3]).
+
+change_config_now(_,_,_) ->
+    ExometerConfig = application:get_env(vmq_exo, report, []),
+    application:stop(exometer),
+    application:set_env(exometer, report, ExometerConfig),
+    application:start(exometer).
 
 entries() ->
     {ok, entries_()}.
@@ -15,11 +22,16 @@ entries_() ->
 
 
 subscribers(SNMPEnabled, GraphiteEnabled, CollectdEnabled) ->
-    smpp_subscribers(SNMPEnabled)
+    snmp_subscribers(SNMPEnabled)
     ++ graphite_subscribers(GraphiteEnabled)
     ++ collectd_subscribers(CollectdEnabled).
 
-smpp_subscribers(_) -> [].
+snmp_subscribers(true) ->
+    application:start(snmp),
+    [];
+snmp_subscribers(false) ->
+    application:stop(snmp),
+    [].
 
 graphite_subscribers(true) ->
     subscriptions(exometer_report_graphite);

@@ -10,6 +10,11 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+    ExometerConfig = application:get_env(vmq_exo, report, []),
+    application:stop(exometer),
+    application:set_env(exometer, report, ExometerConfig),
+    application:start(exometer),
+
     vmq_exo_sup:start_link().
 
 stop(_State) ->

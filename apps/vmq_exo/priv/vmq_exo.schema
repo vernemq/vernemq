@@ -142,7 +142,7 @@
   end}.
 
 %% Exometer
-{mapping, "snmp_reporting", "exometer.report", [
+{mapping, "snmp_reporting", "vmq_exo.report", [
                                                           {default, off},
                                                           {datatype, flag},
                                                           hidden
@@ -160,7 +160,7 @@
                                                    hidden
                                                   ]}.
 
-{mapping, "graphite_reporting", "exometer.report", [
+{mapping, "graphite_reporting", "vmq_exo.report", [
                                                               {default, off},
                                                               {datatype, flag},
                                                               hidden
@@ -196,7 +196,7 @@
                                                            hidden
                                                           ]}.
 
-{mapping, "collectd_reporting", "exometer.report", [
+{mapping, "collectd_reporting", "vmq_exo.report", [
                                                               {default, off},
                                                               {datatype, flag},
                                                               hidden
@@ -250,7 +250,7 @@
                                                                            hidden
                                                                           ]}.
 
-{translation, "exometer.report",
+{translation, "vmq_exo.report",
  fun(Conf) ->
          SNMPEnabled =  cuttlefish:conf_get("snmp_reporting", Conf),
          GraphiteEnabled =  cuttlefish:conf_get("graphite_reporting", Conf),
