@@ -12,35 +12,19 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_endpoint_sup).
+-module(vmq_endpoint).
 -include_lib("public_key/include/public_key.hrl").
--behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([start_listeners/0,
+         change_config_now/3]).
 
-%% Supervisor callbacks
--export([init/1]).
-
--export([change_config_now/3]).
-
--define(SERVER, ?MODULE).
 -define(APP, vmq_server).
-
 -define(SSL_EC, []).
 
 %%%===================================================================
 %%% API functions
 %%%===================================================================
-
-%%--------------------------------------------------------------------
-%% @doc
-%% Starts the supervisor
-%%--------------------------------------------------------------------
--spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
-start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
-
 -spec change_config_now(_,[any()],_) -> 'ok'.
 change_config_now(_New, Changed, _Deleted) ->
     %% we are only interested if the config changes
@@ -87,33 +71,15 @@ maybe_new_listener(Transport, Protocol, Old, New) ->
               end
       end, New).
 
-%%%===================================================================
-%%% Supervisor callbacks
-%%%===================================================================
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Whenever a supervisor is started using supervisor:start_link/[2,3],
-%% this function is called by the new process to find out about
-%% restart strategy, maximum restart frequency and child
-%% specifications.
-%%--------------------------------------------------------------------
--spec init([]) -> {'ok',{{'one_for_one',5,10},[{atom(),{atom(),atom(),list()},permanent,pos_integer(),worker,[atom()]}]}}.
-init([]) ->
+-spec start_listeners() -> ok.
+start_listeners() ->
     {ok, {TCPListeners, SSLListeners, WSListeners, WSSListeners}} = application:get_env(?APP, listeners),
     start_listeners(TCPListeners, ranch_tcp, vmq_tcp),
     start_listeners(SSLListeners, ranch_ssl, vmq_tcp),
     start_listeners(WSListeners, ranch_tcp, cowboy_protocol),
     start_listeners(WSSListeners, ranch_ssl, cowboy_protocol),
-    CRLSrv = [{vmq_crl_srv,
-               {vmq_crl_srv, start_link, []},
-               permanent, 5000, worker, [vmq_crl_srv]}],
-    {ok, { {one_for_one, 5, 10}, CRLSrv}}.
+    ok.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
 -spec start_listeners([any()],'ranch_ssl' | 'ranch_tcp','cowboy_protocol' | 'vmq_tcp') -> [{'ok',pid()}].
 start_listeners(Listeners, Transport, Protocol) ->
     [start_listener(Transport, Protocol, Addr, Port, Opts) || {{Addr, Port}, Opts} <- Listeners].

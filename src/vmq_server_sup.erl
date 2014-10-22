@@ -44,7 +44,7 @@ init([]) ->
                              A /= vmq_server],
     {ok, { {one_for_one, 5, 10}, [
             ?CHILD(vmq_config, worker, []),
-            ?CHILD(vmq_endpoint_sup, supervisor, []),
+            ?CHILD(vmq_crl_srv, worker, []),
             ?CHILD(vmq_reg, worker, []),
             ?CHILD(vmq_session_sup, supervisor, []),
             ?CHILD(vmq_session_expirer, worker, []),

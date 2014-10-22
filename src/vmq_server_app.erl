@@ -33,6 +33,7 @@
 start(_StartType, _StartArgs) ->
     Success = maybe_hipe_compile(),
     warn_if_hipe_compilation_failed(Success),
+    vmq_endpoint:start_listeners(),
     vmq_server_sup:start_link().
 
 -spec stop(_) -> 'ok'.
