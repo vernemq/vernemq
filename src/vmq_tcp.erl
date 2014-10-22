@@ -34,7 +34,12 @@ start_link(Ref, Socket, Transport, Opts) ->
 -spec init(_,_,atom() | tuple(),maybe_improper_list()) -> any().
 init(Ref, Socket, Transport, Opts) ->
     ok = ranch:accept_ack(Ref),
-    ok = tune_buffer_size(Transport, Socket),
+    case lists:keyfind(tune_buffer_size, 1, Opts) of
+        {_, true} ->
+            ok = tune_buffer_size(Transport, Socket);
+        _ ->
+            ok
+    end,
     ok = Transport:setopts(Socket, [{nodelay, true},
                                     {packet, raw},
                                     {active, once}]),
@@ -69,7 +74,7 @@ init(Ref, Socket, Transport, Opts) ->
              session_monitor=MRef,
              proto_tag=proto_tag(Transport)}).
 
-loop(#st{buffer=Buffer, socket=Socket, transport=Transport,
+loop(#st{buffer=_Buffer, socket=Socket, transport=Transport,
             session=SessionPid, parser_state=ParserState,
             proto_tag={Proto, ProtoClosed, ProtoError}} = State) ->
     Transport:setopts(Socket, [{active, once}]),
@@ -81,7 +86,7 @@ loop(#st{buffer=Buffer, socket=Socket, transport=Transport,
         {vmq_writer, exit, Reason} ->
             teardown(State, Reason);
         {Proto, Socket, Data} ->
-            NewParserState = process_bytes(SessionPid, <<Buffer/binary, Data/binary>>, ParserState),
+            NewParserState = process_bytes(SessionPid, Data, ParserState),
             vmq_systree:incr_bytes_received(byte_size(Data)),
             loop(State#st{parser_state=NewParserState});
         {ProtoClosed, Socket} ->
