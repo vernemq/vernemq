@@ -388,13 +388,16 @@ route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, IsRetain)
     FilteredSubscribers = vmq_hook:every(filter_subscribers, Subscribers,
                                          [SendingUser, SendingClientId,
                                           MsgId, RoutingKey, Payload]),
-    lists:foreach(fun
-                    (#subscriber{qos=Qos, client=ClientId}) when Qos > 0 ->
-                          MaybeNewMsgId = vmq_msg_store:store(SendingUser, SendingClientId, MsgId, RoutingKey, Payload),
-                          deliver(ClientId, RoutingKey, Payload, IsRetain, Qos, MaybeNewMsgId);
-                    (#subscriber{qos=0, client=ClientId}) ->
-                          deliver(ClientId, RoutingKey, Payload, IsRetain, 0, undefined)
-                end, FilteredSubscribers).
+    lists:foldl(fun
+                    (#subscriber{qos=Qos, client=ClientId}, AccMsgId) when Qos > 0 ->
+                          MaybeNewMsgId = vmq_msg_store:store(SendingUser, SendingClientId, AccMsgId, RoutingKey, Payload),
+                          deliver(ClientId, RoutingKey, Payload, IsRetain, Qos, MaybeNewMsgId),
+                          MaybeNewMsgId;
+                    (#subscriber{qos=0, client=ClientId}, AccMsgId) ->
+                          deliver(ClientId, RoutingKey, Payload, IsRetain, 0, undefined),
+                          AccMsgId
+                end, MsgId, FilteredSubscribers),
+    ok.
 
 -spec deliver(client_id(),routing_key(),payload(),flag(),
               qos(),msg_ref()) -> 'ok' | {'error','not_found'}.
