@@ -239,10 +239,16 @@ connected({retry, MessageId}, State) ->
         error ->
             State;
         {ok, {QoS, #mqtt_frame{fixed=Fixed} = Frame, _, MsgStoreRef}} ->
-            SendFun(Frame#mqtt_frame{
+            FFrame =
+            case Fixed of
+                #mqtt_frame_fixed{type=?PUBREC} ->
+                    Frame;
+                _ ->
+                    Frame#mqtt_frame{
                       fixed=Fixed#mqtt_frame_fixed{
-                              dup=true
-                             }}),
+                              dup=true}}
+            end,
+            SendFun(FFrame),
             vmq_systree:incr_messages_sent(),
             Ref = send_after(RetryInterval, {retry, MessageId}),
             State#state{

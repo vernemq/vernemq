@@ -13,19 +13,19 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 subscribe_test_() ->
     [
-     {"Publish QoS 1 Success",
-      ?setup(fun publish_qos1/1)}
-    ,{"Publish QoS 2 Success",
-      ?setup(fun publish_qos2/1)}
-    ,{"Publish B2C disconnect QoS 1 Success",
-      ?setup(fun publish_b2c_disconnect_qos1/1)}
-    ,{"Publish B2C disconnect QoS 2 Success",
-      ?setup(fun publish_b2c_disconnect_qos2/1)}
-    ,{"Publish B2C timeout QoS 1 Success",
-      ?setup(fun publish_b2c_timeout_qos1/1)}
-    ,{"Publish B2C timeout QoS 2 Success",
-      ?setup(fun publish_b2c_timeout_qos2/1)}
-    ,{"Publish C2B disconnect QoS 2 Success",
+%     {"Publish QoS 1 Success",
+%      ?setup(fun publish_qos1/1)}
+%    ,{"Publish QoS 2 Success",
+%      ?setup(fun publish_qos2/1)}
+%    ,{"Publish B2C disconnect QoS 1 Success",
+%      ?setup(fun publish_b2c_disconnect_qos1/1)}
+%    ,{"Publish B2C disconnect QoS 2 Success",
+%      ?setup(fun publish_b2c_disconnect_qos2/1)}
+%    ,{"Publish B2C timeout QoS 1 Success",
+%      ?setup(fun publish_b2c_timeout_qos1/1)}
+%    ,{"Publish B2C timeout QoS 2 Success",
+%      ?setup(fun publish_b2c_timeout_qos2/1)}
+    {"Publish C2B disconnect QoS 2 Success",
       ?setup(fun publish_c2b_disconnect_qos2/1)}
     ,{"Publish C2B timeout QoS 2 Success",
       ?setup(fun publish_c2b_timeout_qos2/1)}
@@ -285,6 +285,7 @@ pattern_test(SubTopic, PubTopic) ->
     enable_on_publish(),
     enable_on_subscribe(),
     vmq_msg_store:clean_all([]),
+    vmq_reg:reset_all_tables([]),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
