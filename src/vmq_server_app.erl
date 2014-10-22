@@ -70,7 +70,8 @@ hipe_compile() ->
               [string:copies("-", Count)]),
     T1 = erlang:now(),
     PidMRefs = [spawn_monitor(fun () -> [begin
-                                             {ok, M} = hipe:c(M, [o3])
+                                             {ok, M} = hipe:c(M, [o3]),
+                                             io:format("+", [])
                                          end || M <- Ms]
                               end) ||
                    Ms <- split(HipeModules, ?HIPE_PROCESSES)],

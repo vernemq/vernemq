@@ -23,6 +23,7 @@
           vmq_tcp, vmq_ws,
           vmq_session, vmq_writer, vmq_hook, vmq_cluster, vmq_systree, vmq_msg_store,
           vmq_config, bitcask, vmq_bitcask_store,vmq_ets_store,
+          vmq_acl, vmq_passwd,
           emqtt_frame, emqtt_topic,
           lists,
           dict,
