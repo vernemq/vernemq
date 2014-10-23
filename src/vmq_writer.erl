@@ -1,11 +1,11 @@
 %% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
-%% 
+%%
 %%     http://www.apache.org/licenses/LICENSE-2.0
-%% 
+%%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,6 +16,7 @@
 -export([start_link/3,
          send/2,
          flush/1,
+         flush_and_die/1,
          main_loop/3,
          recv_loop/3]).
 
@@ -38,12 +39,16 @@ flush(WriterPid) ->
     {ok, ok} = gen:call(WriterPid, '$gen_call', flush, infinity),
     ok.
 
+flush_and_die(WriterPid) ->
+    {ok, ok} = gen:call(WriterPid, '$gen_call', flush_and_die, infinity),
+    ok.
+
 main_loop(Socket, Reader, Pending) ->
     try
         recv_loop(Socket, Reader, Pending)
     catch
-        exit:Error ->
-            Reader ! {?MODULE, exit, Error}
+        exit:Reason ->
+            Reader ! {?MODULE, exit, Reason}
     end.
 
 recv_loop(Socket, Reader, []) ->
@@ -78,6 +83,10 @@ handle_message({'$gen_call', From, flush}, Socket, Pending) ->
     NewPending = internal_flush(Socket, Pending),
     gen_server:reply(From, ok),
     NewPending;
+handle_message({'$gen_call', From, flush_and_die}, Socket, Pending) ->
+    internal_flush(Socket, Pending),
+    gen_server:reply(From, ok),
+    exit(normal);
 handle_message(Msg, _, _) ->
     exit({writer, unknown_message_type, Msg}).
 
