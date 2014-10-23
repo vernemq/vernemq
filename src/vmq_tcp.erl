@@ -112,7 +112,9 @@ teardown(#st{session=SessionPid, session_monitor=MRef,
             ok
     end,
     case is_process_alive(WriterPid) of
-        true -> vmq_writer:flush(WriterPid);
+        true ->
+            vmq_writer:flush(WriterPid),
+            exit(WriterPid, kill);
         false -> ok
     end,
     Transport:close(Socket).
