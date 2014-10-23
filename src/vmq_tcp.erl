@@ -102,7 +102,7 @@ teardown(#st{session=SessionPid, session_monitor=MRef,
              writer=WriterPid, transport=Transport, socket=Socket}, Reason) ->
     case Reason of
         normal ->
-            lager:debug("[~p] session stopped~p", [SessionPid]);
+            lager:debug("[~p] session stopped", [SessionPid]);
         _ ->
             lager:info("[~p] session stopped abnormally due to ~p", [SessionPid, Reason])
     end,
