@@ -50,6 +50,8 @@
 -hook({on_unsubscribe, all, 3}).
 -hook({filter_subscribers, every, 5}).
 
+-record(state, {unreg_time, unreg_queue=[]}).
+
 -record(topic, {name, node}).
 -record(trie, {edge, node_id, vclock=unsplit_vclock:fresh()}).
 -record(trie_node, {node_id, edge_count=0, topic, vclock=unsplit_vclock:fresh()}).
@@ -753,7 +755,7 @@ init([]) ->
                                     end
                             end, Sessions)
       end),
-    {ok, []}.
+    {ok, #state{}}.
 
 -spec handle_call(_, _, []) -> {reply, ok, []}.
 handle_call({monitor, ClientPid, MaybeMonitor}, _From, State) ->
@@ -779,27 +781,21 @@ handle_cast(_Req, State) ->
     {noreply, State}.
 
 -spec handle_info(_, []) -> {noreply, []}.
-handle_info({'DOWN', MRef, process, _Pid, _Reason}, State) ->
-    %% should only happen if a session does not propperly unregister
-    {atomic, Ret} = mnesia:transaction(
-                     fun() ->
-                             case mnesia:match_object(vmq_session, #session{monitor=MRef, _='_'}, read) of
-                                 [#session{client_id=ClientId, clean=CleanSession} = Obj] ->
-                                     unregister_client_tx(Obj),
-                                     {ok, {CleanSession, ClientId}};
-                                 [] ->
-                                     {error, not_found}
-                             end
-                     end),
-    case Ret of
-        {ok, {true, ClientId}} ->
-            vmq_msg_store:clean_session(ClientId);
-        {ok, {false, _ClientId}} ->
-            vmq_systree:incr_inactive_clients();
-        {error, not_found} ->
-            io:format(user, "got DOWN event from ~p ~p ~p, but no matching session found", [_Pid, MRef, _Reason])
-    end,
-    {noreply, State}.
+handle_info({'DOWN', MRef, process, _Pid, _Reason}, #state{unreg_time=TRef, unreg_queue=UQueue} = State) ->
+    cancel_timer(TRef),
+    case UQueue =< 1000 of
+        true ->
+            {noreply, State#state{unreg_time=erlang:send_after(500, self(), unreg), unreg_queue=[MRef|UQueue]}};
+        false ->
+            spawn_link(fun unregister_abnormal/1, [UQueue]),
+            {noreply, State#state{unreg_time=undefined, unreg_queue=[]}}
+    end;
+handle_info(unreg, #state{unreg_queue=UQueue} = State) ->
+    spawn_link(fun unregister_abnormal/1, [UQueue]),
+    {noreply, State#state{unreg_time=undefined, unreg_queue=[]}}.
+
+
+
 
 -spec terminate(_, []) -> ok.
 terminate(_Reason, _State) ->
@@ -812,3 +808,33 @@ code_change(_OldVSN, State, _Extra) ->
 epoch() ->
     {Mega, Sec, _} = os:timestamp(),
     (Mega * 1000000 + Sec).
+
+unregister_abnormal(MRefs) ->
+    %% should only happen if a session does not propperly unregister
+    {atomic, Ret} = mnesia:transaction(fun unregister_abnormal/2, [MRefs, []]),
+    unregister_abnormal_cleanup(Ret).
+
+unregister_abnormal([MRef|Rest], Acc) ->
+    Ret =
+    case mnesia:match_object(vmq_session, #session{monitor=MRef, _='_'}, read) of
+        [#session{client_id=ClientId, clean=CleanSession} = Obj] ->
+            unregister_client_tx(Obj),
+            {CleanSession, ClientId};
+        [] ->
+            {error, not_found}
+    end,
+    unregister_abnormal(Rest, [Ret|Acc]);
+unregister_abnormal([], Ret) -> Ret.
+
+unregister_abnormal_cleanup([{true, ClientId}|Rest]) ->
+    vmq_msg_store:clean_session(ClientId),
+    unregister_abnormal_cleanup(Rest);
+unregister_abnormal_cleanup([{false, _ClientId}|Rest]) ->
+    vmq_systree:incr_inactive_clients(),
+    unregister_abnormal_cleanup(Rest);
+unregister_abnormal_cleanup([{error, not_found}|Rest]) ->
+    unregister_abnormal_cleanup(Rest);
+unregister_abnormal_cleanup([]) -> ok.
+
+cancel_timer(undefined) -> ok;
+cancel_timer(TRef) -> erlang:cancel_timer(TRef).
