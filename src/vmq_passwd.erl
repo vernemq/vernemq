@@ -44,8 +44,7 @@ load_from_file(File) ->
                 end,
             parse_passwd_line(F(F,read)),
             del_aged_entries();
-        {error, Reason} ->
-            error_logger:error_msg("can't load password file ~p due to ~p", [File, Reason]),
+        {error, _Reason} ->
             ok
     end.
 
