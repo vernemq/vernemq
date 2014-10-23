@@ -100,7 +100,11 @@ loop(#st{buffer=_Buffer, socket=Socket, transport=Transport,
 
 teardown(#st{session=SessionPid, session_monitor=MRef,
              writer=WriterPid, transport=Transport, socket=Socket}, Reason) ->
-    lager:info("[~p] stop session due to ~p", [SessionPid, Reason]),
+    case Reason of
+        normal -> ok;
+        _ ->
+            lager:info("[~p] stop session due to ~p", [SessionPid, Reason])
+    end,
     case MRef of
         undefined -> ok;
         _ -> demonitor(MRef, [flush])
