@@ -16,9 +16,7 @@
 -behaviour(gen_fsm).
 -include("vmq_server.hrl").
 
--export([start/4,
-         stop/1,
-         start_link/4,
+-export([start_link/3,
          deliver/7,
          in/2,
          deliver_bin/2,
@@ -88,17 +86,9 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec start(pid(), peer(), function(), proplist()) -> {ok, pid()}.
-start(ReaderPid, Peer, SendFun, Opts) ->
-    supervisor:start_child(vmq_session_sup, [ReaderPid, Peer, SendFun, Opts]).
-
--spec stop(pid()) -> ok.
-stop(FsmPid) ->
-    supervisor:terminate_child(vmq_session_sup, FsmPid).
-
--spec start_link(pid(), peer(), function(), proplist()) -> {ok, pid()}.
-start_link(ReaderPid, Peer, SendFun, Opts) ->
-    gen_fsm:start_link(?MODULE, [ReaderPid, Peer, SendFun, Opts], []).
+-spec start_link(peer(), function(), proplist()) -> {ok, pid()}.
+start_link(Peer, SendFun, Opts) ->
+    gen_fsm:start_link(?MODULE, [Peer, SendFun, Opts], []).
 
 -spec deliver(pid(),topic(),payload(),qos(),flag(), flag(), msg_ref()) -> ok.
 deliver(FsmPid, Topic, Payload, QoS, IsRetained, IsDup, Ref) ->
@@ -154,7 +144,7 @@ list_sessions_(InfoItems) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec wait_for_connect(timeout, #state{}) -> {stop, normal, #state{}}.
 wait_for_connect(timeout, State) ->
-    io:format("[~p] stop due to timeout~n", [self()]),
+    lager:debug("[~p] stop due to timeout~n", [self()]),
     {stop, normal, State}.
 
 -spec connection_attempted(timeout, #state{}) -> {next_state, wait_for_connect, #state{}, ?CLOSE_AFTER}.
@@ -192,10 +182,10 @@ connected({deliver, Topic, Payload, QoS, IsRetained, IsDup, MsgStoreRef}, State)
             case send_publish_frame(Frame, State1) of
                 {error, Reason} when QoS > 0 ->
                     vmq_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
-                    io:format("[~p] stop due to ~p, deliver when client reconnects~n", [self(), Reason]),
+                    lager:debug("[~p] stop due to ~p, deliver when client reconnects~n", [self(), Reason]),
                     {stop, normal, State1};
                 {error, Reason} ->
-                    io:format("[~p] stop due to ~p~n", [self(), Reason]),
+                    lager:debug("[~p] stop due to ~p~n", [self(), Reason]),
                     {stop, normal, State1};
                 NewState when QoS == 0 ->
                     {next_state, connected, NewState};
@@ -260,15 +250,15 @@ connected({retry, MessageId}, State) ->
     {next_state, connected, NewState};
 
 connected(keepalive_expired, State) ->
-    io:format("[~p] stop due to ~p~n", [self(), keepalive_expired]),
+    lager:debug("[~p] stop due to ~p~n", [self(), keepalive_expired]),
     {stop, normal, State};
 
 connected(disconnect, State) ->
-    io:format("[~p] stop due to ~p~n", [self(), disconnect]),
+    lager:debug("[~p] stop due to ~p~n", [self(), disconnect]),
     {stop, normal, State}.
 
 -spec init(_) -> {ok, wait_for_connect, #state{}, ?CLOSE_AFTER}.
-init([ReaderPid, Peer, SendFun, Opts]) ->
+init([Peer, SendFun, Opts]) ->
     {_,MountPoint} = lists:keyfind(mountpoint, 1, Opts),
     {_,MaxClientIdSize} = lists:keyfind(max_client_id_size, 1, Opts),
     {_,RetryInterval} = lists:keyfind(retry_interval, 1, Opts),
@@ -288,7 +278,6 @@ init([ReaderPid, Peer, SendFun, Opts]) ->
             end
     end,
     process_flag(trap_exit, true),
-    monitor(process, ReaderPid),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   msg_log_handler=MsgLogHandler,
                                   mountpoint=string:strip(MountPoint, right, $/),
@@ -325,14 +314,13 @@ handle_sync_event({get_info, Items}, _From, StateName, State) ->
 handle_sync_event(Req, _From, _StateName, State) ->
     {stop, {error, {unknown_req, Req}}, State}.
 
--spec handle_info({'DOWN', _, process, pid(), any()}, statename(), #state{}) -> {stop, any(), #state{}}.
-handle_info({'DOWN', _, process, Pid, Reason}, _StateName, State) ->
-    lager:info("Reader Proc ~p of ~p went down, die too", [Pid, self()]),
-    {stop, Reason, State} .
+-spec handle_info(any(), statename(), #state{}) -> {stop, {error, {unknown_info, any()}}, #state{}}.
+handle_info(Info, _StateName, State) ->
+    {stop, {error, {unknown_info, Info}}, State} .
 
 -spec terminate(any(), statename(), #state{}) -> ok.
 terminate(_Reason, connected, State) ->
-    #state{client_id=ClientId, clean_session=CleanSession} = State,
+    #state{clean_session=CleanSession} = State,
     case CleanSession of
         true ->
             ok;
@@ -340,7 +328,6 @@ terminate(_Reason, connected, State) ->
             handle_waiting_acks(State)
     end,
     maybe_publish_last_will(State),
-    vmq_reg:unregister_client(ClientId, CleanSession),
     ok;
 terminate(_Reason, _, _) ->
     ok.
@@ -373,7 +360,6 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
             vmq_msg_store:deref(MsgStoreRef),
             {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
         error ->
-            %io:format("got error~n"),
             {connected, State}
     end;
 

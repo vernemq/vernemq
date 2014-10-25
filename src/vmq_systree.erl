@@ -184,8 +184,7 @@ summary() ->
 
 summary([], Acc) -> Acc;
 summary([{local_active_clients, gauge}|Rest], Acc) ->
-    Res = supervisor:count_children(vmq_session_sup),
-    V = proplists:get_value(active, Res),
+    V = vmq_endpoint:active_connections(),
     summary(Rest, [{active_clients, V}|Acc]);
 summary([{local_inactive_clients, V}|Rest], Acc) ->
     summary(Rest, [{inactive_clients, V}|Acc]);
@@ -255,8 +254,7 @@ summary([_|Rest], Acc) ->
 %%%===================================================================
 publish([]) -> ok;
 publish([{local_active_clients, gauge}|Rest]) ->
-    Res = supervisor:count_children(vmq_session_sup),
-    V = proplists:get_value(active, Res),
+    V = vmq_endpoint:active_connections(),
     publish("clients/active", V),
     publish(Rest);
 publish([{local_inactive_clients, V}|Rest]) ->

@@ -30,7 +30,9 @@
 
 -spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
+    ok = vmq_endpoint:start_listeners(),
+    {ok, Pid}.
 
 %% ===================================================================
 %% Supervisor callbacks
@@ -42,11 +44,16 @@ init([]) ->
     vmq_hook:start(vmq_server),
     [vmq_hook:start(A) || {A, _, _}<- application:loaded_applications(),
                              A /= vmq_server],
+    WorkerPoolSpec = poolboy:child_spec(vmq_worker_pool,
+                                        [{name, {local, vmq_worker_pool}},
+                                         {worker_module, vmq_worker},
+                                         {size, erlang:system_info(schedulers)}],
+                                        []),
     {ok, { {one_for_one, 5, 10}, [
+            WorkerPoolSpec,
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_crl_srv, worker, []),
             ?CHILD(vmq_reg, worker, []),
-            ?CHILD(vmq_session_sup, supervisor, []),
             ?CHILD(vmq_session_expirer, worker, []),
             ?CHILD(vmq_cluster, worker, []),
             ?CHILD(vmq_systree, worker, []),

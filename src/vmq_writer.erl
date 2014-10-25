@@ -13,61 +13,51 @@
 %% limitations under the License.
 
 -module(vmq_writer).
--export([start_link/3,
+-export([start_link/2,
          send/2,
-         flush/1,
-         flush_and_die/1,
-         main_loop/3,
-         recv_loop/3]).
+         main_loop/2,
+         recv_loop/2]).
 
 -define(HIBERNATE_AFTER, 5000).
 
-start_link(Transport, Socket, Reader) ->
+start_link(Transport, Socket) ->
     MaybeMaskedSocket =
     case Transport of
         ranch_ssl -> {ssl, Socket};
         _ -> Socket
     end,
-    {ok, proc_lib:spawn_link(?MODULE, main_loop, [MaybeMaskedSocket, Reader, []])}.
+    {ok, proc_lib:spawn_link(?MODULE, main_loop, [MaybeMaskedSocket, []])}.
 
 send(WriterPid, Bin) when is_binary(Bin) ->
     WriterPid ! {send, Bin};
 send(WriterPid, Frame) when is_tuple(Frame) ->
     WriterPid ! {send_frame, Frame}.
 
-flush(WriterPid) ->
-    {ok, ok} = gen:call(WriterPid, '$gen_call', flush, infinity),
-    ok.
-
-flush_and_die(WriterPid) ->
-    {ok, ok} = gen:call(WriterPid, '$gen_call', flush_and_die, infinity),
-    ok.
-
-main_loop(Socket, Reader, Pending) ->
+main_loop(Socket, Pending) ->
+    process_flag(trap_exit, true),
     try
-        recv_loop(Socket, Reader, Pending)
+        recv_loop(Socket, Pending)
     catch
-        exit:Reason ->
-            Reader ! {?MODULE, exit, Reason}
+        exit:_Reason ->
+            internal_flush(Socket, Pending),
+            exit(normal)
     end.
 
-recv_loop(Socket, Reader, []) ->
+recv_loop(Socket, []) ->
     receive
         Message ->
-            ?MODULE:recv_loop(Socket, Reader,
-                         handle_message(Message, Socket, []))
+            ?MODULE:recv_loop(Socket, handle_message(Message, Socket, []))
     after
         ?HIBERNATE_AFTER ->
-            erlang:hibernate(?MODULE, main_loop, [Socket, Reader, []])
+            erlang:hibernate(?MODULE, main_loop, [Socket, []])
     end;
-recv_loop(Socket, Reader, Pending) ->
+recv_loop(Socket, Pending) ->
     receive
         Message ->
-            ?MODULE:recv_loop(Socket, Reader,
-                         handle_message(Message, Socket, Pending))
+            ?MODULE:recv_loop(Socket, handle_message(Message, Socket, Pending))
     after
         0 ->
-            ?MODULE:recv_loop(Socket, Reader, internal_flush(Socket, Pending))
+            ?MODULE:recv_loop(Socket, internal_flush(Socket, Pending))
     end.
 
 handle_message({send, Bin}, Socket, Pending) ->
@@ -79,14 +69,8 @@ handle_message({inet_reply, _, ok}, _Socket, Pending) ->
     Pending;
 handle_message({inet_reply, _, Status}, _, _) ->
     exit({writer, send_failed, Status});
-handle_message({'$gen_call', From, flush}, Socket, Pending) ->
-    NewPending = internal_flush(Socket, Pending),
-    gen_server:reply(From, ok),
-    NewPending;
-handle_message({'$gen_call', From, flush_and_die}, Socket, Pending) ->
-    internal_flush(Socket, Pending),
-    gen_server:reply(From, ok),
-    exit(normal);
+handle_message({'EXIT', _Parent, Reason}, _, _) ->
+    exit({writer, reader_exit, Reason});
 handle_message(Msg, _, _) ->
     exit({writer, unknown_message_type, Msg}).
 

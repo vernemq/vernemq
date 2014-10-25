@@ -44,6 +44,7 @@ stop() ->
     application:stop(asn1),
     application:stop(public_key),
     application:stop(cowboy),
+    application:stop(poolboy),
     application:stop(bitcask),
     application:stop(mnesia),
     application:stop(crypto),

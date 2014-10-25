@@ -10,6 +10,7 @@
                   ssl,
                   ranch,
                   cowboy,
+                  poolboy,
                   emqtt_commons,
                   bitcask,
                   unsplit,
@@ -38,7 +39,7 @@
           ssl
 
       ]},
-      {allow_anonymous, false},
+      {allow_anonymous, true},
       {msg_log_handler, vmq_test_msg_log_handler},
       {max_client_id_size, 23},
       {retry_interval, 20},

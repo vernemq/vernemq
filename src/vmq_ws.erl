@@ -96,10 +96,9 @@ websocket_terminate(_Reason, _Req, #st{session=SessionPid, session_monitor=MRef}
 start_session(Req, Opts) ->
     Self = self(),
     {Peer, _} = cowboy_req:peer(Req),
-    {ok, SessionPid} = vmq_session:start(self(), Peer,
-                              fun(Frame) ->
-                                        send(Self, {reply, Frame})
-                                end, Opts),
+    {ok, SessionPid} = vmq_session:start_link(Peer, fun(Frame) ->
+                                                            send(Self, {reply, Frame})
+                                                    end, Opts),
     MRef = monitor(process, SessionPid),
     vmq_systree:incr_socket_count(),
     {SessionPid, MRef}.

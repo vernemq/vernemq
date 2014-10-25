@@ -17,7 +17,8 @@
 
 %% API
 -export([start_listeners/0,
-         change_config_now/3]).
+         change_config_now/3,
+         active_connections/0]).
 
 -define(APP, vmq_server).
 -define(SSL_EC, []).
@@ -39,6 +40,12 @@ change_config_now(_New, Changed, _Deleted) ->
     maybe_new_listener(ranch_ssl, vmq_tcp, OldSSL, NewSSL),
     maybe_new_listener(ranch_tcp, cowboy_protocol, OldWS, NewWS),
     maybe_new_listener(ranch_ssl, cowboy_protocol, OldWSS, NewWSS).
+
+active_connections() ->
+    lists:sum(lists:flatten(
+                [[ranch_conns_sup:active_connections(CPid)
+                  ||{ranch_conns_sup,CPid,_,_}<- supervisor:which_children(Pid)]
+                 ||{{ranch_listener_sup,_},Pid,_,_}<- supervisor:which_children(ranch_sup)])).
 
 -spec maybe_change_listener('ranch_ssl' | 'ranch_tcp',_,_) -> 'ok'.
 maybe_change_listener(_, Old, New) when Old == New -> ok;
