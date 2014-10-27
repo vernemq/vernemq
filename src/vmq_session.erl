@@ -530,7 +530,7 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                             vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
                             check_will(F, State#state{username=User});
                         {error, Reason} ->
-                            lager:error("can't register client ~p due to ", [ClientId, Reason]),
+                            lager:error("can't register client ~p due to ~p", [ClientId, Reason]),
                             {connection_attempted,
                              send_connack(?CONNACK_SERVER, State)}
                     end;
