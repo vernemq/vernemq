@@ -699,7 +699,7 @@
                      Dir -> {vmq_bitcask_store, [Dir]}
                  end;
              false  ->
-                 {vmq_ets_store, []}
+                 {vmq_null_store, []}
          end
  end}.
 
