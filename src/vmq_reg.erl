@@ -49,8 +49,7 @@
          code_change/3]).
 
 %% used by RPC calls
--export([register_client__/3,
-         route/7]).
+-export([teardown_session/3, route/7]).
 
 %% used by mnesia_cluster for table setup
 -export([vmq_table_defs/0]).
@@ -78,11 +77,17 @@
 start_link() ->
     case ets:info(vmq_session, name) of
         undefined ->
-            ets:new(vmq_session, [public,
-                                  named_table,
-                                  {keypos, 2},
-                                  {read_concurrency, true},
-                                  {write_concurrency, true}]);
+            SessionFile = vmq_config:get_env(session_dump_file, "session.dump"),
+            case filelib:is_file(SessionFile) of
+                true ->
+                    {ok, _Tab} = ets:file2tab(SessionFile);
+                false ->
+                    ets:new(vmq_session, [public,
+                                          named_table,
+                                          {keypos, 2},
+                                          {read_concurrency, true},
+                                          {write_concurrency, true}])
+            end;
         _ ->
             ok
     end,
@@ -157,68 +162,102 @@ subscriptions_for_client(ClientId) ->
 register_client(ClientId, CleanSession) ->
     vmq_cluster:if_ready(fun register_client_/2, [ClientId, CleanSession]).
 
+
+teardown_session(ProxyPid, ClientId, CleanSession) ->
+    %% we first have to disconnect a local or remote session for
+    %% this client id if one exists, disconnect_client(ClientID)
+    %% blocks until the session is cleaned up
+    NodeWithSession =
+    case disconnect_client(ClientId) of
+        ok -> [node()];
+        {error, not_found} -> []
+    end,
+    case CleanSession of
+        true -> vmq_msg_store:clean_session(ClientId);
+        false -> vmq_msg_store:deliver_from_store(ClientId, ProxyPid)
+    end,
+    NodeWithSession.
+
+session_proxy(ClientId, Node) ->
+    ClientPid = self(),
+    spawn_link(fun() -> session_proxy(ClientPid, ClientId, Node, [], running) end).
+
+session_proxy(ClientPid, ClientId, Node, Msgs, all_finished) ->
+    MsgRefs =
+    lists:foldl(fun({deliver, Term}, Acc) ->
+                        vmq_session:deliver_bin(ClientPid, Term),
+                        Acc;
+                   ({deliver, RoutingKey, Payload, QoS, Dup, MsgRef}, Acc) ->
+                        LocalMsgRef = vmq_msg_store:store(ClientId, RoutingKey, Payload),
+                        vmq_session:deliver(ClientPid, RoutingKey, Payload,
+                                            QoS, false, Dup, LocalMsgRef),
+                        [MsgRef|Acc]
+                end, [], Msgs),
+    rpc:call(Node, vmq_msg_store, deref_multi, [MsgRefs]);
+session_proxy(ClientPid, ClientId, Node, Msgs, {sender_finished, NrOfMsgs})
+  when length(Msgs) < NrOfMsgs ->
+    receive
+        {ClientId, M} ->
+            session_proxy(ClientPid, ClientId, Node, [M|Msgs], {sender_finished, NrOfMsgs})
+    end;
+session_proxy(ClientPid, ClientId, Node, Msgs, {sender_finished, _}) ->
+    session_proxy(ClientPid, ClientId, Node, Msgs, all_finished);
+session_proxy(ClientPid, ClientId, Node, Msgs, Status) ->
+    receive
+        {all_delivered, NrOfMsgs, Node, ClientId}
+            when length(Msgs) == NrOfMsgs ->
+            session_proxy(ClientPid, ClientId, Node, Msgs, all_finished);
+        {all_delivered, NrOfMsgs, Node, ClientId} ->
+            session_proxy(ClientPid, ClientId, Node, Msgs, {sender_finished, NrOfMsgs});
+        {ClientId, M} ->
+            session_proxy(ClientPid, ClientId, Node, [M|Msgs], Status)
+    end.
+
 -spec register_client_(client_id(),flag()) -> 'ok'.
 register_client_(ClientId, CleanSession) ->
-    Nodes = vmq_cluster:nodes(),
-    lists:foreach(fun(Node) when Node == node() ->
-                          ok = register_client__(self(), ClientId, CleanSession);
-                     (Node) ->
-                          rpc:call(Node, ?MODULE, register_client__, [self(), ClientId, CleanSession])
-                  end, Nodes).
-
--spec register_client__(pid(),client_id(),flag()) -> ok | {error, timeout}.
-register_client__(ClientPid, ClientId, CleanSession) ->
-    {Ret, MaybeMonitor} =
-    case ets:lookup(vmq_session, ClientId) of
-        [] ->
-            {new_client, undefined};
-        [#session{pid=OldPid, monitor=OldRef, last_seen=LastSeen}]
-          when is_pid(OldPid) and is_reference(OldRef) ->
-            case epoch() of
-                LastSeen ->
-                    %% multiple connects in same second
-                    timer:sleep(1000);
-                _ ->
-                    ok
-            end,
-            disconnect_client(OldPid),
-            {known_client, OldRef};
-        [_] ->
-            %% persisted client reconnected
-            {known_client, undefined}
-    end,
-    case is_process_alive(ClientPid) of
+    %% cleanup session for this client id if needed
+    case CleanSession of
         true ->
-            MRef = gen_server:call(?MODULE, {monitor, ClientPid, MaybeMonitor}, infinity),
-            transaction(
-              fun() ->
-                      case CleanSession of
-                          true ->
-                              del_subscriber_tx('_', ClientId);
-                          _ ->
-                              ok
-                      end
-              end),
-            Session = #session{client_id=ClientId, pid=ClientPid,
-                               monitor=MRef, last_seen=epoch(), clean=CleanSession},
-            ets:insert(vmq_session, Session),
-            case CleanSession of
-                true ->
-                    vmq_msg_store:clean_session(ClientId);
-                false ->
-                    vmq_msg_store:deliver_from_store(ClientId, ClientPid)
-            end,
-            case Ret of
-                known_client ->
-                    vmq_systree:decr_inactive_clients();
-                _ ->
-                    ok
-            end,
-            ok;
+            transaction(fun() -> del_subscriber_tx('_', ClientId) end);
         false ->
-            lager:warning("Client ~p died during registration~n", [ClientPid]),
             ok
-    end.
+    end,
+    Res =
+    lists:foldl(
+      fun(Node, Acc) ->
+              SessionProxy = case CleanSession of
+                                 true -> undefined;
+                                 false -> session_proxy(ClientId, Node)
+                             end,
+              Res =
+              case Node == node() of
+                  true -> teardown_session(SessionProxy, ClientId, CleanSession);
+                  false -> rpc:call(Node, ?MODULE, teardown_session, [SessionProxy, ClientId, CleanSession])
+              end,
+              [{SessionProxy, Res}|Acc]
+      end, [], vmq_cluster:nodes()),
+    %% We SHOULD always have 0 or 1 Node(s) that had a sesssion
+    {SessionProxies, NodesWithSession} = lists:unzip(Res),
+    NNodesWithSession = lists:flatten(NodesWithSession),
+    case length(NodesWithSession) of
+        L when L =< 1 -> ok;
+        _ -> lager:warning("client ~p was active on multiple nodes ~p", [ClientId, NNodesWithSession])
+    end,
+    ok = gen_server:call(?MODULE, {monitor, self(), ClientId, CleanSession}, infinity),
+    wait_till_replicated(SessionProxies).
+
+wait_till_replicated([Pid|Rest] = SessionProxyPids) when is_pid(Pid) ->
+    case is_process_alive(Pid) of
+        true -> timer:sleep(100),
+                wait_till_replicated(SessionProxyPids);
+        false ->
+            wait_till_replicated(Rest)
+    end;
+wait_till_replicated([_|Rest]) ->
+    wait_till_replicated(Rest);
+wait_till_replicated([]) -> ok.
+
+
 
 -spec publish(username() | plugin_id(),client_id(), undefined | msg_ref(),
               routing_key(),binary(),flag()) -> 'ok' | {'error',_}.
@@ -310,7 +349,7 @@ deliver_retained(ClientPid, Topic, QoS) ->
                                                      payload='_', vclock='_'}),
     lists:foreach(
       fun(#retain{routing_key=RoutingKey, payload=Payload}) ->
-              MsgRef = vmq_msg_store:store(undefined, undefined, RoutingKey, Payload),
+              MsgRef = vmq_msg_store:store(undefined, RoutingKey, Payload),
               vmq_session:deliver(ClientPid, RoutingKey,
                                   Payload, QoS, true, false, MsgRef)
       end, RetainedMsgs).
@@ -351,7 +390,7 @@ route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, IsRetain)
                                           MsgId, RoutingKey, Payload]),
     lists:foldl(fun
                     (#subscriber{qos=Qos, client=ClientId}, AccMsgId) when Qos > 0 ->
-                          MaybeNewMsgId = vmq_msg_store:store(SendingUser, SendingClientId, AccMsgId, RoutingKey, Payload),
+                          MaybeNewMsgId = vmq_msg_store:store(SendingClientId, AccMsgId, RoutingKey, Payload),
                           deliver(ClientId, RoutingKey, Payload, IsRetain, Qos, MaybeNewMsgId),
                           MaybeNewMsgId;
                     (#subscriber{qos=0, client=ClientId}, AccMsgId) ->
@@ -434,6 +473,7 @@ reset_all_tables([]) ->
     %% called using vmq-admin, mainly for test purposes
     %% you don't want to call this during production
     [reset_table(T) || {T,_}<- vmq_table_defs()],
+    ets:delete_all_objects(vmq_session),
     ok.
 
 -spec reset_table(atom()) -> ok.
@@ -476,7 +516,7 @@ direct_plugin_exports(Mod) ->
     fun() ->
             wait_til_ready(),
             CallingPid = self(),
-            register_client__(CallingPid, ClientId(CallingPid), true)
+            register_client_(ClientId(CallingPid), true)
     end,
 
     PublishFun =
@@ -620,7 +660,7 @@ trie_delete_path([{NodeId, Word, _}|RestPath]) ->
                                                            vclock=unsplit_vclock:increment(node(), VClock)
                                                           }, write);
         [] ->
-            throw({notfound, NodeId})
+            throw({not_found, NodeId})
     end.
 
 
@@ -713,33 +753,35 @@ fix_session_table('$end_of_table', Acc) ->
 -spec init([any()]) -> {ok, []}.
 init([]) ->
     spawn_link(fun() -> message_queue_monitor() end),
-    SessionFile = vmq_config:get_env(session_dump_file, "session.dump"),
-    case filelib:is_file(SessionFile) of
-        true ->
-            case ets:first(vmq_session) of
-                '$end_of_table' ->
-                    ok = ets:file2tab(vmq_session, SessionFile, []),
-                    fix_session_table();
-                _ ->
-                    ignore
-            end;
-        false ->
-            ok
-    end,
+    fix_session_table(),
     process_flag(trap_exit, true),
     set_monitors(),
     {ok, #state{}}.
 
 -spec handle_call(_, _, []) -> {reply, ok, []}.
-handle_call({monitor, ClientPid, MaybeMonitor}, _From, State) ->
-    case MaybeMonitor of
-        undefined ->
-            ok;
-        _ ->
-            demonitor(MaybeMonitor, [flush])
+handle_call({monitor, ClientPid, ClientId, CleanSession}, _From, State) ->
+    case ets:lookup(vmq_session, ClientId) of
+        [] -> ok;
+        [#session{pid=undefined, monitor=undefined, clean=false}] ->
+            vmq_systree:decr_inactive_clients();
+        %% ------------------------
+        %% only in a race condition
+        %% vvvvvvvvvvvvvvvvvvvvvvvv
+        [#session{pid=ClientPid, monitor=MRef, clean=true}] ->
+            demonitor(MRef, [flush]),
+            transaction(fun() -> del_subscriber_tx('_', ClientId) end),
+            vmq_msg_store:clean_session(ClientId),
+            disconnect_client(ClientPid);
+        [#session{pid=ClientPid, monitor=MRef, clean=false}] ->
+            demonitor(MRef, [flush]),
+            vmq_systree:incr_inactive_clients(),
+            disconnect_client(ClientPid)
     end,
-    MRef = monitor(process, ClientPid),
-    {reply, MRef, State}.
+    Monitor = monitor(process, ClientPid),
+    Session = #session{client_id=ClientId, pid=ClientPid,
+                       monitor=Monitor, last_seen=epoch(), clean=CleanSession},
+    ets:insert(vmq_session, Session),
+    {reply, ok, State}.
 
 -spec handle_cast(_, []) -> {noreply, []}.
 handle_cast(_Req, State) ->
@@ -753,7 +795,7 @@ handle_info({'DOWN', MRef, process, _Pid, _Reason}, State) ->
 -spec terminate(_, []) -> ok.
 terminate(_Reason, _State) ->
     SessionFile = vmq_config:get_env(session_dump_file, "session.dump"),
-    case ets:tab2file(vmq_session, SessionFile, []) of
+    case ets:tab2file(vmq_session, SessionFile, [{extended_info, [md5sum, object_count]}]) of
         ok ->
             ok;
         {error, Reason} ->
@@ -809,9 +851,3 @@ transaction(TxFun) ->
         {atomic, Result} -> Result;
         {aborted, Reason} -> throw({error, Reason})
     end.
-
-
-
-
-
-

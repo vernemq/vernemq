@@ -162,52 +162,39 @@ connected(timeout, State) ->
     % ignore
     {next_state, connected, State};
 connected({deliver, Topic, Payload, QoS, IsRetained, IsDup, MsgStoreRef}, State) ->
-    case check_in_flight(State) of
-        true ->
-            #state{client_id=ClientId, waiting_acks=WAcks, mountpoint=MountPoint,
-                   retry_interval=RetryInterval} = State,
-            {OutgoingMsgId, State1} = get_msg_id(QoS, State),
-            Frame = #mqtt_frame{
-                       fixed=#mqtt_frame_fixed{
-                                type=?PUBLISH,
-                                qos=QoS,
-                                retain=IsRetained,
-                                dup=IsDup
-                               },
-                       variable=#mqtt_frame_publish{
-                                   topic_name=clean_mp(MountPoint, Topic),
-                                   message_id=OutgoingMsgId},
-                       payload=Payload
-                      },
-            case send_publish_frame(Frame, State1) of
-                {error, Reason} when QoS > 0 ->
-                    vmq_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
-                    lager:debug("[~p] stop due to ~p, deliver when client reconnects~n", [self(), Reason]),
-                    {stop, normal, State1};
-                {error, Reason} ->
-                    lager:debug("[~p] stop due to ~p~n", [self(), Reason]),
-                    {stop, normal, State1};
-                NewState when QoS == 0 ->
-                    {next_state, connected, NewState};
-                NewState when QoS > 0 ->
-                    Ref = send_after(RetryInterval, {retry, OutgoingMsgId}),
-                    {next_state, connected, NewState#state{
-                                              waiting_acks=dict:store(OutgoingMsgId,
-                                                                      {QoS, Frame,
-                                                                       Ref,
-                                                                       MsgStoreRef},
-                                                                      WAcks)}}
-            end;
-        false->
-            %% drop
-            vmq_systree:incr_publishes_dropped(),
-            case QoS > 0 of
-                true ->
-                    vmq_msg_store:deref(MsgStoreRef);
-                false ->
-                    ok
-            end,
-            {next_state, connected, State}
+    #state{client_id=ClientId, waiting_acks=WAcks, mountpoint=MountPoint,
+           retry_interval=RetryInterval} = State,
+    {OutgoingMsgId, State1} = get_msg_id(QoS, State),
+    Frame = #mqtt_frame{
+               fixed=#mqtt_frame_fixed{
+                        type=?PUBLISH,
+                        qos=QoS,
+                        retain=IsRetained,
+                        dup=IsDup
+                       },
+               variable=#mqtt_frame_publish{
+                           topic_name=clean_mp(MountPoint, Topic),
+                           message_id=OutgoingMsgId},
+               payload=Payload
+              },
+    case send_publish_frame(Frame, State1) of
+        {error, Reason} when QoS > 0 ->
+            vmq_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
+            lager:debug("[~p] stop due to ~p, deliver when client reconnects~n", [self(), Reason]),
+            {stop, normal, State1};
+        {error, Reason} ->
+            lager:debug("[~p] stop due to ~p~n", [self(), Reason]),
+            {stop, normal, State1};
+        NewState when QoS == 0 ->
+            {next_state, connected, NewState};
+        NewState when QoS > 0 ->
+            Ref = send_after(RetryInterval, {retry, OutgoingMsgId}),
+            {next_state, connected, NewState#state{
+                                      waiting_acks=dict:store(OutgoingMsgId,
+                                                              {QoS, Frame,
+                                                               Ref,
+                                                               MsgStoreRef},
+                                                              WAcks)}}
     end;
 connected({deliver_bin, {MsgId, QoS, Bin}},State) ->
     #state{send_fun=SendFun, waiting_acks=WAcks,
@@ -277,7 +264,6 @@ init([Peer, SendFun, Opts]) ->
                     apply(Mod, handle, Args)
             end
     end,
-    process_flag(trap_exit, true),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   msg_log_handler=MsgLogHandler,
                                   mountpoint=string:strip(MountPoint, right, $/),
@@ -300,6 +286,13 @@ handle_event({input, Frame}, StateName, State) ->
     case handle_frame(StateName, Fixed, Variable, Payload,
                       State#state{recv_cnt=RecvCnt + 1}) of
         {connected, #state{keep_alive=KeepAlive} = NewState} ->
+            case StateName of
+                connected ->
+                    %% no state change
+                    ignore;
+                _ ->
+                    process_flag(trap_exit, true)
+            end,
             {next_state, connected,
              NewState#state{keep_alive_timer=gen_fsm:send_event_after(KeepAlive, keepalive_expired)}};
         {NextStateName, NewState} ->
@@ -642,7 +635,7 @@ dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
     case check_in_flight(State) of
         true ->
             #state{username=User, client_id=ClientId} = State,
-            MsgRef = vmq_msg_store:store(User, ClientId, Topic, Payload),
+            MsgRef = vmq_msg_store:store(ClientId, Topic, Payload),
             publish(User, ClientId, MsgRef, Topic, Payload, IsRetain),
             NewState = send_frame(?PUBACK, #mqtt_frame_publish{message_id=MessageId},
                                   <<>>, State),
@@ -658,10 +651,10 @@ dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
 dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
     case check_in_flight(State) of
         true ->
-            #state{username=User, client_id=ClientId,
+            #state{client_id=ClientId,
                    waiting_acks=WAcks, retry_interval=RetryInterval,
                    send_fun=SendFun, send_cnt=SendCnt} = State,
-            MsgRef = vmq_msg_store:store(User, ClientId, Topic, Payload),
+            MsgRef = vmq_msg_store:store(ClientId, Topic, Payload),
             Ref = send_after(RetryInterval, {retry, {qos2, MessageId}}),
             Frame = #mqtt_frame{
                        fixed=#mqtt_frame_fixed{type=?PUBREC},

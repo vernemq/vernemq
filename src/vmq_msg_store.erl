@@ -17,11 +17,12 @@
 -include("vmq_server.hrl").
 
 -export([start_link/0,
-         store/4, store/5,
+         store/3, store/4,
          in_flight/0,
          stored/0,
          retrieve/1,
          deref/1,
+         deref_multi/1,
          deliver_from_store/2,
          clean_session/1,
          defer_deliver/3,
@@ -57,20 +58,20 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec store(username(),client_id(),routing_key(),payload()) -> msg_ref().
-store(User, ClientId, RoutingKey, Payload) ->
+-spec store(client_id(),routing_key(),payload()) -> msg_ref().
+store(ClientId, RoutingKey, Payload) ->
     MsgRef = crypto:hash(md5, term_to_binary(os:timestamp())),
-    store(User, ClientId, MsgRef, RoutingKey, Payload).
+    store(ClientId, MsgRef, RoutingKey, Payload).
 
--spec store(username(),client_id(),undefined | msg_ref(),routing_key(),payload()) -> msg_ref().
-store(User, ClientId, undefined, RoutingKey, Payload) ->
-    store(User, ClientId, RoutingKey, Payload);
-store(User, ClientId, MsgRef, RoutingKey, Payload) when is_binary(MsgRef) ->
+-spec store(client_id(),undefined | msg_ref(),routing_key(),payload()) -> msg_ref().
+store(ClientId, undefined, RoutingKey, Payload) ->
+    store(ClientId, RoutingKey, Payload);
+store(ClientId, MsgRef, RoutingKey, Payload) when is_binary(MsgRef) ->
     ets:update_counter(?MSG_CACHE_TABLE, in_flight, {2, 1}),
     case update_msg_cache(MsgRef, {RoutingKey, Payload}) of
         new_cache_item ->
             MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
-            Val = term_to_binary({User, ClientId, RoutingKey, Payload}),
+            Val = term_to_binary({ClientId, RoutingKey, Payload}),
             gen_server:call(?MODULE, {write, MsgRef1, Val}, infinity);
         new_ref_count ->
             ok
@@ -111,24 +112,33 @@ deref(MsgRef) ->
     catch error:badarg -> {error, not_found}
     end.
 
+-spec deref_multi([msg_ref()]) -> ok.
+deref_multi(MsgRefs) ->
+    _ = [deref(MsgRef) || MsgRef <- MsgRefs].
+
 
 -spec deliver_from_store(client_id(),pid()) -> 'ok'.
-deliver_from_store(ClientId, ClientPid) ->
-    lists:foreach(fun ({_, {uncached, Term}} = Obj) ->
-                          vmq_session:deliver_bin(ClientPid, Term),
-                          ets:delete_object(?MSG_INDEX_TABLE, Obj);
-                      ({_, QoS, MsgRef, DeliverAsDup} = Obj) ->
-                          case retrieve(MsgRef) of
-                              {ok, {RoutingKey, Payload}} ->
-                                  vmq_session:deliver(ClientPid, RoutingKey,
-                                                     Payload, QoS,
-                                                     false, DeliverAsDup, MsgRef);
-                              {error, not_found} ->
-                                  %% TODO: this happens,, ??
-                                  ok
-                          end,
-                          ets:delete_object(?MSG_INDEX_TABLE, Obj)
-                  end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
+deliver_from_store(ClientId, Pid) ->
+    NrOfDeliveredMsgs =
+    lists:foldl(fun ({_, {uncached, Term}} = Obj, Acc) ->
+                          Pid ! {ClientId, {deliver, Term}},
+                          ets:delete_object(?MSG_INDEX_TABLE, Obj),
+                          Acc + 1;
+                      ({_, QoS, MsgRef, DeliverAsDup} = Obj, Acc) ->
+                        NewAcc =
+                        case retrieve(MsgRef) of
+                            {ok, {RoutingKey, Payload}} ->
+                                Pid ! {ClientId, {deliver, RoutingKey, Payload, QoS, DeliverAsDup, MsgRef}},
+                                Acc + 1;
+                            {error, not_found} ->
+                                %% TODO: this happens,, ??
+                                Acc
+                        end,
+                        ets:delete_object(?MSG_INDEX_TABLE, Obj),
+                        NewAcc
+                end, 0, ets:lookup(?MSG_INDEX_TABLE, ClientId)),
+    Pid ! {all_delivered, NrOfDeliveredMsgs, node(), ClientId},
+    ok.
 
 -spec clean_session(client_id()) -> 'ok'.
 clean_session(ClientId) ->
@@ -187,7 +197,7 @@ clean_index() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec init([string()]) -> {'ok',#state{store::{atom(), reference()}}}.
 init([]) ->
-    {MsgStoreImpl, MsgStoreImplArgs} = vmq_config:get_env(msg_store, {vmq_ets_store, []}),
+    {MsgStoreImpl, MsgStoreImplArgs} = vmq_config:get_env(msg_store, {vmq_null_store, []}),
     TableOpts = [public, named_table,
                  {read_concurrency, true},
                  {write_concurrency, true}],
@@ -199,7 +209,7 @@ init([]) ->
     MsgStoreImpl:fold(MsgStore,
                  fun
                      (<<?MSG_ITEM, MsgRef/binary>> = Key, Val, Acc) ->
-                         {_, _, RoutingKey, Payload} = binary_to_term(Val),
+                         {_, RoutingKey, Payload} = binary_to_term(Val),
                          case vmq_reg:subscriptions(RoutingKey) of
                              [] -> %% weird
                                 [Key|Acc];
