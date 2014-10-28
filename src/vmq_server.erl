@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_server).
--export([start/0, start_no_auth/0, stop/0]).
+-export([start/0, start_no_auth/0, start_no_auth/1, stop/0]).
 
 -spec start() -> 'ok'.
 start_no_auth() ->
@@ -26,6 +26,19 @@ start_no_auth() ->
     application:set_env(mnesia_cluster, cluster_partition_handling, ignore), % we use unsplit
     application:ensure_all_started(vmq_server),
     ok.
+
+start_no_auth(ClusterNode) ->
+    application:load(mnesia_cluster),
+    application:set_env(mnesia_cluster, table_definition_mod,
+                        {vmq_reg, vmq_table_defs, []}),
+    application:set_env(mnesia_cluster, cluster_monitor_callbacks,
+                        [vmq_cluster]),
+    application:set_env(mnesia_cluster, app_process, vmq_cluster),
+    application:set_env(mnesia_cluster, cluster_partition_handling, ignore), % we use unsplit
+    application:set_env(mnesia_cluster, cluster_nodes, {[ClusterNode], ram}),
+    application:ensure_all_started(vmq_server),
+    ok.
+
 
 start() ->
     start_no_auth(),
