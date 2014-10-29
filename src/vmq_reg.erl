@@ -49,7 +49,8 @@
          code_change/3]).
 
 %% used by RPC calls
--export([teardown_session/3, route/7]).
+-export([teardown_session/3, route/7,
+         register_client_/3]).
 
 %% used by mnesia_cluster for table setup
 -export([vmq_table_defs/0]).
@@ -160,8 +161,7 @@ subscriptions_for_client(ClientId) ->
 
 -spec register_client(client_id(),flag()) -> ok | {error, _}.
 register_client(ClientId, CleanSession) ->
-    vmq_cluster:if_ready(fun register_client_/2, [ClientId, CleanSession]).
-
+    vmq_reg_leader:register_client(self(), ClientId, CleanSession).
 
 teardown_session(ProxyPid, ClientId, CleanSession) ->
     %% we first have to disconnect a local or remote session for
@@ -178,8 +178,7 @@ teardown_session(ProxyPid, ClientId, CleanSession) ->
     end,
     NodeWithSession.
 
-session_proxy(ClientId, Node) ->
-    ClientPid = self(),
+session_proxy(ClientPid, ClientId, Node) ->
     spawn_link(fun() -> session_proxy(ClientPid, ClientId, Node, [], running) end).
 
 session_proxy(ClientPid, ClientId, Node, Msgs, all_finished) ->
@@ -213,8 +212,8 @@ session_proxy(ClientPid, ClientId, Node, Msgs, Status) ->
             session_proxy(ClientPid, ClientId, Node, [M|Msgs], Status)
     end.
 
--spec register_client_(client_id(),flag()) -> 'ok'.
-register_client_(ClientId, CleanSession) ->
+-spec register_client_(pid(), client_id(),flag()) -> 'ok'.
+register_client_(ClientPid, ClientId, CleanSession) ->
     %% cleanup session for this client id if needed
     case CleanSession of
         true ->
@@ -227,7 +226,7 @@ register_client_(ClientId, CleanSession) ->
       fun(Node, Acc) ->
               SessionProxy = case CleanSession of
                                  true -> undefined;
-                                 false -> session_proxy(ClientId, Node)
+                                 false -> session_proxy(ClientPid, ClientId, Node)
                              end,
               Res =
               case Node == node() of
@@ -239,11 +238,11 @@ register_client_(ClientId, CleanSession) ->
     %% We SHOULD always have 0 or 1 Node(s) that had a sesssion
     {SessionProxies, NodesWithSession} = lists:unzip(Res),
     NNodesWithSession = lists:flatten(NodesWithSession),
-    case length(NodesWithSession) of
+    case length(NNodesWithSession) of
         L when L =< 1 -> ok;
         _ -> lager:warning("client ~p was active on multiple nodes ~p", [ClientId, NNodesWithSession])
     end,
-    ok = gen_server:call(?MODULE, {monitor, self(), ClientId, CleanSession}, infinity),
+    ok = gen_server:call(?MODULE, {monitor, ClientPid, ClientId, CleanSession}, infinity),
     wait_till_replicated(SessionProxies).
 
 wait_till_replicated([Pid|Rest] = SessionProxyPids) when is_pid(Pid) ->
@@ -362,21 +361,25 @@ disconnect_client(ClientPid) when is_pid(ClientPid) ->
     vmq_session:disconnect(ClientPid),
     ok;
 disconnect_client(ClientId) ->
-    wait_until_unregistered(ClientId, false).
+    wait_until_unregistered(ClientId).
 
--spec wait_until_unregistered(client_id(),boolean()) -> {'error','not_found'}.
-wait_until_unregistered(ClientId, DisconnectRequested) ->
+-spec wait_until_unregistered(client_id()) -> {'error','not_found'}.
+wait_until_unregistered(ClientId) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
-            case is_process_alive(ClientPid) of
-                true when not DisconnectRequested->
-                    disconnect_client(ClientPid),
-                    wait_until_unregistered(ClientId, true);
-                _ ->
-                    timer:sleep(100),
-                    wait_until_unregistered(ClientId, DisconnectRequested)
-            end;
+            disconnect_client(ClientPid),
+            wait_until_stopped(ClientPid);
         E -> E
+    end.
+
+-spec wait_until_stopped(pid()) -> ok.
+wait_until_stopped(ClientPid) ->
+    case is_process_alive(ClientPid) of
+        true ->
+            timer:sleep(100),
+            wait_until_stopped(ClientPid);
+        false ->
+            ok
     end.
 
 
@@ -516,7 +519,7 @@ direct_plugin_exports(Mod) ->
     fun() ->
             wait_til_ready(),
             CallingPid = self(),
-            register_client_(ClientId(CallingPid), true)
+            register_client_(CallingPid, ClientId(CallingPid), true)
     end,
 
     PublishFun =
@@ -739,8 +742,14 @@ fix_session_table({[], Cont}, Acc) ->
     fix_session_table(ets:select(Cont), Acc);
 fix_session_table('$end_of_table', Acc) ->
     _ = [begin
-             [Session] = ets:lookup(vmq_session, ClientId),
-             ets:insert(vmq_session, Session#session{pid=undefined, monitor=undefined})
+             case ets:lookup(vmq_session, ClientId) of
+                 [#session{clean=true}] ->
+                     transaction(fun() -> del_subscriber_tx('_', ClientId) end),
+                     ets:delete(vmq_session, ClientId),
+                     vmq_msg_store:clean_session(ClientId);
+                 [Session] ->
+                     ets:insert(vmq_session, Session#session{pid=undefined, monitor=undefined})
+             end
          end || ClientId <- Acc],
     ok.
 
@@ -762,21 +771,25 @@ init([]) ->
 handle_call({monitor, ClientPid, ClientId, CleanSession}, _From, State) ->
     case ets:lookup(vmq_session, ClientId) of
         [] -> ok;
+        [#session{pid=undefined, monitor=undefined, clean=true}] ->
+            ok;
         [#session{pid=undefined, monitor=undefined, clean=false}] ->
             vmq_systree:decr_inactive_clients();
         %% ------------------------
         %% only in a race condition
         %% vvvvvvvvvvvvvvvvvvvvvvvv
-        [#session{pid=ClientPid, monitor=MRef, clean=true}] ->
+        [#session{pid=OldClientPid, monitor=MRef, clean=OldClean}] ->
             demonitor(MRef, [flush]),
-            transaction(fun() -> del_subscriber_tx('_', ClientId) end),
-            vmq_msg_store:clean_session(ClientId),
-            disconnect_client(ClientPid);
-        [#session{pid=ClientPid, monitor=MRef, clean=false}] ->
-            demonitor(MRef, [flush]),
-            vmq_systree:incr_inactive_clients(),
-            disconnect_client(ClientPid)
+            case OldClean of
+                true ->
+                    transaction(fun() -> del_subscriber_tx('_', ClientId) end),
+                    vmq_msg_store:clean_session(ClientId);
+                false ->
+                    vmq_systree:incr_inactive_clients()
+            end,
+            disconnect_client(OldClientPid)
     end,
+
     Monitor = monitor(process, ClientPid),
     Session = #session{client_id=ClientId, pid=ClientPid,
                        monitor=Monitor, last_seen=epoch(), clean=CleanSession},

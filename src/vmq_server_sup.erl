@@ -53,10 +53,11 @@ init([]) ->
             WorkerPoolSpec,
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_crl_srv, worker, []),
+            ?CHILD(vmq_msg_store, worker, []),
             ?CHILD(vmq_reg, worker, []),
+            ?CHILD(vmq_reg_leader, worker, []),
             ?CHILD(vmq_session_expirer, worker, []),
             ?CHILD(vmq_cluster, worker, []),
-            ?CHILD(vmq_systree, worker, []),
-            ?CHILD(vmq_msg_store, worker, [])
+            ?CHILD(vmq_systree, worker, [])
                                  ]} }.
 
