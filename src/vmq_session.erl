@@ -100,7 +100,7 @@ deliver_bin(FsmPid, Term) ->
 
 -spec disconnect(pid()) -> ok.
 disconnect(FsmPid) ->
-    gen_fsm:send_event(FsmPid, disconnect).
+    gen_fsm:send_all_state_event(FsmPid, disconnect).
 
 -spec in(pid(), #mqtt_frame{}) ->  ok.
 in(FsmPid, Event) ->
@@ -152,7 +152,6 @@ connection_attempted(timeout, State) ->
     {next_state, wait_for_connect, State, ?CLOSE_AFTER}.
 
 -spec connected(timeout
-                | disconnect
                 | keepalive_expired
                 | {retry, msg_id()}
                 | {deliver_bin, {msg_id(), qos(), payload()}}
@@ -238,10 +237,6 @@ connected({retry, MessageId}, State) ->
 
 connected(keepalive_expired, State) ->
     lager:debug("[~p] stop due to ~p~n", [self(), keepalive_expired]),
-    {stop, normal, State};
-
-connected(disconnect, State) ->
-    lager:debug("[~p] stop due to ~p~n", [self(), disconnect]),
     {stop, normal, State}.
 
 -spec init(_) -> {ok, wait_for_connect, #state{}, ?CLOSE_AFTER}.
@@ -298,7 +293,10 @@ handle_event({input, Frame}, StateName, State) ->
         {NextStateName, NewState} ->
             {next_state, NextStateName, NewState, ?CLOSE_AFTER};
         Ret -> Ret
-    end.
+    end;
+handle_event(disconnect, StateName, State) ->
+    lager:warning("[~p] stop in state ~p due to ~p~n", [self(), StateName, disconnect]),
+    {stop, normal, State}.
 
 -spec handle_sync_event(_, _, _, #state{}) -> {reply, _, statename(), #state{}} | {stop, {error, {unknown_req, _}}, #state{}}.
 handle_sync_event({get_info, Items}, _From, StateName, State) ->
@@ -545,6 +543,7 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
         true ->
             case vmq_reg:register_client(ClientId, CleanSession) of
                 ok ->
+                    io:format(user, "[~p] registered client ~p ~p~n", [node(), ClientId, self()]),
                     vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
                     check_will(F, State#state{username=User});
                 {error, Reason} ->
