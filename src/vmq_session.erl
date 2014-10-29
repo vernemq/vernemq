@@ -543,7 +543,6 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
         true ->
             case vmq_reg:register_client(ClientId, CleanSession) of
                 ok ->
-                    io:format(user, "[~p] registered client ~p ~p~n", [node(), ClientId, self()]),
                     vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
                     check_will(F, State#state{username=User});
                 {error, Reason} ->
