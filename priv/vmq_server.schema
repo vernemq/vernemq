@@ -703,6 +703,12 @@
          end
  end}.
 
+{mapping, "tune_tcp_buffer_size", "vmq_server.tune_tcp_buffer_size", [
+                                                                      {default, off},
+                                                                      {datatype, flag},
+                                                                      hidden
+                                                                     ]}.
+
 {mapping, "table_definition_mod", "mnesia_cluster.table_definition_mod", [
                                                                           {default, "{vmq_reg,vmq_table_defs,[]}"},
                                                                           {datatype, string},

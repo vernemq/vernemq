@@ -26,15 +26,15 @@
              session, session_mon,
              proto_tag}).
 
--spec start_link(_,_,_,_) -> {'ok',pid()}.
+-spec start_link(_, _, _, _) -> {'ok', pid()}.
 start_link(Ref, Socket, Transport, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
     {ok, Pid}.
 
--spec init(_,_,atom() | tuple(),maybe_improper_list()) -> any().
+-spec init(_, _, atom() | tuple(), maybe_improper_list()) -> any().
 init(Ref, Socket, Transport, Opts) ->
     ok = ranch:accept_ack(Ref),
-    {ok, Peer} = Transport:peername(Socket),
+    {ok, Peer} = apply(Transport, peername, [Socket]),
     {ok, WriterPid} = vmq_writer:start_link(Transport, Socket),
     NewOpts =
     case Transport of
@@ -48,19 +48,15 @@ init(Ref, Socket, Transport, Opts) ->
         _ ->
             Opts
     end,
-    {ok, SessionPid} = vmq_session:start_link(Peer, fun(Frame) ->
-                                                            vmq_writer:send(WriterPid, Frame),
-                                                            ok
-                                                    end, NewOpts),
-    case lists:keyfind(tune_buffer_size, 1, Opts) of
-        {_, true} ->
-            ok = tune_buffer_size(Transport, Socket);
-        _ ->
-            ok
-    end,
-    ok = Transport:setopts(Socket, [{nodelay, true},
+    {ok, SessionPid} =
+    vmq_session:start_link(Peer, fun(Frame) ->
+                                         vmq_writer:send(WriterPid, Frame),
+                                         ok
+                                 end, NewOpts),
+    ok = maybe_tune_buffer_size(Transport, Socket),
+    ok = apply(Transport, setopts, [Socket, [{nodelay, true},
                                     {packet, raw},
-                                    {active, once}]),
+                                    {active, once}]]),
     process_flag(trap_exit, true),
     vmq_systree:incr_socket_count(),
     loop(#st{socket=Socket,
@@ -71,7 +67,7 @@ init(Ref, Socket, Transport, Opts) ->
 loop(#st{buffer=_Buffer, socket=Socket, transport=Transport,
             session=SessionPid, parser_state=ParserState,
             proto_tag={Proto, ProtoClosed, ProtoError}} = State) ->
-    Transport:setopts(Socket, [{active, once}]),
+    apply(Transport, setopts, [Socket, [{active, once}]]),
     receive
         {inet_reply, _, ok} ->
             loop(State);
@@ -96,7 +92,8 @@ teardown(#st{session=SessionPid, transport=Transport, socket=Socket}, Reason) ->
         normal ->
             lager:debug("[~p] session stopped", [SessionPid]);
         _ ->
-            lager:info("[~p] session stopped abnormally due to ~p", [SessionPid, Reason])
+            lager:info("[~p] session stopped
+                       abnormally due to ~p", [SessionPid, Reason])
     end,
     fast_close(Transport, Socket).
 
@@ -114,15 +111,21 @@ process_bytes(SessionPid, Bytes, ParserState) ->
             emqtt_frame:initial_state()
     end.
 
+maybe_tune_buffer_size(Transport, Socket) ->
+    case vmq_config:get_env(tune_tcp_buffer_size, false) of
+        true -> tune_buffer_size(Transport, Socket);
+        false -> ok
+    end.
+
 tune_buffer_size(ranch_tcp, Sock) ->
     tune_buffer_size_(inet, Sock);
 tune_buffer_size(ranch_ssl, Sock) ->
     tune_buffer_size_(ssl, Sock).
 
-tune_buffer_size_(T, Sock) ->
-    case T:getopts(Sock, [sndbuf, recbuf, buffer]) of
+tune_buffer_size_(Transport, Sock) ->
+    case apply(Transport, getopts, [Sock, [sndbuf, recbuf, buffer]]) of
         {ok, BufSizes} -> BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
-                          T:setopts(Sock, [{buffer, BufSz}]);
+                          apply(Transport, setopts, [Sock, [{buffer, BufSz}]]);
         Error -> Error
     end.
 
@@ -157,7 +160,7 @@ fast_close(ranch_ssl, Socket) ->
     catch port_close(Socket),
     ok.
 
--spec socket_to_common_name({'sslsocket',_,pid() | {port(),_}}) -> 'undefined' | [any()] | {'error',[any()],binary() | maybe_improper_list(binary() | maybe_improper_list(any(),binary() | []) | char(),binary() | [])} | {'incomplete',[any()],binary()}.
+-spec socket_to_common_name(port()) -> undefined | list().
 socket_to_common_name(Socket) ->
     case ssl:peercert(Socket) of
         {error, no_peercert} ->
@@ -169,11 +172,14 @@ socket_to_common_name(Socket) ->
             extract_cn(Subject)
     end.
 
--spec extract_cn({'rdnSequence',maybe_improper_list()}) -> 'undefined' | [any()] | {'error',[any()],binary() | maybe_improper_list(binary() | maybe_improper_list(any(),binary() | []) | char(),binary() | [])} | {'incomplete',[any()],binary()}.
+-spec extract_cn({'rdnSequence', list()}) -> undefined | list().
 extract_cn({rdnSequence, List}) ->
     extract_cn2(List).
--spec extract_cn2(maybe_improper_list()) -> 'undefined' | [any()] | {'error',[any()],binary() | maybe_improper_list(binary() | maybe_improper_list(any(),binary() | []) | char(),binary() | [])} | {'incomplete',[any()],binary()}.
-extract_cn2([[#'AttributeTypeAndValue'{type=?'id-at-commonName', value={utf8String, CN}}]|_]) ->
+
+-spec extract_cn2(list()) -> undefined | list().
+extract_cn2([[#'AttributeTypeAndValue'{
+                 type=?'id-at-commonName',
+                 value={utf8String, CN}}]|_]) ->
     unicode:characters_to_list(CN);
 extract_cn2([_|Rest]) ->
     extract_cn2(Rest);

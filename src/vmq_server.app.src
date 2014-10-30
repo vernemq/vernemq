@@ -48,6 +48,7 @@
       {max_inflight_messages, 20},
       {message_size_limit, 0},
       {msg_store, {vmq_bitcask_store, []}},
+      {tune_tcp_buffer_size, false},
       {listeners, {
                       [{{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
                                               {nr_of_acceptors, 100}, 
