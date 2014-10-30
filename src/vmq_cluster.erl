@@ -37,6 +37,7 @@
 -define(SERVER, ?MODULE).
 
 -record(state, {}).
+-type state() :: #state{}.
 
 %%%===================================================================
 %%% API
@@ -93,7 +94,7 @@ update_ready(Nodes) ->
 is_ready() ->
     ets:lookup(vmq_status, ready) == [{ready, true}].
 
--spec if_ready(_,_) -> any().
+-spec if_ready(_, _) -> any().
 if_ready(Fun, Args) ->
     case is_ready() of
         true ->
@@ -101,7 +102,7 @@ if_ready(Fun, Args) ->
         false ->
             {error, not_ready}
     end.
--spec if_ready(_,_,_) -> any().
+-spec if_ready(_, _, _) -> any().
 if_ready(Mod, Fun, Args) ->
     case is_ready() of
         true ->
@@ -125,7 +126,7 @@ if_ready(Mod, Fun, Args) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
--spec init([]) -> {'ok',#state{}}.
+-spec init([]) -> {'ok', state()}.
 init([]) ->
     ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
     {ok, #state{}}.
@@ -144,7 +145,7 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
--spec handle_call(_,_,_) -> {'reply','ok',_}.
+-spec handle_call(_, _, _) -> {'reply', 'ok', _}.
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -159,7 +160,7 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
--spec handle_cast(_,_) -> {'noreply',_}.
+-spec handle_cast(_, _) -> {'noreply', _}.
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -173,7 +174,7 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
--spec handle_info(_,_) -> {'noreply',_}.
+-spec handle_info(_, _) -> {'noreply', _}.
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -188,7 +189,7 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
--spec terminate(_,_) -> 'ok'.
+-spec terminate(_, _) -> 'ok'.
 terminate(_Reason, _State) ->
     ok.
 
@@ -200,7 +201,7 @@ terminate(_Reason, _State) ->
 %% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
 %% @end
 %%--------------------------------------------------------------------
--spec code_change(_,_,_) -> {'ok',_}.
+-spec code_change(_, _, _) -> {'ok', _}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 

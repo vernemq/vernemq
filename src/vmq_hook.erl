@@ -53,10 +53,12 @@ start(App) ->
                   <- M:module_info(attributes)] | Acc]
       end, [], Modules),
     case {lists:flatten(Declarations), lists:flatten(Registrations)} of
-        {[],[]} ->
+        {[], []} ->
             ok;
         {FDeclarations, FRegistrations} ->
-            error_logger:info_msg("App ~p registered ~p hook-points, and registered ~p hooks~n", [App, FDeclarations, FRegistrations])
+            error_logger:info_msg(
+              "App ~p registered ~p hook-points, and registered ~p hooks~n",
+              [App, FDeclarations, FRegistrations])
     end.
 
 
@@ -89,7 +91,8 @@ add(Name, {Module, Function, Arity}) ->
                     [] ->
                         error({missing_declare, Name});
                     [{Name, Type, Arity, ListOfHook}] ->
-                        verify_add(Name, Type, Arity, ListOfHook, {length(ListOfHook), Hook});
+                        verify_add(Name, Type, Arity,
+                                   ListOfHook, {length(ListOfHook), Hook});
                     [{_Name, Type, _Arity, _ListOfHook}] ->
                         error({invalid_arity, Name, Type, Hook})
                 end;
@@ -101,7 +104,10 @@ add(Name, {Module, Function, Arity}) ->
             error({undef_module, Module})
     end.
 
--spec verify_add(_,_,_,[any()],{non_neg_integer(),{atom() | tuple(),_,_}}) -> 'ok' | {'error','duplicate_mfa' | 'duplicate_priority'}.
+-spec verify_add(_ , _, _, [any()], {non_neg_integer(),
+                                     {atom() | tuple(), _, _}}) ->
+                        'ok' | {'error', 'duplicate_mfa' |
+                                'duplicate_priority'}.
 verify_add(Name, Type, Arity, ListOfHook, {Priority, MFA} = Hook) ->
     case lists:keymember(Priority, 1, ListOfHook) of
         false ->
@@ -160,7 +166,7 @@ only(Name, Args) ->
             only0(ListOfHook, Args)
     end.
 
--spec only0(maybe_improper_list(),_) -> any().
+-spec only0(maybe_improper_list(), _) -> any().
 only0([], _Args) ->
     not_found;
 only0([{_Priority, {Module, Function, Arity}}|Rest], Args) ->
@@ -181,14 +187,14 @@ every(Name, Value, Args) ->
             every0(Value, Args, ListOfHook)
     end.
 
--spec every0(_,_,[any()]) -> any().
+-spec every0(_, _, [any()]) -> any().
 every0(Value, Args, ListOfHook) ->
     F = fun({_Priority, {Module, Function, Arity}}, Acc) ->
                 try_apply_exit(Module, Function, [Acc|Args], Arity)
         end,
     lists:foldl(F, Value, ListOfHook).
 
--spec try_apply_exit(atom() | tuple(),atom(),[any()],_) -> any().
+-spec try_apply_exit(atom() | tuple(), atom(), [any()], _) -> any().
 try_apply_exit(Module, Function, Args, Arity) ->
     try
         apply(Module, Function, Args)
@@ -198,7 +204,7 @@ try_apply_exit(Module, Function, Args, Arity) ->
                    Reason})
     end.
 
--spec try_apply(atom() | tuple(),atom(),[any()],_) -> any().
+-spec try_apply(atom() | tuple(), atom(), [any()], _) -> any().
 try_apply(Module, Function, Args, _Arity) ->
     try
         apply(Module, Function, Args)

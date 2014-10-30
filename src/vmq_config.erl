@@ -48,7 +48,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-change_config_now(_,_,_) ->
+change_config_now(_, _, _) ->
     %% upon a config change we flush the table
     reset().
 

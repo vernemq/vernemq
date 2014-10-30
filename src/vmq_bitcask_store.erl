@@ -31,7 +31,9 @@ open(Args) ->
             case filelib:is_dir(Dir) of
                 true -> Dir;
                 false ->
-                    error_logger:error_msg("Directory ~p is not available!!! We stop here!!!", [Dir]),
+                    error_logger:error_msg(
+                      "Directory ~p is not available!!! We stop here!!!",
+                      [Dir]),
                     exit(msg_store_directory_not_available)
             end
     end,

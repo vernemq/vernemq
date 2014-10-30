@@ -29,7 +29,7 @@ register_hooks() ->
     vmq_hook:add(auth_on_publish, {?MODULE, auth_on_publish, 6}).
 
 
--spec auth_on_register(_,_,_,_) -> 'ok'.
+-spec auth_on_register(_, _, _, _) -> 'ok'.
 auth_on_register(SrcIp, ClientId, User, Password) ->
     io:format("[~p] auth client ~p from ~p
               with username ~p and password ~p~n",
@@ -39,14 +39,14 @@ auth_on_register(SrcIp, ClientId, User, Password) ->
     %% return next --> next auth handler is tried
     ok.
 
--spec auth_on_subscribe(_,_,_) -> 'ok'.
+-spec auth_on_subscribe(_, _, _) -> 'ok'.
 auth_on_subscribe(User, ClientId, Topics) ->
     io:format("[~p] auth client subscriptions ~p
               from ~p with username ~p~n",
               [self(), Topics, ClientId, User]),
     ok.
 
--spec auth_on_publish(_,_,_,_,_,_) -> 'ok'.
+-spec auth_on_publish(_, _, _, _, _, _) -> 'ok'.
 auth_on_publish(User, ClientId, MsgRef, Topic, _Payload, _IsRetain) ->
    io:format("[~p] auth client publish ~p with
              topic ~p from ~p with username ~p~n",
