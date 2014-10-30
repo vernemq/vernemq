@@ -84,6 +84,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-run({M,F,A}) -> apply(M,F,A);
+run({M, F, A}) -> apply(M, F, A);
 run(Function) when is_function(Function) ->
     Function().

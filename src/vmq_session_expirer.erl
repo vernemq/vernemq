@@ -29,7 +29,7 @@
          code_change/3]).
 
 -record(state, {duration=0}).
-
+-type state() :: #state{}.
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -37,10 +37,11 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec change_config_now(_,[any()],_) -> 'ok'.
+-spec change_config_now(_, [any()], _) -> 'ok'.
 change_config_now(_New, Changed, _Deleted) ->
     %% we are only interested if the config changes
-    {_, NewDuration} = proplists:get_value(persistent_client_expiration, Changed, {undefined,"never"}),
+    {_, NewDuration} = proplists:get_value(persistent_client_expiration,
+                                           Changed, {undefined,"never"}),
     ParsedDuration = parse_duration(NewDuration),
     gen_server:cast(?MODULE, {new_duration, ParsedDuration}).
 
@@ -48,23 +49,24 @@ change_config_now(_New, Changed, _Deleted) ->
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
--spec init([any()]) -> {ok, #state{}}.
+-spec init([any()]) -> {ok, state()}.
 init([]) ->
-    Duration = application:get_env(vmq_server, persistent_client_expiration, "never"),
+    Duration = application:get_env(vmq_server,
+                                   persistent_client_expiration, "never"),
     ParsedDuration = parse_duration(Duration),
     erlang:send_after(5000, self(), expire_clients),
     {ok, #state{duration=ParsedDuration}}.
 
--spec handle_call(_, _, #state{}) -> {reply, ok, #state{}}.
+-spec handle_call(_, _, state()) -> {reply, ok, state()}.
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
--spec handle_cast(_, #state{}) -> {noreply, #state{}}.
+-spec handle_cast(_, state()) -> {noreply, state()}.
 handle_cast({new_duration, Duration}, State) ->
     {noreply, State#state{duration=Duration}}.
 
--spec handle_info(_, #state{}) -> {noreply, #state{}}.
+-spec handle_info(_, state()) -> {noreply, state()}.
 handle_info(expire_clients, State) ->
     case State#state.duration of
         0 ->
@@ -75,11 +77,11 @@ handle_info(expire_clients, State) ->
     erlang:send_after(5000, self(), expire_clients),
     {noreply, State}.
 
--spec terminate(_, #state{}) -> ok.
+-spec terminate(_, state()) -> ok.
 terminate(_Reason, _State) ->
     ok.
 
--spec code_change(_, #state{}, _) -> {ok, #state{}}.
+-spec code_change(_, state(), _) -> {ok, state()}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 

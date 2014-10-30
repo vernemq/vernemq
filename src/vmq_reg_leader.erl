@@ -47,7 +47,8 @@ register_client(ClientPid, ClientId, CleanSession) ->
                 Nodes ->
                     I = erlang:phash2(ClientId) rem length(Nodes) + 1,
                     Leader = lists:nth(I, lists:sort(Nodes)),
-                    rpc:call(Leader, ?MODULE, register_client_by_leader, [node(), ClientPid, ClientId, CleanSession], 5000)
+                    rpc:call(Leader, ?MODULE, register_client_by_leader,
+                             [node(), ClientPid, ClientId, CleanSession], 5000)
             end;
         false ->
             {error, not_ready}
@@ -56,7 +57,8 @@ register_client(ClientPid, ClientId, CleanSession) ->
 register_client_by_leader(Node, ClientPid, ClientId, CleanSession) ->
     case vmq_cluster:is_ready() of
         true ->
-            gen_server:call(?MODULE, {register_client, Node, ClientPid, ClientId, CleanSession}, infinity);
+            gen_server:call(?MODULE, {register_client, Node, ClientPid,
+                                      ClientId, CleanSession}, infinity);
         false ->
             {error, not_ready}
     end.
@@ -68,16 +70,20 @@ register_client_by_leader(Node, ClientPid, ClientId, CleanSession) ->
 init([]) ->
     {ok, #state{}}.
 
-handle_call({register_client, Node, ClientPid, ClientId, CleanSession}, From, State) ->
-    {noreply, schedule_register(ClientId, {Node, ClientPid, CleanSession, From}, State)}.
+handle_call({register_client, Node, ClientPid,
+             ClientId, CleanSession}, From, State) ->
+    {noreply, schedule_register(ClientId,
+                                {Node, ClientPid, CleanSession, From}, State)}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({'DOWN', MRef, process, Pid, _Reason}, #state{monitors=M} = State) ->
+handle_info({'DOWN', MRef, process, Pid, _Reason},
+            #state{monitors=M} = State) ->
     {ok, {ClientId, Pid, From}} = dict:find(MRef, M),
     gen_server:reply(From, ok),
-    {noreply, schedule_next(ClientId, State#state{monitors=dict:erase(MRef, M)})}.
+    {noreply, schedule_next(ClientId,
+                            State#state{monitors=dict:erase(MRef, M)})}.
 
 terminate(_Reason, _State) ->
     ok.
@@ -88,15 +94,21 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-schedule_register(ClientId, {Node, ClientPid, CleanSession, From} = Item, #state{req_queue=R, monitors=M} = State) ->
+schedule_register(ClientId, {Node, ClientPid,
+                             CleanSession, From} = Item,
+                  #state{req_queue=R, monitors=M} = State) ->
     {NewR, NewM} =
     case dict:find(ClientId, R) of
         {ok, Q} ->
             {dict:store(ClientId, queue:in(Item, Q), R), M};
         error ->
             %% no waiting items
-            {Pid, MRef} = spawn_monitor(fun() ->
-                                                register_client_remote(Node, ClientId, ClientPid, CleanSession)
+            {Pid, MRef} =
+                spawn_monitor(fun() ->
+                                      register_client_remote(Node,
+                                                             ClientId,
+                                                             ClientPid,
+                                                             CleanSession)
                                         end),
             {dict:store(ClientId, queue:new(), R),
              dict:store(MRef, {ClientId, Pid, From}, M)}
@@ -109,9 +121,11 @@ schedule_next(ClientId, #state{req_queue=R, monitors=M} = State) ->
         {ok, Q} ->
             case queue:out(Q) of
                 {{value, {Node, ClientPid, CleanSession, From}}, NewQ} ->
-                    {Pid, MRef} = spawn_monitor(fun() ->
-                                                        register_client_remote(Node, ClientId, ClientPid, CleanSession)
-                                                end),
+                    {Pid, MRef} =
+                        register_client_remote_(Node,
+                                                ClientId,
+                                                ClientPid,
+                                                CleanSession),
                     {dict:store(ClientId, NewQ, R),
                      dict:store(MRef, {ClientId, Pid, From}, M)};
                 {empty, Q} ->
@@ -123,4 +137,13 @@ schedule_next(ClientId, #state{req_queue=R, monitors=M} = State) ->
     State#state{req_queue=NewR, monitors=NewM}.
 
 register_client_remote(Node, ClientId, ClientPid, CleanSession) ->
-    rpc:call(Node, vmq_reg, register_client_, [ClientPid, ClientId, CleanSession]).
+    rpc:call(Node, vmq_reg, register_client_,
+             [ClientPid, ClientId, CleanSession]).
+
+register_client_remote_(Node, ClientId, ClientPid, CleanSession) ->
+    spawn_monitor(fun() ->
+                          register_client_remote(Node,
+                                                 ClientId,
+                                                 ClientPid,
+                                                 CleanSession)
+                  end).

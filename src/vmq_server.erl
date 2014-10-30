@@ -23,7 +23,8 @@ start_no_auth() ->
     application:set_env(mnesia_cluster, cluster_monitor_callbacks,
                         [vmq_cluster]),
     application:set_env(mnesia_cluster, app_process, vmq_cluster),
-    application:set_env(mnesia_cluster, cluster_partition_handling, ignore), % we use unsplit
+    application:set_env(mnesia_cluster, cluster_partition_handling,
+                        ignore), % we use unsplit
     application:ensure_all_started(vmq_server),
     ok.
 
@@ -34,7 +35,8 @@ start_no_auth(ClusterNode) ->
     application:set_env(mnesia_cluster, cluster_monitor_callbacks,
                         [vmq_cluster]),
     application:set_env(mnesia_cluster, app_process, vmq_cluster),
-    application:set_env(mnesia_cluster, cluster_partition_handling, ignore), % we use unsplit
+    application:set_env(mnesia_cluster, cluster_partition_handling,
+                        ignore), % we use unsplit
     application:set_env(mnesia_cluster, cluster_nodes, {[ClusterNode], ram}),
     application:ensure_all_started(vmq_server),
     ok.

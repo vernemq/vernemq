@@ -48,6 +48,8 @@
 -define(TABLE, vmq_systree).
 -define(CLIENT_ID, "systree_client_9876"). %% only used internally
 
+-type state() :: #state{}.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -55,10 +57,11 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec change_config_now(_,[any()],_) -> 'ok'.
+-spec change_config_now(_, [any()], _) -> 'ok'.
 change_config_now(_New, Changed, _Deleted) ->
     %% we are only interested if the config changes
-    {_, NewInterval} = proplists:get_value(sys_interval, Changed, {undefined,10}),
+    {_, NewInterval} = proplists:get_value(sys_interval,
+                                           Changed, {undefined,10}),
     gen_server:cast(?MODULE, {new_interval, NewInterval}).
 
 incr_bytes_received(V) ->
@@ -127,7 +130,7 @@ items() ->
 %%% gen_server callbacks
 %%%===================================================================
 
--spec init([integer()]) -> {'ok',#state{}}.
+-spec init([integer()]) -> {'ok', state()}.
 init([]) ->
     Interval = application:get_env(vmq_server, interval, 10),
     ets:new(?TABLE, [public, named_table, {write_concurrency, true}]),
@@ -137,12 +140,12 @@ init([]) ->
     erlang:send_after(1000, self(), shift),
     {ok, #state{interval=IntervalMS, ref=TRef}}.
 
--spec handle_call(_, _, #state{}) -> {reply, ok, #state{}}.
+-spec handle_call(_, _, state()) -> {reply, ok, state()}.
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
--spec handle_cast(_, #state{}) -> {noreply, #state{}}.
+-spec handle_cast(_, state()) -> {noreply, state()}.
 handle_cast({new_interval, Interval}, State) ->
     IntervalMS = Interval * 1000,
     case State#state.ref of
@@ -157,7 +160,7 @@ handle_cast({new_interval, Interval}, State) ->
     end,
     {noreply, State#state{interval=IntervalMS, ref=TRef}}.
 
--spec handle_info(_,_) -> {'noreply',_}.
+-spec handle_info(_, _) -> {'noreply', _}.
 handle_info(publish, State) ->
     #state{interval=Interval} = State,
     Snapshots = averages(items(), []),
@@ -169,11 +172,11 @@ handle_info(shift, State) ->
     erlang:send_after(1000, self(), shift),
     {noreply, State}.
 
--spec terminate(_,#state{}) -> 'ok'.
+-spec terminate(_, state()) -> 'ok'.
 terminate(_Reason, _State) ->
     ok.
 
--spec code_change(_,_,_) -> {'ok',_}.
+-spec code_change(_, _, _) -> {'ok', _}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
@@ -345,11 +348,12 @@ init_table([]) -> ok;
 init_table([{MetricName, mavg}|Rest]) ->
     Epoch = now_epoch(),
     ets:insert_new(?TABLE, {{MetricName, total}, 0, Epoch}),
-    Min1 = list_to_tuple([{MetricName, min1} | [0 || _ <- lists:seq(1,61)]]),
+    Min1 = list_to_tuple([{MetricName, min1} | [0 || _ <- lists:seq(1, 61)]]),
     ets:insert_new(?TABLE, Min1),
-    Min5 = list_to_tuple([{MetricName, min5} | [0 || _ <- lists:seq(1,301)]]),
+    Min5 = list_to_tuple([{MetricName, min5} | [0 || _ <- lists:seq(1, 301)]]),
     ets:insert_new(?TABLE, Min5),
-    Min15 = list_to_tuple([{MetricName, min15} | [0 || _ <- lists:seq(1,901)]]),
+    Min15 = list_to_tuple([{MetricName, min15} |
+                           [0 || _ <- lists:seq(1, 901)]]),
     ets:insert_new(?TABLE, Min15),
     init_table(Rest);
 init_table([{MetricName, counter}|Rest]) ->
@@ -372,25 +376,29 @@ incr_item(MetricName, V) ->
 
 shift(_, []) -> ok;
 shift(Now, [{Key, mavg}|Rest]) ->
-    [{_,_,LastIncr}] = ets:lookup(?TABLE, {Key, total}),
+    [{_, _, LastIncr}] = ets:lookup(?TABLE, {Key, total}),
     case Now - LastIncr of
         0 -> shift(Now, Rest);
         Diff ->
             Diffs = [Now + I || I <- lists:seq(1, Diff)],
             ets:update_element(?TABLE, {Key, total}, {3, Now}),
-            ets:update_element(?TABLE, {Key, min1}, [{2 + (I rem 61), 0} || I <- Diffs]),
-            ets:update_element(?TABLE, {Key, min5}, [{2 + (I rem 301), 0} || I <- Diffs]),
-            ets:update_element(?TABLE, {Key, min15}, [{2 + (I rem 901), 0} || I <- Diffs]),
+            ets:update_element(?TABLE, {Key, min1},
+                               [{2 + (I rem 61), 0} || I <- Diffs]),
+            ets:update_element(?TABLE, {Key, min5},
+                               [{2 + (I rem 301), 0} || I <- Diffs]),
+            ets:update_element(?TABLE, {Key, min15},
+                               [{2 + (I rem 901), 0} || I <- Diffs]),
             shift(Now, Rest)
     end;
 shift(Now, [_|Rest]) ->
     shift(Now, Rest).
 
 update_item(Key, UpdateOp) ->
-    try
-        ets:update_counter(?TABLE, Key, UpdateOp)
-    catch error:badarg -> error
-    end.
+    ok.
+    %% try
+    %%     ets:update_counter(?TABLE, Key, UpdateOp)
+    %% catch error:badarg -> error
+    %% end.
 
 averages([], Acc) -> Acc;
 averages([{Key, counter}|Rest], Acc) ->

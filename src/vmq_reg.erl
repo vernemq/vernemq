@@ -69,10 +69,13 @@
 
 -record(topic, {name, node}).
 -record(trie, {edge, node_id, vclock=unsplit_vclock:fresh()}).
--record(trie_node, {node_id, edge_count=0, topic, vclock=unsplit_vclock:fresh()}).
+-record(trie_node, {node_id, edge_count=0, topic,
+                    vclock=unsplit_vclock:fresh()}).
 -record(trie_edge, {node_id, word}).
 -record(subscriber, {topic, qos, client}).
 -record(retain, {words, routing_key, payload, vclock=unsplit_vclock:fresh()}).
+
+-type state() :: #state{}.
 
 -spec start_link() -> {ok, pid()} | ignore | {error, atom()}.
 start_link() ->
@@ -94,40 +97,35 @@ start_link() ->
     end,
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec subscribe(username() | plugin_id(),client_id(),[{topic(), qos()}]) ->
-    ok | {error, not_allowed | [any(),...]}.
+-spec subscribe(username() | plugin_id(), client_id(), [{topic(), qos()}]) ->
+    ok | {error, not_allowed | [any(), ...]}.
 subscribe(User, ClientId, Topics) ->
     vmq_cluster:if_ready(fun subscribe_/3, [User, ClientId, Topics]).
 
--spec subscribe_(username() | plugin_id(),client_id(),[{topic(), qos()}]) ->
-    'ok' | {'error','not_allowed' | [any(),...]}.
+-spec subscribe_(username() | plugin_id(), client_id(), [{topic(), qos()}]) ->
+    'ok' | {'error','not_allowed'}.
 subscribe_(User, ClientId, Topics) ->
     case vmq_hook:only(auth_on_subscribe, [User, ClientId, Topics]) of
         ok ->
             vmq_hook:all(on_subscribe, [User, ClientId, Topics]),
-            case subscribe_tx(ClientId, Topics, []) of
-                [] ->
-                    ok;
-                Errors ->
-                    {error, Errors}
-            end;
+            subscribe_tx(ClientId, Topics);
         not_found ->
             {error, not_allowed}
     end.
 
--spec subscribe_tx(client_id(),[{topic(),qos()}],[any()]) -> [any()].
-subscribe_tx(_, [], Errors) -> Errors;
-subscribe_tx(ClientId, [{Topic, Qos}|Rest], Errors) ->
+-spec subscribe_tx(client_id(), [{topic(), qos()}]) -> 'ok'.
+subscribe_tx(_, []) -> ok;
+subscribe_tx(ClientId, [{Topic, Qos}|Rest]) ->
     transaction(fun() -> add_subscriber(Topic, Qos, ClientId) end),
     vmq_systree:incr_subscription_count(),
     deliver_retained(self(), Topic, Qos),
-    subscribe_tx(ClientId, Rest, Errors).
+    subscribe_tx(ClientId, Rest).
 
--spec unsubscribe(username() | plugin_id(),client_id(),[topic()]) -> any().
+-spec unsubscribe(username() | plugin_id(), client_id(), [topic()]) -> any().
 unsubscribe(User, ClientId, Topics) ->
     vmq_cluster:if_ready(fun unsubscribe_/3, [User, ClientId, Topics]).
 
--spec unsubscribe_(username() | plugin_id(),client_id(),[topic()]) -> 'ok'.
+-spec unsubscribe_(username() | plugin_id(), client_id(), [topic()]) -> 'ok'.
 unsubscribe_(User, ClientId, Topics) ->
     lists:foreach(fun(Topic) ->
                           del_subscriber(Topic, ClientId),
@@ -140,13 +138,14 @@ unsubscribe_(User, ClientId, Topics) ->
 subscriptions(RoutingKey) ->
     subscriptions(match(RoutingKey), []).
 
--spec subscriptions([#topic{}],_) -> [{client_id(), qos()}].
+-spec subscriptions([topic()], _) -> [{client_id(), qos()}].
 subscriptions([], Acc) -> Acc;
 subscriptions([#topic{name=Topic, node=Node}|Rest], Acc) when Node == node() ->
     subscriptions(Rest,
                   lists:foldl(
                     fun
-                        (#subscriber{client=ClientId, qos=Qos}, Acc1) when Qos > 0 ->
+                        (#subscriber{client=ClientId,
+                                     qos=Qos}, Acc1) when Qos > 0 ->
                             [{ClientId, Qos}|Acc1];
                               (_, Acc1) ->
                             Acc1
@@ -159,7 +158,7 @@ subscriptions_for_client(ClientId) ->
                               #subscriber{client=ClientId, _='_'}),
     [{T, Q} || #subscriber{topic=T, qos=Q} <- Res].
 
--spec register_client(client_id(),flag()) -> ok | {error, _}.
+-spec register_client(client_id(), flag()) -> ok | {error, _}.
 register_client(ClientId, CleanSession) ->
     vmq_reg_leader:register_client(self(), ClientId, CleanSession).
 
@@ -179,7 +178,8 @@ teardown_session(ProxyPid, ClientId, CleanSession) ->
     NodeWithSession.
 
 session_proxy(ClientPid, ClientId, Node) ->
-    spawn_link(fun() -> session_proxy(ClientPid, ClientId, Node, [], running) end).
+    spawn_link(fun() -> session_proxy(ClientPid,
+                                      ClientId, Node, [], running) end).
 
 session_proxy(ClientPid, ClientId, Node, Msgs, all_finished) ->
     MsgRefs =
@@ -187,7 +187,8 @@ session_proxy(ClientPid, ClientId, Node, Msgs, all_finished) ->
                         vmq_session:deliver_bin(ClientPid, Term),
                         Acc;
                    ({deliver, RoutingKey, Payload, QoS, Dup, MsgRef}, Acc) ->
-                        LocalMsgRef = vmq_msg_store:store(ClientId, RoutingKey, Payload),
+                        LocalMsgRef = vmq_msg_store:store(ClientId,
+                                                          RoutingKey, Payload),
                         vmq_session:deliver(ClientPid, RoutingKey, Payload,
                                             QoS, false, Dup, LocalMsgRef),
                         [MsgRef|Acc]
@@ -197,7 +198,8 @@ session_proxy(ClientPid, ClientId, Node, Msgs, {sender_finished, NrOfMsgs})
   when length(Msgs) < NrOfMsgs ->
     receive
         {ClientId, M} ->
-            session_proxy(ClientPid, ClientId, Node, [M|Msgs], {sender_finished, NrOfMsgs})
+            session_proxy(ClientPid, ClientId, Node, [M|Msgs],
+                          {sender_finished, NrOfMsgs})
     end;
 session_proxy(ClientPid, ClientId, Node, Msgs, {sender_finished, _}) ->
     session_proxy(ClientPid, ClientId, Node, Msgs, all_finished);
@@ -207,12 +209,13 @@ session_proxy(ClientPid, ClientId, Node, Msgs, Status) ->
             when length(Msgs) == NrOfMsgs ->
             session_proxy(ClientPid, ClientId, Node, Msgs, all_finished);
         {all_delivered, NrOfMsgs, Node, ClientId} ->
-            session_proxy(ClientPid, ClientId, Node, Msgs, {sender_finished, NrOfMsgs});
+            session_proxy(ClientPid, ClientId, Node, Msgs,
+                          {sender_finished, NrOfMsgs});
         {ClientId, M} ->
             session_proxy(ClientPid, ClientId, Node, [M|Msgs], Status)
     end.
 
--spec register_client_(pid(), client_id(),flag()) -> 'ok'.
+-spec register_client_(pid(), client_id(), flag()) -> 'ok'.
 register_client_(ClientPid, ClientId, CleanSession) ->
     %% cleanup session for this client id if needed
     case CleanSession of
@@ -226,12 +229,16 @@ register_client_(ClientPid, ClientId, CleanSession) ->
       fun(Node, Acc) ->
               SessionProxy = case CleanSession of
                                  true -> undefined;
-                                 false -> session_proxy(ClientPid, ClientId, Node)
+                                 false -> session_proxy(ClientPid,
+                                                        ClientId, Node)
                              end,
               Res =
               case Node == node() of
-                  true -> teardown_session(SessionProxy, ClientId, CleanSession);
-                  false -> rpc:call(Node, ?MODULE, teardown_session, [SessionProxy, ClientId, CleanSession])
+                  true -> teardown_session(SessionProxy, ClientId,
+                                           CleanSession);
+                  false -> rpc:call(Node, ?MODULE,
+                                    teardown_session,
+                                    [SessionProxy, ClientId, CleanSession])
               end,
               [{SessionProxy, Res}|Acc]
       end, [], vmq_cluster:nodes()),
@@ -240,9 +247,12 @@ register_client_(ClientPid, ClientId, CleanSession) ->
     NNodesWithSession = lists:flatten(NodesWithSession),
     case length(NNodesWithSession) of
         L when L =< 1 -> ok;
-        _ -> lager:warning("client ~p was active on multiple nodes ~p", [ClientId, NNodesWithSession])
+        _ -> lager:warning("client ~p was active on multiple nodes ~p",
+                           [ClientId, NNodesWithSession])
     end,
-    ok = gen_server:call(?MODULE, {monitor, ClientPid, ClientId, CleanSession}, infinity),
+    ok = gen_server:call(?MODULE, {monitor,
+                                   ClientPid, ClientId, CleanSession},
+                         infinity),
     wait_till_replicated(SessionProxies).
 
 wait_till_replicated([Pid|Rest] = SessionProxyPids) when is_pid(Pid) ->
@@ -258,47 +268,78 @@ wait_till_replicated([]) -> ok.
 
 
 
--spec publish(username() | plugin_id(),client_id(), undefined | msg_ref(),
-              routing_key(),binary(),flag()) -> 'ok' | {'error',_}.
+-spec publish(username() | plugin_id(), client_id(), undefined | msg_ref(),
+              routing_key(), binary(), flag()) -> 'ok' | {'error', _}.
 publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain) ->
     MatchedTopics = match(RoutingKey),
     case IsRetain of
         true ->
-            vmq_cluster:if_ready(fun publish_/7, [User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics]);
+            vmq_cluster:if_ready(fun publish_/7,
+                                 [User, ClientId, MsgId, RoutingKey,
+                                  Payload, IsRetain, MatchedTopics]);
         false ->
-            case check_single_node(node(), MatchedTopics, length(MatchedTopics)) of
+            case check_single_node(node(), MatchedTopics,
+                                   length(MatchedTopics)) of
                 true ->
                     %% in case we have only subscriptions on one single node
-                    %% we can deliver the messages even in case of network partitions
-                    lists:foreach(fun(#topic{name=Name}) ->
-                                          route(User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain)
-                                  end, MatchedTopics);
+                    %% we can deliver the messages even in case
+                    %% of network partitions
+                    route_for_each(User, ClientId, MsgId, RoutingKey,
+                                   Payload, IsRetain, MatchedTopics);
                 false ->
-                    vmq_cluster:if_ready(fun publish__/7, [User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics])
+                    publish_if_ready(User, ClientId, MsgId,
+                                     RoutingKey, Payload,
+                                     IsRetain, MatchedTopics)
             end
     end.
 
--spec publish_(username() | plugin_id(),client_id(),msg_id(),
-               routing_key(),payload(),'true',[#topic{}]) -> 'ok'.
-publish_(User, ClientId, MsgId, RoutingKey, Payload, IsRetain = true, MatchedTopics) ->
-    ok = retain_action(RoutingKey, Payload),
-    publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics).
 
--spec publish__(username() | plugin_id(),client_id(),msg_id(),
-                routing_key(),payload(),flag(),[#topic{}]) -> 'ok'.
-publish__(User, ClientId, MsgId, RoutingKey, Payload, IsRetain, MatchedTopics) ->
+publish_if_ready(User, ClientId, MsgId, RoutingKey, Payload, IsRetain,
+                 MatchedTopics) ->
+    vmq_cluster:if_ready(fun publish__/7, [User,
+                                           ClientId,
+                                           MsgId,
+                                           RoutingKey,
+                                           Payload,
+                                           IsRetain,
+                                           MatchedTopics]).
+                
+route_for_each(User, ClientId, MsgId, RoutingKey,
+               Payload, IsRetain, MatchedTopics) ->
+    lists:foreach(fun(#topic{name=Name}) ->
+                          route(User, ClientId,
+                                MsgId, Name, RoutingKey,
+                                Payload, IsRetain)
+                  end, MatchedTopics).
+               
+-spec publish_(username() | plugin_id(), client_id(), msg_id(),
+               routing_key(), payload(), 'true',
+               [topic()]) -> 'ok'.
+publish_(User, ClientId, MsgId, RoutingKey,
+         Payload, IsRetain = true, MatchedTopics) ->
+    ok = retain_action(RoutingKey, Payload),
+    publish__(User, ClientId, MsgId, RoutingKey,
+              Payload, IsRetain, MatchedTopics).
+
+-spec publish__(username() | plugin_id(), client_id(), msg_id(),
+                routing_key(), payload(), flag(), [topic()]) -> 'ok'.
+publish__(User, ClientId, MsgId, RoutingKey,
+          Payload, IsRetain, MatchedTopics) ->
     lists:foreach(
       fun(#topic{name=Name, node=Node}) ->
               case Node == node() of
                   true ->
-                      route(User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain);
+                      route(User, ClientId, MsgId,
+                            Name, RoutingKey, Payload, IsRetain);
                   false ->
-                      rpc:call(Node, ?MODULE, route, [User, ClientId, MsgId, Name, RoutingKey, Payload, IsRetain])
+                      rpc:call(Node, ?MODULE, route,
+                               [User, ClientId, MsgId,
+                                Name, RoutingKey, Payload, IsRetain])
               end
       end, MatchedTopics).
 
 
--spec check_single_node(atom(),[#topic{}],integer()) -> boolean().
+-spec check_single_node(atom(), [topic()], integer()) -> boolean().
 check_single_node(Node, [#topic{node=Node}|Rest], Acc) ->
     check_single_node(Node, Rest, Acc -1);
 check_single_node(Node, [_|Rest], Acc) ->
@@ -306,7 +347,7 @@ check_single_node(Node, [_|Rest], Acc) ->
 check_single_node(_, [], 0) -> true;
 check_single_node(_, [], _) -> false.
 
--spec retain_action(routing_key(),payload()) -> 'ok'.
+-spec retain_action(routing_key(), payload()) -> 'ok'.
 retain_action(RoutingKey, <<>>) ->
     %% retain-delete action
     Words = emqtt_topic:words(RoutingKey),
@@ -319,20 +360,24 @@ retain_action(RoutingKey, Payload) ->
       fun() ->
               case mnesia:wread({vmq_retain, Words}) of
                   [] ->
-                      mnesia:write(vmq_retain, #retain{words=Words, routing_key=RoutingKey,
+                      mnesia:write(vmq_retain, #retain{words=Words,
+                                                       routing_key=RoutingKey,
                                                        payload=Payload}, write);
                   [#retain{payload=Payload}] ->
                       %% same retain message, no update needed
                       ok;
                   [#retain{vclock=VClock} = Old] ->
-                      mnesia:write(vmq_retain, Old#retain{payload=Payload,
-                                                          vclock=unsplit_vclock:increment(node(), VClock)
-                                                         }, write)
+                      mnesia:write(vmq_retain,
+                                   Old#retain{payload=Payload,
+                                              vclock=
+                                                  unsplit_vclock:increment(
+                                                    node(), VClock)
+                                             }, write)
               end
       end),
     ok.
 
--spec deliver_retained(pid(),topic(),qos()) -> 'ok'.
+-spec deliver_retained(pid(), topic(), qos()) -> 'ok'.
 deliver_retained(ClientPid, Topic, QoS) ->
     Words = [case W of
                  "+" -> '_';
@@ -344,7 +389,8 @@ deliver_retained(ClientPid, Topic, QoS) ->
         _ -> Words
     end,
     RetainedMsgs = mnesia:dirty_match_object(vmq_retain,
-                                             #retain{words=NewWords, routing_key='_',
+                                             #retain{words=NewWords,
+                                                     routing_key='_',
                                                      payload='_', vclock='_'}),
     lists:foreach(
       fun(#retain{routing_key=RoutingKey, payload=Payload}) ->
@@ -384,26 +430,33 @@ wait_until_stopped(ClientPid) ->
 
 
 %route locally, should only be called by publish
--spec route(username() | plugin_id(),client_id(),msg_id(),topic(),
-            routing_key(),payload(),flag()) -> 'ok'.
-route(SendingUser, SendingClientId, MsgId, Topic, RoutingKey, Payload, IsRetain) ->
+-spec route(username() | plugin_id(), client_id(), msg_id(), topic(),
+            routing_key(), payload(), flag()) -> 'ok'.
+route(SendingUser, SendingClientId, MsgId,
+      Topic, RoutingKey, Payload, IsRetain) ->
     Subscribers = mnesia:dirty_read(vmq_subscriber, Topic),
     FilteredSubscribers = vmq_hook:every(filter_subscribers, Subscribers,
                                          [SendingUser, SendingClientId,
                                           MsgId, RoutingKey, Payload]),
     lists:foldl(fun
-                    (#subscriber{qos=Qos, client=ClientId}, AccMsgId) when Qos > 0 ->
-                          MaybeNewMsgId = vmq_msg_store:store(SendingClientId, AccMsgId, RoutingKey, Payload),
-                          deliver(ClientId, RoutingKey, Payload, IsRetain, Qos, MaybeNewMsgId),
+                    (#subscriber{qos=Qos, client=ClientId},
+                     AccMsgId) when Qos > 0 ->
+                          MaybeNewMsgId = vmq_msg_store:store(SendingClientId,
+                                                              AccMsgId,
+                                                              RoutingKey,
+                                                              Payload),
+                          deliver(ClientId, RoutingKey, Payload,
+                                  IsRetain, Qos, MaybeNewMsgId),
                           MaybeNewMsgId;
                     (#subscriber{qos=0, client=ClientId}, AccMsgId) ->
-                          deliver(ClientId, RoutingKey, Payload, IsRetain, 0, undefined),
+                          deliver(ClientId, RoutingKey, Payload,
+                                  IsRetain, 0, undefined),
                           AccMsgId
                 end, MsgId, FilteredSubscribers),
     ok.
 
--spec deliver(client_id(),routing_key(),payload(),flag(),
-              qos(),msg_ref()) -> 'ok' | {'error','not_found'}.
+-spec deliver(client_id(), routing_key(), payload(), flag(),
+              qos(), msg_ref()) -> 'ok' | {'error', 'not_found'}.
 deliver(_, _, <<>>, true, _, Ref) ->
     %% <<>> --> retain-delete action, we don't deliver the empty frame
     vmq_msg_store:deref(Ref),
@@ -411,7 +464,8 @@ deliver(_, _, <<>>, true, _, Ref) ->
 deliver(ClientId, RoutingKey, Payload, _, Qos, Ref) ->
     case get_client_pid(ClientId) of
         {ok, ClientPid} ->
-            vmq_session:deliver(ClientPid, RoutingKey, Payload, Qos, false, false, Ref);
+            vmq_session:deliver(ClientPid, RoutingKey,
+                                Payload, Qos, false, false, Ref);
         _ when Qos > 0 ->
             vmq_msg_store:defer_deliver(ClientId, Qos, Ref),
             ok;
@@ -419,35 +473,36 @@ deliver(ClientId, RoutingKey, Payload, _, Qos, Ref) ->
             ok
     end.
 
--spec match(routing_key()) -> [#topic{}].
+-spec match(routing_key()) -> [topic()].
 match(Topic) when is_list(Topic) ->
-    TrieNodes = mnesia:async_dirty(fun trie_match/1, [emqtt_topic:words(Topic)]),
+    TrieNodes = mnesia:async_dirty(fun trie_match/1,
+                                   [emqtt_topic:words(Topic)]),
     Names = [Name || #trie_node{topic=Name} <- TrieNodes, Name=/= undefined],
     lists:flatten([mnesia:dirty_read(vmq_trie_topic, Name) || Name <- Names]).
 
 -spec vmq_table_defs() -> [{atom(), [{atom(), any()}]}].
 vmq_table_defs() ->
     [
-     {vmq_trie,[
+     {vmq_trie, [
        {record_name, trie},
        {attributes, record_info(fields, trie)},
        {disc_copies, [node()]},
        {match, #trie{_='_'}},
        unsplit_vclock_props(#trie.vclock)]},
-     {vmq_trie_node,[
+     {vmq_trie_node, [
        {record_name, trie_node},
        {attributes, record_info(fields, trie_node)},
        {disc_copies, [node()]},
        {match, #trie_node{_='_'}},
        unsplit_vclock_props(#trie_node.vclock)]},
-     {vmq_trie_topic,[
+     {vmq_trie_topic, [
        {record_name, topic},
        {type, bag},
        {attributes, record_info(fields, topic)},
        {disc_copies, [node()]},
        {match, #topic{_='_'}},
        unsplit_bag_props()]},
-     {vmq_subscriber,[
+     {vmq_subscriber, [
         {record_name, subscriber},
         {type, bag},
         {attributes, record_info(fields, subscriber)},
@@ -475,7 +530,7 @@ unsplit_vclock_props(Pos) ->
 reset_all_tables([]) ->
     %% called using vmq-admin, mainly for test purposes
     %% you don't want to call this during production
-    [reset_table(T) || {T,_}<- vmq_table_defs()],
+    [reset_table(T) || {T, _}<- vmq_table_defs()],
     ets:delete_all_objects(vmq_session),
     ok.
 
@@ -527,7 +582,8 @@ direct_plugin_exports(Mod) ->
             wait_til_ready(),
             CallingPid = self(),
             User = {plugin, Mod, CallingPid},
-            ok = publish(User, ClientId(CallingPid), undefined, Topic, Payload, false),
+            ok = publish(User, ClientId(CallingPid),
+                         undefined, Topic, Payload, false),
             ok
     end,
 
@@ -541,21 +597,26 @@ direct_plugin_exports(Mod) ->
     end,
     {RegisterFun, PublishFun, SubscribeFun}.
 
--spec add_subscriber(topic(),qos(),client_id()) -> ok | ignore | abort.
+-spec add_subscriber(topic(), qos(), client_id()) -> ok | ignore | abort.
 add_subscriber(Topic, Qos, ClientId) ->
-    mnesia:write(vmq_subscriber, #subscriber{topic=Topic, qos=Qos, client=ClientId}, write),
+    mnesia:write(vmq_subscriber, #subscriber{topic=Topic,
+                                             qos=Qos, client=ClientId}, write),
     mnesia:write(vmq_trie_topic, emqtt_topic:new(Topic), write),
     case mnesia:read(vmq_trie_node, Topic) of
         [TrieNode=#trie_node{topic=undefined, vclock=VClock}] ->
-            mnesia:write(vmq_trie_node, TrieNode#trie_node{topic=Topic,
-                                                           vclock=unsplit_vclock:increment(node(), VClock)}, write);
+            mnesia:write(vmq_trie_node,
+                         TrieNode#trie_node{
+                           topic=Topic,
+                           vclock=unsplit_vclock:increment(node(),
+                                                           VClock)}, write);
         [#trie_node{topic=Topic}] ->
             ignore;
         [] ->
             %add trie path
             [trie_add_path(Triple) || Triple <- emqtt_topic:triples(Topic)],
             %add last node
-            mnesia:write(vmq_trie_node, #trie_node{node_id=Topic, topic=Topic}, write)
+            mnesia:write(vmq_trie_node, #trie_node{node_id=Topic,
+                                                   topic=Topic}, write)
     end.
 
 
@@ -565,7 +626,9 @@ del_subscriber(Topic, ClientId) ->
 
 -spec del_subscriber_tx(topic() | '_' ,client_id()) -> ok.
 del_subscriber_tx(Topic, ClientId) ->
-    Objs = mnesia:match_object(vmq_subscriber, #subscriber{topic=Topic, client=ClientId, _='_'}, write),
+    Objs = mnesia:match_object(vmq_subscriber,
+                               #subscriber{topic=Topic,
+                                           client=ClientId, _='_'}, write),
     lists:foreach(fun(#subscriber{topic=T} = Obj) ->
                           mnesia:delete_object(vmq_subscriber, Obj, write),
                           del_topic(T)
@@ -592,8 +655,10 @@ trie_delete(Topic) ->
             mnesia:delete({vmq_trie_node, Topic}),
             trie_delete_path(lists:reverse(emqtt_topic:triples(Topic)));
         [#trie_node{vclock=VClock} = TrieNode] ->
-            mnesia:write(vmq_trie_node, TrieNode#trie_node{topic=Topic,
-                                                           vclock=unsplit_vclock:increment(node(), VClock)},
+            mnesia:write(vmq_trie_node,
+                         TrieNode#trie_node{
+                           topic=Topic,
+                           vclock=unsplit_vclock:increment(node(), VClock)},
                          write);
         [] ->
             ignore
@@ -603,20 +668,21 @@ trie_delete(Topic) ->
 trie_match(Words) ->
     trie_match(root, Words, []).
 
--spec trie_match(_,maybe_improper_list(),_) -> any().
+-spec trie_match(_, maybe_improper_list(), _) -> any().
 trie_match(NodeId, [], ResAcc) ->
     mnesia:read(vmq_trie_node, NodeId) ++ 'trie_match_#'(NodeId, ResAcc);
 
 trie_match(NodeId, [W|Words], ResAcc) ->
     lists:foldl(
       fun(WArg, Acc) ->
-              case mnesia:read(vmq_trie, #trie_edge{node_id=NodeId, word=WArg}) of
+              case mnesia:read(vmq_trie,
+                               #trie_edge{node_id=NodeId, word=WArg}) of
                   [#trie{node_id=ChildId}] -> trie_match(ChildId, Words, Acc);
                   [] -> Acc
               end
       end, 'trie_match_#'(NodeId, ResAcc), [W, "+"]).
 
--spec 'trie_match_#'(_,_) -> any().
+-spec 'trie_match_#'(_, _) -> any().
 'trie_match_#'(NodeId, ResAcc) ->
     case mnesia:read(vmq_trie, #trie_edge{node_id=NodeId, word="#"}) of
         [#trie{node_id=ChildId}] ->
@@ -625,26 +691,31 @@ trie_match(NodeId, [W|Words], ResAcc) ->
             ResAcc
     end.
 
--spec trie_add_path({'root' | [any()],[any()],[any()]}) -> any().
+-spec trie_add_path({'root' | [any()], [any()], [any()]}) -> any().
 trie_add_path({Node, Word, Child}) ->
     Edge = #trie_edge{node_id=Node, word=Word},
     case mnesia:read(vmq_trie_node, Node) of
         [TrieNode = #trie_node{edge_count=Count, vclock=VClock}] ->
             case mnesia:read(vmq_trie, Edge) of
                 [] ->
-                    mnesia:write(vmq_trie_node, TrieNode#trie_node{edge_count=Count+1,
-                                                                   vclock=unsplit_vclock:increment(node(), VClock)
-                                                                  }, write),
-                    mnesia:write(vmq_trie, #trie{edge=Edge, node_id=Child}, write);
+                    mnesia:write(vmq_trie_node,
+                                 TrieNode#trie_node{
+                                   edge_count=Count+1,
+                                   vclock=unsplit_vclock:increment(node(),
+                                                                   VClock)
+                                  }, write),
+                    mnesia:write(vmq_trie, #trie{edge=Edge,
+                                                 node_id=Child}, write);
                 [_] ->
                     ok
             end;
         [] ->
-            mnesia:write(vmq_trie_node, #trie_node{node_id=Node, edge_count=1}, write),
+            mnesia:write(vmq_trie_node,
+                         #trie_node{node_id=Node, edge_count=1}, write),
             mnesia:write(vmq_trie, #trie{edge=Edge, node_id=Child}, write)
     end.
 
--spec trie_delete_path([{'root' | [any()],[any()],[any()]}]) -> any().
+-spec trie_delete_path([{'root' | [any()], [any()], [any()]}]) -> any().
 trie_delete_path([]) ->
     ok;
 trie_delete_path([{NodeId, Word, _}|RestPath]) ->
@@ -655,13 +726,18 @@ trie_delete_path([{NodeId, Word, _}|RestPath]) ->
             mnesia:delete({vmq_trie_node, NodeId}),
             trie_delete_path(RestPath);
         [TrieNode=#trie_node{edge_count=1, topic=_, vclock=VClock}] ->
-            mnesia:write(vmq_trie_node, TrieNode#trie_node{edge_count=0,
-                                                           vclock=unsplit_vclock:increment(node(), VClock)
-                                                          }, write);
-        [TrieNode=#trie_node{edge_count=Count, vclock=VClock}] ->
-            mnesia:write(vmq_trie_node, TrieNode#trie_node{edge_count=Count-1,
-                                                           vclock=unsplit_vclock:increment(node(), VClock)
-                                                          }, write);
+            mnesia:write(vmq_trie_node,
+                         TrieNode#trie_node{
+                           edge_count=0,
+                           vclock=unsplit_vclock:increment(node(), VClock)
+                          }, write);
+        [TrieNode=#trie_node{
+                     edge_count=Count, vclock=VClock}] ->
+            mnesia:write(vmq_trie_node,
+                         TrieNode#trie_node{
+                           edge_count=Count-1,
+                           vclock=unsplit_vclock:increment(node(), VClock)
+                          }, write);
         [] ->
             throw({not_found, NodeId})
     end.
@@ -699,8 +775,14 @@ message_queue_monitor() ->
 -spec remove_expired_clients(pos_integer()) -> ok.
 remove_expired_clients(ExpiredSinceSeconds) ->
     ExpiredSince = epoch() - ExpiredSinceSeconds,
-    remove_expired_clients_(ets:select(vmq_session, [{#session{last_seen='$1', client_id='$2', pid='$3', _='_'},
-                                             [{'<', '$1', ExpiredSince}], [['$2', '$3']]}], 100)).
+    remove_expired_clients_(ets:select(vmq_session,
+                                       [{#session{last_seen='$1',
+                                                  client_id='$2',
+                                                  pid='$3', _='_'},
+                                             [{'<',
+                                               '$1',
+                                               ExpiredSince}],
+                                         [['$2', '$3']]}], 100)).
 
 remove_expired_clients_({[[ClientId, Pid]|Rest], Cont}) ->
     case is_process_alive(Pid) of
@@ -719,7 +801,8 @@ remove_expired_clients_('$end_of_table') ->
     ok.
 
 set_monitors() ->
-    set_monitors(ets:select(vmq_session, [{#session{pid='$1', _='_'},[],['$1']}], 100)).
+    set_monitors(ets:select(vmq_session,
+                            [{#session{pid='$1', _='_'}, [], ['$1']}], 100)).
 
 set_monitors('$end_of_table') ->
     ok;
@@ -729,8 +812,9 @@ set_monitors({Pids, Cont}) ->
 
 
 fix_session_table() ->
-    fix_session_table(ets:select(vmq_session, [{#session{client_id='$1', pid='$2', _='_'},
-                                             [], [['$1', '$2']]}], 100), []).
+    fix_session_table(ets:select(vmq_session,
+                                 [{#session{client_id='$1', pid='$2', _='_'},
+                                   [], [['$1', '$2']]}], 100), []).
 fix_session_table({[[ClientId, Pid]|Rest], Cont}, Acc) ->
     NewAcc =
     case get_client_pid(ClientId) of
@@ -748,7 +832,9 @@ fix_session_table('$end_of_table', Acc) ->
                      ets:delete(vmq_session, ClientId),
                      vmq_msg_store:clean_session(ClientId);
                  [Session] ->
-                     ets:insert(vmq_session, Session#session{pid=undefined, monitor=undefined})
+                     ets:insert(vmq_session,
+                                Session#session{pid=undefined,
+                                                monitor=undefined})
              end
          end || ClientId <- Acc],
     ok.
@@ -759,7 +845,7 @@ fix_session_table('$end_of_table', Acc) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec init([any()]) -> {ok, []}.
+-spec init([]) -> {ok, state()}.
 init([]) ->
     spawn_link(fun() -> message_queue_monitor() end),
     fix_session_table(),
@@ -782,7 +868,7 @@ handle_call({monitor, ClientPid, ClientId, CleanSession}, _From, State) ->
             demonitor(MRef, [flush]),
             case OldClean of
                 true ->
-                    transaction(fun() -> del_subscriber_tx('_', ClientId) end),
+                    del_subscriber_fun(ClientId),
                     vmq_msg_store:clean_session(ClientId);
                 false ->
                     vmq_systree:incr_inactive_clients()
@@ -808,7 +894,9 @@ handle_info({'DOWN', MRef, process, _Pid, _Reason}, State) ->
 -spec terminate(_, []) -> ok.
 terminate(_Reason, _State) ->
     SessionFile = vmq_config:get_env(session_dump_file, "session.dump"),
-    case ets:tab2file(vmq_session, SessionFile, [{extended_info, [md5sum, object_count]}]) of
+    case ets:tab2file(vmq_session,
+                      SessionFile,
+                      [{extended_info, [md5sum, object_count]}]) of
         ok ->
             ok;
         {error, Reason} ->
@@ -827,11 +915,14 @@ epoch() ->
 unregister_client(MRef) ->
     case ets:match_object(vmq_session, #session{monitor=MRef, _='_'}) of
         [#session{client_id=ClientId, clean=true}] ->
-            transaction(fun() -> del_subscriber_tx('_', ClientId) end),
+            del_subscriber_fun(ClientId),
             ets:delete(vmq_session, ClientId),
             vmq_msg_store:clean_session(ClientId);
         [#session{clean=false} = Obj] ->
-            ets:insert(vmq_session, Obj#session{pid=undefined,monitor=undefined,last_seen=epoch()}),
+            ets:insert(vmq_session,
+                       Obj#session{pid=undefined,
+                                   monitor=undefined,
+                                   last_seen=epoch()}),
             vmq_systree:incr_inactive_clients();
         [] ->
             {error, not_found}
@@ -843,18 +934,7 @@ transaction(TxFun) ->
     %% executes on a different node.
     case vmq_worker:submit(
            fun() ->
-                   case mnesia:is_transaction() of
-                       false ->
-                           DiskLogBefore = mnesia_dumper:get_log_writes(),
-                           Res = mnesia:sync_transaction(TxFun),
-                           DiskLogAfter  = mnesia_dumper:get_log_writes(),
-                           case DiskLogAfter == DiskLogBefore of
-                               true  -> Res;
-                               false -> {sync, Res}
-                           end;
-                       true  ->
-                           mnesia:sync_transaction(TxFun)
-                   end
+                   sync_transaction_(TxFun)
            end) of
         {sync, {atomic, Result}} ->
             %% Rabbit enforces that data is synced to disk by
@@ -864,3 +944,20 @@ transaction(TxFun) ->
         {atomic, Result} -> Result;
         {aborted, Reason} -> throw({error, Reason})
     end.
+
+sync_transaction_(TxFun) ->
+    case mnesia:is_transaction() of
+        false ->
+            DiskLogBefore = mnesia_dumper:get_log_writes(),
+            Res = mnesia:sync_transaction(TxFun),
+            DiskLogAfter  = mnesia_dumper:get_log_writes(),
+            case DiskLogAfter == DiskLogBefore of
+                true  -> Res;
+                false -> {sync, Res}
+            end;
+        true  ->
+            mnesia:sync_transaction(TxFun)
+    end.
+
+del_subscriber_fun(ClientId) ->
+    transaction(fun() -> del_subscriber_tx('_', ClientId) end).

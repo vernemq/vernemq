@@ -29,7 +29,7 @@
 %% Application callbacks
 %% ===================================================================
 
--spec start(_,_) -> {'error',_} | {'ok',pid()} | {'ok', pid(), _}.
+-spec start(_, _) -> {'error', _} | {'ok', pid()} | {'ok', pid(), _}.
 start(_StartType, _StartArgs) ->
     Success = maybe_hipe_compile(),
     warn_if_hipe_compilation_failed(Success),

@@ -33,7 +33,9 @@
 init({tcp, http}, _Req, _Opts) ->
     {upgrade, protocol, cowboy_websocket}.
 
--spec websocket_init(_,cowboy_req:req(),maybe_improper_list()) -> {'shutdown',cowboy_req:req()} | {'ok',cowboy_req:req(),'stop' | {_,_}}.
+-spec websocket_init(_, cowboy_req:req(), maybe_improper_list()) ->
+                            {'shutdown', cowboy_req:req()} | 
+                            {'ok',cowboy_req:req(),'stop' | {_,_}}.
 websocket_init(_TransportName, Req, Opts) ->
 
     case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req) of
@@ -43,8 +45,9 @@ websocket_init(_TransportName, Req, Opts) ->
         {ok, Subprotocols, Req2} ->
             case lists:member(?SUBPROTO, Subprotocols) of
                 true ->
-                    Req3 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>,
-                                                      <<"mqttv3.1">>, Req2),
+                    Req3 = 
+                        cowboy_req:set_resp_header(<<"sec-websocket-protocol">>,
+                                                   <<"mqttv3.1">>, Req2),
                     {SessionPid, MRef} = start_session(Req3, Opts),
                     {ok, Req3, #st{session=SessionPid, session_monitor=MRef}};
                 false ->
@@ -52,17 +55,20 @@ websocket_init(_TransportName, Req, Opts) ->
             end
     end.
 
--spec websocket_handle({binary, binary()} | any(), cowboy_req:req(), any()) -> {ok | shutdown, cowboy_req:req(), any()}.
+-spec websocket_handle({binary, binary()} | any(), cowboy_req:req(), any()) -> 
+                              {ok | shutdown, cowboy_req:req(), any()}.
 websocket_handle({binary, Data}, Req, #st{session=SessionPid, buffer=Buffer,
-                                             parser_state=ParserState} = State) ->
-    NewParserState = process_bytes(SessionPid, <<Buffer/binary, Data/binary>>, ParserState),
+                                          parser_state=ParserState} = State) ->
+    NewParserState = process_bytes(SessionPid, <<Buffer/binary, 
+                                                 Data/binary>>, ParserState),
     vmq_systree:incr_bytes_received(byte_size(Data)),
     {ok, Req, State#st{parser_state=NewParserState}};
 
 websocket_handle(_Data, Req, State) ->
     {ok, Req, State}.
 
--spec websocket_info({reply, binary()} | any(), cowboy_req:req(), any()) -> {ok | shutdown, cowboy_req:req(), any()}.
+-spec websocket_info({reply, binary()} | any(), cowboy_req:req(), any()) -> 
+                            {ok | shutdown, cowboy_req:req(), any()}.
 websocket_info({reply, Frame}, Req, State) ->
     Data =
     case is_binary(Frame) of
@@ -79,14 +85,15 @@ websocket_info({'DOWN', _, process, Pid, Reason}, Req, State) ->
     {shutdown, Req, State#st{session_monitor=undefined}}.
 
 -spec websocket_terminate(_, cowboy_req:req(), any()) -> ok.
-websocket_terminate(_Reason, _Req, #st{session=SessionPid, session_monitor=MRef}) ->
+websocket_terminate(_Reason, _Req, #st{session=SessionPid, 
+                                       session_monitor=MRef}) ->
     case MRef of
         undefined -> ok;
         _ -> demonitor(MRef, [flush])
     end,
     case is_process_alive(SessionPid) of
         true ->
-            vmq_session:stop(SessionPid);
+            vmq_session:disconnect(SessionPid);
         false ->
             ok
     end,
@@ -96,14 +103,15 @@ websocket_terminate(_Reason, _Req, #st{session=SessionPid, session_monitor=MRef}
 start_session(Req, Opts) ->
     Self = self(),
     {Peer, _} = cowboy_req:peer(Req),
-    {ok, SessionPid} = vmq_session:start_link(Peer, fun(Frame) ->
-                                                            send(Self, {reply, Frame})
-                                                    end, Opts),
+    {ok, SessionPid} = 
+        vmq_session:start_link(Peer, 
+                               fun(Frame) -> send(Self, {reply, Frame})
+                               end, Opts),
     MRef = monitor(process, SessionPid),
     vmq_systree:incr_socket_count(),
     {SessionPid, MRef}.
 
--spec send(pid(),{'reply',_}) -> 'ok' | {'error','process_not_alive'}.
+-spec send(pid(), {'reply',_}) -> 'ok' | {'error','process_not_alive'}.
 send(Pid, Msg) ->
     case is_process_alive(Pid) of
         true ->

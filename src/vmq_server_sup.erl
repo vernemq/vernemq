@@ -22,7 +22,8 @@
 -export([init/1]).
 
 %% Helper macro for declaring children of supervisor
--define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
+-define(CHILD(I, Type, Args), {I, {I, start_link, Args},
+                               permanent, 5000, Type, [I]}).
 
 %% ===================================================================
 %% API functions
@@ -38,7 +39,9 @@ start_link() ->
 %% Supervisor callbacks
 %% ===================================================================
 
--spec init([]) -> {'ok',{{'one_for_one',5,10},[{atom(),{atom(),atom(),list()},permanent,pos_integer(),worker,[atom()]}]}}.
+-spec init([]) -> {'ok', {{'one_for_one', 5, 10},
+                         [{atom(), {atom(), atom(), list()},
+                           permanent, pos_integer(), worker, [atom()]}]}}.
 init([]) ->
     %% we make sure the hooks for vmq_server are registered first
     vmq_hook:start(vmq_server),
@@ -47,7 +50,8 @@ init([]) ->
     WorkerPoolSpec = poolboy:child_spec(vmq_worker_pool,
                                         [{name, {local, vmq_worker_pool}},
                                          {worker_module, vmq_worker},
-                                         {size, erlang:system_info(schedulers)}],
+                                         {size, 
+                                          erlang:system_info(schedulers)}],
                                         []),
     {ok, { {one_for_one, 5, 10}, [
             WorkerPoolSpec,

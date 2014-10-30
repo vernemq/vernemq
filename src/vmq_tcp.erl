@@ -160,7 +160,8 @@ fast_close(ranch_ssl, Socket) ->
     catch port_close(Socket),
     ok.
 
--spec socket_to_common_name(port()) -> undefined | list().
+-spec socket_to_common_name({'sslsocket',_,pid() | {port(),_}}) ->
+                                   'undefined' | [any()].
 socket_to_common_name(Socket) ->
     case ssl:peercert(Socket) of
         {error, no_peercert} ->
