@@ -1,4 +1,3 @@
-%% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -132,11 +131,16 @@ items() ->
 
 -spec init([integer()]) -> {'ok', state()}.
 init([]) ->
-    Interval = application:get_env(vmq_server, interval, 10),
+    Interval = vmq_config:get_env(sys_interval, 10),
     ets:new(?TABLE, [public, named_table, {write_concurrency, true}]),
     init_table(items()),
-    IntervalMS = Interval * 1000,
-    TRef = erlang:send_after(IntervalMS, self(), publish),
+    {IntervalMS, TRef} =
+        case Interval of
+            0 -> {undefined, undefined};
+            _ -> 
+                T = Interval * 1000,
+                {T, erlang:send_after(T, self(), publish)}
+    end,
     erlang:send_after(1000, self(), shift),
     {ok, #state{interval=IntervalMS, ref=TRef}}.
 
@@ -394,11 +398,10 @@ shift(Now, [_|Rest]) ->
     shift(Now, Rest).
 
 update_item(Key, UpdateOp) ->
-    ok.
-    %% try
-    %%     ets:update_counter(?TABLE, Key, UpdateOp)
-    %% catch error:badarg -> error
-    %% end.
+    try
+        ets:update_counter(?TABLE, Key, UpdateOp)
+    catch error:badarg -> error
+    end.
 
 averages([], Acc) -> Acc;
 averages([{Key, counter}|Rest], Acc) ->
