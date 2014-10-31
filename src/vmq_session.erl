@@ -68,7 +68,7 @@
           connection_attempted=false        :: boolean(),
           %% auth backend requirement
           peer                              :: peer(),
-          username                          :: undefined | username() | 
+          username                          :: undefined | username() |
                                                {preauth, string() | undefined},
           msg_log_handler                   :: fun((client_id(), topic(),
                                                     payload()) -> any()),
@@ -97,7 +97,7 @@ start_link(Peer, SendFun, Opts) ->
     gen_fsm:start_link(?MODULE, [Peer, SendFun, Opts], []).
 
 -spec deliver(pid(), topic(), payload(), qos(),
-              flag(), flag(), msg_ref()) -> ok.
+              flag(), flag(), msg_ref() | {{pid(), atom()}, msg_ref()}) -> ok.
 deliver(FsmPid, Topic, Payload, QoS, IsRetained, IsDup, Ref) ->
     gen_fsm:send_event(FsmPid,
                        {deliver, Topic, Payload, QoS, IsRetained, IsDup, Ref}).

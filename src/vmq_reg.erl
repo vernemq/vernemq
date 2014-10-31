@@ -31,6 +31,7 @@
 
          %% used in vmq_msg_store:init/1
          subscriptions/1,
+         match/1,
 
          %% used in vmq_systree
          total_clients/0,
@@ -49,7 +50,7 @@
          code_change/3]).
 
 %% used by RPC calls
--export([teardown_session/3, route/7,
+-export([teardown_session/2, route/7,
          register_client_/3]).
 
 %% used by mnesia_cluster for table setup
@@ -72,7 +73,7 @@
 -record(trie_node, {node_id, edge_count=0, topic,
                     vclock=unsplit_vclock:fresh()}).
 -record(trie_edge, {node_id, word}).
--record(subscriber, {topic, qos, client}).
+-record(subscriber, {topic, qos, client, node}).
 -record(retain, {words, routing_key, payload, vclock=unsplit_vclock:fresh()}).
 
 -type state() :: #state{}.
@@ -116,7 +117,7 @@ subscribe_(User, ClientId, Topics) ->
 -spec subscribe_tx(client_id(), [{topic(), qos()}]) -> 'ok'.
 subscribe_tx(_, []) -> ok;
 subscribe_tx(ClientId, [{Topic, Qos}|Rest]) ->
-    transaction(fun() -> add_subscriber(Topic, Qos, ClientId) end),
+    transaction(fun() -> add_subscriber_tx(Topic, Qos, ClientId) end),
     vmq_systree:incr_subscription_count(),
     deliver_retained(self(), Topic, Qos),
     subscribe_tx(ClientId, Rest).
@@ -141,15 +142,14 @@ subscriptions(RoutingKey) ->
 -spec subscriptions([topic()], _) -> [{client_id(), qos()}].
 subscriptions([], Acc) -> Acc;
 subscriptions([#topic{name=Topic, node=Node}|Rest], Acc) when Node == node() ->
-    subscriptions(Rest,
-                  lists:foldl(
-                    fun
-                        (#subscriber{client=ClientId,
+    subscriptions(Rest, lists:foldl(
+                          fun
+                              (#subscriber{client=ClientId,
                                      qos=Qos}, Acc1) when Qos > 0 ->
-                            [{ClientId, Qos}|Acc1];
-                              (_, Acc1) ->
-                            Acc1
-                    end, Acc, mnesia:dirty_read(vmq_subscriber, Topic)));
+                                  [{ClientId, Qos}|Acc1];
+                        (_, Acc1) ->
+                                  Acc1
+                          end, Acc, mnesia:dirty_read(vmq_subscriber, Topic)));
 subscriptions([_|Rest], Acc) ->
     subscriptions(Rest, Acc).
 
@@ -160,60 +160,31 @@ subscriptions_for_client(ClientId) ->
 
 -spec register_client(client_id(), flag()) -> ok | {error, _}.
 register_client(ClientId, CleanSession) ->
-    vmq_reg_leader:register_client(self(), ClientId, CleanSession).
+    case vmq_reg_leader:register_client(self(), ClientId, CleanSession) of
+        ok when not CleanSession ->
+            vmq_session_proxy_sup:start_delivery(self(), ClientId),
+            ok;
+        R ->
+            R
+    end.
 
-teardown_session(ProxyPid, ClientId, CleanSession) ->
+teardown_session(ClientId, CleanSession) ->
     %% we first have to disconnect a local or remote session for
     %% this client id if one exists, disconnect_client(ClientID)
     %% blocks until the session is cleaned up
     NodeWithSession =
     case disconnect_client(ClientId) of
-        ok -> [node()];
-        {error, not_found} -> []
+        ok ->
+            [node()];
+        {error, not_found} ->
+            []
     end,
     case CleanSession of
         true -> vmq_msg_store:clean_session(ClientId);
-        false -> vmq_msg_store:deliver_from_store(ClientId, ProxyPid)
+        false ->
+            ignore
     end,
     NodeWithSession.
-
-session_proxy(ClientPid, ClientId, Node) ->
-    spawn_link(fun() -> session_proxy(ClientPid,
-                                      ClientId, Node, [], running) end).
-
-session_proxy(ClientPid, ClientId, Node, Msgs, all_finished) ->
-    MsgRefs =
-    lists:foldl(fun({deliver, Term}, Acc) ->
-                        vmq_session:deliver_bin(ClientPid, Term),
-                        Acc;
-                   ({deliver, RoutingKey, Payload, QoS, Dup, MsgRef}, Acc) ->
-                        LocalMsgRef = vmq_msg_store:store(ClientId,
-                                                          RoutingKey, Payload),
-                        vmq_session:deliver(ClientPid, RoutingKey, Payload,
-                                            QoS, false, Dup, LocalMsgRef),
-                        [MsgRef|Acc]
-                end, [], Msgs),
-    rpc:call(Node, vmq_msg_store, deref_multi, [MsgRefs]);
-session_proxy(ClientPid, ClientId, Node, Msgs, {sender_finished, NrOfMsgs})
-  when length(Msgs) < NrOfMsgs ->
-    receive
-        {ClientId, M} ->
-            session_proxy(ClientPid, ClientId, Node, [M|Msgs],
-                          {sender_finished, NrOfMsgs})
-    end;
-session_proxy(ClientPid, ClientId, Node, Msgs, {sender_finished, _}) ->
-    session_proxy(ClientPid, ClientId, Node, Msgs, all_finished);
-session_proxy(ClientPid, ClientId, Node, Msgs, Status) ->
-    receive
-        {all_delivered, NrOfMsgs, Node, ClientId}
-            when length(Msgs) == NrOfMsgs ->
-            session_proxy(ClientPid, ClientId, Node, Msgs, all_finished);
-        {all_delivered, NrOfMsgs, Node, ClientId} ->
-            session_proxy(ClientPid, ClientId, Node, Msgs,
-                          {sender_finished, NrOfMsgs});
-        {ClientId, M} ->
-            session_proxy(ClientPid, ClientId, Node, [M|Msgs], Status)
-    end.
 
 -spec register_client_(pid(), client_id(), flag()) -> 'ok'.
 register_client_(ClientPid, ClientId, CleanSession) ->
@@ -222,51 +193,32 @@ register_client_(ClientPid, ClientId, CleanSession) ->
         true ->
             transaction(fun() -> del_subscriber_tx('_', ClientId) end);
         false ->
-            ok
+            transaction(fun() -> remap_subscriptions_tx(ClientId) end)
     end,
-    Res =
+    NodesWithSession =
     lists:foldl(
       fun(Node, Acc) ->
-              SessionProxy = case CleanSession of
-                                 true -> undefined;
-                                 false -> session_proxy(ClientPid,
-                                                        ClientId, Node)
-                             end,
               Res =
               case Node == node() of
-                  true -> teardown_session(SessionProxy, ClientId,
-                                           CleanSession);
-                  false -> rpc:call(Node, ?MODULE,
-                                    teardown_session,
-                                    [SessionProxy, ClientId, CleanSession])
+                  true ->
+                      teardown_session(ClientId, CleanSession);
+                  false ->
+                      rpc:call(Node, ?MODULE,
+                               teardown_session, [ClientId, CleanSession])
               end,
-              [{SessionProxy, Res}|Acc]
+              [Res|Acc]
       end, [], vmq_cluster:nodes()),
     %% We SHOULD always have 0 or 1 Node(s) that had a sesssion
-    {SessionProxies, NodesWithSession} = lists:unzip(Res),
     NNodesWithSession = lists:flatten(NodesWithSession),
     case length(NNodesWithSession) of
-        L when L =< 1 -> ok;
+        L when L =< 1 ->
+            ok;
         _ -> lager:warning("client ~p was active on multiple nodes ~p",
                            [ClientId, NNodesWithSession])
     end,
     ok = gen_server:call(?MODULE, {monitor,
                                    ClientPid, ClientId, CleanSession},
-                         infinity),
-    wait_till_replicated(SessionProxies).
-
-wait_till_replicated([Pid|Rest] = SessionProxyPids) when is_pid(Pid) ->
-    case is_process_alive(Pid) of
-        true -> timer:sleep(100),
-                wait_till_replicated(SessionProxyPids);
-        false ->
-            wait_till_replicated(Rest)
-    end;
-wait_till_replicated([_|Rest]) ->
-    wait_till_replicated(Rest);
-wait_till_replicated([]) -> ok.
-
-
+                         infinity).
 
 -spec publish(username() | plugin_id(), client_id(), undefined | msg_ref(),
               routing_key(), binary(), flag()) -> 'ok' | {'error', _}.
@@ -284,8 +236,8 @@ publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain) ->
                     %% in case we have only subscriptions on one single node
                     %% we can deliver the messages even in case
                     %% of network partitions
-                    route_for_each(User, ClientId, MsgId, RoutingKey,
-                                   Payload, IsRetain, MatchedTopics);
+                    route_single_node(User, ClientId, MsgId, RoutingKey,
+                                      Payload, IsRetain, MatchedTopics);
                 false ->
                     publish_if_ready(User, ClientId, MsgId,
                                      RoutingKey, Payload,
@@ -303,15 +255,15 @@ publish_if_ready(User, ClientId, MsgId, RoutingKey, Payload, IsRetain,
                                            Payload,
                                            IsRetain,
                                            MatchedTopics]).
-                
-route_for_each(User, ClientId, MsgId, RoutingKey,
-               Payload, IsRetain, MatchedTopics) ->
+
+route_single_node(User, ClientId, MsgId, RoutingKey,
+                  Payload, IsRetain, MatchedTopics) ->
     lists:foreach(fun(#topic{name=Name}) ->
                           route(User, ClientId,
                                 MsgId, Name, RoutingKey,
                                 Payload, IsRetain)
                   end, MatchedTopics).
-               
+
 -spec publish_(username() | plugin_id(), client_id(), msg_id(),
                routing_key(), payload(), 'true',
                [topic()]) -> 'ok'.
@@ -597,12 +549,17 @@ direct_plugin_exports(Mod) ->
     end,
     {RegisterFun, PublishFun, SubscribeFun}.
 
--spec add_subscriber(topic(), qos(), client_id()) -> ok | ignore | abort.
-add_subscriber(Topic, Qos, ClientId) ->
-    mnesia:write(vmq_subscriber, #subscriber{topic=Topic,
-                                             qos=Qos, client=ClientId}, write),
-    mnesia:write(vmq_trie_topic, emqtt_topic:new(Topic), write),
-    case mnesia:read(vmq_trie_node, Topic) of
+-spec add_subscriber_tx(topic(), qos(), client_id()) -> ok | ignore | abort.
+add_subscriber_tx(Topic, Qos, ClientId) ->
+    mnesia:write(vmq_subscriber,
+                 #subscriber{topic=Topic, qos=Qos, client=ClientId,
+                                             node=node()}, write),
+    add_topic(Topic, node()).
+
+-spec add_topic(topic(), atom()) -> ok | ignore | abort.
+add_topic(Topic, Node) ->
+    mnesia:write(vmq_trie_topic, #topic{name=Topic, node=Node}, write),
+    case mnesia:wread({vmq_trie_node, Topic}) of
         [TrieNode=#trie_node{topic=undefined, vclock=VClock}] ->
             mnesia:write(vmq_trie_node,
                          TrieNode#trie_node{
@@ -619,7 +576,6 @@ add_subscriber(Topic, Qos, ClientId) ->
                                                    topic=Topic}, write)
     end.
 
-
 -spec del_subscriber(topic() | '_' ,client_id()) -> ok.
 del_subscriber(Topic, ClientId) ->
     transaction(fun() -> del_subscriber_tx(Topic, ClientId) end).
@@ -631,14 +587,40 @@ del_subscriber_tx(Topic, ClientId) ->
                                            client=ClientId, _='_'}, write),
     lists:foreach(fun(#subscriber{topic=T} = Obj) ->
                           mnesia:delete_object(vmq_subscriber, Obj, write),
-                          del_topic(T)
+                          del_topic(T, node())
                   end, Objs).
 
--spec del_topic(topic()) -> any().
-del_topic(Topic) ->
+-spec remap_subscriptions_tx(client_id()) -> ok.
+remap_subscriptions_tx(ClientId) ->
+    Objs = mnesia:match_object(vmq_subscriber,
+                               #subscriber{client=ClientId, _='_'}, write),
+    Node = node(),
+    lists:foreach(
+      fun(#subscriber{topic=T, qos=Qos, node=N} = Obj) ->
+              case N of
+                  Node -> ignore;
+                  _ ->
+                      %% TODO: we add the subscriber before deleting the old
+                      %% one,if we get a route request in between for this topic
+                      %% we might deliver the message to the old and new nodes
+                      %% resulting in duplicate messages delivered from the
+                      %% message stores residing on both nodes. We prefer to
+                      %% deliver duplicates instead of losing messages. The
+                      %% session fsm has currently no way to detect that it is
+                      %% a duplicate message, this should be improved!
+                      add_subscriber_tx(T, Qos, ClientId),
+                      mnesia:delete_object(vmq_subscriber, Obj, write),
+                      del_topic(T, N, [Obj#subscriber{node=Node}])
+              end
+      end, Objs).
+
+-spec del_topic(topic(), atom()) -> any().
+del_topic(Topic, Node) ->
+    del_topic(Topic, Node, []).
+del_topic(Topic, Node, Excl) ->
     case mnesia:wread({vmq_subscriber, Topic}) of
-        [] ->
-            TopicRec = emqtt_topic:new(Topic),
+        Excl ->
+            TopicRec = #topic{name=Topic, node=Node},
             mnesia:delete_object(vmq_trie_topic, TopicRec, write),
             case mnesia:wread({vmq_trie_topic, Topic}) of
                 [] -> trie_delete(Topic);
@@ -648,7 +630,7 @@ del_topic(Topic) ->
             ok
     end.
 
--spec trie_delete(maybe_improper_list()) -> any().
+-spec trie_delete(topic()) -> any().
 trie_delete(Topic) ->
     case mnesia:wread({vmq_trie_node, Topic}) of
         [#trie_node{edge_count=0}] ->

@@ -41,8 +41,8 @@
 -type state() :: #state{}.
 
 -callback open(Args :: term()) -> {ok, term()} | {error, term()}.
--callback fold(term(), fun((binary(), 
-                            binary(), any()) -> any()), 
+-callback fold(term(), fun((binary(),
+                            binary(), any()) -> any()),
                           any()) -> any() | {error, any()}.
 -callback delete(term(), binary()) -> ok.
 -callback insert(term(), binary(), binary()) -> ok | {error, any()}.
@@ -93,8 +93,8 @@ stored() ->
 
 
 
--spec retrieve(msg_ref()) -> 
-                      {'error','not_found'} | 
+-spec retrieve(msg_ref()) ->
+                      {'error','not_found'} |
                       {'ok', {routing_key(), payload()}}.
 retrieve(MsgRef) ->
     case ets:lookup(?MSG_CACHE_TABLE, MsgRef) of
@@ -102,9 +102,12 @@ retrieve(MsgRef) ->
         [] -> {error, not_found}
     end.
 
--spec deref(msg_ref()) -> 
-                   'ok' | {'error','not_found'} | 
+-spec deref(msg_ref()|{{pid(), atom()}, msg_ref()}) ->
+                   'ok' | {'error','not_found'} |
                    {'ok',pos_integer()}.
+deref({{SessionProxy, Node}, MsgRef}) ->
+    rpc:call(Node, ?MODULE, deref, [MsgRef]),
+    vmq_session_proxy:derefed(SessionProxy, MsgRef);
 deref(MsgRef) ->
     try
         ets:update_counter(?MSG_CACHE_TABLE, in_flight, {2, -1}),
@@ -126,36 +129,32 @@ deref_multi(MsgRefs) ->
 
 -spec deliver_from_store(client_id(), pid()) -> 'ok'.
 deliver_from_store(ClientId, Pid) ->
-    NrOfDeliveredMsgs =
-    lists:foldl(fun ({_, {uncached, Term}} = Obj, Acc) ->
-                          Pid ! {ClientId, {deliver, Term}},
-                          ets:delete_object(?MSG_INDEX_TABLE, Obj),
-                          Acc + 1;
-                      ({_, QoS, MsgRef, DeliverAsDup} = Obj, Acc) ->
-                        NewAcc =
-                        case retrieve(MsgRef) of
-                            {ok, {RoutingKey, Payload}} ->
-                                Pid ! {ClientId, 
-                                       {deliver, 
-                                        RoutingKey, 
-                                        Payload, QoS, 
-                                        DeliverAsDup, MsgRef}},
-                                Acc + 1;
-                            {error, not_found} ->
-                                %% TODO: this happens,, ??
-                                Acc
-                        end,
-                        ets:delete_object(?MSG_INDEX_TABLE, Obj),
-                        NewAcc
-                end, 0, ets:lookup(?MSG_INDEX_TABLE, ClientId)),
-    Pid ! {all_delivered, NrOfDeliveredMsgs, node(), ClientId},
+    deliver_from_store_(Pid, ets:match_object(
+                               ?MSG_INDEX_TABLE, {ClientId, '$1'}, 1)).
+
+deliver_from_store_(Pid, {[{_, {uncached, Term}} = Obj], Cont}) ->
+    vmq_session_proxy:deliver(Pid, Term),
+    ets:delete_object(?MSG_INDEX_TABLE, Obj),
+    deliver_from_store_(Pid, ets:match_object(Cont));
+deliver_from_store_(Pid, {[{_, {QoS, MsgRef, Dup}} = Obj], Cont}) ->
+    case retrieve(MsgRef) of
+        {ok, {RoutingKey, Payload}} ->
+            Term = {RoutingKey, Payload, QoS, Dup, MsgRef},
+            vmq_session_proxy:deliver(Pid, Term);
+        {error, not_found} ->
+            %% TODO: this happens,, ??
+            ignore
+    end,
+    ets:delete_object(?MSG_INDEX_TABLE, Obj),
+    deliver_from_store_(Pid, ets:match_object(Cont));
+deliver_from_store_(_, '$end_of_table') ->
     ok.
 
 -spec clean_session(client_id()) -> 'ok'.
 clean_session(ClientId) ->
     lists:foreach(fun ({_, {uncached, _}}) ->
                           ok;
-                      ({_, _, MsgRef, _} = Obj) ->
+                      ({_, {_, MsgRef, _}} = Obj) ->
                           true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
                           deref(MsgRef)
                   end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
@@ -164,13 +163,18 @@ clean_session(ClientId) ->
 defer_deliver_uncached(ClientId, Term) ->
     ets:insert(?MSG_INDEX_TABLE, {ClientId, {uncached, Term}}).
 
--spec defer_deliver(client_id(), qos(), msg_ref()) -> 'true'.
+-spec defer_deliver(client_id(), qos(),
+                    msg_ref() | {atom(), msg_ref()}) -> 'true'.
 defer_deliver(ClientId, Qos, MsgRef) ->
     defer_deliver(ClientId, Qos, MsgRef, false).
 
--spec defer_deliver(client_id(), qos(), msg_ref(), boolean()) -> 'true'.
+-spec defer_deliver(client_id(), qos(), msg_ref() | {{pid(), atom()}, msg_ref()}
+                    , boolean()) -> 'true'.
+defer_deliver(ClientId, Qos, {{_, Node}, MsgRef}, DeliverAsDup) ->
+    rpc:call(Node, ?MODULE, defer_deliver,
+             [ClientId, Qos, MsgRef, DeliverAsDup]);
 defer_deliver(ClientId, Qos, MsgRef, DeliverAsDup) ->
-    ets:insert(?MSG_INDEX_TABLE, {ClientId, Qos, MsgRef, DeliverAsDup}).
+    ets:insert(?MSG_INDEX_TABLE, {ClientId, {Qos, MsgRef, DeliverAsDup}}).
 
 
 -spec clean_all([]) -> 'true'.
@@ -208,8 +212,8 @@ clean_index() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec init([string()]) -> {'ok', state()}.
 init([]) ->
-    {MsgStoreImpl, 
-     MsgStoreImplArgs} = 
+    {MsgStoreImpl,
+     MsgStoreImplArgs} =
         vmq_config:get_env(msg_store, {vmq_null_store, []}),
     TableOpts = [public, named_table,
                  {read_concurrency, true},
@@ -225,8 +229,8 @@ init([]) ->
                          {_, RoutingKey, Payload} = binary_to_term(Val),
                          update_subs_(RoutingKey, MsgRef, Payload, Key, Acc)
                  end, []),
-    ok = lists:foreach(fun(Key) -> 
-                               MsgStoreImpl:delete(MsgStore, Key) 
+    ok = lists:foreach(fun(Key) ->
+                               MsgStoreImpl:delete(MsgStore, Key)
                        end, ToDelete),
     {ok, #state{store={MsgStoreImpl, MsgStore}}}.
 
@@ -243,21 +247,21 @@ update_subs_(RoutingKey, MsgRef, Payload, Key, Acc) ->
                         in_flight, {2, 1}),
                       %% add to cache
                       update_msg_cache(
-                        MsgRef, 
+                        MsgRef,
                         {RoutingKey, Payload}),
                       %% defer deliver expects the Message
                       %% to be already cached and just adds
                       %% the proper index item
-                      defer_deliver(ClientId, QoS, 
+                      defer_deliver(ClientId, QoS,
                                     MsgRef, true)
               end, Subs),
             Acc
     end.
 
--spec handle_call(_, _, _) -> {'reply', 
+-spec handle_call(_, _, _) -> {'reply',
                                ok | {'error', 'not_implemented'}, _}.
 handle_call({delete, MsgRef}, _From, State) ->
-    %% Synchronized Delete, clean_all 
+    %% Synchronized Delete, clean_all
     %% (for testing purposes) is currently the only user
     #state{store={MsgStoreImpl, MsgStore}} = State,
     ok = MsgStoreImpl:delete(MsgStore, MsgRef),
@@ -270,8 +274,8 @@ handle_call({write, Key, Val}, _From, State) ->
 handle_call(_Req, _From, State) ->
     {reply, {error, not_implemented}, State}.
 
--spec handle_cast({'delete',msg_ref()} | 
-                  {'write',binary(),binary()}, 
+-spec handle_cast({'delete',msg_ref()} |
+                  {'write',binary(),binary()},
                   state()) -> {'noreply', state()}.
 handle_cast({write, Key, Val}, State) ->
     #state{store={MsgStoreImpl, MsgStore}} = State,
@@ -297,11 +301,11 @@ terminate(_Reason, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
--spec safe_ets_update_counter('vmq_msg_cache', _, {3, 1}, 
-                              fun((_) -> 'new_ref_count'), 
-                              fun(() -> 'new_cache_item' | 
-                                        'new_ref_count')) -> 
-                                     'new_cache_item' | 
+-spec safe_ets_update_counter('vmq_msg_cache', _, {3, 1},
+                              fun((_) -> 'new_ref_count'),
+                              fun(() -> 'new_cache_item' |
+                                        'new_ref_count')) ->
+                                     'new_cache_item' |
                                      'new_ref_count'.
 safe_ets_update_counter(Tab, Key, UpdateOp, SuccessFun, FailThunk) ->
     try
@@ -309,7 +313,7 @@ safe_ets_update_counter(Tab, Key, UpdateOp, SuccessFun, FailThunk) ->
     catch error:badarg -> FailThunk()
     end.
 
--spec update_msg_cache(msg_ref(), {routing_key(), payload()}) -> 
+-spec update_msg_cache(msg_ref(), {routing_key(), payload()}) ->
                               'new_cache_item' | 'new_ref_count'.
 update_msg_cache(MsgRef, Msg) ->
     case ets:insert_new(?MSG_CACHE_TABLE, {MsgRef, Msg, 1}) of
