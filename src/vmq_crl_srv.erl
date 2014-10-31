@@ -32,6 +32,9 @@
 -record(state, {refs=[]}).
 -define(TAB, ?MODULE).
 
+-type state() :: #state{}.
+-type otp_cert() :: #'OTPCertificate'{}.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -40,7 +43,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec check_crl(_,#'OTPCertificate'{tbsCertificate::#'OTPTBSCertificate'{}}) -> boolean().
+-spec check_crl(_, otp_cert()) -> boolean().
 check_crl(File, #'OTPCertificate'{tbsCertificate=TBSCert} = Cert) ->
     SerialNr = TBSCert#'OTPTBSCertificate'.serialNumber,
     case ets:lookup(?TAB, File) of
@@ -58,37 +61,41 @@ check_crl(File, #'OTPCertificate'{tbsCertificate=TBSCert} = Cert) ->
 %%% gen_server callbacks
 %%%===================================================================
 
--spec init([]) -> {'ok',#state{refs::[]}}.
+-spec init([]) -> {'ok', state()}.
 init([]) ->
     ets:new(?TAB, [public, named_table, {read_concurrency, true}]),
     {ok, #state{}}.
 
--spec handle_call({'add_crl',atom() | binary() | [atom() | [any()] | char()]},_,_) -> {'reply','ok',_}.
+-spec handle_call({'add_crl',atom() | binary() | 
+[atom() | [any()] | char()]}, _, _) -> {'reply','ok', _}.
 handle_call({add_crl, File}, _From, State) ->
     {ok, Bin} = file:read_file(File),
     Serials =
     lists:flatten([begin
                        CRL = public_key:pem_entry_decode(E) ,
-                       #'TBSCertList'{revokedCertificates=Revoked} = CRL#'CertificateList'.tbsCertList,
-                       [SerialNr || #'TBSCertList_revokedCertificates_SEQOF'{userCertificate=SerialNr} <- Revoked]
+                       #'TBSCertList'{revokedCertificates=Revoked} = 
+                           CRL#'CertificateList'.tbsCertList,
+                       [SerialNr ||
+                           #'TBSCertList_revokedCertificates_SEQOF'{
+                              userCertificate=SerialNr} <- Revoked]
                    end || E <- public_key:pem_decode(Bin)]),
     ets:insert(?TAB, {File, Serials}),
     Reply = ok,
     {reply, Reply, State}.
 
--spec handle_cast(_,_) -> {'noreply',_}.
+-spec handle_cast(_, _) -> {'noreply', _}.
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
--spec handle_info(_,_) -> {'noreply',_}.
+-spec handle_info(_, _) -> {'noreply', _}.
 handle_info(_Info, State) ->
     {noreply, State}.
 
--spec terminate(_,_) -> 'ok'.
+-spec terminate(_, _) -> 'ok'.
 terminate(_Reason, _State) ->
     ok.
 
--spec code_change(_,_,_) -> {'ok',_}.
+-spec code_change(_, _, _) -> {'ok', _}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
