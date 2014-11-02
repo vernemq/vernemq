@@ -1,7 +1,7 @@
 {application, vmq_bridge,
  [
-  {description, ""},
-  {vsn, "1"},
+  {description, "Bridge Plugin for VerneMQ"},
+  {vsn, git},
   {registered, []},
   {applications, [
                   kernel,
