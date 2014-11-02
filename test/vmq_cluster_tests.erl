@@ -146,13 +146,23 @@ multiple_connect_unclean(Nodes) ->
     Strd = fun() -> rpc:multicall([N || {N, _} <-Nodes],
                                   vmq_msg_store, stored, [])
            end,
+    Ports = fun() -> rpc:multicall([N || {N, _} <-Nodes],
+                                  erlang, system_info, [port_count])
+           end,
+    Procs = fun() -> rpc:multicall([N || {N, _} <-Nodes],
+                                  erlang, system_info, [process_count])
+           end,
     io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs ~p~n", [Strd()]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
     io:format(user, "subs ~p~n", [rpc:call(RpcNode, mnesia, dirty_read,
                                            [vmq_subscriber, Topic])]),
     timer:sleep(2000),
     ok = receive_publishes(Nodes, Topic, Payloads),
     timer:sleep(2000),
     io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs ~p~n", [Strd()]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
     ?_assertEqual(true, true).
 
 
