@@ -1,7 +1,7 @@
 {application, vmq_server,
  [
-  {description, ""},
-  {vsn, "1"},
+  {description, "VerneMQ MQTT Server"},
+  {vsn, git},
   {registered, []},
   {applications, [
                   kernel,
