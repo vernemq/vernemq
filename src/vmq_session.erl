@@ -51,6 +51,7 @@
                        | mqtt_variable_ping().
 -type mqtt_frame() :: #mqtt_frame{}.
 -type mqtt_frame_fixed() ::  #mqtt_frame_fixed{}.
+-type ts() :: {os:timestamp(), non_neg_integer(), non_neg_integer()}.
 
 
 -record(state, {
@@ -78,8 +79,11 @@
           keep_alive_timer                  :: undefined | reference(),
           clean_session=false               :: flag(),
           proto_ver                         :: undefined | pos_integer(),
-          recv_cnt=0                        :: non_neg_integer(),
-          send_cnt=0                        :: non_neg_integer()
+          recv_cnt=init_ts()                :: ts(),
+          send_cnt=init_ts()                :: ts(),
+          pub_recv_cnt=init_ts()            :: ts(),
+          pub_dropped_cnt=init_ts()         :: ts(),
+          pub_send_cnt=init_ts()            :: ts()
          }).
 
 -type state() :: #state{}.
@@ -213,10 +217,9 @@ connected({deliver_bin, {MsgId, QoS, Bin}}, State) ->
     #state{send_fun=SendFun, waiting_acks=WAcks,
            retry_interval=RetryInterval, send_cnt=SendCnt} = State,
     SendFun(Bin),
-    vmq_systree:incr_messages_sent(),
     Ref = send_after(RetryInterval, {retry, MsgId}),
     {next_state, connected, State#state{
-                              send_cnt=SendCnt + 1,
+                              send_cnt=incr_msg_sent_cnt(SendCnt),
                               waiting_acks=dict:store(MsgId,
                                           {QoS, Bin, Ref, undefined},
                                           WAcks)}};
@@ -239,10 +242,9 @@ connected({retry, MessageId}, State) ->
                               dup=true}}
             end,
             SendFun(FFrame),
-            vmq_systree:incr_messages_sent(),
             Ref = send_after(RetryInterval, {retry, MessageId}),
             State#state{
-              send_cnt=SendCnt + 1,
+              send_cnt=incr_msg_sent_cnt(SendCnt),
               waiting_acks=dict:store(MessageId,
                                       {QoS, Frame, Ref, MsgStoreRef},
                                       WAcks)}
@@ -293,9 +295,8 @@ handle_event({input, Frame}, StateName, State) ->
                 variable=Variable,
                 payload=Payload} = Frame,
     cancel_timer(KARef),
-    vmq_systree:incr_messages_received(),
     case handle_frame(StateName, Fixed, Variable, Payload,
-                      State#state{recv_cnt=RecvCnt + 1}) of
+                      State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)}) of
         {connected, #state{keep_alive=KeepAlive} = NewState} ->
             case StateName of
                 connected ->
@@ -390,11 +391,10 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
                              variable=#mqtt_frame_publish{message_id=MessageId},
                              payload= <<>>},
     SendFun(PubRelFrame),
-    vmq_systree:incr_messages_sent(),
     NewRef = send_after(RetryInterval, {retry, MessageId}),
     vmq_msg_store:deref(MsgStoreRef),
     {connected, State#state{
-                  send_cnt=SendCnt + 1,
+                  send_cnt=incr_msg_sent_cnt(SendCnt),
                   waiting_acks=dict:store(MessageId,
                                           {2, PubRelFrame,
                                            NewRef,
@@ -433,7 +433,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
                                           qos=QoS,
                                           retain=IsRetain},
              Var, Payload, State) ->
-    #state{mountpoint=MountPoint} = State,
+    #state{mountpoint=MountPoint, pub_recv_cnt=PubRecvCnt} = State,
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
@@ -441,10 +441,13 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
         {$$, _} ->
             {connected, State};
         {_, true} ->
-            vmq_systree:incr_publishes_received(),
             {connected, dispatch_publish(QoS, MessageId,
                                          combine_mp(MountPoint, Topic), Payload,
-                                         IsRetain, State)};
+                                         IsRetain,
+                                         State#state{
+                                           pub_recv_cnt=incr_pub_recv_cnt(
+                                                          PubRecvCnt)
+                                          })};
         {_, false} ->
             {connected, State}
     end;
@@ -649,8 +652,7 @@ send_frame(Type, DUP, Variable, Payload,
                variable=Variable,
                payload=Payload
               }),
-    vmq_systree:incr_messages_sent(),
-    State#state{send_cnt=SendCnt + 1}.
+    State#state{send_cnt=incr_msg_sent_cnt(SendCnt)}.
 
 
 -spec maybe_publish_last_will(state()) -> state().
@@ -699,8 +701,8 @@ dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
             NewState;
         false ->
             %% drop
-            vmq_systree:incr_publishes_dropped(),
-            State
+            #state{pub_dropped_cnt=PubDropped} = State,
+            State#state{pub_dropped_cnt=incr_pub_dropped_cnt(PubDropped)}
     end.
 
 -spec dispatch_publish_qos2(msg_id(), topic(),
@@ -719,16 +721,15 @@ dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
                        payload= <<>>
                       },
             SendFun(Frame),
-            vmq_systree:incr_messages_sent(),
             State#state{
-              send_cnt=SendCnt + 1,
+              send_cnt=incr_msg_sent_cnt(SendCnt),
               waiting_acks=dict:store(
                              {qos2, MessageId},
                              {2, Frame, Ref, {MsgRef, IsRetain}}, WAcks)};
         false ->
             %% drop
-            vmq_systree:incr_publishes_dropped(),
-            State
+            #state{pub_dropped_cnt=PubDropped} = State,
+            State#state{pub_dropped_cnt=incr_pub_dropped_cnt(PubDropped)}
     end.
 
 -spec get_msg_id(qos(), state()) -> {msg_id(), state()}.
@@ -741,12 +742,11 @@ get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
 
 -spec send_publish_frame(mqtt_frame(), state()) -> state() | {error, atom()}.
 send_publish_frame(Frame, State) ->
-    #state{send_fun=SendFun, send_cnt=SendCnt} = State,
+    #state{send_fun=SendFun, send_cnt=SendCnt, pub_send_cnt=PubSendCnt} = State,
     case SendFun(Frame) of
         ok ->
-            vmq_systree:incr_publishes_sent(),
-            vmq_systree:incr_messages_sent(),
-            State#state{send_cnt=SendCnt + 1};
+            State#state{send_cnt=incr_msg_sent_cnt(SendCnt),
+                        pub_send_cnt=incr_pub_sent_cnt(PubSendCnt)};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -899,4 +899,27 @@ get_info_items([_|Rest], StateName, State, Acc) ->
     get_info_items(Rest, StateName, State, Acc);
 get_info_items([], _, _, Acc) -> Acc.
 
+init_ts() ->
+    {os:timestamp(), 0, 0}.
 
+incr_msg_sent_cnt(SndCnt) ->
+    incr_cnt(incr_messages_sent, SndCnt).
+incr_msg_recv_cnt(RcvCnt) ->
+    incr_cnt(incr_messages_received, RcvCnt).
+incr_pub_recv_cnt(PubRecvCnt) ->
+    incr_cnt(incr_publishes_received, PubRecvCnt).
+incr_pub_dropped_cnt(PubDroppedCnt) ->
+    incr_cnt(incr_publishes_dropped, PubDroppedCnt).
+incr_pub_sent_cnt(PubSendCnt) ->
+    incr_cnt(incr_publishes_sent, PubSendCnt).
+
+incr_cnt(IncrFun, {{M, S, _}, V, I}) ->
+    NewV = V + 1,
+    NewI = I + 1,
+    case os:timestamp() of
+        {M, S, _} = TS ->
+            {TS, NewV, NewI};
+        TS ->
+            apply(vmq_systree, IncrFun, [NewI]),
+            {TS, NewV, 0}
+    end.

@@ -24,7 +24,7 @@
              transport, buffer= <<>>,
              parser_state=emqtt_frame:initial_state(),
              session, session_mon,
-             proto_tag}).
+             proto_tag, bytes_recv={os:timestamp(), 0}}).
 
 -spec start_link(_, _, _, _) -> {'ok', pid()}.
 start_link(Ref, Socket, Transport, Opts) ->
@@ -66,7 +66,9 @@ init(Ref, Socket, Transport, Opts) ->
 
 loop(#st{buffer=_Buffer, socket=Socket, transport=Transport,
             session=SessionPid, parser_state=ParserState,
-            proto_tag={Proto, ProtoClosed, ProtoError}} = State) ->
+            proto_tag={Proto, ProtoClosed, ProtoError},
+            bytes_recv={TS, V}
+        } = State) ->
     apply(Transport, setopts, [Socket, [{active, once}]]),
     receive
         {inet_reply, _, ok} ->
@@ -75,8 +77,18 @@ loop(#st{buffer=_Buffer, socket=Socket, transport=Transport,
             teardown(State, Status);
         {Proto, Socket, Data} ->
             NewParserState = process_bytes(SessionPid, Data, ParserState),
-            vmq_systree:incr_bytes_received(byte_size(Data)),
-            loop(State#st{parser_state=NewParserState});
+            {M, S, _} = TS,
+            NrOfBytes = byte_size(Data),
+            NewBytesRecv =
+            case os:timestamp() of
+                {M, S, _} = NewTS ->
+                    {NewTS, V + NrOfBytes};
+                NewTS ->
+                    vmq_systree:incr_bytes_received(V + NrOfBytes),
+                    {NewTS, 0}
+            end,
+            loop(State#st{parser_state=NewParserState,
+                          bytes_recv=NewBytesRecv});
         {ProtoClosed, Socket} ->
             teardown(State, tcp_closed);
         {ProtoError, Socket, Reason} ->
@@ -103,7 +115,6 @@ process_bytes(SessionPid, Bytes, ParserState) ->
         {more, NewParserState} ->
             NewParserState;
         {ok, #mqtt_frame{} = Frame, Rest} ->
-            vmq_systree:incr_messages_received(),
             vmq_session:in(SessionPid, Frame),
             process_bytes(SessionPid, Rest, emqtt_frame:initial_state());
         {error, Reason} ->

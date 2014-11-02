@@ -25,11 +25,11 @@
          incr_inactive_clients/0,
          decr_inactive_clients/0,
          incr_expired_clients/0,
-         incr_messages_received/0,
-         incr_messages_sent/0,
-         incr_publishes_dropped/0,
-         incr_publishes_received/0,
-         incr_publishes_sent/0,
+         incr_messages_received/1,
+         incr_messages_sent/1,
+         incr_publishes_dropped/1,
+         incr_publishes_received/1,
+         incr_publishes_sent/1,
          incr_subscription_count/0,
          decr_subscription_count/0,
          incr_socket_count/0,
@@ -78,20 +78,20 @@ incr_inactive_clients() ->
 decr_inactive_clients() ->
     update_item({local_inactive_clients, counter}, {2, -1, 0, 0}).
 
-incr_messages_received() ->
-    incr_item(local_messages_received).
+incr_messages_received(V) ->
+    incr_item(local_messages_received, V).
 
-incr_messages_sent() ->
-    incr_item(local_messages_sent).
+incr_messages_sent(V) ->
+    incr_item(local_messages_sent, V).
 
-incr_publishes_dropped() ->
-    incr_item(local_publishes_dropped).
+incr_publishes_dropped(V) ->
+    incr_item(local_publishes_dropped, V).
 
-incr_publishes_received() ->
-    incr_item(local_publishes_received).
+incr_publishes_received(V) ->
+    incr_item(local_publishes_received, V).
 
-incr_publishes_sent() ->
-    incr_item(local_publishes_sent).
+incr_publishes_sent(V) ->
+    incr_item(local_publishes_sent, V).
 
 incr_subscription_count() ->
     update_item({local_subscription_count, counter}, {2, 1}).
@@ -137,7 +137,7 @@ init([]) ->
     {IntervalMS, TRef} =
         case Interval of
             0 -> {undefined, undefined};
-            _ -> 
+            _ ->
                 T = Interval * 1000,
                 {T, erlang:send_after(T, self(), publish)}
     end,
