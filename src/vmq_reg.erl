@@ -235,7 +235,10 @@ publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain) ->
                 true ->
                     %% in case we have only subscriptions on one single node
                     %% we can deliver the messages even in case
-                    %% of network partitions
+                    %% of network partitions. TODO: this is partly true,
+                    %% in a split brain situation we might not know if
+                    %% another partition got matching subscriptions in the
+                    %% meantime.
                     route_single_node(User, ClientId, MsgId, RoutingKey,
                                       Payload, IsRetain, MatchedTopics);
                 false ->
