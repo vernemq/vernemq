@@ -113,7 +113,7 @@ disconnect(FsmPid) ->
 
 -spec in(pid(), mqtt_frame()) ->  ok.
 in(FsmPid, Event) ->
-    gen_fsm:send_all_state_event(FsmPid, {input, Event}).
+    gen_fsm:sync_send_all_state_event(FsmPid, {input, Event}).
 
 -spec get_info(string() | pid(), [atom()]) -> proplist().
 get_info(ClientId, InfoItems) when is_list(ClientId) ->
@@ -275,12 +275,20 @@ init([Peer, SendFun, Opts]) ->
                                   retry_interval=1000 * RetryInterval
                                  }, ?CLOSE_AFTER}.
 
--spec handle_event({input, mqtt_frame()}, _, state()) ->
-    {stop, normal, state()} | {next_state, statename(), state()}.
-handle_event({input, #mqtt_frame{fixed=#mqtt_frame_fixed{type=?DISCONNECT}}},
-             _, State) ->
+-spec handle_event(disconnect, _, state()) -> {stop, normal, state()}.
+handle_event(disconnect, StateName, State) ->
+    lager:debug("[~p] stop in state ~p due to ~p~n",
+                  [self(), StateName, disconnect]),
+    {stop, normal, State}.
+
+-spec handle_sync_event(_, _, _, state()) -> {reply, _, statename(), state()} |
+                                             {stop, {error, {unknown_req, _}},
+                                              state()}.
+handle_sync_event({input, #mqtt_frame{
+                             fixed=#mqtt_frame_fixed{type=?DISCONNECT}}},
+             _From, _, State) ->
     {stop, normal, State};
-handle_event({input, Frame}, StateName, State) ->
+handle_sync_event({input, Frame}, _From, StateName, State) ->
     #state{keep_alive_timer=KARef, recv_cnt=RecvCnt} = State,
     #mqtt_frame{fixed=Fixed,
                 variable=Variable,
@@ -296,21 +304,13 @@ handle_event({input, Frame}, StateName, State) ->
                 _ ->
                     process_flag(trap_exit, true)
             end,
-            {next_state, connected,
+            {reply, ok, connected,
              NewState#state{keep_alive_timer=gen_fsm:send_event_after(KeepAlive,
                                                            keepalive_expired)}};
         {NextStateName, NewState} ->
-            {next_state, NextStateName, NewState, ?CLOSE_AFTER};
+            {reply, ok, NextStateName, NewState, ?CLOSE_AFTER};
         Ret -> Ret
     end;
-handle_event(disconnect, StateName, State) ->
-    lager:debug("[~p] stop in state ~p due to ~p~n",
-                  [self(), StateName, disconnect]),
-    {stop, normal, State}.
-
--spec handle_sync_event(_, _, _, state()) -> {reply, _, statename(), state()} |
-                                             {stop, {error, {unknown_req, _}},
-                                              state()}.
 handle_sync_event({get_info, Items}, _From, StateName, State) ->
     Reply = get_info_items(Items, StateName, State),
     {reply, Reply, StateName, State};
