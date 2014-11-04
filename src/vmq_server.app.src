@@ -7,10 +7,10 @@
                   kernel,
                   stdlib,
                   lager,
+                  jobs,
                   ssl,
                   ranch,
                   cowboy,
-                  poolboy,
                   emqtt_commons,
                   bitcask,
                   unsplit,
@@ -58,7 +58,9 @@
                                               {nr_of_acceptors, 10}, 
                                               {mountpoint, ""}]}],
                       [] %% WSS Listener
-                  }}
+                  }},
+      {mnesia_tx_queue, [{regulators, [{rate,[{limit, 1000}, {modifiers, [{mnesia, 10}]}]}]}]} 
+
       ]}
 
  ]}.

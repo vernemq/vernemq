@@ -946,6 +946,9 @@ unregister_client(ClientId) ->
             {error, not_found}
     end.
 
+del_subscriber_fun(ClientId) ->
+    transaction(fun() -> del_subscriber_tx('_', ClientId) end).
+
 transaction(TxFun) ->
     transaction(TxFun, fun(Ret) -> Ret end).
 
@@ -953,18 +956,24 @@ transaction(TxFun, SuccessFun) ->
     %% Making this a sync_transaction allows us to use dirty_read
     %% elsewhere and get a consistent result even when that read
     %% executes on a different node.
-    case vmq_worker:submit(
-           fun() ->
-                   sync_transaction_(TxFun)
-           end) of
-        {sync, {atomic, Result}} ->
-            %% Rabbit enforces that data is synced to disk by
-            %% waiting for disk_log:sync(latest_log),
-            SuccessFun(Result);
-        {sync, {aborted, Reason}} -> throw({error, Reason});
-        {atomic, Result} -> SuccessFun(Result);
-        {aborted, Reason} -> throw({error, Reason});
-        {error, overloaded} -> {error, overloaded}
+    case jobs:ask(mnesia_tx_queue) of
+        {ok, JobId} ->
+            try
+                case sync_transaction_(TxFun) of
+                    {sync, {atomic, Result}} ->
+                        %% Rabbit enforces that data is synced to disk by
+                        %% waiting for disk_log:sync(latest_log),
+                        SuccessFun(Result);
+                    {sync, {aborted, Reason}} -> throw({error, Reason});
+                    {atomic, Result} -> SuccessFun(Result);
+                    {aborted, Reason} -> throw({error, Reason});
+                    {error, overloaded} -> {error, overloaded}
+                end
+            after
+                jobs:done(JobId)
+            end;
+        {error, rejected} ->
+            {error, overloaded}
     end.
 
 sync_transaction_(TxFun) ->
@@ -980,6 +989,3 @@ sync_transaction_(TxFun) ->
         true  ->
             mnesia:sync_transaction(TxFun)
     end.
-
-del_subscriber_fun(ClientId) ->
-    transaction(fun() -> del_subscriber_tx('_', ClientId) end).
