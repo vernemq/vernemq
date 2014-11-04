@@ -104,7 +104,7 @@ teardown(#st{session=SessionPid, transport=Transport, socket=Socket}, Reason) ->
         normal ->
             lager:debug("[~p] session stopped", [SessionPid]);
         _ ->
-            lager:info("[~p] session stopped
+            lager:warning("[~p] session stopped
                        abnormally due to ~p", [SessionPid, Reason])
     end,
     fast_close(Transport, Socket).
