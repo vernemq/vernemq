@@ -39,10 +39,17 @@ start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
 submit(Fun) ->
-    poolboy:transaction(vmq_worker_pool,
-                        fun(Worker) ->
-                                gen_server:call(Worker, {submit, Fun})
-                        end, infinity).
+    try poolboy:checkout(vmq_worker_pool, true, 5000) of
+        Worker ->
+            try
+                gen_server:call(Worker, {submit, Fun})
+            after
+                ok = poolboy:checkin(vmq_worker_pool, Worker)
+            end
+    catch
+        _:_ ->
+            {error, overloaded}
+    end.
 
 
 %%%===================================================================

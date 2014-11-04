@@ -116,11 +116,18 @@ subscribe_(User, ClientId, Topics) ->
 
 -spec subscribe_tx(client_id(), [{topic(), qos()}]) -> 'ok'.
 subscribe_tx(_, []) -> ok;
-subscribe_tx(ClientId, [{Topic, Qos}|Rest]) ->
-    transaction(fun() -> add_subscriber_tx(Topic, Qos, ClientId) end),
-    vmq_systree:incr_subscription_count(),
-    deliver_retained(self(), Topic, Qos),
-    subscribe_tx(ClientId, Rest).
+subscribe_tx(ClientId, Topics) ->
+    transaction(fun() ->
+                        _ = [add_subscriber_tx(T, QoS, ClientId)
+                             || {T, QoS} <- Topics]
+                end,
+                fun(_) ->
+                        _ = [begin
+                                 vmq_systree:incr_subscription_count(),
+                                 deliver_retained(self(), T, QoS)
+                             end || {T, QoS} <- Topics],
+                        ok
+                end).
 
 -spec unsubscribe(username() | plugin_id(), client_id(), [topic()]) -> any().
 unsubscribe(User, ClientId, Topics) ->
@@ -186,15 +193,25 @@ teardown_session(ClientId, CleanSession) ->
     end,
     NodeWithSession.
 
--spec register_client_(pid(), client_id(), flag()) -> 'ok'.
+-spec register_client_(pid(), client_id(), flag()) -> 'ok'
+                                                      | {error, overloaded}.
 register_client_(ClientPid, ClientId, CleanSession) ->
     %% cleanup session for this client id if needed
     case CleanSession of
         true ->
-            transaction(fun() -> del_subscriber_tx('_', ClientId) end);
+            transaction(fun() -> del_subscriber_tx('_', ClientId) end,
+                        fun({error, Reason}) -> {error, Reason};
+                           (_) -> register_client__(ClientPid, ClientId, true)
+                        end);
         false ->
-            transaction(fun() -> remap_subscriptions_tx(ClientId) end)
-    end,
+            transaction(fun() -> remap_subscriptions_tx(ClientId) end,
+                        fun({error, Reason}) -> {error, Reason};
+                           (_) -> register_client__(ClientPid, ClientId, false)
+                        end)
+    end.
+
+-spec register_client__(pid(), client_id(), flag()) -> 'ok'.
+register_client__(ClientPid, ClientId, CleanSession) ->
     NodesWithSession =
     lists:foldl(
       fun(Node, Acc) ->
@@ -204,7 +221,8 @@ register_client_(ClientPid, ClientId, CleanSession) ->
                       teardown_session(ClientId, CleanSession);
                   false ->
                       rpc:call(Node, ?MODULE,
-                               teardown_session, [ClientId, CleanSession])
+                               teardown_session, [ClientId,
+                                                  CleanSession])
               end,
               [Res|Acc]
       end, [], vmq_cluster:nodes()),
@@ -269,12 +287,16 @@ route_single_node(User, ClientId, MsgId, RoutingKey,
 
 -spec publish_(username() | plugin_id(), client_id(), msg_id(),
                routing_key(), payload(), 'true',
-               [topic()]) -> 'ok'.
+               [topic()]) -> 'ok' | {error, overloaded}.
 publish_(User, ClientId, MsgId, RoutingKey,
          Payload, IsRetain = true, MatchedTopics) ->
-    ok = retain_action(RoutingKey, Payload),
-    publish__(User, ClientId, MsgId, RoutingKey,
-              Payload, IsRetain, MatchedTopics).
+    case retain_action(RoutingKey, Payload) of
+        {error, overloaded} ->
+            {error, overloaded};
+        ok ->
+            publish__(User, ClientId, MsgId, RoutingKey,
+                      Payload, IsRetain, MatchedTopics)
+    end.
 
 -spec publish__(username() | plugin_id(), client_id(), msg_id(),
                 routing_key(), payload(), flag(), [topic()]) -> 'ok'.
@@ -302,12 +324,11 @@ check_single_node(Node, [_|Rest], Acc) ->
 check_single_node(_, [], 0) -> true;
 check_single_node(_, [], _) -> false.
 
--spec retain_action(routing_key(), payload()) -> 'ok'.
+-spec retain_action(routing_key(), payload()) -> 'ok' | {error, overloaded}.
 retain_action(RoutingKey, <<>>) ->
     %% retain-delete action
     Words = emqtt_topic:words(RoutingKey),
-    transaction(fun() -> mnesia:delete({vmq_retain, Words}) end),
-    ok;
+    transaction(fun() -> mnesia:delete({vmq_retain, Words}) end);
 retain_action(RoutingKey, Payload) ->
     %% retain-insert action
     Words = emqtt_topic:words(RoutingKey),
@@ -329,8 +350,7 @@ retain_action(RoutingKey, Payload) ->
                                                     node(), VClock)
                                              }, write)
               end
-      end),
-    ok.
+      end).
 
 -spec deliver_retained(pid(), topic(), qos()) -> 'ok'.
 deliver_retained(ClientPid, Topic, QoS) ->
@@ -480,7 +500,6 @@ unsplit_vclock_props(Pos) ->
     {user_properties,
      [{unsplit_method, {unsplit_lib, vclock, [Pos]}}]}.
 
-
 -spec reset_all_tables([]) -> ok.
 reset_all_tables([]) ->
     %% called using vmq-admin, mainly for test purposes
@@ -489,7 +508,7 @@ reset_all_tables([]) ->
     ets:delete_all_objects(vmq_session),
     ok.
 
--spec reset_table(atom()) -> ok.
+-spec reset_table(atom()) -> ok | {error, overloaded}.
 reset_table(Tab) ->
     Keys = mnesia:dirty_all_keys(Tab),
     transaction(
@@ -497,10 +516,7 @@ reset_table(Tab) ->
               lists:foreach(fun(Key) ->
                                     mnesia:delete({Tab, Key})
                             end, Keys)
-      end),
-    ok.
-
-
+      end).
 
 -spec wait_til_ready() -> 'ok'.
 wait_til_ready() ->
@@ -772,10 +788,12 @@ remove_expired_clients(ExpiredSinceSeconds) ->
 remove_expired_clients_({[[ClientId, Pid]|Rest], Cont}) ->
     case is_process_alive(Pid) of
         false ->
-            transaction(fun() -> del_subscriber_tx('_', ClientId) end),
-            vmq_msg_store:clean_session(ClientId),
-            vmq_systree:incr_expired_clients(),
-            vmq_systree:decr_inactive_clients();
+            transaction(fun() -> del_subscriber_tx('_', ClientId) end,
+                        fun(_) ->
+                                vmq_msg_store:clean_session(ClientId),
+                                vmq_systree:incr_expired_clients(),
+                                vmq_systree:decr_inactive_clients()
+                        end);
         true ->
             ok
     end,
@@ -787,12 +805,16 @@ remove_expired_clients_('$end_of_table') ->
 
 set_monitors() ->
     set_monitors(ets:select(vmq_session,
-                            [{#session{pid='$1', _='_'}, [], ['$1']}], 100)).
+                            [{#session{pid='$1', client_id='$2', _='_'}, [],
+                              [['$1', '$2']]}], 100)).
 
 set_monitors('$end_of_table') ->
     ok;
-set_monitors({Pids, Cont}) ->
-    _ = [erlang:monitor(process, Pid) || Pid <- Pids],
+set_monitors({PidsAndIds, Cont}) ->
+    _ = [begin
+             MRef = erlang:monitor(process, Pid),
+             ets:insert(vmq_session_mons, {MRef, ClientId})
+         end || [Pid, ClientId] <- PidsAndIds],
     set_monitors(ets:select(Cont)).
 
 
@@ -813,9 +835,11 @@ fix_session_table('$end_of_table', Acc) ->
     _ = [begin
              case ets:lookup(vmq_session, ClientId) of
                  [#session{clean=true}] ->
-                     transaction(fun() -> del_subscriber_tx('_', ClientId) end),
-                     ets:delete(vmq_session, ClientId),
-                     vmq_msg_store:clean_session(ClientId);
+                     transaction(fun() -> del_subscriber_tx('_', ClientId) end,
+                                 fun(_) ->
+                                         ets:delete(vmq_session, ClientId),
+                                         vmq_msg_store:clean_session(ClientId)
+                                 end);
                  [Session] ->
                      ets:insert(vmq_session,
                                 Session#session{pid=undefined,
@@ -832,6 +856,7 @@ fix_session_table('$end_of_table', Acc) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec init([]) -> {ok, state()}.
 init([]) ->
+    ets:new(vmq_session_mons, [named_table]),
     spawn_link(fun() -> message_queue_monitor() end),
     fix_session_table(),
     process_flag(trap_exit, true),
@@ -851,6 +876,7 @@ handle_call({monitor, ClientPid, ClientId, CleanSession}, _From, State) ->
         %% vvvvvvvvvvvvvvvvvvvvvvvv
         [#session{pid=OldClientPid, monitor=MRef, clean=OldClean}] ->
             demonitor(MRef, [flush]),
+            ets:delete(vmq_session_mons, MRef),
             case OldClean of
                 true ->
                     del_subscriber_fun(ClientId),
@@ -864,6 +890,7 @@ handle_call({monitor, ClientPid, ClientId, CleanSession}, _From, State) ->
     Monitor = monitor(process, ClientPid),
     Session = #session{client_id=ClientId, pid=ClientPid,
                        monitor=Monitor, last_seen=epoch(), clean=CleanSession},
+    ets:insert(vmq_session_mons, {Monitor, ClientId}),
     ets:insert(vmq_session, Session),
     {reply, ok, State}.
 
@@ -873,7 +900,13 @@ handle_cast(_Req, State) ->
 
 -spec handle_info(_, []) -> {noreply, []}.
 handle_info({'DOWN', MRef, process, _Pid, _Reason}, State) ->
-    unregister_client(MRef),
+    case ets:lookup(vmq_session_mons, MRef) of
+        [] ->
+            ignore;
+        [{_, ClientId}] ->
+            ets:delete(vmq_session_mons, MRef),
+            unregister_client(ClientId)
+    end,
     {noreply, State}.
 
 -spec terminate(_, []) -> ok.
@@ -897,8 +930,8 @@ epoch() ->
     (Mega * 1000000 + Sec).
 
 
-unregister_client(MRef) ->
-    case ets:match_object(vmq_session, #session{monitor=MRef, _='_'}) of
+unregister_client(ClientId) ->
+    case ets:lookup(vmq_session, ClientId) of
         [#session{client_id=ClientId, clean=true}] ->
             del_subscriber_fun(ClientId),
             ets:delete(vmq_session, ClientId),
@@ -914,6 +947,9 @@ unregister_client(MRef) ->
     end.
 
 transaction(TxFun) ->
+    transaction(TxFun, fun(Ret) -> Ret end).
+
+transaction(TxFun, SuccessFun) ->
     %% Making this a sync_transaction allows us to use dirty_read
     %% elsewhere and get a consistent result even when that read
     %% executes on a different node.
@@ -924,10 +960,11 @@ transaction(TxFun) ->
         {sync, {atomic, Result}} ->
             %% Rabbit enforces that data is synced to disk by
             %% waiting for disk_log:sync(latest_log),
-            Result;
+            SuccessFun(Result);
         {sync, {aborted, Reason}} -> throw({error, Reason});
-        {atomic, Result} -> Result;
-        {aborted, Reason} -> throw({error, Reason})
+        {atomic, Result} -> SuccessFun(Result);
+        {aborted, Reason} -> throw({error, Reason});
+        {error, overloaded} -> {error, overloaded}
     end.
 
 sync_transaction_(TxFun) ->

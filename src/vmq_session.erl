@@ -33,7 +33,6 @@
          code_change/4]).
 
 -export([wait_for_connect/2,
-         connection_attempted/2,
          connected/2]).
 
 
@@ -65,8 +64,6 @@
           will_msg                          :: undefined | payload(),
           will_qos                          :: undefined | qos(),
           waiting_acks=dict:new()           :: dict(),
-          %% statemachine requirement
-          connection_attempted=false        :: boolean(),
           %% auth backend requirement
           peer                              :: peer(),
           username                          :: undefined | username() |
@@ -159,12 +156,6 @@ list_sessions_(InfoItems) ->
 wait_for_connect(timeout, State) ->
     lager:debug("[~p] stop due to timeout~n", [self()]),
     {stop, normal, State}.
-
--spec connection_attempted(timeout, state()) ->
-                                  {next_state, wait_for_connect,
-                                   state(), ?CLOSE_AFTER}.
-connection_attempted(timeout, State) ->
-    {next_state, wait_for_connect, State, ?CLOSE_AFTER}.
 
 -spec connected(timeout
                 | keepalive_expired
@@ -313,7 +304,7 @@ handle_event({input, Frame}, StateName, State) ->
         Ret -> Ret
     end;
 handle_event(disconnect, StateName, State) ->
-    lager:warning("[~p] stop in state ~p due to ~p~n",
+    lager:debug("[~p] stop in state ~p due to ~p~n",
                   [self(), StateName, disconnect]),
     {stop, normal, State}.
 
@@ -410,9 +401,17 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
         {ok, {_, _, TRef, {MsgRef, IsRetain}}} ->
             cancel_timer(TRef),
             {ok, {RoutingKey, Payload}} = vmq_msg_store:retrieve(MsgRef),
-            publish(User, ClientId, MsgRef, RoutingKey, Payload, IsRetain),
-            vmq_msg_store:deref(MsgRef),
-            State#state{waiting_acks=dict:erase({qos2, MessageId}, WAcks)};
+            case publish(User, ClientId, MsgRef,
+                         RoutingKey, Payload, IsRetain) of
+                ok ->
+                    vmq_msg_store:deref(MsgRef),
+                    State#state{
+                      waiting_acks=dict:erase({qos2, MessageId}, WAcks)};
+                {error, _Reason} ->
+                    %% cant publish due to overload or netsplit,
+                    %% client will retry
+                    State
+            end;
         error when IsDup ->
             %% already delivered, Client expects a PUBCOMP
             State
@@ -465,7 +464,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
                                               qos_table=QoSs}, <<>>, State),
             {connected, NewState};
         {error, _Reason} ->
-            %% cant subscribe due to netsplit,
+            %% cant subscribe due to overload or netsplit,
             %% Subscribe uses QoS 1 so the client will retry
             {connected, State}
     end;
@@ -482,7 +481,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
                                                }, <<>>, State),
             {connected, NewState};
         {error, _Reason} ->
-            %% cant unsubscribe due to netsplit,
+            %% cant unsubscribe due to overload or netsplit,
             %% Unsubscribe uses QoS 1 so the client will retry
             {connected, State}
     end;
@@ -500,9 +499,9 @@ check_connect(#mqtt_frame_connect{proto_ver=Ver} = F, State) ->
 check_client_id(#mqtt_frame_connect{},
                 #state{username={preauth, undefined}, peer=Peer} = State) ->
     %% No common name found in client certificate
-    lager:error("can't authenticate ssl client ~p due to no_common_name_found",
-                [Peer]),
-    {connection_attempted,
+    lager:warning("can't authenticate ssl client ~p due to
+                  no_common_name_found", [Peer]),
+    {wait_for_connect,
      send_connack(?CONNACK_CREDENTIALS, State)};
 check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
                 #state{username={preauth, ClientId}, peer=Peer} = State) ->
@@ -512,9 +511,9 @@ check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
             vmq_hook:all(on_register, [Peer, ClientId, undefined, undefined]),
             check_will(F, State#state{clean_session=CleanSession});
         {error, Reason} ->
-            lager:error("can't register client ~p due to ~p",
+            lager:warning("can't register client ~p due to ~p",
                         [ClientId, Reason]),
-            {connection_attempted,
+            {wait_for_connect,
              send_connack(?CONNACK_SERVER, State)}
     end;
 check_client_id(#mqtt_frame_connect{client_id=missing}, State) ->
@@ -524,9 +523,9 @@ check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=4} = F, State) ->
     check_user(F#mqtt_frame_connect{client_id=RandomClientId},
                State#state{client_id=RandomClientId});
 check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=3}, State) ->
-    lager:error("empty protocol version not allowed in mqttv3 ~p",
+    lager:warning("empty protocol version not allowed in mqttv3 ~p",
                 [State#state.client_id]),
-    {connection_attempted,
+    {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)};
 check_client_id(#mqtt_frame_connect{client_id=Id, proto_ver=V} = F,
                 #state{max_client_id_size=S} = State) when length(Id) =< S ->
@@ -534,13 +533,13 @@ check_client_id(#mqtt_frame_connect{client_id=Id, proto_ver=V} = F,
         true ->
             check_user(F, State#state{client_id=Id});
         false ->
-            lager:error("invalid protocol version for ~p ~p", [Id, V]),
-            {connection_attempted,
+            lager:warning("invalid protocol version for ~p ~p", [Id, V]),
+            {wait_for_connect,
              send_connack(?CONNACK_PROTO_VER, State)}
     end;
 check_client_id(#mqtt_frame_connect{client_id=Id}, State) ->
-    lager:error("invalid client id ~p", [Id]),
-    {connection_attempted,
+    lager:warning("invalid client id ~p", [Id]),
+    {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)}.
 
 check_user(#mqtt_frame_connect{username=""} = F, State) ->
@@ -561,31 +560,31 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                                                        User, Password]),
                             check_will(F, State#state{username=User});
                         {error, Reason} ->
-                            lager:error("can't register client ~p due to ~p",
+                            lager:warning("can't register client ~p due to ~p",
                                         [ClientId, Reason]),
-                            {connection_attempted,
+                            {wait_for_connect,
                              send_connack(?CONNACK_SERVER, State)}
                     end;
                 not_found ->
                                                 % returned when no hook
                                                 % on_register hook was
                                                 % able to authenticate user
-                    lager:error(
+                    lager:warning(
                       "can't authenticate client ~p due to not_found",
                       [ClientId]),
-                    {connection_attempted,
+                    {wait_for_connect,
                      send_connack(?CONNACK_AUTH, State)};
                 {error, invalid_credentials} ->
-                    lager:error(
+                    lager:warning(
                       "can't authenticate client ~p due to invalid_credentials",
                       [ClientId]),
-                    {connection_attempted,
+                    {wait_for_connect,
                      send_connack(?CONNACK_CREDENTIALS, State)};
                 {error, not_authorized} ->
-                    lager:error(
+                    lager:warning(
                       "can't authenticate client ~p due to not_authorized",
                       [ClientId]),
-                    {connection_attempted,
+                    {wait_for_connect,
                      send_connack(?CONNACK_AUTH, State)}
             end;
         true ->
@@ -594,9 +593,9 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                     vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
                     check_will(F, State#state{username=User});
                 {error, Reason} ->
-                    lager:error("can't register client ~p due to reason",
+                    lager:warning("can't register client ~p due to reason ~p",
                                 [ClientId, Reason]),
-                    {connection_attempted,
+                    {wait_for_connect,
                      send_connack(?CONNACK_SERVER, State)}
             end
     end.
@@ -605,9 +604,9 @@ check_will(#mqtt_frame_connect{will_topic=undefined}, State) ->
     {connected, send_connack(?CONNACK_ACCEPT, State)};
 check_will(#mqtt_frame_connect{will_topic=""}, State) ->
     %% null topic.... Mosquitto sends a CONNACK_INVALID_ID...
-    lager:error("invalid last will topic for client ~p",
+    lager:warning("invalid last will topic for client ~p",
                 [State#state.client_id]),
-    {connection_attempted,
+    {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)};
 check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos},
            State) ->
@@ -623,16 +622,16 @@ check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos},
                                                          will_topic=LWTopic,
                                                          will_msg=Msg})};
                 false ->
-                    lager:error(
+                    lager:warning(
                       "last will message has invalid size for client ~p",
                       [ClientId]),
-                    {connection_attempted,
+                    {wait_for_connect,
                      send_connack(?CONNACK_SERVER, State)}
             end;
         _ ->
-            lager:error("can't authenticate last will for client ~p",
+            lager:warning("can't authenticate last will for client ~p",
                         [ClientId]),
-            {connection_attempted, send_connack(?CONNACK_AUTH, State)}
+            {wait_for_connect, send_connack(?CONNACK_AUTH, State)}
     end.
 
 -spec send_connack(non_neg_integer(), state()) -> state().
@@ -683,8 +682,12 @@ dispatch_publish_(2, MessageId, Topic, Payload, IsRetain, State) ->
                             payload(), flag(), state()) -> state().
 dispatch_publish_qos0(_MessageId, Topic, Payload, IsRetain, State) ->
     #state{username=User, client_id=ClientId} = State,
-    publish(User, ClientId, undefined, Topic, Payload, IsRetain),
-    State.
+    case publish(User, ClientId, undefined, Topic, Payload, IsRetain) of
+        ok ->
+            State;
+        {error, _Reason} ->
+            drop(State)
+    end.
 
 -spec dispatch_publish_qos1(msg_id(), topic(),
                             payload(), flag(), state()) -> state().
@@ -693,16 +696,21 @@ dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
         true ->
             #state{username=User, client_id=ClientId} = State,
             MsgRef = vmq_msg_store:store(ClientId, Topic, Payload),
-            publish(User, ClientId, MsgRef, Topic, Payload, IsRetain),
-            NewState = send_frame(?PUBACK,
-                                  #mqtt_frame_publish{message_id=MessageId},
-                                  <<>>, State),
-            vmq_msg_store:deref(MsgRef),
-            NewState;
+            case publish(User, ClientId, MsgRef, Topic, Payload, IsRetain) of
+                ok ->
+                    NewState = send_frame(?PUBACK,
+                                          #mqtt_frame_publish{
+                                             message_id=MessageId
+                                            }, <<>>, State),
+                    vmq_msg_store:deref(MsgRef),
+                    NewState;
+                {error, _Reason} ->
+                    %% can't publish due to overload or netsplit
+                    vmq_msg_store:deref(MsgRef),
+                    drop(State)
+            end;
         false ->
-            %% drop
-            #state{pub_dropped_cnt=PubDropped} = State,
-            State#state{pub_dropped_cnt=incr_pub_dropped_cnt(PubDropped)}
+            drop(State)
     end.
 
 -spec dispatch_publish_qos2(msg_id(), topic(),
@@ -727,9 +735,7 @@ dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
                              {qos2, MessageId},
                              {2, Frame, Ref, {MsgRef, IsRetain}}, WAcks)};
         false ->
-            %% drop
-            #state{pub_dropped_cnt=PubDropped} = State,
-            State#state{pub_dropped_cnt=incr_pub_dropped_cnt(PubDropped)}
+            drop(State)
     end.
 
 -spec get_msg_id(qos(), state()) -> {msg_id(), state()}.
@@ -739,6 +745,9 @@ get_msg_id(_, #state{next_msg_id=65535} = State) ->
     {1, State#state{next_msg_id=2}};
 get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
     {MsgId, State#state{next_msg_id=MsgId + 1}}.
+
+drop(#state{pub_dropped_cnt=PubDropped} = State) ->
+    State#state{pub_dropped_cnt=incr_pub_dropped_cnt(PubDropped)}.
 
 -spec send_publish_frame(mqtt_frame(), state()) -> state() | {error, atom()}.
 send_publish_frame(Frame, State) ->
@@ -762,11 +771,15 @@ publish(User, ClientId, MsgRef, Topic, Payload, IsRetain) ->
         not_found ->
             {error, not_allowed};
         ok ->
-            R = vmq_reg:publish(User, ClientId, MsgRef, Topic,
-                                   Payload, IsRetain),
-            vmq_hook:all(on_publish, [User, ClientId, MsgRef,
-                                         Topic, Payload, IsRetain]),
-            R
+            case vmq_reg:publish(User, ClientId, MsgRef, Topic,
+                                   Payload, IsRetain) of
+                ok ->
+                    vmq_hook:all(on_publish, [User, ClientId, MsgRef,
+                                              Topic, Payload, IsRetain]),
+                    ok;
+                E ->
+                    E
+            end
     end.
 
 -spec combine_mp(_, 'undefined' | string()) -> 'undefined' | [any()].
