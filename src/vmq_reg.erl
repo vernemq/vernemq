@@ -860,6 +860,7 @@ init([]) ->
     spawn_link(fun() -> message_queue_monitor() end),
     fix_session_table(),
     process_flag(trap_exit, true),
+    process_flag(priority, high),
     set_monitors(),
     {ok, #state{}}.
 
