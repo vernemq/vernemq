@@ -684,9 +684,8 @@
                                                    ]}.
 
 {mapping, "msg_store.bitcask_backend.directory", "vmq_server.msg_store", [
-                                                    {default, "."},
-                                                    {datatype, directory},
-                                                    {commented, "."}
+                                                    {default, "{{platform_data_dir}}/msgstore"},
+                                                    {datatype, directory}
                                                    ]}.
 
 {translation, "vmq_server.msg_store", 
@@ -748,3 +747,8 @@
          {ok, Term} = erl_parse:parse_term(T),
          Term
  end}.
+
+{mapping, "mnesia.directory", "mnesia.dir", [
+                                             {default, "{{platform_data_dir}}/mnesia"},
+                                             {datatype, directory}
+                                            ]}.
