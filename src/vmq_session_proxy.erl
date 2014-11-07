@@ -32,8 +32,8 @@
 -record(state, {node,
                 repl_pid,
                 repl_mon,
-                session_pid,
-                session_mon,
+                queue_pid,
+                queue_mon,
                 client_id,
                 waiting}).
 
@@ -41,23 +41,23 @@
 %%% API
 %%%===================================================================
 
-start_link(Node, SessionPid, ClientId) ->
-    gen_server:start_link(?MODULE, [Node, SessionPid, ClientId], []).
+start_link(Node, QPid, ClientId) ->
+    gen_server:start_link(?MODULE, [Node, QPid, ClientId], []).
 
 derefed(SessionProxy, MsgRef) ->
     gen_server:cast(SessionProxy, {derefed, MsgRef}).
 
 deliver(SessionProxy, Term) ->
-    gen_server:call(SessionProxy, {deliver, Term}).
+    gen_server:call(SessionProxy, {deliver, Term}, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
-init([Node, SessionPid, ClientId]) ->
-    SessionMon = monitor(process, SessionPid),
-    {ok, #state{node=Node, client_id=ClientId, session_pid=SessionPid,
-                session_mon=SessionMon}, 0}.
+init([Node, QPid, ClientId]) ->
+    QueueMon = monitor(process, QPid),
+    {ok, #state{node=Node, client_id=ClientId, queue_pid=QPid,
+                queue_mon=QueueMon}, 0}.
 
 handle_call({deliver, Term}, From, State) ->
     {noreply, deliver(From, Term, State)}.
@@ -107,14 +107,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 deliver(From, Term, State) ->
-    #state{session_pid=SessionPid, node=Node} = State,
+    #state{queue_pid=QPid, node=Node} = State,
     case Term of
         {RoutingKey, Payload, QoS, Dup, MsgRef} ->
-            vmq_session:deliver(SessionPid, RoutingKey, Payload,
-                                QoS, false, Dup, {{self(), Node}, MsgRef}),
+            vmq_queue:post(QPid, {deliver, {RoutingKey, Payload,
+                                QoS, false, Dup, {{self(), Node}, MsgRef}}}),
             State#state{waiting={MsgRef, From}};
         _ ->
-            vmq_session:deliver_bin(SessionPid, Term),
+            vmq_queue:post(QPid, {deliver_bin, Term}),
             gen_server:reply(From, ok),
             State
     end.
