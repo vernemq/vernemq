@@ -19,6 +19,7 @@
          recv_loop/3]).
 
 -define(HIBERNATE_AFTER, 5000).
+-define(GEN, '$gen_call').
 
 start_link(Transport, Socket) ->
     MaybeMaskedSocket =
@@ -30,9 +31,11 @@ start_link(Transport, Socket) ->
                              [MaybeMaskedSocket, [], {os:timestamp(), 0}])}.
 
 send(WriterPid, Bin) when is_binary(Bin) ->
-    WriterPid ! {send, Bin};
+    {ok, Res} = gen:call(WriterPid, ?GEN, {send, Bin}, infinity),
+    Res;
 send(WriterPid, Frame) when is_tuple(Frame) ->
-    WriterPid ! {send_frame, Frame}.
+    {ok, Res} = gen:call(WriterPid, ?GEN, {send_frame, Frame}, infinity),
+    Res.
 
 main_loop(Socket, Pending, BytesSend) ->
     process_flag(trap_exit, true),
@@ -67,11 +70,15 @@ recv_loop(Socket, Pending, BytesSend) ->
             ?MODULE:recv_loop(Socket, NewPending, NewBytesSend)
     end.
 
-handle_message({send, Bin}, Socket, Pending, BytesSend) ->
-    maybe_flush(Socket, [Bin|Pending], BytesSend);
-handle_message({send_frame, Frame}, Socket, Pending, BytesSend) ->
+handle_message({?GEN, From, {send, Bin}}, Socket, Pending, BytesSend) ->
+    Ret = maybe_flush(Socket, [Bin|Pending], BytesSend),
+    gen_server:reply(From, ok),
+    Ret;
+handle_message({?GEN, From, {send_frame, Frame}}, Socket, Pending, BytesSend) ->
     Bin = emqtt_frame:serialise(Frame),
-    maybe_flush(Socket, [Bin|Pending], BytesSend);
+    Ret = maybe_flush(Socket, [Bin|Pending], BytesSend),
+    gen_server:reply(From, ok),
+    Ret;
 handle_message({inet_reply, _, ok}, _Socket, Pending, BytesSend) ->
     {Pending, BytesSend};
 handle_message({inet_reply, _, Status}, _, _, _) ->
