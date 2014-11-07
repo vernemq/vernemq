@@ -752,3 +752,8 @@
                                              {default, "{{platform_data_dir}}/mnesia"},
                                              {datatype, directory}
                                             ]}.
+
+{mapping, "session_dump_file", "vmq_server.session_dump_file", [
+                                                                {default, "{{platform_data_dir}}/session.dump"},
+                                                                {datatype, file}
+                                                               ]}.
