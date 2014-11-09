@@ -757,3 +757,9 @@
                                                                 {default, "{{platform_data_dir}}/session.dump"},
                                                                 {datatype, file}
                                                                ]}.
+
+{mapping, "queue_size", "vmq_server.queue_size", [
+                                                    {default, 1000},
+                                                    {datatype, integer},
+                                                    hidden
+                                                 ]}.

@@ -46,6 +46,7 @@
       {persistent_client_expiration, "never"},
       {sys_interval, 10}, % in seconds
       {max_inflight_messages, 20},
+      {queue_size, 1000},
       {message_size_limit, 0},
       {msg_store, {vmq_bitcask_store, []}},
       {tune_tcp_buffer_size, false},

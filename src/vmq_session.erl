@@ -213,7 +213,8 @@ init([Peer, SendFun, Opts]) ->
                     apply(Mod, handle, Args)
             end
     end,
-    {ok, QPid} = vmq_queue:start_link(self(), 1000, queue),
+    QueueSize = vmq_config:get_env(queue_size, 1000),
+    {ok, QPid} = vmq_queue:start_link(self(), QueueSize, queue),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   msg_log_handler=MsgLogHandler,
                                   mountpoint=string:strip(MountPoint,
@@ -272,8 +273,15 @@ handle_info({mail, QPid, new_data}, StateName,
             #state{queue_pid=QPid} = State) ->
     vmq_queue:active(QPid, fun(Msg,St) -> {{ok, Msg}, St} end, []),
     {next_state, StateName, State};
-handle_info({mail, QPid, Msgs, _, _}, connected,
-            #state{queue_pid=QPid} = State) ->
+handle_info({mail, QPid, Msgs, _, Dropped}, connected,
+            #state{client_id=ClientId, queue_pid=QPid} = State) ->
+    case Dropped > 0 of
+        true ->
+            lager:warning("client ~p dropped ~p messages~n",
+                          [ClientId, Dropped]);
+        false ->
+            ok
+    end,
     case handle_messages(Msgs, State) of
         {ok, NewState} ->
             vmq_queue:notify(QPid),
