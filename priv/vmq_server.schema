@@ -763,3 +763,16 @@
                                                     {datatype, integer},
                                                     hidden
                                                  ]}.
+
+{mapping, "tcp_listen_options", "vmq_server.tcp_listen_options", [
+                                                                  {default, "[{nodelay, true}, {linger, {true, 0}}, {send_timeout, 30000}, {send_timeout_close, true}, {backlog, 128}]"},
+                                                                  {datatype, string},
+                                                                  hidden
+                                                                 ]}.
+{translation, "vmq_server.tcp_listen_options", 
+ fun(Conf) ->
+         S = cuttlefish:conf_get("tcp_listen_options", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.

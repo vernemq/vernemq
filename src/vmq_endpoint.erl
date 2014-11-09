@@ -45,7 +45,7 @@ change_config_now(_New, Changed, _Deleted) ->
 active_connections() ->
     lists:sum(lists:flatten(
                 [[ranch_conns_sup:active_connections(CPid)
-                  ||{ranch_conns_sup, CPid, _, _}<- 
+                  ||{ranch_conns_sup, CPid, _, _}<-
                         supervisor:which_children(Pid)]
                  ||{{ranch_listener_sup, _}, Pid, _, _}<-
                        supervisor:which_children(ranch_sup)])).
@@ -166,7 +166,8 @@ transport_opts(ranch_ssl, Opts) ->
              []
      end
     ];
-transport_opts(ranch_tcp, _Opts) -> [].
+transport_opts(ranch_tcp, _Opts) ->
+    vmq_config:get_env(tcp_listen_options).
 
 -spec handler_opts('cowboy_protocol' | 'vmq_tcp', [any()]) -> [any(), ...].
 handler_opts(cowboy_protocol, Opts) ->
@@ -323,7 +324,7 @@ check_user_state(UserState, Cert) ->
                     {fail, {bad_cert, cert_revoked}}
             end
     end.
-    
+
 
 -spec load_cert(string()) -> [binary()].
 load_cert(Cert) ->

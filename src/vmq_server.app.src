@@ -61,7 +61,14 @@
                                               {mountpoint, ""}]}],
                       [] %% WSS Listener
                   }},
-      {mnesia_tx_queue, [{regulators, [{rate,[{limit, 1000}, {modifiers, [{mnesia, 10}]}]}]}]} 
+      {mnesia_tx_queue, [{regulators, [{rate,[{limit, 1000}, {modifiers, [{mnesia, 10}]}]}]}]},
+      {tcp_listen_options, [
+            {nodelay, true}, 
+            {linger, {true, 0}}, 
+            {send_timeout, 30000}, 
+            {send_timeout_close, true}, 
+            {backlog, 128}
+        ]}
 
       ]}
 
