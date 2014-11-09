@@ -54,9 +54,6 @@ init(Ref, Socket, Transport, Opts) ->
                                          ok
                                  end, NewOpts),
     ok = maybe_tune_buffer_size(Transport, Socket),
-    ok = apply(Transport, setopts, [Socket, [{nodelay, true},
-                                    {packet, raw},
-                                    {active, once}]]),
     process_flag(trap_exit, true),
     vmq_systree:incr_socket_count(),
     loop(#st{socket=Socket,
