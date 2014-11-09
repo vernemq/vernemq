@@ -242,7 +242,9 @@ register_client__(SessionPid, QPid, ClientId, CleanSession) ->
 -spec publish(username() | plugin_id(), client_id(), undefined | msg_ref(),
               routing_key(), binary(), flag()) -> 'ok' | {'error', _}.
 publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain) ->
+    process_flag(priority, high),
     MatchedTopics = match(RoutingKey),
+    Ret =
     case IsRetain of
         true ->
             vmq_cluster:if_ready(fun publish_/7,
@@ -265,7 +267,9 @@ publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain) ->
                                      RoutingKey, Payload,
                                      IsRetain, MatchedTopics)
             end
-    end.
+    end,
+    process_flag(priority, normal),
+    Ret.
 
 
 publish_if_ready(User, ClientId, MsgId, RoutingKey, Payload, IsRetain,
