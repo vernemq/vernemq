@@ -41,7 +41,7 @@ teardown(Nodes) ->
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 multiple_connect(Nodes) ->
-    NrOfConnects = 1000,
+    NrOfConnects = 250,
     NrOfProcesses = NrOfConnects div 50, %random:uniform(NrOfConnects),
     NrOfMsgsPerProcess = NrOfConnects div NrOfProcesses,
     publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess),
