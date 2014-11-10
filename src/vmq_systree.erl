@@ -12,6 +12,7 @@
 %% limitations under the License.
 
 -module(vmq_systree).
+-include("vmq_server.hrl").
 
 -behaviour(gen_server).
 
@@ -45,7 +46,6 @@
 
 -record(state, {interval=10000, ref}).
 -define(TABLE, vmq_systree).
--define(CLIENT_ID, "systree_client_9876"). %% only used internally
 
 -type state() :: #state{}.
 
@@ -345,8 +345,11 @@ publish([_|Rest]) ->
 
 publish(Topic, Val) ->
     TTopic = lists:flatten(["$SYS/", atom_to_list(node()), "/", Topic]),
-    vmq_reg:publish({plugin, ?MODULE, self()}, ?CLIENT_ID, undefined,
-                    TTopic, erlang:integer_to_binary(Val), false).
+    Msg = #vmq_msg{routing_key=TTopic,
+                   payload=erlang:integer_to_binary(Val),
+                   retain=false,
+                   dup=false},
+    vmq_reg:publish(Msg).
 
 init_table([]) -> ok;
 init_table([{MetricName, mavg}|Rest]) ->

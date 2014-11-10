@@ -23,7 +23,7 @@
          unsubscribe/3,
          register_client/3,
          %% used in vmq_session fsm handling AND vmq_systree
-         publish/6,
+         publish/1,
 
          %% used in vmq_session:get_info/2 and vmq_session:list_sessions/1
          subscriptions_for_client/1,
@@ -50,7 +50,7 @@
          code_change/3]).
 
 %% used by RPC calls
--export([teardown_session/2, route/7,
+-export([teardown_session/2, route/2,
          register_client_/4]).
 
 %% used by mnesia_cluster for table setup
@@ -77,6 +77,7 @@
 -record(retain, {words, routing_key, payload, vclock=unsplit_vclock:fresh()}).
 
 -type state() :: #state{}.
+-type subscriber() :: #subscriber{}.
 
 -spec start_link() -> {ok, pid()} | ignore | {error, atom()}.
 start_link() ->
@@ -124,7 +125,7 @@ subscribe_tx(ClientId, QPid, Topics) ->
                 fun(_) ->
                         _ = [begin
                                  vmq_systree:incr_subscription_count(),
-                                 deliver_retained(QPid, T, QoS)
+                                 deliver_retained(ClientId, QPid, T, QoS)
                              end || {T, QoS} <- Topics],
                         ok
                 end).
@@ -239,17 +240,14 @@ register_client__(SessionPid, QPid, ClientId, CleanSession) ->
     ok = gen_server:call(?MODULE, {monitor, SessionPid, QPid,
                                    ClientId, CleanSession}, infinity).
 
--spec publish(username() | plugin_id(), client_id(), undefined | msg_ref(),
-              routing_key(), binary(), flag()) -> 'ok' | {'error', _}.
-publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain) ->
+-spec publish(msg()) -> 'ok' | {'error', _}.
+publish(#vmq_msg{routing_key=RoutingKey, retain=IsRetain} = Msg) ->
     process_flag(priority, high),
     MatchedTopics = match(RoutingKey),
     Ret =
     case IsRetain of
         true ->
-            vmq_cluster:if_ready(fun publish_/7,
-                                 [User, ClientId, MsgId, RoutingKey,
-                                  Payload, IsRetain, MatchedTopics]);
+            vmq_cluster:if_ready(fun publish_/2, [Msg, MatchedTopics]);
         false ->
             case check_single_node(node(), MatchedTopics,
                                    length(MatchedTopics)) of
@@ -260,63 +258,41 @@ publish(User, ClientId, MsgId, RoutingKey, Payload, IsRetain) ->
                     %% in a split brain situation we might not know if
                     %% another partition got matching subscriptions in the
                     %% meantime.
-                    route_single_node(User, ClientId, MsgId, RoutingKey,
-                                      Payload, IsRetain, MatchedTopics);
+                    route_single_node(Msg, MatchedTopics);
                 false ->
-                    publish_if_ready(User, ClientId, MsgId,
-                                     RoutingKey, Payload,
-                                     IsRetain, MatchedTopics)
+                    publish_if_ready(Msg, MatchedTopics)
             end
     end,
     process_flag(priority, normal),
     Ret.
 
 
-publish_if_ready(User, ClientId, MsgId, RoutingKey, Payload, IsRetain,
-                 MatchedTopics) ->
-    vmq_cluster:if_ready(fun publish__/7, [User,
-                                           ClientId,
-                                           MsgId,
-                                           RoutingKey,
-                                           Payload,
-                                           IsRetain,
-                                           MatchedTopics]).
+publish_if_ready(Msg, MatchedTopics) ->
+    vmq_cluster:if_ready(fun publish__/2, [Msg, MatchedTopics]).
 
-route_single_node(User, ClientId, MsgId, RoutingKey,
-                  Payload, IsRetain, MatchedTopics) ->
+route_single_node(Msg, MatchedTopics) ->
     lists:foreach(fun(#topic{name=Name}) ->
-                          route(User, ClientId,
-                                MsgId, Name, RoutingKey,
-                                Payload, IsRetain)
+                          route(Name, Msg)
                   end, MatchedTopics).
 
--spec publish_(username() | plugin_id(), client_id(), msg_id(),
-               routing_key(), payload(), 'true',
-               [topic()]) -> 'ok' | {error, overloaded}.
-publish_(User, ClientId, MsgId, RoutingKey,
-         Payload, IsRetain = true, MatchedTopics) ->
-    case retain_action(RoutingKey, Payload) of
+-spec publish_(msg(), [topic()]) -> 'ok' | {error, overloaded}.
+publish_(#vmq_msg{retain=true} = Msg, MatchedTopics) ->
+    case retain_action(Msg) of
         {error, overloaded} ->
             {error, overloaded};
         ok ->
-            publish__(User, ClientId, MsgId, RoutingKey,
-                      Payload, IsRetain, MatchedTopics)
+            publish__(Msg#vmq_msg{retain=false}, MatchedTopics)
     end.
 
--spec publish__(username() | plugin_id(), client_id(), msg_id(),
-                routing_key(), payload(), flag(), [topic()]) -> 'ok'.
-publish__(User, ClientId, MsgId, RoutingKey,
-          Payload, IsRetain, MatchedTopics) ->
+-spec publish__(msg(), [topic()]) -> 'ok'.
+publish__(Msg, MatchedTopics) ->
     lists:foreach(
       fun(#topic{name=Name, node=Node}) ->
               case Node == node() of
                   true ->
-                      route(User, ClientId, MsgId,
-                            Name, RoutingKey, Payload, IsRetain);
+                      route(Name, Msg);
                   false ->
-                      rpc:call(Node, ?MODULE, route,
-                               [User, ClientId, MsgId,
-                                Name, RoutingKey, Payload, IsRetain])
+                      rpc:call(Node, ?MODULE, route, [Name, Msg])
               end
       end, MatchedTopics).
 
@@ -329,12 +305,12 @@ check_single_node(Node, [_|Rest], Acc) ->
 check_single_node(_, [], 0) -> true;
 check_single_node(_, [], _) -> false.
 
--spec retain_action(routing_key(), payload()) -> 'ok' | {error, overloaded}.
-retain_action(RoutingKey, <<>>) ->
+-spec retain_action(msg()) -> 'ok' | {error, overloaded}.
+retain_action(#vmq_msg{routing_key=RoutingKey, payload= <<>>}) ->
     %% retain-delete action
     Words = emqtt_topic:words(RoutingKey),
     transaction(fun() -> mnesia:delete({vmq_retain, Words}) end);
-retain_action(RoutingKey, Payload) ->
+retain_action(#vmq_msg{routing_key=RoutingKey, payload= Payload}) ->
     %% retain-insert action
     Words = emqtt_topic:words(RoutingKey),
     transaction(
@@ -357,8 +333,8 @@ retain_action(RoutingKey, Payload) ->
               end
       end).
 
--spec deliver_retained(pid(), topic(), qos()) -> 'ok'.
-deliver_retained(QPid, Topic, QoS) ->
+-spec deliver_retained(client_id(), pid(), topic(), qos()) -> 'ok'.
+deliver_retained(Client, QPid, Topic, QoS) ->
     Words = [case W of
                  "+" -> '_';
                  _ -> W
@@ -374,9 +350,16 @@ deliver_retained(QPid, Topic, QoS) ->
                                                      payload='_', vclock='_'}),
     lists:foreach(
       fun(#retain{routing_key=RoutingKey, payload=Payload}) ->
-              MsgRef = vmq_msg_store:store(undefined, RoutingKey, Payload),
-              vmq_queue:post(QPid, {deliver, {RoutingKey,
-                                  Payload, QoS, true, false, MsgRef}})
+              Msg = #vmq_msg{routing_key=RoutingKey,
+                             payload=Payload,
+                             retain=true,
+                             dup=false},
+              MaybeChangedMsg =
+              case QoS of
+                  0 -> Msg;
+                  _ -> vmq_msg_store:store(Client, Msg)
+              end,
+              vmq_queue:post(QPid, {deliver, QoS, MaybeChangedMsg})
       end, RetainedMsgs).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -410,44 +393,33 @@ wait_until_stopped(ClientPid) ->
 
 
 %route locally, should only be called by publish
--spec route(username() | plugin_id(), client_id(), msg_id(), topic(),
-            routing_key(), payload(), flag()) -> 'ok'.
-route(SendingUser, SendingClientId, MsgId,
-      Topic, RoutingKey, Payload, IsRetain) ->
+-spec route(topic(), msg()) -> 'ok'.
+route(Topic, #vmq_msg{} = Msg) ->
     Subscribers = mnesia:dirty_read(vmq_subscriber, Topic),
     FilteredSubscribers = vmq_hook:every(filter_subscribers, Subscribers,
-                                         [SendingUser, SendingClientId,
-                                          MsgId, RoutingKey, Payload]),
+                                         [Msg]),
     lists:foldl(fun
-                    (#subscriber{qos=Qos, client=ClientId},
-                     AccMsgId) when Qos > 0 ->
-                          MaybeNewMsgId = vmq_msg_store:store(SendingClientId,
-                                                              AccMsgId,
-                                                              RoutingKey,
-                                                              Payload),
-                          deliver(ClientId, RoutingKey, Payload,
-                                  IsRetain, Qos, MaybeNewMsgId),
-                          MaybeNewMsgId;
-                    (#subscriber{qos=0, client=ClientId}, AccMsgId) ->
-                          deliver(ClientId, RoutingKey, Payload,
-                                  IsRetain, 0, undefined),
-                          AccMsgId
-                end, MsgId, FilteredSubscribers),
+                    (#subscriber{qos=0} = Subs, AccMsg) ->
+                          deliver(AccMsg, Subs),
+                          AccMsg;
+                    (#subscriber{client=Client} = Subs, AccMsg)->
+                          MaybeChangedMsg = vmq_msg_store:store(Client, AccMsg),
+                          deliver(MaybeChangedMsg, Subs),
+                          MaybeChangedMsg
+                end, Msg, FilteredSubscribers),
     ok.
 
--spec deliver(client_id(), routing_key(), payload(), flag(),
-              qos(), msg_ref()) -> 'ok' | {'error', 'not_found'}.
-deliver(_, _, <<>>, true, _, Ref) ->
+-spec deliver(msg(), subscriber()) -> 'ok' | {'error', 'not_found'}.
+deliver(#vmq_msg{payload= <<>>, retain=true, msg_ref=Ref}, _) ->
     %% <<>> --> retain-delete action, we don't deliver the empty frame
     vmq_msg_store:deref(Ref),
     ok;
-deliver(ClientId, RoutingKey, Payload, _, Qos, Ref) ->
-    case get_queue_pid(ClientId) of
+deliver(Msg, #subscriber{client=Client, qos=QoS}) ->
+    case get_queue_pid(Client) of
         {ok, QPid} ->
-            vmq_queue:post(QPid, {deliver, {RoutingKey,
-                                Payload, Qos, false, false, Ref}});
-        _ when Qos > 0 ->
-            vmq_msg_store:defer_deliver(ClientId, Qos, Ref),
+            vmq_queue:post(QPid, {deliver, QoS, Msg});
+        _ when QoS > 0 ->
+            vmq_msg_store:defer_deliver(Client, QoS, Msg#vmq_msg.msg_ref),
             ok;
         _ ->
             ok
@@ -557,10 +529,11 @@ direct_plugin_exports(Mod) ->
     PublishFun =
     fun(Topic, Payload) ->
             wait_til_ready(),
-            CallingPid = self(),
-            User = {plugin, Mod, CallingPid},
-            ok = publish(User, ClientId(CallingPid),
-                         undefined, Topic, Payload, false),
+            Msg = #vmq_msg{routing_key=Topic,
+                           payload=Payload,
+                           dup=false,
+                           retain=false},
+            ok = publish(Msg),
             ok
     end,
 

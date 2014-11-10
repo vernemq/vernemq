@@ -312,8 +312,8 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNALS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-handle_messages([{deliver, Msg}|Rest], State) ->
-    case handle_message(Msg, State) of
+handle_messages([{deliver, QoS, Msg}|Rest], State) ->
+    case handle_message(QoS, Msg, State) of
         {ok, NewState} ->
             handle_messages(Rest, NewState);
         {stop, Reason, NewState} ->
@@ -324,9 +324,14 @@ handle_messages([{deliver_bin, Term}|Rest], State) ->
     handle_messages(Rest, NewState);
 handle_messages([], State) -> {ok, State}.
 
-handle_message({Topic, Payload, QoS, IsRetained, IsDup, MsgStoreRef}, State) ->
+handle_message(QoS, Msg, State) ->
     #state{client_id=ClientId, waiting_acks=WAcks, mountpoint=MountPoint,
            retry_interval=RetryInterval} = State,
+    #vmq_msg{routing_key=RoutingKey,
+             payload=Payload,
+             retain=IsRetained,
+             dup=IsDup,
+             msg_ref=MsgStoreRef} = Msg,
     {OutgoingMsgId, State1} = get_msg_id(QoS, State),
     Frame = #mqtt_frame{
                fixed=#mqtt_frame_fixed{
@@ -336,7 +341,7 @@ handle_message({Topic, Payload, QoS, IsRetained, IsDup, MsgStoreRef}, State) ->
                         dup=IsDup
                        },
                variable=#mqtt_frame_publish{
-                           topic_name=clean_mp(MountPoint, Topic),
+                           topic_name=clean_mp(MountPoint, RoutingKey),
                            message_id=OutgoingMsgId},
                payload=Payload
               },
@@ -421,7 +426,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
              Var, _, State) ->
-    #state{username=User, client_id=ClientId, waiting_acks=WAcks} = State,
+    #state{waiting_acks=WAcks, username=User, client_id=ClientId} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
     NewState =
@@ -429,8 +434,11 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
         {ok, {_, _, TRef, {MsgRef, IsRetain}}} ->
             cancel_timer(TRef),
             {ok, {RoutingKey, Payload}} = vmq_msg_store:retrieve(MsgRef),
-            case publish(User, ClientId, MsgRef,
-                         RoutingKey, Payload, IsRetain) of
+            Msg = #vmq_msg{msg_ref=MsgRef,
+                           routing_key=RoutingKey,
+                           payload=Payload,
+                           retain=IsRetain},
+            case publish(User, ClientId, 2, Msg) of
                 ok ->
                     vmq_msg_store:deref(MsgRef),
                     State#state{
@@ -468,9 +476,10 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
         {$$, _} ->
             {connected, State};
         {_, true} ->
-            {connected, dispatch_publish(QoS, MessageId,
-                                         combine_mp(MountPoint, Topic), Payload,
-                                         IsRetain,
+            Msg = #vmq_msg{routing_key=combine_mp(MountPoint, Topic),
+                           payload=Payload,
+                           retain=IsRetain},
+            {connected, dispatch_publish(QoS, MessageId, Msg,
                                          State#state{
                                            pub_recv_cnt=incr_pub_recv_cnt(
                                                           PubRecvCnt)
@@ -689,44 +698,43 @@ maybe_publish_last_will(#state{will_topic=undefined} = State) -> State;
 maybe_publish_last_will(#state{will_qos=QoS, will_topic=Topic,
                                will_msg=Msg } = State) ->
     {MsgId, NewState} = get_msg_id(QoS, State),
-    dispatch_publish(QoS, MsgId, Topic, Msg, false, NewState).
+    dispatch_publish(QoS, MsgId,
+                     #vmq_msg{routing_key=Topic, payload=Msg}, NewState).
 
 
--spec dispatch_publish(qos(), msg_id(), topic(),
-                       payload(), flag(), state()) -> state().
-dispatch_publish(Qos, MessageId, Topic, Payload, IsRetain, State) ->
+-spec dispatch_publish(qos(), msg_id(), msg(), state()) -> state().
+dispatch_publish(Qos, MessageId, #vmq_msg{routing_key=Topic,
+                                          payload=Payload} = Msg, State) ->
     #state{client_id=ClientId, msg_log_handler=MsgLogHandler} = State,
     MsgLogHandler(ClientId, Topic, Payload),
-    dispatch_publish_(Qos, MessageId, Topic, Payload, IsRetain, State).
+    dispatch_publish_(Qos, MessageId, Msg, State).
 
--spec dispatch_publish_(qos(), msg_id(),
-                        topic(), payload(), flag(), state()) -> state().
-dispatch_publish_(0, MessageId, Topic, Payload, IsRetain, State) ->
-    dispatch_publish_qos0(MessageId, Topic, Payload, IsRetain, State);
-dispatch_publish_(1, MessageId, Topic, Payload, IsRetain, State) ->
-    dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State);
-dispatch_publish_(2, MessageId, Topic, Payload, IsRetain, State) ->
-    dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State).
+-spec dispatch_publish_(qos(), msg_id(), msg(), state()) -> state().
+dispatch_publish_(0, MessageId, Msg, State) ->
+    dispatch_publish_qos0(MessageId, Msg, State);
+dispatch_publish_(1, MessageId, Msg, State) ->
+    dispatch_publish_qos1(MessageId, Msg, State);
+dispatch_publish_(2, MessageId, Msg, State) ->
+    dispatch_publish_qos2(MessageId, Msg, State).
 
--spec dispatch_publish_qos0(msg_id(), topic(),
-                            payload(), flag(), state()) -> state().
-dispatch_publish_qos0(_MessageId, Topic, Payload, IsRetain, State) ->
+-spec dispatch_publish_qos0(msg_id(), msg(), state()) -> state().
+dispatch_publish_qos0(_MessageId, Msg, State) ->
     #state{username=User, client_id=ClientId} = State,
-    case publish(User, ClientId, undefined, Topic, Payload, IsRetain) of
+    case publish(User, ClientId, 0, Msg) of
         ok ->
             State;
         {error, _Reason} ->
             drop(State)
     end.
 
--spec dispatch_publish_qos1(msg_id(), topic(),
-                            payload(), flag(), state()) -> state().
-dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
+-spec dispatch_publish_qos1(msg_id(), msg(), state()) -> state().
+dispatch_publish_qos1(MessageId, Msg, State) ->
     case check_in_flight(State) of
         true ->
             #state{username=User, client_id=ClientId} = State,
-            MsgRef = vmq_msg_store:store(ClientId, Topic, Payload),
-            case publish(User, ClientId, MsgRef, Topic, Payload, IsRetain) of
+            #vmq_msg{msg_ref=MsgRef} = UpdatedMsg =
+                vmq_msg_store:store(State#state.client_id, Msg),
+            case publish(User, ClientId, 1, UpdatedMsg) of
                 ok ->
                     NewState = send_frame(?PUBACK,
                                           #mqtt_frame_publish{
@@ -743,15 +751,15 @@ dispatch_publish_qos1(MessageId, Topic, Payload, IsRetain, State) ->
             drop(State)
     end.
 
--spec dispatch_publish_qos2(msg_id(), topic(),
-                            payload(), flag(), state()) -> state().
-dispatch_publish_qos2(MessageId, Topic, Payload, IsRetain, State) ->
+-spec dispatch_publish_qos2(msg_id(), msg(), state()) -> state().
+dispatch_publish_qos2(MessageId, Msg, State) ->
     case check_in_flight(State) of
         true ->
             #state{client_id=ClientId,
                    waiting_acks=WAcks, retry_interval=RetryInterval,
                    send_fun=SendFun, send_cnt=SendCnt} = State,
-            MsgRef = vmq_msg_store:store(ClientId, Topic, Payload),
+            #vmq_msg{msg_ref=MsgRef, retain=IsRetain} =
+                vmq_msg_store:store(ClientId, Msg),
             Ref = send_after(RetryInterval, {retry, {qos2, MessageId}}),
             Frame = #mqtt_frame{
                        fixed=#mqtt_frame_fixed{type=?PUBREC},
@@ -790,27 +798,28 @@ send_publish_frame(Frame, State) ->
             {error, Reason}
     end.
 
--spec publish(username(), client_id(),
-              undefined | msg_ref(), topic(), payload(), flag()) ->
-                     ok | {error,atom()}.
-publish(User, ClientId, MsgRef, Topic, Payload, IsRetain) ->
+-spec publish(username(), client_id(), qos(), msg()) ->  ok | {error,atom()}.
+publish(User, ClientId, QoS, Msg) ->
     %% auth_on_publish hook must return either:
     %% next | ok
-    case vmq_hook:only(auth_on_publish, [User, ClientId, MsgRef, Topic,
-                                            Payload, IsRetain]) of
+    #vmq_msg{routing_key=Topic,
+             payload=Payload,
+             retain=IsRetain, dup=_IsDup} = Msg,
+    HookParams = [User, ClientId, QoS, Topic, Payload, IsRetain],
+    case vmq_hook:only(auth_on_publish, HookParams) of
         not_found ->
             {error, not_allowed};
+        ok when QoS > 0 ->
+            MaybeUpdatedMsg = vmq_msg_store:store(ClientId, Msg),
+            on_publish_hook(vmq_reg:publish(MaybeUpdatedMsg), HookParams);
         ok ->
-            case vmq_reg:publish(User, ClientId, MsgRef, Topic,
-                                   Payload, IsRetain) of
-                ok ->
-                    vmq_hook:all(on_publish, [User, ClientId, MsgRef,
-                                              Topic, Payload, IsRetain]),
-                    ok;
-                E ->
-                    E
-            end
+            on_publish_hook(vmq_reg:publish(Msg), HookParams)
     end.
+
+on_publish_hook(ok, HookParams) ->
+    vmq_hook:all(on_publish, HookParams),
+    ok;
+on_publish_hook(Other, _) -> Other.
 
 -spec combine_mp(_, 'undefined' | string()) -> 'undefined' | [any()].
 combine_mp("", Topic) -> Topic;

@@ -17,7 +17,7 @@
 -include("vmq_server.hrl").
 
 -export([start_link/0,
-         store/3, store/4,
+         store/2,
          in_flight/0,
          stored/0,
          retrieve/1,
@@ -60,16 +60,13 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec store(client_id(), routing_key(), payload()) -> msg_ref().
-store(ClientId, RoutingKey, Payload) ->
+-spec store(client_id(), msg()) -> msg().
+store(ClientId, #vmq_msg{msg_ref=undefined} = Msg) ->
     MsgRef = crypto:hash(md5, term_to_binary(os:timestamp())),
-    store(ClientId, MsgRef, RoutingKey, Payload).
-
--spec store(client_id(), undefined | msg_ref(),
-            routing_key(), payload()) -> msg_ref().
-store(ClientId, undefined, RoutingKey, Payload) ->
-    store(ClientId, RoutingKey, Payload);
-store(ClientId, MsgRef, RoutingKey, Payload) when is_binary(MsgRef) ->
+    store(ClientId, Msg#vmq_msg{msg_ref=MsgRef});
+store(ClientId, Msg) ->
+    #vmq_msg{msg_ref=MsgRef, routing_key=RoutingKey,
+             payload=Payload} = Msg,
     ets:update_counter(?MSG_CACHE_TABLE, in_flight, {2, 1}),
     case update_msg_cache(MsgRef, {RoutingKey, Payload}) of
         new_cache_item ->
@@ -79,7 +76,7 @@ store(ClientId, MsgRef, RoutingKey, Payload) when is_binary(MsgRef) ->
         new_ref_count ->
             ok
     end,
-    MsgRef.
+    Msg.
 
 -spec in_flight() -> non_neg_integer().
 in_flight() ->

@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_session_proxy).
+-include("vmq_server.hrl").
 
 -behaviour(gen_server).
 
@@ -110,8 +111,12 @@ deliver(From, Term, State) ->
     #state{queue_pid=QPid, node=Node} = State,
     case Term of
         {RoutingKey, Payload, QoS, Dup, MsgRef} ->
-            vmq_queue:post(QPid, {deliver, {RoutingKey, Payload,
-                                QoS, false, Dup, {{self(), Node}, MsgRef}}}),
+            Msg = #vmq_msg{routing_key=RoutingKey,
+                           payload=Payload,
+                           dup=Dup,
+                           retain=false,
+                           msg_ref={{self(), Node}, MsgRef}},
+            vmq_queue:post(QPid, {deliver, QoS, Msg}),
             State#state{waiting={MsgRef, From}};
         _ ->
             vmq_queue:post(QPid, {deliver_bin, Term}),
