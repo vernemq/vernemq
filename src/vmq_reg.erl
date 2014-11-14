@@ -359,7 +359,7 @@ deliver_retained(Client, QPid, Topic, QoS) ->
                   0 -> Msg;
                   _ -> vmq_msg_store:store(Client, Msg)
               end,
-              vmq_queue:post(QPid, {deliver, QoS, MaybeChangedMsg})
+              vmq_queue:enqueue(QPid, {deliver, QoS, MaybeChangedMsg})
       end, RetainedMsgs).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -417,7 +417,7 @@ deliver(#vmq_msg{payload= <<>>, retain=true, msg_ref=Ref}, _) ->
 deliver(Msg, #subscriber{client=Client, qos=QoS}) ->
     case get_queue_pid(Client) of
         {ok, QPid} ->
-            vmq_queue:post(QPid, {deliver, QoS, Msg});
+            vmq_queue:enqueue(QPid, {deliver, QoS, Msg});
         _ when QoS > 0 ->
             vmq_msg_store:defer_deliver(Client, QoS, Msg#vmq_msg.msg_ref),
             ok;
@@ -517,7 +517,8 @@ direct_plugin_exports(Mod) ->
                           )
                         )
                end,
-    {ok, QPid} = vmq_queue:start_link(self(), 1000, queue),
+    QueueSize = vmq_config:get_env(max_queued_messages, 1000),
+    {ok, QPid} = vmq_queue:start_link(self(), QueueSize),
 
     RegisterFun =
     fun() ->

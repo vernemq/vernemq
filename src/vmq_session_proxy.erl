@@ -116,10 +116,10 @@ deliver(From, Term, State) ->
                            dup=Dup,
                            retain=false,
                            msg_ref={{self(), Node}, MsgRef}},
-            vmq_queue:post(QPid, {deliver, QoS, Msg}),
+            vmq_queue:enqueue(QPid, {deliver, QoS, Msg}),
             State#state{waiting={MsgRef, From}};
         _ ->
-            vmq_queue:post(QPid, {deliver_bin, Term}),
+            vmq_queue:enqueue(QPid, {deliver_bin, Term}),
             gen_server:reply(From, ok),
             State
     end.

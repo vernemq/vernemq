@@ -223,8 +223,8 @@ init([Peer, SendFun, Opts]) ->
                     apply(Mod, handle, Args)
             end
     end,
-    QueueSize = vmq_config:get_env(queue_size, 1000),
-    {ok, QPid} = vmq_queue:start_link(self(), QueueSize, queue),
+    QueueSize = vmq_config:get_env(max_queued_messages, 1000),
+    {ok, QPid} = vmq_queue:start_link(self(), QueueSize),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   msg_log_handler=MsgLogHandler,
                                   mountpoint=string:strip(MountPoint,
@@ -281,21 +281,23 @@ handle_sync_event(Req, _From, _StateName, State) ->
     {next_state, statename(), state()} | {stop, {error, any()}, state()}.
 handle_info({mail, QPid, new_data}, StateName,
             #state{queue_pid=QPid} = State) ->
-    vmq_queue:active(QPid, fun(Msg,St) -> {{ok, Msg}, St} end, []),
+    vmq_queue:active(QPid),
     {next_state, StateName, State};
 handle_info({mail, QPid, Msgs, _, Dropped}, connected,
             #state{client_id=ClientId, queue_pid=QPid} = State) ->
+    NewState =
     case Dropped > 0 of
         true ->
             lager:warning("client ~p dropped ~p messages~n",
-                          [ClientId, Dropped]);
+                          [ClientId, Dropped]),
+            drop(Dropped, State);
         false ->
-            ok
+            State
     end,
-    case handle_messages(Msgs, State) of
-        {ok, NewState} ->
+    case handle_messages(Msgs, NewState) of
+        {ok, NewState1} ->
             vmq_queue:notify(QPid),
-            {next_state, connected, NewState};
+            {next_state, connected, NewState1};
         Ret ->
             Ret
     end;
@@ -596,14 +598,14 @@ check_user(#mqtt_frame_connect{username=""} = F, State) ->
                                     password=undefined}, State);
 check_user(#mqtt_frame_connect{username=User, password=Password,
                                client_id=ClientId,
-                               clean_sess=CleanSession} = F, State) ->
+                               clean_sess=CleanSess} = F, State) ->
     #state{peer=Peer, queue_pid=QPid} = State,
     case vmq_config:get_env(allow_anonymous, false) of
         false ->
             case vmq_hook:only(auth_on_register,
                                [Peer, ClientId, User, Password]) of
                 ok ->
-                    case vmq_reg:register_client(ClientId, QPid, CleanSession) of
+                    case vmq_reg:register_client(ClientId, QPid, CleanSess) of
                         ok ->
                             vmq_hook:all(on_register, [Peer, ClientId,
                                                        User, Password]),
@@ -794,8 +796,11 @@ get_msg_id(_, #state{next_msg_id=65535} = State) ->
 get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
     {MsgId, State#state{next_msg_id=MsgId + 1}}.
 
-drop(#state{pub_dropped_cnt=PubDropped} = State) ->
-    State#state{pub_dropped_cnt=incr_pub_dropped_cnt(PubDropped)}.
+drop(State) ->
+    drop(1, State).
+
+drop(I, #state{pub_dropped_cnt=PubDropped} = State) ->
+    State#state{pub_dropped_cnt=incr_pub_dropped_cnt(I, PubDropped)}.
 
 -spec send_publish_frame(mqtt_frame(), state()) -> state() | {error, atom()}.
 send_publish_frame(Frame, State) ->
@@ -965,19 +970,19 @@ init_ts() ->
     {os:timestamp(), 0, 0}.
 
 incr_msg_sent_cnt(SndCnt) ->
-    incr_cnt(incr_messages_sent, SndCnt).
+    incr_cnt(incr_messages_sent, 1, SndCnt).
 incr_msg_recv_cnt(RcvCnt) ->
-    incr_cnt(incr_messages_received, RcvCnt).
+    incr_cnt(incr_messages_received, 1, RcvCnt).
 incr_pub_recv_cnt(PubRecvCnt) ->
-    incr_cnt(incr_publishes_received, PubRecvCnt).
-incr_pub_dropped_cnt(PubDroppedCnt) ->
-    incr_cnt(incr_publishes_dropped, PubDroppedCnt).
+    incr_cnt(incr_publishes_received, 1, PubRecvCnt).
+incr_pub_dropped_cnt(I, PubDroppedCnt) ->
+    incr_cnt(incr_publishes_dropped, I, PubDroppedCnt).
 incr_pub_sent_cnt(PubSendCnt) ->
-    incr_cnt(incr_publishes_sent, PubSendCnt).
+    incr_cnt(incr_publishes_sent, 1, PubSendCnt).
 
-incr_cnt(IncrFun, {{M, S, _}, V, I}) ->
-    NewV = V + 1,
-    NewI = I + 1,
+incr_cnt(IncrFun, IncrV, {{M, S, _}, V, I}) ->
+    NewV = V + IncrV,
+    NewI = I + IncrV,
     case os:timestamp() of
         {M, S, _} = TS ->
             {TS, NewV, NewI};
