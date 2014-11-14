@@ -101,7 +101,17 @@ disconnect(FsmPid) ->
     gen_fsm:send_all_state_event(FsmPid, disconnect).
 
 -spec in(pid(), mqtt_frame()) ->  ok.
+in(FsmPid, #mqtt_frame{fixed=#mqtt_frame_fixed{type=?PUBLISH}} = Event) ->
+    Level = vmq_sysmon:cpu_load_level(),
+    case Level of
+        0 -> ok;
+        _ -> timer:sleep(Level * 100) %% introduces sleep, min 100ms, max 300ms
+    end,
+    in_(FsmPid, Event);
 in(FsmPid, Event) ->
+    in_(FsmPid, Event).
+
+in_(FsmPid, Event) ->
     case catch gen_fsm:sync_send_all_state_event(FsmPid, {input, Event},
                                                  infinity) of
         ok -> ok;

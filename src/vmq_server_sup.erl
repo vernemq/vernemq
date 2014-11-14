@@ -49,9 +49,11 @@ init([]) ->
                              A /= vmq_server],
     {ok, MnesiaJobsOpts} = application:get_env(vmq_server, mnesia_tx_queue),
     ok = jobs:add_queue(mnesia_tx_queue, MnesiaJobsOpts),
+
     {ok, { {one_for_one, 5, 10}, [
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_crl_srv, worker, []),
+            ?CHILD(vmq_sysmon, worker, []),
             ?CHILD(vmq_session_proxy_sup, supervisor, []),
             ?CHILD(vmq_msg_store, worker, []),
             ?CHILD(vmq_reg, worker, []),

@@ -63,6 +63,7 @@ stop() ->
     application:stop(mnesia),
     application:stop(crypto),
     application:stop(ssl),
+    application:stop(os_mon),
     application:stop(jobs),
     application:stop(lager).
 
