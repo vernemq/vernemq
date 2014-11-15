@@ -15,7 +15,7 @@
 
 body {
     font-family: 'EB Garamond', serif;
-    font-size: 17px;
+    font-size: 18px;
     background-color: white;
     color: #000;
     margin: 0;
@@ -166,8 +166,8 @@ div.body h6 {
 
 div.body h1 { margin-top: 0; padding-top: 0; font-size: 150%; }
 div.body h2 { font-size: 130%; }
-div.body h3 { font-size: 120%; }
-div.body h4 { font-size: 110%; }
+div.body h3 { font-size: 100%; }
+div.body h4 { font-size: 100%; }
 div.body h5 { font-size: 100%; }
 div.body h6 { font-size: 100%; }
 

@@ -1,3 +1,5 @@
+.. _configure:
+
 Configuration
 =============
 
@@ -84,6 +86,8 @@ The same configuration options can be used for securing WebSocket connections, j
 General Broker Configurations
 -----------------------------
 
+.. _allow_anonymous:
+
 Allow anonymous clients
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -94,6 +98,67 @@ Allow anonymous clients to connect to the broker:
     allow_anonymous = off
 
 This option defaults to ``off``.
+
+Password File
+~~~~~~~~~~~~~
+
+VerneMQ periodically checks the specified password file.
+
+.. code-block:: ini
+
+    password_file = /etc/vmq.passwd
+
+This option allows you to specify a password file which stores username password pairs. Use the tool :ref:`vmq-passwd <vmq_passwd>` to add or delete new users.
+
+ACL File
+~~~~~~~~
+
+VerneMQ periodically checks the specified ACL file.
+
+.. code-block:: ini
+
+    acl_file = /etc/vmq.acl
+
+This option allows you to specify the access control list file that is used to control client access to the topics on the broker. Topic access is added with lines of the format:
+
+.. code-block:: ini
+
+    topic [read|write] <topic>
+
+The access type is controlled using ``read`` or ``write``. If not provided then read an write access is granted for the ``topic``. The ``topic`` can use the MQTT subscription wildcards ``+`` or ``#``.
+
+The first set of topics are applied to all anonymous clients (assuming ``allow_anonymous = on``, see :ref:`allow_anonymous`). User specific ACLs are added after a user line as follows:
+
+.. code-block:: ini
+    
+    user <username>
+
+The username referred to here is the same as in ``password_file``. It is not the client id.
+
+It is also possible to define ACLs based on pattern substitution within the the topic. The form is the same as for the topic keyword, but using pattern as the keyword.
+
+.. code-block:: ini
+
+    pattern [read|write] <topic>
+
+The patterns available for substitution are:
+
+    *   ``%c`` to match the client id of the client
+    *   ``%u`` to match the username of the client
+
+The substitution pattern must be the only text for that level of hierarchy. Pattern ACLs apply to all users even if the **user** keyword has previously been given.
+
+Example:
+
+.. code-block:: ini
+
+    pattern write sensor/%u/data
+
+
+.. warning::
+    
+    VerneMQ currently doesn't cancel active subscriptions in case the ACL file revokes access for a topic.
+    
 
 Maximum Client Id Size
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -282,7 +347,7 @@ Define the topics the bridge should incorporate in its local topic tree, or the 
 
 The ``local-prefix`` and ``remote-prefix`` can be used to prefix incoming or outgoing publish messages.
 
-.. note::
+.. warning::
 
     Currently the ``#`` wildcard is treated as a comment from the configuration parser, please use ``*`` instead. 
 

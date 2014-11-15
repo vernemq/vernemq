@@ -5,7 +5,7 @@ Change Open Files Limit
 
 VerneMQ can consume a large number of open file handles during normal operation. The Bitcask message store backend in particular may accumulate a high number of data files before it has a chance to run a merge process. 
 
-Please note that the creation of numerous data files is normal. Each time VerneMQ is started Bitcask creates a new data file per partition; every so often Bitcask will merge a collection of data files into a single file to avoid accumulating file handles. 
+Please note that the creation of numerous data files is normal. Each time VerneMQ is started Bitcask creates a new data file; every so often Bitcask will merge a collection of data files into a single file to avoid accumulating file handles. 
 
 Most operating systems can change the open-files limit using the ``ulimit -n`` command. Example:
 

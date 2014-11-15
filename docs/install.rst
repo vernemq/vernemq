@@ -1,3 +1,5 @@
+.. _install:
+
 Installation
 ============
 
@@ -22,7 +24,7 @@ Clone the repository using Git and build::
     make rel
 
 
-Once your build is ready you are ready to start. If you can live with the reasonable default settings follow the :ref:`Start VerneMQ <start_vernemq>` instructions or check the section on :ref:`Configuring VerneMQ <configuration>`.
+Once your build is ready you are ready to start. If you can live with the reasonable default settings follow the :ref:`Start VerneMQ <start_vernemq>` instructions or check the section on :ref:`Configuring VerneMQ <configure>`.
 
 
 Microsoft Windows
