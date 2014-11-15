@@ -639,7 +639,7 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                      send_connack(?CONNACK_AUTH, State)}
             end;
         true ->
-            case vmq_reg:register_client(ClientId, QPid, CleanSession) of
+            case vmq_reg:register_client(ClientId, QPid, CleanSess) of
                 ok ->
                     vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
                     check_will(F, State#state{username=User});
