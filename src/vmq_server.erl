@@ -17,6 +17,7 @@
 
 -spec start() -> 'ok'.
 start_no_auth() ->
+    maybe_start_distribution(),
     application:load(mnesia_cluster),
     application:set_env(mnesia_cluster, table_definition_mod,
                         {vmq_reg, vmq_table_defs, []}),
@@ -29,6 +30,7 @@ start_no_auth() ->
     ok.
 
 start_no_auth(ClusterNode) ->
+    maybe_start_distribution(),
     application:load(mnesia_cluster),
     application:set_env(mnesia_cluster, table_definition_mod,
                         {vmq_reg, vmq_table_defs, []}),
@@ -63,7 +65,17 @@ stop() ->
     application:stop(mnesia),
     application:stop(crypto),
     application:stop(ssl),
+    application:stop(riak_sysmon),
     application:stop(os_mon),
     application:stop(jobs),
     application:stop(lager).
+
+maybe_start_distribution() ->
+    case ets:info(sys_dist) of
+        undefined ->
+            %% started without -sname or -name arg
+            {ok, _} = net_kernel:start([vmq_server, shortnames]);
+        _ ->
+            ok
+    end.
 

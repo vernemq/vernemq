@@ -70,6 +70,15 @@ cpu_load_level() ->
 init([]) ->
     cpu_sup:util([per_cpu]), % first return value is rubbish, per the docs
     ets:new(?MODULE, [public, named_table, {read_concurrency, true}]),
+
+    %% Add our system_monitor event handler.  We do that here because
+    %% we have a process at our disposal (i.e. ourself) to receive the
+    %% notification in the very unlikely event that the
+    %% riak_core_sysmon_handler has crashed and been removed from the
+    %% riak_sysmon_handler gen_event server.  (If we had a supervisor
+    %% or app-starting process add the handler, then if the handler
+    %% crashes, nobody will act on the crash notification.)
+    vmq_sysmon_handler:add_handler(),
     {ok, #state{}, 0}.
 
 %%--------------------------------------------------------------------
@@ -124,7 +133,24 @@ handle_info(timeout, #state{samples=Samples} = State) ->
     end,
     Level = calc(NewSamples),
     ets:insert(?MODULE, {cpu_load_level, Level}),
-    {noreply, State#state{samples=NewSamples}, ?SAMPLE_INTERVAL}.
+    {noreply, State#state{samples=NewSamples}, ?SAMPLE_INTERVAL};
+handle_info({gen_event_EXIT, riak_core_sysmon_handler, _}, State) ->
+    %% SASL will create an error message, no need for us to duplicate it.
+    %%
+    %% Our handler should never crash, but it did indeed crash.  If
+    %% there's a pathological condition somewhere that's generating
+    %% lots of unforseen things that crash core's custom handler, we
+    %% could make things worse by jumping back into the exploding
+    %% volcano.  Wait a little bit before jumping back.  Besides, the
+    %% system_monitor data is nice but is not critical: there is no
+    %% need to make things worse if things are indeed bad, and if we
+    %% miss a few seconds of system_monitor events, the world will not
+    %% end.
+    timer:sleep(2000),
+    vmq_sysmon_handler:add_handler(),
+    {noreply, State};
+handle_info(_Info, State) ->
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private

@@ -8,6 +8,7 @@
                   stdlib,
                   lager,
                   os_mon,
+                  riak_sysmon,
                   jobs,
                   ssl,
                   ranch,
