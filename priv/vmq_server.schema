@@ -1,6 +1,12 @@
 %%-*- mode: erlang -*
 %% ex: ft=erlang
 
+%% @doc Allow anonymous users to connect, default is 'off'
+{mapping, "allow_anonymous", "vmq_server.allow_anonymous", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+
 %% @doc listener.max_connections is an integer or 'infinity' defining 
 %% the number of concurrent connections. This option can be overridden
 %% by either specifying on the protocol level:
@@ -84,23 +90,20 @@
 
 {mapping, "listener.ws.$name", "vmq_server.listeners", [
                                                                   {default, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
-                                                                  {commented, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
                                                                   {datatype, ip},
-                                                                  {include_default, "default"}
+                                                                  hidden
                                                                  ]}.
 
 {mapping, "listener.wss.$name", "vmq_server.listeners", [
                                                                   {default, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
-                                                                  {commented, { "{{mqtt_default_ws_ip}}", {{mqtt_default_ws_port}} }},
                                                                   {datatype, ip},
-                                                                  {include_default, "default"}
+                                                                  hidden
                                                                  ]}.
 
 {mapping, "listener.ssl.$name", "vmq_server.listeners", [
                                                             {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
-                                                            {commented, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
                                                             {datatype, ip},
-                                                            {include_default, "default"}
+                                                            hidden
                                                            ]}.
 
 %% @doc Set the nr of acceptors waiting to concurrently accept new connections.
@@ -237,104 +240,6 @@
                                                                        hidden
                                                                       ]}. 
 
-{mapping, "listener.wss.cafile", "vmq_server.listeners", [
-                                                             {default, ""},
-                                                             {datatype, file},
-                                                             {commented, "{{platform_etc_dir}}/cacerts.pem"}
-                                                            ]}. 
-
-{mapping, "listener.wss.$name.cafile", "vmq_server.listeners", [
-                                                                   {default, ""},
-                                                                   {datatype, string},
-                                                                   hidden
-                                                                  ]}. 
-
-{mapping, "listener.wss.certfile", "vmq_server.listeners", [
-                                                               {default, ""},
-                                                               {datatype, file},
-                                                               {commented, "{{platform_etc_dir}}/cert.pem"}
-                                                              ]}. 
-{mapping, "listener.wss.$name.certfile", "vmq_server.listeners", [
-                                                                     {default, ""},
-                                                                     {datatype, file},
-                                                                     hidden
-                                                                    ]}. 
-{mapping, "listener.wss.ciphers", "vmq_server.listeners", [
-                                                              {default, ""},
-                                                              {datatype, string},
-                                                              hidden
-                                                             ]}. 
-{mapping, "listener.wss.$name.ciphers", "vmq_server.listeners", [
-                                                              {default, ""},
-                                                                    {datatype, string},
-                                                                    hidden
-                                                                   ]}. 
-{mapping, "listener.wss.crlfile", "vmq_server.listeners", [
-                                                              {default, ""},
-                                                              {datatype, string},
-                                                              {commented, ""}
-                                                             ]}. 
-{mapping, "listener.wss.$name.crlfile", "vmq_server.listeners", [
-                                                                    {default, ""},
-                                                                    {datatype, string},
-                                                                    hidden
-                                                                   ]}. 
-{mapping, "listener.wss.keyfile", "vmq_server.listeners", [
-                                                              {default, ""},
-                                                              {datatype, file},
-                                                              {commented, "{{platform_etc_dir}}/key.pem"}
-                                                             ]}. 
-{mapping, "listener.wss.$name.keyfile", "vmq_server.listeners", [
-                                                                    {default, ""},
-                                                                    {datatype, file},
-                                                                    hidden
-                                                                   ]}. 
-{mapping, "listener.wss.require_certificate", "vmq_server.listeners", [
-                                                                          {default, off},
-                                                                          {datatype, flag},
-                                                                          {commented, off}
-                                                                         ]}. 
-{mapping, "listener.wss.$name.require_certificate", "vmq_server.listeners", [
-                                                                                {datatype, flag},
-                                                                                hidden
-                                                                               ]}. 
-{mapping, "listener.wss.tls_version", "vmq_server.listeners", [
-                                                                  {default, 'tlsv1.2'},
-                                                                  {datatype, atom},
-                                                                  {commented, 'tlsv1.2'}
-                                                                 ]}. 
-{mapping, "listener.wss.$name.tls_version", "vmq_server.listeners", [
-                                                                        {datatype, atom},
-                                                                        hidden
-                                                                       ]}. 
-{mapping, "listener.wss.use_identity_as_username", "vmq_server.listeners", [
-                                                                               {default, off},
-                                                                               {datatype, flag},
-                                                                               {commented, off}
-                                                                              ]}. 
-{mapping, "listener.wss.$name.use_identity_as_username", "vmq_server.listeners", [
-                                                                                     {datatype, flag},
-                                                                                     hidden
-                                                                                    ]}. 
-{mapping, "listener.wss.psk_hint", "vmq_server.listeners", [
-                                                               {default, ""},
-                                                               {datatype, string},
-                                                               {commented, ""}
-                                                              ]}. 
-{mapping, "listener.wss.$name.psk_hint", "vmq_server.listeners", [
-                                                                     {datatype, string},
-                                                                     hidden
-                                                                    ]}. 
-{mapping, "listener.wss.support_elliptic_curves", "vmq_server.listeners", [
-                                                               {default, on},
-                                                               {datatype, flag},
-                                                               hidden
-                                                              ]}. 
-{mapping, "listener.wss.$name.support_elliptic_curves", "vmq_server.listeners", [
-                                                                     {datatype, flag},
-                                                                     hidden
-                                                                    ]}. 
-
 
 {mapping, "listener.ssl.mountpoint", "vmq_server.listeners", [
                                                                  {default, ""},
@@ -346,105 +251,270 @@
                                                                        {default, ""},
                                                                        {datatype, string},
                                                                        hidden
-                                                                      ]}. 
-
+                                                                ]}. 
+%% @doc The cafile is used to define the path to a file containing 
+%% the PEM encoded CA certificates that are trusted. Set the cafile 
+%% on the protocol level or on the listener level:
+%%
+%%     - listener.ssl.cafile
+%%     - listener.wss.cafile
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.cafile
+%%     - listener.wss.my_wss_listener.cafile
 {mapping, "listener.ssl.cafile", "vmq_server.listeners", [
-                                                             {default, ""},
-                                                             {datatype, file},
-                                                             {commented, "{{platform_etc_dir}}/cacerts.pem"}
-                                                            ]}. 
+                                                          {default, ""},
+                                                          {datatype, file},
+                                                          {commented, "{{platform_etc_dir}}/cacerts.pem"}
+                                                         ]}. 
 
 {mapping, "listener.ssl.$name.cafile", "vmq_server.listeners", [
-                                                                   {default, ""},
-                                                                   {datatype, string},
-                                                                   hidden
-                                                                  ]}. 
+                                                                {default, ""},
+                                                                {datatype, string},
+                                                                hidden
+                                                               ]}. 
+{mapping, "listener.wss.cafile", "vmq_server.listeners", [
+                                                          {default, ""},
+                                                          {datatype, file},
+                                                          hidden
+                                                         ]}. 
+{mapping, "listener.wss.$name.cafile", "vmq_server.listeners", [
+                                                                {default, ""},
+                                                                {datatype, string},
+                                                                hidden
+                                                               ]}. 
 
+%% @doc Set the path to the PEM encoded server certificate
+%% on the protocol level or on the listener level:
+%%
+%%     - listener.ssl.certfile
+%%     - listener.wss.certfile
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.certfile
+%%     - listener.wss.my_wss_listener.certfile
 {mapping, "listener.ssl.certfile", "vmq_server.listeners", [
-                                                               {default, ""},
-                                                               {datatype, file},
-                                                               {commented, "{{platform_etc_dir}}/cert.pem"}
-                                                              ]}. 
+                                                            {default, ""},
+                                                            {datatype, file},
+                                                            {commented, "{{platform_etc_dir}}/cert.pem"}
+                                                           ]}. 
 {mapping, "listener.ssl.$name.certfile", "vmq_server.listeners", [
-                                                                     {default, ""},
-                                                                     {datatype, file},
-                                                                     hidden
-                                                                    ]}. 
+                                                                  {default, ""},
+                                                                  {datatype, file},
+                                                                  hidden
+                                                                 ]}. 
+{mapping, "listener.wss.certfile", "vmq_server.listeners", [
+                                                            {default, ""},
+                                                            {datatype, file},
+                                                            hidden
+                                                           ]}. 
+{mapping, "listener.wss.$name.certfile", "vmq_server.listeners", [
+                                                                  {default, ""},
+                                                                  {datatype, file},
+                                                                  hidden
+                                                                 ]}. 
+%% @doc Set the path to the PEM encoded key file on the protocol 
+%% level or on the listener level:
+%%
+%%     - listener.ssl.keyfile
+%%     - listener.wss.keyfile
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.keyfile
+%%     - listener.wss.my_wss_listener.keyfile
+{mapping, "listener.ssl.keyfile", "vmq_server.listeners", [
+                                                           {default, ""},
+                                                           {datatype, file},
+                                                           {commented, "{{platform_etc_dir}}/key.pem"}
+                                                          ]}. 
+{mapping, "listener.ssl.$name.keyfile", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, file},
+                                                                 hidden
+                                                                ]}. 
+{mapping, "listener.wss.keyfile", "vmq_server.listeners", [
+                                                           {default, ""},
+                                                           {datatype, file},
+                                                           hidden
+                                                          ]}. 
+{mapping, "listener.wss.$name.keyfile", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, file},
+                                                                 hidden
+                                                                ]}. 
+%% @doc Set the list of allowed ciphers (each separated with a colon),
+%% on the protocol level or on the listener level. Reasonable defaults
+%% are used if nothing is specified:
+%%
+%%     - listener.ssl.ciphers
+%%     - listener.wss.ciphers
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.ciphers
+%%     - listener.wss.my_wss_listener.ciphers
 {mapping, "listener.ssl.ciphers", "vmq_server.listeners", [
                                                               {default, ""},
                                                               {datatype, string},
-                                                              hidden
+                                                              {commented, ""}
                                                              ]}. 
 {mapping, "listener.ssl.$name.ciphers", "vmq_server.listeners", [
                                                               {default, ""},
                                                                     {datatype, string},
                                                                     hidden
                                                                    ]}. 
+{mapping, "listener.wss.ciphers", "vmq_server.listeners", [
+                                                           {default, ""},
+                                                           {datatype, string},
+                                                           hidden
+                                                          ]}. 
+{mapping, "listener.wss.$name.ciphers", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
+%% @doc If you have 'listener.ssl.require_certificate' set to true, 
+%% you can create a certificate revocation list file to revoke access 
+%% to particular client certificates. If you have done this, use crlfile 
+%% to point to the PEM encoded revocation file. This can be done on the 
+%% protocol level or on the listener level. 
+%%
+%%     - listener.ssl.crlfile
+%%     - listener.wss.crlfile
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.crlfile
+%%     - listener.wss.my_wss_listener.crlfile
 {mapping, "listener.ssl.crlfile", "vmq_server.listeners", [
-                                                              {default, ""},
-                                                              {datatype, string},
-                                                              {commented, ""}
-                                                             ]}. 
+                                                           {default, ""},
+                                                           {datatype, string},
+                                                           {commented, ""}
+                                                          ]}. 
 {mapping, "listener.ssl.$name.crlfile", "vmq_server.listeners", [
-                                                                    {default, ""},
-                                                                    {datatype, string},
-                                                                    hidden
-                                                                   ]}. 
-{mapping, "listener.ssl.keyfile", "vmq_server.listeners", [
-                                                              {default, ""},
-                                                              {datatype, file},
-                                                              {commented, "{{platform_etc_dir}}/key.pem"}
-                                                             ]}. 
-{mapping, "listener.ssl.$name.keyfile", "vmq_server.listeners", [
-                                                                    {default, ""},
-                                                                    {datatype, file},
-                                                                    hidden
-                                                                   ]}. 
+                                                                 {default, ""},
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
+{mapping, "listener.wss.crlfile", "vmq_server.listeners", [
+                                                           {default, ""},
+                                                           {datatype, string},
+                                                           hidden
+                                                          ]}. 
+{mapping, "listener.wss.$name.crlfile", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
+%% @doc Enable this option if you want to use SSL client certificates 
+%% to authenticate your clients. This can be done on the protocol level
+%% or on the listener level.
+%%
+%%     - listener.ssl.require_certificate
+%%     - listener.wss.require_certificate
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.require_certificate
+%%     - listener.wss.my_wss_listener.require_certificate
 {mapping, "listener.ssl.require_certificate", "vmq_server.listeners", [
-                                                                          {default, off},
-                                                                          {datatype, flag},
-                                                                          {commented, off}
-                                                                         ]}. 
+                                                                       {default, off},
+                                                                       {datatype, flag},
+                                                                       {commented, off}
+                                                                      ]}. 
 {mapping, "listener.ssl.$name.require_certificate", "vmq_server.listeners", [
-                                                                                {datatype, flag},
-                                                                                hidden
-                                                                               ]}. 
+                                                                             {datatype, flag},
+                                                                             hidden
+                                                                            ]}. 
+{mapping, "listener.wss.require_certificate", "vmq_server.listeners", [
+                                                                       {default, off},
+                                                                       {datatype, flag},
+                                                                       hidden
+                                                                      ]}. 
+{mapping, "listener.wss.$name.require_certificate", "vmq_server.listeners", [
+                                                                             {datatype, flag},
+                                                                             hidden
+                                                                            ]}. 
+%% @doc Configure the TLS protocol version (tlsv1, tlsv1.1, or tlsv1.2) to be 
+%% used for either all configured SSL listeners or for a specific listener:
+%%
+%%     - listener.ssl.tls_version
+%%     - listener.wss.tls_version
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.tls_version
+%%     - listener.wss.my_wss_listener.tls_version
 {mapping, "listener.ssl.tls_version", "vmq_server.listeners", [
-                                                                  {default, 'tlsv1.2'},
-                                                                  {datatype, atom},
-                                                                  {commented, 'tlsv1.2'}
-                                                                 ]}. 
-{mapping, "listener.ssl.$name.tls_version", "vmq_server.listeners", [
-                                                                        {datatype, atom},
-                                                                        hidden
-                                                                       ]}. 
-{mapping, "listener.ssl.use_identity_as_username", "vmq_server.listeners", [
-                                                                               {default, off},
-                                                                               {datatype, flag},
-                                                                               {commented, off}
-                                                                              ]}. 
-{mapping, "listener.ssl.$name.use_identity_as_username", "vmq_server.listeners", [
-                                                                                     {datatype, flag},
-                                                                                     hidden
-                                                                                    ]}. 
-{mapping, "listener.ssl.psk_hint", "vmq_server.listeners", [
-                                                               {default, ""},
-                                                               {datatype, string},
-                                                               {commented, ""}
+                                                               {default, 'tlsv1.2'},
+                                                               {datatype, atom},
+                                                               {commented, 'tlsv1.2'}
                                                               ]}. 
-{mapping, "listener.ssl.$name.psk_hint", "vmq_server.listeners", [
-                                                                     {datatype, string},
+{mapping, "listener.ssl.$name.tls_version", "vmq_server.listeners", [
+                                                                     {datatype, atom},
                                                                      hidden
                                                                     ]}. 
-{mapping, "listener.ssl.support_elliptic_curves", "vmq_server.listeners", [
-                                                               {default, on},
-                                                               {datatype, flag},
+{mapping, "listener.wss.tls_version", "vmq_server.listeners", [
+                                                               {default, 'tlsv1.2'},
+                                                               {datatype, atom},
                                                                hidden
                                                               ]}. 
-{mapping, "listener.ssl.$name.support_elliptic_curves", "vmq_server.listeners", [
-                                                                     {datatype, flag},
+{mapping, "listener.wss.$name.tls_version", "vmq_server.listeners", [
+                                                                     {datatype, atom},
                                                                      hidden
                                                                     ]}. 
+%% @doc If 'listener.ssl.require_certificate' is enabled, you may enable 
+%% 'listener.ssl.use_identity_as_username' to use the CN value from the client 
+%% certificate as a username. If enabled other authentication plugins are not
+%% considered. The option can be specified either for all SSL listeners or for
+%% a specific listener:
+%%
+%%     - listener.ssl.use_identity_as_username
+%%     - listener.wss.use_identity_as_username
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.use_identity_as_username
+%%     - listener.wss.my_wss_listener.use_identity_as_username
+{mapping, "listener.ssl.use_identity_as_username", "vmq_server.listeners", [
+                                                                            {default, off},
+                                                                            {datatype, flag},
+                                                                            {commented, off}
+                                                                           ]}. 
+{mapping, "listener.ssl.$name.use_identity_as_username", "vmq_server.listeners", [
+                                                                                  {datatype, flag},
+                                                                                  hidden
+                                                                                 ]}. 
+{mapping, "listener.wss.use_identity_as_username", "vmq_server.listeners", [
+                                                                            {default, off},
+                                                                            {datatype, flag},
+                                                                            hidden
+                                                                           ]}. 
+{mapping, "listener.wss.$name.use_identity_as_username", "vmq_server.listeners", [
+                                                                                  {datatype, flag},
+                                                                                  hidden
+                                                                                 ]}. 
+{mapping, "listener.ssl.support_elliptic_curves", "vmq_server.listeners", [
+                                                                           {default, on},
+                                                                           {datatype, flag},
+                                                                           hidden
+                                                                          ]}. 
+{mapping, "listener.ssl.$name.support_elliptic_curves", "vmq_server.listeners", [
+                                                                                 {datatype, flag},
+                                                                                 hidden
+                                                                                ]}. 
+{mapping, "listener.wss.support_elliptic_curves", "vmq_server.listeners", [
+                                                                           {default, on},
+                                                                           {datatype, flag},
+                                                                           hidden
+                                                                          ]}. 
+{mapping, "listener.wss.$name.support_elliptic_curves", "vmq_server.listeners", [
+                                                                                 {datatype, flag},
+                                                                                 hidden
+                                                                                ]}. 
 
 
 {translation, "vmq_server.listeners", 
@@ -482,7 +552,7 @@
                     %% SSL specific
          SSLMapps = ["cafile", "capath", "certfile", "ciphers", "crlfile",
                      "keyfile", "require_certificate", "tls_version",
-                     "use_identity_as_username", "psk_hint", "support_elliptic_curves"],
+                     "use_identity_as_username", "support_elliptic_curves"],
          F = fun(Prefix, Suffix, Val) ->
                      %% get default from root of the tree
                      Default1 =
@@ -545,7 +615,6 @@
          {SSLIPs, SSLRequireCerts} = lists:unzip(F("listener.ssl", "require_certificate", BoolVal)),
          {SSLIPs, SSLVersions} = lists:unzip(F("listener.ssl", "tls_version", AtomVal)),
          {SSLIPs, SSLUseIdents} = lists:unzip(F("listener.ssl", "use_identity_as_username", BoolVal)),
-         {SSLIPs, SSLPSKHints} = lists:unzip(F("listener.ssl", "psk_hint", StrVal)),
          {SSLIPs, SSLECSupport} = lists:unzip(F("listener.ssl", "support_elliptic_curves", BoolVal)),
 
          % WSS
@@ -558,7 +627,6 @@
          {WS_SSLIPs, WS_SSLRequireCerts} = lists:unzip(F("listener.wss", "require_certificate", BoolVal)),
          {WS_SSLIPs, WS_SSLVersions} = lists:unzip(F("listener.wss", "tls_version", AtomVal)),
          {WS_SSLIPs, WS_SSLUseIdents} = lists:unzip(F("listener.wss", "use_identity_as_username", BoolVal)),
-         {WS_SSLIPs, WS_SSLPSKHints} = lists:unzip(F("listener.wss", "psk_hint", StrVal)),
          {WS_SSLIPs, WS_SSLECSupport} = lists:unzip(F("listener.wss", "support_elliptic_curves", BoolVal)),
          TCP = lists:zip(TCPIPs, MZip([TCPMaxConns, 
                                        TCPNrOfAcceptors, 
@@ -578,7 +646,6 @@
                                        SSLRequireCerts, 
                                        SSLVersions, 
                                        SSLUseIdents, 
-                                       SSLPSKHints,
                                        SSLECSupport])),
          WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns, 
                                        WS_SSLNrOfAcceptors,
@@ -592,7 +659,6 @@
                                        WS_SSLRequireCerts, 
                                        WS_SSLVersions, 
                                        WS_SSLUseIdents, 
-                                       WS_SSLPSKHints,
                                        WS_SSLECSupport])),
          DropUndef = fun(L) ->
                              [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
@@ -600,12 +666,13 @@
          {DropUndef(TCP), DropUndef(SSL), DropUndef(WS), DropUndef(WSS)}
  end
 }.
-
-%% @doc Allow anonymous users to connect, default is 'off'
-{mapping, "allow_anonymous", "vmq_server.allow_anonymous", [
-                                                               {default, off},
-                                                               {datatype, flag}
-                                                              ]}.
+%% @doc Set the time in seconds after a QoS=1 or QoS=2 message has been sent
+%% that vmq will wait before retrying when no response is received.
+{mapping, "retry_interval", "vmq_server.retry_interval", [
+                                                             {default, 20},
+                                                             {commented, 20},
+                                                             {datatype, integer}
+                                                            ]}.
 
 %% @doc Set the max size for client ids, MQTT v3.1 specifies the
 %% limit of 23 characters
@@ -614,13 +681,6 @@
                                                                {commented, 23},
                                                                {datatype, integer}
                                                               ]}.
-%% @doc Set the time in seconds after a QoS=1 or QoS=2 message has been sent
-%% that vmq will wait before retrying when no response is received.
-{mapping, "retry_interval", "vmq_server.retry_interval", [
-                                                             {default, 20},
-                                                             {commented, 20},
-                                                             {datatype, integer}
-                                                            ]}.
 
 %% @doc This option allows persistent clients (those with clean session set to 
 %% false) to be removed if they do not reconnect within a certain time frame. 
