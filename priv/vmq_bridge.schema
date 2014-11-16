@@ -1,165 +1,223 @@
+%%-*- mode: erlang -*
+%% ex: ft=erlang
+
+%% @doc Specify the address and port of the bridge to connect to. Several 
+%% bridges can configured by using different bridge names (e.g. br0). If the 
+%% connection supports SSL encryption bridge.ssl.<name> can be used.
 {mapping, "bridge.tcp.$name", "vmq_bridge.config", [
-                                                       {default, {"127.0.0.1", 1889}},
-                                                       {datatype, ip},
-                                                       {include_default, "br0"},
-                                                       {commented, "127.0.0.1:1889"}
-                                                      ]}. 
-
-{mapping, "bridge.tcp.$name.cleansession", "vmq_bridge.config", [
-                                                       {default, off},
-                                                       {datatype, flag},
-                                                       {include_default, "br0"},
-                                                       {commented, off}
-                                                      ]}. 
-
-{mapping, "bridge.tcp.$name.client_id", "vmq_bridge.config", [
-                                                       {default, "auto"},
-                                                       {datatype, string},
-                                                       {include_default, "br0"},
-                                                       {commented, "auto"}
-                                                      ]}. 
-
-{mapping, "bridge.tcp.$name.keepalive_interval", "vmq_bridge.config", [
-                                                       {default, 60},
-                                                       {datatype, integer},
-                                                       {include_default, "br0"},
-                                                       {commented, 60}
-                                                      ]}. 
-
-{mapping, "bridge.tcp.$name.username", "vmq_bridge.config", [
-                                                       {datatype, string},
-                                                       {include_default, "br0"},
-                                                       {commented, "my_remote_user"}
-                                                      ]}. 
-
-{mapping, "bridge.tcp.$name.password", "vmq_bridge.config", [
-                                                       {datatype, string},
-                                                       {include_default, "br0"},
-                                                       {commented, "my_remote_password"}
-                                                      ]}. 
-
-{mapping, "bridge.tcp.$name.topic.$topic_id", "vmq_bridge.config", [
-                                                       {datatype, string},
-                                                       {include_default, "1"}
-                                                      ]}. 
-
-{mapping, "bridge.tcp.$name.restart_timeout", "vmq_bridge.config", [
-                                                                       {datatype, integer},
-                                                                       {default, 10},
-                                                                       {include_default, "br0"},
-                                                                       {commented, 10}
-                                                                      ]}.
-
-{mapping, "bridge.tcp.$name.try_private", "vmq_bridge.config", [
-                                                                       {datatype, flag},
-                                                                       {default, on},
-                                                                       {include_default, "br0"},
-                                                                       {commented, on}
-                                                                      ]}.
-%%%%%% --------------------------
+                                                    {default, {"127.0.0.1", 1889}},
+                                                    {datatype, ip},
+                                                    {include_default, "br0"},
+                                                    {commented, "127.0.0.1:1889"}
+                                                   ]}. 
 {mapping, "bridge.ssl.$name", "vmq_bridge.config", [
-                                                       {default, {"127.0.0.1", 1889}},
-                                                       {datatype, ip},
-                                                       {include_default, "sbr0"},
-                                                       {commented, "127.0.0.1:1889"}
-                                                      ]}. 
+                                                    {default, {"127.0.0.1", 1889}},
+                                                    {datatype, ip},
+                                                    hidden
+                                                   ]}. 
 
+%% @doc Set the clean session option for the bridge. By default this is disabled, 
+%% which means that all subscriptions on the remote broker are kept in case of 
+%% the network connection dropping. If enabled, all subscriptions and messages 
+%% on the remote broker will be cleaned up if the connection drops. 
+{mapping, "bridge.tcp.$name.cleansession", "vmq_bridge.config", [
+                                                                 {default, off},
+                                                                 {datatype, flag},
+                                                                 {include_default, "br0"},
+                                                                 {commented, off}
+                                                                ]}. 
 {mapping, "bridge.ssl.$name.cleansession", "vmq_bridge.config", [
                                                        {default, off},
                                                        {datatype, flag},
-                                                       {include_default, "sbr0"},
-                                                       {commented, off}
+                                                       hidden
                                                       ]}. 
 
+%% @doc Set the client id for this bridge connection. If not defined, this 
+%% defaults to 'name.hostname', where name is the connection name and hostname 
+%% is the hostname of this computer.
+{mapping, "bridge.tcp.$name.client_id", "vmq_bridge.config", [
+                                                              {default, "auto"},
+                                                              {datatype, string},
+                                                              {include_default, "br0"},
+                                                              {commented, "auto"}
+                                                             ]}. 
 {mapping, "bridge.ssl.$name.client_id", "vmq_bridge.config", [
                                                        {default, "auto"},
                                                        {datatype, string},
-                                                       {include_default, "sbr0"},
-                                                       {commented, "auto"}
+                                                       hidden
                                                       ]}. 
 
+%% @doc Set the number of seconds after which the bridge should send a ping if 
+%% no other traffic has occurred.
+{mapping, "bridge.tcp.$name.keepalive_interval", "vmq_bridge.config", [
+                                                                       {default, 60},
+                                                                       {datatype, integer},
+                                                                       {include_default, "br0"},
+                                                                       {commented, 60}
+                                                                      ]}. 
 {mapping, "bridge.ssl.$name.keepalive_interval", "vmq_bridge.config", [
                                                        {default, 60},
                                                        {datatype, integer},
-                                                       {include_default, "sbr0"},
-                                                       {commented, 60}
+                                                       hidden
                                                       ]}. 
 
+%% @doc Configure a username for the bridge. This is used for authentication 
+%% purposes when connecting to a broker that support MQTT v3.1 and requires a 
+%% username and/or password to connect. See also the password option.
+{mapping, "bridge.tcp.$name.username", "vmq_bridge.config", [
+                                                             {datatype, string},
+                                                             {include_default, "br0"},
+                                                             {commented, "my_remote_user"}
+                                                            ]}. 
 {mapping, "bridge.ssl.$name.username", "vmq_bridge.config", [
                                                        {datatype, string},
                                                        {include_default, "sbr0"},
-                                                       {commented, "my_remote_user"}
+                                                       hidden
                                                       ]}. 
 
+%% @doc Configure a password for the bridge. This is used for authentication 
+%% purposes when connecting to a broker that support MQTT v3.1 and requires a 
+%% username and/or password to connect. This option is only valid if a username 
+%% is also supplied.
+{mapping, "bridge.tcp.$name.password", "vmq_bridge.config", [
+                                                             {datatype, string},
+                                                             {include_default, "br0"},
+                                                             {commented, "my_remote_password"}
+                                                            ]}. 
 {mapping, "bridge.ssl.$name.password", "vmq_bridge.config", [
                                                        {datatype, string},
                                                        {include_default, "sbr0"},
-                                                       {commented, "my_remote_password"}
+                                                       hidden
                                                       ]}. 
 
+%% @doc Define one or more topic pattern to be shared between the two brokers. 
+%% Any topics matching the pattern (including wildcards) are shared. 
+%% The following format is used:
+%%
+%%  pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]
+%%
+%%  [ out | in | both ] specifies that this bridge exports messages (out), imports
+%%                      messages (in) or shared in both directions (both).
+%%                      If undefined we default to export (out).
+%%
+%%  qos-level           specifies the publish/subscribe QoS level used for this
+%%                      topic. If undefined we default to QoS 0.
+%%
+%%  local-prefix and remote-prefix:
+%%      For incoming topics, the bridge will prepend the pattern with the 
+%%      remote prefix and subscribe to the resulting topic on the remote broker. 
+%%      When a matching incoming message is received, the remote prefix will be 
+%%      removed from the topic and then the local prefix added.
+%%
+%%      For outgoing topics, the bridge will prepend the pattern with the local 
+%%      prefix and subscribe to the resulting topic on the local broker. When an 
+%%      outgoing message is processed, the local prefix will be removed from the 
+%%      topic then the remote prefix added.
+{mapping, "bridge.tcp.$name.topic.$topic_id", "vmq_bridge.config", [
+                                                                    {datatype, string},
+                                                                    {include_default, "1"}
+                                                                   ]}. 
 {mapping, "bridge.ssl.$name.topic.$topic_id", "vmq_bridge.config", [
                                                        {datatype, string},
-                                                       {include_default, "sbr0"},
-                                                       {commented, "/demo/+ both 1"}
+                                                       hidden
                                                       ]}. 
 
+%% @doc Set the amount of time a bridge using the automatic start type will wait 
+%% until attempting to reconnect. Defaults to 30 seconds.
+{mapping, "bridge.tcp.$name.restart_timeout", "vmq_bridge.config", [
+                                                                    {datatype, integer},
+                                                                    {default, 10},
+                                                                    {include_default, "br0"},
+                                                                    {commented, 10}
+                                                                   ]}.
 {mapping, "bridge.ssl.$name.restart_timeout", "vmq_bridge.config", [
                                                                        {datatype, integer},
                                                                        {default, 10},
-                                                                       {include_default, "sbr0"},
-                                                                       {commented, 10}
+                                                                       hidden
                                                                       ]}.
 
+%% @doc If try_private is enabled, the bridge will attempt to indicate to the 
+%% remote broker that it is a bridge not an ordinary client. If successful, this 
+%% means that loop detection will be more effective and that retained messages 
+%% will be propagated correctly. Not all brokers support this feature so it may 
+%% be necessary to set try_private to false if your bridge does not connect 
+%% properly.
+{mapping, "bridge.tcp.$name.try_private", "vmq_bridge.config", [
+                                                                {datatype, flag},
+                                                                {default, on},
+                                                                {include_default, "br0"},
+                                                                {commented, on}
+                                                               ]}.
 {mapping, "bridge.ssl.$name.try_private", "vmq_bridge.config", [
                                                                    {datatype, flag},
                                                                    {default, on},
-                                                                   {include_default, "sbr0"},
-                                                                   {commented, on}
+                                                                   hidden
                                                                   ]}.
-%%%%%% --------------------------
+%% @doc The cafile is used to define the path to a file containing 
+%% the PEM encoded CA certificates that are trusted. 
 {mapping, "bridge.ssl.$name.cafile", "vmq_bridge.config", [
                                                               {default, ""},
                                                               {datatype, file},
                                                               {include_default, "sbr0"},
                                                               {commented, "{{platform_etc_dir}}/cacerts.pem"}
                                                              ]}. 
+
+%% @doc Define the path to a folder containing 
+%% the PEM encoded CA certificates that are trusted. 
 {mapping, "bridge.ssl.$name.capath", "vmq_bridge.config", [
                                                               {default, ""},
                                                               {datatype, file},
                                                               {include_default, "sbr0"},
                                                               {commented, "{{platform_etc_dir}}/cacerts"}
                                                              ]}. 
+
+%% @doc Set the path to the PEM encoded server certificate.
 {mapping, "bridge.ssl.$name.certfile", "vmq_bridge.config", [
                                                                 {default, ""},
                                                                 {datatype, file},
                                                                 {include_default, "sbr0"},
                                                                 {commented, "{{platform_etc_dir}}/cert.pem"}
                                                                ]}. 
+%% @doc Set the path to the PEM encoded key file. 
 {mapping, "bridge.ssl.$name.keyfile", "vmq_bridge.config", [
                                                                {default, ""},
                                                                {datatype, file},
                                                                {include_default, "sbr0"},
                                                                {commented, "{{platform_etc_dir}}/key.pem"}
                                                               ]}. 
-
+%% @doc When using certificate based TLS, the bridge will attempt to verify the 
+%% hostname provided in the remote certificate matches the host/address being 
+%% connected to. This may cause problems in testing scenarios, so this option 
+%% may be enabled to disable the hostname verification.
+%%
+%% Setting this option to true means that a malicious third party could 
+%% potentially inpersonate your server, so it should always be disabled in 
+%% production environments.
 {mapping, "bridge.ssl.$name.insecure", "vmq_bridge.config", [
                                                                 {default, off},
                                                                 {datatype, flag},
                                                                 {include_default, "sbr0"},
                                                                 {commented, off}
                                                                ]}. 
+%% @doc Configure the TLS protocol version (tlsv1, tlsv1.1, or tlsv1.2) to be 
+%% used for this bridge.
 {mapping, "bridge.ssl.$name.tls_version", "vmq_bridge.config", [
                                                                    {default, 'tlsv1.2'},
                                                                    {datatype, atom},
                                                                    {include_default, "sbr0"},
                                                                    {commented, 'tlsv1.2'}
                                                                   ]}. 
+%% @doc Pre-shared-key encryption provides an alternative to certificate based 
+%% encryption. This option specifies the identity used. 
 {mapping, "bridge.ssl.$name.identity", "vmq_bridge.config", [
                                                                 {default, ""},
                                                                 {datatype, string},
                                                                 {include_default, "sbr0"},
                                                                 {commented, ""}
                                                                ]}. 
+%% @doc Pre-shared-key encryption provides an alternative to certificate based 
+%% encryption. This option specifies the shared secret used in hexadecimal
+%% format without leading '0x'. 
 {mapping, "bridge.ssl.$name.psk", "vmq_bridge.config", [
                                                            {default, ""},
                                                            {datatype, string},
