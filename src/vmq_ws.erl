@@ -81,15 +81,17 @@ websocket_handle(_Data, Req, State) ->
 
 -spec websocket_info({reply, binary()} | any(), cowboy_req:req(), any()) ->
                             {ok | shutdown, cowboy_req:req(), any()}.
-websocket_info({reply, Frame}, Req, #st{bytes_send={{M, S, _}, V}} = State) ->
-    Data =
-    case is_binary(Frame) of
-        true ->
-            Frame;
-        false ->
-            emqtt_frame:serialise(Frame)
+websocket_info({reply, Frames}, Req, #st{bytes_send={{M, S, _}, V}} = State) ->
+    Bins =
+    case Frames of
+        [F|_] = Frames when is_tuple(F) ->
+            [emqtt_frame:serialise(Frame) || Frame <- Frames];
+        F when is_tuple(F) ->
+            [emqtt_frame:serialise(F)];
+        B when is_binary(B) ->
+            [B]
     end,
-    NrOfBytes = byte_size(Data),
+    NrOfBytes = iolist_size(Bins),
     NewV = V + NrOfBytes,
     NewBytesSend =
     case os:timestamp() of
@@ -99,7 +101,7 @@ websocket_info({reply, Frame}, Req, #st{bytes_send={{M, S, _}, V}} = State) ->
             vmq_systree:incr_bytes_sent(NewV),
             {TS, NewV}
     end,
-    {reply, {binary, Data}, Req, State#st{bytes_send=NewBytesSend}};
+    {reply, {binary, Bins}, Req, State#st{bytes_send=NewBytesSend}};
 websocket_info({'DOWN', _, process, Pid, Reason}, Req, State) ->
     %% session stopped
     lager:info("[~p] stop websocket session due to ~p", [Pid, Reason]),

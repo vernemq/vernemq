@@ -294,7 +294,7 @@ handle_info({mail, QPid, Msgs, _, Dropped}, connected,
         false ->
             State
     end,
-    case handle_messages(Msgs, NewState) of
+    case handle_messages(Msgs, [], NewState) of
         {ok, NewState1} ->
             vmq_queue:notify(QPid),
             {next_state, connected, NewState1};
@@ -324,20 +324,27 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNALS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-handle_messages([{deliver, QoS, Msg}|Rest], State) ->
-    case handle_message(QoS, Msg, State) of
-        {ok, NewState} ->
-            handle_messages(Rest, NewState);
+handle_messages([{deliver, QoS, Msg}|Rest], Frames, State) ->
+    case prepare_frame(QoS, Msg, State) of
+        {ok, Frame, NewState} ->
+            handle_messages(Rest, [Frame|Frames], NewState);
         {stop, Reason, NewState} ->
             {stop, Reason, NewState}
     end;
-handle_messages([{deliver_bin, Term}|Rest], State) ->
+handle_messages([{deliver_bin, Term}|Rest], Frames, State) ->
     {ok, NewState} = handle_bin_message(Term, State),
-    handle_messages(Rest, NewState);
-handle_messages([], State) -> {ok, State}.
+    handle_messages(Rest, Frames, NewState);
+handle_messages([], Frames, State) ->
+    case send_publish_frames(Frames, State) of
+        {ok, NewState} ->
+            {ok, NewState};
+        {error, Reason} ->
+            lager:debug("[~p] stop due to ~p~n", [self(), Reason]),
+            {stop, normal, State}
+    end.
 
-handle_message(QoS, Msg, State) ->
-    #state{client_id=ClientId, waiting_acks=WAcks, mountpoint=MountPoint,
+prepare_frame(QoS, Msg, State) ->
+    #state{waiting_acks=WAcks, mountpoint=MountPoint,
            retry_interval=RetryInterval} = State,
     #vmq_msg{routing_key=RoutingKey,
              payload=Payload,
@@ -357,24 +364,17 @@ handle_message(QoS, Msg, State) ->
                            message_id=OutgoingMsgId},
                payload=Payload
               },
-    case send_publish_frame(Frame, State1) of
-        {error, Reason} when QoS > 0 ->
-            vmq_msg_store:defer_deliver(ClientId, QoS, MsgStoreRef),
-            lager:debug("[~p] stop due to ~p, deliver when client reconnects~n",
-                        [self(), Reason]),
-            {stop, normal, State1};
-        {error, Reason} ->
-            lager:debug("[~p] stop due to ~p~n", [self(), Reason]),
-            {stop, normal, State1};
-        NewState when QoS == 0 ->
-            {ok, NewState};
-        NewState when QoS > 0 ->
+    case QoS of
+        0 ->
+            {ok, Frame, State1};
+        _ ->
             Ref = send_after(RetryInterval, {retry, OutgoingMsgId}),
-            {ok, NewState#state{waiting_acks=dict:store(OutgoingMsgId,
-                                                        {QoS, Frame,
-                                                         Ref,
-                                                         MsgStoreRef},
-                                                        WAcks)}}
+            {ok, Frame, State1#state{
+                          waiting_acks=dict:store(OutgoingMsgId,
+                                                  {QoS, Frame,
+                                                   Ref,
+                                                   MsgStoreRef},
+                                                  WAcks)}}
     end.
 
 handle_bin_message({MsgId, QoS, Bin}, State) ->
@@ -802,13 +802,17 @@ drop(State) ->
 drop(I, #state{pub_dropped_cnt=PubDropped} = State) ->
     State#state{pub_dropped_cnt=incr_pub_dropped_cnt(I, PubDropped)}.
 
--spec send_publish_frame(mqtt_frame(), state()) -> state() | {error, atom()}.
-send_publish_frame(Frame, State) ->
+-spec send_publish_frames([mqtt_frame()], state()) -> state() | {error, atom()}.
+send_publish_frames(Frames, State) ->
     #state{send_fun=SendFun, send_cnt=SendCnt, pub_send_cnt=PubSendCnt} = State,
-    case SendFun(Frame) of
+    case SendFun(Frames) of
         ok ->
-            State#state{send_cnt=incr_msg_sent_cnt(SendCnt),
-                        pub_send_cnt=incr_pub_sent_cnt(PubSendCnt)};
+            NrOfFrames = length(Frames),
+            NewState = State#state{
+                         send_cnt=incr_msg_sent_cnt(NrOfFrames, SendCnt),
+                         pub_send_cnt=incr_pub_sent_cnt(NrOfFrames, PubSendCnt)
+                        },
+            {ok, NewState};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -970,7 +974,9 @@ init_ts() ->
     {os:timestamp(), 0, 0}.
 
 incr_msg_sent_cnt(SndCnt) ->
-    incr_cnt(incr_messages_sent, 1, SndCnt).
+    incr_msg_sent_cnt(1, SndCnt).
+incr_msg_sent_cnt(I, SndCnt) ->
+    incr_cnt(incr_messages_sent, I, SndCnt).
 incr_msg_recv_cnt(RcvCnt) ->
     incr_cnt(incr_messages_received, 1, RcvCnt).
 incr_pub_recv_cnt(PubRecvCnt) ->
@@ -978,7 +984,9 @@ incr_pub_recv_cnt(PubRecvCnt) ->
 incr_pub_dropped_cnt(I, PubDroppedCnt) ->
     incr_cnt(incr_publishes_dropped, I, PubDroppedCnt).
 incr_pub_sent_cnt(PubSendCnt) ->
-    incr_cnt(incr_publishes_sent, 1, PubSendCnt).
+    incr_pub_sent_cnt(1, PubSendCnt).
+incr_pub_sent_cnt(I, PubSendCnt) ->
+    incr_cnt(incr_publishes_sent, I, PubSendCnt).
 
 incr_cnt(IncrFun, IncrV, {{M, S, _}, V, I}) ->
     NewV = V + IncrV,

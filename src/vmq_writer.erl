@@ -32,8 +32,11 @@ start_link(Transport, Socket) ->
 send(WriterPid, Bin) when is_binary(Bin) ->
     WriterPid ! {send, Bin},
     ok;
+send(WriterPid, [F|_] = Frames) when is_tuple(F) ->
+    WriterPid ! {send_frames, Frames},
+    ok;
 send(WriterPid, Frame) when is_tuple(Frame) ->
-    WriterPid ! {send_frame, Frame},
+    WriterPid ! {send_frames, [Frame]},
     ok.
 
 main_loop(Socket, Pending, BytesSend) ->
@@ -72,9 +75,11 @@ recv_loop(Socket, Pending, BytesSend) ->
 
 handle_message({send, Bin}, Socket, Pending, BytesSend) ->
     maybe_flush(Socket, [Bin|Pending], BytesSend);
-handle_message({send_frame, Frame}, Socket, Pending, BytesSend) ->
-    Bin = emqtt_frame:serialise(Frame),
-    maybe_flush(Socket, [Bin|Pending], BytesSend);
+handle_message({send_frames, Frames}, Socket, Pending, BytesSend) ->
+    lists:foldl(fun(Frame, {AccPending, AccBytesSend}) ->
+                        Bin = emqtt_frame:serialise(Frame),
+                        maybe_flush(Socket, [Bin|AccPending], AccBytesSend)
+                end, {Pending, BytesSend}, Frames);
 handle_message({inet_reply, _, ok}, _Socket, Pending, BytesSend) ->
     {Pending, BytesSend};
 handle_message({inet_reply, _, Status}, _, _, _) ->
