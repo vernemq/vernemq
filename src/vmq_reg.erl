@@ -242,7 +242,6 @@ register_client__(SessionPid, QPid, ClientId, CleanSession) ->
 
 -spec publish(msg()) -> 'ok' | {'error', _}.
 publish(#vmq_msg{routing_key=RoutingKey, retain=IsRetain} = Msg) ->
-    process_flag(priority, high),
     MatchedTopics = match(RoutingKey),
     Ret =
     case IsRetain of
@@ -263,7 +262,6 @@ publish(#vmq_msg{routing_key=RoutingKey, retain=IsRetain} = Msg) ->
                     publish_if_ready(Msg, MatchedTopics)
             end
     end,
-    process_flag(priority, normal),
     Ret.
 
 
