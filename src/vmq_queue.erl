@@ -20,6 +20,7 @@
          active/1, notify/1, enqueue/2]).
 -export([init/1,
          active/2, passive/2, notify/2,
+         active/3, passive/3, notify/3,
          handle_event/3, handle_sync_event/4, handle_info/3,
          terminate/3, code_change/4]).
 
@@ -56,7 +57,14 @@ notify(Queue) ->
 %% @doc Enqueues a message.
 -spec enqueue(pid(), term()) -> ok.
 enqueue(Queue, Msg) ->
-    gen_fsm:send_event(Queue, {enqueue, Msg}).
+    case catch gen_fsm:sync_send_event(Queue, {enqueue, Msg}, infinity) of
+        ok -> ok;
+        {'EXIT', _Reason} ->
+            % we are not allowed to crash, this would
+            % teardown 'decoupled' publisher process
+            ok
+    end.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% gen_fsm Function Definitions %%%
@@ -78,6 +86,10 @@ active(_Msg, S = #state{}) ->
     %% unexpected
     {next_state, active, S}.
 
+active({enqueue, Msg}, From, S = #state{}) ->
+    gen_fsm:reply(From, ok),
+    send(insert(Msg, S)).
+
 %% @private
 passive(notify, #state{size=0} = S) ->
     {next_state, notify, S};
@@ -93,6 +105,10 @@ passive(_Msg, S = #state{}) ->
     %% unexpected
     {next_state, passive, S}.
 
+passive({enqueue, Msg}, From, S = #state{}) ->
+    gen_fsm:reply(From, ok),
+    {next_state, passive, insert(Msg, S)}.
+
 %% @private
 notify(active, S = #state{size=0}) ->
     {next_state, active, S};
@@ -105,6 +121,10 @@ notify({enqueue, Msg}, S) ->
 notify(_Msg, S = #state{}) ->
     %% unexpected
     {next_state, notify, S}.
+
+notify({enqueue, Msg}, From, S = #state{}) ->
+    gen_fsm:reply(From, ok),
+    send_notification(insert(Msg, S)).
 
 %% @private
 handle_event(_Event, StateName, State) ->
