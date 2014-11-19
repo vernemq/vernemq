@@ -80,7 +80,8 @@ loop(#st{buffer=_Buffer, socket=Socket, transport=Transport,
             loop(State#st{parser_state=NewParserState,
                           bytes_recv=NewBytesRecv});
         {ProtoClosed, Socket} ->
-            teardown(State, tcp_closed);
+            %% we regard a tcp_closed as 'normal'
+            teardown(State, normal);
         {ProtoError, Socket, Reason} ->
             teardown(State, Reason);
         M ->
