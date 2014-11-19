@@ -116,6 +116,7 @@ in_(FsmPid, Event) ->
                                                  infinity) of
         ok -> ok;
         {'EXIT', {normal, _}} -> ok;
+        {'EXIT', {noproc, _}} -> ok;
         {'EXIT', Reason} -> exit(Reason)
     end.
 
@@ -334,6 +335,7 @@ handle_messages([{deliver, QoS, Msg}|Rest], Frames, State) ->
 handle_messages([{deliver_bin, Term}|Rest], Frames, State) ->
     {ok, NewState} = handle_bin_message(Term, State),
     handle_messages(Rest, Frames, NewState);
+handle_messages([], [], State) -> {ok, State};
 handle_messages([], Frames, State) ->
     case send_publish_frames(Frames, State) of
         {ok, NewState} ->

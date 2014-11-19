@@ -12,20 +12,37 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_endpoint).
--include_lib("public_key/include/public_key.hrl").
+-module(vmq_listener_sup).
+
+-behaviour(supervisor).
 
 %% API
--export([start_listeners/0,
-         change_config_now/3,
-         active_connections/0]).
+-export([start_link/0,
+         start_listeners/0,
+         change_config_now/3]).
+
+%% Supervisor callbacks
+-export([init/1]).
+
+-define(CHILD(Id, Mod, Type, Args), {Id, {Mod, start_link, Args},
+                                     permanent, 5000, Type, [Mod]}).
 
 -define(APP, vmq_server).
--define(SSL_EC, []).
+-define(SUP, ?MODULE).
+-define(TABLE, vmq_listeners).
 
+-type listener_mod() :: vmq_tcp_listener
+                      | vmq_ws_listener
+                      | vmq_ssl_listener
+                      | vmq_wss_listener.
 %%%===================================================================
 %%% API functions
 %%%===================================================================
+start_link() ->
+    {ok, Pid} = supervisor:start_link({local, ?SUP}, ?MODULE, []),
+    start_listeners(),
+    {ok, Pid}.
+
 -spec change_config_now(_, [any()], _) -> 'ok'.
 change_config_now(_New, Changed, _Deleted) ->
     %% we are only interested if the config changes
@@ -33,96 +50,110 @@ change_config_now(_New, Changed, _Deleted) ->
                                                        Changed, {[], []}),
     {OldTCP, OldSSL, OldWS, OldWSS} = OldListeners,
     {NewTcp, NewSSL, NewWS, NewWSS} = NewListeners,
-    maybe_change_listener(ranch_tcp, OldTCP, NewTcp),
-    maybe_change_listener(ranch_ssl, OldSSL, NewSSL),
-    maybe_change_listener(ranch_tcp, OldWS, NewWS),
-    maybe_change_listener(ranch_tcp, OldWSS, NewWSS),
-    maybe_new_listener(ranch_tcp, vmq_tcp, OldTCP, NewTcp),
-    maybe_new_listener(ranch_ssl, vmq_tcp, OldSSL, NewSSL),
-    maybe_new_listener(ranch_tcp, cowboy_protocol, OldWS, NewWS),
-    maybe_new_listener(ranch_ssl, cowboy_protocol, OldWSS, NewWSS).
-
-active_connections() ->
-    lists:sum(lists:flatten(
-                [[ranch_conns_sup:active_connections(CPid)
-                  ||{ranch_conns_sup, CPid, _, _}<-
-                        supervisor:which_children(Pid)]
-                 ||{{ranch_listener_sup, _}, Pid, _, _}<-
-                       supervisor:which_children(ranch_sup)])).
-
--spec maybe_change_listener('ranch_ssl' | 'ranch_tcp', _, _) -> 'ok'.
-maybe_change_listener(_, Old, New) when Old == New -> ok;
-maybe_change_listener(Transport, Old, New) ->
-    lists:foreach(
-      fun({{Ip, Port} = IpAddr, Opts}) ->
-              case proplists:get_value(IpAddr, New) of
-                  undefined ->
-                      %% delete listener
-                      ranch:stop_listener(listener_name(Ip, Port));
-                  Opts -> ok; %% no change;
-                  NewOpts ->
-                      %% New Opts for existing listener
-                      %% teardown listener and restart
-                      %% TODO: improve!
-                      ok = ranch:set_protocol_options(listener_name(
-                                                        Ip, Port),
-                                                      transport_opts(
-                                                        Transport, NewOpts))
-              end
-      end, Old).
-
--spec maybe_new_listener('ranch_ssl' |
-                         'ranch_tcp', 'cowboy_protocol' |
-                         'vmq_tcp', _, [any()]) -> 'ok'.
-maybe_new_listener(Transport, Protocol, Old, New) ->
-    lists:foreach(
-      fun({{Addr, Port} = IpAddr, Opts}) ->
-              case proplists:get_value(IpAddr, Old) of
-                  undefined ->
-                      %% start new listener
-                      start_listener(Transport, Protocol, Addr, Port, Opts);
-                  _ ->
-                      ok
-              end
-      end, New).
+    maybe_change_listener(vmq_tcp_listener, OldTCP, NewTcp),
+    maybe_change_listener(vmq_ssl_listener, OldSSL, NewSSL),
+    maybe_change_listener(vmq_ws_listener, OldWS, NewWS),
+    maybe_change_listener(vmq_wss_listener, OldWSS, NewWSS),
+    maybe_new_listener(vmq_tcp_listener, OldTCP, NewTcp),
+    maybe_new_listener(vmq_ssl_listener, OldSSL, NewSSL),
+    maybe_new_listener(vmq_ws_listener, OldWS, NewWS),
+    maybe_new_listener(vmq_wss_listener, OldWSS, NewWSS).
 
 -spec start_listeners() -> ok.
 start_listeners() ->
     {ok, {TCPListeners, SSLListeners,
           WSListeners, WSSListeners}} = application:get_env(?APP, listeners),
-    start_listeners(TCPListeners, ranch_tcp, vmq_tcp),
-    start_listeners(SSLListeners, ranch_ssl, vmq_tcp),
-    start_listeners(WSListeners, ranch_tcp, cowboy_protocol),
-    start_listeners(WSSListeners, ranch_ssl, cowboy_protocol),
+    start_listeners(TCPListeners, vmq_tcp_listener),
+    start_listeners(SSLListeners, vmq_ssl_listener),
+    start_listeners(WSListeners, vmq_ws_listener),
+    start_listeners(WSSListeners, vmq_wss_listener),
     ok.
 
--spec start_listeners([any()], 'ranch_ssl' |
-                      'ranch_tcp', 'cowboy_protocol' |
-                      'vmq_tcp') -> [{'ok', pid()}].
-start_listeners(Listeners, Transport, Protocol) ->
-    [start_listener(Transport, Protocol,
-                    Addr, Port, Opts) || {{Addr, Port}, Opts} <- Listeners].
+%%%===================================================================
+%%% Supervisor callbacks
+%%%===================================================================
 
--spec start_listener('ranch_ssl' |
-                     'ranch_tcp','cowboy_protocol' |
-                     'vmq_tcp',string() |
-                     inet:ip_address(), inet:port_number(),
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Whenever a supervisor is started using supervisor:start_link/[2,3],
+%% this function is called by the new process to find out about
+%% restart strategy, maximum restart frequency and child
+%% specifications.
+%%
+%% @spec init(Args) -> {ok, {SupFlags, [ChildSpec]}} |
+%%                     ignore |
+%%                     {error, Reason}
+%% @end
+%%--------------------------------------------------------------------
+init([]) ->
+    {ok, {{one_for_one, 5, 10}, []}}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+-spec maybe_change_listener(listener_mod(), _, _) -> 'ok'.
+maybe_change_listener(_, Old, New) when Old == New -> ok;
+maybe_change_listener(Transport, Old, New) ->
+    lists:foreach(
+      fun({{Ip, Port} = IpAddr, Opts}) ->
+              Id = listener_name(Ip, Port),
+              case proplists:get_value(IpAddr, New) of
+                  undefined ->
+                      %% delete listener
+                      supervisor:terminate_child(?SUP, Id);
+                  Opts -> ok; %% no change;
+                  NewOpts ->
+                      {_, Pid, _, _} =
+                      lists:keyfind(Id, 1, supervisor:which_children(?SUP)),
+                      vmq_listener:change_config(Pid, transport_opts(
+                                                        Transport, NewOpts))
+              end
+      end, Old).
+
+-spec maybe_new_listener(listener_mod(), _, _) -> ok.
+maybe_new_listener(ListenerMod, Old, New) ->
+    lists:foreach(
+      fun({{Addr, Port} = IpAddr, Opts}) ->
+              case proplists:get_value(IpAddr, Old) of
+                  undefined ->
+                      %% start new listener
+                      start_listener(ListenerMod, Addr, Port, Opts);
+                  _ ->
+                      ok
+              end
+      end, New).
+
+
+-spec start_listeners([any()], listener_mod()) -> [{'ok', pid()}].
+start_listeners(Listeners, ListenerMod) ->
+    [start_listener(ListenerMod, Addr, Port, Opts)
+     || {{Addr, Port}, Opts} <- Listeners].
+
+-spec start_listener(listener_mod(),
+                     string() | inet:ip_address(), inet:port_number(),
                      [any()]) -> {'ok',pid()}.
-start_listener(Transport, Protocol, Addr, Port, Opts) ->
+start_listener(ListenerMod, Addr, Port, Opts) ->
     Ref = listener_name(Addr, Port),
-    NrOfAcceptors = proplists:get_value(nr_of_acceptors, Opts),
-    {ok, _Pid} =
-        ranch:start_listener(Ref, NrOfAcceptors, Transport,
-                             [{ip, case is_list(Addr) of
-                                       true ->
-                                           {ok, Ip} = inet:parse_address(Addr),
-                                           Ip;
-                                       false -> Addr
-                                   end }, {port, Port},
-                              {max_connections,
-                               proplists:get_value(max_connections, Opts)}
-                              | transport_opts(Transport, Opts)],
-                             Protocol, handler_opts(Protocol, Opts)).
+    TransportOpts = [{ip, case is_list(Addr) of
+                              true ->
+                                  {ok, Ip} = inet:parse_address(Addr),
+                                  Ip;
+                              false -> Addr
+                          end }
+                     | transport_opts(ListenerMod, Opts)],
+    HandlerOpts = handler_opts(Opts),
+    ChildSpec = {Ref,
+                 {vmq_listener, start_link, [Port,
+                                            TransportOpts,
+                                            ListenerMod,
+                                            HandlerOpts]},
+                 permanent, 5000, worker, [ListenerMod]},
+              % {max_connections,
+              %  proplists:get_value(max_connections, Opts)}
+    supervisor:start_child(?SUP, ChildSpec).
+
 
 -spec listener_name(string() |
                     inet:ip_address(),
@@ -132,8 +163,8 @@ start_listener(Transport, Protocol, Addr, Port, Opts) ->
 listener_name(Ip, Port) ->
     {vmq_listener, Ip, Port}.
 
--spec transport_opts('ranch_ssl' | 'ranch_tcp',_) -> [{atom(), any()}].
-transport_opts(ranch_ssl, Opts) ->
+-spec transport_opts(listener_mod(),_) -> [{atom(), any()}].
+transport_opts(vmq_ssl_listener, Opts) ->
     [{cacerts, case proplists:get_value(cafile, Opts) of
                    undefined -> undefined;
                    CAFile -> load_cert(CAFile)
@@ -166,19 +197,9 @@ transport_opts(ranch_ssl, Opts) ->
              []
      end
     ];
-transport_opts(ranch_tcp, _Opts) ->
-    vmq_config:get_env(tcp_listen_options).
+transport_opts(_, _Opts) -> [].
 
--spec handler_opts('cowboy_protocol' | 'vmq_tcp', [any()]) -> [any(), ...].
-handler_opts(cowboy_protocol, Opts) ->
-    Dispatch = cowboy_router:compile(
-                 [
-                  {'_', [
-                         {"/mqtt", vmq_ws, handler_opts(vmq_tcp, Opts)}
-                        ]}
-                 ]),
-    [{env, [{dispatch, Dispatch}]}];
-handler_opts(vmq_tcp, Opts) ->
+handler_opts(Opts) ->
     {ok, MsgLogHandler} = application:get_env(?APP, msg_log_handler),
     {ok, MaxClientIdSize} = application:get_env(?APP, max_client_id_size),
     {ok, RetryInterval} = application:get_env(?APP, retry_interval),
@@ -354,4 +375,3 @@ support_partial_chain() ->
                  [list_to_integer(T)
                   || T <- string:tokens(VSN, ".")]),
     VSNTuple >= {5, 3, 6}.
-

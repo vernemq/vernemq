@@ -13,21 +13,27 @@
 %% limitations under the License.
 
 -module(vmq_writer).
--export([start_link/2,
+-export([start_link/3,
          send/2,
-         main_loop/3,
-         recv_loop/3]).
+         main_loop/1,
+         recv_loop/1]).
+
+-record(state, {socket,
+                handler,
+                pending=[],
+                bytes_send={os:timestamp(), 0}}).
 
 -define(HIBERNATE_AFTER, 5000).
 
-start_link(Transport, Socket) ->
+start_link(Transport, Handler, Socket) ->
     MaybeMaskedSocket =
     case Transport of
-        ranch_ssl -> {ssl, Socket};
+        ssl -> {ssl, Socket};
         _ -> Socket
     end,
     {ok, proc_lib:spawn_link(?MODULE, main_loop,
-                             [MaybeMaskedSocket, [], {os:timestamp(), 0}])}.
+                             [#state{handler=Handler,
+                                     socket=MaybeMaskedSocket}])}.
 
 send(WriterPid, Bin) when is_binary(Bin) ->
     WriterPid ! {send, Bin},
@@ -39,73 +45,75 @@ send(WriterPid, Frame) when is_tuple(Frame) ->
     WriterPid ! {send_frames, [Frame]},
     ok.
 
-main_loop(Socket, Pending, BytesSend) ->
-    process_flag(trap_exit, true),
+main_loop(State) ->
     try
-        recv_loop(Socket, Pending, BytesSend)
+        recv_loop(State)
     catch
         exit:_Reason ->
-            internal_flush(Socket, Pending, BytesSend),
+            internal_flush(State),
             exit(normal)
     end.
 
-recv_loop(Socket, [], BytesSend) ->
+recv_loop(#state{pending=[]} = State) ->
     receive
         Message ->
-            {NewPending, NewBytesSend} = handle_message(Message, Socket,
-                                                        [], BytesSend),
-            ?MODULE:recv_loop(Socket, NewPending, NewBytesSend)
+            NewState = handle_message(Message, State),
+            ?MODULE:recv_loop(NewState)
     after
         ?HIBERNATE_AFTER ->
-            erlang:hibernate(?MODULE, main_loop, [Socket, [], BytesSend])
+            erlang:hibernate(?MODULE, main_loop, [State])
     end;
-recv_loop(Socket, Pending, BytesSend) ->
+recv_loop(State) ->
     receive
         Message ->
-            {NewPending, NewBytesSend} = handle_message(Message, Socket,
-                                                        Pending, BytesSend),
-            ?MODULE:recv_loop(Socket, NewPending, BytesSend)
+            NewState = handle_message(Message, State),
+            ?MODULE:recv_loop(NewState)
     after
         0 ->
-            {NewPending, NewBytesSend} = internal_flush(Socket, Pending,
-                                                        BytesSend),
-            ?MODULE:recv_loop(Socket, NewPending, NewBytesSend)
+            NewState = internal_flush(State),
+            ?MODULE:recv_loop(NewState)
     end.
 
 
-handle_message({send, Bin}, Socket, Pending, BytesSend) ->
-    maybe_flush(Socket, [Bin|Pending], BytesSend);
-handle_message({send_frames, Frames}, Socket, Pending, BytesSend) ->
-    lists:foldl(fun(Frame, {AccPending, AccBytesSend}) ->
+handle_message({send, Bin}, #state{pending=Pending, handler=Handler} = State) ->
+    maybe_flush(State#state{pending=[reprocess(Handler, Bin)|Pending]});
+handle_message({send_frames, Frames}, #state{handler=Handler} = State) ->
+    lists:foldl(fun(Frame, #state{pending=AccPending} = AccSt) ->
                         Bin = emqtt_frame:serialise(Frame),
-                        maybe_flush(Socket, [Bin|AccPending], AccBytesSend)
-                end, {Pending, BytesSend}, Frames);
-handle_message({inet_reply, _, ok}, _Socket, Pending, BytesSend) ->
-    {Pending, BytesSend};
-handle_message({inet_reply, _, Status}, _, _, _) ->
+                        maybe_flush(AccSt#state{
+                                      pending=[reprocess(Handler, Bin)
+                                               |AccPending]})
+                end, State, Frames);
+handle_message({inet_reply, _, ok}, State) ->
+    State;
+handle_message({inet_reply, _, Status}, _) ->
     exit({writer, send_failed, Status});
-handle_message({'EXIT', _Parent, Reason}, _, _, _) ->
-    exit({writer, reader_exit, Reason});
-handle_message(Msg, _, _, _) ->
+handle_message(Msg, _) ->
     exit({writer, unknown_message_type, Msg}).
 
-
+reprocess(vmq_tcp_listener, Bin) -> Bin;
+reprocess(vmq_ssl_listener, Bin) -> Bin;
+reprocess(vmq_ws_listener, Bin) ->
+    wsock_message:encode(Bin, [mask, binary]);
+reprocess(vmq_wss_listener, Bin) ->
+    wsock_message:encode(Bin, [mask, binary]).
 
 %% This magic number is the tcp-over-ethernet MSS (1460) minus the
 %% minimum size of a AMQP basic.deliver method frame (24) plus basic
 %% content header (22). The idea is that we want to flush just before
 %% exceeding the MSS.
 -define(FLUSH_THRESHOLD, 1414).
-maybe_flush(Socket, Pending, BytesSend) ->
+maybe_flush(#state{pending=Pending} = State) ->
     case iolist_size(Pending) >= ?FLUSH_THRESHOLD of
         true ->
-            internal_flush(Socket, Pending, BytesSend);
+            internal_flush(State);
         false ->
-            {Pending, BytesSend}
+            State
     end.
 
-internal_flush(_Socket, Pending = [], BytesSend) -> {Pending, BytesSend};
-internal_flush(Socket, Pending, {{M, S, _}, V}) ->
+internal_flush(#state{pending=[]} = State) -> State;
+internal_flush(#state{pending=Pending, socket=Socket,
+                      bytes_send={{M, S, _}, V}} = State) ->
     ok = port_cmd(Socket, lists:reverse(Pending)),
     NrOfBytes = iolist_size(Pending),
     NewBytesSend =
@@ -116,7 +124,7 @@ internal_flush(Socket, Pending, {{M, S, _}, V}) ->
             vmq_systree:incr_bytes_sent(V + NrOfBytes),
             {TS, 0}
     end,
-    {[], NewBytesSend}.
+    State#state{pending=[], bytes_send=NewBytesSend}.
 
 %% gen_tcp:send/2 does a selective receive of {inet_reply, Sock,
 %% Status} to obtain the result. That is bad when it is called from
