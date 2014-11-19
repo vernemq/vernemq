@@ -64,10 +64,6 @@ loop(#st{buffer=_Buffer, socket=Socket, transport=Transport,
         } = State) ->
     active_once(Transport, Socket),
     receive
-        {inet_reply, _, ok} ->
-            loop(State);
-        {inet_reply, _, Status} ->
-            teardown(State, Status);
         {Proto, Socket, Data} ->
             NewParserState = process_data(SessionPid, Handler,
                                           Socket, Data, ParserState),
