@@ -115,8 +115,17 @@ in_(FsmPid, Event) ->
     case catch gen_fsm:sync_send_all_state_event(FsmPid, {input, Event},
                                                  infinity) of
         ok -> ok;
-        {'EXIT', {normal, _}} -> ok;
-        {'EXIT', {noproc, _}} -> ok;
+        {'EXIT', {normal, _}} ->
+            %% Session Pid died while sync_send_all_state_event
+            %% was waiting to be handled, we can reply 'ok' here
+            %% because vmq_session_sup_sup will kick in and
+            %% shutdown the reader (and writer)
+            ok;
+        {'EXIT', {noproc, _}} ->
+            %% Session Pid is dead, we will be dead pretty soon too,
+            %% the vmq_session_sup_sup probably already has sent the
+            %% shutdown signal to reader (and writer)
+            ok;
         {'EXIT', Reason} -> exit(Reason)
     end.
 
