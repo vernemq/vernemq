@@ -61,7 +61,7 @@
           will_topic                        :: undefined | topic(),
           will_msg                          :: undefined | payload(),
           will_qos                          :: undefined | qos(),
-          waiting_acks=dict:new()           :: dict(),
+          waiting_acks=dict:new()           :: dict:dict(),
           %% auth backend requirement
           peer                              :: peer(),
           username                          :: undefined | username() |
@@ -856,7 +856,7 @@ clean_mp(MountPoint, MountedTopic) ->
 random_client_id() ->
     lists:flatten(["anon-", base64:encode_to_string(crypto:rand_bytes(20))]).
 
--spec handle_waiting_acks(state()) -> dict().
+-spec handle_waiting_acks(state()) -> dict:dict().
 handle_waiting_acks(State) ->
     #state{client_id=ClientId, waiting_acks=WAcks} = State,
     dict:fold(fun ({qos2, _}, _, Acc) ->
