@@ -214,14 +214,30 @@ set_sockopt(ListSock, CliSocket) ->
     case prim_inet:getopts(ListSock, [active, nodelay, keepalive,
                                       delay_send, priority, tos]) of
         {ok, Opts} ->
-            case prim_inet:setopts(CliSocket, Opts) of
-                ok    ->
-                    ok;
-                Error ->
-                    gen_tcp:close(CliSocket),
-                    Error
-            end;
+            set_sockopts(CliSocket, Opts);
         Error ->
             gen_tcp:close(CliSocket),
+            Error
+    end.
+
+set_sockopts(Socket, Opts) ->
+    case vmq_config:get_env(tune_tcp_buffer_size, false) of
+        true ->
+            case get_max_buffer_size(Socket) of
+                {ok, BufSize} ->
+                    prim_inet:setopts(Socket, [{buffer, BufSize}|Opts]);
+                Error ->
+                    gen_tcp:close(Socket),
+                    Error
+            end;
+        false ->
+            prim_inet:setopts(Socket, Opts)
+    end.
+
+get_max_buffer_size(Socket) ->
+    case prim_inet:getopts(Socket, [sndbuf, recbuf, buffer]) of
+        {ok, BufSizes} ->
+            {ok, lists:max([Sz || {_Opt, Sz} <- BufSizes])};
+        Error ->
             Error
     end.

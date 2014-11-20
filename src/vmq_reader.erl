@@ -36,17 +36,15 @@ handover(ReaderPid, Socket) ->
 
 -spec init(_, _, _) -> any().
 init(SessionPid, Handler, Transport) ->
-    wait_for_socket(Transport,
-                    #st{transport=Transport,
+    wait_for_socket(#st{transport=Transport,
                         handler=Handler,
                         session=SessionPid,
                         proto_tag=proto_tag(Transport)}).
 
 
-wait_for_socket(Transport, State) ->
+wait_for_socket(State) ->
     receive
         {handover, Socket} ->
-            ok = maybe_tune_buffer_size(Transport, Socket),
             vmq_systree:incr_socket_count(),
             loop(State#st{socket=Socket});
         M -> exit({unexpected_msg, M})
@@ -98,24 +96,6 @@ teardown(#st{session=SessionPid, transport=Transport, socket=Socket}, Reason) ->
     end,
     fast_close(Transport, Socket).
 
-
-maybe_tune_buffer_size(Transport, Socket) ->
-    case vmq_config:get_env(tune_tcp_buffer_size, false) of
-        true -> tune_buffer_size(Transport, Socket);
-        false -> ok
-    end.
-
-tune_buffer_size(gen_tcp, Sock) ->
-    tune_buffer_size_(inet, Sock);
-tune_buffer_size(ssl, Sock) ->
-    tune_buffer_size_(ssl, Sock).
-
-tune_buffer_size_(Transport, Sock) ->
-    case apply(Transport, getopts, [Sock, [sndbuf, recbuf, buffer]]) of
-        {ok, BufSizes} -> BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
-                          apply(Transport, setopts, [Sock, [{buffer, BufSz}]]);
-        Error -> Error
-    end.
 
 proto_tag(gen_tcp) -> {tcp, tcp_closed, tcp_error};
 proto_tag(ssl) -> {ssl, ssl_closed, ssl_error}.
