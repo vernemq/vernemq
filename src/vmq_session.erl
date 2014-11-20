@@ -985,8 +985,6 @@ incr_pub_recv_cnt(PubRecvCnt) ->
     incr_cnt(incr_publishes_received, 1, PubRecvCnt).
 incr_pub_dropped_cnt(I, PubDroppedCnt) ->
     incr_cnt(incr_publishes_dropped, I, PubDroppedCnt).
-incr_pub_sent_cnt(PubSendCnt) ->
-    incr_pub_sent_cnt(1, PubSendCnt).
 incr_pub_sent_cnt(I, PubSendCnt) ->
     incr_cnt(incr_publishes_sent, I, PubSendCnt).
 
