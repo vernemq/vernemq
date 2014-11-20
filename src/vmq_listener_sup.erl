@@ -126,33 +126,42 @@ maybe_new_listener(ListenerMod, Old, New) ->
       end, New).
 
 
--spec start_listeners([any()], listener_mod()) -> [{'ok', pid()}].
+-spec start_listeners([any()], listener_mod()) -> ok.
 start_listeners(Listeners, ListenerMod) ->
-    [start_listener(ListenerMod, Addr, Port, Opts)
-     || {{Addr, Port}, Opts} <- Listeners].
+    lists:foreach(fun({{Addr, Port}, Opts}) ->
+                          start_listener(ListenerMod, Addr, Port, Opts)
+                  end, Listeners).
 
 -spec start_listener(listener_mod(),
                      string() | inet:ip_address(), inet:port_number(),
                      [any()]) -> {'ok',pid()}.
 start_listener(ListenerMod, Addr, Port, Opts) ->
     Ref = listener_name(Addr, Port),
-    TransportOpts = [{ip, case is_list(Addr) of
-                              true ->
-                                  {ok, Ip} = inet:parse_address(Addr),
-                                  Ip;
-                              false -> Addr
-                          end }
-                     | transport_opts(ListenerMod, Opts)],
+    AAddr = case is_list(Addr) of
+                true ->
+                    {ok, Ip} = inet:parse_address(Addr),
+                    Ip;
+                false ->
+                    Addr
+            end,
+    TransportOpts = transport_opts(ListenerMod, Opts),
     HandlerOpts = handler_opts(Opts),
     ChildSpec = {Ref,
-                 {vmq_listener, start_link, [Port,
+                 {vmq_listener, start_link, [Port, AAddr,
                                             TransportOpts,
                                             ListenerMod,
                                             HandlerOpts]},
                  permanent, 5000, worker, [ListenerMod]},
               % {max_connections,
               %  proplists:get_value(max_connections, Opts)}
-    supervisor:start_child(?SUP, ChildSpec).
+    case supervisor:start_child(?SUP, ChildSpec) of
+        {ok, _} ->
+            lager:info("started ~p on ~p:~p", [ListenerMod, Addr, Port]);
+        {error, Reason} ->
+            FReason = inet:format_error(Reason),
+            lager:error("can't start ~p on ~p:~p due to ~p",
+                        [ListenerMod, Addr, Port, FReason])
+    end.
 
 
 -spec listener_name(string() |

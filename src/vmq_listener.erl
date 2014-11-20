@@ -17,7 +17,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/4,
+-export([start_link/5,
         change_config/2]).
 
 %% gen_server callbacks
@@ -45,8 +45,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(ListenPort, TransportOpts, HandlerMod, HandlerOpts) ->
-    gen_server:start_link(?MODULE, [ListenPort, TransportOpts,
+start_link(ListenPort, ListenAddr, TransportOpts, HandlerMod, HandlerOpts) ->
+    gen_server:start_link(?MODULE, [ListenPort, ListenAddr, TransportOpts,
                                     HandlerMod, HandlerOpts], []).
 
 change_config(ListenerPid, Config) ->
@@ -67,10 +67,10 @@ change_config(ListenerPid, Config) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([ListenPort, TransportOpts, HandlerMod, HandlerOpts]) ->
+init([ListenPort, ListenAddr, TransportOpts, HandlerMod, HandlerOpts]) ->
     process_flag(trap_exit, true),
     TCPListenOptions = vmq_config:get_env(tcp_listen_options),
-    case gen_tcp:listen(ListenPort, TCPListenOptions) of
+    case gen_tcp:listen(ListenPort, [{ip, ListenAddr} | TCPListenOptions]) of
     {ok, ListenSocket} ->
         %%Create first accepting process
         {ok, Ref} = prim_inet:async_accept(ListenSocket, -1),
