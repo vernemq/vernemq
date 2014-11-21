@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_session_sup).
-
+-include_lib("public_key/include/public_key.hrl").
 -behaviour(supervisor).
 
 %% API
@@ -42,16 +42,29 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-start_session(Socket, Handler, HandlerOpts) ->
-    {ok, Pid} = supervisor:start_child(?MODULE, [Socket, Handler, HandlerOpts]),
-    ReaderPid = vmq_session_sup_sup:reader(Pid),
+start_session(Socket, Handler, Opts) ->
     Transport = t(Handler),
-    apply(Transport, controlling_process, [Socket, ReaderPid]),
-    vmq_reader:handover(ReaderPid, Socket),
-    {ok, Pid}.
+    {ok, Peer} = (i(Transport)):peername(Socket),
+    NewOpts =
+    case Transport of
+        ssl ->
+            case proplists:get_value(use_identity_as_username, Opts, false) of
+                true ->
+                    [{preauth, socket_to_common_name(Socket)}|Opts];
+                false ->
+                    Opts
+            end;
+        _ ->
+            Opts
+    end,
+    {ok, TransportPid} = supervisor:start_child(?MODULE, [Peer, Handler,
+                                                         Transport, NewOpts]),
+    apply(Transport, controlling_process, [Socket, TransportPid]),
+    vmq_tcp_transport:handover(TransportPid, Socket),
+    {ok, TransportPid}.
 
-stop_session(SessionSupSupPid) ->
-    supervisor:terminate_child(?MODULE, SessionSupSupPid).
+stop_session(TransportPid) ->
+    supervisor:terminate_child(?MODULE, TransportPid).
 
 active_clients() ->
     Counts = supervisor:count_children(?MODULE),
@@ -77,9 +90,9 @@ active_clients() ->
 %%--------------------------------------------------------------------
 init([]) ->
     {ok, {{simple_one_for_one, 5, 10},
-          [{vmq_session_sup_sup,
-            {vmq_session_sup_sup, start_link, []},
-            temporary, 5000, worker, [vmq_session_sup_sup]}]}}.
+          [{vmq_tcp_transport,
+            {vmq_tcp_transport, start_link, []},
+            temporary, 5000, worker, [vmq_tcp_transport]}]}}.
 
 %%%===================================================================
 %%% Internal functions
@@ -88,3 +101,31 @@ t(vmq_tcp_listener) -> gen_tcp;
 t(vmq_ssl_listener) -> ssl;
 t(vmq_ws_listener) -> gen_tcp;
 t(vmq_wss_listener) -> ssl.
+i(gen_tcp) -> inet;
+i(ssl) -> ssl.
+
+-spec socket_to_common_name({'sslsocket',_,pid() | {port(),_}}) ->
+                                   'undefined' | [any()].
+socket_to_common_name(Socket) ->
+    case ssl:peercert(Socket) of
+        {error, no_peercert} ->
+            undefined;
+        {ok, Cert} ->
+            OTPCert = public_key:pkix_decode_cert(Cert, otp),
+            TBSCert = OTPCert#'OTPCertificate'.tbsCertificate,
+            Subject = TBSCert#'OTPTBSCertificate'.subject,
+            extract_cn(Subject)
+    end.
+
+-spec extract_cn({'rdnSequence', list()}) -> undefined | list().
+extract_cn({rdnSequence, List}) ->
+    extract_cn2(List).
+
+-spec extract_cn2(list()) -> undefined | list().
+extract_cn2([[#'AttributeTypeAndValue'{
+                 type=?'id-at-commonName',
+                 value={utf8String, CN}}]|_]) ->
+    unicode:characters_to_list(CN);
+extract_cn2([_|Rest]) ->
+    extract_cn2(Rest);
+extract_cn2([]) -> undefined.
