@@ -18,7 +18,8 @@
 -export([start_link/4,
          handover/2,
          send/2]).
--export([init/4]).
+-export([init/4,
+         loop/1]).
 
 -record(st, {socket,
              transport, handler, buffer= <<>>,
@@ -28,6 +29,8 @@
              pending=[],
              bytes_recv={os:timestamp(), 0},
              bytes_send={os:timestamp(), 0}}).
+
+-define(HIBERNATE_AFTER, 5000).
 
 -spec start_link(_, _, _, _) -> {'ok', pid()}.
 start_link(Peer, Handler, Transport, Opts) ->
@@ -68,6 +71,7 @@ wait_for_socket(State) ->
                 _ -> Socket
             end,
             vmq_systree:incr_socket_count(),
+            active_once(Socket),
             loop(State#st{socket=MaybeMaskedSocket});
         M ->
             exit({unexpected_msg, M})
@@ -76,43 +80,27 @@ wait_for_socket(State) ->
             exit(socket_handover_timeout)
     end.
 
+loop(State) ->
+    loop_(State).
 
-loop(#st{buffer=_Buffer, socket=Socket,
-            handler=Handler,
-            session=SessionPid, parser_state=ParserState,
-            proto_tag={Proto, ProtoClosed, ProtoError},
-            bytes_recv={TS, V}
-        } = State) ->
-    active_once(Socket),
+loop_(#st{pending=[]} = State) ->
     receive
-        {Proto, _, Data} ->
-            NewParserState = process_data(SessionPid, Handler,
-                                          Socket, Data, ParserState),
-            {M, S, _} = TS,
-            NrOfBytes = byte_size(Data),
-            NewBytesRecv =
-            case os:timestamp() of
-                {M, S, _} = NewTS ->
-                    {NewTS, V + NrOfBytes};
-                NewTS ->
-                    vmq_systree:incr_bytes_received(V + NrOfBytes),
-                    {NewTS, 0}
-            end,
-            loop(State#st{parser_state=NewParserState,
-                          bytes_recv=NewBytesRecv});
-        {ProtoClosed, _} ->
-            %% we regard a tcp_closed as 'normal'
-            teardown(State, normal);
-        {ProtoError, _, Reason} ->
-            teardown(State, Reason);
-        {'EXIT', _, Reason} ->
-            teardown(State, Reason);
         M ->
-            loop(handle_message(M, State))
+            loop_(handle_message(M, State))
+    after
+        ?HIBERNATE_AFTER ->
+            erlang:hibernate(?MODULE, loop, [State])
+    end;
+loop_(#st{} = State) ->
+    receive
+        M ->
+            loop_(handle_message(M, State))
     after
         0 ->
-            loop(internal_flush(State))
-    end.
+            loop_(internal_flush(State))
+    end;
+loop_({exit, Reason, State}) ->
+    teardown(State, Reason).
 
 teardown(#st{session=SessionPid, socket=Socket}, Reason) ->
     case Reason of
@@ -224,9 +212,33 @@ process_bytes(SessionPid, Bytes, ParserState) ->
             emqtt_frame:initial_state()
     end.
 
-%%% Outgoing Message Code
-%% vvvvvvvvvvvvvvvvvvvvvv
-
+handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
+    #st{session=SessionPid,
+        socket=Socket,
+        handler=Handler,
+        parser_state=ParserState,
+        bytes_recv={TS, V}} = State,
+    NewParserState = process_data(SessionPid, Handler,
+                                  Socket, Data, ParserState),
+    {M, S, _} = TS,
+    NrOfBytes = byte_size(Data),
+    NewBytesRecv =
+    case os:timestamp() of
+        {M, S, _} = NewTS ->
+            {NewTS, V + NrOfBytes};
+        NewTS ->
+            vmq_systree:incr_bytes_received(V + NrOfBytes),
+            {NewTS, 0}
+    end,
+    active_once(Socket),
+    State#st{parser_state=NewParserState, bytes_recv=NewBytesRecv};
+handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
+    %% we regard a tcp_closed as 'normal'
+    {exit, normal, State};
+handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
+    {exit, Error, State};
+handle_message({'EXIT', _, Reason}, State) ->
+    {exit, Reason, State};
 handle_message({send, Bin}, #st{pending=Pending, handler=Handler} = State) ->
     maybe_flush(State#st{pending=[reprocess(Handler, Bin)|Pending]});
 handle_message({send_frames, Frames}, #st{handler=Handler} = State) ->
