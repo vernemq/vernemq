@@ -1,0 +1,12 @@
+{application, vmq_plugin,
+ [
+  {description, "Generic Plugin System"},
+  {vsn, git},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { vmq_plugin_app, []}},
+  {env, []}
+ ]}.
