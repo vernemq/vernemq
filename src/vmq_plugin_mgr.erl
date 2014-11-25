@@ -19,7 +19,11 @@
 -export([start_link/0,
          enable_plugin/1,
          enable_plugin/2,
-         disable_plugin/1]).
+         enable_module_plugin/3,
+         enable_module_plugin/4,
+         disable_plugin/1,
+         disable_module_plugin/3,
+         disable_module_plugin/4]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -66,7 +70,21 @@ enable_plugin(Plugin) ->
 enable_plugin(Plugin, Path) when is_atom(Plugin) ->
     gen_server:call(?MODULE, {enable_plugin, Plugin, Path}, infinity).
 
-disable_plugin(Plugin) when is_atom(Plugin) ->
+enable_module_plugin(Module, Fun, Arity) ->
+    enable_module_plugin(Fun, Module, Fun, Arity).
+enable_module_plugin(HookName, Module, Fun, Arity) when
+      is_atom(HookName) and is_atom(Module)
+      and is_atom(Fun) and is_integer(Arity) ->
+    gen_server:call(?MODULE, {enable_module_plugin, HookName, Module, Fun, Arity}, infinity).
+
+disable_module_plugin(Module, Fun, Arity) ->
+    disable_module_plugin(Fun, Module, Fun, Arity).
+disable_module_plugin(HookName, Module, Fun, Arity) when
+      is_atom(HookName) and is_atom(Module)
+      and is_atom(Fun) and is_integer(Arity) ->
+    disable_plugin({HookName, Module, Fun, Arity}).
+
+disable_plugin(Plugin) when is_atom(Plugin) or is_tuple(Plugin) ->
     gen_server:call(?MODULE, {disable_plugin, Plugin}, infinity).
 %%%===================================================================
 %%% gen_server callbacks
@@ -84,7 +102,7 @@ disable_plugin(Plugin) when is_atom(Plugin) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, PluginDir} = application:get_env(vmq_plugin, plugin_dir),
+    PluginDir = application:get_env(vmq_plugin, plugin_dir, "."),
     ConfigFileName = application:get_env(vmq_plugin, plugin_config,
                                            "vmq_plugin.conf"),
     case filelib:ensure_dir(PluginDir) of
@@ -115,9 +133,7 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call({enable_plugin, Plugin, Path}, _From,
-            #state{config_file=ConfigFile,
-                   plugin_dir=PluginDir} = State) ->
-
+            #state{plugin_dir=PluginDir} = State) ->
     AppDir =
     case Path of
         undefined ->
@@ -125,59 +141,36 @@ handle_call({enable_plugin, Plugin, Path}, _From,
             filename:join(PluginDir, App);
         _ -> Path
     end,
-
-    case file:consult(ConfigFile) of
-        {ok, [{plugins, Plugins}]} ->
-            case lists:keyfind(Plugin, 2, Plugins) of
-                {application, Plugin, AppDir} ->
-                    ok;
-                {application, Plugin, _OldAppDir} ->
-                    %% Should we unload the old App Dir
-                    NewPlugins = lists:keydelete(Plugin, 2, Plugins),
-                    New = {plugins, [{application, Plugin, AppDir}|NewPlugins]},
-                    NewS = io_lib:format("~p.", [New]),
-                    ok = file:write_file(ConfigFile, NewS);
-                false ->
-                    New = {plugins, [{application, Plugin, AppDir}|Plugins]},
-                    NewS = io_lib:format("~p.", [New]),
-                    ok = file:write_file(ConfigFile, NewS)
-            end,
-            case init_from_config_file(State) of
-                {ok, NewState} ->
-                    {reply, ok, NewState};
-                {error, _} = E ->
-                    {reply, E, State}
-            end;
+    case enable_plugin_generic(
+           {application, Plugin, AppDir}, State) of
+        {ok, NewState} ->
+            {reply, ok, NewState};
         {error, _} = E ->
             {reply, E, State}
     end;
 
-handle_call({disable_plugin, Plugin}, _From,
-            #state{config_file=ConfigFile} = State) ->
+handle_call({enable_module_plugin, HookName, Module, Fun, Arity}, _From, State) ->
+    case enable_plugin_generic(
+           {module, {HookName, Module, Fun, Arity}}, State) of
+        {ok, NewState} ->
+            {reply, ok, NewState};
+        {error, _} = E ->
+            {reply, E, State}
+    end;
 
-    case file:consult(ConfigFile) of
-        {ok, [{plugins, Plugins}]} ->
-            case lists:keyfind(Plugin, 2, Plugins) of
-                {application, Plugin, _AppDir} ->
-                    %% Should we unload the old App Dir
-                    New = {plugins, lists:keydelete(Plugin, 2, Plugins)},
-                    NewS = io_lib:format("~p.", [New]),
-                    ok = file:write_file(ConfigFile, NewS),
-                    case init_from_config_file(State) of
-                        {ok, NewState} ->
-                            stop_plugin(Plugin),
-                            {reply, ok, NewState};
-                        {error, _} = E ->
-                            {reply, E, State}
-                    end;
-                false ->
-                    io:format("error plugin ~p not loaded~n", [Plugin]),
-                    {reply, {error, plugin_not_found}, State}
-            end;
+handle_call({disable_plugin, PluginKey}, _From, State) ->
+    %% PluginKey is either the Application Name of the Plugin
+    %% or {HookName, ModuleName} for Module Plugins
+    case disable_plugin_generic(PluginKey, State) of
+        {ok, NewState} ->
+            case PluginKey of
+                {_, _, _, _} -> ignore;
+                _ -> stop_plugin(PluginKey)
+            end,
+            {reply, ok, NewState};
         {error, _} = E ->
             {reply, E, State}
     end.
-
 
 
 %%--------------------------------------------------------------------
@@ -234,6 +227,42 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+enable_plugin_generic(Plugin, #state{config_file=ConfigFile} = State) ->
+    case file:consult(ConfigFile) of
+        {ok, [{plugins, Plugins}]} ->
+            Key = element(2, Plugin),
+            NewPlugins =
+            case lists:keyfind(Key, 2, Plugins) of
+                false ->
+                    [Plugin|Plugins];
+                Plugin ->
+                    Plugins;
+                _OldInstance ->
+                    lists:keyreplace(Key, 2, Plugins, Plugin)
+            end,
+            NewS = io_lib:format("~p.", [{plugins, NewPlugins}]),
+            ok = file:write_file(ConfigFile, NewS),
+            init_from_config_file(State);
+        {error, _} = E ->
+            E
+    end.
+
+disable_plugin_generic(PluginKey, #state{config_file=ConfigFile} = State) ->
+    case file:consult(ConfigFile) of
+        {ok, [{plugins, Plugins}]} ->
+            case lists:keyfind(PluginKey, 2, Plugins) of
+                false ->
+                    {error, plugin_not_found};
+                _ ->
+                    NewPlugins = lists:keydelete(PluginKey, 2, Plugins),
+                    NewS = io_lib:format("~p.", [{plugins, NewPlugins}]),
+                    ok = file:write_file(ConfigFile, NewS),
+                    init_from_config_file(State)
+            end;
+        {error, _} = E ->
+            E
+    end.
+
 init_from_config_file(#state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
         {ok, Terms} ->
@@ -254,6 +283,14 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
 
 check_plugins([{plugins, Plugins}], Acc) ->
     check_plugins(Plugins, Acc);
+check_plugins([{module, {Name, Module, Fun, Arity}}|Rest], Acc) ->
+    case lists:member(Module, erlang:loaded()) of
+        true ->
+            check_plugins(Rest, [{module_plugin, [{Name, Module, Fun, Arity}]}
+                                 | Acc]);
+        false ->
+            {error, {not_loaded, Module}}
+    end;
 check_plugins([{application, App, AppPath}|Rest], Acc) ->
     case check_plugin(App, AppPath) of
         {error, R} -> {error, R};
@@ -263,6 +300,8 @@ check_plugins([{application, App, AppPath}|Rest], Acc) ->
 
 check_plugins([], CheckedHooks) -> {ok, CheckedHooks}.
 
+start_plugins([{module_plugin, _}|Rest]) ->
+    start_plugins(Rest);
 start_plugins([{App, _}|Rest]) ->
     start_plugin(App),
     start_plugins(Rest);
@@ -577,6 +616,57 @@ vmq_plugin_test() ->
     application:set_env(vmq_plugin, plugin_dir, ".."),
     application:start(vmq_plugin),
     %% no plugin is yet registered
+    call_no_hooks(),
+
+    %% ENABLE PLUGIN
+    ?assertEqual(ok, vmq_plugin_mgr:enable_plugin(vmq_plugin, "..")),
+    ?assert(lists:keyfind(vmq_plugin, 1, application:which_applications()) /= false),
+
+    call_hooks(),
+
+    io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
+    io:format(user, "info only ~p~n", [vmq_plugin:info(only)]),
+
+    %% Disable Plugin
+    ?assertEqual(ok, vmq_plugin_mgr:disable_plugin(vmq_plugin)),
+    io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
+    io:format(user, "info only ~p~n", [vmq_plugin:info(only)]),
+    %% no plugin is registered
+    call_no_hooks().
+
+vmq_module_plugin_test() ->
+    application:start(vmq_plugin),
+    call_no_hooks(),
+    vmq_plugin_mgr:enable_module_plugin(?MODULE, sample_hook, 0),
+    vmq_plugin_mgr:enable_module_plugin(?MODULE, sample_hook, 1),
+    vmq_plugin_mgr:enable_module_plugin(?MODULE, sample_hook, 2),
+    vmq_plugin_mgr:enable_module_plugin(?MODULE, sample_hook, 3),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_a, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_b, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_c, 1),
+    %% ordering matters, we don't want other_sample_hook_x to be called
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1),
+    call_hooks(),
+
+    % disable hooks
+    vmq_plugin_mgr:disable_module_plugin(?MODULE, sample_hook, 0),
+    vmq_plugin_mgr:disable_module_plugin(?MODULE, sample_hook, 1),
+    vmq_plugin_mgr:disable_module_plugin(?MODULE, sample_hook, 2),
+    vmq_plugin_mgr:disable_module_plugin(?MODULE, sample_hook, 3),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_a, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_b, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_c, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1),
+    call_no_hooks().
+
+
+call_no_hooks() ->
     ?assertEqual({error, no_matching_hook_found},
                  vmq_plugin:only(sample_hook, [])),
     ?assertEqual({error, no_matching_hook_found},
@@ -584,13 +674,10 @@ vmq_plugin_test() ->
     ?assertEqual({error, no_matching_hook_found},
                  vmq_plugin:only(sample_hook, [1, 2])),
     ?assertEqual({error, no_matching_hook_found},
-                 vmq_plugin:only(sample_hook, [1, 2, 3])),
+                 vmq_plugin:only(sample_hook, [1, 2, 3])).
 
 
-    %% ENABLE PLUGIN
-    ?assertEqual(ok, vmq_plugin_mgr:enable_plugin(vmq_plugin, "..")),
-    ?assert(lists:keyfind(vmq_plugin, 1, application:which_applications()) /= false),
-
+call_hooks() ->
     %% ONLY HOOK Tests
     ?assertEqual([], vmq_plugin:only(sample_hook, [])),
     ?assertEqual([1], vmq_plugin:only(sample_hook, [1])),
@@ -618,25 +705,7 @@ vmq_plugin_test() ->
 
 
     %% ALL_TILL_OK Hook Tests
-    ?assertEqual(ok, vmq_plugin:all_till_ok(sample_all_till_ok_hook, [10])),
-
-    io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
-    io:format(user, "info only ~p~n", [vmq_plugin:info(only)]),
-
-    %% Disable Plugin
-    ?assertEqual(ok, vmq_plugin_mgr:disable_plugin(vmq_plugin)),
-    io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
-    io:format(user, "info only ~p~n", [vmq_plugin:info(only)]),
-    %% no plugin is registered
-    ?assertEqual({error, no_matching_hook_found},
-                 vmq_plugin:only(sample_hook, [])),
-    ?assertEqual({error, no_matching_hook_found},
-                 vmq_plugin:only(sample_hook, [1])),
-    ?assertEqual({error, no_matching_hook_found},
-                 vmq_plugin:only(sample_hook, [1, 2])),
-    ?assertEqual({error, no_matching_hook_found},
-                 vmq_plugin:only(sample_hook, [1, 2, 3])).
-
+    ?assertEqual(ok, vmq_plugin:all_till_ok(sample_all_till_ok_hook, [10])).
 
 
 
