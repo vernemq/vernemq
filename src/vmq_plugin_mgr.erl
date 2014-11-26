@@ -67,7 +67,7 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 enable_plugin(Plugin) ->
-    enable_plugin(Plugin, undefined).
+    enable_plugin(Plugin, auto).
 enable_plugin(Plugin, Path) when is_atom(Plugin) ->
     gen_server:call(?MODULE, {enable_plugin, Plugin, Path}, infinity).
 
@@ -133,17 +133,9 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({enable_plugin, Plugin, Path}, _From,
-            #state{plugin_dir=PluginDir} = State) ->
-    AppDir =
-    case Path of
-        undefined ->
-            App = atom_to_list(Plugin),
-            filename:join(PluginDir, App);
-        _ -> Path
-    end,
+handle_call({enable_plugin, Plugin, Path}, _From, State) ->
     case enable_plugin_generic(
-           {application, Plugin, AppDir}, State) of
+           {application, Plugin, Path}, State) of
         {ok, NewState} ->
             {reply, ok, NewState};
         {error, _} = E ->
@@ -266,8 +258,8 @@ disable_plugin_generic(PluginKey, #state{config_file=ConfigFile} = State) ->
 
 init_from_config_file(#state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
-        {ok, Terms} ->
-            case check_plugins(Terms, []) of
+        {ok, [{plugins, Plugins}]} ->
+            case check_plugins(Plugins, []) of
                 {ok, CheckedPlugins} ->
                     ok = start_plugins(CheckedPlugins),
                     ok = compile_hooks(CheckedPlugins),
@@ -275,6 +267,8 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
                 {error, Reason} ->
                     {error, Reason}
             end;
+        {ok, _} ->
+            {error, incorrect_plugin_config};
         {error, enoent} ->
             ok = file:write_file(ConfigFile, "{plugins, []}.", []),
             {ok, State};
@@ -305,7 +299,23 @@ check_plugins([{application, App, AppPath}|Rest], Acc) ->
             check_plugins(Rest, [{App, CheckedHooks} | Acc])
     end;
 
-check_plugins([], CheckedHooks) -> {ok, CheckedHooks}.
+check_plugins([], CheckedHooks) ->
+    S = lists:foldl(fun({App, Hooks}, Acc) ->
+                            HooksString =
+                            lists:foldl(
+                              fun({HookName, Module, Fun, Arity}, AAcc) ->
+                                      HS = io_lib:format("-~p: ~p:~p/~p~n",
+                                                         [HookName, Module,
+                                                          Fun, Arity]),
+                                      [HS|AAcc]
+                              end, [], Hooks),
+                            [io_lib:format("~p:~n~s~n", [App, lists:flatten(HooksString)])
+                             | Acc]
+                    end, [], CheckedHooks),
+    io:format(  "--- ENABLED PLUGINS ----~n"
+              ++"~s"
+              ++"------------------------~n", [lists:flatten(S)]),
+    {ok, CheckedHooks}.
 
 start_plugins([{module_plugin, _}|Rest]) ->
     start_plugins(Rest);
@@ -354,7 +364,7 @@ stop_plugin(App) ->
 
 
 check_plugin(App, AppPath) ->
-    case create_paths(AppPath) of
+    case create_paths(App, AppPath) of
         [] ->
             io:format(user, "can't create path ~p for app ~p~n", [AppPath, App]),
             {error, cant_create_path};
@@ -363,11 +373,9 @@ check_plugin(App, AppPath) ->
             case application:load(App) of
                 ok ->
                     Hooks = application:get_env(App, vmq_plugin_hooks, []),
-                    io:format(user, "hh ~p~n", [Hooks]),
                     check_hooks(App, Hooks, []);
                 {error, {already_loaded, App}} ->
                     Hooks = application:get_env(App, vmq_plugin_hooks, []),
-                    io:format(user, "hhh ~p~n", [Hooks]),
                     check_hooks(App, Hooks, []);
                 E ->
                     io:format(user, "can't load application ~p", [E]),
@@ -391,6 +399,18 @@ create_path(Path, ["deps"|Rest], Acc) ->
 create_path(Path, [_|Rest], Acc) ->
     create_path(Path, Rest, Acc);
 create_path(_, [], Acc) -> Acc.
+
+create_paths(App, auto) ->
+    case application:load(App) of
+        ok ->
+            create_paths(App, code:lib_dir(App));
+        {error, {already_loaded, App}} ->
+            create_paths(App, code:lib_dir(App));
+        _ ->
+            []
+    end;
+create_paths(_, Path) ->
+    create_paths(Path).
 
 create_paths(Path) ->
     case filelib:is_dir(Path) of
