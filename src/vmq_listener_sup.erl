@@ -172,7 +172,7 @@ start_listener(ListenerMod, Addr, Port, Opts) ->
 listener_name(Ip, Port) ->
     {vmq_listener, Ip, Port}.
 
--spec transport_opts(listener_mod(),_) -> [{atom(), any()}].
+-spec transport_opts(listener_mod(), _) -> [{atom(), any()}].
 transport_opts(vmq_ssl_listener, Opts) ->
     [{cacerts, case proplists:get_value(cafile, Opts) of
                    undefined -> undefined;

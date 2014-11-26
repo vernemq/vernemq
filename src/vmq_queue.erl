@@ -57,7 +57,7 @@ notify(Queue) ->
 %% @doc Enqueues a message.
 -spec enqueue(pid(), term()) -> ok.
 enqueue(Queue, Msg) ->
-    case catch gen_fsm:sync_send_event(Queue, {enqueue, Msg}, infinity) of
+    case catch gen_fsm:sync_send_event(Queue, {enqueue, Msg}, 100) of
         ok -> ok;
         {'EXIT', _Reason} ->
             % we are not allowed to crash, this would

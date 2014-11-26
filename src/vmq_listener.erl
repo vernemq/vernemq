@@ -149,7 +149,8 @@ handle_info({inet_async, ListenSocket, Ref, {ok, TCPSocket}},
                 vmq_session_sup:start_session(TCPSocket, Handler, HandlerOpts)
         end,
 
-        %% Signal the network driver that we are ready to accept another connection
+        %% Signal the network driver that we are ready to accept 
+        %% another connection
         NNewRef =
         case prim_inet:async_accept(ListenSocket, -1) of
             {ok,    NewRef} ->
