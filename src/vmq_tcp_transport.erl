@@ -71,7 +71,7 @@ wait_for_socket(State) ->
                 _ -> Socket
             end,
             vmq_systree:incr_socket_count(),
-            active_once(Socket),
+            active_once(MaybeMaskedSocket),
             loop(State#st{socket=MaybeMaskedSocket});
         M ->
             exit({unexpected_msg, M})

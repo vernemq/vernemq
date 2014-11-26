@@ -14,6 +14,7 @@
                   emqtt_commons,
                   bitcask,
                   unsplit,
+                  vmq_plugin,
                   mnesia_cluster
                  ]},
   {mod, { vmq_server_app, []}},

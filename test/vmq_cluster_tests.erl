@@ -215,12 +215,12 @@ start_node(Node, Port, DiscoveryNodes) ->
     rpc:call(Node, application, set_env, [vmq_server, msg_store,
                                           {vmq_null_store, []}]),
     rpc:call(Node, vmq_server, start_no_auth, DiscoveryNodes),
-    rpc:call(Node, vmq_hook, add, [auth_on_register,
-                                   {?MODULE, hook_uname_password_success, 4}]),
-    rpc:call(Node, vmq_hook, add, [auth_on_publish,
-                                   {?MODULE, hook_auth_on_publish, 6}]),
-    rpc:call(Node, vmq_hook, add, [auth_on_subscribe,
-                                   {?MODULE, hook_auth_on_subscribe, 3}]).
+    rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
+             [auth_on_register, ?MODULE, hook_uname_password_success, 4]),
+    rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
+             [auth_on_publish, ?MODULE, hook_auth_on_publish, 6]),
+    rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
+             [auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3]).
 
 stop_cluster(Nodes) ->
     lists:foreach(

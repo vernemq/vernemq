@@ -61,7 +61,7 @@
           will_topic                        :: undefined | topic(),
           will_msg                          :: undefined | payload(),
           will_qos                          :: undefined | qos(),
-          waiting_acks=dict:new()           :: dict:dict(),
+          waiting_acks=dict:new()           :: dict(),
           %% auth backend requirement
           peer                              :: peer(),
           username                          :: undefined | username() |
@@ -83,11 +83,6 @@
          }).
 
 -type state() :: #state{}.
-
--hook({auth_on_publish, only, 6}).
--hook({on_publish, all, 6}).
--hook({auth_on_register, only, 4}).
--hook({on_register, all, 4}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
@@ -570,7 +565,7 @@ check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
     %% User preauthenticated using e.g. SSL client certificate
     case vmq_reg:register_client(ClientId, QPid, CleanSession) of
         ok ->
-            vmq_hook:all(on_register, [Peer, ClientId, undefined, undefined]),
+            vmq_plugin:all(on_register, [Peer, ClientId, undefined, undefined]),
             check_will(F, State#state{clean_session=CleanSession});
         {error, Reason} ->
             lager:warning("can't register client ~p due to ~p",
@@ -613,12 +608,12 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
     #state{peer=Peer, queue_pid=QPid} = State,
     case vmq_config:get_env(allow_anonymous, false) of
         false ->
-            case vmq_hook:only(auth_on_register,
-                               [Peer, ClientId, User, Password]) of
+            case vmq_plugin:all_till_ok(auth_on_register,
+                                         [Peer, ClientId, User, Password]) of
                 ok ->
                     case vmq_reg:register_client(ClientId, QPid, CleanSess) of
                         ok ->
-                            vmq_hook:all(on_register, [Peer, ClientId,
+                            vmq_plugin:all(on_register, [Peer, ClientId,
                                                        User, Password]),
                             check_will(F, State#state{username=User});
                         {error, Reason} ->
@@ -627,32 +622,33 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                             {wait_for_connect,
                              send_connack(?CONNACK_SERVER, State)}
                     end;
-                not_found ->
-                                                % returned when no hook
-                                                % on_register hook was
-                                                % able to authenticate user
-                    lager:warning(
-                      "can't authenticate client ~p due to not_found",
-                      [ClientId]),
+                {error, no_matching_hook_found} ->
+                    lager:error("can't authenticate client ~p due to
+                                no_matching_hook_found", [ClientId]),
                     {wait_for_connect,
                      send_connack(?CONNACK_AUTH, State)};
-                {error, invalid_credentials} ->
-                    lager:warning(
-                      "can't authenticate client ~p due to invalid_credentials",
-                      [ClientId]),
-                    {wait_for_connect,
-                     send_connack(?CONNACK_CREDENTIALS, State)};
-                {error, not_authorized} ->
-                    lager:warning(
-                      "can't authenticate client ~p due to not_authorized",
-                      [ClientId]),
-                    {wait_for_connect,
-                     send_connack(?CONNACK_AUTH, State)}
+                {error, Errors} ->
+                    case lists:keyfind(invalid_credentials, 2, Errors) of
+                        {error, invalid_credentials} ->
+                            lager:warning(
+                              "can't authenticate client ~p due to
+                              invalid_credentials", [ClientId]),
+                            {wait_for_connect,
+                             send_connack(?CONNACK_CREDENTIALS, State)};
+                        false ->
+                            %% can't authenticate due to other reasons
+                            lager:warning(
+                              "can't authenticate client ~p due to ~p",
+                              [ClientId, Errors]),
+                            {wait_for_connect,
+                             send_connack(?CONNACK_AUTH, State)}
+                    end
             end;
         true ->
             case vmq_reg:register_client(ClientId, QPid, CleanSess) of
                 ok ->
-                    vmq_hook:all(on_register, [Peer, ClientId, User, Password]),
+                    vmq_plugin:all(on_register, [Peer, ClientId,
+                                                 User, Password]),
                     check_will(F, State#state{username=User});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
@@ -674,8 +670,8 @@ check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos},
            State) ->
     #state{mountpoint=MountPoint, username=User, client_id=ClientId} = State,
     LWTopic = combine_mp(MountPoint, Topic),
-    case vmq_hook:only(auth_on_publish,
-                       [User, ClientId, last_will, LWTopic, Msg, false]) of
+    case vmq_plugin:all_till_ok(auth_on_publish, [User, ClientId, last_will,
+                                                   LWTopic, Msg, false]) of
         ok ->
             case valid_msg_size(Msg) of
                 true ->
@@ -690,9 +686,9 @@ check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos},
                     {wait_for_connect,
                      send_connack(?CONNACK_SERVER, State)}
             end;
-        _ ->
-            lager:warning("can't authenticate last will for client ~p",
-                        [ClientId]),
+        {error, Error} ->
+            lager:warning("can't authenticate last will
+                          for client ~p due to ~p", [ClientId, Error]),
             {wait_for_connect, send_connack(?CONNACK_AUTH, State)}
     end.
 
@@ -836,8 +832,8 @@ publish(User, ClientId, QoS, Msg) ->
              payload=Payload,
              retain=IsRetain, dup=_IsDup} = Msg,
     HookParams = [User, ClientId, QoS, Topic, Payload, IsRetain],
-    case vmq_hook:only(auth_on_publish, HookParams) of
-        not_found ->
+    case vmq_plugin:all_till_ok(auth_on_publish, HookParams) of
+        {error, _} ->
             {error, not_allowed};
         ok when QoS > 0 ->
             MaybeUpdatedMsg = vmq_msg_store:store(ClientId, Msg),
@@ -847,7 +843,7 @@ publish(User, ClientId, QoS, Msg) ->
     end.
 
 on_publish_hook(ok, HookParams) ->
-    vmq_hook:all(on_publish, HookParams),
+    vmq_plugin:all(on_publish, HookParams),
     ok;
 on_publish_hook(Other, _) -> Other.
 
@@ -865,7 +861,7 @@ clean_mp(MountPoint, MountedTopic) ->
 random_client_id() ->
     lists:flatten(["anon-", base64:encode_to_string(crypto:rand_bytes(20))]).
 
--spec handle_waiting_acks(state()) -> dict:dict().
+-spec handle_waiting_acks(state()) -> dict().
 handle_waiting_acks(State) ->
     #state{client_id=ClientId, waiting_acks=WAcks} = State,
     dict:fold(fun ({qos2, _}, _, Acc) ->

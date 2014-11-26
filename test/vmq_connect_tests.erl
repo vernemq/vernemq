@@ -59,6 +59,7 @@ anon_denied(_) ->
 
 anon_success(_) ->
     application:set_env(vmq_server, allow_anonymous, true),
+    vmq_config:reset(),
     %% allow_anonymous is proxied through vmq_config.erl
     Connect = packet:gen_connect("connect-success-test", [{keepalive,10}]),
     Connack = packet:gen_connack(0),
@@ -74,9 +75,11 @@ invalid_id_0(_) ->
 invalid_id_0_311(_) ->
     Connect = packet:gen_connect("", [{keepalive,10},{proto_ver,4}]),
     Connack = packet:gen_connack(0),
-    vmq_hook:add(auth_on_register, {?MODULE, hook_empty_client_id_proto_4, 4}),
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 4),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    vmq_hook:delete(auth_on_register, only, 1, {?MODULE, hook_empty_client_id_proto_4, 4}),
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 4),
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 invalid_id_missing(_) ->
@@ -105,27 +108,33 @@ invalid_protonum(_) ->
 uname_no_password_denied(_) ->
     Connect = packet:gen_connect("connect-uname-test-", [{keepalive,10}, {username, "user"}]),
     Connack = packet:gen_connack(4),
-    vmq_hook:add(auth_on_register, {?MODULE, hook_uname_no_password_denied, 4}),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_uname_no_password_denied, 4),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    vmq_hook:delete(auth_on_register, only, 1, {?MODULE, hook_uname_no_password_denied, 4}),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_uname_no_password_denied, 4),
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 uname_password_denied(_) ->
     Connect = packet:gen_connect("connect-uname-pwd-test", [{keepalive,10}, {username, "user"},
                                                             {password, "password9"}]),
     Connack = packet:gen_connack(4),
-    vmq_hook:add(auth_on_register, {?MODULE, hook_uname_password_denied, 4}),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_uname_password_denied, 4),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    vmq_hook:delete(auth_on_register, only, 1, {?MODULE, hook_uname_password_denied, 4}),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_uname_password_denied, 4),
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 uname_password_success(_) ->
     Connect = packet:gen_connect("connect-uname-pwd-test", [{keepalive,10}, {username, "user"},
                                                             {password, "password9"}]),
     Connack = packet:gen_connack(0),
-    vmq_hook:add(auth_on_register, {?MODULE, hook_uname_password_success, 4}),
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_uname_password_success, 4),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    vmq_hook:delete(auth_on_register, only, 1, {?MODULE, hook_uname_password_success, 4}),
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_uname_password_success, 4),
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 

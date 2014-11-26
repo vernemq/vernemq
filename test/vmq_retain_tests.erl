@@ -185,10 +185,14 @@ wait_til_ready(false, I) when I > 0 ->
 wait_til_ready(_, _) -> exit(not_ready).
 
 enable_on_subscribe() ->
-    vmq_hook:add(auth_on_subscribe, {?MODULE, hook_auth_on_subscribe, 3}).
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
 enable_on_publish() ->
-    vmq_hook:add(auth_on_publish, {?MODULE, hook_auth_on_publish, 6}).
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 disable_on_subscribe() ->
-    vmq_hook:delete(auth_on_subscribe, only, 1, {?MODULE, hook_auth_on_subscribe, 3}).
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
 disable_on_publish() ->
-    vmq_hook:delete(auth_on_publish, only, 1, {?MODULE, hook_auth_on_publish, 6}).
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_publish, ?MODULE, hook_auth_on_publish, 6).

@@ -60,11 +60,6 @@
 %% used from plugins
 -export([direct_plugin_exports/1]).
 
--hook({auth_on_subscribe, only, 3}).
--hook({on_subscribe, all, 3}).
--hook({on_unsubscribe, all, 3}).
--hook({filter_subscribers, every, 5}).
-
 -record(state, {}).
 -record(session, {client_id, pid, queue_pid, monitor, last_seen, clean}).
 
@@ -107,11 +102,11 @@ subscribe(User, ClientId, QPid, Topics) ->
 -spec subscribe_(username() | plugin_id(), client_id(), pid(),
                  [{topic(), qos()}]) -> 'ok' | {'error','not_allowed'}.
 subscribe_(User, ClientId, QPid, Topics) ->
-    case vmq_hook:only(auth_on_subscribe, [User, ClientId, Topics]) of
+    case vmq_plugin:all_till_ok(auth_on_subscribe, [User, ClientId, Topics]) of
         ok ->
-            vmq_hook:all(on_subscribe, [User, ClientId, Topics]),
+            vmq_plugin:all(on_subscribe, [User, ClientId, Topics]),
             subscribe_tx(ClientId, QPid, Topics);
-        not_found ->
+        {error, _} ->
             {error, not_allowed}
     end.
 
@@ -140,7 +135,7 @@ unsubscribe_(User, ClientId, Topics) ->
                           del_subscriber(Topic, ClientId),
                           vmq_systree:decr_subscription_count()
                   end, Topics),
-    vmq_hook:all(on_unsubscribe, [User, ClientId, Topics]),
+    vmq_plugin:all(on_unsubscribe, [User, ClientId, Topics]),
     ok.
 
 -spec subscriptions(routing_key()) -> [{client_id(), qos()}].
@@ -394,8 +389,6 @@ wait_until_stopped(ClientPid) ->
 -spec route(topic(), msg()) -> 'ok'.
 route(Topic, #vmq_msg{} = Msg) ->
     Subscribers = mnesia:dirty_read(vmq_subscriber, Topic),
-    FilteredSubscribers = vmq_hook:every(filter_subscribers, Subscribers,
-                                         [Msg]),
     lists:foldl(fun
                     (#subscriber{qos=0} = Subs, AccMsg) ->
                           deliver(AccMsg, Subs),
@@ -404,7 +397,7 @@ route(Topic, #vmq_msg{} = Msg) ->
                           MaybeChangedMsg = vmq_msg_store:store(Client, AccMsg),
                           deliver(MaybeChangedMsg, Subs),
                           MaybeChangedMsg
-                end, Msg, FilteredSubscribers),
+                end, Msg, Subscribers),
     ok.
 
 -spec deliver(msg(), subscriber()) -> 'ok' | {'error', 'not_found'}.

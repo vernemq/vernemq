@@ -41,10 +41,6 @@ start_link() ->
                          [{atom(), {atom(), atom(), list()},
                            permanent, pos_integer(), worker, [atom()]}]}}.
 init([]) ->
-    %% we make sure the hooks for vmq_server are registered first
-    vmq_hook:start(vmq_server),
-    [vmq_hook:start(A) || {A, _, _}<- application:loaded_applications(),
-                             A /= vmq_server],
     {ok, MnesiaJobsOpts} = application:get_env(vmq_server, mnesia_tx_queue),
     ok = jobs:add_queue(mnesia_tx_queue, MnesiaJobsOpts),
 
