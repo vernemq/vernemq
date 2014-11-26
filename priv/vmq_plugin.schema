@@ -1,0 +1,10 @@
+{mapping, "plugin_dir", "vmq_plugin.plugin_dir", [
+                                          {default, "{{platform_lib_dir}}"},
+                                          {datatype, directory},
+                                          hidden
+                                         ]}.
+{mapping, "plugin_config", "vmq_plugin.plugin_config", [
+                                          {default, "vmq_plugin.conf"},
+                                          {datatype, file},
+                                          hidden
+                                         ]}.
