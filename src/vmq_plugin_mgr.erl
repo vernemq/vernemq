@@ -44,7 +44,8 @@
          other_sample_hook_c/1,
          other_sample_hook_d/1,
          other_sample_hook_e/1,
-         other_sample_hook_f/1
+         other_sample_hook_f/1,
+         other_sample_hook_x/1
         ]).
 -endif.
 
@@ -284,12 +285,18 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
 check_plugins([{plugins, Plugins}], Acc) ->
     check_plugins(Plugins, Acc);
 check_plugins([{module, {Name, Module, Fun, Arity}}|Rest], Acc) ->
-    case lists:member(Module, erlang:loaded()) of
-        true ->
-            check_plugins(Rest, [{module_plugin, [{Name, Module, Fun, Arity}]}
-                                 | Acc]);
-        false ->
-            {error, {not_loaded, Module}}
+    case catch apply(Module, module_info, [exports]) of
+        {'EXIT', _} ->
+            {error, unknown_module};
+        Exports ->
+            case lists:member({Fun, Arity}, Exports) of
+                true ->
+                    check_plugins(Rest,
+                                  [{module_plugin,
+                                    [{Name, Module, Fun, Arity}]} | Acc]);
+                false ->
+                    {error, no_matching_fun_in_module}
+            end
     end;
 check_plugins([{application, App, AppPath}|Rest], Acc) ->
     case check_plugin(App, AppPath) of
@@ -614,7 +621,7 @@ vmq_plugin_test() ->
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
     %% we have to step out .eunit
     application:set_env(vmq_plugin, plugin_dir, ".."),
-    application:start(vmq_plugin),
+    ok = application:start(vmq_plugin),
     %% no plugin is yet registered
     call_no_hooks(),
 
@@ -651,6 +658,8 @@ vmq_module_plugin_test() ->
     vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1),
     call_hooks(),
 
+    io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
+    io:format(user, "info only ~p~n", [vmq_plugin:info(only)]),
     % disable hooks
     vmq_plugin_mgr:disable_module_plugin(?MODULE, sample_hook, 0),
     vmq_plugin_mgr:disable_module_plugin(?MODULE, sample_hook, 1),
