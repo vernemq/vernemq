@@ -11,6 +11,9 @@
   {mod, { vmq_passwd_app, []}},
   {env, [
       {file, "priv/test.passwd"},
-      {interval, 5000}
+      {interval, 5000},
+      {vmq_plugin_hooks, [
+        {vmq_passwd, auth_on_register, 4}
+        ]}
     ]}
  ]}.

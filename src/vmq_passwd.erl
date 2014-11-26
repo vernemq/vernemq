@@ -24,8 +24,6 @@
 -define(TABLE, ?MODULE).
 -define(SALT_LEN, 12).
 
--register_hook({auth_on_register, {?MODULE, auth_on_register, 4}}).
-
 init() ->
     case lists:member(?TABLE, ets:all()) of
         true ->
