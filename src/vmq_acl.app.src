@@ -10,6 +10,11 @@
   {mod, { vmq_acl_app, []}},
   {env, [
       {file, "priv/test.acl"},
-      {interval, 5000}
+      {interval, 5000},
+      {vmq_plugin_hooks, [
+            {vmq_acl, auth_on_publish, 6},
+            {vmq_acl, auth_on_subscribe, 3}
+        ]}
+
     ]}
  ]}.

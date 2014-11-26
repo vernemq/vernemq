@@ -24,9 +24,6 @@
 
 -import(emqtt_topic, [words/1, match/2]).
 
--register_hook({auth_on_publish, {?MODULE, auth_on_publish, 6}}).
--register_hook({auth_on_subscribe, {?MODULE, auth_on_subscribe, 3}}).
-
 -define(INIT_ACL, {[],[],[],[],[],[]}).
 -define(TABLES, [
                  vmq_acl_read_pattern,
