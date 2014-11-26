@@ -14,12 +14,16 @@
 
 -module(vmq_plugin).
 -export([only/2,
-         all/2]).
+         all/2,
+         all_till_ok/2]).
 
 only(_Hook, _Args) ->
     {error, no_matching_hook_found}.
 
 all(_Hook, _Args) ->
+    {error, no_matching_hook_found}.
+
+all_till_ok(_Hook, _Args) ->
     {error, no_matching_hook_found}.
 
 
