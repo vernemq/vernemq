@@ -7,7 +7,8 @@
           routing_key           :: routing_key(),
           payload               :: payload(),
           retain=false          :: flag(),
-          dup=false             :: flag()
+          dup=false             :: flag(),
+          qos                   :: qos()
          }).
 
 -type msg()             :: #vmq_msg{}.

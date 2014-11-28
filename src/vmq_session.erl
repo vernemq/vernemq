@@ -73,6 +73,7 @@
           keep_alive                        :: undefined | pos_integer(),
           keep_alive_timer                  :: undefined | reference(),
           clean_session=false               :: flag(),
+          upgrade_qos=false                 :: flag(),
           proto_ver                         :: undefined | pos_integer(),
           recv_cnt=init_ts()                :: ts(),
           send_cnt=init_ts()                :: ts(),
@@ -229,9 +230,11 @@ init([Peer, SendFun, Opts]) ->
             end
     end,
     QueueSize = vmq_config:get_env(max_queued_messages, 1000),
+    UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     {ok, QPid} = vmq_queue:start_link(self(), QueueSize),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   msg_log_handler=MsgLogHandler,
+                                  upgrade_qos=UpgradeQoS,
                                   mountpoint=string:strip(MountPoint,
                                                           right, $/),
                                   username=PreAuthUser,
@@ -356,12 +359,14 @@ prepare_frame(QoS, Msg, State) ->
              payload=Payload,
              retain=IsRetained,
              dup=IsDup,
-             msg_ref=MsgStoreRef} = Msg,
-    {OutgoingMsgId, State1} = get_msg_id(QoS, State),
+             qos=MsgQoS} = Msg,
+    {NewQoS, #vmq_msg{msg_ref=MsgStoreRef}} = maybe_upgrade_qos(QoS, MsgQoS,
+                                                                Msg, State),
+    {OutgoingMsgId, State1} = get_msg_id(NewQoS, State),
     Frame = #mqtt_frame{
                fixed=#mqtt_frame_fixed{
                         type=?PUBLISH,
-                        qos=QoS,
+                        qos=NewQoS,
                         retain=IsRetained,
                         dup=IsDup
                        },
@@ -370,18 +375,31 @@ prepare_frame(QoS, Msg, State) ->
                            message_id=OutgoingMsgId},
                payload=Payload
               },
-    case QoS of
+    case NewQoS of
         0 ->
             {ok, Frame, State1};
         _ ->
             Ref = send_after(RetryInterval, {retry, OutgoingMsgId}),
             {ok, Frame, State1#state{
                           waiting_acks=dict:store(OutgoingMsgId,
-                                                  {QoS, Frame,
+                                                  {NewQoS, Frame,
                                                    Ref,
                                                    MsgStoreRef},
                                                   WAcks)}}
     end.
+
+%% The MQTT specification requires that the QoS of a message delivered to a
+%% subscriber is never upgraded to match the QoS of the subscription. If
+%% upgrade_outgoing_qos is set true, messages sent to a subscriber will always
+%% match the QoS of its subscription. This is a non-standard option not provided
+%% for by the spec.
+maybe_upgrade_qos(0, _, Msg, _) ->
+    {0, Msg};
+maybe_upgrade_qos(SubQoS, PubQoS, Msg,
+                  #state{upgrade_qos=true, client_id=ClientId})
+  when SubQoS > PubQoS -> {SubQoS, vmq_msg_store:store(ClientId, Msg)};
+maybe_upgrade_qos(_, PubQoS, Msg, _) ->
+    {PubQoS, Msg}.
 
 handle_bin_message({MsgId, QoS, Bin}, State) ->
     #state{send_fun=SendFun, waiting_acks=WAcks,
@@ -455,8 +473,9 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
             Msg = #vmq_msg{msg_ref=MsgRef,
                            routing_key=RoutingKey,
                            payload=Payload,
-                           retain=IsRetain},
-            case publish(User, ClientId, 2, Msg) of
+                           retain=IsRetain,
+                           qos=2},
+            case publish(User, ClientId, Msg) of
                 ok ->
                     vmq_msg_store:deref(MsgRef),
                     State#state{
@@ -496,7 +515,8 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
         {_, true} ->
             Msg = #vmq_msg{routing_key=combine_mp(MountPoint, Topic),
                            payload=Payload,
-                           retain=IsRetain},
+                           retain=IsRetain,
+                           qos=QoS},
             {connected, dispatch_publish(QoS, MessageId, Msg,
                                          State#state{
                                            pub_recv_cnt=incr_pub_recv_cnt(
@@ -739,7 +759,7 @@ dispatch_publish_(2, MessageId, Msg, State) ->
 -spec dispatch_publish_qos0(msg_id(), msg(), state()) -> state().
 dispatch_publish_qos0(_MessageId, Msg, State) ->
     #state{username=User, client_id=ClientId} = State,
-    case publish(User, ClientId, 0, Msg) of
+    case publish(User, ClientId, Msg) of
         ok ->
             State;
         {error, _Reason} ->
@@ -753,7 +773,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
             #state{username=User, client_id=ClientId} = State,
             #vmq_msg{msg_ref=MsgRef} = UpdatedMsg =
                 vmq_msg_store:store(State#state.client_id, Msg),
-            case publish(User, ClientId, 1, UpdatedMsg) of
+            case publish(User, ClientId, UpdatedMsg) of
                 ok ->
                     NewState = send_frame(?PUBACK,
                                           #mqtt_frame_publish{
@@ -824,12 +844,12 @@ send_publish_frames(Frames, State) ->
             {error, Reason}
     end.
 
--spec publish(username(), client_id(), qos(), msg()) ->  ok | {error,atom()}.
-publish(User, ClientId, QoS, Msg) ->
+-spec publish(username(), client_id(), msg()) ->  ok | {error,atom()}.
+publish(User, ClientId, Msg) ->
     %% auth_on_publish hook must return either:
     %% next | ok
     #vmq_msg{routing_key=Topic,
-             payload=Payload,
+             payload=Payload, qos=QoS,
              retain=IsRetain, dup=_IsDup} = Msg,
     HookParams = [User, ClientId, QoS, Topic, Payload, IsRetain],
     case vmq_plugin:all_till_ok(auth_on_publish, HookParams) of

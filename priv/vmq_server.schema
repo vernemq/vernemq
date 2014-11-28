@@ -768,6 +768,13 @@
          end
  end}.
 
+%% @doc This option controls if a message that is delivered to a subscriber gets
+%% upgraded to match the QoS of the subscription. This is a non-standard option.
+{mapping, "upgrade_outgoing_qos", "vmq_server.upgrade_outgoing_qos", [
+                                                                      {default, off},
+                                                                      {datatype, flag}
+                                                                     ]}.
+
 {mapping, "tune_tcp_buffer_size", "vmq_server.tune_tcp_buffer_size", [
                                                                       {default, off},
                                                                       {datatype, flag},

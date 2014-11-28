@@ -31,6 +31,7 @@
       {msg_store, {vmq_bitcask_store, []}},
       {tune_tcp_buffer_size, false},
       {session_dump_file, "session.dump"},
+      {upgrade_outgoing_qos, false},
       {listeners, {
                       [{{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
                                               {nr_of_acceptors, 100}, 

@@ -115,6 +115,10 @@ deliver(From, Term, State) ->
                            payload=Payload,
                            dup=Dup,
                            retain=false,
+                           qos=QoS, %% TODO: this could be an unwanted
+                                    %% QoS upgrade (from the original
+                                    %% publisher perspective), the consumer
+                                    %% doesn't care.
                            msg_ref={{self(), Node}, MsgRef}},
             vmq_queue:enqueue(QPid, {deliver, QoS, Msg}),
             State#state{waiting={MsgRef, From}};

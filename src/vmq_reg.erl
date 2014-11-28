@@ -391,12 +391,14 @@ route(Topic, #vmq_msg{} = Msg) ->
     Subscribers = mnesia:dirty_read(vmq_subscriber, Topic),
     lists:foldl(fun
                     (#subscriber{qos=0} = Subs, AccMsg) ->
-                          deliver(AccMsg, Subs),
-                          AccMsg;
-                    (#subscriber{client=Client} = Subs, AccMsg)->
-                          MaybeChangedMsg = vmq_msg_store:store(Client, AccMsg),
-                          deliver(MaybeChangedMsg, Subs),
-                          MaybeChangedMsg
+                        %% in case of a qos-upgrade we'll
+                        %% increment the ref count inside the vmq_session
+                        deliver(AccMsg, Subs),
+                        AccMsg;
+                    (#subscriber{client=Client} = Subs, AccMsg) ->
+                        MaybeChangedMsg = vmq_msg_store:store(Client, AccMsg),
+                        deliver(MaybeChangedMsg, Subs),
+                        MaybeChangedMsg
                 end, Msg, Subscribers),
     ok.
 
