@@ -1,4 +1,5 @@
 -module(vmq_queue).
+-include("vmq_server.hrl").
 -behaviour(gen_fsm).
 
 -type max() :: non_neg_integer().
@@ -167,8 +168,15 @@ send_notification(S = #state{owner=Owner}) ->
 
 insert(Msg, #state{max=0, size=Size, queue=Queue} = State) ->
     State#state{queue=queue:in(Msg, Queue), size=Size + 1};
-insert(_, #state{max=Size, size=Size, drop=Drop} = State) ->
+insert(Msg, #state{max=Size, size=Size, drop=Drop} = State) ->
     %% tail drop
+    case Msg of
+        {deliver, 0, _} -> ok;
+        {deliver, _, #vmq_msg{msg_ref=MsgRef}} ->
+            vmq_msg_store:deref(MsgRef);
+        _ ->
+            ok
+    end,
     State#state{drop=Drop + 1};
 insert(Msg, #state{size=Size, queue=Queue} = State) ->
     State#state{queue=queue:in(Msg, Queue), size=Size + 1}.
@@ -187,6 +195,23 @@ resize_buf(NewMax, #state{queue=Queue, size=Size, drop=Drop} = S) ->
     end.
 
 drop(N, Size, Queue) ->
-    if Size > N  -> element(2, queue:split(N, Queue));
-       Size =< N -> queue:new()
+    if Size > N  ->
+           {QDrop, NewQueue} = queue:split(N, Queue),
+           deref(QDrop),
+           NewQueue;
+       Size =< N ->
+           deref(Queue),
+           queue:new()
     end.
+
+deref({{value, {deliver, 0, _}}, Q}) ->
+    deref(queue:out(Q));
+deref({{value, {deliver, _, #vmq_msg{msg_ref=MsgRef}}}, Q}) ->
+    vmq_msg_store:deref(MsgRef),
+    deref(queue:out(Q));
+deref({{value, _}, Q}) ->
+    deref(queue:out(Q));
+deref({empty, _}) ->
+    ok;
+deref(Q) ->
+    deref(queue:out(Q)).
