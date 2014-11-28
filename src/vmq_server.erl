@@ -27,6 +27,7 @@ start_no_auth() ->
     application:set_env(mnesia_cluster, cluster_partition_handling,
                         ignore), % we use unsplit
     application:ensure_all_started(vmq_server),
+    clean_hooks(),
     ok.
 
 start_no_auth(ClusterNode) ->
@@ -78,3 +79,5 @@ maybe_start_distribution() ->
             ok
     end.
 
+clean_hooks() ->
+    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)].
