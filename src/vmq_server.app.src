@@ -12,7 +12,6 @@
                   jobs,
                   ssl,
                   emqtt_commons,
-                  bitcask,
                   unsplit,
                   vmq_plugin,
                   mnesia_cluster
@@ -28,7 +27,6 @@
       {max_inflight_messages, 20},
       {max_queued_messages, 1000},
       {message_size_limit, 0},
-      {msg_store, {vmq_bitcask_store, []}},
       {tune_tcp_buffer_size, false},
       {session_dump_file, "session.dump"},
       {upgrade_outgoing_qos, false},

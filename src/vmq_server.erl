@@ -60,7 +60,6 @@ stop() ->
     application:stop(vmq_server),
     application:stop(asn1),
     application:stop(public_key),
-    application:stop(bitcask),
     application:stop(vmq_plugin),
     application:stop(mnesia),
     application:stop(crypto),
