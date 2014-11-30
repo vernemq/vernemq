@@ -37,7 +37,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {store}).
+-record(state, {}).
 -type state() :: #state{}.
 
 -callback open(Args :: term()) -> {ok, term()} | {error, term()}.
@@ -71,7 +71,7 @@ store(ClientId, Msg) ->
         new_cache_item ->
             MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
             Val = term_to_binary({ClientId, RoutingKey, Payload}),
-            gen_server:call(?MODULE, {write, MsgRef1, Val}, infinity);
+            vmq_plugin:only(msg_store_write_sync, [MsgRef1, Val]);
         new_ref_count ->
             ok
     end,
@@ -111,7 +111,7 @@ deref(MsgRef) ->
             0 ->
                 ets:delete(?MSG_CACHE_TABLE, MsgRef),
                 MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
-                gen_server:cast(?MODULE, {delete, MsgRef1});
+                vmq_plugin:only(msg_store_delete_async, [MsgRef1]);
             N ->
                 {ok, N}
         end
@@ -193,7 +193,7 @@ clean_cache(in_flight) ->
     clean_cache(ets:last(?MSG_CACHE_TABLE));
 clean_cache(MsgRef) ->
     MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
-    gen_server:call(?MODULE, {delete, MsgRef1}, infinity),
+    vmq_plugin:only(msg_store_delete_sync, [MsgRef1]),
     true = ets:delete(?MSG_CACHE_TABLE, MsgRef),
     clean_cache(ets:last(?MSG_CACHE_TABLE)).
 
@@ -208,27 +208,28 @@ clean_index() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec init([string()]) -> {'ok', state()}.
 init([]) ->
-    {MsgStoreImpl,
-     MsgStoreImplArgs} =
-        vmq_config:get_env(msg_store, {vmq_null_store, []}),
     TableOpts = [public, named_table,
                  {read_concurrency, true},
                  {write_concurrency, true}],
     ets:new(?MSG_INDEX_TABLE, [bag|TableOpts]),
     ets:new(?MSG_CACHE_TABLE, TableOpts),
     ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
-    {ok, MsgStore} = MsgStoreImpl:open(MsgStoreImplArgs),
-    ToDelete =
-    MsgStoreImpl:fold(MsgStore,
-                 fun
-                     (<<?MSG_ITEM, MsgRef/binary>> = Key, Val, Acc) ->
-                         {_, RoutingKey, Payload} = binary_to_term(Val),
-                         update_subs_(RoutingKey, MsgRef, Payload, Key, Acc)
-                 end, []),
-    ok = lists:foreach(fun(Key) ->
-                               MsgStoreImpl:delete(MsgStore, Key)
-                       end, ToDelete),
-    {ok, #state{store={MsgStoreImpl, MsgStore}}}.
+    case vmq_plugin:only(
+           msg_store_fold,
+           [fun
+               (<<?MSG_ITEM, MsgRef/binary>> = Key, Val, Acc) ->
+                   {_, RoutingKey, Payload} = binary_to_term(Val),
+                   update_subs_(RoutingKey, MsgRef, Payload, Key, Acc)
+           end, []]) of
+        {error, Reason} ->
+            lager:warning("can't initialize msg cache due to ~p", [Reason]);
+        ToDelete ->
+            lists:foreach(
+              fun(Key) ->
+                      vmq_plugin:only(msg_store_delete_sync, [Key])
+              end, ToDelete)
+    end,
+    {ok, #state{}}.
 
 update_subs_(RoutingKey, MsgRef, Payload, Key, Acc) ->
     case vmq_reg:subscriptions(RoutingKey) of
@@ -254,33 +255,12 @@ update_subs_(RoutingKey, MsgRef, Payload, Key, Acc) ->
             Acc
     end.
 
--spec handle_call(_, _, _) -> {'reply',
-                               ok | {'error', 'not_implemented'}, _}.
-handle_call({delete, MsgRef}, _From, State) ->
-    %% Synchronized Delete, clean_all
-    %% (for testing purposes) is currently the only user
-    #state{store={MsgStoreImpl, MsgStore}} = State,
-    ok = MsgStoreImpl:delete(MsgStore, MsgRef),
-    {reply, ok, State};
-handle_call({write, Key, Val}, _From, State) ->
-    #state{store={MsgStoreImpl, MsgStore}} = State,
-    ok = MsgStoreImpl:insert(MsgStore, Key, Val),
-    {reply, ok, State};
-
+-spec handle_call(_, _, _) -> {'reply', {'error', 'not_implemented'}, _}.
 handle_call(_Req, _From, State) ->
     {reply, {error, not_implemented}, State}.
 
--spec handle_cast({'delete',msg_ref()} |
-                  {'write',binary(),binary()},
-                  state()) -> {'noreply', state()}.
-handle_cast({write, Key, Val}, State) ->
-    #state{store={MsgStoreImpl, MsgStore}} = State,
-    ok = MsgStoreImpl:insert(MsgStore, Key, Val),
-    {noreply, State};
-
-handle_cast({delete, MsgRef}, State) ->
-    #state{store={MsgStoreImpl, MsgStore}} = State,
-    ok = MsgStoreImpl:delete(MsgStore, MsgRef),
+-spec handle_cast(_, _) -> {'noreply', state()}.
+handle_cast(_Req, State) ->
     {noreply, State}.
 
 -spec handle_info(_, _) -> {'noreply', _}.
@@ -288,9 +268,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 -spec terminate(_, state()) -> 'ok'.
-terminate(_Reason, State) ->
-    #state{store={MsgStoreImpl, MsgStore}} = State,
-    MsgStoreImpl:close(MsgStore),
+terminate(_Reason, _State) ->
     ok.
 
 -spec code_change(_, _, _) -> {'ok', _}.
