@@ -119,7 +119,7 @@ subscribe_tx(ClientId, QPid, Topics) ->
                 end,
                 fun(_) ->
                         _ = [begin
-                                 vmq_systree:incr_subscription_count(),
+                                 vmq_plugin:all(incr_subscription_count, []),
                                  deliver_retained(ClientId, QPid, T, QoS)
                              end || {T, QoS} <- Topics],
                         ok
@@ -133,7 +133,7 @@ unsubscribe(User, ClientId, Topics) ->
 unsubscribe_(User, ClientId, Topics) ->
     lists:foreach(fun(Topic) ->
                           del_subscriber(Topic, ClientId),
-                          vmq_systree:decr_subscription_count()
+                          vmq_plugin:all(decr_subscription_count, [])
                   end, Topics),
     vmq_plugin:all(on_unsubscribe, [User, ClientId, Topics]),
     ok.
@@ -490,7 +490,7 @@ reset_table(Tab) ->
 
 -spec wait_til_ready() -> 'ok'.
 wait_til_ready() ->
-    case vmq_cluster:if_ready(fun() -> true end, []) of
+    case catch vmq_cluster:if_ready(fun() -> true end, []) of
         true ->
             ok;
         {error, not_ready} ->
@@ -773,8 +773,8 @@ remove_expired_clients_({[[ClientId, Pid]|Rest], Cont}) ->
             transaction(fun() -> del_subscriber_tx('_', ClientId) end,
                         fun(_) ->
                                 vmq_msg_store:clean_session(ClientId),
-                                vmq_systree:incr_expired_clients(),
-                                vmq_systree:decr_inactive_clients()
+                                vmq_plugin:all(incr_expired_clients, []),
+                                vmq_plugin:all(decr_inactive_clients, [])
                         end);
         true ->
             ok
@@ -855,7 +855,7 @@ handle_call({monitor, SessionPid, QPid, ClientId, CleanSession},
         [#session{pid=undefined, monitor=undefined, clean=true}] ->
             ok;
         [#session{pid=undefined, monitor=undefined, clean=false}] ->
-            vmq_systree:decr_inactive_clients();
+            vmq_plugin:all(decr_inactive_clients, []);
         %% ------------------------
         %% only in a race condition
         %% vvvvvvvvvvvvvvvvvvvvvvvv
@@ -867,7 +867,7 @@ handle_call({monitor, SessionPid, QPid, ClientId, CleanSession},
                     del_subscriber_fun(ClientId),
                     vmq_msg_store:clean_session(ClientId);
                 false ->
-                    vmq_systree:incr_inactive_clients()
+                    vmq_plugin:all(incr_inactive_clients, [])
             end,
             disconnect_client(OldSessionPid)
     end,
@@ -927,7 +927,7 @@ unregister_client(ClientId) ->
                                    queue_pid=undefined,
                                    monitor=undefined,
                                    last_seen=epoch()}),
-            vmq_systree:incr_inactive_clients();
+            vmq_plugin:all(incr_inactive_clients, []);
         [] ->
             {error, not_found}
     end.

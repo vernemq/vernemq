@@ -417,7 +417,7 @@ handle_bin_message({MsgId, QoS, Bin}, State) ->
 
 handle_frame(wait_for_connect, _,
              #mqtt_frame_connect{keep_alive=KeepAlive} = Var, _, State) ->
-    vmq_systree:incr_connect_received(),
+    vmq_plugin:all(incr_connect_received, []),
     %% the client is allowed "grace" of a half a time period
     KKeepAlive = (KeepAlive + (KeepAlive div 2)) * 1000,
     check_connect(Var, State#state{keep_alive=KKeepAlive});
@@ -1020,6 +1020,6 @@ incr_cnt(IncrFun, IncrV, {{M, S, _}, V, I}) ->
         {M, S, _} = TS ->
             {TS, NewV, NewI};
         TS ->
-            apply(vmq_systree, IncrFun, [NewI]),
+            vmq_plugin:all(IncrFun, [NewI]),
             {TS, NewV, 0}
     end.

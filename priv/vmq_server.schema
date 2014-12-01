@@ -707,14 +707,6 @@
          end
  end}.
 
-%% @doc The integer number of seconds between updates of the $SYS subscription hierarchy, 
-%% which provides status information about the broker. If unset, defaults to 10 seconds. 
-%% Set to 0 to disable publishing the $SYS hierarchy completely.
-{mapping, "sys_interval", "vmq_server.sys_interval", [
-                                                      {default, 10},
-                                                      {datatype, integer}
-                                                     ]}.
-
 %% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being 
 %% transmitted simultaneously. This includes messages currently going through handshakes 
 %% and messages that are being retried. Defaults to 20. Set to 0 for no maximum. If set 
