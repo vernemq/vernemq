@@ -238,7 +238,6 @@ register_client__(SessionPid, QPid, ClientId, CleanSession) ->
 -spec publish(msg()) -> 'ok' | {'error', _}.
 publish(#vmq_msg{routing_key=RoutingKey, retain=IsRetain} = Msg) ->
     MatchedTopics = match(RoutingKey),
-    Ret =
     case IsRetain of
         true ->
             vmq_cluster:if_ready(fun publish_/2, [Msg, MatchedTopics]);
@@ -256,8 +255,7 @@ publish(#vmq_msg{routing_key=RoutingKey, retain=IsRetain} = Msg) ->
                 false ->
                     publish_if_ready(Msg, MatchedTopics)
             end
-    end,
-    Ret.
+    end.
 
 
 publish_if_ready(Msg, MatchedTopics) ->
