@@ -691,19 +691,24 @@
 {mapping, "persistent_client_expiration", "vmq_server.persistent_client_expiration", [
                                                                                       {default, "never"},
                                                                                       {commented, "1w"},
-                                                                                      {datatype, string},
-                                                                                      {validators, ["persistent_client_expiration"]}
+                                                                                      {datatype, string}
                                                                                      ]}.
-{validator, "persistent_client_expiration",
- "must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year",
- fun("never") -> true;
-    (V) ->
-         [Entity|Rest] = lists:reverse(V),
-         case lists:member(Entity, ["h","d","w","m","y"]) of
-             true ->
-                 list_to_integer(lists:reverse(Rest)) > 0;
-             false ->
-                 false
+
+{translation, "vmq_server.persistent_client_expiration", 
+ fun(Conf) ->
+         S = cuttlefish:conf_get("persistent_client_expiration", Conf),
+         case S of
+             "never" -> 0;
+             _ ->
+                 [Entity|T] = lists:reverse(S),
+                 case {Entity, lists:reverse(T)} of
+                     {"h", D} -> D * 60 * 60;
+                     {"d", D} -> D * 24 * 60 * 60;
+                     {"w", D} -> D * 7 * 24 * 60 * 60;
+                     {"m", D} -> D * 4 * 7 * 24 * 60 * 60;
+                     {"y", D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
+                     _ -> cuttlefish:invalid(S ++ " must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year, or the string 'never'")
+                 end
          end
  end}.
 
@@ -747,7 +752,7 @@
                                                                      ]}.
 
 {mapping, "table_definition_mod", "mnesia_cluster.table_definition_mod", [
-                                                                          {default, "{vmq_reg,vmq_table_defs,[]}"},
+                                                                          {default, "{vmq_server,table_defs,[]}"},
                                                                           {datatype, string},
                                                                           hidden
                                                                          ]}. 

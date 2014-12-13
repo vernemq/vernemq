@@ -1,11 +1,11 @@
 %% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
-%% 
+%%
 %%     http://www.apache.org/licenses/LICENSE-2.0
-%% 
+%%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,7 +18,7 @@
 
 %% API
 -export([start_link/0,
-         change_config_now/3]).
+         change_duration/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -37,25 +37,17 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec change_config_now(_, [any()], _) -> 'ok'.
-change_config_now(_New, Changed, _Deleted) ->
-    %% we are only interested if the config changes
-    {_, NewDuration} = proplists:get_value(persistent_client_expiration,
-                                           Changed, {undefined,"never"}),
-    ParsedDuration = parse_duration(NewDuration),
-    gen_server:cast(?MODULE, {new_duration, ParsedDuration}).
-
+change_duration(NewDuration) ->
+    gen_server:cast(?MODULE, {new_duration, NewDuration}).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 -spec init([any()]) -> {ok, state()}.
 init([]) ->
-    Duration = application:get_env(vmq_server,
-                                   persistent_client_expiration, "never"),
-    ParsedDuration = parse_duration(Duration),
+    Duration = vmq_config:get_env(persistent_client_expiration, 0),
     erlang:send_after(5000, self(), expire_clients),
-    {ok, #state{duration=ParsedDuration}}.
+    {ok, #state{duration=Duration}}.
 
 -spec handle_call(_, _, state()) -> {reply, ok, state()}.
 handle_call(_Request, _From, State) ->
@@ -88,12 +80,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-parse_duration("never") -> 0;
-parse_duration(Duration) ->
-    [Entity|D] = lists:reverse(Duration),
-    parse_duration(Entity, list_to_integer(lists:reverse(D))).
-parse_duration("h", Duration) -> Duration * 60 * 60;
-parse_duration("d", Duration) -> Duration * parse_duration("h", 24);
-parse_duration("w", Duration) -> Duration * parse_duration("d", 7);
-parse_duration("m", Duration) -> Duration * parse_duration("w", 4);
-parse_duration("y", Duration) -> Duration * parse_duration("m", 12).
