@@ -212,6 +212,11 @@ process_bytes(SessionPid, Bytes, ParserState) ->
             emqtt_frame:initial_state()
     end.
 
+handle_message({reconfigure_session, {CallerPid, CallerRef}, NewConfig}, State) ->
+    ok = vmq_session:reconfigure(State#st.session, NewConfig),
+    CallerPid ! {CallerRef, ok},
+    State;
+
 handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
     #st{session=SessionPid,
         socket=Socket,

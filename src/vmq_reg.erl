@@ -54,7 +54,7 @@
          register_client_/4]).
 
 %% used by mnesia_cluster for table setup
--export([vmq_table_defs/0]).
+-export([table_defs/0]).
 %% used from vmq-admin script (deployed with the VerneMQ release)
 -export([reset_all_tables/1]).
 %% used from plugins
@@ -423,8 +423,8 @@ match(Topic) when is_list(Topic) ->
     Names = [Name || #trie_node{topic=Name} <- TrieNodes, Name=/= undefined],
     lists:flatten([mnesia:dirty_read(vmq_trie_topic, Name) || Name <- Names]).
 
--spec vmq_table_defs() -> [{atom(), [{atom(), any()}]}].
-vmq_table_defs() ->
+-spec table_defs() -> [{atom(), [{atom(), any()}]}].
+table_defs() ->
     [
      {vmq_trie, [
        {record_name, trie},
@@ -472,7 +472,7 @@ unsplit_vclock_props(Pos) ->
 reset_all_tables([]) ->
     %% called using vmq-admin, mainly for test purposes
     %% you don't want to call this during production
-    [reset_table(T) || {T, _}<- vmq_table_defs()],
+    [reset_table(T) || {T, _}<- table_defs()],
     ets:delete_all_objects(vmq_session),
     ok.
 

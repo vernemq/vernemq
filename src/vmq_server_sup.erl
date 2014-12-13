@@ -31,7 +31,13 @@
 
 -spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    case supervisor:start_link({local, ?MODULE}, ?MODULE, []) of
+        {ok, _} = Ret ->
+            vmq_config:configure_node(mnesia),
+            Ret;
+        Ret ->
+            Ret
+    end.
 
 %% ===================================================================
 %% Supervisor callbacks
@@ -47,7 +53,6 @@ init([]) ->
     {ok, { {one_for_one, 5, 10}, [
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_crl_srv, worker, []),
-            ?CHILD(vmq_listener_sup, supervisor, []),
             ?CHILD(vmq_session_sup, supervisor, []),
             ?CHILD(vmq_sysmon, worker, []),
             ?CHILD(vmq_session_proxy_sup, supervisor, []),
@@ -55,6 +60,7 @@ init([]) ->
             ?CHILD(vmq_reg, worker, []),
             ?CHILD(vmq_reg_leader, worker, []),
             ?CHILD(vmq_session_expirer, worker, []),
-            ?CHILD(vmq_cluster, worker, [])
+            ?CHILD(vmq_cluster, worker, []),
+            ?CHILD(vmq_listener_sup, supervisor, [])
                                  ]} }.
 

@@ -13,19 +13,25 @@
 %% limitations under the License.
 
 -module(vmq_server).
--export([start/0, start_no_auth/0, start_no_auth/1, stop/0]).
+-export([start/0,
+         start_no_auth/0,
+         start_no_auth/1,
+         stop/0,
+         table_defs/0]).
 
 -spec start() -> 'ok'.
 start_no_auth() ->
     maybe_start_distribution(),
     application:load(mnesia_cluster),
     application:set_env(mnesia_cluster, table_definition_mod,
-                        {vmq_reg, vmq_table_defs, []}),
+                        {?MODULE, table_defs, []}),
     application:set_env(mnesia_cluster, cluster_monitor_callbacks,
                         [vmq_cluster]),
     application:set_env(mnesia_cluster, app_process, vmq_cluster),
     application:set_env(mnesia_cluster, cluster_partition_handling,
                         ignore), % we use unsplit
+    application:load(sasl),
+    application:set_env(sasl, sasl_error_logger, false),
     application:ensure_all_started(vmq_server),
     clean_hooks(),
     ok.
@@ -34,7 +40,7 @@ start_no_auth(ClusterNode) ->
     maybe_start_distribution(),
     application:load(mnesia_cluster),
     application:set_env(mnesia_cluster, table_definition_mod,
-                        {vmq_reg, vmq_table_defs, []}),
+                        {?MODULE, table_defs, []}),
     application:set_env(mnesia_cluster, cluster_monitor_callbacks,
                         [vmq_cluster]),
     application:set_env(mnesia_cluster, app_process, vmq_cluster),
@@ -53,6 +59,7 @@ start() ->
 -spec stop() -> 'ok' | {'error',_}.
 stop() ->
     application:stop(vmq_server),
+    vmq_config:reset(),
     application:stop(mnesia_cluster),
     application:stop(unsplit),
     application:stop(emqtt_commons),
@@ -79,4 +86,12 @@ maybe_start_distribution() ->
     end.
 
 clean_hooks() ->
-    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)].
+    [vmq_plugin_mgr:disable_plugin(P)
+     || P <- vmq_plugin:info(all),
+        (element(1, P) /= change_config) andalso (element(2, P) /= vmq_config)
+    ].
+
+table_defs() ->
+    VmqRegTables = vmq_reg:table_defs(),
+    VmqConfigTables = vmq_config:table_defs(),
+    VmqRegTables ++ VmqConfigTables.

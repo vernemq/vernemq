@@ -22,14 +22,15 @@
       {msg_log_handler, vmq_test_msg_log_handler},
       {max_client_id_size, 23},
       {retry_interval, 20},
-      {persistent_client_expiration, "never"},
+      {persistent_client_expiration, 0}, % never
       {sys_interval, 10}, % in seconds
       {max_inflight_messages, 20},
       {max_queued_messages, 1000},
-      {message_size_limit, 0},
+      {message_size_limit, 10},
       {tune_tcp_buffer_size, false},
       {session_dump_file, "session.dump"},
       {upgrade_outgoing_qos, false},
+      {vmq_config_enabled, true},
       {listeners, {
                       [{{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
                                               {nr_of_acceptors, 100}, 
@@ -49,8 +50,7 @@
             {reuseaddr, true}, 
             {linger, {true, 0}}, 
             {send_timeout, 30000}, 
-            {send_timeout_close, true}, 
-            {backlog, 128}
+            {send_timeout_close, true}
         ]}
       ]}
 

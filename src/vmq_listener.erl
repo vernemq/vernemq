@@ -13,12 +13,13 @@
 %% limitations under the License.
 
 -module(vmq_listener).
-
+-include_lib("public_key/include/public_key.hrl").
 -behaviour(gen_server).
 
 %% API
--export([start_link/5,
-        change_config/2]).
+-export([start_link/2,
+         setopts/4,
+         accept/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -30,8 +31,9 @@
 
 -record(state, {listener,
                 acceptor,
-                transport_opts,
-                handler_opts,
+                tcp_opts,
+                other_opts, %% mainly ssl
+                mountpoint,
                 handler}).
 
 %%%===================================================================
@@ -45,12 +47,15 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(ListenPort, ListenAddr, TransportOpts, HandlerMod, HandlerOpts) ->
-    gen_server:start_link(?MODULE, [ListenPort, ListenAddr, TransportOpts,
-                                    HandlerMod, HandlerOpts], []).
+start_link(ListenAddr, ListenPort) ->
+    gen_server:start_link(?MODULE, [ListenAddr, ListenPort], []).
 
-change_config(ListenerPid, Config) ->
-    gen_server:call(ListenerPid, {change_config, Config}, infinity).
+setopts(ListenerPid, Handler, MountPoint, TransportOpts) ->
+    gen_server:call(ListenerPid, {setopts, Handler,
+                                  MountPoint, TransportOpts}, infinity).
+
+accept(ListenerPid) ->
+    gen_server:call(ListenerPid, accept, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -67,20 +72,14 @@ change_config(ListenerPid, Config) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([ListenPort, ListenAddr, TransportOpts, HandlerMod, HandlerOpts]) ->
+init([Addr, Port]) ->
     process_flag(trap_exit, true),
-    TCPListenOptions = vmq_config:get_env(tcp_listen_options),
-    case gen_tcp:listen(ListenPort, [{ip, ListenAddr} | TCPListenOptions]) of
-    {ok, ListenSocket} ->
-        %%Create first accepting process
-        {ok, Ref} = prim_inet:async_accept(ListenSocket, -1),
-        {ok, #state{listener = ListenSocket,
-                    acceptor = Ref,
-                    transport_opts=TransportOpts,
-                    handler=HandlerMod,
-                    handler_opts=HandlerOpts}};
-    {error, Reason} ->
-        {stop, Reason}
+    case gen_tcp:listen(Port, [{ip, Addr}, {reuseaddr, true}]) of
+        {ok, ListenSocket} ->
+            %%Create first accepting process
+            {ok, #state{listener = ListenSocket}};
+        {error, Reason} ->
+            {stop, Reason}
     end.
 
 %%--------------------------------------------------------------------
@@ -97,10 +96,29 @@ init([ListenPort, ListenAddr, TransportOpts, HandlerMod, HandlerOpts]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({change_config, _Config}, _From, State) ->
-    %% TODO: implement
-    Reply = ok,
-    {reply, Reply, State}.
+handle_call({setopts, Handler, MountPoint, {TCPOpts, OtherOpts}}, _From,
+            #state{listener=ListenerSocket} = State) ->
+    case prim_inet:setopts(ListenerSocket, [binary|TCPOpts]) of
+        ok ->
+            {reply, ok, State#state{handler=Handler,
+                                    mountpoint=MountPoint,
+                                    tcp_opts=TCPOpts,
+                                    other_opts=OtherOpts}};
+        {error, Reason} ->
+            lager:error("can't set socket options for handler ~p due to ~p
+                         opts: ~p", [Handler, Reason, [binary|TCPOpts]]),
+            {reply, {error, {setopts, Reason}}, State}
+    end;
+handle_call(accept, _From, #state{listener=ListenSocket} = State) ->
+    AcceptorRef =
+    case State#state.acceptor of
+        undefined ->
+            {ok, Ref} = prim_inet:async_accept(ListenSocket, -1),
+            Ref;
+        Ref ->
+            Ref
+    end,
+    {reply, ok, State#state{acceptor=AcceptorRef}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -127,8 +145,8 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({inet_async, ListenSocket, Ref, {ok, TCPSocket}},
             #state{listener=ListenSocket, acceptor=Ref,
-                   handler=Handler, handler_opts=HandlerOpts,
-                   transport_opts=TransportOpts} = State) ->
+                   handler=Handler, mountpoint=MountPoint,
+                   other_opts=TransportOpts} = State) ->
     try
         case set_sockopt(ListenSocket, TCPSocket) of
             ok -> ok;
@@ -140,20 +158,23 @@ handle_info({inet_async, ListenSocket, Ref, {ok, TCPSocket}},
                 %% upgrade TCP socket
                 case ssl:ssl_accept(TCPSocket, TransportOpts) of
                     {ok, SSLSocket} ->
+                        CommonName = socket_to_common_name(SSLSocket),
                         vmq_session_sup:start_session(SSLSocket, Handler,
-                                                      HandlerOpts);
+                                                      [{mountpoint, MountPoint},
+                                                       {preauth, CommonName}]);
                     {error, Reason1} ->
                         lager:warning("can't upgrade SSL due to ~p", [Reason1])
                 end;
             gen_tcp ->
-                vmq_session_sup:start_session(TCPSocket, Handler, HandlerOpts)
+                vmq_session_sup:start_session(TCPSocket, Handler,
+                                              [{mountpoint, MountPoint}])
         end,
 
-        %% Signal the network driver that we are ready to accept 
+        %% Signal the network driver that we are ready to accept
         %% another connection
         NNewRef =
         case prim_inet:async_accept(ListenSocket, -1) of
-            {ok,    NewRef} ->
+            {ok, NewRef} ->
                 NewRef;
             {error, NewRef} ->
                 exit({async_accept, inet:format_error(NewRef)})
@@ -242,3 +263,29 @@ get_max_buffer_size(Socket) ->
         Error ->
             Error
     end.
+
+-spec socket_to_common_name({'sslsocket',_,pid() | {port(),_}}) ->
+                                   'undefined' | [any()].
+socket_to_common_name(Socket) ->
+    case ssl:peercert(Socket) of
+        {error, no_peercert} ->
+            undefined;
+        {ok, Cert} ->
+            OTPCert = public_key:pkix_decode_cert(Cert, otp),
+            TBSCert = OTPCert#'OTPCertificate'.tbsCertificate,
+            Subject = TBSCert#'OTPTBSCertificate'.subject,
+            extract_cn(Subject)
+    end.
+
+-spec extract_cn({'rdnSequence', list()}) -> undefined | list().
+extract_cn({rdnSequence, List}) ->
+    extract_cn2(List).
+
+-spec extract_cn2(list()) -> undefined | list().
+extract_cn2([[#'AttributeTypeAndValue'{
+                 type=?'id-at-commonName',
+                 value={utf8String, CN}}]|_]) ->
+    unicode:characters_to_list(CN);
+extract_cn2([_|Rest]) ->
+    extract_cn2(Rest);
+extract_cn2([]) -> undefined.

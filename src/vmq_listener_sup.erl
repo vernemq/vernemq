@@ -18,8 +18,7 @@
 
 %% API
 -export([start_link/0,
-         start_listeners/0,
-         change_config_now/3]).
+         reconfigure_listeners/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -39,35 +38,21 @@
 %%% API functions
 %%%===================================================================
 start_link() ->
-    {ok, Pid} = supervisor:start_link({local, ?SUP}, ?MODULE, []),
-    start_listeners(),
-    {ok, Pid}.
+    supervisor:start_link({local, ?SUP}, ?MODULE, []).
 
--spec change_config_now(_, [any()], _) -> 'ok'.
-change_config_now(_New, Changed, _Deleted) ->
-    %% we are only interested if the config changes
-    {OldListeners, NewListeners} = proplists:get_value(listeners,
-                                                       Changed, {[], []}),
-    {OldTCP, OldSSL, OldWS, OldWSS} = OldListeners,
-    {NewTcp, NewSSL, NewWS, NewWSS} = NewListeners,
-    maybe_change_listener(vmq_tcp_listener, OldTCP, NewTcp),
-    maybe_change_listener(vmq_ssl_listener, OldSSL, NewSSL),
-    maybe_change_listener(vmq_ws_listener, OldWS, NewWS),
-    maybe_change_listener(vmq_wss_listener, OldWSS, NewWSS),
-    maybe_new_listener(vmq_tcp_listener, OldTCP, NewTcp),
-    maybe_new_listener(vmq_ssl_listener, OldSSL, NewSSL),
-    maybe_new_listener(vmq_ws_listener, OldWS, NewWS),
-    maybe_new_listener(vmq_wss_listener, OldWSS, NewWSS).
-
--spec start_listeners() -> ok.
-start_listeners() ->
-    {ok, {TCPListeners, SSLListeners,
-          WSListeners, WSSListeners}} = application:get_env(?APP, listeners),
-    start_listeners(TCPListeners, vmq_tcp_listener),
-    start_listeners(SSLListeners, vmq_ssl_listener),
-    start_listeners(WSListeners, vmq_ws_listener),
-    start_listeners(WSSListeners, vmq_wss_listener),
-    ok.
+reconfigure_listeners(ListenerConfig) ->
+    TCPListenOptions = proplists:get_value(tcp_listen_options,
+                                           ListenerConfig,
+                                           vmq_config:get_env(tcp_listen_options)),
+    {TCP, SSL, WS, WSS} = proplists:get_value(listeners,
+                                         ListenerConfig,
+                                         vmq_config:get_env(listeners)),
+    Listeners = supervisor:which_children(?SUP),
+    reconfigure_listeners(vmq_tcp_listener, Listeners, TCP, TCPListenOptions),
+    reconfigure_listeners(vmq_ssl_listener, Listeners, SSL, TCPListenOptions),
+    reconfigure_listeners(vmq_ws_listener, Listeners, WS, TCPListenOptions),
+    reconfigure_listeners(vmq_wss_listener, Listeners, WSS, TCPListenOptions),
+    stop_and_delete_unused(Listeners, lists:flatten([TCP, SSL, WS, WSS])).
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -92,80 +77,65 @@ init([]) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
--spec maybe_change_listener(listener_mod(), _, _) -> 'ok'.
-maybe_change_listener(_, Old, New) when Old == New -> ok;
-maybe_change_listener(Transport, Old, New) ->
-    lists:foreach(
-      fun({{Ip, Port} = IpAddr, Opts}) ->
-              Id = listener_name(Ip, Port),
-              case proplists:get_value(IpAddr, New) of
-                  undefined ->
-                      %% delete listener
-                      supervisor:terminate_child(?SUP, Id);
-                  Opts -> ok; %% no change;
-                  NewOpts ->
-                      {_, Pid, _, _} =
-                      lists:keyfind(Id, 1, supervisor:which_children(?SUP)),
-                      vmq_listener:change_config(Pid, transport_opts(
-                                                        Transport, NewOpts))
-              end
-      end, Old).
-
--spec maybe_new_listener(listener_mod(), _, _) -> ok.
-maybe_new_listener(ListenerMod, Old, New) ->
-    lists:foreach(
-      fun({{Addr, Port} = IpAddr, Opts}) ->
-              case proplists:get_value(IpAddr, Old) of
-                  undefined ->
-                      %% start new listener
-                      start_listener(ListenerMod, Addr, Port, Opts);
-                  _ ->
-                      ok
-              end
-      end, New).
-
-
--spec start_listeners([any()], listener_mod()) -> ok.
-start_listeners(Listeners, ListenerMod) ->
-    lists:foreach(fun({{Addr, Port}, Opts}) ->
-                          start_listener(ListenerMod, Addr, Port, Opts)
-                  end, Listeners).
-
 -spec start_listener(listener_mod(),
                      string() | inet:ip_address(), inet:port_number(),
-                     [any()]) -> {'ok',pid()}.
-start_listener(ListenerMod, Addr, Port, Opts) ->
-    Ref = listener_name(Addr, Port),
-    AAddr = case is_list(Addr) of
-                true ->
-                    {ok, Ip} = inet:parse_address(Addr),
-                    Ip;
-                false ->
-                    Addr
-            end,
-    TransportOpts = transport_opts(ListenerMod, Opts),
-    HandlerOpts = handler_opts(Opts),
+                     string(), {[any()],[any()]}) -> {'ok',pid()}.
+start_listener(ListenerMod, Addr, Port, MountPoint, TransportOpts) ->
+    AAddr = addr(Addr),
+    Ref = listener_name(AAddr, Port),
     ChildSpec = {Ref,
-                 {vmq_listener, start_link, [Port, AAddr,
-                                            TransportOpts,
-                                            ListenerMod,
-                                            HandlerOpts]},
-                 permanent, 5000, worker, [ListenerMod]},
-              % {max_connections,
-              %  proplists:get_value(max_connections, Opts)}
+                 {vmq_listener, start_link, [AAddr, Port]},
+                 permanent, 5000, worker, [vmq_listener]},
     case supervisor:start_child(?SUP, ChildSpec) of
-        {ok, _} ->
-            lager:info("started ~p on ~p:~p", [ListenerMod, Addr, Port]);
+        {ok, Pid} ->
+            case vmq_listener:setopts(Pid, ListenerMod,
+                                      MountPoint, TransportOpts) of
+                ok ->
+                    vmq_listener:accept(Pid),
+                    lager:info("started ~p on ~p:~p", [ListenerMod, Addr, Port]),
+                    {ok, Pid};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
         {error, Reason} ->
             FReason = inet:format_error(Reason),
             lager:error("can't start ~p on ~p:~p due to ~p",
-                        [ListenerMod, Addr, Port, FReason])
+                        [ListenerMod, Addr, Port, {Reason, FReason}])
     end.
 
+addr(Addr) when is_list(Addr) ->
+    {ok, Ip} = inet:parse_address(Addr),
+    Ip;
+addr(Addr) -> Addr.
 
--spec listener_name(string() |
-                    inet:ip_address(),
+
+reconfigure_listeners(Type, Listeners, [{{Addr, Port}, Opts}|Rest], TCPOpts) ->
+    Ref = listener_name(addr(Addr),Port),
+    TransportOpts = {TCPOpts, transport_opts(Type, Opts)},
+    MountPoint = proplists:get_value(mountpoint, Opts, ""),
+    case lists:keyfind(Ref, 1, Listeners) of
+        false -> % new listener
+            start_listener(Type, Addr, Port, MountPoint, TransportOpts);
+        {_, Pid, _, _} when is_pid(Pid) -> % change existing listener
+            %% change listener
+            vmq_listener:setopts(Pid, Type, MountPoint, TransportOpts);
+        _ -> ok
+    end,
+    reconfigure_listeners(Type, Listeners, Rest, TCPOpts);
+reconfigure_listeners(_, _, [], _) -> ok.
+
+stop_and_delete_unused(Listeners, Config) ->
+    ListenersToDelete =
+    lists:foldl(fun({{Addr, Port}, _}, Acc) ->
+                        Ref = listener_name(addr(Addr), Port),
+                        lists:keydelete(Ref, 1, Acc)
+                end, Listeners, Config),
+    lists:foreach(fun({Ref, _, _, _}) ->
+                          supervisor:terminate_child(?SUP, Ref),
+                          supervisor:delete_child(?SUP, Ref)
+                  end, ListenersToDelete).
+
+-spec listener_name(inet:ip_address(),
                     inet:port_number()) ->
                            {'vmq_listener',
                             inet:ip_address(), inet:port_number()}.
@@ -207,15 +177,6 @@ transport_opts(vmq_ssl_listener, Opts) ->
      end
     ];
 transport_opts(_, _Opts) -> [].
-
-handler_opts(Opts) ->
-    {ok, MsgLogHandler} = application:get_env(?APP, msg_log_handler),
-    {ok, MaxClientIdSize} = application:get_env(?APP, max_client_id_size),
-    {ok, RetryInterval} = application:get_env(?APP, retry_interval),
-    [{msg_log_handler, MsgLogHandler},
-     {max_client_id_size, MaxClientIdSize},
-     {retry_interval, RetryInterval}
-     |Opts].
 
 -spec ciphersuite_transform(boolean(), string()) -> [{atom(), atom(), atom()}].
 ciphersuite_transform(SupportEC, []) ->
@@ -358,23 +319,17 @@ check_user_state(UserState, Cert) ->
 
 -spec load_cert(string()) -> [binary()].
 load_cert(Cert) ->
-    case file:read_file(Cert) of
-        {error, Reason} ->
-            lager:error("can't load certificate ~p due to Error: ~p",
-                        [Cert, Reason]),
-            undefined;
-        {ok, Bin} ->
-            case filename:extension(Cert) of
-                ".der" ->
-                    %% no decoding necessary
-                    [Bin];
-                _ ->
-                    %% assume PEM otherwise
-                    Contents = public_key:pem_decode(Bin),
-                    [DER || {Type, DER, Cipher} <-
-                                Contents, Type == 'Certificate',
-                            Cipher == 'not_encrypted']
-            end
+    {ok, Bin} = file:read_file(Cert),
+    case filename:extension(Cert) of
+        ".der" ->
+            %% no decoding necessary
+            [Bin];
+        _ ->
+            %% assume PEM otherwise
+            Contents = public_key:pem_decode(Bin),
+            [DER || {Type, DER, Cipher} <-
+                    Contents, Type == 'Certificate',
+                    Cipher == 'not_encrypted']
     end.
 
 -spec support_partial_chain() -> boolean().

@@ -19,6 +19,7 @@
 -export([start_link/3,
          in/2,
          disconnect/1,
+         reconfigure/2,
          get_info/2,
          list_sessions/1,
          list_sessions_/1]).
@@ -57,7 +58,6 @@
           %% mqtt layer requirements
           next_msg_id=1                     :: msg_id(),
           client_id                         :: undefined | client_id(),
-          max_client_id_size=23             :: non_neg_integer(),
           will_topic                        :: undefined | topic(),
           will_msg                          :: undefined | payload(),
           will_qos                          :: undefined | qos(),
@@ -66,21 +66,27 @@
           peer                              :: peer(),
           username                          :: undefined | username() |
                                                {preauth, string() | undefined},
-          msg_log_handler                   :: fun((client_id(), topic(),
-                                                    payload()) -> any()),
-          mountpoint=""                     :: string(),
-          retry_interval=20000              :: pos_integer(),
           keep_alive                        :: undefined | pos_integer(),
           keep_alive_timer                  :: undefined | reference(),
           clean_session=false               :: flag(),
-          upgrade_qos=false                 :: flag(),
           proto_ver                         :: undefined | pos_integer(),
+          queue_pid                         :: pid(),
+
+          %% stats
           recv_cnt=init_ts()                :: ts(),
           send_cnt=init_ts()                :: ts(),
           pub_recv_cnt=init_ts()            :: ts(),
           pub_dropped_cnt=init_ts()         :: ts(),
           pub_send_cnt=init_ts()            :: ts(),
-          queue_pid                         :: pid()
+
+          %% config
+          allow_anonymous=false             :: flag(),
+          max_inflight_messages=20          :: pos_integer(),
+          max_message_size=0                :: pos_integer(),
+          mountpoint=""                     :: string(),
+          retry_interval=20000              :: pos_integer(),
+          upgrade_qos=false                 :: flag(),
+          max_client_id_size=23             :: non_neg_integer()
          }).
 
 -type state() :: #state{}.
@@ -95,6 +101,10 @@ start_link(Peer, SendFun, Opts) ->
 -spec disconnect(pid()) -> ok.
 disconnect(FsmPid) ->
     gen_fsm:send_all_state_event(FsmPid, disconnect).
+
+-spec reconfigure(pid(), [{atom(), term()}]) -> ok.
+reconfigure(FsmPid, NewConfig) ->
+    gen_fsm:sync_send_all_state_event(FsmPid, {reconfigure, NewConfig}).
 
 -spec in(pid(), mqtt_frame()) ->  ok.
 in(FsmPid, #mqtt_frame{fixed=#mqtt_frame_fixed{type=?PUBLISH}} = Event) ->
@@ -124,6 +134,8 @@ in_(FsmPid, Event) ->
             ok;
         {'EXIT', Reason} -> exit(Reason)
     end.
+
+
 
 -spec get_info(string() | pid(), [atom()]) -> proplist().
 get_info(ClientId, InfoItems) when is_list(ClientId) ->
@@ -211,32 +223,28 @@ connected(keepalive_expired, State) ->
 
 -spec init(_) -> {ok, wait_for_connect, state(), ?CLOSE_AFTER}.
 init([Peer, SendFun, Opts]) ->
-    {_, MountPoint} = lists:keyfind(mountpoint, 1, Opts),
-    {_, MaxClientIdSize} = lists:keyfind(max_client_id_size, 1, Opts),
-    {_, RetryInterval} = lists:keyfind(retry_interval, 1, Opts),
+    MountPoint = proplists:get_value(mountpoint, Opts, ""),
     PreAuthUser =
     case lists:keyfind(preauth, 1, Opts) of
         false -> undefined;
+        {_, undefined} -> undefined;
         {_, PreAuth} -> {preauth, PreAuth}
     end,
-    MsgLogHandler =
-    case lists:keyfind(msg_log_handler, 1, Opts) of
-        {_, undefined} ->
-            fun(_, _, _) -> ok end;
-        {_, Mod} when is_atom(Mod) ->
-            fun(ClientId, Topic, Msg) ->
-                    Args = [self(), ClientId, Topic, Msg],
-                    apply(Mod, handle, Args)
-            end
-    end,
+    MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
+    RetryInterval = vmq_config:get_env(retry_interval, 20),
     QueueSize = vmq_config:get_env(max_queued_messages, 1000),
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
+    AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
+    MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
+    MaxMessageSize = vmq_config:get_env(max_message_size, 0),
     {ok, QPid} = vmq_queue:start_link(self(), QueueSize),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
-                                  msg_log_handler=MsgLogHandler,
                                   upgrade_qos=UpgradeQoS,
                                   mountpoint=string:strip(MountPoint,
                                                           right, $/),
+                                  allow_anonymous=AllowAnonymous,
+                                  max_inflight_messages=MaxInflightMsgs,
+                                  max_message_size=MaxMessageSize,
                                   username=PreAuthUser,
                                   max_client_id_size=MaxClientIdSize,
                                   retry_interval=1000 * RetryInterval,
@@ -282,6 +290,27 @@ handle_sync_event({input, Frame}, _From, StateName, State) ->
 handle_sync_event({get_info, Items}, _From, StateName, State) ->
     Reply = get_info_items(Items, StateName, State),
     {reply, Reply, StateName, State};
+handle_sync_event({reconfigure, NewConfig}, _From, StateName, State) ->
+    NewState =
+    State#state{
+      allow_anonymous = proplists:get_value(
+                          allow_anonymous, NewConfig,
+                          State#state.allow_anonymous),
+      max_client_id_size = proplists:get_value(
+                             max_client_id_size, NewConfig,
+                             State#state.max_client_id_size),
+      retry_interval = 1000 * proplists:get_value(
+                         retry_interval, NewConfig, State#state.retry_interval),
+      max_inflight_messages = proplists:get_value(
+                                max_inflight_messages, NewConfig,
+                                State#state.max_inflight_messages),
+      max_message_size = proplists:get_value(
+                           max_message_size, NewConfig,
+                           State#state.max_message_size),
+      upgrade_qos = proplists:get_value(
+                      upgrade_outgoing_qos, NewConfig, State#state.upgrade_qos)
+     },
+    {reply, ok, StateName, NewState};
 handle_sync_event(Req, _From, _StateName, State) ->
     {stop, {error, {unknown_req, Req}}, State}.
 
@@ -505,11 +534,12 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
                                           qos=QoS,
                                           retain=IsRetain},
              Var, Payload, State) ->
-    #state{mountpoint=MountPoint, pub_recv_cnt=PubRecvCnt} = State,
+    #state{mountpoint=MountPoint, pub_recv_cnt=PubRecvCnt,
+           max_message_size=MaxMessageSize} = State,
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
-    case {hd(Topic), valid_msg_size(Payload)} of
+    case {hd(Topic), valid_msg_size(Payload, MaxMessageSize)} of
         {$$, _} ->
             {connected, State};
         {_, true} ->
@@ -625,8 +655,8 @@ check_user(#mqtt_frame_connect{username=""} = F, State) ->
 check_user(#mqtt_frame_connect{username=User, password=Password,
                                client_id=ClientId,
                                clean_sess=CleanSess} = F, State) ->
-    #state{peer=Peer, queue_pid=QPid} = State,
-    case vmq_config:get_env(allow_anonymous, false) of
+    #state{peer=Peer, queue_pid=QPid, allow_anonymous=AllowAnonymous} = State,
+    case AllowAnonymous of
         false ->
             case vmq_plugin:all_till_ok(auth_on_register,
                                          [Peer, ClientId, User, Password]) of
@@ -688,12 +718,13 @@ check_will(#mqtt_frame_connect{will_topic=""}, State) ->
      send_connack(?CONNACK_INVALID_ID, State)};
 check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos},
            State) ->
-    #state{mountpoint=MountPoint, username=User, client_id=ClientId} = State,
+    #state{mountpoint=MountPoint, username=User,
+           client_id=ClientId, max_message_size=MaxMessageSize} = State,
     LWTopic = combine_mp(MountPoint, Topic),
     case vmq_plugin:all_till_ok(auth_on_publish, [User, ClientId, last_will,
                                                    LWTopic, Msg, false]) of
         ok ->
-            case valid_msg_size(Msg) of
+            case valid_msg_size(Msg, MaxMessageSize) of
                 true ->
                     {connected, send_connack(?CONNACK_ACCEPT,
                                              State#state{will_qos=Qos,
@@ -742,10 +773,7 @@ maybe_publish_last_will(#state{will_qos=QoS, will_topic=Topic,
 
 
 -spec dispatch_publish(qos(), msg_id(), msg(), state()) -> state().
-dispatch_publish(Qos, MessageId, #vmq_msg{routing_key=Topic,
-                                          payload=Payload} = Msg, State) ->
-    #state{client_id=ClientId, msg_log_handler=MsgLogHandler} = State,
-    MsgLogHandler(ClientId, Topic, Payload),
+dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
 -spec dispatch_publish_(qos(), msg_id(), msg(), state()) -> state().
@@ -918,20 +946,17 @@ cancel_timer(undefined) -> ok;
 cancel_timer(TRef) -> gen_fsm:cancel_timer(TRef), ok.
 
 -spec check_in_flight(state()) -> boolean().
-check_in_flight(#state{waiting_acks=WAcks}) ->
-    case vmq_config:get_env(max_inflight_messages, 20) of
+check_in_flight(#state{waiting_acks=WAcks, max_inflight_messages=Max}) ->
+    case Max of
         0 -> true;
         V ->
             dict:size(WAcks) < V
     end.
 
--spec valid_msg_size(binary()) -> boolean().
-valid_msg_size(Payload) ->
-    case vmq_config:get_env(message_size_limit, 0) of
-        0 -> true;
-        S when byte_size(Payload) =< S -> true;
-        _ -> false
-    end.
+-spec valid_msg_size(binary(), pos_integer()) -> boolean().
+valid_msg_size(_, 0) -> true;
+valid_msg_size(Payload, Max) when byte_size(Payload) =< Max -> true;
+valid_msg_size(_, _) -> false.
 
 get_info_items([], StateName, State) ->
     DefaultItems = [pid, client_id, user, peer_host, peer_port, state],
