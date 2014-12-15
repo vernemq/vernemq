@@ -802,7 +802,7 @@
                                                                ]}.
 
 {mapping, "tcp_listen_options", "vmq_server.tcp_listen_options", [
-                                                                  {default, "[binary, {packet, raw}, {active, false}, {nodelay, true}, {reuseaddr, true}, {linger, {true, 0}}, {send_timeout, 30000}, {send_timeout_close, true}, {backlog, 128}]"},
+                                                                  {default, "[binary, {packet, raw}, {active, false}, {nodelay, true}, {reuseaddr, true}, {linger, {true, 0}}, {send_timeout, 30000}, {send_timeout_close, true}]"},
                                                                   {datatype, string},
                                                                   hidden
                                                                  ]}.
