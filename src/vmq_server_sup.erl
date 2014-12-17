@@ -33,7 +33,7 @@
 start_link() ->
     case supervisor:start_link({local, ?MODULE}, ?MODULE, []) of
         {ok, _} = Ret ->
-            vmq_config:configure_node(mnesia),
+            vmq_config:configure_node(),
             Ret;
         Ret ->
             Ret
