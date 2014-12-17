@@ -49,8 +49,11 @@
         ]).
 -endif.
 
--record(state, {plugin_dir,
-                config_file}).
+-define(REGISTERED_PROC, vmq_server_sup).
+-record(state, {
+          ready=false,
+          plugin_dir,
+          config_file}).
 
 %%%===================================================================
 %%% API
@@ -189,6 +192,11 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info(ready, State) ->
+    case init_from_config_file(State#state{ready=true}) of
+        {ok, NewState} -> {noreply, NewState};
+        {error, Reason} -> {stop, Reason}
+    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -256,6 +264,35 @@ disable_plugin_generic(PluginKey, #state{config_file=ConfigFile} = State) ->
             E
     end.
 
+init_when_ready(MgrPid, RegisteredProcess) ->
+    case whereis(RegisteredProcess) of
+        undefined ->
+            timer:sleep(500),
+            init_when_ready(MgrPid, RegisteredProcess);
+        _ ->
+            MgrPid ! ready
+    end.
+
+init_from_config_file(#state{ready=false} = State) ->
+    RegisteredProcess = application:get_env(vmq_plugin,
+                                            registered_process,
+                                            ?REGISTERED_PROC),
+    %% we start initializing the plugins as soon as
+    %% the registered process is alive
+    case whereis(RegisteredProcess) of
+        undefined ->
+            Self = self(),
+            Pid = spawn_link(
+                    fun() ->
+                            init_when_ready(Self, RegisteredProcess)
+                    end),
+            {ok, State#state{ready={waiting, Pid}}};
+        _ ->
+            {ok, State#state{ready=true}}
+    end;
+init_from_config_file(#state{ready={waiting,_Pid}} = State) ->
+    %% we currently wait for the registered process to become alive
+    {ok, State};
 init_from_config_file(#state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
         {ok, [{plugins, Plugins}]} ->
@@ -263,7 +300,7 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
                 {ok, CheckedPlugins} ->
                     ok = start_plugins(CheckedPlugins),
                     ok = compile_hooks(CheckedPlugins),
-                    {ok, State};
+                    {ok, State#state{ready=true}};
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -271,7 +308,7 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
             {error, incorrect_plugin_config};
         {error, enoent} ->
             ok = file:write_file(ConfigFile, "{plugins, []}.", []),
-            {ok, State};
+            {ok, State#state{ready=true}};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -289,7 +326,7 @@ check_plugins([{module, {Name, Module, Fun, Arity}}|Rest], Acc) ->
                                   [{module_plugin,
                                     [{Name, Module, Fun, Arity}]} | Acc]);
                 false ->
-                    {error, no_matching_fun_in_module}
+                    {error, {no_matching_fun_in_module, Module, Fun, Arity}}
             end
     end;
 check_plugins([{application, App, AppPath}|Rest], Acc) ->
