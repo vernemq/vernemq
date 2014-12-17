@@ -37,6 +37,8 @@
          terminate/2,
          code_change/3]).
 
+-export([msg_store_init/1]).
+
 -record(state, {}).
 -type state() :: #state{}.
 
@@ -214,22 +216,10 @@ init([]) ->
     ets:new(?MSG_INDEX_TABLE, [bag|TableOpts]),
     ets:new(?MSG_CACHE_TABLE, TableOpts),
     ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
-    case vmq_plugin:only(
-           msg_store_fold,
-           [fun
-               (<<?MSG_ITEM, MsgRef/binary>> = Key, Val, Acc) ->
-                   {_, RoutingKey, Payload} = binary_to_term(Val),
-                   update_subs_(RoutingKey, MsgRef, Payload, Key, Acc)
-           end, []]) of
-        {error, Reason} ->
-            lager:warning("can't initialize msg cache due to ~p", [Reason]);
-        ToDelete ->
-            lists:foreach(
-              fun(Key) ->
-                      vmq_plugin:only(msg_store_delete_sync, [Key])
-              end, ToDelete)
-    end,
     {ok, #state{}}.
+
+msg_store_init(PluginName) ->
+    gen_server:call(?MODULE, {init_plugin, PluginName}).
 
 update_subs_(RoutingKey, MsgRef, Payload, Key, Acc) ->
     case vmq_reg:subscriptions(RoutingKey) of
@@ -255,7 +245,26 @@ update_subs_(RoutingKey, MsgRef, Payload, Key, Acc) ->
             Acc
     end.
 
--spec handle_call(_, _, _) -> {'reply', {'error', 'not_implemented'}, _}.
+-spec handle_call(_, _, _) -> {noreply, _} | {'reply', {'error', 'not_implemented'}, _}.
+handle_call({init_plugin, HookModule}, From, State) ->
+    gen_server:reply(From, ok),
+    ok = wait_for_hooks(HookModule),
+    case vmq_plugin:only(
+           msg_store_fold,
+           [fun
+                (<<?MSG_ITEM, MsgRef/binary>> = Key, Val, Acc) ->
+                    {_, RoutingKey, Payload} = binary_to_term(Val),
+                    update_subs_(RoutingKey, MsgRef, Payload, Key, Acc)
+            end, []]) of
+        {error, Reason} ->
+            lager:warning("can't initialize msg cache due to ~p", [Reason]);
+        ToDelete ->
+            lists:foreach(
+              fun(Key) ->
+                      vmq_plugin:only(msg_store_delete_sync, [Key])
+              end, ToDelete)
+    end,
+    {noreply, State};
 handle_call(_Req, _From, State) ->
     {reply, {error, not_implemented}, State}.
 
@@ -274,6 +283,33 @@ terminate(_Reason, _State) ->
 -spec code_change(_, _, _) -> {'ok', _}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+
+wait_for_hooks(HookModule) ->
+    PluginInfo = vmq_plugin:info(only),
+    MsgStoreHooks = [msg_store_write_sync,
+                     msg_store_write_async,
+                     msg_store_read,
+                     msg_store_fold,
+                     msg_store_delete_sync,
+                     msg_store_delete_async],
+    Hooks = [{Hook, M == HookModule}|| {H, M, _, _} = Hook <- PluginInfo,
+                                       lists:member(H, MsgStoreHooks)],
+    case length(Hooks) == length(MsgStoreHooks) of
+        true ->
+            case lists:keyfind(false, 2, Hooks) of
+                false -> ok;
+                _ ->
+                    %% maybe inconsistency with msg store plugin
+                    lager:warning("check msg store plugin, not all hooks are
+                                  provided by the same plugin", []),
+                    ok
+            end;
+        false ->
+            timer:sleep(1000),
+            wait_for_hooks(HookModule)
+    end.
+
 
 -spec safe_ets_update_counter('vmq_msg_cache', _, {3, 1},
                               fun((_) -> 'new_ref_count'),
