@@ -1,11 +1,11 @@
 %% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
-%% 
+%%
 %%     http://www.apache.org/licenses/LICENSE-2.0
-%% 
+%%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -230,7 +230,11 @@ bridge_plugin(ReportProc) ->
                            ReportProc ! {subscribe, self()},
                            ok
                    end,
-    {RegisterFun, PublishFun, SubscribeFun}.
+    UnsubscribeFun = fun(_Topic) ->
+                             ReportProc ! {unsubscribe, self()},
+                             ok
+                     end,
+    {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}}.
 
 start_bridge_plugin(QoS) ->
     application:load(vmq_bridge),
@@ -247,7 +251,9 @@ start_bridge_plugin(QoS) ->
                           %% SSL Bridges
                          ]
                         }),
-    application:ensure_all_started(vmq_bridge).
+    application:ensure_all_started(vmq_bridge),
+    Config = [{vmq_bridge, application:get_all_env(vmq_bridge)}],
+    vmq_bridge_sup:change_config(Config).
 
 flush() ->
     receive

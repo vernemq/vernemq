@@ -17,7 +17,8 @@
 -behaviour(gen_emqtt).
 
 %% API
--export([start_link/3]).
+-export([start_link/3,
+         setopts/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -35,40 +36,35 @@
          on_publish/3]).
 
 
--record(state, {config=[], subscriptions=[], publish_fun, subscribe_fun}).
+-record(state, {
+          host,
+          port,
+          publish_fun,
+          subscribe_fun,
+          unsubscribe_fun,
+          opts,
+          type,
+          client_pid,
+          bridge_transport,
+          topics,
+          client_opts,
+          subscriptions=[]}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+start_link(Host, Port, RegistryMFA) ->
+    gen_server:start_link(?MODULE, [Host, Port, RegistryMFA], []).
 
-start_link(RegistryMFA, BridgeConfig, ClientOpts) ->
-    gen_emqtt:start_link(?MODULE, [RegistryMFA, BridgeConfig], ClientOpts).
+setopts(BridgePid, Type, Opts) ->
+    gen_server:call(BridgePid, {setopts, Type, Opts}).
 
 %%%===================================================================
 %%% gen_emqtt callbacks
 %%%===================================================================
-on_connect(State) ->
-    #state{config=Config, subscribe_fun=SubscribeFun} = State,
-    Subscriptions =
-    lists:foldl(fun({Topic, Direction, QoS, LocalPrefix, RemotePrefix}, Acc) ->
-                        case Direction of
-                            in ->
-                                RemoteTopic = lists:flatten([LocalPrefix, Topic]),
-                                gen_emqtt:subscribe(self(), RemoteTopic, QoS),
-                                [{{in, RemoteTopic}, LocalPrefix}|Acc];
-                            out ->
-                                LocalTopic = lists:flatten([RemotePrefix, Topic]),
-                                ok = SubscribeFun(LocalTopic),
-                                [{{out, LocalTopic}, QoS, RemotePrefix}|Acc];
-                            both ->
-                                RemoteTopic = lists:flatten([LocalPrefix, Topic]),
-                                gen_emqtt:subscribe(self(), RemoteTopic, QoS),
-                                LocalTopic = lists:flatten([RemotePrefix, Topic]),
-                                ok = SubscribeFun(LocalTopic),
-                                [{{in, RemoteTopic}, LocalPrefix}, {{out, LocalTopic}, QoS, RemotePrefix}|Acc]
-                        end
-                end, [], Config),
-    {ok, State#state{subscriptions=Subscriptions}}.
+on_connect({coord, CoordinatorPid} = State) ->
+    CoordinatorPid ! connected,
+    {ok, State}.
 
 on_connect_error(_Reason, State) ->
     {ok, State}.
@@ -82,41 +78,122 @@ on_subscribe(_Topics, State) ->
 on_unsubscribe(_Topics, State) ->
     {ok, State}.
 
-on_publish(Topic, Payload, #state{subscriptions=Subscriptions, publish_fun=PublishFun} = State) ->
-    case lists:keyfind({in, Topic}, 1, Subscriptions) of
-        {_, LocalPrefix} ->
-            ok = PublishFun(lists:flatten([LocalPrefix, Topic]), Payload);
-        _ ->
-            ignore
-    end,
+on_publish(Topic, Payload, {coord, CoordinatorPid} = State) ->
+    CoordinatorPid ! {deliver_remote, Topic, Payload},
     {ok, State}.
 
-%
-init([RegistryMFA, BridgeConfig]) ->
+init([Host, Port, RegistryMFA]) ->
     {M,F,A} = RegistryMFA,
-    {RegisterFun, PublishFun, SubscribeFun} = apply(M,F,A),
+    {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}} = apply(M,F,A),
     true = is_function(RegisterFun, 0),
     true = is_function(PublishFun, 2),
     true = is_function(SubscribeFun, 1),
+    true = is_function(UnsubscribeFun, 1),
     ok = RegisterFun(),
-    {ok, #state{config=BridgeConfig,
+    {ok, #state{host=Host,
+                port=Port,
                 publish_fun=PublishFun,
-                subscribe_fun=SubscribeFun}}.
+                subscribe_fun=SubscribeFun,
+                unsubscribe_fun=UnsubscribeFun}};
+init([{coord, _CoordinatorPid} = State]) ->
+    {ok, State}.
+
+handle_call({setopts, Type, Opts}, _From,
+            #state{host=Host, port=Port, client_pid=undefined} = State) ->
+    ClientOpts = client_opts(Type, Host, Port, Opts),
+    {ok, Pid} = gen_emqtt:start_link(?MODULE, [{coord, self()}], ClientOpts),
+    {reply, ok, State#state{client_pid=Pid,
+                            opts=Opts,
+                            type=Type}};
+handle_call({setopts, Type, Opts}, _From, #state{type=Type, opts=Opts} = State) ->
+    {reply, ok, State};
+handle_call({setopts, Type, Opts}, _From, #state{type=Type, opts=OldOpts,
+                                                 host=Host, port=Port,
+                                                 client_pid=ClientPid,
+                                                 subscriptions=Subscriptions,
+                                                 subscribe_fun=SubscribeFun,
+                                                 unsubscribe_fun=UnsubscribeFun
+                                                } = State) ->
+    NewState =
+    case lists:keydelete(topics, 1, Opts)
+         == lists:keydelete(topics, 1, OldOpts) of
+        true ->
+            % Client Options did not change
+            % maybe subscriptions changed
+            Topics = proplists:get_value(topics, Opts),
+            NewSubscriptions =
+            case proplists:get_value(topics, OldOpts) of
+                Topics ->
+                    %% subscriptions did not change
+                    Subscriptions;
+                _ ->
+                    bridge_unsubscribe(ClientPid, Subscriptions, UnsubscribeFun),
+                    bridge_subscribe(ClientPid, Topics, SubscribeFun, [])
+            end,
+            State#state{opts=Opts, subscriptions=NewSubscriptions};
+        false ->
+            % Client Options changed
+            % stop client
+            bridge_unsubscribe(ClientPid, Subscriptions, UnsubscribeFun),
+            ok = gen_emqtt:cast(ClientPid, {coord, self(), stop}),
+            % restart client
+            ClientOpts = client_opts(Type, Host, Port, Opts),
+            {ok, Pid} = gen_emqtt:start_link(?MODULE, [{coord, self()}], ClientOpts),
+            State#state{client_pid=Pid, opts=Opts}
+    end,
+    {reply, ok, NewState};
+handle_call({setopts, Type, Opts}, _From, #state{host=Host, port=Port,
+                                                 client_pid=ClientPid,
+                                                 subscriptions=Subscriptions,
+                                                 unsubscribe_fun=UnsubscribeFun
+                                                } = State) ->
+    %% Other Type (ssl or tcp) -> stop client
+    bridge_unsubscribe(ClientPid, Subscriptions, UnsubscribeFun),
+    ok = gen_emqtt:cast(ClientPid, {coord, self(), stop}),
+    % restart client
+    ClientOpts = client_opts(Type, Host, Port, Opts),
+    {ok, Pid} = gen_emqtt:start_link(?MODULE, [{coord, self()}], ClientOpts),
+    {reply, ok, State#state{client_pid=Pid, opts=Opts, type=Type}};
 
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.
 
+handle_cast({coord, CoordinatorPid, stop}, {coord, CoordinatorPid} = State) ->
+    {stop, normal, State};
 handle_cast(_Req, State) ->
     {noreply, State}.
-handle_info({deliver, Topic, Payload, 0, _IsRetained, _IsDup, _Ref},
-            #state{subscriptions=Subscriptions} = State) ->
+
+handle_info(connected, #state{client_pid=Pid, opts=Opts,
+                              subscribe_fun=SubscribeFun} = State) ->
+    Topics = proplists:get_value(topics, Opts),
+    Subscriptions = bridge_subscribe(Pid, Topics, SubscribeFun, []),
+    {noreply, State#state{subscriptions=Subscriptions}};
+handle_info({deliver_remote, Topic, Payload},
+            #state{publish_fun=PublishFun, subscriptions=Subscriptions} = State) ->
+    Words = emqtt_topic:words(Topic),
+    lists:foreach(
+      fun({{in, T}, LocalPrefix}) ->
+              TWords = emqtt_topic:words(T),
+              case emqtt_topic:match(Words, TWords) of
+                  true ->
+                      ok = PublishFun(lists:flatten([LocalPrefix, Topic]), Payload);
+                  false ->
+                      ok
+              end;
+         (_) ->
+              ok
+      end, Subscriptions),
+    {noreply, State};
+handle_info({deliver, Topic, Payload, _QoS, _IsRetained, _IsDup},
+            #state{subscriptions=Subscriptions, client_pid=ClientPid} = State) ->
     Words = emqtt_topic:words(Topic),
     lists:foreach(
       fun({{out, T}, QoS, RemotePrefix}) ->
               TWords = emqtt_topic:words(T),
               case emqtt_topic:match(Words, TWords) of
                   true ->
-                      ok = gen_emqtt:publish(self(), lists:flatten([RemotePrefix, Topic]) , Payload, QoS);
+                      ok = gen_emqtt:publish(ClientPid, lists:flatten([RemotePrefix, Topic]) ,
+                                             Payload, QoS);
                   false ->
                       ok
               end;
@@ -130,3 +207,100 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+bridge_subscribe(Pid, [{Topic, in, QoS, LocalPrefix, _}|Rest],
+                 SubscribeFun, Acc) ->
+    RemoteTopic = lists:flatten([LocalPrefix, Topic]),
+    gen_emqtt:subscribe(Pid, RemoteTopic, QoS),
+    bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, RemoteTopic}, LocalPrefix}|Acc]);
+bridge_subscribe(Pid, [{Topic, out, QoS, _, RemotePrefix}|Rest],
+                 SubscribeFun, Acc) ->
+    LocalTopic = lists:flatten([RemotePrefix, Topic]),
+    ok = SubscribeFun(LocalTopic),
+    bridge_subscribe(Pid, Rest, SubscribeFun, [{{out, LocalTopic}, QoS, RemotePrefix}|Acc]);
+bridge_subscribe(Pid, [{Topic, both, QoS, LocalPrefix, RemotePrefix}|Rest],
+                 SubscribeFun, Acc) ->
+    RemoteTopic = lists:flatten([LocalPrefix, Topic]),
+    gen_emqtt:subscribe(Pid, RemoteTopic, QoS),
+    LocalTopic = lists:flatten([RemotePrefix, Topic]),
+    ok = SubscribeFun(LocalTopic),
+    bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, RemoteTopic}, LocalPrefix},
+                                          {{out, LocalTopic}, QoS, RemotePrefix}|Acc]);
+bridge_subscribe(_, [], _, Acc) -> Acc.
+
+
+bridge_unsubscribe(Pid, [{{in, Topic}, _}|Rest], UnsubscribeFun) ->
+    gen_emqtt:unsubscribe(Pid, Topic),
+    bridge_unsubscribe(Pid, Rest, UnsubscribeFun);
+bridge_unsubscribe(Pid, [{{out, Topic}, _, _}|Rest], UnsubscribeFun) ->
+    UnsubscribeFun(Topic),
+    bridge_unsubscribe(Pid, Rest, UnsubscribeFun);
+bridge_unsubscribe(_, [], _) ->
+    ok.
+
+client_opts(tcp, Host, Port, Opts) ->
+    OOpts =
+    [{host, Host},
+     {port, Port},
+     {username, proplists:get_value(username, Opts)},
+     {password, proplists:get_value(password, Opts)},
+     {client,   proplists:get_value(client_id, Opts)},
+     {clean_session, proplists:get_value(cleansession, Opts, false)},
+     {keepalive_interval, proplists:get_value(keepalive_interval, Opts)},
+     {reconnect_timeout, proplists:get_value(restart_timeout, Opts)},
+     {transport, {gen_tcp, []}}
+     |case proplists:get_value(try_private, Opts, true) of
+          true ->
+              [{proto_version, 131}]; %% non-spec
+          false ->
+              []
+      end],
+    [P || {_, V}=P <- OOpts, V /= undefined];
+client_opts(ssl, Host, Port, Opts) ->
+    TCPOpts = client_opts(tcp, Host, Port, Opts),
+    SSLOpts = [{certfile, proplists:get_value(certfile, Opts)},
+               {cacertfile, proplists:get_value(cafile, Opts)},
+               {keyfile, proplists:get_value(keyfile, Opts)},
+               {verify, case proplists:get_value(insecure, Opts) of
+                            true -> verify_none;
+                            _ -> verify_peer
+                        end},
+               {versions, case proplists:get_value(tls_version, Opts) of
+                              undefined -> undefined;
+                              V -> [V]
+                          end},
+               {psk_identity, proplists:get_value(identity, Opts)},
+               {user_lookup_fun, case {proplists:get_value(identity, Opts) == undefined,
+                                       proplists:get_value(psk, Opts)}
+                                 of
+                                     {Identity, Psk}
+                                       when is_list(Identity) and is_list(Psk) ->
+                                         BinPsk = to_bin(Psk),
+                                         {fun(psk, I, _) when I == Identity ->
+                                                  {ok, BinPsk};
+                                             (_, _, _) -> error
+                                          end, []};
+                                     _ -> undefined
+                                 end}
+                ],
+
+    lists:keyreplace(transport, 1, TCPOpts,
+                     {transport, {ssl, [P||{_,V}=P <- SSLOpts, V /= undefined]}}).
+
+%% @spec to_bin(string()) -> binary()
+%% @doc Convert a hexadecimal string to a binary.
+to_bin(L) ->
+    to_bin(L, []).
+
+%% @doc Convert a hex digit to its integer value.
+dehex(C) when C >= $0, C =< $9 ->
+    C - $0;
+dehex(C) when C >= $a, C =< $f ->
+    C - $a + 10;
+dehex(C) when C >= $A, C =< $F ->
+    C - $A + 10.
+
+to_bin([], Acc) ->
+    iolist_to_binary(lists:reverse(Acc));
+to_bin([C1, C2 | Rest], Acc) ->
+    to_bin(Rest, [(dehex(C1) bsl 4) bor dehex(C2) | Acc]).
