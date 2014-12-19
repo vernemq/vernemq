@@ -509,7 +509,13 @@ direct_plugin_exports(Mod) ->
                         )
                end,
     QueueSize = vmq_config:get_env(max_queued_messages, 1000),
-    {ok, QPid} = vmq_queue:start_link(self(), QueueSize),
+    PluginPid = self(),
+    {ok, QPid} = vmq_queue:start_link(
+                   spawn_link(
+                     fun() ->
+                             plugin_queue_loop(PluginPid)
+                     end)
+                   , QueueSize),
 
     RegisterFun =
     fun() ->
@@ -537,7 +543,38 @@ direct_plugin_exports(Mod) ->
             ok = subscribe(User, ClientId(CallingPid), QPid, [{Topic, 0}]),
             ok
     end,
-    {RegisterFun, PublishFun, SubscribeFun}.
+    UnsubscribeFun =
+    fun(Topic) ->
+            wait_til_ready(),
+            CallingPid = self(),
+            User = {plugin, Mod, CallingPid},
+            ok = unsubscribe(User, ClientId(CallingPid), [{Topic, 0}]),
+            ok
+    end,
+    {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}}.
+
+plugin_queue_loop(PluginPid) ->
+    receive
+        {mail, QPid, new_data} ->
+            vmq_queue:active(QPid),
+            plugin_queue_loop(PluginPid);
+        {mail, QPid, Msgs, _, _} ->
+            [PluginPid ! {deliver, RoutingKey,
+                              Payload,
+                              QoS,
+                              IsRetain,
+                              IsDup}
+             || {deliver, QoS, #vmq_msg{
+                                  routing_key=RoutingKey,
+                                  payload=Payload,
+                                  retain=IsRetain,
+                                  dup=IsDup}} <- Msgs],
+            vmq_queue:notify(QPid),
+            plugin_queue_loop(PluginPid);
+        Other ->
+            exit({unknown_msg_in_plugin_loop, Other})
+    end.
+
 
 -spec add_subscriber_tx(topic(), qos(), client_id()) -> ok | ignore | abort.
 add_subscriber_tx(Topic, Qos, ClientId) ->
