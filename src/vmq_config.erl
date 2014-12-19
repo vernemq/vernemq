@@ -18,7 +18,7 @@
 
 %% API
 -export([start_link/0,
-         change_config/0,
+         change_config/1,
          configure_node/0,
          table_defs/0,
          reset/0,
@@ -97,21 +97,17 @@ configure_node() ->
     %% reset config
     ets:delete_all_objects(?TABLE),
     %% force cache initialization
-    init_config_items(application:loaded_applications()),
-    vmq_plugin:all(change_config, []).
+    Configs = init_config_items(application:loaded_applications(), []),
+    vmq_plugin:all(change_config, [Configs]).
 
-init_config_items([{App, _, _}|Rest]) ->
+init_config_items([{App, _, _}|Rest], Acc) ->
     case application:get_env(App, vmq_config_enabled, false) of
         true ->
-            lists:foreach(fun({Key, Val}) ->
-                                  %% initialize the config cache
-                                  get_env(App, Key, Val)
-                          end, application:get_all_env(App));
+            init_config_items(Rest, [{App, get_all_env(App)}|Acc]);
         false ->
-            ok
-    end,
-    init_config_items(Rest);
-init_config_items([]) -> ok.
+            init_config_items(Rest, Acc)
+    end;
+init_config_items([], Acc) -> Acc.
 
 -spec table_defs() -> [{atom(), [{atom(), any()}]}].
 table_defs() ->
@@ -132,8 +128,9 @@ reset() ->
 
 
 %%% VMQ_SERVER CONFIG HOOK
-change_config() ->
-    Env = filter_out_unchanged(get_all_env(vmq_server), []),
+change_config(Configs) ->
+    {vmq_server, VmqServerConfig} = lists:keyfind(vmq_server, 1, Configs),
+    Env = filter_out_unchanged(VmqServerConfig, []),
     %% change session configurations
     case lists:keyfind(vmq_session, 1, validate_session_config(Env, [])) of
         {_, SessionConfigs} ->
@@ -180,7 +177,7 @@ filter_out_unchanged([], Acc) -> Acc.
 %%--------------------------------------------------------------------
 init([]) ->
     ets:new(?TABLE, [public, named_table, {read_concurrency, true}]),
-    vmq_plugin_mgr:enable_module_plugin(?MODULE, change_config, 0),
+    vmq_plugin_mgr:enable_module_plugin(?MODULE, change_config, 1),
     {ok, []}.
 
 %%--------------------------------------------------------------------
