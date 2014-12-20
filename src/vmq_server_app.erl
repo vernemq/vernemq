@@ -25,7 +25,18 @@
 
 -spec start(_, _) -> {'error', _} | {'ok', pid()} | {'ok', pid(), _}.
 start(_StartType, _StartArgs) ->
-    vmq_server_sup:start_link().
+    case vmq_server_sup:start_link() of
+        {error, _} = E ->
+            E;
+        R ->
+            %% we'll wait for some millis, this
+            %% enables the vmq_plugin mechanism to be prepared...
+            %% vmq_plugin_mgr waits for the 'vmq_server_sup' process
+            %% to be registered.
+            timer:sleep(500),
+            vmq_config:configure_node(),
+            R
+    end.
 
 -spec stop(_) -> 'ok'.
 stop(_State) ->

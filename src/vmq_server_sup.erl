@@ -31,13 +31,7 @@
 
 -spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
-    case supervisor:start_link({local, ?MODULE}, ?MODULE, []) of
-        {ok, _} = Ret ->
-            vmq_config:configure_node(),
-            Ret;
-        Ret ->
-            Ret
-    end.
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% ===================================================================
 %% Supervisor callbacks
