@@ -267,7 +267,7 @@ disable_plugin_generic(PluginKey, #state{config_file=ConfigFile} = State) ->
 init_when_ready(MgrPid, RegisteredProcess) ->
     case whereis(RegisteredProcess) of
         undefined ->
-            timer:sleep(500),
+            timer:sleep(10),
             init_when_ready(MgrPid, RegisteredProcess);
         _ ->
             MgrPid ! ready
