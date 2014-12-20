@@ -49,7 +49,6 @@
         ]).
 -endif.
 
--define(REGISTERED_PROC, vmq_server_sup).
 -record(state, {
           ready=false,
           plugin_dir,
@@ -106,9 +105,8 @@ disable_plugin(Plugin) when is_atom(Plugin) or is_tuple(Plugin) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    PluginDir = application:get_env(vmq_plugin, plugin_dir, "."),
-    ConfigFileName = application:get_env(vmq_plugin, plugin_config,
-                                           "vmq_plugin.conf"),
+    {ok, PluginDir} = application:get_env(vmq_plugin, plugin_dir),
+    {ok, ConfigFileName} = application:get_env(vmq_plugin, plugin_config),
     case filelib:ensure_dir(PluginDir) of
         ok ->
             ConfigFile = filename:join(PluginDir, ConfigFileName),
@@ -274,9 +272,7 @@ init_when_ready(MgrPid, RegisteredProcess) ->
     end.
 
 init_from_config_file(#state{ready=false} = State) ->
-    RegisteredProcess = application:get_env(vmq_plugin,
-                                            registered_process,
-                                            ?REGISTERED_PROC),
+    {ok, RegisteredProcess} = application:get_env(vmq_plugin, wait_for_proc),
     %% we start initializing the plugins as soon as
     %% the registered process is alive
     case whereis(RegisteredProcess) of

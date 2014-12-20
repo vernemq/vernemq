@@ -8,3 +8,8 @@
                                           {datatype, file},
                                           hidden
                                          ]}.
+{mapping, "wait_for_proc", "vmq_plugin.wait_for_proc", [
+                                            {default, vmq_server_sup},
+                                            {datatype, atom},
+                                            hidden
+                                            ]}.

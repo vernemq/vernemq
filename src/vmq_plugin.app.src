@@ -8,5 +8,10 @@
                   stdlib
                  ]},
   {mod, { vmq_plugin_app, []}},
-  {env, []}
+  {env, [
+        {plugin_dir, "."},
+        {plugin_config, "vmq_plugin.conf"},
+        {wait_for_proc, init}
+        
+    ]}
  ]}.
