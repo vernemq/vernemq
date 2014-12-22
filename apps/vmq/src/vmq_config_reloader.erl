@@ -1,40 +1,16 @@
 -module(vmq_config_reloader).
 
--export([reload_all/1,
-         reload_app_conf/1]).
+-export([configure_node/1]).
 -define(CONF_PATH, "data/generated.configs").
 
-reload_all([]) ->
-    %% called from vmq-admin script
-    reload_app_conf(vmq_acl),
-    reload_app_conf(vmq_passwd),
-    %reload_app_conf(vmq_lua),
-    reload_app_conf(vmq_exo),
-    reload_app_conf(vmq_bridge),
-    reload_app_conf(vmq_server).
-
-reload_app_conf(Application) ->
-    case config_diff(Application) of
-        {ok, {New, Changed, Deleted}} ->
-            apply_config_diff(Application, New, Changed, Deleted);
-        E -> E
-    end.
-
-config_diff(Application) ->
+configure_node([]) ->
     case file:list_dir(?CONF_PATH) of
         {ok, Filenames}  ->
             case sorted_sys_configs(Filenames, []) of
                 [{_, SysConfFile}|_] ->
                     {ok, [SysConf]} = file:consult(filename:join(?CONF_PATH, SysConfFile)),
-                    NewConf = proplists:get_value(Application, SysConf, []),
-                    {New, Changed} = config_diffp(Application, NewConf, [], []),
-                    case config_diffm(Application, NewConf) of
-                        {Deleted, []} ->
-                            {ok, {New, Changed, Deleted}};
-                        {Deleted, Warn} ->
-                            error_logger:warning_msg("Settings present in original ~p.app file but not in sys.config, it is safer to keep the configs ~p", [Application, Warn]),
-                            {ok, {New, Changed, Deleted}}
-                    end;
+                    apply_new_conf(SysConf),
+                    vmq_config:configure_node();
                 _ ->
                     {error, no_sys_conf}
             end;
@@ -42,23 +18,21 @@ config_diff(Application) ->
             E
     end.
 
-apply_config_diff(Application, New, Changed, Deleted) ->
+apply_new_conf([{Application, AppConf}|Rest]) ->
+    {New, Changed} = config_diffp(Application, AppConf, [], []),
+    {Deleted, Warn} = config_diffm(Application, AppConf),
     [application:set_env(Application, Par, Val) || {Par, Val} <- New],
     [application:set_env(Application, Par, Val) || {Par, {_, Val}} <- Changed],
     [application:unset_env(Application, Par) || {Par, _} <- Deleted],
-    {ok, Modules} = application:get_key(Application, modules),
-    lists:foreach(fun(Mod) ->
-                        Exports = Mod:module_info(exports),
-                        case lists:member({change_config_now, 3}, Exports) of
-                            true ->
-                                catch apply(Mod, change_config_now, [New, Changed, Deleted]);
-                            false ->
-                                ok
-                        end
-                end, Modules),
-    error_logger:info_msg("reload config for application ~p~nNEW: ~p~nCHANGED: ~p~nDELETED: ~p~n",
-                          [Application, New, Changed, Deleted]).
-
+    case Warn of
+        [] -> ok;
+        _ ->
+            error_logger:warning_msg("Settings present in original ~p.app file
+                                     but not in sys.config, it is safer to keep
+                                     the configs ~p", [Application, Warn])
+    end,
+    apply_new_conf(Rest);
+apply_new_conf([]) -> ok.
 
 config_diffp(Application, [{Par, Val} = Prop | Rest], New, Changed) ->
     case application:get_env(Application, Par) of
