@@ -219,7 +219,15 @@ init([]) ->
     {ok, #state{}}.
 
 msg_store_init(PluginName) ->
-    gen_server:call(?MODULE, {init_plugin, PluginName}).
+    %% called by the message store implementation
+    case whereis(?MODULE) of
+        undefined ->
+            %% we are not yet started,
+            timer:sleep(100),
+            msg_store_init(PluginName);
+        _ ->
+            gen_server:call(?MODULE, {init_plugin, PluginName})
+    end.
 
 update_subs_(RoutingKey, MsgRef, Payload, Key, Acc) ->
     case vmq_reg:subscriptions(RoutingKey) of
