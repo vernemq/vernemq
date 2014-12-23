@@ -60,6 +60,10 @@ config_diffm(OrigEnv, NewConf, [{Par, _} = Prop | Rest], Deleted, Warn) ->
     case proplists:get_value(Par, NewConf) of
         undefined ->
             case lists:keymember(Par, 1, OrigEnv) of
+                true when Par == vmq_config_enabeld ->
+                    config_diffm(OrigEnv, NewConf, Rest, Deleted, Warn);
+                true when Par == vmq_plugin_hooks ->
+                    config_diffm(OrigEnv, NewConf, Rest, Deleted, Warn);
                 true ->
                     %% Setting present in Original Config app.src
                     %% but not exposed in sys.config. It is safer

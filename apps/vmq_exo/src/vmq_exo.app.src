@@ -10,6 +10,24 @@
                  ]},
   {mod, { vmq_exo_app, []}},
   {env, [
-    {exometer_predefined, {apply, vmq_exo, entries, []}}
-   ]}
+      {exometer_predefined, {apply, vmq_exo, entries, []}},
+      {vmq_config_enabled, true},
+      {vmq_plugin_hooks, [
+          {vmq_exo, change_config, 1},
+          {vmq_exo, incr_bytes_received, 1},
+          {vmq_exo, incr_bytes_sent, 1},
+          {vmq_exo, incr_inactive_clients, 0},
+          {vmq_exo, decr_inactive_clients, 0},
+          {vmq_exo, incr_expired_clients, 0},
+          {vmq_exo, incr_messages_received, 1},
+          {vmq_exo, incr_messages_sent, 1},
+          {vmq_exo, incr_publishes_dropped, 1},
+          {vmq_exo, incr_publishes_received, 1},
+          {vmq_exo, incr_publishes_sent, 1},
+          {vmq_exo, incr_subscription_count, 0},
+          {vmq_exo, decr_subscription_count, 0},
+          {vmq_exo, incr_socket_count, 0},
+          {vmq_exo, incr_connect_received, 0}
+      ]}
+  ]}
  ]}.
