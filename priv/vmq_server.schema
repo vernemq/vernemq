@@ -7,6 +7,22 @@
                                                                {datatype, flag}
                                                               ]}.
 
+%% @doc Allows to operate in case the cluster is inconsistent,
+%% this removes the consistency check when registering new
+%% clients, subscribing or unsubscribing from topics
+{mapping, "trade_consistency", "vmq_server.trade_consistency", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+
+%% @doc Allows a client to logon multiple times using the same client id
+%% this is not based on the standard. According to the standard, the server
+%% has to disconnect existing sessions for the same client id
+{mapping, "allow_multiple_sessions", "vmq_server.allow_multiple_sessions", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+
 %% @doc listener.max_connections is an integer or 'infinity' defining 
 %% the number of concurrent connections. This option can be overridden
 %% by either specifying on the protocol level:
@@ -795,11 +811,6 @@
                                              {default, "{{platform_data_dir}}/mnesia"},
                                              {datatype, directory}
                                             ]}.
-
-{mapping, "session_dump_file", "vmq_server.session_dump_file", [
-                                                                {default, "{{platform_data_dir}}/session.dump"},
-                                                                {datatype, file}
-                                                               ]}.
 
 {mapping, "tcp_listen_options", "vmq_server.tcp_listen_options", [
                                                                   {default, "[binary, {packet, raw}, {active, false}, {nodelay, true}, {reuseaddr, true}, {linger, {true, 0}}, {send_timeout, 30000}, {send_timeout_close, true}]"},

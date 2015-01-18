@@ -28,8 +28,9 @@
       {max_queued_messages, 1000},
       {message_size_limit, 10},
       {tune_tcp_buffer_size, false},
-      {session_dump_file, "session.dump"},
       {upgrade_outgoing_qos, false},
+      {trade_consistency, false},
+      {allow_multiple_sessions, false},
       {vmq_config_enabled, true},
       {listeners, {
                       [{{{127,0,0,1}, 1888}, [{max_connections, infinity}, 

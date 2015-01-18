@@ -19,11 +19,12 @@
 -export([start_link/0,
 
          %% used in vmq_session fsm handling
-         subscribe/4,
-         unsubscribe/3,
-         register_client/3,
-         %% used in vmq_session fsm handling AND vmq_systree
-         publish/1,
+         subscribe/5,
+         unsubscribe/4,
+         register_client/4,
+         register_session/2,
+         %% used in vmq_session fsm handling
+         publish/2,
 
          %% used in vmq_session:get_info/2 and vmq_session:list_sessions/1
          subscriptions_for_client/1,
@@ -76,28 +77,23 @@
 
 -spec start_link() -> {ok, pid()} | ignore | {error, atom()}.
 start_link() ->
-    case ets:info(vmq_session, name) of
-        undefined ->
-            SessionFile = vmq_config:get_env(session_dump_file, "session.dump"),
-            case filelib:is_file(SessionFile) of
-                true ->
-                    {ok, _Tab} = ets:file2tab(SessionFile);
-                false ->
-                    ets:new(vmq_session, [public,
-                                          named_table,
-                                          {keypos, 2},
-                                          {read_concurrency, true},
-                                          {write_concurrency, true}])
-            end;
-        _ ->
-            ok
-    end,
+    ets:new(vmq_session, [public,
+                          bag,
+                          named_table,
+                          {keypos, 2},
+                          {read_concurrency, true},
+                          {write_concurrency, true}]),
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec subscribe(username() | plugin_id(), client_id(), pid(),
+-spec subscribe(flag(), username() | plugin_id(), client_id(), pid(),
                 [{topic(), qos()}]) -> ok | {error, not_allowed | [any(), ...]}.
-subscribe(User, ClientId, QPid, Topics) ->
-    vmq_cluster:if_ready(fun subscribe_/4, [User, ClientId, QPid, Topics]).
+
+subscribe(false, User, ClientId, QPid, Topics) ->
+    %% we don't trade consistency
+    vmq_cluster:if_ready(fun subscribe_/4, [User, ClientId, QPid, Topics]);
+subscribe(true, User, ClientId, QPid, Topics) ->
+    %% we trade consistency
+    subscribe_(User, ClientId, QPid, Topics).
 
 -spec subscribe_(username() | plugin_id(), client_id(), pid(),
                  [{topic(), qos()}]) -> 'ok' | {'error','not_allowed'}.
@@ -125,9 +121,14 @@ subscribe_tx(ClientId, QPid, Topics) ->
                         ok
                 end).
 
--spec unsubscribe(username() | plugin_id(), client_id(), [topic()]) -> any().
-unsubscribe(User, ClientId, Topics) ->
-    vmq_cluster:if_ready(fun unsubscribe_/3, [User, ClientId, Topics]).
+-spec unsubscribe(flag(), username() | plugin_id(),
+                  client_id(), [topic()]) -> any().
+unsubscribe(false, User, ClientId, Topics) ->
+    %% we don't trade consistency
+    vmq_cluster:if_ready(fun unsubscribe_/3, [User, ClientId, Topics]);
+unsubscribe(true, User, ClientId, Topics) ->
+    %% we trade consistency
+    unsubscribe_(User, ClientId, Topics).
 
 -spec unsubscribe_(username() | plugin_id(), client_id(), [topic()]) -> 'ok'.
 unsubscribe_(User, ClientId, Topics) ->
@@ -161,6 +162,14 @@ subscriptions_for_client(ClientId) ->
                               #subscriber{client=ClientId, _='_'}),
     [{T, Q} || #subscriber{topic=T, qos=Q} <- Res].
 
+-spec register_client(flag(), client_id(), pid(), flag()) -> ok | {error, _}.
+register_client(false, ClientId, QPid, CleanSession) ->
+    %% we don't allow multiple sessions using same client id
+    register_client(ClientId, QPid, CleanSession);
+register_client(true, ClientId, QPid, _CleanSession) ->
+    %% we allow multiple sessions using same client id
+    register_session(ClientId, QPid).
+
 -spec register_client(client_id(), pid(), flag()) -> ok | {error, _}.
 register_client(ClientId, QPid, CleanSession) ->
     case vmq_reg_leader:register_client(self(), QPid, ClientId, CleanSession) of
@@ -170,6 +179,22 @@ register_client(ClientId, QPid, CleanSession) ->
         R ->
             R
     end.
+
+-spec register_session(client_id(), pid()) -> ok | {error, _}.
+register_session(ClientId, QPid) ->
+    %% register_session allows to have multiple clients connected
+    %% with the same session_id (as oposed to register_client)
+    SessionPid = self(),
+    transaction(fun() -> remap_session_tx(ClientId) end,
+                fun({error, Reason}) -> {error, Reason};
+                   (_) ->
+                        ok = gen_server:call(?MODULE,
+                                             {monitor, SessionPid, QPid,
+                                              ClientId, false, false},
+                                             infinity),
+                        vmq_session_proxy_sup:start_delivery(QPid, ClientId),
+                        ok
+                end).
 
 teardown_session(ClientId, CleanSession) ->
     %% we first have to disconnect a local or remote session for
@@ -233,10 +258,22 @@ register_client__(SessionPid, QPid, ClientId, CleanSession) ->
                            [ClientId, NNodesWithSession])
     end,
     ok = gen_server:call(?MODULE, {monitor, SessionPid, QPid,
-                                   ClientId, CleanSession}, infinity).
+                                   ClientId, CleanSession, true}, infinity).
 
--spec publish(msg()) -> 'ok' | {'error', _}.
-publish(#vmq_msg{routing_key=RoutingKey, retain=IsRetain} = Msg) ->
+-spec publish(flag(), msg()) -> 'ok' | {'error', _}.
+publish(true, #vmq_msg{routing_key=RoutingKey, retain=IsRetain} = Msg) ->
+    %% strong consistency is not required
+    %% if the cluster is not consistent at the moment, it is possible
+    %% that subscribers connected to other nodes won't get this message
+    MatchedTopics = match(RoutingKey),
+    case IsRetain of
+        true ->
+            publish_(Msg, MatchedTopics);
+        false ->
+            publish__(Msg, MatchedTopics)
+    end;
+publish(false, #vmq_msg{routing_key=RoutingKey, retain=IsRetain} = Msg) ->
+    %% strong consistency is required
     MatchedTopics = match(RoutingKey),
     case IsRetain of
         true ->
@@ -366,9 +403,11 @@ disconnect_client(ClientId) ->
 -spec wait_until_unregistered(client_id()) -> {'error','not_found'}.
 wait_until_unregistered(ClientId) ->
     case get_client_pid(ClientId) of
-        {ok, ClientPid} ->
-            disconnect_client(ClientPid),
-            wait_until_stopped(ClientPid);
+        {ok, ClientPids} ->
+            lists:foreach(fun(ClientPid) ->
+                                  disconnect_client(ClientPid),
+                                  wait_until_stopped(ClientPid)
+                          end, ClientPids);
         E -> E
     end.
 
@@ -387,16 +426,21 @@ wait_until_stopped(ClientPid) ->
 -spec route(topic(), msg()) -> 'ok'.
 route(Topic, #vmq_msg{} = Msg) ->
     Subscribers = mnesia:dirty_read(vmq_subscriber, Topic),
+    Node = node(),
     lists:foldl(fun
-                    (#subscriber{qos=0} = Subs, AccMsg) ->
+                    (#subscriber{qos=0, node=SubNode} = Subs, AccMsg)
+                      when SubNode == Node->
                         %% in case of a qos-upgrade we'll
                         %% increment the ref count inside the vmq_session
                         deliver(AccMsg, Subs),
                         AccMsg;
-                    (#subscriber{client=Client} = Subs, AccMsg) ->
+                    (#subscriber{client=Client, node=SubNode} = Subs, AccMsg)
+                      when SubNode == Node ->
                         MaybeChangedMsg = vmq_msg_store:store(Client, AccMsg),
                         deliver(MaybeChangedMsg, Subs),
-                        MaybeChangedMsg
+                        MaybeChangedMsg;
+                    (_, AccMsg) ->
+                        AccMsg
                 end, Msg, Subscribers),
     ok.
 
@@ -405,12 +449,16 @@ deliver(#vmq_msg{payload= <<>>, retain=true, msg_ref=Ref}, _) ->
     %% <<>> --> retain-delete action, we don't deliver the empty frame
     vmq_msg_store:deref(Ref),
     ok;
-deliver(Msg, #subscriber{client=Client, qos=QoS}) ->
-    case get_queue_pid(Client) of
-        {ok, QPid} ->
+deliver(Msg, #subscriber{client=ClientId, qos=QoS}) ->
+    case get_queue_pid(ClientId) of
+        {ok, [QPid]} ->
             vmq_queue:enqueue(QPid, {deliver, QoS, Msg});
+        {ok, QPids} ->
+            lists:foreach(fun(QPid) ->
+                                  vmq_queue:enqueue(QPid, {deliver, QoS, Msg})
+                          end, QPids);
         _ when QoS > 0 ->
-            vmq_msg_store:defer_deliver(Client, QoS, Msg#vmq_msg.msg_ref),
+            vmq_msg_store:defer_deliver(ClientId, QoS, Msg#vmq_msg.msg_ref),
             ok;
         _ ->
             ok
@@ -531,7 +579,7 @@ direct_plugin_exports(Mod) ->
                            payload=Payload,
                            dup=false,
                            retain=false},
-            ok = publish(Msg),
+            ok = publish(false, Msg),
             ok
     end,
 
@@ -540,7 +588,8 @@ direct_plugin_exports(Mod) ->
             wait_til_ready(),
             CallingPid = self(),
             User = {plugin, Mod, CallingPid},
-            ok = subscribe(User, ClientId(CallingPid), QPid, [{Topic, 0}]),
+            ok = subscribe(false, User, ClientId(CallingPid),
+                           QPid, [{Topic, 0}]),
             ok
     end,
     UnsubscribeFun =
@@ -548,7 +597,7 @@ direct_plugin_exports(Mod) ->
             wait_til_ready(),
             CallingPid = self(),
             User = {plugin, Mod, CallingPid},
-            ok = unsubscribe(User, ClientId(CallingPid), [{Topic, 0}]),
+            ok = unsubscribe(false, User, ClientId(CallingPid), [{Topic, 0}]),
             ok
     end,
     {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}}.
@@ -638,6 +687,20 @@ remap_subscriptions_tx(ClientId) ->
                       add_subscriber_tx(T, Qos, ClientId),
                       mnesia:delete_object(vmq_subscriber, Obj, write),
                       del_topic(T, N, [Obj#subscriber{node=Node}])
+              end
+      end, Objs).
+
+-spec remap_session_tx(client_id()) -> ok.
+remap_session_tx(ClientId) ->
+    Objs = mnesia:match_object(vmq_subscriber,
+                               #subscriber{client=ClientId, _='_'}, write),
+    Node = node(),
+    lists:foreach(
+      fun(#subscriber{topic=T, qos=Qos, node=N}) ->
+              case N of
+                  Node -> ignore;
+                  _ ->
+                      add_subscriber_tx(T, Qos, ClientId)
               end
       end, Objs).
 
@@ -752,22 +815,26 @@ trie_delete_path([{NodeId, Word, _}|RestPath]) ->
     end.
 
 
--spec get_client_pid(_) -> {'error','not_found'} | {'ok',_}.
+-spec get_client_pid(_) -> {'error','not_found'} | {'ok', [pid()]}.
 get_client_pid(ClientId) ->
-    case ets:lookup(vmq_session, ClientId) of
-        [#session{pid=Pid}] when is_pid(Pid) ->
-            {ok, Pid};
-        _ ->
-            {error, not_found}
+    case [Pid || #session{pid=Pid}
+                 <- ets:lookup(vmq_session, ClientId),
+                 is_pid(Pid)] of
+        [] ->
+            {error, not_found};
+        Pids ->
+            {ok, Pids}
     end.
 
--spec get_queue_pid(_) -> {error, not_found} | {ok, pid()}.
+-spec get_queue_pid(_) -> {error, not_found} | {ok, [pid()]}.
 get_queue_pid(ClientId) ->
-    case ets:lookup(vmq_session, ClientId) of
-        [#session{queue_pid=Pid}] when is_pid(Pid) ->
-            {ok, Pid};
-        _ ->
-            {error, not_found}
+    case [Pid || #session{queue_pid=Pid}
+                 <- ets:lookup(vmq_session, ClientId),
+                 is_pid(Pid)] of
+        [] ->
+            {error, not_found};
+        Pids ->
+            {ok, Pids}
     end.
 
 -spec total_clients() -> non_neg_integer().
@@ -835,40 +902,6 @@ set_monitors({PidsAndIds, Cont}) ->
     set_monitors(ets:select(Cont)).
 
 
-fix_session_table() ->
-    fix_session_table(ets:select(vmq_session,
-                                 [{#session{client_id='$1', pid='$2', _='_'},
-                                   [], [['$1', '$2']]}], 100), []).
-fix_session_table({[[ClientId, Pid]|Rest], Cont}, Acc) ->
-    NewAcc =
-    case get_client_pid(ClientId) of
-        Pid -> Acc;
-        _ -> [ClientId|Acc]
-    end,
-    fix_session_table({Rest, Cont}, NewAcc);
-fix_session_table({[], Cont}, Acc) ->
-    fix_session_table(ets:select(Cont), Acc);
-fix_session_table('$end_of_table', Acc) ->
-    _ = [begin
-             case ets:lookup(vmq_session, ClientId) of
-                 [#session{clean=true}] ->
-                     transaction(fun() -> del_subscriber_tx('_', ClientId) end,
-                                 fun(_) ->
-                                         ets:delete(vmq_session, ClientId),
-                                         vmq_msg_store:clean_session(ClientId)
-                                 end);
-                 [Session] ->
-                     ets:insert(vmq_session,
-                                Session#session{pid=undefined,
-                                                queue_pid=undefined,
-                                                monitor=undefined})
-             end
-         end || ClientId <- Acc],
-    ok.
-
-
-
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -876,36 +909,36 @@ fix_session_table('$end_of_table', Acc) ->
 init([]) ->
     ets:new(vmq_session_mons, [named_table]),
     spawn_link(fun() -> message_queue_monitor() end),
-    fix_session_table(),
     process_flag(trap_exit, true),
     process_flag(priority, high),
     set_monitors(),
     {ok, #state{}}.
 
 -spec handle_call(_, _, []) -> {reply, ok, []}.
-handle_call({monitor, SessionPid, QPid, ClientId, CleanSession},
+handle_call({monitor, SessionPid, QPid, ClientId, CleanSession, RemoveOldSess},
             _From, State) ->
-    case ets:lookup(vmq_session, ClientId) of
-        [] -> ok;
-        [#session{pid=undefined, monitor=undefined, clean=true}] ->
-            ok;
-        [#session{pid=undefined, monitor=undefined, clean=false}] ->
-            vmq_plugin:all(decr_inactive_clients, []);
-        %% ------------------------
-        %% only in a race condition
-        %% vvvvvvvvvvvvvvvvvvvvvvvv
-        [#session{pid=OldSessionPid, monitor=MRef, clean=OldClean}] ->
-            demonitor(MRef, [flush]),
-            ets:delete(vmq_session_mons, MRef),
-            case OldClean of
-                true ->
-                    del_subscriber_fun(ClientId),
-                    vmq_msg_store:clean_session(ClientId);
-                false ->
-                    vmq_plugin:all(incr_inactive_clients, [])
-            end,
-            disconnect_client(OldSessionPid)
-    end,
+    Sessions = ets:lookup(vmq_session, ClientId),
+    lists:foreach(
+      fun(#session{pid=undefined, monitor=undefined, clean=true} = Obj) ->
+              %% should not happen, we clean this up
+              ets:delete_object(vmq_session, Obj);
+         (#session{pid=undefined, monitor=undefined, clean=false}) ->
+              vmq_plugin:all(decr_inactive_clients, []);
+         (#session{pid=OldSessionPid, monitor=MRef, clean=OldClean})
+            when RemoveOldSess ->
+              demonitor(MRef, [flush]),
+              ets:delete(vmq_session_mons, MRef),
+              case OldClean of
+                  true ->
+                      del_subscriber_fun(ClientId),
+                      vmq_msg_store:clean_session(ClientId);
+                  false ->
+                      vmq_plugin:all(incr_inactive_clients, [])
+              end,
+              disconnect_client(OldSessionPid);
+        (_) ->
+              ok
+      end, Sessions),
 
     Monitor = monitor(process, SessionPid),
     Session = #session{client_id=ClientId, pid=SessionPid, queue_pid=QPid,
@@ -952,19 +985,22 @@ epoch() ->
 
 unregister_client(ClientId) ->
     case ets:lookup(vmq_session, ClientId) of
-        [#session{client_id=ClientId, clean=true}] ->
-            del_subscriber_fun(ClientId),
-            ets:delete(vmq_session, ClientId),
-            vmq_msg_store:clean_session(ClientId);
-        [#session{clean=false} = Obj] ->
-            ets:insert(vmq_session,
-                       Obj#session{pid=undefined,
-                                   queue_pid=undefined,
-                                   monitor=undefined,
-                                   last_seen=epoch()}),
-            vmq_plugin:all(incr_inactive_clients, []);
         [] ->
-            {error, not_found}
+            {error, not_found};
+        Sessions ->
+            lists:foreach(fun(#session{clean=true} = Obj) ->
+                                  del_subscriber_fun(ClientId),
+                                  ets:delete_object(vmq_session, Obj),
+                                  vmq_msg_store:clean_session(ClientId);
+                             (#session{clean=false} = Obj) ->
+                                  ets:delete_object(vmq_session, Obj),
+                                  ets:insert(vmq_session,
+                                             Obj#session{pid=undefined,
+                                                         queue_pid=undefined,
+                                                         monitor=undefined,
+                                                         last_seen=epoch()}),
+                                  vmq_plugin:all(incr_inactive_clients, [])
+                          end, Sessions)
     end.
 
 del_subscriber_fun(ClientId) ->

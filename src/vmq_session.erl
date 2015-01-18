@@ -86,7 +86,10 @@
           mountpoint=""                     :: string(),
           retry_interval=20000              :: pos_integer(),
           upgrade_qos=false                 :: flag(),
-          max_client_id_size=23             :: non_neg_integer()
+          max_client_id_size=23             :: non_neg_integer(),
+          trade_consistency=false           :: flag(),
+          allow_multiple_sessions=false     :: flag()
+
          }).
 
 -type state() :: #state{}.
@@ -237,6 +240,8 @@ init([Peer, SendFun, Opts]) ->
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
     MaxMessageSize = vmq_config:get_env(max_message_size, 0),
+    TradeConsistency = vmq_config:get_env(trade_consistency, false),
+    AllowMultiple = vmq_config:get_env(allow_multiple_sessions, false),
     {ok, QPid} = vmq_queue:start_link(self(), QueueSize),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   upgrade_qos=UpgradeQoS,
@@ -248,7 +253,9 @@ init([Peer, SendFun, Opts]) ->
                                   username=PreAuthUser,
                                   max_client_id_size=MaxClientIdSize,
                                   retry_interval=1000 * RetryInterval,
-                                  queue_pid=QPid
+                                  queue_pid=QPid,
+                                  trade_consistency=TradeConsistency,
+                                  allow_multiple_sessions=AllowMultiple
                                  }, ?CLOSE_AFTER}.
 
 -spec handle_event(disconnect, _, state()) -> {stop, normal, state()}.
@@ -308,7 +315,13 @@ handle_sync_event({reconfigure, NewConfig}, _From, StateName, State) ->
                            max_message_size, NewConfig,
                            State#state.max_message_size),
       upgrade_qos = proplists:get_value(
-                      upgrade_outgoing_qos, NewConfig, State#state.upgrade_qos)
+                      upgrade_outgoing_qos, NewConfig, State#state.upgrade_qos),
+      trade_consistency = proplists:get_value(
+                            trade_consistency, NewConfig,
+                            State#state.trade_consistency),
+      allow_multiple_sessions = proplists:get_value(
+                                    allow_multiple_sessions, NewConfig,
+                                    State#state.allow_multiple_sessions)
      },
     {reply, ok, StateName, NewState};
 handle_sync_event(Req, _From, _StateName, State) ->
@@ -491,7 +504,8 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
              Var, _, State) ->
-    #state{waiting_acks=WAcks, username=User, client_id=ClientId} = State,
+    #state{waiting_acks=WAcks, username=User,
+           client_id=ClientId, trade_consistency=Consistency} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
     NewState =
@@ -504,7 +518,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
                            payload=Payload,
                            retain=IsRetain,
                            qos=2},
-            case publish(User, ClientId, Msg) of
+            case publish(Consistency, User, ClientId, Msg) of
                 ok ->
                     vmq_msg_store:deref(MsgRef),
                     State#state{
@@ -558,11 +572,11 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
 
 handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
     #state{client_id=Id, username=User, mountpoint=MountPoint,
-           queue_pid=QPid} = State,
+           queue_pid=QPid, trade_consistency=Consistency} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
     TTopics = [{combine_mp(MountPoint, Name), QoS} ||
                   #mqtt_topic{name=Name, qos=QoS} <- Topics],
-    case vmq_reg:subscribe(User, Id, QPid, TTopics) of
+    case vmq_reg:subscribe(Consistency, User, Id, QPid, TTopics) of
         ok ->
             {_, QoSs} = lists:unzip(TTopics),
             NewState = send_frame(?SUBACK, #mqtt_frame_suback{
@@ -576,11 +590,12 @@ handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
-    #state{client_id=Id, username=User, mountpoint=MountPoint} = State,
+    #state{client_id=Id, username=User,
+           mountpoint=MountPoint, trade_consistency=Consistency} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
     TTopics = [combine_mp(MountPoint, Name) ||
                   #mqtt_topic{name=Name} <- Topics],
-    case vmq_reg:unsubscribe(User, Id, TTopics) of
+    case vmq_reg:unsubscribe(Consistency, User, Id, TTopics) of
         ok ->
             NewState = send_frame(?UNSUBACK, #mqtt_frame_suback{
                                                 message_id=MessageId
@@ -610,10 +625,10 @@ check_client_id(#mqtt_frame_connect{},
     {wait_for_connect,
      send_connack(?CONNACK_CREDENTIALS, State)};
 check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
-                #state{username={preauth, ClientId}, peer=Peer,
-                       queue_pid=QPid} = State) ->
+                #state{username={preauth, ClientId}, queue_pid=QPid, peer=Peer,
+                       allow_multiple_sessions=AllowMultiple} = State) ->
     %% User preauthenticated using e.g. SSL client certificate
-    case vmq_reg:register_client(ClientId, QPid, CleanSession) of
+    case vmq_reg:register_client(AllowMultiple, ClientId, QPid, CleanSession) of
         ok ->
             vmq_plugin:all(on_register, [Peer, ClientId, undefined, undefined]),
             check_will(F, State#state{clean_session=CleanSession});
@@ -655,13 +670,15 @@ check_user(#mqtt_frame_connect{username=""} = F, State) ->
 check_user(#mqtt_frame_connect{username=User, password=Password,
                                client_id=ClientId,
                                clean_sess=CleanSess} = F, State) ->
-    #state{peer=Peer, queue_pid=QPid, allow_anonymous=AllowAnonymous} = State,
+    #state{peer=Peer, queue_pid=QPid, allow_multiple_sessions=AllowMultiple,
+           allow_anonymous=AllowAnonymous} = State,
     case AllowAnonymous of
         false ->
             case vmq_plugin:all_till_ok(auth_on_register,
                                          [Peer, ClientId, User, Password]) of
                 ok ->
-                    case vmq_reg:register_client(ClientId, QPid, CleanSess) of
+                    case vmq_reg:register_client(AllowMultiple, ClientId,
+                                                 QPid, CleanSess) of
                         ok ->
                             vmq_plugin:all(on_register, [Peer, ClientId,
                                                        User, Password]),
@@ -695,7 +712,8 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                     end
             end;
         true ->
-            case vmq_reg:register_client(ClientId, QPid, CleanSess) of
+            case vmq_reg:register_client(AllowMultiple, ClientId,
+                                         QPid, CleanSess) of
                 ok ->
                     vmq_plugin:all(on_register, [Peer, ClientId,
                                                  User, Password]),
@@ -786,8 +804,9 @@ dispatch_publish_(2, MessageId, Msg, State) ->
 
 -spec dispatch_publish_qos0(msg_id(), msg(), state()) -> state().
 dispatch_publish_qos0(_MessageId, Msg, State) ->
-    #state{username=User, client_id=ClientId} = State,
-    case publish(User, ClientId, Msg) of
+    #state{username=User, client_id=ClientId,
+           trade_consistency=Consistency} = State,
+    case publish(Consistency, User, ClientId, Msg) of
         ok ->
             State;
         {error, _Reason} ->
@@ -798,10 +817,11 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
 dispatch_publish_qos1(MessageId, Msg, State) ->
     case check_in_flight(State) of
         true ->
-            #state{username=User, client_id=ClientId} = State,
+            #state{username=User, client_id=ClientId,
+                   trade_consistency=Consistency} = State,
             #vmq_msg{msg_ref=MsgRef} = UpdatedMsg =
                 vmq_msg_store:store(State#state.client_id, Msg),
-            case publish(User, ClientId, UpdatedMsg) of
+            case publish(Consistency, User, ClientId, UpdatedMsg) of
                 ok ->
                     NewState = send_frame(?PUBACK,
                                           #mqtt_frame_publish{
@@ -872,8 +892,8 @@ send_publish_frames(Frames, State) ->
             {error, Reason}
     end.
 
--spec publish(username(), client_id(), msg()) ->  ok | {error,atom()}.
-publish(User, ClientId, Msg) ->
+-spec publish(flag(), username(), client_id(), msg()) ->  ok | {error,atom()}.
+publish(Consistency, User, ClientId, Msg) ->
     %% auth_on_publish hook must return either:
     %% next | ok
     #vmq_msg{routing_key=Topic,
@@ -885,9 +905,10 @@ publish(User, ClientId, Msg) ->
             {error, not_allowed};
         ok when QoS > 0 ->
             MaybeUpdatedMsg = vmq_msg_store:store(ClientId, Msg),
-            on_publish_hook(vmq_reg:publish(MaybeUpdatedMsg), HookParams);
+            on_publish_hook(vmq_reg:publish(Consistency, MaybeUpdatedMsg),
+                            HookParams);
         ok ->
-            on_publish_hook(vmq_reg:publish(Msg), HookParams)
+            on_publish_hook(vmq_reg:publish(Consistency, Msg), HookParams)
     end.
 
 on_publish_hook(ok, HookParams) ->
