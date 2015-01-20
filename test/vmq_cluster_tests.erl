@@ -82,8 +82,6 @@ publish_random(Nodes, N, Topic, Acc) ->
     Puback = packet:gen_puback(1),
     Disconnect = packet:gen_disconnect(),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, opts(Nodes)),
-    [{RpcNode, _}|_] = Nodes,
-    io:format(user, "subs ~p~n", [rpc:call(RpcNode, vmq_reg, match, [Topic])]),
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "puback", Puback),
     ok = gen_tcp:send(Socket, Disconnect),
@@ -142,17 +140,18 @@ multiple_connect_unclean(Nodes) ->
                                            [vmq_subscriber, Topic])]),
 
     %% publish random content to the topic
-    Payloads = publish_random(Nodes, 1000, Topic),
     Strd = fun() -> rpc:multicall([N || {N, _} <-Nodes],
                                   vmq_msg_store, stored, [])
            end,
+    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs before send ~p~n", [Strd()]),
+    Payloads = publish_random(Nodes, 1000, Topic),
     Ports = fun() -> rpc:multicall([N || {N, _} <-Nodes],
                                   erlang, system_info, [port_count])
            end,
     Procs = fun() -> rpc:multicall([N || {N, _} <-Nodes],
                                   erlang, system_info, [process_count])
            end,
-    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs ~p~n", [Strd()]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after send ~p~n", [Strd()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
     io:format(user, "subs ~p~n", [rpc:call(RpcNode, mnesia, dirty_read,
@@ -160,7 +159,7 @@ multiple_connect_unclean(Nodes) ->
     timer:sleep(2000),
     ok = receive_publishes(Nodes, Topic, Payloads),
     timer:sleep(2000),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs ~p~n", [Strd()]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after deliver~p~n", [Strd()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
     ?_assertEqual(true, true).

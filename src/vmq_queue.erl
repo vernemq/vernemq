@@ -56,14 +56,14 @@ notify(Queue) ->
     gen_fsm:send_event(Queue, notify).
 
 %% @doc Enqueues a message.
--spec enqueue(pid(), term()) -> ok.
+-spec enqueue(pid(), term()) -> ok | {error, _}.
 enqueue(Queue, Msg) ->
     case catch gen_fsm:sync_send_event(Queue, {enqueue, Msg}, 100) of
         ok -> ok;
-        {'EXIT', _Reason} ->
+        {'EXIT', Reason} ->
             % we are not allowed to crash, this would
             % teardown 'decoupled' publisher process
-            ok
+            {error, Reason}
     end.
 
 

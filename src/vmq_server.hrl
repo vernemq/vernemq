@@ -8,7 +8,9 @@
           payload               :: payload(),
           retain=false          :: flag(),
           dup=false             :: flag(),
-          qos                   :: qos()
+          qos                   :: qos(),
+          trade_consistency=false :: flag(),
+          reg_view=vmq_reg_trie   :: atom()
          }).
 
 -type msg()             :: #vmq_msg{}.

@@ -88,6 +88,7 @@
           upgrade_qos=false                 :: flag(),
           max_client_id_size=23             :: non_neg_integer(),
           trade_consistency=false           :: flag(),
+          reg_view=vmq_reg_trie             :: atom(),
           allow_multiple_sessions=false     :: flag()
 
          }).
@@ -241,6 +242,7 @@ init([Peer, SendFun, Opts]) ->
     MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
     MaxMessageSize = vmq_config:get_env(max_message_size, 0),
     TradeConsistency = vmq_config:get_env(trade_consistency, false),
+    RegView = vmq_config:get_env(reg_view, vmq_reg_trie),
     AllowMultiple = vmq_config:get_env(allow_multiple_sessions, false),
     {ok, QPid} = vmq_queue:start_link(self(), QueueSize),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
@@ -255,6 +257,7 @@ init([Peer, SendFun, Opts]) ->
                                   retry_interval=1000 * RetryInterval,
                                   queue_pid=QPid,
                                   trade_consistency=TradeConsistency,
+                                  reg_view=RegView,
                                   allow_multiple_sessions=AllowMultiple
                                  }, ?CLOSE_AFTER}.
 
@@ -319,6 +322,9 @@ handle_sync_event({reconfigure, NewConfig}, _From, StateName, State) ->
       trade_consistency = proplists:get_value(
                             trade_consistency, NewConfig,
                             State#state.trade_consistency),
+      reg_view = proplists:get_value(
+                        reg_view, NewConfig,
+                        State#state.reg_view),
       allow_multiple_sessions = proplists:get_value(
                                     allow_multiple_sessions, NewConfig,
                                     State#state.allow_multiple_sessions)
@@ -504,7 +510,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
              Var, _, State) ->
-    #state{waiting_acks=WAcks, username=User,
+    #state{waiting_acks=WAcks, username=User, reg_view=RegView,
            client_id=ClientId, trade_consistency=Consistency} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
@@ -517,8 +523,10 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
                            routing_key=RoutingKey,
                            payload=Payload,
                            retain=IsRetain,
-                           qos=2},
-            case publish(Consistency, User, ClientId, Msg) of
+                           qos=2,
+                           trade_consistency=Consistency,
+                           reg_view=RegView},
+            case publish(User, ClientId, Msg) of
                 ok ->
                     vmq_msg_store:deref(MsgRef),
                     State#state{
@@ -549,7 +557,8 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
                                           retain=IsRetain},
              Var, Payload, State) ->
     #state{mountpoint=MountPoint, pub_recv_cnt=PubRecvCnt,
-           max_message_size=MaxMessageSize} = State,
+           max_message_size=MaxMessageSize, reg_view=RegView,
+           trade_consistency=Consistency} = State,
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
@@ -560,7 +569,9 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
             Msg = #vmq_msg{routing_key=combine_mp(MountPoint, Topic),
                            payload=Payload,
                            retain=IsRetain,
-                           qos=QoS},
+                           qos=QoS,
+                           trade_consistency=Consistency,
+                           reg_view=RegView},
             {connected, dispatch_publish(QoS, MessageId, Msg,
                                          State#state{
                                            pub_recv_cnt=incr_pub_recv_cnt(
@@ -804,9 +815,8 @@ dispatch_publish_(2, MessageId, Msg, State) ->
 
 -spec dispatch_publish_qos0(msg_id(), msg(), state()) -> state().
 dispatch_publish_qos0(_MessageId, Msg, State) ->
-    #state{username=User, client_id=ClientId,
-           trade_consistency=Consistency} = State,
-    case publish(Consistency, User, ClientId, Msg) of
+    #state{username=User, client_id=ClientId} = State,
+    case publish(User, ClientId, Msg) of
         ok ->
             State;
         {error, _Reason} ->
@@ -817,11 +827,10 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
 dispatch_publish_qos1(MessageId, Msg, State) ->
     case check_in_flight(State) of
         true ->
-            #state{username=User, client_id=ClientId,
-                   trade_consistency=Consistency} = State,
+            #state{username=User, client_id=ClientId} = State,
             #vmq_msg{msg_ref=MsgRef} = UpdatedMsg =
                 vmq_msg_store:store(State#state.client_id, Msg),
-            case publish(Consistency, User, ClientId, UpdatedMsg) of
+            case publish(User, ClientId, UpdatedMsg) of
                 ok ->
                     NewState = send_frame(?PUBACK,
                                           #mqtt_frame_publish{
@@ -892,8 +901,8 @@ send_publish_frames(Frames, State) ->
             {error, Reason}
     end.
 
--spec publish(flag(), username(), client_id(), msg()) ->  ok | {error,atom()}.
-publish(Consistency, User, ClientId, Msg) ->
+-spec publish(username(), client_id(), msg()) ->  ok | {error,atom()}.
+publish(User, ClientId, Msg) ->
     %% auth_on_publish hook must return either:
     %% next | ok
     #vmq_msg{routing_key=Topic,
@@ -903,12 +912,8 @@ publish(Consistency, User, ClientId, Msg) ->
     case vmq_plugin:all_till_ok(auth_on_publish, HookParams) of
         {error, _} ->
             {error, not_allowed};
-        ok when QoS > 0 ->
-            MaybeUpdatedMsg = vmq_msg_store:store(ClientId, Msg),
-            on_publish_hook(vmq_reg:publish(Consistency, MaybeUpdatedMsg),
-                            HookParams);
         ok ->
-            on_publish_hook(vmq_reg:publish(Consistency, Msg), HookParams)
+            on_publish_hook(vmq_reg:publish(Msg), HookParams)
     end.
 
 on_publish_hook(ok, HookParams) ->
