@@ -28,9 +28,8 @@ all_till_ok(Hooks, Params) ->
 all_till_ok([{Module, Fun}|Rest], Params, ErrAcc) ->
     case apply(Module, Fun, Params) of
         ok -> ok;
+        {ok, V} -> {ok, V};
         E -> all_till_ok(Rest, Params, [E|ErrAcc])
     end;
 all_till_ok([], _, ErrAcc) ->
     {error, ErrAcc}.
-
-
