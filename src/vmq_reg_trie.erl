@@ -1,10 +1,23 @@
+%% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%%
 -module(vmq_reg_trie).
 
 -behaviour(gen_server).
 
 %% API
 -export([start_link/0,
-         match/1,
          fold/3]).
 
 %% gen_server callbacks
@@ -34,13 +47,6 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
--spec match(list()) -> [{list(), atom()}].
-match(Topic) when is_list(Topic) ->
-    TrieNodes = trie_match(emqtt_topic:words(Topic)),
-    lists:flatten([ets:lookup(vmq_trie_topic, Name)
-                   || #trie_node{topic=Name} <- TrieNodes,
-                      Name =/= undefined]).
 
 fold(Topic, FoldFun, Acc) when is_list(Topic) ->
     fold_(FoldFun, Acc, match(Topic)).
@@ -165,6 +171,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+match(Topic) when is_list(Topic) ->
+    TrieNodes = trie_match(emqtt_topic:words(Topic)),
+    lists:flatten([ets:lookup(vmq_trie_topic, Name)
+                   || #trie_node{topic=Name} <- TrieNodes,
+                      Name =/= undefined]).
+
 initialize_trie({Topic, {_,_,_}}, Acc) ->
     add_topic(Topic, node()),
     Acc;

@@ -136,25 +136,33 @@ unsubscribe_(User, ClientId, Topics) ->
 
 -spec subscriptions(routing_key()) -> [{client_id(), qos()}].
 subscriptions(RoutingKey) ->
-    RegViews = vmq_config:get(reg_views, []),
-    lists:foldl([subscriptions(RV:match(RoutingKey), []) || RV <- RegViews]).
+    subscriptions(fun(Obj, Acc) -> [Obj|Acc] end, [], RoutingKey).
 
--spec subscriptions([topic()], _) -> [{client_id(), qos()}].
-subscriptions([], Acc) -> Acc;
-subscriptions([{Topic, Node}|Rest], Acc) when Node == node() ->
-    subscriptions(Rest, lists:foldl(
-                          fun
-                              (#vmq_subscriber{client=ClientId,
-                                     qos=Qos}, Acc1) when Qos > 0 ->
-                                  [{ClientId, Qos}|Acc1];
-                        (_, Acc1) ->
-                                  Acc1
-                          end, Acc, mnesia:dirty_read(vmq_subscriber, Topic)));
-subscriptions([{_Topic, Node, ClientId, QoS, _Pid}|Rest], Acc)
+-spec subscriptions(function(), any(), routing_key()) -> any().
+subscriptions(FoldFun, Acc, RoutingKey) ->
+    RegViews = vmq_config:get_env(reg_views, []),
+    lists:flatten([begin
+                       {NewAcc, _} = RV:fold(RoutingKey,
+                                             fun subscriptions/2,
+                                             {Acc, FoldFun}),
+                       NewAcc
+                   end || RV <- RegViews]).
+
+subscriptions({Topic, Node}, {Acc, FoldFun}) when Node == node() ->
+    NewAcc =
+    lists:foldl(
+      fun
+          (#vmq_subscriber{client=ClientId, qos=Qos}, Acc1) ->
+              FoldFun({ClientId, Qos}, Acc1);
+          (_, Acc1) ->
+              Acc1
+      end, Acc, mnesia:dirty_read(vmq_subscriber, Topic)),
+    {NewAcc, FoldFun};
+subscriptions({_Topic, Node, ClientId, QoS, _Pid}, {Acc, FoldFun})
   when Node == node() ->
-    subscriptions(Rest, [{ClientId, QoS}|Acc]);
-subscriptions([_|Rest], Acc) ->
-    subscriptions(Rest, Acc).
+    {FoldFun({ClientId, QoS}, Acc), FoldFun};
+subscriptions(_, Acc) ->
+    Acc.
 
 subscriptions_for_client(ClientId) ->
     Res = mnesia:dirty_match_object(vmq_subscriber,

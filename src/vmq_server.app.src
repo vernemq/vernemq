@@ -32,6 +32,7 @@
       {trade_consistency, false},
       {allow_multiple_sessions, false},
       {vmq_config_enabled, true},
+      {reg_views, [vmq_reg_trie]},
       {listeners, {
                       [{{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
                                               {nr_of_acceptors, 100}, 
