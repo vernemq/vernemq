@@ -643,7 +643,7 @@ fold_subscribers(ResolveQPids, FoldFun, Acc) ->
                                 FoldFun({Topic, {SubscriberId, QoS, undefined}},
                                         AccAcc);
                             false ->
-                                FoldFun({Topic, N})
+                                FoldFun({Topic, N}, AccAcc)
                         end
                 end, Acc, vmq_subscriber)
       end).
