@@ -1,10 +1,9 @@
 -module(vmq_ssl_tests).
 -include_lib("eunit/include/eunit.hrl").
+-export([setup_c/0, connect_cert_auth_expired/1]).
 
 -define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
--define(listener(Port), {{{127,0,0,1}, Port}, [{max_connections, infinity},
-                                               {nr_of_acceptors, 10},
-                                               {mountpoint, ""},
+-define(listener(Port), {{{127,0,0,1}, Port}, [{mountpoint, ""},
                                                {cafile, "../test/ssl/all-ca.crt"},
                                                {certfile, "../test/ssl/server.crt"},
                                                {keyfile, "../test/ssl/server.key"},
@@ -51,9 +50,7 @@ setup_c() ->
     application:set_env(vmq_server, allow_anonymous, true),
     application:set_env(vmq_server, listeners,
                         {[],[
-                             {{{127,0,0,1}, 1888}, [{max_connections, infinity},
-                                                    {nr_of_acceptors, 10},
-                                                    {mountpoint, ""},
+                             {{{127,0,0,1}, 1888}, [{mountpoint, ""},
                                                     {cafile, "../test/ssl/all-ca.crt"},
                                                     {certfile, "../test/ssl/server.crt"},
                                                     {keyfile, "../test/ssl/server.key"},
@@ -68,9 +65,7 @@ setup_r() ->
     application:set_env(vmq_server, allow_anonymous, true),
     application:set_env(vmq_server, listeners,
                         {[],[
-                             {{{127,0,0,1}, 1888}, [{max_connections, infinity},
-                                                    {nr_of_acceptors, 10},
-                                                    {mountpoint, ""},
+                             {{{127,0,0,1}, 1888}, [{mountpoint, ""},
                                                     {cafile, "../test/ssl/all-ca.crt"},
                                                     {certfile, "../test/ssl/server.crt"},
                                                     {keyfile, "../test/ssl/server.key"},
@@ -85,9 +80,7 @@ setup_i() ->
     application:load(vmq_server),
     application:set_env(vmq_server, listeners,
                         {[],[
-                             {{{127,0,0,1}, 1888}, [{max_connections, infinity},
-                                                    {nr_of_acceptors, 10},
-                                                    {mountpoint, ""},
+                             {{{127,0,0,1}, 1888}, [{mountpoint, ""},
                                                     {cafile, "../test/ssl/all-ca.crt"},
                                                     {certfile, "../test/ssl/server.crt"},
                                                     {keyfile, "../test/ssl/server.key"},
@@ -99,6 +92,8 @@ setup_i() ->
     wait_til_ready().
 
 teardown(_) ->
+    io:format(user, "!!!!!!!!!!!!!!!!!!!!!! teardown~n", []),
+    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
     vmq_server:stop().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -206,9 +201,13 @@ wait_til_ready(false, I) when I > 0 ->
     wait_til_ready(vmq_cluster:is_ready(), I - 1);
 wait_til_ready(_, _) -> exit(not_ready).
 
+-compile({inline, [assert_error_or_closed/2]}).
 assert_error_or_closed(Error, Val) ->
     ?_assertEqual(case Val of
                       {error, closed} -> true;
                       Error -> true;
+                      {ok, SSLSocket} = E ->
+                          ssl:close(SSLSocket),
+                          E;
                       Other -> Other
                   end, true).

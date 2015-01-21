@@ -35,6 +35,7 @@ setup() ->
     Nodes.
 
 teardown(Nodes) ->
+    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
     stop_cluster(Nodes).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -245,8 +246,8 @@ check_unique_client(ClientId, Nodes) ->
     Res =
     lists:foldl(
              fun({Node, _Port}, Acc) ->
-                     case rpc:call(Node, vmq_reg, get_client_pid, [ClientId]) of
-                         {ok, Pid} ->
+                     case rpc:call(Node, vmq_reg, get_subscriber_pids, [ClientId]) of
+                         {ok, [Pid]} ->
                              [{Node, Pid}|Acc];
                          {error, not_found} ->
                              Acc

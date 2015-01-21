@@ -37,6 +37,7 @@ setup() ->
     vmq_reg:reset_all_tables([]),
     wait_til_ready().
 teardown(_) ->
+    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
     vmq_server:stop().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -100,8 +101,8 @@ will_qos0(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_,"will-qos0-test", [{"will/null/test",0}]) -> ok;
-hook_auth_on_subscribe(_,"will-qos0-test", [{"will/qos0/test",0}]) -> ok.
+hook_auth_on_subscribe(_,{"", "will-qos0-test"}, [{"will/null/test",0}]) -> ok;
+hook_auth_on_subscribe(_,{"", "will-qos0-test"}, [{"will/qos0/test",0}]) -> ok.
 
 hook_auth_on_publish(_, _, _MsgId, "ok", <<"should be ok">>, false) -> ok;
 hook_auth_on_publish(_, _, _MsgId, "will/acl/test", <<>>, false) -> {error, not_auth};

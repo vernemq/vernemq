@@ -42,7 +42,9 @@ setup() ->
                         {[?listener(1888)],[],[],[]}),
     vmq_server:start_no_auth(),
     wait_til_ready().
-teardown(_) -> vmq_server:stop().
+teardown(_) ->
+    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
+    vmq_server:stop().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -183,16 +185,16 @@ subpub_qos2(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_,"subscribe-qos0-test", [{"qos0/test", 0}]) -> ok;
-hook_auth_on_subscribe(_,"subscribe-qos1-test", [{"qos1/test", 1}]) -> ok;
-hook_auth_on_subscribe(_,"subscribe-qos2-test", [{"qos2/test", 2}]) -> ok;
-hook_auth_on_subscribe(_,"subpub-qos0-test", [{"subpub/qos0", 0}]) -> ok;
-hook_auth_on_subscribe(_,"subpub-qos1-test", [{"subpub/qos1", 1}]) -> ok;
-hook_auth_on_subscribe(_,"subpub-qos2-test", [{"subpub/qos2", 2}]) -> ok.
+hook_auth_on_subscribe(_,{"", "subscribe-qos0-test"}, [{"qos0/test", 0}]) -> ok;
+hook_auth_on_subscribe(_,{"", "subscribe-qos1-test"}, [{"qos1/test", 1}]) -> ok;
+hook_auth_on_subscribe(_,{"", "subscribe-qos2-test"}, [{"qos2/test", 2}]) -> ok;
+hook_auth_on_subscribe(_,{"", "subpub-qos0-test"}, [{"subpub/qos0", 0}]) -> ok;
+hook_auth_on_subscribe(_,{"", "subpub-qos1-test"}, [{"subpub/qos1", 1}]) -> ok;
+hook_auth_on_subscribe(_,{"", "subpub-qos2-test"}, [{"subpub/qos2", 2}]) -> ok.
 
-hook_auth_on_publish(_, "subpub-qos0-test", _MsgId, "subpub/qos0", <<"message">>, false) -> ok;
-hook_auth_on_publish(_, "subpub-qos1-test", _MsgId, "subpub/qos1", <<"message">>, false) -> ok;
-hook_auth_on_publish(_, "subpub-qos2-test", _MsgId, "subpub/qos2", <<"message">>, false) -> ok.
+hook_auth_on_publish(_, {"", "subpub-qos0-test"}, _MsgId, "subpub/qos0", <<"message">>, false) -> ok;
+hook_auth_on_publish(_, {"", "subpub-qos1-test"}, _MsgId, "subpub/qos1", <<"message">>, false) -> ok;
+hook_auth_on_publish(_, {"", "subpub-qos2-test"}, _MsgId, "subpub/qos2", <<"message">>, false) -> ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper

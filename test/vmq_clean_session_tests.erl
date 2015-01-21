@@ -31,6 +31,7 @@ setup() ->
     vmq_reg:reset_all_tables([]),
     wait_til_ready().
 teardown(_) ->
+    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
     vmq_server:stop().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -63,7 +64,7 @@ clean_session_qos1(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_,"clean-qos1-test", [{"qos1/clean_session/test",1}]) -> ok.
+hook_auth_on_subscribe(_,{"", "clean-qos1-test"}, [{"qos1/clean_session/test",1}]) -> ok.
 
 hook_auth_on_publish(_, _, _MsgId, "qos1/clean_session/test", <<"clean-session-message">>, false) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

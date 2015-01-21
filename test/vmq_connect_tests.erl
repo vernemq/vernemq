@@ -46,7 +46,9 @@ setup() ->
                         {[?listener(1888)],[],[],[]}),
     vmq_server:start_no_auth(),
     wait_til_ready().
-teardown(_) -> vmq_server:stop().
+teardown(_) ->
+    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
+    vmq_server:stop().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -142,9 +144,9 @@ uname_password_success(_) ->
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_empty_client_id_proto_4(_, _RandomId, undefined, undefined) -> ok.
-hook_uname_no_password_denied(_,"connect-uname-test-", "user", undefined) -> {error, invalid_credentials}.
-hook_uname_password_denied(_,"connect-uname-pwd-test", "user", "password9") -> {error, invalid_credentials}.
-hook_uname_password_success(_,"connect-uname-pwd-test", "user", "password9") -> ok.
+hook_uname_no_password_denied(_, {"", "connect-uname-test-"}, "user", undefined) -> {error, invalid_credentials}.
+hook_uname_password_denied(_, {"", "connect-uname-pwd-test"}, "user", "password9") -> {error, invalid_credentials}.
+hook_uname_password_success(_, {"", "connect-uname-pwd-test"}, "user", "password9") -> ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
