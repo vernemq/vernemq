@@ -23,6 +23,19 @@
                                                                {datatype, flag}
                                                               ]}.
 
+%% @doc Allows to change the way messages are routed through the system
+{mapping, "default_reg_view", "vmq_server.default_reg_view", [
+                                                              {default, vmq_reg_trie},
+                                                              {datatype, atom},
+                                                              hidden
+                                                             ]}.
+%% @doc the views that are started during startup
+{mapping, "reg_views", "vmq_server.reg_views", [
+                                                {default, "[vmq_reg_trie]"},
+                                                {datatype, string},
+                                                hidden
+                                               ]}. 
+
 %% @doc listener.max_connections is an integer or 'infinity' defining 
 %% the number of concurrent connections. This option can be overridden
 %% by either specifying on the protocol level:
@@ -790,6 +803,14 @@
                                                                                       {datatype, atom},
                                                                                       hidden
                                                                                      ]}.
+
+{translation, "vmq_server.reg_views",
+ fun(Conf) ->
+         S = cuttlefish:conf_get("reg_views", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.
 
 {translation, "mnesia_cluster.table_definition_mod", 
  fun(Conf) ->

@@ -62,17 +62,17 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec store(client_id(), msg()) -> msg().
-store(ClientId, #vmq_msg{msg_ref=undefined} = Msg) ->
-    store(ClientId, Msg#vmq_msg{msg_ref=msg_ref()});
-store(ClientId, Msg) ->
+-spec store(subscriber_id(), msg()) -> msg().
+store(SubscriberId, #vmq_msg{msg_ref=undefined} = Msg) ->
+    store(SubscriberId, Msg#vmq_msg{msg_ref=msg_ref()});
+store(SubscriberId, Msg) ->
     #vmq_msg{msg_ref=MsgRef, routing_key=RoutingKey,
              payload=Payload} = Msg,
     ets:update_counter(?MSG_CACHE_TABLE, in_flight, {2, 1}),
     case update_msg_cache(MsgRef, {RoutingKey, Payload}) of
         new_cache_item ->
             MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
-            Val = term_to_binary({ClientId, RoutingKey, Payload}),
+            Val = term_to_binary({SubscriberId, RoutingKey, Payload}),
             vmq_plugin:only(msg_store_write_sync, [MsgRef1, Val]);
         new_ref_count ->
             ok
@@ -125,10 +125,10 @@ deref_multi(MsgRefs) ->
     _ = [deref(MsgRef) || MsgRef <- MsgRefs].
 
 
--spec deliver_from_store(client_id(), pid()) -> 'ok'.
-deliver_from_store(ClientId, Pid) ->
+-spec deliver_from_store(subscriber_id(), pid()) -> 'ok'.
+deliver_from_store(SubscriberId, Pid) ->
     deliver_from_store_(Pid, ets:match_object(
-                               ?MSG_INDEX_TABLE, {ClientId, '$1'}, 1)).
+                               ?MSG_INDEX_TABLE, {SubscriberId, '$1'}, 1)).
 
 deliver_from_store_(Pid, {[{_, {uncached, Term}} = Obj], Cont}) ->
     vmq_session_proxy:deliver(Pid, Term),
@@ -148,31 +148,31 @@ deliver_from_store_(Pid, {[{_, {QoS, MsgRef, Dup}} = Obj], Cont}) ->
 deliver_from_store_(_, '$end_of_table') ->
     ok.
 
--spec clean_session(client_id()) -> 'ok'.
-clean_session(ClientId) ->
+-spec clean_session(subscriber_id()) -> 'ok'.
+clean_session(SubscriberId) ->
     lists:foreach(fun ({_, {uncached, _}}) ->
                           ok;
                       ({_, {_, MsgRef, _}} = Obj) ->
                           true = ets:delete_object(?MSG_INDEX_TABLE, Obj),
                           deref(MsgRef)
-                  end, ets:lookup(?MSG_INDEX_TABLE, ClientId)).
+                  end, ets:lookup(?MSG_INDEX_TABLE, SubscriberId)).
 
--spec defer_deliver_uncached(client_id(), any()) -> 'true'.
-defer_deliver_uncached(ClientId, Term) ->
-    ets:insert(?MSG_INDEX_TABLE, {ClientId, {uncached, Term}}).
+-spec defer_deliver_uncached(subscriber_id(), any()) -> 'true'.
+defer_deliver_uncached(SubscriberId, Term) ->
+    ets:insert(?MSG_INDEX_TABLE, {SubscriberId, {uncached, Term}}).
 
--spec defer_deliver(client_id(), qos(),
+-spec defer_deliver(subscriber_id(), qos(),
                     msg_ref() | {atom(), msg_ref()}) -> 'true'.
-defer_deliver(ClientId, Qos, MsgRef) ->
-    defer_deliver(ClientId, Qos, MsgRef, false).
+defer_deliver(SubscriberId, Qos, MsgRef) ->
+    defer_deliver(SubscriberId, Qos, MsgRef, false).
 
--spec defer_deliver(client_id(), qos(), msg_ref() | {{pid(), atom()}, msg_ref()}
-                    , boolean()) -> 'true'.
-defer_deliver(ClientId, Qos, {{_, Node}, MsgRef}, DeliverAsDup) ->
+-spec defer_deliver(subscriber_id(), qos(), msg_ref()
+                    | {{pid(), atom()}, msg_ref()}, boolean()) -> 'true'.
+defer_deliver(SubscriberId, Qos, {{_, Node}, MsgRef}, DeliverAsDup) ->
     rpc:call(Node, ?MODULE, defer_deliver,
-             [ClientId, Qos, MsgRef, DeliverAsDup]);
-defer_deliver(ClientId, Qos, MsgRef, DeliverAsDup) ->
-    ets:insert(?MSG_INDEX_TABLE, {ClientId, {Qos, MsgRef, DeliverAsDup}}).
+             [SubscriberId, Qos, MsgRef, DeliverAsDup]);
+defer_deliver(SubscriberId, Qos, MsgRef, DeliverAsDup) ->
+    ets:insert(?MSG_INDEX_TABLE, {SubscriberId, {Qos, MsgRef, DeliverAsDup}}).
 
 
 -spec clean_all([]) -> 'true'.
@@ -235,7 +235,7 @@ update_subs_(RoutingKey, MsgRef, Payload, Key, Acc) ->
             [Key|Acc];
         Subs ->
             lists:foreach(
-              fun({ClientId, QoS}) ->
+              fun({SubscriberId, QoS}) ->
                       %% Increment in_flight counter
                       ets:update_counter(
                         ?MSG_CACHE_TABLE,
@@ -247,8 +247,7 @@ update_subs_(RoutingKey, MsgRef, Payload, Key, Acc) ->
                       %% defer deliver expects the Message
                       %% to be already cached and just adds
                       %% the proper index item
-                      defer_deliver(ClientId, QoS,
-                                    MsgRef, true)
+                      defer_deliver(SubscriberId, QoS, MsgRef, true)
               end, Subs),
             Acc
     end.

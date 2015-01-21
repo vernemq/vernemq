@@ -20,7 +20,7 @@
          active_clients/0]).
 
 total_clients() ->
-    vmq_reg:total_clients().
+    vmq_reg:total_subscribers().
 
 in_flight() ->
     vmq_msg_store:in_flight().

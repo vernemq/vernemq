@@ -64,7 +64,7 @@ handle_info(expire_clients, State) ->
         0 ->
             ok;
         Duration ->
-            vmq_reg:remove_expired_clients(Duration)
+            vmq_reg:remove_expired_subscribers(Duration)
     end,
     erlang:send_after(5000, self(), expire_clients),
     {noreply, State}.

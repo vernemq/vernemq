@@ -131,6 +131,13 @@ reset() ->
 change_config(Configs) ->
     {vmq_server, VmqServerConfig} = lists:keyfind(vmq_server, 1, Configs),
     Env = filter_out_unchanged(VmqServerConfig, []),
+    %% change reg configurations
+    case lists:keyfind(vmq_reg, 1, validate_reg_config(Env, [])) of
+        {_, RegConfigs} ->
+            vmq_reg_sup:reconfigure_registry(RegConfigs);
+        _ ->
+            ok
+    end,
     %% change session configurations
     case lists:keyfind(vmq_session, 1, validate_session_config(Env, [])) of
         {_, SessionConfigs} ->
@@ -259,6 +266,18 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+validate_reg_config([{reg_views, Val} = Item|Rest], Acc)
+  when is_list(Val) ->
+    case length([RV || RV <- Val, is_atom(RV)]) == length(Val) of
+        true ->
+            validate_reg_config(Rest, [Item|Acc]);
+        false ->
+            validate_reg_config(Rest, Acc)
+    end;
+validate_reg_config([_|Rest], Acc) ->
+    validate_reg_config(Rest, Acc);
+validate_reg_config([], Acc) -> [{vmq_reg, Acc}].
+
 validate_session_config([{allow_anonymous, Val} = Item|Rest], Acc)
   when is_boolean(Val) ->
     validate_session_config(Rest, [Item|Acc]);
@@ -277,6 +296,21 @@ validate_session_config([{message_size_limit, Val} = Item|Rest], Acc)
 validate_session_config([{upgrade_outgoing_qos, Val} = Item|Rest], Acc)
   when is_boolean(Val) ->
     validate_session_config(Rest, [Item|Acc]);
+validate_session_config([{trade_consistency, Val} = Item|Rest], Acc)
+  when is_boolean(Val) ->
+    validate_session_config(Rest, [Item|Acc]);
+validate_session_config([{allow_multiple_sessions, Val} = Item|Rest], Acc)
+  when is_boolean(Val) ->
+    validate_session_config(Rest, [Item|Acc]);
+validate_session_config([{default_reg_view, Val} = Item|Rest], Acc)
+  when is_atom(Val) ->
+    case code:is_loaded(Val) of
+        {file, _} ->
+            validate_session_config(Rest, [Item|Acc]);
+        false ->
+            lager:error("can't configure new default_reg_view ~p", [Val]),
+            validate_session_config(Rest, Acc)
+    end;
 validate_session_config([_|Rest], Acc) ->
     validate_session_config(Rest, Acc);
 validate_session_config([], []) -> [];

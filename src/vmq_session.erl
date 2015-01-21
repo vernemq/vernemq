@@ -36,6 +36,7 @@
 
 
 -define(CLOSE_AFTER, 5000).
+-define(ALLOWED_MQTT_VERSIONS, [3, 4, 131]).
 
 -type proplist() :: [{atom(), any()}].
 -type statename() :: atom().
@@ -57,7 +58,7 @@
           send_fun                          :: function(),
           %% mqtt layer requirements
           next_msg_id=1                     :: msg_id(),
-          client_id                         :: undefined | client_id(),
+          subscriber_id                     :: undefined | subscriber_id(),
           will_topic                        :: undefined | topic(),
           will_msg                          :: undefined | payload(),
           will_qos                          :: undefined | qos(),
@@ -143,8 +144,8 @@ in_(FsmPid, Event) ->
 
 -spec get_info(string() | pid(), [atom()]) -> proplist().
 get_info(ClientId, InfoItems) when is_list(ClientId) ->
-    case vmq_reg:get_client_pid(ClientId) of
-        {ok, Pid} -> get_info(Pid, InfoItems);
+    case vmq_reg:get_subscriber_pids(ClientId) of
+        {ok, [Pid|_]} -> get_info(Pid, InfoItems);
         E -> E
     end;
 get_info(FsmPid, InfoItems) when is_pid(FsmPid) ->
@@ -240,9 +241,9 @@ init([Peer, SendFun, Opts]) ->
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
-    MaxMessageSize = vmq_config:get_env(max_message_size, 0),
+    MaxMessageSize = vmq_config:get_env(message_size_limit, 0),
     TradeConsistency = vmq_config:get_env(trade_consistency, false),
-    RegView = vmq_config:get_env(reg_view, vmq_reg_trie),
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
     AllowMultiple = vmq_config:get_env(allow_multiple_sessions, false),
     {ok, QPid} = vmq_queue:start_link(self(), QueueSize),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
@@ -315,7 +316,7 @@ handle_sync_event({reconfigure, NewConfig}, _From, StateName, State) ->
                                 max_inflight_messages, NewConfig,
                                 State#state.max_inflight_messages),
       max_message_size = proplists:get_value(
-                           max_message_size, NewConfig,
+                           message_size_limit, NewConfig,
                            State#state.max_message_size),
       upgrade_qos = proplists:get_value(
                       upgrade_outgoing_qos, NewConfig, State#state.upgrade_qos),
@@ -323,7 +324,7 @@ handle_sync_event({reconfigure, NewConfig}, _From, StateName, State) ->
                             trade_consistency, NewConfig,
                             State#state.trade_consistency),
       reg_view = proplists:get_value(
-                        reg_view, NewConfig,
+                        default_reg_view, NewConfig,
                         State#state.reg_view),
       allow_multiple_sessions = proplists:get_value(
                                     allow_multiple_sessions, NewConfig,
@@ -340,12 +341,12 @@ handle_info({mail, QPid, new_data}, StateName,
     vmq_queue:active(QPid),
     {next_state, StateName, State};
 handle_info({mail, QPid, Msgs, _, Dropped}, connected,
-            #state{client_id=ClientId, queue_pid=QPid} = State) ->
+            #state{subscriber_id=SubscriberId, queue_pid=QPid} = State) ->
     NewState =
     case Dropped > 0 of
         true ->
-            lager:warning("client ~p dropped ~p messages~n",
-                          [ClientId, Dropped]),
+            lager:warning("subscriber ~p dropped ~p messages~n",
+                          [SubscriberId, Dropped]),
             drop(Dropped, State);
         false ->
             State
@@ -444,8 +445,8 @@ prepare_frame(QoS, Msg, State) ->
 maybe_upgrade_qos(0, _, Msg, _) ->
     {0, Msg};
 maybe_upgrade_qos(SubQoS, PubQoS, Msg,
-                  #state{upgrade_qos=true, client_id=ClientId})
-  when SubQoS > PubQoS -> {SubQoS, vmq_msg_store:store(ClientId, Msg)};
+                  #state{upgrade_qos=true, subscriber_id=SubscriberId})
+  when SubQoS > PubQoS -> {SubQoS, vmq_msg_store:store(SubscriberId, Msg)};
 maybe_upgrade_qos(_, PubQoS, Msg, _) ->
     {PubQoS, Msg}.
 
@@ -511,7 +512,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
              Var, _, State) ->
     #state{waiting_acks=WAcks, username=User, reg_view=RegView,
-           client_id=ClientId, trade_consistency=Consistency} = State,
+           subscriber_id=SubscriberId, trade_consistency=Consistency} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
     NewState =
@@ -526,7 +527,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
                            qos=2,
                            trade_consistency=Consistency,
                            reg_view=RegView},
-            case publish(User, ClientId, Msg) of
+            case publish(User, SubscriberId, Msg) of
                 ok ->
                     vmq_msg_store:deref(MsgRef),
                     State#state{
@@ -582,12 +583,12 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
-    #state{client_id=Id, username=User, mountpoint=MountPoint,
+    #state{subscriber_id=SubscriberId, username=User, mountpoint=MountPoint,
            queue_pid=QPid, trade_consistency=Consistency} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
     TTopics = [{combine_mp(MountPoint, Name), QoS} ||
                   #mqtt_topic{name=Name, qos=QoS} <- Topics],
-    case vmq_reg:subscribe(Consistency, User, Id, QPid, TTopics) of
+    case vmq_reg:subscribe(Consistency, User, SubscriberId, QPid, TTopics) of
         ok ->
             {_, QoSs} = lists:unzip(TTopics),
             NewState = send_frame(?SUBACK, #mqtt_frame_suback{
@@ -601,12 +602,12 @@ handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
-    #state{client_id=Id, username=User,
+    #state{subscriber_id=SubscriberId, username=User,
            mountpoint=MountPoint, trade_consistency=Consistency} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
     TTopics = [combine_mp(MountPoint, Name) ||
                   #mqtt_topic{name=Name} <- Topics],
-    case vmq_reg:unsubscribe(Consistency, User, Id, TTopics) of
+    case vmq_reg:unsubscribe(Consistency, User, SubscriberId, TTopics) of
         ok ->
             NewState = send_frame(?UNSUBACK, #mqtt_frame_suback{
                                                 message_id=MessageId
@@ -639,7 +640,8 @@ check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
                 #state{username={preauth, ClientId}, queue_pid=QPid, peer=Peer,
                        allow_multiple_sessions=AllowMultiple} = State) ->
     %% User preauthenticated using e.g. SSL client certificate
-    case vmq_reg:register_client(AllowMultiple, ClientId, QPid, CleanSession) of
+    case vmq_reg:register_subscriber(AllowMultiple, ClientId,
+                                     QPid, CleanSession) of
         ok ->
             vmq_plugin:all(on_register, [Peer, ClientId, undefined, undefined]),
             check_will(F, State#state{clean_session=CleanSession});
@@ -653,20 +655,24 @@ check_client_id(#mqtt_frame_connect{client_id=missing}, State) ->
     {stop, normal, State};
 check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=4} = F, State) ->
     RandomClientId = random_client_id(),
+    SubscriberId = {State#state.mountpoint, RandomClientId},
     check_user(F#mqtt_frame_connect{client_id=RandomClientId},
-               State#state{client_id=RandomClientId});
+               State#state{subscriber_id=SubscriberId});
 check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=3}, State) ->
     lager:warning("empty protocol version not allowed in mqttv3 ~p",
-                [State#state.client_id]),
+                [State#state.subscriber_id]),
     {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)};
-check_client_id(#mqtt_frame_connect{client_id=Id, proto_ver=V} = F,
-                #state{max_client_id_size=S} = State) when length(Id) =< S ->
-    case lists:member(V, [3, 4, 131]) of
+check_client_id(#mqtt_frame_connect{client_id=ClientId, proto_ver=V} = F,
+                #state{max_client_id_size=S} = State)
+  when length(ClientId) =< S ->
+    SubscriberId = {State#state.mountpoint, ClientId},
+    case lists:member(V, ?ALLOWED_MQTT_VERSIONS) of
         true ->
-            check_user(F, State#state{client_id=Id});
+            check_user(F, State#state{subscriber_id=SubscriberId});
         false ->
-            lager:warning("invalid protocol version for ~p ~p", [Id, V]),
+            lager:warning("invalid protocol version for ~p ~p",
+                          [SubscriberId, V]),
             {wait_for_connect,
              send_connack(?CONNACK_PROTO_VER, State)}
     end;
@@ -675,34 +681,52 @@ check_client_id(#mqtt_frame_connect{client_id=Id}, State) ->
     {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)}.
 
+auth_on_register(Peer, {DefaultMP, ClientId} = SubscriberId, User,
+                 Password, DefaultRegView) ->
+    HookArgs = [Peer, SubscriberId, User, Password],
+    case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
+        ok ->
+            {ok, SubscriberId, DefaultRegView};
+        {ok, Args} ->
+            ChangedMP = proplists:get_value(mountpoint, Args, DefaultMP),
+            ChangedRegView = proplists:get_value(regview, Args, DefaultRegView),
+            {ok, {ChangedMP, ClientId}, ChangedRegView};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 check_user(#mqtt_frame_connect{username=""} = F, State) ->
     check_user(F#mqtt_frame_connect{username=undefined,
                                     password=undefined}, State);
 check_user(#mqtt_frame_connect{username=User, password=Password,
-                               client_id=ClientId,
                                clean_sess=CleanSess} = F, State) ->
     #state{peer=Peer, queue_pid=QPid, allow_multiple_sessions=AllowMultiple,
-           allow_anonymous=AllowAnonymous} = State,
+           allow_anonymous=AllowAnonymous, reg_view=DefaultRegView,
+           subscriber_id=SubscriberId} = State,
     case AllowAnonymous of
         false ->
-            case vmq_plugin:all_till_ok(auth_on_register,
-                                         [Peer, ClientId, User, Password]) of
-                ok ->
-                    case vmq_reg:register_client(AllowMultiple, ClientId,
-                                                 QPid, CleanSess) of
+            case auth_on_register(Peer, SubscriberId, User,
+                                  Password, DefaultRegView) of
+                {ok, NewSubscriberId, NewRegView} ->
+                    case vmq_reg:register_subscriber(AllowMultiple,
+                                                     NewSubscriberId,
+                                                     QPid, CleanSess) of
                         ok ->
-                            vmq_plugin:all(on_register, [Peer, ClientId,
-                                                       User, Password]),
-                            check_will(F, State#state{username=User});
+                            vmq_plugin:all(on_register, [Peer, NewSubscriberId,
+                                                         User]),
+                            check_will(F, State#state{
+                                            subscriber_id=NewSubscriberId,
+                                            username=User,
+                                            reg_view=NewRegView});
                         {error, Reason} ->
                             lager:warning("can't register client ~p due to ~p",
-                                        [ClientId, Reason]),
+                                          [SubscriberId, Reason]),
                             {wait_for_connect,
                              send_connack(?CONNACK_SERVER, State)}
                     end;
                 {error, no_matching_hook_found} ->
                     lager:error("can't authenticate client ~p due to
-                                no_matching_hook_found", [ClientId]),
+                                no_matching_hook_found", [SubscriberId]),
                     {wait_for_connect,
                      send_connack(?CONNACK_AUTH, State)};
                 {error, Errors} ->
@@ -710,28 +734,27 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                         {error, invalid_credentials} ->
                             lager:warning(
                               "can't authenticate client ~p due to
-                              invalid_credentials", [ClientId]),
+                              invalid_credentials", [SubscriberId]),
                             {wait_for_connect,
                              send_connack(?CONNACK_CREDENTIALS, State)};
                         false ->
                             %% can't authenticate due to other reasons
                             lager:warning(
                               "can't authenticate client ~p due to ~p",
-                              [ClientId, Errors]),
+                              [SubscriberId, Errors]),
                             {wait_for_connect,
                              send_connack(?CONNACK_AUTH, State)}
                     end
             end;
         true ->
-            case vmq_reg:register_client(AllowMultiple, ClientId,
-                                         QPid, CleanSess) of
+            case vmq_reg:register_subscriber(AllowMultiple, SubscriberId,
+                                             QPid, CleanSess) of
                 ok ->
-                    vmq_plugin:all(on_register, [Peer, ClientId,
-                                                 User, Password]),
+                    vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
                     check_will(F, State#state{username=User});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
-                                [ClientId, Reason]),
+                                [SubscriberId, Reason]),
                     {wait_for_connect,
                      send_connack(?CONNACK_SERVER, State)}
             end
@@ -742,33 +765,36 @@ check_will(#mqtt_frame_connect{will_topic=undefined}, State) ->
 check_will(#mqtt_frame_connect{will_topic=""}, State) ->
     %% null topic.... Mosquitto sends a CONNACK_INVALID_ID...
     lager:warning("invalid last will topic for client ~p",
-                [State#state.client_id]),
+                [State#state.subscriber_id]),
     {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)};
-check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Msg, will_qos=Qos},
+check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos},
            State) ->
-    #state{mountpoint=MountPoint, username=User,
-           client_id=ClientId, max_message_size=MaxMessageSize} = State,
+    #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,
+           max_message_size=MaxMessageSize} = State,
     LWTopic = combine_mp(MountPoint, Topic),
-    case vmq_plugin:all_till_ok(auth_on_publish, [User, ClientId, last_will,
-                                                   LWTopic, Msg, false]) of
-        ok ->
-            case valid_msg_size(Msg, MaxMessageSize) of
+    case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=LWTopic,
+                                                      payload=Payload,
+                                                      qos=Qos},
+                         fun(Msg, _) -> {ok, Msg} end) of
+        {ok, #vmq_msg{payload=MaybeNewPayload} = Msg} ->
+            case valid_msg_size(MaybeNewPayload, MaxMessageSize) of
                 true ->
                     {connected, send_connack(?CONNACK_ACCEPT,
-                                             State#state{will_qos=Qos,
-                                                         will_topic=LWTopic,
-                                                         will_msg=Msg})};
+                                             State#state{
+                                               will_qos=Msg#vmq_msg.qos,
+                                               will_topic=Msg#vmq_msg.routing_key,
+                                               will_msg=Msg#vmq_msg.payload})};
                 false ->
                     lager:warning(
-                      "last will message has invalid size for client ~p",
-                      [ClientId]),
+                      "last will message has invalid size for subscriber ~p",
+                      [SubscriberId]),
                     {wait_for_connect,
                      send_connack(?CONNACK_SERVER, State)}
             end;
-        {error, Error} ->
+        {error, Reason} ->
             lager:warning("can't authenticate last will
-                          for client ~p due to ~p", [ClientId, Error]),
+                          for client ~p due to ~p", [SubscriberId, Reason]),
             {wait_for_connect, send_connack(?CONNACK_AUTH, State)}
     end.
 
@@ -815,8 +841,8 @@ dispatch_publish_(2, MessageId, Msg, State) ->
 
 -spec dispatch_publish_qos0(msg_id(), msg(), state()) -> state().
 dispatch_publish_qos0(_MessageId, Msg, State) ->
-    #state{username=User, client_id=ClientId} = State,
-    case publish(User, ClientId, Msg) of
+    #state{username=User, subscriber_id=SubscriberId} = State,
+    case publish(User, SubscriberId, Msg) of
         ok ->
             State;
         {error, _Reason} ->
@@ -827,10 +853,10 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
 dispatch_publish_qos1(MessageId, Msg, State) ->
     case check_in_flight(State) of
         true ->
-            #state{username=User, client_id=ClientId} = State,
+            #state{username=User, subscriber_id=SubscriberId} = State,
             #vmq_msg{msg_ref=MsgRef} = UpdatedMsg =
-                vmq_msg_store:store(State#state.client_id, Msg),
-            case publish(User, ClientId, UpdatedMsg) of
+                vmq_msg_store:store(SubscriberId, Msg),
+            case publish(User, SubscriberId, UpdatedMsg) of
                 ok ->
                     NewState = send_frame(?PUBACK,
                                           #mqtt_frame_publish{
@@ -851,11 +877,11 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
 dispatch_publish_qos2(MessageId, Msg, State) ->
     case check_in_flight(State) of
         true ->
-            #state{client_id=ClientId,
+            #state{subscriber_id=SubscriberId,
                    waiting_acks=WAcks, retry_interval=RetryInterval,
                    send_fun=SendFun, send_cnt=SendCnt} = State,
             #vmq_msg{msg_ref=MsgRef, retain=IsRetain} =
-                vmq_msg_store:store(ClientId, Msg),
+                vmq_msg_store:store(SubscriberId, Msg),
             Ref = send_after(RetryInterval, {retry, {qos2, MessageId}}),
             Frame = #mqtt_frame{
                        fixed=#mqtt_frame_fixed{type=?PUBREC},
@@ -901,20 +927,40 @@ send_publish_frames(Frames, State) ->
             {error, Reason}
     end.
 
--spec publish(username(), client_id(), msg()) ->  ok | {error,atom()}.
-publish(User, ClientId, Msg) ->
-    %% auth_on_publish hook must return either:
-    %% next | ok
-    #vmq_msg{routing_key=Topic,
-             payload=Payload, qos=QoS,
-             retain=IsRetain, dup=_IsDup} = Msg,
-    HookParams = [User, ClientId, QoS, Topic, Payload, IsRetain],
-    case vmq_plugin:all_till_ok(auth_on_publish, HookParams) of
-        {error, _} ->
-            {error, not_allowed};
+auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
+                                             payload=Payload,
+                                             reg_view=RegView,
+                                             qos=QoS,
+                                             retain=IsRetain,
+                                             dup=_IsDup} = Msg,
+               AuthSuccess) ->
+    HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
+    case vmq_plugin:all_till_ok(auth_on_publish, HookArgs) of
         ok ->
-            on_publish_hook(vmq_reg:publish(Msg), HookParams)
+            AuthSuccess(Msg, HookArgs);
+        {ok, ChangedPayload} when is_binary(Payload) ->
+            AuthSuccess(Msg#vmq_msg{payload=ChangedPayload}, HookArgs);
+        {ok, Args} when is_list(Args) ->
+            ChangedTopic = proplists:get_value(topic, Args, Topic),
+            ChangedPayload = proplists:get_value(payload, Args, Payload),
+            ChangedRegView = proplists:get_value(reg_view, Args, RegView),
+            ChangedQoS = proplists:get_value(qos, Args, QoS),
+            ChangedIsRetain = proplists:get_value(retain, Args, IsRetain),
+            AuthSuccess(Msg#vmq_msg{routing_key=ChangedTopic,
+                                    payload=ChangedPayload,
+                                    reg_view=ChangedRegView,
+                                    qos=ChangedQoS,
+                                    retain=ChangedIsRetain}, HookArgs);
+        {error, _} ->
+            {error, not_allowed}
     end.
+-spec publish(username(), subscriber_id(), msg()) ->  ok | {error,atom()}.
+publish(User, SubscriberId, Msg) ->
+    auth_on_publish(User, SubscriberId, Msg,
+                    fun(MaybeChangedMsg, HookArgs) ->
+                            on_publish_hook(vmq_reg:publish(MaybeChangedMsg),
+                                            HookArgs)
+                    end).
 
 on_publish_hook(ok, HookParams) ->
     vmq_plugin:all(on_publish, HookParams),
@@ -937,7 +983,7 @@ random_client_id() ->
 
 -spec handle_waiting_acks(state()) -> dict().
 handle_waiting_acks(State) ->
-    #state{client_id=ClientId, waiting_acks=WAcks} = State,
+    #state{subscriber_id=SubscriberId, waiting_acks=WAcks} = State,
     dict:fold(fun ({qos2, _}, _, Acc) ->
                       Acc;
                   (MsgId, {QoS, #mqtt_frame{fixed=Fixed} = Frame,
@@ -948,17 +994,17 @@ handle_waiting_acks(State) ->
                               Frame#mqtt_frame{
                                 fixed=Fixed#mqtt_frame_fixed{
                                         dup=true}}),
-                      vmq_msg_store:defer_deliver_uncached(ClientId,
+                      vmq_msg_store:defer_deliver_uncached(SubscriberId,
                                                            {MsgId, QoS, Bin}),
                       Acc;
                   (MsgId, {QoS, Bin, TRef, undefined}, Acc) ->
                       cancel_timer(TRef),
-                      vmq_msg_store:defer_deliver_uncached(ClientId,
+                      vmq_msg_store:defer_deliver_uncached(SubscriberId,
                                                            {MsgId, QoS, Bin}),
                       Acc;
                   (_MsgId, {QoS, _Frame, TRef, MsgStoreRef}, Acc) ->
                       cancel_timer(TRef),
-                      vmq_msg_store:defer_deliver(ClientId, QoS,
+                      vmq_msg_store:defer_deliver(SubscriberId, QoS,
                                                   MsgStoreRef, true),
                       Acc
               end, [], WAcks).
@@ -993,8 +1039,11 @@ get_info_items(Items, StateName, State) ->
 get_info_items([pid|Rest], StateName, State, Acc) ->
     get_info_items(Rest, StateName, State, [{pid, self()}|Acc]);
 get_info_items([client_id|Rest], StateName, State, Acc) ->
-    get_info_items(Rest, StateName, State, [{client_id,
-                                             State#state.client_id}|Acc]);
+    #state{subscriber_id={_, ClientId}} = State,
+    get_info_items(Rest, StateName, State, [{client_id, ClientId}|Acc]);
+get_info_items([mountpoint|Rest], StateName, State, Acc) ->
+    #state{subscriber_id={MountPoint, _}} = State,
+    get_info_items(Rest, StateName, State, [{mountpoint, MountPoint}|Acc]);
 get_info_items([user|Rest], StateName, State, Acc) ->
     User =
     case State#state.username of
@@ -1021,9 +1070,6 @@ get_info_items([protocol|Rest], StateName, State, Acc) ->
 get_info_items([state|Rest], StateName, State, Acc) ->
     get_info_items(Rest, StateName, State,
                    [{state, StateName}|Acc]);
-get_info_items([mountpoint|Rest], StateName, State, Acc) ->
-    get_info_items(Rest, StateName, State,
-                   [{mountpoint, State#state.mountpoint}|Acc]);
 get_info_items([timeout|Rest], StateName, State, Acc) ->
     get_info_items(Rest, StateName, State,
                    [{timeout, State#state.keep_alive}|Acc]);
@@ -1041,7 +1087,8 @@ get_info_items([waiting_acks|Rest], StateName, State, Acc) ->
     get_info_items(Rest, StateName, State,
                    [{waiting_acks, Size}|Acc]);
 get_info_items([subscriptions|Rest], StateName, State, Acc) ->
-    Subscriptions = vmq_reg:subscriptions_for_client(State#state.client_id),
+    #state{subscriber_id=SubscriberId} = State,
+    Subscriptions = vmq_reg:subscriptions_for_subscriber(SubscriberId),
     get_info_items(Rest, StateName, State,
                    [{subscriptions, Subscriptions}|Acc]);
 get_info_items([_|Rest], StateName, State, Acc) ->

@@ -22,6 +22,10 @@
 -spec start() -> 'ok'.
 start_no_auth() ->
     maybe_start_distribution(),
+
+    application:load(vmq_plugin),
+    application:set_env(vmq_plugin, wait_for_proc, vmq_server_sup),
+
     application:load(mnesia_cluster),
     application:set_env(mnesia_cluster, table_definition_mod,
                         {?MODULE, table_defs, []}),
@@ -30,14 +34,17 @@ start_no_auth() ->
     application:set_env(mnesia_cluster, app_process, vmq_cluster),
     application:set_env(mnesia_cluster, cluster_partition_handling,
                         ignore), % we use unsplit
-    application:load(sasl),
-    application:set_env(sasl, sasl_error_logger, false),
+    %application:load(sasl),
+    %application:set_env(sasl, sasl_error_logger, false),
     application:ensure_all_started(vmq_server),
-    clean_hooks(),
     ok.
 
 start_no_auth(ClusterNode) ->
     maybe_start_distribution(),
+
+    application:load(vmq_plugin),
+    application:set_env(vmq_plugin, wait_for_proc, vmq_server_sup),
+
     application:load(mnesia_cluster),
     application:set_env(mnesia_cluster, table_definition_mod,
                         {?MODULE, table_defs, []}),
@@ -84,12 +91,6 @@ maybe_start_distribution() ->
         _ ->
             ok
     end.
-
-clean_hooks() ->
-    [vmq_plugin_mgr:disable_plugin(P)
-     || P <- vmq_plugin:info(all),
-        (element(1, P) /= change_config) andalso (element(2, P) /= vmq_config)
-    ].
 
 table_defs() ->
     VmqRegTables = vmq_reg:table_defs(),

@@ -19,19 +19,19 @@
   {mod, { vmq_server_app, []}},
   {env, [
       {allow_anonymous, true},
-      {msg_log_handler, vmq_test_msg_log_handler},
       {max_client_id_size, 23},
       {retry_interval, 20},
       {persistent_client_expiration, 0}, % never
       {sys_interval, 10}, % in seconds
       {max_inflight_messages, 20},
       {max_queued_messages, 1000},
-      {message_size_limit, 10},
+      {message_size_limit, 0},
       {tune_tcp_buffer_size, false},
       {upgrade_outgoing_qos, false},
       {trade_consistency, false},
       {allow_multiple_sessions, false},
       {vmq_config_enabled, true},
+      {default_reg_view, vmq_reg_trie},
       {reg_views, [vmq_reg_trie]},
       {listeners, {
                       [{{{127,0,0,1}, 1888}, [{max_connections, infinity}, 

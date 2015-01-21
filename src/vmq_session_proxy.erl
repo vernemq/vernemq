@@ -35,15 +35,15 @@
                 repl_mon,
                 queue_pid,
                 queue_mon,
-                client_id,
+                subscriber_id,
                 waiting}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-start_link(Node, QPid, ClientId) ->
-    gen_server:start_link(?MODULE, [Node, QPid, ClientId], []).
+start_link(Node, QPid, SubscriberId) ->
+    gen_server:start_link(?MODULE, [Node, QPid, SubscriberId], []).
 
 derefed(SessionProxy, MsgRef) ->
     gen_server:cast(SessionProxy, {derefed, MsgRef}).
@@ -55,9 +55,9 @@ deliver(SessionProxy, Term) ->
 %%% gen_server callbacks
 %%%===================================================================
 
-init([Node, QPid, ClientId]) ->
+init([Node, QPid, SubscriberId]) ->
     QueueMon = monitor(process, QPid),
-    {ok, #state{node=Node, client_id=ClientId, queue_pid=QPid,
+    {ok, #state{node=Node, subscriber_id=SubscriberId, queue_pid=QPid,
                 queue_mon=QueueMon}, 0}.
 
 handle_call({deliver, Term}, From, State) ->
@@ -68,32 +68,32 @@ handle_cast({derefed, MsgRef}, #state{waiting={MsgRef, From}} = State) ->
     {noreply, State#state{waiting=undefined}}.
 
 handle_info({'DOWN', _MRef, process, Pid, Reason}, State) ->
-    #state{repl_pid=ReplPid, client_id=ClientId} = State,
+    #state{repl_pid=ReplPid, subscriber_id=SubscriberId} = State,
     case {Pid == ReplPid, Reason} of
         {true, normal} ->
             %% finished replicating
             {stop, normal, State};
         {true, OtherReason} ->
-            lager:warning("replication process for client ~p died due to ~p",
-                         [ClientId, OtherReason]),
+            lager:warning("replication process for subscriber ~p died due to ~p",
+                         [SubscriberId, OtherReason]),
             {stop, OtherReason, State};
         {false, Reason} ->
             %% session stopped during replication
             {stop, Reason, State}
     end;
 
-handle_info(timeout, #state{node=Node, client_id=ClientId}= State) ->
+handle_info(timeout, #state{node=Node, subscriber_id=SubscriberId}= State) ->
     Self = self(),
     {ReplPid, ReplMon} =
     case node() of
         Node ->
             spawn_monitor(vmq_msg_store, deliver_from_store,
-                          [ClientId, Self]);
+                          [SubscriberId, Self]);
         _ ->
             spawn_monitor(
               fun() ->
                       rpc:call(Node, vmq_msg_store, deliver_from_store,
-                               [ClientId, Self])
+                               [SubscriberId, Self])
               end)
     end,
     {noreply, State#state{repl_pid=ReplPid, repl_mon=ReplMon}}.

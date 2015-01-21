@@ -14,3 +14,5 @@
          }).
 
 -type msg()             :: #vmq_msg{}.
+-type mountpoint()      :: list().
+-type subscriber_id()   :: {mountpoint(), client_id()}.

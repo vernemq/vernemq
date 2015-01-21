@@ -30,11 +30,11 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-start_delivery(QPid, ClientId) ->
+start_delivery(QPid, SubscriberId) ->
     lists:foreach(
       fun(Node) ->
               {ok, _Pid} = supervisor:start_child(?MODULE,
-                                     [Node, QPid, ClientId])
+                                     [Node, QPid, SubscriberId])
       end, vmq_cluster:nodes()).
 
 
