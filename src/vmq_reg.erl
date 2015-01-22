@@ -528,6 +528,9 @@ direct_plugin_exports(Mod) ->
     %% This Function exports a generic Register, Publish, and Subscribe
     %% Fun, that a plugin can use if needed. Currently all functions
     %% block until the cluster is ready.
+    TradeConsistency = vmq_config:get_env(trade_consistency),
+    QueueSize = vmq_config:get_env(max_queued_messages, 1000),
+    DefaultRegView = vmq_config:get_env(default_reg_view),
     MountPoint = "",
     ClientId = fun(T) ->
                        base64:encode_to_string(
@@ -536,7 +539,6 @@ direct_plugin_exports(Mod) ->
                           )
                         )
                end,
-    QueueSize = vmq_config:get_env(max_queued_messages, 1000),
     PluginPid = self(),
     {ok, QPid} = vmq_queue:start_link(
                    spawn_link(
@@ -559,7 +561,10 @@ direct_plugin_exports(Mod) ->
             Msg = #vmq_msg{routing_key=Topic,
                            payload=Payload,
                            dup=false,
-                           retain=false},
+                           retain=false,
+                           trade_consistency=TradeConsistency,
+                           reg_view=DefaultRegView
+                           },
             ok = publish(Msg),
             ok
     end,
@@ -569,7 +574,8 @@ direct_plugin_exports(Mod) ->
             wait_til_ready(),
             CallingPid = self(),
             User = {plugin, Mod, CallingPid},
-            ok = subscribe(false, User, {MountPoint, ClientId(CallingPid)},
+            ok = subscribe(TradeConsistency, User,
+                           {MountPoint, ClientId(CallingPid)},
                            QPid, [{Topic, 0}]),
             ok
     end,
@@ -578,7 +584,8 @@ direct_plugin_exports(Mod) ->
             wait_til_ready(),
             CallingPid = self(),
             User = {plugin, Mod, CallingPid},
-            ok = unsubscribe(false, User, {MountPoint, ClientId(CallingPid)},
+            ok = unsubscribe(TradeConsistency, User,
+                             {MountPoint, ClientId(CallingPid)},
                              [{Topic, 0}]),
             ok
     end,
