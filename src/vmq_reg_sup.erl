@@ -42,7 +42,7 @@
 start_link() ->
     {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
     DefaultRegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
-    RegViews = vmq_config:get_env(reg_views, [DefaultRegView]),
+    RegViews = lists:usort([DefaultRegView|vmq_config:get_env(reg_views, [])]),
     _ = [{ok, _} = start_reg_view(RV) || RV <- RegViews],
     {ok, Pid}.
 
@@ -61,10 +61,12 @@ stop_reg_view(ViewModule) ->
 reconfigure_registry(Config) ->
     case lists:keyfind(reg_views, 1, Config) of
         {_, RegViews} ->
+            DefaultRegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+            RequiredRegViews = lists:usort([DefaultRegView|RegViews]),
             InstalledRegViews = [Id || {{reg_view, Id}, _, _, _}
                                        <- supervisor:which_children(?MODULE)],
-            ToBeInstalled = RegViews -- InstalledRegViews,
-            ToBeUnInstalled = InstalledRegViews -- RegViews,
+            ToBeInstalled = RequiredRegViews -- InstalledRegViews,
+            ToBeUnInstalled = InstalledRegViews -- RequiredRegViews,
             _ = [{ok, _} = start_reg_view(RV) || RV <- ToBeInstalled],
             _ = [{ok, _} = stop_reg_view(RV) || RV <- ToBeUnInstalled];
         false ->
