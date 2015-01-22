@@ -32,7 +32,7 @@
 -record(state, {listener,
                 acceptor,
                 tcp_opts,
-                other_opts, %% mainly ssl
+                other_opts, %% currently only ssl
                 mountpoint,
                 handler}).
 

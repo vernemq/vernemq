@@ -297,7 +297,8 @@ publish(#vmq_msg{trade_consistency=true,
                     {error, overloaded}
             end;
         false ->
-            RegView:fold(MP, RoutingKey, fun publish_/2, Msg)
+            RegView:fold(MP, RoutingKey, fun publish_/2, Msg),
+            ok
     end;
 publish(#vmq_msg{trade_consistency=false,
                  reg_view=RegView,

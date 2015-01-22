@@ -30,22 +30,22 @@ register_hooks() ->
 
 
 -spec auth_on_register(_, _, _, _) -> 'ok'.
-auth_on_register(SrcIp, ClientId, User, Password) ->
-    io:format("[~p] auth client ~p from ~p
+auth_on_register(SrcIp, SubscriberId, User, Password) ->
+    io:format("[~p] auth subscriber ~p from ~p
               with username ~p and password ~p~n",
-              [self(), ClientId, SrcIp, User, Password]),
+              [self(), SubscriberId, SrcIp, User, Password]),
     ok.
 
 -spec auth_on_subscribe(_, _, _) -> 'ok'.
-auth_on_subscribe(User, ClientId, Topics) ->
-    io:format("[~p] auth client subscriptions ~p
+auth_on_subscribe(User, SubscriberId, Topics) ->
+    io:format("[~p] auth subscriber subscriptions ~p
               from ~p with username ~p~n",
-              [self(), Topics, ClientId, User]),
+              [self(), Topics, SubscriberId, User]),
     ok.
 
 -spec auth_on_publish(_, _, _, _, _, _) -> 'ok'.
-auth_on_publish(User, ClientId, MsgRef, Topic, _Payload, _IsRetain) ->
-   io:format("[~p] auth client publish ~p with
+auth_on_publish(User, SubscriberId, MsgRef, Topic, _Payload, _IsRetain) ->
+   io:format("[~p] auth subscriber publish ~p with
              topic ~p from ~p with username ~p~n",
-             [self(), MsgRef, Topic, ClientId, User]),
+             [self(), MsgRef, Topic, SubscriberId, User]),
   ok.
