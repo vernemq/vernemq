@@ -61,7 +61,8 @@
 -export([direct_plugin_exports/1]).
 %% used by vmq_reg_cache
 -export([subscribe_subscriber_changes/0,
-         fold_subscribers/2]).
+         fold_subscribers/2,
+         fold_subscribers/3]).
 
 -record(state, {}).
 -record(session, {subscriber_id, pid, queue_pid, monitor, last_seen, clean}).
@@ -619,8 +620,12 @@ subscribe_subscriber_changes() ->
         ({write, #vmq_subscriber{topic=Topic, qos=QoS,
                                  id={MP, _} = SubscriberId, node=N}, _})
           when N == Node ->
-             {subscribe, MP, Topic, {SubscriberId, QoS,
-                                     get_queue_pids(SubscriberId)}};
+             QPids =
+             case get_queue_pids(SubscriberId) of
+                 {ok, Pids} -> Pids;
+                 {error, not_found} -> {error, not_found}
+             end,
+             {subscribe, MP, Topic, {SubscriberId, QoS, QPids}};
         ({write, #vmq_subscriber{topic=Topic, id={MP, _}, node=N}, _}) ->
              {subscribe, MP, Topic, N};
         (_) ->
@@ -639,8 +644,12 @@ fold_subscribers(ResolveQPids, FoldFun, Acc) ->
                                     id={MP, _} = SubscriberId, node=N}, AccAcc) ->
                         case Node == N of
                             true when ResolveQPids ->
-                                FoldFun({MP, Topic, {SubscriberId, QoS,
-                                                 get_queue_pids(SubscriberId)}},
+                                QPids =
+                                case get_queue_pids(SubscriberId) of
+                                    {ok, Pids} -> Pids;
+                                    {error, not_found} -> {error, not_found}
+                                end,
+                                FoldFun({MP, Topic, {SubscriberId, QoS, QPids}},
                                         AccAcc);
                             true ->
                                 FoldFun({MP, Topic, {SubscriberId, QoS, undefined}},
