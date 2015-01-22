@@ -50,14 +50,32 @@ start_link() ->
 fold(MP, Topic, FoldFun, Acc) when is_list(Topic) ->
     case find_cache_table({MP, Topic}) of
         {ok, T} ->
-            {_, _, ResAcc} = ets:foldl(fun fold_/2, {Topic, FoldFun, Acc}, T),
-            ResAcc;
+            try
+                {_, _, ResAcc} = ets:foldl(
+                                   fun fold_/2, {Topic, FoldFun, Acc}, T
+                                  ),
+                ResAcc
+            catch
+                error:badarg ->
+                    %% this can happen, if ets:foldl is called while
+                    %% the table has been deleted underneath.
+                    Acc
+            end;
         {error, not_found} ->
             Acc
     end.
 
-fold_({{ClientId, QoS}, Pid}, {Topic, FoldFun, Acc}) ->
+fold_({{ClientId, QoS}, [Pid]}, {Topic, FoldFun, Acc}) ->
+    %% optimizaion for majority of cases,
+    %% where only one session pid per client exists
     NewAcc = FoldFun({Topic, node(), ClientId, QoS, Pid}, Acc),
+    {Topic, FoldFun, NewAcc};
+fold_({{ClientId, QoS}, Pids}, {Topic, FoldFun, Acc}) ->
+    NewAcc =
+    lists:foldl(
+      fun(Pid, AccAcc) ->
+              FoldFun({Topic, node(), ClientId, QoS, Pid}, AccAcc)
+      end, Acc, Pids),
     {Topic, FoldFun, NewAcc};
 fold_({{node, Node}, _}, {Topic, FoldFun, Acc}) ->
     NewAcc = FoldFun({Topic, Node}, Acc),
@@ -185,7 +203,7 @@ handle_event(Handler, Event) ->
             case emqtt_topic:type(emqtt_topic:new(Topic)) of
                 direct ->
                     T = ensure_table_exists(MountPoint, Topic),
-                    handle_sub_event(EvtType, T, EventVal);
+                    handle_sub_event({MountPoint, Topic}, EvtType, T, EventVal);
                 wildcard ->
                     ignore
             end;
@@ -195,7 +213,7 @@ handle_event(Handler, Event) ->
 
 initialize_tables({MP, Topic, Val}, Parent) ->
     T = ensure_table_exists(MP, Topic, Parent),
-    handle_sub_event(subscribe, T, Val),
+    handle_sub_event({MP, Topic}, subscribe, T, Val),
     Parent.
 
 ensure_table_exists(MountPoint, Topic) ->
@@ -205,13 +223,14 @@ ensure_table_exists(MountPoint, Topic, Parent) ->
     case find_cache_table({MountPoint, Topic}) of
         {ok, T} -> T;
         {error, not_found} ->
-            T = ets:new(?MODULE, [public, bag, {read_concurrency, true}]),
+            T = ets:new(?MODULE, [public, ordered_set,
+                                  {read_concurrency, true}]),
             ets:insert(?MODULE, {{MountPoint, Topic}, T}),
             case Parent == self() of
                 true ->
                     T;
                 false ->
-                    ets:give_away(T, Parent, ?MODULE),
+                    true = ets:give_away(T, Parent, ?MODULE),
                     T
             end
     end.
@@ -223,32 +242,34 @@ find_cache_table(TableKey) ->
             {ok, Tid}
     end.
 
-
-handle_sub_event(subscribe, T, {ClientId, QoS, {error, not_found}}) ->
+handle_sub_event(_, subscribe, T, {ClientId, QoS, {error, not_found}}) ->
     %% no local process found for client id
     ets:insert(T, {{ClientId, QoS}, undefined});
-handle_sub_event(subscribe, T, {ClientId, QoS, QPids}) ->
-    Objects = [{{ClientId, QoS}, Pid} || Pid <- QPids],
-    ets:insert(T, Objects);
-handle_sub_event(subscribe, T, Node) ->
+handle_sub_event(_, subscribe, T, {ClientId, QoS, QPids}) ->
+    ets:insert(T, {{ClientId, QoS}, QPids});
+handle_sub_event(_, subscribe, T, Node) ->
     case ets:insert_new(T, {{node, Node}, 1}) of
         true ->
             ok;
         false ->
             ets:update_counter(T, {node, Node}, 1)
     end;
-handle_sub_event(unsubscribe, T, {ClientId, QoS}) ->
+handle_sub_event(TabKey, unsubscribe, T, {ClientId, QoS}) ->
     ets:delete(T, {ClientId, QoS}),
     case ets:info(T, size) of
-        0 -> ets:delete(T);
+        0 ->
+            ets:delete(vmq_reg_pets, TabKey),
+            ets:delete(T);
         _ -> ok
     end;
-handle_sub_event(unsubscribe, T, Node) ->
+handle_sub_event(TabKey, unsubscribe, T, Node) ->
     case ets:update_counter(T, {node, Node}, -1) of
         R when R =< 0 ->
             ets:delete(T, {node, Node}),
             case ets:info(T, size) of
-                0 -> ets:delete(T);
+                0 ->
+                    ets:delete(vmq_reg_pets, TabKey),
+                    ets:delete(T);
                 _ -> ok
             end;
         _ ->
