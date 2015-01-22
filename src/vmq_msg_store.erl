@@ -229,8 +229,8 @@ msg_store_init(PluginName) ->
             gen_server:call(?MODULE, {init_plugin, PluginName})
     end.
 
-update_subs_(RoutingKey, MsgRef, Payload, Key, Acc) ->
-    case vmq_reg:subscriptions(RoutingKey) of
+update_subs_(MountPoint, RoutingKey, MsgRef, Payload, Key, Acc) ->
+    case vmq_reg:subscriptions(MountPoint, RoutingKey) of
         [] -> %% weird
             [Key|Acc];
         Subs ->
@@ -260,8 +260,8 @@ handle_call({init_plugin, HookModule}, From, State) ->
            msg_store_fold,
            [fun
                 (<<?MSG_ITEM, MsgRef/binary>> = Key, Val, Acc) ->
-                    {_, RoutingKey, Payload} = binary_to_term(Val),
-                    update_subs_(RoutingKey, MsgRef, Payload, Key, Acc)
+                    {{MountPoint, _}, RoutingKey, Payload} = binary_to_term(Val),
+                    update_subs_(MountPoint, RoutingKey, MsgRef, Payload, Key, Acc)
             end, []]) of
         {error, Reason} ->
             lager:warning("can't initialize msg cache due to ~p", [Reason]);

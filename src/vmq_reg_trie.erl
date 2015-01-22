@@ -1,24 +1,10 @@
-%% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
-%% Licensed under the Apache License, Version 2.0 (the "License");
-%% you may not use this file except in compliance with the License.
-%% You may obtain a copy of the License at
-%%
-%%     http://www.apache.org/licenses/LICENSE-2.0
-%%
-%% Unless required by applicable law or agreed to in writing, software
-%% distributed under the License is distributed on an "AS IS" BASIS,
-%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%% See the License for the specific language governing permissions and
-%% limitations under the License.
-%%
 -module(vmq_reg_trie).
 
 -behaviour(gen_server).
 
 %% API
 -export([start_link/0,
-         fold/3]).
+         fold/4]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -28,7 +14,10 @@
          terminate/2,
          code_change/3]).
 
--record(state, {event_handler, event_prefix}).
+-record(state, {status=init,
+                event_handler,
+                event_prefix,
+                event_queue=queue:new()}).
 
 -record(trie, {edge, node_id}).
 -record(trie_node, {node_id, edge_count=0, topic}).
@@ -48,8 +37,8 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-fold(Topic, FoldFun, Acc) when is_list(Topic) ->
-    fold_(FoldFun, Acc, match(Topic)).
+fold(MP, Topic, FoldFun, Acc) when is_list(Topic) ->
+    fold_(FoldFun, Acc, match(MP, Topic)).
 
 fold_(FoldFun, Acc, [Topic|MatchedTopics]) ->
     fold_(FoldFun, FoldFun(Topic, Acc), MatchedTopics);
@@ -77,7 +66,12 @@ init([]) ->
     ets:new(vmq_trie, [{keypos, 2}|DefaultETSOpts]),
     ets:new(vmq_trie_node, [{keypos, 2}|DefaultETSOpts]),
     ets:new(vmq_trie_topic, [bag, {keypos, 1}|DefaultETSOpts]),
-    vmq_reg:fold_subscribers(fun initialize_trie/2, []),
+    Self = self(),
+    spawn_link(
+      fun() ->
+              ok = vmq_reg:fold_subscribers(fun initialize_trie/2, ok),
+              Self ! subscribers_loaded
+      end),
     {EventPrefix, EventHandler} = vmq_reg:subscribe_subscriber_changes(),
     {ok, #state{event_prefix=EventPrefix, event_handler=EventHandler}}.
 
@@ -122,25 +116,19 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info(subscribers_loaded, #state{event_handler=Handler,
+                                       event_queue=Q} = State) ->
+    lists:foreach(fun(Event) ->
+                          handle_event(Handler, Event)
+                  end, queue:to_list(Q)),
+    lager:info("all subscribers loaded into ~p", [?MODULE]),
+    {noreply, State#state{status=ready, event_queue=undefined}};
+handle_info({Prefix, Event},
+            #state{status=init, event_prefix=Prefix, event_queue=Q} = State) ->
+    {noreply, State#state{event_queue=queue:in(Event, Q)}};
 handle_info({Prefix, Event},
             #state{event_prefix=Prefix, event_handler=Handler} = State) ->
-    case Handler(Event) of
-        {subscribe, Topic, {_, _, _}} ->
-            %% subscribe on local node
-            add_topic(Topic, node());
-        {subscribe, Topic, Node} when is_atom(Node) ->
-            %% subscribe on remote node
-            add_topic(Topic, Node);
-        {unsubscribe, Topic, {_, _}} ->
-            %% unsubscribe on local node
-            del_topic(Topic, node());
-        {unsubscribe, Topic, Node} when is_atom(Node) ->
-            %% unsubscribe on remote node
-            del_topic(Topic, Node);
-        ignore ->
-            ok
-
-    end,
+    handle_event(Handler, Event),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -171,34 +159,65 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-match(Topic) when is_list(Topic) ->
-    TrieNodes = trie_match(emqtt_topic:words(Topic)),
-    lists:flatten([ets:lookup(vmq_trie_topic, Name)
-                   || #trie_node{topic=Name} <- TrieNodes,
-                      Name =/= undefined]).
+handle_event(Handler, Event) ->
+    case Handler(Event) of
+        {subscribe, MP, Topic, {_, _, _}} ->
+            %% subscribe on local node
+            add_topic(MP, Topic, node());
+        {subscribe, MP, Topic, Node} when is_atom(Node) ->
+            %% subscribe on remote node
+            add_topic(MP, Topic, Node);
+        {unsubscribe, MP, Topic, {_, _}} ->
+            %% unsubscribe on local node
+            del_topic(MP, Topic, node());
+        {unsubscribe, MP, Topic, Node} when is_atom(Node) ->
+            %% unsubscribe on remote node
+            del_topic(MP, Topic, Node);
+        ignore ->
+            ok
+    end.
 
-initialize_trie({Topic, {_,_,_}}, Acc) ->
-    add_topic(Topic, node()),
+match(MP, Topic) when is_list(Topic) and is_list(Topic) ->
+    TrieNodes = trie_match(MP, emqtt_topic:words(Topic)),
+    match(MP, TrieNodes, []).
+
+match(MP, [#trie_node{topic=Name}|Rest], Acc) when Name =/= undefined ->
+    match(MP, Rest, match_(Name, ets:lookup_element(
+                                   vmq_trie_topic,
+                                   {MP, Name}, 2),
+                           Acc));
+match(MP, [_|Rest], Acc) ->
+    match(MP, Rest, Acc);
+match(_, [], Acc) -> Acc.
+
+match_(Topic, [Node|Rest], Acc) ->
+    match_(Topic, Rest, [{Topic, Node}|Acc]);
+match_(_, [], Acc) -> Acc.
+
+initialize_trie({MP, Topic, {_,_,_}}, Acc) ->
+    add_topic(MP, Topic, node()),
     Acc;
-initialize_trie({Topic, Node}, Acc) when is_atom(Node) ->
-    add_topic(Topic, Node),
+initialize_trie({MP, Topic, Node}, Acc) when is_atom(Node) ->
+    add_topic(MP, Topic, Node),
     Acc.
 
-add_topic(Topic, Node) ->
-    ets:insert(vmq_trie_topic, {Topic, Node}),
-    case ets:lookup(vmq_trie_node, Topic) of
+add_topic(MP, Topic, Node) ->
+    MPTopic = {MP, Topic},
+    ets:insert(vmq_trie_topic, {MPTopic, Node}),
+    case ets:lookup(vmq_trie_node, MPTopic) of
         [#trie_node{topic=Topic}] ->
             ignore;
         [] ->
             %% add trie path
-            [trie_add_path(Triple) || Triple <- emqtt_topic:triples(Topic)],
+            [trie_add_path(MP, Triple) || Triple <- emqtt_topic:triples(Topic)],
             %% add last node
-            ets:insert(vmq_trie_node, #trie_node{node_id=Topic, topic=Topic})
+            ets:insert(vmq_trie_node, #trie_node{node_id=MPTopic, topic=Topic})
     end.
 
-trie_add_path({Node, Word, Child}) ->
-    Edge = #trie_edge{node_id=Node, word=Word},
-    case ets:lookup(vmq_trie_node, Node) of
+trie_add_path(MP, {Node, Word, Child}) ->
+    NodeId = {MP, Node},
+    Edge = #trie_edge{node_id=NodeId, word=Word},
+    case ets:lookup(vmq_trie_node, NodeId) of
         [TrieNode = #trie_node{edge_count=Count}] ->
             case ets:lookup(vmq_trie, Edge) of
                 [] ->
@@ -209,22 +228,24 @@ trie_add_path({Node, Word, Child}) ->
                     ok
             end;
         [] ->
-            ets:insert(vmq_trie_node, #trie_node{node_id=Node, edge_count=1}),
+            ets:insert(vmq_trie_node, #trie_node{node_id=NodeId, edge_count=1}),
             ets:insert(vmq_trie, #trie{edge=Edge, node_id=Child})
     end.
 
-trie_match(Words) ->
-    trie_match(root, Words, []).
+trie_match(MP, Words) ->
+    trie_match(MP, root, Words, []).
 
-trie_match(NodeId, [], ResAcc) ->
+trie_match(MP, Node, [], ResAcc) ->
+    NodeId = {MP, Node},
     ets:lookup(vmq_trie_node, NodeId) ++ 'trie_match_#'(NodeId, ResAcc);
-trie_match(NodeId, [W|Words], ResAcc) ->
+trie_match(MP, Node, [W|Words], ResAcc) ->
+    NodeId = {MP, Node},
     lists:foldl(
       fun(WArg, Acc) ->
               case ets:lookup(vmq_trie,
                               #trie_edge{node_id=NodeId, word=WArg}) of
                   [#trie{node_id=ChildId}] ->
-                      trie_match(ChildId, Words, Acc);
+                      trie_match(MP, ChildId, Words, Acc);
                   [] ->
                       Acc
               end
@@ -238,33 +259,36 @@ trie_match(NodeId, [W|Words], ResAcc) ->
             ResAcc
     end.
 
-del_topic(Topic, Node) ->
-    ets:delete_object(vmq_trie_topic, {Topic, Node}),
-    case ets:lookup(vmq_trie_topic, Topic) of
+del_topic(MP, Topic, Node) ->
+    MPTopic = {MP, Topic},
+    ets:delete_object(vmq_trie_topic, {MPTopic, Node}),
+    case ets:lookup(vmq_trie_topic, MPTopic) of
         [] ->
-            trie_delete(Topic);
+            trie_delete(MP, Topic);
         _ ->
             ignore
     end.
 
-trie_delete(Topic) ->
-    case ets:lookup(vmq_trie_node, Topic) of
+trie_delete(MP, Topic) ->
+    NodeId = {MP, Topic},
+    case ets:lookup(vmq_trie_node, NodeId) of
         [#trie_node{edge_count=0}] ->
-            ets:delete(vmq_trie_node, Topic),
-            trie_delete_path(lists:reverse(emqtt_topic:triples(Topic)));
+            ets:delete(vmq_trie_node, NodeId),
+            trie_delete_path(MP, lists:reverse(emqtt_topic:triples(Topic)));
         _ ->
             ignore
     end.
 
-trie_delete_path([]) ->
+trie_delete_path(_, []) ->
     ok;
-trie_delete_path([{NodeId, Word, _}|RestPath]) ->
+trie_delete_path(MP, [{Node, Word, _}|RestPath]) ->
+    NodeId = {MP, Node},
     Edge = #trie_edge{node_id=NodeId, word=Word},
     ets:delete(vmq_trie, Edge),
     case ets:lookup(vmq_trie_node, NodeId) of
         [#trie_node{edge_count=1, topic=undefined}] ->
             ets:delete(vmq_trie_node, NodeId),
-            trie_delete_path(RestPath);
+            trie_delete_path(MP, RestPath);
         [#trie_node{edge_count=Count} = TrieNode] ->
             ets:insert(vmq_trie_node, TrieNode#trie_node{edge_count=Count-1});
         [] ->

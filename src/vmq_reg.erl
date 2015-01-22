@@ -31,7 +31,7 @@
          get_subscriber_pids/1,
 
          %% used in vmq_msg_store:init/1
-         subscriptions/1,
+         subscriptions/2,
 
          %% used in vmq_server_utils
          total_subscribers/0,
@@ -135,34 +135,35 @@ unsubscribe_(User, SubscriberId, Topics) ->
     vmq_plugin:all(on_unsubscribe, [User, SubscriberId, Topics]),
     ok.
 
--spec subscriptions(routing_key()) -> [{subscriber_id(), qos()}].
-subscriptions(RoutingKey) ->
-    subscriptions(fun(Obj, Acc) -> [Obj|Acc] end, [], RoutingKey).
+-spec subscriptions(mountpoint(), routing_key()) -> [{subscriber_id(), qos()}].
+subscriptions(MP, RoutingKey) ->
+    subscriptions(MP, fun(Obj, Acc) -> [Obj|Acc] end, [], RoutingKey).
 
--spec subscriptions(function(), any(), routing_key()) -> any().
-subscriptions(FoldFun, Acc, RoutingKey) ->
+-spec subscriptions(mountpoint(), function(), any(), routing_key()) -> any().
+subscriptions(MP, FoldFun, Acc, RoutingKey) ->
     RegViews = vmq_config:get_env(reg_views, []),
     lists:flatten([begin
-                       {NewAcc, _} = RV:fold(RoutingKey,
-                                             fun subscriptions/2,
-                                             {Acc, FoldFun}),
+                       {NewAcc, _} = RV:fold(MP, RoutingKey,
+                                             fun subscriptions_/2,
+                                             {MP, Acc, FoldFun}),
                        NewAcc
                    end || RV <- RegViews]).
 
-subscriptions({Topic, Node}, {Acc, FoldFun}) when Node == node() ->
+subscriptions_({Topic, Node}, {MountPoint, Acc, FoldFun}) when Node == node() ->
     NewAcc =
     lists:foldl(
       fun
-          (#vmq_subscriber{id=SubscriberId, qos=Qos}, Acc1) ->
+          (#vmq_subscriber{id={MP, _} = SubscriberId, qos=Qos}, Acc1)
+            when MP == MountPoint ->
               FoldFun({SubscriberId, Qos}, Acc1);
           (_, Acc1) ->
               Acc1
       end, Acc, mnesia:dirty_read(vmq_subscriber, Topic)),
     {NewAcc, FoldFun};
-subscriptions({_Topic, Node, SubscriberId, QoS, _Pid}, {Acc, FoldFun})
+subscriptions_({_Topic, Node, {MP, _} = SubscriberId, QoS, _Pid}, {MP, Acc, FoldFun})
   when Node == node() ->
     {FoldFun({SubscriberId, QoS}, Acc), FoldFun};
-subscriptions(_, Acc) ->
+subscriptions_(_, Acc) ->
     Acc.
 
 subscriptions_for_subscriber(SubscriberId) ->
@@ -273,6 +274,7 @@ register_subscriber__(SessionPid, QPid, SubscriberId, CleanSession) ->
 -spec publish(msg()) -> 'ok' | {'error', _}.
 publish(#vmq_msg{trade_consistency=true,
                  reg_view=RegView,
+                 mountpoint=MP,
                  routing_key=RoutingKey,
                  payload=Paylaod,
                  retain=IsRetain} = Msg) ->
@@ -288,16 +290,17 @@ publish(#vmq_msg{trade_consistency=true,
             %% retain set action
             case retain_msg(Msg) of
                 {ok, RetainedMsg} ->
-                    RegView:fold(RoutingKey, fun publish_/2, RetainedMsg),
+                    RegView:fold(MP, RoutingKey, fun publish_/2, RetainedMsg),
                     ok;
                 {error, overloaded} ->
                     {error, overloaded}
             end;
         false ->
-            RegView:fold(RoutingKey, fun publish_/2, Msg)
+            RegView:fold(MP, RoutingKey, fun publish_/2, Msg)
     end;
 publish(#vmq_msg{trade_consistency=false,
                  reg_view=RegView,
+                 mountpoint=MP,
                  routing_key=RoutingKey,
                  payload=Payload,
                  retain=IsRetain} = Msg) ->
@@ -310,13 +313,13 @@ publish(#vmq_msg{trade_consistency=false,
         true when IsRetain ->
             case retain_msg(Msg) of
                 {ok, RetainedMsg} ->
-                    RegView:fold(RoutingKey, fun publish_/2, RetainedMsg),
+                    RegView:fold(MP, RoutingKey, fun publish_/2, RetainedMsg),
                     ok;
                 {error, overloaded} ->
                     {error, overloaded}
             end;
         true ->
-            RegView:fold(RoutingKey, fun publish_/2, Msg),
+            RegView:fold(MP, RoutingKey, fun publish_/2, Msg),
             ok;
         false ->
             {error, not_ready}
@@ -608,18 +611,18 @@ subscribe_subscriber_changes() ->
     {mnesia_table_event,
      fun
         ({delete_object, #vmq_subscriber{topic=Topic, qos=QoS,
-                                         id=SubscriberId, node=N}, _})
+                                         id={MP, _} = SubscriberId, node=N}, _})
           when N == Node ->
-             {unsubscribe, Topic, {SubscriberId, QoS}};
-        ({delete_object, #vmq_subscriber{topic=Topic, node=N}, _}) ->
-             {unsubscribe, Topic, N};
+             {unsubscribe, MP, Topic, {SubscriberId, QoS}};
+        ({delete_object, #vmq_subscriber{topic=Topic, id={MP, _}, node=N}, _}) ->
+             {unsubscribe, MP, Topic, N};
         ({write, #vmq_subscriber{topic=Topic, qos=QoS,
-                                 id=SubscriberId, node=N}, _})
+                                 id={MP, _} = SubscriberId, node=N}, _})
           when N == Node ->
-             {subscribe, Topic, {SubscriberId, QoS,
-                                 get_queue_pids(SubscriberId)}};
-        ({write, #vmq_subscriber{topic=Topic, node=N}, _}) ->
-             {subscribe, Topic, N};
+             {subscribe, MP, Topic, {SubscriberId, QoS,
+                                     get_queue_pids(SubscriberId)}};
+        ({write, #vmq_subscriber{topic=Topic, id={MP, _}, node=N}, _}) ->
+             {subscribe, MP, Topic, N};
         (_) ->
              ignore
      end}.
@@ -633,17 +636,17 @@ fold_subscribers(ResolveQPids, FoldFun, Acc) ->
       fun() ->
               mnesia:foldl(
                 fun(#vmq_subscriber{topic=Topic, qos=QoS,
-                                    id=SubscriberId, node=N}, AccAcc) ->
+                                    id={MP, _} = SubscriberId, node=N}, AccAcc) ->
                         case Node == N of
                             true when ResolveQPids ->
-                                FoldFun({Topic, {SubscriberId, QoS,
+                                FoldFun({MP, Topic, {SubscriberId, QoS,
                                                  get_queue_pids(SubscriberId)}},
                                         AccAcc);
                             true ->
-                                FoldFun({Topic, {SubscriberId, QoS, undefined}},
+                                FoldFun({MP, Topic, {SubscriberId, QoS, undefined}},
                                         AccAcc);
                             false ->
-                                FoldFun({Topic, N}, AccAcc)
+                                FoldFun({MP, Topic, N}, AccAcc)
                         end
                 end, Acc, vmq_subscriber)
       end).

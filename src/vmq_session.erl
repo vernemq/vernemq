@@ -59,9 +59,7 @@
           %% mqtt layer requirements
           next_msg_id=1                     :: msg_id(),
           subscriber_id                     :: undefined | subscriber_id(),
-          will_topic                        :: undefined | topic(),
-          will_msg                          :: undefined | payload(),
-          will_qos                          :: undefined | qos(),
+          will_msg                          :: undefined | msg(),
           waiting_acks=dict:new()           :: dict(),
           %% auth backend requirement
           peer                              :: peer(),
@@ -84,7 +82,7 @@
           allow_anonymous=false             :: flag(),
           max_inflight_messages=20          :: pos_integer(),
           max_message_size=0                :: pos_integer(),
-          mountpoint=""                     :: string(),
+          mountpoint=""                     :: mountpoint(),
           retry_interval=20000              :: pos_integer(),
           upgrade_qos=false                 :: flag(),
           max_client_id_size=23             :: non_neg_integer(),
@@ -402,8 +400,7 @@ handle_messages([], Frames, State) ->
     end.
 
 prepare_frame(QoS, Msg, State) ->
-    #state{waiting_acks=WAcks, mountpoint=MountPoint,
-           retry_interval=RetryInterval} = State,
+    #state{waiting_acks=WAcks, retry_interval=RetryInterval} = State,
     #vmq_msg{routing_key=RoutingKey,
              payload=Payload,
              retain=IsRetained,
@@ -420,7 +417,7 @@ prepare_frame(QoS, Msg, State) ->
                         dup=IsDup
                        },
                variable=#mqtt_frame_publish{
-                           topic_name=clean_mp(MountPoint, RoutingKey),
+                           topic_name=RoutingKey,
                            message_id=OutgoingMsgId},
                payload=Payload
               },
@@ -511,7 +508,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
              Var, _, State) ->
-    #state{waiting_acks=WAcks, username=User, reg_view=RegView,
+    #state{waiting_acks=WAcks, username=User, reg_view=RegView, mountpoint=MP,
            subscriber_id=SubscriberId, trade_consistency=Consistency} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
@@ -526,7 +523,8 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
                            retain=IsRetain,
                            qos=2,
                            trade_consistency=Consistency,
-                           reg_view=RegView},
+                           reg_view=RegView,
+                           mountpoint=MP},
             case publish(User, SubscriberId, Msg) of
                 ok ->
                     vmq_msg_store:deref(MsgRef),
@@ -567,12 +565,13 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
         {$$, _} ->
             {connected, State};
         {_, true} ->
-            Msg = #vmq_msg{routing_key=combine_mp(MountPoint, Topic),
+            Msg = #vmq_msg{routing_key=Topic,
                            payload=Payload,
                            retain=IsRetain,
                            qos=QoS,
                            trade_consistency=Consistency,
-                           reg_view=RegView},
+                           reg_view=RegView,
+                           mountpoint=MountPoint},
             {connected, dispatch_publish(QoS, MessageId, Msg,
                                          State#state{
                                            pub_recv_cnt=incr_pub_recv_cnt(
@@ -583,11 +582,10 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
-    #state{subscriber_id=SubscriberId, username=User, mountpoint=MountPoint,
+    #state{subscriber_id=SubscriberId, username=User,
            queue_pid=QPid, trade_consistency=Consistency} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
-    TTopics = [{combine_mp(MountPoint, Name), QoS} ||
-                  #mqtt_topic{name=Name, qos=QoS} <- Topics],
+    TTopics = [{Name, QoS} || #mqtt_topic{name=Name, qos=QoS} <- Topics],
     case vmq_reg:subscribe(Consistency, User, SubscriberId, QPid, TTopics) of
         ok ->
             {_, QoSs} = lists:unzip(TTopics),
@@ -603,10 +601,9 @@ handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
 
 handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
     #state{subscriber_id=SubscriberId, username=User,
-           mountpoint=MountPoint, trade_consistency=Consistency} = State,
+           trade_consistency=Consistency} = State,
     #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
-    TTopics = [combine_mp(MountPoint, Name) ||
-                  #mqtt_topic{name=Name} <- Topics],
+    TTopics = [Name || #mqtt_topic{name=Name} <- Topics],
     case vmq_reg:unsubscribe(Consistency, User, SubscriberId, TTopics) of
         ok ->
             NewState = send_frame(?UNSUBACK, #mqtt_frame_suback{
@@ -771,20 +768,21 @@ check_will(#mqtt_frame_connect{will_topic=""}, State) ->
 check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos},
            State) ->
     #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,
-           max_message_size=MaxMessageSize} = State,
-    LWTopic = combine_mp(MountPoint, Topic),
-    case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=LWTopic,
+           max_message_size=MaxMessageSize, trade_consistency=Consistency,
+           reg_view=RegView} = State,
+    case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                                       payload=Payload,
-                                                      qos=Qos},
+                                                      qos=Qos,
+                                                      trade_consistency=Consistency,
+                                                      reg_view=RegView,
+                                                      mountpoint=MountPoint
+                                                      },
                          fun(Msg, _) -> {ok, Msg} end) of
         {ok, #vmq_msg{payload=MaybeNewPayload} = Msg} ->
             case valid_msg_size(MaybeNewPayload, MaxMessageSize) of
                 true ->
                     {connected, send_connack(?CONNACK_ACCEPT,
-                                             State#state{
-                                               will_qos=Msg#vmq_msg.qos,
-                                               will_topic=Msg#vmq_msg.routing_key,
-                                               will_msg=Msg#vmq_msg.payload})};
+                                             State#state{will_msg=Msg})};
                 false ->
                     lager:warning(
                       "last will message has invalid size for subscriber ~p",
@@ -819,12 +817,10 @@ send_frame(Type, DUP, Variable, Payload,
 
 
 -spec maybe_publish_last_will(state()) -> state().
-maybe_publish_last_will(#state{will_topic=undefined} = State) -> State;
-maybe_publish_last_will(#state{will_qos=QoS, will_topic=Topic,
-                               will_msg=Msg } = State) ->
-    {MsgId, NewState} = get_msg_id(QoS, State),
-    dispatch_publish(QoS, MsgId,
-                     #vmq_msg{routing_key=Topic, payload=Msg}, NewState).
+maybe_publish_last_will(#state{will_msg=undefined} = State) -> State;
+maybe_publish_last_will(#state{will_msg=Msg} = State) ->
+    {MsgId, NewState} = get_msg_id(Msg#vmq_msg.qos, State),
+    dispatch_publish(Msg#vmq_msg.qos, MsgId, Msg, NewState).
 
 
 -spec dispatch_publish(qos(), msg_id(), msg(), state()) -> state().
@@ -932,7 +928,8 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                              reg_view=RegView,
                                              qos=QoS,
                                              retain=IsRetain,
-                                             dup=_IsDup} = Msg,
+                                             dup=_IsDup,
+                                             mountpoint=MP} = Msg,
                AuthSuccess) ->
     HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
     case vmq_plugin:all_till_ok(auth_on_publish, HookArgs) of
@@ -946,11 +943,13 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
             ChangedRegView = proplists:get_value(reg_view, Args, RegView),
             ChangedQoS = proplists:get_value(qos, Args, QoS),
             ChangedIsRetain = proplists:get_value(retain, Args, IsRetain),
+            ChangedMountpoint = proplists:get_value(mountpoint, Args, MP),
             AuthSuccess(Msg#vmq_msg{routing_key=ChangedTopic,
                                     payload=ChangedPayload,
                                     reg_view=ChangedRegView,
                                     qos=ChangedQoS,
-                                    retain=ChangedIsRetain}, HookArgs);
+                                    retain=ChangedIsRetain,
+                                    mountpoint=ChangedMountpoint}, HookArgs);
         {error, _} ->
             {error, not_allowed}
     end.
@@ -966,16 +965,6 @@ on_publish_hook(ok, HookParams) ->
     vmq_plugin:all(on_publish, HookParams),
     ok;
 on_publish_hook(Other, _) -> Other.
-
--spec combine_mp(_, 'undefined' | string()) -> 'undefined' | [any()].
-combine_mp("", Topic) -> Topic;
-combine_mp(MountPoint, Topic) ->
-    lists:flatten([MountPoint, "/", string:strip(Topic, left, $/)]).
-
--spec clean_mp([any()], _) -> any().
-clean_mp("", Topic) -> Topic;
-clean_mp(MountPoint, MountedTopic) ->
-    lists:sublist(MountedTopic, length(MountPoint) + 1, length(MountedTopic)).
 
 -spec random_client_id() -> string().
 random_client_id() ->

@@ -10,7 +10,8 @@
           dup=false             :: flag(),
           qos                   :: qos(),
           trade_consistency=false :: flag(),
-          reg_view=vmq_reg_trie   :: atom()
+          reg_view=vmq_reg_trie   :: atom(),
+          mountpoint            :: mountpoint()
          }).
 
 -type msg()             :: #vmq_msg{}.
