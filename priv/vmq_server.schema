@@ -7,23 +7,25 @@
                                                                {datatype, flag}
                                                               ]}.
 
-%% @doc Allows to operate in case the cluster is inconsistent,
-%% this removes the consistency check when registering new
-%% clients, subscribing or unsubscribing from topics
+%% @doc Allow operation even when a VerneMQ cluster is inconsistent,
+%% by removing consistency checks while registering new
+%% clients or subscribing/unsubscribing from topics
 {mapping, "trade_consistency", "vmq_server.trade_consistency", [
                                                                {default, off},
                                                                {datatype, flag}
                                                               ]}.
 
 %% @doc Allows a client to logon multiple times using the same client id
-%% this is not based on the standard. According to the standard, the server
-%% has to disconnect existing sessions for the same client id
+%% (non-standard behaviour!).
 {mapping, "allow_multiple_sessions", "vmq_server.allow_multiple_sessions", [
                                                                {default, off},
                                                                {datatype, flag}
                                                               ]}.
 
-%% @doc Allows to change the way messages are routed through the system
+%% @doc Allows to select a new default reg_view.
+%% A view is a pre-defined way to route messages. Multiple views can be 
+%% loaded and used, but one has to be selected as a default. The default routing is
+%% vmq_reg_trie, i.e. routing via the built-in trie data structure. 
 {mapping, "default_reg_view", "vmq_server.default_reg_view", [
                                                               {default, vmq_reg_trie},
                                                               {datatype, atom},
@@ -37,15 +39,15 @@
                                                ]}. 
 
 %% @doc listener.max_connections is an integer or 'infinity' defining 
-%% the number of concurrent connections. This option can be overridden
-%% by either specifying on the protocol level:
+%% the maximum number of concurrent connections. This option can be overridden
+%% on the protocol level by:
 %%
 %%     - listener.tcp.max_connections
 %%     - listener.ssl.max_connections
 %%     - listener.ws.max_connections 
 %%     - listener.wss.max_connections 
 %%
-%% or on the listener level:
+%% or on the listener level by:
 %%
 %%     - listener.tcp.my_tcp_listener.max_connections
 %%     - listener.ssl.my_ssl_listener.max_connections
@@ -103,11 +105,11 @@
                                                                                   hidden
                                                                                  ]}. 
 %% @doc listener.tcp.<name> is an IP address and TCP port that 
-%% the broker will bind. You can define multiple listeners e.g:
+%% the broker will bind to. You can define multiple listeners e.g:
 %% - listener.tcp.default = 127.0.0.1:1883
 %% - listener.tcp.internal = 127.0.0.1:10883
 %% - listener.tcp.my_other_listener = 127.0.0.1:10884
-%% This also works for SSL listeners and ws handlers:
+%% This also works for SSL listeners and WebSocket handlers:
 %% - listener.ssl.default = 127.0.0.1:8883
 %% - listener.ws.default = 127.0.0.1:800 
 %% - listener.wss.default = 127.0.0.1:880 
@@ -213,7 +215,7 @@
 %%     - listener.ws.mountpoint 
 %%     - listener.wss.mountpoint 
 %%
-%% or on the listener level:
+%% listener level:
 %%
 %%     - listener.tcp.my_tcp_listener.mountpoint
 %%     - listener.ssl.my_ssl_listener.mountpoint
@@ -695,15 +697,15 @@
          {DropUndef(TCP), DropUndef(SSL), DropUndef(WS), DropUndef(WSS)}
  end
 }.
-%% @doc Set the time in seconds after a QoS=1 or QoS=2 message has been sent
-%% that vmq will wait before retrying when no response is received.
+%% @doc Set the time in seconds VerneMQ waits before a retry, in case a (QoS=1 or QoS=2) message 
+%% delivery gets no answer.
 {mapping, "retry_interval", "vmq_server.retry_interval", [
                                                              {default, 20},
                                                              {commented, 20},
                                                              {datatype, integer}
                                                             ]}.
 
-%% @doc Set the max size for client ids, MQTT v3.1 specifies the
+%% @doc Set the maximum size for client IDs. MQTT v3.1 specifies a
 %% limit of 23 characters
 {mapping, "max_client_id_size", "vmq_server.max_client_id_size", [
                                                                {default, 23},
@@ -711,9 +713,9 @@
                                                                {datatype, integer}
                                                               ]}.
 
-%% @doc This option allows persistent clients (those with clean session set to 
-%% false) to be removed if they do not reconnect within a certain time frame. 
-%% This is a non-standard option. As far as the MQTT spec is concerned, 
+%% @doc This option allows persistent clients ( = clean session set to 
+%% false) to be removed if they do not reconnect within 'persistent_client_expiration'. 
+%% This is a non-standard option. As far as the MQTT specification is concerned, 
 %% persistent clients persist forever.
 %% The expiration period should be an integer followed by one of 'd', 'w', 'm', 'y' for 
 %% day, week, month, and year.
@@ -752,14 +754,14 @@
 
 %% @doc The maximum number of QoS 1 or 2 messages to hold in the queue above 
 %% those messages that are currently in flight. Defaults to 100. Set to 0 for 
-%% no maximum (not recommended). See also the queue_qos0_messages option.
+%% no maximum (not recommended).
 {mapping, "max_queued_messages", "vmq_server.max_queued_messages", [
                                                     {default, 100},
                                                     {datatype, integer}
                                                  ]}.
 
-%% @doc This option sets the maximum publish payload size that the broker will allow. 
-%% Received messages that exceed this size will not be accepted by the broker. The 
+%% @doc This option sets the maximum payload size that VerneMQ will allow for publishers. 
+%% Messages that exceed this size will not be accepted by VerneMQ. The 
 %% default value is 0, which means that all valid MQTT messages are accepted. MQTT 
 %% imposes a maximum payload size of 268435455 bytes.
 {mapping, "message_size_limit", "vmq_server.message_size_limit", [
@@ -767,8 +769,8 @@
                                                                     {datatype, integer}
                                                                  ]}.
 
-%% @doc This option controls if a message that is delivered to a subscriber gets
-%% upgraded to match the QoS of the subscription. This is a non-standard option.
+%% @doc If a message is published with a QoS lower than the QoS of the subscription it is
+%% delivered to, VerneMQ can upgrade the outgoing QoS. This is a non-standard option.
 {mapping, "upgrade_outgoing_qos", "vmq_server.upgrade_outgoing_qos", [
                                                                       {default, off},
                                                                       {datatype, flag}
