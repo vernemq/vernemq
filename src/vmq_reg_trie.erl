@@ -177,7 +177,7 @@ handle_event(Handler, Event) ->
             ok
     end.
 
-match(MP, Topic) when is_list(Topic) and is_list(Topic) ->
+match(MP, Topic) when is_list(MP) and is_list(Topic) ->
     TrieNodes = trie_match(MP, emqtt_topic:words(Topic)),
     match(MP, TrieNodes, []).
 
@@ -251,10 +251,10 @@ trie_match(MP, Node, [W|Words], ResAcc) ->
               end
       end, 'trie_match_#'(NodeId, ResAcc), [W, "+"]).
 
-'trie_match_#'(NodeId, ResAcc) ->
+'trie_match_#'({MP, _} = NodeId, ResAcc) ->
     case ets:lookup(vmq_trie, #trie_edge{node_id=NodeId, word="#"}) of
         [#trie{node_id=ChildId}] ->
-            ets:lookup(vmq_trie_node, ChildId) ++ ResAcc;
+            ets:lookup(vmq_trie_node, {MP, ChildId}) ++ ResAcc;
         [] ->
             ResAcc
     end.

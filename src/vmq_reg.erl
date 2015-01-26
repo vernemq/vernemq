@@ -59,7 +59,7 @@
 -export([reset_all_tables/1]).
 %% used from plugins
 -export([direct_plugin_exports/1]).
-%% used by vmq_reg_cache
+%% used by reg views
 -export([subscribe_subscriber_changes/0,
          fold_subscribers/2,
          fold_subscribers/3]).
@@ -179,6 +179,9 @@ register_subscriber(false, SubscriberId, QPid, CleanSession) ->
     register_subscriber(SubscriberId, QPid, CleanSession);
 register_subscriber(true, SubscriberId, QPid, _CleanSession) ->
     %% we allow multiple sessions using same subscriber id
+    %%
+    %% !!! CleanSession is disabled if multiple sessions are in use
+    %%
     register_session(SubscriberId, QPid).
 
 -spec register_subscriber(subscriber_id(), pid(), flag()) -> ok | {error, _}.
@@ -195,7 +198,7 @@ register_subscriber(SubscriberId, QPid, CleanSession) ->
 -spec register_session(subscriber_id(), pid()) -> ok | {error, _}.
 register_session(SubscriberId, QPid) ->
     %% register_session allows to have multiple subscribers connected
-    %% with the same session_id (as oposed to register_client)
+    %% with the same session_id (as oposed to register_subscriber)
     SessionPid = self(),
     transaction(fun() -> remap_session_tx(SubscriberId) end,
                 fun({error, Reason}) -> {error, Reason};
@@ -327,62 +330,60 @@ publish(#vmq_msg{trade_consistency=false,
             {error, not_ready}
     end.
 
+%% vmq_reg_trie reg view delivers this format
 publish_({Topic, Node}, Msg) when Node == node() ->
     Subscribers = mnesia:dirty_read(vmq_subscriber, Topic),
-    lists:foldl(fun(#vmq_subscriber{qos=QoS, id=SubscriberId, node=SubNode}, AccMsg)
-                          when SubNode == Node ->
-                        case get_queue_pids(SubscriberId) of
-                            {ok, QPids} ->
-                                RefedMsg =
-                                case QoS of
-                                    0 ->
-                                        AccMsg;
-                                    _ ->
-                                        vmq_msg_store:store(SubscriberId, AccMsg)
-                                end,
-                                lists:foldl(
-                                  fun(QPid, AccAccMsg) ->
-                                          publish_({Topic, Node, SubscriberId,
-                                                    QoS, QPid}, AccAccMsg)
-                                  end, RefedMsg, QPids);
-                            _ when QoS > 0 ->
-                                RefedMsg = vmq_msg_store:store(SubscriberId, AccMsg),
-                                vmq_msg_store:defer_deliver(SubscriberId, QoS,
-                                                            RefedMsg#vmq_msg.msg_ref),
-                                RefedMsg;
-                            _ ->
-                                AccMsg
-                        end;
-                   (_, AccMsg) ->
-                        AccMsg
-                end, Msg, Subscribers);
+    publish__(Node, Msg, Subscribers);
+
+%% vmq_reg_pets reg view delivers this format
+publish_({_Topic, Node, _SubscriberId, 0, undefined}, Msg)
+  when Node == node() ->
+    Msg;
+publish_({_Topic, Node, _SubscriberId, 0, QPid}, Msg)
+  when Node == node() ->
+    vmq_queue:enqueue(QPid, {deliver, 0, Msg}),
+    Msg;
+publish_({_Topic, Node, SubscriberId, QoS, undefined}, Msg)
+  when Node == node() ->
+    RefedMsg = vmq_msg_store:store(SubscriberId, Msg),
+    vmq_msg_store:defer_deliver(SubscriberId, QoS, RefedMsg#vmq_msg.msg_ref),
+    RefedMsg;
+publish_({_Topic, Node, SubscriberId, QoS, QPid}, Msg)
+  when Node == node() ->
+    RefedMsg = vmq_msg_store:store(SubscriberId, Msg),
+    case vmq_queue:enqueue(QPid, {deliver, QoS, RefedMsg}) of
+        ok ->
+            RefedMsg;
+        {error, _} ->
+            vmq_msg_store:defer_deliver(SubscriberId, QoS, RefedMsg#vmq_msg.msg_ref),
+            RefedMsg
+    end;
+%% we route the message to the proper node
 publish_({Topic, Node}, Msg) ->
     rpc:call(Node, ?MODULE, publish_, [{Topic, Node}, Msg]),
-    Msg;
-publish_({_Topic, Node, _SubscriberId, 0, QPid}, Msg) when Node == node() ->
-    case QPid of
-        undefined -> Msg;
-        _ ->
-            %% in case of a qos-upgrade we'll
-            %% increment the ref count inside the vmq_session
-            vmq_queue:enqueue(QPid, {deliver, 0, Msg}),
-            Msg
-    end;
-publish_({_Topic, Node, SubscriberId, QoS, QPid}, Msg) when Node == node() ->
-    case QPid of
-        undefined ->
-            vmq_msg_store:defer_deliver(SubscriberId, QoS, Msg#vmq_msg.msg_ref),
-            Msg;
-        _ ->
-            case vmq_queue:enqueue(QPid, {deliver, QoS, Msg}) of
-                ok ->
-                    Msg;
-                {error, _} ->
-                    vmq_msg_store:defer_deliver(SubscriberId, QoS,
-                                                Msg#vmq_msg.msg_ref),
-                    Msg
-            end
-    end.
+    Msg.
+
+publish__(Node, Msg, [#vmq_subscriber{qos=QoS, id=Id, node=Node}|Rest]) ->
+    {_, QPids} = get_queue_pids(Id),
+    publish__(Node, publish___(Id, Msg, QoS, QPids), Rest);
+publish__(Node, Msg, [_|Rest]) ->
+    %% subscriber on other node
+    publish__(Node, Msg, Rest);
+publish__(_, Msg, []) -> Msg.
+
+publish___(_, Msg, 0, not_found) -> Msg;
+publish___(SubscriberId, Msg, QoS, not_found) ->
+    RefedMsg = vmq_msg_store:store(SubscriberId, Msg),
+    vmq_msg_store:defer_deliver(SubscriberId, QoS, RefedMsg#vmq_msg.msg_ref),
+    RefedMsg;
+publish___(SubscriberId, Msg, 0, [QPid|Rest]) ->
+    vmq_queue:enqueue(QPid, {deliver, 0, Msg}),
+    publish___(SubscriberId, Msg, 0, Rest);
+publish___(SubscriberId, Msg, QoS, [QPid|Rest]) ->
+    RefedMsg = vmq_msg_store:store(SubscriberId, Msg),
+    vmq_queue:enqueue(QPid, {deliver, QoS, RefedMsg}),
+    publish___(SubscriberId, RefedMsg, QoS, Rest);
+publish___(_, Msg, _, []) -> Msg.
 
 retain_msg(Msg = #vmq_msg{routing_key=RoutingKey, payload=Payload}) ->
     Words = emqtt_topic:words(RoutingKey),
@@ -912,6 +913,7 @@ unregister_subscriber(SubscriberId, SubscriberPid) ->
 
 del_subscriber_fun(SubscriberId) ->
     transaction(fun() -> del_subscriber_tx('_', SubscriberId) end).
+
 
 transaction(TxFun) ->
     transaction(TxFun, fun(Ret) -> Ret end).
