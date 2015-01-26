@@ -1,11 +1,11 @@
 %% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
-%% 
+%%
 %%     http://www.apache.org/licenses/LICENSE-2.0
-%% 
+%%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -59,7 +59,7 @@ nodes() ->
     [Node || [{Node, true}]
              <- ets:match(vmq_status, '$1'), Node /= ready].
 
--spec on_node_up(_) -> 'ok' | 'true'.
+-spec on_node_up(_) -> 'ok'.
 on_node_up(Node) ->
     wait_for_table(fun() ->
                            Nodes = mnesia_cluster_utils:cluster_nodes(all),
@@ -67,7 +67,7 @@ on_node_up(Node) ->
                            update_ready(Nodes)
                    end).
 
--spec on_node_down(_) -> 'ok' | 'true'.
+-spec on_node_down(_) -> 'ok'.
 on_node_down(Node) ->
     wait_for_table(fun() ->
                            Nodes = mnesia_cluster_utils:cluster_nodes(all),
@@ -75,20 +75,16 @@ on_node_down(Node) ->
                            update_ready(Nodes)
                    end).
 
--spec wait_for_table(fun(() -> 'true')) -> 'ok' | 'true'.
+-spec wait_for_table(fun(() -> 'ok')) -> 'ok'.
 wait_for_table(Fun) ->
     case lists:member(vmq_status, ets:all()) of
         true -> Fun();
         false -> timer:sleep(100)
     end.
 
--spec update_ready([any()]) -> 'true'.
+-spec update_ready([any()]) -> 'ok'.
 update_ready(Nodes) ->
-    SortedNodes = lists:sort(Nodes),
-    IsReady = lists:sort([Node || [{Node, true}]
-                                  <- ets:match(vmq_status, '$1'),
-                                  Node /= ready]) == SortedNodes,
-    ets:insert(vmq_status, {ready, IsReady}).
+    gen_server:call(?MODULE, {update_ready, Nodes}).
 
 -spec is_ready() -> boolean().
 is_ready() ->
@@ -146,7 +142,12 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec handle_call(_, _, _) -> {'reply', 'ok', _}.
-handle_call(_Request, _From, State) ->
+handle_call({update_ready, Nodes}, _From, State) ->
+    SortedNodes = lists:sort(Nodes),
+    IsReady = lists:sort([Node || [{Node, true}]
+                                  <- ets:match(vmq_status, '$1'),
+                                  Node /= ready]) == SortedNodes,
+    ets:insert(vmq_status, {ready, IsReady}),
     Reply = ok,
     {reply, Reply, State}.
 
