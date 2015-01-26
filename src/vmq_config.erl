@@ -21,7 +21,6 @@
          change_config/1,
          configure_node/0,
          table_defs/0,
-         reset/0,
          get_env/1,
          get_env/2,
          get_env/3,
@@ -122,10 +121,6 @@ table_defs() ->
         [{unsplit_method, {unsplit_lib, vclock, [#vmq_config.vclock]}}]}
       ]}
     ].
-
-reset() ->
-    mnesia:clear_table(vmq_config).
-
 
 %%% VMQ_SERVER CONFIG HOOK
 change_config(Configs) ->

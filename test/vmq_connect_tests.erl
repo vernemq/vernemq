@@ -61,7 +61,7 @@ anon_denied(_) ->
 
 anon_success(_) ->
     application:set_env(vmq_server, allow_anonymous, true),
-    vmq_config:reset(),
+    vmq_config:configure_node(),
     %% allow_anonymous is proxied through vmq_config.erl
     Connect = packet:gen_connect("connect-success-test", [{keepalive,10}]),
     Connack = packet:gen_connack(0),
