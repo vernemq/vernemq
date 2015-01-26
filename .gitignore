@@ -1,0 +1,8 @@
+*.beam
+.eunit
+*.app
+deps
+Mnesia.*
+erl_crash.dump
+log
+.rebar
