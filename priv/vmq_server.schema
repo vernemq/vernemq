@@ -795,10 +795,10 @@
                                                                          ]}. 
 
 {mapping, "app_process", "mnesia_cluster.app_process", [
-                                                                          {default, vmq_cluster},
-                                                                          {datatype, atom},
-                                                                          hidden
-                                                                         ]}. 
+                                                        {default, vmq_server_sup},
+                                                        {datatype, atom},
+                                                        hidden
+                                                       ]}. 
 % vmq_server uses unsplit to handle merges after partition
 {mapping, "cluster_partition_handling", "mnesia_cluster.cluster_partition_handling", [
                                                                                       {default, ignore},
