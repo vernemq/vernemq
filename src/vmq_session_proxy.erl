@@ -38,6 +38,8 @@
                 subscriber_id,
                 waiting}).
 
+-define(RETRY, 10000). % wait 10 seconds to retry
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -57,8 +59,9 @@ deliver(SessionProxy, Term) ->
 
 init([Node, QPid, SubscriberId]) ->
     QueueMon = monitor(process, QPid),
+    self() ! deliver_from_store, % kick of delivery
     {ok, #state{node=Node, subscriber_id=SubscriberId, queue_pid=QPid,
-                queue_mon=QueueMon}, 0}.
+                queue_mon=QueueMon}}.
 
 handle_call({deliver, Term}, From, State) ->
     {noreply, deliver(From, Term, State)}.
@@ -68,11 +71,19 @@ handle_cast({derefed, MsgRef}, #state{waiting={MsgRef, From}} = State) ->
     {noreply, State#state{waiting=undefined}}.
 
 handle_info({'DOWN', _MRef, process, Pid, Reason}, State) ->
-    #state{repl_pid=ReplPid, subscriber_id=SubscriberId} = State,
+    #state{repl_pid=ReplPid, subscriber_id=SubscriberId, node=Node} = State,
     case {Pid == ReplPid, Reason} of
         {true, normal} ->
             %% finished replicating
             {stop, normal, State};
+        {true, {deliver_from_store, retry}} ->
+            case lists:member(Node, vmq_cluster:nodes()) of
+                true ->
+                    erlang:send_after(?RETRY, self(), deliver_from_store),
+                    {noreply, State};
+                false ->
+                    {stop, normal, State}
+            end;
         {true, OtherReason} ->
             lager:warning("replication process for subscriber ~p died due to ~p",
                          [SubscriberId, OtherReason]),
@@ -82,7 +93,8 @@ handle_info({'DOWN', _MRef, process, Pid, Reason}, State) ->
             {stop, Reason, State}
     end;
 
-handle_info(timeout, #state{node=Node, subscriber_id=SubscriberId}= State) ->
+handle_info(deliver_from_store, #state{node=Node,
+                                       subscriber_id=SubscriberId} = State) ->
     Self = self(),
     {ReplPid, ReplMon} =
     case node() of
@@ -92,8 +104,13 @@ handle_info(timeout, #state{node=Node, subscriber_id=SubscriberId}= State) ->
         _ ->
             spawn_monitor(
               fun() ->
-                      rpc:call(Node, vmq_msg_store, deliver_from_store,
-                               [SubscriberId, Self])
+                      case rpc:call(Node, vmq_msg_store, deliver_from_store,
+                                    [SubscriberId, Self]) of
+                          {badrpc, timeout} ->
+                              % maybe netsplit
+                              exit({deliver_from_store, retry});
+                          R -> R
+                      end
               end)
     end,
     {noreply, State#state{repl_pid=ReplPid, repl_mon=ReplMon}}.
