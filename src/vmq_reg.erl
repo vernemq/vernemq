@@ -485,16 +485,16 @@ table_defs() ->
         {attributes, record_info(fields, retain)},
         {disc_copies, [node()]},
         {match, #retain{_='_'}},
-        unsplit_vclock_props(#retain.vclock)]}
+        unsplit_vclock_props(vclock)]}
 ].
 
 unsplit_bag_props() ->
     {user_properties,
      [{unsplit_method, {unsplit_lib, bag, []}}]}.
 
-unsplit_vclock_props(Pos) ->
+unsplit_vclock_props(Attr) ->
     {user_properties,
-     [{unsplit_method, {unsplit_lib, vclock, [Pos]}}]}.
+     [{unsplit_method, {unsplit_lib, vclock, [Attr]}}]}.
 
 -spec reset_all_tables([]) -> ok.
 reset_all_tables([]) ->

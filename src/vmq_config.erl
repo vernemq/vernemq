@@ -118,7 +118,7 @@ table_defs() ->
        {disc_copies, [node()]},
        {match, #vmq_config{_='_'}},
        {user_properties,
-        [{unsplit_method, {unsplit_lib, vclock, [#vmq_config.vclock]}}]}
+        [{unsplit_method, {unsplit_lib, vclock, [vclock]}}]}
       ]}
     ].
 
