@@ -11,13 +11,16 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
-
--module(vmq_cluster).
+%%
+-module(vmq_cluster_node).
+-include("vmq_server.hrl").
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/1,
+         publish/2,
+         publish_batch/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -27,18 +30,9 @@
          terminate/2,
          code_change/3]).
 
--export([nodes/0,
-         is_ready/0,
-         if_ready/2,
-         if_ready/3,
-         publish/2,
-         on_node_up/1,
-         on_node_down/1]).
-
--define(SERVER, ?MODULE).
-
--record(state, {}).
--type state() :: #state{}.
+-record(state, {node, reachable=true, queue = queue:new()}).
+-define(REMONITOR, 5000).
+-define(BATCH_SIZE, 20).
 
 %%%===================================================================
 %%% API
@@ -51,71 +45,22 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
--spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(RemoteNode) ->
+    gen_server:start_link(?MODULE, [RemoteNode], []).
 
-
--spec nodes() -> [any()].
-nodes() ->
-    [Node || [{Node, true}]
-             <- ets:match(vmq_status, '$1'), Node /= ready].
-
--spec on_node_up(_) -> 'ok'.
-on_node_up(Node) ->
-    wait_for_table(fun() ->
-                           Nodes = mnesia_cluster_utils:cluster_nodes(all),
-                           ets:insert(vmq_status, {Node, true}),
-                           update_ready(Nodes)
-                   end).
-
--spec on_node_down(_) -> 'ok'.
-on_node_down(Node) ->
-    wait_for_table(fun() ->
-                           Nodes = mnesia_cluster_utils:cluster_nodes(all),
-                           ets:delete(vmq_status, Node),
-                           update_ready(Nodes)
-                   end).
-
--spec wait_for_table(fun(() -> 'ok')) -> 'ok'.
-wait_for_table(Fun) ->
-    case lists:member(vmq_status, ets:all()) of
-        true -> Fun();
-        false -> timer:sleep(100)
+publish(Pid, Msg) ->
+    case catch gen_server:call(Pid, {publish, Msg}, 100) of
+        ok -> ok;
+        {'EXIT', Reason} ->
+            % we are not allowed to crash, this would
+            % teardown the 'decoupled' publisher process
+            {error, Reason}
     end.
 
--spec update_ready([any()]) -> 'ok'.
-update_ready(Nodes) ->
-    gen_server:call(?MODULE, {update_ready, Nodes}).
-
--spec is_ready() -> boolean().
-is_ready() ->
-    ets:lookup(vmq_status, ready) == [{ready, true}].
-
--spec if_ready(_, _) -> any().
-if_ready(Fun, Args) ->
-    case is_ready() of
-        true ->
-            apply(Fun, Args);
-        false ->
-            {error, not_ready}
-    end.
--spec if_ready(_, _, _) -> any().
-if_ready(Mod, Fun, Args) ->
-    case is_ready() of
-        true ->
-            apply(Mod, Fun, Args);
-        false ->
-            {error, not_ready}
-    end.
-
-publish(Node, Msg) ->
-    case vmq_cluster_node_sup:get_cluster_node(Node) of
-        {error, not_found} ->
-            {error, not_found};
-        {ok, Pid} ->
-            vmq_cluster_node:publish(Pid, Msg)
-    end.
+publish_batch(Msgs) ->
+    lists:foreach(fun({Topic, Msg}) ->
+                          vmq_reg:publish_({Topic, node()}, Msg)
+                  end, Msgs).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -132,10 +77,9 @@ publish(Node, Msg) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
--spec init([]) -> {'ok', state()}.
-init([]) ->
-    ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
-    {ok, #state{}}.
+init([RemoteNode]) ->
+    erlang:monitor_node(RemoteNode, true),
+    {ok, #state{node=RemoteNode}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -151,33 +95,10 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
--spec handle_call(_, _, _) -> {'reply', 'ok', _}.
-handle_call({update_ready, Nodes}, _From, State) ->
-    check_ready(Nodes, [], ets:match(vmq_status, '$1')),
-    Reply = ok,
-    {reply, Reply, State}.
-
-check_ready(MnesiaNodes, Acc, [[{ready, _}]|Rest]) ->
-    check_ready(MnesiaNodes, Acc, Rest);
-check_ready(MnesiaNodes, Acc, [[{Node, Status}]|Rest]) ->
-    case lists:member(Node, MnesiaNodes) of
-        true when Status == true ->
-            vmq_cluster_node_sup:ensure_cluster_node(Node),
-            check_ready(MnesiaNodes -- [Node], Acc, Rest);
-        true when Status == false ->
-            vmq_cluster_node_sup:ensure_cluster_node(Node),
-            check_ready(MnesiaNodes -- [Node], [Node|Acc], Rest);
-        false ->
-            vmq_cluster_node_sup:del_cluster_node(Node),
-            ets:delete(vmq_status, Node),
-            check_ready(MnesiaNodes -- [Node], Acc, Rest)
-    end;
-check_ready([], [], []) ->
-    ets:insert(vmq_status, {ready, true});
-check_ready(UnseenMnesiaNodes, _, []) ->
-    [vmq_cluster_node_sup:ensure_cluster_node(Node)
-     || Node<- UnseenMnesiaNodes],
-    ets:insert(vmq_status, {ready, false}).
+handle_call({publish, Msg}, _From, #state{queue=Q, reachable=true} = State) ->
+    {reply, ok, process_queue(State#state{queue=queue:in(Msg, Q)})};
+handle_call({publish, Msg}, _From, #state{queue=Q, reachable=false} = State) ->
+    {reply, ok, State#state{queue=queue:in(Msg, Q)}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -189,7 +110,6 @@ check_ready(UnseenMnesiaNodes, _, []) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
--spec handle_cast(_, _) -> {'noreply', _}.
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -203,9 +123,17 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
--spec handle_info(_, _) -> {'noreply', _}.
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info({nodedown, Node}, #state{node=Node} = State) ->
+    erlang:send_after(?REMONITOR, self(), remonitor),
+    {noreply, State#state{reachable=false}};
+handle_info(remonitor, #state{node=Node} = State) ->
+    erlang:monitor_node(Node, true),
+    case net_adm:ping(Node) of
+        pong ->
+            {noreply, process_queue(State#state{reachable=true})};
+        _ ->
+            {noreply, State#state{reachable=false}}
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -218,7 +146,6 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
--spec terminate(_, _) -> 'ok'.
 terminate(_Reason, _State) ->
     ok.
 
@@ -230,11 +157,40 @@ terminate(_Reason, _State) ->
 %% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
 %% @end
 %%--------------------------------------------------------------------
--spec code_change(_, _, _) -> {'ok', _}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+process_queue(#state{node=Node, queue=Q} = State) ->
+    case queue:is_empty(Q) of
+        true -> State;
+        false ->
+            State#state{queue=batch(Node, Q)}
+    end.
 
+batch(Node, Q) ->
+    batch(Node, queue:out(Q), []).
+batch(Node, {{value, V}, Q}, Batch) when length(Batch) < ?BATCH_SIZE ->
+    batch(Node, queue:out(Q), [V|Batch]);
+batch(Node, {{value, V}, Q}, Batch) when length(Batch) == ?BATCH_SIZE ->
+    Msgs = lists:reverse([V|Batch]),
+    case rpc:call(Node, ?MODULE, publish_batch, [Msgs]) of
+        ok ->
+            batch(Node, queue:out(Q), []);
+        {badrpc, _} ->
+            lists:foldl(fun(Item, AccQ) ->
+                                queue:in_r(Item, AccQ)
+                        end, Q, Batch)
+    end;
+batch(Node, {empty, Q} , Batch) ->
+    Msgs = lists:reverse(Batch),
+    case rpc:call(Node, ?MODULE, publish_batch, [Msgs]) of
+        ok ->
+            Q;
+        {badrpc, _} ->
+            lists:foldl(fun(Item, AccQ) ->
+                                queue:in_r(Item, AccQ)
+                        end, Q, Batch)
+    end.

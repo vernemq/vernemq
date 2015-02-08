@@ -360,7 +360,7 @@ publish_({_Topic, Node, SubscriberId, QoS, QPid}, Msg)
     end;
 %% we route the message to the proper node
 publish_({Topic, Node}, Msg) ->
-    rpc:call(Node, ?MODULE, publish_, [{Topic, Node}, Msg]),
+    vmq_cluster:publish(Node, {Topic, Msg}),
     Msg.
 
 publish__(Node, Msg, [#vmq_subscriber{qos=QoS, id=Id, node=Node}|Rest]) ->
