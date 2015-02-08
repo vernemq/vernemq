@@ -144,7 +144,7 @@ subscriptions(MP, RoutingKey) ->
 subscriptions(MP, FoldFun, Acc, RoutingKey) ->
     RegViews = vmq_config:get_env(reg_views, []),
     lists:flatten([begin
-                       {NewAcc, _} = RV:fold(MP, RoutingKey,
+                       {_, NewAcc, _} = RV:fold(MP, RoutingKey,
                                              fun subscriptions_/2,
                                              {MP, Acc, FoldFun}),
                        NewAcc
@@ -160,10 +160,10 @@ subscriptions_({Topic, Node}, {MountPoint, Acc, FoldFun}) when Node == node() ->
           (_, Acc1) ->
               Acc1
       end, Acc, mnesia:dirty_read(vmq_subscriber, Topic)),
-    {NewAcc, FoldFun};
+    {MountPoint, NewAcc, FoldFun};
 subscriptions_({_Topic, Node, {MP, _} = SubscriberId, QoS, _Pid}, {MP, Acc, FoldFun})
   when Node == node() ->
-    {FoldFun({SubscriberId, QoS}, Acc), FoldFun};
+    {MP, FoldFun({SubscriberId, QoS}, Acc), FoldFun};
 subscriptions_(_, Acc) ->
     Acc.
 
