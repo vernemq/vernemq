@@ -94,4 +94,5 @@ maybe_start_distribution() ->
 table_defs() ->
     VmqRegTables = vmq_reg:table_defs(),
     VmqConfigTables = vmq_config:table_defs(),
-    VmqRegTables ++ VmqConfigTables.
+    VmqMsgStoreTables = vmq_msg_store:table_defs(),
+    VmqRegTables ++ VmqConfigTables ++ VmqMsgStoreTables.
