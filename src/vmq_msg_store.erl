@@ -259,7 +259,6 @@ handle_call({init_plugin, HookModule}, From, State) ->
     ok = wait_for_hooks(HookModule),
     mnesia:transaction(
       fun() ->
-              ToDelete =
               mnesia:foldl(
                 fun(#vmq_msg_store_ref{ref_data={_, MsgRef, _}} = Obj, Acc) ->
                         Key = <<?MSG_ITEM, MsgRef/binary>>,
@@ -273,15 +272,12 @@ handle_call({init_plugin, HookModule}, From, State) ->
                                 update_msg_cache(MsgRef, {RoutingKey, Payload}),
                                 Acc;
                             notfound ->
-                                [Obj|Acc]
+                                mnesia:delete_object(Obj),
+                                Acc
                         end;
                    (#vmq_msg_store_ref{ref_data={uncached, _}}, Acc) ->
                         Acc
-                end, [], vmq_msg_store_ref),
-              lists:foreach(
-                fun(Obj) ->
-                        mnesia:delete_object(Obj)
-                end, ToDelete)
+                end, [], vmq_msg_store_ref)
       end),
     {noreply, State};
 handle_call(_Req, _From, State) ->
