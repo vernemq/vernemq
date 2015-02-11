@@ -66,6 +66,7 @@ start() ->
 -spec stop() -> 'ok' | {'error',_}.
 stop() ->
     application:stop(vmq_server),
+    application:stop(clique),
     application:stop(mnesia_cluster),
     application:stop(unsplit),
     application:stop(emqtt_commons),

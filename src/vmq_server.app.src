@@ -14,7 +14,8 @@
                   emqtt_commons,
                   unsplit,
                   vmq_plugin,
-                  mnesia_cluster
+                  mnesia_cluster,
+                  clique
                  ]},
   {mod, { vmq_server_app, []}},
   {env, [
