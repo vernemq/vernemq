@@ -12,138 +12,59 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_listener_sup).
+-module(vmq_ssl_transport).
+-include_lib("public_key/include/public_key.hrl").
+-behaviour(vmq_tcp_transport).
 
--behaviour(supervisor).
+-export([opts/1,
+         upgrade_connection/2,
+         decode_bin/3,
+         encode_bin/1]).
 
-%% API
--export([start_link/0,
-         reconfigure_listeners/1]).
-
-%% Supervisor callbacks
--export([init/1]).
-
--define(CHILD(Id, Mod, Type, Args), {Id, {Mod, start_link, Args},
-                                     permanent, 5000, Type, [Mod]}).
-
--define(APP, vmq_server).
--define(SUP, ?MODULE).
--define(TABLE, vmq_listeners).
-
--type listener_mod() :: vmq_tcp_listener
-                      | vmq_ws_listener
-                      | vmq_ssl_listener
-                      | vmq_wss_listener.
-%%%===================================================================
-%%% API functions
-%%%===================================================================
-start_link() ->
-    supervisor:start_link({local, ?SUP}, ?MODULE, []).
-
-reconfigure_listeners(ListenerConfig) ->
-    TCPListenOptions = proplists:get_value(tcp_listen_options,
-                                           ListenerConfig,
-                                           vmq_config:get_env(tcp_listen_options)),
-    {TCP, SSL, WS, WSS} = proplists:get_value(listeners,
-                                         ListenerConfig,
-                                         vmq_config:get_env(listeners)),
-    Listeners = supervisor:which_children(?SUP),
-    reconfigure_listeners(vmq_tcp_listener, Listeners, TCP, TCPListenOptions),
-    reconfigure_listeners(vmq_ssl_listener, Listeners, SSL, TCPListenOptions),
-    reconfigure_listeners(vmq_ws_listener, Listeners, WS, TCPListenOptions),
-    reconfigure_listeners(vmq_wss_listener, Listeners, WSS, TCPListenOptions),
-    stop_and_delete_unused(Listeners, lists:flatten([TCP, SSL, WS, WSS])).
-
-%%%===================================================================
-%%% Supervisor callbacks
-%%%===================================================================
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Whenever a supervisor is started using supervisor:start_link/[2,3],
-%% this function is called by the new process to find out about
-%% restart strategy, maximum restart frequency and child
-%% specifications.
-%%
-%% @spec init(Args) -> {ok, {SupFlags, [ChildSpec]}} |
-%%                     ignore |
-%%                     {error, Reason}
-%% @end
-%%--------------------------------------------------------------------
-init([]) ->
-    {ok, {{one_for_one, 5, 10}, []}}.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
--spec start_listener(listener_mod(),
-                     string() | inet:ip_address(), inet:port_number(),
-                     string(), {[any()],[any()]}) -> {'ok',pid()}.
-start_listener(ListenerMod, Addr, Port, MountPoint, TransportOpts) ->
-    AAddr = addr(Addr),
-    Ref = listener_name(AAddr, Port),
-    ChildSpec = {Ref,
-                 {vmq_listener, start_link, [AAddr, Port]},
-                 permanent, 5000, worker, [vmq_listener]},
-    case supervisor:start_child(?SUP, ChildSpec) of
-        {ok, Pid} ->
-            case vmq_listener:setopts(Pid, ListenerMod,
-                                      MountPoint, TransportOpts) of
-                ok ->
-                    vmq_listener:accept(Pid),
-                    lager:info("started ~p on ~p:~p", [ListenerMod, Addr, Port]),
-                    {ok, Pid};
-                {error, Reason} ->
-                    {error, Reason}
-            end;
+upgrade_connection(TcpSocket, TransportOpts) ->
+    case ssl:ssl_accept(TcpSocket, TransportOpts) of
+        {ok, SSLSocket} ->
+            CommonName = socket_to_common_name(SSLSocket),
+            {ok, {SSLSocket, [{preauth, CommonName}]}};
         {error, Reason} ->
-            FReason = inet:format_error(Reason),
-            lager:error("can't start ~p on ~p:~p due to ~p",
-                        [ListenerMod, Addr, Port, {Reason, FReason}])
+            lager:warning("can't upgrade SSL due to ~p", [Reason]),
+            {error, cant_upgrade}
     end.
 
-addr(Addr) when is_list(Addr) ->
-    {ok, Ip} = inet:parse_address(Addr),
-    Ip;
-addr(Addr) -> Addr.
+decode_bin(_Socket, Data, ParserState) ->
+    {ok, {ParserState, Data}}.
+
+encode_bin(Bin) -> Bin.
+
+-spec socket_to_common_name({'sslsocket',_,pid() | {port(),_}}) ->
+                                   'undefined' | [any()].
+socket_to_common_name(Socket) ->
+    case ssl:peercert(Socket) of
+        {error, no_peercert} ->
+            undefined;
+        {ok, Cert} ->
+            OTPCert = public_key:pkix_decode_cert(Cert, otp),
+            TBSCert = OTPCert#'OTPCertificate'.tbsCertificate,
+            Subject = TBSCert#'OTPTBSCertificate'.subject,
+            extract_cn(Subject)
+    end.
+
+-spec extract_cn({'rdnSequence', list()}) -> undefined | list().
+extract_cn({rdnSequence, List}) ->
+    extract_cn2(List).
+
+-spec extract_cn2(list()) -> undefined | list().
+extract_cn2([[#'AttributeTypeAndValue'{
+                 type=?'id-at-commonName',
+                 value={utf8String, CN}}]|_]) ->
+    unicode:characters_to_list(CN);
+extract_cn2([_|Rest]) ->
+    extract_cn2(Rest);
+extract_cn2([]) -> undefined.
 
 
-reconfigure_listeners(Type, Listeners, [{{Addr, Port}, Opts}|Rest], TCPOpts) ->
-    Ref = listener_name(addr(Addr),Port),
-    TransportOpts = {TCPOpts, transport_opts(Type, Opts)},
-    MountPoint = proplists:get_value(mountpoint, Opts, ""),
-    case lists:keyfind(Ref, 1, Listeners) of
-        false -> % new listener
-            start_listener(Type, Addr, Port, MountPoint, TransportOpts);
-        {_, Pid, _, _} when is_pid(Pid) -> % change existing listener
-            %% change listener
-            vmq_listener:setopts(Pid, Type, MountPoint, TransportOpts);
-        _ -> ok
-    end,
-    reconfigure_listeners(Type, Listeners, Rest, TCPOpts);
-reconfigure_listeners(_, _, [], _) -> ok.
 
-stop_and_delete_unused(Listeners, Config) ->
-    ListenersToDelete =
-    lists:foldl(fun({{Addr, Port}, _}, Acc) ->
-                        Ref = listener_name(addr(Addr), Port),
-                        lists:keydelete(Ref, 1, Acc)
-                end, Listeners, Config),
-    lists:foreach(fun({Ref, _, _, _}) ->
-                          supervisor:terminate_child(?SUP, Ref),
-                          supervisor:delete_child(?SUP, Ref)
-                  end, ListenersToDelete).
-
--spec listener_name(inet:ip_address(),
-                    inet:port_number()) ->
-                           {'vmq_listener',
-                            inet:ip_address(), inet:port_number()}.
-listener_name(Ip, Port) ->
-    {vmq_listener, Ip, Port}.
-
--spec transport_opts(listener_mod(), _) -> [{atom(), any()}].
-transport_opts(vmq_ssl_listener, Opts) ->
+opts(Opts) ->
     [{cacerts, case proplists:get_value(cafile, Opts) of
                    undefined -> undefined;
                    CAFile -> load_cert(CAFile)
@@ -175,8 +96,7 @@ transport_opts(vmq_ssl_listener, Opts) ->
          false ->
              []
      end
-    ];
-transport_opts(_, _Opts) -> [].
+    ].
 
 -spec ciphersuite_transform(boolean(), string()) -> [{atom(), atom(), atom()}].
 ciphersuite_transform(SupportEC, []) ->
@@ -339,3 +259,4 @@ support_partial_chain() ->
                  [list_to_integer(T)
                   || T <- string:tokens(VSN, ".")]),
     VSNTuple >= {5, 3, 6}.
+

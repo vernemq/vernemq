@@ -13,16 +13,20 @@
 %% limitations under the License.
 
 -module(vmq_tcp_transport).
--include_lib("wsock/include/wsock.hrl").
 
--export([start_link/4,
+-export([start_link/3,
          handover/2,
          send/2]).
--export([init/4,
+-export([init/3,
          loop/1]).
 
+-export([behaviour_info/1,
+         upgrade_connection/2,
+         opts/1,
+         port_cmd/2]).
+
 -record(st, {socket,
-             transport, handler, buffer= <<>>,
+             handler, buffer= <<>>,
              parser_state,
              session, session_mon,
              proto_tag,
@@ -32,11 +36,22 @@
 
 -define(HIBERNATE_AFTER, 5000).
 
--spec start_link(_, _, _, _) -> {'ok', pid()}.
-start_link(Peer, Handler, Transport, Opts) ->
-    Pid = proc_lib:spawn_link(?MODULE, init, [Peer, Handler,
-                                              Transport, Opts]),
+-spec start_link(_, _, _) -> {'ok', pid()}.
+start_link(Peer, Handler, Opts) ->
+    Pid = proc_lib:spawn_link(?MODULE, init, [Peer, Handler, Opts]),
     {ok, Pid}.
+
+%% called from vmq_tcp_listener
+upgrade_connection(TcpSocket, _) ->
+    {ok, {TcpSocket, []}}.
+
+opts(_) -> [].
+
+behaviour_info(callbacks) ->
+    [{opts, 1}, {upgrade_connection, 2},
+     {decode_bin, 3}, {encode_bin, 1}];
+behaviour_info(_) ->
+    undefined.
 
 send(TransportPid, Bin) when is_binary(Bin) ->
     TransportPid ! {send, Bin},
@@ -51,22 +66,21 @@ send(TransportPid, Frame) when is_tuple(Frame) ->
 handover(ReaderPid, Socket) ->
     ReaderPid ! {handover, Socket}.
 
--spec init(_, _, _, _) -> any().
-init(Peer, Handler, Transport, Opts) ->
+-spec init(_, _, _) -> any().
+init(Peer, Handler, Opts) ->
     Self = self(),
     SendFun = fun(F) -> vmq_tcp_transport:send(Self, F), ok end,
     {ok, SessionPid} = vmq_session:start_link(Peer, SendFun, Opts),
     process_flag(trap_exit, true),
-    wait_for_socket(#st{transport=Transport,
-                        handler=Handler,
+    wait_for_socket(#st{handler=Handler,
                         session=SessionPid,
-                        proto_tag=proto_tag(Transport)}).
+                        proto_tag=proto_tag(Handler)}).
 
 wait_for_socket(State) ->
     receive
         {handover, Socket} ->
             MaybeMaskedSocket =
-            case State#st.transport of
+            case element(1, State#st.proto_tag) of
                 ssl -> {ssl, Socket};
                 _ -> Socket
             end,
@@ -113,8 +127,10 @@ teardown(#st{session=SessionPid, socket=Socket}, Reason) ->
     fast_close(Socket).
 
 
-proto_tag(gen_tcp) -> {tcp, tcp_closed, tcp_error};
-proto_tag(ssl) -> {ssl, ssl_closed, ssl_error}.
+proto_tag(vmq_ws_transport) -> proto_tag(?MODULE);
+proto_tag(vmq_wss_transport) -> proto_tag(vmq_ssl_transport);
+proto_tag(?MODULE) -> {tcp, tcp_closed, tcp_error};
+proto_tag(vmq_ssl_transport) -> {ssl, ssl_closed, ssl_error}.
 
 fast_close({ssl, Socket}) ->
     %% from rabbit_net.erl
@@ -149,53 +165,16 @@ active_once({ssl, Socket}) ->
 active_once(Socket) ->
     inet:setopts(Socket, [{active, once}]).
 
-process_data(SessionPid, vmq_tcp_listener, _, Data, ParserState) ->
+process_data(SessionPid, ?MODULE, _, Data, ParserState) ->
     process_bytes(SessionPid, Data, ParserState);
-process_data(SessionPid, vmq_ssl_listener, _, Data, ParserState) ->
+process_data(SessionPid, vmq_ssl_transport, _, Data, ParserState) ->
     process_bytes(SessionPid, Data, ParserState);
-process_data(SessionPid, vmq_ws_listener, Socket, Data, ParserState) ->
-    process_ws_data(SessionPid, Socket, Data, ParserState).
-
-process_ws_data(SessionPid, Socket, Data, undefined) ->
-    process_ws_data(SessionPid, Socket,
-                    Data, {{closed, <<>>}, emqtt_frame:initial_state()});
-process_ws_data(_, Socket, Data, {{closed, Buffer}, PS}) ->
-    NewData = <<Buffer/binary, Data/binary>>,
-    case wsock_http:decode(NewData, request) of
-        {ok, OpenHTTPMessage} ->
-            case wsock_handshake:handle_open(OpenHTTPMessage) of
-                {ok, OpenHandshake} ->
-                    WSKey = wsock_http:get_header_value(
-                        "sec-websocket-key",  OpenHandshake#handshake.message),
-                    {ok, Response} = wsock_handshake:response(WSKey),
-                    Bin = wsock_http:encode(Response#handshake.message),
-                    port_cmd(Socket, Bin),
-                    {{open, <<>>}, PS};
-                {error, Reason} ->
-                    exit({ws_handle_open, Reason})
-            end;
-        fragmented_http_message ->
-            {{closed, NewData}, PS};
-        E ->
-            exit({ws_http_decode, E})
-    end;
-process_ws_data(SessionPid, _, Data, {{open, Buffer}, PS}) ->
-    NewData = <<Buffer/binary, Data/binary>>,
-    case wsock_message:decode(NewData, [masked]) of
-        {error, Reason} ->
-            exit({ws_msg_decode, Reason});
-        List ->
-            NewPS =
-            lists:foldl(
-              fun(#message{type=Type, payload=Payload}, ParserState) ->
-                      case Type of
-                          binary ->
-                              process_bytes(SessionPid, Payload, ParserState);
-                          _ ->
-                              ParserState
-                      end
-              end, PS, List),
-            {{open, <<>>}, NewPS}
+process_data(SessionPid, TransportMod, Socket, Data, ParserState) ->
+    case apply(TransportMod, decode_bin, [Socket, Data, ParserState]) of
+        {ok, Bytes, {WSPs, NewParserState}} ->
+            {WSPs, process_bytes(SessionPid, Bytes, NewParserState)};
+        {more, NewParserState} ->
+            NewParserState
     end.
 
 process_bytes(SessionPid, Bytes, undefined) ->
@@ -207,8 +186,7 @@ process_bytes(SessionPid, Bytes, ParserState) ->
         {ok, Frame, Rest} ->
             vmq_session:in(SessionPid, Frame),
             process_bytes(SessionPid, Rest, emqtt_frame:initial_state());
-        {error, Reason} ->
-            io:format("parse error ~p~n", [Reason]),
+        {error, _Reason} ->
             emqtt_frame:initial_state()
     end.
 
@@ -260,12 +238,9 @@ handle_message({inet_reply, _, Status}, _) ->
 handle_message(Msg, _) ->
     exit({vmq_tcp_transport, unknown_message_type, Msg}).
 
-reprocess(vmq_tcp_listener, Bin) -> Bin;
-reprocess(vmq_ssl_listener, Bin) -> Bin;
-reprocess(vmq_ws_listener, Bin) ->
-    wsock_message:encode(Bin, [mask, binary]);
-reprocess(vmq_wss_listener, Bin) ->
-    wsock_message:encode(Bin, [mask, binary]).
+reprocess(vmq_tcp_transport, Bin) -> Bin;
+reprocess(TransportMod, Bin) ->
+    apply(TransportMod, encode_bin, [Bin]).
 
 %% This magic number is the tcp-over-ethernet MSS (1460) minus the
 %% minimum size of a AMQP basic.deliver method frame (24) plus basic

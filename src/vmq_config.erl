@@ -148,7 +148,7 @@ change_config(Configs) ->
     end,
     case lists:keyfind(vmq_listener, 1, validate_listener_config(Env, [])) of
         {_, ListenerConfigs} ->
-            vmq_listener_sup:reconfigure_listeners(ListenerConfigs);
+            vmq_tcp_listener_sup:reconfigure_listeners(ListenerConfigs);
         _ ->
             ok
     end.

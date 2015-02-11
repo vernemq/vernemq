@@ -17,9 +17,7 @@
 
 %% API
 -export([start_link/0,
-         start_session/3,
          reconfigure_sessions/1,
-         stop_session/1,
          active_clients/0]).
 
 %% Supervisor callbacks
@@ -41,18 +39,6 @@
 %%--------------------------------------------------------------------
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
-
-start_session(Socket, Handler, Opts) ->
-    Transport = t(Handler),
-    {ok, Peer} = (i(Transport)):peername(Socket),
-    {ok, TransportPid} = supervisor:start_child(?MODULE, [Peer, Handler,
-                                                         Transport, Opts]),
-    apply(Transport, controlling_process, [Socket, TransportPid]),
-    vmq_tcp_transport:handover(TransportPid, Socket),
-    {ok, TransportPid}.
-
-stop_session(TransportPid) ->
-    supervisor:terminate_child(?MODULE, TransportPid).
 
 active_clients() ->
     Counts = supervisor:count_children(?MODULE),
@@ -107,9 +93,3 @@ init([]) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-t(vmq_tcp_listener) -> gen_tcp;
-t(vmq_ssl_listener) -> ssl;
-t(vmq_ws_listener) -> gen_tcp;
-t(vmq_wss_listener) -> ssl.
-i(gen_tcp) -> inet;
-i(ssl) -> ssl.

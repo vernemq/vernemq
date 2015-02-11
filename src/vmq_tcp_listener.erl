@@ -12,13 +12,13 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_listener).
--include_lib("public_key/include/public_key.hrl").
+-module(vmq_tcp_listener).
 -behaviour(gen_server).
 
 %% API
 -export([start_link/2,
          setopts/4,
+         getopts/1,
          accept/1]).
 
 %% gen_server callbacks
@@ -53,6 +53,9 @@ start_link(ListenAddr, ListenPort) ->
 setopts(ListenerPid, Handler, MountPoint, TransportOpts) ->
     gen_server:call(ListenerPid, {setopts, Handler,
                                   MountPoint, TransportOpts}, infinity).
+
+getopts(ListenerPid) ->
+    gen_server:call(ListenerPid, getopts, infinity).
 
 accept(ListenerPid) ->
     gen_server:call(ListenerPid, accept, infinity).
@@ -109,6 +112,13 @@ handle_call({setopts, Handler, MountPoint, {TCPOpts, OtherOpts}}, _From,
                          opts: ~p", [Handler, Reason, [binary|TCPOpts]]),
             {reply, {error, {setopts, Reason}}, State}
     end;
+handle_call(getopts, _From, State) ->
+    #state{handler=Handler,
+           mountpoint=MountPoint,
+           tcp_opts=TCPOpts,
+           other_opts=TransportOpts} = State,
+    Reply = {Handler, MountPoint, {TCPOpts, TransportOpts}},
+    {reply, Reply, State};
 handle_call(accept, _From, #state{listener=ListenSocket} = State) ->
     AcceptorRef =
     case State#state.acceptor of
@@ -153,21 +163,23 @@ handle_info({inet_async, ListenSocket, Ref, {ok, TCPSocket}},
             {error, Reason} -> exit({set_sockopt, Reason})
         end,
 
-        case t(Handler) of
-            ssl ->
-                %% upgrade TCP socket
-                case ssl:ssl_accept(TCPSocket, TransportOpts) of
-                    {ok, SSLSocket} ->
-                        CommonName = socket_to_common_name(SSLSocket),
-                        vmq_session_sup:start_session(SSLSocket, Handler,
-                                                      [{mountpoint, MountPoint},
-                                                       {preauth, CommonName}]);
-                    {error, Reason1} ->
-                        lager:warning("can't upgrade SSL due to ~p", [Reason1])
-                end;
-            gen_tcp ->
-                vmq_session_sup:start_session(TCPSocket, Handler,
-                                              [{mountpoint, MountPoint}])
+        {ok, Peer} = inet:peername(TCPSocket),
+
+        case apply(Handler, upgrade_connection, [TCPSocket, TransportOpts]) of
+            {ok, {UpgradedSocket, SessionOpts}} ->
+                {ok, Pid} = supervisor:start_child(
+                              vmq_session_sup,
+                              [Peer, Handler,
+                               [{mountpoint, MountPoint}|SessionOpts]]),
+                apply(case Handler of
+                          vmq_wss_transport -> ssl;
+                          vmq_ssl_transport -> ssl;
+                          _ -> gen_tcp
+                      end, controlling_process, [UpgradedSocket, Pid]),
+                vmq_tcp_transport:handover(Pid, UpgradedSocket);
+
+            {error, _} ->
+                ignore
         end,
 
         %% Signal the network driver that we are ready to accept
@@ -224,10 +236,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-t(vmq_tcp_listener) -> gen_tcp;
-t(vmq_ssl_listener) -> ssl;
-t(vmq_ws_listener) -> gen_tcp;
-t(vmq_wss_listener) -> ssl.
 
 %% Taken from prim_inet.  We are merely copying some socket options from the
 %% listening socket to the new client socket.
@@ -263,29 +271,3 @@ get_max_buffer_size(Socket) ->
         Error ->
             Error
     end.
-
--spec socket_to_common_name({'sslsocket',_,pid() | {port(),_}}) ->
-                                   'undefined' | [any()].
-socket_to_common_name(Socket) ->
-    case ssl:peercert(Socket) of
-        {error, no_peercert} ->
-            undefined;
-        {ok, Cert} ->
-            OTPCert = public_key:pkix_decode_cert(Cert, otp),
-            TBSCert = OTPCert#'OTPCertificate'.tbsCertificate,
-            Subject = TBSCert#'OTPTBSCertificate'.subject,
-            extract_cn(Subject)
-    end.
-
--spec extract_cn({'rdnSequence', list()}) -> undefined | list().
-extract_cn({rdnSequence, List}) ->
-    extract_cn2(List).
-
--spec extract_cn2(list()) -> undefined | list().
-extract_cn2([[#'AttributeTypeAndValue'{
-                 type=?'id-at-commonName',
-                 value={utf8String, CN}}]|_]) ->
-    unicode:characters_to_list(CN);
-extract_cn2([_|Rest]) ->
-    extract_cn2(Rest);
-extract_cn2([]) -> undefined.
