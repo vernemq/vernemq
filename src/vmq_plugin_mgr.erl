@@ -427,8 +427,9 @@ create_path(Path, ["ebin"|Rest], Acc) ->
     create_path(Path, Rest, [EbinDir|Acc]);
 create_path(Path, ["deps"|Rest], Acc) ->
     DepsDir = filename:join(Path, "deps"),
-    DepsPath = create_paths(DepsDir),
-    create_path(Path, Rest, Acc ++ DepsPath);
+    {ok, DepsNames} = file:list_dir(DepsDir),
+    DepsPaths = [filename:join(filename:join(DepsDir, Dep), "ebin")|| Dep <- DepsNames],
+    create_path(Path, Rest, Acc ++ DepsPaths);
 create_path(Path, [_|Rest], Acc) ->
     create_path(Path, Rest, Acc);
 create_path(_, [], Acc) -> Acc.
