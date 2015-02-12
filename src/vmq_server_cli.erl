@@ -22,7 +22,7 @@
 init_registry() ->
     F = fun() -> vmq_cluster:nodes() end,
     clique:register_node_finder(F),
-    clique:register([?MODULE]).
+    clique:register([?MODULE, vmq_plugin_cli]).
 
 command(Cmd) ->
     clique:run(Cmd).
