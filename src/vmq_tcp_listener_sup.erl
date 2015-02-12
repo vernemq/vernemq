@@ -18,10 +18,12 @@
 
 %% API
 -export([start_link/0,
-         reconfigure_single_listener/6,
          reconfigure_listeners/1,
-         listener_name/2,
-         addr/1]).
+         stop_listener/2,
+         delete_listener/2,
+         restart_listener/2,
+         get_listener_config/2,
+         listeners/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -32,7 +34,7 @@
 -define(SUP, ?MODULE).
 
 -type transport_mod() :: vmq_tcp_transport
-                      | vmq_ws_tranport
+                      | vmq_ws_transport
                       | vmq_ssl_transport
                       | vmq_wss_transport.
 %%%===================================================================
@@ -41,13 +43,108 @@
 start_link() ->
     supervisor:start_link({local, ?SUP}, ?MODULE, []).
 
-reconfigure_listeners(ListenerConfig) ->
-    TCPListenOptions = proplists:get_value(tcp_listen_options,
-                                           ListenerConfig,
-                                           vmq_config:get_env(tcp_listen_options)),
-    {TCP, SSL, WS, WSS} = proplists:get_value(listeners,
-                                         ListenerConfig,
-                                         vmq_config:get_env(listeners)),
+stop_listener(Addr, Port) ->
+    AAddr = addr(Addr),
+    Ref = listener_name(AAddr, Port),
+    supervisor:terminate_child(?SUP, Ref).
+
+delete_listener(Addr, Port) ->
+    AAddr = addr(Addr),
+    Ref = listener_name(AAddr, Port),
+    supervisor:terminate_child(?SUP, Ref),
+    supervisor:delete_child(?SUP, Ref).
+
+start_listener(TransportMod, Ref, Addr, Port, MountPoint, TransportOpts) ->
+    ChildSpec = {Ref,
+                 {vmq_tcp_listener, start_link, [Addr, Port]},
+                 permanent, 5000, worker, [vmq_tcp_listener]},
+    case supervisor:start_child(?SUP, ChildSpec) of
+        {ok, Pid} ->
+            case vmq_tcp_listener:setopts(Pid, TransportMod,
+                                      MountPoint, TransportOpts) of
+                ok ->
+                    vmq_tcp_listener:accept(Pid),
+                    lager:info("started ~p on ~p:~p", [TransportMod, Addr, Port]),
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {error, Reason} ->
+            FReason = inet:format_error(Reason),
+            lager:error("can't start ~p on ~p:~p due to ~p",
+                        [TransportMod, Addr, Port, {Reason, FReason}]),
+            {error, Reason}
+    end.
+
+restart_listener(Addr, Port) ->
+    case get_listener_config(Addr, Port) of
+        {ok, {TransportMod, Opts}} ->
+            TCPOpts = vmq_config:get_env(tcp_listen_options),
+            AAddr = addr(Addr),
+            Ref = listener_name(AAddr, Port),
+            case supervisor:restart_child(?SUP, Ref) of
+                {ok, Pid} ->
+                    TransportOpts = {TCPOpts, transport_opts(TransportMod, Opts)},
+                    MountPoint = proplists:get_value(mountpoint, Opts, ""),
+                    case vmq_tcp_listener:setopts(Pid, TransportMod,
+                                                  MountPoint, TransportOpts) of
+                        ok ->
+                            vmq_tcp_listener:accept(Pid),
+                            lager:info("restarted ~p on ~p:~p", [TransportMod, Addr, Port]),
+                            ok;
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                {error, Reason} ->
+                    FReason = inet:format_error(Reason),
+                    lager:error("can't restart ~p on ~p:~p due to ~p",
+                                [TransportMod, Addr, Port, {Reason, FReason}]),
+                    {error, Reason}
+            end;
+        [] ->
+            {error, not_found}
+    end.
+
+listeners() ->
+    lists:foldl(
+      fun ({{vmq_tcp_listener, Ip, Port}, Status, worker, _}, Acc) ->
+              {ok, {TransportMod, Opts}} = get_listener_config(Ip, Port),
+              MountPoint = proplists:get_value(mountpoint, Opts, ""),
+              Status1 =
+              case Status of
+                  restarting -> restarting;
+                  undefined -> stopped;
+                  Pid when is_pid(Pid) -> running
+              end,
+              Type =
+              case TransportMod of
+                  vmq_tcp_transport -> 'TCP';
+                  vmq_ws_transport -> 'WS';
+                  vmq_ssl_transport -> 'SSL';
+                  vmq_wss_transport -> 'WSS'
+              end,
+              StrIp = inet:ntoa(Ip),
+              StrPort = integer_to_list(Port),
+              [{Type, StrIp, StrPort, Status1, MountPoint}|Acc]
+      end, [], supervisor:which_children(?SUP)).
+
+get_listener_config(Addr, Port) ->
+    Key = {Addr, Port},
+    {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
+    case [{M, Opts} ||{M, Opts} <-
+                      [{vmq_tcp_transport, proplists:get_value(Key, TCP, nil)},
+                       {vmq_ssl_transport, proplists:get_value(Key, SSL, nil)},
+                       {vmq_ws_transport, proplists:get_value(Key, WS, nil)},
+                       {vmq_wss_transport, proplists:get_value(Key, WSS, nil)}],
+                      Opts /= nil] of
+        [{TransportMod, Opts}] -> {ok, {TransportMod, Opts}};
+        [] -> {error, not_found}
+    end.
+
+
+reconfigure_listeners(_) ->
+    TCPListenOptions = vmq_config:get_env(tcp_listen_options),
+    {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
     Listeners = supervisor:which_children(?SUP),
     reconfigure_listeners(vmq_tcp_transport, Listeners, TCP, TCPListenOptions),
     reconfigure_listeners(vmq_ssl_transport, Listeners, SSL, TCPListenOptions),
@@ -78,32 +175,6 @@ init([]) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
--spec start_listener(transport_mod(),
-                     string() | inet:ip_address(), inet:port_number(),
-                     string(), {[any()],[any()]}) -> {'ok',pid()}.
-start_listener(TransportMod, Addr, Port, MountPoint, TransportOpts) ->
-    AAddr = addr(Addr),
-    Ref = listener_name(AAddr, Port),
-    ChildSpec = {Ref,
-                 {vmq_tcp_listener, start_link, [AAddr, Port]},
-                 permanent, 5000, worker, [vmq_tcp_listener]},
-    case supervisor:start_child(?SUP, ChildSpec) of
-        {ok, Pid} ->
-            case vmq_tcp_listener:setopts(Pid, TransportMod,
-                                      MountPoint, TransportOpts) of
-                ok ->
-                    vmq_tcp_listener:accept(Pid),
-                    lager:info("started ~p on ~p:~p", [TransportMod, Addr, Port]),
-                    ok;
-                {error, Reason} ->
-                    {error, Reason}
-            end;
-        {error, Reason} ->
-            FReason = inet:format_error(Reason),
-            lager:error("can't start ~p on ~p:~p due to ~p",
-                        [TransportMod, Addr, Port, {Reason, FReason}]),
-            {error, Reason}
-    end.
 
 addr(Addr) when is_list(Addr) ->
     {ok, Ip} = inet:parse_address(Addr),
@@ -117,12 +188,13 @@ reconfigure_listeners(Type, Listeners, [{{Addr, Port}, Opts}|Rest], TCPOpts) ->
 reconfigure_listeners(_, _, [], _) -> ok.
 
 reconfigure_single_listener(Type, Listeners, Addr, Port, Opts, TCPOpts) ->
-    Ref = listener_name(addr(Addr),Port),
+    AAddr = addr(Addr),
+    Ref = listener_name(AAddr, Port),
     TransportOpts = {TCPOpts, transport_opts(Type, Opts)},
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     case lists:keyfind(Ref, 1, Listeners) of
         false -> % new listener
-            start_listener(Type, Addr, Port, MountPoint, TransportOpts);
+            start_listener(Type, Ref, AAddr, Port, MountPoint, TransportOpts);
         {_, Pid, _, _} when is_pid(Pid) -> % change existing listener
             %% change listener
             vmq_tcp_listener:setopts(Pid, Type, MountPoint, TransportOpts);

@@ -24,6 +24,8 @@
          get_env/1,
          get_env/2,
          get_env/3,
+         set_env/2,
+         set_env/3,
          get_all_env/1
         ]).
 
@@ -84,6 +86,7 @@ get_env(App, Key, Default) ->
             end,
             %% cache val
             ets:insert(?TABLE, {{App, Key}, Val}),
+            application:set_env(App, Key, Val),
             Val
     end.
 
@@ -91,6 +94,27 @@ get_all_env(App) ->
     lists:foldl(fun({Key, Val}, Acc) ->
                         [{Key, get_env(App, Key, Val)}|Acc]
                 end, [], application:get_all_env(App)).
+
+set_env(Key, Val) ->
+    set_env(vmq_server, Key, Val).
+set_env(App, Key, Val) ->
+    {atomic, ok} = mnesia:transaction(
+      fun() ->
+              Rec =
+              case mnesia:read(?MNESIA, {node(), App, Key}) of
+                  [] ->
+                      #vmq_config{key={node(), App, Key},
+                                  val=Val};
+                  [#vmq_config{vclock=VClock} = C] ->
+                      C#vmq_config{
+                        val=Val,
+                        vclock=unsplit_vclock:increment(node(), VClock)
+                       }
+              end,
+              mnesia:write(Rec)
+      end),
+    ets:insert(?TABLE, {{App, Key}, Val}),
+    ok.
 
 configure_node() ->
     %% reset config
@@ -128,14 +152,14 @@ change_config(Configs) ->
     Env = filter_out_unchanged(VmqServerConfig, []),
     %% change reg configurations
     case lists:keyfind(vmq_reg, 1, validate_reg_config(Env, [])) of
-        {_, RegConfigs} ->
+        {_, RegConfigs} when length(RegConfigs) > 0 ->
             vmq_reg_sup:reconfigure_registry(RegConfigs);
         _ ->
             ok
     end,
     %% change session configurations
     case lists:keyfind(vmq_session, 1, validate_session_config(Env, [])) of
-        {_, SessionConfigs} ->
+        {_, SessionConfigs} when length(SessionConfigs) > 0 ->
             vmq_session_sup:reconfigure_sessions(SessionConfigs);
         _ ->
             ok
@@ -147,7 +171,7 @@ change_config(Configs) ->
             ok
     end,
     case lists:keyfind(vmq_listener, 1, validate_listener_config(Env, [])) of
-        {_, ListenerConfigs} ->
+        {_, ListenerConfigs} when length(ListenerConfigs) > 0 ->
             vmq_tcp_listener_sup:reconfigure_listeners(ListenerConfigs);
         _ ->
             ok

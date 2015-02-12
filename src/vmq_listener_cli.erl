@@ -22,8 +22,14 @@ register_server_cli() ->
                           vmq_listener_start_usage()),
     clique:register_usage(["vmq-admin", "listener", "stop"],
                           vmq_listener_stop_usage()),
+    clique:register_usage(["vmq-admin", "listener", "delete"],
+                          vmq_listener_delete_usage()),
+    clique:register_usage(["vmq-admin", "listener", "restart"],
+                          vmq_listener_restart_usage()),
     vmq_listener_start_cmd(),
     vmq_listener_stop_cmd(),
+    vmq_listener_delete_cmd(),
+    vmq_listener_restart_cmd(),
     vmq_listener_show_cmd().
 
 vmq_listener_start_cmd() ->
@@ -106,39 +112,49 @@ vmq_listener_start_cmd() ->
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
             IsWebSocket = lists:keymember(websocket, 1, Flags),
             IsSSL = lists:keymember(ssl, 1, Flags),
-            TCPListenOptions = vmq_config:get_env(tcp_listen_options),
-            Listeners = supervisor:which_children(?SUP),
             NewOpts1 = lists:keydelete(address, 1, lists:keydelete(port, 1, Flags)),
             NewOpts2 = lists:keyreplace(require_certificate, 1, NewOpts1,
                                         {require_certificate, true}),
             NewOpts3 = lists:keyreplace(use_identity_as_username, 1, NewOpts2,
                                         {use_identity_as_username, true}),
+
+            {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
+            ListenerKey = {Addr, Port},
+            {TCP1, SSL1, WS1, WSS1} = {lists:keydelete(ListenerKey, 1, TCP),
+                                       lists:keydelete(ListenerKey, 1, SSL),
+                                       lists:keydelete(ListenerKey, 1, WS),
+                                       lists:keydelete(ListenerKey, 1, WSS)},
+            Listener = {ListenerKey, NewOpts3},
             Ret =
             case IsSSL of
                 true ->
                     case ssl_mandatory_opts([cafile, certfile, keyfile],
                                             NewOpts3, []) of
                         ok when IsWebSocket ->
-                            {ok, vmq_wss_transport};
+                            {ok, {TCP1, SSL1, WS1, [Listener|WSS1]}};
                         ok ->
-                            {ok, vmq_ssl_transport};
+                            {ok, {TCP1, [Listener|SSL1], WS1, WSS1}};
                         {error, Alerts} ->
                             {error, Alerts}
                     end;
                 false when IsWebSocket ->
-                    {ok, vmq_ws_transport};
+                    {ok, {TCP1, SSL1, [Listener|WS1], WSS1}};
                 false ->
-                    {ok, vmq_tcp_transport}
+                    {ok, {[Listener|TCP1], SSL1, WS1, WSS1}}
             end,
+
+
             case Ret of
-                {ok, Transport} ->
-                    case vmq_tcp_listener_sup:reconfigure_single_listener(
-                           Transport, Listeners,
-                           Addr, Port, NewOpts3,
-                           TCPListenOptions) of
+                {ok, ListenerConfig} ->
+                    OldListenerConfig = vmq_config:get_env(listeners),
+                    vmq_config:set_env(listeners, ListenerConfig),
+                    case vmq_tcp_listener_sup:reconfigure_listeners(
+                           [{listeners, ListenerConfig}]) of
                         ok ->
                             [clique_status:text("Done")];
                         {error, Reason} ->
+                            vmq_tcp_listener_sup:reconfigure_listeners(
+                              [{listeners, OldListenerConfig}]),
                             Text = io_lib:format("can't configure listener due to '~p'", [Reason]),
                             [clique_status:alert([clique_status:text(Text)])]
                     end;
@@ -174,17 +190,9 @@ vmq_listener_stop_cmd() ->
     fun([], Flags) ->
             Port = proplists:get_value(port, Flags, 1883),
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
-            Ref = vmq_tcp_listener_sup:listener_name(
-                    vmq_tcp_listener_sup:addr(Addr), Port),
-            case supervisor:terminate_child(?SUP, Ref) of
+            case vmq_tcp_listener_sup:stop_listener(Addr, Port) of
                 ok ->
-                    case supervisor:delete_child(?SUP, Ref) of
-                        ok ->
-                            [clique_status:text("Done")];
-                        {error, Reason} ->
-                            Text = io_lib:format("can't stop listener due to '~p'", [Reason]),
-                            [clique_status:alert([clique_status:text(Text)])]
-                    end;
+                    [clique_status:text("Done")];
                 {error, Reason} ->
                     Text = io_lib:format("can't stop listener due to '~p'", [Reason]),
                     [clique_status:alert([clique_status:text(Text)])]
@@ -192,8 +200,8 @@ vmq_listener_stop_cmd() ->
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
-vmq_listener_show_cmd() ->
-    Cmd = ["vmq-admin", "listener", "show"],
+vmq_listener_delete_cmd() ->
+    Cmd = ["vmq-admin", "listener", "delete"],
     KeySpecs = [],
     FlagSpecs = [{port, [{shortname, "p"},
                          {longname, "port"},
@@ -216,28 +224,74 @@ vmq_listener_show_cmd() ->
                                        end}]}],
     Callback =
     fun([], Flags) ->
-            _Port = proplists:get_value(port, Flags, undefined),
-            _Addr = proplists:get_value(address, Flags, undefined),
+            Port = proplists:get_value(port, Flags, 1883),
+            Addr = proplists:get_value(address, Flags, {0,0,0,0}),
+            {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
+            ListenerKey = {Addr, Port},
+            ListenerConfig = {lists:keydelete(ListenerKey, 1, TCP),
+                              lists:keydelete(ListenerKey, 1, SSL),
+                              lists:keydelete(ListenerKey, 1, WS),
+                              lists:keydelete(ListenerKey, 1, WSS)},
+            vmq_config:set_env(listeners, ListenerConfig),
+            case vmq_tcp_listener_sup:reconfigure_listeners(
+                   [{listeners, ListenerConfig}]) of
+                ok ->
+                    [clique_status:text("Done")];
+                {error, Reason} ->
+                    Text = io_lib:format("can't delete listener due to '~p'", [Reason]),
+                    [clique_status:alert([clique_status:text(Text)])]
+            end
+    end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+vmq_listener_restart_cmd() ->
+    Cmd = ["vmq-admin", "listener", "restart"],
+    KeySpecs = [],
+    FlagSpecs = [{port, [{shortname, "p"},
+                         {longname, "port"},
+                         {typecast, fun(StrP) ->
+                                            case catch list_to_integer(StrP) of
+                                                P when (P >= 0) and (P=<65535) -> P;
+                                                _ -> {error, {invalid_flag_value,
+                                                              {port, StrP}}}
+                                            end
+                                    end}]},
+                 {address, [{shortname, "a"},
+                            {longname, "address"},
+                            {typecast, fun(A) ->
+                                               case inet:parse_address(A) of
+                                                   {ok, Ip} -> Ip;
+                                                   {error, einval} ->
+                                                       {error, {invalid_flag_value,
+                                                                {address, A}}}
+                                               end
+                                       end}]}],
+    Callback =
+    fun([], Flags) ->
+            Port = proplists:get_value(port, Flags, undefined),
+            Addr = proplists:get_value(address, Flags, undefined),
+            case vmq_tcp_listener_sup:restart_listener(Addr, Port) of
+                ok ->
+                    [clique_status:text("Done")];
+                {error, Reason} ->
+                    Text = io_lib:format("can't restart listener due to '~p'", [Reason]),
+                    [clique_status:alert([clique_status:text(Text)])]
+            end
+    end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+vmq_listener_show_cmd() ->
+    Cmd = ["vmq-admin", "listener", "show"],
+    KeySpecs = [],
+    FlagSpecs = [],
+    Callback =
+    fun([], []) ->
             Table =
             lists:foldl(
-              fun({{vmq_tcp_listener, Ip, Port}, Pid, worker, _}, Acc) ->
-                      StrIp = inet:ntoa(Ip),
-                      StrPort = integer_to_list(Port),
-                      case vmq_listener:getopts(Pid) of
-                          {vmq_tcp_transport, MountPoint, _} ->
-                              [[{type, 'TCP'}, {ip, StrIp},
-                               {port, StrPort}, {mountpoint, MountPoint}]|Acc];
-                          {vmq_ssl_transport, MountPoint, _} ->
-                              [[{type, 'SSL'}, {ip, StrIp},
-                               {port, StrPort}, {mountpoint, MountPoint}]|Acc];
-                          {vmq_ws_transport, MountPoint, _} ->
-                              [[{type, 'WS'}, {ip, StrIp},
-                               {port, StrPort}, {mountpoint, MountPoint}]|Acc];
-                          {vmq_wss_transport, MountPoint, _} ->
-                              [[{type, 'WSS'}, {ip, StrIp},
-                               {port, StrPort}, {mountpoint, MountPoint}]|Acc]
-                      end
-              end, [], supervisor:which_children(?SUP)),
+              fun({Type, Ip, Port, Status, MP}, Acc) ->
+                      [[{type, Type}, {status, Status}, {ip, Ip},
+                        {port, Port}, {mountpoint, MP}]|Acc]
+              end, [], vmq_tcp_listener_sup:listeners()),
               [clique_status:table(Table)]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
@@ -246,8 +300,10 @@ vmq_listener_usage() ->
     ["vmq-admin listener <sub-command>\n\n",
      "  starts, modifies, and stops listeners.\n\n",
      "  Sub-commands:\n",
-     "    start       Start the server application\n",
-     "    stop        Stop the server application\n",
+     "    start       Starts or modifies a listener\n",
+     "    stop        Stops a listener\n",
+     "    delete      Deletes a stopped listener\n",
+     "    show        Shows all intalled listeners\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 
@@ -288,6 +344,24 @@ vmq_listener_stop_usage() ->
     ["vmq-admin listener stop\n\n",
      "  Stops a running listener. If no option is given, the listener\n",
      "  listening on 0.0.0.0:1883 is stopped\n\n",
+     "Options\n\n",
+     "  -p, --port=PortNr\n",
+     "  -a, --address=IpAddress\n\n"
+    ].
+
+vmq_listener_delete_usage() ->
+    ["vmq-admin listener delete\n\n",
+     "  Deletes a stopped listener. If no option is given, the listener\n",
+     "  listening on 0.0.0.0:1883 is deleted\n\n",
+     "Options\n\n",
+     "  -p, --port=PortNr\n",
+     "  -a, --address=IpAddress\n\n"
+    ].
+
+vmq_listener_restart_usage() ->
+    ["vmq-admin listener restart\n\n",
+     "  Restarts a stopped listener. If no option is given, the listener\n",
+     "  listening on 0.0.0.0:1883 is restarted\n\n",
      "Options\n\n",
      "  -p, --port=PortNr\n",
      "  -a, --address=IpAddress\n\n"

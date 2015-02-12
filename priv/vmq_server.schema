@@ -597,13 +597,15 @@
                      %% get the name value pairs
                      Prefix3 = lists:flatten([Prefix, ".$name"]),
                      [begin
+                          {ok, Addr} = inet:parse_address(StrAddr),
                           Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
                           V = Val(Name, cuttlefish:conf_get(Prefix4, Conf, Default2), 
                                   Val(Name, Default2, 
                                       Val(Name, Default1, undefined))),
+                          AddrPort = {Addr, Port},
                           {AddrPort, {list_to_atom(Suffix), V}}
                       end 
-                      || {[_, _, Name], AddrPort} <- lists:filter(
+                      || {[_, _, Name], {StrAddr, Port}} <- lists:filter(
                                                             fun({K, _V}) ->
                                                                     cuttlefish_variable:is_fuzzy_match(K, string:tokens(Prefix3, "."))
                                                             end, Conf), not lists:member(Name, Mappings ++ SSLMapps)]
