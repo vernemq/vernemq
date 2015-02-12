@@ -137,76 +137,6 @@
                                                             hidden
                                                            ]}.
 
-%% @doc Set the nr of acceptors waiting to concurrently accept new connections.
-%% This can be specified either on the protocol level:
-%%
-%%     - listener.tcp.nr_of_acceptors
-%%     - listener.ssl.nr_of_acceptors
-%%     - listener.ws.nr_of_acceptors 
-%%     - listener.wss.nr_of_acceptors 
-%%
-%% or on the listener level:
-%%
-%%     - listener.tcp.my_tcp_listener.nr_of_acceptors
-%%     - listener.ssl.my_ssl_listener.nr_of_acceptors
-%%     - listener.ws.my_ws_listener.nr_of_acceptors
-%%     - listener.wss.my_wss_listener.nr_of_acceptors
-{mapping, "listener.nr_of_acceptors", "vmq_server.listeners", [
-                                                                  {default, {{ max_nr_of_acceptors}} },
-                                                                  {datatype, integer}
-                                                                 ]}.
-
-{mapping, "listener.tcp.nr_of_acceptors", "vmq_server.listeners", [
-                                                                      {default, -1},
-                                                                      {datatype, integer},
-                                                                      hidden
-                                                                     ]}. 
-
-{mapping, "listener.tcp.$name.nr_of_acceptors", "vmq_server.listeners", [
-                                                                            {default, -1},
-                                                                            {datatype, integer},
-                                                                            {include_default, "default"},
-                                                                            hidden
-                                                                           ]}. 
-
-{mapping, "listener.ssl.nr_of_acceptors", "vmq_server.listeners", [
-                                                                      {default, -1},
-                                                                      {datatype, integer},
-                                                                      hidden
-                                                                     ]}. 
-
-{mapping, "listener.ssl.$name.nr_of_acceptors", "vmq_server.listeners", [
-                                                                            {default, -1},
-                                                                            {datatype, integer},
-                                                                            {include_default, "default"},
-                                                                            hidden
-                                                                           ]}. 
-
-{mapping, "listener.ws.nr_of_acceptors", "vmq_server.listeners", [
-                                                                            {default, -1},
-                                                                            {datatype, integer},
-                                                                            hidden
-                                                                           ]}. 
-
-{mapping, "listener.ws.$name.nr_of_acceptors", "vmq_server.listeners", [
-                                                                                  {default, -1},
-                                                                                  {datatype, integer},
-                                                                                  {include_default, "default"},
-                                                                                  hidden
-                                                                                 ]}. 
-{mapping, "listener.wss.nr_of_acceptors", "vmq_server.listeners", [
-                                                                            {default, -1},
-                                                                            {datatype, integer},
-                                                                            hidden
-                                                                           ]}. 
-
-{mapping, "listener.wss.$name.nr_of_acceptors", "vmq_server.listeners", [
-                                                                                  {default, -1},
-                                                                                  {datatype, integer},
-                                                                                  {include_default, "default"},
-                                                                                  hidden
-                                                                                 ]}. 
-
 
 %% @doc Set the mountpoint on the protocol level or on the listener level
 %%
@@ -579,7 +509,7 @@
          AtomVal = fun(_, A, _) when is_atom(A) -> A end,
 
 
-         Mappings = ["max_connections", "nr_of_acceptors", "mountpoint"],
+         Mappings = ["max_connections", "mountpoint"],
                     %% SSL specific
          SSLMapps = ["cafile", "capath", "certfile", "ciphers", "crlfile",
                      "keyfile", "require_certificate", "tls_version",
@@ -628,11 +558,6 @@
          {WSIPs, WSMaxConns} = lists:unzip(F("listener.ws", "max_connections", InfIntVal)),
          {WS_SSLIPs, WS_SSLMaxConns} = lists:unzip(F("listener.wss", "max_connections", InfIntVal)),
          
-         {TCPIPs, TCPNrOfAcceptors} = lists:unzip(F("listener.tcp", "nr_of_acceptors", InfIntVal)),
-         {SSLIPs, SSLNrOfAcceptors} = lists:unzip(F("listener.ssl", "nr_of_acceptors", InfIntVal)),
-         {WSIPs, WSNrOfAcceptors} = lists:unzip(F("listener.ws", "nr_of_acceptors", InfIntVal)),
-         {WS_SSLIPs, WS_SSLNrOfAcceptors} = lists:unzip(F("listener.wss", "nr_of_acceptors", InfIntVal)),
-
          {TCPIPs, TCPMountPoint} = lists:unzip(F("listener.tcp", "mountpoint", MPVal)),
          {SSLIPs, SSLMountPoint} = lists:unzip(F("listener.ssl", "mountpoint", MPVal)),
          {WSIPs, WSMountPoint} = lists:unzip(F("listener.ws", "mountpoint", MPVal)),
@@ -662,13 +587,10 @@
          {WS_SSLIPs, WS_SSLUseIdents} = lists:unzip(F("listener.wss", "use_identity_as_username", BoolVal)),
          {WS_SSLIPs, WS_SSLECSupport} = lists:unzip(F("listener.wss", "support_elliptic_curves", BoolVal)),
          TCP = lists:zip(TCPIPs, MZip([TCPMaxConns, 
-                                       TCPNrOfAcceptors, 
                                        TCPMountPoint])),
          WS = lists:zip(WSIPs, MZip([WSMaxConns, 
-                                     WSNrOfAcceptors, 
                                      WSMountPoint])),
          SSL = lists:zip(SSLIPs, MZip([SSLMaxConns, 
-                                       SSLNrOfAcceptors,
                                        SSLMountPoint,
                                        SSLCAFiles, 
                                        SSLCAPaths, 
@@ -681,7 +603,6 @@
                                        SSLUseIdents, 
                                        SSLECSupport])),
          WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns, 
-                                       WS_SSLNrOfAcceptors,
                                        WS_SSLMountPoint,
                                        WS_SSLCAFiles, 
                                        WS_SSLCAPaths, 
