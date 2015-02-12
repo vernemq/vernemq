@@ -30,12 +30,17 @@ command(Cmd) ->
 register_cli() ->
     vmq_config_cli:register_config(),
     register_cli_usage(),
-    vmq_server_stop_cmd(),
     vmq_server_start_cmd(),
+    vmq_server_stop_cmd(),
+    vmq_server_status_cmd(),
     vmq_cluster_reset_cmd(),
     vmq_cluster_chtype_cmd(),
-    vmq_cluster_remove_cmd(),
     vmq_cluster_join_cmd(),
+    vmq_cluster_remove_cmd(),
+    vmq_cluster_upgrade_cmd(),
+
+    vmq_session_list_cmd(),
+
     vmq_listener_cli:register_server_cli().
 
 register_cli_usage() ->
@@ -45,7 +50,11 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "node", "reset"], reset_usage()),
     clique:register_usage(["vmq-admin", "node", "chtype"], chtype_usage()),
     clique:register_usage(["vmq-admin", "node", "join"], join_usage()),
-    clique:register_usage(["vmq-admin", "node", "remove"], remove_usage()).
+    clique:register_usage(["vmq-admin", "node", "remove"], remove_usage()),
+    clique:register_usage(["vmq-admin", "node", "upgrade"], upgrade_usage()),
+
+    clique:register_usage(["vmq-admin", "session"], session_usage()),
+    clique:register_usage(["vmq-admin", "session", "list"], fun vmq_session_list_usage/0).
 
 vmq_server_stop_cmd() ->
     Cmd = ["vmq-admin", "node", "stop"],
@@ -60,6 +69,28 @@ vmq_server_start_cmd() ->
     Callback = fun(_, _) ->
                        application:ensure_all_started(vmq_server),
                        [clique_status:text("Done")]
+               end,
+    clique:register_command(Cmd, [], [], Callback).
+
+vmq_server_status_cmd() ->
+    Cmd = ["vmq-admin", "node", "status"],
+    Callback = fun(_, _) ->
+                       VmqNodes = vmq_cluster:nodes(),
+                       Status = mnesia_cluster_utils:status(),
+                       Nodes = proplists:get_value(nodes, Status),
+                       RunningNodes = proplists:get_value(running_nodes, Status),
+                       TypedNodes = lists:flatten([[{Type, Node}|| Node <- NodesWithType]
+                                                   || {Type, NodesWithType} <- Nodes]),
+                       NodeTable =
+                       lists:foldl(fun({NodeType, NodeName}, Acc) ->
+                                           IsRunning = lists:member(NodeName, RunningNodes),
+                                           VmqReady = lists:member(NodeName, VmqNodes),
+                                           [[{'Node', NodeName},
+                                             {'Type', NodeType},
+                                             {'Database-Ready', IsRunning},
+                                             {'Server-Ready', VmqReady}]|Acc]
+                                   end, [], TypedNodes),
+                       [clique_status:table(NodeTable)]
                end,
     clique:register_command(Cmd, [], [], Callback).
 
@@ -161,8 +192,72 @@ vmq_cluster_join_cmd() ->
                                [clique_status:alert([clique_status:text(Text)])]
                        end
                end,
-
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+vmq_cluster_upgrade_cmd() ->
+    Cmd = ["vmq-admin", "node", "upgrade"],
+    KeySpecs = [],
+    FlagSpecs = [{'upgrade-now', [{longname, "upgrade-now"}]},
+                 {'instruction-file', [{longname, "instruction-file"},
+                                       {typecast, fun(F) ->
+                                                          case filelib:is_file(F) of
+                                                              true ->
+                                                                  F;
+                                                              false ->
+                                                                  {error, {invalid_flag_value,
+                                                                           {'instruction-file', F}}}
+                                                          end
+                                                  end}]}],
+    Callback = fun([], Flags) ->
+                       IsUpgradeNow = lists:keymember('upgrade-now', 1, Flags),
+                       {Function, Args} =
+                       case lists:keyfind('instruction-file', 1, Flags) of
+                           false when IsUpgradeNow ->
+                               {run, []};
+                           false ->
+                               {dry_run, []};
+                           {_, F} when IsUpgradeNow ->
+                               {run, [F]};
+                           {_, F} ->
+                               {dry_run, [F]}
+                       end,
+                       Ret = apply(vmq_updo, Function, Args),
+                       Text = io_lib:format("~p upgrade: ~p~n", [Function, Ret]),
+                       [clique_status:text([Text])]
+               end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+
+vmq_session_info_items() ->
+    [pid, client_id, user, peer_host, peer_port, state,
+     mountpoint, node, protocol, timeout, retry_timeout,
+     recv_cnt, send_cnt, waiting_acks].
+
+vmq_session_list_cmd() ->
+    Cmd = ["vmq-admin", "session", "list"],
+    KeySpecs = [],
+    ValidInfoItems = vmq_session_info_items(),
+    FlagSpecs = [{I, [{longname, atom_to_list(I)}]} || I <- ValidInfoItems],
+    Callback = fun([], Flags) ->
+                       InfoItems = [I || {I, undefined} <- Flags],
+                       Table =
+                       vmq_session:list_sessions(InfoItems,
+                                                 fun(_, Infos, AccAcc) ->
+                                                         [Infos|AccAcc]
+                                                 end, []),
+                       [clique_status:table(Table)]
+               end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+vmq_session_list_usage() ->
+    Options = [io_lib:format("  --~p\n", [Item])
+               || Item <- vmq_session_info_items()],
+    ["vmq-admin session list\n\n",
+     "  Prints the information of currently running sessions\n\n",
+     "Options\n\n" | Options
+    ].
+
+
 
 start_usage() ->
     ["vmq-admin node start\n\n",
@@ -182,7 +277,12 @@ reset_usage() ->
     ["vmq-admin node reset\n\n",
      "  Return a node to its virgin state, where is it not a member of any\n",
      "  cluster, has no cluster configuration, no local database, and no\n"
-     "  persisted messages.\n"
+     "  persisted messages.\n\n",
+     "Options\n\n",
+     "  --forcefully, -f\n",
+     "     Resets the node regardless of the current state and cluster\n",
+     "     configuration. Should only be used if the database or cluster\n",
+     "     configuration has been corrupted.\n\n"
     ].
 
 chtype_usage() ->
@@ -217,20 +317,41 @@ remove_usage() ->
      "      since it can lead to inconsistencies.\n\n"
     ].
 
+upgrade_usage() ->
+    ["vmq-admin node upgrade [--upgrade-now]\n\n",
+     "  Performs a dry run of a hot code upgrade. Use the --upgrade-now flag if\n",
+     "  you are aware of the consequences of the upgrade. It is recommended to\n"
+     "  previously perform a dry run to see which parts of the systems would\n"
+     "  be touched by the upgrade\n\n",
+     "Options\n\n",
+     "  --upgrade-now\n",
+     "      Perform the hot code upgrade, Erlang is good at it, but many things\n",
+     "      could fail using this way to perform an upgrade. We generally don't\n",
+     "      recommend it. YOU SHOULD KNOW WHAT YOU ARE DOING AT THIS POINT\n\n"
+    ].
+
 node_usage() ->
     ["vmq-admin node <sub-command>\n\n",
      "  administrate this VerneMQ cluster node.\n\n",
      "  Sub-commands:\n",
      "    start       Start the server application\n",
      "    stop        Stop the server application\n",
+     "    status      Prints cluster status information\n",
      "    reset       Reset the server state\n",
      "    chtype      Change the type of the node\n",
      "    join        Join a cluster\n",
-     "    remove      Remove a cluster node\n\n",
+     "    remove      Remove a cluster node\n",
+     "    upgrade     Upgrade a cluster node\n\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 
-
+session_usage() ->
+    ["vmq-admin session <sub-command>\n\n",
+     "  retrieve information about the sessions.\n\n",
+     "  Sub-commands:\n",
+     "    list        list the currently running sessions\n",
+     "  Use --help after a sub-command for more details.\n"
+    ].
 
 
 ensure_all_stopped(App)  ->

@@ -21,8 +21,8 @@
          disconnect/1,
          reconfigure/2,
          get_info/2,
-         list_sessions/1,
-         list_sessions_/1]).
+         list_sessions/3,
+         list_sessions_/3]).
 
 -export([init/1,
          handle_event/3,
@@ -121,30 +121,33 @@ in(FsmPid, Event) ->
     in_(FsmPid, Event).
 
 in_(FsmPid, Event) ->
-    case catch gen_fsm:sync_send_all_state_event(FsmPid, {input, Event},
-                                                 infinity) of
-        ok -> ok;
+    save_sync_send_all_state_event(FsmPid, {input, Event}, ok, infinity).
+
+save_sync_send_all_state_event(FsmPid, Event, DefaultRet, Timeout) ->
+    case catch gen_fsm:sync_send_all_state_event(FsmPid, Event, Timeout) of
         {'EXIT', {normal, _}} ->
             %% Session Pid died while sync_send_all_state_event
             %% was waiting to be handled, we can reply 'ok' here
             %% because vmq_session_sup_sup will kick in and
             %% shutdown the reader (and writer)
-            ok;
+            DefaultRet;
         {'EXIT', {noproc, _}} ->
             %% Session Pid is dead, we will be dead pretty soon too,
             %% the vmq_session_sup_sup probably already has sent the
             %% shutdown signal to reader (and writer)
-            ok;
-        {'EXIT', Reason} -> exit(Reason)
+            DefaultRet;
+        {'EXIT', {timeout, _}} ->
+            %% if the session is overloaded
+            DefaultRet;
+        {'EXIT', Reason} -> exit(Reason);
+        Ret -> Ret
     end.
 
-
-
--spec get_info(string() | pid(), [atom()]) -> proplist().
-get_info(ClientId, InfoItems) when is_list(ClientId) ->
-    case vmq_reg:get_subscriber_pids(ClientId) of
-        {ok, [Pid|_]} -> get_info(Pid, InfoItems);
-        E -> E
+-spec get_info(subscriber_id() | pid(), [atom()]) -> proplist().
+get_info(SubscriberId, InfoItems) when is_tuple(SubscriberId) ->
+    case vmq_reg:get_subscriber_pids(SubscriberId) of
+        {ok, Pids} -> [get_info(Pid, InfoItems)|| Pid <- Pids];
+        _ -> []
     end;
 get_info(FsmPid, InfoItems) when is_pid(FsmPid) ->
     AInfoItems =
@@ -156,23 +159,46 @@ get_info(FsmPid, InfoItems) when is_pid(FsmPid) ->
              end;
          _ when is_atom(I) -> I
      end || I <- InfoItems],
-    gen_fsm:sync_send_all_state_event(FsmPid, {get_info, AInfoItems}).
+    save_sync_send_all_state_event(FsmPid, {get_info, AInfoItems}, [], 1000).
 
--spec list_sessions([atom()|string()]) -> proplist().
-list_sessions(InfoItems) ->
-    Nodes = vmq_cluster:nodes(),
-    lists:foldl(fun(Node, Acc) when Node == node() ->
-                        [{Node, list_sessions_(InfoItems)}|Acc];
-                   (Node, Acc) ->
-                        Res = rpc:call(Node, ?MODULE,
-                                       list_sessions_, [InfoItems]),
-                        [{Node, Res}|Acc]
-                end, [], Nodes).
+-spec list_sessions([atom()|string()], function(), any()) -> any().
+list_sessions(InfoItems, Fun, Acc) ->
+    list_sessions(vmq_cluster:nodes(), InfoItems, Fun, Acc).
+list_sessions([Node|Nodes], InfoItems, Fun, Acc) when Node == node() ->
+    NewAcc = list_sessions_(InfoItems, Fun, Acc),
+    list_sessions(Nodes, InfoItems, Fun, NewAcc);
+list_sessions([Node|Nodes], InfoItems, Fun, Acc) ->
+    Self = self(),
+    F = fun(SubscriberId, Infos, NrOfSessions) ->
+                Self ! {session_info, SubscriberId, Infos},
+                NrOfSessions + 1
+        end,
+    Key = rpc:async_call(Node, ?MODULE, list_sessions_, [InfoItems, F, 0]),
+    NewAcc = list_session_recv_loop(Key, Fun, Acc),
+    list_sessions(Nodes, InfoItems, Fun, NewAcc);
+list_sessions([], _, _, Acc) -> Acc.
 
-list_sessions_(InfoItems) ->
-    [get_info(Child, InfoItems)
-     || {_, Child, _, _} <- supervisor:which_children(vmq_session_sup),
-     Child /= restarting].
+list_sessions_(InfoItems, Fun, Acc) ->
+    vmq_reg:fold_sessions(
+      fun(SubscriberId, Pid, AccAcc) when is_pid(Pid) ->
+              Fun(SubscriberId, get_info(Pid, InfoItems), AccAcc);
+         (_, _, AccAcc) ->
+              AccAcc
+      end, Acc).
+
+list_session_recv_loop(RPCKey, Fun, Acc) ->
+    case rpc:nb_yield(RPCKey) of
+        {value, _NrOfSessions} ->
+            Acc;
+        timeout ->
+            receive
+                {session_info, SubscriberId, Infos} ->
+                    list_session_recv_loop(RPCKey, Fun,
+                                           Fun(SubscriberId, Infos, Acc));
+                _ ->
+                    Acc
+            end
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% FSM FUNCTIONS
@@ -1065,21 +1091,16 @@ get_info_items([timeout|Rest], StateName, State, Acc) ->
 get_info_items([retry_timeout|Rest], StateName, State, Acc) ->
     get_info_items(Rest, StateName, State,
                    [{timeout, State#state.retry_interval}|Acc]);
-get_info_items([recv_cnt|Rest], StateName, State, Acc) ->
+get_info_items([recv_cnt|Rest], StateName, #state{recv_cnt={_,V,_}} = State, Acc) ->
     get_info_items(Rest, StateName, State,
-                   [{recv_cnt, State#state.recv_cnt}|Acc]);
-get_info_items([send_cnt|Rest], StateName, State, Acc) ->
+                   [{recv_cnt, V}|Acc]);
+get_info_items([send_cnt|Rest], StateName, #state{send_cnt={_,V,_}} = State, Acc) ->
     get_info_items(Rest, StateName, State,
-                   [{send_cnt, State#state.send_cnt}|Acc]);
+                   [{send_cnt, V}|Acc]);
 get_info_items([waiting_acks|Rest], StateName, State, Acc) ->
     Size = dict:size(State#state.waiting_acks),
     get_info_items(Rest, StateName, State,
                    [{waiting_acks, Size}|Acc]);
-get_info_items([subscriptions|Rest], StateName, State, Acc) ->
-    #state{subscriber_id=SubscriberId} = State,
-    Subscriptions = vmq_reg:subscriptions_for_subscriber(SubscriberId),
-    get_info_items(Rest, StateName, State,
-                   [{subscriptions, Subscriptions}|Acc]);
 get_info_items([_|Rest], StateName, State, Acc) ->
     get_info_items(Rest, StateName, State, Acc);
 get_info_items([], _, _, Acc) -> Acc.

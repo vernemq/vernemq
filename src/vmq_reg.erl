@@ -63,6 +63,8 @@
 -export([subscribe_subscriber_changes/0,
          fold_subscribers/2,
          fold_subscribers/3]).
+%% used by vmq_session:list_sessions
+-export([fold_sessions/2]).
 
 -record(state, {}).
 -record(session, {subscriber_id, pid, queue_pid, monitor, last_seen, clean}).
@@ -668,6 +670,13 @@ fold_subscribers(ResolveQPids, FoldFun, Acc) ->
                         end
                 end, Acc, vmq_subscriber)
       end).
+
+fold_sessions(FoldFun, Acc) ->
+    ets:foldl(fun(#session{subscriber_id=SubscriberId,
+                           pid=SessionPid}, AccAcc) ->
+                      FoldFun(SubscriberId, SessionPid, AccAcc)
+              end, Acc, vmq_session).
+
 
 -spec add_subscriber_tx(topic(), qos(), subscriber_id()) -> ok | ignore | abort.
 add_subscriber_tx(Topic, Qos, SubscriberId) ->
