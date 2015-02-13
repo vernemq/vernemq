@@ -19,13 +19,62 @@
 
 register_cli() ->
     vmq_plugin_cli_usage(),
+    vmq_plugin_show_cmd(),
     vmq_plugin_enable_cmd(),
     vmq_plugin_disable_cmd().
 
 vmq_plugin_cli_usage() ->
     clique:register_usage(["vmq-admin", "plugin"], plugin_usage()),
+    clique:register_usage(["vmq-admin", "plugin", "show"], plugin_show_usage()),
     clique:register_usage(["vmq-admin", "plugin", "enable"], plugin_enable_usage()),
     clique:register_usage(["vmq-admin", "plugin", "disable"], plugin_disable_usage()).
+
+vmq_plugin_show_cmd() ->
+    Cmd = ["vmq-admin", "plugin", "show"],
+    KeySpecs = [],
+    FlagSpecs = [{plugin, [{longname, "plugin"},
+                           {typecast, fun(P) -> list_to_atom(P) end}]},
+                 {hook, [{longname, "hook"},
+                         {typecast, fun(H) -> list_to_atom(H) end}]}],
+    Callback =
+    fun([], Flags) ->
+            PF = case lists:keyfind(plugin, 1, Flags) of
+                               false -> [];
+                               {_, P} -> [P]
+                           end,
+            HF = case lists:keyfind(hook, 1, Flags) of
+                               false -> [];
+                               {_, H} -> [H]
+                           end,
+            Plugins =
+            lists:foldl(
+              fun({Hook, Plugin, _, Arity}, [{Plugin, Hooks}|Acc])
+                    when ((PF == []) or (PF == [Plugin]))
+                         and
+                         ((HF == []) or (HF == [Hook])) ->
+                      [{Plugin, [{Hook, Arity}|Hooks]}|Acc];
+                 ({Hook, Plugin, _, Arity}, Acc)
+                   when ((PF == []) or (PF == [Plugin]))
+                        and
+                        ((HF == []) or (HF == [Hook])) ->
+                      [{Plugin, [{Hook, Arity}]}|Acc];
+                 (_, Acc) ->
+                      Acc
+              end, [], lists:keysort(2, vmq_plugin:info(all))),
+            Table =
+            lists:foldl(
+              fun({Plugin, Hooks}, Acc) ->
+                      HooksTxt =
+                      lists:flatten([io_lib:format("~p/~p~n", [Hook, Arity])
+                                     || {Hook, Arity} <- Hooks]),
+                      [[{'Plugin', Plugin},
+                        {'Hooks', HooksTxt ++ "\n"}]
+                       |Acc]
+              end, [], Plugins),
+            [clique_status:table(Table)]
+    end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
 
 vmq_plugin_flag_specs() ->
     [{name, [{shortname, "n"},
@@ -53,7 +102,6 @@ vmq_plugin_flag_specs() ->
      {hook, [{shortname, "h"},
              {longname, "hook"},
              {typecast, fun(H) -> list_to_atom(H) end}]}].
-
 vmq_plugin_enable_cmd() ->
     Cmd = ["vmq-admin", "plugin", "enable"],
     KeySpecs = [],
@@ -146,6 +194,16 @@ plugin_usage() ->
      "    enable        enable plugin\n",
      "    disable       disable plugin\n",
      "  Use --help after a sub-command for more details.\n"
+    ].
+
+plugin_show_usage() ->
+    ["vmq-admin plugin show\n\n",
+     "  Shows the currently running plugins.\n\n",
+     "Options\n\n",
+     "  --plugin\n",
+     "      Only shows the hooks for the specified plugin\n",
+     "  --hook\n",
+     "      Only shows the plugins that provide callbacks for the specified hook\n"
     ].
 
 plugin_enable_usage() ->
