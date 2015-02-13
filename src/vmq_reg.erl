@@ -562,6 +562,7 @@ direct_plugin_exports(Mod) ->
     fun(Topic, Payload) ->
             wait_til_ready(),
             Msg = #vmq_msg{routing_key=Topic,
+                           mountpoint=MountPoint,
                            payload=Payload,
                            dup=false,
                            retain=false,
