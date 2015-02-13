@@ -294,6 +294,7 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
         {ok, [{plugins, Plugins}]} ->
             case check_plugins(Plugins, []) of
                 {ok, CheckedPlugins} ->
+                    ok = init_plugins_cli(CheckedPlugins),
                     ok = start_plugins(CheckedPlugins),
                     ok = compile_hooks(CheckedPlugins),
                     {ok, State#state{ready=true}};
@@ -333,21 +334,6 @@ check_plugins([{application, App, AppPath}|Rest], Acc) ->
     end;
 
 check_plugins([], CheckedHooks) ->
-    S = lists:foldl(fun({App, Hooks}, Acc) ->
-                            HooksString =
-                            lists:foldl(
-                              fun({HookName, Module, Fun, Arity}, AAcc) ->
-                                      HS = io_lib:format("-~p: ~p:~p/~p~n",
-                                                         [HookName, Module,
-                                                          Fun, Arity]),
-                                      [HS|AAcc]
-                              end, [], Hooks),
-                            [io_lib:format("~p:~n~s~n", [App, lists:flatten(HooksString)])
-                             | Acc]
-                    end, [], CheckedHooks),
-    io:format(  "--- ENABLED PLUGINS ----~n"
-              ++"~s"
-              ++"------------------------~n", [lists:flatten(S)]),
     {ok, CheckedHooks}.
 
 start_plugins([{module_plugin, _}|Rest]) ->
@@ -377,6 +363,27 @@ start_plugin(App) ->
         _ ->
             ok
     end.
+
+init_plugins_cli(CheckedPlugins) ->
+    init_plugins_cli(CheckedPlugins, [code:lib_dir()]).
+
+init_plugins_cli([{module_plugin, _}|Rest], Acc) ->
+    init_plugins_cli(Rest, Acc);
+init_plugins_cli([{App, _}|Rest], Acc) ->
+    case code:priv_dir(App) of
+        {error, bad_name} ->
+            init_plugins_cli(Rest, Acc);
+        PrivDir ->
+            init_plugins_cli(Rest, [PrivDir|Acc])
+    end;
+init_plugins_cli([], Acc) ->
+    case clique_config:load_schema(Acc) of
+        {error, schema_files_not_found} ->
+            lager:debug("couldn't load cuttlefish schema");
+        ok ->
+            ok
+    end.
+
 
 stop_plugin(vmq_plugin) -> ok;
 stop_plugin(App) ->
@@ -420,7 +427,6 @@ compile_hooks(CheckedPlugins) ->
     {_, CheckedHooks} = lists:unzip(CheckedPlugins),
     compile_hook_module(
       lists:keysort(1, lists:flatten(CheckedHooks))).
-
 
 create_path(Path, ["ebin"|Rest], Acc) ->
     EbinDir = filename:join(Path, "ebin"),
