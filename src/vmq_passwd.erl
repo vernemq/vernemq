@@ -43,7 +43,7 @@ stop() ->
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 change_config(Configs) ->
-    case lists:keyfind(vmq_acl, 1, Configs) of
+    case lists:keyfind(vmq_passwd, 1, Configs) of
         false ->
             ok;
         _ ->

@@ -24,5 +24,5 @@ register() ->
     ok = clique:register_config_whitelist(ConfigKeys).
 
 register_config_callback(_, _, _) ->
-    vmq_acl_reloader:change_config_now().
+    vmq_passwd_reloader:change_config_now().
 
