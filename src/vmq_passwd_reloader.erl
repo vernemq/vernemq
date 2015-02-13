@@ -19,7 +19,7 @@
 %% API
 -export([start_link/0]).
 
--export([change_config_now/3]).
+-export([change_config_now/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -46,9 +46,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-change_config_now([], {[],[]}, []) ->
-    ok;
-change_config_now(_New, _Changed, _Deleted) ->
+change_config_now() ->
     gen_server:cast(?MODULE, config_changed).
 %%%===================================================================
 %%% gen_server callbacks
@@ -158,5 +156,13 @@ init_state(State) ->
     {ok, Interval} = application:get_env(?APP, interval),
     ok = vmq_passwd:init(),
     ok = vmq_passwd:load_from_file(File),
-    NewTRef = erlang:send_after(Interval, self(), reload),
-    State#state{file=File, interval=Interval, timer=NewTRef}.
+    {NewI, NewTRef} =
+    case Interval of
+        0 ->
+            {0, undefined};
+        I ->
+            IinMs = abs(I * 1000),
+            NTRef = erlang:send_after(IinMs, self(), reload),
+            {IinMs, NTRef}
+    end,
+    State#state{file=File, interval=NewI, timer=NewTRef}.

@@ -1,5 +1,12 @@
 %% @doc Set the path to a password file. 
+%% @doc Set the path to an password file. 
 {mapping, "password_file", "vmq_passwd.file", [
                                                   {default, "{{platform_etc_dir}}/vmq.passwd"},
                                                   {datatype, file}
                                                  ]}.
+%% @doc set the password reload interval in seconds, the value 0 disables the
+%% automatic reloading of the password file.
+{mapping, "password_reload_interval", "vmq_passwd.interval", [
+                                          {default, 10},
+                                          {datatype, integer}
+                                            ]}.

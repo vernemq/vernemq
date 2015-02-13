@@ -14,16 +14,48 @@
 
 -module(vmq_passwd).
 
--export([init/0,
+-export([start/0,
+         stop/0,
+         init/0,
          check/2,
          hash/1, hash/2,
          load_from_file/1,
          load_from_list/1]).
--export([auth_on_register/4]).
+-export([change_config/1,
+         auth_on_register/4]).
 
 -define(TABLE, ?MODULE).
 -define(SALT_LEN, 12).
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Plugin Callbacks
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+start() ->
+    {ok, _} = application:ensure_all_started(vmq_passwd),
+    vmq_passwd_cli:register(),
+    ok.
+
+stop() ->
+    application:stop(vmq_passwd).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Hooks
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+change_config(Configs) ->
+    case lists:keyfind(vmq_acl, 1, Configs) of
+        false ->
+            ok;
+        _ ->
+            vmq_passwd_reloader:change_config_now()
+    end.
+
+auth_on_register(_Peer, _ClientId, User, Password) ->
+    check(User, Password).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Internal
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init() ->
     case lists:member(?TABLE, ets:all()) of
         true ->
@@ -78,9 +110,6 @@ check(User, Password) ->
         [] ->
             next
     end.
-
-auth_on_register(_Peer, _ClientId, User, Password) ->
-    check(User, Password).
 
 parse_passwd_line({F, eof}) ->
     F(F,close),
