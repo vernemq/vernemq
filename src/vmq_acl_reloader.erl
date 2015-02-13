@@ -1,11 +1,11 @@
 %% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
-%% 
+%%
 %%     http://www.apache.org/licenses/LICENSE-2.0
-%% 
+%%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,7 +19,7 @@
 %% API
 -export([start_link/0]).
 
--export([change_config_now/3]).
+-export([change_config_now/0]).
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -45,9 +45,7 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-change_config_now([], {[],[]}, []) ->
-    ok;
-change_config_now(_New, _Changed, _Deleted) ->
+change_config_now() ->
     gen_server:cast(?MODULE, config_changed).
 
 
@@ -154,5 +152,13 @@ init_state(State) ->
     {ok, Interval} = application:get_env(?APP, interval),
     ok = vmq_acl:init(),
     ok = vmq_acl:load_from_file(File),
-    NewTRef = erlang:send_after(Interval, self(), reload),
-    State#state{file=File, interval=Interval, timer=NewTRef}.
+    {NewI, NewTRef} =
+    case Interval of
+        0 ->
+            {0, undefined};
+        I ->
+            IinMs = abs(I * 1000),
+            NTRef = erlang:send_after(IinMs, self(), reload),
+            {IinMs, NTRef}
+    end,
+    State#state{file=File, interval=NewI, timer=NewTRef}.

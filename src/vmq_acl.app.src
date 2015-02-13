@@ -5,13 +5,15 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  clique
                  ]},
   {mod, { vmq_acl_app, []}},
   {env, [
       {file, "priv/test.acl"},
-      {interval, 5000},
+      {interval, 10},
       {vmq_plugin_hooks, [
+            {vmq_acl, change_config, 1},
             {vmq_acl, auth_on_publish, 6},
             {vmq_acl, auth_on_subscribe, 3}
         ]}

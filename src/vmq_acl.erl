@@ -13,14 +13,16 @@
 %% limitations under the License.
 
 -module(vmq_acl).
-
--export([init/0,
+-export([start/0,
+         stop/0,
+         init/0,
          load_from_file/1,
          load_from_list/1,
          check/4]).
 
 -export([auth_on_subscribe/3,
-         auth_on_publish/6]).
+         auth_on_publish/6,
+         change_config/1]).
 
 -import(emqtt_topic, [words/1, match/2]).
 
@@ -35,14 +37,27 @@
                 ]).
 -define(TABLE_OPTS, [public, named_table, {read_concurrency, true}]).
 
-init() ->
-    lists:foreach(fun(T) ->
-                          case lists:member(T, ets:all()) of
-                              true -> ok;
-                              false ->
-                                  ets:new(T, ?TABLE_OPTS)
-                          end
-                  end, ?TABLES).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Plugin Callbacks
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+start() ->
+    {ok, _} = application:ensure_all_started(vmq_acl),
+    vmq_acl_cli:register(),
+    ok.
+
+stop() ->
+    application:stop(vmq_acl).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Hooks
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+change_config(Configs) ->
+    case lists:keyfind(vmq_acl, 1, Configs) of
+        false ->
+            ok;
+        _ ->
+            vmq_acl_reloader:change_config_now()
+    end.
 
 auth_on_subscribe(_, _, []) -> ok;
 auth_on_subscribe(User, ClientId, [{Topic, _Qos}|Rest]) ->
@@ -60,6 +75,18 @@ auth_on_publish(User, ClientId, _, Topic, _, _) ->
         false ->
             next
     end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Internal
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+init() ->
+    lists:foreach(fun(T) ->
+                          case lists:member(T, ets:all()) of
+                              true -> ok;
+                              false ->
+                                  ets:new(T, ?TABLE_OPTS)
+                          end
+                  end, ?TABLES).
 
 load_from_file(File) ->
     case file:open(File, [read, binary]) of
@@ -92,7 +119,6 @@ load_from_list(List) ->
     age_entries(),
     parse_acl_line(F(F, read), all),
     del_aged_entries().
-
 
 parse_acl_line({F, <<"topic read ", Topic/binary>>}, User) ->
     in(read, User, Topic),
