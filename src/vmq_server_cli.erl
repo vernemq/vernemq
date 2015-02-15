@@ -44,6 +44,7 @@ register_cli() ->
     vmq_listener_cli:register_server_cli().
 
 register_cli_usage() ->
+    clique:register_usage(["vmq-admin"], usage()),
     clique:register_usage(["vmq-admin", "node"], node_usage()),
     clique:register_usage(["vmq-admin", "node", "start"], start_usage()),
     clique:register_usage(["vmq-admin", "node", "stop"], stop_usage()),
@@ -330,6 +331,16 @@ upgrade_usage() ->
      "      recommend it. YOU SHOULD KNOW WHAT YOU ARE DOING AT THIS POINT\n\n"
     ].
 
+usage() ->
+    ["vmq-admin <sub-command>\n\n",
+     "  administrate the cluster.\n\n",
+     "  Sub-commands:\n",
+     "    node        Manage the cluster node\n",
+     "    session     Retrieve session information\n",
+     "    config      Manage the internal configuration store\n",
+     "    plugin      Manage plugin system\n",
+     "  Use --help after a sub-command for more details.\n"
+    ].
 node_usage() ->
     ["vmq-admin node <sub-command>\n\n",
      "  administrate this VerneMQ cluster node.\n\n",

@@ -20,13 +20,20 @@
 -export([start_link/0,
          change_config/1,
          configure_node/0,
+         configure_node/1,
+         configure_nodes/0,
          table_defs/0,
          get_env/1,
          get_env/2,
          get_env/3,
          set_env/2,
          set_env/3,
-         get_all_env/1
+         set_global_env/3,
+         get_all_env/1,
+         get_prefixed_env/2,
+         get_prefixed_all_env/1,
+         unset_local_env/2,
+         unset_global_env/2
         ]).
 
 %% gen_server callbacks
@@ -95,15 +102,71 @@ get_all_env(App) ->
                         [{Key, get_env(App, Key, Val)}|Acc]
                 end, [], application:get_all_env(App)).
 
+get_prefixed_env(App, Key) ->
+    case application:get_env(App, Key) of
+        {ok, Val} ->
+            case mnesia:dirty_read(?MNESIA, {node(), App, Key}) of
+                [] ->
+                    case mnesia:dirty_read(?MNESIA, {App, Key}) of
+                        [] ->
+                            {env, Key, Val};
+                        [#vmq_config{val=GlobalVal}] ->
+                            {global, Key, GlobalVal}
+                    end;
+                [#vmq_config{val=NodeVal}] ->
+                    {node, Key, NodeVal}
+            end;
+        undefined ->
+            {error, not_found}
+    end.
+
+get_prefixed_all_env(App) ->
+    lists:foldl(
+      fun({Key, _}, AccAcc) ->
+              [get_prefixed_env(App, Key)|AccAcc]
+      end, [], application:get_all_env(App)).
+
 set_env(Key, Val) ->
     set_env(vmq_server, Key, Val).
 set_env(App, Key, Val) ->
+    set_env(node(), App, Key, Val).
+set_env(Node, App, Key, Val) when Node == node() ->
     {atomic, ok} = mnesia:transaction(
       fun() ->
               Rec =
-              case mnesia:read(?MNESIA, {node(), App, Key}) of
+              case mnesia:read(?MNESIA, {Node, App, Key}) of
                   [] ->
-                      #vmq_config{key={node(), App, Key},
+                      #vmq_config{key={Node, App, Key},
+                                  val=Val};
+                  [#vmq_config{vclock=VClock} = C] ->
+                      C#vmq_config{
+                        val=Val,
+                        vclock=unsplit_vclock:increment(Node, VClock)
+                       }
+              end,
+              mnesia:write(Rec)
+      end),
+    ets:insert(?TABLE, {{App, Key}, Val}),
+    ok;
+set_env(Node, App, Key, Val) ->
+    safe_rpc(Node, ?MODULE, set_env, [App, Key, Val]).
+
+safe_rpc(Node, Module, Fun, Args) ->
+    try rpc:call(Node, Module, Fun, Args) of
+        Result ->
+            Result
+    catch
+        exit:{noproc, _NoProcDetails} ->
+            {badrpc, rpc_process_down}
+    end.
+
+set_global_env(App, Key, Val) ->
+    {atomic, ok} = mnesia:transaction(
+      fun() ->
+              Rec =
+              case mnesia:read(?MNESIA, {App, Key}) of
+                  [] ->
+                      #vmq_config{key={App, Key},
                                   val=Val};
                   [#vmq_config{vclock=VClock} = C] ->
                       C#vmq_config{
@@ -116,12 +179,39 @@ set_env(App, Key, Val) ->
     ets:insert(?TABLE, {{App, Key}, Val}),
     ok.
 
+
+unset_local_env(App, Key) ->
+    {atomic, ok} =
+    mnesia:transaction(
+      fun() ->
+              mnesia:delete(?MNESIA, {node(), App, Key}, write)
+      end),
+    ok.
+
+unset_global_env(App, Key) ->
+    {atomic, ok} =
+    mnesia:transaction(
+      fun() ->
+              mnesia:delete(?MNESIA, {App, Key}, write)
+      end),
+    ok.
+
+
 configure_node() ->
+    configure_node(node()).
+configure_node(Node) when Node == node() ->
     %% reset config
     ets:delete_all_objects(?TABLE),
     %% force cache initialization
     Configs = init_config_items(application:loaded_applications(), []),
-    vmq_plugin:all(change_config, [Configs]).
+    vmq_plugin:all(change_config, [Configs]);
+configure_node(Node) ->
+    safe_rpc(Node, ?MODULE, configure_node, []).
+
+configure_nodes() ->
+    Nodes = vmq_cluster:nodes(),
+    _ = [safe_rpc(Node, ?MODULE, configure_node, []) || Node <- Nodes].
+
 
 init_config_items([{App, _, _}|Rest], Acc) ->
     case application:get_env(App, vmq_config_enabled, false) of
