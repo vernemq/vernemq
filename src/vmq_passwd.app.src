@@ -13,6 +13,7 @@
   {env, [
       {file, "priv/test.passwd"},
       {interval, 10},
+      {vmq_config_enabled, true},
       {vmq_plugin_hooks, [
           {vmq_passwd, change_config, 1},
           {vmq_passwd, auth_on_register, 4}
