@@ -12,6 +12,7 @@
   {env, [
       {file, "priv/test.acl"},
       {interval, 10},
+      {vmq_config_enabled, true},
       {vmq_plugin_hooks, [
             {vmq_acl, change_config, 1},
             {vmq_acl, auth_on_publish, 6},
