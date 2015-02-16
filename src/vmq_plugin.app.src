@@ -5,7 +5,8 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  clique
                  ]},
   {mod, { vmq_plugin_app, []}},
   {env, [
