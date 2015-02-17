@@ -54,6 +54,12 @@
           plugin_dir,
           config_file}).
 
+-type plugin() :: atom()
+                | {atom(),
+                   atom(),
+                   atom(),
+                   non_neg_integer()}.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -68,25 +74,38 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+-spec enable_plugin(atom()) -> ok | {error, _}.
 enable_plugin(Plugin) ->
     enable_plugin(Plugin, auto).
+-spec enable_plugin(atom(), string() | auto) -> ok | {error, _}.
 enable_plugin(Plugin, Path) when is_atom(Plugin) ->
     gen_server:call(?MODULE, {enable_plugin, Plugin, Path}, infinity).
 
+-spec enable_module_plugin(atom(), atom(), non_neg_integer()) ->
+    ok | {error, _}.
 enable_module_plugin(Module, Fun, Arity) ->
     enable_module_plugin(Fun, Module, Fun, Arity).
+
+-spec enable_module_plugin(atom(), atom(), atom(), non_neg_integer()) ->
+    ok | {error, _}.
 enable_module_plugin(HookName, Module, Fun, Arity) when
       is_atom(HookName) and is_atom(Module)
-      and is_atom(Fun) and is_integer(Arity) ->
+      and is_atom(Fun) and (Arity >= 0) ->
     gen_server:call(?MODULE, {enable_module_plugin, HookName, Module, Fun, Arity}, infinity).
 
+-spec disable_module_plugin(atom(), atom(), non_neg_integer()) ->
+    ok | {error, _}.
 disable_module_plugin(Module, Fun, Arity) ->
     disable_module_plugin(Fun, Module, Fun, Arity).
+
+-spec disable_module_plugin(atom(), atom(), atom(), non_neg_integer()) ->
+    ok | {error, _}.
 disable_module_plugin(HookName, Module, Fun, Arity) when
       is_atom(HookName) and is_atom(Module)
-      and is_atom(Fun) and is_integer(Arity) ->
+      and is_atom(Fun) and (Arity >= 0) ->
     disable_plugin({HookName, Module, Fun, Arity}).
 
+-spec disable_plugin(plugin()) -> ok | {error, _}.
 disable_plugin(Plugin) when is_atom(Plugin) or is_tuple(Plugin) ->
     gen_server:call(?MODULE, {disable_plugin, Plugin}, infinity).
 %%%===================================================================
@@ -681,7 +700,7 @@ vmq_plugin_test() ->
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
     %% we have to step out .eunit
     application:set_env(vmq_plugin, plugin_dir, ".."),
-    ok = application:ensure_all_started(vmq_plugin),
+    {ok, _} = application:ensure_all_started(vmq_plugin),
     %% no plugin is yet registered
     call_no_hooks(),
 
@@ -702,7 +721,7 @@ vmq_plugin_test() ->
     call_no_hooks().
 
 vmq_module_plugin_test() ->
-    application:ensure_all_started(vmq_plugin),
+    {ok, _} = application:ensure_all_started(vmq_plugin),
     call_no_hooks(),
     vmq_plugin_mgr:enable_module_plugin(?MODULE, sample_hook, 0),
     vmq_plugin_mgr:enable_module_plugin(?MODULE, sample_hook, 1),

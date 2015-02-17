@@ -6,6 +6,7 @@
   {applications, [
                   kernel,
                   stdlib,
+                  lager,
                   clique
                  ]},
   {mod, { vmq_plugin_app, []}},

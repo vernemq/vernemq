@@ -21,7 +21,8 @@ register_cli() ->
     vmq_plugin_cli_usage(),
     vmq_plugin_show_cmd(),
     vmq_plugin_enable_cmd(),
-    vmq_plugin_disable_cmd().
+    vmq_plugin_disable_cmd(),
+    ok.
 
 vmq_plugin_cli_usage() ->
     clique:register_usage(["vmq-admin", "plugin"], plugin_usage()),
@@ -123,25 +124,24 @@ vmq_plugin_enable_cmd() ->
                             [clique_status:alert([clique_status:text(Text)])]
                     end;
                 false ->
-                    Module = lists:keyfind(module, 1, Flags),
-                    Function = lists:keyfind(function, 1, Flags),
-                    Arity = lists:keyfind(arity, 1, Flags),
-                    case lists:member(false, [Module, Function, Arity]) of
-                        true ->
-                            Text = "Incomplete plugin specification",
-                            [clique_status:alert([clique_status:text(Text)])];
-                        false ->
+                    case {proplists:get_value(module, Flags, ""),
+                          proplists:get_value(function, Flags, ""),
+                          proplists:get_value(arity, Flags, "")} of
+                        {M, F, A} when is_atom(M) and is_atom(F) and (A >= 0) ->
                             %% default hook name is the function name
-                            HookName = proplists:get_value(hook, Flags, Function),
+                            HookName = proplists:get_value(hook, Flags, F),
                             case vmq_plugin_mgr:enable_module_plugin(
-                                   HookName, Module, Function, Arity) of
+                                   HookName, M, F, A) of
                                 ok ->
                                     [clique_status:text("Done")];
                                 {error, Reason} ->
                                     Text = io_lib:format("Can't enable module plugin: ~p due to ~p",
-                                                         [{Module, Function, Arity}, Reason]),
+                                                         [{M, F, A}, Reason]),
                                     [clique_status:alert([clique_status:text(Text)])]
-                            end
+                            end;
+                        _ ->
+                            Text = "Incomplete plugin specification",
+                            [clique_status:alert([clique_status:text(Text)])]
                     end
             end
     end,
@@ -163,25 +163,24 @@ vmq_plugin_disable_cmd() ->
                             [clique_status:alert([clique_status:text(Text)])]
                     end;
                 false ->
-                    Module = lists:keyfind(module, 1, Flags),
-                    Function = lists:keyfind(function, 1, Flags),
-                    Arity = lists:keyfind(arity, 1, Flags),
-                    case lists:member(false, [Module, Function, Arity]) of
-                        true ->
-                            Text = "Incomplete plugin specification",
-                            [clique_status:alert([clique_status:text(Text)])];
-                        false ->
+                    case {proplists:get_value(module, Flags, ""),
+                          proplists:get_value(function, Flags, ""),
+                          proplists:get_value(arity, Flags, "")} of
+                        {M, F, A} when is_atom(M) and is_atom(F) and (A >= 0) ->
                             %% default hook name is the function name
-                            HookName = proplists:get_value(hook, Flags, Function),
+                            HookName = proplists:get_value(hook, Flags, F),
                             case vmq_plugin_mgr:disable_module_plugin(
-                                   HookName, Module, Function, Arity) of
+                                   HookName, M, F, A) of
                                 ok ->
                                     [clique_status:text("Done")];
                                 {error, Reason} ->
                                     Text = io_lib:format("Can't disable module plugin: ~p due to ~p",
-                                                         [{Module, Function, Arity}, Reason]),
+                                                         [{M, F, A}, Reason]),
                                     [clique_status:alert([clique_status:text(Text)])]
-                            end
+                            end;
+                        _ ->
+                            Text = "Incomplete plugin specification",
+                            [clique_status:alert([clique_status:text(Text)])]
                     end
             end
     end,

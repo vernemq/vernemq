@@ -164,7 +164,7 @@ for_module(ModuleName, IncludePaths, Macros) when is_atom(ModuleName) ->
     case for_file(Path, IncludePaths, Macros) of
         {ok, _Mod} = Res->
             Res;
-        _Err ->
+        _ ->
             case code:which(ModuleName) of
                 Path1 when is_list(Path1) ->
                     case get_forms(ModuleName, Path1) of
@@ -173,7 +173,7 @@ for_module(ModuleName, IncludePaths, Macros) when is_atom(ModuleName) ->
                         _Other ->
                             {error, {invalid_module, ModuleName}}
                     end;
-                _Err ->
+                _ ->
                     {error, {invalid_module, ModuleName}}
             end
     end.
