@@ -1,37 +1,29 @@
-REBAR=$(shell which rebar)
+DIALYZER_APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \
+				public_key mnesia syntax_tools compiler
 
-# =============================================================================
-# Verify that the programs we need to run are installed on this system
-# =============================================================================
-ERL = $(shell which erl)
+NETSPLIT_TESTS = vmq_netsplit_publish_tests,\
+				 vmq_netsplit_register_consistency_tests,\
+				 vmq_netsplit_register_multiple_session_tests,\
+				 vmq_netsplit_register_not_ready_tests,\
+				 vmq_netsplit_subscribe_tests
 
-ifeq ($(ERL),)
-	$(error "Erlang not available on this system")
-endif 
+.PHONY: deps test
 
-ifeq ($(REBAR),)
-	$(error "Rebar not available on this system")
-endif
-
-all: compile test
-
-deps:
-	$(REBAR) get-deps
+all: deps compile
 
 compile: deps
-	$(REBAR) compile
+	./rebar compile
 
-
-default-test: compile
-	$(REBAR) skip_deps=true eunit suites=vmq_clean_session_tests,vmq_cluster_tests,vmq_connect_tests,vmq_last_will_tests,vmq_publish_tests,vmq_retain_tests,vmq_ssl_tests,vmq_subscribe_tests
-
-
-netsplit-test: compile
-	ERL_FLAGS="-epmd_port 43690" $(REBAR) skip_deps=true eunit suites=vmq_netsplit_publish_tests,vmq_netsplit_register_consistency_tests,vmq_netsplit_register_multiple_session_tests,vmq_netsplit_register_not_ready_tests,vmq_netsplit_subscribe_tests
-
-test: compile default-test netsplit-test
+deps:
+	./rebar get-deps
 
 clean:
-	- rm -rf $(CURDIR)/.eunit
-	- rm -rf $(CURDIR)/ebin
-	$(REBAR) skip_deps=true clean
+	./rebar clean
+	
+distclean: clean
+	./rebar delete-deps
+
+netsplit:
+	ERL_FLAGS="-epmd_port 43690" ./rebar eunit -D NETSPLIT skip_deps=true suites=$(NETSPLIT_TESTS)
+
+include tools.mk

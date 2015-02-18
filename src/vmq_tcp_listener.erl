@@ -177,9 +177,8 @@ handle_info({inet_async, ListenSocket, Ref, {ok, TCPSocket}},
                           _ -> gen_tcp
                       end, controlling_process, [UpgradedSocket, Pid]),
                 vmq_tcp_transport:handover(Pid, UpgradedSocket);
-
             {error, _} ->
-                ignore
+                ok
         end,
 
         %% Signal the network driver that we are ready to accept

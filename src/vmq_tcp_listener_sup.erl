@@ -51,8 +51,15 @@ stop_listener(Addr, Port) ->
 delete_listener(Addr, Port) ->
     AAddr = addr(Addr),
     Ref = listener_name(AAddr, Port),
-    supervisor:terminate_child(?SUP, Ref),
-    supervisor:delete_child(?SUP, Ref).
+    delete_listener(Ref).
+
+delete_listener(ListenerRef) ->
+    case supervisor:terminate_child(?SUP, ListenerRef) of
+        {error, _} ->
+            ok;
+        ok ->
+            supervisor:delete_child(?SUP, ListenerRef)
+    end.
 
 start_listener(TransportMod, Ref, Addr, Port, MountPoint, TransportOpts) ->
     ChildSpec = {Ref,
@@ -101,8 +108,8 @@ restart_listener(Addr, Port) ->
                                 [TransportMod, Addr, Port, {Reason, FReason}]),
                     {error, Reason}
             end;
-        [] ->
-            {error, not_found}
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 listeners() ->
@@ -210,8 +217,7 @@ stop_and_delete_unused(Listeners, Config) ->
                         lists:keydelete(Ref, 1, Acc)
                 end, Listeners, Config),
     lists:foreach(fun({Ref, _, _, _}) ->
-                          supervisor:terminate_child(?SUP, Ref),
-                          supervisor:delete_child(?SUP, Ref)
+                          delete_listener(Ref)
                   end, ListenersToDelete).
 
 -spec listener_name(inet:ip_address(),

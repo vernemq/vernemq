@@ -99,7 +99,7 @@ fold_({{node, Node}, _}, {Topic, FoldFun, Acc}) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    ets:new(?MODULE, [named_table, public, {read_concurrency, true}]),
+    _ = ets:new(?MODULE, [named_table, public, {read_concurrency, true}]),
     Self = self(),
     spawn_link(
       fun() ->
@@ -205,7 +205,7 @@ handle_event(Handler, Event) ->
                     T = ensure_table_exists(MountPoint, Topic),
                     handle_sub_event({MountPoint, Topic}, EvtType, T, EventVal);
                 wildcard ->
-                    ignore
+                    ok
             end;
         ignore ->
             ok
@@ -213,7 +213,7 @@ handle_event(Handler, Event) ->
 
 initialize_tables({MP, Topic, Val}, Parent) ->
     T = ensure_table_exists(MP, Topic, Parent),
-    handle_sub_event({MP, Topic}, subscribe, T, Val),
+    ok = handle_sub_event({MP, Topic}, subscribe, T, Val),
     Parent.
 
 ensure_table_exists(MountPoint, Topic) ->
@@ -244,22 +244,26 @@ find_cache_table(TableKey) ->
 
 handle_sub_event(_, subscribe, T, {ClientId, QoS, {error, not_found}}) ->
     %% no local process found for client id
-    ets:insert(T, {{ClientId, QoS}, undefined});
+    ets:insert(T, {{ClientId, QoS}, undefined}),
+    ok;
 handle_sub_event(_, subscribe, T, {ClientId, QoS, QPids}) ->
-    ets:insert(T, {{ClientId, QoS}, QPids});
+    ets:insert(T, {{ClientId, QoS}, QPids}),
+    ok;
 handle_sub_event(_, subscribe, T, Node) ->
     case ets:insert_new(T, {{node, Node}, 1}) of
         true ->
             ok;
         false ->
-            ets:update_counter(T, {node, Node}, 1)
+            ets:update_counter(T, {node, Node}, 1),
+            ok
     end;
 handle_sub_event(TabKey, unsubscribe, T, {ClientId, QoS}) ->
     ets:delete(T, {ClientId, QoS}),
     case ets:info(T, size) of
         0 ->
             ets:delete(vmq_reg_pets, TabKey),
-            ets:delete(T);
+            ets:delete(T),
+            ok;
         _ -> ok
     end;
 handle_sub_event(TabKey, unsubscribe, T, Node) ->
@@ -269,7 +273,8 @@ handle_sub_event(TabKey, unsubscribe, T, Node) ->
             case ets:info(T, size) of
                 0 ->
                     ets:delete(vmq_reg_pets, TabKey),
-                    ets:delete(T);
+                    ets:delete(T),
+                    ok;
                 _ -> ok
             end;
         _ ->

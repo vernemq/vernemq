@@ -40,13 +40,15 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 ensure_cluster_node(Node) when Node == node() ->
-    {error, not_needed};
+    %% cluster node not needed
+    ok;
 ensure_cluster_node(Node) ->
     case get_cluster_node(Node) of
         {error, not_found} ->
-            supervisor:start_child(?MODULE, child_spec(Node));
-        {ok, Pid} ->
-            {ok, Pid}
+            {ok, _} = supervisor:start_child(?MODULE, child_spec(Node)),
+            ok;
+        {ok, _} ->
+            ok
     end.
 
 del_cluster_node(Node) ->
@@ -63,6 +65,13 @@ get_cluster_node(Node) ->
     case lists:keyfind(ChildId, 1, supervisor:which_children(?MODULE)) of
         false ->
             {error, not_found};
+        {_, undefined, _, _} ->
+            %% child was stopped
+            {error, not_found};
+        {_, restarting, _, _} ->
+            %% child is restarting
+            timer:sleep(100),
+            get_cluster_node(Node);
         {_, Pid, _, _} when is_pid(Pid) ->
             {ok, Pid}
     end.

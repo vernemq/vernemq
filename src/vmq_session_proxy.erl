@@ -51,6 +51,14 @@ derefed(SessionProxy, MsgRef) ->
     gen_server:cast(SessionProxy, {derefed, MsgRef}).
 
 deliver(SessionProxy, Term) ->
+    %% this must be a call (as well as infinity), this ensures
+    %% that the deliver_from_store process is kept alive as long
+    %% as there are messages to replicate
+    %%
+    %% this call lasts as long as the message is not delivered and
+    %% acked on the remote node
+    %%
+    %% SessionProxy is the Pid on either the local or remote node
     gen_server:call(SessionProxy, {deliver, Term}, infinity).
 
 %%%===================================================================
@@ -70,11 +78,14 @@ handle_cast({derefed, MsgRef}, #state{waiting={MsgRef, From}} = State) ->
     gen_server:reply(From, ok),
     {noreply, State#state{waiting=undefined}}.
 
-handle_info({'DOWN', _MRef, process, Pid, Reason}, State) ->
-    #state{repl_pid=ReplPid, subscriber_id=SubscriberId, node=Node} = State,
+handle_info({'DOWN', MRef, process, Pid, Reason}, State) ->
+    #state{repl_pid=ReplPid, repl_mon=ReplMon, queue_mon=QMon,
+           subscriber_id=SubscriberId, node=Node} = State,
     case {Pid == ReplPid, Reason} of
         {true, normal} ->
             %% finished replicating
+            lager:debug("[~p][~p] stopped message replication for subscriber ~p due to
+                       deliver_from_store proc stopped normally", [node(), SubscriberId, Node]),
             {stop, normal, State};
         {true, {deliver_from_store, retry}} ->
             case lists:member(Node, vmq_cluster:nodes()) of
@@ -82,14 +93,19 @@ handle_info({'DOWN', _MRef, process, Pid, Reason}, State) ->
                     erlang:send_after(?RETRY, self(), deliver_from_store),
                     {noreply, State};
                 false ->
+                    lager:warning("[~p][~p] stopped due to deliver_from_store proc stopped", [node(), Node]),
                     {stop, normal, State}
             end;
         {true, OtherReason} ->
             lager:warning("replication process for subscriber ~p died due to ~p",
                          [SubscriberId, OtherReason]),
             {stop, OtherReason, State};
-        {false, Reason} ->
+        {false, Reason} when QMon == MRef->
             %% session stopped during replication
+            demonitor(ReplMon, [flush]),
+            exit(ReplPid, normal),
+            lager:debug("[~p][~p] stopped message replication for subscriber ~p due to
+                        session stopped for reason '~p'", [node(), Node, Reason]),
             {stop, Reason, State}
     end;
 
@@ -109,7 +125,13 @@ handle_info(deliver_from_store, #state{node=Node,
                           {badrpc, timeout} ->
                               % maybe netsplit
                               exit({deliver_from_store, retry});
-                          R -> R
+                          {badrpc, {'EXIT', {normal, _}}} ->
+                              %% vmq_session_proxy/deliver died
+                              exit(normal);
+                          {badrpc, {'EXIT', {noproc, _}}} ->
+                              %% vmq_session_proxy proc stopped
+                              exit(normal);
+                          ok -> ok
                       end
               end)
     end,
@@ -137,10 +159,21 @@ deliver(From, Term, State) ->
                                     %% publisher perspective), the consumer
                                     %% doesn't care.
                            msg_ref={{self(), Node}, MsgRef}},
-            vmq_queue:enqueue(QPid, {deliver, QoS, Msg}),
+            enqueue_or_exit(QPid, {deliver, QoS, Msg}),
             State#state{waiting={MsgRef, From}};
         _ ->
-            vmq_queue:enqueue(QPid, {deliver_bin, Term}),
+            enqueue_or_exit(QPid, {deliver_bin, Term}),
             gen_server:reply(From, ok),
             State
+    end.
+
+enqueue_or_exit(QPid, Item) ->
+    case vmq_queue:enqueue(QPid, Item) of
+        ok ->
+            ok;
+        {error, _} ->
+            %% Session/Queue died, this is ok to happen, we just
+            %% have to ensure that we don't reply 'ok' which will
+            %% delete the stored msg ref in the remote store.
+            exit(normal)
     end.

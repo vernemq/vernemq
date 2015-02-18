@@ -68,8 +68,8 @@ cpu_load_level() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    cpu_sup:util([per_cpu]), % first return value is rubbish, per the docs
-    ets:new(?MODULE, [public, named_table, {read_concurrency, true}]),
+    _ = cpu_sup:util([per_cpu]), % first return value is rubbish, per the docs
+    _ = ets:new(?MODULE, [public, named_table, {read_concurrency, true}]),
 
     %% Add our system_monitor event handler.  We do that here because
     %% we have a process at our disposal (i.e. ourself) to receive the

@@ -66,6 +66,14 @@ start_link() ->
 -spec store(subscriber_id(), msg()) -> msg().
 store(SubscriberId, #vmq_msg{msg_ref=undefined} = Msg) ->
     store(SubscriberId, Msg#vmq_msg{msg_ref=msg_ref()});
+store(_SubscriberId, #vmq_msg{msg_ref={{_Pid, _Node}, _MsgRef}} = Msg) ->
+    %% during message replication, a session will try to store
+    %% the a remote message, which we forbid, as long as the
+    %% replication process hasn't finished, the message will
+    %% remain stored on the remote node, so no need to store it here
+    %% TODO: keep track of replicated messages that are not acked yet
+    %% --> replication process not yet finished
+    Msg;
 store(SubscriberId, Msg) ->
     #vmq_msg{msg_ref=MsgRef, routing_key=RoutingKey,
              payload=Payload} = Msg,
@@ -74,7 +82,8 @@ store(SubscriberId, Msg) ->
         new_cache_item ->
             MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
             Val = term_to_binary({SubscriberId, RoutingKey, Payload}),
-            vmq_plugin:only(msg_store_write_sync, [MsgRef1, Val]);
+            _ = vmq_plugin:only(msg_store_write_sync, [MsgRef1, Val]),
+            ok;
         new_ref_count ->
             ok
     end,
@@ -135,7 +144,9 @@ deliver_from_store(SubscriberId, Pid) ->
 
 deliver_from_store_(Pid, [#vmq_msg_store_ref{ref_data={uncached, Term}} = Obj
                           |Rest]) ->
-    vmq_session_proxy:deliver(Pid, Term),
+    %% deliver will last as long as the message is not acked by the client
+    %% connected to the remote node
+    ok = vmq_session_proxy:deliver(Pid, Term),
     mnesia:dirty_delete_object(Obj),
     deliver_from_store_(Pid, Rest);
 deliver_from_store_(Pid, [#vmq_msg_store_ref{ref_data={QoS, MsgRef, Dup}} = Obj
@@ -169,14 +180,15 @@ defer_deliver_uncached(SubscriberId, Term) ->
                           ref_data={uncached, Term}}).
 
 -spec defer_deliver(subscriber_id(), qos(),
-                    msg_ref() | {atom(), msg_ref()}) -> 'true'.
+                    msg_ref() | {atom(), msg_ref()}) -> 'ok'.
 defer_deliver(SubscriberId, Qos, MsgRef) ->
     defer_deliver(SubscriberId, Qos, MsgRef, false).
 
 -spec defer_deliver(subscriber_id(), qos(), msg_ref()
-                    | {{pid(), atom()}, msg_ref()}, boolean()) -> 'true'.
+                    | {{pid(), atom()}, msg_ref()}, boolean()) -> 'ok'.
 defer_deliver(SubscriberId, Qos, {{_, Node}, MsgRef}, DeliverAsDup) ->
-    %% used by vmq_session_proxy
+    %% The MsgRef gets annonated by the vmq_session_proxy when it
+    %% enqueues the message the 'local' session queue..
     rpc:call(Node, ?MODULE, defer_deliver,
              [SubscriberId, Qos, MsgRef, DeliverAsDup]);
 defer_deliver(SubscriberId, Qos, MsgRef, DeliverAsDup) ->
@@ -185,7 +197,7 @@ defer_deliver(SubscriberId, Qos, MsgRef, DeliverAsDup) ->
                           ref_data={Qos, MsgRef, DeliverAsDup}}).
 
 
--spec clean_all([]) -> 'true'.
+-spec clean_all([]) -> 'ok'.
 clean_all([]) ->
     %% called using vmq-admin, mainly for test purposes
     %% you don't want to call this during production
@@ -205,16 +217,14 @@ clean_cache(in_flight) ->
     clean_cache(ets:last(?MSG_CACHE_TABLE));
 clean_cache(MsgRef) ->
     MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
-    vmq_plugin:only(msg_store_delete_sync, [MsgRef1]),
+    _ = vmq_plugin:only(msg_store_delete_sync, [MsgRef1]),
     true = ets:delete(?MSG_CACHE_TABLE, MsgRef),
     clean_cache(ets:last(?MSG_CACHE_TABLE)).
 
--spec clean_index() -> {atomic, ok} | {aborted, _}.
+-spec clean_index() -> ok.
 clean_index() ->
-    mnesia:transaction(
-      fun() ->
-              mnesia:clear_table(vmq_msg_store_ref)
-      end).
+    {atomic, ok} = mnesia:clear_table(vmq_msg_store_ref),
+    ok.
 
 
 table_defs() ->
@@ -238,7 +248,7 @@ init([]) ->
     TableOpts = [public, named_table,
                  {read_concurrency, true},
                  {write_concurrency, true}],
-    ets:new(?MSG_CACHE_TABLE, TableOpts),
+    _ = ets:new(?MSG_CACHE_TABLE, TableOpts),
     ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
     {ok, #state{}}.
 
@@ -257,6 +267,7 @@ msg_store_init(PluginName) ->
 handle_call({init_plugin, HookModule}, From, State) ->
     gen_server:reply(From, ok),
     ok = wait_for_hooks(HookModule),
+    {atomic, ok} =
     mnesia:transaction(
       fun() ->
               mnesia:foldl(
@@ -273,6 +284,8 @@ handle_call({init_plugin, HookModule}, From, State) ->
                                 Acc;
                             notfound ->
                                 mnesia:delete_object(Obj),
+                                Acc;
+                            {error, no_matching_hook_found} ->
                                 Acc
                         end;
                    (#vmq_msg_store_ref{ref_data={uncached, _}}, Acc) ->
@@ -308,19 +321,14 @@ wait_for_hooks(HookModule) ->
                      msg_store_fold,
                      msg_store_delete_sync,
                      msg_store_delete_async],
-    Hooks = [{Hook, M == HookModule}|| {H, M, _, _} = Hook <- PluginInfo,
-                                       lists:member(H, MsgStoreHooks)],
+    Hooks = [Hook|| {H, M, _, _} = Hook <- PluginInfo, (M == HookModule)
+                                       and lists:member(H, MsgStoreHooks)],
     case length(Hooks) == length(MsgStoreHooks) of
         true ->
-            case lists:keyfind(false, 2, Hooks) of
-                false -> ok;
-                _ ->
-                    %% maybe inconsistency with msg store plugin
-                    lager:warning("check msg store plugin, not all hooks are
-                                  provided by the same plugin", []),
-                    ok
-            end;
+            ok;
         false ->
+            lager:error("check msg store plugin, not all hooks are
+                        provided by the same plugin", []),
             timer:sleep(1000),
             wait_for_hooks(HookModule)
     end.

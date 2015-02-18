@@ -3,7 +3,7 @@
 
 
 -record(vmq_msg, {
-          msg_ref               :: msg_ref(),
+          msg_ref               :: msg_ref() | {{pid(), atom()}, binary()},
           routing_key           :: routing_key(),
           payload               :: payload(),
           retain=false          :: flag(),

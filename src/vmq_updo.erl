@@ -147,15 +147,8 @@ translate_and_run(HLinstrs) ->
     LibDirs = app_lib_dirs(Apps),
     check_script(LLinstrs, LibDirs),
     % The interface to release_handler_1 changed in R15.
-    code:ensure_loaded(release_handler_1),
-    case erlang:function_exported(release_handler_1, eval_script, 5) of
-        true ->
-            % R15
-            release_handler_1:eval_script(LLinstrs, [], LibDirs, LibDirs, []);
-        false ->
-            % R14 or older
-            release_handler_1:eval_script(LLinstrs, [], LibDirs)
-    end.
+    _ = code:ensure_loaded(release_handler_1),
+    release_handler_1:eval_script(LLinstrs, [], LibDirs, LibDirs, []).
 
 translate_and_check(HLinstrs) ->
     {Apps, LLinstrs} = translate(HLinstrs, loaded_apps()),
@@ -177,8 +170,6 @@ translate(HLinstrs, AppsNow) ->
 
 check_script(LLinstrs, LibDirs) ->
     case release_handler_1:check_script(LLinstrs, LibDirs) of
-        ok ->
-            ok;
         {ok, _} ->
             ok;
         {error, Error} ->

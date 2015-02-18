@@ -20,8 +20,7 @@
 -export([init/3,
          loop/1]).
 
--export([behaviour_info/1,
-         upgrade_connection/2,
+-export([upgrade_connection/2,
          opts/1,
          port_cmd/2]).
 
@@ -36,6 +35,17 @@
 
 -define(HIBERNATE_AFTER, 5000).
 
+-callback opts(Opts :: list({atom(), term()})) -> list({atom(), term()}).
+-callback upgrade_connection(Socket :: port(),
+                             Opts :: list({atom(), term()})) ->
+    {ok, {Socket :: port(), SessionOpts :: list({atom(), term()})}}
+    | {error, term()}.
+-callback decode_bin(Socket :: port(),
+                     Data :: binary(),
+                     ParserState :: term()) ->
+    Result :: {ok, {ParserState :: term(), binary()}}
+            | {more, ParserState :: term()}.
+
 -spec start_link(_, _, _) -> {'ok', pid()}.
 start_link(Peer, Handler, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Peer, Handler, Opts]),
@@ -45,13 +55,7 @@ start_link(Peer, Handler, Opts) ->
 upgrade_connection(TcpSocket, _) ->
     {ok, {TcpSocket, []}}.
 
-opts(_) -> [].
-
-behaviour_info(callbacks) ->
-    [{opts, 1}, {upgrade_connection, 2},
-     {decode_bin, 3}, {encode_bin, 1}];
-behaviour_info(_) ->
-    undefined.
+opts(_Opts) -> [].
 
 send(TransportPid, Bin) when is_binary(Bin) ->
     TransportPid ! {send, Bin},
@@ -64,7 +68,8 @@ send(TransportPid, Frame) when is_tuple(Frame) ->
     ok.
 
 handover(ReaderPid, Socket) ->
-    ReaderPid ! {handover, Socket}.
+    ReaderPid ! {handover, Socket},
+    ok.
 
 -spec init(_, _, _) -> any().
 init(Peer, Handler, Opts) ->
@@ -84,9 +89,13 @@ wait_for_socket(State) ->
                 ssl -> {ssl, Socket};
                 _ -> Socket
             end,
-            vmq_plugin:all(incr_socket_count, []),
-            active_once(MaybeMaskedSocket),
-            loop(State#st{socket=MaybeMaskedSocket});
+            _ = vmq_plugin:all(incr_socket_count, []),
+            case active_once(MaybeMaskedSocket) of
+                ok ->
+                    loop(State#st{socket=MaybeMaskedSocket});
+                {error, Reason} ->
+                    exit(Reason)
+            end;
         M ->
             exit({unexpected_msg, M})
     after
@@ -210,11 +219,15 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
         {M, S, _} = NewTS ->
             {NewTS, V + NrOfBytes};
         NewTS ->
-            vmq_plugin:all(incr_bytes_received, [V + NrOfBytes]),
+            _ = vmq_plugin:all(incr_bytes_received, [V + NrOfBytes]),
             {NewTS, 0}
     end,
-    active_once(Socket),
-    State#st{parser_state=NewParserState, bytes_recv=NewBytesRecv};
+    case active_once(Socket) of
+        ok ->
+            State#st{parser_state=NewParserState, bytes_recv=NewBytesRecv};
+        {error, Reason} ->
+            {exit, Reason, State}
+    end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
     %% we regard a tcp_closed as 'normal'
     {exit, normal, State};
@@ -257,7 +270,7 @@ maybe_flush(#st{pending=Pending} = State) ->
 
 internal_flush(#st{pending=[]} = State) -> State;
 internal_flush(#st{pending=Pending, socket=Socket,
-                      bytes_send={{M, S, _}, V}} = State) ->
+                   bytes_send={{M, S, _}, V}} = State) ->
     ok = port_cmd(Socket, lists:reverse(Pending)),
     NrOfBytes = iolist_size(Pending),
     NewBytesSend =
@@ -265,7 +278,7 @@ internal_flush(#st{pending=Pending, socket=Socket,
         {M, S, _} = TS ->
             {TS, V + NrOfBytes};
         TS ->
-            vmq_plugin:all(incr_bytes_sent, [V + NrOfBytes]),
+            _ = vmq_plugin:all(incr_bytes_sent, [V + NrOfBytes]),
             {TS, 0}
     end,
     State#st{pending=[], bytes_send=NewBytesSend}.

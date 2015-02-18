@@ -2,16 +2,23 @@
 -include("vmq_server.hrl").
 -behaviour(gen_fsm).
 
+-type item() :: {deliver, qos(), msg()} | {deliver_bin, any()}.
 -type max() :: non_neg_integer().
 -type drop() :: non_neg_integer().
--type in() :: {'post', Msg::term()}.
 -type note() :: {'mail', Self::pid(), new_data}.
--type mail() :: {'mail', Self::pid(), Msgs::list(),
+-type mail() :: {'mail', Self::pid(), Msgs::list(item()),
                          Count::non_neg_integer(), Lost::drop()}.
 
--export_type([max/0, in/0, mail/0, note/0]).
+-ifdef(namespaced_types).
+-type qqueue()   :: queue:queue().
+-else.
+-type qqueue()   :: queue().
+-endif.
 
--record(state, {queue = queue:new() :: queue(),
+-export_type([max/0, mail/0, note/0]).
+
+
+-record(state, {queue = queue:new() :: qqueue(),
                 max = undefined :: non_neg_integer(),
                 size = 0 :: non_neg_integer(),
                 drop = 0 :: drop(),
@@ -56,7 +63,7 @@ notify(Queue) ->
     gen_fsm:send_event(Queue, notify).
 
 %% @doc Enqueues a message.
--spec enqueue(pid(), term()) -> ok | {error, _}.
+-spec enqueue(pid(), item()) -> ok | {error, _}.
 enqueue(Queue, Msg) ->
     case catch gen_fsm:sync_send_event(Queue, {enqueue, Msg}, 100) of
         ok -> ok;
@@ -173,7 +180,8 @@ insert(Msg, #state{max=Size, size=Size, drop=Drop} = State) ->
     case Msg of
         {deliver, 0, _} -> ok;
         {deliver, _, #vmq_msg{msg_ref=MsgRef}} ->
-            vmq_msg_store:deref(MsgRef);
+            _ = vmq_msg_store:deref(MsgRef),
+            ok;
         _ ->
             ok
     end,
@@ -207,7 +215,7 @@ drop(N, Size, Queue) ->
 deref({{value, {deliver, 0, _}}, Q}) ->
     deref(queue:out(Q));
 deref({{value, {deliver, _, #vmq_msg{msg_ref=MsgRef}}}, Q}) ->
-    vmq_msg_store:deref(MsgRef),
+    _ = vmq_msg_store:deref(MsgRef),
     deref(queue:out(Q));
 deref({{value, _}, Q}) ->
     deref(queue:out(Q));

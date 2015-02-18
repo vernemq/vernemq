@@ -32,8 +32,8 @@ register_config() ->
              "message_size_limit",
              "upgrade_outgoing_qos"
             ],
-            [clique:register_config([Key], fun register_config_callback/3)
-             || Key <- ConfigKeys],
+            _ = [clique:register_config([Key], fun register_config_callback/3)
+                 || Key <- ConfigKeys],
             ok = clique:register_config_whitelist(ConfigKeys)
     end,
     register_cli_usage(),

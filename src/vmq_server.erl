@@ -23,10 +23,10 @@
 start_no_auth() ->
     maybe_start_distribution(),
 
-    application:load(vmq_plugin),
+    _ = application:load(vmq_plugin),
     application:set_env(vmq_plugin, wait_for_proc, vmq_server_sup),
 
-    application:load(mnesia_cluster),
+    _ = application:load(mnesia_cluster),
     application:set_env(mnesia_cluster, table_definition_mod,
                         {?MODULE, table_defs, []}),
     application:set_env(mnesia_cluster, cluster_monitor_callbacks,
@@ -36,16 +36,16 @@ start_no_auth() ->
                         ignore), % we use unsplit
     %application:load(sasl),
     %application:set_env(sasl, sasl_error_logger, false),
-    application:ensure_all_started(vmq_server),
+    _ = application:ensure_all_started(vmq_server),
     ok.
 
 start_no_auth(ClusterNode) ->
     maybe_start_distribution(),
 
-    application:load(vmq_plugin),
+    _ = application:load(vmq_plugin),
     application:set_env(vmq_plugin, wait_for_proc, vmq_server_sup),
 
-    application:load(mnesia_cluster),
+    _ = application:load(mnesia_cluster),
     application:set_env(mnesia_cluster, table_definition_mod,
                         {?MODULE, table_defs, []}),
     application:set_env(mnesia_cluster, cluster_monitor_callbacks,
@@ -54,7 +54,7 @@ start_no_auth(ClusterNode) ->
     application:set_env(mnesia_cluster, cluster_partition_handling,
                         ignore), % we use unsplit
     application:set_env(mnesia_cluster, cluster_nodes, {[ClusterNode], ram}),
-    application:ensure_all_started(vmq_server),
+    _ = application:ensure_all_started(vmq_server),
     ok.
 
 
@@ -63,31 +63,33 @@ start() ->
     vmq_auth:register_hooks().
 
 
--spec stop() -> 'ok' | {'error',_}.
+-spec stop() -> 'ok'.
 stop() ->
-    application:stop(vmq_server),
-    application:stop(clique),
-    application:stop(mnesia_cluster),
-    application:stop(unsplit),
-    application:stop(emqtt_commons),
-    application:stop(cowlib),
-    application:stop(vmq_server),
-    application:stop(asn1),
-    application:stop(public_key),
-    application:stop(vmq_plugin),
-    application:stop(mnesia),
-    application:stop(crypto),
-    application:stop(ssl),
-    application:stop(riak_sysmon),
-    application:stop(os_mon),
-    application:stop(jobs),
-    application:stop(lager).
+    _ = [application:stop(App) || App <- [vmq_server,
+                                          clique,
+                                          mnesia_cluster,
+                                          unsplit,
+                                          emqtt_commons,
+                                          cowlib,
+                                          vmq_server,
+                                          asn1,
+                                          public_key,
+                                          vmq_plugin,
+                                          mnesia,
+                                          crypto,
+                                          ssl,
+                                          riak_sysmon,
+                                          os_mon,
+                                          jobs,
+                                          lager]],
+    ok.
 
 maybe_start_distribution() ->
     case ets:info(sys_dist) of
         undefined ->
             %% started without -sname or -name arg
-            {ok, _} = net_kernel:start([vmq_server, shortnames]);
+            {ok, _} = net_kernel:start([vmq_server, shortnames]),
+            ok;
         _ ->
             ok
     end.

@@ -146,18 +146,10 @@ vmq_listener_start_cmd() ->
 
             case Ret of
                 {ok, ListenerConfig} ->
-                    OldListenerConfig = vmq_config:get_env(listeners),
                     vmq_config:set_env(listeners, ListenerConfig),
-                    case vmq_tcp_listener_sup:reconfigure_listeners(
-                           [{listeners, ListenerConfig}]) of
-                        ok ->
-                            [clique_status:text("Done")];
-                        {error, Reason} ->
-                            vmq_tcp_listener_sup:reconfigure_listeners(
-                              [{listeners, OldListenerConfig}]),
-                            Text = io_lib:format("can't configure listener due to '~p'", [Reason]),
-                            [clique_status:alert([clique_status:text(Text)])]
-                    end;
+                    ok = vmq_tcp_listener_sup:reconfigure_listeners(
+                           [{listeners, ListenerConfig}]),
+                    [clique_status:text("Done")];
                 {error, Texts} when is_list(Texts) ->
                     [clique_status:alert(Texts)]
             end
@@ -233,14 +225,9 @@ vmq_listener_delete_cmd() ->
                               lists:keydelete(ListenerKey, 1, WS),
                               lists:keydelete(ListenerKey, 1, WSS)},
             vmq_config:set_env(listeners, ListenerConfig),
-            case vmq_tcp_listener_sup:reconfigure_listeners(
-                   [{listeners, ListenerConfig}]) of
-                ok ->
-                    [clique_status:text("Done")];
-                {error, Reason} ->
-                    Text = io_lib:format("can't delete listener due to '~p'", [Reason]),
-                    [clique_status:alert([clique_status:text(Text)])]
-            end
+            ok = vmq_tcp_listener_sup:reconfigure_listeners(
+                   [{listeners, ListenerConfig}]),
+            [clique_status:text("Done")]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 

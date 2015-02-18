@@ -3,6 +3,8 @@
 -include_lib("emqtt_commons/include/emqtt_frame.hrl").
 -define(NET_TICK_TIME, 10).
 
+-compile(export_all).
+-ifdef(NETSPLIT_TESTS).
 run_test_() ->
     NetTickTime = ?NET_TICK_TIME,
     vmq_netsplit_utils:test(NetTickTime, NetTickTime * 10,
@@ -10,6 +12,7 @@ run_test_() ->
                                     {timeout, NetTickTime * 10,
                                      [?_test(subscribe_clean_session(Nodes))]}
                             end).
+-endif.
 
 subscribe_clean_session(Nodes) ->
     vmq_netsplit_utils:reset_tables(Nodes),

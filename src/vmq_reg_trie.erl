@@ -63,9 +63,9 @@ fold_(_, Acc, []) -> Acc.
 init([]) ->
     DefaultETSOpts = [public, named_table,
                       {read_concurrency, true}],
-    ets:new(vmq_trie, [{keypos, 2}|DefaultETSOpts]),
-    ets:new(vmq_trie_node, [{keypos, 2}|DefaultETSOpts]),
-    ets:new(vmq_trie_topic, [bag, {keypos, 1}|DefaultETSOpts]),
+    _ = ets:new(vmq_trie, [{keypos, 2}|DefaultETSOpts]),
+    _ = ets:new(vmq_trie_node, [{keypos, 2}|DefaultETSOpts]),
+    _ = ets:new(vmq_trie_topic, [bag, {keypos, 1}|DefaultETSOpts]),
     Self = self(),
     spawn_link(
       fun() ->
@@ -209,7 +209,7 @@ add_topic(MP, Topic, Node) ->
             ignore;
         [] ->
             %% add trie path
-            [trie_add_path(MP, Triple) || Triple <- emqtt_topic:triples(Topic)],
+            _ = [trie_add_path(MP, Triple) || Triple <- emqtt_topic:triples(Topic)],
             %% add last node
             ets:insert(vmq_trie_node, #trie_node{node_id=MPTopic, topic=Topic})
     end.

@@ -134,7 +134,7 @@ publish(Node, Msg) ->
 %%--------------------------------------------------------------------
 -spec init([]) -> {'ok', state()}.
 init([]) ->
-    ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
+    _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -162,21 +162,21 @@ check_ready(MnesiaNodes, Acc, [[{ready, _}]|Rest]) ->
 check_ready(MnesiaNodes, Acc, [[{Node, Status}]|Rest]) ->
     case lists:member(Node, MnesiaNodes) of
         true when Status == true ->
-            vmq_cluster_node_sup:ensure_cluster_node(Node),
+            ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
             check_ready(MnesiaNodes -- [Node], Acc, Rest);
         true when Status == false ->
-            vmq_cluster_node_sup:ensure_cluster_node(Node),
+            ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
             check_ready(MnesiaNodes -- [Node], [Node|Acc], Rest);
         false ->
-            vmq_cluster_node_sup:del_cluster_node(Node),
+            _ = vmq_cluster_node_sup:del_cluster_node(Node),
             ets:delete(vmq_status, Node),
             check_ready(MnesiaNodes -- [Node], Acc, Rest)
     end;
 check_ready([], [], []) ->
     ets:insert(vmq_status, {ready, true});
 check_ready(UnseenMnesiaNodes, _, []) ->
-    [vmq_cluster_node_sup:ensure_cluster_node(Node)
-     || Node<- UnseenMnesiaNodes],
+    _ = [vmq_cluster_node_sup:ensure_cluster_node(Node)
+         || Node<- UnseenMnesiaNodes],
     ets:insert(vmq_status, {ready, false}).
 
 %%--------------------------------------------------------------------

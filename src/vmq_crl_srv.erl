@@ -1,11 +1,11 @@
 %% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%% 
+%%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
 %% You may obtain a copy of the License at
-%% 
+%%
 %%     http://www.apache.org/licenses/LICENSE-2.0
-%% 
+%%
 %% Unless required by applicable law or agreed to in writing, software
 %% distributed under the License is distributed on an "AS IS" BASIS,
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -63,17 +63,17 @@ check_crl(File, #'OTPCertificate'{tbsCertificate=TBSCert} = Cert) ->
 
 -spec init([]) -> {'ok', state()}.
 init([]) ->
-    ets:new(?TAB, [public, named_table, {read_concurrency, true}]),
+    _ = ets:new(?TAB, [public, named_table, {read_concurrency, true}]),
     {ok, #state{}}.
 
--spec handle_call({'add_crl',atom() | binary() | 
+-spec handle_call({'add_crl',atom() | binary() |
 [atom() | [any()] | char()]}, _, _) -> {'reply','ok', _}.
 handle_call({add_crl, File}, _From, State) ->
     {ok, Bin} = file:read_file(File),
     Serials =
     lists:flatten([begin
                        CRL = public_key:pem_entry_decode(E) ,
-                       #'TBSCertList'{revokedCertificates=Revoked} = 
+                       #'TBSCertList'{revokedCertificates=Revoked} =
                            CRL#'CertificateList'.tbsCertList,
                        [SerialNr ||
                            #'TBSCertList_revokedCertificates_SEQOF'{

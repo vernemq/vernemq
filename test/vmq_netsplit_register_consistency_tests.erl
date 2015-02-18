@@ -2,6 +2,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("emqtt_commons/include/emqtt_frame.hrl").
 
+-compile(export_all).
+-ifdef(NETSPLIT_TESTS).
 run_test_() ->
     NetTickTime = 10,
     vmq_netsplit_utils:test(NetTickTime, NetTickTime * 10,
@@ -9,6 +11,7 @@ run_test_() ->
                                     {timeout, NetTickTime * 5,
                                      [?_test(register_consistency(Nodes))]}
                             end).
+-endif.
 
 register_consistency(Nodes) ->
     ok = vmq_netsplit_utils:check_connected(Nodes),

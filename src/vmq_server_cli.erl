@@ -41,7 +41,8 @@ register_cli() ->
 
     vmq_session_list_cmd(),
 
-    vmq_listener_cli:register_server_cli().
+    vmq_listener_cli:register_server_cli(),
+    ok.
 
 register_cli_usage() ->
     clique:register_usage(["vmq-admin"], usage()),
@@ -55,7 +56,8 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "node", "upgrade"], upgrade_usage()),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
-    clique:register_usage(["vmq-admin", "session", "list"], fun vmq_session_list_usage/0).
+    clique:register_usage(["vmq-admin", "session", "list"], vmq_session_list_usage()),
+    ok.
 
 vmq_server_stop_cmd() ->
     Cmd = ["vmq-admin", "node", "stop"],
@@ -68,7 +70,7 @@ vmq_server_stop_cmd() ->
 vmq_server_start_cmd() ->
     Cmd = ["vmq-admin", "node", "start"],
     Callback = fun(_, _) ->
-                       application:ensure_all_started(vmq_server),
+                       _ = application:ensure_all_started(vmq_server),
                        [clique_status:text("Done")]
                end,
     clique:register_command(Cmd, [], [], Callback).
@@ -378,7 +380,7 @@ ensure_all_stopped([clique|Apps], Res)  ->
     ensure_all_stopped(Apps, Res);
 ensure_all_stopped([App|Apps], Res)  ->
     {ok, Deps} = application:get_key(App, applications),
-    application:stop(App),
+    _ = application:stop(App),
     Stopped = ensure_all_stopped(lists:reverse(Deps), []),
     ensure_all_stopped(Apps -- Stopped, [[App|Stopped]|Res]);
 ensure_all_stopped([], Res) -> Res.

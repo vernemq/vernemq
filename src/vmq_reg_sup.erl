@@ -46,6 +46,43 @@ start_link() ->
     _ = [{ok, _} = start_reg_view(RV) || RV <- RegViews],
     {ok, Pid}.
 
+reconfigure_registry(Config) ->
+    case lists:keyfind(reg_views, 1, Config) of
+        {_, RegViews} ->
+            DefaultRegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+            RequiredRegViews = lists:usort([DefaultRegView|RegViews]),
+            InstalledRegViews = [Id || {{reg_view, Id}, _, _, _}
+                                       <- supervisor:which_children(?MODULE)],
+            ToBeInstalled = RequiredRegViews -- InstalledRegViews,
+            ToBeUnInstalled = InstalledRegViews -- RequiredRegViews,
+            install_reg_views(ToBeInstalled),
+            uninstall_reg_views(ToBeUnInstalled);
+        false ->
+            ok
+    end.
+
+install_reg_views([RV|RegViews]) ->
+    case start_reg_view(RV) of
+        {ok, _} ->
+            lager:info("installed reg view ~p", [RV]),
+            install_reg_views(RegViews);
+        {error, Reason} ->
+            lager:error("can't install reg view due to ~p", [RV, Reason]),
+            install_reg_views(RegViews)
+    end;
+install_reg_views([]) -> ok.
+
+uninstall_reg_views([RV|RegViews]) ->
+    case stop_reg_view(RV) of
+        {error, Reason} ->
+            lager:error("can't uninstall reg view due to ~p", [RV, Reason]),
+            uninstall_reg_views(RegViews);
+        _ ->
+            lager:info("uninstalled reg view ~p", [RV]),
+            uninstall_reg_views(RegViews)
+    end;
+uninstall_reg_views([]) -> ok.
+
 start_reg_view(ViewModule) ->
     supervisor:start_child(?MODULE, reg_view_child_spec(ViewModule)).
 
@@ -58,20 +95,6 @@ stop_reg_view(ViewModule) ->
             {error, Reason}
     end.
 
-reconfigure_registry(Config) ->
-    case lists:keyfind(reg_views, 1, Config) of
-        {_, RegViews} ->
-            DefaultRegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
-            RequiredRegViews = lists:usort([DefaultRegView|RegViews]),
-            InstalledRegViews = [Id || {{reg_view, Id}, _, _, _}
-                                       <- supervisor:which_children(?MODULE)],
-            ToBeInstalled = RequiredRegViews -- InstalledRegViews,
-            ToBeUnInstalled = InstalledRegViews -- RequiredRegViews,
-            _ = [{ok, _} = start_reg_view(RV) || RV <- ToBeInstalled],
-            _ = [{ok, _} = stop_reg_view(RV) || RV <- ToBeUnInstalled];
-        false ->
-            ok
-    end.
 
 %%%===================================================================
 %%% Supervisor callbacks

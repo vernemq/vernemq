@@ -23,10 +23,10 @@ upgrade_connection(TcpSocket, TransportOpts) ->
     vmq_ssl_transport:upgrade_connection(TcpSocket, TransportOpts).
 
 opts(Opts) ->
-    vmq_ssl_listener:transport_opts(Opts).
+    vmq_ssl_transport:opts(Opts).
 
 decode_bin(Socket, Data, ParserState) ->
-    vmq_ws_transport:process_data(Socket, Data, ParserState).
+    vmq_ws_transport:decode_bin(Socket, Data, ParserState).
 
 encode_bin(Bin) ->
     vmq_ws_transport:encode_bin(Bin).

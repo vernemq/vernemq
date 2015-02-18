@@ -28,6 +28,7 @@
          get_env/3,
          set_env/2,
          set_env/3,
+         set_env/4,
          set_global_env/3,
          get_all_env/1,
          get_prefixed_env/2,
@@ -102,6 +103,8 @@ get_all_env(App) ->
                         [{Key, get_env(App, Key, Val)}|Acc]
                 end, [], application:get_all_env(App)).
 
+%% returns the config value in use for given key, together
+%% with the scope.
 get_prefixed_env(App, Key) ->
     case application:get_env(App, Key) of
         {ok, Val} ->
@@ -109,11 +112,19 @@ get_prefixed_env(App, Key) ->
                 [] ->
                     case mnesia:dirty_read(?MNESIA, {App, Key}) of
                         [] ->
+                            %% we only have what is stored inside the
+                            %% application environment
                             {env, Key, Val};
                         [#vmq_config{val=GlobalVal}] ->
+                            %% we have a value stored inside the application
+                            %% environment, which is ignored, since we have
+                            %% a value that is globally configured in mnesia
                             {global, Key, GlobalVal}
                     end;
                 [#vmq_config{val=NodeVal}] ->
+                    %% we have a value stored inside the application
+                    %% environment, which is ignored, since we have a
+                    %% value that is configured for this node in mnesia
                     {node, Key, NodeVal}
             end;
         undefined ->
@@ -212,7 +223,6 @@ configure_nodes() ->
     Nodes = vmq_cluster:nodes(),
     _ = [safe_rpc(Node, ?MODULE, configure_node, []) || Node <- Nodes].
 
-
 init_config_items([{App, _, _}|Rest], Acc) ->
     case application:get_env(App, vmq_config_enabled, false) of
         true ->
@@ -241,31 +251,14 @@ change_config(Configs) ->
     {vmq_server, VmqServerConfig} = lists:keyfind(vmq_server, 1, Configs),
     Env = filter_out_unchanged(VmqServerConfig, []),
     %% change reg configurations
-    case lists:keyfind(vmq_reg, 1, validate_reg_config(Env, [])) of
-        {_, RegConfigs} when length(RegConfigs) > 0 ->
-            vmq_reg_sup:reconfigure_registry(RegConfigs);
-        _ ->
-            ok
-    end,
+    _ = validate_reg_config(Env, []),
     %% change session configurations
-    case lists:keyfind(vmq_session, 1, validate_session_config(Env, [])) of
-        {_, SessionConfigs} when length(SessionConfigs) > 0 ->
-            vmq_session_sup:reconfigure_sessions(SessionConfigs);
-        _ ->
-            ok
-    end,
-    case lists:keyfind(vmq_expirer, 1, validate_expirer_config(Env, [])) of
-        {_, [{persistent_client_expiration, Duration}]} ->
-            vmq_session_expirer:change_duration(Duration);
-        _ ->
-            ok
-    end,
-    case lists:keyfind(vmq_listener, 1, validate_listener_config(Env, [])) of
-        {_, ListenerConfigs} when length(ListenerConfigs) > 0 ->
-            vmq_tcp_listener_sup:reconfigure_listeners(ListenerConfigs);
-        _ ->
-            ok
-    end.
+    _ = validate_session_config(Env, []),
+    %% change session_expirer config
+    _ = validate_expirer_config(Env, []),
+    %% change listener config
+    _ = validate_listener_config(Env, []),
+    ok.
 
 filter_out_unchanged([{Key, Val} = Item|Rest], Acc) ->
     case gen_server:call(?MODULE, {last_val, Key, Val}) of
@@ -292,9 +285,13 @@ filter_out_unchanged([], Acc) -> Acc.
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    ets:new(?TABLE, [public, named_table, {read_concurrency, true}]),
-    vmq_plugin_mgr:enable_module_plugin(?MODULE, change_config, 1),
-    {ok, []}.
+    _ = ets:new(?TABLE, [public, named_table, {read_concurrency, true}]),
+    case vmq_plugin_mgr:enable_module_plugin(?MODULE, change_config, 1) of
+        ok ->
+            {ok, []};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -385,7 +382,8 @@ validate_reg_config([{reg_views, Val} = Item|Rest], Acc)
     end;
 validate_reg_config([_|Rest], Acc) ->
     validate_reg_config(Rest, Acc);
-validate_reg_config([], Acc) -> [{vmq_reg, Acc}].
+validate_reg_config([], Acc) ->
+    vmq_reg_sup:reconfigure_registry(Acc).
 
 validate_session_config([{allow_anonymous, Val} = Item|Rest], Acc)
   when is_boolean(Val) ->
@@ -423,7 +421,8 @@ validate_session_config([{default_reg_view, Val} = Item|Rest], Acc)
 validate_session_config([_|Rest], Acc) ->
     validate_session_config(Rest, Acc);
 validate_session_config([], []) -> [];
-validate_session_config([], Acc) -> [{vmq_session, Acc}].
+validate_session_config([], Acc) ->
+    vmq_session_sup:reconfigure_sessions(Acc).
 
 validate_expirer_config([{persistent_client_expiration, Val} = Item|Rest], Acc)
   when is_integer(Val) and Val >= 0 ->
@@ -431,7 +430,8 @@ validate_expirer_config([{persistent_client_expiration, Val} = Item|Rest], Acc)
 validate_expirer_config([_|Rest], Acc) ->
     validate_expirer_config(Rest, Acc);
 validate_expirer_config([], []) -> [];
-validate_expirer_config([], Acc) -> [{vmq_expirer, Acc}].
+validate_expirer_config([], [{persistent_client_expiration, Duration}]) ->
+    vmq_session_expirer:change_duration(Duration).
 
 validate_listener_config([{listeners, _} = Item|Rest], Acc) ->
     validate_listener_config(Rest, [Item|Acc]);
@@ -439,4 +439,5 @@ validate_listener_config([{tcp_listen_options, _} = Item|Rest], Acc) ->
     validate_listener_config(Rest, [Item|Acc]);
 validate_listener_config([_|Rest], Acc) ->
     validate_listener_config(Rest, Acc);
-validate_listener_config([], Acc) -> [{vmq_listener, Acc}].
+validate_listener_config([], Acc) ->
+    vmq_tcp_listener_sup:reconfigure_listeners(Acc).
