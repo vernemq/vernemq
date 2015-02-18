@@ -290,7 +290,7 @@ handle_call({init_plugin, HookModule}, From, State) ->
                         end;
                    (#vmq_msg_store_ref{ref_data={uncached, _}}, Acc) ->
                         Acc
-                end, [], vmq_msg_store_ref)
+                end, ok, vmq_msg_store_ref)
       end),
     {noreply, State};
 handle_call(_Req, _From, State) ->
