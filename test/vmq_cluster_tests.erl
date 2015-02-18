@@ -20,7 +20,8 @@
 cluster_test_() ->
     [
      ?SETUP(fun multiple_connect/1),
-     ?SETUP(fun multiple_connect_unclean/1)
+     ?SETUP(fun multiple_connect_unclean/1),
+     ?SETUP(fun distributed_subscribe/1)
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -48,6 +49,79 @@ multiple_connect(Nodes) ->
     publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess),
     done = receive_times(done, NrOfProcesses),
     ?_assertEqual(true, check_unique_client("connect-multiple", Nodes)).
+
+multiple_connect_unclean(Nodes) ->
+    Topic = "qos1/multiple/test",
+    Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
+                                                      {keepalive, 10}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(123, Topic, 1),
+    Suback = packet:gen_suback(123, 1),
+    Disconnect = packet:gen_disconnect(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, opts(Nodes)),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = gen_tcp:send(Socket, Disconnect),
+    [{RpcNode, _}|_] = Nodes,
+    io:format(user, "subs ~p~n", [rpc:call(RpcNode, mnesia, dirty_read,
+                                           [vmq_subscriber, Topic])]),
+
+    %% publish random content to the topic
+    Strd = fun() -> rpc:multicall([N || {N, _} <-Nodes],
+                                  vmq_msg_store, stored, [])
+           end,
+    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs before send ~p~n", [Strd()]),
+    Payloads = publish_random(Nodes, 1000, Topic),
+    Ports = fun() -> rpc:multicall([N || {N, _} <-Nodes],
+                                  erlang, system_info, [port_count])
+           end,
+    Procs = fun() -> rpc:multicall([N || {N, _} <-Nodes],
+                                  erlang, system_info, [process_count])
+           end,
+    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after send ~p~n", [Strd()]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
+    io:format(user, "subs ~p~n", [rpc:call(RpcNode, mnesia, dirty_read,
+                                           [vmq_subscriber, Topic])]),
+    timer:sleep(2000),
+    ok = receive_publishes(Nodes, Topic, Payloads),
+    timer:sleep(2000),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after deliver~p~n", [Strd()]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
+    ?_assertEqual(true, true).
+
+distributed_subscribe(Nodes) ->
+    Topic = "qos1/distributed/test",
+    Sockets =
+    [begin
+         Connect = packet:gen_connect("connect-" ++ integer_to_list(Port),
+                                      [{clean_session, true},
+                                       {keepalive, 10}]),
+         Connack = packet:gen_connack(0),
+         Subscribe = packet:gen_subscribe(123, Topic, 1),
+         Suback = packet:gen_suback(123, 1),
+         {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+         ok = gen_tcp:send(Socket, Subscribe),
+         ok = packet:expect_packet(Socket, "suback", Suback),
+         Socket
+     end || {_, Port} <- Nodes],
+    [PubSocket|Rest] = Sockets,
+    Publish = packet:gen_publish(Topic, 1, <<"test-message">>, [{mid, 1}]),
+    Puback = packet:gen_puback(1),
+    ok = gen_tcp:send(PubSocket, Publish),
+    ok = packet:expect_packet(PubSocket, "puback", Puback),
+    _ = [begin
+             ok = packet:expect_packet(Socket, "publish", Publish),
+             ok = gen_tcp:send(Socket, Puback),
+             gen_tcp:close(Socket)
+         end || Socket <- Rest],
+    ?_assertEqual(true, true).
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Internal
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess) ->
     publish(self(), Nodes, NrOfProcesses, NrOfMsgsPerProcess, []).
@@ -123,47 +197,6 @@ recv(Socket, ParserState) ->
         {error, Reason} -> {error, Reason}
     end.
 
-
-multiple_connect_unclean(Nodes) ->
-    Topic = "qos1/multiple/test",
-    Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
-                                                      {keepalive, 10}]),
-    Connack = packet:gen_connack(0),
-    Subscribe = packet:gen_subscribe(123, Topic, 1),
-    Suback = packet:gen_suback(123, 1),
-    Disconnect = packet:gen_disconnect(),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, opts(Nodes)),
-    ok = gen_tcp:send(Socket, Subscribe),
-    ok = packet:expect_packet(Socket, "suback", Suback),
-    ok = gen_tcp:send(Socket, Disconnect),
-    [{RpcNode, _}|_] = Nodes,
-    io:format(user, "subs ~p~n", [rpc:call(RpcNode, mnesia, dirty_read,
-                                           [vmq_subscriber, Topic])]),
-
-    %% publish random content to the topic
-    Strd = fun() -> rpc:multicall([N || {N, _} <-Nodes],
-                                  vmq_msg_store, stored, [])
-           end,
-    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs before send ~p~n", [Strd()]),
-    Payloads = publish_random(Nodes, 1000, Topic),
-    Ports = fun() -> rpc:multicall([N || {N, _} <-Nodes],
-                                  erlang, system_info, [port_count])
-           end,
-    Procs = fun() -> rpc:multicall([N || {N, _} <-Nodes],
-                                  erlang, system_info, [process_count])
-           end,
-    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after send ~p~n", [Strd()]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
-    io:format(user, "subs ~p~n", [rpc:call(RpcNode, mnesia, dirty_read,
-                                           [vmq_subscriber, Topic])]),
-    timer:sleep(2000),
-    ok = receive_publishes(Nodes, Topic, Payloads),
-    timer:sleep(2000),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after deliver~p~n", [Strd()]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
-    ?_assertEqual(true, true).
 
 
 
