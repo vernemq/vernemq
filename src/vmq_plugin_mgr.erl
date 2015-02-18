@@ -52,7 +52,8 @@
 -record(state, {
           ready=false,
           plugin_dir,
-          config_file}).
+          config_file,
+          defered_calls=[]}).
 
 -type plugin() :: atom()
                 | {atom(),
@@ -153,7 +154,12 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({enable_plugin, Plugin, Path}, _From, State) ->
+handle_call(Call, _From, #state{ready=true} = State) ->
+    handle_plugin_call(Call, State);
+handle_call(Call, From, #state{defered_calls=DeferedCalls} = State) ->
+    {noreply, State#state{defered_calls=[{Call, From}|DeferedCalls]}}.
+
+handle_plugin_call({enable_plugin, Plugin, Path}, State) ->
     case enable_plugin_generic(
            {application, Plugin, Path}, State) of
         {ok, NewState} ->
@@ -161,8 +167,7 @@ handle_call({enable_plugin, Plugin, Path}, _From, State) ->
         {error, _} = E ->
             {reply, E, State}
     end;
-
-handle_call({enable_module_plugin, HookName, Module, Fun, Arity}, _From, State) ->
+handle_plugin_call({enable_module_plugin, HookName, Module, Fun, Arity}, State) ->
     case enable_plugin_generic(
            {module, {HookName, Module, Fun, Arity}}, State) of
         {ok, NewState} ->
@@ -170,8 +175,7 @@ handle_call({enable_module_plugin, HookName, Module, Fun, Arity}, _From, State) 
         {error, _} = E ->
             {reply, E, State}
     end;
-
-handle_call({disable_plugin, PluginKey}, _From, State) ->
+handle_plugin_call({disable_plugin, PluginKey}, State) ->
     %% PluginKey is either the Application Name of the Plugin
     %% or {HookName, ModuleName} for Module Plugins
     case disable_plugin_generic(PluginKey, State) of
@@ -185,6 +189,11 @@ handle_call({disable_plugin, PluginKey}, _From, State) ->
             {reply, E, State}
     end.
 
+handle_defered_calls(#state{defered_calls=[{Call, From}|Rest]} = State) ->
+    {reply, Reply, NewState} = handle_plugin_call(Call, State#state{defered_calls=Rest}),
+    gen_server:reply(From, Reply),
+    handle_defered_calls(NewState);
+handle_defered_calls(#state{defered_calls=[]} = State) -> State.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -303,7 +312,7 @@ init_from_config_file(#state{ready=false} = State) ->
                     end),
             {ok, State#state{ready={waiting, Pid}}};
         _ ->
-            {ok, State#state{ready=true}}
+            {ok, handle_defered_calls(State#state{ready=true})}
     end;
 init_from_config_file(#state{ready={waiting,_Pid}} = State) ->
     %% we currently wait for the registered process to become alive
@@ -316,7 +325,7 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
                     ok = init_plugins_cli(CheckedPlugins),
                     ok = start_plugins(CheckedPlugins),
                     ok = compile_hooks(CheckedPlugins),
-                    {ok, State#state{ready=true}};
+                    {ok, handle_defered_calls(State#state{ready=true})};
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -324,7 +333,7 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
             {error, incorrect_plugin_config};
         {error, enoent} ->
             ok = file:write_file(ConfigFile, "{plugins, []}.", []),
-            {ok, State#state{ready=true}};
+            {ok, handle_defered_calls(State#state{ready=true})};
         {error, Reason} ->
             {error, Reason}
     end.
