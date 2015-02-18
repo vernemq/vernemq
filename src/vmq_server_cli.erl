@@ -105,7 +105,7 @@ mnesia_op(Op, What) ->
             Text = clique_status:text(Descr),
             [clique_status:alert([Text])];
         {error, mnesia_unexpectedly_running} ->
-            Text = clique_status:text("This node is currently running, use 'vmq-admin server stop' to stop it."),
+            Text = clique_status:text("This node is currently running, use 'vmq-admin node stop' to stop it."),
             [clique_status:alert([Text])];
         {error, Reason} ->
             Text = io_lib:format("Couldn't ~s cluster due to ~p~n", [What, Reason]),
@@ -166,7 +166,9 @@ vmq_cluster_remove_cmd() ->
 
 vmq_cluster_join_cmd() ->
     Cmd = ["vmq-admin", "node", "join"],
-    KeySpecs = [{'discovery-node', [{typecast, fun clique_typecast:to_node/1}]}],
+    KeySpecs = [{'discovery-node', [{typecast, fun(Node) ->
+                                                       list_to_atom(Node)
+                                               end}]}],
     FlagSpecs = [{'node-type', [{shortname, "t"},
                                 {longname, "node-type"},
                                 {typecast, fun("disc") -> disc;
@@ -188,7 +190,7 @@ vmq_cluster_join_cmd() ->
                                Text = clique_status:text(Descr),
                                [clique_status:alert([Text])];
                            {error, mnesia_unexpectedly_running} ->
-                               Text = clique_status:text("This node is currently running, use vmq-admin stop-server to stop it."),
+                               Text = clique_status:text("This node is currently running, use vmq-admin node stop to stop it."),
                                [clique_status:alert([Text])];
                            {error, Reason} ->
                                Text = io_lib:format("Couldn't join cluster due to ~p~n", [Reason]),

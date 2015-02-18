@@ -46,19 +46,22 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "config", "reset"], reset_usage()).
 
 
-register_config_callback([StrKey], Val, [{all, _}]) ->
+register_config_callback([StrKey], _, [{all, _}]) ->
     %% the callback is called, after the application environment is set
     Key = list_to_existing_atom(StrKey),
+    {ok, Val} = application:get_env(vmq_server, Key),
     vmq_config:set_global_env(vmq_server, Key, Val),
     vmq_config:configure_nodes();
-register_config_callback([StrKey], Val, [{node, Node}]) ->
+register_config_callback([StrKey], _, [{node, Node}]) ->
     %% the callback is called, after the application environment is set
     Key = list_to_existing_atom(StrKey),
+    {ok, Val} = application:get_env(vmq_server, Key),
     vmq_config:set_env(Node, vmq_server, Key, Val),
     vmq_config:configure_node(Node);
-register_config_callback([StrKey], Val, []) ->
+register_config_callback([StrKey], _, []) ->
     %% the callback is called, after the application environment is set
     Key = list_to_existing_atom(StrKey),
+    {ok, Val} = application:get_env(vmq_server, Key),
     vmq_config:set_env(vmq_server, Key, Val),
     vmq_config:configure_node().
 
