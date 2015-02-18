@@ -99,12 +99,34 @@ teardown(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+load_cacerts() ->
+    IntermediateCA = "../test/ssl/test-signing-ca.crt",
+    RootCA = "../test/ssl/test-root-ca.crt",
+    load_cert(RootCA) ++ load_cert(IntermediateCA).
+
+load_cert(Cert) ->
+    {ok, Bin} = file:read_file(Cert),
+    case filename:extension(Cert) of
+        ".der" ->
+            %% no decoding necessary
+            [Bin];
+        _ ->
+            %% assume PEM otherwise
+            Contents = public_key:pem_decode(Bin),
+            [DER || {Type, DER, Cipher} <-
+                    Contents, Type == 'Certificate',
+                    Cipher == 'not_encrypted']
+    end.
+
+
+
+
 connect_no_auth(_) ->
     Connect = packet:gen_connect("connect-success-test", [{keepalive, 10}]),
     Connack = packet:gen_connack(0),
     {ok, SSock} = ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
-                               {cacertfile, "../test/ssl/test-root-ca.crt"},
+                               {cacerts, load_cacerts()},
                                {versions, [tlsv1]}]),
     io:format(user, "opts ~p~n", [ssl:getopts(SSock, [cipher, ciphers, version, versions])]),
     ok = ssl:send(SSock, Connect),
@@ -125,7 +147,7 @@ connect_cert_auth(_) ->
     {ok, SSock} = ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
-                               {cacertfile, "../test/ssl/test-root-ca.crt"},
+                               {cacerts, load_cacerts()},
                                {certfile, "../test/ssl/client.crt"},
                                {keyfile, "../test/ssl/client.key"}]),
     ok = ssl:send(SSock, Connect),
@@ -137,14 +159,14 @@ connect_cert_auth_without(_) ->
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
-                               {cacertfile, "../test/ssl/test-root-ca.crt"}])).
+                               {cacerts, load_cacerts()}])).
 
 connect_cert_auth_expired(_) ->
     assert_error_or_closed({error,{tls_alert,"certificate expired"}},
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
-                               {cacertfile, "../test/ssl/test-root-ca.crt"},
+                               {cacerts, load_cacerts()},
                                {certfile, "../test/ssl/client-expired.crt"},
                                {keyfile, "../test/ssl/client.key"}])).
 
@@ -153,7 +175,7 @@ connect_cert_auth_revoked(_) ->
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
-                               {cacertfile, "../test/ssl/test-root-ca.crt"},
+                               {cacerts, load_cacerts()},
                                {certfile, "../test/ssl/client-revoked.crt"},
                                {keyfile, "../test/ssl/client.key"}])).
 
@@ -163,7 +185,7 @@ connect_cert_auth_crl(_) ->
     {ok, SSock} = ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
-                               {cacertfile, "../test/ssl/test-root-ca.crt"},
+                               {cacerts, load_cacerts()},
                                {certfile, "../test/ssl/client.crt"},
                                {keyfile, "../test/ssl/client.key"}]),
     ok = ssl:send(SSock, Connect),
@@ -176,7 +198,7 @@ connect_identity(_) ->
     {ok, SSock} = ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
-                               {cacertfile, "../test/ssl/test-root-ca.crt"},
+                               {cacerts, load_cacerts()},
                                {certfile, "../test/ssl/client.crt"},
                                {keyfile, "../test/ssl/client.key"}]),
     ok = ssl:send(SSock, Connect),
@@ -188,7 +210,7 @@ connect_no_identity(_) ->
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
-                               {cacertfile, "../test/ssl/test-root-ca.crt"}])).
+                               {cacerts, load_cacerts()}])).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper

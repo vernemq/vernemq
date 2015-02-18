@@ -88,15 +88,25 @@ opts(Opts) ->
                    proplists:get_value(crlfile, Opts, no_crl)}},
      {versions, [proplists:get_value(tls_version, Opts, 'tlsv1.2')]}
      |
-     case support_partial_chain() of
-         true ->
-             [{partial_chain, fun([DerCert|_]) ->
-                                      {trusted_ca, DerCert}
-                              end}];
-         false ->
-             []
-     end
+     []
+     %% TODO: support for flexible partial chain functions
+     % case support_partial_chain() of
+     %     true ->
+     %         [{partial_chain, fun([DerCert|_]) ->
+     %                                  {trusted_ca, DerCert}
+     %                          end}];
+     %     false ->
+     %         []
+     % end
     ].
+
+%-spec support_partial_chain() -> boolean().
+%support_partial_chain() ->
+%    {ok, VSN} = application:get_key(ssl, vsn),
+%    VSNTuple = list_to_tuple(
+%                 [list_to_integer(T)
+%                  || T <- string:tokens(VSN, ".")]),
+%    VSNTuple >= {5, 3, 6}.
 
 -spec ciphersuite_transform(boolean(), string()) -> [{atom(), atom(), atom()}].
 ciphersuite_transform(SupportEC, []) ->
@@ -251,12 +261,4 @@ load_cert(Cert) ->
                     Contents, Type == 'Certificate',
                     Cipher == 'not_encrypted']
     end.
-
--spec support_partial_chain() -> boolean().
-support_partial_chain() ->
-    {ok, VSN} = application:get_key(ssl, vsn),
-    VSNTuple = list_to_tuple(
-                 [list_to_integer(T)
-                  || T <- string:tokens(VSN, ".")]),
-    VSNTuple >= {5, 3, 6}.
 
