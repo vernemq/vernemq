@@ -62,7 +62,7 @@ register_cli_usage() ->
 vmq_server_stop_cmd() ->
     Cmd = ["vmq-admin", "node", "stop"],
     Callback = fun(_, _) ->
-                       ensure_all_stopped(vmq_server),
+                       _ = ensure_all_stopped(vmq_server),
                        [clique_status:text("Done")]
                end,
     clique:register_command(Cmd, [], [], Callback).

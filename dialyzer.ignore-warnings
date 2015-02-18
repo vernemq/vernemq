@@ -1,0 +1,10 @@
+vmq_msg_store.erl:277: The pattern {'ok', Val} can never match the type {'error','no_matching_hook_found'}
+vmq_msg_store.erl:285: The pattern 'notfound' can never match the type {'error','no_matching_hook_found'}
+vmq_msg_store.erl:324: The pattern [Hook = {H, M, _, _} | _] can never match the type []
+vmq_reg.erl:115: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
+vmq_reg.erl:118: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
+vmq_reg.erl:965: The call jobs:done(JobId::jobs_server:reg_obj()) contains an opaque term as 1st argument when a structured term of type {_,_} is expected
+vmq_reg.erl:1006: The pattern 'ok' can never match the type {'error','overloaded'}
+vmq_session.erl:673: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
+vmq_session.erl:743: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
+vmq_ssl_transport.erl:194: The pattern [CS = {Ex, _, _} | _] can never match the type [[1..255,...]]
