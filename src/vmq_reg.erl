@@ -112,7 +112,7 @@ subscribe_tx(User, SubscriberId, QPid, Topics) ->
                 end,
                 fun(_) ->
                         _ = [begin
-                                 vmq_plugin:all(incr_subscription_count, []),
+                                 _ = vmq_exo:incr_subscription_count(),
                                  deliver_retained(SubscriberId, QPid, T, QoS)
                              end || {T, QoS} <- Topics],
                         vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
@@ -139,7 +139,7 @@ unsubscribe_tx(User, SubscriberId, Topics) ->
                     ok
                 end,
                 fun(_) ->
-                        _ = [vmq_plugin:all(decr_subscription_count, [])
+                        _ = [vmq_exo:decr_subscription_count()
                              || _ <- Topics],
                         _ = vmq_plugin:all(on_unsubscribe, [User, SubscriberId, Topics]),
                         ok
@@ -539,7 +539,7 @@ wait_til_ready() ->
     case catch vmq_cluster:if_ready(fun() -> true end, []) of
         true ->
             ok;
-        {error, not_ready} ->
+        _ ->
             timer:sleep(100),
             wait_til_ready()
     end.
@@ -824,8 +824,8 @@ remove_expired_subscribers_({[[SubscriberId, Pid]|Rest], Cont}) ->
               fun() -> del_subscriber_tx('_', SubscriberId) end,
               fun(_) ->
                       vmq_msg_store:clean_session(SubscriberId),
-                      _ = vmq_plugin:all(incr_expired_clients, []),
-                      _ = vmq_plugin:all(decr_inactive_clients, []),
+                      _ = vmq_exo:incr_expired_clients(),
+                      _ = vmq_exo:decr_inactive_clients(),
                       remove_expired_subscribers_({Rest, Cont})
               end);
         true ->
@@ -926,7 +926,7 @@ unregister_subscriber(SubscriberId, SubscriberPid) ->
                                    queue_pid=undefined,
                                    monitor=undefined,
                                    last_seen=epoch()}),
-            _ = vmq_plugin:all(incr_inactive_clients, []),
+            _ = vmq_exo:incr_inactive_clients(),
             ok;
         Sessions ->
             %% at this moment we have multiple sessions for the same client id
@@ -994,7 +994,7 @@ cleanup_sessions([#session{pid=undefined,
 cleanup_sessions([#session{pid=undefined,
                            monitor=undefined,
                            clean=false}|Rest], SubscriberId, RemoveOldSess) ->
-    _ = vmq_plugin:all(decr_inactive_clients, []),
+    _ = vmq_exo:decr_inactive_clients(),
     cleanup_sessions(Rest, SubscriberId, RemoveOldSess);
 cleanup_sessions([#session{pid=SessionPid,
                            monitor=MRef,
@@ -1017,7 +1017,7 @@ cleanup_sessions([#session{pid=SessionPid,
     demonitor(MRef, [flush]),
     ets:delete(vmq_session_mons, MRef),
     _ = disconnect_subscriber(SessionPid),
-    _ = vmq_plugin:all(incr_inactive_clients, []),
+    _ = vmq_exo:incr_inactive_clients(),
     cleanup_sessions(Rest, SubscriberId, true);
 cleanup_sessions([_|Rest], SubscriberId, RemoveOldSess) ->
     % in case we allow multiple sessions, we land here

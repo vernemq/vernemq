@@ -492,7 +492,7 @@ handle_bin_message({MsgId, QoS, Bin}, State) ->
 
 handle_frame(wait_for_connect, _,
              #mqtt_frame_connect{keep_alive=KeepAlive} = Var, _, State) ->
-    _ = vmq_plugin:all(incr_connect_received, []),
+    _ = vmq_exo:incr_connect_received(),
     %% the client is allowed "grace" of a half a time period
     KKeepAlive = (KeepAlive + (KeepAlive div 2)) * 1000,
     check_connect(Var, State#state{keep_alive=KKeepAlive});
@@ -1125,10 +1125,12 @@ incr_msg_sent_cnt(SndCnt) ->
     incr_msg_sent_cnt(1, SndCnt).
 incr_msg_sent_cnt(I, SndCnt) ->
     incr_cnt(incr_messages_sent, I, SndCnt).
+
 incr_msg_recv_cnt(RcvCnt) ->
     incr_cnt(incr_messages_received, 1, RcvCnt).
 incr_pub_recv_cnt(PubRecvCnt) ->
     incr_cnt(incr_publishes_received, 1, PubRecvCnt).
+
 incr_pub_dropped_cnt(I, PubDroppedCnt) ->
     incr_cnt(incr_publishes_dropped, I, PubDroppedCnt).
 incr_pub_sent_cnt(I, PubSendCnt) ->
@@ -1141,6 +1143,6 @@ incr_cnt(IncrFun, IncrV, {{M, S, _}, V, I}) ->
         {M, S, _} = TS ->
             {TS, NewV, NewI};
         TS ->
-            _ = vmq_plugin:all(IncrFun, [NewI]),
+            _ = apply(vmq_exo, IncrFun, [NewI]),
             {TS, NewV, 0}
     end.

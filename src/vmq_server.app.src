@@ -13,6 +13,7 @@
                   ssl,
                   emqtt_commons,
                   unsplit,
+                  exometer_core,
                   vmq_plugin,
                   mnesia_cluster,
                   clique
@@ -54,7 +55,8 @@
             {linger, {true, 0}}, 
             {send_timeout, 30000}, 
             {send_timeout_close, true}
-        ]}
+        ]},
+      {exometer_predefined, {apply, vmq_exo, entries, []}}
       ]}
 
  ]}.

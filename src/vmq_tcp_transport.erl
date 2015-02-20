@@ -89,7 +89,7 @@ wait_for_socket(State) ->
                 ssl -> {ssl, Socket};
                 _ -> Socket
             end,
-            _ = vmq_plugin:all(incr_socket_count, []),
+            _ = vmq_exo:incr_socket_count(),
             case active_once(MaybeMaskedSocket) of
                 ok ->
                     loop(State#st{socket=MaybeMaskedSocket});
@@ -219,7 +219,7 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
         {M, S, _} = NewTS ->
             {NewTS, V + NrOfBytes};
         NewTS ->
-            _ = vmq_plugin:all(incr_bytes_received, [V + NrOfBytes]),
+            _ = vmq_exo:incr_bytes_received(V + NrOfBytes),
             {NewTS, 0}
     end,
     case active_once(Socket) of
@@ -278,7 +278,7 @@ internal_flush(#st{pending=Pending, socket=Socket,
         {M, S, _} = TS ->
             {TS, V + NrOfBytes};
         TS ->
-            _ = vmq_plugin:all(incr_bytes_sent, [V + NrOfBytes]),
+            _ = vmq_exo:incr_bytes_sent(V + NrOfBytes),
             {TS, 0}
     end,
     State#st{pending=[], bytes_send=NewBytesSend}.
