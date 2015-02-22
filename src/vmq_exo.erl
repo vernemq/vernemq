@@ -28,14 +28,6 @@
          entries/0,
          entries/1]).
 
--export([start_link/0,
-         init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
-
 incr_bytes_received(V) ->
     incr_item([bytes, received], V).
 
@@ -80,7 +72,9 @@ entries() ->
 
 entries(undefined) ->
     [
-     {[memory], {function, erlang, memory, [], proplist,[total, processes]}, []},
+     {[memory], {function, erlang, memory, [], proplist,
+                 [total, processes, system,
+                  atom, binary, code, ets]}, []},
      {[bytes, received], histogram, [{snmp, []}]},
      {[bytes, sent], histogram, [{snmp, []}]},
      {[messages, received], histogram, [{snmp, []}]},
@@ -90,9 +84,10 @@ entries(undefined) ->
      {[publishes, sent], histogram, [{snmp, []}]},
      {[connects, received], histogram, [{snmp, []}]},
      {[sockets], histogram, [{snmp, []}]},
-     {[subscriptions], counter, [{snmp, []}]},
+     {[subscriptions], {function, vmq_reg, total_subscriptions, [], proplist, [total]}, []},
      {[clients, expired], counter, [{snmp, []}]},
-     {[clients], {function, vmq_reg, client_stats, [], proplist, [active, inactive]}, []}
+     {[clients], {function, vmq_reg, client_stats, [], proplist,
+                  [total, active, inactive]}, []}
     ];
 entries({ReporterMod, Interval}) ->
     subscribe(ReporterMod, entries(undefined), Interval).
@@ -126,55 +121,3 @@ subscribe(ReporterMod, Metric, Datapoint, Interval) when is_atom(Datapoint) ->
             exit({exometer_report_subscribe, E, ReporterMod, Metric, Datapoint})
     end;
 subscribe(_, _, [], _) -> ok.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% GEN_SERVER
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, []).
-
--spec init([string()]) -> {'ok', []}.
-init([]) ->
-    {ok, []}.
-
--spec handle_call(_, _, _) -> {'reply', ok|{error, _}, _}.
-handle_call({init_counter, Entry, Val}, _From, State) ->
-    Reply =
-    case exometer:update(Entry, Val) of
-        {error, not_found} ->
-            NewVal = get_default_val(Entry),
-            case exometer_admin:auto_create_entry(Entry) of
-                ok ->
-                    exometer:update(Entry, NewVal);
-                Error ->
-                    Error
-            end;
-        ok ->
-            ok
-    end,
-    {reply, Reply, State}.
-
--spec handle_cast(_, _) -> {'noreply', _}.
-handle_cast(_Req, State) ->
-    {noreply, State}.
-
--spec handle_info(_, _) -> {'noreply', _}.
-handle_info(_Info, State) ->
-    {noreply, State}.
-
--spec terminate(_, _) -> 'ok'.
-terminate(_Reason, _State) ->
-    ok.
-
--spec code_change(_, _, _) -> {'ok', _}.
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-get_default_val([subscriptions]) ->
-    vmq_reg:fold_subscribers(
-      fun({_, _, T}, Sum) when is_tuple(T) ->
-              Sum + 1;
-         (_, Sum) ->
-              Sum
-      end, 0).
-

@@ -37,6 +37,7 @@
          client_stats/0,
          total_sessions/0,
          total_inactive_sessions/0,
+         total_subscriptions/0,
          retained/0,
 
          %% used in vmq_session_expirer
@@ -790,7 +791,8 @@ get_queue_pids(SubscriberId) ->
 client_stats() ->
     TotalSessions = total_sessions(),
     TotalInactiveSessions = total_inactive_sessions(),
-    [{active, TotalSessions},
+    [{total, TotalSessions},
+     {active, TotalSessions - TotalInactiveSessions},
      {inactive, TotalInactiveSessions}].
 
 -spec total_sessions() -> non_neg_integer().
@@ -804,6 +806,10 @@ total_inactive_sessions() ->
                        monitor=undefined,
                        _='_'},
     ets:select_count(vmq_session, [{Pattern, [], [true]}]).
+
+total_subscriptions() ->
+    Size = mnesia:table_info(vmq_subscriber, size),
+    [{total, Size}].
 
 -spec retained() -> non_neg_integer().
 retained() ->
