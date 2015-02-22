@@ -422,7 +422,17 @@ validate_session_config([_|Rest], Acc) ->
     validate_session_config(Rest, Acc);
 validate_session_config([], []) -> [];
 validate_session_config([], Acc) ->
-    vmq_session_sup:reconfigure_sessions(Acc).
+    lists:foreach(
+      fun({_, ListenerSupSup, supervisor, _}) when is_pid(ListenerSupSup) ->
+              case lists:keyfind(vmq_tcp_transport_sup, 1,
+                                 supervisor:which_children(ListenerSupSup)) of
+                  {_, TransportSupPid, supervisor, _} when is_pid(TransportSupPid) ->
+                      vmq_tcp_transport_sup:reconfigure_sessions(TransportSupPid, Acc);
+                  _ ->
+                      ok
+              end;
+         (_) -> ignore
+      end, supervisor:which_children(vmq_tcp_listener_sup)).
 
 validate_expirer_config([{persistent_client_expiration, Val} = Item|Rest], Acc)
   when is_integer(Val) and Val >= 0 ->

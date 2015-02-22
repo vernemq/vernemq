@@ -12,13 +12,14 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_session_sup).
+-module(vmq_tcp_transport_sup).
 -behaviour(supervisor).
 
 %% API
 -export([start_link/0,
-         reconfigure_sessions/1,
-         active_clients/0]).
+         start_child/4,
+         nr_of_connections/1,
+         reconfigure_sessions/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -38,15 +39,13 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link(?MODULE, []).
 
-active_clients() ->
-    Counts = supervisor:count_children(?MODULE),
-    {_, N} = lists:keyfind(active, 1, Counts),
-    N.
+start_child(SupPid, Peer, Handler, SessionOpts) ->
+    supervisor:start_child(SupPid, [Peer, Handler, SessionOpts]).
 
-reconfigure_sessions(NewConfig) ->
-    reconfigure_sessions(NewConfig, supervisor:which_children(?MODULE)).
+reconfigure_sessions(SupPid, NewConfig) when is_pid(SupPid) ->
+    reconfigure_sessions(NewConfig, supervisor:which_children(SupPid));
 
 reconfigure_sessions(NewConfig, [{_, Pid, _, _}|Rest]) when is_pid(Pid) ->
     MRef = monitor(process, Pid),
@@ -65,6 +64,11 @@ reconfigure_sessions(NewConfig, [{_, Pid, _, _}|Rest]) when is_pid(Pid) ->
 reconfigure_sessions(NewConfig, [_|Rest]) ->
     reconfigure_sessions(NewConfig, Rest);
 reconfigure_sessions(_, []) -> ok.
+
+nr_of_connections(SupPid) ->
+    Counts = supervisor:count_children(SupPid),
+    {_, Val} = lists:keyfind(active, 1, Counts),
+    Val.
 
 
 %%%===================================================================
@@ -93,3 +97,4 @@ init([]) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+

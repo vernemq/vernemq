@@ -22,6 +22,7 @@
   {env, [
       {allow_anonymous, true},
       {max_client_id_size, 23},
+      {max_connections, infinity},
       {retry_interval, 20},
       {persistent_client_expiration, 0}, % never
       {sys_interval, 10}, % in seconds
@@ -37,11 +38,9 @@
       {reg_views, [vmq_reg_trie]},
       {listeners, {
                       [{{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
-                                              {nr_of_acceptors, 100}, 
                                               {mountpoint, ""}]}],
                       [], %% SSL Listener
                       [{{{127,0,0,1}, 8080}, [{max_connections, 1000}, 
-                                              {nr_of_acceptors, 10}, 
                                               {mountpoint, ""}]}],
                       [] %% WSS Listener
                   }},

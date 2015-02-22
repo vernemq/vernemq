@@ -17,9 +17,9 @@
 
 %% API
 -export([start_link/2,
-         setopts/4,
+         setopts/5,
          getopts/1,
-         accept/1]).
+         accept/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -31,6 +31,8 @@
 
 -record(state, {listener,
                 acceptor,
+                max_conns,
+                conn_sup,
                 tcp_opts,
                 other_opts, %% currently only ssl
                 mountpoint,
@@ -50,15 +52,15 @@
 start_link(ListenAddr, ListenPort) ->
     gen_server:start_link(?MODULE, [ListenAddr, ListenPort], []).
 
-setopts(ListenerPid, Handler, MountPoint, TransportOpts) ->
-    gen_server:call(ListenerPid, {setopts, Handler,
+setopts(ListenerPid, Handler, MaxConns, MountPoint, TransportOpts) ->
+    gen_server:call(ListenerPid, {setopts, Handler, MaxConns,
                                   MountPoint, TransportOpts}, infinity).
 
 getopts(ListenerPid) ->
     gen_server:call(ListenerPid, getopts, infinity).
 
-accept(ListenerPid) ->
-    gen_server:call(ListenerPid, accept, infinity).
+accept(ListenerPid, ConnSup) ->
+    gen_server:call(ListenerPid, {accept, ConnSup}, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -99,11 +101,12 @@ init([Addr, Port]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({setopts, Handler, MountPoint, {TCPOpts, OtherOpts}}, _From,
+handle_call({setopts, Handler, MaxConns, MountPoint, {TCPOpts, OtherOpts}}, _From,
             #state{listener=ListenerSocket} = State) ->
     case prim_inet:setopts(ListenerSocket, [binary|TCPOpts]) of
         ok ->
             {reply, ok, State#state{handler=Handler,
+                                    max_conns=MaxConns,
                                     mountpoint=MountPoint,
                                     tcp_opts=TCPOpts,
                                     other_opts=OtherOpts}};
@@ -115,11 +118,12 @@ handle_call({setopts, Handler, MountPoint, {TCPOpts, OtherOpts}}, _From,
 handle_call(getopts, _From, State) ->
     #state{handler=Handler,
            mountpoint=MountPoint,
+           max_conns=MaxConns,
            tcp_opts=TCPOpts,
            other_opts=TransportOpts} = State,
-    Reply = {Handler, MountPoint, {TCPOpts, TransportOpts}},
+    Reply = {Handler, MaxConns, MountPoint, {TCPOpts, TransportOpts}},
     {reply, Reply, State};
-handle_call(accept, _From, #state{listener=ListenSocket} = State) ->
+handle_call({accept, ConnSup}, _From, #state{listener=ListenSocket} = State) ->
     AcceptorRef =
     case State#state.acceptor of
         undefined ->
@@ -128,7 +132,7 @@ handle_call(accept, _From, #state{listener=ListenSocket} = State) ->
         Ref ->
             Ref
     end,
-    {reply, ok, State#state{acceptor=AcceptorRef}}.
+    {reply, ok, State#state{acceptor=AcceptorRef, conn_sup=ConnSup}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -155,29 +159,33 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({inet_async, ListenSocket, Ref, {ok, TCPSocket}},
             #state{listener=ListenSocket, acceptor=Ref,
-                   handler=Handler, mountpoint=MountPoint,
-                   other_opts=TransportOpts} = State) ->
+                   handler=Handler, mountpoint=MountPoint, max_conns=MaxConns,
+                   other_opts=TransportOpts, conn_sup=ConnSup} = State) ->
     try
-        case set_sockopt(ListenSocket, TCPSocket) of
-            ok -> ok;
-            {error, Reason} -> exit({set_sockopt, Reason})
-        end,
+        case vmq_tcp_transport_sup:nr_of_connections(ConnSup) of
+            N when (MaxConns == infinity) orelse (N < MaxConns) ->
+                case set_sockopt(ListenSocket, TCPSocket) of
+                    ok -> ok;
+                    {error, Reason} -> exit({set_sockopt, Reason})
+                end,
 
-        {ok, Peer} = inet:peername(TCPSocket),
+                {ok, Peer} = inet:peername(TCPSocket),
 
-        case apply(Handler, upgrade_connection, [TCPSocket, TransportOpts]) of
-            {ok, {UpgradedSocket, SessionOpts}} ->
-                {ok, Pid} = supervisor:start_child(
-                              vmq_session_sup,
-                              [Peer, Handler,
-                               [{mountpoint, MountPoint}|SessionOpts]]),
-                apply(case Handler of
-                          vmq_wss_transport -> ssl;
-                          vmq_ssl_transport -> ssl;
-                          _ -> gen_tcp
-                      end, controlling_process, [UpgradedSocket, Pid]),
-                vmq_tcp_transport:handover(Pid, UpgradedSocket);
-            {error, _} ->
+                case apply(Handler, upgrade_connection, [TCPSocket, TransportOpts]) of
+                    {ok, {UpgradedSocket, SessionOpts}} ->
+                        {ok, Pid} = vmq_tcp_transport_sup:start_child(
+                                      ConnSup, Peer, Handler,
+                                      [{mountpoint, MountPoint}|SessionOpts]),
+                        apply(case Handler of
+                                  vmq_wss_transport -> ssl;
+                                  vmq_ssl_transport -> ssl;
+                                  _ -> gen_tcp
+                              end, controlling_process, [UpgradedSocket, Pid]),
+                        vmq_tcp_transport:handover(Pid, UpgradedSocket);
+                    {error, _} ->
+                        ok
+                end;
+            _ ->
                 ok
         end,
 

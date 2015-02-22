@@ -47,7 +47,6 @@ init([]) ->
     {ok, { {one_for_one, 5, 10}, [
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_crl_srv, worker, []),
-            ?CHILD(vmq_session_sup, supervisor, []),
             ?CHILD(vmq_sysmon, worker, []),
             ?CHILD(vmq_session_proxy_sup, supervisor, []),
             ?CHILD(vmq_msg_store, worker, []),

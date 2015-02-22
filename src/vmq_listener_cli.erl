@@ -54,6 +54,8 @@ vmq_listener_start_cmd() ->
                  {mountpoint, [{shortname, "m"},
                                {longname, "mountpoint"},
                                {typecast, fun(MP) -> MP end}]},
+                 {max_connections, [{longname, "max-connections"},
+                               {typecast, fun(MaxConns) -> MaxConns end}]},
                  {websocket, [{shortname, "ws"},
                               {longname, "websocket"}]},
                  {ssl, [{longname, "ssl"}]},
@@ -108,7 +110,10 @@ vmq_listener_start_cmd() ->
                  {use_identity_as_username, [{longname, "use-identity-as-username"}]}
                 ],
     Callback =
-    fun([{port, Port}], Flags) ->
+    fun ([], _) ->
+            Text = lists:flatten(vmq_listener_start_usage()),
+            [clique_status:alert([clique_status:text(Text)])];
+        ([{port, Port}], Flags) ->
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
             IsWebSocket = lists:keymember(websocket, 1, Flags),
             IsSSL = lists:keymember(ssl, 1, Flags),
@@ -147,9 +152,13 @@ vmq_listener_start_cmd() ->
             case Ret of
                 {ok, ListenerConfig} ->
                     vmq_config:set_env(listeners, ListenerConfig),
-                    ok = vmq_tcp_listener_sup:reconfigure_listeners(
-                           [{listeners, ListenerConfig}]),
-                    [clique_status:text("Done")];
+                    case vmq_tcp_listener_sup:start_listener(Addr, Port) of
+                        ok ->
+                            [clique_status:text("Done")];
+                        {error, Reason} ->
+                            Text = io_lib:format("can't start listener due to '~p'", [Reason]),
+                            [clique_status:alert([clique_status:text(Text)])]
+                    end;
                 {error, Texts} when is_list(Texts) ->
                     [clique_status:alert(Texts)]
             end
@@ -177,12 +186,15 @@ vmq_listener_stop_cmd() ->
                                                        {error, {invalid_flag_value,
                                                                 {address, A}}}
                                                end
-                                       end}]}],
+                                       end}]},
+                 {kill, [{shortname, "k"},
+                         {longname, "kill-sessions"}]}],
     Callback =
     fun([], Flags) ->
             Port = proplists:get_value(port, Flags, 1883),
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
-            case vmq_tcp_listener_sup:stop_listener(Addr, Port) of
+            IsKill = lists:keymember(kill, 1, Flags),
+            case vmq_tcp_listener_sup:stop_listener(Addr, Port, IsKill) of
                 ok ->
                     [clique_status:text("Done")];
                 {error, Reason} ->
@@ -225,9 +237,13 @@ vmq_listener_delete_cmd() ->
                               lists:keydelete(ListenerKey, 1, WS),
                               lists:keydelete(ListenerKey, 1, WSS)},
             vmq_config:set_env(listeners, ListenerConfig),
-            ok = vmq_tcp_listener_sup:reconfigure_listeners(
-                   [{listeners, ListenerConfig}]),
-            [clique_status:text("Done")]
+            case vmq_tcp_listener_sup:delete_listener(Addr, Port) of
+                ok ->
+                    [clique_status:text("Done")];
+                {error, Reason} ->
+                    Text = io_lib:format("can't delete listener due to '~p'", [Reason]),
+                    [clique_status:alert([clique_status:text(Text)])]
+            end
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
@@ -255,8 +271,8 @@ vmq_listener_restart_cmd() ->
                                        end}]}],
     Callback =
     fun([], Flags) ->
-            Port = proplists:get_value(port, Flags, undefined),
-            Addr = proplists:get_value(address, Flags, undefined),
+            Port = proplists:get_value(port, Flags, 1883),
+            Addr = proplists:get_value(address, Flags, {0,0,0,0}),
             case vmq_tcp_listener_sup:restart_listener(Addr, Port) of
                 ok ->
                     [clique_status:text("Done")];
@@ -275,9 +291,10 @@ vmq_listener_show_cmd() ->
     fun([], []) ->
             Table =
             lists:foldl(
-              fun({Type, Ip, Port, Status, MP}, Acc) ->
+              fun({Type, Ip, Port, Status, MP, MaxConns}, Acc) ->
                       [[{type, Type}, {status, Status}, {ip, Ip},
-                        {port, Port}, {mountpoint, MP}]|Acc]
+                        {port, Port}, {mountpoint, MP}, {max_conns, MaxConns}]
+                       |Acc]
               end, [], vmq_tcp_listener_sup:listeners()),
               [clique_status:table(Table)]
     end,

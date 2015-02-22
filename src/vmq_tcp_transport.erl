@@ -128,7 +128,9 @@ loop_({exit, Reason, State}) ->
 teardown(#st{session=SessionPid, socket=Socket}, Reason) ->
     case Reason of
         normal ->
-            lager:debug("[~p] session stopped", [SessionPid]);
+            lager:debug("[~p] session normally stopped", [SessionPid]);
+        shutdown ->
+            lager:debug("[~p] session stopped due to shutdown", [SessionPid]);
         _ ->
             lager:warning("[~p] session stopped
                        abnormally due to ~p", [SessionPid, Reason])
