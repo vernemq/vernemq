@@ -376,10 +376,16 @@ ensure_all_stopped([kernel|Apps], Res)  ->
     ensure_all_stopped(Apps, Res);
 ensure_all_stopped([stdlib|Apps], Res)  ->
     ensure_all_stopped(Apps, Res);
+ensure_all_stopped([sasl|Apps], Res) ->
+    ensure_all_stopped(Apps, Res);
 ensure_all_stopped([lager|Apps], Res)  ->
     ensure_all_stopped(Apps, Res);
 ensure_all_stopped([clique|Apps], Res)  ->
     ensure_all_stopped(Apps, Res);
+ensure_all_stopped([vmq_plugin|Apps], Res) ->
+    vmq_plugin_mgr:stop(), %% this will stop all plugin applications
+    application:stop(vmq_plugin),
+    ensure_all_stopped(Apps, [vmq_plugin|Res]);
 ensure_all_stopped([App|Apps], Res)  ->
     {ok, Deps} = application:get_key(App, applications),
     _ = application:stop(App),
