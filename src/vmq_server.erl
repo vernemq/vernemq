@@ -19,7 +19,6 @@
          stop/0,
          table_defs/0]).
 
--spec start() -> 'ok'.
 start_no_auth() ->
     maybe_start_distribution(),
 
