@@ -17,6 +17,7 @@
 
 %% API
 -export([start_link/0,
+         stop/0,
          enable_plugin/1,
          enable_plugin/2,
          enable_module_plugin/3,
@@ -74,6 +75,11 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+stop() ->
+    %% only call after all application that call INTO a
+    %% plugin are stopped...
+    gen_server:call(?MODULE, stop, infinity).
 
 -spec enable_plugin(atom()) -> ok | {error, _}.
 enable_plugin(Plugin) ->
@@ -154,6 +160,20 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(stop, _From, #state{config_file=ConfigFile} = State) ->
+    case file:consult(ConfigFile) of
+        {ok, [{plugins, Plugins}]} ->
+            lists:foreach(
+              fun
+                  ({application, App, _}) ->
+                      catch stop_plugin(App);
+                  (_) ->
+                      ignore
+              end, Plugins);
+        _ ->
+            ignore
+    end,
+    {reply, ok, State};
 handle_call(Call, _From, #state{ready=true} = State) ->
     handle_plugin_call(Call, State);
 handle_call(Call, From, #state{defered_calls=DeferedCalls} = State) ->
