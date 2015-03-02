@@ -135,6 +135,10 @@ publish(Node, Msg) ->
 -spec init([]) -> {'ok', state()}.
 init([]) ->
     _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
+    _ = ets:insert(vmq_status, {ready, false}),
+    Nodes = mnesia_cluster_utils:cluster_nodes(running),
+    _ = [ets:insert(vmq_status, {Node, true}) ||Node <- Nodes],
+    _ = check_ready(Nodes, [], ets:match(vmq_status, '$1')),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
