@@ -84,8 +84,8 @@ handle_info({'DOWN', MRef, process, Pid, Reason}, State) ->
     case {Pid == ReplPid, Reason} of
         {true, normal} ->
             %% finished replicating
-            lager:debug("[~p][~p] stopped message replication for subscriber ~p due to
-                       deliver_from_store proc stopped normally", [node(), SubscriberId, Node]),
+            lager:debug("[~p][~p] stopped message replication for subscriber ~p due to "
+                       ++ "deliver_from_store proc stopped normally", [node(), SubscriberId, Node]),
             {stop, normal, State};
         {true, {deliver_from_store, retry}} ->
             case lists:member(Node, vmq_cluster:nodes()) of
@@ -104,8 +104,8 @@ handle_info({'DOWN', MRef, process, Pid, Reason}, State) ->
             %% session stopped during replication
             demonitor(ReplMon, [flush]),
             exit(ReplPid, normal),
-            lager:debug("[~p][~p] stopped message replication for subscriber ~p due to
-                        session stopped for reason '~p'", [node(), Node, Reason]),
+            lager:debug("[~p][~p] stopped message replication for subscriber ~p due to "
+                        ++ "session stopped for reason '~p'", [node(), Node, Reason]),
             {stop, Reason, State}
     end;
 
