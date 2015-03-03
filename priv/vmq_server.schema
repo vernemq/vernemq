@@ -711,12 +711,6 @@
                                                                           hidden
                                                                          ]}. 
 
-{mapping, "cluster_monitor_callbacks", "mnesia_cluster.cluster_monitor_callbacks", [
-                                                                          {default, "[vmq_cluster]"},
-                                                                          {datatype, string},
-                                                                          hidden
-                                                                         ]}. 
-
 {mapping, "app_process", "mnesia_cluster.app_process", [
                                                         {default, vmq_server_sup},
                                                         {datatype, atom},
@@ -740,14 +734,6 @@
 {translation, "mnesia_cluster.table_definition_mod", 
  fun(Conf) ->
          S = cuttlefish:conf_get("table_definition_mod", Conf),
-         {ok, T, _} = erl_scan:string(S ++ "."),
-         {ok, Term} = erl_parse:parse_term(T),
-         Term
- end}.
-
-{translation, "mnesia_cluster.cluster_monitor_callbacks", 
- fun(Conf) ->
-         S = cuttlefish:conf_get("cluster_monitor_callbacks", Conf),
          {ok, T, _} = erl_scan:string(S ++ "."),
          {ok, Term} = erl_parse:parse_term(T),
          Term
