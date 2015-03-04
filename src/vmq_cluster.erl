@@ -110,7 +110,7 @@ init([]) ->
     Nodes = mnesia_cluster_utils:cluster_nodes(running),
     _ = [ets:insert(vmq_status, {Node, true}) ||Node <- Nodes],
     _ = check_ready(Nodes),
-    mnesia_cluster_monitor:subscribe(self()),
+    net_kernel:monitor_nodes(true),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -157,15 +157,13 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec handle_info(_, _) -> {'noreply', _}.
-handle_info({node_down, Node}, State) ->
-    Nodes = mnesia_cluster_utils:cluster_nodes(all),
+handle_info({nodedown, Node}, State) ->
     ets:delete(vmq_status, Node),
-    _ = check_ready(Nodes),
+    _ = check_ready(),
     {noreply, State};
-handle_info({node_up, Node}, State) ->
-    Nodes = mnesia_cluster_utils:cluster_nodes(all),
+handle_info({nodeup, Node}, State) ->
     ets:insert(vmq_status, {Node, true}),
-    _ = check_ready(Nodes),
+    _ = check_ready(),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -200,6 +198,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+check_ready() ->
+    Nodes = mnesia_cluster_utils:cluster_nodes(all),
+    check_ready(Nodes).
+
 check_ready(Nodes) ->
     check_ready(Nodes, [], ets:match(vmq_status, '$1')).
 
