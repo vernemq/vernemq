@@ -104,6 +104,78 @@
                                                                                   {datatype, [integer, {atom, infinity}]},
                                                                                   hidden
                                                                                  ]}. 
+
+
+%% @doc Set the nr of acceptors waiting to concurrently accept new connections.
+%% This can be specified either on the protocol level:
+%%
+%%     - listener.tcp.nr_of_acceptors
+%%     - listener.ssl.nr_of_acceptors
+%%     - listener.ws.nr_of_acceptors 
+%%     - listener.wss.nr_of_acceptors 
+%%
+%% or on the listener level:
+%%
+%%     - listener.tcp.my_tcp_listener.nr_of_acceptors
+%%     - listener.ssl.my_ssl_listener.nr_of_acceptors
+%%     - listener.ws.my_ws_listener.nr_of_acceptors
+%%     - listener.wss.my_wss_listener.nr_of_acceptors
+{mapping, "listener.nr_of_acceptors", "vmq_server.listeners", [
+                                                                  {default, {{ max_nr_of_acceptors}} },
+                                                                  {datatype, integer}
+                                                                 ]}.
+
+{mapping, "listener.tcp.nr_of_acceptors", "vmq_server.listeners", [
+                                                                      {default, -1},
+                                                                      {datatype, integer},
+                                                                      hidden
+                                                                     ]}. 
+
+{mapping, "listener.tcp.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, integer},
+                                                                            {include_default, "default"},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.ssl.nr_of_acceptors", "vmq_server.listeners", [
+                                                                      {default, -1},
+                                                                      {datatype, integer},
+                                                                      hidden
+                                                                     ]}. 
+
+{mapping, "listener.ssl.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, integer},
+                                                                            {include_default, "default"},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.ws.nr_of_acceptors", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, integer},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.ws.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, integer},
+                                                                                  {include_default, "default"},
+                                                                                  hidden
+                                                                                 ]}. 
+{mapping, "listener.wss.nr_of_acceptors", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, integer},
+                                                                            hidden
+                                                                           ]}. 
+
+{mapping, "listener.wss.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, integer},
+                                                                                  {include_default, "default"},
+                                                                                  hidden
+                                                                                 ]}.
+
 %% @doc listener.tcp.<name> is an IP address and TCP port that 
 %% the broker will bind to. You can define multiple listeners e.g:
 %% - listener.tcp.default = 127.0.0.1:1883
@@ -509,7 +581,7 @@
          AtomVal = fun(_, A, _) when is_atom(A) -> A end,
 
 
-         Mappings = ["max_connections", "mountpoint"],
+         Mappings = ["max_connections", "nr_of_acceptors", "mountpoint"],
                     %% SSL specific
          SSLMapps = ["cafile", "capath", "certfile", "ciphers", "crlfile",
                      "keyfile", "require_certificate", "tls_version",
@@ -557,6 +629,11 @@
          {SSLIPs, SSLMaxConns} = lists:unzip(F("listener.ssl", "max_connections", InfIntVal)),
          {WSIPs, WSMaxConns} = lists:unzip(F("listener.ws", "max_connections", InfIntVal)),
          {WS_SSLIPs, WS_SSLMaxConns} = lists:unzip(F("listener.wss", "max_connections", InfIntVal)),
+
+         {TCPIPs, TCPNrOfAcceptors} = lists:unzip(F("listener.tcp", "nr_of_acceptors", InfIntVal)),
+         {SSLIPs, SSLNrOfAcceptors} = lists:unzip(F("listener.ssl", "nr_of_acceptors", InfIntVal)),
+         {WSIPs, WSNrOfAcceptors} = lists:unzip(F("listener.ws", "nr_of_acceptors", InfIntVal)),
+         {WS_SSLIPs, WS_SSLNrOfAcceptors} = lists:unzip(F("listener.wss", "nr_of_acceptors", InfIntVal)),
          
          {TCPIPs, TCPMountPoint} = lists:unzip(F("listener.tcp", "mountpoint", MPVal)),
          {SSLIPs, SSLMountPoint} = lists:unzip(F("listener.ssl", "mountpoint", MPVal)),
@@ -587,10 +664,13 @@
          {WS_SSLIPs, WS_SSLUseIdents} = lists:unzip(F("listener.wss", "use_identity_as_username", BoolVal)),
          {WS_SSLIPs, WS_SSLECSupport} = lists:unzip(F("listener.wss", "support_elliptic_curves", BoolVal)),
          TCP = lists:zip(TCPIPs, MZip([TCPMaxConns, 
+                                       TCPNrOfAcceptors,
                                        TCPMountPoint])),
          WS = lists:zip(WSIPs, MZip([WSMaxConns, 
+                                     WSNrOfAcceptors,
                                      WSMountPoint])),
          SSL = lists:zip(SSLIPs, MZip([SSLMaxConns, 
+                                       SSLNrOfAcceptors,
                                        SSLMountPoint,
                                        SSLCAFiles, 
                                        SSLCAPaths, 
@@ -603,23 +683,25 @@
                                        SSLUseIdents, 
                                        SSLECSupport])),
          WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns, 
-                                       WS_SSLMountPoint,
-                                       WS_SSLCAFiles, 
-                                       WS_SSLCAPaths, 
-                                       WS_SSLCertFiles, 
-                                       WS_SSLCiphers, 
-                                       WS_SSLCrlFiles, 
-                                       WS_SSLKeyFiles, 
-                                       WS_SSLRequireCerts, 
-                                       WS_SSLVersions, 
-                                       WS_SSLUseIdents, 
-                                       WS_SSLECSupport])),
+                                          WS_SSLNrOfAcceptors,
+                                          WS_SSLMountPoint,
+                                          WS_SSLCAFiles, 
+                                          WS_SSLCAPaths, 
+                                          WS_SSLCertFiles, 
+                                          WS_SSLCiphers, 
+                                          WS_SSLCrlFiles, 
+                                          WS_SSLKeyFiles, 
+                                          WS_SSLRequireCerts, 
+                                          WS_SSLVersions, 
+                                          WS_SSLUseIdents, 
+                                          WS_SSLECSupport])),
          DropUndef = fun(L) ->
                              [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
                      end,
          {DropUndef(TCP), DropUndef(SSL), DropUndef(WS), DropUndef(WSS)}
  end
 }.
+
 %% @doc Set the time in seconds VerneMQ waits before a retry, in case a (QoS=1 or QoS=2) message 
 %% delivery gets no answer.
 {mapping, "retry_interval", "vmq_server.retry_interval", [
@@ -699,12 +781,6 @@
                                                                       {datatype, flag}
                                                                      ]}.
 
-{mapping, "tune_tcp_buffer_size", "vmq_server.tune_tcp_buffer_size", [
-                                                                      {default, off},
-                                                                      {datatype, flag},
-                                                                      hidden
-                                                                     ]}.
-
 {mapping, "table_definition_mod", "mnesia_cluster.table_definition_mod", [
                                                                           {default, "{vmq_server,table_defs,[]}"},
                                                                           {datatype, string},
@@ -745,7 +821,7 @@
                                             ]}.
 
 {mapping, "tcp_listen_options", "vmq_server.tcp_listen_options", [
-                                                                  {default, "[binary, {packet, raw}, {active, false}, {nodelay, true}, {reuseaddr, true}, {linger, {true, 0}}, {send_timeout, 30000}, {send_timeout_close, true}]"},
+                                                                  {default, "[{packet, raw}, {nodelay, true}, {reuseaddr, true}, {linger, {true, 0}}, {send_timeout, 30000}, {send_timeout_close, true}]"},
                                                                   {datatype, string},
                                                                   hidden
                                                                  ]}.

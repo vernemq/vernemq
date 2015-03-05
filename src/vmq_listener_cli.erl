@@ -14,8 +14,6 @@
 -module(vmq_listener_cli).
 -export([register_server_cli/0]).
 
--define(SUP, vmq_tcp_listener_sup).
-
 register_server_cli() ->
     clique:register_usage(["vmq-admin", "listener"], vmq_listener_usage()),
     clique:register_usage(["vmq-admin", "listener", "start"],
@@ -118,52 +116,46 @@ vmq_listener_start_cmd() ->
             IsWebSocket = lists:keymember(websocket, 1, Flags),
             IsSSL = lists:keymember(ssl, 1, Flags),
             NewOpts1 = lists:keydelete(address, 1, lists:keydelete(port, 1, Flags)),
-            NewOpts2 = lists:keyreplace(require_certificate, 1, NewOpts1,
-                                        {require_certificate, true}),
-            NewOpts3 = lists:keyreplace(use_identity_as_username, 1, NewOpts2,
-                                        {use_identity_as_username, true}),
 
-            {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
-            ListenerKey = {Addr, Port},
-            {TCP1, SSL1, WS1, WSS1} = {lists:keydelete(ListenerKey, 1, TCP),
-                                       lists:keydelete(ListenerKey, 1, SSL),
-                                       lists:keydelete(ListenerKey, 1, WS),
-                                       lists:keydelete(ListenerKey, 1, WSS)},
-            Listener = {ListenerKey, NewOpts3},
-            Ret =
             case IsSSL of
+                true when IsWebSocket ->
+                    start_listener(wss, Addr, Port, NewOpts1);
                 true ->
-                    case ssl_mandatory_opts([cafile, certfile, keyfile],
-                                            NewOpts3, []) of
-                        ok when IsWebSocket ->
-                            {ok, {TCP1, SSL1, WS1, [Listener|WSS1]}};
-                        ok ->
-                            {ok, {TCP1, [Listener|SSL1], WS1, WSS1}};
-                        {error, Alerts} ->
-                            {error, Alerts}
-                    end;
+                    start_listener(ssl, Addr, Port, NewOpts1);
                 false when IsWebSocket ->
-                    {ok, {TCP1, SSL1, [Listener|WS1], WSS1}};
+                    start_listener(ws, Addr, Port, NewOpts1);
                 false ->
-                    {ok, {[Listener|TCP1], SSL1, WS1, WSS1}}
-            end,
-
-
-            case Ret of
-                {ok, ListenerConfig} ->
-                    vmq_config:set_env(listeners, ListenerConfig),
-                    case vmq_tcp_listener_sup:start_listener(Addr, Port) of
-                        ok ->
-                            [clique_status:text("Done")];
-                        {error, Reason} ->
-                            Text = io_lib:format("can't start listener due to '~p'", [Reason]),
-                            [clique_status:alert([clique_status:text(Text)])]
-                    end;
-                {error, Texts} when is_list(Texts) ->
-                    [clique_status:alert(Texts)]
+                    start_listener(tcp, Addr, Port, NewOpts1)
             end
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+start_listener(Type, Addr, Port, Opts) ->
+    case vmq_ranch_config:start_listener(Type, Addr, Port, Opts) of
+        ok ->
+            ListenerKey = {Addr, Port},
+            {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
+            NewListenerConf = {lists:keydelete(ListenerKey, 1, TCP),
+                               lists:keydelete(ListenerKey, 1, SSL),
+                               lists:keydelete(ListenerKey, 1, WS),
+                               lists:keydelete(ListenerKey, 1, WSS)},
+            UpdatedConf = update_conf(Type, {ListenerKey, Opts}, NewListenerConf),
+            vmq_config:set_env(listeners, UpdatedConf),
+            [clique_status:text("Done")];
+        {error, Reason} ->
+            Text = io_lib:format("can't start listener due to '~p'", [Reason]),
+            [clique_status:alert([clique_status:text(Text)])]
+    end.
+
+update_conf(tcp, ListenerConf, {TCP,_,_,_} = CleanedConf) ->
+    setelement(1, CleanedConf, [ListenerConf|TCP]);
+update_conf(ssl, ListenerConf, {_,SSL,_,_} = CleanedConf) ->
+    setelement(2, CleanedConf, [ListenerConf|SSL]);
+update_conf(ws, ListenerConf, {_,_,WS,_} = CleanedConf) ->
+    setelement(3, CleanedConf, [ListenerConf|WS]);
+update_conf(wss, ListenerConf, {_,_,_,WSS} = CleanedConf) ->
+    setelement(4, CleanedConf, [ListenerConf|WSS]).
+
 
 vmq_listener_stop_cmd() ->
     Cmd = ["vmq-admin", "listener", "stop"],
@@ -194,7 +186,7 @@ vmq_listener_stop_cmd() ->
             Port = proplists:get_value(port, Flags, 1883),
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
             IsKill = lists:keymember(kill, 1, Flags),
-            case vmq_tcp_listener_sup:stop_listener(Addr, Port, IsKill) of
+            case vmq_ranch_config:stop_listener(Addr, Port, IsKill) of
                 ok ->
                     [clique_status:text("Done")];
                 {error, Reason} ->
@@ -230,15 +222,15 @@ vmq_listener_delete_cmd() ->
     fun([], Flags) ->
             Port = proplists:get_value(port, Flags, 1883),
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
-            {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
-            ListenerKey = {Addr, Port},
-            ListenerConfig = {lists:keydelete(ListenerKey, 1, TCP),
-                              lists:keydelete(ListenerKey, 1, SSL),
-                              lists:keydelete(ListenerKey, 1, WS),
-                              lists:keydelete(ListenerKey, 1, WSS)},
-            vmq_config:set_env(listeners, ListenerConfig),
-            case vmq_tcp_listener_sup:delete_listener(Addr, Port) of
+            case vmq_ranch_config:delete_listener(Addr, Port) of
                 ok ->
+                    {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
+                    ListenerKey = {Addr, Port},
+                    ListenerConfig = {lists:keydelete(ListenerKey, 1, TCP),
+                                      lists:keydelete(ListenerKey, 1, SSL),
+                                      lists:keydelete(ListenerKey, 1, WS),
+                                      lists:keydelete(ListenerKey, 1, WSS)},
+                    vmq_config:set_env(listeners, ListenerConfig),
                     [clique_status:text("Done")];
                 {error, Reason} ->
                     Text = io_lib:format("can't delete listener due to '~p'", [Reason]),
@@ -273,7 +265,7 @@ vmq_listener_restart_cmd() ->
     fun([], Flags) ->
             Port = proplists:get_value(port, Flags, 1883),
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
-            case vmq_tcp_listener_sup:restart_listener(Addr, Port) of
+            case vmq_ranch_config:restart_listener(Addr, Port) of
                 ok ->
                     [clique_status:text("Done")];
                 {error, Reason} ->
@@ -295,7 +287,7 @@ vmq_listener_show_cmd() ->
                       [[{type, Type}, {status, Status}, {ip, Ip},
                         {port, Port}, {mountpoint, MP}, {max_conns, MaxConns}]
                        |Acc]
-              end, [], vmq_tcp_listener_sup:listeners()),
+              end, [], vmq_ranch_config:listeners()),
               [clique_status:table(Table)]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
@@ -318,6 +310,9 @@ vmq_listener_start_usage() ->
      "General Options\n\n",
      "  -a, --address=IpAddress\n",
      "  -m, --mountpoint=Mountpoint\n\n",
+     "WebSocket Options\n\n",
+     "  --websocket\n",
+     "      use the Websocket protocol as the underlying transport\n\n",
      "SSL Options\n\n",
      "  --ssl\n",
      "      use SSL for this listener, without this option, all other SSL\n",
@@ -370,15 +365,3 @@ vmq_listener_restart_usage() ->
      "  -p, --port=PortNr\n",
      "  -a, --address=IpAddress\n\n"
     ].
-
-
-ssl_mandatory_opts([Opt|Rest], Flags, Acc) ->
-    case proplists:get_value(Opt, Flags, not_found) of
-        not_found ->
-            Text = io_lib:format("mandatory param '~p' not specified", [Opt]),
-            ssl_mandatory_opts(Rest, Flags, [clique_status:text(Text)|Acc]);
-        _ ->
-            ssl_mandatory_opts(Rest, Flags, Acc)
-    end;
-ssl_mandatory_opts([], _, []) -> ok;
-ssl_mandatory_opts([], _, Alerts) -> {error, Alerts}.

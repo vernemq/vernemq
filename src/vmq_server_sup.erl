@@ -51,7 +51,6 @@ init([]) ->
             ?CHILD(vmq_session_proxy_sup, supervisor, []),
             ?CHILD(vmq_msg_store, worker, []),
             ?CHILD(vmq_reg_sup, supervisor, []),
-            ?CHILD(vmq_tcp_listener_sup, supervisor, []),
             ?CHILD(vmq_cluster_node_sup, supervisor, []),
             ?CHILD(vmq_cluster, worker, [])
                                  ]} }.

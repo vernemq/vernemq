@@ -19,7 +19,6 @@
 -export([start_link/3,
          in/2,
          disconnect/1,
-         reconfigure/2,
          get_info/2,
          list_sessions/3,
          list_sessions_/3]).
@@ -111,10 +110,6 @@ start_link(Peer, SendFun, Opts) ->
 -spec disconnect(pid()) -> ok.
 disconnect(FsmPid) ->
     gen_fsm:send_all_state_event(FsmPid, disconnect).
-
--spec reconfigure(pid(), [{atom(), term()}]) -> ok.
-reconfigure(FsmPid, NewConfig) ->
-    gen_fsm:sync_send_all_state_event(FsmPid, {reconfigure, NewConfig}).
 
 -spec in(pid(), mqtt_frame()) ->  ok.
 in(FsmPid, #mqtt_frame{fixed=#mqtt_frame_fixed{type=?PUBLISH}} = Event) ->
@@ -328,36 +323,6 @@ handle_sync_event({input, Frame}, _From, StateName, State) ->
 handle_sync_event({get_info, Items}, _From, StateName, State) ->
     Reply = get_info_items(Items, StateName, State),
     {reply, Reply, StateName, State};
-handle_sync_event({reconfigure, NewConfig}, _From, StateName, State) ->
-    NewState =
-    State#state{
-      allow_anonymous = proplists:get_value(
-                          allow_anonymous, NewConfig,
-                          State#state.allow_anonymous),
-      max_client_id_size = proplists:get_value(
-                             max_client_id_size, NewConfig,
-                             State#state.max_client_id_size),
-      retry_interval = 1000 * proplists:get_value(
-                         retry_interval, NewConfig, State#state.retry_interval),
-      max_inflight_messages = proplists:get_value(
-                                max_inflight_messages, NewConfig,
-                                State#state.max_inflight_messages),
-      max_message_size = proplists:get_value(
-                           message_size_limit, NewConfig,
-                           State#state.max_message_size),
-      upgrade_qos = proplists:get_value(
-                      upgrade_outgoing_qos, NewConfig, State#state.upgrade_qos),
-      trade_consistency = proplists:get_value(
-                            trade_consistency, NewConfig,
-                            State#state.trade_consistency),
-      reg_view = proplists:get_value(
-                        default_reg_view, NewConfig,
-                        State#state.reg_view),
-      allow_multiple_sessions = proplists:get_value(
-                                    allow_multiple_sessions, NewConfig,
-                                    State#state.allow_multiple_sessions)
-     },
-    {reply, ok, StateName, NewState};
 handle_sync_event(Req, _From, _StateName, State) ->
     {stop, {error, {unknown_req, Req}}, State}.
 

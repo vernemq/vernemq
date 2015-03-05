@@ -7,6 +7,7 @@
                   kernel,
                   stdlib,
                   lager,
+                  cowboy,
                   os_mon,
                   riak_sysmon,
                   jobs,
@@ -23,13 +24,12 @@
       {allow_anonymous, true},
       {max_client_id_size, 23},
       {max_connections, infinity},
+      {nr_of_acceptors, 10},
       {retry_interval, 20},
       {persistent_client_expiration, 0}, % never
-      {sys_interval, 10}, % in seconds
       {max_inflight_messages, 20},
       {max_queued_messages, 1000},
       {message_size_limit, 0},
-      {tune_tcp_buffer_size, false},
       {upgrade_outgoing_qos, false},
       {trade_consistency, false},
       {allow_multiple_sessions, false},
@@ -46,9 +46,7 @@
                   }},
       {mnesia_tx_queue, [{regulators, [{rate,[{limit, 1000}, {modifiers, [{mnesia, 10}]}]}]}]},
       {tcp_listen_options, [
-            binary,
             {packet, raw},
-            {active, false},
             {nodelay, true},
             {reuseaddr, true}, 
             {linger, {true, 0}}, 

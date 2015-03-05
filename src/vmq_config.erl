@@ -252,8 +252,6 @@ change_config(Configs) ->
     Env = filter_out_unchanged(VmqServerConfig, []),
     %% change reg configurations
     _ = validate_reg_config(Env, []),
-    %% change session configurations
-    _ = validate_session_config(Env, []),
     %% change session_expirer config
     _ = validate_expirer_config(Env, []),
     %% change listener config
@@ -385,55 +383,6 @@ validate_reg_config([_|Rest], Acc) ->
 validate_reg_config([], Acc) ->
     vmq_reg_sup:reconfigure_registry(Acc).
 
-validate_session_config([{allow_anonymous, Val} = Item|Rest], Acc)
-  when is_boolean(Val) ->
-    validate_session_config(Rest, [Item|Acc]);
-validate_session_config([{max_client_id_size, Val} = Item|Rest], Acc)
-  when is_integer(Val) and Val >= 0 ->
-    validate_session_config(Rest, [Item|Acc]);
-validate_session_config([{retry_interval, Val} = Item|Rest], Acc)
-  when is_integer(Val) and Val > 0 ->
-    validate_session_config(Rest, [Item|Acc]);
-validate_session_config([{max_inflight_messages, Val} = Item|Rest], Acc)
-  when is_integer(Val) and Val >= 0 ->
-    validate_session_config(Rest, [Item|Acc]);
-validate_session_config([{message_size_limit, Val} = Item|Rest], Acc)
-  when is_integer(Val) and Val >= 0 ->
-    validate_session_config(Rest, [Item|Acc]);
-validate_session_config([{upgrade_outgoing_qos, Val} = Item|Rest], Acc)
-  when is_boolean(Val) ->
-    validate_session_config(Rest, [Item|Acc]);
-validate_session_config([{trade_consistency, Val} = Item|Rest], Acc)
-  when is_boolean(Val) ->
-    validate_session_config(Rest, [Item|Acc]);
-validate_session_config([{allow_multiple_sessions, Val} = Item|Rest], Acc)
-  when is_boolean(Val) ->
-    validate_session_config(Rest, [Item|Acc]);
-validate_session_config([{default_reg_view, Val} = Item|Rest], Acc)
-  when is_atom(Val) ->
-    case code:is_loaded(Val) of
-        {file, _} ->
-            validate_session_config(Rest, [Item|Acc]);
-        false ->
-            lager:error("can't configure new default_reg_view ~p", [Val]),
-            validate_session_config(Rest, Acc)
-    end;
-validate_session_config([_|Rest], Acc) ->
-    validate_session_config(Rest, Acc);
-validate_session_config([], []) -> [];
-validate_session_config([], Acc) ->
-    lists:foreach(
-      fun({_, ListenerSupSup, supervisor, _}) when is_pid(ListenerSupSup) ->
-              case lists:keyfind(vmq_tcp_transport_sup, 1,
-                                 supervisor:which_children(ListenerSupSup)) of
-                  {_, TransportSupPid, supervisor, _} when is_pid(TransportSupPid) ->
-                      vmq_tcp_transport_sup:reconfigure_sessions(TransportSupPid, Acc);
-                  _ ->
-                      ok
-              end;
-         (_) -> ignore
-      end, supervisor:which_children(vmq_tcp_listener_sup)).
-
 validate_expirer_config([{persistent_client_expiration, Val} = Item|Rest], Acc)
   when is_integer(Val) and Val >= 0 ->
     validate_expirer_config(Rest, [Item|Acc]);
@@ -450,4 +399,4 @@ validate_listener_config([{tcp_listen_options, _} = Item|Rest], Acc) ->
 validate_listener_config([_|Rest], Acc) ->
     validate_listener_config(Rest, Acc);
 validate_listener_config([], Acc) ->
-    vmq_tcp_listener_sup:reconfigure_listeners(Acc).
+    vmq_ranch_config:reconfigure_listeners(Acc).

@@ -12,22 +12,19 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_tcp_transport).
+-module(vmq_ranch).
+-behaviour(ranch_protocol).
 
--export([start_link/3,
-         handover/2,
-         send/2]).
--export([init/3,
+%% API.
+-export([start_link/4]).
+
+-export([init/4,
          loop/1]).
 
--export([upgrade_connection/2,
-         opts/1,
-         port_cmd/2]).
-
 -record(st, {socket,
-             handler, buffer= <<>>,
+             buffer= <<>>,
              parser_state,
-             session, session_mon,
+             session,
              proto_tag,
              pending=[],
              bytes_recv={os:timestamp(), 0},
@@ -35,27 +32,10 @@
 
 -define(HIBERNATE_AFTER, 5000).
 
--callback opts(Opts :: list({atom(), term()})) -> list({atom(), term()}).
--callback upgrade_connection(Socket :: port(),
-                             Opts :: list({atom(), term()})) ->
-    {ok, {Socket :: port(), SessionOpts :: list({atom(), term()})}}
-    | {error, term()}.
--callback decode_bin(Socket :: port(),
-                     Data :: binary(),
-                     ParserState :: term()) ->
-    Result :: {ok, {ParserState :: term(), binary()}}
-            | {more, ParserState :: term()}.
-
--spec start_link(_, _, _) -> {'ok', pid()}.
-start_link(Peer, Handler, Opts) ->
-    Pid = proc_lib:spawn_link(?MODULE, init, [Peer, Handler, Opts]),
+%% API.
+start_link(Ref, Socket, Transport, Opts) ->
+    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
     {ok, Pid}.
-
-%% called from vmq_tcp_listener
-upgrade_connection(TcpSocket, _) ->
-    {ok, {TcpSocket, []}}.
-
-opts(_Opts) -> [].
 
 send(TransportPid, Bin) when is_binary(Bin) ->
     TransportPid ! {send, Bin},
@@ -67,41 +47,33 @@ send(TransportPid, Frame) when is_tuple(Frame) ->
     TransportPid ! {send_frames, [Frame]},
     ok.
 
-handover(ReaderPid, Socket) ->
-    ReaderPid ! {handover, Socket},
-    ok.
-
--spec init(_, _, _) -> any().
-init(Peer, Handler, Opts) ->
+init(Ref, Socket, Transport, Opts) ->
     Self = self(),
-    SendFun = fun(F) -> vmq_tcp_transport:send(Self, F), ok end,
-    {ok, SessionPid} = vmq_session:start_link(Peer, SendFun, Opts),
+    SendFun = fun(F) -> send(Self, F), ok end,
+    NewOpts =
+    case Transport of
+        ranch_ssl ->
+            [{preauth, vmq_ssl:socket_to_common_name(Socket)}|Opts];
+        _ ->
+            Opts
+    end,
+    {ok, Peer} = Transport:peername(Socket),
+    {ok, SessionPid} = vmq_session:start_link(Peer, SendFun, NewOpts),
+    ok = ranch:accept_ack(Ref),
     process_flag(trap_exit, true),
-    wait_for_socket(#st{handler=Handler,
-                        session=SessionPid,
-                        proto_tag=proto_tag(Handler)}).
-
-wait_for_socket(State) ->
-    receive
-        {handover, Socket} ->
-            MaybeMaskedSocket =
-            case element(1, State#st.proto_tag) of
-                ssl -> {ssl, Socket};
-                _ -> Socket
-            end,
+    MaskedSocket = mask_socket(Transport, Socket),
+    case active_once(MaskedSocket) of
+        ok ->
             _ = vmq_exo:incr_socket_count(),
-            case active_once(MaybeMaskedSocket) of
-                ok ->
-                    loop(State#st{socket=MaybeMaskedSocket});
-                {error, Reason} ->
-                    exit(Reason)
-            end;
-        M ->
-            exit({unexpected_msg, M})
-    after
-        5000 ->
-            exit(socket_handover_timeout)
+            loop(#st{socket=MaskedSocket,
+                        session=SessionPid,
+                        proto_tag=proto_tag(Transport)});
+        {error, Reason} ->
+            exit(Reason)
     end.
+
+mask_socket(ranch_tcp, Socket) -> Socket;
+mask_socket(ranch_ssl, Socket) -> {ssl, Socket}.
 
 loop(State) ->
     loop_(State).
@@ -138,10 +110,8 @@ teardown(#st{session=SessionPid, socket=Socket}, Reason) ->
     fast_close(Socket).
 
 
-proto_tag(vmq_ws_transport) -> proto_tag(?MODULE);
-proto_tag(vmq_wss_transport) -> proto_tag(vmq_ssl_transport);
-proto_tag(?MODULE) -> {tcp, tcp_closed, tcp_error};
-proto_tag(vmq_ssl_transport) -> {ssl, ssl_closed, ssl_error}.
+proto_tag(ranch_tcp) -> {tcp, tcp_closed, tcp_error};
+proto_tag(ranch_ssl) -> {ssl, ssl_closed, ssl_error}.
 
 fast_close({ssl, Socket}) ->
     %% from rabbit_net.erl
@@ -176,18 +146,6 @@ active_once({ssl, Socket}) ->
 active_once(Socket) ->
     inet:setopts(Socket, [{active, once}]).
 
-process_data(SessionPid, ?MODULE, _, Data, ParserState) ->
-    process_bytes(SessionPid, Data, ParserState);
-process_data(SessionPid, vmq_ssl_transport, _, Data, ParserState) ->
-    process_bytes(SessionPid, Data, ParserState);
-process_data(SessionPid, TransportMod, Socket, Data, ParserState) ->
-    case apply(TransportMod, decode_bin, [Socket, Data, ParserState]) of
-        {ok, Bytes, {WSPs, NewParserState}} ->
-            {WSPs, process_bytes(SessionPid, Bytes, NewParserState)};
-        {more, NewParserState} ->
-            NewParserState
-    end.
-
 process_bytes(SessionPid, Bytes, undefined) ->
     process_bytes(SessionPid, Bytes, emqtt_frame:initial_state());
 process_bytes(SessionPid, Bytes, ParserState) ->
@@ -201,19 +159,12 @@ process_bytes(SessionPid, Bytes, ParserState) ->
             emqtt_frame:initial_state()
     end.
 
-handle_message({reconfigure_session, {CallerPid, CallerRef}, NewConfig}, State) ->
-    ok = vmq_session:reconfigure(State#st.session, NewConfig),
-    CallerPid ! {CallerRef, ok},
-    State;
-
 handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
     #st{session=SessionPid,
         socket=Socket,
-        handler=Handler,
         parser_state=ParserState,
         bytes_recv={TS, V}} = State,
-    NewParserState = process_data(SessionPid, Handler,
-                                  Socket, Data, ParserState),
+    NewParserState = process_bytes(SessionPid, Data, ParserState),
     {M, S, _} = TS,
     NrOfBytes = byte_size(Data),
     NewBytesRecv =
@@ -237,25 +188,19 @@ handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
     {exit, Error, State};
 handle_message({'EXIT', _, Reason}, State) ->
     {exit, Reason, State};
-handle_message({send, Bin}, #st{pending=Pending, handler=Handler} = State) ->
-    maybe_flush(State#st{pending=[reprocess(Handler, Bin)|Pending]});
-handle_message({send_frames, Frames}, #st{handler=Handler} = State) ->
+handle_message({send, Bin}, #st{pending=Pending} = State) ->
+    maybe_flush(State#st{pending=[Bin|Pending]});
+handle_message({send_frames, Frames}, State) ->
     lists:foldl(fun(Frame, #st{pending=AccPending} = AccSt) ->
                         Bin = emqtt_frame:serialise(Frame),
-                        maybe_flush(AccSt#st{
-                                      pending=[reprocess(Handler, Bin)
-                                               |AccPending]})
+                        maybe_flush(AccSt#st{pending=[Bin|AccPending]})
                 end, State, Frames);
 handle_message({inet_reply, _, ok}, State) ->
     State;
 handle_message({inet_reply, _, Status}, _) ->
-    exit({vmq_tcp_transport, send_failed, Status});
+    exit({send_failed, Status});
 handle_message(Msg, _) ->
-    exit({vmq_tcp_transport, unknown_message_type, Msg}).
-
-reprocess(vmq_tcp_transport, Bin) -> Bin;
-reprocess(TransportMod, Bin) ->
-    apply(TransportMod, encode_bin, [Bin]).
+    exit({unknown_message_type, Msg}).
 
 %% This magic number is the tcp-over-ethernet MSS (1460) minus the
 %% minimum size of a AMQP basic.deliver method frame (24) plus basic
@@ -321,4 +266,5 @@ port_cmd_({ssl, Socket}, Data) ->
     end;
 port_cmd_(Socket, Data) ->
     erlang:port_command(Socket, Data).
+
 

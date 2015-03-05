@@ -1,43 +1,8 @@
-%% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
-%% Licensed under the Apache License, Version 2.0 (the "License");
-%% you may not use this file except in compliance with the License.
-%% You may obtain a copy of the License at
-%%
-%%     http://www.apache.org/licenses/LICENSE-2.0
-%%
-%% Unless required by applicable law or agreed to in writing, software
-%% distributed under the License is distributed on an "AS IS" BASIS,
-%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%% See the License for the specific language governing permissions and
-%% limitations under the License.
-
--module(vmq_ssl_transport).
+-module(vmq_ssl).
 -include_lib("public_key/include/public_key.hrl").
--behaviour(vmq_tcp_transport).
+-export([socket_to_common_name/1,
+         opts/1]).
 
--export([opts/1,
-         upgrade_connection/2,
-         decode_bin/3,
-         encode_bin/1]).
-
-upgrade_connection(TcpSocket, TransportOpts) ->
-    case ssl:ssl_accept(TcpSocket, TransportOpts) of
-        {ok, SSLSocket} ->
-            CommonName = socket_to_common_name(SSLSocket),
-            {ok, {SSLSocket, [{preauth, CommonName}]}};
-        {error, Reason} ->
-            lager:warning("can't upgrade SSL due to ~p", [Reason]),
-            {error, cant_upgrade}
-    end.
-
-decode_bin(_Socket, Data, ParserState) ->
-    {ok, {ParserState, Data}}.
-
-encode_bin(Bin) -> Bin.
-
--spec socket_to_common_name({'sslsocket',_,pid() | {port(),_}}) ->
-                                   'undefined' | [any()].
 socket_to_common_name(Socket) ->
     case ssl:peercert(Socket) of
         {error, no_peercert} ->
@@ -61,8 +26,6 @@ extract_cn2([[#'AttributeTypeAndValue'{
 extract_cn2([_|Rest]) ->
     extract_cn2(Rest);
 extract_cn2([]) -> undefined.
-
-
 
 opts(Opts) ->
     [{cacerts, case proplists:get_value(cafile, Opts) of
@@ -100,13 +63,6 @@ opts(Opts) ->
      % end
     ].
 
-%-spec support_partial_chain() -> boolean().
-%support_partial_chain() ->
-%    {ok, VSN} = application:get_key(ssl, vsn),
-%    VSNTuple = list_to_tuple(
-%                 [list_to_integer(T)
-%                  || T <- string:tokens(VSN, ".")]),
-%    VSNTuple >= {5, 3, 6}.
 
 -spec ciphersuite_transform(boolean(), string()) -> [{atom(), atom(), atom()}].
 ciphersuite_transform(SupportEC, []) ->
@@ -117,7 +73,7 @@ ciphersuite_transform(_, CiphersString) when is_list(CiphersString) ->
 
 -spec ciphersuite_transform_([string()],
                              [{atom(), atom(), atom()}]) ->
-                                    [{atom(), atom(), atom()}].
+    [{atom(), atom(), atom()}].
 ciphersuite_transform_([CipherString|Rest], Acc) ->
     Cipher = string:tokens(CipherString, "-"),
     case cipher_ex_transform(Cipher) of
@@ -131,9 +87,9 @@ ciphersuite_transform_([CipherString|Rest], Acc) ->
 ciphersuite_transform_([], Acc) -> Acc.
 
 -spec cipher_ex_transform([string()]) ->
-                                 {ok, {atom(), atom(), atom()}} |
-                                 {error, unknown_keyexchange |
-                                  unknown_cipher | unknown_cipher}.
+    {ok, {atom(), atom(), atom()}} |
+    {error, unknown_keyexchange |
+     unknown_cipher | unknown_cipher}.
 cipher_ex_transform(["ECDH", "ANON"|Rest]) ->
     cipher_ci_transform(ecdh_anon, Rest);
 cipher_ex_transform(["ECDH", "ECDSA"|Rest]) ->
@@ -159,8 +115,8 @@ cipher_ex_transform([_|Rest]) -> cipher_ex_transform(Rest);
 cipher_ex_transform([]) -> {error, unknown_keyexchange}.
 
 -spec cipher_ci_transform(atom(), [string()]) ->
-                                 {ok, {atom(), atom(), atom()}} |
-                                 {error, unknown_hash | unknown_cipher}.
+    {ok, {atom(), atom(), atom()}} |
+    {error, unknown_hash | unknown_cipher}.
 cipher_ci_transform(KeyEx, ["3DES", "EDE", "CBC"|Rest]) ->
     cipher_hash_transform(KeyEx, '3des_ede_cbc', Rest);
 cipher_ci_transform(KeyEx, ["AES128", "CBC"|Rest]) ->
@@ -176,8 +132,8 @@ cipher_ci_transform(KeyEx, [_|Rest]) ->
 cipher_ci_transform(_, []) -> {error, unknown_cipher}.
 
 -spec cipher_hash_transform(atom(), atom(), [string()]) ->
-                                   {ok, {atom(), atom(), atom()}} |
-                                   {error, unknown_hash}.
+    {ok, {atom(), atom(), atom()}} |
+    {error, unknown_hash}.
 cipher_hash_transform(KeyEx, Cipher, ["MD5"]) -> {ok, {KeyEx, Cipher, md5}};
 cipher_hash_transform(KeyEx, Cipher, ["SHA"]) -> {ok, {KeyEx, Cipher, sha}};
 cipher_hash_transform(KeyEx, Cipher, ["SHA256"]) ->
@@ -192,7 +148,7 @@ cipher_hash_transform(_, _, []) -> {error, unknown_hash}.
 all_ciphers(UseEc) ->
     ECExchanges = [ecdh_anon, ecdh_ecdsa, ecdhe_ecdsa, ecdh_rsa, ecdhe_rsa],
     [CS || {Ex, _, _} =
-               CS <- ssl:cipher_suites(),
+           CS <- ssl:cipher_suites(),
            case UseEc of
                true -> true;
                false ->
@@ -216,9 +172,9 @@ unbroken_cipher_suites(CipherSuites) ->
 -spec verify_ssl_peer(_, 'valid' | 'valid_peer' |
                       {'bad_cert', _} |
                       {'extension', _}, _) ->
-                             {'fail', 'is_self_signed' |
-                              {'bad_cert', _}} |
-                             {'unknown', _} | {'valid', _}.
+    {'fail', 'is_self_signed' |
+     {'bad_cert', _}} |
+    {'unknown', _} | {'valid', _}.
 verify_ssl_peer(_, {bad_cert, _} = Reason, _) ->
     {fail, Reason};
 verify_ssl_peer(_, {extension, _}, UserState) ->
@@ -246,7 +202,6 @@ check_user_state(UserState, Cert) ->
             end
     end.
 
-
 -spec load_cert(string()) -> [binary()].
 load_cert(Cert) ->
     {ok, Bin} = file:read_file(Cert),
@@ -261,4 +216,5 @@ load_cert(Cert) ->
                     Contents, Type == 'Certificate',
                     Cipher == 'not_encrypted']
     end.
+
 
