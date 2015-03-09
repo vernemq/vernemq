@@ -129,28 +129,28 @@ listeners() ->
       end, [], supervisor:which_children(ranch_sup)).
 
 get_listener_config(Addr, Port) ->
-    Key = {Addr, Port},
-    {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
-    case [{M, Opts} ||{M, Opts} <-
-                      [{tcp, proplists:get_value(Key, TCP, nil)},
-                       {ssl, proplists:get_value(Key, SSL, nil)},
-                       {ws, proplists:get_value(Key, WS, nil)},
-                       {wss, proplists:get_value(Key, WSS, nil)}],
-                      Opts /= nil] of
-        [{TransportMod, Opts}] -> {ok, {TransportMod, Opts}};
-        [] -> {error, not_found}
-    end.
+    get_listener_config(Addr, Port, vmq_config:get_env(listeners)).
+get_listener_config(Addr, Port, [{T, Listeners}|Rest]) ->
+    case lists:keyfind({Addr, Port}, 1, Listeners) of
+        false ->
+            get_listener_config(Addr, Port, Rest);
+        {_, Opts} ->
+            {ok, {T, Opts}}
+    end;
+get_listener_config(_, _, []) -> {error, not_found}.
 
 
 reconfigure_listeners(_) ->
     TCPListenOptions = vmq_config:get_env(tcp_listen_options),
-    {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
     Listeners = supervisor:which_children(ranch_sup),
-    reconfigure_listeners(tcp, Listeners, TCP, TCPListenOptions),
-    reconfigure_listeners(ssl, Listeners, SSL, TCPListenOptions),
-    reconfigure_listeners(ws, Listeners, WS, TCPListenOptions),
-    reconfigure_listeners(wss, Listeners, WSS, TCPListenOptions),
-    stop_and_delete_unused(Listeners, lists:flatten([TCP, SSL, WS, WSS])).
+    reconfigure_listeners(TCPListenOptions, vmq_config:get_env(listeners), Listeners).
+reconfigure_listeners(TCPListenOptions, [{T, Config}|Rest], Listeners) ->
+    NewListeners = reconfigure_listeners_for_type(T, Config, TCPListenOptions, Listeners),
+    reconfigure_listeners(TCPListenOptions, Rest, NewListeners);
+reconfigure_listeners(_, [], ListenersToDelete) ->
+    lists:foreach(fun({Ref, _, _, _}) ->
+                          delete_listener(Ref)
+                  end, ListenersToDelete).
 
 addr(Addr) when is_list(Addr) ->
     {ok, Ip} = inet:parse_address(Addr),
@@ -158,34 +158,25 @@ addr(Addr) when is_list(Addr) ->
 addr(Addr) -> Addr.
 
 
-reconfigure_listeners(Type, Listeners, [{{Addr, Port}, Opts}|Rest], TCPOpts) ->
+reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts}|Rest], TCPOpts, Listeners) ->
     TransportOpts = TCPOpts ++ transport_opts_for_type(Type, Opts),
     start_listener(Type, Addr, Port, {TransportOpts, Opts}),
-    reconfigure_listeners(Type, Listeners, Rest, TCPOpts);
-reconfigure_listeners(_, _, [], _) -> ok.
-
-stop_and_delete_unused(Listeners, Config) ->
-    ListenersToDelete =
-    lists:foldl(fun ({{Addr, Port}, _}, Acc) ->
-                        Ref = listener_name(addr(Addr), Port),
-                        lists:keydelete({ranch_listener_sup, Ref}, 1, Acc)
-                end, Listeners, Config),
-    lists:foreach(fun({Ref, _, _, _}) ->
-                          delete_listener(Ref)
-                  end, ListenersToDelete).
+    Key = {ranch_listener_sup, listener_name(addr(Addr), Port)},
+    reconfigure_listeners_for_type(Type, Rest, TCPOpts, lists:keydelete(Key, 1, Listeners));
+reconfigure_listeners_for_type(_, [], _, Listeners) -> Listeners.
 
 listener_name(Ip, Port) ->
     {Ip, Port}.
 
-transport_for_type(tcp) -> ranch_tcp;
-transport_for_type(ssl) -> ranch_ssl;
-transport_for_type(ws) -> ranch_tcp;
-transport_for_type(wss) -> ranch_ssl.
+transport_for_type(mqtt) -> ranch_tcp;
+transport_for_type(mqtts) -> ranch_ssl;
+transport_for_type(mqttws) -> ranch_tcp;
+transport_for_type(mqttwss) -> ranch_ssl.
 
-protocol_for_type(tcp) -> vmq_ranch;
-protocol_for_type(ssl) -> vmq_ranch;
-protocol_for_type(ws) -> cowboy_protocol;
-protocol_for_type(wss) -> cowboy_protocol.
+protocol_for_type(mqtt) -> vmq_ranch;
+protocol_for_type(mqtts) -> vmq_ranch;
+protocol_for_type(mqttws) -> cowboy_protocol;
+protocol_for_type(mqttwss) -> cowboy_protocol.
 
 transport_opts_for_type(Type, Opts) ->
     transport_opts(transport_for_type(Type), Opts).

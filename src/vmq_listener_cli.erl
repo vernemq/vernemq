@@ -53,7 +53,10 @@ vmq_listener_start_cmd() ->
                                {longname, "mountpoint"},
                                {typecast, fun(MP) -> MP end}]},
                  {max_connections, [{longname, "max-connections"},
-                               {typecast, fun(MaxConns) -> MaxConns end}]},
+                               {typecast, fun
+                                              (infinity) -> infinity;
+                                              (N) when is_integer(N) -> N
+                                          end}]},
                  {websocket, [{shortname, "ws"},
                               {longname, "websocket"}]},
                  {ssl, [{longname, "ssl"}]},
@@ -119,13 +122,13 @@ vmq_listener_start_cmd() ->
 
             case IsSSL of
                 true when IsWebSocket ->
-                    start_listener(wss, Addr, Port, NewOpts1);
+                    start_listener(mqttwss, Addr, Port, NewOpts1);
                 true ->
-                    start_listener(ssl, Addr, Port, NewOpts1);
+                    start_listener(mqtts, Addr, Port, NewOpts1);
                 false when IsWebSocket ->
-                    start_listener(ws, Addr, Port, NewOpts1);
+                    start_listener(mqttws, Addr, Port, NewOpts1);
                 false ->
-                    start_listener(tcp, Addr, Port, NewOpts1)
+                    start_listener(mqtt, Addr, Port, NewOpts1)
             end
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
@@ -134,28 +137,18 @@ start_listener(Type, Addr, Port, Opts) ->
     case vmq_ranch_config:start_listener(Type, Addr, Port, Opts) of
         ok ->
             ListenerKey = {Addr, Port},
-            {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
-            NewListenerConf = {lists:keydelete(ListenerKey, 1, TCP),
-                               lists:keydelete(ListenerKey, 1, SSL),
-                               lists:keydelete(ListenerKey, 1, WS),
-                               lists:keydelete(ListenerKey, 1, WSS)},
-            UpdatedConf = update_conf(Type, {ListenerKey, Opts}, NewListenerConf),
-            vmq_config:set_env(listeners, UpdatedConf),
+            ListenerConfig = vmq_config:get_env(listeners),
+            ConfigForType = proplists:get_value(Type, ListenerConfig, []),
+            NewConfigForType = [{ListenerKey, Opts}
+                                |lists:keydelete(ListenerKey, 1, ConfigForType)],
+            NewListenerConfig = [{Type, NewConfigForType}
+                                 |lists:keydelete(Type, 1, ListenerConfig)],
+            vmq_config:set_env(listeners, NewListenerConfig),
             [clique_status:text("Done")];
         {error, Reason} ->
             Text = io_lib:format("can't start listener due to '~p'", [Reason]),
             [clique_status:alert([clique_status:text(Text)])]
     end.
-
-update_conf(tcp, ListenerConf, {TCP,_,_,_} = CleanedConf) ->
-    setelement(1, CleanedConf, [ListenerConf|TCP]);
-update_conf(ssl, ListenerConf, {_,SSL,_,_} = CleanedConf) ->
-    setelement(2, CleanedConf, [ListenerConf|SSL]);
-update_conf(ws, ListenerConf, {_,_,WS,_} = CleanedConf) ->
-    setelement(3, CleanedConf, [ListenerConf|WS]);
-update_conf(wss, ListenerConf, {_,_,_,WSS} = CleanedConf) ->
-    setelement(4, CleanedConf, [ListenerConf|WSS]).
-
 
 vmq_listener_stop_cmd() ->
     Cmd = ["vmq-admin", "listener", "stop"],
@@ -224,13 +217,15 @@ vmq_listener_delete_cmd() ->
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
             case vmq_ranch_config:delete_listener(Addr, Port) of
                 ok ->
-                    {TCP, SSL, WS, WSS} = vmq_config:get_env(listeners),
                     ListenerKey = {Addr, Port},
-                    ListenerConfig = {lists:keydelete(ListenerKey, 1, TCP),
-                                      lists:keydelete(ListenerKey, 1, SSL),
-                                      lists:keydelete(ListenerKey, 1, WS),
-                                      lists:keydelete(ListenerKey, 1, WSS)},
-                    vmq_config:set_env(listeners, ListenerConfig),
+                    ListenerConfig = vmq_config:get_env(listeners),
+                    NewListenerConfig =
+                    lists:foldl(
+                      fun({Type, ConfigForType}, Acc) ->
+                              NewConfigForType = lists:keydelete(ListenerKey, 1, ConfigForType),
+                              [{Type, NewConfigForType}|Acc]
+                      end, [], ListenerConfig),
+                    vmq_config:set_env(listeners, NewListenerConfig),
                     [clique_status:text("Done")];
                 {error, Reason} ->
                     Text = io_lib:format("can't delete listener due to '~p'", [Reason]),
@@ -309,7 +304,8 @@ vmq_listener_start_usage() ->
      "  is specified a TCP listener is started listening on the given port\n\n",
      "General Options\n\n",
      "  -a, --address=IpAddress\n",
-     "  -m, --mountpoint=Mountpoint\n\n",
+     "  -m, --mountpoint=Mountpoint\n",
+     "  --max-connections=[infinity | MaxConnections]\n\n",
      "WebSocket Options\n\n",
      "  --websocket\n",
      "      use the Websocket protocol as the underlying transport\n\n",
