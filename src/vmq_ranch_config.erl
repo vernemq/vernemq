@@ -171,12 +171,16 @@ listener_name(Ip, Port) ->
 transport_for_type(mqtt) -> ranch_tcp;
 transport_for_type(mqtts) -> ranch_ssl;
 transport_for_type(mqttws) -> ranch_tcp;
-transport_for_type(mqttwss) -> ranch_ssl.
+transport_for_type(mqttwss) -> ranch_ssl;
+transport_for_type(http) -> ranch_tcp;
+transport_for_type(https) -> ranch_ssl.
 
 protocol_for_type(mqtt) -> vmq_ranch;
 protocol_for_type(mqtts) -> vmq_ranch;
 protocol_for_type(mqttws) -> cowboy_protocol;
-protocol_for_type(mqttwss) -> cowboy_protocol.
+protocol_for_type(mqttwss) -> cowboy_protocol;
+protocol_for_type(http) -> cowboy_protocol;
+protocol_for_type(https) -> cowboy_protocol.
 
 transport_opts_for_type(Type, Opts) ->
     transport_opts(transport_for_type(Type), Opts).
@@ -184,11 +188,20 @@ transport_opts(ranch_tcp, _) -> [];
 transport_opts(ranch_ssl, Opts) -> vmq_ssl:opts(Opts).
 
 protocol_opts_for_type(Type, Opts) ->
-    protocol_opts(protocol_for_type(Type), Opts).
-protocol_opts(vmq_ranch, Opts) -> Opts;
-protocol_opts(cowboy_protocol, Opts) ->
+    protocol_opts(protocol_for_type(Type), Type, Opts).
+protocol_opts(vmq_ranch, _, Opts) -> Opts;
+protocol_opts(cowboy_protocol, Type, Opts)
+  when (Type == mqttws) or (Type == mqttwss) ->
     Dispatch = cowboy_router:compile(
                  [{'_', [{"/mqtt", vmq_websocket, [Opts]}]}
                  ]),
+    [{env, [{dispatch, Dispatch}]}];
+protocol_opts(cowboy_protocol, _, Opts) ->
+    CowboyRoutes =
+    case lists:keyfind(routes, 1, Opts) of
+        false -> [{'_', []}];
+        {_, Routes} ->
+            Routes
+    end,
+    Dispatch = cowboy_router:compile(CowboyRoutes),
     [{env, [{dispatch, Dispatch}]}].
-

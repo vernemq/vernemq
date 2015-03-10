@@ -59,6 +59,8 @@ vmq_listener_start_cmd() ->
                                           end}]},
                  {websocket, [{shortname, "ws"},
                               {longname, "websocket"}]},
+                 {http, [{shortname, "http"},
+                         {longname, "http"}]},
                  {ssl, [{longname, "ssl"}]},
                  {cafile, [{longname, "cafile"},
                            {typecast, fun(FileName) ->
@@ -117,16 +119,21 @@ vmq_listener_start_cmd() ->
         ([{port, Port}], Flags) ->
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
             IsWebSocket = lists:keymember(websocket, 1, Flags),
+            IsPlainHTTP = lists:keymember(http, 1, Flags),
             IsSSL = lists:keymember(ssl, 1, Flags),
             NewOpts1 = lists:keydelete(address, 1, lists:keydelete(port, 1, Flags)),
 
             case IsSSL of
                 true when IsWebSocket ->
                     start_listener(mqttwss, Addr, Port, NewOpts1);
+                true when IsPlainHTTP ->
+                    start_listener(https, Addr, Port, NewOpts1);
                 true ->
                     start_listener(mqtts, Addr, Port, NewOpts1);
                 false when IsWebSocket ->
                     start_listener(mqttws, Addr, Port, NewOpts1);
+                false when IsPlainHTTP ->
+                    start_listener(http, Addr, Port, NewOpts1);
                 false ->
                     start_listener(mqtt, Addr, Port, NewOpts1)
             end
