@@ -54,8 +54,9 @@ vmq_listener_start_cmd() ->
                                {typecast, fun(MP) -> MP end}]},
                  {max_connections, [{longname, "max-connections"},
                                {typecast, fun
-                                              (infinity) -> infinity;
-                                              (N) when is_integer(N) -> N
+                                              ("infinity") -> infinity;
+                                              (N) ->
+                                                    list_to_integer(N)
                                           end}]},
                  {websocket, [{shortname, "ws"},
                               {longname, "websocket"}]},
@@ -102,7 +103,7 @@ vmq_listener_start_cmd() ->
                                        end}]},
                  {require_certificate, [{longname, "require-certificate"}]},
                  {tls_version, [{longname, "tls-version"},
-                                {typespec, fun("sslv3") -> sslv3;
+                                {typecast, fun("sslv3") -> sslv3;
                                               ("tlsv1") -> tlsv1;
                                               ("tlsv1.1") -> 'tlsv1.1';
                                               ("tlsv1.2") -> 'tlsv1.2';
@@ -110,7 +111,11 @@ vmq_listener_start_cmd() ->
                                                    {error, {invalid_flag_value,
                                                             {'tls-version', V}}}
                                            end}]},
-                 {use_identity_as_username, [{longname, "use-identity-as-username"}]}
+                 {use_identity_as_username, [{longname, "use-identity-as-username"}]},
+                 {config_mod, [{longname, "config-mod"},
+                               {typecast, fun(M) -> list_to_existing_atom(M) end}]},
+                 {config_fun, [{longname, "config-fun"},
+                               {typecast, fun(F) -> list_to_existing_atom(F) end}]}
                 ],
     Callback =
     fun ([], _) ->
