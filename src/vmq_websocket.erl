@@ -24,6 +24,20 @@
              bytes_send={os:timestamp(), 0}}).
 
 init(Req, Opts) ->
+    case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req) of
+        undefined ->
+            init_(Req, Opts);
+        SubProtocols ->
+            case lists:member(<<"mqttv3.1">>, SubProtocols) of
+                true ->
+                    Req2 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, <<"mqttv3.1">>, Req),
+                    init_(Req2, Opts);
+                false ->
+                    {stop, Req, undefined}
+            end
+    end.
+
+init_(Req, Opts) ->
     Peer = cowboy_req:peer(Req),
     Self = self(),
     SendFun = fun(F) -> send(Self, F), ok end,
