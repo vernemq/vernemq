@@ -931,7 +931,7 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
     case vmq_plugin:all_till_ok(auth_on_publish, HookArgs) of
         ok ->
             AuthSuccess(Msg, HookArgs);
-        {ok, ChangedPayload} when is_binary(Payload) ->
+        {ok, ChangedPayload} when is_binary(ChangedPayload) ->
             AuthSuccess(Msg#vmq_msg{payload=ChangedPayload}, HookArgs);
         {ok, Args} when is_list(Args) ->
             ChangedTopic = proplists:get_value(topic, Args, Topic),
