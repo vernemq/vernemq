@@ -197,11 +197,19 @@ protocol_opts(cowboy_protocol, Type, Opts)
                  ]),
     [{env, [{dispatch, Dispatch}]}];
 protocol_opts(cowboy_protocol, _, Opts) ->
-    CowboyRoutes =
-    case lists:keyfind(routes, 1, Opts) of
-        false -> [{'_', []}];
-        {_, Routes} ->
-            Routes
+    Routes =
+    case {lists:keyfind(config_mod, 1, Opts),
+          lists:keyfind(config_fun, 1, Opts)} of
+        {{_, ConfigMod}, {_, ConfigFun}} ->
+            try
+                apply(ConfigMod, ConfigFun, [])
+            catch
+                _:_ ->
+                    []
+            end;
+        _ ->
+            []
     end,
+    CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
     [{env, [{dispatch, Dispatch}]}].
