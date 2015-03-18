@@ -23,12 +23,14 @@
              bytes_recv={os:timestamp(), 0},
              bytes_send={os:timestamp(), 0}}).
 
+-define(SUPPORTED_PROTOCOLS, [<<"mqttv3.1">>, <<"mqtt">>]).
+
 init(Req, Opts) ->
     case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req) of
         undefined ->
             init_(Req, Opts);
-        SubProtocols ->
-            case lists:member(<<"mqttv3.1">>, SubProtocols) of
+        [SubProtocol] ->
+            case lists:member(SubProtocol, ?SUPPORTED_PROTOCOLS) of
                 true ->
                     Req2 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, <<"mqttv3.1">>, Req),
                     init_(Req2, Opts);
