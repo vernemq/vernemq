@@ -13,6 +13,10 @@
 %% limitations under the License.
 
 -module(vmq_acl).
+-behaviour(auth_on_subscribe_hook).
+-behaviour(auth_on_publish_hook).
+-behaviour(on_config_change_hook).
+
 -export([start/0,
          stop/0,
          init/0,
