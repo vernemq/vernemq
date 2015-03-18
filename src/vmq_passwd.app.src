@@ -16,7 +16,7 @@
       {vmq_config_enabled, true},
       {vmq_plugin_hooks, [
           {vmq_passwd, change_config, 1},
-          {vmq_passwd, auth_on_register, 4}
+          {vmq_passwd, auth_on_register, 5}
         ]}
     ]}
  ]}.
