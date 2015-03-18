@@ -13,6 +13,8 @@
 %% limitations under the License.
 
 -module(vmq_passwd).
+-behaviour(auth_on_register_hook).
+-behaviour(on_config_change_hook).
 
 -export([start/0,
          stop/0,
@@ -22,7 +24,7 @@
          load_from_file/1,
          load_from_list/1]).
 -export([change_config/1,
-         auth_on_register/4]).
+         auth_on_register/5]).
 
 -define(TABLE, ?MODULE).
 -define(SALT_LEN, 12).
@@ -50,7 +52,7 @@ change_config(Configs) ->
             vmq_passwd_reloader:change_config_now()
     end.
 
-auth_on_register(_Peer, _ClientId, User, Password) ->
+auth_on_register(_Peer, _ClientId, User, Password, _CleanSession) ->
     check(User, Password).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
