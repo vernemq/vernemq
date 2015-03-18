@@ -1,0 +1,14 @@
+-type peer()            :: {inet:ip_address(), inet:port_number()}.
+-type username()        :: string() | undefined.
+-type password()        :: string() | undefined.
+-type client_id()       :: string().
+-type mountpoint()      :: string().
+-type subscriber_id()   :: {mountpoint(), client_id()}.
+-type reg_view()        :: atom().
+-type topic()           :: string().
+-type qos()             :: 0 | 1 | 2.
+-type routing_key()     :: string().
+-type payload()         :: binary().
+-type flag()            :: true | false.
+-type msg_ref()         :: binary().
+

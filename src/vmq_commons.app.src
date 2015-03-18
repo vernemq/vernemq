@@ -1,0 +1,11 @@
+{application, vmq_commons,
+ [
+  {description, "Common Functionality for VMQ"},
+  {vsn, git},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.
