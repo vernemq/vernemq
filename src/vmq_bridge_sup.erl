@@ -15,6 +15,7 @@
 -module(vmq_bridge_sup).
 
 -behaviour(supervisor).
+-behaviour(on_config_change_hook).
 
 %% API
 -export([start_link/0]).
