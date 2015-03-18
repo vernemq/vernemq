@@ -675,7 +675,7 @@ auth_on_register(Peer, {DefaultMP, ClientId} = SubscriberId, User,
     HookArgs = [Peer, SubscriberId, User, Password, DefaultCleanSess],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
-            {ok, SubscriberId, DefaultRegView};
+            {ok, SubscriberId, DefaultRegView, DefaultCleanSess};
         {ok, Args} ->
             ChangedMP = proplists:get_value(mountpoint, Args, DefaultMP),
             ChangedRegView = proplists:get_value(regview, Args, DefaultRegView),
