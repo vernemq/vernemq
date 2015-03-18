@@ -10,7 +10,7 @@
                                                   {msg_store,
                                                    {vmq_null_store, []}}]}).
 
--export([hook_uname_password_success/4,
+-export([hook_uname_password_success/5,
          hook_auth_on_publish/6,
          hook_auth_on_subscribe/3]).
 
@@ -204,7 +204,7 @@ recv(Socket, ParserState) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_uname_password_success(_, _, _, _) -> ok.
+hook_uname_password_success(_, _, _, _, _) -> ok.
 hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 hook_auth_on_subscribe(_, _, _) -> ok.
 
@@ -244,12 +244,12 @@ start_node(Node, Port, DiscoveryNodes) ->
     rpc:call(Node, application, load, [vmq_server]),
     rpc:call(Node, application, set_env, [vmq_server, allow_anonymous, false]),
     rpc:call(Node, application, set_env, [vmq_server, listeners,
-                                          {[?LISTENER(Port)], [], [], []}]),
+                                          [{mqtt, [?LISTENER(Port)]}]]),
     rpc:call(Node, application, set_env, [vmq_server, msg_store,
                                           {vmq_null_store, []}]),
     rpc:call(Node, vmq_server, start_no_auth, DiscoveryNodes),
     rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
-             [auth_on_register, ?MODULE, hook_uname_password_success, 4]),
+             [auth_on_register, ?MODULE, hook_uname_password_success, 5]),
     rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
              [auth_on_publish, ?MODULE, hook_auth_on_publish, 6]),
     rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,

@@ -41,7 +41,7 @@ setup() ->
     application:load(vmq_server),
     application:set_env(vmq_server, allow_anonymous, true),
     application:set_env(vmq_server, listeners,
-                        {[],[?listener(1888)],[], []}),
+                        [{mqtts, [?listener(1888)]}]),
     vmq_server:start_no_auth(),
     wait_til_ready().
 
@@ -49,14 +49,14 @@ setup_c() ->
     application:load(vmq_server),
     application:set_env(vmq_server, allow_anonymous, true),
     application:set_env(vmq_server, listeners,
-                        {[],[
+                        [{mqtts, [
                              {{{127,0,0,1}, 1888}, [{mountpoint, ""},
                                                     {cafile, "../test/ssl/all-ca.crt"},
                                                     {certfile, "../test/ssl/server.crt"},
                                                     {keyfile, "../test/ssl/server.key"},
                                                     {tls_version, 'tlsv1.2'},
                                                     {require_certificate, true}]}
-                            ], [], []}),
+                            ]}]),
     vmq_server:start_no_auth(),
     wait_til_ready().
 
@@ -64,7 +64,7 @@ setup_r() ->
     application:load(vmq_server),
     application:set_env(vmq_server, allow_anonymous, true),
     application:set_env(vmq_server, listeners,
-                        {[],[
+                        [{mqtts, [
                              {{{127,0,0,1}, 1888}, [{mountpoint, ""},
                                                     {cafile, "../test/ssl/all-ca.crt"},
                                                     {certfile, "../test/ssl/server.crt"},
@@ -72,14 +72,14 @@ setup_r() ->
                                                     {tls_version, 'tlsv1.2'},
                                                     {require_certificate, true},
                                                     {crlfile, "../test/ssl/crl.pem"}]}
-                            ], [], []}),
+                            ]}]),
     vmq_server:start_no_auth(),
     wait_til_ready().
 
 setup_i() ->
     application:load(vmq_server),
     application:set_env(vmq_server, listeners,
-                        {[],[
+                        [{mqtts, [
                              {{{127,0,0,1}, 1888}, [{mountpoint, ""},
                                                     {cafile, "../test/ssl/all-ca.crt"},
                                                     {certfile, "../test/ssl/server.crt"},
@@ -87,7 +87,7 @@ setup_i() ->
                                                     {tls_version, 'tlsv1.2'},
                                                     {require_certificate, true},
                                                     {use_identity_as_username, true}]}
-                            ], [], []}),
+                            ]}]),
     vmq_server:start_no_auth(),
     wait_til_ready().
 

@@ -5,10 +5,10 @@
 -define(listener(Port), {{{127,0,0,1}, Port}, [{max_connections, infinity},
                                                {nr_of_acceptors, 10},
                                                {mountpoint, ""}]}).
--export([hook_empty_client_id_proto_4/4,
-         hook_uname_no_password_denied/4,
-         hook_uname_password_denied/4,
-         hook_uname_password_success/4]).
+-export([hook_empty_client_id_proto_4/5,
+         hook_uname_no_password_denied/5,
+         hook_uname_password_denied/5,
+         hook_uname_password_success/5]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Tests Descriptions
@@ -43,7 +43,7 @@ setup() ->
     application:load(vmq_server),
     application:set_env(vmq_server, allow_anonymous, false),
     application:set_env(vmq_server, listeners,
-                        {[?listener(1888)],[],[],[]}),
+                        [{mqtt, [?listener(1888)]}]),
     vmq_server:start_no_auth(),
     wait_til_ready().
 teardown(_) ->
@@ -78,10 +78,10 @@ invalid_id_0_311(_) ->
     Connect = packet:gen_connect("", [{keepalive,10},{proto_ver,4}]),
     Connack = packet:gen_connack(0),
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 4),
+      auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 5),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 4),
+      auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 5),
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 invalid_id_missing(_) ->
@@ -111,10 +111,10 @@ uname_no_password_denied(_) ->
     Connect = packet:gen_connect("connect-uname-test-", [{keepalive,10}, {username, "user"}]),
     Connack = packet:gen_connack(4),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_no_password_denied, 4),
+      auth_on_register, ?MODULE, hook_uname_no_password_denied, 5),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_no_password_denied, 4),
+      auth_on_register, ?MODULE, hook_uname_no_password_denied, 5),
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 uname_password_denied(_) ->
@@ -122,10 +122,10 @@ uname_password_denied(_) ->
                                                             {password, "password9"}]),
     Connack = packet:gen_connack(4),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_password_denied, 4),
+      auth_on_register, ?MODULE, hook_uname_password_denied, 5),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_password_denied, 4),
+      auth_on_register, ?MODULE, hook_uname_password_denied, 5),
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 uname_password_success(_) ->
@@ -133,20 +133,20 @@ uname_password_success(_) ->
                                                             {password, "password9"}]),
     Connack = packet:gen_connack(0),
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_password_success, 4),
+      auth_on_register, ?MODULE, hook_uname_password_success, 5),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     vmq_plugin_mgr:disable_module_plugin(
-      auth_on_register, ?MODULE, hook_uname_password_success, 4),
+      auth_on_register, ?MODULE, hook_uname_password_success, 5),
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_empty_client_id_proto_4(_, _RandomId, undefined, undefined) -> ok.
-hook_uname_no_password_denied(_, {"", "connect-uname-test-"}, "user", undefined) -> {error, invalid_credentials}.
-hook_uname_password_denied(_, {"", "connect-uname-pwd-test"}, "user", "password9") -> {error, invalid_credentials}.
-hook_uname_password_success(_, {"", "connect-uname-pwd-test"}, "user", "password9") -> ok.
+hook_empty_client_id_proto_4(_, _RandomId, undefined, undefined, _) -> ok.
+hook_uname_no_password_denied(_, {"", "connect-uname-test-"}, "user", undefined, _) -> {error, invalid_credentials}.
+hook_uname_password_denied(_, {"", "connect-uname-pwd-test"}, "user", "password9", _) -> {error, invalid_credentials}.
+hook_uname_password_success(_, {"", "connect-uname-pwd-test"}, "user", "password9", _) -> ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper

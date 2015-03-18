@@ -131,7 +131,7 @@ start_app(NetTickTime, DiscoveryNode, I) ->
     net_kernel:set_net_ticktime(NetTickTime, NetTickTime),
     application:load(vmq_server),
     application:set_env(vmq_server, allow_anonymous, true),
-    application:set_env(vmq_server, listeners, {[?LISTENER(Port)], [], [], []}),
+    application:set_env(vmq_server, listeners, [{mqtt, [?LISTENER(Port)]}]),
     case I of
         1 ->
             % we are the discovery node
