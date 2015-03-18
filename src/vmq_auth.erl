@@ -13,8 +13,12 @@
 %% limitations under the License.
 
 -module(vmq_auth).
+-behaviour(auth_on_register_hook).
+-behaviour(auth_on_publish_hook).
+-behaviour(auth_on_subscribe_hook).
+
 -export([register_hooks/0]).
--export([auth_on_register/4,
+-export([auth_on_register/5,
          auth_on_subscribe/3,
          auth_on_publish/6]).
 
@@ -22,18 +26,18 @@
 -spec register_hooks() -> 'ok'.
 register_hooks() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_register, ?MODULE, auth_on_register, 4),
+           ?MODULE, auth_on_register, 5),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_subscribe, ?MODULE, auth_on_subscribe, 3),
+           ?MODULE, auth_on_subscribe, 3),
     ok = vmq_plugin_mgr:enable_module_plugin(
-      auth_on_publish, ?MODULE, auth_on_publish, 6).
+           ?MODULE, auth_on_publish, 6).
 
 
--spec auth_on_register(_, _, _, _) -> 'ok'.
-auth_on_register(SrcIp, SubscriberId, User, Password) ->
+-spec auth_on_register(_, _, _, _, _) -> 'ok'.
+auth_on_register(SrcIp, SubscriberId, User, Password, CleanSession) ->
     io:format("[~p] auth subscriber ~p from ~p
-              with username ~p and password ~p~n",
-              [self(), SubscriberId, SrcIp, User, Password]),
+              with username ~p and password ~p, cleansession: ~p~n",
+              [self(), SubscriberId, SrcIp, User, Password, CleanSession]),
     ok.
 
 -spec auth_on_subscribe(_, _, _) -> 'ok'.

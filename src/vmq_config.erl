@@ -15,6 +15,7 @@
 -module(vmq_config).
 
 -behaviour(gen_server).
+-behaviour(on_config_change_hook).
 
 %% API
 -export([start_link/0,

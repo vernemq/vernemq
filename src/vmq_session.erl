@@ -39,7 +39,6 @@
 
 -type proplist() :: [{atom(), any()}].
 -type statename() :: atom().
--type peer() :: {inet:ip_address(), inet:port_number()}.
 -type mqtt_variable_ping() :: undefined.
 -type mqtt_variable() :: #mqtt_frame_connect{}
                        | #mqtt_frame_connack{}
@@ -51,6 +50,7 @@
 -type mqtt_frame_fixed() ::  #mqtt_frame_fixed{}.
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 -type counter() :: {timestamp(), non_neg_integer(), non_neg_integer()}.
+-type msg_id() :: undefined | 1..65535.
 
 -ifdef(namespaced_types).
 -type ddict()   :: dict:dict().
@@ -671,15 +671,16 @@ check_client_id(#mqtt_frame_connect{client_id=Id}, State) ->
      send_connack(?CONNACK_INVALID_ID, State)}.
 
 auth_on_register(Peer, {DefaultMP, ClientId} = SubscriberId, User,
-                 Password, DefaultRegView) ->
-    HookArgs = [Peer, SubscriberId, User, Password],
+                 Password, DefaultRegView, DefaultCleanSess) ->
+    HookArgs = [Peer, SubscriberId, User, Password, DefaultCleanSess],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
             {ok, SubscriberId, DefaultRegView};
         {ok, Args} ->
             ChangedMP = proplists:get_value(mountpoint, Args, DefaultMP),
             ChangedRegView = proplists:get_value(regview, Args, DefaultRegView),
-            {ok, {ChangedMP, ClientId}, ChangedRegView};
+            ChangedCleanSess = proplists:get_value(clean_session, Args, DefaultCleanSess),
+            {ok, {ChangedMP, ClientId}, ChangedRegView, ChangedCleanSess};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -695,18 +696,19 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
     case AllowAnonymous of
         false ->
             case auth_on_register(Peer, SubscriberId, User,
-                                  Password, DefaultRegView) of
-                {ok, NewSubscriberId, NewRegView} ->
+                                  Password, DefaultRegView, CleanSess) of
+                {ok, NewSubscriberId, NewRegView, NewCleanSess} ->
                     case vmq_reg:register_subscriber(AllowMultiple,
                                                      NewSubscriberId,
-                                                     QPid, CleanSess) of
+                                                     QPid, NewCleanSess) of
                         ok ->
                             vmq_plugin:all(on_register, [Peer, NewSubscriberId,
                                                          User]),
                             check_will(F, State#state{
                                             subscriber_id=NewSubscriberId,
                                             username=User,
-                                            reg_view=NewRegView});
+                                            reg_view=NewRegView,
+                                            clean_session=NewCleanSess});
                         {error, Reason} ->
                             lager:warning("can't register client ~p due to ~p",
                                           [SubscriberId, Reason]),

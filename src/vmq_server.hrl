@@ -1,6 +1,6 @@
 -include_lib("emqtt_commons/include/emqtt_frame.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -type plugin_id()       :: {plugin, atom(), pid()}.
-
 
 -record(vmq_msg, {
           msg_ref               :: msg_ref() | {{pid(), atom()}, binary()},
@@ -13,7 +13,4 @@
           reg_view=vmq_reg_trie   :: atom(),
           mountpoint            :: mountpoint()
          }).
-
 -type msg()             :: #vmq_msg{}.
--type mountpoint()      :: list().
--type subscriber_id()   :: {mountpoint(), client_id()}.
