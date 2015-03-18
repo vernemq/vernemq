@@ -12,7 +12,7 @@
 
 -callback msg_store_fold(fun((MsgRef :: msg_ref(),
                               Value :: binary(),
-                              Acc :: any()) -> Acc :: any())) -> Acc :: any() | {error, Reason :: any()}.
+                              Acc :: any()) -> Acc :: any()), Acc :: any()) -> Acc :: any() | {error, Reason :: any()}.
 
 -callback msg_store_delete_sync(MsgRef :: msg_ref()) -> ok | {error, Reason :: any()}.
 -callback msg_store_delete_async(MsgRef :: msg_ref()) -> ok.
