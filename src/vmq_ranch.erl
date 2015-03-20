@@ -48,6 +48,7 @@ send(TransportPid, Frame) when is_tuple(Frame) ->
     ok.
 
 init(Ref, Socket, Transport, Opts) ->
+    ok = ranch:accept_ack(Ref),
     Self = self(),
     SendFun = fun(F) -> send(Self, F), ok end,
     NewOpts =
@@ -59,7 +60,6 @@ init(Ref, Socket, Transport, Opts) ->
     end,
     {ok, Peer} = Transport:peername(Socket),
     {ok, SessionPid} = vmq_session:start_link(Peer, SendFun, NewOpts),
-    ok = ranch:accept_ack(Ref),
     process_flag(trap_exit, true),
     MaskedSocket = mask_socket(Transport, Socket),
     case active_once(MaskedSocket) of
