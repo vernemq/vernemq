@@ -78,9 +78,17 @@ get_env(Key, Default) ->
     get_env(vmq_server, Key, Default).
 
 get_env(App, Key, Default) ->
+    IgnoreMnesiaConfig = case ets:lookup(?TABLE, ignore_mnesia_config) of
+                             [{_, true}] -> true;
+                             _ -> false
+                         end,
+    get_env(App, Key, Default, IgnoreMnesiaConfig).
+
+get_env(App, Key, Default, IgnoreMnesiaConfig) ->
     case ets:lookup(?TABLE, {App, Key}) of
-        [{_, Val}] -> Val;
-        [] ->
+        [{_, Val}] ->
+            Val;
+        [] when IgnoreMnesiaConfig == false->
             Val =
             case mnesia:dirty_read(?MNESIA, {node(), App, Key}) of
                 [] ->
@@ -96,12 +104,17 @@ get_env(App, Key, Default) ->
             %% cache val
             ets:insert(?TABLE, {{App, Key}, Val}),
             application:set_env(App, Key, Val),
-            Val
+            Val;
+        _ ->
+            Default
     end.
 
 get_all_env(App) ->
+    %% setting ignore_mnesia_config to true is useful, if the broker is
+    %% misconfigured and you need to cleanup first.
+    IgnoreMnesiaConfig = application:get_env(App, ignore_mnesia_config, false),
     lists:foldl(fun({Key, Val}, Acc) ->
-                        [{Key, get_env(App, Key, Val)}|Acc]
+                        [{Key, get_env(App, Key, Val, IgnoreMnesiaConfig)}|Acc]
                 end, [], application:get_all_env(App)).
 
 %% returns the config value in use for given key, together

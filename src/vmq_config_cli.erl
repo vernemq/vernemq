@@ -18,27 +18,36 @@
 register_config() ->
     case clique_config:load_schema([code:lib_dir()]) of
         {error, schema_files_not_found} ->
-            lager:debug("couldn't load cuttlefish schema");
+            case clique_config:load_schema(application:get_env(vmq_server, schema_dirs, ["./priv"])) of
+                ok ->
+                    register_config_();
+                E ->
+                    E
+            end;
         ok ->
-            ConfigKeys =
-            ["allow_anonymous",
-             "trade_consistency",
-             "allow_multiple_sessions",
-             "retry_interval",
-             "max_client_id_size",
-             "persistent_client_expiration",
-             "max_inflight_messages",
-             "max_queued_messages",
-             "message_size_limit",
-             "upgrade_outgoing_qos"
-            ],
-            _ = [clique:register_config([Key], fun register_config_callback/3)
-                 || Key <- ConfigKeys],
-            ok = clique:register_config_whitelist(ConfigKeys)
+            register_config_()
     end,
     register_cli_usage(),
     vmq_config_show_cmd(),
     vmq_config_reset_cmd().
+
+register_config_() ->
+    ConfigKeys =
+    ["allow_anonymous",
+     "trade_consistency",
+     "allow_multiple_sessions",
+     "retry_interval",
+     "max_client_id_size",
+     "persistent_client_expiration",
+     "max_inflight_messages",
+     "max_queued_messages",
+     "message_size_limit",
+     "upgrade_outgoing_qos"
+    ],
+    _ = [clique:register_config([Key], fun register_config_callback/3)
+         || Key <- ConfigKeys],
+    ok = clique:register_config_whitelist(ConfigKeys).
+
 
 register_cli_usage() ->
     clique:register_usage(["vmq-admin", "config"], config_usage()),

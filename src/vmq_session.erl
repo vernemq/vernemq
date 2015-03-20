@@ -20,6 +20,7 @@
          in/2,
          disconnect/1,
          get_info/2,
+         info_items/0,
          list_sessions/3,
          list_sessions_/3]).
 
@@ -158,6 +159,11 @@ get_info(FsmPid, InfoItems) when is_pid(FsmPid) ->
          _ when is_atom(I) -> I
      end || I <- InfoItems],
     save_sync_send_all_state_event(FsmPid, {get_info, AInfoItems}, [], 1000).
+
+info_items() ->
+    [pid, client_id, user, peer_host, peer_port, state,
+     mountpoint, node, protocol, timeout, retry_timeout,
+     recv_cnt, send_cnt, waiting_acks].
 
 -spec list_sessions([atom()|string()], function(), any()) -> any().
 list_sessions(InfoItems, Fun, Acc) ->

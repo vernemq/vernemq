@@ -140,10 +140,13 @@ get_listener_config(Addr, Port, [{T, Listeners}|Rest]) ->
 get_listener_config(_, _, []) -> {error, not_found}.
 
 
-reconfigure_listeners(_) ->
-    TCPListenOptions = vmq_config:get_env(tcp_listen_options),
+reconfigure_listeners(Config) ->
+    TCPListenOptions = proplists:get_value(tcp_listen_options, Config,
+                                          vmq_config:get_env(tcp_listen_options)),
+    ListenerConfig = proplists:get_value(listeners, Config,
+                                        vmq_config:get_env(listeners)),
     Listeners = supervisor:which_children(ranch_sup),
-    reconfigure_listeners(TCPListenOptions, vmq_config:get_env(listeners), Listeners).
+    reconfigure_listeners(TCPListenOptions, ListenerConfig, Listeners).
 reconfigure_listeners(TCPListenOptions, [{T, Config}|Rest], Listeners) ->
     NewListeners = reconfigure_listeners_for_type(T, Config, TCPListenOptions, Listeners),
     reconfigure_listeners(TCPListenOptions, Rest, NewListeners);
@@ -189,11 +192,11 @@ transport_opts(ranch_ssl, Opts) -> vmq_ssl:opts(Opts).
 
 protocol_opts_for_type(Type, Opts) ->
     protocol_opts(protocol_for_type(Type), Type, Opts).
-protocol_opts(vmq_ranch, _, Opts) -> Opts;
+protocol_opts(vmq_ranch, _, Opts) -> default_session_opts(Opts);
 protocol_opts(cowboy_protocol, Type, Opts)
   when (Type == mqttws) or (Type == mqttwss) ->
     Dispatch = cowboy_router:compile(
-                 [{'_', [{"/mqtt", vmq_websocket, [Opts]}]}
+                 [{'_', [{"/mqtt", vmq_websocket, [default_session_opts(Opts)]}]}
                  ]),
     [{env, [{dispatch, Dispatch}]}];
 protocol_opts(cowboy_protocol, _, Opts) ->
@@ -213,3 +216,7 @@ protocol_opts(cowboy_protocol, _, Opts) ->
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
     [{env, [{dispatch, Dispatch}]}].
+
+default_session_opts(Opts) ->
+    %% currently only the mountpoint option is supported
+    [{mountpoint, proplists:get_value(mountpoint, Opts, "")}].

@@ -52,12 +52,14 @@ vmq_listener_start_cmd() ->
                  {mountpoint, [{shortname, "m"},
                                {longname, "mountpoint"},
                                {typecast, fun(MP) -> MP end}]},
-                 {max_connections, [{longname, "max-connections"},
+                 {max_connections, [{longname, "max_connections"},
                                {typecast, fun
                                               ("infinity") -> infinity;
                                               (N) ->
                                                     list_to_integer(N)
                                           end}]},
+                 {nr_of_acceptors, [{longname, "nr_of_acceptors"},
+                                    {typecast, fun(N) -> list_to_integer(N) end}]},
                  {websocket, [{shortname, "ws"},
                               {longname, "websocket"}]},
                  {http, [{shortname, "http"},
@@ -101,8 +103,8 @@ vmq_listener_start_cmd() ->
                                                                 {crlfile, FileName}}}
                                                end
                                        end}]},
-                 {require_certificate, [{longname, "require-certificate"}]},
-                 {tls_version, [{longname, "tls-version"},
+                 {require_certificate, [{longname, "require_certificate"}]},
+                 {tls_version, [{longname, "tls_version"},
                                 {typecast, fun("sslv3") -> sslv3;
                                               ("tlsv1") -> tlsv1;
                                               ("tlsv1.1") -> 'tlsv1.1';
@@ -111,10 +113,10 @@ vmq_listener_start_cmd() ->
                                                    {error, {invalid_flag_value,
                                                             {'tls-version', V}}}
                                            end}]},
-                 {use_identity_as_username, [{longname, "use-identity-as-username"}]},
-                 {config_mod, [{longname, "config-mod"},
+                 {use_identity_as_username, [{longname, "use_identity_as_username"}]},
+                 {config_mod, [{longname, "config_mod"},
                                {typecast, fun(M) -> list_to_existing_atom(M) end}]},
-                 {config_fun, [{longname, "config-fun"},
+                 {config_fun, [{longname, "config_fun"},
                                {typecast, fun(F) -> list_to_existing_atom(F) end}]}
                 ],
     Callback =
@@ -126,7 +128,9 @@ vmq_listener_start_cmd() ->
             IsWebSocket = lists:keymember(websocket, 1, Flags),
             IsPlainHTTP = lists:keymember(http, 1, Flags),
             IsSSL = lists:keymember(ssl, 1, Flags),
-            NewOpts1 = lists:keydelete(address, 1, lists:keydelete(port, 1, Flags)),
+            NewOpts1 = lists:keydelete(address, 1,
+                                       lists:keydelete(port, 1,
+                                                       cleanup_flags(Flags, []))),
 
             case IsSSL of
                 true when IsWebSocket ->
@@ -185,7 +189,7 @@ vmq_listener_stop_cmd() ->
                                                end
                                        end}]},
                  {kill, [{shortname, "k"},
-                         {longname, "kill-sessions"}]}],
+                         {longname, "kill_sessions"}]}],
     Callback =
     fun([], Flags) ->
             Port = proplists:get_value(port, Flags, 1883),
@@ -299,6 +303,13 @@ vmq_listener_show_cmd() ->
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+cleanup_flags([{K, undefined}|Rest], Acc) ->
+    %% e.g. from --websocket or --ssl
+    cleanup_flags(Rest, [{K, true}|Acc]);
+cleanup_flags([KV|Rest], Acc) ->
+    cleanup_flags(Rest, [KV|Acc]);
+cleanup_flags([], Acc) -> Acc.
+
 vmq_listener_usage() ->
     ["vmq-admin listener <sub-command>\n\n",
      "  starts, modifies, and stops listeners.\n\n",
@@ -317,7 +328,8 @@ vmq_listener_start_usage() ->
      "General Options\n\n",
      "  -a, --address=IpAddress\n",
      "  -m, --mountpoint=Mountpoint\n",
-     "  --max-connections=[infinity | MaxConnections]\n\n",
+     "  --nr_of_acceptors=NrOfAcceptors\n",
+     "  --max_connections=[infinity | MaxConnections]\n\n",
      "WebSocket Options\n\n",
      "  --websocket\n",
      "      use the Websocket protocol as the underlying transport\n\n",
@@ -338,11 +350,11 @@ vmq_listener_start_usage() ->
      "      If --require-certificate is set, you can use a certificate\n",
      "      revocation list file to revoke access to particular client\n",
      "      certificates. The file has to be PEM encoded.\n",
-     "  --tls-version=TLSVersion\n",
+     "  --tls_version=TLSVersion\n",
      "      use this TLS version for the listener\n",
      "  --require_certificate\n",
      "      Use client certificates to authenticate your clients\n",
-     "  --use-identity-as-username\n",
+     "  --use_identity_as_username\n",
      "      If --require-certificate is set, the CN value from the client\n",
      "      certificate is used as the username for authentication\n\n"
     ].

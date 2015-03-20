@@ -15,6 +15,7 @@
 -module(vmq_server_cli).
 -export([init_registry/0]).
 -export([command/1,
+         command/2,
          register_cli/0]).
 
 -behaviour(clique_handler).
@@ -25,7 +26,28 @@ init_registry() ->
     clique:register([?MODULE, vmq_plugin_cli]).
 
 command(Cmd) ->
-    clique:run(Cmd).
+    command(Cmd, true).
+command(Cmd, true) ->
+    clique:run(Cmd);
+command(Cmd, false) ->
+    M0 = clique_command:match(Cmd),
+    M1 = clique_parser:parse(M0),
+    M2 = clique_parser:extract_global_flags(M1),
+    M3 = clique_parser:validate(M2),
+    {Res, _} = clique_command:run(M3),
+    parse_res(Res, Res).
+
+parse_res(error, error) ->
+    {error, unhandled_clique_error};
+parse_res([{alert, _}|_], Res) ->
+    {error, Res};
+parse_res([{_, _}|Rest], Res) ->
+    parse_res(Rest, Res);
+parse_res([], Res) ->
+    {ok, Res}.
+
+
+
 
 register_cli() ->
     vmq_config_cli:register_config(),
@@ -184,8 +206,7 @@ vmq_cluster_join_cmd() ->
                            ok ->
                                [clique_status:text("Done")];
                            {ok, already_member} ->
-                               Text = clique_status:text("Already a cluster member"),
-                               [clique_status:alert([Text])];
+                               [clique_status:text("Done, Already member!")];
                            {error, {_, Descr}} ->
                                Text = clique_status:text(Descr),
                                [clique_status:alert([Text])];
@@ -233,15 +254,10 @@ vmq_cluster_upgrade_cmd() ->
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 
-vmq_session_info_items() ->
-    [pid, client_id, user, peer_host, peer_port, state,
-     mountpoint, node, protocol, timeout, retry_timeout,
-     recv_cnt, send_cnt, waiting_acks].
-
 vmq_session_list_cmd() ->
     Cmd = ["vmq-admin", "session", "list"],
     KeySpecs = [],
-    ValidInfoItems = vmq_session_info_items(),
+    ValidInfoItems = vmq_session:info_items(),
     FlagSpecs = [{I, [{longname, atom_to_list(I)}]} || I <- ValidInfoItems],
     Callback = fun([], Flags) ->
                        InfoItems = [I || {I, undefined} <- Flags],
@@ -256,7 +272,7 @@ vmq_session_list_cmd() ->
 
 vmq_session_list_usage() ->
     Options = [io_lib:format("  --~p\n", [Item])
-               || Item <- vmq_session_info_items()],
+               || Item <- vmq_session:info_items()],
     ["vmq-admin session list\n\n",
      "  Prints the information of currently running sessions\n\n",
      "Options\n\n" | Options
