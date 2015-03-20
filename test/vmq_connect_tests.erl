@@ -40,15 +40,12 @@ connect_test_() ->
 %%% Setup Functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 setup() ->
-    application:load(vmq_server),
-    application:set_env(vmq_server, allow_anonymous, false),
-    application:set_env(vmq_server, listeners,
-                        [{mqtt, [?listener(1888)]}]),
-    vmq_server:start_no_auth(),
-    wait_til_ready().
+    vmq_test_utils:setup(),
+    vmq_server_cmd:set_config(allow_anonymous, false),
+    vmq_server_cmd:listener_start(1888, []),
+    ok.
 teardown(_) ->
-    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
-    vmq_server:stop().
+    vmq_test_utils:teardown().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -60,7 +57,7 @@ anon_denied(_) ->
     ?_assertEqual(ok, gen_tcp:close(Socket)).
 
 anon_success(_) ->
-    application:set_env(vmq_server, allow_anonymous, true),
+    vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_config:configure_node(),
     %% allow_anonymous is proxied through vmq_config.erl
     Connect = packet:gen_connect("connect-success-test", [{keepalive,10}]),
@@ -147,14 +144,3 @@ hook_empty_client_id_proto_4(_, _RandomId, undefined, undefined, _) -> ok.
 hook_uname_no_password_denied(_, {"", "connect-uname-test-"}, "user", undefined, _) -> {error, invalid_credentials}.
 hook_uname_password_denied(_, {"", "connect-uname-pwd-test"}, "user", "password9", _) -> {error, invalid_credentials}.
 hook_uname_password_success(_, {"", "connect-uname-pwd-test"}, "user", "password9", _) -> ok.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Helper
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-wait_til_ready() ->
-    wait_til_ready(vmq_cluster:is_ready(), 100).
-wait_til_ready(true, _) -> ok;
-wait_til_ready(false, I) when I > 0 ->
-    timer:sleep(5),
-    wait_til_ready(vmq_cluster:is_ready(), I - 1);
-wait_til_ready(_, _) -> exit(not_ready).

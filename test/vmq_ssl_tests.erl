@@ -38,63 +38,57 @@ ssl_test_() ->
 %%% Setup Functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 setup() ->
-    application:load(vmq_server),
-    application:set_env(vmq_server, allow_anonymous, true),
-    application:set_env(vmq_server, listeners,
-                        [{mqtts, [?listener(1888)]}]),
-    vmq_server:start_no_auth(),
-    wait_til_ready().
+    vmq_test_utils:setup(),
+    {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
+    {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
+                                                   {nr_of_acceptors, 5},
+                                                   {cafile, "../test/ssl/all-ca.crt"},
+                                                   {certfile, "../test/ssl/server.crt"},
+                                                   {keyfile, "../test/ssl/server.key"},
+                                                   {tls_version, tlsv1}]),
+    ok.
 
 setup_c() ->
-    application:load(vmq_server),
-    application:set_env(vmq_server, allow_anonymous, true),
-    application:set_env(vmq_server, listeners,
-                        [{mqtts, [
-                             {{{127,0,0,1}, 1888}, [{mountpoint, ""},
-                                                    {cafile, "../test/ssl/all-ca.crt"},
-                                                    {certfile, "../test/ssl/server.crt"},
-                                                    {keyfile, "../test/ssl/server.key"},
-                                                    {tls_version, 'tlsv1.2'},
-                                                    {require_certificate, true}]}
-                            ]}]),
-    vmq_server:start_no_auth(),
-    wait_til_ready().
+    vmq_test_utils:setup(),
+    {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
+    {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
+                                                   {nr_of_acceptors, 5},
+                                                   {cafile, "../test/ssl/all-ca.crt"},
+                                                   {certfile, "../test/ssl/server.crt"},
+                                                   {keyfile, "../test/ssl/server.key"},
+                                                   {tls_version, "tlsv1.2"},
+                                                   {require_certificate, true}]),
+    ok.
 
 setup_r() ->
-    application:load(vmq_server),
-    application:set_env(vmq_server, allow_anonymous, true),
-    application:set_env(vmq_server, listeners,
-                        [{mqtts, [
-                             {{{127,0,0,1}, 1888}, [{mountpoint, ""},
-                                                    {cafile, "../test/ssl/all-ca.crt"},
-                                                    {certfile, "../test/ssl/server.crt"},
-                                                    {keyfile, "../test/ssl/server.key"},
-                                                    {tls_version, 'tlsv1.2'},
-                                                    {require_certificate, true},
-                                                    {crlfile, "../test/ssl/crl.pem"}]}
-                            ]}]),
-    vmq_server:start_no_auth(),
-    wait_til_ready().
+    vmq_test_utils:setup(),
+    {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
+    {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
+                                                   {nr_of_acceptors, 5},
+                                                   {cafile, "../test/ssl/all-ca.crt"},
+                                                   {certfile, "../test/ssl/server.crt"},
+                                                   {keyfile, "../test/ssl/server.key"},
+                                                   {tls_version, "tlsv1.2"},
+                                                   {require_certificate, true},
+                                                   {crlfile, "../test/ssl/crl.pem"}]),
+    ok.
 
 setup_i() ->
-    application:load(vmq_server),
-    application:set_env(vmq_server, listeners,
-                        [{mqtts, [
-                             {{{127,0,0,1}, 1888}, [{mountpoint, ""},
-                                                    {cafile, "../test/ssl/all-ca.crt"},
-                                                    {certfile, "../test/ssl/server.crt"},
-                                                    {keyfile, "../test/ssl/server.key"},
-                                                    {tls_version, 'tlsv1.2'},
-                                                    {require_certificate, true},
-                                                    {use_identity_as_username, true}]}
-                            ]}]),
-    vmq_server:start_no_auth(),
-    wait_til_ready().
+    vmq_test_utils:setup(),
+    {ok, _} = vmq_server_cmd:set_config(allow_anonymous, false),
+    {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
+                                                   {nr_of_acceptors, 5},
+                                                   {cafile, "../test/ssl/all-ca.crt"},
+                                                   {certfile, "../test/ssl/server.crt"},
+                                                   {keyfile, "../test/ssl/server.key"},
+                                                   {tls_version, "tlsv1.2"},
+                                                   {require_certificate, true},
+                                                   {crlfile, "../test/ssl/crl.pem"},
+                                                   {use_identity_as_username, true}]),
+    ok.
 
 teardown(_) ->
-    io:format(user, "!!!!!!!!!!!!!!!!!!!!!! teardown~n", []),
-    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
-    vmq_server:stop().
+    vmq_test_utils:teardown().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -128,7 +122,6 @@ connect_no_auth(_) ->
                               [binary, {active, false}, {packet, raw},
                                {cacerts, load_cacerts()},
                                {versions, [tlsv1]}]),
-    io:format(user, "opts ~p~n", [ssl:getopts(SSock, [cipher, ciphers, version, versions])]),
     ok = ssl:send(SSock, Connect),
     ok = packet:expect_packet(ssl, SSock, "connack", Connack),
     ?_assertEqual(ok, ssl:close(SSock)).
@@ -215,14 +208,6 @@ connect_no_identity(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-wait_til_ready() ->
-    wait_til_ready(vmq_cluster:is_ready(), 100).
-wait_til_ready(true, _) -> ok;
-wait_til_ready(false, I) when I > 0 ->
-    timer:sleep(5),
-    wait_til_ready(vmq_cluster:is_ready(), I - 1);
-wait_til_ready(_, _) -> exit(not_ready).
-
 -compile({inline, [assert_error_or_closed/2]}).
 assert_error_or_closed(Error, Val) ->
     ?_assertEqual(case Val of

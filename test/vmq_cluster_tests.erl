@@ -4,11 +4,6 @@
 
 -define(SETUP(F), {setup, fun setup/0, fun teardown/1,
                    fun(State) -> {timeout, 600, F(State)} end}).
--define(LISTENER(Port), {{{127, 0, 0, 1}, Port}, [{max_connections, infinity},
-                                                  {nr_of_acceptors, 10},
-                                                  {mountpoint, ""},
-                                                  {msg_store,
-                                                   {vmq_null_store, []}}]}).
 
 -export([hook_uname_password_success/5,
          hook_auth_on_publish/6,
@@ -125,24 +120,26 @@ distributed_subscribe(Nodes) ->
 
 publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess) ->
     publish(self(), Nodes, NrOfProcesses, NrOfMsgsPerProcess, []).
-publish(_, _, 0, _, Pids) -> Pids;
-publish(Self, Nodes, NrOfProcesses, NrOfMsgsPerProcess, Pids) ->
-    Pid = spawn_link(fun() -> publish_(Self, Nodes, NrOfMsgsPerProcess) end),
-    publish(Self, Nodes, NrOfProcesses -1, NrOfMsgsPerProcess, [Pid|Pids]).
 
-publish_(Self, Nodes, NrOfMsgsPerProcess) ->
+publish(_, _, 0, _, Pids) -> Pids;
+publish(Self, [Node|Rest] = Nodes, NrOfProcesses, NrOfMsgsPerProcess, Pids) ->
+    Pid = spawn_link(fun() -> publish_(Self, {Node, Nodes}, NrOfMsgsPerProcess) end),
+    publish(Self, Rest ++ [Node], NrOfProcesses -1, NrOfMsgsPerProcess, [Pid|Pids]).
+
+publish_(Self, Node, NrOfMsgsPerProcess) ->
     {A, B, C} =  now(),
     random:seed(A, B, C),
-    publish__(Self, Nodes, NrOfMsgsPerProcess).
+    publish__(Self, Node, NrOfMsgsPerProcess).
 publish__(Self, _, 0) ->
     Self ! done;
-publish__(Self, Nodes, NrOfMsgsPerProcess) ->
+publish__(Self, {{_, Port}, Nodes} = Conf, NrOfMsgsPerProcess) ->
     Connect = packet:gen_connect("connect-multiple", [{keepalive, 10}]),
     Connack = packet:gen_connack(0),
-    {ok, _Socket} = packet:do_client_connect(Connect, Connack, opts(Nodes)),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
     check_unique_client("connect-multiple", Nodes),
+    gen_tcp:close(Socket),
     timer:sleep(random:uniform(100)),
-    publish__(Self, Nodes, NrOfMsgsPerProcess - 1).
+    publish__(Self, Conf, NrOfMsgsPerProcess - 1).
 
 publish_random(Nodes, N, Topic) ->
     publish_random(Nodes, N, Topic, []).
@@ -241,25 +238,42 @@ start_cluster(NrOfNodes) ->
     State.
 start_node(Node, Port, DiscoveryNodes) ->
     rpc:call(Node, code, add_paths, [code:get_path()]),
-    rpc:call(Node, application, load, [vmq_server]),
-    rpc:call(Node, application, set_env, [vmq_server, allow_anonymous, false]),
-    rpc:call(Node, application, set_env, [vmq_server, listeners,
-                                          [{mqtt, [?LISTENER(Port)]}]]),
-    rpc:call(Node, application, set_env, [vmq_server, msg_store,
-                                          {vmq_null_store, []}]),
-    rpc:call(Node, vmq_server, start_no_auth, DiscoveryNodes),
-    rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
-             [auth_on_register, ?MODULE, hook_uname_password_success, 5]),
-    rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
-             [auth_on_publish, ?MODULE, hook_auth_on_publish, 6]),
-    rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
-             [auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3]).
+    ok = rpc:call(Node, vmq_test_utils, setup, []),
+    case DiscoveryNodes of
+        [] ->
+            ignore;
+        _ ->
+            {ok, _} = rpc:call(Node, vmq_server_cmd, node_stop, []),
+            {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, DiscoveryNodes),
+            {ok, _} = rpc:call(Node, vmq_server_cmd, node_start, [])
+    end,
+    wait_til_ready(Node),
+    {ok, _} = rpc:call(Node, vmq_server_cmd, set_config, [allow_anonymous, false]),
+    {ok, _} = rpc:call(Node, vmq_server_cmd, listener_start, [Port, []]),
+
+    ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
+                  [auth_on_register, ?MODULE, hook_uname_password_success, 5]),
+    ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
+                  [auth_on_publish, ?MODULE, hook_auth_on_publish, 6]),
+    ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
+                  [auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3]).
+
+
+
+    %% rpc:call(Node, application, load, [vmq_server]),
+    %% rpc:call(Node, application, set_env, [vmq_server, allow_anonymous, false]),
+    %% rpc:call(Node, application, set_env, [vmq_server, listeners,
+    %%                                       [{mqtt, [?LISTENER(Port)]}]]),
+    %% rpc:call(Node, application, set_env, [vmq_server, msg_store,
+    %%                                       {vmq_null_store, []}]),
+    %% rpc:call(Node, vmq_server, start_no_auth, DiscoveryNodes),
+
 
 stop_cluster(Nodes) ->
     lists:foreach(
       fun({Node, _Port}) ->
-              rpc:call(Node, vmq_server, stop, []),
-              slave:stop(Node)
+              ok = rpc:call(Node, vmq_test_utils, teardown, []),
+              ok = slave:stop(Node)
       end, lists:reverse(Nodes)).
 
 wait_til_ready(Node) ->
@@ -268,8 +282,8 @@ wait_til_ready(_, true, _) -> ok;
 wait_til_ready(Node, false, I) when I > 0 ->
     timer:sleep(100),
     wait_til_ready(Node, rpc:call(Node, vmq_cluster, is_ready, []), I - 1);
-wait_til_ready(_, _, _) ->
-    exit(not_ready).
+wait_til_ready(N, _, _) ->
+    exit({not_ready, N, rpc:call(N, erlang, whereis, [vmq_cluster])}).
 
 opts(Nodes) ->
     {_, Port} = lists:nth(random:uniform(length(Nodes)), Nodes),

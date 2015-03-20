@@ -2,9 +2,6 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(SETUP(F), {setup, fun setup/0, fun teardown/1, F}).
--define(LISTENER(Port), {{{127, 0, 0, 1}, Port}, [{max_connections, infinity},
-                                                  {nr_of_acceptors, 10},
-                                                  {mountpoint, ""}]}).
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
 
@@ -37,18 +34,13 @@ subscribe_test_() ->
 %%% Setup Functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 setup() ->
-    application:load(vmq_server),
-    application:set_env(vmq_server, allow_anonymous, true),
-    application:set_env(vmq_server, listeners,
-                        [{mqtt, [?LISTENER(1888)]}]),
-    application:set_env(vmq_server, retry_interval, 10),
-    vmq_server:start_no_auth(),
-    wait_til_ready().
+    vmq_test_utils:setup(),
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_server_cmd:set_config(retry_interval, 10),
+    vmq_server_cmd:listener_start(1888, []),
+    ok.
 teardown(_) ->
-    vmq_msg_store:clean_all([]),
-    vmq_reg:reset_all_tables([]),
-    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
-    vmq_server:stop().
+    vmq_test_utils:teardown().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -372,14 +364,6 @@ hook_auth_on_publish(_, {"", "test-helper"}, _MsgId, _, <<"message">>, true) -> 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-wait_til_ready() ->
-    wait_til_ready(vmq_cluster:is_ready(), 100).
-wait_til_ready(true, _) -> ok;
-wait_til_ready(false, I) when I > 0 ->
-    timer:sleep(5),
-    wait_til_ready(vmq_cluster:is_ready(), I - 1);
-wait_til_ready(_, _) -> exit(not_ready).
-
 enable_on_subscribe() ->
     vmq_plugin_mgr:enable_module_plugin(
       auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
