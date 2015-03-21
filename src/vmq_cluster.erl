@@ -106,10 +106,7 @@ publish(Node, Msg) ->
 -spec init([]) -> {'ok', state()}.
 init([]) ->
     _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
-    _ = ets:insert(vmq_status, {ready, false}),
-    Nodes = mnesia_cluster_utils:cluster_nodes(running),
-    _ = [ets:insert(vmq_status, {Node, true}) ||Node <- Nodes],
-    _ = check_ready(Nodes),
+    _ = check_ready(),
     net_kernel:monitor_nodes(true),
     {ok, #state{}}.
 
@@ -199,31 +196,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 check_ready() ->
-    Nodes = mnesia_cluster_utils:cluster_nodes(all),
-    check_ready(Nodes).
-
-check_ready(Nodes) ->
-    check_ready(Nodes, [], ets:match(vmq_status, '$1')).
-
-check_ready(MnesiaNodes, Acc, [[{ready, _}]|Rest]) ->
-    check_ready(MnesiaNodes, Acc, Rest);
-check_ready(MnesiaNodes, Acc, [[{Node, Status}]|Rest]) ->
-    case lists:member(Node, MnesiaNodes) of
-        true when Status == true ->
-            ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
-            check_ready(MnesiaNodes -- [Node], Acc, Rest);
-        true when Status == false ->
-            ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
-            check_ready(MnesiaNodes -- [Node], [Node|Acc], Rest);
-        false ->
-            _ = vmq_cluster_node_sup:del_cluster_node(Node),
-            ets:delete(vmq_status, Node),
-            check_ready(MnesiaNodes -- [Node], Acc, Rest)
-    end;
-check_ready([], [], []) ->
-    ets:insert(vmq_status, {ready, true});
-check_ready(UnseenMnesiaNodes, _, []) ->
-    _ = [vmq_cluster_node_sup:ensure_cluster_node(Node)
-         || Node<- UnseenMnesiaNodes],
-    ets:insert(vmq_status, {ready, false}).
-
+    Status = mnesia_cluster_utils:status(),
+    AllNodes = proplists:get_value(nodes, Status, []),
+    DiscNodes= proplists:get_value(disc, AllNodes, []),
+    RamNodes= proplists:get_value(ram, AllNodes, []),
+    RunningNodes = proplists:get_value(running_nodes, Status, []),
+    Ready = lists:usort(RunningNodes) == lists:usort(DiscNodes ++ RamNodes),
+    [begin
+         ets:insert(vmq_status, {Node, true}),
+         ok = vmq_cluster_node_sup:ensure_cluster_node(Node)
+     end || Node <- RunningNodes],
+    ets:insert(vmq_status, {ready, Ready}).
