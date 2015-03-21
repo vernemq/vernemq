@@ -32,7 +32,7 @@ setup() ->
 
 teardown(Nodes) ->
     [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
-    stop_cluster(Nodes).
+    ok = stop_cluster(Nodes).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests

@@ -10,7 +10,7 @@ setup_use_default_auth() ->
 
 start_server(StartNoAuth) ->
     ok = maybe_start_distribution(),
-    mnesia_cluster_utils:force_reset(),
+    catch mnesia_cluster_utils:force_reset(),
     application:load(vmq_server),
     application:set_env(vmq_server, schema_dirs, ["../priv"]),
     application:set_env(vmq_server, listeners, []),
