@@ -12,7 +12,17 @@ start_server(StartNoAuth) ->
     ok = maybe_start_distribution(),
     catch mnesia_cluster_utils:force_reset(),
     application:load(vmq_server),
-    application:set_env(vmq_server, schema_dirs, ["../priv"]),
+    %% CWD using rebar3 is _build/logs/ct_run.nodename.YYYY-MM-DD_hh.mm.ss
+    PrivDir =
+    case {filelib:is_dir("./priv"),
+          filelib:is_dir("../../priv")} of
+        {true, _} ->
+            "./priv";
+        {_, true} ->
+            "../../priv"
+    end,
+
+    application:set_env(vmq_server, schema_dirs, [PrivDir]),
     application:set_env(vmq_server, listeners, []),
     application:set_env(vmq_server, ignore_mnesia_config, true),
     start_server_(StartNoAuth),

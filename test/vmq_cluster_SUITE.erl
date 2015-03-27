@@ -1,51 +1,77 @@
--module(vmq_cluster_tests).
--include_lib("eunit/include/eunit.hrl").
--include_lib("emqtt_commons/include/emqtt_frame.hrl").
+-module(vmq_cluster_SUITE).
+-export([
+         %% suite/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         all/0
+        ]).
 
--define(SETUP(F), {setup, fun setup/0, fun teardown/1,
-                   fun(State) -> {timeout, 600, F(State)} end}).
+-export([multiple_connect_test/1,
+         multiple_connect_unclean_test/1,
+         distributed_subscribe_test/1]).
 
 -export([hook_uname_password_success/5,
          hook_auth_on_publish/6,
          hook_auth_on_subscribe/3]).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Tests Descriptions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-cluster_test_() ->
-    [
-     ?SETUP(fun multiple_connect/1),
-     ?SETUP(fun multiple_connect_unclean/1),
-     ?SETUP(fun distributed_subscribe/1)
+-include_lib("common_test/include/ct.hrl").
+-include_lib("kernel/include/inet.hrl").
+-include_lib("emqtt_commons/include/emqtt_frame.hrl").
+
+%% ===================================================================
+%% common_test callbacks
+%% ===================================================================
+init_per_suite(_Config) ->
+    %% this might help, might not...
+    os:cmd(os:find_executable("epmd")++" -daemon"),
+    case net_kernel:start([test_master, shortnames]) of
+        {ok, _} -> ok;
+        {error, _} -> ok
+    end,
+    cover:start(),
+    _Config.
+
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_testcase(_Case, Config) ->
+    {_MasterNode, Nodes} = start_cluster(5),
+    CoverNodes = [begin
+                      wait_til_ready(Node),
+                      Node
+                  end || {Node, _} <- Nodes],
+    {ok, _} = ct_cover:add_nodes(CoverNodes),
+    [{nodes, Nodes}|Config].
+
+end_per_testcase(_, Config) ->
+    {_, Nodes} = lists:keyfind(nodes, 1, Config),
+    stop_cluster(Nodes),
+    Config.
+
+all() ->
+    [multiple_connect_test
+     , multiple_connect_unclean_test
+     , distributed_subscribe_test
     ].
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Setup Functions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-setup() ->
-    {A, B, C} = now(),
-    random:seed(A, B, C),
-    net_kernel:start([test_master, shortnames]),
-    {_MasterNode, Nodes} = start_cluster(5),
-    [wait_til_ready(Node) || {Node, _} <- Nodes],
-    Nodes.
-
-teardown(Nodes) ->
-    [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
-    ok = stop_cluster(Nodes).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-multiple_connect(Nodes) ->
+multiple_connect_test(Config) ->
+    {_, Nodes} = lists:keyfind(nodes, 1, Config),
     NrOfConnects = 250,
     NrOfProcesses = NrOfConnects div 50, %random:uniform(NrOfConnects),
     NrOfMsgsPerProcess = NrOfConnects div NrOfProcesses,
     publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess),
     done = receive_times(done, NrOfProcesses),
-    ?_assertEqual(true, check_unique_client("connect-multiple", Nodes)).
+    true = check_unique_client("connect-multiple", Nodes),
+    Config.
 
-multiple_connect_unclean(Nodes) ->
+multiple_connect_unclean_test(Config) ->
+    {_, Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "qos1/multiple/test",
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
                                                       {keepalive, 10}]),
@@ -84,9 +110,10 @@ multiple_connect_unclean(Nodes) ->
     io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after deliver~p~n", [Strd()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
-    ?_assertEqual(true, true).
+    Config.
 
-distributed_subscribe(Nodes) ->
+distributed_subscribe_test(Config) ->
+    {_, Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "qos1/distributed/test",
     Sockets =
     [begin
@@ -111,12 +138,7 @@ distributed_subscribe(Nodes) ->
              ok = gen_tcp:send(Socket, Puback),
              gen_tcp:close(Socket)
          end || Socket <- Rest],
-    ?_assertEqual(true, true).
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Internal
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    Config.
 
 publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess) ->
     publish(self(), Nodes, NrOfProcesses, NrOfMsgsPerProcess, []).
@@ -197,7 +219,6 @@ recv(Socket, ParserState) ->
 
 
 
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -209,54 +230,59 @@ hook_auth_on_subscribe(_, _, _) -> ok.
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 start_cluster(NrOfNodes) ->
-    {ok, HostName} = inet:gethostname(),
-    AHostName = list_to_atom(HostName),
     Self = self(),
     State =
     lists:foldl(
-      fun(I, {Node, Acc}) ->
-              Slave = list_to_atom("test_"++integer_to_list(I)),
-              {ok, SlaveNode} = slave:start(AHostName, Slave),
-              Master =
-              case Node of
-                  undefined -> SlaveNode;
-                  _ -> Node
-              end,
+      fun(I, {MasterNode, Acc}) ->
+              Name = list_to_atom("test_"++integer_to_list(I)),
               Port = 18880 + I,
-              case I of
-                  1 ->
-                      start_node(Master, Port, []);
+              {NewMasterNode, Node} =
+              case MasterNode of
+                  undefined ->
+                      N = start_node(Name, Port, []),
+                      {N, N};
                   _ ->
-                      RandomTime = random:uniform(2000),
-                      timer:sleep(RandomTime),
-                      start_node(SlaveNode, Port, [Master])
+                      N = start_node(Name, Port, [MasterNode]),
+                      {MasterNode, N}
               end,
               Self ! done,
-              {Master, [{SlaveNode, Port}|Acc]}
+              {NewMasterNode, [{Node, Port}|Acc]}
       end , {undefined, []}, lists:seq(1, NrOfNodes)),
     receive_times(done, NrOfNodes),
     State.
-start_node(Node, Port, DiscoveryNodes) ->
-    rpc:call(Node, code, add_paths, [code:get_path()]),
-    ok = rpc:call(Node, vmq_test_utils, setup, []),
-    case DiscoveryNodes of
-        [] ->
-            ignore;
-        _ ->
-            {ok, _} = rpc:call(Node, vmq_server_cmd, node_stop, []),
-            {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, DiscoveryNodes),
-            {ok, _} = rpc:call(Node, vmq_server_cmd, node_start, [])
-    end,
-    wait_til_ready(Node),
-    {ok, _} = rpc:call(Node, vmq_server_cmd, set_config, [allow_anonymous, false]),
-    {ok, _} = rpc:call(Node, vmq_server_cmd, listener_start, [Port, []]),
 
-    ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
-                  [auth_on_register, ?MODULE, hook_uname_password_success, 5]),
-    ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
-                  [auth_on_publish, ?MODULE, hook_auth_on_publish, 6]),
-    ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
-                  [auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3]).
+start_node(Name, Port, DiscoveryNodes) ->
+    CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
+    NodeConfig = [{monitor_master, true},
+                  {startup_functions,
+                   [{code, set_path, [CodePath]}]}],
+    case ct_slave:start(Name, NodeConfig) of
+        {ok, Node} ->
+            ok = rpc:call(Node, vmq_test_utils, setup, []),
+            case DiscoveryNodes of
+                [] ->
+                    ignore;
+                _ ->
+                    {ok, _} = rpc:call(Node, vmq_server_cmd, node_stop, []),
+                    {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, DiscoveryNodes),
+                    {ok, _} = rpc:call(Node, vmq_server_cmd, node_start, [])
+            end,
+            wait_til_ready(Node),
+            {ok, _} = rpc:call(Node, vmq_server_cmd, set_config, [allow_anonymous, false]),
+            {ok, _} = rpc:call(Node, vmq_server_cmd, listener_start, [Port, []]),
+
+            ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
+                          [auth_on_register, ?MODULE, hook_uname_password_success, 5]),
+            ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
+                          [auth_on_publish, ?MODULE, hook_auth_on_publish, 6]),
+            ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
+                          [auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3]),
+            Node;
+        {error, already_started, Node} ->
+            ct_slave:stop(Node),
+            timer:sleep(1000),
+            start_node(Name, Port, DiscoveryNodes)
+    end.
 
 
 
@@ -270,10 +296,13 @@ start_node(Node, Port, DiscoveryNodes) ->
 
 
 stop_cluster(Nodes) ->
+    error_logger:info_msg("stop cluster nodes ~p", [Nodes]),
     lists:foreach(
       fun({Node, _Port}) ->
+              [NodeNameStr|_] = re:split(atom_to_list(Node), "@", [{return, list}]),
               ok = rpc:call(Node, vmq_test_utils, teardown, []),
-              ok = slave:stop(Node)
+              ShortNodeName = list_to_existing_atom(NodeNameStr),
+              {ok, _} = ct_slave:stop(ShortNodeName)
       end, lists:reverse(Nodes)).
 
 wait_til_ready(Node) ->
