@@ -27,11 +27,7 @@
          publish/1,
 
          %% used in vmq_session:get_info/2
-         subscriptions_for_subscriber/1,
          get_subscriber_pids/1,
-
-         %% used in vmq_msg_store:init/1
-         subscriptions/2,
 
          %% used in vmq_server_utils
          client_stats/0,
@@ -56,10 +52,6 @@
 -export([teardown_session/2, publish_/2,
          register_subscriber_/4]).
 
-%% used by mnesia_cluster for table setup
--export([table_defs/0]).
-%% used from vmq-admin script (deployed with the VerneMQ release)
--export([reset_all_tables/1]).
 %% used from plugins
 -export([direct_plugin_exports/1]).
 %% used by reg views
@@ -71,10 +63,11 @@
 
 -record(state, {}).
 -record(session, {subscriber_id, pid, queue_pid, monitor, last_seen, clean}).
--record(vmq_subscriber, {topic, qos, id, node}).
--record(retain, {words, routing_key, payload, vclock=unsplit_vclock:fresh()}).
 
 -type state() :: #state{}.
+
+-define(RETAIN_DB, {vmq, retain}).
+-define(SUBSCRIBER_DB, {vmq, subscriber}).
 
 -spec start_link() -> {ok, pid()} | ignore | {error, atom()}.
 start_link() ->
@@ -102,25 +95,17 @@ subscribe_(User, SubscriberId, QPid, Topics) ->
     case vmq_plugin:all_till_ok(auth_on_subscribe,
                                 [User, SubscriberId, Topics]) of
         ok ->
-            subscribe_tx(User, SubscriberId, QPid, Topics);
+            lists:foreach(
+              fun({T, QoS}) ->
+                      add_subscriber(T, QoS, SubscriberId),
+                      vmq_exo:incr_subscription_count(),
+                      deliver_retained(SubscriberId, QPid, T, QoS)
+              end, Topics),
+            vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
+            ok;
         {error, _} ->
             {error, not_allowed}
     end.
-
-subscribe_tx(User, SubscriberId, QPid, Topics) ->
-    transaction(fun() ->
-                        _ = [add_subscriber_tx(T, QoS, SubscriberId)
-                             || {T, QoS} <- Topics],
-                        ok
-                end,
-                fun(_) ->
-                        _ = [begin
-                                 _ = vmq_exo:incr_subscription_count(),
-                                 deliver_retained(SubscriberId, QPid, T, QoS)
-                             end || {T, QoS} <- Topics],
-                        vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
-                        ok
-                end).
 
 -spec unsubscribe(flag(), username() | plugin_id(),
                   subscriber_id(), [topic()]) -> ok | {error, overloaded
@@ -133,56 +118,13 @@ unsubscribe(true, User, SubscriberId, Topics) ->
     unsubscribe_(User, SubscriberId, Topics).
 
 unsubscribe_(User, SubscriberId, Topics) ->
-    unsubscribe_tx(User, SubscriberId, Topics).
-
-unsubscribe_tx(User, SubscriberId, Topics) ->
-    transaction(fun() ->
-                    _ = [del_subscriber_tx(T, SubscriberId)
-                         || T <- Topics],
-                    ok
-                end,
-                fun(_) ->
-                        _ = [vmq_exo:decr_subscription_count()
-                             || _ <- Topics],
-                        _ = vmq_plugin:all(on_unsubscribe, [User, SubscriberId, Topics]),
-                        ok
-                end).
-
--spec subscriptions(mountpoint(), routing_key()) -> [{subscriber_id(), qos()}].
-subscriptions(MP, RoutingKey) ->
-    subscriptions(MP, fun(Obj, Acc) -> [Obj|Acc] end, [], RoutingKey).
-
--spec subscriptions(mountpoint(), function(), any(), routing_key()) -> any().
-subscriptions(MP, FoldFun, Acc, RoutingKey) ->
-    RegViews = vmq_config:get_env(reg_views, []),
-    lists:flatten([begin
-                       {_, NewAcc, _} = RV:fold(MP, RoutingKey,
-                                             fun subscriptions_/2,
-                                             {MP, Acc, FoldFun}),
-                       NewAcc
-                   end || RV <- RegViews]).
-
-subscriptions_({Topic, Node}, {MountPoint, Acc, FoldFun}) when Node == node() ->
-    NewAcc =
-    lists:foldl(
-      fun
-          (#vmq_subscriber{id={MP, _} = SubscriberId, qos=Qos}, Acc1)
-            when MP == MountPoint ->
-              FoldFun({SubscriberId, Qos}, Acc1);
-          (_, Acc1) ->
-              Acc1
-      end, Acc, mnesia:dirty_read(vmq_subscriber, Topic)),
-    {MountPoint, NewAcc, FoldFun};
-subscriptions_({_Topic, Node, {MP, _} = SubscriberId, QoS, _Pid}, {MP, Acc, FoldFun})
-  when Node == node() ->
-    {MP, FoldFun({SubscriberId, QoS}, Acc), FoldFun};
-subscriptions_(_, Acc) ->
-    Acc.
-
-subscriptions_for_subscriber(SubscriberId) ->
-    Res = mnesia:dirty_match_object(vmq_subscriber,
-                              #vmq_subscriber{id=SubscriberId, _='_'}),
-    [{T, Q} || #vmq_subscriber{topic=T, qos=Q} <- Res].
+    lists:foreach(
+      fun(T) ->
+        del_subscriber(T, SubscriberId),
+        vmq_exo:decr_subscription_count()
+      end, Topics),
+    _ = vmq_plugin:all(on_unsubscribe, [User, SubscriberId, Topics]),
+    ok.
 
 -spec register_subscriber(flag(), subscriber_id(), pid(), flag()) ->
     ok | {error, _}.
@@ -212,19 +154,16 @@ register_session(SubscriberId, QPid) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
     SessionPid = self(),
-    transaction(fun() -> remap_session_tx(SubscriberId) end,
-                fun({error, Reason}) -> {error, Reason};
-                   (_) ->
-                        case gen_server:call(?MODULE,
-                                             {monitor, SessionPid, QPid,
-                                              SubscriberId, false, false},
-                                             infinity) of
-                            ok ->
-                                vmq_session_proxy_sup:start_delivery(QPid, SubscriberId);
-                            {error, Reason} ->
-                                {error, Reason}
-                        end
-                end).
+    remap_session(SubscriberId),
+    case gen_server:call(?MODULE,
+                         {monitor, SessionPid, QPid,
+                          SubscriberId, false, false},
+                         infinity) of
+        ok ->
+            vmq_session_proxy_sup:start_delivery(QPid, SubscriberId);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 teardown_session(SubscriberId, CleanSession) ->
     %% we first have to disconnect a local or remote session for
@@ -250,17 +189,13 @@ register_subscriber_(SessionPid, QPid, SubscriberId, CleanSession) ->
     %% cleanup session for this client id if needed
     case CleanSession of
         true ->
-            transaction(fun() -> del_subscriber_tx('_', SubscriberId) end,
-                        fun({error, Reason}) -> {error, Reason};
-                           (_) -> register_subscriber__(SessionPid, QPid,
-                                                        SubscriberId, true)
-                        end);
+            del_subscriber(SubscriberId),
+            register_subscriber__(SessionPid, QPid,
+                                  SubscriberId, true);
         false ->
-            transaction(fun() -> remap_subscriptions_tx(SubscriberId) end,
-                        fun({error, Reason}) -> {error, Reason};
-                           (_) -> register_subscriber__(SessionPid, QPid,
-                                                        SubscriberId, false)
-                        end)
+            remap_subscriptions(SubscriberId),
+            register_subscriber__(SessionPid, QPid,
+                                  SubscriberId, false)
     end.
 
 -spec register_subscriber__(pid(), pid(), subscriber_id(), flag()) -> 'ok' | {error, _}.
@@ -304,7 +239,7 @@ publish(#vmq_msg{trade_consistency=true,
         true when Paylaod == <<>> ->
             %% retain delete action
             Words = emqtt_topic:words(RoutingKey),
-            transaction(fun() -> mnesia:delete({vmq_retain, Words}) end);
+            plumtree_metadata:delete(?RETAIN_DB, {Words});
         true ->
             %% retain set action
             retain_msg(Msg);
@@ -323,7 +258,7 @@ publish(#vmq_msg{trade_consistency=false,
         true when IsRetain and (Payload == <<>>) ->
             %% retain delete action
             Words = emqtt_topic:words(RoutingKey),
-            transaction(fun() -> mnesia:delete({vmq_retain, Words}) end);
+            plumtree_metadata:delete(?RETAIN_DB, {Words});
         true when IsRetain ->
             %% retain set action
             retain_msg(Msg);
@@ -336,8 +271,18 @@ publish(#vmq_msg{trade_consistency=false,
 
 %% vmq_reg_trie reg view delivers this format
 publish_({Topic, Node}, Msg) when Node == node() ->
-    Subscribers = mnesia:dirty_read(vmq_subscriber, Topic),
-    publish__(Node, Msg, Subscribers);
+    plumtree_metadata:fold(
+      fun({{SubscriberId, {_, QoS, _}}, N}, AccMsg) ->
+              case Node of
+                  N ->
+                      {_, QPids} = get_queue_pids(SubscriberId),
+                      publish___(SubscriberId, AccMsg, QoS, QPids);
+                  _ ->
+                      AccMsg
+              end
+      end, Msg, ?SUBSCRIBER_DB,
+     [{match, {'_', {Topic, '_', '_'}}},
+      {resolver, lww}]);
 
 %% vmq_reg_pets reg view delivers this format
 publish_({_Topic, Node, _SubscriberId, 0, undefined}, Msg)
@@ -368,22 +313,16 @@ publish_({_Topic, Node, SubscriberId, QoS, QPid}, Msg)
             RefedMsg
     end;
 %% we route the message to the proper node
+publish_({_, '$deleted'}, Msg) ->
+    Msg;
 publish_({Topic, Node}, Msg) ->
     case vmq_cluster:publish(Node, {Topic, Msg}) of
         ok ->
             Msg;
         {error, Reason} ->
-            lager:warning("cant' publish to remote node ~p due to '~p'", [Node, Reason]),
+            lager:warning("can't publish to remote node ~p due to '~p'", [Node, Reason]),
             Msg
     end.
-
-publish__(Node, Msg, [#vmq_subscriber{qos=QoS, id=Id, node=Node}|Rest]) ->
-    {_, QPids} = get_queue_pids(Id),
-    publish__(Node, publish___(Id, Msg, QoS, QPids), Rest);
-publish__(Node, Msg, [_|Rest]) ->
-    %% subscriber on other node
-    publish__(Node, Msg, Rest);
-publish__(_, Msg, []) -> Msg.
 
 publish___(_, Msg, 0, not_found) -> Msg;
 publish___(SubscriberId, Msg, QoS, not_found) ->
@@ -407,30 +346,9 @@ publish___(_, Msg, _, []) -> Msg.
 retain_msg(Msg = #vmq_msg{mountpoint=MP, reg_view=RegView,
                           routing_key=RoutingKey, payload=Payload}) ->
     Words = emqtt_topic:words(RoutingKey),
-    transaction(
-      fun() ->
-              case mnesia:wread({vmq_retain, Words}) of
-                  [] ->
-                      mnesia:write(vmq_retain, #retain{words=Words,
-                                                       routing_key=RoutingKey,
-                                                       payload=Payload}, write);
-                  [#retain{payload=Payload}] ->
-                      %% same retain message, no update needed
-                      ok;
-                  [#retain{vclock=VClock} = Old] ->
-                      mnesia:write(vmq_retain,
-                                   Old#retain{payload=Payload,
-                                              vclock=
-                                                  unsplit_vclock:increment(
-                                                    node(), VClock)
-                                             }, write)
-              end,
-              Msg#vmq_msg{retain=false}
-      end,
-     fun(RetainedMsg) ->
-             _ = RegView:fold(MP, RoutingKey, fun publish_/2, RetainedMsg),
-             ok
-     end).
+    plumtree_metadata:put(?RETAIN_DB, {Words}, {RoutingKey, Payload}),
+    _ = RegView:fold(MP, RoutingKey, fun publish_/2, Msg#vmq_msg{retain=false}),
+    ok.
 
 -spec deliver_retained(subscriber_id(), pid(), topic(), qos()) -> 'ok'.
 deliver_retained(SubscriberId, QPid, Topic, QoS) ->
@@ -443,12 +361,8 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
         ["#"|Tail] -> lists:reverse(Tail) ++ '_' ;
         _ -> Words
     end,
-    RetainedMsgs = mnesia:dirty_match_object(vmq_retain,
-                                             #retain{words=NewWords,
-                                                     routing_key='_',
-                                                     payload='_', vclock='_'}),
-    lists:foreach(
-      fun(#retain{routing_key=RoutingKey, payload=Payload}) ->
+    plumtree_metadata:fold(
+      fun({_Key, [{RoutingKey, Payload}]}, _) ->
               Msg = #vmq_msg{routing_key=RoutingKey,
                              payload=Payload,
                              retain=true,
@@ -458,8 +372,12 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
                   0 -> Msg;
                   _ -> vmq_msg_store:store(SubscriberId, Msg)
               end,
-              vmq_queue:enqueue(QPid, {deliver, QoS, MaybeChangedMsg})
-      end, RetainedMsgs).
+              vmq_queue:enqueue(QPid, {deliver, QoS, MaybeChangedMsg}),
+              ok
+      end, ok, ?RETAIN_DB,
+      %% iterator opts
+      [{match, {NewWords}}]).
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% RPC Callbacks / Maintenance
@@ -492,50 +410,6 @@ wait_until_stopped(SubscriberPid) ->
         false ->
             ok
     end.
-
--spec table_defs() -> [{atom(), [{atom(), any()}]}].
-table_defs() ->
-    [
-     {vmq_subscriber, [
-        {record_name, vmq_subscriber},
-        {type, bag},
-        {attributes, record_info(fields, vmq_subscriber)},
-        {disc_copies, [node()]},
-        {match, #vmq_subscriber{_='_'}},
-        unsplit_bag_props()]},
-     {vmq_retain, [
-        {record_name, retain},
-        {attributes, record_info(fields, retain)},
-        {disc_copies, [node()]},
-        {match, #retain{_='_'}},
-        unsplit_vclock_props(vclock)]}
-].
-
-unsplit_bag_props() ->
-    {user_properties,
-     [{unsplit_method, {unsplit_lib, bag, []}}]}.
-
-unsplit_vclock_props(Attr) ->
-    {user_properties,
-     [{unsplit_method, {unsplit_lib, vclock, [Attr]}}]}.
-
--spec reset_all_tables([]) -> ok.
-reset_all_tables([]) ->
-    %% called using vmq-admin, mainly for test purposes
-    %% you don't want to call this during production
-    _ = [reset_table(T) || {T, _}<- table_defs()],
-    ets:delete_all_objects(vmq_session),
-    ok.
-
--spec reset_table(atom()) -> ok | {error, overloaded}.
-reset_table(Tab) ->
-    Keys = mnesia:dirty_all_keys(Tab),
-    transaction(
-      fun() ->
-              lists:foreach(fun(Key) ->
-                                    mnesia:delete({Tab, Key})
-                            end, Keys)
-      end).
 
 -spec wait_til_ready() -> 'ok'.
 wait_til_ready() ->
@@ -652,58 +526,60 @@ plugin_queue_loop(PluginPid, PluginMod) ->
 
 
 subscribe_subscriber_changes() ->
-    mnesia:subscribe({table, vmq_subscriber, simple}),
+    plumtree_metadata_manager:subscribe(?SUBSCRIBER_DB),
     Node = node(),
-    {mnesia_table_event,
-     fun
-        ({delete_object, #vmq_subscriber{topic=Topic, qos=QoS,
-                                         id={MP, _} = SubscriberId, node=N}, _})
-          when N == Node ->
-             {unsubscribe, MP, Topic, {SubscriberId, QoS}};
-        ({delete_object, #vmq_subscriber{topic=Topic, id={MP, _}, node=N}, _}) ->
-             {unsubscribe, MP, Topic, N};
-        ({write, #vmq_subscriber{topic=Topic, qos=QoS,
-                                 id={MP, _} = SubscriberId, node=N}, _})
-          when N == Node ->
-             QPids =
-             case get_queue_pids(SubscriberId) of
-                 {ok, Pids} -> Pids;
-                 {error, not_found} -> {error, not_found}
-             end,
-             {subscribe, MP, Topic, {SubscriberId, QoS, QPids}};
-        ({write, #vmq_subscriber{topic=Topic, id={MP, _}, node=N}, _}) ->
-             {subscribe, MP, Topic, N};
+    fun
+        ({delete, ?SUBSCRIBER_DB, _, []}) ->
+            %% no existing subscription was deleted
+            ignore;
+        ({delete, ?SUBSCRIBER_DB, {{MP, _} = SubscriberId, {Topic, QoS, _}}, [Metadata]}) ->
+            case plumtree_metadata_object:values(Metadata) of
+                [Node|_] ->
+                    {unsubscribe, MP, Topic, {SubscriberId, QoS}};
+                [OtherNode|_] ->
+                    {unsubscribe, MP, Topic, OtherNode}
+            end;
+        ({write, ?SUBSCRIBER_DB, {{MP, _} = SubscriberId, {Topic, QoS, _}}, Metadata}) ->
+            case plumtree_metadata_object:values(Metadata) of
+                [Node|_] ->
+                    QPids =
+                    case get_queue_pids(SubscriberId) of
+                        {ok, Pids} -> Pids;
+                        {error, not_found} -> {error, not_found}
+                    end,
+                    {subscribe, MP, Topic, {SubscriberId, QoS, QPids}};
+                [OtherNode|_] ->
+                    {subscribe, MP, Topic, OtherNode}
+            end;
         (_) ->
-             ignore
-     end}.
+            ignore
+    end.
 
 fold_subscribers(FoldFun, Acc) ->
     fold_subscribers(false, FoldFun, Acc).
 
 fold_subscribers(ResolveQPids, FoldFun, Acc) ->
     Node = node(),
-    mnesia:async_dirty(
-      fun() ->
-              mnesia:foldl(
-                fun(#vmq_subscriber{topic=Topic, qos=QoS,
-                                    id={MP, _} = SubscriberId, node=N}, AccAcc) ->
-                        case Node == N of
-                            true when ResolveQPids ->
-                                QPids =
-                                case get_queue_pids(SubscriberId) of
-                                    {ok, Pids} -> Pids;
-                                    {error, not_found} -> {error, not_found}
-                                end,
-                                FoldFun({MP, Topic, {SubscriberId, QoS, QPids}},
-                                        AccAcc);
-                            true ->
-                                FoldFun({MP, Topic, {SubscriberId, QoS, undefined}},
-                                        AccAcc);
-                            false ->
-                                FoldFun({MP, Topic, N}, AccAcc)
-                        end
-                end, Acc, vmq_subscriber)
-      end).
+    plumtree_metadata:fold(
+      fun({{{MP, _} = SubscriberId, {Topic, QoS, _}}, N}, AccAcc) ->
+              case Node == N of
+                  true when ResolveQPids ->
+                      QPids =
+                      case get_queue_pids(SubscriberId) of
+                          {ok, Pids} -> Pids;
+                          {error, not_found} -> {error, not_found}
+                      end,
+                      FoldFun({MP, Topic, {SubscriberId, QoS, QPids}},
+                              AccAcc);
+                  true ->
+                      FoldFun({MP, Topic, {SubscriberId, QoS, undefined}},
+                              AccAcc);
+                  false ->
+                      FoldFun({MP, Topic, N}, AccAcc)
+              end
+      end, Acc, ?SUBSCRIBER_DB,
+      [{resolver, lww}]
+     ).
 
 fold_sessions(FoldFun, Acc) ->
     ets:foldl(fun(#session{subscriber_id=SubscriberId,
@@ -712,57 +588,53 @@ fold_sessions(FoldFun, Acc) ->
               end, Acc, vmq_session).
 
 
--spec add_subscriber_tx(topic(), qos(), subscriber_id()) -> ok | ignore | abort.
-add_subscriber_tx(Topic, Qos, SubscriberId) ->
-    mnesia:write(vmq_subscriber,
-                 #vmq_subscriber{topic=Topic, qos=Qos, id=SubscriberId,
-                                 node=node()}, write).
+-spec add_subscriber(topic(), qos(), subscriber_id()) -> ok.
+add_subscriber(Topic, QoS, SubscriberId) ->
+    add_subscriber(Topic, QoS, SubscriberId, os:timestamp()).
+add_subscriber(Topic, QoS, SubscriberId, Timestamp) ->
+    Key = {SubscriberId, {Topic, QoS, Timestamp}},
+    plumtree_metadata:put(?SUBSCRIBER_DB, Key, node()).
 
--spec del_subscriber_tx(topic() | '_' , subscriber_id()) -> ok.
-del_subscriber_tx(Topic, SubscriberId) ->
-    Objs = mnesia:match_object(vmq_subscriber,
-                               #vmq_subscriber{topic=Topic,
-                                               id=SubscriberId, _='_'}, write),
-    lists:foreach(fun(Obj) ->
-                          mnesia:delete_object(vmq_subscriber, Obj, write)
-                  end, Objs).
 
--spec remap_subscriptions_tx(subscriber_id()) -> ok.
-remap_subscriptions_tx(SubscriberId) ->
-    Objs = mnesia:match_object(vmq_subscriber,
-                               #vmq_subscriber{id=SubscriberId, _='_'}, write),
+-spec del_subscriber(subscriber_id()) -> ok.
+del_subscriber(SubscriberId) ->
+    del_subscriber('_', SubscriberId).
+
+-spec del_subscriber(topic() | '_' , subscriber_id()) -> ok.
+del_subscriber(Topic, SubscriberId) ->
+    plumtree_metadata:fold(
+      fun({Key, _}, _) ->
+              plumtree_metadata:delete(?SUBSCRIBER_DB, Key)
+      end, ok, ?SUBSCRIBER_DB,
+      [{match, {SubscriberId, {Topic, '_', '_'}}}]).
+
+-spec remap_subscriptions(subscriber_id()) -> ok.
+remap_subscriptions(SubscriberId) ->
     Node = node(),
-    lists:foreach(
-      fun(#vmq_subscriber{topic=T, qos=Qos, node=N} = Obj) ->
+    plumtree_metadata:fold(
+      fun({{_, {Topic, QoS, TS}}, N}, _) ->
               case N of
-                  Node -> ignore;
+                  Node -> ok;
                   _ ->
-                      %% TODO: we add the subscriber before deleting the old
-                      %% one,if we get a route request in between for this topic
-                      %% we might deliver the message to the old and new nodes
-                      %% resulting in duplicate messages delivered from the
-                      %% message stores residing on both nodes. We prefer to
-                      %% deliver duplicates instead of losing messages. The
-                      %% session fsm has currently no way to detect that it is
-                      %% a duplicate message, this should be improved!
-                      add_subscriber_tx(T, Qos, SubscriberId),
-                      mnesia:delete_object(vmq_subscriber, Obj, write)
+                      add_subscriber(Topic, QoS, SubscriberId, TS)
               end
-      end, Objs).
+      end, ok, ?SUBSCRIBER_DB,
+      [{match, {SubscriberId, '_'}},
+       {resolver, lww}]).
 
--spec remap_session_tx(subscriber_id()) -> ok.
-remap_session_tx(SubscriberId) ->
-    Objs = mnesia:match_object(vmq_subscriber,
-                               #vmq_subscriber{id=SubscriberId, _='_'}, write),
+-spec remap_session(subscriber_id()) -> ok.
+remap_session(SubscriberId) ->
     Node = node(),
-    lists:foreach(
-      fun(#vmq_subscriber{topic=T, qos=Qos, node=N}) ->
+    plumtree_metadata:fold(
+      fun({{_, {Topic, QoS, _}}, N}, _) ->
               case N of
-                  Node -> ignore;
+                  Node -> ok;
                   _ ->
-                      add_subscriber_tx(T, Qos, SubscriberId)
+                      add_subscriber(Topic, QoS, SubscriberId)
               end
-      end, Objs).
+      end, ok, ?SUBSCRIBER_DB,
+      [{match, {SubscriberId, '_'}},
+       {resolver, lww}]).
 
 
 -spec get_subscriber_pids(subscriber_id()) ->
@@ -808,13 +680,11 @@ total_inactive_sessions() ->
     ets:select_count(vmq_session, [{Pattern, [], [true]}]).
 
 total_subscriptions() ->
-    Size = mnesia:table_info(vmq_subscriber, size),
-    [{total, Size}].
+    [{total, plumtree_metadata_manager:size(?SUBSCRIBER_DB)}].
 
 -spec retained() -> non_neg_integer().
 retained() ->
-    mnesia:table_info(vmq_retain, size).
-
+    plumtree_metadata_manager:size(?RETAIN_DB).
 
 message_queue_monitor() ->
     {messages, Messages} = erlang:process_info(whereis(vmq_reg), messages),
@@ -842,13 +712,10 @@ remove_expired_subscribers(ExpiredSinceSeconds) ->
 remove_expired_subscribers_({[[SubscriberId, Pid]|Rest], Cont}) ->
     case is_process_alive(Pid) of
         false ->
-            transaction(
-              fun() -> del_subscriber_tx('_', SubscriberId) end,
-              fun(_) ->
-                      vmq_msg_store:clean_session(SubscriberId),
-                      _ = vmq_exo:incr_expired_clients(),
-                      remove_expired_subscribers_({Rest, Cont})
-              end);
+            ok = del_subscriber(SubscriberId),
+            vmq_msg_store:clean_session(SubscriberId),
+            _ = vmq_exo:incr_expired_clients(),
+            remove_expired_subscribers_({Rest, Cont});
         true ->
             remove_expired_subscribers_({Rest, Cont})
     end;
@@ -937,7 +804,7 @@ unregister_subscriber(SubscriberId, SubscriberPid) ->
         [] ->
             ok;
         [#session{clean=true} = Obj] ->
-            _ = del_subscriber_fun(SubscriberId),
+            _ = del_subscriber(SubscriberId),
             ets:delete_object(vmq_session, Obj),
             vmq_msg_store:clean_session(SubscriberId);
         [#session{clean=false} = Obj] ->
@@ -953,53 +820,6 @@ unregister_subscriber(SubscriberId, SubscriberPid) ->
             _ = [ets:delete_object(vmq_session, Obj)
                  || #session{pid=Pid} = Obj <- Sessions, Pid == SubscriberPid],
             ok
-    end.
-
-del_subscriber_fun(SubscriberId) ->
-    transaction(fun() -> del_subscriber_tx('_', SubscriberId) end).
-
-
--spec transaction(fun(() -> any())) -> any().
-transaction(TxFun) ->
-    transaction(TxFun, fun(Ret) -> Ret end).
-
--spec transaction(fun(() -> any()),
-                  fun((any()) -> any())) -> any().
-transaction(TxFun, SuccessFun) ->
-    %% Making this a sync_transaction allows us to use dirty_read
-    %% elsewhere and get a consistent result even when that read
-    %% executes on a different node.
-    case jobs:ask(mnesia_tx_queue) of
-        {ok, JobId} ->
-            try
-                case sync_transaction_(TxFun) of
-                    {sync, {atomic, Result}} ->
-                        %% we enforces that data is synced to disk by
-                        %% waiting for disk_log:sync(latest_log),
-                        SuccessFun(Result);
-                    {sync, {aborted, Reason}} -> throw({error, Reason});
-                    {atomic, Result} -> SuccessFun(Result);
-                    {aborted, Reason} -> throw({error, Reason})
-                end
-            after
-                jobs:done(JobId)
-            end;
-        {error, rejected} ->
-            {error, overloaded}
-    end.
-
-sync_transaction_(TxFun) ->
-    case mnesia:is_transaction() of
-        false ->
-            DiskLogBefore = mnesia_dumper:get_log_writes(),
-            Res = mnesia:sync_transaction(TxFun),
-            DiskLogAfter  = mnesia_dumper:get_log_writes(),
-            case DiskLogAfter == DiskLogBefore of
-                true  -> Res;
-                false -> {sync, Res}
-            end;
-        true  ->
-            mnesia:sync_transaction(TxFun)
     end.
 
 cleanup_sessions(SubscriberId, RemoveOldSess) ->
@@ -1023,7 +843,7 @@ cleanup_sessions([#session{pid=SessionPid,
     demonitor(MRef, [flush]),
     ets:delete(vmq_session_mons, MRef),
     _ = disconnect_subscriber(SessionPid),
-    case del_subscriber_fun(SubscriberId) of
+    case del_subscriber(SubscriberId) of
         ok ->
             ok = vmq_msg_store:clean_session(SubscriberId),
             cleanup_sessions(Rest, SubscriberId, true);

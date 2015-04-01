@@ -2,13 +2,8 @@
 -export([node_start/0,
          node_stop/0,
          node_status/0,
-         node_reset/0,
-         node_reset/1,
-         node_change_type/1,
          node_join/1,
-         node_join/2,
-         node_remove/1,
-         node_remove_offline/1,
+         node_leave/1,
          node_upgrade/0,
          node_upgrade/1,
          list_sessions/0,
@@ -29,33 +24,13 @@ node_stop() ->
 node_status() ->
     vmq_server_cli:command(["vmq-admin", "node", "status"], false).
 
-node_reset() ->
-    node_reset(false).
-node_reset(false) ->
-    vmq_server_cli:command(["vmq-admin", "node", "reset"], false);
-node_reset(true) ->
-    vmq_server_cli:command(["vmq-admin", "node", "reset", "--forcefully"], false).
-
-node_change_type(disc) ->
-    vmq_server_cli:command(["vmq-admin", "node", "chtype", "-t", "disc"], false);
-node_change_type(ram) ->
-    vmq_server_cli:command(["vmq-admin", "node", "chtype", "-t", "ram"], false).
-
 node_join(DiscoveryNode) ->
-    node_join(DiscoveryNode, disc).
-node_join(DiscoveryNode, disc) ->
     vmq_server_cli:command(["vmq-admin", "node", "join", "discovery-node=" ++
-             atom_to_list(DiscoveryNode), "-t", "disc"], false);
-node_join(DiscoveryNode, ram) ->
-    vmq_server_cli:command(["vmq-admin", "node", "join", "discovery-node=" ++
-             atom_to_list(DiscoveryNode), "-t", "ram"], false).
+             atom_to_list(DiscoveryNode)], false).
 
-node_remove(Node) ->
-    vmq_server_cli:command(["vmq-admin", "node", "remove", "node=" ++
+node_leave(Node) ->
+    vmq_server_cli:command(["vmq-admin", "node", "leave", "node=" ++
              atom_to_list(Node)], false).
-node_remove_offline(Node) ->
-    vmq_server_cli:command(["vmq-admin", "node", "remove", "node=" ++
-             atom_to_list(Node), "offline"], false).
 
 node_upgrade() ->
     vmq_server_cli:command(["vmq-admin", "node", "upgrade", "--upgrade-now"], false).

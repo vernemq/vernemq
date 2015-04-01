@@ -41,9 +41,6 @@ start_link() ->
                          [{atom(), {atom(), atom(), list()},
                            permanent, pos_integer(), worker, [atom()]}]}}.
 init([]) ->
-    {ok, MnesiaJobsOpts} = application:get_env(vmq_server, mnesia_tx_queue),
-    ok = jobs:add_queue(mnesia_tx_queue, MnesiaJobsOpts),
-
     {ok, { {one_for_one, 5, 10}, [
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_crl_srv, worker, []),
@@ -51,7 +48,6 @@ init([]) ->
             ?CHILD(vmq_session_proxy_sup, supervisor, []),
             ?CHILD(vmq_msg_store, worker, []),
             ?CHILD(vmq_reg_sup, supervisor, []),
-            ?CHILD(vmq_cluster_node_sup, supervisor, []),
-            ?CHILD(vmq_cluster, worker, [])
+            ?CHILD(vmq_cluster_node_sup, supervisor, [])
                                  ]} }.
 

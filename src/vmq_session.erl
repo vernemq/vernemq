@@ -469,20 +469,20 @@ handle_frame(wait_for_connect, _, _, _,
     {wait_for_connect, State#state{keep_alive=RetryInterval}};
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
-    #state{waiting_acks=WAcks} = State,
+    #state{subscriber_id=SubscriberId, waiting_acks=WAcks} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos1 flow
     case dict:find(MessageId, WAcks) of
         {ok, {_, _, Ref, MsgStoreRef}} ->
             cancel_timer(Ref),
-            _ = vmq_msg_store:deref(MsgStoreRef),
+            _ = vmq_msg_store:deref(SubscriberId, MsgStoreRef),
             {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
         error ->
             {connected, State}
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
-    #state{waiting_acks=WAcks, send_fun=SendFun,
+    #state{subscriber_id=SubscriberId, waiting_acks=WAcks, send_fun=SendFun,
            retry_interval=RetryInterval, send_cnt=SendCnt} = State,
     #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
@@ -494,7 +494,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
                              payload= <<>>},
     SendFun(PubRelFrame),
     NewRef = send_after(RetryInterval, {retry, MessageId}),
-    _ = vmq_msg_store:deref(MsgStoreRef),
+    _ = vmq_msg_store:deref(SubscriberId, MsgStoreRef),
     {connected, State#state{
                   send_cnt=incr_msg_sent_cnt(SendCnt),
                   waiting_acks=dict:store(MessageId,
@@ -523,7 +523,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
                            mountpoint=MP},
             case publish(User, SubscriberId, Msg) of
                 {ok, _} ->
-                    _ = vmq_msg_store:deref(MsgRef),
+                    _ = vmq_msg_store:deref(SubscriberId, MsgRef),
                     State#state{
                       waiting_acks=dict:erase({qos2, MessageId}, WAcks)};
                 {error, _Reason} ->
@@ -859,11 +859,11 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
                                           #mqtt_frame_publish{
                                              message_id=MessageId
                                             }, <<>>, State),
-                    _ = vmq_msg_store:deref(MsgRef),
+                    _ = vmq_msg_store:deref(SubscriberId, MsgRef),
                     NewState;
                 {error, _Reason} ->
                     %% can't publish due to overload or netsplit
-                    _ = vmq_msg_store:deref(MsgRef),
+                    _ = vmq_msg_store:deref(SubscriberId, MsgRef),
                     drop(State)
             end;
         false ->

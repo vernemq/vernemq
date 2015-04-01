@@ -784,24 +784,6 @@
                                                                       {datatype, flag}
                                                                      ]}.
 
-{mapping, "table_definition_mod", "mnesia_cluster.table_definition_mod", [
-                                                                          {default, "{vmq_server,table_defs,[]}"},
-                                                                          {datatype, string},
-                                                                          hidden
-                                                                         ]}. 
-
-{mapping, "app_process", "mnesia_cluster.app_process", [
-                                                        {default, vmq_server_sup},
-                                                        {datatype, atom},
-                                                        hidden
-                                                       ]}. 
-% vmq_server uses unsplit to handle merges after partition
-{mapping, "cluster_partition_handling", "mnesia_cluster.cluster_partition_handling", [
-                                                                                      {default, ignore},
-                                                                                      {datatype, atom},
-                                                                                      hidden
-                                                                                     ]}.
-
 {translation, "vmq_server.reg_views",
  fun(Conf) ->
          S = cuttlefish:conf_get("reg_views", Conf),
@@ -809,19 +791,6 @@
          {ok, Term} = erl_parse:parse_term(T),
          Term
  end}.
-
-{translation, "mnesia_cluster.table_definition_mod", 
- fun(Conf) ->
-         S = cuttlefish:conf_get("table_definition_mod", Conf),
-         {ok, T, _} = erl_scan:string(S ++ "."),
-         {ok, Term} = erl_parse:parse_term(T),
-         Term
- end}.
-
-{mapping, "mnesia.directory", "mnesia.dir", [
-                                             {default, "{{platform_data_dir}}/mnesia"},
-                                             {datatype, directory}
-                                            ]}.
 
 {mapping, "tcp_listen_options", "vmq_server.tcp_listen_options", [
                                                                   {default, "[{packet, raw}, {nodelay, true}, {reuseaddr, true}, {linger, {true, 0}}, {send_timeout, 30000}, {send_timeout_close, true}]"},
