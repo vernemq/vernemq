@@ -438,8 +438,10 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                                   )
                                 )
                        end,
+            SubscriberId = {MountPoint, ClientId(self())},
             PluginPid = self(),
             {ok, QPid} = vmq_queue:start_link(
+                           SubscriberId,
                            spawn_link(
                              fun() ->
                                      plugin_queue_loop(PluginPid, Mod)
@@ -449,9 +451,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             RegisterFun =
             fun() ->
                     wait_til_ready(),
-                    CallingPid = self(),
-                    register_subscriber_(CallingPid, QPid,
-                                         {MountPoint, ClientId(CallingPid)}, true)
+                    register_subscriber_(self(), QPid, SubscriberId, true)
             end,
 
             PublishFun =

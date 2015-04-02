@@ -2,7 +2,6 @@ vmq_config_cli.erl:19: Expression produces a value of type 'ok' | {'error','sche
 vmq_msg_store.erl:109: Expression produces a value of type 'ignore' | {'error','no_matching_hook_found'}, but this value is unmatched
 vmq_msg_store.erl:119: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
 vmq_msg_store.erl:225: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
-vmq_reg.erl:442: Call to missing or unexported function vmq_queue:start_link/2
 vmq_reg.erl:525: Function subscribe_subscriber_changes/0 has no local return
 vmq_reg.erl:526: The call plumtree_metadata_manager:subscribe({'vmq','subscriber'}) breaks the contract (metadata_pkey()) -> 'ok'
 vmq_reg.erl:534: Guard test any() =:= Node::none() can never succeed
