@@ -81,6 +81,7 @@ start_link() ->
 
 -spec subscribe(flag(), username() | plugin_id(), subscriber_id(), pid(),
                 [{topic(), qos()}]) -> ok | {error, not_allowed
+                                             | overloaded
                                              | not_ready}.
 
 subscribe(false, User, SubscriberId, QPid, Topics) ->
@@ -94,35 +95,48 @@ subscribe_(User, SubscriberId, QPid, Topics) ->
     case vmq_plugin:all_till_ok(auth_on_subscribe,
                                 [User, SubscriberId, Topics]) of
         ok ->
-            lists:foreach(
-              fun({T, QoS}) ->
-                      add_subscriber(T, QoS, SubscriberId),
-                      _ = vmq_exo:incr_subscription_count(),
-                      deliver_retained(SubscriberId, QPid, T, QoS)
-              end, Topics),
-            _ = vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
-            ok;
+            subscribe_op(User, SubscriberId, QPid, Topics);
         {error, _} ->
             {error, not_allowed}
     end.
 
+subscribe_op(User, SubscriberId, QPid, Topics) ->
+    rate_limited_op(
+      fun() ->
+              _ = [add_subscriber(T, QoS, SubscriberId)
+                   || {T, QoS} <- Topics],
+              ok
+      end,
+      fun(_) ->
+              _ = [begin
+                       _ = vmq_exo:incr_subscription_count(),
+                       deliver_retained(SubscriberId, QPid, T, QoS)
+                   end || {T, QoS} <- Topics],
+              vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
+              ok
+      end).
+
 -spec unsubscribe(flag(), username() | plugin_id(),
-                  subscriber_id(), [topic()]) -> ok | {error, not_ready}.
+                  subscriber_id(), [topic()]) -> ok | {error, overloaded
+                                                       | not_ready}.
 unsubscribe(false, User, SubscriberId, Topics) ->
     %% trade availability for consistency
-    vmq_cluster:if_ready(fun unsubscribe_/3, [User, SubscriberId, Topics]);
+    vmq_cluster:if_ready(fun unsubscribe_op/3, [User, SubscriberId, Topics]);
 unsubscribe(true, User, SubscriberId, Topics) ->
     %% trade consistency for availability
-    unsubscribe_(User, SubscriberId, Topics).
+    unsubscribe_op(User, SubscriberId, Topics).
 
-unsubscribe_(User, SubscriberId, Topics) ->
-    lists:foreach(
-      fun(T) ->
-        del_subscriber(T, SubscriberId),
-        vmq_exo:decr_subscription_count()
-      end, Topics),
-    _ = vmq_plugin:all(on_unsubscribe, [User, SubscriberId, Topics]),
-    ok.
+unsubscribe_op(User, SubscriberId, Topics) ->
+    rate_limited_op(
+      fun() ->
+              _ = [del_subscriber(T, SubscriberId) || T <- Topics],
+              ok
+      end,
+      fun(_) ->
+              _ = [vmq_exo:decr_subscription_count() || _ <- Topics],
+              _ = vmq_plugin:all(on_unsubscribe, [User, SubscriberId, Topics]),
+              ok
+      end).
 
 -spec register_subscriber(flag(), subscriber_id(), pid(), flag()) ->
     ok | {error, _}.
@@ -152,16 +166,20 @@ register_session(SubscriberId, QPid) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
     SessionPid = self(),
-    remap_session(SubscriberId),
-    case gen_server:call(?MODULE,
-                         {monitor, SessionPid, QPid,
-                          SubscriberId, false, false},
-                         infinity) of
-        ok ->
-            vmq_session_proxy_sup:start_delivery(QPid, SubscriberId);
-        {error, Reason} ->
-            {error, Reason}
-    end.
+    rate_limited_op(
+      fun() -> remap_session(SubscriberId) end,
+      fun({error, Reason}) -> {error, Reason};
+         (_) ->
+              case gen_server:call(?MODULE,
+                                   {monitor, SessionPid, QPid,
+                                    SubscriberId, false, false},
+                                   infinity) of
+                  ok ->
+                      vmq_session_proxy_sup:start_delivery(QPid, SubscriberId);
+                  {error, Reason} ->
+                      {error, Reason}
+              end
+      end).
 
 teardown_session(SubscriberId, CleanSession) ->
     %% we first have to disconnect a local or remote session for
@@ -181,18 +199,23 @@ teardown_session(SubscriberId, CleanSession) ->
     end,
     NodeWithSession.
 
--spec register_subscriber_(pid(), pid(), subscriber_id(), flag()) -> 'ok'.
+-spec register_subscriber_(pid(), pid(),
+                           subscriber_id(), flag()) -> 'ok' | {error, overloaded}.
 register_subscriber_(SessionPid, QPid, SubscriberId, CleanSession) ->
     %% cleanup session for this client id if needed
     case CleanSession of
         true ->
-            del_subscriber(SubscriberId),
-            register_subscriber__(SessionPid, QPid,
-                                  SubscriberId, true);
+            rate_limited_op(fun() -> del_subscriber(SubscriberId) end,
+                            fun({error, Reason}) -> {error, Reason};
+                               (_) -> register_subscriber__(SessionPid, QPid,
+                                                            SubscriberId, true)
+                            end);
         false ->
-            remap_subscriptions(SubscriberId),
-            register_subscriber__(SessionPid, QPid,
-                                  SubscriberId, false)
+            rate_limited_op(fun() -> remap_subscriptions(SubscriberId) end,
+                            fun({error, Reason}) -> {error, Reason};
+                               (_) -> register_subscriber__(SessionPid, QPid,
+                                                            SubscriberId, false)
+                            end)
     end.
 
 -spec register_subscriber__(pid(), pid(), subscriber_id(), flag()) -> 'ok' | {error, _}.
@@ -236,7 +259,8 @@ publish(#vmq_msg{trade_consistency=true,
         true when Paylaod == <<>> ->
             %% retain delete action
             Words = emqtt_topic:words(RoutingKey),
-            plumtree_metadata:delete(?RETAIN_DB, {Words});
+            rate_limited_op(fun() -> plumtree_metadata:delete(?RETAIN_DB,
+                                                              {Words}) end);
         true ->
             %% retain set action
             retain_msg(Msg);
@@ -255,7 +279,8 @@ publish(#vmq_msg{trade_consistency=false,
         true when IsRetain and (Payload == <<>>) ->
             %% retain delete action
             Words = emqtt_topic:words(RoutingKey),
-            plumtree_metadata:delete(?RETAIN_DB, {Words});
+            rate_limited_op(fun() -> plumtree_metadata:delete(?RETAIN_DB,
+                                                              {Words}) end);
         true when IsRetain ->
             %% retain set action
             retain_msg(Msg);
@@ -343,9 +368,15 @@ publish___(_, Msg, _, []) -> Msg.
 retain_msg(Msg = #vmq_msg{mountpoint=MP, reg_view=RegView,
                           routing_key=RoutingKey, payload=Payload}) ->
     Words = emqtt_topic:words(RoutingKey),
-    plumtree_metadata:put(?RETAIN_DB, {Words}, {RoutingKey, Payload}),
-    _ = RegView:fold(MP, RoutingKey, fun publish_/2, Msg#vmq_msg{retain=false}),
-    ok.
+    rate_limited_op(
+      fun() ->
+              plumtree_metadata:put(?RETAIN_DB, {Words}, {RoutingKey, Payload}),
+              Msg#vmq_msg{retain=false}
+      end,
+      fun(RetainedMsg) ->
+              _ = RegView:fold(MP, RoutingKey, fun publish_/2, RetainedMsg),
+              ok
+      end).
 
 -spec deliver_retained(subscriber_id(), pid(), topic(), qos()) -> 'ok'.
 deliver_retained(SubscriberId, QPid, Topic, QoS) ->
@@ -359,7 +390,7 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
         _ -> Words
     end,
     plumtree_metadata:fold(
-      fun({_Key, [{RoutingKey, Payload}]}, _) ->
+      fun({_Key, {RoutingKey, Payload}}, _) ->
               Msg = #vmq_msg{routing_key=RoutingKey,
                              payload=Payload,
                              retain=true,
@@ -373,7 +404,8 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
               ok
       end, ok, ?RETAIN_DB,
       %% iterator opts
-      [{match, {NewWords}}]).
+      [{match, {NewWords}},
+       {resolver, lww}]).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -694,7 +726,7 @@ message_queue_monitor() ->
     timer:sleep(1000),
     message_queue_monitor().
 
--spec remove_expired_subscribers(pos_integer()) -> ok.
+-spec remove_expired_subscribers(pos_integer()) -> ok | {error, overloaded}.
 remove_expired_subscribers(ExpiredSinceSeconds) ->
     ExpiredSince = epoch() - ExpiredSinceSeconds,
     remove_expired_subscribers_(ets:select(vmq_session,
@@ -709,10 +741,13 @@ remove_expired_subscribers(ExpiredSinceSeconds) ->
 remove_expired_subscribers_({[[SubscriberId, Pid]|Rest], Cont}) ->
     case is_process_alive(Pid) of
         false ->
-            del_subscriber(SubscriberId),
-            vmq_msg_store:clean_session(SubscriberId),
-            _ = vmq_exo:incr_expired_clients(),
-            remove_expired_subscribers_({Rest, Cont});
+            rate_limited_op(
+              fun() -> del_subscriber(SubscriberId) end,
+              fun(_) ->
+                      vmq_msg_store:clean_session(SubscriberId),
+                      _ = vmq_exo:incr_expired_clients(),
+                      remove_expired_subscribers_({Rest, Cont})
+              end);
         true ->
             remove_expired_subscribers_({Rest, Cont})
     end;
@@ -811,6 +846,20 @@ unregister_subscriber(SubscriberId, SubscriberPid) ->
             _ = [ets:delete_object(vmq_session, Obj)
                  || #session{pid=Pid} = Obj <- Sessions, Pid == SubscriberPid],
             ok
+    end.
+
+rate_limited_op(OpFun) ->
+    rate_limited_op(OpFun, fun(Ret) -> Ret end).
+rate_limited_op(OpFun, SuccessFun) ->
+    case jobs:ask(plumtree_queue) of
+        {ok, JobId} ->
+            try
+                SuccessFun(OpFun())
+            after
+                jobs:done(JobId)
+            end;
+        {error, rejected} ->
+            {error, overloaded}
     end.
 
 cleanup_sessions(SubscriberId, RemoveOldSess) ->

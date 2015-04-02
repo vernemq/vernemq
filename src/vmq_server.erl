@@ -50,6 +50,7 @@ stop() ->
     _ = [application:stop(App) || App <- [vmq_server,
                                           clique,
                                           plumtree,
+                                          jobs,
                                           eleveldb,
                                           emqtt_commons,
                                           vmq_server,

@@ -41,6 +41,8 @@ start_link() ->
                          [{atom(), {atom(), atom(), list()},
                            permanent, pos_integer(), worker, [atom()]}]}}.
 init([]) ->
+    {ok, PlumtreeJobsOpts} = application:get_env(vmq_server, plumtree_jobs_opts),
+    ok = jobs:add_queue(plumtree_queue, PlumtreeJobsOpts),
     {ok, { {one_for_one, 5, 10}, [
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_crl_srv, worker, []),
