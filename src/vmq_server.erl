@@ -41,6 +41,7 @@ start_no_auth(ClusterNode) ->
 start() ->
     application:load(plumtree),
     application:set_env(plumtree, plumtree_data_dir, "./data/" ++ atom_to_list(node())),
+    application:set_env(plumtree, storage_mod, plumtree_leveldb_metadata_manager),
     start_no_auth(),
     vmq_auth:register_hooks().
 

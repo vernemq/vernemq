@@ -800,8 +800,15 @@
 
 {mapping, "plumtree.directory", "plumtree.plumtree_data_dir", [
                                              {default, "{{platform_data_dir}}/broker"},
-                                             {datatype, directory}
+                                             {datatype, directory},
+                                             hidden
                                             ]}.
+
+{mapping, "plumtree.storage_mod", "plumtree.storage_mod", [
+                                                           {default, plumtree_leveldb_metadata_manager},
+                                                           {datatype, atom},
+                                                           hidden
+                                                          ]}.
 
 {translation, "vmq_server.tcp_listen_options", 
  fun(Conf) ->
