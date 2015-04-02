@@ -797,6 +797,12 @@
                                                                   {datatype, string},
                                                                   hidden
                                                                  ]}.
+
+{mapping, "plumtree.directory", "plumtree.plumtree_data_dir", [
+                                             {default, "{{platform_data_dir}}/broker"},
+                                             {datatype, directory}
+                                            ]}.
+
 {translation, "vmq_server.tcp_listen_options", 
  fun(Conf) ->
          S = cuttlefish:conf_get("tcp_listen_options", Conf),
