@@ -183,7 +183,7 @@ defer_deliver(SubscriberId, Qos, MsgRef, DeliverAsDup) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec init([string()]) -> {'ok', state()}.
+-spec init([]) -> {'ok', state(), non_neg_integer()}.
 init([]) ->
     MsgStoreMod = vmq_config:get_env(msg_store_mod),
     ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_write_sync, 2),
@@ -248,7 +248,7 @@ populate_tables() ->
                       %% not found --> clean up
                       SubHash = erlang:phash2(SubscriberId),
                       _ = vmq_plugin:only(msg_store_delete_sync,
-                                          [<<?MSG_REF, MsgRef/binary, SubHash/binary>>]),
+                                          [<<?MSG_REF, MsgRef/binary, SubHash>>]),
                       ets:delete_object(?MSG_REF_TABLE, Obj),
                       Acc
               end

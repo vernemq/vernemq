@@ -64,12 +64,7 @@ handle_info(expire_clients, State) ->
         0 ->
             ok;
         Duration ->
-            case vmq_reg:remove_expired_subscribers(Duration) of
-                ok ->
-                    ok;
-                {error, Reason} ->
-                    lager:warning("cant remove all expired subscribers due to ~p", [Reason])
-            end
+            vmq_reg:remove_expired_subscribers(Duration)
     end,
     erlang:send_after(5000, self(), expire_clients),
     {noreply, State}.

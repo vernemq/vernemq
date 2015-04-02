@@ -210,11 +210,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 handle_req({write, Key, Val}, Bucket) ->
-    eleveldb:put(Bucket, Key, Val, []),
-    ok;
+    eleveldb:put(Bucket, Key, Val, []);
 handle_req({delete, Key}, Bucket) ->
-    eleveldb:delete(Bucket, Key, []),
-    ok;
+    eleveldb:delete(Bucket, Key, []);
 handle_req({read, Key}, Bucket) ->
     eleveldb:get(Bucket, Key, []);
 handle_req({fold, Fun, Acc}, Bucket) ->

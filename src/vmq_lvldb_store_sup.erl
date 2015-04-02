@@ -56,7 +56,7 @@ get_bucket_pids() ->
 %% ===================================================================
 
 init([]) ->
-    ets:new(?TABLE, [public, named_table, {read_concurrency, true}]),
+    _ = ets:new(?TABLE, [public, named_table, {read_concurrency, true}]),
     {ok, { {one_for_one, 5, 10}, []} }.
 
 child_spec(I) ->

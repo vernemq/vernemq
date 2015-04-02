@@ -89,11 +89,15 @@ publish(Node, Msg) ->
 %%%===================================================================
 -spec init([]) -> {'ok', state()}.
 init([]) ->
-    _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
-    _ = check_ready(),
-    net_kernel:monitor_nodes(true),
-    erlang:send_after(?RECHECK_INTERVAL, self(), recheck),
-    {ok, #state{}}.
+    case net_kernel:monitor_nodes(true) of
+        ok ->
+            _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
+            check_ready(),
+            erlang:send_after(?RECHECK_INTERVAL, self(), recheck),
+            {ok, #state{}};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
 
 -spec handle_call(_, _) -> {'ok', 'ok', _}.
 handle_call(schedule_recheck, State) ->
@@ -147,7 +151,7 @@ check_ready(Nodes) ->
                           false ->
                               %% Node is not part of the cluster anymore
                               lager:warning("remove supervision for node ~p", [Node]),
-                              vmq_cluster_node_sup:del_cluster_node(Node),
+                              _ = vmq_cluster_node_sup:del_cluster_node(Node),
                               ets:delete(vmq_status, Node)
                       end
               end, ok, vmq_status),

@@ -81,7 +81,6 @@ start_link() ->
 
 -spec subscribe(flag(), username() | plugin_id(), subscriber_id(), pid(),
                 [{topic(), qos()}]) -> ok | {error, not_allowed
-                                             | overloaded
                                              | not_ready}.
 
 subscribe(false, User, SubscriberId, QPid, Topics) ->
@@ -98,18 +97,17 @@ subscribe_(User, SubscriberId, QPid, Topics) ->
             lists:foreach(
               fun({T, QoS}) ->
                       add_subscriber(T, QoS, SubscriberId),
-                      vmq_exo:incr_subscription_count(),
+                      _ = vmq_exo:incr_subscription_count(),
                       deliver_retained(SubscriberId, QPid, T, QoS)
               end, Topics),
-            vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
+            _ = vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
             ok;
         {error, _} ->
             {error, not_allowed}
     end.
 
 -spec unsubscribe(flag(), username() | plugin_id(),
-                  subscriber_id(), [topic()]) -> ok | {error, overloaded
-                                                       | not_ready}.
+                  subscriber_id(), [topic()]) -> ok | {error, not_ready}.
 unsubscribe(false, User, SubscriberId, Topics) ->
     %% trade availability for consistency
     vmq_cluster:if_ready(fun unsubscribe_/3, [User, SubscriberId, Topics]);
@@ -183,8 +181,7 @@ teardown_session(SubscriberId, CleanSession) ->
     end,
     NodeWithSession.
 
--spec register_subscriber_(pid(), pid(),
-                           subscriber_id(), flag()) -> 'ok' | {error, overloaded}.
+-spec register_subscriber_(pid(), pid(), subscriber_id(), flag()) -> 'ok'.
 register_subscriber_(SessionPid, QPid, SubscriberId, CleanSession) ->
     %% cleanup session for this client id if needed
     case CleanSession of
@@ -372,7 +369,7 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
                   0 -> Msg;
                   _ -> vmq_msg_store:store(SubscriberId, Msg)
               end,
-              vmq_queue:enqueue(QPid, {deliver, QoS, MaybeChangedMsg}),
+              ok = vmq_queue:enqueue(QPid, {deliver, QoS, MaybeChangedMsg}),
               ok
       end, ok, ?RETAIN_DB,
       %% iterator opts
@@ -697,7 +694,7 @@ message_queue_monitor() ->
     timer:sleep(1000),
     message_queue_monitor().
 
--spec remove_expired_subscribers(pos_integer()) -> ok | {error, overloaded}.
+-spec remove_expired_subscribers(pos_integer()) -> ok.
 remove_expired_subscribers(ExpiredSinceSeconds) ->
     ExpiredSince = epoch() - ExpiredSinceSeconds,
     remove_expired_subscribers_(ets:select(vmq_session,
@@ -712,7 +709,7 @@ remove_expired_subscribers(ExpiredSinceSeconds) ->
 remove_expired_subscribers_({[[SubscriberId, Pid]|Rest], Cont}) ->
     case is_process_alive(Pid) of
         false ->
-            ok = del_subscriber(SubscriberId),
+            del_subscriber(SubscriberId),
             vmq_msg_store:clean_session(SubscriberId),
             _ = vmq_exo:incr_expired_clients(),
             remove_expired_subscribers_({Rest, Cont});
@@ -752,24 +749,18 @@ init([]) ->
     {ok, #state{}}.
 
 
--spec handle_call(_, _, []) -> {reply, ok | {error, _}, []}.
+-spec handle_call(_, _, []) -> {reply, ok, []}.
 handle_call({monitor, SessionPid, QPid, SubscriberId,
              CleanSession, RemoveOldSess}, _From, State) ->
-    Reply =
-    case cleanup_sessions(SubscriberId, RemoveOldSess) of
-        ok ->
-            Monitor = monitor(process, SessionPid),
-            Session = #session{subscriber_id=SubscriberId,
-                               pid=SessionPid, queue_pid=QPid,
-                               monitor=Monitor, last_seen=epoch(),
-                               clean=CleanSession},
-            ets:insert(vmq_session_mons, {Monitor, SubscriberId}),
-            ets:insert(vmq_session, Session),
-            ok;
-        {error, Reason} ->
-            {error, Reason}
-    end,
-    {reply, Reply, State}.
+    cleanup_sessions(SubscriberId, RemoveOldSess),
+    Monitor = monitor(process, SessionPid),
+    Session = #session{subscriber_id=SubscriberId,
+                       pid=SessionPid, queue_pid=QPid,
+                       monitor=Monitor, last_seen=epoch(),
+                       clean=CleanSession},
+    ets:insert(vmq_session_mons, {Monitor, SubscriberId}),
+    ets:insert(vmq_session, Session),
+    {reply, ok, State}.
 
 -spec handle_cast(_, []) -> {noreply, []}.
 handle_cast(_Req, State) ->
@@ -804,7 +795,7 @@ unregister_subscriber(SubscriberId, SubscriberPid) ->
         [] ->
             ok;
         [#session{clean=true} = Obj] ->
-            _ = del_subscriber(SubscriberId),
+            del_subscriber(SubscriberId),
             ets:delete_object(vmq_session, Obj),
             vmq_msg_store:clean_session(SubscriberId);
         [#session{clean=false} = Obj] ->
@@ -843,15 +834,9 @@ cleanup_sessions([#session{pid=SessionPid,
     demonitor(MRef, [flush]),
     ets:delete(vmq_session_mons, MRef),
     _ = disconnect_subscriber(SessionPid),
-    case del_subscriber(SubscriberId) of
-        ok ->
-            ok = vmq_msg_store:clean_session(SubscriberId),
-            cleanup_sessions(Rest, SubscriberId, true);
-        {error, overloaded} ->
-            %% it's safe to return an error, the CONNECT req will be nacked,
-            %% and the client will retry...
-            {error, overloaded}
-    end;
+    del_subscriber(SubscriberId),
+    ok = vmq_msg_store:clean_session(SubscriberId),
+    cleanup_sessions(Rest, SubscriberId, true);
 cleanup_sessions([#session{pid=SessionPid,
                            monitor=MRef,
                            clean=false}|Rest], SubscriberId, true) ->

@@ -1,10 +1,17 @@
-vmq_msg_store.erl:277: The pattern {'ok', Val} can never match the type {'error','no_matching_hook_found'}
-vmq_msg_store.erl:285: The pattern 'notfound' can never match the type {'error','no_matching_hook_found'}
-vmq_msg_store.erl:324: The pattern [Hook = {H, M, _, _} | _] can never match the type []
-vmq_reg.erl:115: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
-vmq_reg.erl:118: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
-vmq_reg.erl:965: The call jobs:done(JobId::jobs_server:reg_obj()) contains an opaque term as 1st argument when a structured term of type {_,_} is expected
-vmq_reg.erl:1006: The pattern 'ok' can never match the type {'error','overloaded'}
-vmq_session.erl:673: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
-vmq_session.erl:743: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
-vmq_ssl_transport.erl:194: The pattern [CS = {Ex, _, _} | _] can never match the type [[1..255,...]]
+vmq_config_cli.erl:19: Expression produces a value of type 'ok' | {'error','schema_files_not_found'}, but this value is unmatched
+vmq_msg_store.erl:109: Expression produces a value of type 'ignore' | {'error','no_matching_hook_found'}, but this value is unmatched
+vmq_msg_store.erl:119: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
+vmq_msg_store.erl:225: Expression produces a value of type {'error','no_matching_hook_found'}, but this value is unmatched
+vmq_reg.erl:442: Call to missing or unexported function vmq_queue:start_link/2
+vmq_reg.erl:525: Function subscribe_subscriber_changes/0 has no local return
+vmq_reg.erl:526: The call plumtree_metadata_manager:subscribe({'vmq','subscriber'}) breaks the contract (metadata_pkey()) -> 'ok'
+vmq_reg.erl:534: Guard test any() =:= Node::none() can never succeed
+vmq_reg.erl:541: Guard test any() =:= Node::none() can never succeed
+vmq_reg.erl:679: Function total_subscriptions/0 has no local return
+vmq_reg.erl:680: The call plumtree_metadata_manager:size({'vmq','subscriber'}) breaks the contract (metadata_pkey()) -> non_neg_integer()
+vmq_reg.erl:683: Function retained/0 has no local return
+vmq_reg.erl:684: The call plumtree_metadata_manager:size({'vmq','retain'}) breaks the contract (metadata_pkey()) -> non_neg_integer()
+vmq_reg_pets.erl:100: Function init/1 has no local return
+vmq_reg_trie.erl:62: Function init/1 has no local return
+vmq_server_cli.erl:288: Expression produces a value of type 'ok' | {'error',_}, but this value is unmatched
+vmq_ssl.erl:150: The pattern [CS = {Ex, _, _} | _] can never match the type [[1..255,...]]

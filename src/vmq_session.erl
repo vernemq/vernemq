@@ -265,7 +265,6 @@ init([Peer, SendFun, Opts]) ->
     end,
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
     RetryInterval = vmq_config:get_env(retry_interval, 20),
-    QueueSize = vmq_config:get_env(max_queued_messages, 1000),
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
@@ -273,7 +272,6 @@ init([Peer, SendFun, Opts]) ->
     TradeConsistency = vmq_config:get_env(trade_consistency, false),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
     AllowMultiple = vmq_config:get_env(allow_multiple_sessions, false),
-    {ok, QPid} = vmq_queue:start_link(self(), QueueSize),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   upgrade_qos=UpgradeQoS,
                                   mountpoint=string:strip(MountPoint,
@@ -284,7 +282,6 @@ init([Peer, SendFun, Opts]) ->
                                   username=PreAuthUser,
                                   max_client_id_size=MaxClientIdSize,
                                   retry_interval=1000 * RetryInterval,
-                                  queue_pid=QPid,
                                   trade_consistency=TradeConsistency,
                                   reg_view=RegView,
                                   allow_multiple_sessions=AllowMultiple
@@ -630,15 +627,17 @@ check_client_id(#mqtt_frame_connect{},
     {wait_for_connect,
      send_connack(?CONNACK_CREDENTIALS, State)};
 check_client_id(#mqtt_frame_connect{clean_sess=CleanSession} = F,
-                #state{username={preauth, ClientId}, queue_pid=QPid, peer=Peer,
+                #state{username={preauth, ClientId}, peer=Peer,
                        allow_multiple_sessions=AllowMultiple, mountpoint=MP} = State) ->
     SubscriberId = {MP, ClientId},
+    QueueSize = vmq_config:get_env(max_queued_messages, 1000),
+    {ok, QPid} = vmq_queue:start_link(SubscriberId, self(), QueueSize),
     %% User preauthenticated using e.g. SSL client certificate
     case vmq_reg:register_subscriber(AllowMultiple, SubscriberId,
                                      QPid, CleanSession) of
         ok ->
-            vmq_plugin:all(on_register, [Peer, SubscriberId, undefined]),
-            check_will(F, State#state{subscriber_id=SubscriberId,
+            _ = vmq_plugin:all(on_register, [Peer, SubscriberId, undefined]),
+            check_will(F, State#state{queue_pid=QPid, subscriber_id=SubscriberId,
                                       clean_session=CleanSession});
         {error, Reason} ->
             lager:warning("can't register client ~p due to ~p",
@@ -696,7 +695,7 @@ check_user(#mqtt_frame_connect{username=""} = F, State) ->
                                     password=undefined}, State);
 check_user(#mqtt_frame_connect{username=User, password=Password,
                                clean_sess=CleanSess} = F, State) ->
-    #state{peer=Peer, queue_pid=QPid, allow_multiple_sessions=AllowMultiple,
+    #state{peer=Peer, allow_multiple_sessions=AllowMultiple,
            allow_anonymous=AllowAnonymous, reg_view=DefaultRegView,
            subscriber_id=SubscriberId} = State,
     case AllowAnonymous of
@@ -704,13 +703,17 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
             case auth_on_register(Peer, SubscriberId, User,
                                   Password, DefaultRegView, CleanSess) of
                 {ok, NewSubscriberId, NewRegView, NewCleanSess} ->
+                    QueueSize = vmq_config:get_env(max_queued_messages, 1000),
+                    {ok, QPid} = vmq_queue:start_link(NewSubscriberId, self(),
+                                                      QueueSize),
                     case vmq_reg:register_subscriber(AllowMultiple,
                                                      NewSubscriberId,
                                                      QPid, NewCleanSess) of
                         ok ->
-                            vmq_plugin:all(on_register, [Peer, NewSubscriberId,
-                                                         User]),
+                            _ = vmq_plugin:all(on_register, [Peer, NewSubscriberId,
+                                                             User]),
                             check_will(F, State#state{
+                                            queue_pid=QPid,
                                             subscriber_id=NewSubscriberId,
                                             username=User,
                                             reg_view=NewRegView,
@@ -744,11 +747,14 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                     end
             end;
         true ->
+            QueueSize = vmq_config:get_env(max_queued_messages, 1000),
+            {ok, QPid} = vmq_queue:start_link(SubscriberId, self(),
+                                              QueueSize),
             case vmq_reg:register_subscriber(AllowMultiple, SubscriberId,
                                              QPid, CleanSess) of
                 ok ->
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
-                    check_will(F, State#state{username=User});
+                    check_will(F, State#state{queue_pid=QPid, username=User});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
                                 [SubscriberId, Reason]),

@@ -34,12 +34,11 @@ start_no_auth(ClusterNode) ->
     _ = application:load(vmq_plugin),
     application:set_env(vmq_plugin, wait_for_proc, vmq_server_sup),
     _ = application:ensure_all_started(vmq_server),
-    plumtree_peer_service:join(ClusterNode),
-    ok.
+    plumtree_peer_service:join(ClusterNode).
 
 
 start() ->
-    application:load(plumtree),
+    _ = application:load(plumtree),
     application:set_env(plumtree, plumtree_data_dir, "./data/" ++ atom_to_list(node())),
     application:set_env(plumtree, storage_mod, plumtree_leveldb_metadata_manager),
     start_no_auth(),
