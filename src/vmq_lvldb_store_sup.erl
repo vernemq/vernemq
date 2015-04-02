@@ -12,42 +12,54 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_server_sup).
+-module(vmq_lvldb_store_sup).
 
 -behaviour(supervisor).
+
 %% API
--export([start_link/0]).
+-export([start_link/0,
+         get_bucket_pid/1,
+         get_bucket_pids/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
 
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type, Args), {I, {I, start_link, Args},
-                               permanent, 5000, Type, [I]}).
+-define(NR_OF_BUCKETS, 8).
+-define(TABLE, vmq_lvldb_store_buckets).
 
 %% ===================================================================
 %% API functions
 %% ===================================================================
 
--spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
+    [begin
+         {ok, CPid} = supervisor:start_child(Pid, child_spec(I)),
+         ets:insert(?TABLE, {I, CPid})
+     end || I <- lists:seq(1, ?NR_OF_BUCKETS)],
+    {ok, Pid}.
+
+get_bucket_pid(Key) when is_binary(Key) ->
+    Id = (erlang:phash2(Key) rem ?NR_OF_BUCKETS) + 1,
+    case ets:lookup(?TABLE, Id) of
+        [] ->
+            {error, no_bucket_found};
+        [{Id, Pid}] ->
+            {ok, Pid}
+    end.
+
+get_bucket_pids() ->
+    [Pid || [{_, Pid}] <- ets:match(?TABLE, '$1')].
 
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
 
--spec init([]) -> {'ok', {{'one_for_one', 5, 10},
-                         [{atom(), {atom(), atom(), list()},
-                           permanent, pos_integer(), worker, [atom()]}]}}.
 init([]) ->
-    {ok, { {one_for_one, 5, 10}, [
-            ?CHILD(vmq_config, worker, []),
-            ?CHILD(vmq_crl_srv, worker, []),
-            ?CHILD(vmq_sysmon, worker, []),
-            ?CHILD(vmq_session_proxy_sup, supervisor, []),
-            ?CHILD(vmq_msg_store_sup, supervisor, []),
-            ?CHILD(vmq_reg_sup, supervisor, []),
-            ?CHILD(vmq_cluster_node_sup, supervisor, [])
-                                 ]} }.
+    ets:new(?TABLE, [public, named_table, {read_concurrency, true}]),
+    {ok, { {one_for_one, 5, 10}, []} }.
 
+child_spec(I) ->
+    {{vmq_lvldb_store_bucket, I},
+     {vmq_lvldb_store, start_link, [I]},
+     permanent, 5000, worker, [vmq_lvldb_store]}.

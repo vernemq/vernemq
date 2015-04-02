@@ -54,6 +54,10 @@
             {send_timeout, 30000}, 
             {send_timeout_close, true}
         ]},
+      {msg_store_childspec, {vmq_lvldb_store_sup,
+                             {vmq_lvldb_store_sup, start_link, []},
+                             permanent, 5000, supervisor, [vmq_lvldb_store_sup]}},
+      {msg_store_mod, vmq_lvldb_store}, 
       {exometer_predefined, {apply, vmq_exo, entries, []}}
       ]}
 

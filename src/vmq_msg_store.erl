@@ -35,8 +35,6 @@
          terminate/2,
          code_change/3]).
 
--export([msg_store_init/1]).
-
 -record(state, {}).
 -type state() :: #state{}.
 
@@ -187,30 +185,43 @@ defer_deliver(SubscriberId, Qos, MsgRef, DeliverAsDup) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec init([string()]) -> {'ok', state()}.
 init([]) ->
+    MsgStoreMod = vmq_config:get_env(msg_store_mod),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_write_sync, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_write_async, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_read, 1),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_fold, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_delete_sync, 1),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_delete_async, 1),
     TableOpts = [public, named_table,
                  {read_concurrency, true},
                  {write_concurrency, true}],
     _ = ets:new(?MSG_CACHE_TABLE, TableOpts),
     _ = ets:new(?MSG_REF_TABLE, [bag | TableOpts]),
     ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
-    {ok, #state{}}.
+    spawn_link(fun populate_tables/0),
+    {ok, #state{}, 0}.
 
-msg_store_init(PluginName) ->
-    %% called by the message store implementation
-    case whereis(?MODULE) of
-        undefined ->
-            %% we are not yet started,
-            timer:sleep(100),
-            msg_store_init(PluginName);
-        _ ->
-            gen_server:call(?MODULE, {init_plugin, PluginName})
-    end.
+-spec handle_call(_, _, _) -> {'reply', {'error', 'not_implemented'}, _}.
+handle_call(_Req, _From, State) ->
+    {reply, {error, not_implemented}, State}.
 
--spec handle_call(_, _, _) -> {noreply, _} | {'reply', {'error', 'not_implemented'}, _}.
-handle_call({init_plugin, HookModule}, From, State) ->
-    gen_server:reply(From, ok),
-    ok = wait_for_hooks(HookModule),
+-spec handle_cast(_, _) -> {'noreply', state()}.
+handle_cast(_Req, State) ->
+    {noreply, State}.
 
+-spec handle_info(_, _) -> {'noreply', _}.
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+-spec terminate(_, state()) -> 'ok'.
+terminate(_Reason, _State) ->
+    ok.
+
+-spec code_change(_, _, _) -> {'ok', _}.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+populate_tables() ->
     vmq_plugin:only(
       msg_store_fold,
       [fun
@@ -242,47 +253,7 @@ handle_call({init_plugin, HookModule}, From, State) ->
                       Acc
               end
       end, undefined, ?MSG_REF_TABLE),
-    {noreply, State};
-handle_call(_Req, _From, State) ->
-    {reply, {error, not_implemented}, State}.
-
--spec handle_cast(_, _) -> {'noreply', state()}.
-handle_cast(_Req, State) ->
-    {noreply, State}.
-
--spec handle_info(_, _) -> {'noreply', _}.
-handle_info(_Info, State) ->
-    {noreply, State}.
-
--spec terminate(_, state()) -> 'ok'.
-terminate(_Reason, _State) ->
     ok.
-
--spec code_change(_, _, _) -> {'ok', _}.
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-
-wait_for_hooks(HookModule) ->
-    PluginInfo = vmq_plugin:info(only),
-    MsgStoreHooks = [msg_store_write_sync,
-                     msg_store_write_async,
-                     msg_store_read,
-                     msg_store_fold,
-                     msg_store_delete_sync,
-                     msg_store_delete_async],
-    Hooks = [Hook|| {H, M, _, _} = Hook <- PluginInfo, (M == HookModule)
-                                       and lists:member(H, MsgStoreHooks)],
-    case length(Hooks) == length(MsgStoreHooks) of
-        true ->
-            ok;
-        false ->
-            lager:error("check msg store plugin, not all hooks are
-                        provided by the same plugin", []),
-            timer:sleep(1000),
-            wait_for_hooks(HookModule)
-    end.
-
 
 -spec safe_ets_update_counter('vmq_msg_cache', _, {3, 1},
                               fun((_) -> 'new_ref_count'),
