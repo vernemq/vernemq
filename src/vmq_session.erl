@@ -110,7 +110,17 @@ start_link(Peer, SendFun, Opts) ->
 
 -spec disconnect(pid()) -> ok.
 disconnect(FsmPid) ->
-    gen_fsm:send_all_state_event(FsmPid, disconnect).
+    gen_fsm:send_all_state_event(FsmPid, disconnect),
+    wait_until_disconnected(FsmPid).
+
+wait_until_disconnected(FsmPid) ->
+    case is_process_alive(FsmPid) of
+        true ->
+            timer:sleep(100),
+            wait_until_disconnected(FsmPid);
+        false ->
+            ok
+    end.
 
 -spec in(pid(), mqtt_frame()) ->  ok.
 in(FsmPid, #mqtt_frame{fixed=#mqtt_frame_fixed{type=?PUBLISH}} = Event) ->
@@ -309,13 +319,6 @@ handle_sync_event({input, Frame}, _From, StateName, State) ->
     case handle_frame(StateName, Fixed, Variable, Payload,
                       State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)}) of
         {connected, #state{keep_alive=KeepAlive} = NewState} ->
-            case StateName of
-                connected ->
-                    %% no state change
-                    ignore;
-                _ ->
-                    process_flag(trap_exit, true)
-            end,
             {reply, ok, connected,
              NewState#state{keep_alive_timer=gen_fsm:send_event_after(KeepAlive,
                                                            keepalive_expired)}};

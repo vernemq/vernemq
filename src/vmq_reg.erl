@@ -424,20 +424,9 @@ wait_until_unregistered(SubscriberId) ->
     case get_subscriber_pids(SubscriberId) of
         {ok, SubscriberPids} ->
             lists:foreach(fun(SubscriberPid) ->
-                                  _ = disconnect_subscriber(SubscriberPid),
-                                  wait_until_stopped(SubscriberPid)
+                                  ok = disconnect_subscriber(SubscriberPid)
                           end, SubscriberPids);
         E -> E
-    end.
-
--spec wait_until_stopped(pid()) -> ok.
-wait_until_stopped(SubscriberPid) ->
-    case is_process_alive(SubscriberPid) of
-        true ->
-            timer:sleep(100),
-            wait_until_stopped(SubscriberPid);
-        false ->
-            ok
     end.
 
 -spec wait_til_ready() -> 'ok'.
@@ -732,25 +721,20 @@ remove_expired_subscribers(ExpiredSinceSeconds) ->
     remove_expired_subscribers_(ets:select(vmq_session,
                                            [{#session{last_seen='$1',
                                                       subscriber_id='$2',
-                                                      pid='$3', _='_'},
+                                                      pid=undefined, _='_'},
                                              [{'<',
                                                '$1',
                                                ExpiredSince}],
-                                             [['$2', '$3']]}], 100)).
+                                             [['$2']]}], 100)).
 
-remove_expired_subscribers_({[[SubscriberId, Pid]|Rest], Cont}) ->
-    case is_process_alive(Pid) of
-        false ->
-            rate_limited_op(
-              fun() -> del_subscriber(SubscriberId) end,
-              fun(_) ->
-                      vmq_msg_store:clean_session(SubscriberId),
-                      _ = vmq_exo:incr_expired_clients(),
-                      remove_expired_subscribers_({Rest, Cont})
-              end);
-        true ->
-            remove_expired_subscribers_({Rest, Cont})
-    end;
+remove_expired_subscribers_({[[SubscriberId]|Rest], Cont}) ->
+    rate_limited_op(
+      fun() -> del_subscriber(SubscriberId) end,
+      fun(_) ->
+              vmq_msg_store:clean_session(SubscriberId),
+              _ = vmq_exo:incr_expired_clients(),
+              remove_expired_subscribers_({Rest, Cont})
+      end);
 remove_expired_subscribers_({[], Cont}) ->
     remove_expired_subscribers_(ets:select(Cont));
 remove_expired_subscribers_('$end_of_table') ->
