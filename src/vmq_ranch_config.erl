@@ -163,7 +163,13 @@ addr(Addr) -> Addr.
 
 reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts}|Rest], TCPOpts, Listeners) ->
     TransportOpts = TCPOpts ++ transport_opts_for_type(Type, Opts),
-    start_listener(Type, Addr, Port, {TransportOpts, Opts}),
+    case start_listener(Type, Addr, Port, {TransportOpts, Opts}) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            lager:error("can't reconfigure ~p listener(~p, ~p) with Options ~p due to ~p",
+                        [Type, Addr, Port, Opts, Reason])
+    end,
     Key = {ranch_listener_sup, listener_name(addr(Addr), Port)},
     reconfigure_listeners_for_type(Type, Rest, TCPOpts, lists:keydelete(Key, 1, Listeners));
 reconfigure_listeners_for_type(_, [], _, Listeners) -> Listeners.

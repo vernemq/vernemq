@@ -83,10 +83,11 @@ multiple_connect_unclean_test(Config) ->
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:send(Socket, Disconnect),
-    [{RpcNode, _}|_] = Nodes,
-    io:format(user, "subs ~p~n", [rpc:call(RpcNode, mnesia, dirty_read,
-                                           [vmq_subscriber, Topic])]),
-
+    timer:sleep(500),
+    Subs = fun() -> rpc:multicall([N || {N, _} <-Nodes],
+                                      vmq_reg, total_subscriptions, [])
+               end,
+    io:format(user, "!!!!!!!!!!!!!!!!!!! Subs before send ~p~n", [Subs()]),
     %% publish random content to the topic
     Strd = fun() -> rpc:multicall([N || {N, _} <-Nodes],
                                   vmq_msg_store, stored, [])
@@ -102,8 +103,6 @@ multiple_connect_unclean_test(Config) ->
     io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after send ~p~n", [Strd()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
-    io:format(user, "subs ~p~n", [rpc:call(RpcNode, mnesia, dirty_read,
-                                           [vmq_subscriber, Topic])]),
     timer:sleep(2000),
     ok = receive_publishes(Nodes, Topic, Payloads),
     timer:sleep(2000),
@@ -128,6 +127,7 @@ distributed_subscribe_test(Config) ->
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
      end || {_, Port} <- Nodes],
+    timer:sleep(100),
     [PubSocket|Rest] = Sockets,
     Publish = packet:gen_publish(Topic, 1, <<"test-message">>, [{mid, 1}]),
     Puback = packet:gen_puback(1),
@@ -157,11 +157,18 @@ publish__(Self, _, 0) ->
 publish__(Self, {{_, Port}, Nodes} = Conf, NrOfMsgsPerProcess) ->
     Connect = packet:gen_connect("connect-multiple", [{keepalive, 10}]),
     Connack = packet:gen_connack(0),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
-    check_unique_client("connect-multiple", Nodes),
-    gen_tcp:close(Socket),
-    timer:sleep(random:uniform(100)),
-    publish__(Self, Conf, NrOfMsgsPerProcess - 1).
+    case packet:do_client_connect(Connect, Connack, [{port, Port}]) of
+        {ok, Socket} ->
+            check_unique_client("connect-multiple", Nodes),
+            gen_tcp:close(Socket),
+            timer:sleep(random:uniform(100)),
+            publish__(Self, Conf, NrOfMsgsPerProcess - 1);
+        {error, closed} ->
+            %% this happens if at the same time the same client id
+            %% connects to the cluster
+            timer:sleep(random:uniform(100)),
+            publish__(Self, Conf, NrOfMsgsPerProcess)
+    end.
 
 publish_random(Nodes, N, Topic) ->
     publish_random(Nodes, N, Topic, []).
@@ -172,8 +179,8 @@ publish_random(Nodes, N, Topic, Acc) ->
                                                            {keepalive, 10}]),
     Connack = packet:gen_connack(0),
     Payload = crypto:rand_bytes(random:uniform(10000)),
-    Publish = packet:gen_publish(Topic, 1, Payload, [{mid, 1}]),
-    Puback = packet:gen_puback(1),
+    Publish = packet:gen_publish(Topic, 1, Payload, [{mid, N}]),
+    Puback = packet:gen_puback(N),
     Disconnect = packet:gen_disconnect(),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, opts(Nodes)),
     ok = gen_tcp:send(Socket, Publish),
@@ -187,7 +194,8 @@ receive_publishes(Nodes, Topic, Payloads) ->
                                                            {keepalive, 10}]),
     Connack = packet:gen_connack(0),
     Disconnect = packet:gen_disconnect(),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, opts(Nodes)),
+    Opts = opts(Nodes),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, Opts),
     case recv(Socket, emqtt_frame:initial_state()) of
         {ok, #mqtt_frame{variable= #mqtt_frame_publish{
                                       message_id=MsgId
@@ -197,10 +205,7 @@ receive_publishes(Nodes, Topic, Payloads) ->
             ok = gen_tcp:send(Socket, Disconnect),
             io:format(user, "+", []),
             receive_publishes(Nodes, Topic, Payloads -- [Payload]);
-        E ->
-            io:format(user, "got other ~p~n", [E]),
-            gen_tcp:send(Socket, Disconnect),
-            gen_tcp:close(Socket),
+        {error, closed} ->
             receive_publishes(Nodes, Topic, Payloads)
     end.
 
@@ -231,7 +236,7 @@ hook_auth_on_subscribe(_, _, _) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 start_cluster(NrOfNodes) ->
     Self = self(),
-    State =
+    {MasterNode, Nodes} = State =
     lists:foldl(
       fun(I, {MasterNode, Acc}) ->
               Name = list_to_atom("test_"++integer_to_list(I)),
@@ -249,6 +254,14 @@ start_cluster(NrOfNodes) ->
               {NewMasterNode, [{Node, Port}|Acc]}
       end , {undefined, []}, lists:seq(1, NrOfNodes)),
     receive_times(done, NrOfNodes),
+    wait_til_ready(MasterNode),
+    Readies = fun() ->
+                      RPCNodes = [N || {N, _} <- Nodes],
+                      rpc:multicall(RPCNodes, vmq_cluster, recheck, []),
+                      timer:sleep(500),
+                      rpc:multicall(RPCNodes, vmq_cluster, is_ready, [])
+              end,
+    io:format(user, "cluster state ~p~n", [Readies()]),
     State.
 
 start_node(Name, Port, DiscoveryNodes) ->
@@ -263,9 +276,7 @@ start_node(Name, Port, DiscoveryNodes) ->
                 [] ->
                     ignore;
                 _ ->
-                    {ok, _} = rpc:call(Node, vmq_server_cmd, node_stop, []),
-                    {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, DiscoveryNodes),
-                    {ok, _} = rpc:call(Node, vmq_server_cmd, node_start, [])
+                    {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, DiscoveryNodes)
             end,
             wait_til_ready(Node),
             {ok, _} = rpc:call(Node, vmq_server_cmd, set_config, [allow_anonymous, false]),
@@ -283,16 +294,6 @@ start_node(Name, Port, DiscoveryNodes) ->
             timer:sleep(1000),
             start_node(Name, Port, DiscoveryNodes)
     end.
-
-
-
-    %% rpc:call(Node, application, load, [vmq_server]),
-    %% rpc:call(Node, application, set_env, [vmq_server, allow_anonymous, false]),
-    %% rpc:call(Node, application, set_env, [vmq_server, listeners,
-    %%                                       [{mqtt, [?LISTENER(Port)]}]]),
-    %% rpc:call(Node, application, set_env, [vmq_server, msg_store,
-    %%                                       {vmq_null_store, []}]),
-    %% rpc:call(Node, vmq_server, start_no_auth, DiscoveryNodes),
 
 
 stop_cluster(Nodes) ->

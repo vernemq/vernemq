@@ -55,10 +55,8 @@ register_cli() ->
     vmq_server_start_cmd(),
     vmq_server_stop_cmd(),
     vmq_server_status_cmd(),
-    vmq_cluster_reset_cmd(),
-    vmq_cluster_chtype_cmd(),
     vmq_cluster_join_cmd(),
-    vmq_cluster_remove_cmd(),
+    vmq_cluster_leave_cmd(),
     vmq_cluster_upgrade_cmd(),
 
     vmq_session_list_cmd(),
@@ -71,10 +69,8 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "node"], node_usage()),
     clique:register_usage(["vmq-admin", "node", "start"], start_usage()),
     clique:register_usage(["vmq-admin", "node", "stop"], stop_usage()),
-    clique:register_usage(["vmq-admin", "node", "reset"], reset_usage()),
-    clique:register_usage(["vmq-admin", "node", "chtype"], chtype_usage()),
     clique:register_usage(["vmq-admin", "node", "join"], join_usage()),
-    clique:register_usage(["vmq-admin", "node", "remove"], remove_usage()),
+    clique:register_usage(["vmq-admin", "node", "leave"], leave_usage()),
     clique:register_usage(["vmq-admin", "node", "upgrade"], upgrade_usage()),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
@@ -100,88 +96,26 @@ vmq_server_start_cmd() ->
 vmq_server_status_cmd() ->
     Cmd = ["vmq-admin", "node", "status"],
     Callback = fun(_, _) ->
-                       VmqNodes = vmq_cluster:nodes(),
-                       Status = mnesia_cluster_utils:status(),
-                       Nodes = proplists:get_value(nodes, Status),
-                       RunningNodes = proplists:get_value(running_nodes, Status),
-                       TypedNodes = lists:flatten([[{Type, Node}|| Node <- NodesWithType]
-                                                   || {Type, NodesWithType} <- Nodes]),
+                       VmqStatus = vmq_cluster:status(),
                        NodeTable =
-                       lists:foldl(fun({NodeType, NodeName}, Acc) ->
-                                           IsRunning = lists:member(NodeName, RunningNodes),
-                                           VmqReady = lists:member(NodeName, VmqNodes),
+                       lists:foldl(fun({NodeName, IsReady}, Acc) ->
                                            [[{'Node', NodeName},
-                                             {'Type', NodeType},
-                                             {'Database-Ready', IsRunning},
-                                             {'Server-Ready', VmqReady}]|Acc]
-                                   end, [], TypedNodes),
+                                             {'Running', IsReady}]|Acc]
+                                   end, [], VmqStatus),
                        [clique_status:table(NodeTable)]
                end,
     clique:register_command(Cmd, [], [], Callback).
 
-mnesia_op(Op, What) ->
-    case catch Op() of
-        ok ->
-            [clique_status:text("Done")];
-        {error, {_, Descr}} ->
-            Text = clique_status:text(Descr),
-            [clique_status:alert([Text])];
-        {error, mnesia_unexpectedly_running} ->
-            Text = clique_status:text("This node is currently running, use 'vmq-admin node stop' to stop it."),
-            [clique_status:alert([Text])];
-        {error, Reason} ->
-            Text = io_lib:format("Couldn't ~s cluster due to ~p~n", [What, Reason]),
-            [clique_status:alert([clique_status:text(Text)])]
-    end.
-
-vmq_cluster_reset_cmd() ->
-    Cmd = ["vmq-admin", "node", "reset"],
-    KeySpecs = [],
-    FlagSpecs = [{forcefully, [{shortname, "f"},
-                               {longname, "forcefully"}]}],
-    Callback = fun([], []) ->
-                       mnesia_op(fun() -> mnesia_cluster_utils:reset() end, "reset");
-                  ([], _) ->
-                       mnesia_op(fun() -> mnesia_cluster_utils:force_reset() end, "force-reset")
-               end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-vmq_cluster_chtype_cmd() ->
-    Cmd = ["vmq-admin", "node", "chtype"],
-    KeySpecs = [],
-    FlagSpecs = [{'node-type', [{shortname, "t"},
-                                {longname, "node-type"},
-                                {typecast, fun("disc") -> disc;
-                                              ("ram") -> ram;
-                                              (E) -> {error, {invalid_flag_value, {'node-type', E}}}
-                                           end}]}],
-    Callback = fun([], []) ->
-                       Text = clique_status:text("You have to provide a node type"),
-                       [clique_status:alert([Text])];
-                  ([], Flags) ->
-                       {ok, Type} = proplists:get_value('node-type', Flags),
-                       %% TODO: we should also change the way we store messages...
-                       mnesia_op(fun() ->
-                                         mnesia_cluster_utils:change_cluster_node_type(Type)
-                                 end, "change node-type")
-               end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-vmq_cluster_remove_cmd() ->
-    Cmd = ["vmq-admin", "node", "remove"],
+vmq_cluster_leave_cmd() ->
+    Cmd = ["vmq-admin", "node", "leave"],
     KeySpecs = [{node, [{typecast, fun clique_typecast:to_node/1}]}],
-    FlagSpecs = [{offline, [{longname, "offline"}]}],
+    FlagSpecs = [],
     Callback = fun([], _) ->
                        Text = clique_status:text("You have to provide a node"),
                        [clique_status:alert([Text])];
                   ([{node, Node}], []) ->
-                       mnesia_op(fun() ->
-                                         mnesia_cluster_utils:forget_cluster_node(Node, false)
-                                 end, "remove cluster node");
-                  ([{node, Node}], [{offline, _}]) ->
-                       mnesia_op(fun() ->
-                                         mnesia_cluster_utils:forget_cluster_node(Node, true)
-                                 end, "remove cluster node")
+                       plumtree_peer_service:leave(Node),
+                       [clique_status:text("Done")]
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
@@ -191,28 +125,15 @@ vmq_cluster_join_cmd() ->
     KeySpecs = [{'discovery-node', [{typecast, fun(Node) ->
                                                        list_to_atom(Node)
                                                end}]}],
-    FlagSpecs = [{'node-type', [{shortname, "t"},
-                                {longname, "node-type"},
-                                {typecast, fun("disc") -> disc;
-                                              ("ram") -> ram;
-                                              (E) -> {error, {invalid_flag_value, {'node-type', E}}}
-                                           end}]}],
+    FlagSpecs = [],
     Callback = fun ([], []) ->
                        Text = clique_status:text("You have to provide a discovery node"),
                        [clique_status:alert([Text])];
-                   ([{'discovery-node', Node}], Flags) ->
-                       Type = proplists:get_value('node-type', Flags, disc),
-                       case catch mnesia_cluster_utils:join_cluster(Node, Type) of
+                   ([{'discovery-node', Node}], _) ->
+                       case plumtree_peer_service:join(Node) of
                            ok ->
+                               vmq_cluster:recheck(),
                                [clique_status:text("Done")];
-                           {ok, already_member} ->
-                               [clique_status:text("Done, Already member!")];
-                           {error, {_, Descr}} ->
-                               Text = clique_status:text(Descr),
-                               [clique_status:alert([Text])];
-                           {error, mnesia_unexpectedly_running} ->
-                               Text = clique_status:text("This node is currently running, use vmq-admin node stop to stop it."),
-                               [clique_status:alert([Text])];
                            {error, Reason} ->
                                Text = io_lib:format("Couldn't join cluster due to ~p~n", [Reason]),
                                [clique_status:alert([clique_status:text(Text)])]
@@ -289,53 +210,19 @@ start_usage() ->
 
 stop_usage() ->
     ["vmq-admin node stop\n\n",
-     "  Stops the server application within this node. This is typically\n",
-     "  only necessary previously to the 'join', 'reset' and 'chtype'\n",
-     "  commands.\n"
-    ].
-
-reset_usage() ->
-    ["vmq-admin node reset\n\n",
-     "  Return a node to its virgin state, where is it not a member of any\n",
-     "  cluster, has no cluster configuration, no local database, and no\n"
-     "  persisted messages.\n\n",
-     "Options\n\n",
-     "  --forcefully, -f\n",
-     "     Resets the node regardless of the current state and cluster\n",
-     "     configuration. Should only be used if the database or cluster\n",
-     "     configuration has been corrupted.\n\n"
-    ].
-
-chtype_usage() ->
-    ["vmq-admin node chtype\n\n",
-     "  Changes the type of the cluster node. The node must be stopped for\n",
-     "  this operation to succeed, and when turning a node into a RAM node the\n",
-     "  node must not be the only disc node in the cluster.\n"
+     "  Stops the server application within this node. This is typically\n\n"
     ].
 
 join_usage() ->
     ["vmq-admin node join discovery-node=<Node> [--node-type=disc|ram]\n\n",
      "  Make the node join a cluster. The node will be reset automatically\n",
      "  before we actually cluster it. The discovery node provided will be\n",
-     "  used to find out about the nodes in the cluster.\n\n",
-     "Options\n\n",
-     "  --node-type, -t=disc|ram\n",
-     "      Specifies whether the new node joins as a 'disc' or 'ram' node.\n",
-     "      The default value is 'disc'.\n\n"
+     "  used to find out about the nodes in the cluster.\n\n"
     ].
 
-remove_usage() ->
-    ["vmq-admin node remove node=<Node> [--offline]\n\n",
-     "  Removes a cluster node remotely. The node that is being removed must\n",
-     "  be offline, while the node we are removing from must be online, except\n",
-     "  when using the --offline flag.\n\n",
-     "Options\n\n",
-     "  --offline\n",
-     "      Enables node removal from an offline node. This is only useful in\n",
-     "      the situation where all the nodes are offline and the last node to\n",
-     "      go down cannot be brought online, thus preventing the whole cluster\n",
-     "      from starting. It should not be used in any other circumstances\n",
-     "      since it can lead to inconsistencies.\n\n"
+leave_usage() ->
+    ["vmq-admin node leave\n\n",
+     "  Leaves this cluster.\n\n"
     ].
 
 upgrade_usage() ->
@@ -368,10 +255,8 @@ node_usage() ->
      "    start       Start the server application\n",
      "    stop        Stop the server application\n",
      "    status      Prints cluster status information\n",
-     "    reset       Reset the server state\n",
-     "    chtype      Change the type of the node\n",
      "    join        Join a cluster\n",
-     "    remove      Remove a cluster node\n",
+     "    leave       Leave the cluster\n",
      "    upgrade     Upgrade a cluster node\n\n",
      "  Use --help after a sub-command for more details.\n"
     ].

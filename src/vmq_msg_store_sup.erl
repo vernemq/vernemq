@@ -11,23 +11,19 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
-%%
--module(vmq_cluster_node_sup).
+-module(vmq_msg_store_sup).
 
 -behaviour(supervisor).
 
-%% API
--export([start_link/0,
-         ensure_cluster_node/1,
-         get_cluster_node/1,
-         del_cluster_node/1]).
+%% API functions
+-export([start_link/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
 
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type, Args), {I, {I, start_link, Args},
-                               permanent, 5000, Type, [I]}).
+-define(CHILD(Id, Mod, Type, Args), {Id, {Mod, start_link, Args},
+                                     permanent, 5000, Type, [Mod]}).
+
 %%%===================================================================
 %%% API functions
 %%%===================================================================
@@ -41,43 +37,6 @@
 %%--------------------------------------------------------------------
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
-
-ensure_cluster_node(Node) when Node == node() ->
-    %% cluster node not needed
-    ok;
-ensure_cluster_node(Node) ->
-    case get_cluster_node(Node) of
-        {error, not_found} ->
-            {ok, _} = supervisor:start_child(?MODULE, child_spec(Node)),
-            ok;
-        {ok, _} ->
-            ok
-    end.
-
-del_cluster_node(Node) ->
-    ChildId = {vmq_cluster_node, Node},
-    case supervisor:terminate_child(?MODULE, ChildId) of
-        ok ->
-            supervisor:delete_child(?MODULE, ChildId);
-        {error, not_found} ->
-            {error, not_found}
-    end.
-
-get_cluster_node(Node) ->
-    ChildId = {vmq_cluster_node, Node},
-    case lists:keyfind(ChildId, 1, supervisor:which_children(?MODULE)) of
-        false ->
-            {error, not_found};
-        {_, undefined, _, _} ->
-            %% child was stopped
-            {error, not_found};
-        {_, restarting, _, _} ->
-            %% child is restarting
-            timer:sleep(100),
-            get_cluster_node(Node);
-        {_, Pid, _, _} when is_pid(Pid) ->
-            {ok, Pid}
-    end.
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -97,15 +56,9 @@ get_cluster_node(Node) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, [
-            ?CHILD(vmq_cluster_mon, worker, [])
-                                ]}}.
+    ChildSpec = vmq_config:get_env(msg_store_childspec),
+    {ok, {{one_for_all, 5, 10}, [ChildSpec, ?CHILD(vmq_msg_store, vmq_msg_store, worker, [])]}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-child_spec(Node) ->
-    {{vmq_cluster_node, Node}, {vmq_cluster_node, start_link, [Node]},
-     permanent, 5000, worker, [vmq_cluster_node]}.
-
-

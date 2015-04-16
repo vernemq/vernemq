@@ -16,7 +16,6 @@
 
 -record(state, {status=init,
                 event_handler,
-                event_prefix,
                 event_queue=queue:new()}).
 
 -record(trie, {edge, node_id}).
@@ -72,8 +71,8 @@ init([]) ->
               ok = vmq_reg:fold_subscribers(fun initialize_trie/2, ok),
               Self ! subscribers_loaded
       end),
-    {EventPrefix, EventHandler} = vmq_reg:subscribe_subscriber_changes(),
-    {ok, #state{event_prefix=EventPrefix, event_handler=EventHandler}}.
+    EventHandler = vmq_reg:subscribe_subscriber_changes(),
+    {ok, #state{event_handler=EventHandler}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -123,11 +122,9 @@ handle_info(subscribers_loaded, #state{event_handler=Handler,
                   end, queue:to_list(Q)),
     lager:info("all subscribers loaded into ~p", [?MODULE]),
     {noreply, State#state{status=ready, event_queue=undefined}};
-handle_info({Prefix, Event},
-            #state{status=init, event_prefix=Prefix, event_queue=Q} = State) ->
+handle_info(Event, #state{status=init, event_queue=Q} = State) ->
     {noreply, State#state{event_queue=queue:in(Event, Q)}};
-handle_info({Prefix, Event},
-            #state{event_prefix=Prefix, event_handler=Handler} = State) ->
+handle_info(Event, #state{event_handler=Handler} = State) ->
     handle_event(Handler, Event),
     {noreply, State}.
 

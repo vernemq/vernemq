@@ -183,10 +183,11 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
     end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
     %% we regard a tcp_closed as 'normal'
+    vmq_session:disconnect(State#st.session),
     {exit, normal, State};
 handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
     {exit, Error, State};
-handle_message({'EXIT', _, Reason}, State) ->
+handle_message({'EXIT', SessionPid, Reason}, #st{session=SessionPid} = State) ->
     {exit, Reason, State};
 handle_message({send, Bin}, #st{pending=Pending} = State) ->
     maybe_flush(State#st{pending=[Bin|Pending]});

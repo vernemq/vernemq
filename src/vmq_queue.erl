@@ -18,13 +18,14 @@
 -export_type([max/0, mail/0, note/0]).
 
 
--record(state, {queue = queue:new() :: qqueue(),
+-record(state, {id :: subscriber_id(),
+                queue = queue:new() :: qqueue(),
                 max = undefined :: non_neg_integer(),
                 size = 0 :: non_neg_integer(),
                 drop = 0 :: drop(),
                 owner :: pid()}).
 
--export([start_link/2, resize/2,
+-export([start_link/3, resize/2,
          active/1, notify/1, enqueue/2]).
 -export([init/1,
          active/2, passive/2, notify/2,
@@ -36,9 +37,9 @@
 %%% API Function Definitions %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-start_link(Owner, QueueSize) when is_pid(Owner),
-                                 is_integer(QueueSize) ->
-    gen_fsm:start_link(?MODULE, [Owner, QueueSize], []).
+start_link(SubscriberId, Owner, QueueSize) when is_pid(Owner),
+                                                is_integer(QueueSize) ->
+    gen_fsm:start_link(?MODULE, [SubscriberId, Owner, QueueSize], []).
 
 %% @doc Allows to take a given queue, and make it larger or smaller.
 %% A Queue can be made larger without overhead, but it may take
@@ -79,9 +80,9 @@ enqueue(Queue, Msg) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% @private
-init([Owner, QueueSize]) ->
+init([SubscriberId, Owner, QueueSize]) ->
     monitor(process, Owner),
-    {ok, notify, #state{max=QueueSize, owner=Owner}}.
+    {ok, notify, #state{id=SubscriberId, max=QueueSize, owner=Owner}}.
 
 %% @private
 active(active, S = #state{}) ->
@@ -175,12 +176,12 @@ send_notification(S = #state{owner=Owner}) ->
 
 insert(Msg, #state{max=0, size=Size, queue=Queue} = State) ->
     State#state{queue=queue:in(Msg, Queue), size=Size + 1};
-insert(Msg, #state{max=Size, size=Size, drop=Drop} = State) ->
+insert(Msg, #state{id=SId, max=Size, size=Size, drop=Drop} = State) ->
     %% tail drop
     case Msg of
         {deliver, 0, _} -> ok;
         {deliver, _, #vmq_msg{msg_ref=MsgRef}} ->
-            _ = vmq_msg_store:deref(MsgRef),
+            _ = vmq_msg_store:deref(SId, MsgRef),
             ok;
         _ ->
             ok
@@ -193,33 +194,33 @@ resize_buf(0, S) ->
     S#state{max=0};
 resize_buf(NewMax, #state{max=Max} = S) when Max =< NewMax ->
     S#state{max=NewMax};
-resize_buf(NewMax, #state{queue=Queue, size=Size, drop=Drop} = S) ->
+resize_buf(NewMax, #state{id=SId, queue=Queue, size=Size, drop=Drop} = S) ->
     if Size > NewMax ->
            ToDrop = Size - NewMax,
-           S#state{queue=drop(ToDrop, Size, Queue),
+           S#state{queue=drop(SId, ToDrop, Size, Queue),
                    size=NewMax, max=NewMax, drop=Drop + ToDrop};
        Size =< NewMax ->
            S#state{max=NewMax}
     end.
 
-drop(N, Size, Queue) ->
+drop(SubscriberId, N, Size, Queue) ->
     if Size > N  ->
            {QDrop, NewQueue} = queue:split(N, Queue),
-           deref(QDrop),
+           deref(SubscriberId, QDrop),
            NewQueue;
        Size =< N ->
-           deref(Queue),
+           deref(SubscriberId, Queue),
            queue:new()
     end.
 
-deref({{value, {deliver, 0, _}}, Q}) ->
-    deref(queue:out(Q));
-deref({{value, {deliver, _, #vmq_msg{msg_ref=MsgRef}}}, Q}) ->
-    _ = vmq_msg_store:deref(MsgRef),
-    deref(queue:out(Q));
-deref({{value, _}, Q}) ->
-    deref(queue:out(Q));
-deref({empty, _}) ->
+deref(SubscriberId, {{value, {deliver, 0, _}}, Q}) ->
+    deref(SubscriberId, queue:out(Q));
+deref(SubscriberId, {{value, {deliver, _, #vmq_msg{msg_ref=MsgRef}}}, Q}) ->
+    _ = vmq_msg_store:deref(SubscriberId, MsgRef),
+    deref(SubscriberId, queue:out(Q));
+deref(SubscriberId, {{value, _}, Q}) ->
+    deref(SubscriberId, queue:out(Q));
+deref(_, {empty, _}) ->
     ok;
-deref(Q) ->
-    deref(queue:out(Q)).
+deref(SubscriberId, Q) ->
+    deref(SubscriberId, queue:out(Q)).

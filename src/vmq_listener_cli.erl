@@ -231,22 +231,17 @@ vmq_listener_delete_cmd() ->
     fun([], Flags) ->
             Port = proplists:get_value(port, Flags, 1883),
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
-            case vmq_ranch_config:delete_listener(Addr, Port) of
-                ok ->
-                    ListenerKey = {Addr, Port},
-                    ListenerConfig = vmq_config:get_env(listeners),
-                    NewListenerConfig =
-                    lists:foldl(
-                      fun({Type, ConfigForType}, Acc) ->
-                              NewConfigForType = lists:keydelete(ListenerKey, 1, ConfigForType),
-                              [{Type, NewConfigForType}|Acc]
-                      end, [], ListenerConfig),
-                    vmq_config:set_env(listeners, NewListenerConfig),
-                    [clique_status:text("Done")];
-                {error, Reason} ->
-                    Text = io_lib:format("can't delete listener due to '~p'", [Reason]),
-                    [clique_status:alert([clique_status:text(Text)])]
-            end
+            vmq_ranch_config:delete_listener(Addr, Port),
+            ListenerKey = {Addr, Port},
+            ListenerConfig = vmq_config:get_env(listeners),
+            NewListenerConfig =
+            lists:foldl(
+              fun({Type, ConfigForType}, Acc) ->
+                      NewConfigForType = lists:keydelete(ListenerKey, 1, ConfigForType),
+                      [{Type, NewConfigForType}|Acc]
+              end, [], ListenerConfig),
+            vmq_config:set_env(listeners, NewListenerConfig),
+            [clique_status:text("Done")]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 

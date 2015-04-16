@@ -17,19 +17,16 @@
 -include("vmq_server.hrl").
 
 -export([start_link/0,
-         table_defs/0,
          store/2,
          in_flight/0,
          stored/0,
          retrieve/1,
-         deref/1,
-         deref_multi/1,
+         deref/2,
          deliver_from_store/2,
          clean_session/1,
          defer_deliver/3,
          defer_deliver/4,
-         defer_deliver_uncached/2,
-         clean_all/1
+         defer_deliver_uncached/2
          ]).
 -export([init/1,
          handle_call/3,
@@ -38,23 +35,14 @@
          terminate/2,
          code_change/3]).
 
--export([msg_store_init/1]).
-
--record(vmq_msg_store_ref, {subscriber_id, ref_data}).
 -record(state, {}).
 -type state() :: #state{}.
 
--callback open(Args :: term()) -> {ok, term()} | {error, term()}.
--callback fold(term(), fun((binary(),
-                            binary(), any()) -> any()),
-                          any()) -> any() | {error, any()}.
--callback delete(term(), binary()) -> ok.
--callback insert(term(), binary(), binary()) -> ok | {error, any()}.
--callback close(term()) -> ok.
-
 -define(MSG_ITEM, 0).
 -define(INDEX_ITEM, 1).
+-define(MSG_REF, 2).
 -define(MSG_CACHE_TABLE, vmq_msg_cache).
+-define(MSG_REF_TABLE, vmq_msg_regs).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% API FUNCTIONS
@@ -92,7 +80,7 @@ store(SubscriberId, Msg) ->
 -spec in_flight() -> non_neg_integer().
 in_flight() ->
     [{in_flight, InFlight}] = ets:lookup(?MSG_CACHE_TABLE, in_flight),
-    NrOfDeferedMsgs = mnesia:table_info(vmq_msg_store_ref, size),
+    NrOfDeferedMsgs = ets:info(?MSG_REF_TABLE, size),
     InFlight - NrOfDeferedMsgs.
 
 -spec stored() -> non_neg_integer().
@@ -110,47 +98,41 @@ retrieve(MsgRef) ->
         [] -> {error, not_found}
     end.
 
--spec deref(msg_ref()|{{pid(), atom()}, msg_ref()}) ->
-                   'ok' | {'error','not_found'} |
-                   {'ok',pos_integer()}.
-deref({{SessionProxy, Node}, MsgRef}) ->
-    rpc:call(Node, ?MODULE, deref, [MsgRef]),
+-spec deref(subscriber_id(), msg_ref()|{{pid(), atom()}, msg_ref()}) ->
+    'ok' | {'error','not_found'}.
+deref(SubscriberId, {{SessionProxy, Node}, MsgRef}) ->
+    rpc:call(Node, ?MODULE, deref, [SubscriberId, MsgRef]),
     vmq_session_proxy:derefed(SessionProxy, MsgRef);
-deref(MsgRef) ->
+deref(SubscriberId, MsgRef) ->
     try
         ets:update_counter(?MSG_CACHE_TABLE, in_flight, {2, -1}),
         case ets:update_counter(?MSG_CACHE_TABLE, MsgRef, {3, -1}) of
             0 ->
                 ets:delete(?MSG_CACHE_TABLE, MsgRef),
-                MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
-                vmq_plugin:only(msg_store_delete_async, [MsgRef1]);
-            N ->
-                {ok, N}
-        end
+                Key = <<?MSG_ITEM, MsgRef/binary>>,
+                vmq_plugin:only(msg_store_delete_async, [Key]);
+            _ ->
+                ignore
+        end,
+        SubHash = erlang:phash2(SubscriberId),
+        RefKey = <<?MSG_REF, MsgRef/binary, SubHash>>,
+        vmq_plugin:only(msg_store_delete_async, [RefKey]),
+        ets:match_delete(?MSG_REF_TABLE, {SubscriberId, MsgRef, '_', '_'}),
+        ok
     catch error:badarg -> {error, not_found}
     end.
 
--spec deref_multi([msg_ref()]) -> [any()].
-deref_multi(MsgRefs) ->
-    _ = [deref(MsgRef) || MsgRef <- MsgRefs].
-
-
 -spec deliver_from_store(subscriber_id(), pid()) -> 'ok'.
 deliver_from_store(SubscriberId, Pid) ->
-    MsgRefRecs = mnesia:dirty_match_object(#vmq_msg_store_ref{
-                                              subscriber_id=SubscriberId,
-                                              _='_'}),
-    deliver_from_store_(Pid, MsgRefRecs).
+    deliver_from_store_(Pid, ets:lookup(?MSG_REF_TABLE, SubscriberId)).
 
-deliver_from_store_(Pid, [#vmq_msg_store_ref{ref_data={uncached, Term}} = Obj
-                          |Rest]) ->
+deliver_from_store_(Pid, [{_, {uncached, Term}} = Obj |Rest]) ->
     %% deliver will last as long as the message is not acked by the client
     %% connected to the remote node
     ok = vmq_session_proxy:deliver(Pid, Term),
-    mnesia:dirty_delete_object(Obj),
+    ets:delete_object(?MSG_REF_TABLE, Obj),
     deliver_from_store_(Pid, Rest);
-deliver_from_store_(Pid, [#vmq_msg_store_ref{ref_data={QoS, MsgRef, Dup}} = Obj
-                          |Rest]) ->
+deliver_from_store_(Pid, [{_, MsgRef, QoS, Dup} |Rest]) ->
     case retrieve(MsgRef) of
         {ok, {RoutingKey, Payload}} ->
             Term = {RoutingKey, Payload, QoS, Dup, MsgRef},
@@ -159,25 +141,24 @@ deliver_from_store_(Pid, [#vmq_msg_store_ref{ref_data={QoS, MsgRef, Dup}} = Obj
             %% TODO: this happens,, ??
             ignore
     end,
-    mnesia:dirty_delete_object(Obj),
+    %%% Message is already properly derefed
     deliver_from_store_(Pid, Rest);
 deliver_from_store_(_, []) ->
     ok.
 
 -spec clean_session(subscriber_id()) -> 'ok'.
 clean_session(SubscriberId) ->
-    lists:foreach(fun (#vmq_msg_store_ref{ref_data={uncached, _}}) ->
-                          ok;
-                      (#vmq_msg_store_ref{ref_data={_, MsgRef, _}} = Obj) ->
-                          mnesia:dirty_delete_object(Obj),
-                          deref(MsgRef)
-                  end, mnesia:dirty_read(vmq_msg_store_ref, SubscriberId)).
+    lists:foreach(fun ({_, {uncached, _}} = Obj) ->
+                          ets:delete_object(?MSG_REF_TABLE, Obj);
+                      ({_, MsgRef, _QoS, _Dup} = Obj) ->
+                          ets:delete_object(?MSG_REF_TABLE, Obj),
+                          deref(SubscriberId, MsgRef)
+                  end, ets:lookup(?MSG_REF_TABLE, SubscriberId)).
 
 -spec defer_deliver_uncached(subscriber_id(), any()) -> 'ok'.
 defer_deliver_uncached(SubscriberId, Term) ->
-    mnesia:dirty_write(#vmq_msg_store_ref{
-                          subscriber_id=SubscriberId,
-                          ref_data={uncached, Term}}).
+    ets:insert(?MSG_REF_TABLE, {SubscriberId, {uncached, Term}}),
+    ok.
 
 -spec defer_deliver(subscriber_id(), qos(),
                     msg_ref() | {atom(), msg_ref()}) -> 'ok'.
@@ -192,107 +173,35 @@ defer_deliver(SubscriberId, Qos, {{_, Node}, MsgRef}, DeliverAsDup) ->
     rpc:call(Node, ?MODULE, defer_deliver,
              [SubscriberId, Qos, MsgRef, DeliverAsDup]);
 defer_deliver(SubscriberId, Qos, MsgRef, DeliverAsDup) ->
-    mnesia:dirty_write(#vmq_msg_store_ref{
-                          subscriber_id=SubscriberId,
-                          ref_data={Qos, MsgRef, DeliverAsDup}}).
-
-
--spec clean_all([]) -> 'ok'.
-clean_all([]) ->
-    %% called using vmq-admin, mainly for test purposes
-    %% you don't want to call this during production
-    clean_cache(),
-    clean_index().
-
--spec clean_cache() -> 'ok'.
-clean_cache() ->
-    clean_cache(ets:last(?MSG_CACHE_TABLE)).
-
--spec clean_cache('$end_of_table' | 'in_flight' | msg_ref()) -> 'ok'.
-clean_cache('$end_of_table') ->
-    ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
-    ok;
-clean_cache(in_flight) ->
-    ets:delete(?MSG_CACHE_TABLE, in_flight),
-    clean_cache(ets:last(?MSG_CACHE_TABLE));
-clean_cache(MsgRef) ->
-    MsgRef1 = <<?MSG_ITEM, MsgRef/binary>>,
-    _ = vmq_plugin:only(msg_store_delete_sync, [MsgRef1]),
-    true = ets:delete(?MSG_CACHE_TABLE, MsgRef),
-    clean_cache(ets:last(?MSG_CACHE_TABLE)).
-
--spec clean_index() -> ok.
-clean_index() ->
-    {atomic, ok} = mnesia:clear_table(vmq_msg_store_ref),
+    SubHash = erlang:phash2(SubscriberId),
+    Key = <<?MSG_REF, MsgRef/binary, SubHash>>,
+    Val = term_to_binary({SubscriberId, Qos, DeliverAsDup}),
+    _ = vmq_plugin:only(msg_store_write_async, [Key, Val]),
+    ets:insert(?MSG_REF_TABLE, {SubscriberId, MsgRef, Qos, DeliverAsDup}),
     ok.
-
-
-table_defs() ->
-    [
-     {vmq_msg_store_ref, [
-        {record_name, vmq_msg_store_ref},
-        {type, bag},
-        {local_content, true},
-        {attributes, record_info(fields, vmq_msg_store_ref)},
-        {disc_copies, [node()]},
-        {match, #vmq_msg_store_ref{_='_'}},
-        {user_properties,
-         [{unsplit_method, {unsplit_lib, bag, []}}]}]}
-    ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec init([string()]) -> {'ok', state()}.
+-spec init([]) -> {'ok', state(), non_neg_integer()}.
 init([]) ->
+    MsgStoreMod = vmq_config:get_env(msg_store_mod),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_write_sync, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_write_async, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_read, 1),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_fold, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_delete_sync, 1),
+    ok = vmq_plugin_mgr:enable_module_plugin(MsgStoreMod, msg_store_delete_async, 1),
     TableOpts = [public, named_table,
                  {read_concurrency, true},
                  {write_concurrency, true}],
     _ = ets:new(?MSG_CACHE_TABLE, TableOpts),
+    _ = ets:new(?MSG_REF_TABLE, [bag | TableOpts]),
     ets:insert(?MSG_CACHE_TABLE, {in_flight, 0}),
-    {ok, #state{}}.
+    spawn_link(fun populate_tables/0),
+    {ok, #state{}, 0}.
 
-msg_store_init(PluginName) ->
-    %% called by the message store implementation
-    case whereis(?MODULE) of
-        undefined ->
-            %% we are not yet started,
-            timer:sleep(100),
-            msg_store_init(PluginName);
-        _ ->
-            gen_server:call(?MODULE, {init_plugin, PluginName})
-    end.
-
--spec handle_call(_, _, _) -> {noreply, _} | {'reply', {'error', 'not_implemented'}, _}.
-handle_call({init_plugin, HookModule}, From, State) ->
-    gen_server:reply(From, ok),
-    ok = wait_for_hooks(HookModule),
-    {atomic, ok} =
-    mnesia:transaction(
-      fun() ->
-              mnesia:foldl(
-                fun(#vmq_msg_store_ref{ref_data={_, MsgRef, _}} = Obj, Acc) ->
-                        Key = <<?MSG_ITEM, MsgRef/binary>>,
-                        case vmq_plugin:only(msg_store_read, Key) of
-                            {ok, Val} ->
-                                {_, RoutingKey, Payload} = binary_to_term(Val),
-                                %% Increment in_flight counter
-                                ets:update_counter(?MSG_CACHE_TABLE,
-                                                   in_flight, {2, 1}),
-                                %% add to cache
-                                update_msg_cache(MsgRef, {RoutingKey, Payload}),
-                                Acc;
-                            notfound ->
-                                mnesia:delete_object(Obj),
-                                Acc;
-                            {error, no_matching_hook_found} ->
-                                Acc
-                        end;
-                   (#vmq_msg_store_ref{ref_data={uncached, _}}, Acc) ->
-                        Acc
-                end, ok, vmq_msg_store_ref)
-      end),
-    {noreply, State};
+-spec handle_call(_, _, _) -> {'reply', {'error', 'not_implemented'}, _}.
 handle_call(_Req, _From, State) ->
     {reply, {error, not_implemented}, State}.
 
@@ -312,27 +221,39 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-
-wait_for_hooks(HookModule) ->
-    PluginInfo = vmq_plugin:info(only),
-    MsgStoreHooks = [msg_store_write_sync,
-                     msg_store_write_async,
-                     msg_store_read,
-                     msg_store_fold,
-                     msg_store_delete_sync,
-                     msg_store_delete_async],
-    Hooks = [Hook|| {H, M, _, _} = Hook <- PluginInfo, (M == HookModule)
-                                       and lists:member(H, MsgStoreHooks)],
-    case length(Hooks) == length(MsgStoreHooks) of
-        true ->
-            ok;
-        false ->
-            lager:error("check msg store plugin, not all hooks are
-                        provided by the same plugin", []),
-            timer:sleep(1000),
-            wait_for_hooks(HookModule)
-    end.
-
+populate_tables() ->
+    vmq_plugin:only(
+      msg_store_fold,
+      [fun
+          (<<?MSG_REF, MsgRef:16/binary, _/binary>>, RefData, Acc) ->
+              {{_,_} = SubscriberId, QoS, Dup} = binary_to_term(RefData),
+              ets:insert(?MSG_REF_TABLE, {SubscriberId, MsgRef, QoS, Dup}),
+              Acc;
+          (<<?MSG_ITEM, MsgRef/binary>>, Val, Acc) ->
+              {_, RoutingKey, Payload} = binary_to_term(Val),
+              %% Increment in_flight counter
+              ets:update_counter(?MSG_CACHE_TABLE,
+                                 in_flight, {2, 1}),
+              %% add to cache
+              update_msg_cache(MsgRef, {RoutingKey, Payload}),
+              Acc
+      end, undefined]),
+    ets:foldl(
+      fun({SubscriberId, MsgRef} = Obj, Acc) ->
+              case ets:lookup(?MSG_CACHE_TABLE, MsgRef) of
+                  [{_, Msg, _RefCnt}] ->
+                      update_msg_cache(MsgRef, Msg),
+                      Acc;
+                  [] ->
+                      %% not found --> clean up
+                      SubHash = erlang:phash2(SubscriberId),
+                      _ = vmq_plugin:only(msg_store_delete_sync,
+                                          [<<?MSG_REF, MsgRef/binary, SubHash>>]),
+                      ets:delete_object(?MSG_REF_TABLE, Obj),
+                      Acc
+              end
+      end, undefined, ?MSG_REF_TABLE),
+    ok.
 
 -spec safe_ets_update_counter('vmq_msg_cache', _, {3, 1},
                               fun((_) -> 'new_ref_count'),

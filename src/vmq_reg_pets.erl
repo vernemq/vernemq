@@ -30,7 +30,6 @@
 
 -record(state, {status=init,
                 event_handler,
-                event_prefix,
                 event_queue=queue:new()}).
 
 %%%===================================================================
@@ -108,8 +107,8 @@ init([]) ->
                                        fun initialize_tables/2, Self),
               Self ! subscribers_loaded
       end),
-    {EventPrefix, EventHandler} = vmq_reg:subscribe_subscriber_changes(),
-    {ok, #state{event_prefix=EventPrefix, event_handler=EventHandler}}.
+    EventHandler = vmq_reg:subscribe_subscriber_changes(),
+    {ok, #state{event_handler=EventHandler}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -161,11 +160,9 @@ handle_info(subscribers_loaded, #state{event_handler=Handler,
     {noreply, State#state{status=ready, event_queue=undefined}};
 handle_info({'ETS-TRANSFER', _, _, _}, State) ->
     {noreply, State};
-handle_info({Prefix, Event},
-            #state{status=init, event_prefix=Prefix, event_queue=Q} = State) ->
+handle_info(Event, #state{status=init, event_queue=Q} = State) ->
     {noreply, State#state{event_queue=queue:in(Event, Q)}};
-handle_info({Prefix, Event},
-            #state{event_prefix=Prefix, event_handler=Handler} = State) ->
+handle_info(Event, #state{event_handler=Handler} = State) ->
     handle_event(Handler, Event),
     {noreply, State}.
 

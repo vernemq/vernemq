@@ -16,21 +16,13 @@
 -export([start/0,
          start_no_auth/0,
          start_no_auth/1,
-         stop/0,
-         table_defs/0]).
+         stop/0]).
 
 start_no_auth() ->
     maybe_start_distribution(),
 
     _ = application:load(vmq_plugin),
     application:set_env(vmq_plugin, wait_for_proc, vmq_server_sup),
-
-    _ = application:load(mnesia_cluster),
-    application:set_env(mnesia_cluster, table_definition_mod,
-                        {?MODULE, table_defs, []}),
-    application:set_env(mnesia_cluster, app_process, vmq_server_sup),
-    application:set_env(mnesia_cluster, cluster_partition_handling,
-                        ignore), % we use unsplit
     %application:load(sasl),
     %application:set_env(sasl, sasl_error_logger, false),
     _ = application:ensure_all_started(vmq_server),
@@ -41,19 +33,14 @@ start_no_auth(ClusterNode) ->
 
     _ = application:load(vmq_plugin),
     application:set_env(vmq_plugin, wait_for_proc, vmq_server_sup),
-
-    _ = application:load(mnesia_cluster),
-    application:set_env(mnesia_cluster, table_definition_mod,
-                        {?MODULE, table_defs, []}),
-    application:set_env(mnesia_cluster, app_process, vmq_server_sup),
-    application:set_env(mnesia_cluster, cluster_partition_handling,
-                        ignore), % we use unsplit
-    application:set_env(mnesia_cluster, cluster_nodes, {[ClusterNode], ram}),
     _ = application:ensure_all_started(vmq_server),
-    ok.
+    plumtree_peer_service:join(ClusterNode).
 
 
 start() ->
+    _ = application:load(plumtree),
+    application:set_env(plumtree, plumtree_data_dir, "./data/" ++ atom_to_list(node())),
+    application:set_env(plumtree, storage_mod, plumtree_leveldb_metadata_manager),
     start_no_auth(),
     vmq_auth:register_hooks().
 
@@ -62,21 +49,20 @@ start() ->
 stop() ->
     _ = [application:stop(App) || App <- [vmq_server,
                                           clique,
-                                          mnesia_cluster,
-                                          unsplit,
+                                          plumtree,
+                                          jobs,
+                                          eleveldb,
                                           emqtt_commons,
                                           vmq_server,
                                           asn1,
                                           public_key,
                                           vmq_plugin,
-                                          mnesia,
                                           cowboy,
                                           ranch,
                                           crypto,
                                           ssl,
                                           riak_sysmon,
                                           os_mon,
-                                          jobs,
                                           lager]],
     ok.
 
@@ -89,9 +75,3 @@ maybe_start_distribution() ->
         _ ->
             ok
     end.
-
-table_defs() ->
-    VmqRegTables = vmq_reg:table_defs(),
-    VmqConfigTables = vmq_config:table_defs(),
-    VmqMsgStoreTables = vmq_msg_store:table_defs(),
-    VmqRegTables ++ VmqConfigTables ++ VmqMsgStoreTables.

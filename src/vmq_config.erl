@@ -23,7 +23,6 @@
          configure_node/0,
          configure_node/1,
          configure_nodes/0,
-         table_defs/0,
          get_env/1,
          get_env/2,
          get_env/3,
@@ -49,11 +48,10 @@
 -record(vmq_config, {key, % {node(), app_name(), item_name()}
                      val,
                      short_descr,
-                     long_descr,
-                     vclock=unsplit_vclock:fresh()}).
+                     long_descr}).
 
 -define(TABLE, vmq_config_cache).
--define(MNESIA, ?MODULE).
+-define(DB, {vmq, config}).
 
 
 
@@ -78,27 +76,27 @@ get_env(Key, Default) ->
     get_env(vmq_server, Key, Default).
 
 get_env(App, Key, Default) ->
-    IgnoreMnesiaConfig = case ets:lookup(?TABLE, ignore_mnesia_config) of
-                             [{_, true}] -> true;
-                             _ -> false
-                         end,
-    get_env(App, Key, Default, IgnoreMnesiaConfig).
+    IgnoreDBConfig = case ets:lookup(?TABLE, ignore_db_config) of
+                         [{_, true}] -> true;
+                         _ -> false
+                     end,
+    get_env(App, Key, Default, IgnoreDBConfig).
 
-get_env(App, Key, Default, IgnoreMnesiaConfig) ->
+get_env(App, Key, Default, IgnoreDBConfig) ->
     case ets:lookup(?TABLE, {App, Key}) of
         [{_, Val}] ->
             Val;
-        [] when IgnoreMnesiaConfig == false->
+        [] when IgnoreDBConfig == false->
             Val =
-            case mnesia:dirty_read(?MNESIA, {node(), App, Key}) of
-                [] ->
-                    case mnesia:dirty_read(?MNESIA, {App, Key}) of
-                        [] ->
+            case plumtree_metadata:get(?DB, {node(), App, Key}) of
+                undefined ->
+                    case plumtree_metadata:get(?DB, {App, Key}) of
+                        undefined ->
                             application:get_env(App, Key, Default);
-                        [#vmq_config{val=GlobalVal}] ->
+                        #vmq_config{val=GlobalVal} ->
                             GlobalVal
                     end;
-                [#vmq_config{val=NodeVal}] ->
+                #vmq_config{val=NodeVal} ->
                     NodeVal
             end,
             %% cache val
@@ -110,11 +108,11 @@ get_env(App, Key, Default, IgnoreMnesiaConfig) ->
     end.
 
 get_all_env(App) ->
-    %% setting ignore_mnesia_config to true is useful, if the broker is
+    %% setting ignore_db_config to true is useful, if the broker is
     %% misconfigured and you need to cleanup first.
-    IgnoreMnesiaConfig = application:get_env(App, ignore_mnesia_config, false),
+    IgnoreDBConfig = application:get_env(App, ignore_db_config, false),
     lists:foldl(fun({Key, Val}, Acc) ->
-                        [{Key, get_env(App, Key, Val, IgnoreMnesiaConfig)}|Acc]
+                        [{Key, get_env(App, Key, Val, IgnoreDBConfig)}|Acc]
                 end, [], application:get_all_env(App)).
 
 %% returns the config value in use for given key, together
@@ -122,23 +120,23 @@ get_all_env(App) ->
 get_prefixed_env(App, Key) ->
     case application:get_env(App, Key) of
         {ok, Val} ->
-            case mnesia:dirty_read(?MNESIA, {node(), App, Key}) of
-                [] ->
-                    case mnesia:dirty_read(?MNESIA, {App, Key}) of
-                        [] ->
+            case plumtree_metadata:get(?DB, {node(), App, Key}) of
+                undefined ->
+                    case plumtree_metadata:get(?DB, {App, Key}) of
+                        undefined ->
                             %% we only have what is stored inside the
                             %% application environment
                             {env, Key, Val};
-                        [#vmq_config{val=GlobalVal}] ->
+                        #vmq_config{val=GlobalVal} ->
                             %% we have a value stored inside the application
                             %% environment, which is ignored, since we have
-                            %% a value that is globally configured in mnesia
+                            %% a value that is globally configured in the db
                             {global, Key, GlobalVal}
                     end;
-                [#vmq_config{val=NodeVal}] ->
+                #vmq_config{val=NodeVal} ->
                     %% we have a value stored inside the application
                     %% environment, which is ignored, since we have a
-                    %% value that is configured for this node in mnesia
+                    %% value that is configured for this node in the db
                     {node, Key, NodeVal}
             end;
         undefined ->
@@ -156,21 +154,15 @@ set_env(Key, Val) ->
 set_env(App, Key, Val) ->
     set_env(node(), App, Key, Val).
 set_env(Node, App, Key, Val) when Node == node() ->
-    {atomic, ok} = mnesia:transaction(
-      fun() ->
-              Rec =
-              case mnesia:read(?MNESIA, {Node, App, Key}) of
-                  [] ->
-                      #vmq_config{key={Node, App, Key},
-                                  val=Val};
-                  [#vmq_config{vclock=VClock} = C] ->
-                      C#vmq_config{
-                        val=Val,
-                        vclock=unsplit_vclock:increment(Node, VClock)
-                       }
-              end,
-              mnesia:write(Rec)
-      end),
+    Rec =
+    case plumtree_metadata:get(?DB, {Node, App, Key}) of
+        undefined ->
+            #vmq_config{key={Node, App, Key},
+                        val=Val};
+        Config ->
+            Config#vmq_config{val=Val}
+    end,
+    plumtree_metadata:put(?DB, {Node, App, Key}, Rec),
     ets:insert(?TABLE, {{App, Key}, Val}),
     ok;
 set_env(Node, App, Key, Val) ->
@@ -186,39 +178,25 @@ safe_rpc(Node, Module, Fun, Args) ->
     end.
 
 set_global_env(App, Key, Val) ->
-    {atomic, ok} = mnesia:transaction(
-      fun() ->
-              Rec =
-              case mnesia:read(?MNESIA, {App, Key}) of
-                  [] ->
-                      #vmq_config{key={App, Key},
-                                  val=Val};
-                  [#vmq_config{vclock=VClock} = C] ->
-                      C#vmq_config{
-                        val=Val,
-                        vclock=unsplit_vclock:increment(node(), VClock)
-                       }
-              end,
-              mnesia:write(Rec)
-      end),
+    Rec =
+    case plumtree_metadata:get(?DB, {App, Key}) of
+        undefined ->
+            #vmq_config{key={App, Key},
+                        val=Val};
+        Config ->
+            Config#vmq_config{val=Val}
+    end,
+    plumtree_metadata:put(?DB, {App, Key}, Rec),
     ets:insert(?TABLE, {{App, Key}, Val}),
     ok.
 
 
 unset_local_env(App, Key) ->
-    {atomic, ok} =
-    mnesia:transaction(
-      fun() ->
-              mnesia:delete(?MNESIA, {node(), App, Key}, write)
-      end),
+    plumtree_metadata:delete(?DB, {node(), App, Key}),
     ok.
 
 unset_global_env(App, Key) ->
-    {atomic, ok} =
-    mnesia:transaction(
-      fun() ->
-              mnesia:delete(?MNESIA, {App, Key}, write)
-      end),
+    plumtree_metadata:delete(?DB, {App, Key}),
     ok.
 
 
@@ -245,20 +223,6 @@ init_config_items([{App, _, _}|Rest], Acc) ->
             init_config_items(Rest, Acc)
     end;
 init_config_items([], Acc) -> Acc.
-
--spec table_defs() -> [{atom(), [{atom(), any()}]}].
-table_defs() ->
-    [
-     {vmq_config,
-      [
-       {record_name, vmq_config},
-       {attributes, record_info(fields, vmq_config)},
-       {disc_copies, [node()]},
-       {match, #vmq_config{_='_'}},
-       {user_properties,
-        [{unsplit_method, {unsplit_lib, vclock, [vclock]}}]}
-      ]}
-    ].
 
 %%% VMQ_SERVER CONFIG HOOK
 change_config(Configs) ->

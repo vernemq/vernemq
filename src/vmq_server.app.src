@@ -10,13 +10,12 @@
                   cowboy,
                   os_mon,
                   riak_sysmon,
-                  jobs,
                   ssl,
                   emqtt_commons,
-                  unsplit,
                   exometer_core,
+                  jobs,
+                  plumtree,
                   vmq_plugin,
-                  mnesia_cluster,
                   clique
                  ]},
   {mod, { vmq_server_app, []}},
@@ -36,15 +35,19 @@
       {vmq_config_enabled, true},
       {default_reg_view, vmq_reg_trie},
       {reg_views, [vmq_reg_trie]},
-      {listeners, [{mqtt,
-                      [{{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
-                                              {mountpoint, ""}]}]},
+      {listeners, [{mqtt, [
+                         %  {{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
+                         %                     {mountpoint, ""}]}
+                          ]
+                   },
                     {mqtts, []},
-                    {mqttws, [{{{127,0,0,1}, 8080}, [{max_connections, 1000},
-                                                    {mountpoint, ""}]}]},
+                    {mqttws, [
+                            %  {{{127,0,0,1}, 8080}, [{max_connections, 1000},
+                            %                        {mountpoint, ""}]}
+                             ]},
                     {mqttwss, []}
       ]},
-      {mnesia_tx_queue, [{regulators, [{rate,[{limit, 1000}, {modifiers, [{mnesia, 10}]}]}]}]},
+      {plumtree_jobs_opts, [{regulators, [{counter,[{limit, 20}]}]}]},
       {tcp_listen_options, [
             {packet, raw},
             {nodelay, true},
@@ -53,6 +56,10 @@
             {send_timeout, 30000}, 
             {send_timeout_close, true}
         ]},
+      {msg_store_childspec, {vmq_lvldb_store_sup,
+                             {vmq_lvldb_store_sup, start_link, []},
+                             permanent, 5000, supervisor, [vmq_lvldb_store_sup]}},
+      {msg_store_mod, vmq_lvldb_store}, 
       {exometer_predefined, {apply, vmq_exo, entries, []}}
       ]}
 
