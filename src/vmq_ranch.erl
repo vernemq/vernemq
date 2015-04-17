@@ -27,6 +27,8 @@
              session,
              proto_tag,
              pending=[],
+             throttled=false,
+             max_msg_rate=unlimited,
              bytes_recv={os:timestamp(), 0},
              bytes_send={os:timestamp(), 0}}).
 
@@ -54,7 +56,12 @@ init(Ref, Socket, Transport, Opts) ->
     NewOpts =
     case Transport of
         ranch_ssl ->
-            [{preauth, vmq_ssl:socket_to_common_name(Socket)}|Opts];
+            case proplists:get_value(use_identity_as_username, Opts, false) of
+                false ->
+                    Opts;
+                true ->
+                    [{preauth, vmq_ssl:socket_to_common_name(Socket)}|Opts]
+            end;
         _ ->
             Opts
     end,
@@ -161,26 +168,22 @@ process_bytes(SessionPid, Bytes, ParserState) ->
 
 handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
     #st{session=SessionPid,
-        socket=Socket,
         parser_state=ParserState,
         bytes_recv={TS, V}} = State,
     NewParserState = process_bytes(SessionPid, Data, ParserState),
     {M, S, _} = TS,
     NrOfBytes = byte_size(Data),
+    BytesRecvLastSecond = V + NrOfBytes,
     NewBytesRecv =
     case os:timestamp() of
         {M, S, _} = NewTS ->
-            {NewTS, V + NrOfBytes};
+            {NewTS, BytesRecvLastSecond};
         NewTS ->
-            _ = vmq_exo:incr_bytes_received(V + NrOfBytes),
+            _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
             {NewTS, 0}
     end,
-    case active_once(Socket) of
-        ok ->
-            State#st{parser_state=NewParserState, bytes_recv=NewBytesRecv};
-        {error, Reason} ->
-            {exit, Reason, State}
-    end;
+    maybe_throttle(BytesRecvLastSecond, State#st{parser_state=NewParserState,
+                                                 bytes_recv=NewBytesRecv});
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
     %% we regard a tcp_closed as 'normal'
     vmq_session:disconnect(State#st.session),
@@ -200,8 +203,27 @@ handle_message({inet_reply, _, ok}, State) ->
     State;
 handle_message({inet_reply, _, Status}, _) ->
     exit({send_failed, Status});
+handle_message(active_once, #st{socket=Socket, throttled=true} = State) ->
+    case active_once(Socket) of
+        ok ->
+            State#st{throttled=false};
+        {error, Reason} ->
+            {exit, Reason, State}
+    end;
 handle_message(Msg, _) ->
     exit({unknown_message_type, Msg}).
+
+maybe_throttle(BytesRecvLastSecond, #st{max_msg_rate=MaxMsgRate} = State)
+  when is_integer(MaxMsgRate) and (BytesRecvLastSecond > MaxMsgRate) ->
+    erlang:send_after(1000, self(), active_once),
+    State#st{throttled=true};
+maybe_throttle(_, #st{socket=Socket} = State) ->
+    case active_once(Socket) of
+        ok ->
+            State;
+        {error, Reason} ->
+            {exit, Reason, State}
+    end.
 
 %% This magic number is the tcp-over-ethernet MSS (1460) minus the
 %% minimum size of a AMQP basic.deliver method frame (24) plus basic

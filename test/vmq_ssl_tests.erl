@@ -1,6 +1,6 @@
 -module(vmq_ssl_tests).
+-export([hook_preauth_success/5]).
 -include_lib("eunit/include/eunit.hrl").
--export([setup_c/0, connect_cert_auth_expired/1]).
 
 -define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
 -define(listener(Port), {{{127,0,0,1}, Port}, [{mountpoint, ""},
@@ -85,6 +85,8 @@ setup_i() ->
                                                    {require_certificate, true},
                                                    {crlfile, "../test/ssl/crl.pem"},
                                                    {use_identity_as_username, true}]),
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_preauth_success, 5),
     ok.
 
 teardown(_) ->
@@ -111,9 +113,6 @@ load_cert(Cert) ->
                     Contents, Type == 'Certificate',
                     Cipher == 'not_encrypted']
     end.
-
-
-
 
 connect_no_auth(_) ->
     Connect = packet:gen_connect("connect-success-test", [{keepalive, 10}]),
@@ -204,6 +203,11 @@ connect_no_identity(_) ->
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
                                {cacerts, load_cacerts()}])).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Hooks
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+hook_preauth_success(_, {"", "connect-success-test"}, {preauth, "test client"}, undefined, _) -> ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper

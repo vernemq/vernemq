@@ -224,5 +224,10 @@ protocol_opts(cowboy_protocol, _, Opts) ->
     [{env, [{dispatch, Dispatch}]}].
 
 default_session_opts(Opts) ->
+    MaybeSSLDefaults =
+    case lists:keyfind(use_identity_as_username, 1, Opts) of
+        false -> [];
+        {_, V} -> [{use_identity_as_username, V}]
+    end,
     %% currently only the mountpoint option is supported
-    [{mountpoint, proplists:get_value(mountpoint, Opts, "")}].
+    [{mountpoint, proplists:get_value(mountpoint, Opts, "")}|MaybeSSLDefaults].
