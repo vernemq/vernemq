@@ -459,20 +459,23 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                                   )
                                 )
                        end,
-            SubscriberId = {MountPoint, ClientId(self())},
-            PluginPid = self(),
-            {ok, QPid} = vmq_queue:start_link(
-                           SubscriberId,
-                           spawn_link(
-                             fun() ->
-                                     plugin_queue_loop(PluginPid, Mod)
-                             end)
-                           , QueueSize),
+            CallingPid = self(),
+            SubscriberId = {MountPoint, ClientId(CallingPid)},
+            User = {plugin, Mod, CallingPid},
 
             RegisterFun =
             fun() ->
+                    PluginPid = self(),
                     wait_til_ready(),
-                    register_subscriber_(self(), QPid, SubscriberId, true)
+                    {ok, QPid} = vmq_queue:start_link(
+                                   SubscriberId,
+                                   spawn_link(
+                                     fun() ->
+                                             plugin_queue_loop(PluginPid, Mod)
+                                     end)
+                                   , QueueSize),
+                    put(vmq_queue_pid, QPid),
+                    register_subscriber_(PluginPid, QPid, SubscriberId, true)
             end,
 
             PublishFun =
@@ -496,10 +499,11 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                     User = {plugin, Mod, CallingPid},
                     subscribe(TradeConsistency, User,
                               {MountPoint, ClientId(CallingPid)},
-                              QPid, [{Topic, 0}]);
+                              get(vmq_queue_pid), [{Topic, 0}]);
                (_) ->
                     {error, invalid_topic}
             end,
+
             UnsubscribeFun =
             fun(Topic) when is_list(Topic) ->
                     wait_til_ready(),
