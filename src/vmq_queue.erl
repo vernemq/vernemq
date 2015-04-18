@@ -66,7 +66,7 @@ notify(Queue) ->
 %% @doc Enqueues a message.
 -spec enqueue(pid(), item()) -> ok | {error, _}.
 enqueue(Queue, Msg) ->
-    case catch gen_fsm:sync_send_event(Queue, {enqueue, Msg}, 100) of
+    case catch gen_fsm:sync_send_event(Queue, {enqueue, Msg}, infinity) of
         ok -> ok;
         {'EXIT', Reason} ->
             % we are not allowed to crash, this would
@@ -89,8 +89,6 @@ active(active, S = #state{}) ->
     {next_state, active, S};
 active(notify, S = #state{}) ->
     {next_state, notify, S};
-active({enqueue, Msg}, S = #state{}) ->
-    send(insert(Msg, S));
 active(_Msg, S = #state{}) ->
     %% unexpected
     {next_state, active, S}.
@@ -108,8 +106,6 @@ passive(active, S = #state{size=0} = S) ->
     {next_state, active, S};
 passive(active, S = #state{size=Size} = S) when Size > 0 ->
     send(S);
-passive({enqueue, Msg}, S) ->
-    {next_state, passive, insert(Msg, S)};
 passive(_Msg, S = #state{}) ->
     %% unexpected
     {next_state, passive, S}.
@@ -125,8 +121,6 @@ notify(active, S = #state{size=Size}) when Size > 0 ->
     send(S);
 notify(notify, S = #state{}) ->
     {next_state, notify, S};
-notify({enqueue, Msg}, S) ->
-    send_notification(insert(Msg, S));
 notify(_Msg, S = #state{}) ->
     %% unexpected
     {next_state, notify, S}.
@@ -148,7 +142,7 @@ handle_sync_event(_Event, _From, StateName, State) ->
 
 %% @private
 handle_info({'DOWN', _, process, _, Reason}, _, State) ->
-    {stop, Reason, State};
+    {stop, Reason, defer_delivery_before_death(State)};
 handle_info(_Info, StateName, State) ->
     {next_state, StateName, State}.
 
@@ -224,3 +218,16 @@ deref(_, {empty, _}) ->
     ok;
 deref(SubscriberId, Q) ->
     deref(SubscriberId, queue:out(Q)).
+
+defer_delivery_before_death(#state{id=SId, queue=Q} = State) ->
+    State#state{queue=defer_delivery_before_death(SId, queue:out(Q))}.
+
+defer_delivery_before_death(SId, {{value, {deliver, 0, _}}, Q}) ->
+    defer_delivery_before_death(SId, queue:out(Q));
+defer_delivery_before_death(SId, {{value, {deliver, QoS, #vmq_msg{msg_ref=MsgRef}}}, Q}) ->
+    vmq_msg_store:defer_deliver(SId, QoS, MsgRef),
+    defer_delivery_before_death(SId, queue:out(Q));
+defer_delivery_before_death(SId, {{value, _}, Q}) ->
+    defer_delivery_before_death(SId, queue:out(Q));
+defer_delivery_before_death(_, {empty, Q}) ->
+    Q.

@@ -101,7 +101,7 @@ retrieve(MsgRef) ->
 -spec deref(subscriber_id(), msg_ref()|{{pid(), atom()}, msg_ref()}) ->
     'ok' | {'error','not_found'}.
 deref(SubscriberId, {{SessionProxy, Node}, MsgRef}) ->
-    rpc:call(Node, ?MODULE, deref, [SubscriberId, MsgRef]),
+    rpc:cast(Node, ?MODULE, deref, [SubscriberId, MsgRef]),
     vmq_session_proxy:derefed(SessionProxy, MsgRef);
 deref(SubscriberId, MsgRef) ->
     try
