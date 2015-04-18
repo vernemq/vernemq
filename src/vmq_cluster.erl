@@ -34,6 +34,7 @@
 
 -define(SERVER, ?MODULE).
 -define(RECHECK_INTERVAL, 10000).
+-define(RECHECK_INTERVAL_NOT_READY, 2000).
 
 -record(state, {}).
 -type state() :: #state{}.
@@ -94,6 +95,7 @@ init([]) ->
             _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
             check_ready(),
             erlang:send_after(?RECHECK_INTERVAL, self(), recheck),
+            lager:info("plumtree peer service event handler '~p' registered", [?MODULE]),
             {ok, #state{}};
         {error, Reason} ->
             {stop, Reason}
@@ -111,17 +113,23 @@ handle_event({update, _}, State) ->
     {ok, State}.
 
 -spec handle_info(_, _) -> {'ok', _}.
-handle_info({nodedown, _Node}, State) ->
+handle_info({nodedown, Node}, State) ->
+    lager:warning("Cluster Node ~p DOWN", [Node]),
     _ = check_ready(),
     {ok, State};
-handle_info({nodeup, _Node}, State) ->
+handle_info({nodeup, Node}, State) ->
+    lager:info("Cluster Node ~p UP", [Node]),
     _ = check_ready(),
     {ok, State};
 handle_info(recheck, State) ->
     _ = check_ready(),
-    erlang:send_after(?RECHECK_INTERVAL, self(), recheck),
+    erlang:send_after(case is_ready() of
+                          true -> ?RECHECK_INTERVAL;
+                          false -> ?RECHECK_INTERVAL_NOT_READY
+                      end, self(), recheck),
     {ok, State};
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    lager:warning("got unhandled info ~p", [Info]),
     {ok, State}.
 
 -spec terminate(_, _) -> 'ok'.
@@ -158,13 +166,11 @@ check_ready(Nodes) ->
     ok.
 
 check_ready([Node|Rest], Acc) ->
-    IsOnline = net_adm:ping(Node) == pong,
-    AppIsStarted = case rpc:call(Node, erlang, whereis, [vmq_server_sup]) of
+    IsReady = case rpc:call(Node, erlang, whereis, [vmq_server_sup]) of
                        Pid when is_pid(Pid) -> true;
                        _ -> false
                    end,
     ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
-    IsReady = IsOnline and AppIsStarted,
     check_ready(Rest, [{Node, IsReady}|Acc]);
 check_ready([], Acc) ->
     ClusterReady =
