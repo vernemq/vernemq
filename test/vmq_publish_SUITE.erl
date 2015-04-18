@@ -1,51 +1,62 @@
--module(vmq_publish_tests).
--include_lib("eunit/include/eunit.hrl").
+-module(vmq_publish_SUITE).
+-export([
+         %% suite/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         all/0
+        ]).
 
--define(SETUP(F), {setup, fun setup/0, fun teardown/1, F}).
+-export([publish_qos1_test/1,
+         publish_qos2_test/1,
+         publish_b2c_disconnect_qos1_test/1,
+         publish_b2c_disconnect_qos2_test/1,
+         publish_b2c_timeout_qos1_test/1,
+         publish_b2c_timeout_qos2_test/1,
+         publish_c2b_disconnect_qos2_test/1,
+         publish_c2b_timeout_qos2_test/1,
+         pattern_matching_test/1]).
+
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Tests Descriptions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-subscribe_test_() ->
-    [
-     {"Publish QoS 1 Success",
-      ?SETUP(fun publish_qos1/1)}
-     , {"Publish QoS 2 Success",
-        ?SETUP(fun publish_qos2/1)}
-     , {"Publish B2C disconnect QoS 1 Success",
-        ?SETUP(fun publish_b2c_disconnect_qos1/1)}
-     , {"Publish B2C disconnect QoS 2 Success",
-        ?SETUP(fun publish_b2c_disconnect_qos2/1)}
-     , {"Publish B2C timeout QoS 1 Success",
-        ?SETUP(fun publish_b2c_timeout_qos1/1)}
-     , {"Publish B2C timeout QoS 2 Success",
-        ?SETUP(fun publish_b2c_timeout_qos2/1)}
-     , {"Publish C2B disconnect QoS 2 Success",
-        ?SETUP(fun publish_c2b_disconnect_qos2/1)}
-     , {"Publish C2B timeout QoS 2 Success",
-        ?SETUP(fun publish_c2b_timeout_qos2/1)}
-     , {"Pattern Matching PubSub Test",
-        ?SETUP(fun pattern_matching/1)}
-    ].
+%% ===================================================================
+%% common_test callbacks
+%% ===================================================================
+init_per_suite(_Config) ->
+    cover:start(),
+    _Config.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Setup Functions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-setup() ->
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:listener_start(1888, []),
-    ok.
-teardown(_) ->
-    vmq_test_utils:teardown().
+    Config.
+
+end_per_testcase(_, Config) ->
+    vmq_test_utils:teardown(),
+    Config.
+
+all() ->
+    [publish_qos1_test,
+     publish_qos2_test,
+     publish_b2c_disconnect_qos1_test,
+     publish_b2c_disconnect_qos2_test,
+     publish_b2c_timeout_qos1_test,
+     publish_b2c_timeout_qos2_test,
+     publish_c2b_disconnect_qos2_test,
+     publish_c2b_timeout_qos2_test,
+     pattern_matching_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-publish_qos1(_) ->
+publish_qos1_test(_) ->
     Connect = packet:gen_connect("pub-qos1-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
     Publish = packet:gen_publish("pub/qos1/test", 1, <<"message">>,
@@ -56,9 +67,9 @@ publish_qos1(_) ->
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "puback", Puback),
     disable_on_publish(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-publish_qos2(_) ->
+publish_qos2_test(_) ->
     Connect = packet:gen_connect("pub-qos2-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
     Publish = packet:gen_publish("pub/qos2/test", 2, <<"message">>,
@@ -73,9 +84,9 @@ publish_qos2(_) ->
     ok = gen_tcp:send(Socket, Pubrel),
     ok = packet:expect_packet(Socket, "pubcomp", Pubcomp),
     disable_on_publish(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-publish_b2c_disconnect_qos1(_) ->
+publish_b2c_disconnect_qos1_test(_) ->
     Connect = packet:gen_connect("pub-qos1-disco-test",
                                  [{keepalive, 60}, {clean_session, false}]),
     Connack = packet:gen_connack(0),
@@ -109,9 +120,9 @@ publish_b2c_disconnect_qos1(_) ->
     ok = gen_tcp:send(Socket1, Puback),
     disable_on_publish(),
     disable_on_subscribe(),
-    ?_assertEqual(ok, gen_tcp:close(Socket1)).
+    ok = gen_tcp:close(Socket1).
 
-publish_b2c_disconnect_qos2(_) ->
+publish_b2c_disconnect_qos2_test(_) ->
     Connect = packet:gen_connect("pub-qos2-disco-test",
                                  [{keepalive, 60}, {clean_session, false}]),
     Connack = packet:gen_connack(0),
@@ -154,9 +165,9 @@ publish_b2c_disconnect_qos2(_) ->
     ok = gen_tcp:send(Socket2, Pubcomp),
     disable_on_publish(),
     disable_on_subscribe(),
-    ?_assertEqual(ok, gen_tcp:close(Socket2)).
+    ok = gen_tcp:close(Socket2).
 
-publish_b2c_timeout_qos1(_) ->
+publish_b2c_timeout_qos1_test(_) ->
     Connect = packet:gen_connect("pub-qos1-timeout-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(3265, "qos1/timeout/test", 1),
@@ -181,9 +192,9 @@ publish_b2c_timeout_qos1(_) ->
     ok = gen_tcp:send(Socket, Puback),
     disable_on_publish(),
     disable_on_subscribe(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-publish_b2c_timeout_qos2(_) ->
+publish_b2c_timeout_qos2_test(_) ->
     Connect = packet:gen_connect("pub-qos2-timeout-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(3265, "qos2/timeout/test", 2),
@@ -215,9 +226,9 @@ publish_b2c_timeout_qos2(_) ->
     ok = gen_tcp:send(Socket, Pubcomp),
     disable_on_publish(),
     disable_on_subscribe(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-publish_c2b_disconnect_qos2(_) ->
+publish_c2b_disconnect_qos2_test(_) ->
     Connect = packet:gen_connect("pub-qos2-disco-test",
                                  [{keepalive, 60}, {clean_session, false}]),
     Connack = packet:gen_connack(0),
@@ -247,9 +258,9 @@ publish_c2b_disconnect_qos2(_) ->
     ok = gen_tcp:send(Socket2, PubrelDup),
     ok = packet:expect_packet(Socket2, "pubcomp", Pubcomp),
     disable_on_publish(),
-    ?_assertEqual(ok, gen_tcp:close(Socket2)).
+    ok = gen_tcp:close(Socket2).
 
-publish_c2b_timeout_qos2(_) ->
+publish_c2b_timeout_qos2_test(_) ->
     Connect = packet:gen_connect("pub-qos2-timeout-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
     Publish = packet:gen_publish("pub/qos2/test", 2,
@@ -266,34 +277,32 @@ publish_c2b_timeout_qos2(_) ->
     ok = gen_tcp:send(Socket, Pubrel),
     ok = packet:expect_packet(Socket, "pubcomp", Pubcomp),
     disable_on_publish(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-pattern_matching(_) ->
-    [?_assertEqual(ok, pattern_test("#", "test/topic"))
-     , ?_assertEqual(ok, pattern_test("#", "/test/topic"))
-     , ?_assertEqual(ok, pattern_test("foo/#", "foo/bar/baz"))
-     , ?_assertEqual(ok, pattern_test("foo/+/baz", "foo/bar/baz"))
-     , ?_assertEqual(ok, pattern_test("foo/+/baz/#", "foo/bar/baz"))
-     , ?_assertEqual(ok, pattern_test("foo/+/baz/#", "foo/bar/baz/bar"))
-     , ?_assertEqual(ok, pattern_test("foo/foo/baz/#", "foo/foo/baz/bar"))
-     , ?_assertEqual(ok, pattern_test("foo/#", "foo"))
-     , ?_assertEqual(ok, pattern_test("/#", "/foo"))
-     , ?_assertEqual(ok, pattern_test("test/topic/", "test/topic/"))
-     , ?_assertEqual(ok, pattern_test("test/topic/+", "test/topic/"))
-     , ?_assertEqual(ok, pattern_test("+/+/+/+/+/+/+/+/+/+/test",
-                                      "one/two/three/four/five/six"
-                                      ++ "/seven/eight/nine/ten/test"))
-     , ?_assertEqual(ok, pattern_test("#", "test////a//topic"))
-     , ?_assertEqual(ok, pattern_test("#", "/test////a//topic"))
-     , ?_assertEqual(ok, pattern_test("foo/#", "foo//bar///baz"))
-     , ?_assertEqual(ok, pattern_test("foo/+/baz", "foo//baz"))
-     , ?_assertEqual(ok, pattern_test("foo/+/baz//", "foo//baz//"))
-     , ?_assertEqual(ok, pattern_test("foo/+/baz/#", "foo//baz"))
-     , ?_assertEqual(ok, pattern_test("foo/+/baz/#", "foo//baz/bar"))
-     , ?_assertEqual(ok, pattern_test("foo//baz/#", "foo//baz/bar"))
-     , ?_assertEqual(ok, pattern_test("foo/foo/baz/#", "foo/foo/baz/bar"))
-     , ?_assertEqual(ok, pattern_test("/#", "////foo///bar"))
-    ].
+pattern_matching_test(_) ->
+    ok = pattern_test("#", "test/topic"),
+    ok = pattern_test("#", "/test/topic"),
+    ok = pattern_test("foo/#", "foo/bar/baz"),
+    ok = pattern_test("foo/+/baz", "foo/bar/baz"),
+    ok = pattern_test("foo/+/baz/#", "foo/bar/baz"),
+    ok = pattern_test("foo/+/baz/#", "foo/bar/baz/bar"),
+    ok = pattern_test("foo/foo/baz/#", "foo/foo/baz/bar"),
+    ok = pattern_test("foo/#", "foo"),
+    ok = pattern_test("/#", "/foo"),
+    ok = pattern_test("test/topic/", "test/topic/"),
+    ok = pattern_test("test/topic/+", "test/topic/"),
+    ok = pattern_test("+/+/+/+/+/+/+/+/+/+/test",
+                      "one/two/three/four/five/six/seven/eight/nine/ten/test"),
+    ok = pattern_test("#", "test////a//topic"),
+    ok = pattern_test("#", "/test////a//topic"),
+    ok = pattern_test("foo/#", "foo//bar///baz"),
+    ok = pattern_test("foo/+/baz", "foo//baz"),
+    ok = pattern_test("foo/+/baz//", "foo//baz//"),
+    ok = pattern_test("foo/+/baz/#", "foo//baz"),
+    ok = pattern_test("foo/+/baz/#", "foo//baz/bar"),
+    ok = pattern_test("foo//baz/#", "foo//baz/bar"),
+    ok = pattern_test("foo/foo/baz/#", "foo/foo/baz/bar"),
+    ok = pattern_test("/#", "////foo///bar").
 
 pattern_test(SubTopic, PubTopic) ->
     Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),

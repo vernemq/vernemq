@@ -1,6 +1,6 @@
 -module(vmq_netsplit_utils).
--export([test/3,
-         reset_tables/1,
+-export([setup/1,
+         teardown/1,
          partition_network/1,
          fix_network/2,
          get_port/1,
@@ -14,12 +14,9 @@
          proxy/0,
          wait_til_ready/0]).
 
--define(LISTENER(Port), {{{127, 0, 0, 1}, Port}, [{max_connections, infinity},
-                                                  {nr_of_acceptors, 10},
-                                                  {mountpoint, ""}]}).
-
 -define(NR_OF_NODES, 5).
 -define(INIT_PORT, 18880).
+-define(DEFAULT_EPMDPXY_PORT, 4369).
 
 -export([hook_auth_on_publish/6,
          hook_auth_on_subscribe/3]).
@@ -27,28 +24,19 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Setup Functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-test(NetTickTime, Timeout, TestsFun) ->
-    {timeout, Timeout,
-     {setup,
-      fun() -> setup(NetTickTime) end,
-      fun(Nodes) -> teardown(Nodes) end,
-      TestsFun
-     }
-    }.
-
-reset_tables([N|_]) ->
-    call_proxy(N, vmq_reg, reset_all_tables, [[]]).
 
 setup(NetTickTime) ->
     {A, B, C} = now(),
     random:seed(A, B, C),
-    epmdpxy:start(vmq_server_test_master, epmd_port()),
+    os:cmd("killall epmd"),
+    epmdpxy:start(?DEFAULT_EPMDPXY_PORT),
     timer:sleep(1000),
-    io:format(user, "Started EPMDPXY on node ~p with EPMD port ~p~n",
-              [node(), epmd_port()]),
-    net_kernel:set_net_ticktime(NetTickTime, NetTickTime),
+    ct:pal("Started EPMDPXY on node ~p with EPMD port ~p~n",
+              [node(), ?DEFAULT_EPMDPXY_PORT]),
+    set_net_ticktime(NetTickTime),
     Hosts = hosts(),
-    [DiscoveryNode|_] = Ns = start_slaves(Hosts),
+    [DiscoveryNode|_] = Ns = start_slaves(NetTickTime, Hosts),
+    ct_cover:add_nodes(Ns),
     try
         [ok = rpc:call(Node, ?MODULE, start_app, [NetTickTime, DiscoveryNode, I])
          || {I, Node} <- lists:zip(lists:seq(1, length(Ns)), Ns)],
@@ -82,11 +70,6 @@ get_port([Node|_]) ->
     [I|_] = lists:reverse(Name),
     ?INIT_PORT + list_to_integer([I]).
 
-
-
-
-
-
 check_connected(Nodes) ->
     check_connected(Nodes, 0).
 check_connected([N1, N2|Rest] = Nodes, I) when length(Nodes) < I ->
@@ -96,26 +79,41 @@ check_connected([N1, N2|Rest] = Nodes, I) when length(Nodes) < I ->
 check_connected(_ , _) -> ok.
 
 configure_trade_consistency(Nodes) ->
-    S= proxy_multicall(Nodes, application, set_env, [vmq_server,
+    proxy_multicall(Nodes, vmq_server_cmd, set_config, [
                                                   trade_consistency,
                                                   true]),
     %% we must also allow multiple sessions, if we want to let
     %% new clients register during netsplit, otherwise
     %% vmq_reg_leader will complain about the unstable cluster
-    S= proxy_multicall(Nodes, application, set_env, [vmq_server,
+    proxy_multicall(Nodes, vmq_server_cmd, set_config, [
                                                   allow_multiple_sessions,
                                                   true]),
-    C= proxy_multicall(Nodes, vmq_config, configure_node, []),
-    io:format(user, "configurge trade consistency ~p ~p~n", [S, C]),
     ok.
 
 ensure_not_ready(Nodes) ->
+    ensure_not_ready(Nodes, 60000).
+
+ensure_not_ready(_, 0) ->
+    ct:pal("cluster can't agree on cluster state on time"),
+    false;
+ensure_not_ready(Nodes, Max) ->
     Ready = proxy_multicall(Nodes, vmq_cluster, is_ready, []),
-    false == lists:member(true, Ready).
+    case lists:member(true, Ready) of
+        false ->
+            ct:pal("cluster is not ready anymore"),
+            true;
+        _ ->
+            ct:pal("still no consensus about cluster state ~p", [Ready]),
+            timer:sleep(1000),
+            ensure_not_ready(Nodes, Max - 1000)
+    end.
 
 hosts() ->
     [list_to_atom("vmq"++integer_to_list(I))
      || I <- lists:seq(1, ?NR_OF_NODES)].
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
@@ -128,24 +126,25 @@ hook_auth_on_subscribe(_, _, _) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 start_app(NetTickTime, DiscoveryNode, I) ->
     Port = ?INIT_PORT + I,
-    net_kernel:set_net_ticktime(NetTickTime, NetTickTime),
+    ok = set_net_ticktime(NetTickTime),
+    vmq_test_utils:setup(),
     application:load(vmq_server),
-    application:set_env(vmq_server, allow_anonymous, true),
-    application:set_env(vmq_server, listeners, [{mqtt, [?LISTENER(Port)]}]),
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_server_cmd:set_config(retry_interval, 10),
+    vmq_server_cmd:listener_start(Port, []),
     case I of
         1 ->
             % we are the discovery node
-            vmq_server:start_no_auth();
+            ignore;
         _ ->
-            pong = net_adm:ping(DiscoveryNode),
-            vmq_server:start_no_auth(DiscoveryNode)
+            vmq_server_cmd:node_join(DiscoveryNode)
     end,
     vmq_plugin_mgr:enable_module_plugin(auth_on_publish, ?MODULE,
                                         hook_auth_on_publish, 6),
     vmq_plugin_mgr:enable_module_plugin(auth_on_subscribe, ?MODULE,
                                         hook_auth_on_subscribe, 3),
 
-    io:fwrite(user, "app started ~p~n", [node()]).
+    io:fwrite(user, "vernemq started ~p~n", [node()]).
 
 wait_till_cluster_ready([N|Nodes]) ->
     call_proxy(N, ?MODULE, wait_til_ready, []),
@@ -194,17 +193,18 @@ call_proxy(N, M, F, A) ->
               error(proxy_call_timeout)
     end.
 
-start_slaves(Ns) ->
-    Nodes = [start_slave(N) || N <- Ns],
+start_slaves(NetTickTime, Ns) ->
+
+    Nodes = [start_slave(NetTickTime, N) || N <- Ns],
     Nodes.
 
-start_slave(Name) ->
-    {Pa, Pz} = paths(),
-    Paths = "-pa ./ -pz ../ebin" ++
-    lists:flatten([[" -pa " ++ Path || Path <- Pa],
-                   [" -pz " ++ Path || Path <- Pz]]),
-    {ok, Node} = ct_slave:start(host(), Name, [{erl_flags, Paths},
-                                               {monitor_master, true}]),
+start_slave(NetTickTime, Name) ->
+    CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
+    NodeConfig = [{monitor_master, true},
+                  {erl_flags, "-kernel net_ticktime " ++ integer_to_list(NetTickTime)},
+                  {startup_functions,
+                   [{code, set_path, [CodePath]}]}],
+    {ok, Node} = ct_slave:start(host(), Name, NodeConfig),
     spawn(Node, ?MODULE, proxy, []),
     Node.
 
@@ -226,22 +226,28 @@ stop_slave(N) ->
             ok
     end.
 
-paths() ->
-    Path = code:get_path(),
-    {ok, [[Root]]} = init:get_argument(root),
-    {Pas, Rest} = lists:splitwith(fun(P) ->
-                                          not lists:prefix(Root, P)
-                                  end, Path),
-    Pzs = lists:filter(fun(P) ->
-                               not lists:prefix(Root, P)
-                       end, Rest),
-    {Pas, Pzs}.
-
 host() ->
     [_Name, Host] = re:split(atom_to_list(node()), "@", [{return, list}]),
     list_to_atom(Host).
 
-epmd_port() ->
-    {ok, [[StrEPMD_PORT]|_]} = init:get_argument(epmd_port),
-    list_to_integer(StrEPMD_PORT).
+set_net_ticktime(NetTickTime) ->
+    ct:pal("change net_ticktime on node ~p to ~p initiated", [node(), NetTickTime]),
+    case net_kernel:set_net_ticktime(NetTickTime, NetTickTime) of
+        unchanged ->
+            ct:pal("net_ticktime on node ~p changed", [node()]),
+            ok;
+        change_initiated ->
+            wait_till_net_tick_converged(NetTickTime);
+        {ongoing_change_to, NetTickTime} ->
+            wait_till_net_tick_converged(NetTickTime)
+    end.
 
+wait_till_net_tick_converged(NetTickTime) ->
+    case net_kernel:get_net_ticktime() of
+        NetTickTime ->
+            ct:pal("net_ticktime on node ~p changed", [node()]),
+            ok;
+        {ongoing_change_to, NetTickTime} ->
+            timer:sleep(1000),
+            wait_till_net_tick_converged(NetTickTime)
+    end.

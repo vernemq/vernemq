@@ -1,19 +1,43 @@
--module(vmq_netsplit_register_consistency_tests).
--include_lib("eunit/include/eunit.hrl").
--include_lib("emqtt_commons/include/emqtt_frame.hrl").
+-module(vmq_netsplit_register_consistency_SUITE).
+-export([
+         %% suite/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         all/0
+        ]).
 
--compile(export_all).
--ifdef(NETSPLIT_TESTS).
-run_test_() ->
-    NetTickTime = 10,
-    vmq_netsplit_utils:test(NetTickTime, NetTickTime * 10,
-                            fun(Nodes) ->
-                                    {timeout, NetTickTime * 5,
-                                     [?_test(register_consistency(Nodes))]}
-                            end).
--endif.
+-export([register_consistency_test/1]).
 
-register_consistency(Nodes) ->
+-define(NET_TICK_TIME, 5).
+
+%% ===================================================================
+%% common_test callbacks
+%% ===================================================================
+init_per_suite(_Config) ->
+    cover:start(),
+    _Config.
+
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_testcase(_Case, Config) ->
+    Nodes = vmq_netsplit_utils:setup(?NET_TICK_TIME),
+    [{nodes, Nodes}|Config].
+
+end_per_testcase(_, Config) ->
+    vmq_netsplit_utils:teardown(proplists:get_value(nodes, Config, [])),
+    Config.
+
+all() ->
+    [register_consistency_test].
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Actual Tests
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+register_consistency_test(Config) ->
+    Nodes = proplists:get_value(nodes, Config, []),
     ok = vmq_netsplit_utils:check_connected(Nodes),
 
     %% Create Partitions

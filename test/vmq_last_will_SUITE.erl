@@ -1,41 +1,52 @@
--module(vmq_last_will_tests).
--include_lib("eunit/include/eunit.hrl").
+-module(vmq_last_will_SUITE).
+-export([
+         %% suite/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         all/0
+        ]).
 
--define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
+-export([will_denied_test/1,
+         will_null_test/1,
+         will_null_topic_test/1,
+         will_qos0_test/1]).
+
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Tests Descriptions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-subscribe_test_() ->
-    [
-     {"Check Last Will Denied",
-      ?setup(fun will_denied/1)}
-    ,{"Check Null Will Payload",
-      ?setup(fun will_null/1)}
-    ,{"Check Null Will Topic",
-      ?setup(fun will_null_topic/1)}
-    ,{"Check QoS0 Will Topic",
-      ?setup(fun will_qos0/1)}
-    ].
+%% ===================================================================
+%% common_test callbacks
+%% ===================================================================
+init_per_suite(_Config) ->
+    cover:start(),
+    _Config.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Setup Functions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-setup() ->
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:listener_start(1888, []),
-    ok.
-teardown(_) ->
-    vmq_test_utils:teardown().
+    Config.
+
+end_per_testcase(_, Config) ->
+    vmq_test_utils:teardown(),
+    Config.
+
+all() ->
+    [will_denied_test,
+     will_null_test,
+     will_null_topic_test,
+     will_qos0_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-will_denied(_) ->
+will_denied_test(_) ->
     ConnectOK = packet:gen_connect("will-acl-test", [{keepalive,60}, {will_topic, "ok"}, {will_payload, <<"should be ok">>}]),
     ConnackOK = packet:gen_connack(0),
     Connect = packet:gen_connect("will-acl-test", [{keepalive,60}, {will_topic, "will/acl/test"}, {will_msg, <<"should be denied">>}]),
@@ -45,9 +56,9 @@ will_denied(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     disable_on_publish(),
     ok = gen_tcp:close(Socket),
-    ?_assertEqual(ok, gen_tcp:close(SocketOK)).
+    ok = gen_tcp:close(SocketOK).
 
-will_null(_) ->
+will_null_test(_) ->
     Connect = packet:gen_connect("will-qos0-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(53, "will/null/test", 0),
@@ -62,15 +73,15 @@ will_null(_) ->
     ok = packet:expect_packet(Socket, "publish", Publish),
     disable_on_subscribe(),
     disable_on_publish(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-will_null_topic(_) ->
+will_null_topic_test(_) ->
     Connect = packet:gen_connect("will-null-topic", [{keepalive,60}, {will_topic, ""}, {will_payload, <<"will message">>}]),
     Connack = packet:gen_connack(2),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-will_qos0(_) ->
+will_qos0_test(_) ->
     Connect = packet:gen_connect("will-qos0-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(53, "will/qos0/test", 0),
@@ -85,10 +96,7 @@ will_qos0(_) ->
     ok = packet:expect_packet(Socket, "publish", Publish),
     disable_on_subscribe(),
     disable_on_publish(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
-
-
-
+    ok = gen_tcp:close(Socket).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)

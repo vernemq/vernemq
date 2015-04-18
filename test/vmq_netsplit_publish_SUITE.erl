@@ -1,21 +1,43 @@
--module(vmq_netsplit_publish_tests).
--include_lib("eunit/include/eunit.hrl").
--include_lib("emqtt_commons/include/emqtt_frame.hrl").
--define(NET_TICK_TIME, 10).
+-module(vmq_netsplit_publish_SUITE).
+-export([
+         %% suite/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         all/0
+        ]).
 
--compile(export_all).
--ifdef(NETSPLIT_TESTS).
-run_test_() ->
-    NetTickTime = ?NET_TICK_TIME,
-    vmq_netsplit_utils:test(NetTickTime, NetTickTime * 10,
-                            fun(Nodes) ->
-                                    {timeout, NetTickTime * 5,
-                                     [?_test(publish_qos0(Nodes))]}
-                            end).
--endif.
+-export([publish_qos0_test/1]).
 
-publish_qos0(Nodes) ->
-    vmq_netsplit_utils:reset_tables(Nodes),
+-define(NET_TICK_TIME, 5).
+
+%% ===================================================================
+%% common_test callbacks
+%% ===================================================================
+init_per_suite(_Config) ->
+    cover:start(),
+    _Config.
+
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_testcase(_Case, Config) ->
+    Nodes = vmq_netsplit_utils:setup(?NET_TICK_TIME),
+    [{nodes, Nodes}|Config].
+
+end_per_testcase(_, Config) ->
+    vmq_netsplit_utils:teardown(proplists:get_value(nodes, Config, [])),
+    Config.
+
+all() ->
+    [publish_qos0_test].
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Actual Tests
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+publish_qos0_test(Config) ->
+    Nodes = proplists:get_value(nodes, Config, []),
     ok = vmq_netsplit_utils:check_connected(Nodes),
     Connect = packet:gen_connect("test-netsplit-client", [{clean_session, false},
                                                           {keepalive, 60}]),
@@ -28,6 +50,8 @@ publish_qos0(Nodes) ->
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
 
+    % ensures the subscription is replicated
+    timer:sleep(100),
     %% Create Partitions
     {Island1, Island2} = vmq_netsplit_utils:partition_network(Nodes),
 

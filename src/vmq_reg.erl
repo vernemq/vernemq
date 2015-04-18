@@ -61,6 +61,9 @@
 %% used by vmq_session:list_sessions
 -export([fold_sessions/2]).
 
+%% currently used by netsplit tests
+-export([subscriptions_for_subscriber_id/1]).
+
 -record(state, {}).
 -record(session, {subscriber_id, pid, queue_pid, monitor, last_seen, clean}).
 
@@ -407,6 +410,13 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
       [{match, {NewWords}},
        {resolver, lww}]).
 
+subscriptions_for_subscriber_id(SubscriberId) ->
+    plumtree_metadata:fold(
+      fun({{_, {Topic, QoS, _}}, _}, Acc) ->
+              [{Topic, QoS}|Acc]
+      end, [], ?SUBSCRIBER_DB,
+      [{match, {SubscriberId, '_'}},
+       {resolver, lww}]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% RPC Callbacks / Maintenance

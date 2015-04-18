@@ -1,43 +1,54 @@
--module(vmq_retain_tests).
--include_lib("eunit/include/eunit.hrl").
+-module(vmq_retain_SUITE).
+-export([
+         %% suite/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         all/0
+        ]).
 
--define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
+-export([retain_qos0_test/1,
+         retain_qos0_repeated_test/1,
+         retain_qos0_fresh_test/1,
+         retain_qos0_clear_test/1,
+         retain_qos1_qos0_test/1]).
+
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Tests Descriptions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-subscribe_test_() ->
-    [
-     {"Retain QoS 0",
-      ?setup(fun retain_qos0/1)}
-    ,{"Retain QoS 0 Repeated",
-      ?setup(fun retain_qos0_repeated/1)}
-    ,{"Retain QoS 0 Fresh",
-      ?setup(fun retain_qos0_fresh/1)}
-    ,{"Clear Retained Publish QoS 0",
-      ?setup(fun retain_qos0_clear/1)}
-    ,{"Retained Publish QoS 1 -> QoS 0",
-      ?setup(fun retain_qos1_qos0/1)}
-    ].
+%% ===================================================================
+%% common_test callbacks
+%% ===================================================================
+init_per_suite(_Config) ->
+    cover:start(),
+    _Config.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Setup Functions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-setup() ->
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:listener_start(1888, []),
-    ok.
-teardown(_) ->
-    vmq_test_utils:teardown().
+    Config.
+
+end_per_testcase(_, Config) ->
+    vmq_test_utils:teardown(),
+    Config.
+
+all() ->
+    [retain_qos0_test,
+     retain_qos0_repeated_test,
+     retain_qos0_fresh_test,
+     retain_qos0_clear_test,
+     retain_qos1_qos0_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-retain_qos0(_) ->
+retain_qos0_test(_) ->
     Connect = packet:gen_connect("retain-qos0-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Publish = packet:gen_publish("retain/qos0/test", 0, <<"retained message">>, [{retain, true}]),
@@ -53,9 +64,9 @@ retain_qos0(_) ->
     ok = packet:expect_packet(Socket, "publish", Publish),
     disable_on_publish(),
     disable_on_subscribe(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-retain_qos0_repeated(_) ->
+retain_qos0_repeated_test(_) ->
     Connect = packet:gen_connect("retain-qos0-rep-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Publish = packet:gen_publish("retain/qos0/test", 0, <<"retained message">>, [{retain, true}]),
@@ -78,9 +89,9 @@ retain_qos0_repeated(_) ->
     ok = packet:expect_packet(Socket, "publish", Publish),
     disable_on_publish(),
     disable_on_subscribe(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-retain_qos0_fresh(_) ->
+retain_qos0_fresh_test(_) ->
     Connect = packet:gen_connect("retain-qos0-fresh-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Publish = packet:gen_publish("retain/qos0/test", 0, <<"retained message">>, [{retain, true}]),
@@ -97,9 +108,9 @@ retain_qos0_fresh(_) ->
     ok = packet:expect_packet(Socket, "publish", PublishFresh),
     disable_on_publish(),
     disable_on_subscribe(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-retain_qos0_clear(_) ->
+retain_qos0_clear_test(_) ->
     Connect = packet:gen_connect("retain-clear-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Publish = packet:gen_publish("retain/clear/test", 0, <<"retained message">>, [{retain, true}]),
@@ -128,9 +139,9 @@ retain_qos0_clear(_) ->
     {error, timeout} = gen_tcp:recv(Socket, 256, 1000),
     disable_on_publish(),
     disable_on_subscribe(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = ok, gen_tcp:close(Socket).
 
-retain_qos1_qos0(_) ->
+retain_qos1_qos0_test(_) ->
     Connect = packet:gen_connect("retain-qos1-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Publish = packet:gen_publish("retain/qos1/test", 1, <<"retained message">>, [{mid, 6}, {retain, true}]),
@@ -149,7 +160,7 @@ retain_qos1_qos0(_) ->
     ok = packet:expect_packet(Socket, "publish0", Publish0),
     disable_on_publish(),
     disable_on_subscribe(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)

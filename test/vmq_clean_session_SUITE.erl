@@ -1,38 +1,47 @@
--module(vmq_clean_session_tests).
--include_lib("eunit/include/eunit.hrl").
+-module(vmq_clean_session_SUITE).
+-export([
+         %% suite/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         all/0
+        ]).
 
--define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
--define(listener(Port), {{{127,0,0,1}, Port}, [{max_connections, infinity},
-                                               {nr_of_acceptors, 10},
-                                               {mountpoint, ""}]}).
+-export([clean_session_qos1_test/1]).
+
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Tests Descriptions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-subscribe_test_() ->
-    [
-     {"Clean Session QoS 1",
-      ?setup(fun clean_session_qos1/1)}
-    ].
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Setup Functions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-setup() ->
+%% ===================================================================
+%% common_test callbacks
+%% ===================================================================
+init_per_suite(_Config) ->
+    cover:start(),
+    _Config.
+
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:listener_start(1888, []),
-    ok.
-teardown(_) ->
-    vmq_test_utils:teardown().
+    Config.
+
+end_per_testcase(_, Config) ->
+    vmq_test_utils:teardown(),
+    Config.
+
+all() ->
+    [clean_session_qos1_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-clean_session_qos1(_) ->
+clean_session_qos1_test(_) ->
     Connect = packet:gen_connect("clean-qos1-test", [{keepalive,60}, {clean_session, false}]),
     Connack = packet:gen_connack(0),
     Disconnect = packet:gen_disconnect(),
@@ -54,7 +63,7 @@ clean_session_qos1(_) ->
     ok = gen_tcp:send(Socket1, Puback),
     disable_on_publish(),
     disable_on_subscribe(),
-    ?_assertEqual(ok, gen_tcp:close(Socket1)).
+    ok = gen_tcp:close(Socket1).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)

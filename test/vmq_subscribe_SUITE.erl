@@ -1,53 +1,63 @@
--module(vmq_subscribe_tests).
--include_lib("eunit/include/eunit.hrl").
+-module(vmq_subscribe_SUITE).
+-export([
+         %% suite/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         all/0
+        ]).
 
--define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
--define(listener(Port), {{{127,0,0,1}, Port}, [{max_connections, infinity},
-                                               {nr_of_acceptors, 10},
-                                               {mountpoint, ""}]}).
+-export([subscribe_qos0_test/1,
+         subscribe_qos1_test/1,
+         subscribe_qos2_test/1,
+         unsubscribe_qos0_test/1,
+         unsubscribe_qos1_test/1,
+         unsubscribe_qos2_test/1,
+         subpub_qos0_test/1,
+         subpub_qos1_test/1,
+         subpub_qos2_test/1]).
+
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Tests Descriptions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-subscribe_test_() ->
-    [{"Subscribe QoS 0 Success",
-      ?setup(fun subscribe_qos0/1)}
-    ,{"Subscribe QoS 1 Success",
-      ?setup(fun subscribe_qos1/1)}
-    ,{"Subscribe QoS 2 Success",
-      ?setup(fun subscribe_qos2/1)}
-    ,{"Unsubscribe QoS 0 Success",
-      ?setup(fun unsubscribe_qos0/1)}
-    ,{"Unsubscribe QoS 1 Success",
-      ?setup(fun unsubscribe_qos1/1)}
-    ,{"Unsubscribe QoS 2 Success",
-      ?setup(fun unsubscribe_qos2/1)}
-    ,{"Subscribe and Publish QoS 0 Success",
-      ?setup(fun subpub_qos0/1)}
-    ,{"Subscribe and Publish QoS 1 Success",
-      ?setup(fun subpub_qos1/1)}
-    ,{"Subscribe and Publish QoS 2 Success",
-      ?setup(fun subpub_qos2/1)}
-    ].
+%% ===================================================================
+%% common_test callbacks
+%% ===================================================================
+init_per_suite(_Config) ->
+    cover:start(),
+    _Config.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Setup Functions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-setup() ->
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
-    vmq_server_cmd:listener_start(1888, []).
-teardown(_) ->
-    vmq_test_utils:teardown().
+    vmq_server_cmd:listener_start(1888, []),
+    Config.
+
+end_per_testcase(_, Config) ->
+    vmq_test_utils:teardown(),
+    Config.
+
+all() ->
+    [subscribe_qos0_test,
+     subscribe_qos1_test,
+     subscribe_qos2_test,
+     unsubscribe_qos0_test,
+     unsubscribe_qos1_test,
+     unsubscribe_qos2_test,
+     subpub_qos0_test,
+     subpub_qos1_test,
+     subpub_qos2_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-subscribe_qos0(_) ->
+subscribe_qos0_test(_) ->
     Connect = packet:gen_connect("subscribe-qos0-test", [{keepalive,10}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(53, "qos0/test", 0),
@@ -56,10 +66,10 @@ subscribe_qos0(_) ->
     enable_on_subscribe(),
     ok = gen_tcp:send(Socket, Subscribe),
     disable_on_subscribe(),
-    [?_assertEqual(ok, packet:expect_packet(Socket, "suback", Suback))
-    ,?_assertEqual(ok, gen_tcp:close(Socket))].
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = gen_tcp:close(Socket).
 
-subscribe_qos1(_) ->
+subscribe_qos1_test(_) ->
     Connect = packet:gen_connect("subscribe-qos1-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(79, "qos1/test", 1),
@@ -68,10 +78,10 @@ subscribe_qos1(_) ->
     enable_on_subscribe(),
     ok = gen_tcp:send(Socket, Subscribe),
     disable_on_subscribe(),
-    [?_assertEqual(ok, packet:expect_packet(Socket, "suback", Suback))
-    ,?_assertEqual(ok, gen_tcp:close(Socket))].
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = gen_tcp:close(Socket).
 
-subscribe_qos2(_) ->
+subscribe_qos2_test(_) ->
     Connect = packet:gen_connect("subscribe-qos2-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(3, "qos2/test", 2),
@@ -80,40 +90,40 @@ subscribe_qos2(_) ->
     enable_on_subscribe(),
     ok = gen_tcp:send(Socket, Subscribe),
     disable_on_subscribe(),
-    [?_assertEqual(ok, packet:expect_packet(Socket, "suback", Suback))
-    ,?_assertEqual(ok, gen_tcp:close(Socket))].
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = gen_tcp:close(Socket).
 
-unsubscribe_qos0(_) ->
+unsubscribe_qos0_test(_) ->
     Connect = packet:gen_connect("unsubscribe-qos0-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Unsubscribe = packet:gen_unsubscribe(53, "qos0/test"),
     Unsuback = packet:gen_unsuback(53),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Unsubscribe),
-    [?_assertEqual(ok, packet:expect_packet(Socket, "unsuback", Unsuback))
-    ,?_assertEqual(ok, gen_tcp:close(Socket))].
+    ok = packet:expect_packet(Socket, "unsuback", Unsuback),
+    ok = gen_tcp:close(Socket).
 
-unsubscribe_qos1(_) ->
+unsubscribe_qos1_test(_) ->
     Connect = packet:gen_connect("unsubscribe-qos1-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Unsubscribe = packet:gen_unsubscribe(79, "qos1/test"),
     Unsuback = packet:gen_unsuback(79),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Unsubscribe),
-    [?_assertEqual(ok, packet:expect_packet(Socket, "unsuback", Unsuback))
-    ,?_assertEqual(ok, gen_tcp:close(Socket))].
+    ok = packet:expect_packet(Socket, "unsuback", Unsuback),
+    ok = gen_tcp:close(Socket).
 
-unsubscribe_qos2(_) ->
+unsubscribe_qos2_test(_) ->
     Connect = packet:gen_connect("unsubscribe-qos2-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Unsubscribe = packet:gen_unsubscribe(3, "qos2/test"),
     Unsuback = packet:gen_unsuback(3),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Unsubscribe),
-    [?_assertEqual(ok, packet:expect_packet(Socket, "unsuback", Unsuback))
-    ,?_assertEqual(ok, gen_tcp:close(Socket))].
+    ok = packet:expect_packet(Socket, "unsuback", Unsuback),
+    ok = gen_tcp:close(Socket).
 
-subpub_qos0(_) ->
+subpub_qos0_test(_) ->
     Connect = packet:gen_connect("subpub-qos0-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(53, "subpub/qos0", 0),
@@ -128,9 +138,9 @@ subpub_qos0(_) ->
     ok = packet:expect_packet(Socket, "publish", Publish),
     disable_on_subscribe(),
     disable_on_publish(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-subpub_qos1(_) ->
+subpub_qos1_test(_) ->
     Connect = packet:gen_connect("subpub-qos1-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(530, "subpub/qos1", 1),
@@ -148,9 +158,9 @@ subpub_qos1(_) ->
     ok = packet:expect_packet(Socket, "publish", Publish2),
     disable_on_subscribe(),
     disable_on_publish(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-subpub_qos2(_) ->
+subpub_qos2_test(_) ->
     Connect = packet:gen_connect("subpub-qos2-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(530, "subpub/qos2", 2),
@@ -177,7 +187,7 @@ subpub_qos2(_) ->
     ok = packet:expect_packet(Socket, "pubrel2", Pubrel2),
     disable_on_subscribe(),
     disable_on_publish(),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks

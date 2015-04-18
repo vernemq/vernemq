@@ -4,5 +4,7 @@
 deps
 Mnesia.*
 erl_crash.dump
+data
 log
+logs
 .rebar

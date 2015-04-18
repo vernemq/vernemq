@@ -1,20 +1,43 @@
--module(vmq_netsplit_register_not_ready_tests).
--include_lib("eunit/include/eunit.hrl").
--include_lib("emqtt_commons/include/emqtt_frame.hrl").
--define(NET_TICK_TIME, 10).
+-module(vmq_netsplit_register_not_ready_SUITE).
+-export([
+         %% suite/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         all/0
+        ]).
 
--compile(export_all).
--ifdef(NETSPLIT_TESTS).
-run_test_() ->
-    NetTickTime = ?NET_TICK_TIME,
-    vmq_netsplit_utils:test(NetTickTime, NetTickTime * 10,
-                            fun(Nodes) ->
-                                    {timeout, NetTickTime * 5,
-                                     [?_test(register_not_ready(Nodes))]}
-                            end).
--endif.
+-export([register_not_ready_test/1]).
 
-register_not_ready(Nodes) ->
+-define(NET_TICK_TIME, 5).
+
+%% ===================================================================
+%% common_test callbacks
+%% ===================================================================
+init_per_suite(_Config) ->
+    cover:start(),
+    _Config.
+
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_testcase(_Case, Config) ->
+    Nodes = vmq_netsplit_utils:setup(?NET_TICK_TIME),
+    [{nodes, Nodes}|Config].
+
+end_per_testcase(_, Config) ->
+    vmq_netsplit_utils:teardown(proplists:get_value(nodes, Config, [])),
+    Config.
+
+all() ->
+    [register_not_ready_test].
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Actual Tests
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+register_not_ready_test(Config) ->
+    Nodes = proplists:get_value(nodes, Config, []),
     ok = vmq_netsplit_utils:check_connected(Nodes),
 
     %% Connect a test-client
@@ -37,9 +60,7 @@ register_not_ready(Nodes) ->
 
 
     %% SLEEP until cluster knows about net split
-    io:format(user, "Sleep 2x ~p seconds (net_ticktime)~n", [?NET_TICK_TIME]),
-    timer:sleep(?NET_TICK_TIME * 2000), % sleep 2x net_tick_time
-
+    true = vmq_netsplit_utils:ensure_not_ready(Nodes),
     %%================================%%
     %%     Window of Uncertanity      %%
     %%                                %%
@@ -48,7 +69,6 @@ register_not_ready(Nodes) ->
 
     vmq_netsplit_utils:check_connected(Island1),
     vmq_netsplit_utils:check_connected(Island2),
-    true = vmq_netsplit_utils:ensure_not_ready(Nodes),
 
     %% we are now on a partitioned network and SHOULD NOT allow new connections
     ConnNack = packet:gen_connack(3), %% server unavailable

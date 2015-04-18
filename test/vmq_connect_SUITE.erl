@@ -1,77 +1,86 @@
--module(vmq_connect_tests).
--include_lib("eunit/include/eunit.hrl").
+-module(vmq_connect_SUITE).
+-export([
+         %% suite/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         all/0
+        ]).
 
--define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
--define(listener(Port), {{{127,0,0,1}, Port}, [{max_connections, infinity},
-                                               {nr_of_acceptors, 10},
-                                               {mountpoint, ""}]}).
+-export([anon_denied_test/1,
+         anon_success_test/1,
+         invalid_id_0_test/1,
+         invalid_id_0_311_test/1,
+         invalid_id_missing_test/1,
+         invalid_id_24_test/1,
+         invalid_protonum_test/1,
+         uname_no_password_denied_test/1,
+         uname_password_denied_test/1,
+         uname_password_success_test/1]).
+
 -export([hook_empty_client_id_proto_4/5,
          hook_uname_no_password_denied/5,
          hook_uname_password_denied/5,
          hook_uname_password_success/5]).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Tests Descriptions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-connect_test_() ->
-    [{"A anonymous client is not allowed to connect",
-      ?setup(fun anon_denied/1)}
-     ,{"A anonymous client is allowed to connect",
-       ?setup(fun anon_success/1)}
-     ,{"A client with an empty Client Id is not allowed to connect",
-       ?setup(fun invalid_id_0/1)}
-     ,{"A client can connect with a missing Client Id if Protocol Version 4",
-       ?setup(fun invalid_id_0_311/1)}
-     ,{"A client can connect with a missing Client Id",
-       ?setup(fun invalid_id_missing/1)}
-     ,{"A strict implementation doesn't allow client ids longer than 23 Characters",
-       ?setup(fun invalid_id_24/1)}
-     ,{"We only support Protocol Version 3,4",
-       ?setup(fun invalid_protonum/1)}
-     ,{"A client with a username but no password is not allowed to connect",
-       ?setup(fun uname_no_password_denied/1)}
-     ,{"A client with a username and wrong password is not allowed to connect",
-       ?setup(fun uname_password_denied/1)}
-     ,{"A client with a username and proper password is allowed to connect",
-       ?setup(fun uname_password_success/1)}
-    ].
+%% ===================================================================
+%% common_test callbacks
+%% ===================================================================
+init_per_suite(_Config) ->
+    cover:start(),
+    _Config.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Setup Functions
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-setup() ->
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, false),
     vmq_server_cmd:listener_start(1888, []),
-    ok.
-teardown(_) ->
-    vmq_test_utils:teardown().
+    Config.
+
+end_per_testcase(_, Config) ->
+    vmq_test_utils:teardown(),
+    Config.
+
+all() ->
+    [anon_denied_test,
+     anon_success_test,
+     invalid_id_0_test,
+     invalid_id_0_311_test,
+     invalid_id_missing_test,
+     invalid_id_24_test,
+     invalid_protonum_test,
+     uname_no_password_denied_test,
+     uname_password_denied_test,
+     uname_password_success_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-anon_denied(_) ->
+anon_denied_test(_) ->
     Connect = packet:gen_connect("connect-anon-test", [{keepalive,10}]),
     Connack = packet:gen_connack(5),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-anon_success(_) ->
+anon_success_test(_) ->
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_config:configure_node(),
     %% allow_anonymous is proxied through vmq_config.erl
     Connect = packet:gen_connect("connect-success-test", [{keepalive,10}]),
     Connack = packet:gen_connack(0),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-invalid_id_0(_) ->
+invalid_id_0_test(_) ->
     Connect = packet:gen_connect("", [{keepalive,10}]),
     Connack = packet:gen_connack(2),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-invalid_id_0_311(_) ->
+invalid_id_0_311_test(_) ->
     Connect = packet:gen_connect("", [{keepalive,10},{proto_ver,4}]),
     Connack = packet:gen_connack(0),
     vmq_plugin_mgr:enable_module_plugin(
@@ -79,32 +88,32 @@ invalid_id_0_311(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     vmq_plugin_mgr:disable_module_plugin(
       auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 5),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-invalid_id_missing(_) ->
+invalid_id_missing_test(_) ->
     %% mosq_test.gen_connect(None, keepalive=10)
     Connect = <<16#10,16#0c,16#00,16#06,
                 16#4d,16#51,16#49,16#73,
                 16#64,16#70,16#03,16#02,
                 16#00,16#0a>>,
-    ?_assertEqual({error, closed}, packet:do_client_connect(Connect, <<>>, [])).
+    {error, closed} = packet:do_client_connect(Connect, <<>>, []).
 
-invalid_id_24(_) ->
+invalid_id_24_test(_) ->
     Connect = packet:gen_connect("connect-invalid-id-test-", [{keepalive,10}]),
     Connack = packet:gen_connack(2), %% client id longer than 23 Characters
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-invalid_protonum(_) ->
+invalid_protonum_test(_) ->
     %% mosq_test.gen_connect("test", keepalive=10, proto_ver=0)
     Connect = <<16#10,16#12,16#00,16#06,16#4d,16#51,16#49,16#73,
                 16#64,16#70,16#00,16#02,16#00,16#0a,16#00,16#04,
                 16#74,16#65,16#73,16#74>>,
     Connack = packet:gen_connack(1),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-uname_no_password_denied(_) ->
+uname_no_password_denied_test(_) ->
     Connect = packet:gen_connect("connect-uname-test-", [{keepalive,10}, {username, "user"}]),
     Connack = packet:gen_connack(4),
     ok = vmq_plugin_mgr:enable_module_plugin(
@@ -112,9 +121,9 @@ uname_no_password_denied(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = vmq_plugin_mgr:disable_module_plugin(
       auth_on_register, ?MODULE, hook_uname_no_password_denied, 5),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-uname_password_denied(_) ->
+uname_password_denied_test(_) ->
     Connect = packet:gen_connect("connect-uname-pwd-test", [{keepalive,10}, {username, "user"},
                                                             {password, "password9"}]),
     Connack = packet:gen_connack(4),
@@ -123,9 +132,9 @@ uname_password_denied(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = vmq_plugin_mgr:disable_module_plugin(
       auth_on_register, ?MODULE, hook_uname_password_denied, 5),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
-uname_password_success(_) ->
+uname_password_success_test(_) ->
     Connect = packet:gen_connect("connect-uname-pwd-test", [{keepalive,10}, {username, "user"},
                                                             {password, "password9"}]),
     Connack = packet:gen_connack(0),
@@ -134,7 +143,7 @@ uname_password_success(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     vmq_plugin_mgr:disable_module_plugin(
       auth_on_register, ?MODULE, hook_uname_password_success, 5),
-    ?_assertEqual(ok, gen_tcp:close(Socket)).
+    ok = gen_tcp:close(Socket).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
