@@ -35,7 +35,7 @@ compile-no-deps:
 	${REBAR} compile skip_deps=true
 
 test: compile
-	${REBAR} eunit skip_deps=true
+	${REBAR} ct skip_deps=true
 
 upload-docs: docs
 	@if [ -z "${BUCKET}" -o -z "${PROJECT}" -o -z "${REVISION}" ]; then \
