@@ -746,16 +746,16 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
         true ->
             #state{peer=Peer,
                    allow_multiple_sessions=AllowMultiple,
-                   clean_session=CleanSession,
                    subscriber_id=SubscriberId,
                    max_queued_messages=QueueSize
                   } = State,
             {ok, QPid} = vmq_queue:start_link(SubscriberId, self(), QueueSize),
             case vmq_reg:register_subscriber(AllowMultiple, SubscriberId,
-                                             QPid, CleanSession) of
+                                             QPid, Clean) of
                 ok ->
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
-                    check_will(F, State#state{queue_pid=QPid, username=User});
+                    check_will(F, State#state{queue_pid=QPid, username=User,
+                                              clean_session=Clean});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
                                 [SubscriberId, Reason]),
