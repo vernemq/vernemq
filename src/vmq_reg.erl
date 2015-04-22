@@ -21,8 +21,8 @@
          %% used in vmq_session fsm handling
          subscribe/5,
          unsubscribe/4,
-         register_subscriber/4,
-         register_session/2,
+         register_subscriber/5,
+         register_session/3,
          %% used in vmq_session fsm handling
          publish/1,
 
@@ -65,7 +65,13 @@
 -export([subscriptions_for_subscriber_id/1]).
 
 -record(state, {}).
--record(session, {subscriber_id, pid, queue_pid, monitor, last_seen, clean}).
+-record(session, {subscriber_id,
+                  pid,
+                  queue_pid,
+                  monitor,
+                  last_seen,
+                  balance,
+                  clean}).
 
 -type state() :: #state{}.
 
@@ -141,17 +147,18 @@ unsubscribe_op(User, SubscriberId, Topics) ->
               ok
       end).
 
--spec register_subscriber(flag(), subscriber_id(), pid(), flag()) ->
+-spec register_subscriber(flag(), flag(), subscriber_id(), pid(), flag()) ->
     ok | {error, _}.
-register_subscriber(false, SubscriberId, QPid, CleanSession) ->
+register_subscriber(false, _, SubscriberId, QPid, CleanSession) ->
     %% we don't allow multiple sessions using same subscriber id
+    %% allow_multiple_sessions is needed for session balancing
     register_subscriber(SubscriberId, QPid, CleanSession);
-register_subscriber(true, SubscriberId, QPid, _CleanSession) ->
+register_subscriber(true, BalanceSessions, SubscriberId, QPid, _CleanSession) ->
     %% we allow multiple sessions using same subscriber id
     %%
     %% !!! CleanSession is disabled if multiple sessions are in use
     %%
-    register_session(SubscriberId, QPid).
+    register_session(SubscriberId, BalanceSessions, QPid).
 
 -spec register_subscriber(subscriber_id(), pid(), flag()) -> ok | {error, _}.
 register_subscriber(SubscriberId, QPid, CleanSession) ->
@@ -164,8 +171,8 @@ register_subscriber(SubscriberId, QPid, CleanSession) ->
             R
     end.
 
--spec register_session(subscriber_id(), pid()) -> ok | {error, _}.
-register_session(SubscriberId, QPid) ->
+-spec register_session(subscriber_id(), flag(), pid()) -> ok | {error, _}.
+register_session(SubscriberId, BalanceSessions, QPid) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
     SessionPid = self(),
@@ -174,8 +181,8 @@ register_session(SubscriberId, QPid) ->
       fun({error, Reason}) -> {error, Reason};
          (_) ->
               case gen_server:call(?MODULE,
-                                   {monitor, SessionPid, QPid,
-                                    SubscriberId, false, false},
+                                   {monitor, SessionPid, QPid, SubscriberId,
+                                    BalanceSessions, false, false},
                                    infinity) of
                   ok ->
                       vmq_session_proxy_sup:start_delivery(QPid, SubscriberId);
@@ -246,7 +253,7 @@ register_subscriber__(SessionPid, QPid, SubscriberId, CleanSession) ->
                            [SubscriberId, NNodesWithSession])
     end,
     gen_server:call(?MODULE, {monitor, SessionPid, QPid,
-                              SubscriberId, CleanSession, true}, infinity).
+                              SubscriberId, false, CleanSession, true}, infinity).
 
 -spec publish(msg()) -> 'ok' | {'error', _}.
 publish(#vmq_msg{trade_consistency=true,
@@ -300,7 +307,12 @@ publish_({Topic, Node}, Msg) when Node == node() ->
       fun({{SubscriberId, {_, QoS, _}}, N}, AccMsg) ->
               case Node of
                   N ->
-                      {_, QPids} = get_queue_pids(SubscriberId),
+                      QPids =
+                      case get_queue_pids(SubscriberId) of
+                          [] -> not_found;
+                          Pids ->
+                              Pids
+                      end,
                       publish___(SubscriberId, AccMsg, QoS, QPids);
                   _ ->
                       AccMsg
@@ -576,8 +588,8 @@ subscribe_subscriber_changes() ->
                 [Node|_] ->
                     QPids =
                     case get_queue_pids(SubscriberId) of
-                        {ok, Pids} -> Pids;
-                        {error, not_found} -> {error, not_found}
+                        [] -> {error, not_found};
+                        Pids ->  Pids
                     end,
                     {subscribe, MP, Topic, {SubscriberId, QoS, QPids}};
                 [OtherNode|_] ->
@@ -596,11 +608,7 @@ fold_subscribers(ResolveQPids, FoldFun, Acc) ->
       fun({{{MP, _} = SubscriberId, {Topic, QoS, _}}, N}, AccAcc) ->
               case Node == N of
                   true when ResolveQPids ->
-                      QPids =
-                      case get_queue_pids(SubscriberId) of
-                          {ok, Pids} -> Pids;
-                          {error, not_found} -> {error, not_found}
-                      end,
+                      QPids = get_queue_pids(SubscriberId),
                       FoldFun({MP, Topic, {SubscriberId, QoS, QPids}},
                               AccAcc);
                   true ->
@@ -681,16 +689,25 @@ get_subscriber_pids(SubscriberId) ->
             {ok, Pids}
     end.
 
--spec get_queue_pids(subscriber_id()) -> {error, not_found} | {ok, [pid()]}.
+-spec get_queue_pids(subscriber_id()) -> [pid()].
 get_queue_pids(SubscriberId) ->
-    case [Pid || #session{queue_pid=Pid}
-                 <- ets:lookup(vmq_session, SubscriberId),
-                 is_pid(Pid)] of
+    case ets:lookup(vmq_session, SubscriberId) of
         [] ->
-            {error, not_found};
-        Pids ->
-            {ok, Pids}
+            [];
+        [#session{queue_pid=Pid}] when is_pid(Pid) ->
+            %% optimization
+            [Pid];
+        [#session{balance=false}|_] = Sessions ->
+            [P || #session{queue_pid=P} <- Sessions, is_pid(P)];
+        [#session{balance=true}|_] = Sessions ->
+            case [P || #session{queue_pid=P} <- Sessions, is_pid(P)] of
+                [] -> [];
+                VSessions ->
+                    [lists:nth(random:uniform(length(VSessions)), VSessions)]
+            end;
+        _ -> []
     end.
+
 
 client_stats() ->
     TotalSessions = total_sessions(),
@@ -783,13 +800,14 @@ init([]) ->
 
 
 -spec handle_call(_, _, []) -> {reply, ok, []}.
-handle_call({monitor, SessionPid, QPid, SubscriberId,
+handle_call({monitor, SessionPid, QPid, SubscriberId, Balance,
              CleanSession, RemoveOldSess}, _From, State) ->
     cleanup_sessions(SubscriberId, RemoveOldSess),
     Monitor = monitor(process, SessionPid),
     Session = #session{subscriber_id=SubscriberId,
                        pid=SessionPid, queue_pid=QPid,
                        monitor=Monitor, last_seen=epoch(),
+                       balance=Balance,
                        clean=CleanSession},
     ets:insert(vmq_session_mons, {Monitor, SubscriberId}),
     ets:insert(vmq_session, Session),

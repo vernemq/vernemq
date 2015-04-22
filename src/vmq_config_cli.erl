@@ -36,6 +36,7 @@ register_config_() ->
     ["allow_anonymous",
      "trade_consistency",
      "allow_multiple_sessions",
+     "balance_sessions",
      "retry_interval",
      "max_client_id_size",
      "persistent_client_expiration",

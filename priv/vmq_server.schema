@@ -22,6 +22,16 @@
                                                                {datatype, flag}
                                                               ]}.
 
+%% @doc If allow_multiple_sessions is enabled 'balance_sessions' will 
+%% publish to a randomly choosen client session. This acts as simple load
+%% balancer between consumers, but is limited to the sessions on a single node.
+%% (non-standard behaviour!).
+{mapping, "balance_sessions", "vmq_server.balance_sessions", [
+                                                               {default, off},
+                                                               {datatype, flag},
+                                                               hidden
+                                                              ]}.
+
 %% @doc Allows to select a new default reg_view.
 %% A view is a pre-defined way to route messages. Multiple views can be 
 %% loaded and used, but one has to be selected as a default. The default routing is

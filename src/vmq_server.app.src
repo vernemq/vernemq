@@ -32,6 +32,7 @@
       {upgrade_outgoing_qos, false},
       {trade_consistency, false},
       {allow_multiple_sessions, false},
+      {balance_sessions, false},
       {vmq_config_enabled, true},
       {default_reg_view, vmq_reg_trie},
       {reg_views, [vmq_reg_trie]},

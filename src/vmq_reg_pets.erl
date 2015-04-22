@@ -239,7 +239,7 @@ find_cache_table(TableKey) ->
             {ok, Tid}
     end.
 
-handle_sub_event(_, subscribe, T, {ClientId, QoS, {error, not_found}}) ->
+handle_sub_event(_, subscribe, T, {ClientId, QoS, []}) ->
     %% no local process found for client id
     ets:insert(T, {{ClientId, QoS}, undefined}),
     ok;

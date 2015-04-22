@@ -99,9 +99,8 @@
           upgrade_qos=false                 :: flag(),
           trade_consistency=false           :: flag(),
           reg_view=vmq_reg_trie             :: atom(),
-          allow_multiple_sessions=false     :: flag()
-
-
+          allow_multiple_sessions=false     :: flag(),
+          balance_sessions=false            :: flag()
          }).
 
 -type state() :: #state{}.
@@ -288,6 +287,7 @@ init([Peer, SendFun, Opts]) ->
     TradeConsistency = vmq_config:get_env(trade_consistency, false),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
     AllowMultiple = vmq_config:get_env(allow_multiple_sessions, false),
+    BalanceSessions = vmq_config:get_env(balance_sessions, false),
     MaxQueuedMsgs = vmq_config:get_env(max_queued_messages, 1000),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   upgrade_qos=UpgradeQoS,
@@ -302,7 +302,8 @@ init([Peer, SendFun, Opts]) ->
                                   retry_interval=1000 * RetryInterval,
                                   trade_consistency=TradeConsistency,
                                   reg_view=RegView,
-                                  allow_multiple_sessions=AllowMultiple
+                                  allow_multiple_sessions=AllowMultiple,
+                                  balance_sessions=BalanceSessions
                                  }, ?CLOSE_AFTER}.
 
 -spec handle_event(disconnect, _, state()) -> {stop, normal, state()}.
@@ -685,7 +686,8 @@ auth_on_register(User, Password, DefaultCleanSess, State) ->
                              retry_interval=?state_val(retry_interval, Args, State),
                              upgrade_qos=?state_val(upgrade_qos, Args, State),
                              trade_consistency=?state_val(trade_consistency, Args, State),
-                             allow_multiple_sessions=?state_val(allow_multiple_sessions, Args, State)
+                             allow_multiple_sessions=?state_val(allow_multiple_sessions, Args, State),
+                             balance_sessions=?state_val(balance_sessions, Args, State)
                             },
             {ok, ChangedState};
         {error, Reason} ->
@@ -702,6 +704,7 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
             case auth_on_register(User, Password, Clean, State) of
                 {ok, #state{peer=Peer,
                             allow_multiple_sessions=AllowMultiple,
+                            balance_sessions=BalanceSessions,
                             clean_session=CleanSession,
                             subscriber_id=SubscriberId,
                             max_queued_messages=QueueSize
@@ -709,6 +712,7 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
                     {ok, QPid} = vmq_queue:start_link(SubscriberId, self(),
                                                       QueueSize),
                     case vmq_reg:register_subscriber(AllowMultiple,
+                                                     BalanceSessions,
                                                      SubscriberId,
                                                      QPid, CleanSession) of
                         ok ->
@@ -746,12 +750,13 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
         true ->
             #state{peer=Peer,
                    allow_multiple_sessions=AllowMultiple,
+                   balance_sessions=BalanceSessions,
                    subscriber_id=SubscriberId,
                    max_queued_messages=QueueSize
                   } = State,
             {ok, QPid} = vmq_queue:start_link(SubscriberId, self(), QueueSize),
-            case vmq_reg:register_subscriber(AllowMultiple, SubscriberId,
-                                             QPid, Clean) of
+            case vmq_reg:register_subscriber(AllowMultiple, BalanceSessions,
+                                             SubscriberId, QPid, Clean) of
                 ok ->
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
                     check_will(F, State#state{queue_pid=QPid, username=User,
