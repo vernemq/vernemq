@@ -153,17 +153,18 @@ parse_acl_line({F, eof}, _User) ->
     F(F,close),
     ok.
 
-check(Type, Topic, User, ClientId) ->
-    WTopic = words(Topic),
-    case check_all_acl(Type, WTopic) of
+check(Type, [Word|_] = Topic, User, ClientId) when is_list(Word) ->
+    case check_all_acl(Type, Topic) of
         true -> true;
         false when User == all -> false;
         false ->
-            case check_user_acl(Type, User, WTopic) of
+            case check_user_acl(Type, User, Topic) of
                 true -> true;
-                false -> check_pattern_acl(Type, WTopic, User, ClientId)
+                false -> check_pattern_acl(Type, Topic, User, ClientId)
             end
-    end.
+    end;
+check(Type, Topic, User, ClientId) ->
+    check(Type, words(Topic), User, ClientId).
 
 check_all_acl(Type, TIn) ->
     {Tbl, _} = t(Type, all, TIn),
