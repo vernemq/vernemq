@@ -400,7 +400,7 @@ handle_messages([], Frames, State) ->
 
 prepare_frame(QoS, Msg, State) ->
     #state{waiting_acks=WAcks, retry_interval=RetryInterval} = State,
-    #vmq_msg{routing_key=RoutingKey,
+    #vmq_msg{routing_key=Topic,
              payload=Payload,
              retain=IsRetained,
              dup=IsDup,
@@ -416,7 +416,7 @@ prepare_frame(QoS, Msg, State) ->
                         dup=IsDup
                        },
                variable=#mqtt_frame_publish{
-                           topic_name=RoutingKey,
+                           topic_name=unword(Topic),
                            message_id=OutgoingMsgId},
                payload=Payload
               },
@@ -432,6 +432,20 @@ prepare_frame(QoS, Msg, State) ->
                                                    MsgStoreRef},
                                                   WAcks)}}
     end.
+
+% -- pattern test cases in vmq_publish_SUITE
+% [[], "hello", "world"] --> /hello/world
+% ["hello", "world", []] --> hello/world/
+unword(Topic) ->
+    lists:flatten(lists:reverse(unword(Topic, []))).
+
+unword([[]], Acc) -> Acc;
+unword([], Acc) -> [$/|Acc];
+unword([Word], Acc) -> [Word|Acc];
+unword([[]|Topic], Acc) ->
+    unword(Topic, [$/|Acc]);
+unword([Word|Rest], Acc) ->
+    unword(Rest, [$/, Word|Acc]).
 
 %% The MQTT specification requires that the QoS of a message delivered to a
 %% subscriber is never upgraded to match the QoS of the subscription. If
@@ -516,9 +530,9 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
     case dict:find({qos2, MessageId} , WAcks) of
         {ok, {_, _, TRef, {MsgRef, IsRetain}}} ->
             cancel_timer(TRef),
-            {ok, {RoutingKey, Payload}} = vmq_msg_store:retrieve(MsgRef),
+            {ok, {Topic, Payload}} = vmq_msg_store:retrieve(MsgRef),
             Msg = #vmq_msg{msg_ref=MsgRef,
-                           routing_key=RoutingKey,
+                           routing_key=Topic,
                            payload=Payload,
                            retain=IsRetain,
                            qos=2,
@@ -565,7 +579,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
         {$$, _} ->
             {connected, State};
         {_, true} ->
-            Msg = #vmq_msg{routing_key=Topic,
+            Msg = #vmq_msg{routing_key=emqtt_topic:words(Topic),
                            payload=Payload,
                            retain=IsRetain,
                            qos=QoS,
@@ -777,7 +791,7 @@ check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos}
     #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,
            max_message_size=MaxMessageSize, trade_consistency=Consistency,
            reg_view=RegView} = State,
-    case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
+    case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=emqtt_topic:words(Topic),
                                                       payload=Payload,
                                                       qos=Qos,
                                                       trade_consistency=Consistency,

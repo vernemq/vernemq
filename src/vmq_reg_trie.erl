@@ -175,7 +175,7 @@ handle_event(Handler, Event) ->
     end.
 
 match(MP, Topic) when is_list(MP) and is_list(Topic) ->
-    TrieNodes = trie_match(MP, emqtt_topic:words(Topic)),
+    TrieNodes = trie_match(MP, Topic),
     match(MP, TrieNodes, []).
 
 match(MP, [#trie_node{topic=Name}|Rest], Acc) when Name =/= undefined ->

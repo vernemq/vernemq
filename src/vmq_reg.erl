@@ -259,7 +259,7 @@ register_subscriber__(SessionPid, QPid, SubscriberId, CleanSession) ->
 publish(#vmq_msg{trade_consistency=true,
                  reg_view=RegView,
                  mountpoint=MP,
-                 routing_key=RoutingKey,
+                 routing_key=Topic,
                  payload=Paylaod,
                  retain=IsRetain} = Msg) ->
     %% trade consistency for availability
@@ -268,34 +268,32 @@ publish(#vmq_msg{trade_consistency=true,
     case IsRetain of
         true when Paylaod == <<>> ->
             %% retain delete action
-            Words = emqtt_topic:words(RoutingKey),
             rate_limited_op(fun() -> plumtree_metadata:delete(?RETAIN_DB,
-                                                              {Words}) end);
+                                                              {Topic}) end);
         true ->
             %% retain set action
             retain_msg(Msg);
         false ->
-            RegView:fold(MP, RoutingKey, fun publish_/2, Msg),
+            RegView:fold(MP, Topic, fun publish_/2, Msg),
             ok
     end;
 publish(#vmq_msg{trade_consistency=false,
                  reg_view=RegView,
                  mountpoint=MP,
-                 routing_key=RoutingKey,
+                 routing_key=Topic,
                  payload=Payload,
                  retain=IsRetain} = Msg) ->
     %% don't trade consistency for availability
     case vmq_cluster:is_ready() of
         true when IsRetain and (Payload == <<>>) ->
             %% retain delete action
-            Words = emqtt_topic:words(RoutingKey),
             rate_limited_op(fun() -> plumtree_metadata:delete(?RETAIN_DB,
-                                                              {Words}) end);
+                                                              {Topic}) end);
         true when IsRetain ->
             %% retain set action
             retain_msg(Msg);
         true ->
-            RegView:fold(MP, RoutingKey, fun publish_/2, Msg),
+            RegView:fold(MP, Topic, fun publish_/2, Msg),
             ok;
         false ->
             {error, not_ready}
@@ -380,15 +378,14 @@ publish___(SubscriberId, Msg, QoS, [QPid|Rest]) ->
 publish___(_, Msg, _, []) -> Msg.
 
 retain_msg(Msg = #vmq_msg{mountpoint=MP, reg_view=RegView,
-                          routing_key=RoutingKey, payload=Payload}) ->
-    Words = emqtt_topic:words(RoutingKey),
+                          routing_key=Topic, payload=Payload}) ->
     rate_limited_op(
       fun() ->
-              plumtree_metadata:put(?RETAIN_DB, {Words}, {RoutingKey, Payload}),
+              plumtree_metadata:put(?RETAIN_DB, {Topic}, Payload),
               Msg#vmq_msg{retain=false}
       end,
       fun(RetainedMsg) ->
-              _ = RegView:fold(MP, RoutingKey, fun publish_/2, RetainedMsg),
+              _ = RegView:fold(MP, Topic, fun publish_/2, RetainedMsg),
               ok
       end).
 
@@ -404,8 +401,8 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
         _ -> Words
     end,
     plumtree_metadata:fold(
-      fun({_Key, {RoutingKey, Payload}}, _) ->
-              Msg = #vmq_msg{routing_key=RoutingKey,
+      fun({{T}, Payload}, _) ->
+              Msg = #vmq_msg{routing_key=T,
                              payload=Payload,
                              retain=true,
                              dup=false},
