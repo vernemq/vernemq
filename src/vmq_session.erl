@@ -129,11 +129,6 @@ wait_until_disconnected(FsmPid) ->
 
 -spec in(pid(), mqtt_frame()) ->  ok.
 in(FsmPid, #mqtt_frame{fixed=#mqtt_frame_fixed{type=?PUBLISH}} = Event) ->
-    Level = vmq_sysmon:cpu_load_level(),
-    case Level of
-        0 -> ok;
-        _ -> timer:sleep(Level * 100) %% introduces sleep, min 100ms, max 300ms
-    end,
     in_(FsmPid, Event);
 in(FsmPid, Event) ->
     in_(FsmPid, Event).
