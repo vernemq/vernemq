@@ -304,7 +304,7 @@ publish(#vmq_msg{trade_consistency=false,
 %% vmq_reg_trie reg view delivers this format
 publish_({Topic, Node}, Msg) when Node == node() ->
     plumtree_metadata:fold(
-      fun({{SubscriberId, {_, QoS, _}}, N}, AccMsg) ->
+      fun({{SubscriberId, {_, QoS, _}}, [N|_]}, AccMsg) ->
               case Node of
                   N ->
                       QPids =
@@ -318,8 +318,7 @@ publish_({Topic, Node}, Msg) when Node == node() ->
                       AccMsg
               end
       end, Msg, ?SUBSCRIBER_DB,
-     [{match, {'_', {Topic, '_', '_'}}},
-      {resolver, lww}]);
+     [{match, {'_', {Topic, '_', '_'}}}]);
 
 %% vmq_reg_pets reg view delivers this format
 publish_({_Topic, Node, _SubscriberId, 0, undefined}, Msg)
