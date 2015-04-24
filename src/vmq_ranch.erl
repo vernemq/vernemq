@@ -28,6 +28,7 @@
              proto_tag,
              pending=[],
              throttled=false,
+             cpulevel=0,
              bytes_recv={os:timestamp(), 0},
              bytes_send={os:timestamp(), 0}}).
 
@@ -64,10 +65,16 @@ init(Ref, Socket, Transport, Opts) ->
         _ ->
             Opts
     end,
+
     {ok, Peer} = Transport:peername(Socket),
     {ok, SessionPid} = vmq_session:start_link(Peer, SendFun, NewOpts),
+
     process_flag(trap_exit, true),
     MaskedSocket = mask_socket(Transport, Socket),
+    %% tune buffer sizes
+    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+    setopts(MaskedSocket, [{buffer, BufSize}]),
     case active_once(MaskedSocket) of
         ok ->
             _ = vmq_exo:incr_socket_count(),
@@ -152,6 +159,16 @@ active_once({ssl, Socket}) ->
 active_once(Socket) ->
     inet:setopts(Socket, [{active, once}]).
 
+getopts({ssl, Socket}, Opts) ->
+    ssl:getopts(Socket, Opts);
+getopts(Socket, Opts) ->
+    inet:getopts(Socket, Opts).
+
+setopts({ssl, Socket}, Opts) ->
+    ssl:setopts(Socket, Opts);
+setopts(Socket, Opts) ->
+    inet:setopts(Socket, Opts).
+
 process_bytes(SessionPid, Bytes, undefined, Throttle) ->
     process_bytes(SessionPid, Bytes, emqtt_frame:initial_state(), Throttle);
 process_bytes(SessionPid, Bytes, ParserState, Throttle) ->
@@ -169,21 +186,23 @@ process_bytes(SessionPid, Bytes, ParserState, Throttle) ->
 handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
     #st{session=SessionPid,
         parser_state=ParserState,
-        bytes_recv={TS, V}} = State,
+        bytes_recv={TS, V},
+        cpulevel=CpuLevel} = State,
     {NewParserState, Throttle} = process_bytes(SessionPid, Data, ParserState, false),
     {M, S, _} = TS,
     NrOfBytes = byte_size(Data),
     BytesRecvLastSecond = V + NrOfBytes,
-    NewBytesRecv =
+    {NewCpuLevel, NewBytesRecv} =
     case os:timestamp() of
         {M, S, _} = NewTS ->
-            {NewTS, BytesRecvLastSecond};
+            {CpuLevel, {NewTS, BytesRecvLastSecond}};
         NewTS ->
             _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
-            {NewTS, 0}
+            {vmq_sysmon:cpu_load_level(), {NewTS, 0}}
     end,
     maybe_throttle(Throttle, State#st{parser_state=NewParserState,
-                                      bytes_recv=NewBytesRecv});
+                                      bytes_recv=NewBytesRecv,
+                                      cpulevel=NewCpuLevel});
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
     %% we regard a tcp_closed as 'normal'
     vmq_session:disconnect(State#st.session),
@@ -215,6 +234,15 @@ handle_message(Msg, _) ->
 
 maybe_throttle(true, State) ->
     erlang:send_after(1000, self(), active_once),
+    State#st{throttled=true};
+maybe_throttle(false, #st{cpulevel=1} = State) ->
+    erlang:send_after(10, self(), active_once),
+    State#st{throttled=true};
+maybe_throttle(false, #st{cpulevel=2} = State) ->
+    erlang:send_after(20, self(), active_once),
+    State#st{throttled=true};
+maybe_throttle(false, #st{cpulevel=L} = State) when L > 2->
+    erlang:send_after(100, self(), active_once),
     State#st{throttled=true};
 maybe_throttle(false, #st{socket=Socket} = State) ->
     case active_once(Socket) of

@@ -567,7 +567,7 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
                                           qos=QoS,
                                           retain=IsRetain},
              Var, Payload, State) ->
-    DoThrottle = check_msg_rate(State),
+    DoThrottle = do_throttle(State),
     #state{mountpoint=MountPoint, pub_recv_cnt=PubRecvCnt,
            max_message_size=MaxMessageSize, reg_view=RegView,
            trade_consistency=Consistency} = State,
@@ -681,10 +681,10 @@ check_client_id(#mqtt_frame_connect{client_id=Id}, State) ->
     {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)}.
 
-check_msg_rate(#state{max_message_rate=0}) -> true;
-check_msg_rate(#state{max_message_rate=Rate, pub_recv_cnt={_,_,RecvCnt}})
-    when RecvCnt =< Rate -> true;
-check_msg_rate(_) -> false.
+do_throttle(#state{max_message_rate=0}) -> false;
+do_throttle(#state{max_message_rate=Rate, pub_recv_cnt={_,_,RecvCnt}})
+    when RecvCnt =< Rate -> false;
+do_throttle(_) -> true.
 
 
 
