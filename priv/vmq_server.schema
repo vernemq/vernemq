@@ -778,6 +778,15 @@
                                                     {datatype, integer}
                                                  ]}.
 
+%% @doc specifies the maximum incoming publish rate per session. Depending
+%% on the underlying network buffers this rate isn't enforced.
+%% defaults to 0, which means no rate limits apply
+{mapping, "max_message_rate", "vmq_server.max_message_rate", [
+                                                              {default, 0},
+                                                              {datatype, integer},
+                                                              hidden
+                                                             ]}.
+
 %% @doc This option sets the maximum payload size that VerneMQ will allow for publishers. 
 %% Messages that exceed this size will not be accepted by VerneMQ. The 
 %% default value is 0, which means that all valid MQTT messages are accepted. MQTT 

@@ -28,6 +28,7 @@
       {persistent_client_expiration, 0}, % never
       {max_inflight_messages, 20},
       {max_queued_messages, 1000},
+      {max_message_rate, 0}, % no rate limit
       {message_size_limit, 0},
       {upgrade_outgoing_qos, false},
       {trade_consistency, false},

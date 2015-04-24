@@ -42,6 +42,7 @@ register_config_() ->
      "persistent_client_expiration",
      "max_inflight_messages",
      "max_queued_messages",
+     "max_message_rate",
      "message_size_limit",
      "upgrade_outgoing_qos"
     ],

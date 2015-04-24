@@ -128,29 +128,8 @@ wait_until_disconnected(FsmPid) ->
     end.
 
 -spec in(pid(), mqtt_frame()) ->  ok.
-in(FsmPid, #mqtt_frame{fixed=#mqtt_frame_fixed{type=?PUBLISH}} = Event) ->
-    in_(FsmPid, Event);
 in(FsmPid, Event) ->
-    in_(FsmPid, Event).
-
-in_(FsmPid, Event) ->
     save_sync_send_all_state_event(FsmPid, {input, Event}, ok, infinity).
-
-save_sync_send_all_state_event(FsmPid, Event, DefaultRet, Timeout) ->
-    case catch gen_fsm:sync_send_all_state_event(FsmPid, Event, Timeout) of
-        {'EXIT', {normal, _}} ->
-            %% Session Pid died while sync_send_all_state_event
-            %% was waiting to be handled
-            DefaultRet;
-        {'EXIT', {noproc, _}} ->
-            %% Session Pid is dead, we will be dead pretty soon too.
-            DefaultRet;
-        {'EXIT', {timeout, _}} ->
-            %% if the session is overloaded
-            DefaultRet;
-        {'EXIT', Reason} -> exit(Reason);
-        Ret -> Ret
-    end.
 
 -spec get_info(subscriber_id() | pid(), [atom()]) -> proplist().
 get_info(SubscriberId, InfoItems) when is_tuple(SubscriberId) ->
@@ -169,6 +148,22 @@ get_info(FsmPid, InfoItems) when is_pid(FsmPid) ->
          _ when is_atom(I) -> I
      end || I <- InfoItems],
     save_sync_send_all_state_event(FsmPid, {get_info, AInfoItems}, [], 1000).
+
+save_sync_send_all_state_event(FsmPid, Event, DefaultRet, Timeout) ->
+    case catch gen_fsm:sync_send_all_state_event(FsmPid, Event, Timeout) of
+        {'EXIT', {normal, _}} ->
+            %% Session Pid died while sync_send_all_state_event
+            %% was waiting to be handled
+            DefaultRet;
+        {'EXIT', {noproc, _}} ->
+            %% Session Pid is dead, we will be dead pretty soon too.
+            DefaultRet;
+        {'EXIT', {timeout, _}} ->
+            %% if the session is overloaded
+            DefaultRet;
+        {'EXIT', Reason} -> exit(Reason);
+        Ret -> Ret
+    end.
 
 info_items() ->
     [pid, client_id, user, peer_host, peer_port, state,
@@ -273,24 +268,25 @@ init([Peer, SendFun, Opts]) ->
         {_, undefined} -> undefined;
         {_, PreAuth} -> {preauth, PreAuth}
     end,
-    MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
-    RetryInterval = vmq_config:get_env(retry_interval, 20),
-    UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
-    MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
-    MaxMessageSize = vmq_config:get_env(message_size_limit, 0),
     TradeConsistency = vmq_config:get_env(trade_consistency, false),
-    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
     AllowMultiple = vmq_config:get_env(allow_multiple_sessions, false),
     BalanceSessions = vmq_config:get_env(balance_sessions, false),
+    RetryInterval = vmq_config:get_env(retry_interval, 20),
+    MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
+    MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
     MaxQueuedMsgs = vmq_config:get_env(max_queued_messages, 1000),
+    MaxMessageSize = vmq_config:get_env(message_size_limit, 0),
+    MaxMessageRate = vmq_config:get_env(max_message_rate, 0),
+    UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   upgrade_qos=UpgradeQoS,
-                                  mountpoint=string:strip(MountPoint,
-                                                          right, $/),
+                                  mountpoint=string:strip(MountPoint, right, $/),
                                   allow_anonymous=AllowAnonymous,
                                   max_inflight_messages=MaxInflightMsgs,
                                   max_message_size=MaxMessageSize,
+                                  max_message_rate=MaxMessageRate,
                                   max_queued_messages=MaxQueuedMsgs,
                                   username=PreAuthUser,
                                   max_client_id_size=MaxClientIdSize,
@@ -478,6 +474,8 @@ handle_bin_message({MsgId, QoS, Bin}, State) ->
 handle_frame(wait_for_connect, _,
              #mqtt_frame_connect{keep_alive=KeepAlive} = Var, _, State) ->
     _ = vmq_exo:incr_connect_received(),
+    {A, B, C} = now(),
+    random:seed(A, B, C),
     %% the client is allowed "grace" of a half a time period
     KKeepAlive = (KeepAlive + (KeepAlive div 2)) * 1000,
     check_connect(Var, State#state{keep_alive=KKeepAlive});
@@ -569,15 +567,17 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
                                           qos=QoS,
                                           retain=IsRetain},
              Var, Payload, State) ->
+    DoThrottle = check_msg_rate(State),
     #state{mountpoint=MountPoint, pub_recv_cnt=PubRecvCnt,
            max_message_size=MaxMessageSize, reg_view=RegView,
            trade_consistency=Consistency} = State,
     #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
+    NewState =
     case {hd(Topic), valid_msg_size(Payload, MaxMessageSize)} of
         {$$, _} ->
-            {connected, State};
+            State;
         {_, true} ->
             Msg = #vmq_msg{routing_key=emqtt_topic:words(Topic),
                            payload=Payload,
@@ -586,13 +586,19 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
                            trade_consistency=Consistency,
                            reg_view=RegView,
                            mountpoint=MountPoint},
-            {connected, dispatch_publish(QoS, MessageId, Msg,
-                                         State#state{
-                                           pub_recv_cnt=incr_pub_recv_cnt(
-                                                          PubRecvCnt)
-                                          })};
+            dispatch_publish(QoS, MessageId, Msg,
+                             State#state{
+                               pub_recv_cnt=incr_pub_recv_cnt(
+                                              PubRecvCnt)
+                              });
         {_, false} ->
-            {connected, State}
+            State
+    end,
+    case DoThrottle of
+        false ->
+            {connected, NewState};
+        true ->
+            {reply, throttle, connected, NewState}
     end;
 
 handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
@@ -674,6 +680,12 @@ check_client_id(#mqtt_frame_connect{client_id=Id}, State) ->
     lager:warning("invalid client id ~p", [Id]),
     {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)}.
+
+check_msg_rate(#state{max_message_rate=0}) -> true;
+check_msg_rate(#state{max_message_rate=Rate, pub_recv_cnt={_,_,RecvCnt}})
+    when RecvCnt =< Rate -> true;
+check_msg_rate(_) -> false.
+
 
 
 auth_on_register(User, Password, DefaultCleanSess, State) ->
