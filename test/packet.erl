@@ -2,6 +2,7 @@
 -include_lib("emqtt_commons/include/emqtt_frame.hrl").
 -export([expect_packet/3,
          expect_packet/4,
+         expect_packet/5,
          do_client_connect/3,
          gen_connect/2,
          gen_connack/0,
@@ -22,13 +23,15 @@
 
 expect_packet(Socket, Name, Expected) ->
     expect_packet(gen_tcp, Socket, Name, Expected).
-expect_packet(Transport, Socket, _Name, Expected) ->
+expect_packet(Transport, Socket, Name, Expected) ->
+    expect_packet(Transport, Socket, Name, Expected, 60000).
+expect_packet(Transport, Socket, _Name, Expected, Timeout) ->
     RLen =
     case byte_size(Expected) of
         L when L > 0 -> L;
         _ -> 1
     end,
-    case Transport:recv(Socket, RLen, 60000) of
+    case Transport:recv(Socket, RLen, Timeout) of
         {ok, Expected} ->
             ok;
         {ok, Different} ->
