@@ -817,8 +817,14 @@
                                                                   hidden
                                                                  ]}.
 
+{mapping, "leveldb_message_store.directory", "vmq_server.lvldb_store_dir", [
+                                                                            {default, "{{platform_data_dir}}/msgstore"},
+                                                                            {datatype, directory},
+                                                                            hidden
+                                                                           ]}.
+
 {mapping, "plumtree.directory", "plumtree.plumtree_data_dir", [
-                                             {default, "{{platform_data_dir}}/broker"},
+                                             {default, "{{platform_data_dir}}/meta"},
                                              {datatype, directory},
                                              hidden
                                             ]}.

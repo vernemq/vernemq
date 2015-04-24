@@ -105,17 +105,9 @@ init([Id]) ->
             ok = filelib:ensure_dir(Dir),
             Dir;
         Dir when is_list(Dir) ->
-            case filelib:is_dir(Dir) of
-                true ->
-                    DDir = filename:join(Dir, integer_to_list(Id)),
-                    ok = filelib:ensure_dir(DDir),
-                    DDir;
-                false ->
-                    error_logger:error_msg(
-                      "Directory ~p is not available!!! We stop here!!!",
-                      [Dir]),
-                    exit(msg_store_directory_not_available)
-            end
+            DDir = filename:join(Dir, integer_to_list(Id)),
+            ok = filelib:ensure_dir(DDir),
+            DDir
     end,
     process_flag(trap_exit, true),
     {ok, TabRef} = eleveldb:open(BucketDir, [{create_if_missing, true}]),

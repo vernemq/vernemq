@@ -11,8 +11,9 @@ setup_use_default_auth() ->
 
 start_server(StartNoAuth) ->
     ok = maybe_start_distribution(),
+    Datadir = "data/" ++ atom_to_list(node()),
     application:load(plumtree),
-    application:set_env(plumtree, plumtree_data_dir, "data/" ++ atom_to_list(node())),
+    application:set_env(plumtree, plumtree_data_dir, Datadir ++ "/meta"),
     application:load(vmq_server),
     %% CWD using rebar3 is _build/logs/ct_run.nodename.YYYY-MM-DD_hh.mm.ss
     PrivDir =
@@ -27,6 +28,7 @@ start_server(StartNoAuth) ->
     application:set_env(vmq_server, schema_dirs, [PrivDir]),
     application:set_env(vmq_server, listeners, []),
     application:set_env(vmq_server, ignore_db_config, true),
+    application:set_env(vmq_server, lvldb_store_dir, Datadir ++ "/msgstore"),
     reset_all(),
     start_server_(StartNoAuth),
     %wait_til_ready(),
@@ -56,9 +58,12 @@ maybe_start_distribution() ->
     end.
 
 reset_all() ->
-    {ok, Dir} = application:get_env(plumtree, plumtree_data_dir),
-    filelib:ensure_dir(Dir ++ "/ptmp"),
-    del_dir(Dir).
+    {ok, PlumtreeDir} = application:get_env(plumtree, plumtree_data_dir),
+    filelib:ensure_dir(PlumtreeDir ++ "/ptmp"),
+    del_dir(PlumtreeDir),
+    {ok, MsgStoreDir} = application:get_env(vmq_server, lvldb_store_dir),
+    filelib:ensure_dir(MsgStoreDir ++ "/ptmp"),
+    del_dir(MsgStoreDir).
 
 reset_tables() ->
     _ = [reset_tab(T) || T <- [subscriber, config, retain]],
