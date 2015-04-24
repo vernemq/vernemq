@@ -204,7 +204,7 @@ add_topic(MP, Topic, Node) ->
     case ets:lookup(vmq_trie_node, MPTopic) of
         [#trie_node{topic=Topic}] ->
             ignore;
-        [] ->
+        _ ->
             %% add trie path
             _ = [trie_add_path(MP, Triple) || Triple <- emqtt_topic:triples(Topic)],
             %% add last node
