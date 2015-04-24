@@ -302,7 +302,7 @@ publish(#vmq_msg{trade_consistency=false,
 %% vmq_reg_trie reg view delivers this format
 publish_({Topic, Node}, Msg) when Node == node() ->
     plumtree_metadata:fold(
-      fun({{SubscriberId, {_, QoS, _}}, [N|_]}, AccMsg) ->
+      fun({{SubscriberId, {_, QoS}}, [N|_]}, AccMsg) ->
               case Node of
                   N ->
                       QPids =
@@ -316,7 +316,7 @@ publish_({Topic, Node}, Msg) when Node == node() ->
                       AccMsg
               end
       end, Msg, ?SUBSCRIBER_DB,
-     [{match, {'_', {Topic, '_', '_'}}}]);
+     [{match, {'_', {Topic, '_'}}}]);
 
 %% vmq_reg_pets reg view delivers this format
 publish_({_Topic, Node, _SubscriberId, 0, undefined}, Msg)
@@ -420,7 +420,7 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
 
 subscriptions_for_subscriber_id(SubscriberId) ->
     plumtree_metadata:fold(
-      fun({{_, {Topic, QoS, _}}, _}, Acc) ->
+      fun({{_, {Topic, QoS}}, _}, Acc) ->
               [{Topic, QoS}|Acc]
       end, [], ?SUBSCRIBER_DB,
       [{match, {SubscriberId, '_'}},
@@ -572,14 +572,14 @@ subscribe_subscriber_changes() ->
         ({delete, ?SUBSCRIBER_DB, _, []}) ->
             %% no existing subscription was deleted
             ignore;
-        ({delete, ?SUBSCRIBER_DB, {{MP, _} = SubscriberId, {Topic, QoS, _}}, [Metadata]}) ->
+        ({delete, ?SUBSCRIBER_DB, {{MP, _} = SubscriberId, {Topic, QoS}}, [Metadata]}) ->
             case plumtree_metadata_object:values(Metadata) of
                 [Node|_] ->
                     {unsubscribe, MP, Topic, {SubscriberId, QoS}};
                 [OtherNode|_] ->
                     {unsubscribe, MP, Topic, OtherNode}
             end;
-        ({write, ?SUBSCRIBER_DB, {{MP, _} = SubscriberId, {Topic, QoS, _}}, Metadata}) ->
+        ({write, ?SUBSCRIBER_DB, {{MP, _} = SubscriberId, {Topic, QoS}}, Metadata}) ->
             case plumtree_metadata_object:values(Metadata) of
                 [Node|_] ->
                     QPids =
@@ -601,7 +601,7 @@ fold_subscribers(FoldFun, Acc) ->
 fold_subscribers(ResolveQPids, FoldFun, Acc) ->
     Node = node(),
     plumtree_metadata:fold(
-      fun({{{MP, _} = SubscriberId, {Topic, QoS, _}}, N}, AccAcc) ->
+      fun({{{MP, _} = SubscriberId, {Topic, QoS}}, N}, AccAcc) ->
               case Node == N of
                   true when ResolveQPids ->
                       QPids = get_queue_pids(SubscriberId),
@@ -626,9 +626,7 @@ fold_sessions(FoldFun, Acc) ->
 
 -spec add_subscriber(topic(), qos(), subscriber_id()) -> ok.
 add_subscriber(Topic, QoS, SubscriberId) ->
-    add_subscriber(Topic, QoS, SubscriberId, os:timestamp()).
-add_subscriber(Topic, QoS, SubscriberId, Timestamp) ->
-    Key = {SubscriberId, {Topic, QoS, Timestamp}},
+    Key = {SubscriberId, {Topic, QoS}},
     plumtree_metadata:put(?SUBSCRIBER_DB, Key, node()).
 
 
@@ -642,17 +640,17 @@ del_subscriber(Topic, SubscriberId) ->
       fun({Key, _}, _) ->
               plumtree_metadata:delete(?SUBSCRIBER_DB, Key)
       end, ok, ?SUBSCRIBER_DB,
-      [{match, {SubscriberId, {Topic, '_', '_'}}}]).
+      [{match, {SubscriberId, {Topic, '_'}}}]).
 
 -spec remap_subscriptions(subscriber_id()) -> ok.
 remap_subscriptions(SubscriberId) ->
     Node = node(),
     plumtree_metadata:fold(
-      fun({{_, {Topic, QoS, TS}}, N}, _) ->
+      fun({{_, {Topic, QoS}}, N}, _) ->
               case N of
                   Node -> ok;
                   _ ->
-                      add_subscriber(Topic, QoS, SubscriberId, TS)
+                      add_subscriber(Topic, QoS, SubscriberId)
               end
       end, ok, ?SUBSCRIBER_DB,
       [{match, {SubscriberId, '_'}},
@@ -662,7 +660,7 @@ remap_subscriptions(SubscriberId) ->
 remap_session(SubscriberId) ->
     Node = node(),
     plumtree_metadata:fold(
-      fun({{_, {Topic, QoS, _}}, N}, _) ->
+      fun({{_, {Topic, QoS}}, N}, _) ->
               case N of
                   Node -> ok;
                   _ ->
