@@ -229,8 +229,8 @@ handle_message({send_frames, Frames}, State) ->
                 end, State, Frames);
 handle_message({inet_reply, _, ok}, State) ->
     State;
-handle_message({inet_reply, _, Status}, _) ->
-    exit({send_failed, Status});
+handle_message({inet_reply, _, Status}, State) ->
+    {exit, {send_failed, Status}, State};
 handle_message(active_once, #st{socket=Socket, throttled=true} = State) ->
     case active_once(Socket) of
         ok ->
@@ -241,8 +241,8 @@ handle_message(active_once, #st{socket=Socket, throttled=true} = State) ->
 handle_message(restart_work, #st{throttled=true} = State) ->
     #st{proto_tag={Proto, _, _}, buffer=Data, socket=Socket} = State,
     handle_message({Proto, Socket, Data}, State#st{throttled=false, buffer= <<>>});
-handle_message(Msg, _) ->
-    exit({unknown_message_type, Msg}).
+handle_message(Msg, State) ->
+    {exit, {unknown_message_type, Msg}, State}.
 
 maybe_throttle(#st{cpulevel=1} = State) ->
     erlang:send_after(10, self(), active_once),
@@ -261,11 +261,10 @@ maybe_throttle(#st{socket=Socket} = State) ->
             {exit, Reason, State}
     end.
 
-%% This magic number is the tcp-over-ethernet MSS (1460) minus the
-%% minimum size of a AMQP basic.deliver method frame (24) plus basic
-%% content header (22). The idea is that we want to flush just before
+%% This magic number is the tcp-over-ethernet MSS (1460) minus the 4 byte
+%% header of the Publish frame. The idea is that we want to flush just before
 %% exceeding the MSS.
--define(FLUSH_THRESHOLD, 1414).
+-define(FLUSH_THRESHOLD, 1456).
 maybe_flush(#st{pending=Pending} = State) ->
     case iolist_size(Pending) >= ?FLUSH_THRESHOLD of
         true ->
@@ -277,17 +276,21 @@ maybe_flush(#st{pending=Pending} = State) ->
 internal_flush(#st{pending=[]} = State) -> State;
 internal_flush(#st{pending=Pending, socket=Socket,
                    bytes_send={{M, S, _}, V}} = State) ->
-    ok = port_cmd(Socket, lists:reverse(Pending)),
-    NrOfBytes = iolist_size(Pending),
-    NewBytesSend =
-    case os:timestamp() of
-        {M, S, _} = TS ->
-            {TS, V + NrOfBytes};
-        TS ->
-            _ = vmq_exo:incr_bytes_sent(V + NrOfBytes),
-            {TS, 0}
-    end,
-    State#st{pending=[], bytes_send=NewBytesSend}.
+    case port_cmd(Socket, lists:reverse(Pending)) of
+        ok ->
+            NrOfBytes = iolist_size(Pending),
+            NewBytesSend =
+            case os:timestamp() of
+                {M, S, _} = TS ->
+                    {TS, V + NrOfBytes};
+                TS ->
+                    _ = vmq_exo:incr_bytes_sent(V + NrOfBytes),
+                    {TS, 0}
+            end,
+            State#st{pending=[], bytes_send=NewBytesSend};
+        {error, Reason} ->
+            {exit, Reason, State}
+    end.
 
 %% gen_tcp:send/2 does a selective receive of {inet_reply, Sock,
 %% Status} to obtain the result. That is bad when it is called from
@@ -308,12 +311,13 @@ internal_flush(#st{pending=Pending, socket=Socket,
 %% when these are full. So the fact that we process the result
 %% asynchronously does not impact flow control.
 port_cmd(Socket, Data) ->
-    true =
-    try port_cmd_(Socket, Data)
-    catch error:Error ->
-              exit({writer, send_failed, Error})
-    end,
-    ok.
+    try
+        port_cmd_(Socket, Data),
+        ok
+    catch
+        error:Error ->
+            {error, Error}
+    end.
 
 port_cmd_({ssl, Socket}, Data) ->
     case ssl:send(Socket, Data) of
