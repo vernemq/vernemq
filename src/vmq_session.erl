@@ -72,7 +72,7 @@
           peer                              :: peer(),
           username                          :: undefined | username() |
                                                {preauth, string() | undefined},
-          keep_alive                        :: undefined | pos_integer(),
+          keep_alive                        :: undefined | non_neg_integer(),
           keep_alive_timer                  :: undefined | reference(),
           clean_session=false               :: flag(),
           proto_ver                         :: undefined | pos_integer(),
@@ -320,8 +320,7 @@ handle_sync_event({input, Frame}, _From, StateName, State) ->
                       State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)}) of
         {connected, #state{keep_alive=KeepAlive} = NewState} ->
             {reply, ok, connected,
-             NewState#state{keep_alive_timer=gen_fsm:send_event_after(KeepAlive,
-                                                           keepalive_expired)}};
+             NewState#state{keep_alive_timer=set_keepalive_timer(KeepAlive)}};
         {NextStateName, NewState} ->
             {reply, ok, NextStateName, NewState, ?CLOSE_AFTER};
         Ret -> Ret
@@ -448,13 +447,24 @@ unword([Word|Rest], Acc) ->
 %% upgrade_outgoing_qos is set true, messages sent to a subscriber will always
 %% match the QoS of its subscription. This is a non-standard option not provided
 %% for by the spec.
-maybe_upgrade_qos(0, _, Msg, _) ->
-    {0, Msg};
-maybe_upgrade_qos(SubQoS, PubQoS, Msg,
-                  #state{upgrade_qos=true, subscriber_id=SubscriberId})
-  when SubQoS > PubQoS ->
-    {SubQoS, vmq_msg_store:store(SubscriberId, Msg)};
-maybe_upgrade_qos(_, PubQoS, Msg, _) ->
+maybe_upgrade_qos(SubQoS, PubQoS, Msg, _) when SubQoS =< PubQoS ->
+    %% already ref counted in vmq_reg
+    {SubQoS, Msg};
+maybe_upgrade_qos(SubQoS, PubQoS, Msg, #state{upgrade_qos=true})
+    when SubQoS > PubQoS ->
+    %% already ref counted in vmq_reg
+    {SubQoS, vmq_msg_store:store(Msg)};
+maybe_upgrade_qos(SubQoS, PubQoS, Msg, State) ->
+    %% matches when PubQoS is smaller than SubQoS
+    %% SubQoS = 0, PubQoS cannot be smaller than 0, --> matched in first case
+    %% SubQoS = 1|2, PubQoS = 0 ---> deref message
+    case PubQoS of
+        0 when SubQoS > 0 ->
+            vmq_msg_store:deref(State#state.subscriber_id, Msg#vmq_msg.msg_ref);
+        _ ->
+            %% no need for deref
+            ignore
+    end,
     {PubQoS, Msg}.
 
 handle_bin_message({MsgId, QoS, Bin}, State) ->
@@ -638,7 +648,11 @@ handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
 
 handle_frame(connected, #mqtt_frame_fixed{type=?PINGREQ}, _, _, State) ->
     NewState = send_frame(?PINGRESP, undefined, <<>>, State),
-    {connected, NewState}.
+    {connected, NewState};
+handle_frame(connected, #mqtt_frame_fixed{type=Type}, _, _, State) ->
+    lager:debug("stopped connected session, due to unexpected frame type ~p", [Type]),
+    {stop, normal, State}.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
@@ -851,9 +865,10 @@ send_frame(Type, DUP, Variable, Payload,
 
 -spec maybe_publish_last_will(state()) -> ok.
 maybe_publish_last_will(#state{will_msg=undefined}) -> ok;
-maybe_publish_last_will(#state{will_msg=Msg} = State) ->
-    {MsgId, NewState} = get_msg_id(Msg#vmq_msg.qos, State),
-    _ = dispatch_publish(Msg#vmq_msg.qos, MsgId, Msg, NewState),
+maybe_publish_last_will(#state{subscriber_id=SubscriberId, username=User, will_msg=Msg}) ->
+    #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
+    HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
+    _ = on_publish_hook(vmq_reg:publish(Msg), HookArgs),
     ok.
 
 
@@ -1046,6 +1061,11 @@ send_after(Time, Msg) ->
 -spec cancel_timer('undefined' | reference()) -> 'ok'.
 cancel_timer(undefined) -> ok;
 cancel_timer(TRef) -> _ = gen_fsm:cancel_timer(TRef), ok.
+
+-spec set_keepalive_timer(non_neg_integer()) -> undefined | reference().
+set_keepalive_timer(0) -> undefined;
+set_keepalive_timer(KeepAlive) ->
+    gen_fsm:send_event_after(KeepAlive, keepalive_expired).
 
 -spec check_in_flight(state()) -> boolean().
 check_in_flight(#state{waiting_acks=WAcks, max_inflight_messages=Max}) ->

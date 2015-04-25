@@ -405,6 +405,7 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
               Msg = #vmq_msg{routing_key=T,
                              payload=Payload,
                              retain=true,
+                             qos=QoS,
                              dup=false},
               MaybeChangedMsg =
               case QoS of
