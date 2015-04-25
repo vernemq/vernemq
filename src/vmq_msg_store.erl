@@ -239,7 +239,7 @@ populate_tables() ->
               Acc
       end, undefined]),
     ets:foldl(
-      fun({SubscriberId, MsgRef} = Obj, Acc) ->
+      fun({SubscriberId, MsgRef, _Qos, _DeliverAsDup} = Obj, Acc) ->
               case ets:lookup(?MSG_CACHE_TABLE, MsgRef) of
                   [{_, Msg, _RefCnt}] ->
                       update_msg_cache(MsgRef, Msg),
