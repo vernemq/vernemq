@@ -169,18 +169,22 @@ setopts({ssl, Socket}, Opts) ->
 setopts(Socket, Opts) ->
     inet:setopts(Socket, Opts).
 
-process_bytes(SessionPid, Bytes, undefined, Throttle) ->
-    process_bytes(SessionPid, Bytes, emqtt_frame:initial_state(), Throttle);
-process_bytes(SessionPid, Bytes, ParserState, Throttle) ->
+process_bytes(SessionPid, Bytes, undefined) ->
+    process_bytes(SessionPid, Bytes, emqtt_frame:initial_state());
+process_bytes(SessionPid, Bytes, ParserState) ->
     case emqtt_frame:parse(Bytes, ParserState) of
         {more, NewParserState} ->
-            {NewParserState, Throttle};
+            {ok, NewParserState};
         {ok, Frame, Rest} ->
             Ret = vmq_session:in(SessionPid, Frame),
-            process_bytes(SessionPid, Rest,
-                          emqtt_frame:initial_state(), Ret == throttle);
+            case Ret of
+                throttle ->
+                    {throttled, Rest};
+                _ ->
+                    process_bytes(SessionPid, Rest, emqtt_frame:initial_state())
+            end;
         {error, _Reason} ->
-            {emqtt_frame:initial_state(), Throttle}
+            {ok, emqtt_frame:initial_state()}
     end.
 
 handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
@@ -188,21 +192,26 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
         parser_state=ParserState,
         bytes_recv={TS, V},
         cpulevel=CpuLevel} = State,
-    {NewParserState, Throttle} = process_bytes(SessionPid, Data, ParserState, false),
-    {M, S, _} = TS,
-    NrOfBytes = byte_size(Data),
-    BytesRecvLastSecond = V + NrOfBytes,
-    {NewCpuLevel, NewBytesRecv} =
-    case os:timestamp() of
-        {M, S, _} = NewTS ->
-            {CpuLevel, {NewTS, BytesRecvLastSecond}};
-        NewTS ->
-            _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
-            {vmq_sysmon:cpu_load_level(), {NewTS, 0}}
-    end,
-    maybe_throttle(Throttle, State#st{parser_state=NewParserState,
-                                      bytes_recv=NewBytesRecv,
-                                      cpulevel=NewCpuLevel});
+    case process_bytes(SessionPid, Data, ParserState) of
+        {ok, NewParserState} ->
+            {M, S, _} = TS,
+            NrOfBytes = byte_size(Data),
+            BytesRecvLastSecond = V + NrOfBytes,
+            {NewCpuLevel, NewBytesRecv} =
+            case os:timestamp() of
+                {M, S, _} = NewTS ->
+                    {CpuLevel, {NewTS, BytesRecvLastSecond}};
+                NewTS ->
+                    _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
+                    {vmq_sysmon:cpu_load_level(), {NewTS, 0}}
+            end,
+            maybe_throttle(State#st{parser_state=NewParserState,
+                                    bytes_recv=NewBytesRecv,
+                                    cpulevel=NewCpuLevel});
+        {throttled, HoldBackBuf} ->
+            erlang:send_after(1000, self(), restart_work),
+            State#st{throttled=true, buffer=HoldBackBuf}
+    end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
     %% we regard a tcp_closed as 'normal'
     vmq_session:disconnect(State#st.session),
@@ -229,22 +238,22 @@ handle_message(active_once, #st{socket=Socket, throttled=true} = State) ->
         {error, Reason} ->
             {exit, Reason, State}
     end;
+handle_message(restart_work, #st{throttled=true} = State) ->
+    #st{proto_tag={Proto, _, _}, buffer=Data, socket=Socket} = State,
+    handle_message({Proto, Socket, Data}, State#st{throttled=false, buffer= <<>>});
 handle_message(Msg, _) ->
     exit({unknown_message_type, Msg}).
 
-maybe_throttle(true, State) ->
-    erlang:send_after(1000, self(), active_once),
-    State#st{throttled=true};
-maybe_throttle(false, #st{cpulevel=1} = State) ->
+maybe_throttle(#st{cpulevel=1} = State) ->
     erlang:send_after(10, self(), active_once),
     State#st{throttled=true};
-maybe_throttle(false, #st{cpulevel=2} = State) ->
+maybe_throttle(#st{cpulevel=2} = State) ->
     erlang:send_after(20, self(), active_once),
     State#st{throttled=true};
-maybe_throttle(false, #st{cpulevel=L} = State) when L > 2->
+maybe_throttle(#st{cpulevel=L} = State) when L > 2->
     erlang:send_after(100, self(), active_once),
     State#st{throttled=true};
-maybe_throttle(false, #st{socket=Socket} = State) ->
+maybe_throttle(#st{socket=Socket} = State) ->
     case active_once(Socket) of
         ok ->
             State;

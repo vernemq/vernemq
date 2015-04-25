@@ -37,6 +37,7 @@
 
 -define(CLOSE_AFTER, 5000).
 -define(ALLOWED_MQTT_VERSIONS, [3, 4, 131]).
+-define(MAX_SAMPLES, 10).
 
 -type proplist() :: [{atom(), any()}].
 -type statename() :: atom().
@@ -280,6 +281,7 @@ init([Peer, SendFun, Opts]) ->
     MaxMessageRate = vmq_config:get_env(max_message_rate, 0),
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    erlang:send_after(1000, self(), trigger_counter_update),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   upgrade_qos=UpgradeQoS,
                                   mountpoint=string:strip(MountPoint, right, $/),
@@ -355,6 +357,9 @@ handle_info({mail, QPid, Msgs, _, Dropped}, connected,
         Ret ->
             Ret
     end;
+handle_info(trigger_counter_update, StateName, State) ->
+    erlang:send_after(1000, self(), trigger_counter_update),
+    {next_state, StateName, trigger_counter_update(State)};
 handle_info(Info, _StateName, State) ->
     {stop, {error, {unknown_info, Info}}, State} .
 
@@ -373,6 +378,11 @@ terminate(_Reason, _, _) ->
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
+
+
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNALS
@@ -696,11 +706,8 @@ check_client_id(#mqtt_frame_connect{client_id=Id}, State) ->
      send_connack(?CONNACK_INVALID_ID, State)}.
 
 do_throttle(#state{max_message_rate=0}) -> false;
-do_throttle(#state{max_message_rate=Rate, pub_recv_cnt={_,_,RecvCnt}})
-    when RecvCnt =< Rate -> false;
-do_throttle(_) -> true.
-
-
+do_throttle(#state{max_message_rate=Rate, pub_recv_cnt={AvgRecvCnt,_,_}}) ->
+    AvgRecvCnt > Rate.
 
 auth_on_register(User, Password, DefaultCleanSess, State) ->
     #state{peer=Peer, subscriber_id={_, ClientId} = SubscriberId} = State,
@@ -1141,32 +1148,49 @@ get_info_items([_|Rest], StateName, State, Acc) ->
 get_info_items([], _, _, Acc) -> Acc.
 
 init_counter() ->
-    {os:timestamp(), 0, 0}.
+    {0, 0, []}.
 
-incr_msg_sent_cnt(SndCnt) ->
-    incr_msg_sent_cnt(1, SndCnt).
-incr_msg_sent_cnt(I, SndCnt) ->
-    incr_cnt(incr_messages_sent, I, SndCnt).
+incr_msg_sent_cnt(SndCnt) -> incr_msg_sent_cnt(1, SndCnt).
+incr_msg_sent_cnt(I, SndCnt) -> incr_cnt(I, SndCnt).
+incr_msg_recv_cnt(RcvCnt) -> incr_cnt(1, RcvCnt).
+incr_pub_recv_cnt(PubRecvCnt) -> incr_cnt(1, PubRecvCnt).
+incr_pub_dropped_cnt(I, PubDroppedCnt) -> incr_cnt(I, PubDroppedCnt).
+incr_pub_sent_cnt(I, PubSendCnt) -> incr_cnt(I, PubSendCnt).
 
-incr_msg_recv_cnt(RcvCnt) ->
-    incr_cnt(incr_messages_received, 1, RcvCnt).
-incr_pub_recv_cnt(PubRecvCnt) ->
-    incr_cnt(incr_publishes_received, 1, PubRecvCnt).
+incr_cnt(IncrV, {Avg, Total, []}) ->
+    {Avg, Total, [IncrV]};
+incr_cnt(IncrV, {Avg, Total, [V|Vals]}) ->
+    {Avg, Total + IncrV, [V + IncrV|Vals]}.
 
-incr_pub_dropped_cnt(I, PubDroppedCnt) ->
-    incr_cnt(incr_publishes_dropped, I, PubDroppedCnt).
-incr_pub_sent_cnt(I, PubSendCnt) ->
-    incr_cnt(incr_publishes_sent, I, PubSendCnt).
 
-incr_cnt(IncrFun, IncrV, {{M, S, _}, V, I}) ->
-    NewV = V + IncrV,
-    NewI = I + IncrV,
-    case os:timestamp() of
-        {M, S, _} = TS ->
-            {TS, NewV, NewI};
-        TS ->
-            _ = apply(vmq_exo, IncrFun, [NewI]),
-            {TS, NewV, 0}
+trigger_counter_update(State) ->
+    #state{recv_cnt=RecvCnt,
+           send_cnt=SendCnt,
+           pub_recv_cnt=PubRecvCnt,
+           pub_send_cnt=PubSendCnt,
+           pub_dropped_cnt=PubDroppedCnt} = State,
+    State#state{
+        recv_cnt=trigger_counter_update(incr_messages_received, RecvCnt),
+        send_cnt=trigger_counter_update(incr_messages_sent, SendCnt),
+        pub_recv_cnt=trigger_counter_update(incr_publishes_received,
+                                            PubRecvCnt),
+        pub_send_cnt=trigger_counter_update(incr_publishes_sent,
+                                            PubSendCnt),
+        pub_dropped_cnt=trigger_counter_update(incr_publishes_dropped,
+                                               PubDroppedCnt)}.
+
+trigger_counter_update(IncrFun, {Avg, _, []} = Counter) ->
+    _ = apply(vmq_exo, IncrFun, [Avg]),
+    Counter;
+trigger_counter_update(IncrFun, {_, Total, Vals}) ->
+    L = length(Vals),
+    Avg = lists:sum(Vals) div L,
+    _ = apply(vmq_exo, IncrFun, [Avg]),
+    case L of
+        ?MAX_SAMPLES ->
+            {Avg, Total, lists:reverse(tl(lists:reverse(Vals)))};
+        _ when L < ?MAX_SAMPLES ->
+            {Avg, Total, [0|Vals]}
     end.
 
 prop_val(Key, Args, Default) when is_list(Default) ->

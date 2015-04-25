@@ -43,23 +43,31 @@ all() ->
 publish_rate_limit_test(_) ->
     Connect = packet:gen_connect("rate-limit-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
-    Pub = fun(Socket, Id) ->
+    Pub = fun(Sleep, Socket, Id) ->
                   Publish = packet:gen_publish("rate/limit/test", 1,
-                                               <<"message">>, [{mid, Id}]),
+                                               crypto:rand_bytes(1460), [{mid, Id}]),
                   Puback = packet:gen_puback(Id),
                   ok = gen_tcp:send(Socket, Publish),
-                  ok = packet:expect_packet(Socket, "puback", Puback)
+                  ok = packet:expect_packet(Socket, "puback", Puback),
+                  timer:sleep(Sleep)
           end,
     enable_hooks(),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    % sending 10 publishes should take us at least 10 seconds
-    {T, _} = timer:tc(fun() ->
-                              _ = [Pub(Socket, I) || I <- lists:seq(0, 10)]
-                      end),
-    ct:pal("time passed ~p", [T]),
-    10 = T div 1000000,
-    disable_hooks(),
-    ok = gen_tcp:close(Socket).
+    {T, _} =
+    timer:tc(
+      fun() ->
+              _ = [Pub(10, Socket, I) || I <- lists:seq(0, 100)], %% inits first movingavg slot
+
+              NrOfSamples = 10,
+              % sending 10 publishes should take us at least 10 seconds
+              _ = [Pub(10, Socket, I) || I <- lists:seq(0, NrOfSamples)]
+      end),
+    %% this should take us more than 10 seconds
+    TimeInMs = round(T / 1000),
+    ct:pal("time passed in ms/ sample ~p", [TimeInMs]),
+    true = TimeInMs > 10000,
+    ok = gen_tcp:close(Socket),
+    disable_hooks().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
