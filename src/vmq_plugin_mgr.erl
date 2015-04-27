@@ -454,7 +454,7 @@ stop_plugin(App) ->
 check_plugin(App, AppPath) ->
     case create_paths(App, AppPath) of
         [] ->
-            io:format(user, "can't create path ~p for app ~p~n", [AppPath, App]),
+            lager:debug("can't create path ~p for app ~p~n", [AppPath, App]),
             {error, cant_create_path};
         Paths ->
             code:add_paths(Paths),
@@ -466,7 +466,7 @@ check_plugin(App, AppPath) ->
                     Hooks = application:get_env(App, vmq_plugin_hooks, []),
                     check_hooks(App, Hooks, []);
                 E ->
-                    io:format(user, "can't load application ~p", [E]),
+                    lager:debug("can't load application ~p", [E]),
                     []
             end
     end.
@@ -516,7 +516,7 @@ check_hooks(App, [{Name, Module, Fun, Arity}|Rest], Acc) ->
         ok ->
             check_hooks(App, Rest, [{Name, Module, Fun, Arity}|Acc]);
         {error, Reason} ->
-            io:format(user, "can't load specified hook module ~p in app ~p due to ~p",
+            lager:debug("can't load specified hook module ~p in app ~p due to ~p",
                       [Module, App, Reason]),
             check_hooks(App, Rest, Acc)
     end;
