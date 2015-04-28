@@ -287,8 +287,7 @@ enable_plugin_generic(Plugin, #state{config_file=ConfigFile} = State) ->
                 _OldInstance ->
                     lists:keyreplace(Key, 2, Plugins, Plugin)
             end,
-            ok = write_plugin_config(ConfigFile, NewPlugins),
-            init_from_config_file(State);
+            update_plugins(NewPlugins, State);
         {error, _} = E ->
             E
     end.
@@ -301,11 +300,19 @@ disable_plugin_generic(PluginKey, #state{config_file=ConfigFile} = State) ->
                     {error, plugin_not_found};
                 _ ->
                     NewPlugins = lists:keydelete(PluginKey, 2, Plugins),
-                    ok = write_plugin_config(ConfigFile, NewPlugins),
-                    init_from_config_file(State)
+                    update_plugins(NewPlugins, State)
             end;
         {error, _} = E ->
             E
+    end.
+
+update_plugins(Plugins, #state{config_file=ConfigFile} = State) ->
+    case load_plugins(Plugins, State) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, NewState} ->
+            ok = write_plugin_config(ConfigFile, Plugins),
+            {ok, NewState}
     end.
 
 write_plugin_config(ConfigFile, NewPlugins) ->
@@ -342,19 +349,22 @@ init_from_config_file(#state{ready={waiting,_Pid}} = State) ->
 init_from_config_file(#state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
         {ok, [{plugins, Plugins}]} ->
-            case check_plugins(Plugins, []) of
-                {ok, CheckedPlugins} ->
-                    ok = init_plugins_cli(CheckedPlugins),
-                    ok = start_plugins(CheckedPlugins),
-                    ok = compile_hooks(CheckedPlugins),
-                    {ok, handle_deferred_calls(State#state{ready=true})};
-                {error, Reason} ->
-                    {error, Reason}
-            end;
+            load_plugins(Plugins, State);
         {ok, _} ->
             {error, incorrect_plugin_config};
         {error, enoent} ->
             ok = write_plugin_config(ConfigFile, []),
+            {ok, handle_deferred_calls(State#state{ready=true})};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+load_plugins(Plugins, State) ->
+    case check_plugins(Plugins, []) of
+        {ok, CheckedPlugins} ->
+            ok = init_plugins_cli(CheckedPlugins),
+            ok = start_plugins(CheckedPlugins),
+            ok = compile_hooks(CheckedPlugins),
             {ok, handle_deferred_calls(State#state{ready=true})};
         {error, Reason} ->
             {error, Reason}
