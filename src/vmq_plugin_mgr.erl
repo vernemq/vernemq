@@ -287,8 +287,7 @@ enable_plugin_generic(Plugin, #state{config_file=ConfigFile} = State) ->
                 _OldInstance ->
                     lists:keyreplace(Key, 2, Plugins, Plugin)
             end,
-            NewS = io_lib:format("~p.", [{plugins, NewPlugins}]),
-            ok = file:write_file(ConfigFile, NewS),
+            ok = write_plugin_config(ConfigFile, NewPlugins),
             init_from_config_file(State);
         {error, _} = E ->
             E
@@ -302,13 +301,16 @@ disable_plugin_generic(PluginKey, #state{config_file=ConfigFile} = State) ->
                     {error, plugin_not_found};
                 _ ->
                     NewPlugins = lists:keydelete(PluginKey, 2, Plugins),
-                    NewS = io_lib:format("~p.", [{plugins, NewPlugins}]),
-                    ok = file:write_file(ConfigFile, NewS),
+                    ok = write_plugin_config(ConfigFile, NewPlugins),
                     init_from_config_file(State)
             end;
         {error, _} = E ->
             E
     end.
+
+write_plugin_config(ConfigFile, NewPlugins) ->
+    NewS = io_lib:format("~p.", [{plugins, NewPlugins}]),
+    ok = file:write_file(ConfigFile, NewS).
 
 init_when_ready(MgrPid, RegisteredProcess) ->
     case whereis(RegisteredProcess) of
@@ -352,7 +354,7 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
         {ok, _} ->
             {error, incorrect_plugin_config};
         {error, enoent} ->
-            ok = file:write_file(ConfigFile, "{plugins, []}.", []),
+            ok = write_plugin_config(ConfigFile, []),
             {ok, handle_deferred_calls(State#state{ready=true})};
         {error, Reason} ->
             {error, Reason}
