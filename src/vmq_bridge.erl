@@ -170,11 +170,11 @@ handle_info(connected, #state{client_pid=Pid, opts=Opts,
     {noreply, State#state{subscriptions=Subscriptions}};
 handle_info({deliver_remote, Topic, Payload},
             #state{publish_fun=PublishFun, subscriptions=Subscriptions} = State) ->
-    Words = emqtt_topic:words(Topic),
+    Words = vmq_topic:words(Topic),
     lists:foreach(
       fun({{in, T}, LocalPrefix}) ->
-              TWords = emqtt_topic:words(T),
-              case emqtt_topic:match(Words, TWords) of
+              TWords = vmq_topic:words(T),
+              case vmq_topic:match(Words, TWords) of
                   true ->
                       ok = PublishFun(lists:flatten([LocalPrefix, Topic]), Payload);
                   false ->
@@ -186,11 +186,11 @@ handle_info({deliver_remote, Topic, Payload},
     {noreply, State};
 handle_info({deliver, Topic, Payload, _QoS, _IsRetained, _IsDup},
             #state{subscriptions=Subscriptions, client_pid=ClientPid} = State) ->
-    Words = emqtt_topic:words(Topic),
+    Words = vmq_topic:words(Topic),
     lists:foreach(
       fun({{out, T}, QoS, RemotePrefix}) ->
-              TWords = emqtt_topic:words(T),
-              case emqtt_topic:match(Words, TWords) of
+              TWords = vmq_topic:words(T),
+              case vmq_topic:match(Words, TWords) of
                   true ->
                       ok = gen_emqtt:publish(ClientPid, lists:flatten([RemotePrefix, Topic]) ,
                                              Payload, QoS);
