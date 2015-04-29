@@ -28,7 +28,7 @@
          auth_on_publish/6,
          change_config/1]).
 
--import(emqtt_topic, [match/2]).
+-import(vmq_topic, [words/1, match/2]).
 
 -define(INIT_ACL, {[],[],[],[],[],[]}).
 -define(TABLES, [
@@ -164,7 +164,7 @@ check(Type, [Word|_] = Topic, User, ClientId) when is_list(Word) ->
             end
     end;
 check(Type, Topic, User, ClientId) ->
-    check(Type, emqtt_topic:words(Topic), User, ClientId).
+    check(Type, words(Topic), User, ClientId).
 
 check_all_acl(Type, TIn) ->
     {Tbl, _} = t(Type, all, TIn),
@@ -196,7 +196,7 @@ in(Type, User, Topic) when is_binary(Topic) ->
     STopic = string:substr(binary_to_list(Topic), 1, byte_size(Topic) -1),
     in(Type, User, STopic);
 in(Type, User, Topic) ->
-    {Tbl, Obj} = t(Type, User, emqtt_topic:words(Topic)),
+    {Tbl, Obj} = t(Type, User, words(Topic)),
     ets:insert(Tbl, Obj).
 
 t(read, all, Topic) -> {vmq_acl_read_all, {Topic, 1}};
