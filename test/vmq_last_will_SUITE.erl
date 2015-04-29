@@ -47,7 +47,7 @@ all() ->
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 will_denied_test(_) ->
-    ConnectOK = packet:gen_connect("will-acl-test", [{keepalive,60}, {will_topic, "ok"}, {will_payload, <<"should be ok">>}]),
+    ConnectOK = packet:gen_connect("will-acl-test", [{keepalive,60}, {will_topic, "ok"}, {will_msg, <<"should be ok">>}]),
     ConnackOK = packet:gen_connack(0),
     Connect = packet:gen_connect("will-acl-test", [{keepalive,60}, {will_topic, "will/acl/test"}, {will_msg, <<"should be denied">>}]),
     Connack = packet:gen_connack(5),
@@ -76,7 +76,7 @@ will_null_test(_) ->
     ok = gen_tcp:close(Socket).
 
 will_null_topic_test(_) ->
-    Connect = packet:gen_connect("will-null-topic", [{keepalive,60}, {will_topic, ""}, {will_payload, <<"will message">>}]),
+    Connect = packet:gen_connect("will-null-topic", [{keepalive,60}, {will_topic, empty}, {will_msg, <<"will message">>}]),
     Connack = packet:gen_connack(2),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:close(Socket).
@@ -105,7 +105,7 @@ hook_auth_on_subscribe(_,{"", "will-qos0-test"}, [{"will/null/test",0}]) -> ok;
 hook_auth_on_subscribe(_,{"", "will-qos0-test"}, [{"will/qos0/test",0}]) -> ok.
 
 hook_auth_on_publish(_, _, _MsgId, ["ok"], <<"should be ok">>, false) -> ok;
-hook_auth_on_publish(_, _, _MsgId, ["will","acl","test"], <<>>, false) -> {error, not_auth};
+hook_auth_on_publish(_, _, _MsgId, ["will","acl","test"], <<"should be denied">>, false) -> {error, not_auth};
 hook_auth_on_publish(_, _, _MsgId, ["will","null","test"], <<>>, false) -> ok;
 hook_auth_on_publish(_, _, _MsgId, ["will","qos0","test"], <<"will-message">>, false) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -125,13 +125,13 @@ disable_on_publish() ->
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 
 will_null_helper() ->
-    Connect = packet:gen_connect("test-helper", [{keepalive,60}, {will_topic, "will/null/test"}]),
+    Connect = packet:gen_connect("test-helper", [{keepalive,60}, {will_topic, "will/null/test"}, {will_msg, empty}]),
     Connack = packet:gen_connack(0),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     gen_tcp:close(Socket).
 
 will_qos0_helper() ->
-    Connect = packet:gen_connect("test-helper", [{keepalive,60}, {will_topic, "will/qos0/test"}, {will_payload, <<"will-message">>}]),
+    Connect = packet:gen_connect("test-helper", [{keepalive,60}, {will_topic, "will/qos0/test"}, {will_msg, <<"will-message">>}]),
     Connack = packet:gen_connack(0),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     gen_tcp:close(Socket).

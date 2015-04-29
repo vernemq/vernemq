@@ -197,7 +197,7 @@ code_change(_OldVsn, State, _Extra) ->
 handle_event(Handler, Event) ->
     case Handler(Event) of
         {EvtType, MountPoint, Topic, EventVal} ->
-            case emqtt_topic:type(emqtt_topic:new(Topic)) of
+            case vmq_topic:type(vmq_topic:new(Topic)) of
                 direct ->
                     T = ensure_table_exists(MountPoint, Topic),
                     handle_sub_event({MountPoint, Topic}, EvtType, T, EventVal);

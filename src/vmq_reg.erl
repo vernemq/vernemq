@@ -164,7 +164,7 @@ register_subscriber(true, BalanceSessions, SubscriberId, QPid, _CleanSession) ->
 register_subscriber(SubscriberId, QPid, CleanSession) ->
     case vmq_reg_leader:register_subscriber(self(), QPid, SubscriberId,
                                             CleanSession) of
-        ok when not CleanSession ->
+        ok when CleanSession == ?false ->
             vmq_session_proxy_sup:start_delivery(QPid, SubscriberId),
             ok;
         R ->
@@ -214,13 +214,13 @@ teardown_session(SubscriberId, CleanSession) ->
 register_subscriber_(SessionPid, QPid, SubscriberId, CleanSession) ->
     %% cleanup session for this client id if needed
     case CleanSession of
-        true ->
+        ?true ->
             rate_limited_op(fun() -> del_subscriber(SubscriberId) end,
                             fun({error, Reason}) -> {error, Reason};
                                (_) -> register_subscriber__(SessionPid, QPid,
                                                             SubscriberId, true)
                             end);
-        false ->
+        ?false ->
             rate_limited_op(fun() -> remap_subscriptions(SubscriberId) end,
                             fun({error, Reason}) -> {error, Reason};
                                (_) -> register_subscriber__(SessionPid, QPid,
@@ -266,14 +266,14 @@ publish(#vmq_msg{trade_consistency=true,
     %% if the cluster is not consistent at the moment, it is possible
     %% that subscribers connected to other nodes won't get this message
     case IsRetain of
-        true when Paylaod == <<>> ->
+        ?true when Paylaod == <<>> ->
             %% retain delete action
             rate_limited_op(fun() -> plumtree_metadata:delete(?RETAIN_DB,
                                                               {Topic}) end);
-        true ->
+        ?true ->
             %% retain set action
             retain_msg(Msg);
-        false ->
+        ?false ->
             RegView:fold(MP, Topic, fun publish_/2, Msg),
             ok
     end;
@@ -285,11 +285,11 @@ publish(#vmq_msg{trade_consistency=false,
                  retain=IsRetain} = Msg) ->
     %% don't trade consistency for availability
     case vmq_cluster:is_ready() of
-        true when IsRetain and (Payload == <<>>) ->
+        true when (IsRetain == ?true) and (Payload == <<>>) ->
             %% retain delete action
             rate_limited_op(fun() -> plumtree_metadata:delete(?RETAIN_DB,
                                                               {Topic}) end);
-        true when IsRetain ->
+        true when (IsRetain == ?true) ->
             %% retain set action
             retain_msg(Msg);
         true ->
@@ -394,7 +394,7 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
     Words = [case W of
                  "+" -> '_';
                  _ -> W
-             end || W <- emqtt_topic:words(Topic)],
+             end || W <- vmq_topic:words(Topic)],
     NewWords =
     case lists:reverse(Words) of
         ["#"|Tail] -> lists:reverse(Tail) ++ '_' ;
@@ -494,7 +494,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                                      end)
                                    , QueueSize),
                     put(vmq_queue_pid, QPid),
-                    register_subscriber_(PluginPid, QPid, SubscriberId, true)
+                    register_subscriber_(PluginPid, QPid, SubscriberId, ?true)
             end,
 
             PublishFun =

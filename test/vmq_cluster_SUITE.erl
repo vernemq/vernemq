@@ -18,7 +18,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/inet.hrl").
--include_lib("emqtt_commons/include/emqtt_frame.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 
 %% ===================================================================
 %% common_test callbacks
@@ -52,9 +52,8 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [multiple_connect_test
-     , multiple_connect_unclean_test
-     , distributed_subscribe_test
-    ].
+     ,multiple_connect_unclean_test
+     , distributed_subscribe_test].
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -196,27 +195,29 @@ receive_publishes(Nodes, Topic, Payloads) ->
     Disconnect = packet:gen_disconnect(),
     Opts = opts(Nodes),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, Opts),
-    case recv(Socket, emqtt_frame:initial_state()) of
-        {ok, #mqtt_frame{variable= #mqtt_frame_publish{
-                                      message_id=MsgId
-                                     },
-                         payload=Payload}} ->
+    case recv(Socket, <<>>) of
+        {ok, #mqtt_publish{message_id=MsgId, payload=Payload}} ->
             ok = gen_tcp:send(Socket, packet:gen_puback(MsgId)),
             ok = gen_tcp:send(Socket, Disconnect),
             io:format(user, "+", []),
             receive_publishes(Nodes, Topic, Payloads -- [Payload]);
-        {error, closed} ->
+        {error, _} ->
             receive_publishes(Nodes, Topic, Payloads)
     end.
 
-recv(Socket, ParserState) ->
+recv(Socket, Buf) ->
     case gen_tcp:recv(Socket, 0) of
         {ok, Data} ->
-            case emqtt_frame:parse(Data, ParserState) of
-                {ok, F, _} -> {ok, F};
-                {more, NewParserState} ->
-                    recv(Socket, NewParserState);
-                {error, Reason} -> {error, Reason}
+            NewData = <<Buf/binary, Data/binary>>,
+            case vmq_parser:parse(NewData) of
+                more ->
+                    recv(Socket, NewData);
+                {error, _Rest} ->
+                    {error, parse_error};
+                error ->
+                    {error, parse_error};
+                {Frame, _Rest} ->
+                    {ok, Frame}
             end;
         {error, Reason} -> {error, Reason}
     end.

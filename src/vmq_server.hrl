@@ -1,4 +1,3 @@
--include_lib("emqtt_commons/include/emqtt_frame.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
 -type plugin_id()       :: {plugin, atom(), pid()}.
 
@@ -9,7 +8,7 @@
           retain=false          :: flag(),
           dup=false             :: flag(),
           qos                   :: qos(),
-          trade_consistency=false :: flag(),
+          trade_consistency=false :: boolean(),
           reg_view=vmq_reg_trie   :: atom(),
           mountpoint            :: mountpoint()
          }).

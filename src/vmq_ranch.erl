@@ -42,7 +42,7 @@ start_link(Ref, Socket, Transport, Opts) ->
 send(TransportPid, Bin) when is_binary(Bin) ->
     TransportPid ! {send, Bin},
     ok;
-send(TransportPid, [F|_] = Frames) when is_tuple(F) ->
+send(TransportPid, Frames) when is_list(Frames) ->
     TransportPid ! {send_frames, Frames},
     ok;
 send(TransportPid, Frame) when is_tuple(Frame) ->
@@ -170,21 +170,24 @@ setopts(Socket, Opts) ->
     inet:setopts(Socket, Opts).
 
 process_bytes(SessionPid, Bytes, undefined) ->
-    process_bytes(SessionPid, Bytes, emqtt_frame:initial_state());
+    process_bytes(SessionPid, Bytes, <<>>);
 process_bytes(SessionPid, Bytes, ParserState) ->
-    case emqtt_frame:parse(Bytes, ParserState) of
-        {more, NewParserState} ->
+    NewParserState = <<ParserState/binary, Bytes/binary>>,
+    case vmq_parser:parse(NewParserState) of
+        more ->
             {ok, NewParserState};
-        {ok, Frame, Rest} ->
+        {error, _} ->
+            error;
+        {Frame, Rest} ->
             Ret = vmq_session:in(SessionPid, Frame),
             case Ret of
                 throttle ->
                     {throttled, Rest};
                 _ ->
-                    process_bytes(SessionPid, Rest, emqtt_frame:initial_state())
+                    process_bytes(SessionPid, Rest, <<>>)
             end;
-        {error, _Reason} ->
-            {ok, emqtt_frame:initial_state()}
+        error ->
+            error
     end.
 
 handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
@@ -210,7 +213,9 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
                                     cpulevel=NewCpuLevel});
         {throttled, HoldBackBuf} ->
             erlang:send_after(1000, self(), restart_work),
-            State#st{throttled=true, buffer=HoldBackBuf}
+            State#st{throttled=true, buffer=HoldBackBuf};
+        error ->
+            {exit, parse_error, State}
     end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
     %% we regard a tcp_closed as 'normal'
@@ -224,7 +229,7 @@ handle_message({send, Bin}, #st{pending=Pending} = State) ->
     maybe_flush(State#st{pending=[Bin|Pending]});
 handle_message({send_frames, Frames}, State) ->
     lists:foldl(fun(Frame, #st{pending=AccPending} = AccSt) ->
-                        Bin = emqtt_frame:serialise(Frame),
+                        Bin = vmq_parser:serialise(Frame),
                         maybe_flush(AccSt#st{pending=[Bin|AccPending]})
                 end, State, Frames);
 handle_message({inet_reply, _, ok}, State) ->

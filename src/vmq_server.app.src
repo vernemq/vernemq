@@ -11,10 +11,10 @@
                   os_mon,
                   riak_sysmon,
                   ssl,
-                  emqtt_commons,
                   exometer_core,
                   jobs,
                   plumtree,
+                  vmq_commons,
                   vmq_plugin,
                   clique
                  ]},

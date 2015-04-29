@@ -52,7 +52,6 @@ stop() ->
                                           plumtree,
                                           jobs,
                                           eleveldb,
-                                          emqtt_commons,
                                           vmq_server,
                                           asn1,
                                           public_key,

@@ -41,15 +41,7 @@
 
 -type proplist() :: [{atom(), any()}].
 -type statename() :: atom().
--type mqtt_variable_ping() :: undefined.
--type mqtt_variable() :: #mqtt_frame_connect{}
-                       | #mqtt_frame_connack{}
-                       | #mqtt_frame_publish{}
-                       | #mqtt_frame_subscribe{}
-                       | #mqtt_frame_suback{}
-                       | mqtt_variable_ping().
--type mqtt_frame() :: #mqtt_frame{}.
--type mqtt_frame_fixed() ::  #mqtt_frame_fixed{}.
+
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 -type counter() :: {timestamp(), non_neg_integer(), non_neg_integer()}.
 -type msg_id() :: undefined | 1..65535.
@@ -74,8 +66,7 @@
           username                          :: undefined | username() |
                                                {preauth, string() | undefined},
           keep_alive                        :: undefined | non_neg_integer(),
-          keep_alive_timer                  :: undefined | reference(),
-          clean_session=false               :: flag(),
+          clean_session=0                   :: flag(),
           proto_ver                         :: undefined | pos_integer(),
           queue_pid                         :: pid(),
 
@@ -87,7 +78,7 @@
           pub_send_cnt=init_counter()       :: counter(),
 
           %% config
-          allow_anonymous=false             :: flag(),
+          allow_anonymous=false             :: boolean(),
           mountpoint=""                     :: mountpoint(),
           max_client_id_size=23             :: non_neg_integer(),
 
@@ -97,11 +88,11 @@
           max_queued_messages=1000          :: non_neg_integer(),
           max_message_rate=0                :: non_neg_integer(), %% 0 means unlimited
           retry_interval=20000              :: pos_integer(),
-          upgrade_qos=false                 :: flag(),
-          trade_consistency=false           :: flag(),
+          upgrade_qos=false                 :: boolean(),
+          trade_consistency=false           :: boolean(),
           reg_view=vmq_reg_trie             :: atom(),
-          allow_multiple_sessions=false     :: flag(),
-          balance_sessions=false            :: flag()
+          allow_multiple_sessions=false     :: boolean(),
+          balance_sessions=false            :: boolean()
          }).
 
 -type state() :: #state{}.
@@ -219,15 +210,14 @@ wait_for_connect(timeout, State) ->
     {stop, normal, State}.
 
 -spec connected(timeout
-                | keepalive_expired
                 | {retry, msg_id()}
                 | {deliver_bin, {msg_id(), qos(), payload()}}
                 | {deliver, topic(), payload(), qos(),
                    flag(), flag(), binary()}, state()) ->
     {next_state, connected, state()} | {stop, normal, state()}.
 connected(timeout, State) ->
-    % ignore
-    {next_state, connected, State};
+    lager:warning("[~p] stop due to ~p ~p~n", [self(), keepalive_expired, State#state.keep_alive]),
+    {stop, normal, State};
 
 connected({retry, MessageId}, State) ->
     #state{send_fun=SendFun, waiting_acks=WAcks,
@@ -236,15 +226,11 @@ connected({retry, MessageId}, State) ->
     case dict:find(MessageId, WAcks) of
         error ->
             State;
-        {ok, {QoS, #mqtt_frame{fixed=Fixed} = Frame, _, MsgStoreRef}} ->
+        {ok, {QoS, Frame, _, MsgStoreRef}} ->
             FFrame =
-            case Fixed of
-                #mqtt_frame_fixed{type=?PUBREC} ->
-                    Frame;
-                _ ->
-                    Frame#mqtt_frame{
-                      fixed=Fixed#mqtt_frame_fixed{
-                              dup=true}}
+            case Frame of
+                #mqtt_publish{} -> Frame#mqtt_publish{dup=true};
+                _ -> Frame
             end,
             SendFun(FFrame),
             Ref = send_after(RetryInterval, {retry, MessageId}),
@@ -254,11 +240,7 @@ connected({retry, MessageId}, State) ->
                                       {QoS, Frame, Ref, MsgStoreRef},
                                       WAcks)}
     end,
-    {next_state, connected, NewState};
-
-connected(keepalive_expired, State) ->
-    lager:debug("[~p] stop due to ~p~n", [self(), keepalive_expired]),
-    {stop, normal, State}.
+    {next_state, connected, NewState}.
 
 -spec init(_) -> {ok, wait_for_connect, state(), ?CLOSE_AFTER}.
 init([Peer, SendFun, Opts]) ->
@@ -308,21 +290,16 @@ handle_event(disconnect, StateName, State) ->
 -spec handle_sync_event(_, _, _, state()) -> {reply, _, statename(), state()} |
                                              {stop, {error, {unknown_req, _}},
                                               state()}.
-handle_sync_event({input, #mqtt_frame{
-                             fixed=#mqtt_frame_fixed{type=?DISCONNECT}}},
-             _From, _, State) ->
+handle_sync_event({input, #mqtt_disconnect{}}, _From, _, State) ->
     {stop, normal, State};
 handle_sync_event({input, Frame}, _From, StateName, State) ->
-    #state{keep_alive_timer=KARef, recv_cnt=RecvCnt} = State,
-    #mqtt_frame{fixed=Fixed,
-                variable=Variable,
-                payload=Payload} = Frame,
-    cancel_timer(KARef),
-    case handle_frame(StateName, Fixed, Variable, Payload,
+    #state{recv_cnt=RecvCnt} = State,
+    case handle_frame(StateName, Frame,
                       State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)}) of
+        {connected, #state{keep_alive=0} = NewState} ->
+            {reply, ok, connected, NewState};
         {connected, #state{keep_alive=KeepAlive} = NewState} ->
-            {reply, ok, connected,
-             NewState#state{keep_alive_timer=set_keepalive_timer(KeepAlive)}};
+            {reply, ok, connected, NewState, KeepAlive};
         {NextStateName, NewState} ->
             {reply, ok, NextStateName, NewState, ?CLOSE_AFTER};
         Ret -> Ret
@@ -367,9 +344,9 @@ handle_info(Info, _StateName, State) ->
 terminate(_Reason, connected, State) ->
     #state{clean_session=CleanSession} = State,
     _ = case CleanSession of
-            true ->
+            ?true ->
                 ok;
-            false ->
+            ?false ->
                 handle_waiting_acks(State)
         end,
     maybe_publish_last_will(State);
@@ -378,11 +355,6 @@ terminate(_Reason, _, _) ->
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
-
-
-
-
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNALS
@@ -413,18 +385,12 @@ prepare_frame(QoS, Msg, State) ->
     {NewQoS, #vmq_msg{msg_ref=MsgStoreRef}} = maybe_upgrade_qos(QoS, MsgQoS,
                                                                 Msg, State),
     {OutgoingMsgId, State1} = get_msg_id(NewQoS, State),
-    Frame = #mqtt_frame{
-               fixed=#mqtt_frame_fixed{
-                        type=?PUBLISH,
-                        qos=NewQoS,
-                        retain=IsRetained,
-                        dup=IsDup
-                       },
-               variable=#mqtt_frame_publish{
-                           topic_name=unword(Topic),
-                           message_id=OutgoingMsgId},
-               payload=Payload
-              },
+    Frame = #mqtt_publish{message_id=OutgoingMsgId,
+                          topic=unword(Topic),
+                          qos=NewQoS,
+                          retain=IsRetained,
+                          dup=IsDup,
+                          payload=Payload},
     case NewQoS of
         0 ->
             {ok, Frame, State1};
@@ -442,7 +408,7 @@ prepare_frame(QoS, Msg, State) ->
 % [[], "hello", "world"] --> /hello/world
 % ["hello", "world", []] --> hello/world/
 unword(Topic) ->
-    lists:flatten(lists:reverse(unword(Topic, []))).
+    iolist_to_binary(lists:reverse(unword(Topic, []))).
 
 unword([[]], Acc) -> Acc;
 unword([], Acc) -> [$/|Acc];
@@ -487,26 +453,22 @@ handle_bin_message({MsgId, QoS, Bin}, State) ->
                                              {QoS, Bin, Ref, undefined},
                                              WAcks)}}.
 
--spec handle_frame(statename(), mqtt_frame_fixed(),
-                   mqtt_variable(), payload(), state()) ->
+-spec handle_frame(statename(), mqtt_frame(), state()) ->
                    {statename(), state()} | {stop, atom(), state()}.
 
-handle_frame(wait_for_connect, _,
-             #mqtt_frame_connect{keep_alive=KeepAlive} = Var, _, State) ->
+handle_frame(wait_for_connect, #mqtt_connect{keep_alive=KeepAlive} = Frame, State) ->
     _ = vmq_exo:incr_connect_received(),
     {A, B, C} = now(),
     random:seed(A, B, C),
     %% the client is allowed "grace" of a half a time period
     KKeepAlive = (KeepAlive + (KeepAlive div 2)) * 1000,
-    check_connect(Var, State#state{keep_alive=KKeepAlive});
-handle_frame(wait_for_connect, _, _, _,
-             #state{retry_interval=RetryInterval} = State) ->
+    check_connect(Frame, State#state{keep_alive=KKeepAlive});
+handle_frame(wait_for_connect, _, #state{retry_interval=RetryInterval} = State) ->
     %% drop frame
     {wait_for_connect, State#state{keep_alive=RetryInterval}};
 
-handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
+handle_frame(connected, #mqtt_puback{message_id=MessageId}, State) ->
     #state{subscriber_id=SubscriberId, waiting_acks=WAcks} = State,
-    #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos1 flow
     case dict:find(MessageId, WAcks) of
         {ok, {_, _, Ref, MsgStoreRef}} ->
@@ -517,17 +479,13 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBACK}, Var, _, State) ->
             {connected, State}
     end;
 
-handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
+handle_frame(connected, #mqtt_pubrec{message_id=MessageId}, State) ->
     #state{subscriber_id=SubscriberId, waiting_acks=WAcks, send_fun=SendFun,
            retry_interval=RetryInterval, send_cnt=SendCnt} = State,
-    #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
     {_, _, Ref, MsgStoreRef} = dict:fetch(MessageId, WAcks),
     cancel_timer(Ref), % cancel republish timer
-    PubRelFrame =#mqtt_frame{
-                             fixed=#mqtt_frame_fixed{type=?PUBREL, qos=1},
-                             variable=#mqtt_frame_publish{message_id=MessageId},
-                             payload= <<>>},
+    PubRelFrame = #mqtt_pubrel{message_id=MessageId},
     SendFun(PubRelFrame),
     NewRef = send_after(RetryInterval, {retry, MessageId}),
     _ = vmq_msg_store:deref(SubscriberId, MsgStoreRef),
@@ -538,11 +496,9 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREC}, Var, _, State) ->
                                            NewRef,
                                            undefined}, WAcks)}};
 
-handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
-             Var, _, State) ->
+handle_frame(connected, #mqtt_pubrel{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks, username=User, reg_view=RegView, mountpoint=MP,
            subscriber_id=SubscriberId, trade_consistency=Consistency} = State,
-    #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
     NewState =
     case dict:find({qos2, MessageId} , WAcks) of
@@ -567,39 +523,35 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBREL, dup=IsDup},
                     %% client will retry
                     State
             end;
-        error when IsDup ->
+        error ->
             %% already delivered, Client expects a PUBCOMP
             State
     end,
-    {connected, send_frame(?PUBCOMP, #mqtt_frame_publish{
-                                       message_id=MessageId
-                                      }, <<>>, NewState)};
+    {connected, send_frame(#mqtt_pubcomp{message_id=MessageId}, NewState)};
 
-handle_frame(connected, #mqtt_frame_fixed{type=?PUBCOMP}, Var, _, State) ->
+handle_frame(connected, #mqtt_pubcomp{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks} = State,
-    #mqtt_frame_publish{message_id=MessageId} = Var,
     %% qos2 flow
     {_, _, Ref, undefined} = dict:fetch(MessageId, WAcks),
     cancel_timer(Ref), % cancel rpubrel timer
     {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
 
-handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
-                                          qos=QoS,
-                                          retain=IsRetain},
-             Var, Payload, State) ->
+handle_frame(connected, #mqtt_publish{message_id=MessageId, topic=Topic,
+                                      qos=QoS, retain=IsRetain,
+                                      payload=Payload}, State) ->
     DoThrottle = do_throttle(State),
     #state{mountpoint=MountPoint, pub_recv_cnt=PubRecvCnt,
            max_message_size=MaxMessageSize, reg_view=RegView,
            trade_consistency=Consistency} = State,
-    #mqtt_frame_publish{topic_name=Topic, message_id=MessageId} = Var,
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
     NewState =
-    case {hd(Topic), valid_msg_size(Payload, MaxMessageSize)} of
-        {$$, _} ->
+    case {Topic, valid_msg_size(Payload, MaxMessageSize)} of
+        {[$$|_], _} ->
+            %% $SYS
             State;
         {_, true} ->
-            Msg = #vmq_msg{routing_key=emqtt_topic:words(Topic),
+            Msg = #vmq_msg{routing_key=vmq_topic:words(Topic),
                            payload=Payload,
                            retain=IsRetain,
                            qos=QoS,
@@ -621,17 +573,15 @@ handle_frame(connected, #mqtt_frame_fixed{type=?PUBLISH,
             {reply, throttle, connected, NewState}
     end;
 
-handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
+handle_frame(connected, #mqtt_subscribe{message_id=MessageId, topics=Topics},
+             State) ->
     #state{subscriber_id=SubscriberId, username=User,
            queue_pid=QPid, trade_consistency=Consistency} = State,
-    #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
-    TTopics = [{Name, QoS} || #mqtt_topic{name=Name, qos=QoS} <- Topics],
-    case vmq_reg:subscribe(Consistency, User, SubscriberId, QPid, TTopics) of
+    case vmq_reg:subscribe(Consistency, User, SubscriberId, QPid, Topics) of
         ok ->
-            {_, QoSs} = lists:unzip(TTopics),
-            NewState = send_frame(?SUBACK, #mqtt_frame_suback{
-                                              message_id=MessageId,
-                                              qos_table=QoSs}, <<>>, State),
+            {_, QoSs} = lists:unzip(Topics),
+            NewState = send_frame(#mqtt_suback{message_id=MessageId,
+                                               qos_table=QoSs}, State),
             {connected, NewState};
         {error, _Reason} ->
             %% cant subscribe due to overload or netsplit,
@@ -639,16 +589,12 @@ handle_frame(connected, #mqtt_frame_fixed{type=?SUBSCRIBE}, Var, _, State) ->
             {connected, State}
     end;
 
-handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
+handle_frame(connected, #mqtt_unsubscribe{message_id=MessageId, topics=Topics}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
            trade_consistency=Consistency} = State,
-    #mqtt_frame_subscribe{topic_table=Topics, message_id=MessageId} = Var,
-    TTopics = [Name || #mqtt_topic{name=Name} <- Topics],
-    case vmq_reg:unsubscribe(Consistency, User, SubscriberId, TTopics) of
+    case vmq_reg:unsubscribe(Consistency, User, SubscriberId, Topics) of
         ok ->
-            NewState = send_frame(?UNSUBACK, #mqtt_frame_suback{
-                                                message_id=MessageId
-                                               }, <<>>, State),
+            NewState = send_frame(#mqtt_unsuback{message_id=MessageId}, State),
             {connected, NewState};
         {error, _Reason} ->
             %% cant unsubscribe due to overload or netsplit,
@@ -656,38 +602,36 @@ handle_frame(connected, #mqtt_frame_fixed{type=?UNSUBSCRIBE}, Var, _, State) ->
             {connected, State}
     end;
 
-handle_frame(connected, #mqtt_frame_fixed{type=?PINGREQ}, _, _, State) ->
-    NewState = send_frame(?PINGRESP, undefined, <<>>, State),
+handle_frame(connected, #mqtt_pingreq{}, State) ->
+    NewState = send_frame(#mqtt_pingresp{}, State),
     {connected, NewState};
-handle_frame(connected, #mqtt_frame_fixed{type=Type}, _, _, State) ->
-    lager:debug("stopped connected session, due to unexpected frame type ~p", [Type]),
+handle_frame(connected, Unexpected, State) ->
+    lager:debug("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
     {stop, normal, State}.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-check_connect(#mqtt_frame_connect{proto_ver=Ver} = F, State) ->
+check_connect(#mqtt_connect{proto_ver=Ver} = F, State) ->
     check_client_id(F, State#state{proto_ver=Ver}).
 
-check_client_id(#mqtt_frame_connect{} = Frame,
+check_client_id(#mqtt_connect{} = Frame,
                 #state{username={preauth, UserNameFromCert}} = State) ->
-    check_client_id(Frame#mqtt_frame_connect{username={preauth, UserNameFromCert}},
+    check_client_id(Frame#mqtt_connect{username={preauth, UserNameFromCert}},
                     State#state{username=UserNameFromCert});
 
-check_client_id(#mqtt_frame_connect{client_id=missing}, State) ->
-    {stop, normal, State};
-check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=4} = F, State) ->
+check_client_id(#mqtt_connect{client_id=undefined, proto_ver=4} = F, State) ->
     RandomClientId = random_client_id(),
     SubscriberId = {State#state.mountpoint, RandomClientId},
-    check_user(F#mqtt_frame_connect{client_id=RandomClientId},
+    check_user(F#mqtt_connect{client_id=RandomClientId},
                State#state{subscriber_id=SubscriberId});
-check_client_id(#mqtt_frame_connect{client_id=empty, proto_ver=3}, State) ->
+check_client_id(#mqtt_connect{client_id=undefined, proto_ver=3}, State) ->
     lager:warning("empty protocol version not allowed in mqttv3 ~p",
                 [State#state.subscriber_id]),
     {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)};
-check_client_id(#mqtt_frame_connect{client_id=ClientId, proto_ver=V} = F,
+check_client_id(#mqtt_connect{client_id=ClientId, proto_ver=V} = F,
                 #state{max_client_id_size=S} = State)
   when length(ClientId) =< S ->
     SubscriberId = {State#state.mountpoint, ClientId},
@@ -700,7 +644,7 @@ check_client_id(#mqtt_frame_connect{client_id=ClientId, proto_ver=V} = F,
             {wait_for_connect,
              send_connack(?CONNACK_PROTO_VER, State)}
     end;
-check_client_id(#mqtt_frame_connect{client_id=Id}, State) ->
+check_client_id(#mqtt_connect{client_id=Id}, State) ->
     lager:warning("invalid client id ~p", [Id]),
     {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)}.
@@ -736,14 +680,11 @@ auth_on_register(User, Password, DefaultCleanSess, State) ->
             {error, Reason}
     end.
 
-check_user(#mqtt_frame_connect{username=""} = F, State) ->
-    check_user(F#mqtt_frame_connect{username=undefined,
-                                    password=undefined}, State);
-check_user(#mqtt_frame_connect{username=User, password=Password,
-                               clean_sess=Clean} = F, State) ->
+check_user(#mqtt_connect{username=User, password=Password,
+                         clean_session=Clean} = F, State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, Clean, State) of
+            case auth_on_register(User, Password, unflag(Clean), State) of
                 {ok, #state{peer=Peer,
                             allow_multiple_sessions=AllowMultiple,
                             balance_sessions=BalanceSessions,
@@ -811,20 +752,20 @@ check_user(#mqtt_frame_connect{username=User, password=Password,
             end
     end.
 
-check_will(#mqtt_frame_connect{will_topic=undefined}, State) ->
+check_will(#mqtt_connect{will_topic=undefined, will_msg= <<>>}, State) ->
     {connected, send_connack(?CONNACK_ACCEPT, State)};
-check_will(#mqtt_frame_connect{will_topic=""}, State) ->
+check_will(#mqtt_connect{will_topic=undefined}, State) ->
     %% null topic.... Mosquitto sends a CONNACK_INVALID_ID...
     lager:warning("invalid last will topic for client ~p",
                 [State#state.subscriber_id]),
     {wait_for_connect,
      send_connack(?CONNACK_INVALID_ID, State)};
-check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos},
+check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos},
            State) ->
     #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,
            max_message_size=MaxMessageSize, trade_consistency=Consistency,
            reg_view=RegView} = State,
-    case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=emqtt_topic:words(Topic),
+    case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=vmq_topic:words(Topic),
                                                       payload=Payload,
                                                       qos=Qos,
                                                       trade_consistency=Consistency,
@@ -852,21 +793,11 @@ check_will(#mqtt_frame_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos}
 
 -spec send_connack(non_neg_integer(), state()) -> state().
 send_connack(ReturnCode, State) ->
-    send_frame(?CONNACK, #mqtt_frame_connack{return_code=ReturnCode},
-               <<>>, State).
+    send_frame(#mqtt_connack{return_code=ReturnCode}, State).
 
--spec send_frame(non_neg_integer(), mqtt_variable(),
-                 payload(), state()) -> state().
-send_frame(Type, Variable, Payload, State) ->
-    send_frame(Type, false, Variable, Payload, State).
-
-send_frame(Type, DUP, Variable, Payload,
-           #state{send_fun=SendFun, send_cnt=SendCnt} = State) ->
-    SendFun(#mqtt_frame{
-               fixed=#mqtt_frame_fixed{type=Type, dup=DUP},
-               variable=Variable,
-               payload=Payload
-              }),
+-spec send_frame(mqtt_frame(), state()) -> state().
+send_frame(Frame, #state{send_fun=SendFun, send_cnt=SendCnt} = State) ->
+    SendFun(Frame),
     State#state{send_cnt=incr_msg_sent_cnt(SendCnt)}.
 
 
@@ -910,10 +841,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
                 vmq_msg_store:store(SubscriberId, Msg),
             case publish(User, SubscriberId, UpdatedMsg) of
                 {ok, _} ->
-                    NewState = send_frame(?PUBACK,
-                                          #mqtt_frame_publish{
-                                             message_id=MessageId
-                                            }, <<>>, State),
+                    NewState = send_frame(#mqtt_puback{message_id=MessageId}, State),
                     _ = vmq_msg_store:deref(SubscriberId, MsgRef),
                     NewState;
                 {error, _Reason} ->
@@ -935,11 +863,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
             #vmq_msg{msg_ref=MsgRef, retain=IsRetain} =
                 vmq_msg_store:store(SubscriberId, Msg),
             Ref = send_after(RetryInterval, {retry, {qos2, MessageId}}),
-            Frame = #mqtt_frame{
-                       fixed=#mqtt_frame_fixed{type=?PUBREC},
-                       variable=#mqtt_frame_publish{message_id=MessageId},
-                       payload= <<>>
-                      },
+            Frame = #mqtt_pubrec{message_id=MessageId},
             SendFun(Frame),
             State#state{
               send_cnt=incr_msg_sent_cnt(SendCnt),
@@ -990,7 +914,7 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                              dup=_IsDup,
                                              mountpoint=MP} = Msg,
                AuthSuccess) ->
-    HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
+    HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
     case vmq_plugin:all_till_ok(auth_on_publish, HookArgs) of
         ok ->
             AuthSuccess(Msg, HookArgs);
@@ -1038,14 +962,10 @@ handle_waiting_acks(State) ->
     #state{subscriber_id=SubscriberId, waiting_acks=WAcks} = State,
     dict:fold(fun ({qos2, _}, _, Acc) ->
                       Acc;
-                  (MsgId, {QoS, #mqtt_frame{fixed=Fixed} = Frame,
-                           TRef, undefined}, Acc) ->
+                  (MsgId, {QoS, #mqtt_pubrel{} = Frame, TRef, undefined}, Acc) ->
                       %% unacked PUBREL Frame
                       cancel_timer(TRef),
-                      Bin = emqtt_frame:serialise(
-                              Frame#mqtt_frame{
-                                fixed=Fixed#mqtt_frame_fixed{
-                                        dup=true}}),
+                      Bin = vmq_parser:serialise(Frame),
                       vmq_msg_store:defer_deliver_uncached(SubscriberId,
                                                            {MsgId, QoS, Bin}),
                       Acc;
@@ -1068,11 +988,6 @@ send_after(Time, Msg) ->
 -spec cancel_timer('undefined' | reference()) -> 'ok'.
 cancel_timer(undefined) -> ok;
 cancel_timer(TRef) -> _ = gen_fsm:cancel_timer(TRef), ok.
-
--spec set_keepalive_timer(non_neg_integer()) -> undefined | reference().
-set_keepalive_timer(0) -> undefined;
-set_keepalive_timer(KeepAlive) ->
-    gen_fsm:send_event_after(KeepAlive, keepalive_expired).
 
 -spec check_in_flight(state()) -> boolean().
 check_in_flight(#state{waiting_acks=WAcks, max_inflight_messages=Max}) ->
@@ -1214,3 +1129,8 @@ prop_val(Key, Args, Default, Validator) ->
                    false -> Default
                end
     end.
+
+unflag(true) -> true;
+unflag(false) -> false;
+unflag(?true) -> true;
+unflag(?false) -> false.

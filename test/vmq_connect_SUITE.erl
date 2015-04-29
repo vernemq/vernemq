@@ -75,13 +75,13 @@ anon_success_test(_) ->
     ok = gen_tcp:close(Socket).
 
 invalid_id_0_test(_) ->
-    Connect = packet:gen_connect("", [{keepalive,10}]),
+    Connect = packet:gen_connect(empty, [{keepalive,10}]),
     Connack = packet:gen_connack(2),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:close(Socket).
 
 invalid_id_0_311_test(_) ->
-    Connect = packet:gen_connect("", [{keepalive,10},{proto_ver,4}]),
+    Connect = packet:gen_connect(empty, [{keepalive,10},{proto_ver,4}]),
     Connack = packet:gen_connack(0),
     vmq_plugin_mgr:enable_module_plugin(
       auth_on_register, ?MODULE, hook_empty_client_id_proto_4, 5),
@@ -91,11 +91,7 @@ invalid_id_0_311_test(_) ->
     ok = gen_tcp:close(Socket).
 
 invalid_id_missing_test(_) ->
-    %% mosq_test.gen_connect(None, keepalive=10)
-    Connect = <<16#10,16#0c,16#00,16#06,
-                16#4d,16#51,16#49,16#73,
-                16#64,16#70,16#03,16#02,
-                16#00,16#0a>>,
+    Connect = packet:gen_connect(undefined, [{keepalive,10}]),
     {error, closed} = packet:do_client_connect(Connect, <<>>, []).
 
 invalid_id_24_test(_) ->

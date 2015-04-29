@@ -135,7 +135,6 @@ publish_b2c_disconnect_qos2_test(_) ->
                                     [{mid, 1}, {dup, true}]),
     Pubrel = packet:gen_pubrel(1),
     Pubrec = packet:gen_pubrec(1),
-    PubrelDup = packet:gen_pubrel(1, true),
     Pubcomp = packet:gen_pubcomp(1),
     Publish2 = packet:gen_publish("qos1/outgoing", 1,
                                   <<"outgoing-message">>, [{mid, 3266}]),
@@ -159,9 +158,9 @@ publish_b2c_disconnect_qos2_test(_) ->
     ok = gen_tcp:send(Socket1, Pubrec),
     ok = packet:expect_packet(Socket1, "pubrel", Pubrel),
     ok = gen_tcp:close(Socket1),
-    %% Expect PubrelDup
+    %% Expect Pubrel
     {ok, Socket2} = packet:do_client_connect(Connect, Connack, []),
-    ok = packet:expect_packet(Socket2, "dup pubrel", PubrelDup),
+    ok = packet:expect_packet(Socket2, "pubrel", Pubrel),
     ok = gen_tcp:send(Socket2, Pubcomp),
     disable_on_publish(),
     disable_on_subscribe(),
@@ -206,7 +205,6 @@ publish_b2c_timeout_qos2_test(_) ->
                                     [{mid, 1}, {dup, true}]),
     Pubrec = packet:gen_pubrec(1),
     Pubrel = packet:gen_pubrel(1),
-    PubrelDup = packet:gen_pubrel(1, true),
     Pubcomp = packet:gen_pubcomp(1),
     enable_on_publish(),
     enable_on_subscribe(),
@@ -221,8 +219,8 @@ publish_b2c_timeout_qos2_test(_) ->
     ok = packet:expect_packet(Socket, "dup publish", PublishDup),
     ok = gen_tcp:send(Socket, Pubrec),
     ok = packet:expect_packet(Socket, "pubrel", Pubrel),
-    %% The broker should repeat the PUBREL with dup set
-    ok = packet:expect_packet(Socket, "pubrel", PubrelDup),
+    %% The broker should repeat the PUBREL NO dup set according to MQTT-3.6.1-1
+    ok = packet:expect_packet(Socket, "pubrel", Pubrel),
     ok = gen_tcp:send(Socket, Pubcomp),
     disable_on_publish(),
     disable_on_subscribe(),
@@ -239,7 +237,6 @@ publish_c2b_disconnect_qos2_test(_) ->
                                     [{mid, 1}, {dup, true}]),
     Pubrec = packet:gen_pubrec(1),
     Pubrel = packet:gen_pubrel(1),
-    PubrelDup = packet:gen_pubrel(1, true),
     Pubcomp = packet:gen_pubcomp(1),
     enable_on_publish(),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
@@ -255,7 +252,7 @@ publish_c2b_disconnect_qos2_test(_) ->
     %% Again, pretend we didn't receive this pubcomp
     ok = gen_tcp:close(Socket1),
     {ok, Socket2} = packet:do_client_connect(Connect, Connack, []),
-    ok = gen_tcp:send(Socket2, PubrelDup),
+    ok = gen_tcp:send(Socket2, Pubrel),
     ok = packet:expect_packet(Socket2, "pubcomp", Pubcomp),
     disable_on_publish(),
     ok = gen_tcp:close(Socket2).

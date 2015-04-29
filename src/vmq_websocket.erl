@@ -20,6 +20,7 @@
 -record(st, {buffer= <<>>,
              parser_state,
              session,
+             cpulevel=0,
              bytes_recv={os:timestamp(), 0},
              bytes_send={os:timestamp(), 0}}).
 
@@ -51,18 +52,31 @@ init_(Req, Opts) ->
 websocket_handle({binary, Bytes}, Req, State) ->
     #st{session=SessionPid,
         parser_state=ParserState,
-        bytes_recv={{M, S, _}, V}} = State,
-    NewParserState = process_bytes(SessionPid, Bytes, ParserState),
-    NrOfBytes = byte_size(Bytes),
-    NewBytesRecv =
-    case os:timestamp() of
-        {M, S, _} = NewTS ->
-            {NewTS, V + NrOfBytes};
-        NewTS ->
-            _ = vmq_exo:incr_bytes_received(V + NrOfBytes),
-            {NewTS, 0}
-    end,
-    {ok, Req, State#st{parser_state=NewParserState, bytes_recv=NewBytesRecv}};
+        cpulevel=CpuLevel,
+        bytes_recv={TS, V}} = State,
+    case process_bytes(SessionPid, Bytes, ParserState) of
+        {ok, NewParserState} ->
+            {M, S, _} = TS,
+            NrOfBytes = byte_size(Bytes),
+            BytesRecvLastSecond = V + NrOfBytes,
+            {NewCpuLevel, NewBytesRecv} =
+            case os:timestamp() of
+                {M, S, _} = NewTS ->
+                    {CpuLevel, {NewTS, BytesRecvLastSecond}};
+                NewTS ->
+                    _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
+                    {vmq_sysmon:cpu_load_level(), {NewTS, 0}}
+            end,
+            {ok, Req, maybe_throttle(State#st{parser_state=NewParserState,
+                                              bytes_recv=NewBytesRecv,
+                                              cpulevel=NewCpuLevel})};
+        {throttled, HoldBackBuf} ->
+            timer:sleep(1000),
+            websocket_handle({binary, HoldBackBuf}, Req,
+                             State#st{parser_state= <<>>});
+        error ->
+            {stop, Req, State}
+    end;
 
 websocket_handle(_Data, Req, State) ->
     {ok, Req, State}.
@@ -71,7 +85,7 @@ websocket_info({send, Bin}, Req, State) ->
     {reply, {binary, Bin}, Req, State};
 websocket_info({send_frames, Frames}, Req, #st{bytes_send={{M, S, _}, V}} = State) ->
     Data = lists:foldl(fun(Frame, Acc) ->
-                               Bin = emqtt_frame:serialise(Frame),
+                               Bin = vmq_parser:serialise(Frame),
                                [Bin|Acc]
                        end, [], Frames),
     NrOfBytes = iolist_size(Data),
@@ -99,6 +113,19 @@ websocket_info(_Info, Req, State) ->
     {ok, Req, State}.
 
 
+maybe_throttle(#st{cpulevel=1} = State) ->
+    timer:sleep(10),
+    State;
+maybe_throttle(#st{cpulevel=2} = State) ->
+    timer:sleep(20),
+    State;
+maybe_throttle(#st{cpulevel=L} = State) when L > 2->
+    timer:sleep(100),
+    State;
+maybe_throttle(State) ->
+    State.
+
+
 send(TransportPid, Bin) when is_binary(Bin) ->
     TransportPid ! {send, Bin},
     ok;
@@ -110,14 +137,22 @@ send(TransportPid, Frame) when is_tuple(Frame) ->
     ok.
 
 process_bytes(SessionPid, Bytes, undefined) ->
-    process_bytes(SessionPid, Bytes, emqtt_frame:initial_state());
+    process_bytes(SessionPid, Bytes, <<>>);
 process_bytes(SessionPid, Bytes, ParserState) ->
-    case emqtt_frame:parse(Bytes, ParserState) of
-        {more, NewParserState} ->
-            NewParserState;
-        {ok, Frame, Rest} ->
-            vmq_session:in(SessionPid, Frame),
-            process_bytes(SessionPid, Rest, emqtt_frame:initial_state());
-        {error, _Reason} ->
-            emqtt_frame:initial_state()
+    NewParserState = <<ParserState/binary, Bytes/binary>>,
+    case vmq_parser:parse(NewParserState) of
+        more ->
+            {ok, NewParserState};
+        {error, _} ->
+            error;
+        {Frame, Rest} ->
+            Ret = vmq_session:in(SessionPid, Frame),
+            case Ret of
+                throttle ->
+                    {throttled, Rest};
+                _ ->
+                    process_bytes(SessionPid, Rest, <<>>)
+            end;
+        error ->
+            error
     end.

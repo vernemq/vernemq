@@ -206,7 +206,7 @@ add_topic(MP, Topic, Node) ->
             ignore;
         _ ->
             %% add trie path
-            _ = [trie_add_path(MP, Triple) || Triple <- emqtt_topic:triples(Topic)],
+            _ = [trie_add_path(MP, Triple) || Triple <- vmq_topic:triples(Topic)],
             %% add last node
             ets:insert(vmq_trie_node, #trie_node{node_id=MPTopic, topic=Topic})
     end.
@@ -271,7 +271,7 @@ trie_delete(MP, Topic) ->
     case ets:lookup(vmq_trie_node, NodeId) of
         [#trie_node{edge_count=0}] ->
             ets:delete(vmq_trie_node, NodeId),
-            trie_delete_path(MP, lists:reverse(emqtt_topic:triples(Topic)));
+            trie_delete_path(MP, lists:reverse(vmq_topic:triples(Topic)));
         _ ->
             ignore
     end.
