@@ -2,6 +2,22 @@
 -include("vmq_types.hrl").
 -export([parse/1, serialise/1]).
 
+-export([gen_connect/2,
+         gen_connack/0,
+         gen_connack/1,
+         gen_publish/4,
+         gen_puback/1,
+         gen_pubrec/1,
+         gen_pubrel/1,
+         gen_pubcomp/1,
+         gen_subscribe/3,
+         gen_suback/2,
+         gen_unsubscribe/2,
+         gen_unsuback/1,
+         gen_pingreq/0,
+         gen_pingresp/0,
+         gen_disconnect/0]).
+
 %% frame types
 -define(CONNECT,      1).
 -define(CONNACK,      2).
@@ -28,13 +44,6 @@
 
 -define(MAX_PACKET_SIZE, 266338304).
 
--ifdef(TEST).
--export([expect_packet/3,
-         expect_packet/4,
-         expect_packet/5,
-         do_client_connect/3]).
--endif.
-
 -spec parse(binary()) -> {mqtt_frame(), binary()} | {error, binary()} | error.
 parse(<<Fixed:1/binary, 0:1, L1:7, Data:L1/binary, Rest/binary>>) ->
     {parse(Fixed, Data), Rest};
@@ -56,7 +65,8 @@ parse(<<Fixed:1/binary, 1:1, L1:7, 1:1, L2:7, 1:1, L3:7, 0:1, L4:7, Data/binary>
         <<Var:DataSize/binary, Rest/binary>> -> {parse(Fixed, Var), Rest};
         _ -> {more, Data}
     end;
-parse(Data) when byte_size(Data) =< 8 -> {more, Data}.
+parse(Data) when byte_size(Data) =< 8 -> {more, Data};
+parse(_) -> {error, <<>>}.
 
 parse(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, Payload/binary>>) ->
     #mqtt_publish{dup=Dup,
@@ -154,6 +164,14 @@ parse_acks(<<_:6, QoS:2, Rest/binary>>, Acks) ->
     parse_acks(Rest, [QoS | Acks]).
 
 -spec serialise(mqtt_frame()) -> binary() | iolist().
+serialise(#mqtt_publish{qos=0,
+                        topic=Topic,
+                        retain=Retain,
+                        dup=Dup,
+                        payload=Payload}) ->
+    Var = [utf8(Topic), Payload],
+    LenBytes = serialise_len(iolist_size(Var)),
+    [<<?PUBLISH:4, (flag(Dup)):1/integer, 0:2/integer, (flag(Retain)):1/integer>>, LenBytes, Var];
 serialise(#mqtt_publish{message_id=MessageId,
                         topic=Topic,
                         qos=QoS,
@@ -164,6 +182,7 @@ serialise(#mqtt_publish{message_id=MessageId,
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?PUBLISH:4, (flag(Dup)):1/integer,
        (default(QoS, 0)):2/integer, (flag(Retain)):1/integer>>, LenBytes, Var];
+
 serialise(#mqtt_puback{message_id=MessageId}) ->
     <<?PUBACK:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt_pubrel{message_id=MessageId}) ->
@@ -247,10 +266,11 @@ proto(3) -> {6, ?PROTOCOL_MAGIC_31}.
 flag([]) -> 0;
 flag(undefined) -> 0;
 flag(0) -> 0;
+flag(1) -> 1;
 flag(false) -> 0;
 flag(true) -> 1;
-flag(1) -> 1;
 flag(V) when is_binary(V) orelse is_list(V) -> 1;
+flag(empty) -> 1;
 flag(_) -> 0.
 
 list(<<>>) -> undefined;
@@ -264,114 +284,13 @@ default(Val, _) -> Val.
 
 utf8(<<>>) -> [];
 utf8(undefined) -> [];
+utf8(empty) -> <<0:16/big>>; %% useful if you want to encode an empty string..
 utf8(List) when is_list(List) ->
     utf8(list_to_binary(List));
 utf8(Bin) -> <<(byte_size(Bin)):16/big, Bin/binary>>.
 
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-parser_test() ->
-    compare_frame("connect1", gen_connect("test-client", [])),
-    compare_frame("connect2", gen_connect("test-client", [{will_topic, "test-will-topic"},
-                                                                 {will_payload, "this is a samp"},
-                                                                 {will_qos, 2},
-                                                                 {username, "joe"},
-                                                                 {password, "secret"}])),
-    compare_frame("connack", gen_connack()),
-    compare_frame("publish1", gen_publish("test-topic", 0, <<"test-payload">>, [{dup, true}, {retain, true}])),
-    compare_frame("publish2", gen_publish("test-topic", 2, crypto:rand_bytes(1000), [{dup, true}, {retain, true}])),
-    compare_frame("publish3", gen_publish("test-topic", 2, crypto:rand_bytes(100000), [{dup, true}, {retain, true}])),
-    compare_frame("publish4", gen_publish("test-topic", 2, crypto:rand_bytes(2097153), [{dup, true}, {retain, true}])),
-
-    compare_frame("puback", gen_puback(123)),
-    compare_frame("pubrec", gen_pubrec(123)),
-    compare_frame("pubrel1", gen_pubrel(123)),
-    compare_frame("pubcomp", gen_pubcomp(123)),
-
-    compare_frame("subscribe", gen_subscribe(123, "test/hello/world", 2)),
-    compare_frame("suback", gen_suback(123, 2)),
-    compare_frame("unsubscribe", gen_unsubscribe(123, "test/hello/world")),
-    compare_frame("unsuback", gen_unsuback(123)),
-
-    compare_frame("pingreq", gen_pingreq()),
-    compare_frame("pingresp", gen_pingresp()),
-    compare_frame("disconnect", gen_disconnect()).
-
-
-compare_frame(Test, Frame) ->
-    io:format(user, "---- compare test: ~p~n", [Test]),
-    {ParsedFrame, <<>>} = parse(Frame),
-    SerializedFrame = iolist_to_binary(serialise(ParsedFrame)),
-    compare_frame(Test, Frame, SerializedFrame).
-
-%%%%%%% packet test functions
-expect_packet(Socket, Name, Expected) ->
-    expect_packet(gen_tcp, Socket, Name, Expected).
-expect_packet(Transport, Socket, Name, Expected) ->
-    expect_packet(Transport, Socket, Name, Expected, 60000).
-expect_packet(Transport, Socket, _Name, Expected, Timeout) ->
-    RLen =
-    case byte_size(Expected) of
-        L when L > 0 -> L;
-        _ -> 1
-    end,
-    case Transport:recv(Socket, RLen, Timeout) of
-        {ok, Expected} ->
-            ok;
-        {ok, Different} ->
-            io:format(user, "exp ~p: diff ~p~n", [Expected, Different]),
-            {ExpectedFrame, <<>>} = parse(Expected),
-            {DifferentFrame, <<>>} =parse(Different),
-            {error, diff(ExpectedFrame, DifferentFrame)};
-        E ->
-            E
-    end.
-
-diff(Rec1, Rec2) ->
-    diff_record(Rec1, Rec2).
-
-diff_record(T1, T2) ->
-    [RecordName|L1] = tuple_to_list(T1),
-    [RecordName|L2] = tuple_to_list(T2),
-    Fields = fields(RecordName),
-    PL1 = lists:zip(Fields, L1),
-    PL2 = lists:zip(Fields, L2),
-    [begin
-         {_,VD} = lists:keyfind(K, 1, PL2),
-         {K, V, VD}
-     end || {K,V} = I <- PL1, lists:keyfind(K, 1, PL2) /= I].
-
-fields(mqtt_publish) -> record_info(fields, mqtt_publish);
-fields(mqtt_connect) -> record_info(fields, mqtt_connect);
-fields(mqtt_subscribe) -> record_info(fields, mqtt_subscribe);
-fields(mqtt_unsubscribe) -> record_info(fields, mqtt_unsubscribe);
-fields(mqtt_puback) -> record_info(fields, mqtt_puback);
-fields(mqtt_suback) -> record_info(fields, mqtt_suback);
-fields(mqtt_connack) -> record_info(fields, mqtt_connack);
-fields(mqtt_unsuback) -> record_info(fields, mqtt_unsuback);
-fields(mqtt_pubrel) -> record_info(fields, mqtt_pubrel);
-fields(mqtt_pubrec) -> record_info(fields, mqtt_pubrec);
-fields(mqtt_pubcomp) -> record_info(fields, mqtt_pubcomp).
-
-do_client_connect(ConnectPacket, ConnackPacket, Opts) ->
-    Host = proplists:get_value(hostname, Opts, "localhost"),
-    Port = proplists:get_value(port, Opts, 1888),
-    Timeout = proplists:get_value(timeout, Opts, 60000),
-    ConnackError = proplists:get_value(connack_error, Opts, "connack"),
-    case gen_tcp:connect(Host, Port, [binary, {reuseaddr, true},{active, false}, {packet, raw}], Timeout) of
-        {ok, Socket} ->
-            gen_tcp:send(Socket, ConnectPacket),
-            case expect_packet(Socket, ConnackError, ConnackPacket) of
-                ok ->
-                    {ok, Socket};
-                E ->
-                    gen_tcp:close(Socket),
-                    E
-            end
-    end.
-
+%%%%%%% packet generator functions (useful for testing)
 gen_connect(ClientId, Opts) ->
     Frame = #mqtt_connect{
               client_id = ClientId,
@@ -380,10 +299,10 @@ gen_connect(ClientId, Opts) ->
               username =       proplists:get_value(username, Opts),
               password =       proplists:get_value(password, Opts),
               proto_ver =      proplists:get_value(proto_ver, Opts, 3),
-              will_topic =     proplists:get_value(will_topic, Opts, ""),
+              will_topic =     proplists:get_value(will_topic, Opts),
               will_qos =       proplists:get_value(will_qos, Opts, 0),
               will_retain =    proplists:get_value(will_retain, Opts, false),
-              will_msg =       proplists:get_value(will_payload, Opts, <<>>)
+              will_msg =       proplists:get_value(will_msg, Opts)
               },
     iolist_to_binary(serialise(Frame)).
 
@@ -436,6 +355,41 @@ gen_pingresp() ->
 gen_disconnect() ->
     iolist_to_binary(serialise(#mqtt_disconnect{})).
 
-compare_frame(_, F, F) -> true.
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+parser_test() ->
+    compare_frame("connect1", gen_connect("test-client", [])),
+    compare_frame("connect2", gen_connect("test-client", [{will_topic, "test-will-topic"},
+                                                          {will_msg, "this is a samp"},
+                                                          {will_qos, 2},
+                                                          {username, "joe"},
+                                                          {password, "secret"}])),
+    compare_frame("connack", gen_connack()),
+    compare_frame("publish1", gen_publish("test-topic", 0, <<"test-payload">>, [{dup, true}, {retain, true}])),
+    compare_frame("publish2", gen_publish("test-topic", 2, crypto:rand_bytes(1000), [{dup, true}, {retain, true}])),
+    compare_frame("publish3", gen_publish("test-topic", 2, crypto:rand_bytes(100000), [{dup, true}, {retain, true}])),
+    compare_frame("publish4", gen_publish("test-topic", 2, crypto:rand_bytes(2097153), [{dup, true}, {retain, true}])),
+
+    compare_frame("puback", gen_puback(123)),
+    compare_frame("pubrec", gen_pubrec(123)),
+    compare_frame("pubrel1", gen_pubrel(123)),
+    compare_frame("pubcomp", gen_pubcomp(123)),
+
+    compare_frame("subscribe", gen_subscribe(123, "test/hello/world", 2)),
+    compare_frame("suback", gen_suback(123, 2)),
+    compare_frame("unsubscribe", gen_unsubscribe(123, "test/hello/world")),
+    compare_frame("unsuback", gen_unsuback(123)),
+
+    compare_frame("pingreq", gen_pingreq()),
+    compare_frame("pingresp", gen_pingresp()),
+    compare_frame("disconnect", gen_disconnect()).
+
+compare_frame(Test, Frame) ->
+    io:format(user, "---- compare test: ~p~n", [Test]),
+    {ParsedFrame, <<>>} = parse(Frame),
+    SerializedFrame = iolist_to_binary(serialise(ParsedFrame)),
+    compare_frame(Test, Frame, SerializedFrame).
+compare_frame(_, F, F) -> true.
 -endif.
