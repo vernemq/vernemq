@@ -44,28 +44,28 @@
 
 -define(MAX_PACKET_SIZE, 266338304).
 
--spec parse(binary()) -> {mqtt_frame(), binary()} | {error, binary()} | error.
+-spec parse(binary()) -> {mqtt_frame(), binary()} | {error, binary()} | error | more.
 parse(<<Fixed:1/binary, 0:1, L1:7, Data:L1/binary, Rest/binary>>) ->
     {parse(Fixed, Data), Rest};
 parse(<<Fixed:1/binary, 1:1, L1:7, 0:1, L2:7, Data/binary>>) ->
     DataSize = L1 + (L2 bsl 7),
     case Data of
         <<Var:DataSize/binary, Rest/binary>> -> {parse(Fixed, Var), Rest};
-        _ -> {more, Data}
+        _ -> more
     end;
 parse(<<Fixed:1/binary, 1:1, L1:7, 1:1, L2:7, 0:1, L3:7, Data/binary>>) ->
     DataSize = L1 + (L2 bsl 7) + (L3 bsl 14),
     case Data of
         <<Var:DataSize/binary, Rest/binary>> -> {parse(Fixed, Var), Rest};
-        _ -> {more, Data}
+        _ -> more
     end;
 parse(<<Fixed:1/binary, 1:1, L1:7, 1:1, L2:7, 1:1, L3:7, 0:1, L4:7, Data/binary>>) ->
     DataSize = L1 + (L2 bsl 7) + (L3 bsl 14) + (L4 bsl 21),
     case Data of
         <<Var:DataSize/binary, Rest/binary>> -> {parse(Fixed, Var), Rest};
-        _ -> {more, Data}
+        _ -> more
     end;
-parse(Data) when byte_size(Data) =< 8 -> {more, Data};
+parse(Data) when byte_size(Data) =< 8 -> more;
 parse(_) -> {error, <<>>}.
 
 parse(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, Payload/binary>>) ->
