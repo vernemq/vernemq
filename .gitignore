@@ -1,0 +1,7 @@
+*.beam
+.eunit
+*.app
+deps
+.rebar
+*.o
+vmq_passwd
