@@ -54,7 +54,7 @@
           ready=false,
           plugin_dir,
           config_file,
-          defered_calls=[]}).
+          deferred_calls=[]}).
 
 -type plugin() :: atom()
                 | {atom(),
@@ -176,8 +176,8 @@ handle_call(stop, _From, #state{config_file=ConfigFile} = State) ->
     {reply, ok, State};
 handle_call(Call, _From, #state{ready=true} = State) ->
     handle_plugin_call(Call, State);
-handle_call(Call, From, #state{defered_calls=DeferedCalls} = State) ->
-    {noreply, State#state{defered_calls=[{Call, From}|DeferedCalls]}}.
+handle_call(Call, From, #state{deferred_calls=DeferredCalls} = State) ->
+    {noreply, State#state{deferred_calls=[{Call, From}|DeferredCalls]}}.
 
 handle_plugin_call({enable_plugin, Plugin, Path}, State) ->
     case enable_plugin_generic(
@@ -209,11 +209,11 @@ handle_plugin_call({disable_plugin, PluginKey}, State) ->
             {reply, E, State}
     end.
 
-handle_defered_calls(#state{defered_calls=[{Call, From}|Rest]} = State) ->
-    {reply, Reply, NewState} = handle_plugin_call(Call, State#state{defered_calls=Rest}),
+handle_deferred_calls(#state{deferred_calls=[{Call, From}|Rest]} = State) ->
+    {reply, Reply, NewState} = handle_plugin_call(Call, State#state{deferred_calls=Rest}),
     gen_server:reply(From, Reply),
-    handle_defered_calls(NewState);
-handle_defered_calls(#state{defered_calls=[]} = State) -> State.
+    handle_deferred_calls(NewState);
+handle_deferred_calls(#state{deferred_calls=[]} = State) -> State.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -287,9 +287,7 @@ enable_plugin_generic(Plugin, #state{config_file=ConfigFile} = State) ->
                 _OldInstance ->
                     lists:keyreplace(Key, 2, Plugins, Plugin)
             end,
-            NewS = io_lib:format("~p.", [{plugins, NewPlugins}]),
-            ok = file:write_file(ConfigFile, NewS),
-            init_from_config_file(State);
+            update_plugins(NewPlugins, State);
         {error, _} = E ->
             E
     end.
@@ -302,13 +300,24 @@ disable_plugin_generic(PluginKey, #state{config_file=ConfigFile} = State) ->
                     {error, plugin_not_found};
                 _ ->
                     NewPlugins = lists:keydelete(PluginKey, 2, Plugins),
-                    NewS = io_lib:format("~p.", [{plugins, NewPlugins}]),
-                    ok = file:write_file(ConfigFile, NewS),
-                    init_from_config_file(State)
+                    update_plugins(NewPlugins, State)
             end;
         {error, _} = E ->
             E
     end.
+
+update_plugins(Plugins, #state{config_file=ConfigFile} = State) ->
+    case load_plugins(Plugins, State) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, NewState} ->
+            ok = write_plugin_config(ConfigFile, Plugins),
+            {ok, NewState}
+    end.
+
+write_plugin_config(ConfigFile, NewPlugins) ->
+    NewS = io_lib:format("~p.", [{plugins, NewPlugins}]),
+    ok = file:write_file(ConfigFile, NewS).
 
 init_when_ready(MgrPid, RegisteredProcess) ->
     case whereis(RegisteredProcess) of
@@ -332,7 +341,7 @@ init_from_config_file(#state{ready=false} = State) ->
                     end),
             {ok, State#state{ready={waiting, Pid}}};
         _ ->
-            {ok, handle_defered_calls(State#state{ready=true})}
+            {ok, handle_deferred_calls(State#state{ready=true})}
     end;
 init_from_config_file(#state{ready={waiting,_Pid}} = State) ->
     %% we currently wait for the registered process to become alive
@@ -340,20 +349,23 @@ init_from_config_file(#state{ready={waiting,_Pid}} = State) ->
 init_from_config_file(#state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
         {ok, [{plugins, Plugins}]} ->
-            case check_plugins(Plugins, []) of
-                {ok, CheckedPlugins} ->
-                    ok = init_plugins_cli(CheckedPlugins),
-                    ok = start_plugins(CheckedPlugins),
-                    ok = compile_hooks(CheckedPlugins),
-                    {ok, handle_defered_calls(State#state{ready=true})};
-                {error, Reason} ->
-                    {error, Reason}
-            end;
+            load_plugins(Plugins, State);
         {ok, _} ->
             {error, incorrect_plugin_config};
         {error, enoent} ->
-            ok = file:write_file(ConfigFile, "{plugins, []}.", []),
-            {ok, handle_defered_calls(State#state{ready=true})};
+            ok = write_plugin_config(ConfigFile, []),
+            {ok, handle_deferred_calls(State#state{ready=true})};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+load_plugins(Plugins, State) ->
+    case check_plugins(Plugins, []) of
+        {ok, CheckedPlugins} ->
+            ok = init_plugins_cli(CheckedPlugins),
+            ok = start_plugins(CheckedPlugins),
+            ok = compile_hooks(CheckedPlugins),
+            {ok, handle_deferred_calls(State#state{ready=true})};
         {error, Reason} ->
             {error, Reason}
     end.
