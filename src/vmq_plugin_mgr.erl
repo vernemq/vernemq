@@ -83,10 +83,10 @@ stop() ->
 
 -spec enable_plugin(atom()) -> ok | {error, _}.
 enable_plugin(Plugin) ->
-    enable_plugin(Plugin, auto).
--spec enable_plugin(atom(), string() | auto) -> ok | {error, _}.
-enable_plugin(Plugin, Path) when is_atom(Plugin) ->
-    gen_server:call(?MODULE, {enable_plugin, Plugin, Path}, infinity).
+    enable_plugin(Plugin, []).
+-spec enable_plugin(atom(), [string()]) -> ok | {error, _}.
+enable_plugin(Plugin, Paths) when is_atom(Plugin) ->
+    gen_server:call(?MODULE, {enable_plugin, Plugin, [{paths, Paths}]}, infinity).
 
 -spec enable_module_plugin(atom(), atom(), non_neg_integer()) ->
     ok | {error, _}.
@@ -349,6 +349,7 @@ init_from_config_file(#state{ready={waiting,_Pid}} = State) ->
 init_from_config_file(#state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
         {ok, [{plugins, Plugins}]} ->
+            lager:debug("{plugins, ~p}~n", [Plugins]),
             load_plugins(Plugins, State);
         {ok, _} ->
             {error, incorrect_plugin_config};
@@ -362,6 +363,7 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
 load_plugins(Plugins, State) ->
     case check_plugins(Plugins, []) of
         {ok, CheckedPlugins} ->
+            lager:debug("CheckedPlugins: ~p", [CheckedPlugins]),
             ok = init_plugins_cli(CheckedPlugins),
             ok = start_plugins(CheckedPlugins),
             ok = compile_hooks(CheckedPlugins),
@@ -372,28 +374,53 @@ load_plugins(Plugins, State) ->
 
 check_plugins([{plugins, Plugins}], Acc) ->
     check_plugins(Plugins, Acc);
-check_plugins([{module, {Name, Module, Fun, Arity}}|Rest], Acc) ->
-    case catch apply(Module, module_info, [exports]) of
-        {'EXIT', _} ->
-            {error, unknown_module};
-        Exports ->
-            case lists:member({Fun, Arity}, Exports) of
-                true ->
-                    check_plugins(Rest,
-                                  [{module_plugin,
-                                    [{Name, Module, Fun, Arity}]} | Acc]);
-                false ->
-                    {error, {no_matching_fun_in_module, Module, Fun, Arity}}
-            end
+check_plugins([{module, ModuleName, Options} = Plugin|Rest], Acc) ->
+    case check_module_plugin(ModuleName, Options) of
+        {error, Reason} ->
+            lager:warning("can't load module plugin \"~p\": ~p", [ModuleName, Reason]),
+            check_plugins(Rest, Acc);
+         plugin_ok ->
+            check_plugins(Rest, [Plugin|Acc])
     end;
-check_plugins([{application, App, AppPath}|Rest], Acc) ->
-    case check_plugin(App, AppPath) of
-        {error, R} -> {error, R};
-        CheckedHooks ->
-            check_plugins(Rest, [{App, CheckedHooks} | Acc])
+check_plugins([{application, App, Options} = Plugin|Rest], Acc) ->
+    case check_app_plugin(App, Options) of
+        {error, Reason} ->
+            lager:warning("can't load application plugin \"~p\": ~p", [App, Reason]),
+            check_plugins(Rest, Acc);
+        plugin_ok ->
+            check_plugins(Rest, [Plugin|Acc])
     end;
 check_plugins([], CheckedHooks) ->
     {ok, lists:reverse(CheckedHooks)}.
+
+check_module_plugin(Module, Options) ->
+    Hooks = proplists:get_value(hooks, Options, undefined),
+    check_module_hooks(Module, Hooks).
+
+check_module_hooks(Module, undefined) ->
+    {error, {no_hooks_defined_for_module, Module}};
+check_module_hooks(_, []) ->
+    plugin_ok;
+check_module_hooks(Module, [Hook|Rest]) ->
+    case check_module_hook(Module, Hook) of
+        {error, Reason} -> {error, Reason};
+        ok -> check_module_hooks(Module, Rest)
+    end.
+
+check_module_hook(Module, {_HookName, Fun, Arity}) ->
+    check_module_hook(Module, {Fun, Arity});
+check_module_hook(Module, {Fun, Arity}) ->
+    case catch apply(Module, module_info, [exports]) of
+        {'EXIT', _} ->
+            {error, {unknown_module, Module}};
+        Exports ->
+            case lists:member({Fun, Arity}, Exports) of
+                true ->
+                    ok;
+                false ->
+                    {error, {no_matching_fun_in_module, Module, Fun, Arity}}
+            end
+    end.
 
 start_plugins([{module_plugin, _}|Rest]) ->
     start_plugins(Rest);
@@ -462,20 +489,22 @@ stop_plugin(App) ->
     ok.
 
 
-check_plugin(App, AppPath) ->
-    case create_paths(App, AppPath) of
+check_app_plugin(App, Options) ->
+    lager:debug("check_app_plugin: ~p:~p", [App, Options]),
+    AppPaths = proplists:get_value(paths, Options, auto),
+    case create_paths(App, AppPaths) of
         [] ->
-            lager:debug("can't create path ~p for app ~p~n", [AppPath, App]),
+            lager:debug("can't create path ~p for app ~p~n", [AppPaths, App]),
             {error, cant_create_path};
         Paths ->
             code:add_paths(Paths),
             case application:load(App) of
                 ok ->
                     Hooks = application:get_env(App, vmq_plugin_hooks, []),
-                    check_hooks(App, Hooks, []);
+                    check_app_hooks(App, Hooks);
                 {error, {already_loaded, App}} ->
                     Hooks = application:get_env(App, vmq_plugin_hooks, []),
-                    check_hooks(App, Hooks, []);
+                    check_app_hooks(App, Hooks);
                 E ->
                     lager:debug("can't load application ~p", [E]),
                     []
@@ -502,14 +531,15 @@ create_path(_, [], Acc) -> Acc.
 create_paths(App, auto) ->
     case application:load(App) of
         ok ->
-            create_paths(App, code:lib_dir(App));
+            create_paths(App, [code:lib_dir(App)]);
         {error, {already_loaded, App}} ->
-            create_paths(App, code:lib_dir(App));
+            create_paths(App, [code:lib_dir(App)]);
         _ ->
             []
     end;
-create_paths(_, Path) ->
-    create_paths(Path).
+create_paths(_, Paths) ->
+    lager:debug("XXXX ~p", [Paths]),
+    lists:flatmap(fun(Path) -> create_paths(Path) end, Paths).
 
 create_paths(Path) ->
     case filelib:is_dir(Path) of
@@ -520,27 +550,27 @@ create_paths(Path) ->
             []
     end.
 
-check_hooks(App, [{Module, Fun, Arity}|Rest], Acc) ->
-    check_hooks(App, [{Fun, Module, Fun, Arity}|Rest], Acc);
-check_hooks(App, [{Name, Module, Fun, Arity}|Rest], Acc) ->
-    case check_hook(Module, Fun, Arity) of
-        ok ->
-            check_hooks(App, Rest, [{Name, Module, Fun, Arity}|Acc]);
+check_app_hooks(App, [{Module, Fun, Arity}|Rest]) ->
+    check_app_hooks(App, [{Fun, Module, Fun, Arity}|Rest]);
+check_app_hooks(App, [{_HookName, Module, Fun, Arity}|Rest]) ->
+    case check_app_hook(Module, Fun, Arity) of
+        hook_ok ->
+            check_app_hooks(App, Rest);
         {error, Reason} ->
             lager:debug("can't load specified hook module ~p in app ~p due to ~p",
-                      [Module, App, Reason]),
-            check_hooks(App, Rest, Acc)
+                        [Module, App, Reason]),
+            check_app_hooks(App, Rest)
     end;
-check_hooks(App, [_|Rest], Acc) ->
-    check_hooks(App, Rest, Acc);
-check_hooks(_, [], Acc) -> lists:reverse(Acc).
+check_app_hooks(App, [_|Rest]) ->
+    check_app_hooks(App, Rest);
+check_app_hooks(_, []) -> plugin_ok.
 
-check_hook(Module, Fun, Arity) ->
+check_app_hook(Module, Fun, Arity) ->
     case catch apply(Module, module_info, [exports]) of
         Exports when is_list(Exports) ->
             case lists:member({Fun, Arity}, Exports) of
                 true ->
-                    ok;
+                    hook_ok;
                 false ->
                     {error, not_exported}
             end;
