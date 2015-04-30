@@ -37,9 +37,9 @@ end_per_testcase(_, _Config) ->
 load_plugin_config_file(Config) ->
     Contents =
         {plugins,
-         [{application,vmq_elixir_plugin,
+         [{application,vmq_elixir,
            [{paths,
-             ["/home/lhc/dev/erl.io/vmq_elixir_plugin/_build/dev/lib/vmq_elixir_plugin/"]}]},
+             ["/home/lhc/dev/erl.io/vmq_elixir"]}]},
           {module,vmq_lvldb_store,
            [{hooks,
              [{msg_store_delete_async,msg_store_delete_async,1}]}]},

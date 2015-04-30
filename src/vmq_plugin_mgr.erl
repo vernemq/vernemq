@@ -349,7 +349,6 @@ init_from_config_file(#state{ready={waiting,_Pid}} = State) ->
 init_from_config_file(#state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
         {ok, [{plugins, Plugins}]} ->
-            lager:debug("{plugins, ~p}~n", [Plugins]),
             load_plugins(Plugins, State);
         {ok, _} ->
             {error, incorrect_plugin_config};
@@ -363,7 +362,6 @@ init_from_config_file(#state{config_file=ConfigFile} = State) ->
 load_plugins(Plugins, State) ->
     case check_plugins(Plugins, []) of
         {ok, CheckedPlugins} ->
-            lager:debug("CheckedPlugins: ~p", [CheckedPlugins]),
             ok = init_plugins_cli(CheckedPlugins),
             ok = start_plugins(CheckedPlugins),
             ok = compile_hooks(CheckedPlugins),
@@ -490,7 +488,6 @@ stop_plugin(App) ->
 
 
 check_app_plugin(App, Options) ->
-    lager:debug("check_app_plugin: ~p:~p", [App, Options]),
     AppPaths = proplists:get_value(paths, Options, auto),
     case create_paths(App, AppPaths) of
         [] ->
@@ -511,23 +508,6 @@ check_app_plugin(App, Options) ->
             end
     end.
 
-compile_hooks(CheckedPlugins) ->
-    {_, CheckedHooks} = lists:unzip(CheckedPlugins),
-    compile_hook_module(
-      lists:keysort(1, lists:flatten(CheckedHooks))).
-
-create_path(Path, ["ebin"|Rest], Acc) ->
-    EbinDir = filename:join(Path, "ebin"),
-    create_path(Path, Rest, [EbinDir|Acc]);
-create_path(Path, ["deps"|Rest], Acc) ->
-    DepsDir = filename:join(Path, "deps"),
-    {ok, DepsNames} = file:list_dir(DepsDir),
-    DepsPaths = [filename:join(filename:join(DepsDir, Dep), "ebin")|| Dep <- DepsNames],
-    create_path(Path, Rest, Acc ++ DepsPaths);
-create_path(Path, [_|Rest], Acc) ->
-    create_path(Path, Rest, Acc);
-create_path(_, [], Acc) -> Acc.
-
 create_paths(App, auto) ->
     case application:load(App) of
         ok ->
@@ -538,14 +518,14 @@ create_paths(App, auto) ->
             []
     end;
 create_paths(_, Paths) ->
-    lager:debug("XXXX ~p", [Paths]),
     lists:flatmap(fun(Path) -> create_paths(Path) end, Paths).
 
 create_paths(Path) ->
     case filelib:is_dir(Path) of
         true ->
-            {ok, FNames} = file:list_dir(Path),
-            create_path(Path, FNames, []);
+            EbinDir = filelib:wildcard(filename:join(Path, "ebin")),
+            DepsEbinDir = filelib:wildcard(filename:join(Path, "deps/*/ebin")),
+            lists:append(EbinDir, DepsEbinDir);
         false ->
             []
     end.
@@ -577,6 +557,11 @@ check_app_hook(Module, Fun, Arity) ->
         {'EXIT', Reason} ->
             {error, Reason}
     end.
+
+compile_hooks(CheckedPlugins) ->
+    {_, CheckedHooks} = lists:unzip(CheckedPlugins),
+    compile_hook_module(
+      lists:keysort(1, lists:flatten(CheckedHooks))).
 
 compile_hook_module(Hooks) ->
     M1 = smerl:new(vmq_plugin),
