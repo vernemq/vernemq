@@ -453,9 +453,9 @@ start_plugin(App) ->
 init_plugins_cli(CheckedPlugins) ->
     init_plugins_cli(CheckedPlugins, [code:lib_dir()]).
 
-init_plugins_cli([{module_plugin, _}|Rest], Acc) ->
+init_plugins_cli([{module, _, _}|Rest], Acc) ->
     init_plugins_cli(Rest, Acc);
-init_plugins_cli([{App, _}|Rest], Acc) ->
+init_plugins_cli([{application, App, _}|Rest], Acc) ->
     case code:priv_dir(App) of
         {error, bad_name} ->
             init_plugins_cli(Rest, Acc);
