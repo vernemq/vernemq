@@ -422,9 +422,9 @@ check_module_hook(Module, {Fun, Arity}) ->
             end
     end.
 
-start_plugins([{module_plugin, _}|Rest]) ->
+start_plugins([{module, _, _}|Rest]) ->
     start_plugins(Rest);
-start_plugins([{App, _}|Rest]) ->
+start_plugins([{application, App, _}|Rest]) ->
     start_plugin(App),
     start_plugins(Rest);
 start_plugins([]) -> ok.
