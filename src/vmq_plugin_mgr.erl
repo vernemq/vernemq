@@ -486,7 +486,6 @@ stop_plugin(App) ->
     end,
     ok.
 
-
 check_app_plugin(App, Options) ->
     AppPaths = proplists:get_value(paths, Options, auto),
     case create_paths(App, AppPaths) of
@@ -558,8 +557,55 @@ check_app_hook(Module, Fun, Arity) ->
             {error, Reason}
     end.
 
+
+
+
+
+
+extract_hooks(CheckedPlugins) ->
+    extract_hooks(CheckedPlugins, []).
+
+extract_hooks([], Acc) ->
+    lists:reverse(lists:flatten(Acc));
+extract_hooks([{module, Name, Options}|Rest], Acc) ->
+    case proplists:get_value(hooks, Options, []) of
+        [] -> extract_hooks(Rest, Acc);
+        Hooks ->
+            extract_hooks(Rest, [extract_module_hooks(Name, Hooks, []) | Acc])
+    end;
+extract_hooks([{application, Name, Options}|Rest], Acc) ->
+    case proplists:get_value(hooks, Options, []) of
+        [] ->
+            case application:get_env(Name, vmq_plugin_hooks, []) of
+                [] -> extract_hooks(Rest, Acc);
+                Hooks -> extract_hooks(Rest, [extract_app_env_hooks(Hooks, []) | Acc])
+            end;
+        Hooks ->
+                extract_hooks(Rest, [extract_app_hooks(Hooks, []) | Acc])
+    end.
+
+extract_app_hooks([{Mod, Fun, Arity}|Rest], Acc) ->
+    extract_app_hooks(Rest, [{Fun, Mod, Fun, Arity}|Acc]);
+extract_app_hooks([{_,_,_,_}=Hook|Rest], Acc) ->
+    extract_app_hooks(Rest, [Hook|Acc]).
+
+extract_app_env_hooks([{Mod, Fun, Arity}|Rest], Acc) ->
+    extract_app_env_hooks(Rest, [{Fun, Mod, Fun, Arity}|Acc]).
+
+extract_module_hooks(_, [], Acc) ->
+    Acc;
+extract_module_hooks(ModName, [{HookName, Fun, Arity}|Rest], Acc) ->
+    extract_module_hooks(ModName, Rest, [{HookName, ModName, Fun, Arity}|Acc]);
+extract_module_hooks(ModName, [{Fun, Arity}|Rest], Acc) ->
+    extract_module_hooks(ModName, Rest, [{Fun, ModName, Fun, Arity}|Acc]).
+
+
+
+
+
 compile_hooks(CheckedPlugins) ->
-    {_, CheckedHooks} = lists:unzip(CheckedPlugins),
+    CheckedHooks = extract_hooks(CheckedPlugins),
+    %%{_, CheckedHooks} = lists:unzip(CheckedPlugins),
     compile_hook_module(
       lists:keysort(1, lists:flatten(CheckedHooks))).
 
