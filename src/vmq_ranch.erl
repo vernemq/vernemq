@@ -228,10 +228,7 @@ handle_message({'EXIT', SessionPid, Reason}, #st{session=SessionPid} = State) ->
 handle_message({send, Bin}, #st{pending=Pending} = State) ->
     maybe_flush(State#st{pending=[Bin|Pending]});
 handle_message({send_frames, Frames}, State) ->
-    lists:foldl(fun(Frame, #st{pending=AccPending} = AccSt) ->
-                        Bin = vmq_parser:serialise(Frame),
-                        maybe_flush(AccSt#st{pending=[Bin|AccPending]})
-                end, State, Frames);
+    send_frames(Frames, State);
 handle_message({inet_reply, _, ok}, State) ->
     State;
 handle_message({inet_reply, _, Status}, State) ->
@@ -265,6 +262,11 @@ maybe_throttle(#st{socket=Socket} = State) ->
         {error, Reason} ->
             {exit, Reason, State}
     end.
+
+send_frames([Frame|Frames], #st{pending=Pending} = State) ->
+    Bin = vmq_parser:serialise(Frame),
+    send_frames(Frames, maybe_flush(State#st{pending=[Bin|Pending]}));
+send_frames(_, State) -> State.
 
 %% This magic number is the tcp-over-ethernet MSS (1460) minus the 4 byte
 %% header of the Publish frame. The idea is that we want to flush just before
