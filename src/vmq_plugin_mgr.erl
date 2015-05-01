@@ -189,7 +189,7 @@ handle_plugin_call({enable_plugin, Plugin, Path}, State) ->
     end;
 handle_plugin_call({enable_module_plugin, HookName, Module, Fun, Arity}, State) ->
     case enable_plugin_generic(
-           {module, {HookName, Module, Fun, Arity}}, State) of
+           {module, Module, [{hooks, [{HookName, Fun, Arity}]}]}, State) of
         {ok, NewState} ->
             {reply, ok, NewState};
         {error, _} = E ->
