@@ -683,31 +683,31 @@ list_const(true, [{Name, Module, Fun, Arity}|Rest]) ->
 %%%===================================================================
 sample_hook() ->
     io:format(user, "called sample_hook()~n", []),
-    [].
+    {sample_hook,0}.
 
 sample_hook(A) ->
     io:format(user, "called sample_hook(~p)~n", [A]),
-    [A].
+    {sample_hook,1,A}.
 
 sample_hook(A, B) ->
     io:format(user, "called sample_hook(~p, ~p)~n", [A, B]),
-    [A, B].
+    {sample_hook, 2, A, B}.
 
 sample_hook(A, B, C) ->
     io:format(user, "called sample_hook(~p, ~p, ~p)~n", [A, B, C]),
-    [A, B, C].
+    {sample_hook, 3, A, B, C}.
 
 other_sample_hook_a(V) ->
     io:format(user, "called other_sample_hook_a(~p)~n", [V]),
-    V.
+    {other_sample_hook_a, 1, V}.
 
 other_sample_hook_b(V) ->
     io:format(user, "called other_sample_hook_b(~p)~n", [V]),
-    V.
+    {other_sample_hook_b, 1, V}.
 
 other_sample_hook_c(V) ->
     io:format(user, "called other_sample_hook_c(~p)~n", [V]),
-    V.
+    {other_sample_hook_c, 1, V}.
 
 other_sample_hook_d(V) ->
     io:format(user, "called other_sample_hook_d(~p)~n", [V]),
@@ -772,10 +772,10 @@ vmq_module_plugin_test() ->
     vmq_plugin_mgr:enable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_b, 1),
     vmq_plugin_mgr:enable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_c, 1),
     %% ordering matters, we don't want other_sample_hook_x to be called
-    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1),
-    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1),
-    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1),
     vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1),
     call_hooks(),
 
     io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
@@ -788,10 +788,10 @@ vmq_module_plugin_test() ->
     vmq_plugin_mgr:disable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_a, 1),
     vmq_plugin_mgr:disable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_b, 1),
     vmq_plugin_mgr:disable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_c, 1),
-    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1),
-    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1),
-    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1),
     vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1),
     call_no_hooks().
 
 
@@ -808,10 +808,10 @@ call_no_hooks() ->
 
 call_hooks() ->
     %% ONLY HOOK Tests
-    ?assertEqual([], vmq_plugin:only(sample_hook, [])),
-    ?assertEqual([1], vmq_plugin:only(sample_hook, [1])),
-    ?assertEqual([1, 2], vmq_plugin:only(sample_hook, [1, 2])),
-    ?assertEqual([1, 2, 3], vmq_plugin:only(sample_hook, [1, 2, 3])),
+    ?assertEqual({sample_hook, 0}, vmq_plugin:only(sample_hook, [])),
+    ?assertEqual({sample_hook, 1, 1}, vmq_plugin:only(sample_hook, [1])),
+    ?assertEqual({sample_hook, 2, 1, 2}, vmq_plugin:only(sample_hook, [1, 2])),
+    ?assertEqual({sample_hook, 3, 1, 2, 3}, vmq_plugin:only(sample_hook, [1, 2, 3])),
 
     %% call hook with wrong arity
     ?assertEqual({error, no_matching_hook_found},
@@ -821,21 +821,21 @@ call_hooks() ->
                  vmq_plugin:only(unknown_hook, [])),
 
     %% ALL HOOK Tests
-    ?assertEqual([[]], vmq_plugin:all(sample_hook, [])),
+    ?assertEqual([{sample_hook, 0}], vmq_plugin:all(sample_hook, [])),
 
     %% call hook with wrong arity
     ?assertEqual({error, no_matching_hook_found},
                  vmq_plugin:all(sample_hook, [1, 2, 3, 4])),
+
     %% call unknown hook
     ?assertEqual({error, no_matching_hook_found},
                  vmq_plugin:all(unknown_hook, [])),
 
-    ?assertEqual([10,10,10], vmq_plugin:all(sample_all_hook, [10])),
-
+    %% hook order
+    ?assertEqual([{other_sample_hook_a, 1, 10},
+                  {other_sample_hook_b, 1, 10},
+                  {other_sample_hook_c, 1, 10}], vmq_plugin:all(sample_all_hook, [10])),
 
     %% ALL_TILL_OK Hook Tests
     ?assertEqual(ok, vmq_plugin:all_till_ok(sample_all_till_ok_hook, [10])).
-
-
-
 -endif.
