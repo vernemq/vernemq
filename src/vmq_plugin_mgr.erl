@@ -281,7 +281,7 @@ enable_plugin_generic(Plugin, #state{config_file=ConfigFile} = State) ->
             NewPlugins =
             case lists:keyfind(Key, 2, Plugins) of
                 false ->
-                    [Plugin|Plugins];
+                    Plugins ++ [Plugin];
                 Plugin ->
                     Plugins;
                 _OldInstance ->
@@ -394,7 +394,7 @@ check_plugins([{application, App, AppPath}|Rest], Acc) ->
     end;
 
 check_plugins([], CheckedHooks) ->
-    {ok, CheckedHooks}.
+    {ok, lists:reverse(CheckedHooks)}.
 
 start_plugins([{module_plugin, _}|Rest]) ->
     start_plugins(Rest);
@@ -534,7 +534,7 @@ check_hooks(App, [{Name, Module, Fun, Arity}|Rest], Acc) ->
     end;
 check_hooks(App, [_|Rest], Acc) ->
     check_hooks(App, Rest, Acc);
-check_hooks(_, [], Acc) -> Acc.
+check_hooks(_, [], Acc) -> lists:reverse(Acc).
 
 check_hook(Module, Fun, Arity) ->
     case catch apply(Module, module_info, [exports]) of
@@ -608,7 +608,7 @@ all_clauses(I, [{Name, _, _, Arity} = Hook |Rest], Acc, Info) ->
              [{atom, 1, vmq_plugin_helper},
               {atom, 1, all},
               {cons, 1,
-               list_const(false, lists:reverse([Hook|Hooks])),
+               list_const(false, [Hook|Hooks]),
                {cons, 1,
                 {var, 1, 'Params'},
                 {nil, 1}}}]
@@ -627,7 +627,7 @@ all_till_ok_clauses(I, [{Name, _, _, Arity} = Hook |Rest], Acc) ->
              [{atom, 1, vmq_plugin_helper},
               {atom, 1, all_till_ok},
               {cons, 1,
-               list_const(false, lists:reverse([Hook|Hooks])),
+               list_const(false, [Hook|Hooks]),
                {cons, 1,
                 {var, 1, 'Params'},
                 {nil, 1}}}]

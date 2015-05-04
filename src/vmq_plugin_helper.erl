@@ -21,7 +21,7 @@ all(Hooks, Params) ->
 all([{Module, Fun}|Rest], Params, Acc) ->
     Res = apply(Module, Fun, Params),
     all(Rest, Params, [Res|Acc]);
-all([], _, Acc) -> Acc.
+all([], _, Acc) -> lists:reverse(Acc).
 
 all_till_ok(Hooks, Params) ->
     all_till_ok(Hooks, Params, []).
