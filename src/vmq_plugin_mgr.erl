@@ -380,13 +380,13 @@ check_plugins([{module, ModuleName, Options} = Plugin|Rest], Acc) ->
          plugin_ok ->
             check_plugins(Rest, [Plugin|Acc])
     end;
-check_plugins([{application, App, Options} = Plugin|Rest], Acc) ->
+check_plugins([{application, App, Options}|Rest], Acc) ->
     case check_app_plugin(App, Options) of
         {error, Reason} ->
             lager:warning("can't load application plugin \"~p\": ~p", [App, Reason]),
             check_plugins(Rest, Acc);
-        plugin_ok ->
-            check_plugins(Rest, [Plugin|Acc])
+        CheckedPlugin ->
+            check_plugins(Rest, [CheckedPlugin|Acc])
     end;
 check_plugins([], CheckedHooks) ->
     {ok, lists:reverse(CheckedHooks)}.
@@ -497,10 +497,10 @@ check_app_plugin(App, Options) ->
             case application:load(App) of
                 ok ->
                     Hooks = application:get_env(App, vmq_plugin_hooks, []),
-                    check_app_hooks(App, Hooks);
+                    check_app_hooks(App, Hooks, Options);
                 {error, {already_loaded, App}} ->
                     Hooks = application:get_env(App, vmq_plugin_hooks, []),
-                    check_app_hooks(App, Hooks);
+                    check_app_hooks(App, Hooks, Options);
                 E ->
                     lager:debug("can't load application ~p", [E]),
                     []
@@ -529,6 +529,15 @@ create_paths(Path) ->
             []
     end.
 
+check_app_hooks(App, Hooks, Options) ->
+    Hooks = application:get_env(App, vmq_plugin_hooks, []),
+    case check_app_hooks(App, Hooks) of
+        hooks_ok ->
+            {application, App, [{hooks, Hooks}|Options]};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 check_app_hooks(App, [{Module, Fun, Arity}|Rest]) ->
     check_app_hooks(App, [{Fun, Module, Fun, Arity}|Rest]);
 check_app_hooks(App, [{_HookName, Module, Fun, Arity}|Rest]) ->
@@ -542,7 +551,7 @@ check_app_hooks(App, [{_HookName, Module, Fun, Arity}|Rest]) ->
     end;
 check_app_hooks(App, [_|Rest]) ->
     check_app_hooks(App, Rest);
-check_app_hooks(_, []) -> plugin_ok.
+check_app_hooks(_, []) -> hooks_ok.
 
 check_app_hook(Module, Fun, Arity) ->
     case catch apply(Module, module_info, [exports]) of
@@ -783,6 +792,39 @@ other_sample_hook_f(V) ->
 
 other_sample_hook_x(V) ->
     exit({other_sampl_hook_x_called_but_should_not, V}).
+
+
+check_plugins_test() ->
+    Hooks = [{?MODULE, sample_hook, 0},
+             {?MODULE, sample_hook, 1},
+             {?MODULE, sample_hook, 2},
+             {?MODULE, sample_hook, 3},
+             {sample_all_hook, ?MODULE, other_sample_hook_a, 1},
+             {sample_all_hook, ?MODULE, other_sample_hook_b, 1},
+             {sample_all_hook, ?MODULE, other_sample_hook_c, 1},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1}
+            ],
+    application:load(vmq_plugin),
+    application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
+    {ok, CheckedPlugins} = check_plugins([{application, vmq_plugin, []}], []),
+    ?assertEqual([{application,vmq_plugin,
+                  [{hooks,
+                    [{vmq_plugin_mgr,sample_hook,0},
+                     {vmq_plugin_mgr,sample_hook,1},
+                     {vmq_plugin_mgr,sample_hook,2},
+                     {vmq_plugin_mgr,sample_hook,3},
+                     {sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1},
+                     {sample_all_hook,vmq_plugin_mgr,other_sample_hook_b,1},
+                     {sample_all_hook,vmq_plugin_mgr,other_sample_hook_c,1},
+                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_d,1},
+                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_e,1},
+                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_f,1},
+                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_x,1}]}]}],
+                 CheckedPlugins),
+    application:unload(vmq_plugin).
 
 vmq_plugin_test() ->
     application:load(vmq_plugin),
