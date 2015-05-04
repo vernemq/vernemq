@@ -392,7 +392,6 @@ check_plugins([{application, App, AppPath}|Rest], Acc) ->
         CheckedHooks ->
             check_plugins(Rest, [{App, CheckedHooks} | Acc])
     end;
-
 check_plugins([], CheckedHooks) ->
     {ok, lists:reverse(CheckedHooks)}.
 
@@ -566,13 +565,13 @@ info_only_clause(Hooks) ->
     {clause, 1,
      [{atom, 1, only}],
      [],
-     [list_const(true, lists:reverse(Hooks))]
+     [list_const(true, Hooks)]
     }.
 info_all_clause(Hooks) ->
     {clause, 2,
      [{atom, 1, all}],
      [],
-     [list_const(true, lists:reverse(Hooks))]
+     [list_const(true, Hooks)]
     }.
 
 
@@ -613,9 +612,9 @@ all_clauses(I, [{Name, _, _, Arity} = Hook |Rest], Acc, Info) ->
                 {var, 1, 'Params'},
                 {nil, 1}}}]
             }]),
-    all_clauses(I + 1, Rest -- Hooks, [Clause|Acc], lists:reverse([Hook|Hooks]) ++ Info);
+    all_clauses(I + 1, Rest -- Hooks, [Clause|Acc], Info ++ [Hook|Hooks]);
 all_clauses(I, [], Acc, Info) ->
-    {lists:reverse([not_found_clause(I) | Acc]), lists:reverse(Info)}.
+    {lists:reverse([not_found_clause(I) | Acc]), Info}.
 
 
 all_till_ok_clauses(I, [{Name, _, _, Arity} = Hook |Rest], Acc) ->
