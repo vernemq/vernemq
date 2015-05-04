@@ -749,15 +749,35 @@ vmq_plugin_test() ->
     ?assertEqual(ok, vmq_plugin_mgr:enable_plugin(vmq_plugin, "..")),
     ?assert(lists:keyfind(vmq_plugin, 1, application:which_applications()) /= false),
 
-    call_hooks(),
-
     io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
     io:format(user, "info only ~p~n", [vmq_plugin:info(only)]),
+
+    %% the plugins are sorted (stable) by the plugin name.
+    ?assertEqual([{sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1},
+                  {sample_all_hook,vmq_plugin_mgr,other_sample_hook_b,1},
+                  {sample_all_hook,vmq_plugin_mgr,other_sample_hook_c,1},
+                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_d,1},
+                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_e,1},
+                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_f,1},
+                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_x,1},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,0},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,1},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,2},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,3}], vmq_plugin:info(all)),
+
+    %% the plugins are sorted (stable) by the plugin name.
+    ?assertEqual([{sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1},
+                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_d,1},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,0},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,1},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,2},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,3}], vmq_plugin:info(only)),
+
+    call_hooks(),
+
 
     %% Disable Plugin
     ?assertEqual(ok, vmq_plugin_mgr:disable_plugin(vmq_plugin)),
-    io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
-    io:format(user, "info only ~p~n", [vmq_plugin:info(only)]),
     %% no plugin is registered
     call_no_hooks().
 
@@ -776,10 +796,30 @@ vmq_module_plugin_test() ->
     vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1),
     vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1),
     vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1),
+
+    %% the plugins are sorted (stable) by the plugin name.
+    ?assertEqual([{sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1},
+                  {sample_all_hook,vmq_plugin_mgr,other_sample_hook_b,1},
+                  {sample_all_hook,vmq_plugin_mgr,other_sample_hook_c,1},
+                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_d,1},
+                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_e,1},
+                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_f,1},
+                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_x,1},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,0},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,1},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,2},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,3}], vmq_plugin:info(all)),
+
+    %% the plugins are sorted (stable) by the plugin name.
+    ?assertEqual([{sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1},
+                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_d,1},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,0},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,1},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,2},
+                  {sample_hook,vmq_plugin_mgr,sample_hook,3}], vmq_plugin:info(only)),
+
     call_hooks(),
 
-    io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
-    io:format(user, "info only ~p~n", [vmq_plugin:info(only)]),
     % disable hooks
     vmq_plugin_mgr:disable_module_plugin(?MODULE, sample_hook, 0),
     vmq_plugin_mgr:disable_module_plugin(?MODULE, sample_hook, 1),
