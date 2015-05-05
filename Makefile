@@ -107,12 +107,7 @@ stage : rel
 ## Doc targets
 ##
 docs:
-	ln -s ../../deps/vmq_acl/docs docs/plugins/vmq_acl
-	ln -s ../../deps/vmq_passwd/docs docs/plugins/vmq_passwd
-	ln -s ../../deps/vmq_bridge/docs docs/plugins/vmq_bridge
-	ln -s ../../deps/vmq_systree/docs docs/plugins/vmq_systree
-	ln -s ../../deps/vmq_graphite/docs docs/plugins/vmq_graphite
-	ln -s ../../deps/vmq_snmp/docs docs/plugins/vmq_snmp
+	ln -s ../deps docs/apps
 	(cd docs && make clean && make html)
 
 

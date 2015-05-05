@@ -45,5 +45,5 @@ User Guide
     configure
     start
     clustering
-    plugins/overview
+    plugins
     tuning/overview

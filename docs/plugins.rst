@@ -9,7 +9,7 @@ Many aspects of VerneMQ can be extended using plugins. The standard VerneMQ pack
     :maxdepth: 1
     :glob:
 
-    vmq_*/*
+    apps/vmq_*/docs/*
 
 Check the installed plugins
 ---------------------------
