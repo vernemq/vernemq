@@ -877,6 +877,9 @@ vmq_plugin_test() ->
     call_no_hooks().
 
 vmq_module_plugin_test() ->
+    application:load(vmq_plugin),
+    application:set_env(vmq_plugin, plugin_dir, ".."),
+
     {ok, _} = application:ensure_all_started(vmq_plugin),
     call_no_hooks(),
     vmq_plugin_mgr:enable_module_plugin(?MODULE, sample_hook, 0),
