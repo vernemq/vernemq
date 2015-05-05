@@ -85,8 +85,10 @@ stop() ->
 enable_plugin(Plugin) ->
     enable_plugin(Plugin, []).
 -spec enable_plugin(atom(), [string()]) -> ok | {error, _}.
-enable_plugin(Plugin, Paths) when is_atom(Plugin) ->
-    gen_server:call(?MODULE, {enable_plugin, Plugin, [{paths, Paths}]}, infinity).
+enable_plugin(Plugin, [[_|_]|_]=Paths) when is_atom(Plugin) ->
+    gen_server:call(?MODULE, {enable_plugin, Plugin, [{paths, Paths}]}, infinity);
+enable_plugin(Plugin, Path) when is_atom(Plugin) ->
+    gen_server:call(?MODULE, {enable_plugin, Plugin, [{paths, [Path]}]}, infinity).
 
 -spec enable_module_plugin(atom(), atom(), non_neg_integer()) ->
     ok | {error, _}.
