@@ -311,16 +311,42 @@ plugins_have_hook({H, M, F, A}, OldPlugins) ->
 disable_plugin_generic(PluginKey, #state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
         {ok, [{plugins, Plugins}]} ->
-            case lists:keyfind(PluginKey, 2, Plugins) of
-                false ->
-                    {error, plugin_not_found};
-                _ ->
-                    NewPlugins = lists:keydelete(PluginKey, 2, Plugins),
-                    update_plugins(NewPlugins, State)
+            case delete_plugin(PluginKey, Plugins) of
+                Plugins -> {error, plugin_not_found};
+                NewPlugins -> update_plugins(NewPlugins, State)
             end;
         {error, _} = E ->
             E
     end.
+
+delete_plugin(AppName, Plugins) when is_atom(AppName) ->
+    lists:filter(fun({application, N, _}) ->
+                         N =/= AppName;
+                    (_) -> true
+                 end, Plugins);
+delete_plugin({H,M,F,A}, Plugins) ->
+    lists:filtermap(
+      fun({module, Name, Opts}) ->
+              Hooks = proplists:get_value(hooks, Opts, []),
+              RemainingHooks = remove_module_hook({H,M,F,A}, Name, Hooks),
+              case RemainingHooks of
+                  [] -> false;
+                  RemainingHooks ->
+                      NewOpts = lists:keyreplace(hooks, 1, Opts, {hooks, RemainingHooks}),
+                      {true, {module, Name, NewOpts}}
+              end;
+         (_) -> true
+      end,
+      Plugins).
+
+remove_module_hook({H,M,F,A}, Module, Hooks) ->
+    lists:filter(fun({H1, F1, A1}) ->
+                         {H1, Module, F1, A1} =/= {H,M,F,A};
+                    ({F1, A1}) ->
+                         {Module, Module, F1, A1} =/= {H,M,F,A};
+                    (_) -> true
+                 end,
+                 Hooks).
 
 update_plugins(Plugins, #state{config_file=ConfigFile} = State) ->
     case load_plugins(Plugins, State) of
