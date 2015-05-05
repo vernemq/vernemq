@@ -277,19 +277,36 @@ code_change(_OldVsn, State, _Extra) ->
 enable_plugin_generic(Plugin, #state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
         {ok, [{plugins, Plugins}]} ->
-            NewPlugins =
-            case lists:keyfind(Key, 2, Plugins) of
-                false ->
-                    Plugins ++ [Plugin];
-                Plugin ->
-                    Plugins;
-                _OldInstance ->
-                    lists:keyreplace(Key, 2, Plugins, Plugin)
-            end,
-            update_plugins(NewPlugins, State);
-        {error, _} = E ->
-            E
+            io:format(user, "Read: ~p~n", [Plugins]),
+            case get_new_hooks(Plugin, Plugins) of
+                none -> update_plugins(Plugins, State);
+                {error, _} = E -> E;
+                NewPlugin -> update_plugins(Plugins ++ [NewPlugin], State)
+            end;
+        {error, _} = E -> E
     end.
+
+get_new_hooks({module, Module, [{hooks, [{H,F,A}]}]} = NewPlugin, OldPlugins) ->
+    case plugins_have_hook({H, Module, F, A}, OldPlugins) of
+        false -> NewPlugin;
+        true -> none
+    end;
+get_new_hooks({application, Name, Opts}, OldPlugins) ->
+    HasAppHook = lists:any(fun({application, N, _}) -> Name =:= N;
+                              (_) -> false
+                           end,
+                           OldPlugins),
+    case HasAppHook of
+        true ->
+            %% Currently we do note overwrite application plugins.
+            %% They need to be disabled and enabled again.
+            {error, already_enabled};
+        false -> {application, Name, Opts}
+    end.
+
+plugins_have_hook({H, M, F, A}, OldPlugins) ->
+    Hooks = extract_hooks(OldPlugins),
+    lists:member({H,M,F,A}, Hooks).
 
 disable_plugin_generic(PluginKey, #state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
