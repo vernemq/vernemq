@@ -810,6 +810,15 @@ check_plugins_test() ->
                  CheckedPlugins),
     application:unload(vmq_plugin).
 
+check_plugin_for_module_plugin_test() ->
+    Plugins = [{module, ?MODULE, [{hooks, [{sample_hook1, sample_hook, 0},
+                                           {sample_hook2, sample_hook, 1}]}]}],
+    {ok, CheckedPlugins} = check_plugins(Plugins, []),
+    ?assertEqual([{module, ?MODULE,
+                   [{hooks, [{sample_hook1, sample_hook, 0},
+                             {sample_hook2, sample_hook, 1}]}]}],
+                 CheckedPlugins).
+
 vmq_plugin_test() ->
     application:load(vmq_plugin),
     Hooks = [{?MODULE, sample_hook, 0},
