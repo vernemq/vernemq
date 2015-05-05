@@ -8,7 +8,7 @@ OVERLAY_VARS    ?=
 
 $(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will probably not work"))
 
-.PHONY: rel stagedevrel deps
+.PHONY: rel stagedevrel deps docs
 
 all: deps compile
 
@@ -101,6 +101,19 @@ devclean: clean
 
 stage : rel
 	$(foreach dep,$(wildcard deps/*), rm -rf rel/vernemq/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/vernemq/lib;)
+
+
+##
+## Doc targets
+##
+docs:
+	ln -s ../../deps/vmq_acl/docs docs/plugins/vmq_acl
+	ln -s ../../deps/vmq_passwd/docs docs/plugins/vmq_passwd
+	ln -s ../../deps/vmq_bridge/docs docs/plugins/vmq_bridge
+	ln -s ../../deps/vmq_systree/docs docs/plugins/vmq_systree
+	ln -s ../../deps/vmq_graphite/docs docs/plugins/vmq_graphite
+	ln -s ../../deps/vmq_snmp/docs docs/plugins/vmq_snmp
+	(cd docs && make clean && make html)
 
 
 APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \

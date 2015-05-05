@@ -4,4 +4,7 @@ rel/vars/dev*_vars.config
 dev/
 ebin/
 test/vernemq*
-*.pyc
+docs/_build/
+docs/plugins/vmq_*
+
+

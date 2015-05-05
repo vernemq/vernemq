@@ -42,8 +42,8 @@ User Guide
     :maxdepth: 3
 
     install
-    start
     configure
-    open_files_limit
-    vmq_passwd
-
+    start
+    clustering
+    plugins/overview
+    tuning/overview

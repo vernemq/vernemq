@@ -39,6 +39,6 @@ Once your node has started, you can initially check that it is running with the 
 
 The command will respond with ``pong`` if the node is running or ``Node <NodeName> not responding to pings`` if it is not.
 
-.. note:: 
+.. warning:: 
     
-    As you may have noticed, if you haven't adjusted your open files limit (ulimit -n), VerneMQ will warn you at startup. You're advised to increase the operating system default open files limit when running VerneMQ. You can read more about why in the :ref:`Open Files Limit <open_files_limit>` documentation. 
+    As you may have noticed, if you haven't adjusted your open files limit (``ulimit -n``), VerneMQ will warn you at startup. You're advised to increase the operating system default open files limit when running VerneMQ. You can read more about why in the :ref:`Open Files Limit <open_files_limit>` documentation. 
