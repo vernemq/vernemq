@@ -89,7 +89,11 @@ cannot_enable_duplicate_module_plugin(Config) ->
     ok = write_config(Config ,empty_plugin_config()),
     {ok, _} = application:ensure_all_started(vmq_plugin),
     ok = vmq_plugin_mgr:enable_module_plugin(hookname, ?MODULE, sample_hook_function, 0),
-    {error, already_enabled} = vmq_plugin_mgr:enable_module_plugin(hookname, ?MODULE, sample_hook_function, 0).
+    %% Enabling a module twice does not throw an error.
+    ok = vmq_plugin_mgr:enable_module_plugin(hookname, ?MODULE, sample_hook_function, 0),
+    %% but it does not get written to the config file again.
+    {plugins, [{module, ?MODULE, [{hooks, [{hookname, sample_hook_function, 0}]}]}]} = read_config(Config).
+
 
 cannot_enable_duplicate_app_plugin(Config) ->
     ok = write_config(Config ,empty_plugin_config()),

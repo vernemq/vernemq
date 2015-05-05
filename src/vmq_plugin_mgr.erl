@@ -279,7 +279,6 @@ code_change(_OldVsn, State, _Extra) ->
 enable_plugin_generic(Plugin, #state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
         {ok, [{plugins, Plugins}]} ->
-            io:format(user, "Read: ~p~n", [Plugins]),
             case get_new_hooks(Plugin, Plugins) of
                 none -> update_plugins(Plugins, State);
                 {error, _} = E -> E;
@@ -414,13 +413,11 @@ load_plugins(Plugins, State) ->
             {error, Reason}
     end.
 
-check_plugins([{plugins, Plugins}], Acc) ->
-    check_plugins(Plugins, Acc);
 check_plugins([{module, ModuleName, Options} = Plugin|Rest], Acc) ->
     case check_module_plugin(ModuleName, Options) of
         {error, Reason} ->
             lager:warning("can't load module plugin \"~p\": ~p", [ModuleName, Reason]),
-            check_plugins(Rest, Acc);
+            {error, Reason};
          plugin_ok ->
             check_plugins(Rest, [Plugin|Acc])
     end;
@@ -428,7 +425,7 @@ check_plugins([{application, App, Options}|Rest], Acc) ->
     case check_app_plugin(App, Options) of
         {error, Reason} ->
             lager:warning("can't load application plugin \"~p\": ~p", [App, Reason]),
-            check_plugins(Rest, Acc);
+            {error, Reason};
         CheckedPlugin ->
             check_plugins(Rest, [CheckedPlugin|Acc])
     end;
