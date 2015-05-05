@@ -196,8 +196,8 @@ handle_plugin_call({enable_module_plugin, HookName, Module, Fun, Arity}, State) 
             {reply, E, State}
     end;
 handle_plugin_call({disable_plugin, PluginKey}, State) ->
-    %% PluginKey is either the Application Name of the Plugin
-    %% or {HookName, ModuleName} for Module Plugins
+    %% PluginKey is either the Application Name of the Plugin or
+    %% {HookName, ModuleName, Fun, Arity} for Module Plugins
     case disable_plugin_generic(PluginKey, State) of
         {ok, NewState} ->
             case PluginKey of
