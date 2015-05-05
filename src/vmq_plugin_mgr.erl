@@ -277,7 +277,6 @@ code_change(_OldVsn, State, _Extra) ->
 enable_plugin_generic(Plugin, #state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
         {ok, [{plugins, Plugins}]} ->
-            Key = element(2, Plugin),
             NewPlugins =
             case lists:keyfind(Key, 2, Plugins) of
                 false ->
@@ -778,7 +777,7 @@ other_sample_hook_x(V) ->
     exit({other_sampl_hook_x_called_but_should_not, V}).
 
 
-check_plugins_test() ->
+check_plugin_for_app_plugins_test() ->
     Hooks = [{?MODULE, sample_hook, 0},
              {?MODULE, sample_hook, 1},
              {?MODULE, sample_hook, 2},
@@ -841,7 +840,7 @@ vmq_plugin_test() ->
     call_no_hooks(),
 
     %% ENABLE PLUGIN
-    ?assertEqual(ok, vmq_plugin_mgr:enable_plugin(vmq_plugin, "..")),
+    ?assertEqual(ok, vmq_plugin_mgr:enable_plugin(vmq_plugin, [".."])),
     ?assert(lists:keyfind(vmq_plugin, 1, application:which_applications()) /= false),
 
     io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
@@ -869,7 +868,6 @@ vmq_plugin_test() ->
                   {sample_hook,vmq_plugin_mgr,sample_hook,3}], vmq_plugin:info(only)),
 
     call_hooks(),
-
 
     %% Disable Plugin
     ?assertEqual(ok, vmq_plugin_mgr:disable_plugin(vmq_plugin)),
@@ -931,7 +929,6 @@ vmq_module_plugin_test() ->
     vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1),
     vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1),
     call_no_hooks().
-
 
 call_no_hooks() ->
     ?assertEqual({error, no_matching_hook_found},
