@@ -106,8 +106,7 @@ stage : rel
 ##
 ## Doc targets
 ##
-docs:
-	ln -s ../deps docs/apps
+docs: deps
 	(cd docs && make clean && make html)
 
 
