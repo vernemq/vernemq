@@ -1,0 +1,7 @@
+language: erlang
+otp_release:
+    - R16B03
+    - R16B03-1
+    - 17.1
+    - 17.3
+    - 17.4
