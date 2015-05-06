@@ -52,9 +52,9 @@ end_per_testcase(_, _Config) ->
 load_plugin_config_file(Config) ->
     Contents =
         {plugins,
-         [{application,vmq_elixir,
+         [{application,vmq_plugin,
            [{paths,
-             ["/home/lhc/dev/erl.io/vmq_elixir"]}]},
+             [code:lib_dir(vmq_plugin)]}]},
           {module,?MODULE,
            [{hooks,
              [{hook_number_1,sample_hook_function,0}]}]},
@@ -65,9 +65,7 @@ load_plugin_config_file(Config) ->
            [{hooks,
              [{hook_number_1,sample_hook_function,2}]}]}]},
     ok = write_config(Config, Contents),
-    {ok, _} = application:ensure_all_started(vmq_plugin),
-    ok = vmq_plugin_mgr:enable_plugin(vmq_plugin, [code:lib_dir(vmq_plugin)]).
-
+    {ok, _} = application:ensure_all_started(vmq_plugin).
 
 an_empty_config_file(Config) ->
     ok = write_config(Config, empty_plugin_config()),
