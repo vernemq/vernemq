@@ -1,7 +1,7 @@
 .. _open_files_limit:
 
-Change Open Files Limit
------------------------
+Change Open Files Limit [#a1]_
+------------------------------
 
 VerneMQ can consume a large number of open file handles during normal operation. The Bitcask message store backend in particular may accumulate a high number of data files before it has a chance to run a merge process. 
 
@@ -177,4 +177,6 @@ For example, to set the soft limit to 16384 files, and the hard limit to 32768 f
         maxproc     709            1064
         maxfiles    16384          32768    
 
+.. rubric:: Attributions
 
+.. [#a1] This work, "Open File Limits", is a derivative of Open File Limits by Riak, used under Creative Commons Attribution 3.0 Unported License. "Open File Limits" is licensed under Creative Commons Attribution 3.0 Unported License by Erlio GmbH.
