@@ -1,0 +1,3 @@
+[submodule "docs/sphinx_rtd_theme"]
+	path = docs/sphinx_rtd_theme
+	url = git://github.com/dergraf/sphinx_rtd_theme.git
