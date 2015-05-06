@@ -447,8 +447,11 @@ check_module_hooks(Module, [Hook|Rest]) ->
     end.
 
 check_module_hook(Module, {_HookName, Fun, Arity}) ->
-    check_module_hook(Module, {Fun, Arity});
+    check_mfa(Module, Fun, Arity);
 check_module_hook(Module, {Fun, Arity}) ->
+    check_mfa(Module, Fun, Arity).
+
+check_mfa(Module, Fun, Arity) ->
     case catch apply(Module, module_info, [exports]) of
         {'EXIT', _} ->
             {error, {unknown_module, Module}};
@@ -582,8 +585,8 @@ check_app_hooks(App, Hooks, Options) ->
 check_app_hooks(App, [{Module, Fun, Arity}|Rest]) ->
     check_app_hooks(App, [{Fun, Module, Fun, Arity}|Rest]);
 check_app_hooks(App, [{_HookName, Module, Fun, Arity}|Rest]) ->
-    case check_app_hook(Module, Fun, Arity) of
-        hook_ok ->
+    case check_mfa(Module, Fun, Arity) of
+        ok ->
             check_app_hooks(App, Rest);
         {error, Reason} ->
             lager:debug("can't load specified hook module ~p in app ~p due to ~p",
@@ -593,19 +596,6 @@ check_app_hooks(App, [{_HookName, Module, Fun, Arity}|Rest]) ->
 check_app_hooks(App, [_|Rest]) ->
     check_app_hooks(App, Rest);
 check_app_hooks(_, []) -> hooks_ok.
-
-check_app_hook(Module, Fun, Arity) ->
-    case catch apply(Module, module_info, [exports]) of
-        Exports when is_list(Exports) ->
-            case lists:member({Fun, Arity}, Exports) of
-                true ->
-                    hook_ok;
-                false ->
-                    {error, not_exported}
-            end;
-        {'EXIT', Reason} ->
-            {error, Reason}
-    end.
 
 extract_hooks(CheckedPlugins) ->
     extract_hooks(CheckedPlugins, []).
