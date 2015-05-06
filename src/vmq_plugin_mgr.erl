@@ -588,7 +588,7 @@ check_app_hooks(App, [{_HookName, Module, Fun, Arity}|Rest]) ->
         {error, Reason} ->
             lager:debug("can't load specified hook module ~p in app ~p due to ~p",
                         [Module, App, Reason]),
-            check_app_hooks(App, Rest)
+            {error, Reason}
     end;
 check_app_hooks(App, [_|Rest]) ->
     check_app_hooks(App, Rest);

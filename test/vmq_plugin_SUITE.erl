@@ -10,7 +10,9 @@
          bad_plugin_does_not_get_saved/1,
          good_plugin_gets_saved/1,
          cannot_enable_duplicate_module_plugin/1,
-         cannot_enable_duplicate_app_plugin/1]).
+         cannot_enable_duplicate_app_plugin/1,
+         module_plugin_mod_does_not_exist/1,
+         module_plugin_function_does_not_exist/1]).
 
 -export([sample_hook_function/0,
          sample_hook_function/1,
@@ -22,7 +24,9 @@ all() ->
      bad_plugin_does_not_get_saved,
      good_plugin_gets_saved,
      cannot_enable_duplicate_module_plugin,
-     cannot_enable_duplicate_app_plugin].
+     cannot_enable_duplicate_app_plugin,
+     module_plugin_mod_does_not_exist,
+     module_plugin_function_does_not_exist].
 
 init_per_suite(Config) ->
     application:ensure_all_started(lager),
@@ -100,6 +104,18 @@ cannot_enable_duplicate_app_plugin(Config) ->
     {ok, _} = application:ensure_all_started(vmq_plugin),
     ok = vmq_plugin_mgr:enable_plugin(vmq_plugin, [code:lib_dir(vmq_plugin)]),
     {error,already_enabled} = vmq_plugin_mgr:enable_plugin(vmq_plugin, [code:lib_dir(vmq_plugin)]).
+
+module_plugin_function_does_not_exist(Config) ->
+    ok = write_config(Config ,empty_plugin_config()),
+    {ok, _} = application:ensure_all_started(vmq_plugin),
+    {error,{no_matching_fun_in_module,vmq_plugin_SUITE,nonexistent_fun,0}} =
+        vmq_plugin_mgr:enable_module_plugin(hookname, ?MODULE, nonexistent_fun, 0).
+
+module_plugin_mod_does_not_exist(Config) ->
+    ok = write_config(Config ,empty_plugin_config()),
+    {ok, _} = application:ensure_all_started(vmq_plugin),
+    {error, {unknown_module,nonexistent_mod}} =
+        vmq_plugin_mgr:enable_module_plugin(hookname, nonexistent_mod, sample_hook_function, 0).
 
 sample_hook_function() ->
     ok.
