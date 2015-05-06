@@ -629,11 +629,7 @@ extract_module_hooks(ModName, [{Fun, Arity}|Rest], Acc) ->
 
 compile_hooks(CheckedPlugins) ->
     CheckedHooks = extract_hooks(CheckedPlugins),
-    %%{_, CheckedHooks} = lists:unzip(CheckedPlugins),
-    compile_hook_module(
-      lists:keysort(1, lists:flatten(CheckedHooks))).
-
-compile_hook_module(Hooks) ->
+    Hooks = lists:keysort(1, lists:flatten(CheckedHooks)),
     M1 = smerl:new(vmq_plugin),
     {OnlyClauses, OnlyInfo} = only_clauses(1, Hooks, {nil, nil}, [], []),
     {ok, M2} = smerl:add_func(M1, {function, 1, only, 2, OnlyClauses}),
@@ -643,9 +639,16 @@ compile_hook_module(Hooks) ->
     {ok, M4} = smerl:add_func(M3, {function, 1, all_till_ok, 2, AllTillOkClauses}),
     InfoOnlyClause = info_only_clause(OnlyInfo),
     InfoAllClause = info_all_clause(AllInfo),
-    {ok, M5} = smerl:add_func(M4, {function, 1, info, 1, [InfoOnlyClause, InfoAllClause]}),
+    InfoRawClause = info_raw_clause(CheckedPlugins),
+    {ok, M5} = smerl:add_func(M4, {function, 1, info, 1, [InfoOnlyClause, InfoAllClause, InfoRawClause]}),
     smerl:compile(M5).
 
+info_raw_clause(Hooks) ->
+    {clause, 1,
+     [{atom, 1, raw}],
+     [],
+     [erl_parse:abstract(Hooks)]
+    }.
 info_only_clause(Hooks) ->
     {clause, 1,
      [{atom, 1, only}],
@@ -658,7 +661,6 @@ info_all_clause(Hooks) ->
      [],
      [list_const(true, Hooks)]
     }.
-
 
 only_clauses(I, [{Name, _, _, Arity} | Rest], {Name, Arity} = Last, Acc, Info) ->
     %% we already serve this only-clause
