@@ -22,11 +22,10 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN
 * Dynamic Topics
 * Websockets Support
 * Cluster Support
-* Scriptable via Lua 
 * SNMP Monitoring
 * Logging (Console, Files, Syslog)
 * Reporting to Graphite and CollectD
-
+* Extensible Plugin architecture
 .. note:: 
 
     Although VerneMQ hasn't reached version 1.0.0 yet, it is already deployed in small to medium size projects. Erlio GmbH, the main company sponsor behind the VerneMQ development provides commercial services around VerneMQ, namely M2M consulting, VerneMQ extension development, and service level agreements.

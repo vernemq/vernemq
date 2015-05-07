@@ -1,13 +1,13 @@
 .. _start_vernemq:
 
-Start VerneMQ
+Starting VerneMQ
 -------------
 
 .. note::
 
-    If you have build VerneMQ from sources, you can add the VerneMQ binary directory from the installation directory you've chosen to your ``PATH``.
+    If you built VerneMQ from sources, you can add the ``/bin`` directory of your VerneMQ release to ``PATH``.
     
-    For example, if you compiled VerneMQ from source in the ``/home/vernemq`` directory, then you can add the binary directory (``/home/vernemq/rel/vernemq/bin``) to your ``PATH`` so that VerneMQ commands can be used in the same manner as with a packaged installation.
+    For example, if you compiled VerneMQ in the ``/home/vernemq`` directory, then add the binary directory (``/home/vernemq/rel/vernemq/bin``) to your ``PATH``, so that VerneMQ commands can be used in the same manner as with a packaged installation.
 
 To start a VerneMQ node, use the ``vernemq start`` command in your Shell:
 
@@ -37,8 +37,10 @@ Once your node has started, you can initially check that it is running with the 
 
     vernemq ping
 
-The command will respond with ``pong`` if the node is running or ``Node <NodeName> not responding to pings`` if it is not.
+The command will respond with ``pong`` if the node is running or ``Node <NodeName> not responding to pings`` in case it's not.
 
 .. warning:: 
     
-    As you may have noticed, if you haven't adjusted your open files limit (``ulimit -n``), VerneMQ will warn you at startup. You're advised to increase the operating system default open files limit when running VerneMQ. You can read more about why in the :ref:`Open Files Limit <open_files_limit>` documentation. 
+    As you may have noticed, VerneMQ will warn you at startup when your system's open files limit (``ulimit -n``) is too low. You're advised to increase the OS default open files limit when running VerneMQ. 
+
+    Read more about why and how in the :ref:`Open Files Limit <open_files_limit>` documentation. 
