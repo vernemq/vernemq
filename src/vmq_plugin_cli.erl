@@ -86,7 +86,7 @@ extract_table(Plugins) ->
               [{Name, module, get_module_hooks(Name, proplists:get_value(hooks, Opts, []))} | Acc];
          ({application, Name, Opts}, Acc) ->
               [{Name, application, get_app_hooks(proplists:get_value(hooks, Opts, []))} | Acc]
-      end, [], lists:keysort(2, Plugins)).
+      end, [], Plugins).
 
 get_module_hooks(Mod, Hooks) ->
     lists:map(fun({F, A}) -> {F, Mod, F, A};
