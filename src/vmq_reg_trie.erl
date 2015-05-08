@@ -286,5 +286,6 @@ trie_delete_path(MP, [{Node, Word, _}|RestPath]) ->
         [#trie_node{edge_count=Count} = TrieNode] ->
             ets:insert(vmq_trie_node, TrieNode#trie_node{edge_count=Count-1});
         [] ->
-            throw({not_found, NodeId})
+            lager:debug("NodeId ~p not found", [NodeId]),
+            ignore
     end.
