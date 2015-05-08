@@ -179,15 +179,12 @@ match(MP, Topic) when is_list(MP) and is_list(Topic) ->
     match(MP, TrieNodes, []).
 
 match(MP, [#trie_node{topic=Name}|Rest], Acc) when Name =/= undefined ->
-    match(MP, Rest, match_(Name, ets:lookup_element(
-                                   vmq_trie_topic,
-                                   {MP, Name}, 2),
-                           Acc));
+    match(MP, Rest, match_(Name, ets:lookup(vmq_trie_topic, {MP, Name}), Acc));
 match(MP, [_|Rest], Acc) ->
     match(MP, Rest, Acc);
 match(_, [], Acc) -> Acc.
 
-match_(Topic, [Node|Rest], Acc) ->
+match_(Topic, [{_, Node}|Rest], Acc) ->
     match_(Topic, Rest, [{Topic, Node}|Acc]);
 match_(_, [], Acc) -> Acc.
 
