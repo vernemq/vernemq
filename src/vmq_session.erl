@@ -541,7 +541,7 @@ handle_frame(connected, #mqtt_pubcomp{message_id=MessageId}, State) ->
         {ok, {_, _, Ref, undefined}} ->
             cancel_timer(Ref), % cancel rpubrel timer
             {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
-        error ->
+        _ -> % error or wrong waiting_ack, definitely not well behaving client
             lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
             {stop, normal, State}
     end;
