@@ -317,38 +317,6 @@ publish_({Topic, Node}, Msg) when Node == node() ->
               end
       end, Msg, ?SUBSCRIBER_DB,
      [{match, {'_', {Topic, '_'}}}]);
-
-%% vmq_reg_pets reg view delivers this format
-publish_({_Topic, Node, _SubscriberId, 0, undefined}, Msg)
-  when Node == node() ->
-    Msg;
-publish_({_Topic, Node, _SubscriberId, 0, QPid}, Msg)
-  when Node == node() ->
-    case vmq_queue:enqueue(QPid, {deliver, 0, Msg}) of
-        ok ->
-            Msg;
-        {error, _} ->
-            % ignore
-            Msg
-    end;
-publish_({_Topic, Node, SubscriberId, QoS, undefined}, Msg)
-  when Node == node() ->
-    RefedMsg = vmq_msg_store:store(SubscriberId, Msg),
-    vmq_msg_store:defer_deliver(SubscriberId, QoS, RefedMsg#vmq_msg.msg_ref),
-    RefedMsg;
-publish_({_Topic, Node, SubscriberId, QoS, QPid}, Msg)
-  when Node == node() ->
-    RefedMsg = vmq_msg_store:store(SubscriberId, Msg),
-    case vmq_queue:enqueue(QPid, {deliver, QoS, RefedMsg}) of
-        ok ->
-            RefedMsg;
-        {error, _} ->
-            vmq_msg_store:defer_deliver(SubscriberId, QoS, RefedMsg#vmq_msg.msg_ref),
-            RefedMsg
-    end;
-%% we route the message to the proper node
-publish_({_, '$deleted'}, Msg) ->
-    Msg;
 publish_({Topic, Node}, Msg) ->
     case vmq_cluster:publish(Node, {Topic, Msg}) of
         ok ->
