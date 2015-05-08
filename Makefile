@@ -3,8 +3,17 @@ PKG_REVISION    ?= $(shell git describe --tags)
 PKG_BUILD        = 1
 BASE_DIR         = $(shell pwd)
 ERLANG_BIN       = $(shell dirname $(shell which erl))
-REBAR           ?= $(BASE_DIR)/rebar
 OVERLAY_VARS    ?=
+
+use_locked_config = $(wildcard rebar.config.lock)
+ifeq ($(use_locked_config), rebar.config.lock)
+	rebar_config = rebar.config.lock
+else
+	rebar_config = rebar.config
+endif
+REBAR ?= $(BASE_DIR)/rebar -C $(rebar_config)
+
+
 
 $(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will probably not work"))
 
@@ -13,19 +22,19 @@ $(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will 
 all: deps compile
 
 compile:
-	./rebar compile
+	$(REBAR) compile
 
 deps:
-	./rebar get-deps
+	$(REBAR) get-deps
 
 clean: testclean
-	./rebar clean
+	$(REBAR) clean
 
 distclean: clean devclean relclean ballclean
-	./rebar delete-deps
+	$(REBAR) delete-deps
 
 generate:
-	./rebar generate $(OVERLAY_VARS)
+	$(REBAR) generate $(OVERLAY_VARS)
 
 
 ##
@@ -33,13 +42,8 @@ generate:
 ##
 ##  see https://github.com/seth/rebar_lock_deps_plugin
 lock: deps compile
-	./rebar lock-deps
+	$(BASE_DIR)/rebar lock-deps
 
-locked-all: locked-deps compile
-
-locked-deps:
-	@echo "Using rebar.config.lock file to fetch dependencies"
-	./rebar -C rebar.config.lock get-deps
 
 ##
 ## Test targets
