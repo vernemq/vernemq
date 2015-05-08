@@ -483,18 +483,23 @@ handle_frame(connected, #mqtt_pubrec{message_id=MessageId}, State) ->
     #state{subscriber_id=SubscriberId, waiting_acks=WAcks, send_fun=SendFun,
            retry_interval=RetryInterval, send_cnt=SendCnt} = State,
     %% qos2 flow
-    {_, _, Ref, MsgStoreRef} = dict:fetch(MessageId, WAcks),
-    cancel_timer(Ref), % cancel republish timer
-    PubRelFrame = #mqtt_pubrel{message_id=MessageId},
-    SendFun(PubRelFrame),
-    NewRef = send_after(RetryInterval, {retry, MessageId}),
-    _ = vmq_msg_store:deref(SubscriberId, MsgStoreRef),
-    {connected, State#state{
-                  send_cnt=incr_msg_sent_cnt(SendCnt),
-                  waiting_acks=dict:store(MessageId,
-                                          {2, PubRelFrame,
-                                           NewRef,
-                                           undefined}, WAcks)}};
+    case dict:find(MessageId, WAcks) of
+        {ok, {_, _, Ref, MsgStoreRef}} ->
+            cancel_timer(Ref), % cancel republish timer
+            PubRelFrame = #mqtt_pubrel{message_id=MessageId},
+            SendFun(PubRelFrame),
+            NewRef = send_after(RetryInterval, {retry, MessageId}),
+            _ = vmq_msg_store:deref(SubscriberId, MsgStoreRef),
+            {connected, State#state{
+                          send_cnt=incr_msg_sent_cnt(SendCnt),
+                          waiting_acks=dict:store(MessageId,
+                                                  {2, PubRelFrame,
+                                                   NewRef,
+                                                   undefined}, WAcks)}};
+        error ->
+            lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
+            {stop, normal, State}
+    end;
 
 handle_frame(connected, #mqtt_pubrel{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks, username=User, reg_view=RegView, mountpoint=MP,
@@ -532,9 +537,14 @@ handle_frame(connected, #mqtt_pubrel{message_id=MessageId}, State) ->
 handle_frame(connected, #mqtt_pubcomp{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks} = State,
     %% qos2 flow
-    {_, _, Ref, undefined} = dict:fetch(MessageId, WAcks),
-    cancel_timer(Ref), % cancel rpubrel timer
-    {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
+    case dict:find(MessageId, WAcks) of
+        {ok, {_, _, Ref, undefined}} ->
+            cancel_timer(Ref), % cancel rpubrel timer
+            {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
+        error ->
+            lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
+            {stop, normal, State}
+    end;
 
 handle_frame(connected, #mqtt_publish{message_id=MessageId, topic=Topic,
                                       qos=QoS, retain=IsRetain,
