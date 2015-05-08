@@ -6,5 +6,7 @@ ebin/
 test/vernemq*
 docs/_build/
 docs/plugins/vmq_*
-
+distdir
+package
+.ropeproject
 
