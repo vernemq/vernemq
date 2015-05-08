@@ -39,43 +39,64 @@ vmq_plugin_show_cmd() ->
                          {typecast, fun(H) -> list_to_atom(H) end}]}],
     Callback =
     fun([], Flags) ->
-            PF = case lists:keyfind(plugin, 1, Flags) of
-                               false -> [];
-                               {_, P} -> [P]
-                           end,
-            HF = case lists:keyfind(hook, 1, Flags) of
-                               false -> [];
-                               {_, H} -> [H]
-                           end,
-            Plugins =
-            lists:foldl(
-              fun({Hook, Plugin, _, Arity}, [{Plugin, Hooks}|Acc])
-                    when ((PF == []) or (PF == [Plugin]))
-                         and
-                         ((HF == []) or (HF == [Hook])) ->
-                      [{Plugin, [{Hook, Arity}|Hooks]}|Acc];
-                 ({Hook, Plugin, _, Arity}, Acc)
-                   when ((PF == []) or (PF == [Plugin]))
-                        and
-                        ((HF == []) or (HF == [Hook])) ->
-                      [{Plugin, [{Hook, Arity}]}|Acc];
-                 (_, Acc) ->
-                      Acc
-              end, [], lists:keysort(2, vmq_plugin:info(all))),
+            Plugins = extract_table(vmq_plugin:info(raw)),
+            PluginName = proplists:get_value(plugin, Flags, []),
+            HookName = proplists:get_value(hook, Flags, []),
+            FilteredPlugins =
+                lists:filtermap(
+                  fun({_, _, _}=P)
+                        when (PluginName == []) and (HookName == []) ->
+                          {true, P};
+                     ({PN, _,_}=P) when (PluginName == PN) and (HookName == []) ->
+                          {true, P};
+                     ({PN,T,Hooks}) when (PluginName == []) and (HookName =/= []) ->
+                          case [H|| {HN,_,_,_}=H <-Hooks, HN ==  HookName] of
+                              [] -> false;
+                              Hs -> {true, {PN, T, Hs}}
+                          end;
+                     ({PN,T,Hooks}) when (PluginName == PN) and (HookName =/= []) ->
+                          case [H|| {HN,_,_,_}=H <-Hooks, HN ==  HookName] of
+                              [] -> false;
+                              Hs -> {true, {PN, T, Hs}}
+                          end;
+                     (_) -> false
+                  end, Plugins),
             Table =
             lists:foldl(
-              fun({Plugin, Hooks}, Acc) ->
-                      HooksTxt =
-                      lists:flatten([io_lib:format("~p/~p~n", [Hook, Arity])
-                                     || {Hook, Arity} <- Hooks]),
-                      [[{'Plugin', Plugin},
-                        {'Hooks', HooksTxt ++ "\n"}]
-                       |Acc]
-              end, [], Plugins),
+              fun({Plugin, Type, Hooks}, Acc) ->
+                      new_row(Plugin, Type, Hooks, Acc)
+              end, [], FilteredPlugins),
             [clique_status:table(Table)]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+new_row(Plugin, Type, Hooks, Acc) ->
+    [[{'Plugin', Plugin}, {'Type',  Type},
+      {'Hook(s)', fmt_hooks(Hooks)}, {'M:F/A', fmt_mfas(Hooks)}] | Acc].
+
+fmt_hooks(Hooks) ->
+    lists:flatten([io_lib:format("~p~n", [H]) || {H,_,_,_} <- Hooks]).
+
+fmt_mfas(Hooks) ->
+    lists:flatten([io_lib:format("~p:~p/~p~n", [M,F,A]) || {_,M,F,A} <- Hooks]).
+
+extract_table(Plugins) ->
+    lists:foldl(
+      fun({module, Name, Opts}, Acc) ->
+              [{Name, module, get_module_hooks(Name, proplists:get_value(hooks, Opts, []))} | Acc];
+         ({application, Name, Opts}, Acc) ->
+              [{Name, application, get_app_hooks(proplists:get_value(hooks, Opts, []))} | Acc]
+      end, [], Plugins).
+
+get_module_hooks(Mod, Hooks) ->
+    lists:map(fun({F, A}) -> {F, Mod, F, A};
+                 ({H, F, A}) -> {H, Mod, F, A}
+              end, Hooks).
+
+get_app_hooks(Hooks) ->
+    lists:map(fun({_,_,_,_} = H) -> H;
+                 ({M,F,A}) -> {F,M,F,A}
+              end, Hooks).
 
 vmq_plugin_flag_specs() ->
     [{name, [{shortname, "n"},
