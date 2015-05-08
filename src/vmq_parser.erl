@@ -74,7 +74,8 @@ parse(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/bi
                   topic=list(Topic),
                   qos=0,
                   payload=Payload};
-parse(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Payload/binary>>) ->
+parse(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Payload/binary>>)
+  when QoS < 3 ->
     #mqtt_publish{dup=Dup,
                   retain=Retain,
                   topic=list(Topic),
@@ -90,11 +91,19 @@ parse(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) ->
 parse(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_pubcomp{message_id=MessageId};
 parse(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
-    #mqtt_subscribe{topics=parse_topics(?SUBSCRIBE, Topics, []),
-                    message_id=MessageId};
+    case parse_topics(?SUBSCRIBE, Topics, []) of
+        error -> error;
+        ParsedTopics ->
+            #mqtt_subscribe{topics=ParsedTopics,
+                            message_id=MessageId}
+    end;
 parse(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
-    #mqtt_unsubscribe{topics=parse_topics(?UNSUBSCRIBE, Topics, []),
-                      message_id=MessageId};
+    case parse_topics(?SUBSCRIBE, Topics, []) of
+        error -> error;
+        ParsedTopics ->
+            #mqtt_unsubscribe{topics=ParsedTopics,
+                              message_id=MessageId}
+    end;
 parse(<<?SUBACK:4, 0:4>>, <<MessageId:16/big, Acks/binary>>) ->
     #mqtt_suback{qos_table=parse_acks(Acks, []),
                  message_id=MessageId};
@@ -151,12 +160,14 @@ parse(<<?DISCONNECT:4, 0:4>>, <<>>) ->
     #mqtt_disconnect{};
 parse(_, _) -> error.
 
-parse_topics(_, <<>>, Topics) ->
-    Topics;
-parse_topics(?SUBSCRIBE = Sub, <<L:16/big, Topic:L/binary, 0:6, QoS:2, Rest/binary>>, Acc) ->
+parse_topics(_, <<>>, []) -> error;
+parse_topics(_, <<>>, Topics) -> Topics;
+parse_topics(?SUBSCRIBE = Sub, <<L:16/big, Topic:L/binary, 0:6, QoS:2, Rest/binary>>, Acc)
+  when (QoS >= 0) and (QoS < 3) ->
     parse_topics(Sub, Rest, [{list(Topic), QoS}|Acc]);
 parse_topics(?UNSUBSCRIBE = Sub, <<L:16/big, Topic:L/binary, Rest/binary>>, Acc) ->
-    parse_topics(Sub, Rest, [list(Topic)|Acc]).
+    parse_topics(Sub, Rest, [list(Topic)|Acc]);
+parse_topics(_, _, _) -> error.
 
 parse_acks(<<>>, Acks) ->
     Acks;
