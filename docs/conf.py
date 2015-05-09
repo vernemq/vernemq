@@ -76,7 +76,7 @@ for tag in subprocess.check_output(["git", "tag"]).splitlines():
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
-exclude_patterns = ['_build']
+exclude_patterns = ['_build', 'sphinx_rtd_theme']
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.

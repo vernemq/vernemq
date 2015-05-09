@@ -3,8 +3,11 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+
 VerneMQ: A Distributed MQTT Broker
 ==================================
+
+.. image:: images/vernemq_logo.png
 
 Release v\ |release|. (:ref:`Installation <install>`)
 
