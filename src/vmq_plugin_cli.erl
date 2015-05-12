@@ -42,22 +42,24 @@ vmq_plugin_show_cmd() ->
             Plugins = extract_table(vmq_plugin:info(raw)),
             PluginName = proplists:get_value(plugin, Flags, []),
             HookName = proplists:get_value(hook, Flags, []),
+            ShowInternal = false,
             FilteredPlugins =
                 lists:filtermap(
-                  fun({_, _, _}=P)
-                        when (PluginName == []) and (HookName == []) ->
-                          {true, P};
+                  fun({_, module, _}) when not ShowInternal ->
+                          false;
+                     ({_, _, _}=P) when (PluginName == []) and (HookName == []) ->
+                          {true, show_internal_hooks(P, ShowInternal)};
                      ({PN, _,_}=P) when (PluginName == PN) and (HookName == []) ->
-                          {true, P};
+                          {true, show_internal_hooks(P, ShowInternal)};
                      ({PN,T,Hooks}) when (PluginName == []) and (HookName =/= []) ->
-                          case [H|| {HN,_,_,_}=H <-Hooks, HN ==  HookName] of
+                          case [H|| {HN,_,_,_, _}=H<-Hooks, HN ==  HookName] of
                               [] -> false;
-                              Hs -> {true, {PN, T, Hs}}
+                              Hs -> show_internal_hooks({PN, T, Hs}, ShowInternal)
                           end;
                      ({PN,T,Hooks}) when (PluginName == PN) and (HookName =/= []) ->
-                          case [H|| {HN,_,_,_}=H <-Hooks, HN ==  HookName] of
+                          case [H|| {HN,_,_,_, _}=H<-Hooks, HN == HookName] of
                               [] -> false;
-                              Hs -> {true, {PN, T, Hs}}
+                              Hs -> show_internal_hooks({PN, T, Hs}, ShowInternal)
                           end;
                      (_) -> false
                   end, Plugins),
@@ -70,15 +72,25 @@ vmq_plugin_show_cmd() ->
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+show_internal_hooks({PN,T,Hs}, ShowInternal) ->
+    {PN, T, [ Hook || {_,_,_,_,Opts}=Hook <-Hs,
+                      show_internal_hook(T, Opts, ShowInternal)]}.
+
+show_internal_hook(_, Opts, ShowInternal) ->
+    case {ShowInternal, proplists:get_value(internal, Opts, false)} of
+        {false, true} -> false;
+        _ -> true
+    end.
+
 new_row(Plugin, Type, Hooks, Acc) ->
     [[{'Plugin', Plugin}, {'Type',  Type},
       {'Hook(s)', fmt_hooks(Hooks)}, {'M:F/A', fmt_mfas(Hooks)}] | Acc].
 
 fmt_hooks(Hooks) ->
-    lists:flatten([io_lib:format("~p~n", [H]) || {H,_,_,_} <- Hooks]).
+    lists:flatten([io_lib:format("~p~n", [H]) || {H,_,_,_,_} <- Hooks]).
 
 fmt_mfas(Hooks) ->
-    lists:flatten([io_lib:format("~p:~p/~p~n", [M,F,A]) || {_,M,F,A} <- Hooks]).
+    lists:flatten([io_lib:format("~p:~p/~p~n", [M,F,A]) || {_,M,F,A,_} <- Hooks]).
 
 extract_table(Plugins) ->
     lists:foldl(
@@ -90,12 +102,12 @@ extract_table(Plugins) ->
 
 get_module_hooks(Mod, Hooks) ->
     lists:map(fun({F, A}) -> {F, Mod, F, A};
-                 ({H, F, A}) -> {H, Mod, F, A}
+                 ({H, F, A}) -> {H, Mod, F, A, []}
               end, Hooks).
 
 get_app_hooks(Hooks) ->
-    lists:map(fun({_,_,_,_} = H) -> H;
-                 ({M,F,A}) -> {F,M,F,A}
+    lists:map(fun({_,_,_,_,_} = H) -> H;
+                 ({M,F,A,Opts}) -> {F,M,F,A,Opts}
               end, Hooks).
 
 vmq_plugin_flag_specs() ->
