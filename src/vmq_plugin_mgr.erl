@@ -585,9 +585,13 @@ check_app_hooks(App, Hooks, Options) ->
             {error, Reason}
     end.
 
+check_app_hooks(App, [{Module, Fun, Arity}|Rest]) ->
+    check_app_hooks(App, [{Module, Fun, Arity, []}|Rest]);
 check_app_hooks(App, [{Module, Fun, Arity, Opts}|Rest])
   when is_list(Opts) ->
     check_app_hooks(App, [{Fun, Module, Fun, Arity, Opts}|Rest]);
+check_app_hooks(App, [{HookName, Module, Fun, Arity}|Rest]) ->
+    check_app_hooks(App, [{HookName, Module, Fun, Arity, []}|Rest]);
 check_app_hooks(App, [{_HookName, Module, Fun, Arity, Opts}|Rest])
   when is_list(Opts) ->
     case check_mfa(Module, Fun, Arity) of
@@ -618,8 +622,12 @@ extract_hooks([{application, _Name, Options}|Rest], Acc) ->
     end.
 
 extract_app_hooks([], Acc) -> Acc;
+extract_app_hooks([{Mod, Fun, Arity}|Rest], Acc) ->
+    extract_app_hooks(Rest, [{Fun, Mod, Fun, Arity, []}|Acc]);
 extract_app_hooks([{Mod, Fun, Arity, Opts}|Rest], Acc) when is_list(Opts) ->
     extract_app_hooks(Rest, [{Fun, Mod, Fun, Arity, Opts}|Acc]);
+extract_app_hooks([{H,M,F,A}|Rest], Acc) ->
+    extract_app_hooks([{H,M,F,A,[]}|Rest], Acc);
 extract_app_hooks([{H,M,F,A, Opts}|Rest], Acc) ->
     extract_app_hooks(Rest, [{H,M,F,A, Opts}|Acc]).
 
