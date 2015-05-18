@@ -305,9 +305,12 @@ get_new_hooks({application, Name, Opts}, OldPlugins) ->
         false -> {application, Name, Opts}
     end.
 
-plugins_have_hook({H, M, F, A}, OldPlugins) ->
-    Hooks = extract_hooks(OldPlugins),
-    lists:member({H,M,F,A}, Hooks).
+plugins_have_hook(Hook, OldPlugins) ->
+    lists:any(
+      fun({H,M,F,A,_}) ->
+              {H,M,F,A} =:= Hook
+      end,
+      extract_hooks(OldPlugins)).
 
 disable_plugin_generic(PluginKey, #state{config_file=ConfigFile} = State) ->
     case file:consult(ConfigFile) of
@@ -583,8 +586,14 @@ check_app_hooks(App, Hooks, Options) ->
     end.
 
 check_app_hooks(App, [{Module, Fun, Arity}|Rest]) ->
-    check_app_hooks(App, [{Fun, Module, Fun, Arity}|Rest]);
-check_app_hooks(App, [{_HookName, Module, Fun, Arity}|Rest]) ->
+    check_app_hooks(App, [{Module, Fun, Arity, []}|Rest]);
+check_app_hooks(App, [{Module, Fun, Arity, Opts}|Rest])
+  when is_list(Opts) ->
+    check_app_hooks(App, [{Fun, Module, Fun, Arity, Opts}|Rest]);
+check_app_hooks(App, [{HookName, Module, Fun, Arity}|Rest]) ->
+    check_app_hooks(App, [{HookName, Module, Fun, Arity, []}|Rest]);
+check_app_hooks(App, [{_HookName, Module, Fun, Arity, Opts}|Rest])
+  when is_list(Opts) ->
     case check_mfa(Module, Fun, Arity) of
         ok ->
             check_app_hooks(App, Rest);
@@ -593,8 +602,6 @@ check_app_hooks(App, [{_HookName, Module, Fun, Arity}|Rest]) ->
                         [Module, App, Reason]),
             {error, Reason}
     end;
-check_app_hooks(App, [_|Rest]) ->
-    check_app_hooks(App, Rest);
 check_app_hooks(_, []) -> hooks_ok.
 
 extract_hooks(CheckedPlugins) ->
@@ -616,20 +623,25 @@ extract_hooks([{application, _Name, Options}|Rest], Acc) ->
 
 extract_app_hooks([], Acc) -> Acc;
 extract_app_hooks([{Mod, Fun, Arity}|Rest], Acc) ->
-    extract_app_hooks(Rest, [{Fun, Mod, Fun, Arity}|Acc]);
-extract_app_hooks([{_,_,_,_}=Hook|Rest], Acc) ->
-    extract_app_hooks(Rest, [Hook|Acc]).
+    extract_app_hooks(Rest, [{Fun, Mod, Fun, Arity, []}|Acc]);
+extract_app_hooks([{Mod, Fun, Arity, Opts}|Rest], Acc) when is_list(Opts) ->
+    extract_app_hooks(Rest, [{Fun, Mod, Fun, Arity, Opts}|Acc]);
+extract_app_hooks([{H,M,F,A}|Rest], Acc) ->
+    extract_app_hooks([{H,M,F,A,[]}|Rest], Acc);
+extract_app_hooks([{H,M,F,A, Opts}|Rest], Acc) ->
+    extract_app_hooks(Rest, [{H,M,F,A, Opts}|Acc]).
 
 extract_module_hooks(_, [], Acc) ->
     Acc;
 extract_module_hooks(ModName, [{HookName, Fun, Arity}|Rest], Acc) ->
-    extract_module_hooks(ModName, Rest, [{HookName, ModName, Fun, Arity}|Acc]);
+    extract_module_hooks(ModName, Rest, [{HookName, ModName, Fun, Arity, []}|Acc]);
 extract_module_hooks(ModName, [{Fun, Arity}|Rest], Acc) ->
-    extract_module_hooks(ModName, Rest, [{Fun, ModName, Fun, Arity}|Acc]).
+    extract_module_hooks(ModName, Rest, [{Fun, ModName, Fun, Arity, []}|Acc]).
 
 compile_hooks(CheckedPlugins) ->
-    CheckedHooks = extract_hooks(CheckedPlugins),
-    Hooks = lists:keysort(1, lists:flatten(CheckedHooks)),
+    RawPlugins = extract_hooks(CheckedPlugins),
+    Hooks = [{H,M,F,A} || {H,M,F,A,_} <-
+                              lists:keysort(1, lists:flatten(RawPlugins))],
     M1 = smerl:new(vmq_plugin),
     {OnlyClauses, OnlyInfo} = only_clauses(1, Hooks, {nil, nil}, [], []),
     {ok, M2} = smerl:add_func(M1, {function, 1, only, 2, OnlyClauses}),
@@ -812,34 +824,34 @@ other_sample_hook_x(V) ->
 
 
 check_plugin_for_app_plugins_test() ->
-    Hooks = [{?MODULE, sample_hook, 0},
-             {?MODULE, sample_hook, 1},
-             {?MODULE, sample_hook, 2},
-             {?MODULE, sample_hook, 3},
-             {sample_all_hook, ?MODULE, other_sample_hook_a, 1},
-             {sample_all_hook, ?MODULE, other_sample_hook_b, 1},
-             {sample_all_hook, ?MODULE, other_sample_hook_c, 1},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1}
+    Hooks = [{?MODULE, sample_hook, 0, []},
+             {?MODULE, sample_hook, 1, []},
+             {?MODULE, sample_hook, 2, []},
+             {?MODULE, sample_hook, 3, []},
+             {sample_all_hook, ?MODULE, other_sample_hook_a, 1, []},
+             {sample_all_hook, ?MODULE, other_sample_hook_b, 1, []},
+             {sample_all_hook, ?MODULE, other_sample_hook_c, 1, []},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1, []},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1, []},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1, []},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1, []}
             ],
     application:load(vmq_plugin),
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
     {ok, CheckedPlugins} = check_plugins([{application, vmq_plugin, []}], []),
     ?assertEqual([{application,vmq_plugin,
                   [{hooks,
-                    [{vmq_plugin_mgr,sample_hook,0},
-                     {vmq_plugin_mgr,sample_hook,1},
-                     {vmq_plugin_mgr,sample_hook,2},
-                     {vmq_plugin_mgr,sample_hook,3},
-                     {sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1},
-                     {sample_all_hook,vmq_plugin_mgr,other_sample_hook_b,1},
-                     {sample_all_hook,vmq_plugin_mgr,other_sample_hook_c,1},
-                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_d,1},
-                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_e,1},
-                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_f,1},
-                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_x,1}]}]}],
+                    [{vmq_plugin_mgr,sample_hook,0, []},
+                     {vmq_plugin_mgr,sample_hook,1, []},
+                     {vmq_plugin_mgr,sample_hook,2, []},
+                     {vmq_plugin_mgr,sample_hook,3, []},
+                     {sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1, []},
+                     {sample_all_hook,vmq_plugin_mgr,other_sample_hook_b,1, []},
+                     {sample_all_hook,vmq_plugin_mgr,other_sample_hook_c,1, []},
+                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_d,1, []},
+                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_e,1, []},
+                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_f,1, []},
+                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_x,1, []}]}]}],
                  CheckedPlugins),
     application:unload(vmq_plugin).
 
@@ -854,17 +866,17 @@ check_plugin_for_module_plugin_test() ->
 
 vmq_plugin_test() ->
     application:load(vmq_plugin),
-    Hooks = [{?MODULE, sample_hook, 0},
-             {?MODULE, sample_hook, 1},
-             {?MODULE, sample_hook, 2},
-             {?MODULE, sample_hook, 3},
-             {sample_all_hook, ?MODULE, other_sample_hook_a, 1},
-             {sample_all_hook, ?MODULE, other_sample_hook_b, 1},
-             {sample_all_hook, ?MODULE, other_sample_hook_c, 1},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1}
+    Hooks = [{?MODULE, sample_hook, 0, []},
+             {?MODULE, sample_hook, 1, []},
+             {?MODULE, sample_hook, 2, []},
+             {?MODULE, sample_hook, 3, []},
+             {sample_all_hook, ?MODULE, other_sample_hook_a, 1, []},
+             {sample_all_hook, ?MODULE, other_sample_hook_b, 1, []},
+             {sample_all_hook, ?MODULE, other_sample_hook_c, 1, []},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1, []},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1, []},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1, []},
+             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1, []}
             ],
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
     %% we have to step out .eunit

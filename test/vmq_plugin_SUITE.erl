@@ -6,6 +6,7 @@
          all/0]).
 
 -export([an_empty_config_file/1,
+         app_hook_without_proplist/1,
          load_plugin_config_file/1,
          bad_plugin_does_not_get_saved/1,
          good_plugin_gets_saved/1,
@@ -22,6 +23,7 @@
 
 all() ->
     [an_empty_config_file,
+     app_hook_without_proplist,
      load_plugin_config_file,
      bad_plugin_does_not_get_saved,
      good_plugin_gets_saved,
@@ -73,6 +75,15 @@ an_empty_config_file(Config) ->
     %% Expect that no new plugins has been written to file.
     {plugins, []} = read_config(Config).
 
+
+app_hook_without_proplist(Config) ->
+    ok = write_config(Config, empty_plugin_config()),
+    {ok, _} = application:ensure_all_started(vmq_plugin),
+    Hooks = [{?MODULE, sample_hook_function, 0},
+             {hookname, ?MODULE, sample_hook_function, 0}],
+    application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
+    ok = vmq_plugin_mgr:enable_plugin(vmq_plugin, [code:lib_dir(vmq_plugin)]).
+
 bad_plugin_does_not_get_saved(Config) ->
     ok = write_config(Config, empty_plugin_config()),
     {ok, _} = application:ensure_all_started(vmq_plugin),
@@ -120,7 +131,7 @@ module_plugin_function_does_not_exist(Config) ->
 app_plugin_mod_does_not_exist(Config) ->
     ok = write_config(Config, empty_plugin_config()),
     {ok, _} = application:ensure_all_started(vmq_plugin),
-    Hooks = [{nonexistent_mod,sample_hook,0}],
+    Hooks = [{nonexistent_mod,sample_hook,0, []}],
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
     {error, {unknown_module,nonexistent_mod}} =
         vmq_plugin_mgr:enable_plugin(vmq_plugin, [code:lib_dir(vmq_plugin)]).
@@ -128,7 +139,7 @@ app_plugin_mod_does_not_exist(Config) ->
 app_plugin_function_does_not_exist(Config) ->
     ok = write_config(Config, empty_plugin_config()),
     {ok, _} = application:ensure_all_started(vmq_plugin),
-    Hooks = [{?MODULE,nonexistent_fun,0}],
+    Hooks = [{?MODULE,nonexistent_fun,0, []}],
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
     {error, {no_matching_fun_in_module,vmq_plugin_SUITE,nonexistent_fun,0}} =
         vmq_plugin_mgr:enable_plugin(vmq_plugin, [code:lib_dir(vmq_plugin)]).
