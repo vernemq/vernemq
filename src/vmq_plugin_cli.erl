@@ -19,8 +19,7 @@
 
 register_cli() ->
     vmq_plugin_cli_usage(),
-    vmq_plugin_show_cmd(["vmq-admin", "plugin", "show"], false),
-    vmq_plugin_show_cmd(["vmq-admin", "plugin", "show", "internal"], true),
+    vmq_plugin_show_cmd(),
     vmq_plugin_enable_cmd(),
     vmq_plugin_disable_cmd(),
     ok.
@@ -28,21 +27,23 @@ register_cli() ->
 vmq_plugin_cli_usage() ->
     clique:register_usage(["vmq-admin", "plugin"], plugin_usage()),
     clique:register_usage(["vmq-admin", "plugin", "show"], plugin_show_usage()),
-    clique:register_usage(["vmq-admin", "plugin", "show", "internal"], plugin_show_internal_usage()),
     clique:register_usage(["vmq-admin", "plugin", "enable"], plugin_enable_usage()),
     clique:register_usage(["vmq-admin", "plugin", "disable"], plugin_disable_usage()).
 
-vmq_plugin_show_cmd(Cmd, ShowInternal) ->
+vmq_plugin_show_cmd() ->
+    Cmd = ["vmq-admin", "plugin", "show"],
     KeySpecs = [],
     FlagSpecs = [{plugin, [{longname, "plugin"},
                            {typecast, fun(P) -> list_to_atom(P) end}]},
                  {hook, [{longname, "hook"},
-                         {typecast, fun(H) -> list_to_atom(H) end}]}],
+                         {typecast, fun(H) -> list_to_atom(H) end}]},
+                 {internal, [{longname, "internal"}]}],
     Callback =
     fun([], Flags) ->
             Plugins = extract_table(vmq_plugin:info(raw)),
             PluginName = proplists:get_value(plugin, Flags, []),
             HookName = proplists:get_value(hook, Flags, []),
+            ShowInternal = proplists:get_value(internal, Flags, false),
             FilteredPlugins =
                 lists:filtermap(
                   fun({_, module, _}) when not ShowInternal ->
@@ -232,23 +233,13 @@ plugin_usage() ->
 plugin_show_usage() ->
     ["vmq-admin plugin show\n\n",
      "  Shows the currently running plugins.\n\n",
-     "  Sub-commands:\n",
-     "    internal      also show internal plugins\n\n"
      "Options\n\n",
      "  --plugin\n",
      "      Only shows the hooks for the specified plugin\n",
      "  --hook\n",
-     "      Only shows the plugins that provide callbacks for the specified hook\n"
-    ].
-
-plugin_show_internal_usage() ->
-    ["vmq-admin plugin show\n\n",
-     "  Shows all currently running plugins, including internal plugins.\n\n",
-     "Options\n\n",
-     "  --plugin\n",
-     "      Only shows the hooks for the specified plugin\n",
-     "  --hook\n",
-     "      Only shows the plugins that provide callbacks for the specified hook\n"
+     "      Only shows the plugins that provide callbacks for the specified hook\n",
+     "  --internal\n",
+     "      Also show internal plugins\n"
     ].
 
 plugin_enable_usage() ->
