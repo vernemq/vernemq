@@ -4,14 +4,7 @@ PKG_BUILD        = 1
 BASE_DIR         = $(shell pwd)
 ERLANG_BIN       = $(shell dirname $(shell which erl))
 OVERLAY_VARS    ?=
-
-use_locked_config = $(wildcard rebar.config.lock)
-ifeq ($(use_locked_config), rebar.config.lock)
-	rebar_config = rebar.config.lock
-else
-	rebar_config = rebar.config
-endif
-REBAR ?= $(BASE_DIR)/rebar -C $(rebar_config)
+REBAR ?= $(BASE_DIR)/rebar
 
 
 
