@@ -11,7 +11,7 @@
   {env, [
         {registry_mfa, {vmq_reg, direct_plugin_exports, [vmq_bridge]}},
         {vmq_config_enabled, true},
-        {vmq_plugin_hooks, [{vmq_bridge_sup, change_config, 1}]}, 
+        {vmq_plugin_hooks, [{vmq_bridge_sup, change_config, 1, [internal]}]}, 
         
         {config, { 
             [
