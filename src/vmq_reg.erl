@@ -858,18 +858,20 @@ cleanup_sessions([#session{pid=undefined,
     cleanup_sessions(Rest, SubscriberId, RemoveOldSess);
 cleanup_sessions([#session{pid=SessionPid,
                            monitor=MRef,
-                           clean=true}|Rest], SubscriberId, true) ->
+                           clean=true} = Obj|Rest], SubscriberId, true) ->
     demonitor(MRef, [flush]),
     ets:delete(vmq_session_mons, MRef),
+    ets:delete_object(vmq_session, Obj),
     _ = disconnect_subscriber(SessionPid),
     del_subscriber(SubscriberId),
     ok = vmq_msg_store:clean_session(SubscriberId),
     cleanup_sessions(Rest, SubscriberId, true);
 cleanup_sessions([#session{pid=SessionPid,
                            monitor=MRef,
-                           clean=false}|Rest], SubscriberId, true) ->
+                           clean=false} = Obj|Rest], SubscriberId, true) ->
     demonitor(MRef, [flush]),
     ets:delete(vmq_session_mons, MRef),
+    ets:delete_object(vmq_session, Obj),
     _ = disconnect_subscriber(SessionPid),
     cleanup_sessions(Rest, SubscriberId, true);
 cleanup_sessions([_|Rest], SubscriberId, RemoveOldSess) ->
