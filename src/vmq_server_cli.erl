@@ -218,7 +218,7 @@ stop_usage() ->
     ].
 
 join_usage() ->
-    ["vmq-admin cluster join discovery-node=<Node> [--node-type=disc|ram]\n\n",
+    ["vmq-admin cluster join discovery-node=<Node>\n\n",
      "  The discovery node provided will be used to find out about the \n",
      "  nodes in the cluster.\n\n"
     ].
