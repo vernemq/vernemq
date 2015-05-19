@@ -69,9 +69,11 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "node"], node_usage()),
     clique:register_usage(["vmq-admin", "node", "start"], start_usage()),
     clique:register_usage(["vmq-admin", "node", "stop"], stop_usage()),
-    clique:register_usage(["vmq-admin", "node", "join"], join_usage()),
-    clique:register_usage(["vmq-admin", "node", "leave"], leave_usage()),
     clique:register_usage(["vmq-admin", "node", "upgrade"], upgrade_usage()),
+
+    clique:register_usage(["vmq-admin", "cluster"], cluster_usage()),
+    clique:register_usage(["vmq-admin", "cluster", "join"], join_usage()),
+    clique:register_usage(["vmq-admin", "cluster", "leave"], leave_usage()),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
     clique:register_usage(["vmq-admin", "session", "list"], vmq_session_list_usage()),
@@ -94,7 +96,7 @@ vmq_server_start_cmd() ->
     clique:register_command(Cmd, [], [], Callback).
 
 vmq_server_status_cmd() ->
-    Cmd = ["vmq-admin", "node", "status"],
+    Cmd = ["vmq-admin", "cluster", "status"],
     Callback = fun(_, _) ->
                        VmqStatus = vmq_cluster:status(),
                        NodeTable =
@@ -107,7 +109,7 @@ vmq_server_status_cmd() ->
     clique:register_command(Cmd, [], [], Callback).
 
 vmq_cluster_leave_cmd() ->
-    Cmd = ["vmq-admin", "node", "leave"],
+    Cmd = ["vmq-admin", "cluster", "leave"],
     KeySpecs = [{node, [{typecast, fun clique_typecast:to_node/1}]}],
     FlagSpecs = [],
     Callback = fun([], _) ->
@@ -121,7 +123,7 @@ vmq_cluster_leave_cmd() ->
 
 
 vmq_cluster_join_cmd() ->
-    Cmd = ["vmq-admin", "node", "join"],
+    Cmd = ["vmq-admin", "cluster", "join"],
     KeySpecs = [{'discovery-node', [{typecast, fun(Node) ->
                                                        list_to_atom(Node)
                                                end}]}],
@@ -205,23 +207,24 @@ start_usage() ->
     ["vmq-admin node start\n\n",
      "  Starts the server application within this node. This is typically\n",
      "  not necessary since the server application is started automatically\n",
-     "  when starting the node.\n"
+     "  when starting the service.\n"
     ].
 
 stop_usage() ->
     ["vmq-admin node stop\n\n",
-     "  Stops the server application within this node. This is typically\n\n"
+     "  Stops the server application within this node. This is typically \n"
+     "  not necessary since the server application is stopped automatically\n",
+     "  when the service is stopped.\n"
     ].
 
 join_usage() ->
-    ["vmq-admin node join discovery-node=<Node> [--node-type=disc|ram]\n\n",
-     "  Make the node join a cluster. The node will be reset automatically\n",
-     "  before we actually cluster it. The discovery node provided will be\n",
-     "  used to find out about the nodes in the cluster.\n\n"
+    ["vmq-admin cluster join discovery-node=<Node> [--node-type=disc|ram]\n\n",
+     "  The discovery node provided will be used to find out about the \n",
+     "  nodes in the cluster.\n\n"
     ].
 
 leave_usage() ->
-    ["vmq-admin node leave\n\n",
+    ["vmq-admin cluster leave\n\n",
      "  Leaves this cluster.\n\n"
     ].
 
@@ -242,7 +245,8 @@ usage() ->
     ["vmq-admin <sub-command>\n\n",
      "  administrate the cluster.\n\n",
      "  Sub-commands:\n",
-     "    node        Manage the cluster node\n",
+     "    node        Manage this node\n",
+     "    cluster     Manage this nodes cluster membership\n",
      "    session     Retrieve session information\n",
      "    config      Manage the internal configuration store\n",
      "    plugin      Manage plugin system\n",
@@ -250,14 +254,20 @@ usage() ->
     ].
 node_usage() ->
     ["vmq-admin node <sub-command>\n\n",
-     "  administrate this VerneMQ cluster node.\n\n",
+     "  administrate this VerneMQ node.\n\n",
      "  Sub-commands:\n",
      "    start       Start the server application\n",
-     "    stop        Stop the server application\n",
+     "    stop        Stop the server application\n\n",
+     "  Use --help after a sub-command for more details.\n"
+    ].
+
+cluster_usage() ->
+    ["vmq-admin cluster <sub-command>\n\n",
+     "  administrate this VerneMQ cluster membership.\n\n",
+     "  Sub-commands:\n",
      "    status      Prints cluster status information\n",
      "    join        Join a cluster\n",
-     "    leave       Leave the cluster\n",
-     "    upgrade     Upgrade a cluster node\n\n",
+     "    leave       Leave the cluster\n\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 
