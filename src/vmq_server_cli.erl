@@ -248,8 +248,8 @@ usage() ->
      "    node        Manage this node\n",
      "    cluster     Manage this nodes cluster membership\n",
      "    session     Retrieve session information\n",
-     "    config      Manage the internal configuration store\n",
      "    plugin      Manage plugin system\n",
+     "    listener    Manage listener interfaces\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 node_usage() ->

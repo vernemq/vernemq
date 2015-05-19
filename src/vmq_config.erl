@@ -26,10 +26,10 @@
          get_env/1,
          get_env/2,
          get_env/3,
-         set_env/2,
          set_env/3,
          set_env/4,
-         set_global_env/3,
+         set_env/5,
+         set_global_env/4,
          get_all_env/1,
          get_prefixed_env/2,
          get_prefixed_all_env/1,
@@ -149,11 +149,14 @@ get_prefixed_all_env(App) ->
               [get_prefixed_env(App, Key)|AccAcc]
       end, [], application:get_all_env(App)).
 
-set_env(Key, Val) ->
-    set_env(vmq_server, Key, Val).
-set_env(App, Key, Val) ->
-    set_env(node(), App, Key, Val).
-set_env(Node, App, Key, Val) when Node == node() ->
+set_env(Key, Val, Durable) ->
+    set_env(vmq_server, Key, Val, Durable).
+set_env(App, Key, Val, Durable) ->
+    set_env(node(), App, Key, Val, Durable).
+set_env(Node, App, Key, Val, false) when Node == node() ->
+    ets:insert(?TABLE, {{App, Key}, Val}),
+    ok;
+set_env(Node, App, Key, Val, true) when Node == node() ->
     Rec =
     case plumtree_metadata:get(?DB, {Node, App, Key}) of
         undefined ->
@@ -165,8 +168,8 @@ set_env(Node, App, Key, Val) when Node == node() ->
     plumtree_metadata:put(?DB, {Node, App, Key}, Rec),
     ets:insert(?TABLE, {{App, Key}, Val}),
     ok;
-set_env(Node, App, Key, Val) ->
-    safe_rpc(Node, ?MODULE, set_env, [App, Key, Val]).
+set_env(Node, App, Key, Val, Durable) ->
+    safe_rpc(Node, ?MODULE, set_env, [App, Key, Val, Durable]).
 
 safe_rpc(Node, Module, Fun, Args) ->
     try rpc:call(Node, Module, Fun, Args) of
@@ -177,7 +180,10 @@ safe_rpc(Node, Module, Fun, Args) ->
             {badrpc, rpc_process_down}
     end.
 
-set_global_env(App, Key, Val) ->
+set_global_env(App, Key, Val, false) ->
+    ets:insert(?TABLE, {{App, Key}, Val}),
+    ok;
+set_global_env(App, Key, Val, true) ->
     Rec =
     case plumtree_metadata:get(?DB, {App, Key}) of
         undefined ->

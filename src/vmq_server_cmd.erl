@@ -22,14 +22,14 @@ node_stop() ->
     vmq_server_cli:command(["vmq-admin", "node", "stop"], false).
 
 node_status() ->
-    vmq_server_cli:command(["vmq-admin", "node", "status"], false).
+    vmq_server_cli:command(["vmq-admin", "cluster", "status"], false).
 
 node_join(DiscoveryNode) ->
-    vmq_server_cli:command(["vmq-admin", "node", "join", "discovery-node=" ++
+    vmq_server_cli:command(["vmq-admin", "cluster", "join", "discovery-node=" ++
              atom_to_list(DiscoveryNode)], false).
 
 node_leave(Node) ->
-    vmq_server_cli:command(["vmq-admin", "node", "leave", "node=" ++
+    vmq_server_cli:command(["vmq-admin", "cluster", "leave", "node=" ++
              atom_to_list(Node)], false).
 
 node_upgrade() ->

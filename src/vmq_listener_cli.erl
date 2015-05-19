@@ -159,7 +159,7 @@ start_listener(Type, Addr, Port, Opts) ->
                                 |lists:keydelete(ListenerKey, 1, ConfigForType)],
             NewListenerConfig = [{Type, NewConfigForType}
                                  |lists:keydelete(Type, 1, ListenerConfig)],
-            vmq_config:set_env(listeners, NewListenerConfig),
+            vmq_config:set_env(listeners, NewListenerConfig, false),
             [clique_status:text("Done")];
         {error, Reason} ->
             Text = io_lib:format("can't start listener due to '~p'", [Reason]),
@@ -240,7 +240,7 @@ vmq_listener_delete_cmd() ->
                       NewConfigForType = lists:keydelete(ListenerKey, 1, ConfigForType),
                       [{Type, NewConfigForType}|Acc]
               end, [], ListenerConfig),
-            vmq_config:set_env(listeners, NewListenerConfig),
+            vmq_config:set_env(listeners, NewListenerConfig, false),
             [clique_status:text("Done")]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).

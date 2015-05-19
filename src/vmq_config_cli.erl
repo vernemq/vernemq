@@ -61,19 +61,19 @@ register_config_callback([StrKey], _, [{all, _}]) ->
     %% the callback is called, after the application environment is set
     Key = list_to_existing_atom(StrKey),
     {ok, Val} = application:get_env(vmq_server, Key),
-    vmq_config:set_global_env(vmq_server, Key, Val),
+    vmq_config:set_global_env(vmq_server, Key, Val, false),
     vmq_config:configure_nodes();
 register_config_callback([StrKey], _, [{node, Node}]) ->
     %% the callback is called, after the application environment is set
     Key = list_to_existing_atom(StrKey),
     {ok, Val} = application:get_env(vmq_server, Key),
-    vmq_config:set_env(Node, vmq_server, Key, Val),
+    vmq_config:set_env(Node, vmq_server, Key, Val, false),
     vmq_config:configure_node(Node);
 register_config_callback([StrKey], _, []) ->
     %% the callback is called, after the application environment is set
     Key = list_to_existing_atom(StrKey),
     {ok, Val} = application:get_env(vmq_server, Key),
-    vmq_config:set_env(vmq_server, Key, Val),
+    vmq_config:set_env(vmq_server, Key, Val, false),
     vmq_config:configure_node().
 
 vmq_config_show_cmd() ->
@@ -130,7 +130,11 @@ vmq_config_show_cmd() ->
                 false ->
                     [clique_status:alert([
                         clique_status:text("app not configured via vmq_config")])]
-            end
+            end;
+       ([], _) ->
+            [clique_status:alert([
+                                  clique_status:text("please provide an app= <App>")])]
+
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
@@ -322,7 +326,8 @@ reset_usage() ->
 
 config_usage() ->
     ["vmq-admin config <sub-command>\n\n",
-     "  manage internal configuration values.\n\n",
+     "  ADVANCED! Manages internal configuration values. Only use if you know\n",
+     "  what you are doing! If you don't please use 'vmq-admin set' command.\n\n",
      "  Sub-commands:\n",
      "    show        shows interal configuration\n",
      "    reset       resets internal configuration\n",
