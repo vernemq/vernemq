@@ -187,7 +187,12 @@ vmq_session_list_cmd() ->
                        Table =
                        vmq_session:list_sessions(InfoItems,
                                                  fun(_, Infos, AccAcc) ->
-                                                         [Infos|AccAcc]
+                                                         case Infos of
+                                                             [] ->
+                                                                 AccAcc;
+                                                             _ ->
+                                                                 [Infos|AccAcc]
+                                                         end
                                                  end, []),
                        [clique_status:table(Table)]
                end,
