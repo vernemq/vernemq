@@ -3,21 +3,21 @@
 Clustering
 ==========
 
-VerneMQ can be easily clustered, enabling that clients can connect to any cluster node and receive messages published from a client connected to a different node. However, the MQTT specification comes up with certain guarantees that are hard to fulfill in a distributed environment, especially when network partitions occur. We'll discuss the way VerneMQ deals with network partitions in [Dealing with Network Partitions](dealing-with-network-partitions).
+VerneMQ can be easily clustered, enabling that clients can connect to any cluster node and receive messages published from clients connected to different nodes. However, the MQTT specification comes up with certain guarantees that are hard to fulfill in a distributed environment, especially when network partitions occur. We'll discuss the way VerneMQ deals with network partitions in [Dealing with Network Partitions](dealing-with-network-partitions).
 
 Joining a Cluster
 -----------------
 
 .. code-block:: ini
 
-    vmq-admin node join discovery-node=<OtherClusterNode>
+    vmq-admin cluster join discovery-node=<OtherClusterNode>
 
 Leaving a Cluster
 -----------------
 
 .. code-block:: ini
 
-    vmq-admin node leave node=<NodeThatShouldGo>
+    vmq-admin cluster leave node=<NodeThatShouldGo>
 
 .. danger::
 
@@ -28,4 +28,4 @@ Getting Cluster Status Information
 
 .. code-block:: ini
 
-    vmq-admin node status
+    vmq-admin cluster status

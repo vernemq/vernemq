@@ -7,8 +7,6 @@
 VerneMQ: A Distributed MQTT Broker
 ==================================
 
-.. image:: images/vernemq_logo.png
-
 Release v\ |release|. (:ref:`Installation <install>`)
 
 VerneMQ is an :ref:`Apache2 licensed <apache2>` distributed `MQTT <http://www.mqtt.org>`_ broker, developed in `Erlang <http://www.erlang.org>`_.

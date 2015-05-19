@@ -118,6 +118,8 @@ html_theme_options = {
     'github_repo': 'vernemq',
     'conf_py_path': 'docs/',
     'source_suffix': '.rst',
+    'logo_only': True,
+    'theme_logo_only': True,
     'versions': versions.items()
 }
 

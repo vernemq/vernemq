@@ -22,23 +22,14 @@ The command above displays all the installed plugins together with the hooks the
 
 .. code-block:: ini
 
-    +---------------+------------------------+
-    |    Plugin     |         Hooks          |
-    +---------------+------------------------+
-    |    vmq_acl    |   auth_on_publish/6    |
-    |               |  auth_on_subscribe/3   |
-    |               |    change_config/1     |
-    |  vmq_config   |    change_config/1     |
-    |vmq_lvldb_store|msg_store_delete_async/1|
-    |               |msg_store_delete_sync/1 |
-    |               |    msg_store_fold/2    |
-    |               |    msg_store_read/1    |
-    |               |msg_store_write_async/2 |
-    |               | msg_store_write_sync/2 |
-    |  vmq_passwd   |   auth_on_register/5   |
-    |               |    change_config/1     |
-    |  vmq_systree  |    change_config/1     |
-    +---------------+------------------------+
+    +-----------+-----------+-----------------+-----------------------------+
+    |  Plugin   |   Type    |     Hook(s)     |            M:F/A            |
+    +-----------+-----------+-----------------+-----------------------------+
+    |vmq_systree|application|                 |                             |
+    |vmq_passwd |application|auth_on_register |vmq_passwd:auth_on_register/5|
+    |  vmq_acl  |application| auth_on_publish |  vmq_acl:auth_on_publish/6  |
+    |           |           |auth_on_subscribe| vmq_acl:auth_on_subscribe/3 |
+    +-----------+-----------+-----------------+-----------------------------+
 
 Enable a plugin
 ---------------
