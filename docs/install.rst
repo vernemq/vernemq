@@ -4,6 +4,63 @@ Installation
 ============
 
 VerneMQ builds on most operating systems where a recent Erlang version is installed. You can download and install VerneMQ as a package for your operating system, or you can build and run it from the sources yourself.
+We currently provide binary packages for Debian Wheezy/Jessie, Ubuntu Precise/Trusty, and CentOS 6/7. These packages are hosted by our `PackageCloud Repository <https://packagecloud.io/erlio/vernemq>`_.
+
+Install VerneMQ on Debians
+--------------------------
+
+To automatically add the package repository to your apt sources you could use the following script::
+
+    curl https://packagecloud.io/install/repositories/erlio/vernemq/script.deb.sh | sudo bash
+
+.. note::
+
+    The script is essentially a shortcut for the following steps:
+
+    First you need to install the Packagecloud gpg key that is used to sign repository metadata. You do that using ``apt-key``. ::
+    
+        curl https://packagecloud.io/gpg.key | apt-key add -
+    
+    You'll also need to install a package called apt-transport-https to make it possible for apt to fetch packages over https. ::
+    
+        apt-get install -y apt-transport-https
+    
+    The next thing you'll need to do is put a .list file in place. The easiest way to do that is to let the Packagecloud installation API generate one for you and modify it as you please. Here's an example curl request: ::
+    
+        HOSTNAME=`hostname -f` && curl "https://packagecloud.io/install/repositories/erlio/vernemq/config_file.list?os=ubuntu&dist=precise&name=${HOSTNAME}"
+    
+    You'll want to tailor that command to fit the system you're trying to install the repo on. We recommend you set the name to the fqdn of the target node (the value of hostname -f on linux), but you can set it to whatever you want.
+
+Installing the package is as simple as::
+
+    sudo apt-get install vernemq
+
+
+Install VerneMQ on RedHats
+--------------------------
+
+To automatically add the package repository to your yum repos you could use the following script::
+
+    curl https://packagecloud.io/install/repositories/erlio/vernemq/script.rpm.sh | sudo bash
+
+.. note::
+
+    The script is essentially a shortcut for the following steps:
+
+    Before installing the .repo file, you'll probably need to install a package called ``pygpgme``, which allows yum to handle gpg signatures ::
+    
+        sudo yum install pygpgme
+
+    The next thing you'll need to do is put a .repo file in place. The easiest way to do that is to let the PackageCloud installation API generate one for you and modify it as you please. Here's an example curl request: ::
+
+        HOSTNAME=`hostname -f` && curl "https://packagecloud.io/install/repositories/erlio/vernemq/config_file.repo?os=el&dist=6&name=${HOSTNAME}"
+
+    You'll want to tailor that command to fit the system you're trying to install the repo on. We recommend you set the name to the fqdn of the target node (the value of hostname -f on linux), but you can set it to whatever you want. 
+
+Installing the package is as simple as::
+
+    sudo yum install vernemq
+
 
 Install VerneMQ from sources
 ----------------------------

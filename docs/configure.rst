@@ -94,6 +94,11 @@ Allow anonymous clients to connect to the broker:
 
 This option defaults to ``off``.
 
+Authentication & Authorization
+------------------------------
+
+All the authentication and authorization handling is implemented by plugins. VerneMQ bundles the file based authentication plugin :ref:`vmq_passwd <vmq_passwd>` and a file based authorization plugin called :ref:`vmq_acl <vmq_acl>`.
+
 
 Maximum Client Id Size
 ----------------------
