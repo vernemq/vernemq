@@ -13,10 +13,10 @@ VerneMQ is an :ref:`Apache2 licensed <apache2>` distributed `MQTT <http://www.mq
 
 MQTT stands for MQ Telemetry Transport. It is an extremely simple and lightweight publish/subscribe messaging protocol, that was invented at IBM and Arcom (now Eurotech) to connect restricted devices in low bandwidth, high-latency or unreliable networks.
 
-VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN is planned. Currently are following features implemented:
+VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN is planned. Currently the following features implemented:
 
 * QoS 0, QoS 1, QoS 2
-* Basic Authentication and Authorization 
+* Basic Authentication and Authorization
 * Bridge Support
 * $SYS Tree for monitoring and reporting
 * SSL Encryption
@@ -28,7 +28,7 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN
 * Reporting to Graphite and CollectD
 * Extensible Plugin architecture
 
-.. note:: 
+.. note::
 
     Although VerneMQ hasn't reached version 1.0.0 yet, it is already deployed in small to medium size projects. Erlio GmbH, the main company sponsor behind the VerneMQ development provides commercial services around VerneMQ, namely M2M consulting, VerneMQ extension development, and service level agreements.
 

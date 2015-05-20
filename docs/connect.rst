@@ -3,12 +3,12 @@
 Connecting to VerneMQ
 =====================
 
-As MQTT is the main application protocol spoken by VerneMQ, you could use every protocol complient MQTT client library. This page gives an overview to the different options you have.
+As MQTT is the main application protocol spoken by VerneMQ, you could use any protocol compliant MQTT client library. This page gives an overview of the different options you have.
 
 C & C++
 -------
 
-We recommend to use the official `Paho MQTT client library <http://eclipse.org/paho/clients/c/embedded/>`_. A simple example would look like the following:
+We recommend the official `Paho MQTT client library <http://eclipse.org/paho/clients/c/embedded/>`_. A simple example looks like the following:
 
 .. code-block:: C
 
@@ -36,7 +36,7 @@ We recommend to use the official `Paho MQTT client library <http://eclipse.org/p
 Ruby
 ----
 
-We recommend to use the `Ruby-MQTT client library <https://github.com/njh/ruby-mqtt>`_. A simple example would look like the following:
+We recommend the `Ruby-MQTT client library <https://github.com/njh/ruby-mqtt>`_. A simple example looks like the following:
 
 .. code-block:: Ruby
 
@@ -59,7 +59,7 @@ We recommend to use the `Ruby-MQTT client library <https://github.com/njh/ruby-m
 Python
 ------
 
-We recommend to use the official `Paho MQTT client library <http://eclipse.org/paho/clients/python/>`_. A simple example would look like the following:
+We recommend the official `Paho MQTT client library <http://eclipse.org/paho/clients/python/>`_. A simple example looks like the following:
 
 .. code-block:: Python
 
@@ -91,7 +91,7 @@ We recommend to use the official `Paho MQTT client library <http://eclipse.org/p
 Java
 ----
 
-We recommend to use the official `Paho MQTT client library <http://eclipse.org/paho/clients/java/>`_. A simple example would look like the following:
+We recommend the official `Paho MQTT client library <http://eclipse.org/paho/clients/java/>`_. A simple example looks like the following:
 
 .. code-block:: Java
 
@@ -141,7 +141,7 @@ We recommend to use the official `Paho MQTT client library <http://eclipse.org/p
 Go
 --
 
-We recommend to use the official `Paho MQTT client library <http://eclipse.org/paho/clients/golang/>`_. A simple example would look like the following:
+We recommend the official `Paho MQTT client library <http://eclipse.org/paho/clients/golang/>`_. A simple example looks like the following:
 
 .. code-block:: Go
 
@@ -209,7 +209,7 @@ We recommend to use the official `Paho MQTT client library <http://eclipse.org/p
 PHP
 ---
 
-We recommend to use the `phpMQTT library <https://github.com/bluerhinos/phpMQTT>`_. A simple example would look like the following:
+We recommend the `phpMQTT library <https://github.com/bluerhinos/phpMQTT>`_. A simple example looks like the following:
 
 .. code-block:: PHP
 
@@ -242,7 +242,7 @@ We recommend to use the `phpMQTT library <https://github.com/bluerhinos/phpMQTT>
 Javascript
 ----------
 
-We recommend to use the official `Paho MQTT client library <http://eclipse.org/paho/clients/js/>`_. This library is meant to be used in the web browser. It requires that VerneMQ has a websocket listener configured. A simple example for using the client on a webpage could look like the following:
+We recommend the official `Paho MQTT client library <http://eclipse.org/paho/clients/js/>`_. This library is meant to be used in the web browser. It requires that VerneMQ has a websocket listener configured. A simple example for using the client on a webpage could look like the following:
 
 .. code-block:: Javascript
 
@@ -282,7 +282,7 @@ We recommend to use the official `Paho MQTT client library <http://eclipse.org/p
 Lua
 ---
 
-We recommend to use the `mqtt_lua client library <https://github.com/geekscape/mqtt_lua>`_. The library requires A simple example would look like the following:
+We recommend the `mqtt_lua client library <https://github.com/geekscape/mqtt_lua>`_. The library requires A simple example looks like the following:
 
 .. code-block:: Lua
 
@@ -318,7 +318,7 @@ We recommend to use the `mqtt_lua client library <https://github.com/geekscape/m
 Arduino
 -------
 
-We recommend to use the `knolleary MQTT client library <https://github.com/knolleary/pubsubclient>`_. The library requires the Arduino Ethernet Shield. A simple example would look like the following:
+We recommend the `knolleary MQTT client library <https://github.com/knolleary/pubsubclient>`_. The library requires the Arduino Ethernet Shield. A simple example looks like the following:
 
 .. code-block:: C
 
