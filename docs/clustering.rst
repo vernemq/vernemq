@@ -33,23 +33,23 @@ Getting Cluster Status Information
 Dealing with Network Partitions
 -------------------------------
 
-This section elaborates how a VerneMQ cluster deals with network partitions (aka. netsplit or split brain situation). A netsplit is mostly the result of a failure of one or more network devices resulting in a cluster where nodes can't reach each other anymore. This guide explains how VerneMQ deals with such situations.
+This section elaborates how a VerneMQ cluster deals with network partitions (aka. netsplit or split brain situation). A netsplit is mostly the result of a failure of one or more network devices resulting in a cluster where nodes can no longer reach each other.
 
-VerneMQ is able to detect a network partition, and per default it will stop serving ``CONNECT``, ``PUBLISH``, ``SUBSCRIBE``, and ``UNSUBSCRIBE`` requests. Due to the necessary retry interval on all of these commands, the message won't be lost (QOS 0 publishes will be lost). However, the time window between the network partition and the time VerneMQ detects the partition **much** can happen. Moreover, this time frame will be different on every participating cluster node. In this guide we're referring to this time frame as the *Window of Uncertainty*.
+VerneMQ is able to detect a network partition, and by default it will stop serving ``CONNECT``, ``PUBLISH``, ``SUBSCRIBE``, and ``UNSUBSCRIBE`` requests. Due to the necessary retry interval on all of these commands, the message won't be lost (QOS 0 publishes will be lost). However, the time window between the network partition and the time VerneMQ detects the partition **much** can happen. Moreover, this time frame will be different on every participating cluster node. In this guide we're referring to this time frame as the *Window of Uncertainty*.
 
 .. note::
 
-    If ``trade_consistency = on`` is set in the ``vernemq.conf`` VerneMQ keeps accepting ``PUBLISH``, ``SUBSCRIBE``, and ``UNSUBSCRIBE`` requests in present of network partitions. However, it won't allow new client connections. This is mainly for preventing that multiple clients with the same client id connect on different cluster nodes.
+    If ``trade_consistency = on`` is set in the ``vernemq.conf`` VerneMQ keeps accepting ``PUBLISH``, ``SUBSCRIBE``, and ``UNSUBSCRIBE`` requests in presence of network partitions. However, it won't allow new client connections. This is mainly to prevent multiple clients with the same client id from connecting to different cluster nodes.
 
 
 Possible Scenario for Message Loss:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-VerneMQ follows an eventual consistent model for storing and replicating the subscription data. This also includes retained messages. 
+VerneMQ follows an eventually consistent model for storing and replicating the subscription data. This also includes retained messages. 
 
-Due to the eventual consistent data model it is possible that during the Window of Uncertainty a publish won't take into account a subscription made on a remote node (in another partition). Obviously, VerneMQ can't deliver the message in this case. The same holds for delivering retained messages to remote subscribers.
+Due to the eventually consistent data model it is possible that during the Window of Uncertainty a publish won't take into account a subscription made on a remote node (in another partition). Obviously, VerneMQ can't deliver the message in this case. The same holds for delivering retained messages to remote subscribers.
 
-Currently, last will messages that are triggered during a network partition are lost.
+Currently, ``last will`` messages that are triggered during a network partition are lost.
 
 Possible Scenario for Duplicate Clients:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -59,7 +59,7 @@ Normally, client registration is synchronized using an *elected* leader node for
 Recovering from a Netsplit
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-As soon as the connectivity recovers, the VerneMQ nodes replicate the latest changes made to the subscription data. This includes all the changes 'accidentally' made during the Window of Uncertainty. Using `Dotted Version Vectors <https://github.com/ricardobcl/Dotted-Version-Vectors>`_ VerneMQ ensures that convergence regarding subscription data and retained messages is eventually reached.
+As soon as the partition is healed, and connectivity reestablished, the VerneMQ nodes replicate the latest changes made to the subscription data. This includes all the changes 'accidentally' made during the Window of Uncertainty. Using `Dotted Version Vectors <https://github.com/ricardobcl/Dotted-Version-Vectors>`_ VerneMQ ensures that convergence regarding subscription data and retained messages is eventually reached.
 
 Currently, duplicate clients are not automatically resolved.
 
