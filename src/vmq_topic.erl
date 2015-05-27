@@ -42,7 +42,8 @@
 		 match/2,
 		 validate/1,
 		 triples/1,
-		 words/1]).
+		 words/1,
+         unword/1]).
 
 -export([test/0]).
 
@@ -121,6 +122,17 @@ words([$/|Topic], Word, ResAcc) ->
 
 words([C|Topic], Word, ResAcc) ->
 	words(Topic, [C|Word], ResAcc).
+
+unword(Topic) ->
+    lists:reverse(unword(Topic, [])).
+
+unword([[]], Acc) -> Acc;
+unword([], Acc) -> [$/|Acc];
+unword([Word], Acc) -> [Word|Acc];
+unword([[]|Topic], Acc) ->
+    unword(Topic, [$/|Acc]);
+unword([Word|Rest], Acc) ->
+    unword(Rest, [$/, Word|Acc]).
 
 valid([""|Words]) -> valid2(Words);
 valid(Words) -> valid2(Words).
