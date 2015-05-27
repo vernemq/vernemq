@@ -145,7 +145,7 @@ vmq_plugin_enable_cmd() ->
     fun([], Flags) ->
             Path =
             case lists:keyfind(path, 1, Flags) of
-                false -> auto;
+                false -> [];
                 {_, P} -> P
             end,
             case lists:keyfind(name, 1, Flags) of

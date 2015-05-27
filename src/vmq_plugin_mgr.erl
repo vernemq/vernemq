@@ -85,10 +85,8 @@ stop() ->
 enable_plugin(Plugin) ->
     enable_plugin(Plugin, []).
 -spec enable_plugin(atom(), [string()]) -> ok | {error, _}.
-enable_plugin(Plugin, [[_|_]|_]=Paths) when is_atom(Plugin) ->
-    gen_server:call(?MODULE, {enable_plugin, Plugin, [{paths, Paths}]}, infinity);
-enable_plugin(Plugin, Path) when is_atom(Plugin) ->
-    gen_server:call(?MODULE, {enable_plugin, Plugin, [{paths, [Path]}]}, infinity).
+enable_plugin(Plugin, Paths) when is_atom(Plugin) and is_list(Paths) ->
+    gen_server:call(?MODULE, {enable_plugin, Plugin, [{paths, Paths}]}, infinity).
 
 -spec enable_module_plugin(atom(), atom(), non_neg_integer()) ->
     ok | {error, _}.
@@ -534,7 +532,7 @@ stop_plugin(App) ->
     ok.
 
 check_app_plugin(App, Options) ->
-    AppPaths = proplists:get_value(paths, Options, auto),
+    AppPaths = proplists:get_value(paths, Options, []),
     case create_paths(App, AppPaths) of
         [] ->
             lager:debug("can't create path ~p for app ~p~n", [AppPaths, App]),
@@ -554,7 +552,7 @@ check_app_plugin(App, Options) ->
             end
     end.
 
-create_paths(App, auto) ->
+create_paths(App, []) ->
     case application:load(App) of
         ok ->
             create_paths(App, [code:lib_dir(App)]);
