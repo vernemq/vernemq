@@ -98,7 +98,7 @@ parse(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
                             message_id=MessageId}
     end;
 parse(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
-    case parse_topics(?SUBSCRIBE, Topics, []) of
+    case parse_topics(?UNSUBSCRIBE, Topics, []) of
         error -> error;
         ParsedTopics ->
             #mqtt_unsubscribe{topics=ParsedTopics,
