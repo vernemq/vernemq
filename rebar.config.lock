@@ -87,7 +87,7 @@
                          "26a58bcaba96d07df885f7b3db4d4306f995ce14"}},
        {vmq_commons,".*",
                     {git,"https://github.com/erlio/vmq_commons.git",
-                         "da3595e273170a080b663d4f528e794154f5fbf7"}},
+                         "3c1b3b8f3aaddaca1446b54045764f332e4f702f"}},
        {vmq_plugin,".*",
                    {git,"https://github.com/erlio/vmq_plugin.git",
                         "67b5d0b8eafe11dc878917236059f900620fa624"}},
