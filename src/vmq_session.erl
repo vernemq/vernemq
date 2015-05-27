@@ -386,7 +386,7 @@ prepare_frame(QoS, Msg, State) ->
                                                                 Msg, State),
     {OutgoingMsgId, State1} = get_msg_id(NewQoS, State),
     Frame = #mqtt_publish{message_id=OutgoingMsgId,
-                          topic=unword(Topic),
+                          topic=iolist_to_binary(vmq_topic:unword(Topic)),
                           qos=NewQoS,
                           retain=IsRetained,
                           dup=IsDup,
@@ -403,20 +403,6 @@ prepare_frame(QoS, Msg, State) ->
                                                    MsgStoreRef},
                                                   WAcks)}}
     end.
-
-% -- pattern test cases in vmq_publish_SUITE
-% [[], "hello", "world"] --> /hello/world
-% ["hello", "world", []] --> hello/world/
-unword(Topic) ->
-    iolist_to_binary(lists:reverse(unword(Topic, []))).
-
-unword([[]], Acc) -> Acc;
-unword([], Acc) -> [$/|Acc];
-unword([Word], Acc) -> [Word|Acc];
-unword([[]|Topic], Acc) ->
-    unword(Topic, [$/|Acc]);
-unword([Word|Rest], Acc) ->
-    unword(Rest, [$/, Word|Acc]).
 
 %% The MQTT specification requires that the QoS of a message delivered to a
 %% subscriber is never upgraded to match the QoS of the subscription. If
