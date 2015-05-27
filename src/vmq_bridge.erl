@@ -210,22 +210,18 @@ code_change(_OldVsn, State, _Extra) ->
 
 bridge_subscribe(Pid, [{Topic, in, QoS, LocalPrefix, _}|Rest],
                  SubscribeFun, Acc) ->
-    RemoteTopic = lists:flatten([LocalPrefix, Topic]),
-    gen_emqtt:subscribe(Pid, RemoteTopic, QoS),
-    bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, RemoteTopic}, LocalPrefix}|Acc]);
+    gen_emqtt:subscribe(Pid, Topic, QoS),
+    bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, Topic}, LocalPrefix}|Acc]);
 bridge_subscribe(Pid, [{Topic, out, QoS, _, RemotePrefix}|Rest],
                  SubscribeFun, Acc) ->
-    LocalTopic = lists:flatten([RemotePrefix, Topic]),
-    ok = SubscribeFun(LocalTopic),
-    bridge_subscribe(Pid, Rest, SubscribeFun, [{{out, LocalTopic}, QoS, RemotePrefix}|Acc]);
+    ok = SubscribeFun(Topic),
+    bridge_subscribe(Pid, Rest, SubscribeFun, [{{out, Topic}, QoS, RemotePrefix}|Acc]);
 bridge_subscribe(Pid, [{Topic, both, QoS, LocalPrefix, RemotePrefix}|Rest],
                  SubscribeFun, Acc) ->
-    RemoteTopic = lists:flatten([LocalPrefix, Topic]),
-    gen_emqtt:subscribe(Pid, RemoteTopic, QoS),
-    LocalTopic = lists:flatten([RemotePrefix, Topic]),
-    ok = SubscribeFun(LocalTopic),
-    bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, RemoteTopic}, LocalPrefix},
-                                          {{out, LocalTopic}, QoS, RemotePrefix}|Acc]);
+    gen_emqtt:subscribe(Pid, Topic, QoS),
+    ok = SubscribeFun(Topic),
+    bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, Topic}, LocalPrefix},
+                                          {{out, Topic}, QoS, RemotePrefix}|Acc]);
 bridge_subscribe(_, [], _, Acc) -> Acc.
 
 
