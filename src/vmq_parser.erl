@@ -261,7 +261,8 @@ serialise_acks([QoS|Rest], Acks) ->
     serialise_acks(Rest, [<<0:6, QoS:2>>|Acks]).
 
 proto(4) -> {4, ?PROTOCOL_MAGIC_311};
-proto(3) -> {6, ?PROTOCOL_MAGIC_31}.
+proto(3) -> {6, ?PROTOCOL_MAGIC_31};
+proto(131) -> {9, ?PROTOCOL_MAGIC_131}.
 
 flag([]) -> 0;
 flag(undefined) -> 0;
