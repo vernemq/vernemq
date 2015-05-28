@@ -6,7 +6,7 @@ VerneMQ: A Distributed MQTT Broker
 
 VerneMQ is an Apache2 licensed distributed `MQTT <http://www.mqtt.org>`_ broker, developed in `Erlang <http://www.erlang.org>`_.
 
-MQTT stands for MQ Telemetry Transport. It is an extremely simple and lightweight publish/subscribe messaging protocol, that was invented at IBM and Arcom (now Eurotech) to connect restricted devices in low bandwidth, high-latency or unreliable networks.
+MQTT used to stand for MQ Telemetry Transport, but it no longer is an acronym. It is an extremely simple and lightweight publish/subscribe messaging protocol, that was invented at IBM and Arcom (now Eurotech) to connect restricted devices in low bandwidth, high-latency or unreliable networks.
 
 VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN is planned. Currently the following features are implemented:
 
@@ -14,7 +14,7 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN
 * Basic Authentication and Authorization
 * Bridge Support
 * $SYS Tree for monitoring and reporting
-* SSL Encryption
+* TLS (SSL) Encryption
 * Dynamic Topics
 * Websockets Support
 * Cluster Support
