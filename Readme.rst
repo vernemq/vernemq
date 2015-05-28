@@ -1,3 +1,6 @@
+.. image:: https://badge.waffle.io/erlio/vernemq.png?label=ready&title=Ready 
+ :target: https://waffle.io/erlio/vernemq
+ :alt: 'Stories in Ready'
 VerneMQ: A Distributed MQTT Broker
 ==================================
 
