@@ -14,6 +14,8 @@ We recommend the `Mosquitto C library <http://mosquitto.org>`_. A simple example
 
     #include <stdio.h>
     #include <mosquitto.h>
+
+    /* Compile with: cc -o sub sub.c -lmosquitto  */
     
     void on_connect(struct mosquitto *mosq, void *userdata, int rc)
     {
