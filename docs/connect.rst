@@ -5,7 +5,62 @@ Connecting to VerneMQ
 
 As MQTT is the main application protocol spoken by VerneMQ, you could use any protocol compliant MQTT client library. This page gives an overview of the different options you have.
 
-C & C++
+C
+-------
+
+We recommend the `Mosquitto C library <http://mosquitto.org>`_. A simple example looks like the following:
+
+.. code-block:: C
+
+    #include <stdio.h>
+    #include <mosquitto.h>
+
+    /* Compile with: cc -o sub sub.c -lmosquitto  */
+    
+    void on_connect(struct mosquitto *mosq, void *userdata, int rc)
+    {
+        mosquitto_subscribe(mosq, NULL, "$SYS/#", 0);
+    }
+    
+    void on_message(struct mosquitto *mosq, void *userdata, const struct mosquitto_message *m)
+    {
+        printf("%s %s\n", m->topic, m->payload);
+    }
+    
+    int main(int argc, char **argv)
+    {
+        struct mosquitto *mosq;
+        int rc;
+    
+        mosquitto_lib_init();
+    
+        mosq = mosquitto_new(NULL, true, (void *)NULL);
+        if (!mosq) {
+            fprintf(stderr, "Error: Out of memory.\n");
+            mosquitto_lib_cleanup();
+            return (1);
+        }
+    
+        mosquitto_connect_callback_set(mosq, on_connect);
+        mosquitto_message_callback_set(mosq, on_message);
+    
+        rc = mosquitto_connect(mosq, "127.0.0.1", 1883, 60);
+        if (rc) {
+            fprintf(stderr, "Unable to connect (%d).\n", rc);
+            mosquitto_lib_cleanup();
+            return (rc);
+        }
+    
+        mosquitto_loop_forever(mosq, -1, 1);
+    
+        /* Unreached */
+        mosquitto_destroy(mosq);
+        mosquitto_lib_cleanup();
+    
+        return (0);
+    }
+
+C++
 -------
 
 We recommend the official `Paho MQTT client library <http://eclipse.org/paho/clients/c/embedded/>`_. A simple example looks like the following:
