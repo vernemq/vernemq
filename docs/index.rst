@@ -11,7 +11,7 @@ Release v\ |release|. (:ref:`Installation <install>`)
 
 VerneMQ is an :ref:`Apache2 licensed <apache2>` distributed `MQTT <http://www.mqtt.org>`_ broker, developed in `Erlang <http://www.erlang.org>`_.
 
-MQTT stands for MQ Telemetry Transport. It is an extremely simple and lightweight publish/subscribe messaging protocol, that was invented at IBM and Arcom (now Eurotech) to connect restricted devices in low bandwidth, high-latency or unreliable networks.
+MQTT used to stand for MQ Telemetry Transport. It is an extremely simple and lightweight publish/subscribe messaging protocol, that was invented at IBM and Arcom (now Eurotech) to connect restricted devices in low bandwidth, high-latency or unreliable networks.
 
 VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN is planned. Currently the following features are implemented:
 
@@ -19,7 +19,7 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN
 * Basic Authentication and Authorization
 * Bridge Support
 * $SYS Tree for monitoring and reporting
-* SSL Encryption
+* TLS (SSL) Encryption
 * Dynamic Topics
 * Websockets Support
 * Cluster Support
@@ -34,7 +34,7 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN
 
     Erlio GmbH, the main company sponsor behind the VerneMQ development provides commercial services around VerneMQ, namely M2M consulting, VerneMQ extension development, and service level agreements.
 
-VerneMQ can be deployed on most platforms where a recent Erlang version (17 or higher) is available. Software packages for Redhats (and variants), Debians (and variants), will be provided. Please follow the :doc:`Installation <install>` instructions.
+VerneMQ can be deployed on most platforms where a recent Erlang version (17 or higher) is available. Software packages for Redhat (and variants), Debian (and variants), will be provided. Please follow the :doc:`Installation <install>` instructions.
 
 
 User Guide
