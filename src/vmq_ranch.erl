@@ -108,6 +108,7 @@ loop_(#st{} = State) ->
             loop_(internal_flush(State))
     end;
 loop_({exit, Reason, State}) ->
+    _ = internal_flush(State),
     teardown(State, Reason).
 
 teardown(#st{session=SessionPid, socket=Socket}, Reason) ->
