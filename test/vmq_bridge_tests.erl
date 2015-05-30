@@ -176,7 +176,7 @@ br2b_disconnect_qos2(_) ->
     PublishDup = packet:gen_publish("bridge/disconnect/test", 2, <<"disconnect-message">>, [{mid, 2}, {dup, true}]),
     Pubrec = packet:gen_pubrec(2),
     Pubrel = packet:gen_pubrel(2),
-    PubrelDup = packet:gen_pubrel(2, true),
+    PubrelDup = packet:gen_pubrel(2),
     Pubcomp = packet:gen_pubcomp(2),
     {ok, SSocket} = gen_tcp:listen(1890, [binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
     {ok, Bridge} = gen_tcp:accept(SSocket),
