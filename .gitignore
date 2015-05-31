@@ -1,3 +1,5 @@
+_build
+log
 deps/*
 rel/vernemq
 rel/vars/dev*_vars.config
