@@ -161,6 +161,7 @@ parse(<<?DISCONNECT:4, 0:4>>, <<>>) ->
 parse(_, _) -> error.
 
 parse_topics(_, <<>>, []) -> error;
+parse_topics(_, <<>>, [undefined]) -> error; % [MQTT-3.10.3-2]
 parse_topics(_, <<>>, Topics) -> Topics;
 parse_topics(?SUBSCRIBE = Sub, <<L:16/big, Topic:L/binary, 0:6, QoS:2, Rest/binary>>, Acc)
   when (QoS >= 0) and (QoS < 3) ->
