@@ -757,14 +757,8 @@ check_user(#mqtt_connect{username=User, password=Password,
             end
     end.
 
-check_will(#mqtt_connect{will_topic=undefined, will_msg= <<>>}, State) ->
+check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, State) ->
     {connected, send_connack(?CONNACK_ACCEPT, State)};
-check_will(#mqtt_connect{will_topic=undefined}, State) ->
-    %% null topic.... Mosquitto sends a CONNACK_INVALID_ID...
-    lager:warning("invalid last will topic for client ~p",
-                [State#state.subscriber_id]),
-    {wait_for_connect,
-     send_connack(?CONNACK_INVALID_ID, State)};
 check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos},
            State) ->
     #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,

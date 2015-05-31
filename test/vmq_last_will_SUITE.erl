@@ -78,8 +78,7 @@ will_null_test(_) ->
 will_null_topic_test(_) ->
     Connect = packet:gen_connect("will-null-topic", [{keepalive,60}, {will_topic, empty}, {will_msg, <<"will message">>}]),
     Connack = packet:gen_connack(2),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    ok = gen_tcp:close(Socket).
+    {error, closed} = packet:do_client_connect(Connect, Connack, []).
 
 will_qos0_test(_) ->
     Connect = packet:gen_connect("will-qos0-test", [{keepalive,60}]),
