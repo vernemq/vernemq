@@ -45,8 +45,6 @@
 		 words/1,
          unword/1]).
 
--export([test/0]).
-
 -define(MAX_LEN, 64*1024).
 
 new(Name) when is_list(Name) ->
@@ -134,10 +132,11 @@ unword([[]|Topic], Acc) ->
 unword([Word|Rest], Acc) ->
     unword(Rest, [$/, Word|Acc]).
 
-valid([""|Words]) -> valid2(Words);
+valid([""|Words]) -> valid2(Words); %% leading '/'
 valid(Words) -> valid2(Words).
 
-valid2([""|_Words]) -> false;
+valid2([""]) -> true; %% allow trailing '/'
+%valid2([""|_Words]) -> false; %% forbid '//'
 valid2(["#"|Words]) when length(Words) > 0 -> false;
 valid2([_|Words]) -> valid2(Words);
 valid2([]) -> true.
@@ -147,11 +146,36 @@ include_wildcard(["#"|_T]) -> true;
 include_wildcard(["+"|_T]) -> true;
 include_wildcard([_H|T]) -> include_wildcard(T).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
 
-test() ->
+validate_no_wildcard_test() ->
+    % no wildcard
 	true = validate({subscribe, "a/b/c"}),
 	true = validate({subscribe, "/a/b"}),
+    true = validate({subscribe, "test/topic/"}),
+    true = validate({subscribe, "test////a//topic"}),
+    true = validate({subscribe, "/test////a//topic"}),
+    true = validate({subscribe, "foo//bar///baz"}),
+    true = validate({subscribe, "foo//baz//"}),
+    true = validate({subscribe, "foo//baz"}),
+    true = validate({subscribe, "foo//baz/bar"}),
+    true = validate({subscribe, "////foo///bar"}).
+
+validate_wildcard_test() ->
 	true = validate({subscribe, "/+/x"}),
 	true = validate({subscribe, "/a/b/c/#"}),
-	false = validate({subscribe, "a/#/c"}),
-	ok.
+    true = validate({subscribe, "#"}),
+    true = validate({subscribe, "foo/#"}),
+    true = validate({subscribe, "foo/+/baz"}),
+    true = validate({subscribe, "foo/+/baz/#"}),
+    true = validate({subscribe, "foo/foo/baz/#"}),
+    true = validate({subscribe, "foo/#"}),
+    true = validate({subscribe, "/#"}),
+    true = validate({subscribe, "test/topic/+"}),
+    true = validate({subscribe, "+/+/+/+/+/+/+/+/+/+/test"}),
+
+	false = validate({subscribe, "a/#/c"}).
+
+
+-endif.

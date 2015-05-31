@@ -69,19 +69,31 @@ parse(Data) when byte_size(Data) =< 8 -> more;
 parse(_) -> {error, <<>>}.
 
 parse(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, Payload/binary>>) ->
-    #mqtt_publish{dup=Dup,
-                  retain=Retain,
-                  topic=list(Topic),
-                  qos=0,
-                  payload=Payload};
+    LTopic = binary_to_list(Topic),
+    case vmq_topic:validate({publish, LTopic}) of
+        true ->
+            #mqtt_publish{dup=Dup,
+                          retain=Retain,
+                          topic=list(Topic),
+                          qos=0,
+                          payload=Payload};
+        false ->
+            error
+    end;
 parse(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Payload/binary>>)
   when QoS < 3 ->
-    #mqtt_publish{dup=Dup,
-                  retain=Retain,
-                  topic=list(Topic),
-                  qos=QoS,
-                  message_id=MessageId,
-                  payload=Payload};
+    LTopic = binary_to_list(Topic),
+    case vmq_topic:validate({publish, LTopic}) of
+        true ->
+            #mqtt_publish{dup=Dup,
+                          retain=Retain,
+                          topic=LTopic,
+                          qos=QoS,
+                          message_id=MessageId,
+                          payload=Payload};
+        false ->
+            error
+    end;
 parse(<<?PUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_puback{message_id=MessageId};
 parse(<<?PUBREC:4, 0:4>>, <<MessageId:16/big>>) ->
@@ -140,16 +152,32 @@ parse(<<?CONNECT:4, 0:4>>,
         {1, <<PasswordLen:16/big, P:PasswordLen/binary, R3/binary>>} ->
             {P, R3}
     end,
-    #mqtt_connect{proto_ver=ProtoVersion,
-                   username=list(UserName),
-                   password=list(Password),
-                   will_retain=WillRetain,
-                   will_qos=WillQos,
-                   clean_session=CleanSession,
-                   keep_alive=KeepAlive,
-                   client_id=list(ClientId),
-                   will_topic=list(WillTopic),
-                   will_msg=WillMsg};
+    case {WillTopic, WillMsg} of
+        {<<>>, <<>>} ->
+            #mqtt_connect{proto_ver=ProtoVersion,
+                          username=list(UserName),
+                          password=list(Password),
+                          clean_session=CleanSession,
+                          keep_alive=KeepAlive,
+                          client_id=list(ClientId)};
+        _ ->
+            LWillTopic = binary_to_list(WillTopic),
+            case vmq_topic:validate({publish, LWillTopic}) of
+                true ->
+                    #mqtt_connect{proto_ver=ProtoVersion,
+                                  username=list(UserName),
+                                  password=list(Password),
+                                  will_retain=WillRetain,
+                                  will_qos=WillQos,
+                                  clean_session=CleanSession,
+                                  keep_alive=KeepAlive,
+                                  client_id=list(ClientId),
+                                  will_topic=LWillTopic,
+                                  will_msg=WillMsg};
+                false ->
+                    error
+            end
+    end;
 parse(<<?CONNACK:4, 0:4>>, <<0:8, ReturnCode:8/big>>) ->
     #mqtt_connack{return_code=ReturnCode};
 parse(<<?PINGREQ:4, 0:4>>, <<>>) ->
@@ -161,13 +189,24 @@ parse(<<?DISCONNECT:4, 0:4>>, <<>>) ->
 parse(_, _) -> error.
 
 parse_topics(_, <<>>, []) -> error;
-parse_topics(_, <<>>, [undefined]) -> error; % [MQTT-3.10.3-2]
 parse_topics(_, <<>>, Topics) -> Topics;
 parse_topics(?SUBSCRIBE = Sub, <<L:16/big, Topic:L/binary, 0:6, QoS:2, Rest/binary>>, Acc)
   when (QoS >= 0) and (QoS < 3) ->
-    parse_topics(Sub, Rest, [{list(Topic), QoS}|Acc]);
+    LTopic = binary_to_list(Topic),
+    case vmq_topic:validate({subscribe, LTopic}) of
+        true ->
+            parse_topics(Sub, Rest, [{LTopic, QoS}|Acc]);
+        false ->
+            error
+    end;
 parse_topics(?UNSUBSCRIBE = Sub, <<L:16/big, Topic:L/binary, Rest/binary>>, Acc) ->
-    parse_topics(Sub, Rest, [list(Topic)|Acc]);
+    LTopic = binary_to_list(Topic),
+    case vmq_topic:validate({subscribe, LTopic}) of
+        true ->
+            parse_topics(Sub, Rest, [LTopic|Acc]);
+        false ->
+            error
+    end;
 parse_topics(_, _, _) -> error.
 
 parse_acks(<<>>, Acks) ->
