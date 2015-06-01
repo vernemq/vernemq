@@ -10,7 +10,7 @@ REBAR ?= $(BASE_DIR)/rebar
 
 $(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will probably not work"))
 
-.PHONY: rel stagedevrel deps docs
+.PHONY: rel stagedevrel deps locked-deps docs
 
 all: deps compile
 
@@ -19,6 +19,9 @@ compile:
 
 deps:
 	$(REBAR) get-deps
+
+locked-deps:
+	$(REBAR) get-deps -C rebar.config.lock
 
 clean: testclean
 	$(REBAR) clean
@@ -35,7 +38,7 @@ generate:
 ##
 ##  see https://github.com/seth/rebar_lock_deps_plugin
 lock: deps compile
-	$(BASE_DIR)/rebar lock-deps
+	$(REBAR) lock-deps
 
 
 ##
@@ -60,7 +63,7 @@ test: deps compile testclean
 ##
 ## Release targets
 ##
-rel: deps compile generate
+rel: locked-deps compile generate
 
 relclean:
 	rm -rf rel/vernemq
@@ -197,7 +200,7 @@ get_dist_deps = mkdir distdir && \
                 git clone . distdir/$(CLONEDIR) && \
                 cd distdir/$(CLONEDIR) && \
                 git checkout $(REPO_TAG) && \
-                $(MAKE) deps && \
+                $(MAKE) locked-deps && \
                 echo "- Dependencies and their tags at build time of $(REPO) at $(REPO_TAG)" > $(MANIFEST_FILE) && \
                 for dep in deps/*; do \
                     cd $${dep} && \
