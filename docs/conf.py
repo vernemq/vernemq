@@ -118,6 +118,7 @@ html_theme_options = {
     'display_github': True,
     'github_user': 'erlio',
     'github_repo': 'vernemq',
+    'github_version': 'master/',
     'conf_py_path': 'docs/',
     'source_suffix': '.rst',
     'logo_only': True,
