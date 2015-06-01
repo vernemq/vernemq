@@ -121,7 +121,7 @@ expect_packet([Socket|Sockets], Publish, Acc) ->
         ok ->
             expect_packet(Sockets ++ [Socket], Publish, Acc - 1);
         {error, timeout} ->
-            expect_packet(Sockets, Publish, Acc)
+            expect_packet(Sockets ++ [Socket], Publish, Acc)
     end.
 
 drain_packet([], _) -> ok;
