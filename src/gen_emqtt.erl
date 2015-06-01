@@ -168,7 +168,7 @@ connecting(connect, State) ->
             {next_state, waiting_for_connack, NewState};
         {error, _Reason} ->
             gen_fsm:send_event_after(3000, connect),
-            {next_state, connecting, State}
+            wrap_res(connecting, on_connect_error, [server_not_found], State)
     end;
 connecting(_Event, State) ->
     {next_state, connecting, State}.
