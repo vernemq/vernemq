@@ -20,14 +20,14 @@ compile:
 deps:
 	$(REBAR) deps
 
-locked-deps:
-	$(REBAR) get-deps -C rebar.config.lock
+install_deps:
+	$(REBAR) install_deps
 
 clean: testclean
-	$(REBAR) clean
+	@rm -rf ebin
 
 distclean: clean relclean ballclean
-	$(REBAR) delete-deps
+	@rm -rf _build
 
 
 ##
@@ -52,7 +52,15 @@ test: compile testclean
 ## Release targets
 ##
 rel:
-	$(REBAR) release
+ifeq ($(OVERLAY_VARS),)
+	$(REBAR) release --overlay_vars vars.config
+else
+	cat $(OVERLAY_VARS) > vars_pkg.config
+	cat vars.config >> vars_pkg.config
+	$(REBAR) release --overlay_vars vars_pkg.config
+	cp _build/default/rel/vernemq/bin/start_clean.boot _build/default/rel/vernemq/releases/$(MAJOR_VERSION)/start_clean.boot
+endif
+
 
 
 relclean:
@@ -146,12 +154,14 @@ get_dist_deps = mkdir distdir && \
                 git clone . distdir/$(CLONEDIR) && \
                 cd distdir/$(CLONEDIR) && \
                 git checkout $(REPO_TAG) && \
-                $(MAKE) locked-deps && \
+                $(MAKE) install_deps && \
                 echo "- Dependencies and their tags at build time of $(REPO) at $(REPO_TAG)" > $(MANIFEST_FILE) && \
-                for dep in deps/*; do \
+				cd _build/default && \
+                for dep in lib/*; do \
                     cd $${dep} && \
-                    printf "$${dep} version `git describe --long --tags 2>/dev/null || git rev-parse HEAD`\n" >> ../../$(MANIFEST_FILE) && \
+                    printf "$${dep} version `git describe --long --tags 2>/dev/null || git rev-parse HEAD`\n" >> ../../../../$(MANIFEST_FILE) && \
                     cd ../..; done && \
+				cd ../.. && \
                 LC_ALL=POSIX && export LC_ALL && sort $(MANIFEST_FILE) > $(MANIFEST_FILE).tmp && mv $(MANIFEST_FILE).tmp $(MANIFEST_FILE);
 
 
@@ -175,14 +185,16 @@ endif
 build_clean_dir = cd distdir/$(CLONEDIR) && \
                   $(call archive_git,$(PKG_ID),..) && \
                   cp $(MANIFEST_FILE) ../$(PKG_ID)/ && \
-                  mkdir ../$(PKG_ID)/deps && \
-                  for dep in deps/*; do \
+                  mkdir -p ../$(PKG_ID)/_build/default/lib && \
+				  cd _build/default && \
+                  for dep in lib/*; do \
+				  	  cp -R $${dep} ../../../$(PKG_ID)/_build/default/lib && \
                       cd $${dep} && \
-                           $(call archive,$${dep},../../../$(PKG_ID)) && \
-                           mkdir -p ../../../$(PKG_ID)/$${dep}/priv && \
-                           printf "`git describe --long --tags 2>/dev/null || git rev-parse HEAD`" > ../../../$(PKG_ID)/$${dep}/priv/vsn.git && \
+                           mkdir -p ../../../../../$(PKG_ID)/_build/default/$${dep}/priv && \
+                           printf "`git describe --long --tags 2>/dev/null || git rev-parse HEAD`" > ../../../../../$(PKG_ID)/_build/default/$${dep}/priv/vsn.git && \
                            cd ../..; \
-                  done
+                  done && \
+				  cd ../..
 
 distdir/$(CLONEDIR)/$(MANIFEST_FILE):
 	$(if $(REPO_TAG), $(call get_dist_deps), $(error "You can't generate a release tarball from a non-tagged revision. Run 'git checkout <tag>', then 'make dist'"))
@@ -212,7 +224,7 @@ PKG_VERSION = $(shell echo $(PKG_ID) | sed -e 's/^$(REPO)-//')
 
 package: distdir/$(PKG_ID).tar.gz
 	ln -s distdir package
-	$(MAKE) -C package -f $(PKG_ID)/_build/node_package/Makefile
+	$(MAKE) -C package -f $(PKG_ID)/_build/default/lib/node_package/Makefile DEPS_DIR=_build/default/lib
 
 .PHONY: package
 export PKG_VERSION PKG_ID PKG_BUILD BASE_DIR ERLANG_BIN REBAR OVERLAY_VARS RELEASE
