@@ -216,6 +216,8 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
             erlang:send_after(1000, self(), restart_work),
             State#st{throttled=true, buffer=HoldBackBuf};
         error ->
+            lager:debug("[~p][~p] parse error for data: ~p and  parser state: ~p",
+                        [Proto, SessionPid, Data, ParserState]),
             {exit, parse_error, State}
     end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
