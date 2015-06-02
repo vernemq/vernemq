@@ -412,10 +412,10 @@ prepare_frame(QoS, Msg, State) ->
 maybe_upgrade_qos(SubQoS, PubQoS, Msg, _) when SubQoS =< PubQoS ->
     %% already ref counted in vmq_reg
     {SubQoS, Msg};
-maybe_upgrade_qos(SubQoS, PubQoS, Msg, #state{upgrade_qos=true})
+maybe_upgrade_qos(SubQoS, PubQoS, Msg, #state{subscriber_id=SubscriberId, upgrade_qos=true})
     when SubQoS > PubQoS ->
     %% already ref counted in vmq_reg
-    {SubQoS, vmq_msg_store:store(Msg)};
+    {SubQoS, vmq_msg_store:store(SubId, Msg)};
 maybe_upgrade_qos(SubQoS, PubQoS, Msg, State) ->
     %% matches when PubQoS is smaller than SubQoS
     %% SubQoS = 0, PubQoS cannot be smaller than 0, --> matched in first case
