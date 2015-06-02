@@ -24,7 +24,7 @@ locked-deps:
 	$(REBAR) get-deps -C rebar.config.lock
 
 clean: testclean
-	$(REBAR) clean
+	@rm -rf ebin
 
 distclean: clean relclean ballclean
 	$(REBAR) delete-deps
@@ -177,15 +177,13 @@ endif
 build_clean_dir = cd distdir/$(CLONEDIR) && \
                   $(call archive_git,$(PKG_ID),..) && \
                   cp $(MANIFEST_FILE) ../$(PKG_ID)/ && \
-                  mkdir ../$(PKG_ID)/deps && \
+                  mkdir -p ../$(PKG_ID)/_build/default/ && \
 				  cd _build/default && \
-				  rm -f deps && \
-				  ln -s lib deps && \
-                  for dep in deps/*; do \
+                  for dep in lib/*; do \
                       cd $${dep} && \
-                           $(call archive,$${dep},../../../../../$(PKG_ID)) && \
-                           mkdir -p ../../../../../$(PKG_ID)/$${dep}/priv && \
-                           printf "`git describe --long --tags 2>/dev/null || git rev-parse HEAD`" > ../../../../../$(PKG_ID)/$${dep}/priv/vsn.git && \
+                           $(call archive,$${dep},../../../../../$(PKG_ID)/_build/default) && \
+                           mkdir -p ../../../../../$(PKG_ID)/_build/default/$${dep}/priv && \
+                           printf "`git describe --long --tags 2>/dev/null || git rev-parse HEAD`" > ../../../../../$(PKG_ID)/_build/default/$${dep}/priv/vsn.git && \
                            cd ../..; \
                   done && \
 				  cd ../..
@@ -218,7 +216,7 @@ PKG_VERSION = $(shell echo $(PKG_ID) | sed -e 's/^$(REPO)-//')
 
 package: distdir/$(PKG_ID).tar.gz
 	ln -s distdir package
-	$(MAKE) -C package -f $(PKG_ID)/deps/node_package/Makefile
+	$(MAKE) -C package -f $(PKG_ID)/_build/default/lib/node_package/Makefile DEPS_DIR=_build/default/lib
 
 .PHONY: package
 export PKG_VERSION PKG_ID PKG_BUILD BASE_DIR ERLANG_BIN REBAR OVERLAY_VARS RELEASE
