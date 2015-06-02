@@ -617,15 +617,24 @@ check_client_id(#mqtt_connect{} = Frame,
     check_client_id(Frame#mqtt_connect{username={preauth, UserNameFromCert}},
                     State#state{username=UserNameFromCert});
 
-check_client_id(#mqtt_connect{client_id=undefined, proto_ver=4} = F, State) ->
-    RandomClientId = random_client_id(),
-    SubscriberId = {State#state.mountpoint, RandomClientId},
-    check_user(F#mqtt_connect{client_id=RandomClientId},
-               State#state{subscriber_id=SubscriberId});
+check_client_id(#mqtt_connect{client_id=undefined, proto_ver=4, clean_session=CleanSession} = F, State) ->
+    %% [MQTT-3.1.3-8]
+    %% If the Client supplies a zero-byte ClientId with CleanSession set to 0,
+    %% the Server MUST respond to the >CONNECT Packet with a CONNACK return
+    %% code 0x02 (Identifier rejected) and then close the Network
+    case CleanSession of
+        ?false ->
+            {stop, normal, send_connack(?CONNACK_INVALID_ID, State)};
+        ?true ->
+            RandomClientId = random_client_id(),
+            SubscriberId = {State#state.mountpoint, RandomClientId},
+            check_user(F#mqtt_connect{client_id=RandomClientId},
+                       State#state{subscriber_id=SubscriberId})
+    end;
 check_client_id(#mqtt_connect{client_id=undefined, proto_ver=3}, State) ->
-    lager:warning("empty protocol version not allowed in mqttv3 ~p",
+    lager:warning("empty client id not allowed in mqttv3 ~p",
                 [State#state.subscriber_id]),
-    {wait_for_connect,
+    {stop, normal,
      send_connack(?CONNACK_INVALID_ID, State)};
 check_client_id(#mqtt_connect{client_id=ClientId, proto_ver=V} = F,
                 #state{max_client_id_size=S} = State)
@@ -642,7 +651,7 @@ check_client_id(#mqtt_connect{client_id=ClientId, proto_ver=V} = F,
     end;
 check_client_id(#mqtt_connect{client_id=Id}, State) ->
     lager:warning("invalid client id ~p", [Id]),
-    {wait_for_connect,
+    {stop, normal,
      send_connack(?CONNACK_INVALID_ID, State)}.
 
 do_throttle(#state{max_message_rate=0}) -> false;
@@ -748,14 +757,8 @@ check_user(#mqtt_connect{username=User, password=Password,
             end
     end.
 
-check_will(#mqtt_connect{will_topic=undefined, will_msg= <<>>}, State) ->
+check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, State) ->
     {connected, send_connack(?CONNACK_ACCEPT, State)};
-check_will(#mqtt_connect{will_topic=undefined}, State) ->
-    %% null topic.... Mosquitto sends a CONNACK_INVALID_ID...
-    lager:warning("invalid last will topic for client ~p",
-                [State#state.subscriber_id]),
-    {wait_for_connect,
-     send_connack(?CONNACK_INVALID_ID, State)};
 check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos},
            State) ->
     #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,

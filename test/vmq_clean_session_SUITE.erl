@@ -56,6 +56,10 @@ clean_session_qos1_test(_) ->
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:send(Socket, Disconnect),
     ok = gen_tcp:close(Socket),
+    %% we should be sure that this session is down,
+    %% otherwise we'll get a dup=1 badmatch error
+    timer:sleep(100),
+
     clean_session_qos1_helper(),
     %% Now reconnect and expect a publish message.
     {ok, Socket1} = packet:do_client_connect(Connect, Connack, []),
