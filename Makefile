@@ -4,38 +4,27 @@ PKG_BUILD        = 1
 BASE_DIR         = $(shell pwd)
 ERLANG_BIN       = $(shell dirname $(shell which erl))
 OVERLAY_VARS    ?=
-REBAR ?= $(BASE_DIR)/rebar
+REBAR ?= $(BASE_DIR)/rebar3
 
 
 
 $(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will probably not work"))
 
-.PHONY: rel stagedevrel deps docs
+.PHONY: rel docs
 
-all: deps compile
+all: compile
 
 compile:
 	$(REBAR) compile
 
 deps:
-	$(REBAR) get-deps
+	$(REBAR) deps
 
 clean: testclean
 	$(REBAR) clean
 
-distclean: clean devclean relclean ballclean
+distclean: clean relclean ballclean
 	$(REBAR) delete-deps
-
-generate:
-	$(REBAR) generate $(OVERLAY_VARS)
-
-
-##
-## Lock Targets
-##
-##  see https://github.com/seth/rebar_lock_deps_plugin
-lock: deps compile
-	$(BASE_DIR)/rebar lock-deps
 
 
 ##
@@ -46,64 +35,30 @@ testclean:
 	@rm -f $(TEST_LOG_FILE)
 
 # Test each dependency individually in its own VM
-test: deps compile testclean
+test: compile testclean
 	@$(foreach dep, \
-            $(wildcard deps/*), \
-               (cd $(dep) && ../../rebar eunit deps_dir=.. skip_deps=true)  \
-               || echo "Eunit: $(notdir $(dep)) FAILED" >> $(TEST_LOG_FILE);)
-	./rebar eunit skip_deps=true
+		$(wildcard _build/default/lib/*), \
+		(./rebar3 eunit --app=$(notdir $(dep)))  \
+		|| echo "Eunit: $(notdir $(dep)) FAILED" >> $(TEST_LOG_FILE);)
 	@if test -s $(TEST_LOG_FILE) ; then \
-             cat $(TEST_LOG_FILE) && \
+		cat $(TEST_LOG_FILE) && \
              exit `wc -l < $(TEST_LOG_FILE)`; \
         fi
 
 ##
 ## Release targets
 ##
-rel: deps compile generate
+rel:
+	$(REBAR) release
+
 
 relclean:
-	rm -rf rel/vernemq
-
-##
-## Developer targets
-##
-##  devN - Make a dev build for node N
-##  stagedevN - Make a stage dev build for node N (symlink libraries)
-##  devrel - Make a dev build for 1..$DEVNODES
-##  stagedevrel Make a stagedev build for 1..$DEVNODES
-##
-##  Example, make a 68 node devrel cluster
-##    make stagedevrel DEVNODES=68
-
-.PHONY : stagedevrel devrel
-DEVNODES ?= 8
-
-# 'seq' is not available on all *BSD, so using an alternate in awk
-SEQ = $(shell awk 'BEGIN { for (i = 1; i < '$(DEVNODES)'; i++) printf("%i ", i); print i ;exit(0);}')
-
-$(eval stagedevrel : $(foreach n,$(SEQ),stagedev$(n)))
-$(eval devrel : $(foreach n,$(SEQ),dev$(n)))
-
-dev% : all
-	mkdir -p dev
-	rel/gen_dev $@ rel/vars/dev_vars.config.src rel/vars/$@_vars.config
-	(cd rel && ../rebar generate target_dir=../dev/$@ overlay_vars=vars/$@_vars.config)
-
-stagedev% : dev%
-	  $(foreach dep,$(wildcard deps/*), rm -rf dev/$^/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) dev/$^/lib;)
-
-devclean: clean
-	rm -rf dev
-
-stage : rel
-	$(foreach dep,$(wildcard deps/*), rm -rf rel/vernemq/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/vernemq/lib;)
-
+	rm -rf _build/default/rel
 
 ##
 ## Doc targets
 ##
-docs: deps
+docs: compile
 	(cd docs && make clean && make html)
 
 
@@ -113,11 +68,11 @@ COMBO_PLT = $(HOME)/.$(REPO)_combo_dialyzer_plt
 
 check_plt: compile
 	dialyzer --check_plt --plt $(COMBO_PLT) --apps $(APPS) \
-		deps/*/ebin
+		_build/default/lib/*/ebin
 
 build_plt: compile
 	dialyzer --build_plt --output_plt $(COMBO_PLT) --apps $(APPS) \
-		deps/*/ebin
+		_build/default/lib/*/ebin
 
 dialyzer: compile
 	@echo
@@ -136,15 +91,6 @@ cleanplt:
 	sleep 5
 	rm $(COMBO_PLT)
 
-
-## Create a dependency graph png
-depgraph: graphviz
-	@echo "Note: If you have nothing in deps/ this might be boring"
-	@echo "Creating dependency graph..."
-	@misc/mapdeps.erl | dot -Tpng -overnemq.png
-	@echo "Dependency graph created as vernemq.png"
-graphviz:
-	$(if $(shell which dot),,$(error "To make the depgraph, you need graphviz installed"))
 
 ##
 ## Version and naming variables for distribution and packaging
@@ -235,7 +181,6 @@ build_clean_dir = cd distdir/$(CLONEDIR) && \
                            cd ../..; \
                   done
 
-
 distdir/$(CLONEDIR)/$(MANIFEST_FILE):
 	$(if $(REPO_TAG), $(call get_dist_deps), $(error "You can't generate a release tarball from a non-tagged revision. Run 'git checkout <tag>', then 'make dist'"))
 
@@ -264,7 +209,7 @@ PKG_VERSION = $(shell echo $(PKG_ID) | sed -e 's/^$(REPO)-//')
 
 package: distdir/$(PKG_ID).tar.gz
 	ln -s distdir package
-	$(MAKE) -C package -f $(PKG_ID)/deps/node_package/Makefile
+	$(MAKE) -C package -f $(PKG_ID)/_build/node_package/Makefile
 
 .PHONY: package
 export PKG_VERSION PKG_ID PKG_BUILD BASE_DIR ERLANG_BIN REBAR OVERLAY_VARS RELEASE
