@@ -529,6 +529,7 @@ stop_plugin(App) ->
         false ->
             application:stop(App)
     end,
+    application:unload(App),
     ok.
 
 check_app_plugin(App, Options) ->
