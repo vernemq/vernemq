@@ -568,9 +568,12 @@ create_paths(_, Paths) ->
 create_paths(Path) ->
     case filelib:is_dir(Path) of
         true ->
+            %% rebar2 directory structure support
             EbinDir = filelib:wildcard(filename:join(Path, "ebin")),
             DepsEbinDir = filelib:wildcard(filename:join(Path, "deps/*/ebin")),
-            lists:append(EbinDir, DepsEbinDir);
+            %% rebar3 directory structure support
+            LibEbinDir = filelib:wildcard(filename:join(Path, "lib/*/ebin")),
+            lists:append(LibEbinDir,lists:append(EbinDir, DepsEbinDir));
         false ->
             []
     end.
