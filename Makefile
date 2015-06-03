@@ -180,10 +180,10 @@ endif
 build_clean_dir = cd distdir/$(CLONEDIR) && \
                   $(call archive_git,$(PKG_ID),..) && \
                   cp $(MANIFEST_FILE) ../$(PKG_ID)/ && \
-                  mkdir -p ../$(PKG_ID)/_build/default/ && \
+                  mkdir -p ../$(PKG_ID)/_build/default/lib && \
 				  cd _build/default && \
                   for dep in lib/*; do \
-				  	  cp -R $${dep} ../../../$(PKG_ID)/_build/default && \
+				  	  cp -R $${dep} ../../../$(PKG_ID)/_build/default/lib && \
                       cd $${dep} && \
                            mkdir -p ../../../../../$(PKG_ID)/_build/default/$${dep}/priv && \
                            printf "`git describe --long --tags 2>/dev/null || git rev-parse HEAD`" > ../../../../../$(PKG_ID)/_build/default/$${dep}/priv/vsn.git && \
