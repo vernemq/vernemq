@@ -183,13 +183,12 @@ build_clean_dir = cd distdir/$(CLONEDIR) && \
                   mkdir -p ../$(PKG_ID)/_build/default/ && \
 				  cd _build/default && \
                   for dep in lib/*; do \
+				  	  cp -R $${dep} ../../../$(PKG_ID)/_build/default && \
                       cd $${dep} && \
-						   cp -R $${dep} ../../../../../$(PKG_ID)/_build/default && \
                            mkdir -p ../../../../../$(PKG_ID)/_build/default/$${dep}/priv && \
                            printf "`git describe --long --tags 2>/dev/null || git rev-parse HEAD`" > ../../../../../$(PKG_ID)/_build/default/$${dep}/priv/vsn.git && \
                            cd ../..; \
                   done && \
-				  cp -R rel ../../../$(PKG_ID)/_build/default && \
 				  cd ../..
 
 distdir/$(CLONEDIR)/$(MANIFEST_FILE):
