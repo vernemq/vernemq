@@ -146,7 +146,7 @@ get_dist_deps = mkdir distdir && \
                 git clone . distdir/$(CLONEDIR) && \
                 cd distdir/$(CLONEDIR) && \
                 git checkout $(REPO_TAG) && \
-                $(MAKE) && \
+                $(MAKE) rel && \
                 echo "- Dependencies and their tags at build time of $(REPO) at $(REPO_TAG)" > $(MANIFEST_FILE) && \
 				cd _build/default && \
                 for dep in lib/*; do \
@@ -186,6 +186,7 @@ build_clean_dir = cd distdir/$(CLONEDIR) && \
                            printf "`git describe --long --tags 2>/dev/null || git rev-parse HEAD`" > ../../../../../$(PKG_ID)/_build/default/$${dep}/priv/vsn.git && \
                            cd ../..; \
                   done && \
+				  cp -R rel ../../../$(PKG_ID)/_build/default && \
 				  cd ../..
 
 distdir/$(CLONEDIR)/$(MANIFEST_FILE):
