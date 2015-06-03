@@ -3,7 +3,7 @@ PKG_REVISION    ?= $(shell git describe --tags)
 PKG_BUILD        = 1
 BASE_DIR         = $(shell pwd)
 ERLANG_BIN       = $(shell dirname $(shell which erl))
-OVERLAY_VARS    ?=
+OVERLAY_VARS    =
 REBAR ?= $(BASE_DIR)/rebar3
 
 
@@ -55,7 +55,12 @@ test: compile testclean
 ## Release targets
 ##
 rel:
+ifeq ($(OVERLAY_VARS),)
 	$(REBAR) release
+else
+	$(REBAR) release --overlay_vars $(OVERLAY_VARS)
+endif
+
 
 
 relclean:
