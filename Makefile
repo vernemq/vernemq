@@ -20,6 +20,9 @@ compile:
 deps:
 	$(REBAR) deps
 
+install_deps:
+	$(REBAR) install_deps
+
 locked-deps:
 	$(REBAR) get-deps -C rebar.config.lock
 
@@ -146,7 +149,7 @@ get_dist_deps = mkdir distdir && \
                 git clone . distdir/$(CLONEDIR) && \
                 cd distdir/$(CLONEDIR) && \
                 git checkout $(REPO_TAG) && \
-                $(MAKE) rel && \
+                $(MAKE) install_deps && \
                 echo "- Dependencies and their tags at build time of $(REPO) at $(REPO_TAG)" > $(MANIFEST_FILE) && \
 				cd _build/default && \
                 for dep in lib/*; do \
@@ -181,7 +184,7 @@ build_clean_dir = cd distdir/$(CLONEDIR) && \
 				  cd _build/default && \
                   for dep in lib/*; do \
                       cd $${dep} && \
-                           $(call archive,$${dep},../../../../../$(PKG_ID)/_build/default) && \
+						   cp -R $${dep} ../../../../../$(PKG_ID)/_build/default && \
                            mkdir -p ../../../../../$(PKG_ID)/_build/default/$${dep}/priv && \
                            printf "`git describe --long --tags 2>/dev/null || git rev-parse HEAD`" > ../../../../../$(PKG_ID)/_build/default/$${dep}/priv/vsn.git && \
                            cd ../..; \
