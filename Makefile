@@ -56,9 +56,11 @@ test: compile testclean
 ##
 rel:
 ifeq ($(OVERLAY_VARS),)
-	$(REBAR) release
+	$(REBAR) release --overlay_vars vars.config
 else
-	$(REBAR) release --overlay_vars $(OVERLAY_VARS)
+	cat $(OVERLAY_VARS) > vars_pkg.config
+	cat vars.config >> vars_pkg.config
+	$(REBAR) release --overlay_vars vars_pkg.config
 endif
 
 
