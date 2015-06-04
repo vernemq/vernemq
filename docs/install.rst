@@ -72,7 +72,7 @@ VerneMQ depends on source code located in multiple `Git <http://git-scm.com>`_ r
 Installing from GitHub
 ~~~~~~~~~~~~~~~~~~~~~~
 
-The following instructions generate a complete, self-contained build of VerneMQ in ``$VERNEMQ/rel/vernemq`` where ``$VERNEMQ`` is the location of the unpacked or cloned source repository.
+The following instructions generate a complete, self-contained build of VerneMQ in ``$VERNEMQ/_build/default/rel/vernemq`` where ``$VERNEMQ`` is the location of the unpacked or cloned source repository.
 
 Clone the repository using Git and build a release::
 
