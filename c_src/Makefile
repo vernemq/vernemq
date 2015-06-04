@@ -1,3 +1,3 @@
 
 compile:
-	gcc vmq_passwd.o -lcrypto -o vmq_passwd
+	gcc vmq_passwd.c -lcrypto -o vmq_passwd
