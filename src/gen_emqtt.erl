@@ -62,6 +62,7 @@
                 buffer = <<>>           :: binary(),
                 reconnect_timeout,
                 keepalive_interval = 60000,
+                retry_interval = 10000,
                 proto_version = ?MQTT_PROTO_MAJOR,
                 %%
                 mod,
@@ -181,24 +182,28 @@ disconnecting({error, ConnectError}, #state{sock=Sock, transport={Transport,_}} 
     error_logger:error_msg("bridge disconnected due to connection error ~p", [ConnectError]),
     {stop, ConnectError, State}.
 
-connected({subscribe, Topics}, State=#state{transport={Transport,_}, msgid=MsgId,sock=Sock, waiting_acks=WAcks}) ->
+connected({subscribe, Topics}, State=#state{transport={Transport,_}, msgid=MsgId,
+                                            sock=Sock, waiting_acks=WAcks,
+                                            retry_interval=RetryInterval}) ->
     Frame = #mqtt_subscribe{
                message_id = MsgId,
                topics = Topics
               },
     send_frame(Transport, Sock, Frame),
     Key = {subscribe, MsgId},
-    Ref = gen_fsm:send_event_after(10000, {retry, Key}),
+    Ref = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
     {next_state, connected, State#state{msgid='++'(MsgId), waiting_acks=store(Key, {Ref, {subscribe, Topics}}, WAcks)}};
 
-connected({unsubscribe, Topics}, State=#state{transport={Transport, _}, sock=Sock, msgid=MsgId, waiting_acks=WAcks}) ->
+connected({unsubscribe, Topics}, State=#state{transport={Transport, _}, sock=Sock,
+                                              msgid=MsgId, waiting_acks=WAcks,
+                                              retry_interval=RetryInterval}) ->
     Frame = #mqtt_unsubscribe{
                message_id = MsgId,
                topics = Topics
               },
     send_frame(Transport, Sock, Frame),
     Key = {unsubscribe, MsgId},
-    Ref = gen_fsm:send_event_after(10000, {retry, Key}),
+    Ref = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
     {next_state, connected, State#state{msgid='++'(MsgId), waiting_acks=store(Key, {Ref, {unsubscribe, Topics}}, WAcks)}};
 
 connected({publish, Topic, Payload, QoS, Dup}, #state{msgid=MsgId} = State) ->
@@ -270,6 +275,7 @@ init([Mod, Args, Opts]) ->
     LWQos = proplists:get_value(last_will_qos, Opts, 0),
     ReconnectTimeout = proplists:get_value(reconnect_timeout, Opts, undefined),
     KeepAliveInterval = proplists:get_value(keepalive_interval, Opts, 60),
+    RetryInterval = proplists:get_value(retry_interval, Opts, 10),
     ProtoVer = proplists:get_value(proto_version, Opts, ?MQTT_PROTO_MAJOR),
 
     {Transport, TransportOpts} = proplists:get_value(transport, Opts, {gen_tcp, []}),
@@ -278,7 +284,8 @@ init([Mod, Args, Opts]) ->
 		   username = Username, password = Password, client=ClientId, mod=Mod,
            clean_session=CleanSession, last_will_topic=LWTopic, last_will_msg=LWMsg, last_will_qos=LWQos,
            reconnect_timeout=case ReconnectTimeout of undefined -> undefined; _ -> 1000 * ReconnectTimeout end,
-           keepalive_interval=1000 * KeepAliveInterval, transport={Transport, TransportOpts}},
+           keepalive_interval=1000 * KeepAliveInterval,
+           retry_interval=1000* RetryInterval, transport={Transport, TransportOpts}},
     Res = wrap_res(connecting, init, [Args], State),
     gen_fsm:send_event_after(0, connect),
     Res.
@@ -390,7 +397,8 @@ handle_frame(connected, #mqtt_puback{message_id=MessageId}, State) ->
     end;
 
 handle_frame(connected, #mqtt_pubrec{message_id=MessageId}, State) ->
-    #state{transport={Transport, _}, waiting_acks=WAcks, sock=Socket} = State,
+    #state{transport={Transport, _}, waiting_acks=WAcks, sock=Socket,
+           retry_interval=RetryInterval} = State,
     %% qos2 flow
     Key = {publish, MessageId},
     %% is retried
@@ -401,7 +409,7 @@ handle_frame(connected, #mqtt_pubrec{message_id=MessageId}, State) ->
             send_frame(Transport, Socket, PubRelFrame),
             NewWAcks = erase(Key, WAcks),
             NewKey = {pubrel, MessageId},
-            NewRef = gen_fsm:send_event_after(10000, {retry, NewKey}),
+            NewRef = gen_fsm:send_event_after(RetryInterval, {retry, NewKey}),
             {next_state, connected, State#state{
                                       waiting_acks=store(NewKey, {NewRef, PubRelFrame}, NewWAcks)}};
         error ->
@@ -496,7 +504,8 @@ send_connect(#state{transport={Transport, _}, sock=Sock, username=Username, pass
     send_frame(Transport, Sock, Frame).
 
 send_publish(MsgId, Topic, Payload, QoS, Dup, State) ->
-    #state{transport={Transport, _}, sock = Sock, waiting_acks=WAcks} = State,
+    #state{transport={Transport, _}, sock = Sock, waiting_acks=WAcks,
+           retry_interval=RetryInterval} = State,
     Frame = #mqtt_publish{
                message_id = if QoS == 0 ->
                                    undefined;
@@ -516,7 +525,7 @@ send_publish(MsgId, Topic, Payload, QoS, Dup, State) ->
         _ ->
             Msg = {publish, MsgId, Topic, Payload, QoS, true},
             Key = {publish, MsgId},
-            Ref = gen_fsm:send_event_after(10000, {retry, Key}),
+            Ref = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
             State#state{waiting_acks=store(Key, {Ref, Msg}, WAcks)}
     end.
 
