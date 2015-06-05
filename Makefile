@@ -9,5 +9,6 @@ clean:
 	./rebar3 clean
 
 test:
-	./rebar3 ct
+	erl -sname epmd_starter_node -eval "init:stop()"
+	./rebar3 ct 
 	
