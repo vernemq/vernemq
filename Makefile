@@ -1,20 +1,13 @@
-DIALYZER_APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \
-				public_key mnesia syntax_tools compiler
+.PHONY: test
 
-.PHONY: deps test
+all: compile
 
-all: deps compile
-
-compile: deps
-	./rebar compile
-
-deps:
-	./rebar get-deps
+compile:
+	./rebar3 compile
 
 clean:
-	./rebar clean
-	
-distclean: clean
-	./rebar delete-deps
+	./rebar3 clean
 
-include tools.mk
+test:
+	./rebar3 ct
+	

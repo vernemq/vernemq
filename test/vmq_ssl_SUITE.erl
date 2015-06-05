@@ -40,39 +40,39 @@ init_per_testcase(Case, Config) ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                            {nr_of_acceptors, 5},
-                                                           {cafile, "../../test/ssl/all-ca.crt"},
-                                                           {certfile, "../../test/ssl/server.crt"},
-                                                           {keyfile, "../../test/ssl/server.key"},
+                                                           {cafile, ssl_path("all-ca.crt")},
+                                                           {certfile, ssl_path("server.crt")},
+                                                           {keyfile, ssl_path("server.key")},
                                                            {tls_version, "tlsv1.2"}]);
         {_, true, _, _} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                            {nr_of_acceptors, 5},
-                                                           {cafile, "../../test/ssl/all-ca.crt"},
-                                                           {certfile, "../../test/ssl/server.crt"},
-                                                           {keyfile, "../../test/ssl/server.key"},
+                                                           {cafile, ssl_path("all-ca.crt")},
+                                                           {certfile, ssl_path("server.crt")},
+                                                           {keyfile, ssl_path("server.key")},
                                                            {tls_version, "tlsv1.2"},
                                                            {require_certificate, true}]);
         {_, _, true, _} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, true),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                            {nr_of_acceptors, 5},
-                                                           {cafile, "../../test/ssl/all-ca.crt"},
-                                                           {certfile, "../../test/ssl/server.crt"},
-                                                           {keyfile, "../../test/ssl/server.key"},
+                                                           {cafile, ssl_path("all-ca.crt")},
+                                                           {certfile, ssl_path("server.crt")},
+                                                           {keyfile, ssl_path("server.key")},
                                                            {tls_version, "tlsv1.2"},
                                                            {require_certificate, true},
-                                                           {crlfile, "../../test/ssl/crl.pem"}]);
+                                                           {crlfile, ssl_path("crl.pem")}]);
         {_, _, _, true} ->
             {ok, _} = vmq_server_cmd:set_config(allow_anonymous, false),
             {ok, _} = vmq_server_cmd:listener_start(1888, [{ssl, true},
                                                            {nr_of_acceptors, 5},
-                                                           {cafile, "../../test/ssl/all-ca.crt"},
-                                                           {certfile, "../../test/ssl/server.crt"},
-                                                           {keyfile, "../../test/ssl/server.key"},
+                                                           {cafile, ssl_path("all-ca.crt")},
+                                                           {certfile, ssl_path("server.crt")},
+                                                           {keyfile, ssl_path("server.key")},
                                                            {tls_version, "tlsv1.2"},
                                                            {require_certificate, true},
-                                                           {crlfile, "../../test/ssl/crl.pem"},
+                                                           {crlfile, ssl_path("crl.pem")},
                                                            {use_identity_as_username, true}]),
             vmq_plugin_mgr:enable_module_plugin(
               auth_on_register, ?MODULE, hook_preauth_success, 5)
@@ -125,7 +125,7 @@ connect_no_auth_wrong_ca_test(_) ->
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
-                               {cacertfile, "../../test/ssl/test-alt-ca.crt"}])).
+                               {cacertfile, ssl_path("test-alt-ca.crt")}])).
 
 connect_cert_auth_test(_) ->
     Connect = packet:gen_connect("connect-success-test", [{keepalive, 10}]),
@@ -134,8 +134,8 @@ connect_cert_auth_test(_) ->
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
                                {cacerts, load_cacerts()},
-                               {certfile, "../../test/ssl/client.crt"},
-                               {keyfile, "../../test/ssl/client.key"}]),
+                               {certfile, ssl_path("client.crt")},
+                               {keyfile, ssl_path("client.key")}]),
     ok = ssl:send(SSock, Connect),
     ok = packet:expect_packet(ssl, SSock, "connack", Connack),
     ok = ssl:close(SSock).
@@ -153,8 +153,8 @@ connect_cert_auth_expired_test(_) ->
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
                                {cacerts, load_cacerts()},
-                               {certfile, "../../test/ssl/client-expired.crt"},
-                               {keyfile, "../../test/ssl/client.key"}])).
+                               {certfile, ssl_path("client-expired.crt")},
+                               {keyfile, ssl_path("client.key")}])).
 
 connect_cert_auth_revoked_test(_) ->
     assert_error_or_closed({error,{tls_alert,"certificate revoked"}},
@@ -162,8 +162,8 @@ connect_cert_auth_revoked_test(_) ->
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
                                {cacerts, load_cacerts()},
-                               {certfile, "../../test/ssl/client-revoked.crt"},
-                               {keyfile, "../../test/ssl/client.key"}])).
+                               {certfile, ssl_path("client-revoked.crt")},
+                               {keyfile, ssl_path("client.key")}])).
 
 connect_cert_auth_crl_test(_) ->
     Connect = packet:gen_connect("connect-success-test", [{keepalive, 10}]),
@@ -172,8 +172,8 @@ connect_cert_auth_crl_test(_) ->
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
                                {cacerts, load_cacerts()},
-                               {certfile, "../../test/ssl/client.crt"},
-                               {keyfile, "../../test/ssl/client.key"}]),
+                               {certfile, ssl_path("client.crt")},
+                               {keyfile, ssl_path("client.key")}]),
     ok = ssl:send(SSock, Connect),
     ok = packet:expect_packet(ssl, SSock, "connack", Connack),
     ok = ssl:close(SSock).
@@ -185,8 +185,8 @@ connect_identity_test(_) ->
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
                                {cacerts, load_cacerts()},
-                               {certfile, "../../test/ssl/client.crt"},
-                               {keyfile, "../../test/ssl/client.key"}]),
+                               {certfile, ssl_path("client.crt")},
+                               {keyfile, ssl_path("client.key")}]),
     ok = ssl:send(SSock, Connect),
     ok = packet:expect_packet(ssl, SSock, "connack", Connack),
     ok = ssl:close(SSock).
@@ -218,8 +218,8 @@ assert_error_or_closed(Error, Val) ->
            end, true.
 
 load_cacerts() ->
-    IntermediateCA = "../../test/ssl/test-signing-ca.crt",
-    RootCA = "../../test/ssl/test-root-ca.crt",
+    IntermediateCA = ssl_path("test-signing-ca.crt"),
+    RootCA = ssl_path("test-root-ca.crt"),
     load_cert(RootCA) ++ load_cert(IntermediateCA).
 
 load_cert(Cert) ->
@@ -235,3 +235,8 @@ load_cert(Cert) ->
                     Contents, Type == 'Certificate',
                     Cipher == 'not_encrypted']
     end.
+
+ssl_path(File) ->
+    Path = filename:dirname(
+             proplists:get_value(source, ?MODULE:module_info(compile))),
+    filename:join([Path, "ssl", File]).
