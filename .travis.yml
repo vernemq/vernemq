@@ -3,4 +3,3 @@ script: "make test"
 otp_release:
     - 17.3
     - 17.4
-    - 17.5
