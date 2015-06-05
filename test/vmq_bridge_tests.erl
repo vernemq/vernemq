@@ -176,7 +176,6 @@ br2b_disconnect_qos2(_) ->
     PublishDup = packet:gen_publish("bridge/disconnect/test", 2, <<"disconnect-message">>, [{mid, 2}, {dup, true}]),
     Pubrec = packet:gen_pubrec(2),
     Pubrel = packet:gen_pubrel(2),
-    PubrelDup = packet:gen_pubrel(2),
     Pubcomp = packet:gen_pubcomp(2),
     {ok, SSocket} = gen_tcp:listen(1890, [binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
     {ok, Bridge} = gen_tcp:accept(SSocket),
@@ -206,7 +205,7 @@ br2b_disconnect_qos2(_) ->
     ok = gen_tcp:send(Bridge3, Connack),
     ok = packet:expect_packet(Bridge3, "3rd subscribe", Subscribe3),
     ok = gen_tcp:send(Bridge3, Suback3),
-    ok = packet:expect_packet(Bridge3, "2nd pubrel", PubrelDup),
+    ok = packet:expect_packet(Bridge3, "2nd pubrel", Pubrel),
     ok = gen_tcp:send(Bridge3, Pubcomp),
     ok = gen_tcp:close(Bridge3),
     ?_assertEqual(ok, gen_tcp:close(SSocket)).
@@ -216,7 +215,7 @@ br2b_disconnect_qos2(_) ->
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 br2b_disconnect_helper(BridgeProc) ->
-    BridgeProc ! {deliver, "bridge/disconnect/test", <<"disconnect-message">>, 0, false, false, undefined}.
+    BridgeProc ! {deliver, "bridge/disconnect/test", <<"disconnect-message">>, 0, false, false}.
 
 bridge_plugin(ReportProc) ->
     RegisterFun = fun() ->
