@@ -23,14 +23,11 @@ deps:
 install_deps:
 	$(REBAR) install_deps
 
-locked-deps:
-	$(REBAR) get-deps -C rebar.config.lock
-
 clean: testclean
 	@rm -rf ebin
 
 distclean: clean relclean ballclean
-	$(REBAR) delete-deps
+	@rm -rf _build
 
 
 ##
