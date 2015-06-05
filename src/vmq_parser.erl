@@ -274,16 +274,16 @@ serialise(#mqtt_connack{return_code=RC}) ->
     [<<?CONNACK:4, 0:4>>, serialise_len(2), <<RC:16/big>>];
 serialise(#mqtt_subscribe{message_id=MessageId, topics=Topics}) ->
     SerialisedTopics = serialise_topics(?SUBSCRIBE, Topics, []),
-    VarLen = iolist_size(SerialisedTopics) + 2,
-    [<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, VarLen, <<MessageId:16/big>>, SerialisedTopics];
+    LenBytes = serialise_len(iolist_size(SerialisedTopics) + 2),
+    [<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, LenBytes, <<MessageId:16/big>>, SerialisedTopics];
 serialise(#mqtt_suback{message_id=MessageId, qos_table=QosTable}) ->
     SerialisedAcks = serialise_acks(QosTable, []),
-    VarLen = iolist_size(SerialisedAcks) + 2,
-    [<<?SUBACK:4, 0:4>>, VarLen, <<MessageId:16/big>>, SerialisedAcks];
+    LenBytes = serialise_len(iolist_size(SerialisedAcks) + 2),
+    [<<?SUBACK:4, 0:4>>, LenBytes, <<MessageId:16/big>>, SerialisedAcks];
 serialise(#mqtt_unsubscribe{message_id=MessageId, topics=Topics}) ->
     SerialisedTopics = serialise_topics(?UNSUBSCRIBE, Topics, []),
-    VarLen = iolist_size(SerialisedTopics) + 2,
-    [<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, VarLen, <<MessageId:16/big>>,
+    LenBytes = serialise_len(iolist_size(SerialisedTopics) + 2),
+    [<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, LenBytes, <<MessageId:16/big>>,
      SerialisedTopics];
 serialise(#mqtt_unsuback{message_id=MessageId}) ->
     <<?UNSUBACK:4, 0:4, 2, MessageId:16/big>>;
