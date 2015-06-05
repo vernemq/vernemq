@@ -208,13 +208,19 @@ connected({publish, MsgId, Topic, Payload, QoS, _}, State) ->
     %% called in case of retry
     {next_state, connected, send_publish(MsgId, Topic, Payload, QoS, true, State)};
 
-connected({retry, Key}, #state{transport={Transport,_}, sock=Sock, waiting_acks=WAcks} = State) ->
+connected({retry, Key}, #state{transport={Transport,_}, sock=Sock, waiting_acks=WAcks,
+                               retry_interval=RetryInterval} = State) ->
     case dict:find(Key, WAcks) of
         error ->
             {next_state, connected, State};
         {ok, {_Ref, #mqtt_publish{} = Frame}} ->
             send_frame(Transport, Sock, Frame#mqtt_publish{dup = true}),
-            NewRef = gen_fsm:send_event_after(10000, {retry, Key}),
+            NewRef = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
+            NewDict = erase(Key, WAcks),
+            {next_state, connected, State#state{waiting_acks=store(Key, {NewRef, Frame}, NewDict)}};
+        {ok, {_Ref, #mqtt_pubrel{} = Frame}} ->
+            send_frame(Transport, Sock, Frame),
+            NewRef = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
             NewDict = erase(Key, WAcks),
             {next_state, connected, State#state{waiting_acks=store(Key, {NewRef, Frame}, NewDict)}};
         {ok, {_Ref, Msg}} ->
