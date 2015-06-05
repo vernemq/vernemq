@@ -128,7 +128,7 @@
   0},
  {<<"node_package">>,
   {git,"git://github.com/dergraf/node_package.git",
-       {ref,"623ccbe31f32314e7c407a6eb5cced74f93b0071"}},
+       {ref,"ddf2281e687d0772eb65f0a56bbf94649ec9c216"}},
   0},
  {<<"lager_syslog">>,
   {git,"git://github.com/basho/lager_syslog.git",
