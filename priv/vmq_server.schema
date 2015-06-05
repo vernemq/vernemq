@@ -750,12 +750,12 @@
              "never" -> 0;
              _ ->
                  [Entity|T] = lists:reverse(S),
-                 case {Entity, lists:reverse(T)} of
-                     {"h", D} -> D * 60 * 60;
-                     {"d", D} -> D * 24 * 60 * 60;
-                     {"w", D} -> D * 7 * 24 * 60 * 60;
-                     {"m", D} -> D * 4 * 7 * 24 * 60 * 60;
-                     {"y", D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
+                 case {Entity, list_to_integer(lists:reverse(T))} of
+                     {$h, D} -> D * 60 * 60;
+                     {$d, D} -> D * 24 * 60 * 60;
+                     {$w, D} -> D * 7 * 24 * 60 * 60;
+                     {$m, D} -> D * 4 * 7 * 24 * 60 * 60;
+                     {$y, D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
                      _ -> cuttlefish:invalid(S ++ " must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year, or the string 'never'")
                  end
          end
