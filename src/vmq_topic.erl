@@ -89,11 +89,8 @@ validate({_, ""}) ->
 	false;
 validate({_, Topic}) when length(Topic) > ?MAX_LEN ->
 	false;
-validate({subscribe, Topic}) when is_list(Topic) ->
-	valid(words(Topic));
-validate({publish, Topic}) when is_list(Topic) ->
-	Words = words(Topic),
-	valid(Words) and (not include_wildcard(Words)).
+validate({Type, Topic}) when is_list(Topic) ->
+	valid(Type, words(Topic)).
 
 triples(S) when is_list(S) ->
 	triples(S, []).
@@ -132,19 +129,29 @@ unword([[]|Topic], Acc) ->
 unword([Word|Rest], Acc) ->
     unword(Rest, [$/, Word|Acc]).
 
-valid([""|Words]) -> valid2(Words); %% leading '/'
-valid(Words) -> valid2(Words).
+valid(Type, [""|Words]) -> valid2(Type, Words); %% leading '/'
+valid(Type, Words) -> valid2(Type, Words).
 
-valid2([""]) -> true; %% allow trailing '/'
+valid2(_, [""]) -> true; %% allow trailing '/'
 %valid2([""|_Words]) -> false; %% forbid '//'
-valid2(["#"|Words]) when length(Words) > 0 -> false;
-valid2([_|Words]) -> valid2(Words);
-valid2([]) -> true.
+valid2(subscribe, ["#"|Words]) when length(Words) > 0 -> false;
+valid2(subscribe, ["#"]) -> true;
+valid2(subscribe, ["+"|Words]) -> valid2(subscribe, Words);
+valid2(publish, ["#"|_]) -> false;
+valid2(publish, ["+"|_]) -> false;
+valid2(Type, [Word|Words]) ->
+    case include_wildcard_char(Word) of
+        true -> false;
+        false -> valid2(Type, Words)
+    end;
+valid2(_, []) -> true.
 
-include_wildcard([]) -> false;
-include_wildcard(["#"|_T]) -> true;
-include_wildcard(["+"|_T]) -> true;
-include_wildcard([_H|T]) -> include_wildcard(T).
+include_wildcard_char([]) -> false;
+include_wildcard_char([$#|_]) -> true;
+include_wildcard_char([$+|_]) -> true;
+include_wildcard_char([_|Rest]) ->
+    include_wildcard_char(Rest).
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -175,7 +182,22 @@ validate_wildcard_test() ->
     true = validate({subscribe, "test/topic/+"}),
     true = validate({subscribe, "+/+/+/+/+/+/+/+/+/+/test"}),
 
-	false = validate({subscribe, "a/#/c"}).
+    false = validate({publish, "test/#-"}),
+    false = validate({publish, "test/+-"}),
+	false = validate({subscribe, "a/#/c"}),
+    false = validate({subscribe, "#testtopic"}),
+    false = validate({subscribe, "testtopic#"}),
+    false = validate({subscribe, "+testtopic"}),
+    false = validate({subscribe, "testtopic+"}),
+    false = validate({subscribe, "#testtopic/test"}),
+    false = validate({subscribe, "testtopic#/test"}),
+    false = validate({subscribe, "+testtopic/test"}),
+    false = validate({subscribe, "testtopic+/test"}),
+    false = validate({subscribe, "/test/#testtopic"}),
+    false = validate({subscribe, "/test/testtopic#"}),
+    false = validate({subscribe, "/test/+testtopic"}),
+    false = validate({subscribe, "/testtesttopic+"}).
+
 
 
 -endif.
