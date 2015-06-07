@@ -176,13 +176,20 @@ handle_event(Handler, Event) ->
 
 match(MP, Topic) when is_list(MP) and is_list(Topic) ->
     TrieNodes = trie_match(MP, Topic),
-    match(MP, TrieNodes, []).
+    match(MP, Topic, TrieNodes, []).
 
-match(MP, [#trie_node{topic=Name}|Rest], Acc) when Name =/= undefined ->
-    match(MP, Rest, match_(Name, ets:lookup(vmq_trie_topic, {MP, Name}), Acc));
-match(MP, [_|Rest], Acc) ->
-    match(MP, Rest, Acc);
-match(_, [], Acc) -> Acc.
+%% [MQTT-4.7.2-1] The Server MUST NOT match Topic Filters starting with a
+%% wildcard character (# or +) with Topic Names beginning with a $ character.
+match(MP, [[$$|_]|_] = Topic, [#trie_node{topic="#"}|Rest], Acc) ->
+    match(MP, Topic, Rest, Acc);
+match(MP, [[$$|_]|_] = Topic, [#trie_node{topic=[$+|_]}|Rest], Acc) ->
+    match(MP, Topic, Rest, Acc);
+
+match(MP, Topic, [#trie_node{topic=Name}|Rest], Acc) when Name =/= undefined ->
+    match(MP, Topic, Rest, match_(Name, ets:lookup(vmq_trie_topic, {MP, Name}), Acc));
+match(MP, Topic, [_|Rest], Acc) ->
+    match(MP, Topic, Rest, Acc);
+match(_, _, [], Acc) -> Acc.
 
 match_(Topic, [{_, Node}|Rest], Acc) ->
     match_(Topic, Rest, [{Topic, Node}|Acc]);
