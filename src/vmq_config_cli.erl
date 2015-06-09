@@ -129,11 +129,11 @@ vmq_config_show_cmd() ->
                     end;
                 false ->
                     [clique_status:alert([
-                        clique_status:text("app not configured via vmq_config")])]
+                        clique_status:text("App not configured via vmq_config")])]
             end;
        ([], _) ->
             [clique_status:alert([
-                                  clique_status:text("please provide an app= <App>")])]
+                                  clique_status:text("Please provide an app=<App>")])]
 
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
@@ -203,7 +203,7 @@ vmq_config_reset_cmd() ->
                                     [clique_status:text("Done")];
                                 {true, true} ->
                                     [clique_status:alert(
-                                       [clique_status:text("specify either config file or config value")])]
+                                       [clique_status:text("Specify config file or config value")])]
                             end;
                         false ->
                             %% we reset all keys for given app
@@ -222,7 +222,7 @@ vmq_config_reset_cmd() ->
                     end;
                 false ->
                     [clique_status:alert([
-                        clique_status:text("app not configured via vmq_config")])]
+                        clique_status:text("App not configured via vmq_config")])]
             end
 
     end,
@@ -254,7 +254,7 @@ set_new_config_val_from_file(App, Key, ConfigFile) ->
                     [clique_status:text("Done")]
             end;
         {error, Reason} ->
-            Text = io_lib:format("no config found for app, due to ~p", [Reason]),
+            Text = io_lib:format("No config found for app, due to ~p", [Reason]),
             [clique_status:alert([clique_status:text(Text)])]
     end.
 
@@ -268,7 +268,7 @@ set_new_config_from_file(App, ConfigFile) ->
             vmq_config:configure_node(),
             [clique_status:text("Done")];
         {error, Reason} ->
-            Text = io_lib:format("no config found for app, due to ~p", [Reason]),
+            Text = io_lib:format("No config found for app, due to ~p", [Reason]),
             [clique_status:alert([clique_status:text(Text)])]
     end.
 
@@ -288,14 +288,14 @@ get_app_config(App, ConfigFile) ->
 show_usage() ->
     ["vmq-admin config show app=<App> [--key=<Key>]\n\n",
      "  Shows the INTERNAL configuration values for the specified application.\n",
-     "  Since multiple configuration sources are allowed this command allows you\n",
-     "  to inspect if the config value is coming from the config file, or the\n",
-     "  distributed configuration store. In case the config is served from the\n",
-     "  config store, we indicate wheter the value is configured locally or globally.\n\n",
+     "  Since multiple configuration sources are allowed, this command lets you\n",
+     "  inspect whether the config value belongs to the config file or the\n",
+     "  distributed configuration store. For values in the configuration store it also\n",
+     "  indicates their local or global scope.\n\n",
      "Options\n\n",
-     "  --key = <Key>\n",
-     "      in some cases the config value is too complex for the tabular display,\n",
-     "      such cases are indicated with 'too_complex'. Use the --key flag to\n",
+     "  --key=<Key>\n",
+     "      In some cases the config value is too complex for tabular display.\n",
+     "      This is indicated with 'too_complex'. Use the --key flag to\n",
      "      manuallky extract the config value.\n\n"
     ].
 
@@ -305,15 +305,15 @@ reset_usage() ->
      "  store. This is done for all config values of an application, but can be\n",
      "  limited to a specific item by providing --key=ConfigKey.\n\n",
      "Options\n\n",
-     "  --key = <Key>\n",
+     "  --key=<Key>\n",
      "      Resets a config value of a specific item rather than the whole app config\n",
      "  --local\n",
-     "      only resets the config value specified for this node. A global\n",
+     "      Only resets the config value specified for this node. A global\n",
      "      config value is used if present. If a global config value is not\n",
      "      present, the currently installed value is kept unless you provide\n",
      "      a new value via --config-val or --config-file flags\n",
      "  --global\n",
-     "      only resets the globally specified config value. If a local config\n"
+     "      Only resets the globally specified config value. If a local config\n"
      "      value is not present, the currently installed value is kept unless\n",
      "      you provide a new value via --config-val or --config-file flags\n",
      "  --config-file = <File>\n",
