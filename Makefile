@@ -71,6 +71,16 @@ relclean:
 ##
 docs: compile
 	(cd docs && make clean && make html)
+	
+
+##
+## Developer targets
+##
+##  devN - Make a dev build for node N
+dev% :
+	mkdir -p dev
+	./gen_dev $@ vars/dev_vars.config.src vars/$@_vars.config
+	(./rebar3 as $@ release --overlay_vars vars/$@_vars.config)
 
 
 APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \
