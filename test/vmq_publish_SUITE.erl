@@ -410,4 +410,5 @@ helper_pattern_matching(PubTopic) ->
     Publish = packet:gen_publish(PubTopic, 0, <<"message">>, [{retain, true}]),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Publish),
+    ok = gen_tcp:send(Socket, packet:gen_disconnect()),
     gen_tcp:close(Socket).

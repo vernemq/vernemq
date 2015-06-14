@@ -32,8 +32,6 @@
              bytes_recv={os:timestamp(), 0},
              bytes_send={os:timestamp(), 0}}).
 
--define(HIBERNATE_AFTER, 5000).
-
 %% API.
 start_link(Ref, Socket, Transport, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
@@ -95,9 +93,6 @@ loop_(#st{pending=[]} = State) ->
     receive
         M ->
             loop_(handle_message(M, State))
-    after
-        ?HIBERNATE_AFTER ->
-            erlang:hibernate(?MODULE, loop, [State])
     end;
 loop_(#st{} = State) ->
     receive
@@ -249,15 +244,15 @@ handle_message(restart_work, #st{throttled=true} = State) ->
 handle_message(Msg, State) ->
     {exit, {unknown_message_type, Msg}, State}.
 
-maybe_throttle(#st{cpulevel=1} = State) ->
-    erlang:send_after(10, self(), active_once),
-    State#st{throttled=true};
-maybe_throttle(#st{cpulevel=2} = State) ->
-    erlang:send_after(20, self(), active_once),
-    State#st{throttled=true};
-maybe_throttle(#st{cpulevel=L} = State) when L > 2->
-    erlang:send_after(100, self(), active_once),
-    State#st{throttled=true};
+%maybe_throttle(#st{cpulevel=1} = State) ->
+%    erlang:send_after(10, self(), active_once),
+%    State#st{throttled=true};
+%maybe_throttle(#st{cpulevel=2} = State) ->
+%    erlang:send_after(20, self(), active_once),
+%    State#st{throttled=true};
+%maybe_throttle(#st{cpulevel=L} = State) when L > 2->
+%    erlang:send_after(100, self(), active_once),
+%    State#st{throttled=true};
 maybe_throttle(#st{socket=Socket} = State) ->
     case active_once(Socket) of
         ok ->

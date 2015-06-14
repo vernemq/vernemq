@@ -35,21 +35,21 @@ register_hooks() ->
 
 -spec auth_on_register(_, _, _, _, _) -> 'ok'.
 auth_on_register(SrcIp, SubscriberId, User, Password, CleanSession) ->
-    io:format("[~p] auth subscriber ~p from ~p
+    lager:info("[~p] auth subscriber ~p from ~p
               with username ~p and password ~p, cleansession: ~p~n",
               [self(), SubscriberId, SrcIp, User, Password, CleanSession]),
     ok.
 
 -spec auth_on_subscribe(_, _, _) -> 'ok'.
 auth_on_subscribe(User, SubscriberId, Topics) ->
-    io:format("[~p] auth subscriber subscriptions ~p
+    lager:info("[~p] auth subscriber subscriptions ~p
               from ~p with username ~p~n",
               [self(), Topics, SubscriberId, User]),
     ok.
 
 -spec auth_on_publish(_, _, _, _, _, _) -> 'ok'.
 auth_on_publish(User, SubscriberId, MsgRef, Topic, _Payload, _IsRetain) ->
-   io:format("[~p] auth subscriber publish ~p with
+   lager:debug("[~p] auth subscriber publish ~p with
              topic ~p from ~p with username ~p~n",
              [self(), MsgRef, Topic, SubscriberId, User]),
   ok.
