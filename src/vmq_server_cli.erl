@@ -129,7 +129,7 @@ vmq_cluster_join_cmd() ->
                                                end}]}],
     FlagSpecs = [],
     Callback = fun ([], []) ->
-                       Text = clique_status:text("You have to provide a discovery node"),
+                       Text = clique_status:text("You have to provide a discovery node (example discovery-node=vernemq1@127.0.0.1)"),
                        [clique_status:alert([Text])];
                    ([{'discovery-node', Node}], _) ->
                        case plumtree_peer_service:join(Node) of
@@ -202,7 +202,7 @@ vmq_session_list_usage() ->
     Options = [io_lib:format("  --~p\n", [Item])
                || Item <- vmq_session:info_items()],
     ["vmq-admin session list\n\n",
-     "  Prints the information of currently running sessions\n\n",
+     "  Prints some information on running sessions\n\n",
      "Options\n\n" | Options
     ].
 
@@ -224,34 +224,33 @@ stop_usage() ->
 
 join_usage() ->
     ["vmq-admin cluster join discovery-node=<Node>\n\n",
-     "  The discovery node provided will be used to find out about the \n",
+     "  The discovery node will be used to find out about the \n",
      "  nodes in the cluster.\n\n"
     ].
 
 leave_usage() ->
     ["vmq-admin cluster leave\n\n",
-     "  Leaves this cluster.\n\n"
+     "  Leave this cluster.\n\n"
     ].
 
 upgrade_usage() ->
     ["vmq-admin node upgrade [--upgrade-now]\n\n",
-     "  Performs a dry run of a hot code upgrade. Use the --upgrade-now flag if\n",
-     "  you are aware of the consequences of the upgrade. It is recommended to\n"
-     "  previously perform a dry run to see which parts of the systems would\n"
-     "  be touched by the upgrade\n\n",
+     "  Performs a dry run of a hot code upgrade. Use the --upgrade-now flag only after\n",
+     "  a dry run. Make sure you are aware any possible consequences of the upgrade. Doing a dry run\n"
+     "  can show which parts of the systems will be touched by the upgrade.\n\n",
      "Options\n\n",
      "  --upgrade-now\n",
-     "      Perform the hot code upgrade, Erlang is good at it, but many things\n",
-     "      could fail using this way to perform an upgrade. We generally don't\n",
+     "      Perform & apply a hot code upgrade. Erlang is good at it, but many things\n",
+     "      can still fail upgrading this way. We generally don't\n",
      "      recommend it. YOU SHOULD KNOW WHAT YOU ARE DOING AT THIS POINT\n\n"
     ].
 
 usage() ->
     ["vmq-admin <sub-command>\n\n",
-     "  administrate the cluster.\n\n",
+     "  Administrate the cluster.\n\n",
      "  Sub-commands:\n",
      "    node        Manage this node\n",
-     "    cluster     Manage this nodes cluster membership\n",
+     "    cluster     Manage this node's cluster membership\n",
      "    session     Retrieve session information\n",
      "    plugin      Manage plugin system\n",
      "    listener    Manage listener interfaces\n",
@@ -259,7 +258,7 @@ usage() ->
     ].
 node_usage() ->
     ["vmq-admin node <sub-command>\n\n",
-     "  administrate this VerneMQ node.\n\n",
+     "  Administrate this VerneMQ node.\n\n",
      "  Sub-commands:\n",
      "    start       Start the server application\n",
      "    stop        Stop the server application\n\n",
@@ -268,7 +267,7 @@ node_usage() ->
 
 cluster_usage() ->
     ["vmq-admin cluster <sub-command>\n\n",
-     "  administrate this VerneMQ cluster membership.\n\n",
+     "  Administrate cluster membership for this particular VerneMQ node.\n\n",
      "  Sub-commands:\n",
      "    status      Prints cluster status information\n",
      "    join        Join a cluster\n",
@@ -278,9 +277,9 @@ cluster_usage() ->
 
 session_usage() ->
     ["vmq-admin session <sub-command>\n\n",
-     "  retrieve information about the sessions.\n\n",
+     "  Retrieve information on live sessions.\n\n",
      "  Sub-commands:\n",
-     "    list        list the currently running sessions\n",
+     "    list        list all running sessions\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 
