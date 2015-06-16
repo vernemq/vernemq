@@ -57,10 +57,19 @@ publish(Pid, Msg) ->
             {error, Reason}
     end.
 
-publish_batch(Msgs) ->
-    lists:foreach(fun({Topic, Msg}) ->
-                          vmq_reg:publish_({Topic, node()}, Msg)
-                  end, Msgs).
+publish_batch([#vmq_msg{mountpoint=MP,
+                        routing_key=Topic,
+                        reg_view=RegView} = Msg|Msgs]) ->
+    _ = RegView:fold(MP, Topic, fun publish_batch_single/2, Msg),
+    publish_batch(Msgs);
+publish_batch([]) -> ok.
+
+publish_batch_single({_,_} = SubscriberIdAndQoS, Msg) ->
+    vmq_reg:publish(SubscriberIdAndQoS, Msg);
+publish_batch_single(_Node, Msg) ->
+    %% we ignore remote subscriptions, they are already covered
+    %% by original publisher
+    Msg.
 
 %%%===================================================================
 %%% gen_server callbacks

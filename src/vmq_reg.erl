@@ -48,8 +48,9 @@
          terminate/2,
          code_change/3]).
 
-%% used by RPC calls
--export([teardown_session/2, publish_/2,
+%% used by/through RPC calls
+-export([teardown_session/2,
+         publish/2,
          register_subscriber_/4]).
 
 %% used from plugins
@@ -274,7 +275,7 @@ publish(#vmq_msg{trade_consistency=true,
             %% retain set action
             retain_msg(Msg);
         ?false ->
-            RegView:fold(MP, Topic, fun publish_/2, Msg),
+            RegView:fold(MP, Topic, fun publish/2, Msg),
             ok
     end;
 publish(#vmq_msg{trade_consistency=false,
@@ -293,32 +294,23 @@ publish(#vmq_msg{trade_consistency=false,
             %% retain set action
             retain_msg(Msg);
         true ->
-            RegView:fold(MP, Topic, fun publish_/2, Msg),
+            RegView:fold(MP, Topic, fun publish/2, Msg),
             ok;
         false ->
             {error, not_ready}
     end.
 
-%% vmq_reg_trie reg view delivers this format
-publish_({Topic, Node}, Msg) when Node == node() ->
-    plumtree_metadata:fold(
-      fun({{SubscriberId, {_, QoS}}, [N|_]}, AccMsg) ->
-              case Node of
-                  N ->
-                      QPids =
-                      case get_queue_pids(SubscriberId) of
-                          [] -> not_found;
-                          Pids ->
-                              Pids
-                      end,
-                      publish___(SubscriberId, AccMsg, QoS, QPids);
-                  _ ->
-                      AccMsg
-              end
-      end, Msg, ?SUBSCRIBER_DB,
-     [{match, {'_', {Topic, '_'}}}]);
-publish_({Topic, Node}, Msg) ->
-    case vmq_cluster:publish(Node, {Topic, Msg}) of
+%% publish/2 is used as the fold function in RegView:fold/4
+publish({SubscriberId, QoS}, Msg) ->
+    QPids =
+    case get_queue_pids(SubscriberId) of
+        [] -> not_found;
+        Pids ->
+            Pids
+    end,
+    publish(SubscriberId, Msg, QoS, QPids);
+publish(Node, Msg) ->
+    case vmq_cluster:publish(Node, Msg) of
         ok ->
             Msg;
         {error, Reason} ->
@@ -326,24 +318,24 @@ publish_({Topic, Node}, Msg) ->
             Msg
     end.
 
-publish___(_, Msg, 0, not_found) -> Msg;
-publish___(SubscriberId, Msg, QoS, not_found) ->
+publish(_, Msg, 0, not_found) -> Msg;
+publish(SubscriberId, Msg, QoS, not_found) ->
     RefedMsg = vmq_msg_store:store(SubscriberId, Msg),
     vmq_msg_store:defer_deliver(SubscriberId, QoS, RefedMsg#vmq_msg.msg_ref),
     RefedMsg;
-publish___(SubscriberId, Msg, 0, [QPid|Rest]) ->
+publish(SubscriberId, Msg, 0, [QPid|Rest]) ->
     _ = vmq_queue:enqueue(QPid, {deliver, 0, Msg}),
-    publish___(SubscriberId, Msg, 0, Rest);
-publish___(SubscriberId, Msg, QoS, [QPid|Rest]) ->
+    publish(SubscriberId, Msg, 0, Rest);
+publish(SubscriberId, Msg, QoS, [QPid|Rest]) ->
     RefedMsg = vmq_msg_store:store(SubscriberId, Msg),
     case vmq_queue:enqueue(QPid, {deliver, QoS, RefedMsg}) of
         ok ->
-            publish___(SubscriberId, RefedMsg, QoS, Rest);
+            publish(SubscriberId, RefedMsg, QoS, Rest);
         {error, _} ->
             vmq_msg_store:defer_deliver(SubscriberId, QoS, RefedMsg#vmq_msg.msg_ref),
-            publish___(SubscriberId, RefedMsg, QoS, Rest)
+            publish(SubscriberId, RefedMsg, QoS, Rest)
     end;
-publish___(_, Msg, _, []) -> Msg.
+publish(_, Msg, _, []) -> Msg.
 
 retain_msg(Msg = #vmq_msg{mountpoint=MP, reg_view=RegView,
                           routing_key=Topic, payload=Payload}) ->
@@ -353,7 +345,7 @@ retain_msg(Msg = #vmq_msg{mountpoint=MP, reg_view=RegView,
               Msg#vmq_msg{retain=false}
       end,
       fun(RetainedMsg) ->
-              _ = RegView:fold(MP, Topic, fun publish_/2, RetainedMsg),
+              _ = RegView:fold(MP, Topic, fun publish/2, RetainedMsg),
               ok
       end).
 

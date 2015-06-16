@@ -64,7 +64,7 @@
   0},
  {<<"plumtree">>,
   {git,"git://github.com/dergraf/plumtree.git",
-       {ref,"1236aa1022ee8bcfbbc128573608c1d0ff4ed0ea"}},
+       {ref,"8f73a6fc517d2afced5fd586b4c37673b8894a4a"}},
   0},
  {<<"lager">>,
   {git,"git://github.com/basho/lager.git",
