@@ -137,11 +137,8 @@
                                                                       ]}.
 
 %% @doc If try_private is enabled, the bridge will attempt to indicate to the 
-%% remote broker that it is a bridge not an ordinary client. If successful, this 
-%% means that loop detection will be more effective and that retained messages 
-%% will be propagated correctly. Not all brokers support this feature so it may 
-%% be necessary to set try_private to false if your bridge does not connect 
-%% properly.
+%% remote broker that it is a bridge not an ordinary client. 
+%% Note that loop detection for bridges is not yet implemented. 
 {mapping, "bridge.tcp.$name.try_private", "vmq_bridge.config", [
                                                                 {datatype, flag},
                                                                 {default, on},
