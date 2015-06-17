@@ -37,7 +37,6 @@
 -define(RESERVED, 0).
 -define(PROTOCOL_MAGIC_31, <<"MQIsdp">>).
 -define(PROTOCOL_MAGIC_311, <<"MQTT">>).
--define(PROTOCOL_MAGIC_131, <<"MQIsdp131">>). %% used for bridges
 -define(MAX_LEN, 16#fffffff).
 -define(HIGHBIT, 2#10000000).
 -define(LOWBITS, 2#01111111).
@@ -123,8 +122,7 @@ parse(<<?UNSUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_unsuback{message_id=MessageId};
 parse(<<?CONNECT:4, 0:4>>, <<L:16/big, PMagic:L/binary, _/binary>>)
   when not ((PMagic == ?PROTOCOL_MAGIC_311) or
-             (PMagic == ?PROTOCOL_MAGIC_31) or
-             (PMagic == ?PROTOCOL_MAGIC_131)) ->
+             (PMagic == ?PROTOCOL_MAGIC_31)) ->
     error;
 parse(<<?CONNECT:4, 0:4>>,
     <<L:16/big, _:L/binary, ProtoVersion:8,
@@ -313,7 +311,7 @@ serialise_acks([QoS|Rest], Acks) ->
 
 proto(4) -> {4, ?PROTOCOL_MAGIC_311};
 proto(3) -> {6, ?PROTOCOL_MAGIC_31};
-proto(131) -> {9, ?PROTOCOL_MAGIC_131}.
+proto(131) -> {6, ?PROTOCOL_MAGIC_31}.
 
 flag([]) -> 0;
 flag(undefined) -> 0;
