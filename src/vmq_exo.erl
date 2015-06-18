@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_exo).
+-behaviour(gen_server).
 -export([incr_bytes_received/1,
          incr_bytes_sent/1,
          incr_expired_clients/0,
@@ -27,6 +28,23 @@
          incr_connect_received/0,
          entries/0,
          entries/1]).
+
+%% API functions
+-export([start_link/0]).
+
+%% gen_server callbacks
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
+
+-record(state, {}).
+
+%%%===================================================================
+%%% API functions
+%%%===================================================================
 
 incr_bytes_received(V) ->
     incr_item([bytes, received], V).
@@ -65,7 +83,11 @@ incr_connect_received() ->
     incr_item([connects, received], 1).
 
 incr_item(Entry, Val) ->
-    exometer:update_or_create(Entry, Val).
+    exometer:update_or_create(Entry ++ ['last_sec'], Val),
+    exometer:update_or_create(Entry ++ ['last_10sec'], Val),
+    exometer:update_or_create(Entry ++ ['last_30sec'], Val),
+    exometer:update_or_create(Entry ++ ['last_min'], Val),
+    exometer:update_or_create(Entry ++ ['last_5min'], Val).
 
 entries() ->
     {ok, entries(undefined)}.
@@ -75,24 +97,69 @@ entries(undefined) ->
      {[memory], {function, erlang, memory, [], proplist,
                  [total, processes, system,
                   atom, binary, code, ets]}, []},
-     {[bytes, received], histogram, [{snmp, []}]},
-     {[bytes, sent], histogram, [{snmp, []}]},
-     {[messages, received], histogram, [{snmp, []}]},
-     {[messages, sent], histogram, [{snmp, []}]},
-     {[publishes, dropped], histogram, [{snmp, []}]},
-     {[publishes, received], histogram, [{snmp, []}]},
-     {[publishes, sent], histogram, [{snmp, []}]},
-     {[connects, received], histogram, [{snmp, []}]},
-     {[sockets], histogram, [{snmp, []}]},
      {[subscriptions], {function, vmq_reg, total_subscriptions, [], proplist, [total]}, []},
-     {[clients, expired], counter, [{snmp, []}]},
      {[clients], {function, vmq_reg, client_stats, [], proplist,
                   [total, active, inactive]}, []}
-    ];
+     | counter_entries()];
 entries({ReporterMod, Interval}) ->
     subscribe(ReporterMod, entries(undefined), Interval).
 
+counter_entries() ->
+    [
+     {[bytes, received, last_sec], counter, [{snmp, []}]},
+     {[bytes, received, last_10sec], counter, [{snmp, []}]},
+     {[bytes, received, last_30sec], counter, [{snmp, []}]},
+     {[bytes, received, last_min], counter, [{snmp, []}]},
+     {[bytes, received, last_5min], counter, [{snmp, []}]},
 
+     {[bytes, sent, last_sec], counter, [{snmp, []}]},
+     {[bytes, sent, last_10sec], counter, [{snmp, []}]},
+     {[bytes, sent, last_30sec], counter, [{snmp, []}]},
+     {[bytes, sent, last_min], counter, [{snmp, []}]},
+     {[bytes, sent, last_5min], counter, [{snmp, []}]},
+
+     {[messages, received, last_sec], counter, [{snmp, []}]},
+     {[messages, received, last_10sec], counter, [{snmp, []}]},
+     {[messages, received, last_30sec], counter, [{snmp, []}]},
+     {[messages, received, last_min], counter, [{snmp, []}]},
+     {[messages, received, last_5min], counter, [{snmp, []}]},
+
+     {[messages, sent, last_sec], counter, [{snmp, []}]},
+     {[messages, sent, last_10sec], counter, [{snmp, []}]},
+     {[messages, sent, last_30sec], counter, [{snmp, []}]},
+     {[messages, sent, last_min], counter, [{snmp, []}]},
+     {[messages, sent, last_5min], counter, [{snmp, []}]},
+
+     {[publishes, dropped, last_sec], counter, [{snmp, []}]},
+     {[publishes, dropped, last_10sec], counter, [{snmp, []}]},
+     {[publishes, dropped, last_30sec], counter, [{snmp, []}]},
+     {[publishes, dropped, last_min], counter, [{snmp, []}]},
+     {[publishes, dropped, last_5min], counter, [{snmp, []}]},
+
+     {[publishes, received, last_sec], counter, [{snmp, []}]},
+     {[publishes, received, last_10sec], counter, [{snmp, []}]},
+     {[publishes, received, last_30sec], counter, [{snmp, []}]},
+     {[publishes, received, last_min], counter, [{snmp, []}]},
+     {[publishes, received, last_5min], counter, [{snmp, []}]},
+
+     {[publishes, sent, last_sec], counter, [{snmp, []}]},
+     {[publishes, sent, last_10sec], counter, [{snmp, []}]},
+     {[publishes, sent, last_30sec], counter, [{snmp, []}]},
+     {[publishes, sent, last_min], counter, [{snmp, []}]},
+     {[publishes, sent, last_5min], counter, [{snmp, []}]},
+
+     {[connects, received, last_sec], counter, [{snmp, []}]},
+     {[connects, received, last_10sec], counter, [{snmp, []}]},
+     {[connects, received, last_30sec], counter, [{snmp, []}]},
+     {[connects, received, last_min], counter, [{snmp, []}]},
+     {[connects, received, last_5min], counter, [{snmp, []}]},
+
+     {[sockets, last_sec], counter, [{snmp, []}]},
+     {[sockets, last_10sec], counter, [{snmp, []}]},
+     {[sockets, last_30sec], counter, [{snmp, []}]},
+     {[sockets, last_min], counter, [{snmp, []}]},
+     {[sockets, last_5min], counter, [{snmp, []}]}
+    ].
 
 subscribe(ReporterMod, [{Metric, histogram, _}|Rest], Interval) ->
     Datapoints = [max, min, mean, median],
@@ -121,3 +188,126 @@ subscribe(ReporterMod, Metric, Datapoint, Interval) when is_atom(Datapoint) ->
             exit({exometer_report_subscribe, E, ReporterMod, Metric, Datapoint})
     end;
 subscribe(_, _, [], _) -> ok.
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Starts the server
+%%
+%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
+%% @end
+%%--------------------------------------------------------------------
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+%%%===================================================================
+%%% gen_server callbacks
+%%%===================================================================
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Initializes the server
+%%
+%% @spec init(Args) -> {ok, State} |
+%%                     {ok, State, Timeout} |
+%%                     ignore |
+%%                     {stop, Reason}
+%% @end
+%%--------------------------------------------------------------------
+init([]) ->
+    {ok, #state{}, 1000}.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling call messages
+%%
+%% @spec handle_call(Request, From, State) ->
+%%                                   {reply, Reply, State} |
+%%                                   {reply, Reply, State, Timeout} |
+%%                                   {noreply, State} |
+%%                                   {noreply, State, Timeout} |
+%%                                   {stop, Reason, Reply, State} |
+%%                                   {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling cast messages
+%%
+%% @spec handle_cast(Msg, State) -> {noreply, State} |
+%%                                  {noreply, State, Timeout} |
+%%                                  {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling all non call/cast messages
+%%
+%% @spec handle_info(Info, State) -> {noreply, State} |
+%%                                   {noreply, State, Timeout} |
+%%                                   {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_info(timeout, State) ->
+    Start = os:timestamp(),
+    lists:foreach(fun({Entry,_,_}) ->
+                          [_|Tail] = lists:reverse(Entry),
+                          OneSecEntry = lists:reverse([last_sec | Tail]),
+                          case exometer:get_value(OneSecEntry) of
+                              {error, not_found} ->
+                                  ignore;
+                              {ok, [{value, Val}|_]} ->
+                                  exometer:update(OneSecEntry, -Val),
+                                  exometer:update(lists:reverse([last_10sec | Tail]), -Val),
+                                  exometer:update(lists:reverse([last_30sec | Tail]), -Val),
+                                  exometer:update(lists:reverse([last_min | Tail]), -Val),
+                                  exometer:update(lists:reverse([last_5min | Tail]), -Val)
+                          end
+                  end, counter_entries()),
+    Stop = os:timestamp(),
+    case timer:now_diff(Start, Stop) of
+        Diff when Diff >= 1000 ->
+            {noreply, State, 1000};
+        Diff ->
+            %% get a little bit of accuracy
+            {noreply, State, 1000 - Diff}
+    end.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any
+%% necessary cleaning up. When it returns, the gen_server terminates
+%% with Reason. The return value is ignored.
+%%
+%% @spec terminate(Reason, State) -> void()
+%% @end
+%%--------------------------------------------------------------------
+terminate(_Reason, _State) ->
+    ok.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Convert process state when code is changed
+%%
+%% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
+%% @end
+%%--------------------------------------------------------------------
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
