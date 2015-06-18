@@ -324,7 +324,7 @@ publish(SubscriberId, Msg, QoS, not_found) ->
     vmq_msg_store:defer_deliver(SubscriberId, QoS, RefedMsg#vmq_msg.msg_ref),
     RefedMsg;
 publish(SubscriberId, Msg, 0, [QPid|Rest]) ->
-    _ = vmq_queue:enqueue(QPid, {deliver, 0, Msg}),
+    _ = vmq_queue:enqueue_nb(QPid, {deliver, 0, Msg}),
     publish(SubscriberId, Msg, 0, Rest);
 publish(SubscriberId, Msg, QoS, [QPid|Rest]) ->
     RefedMsg = vmq_msg_store:store(SubscriberId, Msg),

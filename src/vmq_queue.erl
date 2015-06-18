@@ -26,7 +26,7 @@
                 owner :: pid()}).
 
 -export([start_link/3, resize/2,
-         active/1, notify/1, enqueue/2]).
+         active/1, notify/1, enqueue/2, enqueue_nb/2]).
 -export([init/1,
          active/2, passive/2, notify/2,
          active/3, passive/3, notify/3,
@@ -74,6 +74,11 @@ enqueue(Queue, Msg) ->
             {error, Reason}
     end.
 
+%% @doc Enqueues a message non blocking.
+-spec enqueue_nb(pid(), item()) -> ok | {error, _}.
+enqueue_nb(Queue, Msg) ->
+    gen_fsm:send_event(Queue, {enqueue, Msg}).
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% gen_fsm Function Definitions %%%
@@ -89,6 +94,8 @@ active(active, S = #state{}) ->
     {next_state, active, S};
 active(notify, S = #state{}) ->
     {next_state, notify, S};
+active({enqueue, Msg}, S = #state{}) ->
+    send(insert(Msg, S));
 active(_Msg, S = #state{}) ->
     %% unexpected
     {next_state, active, S}.
@@ -106,6 +113,8 @@ passive(active, S = #state{size=0} = S) ->
     {next_state, active, S};
 passive(active, S = #state{size=Size} = S) when Size > 0 ->
     send(S);
+passive({enqueue, Msg}, S = #state{}) ->
+    {next_state, passive, insert(Msg, S)};
 passive(_Msg, S = #state{}) ->
     %% unexpected
     {next_state, passive, S}.
@@ -121,6 +130,8 @@ notify(active, S = #state{size=Size}) when Size > 0 ->
     send(S);
 notify(notify, S = #state{}) ->
     {next_state, notify, S};
+notify({enqueue, Msg}, S = #state{}) ->
+    send_notification(insert(Msg, S));
 notify(_Msg, S = #state{}) ->
     %% unexpected
     {next_state, notify, S}.
