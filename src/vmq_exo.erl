@@ -30,7 +30,9 @@
          entries/1]).
 
 %% API functions
--export([start_link/0]).
+-export([start_link/0,
+         system_statistics/0,
+         scheduler_utilization/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -53,7 +55,7 @@ incr_bytes_sent(V) ->
     incr_item([bytes, sent], V).
 
 incr_expired_clients() ->
-    incr_item([expired_clients], 1).
+    exometer:update_or_create([clients, expired], 1).
 
 incr_messages_received(V) ->
     incr_item([messages, received], V).
@@ -97,9 +99,14 @@ entries(undefined) ->
      {[memory], {function, erlang, memory, [], proplist,
                  [total, processes, system,
                   atom, binary, code, ets]}, []},
+     {[system_stats], {function, ?MODULE, system_statistics, [], proplist,
+                      system_statistics_items()}, []},
+     {[cpuinfo], {function, ?MODULE, scheduler_utilization, [], proplist,
+                 scheduler_utilization_items()}, []},
      {[subscriptions], {function, vmq_reg, total_subscriptions, [], proplist, [total]}, []},
      {[clients], {function, vmq_reg, client_stats, [], proplist,
-                  [total, active, inactive]}, []}
+                  [total, active, inactive]}, []},
+     {[clients, expired], counter, [{snmp, []}]}
      | counter_entries()];
 entries({ReporterMod, Interval}) ->
     subscribe(ReporterMod, entries(undefined), Interval).
@@ -161,6 +168,73 @@ counter_entries() ->
      {[sockets, last_5min], counter, [{snmp, []}]}
     ].
 
+system_statistics() ->
+    {ContextSwitches, _} = erlang:statistics(context_switches),
+    {TotalExactReductions, ExactReductions} = erlang:statistics(exact_reductions),
+    {Number_of_GCs, Words_Reclaimed, 0} = erlang:statistics(garbage_collection),
+    {{input, Input}, {output, Output}} = erlang:statistics(io),
+    {Total_Reductions, Reductions_Since_Last_Call} = erlang:statistics(reductions),
+    RunQueueLen = erlang:statistics(run_queue),
+    {Total_Run_Time, Time_Since_Last_Call} = erlang:statistics(runtime),
+    {Total_Wallclock_Time, Wallclock_Time_Since_Last_Call} = erlang:statistics(wall_clock),
+
+    [{context_switches, ContextSwitches},
+     {total_exact_reductions, TotalExactReductions},
+     {exact_reductions, ExactReductions},
+     {gc_count, Number_of_GCs},
+     {words_reclaimed_by_gc, Words_Reclaimed},
+     {total_io_in, Input},
+     {total_io_out, Output},
+     {total_reductions, Total_Reductions},
+     {reductions, Reductions_Since_Last_Call},
+     {run_queue, RunQueueLen},
+     {total_runtime, Total_Run_Time},
+     {runtime, Time_Since_Last_Call},
+     {total_wallclock, Total_Wallclock_Time},
+     {wallclock, Wallclock_Time_Since_Last_Call}].
+
+system_statistics_items() ->
+    [context_switches,
+     total_exact_reductions,
+     exact_reductions,
+     gc_count,
+     words_reclaimed_by_gc,
+     total_io_in,
+     total_io_out,
+     total_reductions,
+     reductions,
+     run_queue,
+     total_runtime,
+     runtime,
+     total_wallclock,
+     wallclock].
+
+scheduler_utilization() ->
+    WallTimeTs0 =
+    case erlang:get(vmq_exo_scheduler_wall_time) of
+        undefined ->
+            Ts0 = lists:sort(erlang:statistics(scheduler_wall_time)),
+            erlang:put(vmq_exo_scheduler_wall_time, Ts0),
+            Ts0;
+        Ts0 -> Ts0
+    end,
+    WallTimeTs1 = lists:sort(erlang:statistics(scheduler_wall_time)),
+    SchedulerUtilization = lists:map(fun({{I, A0, T0}, {I, A1, T1}}) ->
+                                             Id = list_to_atom("scheduler_" ++ integer_to_list(I)),
+                                             {Id, (A1 - A0)/(T1 - T0)}
+                                     end, lists:zip(WallTimeTs0, WallTimeTs1)),
+    {A, T} = lists:foldl(fun({{_, A0, T0}, {_, A1, T1}}, {Ai,Ti}) ->
+                                 {Ai + (A1 - A0), Ti + (T1 - T0)}
+                         end, {0, 0}, lists:zip(WallTimeTs0, WallTimeTs1)),
+    TotalUtilization = A/T,
+    [{total, TotalUtilization}|SchedulerUtilization].
+
+scheduler_utilization_items() ->
+    erlang:system_flag(scheduler_wall_time, true),
+    [total | [list_to_atom("scheduler_" ++ integer_to_list(I))
+              || {I, _, _} <- lists:sort(erlang:statistics(scheduler_wall_time))]].
+
+
 subscribe(ReporterMod, [{Metric, histogram, _}|Rest], Interval) ->
     Datapoints = [max, min, mean, median],
     subscribe(ReporterMod, Metric, Datapoints, Interval),
@@ -215,6 +289,7 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    erlang:system_flag(scheduler_wall_time, true),
     timer:send_interval(1000, calc_stats),
     {ok, #state{}}.
 
@@ -232,7 +307,7 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call(_Request, _From, State) ->
+handle_call(_Req, _From, #state{} = State) ->
     Reply = ok,
     {reply, Reply, State}.
 
@@ -267,10 +342,10 @@ handle_info(calc_stats, #state{history=History} = State) ->
               case lists:reverse(Entry) of
                   [last_sec|Tail] ->
                      %% only call this if we hit the 'last_sec' counter
-                      case exometer:get_value(Entry) of
+                      case exometer:get_value(Entry, [value]) of
                           {error, not_found} ->
                               ignore;
-                          {ok, [{value, Val}|_]} ->
+                          {ok, [{value, Val}]} ->
                               exometer:update(Entry, -Val),
                               H1 = update_sliding_windows(last_10sec, Tail, Val, AccHistory),
                               H2 = update_sliding_windows(last_30sec, Tail, Val, H1),
