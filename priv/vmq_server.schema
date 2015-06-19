@@ -803,6 +803,22 @@
                                                                       {datatype, flag}
                                                                      ]}.
 
+%% @doc specifies how many messages we store in the outgoing rpc queue in case 
+%% the remote node is not available
+{mapping, "max_outgoing_publish_queue_size", "vmq_server.max_outgoing_publish_queue_size", [
+                                                                                            {default, 1000},
+                                                                                            {datatype, integer},
+                                                                                            hidden
+                                                                                           ]}.
+
+%% @doc if a cluster node comes back online and we queued messages for this node
+%% we send them in batches. this specifies the size of the batch.
+{mapping, "outgoing_publish_batch_size", "vmq_server.outgoing_publish_batch_size", [
+                                                                                    {default, 20},
+                                                                                    {datatype, integer},
+                                                                                    hidden
+                                                                                   ]}.
+
 {translation, "vmq_server.reg_views",
  fun(Conf) ->
          S = cuttlefish:conf_get("reg_views", Conf),
