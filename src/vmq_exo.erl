@@ -40,7 +40,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {}).
+-record(state, {history=[]}).
 
 %%%===================================================================
 %%% API functions
@@ -215,7 +215,8 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{}, 1000}.
+    timer:send_interval(1000, calc_stats),
+    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -258,30 +259,58 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(timeout, State) ->
-    Start = os:timestamp(),
-    lists:foreach(fun({Entry,_,_}) ->
-                          [_|Tail] = lists:reverse(Entry),
-                          OneSecEntry = lists:reverse([last_sec | Tail]),
-                          case exometer:get_value(OneSecEntry) of
-                              {error, not_found} ->
-                                  ignore;
-                              {ok, [{value, Val}|_]} ->
-                                  exometer:update(OneSecEntry, -Val),
-                                  exometer:update(lists:reverse([last_10sec | Tail]), -Val),
-                                  exometer:update(lists:reverse([last_30sec | Tail]), -Val),
-                                  exometer:update(lists:reverse([last_min | Tail]), -Val),
-                                  exometer:update(lists:reverse([last_5min | Tail]), -Val)
-                          end
-                  end, counter_entries()),
-    Stop = os:timestamp(),
-    case timer:now_diff(Start, Stop) of
-        Diff when Diff >= 1000 ->
-            {noreply, State, 1000};
-        Diff ->
-            %% get a little bit of accuracy
-            {noreply, State, 1000 - Diff}
+handle_info(calc_stats, #state{history=History} = State) ->
+    %% this is (MUST be) called every second!
+    NewHistory =
+    lists:foldl(
+      fun({Entry,_,_}, AccHistory) ->
+              case lists:reverse(Entry) of
+                  [last_sec|Tail] ->
+                     %% only call this if we hit the 'last_sec' counter
+                      case exometer:get_value(Entry) of
+                          {error, not_found} ->
+                              ignore;
+                          {ok, [{value, Val}|_]} ->
+                              exometer:update(Entry, -Val),
+                              H1 = update_sliding_windows(last_10sec, Tail, Val, AccHistory),
+                              H2 = update_sliding_windows(last_30sec, Tail, Val, H1),
+                              H3 = update_sliding_windows(last_min, Tail, Val, H2),
+                              update_sliding_windows(last_5min, Tail, Val, H3)
+                      end;
+                  _ ->
+                      AccHistory
+              end
+      end, History, counter_entries()),
+    {noreply, State#state{history=NewHistory}}.
+
+update_sliding_windows(last_10sec, Base, Val, History) ->
+    update_sliding_windows(10, lists:reverse([last_10sec | Base]), Val, History);
+update_sliding_windows(last_30sec, Base, Val, History) ->
+    update_sliding_windows(30, lists:reverse([last_30sec | Base]), Val, History);
+update_sliding_windows(last_min, Base, Val, History) ->
+    update_sliding_windows(60, lists:reverse([last_min | Base]), Val, History);
+update_sliding_windows(last_5min, Base, Val, History) ->
+    update_sliding_windows(300, lists:reverse([last_5min | Base]), Val, History);
+
+update_sliding_windows(Size, MetricName, SecVal, History) ->
+    case lists:keyfind(MetricName, 1, History) of
+        false ->
+            InitSlidingWindow = [0 || _ <- lists:seq(1, Size - 1)],
+            [{MetricName, [SecVal|InitSlidingWindow]}|History];
+        {_, SlidingWindow} ->
+            case lists:last(SlidingWindow) of
+                0 ->
+                    lists:keyreplace(MetricName, 1, History ,
+                                     {MetricName, [SecVal|lists:droplast(SlidingWindow)]});
+                OldestVal ->
+                    exometer:update(MetricName, -OldestVal),
+                    lists:keyreplace(MetricName, 1, History ,
+                                     {MetricName, [SecVal|lists:droplast(SlidingWindow)]})
+            end
     end.
+
+
+
 
 %%--------------------------------------------------------------------
 %% @private
