@@ -98,14 +98,15 @@ entries(undefined) ->
     [
      {[memory], {function, erlang, memory, [], proplist,
                  [total, processes, system,
-                  atom, binary, code, ets]}, []},
+                  atom, binary, code, ets]}, [{snmp, []}]},
      {[system_stats], {function, ?MODULE, system_statistics, [], proplist,
-                      system_statistics_items()}, []},
+                      system_statistics_items()}, [{snmp, []}]},
      {[cpuinfo], {function, ?MODULE, scheduler_utilization, [], proplist,
-                 scheduler_utilization_items()}, []},
-     {[subscriptions], {function, vmq_reg, total_subscriptions, [], proplist, [total]}, []},
+                 scheduler_utilization_items()}, [{snmp, []}]},
+     {[subscriptions], {function, vmq_reg, total_subscriptions, [], proplist,
+                        [total]}, [{snmp, []}]},
      {[clients], {function, vmq_reg, client_stats, [], proplist,
-                  [total, active, inactive]}, []},
+                  [total, active, inactive]}, [{snmp, []}]},
      {[clients, expired], counter, [{snmp, []}]}
      | counter_entries()];
 entries({ReporterMod, Interval}) ->
@@ -221,12 +222,12 @@ scheduler_utilization() ->
     WallTimeTs1 = lists:sort(erlang:statistics(scheduler_wall_time)),
     SchedulerUtilization = lists:map(fun({{I, A0, T0}, {I, A1, T1}}) ->
                                              Id = list_to_atom("scheduler_" ++ integer_to_list(I)),
-                                             {Id, (A1 - A0)/(T1 - T0)}
+                                             {Id, round((100 * (A1 - A0)/(T1 - T0)))}
                                      end, lists:zip(WallTimeTs0, WallTimeTs1)),
-    {A, T} = lists:foldl(fun({{_, A0, T0}, {_, A1, T1}}, {Ai,Ti}) ->
-                                 {Ai + (A1 - A0), Ti + (T1 - T0)}
-                         end, {0, 0}, lists:zip(WallTimeTs0, WallTimeTs1)),
-    TotalUtilization = A/T,
+    TotalSum = lists:foldl(fun({_, UsagePerSchedu}, Sum) ->
+                                   Sum + UsagePerSchedu
+                           end, 0, SchedulerUtilization),
+    TotalUtilization = round(TotalSum / length(SchedulerUtilization)),
     [{total, TotalUtilization}|SchedulerUtilization].
 
 scheduler_utilization_items() ->
