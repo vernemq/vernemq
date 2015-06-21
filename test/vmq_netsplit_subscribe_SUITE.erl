@@ -44,7 +44,8 @@ subscribe_clean_session_test(Config) ->
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(53, "netsplit/0/test", 0),
     Suback = packet:gen_suback(53, 0),
-    Port = vmq_netsplit_utils:get_port(Nodes),
+    Port = vmq_netsplit_utils:get_port(Nodes), % port for first node
+    [FirstNode|_] = Nodes,
     {ok, Socket} = packet:do_client_connect(Connect, Connack,
                                             [{port, Port}]),
 
@@ -66,7 +67,7 @@ subscribe_clean_session_test(Config) ->
                                                     subscriptions_for_subscriber_id,
                                                     [{"", "test-netsplit-client"}]),
     ct:pal("subscrptions on island 1: ~p", [Island1Res]),
-    Island1Res = [[{"netsplit/0/test", 0}] || _ <- lists:seq(1, length(Island1))],
+    Island1Res = [[{"netsplit/0/test", 0, FirstNode}] || _ <- lists:seq(1, length(Island1))],
     Island2Res = vmq_netsplit_utils:proxy_multicall(Island2, vmq_reg,
                                                     subscriptions_for_subscriber_id,
                                                     [{"", "test-netsplit-client"}]),
@@ -94,4 +95,4 @@ subscribe_clean_session_test(Config) ->
     NodesRes = vmq_netsplit_utils:proxy_multicall(Nodes, vmq_reg,
                                                   subscriptions_for_subscriber_id,
                                                   [{"", "test-netsplit-client"}]),
-    NodesRes = [[{"netsplit/0/test", 0}] || _ <- lists:seq(1, length(Nodes))].
+    NodesRes = [[{"netsplit/0/test", 0, FirstNode}] || _ <- lists:seq(1, length(Nodes))].

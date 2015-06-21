@@ -168,23 +168,34 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 handle_event(Handler, Event) ->
     case Handler(Event) of
-        {subscribe, MP, Topic, {SubscriberId, QoS, _}} ->
-            %% subscribe on local node
-            add_topic(MP, Topic, node()),
-            add_subscriber(MP, Topic, SubscriberId, QoS);
-        {subscribe, MP, Topic, Node} when is_atom(Node) ->
-            %% subscribe on remote node
-            add_topic(MP, Topic, Node);
-        {unsubscribe, MP, Topic, {SubscriberId, QoS}} ->
-            %% unsubscribe on local node
-            del_topic(MP, Topic, node()),
-            del_subscriber(MP, Topic, SubscriberId, QoS);
-        {unsubscribe, MP, Topic, Node} when is_atom(Node) ->
-            %% unsubscribe on remote node
-            del_topic(MP, Topic, Node);
+        {delete, SubscriberId, Subs} ->
+            handle_delete_event(SubscriberId, Subs);
+        {update, SubscriberId, ToRemove, ToAdd} ->
+            handle_delete_event(SubscriberId, ToRemove),
+            handle_add_event(SubscriberId, ToAdd);
         ignore ->
             ok
     end.
+
+handle_delete_event({MP, _} = SubscriberId, [{Topic, QoS, Node}|Rest]) when Node == node() ->
+    del_topic(MP, Topic, Node),
+    del_subscriber(MP, Topic, SubscriberId, QoS),
+    handle_delete_event(SubscriberId, Rest);
+handle_delete_event({MP, _} = SubscriberId, [{Topic, _, Node}|Rest]) ->
+    del_topic(MP, Topic, Node),
+    handle_delete_event(SubscriberId, Rest);
+handle_delete_event(_, []) -> ok.
+
+handle_add_event({MP, _} = SubscriberId, [{Topic, QoS, Node}|Rest]) when Node == node() ->
+    add_topic(MP, Topic, Node),
+    add_subscriber(MP, Topic, SubscriberId, QoS),
+    handle_add_event(SubscriberId, Rest);
+handle_add_event({MP, _} = SubscriberId, [{Topic, _, Node}|Rest]) ->
+    add_topic(MP, Topic, Node),
+    handle_add_event(SubscriberId, Rest);
+handle_add_event(_, []) -> ok.
+
+
 
 match(MP, Topic) when is_list(MP) and is_list(Topic) ->
     TrieNodes = trie_match(MP, Topic),

@@ -22,7 +22,6 @@
          subscribe/5,
          unsubscribe/4,
          register_subscriber/5,
-         register_session/3,
          %% used in vmq_session fsm handling
          publish/1,
 
@@ -62,7 +61,10 @@
 %% used by vmq_session:list_sessions
 -export([fold_sessions/2]).
 
-%% currently used by netsplit tests
+%% called when remote message delivery successfully finished for node
+-export([remap_subscription/2]).
+
+%% exported because currently used by netsplit tests
 -export([subscriptions_for_subscriber_id/1]).
 
 -record(state, {}).
@@ -78,15 +80,23 @@
 
 -define(RETAIN_DB, {vmq, retain}).
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
+-define(TOMBSTONE, '$deleted').
 
 -spec start_link() -> {ok, pid()} | ignore | {error, atom()}.
 start_link() ->
-    _ = ets:new(vmq_session, [public,
-                              bag,
-                              named_table,
-                              {keypos, 2},
-                              {read_concurrency, true},
-                              {write_concurrency, true}]),
+    case ets:info(vmq_session) of
+        undefined ->
+            _ = ets:new(vmq_session, [public,
+                                      bag,
+                                      named_table,
+                                      {keypos, 2},
+                                      {read_concurrency, true},
+                                      {write_concurrency, true}]);
+        _ ->
+            %% ets table already exists, we'll remap the monitors
+            %% in the init callback.
+            ignore
+    end,
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec subscribe(flag(), username() | plugin_id(), subscriber_id(), pid(),
@@ -165,9 +175,13 @@ register_subscriber(true, BalanceSessions, SubscriberId, QPid, _CleanSession) ->
 register_subscriber(SubscriberId, QPid, CleanSession) ->
     case vmq_reg_leader:register_subscriber(self(), QPid, SubscriberId,
                                             CleanSession) of
-        ok when CleanSession == ?false ->
-            vmq_session_proxy_sup:start_delivery(QPid, SubscriberId),
+        ok when CleanSession == ?true ->
+            %% no need to remap
             ok;
+        ok ->
+            Subs = subscriptions_for_subscriber_id(SubscriberId),
+            RemapedNodes = lists:usort([N || {_,_,N} <- Subs]),
+            vmq_session_proxy_sup:start_delivery(RemapedNodes, QPid, SubscriberId);
         R ->
             R
     end.
@@ -177,20 +191,18 @@ register_session(SubscriberId, BalanceSessions, QPid) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
     SessionPid = self(),
-    rate_limited_op(
-      fun() -> remap_session(SubscriberId) end,
-      fun({error, Reason}) -> {error, Reason};
-         (_) ->
-              case gen_server:call(?MODULE,
-                                   {monitor, SessionPid, QPid, SubscriberId,
-                                    BalanceSessions, false, false},
-                                   infinity) of
-                  ok ->
-                      vmq_session_proxy_sup:start_delivery(QPid, SubscriberId);
-                  {error, Reason} ->
-                      {error, Reason}
-              end
-      end).
+    Subs = subscriptions_for_subscriber_id(SubscriberId),
+    case gen_server:call(?MODULE,
+                         {monitor, SessionPid, QPid, SubscriberId,
+                          BalanceSessions, false, false},
+                         infinity) of
+        ok ->
+            RemapedNodes = lists:usort([N || {_,_,N} <- Subs]),
+            vmq_session_proxy_sup:start_delivery(RemapedNodes, QPid,
+                                                 SubscriberId);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 teardown_session(SubscriberId, CleanSession) ->
     %% we first have to disconnect a local or remote session for
@@ -210,27 +222,28 @@ teardown_session(SubscriberId, CleanSession) ->
     end,
     NodeWithSession.
 
--spec register_subscriber_(pid(), pid(),
-                           subscriber_id(), flag()) -> 'ok' | {error, overloaded}.
+-spec register_subscriber_(pid(), pid(), subscriber_id(), flag()) ->
+    'ok' | {error, overloaded}.
 register_subscriber_(SessionPid, QPid, SubscriberId, CleanSession) ->
     %% cleanup session for this client id if needed
     case CleanSession of
         ?true ->
-            rate_limited_op(fun() -> del_subscriber(SubscriberId) end,
-                            fun({error, Reason}) -> {error, Reason};
-                               (_) -> register_subscriber__(SessionPid, QPid,
-                                                            SubscriberId, true)
-                            end);
+            rate_limited_op(
+              fun() ->
+                      del_subscriber(SubscriberId)
+              end,
+              fun(ok) ->
+                      register_subscriber__(SessionPid, QPid, SubscriberId, true);
+                 (E) -> E
+              end);
         ?false ->
-            rate_limited_op(fun() -> remap_subscriptions(SubscriberId) end,
-                            fun({error, Reason}) -> {error, Reason};
-                               (_) -> register_subscriber__(SessionPid, QPid,
-                                                            SubscriberId, false)
-                            end)
+            register_subscriber__(SessionPid, QPid, SubscriberId, false)
     end.
 
 -spec register_subscriber__(pid(), pid(), subscriber_id(), flag()) -> 'ok' | {error, _}.
 register_subscriber__(SessionPid, QPid, SubscriberId, CleanSession) ->
+    %% TODO: make this more efficient, currently we have to rpc every
+    %% node in the cluster
     NodesWithSession =
     lists:foldl(
       fun(Node, Acc) ->
@@ -361,7 +374,8 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
         _ -> Words
     end,
     plumtree_metadata:fold(
-      fun({{T}, Payload}, _) ->
+      fun ({_, ?TOMBSTONE}, Acc) -> Acc;
+          ({{T}, Payload}, _) ->
               Msg = #vmq_msg{routing_key=T,
                              payload=Payload,
                              retain=true,
@@ -380,12 +394,7 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
        {resolver, lww}]).
 
 subscriptions_for_subscriber_id(SubscriberId) ->
-    plumtree_metadata:fold(
-      fun({{_, {Topic, QoS}}, _}, Acc) ->
-              [{Topic, QoS}|Acc]
-      end, [], ?SUBSCRIBER_DB,
-      [{match, {SubscriberId, '_'}},
-       {resolver, lww}]).
+    plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% RPC Callbacks / Maintenance
@@ -528,30 +537,17 @@ plugin_queue_loop(PluginPid, PluginMod) ->
 
 subscribe_subscriber_changes() ->
     plumtree_metadata_manager:subscribe(?SUBSCRIBER_DB),
-    Node = node(),
     fun
-        ({delete, ?SUBSCRIBER_DB, _, []}) ->
-            %% no existing subscription was deleted
+        ({deleted, ?SUBSCRIBER_DB, _, Val})
+          when (Val == ?TOMBSTONE) or (Val == undefined) ->
             ignore;
-        ({delete, ?SUBSCRIBER_DB, {{MP, _} = SubscriberId, {Topic, QoS}}, [Metadata]}) ->
-            case plumtree_metadata_object:values(Metadata) of
-                [Node|_] ->
-                    {unsubscribe, MP, Topic, {SubscriberId, QoS}};
-                [OtherNode|_] ->
-                    {unsubscribe, MP, Topic, OtherNode}
-            end;
-        ({write, ?SUBSCRIBER_DB, {{MP, _} = SubscriberId, {Topic, QoS}}, Metadata}) ->
-            case plumtree_metadata_object:values(Metadata) of
-                [Node|_] ->
-                    QPids =
-                    case get_queue_pids(SubscriberId) of
-                        [] -> {error, not_found};
-                        Pids ->  Pids
-                    end,
-                    {subscribe, MP, Topic, {SubscriberId, QoS, QPids}};
-                [OtherNode|_] ->
-                    {subscribe, MP, Topic, OtherNode}
-            end;
+        ({deleted, ?SUBSCRIBER_DB, SubscriberId, Subscriptions}) ->
+            {delete, SubscriberId, Subscriptions};
+        ({updated, ?SUBSCRIBER_DB, SubscriberId, OldVal, NewSubs})
+          when (OldVal == ?TOMBSTONE) or (OldVal == undefined) ->
+            {update, SubscriberId, [], NewSubs};
+        ({updated, ?SUBSCRIBER_DB, SubscriberId, OldSubs, NewSubs}) ->
+            {update, SubscriberId, OldSubs -- NewSubs, NewSubs -- OldSubs};
         (_) ->
             ignore
     end.
@@ -562,21 +558,24 @@ fold_subscribers(FoldFun, Acc) ->
 fold_subscribers(ResolveQPids, FoldFun, Acc) ->
     Node = node(),
     plumtree_metadata:fold(
-      fun({{{MP, _} = SubscriberId, {Topic, QoS}}, N}, AccAcc) ->
-              case Node == N of
-                  true when ResolveQPids ->
-                      QPids = get_queue_pids(SubscriberId),
-                      FoldFun({MP, Topic, {SubscriberId, QoS, QPids}},
-                              AccAcc);
-                  true ->
-                      FoldFun({MP, Topic, {SubscriberId, QoS, undefined}},
-                              AccAcc);
-                  false ->
-                      FoldFun({MP, Topic, N}, AccAcc)
-              end
+      fun ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
+          ({{MP, _} = SubscriberId, Subs}, AccAcc) ->
+              lists:foldl(
+                fun({Topic, QoS, N}, AccAccAcc) when Node == N ->
+                        case ResolveQPids of
+                            true ->
+                                QPids = get_queue_pids(SubscriberId),
+                                FoldFun({MP, Topic, {SubscriberId, QoS, QPids}},
+                                        AccAccAcc);
+                            false ->
+                                FoldFun({MP, Topic, {SubscriberId, QoS, undefined}},
+                                        AccAccAcc)
+                        end;
+                   ({Topic, _, N}, AccAccAcc) ->
+                        FoldFun({MP, Topic, N}, AccAccAcc)
+                end, AccAcc, Subs)
       end, Acc, ?SUBSCRIBER_DB,
-      [{resolver, lww}]
-     ).
+      [{resolver, lww}]).
 
 fold_sessions(FoldFun, Acc) ->
     ets:foldl(fun(#session{subscriber_id=SubscriberId,
@@ -587,50 +586,52 @@ fold_sessions(FoldFun, Acc) ->
 
 -spec add_subscriber(topic(), qos(), subscriber_id()) -> ok.
 add_subscriber(Topic, QoS, SubscriberId) ->
-    Key = {SubscriberId, {Topic, QoS}},
-    plumtree_metadata:put(?SUBSCRIBER_DB, Key, node()).
+    NewSubs =
+    case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
+        undefined ->
+            [{Topic, QoS, node()}];
+        Subs ->
+            lists:usort([{Topic, QoS, node()}|Subs])
+    end,
+    plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs).
 
 
 -spec del_subscriber(subscriber_id()) -> ok.
 del_subscriber(SubscriberId) ->
-    del_subscriber('_', SubscriberId).
+    plumtree_metadata:delete(?SUBSCRIBER_DB, SubscriberId).
 
 -spec del_subscriber(topic() | '_' , subscriber_id()) -> ok.
 del_subscriber(Topic, SubscriberId) ->
-    plumtree_metadata:fold(
-      fun({Key, _}, _) ->
-              plumtree_metadata:delete(?SUBSCRIBER_DB, Key)
-      end, ok, ?SUBSCRIBER_DB,
-      [{match, {SubscriberId, {Topic, '_'}}}]).
+    Subs = plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]),
+    NewSubs = [Sub || {T, _, N} = Sub <- Subs, (T /= Topic) and (N /= node())],
+    plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs).
 
--spec remap_subscriptions(subscriber_id()) -> ok.
-remap_subscriptions(SubscriberId) ->
-    Node = node(),
-    plumtree_metadata:fold(
-      fun({{_, {Topic, QoS}}, N}, _) ->
-              case N of
-                  Node -> ok;
-                  _ ->
-                      add_subscriber(Topic, QoS, SubscriberId)
-              end
-      end, ok, ?SUBSCRIBER_DB,
-      [{match, {SubscriberId, '_'}},
-       {resolver, lww}]).
-
--spec remap_session(subscriber_id()) -> ok.
-remap_session(SubscriberId) ->
-    Node = node(),
-    plumtree_metadata:fold(
-      fun({{_, {Topic, QoS}}, N}, _) ->
-              case N of
-                  Node -> ok;
-                  _ ->
-                      add_subscriber(Topic, QoS, SubscriberId)
-              end
-      end, ok, ?SUBSCRIBER_DB,
-      [{match, {SubscriberId, '_'}},
-       {resolver, lww}]).
-
+-spec remap_subscription(subscriber_id(), atom()) -> ok | {error, overloaded}.
+remap_subscription(SubscriberId, Node) ->
+    %% Called as the last step of the remote message delivery. when we reach
+    %% this step, the session has received and acked all messages that were
+    %% persisted on `Node'.
+    %%
+    %% As the last action we remap the subscription, telling the cluster that
+    %% the subscription has finally moved to this node. There's not much that
+    %% can go wrong at this point, but we still have to load protect the last
+    %% update to the ?SUBSCRIBER_DB. vmq_session_proxy process keeps retrying
+    %% if rate_limited_op/1 returns {error, overloaded}.
+    %%
+    %% In case the session process goes down (for good and bad reasons) in the
+    %% meantime, the subscription is not moved and retried upon the next connect.
+    rate_limited_op(
+      fun() ->
+              Self = node(),
+              Subs = plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]),
+              NewSubs =
+              lists:foldl(fun({Topic, QoS, N}, Acc) when N == Node ->
+                                  [{Topic, QoS, Self}|Acc];
+                             (Sub, Acc) ->
+                                  [Sub|Acc]
+                          end, [], Subs),
+              plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs) end
+     ).
 
 -spec get_subscriber_pids(subscriber_id()) ->
     {'error','not_found'} | {'ok', [pid()]}.
@@ -748,7 +749,6 @@ set_monitors({PidsAndIds, Cont}) ->
 init([]) ->
     _ = ets:new(vmq_session_mons, [named_table]),
     spawn_link(fun() -> message_queue_monitor() end),
-    process_flag(trap_exit, true),
     process_flag(priority, high),
     set_monitors(),
     {ok, #state{}}.

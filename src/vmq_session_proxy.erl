@@ -78,15 +78,24 @@ handle_cast({derefed, MsgRef}, #state{waiting={MsgRef, From}} = State) ->
     gen_server:reply(From, ok),
     {noreply, State#state{waiting=undefined}}.
 
+handle_info(remap_subscription, #state{subscriber_id=SubscriberId, node=Node} = State) ->
+    case vmq_reg:remap_subscription(SubscriberId, Node) of
+        ok ->
+            %% finished replicating
+            lager:debug("[~p][~p] stopped message replication for subscriber ~p due to "
+                        ++ "deliver_from_store proc stopped normally", [node(), SubscriberId, Node]),
+            {stop, normal, State};
+        {error, overloaded} ->
+            erlang:send_after(1000, self(), remap_subscription),
+            {noreply, State}
+    end;
 handle_info({'DOWN', MRef, process, Pid, Reason}, State) ->
     #state{repl_pid=ReplPid, repl_mon=ReplMon, queue_mon=QMon,
            subscriber_id=SubscriberId, node=Node} = State,
     case {Pid == ReplPid, Reason} of
         {true, normal} ->
-            %% finished replicating
-            lager:debug("[~p][~p] stopped message replication for subscriber ~p due to "
-                       ++ "deliver_from_store proc stopped normally", [node(), SubscriberId, Node]),
-            {stop, normal, State};
+            self() ! remap_subscription,
+            {noreply, State};
         {true, {deliver_from_store, retry}} ->
             case lists:member(Node, vmq_cluster:nodes()) of
                 true ->
