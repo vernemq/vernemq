@@ -36,6 +36,7 @@
 
 
 -define(CLOSE_AFTER, 5000).
+-define(HIBERNATE_AFTER, 5000).
 -define(ALLOWED_MQTT_VERSIONS, [3, 4, 131]).
 -define(MAX_SAMPLES, 10).
 
@@ -43,7 +44,7 @@
 -type statename() :: atom().
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
--type counter() :: {timestamp(), non_neg_integer(), non_neg_integer()}.
+-type counter() :: {non_neg_integer(), non_neg_integer(), [non_neg_integer()]}.
 -type msg_id() :: undefined | 1..65535.
 
 -ifdef(namespaced_types).
@@ -66,9 +67,12 @@
           username                          :: undefined | username() |
                                                {preauth, string() | undefined},
           keep_alive                        :: undefined | non_neg_integer(),
+          keep_alive_tref                   :: undefined | reference(),
           clean_session=0                   :: flag(),
           proto_ver                         :: undefined | pos_integer(),
           queue_pid                         :: pid(),
+
+          last_time_active=os:timestamp()   :: timestamp(),
 
           %% stats
           recv_cnt=init_counter()           :: counter(),
@@ -215,10 +219,9 @@ wait_for_connect(timeout, State) ->
                 | {deliver, topic(), payload(), qos(),
                    flag(), flag(), binary()}, state()) ->
     {next_state, connected, state()} | {stop, normal, state()}.
-connected(timeout, State) ->
+connected(keepalive_expired, State) ->
     lager:warning("[~p] stop due to ~p ~p~n", [self(), keepalive_expired, State#state.keep_alive]),
     {stop, normal, State};
-
 connected({retry, MessageId}, State) ->
     #state{send_fun=SendFun, waiting_acks=WAcks,
            retry_interval=RetryInterval, send_cnt=SendCnt} = State,
@@ -263,7 +266,6 @@ init([Peer, SendFun, Opts]) ->
     MaxMessageRate = vmq_config:get_env(max_message_rate, 0),
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
-    erlang:send_after(1000, self(), trigger_counter_update),
     {ok, wait_for_connect, #state{peer=Peer, send_fun=SendFun,
                                   upgrade_qos=UpgradeQoS,
                                   mountpoint=string:strip(MountPoint, right, $/),
@@ -293,15 +295,19 @@ handle_event(disconnect, StateName, State) ->
 handle_sync_event({input, #mqtt_disconnect{}}, _From, _, State) ->
     {stop, normal, State};
 handle_sync_event({input, Frame}, _From, StateName, State) ->
-    #state{recv_cnt=RecvCnt} = State,
+    #state{recv_cnt=RecvCnt, keep_alive_tref=TRef} = State,
+    cancel_timer(TRef),
     case handle_frame(StateName, Frame,
                       State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)}) of
         {connected, #state{keep_alive=0} = NewState} ->
-            {reply, ok, connected, NewState};
+            {reply, ok, connected, maybe_trigger_counter_update(NewState)};
         {connected, #state{keep_alive=KeepAlive} = NewState} ->
-            {reply, ok, connected, NewState, KeepAlive};
+            NewTRef = gen_fsm:send_event_after(KeepAlive, keepalive_expired),
+            {reply, ok, connected, maybe_trigger_counter_update(
+                                     NewState#state{keep_alive_tref=NewTRef})};
         {NextStateName, NewState} ->
-            {reply, ok, NextStateName, NewState, ?CLOSE_AFTER};
+            {reply, ok, NextStateName,
+             maybe_trigger_counter_update(NewState), ?CLOSE_AFTER};
         Ret -> Ret
     end;
 handle_sync_event({get_info, Items}, _From, StateName, State) ->
@@ -316,7 +322,7 @@ handle_info({mail, QPid, new_data}, StateName,
             #state{queue_pid=QPid} = State) ->
     vmq_queue:active(QPid),
     {next_state, StateName, State};
-handle_info({mail, QPid, Msgs, _, Dropped}, connected,
+handle_info({mail, QPid, Msgs, _, Dropped}, StateName,
             #state{subscriber_id=SubscriberId, queue_pid=QPid} = State) ->
     NewState =
     case Dropped > 0 of
@@ -330,13 +336,10 @@ handle_info({mail, QPid, Msgs, _, Dropped}, connected,
     case handle_messages(Msgs, [], NewState) of
         {ok, NewState1} ->
             vmq_queue:notify(QPid),
-            {next_state, connected, NewState1};
+            {next_state, StateName, maybe_trigger_counter_update(NewState1)};
         Ret ->
             Ret
     end;
-handle_info(trigger_counter_update, StateName, State) ->
-    erlang:send_after(1000, self(), trigger_counter_update),
-    {next_state, StateName, trigger_counter_update(State)};
 handle_info(Info, _StateName, State) ->
     {stop, {error, {unknown_info, Info}}, State} .
 
@@ -349,6 +352,8 @@ terminate(_Reason, connected, State) ->
             ?false ->
                 handle_waiting_acks(State)
         end,
+    trigger_counter_update(false, State),
+    %% TODO: the counter update is missing the last will message
     maybe_publish_last_will(State);
 terminate(_Reason, _, _) ->
     ok.
@@ -566,7 +571,7 @@ handle_frame(connected, #mqtt_publish{message_id=MessageId, topic=Topic,
         false ->
             {connected, NewState};
         true ->
-            {reply, throttle, connected, NewState}
+            {reply, throttle, connected, maybe_trigger_counter_update(NewState)}
     end;
 
 handle_frame(connected, #mqtt_subscribe{message_id=MessageId, topics=Topics},
@@ -1072,39 +1077,54 @@ incr_pub_dropped_cnt(I, PubDroppedCnt) -> incr_cnt(I, PubDroppedCnt).
 incr_pub_sent_cnt(I, PubSendCnt) -> incr_cnt(I, PubSendCnt).
 
 incr_cnt(IncrV, {Avg, Total, []}) ->
-    {Avg, Total, [IncrV]};
+    {Avg, Total + IncrV, [IncrV]};
 incr_cnt(IncrV, {Avg, Total, [V|Vals]}) ->
     {Avg, Total + IncrV, [V + IncrV|Vals]}.
 
 
-trigger_counter_update(State) ->
+maybe_trigger_counter_update(#state{last_time_active={MSecs, Secs, _}} = State) ->
+    NewTS = os:timestamp(),
+    case NewTS of
+        {MSecs, Secs, _} ->
+            State;
+        _ ->
+            trigger_counter_update(false, State#state{last_time_active=NewTS})
+    end.
+
+trigger_counter_update(ResetSamples, State) ->
     #state{recv_cnt=RecvCnt,
            send_cnt=SendCnt,
            pub_recv_cnt=PubRecvCnt,
            pub_send_cnt=PubSendCnt,
            pub_dropped_cnt=PubDroppedCnt} = State,
     State#state{
-        recv_cnt=trigger_counter_update(incr_messages_received, RecvCnt),
-        send_cnt=trigger_counter_update(incr_messages_sent, SendCnt),
-        pub_recv_cnt=trigger_counter_update(incr_publishes_received,
+        recv_cnt=trigger_counter_update(ResetSamples, incr_messages_received, RecvCnt),
+        send_cnt=trigger_counter_update(ResetSamples, incr_messages_sent, SendCnt),
+        pub_recv_cnt=trigger_counter_update(ResetSamples, incr_publishes_received,
                                             PubRecvCnt),
-        pub_send_cnt=trigger_counter_update(incr_publishes_sent,
+        pub_send_cnt=trigger_counter_update(ResetSamples, incr_publishes_sent,
                                             PubSendCnt),
-        pub_dropped_cnt=trigger_counter_update(incr_publishes_dropped,
+        pub_dropped_cnt=trigger_counter_update(ResetSamples, incr_publishes_dropped,
                                                PubDroppedCnt)}.
 
-trigger_counter_update(IncrFun, {Avg, _, []} = Counter) ->
-    _ = apply(vmq_exo, IncrFun, [Avg]),
+trigger_counter_update(_,_, {_, _, []} = Counter) ->
     Counter;
-trigger_counter_update(IncrFun, {_, Total, Vals}) ->
+trigger_counter_update(ResetSamples, IncrFun, {_, Total, Vals}) ->
     L = length(Vals),
     Avg = lists:sum(Vals) div L,
     _ = apply(vmq_exo, IncrFun, [Avg]),
-    case L of
-        ?MAX_SAMPLES ->
-            {Avg, Total, lists:reverse(tl(lists:reverse(Vals)))};
-        _ when L < ?MAX_SAMPLES ->
-            {Avg, Total, [0|Vals]}
+    case {L, ResetSamples} of
+        {?MAX_SAMPLES, false} ->
+            % remove oldest sample
+            {Avg, Total, [0|lists:reverse(tl(lists:reverse(Vals)))]};
+        {_, false} when L < ?MAX_SAMPLES ->
+            {Avg, Total, [0|Vals]};
+        {_, true} ->
+            %% this ensures that once the process
+            %% wakes up after hibernation, we won't
+            %% use maybe too old samples.
+            %% BUT: we'll keep the Avg since this is used for rate limitation
+            {Avg, Total, []}
     end.
 
 prop_val(Key, Args, Default) when is_list(Default) ->

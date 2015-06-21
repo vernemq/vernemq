@@ -30,9 +30,12 @@
          terminate/2,
          code_change/3]).
 
--record(state, {node, reachable=true, queue = queue:new()}).
+-record(state, {node,
+                reachable=true,
+                queue = queue:new(),
+                batch_size,
+                max_queue_size}).
 -define(REMONITOR, 5000).
--define(BATCH_SIZE, 20).
 
 %%%===================================================================
 %%% API
@@ -49,7 +52,7 @@ start_link(RemoteNode) ->
     gen_server:start_link(?MODULE, [RemoteNode], []).
 
 publish(Pid, Msg) ->
-    case catch gen_server:call(Pid, {publish, Msg}, 100) of
+    case catch gen_server:call(Pid, {publish, Msg}, infinity) of
         ok -> ok;
         {'EXIT', Reason} ->
             % we are not allowed to crash, this would
@@ -57,10 +60,19 @@ publish(Pid, Msg) ->
             {error, Reason}
     end.
 
-publish_batch(Msgs) ->
-    lists:foreach(fun({Topic, Msg}) ->
-                          vmq_reg:publish_({Topic, node()}, Msg)
-                  end, Msgs).
+publish_batch([#vmq_msg{mountpoint=MP,
+                        routing_key=Topic,
+                        reg_view=RegView} = Msg|Msgs]) ->
+    _ = RegView:fold(MP, Topic, fun publish_batch_single/2, Msg),
+    publish_batch(Msgs);
+publish_batch([]) -> ok.
+
+publish_batch_single({_,_} = SubscriberIdAndQoS, Msg) ->
+    vmq_reg:publish(SubscriberIdAndQoS, Msg);
+publish_batch_single(_Node, Msg) ->
+    %% we ignore remote subscriptions, they are already covered
+    %% by original publisher
+    Msg.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -78,8 +90,10 @@ publish_batch(Msgs) ->
 %% @end
 %%--------------------------------------------------------------------
 init([RemoteNode]) ->
+    MaxQueueSize = vmq_config:get_env(max_outgoing_publish_queue_size),
+    BatchSize = vmq_config:get_env(outgoing_publish_batch_size),
     erlang:monitor_node(RemoteNode, true),
-    {ok, #state{node=RemoteNode}}.
+    {ok, #state{node=RemoteNode, batch_size=BatchSize, max_queue_size=MaxQueueSize}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -95,11 +109,18 @@ init([RemoteNode]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({publish, Msg}, _From, #state{queue=Q, reachable=true} = State) ->
-    {reply, ok, process_queue(State#state{queue=queue:in(Msg, Q)})};
-handle_call({publish, Msg}, _From, #state{queue=Q, reachable=false} = State) ->
-    {reply, ok, State#state{queue=queue:in(Msg, Q)}}.
-
+handle_call({publish, Msg}, From, #state{queue=Q, reachable=true} = State) ->
+    gen_server:reply(From, ok),
+    {noreply, process_queue(State#state{queue=queue:in(Msg, Q)})};
+handle_call({publish, Msg}, _From, #state{queue=Q, max_queue_size=Max,
+                                          reachable=false} = State) ->
+    case queue:len(Q) < Max of
+        true ->
+            {reply, ok, State#state{queue=queue:in(Msg, Q)}};
+        false ->
+            {reply, {error, outgoing_queue_full}, State}
+    end.
+%%
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -163,28 +184,29 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-process_queue(#state{node=Node, queue=Q} = State) ->
+process_queue(#state{node=Node, queue=Q, batch_size=BatchSize} = State) ->
     case queue:is_empty(Q) of
         true -> State;
         false ->
-            State#state{queue=batch(Node, Q)}
+            State#state{queue=batch(Node, BatchSize, Q)}
     end.
 
-batch(Node, Q) ->
-    batch(Node, queue:out(Q), []).
-batch(Node, {{value, V}, Q}, Batch) when length(Batch) < ?BATCH_SIZE ->
-    batch(Node, queue:out(Q), [V|Batch]);
-batch(Node, {{value, V}, Q}, Batch) when length(Batch) == ?BATCH_SIZE ->
+batch(Node, BatchSize, Q) ->
+    batch(Node, BatchSize, queue:out(Q), []).
+
+batch(Node, BatchSize, {{value, V}, Q}, Batch) when length(Batch) < BatchSize ->
+    batch(Node, BatchSize, queue:out(Q), [V|Batch]);
+batch(Node, BatchSize, {{value, V}, Q}, Batch) when length(Batch) == BatchSize ->
     Msgs = lists:reverse([V|Batch]),
     case rpc:call(Node, ?MODULE, publish_batch, [Msgs]) of
         ok ->
-            batch(Node, queue:out(Q), []);
+            batch(Node, BatchSize, queue:out(Q), []);
         {badrpc, _} ->
             lists:foldl(fun(Item, AccQ) ->
                                 queue:in_r(Item, AccQ)
                         end, Q, Batch)
     end;
-batch(Node, {empty, Q} , Batch) ->
+batch(Node, _, {empty, Q} , Batch) ->
     Msgs = lists:reverse(Batch),
     case rpc:call(Node, ?MODULE, publish_batch, [Msgs]) of
         ok ->

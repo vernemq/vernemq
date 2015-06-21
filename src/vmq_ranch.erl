@@ -28,11 +28,8 @@
              proto_tag,
              pending=[],
              throttled=false,
-             cpulevel=0,
              bytes_recv={os:timestamp(), 0},
              bytes_send={os:timestamp(), 0}}).
-
--define(HIBERNATE_AFTER, 5000).
 
 %% API.
 start_link(Ref, Socket, Transport, Opts) ->
@@ -95,9 +92,6 @@ loop_(#st{pending=[]} = State) ->
     receive
         M ->
             loop_(handle_message(M, State))
-    after
-        ?HIBERNATE_AFTER ->
-            erlang:hibernate(?MODULE, loop, [State])
     end;
 loop_(#st{} = State) ->
     receive
@@ -193,25 +187,29 @@ process_bytes(SessionPid, Bytes, ParserState) ->
 
 handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
     #st{session=SessionPid,
+        socket=Socket,
         parser_state=ParserState,
-        bytes_recv={TS, V},
-        cpulevel=CpuLevel} = State,
+        bytes_recv={TS, V}} = State,
     case process_bytes(SessionPid, Data, ParserState) of
         {ok, NewParserState} ->
             {M, S, _} = TS,
             NrOfBytes = byte_size(Data),
             BytesRecvLastSecond = V + NrOfBytes,
-            {NewCpuLevel, NewBytesRecv} =
+            NewBytesRecv =
             case os:timestamp() of
                 {M, S, _} = NewTS ->
-                    {CpuLevel, {NewTS, BytesRecvLastSecond}};
+                    {NewTS, BytesRecvLastSecond};
                 NewTS ->
                     _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
-                    {vmq_sysmon:cpu_load_level(), {NewTS, 0}}
+                    {NewTS, 0}
             end,
-            maybe_throttle(State#st{parser_state=NewParserState,
-                                    bytes_recv=NewBytesRecv,
-                                    cpulevel=NewCpuLevel});
+            case active_once(Socket) of
+                ok ->
+                    State#st{parser_state=NewParserState,
+                             bytes_recv=NewBytesRecv};
+                {error, Reason} ->
+                    {exit, Reason, State}
+            end;
         {throttled, HoldBackBuf} ->
             erlang:send_after(1000, self(), restart_work),
             State#st{throttled=true, buffer=HoldBackBuf};
@@ -236,35 +234,11 @@ handle_message({inet_reply, _, ok}, State) ->
     State;
 handle_message({inet_reply, _, Status}, State) ->
     {exit, {send_failed, Status}, State};
-handle_message(active_once, #st{socket=Socket, throttled=true} = State) ->
-    case active_once(Socket) of
-        ok ->
-            State#st{throttled=false};
-        {error, Reason} ->
-            {exit, Reason, State}
-    end;
 handle_message(restart_work, #st{throttled=true} = State) ->
     #st{proto_tag={Proto, _, _}, buffer=Data, socket=Socket} = State,
     handle_message({Proto, Socket, Data}, State#st{throttled=false, buffer= <<>>});
 handle_message(Msg, State) ->
     {exit, {unknown_message_type, Msg}, State}.
-
-maybe_throttle(#st{cpulevel=1} = State) ->
-    erlang:send_after(10, self(), active_once),
-    State#st{throttled=true};
-maybe_throttle(#st{cpulevel=2} = State) ->
-    erlang:send_after(20, self(), active_once),
-    State#st{throttled=true};
-maybe_throttle(#st{cpulevel=L} = State) when L > 2->
-    erlang:send_after(100, self(), active_once),
-    State#st{throttled=true};
-maybe_throttle(#st{socket=Socket} = State) ->
-    case active_once(Socket) of
-        ok ->
-            State;
-        {error, Reason} ->
-            {exit, Reason, State}
-    end.
 
 send_frames([Frame|Frames], #st{pending=Pending} = State) ->
     Bin = vmq_parser:serialise(Frame),

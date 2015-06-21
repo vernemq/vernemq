@@ -199,6 +199,7 @@ receive_publishes(Nodes, Topic, Payloads) ->
         {ok, #mqtt_publish{message_id=MsgId, payload=Payload}} ->
             ok = gen_tcp:send(Socket, packet:gen_puback(MsgId)),
             ok = gen_tcp:send(Socket, Disconnect),
+            gen_tcp:close(Socket),
             io:format(user, "+", []),
             receive_publishes(Nodes, Topic, Payloads -- [Payload]);
         {error, _} ->

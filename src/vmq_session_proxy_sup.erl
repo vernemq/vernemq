@@ -18,7 +18,7 @@
 
 %% API
 -export([start_link/0,
-         start_delivery/2]).
+         start_delivery/3]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -30,12 +30,18 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-start_delivery(QPid, SubscriberId) ->
+start_delivery(Nodes, QPid, SubscriberId) ->
+    ClusterNodes = vmq_cluster:nodes(),
     lists:foreach(
       fun(Node) ->
-              {ok, _Pid} = supervisor:start_child(?MODULE,
-                                     [Node, QPid, SubscriberId])
-      end, vmq_cluster:nodes()).
+              case lists:member(Node, ClusterNodes) of
+                  true ->
+                      {ok, _Pid} = supervisor:start_child(?MODULE, [Node, QPid,
+                                                                    SubscriberId]);
+                  false ->
+                      lager:warning("can't initiate remote delivery due to node ~p not found", [Node])
+              end
+      end, Nodes).
 
 
 %%%===================================================================

@@ -37,11 +37,20 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 fold(MP, Topic, FoldFun, Acc) when is_list(Topic) ->
-    fold_(FoldFun, Acc, match(MP, Topic)).
+    fold_(MP, FoldFun, Acc, match(MP, Topic)).
 
-fold_(FoldFun, Acc, [Topic|MatchedTopics]) ->
-    fold_(FoldFun, FoldFun(Topic, Acc), MatchedTopics);
-fold_(_, Acc, []) -> Acc.
+fold_(MP, FoldFun, Acc, [{Topic, Node}|MatchedTopics]) when Node == node() ->
+    fold_(MP, FoldFun,
+          fold__(FoldFun, Acc,
+                 ets:lookup(vmq_trie_subs, {MP, Topic})),
+          MatchedTopics);
+fold_(MP, FoldFun, Acc, [{_Topic, Node}|MatchedTopics]) ->
+    fold_(MP, FoldFun, FoldFun(Node, Acc), MatchedTopics);
+fold_(_, _, Acc, []) -> Acc.
+
+fold__(FoldFun, Acc, [{_, SubsIdQoS}|Rest]) ->
+    fold__(FoldFun, FoldFun(SubsIdQoS, Acc), Rest);
+fold__(_, Acc, []) -> Acc.
 
 
 %%%===================================================================
@@ -65,6 +74,7 @@ init([]) ->
     _ = ets:new(vmq_trie, [{keypos, 2}|DefaultETSOpts]),
     _ = ets:new(vmq_trie_node, [{keypos, 2}|DefaultETSOpts]),
     _ = ets:new(vmq_trie_topic, [bag, {keypos, 1}|DefaultETSOpts]),
+    _ = ets:new(vmq_trie_subs, [bag|DefaultETSOpts]),
     Self = self(),
     spawn_link(
       fun() ->
@@ -158,21 +168,34 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 handle_event(Handler, Event) ->
     case Handler(Event) of
-        {subscribe, MP, Topic, {_, _, _}} ->
-            %% subscribe on local node
-            add_topic(MP, Topic, node());
-        {subscribe, MP, Topic, Node} when is_atom(Node) ->
-            %% subscribe on remote node
-            add_topic(MP, Topic, Node);
-        {unsubscribe, MP, Topic, {_, _}} ->
-            %% unsubscribe on local node
-            del_topic(MP, Topic, node());
-        {unsubscribe, MP, Topic, Node} when is_atom(Node) ->
-            %% unsubscribe on remote node
-            del_topic(MP, Topic, Node);
+        {delete, SubscriberId, Subs} ->
+            handle_delete_event(SubscriberId, Subs);
+        {update, SubscriberId, ToRemove, ToAdd} ->
+            handle_delete_event(SubscriberId, ToRemove),
+            handle_add_event(SubscriberId, ToAdd);
         ignore ->
             ok
     end.
+
+handle_delete_event({MP, _} = SubscriberId, [{Topic, QoS, Node}|Rest]) when Node == node() ->
+    del_topic(MP, Topic, Node),
+    del_subscriber(MP, Topic, SubscriberId, QoS),
+    handle_delete_event(SubscriberId, Rest);
+handle_delete_event({MP, _} = SubscriberId, [{Topic, _, Node}|Rest]) ->
+    del_topic(MP, Topic, Node),
+    handle_delete_event(SubscriberId, Rest);
+handle_delete_event(_, []) -> ok.
+
+handle_add_event({MP, _} = SubscriberId, [{Topic, QoS, Node}|Rest]) when Node == node() ->
+    add_topic(MP, Topic, Node),
+    add_subscriber(MP, Topic, SubscriberId, QoS),
+    handle_add_event(SubscriberId, Rest);
+handle_add_event({MP, _} = SubscriberId, [{Topic, _, Node}|Rest]) ->
+    add_topic(MP, Topic, Node),
+    handle_add_event(SubscriberId, Rest);
+handle_add_event(_, []) -> ok.
+
+
 
 match(MP, Topic) when is_list(MP) and is_list(Topic) ->
     TrieNodes = trie_match(MP, Topic),
@@ -195,8 +218,9 @@ match_(Topic, [{_, Node}|Rest], Acc) ->
     match_(Topic, Rest, [{Topic, Node}|Acc]);
 match_(_, [], Acc) -> Acc.
 
-initialize_trie({MP, Topic, {_,_,_}}, Acc) ->
+initialize_trie({MP, Topic, {SubscriberId, QoS, _}}, Acc) ->
     add_topic(MP, Topic, node()),
+    add_subscriber(MP, Topic, SubscriberId, QoS),
     Acc;
 initialize_trie({MP, Topic, Node}, Acc) when is_atom(Node) ->
     add_topic(MP, Topic, Node),
@@ -296,3 +320,9 @@ trie_delete_path(MP, [{Node, Word, _}|RestPath]) ->
             lager:debug("NodeId ~p not found", [NodeId]),
             ignore
     end.
+
+add_subscriber(MP, Topic, SubscriberId, QoS) ->
+    ets:insert(vmq_trie_subs, {{MP, Topic}, {SubscriberId, QoS}}).
+
+del_subscriber(MP, Topic, SubscriberId, QoS) ->
+    ets:delete_object(vmq_trie_subs, {{MP, Topic}, {SubscriberId, QoS}}).

@@ -37,6 +37,8 @@
       {vmq_config_enabled, true},
       {default_reg_view, vmq_reg_trie},
       {reg_views, [vmq_reg_trie]},
+      {max_outgoing_publish_queue_size, 1000},
+      {outgoing_publish_batch_size, 20},
       {listeners, [{mqtt, [
                          %  {{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
                          %                     {mountpoint, ""}]}
