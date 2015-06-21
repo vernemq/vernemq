@@ -851,6 +851,20 @@
                                                            hidden
                                                           ]}.
 
+%% the setup utility will call hooks to create the default directories,
+%% however the setup defaults e.g. data.<nodename> are not matching with our 
+%% defaults, so we need to override them.
+{mapping, "setup.log_dir", "setup.log_dir", [
+                                             {default, "{{platform_log_dir}}/"},
+                                             {datatype, directory},
+                                             hidden
+                                            ]}.
+{mapping, "setup.data_dir", "setup.data_dir", [
+                                             {default, "{{platform_data_dir}}/"},
+                                             {datatype, directory},
+                                             hidden
+                                            ]}.
+
 {translation, "vmq_server.tcp_listen_options", 
  fun(Conf) ->
          S = cuttlefish:conf_get("tcp_listen_options", Conf),
