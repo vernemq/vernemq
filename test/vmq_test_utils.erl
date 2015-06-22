@@ -17,7 +17,7 @@ start_server(StartNoAuth) ->
     application:load(vmq_server),
     PrivDir = code:priv_dir(vmq_server),
     application:set_env(vmq_server, schema_dirs, [PrivDir]),
-    application:set_env(vmq_server, listeners, []),
+    application:set_env(vmq_server, listeners, [{vmq, [{{{0,0,0,0}, random_port()}, []}]}]),
     application:set_env(vmq_server, ignore_db_config, true),
     application:set_env(vmq_server, lvldb_store_dir, Datadir ++ "/msgstore"),
     reset_all(),
@@ -29,6 +29,9 @@ start_server_(_StartNoAuth = true) ->
     vmq_server:start_no_auth();
 start_server_(_StartNoAuth = false) ->
     vmq_server:start().
+
+random_port() ->
+    10000 + (erlang:phash2(node()) rem 10000).
 
 teardown() ->
     disable_all_plugins(),

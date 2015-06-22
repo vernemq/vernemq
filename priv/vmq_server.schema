@@ -114,6 +114,26 @@
                                                                                   {datatype, [integer, {atom, infinity}]},
                                                                                   hidden
                                                                                  ]}. 
+{mapping, "listener.vmq.max_connections", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, [integer, {atom, infinity}]},
+                                                                            hidden
+                                                                           ]}. 
+{mapping, "listener.vmq.$name.max_connections", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                                 ]}. 
+{mapping, "listener.vmqs.max_connections", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, [integer, {atom, infinity}]},
+                                                                            hidden
+                                                                           ]}. 
+{mapping, "listener.vmqs.$name.max_connections", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                                 ]}. 
 
 
 %% @doc Set the nr of acceptors waiting to concurrently accept new connections.
@@ -185,6 +205,28 @@
                                                                                   {include_default, "default"},
                                                                                   hidden
                                                                                  ]}.
+{mapping, "listener.vmq.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, integer},
+                                                                                  hidden
+                                                                                 ]}.
+{mapping, "listener.vmq.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, integer},
+                                                                                  {include_default, "default"},
+                                                                                  hidden
+                                                                                 ]}.
+{mapping, "listener.vmqs.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, integer},
+                                                                                  hidden
+                                                                                 ]}.
+{mapping, "listener.vmqs.$name.nr_of_acceptors", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, integer},
+                                                                                  {include_default, "default"},
+                                                                                  hidden
+                                                                                 ]}.
 
 %% @doc listener.tcp.<name> is an IP address and TCP port that 
 %% the broker will bind to. You can define multiple listeners e.g:
@@ -218,6 +260,23 @@
                                                             {datatype, ip},
                                                             hidden
                                                            ]}.
+
+%% @doc listener.vmq.clustering is the IP address and TCP port that
+%% the broker will bind to accept connections from other cluster
+%% nodes e.g:
+%% - listener.vmq.clustering = 0.0.0.0:18883
+%% This also works for SSL listeners:
+%% - listener.vmqs.clustering = 0.0.0.0:18884
+{mapping, "listener.vmq.$name", "vmq_server.listeners", [
+                                                           {default, { "{{cluster_default_ip}}", {{cluster_default_port}} }},
+                                                           {datatype, ip},
+                                                            {include_default, "clustering"}
+                                                          ]}.
+{mapping, "listener.vmqs.$name", "vmq_server.listeners", [
+                                                           {default, { "{{cluster_default_ip}}", {{cluster_default_port}} }},
+                                                           {datatype, ip},
+                                                           hidden
+                                                          ]}.
 
 
 %% @doc Set the mountpoint on the protocol level or on the listener level
@@ -295,6 +354,28 @@
                                                                        {datatype, string},
                                                                        hidden
                                                                 ]}. 
+{mapping, "listener.vmq.mountpoint", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
+
+{mapping, "listener.vmq.$name.mountpoint", "vmq_server.listeners", [
+                                                                       {default, ""},
+                                                                       {datatype, string},
+                                                                       hidden
+                                                                      ]}. 
+{mapping, "listener.vmqs.mountpoint", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
+
+{mapping, "listener.vmqs.$name.mountpoint", "vmq_server.listeners", [
+                                                                       {default, ""},
+                                                                       {datatype, string},
+                                                                       hidden
+                                                                      ]}. 
 %% @doc The cafile is used to define the path to a file containing 
 %% the PEM encoded CA certificates that are trusted. Set the cafile 
 %% on the protocol level or on the listener level:
@@ -323,6 +404,11 @@
                                                           hidden
                                                          ]}. 
 {mapping, "listener.wss.$name.cafile", "vmq_server.listeners", [
+                                                                {default, ""},
+                                                                {datatype, string},
+                                                                hidden
+                                                               ]}. 
+{mapping, "listener.vmqs.$name.cafile", "vmq_server.listeners", [
                                                                 {default, ""},
                                                                 {datatype, string},
                                                                 hidden
@@ -358,6 +444,11 @@
                                                                   {datatype, file},
                                                                   hidden
                                                                  ]}. 
+{mapping, "listener.vmqs.$name.certfile", "vmq_server.listeners", [
+                                                                  {default, ""},
+                                                                  {datatype, file},
+                                                                  hidden
+                                                                 ]}. 
 %% @doc Set the path to the PEM encoded key file on the protocol 
 %% level or on the listener level:
 %%
@@ -384,6 +475,11 @@
                                                            hidden
                                                           ]}. 
 {mapping, "listener.wss.$name.keyfile", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, file},
+                                                                 hidden
+                                                                ]}. 
+{mapping, "listener.vmqs.$name.keyfile", "vmq_server.listeners", [
                                                                  {default, ""},
                                                                  {datatype, file},
                                                                  hidden
@@ -415,6 +511,11 @@
                                                            hidden
                                                           ]}. 
 {mapping, "listener.wss.$name.ciphers", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
+{mapping, "listener.vmqs.$name.ciphers", "vmq_server.listeners", [
                                                                  {default, ""},
                                                                  {datatype, string},
                                                                  hidden
@@ -452,6 +553,11 @@
                                                                  {datatype, string},
                                                                  hidden
                                                                 ]}. 
+{mapping, "listener.vmqs.$name.crlfile", "vmq_server.listeners", [
+                                                                 {default, ""},
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
 %% @doc Enable this option if you want to use SSL client certificates 
 %% to authenticate your clients. This can be done on the protocol level
 %% or on the listener level.
@@ -481,6 +587,10 @@
                                                                              {datatype, flag},
                                                                              hidden
                                                                             ]}. 
+{mapping, "listener.vmqs.$name.require_certificate", "vmq_server.listeners", [
+                                                                             {datatype, flag},
+                                                                             hidden
+                                                                            ]}. 
 %% @doc Configure the TLS protocol version (tlsv1, tlsv1.1, or tlsv1.2) to be 
 %% used for either all configured SSL listeners or for a specific listener:
 %%
@@ -506,6 +616,10 @@
                                                                hidden
                                                               ]}. 
 {mapping, "listener.wss.$name.tls_version", "vmq_server.listeners", [
+                                                                     {datatype, atom},
+                                                                     hidden
+                                                                    ]}. 
+{mapping, "listener.vmqs.$name.tls_version", "vmq_server.listeners", [
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}. 
@@ -555,6 +669,10 @@
                                                                            hidden
                                                                           ]}. 
 {mapping, "listener.wss.$name.support_elliptic_curves", "vmq_server.listeners", [
+                                                                                 {datatype, flag},
+                                                                                 hidden
+                                                                                ]}. 
+{mapping, "listener.vmqs.$name.support_elliptic_curves", "vmq_server.listeners", [
                                                                                  {datatype, flag},
                                                                                  hidden
                                                                                 ]}. 
@@ -639,16 +757,22 @@
          {SSLIPs, SSLMaxConns} = lists:unzip(F("listener.ssl", "max_connections", InfIntVal)),
          {WSIPs, WSMaxConns} = lists:unzip(F("listener.ws", "max_connections", InfIntVal)),
          {WS_SSLIPs, WS_SSLMaxConns} = lists:unzip(F("listener.wss", "max_connections", InfIntVal)),
+         {VMQIPs, VMQMaxConns} = lists:unzip(F("listener.vmq", "max_connections", InfIntVal)),
+         {VMQ_SSLIPs, VMQ_SSLMaxConns} = lists:unzip(F("listener.vmqs", "max_connections", InfIntVal)),
 
          {TCPIPs, TCPNrOfAcceptors} = lists:unzip(F("listener.tcp", "nr_of_acceptors", InfIntVal)),
          {SSLIPs, SSLNrOfAcceptors} = lists:unzip(F("listener.ssl", "nr_of_acceptors", InfIntVal)),
          {WSIPs, WSNrOfAcceptors} = lists:unzip(F("listener.ws", "nr_of_acceptors", InfIntVal)),
          {WS_SSLIPs, WS_SSLNrOfAcceptors} = lists:unzip(F("listener.wss", "nr_of_acceptors", InfIntVal)),
+         {VMQIPs, VMQNrOfAcceptors} = lists:unzip(F("listener.vmq", "nr_of_acceptors", InfIntVal)),
+         {VMQ_SSLIPs, VMQ_SSLNrOfAcceptors} = lists:unzip(F("listener.vmqs", "nr_of_acceptors", InfIntVal)),
          
          {TCPIPs, TCPMountPoint} = lists:unzip(F("listener.tcp", "mountpoint", MPVal)),
          {SSLIPs, SSLMountPoint} = lists:unzip(F("listener.ssl", "mountpoint", MPVal)),
          {WSIPs, WSMountPoint} = lists:unzip(F("listener.ws", "mountpoint", MPVal)),
          {WS_SSLIPs, WS_SSLMountPoint} = lists:unzip(F("listener.wss", "mountpoint", MPVal)),
+         {VMQIPs, VMQMountPoint} = lists:unzip(F("listener.vmq", "mountpoint", MPVal)),
+         {VMQ_SSLIPs, VMQ_SSLMountPoint} = lists:unzip(F("listener.vmqs", "mountpoint", MPVal)),
 
          % SSL
          {SSLIPs, SSLCAFiles} = lists:unzip(F("listener.ssl", "cafile", StrVal)),
@@ -673,12 +797,28 @@
          {WS_SSLIPs, WS_SSLVersions} = lists:unzip(F("listener.wss", "tls_version", AtomVal)),
          {WS_SSLIPs, WS_SSLUseIdents} = lists:unzip(F("listener.wss", "use_identity_as_username", BoolVal)),
          {WS_SSLIPs, WS_SSLECSupport} = lists:unzip(F("listener.wss", "support_elliptic_curves", BoolVal)),
+
+         % VMQS
+         {VMQ_SSLIPs, VMQ_SSLCAFiles} = lists:unzip(F("listener.vmqs", "cafile", StrVal)),
+         {VMQ_SSLIPs, VMQ_SSLCAPaths} = lists:unzip(F("listener.vmqs", "capath", StrVal)),
+         {VMQ_SSLIPs, VMQ_SSLCertFiles} = lists:unzip(F("listener.vmqs", "certfile", StrVal)),
+         {VMQ_SSLIPs, VMQ_SSLCiphers} = lists:unzip(F("listener.vmqs", "ciphers", StrVal)),
+         {VMQ_SSLIPs, VMQ_SSLCrlFiles} = lists:unzip(F("listener.vmqs", "crlfile", StrVal)),
+         {VMQ_SSLIPs, VMQ_SSLKeyFiles} = lists:unzip(F("listener.vmqs", "keyfile", StrVal)),
+         {VMQ_SSLIPs, VMQ_SSLRequireCerts} = lists:unzip(F("listener.vmqs", "require_certificate", BoolVal)),
+         {VMQ_SSLIPs, VMQ_SSLVersions} = lists:unzip(F("listener.vmqs", "tls_version", AtomVal)),
+         {VMQ_SSLIPs, VMQ_SSLUseIdents} = lists:unzip(F("listener.vmqs", "use_identity_as_username", BoolVal)),
+         {VMQ_SSLIPs, VMQ_SSLECSupport} = lists:unzip(F("listener.vmqs", "support_elliptic_curves", BoolVal)),
+
          TCP = lists:zip(TCPIPs, MZip([TCPMaxConns, 
                                        TCPNrOfAcceptors,
                                        TCPMountPoint])),
          WS = lists:zip(WSIPs, MZip([WSMaxConns, 
                                      WSNrOfAcceptors,
                                      WSMountPoint])),
+         VMQ = lists:zip(VMQIPs, MZip([VMQMaxConns, 
+                                     VMQNrOfAcceptors,
+                                     VMQMountPoint])),
          SSL = lists:zip(SSLIPs, MZip([SSLMaxConns, 
                                        SSLNrOfAcceptors,
                                        SSLMountPoint,
@@ -705,13 +845,28 @@
                                           WS_SSLVersions, 
                                           WS_SSLUseIdents, 
                                           WS_SSLECSupport])),
+         VMQS = lists:zip(VMQ_SSLIPs, MZip([VMQ_SSLMaxConns, 
+                                          VMQ_SSLNrOfAcceptors,
+                                          VMQ_SSLMountPoint,
+                                          VMQ_SSLCAFiles, 
+                                          VMQ_SSLCAPaths, 
+                                          VMQ_SSLCertFiles, 
+                                          VMQ_SSLCiphers, 
+                                          VMQ_SSLCrlFiles, 
+                                          VMQ_SSLKeyFiles, 
+                                          VMQ_SSLRequireCerts, 
+                                          VMQ_SSLVersions, 
+                                          VMQ_SSLUseIdents, 
+                                          VMQ_SSLECSupport])),
          DropUndef = fun(L) ->
                              [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
                      end,
          [{mqtt, DropUndef(TCP)}, 
           {mqtts, DropUndef(SSL)}, 
           {mqttws, DropUndef(WS)}, 
-          {mqttwss, DropUndef(WSS)}]
+          {mqttwss, DropUndef(WSS)},
+          {vmq, DropUndef(VMQ)},
+          {vmqs, DropUndef(VMQS)}]
  end
 }.
 
