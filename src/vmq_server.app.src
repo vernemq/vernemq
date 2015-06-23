@@ -37,10 +37,9 @@
       {vmq_config_enabled, true},
       {default_reg_view, vmq_reg_trie},
       {reg_views, [vmq_reg_trie]},
-      {max_outgoing_publish_queue_size, 1000},
-      {outgoing_publish_batch_size, 20},
+      {outgoing_clustering_buffer_size, 10000},
       {listeners, [{mqtt, [
-                           {{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
+                           {{{127,0,0,1}, 1889}, [{max_connections, infinity}, 
                                               {mountpoint, ""}]}
                           ]
                    },
@@ -52,7 +51,7 @@
                     {mqttwss, []},
 
                     %% used for clustering
-                    {vmq, [{{{0,0,0,0}, 18883}, []}]},
+                    {vmq, [{{{0,0,0,0}, 18884}, []}]},
                     {vmqs, []}
       ]},
       {outgoing_connect_opts, []},

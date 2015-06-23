@@ -18,6 +18,7 @@
 %% API
 -export([start_link/1,
          publish/2,
+         enqueue/2,
          connect_params/1]).
 
 %% gen_server callbacks
@@ -28,7 +29,9 @@
                 transport,
                 reachable=false,
                 pending = [],
-                max_queue_size}).
+                max_queue_size,
+                bytes_dropped={os:timestamp(), 0},
+                bytes_send={os:timestamp(), 0}}).
 
 -define(REMONITOR, 5000).
 -define(RECONNECT, 1000).
@@ -44,11 +47,23 @@ publish(Pid, Msg) ->
     Pid ! {msg, Msg},
     ok.
 
+enqueue(Pid, Term) ->
+    Ref = make_ref(),
+    MRef = monitor(process, Pid),
+    Pid ! {enq, self(), Ref, Term},
+    receive
+        {Ref, Reply} ->
+            demonitor(MRef, [flush]),
+            Reply;
+        {'DOWN', MRef, process, Pid, Reason} ->
+            {error, Reason}
+    end.
+
 
 init([Parent, RemoteNode]) ->
-    MaxQueueSize = vmq_config:get_env(max_outgoing_publish_queue_size),
+    MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
     proc_lib:init_ack(Parent, {ok, self()}),
-    self() ! reconnect,
+    self() ! reconnect, %% initial connect
     loop(#state{node=RemoteNode, max_queue_size=MaxQueueSize}).
 
 loop(#state{pending=[]} = State) ->
@@ -78,24 +93,52 @@ teardown(Reason, #state{node=Node}) ->
             lager:warning("connection to ~p stopped due to ~p", [Node, Reason])
     end.
 
-handle_message({msg, Msg}, #state{pending=Pending, max_queue_size=Max,
-                                  reachable=Reachable} = State) ->
-    Bin = term_to_binary(Msg),
-    L = byte_size(Bin),
-    BinMsg = <<L:32, Bin/binary>>,
-    NewPending =
+buffer_message(BinMsg, #state{pending=Pending, max_queue_size=Max,
+                              reachable=Reachable,
+                              bytes_dropped={{M, S, _}, V}} = State) ->
+    {NewPending, Dropped} =
     case Reachable of
         true ->
-            [BinMsg|Pending];
+            {[BinMsg|Pending], 0};
         false ->
             case iolist_size(Pending) < Max of
                 true ->
-                    [BinMsg|Pending];
+                    {[BinMsg|Pending], 0};
                 false ->
-                    Pending
+                    {Pending, byte_size(BinMsg)}
             end
     end,
-    maybe_flush(State#state{pending=NewPending});
+    NewBytesDropped =
+    case os:timestamp() of
+        {M, S, _} = TS ->
+            {TS, V + Dropped};
+        TS ->
+            _ = vmq_exo:incr_cluster_bytes_dropped(V + Dropped),
+            {TS, 0}
+    end,
+    {Dropped, maybe_flush(State#state{pending=NewPending, bytes_dropped=NewBytesDropped})}.
+
+
+handle_message({enq, CallerPid, Ref, Term}, State) ->
+    Bin = term_to_binary(Term),
+    L = byte_size(Bin),
+    BinMsg = <<"enq", L:32, Bin/binary>>,
+    {Dropped, NewState} = buffer_message(BinMsg, State),
+    Reply =
+    case Dropped > 0 of
+        true ->
+            {error, msg_dropped};
+        false ->
+            ok
+    end,
+    CallerPid ! {Ref, Reply},
+    NewState;
+handle_message({msg, Msg}, State) ->
+    Bin = term_to_binary(Msg),
+    L = byte_size(Bin),
+    BinMsg = <<"msg", L:32, Bin/binary>>,
+    {_, NewState} = buffer_message(BinMsg, State),
+    NewState;
 handle_message({NetEv, _}, State)
   when
       NetEv == tcp_closed;
@@ -138,12 +181,20 @@ maybe_flush(#state{pending=Pending} = State) ->
 
 internal_flush(#state{pending=[]} = State) -> State;
 internal_flush(#state{pending=Pending, node=Node, transport=Transport,
-                      socket=Socket} = State) ->
-    S = iolist_size(Pending),
-    Msg = [<<"vmq-send", S:32>>|lists:reverse(Pending)],
+                      socket=Socket, bytes_send={{M, S, _}, V}} = State) ->
+    L = iolist_size(Pending),
+    Msg = [<<"vmq-send", L:32>>|lists:reverse(Pending)],
     case Transport:send(Socket, Msg) of
         ok ->
-            State#state{pending=[]};
+            NewBytesSend =
+            case os:timestamp() of
+                {M, S, _} = TS ->
+                    {TS, V + L};
+                TS ->
+                    _ = vmq_exo:incr_cluster_bytes_sent(V + L),
+                    {TS, 0}
+            end,
+            State#state{pending=[], bytes_send=NewBytesSend};
         {error, Reason} ->
             erlang:send_after(?RECONNECT, self(), reconnect),
             lager:warning("can't send ~p bytes to ~p due to ~p, reconnect!",
@@ -174,12 +225,17 @@ connect(#state{node=RemoteNode} = State) ->
                     erlang:send_after(?RECONNECT, self(), reconnect),
                     State#state{reachable=false}
             end;
+        {badrpc, nodedown} ->
+            %% we don't scream.. vmq_cluster_mon screams
+            erlang:send_after(?RECONNECT, self(), reconnect),
+            State#state{reachable=false};
         E ->
             lager:warning("can't connect to cluster node ~p due to ~p", [RemoteNode, E]),
             erlang:send_after(?RECONNECT, self(), reconnect),
             State#state{reachable=false}
     end.
 
+%% connect_params is called by a RPC
 connect_params(_Node) ->
     case whereis(vmq_server_sup) of
         undefined ->

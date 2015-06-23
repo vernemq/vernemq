@@ -25,12 +25,10 @@
 -record(st, {socket,
              buffer= <<>>,
              parser_state,
-             cluster_node,
              proto_tag,
              pending=[],
              throttled=false,
-             bytes_recv={os:timestamp(), 0},
-             bytes_send={os:timestamp(), 0}}).
+             bytes_recv={os:timestamp(), 0}}).
 
 %% API.
 start_link(Ref, Socket, Transport, Opts) ->
@@ -64,17 +62,12 @@ loop(#st{} = State) ->
         M ->
             loop(handle_message(M, State))
     end;
-loop({exit, Reason, State}) ->
-    teardown(State, Reason).
-
-teardown(#st{cluster_node=ClusterNodePid}, Reason) ->
+loop({exit, Reason, _State}) ->
     case Reason of
-        normal ->
-            lager:debug("[~p] cluster node connection normally stopped", [ClusterNodePid]);
-        shutdown ->
-            lager:debug("[~p] cluster node connection stopped due to shutdown", [ClusterNodePid]);
+        shutdown -> ok;
+        normal -> ok;
         _ ->
-            lager:warning("[~p] cluster node connection stopped abnormally due to ~p", [ClusterNodePid, Reason])
+            lager:warning("terminate due to ~p", [Reason])
     end.
 
 active_once({ssl, Socket}) ->
@@ -92,58 +85,74 @@ setopts({ssl, Socket}, Opts) ->
 setopts(Socket, Opts) ->
     inet:setopts(Socket, Opts).
 
-handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
-    #st{cluster_node=ClusterNodePid,
-        socket=Socket,
-        parser_state=ParserState} = State,
-    case process_bytes(ClusterNodePid, Data, ParserState) of
+handle_message({Proto, _, Data}, #st{socket=Socket,
+                                     parser_state=ParserState,
+                                     proto_tag={Proto, _, _},
+                                     bytes_recv={{M, S, _}, V}} = State) ->
+    case process_bytes(Data, ParserState) of
         {ok, NewParserState} ->
             case active_once(Socket) of
                 ok ->
-                    State#st{parser_state=NewParserState};
-                {error, Reason} ->
-                    {exit, Reason, State}
+                    L = byte_size(Data),
+                    NewBytesRecv =
+                    case os:timestamp() of
+                        {M, S, _} = TS ->
+                            {TS, V + L};
+                        TS ->
+                            _ = vmq_exo:incr_cluster_bytes_received(V + L),
+                            {TS, 0}
+                    end,
+                    State#st{parser_state=NewParserState, bytes_recv=NewBytesRecv};
+                {error, _InetError} ->
+                    %% Socket has a problem (most possibly closed)
+                    %% ther's not much we can do right now.
+                    %% let's go down, and let the remote node
+                    %% reconnect!
+                    {exit, normal, State}
             end;
-        error ->
-            {exit, error, State}
+        {error, Reason} ->
+            {exit, Reason, State}
     end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
     %% we regard a tcp_closed as 'normal'
     {exit, normal, State};
 handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
     {exit, Error, State};
-handle_message({'EXIT', ClusterNodePid, Reason}, #st{cluster_node=ClusterNodePid} = State) ->
+handle_message({'DOWN', _, process, _ClusterNodePid, Reason}, State) ->
     {exit, Reason, State}.
 
-process_bytes(_,
-              <<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefined) ->
+process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefined) ->
     NodeName = binary_to_term(BNodeName),
     case vmq_cluster_node_sup:get_cluster_node(NodeName) of
         {ok, ClusterNodePid} ->
             monitor(process, ClusterNodePid),
-            process_bytes(ClusterNodePid, Rest, <<>>);
+            process_bytes(Rest, <<>>);
         {error, not_found} ->
-            lager:warning("got connect request from unknown cluster node ~p", [NodeName]),
-            error
+            lager:debug("got connect request from unknown cluster node ~p", [NodeName]),
+            {error, remote_node_not_available}
     end;
-process_bytes(ClusterNodePid, Bytes, Buffer) ->
+process_bytes(Bytes, Buffer) ->
     NewBuffer = <<Buffer/binary, Bytes/binary>>,
     case NewBuffer of
         <<"vmq-send", L:32, BFrames:L/binary, Rest/binary>> ->
-            publish(BFrames),
-            process_bytes(ClusterNodePid, Rest, <<>>);
+            process(BFrames),
+            process_bytes(Rest, <<>>);
         _ ->
             {ok, NewBuffer}
     end.
 
 
-publish(<<L:32, Bin:L/binary, Rest/binary>>) ->
+process(<<"msg", L:32, Bin:L/binary, Rest/binary>>) ->
     #vmq_msg{mountpoint=MP,
              routing_key=Topic,
              reg_view=RegView} = Msg = binary_to_term(Bin),
     _ = RegView:fold(MP, Topic, fun publish/2, Msg),
-    publish(Rest);
-publish(<<>>) -> ok.
+    process(Rest);
+process(<<"enq", L:32, Bin:L/binary, Rest/binary>>) ->
+    {SessionProxyPid, Term} = binary_to_term(Bin),
+    SessionProxyPid ! {deliver, Term},
+    process(Rest);
+process(<<>>) -> ok.
 
 publish({_,_} = SubscriberIdAndQoS, Msg) ->
     vmq_reg:publish(SubscriberIdAndQoS, Msg);
