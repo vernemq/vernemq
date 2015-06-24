@@ -110,17 +110,52 @@ vmq_server_status_cmd() ->
 
 vmq_cluster_leave_cmd() ->
     Cmd = ["vmq-admin", "cluster", "leave"],
-    KeySpecs = [{node, [{typecast, fun clique_typecast:to_node/1}]}],
+    KeySpecs = [{node, [{typecast, fun (Node) ->
+                                           list_to_atom(Node)
+                                   end}]}],
     FlagSpecs = [],
     Callback = fun([], _) ->
                        Text = clique_status:text("You have to provide a node"),
                        [clique_status:alert([Text])];
                   ([{node, Node}], []) ->
-                       plumtree_peer_service:leave(Node),
-                       [clique_status:text("Done")]
+                       Text =
+                       case net_adm:ping(Node) of
+                           pang ->
+                               % node is offline, we delete it locally and
+                               % publish the changes ourselves.
+                               leave_cluster(Node);
+                           pong ->
+                               %% node is online, we'll go the proper route
+                               case rpc:call(Node, plumtree_peer_service, leave, [unused_arg]) of
+                                   ok ->
+                                       rpc:call(Node, init, stop, []),
+                                       "Done";
+                                   {badrpc, Reason} ->
+                                       io_lib:format("~p~n", [Reason])
+                               end
+                       end,
+                       [clique_status:text(Text)]
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+
+leave_cluster(Node) ->
+    {ok, Local} = plumtree_peer_service_manager:get_local_state(),
+    {ok, Actor} = plumtree_peer_service_manager:get_actor(),
+    case riak_dt_orswot:update({remove, Node}, Actor, Local) of
+        {error,{precondition,{not_present, Node}}} ->
+            io_lib:format("Node ~p wasn't part of the cluster~n", [Node]);
+        {ok, Merged} ->
+            _ = gen_server:cast(plumtree_peer_service_gossip, {receive_state, Merged}),
+            {ok, Local2} = plumtree_peer_service_manager:get_local_state(),
+            Local2List = riak_dt_orswot:value(Local2),
+            case [P || P <- Local2List, P =:= Node] of
+                [] ->
+                    "Done";
+                _ ->
+                    leave_cluster(Node)
+            end
+    end.
 
 vmq_cluster_join_cmd() ->
     Cmd = ["vmq-admin", "cluster", "join"],
