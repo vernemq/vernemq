@@ -26,6 +26,9 @@
          decr_subscription_count/0,
          incr_socket_count/0,
          incr_connect_received/0,
+         incr_cluster_bytes_sent/1,
+         incr_cluster_bytes_received/1,
+         incr_cluster_bytes_dropped/1,
          entries/0,
          entries/1]).
 
@@ -83,6 +86,15 @@ incr_socket_count() ->
 
 incr_connect_received() ->
     incr_item([connects, received], 1).
+
+incr_cluster_bytes_received(V) ->
+    incr_item([cluster, bytes, received], V).
+
+incr_cluster_bytes_sent(V) ->
+    incr_item([cluster, bytes, sent], V).
+
+incr_cluster_bytes_dropped(V) ->
+    incr_item([cluster, bytes, dropped], V).
 
 incr_item(Entry, Val) ->
     exometer:update_or_create(Entry ++ ['last_sec'], Val),
@@ -166,7 +178,26 @@ counter_entries() ->
      {[sockets, last_10sec], counter, [{snmp, []}]},
      {[sockets, last_30sec], counter, [{snmp, []}]},
      {[sockets, last_min], counter, [{snmp, []}]},
-     {[sockets, last_5min], counter, [{snmp, []}]}
+     {[sockets, last_5min], counter, [{snmp, []}]},
+
+     {[cluster, bytes, received, last_sec], counter, [{snmp, []}]},
+     {[cluster, bytes, received, last_10sec], counter, [{snmp, []}]},
+     {[cluster, bytes, received, last_30sec], counter, [{snmp, []}]},
+     {[cluster, bytes, received, last_min], counter, [{snmp, []}]},
+     {[cluster, bytes, received, last_5min], counter, [{snmp, []}]},
+
+     {[cluster, bytes, sent, last_sec], counter, [{snmp, []}]},
+     {[cluster, bytes, sent, last_10sec], counter, [{snmp, []}]},
+     {[cluster, bytes, sent, last_30sec], counter, [{snmp, []}]},
+     {[cluster, bytes, sent, last_min], counter, [{snmp, []}]},
+     {[cluster, bytes, sent, last_5min], counter, [{snmp, []}]},
+
+     {[cluster, bytes, dropped, last_sec], counter, [{snmp, []}]},
+     {[cluster, bytes, dropped, last_10sec], counter, [{snmp, []}]},
+     {[cluster, bytes, dropped, last_30sec], counter, [{snmp, []}]},
+     {[cluster, bytes, dropped, last_min], counter, [{snmp, []}]},
+     {[cluster, bytes, dropped, last_5min], counter, [{snmp, []}]}
+
     ].
 
 system_statistics() ->
@@ -235,11 +266,6 @@ scheduler_utilization_items() ->
     [total | [list_to_atom("scheduler_" ++ integer_to_list(I))
               || {I, _, _} <- lists:sort(erlang:statistics(scheduler_wall_time))]].
 
-
-subscribe(ReporterMod, [{Metric, histogram, _}|Rest], Interval) ->
-    Datapoints = [max, min, mean, median],
-    subscribe(ReporterMod, Metric, Datapoints, Interval),
-    subscribe(ReporterMod, Rest, Interval);
 subscribe(ReporterMod, [{Metric, {function, _, _, _, proplist, Items}, _}|Rest],
           Interval) ->
     subscribe(ReporterMod, Metric, Items, Interval),

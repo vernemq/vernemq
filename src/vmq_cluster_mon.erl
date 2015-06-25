@@ -28,6 +28,8 @@
          code_change/3]).
 
 -record(state, {}).
+-define(RECHECK_INTERVAL, 10000).
+-define(RECHECK_INTERVAL_NOT_READY, 2000).
 
 %%%===================================================================
 %%% API functions
@@ -59,8 +61,17 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    %% the event handler is added after the timeout
-    {ok, #state{}, 0}.
+    case net_kernel:monitor_nodes(true) of
+        ok ->
+            %% we are the owner of this table, although the event handler
+            %% is writing to it.
+            _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
+            %% the event handler is added after the timeout
+            erlang:send_after(?RECHECK_INTERVAL, self(), recheck),
+            {ok, #state{}, 0};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -106,9 +117,25 @@ handle_cast(_Msg, State) ->
 handle_info(timeout, State) ->
     plumtree_peer_service_events:add_sup_handler(vmq_cluster, []),
     {noreply, State};
+handle_info({nodedown, Node}, State) ->
+    lager:warning("Cluster Node ~p DOWN", [Node]),
+    vmq_cluster:recheck(),
+    {noreply, State};
+handle_info({nodeup, Node}, State) ->
+    lager:info("Cluster Node ~p UP", [Node]),
+    vmq_cluster:recheck(),
+    {noreply, State};
 handle_info({gen_event_EXIT,vmq_cluster,_}, State) ->
-    plumtree_peer_service_events:add_sup_handler(vmq_cluster, []),
+    plumtree_peer_service_events:add_sup_handler(vmq_cluster, [self()]),
+    {noreply, State};
+handle_info(recheck, State) ->
+    vmq_cluster:recheck(),
+    erlang:send_after(case vmq_cluster:is_ready() of
+                          true -> ?RECHECK_INTERVAL;
+                          false -> ?RECHECK_INTERVAL_NOT_READY
+                      end, self(), recheck),
     {noreply, State}.
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -138,3 +165,4 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+

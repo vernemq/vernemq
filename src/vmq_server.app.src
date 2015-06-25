@@ -27,7 +27,7 @@
       {retry_interval, 20},
       {persistent_client_expiration, 0}, % never
       {max_inflight_messages, 20},
-      {max_queued_messages, 1000},
+      {max_queued_messages, 30000},
       {max_message_rate, 0}, % no rate limit
       {message_size_limit, 0},
       {upgrade_outgoing_qos, false},
@@ -37,11 +37,10 @@
       {vmq_config_enabled, true},
       {default_reg_view, vmq_reg_trie},
       {reg_views, [vmq_reg_trie]},
-      {max_outgoing_publish_queue_size, 1000},
-      {outgoing_publish_batch_size, 20},
+      {outgoing_clustering_buffer_size, 10000},
       {listeners, [{mqtt, [
-                         %  {{{127,0,0,1}, 1888}, [{max_connections, infinity}, 
-                         %                     {mountpoint, ""}]}
+                           {{{127,0,0,1}, 1889}, [{max_connections, infinity}, 
+                                              {mountpoint, ""}]}
                           ]
                    },
                     {mqtts, []},
@@ -49,8 +48,13 @@
                             %  {{{127,0,0,1}, 8080}, [{max_connections, 1000},
                             %                        {mountpoint, ""}]}
                              ]},
-                    {mqttwss, []}
+                    {mqttwss, []},
+
+                    %% used for clustering
+                    {vmq, [{{{0,0,0,0}, 18884}, []}]},
+                    {vmqs, []}
       ]},
+      {outgoing_connect_opts, []},
       {plumtree_jobs_opts, [{regulators, [{counter,[{limit, 20}]}]}]},
       {tcp_listen_options, [
             {packet, raw},

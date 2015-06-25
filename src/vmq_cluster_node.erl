@@ -15,204 +15,237 @@
 -module(vmq_cluster_node).
 -include("vmq_server.hrl").
 
--behaviour(gen_server).
-
 %% API
 -export([start_link/1,
          publish/2,
-         publish_batch/1]).
+         enqueue/2,
+         connect_params/1]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([init/1]).
 
 -record(state, {node,
-                reachable=true,
-                queue = queue:new(),
-                batch_size,
-                max_queue_size}).
+                socket,
+                transport,
+                reachable=false,
+                pending = [],
+                max_queue_size,
+                bytes_dropped={os:timestamp(), 0},
+                bytes_send={os:timestamp(), 0}}).
+
 -define(REMONITOR, 5000).
+-define(RECONNECT, 1000).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-%%--------------------------------------------------------------------
-%% @doc
-%% Starts the server
-%%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
-%% @end
-%%--------------------------------------------------------------------
 start_link(RemoteNode) ->
-    gen_server:start_link(?MODULE, [RemoteNode], []).
+    proc_lib:start_link(?MODULE, init, [[self(), RemoteNode]]).
 
 publish(Pid, Msg) ->
-    case catch gen_server:call(Pid, {publish, Msg}, infinity) of
-        ok -> ok;
-        {'EXIT', Reason} ->
-            % we are not allowed to crash, this would
-            % teardown the 'decoupled' publisher process
+    Pid ! {msg, Msg},
+    ok.
+
+enqueue(Pid, Term) ->
+    Ref = make_ref(),
+    MRef = monitor(process, Pid),
+    Pid ! {enq, self(), Ref, Term},
+    receive
+        {Ref, Reply} ->
+            demonitor(MRef, [flush]),
+            Reply;
+        {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason}
     end.
 
-publish_batch([#vmq_msg{mountpoint=MP,
-                        routing_key=Topic,
-                        reg_view=RegView} = Msg|Msgs]) ->
-    _ = RegView:fold(MP, Topic, fun publish_batch_single/2, Msg),
-    publish_batch(Msgs);
-publish_batch([]) -> ok.
 
-publish_batch_single({_,_} = SubscriberIdAndQoS, Msg) ->
-    vmq_reg:publish(SubscriberIdAndQoS, Msg);
-publish_batch_single(_Node, Msg) ->
-    %% we ignore remote subscriptions, they are already covered
-    %% by original publisher
-    Msg.
+init([Parent, RemoteNode]) ->
+    MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
+    proc_lib:init_ack(Parent, {ok, self()}),
+    self() ! reconnect, %% initial connect
+    loop(#state{node=RemoteNode, max_queue_size=MaxQueueSize}).
 
-%%%===================================================================
-%%% gen_server callbacks
-%%%===================================================================
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Initializes the server
-%%
-%% @spec init(Args) -> {ok, State} |
-%%                     {ok, State, Timeout} |
-%%                     ignore |
-%%                     {stop, Reason}
-%% @end
-%%--------------------------------------------------------------------
-init([RemoteNode]) ->
-    MaxQueueSize = vmq_config:get_env(max_outgoing_publish_queue_size),
-    BatchSize = vmq_config:get_env(outgoing_publish_batch_size),
-    erlang:monitor_node(RemoteNode, true),
-    {ok, #state{node=RemoteNode, batch_size=BatchSize, max_queue_size=MaxQueueSize}}.
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling call messages
-%%
-%% @spec handle_call(Request, From, State) ->
-%%                                   {reply, Reply, State} |
-%%                                   {reply, Reply, State, Timeout} |
-%%                                   {noreply, State} |
-%%                                   {noreply, State, Timeout} |
-%%                                   {stop, Reason, Reply, State} |
-%%                                   {stop, Reason, State}
-%% @end
-%%--------------------------------------------------------------------
-handle_call({publish, Msg}, From, #state{queue=Q, reachable=true} = State) ->
-    gen_server:reply(From, ok),
-    {noreply, process_queue(State#state{queue=queue:in(Msg, Q)})};
-handle_call({publish, Msg}, _From, #state{queue=Q, max_queue_size=Max,
-                                          reachable=false} = State) ->
-    case queue:len(Q) < Max of
-        true ->
-            {reply, ok, State#state{queue=queue:in(Msg, Q)}};
-        false ->
-            {reply, {error, outgoing_queue_full}, State}
+loop(#state{pending=[]} = State) ->
+    receive
+        M ->
+            loop(handle_message(M, State))
+    end;
+loop(#state{} = State) ->
+    receive
+        M ->
+            loop(handle_message(M, State))
+    after
+        0 ->
+            loop(internal_flush(State))
     end.
-%%
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling cast messages
-%%
-%% @spec handle_cast(Msg, State) -> {noreply, State} |
-%%                                  {noreply, State, Timeout} |
-%%                                  {stop, Reason, State}
-%% @end
-%%--------------------------------------------------------------------
-handle_cast(_Msg, State) ->
-    {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling all non call/cast messages
-%%
-%% @spec handle_info(Info, State) -> {noreply, State} |
-%%                                   {noreply, State, Timeout} |
-%%                                   {stop, Reason, State}
-%% @end
-%%--------------------------------------------------------------------
-handle_info({nodedown, Node}, #state{node=Node} = State) ->
+buffer_message(BinMsg, #state{pending=Pending, max_queue_size=Max,
+                              reachable=Reachable,
+                              bytes_dropped={{M, S, _}, V}} = State) ->
+    {NewPending, Dropped} =
+    case Reachable of
+        true ->
+            {[BinMsg|Pending], 0};
+        false ->
+            case iolist_size(Pending) < Max of
+                true ->
+                    {[BinMsg|Pending], 0};
+                false ->
+                    {Pending, byte_size(BinMsg)}
+            end
+    end,
+    NewBytesDropped =
+    case os:timestamp() of
+        {M, S, _} = TS ->
+            {TS, V + Dropped};
+        TS ->
+            _ = vmq_exo:incr_cluster_bytes_dropped(V + Dropped),
+            {TS, 0}
+    end,
+    {Dropped, maybe_flush(State#state{pending=NewPending, bytes_dropped=NewBytesDropped})}.
+
+
+handle_message({enq, CallerPid, Ref, Term}, State) ->
+    Bin = term_to_binary(Term),
+    L = byte_size(Bin),
+    BinMsg = <<"enq", L:32, Bin/binary>>,
+    {Dropped, NewState} = buffer_message(BinMsg, State),
+    Reply =
+    case Dropped > 0 of
+        true ->
+            {error, msg_dropped};
+        false ->
+            ok
+    end,
+    CallerPid ! {Ref, Reply},
+    NewState;
+handle_message({msg, Msg}, State) ->
+    Bin = term_to_binary(Msg),
+    L = byte_size(Bin),
+    BinMsg = <<"msg", L:32, Bin/binary>>,
+    {_, NewState} = buffer_message(BinMsg, State),
+    NewState;
+handle_message({NetEv, _}, State)
+  when
+      NetEv == tcp_closed;
+      NetEv == tcp_error;
+      NetEv == ssl_closed;
+      NetEv == ssl_error ->
+    erlang:send_after(?RECONNECT, self(), reconnect),
+    State#state{reachable=false};
+handle_message({nodedown, Node}, #state{node=Node} = State) ->
     erlang:send_after(?REMONITOR, self(), remonitor),
-    {noreply, State#state{reachable=false}};
-handle_info(remonitor, #state{node=Node} = State) ->
-    erlang:monitor_node(Node, true),
+    State#state{reachable=false};
+handle_message(remonitor, #state{node=Node, reachable=Reachable} = State) ->
+    case Reachable of
+        true ->
+            ignore;
+        false ->
+            erlang:monitor_node(Node, true)
+    end,
     case net_adm:ping(Node) of
         pong ->
-            {noreply, process_queue(State#state{reachable=true})};
+            State#state{reachable=true};
         _ ->
-            {noreply, State#state{reachable=false}}
-    end.
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any
-%% necessary cleaning up. When it returns, the gen_server terminates
-%% with Reason. The return value is ignored.
-%%
-%% @spec terminate(Reason, State) -> void()
-%% @end
-%%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
-    ok.
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Convert process state when code is changed
-%%
-%% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% @end
-%%--------------------------------------------------------------------
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-process_queue(#state{node=Node, queue=Q, batch_size=BatchSize} = State) ->
-    case queue:is_empty(Q) of
-        true -> State;
-        false ->
-            State#state{queue=batch(Node, BatchSize, Q)}
-    end.
-
-batch(Node, BatchSize, Q) ->
-    batch(Node, BatchSize, queue:out(Q), []).
-
-batch(Node, BatchSize, {{value, V}, Q}, Batch) when length(Batch) < BatchSize ->
-    batch(Node, BatchSize, queue:out(Q), [V|Batch]);
-batch(Node, BatchSize, {{value, V}, Q}, Batch) when length(Batch) == BatchSize ->
-    Msgs = lists:reverse([V|Batch]),
-    case rpc:call(Node, ?MODULE, publish_batch, [Msgs]) of
-        ok ->
-            batch(Node, BatchSize, queue:out(Q), []);
-        {badrpc, _} ->
-            lists:foldl(fun(Item, AccQ) ->
-                                queue:in_r(Item, AccQ)
-                        end, Q, Batch)
+            State#state{reachable=false}
     end;
-batch(Node, _, {empty, Q} , Batch) ->
-    Msgs = lists:reverse(Batch),
-    case rpc:call(Node, ?MODULE, publish_batch, [Msgs]) of
-        ok ->
-            Q;
-        {badrpc, _} ->
-            lists:foldl(fun(Item, AccQ) ->
-                                queue:in_r(Item, AccQ)
-                        end, Q, Batch)
+handle_message(reconnect, #state{reachable=false} = State) ->
+    connect(State);
+handle_message(Msg, #state{node=Node, reachable=Reachable} = State) ->
+    lager:warning("got unknown message ~p for node ~p (reachable ~p)",
+                  [Msg, Node, Reachable]),
+    State.
+
+-define(FLUSH_THRESHOLD, 1460). % tcp-over-ethernet MSS 1460
+maybe_flush(#state{pending=Pending} = State) ->
+    case iolist_size(Pending) >= ?FLUSH_THRESHOLD of
+        true ->
+            internal_flush(State);
+        false ->
+            State
     end.
+
+internal_flush(#state{pending=[]} = State) -> State;
+internal_flush(#state{pending=Pending, node=Node, transport=Transport,
+                      socket=Socket, bytes_send={{M, S, _}, V}} = State) ->
+    L = iolist_size(Pending),
+    Msg = [<<"vmq-send", L:32>>|lists:reverse(Pending)],
+    case Transport:send(Socket, Msg) of
+        ok ->
+            NewBytesSend =
+            case os:timestamp() of
+                {M, S, _} = TS ->
+                    {TS, V + L};
+                TS ->
+                    _ = vmq_exo:incr_cluster_bytes_sent(V + L),
+                    {TS, 0}
+            end,
+            State#state{pending=[], bytes_send=NewBytesSend};
+        {error, Reason} ->
+            erlang:send_after(?RECONNECT, self(), reconnect),
+            lager:warning("can't send ~p bytes to ~p due to ~p, reconnect!",
+                          [iolist_size(Pending), Node, Reason]),
+            State#state{reachable=false}
+    end.
+
+connect(#state{node=RemoteNode} = State) ->
+    ConnectOpts = vmq_config:get_env(outgoing_connect_opts),
+    case rpc:call(RemoteNode, ?MODULE, connect_params, [node()]) of
+        {Transport, Host, Port} ->
+            case Transport:connect(Host, Port,
+                                   lists:usort([binary, {active, true}|ConnectOpts])) of
+                {ok, Socket} ->
+                    NodeName = term_to_binary(node()),
+                    L = byte_size(NodeName),
+                    Msg = [<<"vmq-connect">>, <<L:32, NodeName/binary>>],
+                    case Transport:send(Socket, Msg) of
+                        ok ->
+                            self() ! remonitor, %% let remonitor decide if we are reachable
+                            State#state{socket=Socket, transport=Transport};
+                        {error, Reason} ->
+                            lager:warning("can't initiate connect to cluster node ~p due to ~p", [RemoteNode, Reason]),
+                            State#state{reachable=false}
+                    end;
+                {error, Reason} ->
+                    lager:warning("can't connect to cluster node ~p due to ~p", [RemoteNode, Reason]),
+                    erlang:send_after(?RECONNECT, self(), reconnect),
+                    State#state{reachable=false}
+            end;
+        {badrpc, nodedown} ->
+            %% we don't scream.. vmq_cluster_mon screams
+            erlang:send_after(?RECONNECT, self(), reconnect),
+            State#state{reachable=false};
+        E ->
+            lager:warning("can't connect to cluster node ~p due to ~p", [RemoteNode, E]),
+            erlang:send_after(?RECONNECT, self(), reconnect),
+            State#state{reachable=false}
+    end.
+
+%% connect_params is called by a RPC
+connect_params(_Node) ->
+    case whereis(vmq_server_sup) of
+        undefined ->
+            %% vmq_server app not ready
+            {error, not_ready};
+        _ ->
+            Listeners = vmq_config:get_env(listeners),
+            MaybeSSLConfig = proplists:get_value(vmqs, Listeners, []),
+            case connect_params(ssl, MaybeSSLConfig) of
+                no_config ->
+                    case proplists:get_value(vmq, Listeners) of
+                        undefined ->
+                            exit("can't connect to cluster node");
+                        Config ->
+                            connect_params(tcp, Config)
+                    end;
+                Config ->
+                    Config
+            end
+    end.
+
+connect_params(tcp, [{{Addr, Port}, _}|_]) ->
+    {gen_tcp, Addr, Port};
+connect_params(ssl, [{{Addr, Port}, _}|_]) ->
+    {ssl, Addr, Port};
+connect_params(_, []) -> no_config.

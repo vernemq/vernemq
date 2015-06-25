@@ -30,11 +30,11 @@
          is_ready/0,
          if_ready/2,
          if_ready/3,
-         publish/2]).
+         publish/2,
+         remote_enqueue/2]).
 
 -define(SERVER, ?MODULE).
--define(RECHECK_INTERVAL, 10000).
--define(RECHECK_INTERVAL_NOT_READY, 2000).
+-define(VMQ_CLUSTER_STATUS, vmq_status). %% table is owned by vmq_cluster_mon
 
 -record(state, {}).
 -type state() :: #state{}.
@@ -44,21 +44,26 @@
 %%%===================================================================
 
 recheck() ->
-    gen_event:call(plumtree_peer_service_events, ?MODULE, schedule_recheck).
+    case gen_event:call(plumtree_peer_service_events, ?MODULE, recheck) of
+        ok -> ok;
+        E ->
+            lager:warning("error happened during cluster checkup ~p", [E]),
+            E
+    end.
 
 -spec nodes() -> [any()].
 nodes() ->
     [Node || [{Node, true}]
-             <- ets:match(vmq_status, '$1'), Node /= ready].
+             <- ets:match(?VMQ_CLUSTER_STATUS, '$1'), Node /= ready].
 
 status() ->
     [{Node, Ready} || [{Node, Ready}]
-             <- ets:match(vmq_status, '$1'), Node /= ready].
+             <- ets:match(?VMQ_CLUSTER_STATUS, '$1'), Node /= ready].
 
 
 -spec is_ready() -> boolean().
 is_ready() ->
-    ets:lookup(vmq_status, ready) == [{ready, true}].
+    ets:lookup(?VMQ_CLUSTER_STATUS, ready) == [{ready, true}].
 
 -spec if_ready(_, _) -> any().
 if_ready(Fun, Args) ->
@@ -85,49 +90,34 @@ publish(Node, Msg) ->
             vmq_cluster_node:publish(Pid, Msg)
     end.
 
+remote_enqueue(Node, Term) ->
+    case vmq_cluster_node_sup:get_cluster_node(Node) of
+        {error, not_found} ->
+            {error, not_found};
+        {ok, Pid} ->
+            vmq_cluster_node:enqueue(Pid, Term)
+    end.
+
 %%%===================================================================
 %%% gen_event callbacks
 %%%===================================================================
 -spec init([]) -> {'ok', state()}.
 init([]) ->
-    case net_kernel:monitor_nodes(true) of
-        ok ->
-            _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
-            check_ready(),
-            erlang:send_after(?RECHECK_INTERVAL, self(), recheck),
-            lager:info("plumtree peer service event handler '~p' registered", [?MODULE]),
-            {ok, #state{}};
-        {error, Reason} ->
-            {stop, Reason}
-    end.
+    check_ready(),
+    lager:info("plumtree peer service event handler '~p' registered", [?MODULE]),
+    {ok, #state{}}.
 
 -spec handle_call(_, _) -> {'ok', 'ok', _}.
-handle_call(schedule_recheck, State) ->
-    self() ! recheck,
-    Reply = ok,
-    {ok, Reply, State}.
+handle_call(recheck, State) ->
+    _ = check_ready(),
+    {ok, ok, State}.
 
 -spec handle_event(_, _) -> {'ok', _}.
 handle_event({update, _}, State) ->
+    %% Plumtree event
     _ = check_ready(),
     {ok, State}.
 
--spec handle_info(_, _) -> {'ok', _}.
-handle_info({nodedown, Node}, State) ->
-    lager:warning("Cluster Node ~p DOWN", [Node]),
-    _ = check_ready(),
-    {ok, State};
-handle_info({nodeup, Node}, State) ->
-    lager:info("Cluster Node ~p UP", [Node]),
-    _ = check_ready(),
-    {ok, State};
-handle_info(recheck, State) ->
-    _ = check_ready(),
-    erlang:send_after(case is_ready() of
-                          true -> ?RECHECK_INTERVAL;
-                          false -> ?RECHECK_INTERVAL_NOT_READY
-                      end, self(), recheck),
-    {ok, State};
 handle_info(Info, State) ->
     lager:warning("got unhandled info ~p", [Info]),
     {ok, State}.
@@ -151,18 +141,18 @@ check_ready() ->
 check_ready(Nodes) ->
     check_ready(Nodes, []),
     ets:foldl(fun({ready, _}, _) ->
-                      ignore;
-                 ({Node, _IsReady}, _) ->
-                      case lists:member(Node, Nodes) of
-                          true ->
-                              ignore;
-                          false ->
-                              %% Node is not part of the cluster anymore
-                              lager:warning("remove supervision for node ~p", [Node]),
-                              _ = vmq_cluster_node_sup:del_cluster_node(Node),
-                              ets:delete(vmq_status, Node)
-                      end
-              end, ok, vmq_status),
+                        ignore;
+                   ({Node, _IsReady}, _) ->
+                        case lists:member(Node, Nodes) of
+                            true ->
+                                ignore;
+                            false ->
+                                %% Node is not part of the cluster anymore
+                                lager:warning("remove supervision for node ~p", [Node]),
+                                _ = vmq_cluster_node_sup:del_cluster_node(Node),
+                                ets:delete(?VMQ_CLUSTER_STATUS, Node)
+                        end
+                end, ok, ?VMQ_CLUSTER_STATUS),
     ok.
 
 check_ready([Node|Rest], Acc) ->
@@ -178,4 +168,4 @@ check_ready([], Acc) ->
         false -> true;
         _ -> false
     end,
-    ets:insert(vmq_status, [{ready, ClusterReady}|Acc]).
+    ets:insert(?VMQ_CLUSTER_STATUS, [{ready, ClusterReady}|Acc]).

@@ -20,7 +20,6 @@
 -record(st, {buffer= <<>>,
              parser_state,
              session,
-             cpulevel=0,
              bytes_recv={os:timestamp(), 0},
              bytes_send={os:timestamp(), 0}}).
 
@@ -52,24 +51,22 @@ init_(Req, Opts) ->
 websocket_handle({binary, Bytes}, Req, State) ->
     #st{session=SessionPid,
         parser_state=ParserState,
-        cpulevel=CpuLevel,
         bytes_recv={TS, V}} = State,
     case process_bytes(SessionPid, Bytes, ParserState) of
         {ok, NewParserState} ->
             {M, S, _} = TS,
             NrOfBytes = byte_size(Bytes),
             BytesRecvLastSecond = V + NrOfBytes,
-            {NewCpuLevel, NewBytesRecv} =
+            NewBytesRecv =
             case os:timestamp() of
                 {M, S, _} = NewTS ->
-                    {CpuLevel, {NewTS, BytesRecvLastSecond}};
+                    {NewTS, BytesRecvLastSecond};
                 NewTS ->
                     _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
-                    {vmq_sysmon:cpu_load_level(), {NewTS, 0}}
+                    {NewTS, 0}
             end,
-            {ok, Req, maybe_throttle(State#st{parser_state=NewParserState,
-                                              bytes_recv=NewBytesRecv,
-                                              cpulevel=NewCpuLevel})};
+            {ok, Req, State#st{parser_state=NewParserState,
+                               bytes_recv=NewBytesRecv}};
         {throttled, HoldBackBuf} ->
             timer:sleep(1000),
             websocket_handle({binary, HoldBackBuf}, Req,
@@ -112,20 +109,6 @@ websocket_info({'EXIT', _, Reason}, Req, #st{session=SessionPid} = State) ->
 websocket_info(_Info, Req, State) ->
     {ok, Req, State}.
 
-
-maybe_throttle(#st{cpulevel=1} = State) ->
-    timer:sleep(10),
-    State;
-maybe_throttle(#st{cpulevel=2} = State) ->
-    timer:sleep(20),
-    State;
-maybe_throttle(#st{cpulevel=L} = State) when L > 2->
-    timer:sleep(100),
-    State;
-maybe_throttle(State) ->
-    State.
-
-
 send(TransportPid, Bin) when is_binary(Bin) ->
     TransportPid ! {send, Bin},
     ok;
@@ -152,7 +135,5 @@ process_bytes(SessionPid, Bytes, ParserState) ->
                     {throttled, Rest};
                 _ ->
                     process_bytes(SessionPid, Rest, <<>>)
-            end;
-        error ->
-            error
+            end
     end.

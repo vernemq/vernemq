@@ -201,7 +201,7 @@ connect_no_identity_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_preauth_success(_, {"", "connect-success-test"}, {preauth, "test client"}, undefined, _) -> ok.
+hook_preauth_success(_, {"", "connect-success-test"}, "test client", undefined, _) -> ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper

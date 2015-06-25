@@ -36,7 +36,7 @@
                 queue_pid,
                 queue_mon,
                 subscriber_id,
-                waiting}).
+                waiting_for_deref}).
 
 -define(RETRY, 10000). % wait 10 seconds to retry
 
@@ -59,7 +59,44 @@ deliver(SessionProxy, Term) ->
     %% acked on the remote node
     %%
     %% SessionProxy is the Pid on either the local or remote node
-    gen_server:call(SessionProxy, {deliver, Term}, infinity).
+    RemoteNode = node(SessionProxy),
+    case RemoteNode == node() of
+        true ->
+            %% we are local
+            local_deliver(SessionProxy, Term);
+        false ->
+            %% this will bypass the Erlang distribution link for sending the message
+            remote_deliver(RemoteNode, SessionProxy, Term)
+    end.
+
+local_deliver(SessionProxy, Term) ->
+    Ref = make_ref(),
+    SessionProxy ! {deliver, {Ref, self(), Term}},
+    wait_till_delivered(SessionProxy, Ref).
+
+remote_deliver(RemoteNode, SessionProxy, Term) ->
+    Ref = make_ref(),
+    case vmq_cluster:remote_enqueue(RemoteNode,
+                                    {SessionProxy, {Ref, self(), Term}}) of
+        ok ->
+            wait_till_delivered(SessionProxy, Ref);
+        E ->
+            E
+    end.
+
+wait_till_delivered(SessionProxy, Ref) ->
+    MRef = monitor(process, SessionProxy),
+    receive
+        {'DOWN', MRef, process, SessionProxy, Reason} ->
+            {error, Reason};
+        {Ref, Reply} ->
+            demonitor(MRef, [flush]),
+            Reply
+    end.
+
+
+
+
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -71,12 +108,16 @@ init([Node, QPid, SubscriberId]) ->
     {ok, #state{node=Node, subscriber_id=SubscriberId, queue_pid=QPid,
                 queue_mon=QueueMon}}.
 
-handle_call({deliver, Term}, From, State) ->
-    {noreply, deliver(From, Term, State)}.
+handle_call(Req, _From, State) ->
+    {stop, {error, {unknown_req, Req}}, State}.
 
-handle_cast({derefed, MsgRef}, #state{waiting={MsgRef, From}} = State) ->
-    gen_server:reply(From, ok),
-    {noreply, State#state{waiting=undefined}}.
+handle_cast({derefed, MsgRef}, #state{waiting_for_deref={MsgRef, {Ref, CallerPid}}} = State) ->
+    CallerPid ! {Ref, ok},
+    {noreply, State#state{waiting_for_deref=undefined}}.
+
+handle_info({deliver, {Ref, CallerPid, Term}}, State) ->
+    %% this message is sent from the vmq_cluster_com
+    {noreply, deliver({Ref, CallerPid}, Term, State)};
 
 handle_info(remap_subscription, #state{subscriber_id=SubscriberId, node=Node} = State) ->
     case vmq_reg:remap_subscription(SubscriberId, Node) of
@@ -85,7 +126,7 @@ handle_info(remap_subscription, #state{subscriber_id=SubscriberId, node=Node} = 
             lager:debug("[~p][~p] stopped message replication for subscriber ~p due to "
                         ++ "deliver_from_store proc stopped normally", [node(), SubscriberId, Node]),
             {stop, normal, State};
-        {error, overloaded} ->
+        {error, _Reason} ->
             erlang:send_after(1000, self(), remap_subscription),
             {noreply, State}
     end;
@@ -155,7 +196,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-deliver(From, Term, State) ->
+deliver({Ref, CallerPid} = From, Term, State) ->
     #state{queue_pid=QPid, node=Node} = State,
     case Term of
         {RoutingKey, Payload, QoS, Dup, MsgRef} ->
@@ -169,10 +210,10 @@ deliver(From, Term, State) ->
                                     %% doesn't care.
                            msg_ref={{self(), Node}, MsgRef}},
             enqueue_or_exit(QPid, {deliver, QoS, Msg}),
-            State#state{waiting={MsgRef, From}};
+            State#state{waiting_for_deref={MsgRef, From}};
         _ ->
             enqueue_or_exit(QPid, {deliver_bin, Term}),
-            gen_server:reply(From, ok),
+            CallerPid ! {Ref, ok},
             State
     end.
 
