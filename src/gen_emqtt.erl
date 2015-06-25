@@ -320,8 +320,6 @@ process_bytes(Bytes, StateName, #state{parser=ParserState} = State) ->
     case vmq_parser:parse(Data) of
         {error, NewParserState} ->
             {next_state, StateName, State#state{parser=NewParserState}};
-        error ->
-            {next_state, StateName, State#state{parser= <<>>}};
         more ->
             {next_state, StateName, State#state{parser=Data}};
         {Frame, Rest} ->
