@@ -126,7 +126,7 @@ handle_info(remap_subscription, #state{subscriber_id=SubscriberId, node=Node} = 
             lager:debug("[~p][~p] stopped message replication for subscriber ~p due to "
                         ++ "deliver_from_store proc stopped normally", [node(), SubscriberId, Node]),
             {stop, normal, State};
-        {error, overloaded} ->
+        {error, _Reason} ->
             erlang:send_after(1000, self(), remap_subscription),
             {noreply, State}
     end;

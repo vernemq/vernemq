@@ -47,7 +47,7 @@
          terminate/2,
          code_change/3]).
 
-%% used by/through RPC calls
+%% used by/through remote calls
 -export([teardown_session/2,
          publish/2,
          register_subscriber_/4]).
@@ -622,15 +622,20 @@ remap_subscription(SubscriberId, Node) ->
     %% meantime, the subscription is not moved and retried upon the next connect.
     rate_limited_op(
       fun() ->
+              plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}])
+      end,
+      fun ({error, Reason}) -> {error, Reason};
+          (Subs) ->
               Self = node(),
-              Subs = plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]),
               NewSubs =
               lists:foldl(fun({Topic, QoS, N}, Acc) when N == Node ->
                                   [{Topic, QoS, Self}|Acc];
                              (Sub, Acc) ->
                                   [Sub|Acc]
                           end, [], Subs),
-              plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs) end
+              plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs),
+              ok
+      end
      ).
 
 -spec get_subscriber_pids(subscriber_id()) ->
@@ -819,8 +824,12 @@ unregister_subscriber(SubscriberId, SubscriberPid) ->
             ok
     end.
 
+-spec rate_limited_op(fun(() -> any())) -> any() | {error, overloaded}.
 rate_limited_op(OpFun) ->
     rate_limited_op(OpFun, fun(Ret) -> Ret end).
+
+-spec rate_limited_op(fun(() -> any()),
+                      fun((any()) -> any())) -> any() | {error, overloaded}.
 rate_limited_op(OpFun, SuccessFun) ->
     case jobs:ask(plumtree_queue) of
         {ok, JobId} ->

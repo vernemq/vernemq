@@ -180,9 +180,7 @@ process_bytes(SessionPid, Bytes, ParserState) ->
                     {throttled, Rest};
                 _ ->
                     process_bytes(SessionPid, Rest, <<>>)
-            end;
-        error ->
-            error
+            end
     end.
 
 handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->

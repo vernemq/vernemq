@@ -266,11 +266,6 @@ scheduler_utilization_items() ->
     [total | [list_to_atom("scheduler_" ++ integer_to_list(I))
               || {I, _, _} <- lists:sort(erlang:statistics(scheduler_wall_time))]].
 
-
-subscribe(ReporterMod, [{Metric, histogram, _}|Rest], Interval) ->
-    Datapoints = [max, min, mean, median],
-    subscribe(ReporterMod, Metric, Datapoints, Interval),
-    subscribe(ReporterMod, Rest, Interval);
 subscribe(ReporterMod, [{Metric, {function, _, _, _, proplist, Items}, _}|Rest],
           Interval) ->
     subscribe(ReporterMod, Metric, Items, Interval),

@@ -123,7 +123,7 @@ wait_until_disconnected(FsmPid) ->
             ok
     end.
 
--spec in(pid(), mqtt_frame()) ->  ok.
+-spec in(pid(), mqtt_frame()) ->  ok | throttle.
 in(FsmPid, Event) ->
     save_sync_send_all_state_event(FsmPid, {input, Event}, ok, infinity).
 
@@ -333,13 +333,9 @@ handle_info({mail, QPid, Msgs, _, Dropped}, StateName,
         false ->
             State
     end,
-    case handle_messages(Msgs, [], NewState) of
-        {ok, NewState1} ->
-            vmq_queue:notify(QPid),
-            {next_state, StateName, maybe_trigger_counter_update(NewState1)};
-        Ret ->
-            Ret
-    end;
+    NewState1 = handle_messages(Msgs, [], NewState),
+    vmq_queue:notify(QPid),
+    {next_state, StateName, maybe_trigger_counter_update(NewState1)};
 handle_info(Info, _StateName, State) ->
     {stop, {error, {unknown_info, Info}}, State} .
 
@@ -352,7 +348,7 @@ terminate(_Reason, connected, State) ->
             ?false ->
                 handle_waiting_acks(State)
         end,
-    trigger_counter_update(false, State),
+    trigger_counter_update(State),
     %% TODO: the counter update is missing the last will message
     maybe_publish_last_will(State);
 terminate(_Reason, _, _) ->
@@ -365,20 +361,13 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% INTERNALS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 handle_messages([{deliver, QoS, Msg}|Rest], Frames, State) ->
-    {ok, Frame, NewState} = prepare_frame(QoS, Msg, State),
+    {Frame, NewState} = prepare_frame(QoS, Msg, State),
     handle_messages(Rest, [Frame|Frames], NewState);
 handle_messages([{deliver_bin, Term}|Rest], Frames, State) ->
-    {ok, NewState} = handle_bin_message(Term, State),
-    handle_messages(Rest, Frames, NewState);
-handle_messages([], [], State) -> {ok, State};
+    handle_messages(Rest, Frames, handle_bin_message(Term, State));
+handle_messages([], [], State) -> State;
 handle_messages([], Frames, State) ->
-    case send_publish_frames(Frames, State) of
-        {ok, NewState} ->
-            {ok, NewState};
-        {error, Reason} ->
-            lager:debug("[~p] stop due to ~p~n", [self(), Reason]),
-            {stop, normal, State}
-    end.
+    send_publish_frames(Frames, State).
 
 prepare_frame(QoS, Msg, State) ->
     #state{waiting_acks=WAcks, retry_interval=RetryInterval} = State,
@@ -391,22 +380,22 @@ prepare_frame(QoS, Msg, State) ->
                                                                 Msg, State),
     {OutgoingMsgId, State1} = get_msg_id(NewQoS, State),
     Frame = #mqtt_publish{message_id=OutgoingMsgId,
-                          topic=iolist_to_binary(vmq_topic:unword(Topic)),
+                          topic=lists:flatten(vmq_topic:unword(Topic)),
                           qos=NewQoS,
                           retain=IsRetained,
                           dup=IsDup,
                           payload=Payload},
     case NewQoS of
         0 ->
-            {ok, Frame, State1};
+            {Frame, State1};
         _ ->
             Ref = send_after(RetryInterval, {retry, OutgoingMsgId}),
-            {ok, Frame, State1#state{
-                          waiting_acks=dict:store(OutgoingMsgId,
-                                                  {NewQoS, Frame,
-                                                   Ref,
-                                                   MsgStoreRef},
-                                                  WAcks)}}
+            {Frame, State1#state{
+                      waiting_acks=dict:store(OutgoingMsgId,
+                                              {NewQoS, Frame,
+                                               Ref,
+                                               MsgStoreRef},
+                                              WAcks)}}
     end.
 
 %% The MQTT specification requires that the QoS of a message delivered to a
@@ -439,10 +428,10 @@ handle_bin_message({MsgId, QoS, Bin}, State) ->
            retry_interval=RetryInterval, send_cnt=SendCnt} = State,
     SendFun(Bin),
     Ref = send_after(RetryInterval, {retry, MsgId}),
-    {ok, State#state{send_cnt=incr_msg_sent_cnt(SendCnt),
-                     waiting_acks=dict:store(MsgId,
-                                             {QoS, Bin, Ref, undefined},
-                                             WAcks)}}.
+    State#state{send_cnt=incr_msg_sent_cnt(SendCnt),
+                waiting_acks=dict:store(MsgId,
+                                        {QoS, Bin, Ref, undefined},
+                                        WAcks)}.
 
 -spec handle_frame(statename(), mqtt_frame(), state()) ->
                    {statename(), state()} | {stop, atom(), state()}.
@@ -892,20 +881,15 @@ drop(State) ->
 drop(I, #state{pub_dropped_cnt=PubDropped} = State) ->
     State#state{pub_dropped_cnt=incr_pub_dropped_cnt(I, PubDropped)}.
 
--spec send_publish_frames([mqtt_frame()], state()) -> state() | {error, atom()}.
+-spec send_publish_frames([mqtt_frame()], state()) -> state().
 send_publish_frames(Frames, State) ->
     #state{send_fun=SendFun, send_cnt=SendCnt, pub_send_cnt=PubSendCnt} = State,
-    case SendFun(Frames) of
-        ok ->
-            NrOfFrames = length(Frames),
-            NewState = State#state{
-                         send_cnt=incr_msg_sent_cnt(NrOfFrames, SendCnt),
-                         pub_send_cnt=incr_pub_sent_cnt(NrOfFrames, PubSendCnt)
-                        },
-            {ok, NewState};
-        {error, Reason} ->
-            {error, Reason}
-    end.
+    ok = SendFun(Frames),
+    NrOfFrames = length(Frames),
+    State#state{
+      send_cnt=incr_msg_sent_cnt(NrOfFrames, SendCnt),
+      pub_send_cnt=incr_pub_sent_cnt(NrOfFrames, PubSendCnt)
+     }.
 
 -spec auth_on_publish(username(), subscriber_id(), msg(),
                       fun((msg(), list()) -> {ok, msg()} | {error, atom()})
@@ -1088,57 +1072,47 @@ maybe_trigger_counter_update(#state{last_time_active={MSecs, Secs, _}} = State) 
         {MSecs, Secs, _} ->
             State;
         _ ->
-            trigger_counter_update(false, State#state{last_time_active=NewTS})
+            trigger_counter_update(State#state{last_time_active=NewTS})
     end.
 
-trigger_counter_update(ResetSamples, State) ->
+trigger_counter_update(State) ->
     #state{recv_cnt=RecvCnt,
            send_cnt=SendCnt,
            pub_recv_cnt=PubRecvCnt,
            pub_send_cnt=PubSendCnt,
            pub_dropped_cnt=PubDroppedCnt} = State,
     State#state{
-        recv_cnt=trigger_counter_update(ResetSamples, incr_messages_received, RecvCnt),
-        send_cnt=trigger_counter_update(ResetSamples, incr_messages_sent, SendCnt),
-        pub_recv_cnt=trigger_counter_update(ResetSamples, incr_publishes_received,
+        recv_cnt=trigger_counter_update(incr_messages_received, RecvCnt),
+        send_cnt=trigger_counter_update(incr_messages_sent, SendCnt),
+        pub_recv_cnt=trigger_counter_update(incr_publishes_received,
                                             PubRecvCnt),
-        pub_send_cnt=trigger_counter_update(ResetSamples, incr_publishes_sent,
+        pub_send_cnt=trigger_counter_update(incr_publishes_sent,
                                             PubSendCnt),
-        pub_dropped_cnt=trigger_counter_update(ResetSamples, incr_publishes_dropped,
+        pub_dropped_cnt=trigger_counter_update(incr_publishes_dropped,
                                                PubDroppedCnt)}.
 
-trigger_counter_update(_,_, {_, _, []} = Counter) ->
+trigger_counter_update(_, {_, _, []} = Counter) ->
     Counter;
-trigger_counter_update(ResetSamples, IncrFun, {_, Total, Vals}) ->
+trigger_counter_update(IncrFun, {_, Total, Vals}) ->
     L = length(Vals),
     Avg = lists:sum(Vals) div L,
     _ = apply(vmq_exo, IncrFun, [Avg]),
-    case {L, ResetSamples} of
-        {?MAX_SAMPLES, false} ->
-            % remove oldest sample
-            {Avg, Total, [0|lists:reverse(tl(lists:reverse(Vals)))]};
-        {_, false} when L < ?MAX_SAMPLES ->
+    case L < ?MAX_SAMPLES of
+        true ->
             {Avg, Total, [0|Vals]};
-        {_, true} ->
-            %% this ensures that once the process
-            %% wakes up after hibernation, we won't
-            %% use maybe too old samples.
-            %% BUT: we'll keep the Avg since this is used for rate limitation
-            {Avg, Total, []}
+        false ->
+            % remove oldest sample
+            {Avg, Total, [0|lists:reverse(tl(lists:reverse(Vals)))]}
     end.
 
 prop_val(Key, Args, Default) when is_list(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_list/1);
 prop_val(Key, Args, Default) when is_integer(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_integer/1);
-prop_val(Key, Args, Default) when is_float(Default) ->
-    prop_val(Key, Args, Default, fun erlang:is_float/1);
-prop_val(Key, Args, Default) when is_atom(Default) ->
-    prop_val(Key, Args, Default, fun erlang:is_atom/1);
 prop_val(Key, Args, Default) when is_boolean(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_boolean/1);
-prop_val(Key, Args, Default) when is_binary(Default) ->
-    prop_val(Key, Args, Default, fun erlang:is_binary/1).
+prop_val(Key, Args, Default) when is_atom(Default) ->
+    prop_val(Key, Args, Default, fun erlang:is_atom/1).
 
 prop_val(Key, Args, Default, Validator) ->
     case proplists:get_value(Key, Args) of

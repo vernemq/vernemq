@@ -78,19 +78,6 @@ loop(#state{} = State) ->
     after
         0 ->
             loop(internal_flush(State))
-    end;
-loop({exit, Reason, State}) ->
-    _ = internal_flush(State),
-    teardown(Reason, State).
-
-teardown(Reason, #state{node=Node}) ->
-    case Reason of
-        normal ->
-            lager:debug("connection to ~p stopped", [Node]);
-        shutdown ->
-            lager:debug("connection to ~p stopped due to shutdown", [Node]);
-        _ ->
-            lager:warning("connection to ~p stopped due to ~p", [Node, Reason])
     end.
 
 buffer_message(BinMsg, #state{pending=Pending, max_queue_size=Max,

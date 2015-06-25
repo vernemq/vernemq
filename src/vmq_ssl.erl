@@ -147,13 +147,17 @@ cipher_hash_transform(_, _, []) -> {error, unknown_hash}.
 -spec all_ciphers(boolean()) -> [{atom(), atom(), atom()}].
 all_ciphers(UseEc) ->
     ECExchanges = [ecdh_anon, ecdh_ecdsa, ecdhe_ecdsa, ecdh_rsa, ecdhe_rsa],
-    [CS || {Ex, _, _} =
-           CS <- ssl:cipher_suites(),
-           case UseEc of
-               true -> true;
-               false ->
-                   not lists:member(Ex, ECExchanges)
-           end].
+    lists:foldl(fun({Ex, _, _} = CS, Acc) ->
+                        case UseEc of
+                            true -> [CS|Acc];
+                            false ->
+                                case lists:member(Ex, ECExchanges) of
+                                    true -> Acc;
+                                    false -> [CS|Acc]
+                                end
+                        end;
+                   (_, Acc) -> Acc
+                end, [], ssl:cipher_suites()).
 
 -spec unbroken_cipher_suites([atom()]) -> [{atom(), atom(), atom()}].
 unbroken_cipher_suites(CipherSuites) ->
