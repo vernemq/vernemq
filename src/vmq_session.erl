@@ -608,7 +608,7 @@ check_connect(#mqtt_connect{proto_ver=Ver} = F, State) ->
 
 check_client_id(#mqtt_connect{} = Frame,
                 #state{username={preauth, UserNameFromCert}} = State) ->
-    check_client_id(Frame#mqtt_connect{username={preauth, UserNameFromCert}},
+    check_client_id(Frame#mqtt_connect{username=UserNameFromCert},
                     State#state{username=UserNameFromCert});
 
 check_client_id(#mqtt_connect{client_id=undefined, proto_ver=4, clean_session=CleanSession} = F, State) ->
