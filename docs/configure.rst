@@ -83,6 +83,11 @@ Both options ``require_certificate`` and ``use_identity_as_username`` default to
 
 The same configuration options can be used for securing WebSocket connections, just use ``wss`` as the protocol identifier e.g. ``listener.wss.require_certificate``.
 
+.. note::
+
+    The default listener ``listener.vmq.clustering`` is used for distributing MQTT messages among the cluster nodes.
+
+
 Allow anonymous clients
 -----------------------
 
