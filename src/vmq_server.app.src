@@ -64,6 +64,7 @@
             {send_timeout, 30000}, 
             {send_timeout_close, true}
         ]},
+      {tune_tcp_buffer_size, false},
       {msg_store_childspec, {vmq_lvldb_store_sup,
                              {vmq_lvldb_store_sup, start_link, []},
                              permanent, 5000, supervisor, [vmq_lvldb_store_sup]}},
