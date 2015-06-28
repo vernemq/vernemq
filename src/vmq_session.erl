@@ -380,7 +380,7 @@ prepare_frame(QoS, Msg, State) ->
                                                                 Msg, State),
     {OutgoingMsgId, State1} = get_msg_id(NewQoS, State),
     Frame = #mqtt_publish{message_id=OutgoingMsgId,
-                          topic=lists:flatten(vmq_topic:unword(Topic)),
+                          topic=iolist_to_binary(vmq_topic:unword(Topic)),
                           qos=NewQoS,
                           retain=IsRetained,
                           dup=IsDup,
