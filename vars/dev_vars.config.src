@@ -35,6 +35,8 @@
 {mqtt_default_port, @MQTTPORT@}.
 {mqtt_default_ws_ip, "127.0.0.1"}.
 {mqtt_default_ws_port, @MQTTWSPORT@}.
+{cluster_default_ip, "0.0.0.0"}.
+{cluster_default_port, @CLUSTERPORT@}.
 
 %% lager
 {console_log_default, both}.

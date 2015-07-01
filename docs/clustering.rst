@@ -52,6 +52,17 @@ For ease of firewall configuration, VerneMQ can be configured to instruct the Er
     erlang.distribution.port_range.minimum = 6000
     erlang.distribution.port_range.maximum = 7999
 
+The settings above are only used for distributing subscription updates and maintenance messages. For distributing the 'real' MQTT messages the proper ``vmq`` listener must be configured in the vernemq.conf.
+
+.. code-block:: ini
+
+    listener.vmq.clustering = 0.0.0.0:44053
+
+.. note::
+
+    It isn't necessary to configure the same port on every machine, as the nodes will probe each other for this information.
+
+
 Dealing with Network Partitions
 -------------------------------
 
