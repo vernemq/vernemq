@@ -4,8 +4,8 @@ Changelog
 VERNEMQ 0.10.0
 --------------
 
-We switched to the rebar3 toolchain for building VerneMQ. This involved quite
-some changes in many of our direct dependencies (``vmq_*``). Several bug fixes and
+We switched to the rebar3 toolchain for building VerneMQ, involving quite some 
+changes in many of our direct dependencies (``vmq_*``). Several bug fixes and
 performance improvements. Unfortunately some of the changes required some backward
 imcompatibilites:
 
@@ -13,18 +13,17 @@ imcompatibilites:
 
     Make sure to delete (or backup) the old subscriber data directory 
     ``/var/lib/vernemq/meta/lvldb_cluster_meta`` as the contained data format isn't
-    compatible with the one found in ``0.10.0``. This results that the durable
-    sessions (``clean_session=false``) are lost, and the clients have to resubscribe.
+    compatible with the one found in ``0.10.0``. Durable sessions (``clean_session=false``) 
+    will be lost, and the clients are forced to resubscribe.
     Although the offline messages for these sessions aren't necessary lost, an ugly
-    workaround is required. And therefore it's recommended to also delete the message store
+    workaround is required. Therefore it's recommended to also delete the message store
     folder ``/var/lib/vernemq/msgstore``.
 
     If you were running a clustered setup, make sure to revisit the clustering
     documentation as the specific ``listener.vmq.clustering`` configuration is needed 
     inside ``vernemq.conf`` to enable inter-node communicaton.
     
-    Besides the mentioned changes we updated the format of the exposed metrics.
-    Make sure to adjust your monitoring setup.
+    We updated the format of the exposed metrics. Make sure to adjust your monitoring setup.
 
 vmq_server
 ~~~~~~~~~~
