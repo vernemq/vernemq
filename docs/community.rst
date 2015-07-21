@@ -16,8 +16,8 @@ about VerneMQ.
 Mailing List
 ------------
 
-We host a low traffic `mailing list`_ where we ask you to ask and answer questions
-around VerneMQ installation, operations, but also plugin development.
+We host a low traffic `mailing list`_ where we you can ask and answer questions
+about VerneMQ installation, operations, but also plugin development.
 
 .. _mailing list: http://verne.mq/mailman/listinfo/vernemq-list_verne.mq
 
