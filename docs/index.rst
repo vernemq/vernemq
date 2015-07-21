@@ -50,4 +50,5 @@ User Guide
     connect
     plugins
     tuning/overview
+    community
     changelog
