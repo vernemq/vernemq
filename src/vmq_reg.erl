@@ -90,8 +90,7 @@ start_link() ->
                                       bag,
                                       named_table,
                                       {keypos, 2},
-                                      {read_concurrency, true},
-                                      {write_concurrency, true}]);
+                                      {read_concurrency, true}]);
         _ ->
             %% ets table already exists, we'll remap the monitors
             %% in the init callback.
