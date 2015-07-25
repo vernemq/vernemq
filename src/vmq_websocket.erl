@@ -72,7 +72,7 @@ websocket_handle({binary, Bytes}, Req, State) ->
             websocket_handle({binary, HoldBackBuf}, Req,
                              State#st{parser_state= <<>>});
         error ->
-            {stop, Req, State}
+            {shutdown, Req, State}
     end;
 
 websocket_handle(_Data, Req, State) ->
