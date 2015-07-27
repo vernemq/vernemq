@@ -44,8 +44,11 @@
 -define(MAX_PACKET_SIZE, 266338304).
 
 -spec parse(binary()) -> {mqtt_frame(), binary()} | {error, binary()} | more.
-parse(<<Fixed:1/binary, 0:1, L1:7, Data:L1/binary, Rest/binary>>) ->
-    {parse(Fixed, Data), Rest};
+parse(<<Fixed:1/binary, 0:1, L1:7, Data/binary>>) ->
+    case Data of
+        <<Var:L1/binary, Rest/binary>> -> {parse(Fixed, Var), Rest};
+        _ -> more
+    end;
 parse(<<Fixed:1/binary, 1:1, L1:7, 0:1, L2:7, Data/binary>>) ->
     DataSize = L1 + (L2 bsl 7),
     case Data of
