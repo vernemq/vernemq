@@ -118,6 +118,8 @@ subscribe_(User, SubscriberId, QPid, Topics) ->
                                 [User, SubscriberId, Topics]) of
         ok ->
             subscribe_op(User, SubscriberId, QPid, Topics);
+        {ok, NewTopics} when is_list(NewTopics) ->
+            subscribe_op(User, SubscriberId, QPid, NewTopics);
         {error, _} ->
             {error, not_allowed}
     end.
@@ -125,9 +127,7 @@ subscribe_(User, SubscriberId, QPid, Topics) ->
 subscribe_op(User, SubscriberId, QPid, Topics) ->
     rate_limited_op(
       fun() ->
-              _ = [add_subscriber(T, QoS, SubscriberId)
-                   || {T, QoS} <- Topics],
-              ok
+              add_subscriber(Topics, SubscriberId)
       end,
       fun(_) ->
               _ = [begin
@@ -151,8 +151,7 @@ unsubscribe(true, User, SubscriberId, Topics) ->
 unsubscribe_op(User, SubscriberId, Topics) ->
     rate_limited_op(
       fun() ->
-              _ = [del_subscriber(T, SubscriberId) || T <- Topics],
-              ok
+              del_subscriptions(Topics, SubscriberId)
       end,
       fun(_) ->
               _ = [vmq_exo:decr_subscription_count() || _ <- Topics],
@@ -600,14 +599,21 @@ fold_sessions(FoldFun, Acc) ->
               end, Acc, vmq_session).
 
 
--spec add_subscriber(topic(), qos(), subscriber_id()) -> ok.
-add_subscriber(Topic, QoS, SubscriberId) ->
+-spec add_subscriber([{topic(), qos()}], subscriber_id()) -> ok.
+add_subscriber(Topics, SubscriberId) ->
     NewSubs =
     case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined ->
-            [{Topic, QoS, node()}];
+            [{Topic, QoS, node()} || {Topic, QoS} <- Topics];
         Subs ->
-            lists:usort([{Topic, QoS, node()}|Subs])
+            lists:foldl(fun({Topic, QoS}, NewSubsAcc) ->
+                                NewSub = {Topic, QoS, node()},
+                                case lists:member(NewSub, NewSubsAcc) of
+                                    true -> NewSubsAcc;
+                                    false ->
+                                        [NewSub|NewSubsAcc]
+                                end
+                        end, Subs, Topics)
     end,
     plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs).
 
@@ -616,10 +622,23 @@ add_subscriber(Topic, QoS, SubscriberId) ->
 del_subscriber(SubscriberId) ->
     plumtree_metadata:delete(?SUBSCRIBER_DB, SubscriberId).
 
--spec del_subscriber(topic() | '_' , subscriber_id()) -> ok.
-del_subscriber(Topic, SubscriberId) ->
+-spec del_subscriptions([topic()], subscriber_id()) -> ok.
+del_subscriptions(Topics, SubscriberId) ->
     Subs = plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]),
-    NewSubs = [Sub || {T, _, N} = Sub <- Subs, (T /= Topic) and (N /= node())],
+    NewSubs =
+    lists:foldl(fun({Topic, _, Node} = Sub, NewSubsAcc) ->
+                        case Node == node() of
+                            true ->
+                                case lists:member(Topic, Topics) of
+                                    true ->
+                                        NewSubsAcc;
+                                    false ->
+                                        [Sub|NewSubsAcc]
+                                end;
+                            false ->
+                                [Sub|NewSubsAcc]
+                        end
+                end, [], Subs),
     plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs).
 
 -spec remap_subscription(subscriber_id(), atom()) -> ok | {error, overloaded}.
