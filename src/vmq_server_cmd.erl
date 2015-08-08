@@ -12,7 +12,8 @@
          listener_start/1,
          listener_start/2,
          listener_stop/2,
-         listener_stop/3
+         listener_stop/3,
+         listener_delete/2
         ]).
 
 node_start() ->
@@ -67,12 +68,16 @@ listener_stop(Port, Address, false) when is_integer(Port) and is_list(Address) -
     vmq_server_cli:command(["vmq-admin", "listener", "stop",
                             "--port", integer_to_list(Port),
                             "--address", Address], false);
-listener_stop(Port, Address, false) when is_integer(Port) and is_list(Address) ->
+listener_stop(Port, Address, true) when is_integer(Port) and is_list(Address) ->
     vmq_server_cli:command(["vmq-admin", "listener", "stop",
                             "--port", integer_to_list(Port),
                             "--address", Address,
                             "--kill_sessions"], false).
 
+listener_delete(Port, Address) when is_integer(Port) and is_list(Address) ->
+    vmq_server_cli:command(["vmq-admin", "listener", "delete",
+                            "--port", integer_to_list(Port),
+                            "--address", Address], false).
 
 
 convert_listener_options([{K, true}|Rest], Acc) ->

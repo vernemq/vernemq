@@ -162,6 +162,8 @@ start_listener(Type, Addr, Port, Opts) ->
             vmq_config:set_env(listeners, NewListenerConfig, false),
             [clique_status:text("Done")];
         {error, Reason} ->
+            lager:warning("Can't start listener ~p ~p ~p ~p due to ~p",
+                          [Type, Addr, Port, Opts, Reason]),
             Text = io_lib:format("can't start listener due to '~p'", [Reason]),
             [clique_status:alert([clique_status:text(Text)])]
     end.
@@ -311,6 +313,7 @@ vmq_listener_usage() ->
      "  Sub-commands:\n",
      "    start       Starts or modifies a listener\n",
      "    stop        Stops a listener\n",
+     "    restart     Restarts a listener\n",
      "    delete      Deletes a stopped listener\n",
      "    show        Shows all intalled listeners\n",
      "  Use --help after a sub-command for more details.\n"
@@ -360,7 +363,9 @@ vmq_listener_stop_usage() ->
      "  listening on 0.0.0.0:1883 is stopped\n\n",
      "Options\n\n",
      "  -p, --port=PortNr\n",
-     "  -a, --address=IpAddress\n\n"
+     "  -a, --address=IpAddress\n"
+     "  -k, --kill_sessions\n"
+     "      kills all sessions accepted with this listener.\n\n"
     ].
 
 vmq_listener_delete_usage() ->
