@@ -61,6 +61,9 @@
 %% used by vmq_session:list_sessions
 -export([fold_sessions/2]).
 
+%% might be used for presence support
+-export([deliver_all_retained_for_subscriber_id/1]).
+
 %% called when remote message delivery successfully finished for node
 -export([remap_subscription/2]).
 
@@ -391,6 +394,20 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
       %% iterator opts
       [{match, {NewWords}},
        {resolver, lww}]).
+
+deliver_all_retained_for_subscriber_id(SubscriberId) ->
+    case subscriptions_for_subscriber_id(SubscriberId) of
+        [] ->
+            ok;
+        Subs ->
+            lists:foreach(
+              fun(QPid) ->
+                      lists:foreach(
+                        fun({Topic, QoS, _}) ->
+                                deliver_retained(SubscriberId, QPid, Topic, QoS)
+                        end, Subs)
+              end, get_queue_pids(SubscriberId))
+    end.
 
 subscriptions_for_subscriber_id(SubscriberId) ->
     plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]).
