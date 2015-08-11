@@ -116,6 +116,7 @@ stop_reg_view(ViewModule) ->
 init([]) ->
     {ok, {{one_for_one, 5, 10},
           [?CHILD(vmq_reg, vmq_reg, worker, []),
+           ?CHILD(vmq_retain_srv, vmq_retain_srv, worker, []),
            ?CHILD(vmq_reg_leader, vmq_reg_leader, worker, []),
            ?CHILD(vmq_session_expirer, vmq_session_expirer, worker, [])]
          }

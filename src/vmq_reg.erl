@@ -81,7 +81,6 @@
 
 -type state() :: #state{}.
 
--define(RETAIN_DB, {vmq, retain}).
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
 -define(TOMBSTONE, '$deleted').
 
@@ -275,19 +274,20 @@ publish(#vmq_msg{trade_consistency=true,
                  reg_view=RegView,
                  mountpoint=MP,
                  routing_key=Topic,
-                 payload=Paylaod,
+                 payload=Payload,
                  retain=IsRetain} = Msg) ->
     %% trade consistency for availability
     %% if the cluster is not consistent at the moment, it is possible
     %% that subscribers connected to other nodes won't get this message
     case IsRetain of
-        ?true when Paylaod == <<>> ->
+        ?true when Payload == <<>> ->
             %% retain delete action
-            rate_limited_op(fun() -> plumtree_metadata:delete(?RETAIN_DB,
-                                                              {Topic}) end);
+            vmq_retain_srv:delete(Topic);
         ?true ->
             %% retain set action
-            retain_msg(Msg);
+            vmq_retain_srv:insert(Topic, Payload),
+            RegView:fold(MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            ok;
         ?false ->
             RegView:fold(MP, Topic, fun publish/2, Msg),
             ok
@@ -302,11 +302,12 @@ publish(#vmq_msg{trade_consistency=false,
     case vmq_cluster:is_ready() of
         true when (IsRetain == ?true) and (Payload == <<>>) ->
             %% retain delete action
-            rate_limited_op(fun() -> plumtree_metadata:delete(?RETAIN_DB,
-                                                              {Topic}) end);
+            vmq_retain_srv:delete(Topic);
         true when (IsRetain == ?true) ->
             %% retain set action
-            retain_msg(Msg);
+            vmq_retain_srv:insert(Topic, Payload),
+            RegView:fold(MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            ok;
         true ->
             RegView:fold(MP, Topic, fun publish/2, Msg),
             ok;
@@ -351,32 +352,10 @@ publish(SubscriberId, Msg, QoS, [QPid|Rest]) ->
     end;
 publish(_, Msg, _, []) -> Msg.
 
-retain_msg(Msg = #vmq_msg{mountpoint=MP, reg_view=RegView,
-                          routing_key=Topic, payload=Payload}) ->
-    rate_limited_op(
-      fun() ->
-              plumtree_metadata:put(?RETAIN_DB, {Topic}, Payload),
-              Msg#vmq_msg{retain=false}
-      end,
-      fun(RetainedMsg) ->
-              _ = RegView:fold(MP, Topic, fun publish/2, RetainedMsg),
-              ok
-      end).
-
 -spec deliver_retained(subscriber_id(), pid(), topic(), qos()) -> 'ok'.
 deliver_retained(SubscriberId, QPid, Topic, QoS) ->
-    Words = [case W of
-                 "+" -> '_';
-                 _ -> W
-             end || W <- vmq_topic:words(Topic)],
-    NewWords =
-    case lists:reverse(Words) of
-        ["#"|Tail] -> lists:reverse(Tail) ++ '_' ;
-        _ -> Words
-    end,
-    plumtree_metadata:fold(
-      fun ({_, ?TOMBSTONE}, Acc) -> Acc;
-          ({{T}, Payload}, _) ->
+    vmq_retain_srv:match_fold(
+      fun ({T, Payload}, _) ->
               Msg = #vmq_msg{routing_key=T,
                              payload=Payload,
                              retain=true,
@@ -389,10 +368,7 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
               end,
               ok = vmq_queue:enqueue(QPid, {deliver, QoS, MaybeChangedMsg}),
               ok
-      end, ok, ?RETAIN_DB,
-      %% iterator opts
-      [{match, {NewWords}},
-       {resolver, lww}]).
+      end, ok, Topic).
 
 deliver_all_retained_for_subscriber_id(SubscriberId) ->
     case subscriptions_for_subscriber_id(SubscriberId) of
@@ -729,7 +705,7 @@ total_subscriptions() ->
 
 -spec retained() -> non_neg_integer().
 retained() ->
-    plumtree_metadata_manager:size(?RETAIN_DB).
+    vmq_retain_srv:size().
 
 message_queue_monitor() ->
     {messages, Messages} = erlang:process_info(whereis(vmq_reg), messages),
@@ -858,10 +834,6 @@ unregister_subscriber(SubscriberId, SubscriberPid) ->
                  || #session{pid=Pid} = Obj <- Sessions, Pid == SubscriberPid],
             ok
     end.
-
--spec rate_limited_op(fun(() -> any())) -> any() | {error, overloaded}.
-rate_limited_op(OpFun) ->
-    rate_limited_op(OpFun, fun(Ret) -> Ret end).
 
 -spec rate_limited_op(fun(() -> any()),
                       fun((any()) -> any())) -> any() | {error, overloaded}.

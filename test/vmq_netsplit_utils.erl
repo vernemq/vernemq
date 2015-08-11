@@ -33,6 +33,7 @@ setup(NetTickTime) ->
     timer:sleep(1000),
     ct:pal("Started EPMDPXY on node ~p with EPMD port ~p~n",
               [node(), ?DEFAULT_EPMDPXY_PORT]),
+    vmq_test_utils:maybe_start_distribution(vmq_ct_master),
     set_net_ticktime(NetTickTime),
     Hosts = hosts(),
     [DiscoveryNode|_] = Ns = start_slaves(NetTickTime, Hosts),
@@ -238,7 +239,7 @@ set_net_ticktime(NetTickTime) ->
             ok;
         change_initiated ->
             wait_till_net_tick_converged(NetTickTime);
-        {ongoing_change_to, NetTickTime} ->
+        {ongoing_change_to, _} ->
             wait_till_net_tick_converged(NetTickTime)
     end.
 
