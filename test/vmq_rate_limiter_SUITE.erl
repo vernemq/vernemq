@@ -56,11 +56,11 @@ publish_rate_limit_test(_) ->
     {T, _} =
     timer:tc(
       fun() ->
-              _ = [Pub(10, Socket, I) || I <- lists:seq(0, 100)], %% inits first movingavg slot
+              _ = [Pub(10, Socket, I) || I <- lists:seq(1, 100)], %% inits first movingavg slot
 
               NrOfSamples = 10,
               % sending 10 publishes should take us at least 10 seconds
-              _ = [Pub(10, Socket, I) || I <- lists:seq(0, NrOfSamples)]
+              _ = [Pub(10, Socket, I) || I <- lists:seq(101, 101 + NrOfSamples)]
       end),
     %% this should take us more than 10 seconds
     TimeInMs = round(T / 1000),
