@@ -11,6 +11,7 @@ setup_use_default_auth() ->
     start_server(false).
 
 start_server(StartNoAuth) ->
+    os:cmd(os:find_executable("epmd")++" -daemon"),
     ok = maybe_start_distribution(vmq_server),
     Datadir = "data/" ++ atom_to_list(node()),
     application:load(plumtree),
