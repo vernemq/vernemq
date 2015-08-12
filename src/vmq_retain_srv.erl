@@ -18,9 +18,9 @@
 
 %% API functions
 -export([start_link/0,
-         insert/2,
-         delete/1,
-         match_fold/3,
+         insert/3,
+         delete/2,
+         match_fold/4,
          size/0]).
 
 %% gen_server callbacks
@@ -58,22 +58,25 @@ start_link() ->
     end,
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-delete(RoutingKey) ->
-    gen_server:call(?MODULE, {delete, RoutingKey}, infinity).
+delete(MP, RoutingKey) ->
+    gen_server:call(?MODULE, {delete, {MP, RoutingKey}}, infinity).
 
-insert(RoutingKey, Message) ->
-    ets:insert(?RETAIN_CACHE, {RoutingKey, Message, true}).
+insert(MP, RoutingKey, Message) ->
+    ets:insert(?RETAIN_CACHE, {{MP, RoutingKey}, Message, true}).
 
-match_fold(FoldFun, Acc, Topic) ->
+match_fold(FoldFun, Acc, MP, Topic) ->
     Words = vmq_topic:words(Topic),
-    ets:foldl(fun({T, Payload, _}, AccAcc) ->
-                      case vmq_topic:match(T, Words) of
-                          true ->
-                              FoldFun({T, Payload}, AccAcc);
-                          false ->
-                              AccAcc
-                      end
-              end, Acc, ?RETAIN_CACHE).
+    ets:foldl(
+      fun({{M, T}, Payload, _}, AccAcc) when M == MP ->
+              case vmq_topic:match(T, Words) of
+                  true ->
+                      FoldFun({T, Payload}, AccAcc);
+                  false ->
+                      AccAcc
+              end;
+         (_, AccAcc) ->
+              AccAcc
+      end, Acc, ?RETAIN_CACHE).
 
 size() ->
     ets:info(?RETAIN_CACHE, size).
@@ -97,10 +100,10 @@ size() ->
 init([]) ->
     plumtree_metadata_manager:subscribe(?RETAIN_DB),
     plumtree_metadata:fold(
-      fun({Topic, '$deleted'}, _) ->
-              ets:delete(?RETAIN_CACHE, Topic);
-         ({Topic, Msg}, _) ->
-              ets:insert(?RETAIN_CACHE, [{Topic, Msg, false}])
+      fun({MPTopic, '$deleted'}, _) ->
+              ets:delete(?RETAIN_CACHE, MPTopic);
+         ({MPTopic, Msg}, _) ->
+              ets:insert(?RETAIN_CACHE, [{MPTopic, Msg, false}])
       end, ok, ?RETAIN_DB, [{resolver, lww}]),
     erlang:send_after(vmq_config:get_env(retain_persist_interval, 1000),
                       self(), persist),
@@ -120,8 +123,8 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({delete, Topic}, _From, State) ->
-    plumtree_metadata:delete(?RETAIN_DB, Topic),
+handle_call({delete, MPTopic}, _From, State) ->
+    plumtree_metadata:delete(?RETAIN_DB, MPTopic),
     {reply, ok, State}.
 
 %%--------------------------------------------------------------------
@@ -189,7 +192,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-persist({Topic, Message, true}, Acc) ->
-    plumtree_metadata:put(?RETAIN_DB, Topic, Message),
+persist({MPTopic, Message, true}, Acc) ->
+    plumtree_metadata:put(?RETAIN_DB, MPTopic, Message),
     Acc;
 persist({_, _, false}, Acc) -> Acc.

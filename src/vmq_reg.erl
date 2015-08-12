@@ -282,10 +282,10 @@ publish(#vmq_msg{trade_consistency=true,
     case IsRetain of
         ?true when Payload == <<>> ->
             %% retain delete action
-            vmq_retain_srv:delete(Topic);
+            vmq_retain_srv:delete(MP, Topic);
         ?true ->
             %% retain set action
-            vmq_retain_srv:insert(Topic, Payload),
+            vmq_retain_srv:insert(MP, Topic, Payload),
             RegView:fold(MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
             ok;
         ?false ->
@@ -302,10 +302,10 @@ publish(#vmq_msg{trade_consistency=false,
     case vmq_cluster:is_ready() of
         true when (IsRetain == ?true) and (Payload == <<>>) ->
             %% retain delete action
-            vmq_retain_srv:delete(Topic);
+            vmq_retain_srv:delete(MP, Topic);
         true when (IsRetain == ?true) ->
             %% retain set action
-            vmq_retain_srv:insert(Topic, Payload),
+            vmq_retain_srv:insert(MP, Topic, Payload),
             RegView:fold(MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
             ok;
         true ->
@@ -353,7 +353,7 @@ publish(SubscriberId, Msg, QoS, [QPid|Rest]) ->
 publish(_, Msg, _, []) -> Msg.
 
 -spec deliver_retained(subscriber_id(), pid(), topic(), qos()) -> 'ok'.
-deliver_retained(SubscriberId, QPid, Topic, QoS) ->
+deliver_retained({MP, _} = SubscriberId, QPid, Topic, QoS) ->
     vmq_retain_srv:match_fold(
       fun ({T, Payload}, _) ->
               Msg = #vmq_msg{routing_key=T,
@@ -368,7 +368,7 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
               end,
               ok = vmq_queue:enqueue(QPid, {deliver, QoS, MaybeChangedMsg}),
               ok
-      end, ok, Topic).
+      end, ok, MP, Topic).
 
 deliver_all_retained_for_subscriber_id(SubscriberId) ->
     case subscriptions_for_subscriber_id(SubscriberId) of
