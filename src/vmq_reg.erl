@@ -61,6 +61,9 @@
 %% used by vmq_session:list_sessions
 -export([fold_sessions/2]).
 
+%% might be used for presence support
+-export([deliver_all_retained_for_subscriber_id/1]).
+
 %% called when remote message delivery successfully finished for node
 -export([remap_subscription/2]).
 
@@ -78,7 +81,6 @@
 
 -type state() :: #state{}.
 
--define(RETAIN_DB, {vmq, retain}).
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
 -define(TOMBSTONE, '$deleted').
 
@@ -90,8 +92,7 @@ start_link() ->
                                       bag,
                                       named_table,
                                       {keypos, 2},
-                                      {read_concurrency, true},
-                                      {write_concurrency, true}]);
+                                      {read_concurrency, true}]);
         _ ->
             %% ets table already exists, we'll remap the monitors
             %% in the init callback.
@@ -116,6 +117,8 @@ subscribe_(User, SubscriberId, QPid, Topics) ->
                                 [User, SubscriberId, Topics]) of
         ok ->
             subscribe_op(User, SubscriberId, QPid, Topics);
+        {ok, NewTopics} when is_list(NewTopics) ->
+            subscribe_op(User, SubscriberId, QPid, NewTopics);
         {error, _} ->
             {error, not_allowed}
     end.
@@ -123,9 +126,7 @@ subscribe_(User, SubscriberId, QPid, Topics) ->
 subscribe_op(User, SubscriberId, QPid, Topics) ->
     rate_limited_op(
       fun() ->
-              _ = [add_subscriber(T, QoS, SubscriberId)
-                   || {T, QoS} <- Topics],
-              ok
+              add_subscriber(Topics, SubscriberId)
       end,
       fun(_) ->
               _ = [begin
@@ -149,8 +150,7 @@ unsubscribe(true, User, SubscriberId, Topics) ->
 unsubscribe_op(User, SubscriberId, Topics) ->
     rate_limited_op(
       fun() ->
-              _ = [del_subscriber(T, SubscriberId) || T <- Topics],
-              ok
+              del_subscriptions(Topics, SubscriberId)
       end,
       fun(_) ->
               _ = [vmq_exo:decr_subscription_count() || _ <- Topics],
@@ -274,19 +274,20 @@ publish(#vmq_msg{trade_consistency=true,
                  reg_view=RegView,
                  mountpoint=MP,
                  routing_key=Topic,
-                 payload=Paylaod,
+                 payload=Payload,
                  retain=IsRetain} = Msg) ->
     %% trade consistency for availability
     %% if the cluster is not consistent at the moment, it is possible
     %% that subscribers connected to other nodes won't get this message
     case IsRetain of
-        ?true when Paylaod == <<>> ->
+        ?true when Payload == <<>> ->
             %% retain delete action
-            rate_limited_op(fun() -> plumtree_metadata:delete(?RETAIN_DB,
-                                                              {Topic}) end);
+            vmq_retain_srv:delete(MP, Topic);
         ?true ->
             %% retain set action
-            retain_msg(Msg);
+            vmq_retain_srv:insert(MP, Topic, Payload),
+            RegView:fold(MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            ok;
         ?false ->
             RegView:fold(MP, Topic, fun publish/2, Msg),
             ok
@@ -301,11 +302,12 @@ publish(#vmq_msg{trade_consistency=false,
     case vmq_cluster:is_ready() of
         true when (IsRetain == ?true) and (Payload == <<>>) ->
             %% retain delete action
-            rate_limited_op(fun() -> plumtree_metadata:delete(?RETAIN_DB,
-                                                              {Topic}) end);
+            vmq_retain_srv:delete(MP, Topic);
         true when (IsRetain == ?true) ->
             %% retain set action
-            retain_msg(Msg);
+            vmq_retain_srv:insert(MP, Topic, Payload),
+            RegView:fold(MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            ok;
         true ->
             RegView:fold(MP, Topic, fun publish/2, Msg),
             ok;
@@ -350,32 +352,10 @@ publish(SubscriberId, Msg, QoS, [QPid|Rest]) ->
     end;
 publish(_, Msg, _, []) -> Msg.
 
-retain_msg(Msg = #vmq_msg{mountpoint=MP, reg_view=RegView,
-                          routing_key=Topic, payload=Payload}) ->
-    rate_limited_op(
-      fun() ->
-              plumtree_metadata:put(?RETAIN_DB, {Topic}, Payload),
-              Msg#vmq_msg{retain=false}
-      end,
-      fun(RetainedMsg) ->
-              _ = RegView:fold(MP, Topic, fun publish/2, RetainedMsg),
-              ok
-      end).
-
 -spec deliver_retained(subscriber_id(), pid(), topic(), qos()) -> 'ok'.
-deliver_retained(SubscriberId, QPid, Topic, QoS) ->
-    Words = [case W of
-                 "+" -> '_';
-                 _ -> W
-             end || W <- vmq_topic:words(Topic)],
-    NewWords =
-    case lists:reverse(Words) of
-        ["#"|Tail] -> lists:reverse(Tail) ++ '_' ;
-        _ -> Words
-    end,
-    plumtree_metadata:fold(
-      fun ({_, ?TOMBSTONE}, Acc) -> Acc;
-          ({{T}, Payload}, _) ->
+deliver_retained({MP, _} = SubscriberId, QPid, Topic, QoS) ->
+    vmq_retain_srv:match_fold(
+      fun ({T, Payload}, _) ->
               Msg = #vmq_msg{routing_key=T,
                              payload=Payload,
                              retain=true,
@@ -388,10 +368,21 @@ deliver_retained(SubscriberId, QPid, Topic, QoS) ->
               end,
               ok = vmq_queue:enqueue(QPid, {deliver, QoS, MaybeChangedMsg}),
               ok
-      end, ok, ?RETAIN_DB,
-      %% iterator opts
-      [{match, {NewWords}},
-       {resolver, lww}]).
+      end, ok, MP, Topic).
+
+deliver_all_retained_for_subscriber_id(SubscriberId) ->
+    case subscriptions_for_subscriber_id(SubscriberId) of
+        [] ->
+            ok;
+        Subs ->
+            lists:foreach(
+              fun(QPid) ->
+                      lists:foreach(
+                        fun({Topic, QoS, _}) ->
+                                deliver_retained(SubscriberId, QPid, Topic, QoS)
+                        end, Subs)
+              end, get_queue_pids(SubscriberId))
+    end.
 
 subscriptions_for_subscriber_id(SubscriberId) ->
     plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]).
@@ -584,14 +575,21 @@ fold_sessions(FoldFun, Acc) ->
               end, Acc, vmq_session).
 
 
--spec add_subscriber(topic(), qos(), subscriber_id()) -> ok.
-add_subscriber(Topic, QoS, SubscriberId) ->
+-spec add_subscriber([{topic(), qos()}], subscriber_id()) -> ok.
+add_subscriber(Topics, SubscriberId) ->
     NewSubs =
     case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined ->
-            [{Topic, QoS, node()}];
+            [{Topic, QoS, node()} || {Topic, QoS} <- Topics];
         Subs ->
-            lists:usort([{Topic, QoS, node()}|Subs])
+            lists:foldl(fun({Topic, QoS}, NewSubsAcc) ->
+                                NewSub = {Topic, QoS, node()},
+                                case lists:member(NewSub, NewSubsAcc) of
+                                    true -> NewSubsAcc;
+                                    false ->
+                                        [NewSub|NewSubsAcc]
+                                end
+                        end, Subs, Topics)
     end,
     plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs).
 
@@ -600,10 +598,23 @@ add_subscriber(Topic, QoS, SubscriberId) ->
 del_subscriber(SubscriberId) ->
     plumtree_metadata:delete(?SUBSCRIBER_DB, SubscriberId).
 
--spec del_subscriber(topic() | '_' , subscriber_id()) -> ok.
-del_subscriber(Topic, SubscriberId) ->
+-spec del_subscriptions([topic()], subscriber_id()) -> ok.
+del_subscriptions(Topics, SubscriberId) ->
     Subs = plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]),
-    NewSubs = [Sub || {T, _, N} = Sub <- Subs, (T /= Topic) and (N /= node())],
+    NewSubs =
+    lists:foldl(fun({Topic, _, Node} = Sub, NewSubsAcc) ->
+                        case Node == node() of
+                            true ->
+                                case lists:member(Topic, Topics) of
+                                    true ->
+                                        NewSubsAcc;
+                                    false ->
+                                        [Sub|NewSubsAcc]
+                                end;
+                            false ->
+                                [Sub|NewSubsAcc]
+                        end
+                end, [], Subs),
     plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs).
 
 -spec remap_subscription(subscriber_id(), atom()) -> ok | {error, overloaded}.
@@ -694,7 +705,7 @@ total_subscriptions() ->
 
 -spec retained() -> non_neg_integer().
 retained() ->
-    plumtree_metadata_manager:size(?RETAIN_DB).
+    vmq_retain_srv:size().
 
 message_queue_monitor() ->
     {messages, Messages} = erlang:process_info(whereis(vmq_reg), messages),
@@ -823,10 +834,6 @@ unregister_subscriber(SubscriberId, SubscriberPid) ->
                  || #session{pid=Pid} = Obj <- Sessions, Pid == SubscriberPid],
             ok
     end.
-
--spec rate_limited_op(fun(() -> any())) -> any() | {error, overloaded}.
-rate_limited_op(OpFun) ->
-    rate_limited_op(OpFun, fun(Ret) -> Ret end).
 
 -spec rate_limited_op(fun(() -> any()),
                       fun((any()) -> any())) -> any() | {error, overloaded}.

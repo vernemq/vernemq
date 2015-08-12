@@ -82,12 +82,8 @@ multiple_balanced_sessions_test(_) ->
     Sockets = [F() || _ <- lists:seq(1, 100)],
     Publish = packet:gen_publish("multiple/sessions/test", 0, <<"message">>, []),
     _ = [gen_tcp:send(S, Publish) || S <- Sockets],
-    RestSockets = expect_packet(Sockets, Publish, length(Sockets)),
-    %% all messsages should be retrieved, calling expect_packet again
-    %% will return us the empty list
-    ct:pal("All but ~p of ~p sessions were balanced during the test",
-           [length(RestSockets), length(Sockets)]),
-    ok = drain_packet(RestSockets, Publish),
+    ok = expect_packet(Sockets, Publish, length(Sockets)),
+    ok = drain_packet(Sockets, Publish),
     _ = [gen_tcp:close(S) || S <- Sockets],
     disable_on_subscribe(),
     disable_on_publish().
@@ -115,7 +111,7 @@ disable_on_publish() ->
     vmq_plugin_mgr:disable_module_plugin(
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 
-expect_packet(Sockets, _, 0) -> Sockets;
+expect_packet(_, _, 0) -> ok;
 expect_packet([Socket|Sockets], Publish, Acc) ->
     case packet:expect_packet(gen_tcp, Socket, "publish", Publish, 10) of
         ok ->

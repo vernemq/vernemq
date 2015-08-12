@@ -155,6 +155,7 @@ set_env(App, Key, Val, Durable) ->
     set_env(node(), App, Key, Val, Durable).
 set_env(Node, App, Key, Val, false) when Node == node() ->
     ets:insert(?TABLE, {{App, Key}, Val}),
+    application:set_env(App, Key, Val),
     ok;
 set_env(Node, App, Key, Val, true) when Node == node() ->
     Rec =
@@ -167,6 +168,7 @@ set_env(Node, App, Key, Val, true) when Node == node() ->
     end,
     plumtree_metadata:put(?DB, {Node, App, Key}, Rec),
     ets:insert(?TABLE, {{App, Key}, Val}),
+    application:set_env(App, Key, Val),
     ok;
 set_env(Node, App, Key, Val, Durable) ->
     safe_rpc(Node, ?MODULE, set_env, [App, Key, Val, Durable]).
@@ -182,6 +184,7 @@ safe_rpc(Node, Module, Fun, Args) ->
 
 set_global_env(App, Key, Val, false) ->
     ets:insert(?TABLE, {{App, Key}, Val}),
+    application:set_env(App, Key, Val),
     ok;
 set_global_env(App, Key, Val, true) ->
     Rec =
@@ -194,6 +197,7 @@ set_global_env(App, Key, Val, true) ->
     end,
     plumtree_metadata:put(?DB, {App, Key}, Rec),
     ets:insert(?TABLE, {{App, Key}, Val}),
+    application:set_env(App, Key, Val),
     ok.
 
 

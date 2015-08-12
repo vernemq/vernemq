@@ -92,6 +92,7 @@ subscribe_clean_session_test(Config) ->
     vmq_netsplit_utils:check_connected(Nodes),
 
     %% unsplit should have merged the tables
+    timer:sleep(10000), %% wait until async rebuild triggered
     NodesRes = vmq_netsplit_utils:proxy_multicall(Nodes, vmq_reg,
                                                   subscriptions_for_subscriber_id,
                                                   [{"", "test-netsplit-client"}]),

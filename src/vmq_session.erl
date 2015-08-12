@@ -62,6 +62,7 @@
           subscriber_id                     :: undefined | subscriber_id(),
           will_msg                          :: undefined | msg(),
           waiting_acks=dict:new()           :: ddict(),
+          waiting_msgs=[]                   :: list(),
           %% auth backend requirement
           peer                              :: peer(),
           username                          :: undefined | username() |
@@ -333,9 +334,18 @@ handle_info({mail, QPid, Msgs, _, Dropped}, StateName,
         false ->
             State
     end,
-    NewState1 = handle_messages(Msgs, [], NewState),
-    vmq_queue:notify(QPid),
-    {next_state, StateName, maybe_trigger_counter_update(NewState1)};
+    NewState2 =
+    case handle_messages(Msgs, [], NewState, []) of
+        {NewState1, []} ->
+            vmq_queue:notify(QPid),
+            NewState1;
+        {NewState1, Waiting} ->
+            %% we call vmq_queue:notify as soon as
+            %% the check_in_flight returns true again
+            %% SEE: Comment in handle_waiting_msgs function.
+            NewState1#state{waiting_msgs=Waiting}
+    end,
+    {next_state, StateName, maybe_trigger_counter_update(NewState2)};
 handle_info(Info, _StateName, State) ->
     {stop, {error, {unknown_info, Info}}, State} .
 
@@ -360,14 +370,24 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNALS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-handle_messages([{deliver, QoS, Msg}|Rest], Frames, State) ->
-    {Frame, NewState} = prepare_frame(QoS, Msg, State),
-    handle_messages(Rest, [Frame|Frames], NewState);
-handle_messages([{deliver_bin, Term}|Rest], Frames, State) ->
-    handle_messages(Rest, Frames, handle_bin_message(Term, State));
-handle_messages([], [], State) -> State;
-handle_messages([], Frames, State) ->
-    send_publish_frames(Frames, State).
+handle_messages([{deliver, 0, Msg}|Rest], Frames, State, Waiting) ->
+    {Frame, NewState} = prepare_frame(0, Msg, State),
+    handle_messages(Rest, [Frame|Frames], NewState, Waiting);
+handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, State, Waiting) ->
+    case check_in_flight(State) of
+        true ->
+            {Frame, NewState} = prepare_frame(QoS, Msg, State),
+            handle_messages(Rest, [Frame|Frames], NewState, Waiting);
+        false ->
+            % only qos 1&2 are constrained by max_in_flight
+            handle_messages(Rest, Frames, State, [Obj|Waiting])
+    end;
+handle_messages([{deliver_bin, Term}|Rest], Frames, State, Waiting) ->
+    handle_messages(Rest, Frames, handle_bin_message(Term, State), Waiting);
+handle_messages([], [], State, Waiting) ->
+    {State, lists:reverse(Waiting)};
+handle_messages([], Frames, State, Waiting) ->
+    {send_publish_frames(Frames, State), lists:reverse(Waiting)}.
 
 prepare_frame(QoS, Msg, State) ->
     #state{waiting_acks=WAcks, retry_interval=RetryInterval} = State,
@@ -398,6 +418,7 @@ prepare_frame(QoS, Msg, State) ->
                                               WAcks)}}
     end.
 
+
 %% The MQTT specification requires that the QoS of a message delivered to a
 %% subscriber is never upgraded to match the QoS of the subscription. If
 %% upgrade_outgoing_qos is set true, messages sent to a subscriber will always
@@ -410,17 +431,10 @@ maybe_upgrade_qos(SubQoS, PubQoS, Msg, #state{subscriber_id=SubscriberId, upgrad
     when SubQoS > PubQoS ->
     %% already ref counted in vmq_reg
     {SubQoS, vmq_msg_store:store(SubscriberId, Msg)};
-maybe_upgrade_qos(SubQoS, PubQoS, Msg, State) ->
-    %% matches when PubQoS is smaller than SubQoS
+maybe_upgrade_qos(_, PubQoS, Msg, _) ->
+    %% matches when PubQoS is smaller than SubQoS and upgrade_qos=false
     %% SubQoS = 0, PubQoS cannot be smaller than 0, --> matched in first case
-    %% SubQoS = 1|2, PubQoS = 0 ---> deref message
-    case PubQoS of
-        0 when SubQoS > 0 ->
-            vmq_msg_store:deref(State#state.subscriber_id, Msg#vmq_msg.msg_ref);
-        _ ->
-            %% no need for deref
-            ignore
-    end,
+    %% SubQoS = 1|2, PubQoS = 0 ---> this case
     {PubQoS, Msg}.
 
 handle_bin_message({MsgId, QoS, Bin}, State) ->
@@ -454,7 +468,9 @@ handle_frame(connected, #mqtt_puback{message_id=MessageId}, State) ->
         {ok, {_, _, Ref, MsgStoreRef}} ->
             cancel_timer(Ref),
             _ = vmq_msg_store:deref(SubscriberId, MsgStoreRef),
-            {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
+            {connected, handle_waiting_msgs(State#state{
+                                              waiting_acks=dict:erase(MessageId, WAcks)
+                                             })};
         error ->
             {connected, State}
     end;
@@ -501,8 +517,9 @@ handle_frame(connected, #mqtt_pubrel{message_id=MessageId}, State) ->
             case publish(User, SubscriberId, Msg) of
                 {ok, _} ->
                     _ = vmq_msg_store:deref(SubscriberId, MsgRef),
-                    State#state{
-                      waiting_acks=dict:erase({qos2, MessageId}, WAcks)};
+                    handle_waiting_msgs(
+                      State#state{
+                        waiting_acks=dict:erase({qos2, MessageId}, WAcks)});
                 {error, _Reason} ->
                     %% cant publish due to overload or netsplit,
                     %% client will retry
@@ -520,7 +537,9 @@ handle_frame(connected, #mqtt_pubcomp{message_id=MessageId}, State) ->
     case dict:find(MessageId, WAcks) of
         {ok, {_, _, Ref, undefined}} ->
             cancel_timer(Ref), % cancel rpubrel timer
-            {connected, State#state{waiting_acks=dict:erase(MessageId, WAcks)}};
+            {connected,
+             handle_waiting_msgs(State#state{
+                                   waiting_acks=dict:erase(MessageId, WAcks)})};
         _ -> % error or wrong waiting_ack, definitely not well behaving client
             lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
             {stop, normal, State}
@@ -700,10 +719,10 @@ check_user(#mqtt_connect{username=User, password=Password,
                         ok ->
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
                                                              User]),
-                            check_will(F, NewState#state{queue_pid=QPid});
+                            check_will(F, NewState#state{username=User, queue_pid=QPid});
                         {error, Reason} ->
-                            lager:warning("can't register client ~p due to ~p",
-                                          [SubscriberId, Reason]),
+                            lager:warning("can't register client ~p with username ~p due to ~p",
+                                          [SubscriberId, User, Reason]),
                             {wait_for_connect,
                              send_connack(?CONNACK_SERVER, State)}
                     end;
@@ -896,11 +915,8 @@ send_publish_frames(Frames, State) ->
                         ) -> {ok, msg()} | {error, atom()}.
 auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                              payload=Payload,
-                                             reg_view=RegView,
                                              qos=QoS,
-                                             retain=IsRetain,
-                                             dup=_IsDup,
-                                             mountpoint=MP} = Msg,
+                                             retain=IsRetain} = Msg,
                AuthSuccess) ->
     HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
     case vmq_plugin:all_till_ok(auth_on_publish, HookArgs) of
@@ -909,6 +925,7 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
             AuthSuccess(Msg#vmq_msg{payload=ChangedPayload}, HookArgs);
         {ok, Args} when is_list(Args) ->
+            #vmq_msg{reg_view=RegView, mountpoint=MP} = Msg,
             ChangedTopic = proplists:get_value(topic, Args, Topic),
             ChangedPayload = proplists:get_value(payload, Args, Payload),
             ChangedRegView = proplists:get_value(reg_view, Args, RegView),
@@ -924,6 +941,7 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
         {error, _} ->
             {error, not_allowed}
     end.
+
 -spec publish(username(), subscriber_id(), msg()) ->  {ok, msg()} | {error, atom()}.
 publish(User, SubscriberId, Msg) ->
     auth_on_publish(User, SubscriberId, Msg,
@@ -968,6 +986,24 @@ handle_waiting_acks(State) ->
                                                   MsgStoreRef, true),
                       Acc
               end, [], WAcks).
+
+handle_waiting_msgs(#state{waiting_msgs=[]} = State) -> State;
+handle_waiting_msgs(#state{waiting_msgs=Msgs, queue_pid=QPid} = State) ->
+    case handle_messages(Msgs, [], State, []) of
+        {NewState, []} ->
+            %% we're ready to take more
+            vmq_queue:notify(QPid),
+            NewState#state{waiting_msgs=[]};
+        {NewState, Waiting} ->
+            %% TODO: since we don't notfiy the queue it is now possible
+            %% that ALSO QoS0 messages are getting queued up, and need
+            %% to wait until check_in_flight(_) returns true again.
+            %% That's unfortunate, but would need a different implementation
+            %% of the vmq_queue FSM which differentiates between QoS.
+            NewState#state{waiting_msgs=Waiting}
+    end.
+
+
 
 -spec send_after(non_neg_integer(), any()) -> reference().
 send_after(Time, Msg) ->

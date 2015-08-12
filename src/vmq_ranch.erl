@@ -22,7 +22,6 @@
          loop/1]).
 
 -record(st, {socket,
-             buffer= <<>>,
              parser_state,
              session,
              proto_tag,
@@ -213,9 +212,9 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
                 {error, Reason} ->
                     {exit, Reason, State}
             end;
-        {throttled, HoldBackBuf} ->
+        {throttled, Rest} ->
             erlang:send_after(1000, self(), restart_work),
-            State#st{throttled=true, buffer=HoldBackBuf};
+            State#st{throttled=true, parser_state=Rest};
         error ->
             lager:debug("[~p][~p] parse error for data: ~p and  parser state: ~p",
                         [Proto, SessionPid, Data, ParserState]),
@@ -238,8 +237,8 @@ handle_message({inet_reply, _, ok}, State) ->
 handle_message({inet_reply, _, Status}, State) ->
     {exit, {send_failed, Status}, State};
 handle_message(restart_work, #st{throttled=true} = State) ->
-    #st{proto_tag={Proto, _, _}, buffer=Data, socket=Socket} = State,
-    handle_message({Proto, Socket, Data}, State#st{throttled=false, buffer= <<>>});
+    #st{proto_tag={Proto, _, _}, socket=Socket} = State,
+    handle_message({Proto, Socket, <<>>}, State#st{throttled=false});
 handle_message(Msg, State) ->
     {exit, {unknown_message_type, Msg}, State}.
 

@@ -40,7 +40,8 @@ stop_listener(Addr, Port) ->
 stop_listener(Addr, Port, KillSessions) ->
     case listener_sup_sup(Addr, Port) of
         {ok, Pid} when KillSessions ->
-            supervisor:terminate_child(Pid, ranch_conns_sup);
+            supervisor:terminate_child(Pid, ranch_conns_sup),
+            supervisor:terminate_child(Pid, ranch_acceptors_sup);
         {ok, Pid} ->
             supervisor:terminate_child(Pid, ranch_acceptors_sup);
         E -> E
