@@ -8,3 +8,4 @@ data
 log
 logs
 .rebar
+rebar.lock
