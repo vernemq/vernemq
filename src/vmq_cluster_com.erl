@@ -149,8 +149,8 @@ process(<<"msg", L:32, Bin:L/binary, Rest/binary>>) ->
     _ = RegView:fold(MP, Topic, fun publish/2, Msg),
     process(Rest);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>) ->
-    {SessionProxyPid, Term} = binary_to_term(Bin),
-    SessionProxyPid ! {deliver, Term},
+    {enqueue, QueuePid, Msgs} = binary_to_term(Bin),
+    vmq_queue:enqueue_many(QueuePid, Msgs),
     process(Rest);
 process(<<>>) -> ok.
 

@@ -12,13 +12,13 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_session_proxy_sup).
+-module(vmq_queue_sup).
 
 -behaviour(supervisor).
 
-%% API
+%% API functions
 -export([start_link/0,
-         start_delivery/3]).
+         start_queue/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -27,32 +27,41 @@
 %%% API functions
 %%%===================================================================
 
+%%--------------------------------------------------------------------
+%% @doc
+%% Starts the supervisor
+%%
+%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
+%% @end
+%%--------------------------------------------------------------------
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-start_delivery(Nodes, QPid, SubscriberId) ->
-    ClusterNodes = vmq_cluster:nodes(),
-    lists:foreach(
-      fun(Node) ->
-              case lists:member(Node, ClusterNodes) of
-                  true ->
-                      {ok, _Pid} = supervisor:start_child(?MODULE, [Node, QPid,
-                                                                    SubscriberId]);
-                  false ->
-                      lager:warning("can't initiate remote delivery due to node ~p not found", [Node])
-              end
-      end, Nodes).
-
+start_queue(SubscriberId) ->
+    supervisor:start_child(?MODULE, [SubscriberId]).
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Whenever a supervisor is started using supervisor:start_link/[2,3],
+%% this function is called by the new process to find out about
+%% restart strategy, maximum restart frequency and child
+%% specifications.
+%%
+%% @spec init(Args) -> {ok, {SupFlags, [ChildSpec]}} |
+%%                     ignore |
+%%                     {error, Reason}
+%% @end
+%%--------------------------------------------------------------------
 init([]) ->
     {ok, {{simple_one_for_one, 5, 10},
-          [{vmq_session_proxy,
-            {vmq_session_proxy, start_link, []},
-            temporary, 1000, worker, [vmq_session_proxy]}]}}.
+          [{vmq_queue,
+            {vmq_queue, start_link, []},
+            temporary, 1000, worker, [vmq_queue]}]}}.
 
 %%%===================================================================
 %%% Internal functions

@@ -48,7 +48,7 @@ init([]) ->
             ?CHILD(vmq_crl_srv, worker, []),
             ?CHILD(vmq_sysmon, worker, []),
             ?CHILD(vmq_exo, worker, []),
-            ?CHILD(vmq_session_proxy_sup, supervisor, []),
+            ?CHILD(vmq_queue_sup, supervisor, []),
             ?CHILD(vmq_msg_store_sup, supervisor, []),
             ?CHILD(vmq_reg_sup, supervisor, []),
             ?CHILD(vmq_cluster_node_sup, supervisor, [])
