@@ -32,7 +32,7 @@ init(Req, Opts) ->
         [SubProtocol] ->
             case lists:member(SubProtocol, ?SUPPORTED_PROTOCOLS) of
                 true ->
-                    Req2 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, <<"mqttv3.1">>, Req),
+                    Req2 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, SubProtocol, Req),
                     init_(Req2, Opts);
                 false ->
                     {stop, Req, undefined}
