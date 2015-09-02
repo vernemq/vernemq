@@ -22,7 +22,11 @@ start_server(StartNoAuth) ->
     application:set_env(vmq_server, schema_dirs, [PrivDir]),
     application:set_env(vmq_server, listeners, [{vmq, [{{{0,0,0,0}, random_port()}, []}]}]),
     application:set_env(vmq_server, ignore_db_config, true),
-    application:set_env(vmq_server, lvldb_store_dir, Datadir ++ "/msgstore"),
+    application:set_env(vmq_server, msg_store_opts, [
+                                                     {store_dir, Datadir ++ "/msgstore"},
+                                                     {open_retries, 30},
+                                                     {open_retry_delay, 2000}
+                                                    ]),
     LogDir = "log." ++ atom_to_list(node()),
     application:load(lager),
     application:set_env(lager, handlers, [
@@ -73,7 +77,7 @@ reset_all() ->
     {ok, PlumtreeDir} = application:get_env(plumtree, plumtree_data_dir),
     filelib:ensure_dir(PlumtreeDir ++ "/ptmp"),
     del_dir(PlumtreeDir),
-    {ok, MsgStoreDir} = application:get_env(vmq_server, lvldb_store_dir),
+    MsgStoreDir = proplists:get_value(store_dir, application:get_env(vmq_server, msg_store_opts, [])),
     filelib:ensure_dir(MsgStoreDir ++ "/ptmp"),
     del_dir(MsgStoreDir).
 

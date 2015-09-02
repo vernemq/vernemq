@@ -925,13 +925,38 @@
                                                                         {datatype, integer}
                                                                        ]}.
 
-%% @doc The maximum number of QoS 1 or 2 messages to hold in the queue above 
-%% those messages that are currently in flight. Defaults to 100. Set to 0 for 
-%% no maximum (not recommended).
-{mapping, "max_queued_messages", "vmq_server.max_queued_messages", [
-                                                    {default, 100},
+%% @doc The maximum number of messages to hold in the queue above 
+%% those messages that are currently in flight. Defaults to 1000. Set to 0 for 
+%% no maximum (not recommended). This option allows to control how a specific
+%% client session can deal with message bursts. As a general rule of thumb set
+%% this number as high as the nr of msgs/sec a single subscriber is required 
+%% to process.
+{mapping, "max_online_messages", "vmq_server.max_online_messages", [
+                                                    {default, 1000},
                                                     {datatype, integer}
                                                  ]}.
+
+%% @doc The maximum number of QoS 1 or 2 messages to hold in the offline queue.
+%% Defaults to 1000. Set to -1 for no maximum (not recommended). Set to 0
+%% if no messages should be stored offline.
+{mapping, "max_offline_messages", "vmq_server.max_offline_messages", [
+                                                    {default, 1000},
+                                                    {datatype, integer}
+                                                 ]}.
+
+%% @doc specify in case multiple sessions are allowed how the queue should
+%% deliver the messages. In case of 'fanout' all the attached sessions 
+%% will receive the message, in case of 'balance' an attached session is 
+%% choosen randomly.
+{mapping, "queue_deliver_mode", "vmq_server.queue_deliver_mode", [{default, fanout},
+                                                                  {datatype, atom},
+                                                                  hidden]}.
+
+%% @doc specify how the queue should process the messages, 
+%% either the 'fifo' or 'lifo' way.
+{mapping, "queue_type", "vmq_server.queue_type", [{default, fifo},
+                                                  {datatype, atom},
+                                                  hidden]}.
 
 %% @doc specifies the maximum incoming publish rate per session. Depending
 %% on the underlying network buffers this rate isn't enforced.

@@ -42,15 +42,17 @@ start_link() ->
                            permanent, pos_integer(), worker, [atom()]}]}}.
 init([]) ->
     {ok, PlumtreeJobsOpts} = application:get_env(vmq_server, plumtree_jobs_opts),
+    {ok, MsgStoreChildSpecs} = application:get_env(vmq_server, msg_store_childspecs),
+
     ok = jobs:add_queue(plumtree_queue, PlumtreeJobsOpts),
-    {ok, { {one_for_one, 5, 10}, [
-            ?CHILD(vmq_config, worker, []),
-            ?CHILD(vmq_crl_srv, worker, []),
-            ?CHILD(vmq_sysmon, worker, []),
-            ?CHILD(vmq_exo, worker, []),
-            ?CHILD(vmq_queue_sup, supervisor, []),
-            ?CHILD(vmq_msg_store_sup, supervisor, []),
-            ?CHILD(vmq_reg_sup, supervisor, []),
-            ?CHILD(vmq_cluster_node_sup, supervisor, [])
-                                 ]} }.
+    {ok, { {one_for_one, 5, 10},
+           [?CHILD(vmq_config, worker, []) | MsgStoreChildSpecs]
+           ++ [
+               ?CHILD(vmq_crl_srv, worker, []),
+               ?CHILD(vmq_sysmon, worker, []),
+               ?CHILD(vmq_exo, worker, []),
+               ?CHILD(vmq_queue_sup, supervisor, []),
+               ?CHILD(vmq_reg_sup, supervisor, []),
+               ?CHILD(vmq_cluster_node_sup, supervisor, [])
+              ]} }.
 

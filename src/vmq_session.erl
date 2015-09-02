@@ -35,6 +35,8 @@
 -export([wait_for_connect/2,
          connected/2]).
 
+%% used for testing
+-export([msg_ref/0]).
 
 -define(CLOSE_AFTER, 5000).
 -define(HIBERNATE_AFTER, 5000).
@@ -84,14 +86,11 @@
           %% changeable by auth_on_register
           max_inflight_messages=20          :: non_neg_integer(), %% 0 means unlimited
           max_message_size=0                :: non_neg_integer(), %% 0 means unlimited
-          max_queued_messages=1000          :: non_neg_integer(),
           max_message_rate=0                :: non_neg_integer(), %% 0 means unlimited
           retry_interval=20000              :: pos_integer(),
           upgrade_qos=false                 :: boolean(),
           trade_consistency=false           :: boolean(),
-          reg_view=vmq_reg_trie             :: atom(),
-          allow_multiple_sessions=false     :: boolean(),
-          balance_sessions=false            :: boolean()
+          reg_view=vmq_reg_trie             :: atom()
          }).
 
 -type state() :: #state{}.
@@ -263,12 +262,9 @@ init([Peer, SendFun, Opts]) ->
     end,
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     TradeConsistency = vmq_config:get_env(trade_consistency, false),
-    AllowMultiple = vmq_config:get_env(allow_multiple_sessions, false),
-    BalanceSessions = vmq_config:get_env(balance_sessions, false),
     RetryInterval = vmq_config:get_env(retry_interval, 20),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
     MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
-    MaxQueuedMsgs = vmq_config:get_env(max_queued_messages, 1000),
     MaxMessageSize = vmq_config:get_env(message_size_limit, 0),
     MaxMessageRate = vmq_config:get_env(max_message_rate, 0),
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
@@ -280,14 +276,11 @@ init([Peer, SendFun, Opts]) ->
                                   max_inflight_messages=MaxInflightMsgs,
                                   max_message_size=MaxMessageSize,
                                   max_message_rate=MaxMessageRate,
-                                  max_queued_messages=MaxQueuedMsgs,
                                   username=PreAuthUser,
                                   max_client_id_size=MaxClientIdSize,
                                   retry_interval=1000 * RetryInterval,
                                   trade_consistency=TradeConsistency,
-                                  reg_view=RegView,
-                                  allow_multiple_sessions=AllowMultiple,
-                                  balance_sessions=BalanceSessions
+                                  reg_view=RegView
                                  }, ?CLOSE_AFTER}.
 
 -spec handle_event(disconnect, _, state()) -> {stop, normal, state()}.
@@ -346,12 +339,23 @@ handle_info({mail, QPid, Msgs, _, Dropped}, StateName,
             vmq_queue:notify(QPid),
             NewState1;
         {NewState1, Waiting} ->
+            %% messages aren't delivered (yet) but are queued in this process
+            %% we tell the queue to get rid of them
+            vmq_queue:notify_recv(QPid),
             %% we call vmq_queue:notify as soon as
             %% the check_in_flight returns true again
             %% SEE: Comment in handle_waiting_msgs function.
             NewState1#state{waiting_msgs=Waiting}
     end,
     {next_state, StateName, maybe_trigger_counter_update(NewState2)};
+handle_info({'DOWN', _MRef, process, QPid, Reason}, _StateName,
+            #state{queue_pid=QPid} = State) ->
+    case Reason of
+        shutdown ->
+            {stop, normal, State};
+        _ ->
+            {stop, {error, {queue_down, QPid, Reason}}, State}
+    end;
 handle_info(Info, _StateName, State) ->
     {stop, {error, {unknown_info, Info}}, State} .
 
@@ -546,7 +550,7 @@ handle_frame(connected, #mqtt_publish{message_id=MessageId, topic=Topic,
         {_, true} ->
             Msg = #vmq_msg{routing_key=vmq_topic:words(Topic),
                            payload=Payload,
-                           retain=IsRetain,
+                           retain=unflag(IsRetain),
                            qos=QoS,
                            trade_consistency=Consistency,
                            reg_view=RegView,
@@ -607,8 +611,9 @@ handle_frame(connected, Unexpected, State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-check_connect(#mqtt_connect{proto_ver=Ver} = F, State) ->
-    check_client_id(F, State#state{proto_ver=Ver}).
+check_connect(#mqtt_connect{proto_ver=Ver, clean_session=CleanSession} = F, State) ->
+    check_client_id(F#mqtt_connect{clean_session=unflag(CleanSession)},
+                    State#state{proto_ver=Ver}).
 
 check_client_id(#mqtt_connect{} = Frame,
                 #state{username={preauth, UserNameFromCert}} = State) ->
@@ -661,47 +666,34 @@ auth_on_register(User, Password, DefaultCleanSess, State) ->
     HookArgs = [Peer, SubscriberId, User, Password, DefaultCleanSess],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
-            {ok, State};
+            {ok, queue_opts(State, []), State};
         {ok, Args} ->
             ChangedState = State#state{
                              subscriber_id={?state_val(mountpoint, Args, State), ClientId},
                              mountpoint=?state_val(mountpoint, Args, State),
                              clean_session=prop_val(clean_session, Args, DefaultCleanSess),
                              reg_view=?state_val(reg_view, Args, State),
-                             max_queued_messages=?state_val(max_queued_messages, Args, State),
                              max_message_size=?state_val(max_message_size, Args, State),
                              max_message_rate=?state_val(max_message_rate, Args, State),
                              max_inflight_messages=?state_val(max_inflight_messages, Args, State),
                              retry_interval=?state_val(retry_interval, Args, State),
                              upgrade_qos=?state_val(upgrade_qos, Args, State),
-                             trade_consistency=?state_val(trade_consistency, Args, State),
-                             allow_multiple_sessions=?state_val(allow_multiple_sessions, Args, State),
-                             balance_sessions=?state_val(balance_sessions, Args, State)
+                             trade_consistency=?state_val(trade_consistency, Args, State)
                             },
-            {ok, ChangedState};
+            {ok, queue_opts(State, Args), ChangedState};
         {error, Reason} ->
             {error, Reason}
     end.
 
 check_user(#mqtt_connect{username=User, password=Password,
                          clean_session=Clean} = F, State) ->
-    CClean = unflag(Clean),
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, CClean, State) of
-                {ok, #state{peer=Peer,
-                            allow_multiple_sessions=AllowMultiple,
-                            balance_sessions=BalanceSessions,
-                            clean_session=CleanSession,
-                            subscriber_id=SubscriberId,
-                            max_queued_messages=QueueSize
-                           } = NewState} ->
-                    case vmq_reg:register_subscriber(AllowMultiple,
-                                                     BalanceSessions,
-                                                     SubscriberId,
-                                                     CleanSession) of
+            case auth_on_register(User, Password, Clean, State) of
+                {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId} = NewState} ->
+                    case vmq_reg:register_subscriber(SubscriberId, QueueOpts) of
                         {ok, QPid} ->
-                            vmq_queue:set_opts(QPid, [max_queued_messages, QueueSize]),
+                            monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
                                                              User]),
                             check_will(F, NewState#state{username=User, queue_pid=QPid});
@@ -734,19 +726,13 @@ check_user(#mqtt_connect{username=User, password=Password,
                     end
             end;
         true ->
-            #state{peer=Peer,
-                   allow_multiple_sessions=AllowMultiple,
-                   balance_sessions=BalanceSessions,
-                   subscriber_id=SubscriberId,
-                   max_queued_messages=QueueSize
-                  } = State,
-            case vmq_reg:register_subscriber(AllowMultiple, BalanceSessions,
-                                             SubscriberId, CClean) of
+            #state{peer=Peer, subscriber_id=SubscriberId} = State,
+            case vmq_reg:register_subscriber(SubscriberId, queue_opts(State, [])) of
                 {ok, QPid} ->
-                    vmq_queue:set_opts(QPid, [max_queued_messages, QueueSize]),
+                    monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
                     check_will(F, State#state{queue_pid=QPid, username=User,
-                                              clean_session=CClean});
+                                              clean_session=Clean});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
                                 [SubscriberId, Reason]),
@@ -757,7 +743,7 @@ check_user(#mqtt_connect{username=User, password=Password,
 
 check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, State) ->
     {connected, send_connack(?CONNACK_ACCEPT, State)};
-check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos},
+check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_retain=IsRetain},
            State) ->
     #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,
            max_message_size=MaxMessageSize, trade_consistency=Consistency,
@@ -765,6 +751,7 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos},
     case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=vmq_topic:words(Topic),
                                                       payload=Payload,
                                                       qos=Qos,
+                                                      retain=unflag(IsRetain),
                                                       trade_consistency=Consistency,
                                                       reg_view=RegView,
                                                       mountpoint=MountPoint
@@ -959,7 +946,7 @@ handle_waiting_acks_and_msgs(State) ->
                       cancel_timer(TRef),
                       [{deliver, QoS, Msg#vmq_msg{dup=true}}|Acc]
               end, WMsgs, WAcks),
-    vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime).
+    catch vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime).
 
 
 handle_waiting_msgs(#state{waiting_msgs=[]} = State) -> State;
@@ -1133,6 +1120,12 @@ prop_val(Key, Args, Default, Validator) ->
                    false -> Default
                end
     end.
+
+queue_opts(#state{trade_consistency=TradeConsistency,
+                  clean_session=CleanSession}, Args) ->
+    Opts = maps:from_list([{trade_consistency, TradeConsistency},
+                           {clean_session, CleanSession} | Args]),
+    maps:merge(vmq_queue:default_opts(), Opts).
 
 unflag(true) -> true;
 unflag(false) -> false;

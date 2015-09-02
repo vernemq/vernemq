@@ -13,18 +13,16 @@
 %% limitations under the License.
 
 -module(vmq_lvldb_store).
-
+-include("vmq_server.hrl").
 -behaviour(gen_server).
--behaviour(msg_store_plugin).
 
 %% API
 -export([start_link/1,
-         msg_store_write_sync/2,
-         msg_store_write_async/2,
-         msg_store_delete_sync/1,
-         msg_store_delete_async/1,
-         msg_store_read/1,
-         msg_store_fold/2]).
+         msg_store_write/2,
+         msg_store_delete/2,
+         msg_store_find/1]).
+
+-export([msg_store_init_queue_collector/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -34,7 +32,16 @@
          terminate/2,
          code_change/3]).
 
--record(state, {bucket, waiting}).
+-record(state, {ref :: eleveldb:db_ref(),
+                data_root :: string(),
+                open_opts = [],
+                config :: config(),
+                read_opts = [],
+                write_opts = [],
+                fold_opts = [{fill_cache, false}],
+                open_iterators = []
+               }).
+-type config() :: [{atom(), term()}].
 
 %%%===================================================================
 %%% API
@@ -42,41 +49,40 @@
 start_link(Id) ->
     gen_server:start_link(?MODULE, [Id], []).
 
-msg_store_write_sync(Key, Val) ->
-    call(Key, {write, Key, Val}).
+msg_store_write(SubscriberId, #vmq_msg{msg_ref=MsgRef} = Msg) ->
+    call(MsgRef, {write, SubscriberId, Msg}).
 
-msg_store_write_async(Key, Val) ->
-    cast(Key, {write, Key, Val}).
+msg_store_delete(SubscriberId, MsgRef) ->
+    call(MsgRef, {delete, SubscriberId, MsgRef}).
 
-msg_store_delete_sync(Key) ->
-   call(Key, {delete, Key}).
+msg_store_find(SubscriberId) ->
+    Ref = make_ref(),
+    {Pid, MRef} = spawn_monitor(?MODULE, msg_store_init_queue_collector,
+                                [self(), SubscriberId, Ref]),
+    receive
+        {'DOWN', MRef, process, Pid, Reason} ->
+            {error, Reason};
+        {Pid, Ref, Result} ->
+            demonitor(MRef, [flush]),
+            {_, Msgs} = lists:unzip(Result),
+            {ok, Msgs}
+    end.
 
-msg_store_delete_async(Key) ->
-    cast(Key, {delete, Key}).
+msg_store_init_queue_collector(ParentPid, SubscriberId, Ref) ->
+    Pids = vmq_lvldb_store_sup:get_bucket_pids(),
+    Acc = ordsets:new(),
+    ResAcc = msg_store_collect(SubscriberId, Pids, Acc),
+    ParentPid ! {self(), Ref, ordsets:to_list(ResAcc)}.
 
-msg_store_read(Key) ->
-    call(Key, {read, Key}).
-
-msg_store_fold(Fun, Acc) ->
-    [Coordinator|_] = Pids = vmq_lvldb_store_sup:get_bucket_pids(),
-    gen_server:call(Coordinator, {coordinate_fold, Fun, Acc, Pids}, infinity).
-
-fold(BucketPid, Fun, Acc) ->
-    gen_server:call(BucketPid, {fold, Fun, Acc}, infinity).
-
+msg_store_collect(_, [], Acc) -> Acc;
+msg_store_collect(SubscriberId, [Pid|Rest], Acc) ->
+    Res = gen_server:call(Pid, {find_for_subscriber_id, SubscriberId}, infinity),
+    msg_store_collect(SubscriberId, Rest, ordsets:union(Res, Acc)).
 
 call(Key, Req) ->
     case vmq_lvldb_store_sup:get_bucket_pid(Key) of
         {ok, BucketPid} ->
             gen_server:call(BucketPid, Req, infinity);
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-cast(Key, Req) ->
-    case vmq_lvldb_store_sup:get_bucket_pid(Key) of
-        {ok, BucketPid} ->
-            gen_server:cast(BucketPid, Req);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -96,22 +102,23 @@ cast(Key, Req) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Id]) ->
-    BucketDir =
-    case application:get_env(vmq_server, lvldb_store_dir, []) of
-        [] ->
-            Dir = filename:join(["VERNEMQ."++atom_to_list(node()),
-                                 "lvldb", integer_to_list(Id)]),
-            ok = filelib:ensure_dir(Dir),
-            Dir;
-        Dir when is_list(Dir) ->
-            DDir = filename:join(Dir, integer_to_list(Id)),
-            ok = filelib:ensure_dir(DDir),
-            DDir
-    end,
+init([InstanceId]) ->
+    %% Initialize random seed
+    random:seed(now()),
+
+    Opts = vmq_config:get_env(msg_store_opts, []),
+    DataDir1 = filename:join(proplists:get_value(store_dir, Opts, "./data"), "msg_store"),
+    DataDir2 = filename:join(DataDir1, integer_to_list(InstanceId)),
+
+    %% Initialize state
+    S0 = init_state(DataDir2, Opts),
     process_flag(trap_exit, true),
-    {ok, TabRef} = eleveldb:open(BucketDir, [{create_if_missing, true}]),
-    {ok, #state{bucket=TabRef}}.
+    case open_db(Opts, S0) of
+        {ok, State} ->
+            {ok, State};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -127,16 +134,8 @@ init([Id]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({coordinate_fold, Fun, Acc, Pids}, From, State) ->
-    CoordinatorPid = self(),
-    [spawn(fun() ->
-                   Res = fold(Pid, Fun, Acc),
-                   CoordinatorPid ! {fold_res, Res}
-           end) || Pid <- Pids],
-    Res = handle_req({fold, Fun, Acc}, State#state.bucket),
-    {noreply, State#state{waiting={From, length(Pids), [Res]}}};
 handle_call(Request, _From, State) ->
-    {reply, handle_req(Request, State#state.bucket), State}.
+    {reply, handle_req(Request, State), State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -148,8 +147,7 @@ handle_call(Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(Request, State) ->
-    handle_req(Request, State#state.bucket),
+handle_cast(_Request, State) ->
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -162,16 +160,8 @@ handle_cast(Request, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({fold_res, Res}, #state{waiting={From, Waiting, ResAcc}} = State) ->
-    NewState =
-    case Waiting of
-        1 ->
-            gen_server:reply(From, lists:flatten([Res|ResAcc])),
-            State#state{waiting=undefined};
-        _ ->
-            State#state{waiting={From, Waiting - 1, [Res|ResAcc]}}
-    end,
-    {noreply, NewState}.
+handle_info(_Info, State) ->
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -184,8 +174,9 @@ handle_info({fold_res, Res}, #state{waiting={From, Waiting, ResAcc}} = State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, State) ->
-    eleveldb:close(State#state.bucket).
+terminate(_Reason, #state{ref=Ref}) ->
+    eleveldb:close(Ref),
+    ok.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -201,11 +192,176 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-handle_req({write, Key, Val}, Bucket) ->
-    eleveldb:put(Bucket, Key, Val, []);
-handle_req({delete, Key}, Bucket) ->
-    eleveldb:delete(Bucket, Key, []);
-handle_req({read, Key}, Bucket) ->
-    eleveldb:get(Bucket, Key, []);
-handle_req({fold, Fun, Acc}, Bucket) ->
-    eleveldb:fold(Bucket, fun({K,V}, AccAcc) -> Fun(K, V, AccAcc) end, Acc, []).
+
+%% @private
+init_state(DataRoot, Config) ->
+    %% Get the data root directory
+    filelib:ensure_dir(filename:join(DataRoot, "msg_store_dummy")),
+
+    %% Merge the proplist passed in from Config with any values specified by the
+    %% eleveldb app level; precedence is given to the Config.
+    MergedConfig = orddict:merge(fun(_K, VLocal, _VGlobal) -> VLocal end,
+                                 orddict:from_list(Config), % Local
+                                 orddict:from_list(application:get_all_env(eleveldb))), % Global
+
+    %% Use a variable write buffer size in order to reduce the number
+    %% of vnodes that try to kick off compaction at the same time
+    %% under heavy uniform load...
+    WriteBufferMin = config_value(write_buffer_size_min, MergedConfig, 30 * 1024 * 1024),
+    WriteBufferMax = config_value(write_buffer_size_max, MergedConfig, 60 * 1024 * 1024),
+    WriteBufferSize = WriteBufferMin + random:uniform(1 + WriteBufferMax - WriteBufferMin),
+
+    %% Update the write buffer size in the merged config and make sure create_if_missing is set
+    %% to true
+    FinalConfig = orddict:store(write_buffer_size, WriteBufferSize,
+                                orddict:store(create_if_missing, true, MergedConfig)),
+
+    %% Parse out the open/read/write options
+    {OpenOpts, _BadOpenOpts} = eleveldb:validate_options(open, FinalConfig),
+    {ReadOpts, _BadReadOpts} = eleveldb:validate_options(read, FinalConfig),
+    {WriteOpts, _BadWriteOpts} = eleveldb:validate_options(write, FinalConfig),
+
+    %% Use read options for folding, but FORCE fill_cache to false
+    FoldOpts = lists:keystore(fill_cache, 1, ReadOpts, {fill_cache, false}),
+
+    %% Warn if block_size is set
+    SSTBS = proplists:get_value(sst_block_size, OpenOpts, false),
+    BS = proplists:get_value(block_size, OpenOpts, false),
+    case BS /= false andalso SSTBS == false of
+        true ->
+            lager:warning("eleveldb block_size has been renamed sst_block_size "
+                          "and the current setting of ~p is being ignored.  "
+                          "Changing sst_block_size is strongly cautioned "
+                          "against unless you know what you are doing.  Remove "
+                          "block_size from app.config to get rid of this "
+                          "message.\n", [BS]);
+        _ ->
+            ok
+    end,
+
+    %% Generate a debug message with the options we'll use for each operation
+    lager:debug("Datadir ~s options for LevelDB: ~p\n",
+                [DataRoot, [{open, OpenOpts}, {read, ReadOpts}, {write, WriteOpts}, {fold, FoldOpts}]]),
+    #state { data_root = DataRoot,
+             open_opts = OpenOpts,
+             read_opts = ReadOpts,
+             write_opts = WriteOpts,
+             fold_opts = FoldOpts,
+             config = FinalConfig }.
+
+config_value(Key, Config, Default) ->
+    case orddict:find(Key, Config) of
+        error ->
+            Default;
+        {ok, Value} ->
+            Value
+    end.
+
+open_db(Opts, State) ->
+    RetriesLeft = proplists:get_value(open_retries, Opts, 30),
+    open_db(Opts, State, max(1, RetriesLeft), undefined).
+
+open_db(_Opts, _State0, 0, LastError) ->
+    {error, LastError};
+open_db(Opts, State0, RetriesLeft, _) ->
+    case eleveldb:open(State0#state.data_root, State0#state.open_opts) of
+        {ok, Ref} ->
+            {ok, State0#state { ref = Ref }};
+        %% Check specifically for lock error, this can be caused if
+        %% a crashed instance takes some time to flush leveldb information
+        %% out to disk.  The process is gone, but the NIF resource cleanup
+        %% may not have completed.
+        {error, {db_open, OpenErr}=Reason} ->
+            case lists:prefix("IO error: lock ", OpenErr) of
+                true ->
+                    SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
+                    lager:debug("VerneMQ Leveldb backend retrying ~p in ~p ms after error ~s\n",
+                                [State0#state.data_root, SleepFor, OpenErr]),
+                    timer:sleep(SleepFor),
+                    open_db(Opts, State0, RetriesLeft - 1, Reason);
+                false ->
+                    {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+
+handle_req({write, {MP, _} = SubscriberId,
+            #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
+                     routing_key=RoutingKey, payload=Payload}},
+           #state{ref=Bucket, read_opts=ReadOpts, write_opts=WriteOpts}) ->
+    MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
+    RefKey = sext:encode({msg, MsgRef, SubscriberId}),
+    IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
+    IdxVal = term_to_binary({os:timestamp(), Dup, QoS}),
+    case eleveldb:get(Bucket, MsgKey, ReadOpts) of
+        {ok, _} ->
+            eleveldb:write(Bucket, [{put, RefKey, <<>>},
+                                    {put, IdxKey, IdxVal}], WriteOpts);
+        not_found ->
+            Val = term_to_binary({RoutingKey, Payload}),
+            eleveldb:write(Bucket, [{put, MsgKey, Val},
+                                    {put, RefKey, <<>>},
+                                    {put, IdxKey, IdxVal}], WriteOpts)
+    end;
+handle_req({delete, {MP, _} = SubscriberId, MsgRef},
+           #state{ref=Bucket, fold_opts=FoldOpts, write_opts=WriteOpts}) ->
+    MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
+    RefKey = sext:encode({msg, MsgRef, SubscriberId}),
+    IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
+    eleveldb:write(Bucket, [{delete, RefKey},
+                            {delete, IdxKey}], WriteOpts),
+    {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts, keys_only),
+    case eleveldb:iterator_move(Itr, MsgKey) of
+        {error, _} ->
+            ok;
+        {ok, MsgKey} ->
+            case eleveldb:iterator_move(Itr, prefetch) of
+                {ok, OtherRefKey} ->
+                    case sext:decode(OtherRefKey) of
+                        {msg, MsgRef, {MP, _}} ->
+                            %% no need to delete
+                            eleveldb:iterator_close(Itr),
+                            ok;
+                        {msg, _, _} ->
+                            %% we deleted last reference, we can delete message
+                            eleveldb:iterator_close(Itr),
+                            eleveldb:write(Bucket, [{delete, MsgKey}], WriteOpts),
+                            ok
+                    end;
+                {error, _} ->
+                    ok
+            end;
+        {ok, _OtherMsgKey} ->
+            lager:warning("couldn't delete ~p due to not found", [MsgRef]),
+            %% we shouldn't end up here
+            ok
+    end;
+handle_req({find_for_subscriber_id, SubscriberId},
+           #state{ref=Bucket, fold_opts=FoldOpts} = State) ->
+    {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts),
+    FirstIdxKey = sext:encode({idx, SubscriberId, ''}),
+    iterate_index_items(eleveldb:iterator_move(Itr, FirstIdxKey),
+                        SubscriberId, ordsets:new(), Itr, State).
+
+iterate_index_items({error, _}, _, Acc, _, _) ->
+    %% no need to close the iterator
+    Acc;
+iterate_index_items({ok, IdxKey, IdxVal}, {MP, _} = SubscriberId, Acc, Itr,
+                    #state{ref=Bucket, read_opts=ReadOpts} = State) ->
+    case sext:decode(IdxKey) of
+        {idx, SubscriberId, MsgRef} ->
+            MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
+            {TS, Dup, QoS} = binary_to_term(IdxVal),
+            {ok, Val} = eleveldb:get(Bucket, MsgKey, ReadOpts),
+            {RoutingKey, Payload} = binary_to_term(Val),
+            Msg = #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
+                           routing_key=RoutingKey, payload=Payload, persisted=true},
+            iterate_index_items(eleveldb:iterator_move(Itr, prefetch), SubscriberId,
+                                ordsets:add_element({TS, Msg}, Acc), Itr, State);
+        _ ->
+            %% all messages accumulated for this subscriber
+            eleveldb:iterator_close(Itr),
+            Acc
+    end.

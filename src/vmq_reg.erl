@@ -21,7 +21,7 @@
          %% used in vmq_session fsm handling
          subscribe/4,
          unsubscribe/4,
-         register_subscriber/4,
+         register_subscriber/2,
          delete_subscriptions/1,
          %% used in vmq_session fsm handling
          publish/1,
@@ -37,7 +37,8 @@
          total_subscriptions/0,
          retained/0,
 
-         stored/1
+         stored/1,
+         status/1
         ]).
 
 %% gen_server callback
@@ -60,9 +61,6 @@
          fold_subscribers/2]).
 %% used by vmq_session:list_sessions
 -export([fold_sessions/2]).
-
-%% might be used for presence support
--export([deliver_all_retained_for_subscriber_id/1]).
 
 %% exported because currently used by netsplit tests
 -export([subscriptions_for_subscriber_id/1]).
@@ -158,23 +156,13 @@ unsubscribe_op(User, SubscriberId, Topics) ->
 delete_subscriptions(SubscriberId) ->
     del_subscriber(SubscriberId).
 
--spec register_subscriber(flag(), flag(), subscriber_id(), flag()) ->
+-spec register_subscriber(subscriber_id(), map()) ->
     {ok, pid()} | {error, _}.
-register_subscriber(false, _, SubscriberId, CleanSession) ->
+register_subscriber(SubscriberId, #{allow_multiple_sessions := false,
+                                    clean_session := CleanSession} = QueueOpts) ->
     %% we don't allow multiple sessions using same subscriber id
     %% allow_multiple_sessions is needed for session balancing
-    register_subscriber(SubscriberId, CleanSession);
-register_subscriber(true, BalanceSessions, SubscriberId, _CleanSession) ->
-    %% we allow multiple sessions using same subscriber id
-    %%
-    %% !!! CleanSession is disabled if multiple sessions are in use
-    %%
-    register_session(SubscriberId, BalanceSessions).
-
--spec register_subscriber(subscriber_id(), flag()) -> {ok, pid()} | {error, _}.
-register_subscriber(SubscriberId, CleanSession) ->
-    case vmq_reg_leader:register_subscriber(self(), SubscriberId,
-                                            CleanSession) of
+    case vmq_reg_leader:register_subscriber(self(), SubscriberId, QueueOpts) of
         {ok, QPid} when CleanSession->
             %% no need to remap
             {ok, QPid};
@@ -183,16 +171,21 @@ register_subscriber(SubscriberId, CleanSession) ->
             {ok, QPid};
         R ->
             R
-    end.
+    end;
+register_subscriber(SubscriberId, #{allow_multiple_sessions := true} = QueueOpts) ->
+    %% we allow multiple sessions using same subscriber id
+    %%
+    %% !!! CleanSession is disabled if multiple sessions are in use
+    %%
+    register_session(SubscriberId, QueueOpts).
 
--spec register_session(subscriber_id(), flag()) -> {ok, pid()} | {error, _}.
-register_session(SubscriberId, BalanceSessions) ->
+-spec register_session(subscriber_id(), map()) -> {ok, pid()} | {error, _}.
+register_session(SubscriberId, QueueOpts) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
     SessionPid = self(),
     QPid = gen_server:call(?MODULE, {ensure_queue, SubscriberId}),
-    ok = vmq_queue:add_session(QPid, SessionPid, false, true),
-    vmq_queue:set_opts(QPid, [{deliver_mode, balance}|| true <- [BalanceSessions]]),
+    ok = vmq_queue:add_session(QPid, SessionPid, QueueOpts),
     {ok, QPid}.
 
 migrate_session(SubscriberId, OtherQPid) ->
@@ -203,9 +196,9 @@ migrate_session(SubscriberId, OtherQPid) ->
             vmq_queue:migrate(QPid, OtherQPid)
     end.
 
--spec register_subscriber_(pid(), subscriber_id(), flag()) ->
+-spec register_subscriber_(pid(), subscriber_id(), map()) ->
     {'ok', pid()} | {error, overloaded}.
-register_subscriber_(SessionPid, SubscriberId, CleanSession) ->
+register_subscriber_(SessionPid, SubscriberId, #{clean_session := CleanSession} = QueueOpts) ->
     %% cleanup session for this client id if needed
     case CleanSession of
         true ->
@@ -214,17 +207,17 @@ register_subscriber_(SessionPid, SubscriberId, CleanSession) ->
                       del_subscriber(SubscriberId)
               end,
               fun(ok) ->
-                      register_subscriber__(SessionPid, SubscriberId, true);
+                      register_subscriber__(SessionPid, SubscriberId, QueueOpts);
                  ({error, overloaded}) ->
                       timer:sleep(100),
-                      register_subscriber__(SessionPid, SubscriberId, true)
+                      register_subscriber__(SessionPid, SubscriberId, QueueOpts)
               end);
         false ->
-            register_subscriber__(SessionPid, SubscriberId, false)
+            register_subscriber__(SessionPid, SubscriberId, QueueOpts)
     end.
 
--spec register_subscriber__(pid(), subscriber_id(), flag()) -> {'ok', pid()} | {error, _}.
-register_subscriber__(SessionPid, SubscriberId, CleanSession) ->
+-spec register_subscriber__(pid(), subscriber_id(), map()) -> {'ok', pid()} | {error, _}.
+register_subscriber__(SessionPid, SubscriberId, QueueOpts) ->
     %% TODO: make this more efficient, currently we have to rpc every
     %% node in the cluster
     QPid = gen_server:call(?MODULE, {ensure_queue, SubscriberId}),
@@ -237,7 +230,7 @@ register_subscriber__(SessionPid, SubscriberId, CleanSession) ->
                       rpc:call(Node, ?MODULE, migrate_session, [SubscriberId, QPid])
               end
       end, vmq_cluster:nodes()),
-    ok = vmq_queue:add_session(QPid, SessionPid, CleanSession, false),
+    ok = vmq_queue:add_session(QPid, SessionPid, QueueOpts),
     {ok, QPid}.
 
 -spec publish(msg()) -> 'ok' | {'error', _}.
@@ -311,25 +304,11 @@ deliver_retained({MP, _}, QPid, Topic, QoS) ->
                              payload=Payload,
                              retain=true,
                              qos=QoS,
-                             dup=false},
+                             dup=false,
+                             mountpoint=MP,
+                             msg_ref=vmq_session:msg_ref()},
               vmq_queue:enqueue(QPid, {deliver, QoS, Msg})
       end, ok, MP, Topic).
-
-deliver_all_retained_for_subscriber_id(SubscriberId) ->
-    case subscriptions_for_subscriber_id(SubscriberId) of
-        [] ->
-            ok;
-        Subs ->
-            case get_queue_pid(SubscriberId) of
-                not_found ->
-                    ok;
-                QPid ->
-                    lists:foreach(
-                      fun({Topic, QoS, _}) ->
-                              deliver_retained(SubscriberId, QPid, Topic, QoS)
-                      end, Subs)
-            end
-    end.
 
 subscriptions_for_subscriber_id(SubscriberId) ->
     plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]).
@@ -353,11 +332,9 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
     %% Fun, that a plugin can use if needed. Currently all functions
     %% block until the cluster is ready.
     case {vmq_config:get_env(trade_consistency, false),
-          vmq_config:get_env(max_queued_messages, 1000),
           vmq_config:get_env(default_reg_view, vmq_reg_trie)} of
-        {TradeConsistency, QueueSize, DefaultRegView}
+        {TradeConsistency, DefaultRegView}
               when is_boolean(TradeConsistency)
-                   and (QueueSize >= 0)
                    and is_atom(DefaultRegView) ->
             MountPoint = "",
             ClientId = fun(T) ->
@@ -379,7 +356,9 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                                          fun() ->
                                                  plugin_queue_loop(PluginPid, Mod)
                                          end),
-                    _ = register_subscriber_(PluginSessionPid, SubscriberId, true)
+                    QueueOpts = maps:merge(vmq_queue:default_opts(),
+                                           #{clean_session => true}),
+                    _ = register_subscriber_(PluginSessionPid, SubscriberId, QueueOpts)
 
             end,
 
@@ -606,8 +585,15 @@ stored(SubscriberId) ->
     case get_queue_pid(SubscriberId) of
         not_found -> 0;
         QPid ->
-            {_, Queued} = vmq_queue:status(QPid),
+            {_, _, Queued} = vmq_queue:status(QPid),
             Queued
+    end.
+
+status(SubscriberId) ->
+    case get_queue_pid(SubscriberId) of
+        not_found -> {error, not_found};
+        QPid ->
+            {ok, vmq_queue:status(QPid)}
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -615,25 +601,17 @@ stored(SubscriberId) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec init([]) -> {ok, state()}.
 init([]) ->
+    fold_subscribers(fun({_, _, {SubscriberId, _, undefined}}, Acc) ->
+                             ensure_queue(SubscriberId),
+                             Acc;
+                        (_, Acc) ->
+                             Acc
+                     end, ok),
     {ok, #state{}}.
-
 
 -spec handle_call(_, _, []) -> {reply, ok, []}.
 handle_call({ensure_queue, SubscriberId}, _From, State) ->
-    Ret =
-    case get_queue_pid(SubscriberId) of
-        not_found ->
-            {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId),
-            MRef = monitor(process, QPid),
-            ets:insert(vmq_session, #session{subscriber_id=SubscriberId,
-                                             queue_pid=QPid,
-                                             monitor=MRef,
-                                             last_seen=epoch()}),
-            QPid;
-        QPid ->
-            QPid
-    end,
-    {reply, Ret, State}.
+    {reply, ensure_queue(SubscriberId), State}.
 
 -spec handle_cast(_, []) -> {noreply, []}.
 handle_cast(_Req, State) ->
@@ -671,4 +649,18 @@ rate_limited_op(OpFun, SuccessFun) ->
             end;
         {error, rejected} ->
             {error, overloaded}
+    end.
+
+ensure_queue(SubscriberId) ->
+    case get_queue_pid(SubscriberId) of
+        not_found ->
+            {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId),
+            MRef = monitor(process, QPid),
+            ets:insert(vmq_session, #session{subscriber_id=SubscriberId,
+                                             queue_pid=QPid,
+                                             monitor=MRef,
+                                             last_seen=epoch()}),
+            QPid;
+        QPid ->
+            QPid
     end.

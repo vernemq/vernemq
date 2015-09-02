@@ -20,24 +20,30 @@
                  ]},
   {mod, { vmq_server_app, []}},
   {env, [
+      % session opts
       {allow_anonymous, true},
       {max_client_id_size, 23},
-      {max_connections, infinity},
-      {nr_of_acceptors, 10},
       {retry_interval, 20},
-      {persistent_client_expiration, 0}, % never
       {max_inflight_messages, 20},
-      {max_queued_messages, 30000},
       {max_message_rate, 0}, % no rate limit
       {message_size_limit, 0},
       {upgrade_outgoing_qos, false},
       {trade_consistency, false},
-      {allow_multiple_sessions, false},
-      {balance_sessions, false},
       {vmq_config_enabled, true},
       {default_reg_view, vmq_reg_trie},
       {reg_views, [vmq_reg_trie]},
-      {outgoing_clustering_buffer_size, 10000},
+
+      % queue opts
+      {allow_multiple_sessions, false},
+      {max_online_messages, 30000},
+      {max_offline_messages, -1}, % no rate limit
+      {queue_deliver_mode, fanout}, % balance vs fanout
+      {queue_type, fifo}, % fifo vs lifo
+      {persistent_client_expiration, 0}, % never
+
+      % default listener / clustering /system opts
+      {max_connections, infinity},
+      {nr_of_acceptors, 10},
       {listeners, [{mqtt, [
                            {{{127,0,0,1}, 1889}, [{max_connections, infinity}, 
                                               {mountpoint, ""}]}
@@ -54,6 +60,7 @@
                     {vmq, [{{{0,0,0,0}, 18884}, []}]},
                     {vmqs, []}
       ]},
+      {outgoing_clustering_buffer_size, 10000},
       {outgoing_connect_opts, []},
       {plumtree_jobs_opts, [{regulators, [{counter,[{limit, 20}]}]}]},
       {tcp_listen_options, [
@@ -65,10 +72,17 @@
             {send_timeout_close, true}
         ]},
       {tune_tcp_buffer_size, false},
-      {msg_store_childspec, {vmq_lvldb_store_sup,
-                             {vmq_lvldb_store_sup, start_link, []},
-                             permanent, 5000, supervisor, [vmq_lvldb_store_sup]}},
-      {msg_store_mod, vmq_lvldb_store}, 
+
+      % default message store opts
+      {msg_store_childspecs, [{vmq_lvldb_store_sup,
+                               {vmq_lvldb_store_sup, start_link, []},
+                               permanent, 5000, supervisor, [vmq_lvldb_store_sup]}]},
+      {msg_store_opts, [
+                        {store_dir, "./data"},
+                        {open_retries, 30},
+                        {open_retry_delay, 2000}
+                       ]},
+
       {exometer_predefined, {apply, vmq_exo, entries, []}}
       ]}
 

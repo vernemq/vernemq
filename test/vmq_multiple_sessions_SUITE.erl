@@ -66,7 +66,7 @@ multiple_sessions_test(_) ->
     disable_on_publish().
 
 multiple_balanced_sessions_test(_) ->
-    vmq_server_cmd:set_config(balance_sessions, true),
+    vmq_server_cmd:set_config(queue_deliver_mode, balance),
     Connect = packet:gen_connect("multiple-sessions-test", [{keepalive,10}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(53, "multiple/sessions/test", 0),
