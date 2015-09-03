@@ -18,8 +18,7 @@
 
 %% API
 -export([start_link/0,
-         register_subscriber/3,
-         register_subscriber_by_leader/4]).
+         register_subscriber/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -48,7 +47,7 @@ register_subscriber(SessionPid, SubscriberId, QueueOpts) ->
                     I = erlang:phash2(SubscriberId) rem length(Nodes) + 1,
                     Leader = lists:nth(I, lists:sort(Nodes)),
                     Req = {register_subscriber, node(), SessionPid, SubscriberId, QueueOpts},
-                    try gen_server:call({?MODULE, Leader}, Req, 5000) of
+                    try gen_server:call({?MODULE, Leader}, Req, infinity) of
                         ok ->
                             case vmq_reg:get_queue_pid(SubscriberId) of
                                 not_found ->
@@ -64,16 +63,6 @@ register_subscriber(SessionPid, SubscriberId, QueueOpts) ->
                             {error, not_ready}
                     end
             end;
-        false ->
-            {error, not_ready}
-    end.
-
-register_subscriber_by_leader(Node, SessionPid, SubscriberId, QueueOpts) ->
-    case vmq_cluster:is_ready() of
-        true ->
-            gen_server:call(?MODULE, {register_subscriber, Node, SessionPid,
-                                      SubscriberId, QueueOpts},
-                            infinity);
         false ->
             {error, not_ready}
     end.

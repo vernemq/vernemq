@@ -162,7 +162,7 @@ register_subscriber(SubscriberId, #{allow_multiple_sessions := false,
     %% allow_multiple_sessions is needed for session balancing
     case vmq_reg_leader:register_subscriber(self(), SubscriberId, QueueOpts) of
         {ok, QPid} when CleanSession->
-            %% no need to remap
+            %% no need to remap as the session is fresh
             {ok, QPid};
         {ok, QPid} ->
             remap_subscription(SubscriberId),
@@ -655,12 +655,21 @@ rate_limited_op(OpFun, SuccessFun) ->
 ensure_queue(SubscriberId) ->
     case ets:lookup(vmq_session, SubscriberId) of
         [#session{queue_pid=QPid, monitor=MRef} = Session] when is_pid(QPid) ->
-            demonitor(MRef),
             %% cumbersome, but this ensures in case of a crash of the
             %% vmq_reg process to have a valid monitor on the queue process
-            NewMRef = monitor(process, QPid),
-            ets:insert(vmq_session, Session#session{monitor=NewMRef}),
-            QPid;
+            #session{queue_pid=NewQPid} = UpdatedSession =
+            case is_process_alive(QPid) of
+                true ->
+                    demonitor(MRef),
+                    Session;
+                false ->
+                    demonitor(MRef, [flush]),
+                    {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId),
+                    Session#session{queue_pid=QPid}
+            end,
+            NewMRef = monitor(process, NewQPid),
+            ets:insert(vmq_session, UpdatedSession#session{monitor=NewMRef}),
+            NewQPid;
         _ ->
             {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId),
             MRef = monitor(process, QPid),

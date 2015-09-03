@@ -253,9 +253,13 @@ offline(init_offline_queue, #state{id=SId} = State) ->
             {next_state, offline,
              insert_many([{deliver, QoS, Msg}
                           || #vmq_msg{qos=QoS} = Msg <- Msgs], State)};
-        {error, Reason} ->
-            lager:error("cant init from offline store due to ~p", [Reason]),
+        {error, no_matching_hook_found} ->
+            % that's ok
             vmq_reg:queue_ready(SId, self()),
+            {next_state, offline, State};
+        {error, Reason} ->
+            lager:error("can't initialize queue from offline storage due to ~p, retry in 1 sec", [Reason]),
+            gen_fsm:send_event_after(1000, init_offline_queue),
             {next_state, offline, State}
     end;
 offline({enqueue, Msg}, State) ->
@@ -382,16 +386,16 @@ add_session_(SessionPid, Opts, #state{id=SId, offline=Offline, sessions=Sessions
             Sessions
     end,
     vmq_reg:update_session_count(SId, maps:size(NewSessions)),
-    insert_from_queue(
-      queue:out(Offline#queue.queue), State#state{
-                                        deliver_mode=DeliverMode,
-                                        offline=Offline#queue{
-                                                             max=MaxOfflineMsgs,
-                                                             type=QueueType,
-                                                             size=0, drop=0,
-                                                             queue = queue:new()
-                                                            },
-                                                   sessions=NewSessions}).
+    insert_from_queue(Offline#queue{type=QueueType},
+                      State#state{
+                        deliver_mode=DeliverMode,
+                        offline=Offline#queue{
+                                  max=MaxOfflineMsgs,
+                                  type=QueueType,
+                                  size=0, drop=0,
+                                  queue = queue:new()
+                                 },
+                        sessions=NewSessions}).
 
 del_session(SessionPid, #state{id=SId, sessions=Sessions} = State) ->
     NewSessions = maps:remove(SessionPid, Sessions),
@@ -470,22 +474,27 @@ change_session_state(active, #session{status=notify} = Session) ->
 change_session_state(notify, #session{status=notify} = Session) ->
     Session.
 
-insert_from_session(#session{queue=#queue{queue=Q}},
+insert_from_session(#session{queue=Queue},
                     #state{deliver_mode=fanout, sessions=Sessions} = State)
   when Sessions == #{} ->
     %% all will go into offline queue
-    insert_from_queue(queue:out(Q), State);
+    insert_from_queue(Queue, State);
 insert_from_session(_, #state{deliver_mode=fanout} = State) ->
     %% due to fanout other sessions have already received the messages
     State;
-insert_from_session(#session{queue=#queue{queue=Q}},
+insert_from_session(#session{queue=Queue},
                     #state{deliver_mode=balance} = State) ->
     %% allow other sessions to balance the messages of the dead queue
-    insert_from_queue(queue:out(Q), State).
+    insert_from_queue(Queue, State).
 
-insert_from_queue({{value, Msg}, Q}, State) ->
-    insert_from_queue(queue:out(Q), insert(Msg, State));
-insert_from_queue({empty, _}, State) ->
+insert_from_queue(#queue{type=fifo, queue=Q}, State) ->
+    insert_from_queue(fun queue:out/1, queue:out(Q), State);
+insert_from_queue(#queue{type=lifo, queue=Q}, State) ->
+    insert_from_queue(fun queue:out_r/1, queue:out_r(Q), State).
+
+insert_from_queue(F, {{value, Msg}, Q}, State) ->
+    insert_from_queue(F, F(Q), insert(Msg, State));
+insert_from_queue(_F, {empty, _}, State) ->
     State.
 
 insert_many(Msgs, State) ->
@@ -509,11 +518,11 @@ insert(Msg, #state{id=SId, deliver_mode=fanout, sessions=Sessions} = State) ->
     State#state{sessions=NewSessions};
 
 insert(Msg, #state{id=SId, deliver_mode=balance, sessions=Sessions} = State) ->
-    Keys = maps:keys(Sessions),
-    RandomKey = lists:nth(random:uniform(length(Keys)), Keys),
-    RandomSession = maps:get(RandomKey, Sessions),
+    Pids = maps:keys(Sessions),
+    RandomPid = lists:nth(random:uniform(length(Pids)), Pids),
+    RandomSession = maps:get(RandomPid, Sessions),
     {UpdatedSession, _} = session_insert(RandomSession, {Msg, SId}),
-    State#state{sessions=maps:update(RandomKey, UpdatedSession, Sessions)}.
+    State#state{sessions=maps:update(RandomPid, UpdatedSession, Sessions)}.
 
 
 session_insert(#session{status=active, queue=Q} = Session, {Msg, SId} = Acc) ->

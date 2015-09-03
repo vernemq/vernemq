@@ -175,7 +175,7 @@ publish_random(Nodes, N, Topic) ->
 publish_random(_, 0, _, Acc) -> Acc;
 publish_random(Nodes, N, Topic, Acc) ->
     Connect = packet:gen_connect("connect-unclean-pub", [{clean_session, true},
-                                                           {keepalive, 10}]),
+                                                         {keepalive, 10}]),
     Connack = packet:gen_connack(0),
     Payload = crypto:rand_bytes(random:uniform(10000)),
     Publish = packet:gen_publish(Topic, 1, Payload, [{mid, N}]),
