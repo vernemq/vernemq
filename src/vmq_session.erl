@@ -129,9 +129,10 @@ in(FsmPid, Event) ->
 
 -spec get_info(subscriber_id() | pid(), [atom()]) -> proplist().
 get_info(SubscriberId, InfoItems) when is_tuple(SubscriberId) ->
-    case vmq_reg:get_subscriber_pids(SubscriberId) of
-        {ok, Pids} -> [get_info(Pid, InfoItems)|| Pid <- Pids];
-        _ -> []
+    case vmq_reg:get_session_pids(SubscriberId) of
+        {error, not_found} -> [];
+        {ok, _QPid, Pids} ->
+            [get_info(Pid, InfoItems)|| Pid <- Pids]
     end;
 get_info(FsmPid, InfoItems) when is_pid(FsmPid) ->
     AInfoItems =
@@ -612,20 +613,20 @@ handle_frame(connected, Unexpected, State) ->
 %%% INTERNAL
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 check_connect(#mqtt_connect{proto_ver=Ver, clean_session=CleanSession} = F, State) ->
-    check_client_id(F#mqtt_connect{clean_session=unflag(CleanSession)},
-                    State#state{proto_ver=Ver}).
+    CCleanSession = unflag(CleanSession),
+    check_client_id(F, State#state{clean_session=CCleanSession, proto_ver=Ver}).
 
 check_client_id(#mqtt_connect{} = Frame,
                 #state{username={preauth, UserNameFromCert}} = State) ->
     check_client_id(Frame#mqtt_connect{username=UserNameFromCert},
                     State#state{username=UserNameFromCert});
 
-check_client_id(#mqtt_connect{client_id=undefined, proto_ver=4, clean_session=CleanSession} = F, State) ->
+check_client_id(#mqtt_connect{client_id=undefined, proto_ver=4} = F, State) ->
     %% [MQTT-3.1.3-8]
     %% If the Client supplies a zero-byte ClientId with CleanSession set to 0,
     %% the Server MUST respond to the >CONNECT Packet with a CONNACK return
     %% code 0x02 (Identifier rejected) and then close the Network
-    case CleanSession of
+    case State#state.clean_session of
         false ->
             {stop, normal, send_connack(?CONNACK_INVALID_ID, State)};
         true ->
@@ -661,9 +662,9 @@ do_throttle(#state{max_message_rate=0}) -> false;
 do_throttle(#state{max_message_rate=Rate, pub_recv_cnt={AvgRecvCnt,_,_}}) ->
     AvgRecvCnt > Rate.
 
-auth_on_register(User, Password, DefaultCleanSess, State) ->
-    #state{peer=Peer, subscriber_id={_, ClientId} = SubscriberId} = State,
-    HookArgs = [Peer, SubscriberId, User, Password, DefaultCleanSess],
+auth_on_register(User, Password, State) ->
+    #state{clean_session=Clean, peer=Peer, subscriber_id={_, ClientId} = SubscriberId} = State,
+    HookArgs = [Peer, SubscriberId, User, Password, Clean],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
             {ok, queue_opts(State, []), State};
@@ -671,7 +672,7 @@ auth_on_register(User, Password, DefaultCleanSess, State) ->
             ChangedState = State#state{
                              subscriber_id={?state_val(mountpoint, Args, State), ClientId},
                              mountpoint=?state_val(mountpoint, Args, State),
-                             clean_session=prop_val(clean_session, Args, DefaultCleanSess),
+                             clean_session=?state_val(clean_session, Args, State),
                              reg_view=?state_val(reg_view, Args, State),
                              max_message_size=?state_val(max_message_size, Args, State),
                              max_message_rate=?state_val(max_message_rate, Args, State),
@@ -680,16 +681,15 @@ auth_on_register(User, Password, DefaultCleanSess, State) ->
                              upgrade_qos=?state_val(upgrade_qos, Args, State),
                              trade_consistency=?state_val(trade_consistency, Args, State)
                             },
-            {ok, queue_opts(State, Args), ChangedState};
+            {ok, queue_opts(ChangedState, Args), ChangedState};
         {error, Reason} ->
             {error, Reason}
     end.
 
-check_user(#mqtt_connect{username=User, password=Password,
-                         clean_session=Clean} = F, State) ->
+check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, Clean, State) of
+            case auth_on_register(User, Password, State) of
                 {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId} = NewState} ->
                     case vmq_reg:register_subscriber(SubscriberId, QueueOpts) of
                         {ok, QPid} ->
@@ -731,8 +731,7 @@ check_user(#mqtt_connect{username=User, password=Password,
                 {ok, QPid} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
-                    check_will(F, State#state{queue_pid=QPid, username=User,
-                                              clean_session=Clean});
+                    check_will(F, State#state{queue_pid=QPid, username=User});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
                                 [SubscriberId, Reason]),

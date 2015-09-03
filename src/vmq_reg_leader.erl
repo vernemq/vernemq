@@ -47,13 +47,21 @@ register_subscriber(SessionPid, SubscriberId, QueueOpts) ->
                 Nodes ->
                     I = erlang:phash2(SubscriberId) rem length(Nodes) + 1,
                     Leader = lists:nth(I, lists:sort(Nodes)),
-                    rpc:call(Leader, ?MODULE, register_subscriber_by_leader,
-                             [node(), SessionPid, SubscriberId, QueueOpts], 5000),
-                    case vmq_reg:get_queue_pid(SubscriberId) of
-                        not_found ->
-                            exit({cant_register_subscriber_by_leader, queue_not_found});
-                        QPid ->
-                            {ok, QPid}
+                    Req = {register_subscriber, node(), SessionPid, SubscriberId, QueueOpts},
+                    try gen_server:call({?MODULE, Leader}, Req, 5000) of
+                        ok ->
+                            case vmq_reg:get_queue_pid(SubscriberId) of
+                                not_found ->
+                                    exit({cant_register_subscriber_by_leader, queue_not_found});
+                                QPid ->
+                                    {ok, QPid}
+                            end
+                    catch
+                        _:_ ->
+                            %% mostly happens in case of a netsplit
+                            %% this triggers the proper CONNACK leaving the
+                            %% client to retry the CONNECT
+                            {error, not_ready}
                     end
             end;
         false ->

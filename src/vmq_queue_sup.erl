@@ -61,7 +61,7 @@ init([]) ->
     {ok, {{simple_one_for_one, 5, 10},
           [{vmq_queue,
             {vmq_queue, start_link, []},
-            temporary, 1000, worker, [vmq_queue]}]}}.
+            transient, 1000, worker, [vmq_queue]}]}}.
 
 %%%===================================================================
 %%% Internal functions

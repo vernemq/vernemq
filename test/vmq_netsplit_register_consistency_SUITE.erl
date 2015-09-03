@@ -58,11 +58,10 @@ register_consistency_test(Config) ->
 
     Connect = packet:gen_connect("test-client", [{clean_session, true},
                                                  {keepalive, 10}]),
-    Connack = packet:gen_connack(0),
-    {error, closed} = packet:do_client_connect(Connect, Connack,
-                                             [{port, PortInIsland1}]),
-
-    {error, closed} = packet:do_client_connect(Connect, Connack,
-                                               [{port, PortInIsland2}]),
+    Connack = packet:gen_connack(3), %% get CONNACK-SERVER
+    %% Island 1 should return us the proper CONNACK
+    {ok, _} = packet:do_client_connect(Connect, Connack, [{port, PortInIsland1}]),
+    %% Island 2 should return us the proper CONNACK
+    {ok, _} = packet:do_client_connect(Connect, Connack, [{port, PortInIsland2}]),
     vmq_netsplit_utils:fix_network(Island1, Island2),
     ok.

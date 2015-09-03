@@ -99,7 +99,7 @@ multiple_connect_unclean_test(Config) ->
     Procs = fun() -> rpc:multicall([N || {N, _} <-Nodes],
                                   erlang, system_info, [process_count])
            end,
-    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after send ~p~n", [Strd()]),
+    io:format(user, "~n!!!!!!!!!!!!!!!!!!! stored msgs after send ~p~n", [Strd()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
     timer:sleep(2000),

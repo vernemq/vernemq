@@ -202,7 +202,7 @@ drain(drain_start, #state{offline=#queue{queue=Q} = Queue,
     %% instead of the erlang distribution link.
     vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, Msgs}),
     case status(RemoteQueue) of
-        {RemoteState, _, _} when (RemoteState == offline)
+        {RemoteState, _, _, _} when (RemoteState == offline)
                               or (RemoteState == online) ->
             %% the extra timeout gives the chance that pending messages
             %% in the erlang mailbox could still get enqueued and
@@ -211,7 +211,7 @@ drain(drain_start, #state{offline=#queue{queue=Q} = Queue,
              State#state{drain_over_timer=gen_fsm:send_event_after(DrainTimeout, drain_over),
                          offline=Queue#queue{size=0, drop=0,
                                              queue=queue:new()}}};
-        {OtherRemoteState, _} ->
+        {OtherRemoteState, _, _, _} ->
             %% this shouldn't happen, as the register_subsciber is synchronized
             %% using the vmq_reg_leader process. However this could theoretically
             %% happen in case of an inconsistent (but un-detected) cluster state.
@@ -249,10 +249,13 @@ drain(Event, _From, State) ->
 offline(init_offline_queue, #state{id=SId} = State) ->
     case vmq_plugin:only(msg_store_find, [SId]) of
         {ok, Msgs} ->
+            vmq_reg:queue_ready(SId, self()),
             {next_state, offline,
              insert_many([{deliver, QoS, Msg}
                           || #vmq_msg{qos=QoS} = Msg <- Msgs], State)};
-        {error, _} ->
+        {error, Reason} ->
+            lager:error("cant init from offline store due to ~p", [Reason]),
+            vmq_reg:queue_ready(SId, self()),
             {next_state, offline, State}
     end;
 offline({enqueue, Msg}, State) ->
@@ -308,7 +311,7 @@ handle_sync_event(status, _From, StateName,
     maps:fold(fun(_, #session{queue=#queue{size=Size}}, Acc) ->
                       Acc + Size
               end, OfflineSize, Sessions),
-    {reply, {StateName, Mode, TotalStoredMsgs}, StateName, State};
+    {reply, {StateName, Mode, TotalStoredMsgs, maps:size(Sessions)}, StateName, State};
 handle_sync_event(get_sessions, _From, StateName, #state{sessions=Sessions} = State) ->
     {reply, maps:keys(Sessions), StateName, State};
 
@@ -362,7 +365,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-add_session_(SessionPid, Opts, #state{offline=Offline, sessions=Sessions} = State) ->
+add_session_(SessionPid, Opts, #state{id=SId, offline=Offline, sessions=Sessions} = State) ->
     #{clean_session := Clean,
       max_online_messages := MaxOnlineMessages,
       max_offline_messages := MaxOfflineMsgs,
@@ -378,6 +381,7 @@ add_session_(SessionPid, Opts, #state{offline=Offline, sessions=Sessions} = Stat
         _ ->
             Sessions
     end,
+    vmq_reg:update_session_count(SId, maps:size(NewSessions)),
     insert_from_queue(
       queue:out(Offline#queue.queue), State#state{
                                         deliver_mode=DeliverMode,
@@ -391,6 +395,7 @@ add_session_(SessionPid, Opts, #state{offline=Offline, sessions=Sessions} = Stat
 
 del_session(SessionPid, #state{id=SId, sessions=Sessions} = State) ->
     NewSessions = maps:remove(SessionPid, Sessions),
+    vmq_reg:update_session_count(SId, maps:size(NewSessions)),
     case maps:get(SessionPid, Sessions) of
         #session{clean=true} = Session ->
             cleanup_session(SId, Session),
@@ -489,10 +494,10 @@ insert_many(Msgs, State) ->
                 end, State, Msgs).
 
 %% Offline Queue
-insert({deliver, 0, _}, #state{offline=#queue{drop=Drop}, sessions=Sessions} = State)
+insert({deliver, 0, _}, #state{offline=#queue{drop=Drop} = Offline, sessions=Sessions} = State)
   when Sessions == #{} ->
     %% no session online, drop
-    State#state{offline=Drop#queue{drop=Drop + 1}};
+    State#state{offline=Offline#queue{drop=Drop + 1}};
 insert(Msg, #state{id=SId, offline=Offline, sessions=Sessions} = State)
   when Sessions == #{} ->
     %% no session online, insert in offline queue
@@ -546,8 +551,12 @@ queue_insert(Msg, #queue{queue=Queue, size=Size} = Q, SId) ->
 send(#session{pid=Pid, queue=Q} = Session) ->
     Session#session{status=passive, queue=send(Pid, Q)}.
 
-send(Pid, #queue{queue=Queue, size=Count, drop=Dropped} = Q) ->
+send(Pid, #queue{type=fifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
     Msgs = queue:to_list(Queue),
+    Pid ! {mail, self(), Msgs, Count, Dropped},
+    Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0};
+send(Pid, #queue{type=lifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
+    Msgs = lists:reverse(queue:to_list(Queue)),
     Pid ! {mail, self(), Msgs, Count, Dropped},
     Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0}.
 
@@ -593,9 +602,10 @@ maybe_set_expiry_timer(ExpireAfter, State) when ExpireAfter > 0 ->
     State#state{expiry_timer=Ref}.
 
 maybe_offline_store(SubscriberId, {deliver, QoS, #vmq_msg{persisted=false} = Msg}) when QoS > 0 ->
-    case vmq_plugin:only(msg_store_write, [SubscriberId, Msg#vmq_msg{qos=QoS}]) of
-        ok -> {deliver, QoS, Msg#vmq_msg{persisted=true}};
-        {ok, NewMsgRef} -> {deliver, QoS, Msg#vmq_msg{persisted=true, msg_ref=NewMsgRef}};
+    PMsg = Msg#vmq_msg{persisted=true},
+    case vmq_plugin:only(msg_store_write, [SubscriberId, PMsg#vmq_msg{qos=QoS}]) of
+        ok -> {deliver, QoS, PMsg};
+        {ok, NewMsgRef} -> {deliver, QoS, PMsg#vmq_msg{msg_ref=NewMsgRef}};
         {error, _} -> {deliver, QoS, Msg}
     end;
 maybe_offline_store(_, Msg) -> Msg.
