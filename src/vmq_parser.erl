@@ -68,7 +68,7 @@ parse(<<Fixed:1/binary, 1:1, L1:7, 1:1, L2:7, 1:1, L3:7, 0:1, L4:7, Data/binary>
         _ -> more
     end;
 parse(Data) when byte_size(Data) =< 8 -> more;
-parse(_) -> {error, cant_parse_fixed_header}.
+parse(_) -> {{error, cant_parse_fixed_header}, <<>>}.
 
 parse(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, Payload/binary>>) ->
     LTopic = binary_to_list(Topic),
