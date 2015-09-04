@@ -95,7 +95,14 @@ init(Parent, Shutdown, MaxR, MaxT) ->
 loop(State = #state{parent=Parent}, NrOfChildren) ->
     receive
         {?MODULE, Caller, {start_queue, SubscriberId}} ->
-            loop(State, start_queue(Caller, SubscriberId, NrOfChildren));
+            case ets:lookup(?QUEUE_TAB, SubscriberId) of
+                [] ->
+                    loop(State, start_queue(Caller, SubscriberId, NrOfChildren));
+                [{_, Pid}] ->
+                    %% already started
+                    reply(Caller, {ok, Pid}),
+                    loop(State, NrOfChildren)
+            end;
         {'EXIT', Parent, Reason} ->
             terminate(State, NrOfChildren, Reason);
         {'EXIT', Pid, Reason} ->
