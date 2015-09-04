@@ -350,6 +350,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                     Msg = #vmq_msg{routing_key=vmq_topic:words(Topic),
                                    mountpoint=MountPoint,
                                    payload=Payload,
+                                   msg_ref=vmq_session:msg_ref(),
                                    dup=false,
                                    retain=false,
                                    trade_consistency=TradeConsistency,
