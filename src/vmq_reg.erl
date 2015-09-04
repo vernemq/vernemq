@@ -208,8 +208,18 @@ register_subscriber__(SessionPid, SubscriberId, QueueOpts) ->
                       rpc:call(Node, ?MODULE, migrate_session, [SubscriberId, QPid])
               end
       end, vmq_cluster:nodes()),
-    ok = vmq_queue:add_session(QPid, SessionPid, QueueOpts),
-    {ok, QPid}.
+    case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
+        {'EXIT', {normal, _}} ->
+            %% queue went down in the meantime, retry
+            register_subscriber__(SessionPid, SubscriberId, QueueOpts);
+        {'EXIT', {noproc, _}} ->
+            %% queue was stopped in the meantime, retry
+            register_subscriber__(SessionPid, SubscriberId, QueueOpts);
+        {'EXIT', Reason} ->
+            exit(Reason);
+        ok ->
+            {ok, QPid}
+    end.
 
 -spec publish(msg()) -> 'ok' | {'error', _}.
 publish(#vmq_msg{trade_consistency=true,
