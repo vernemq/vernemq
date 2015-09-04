@@ -43,7 +43,7 @@
 
 -define(MAX_PACKET_SIZE, 266338304).
 
--spec parse(binary()) -> {mqtt_frame(), binary()} | {error, binary()} | more.
+-spec parse(binary()) -> {mqtt_frame(), binary()} | {error, atom()} | more.
 parse(<<Fixed:1/binary, 0:1, L1:7, Data/binary>>) ->
     case Data of
         <<Var:L1/binary, Rest/binary>> -> {parse(Fixed, Var), Rest};
@@ -68,7 +68,7 @@ parse(<<Fixed:1/binary, 1:1, L1:7, 1:1, L2:7, 1:1, L3:7, 0:1, L4:7, Data/binary>
         _ -> more
     end;
 parse(Data) when byte_size(Data) =< 8 -> more;
-parse(_) -> {error, <<>>}.
+parse(_) -> {error, cant_parse_fixed_header}.
 
 parse(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, Payload/binary>>) ->
     LTopic = binary_to_list(Topic),
@@ -80,7 +80,7 @@ parse(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/bi
                           qos=0,
                           payload=Payload};
         false ->
-            error
+            {error, cant_validate_publish_topic}
     end;
 parse(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Payload/binary>>)
   when QoS < 3 ->
@@ -94,7 +94,7 @@ parse(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/
                           message_id=MessageId,
                           payload=Payload};
         false ->
-            error
+            {error, cant_validate_publish_topic}
     end;
 parse(<<?PUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_puback{message_id=MessageId};
@@ -106,14 +106,14 @@ parse(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_pubcomp{message_id=MessageId};
 parse(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
     case parse_topics(?SUBSCRIBE, Topics, []) of
-        error -> error;
+        error -> {error, cant_parse_subscribe_topic};
         ParsedTopics ->
             #mqtt_subscribe{topics=ParsedTopics,
                             message_id=MessageId}
     end;
 parse(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
     case parse_topics(?UNSUBSCRIBE, Topics, []) of
-        error -> error;
+        error -> {error, cant_parse_unsubscribe_topic};
         ParsedTopics ->
             #mqtt_unsubscribe{topics=ParsedTopics,
                               message_id=MessageId}
@@ -126,58 +126,35 @@ parse(<<?UNSUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
 parse(<<?CONNECT:4, 0:4>>, <<L:16/big, PMagic:L/binary, _/binary>>)
   when not ((PMagic == ?PROTOCOL_MAGIC_311) or
              (PMagic == ?PROTOCOL_MAGIC_31)) ->
-    error;
+    {error, unknown_protocol_magic};
+
 parse(<<?CONNECT:4, 0:4>>,
     <<L:16/big, _:L/binary, ProtoVersion:8,
       UserNameFlag:1, PasswordFlag:1, WillRetain:1, WillQos:2, WillFlag:1,
       CleanSession:1,
       0:1,  % reserved
       KeepAlive: 16/big,
-      ClientIdLen:16/big, ClientId:ClientIdLen/binary, Rest/binary>>) ->
-    {WillTopic, WillMsg, Rest1} =
-    case {WillFlag, Rest} of
-        {0, _} -> {<<>>, <<>>, Rest};
-        {1,<<WillTopicLen:16/big, WT:WillTopicLen/binary,
-             WillMsgLen:16/big, WM:WillMsgLen/binary, R1/binary>>} ->
-            {WT, WM, R1}
-    end,
-    {UserName, Rest2} =
-    case {UserNameFlag, Rest1} of
-        {0, _} -> {<<>>, Rest1};
-        {1, <<UserNameLen:16/big, U:UserNameLen/binary, R2/binary>>} ->
-            {U, R2}
-    end,
-    {Password, <<>>} =
-    case {PasswordFlag, Rest2} of
-        {0, _} -> {<<>>, Rest2};
-        {1, <<PasswordLen:16/big, P:PasswordLen/binary, R3/binary>>} ->
-            {P, R3}
-    end,
-    case {WillTopic, WillMsg} of
-        {<<>>, <<>>} ->
-            #mqtt_connect{proto_ver=ProtoVersion,
-                          username=list(UserName),
-                          password=list(Password),
+      ClientIdLen:16/big, ClientId:ClientIdLen/binary, Rest0/binary>>) ->
+
+    Conn0 = #mqtt_connect{proto_ver=ProtoVersion,
+                          username = "",
+                          password = "",
                           clean_session=CleanSession,
                           keep_alive=KeepAlive,
-                          client_id=list(ClientId)};
-        _ ->
-            LWillTopic = binary_to_list(WillTopic),
-            case vmq_topic:validate({publish, LWillTopic}) of
-                true ->
-                    #mqtt_connect{proto_ver=ProtoVersion,
-                                  username=list(UserName),
-                                  password=list(Password),
-                                  will_retain=WillRetain,
-                                  will_qos=WillQos,
-                                  clean_session=CleanSession,
-                                  keep_alive=KeepAlive,
-                                  client_id=list(ClientId),
-                                  will_topic=LWillTopic,
-                                  will_msg=WillMsg};
-                false ->
-                    error
-            end
+                          client_id=list(ClientId)},
+
+    case parse_last_will_topic(WillFlag, WillRetain, WillQos, Rest0, Conn0) of
+        {ok, Rest1, Conn1} ->
+            case parse_username(UserNameFlag, Rest1, Conn1) of
+                {ok, Rest2, Conn2} ->
+                    case parse_password(PasswordFlag, Rest2, Conn2) of
+                        {ok, _, Conn3} ->
+                            Conn3;
+                        E -> E
+                    end;
+                E -> E
+            end;
+        E -> E
     end;
 parse(<<?CONNACK:4, 0:4>>, <<0:8, ReturnCode:8/big>>) ->
     #mqtt_connack{return_code=ReturnCode};
@@ -187,7 +164,37 @@ parse(<<?PINGRESP:4, 0:4>>, <<>>) ->
     #mqtt_pingresp{};
 parse(<<?DISCONNECT:4, 0:4>>, <<>>) ->
     #mqtt_disconnect{};
-parse(_, _) -> error.
+parse(_, _) -> {error, cant_parse_variable_header}.
+
+parse_last_will_topic(0, _, _, Rest, Conn) -> {ok, Rest, Conn};
+parse_last_will_topic(1, Retain, QoS, <<WillTopicLen:16/big, WillTopic:WillTopicLen/binary,
+                           WillMsgLen:16/big, WillMsg:WillMsgLen/binary,
+                           Rest/binary>>, Conn) ->
+    LWillTopic = binary_to_list(WillTopic),
+    case vmq_topic:validate({publish, LWillTopic}) of
+        true ->
+            {ok, Rest, Conn#mqtt_connect{will_msg=WillMsg,
+                                         will_topic=LWillTopic,
+                                         will_retain=Retain,
+                                         will_qos=QoS}};
+        false ->
+            {error, cant_validate_last_will_topic}
+    end;
+parse_last_will_topic(1, _, _, _,_) ->
+    {error, cant_parse_last_will}.
+
+parse_username(0, Rest, Conn) -> {ok, Rest, Conn};
+parse_username(1, <<Len:16/big, UserName:Len/binary, Rest/binary>>, Conn) ->
+    {ok, Rest, Conn#mqtt_connect{username=list(UserName)}};
+parse_username(1, _, _) ->
+    {error, cant_parse_username}.
+
+parse_password(0, Rest, Conn) -> {ok, Rest, Conn};
+parse_password(1, <<Len:16/big, Password:Len/binary, Rest/binary>>, Conn) ->
+    {ok, Rest, Conn#mqtt_connect{password=list(Password)}};
+parse_password(1, _, _) ->
+    {error, cant_parse_password}.
+
 
 parse_topics(_, <<>>, []) -> error;
 parse_topics(_, <<>>, Topics) -> Topics;
