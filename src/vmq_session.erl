@@ -749,6 +749,7 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
            reg_view=RegView} = State,
     case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=vmq_topic:words(Topic),
                                                       payload=Payload,
+                                                      msg_ref=msg_ref(),
                                                       qos=Qos,
                                                       retain=unflag(IsRetain),
                                                       trade_consistency=Consistency,
