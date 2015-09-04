@@ -31,7 +31,6 @@
          get_queue_pid/1,
 
          %% used in vmq_server_utils
-         client_stats/0,
          total_subscriptions/0,
          retained/0,
 
@@ -52,10 +51,6 @@
          publish/2,
          register_subscriber_/3]).
 
-%% used by vmq_queue
--export([update_session_count/2,
-         queue_ready/2]).
-
 %% used from plugins
 -export([direct_plugin_exports/1]).
 %% used by reg views
@@ -68,10 +63,6 @@
 -export([subscriptions_for_subscriber_id/1]).
 
 -record(state, {}).
--record(session, {subscriber_id     :: subscriber_id(),
-                  queue_pid         :: pid(),
-                  monitor           :: reference(),
-                  nr_of_clients = 0 :: non_neg_integer() }).
 
 -type state() :: #state{}.
 
@@ -80,17 +71,6 @@
 
 -spec start_link() -> {ok, pid()} | ignore | {error, atom()}.
 start_link() ->
-    case ets:info(vmq_session) of
-        undefined ->
-            _ = ets:new(vmq_session, [public,
-                                      named_table,
-                                      {keypos, 2},
-                                      {read_concurrency, true}]);
-        _ ->
-            %% ets table already exists, we'll remap the monitors
-            %% in the init callback.
-            ignore
-    end,
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec subscribe(flag(), username() | plugin_id(), subscriber_id(),
@@ -313,10 +293,6 @@ subscriptions_for_subscriber_id(SubscriberId) ->
     plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]).
 
 
--spec update_session_count(subscriber_id(), non_neg_integer()) -> boolean().
-update_session_count(SubscriberId, Count) ->
-    ets:update_element(vmq_session, SubscriberId, {5, Count}).
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% RPC Callbacks / Maintenance
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -362,8 +338,10 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                                          end),
                     QueueOpts = maps:merge(vmq_queue:default_opts(),
                                            #{clean_session => true}),
-                    _ = register_subscriber_(PluginSessionPid, SubscriberId, QueueOpts)
-
+                    case register_subscriber_(PluginSessionPid, SubscriberId, QueueOpts) of
+                        {ok, _QPid} -> ok;
+                        {error, Reason} -> exit({Mod, Reason})
+                    end
             end,
 
             PublishFun =
@@ -429,6 +407,10 @@ plugin_queue_loop(PluginPid, PluginMod) ->
                           end, Msgs),
             vmq_queue:notify(QPid),
             plugin_queue_loop(PluginPid, PluginMod);
+        {'$gen_all_state_event',disconnect} ->
+            ok;
+        {'$gen_sync_all_state_event', _, {get_info, []}} ->
+            [];
         Other ->
             exit({unknown_msg_in_plugin_loop, Other})
     end.
@@ -467,14 +449,13 @@ fold_subscribers(FoldFun, Acc) ->
       [{resolver, lww}]).
 
 fold_sessions(FoldFun, Acc) ->
-    ets:foldl(fun(#session{subscriber_id=SubscriberId,
-                           queue_pid=QPid}, AccAcc) ->
-                      lists:foldl(
-                        fun(SessionPid, AccAccAcc) ->
-                                FoldFun(SubscriberId, SessionPid, AccAccAcc)
-                        end, AccAcc, vmq_queue:get_sessions(QPid))
-              end, Acc, vmq_session).
-
+    vmq_queue_sup:fold_queues(
+      fun(SubscriberId, QPid, AccAcc) ->
+              lists:foldl(
+                fun(SessionPid, AccAccAcc) ->
+                        FoldFun(SubscriberId, SessionPid, AccAccAcc)
+                end, AccAcc, vmq_queue:get_sessions(QPid))
+      end, Acc).
 
 -spec add_subscriber([{topic(), qos()}], subscriber_id()) -> ok.
 add_subscriber(Topics, SubscriberId) ->
@@ -553,24 +534,7 @@ get_session_pids(SubscriberId) ->
 
 -spec get_queue_pid(subscriber_id()) -> pid() | not_found.
 get_queue_pid(SubscriberId) ->
-    case ets:lookup(vmq_session, SubscriberId) of
-        [#session{queue_pid=Pid}] when is_pid(Pid) ->
-            %% optimization
-            Pid;
-        _ ->
-            not_found
-    end.
-
-client_stats() ->
-    {ActiveSessions, InactiveSessions} = % includes multiple sessions
-    ets:foldl(fun(#session{nr_of_clients=0}, {Online, Offline}) ->
-                      {Online, Offline + 1};
-                 (#session{nr_of_clients=N}, {Online, Offline}) ->
-                      {Online + N, Offline}
-              end, {0, 0}, vmq_session),
-    [{total, ActiveSessions + InactiveSessions},
-     {active, ActiveSessions},
-     {inactive, InactiveSessions}].
+    vmq_queue_sup:get_queue_pid(SubscriberId).
 
 total_subscriptions() ->
     [{total, plumtree_metadata_manager:size(?SUBSCRIBER_DB)}].
@@ -594,39 +558,30 @@ status(SubscriberId) ->
             {ok, vmq_queue:status(QPid)}
     end.
 
-queue_ready(SubscriberId, QPid) ->
-    gen_server:cast(?MODULE, {queue_ready, SubscriberId, QPid}).
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER CALLBACKS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -spec init([]) -> {ok, state()}.
 init([]) ->
-    fold_subscribers(fun({_, _, {SubscriberId, _, undefined}}, Acc) ->
-                             %% ensures the queue, but also the
-                             %% proper monitor
-                             ensure_queue(SubscriberId),
-                             Acc;
-                        (_, Acc) ->
-                             Acc
-                     end, ok),
     {ok, #state{}}.
 
 -spec handle_call(_, _, []) -> {reply, ok, []}.
 handle_call({ensure_queue, SubscriberId}, _From, State) ->
-    {reply, ensure_queue(SubscriberId), State}.
+    Reply =
+    case get_queue_pid(SubscriberId) of
+        not_found ->
+            {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId),
+            QPid;
+        QPid ->
+            QPid
+    end,
+    {reply, Reply, State}.
 
 -spec handle_cast(_, []) -> {noreply, []}.
-handle_cast({queue_ready, SubscriberId, QPid}, State) ->
-    maybe_fix_queue(SubscriberId, QPid),
-    {noreply, State};
 handle_cast(_Req, State) ->
     {noreply, State}.
 
 -spec handle_info(_, []) -> {noreply, []}.
-handle_info({'DOWN', MRef, process, QueuePid, _}, State) ->
-    ets:match_delete(vmq_session, #session{queue_pid=QueuePid, monitor=MRef, _='_'}),
-    {noreply, State};
 handle_info(_, State) ->
     {noreply, State}.
 
@@ -651,56 +606,3 @@ rate_limited_op(OpFun, SuccessFun) ->
         {error, rejected} ->
             {error, overloaded}
     end.
-
-ensure_queue(SubscriberId) ->
-    case ets:lookup(vmq_session, SubscriberId) of
-        [#session{queue_pid=QPid, monitor=MRef} = Session] when is_pid(QPid) ->
-            %% cumbersome, but this ensures in case of a crash of the
-            %% vmq_reg process to have a valid monitor on the queue process
-            #session{queue_pid=NewQPid} = UpdatedSession =
-            case is_process_alive(QPid) of
-                true ->
-                    demonitor(MRef),
-                    Session;
-                false ->
-                    demonitor(MRef, [flush]),
-                    {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId),
-                    Session#session{queue_pid=QPid}
-            end,
-            NewMRef = monitor(process, NewQPid),
-            ets:insert(vmq_session, UpdatedSession#session{monitor=NewMRef}),
-            NewQPid;
-        _ ->
-            {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId),
-            MRef = monitor(process, QPid),
-            ets:insert(vmq_session, #session{subscriber_id=SubscriberId,
-                                             queue_pid=QPid,
-                                             monitor=MRef}),
-            QPid
-    end.
-
-maybe_fix_queue(SubscriberId, QPid) ->
-    %% we must ensure that the ETS table 'always' points to the right
-    %% qpid together with the right monitor
-    case ets:lookup(vmq_session, SubscriberId) of
-        [#session{queue_pid=QPid}] ->
-            %% we have a session with identical QPid,
-            %% ensure that the monitor is correct
-            ensure_queue(SubscriberId);
-        [#session{monitor=OldMRef} = Session] ->
-            %% session went down and was restarted, but we haven't yet
-            %% processed the 'DOWN'
-            demonitor(OldMRef, [flush]), % delete the 'DOWN'
-            NewMRef = monitor(process, QPid),
-            ets:insert(vmq_session, Session#session{queue_pid=QPid,
-                                                    monitor=NewMRef});
-        [] ->
-            %% 'DOWN' signal already processed, vmq_queue_sup has
-            %% restarted queue
-            MRef = monitor(process, QPid),
-            ets:insert(vmq_session, #session{subscriber_id=SubscriberId,
-                                             queue_pid=QPid,
-                                             monitor=MRef})
-    end,
-    ok.
-

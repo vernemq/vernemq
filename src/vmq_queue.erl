@@ -249,13 +249,11 @@ drain(Event, _From, State) ->
 offline(init_offline_queue, #state{id=SId} = State) ->
     case vmq_plugin:only(msg_store_find, [SId]) of
         {ok, Msgs} ->
-            vmq_reg:queue_ready(SId, self()),
             {next_state, offline,
              insert_many([{deliver, QoS, Msg}
                           || #vmq_msg{qos=QoS} = Msg <- Msgs], State)};
         {error, no_matching_hook_found} ->
             % that's ok
-            vmq_reg:queue_ready(SId, self()),
             {next_state, offline, State};
         {error, Reason} ->
             lager:error("can't initialize queue from offline storage due to ~p, retry in 1 sec", [Reason]),
@@ -269,6 +267,8 @@ offline({enqueue_many, Msgs}, State) ->
     {next_state, offline, insert_many(Msgs, State)};
 offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     %% session has expired cleanup and go down
+    vmq_exo:decr_inactive_clients(),
+    vmq_exo:incr_expired_clients(),
     vmq_reg:delete_subscriptions(SId),
     cleanup_queue(SId, Q),
     {stop, normal, State};
@@ -277,6 +277,8 @@ offline(Event, State) ->
     {next_state, offline, State}.
 
 offline({add_session, SessionPid, Opts}, _From, State) ->
+    vmq_exo:decr_inactive_clients(),
+    vmq_exo:incr_active_clients(),
     {reply, ok, state_change(add_session, offline, online),
      unset_expiry_timer(add_session_(SessionPid, Opts, State))};
 offline({migrate, OtherQueue}, From, State) ->
@@ -301,6 +303,7 @@ init([SubscriberId]) ->
     {A, B, C} = now(),
     random:seed(A, B, C),
     gen_fsm:send_event(self(), init_offline_queue),
+    vmq_exo:incr_inactive_clients(),
     {ok, offline,  #state{id=SubscriberId,
                           offline=OfflineQueue,
                           drain_time=DrainTime,
@@ -345,12 +348,15 @@ handle_info({'DOWN', _MRef, process, SessionPid, _}, StateName,
             %%
             %% it is assumed that all attached sessions use the same
             %% clean session flag
+            vmq_exo:decr_active_clients(),
             vmq_reg:delete_subscriptions(SId),
             {stop, normal, NewState};
         {0, OldStateName, _} ->
             %% last session gone
             %% ... we've to stay around and store the messages
             %%     inside the offline queue
+            vmq_exo:decr_active_clients(),
+            vmq_exo:incr_inactive_clients(),
             {next_state, state_change('DOWN', OldStateName, offline),
              maybe_set_expiry_timer(NewState)};
         _ ->
@@ -369,7 +375,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-add_session_(SessionPid, Opts, #state{id=SId, offline=Offline, sessions=Sessions} = State) ->
+add_session_(SessionPid, Opts, #state{offline=Offline, sessions=Sessions} = State) ->
     #{clean_session := Clean,
       max_online_messages := MaxOnlineMessages,
       max_offline_messages := MaxOfflineMsgs,
@@ -385,7 +391,6 @@ add_session_(SessionPid, Opts, #state{id=SId, offline=Offline, sessions=Sessions
         _ ->
             Sessions
     end,
-    vmq_reg:update_session_count(SId, maps:size(NewSessions)),
     insert_from_queue(Offline#queue{type=QueueType},
                       State#state{
                         deliver_mode=DeliverMode,
@@ -399,7 +404,6 @@ add_session_(SessionPid, Opts, #state{id=SId, offline=Offline, sessions=Sessions
 
 del_session(SessionPid, #state{id=SId, sessions=Sessions} = State) ->
     NewSessions = maps:remove(SessionPid, Sessions),
-    vmq_reg:update_session_count(SId, maps:size(NewSessions)),
     case maps:get(SessionPid, Sessions) of
         #session{clean=true} = Session ->
             cleanup_session(SId, Session),
