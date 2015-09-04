@@ -422,9 +422,12 @@ handle_waiting_acks_and_msgs(WAcks, #state{id=SId, sessions=Sessions, offline=Of
         1 ->
             %% this is the last active session
             NewOfflineQueue =
-            lists:foldl(fun(Msg, AccOffline) ->
-                                queue_insert(Msg, AccOffline, SId)
-                        end, Offline, WAcks),
+            lists:foldl(
+              fun({deliver, QoS, #vmq_msg{persisted=true} = Msg}, AccOffline) ->
+                      queue_insert({deliver, QoS, Msg#vmq_msg{persisted=false}}, AccOffline, SId);
+                 (Msg, AccOffline) ->
+                      queue_insert(Msg, AccOffline, SId)
+              end, Offline, WAcks),
             State#state{offline=NewOfflineQueue};
         N ->
             lager:debug("handle waiting acks for multiple sessions (~p) not possible", [N]),
