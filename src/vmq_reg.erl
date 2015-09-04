@@ -16,8 +16,7 @@
 -include("vmq_server.hrl").
 
 %% API
--export([start_link/0,
-
+-export([
          %% used in vmq_session fsm handling
          subscribe/4,
          unsubscribe/4,
@@ -38,14 +37,6 @@
          status/1
         ]).
 
-%% gen_server callback
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
-
 %% used by/through remote calls
 -export([migrate_session/2,
          publish/2,
@@ -62,16 +53,8 @@
 %% exported because currently used by netsplit tests
 -export([subscriptions_for_subscriber_id/1]).
 
--record(state, {}).
-
--type state() :: #state{}.
-
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
 -define(TOMBSTONE, '$deleted').
-
--spec start_link() -> {ok, pid()} | ignore | {error, atom()}.
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec subscribe(flag(), username() | plugin_id(), subscriber_id(),
                 [{topic(), qos()}]) -> ok | {error, not_allowed
@@ -162,7 +145,7 @@ register_session(SubscriberId, QueueOpts) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
     SessionPid = self(),
-    QPid = gen_server:call(?MODULE, {ensure_queue, SubscriberId}),
+    {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId), % wont create new queue in case it already exists
     ok = vmq_queue:add_session(QPid, SessionPid, QueueOpts),
     {ok, QPid}.
 
@@ -198,7 +181,7 @@ register_subscriber_(SessionPid, SubscriberId, #{clean_session := CleanSession} 
 register_subscriber__(SessionPid, SubscriberId, QueueOpts) ->
     %% TODO: make this more efficient, currently we have to rpc every
     %% node in the cluster
-    QPid = gen_server:call(?MODULE, {ensure_queue, SubscriberId}),
+    {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId), % wont create new queue in case it already exists
     lists:foreach(
       fun(Node) ->
               case Node == node() of
@@ -568,41 +551,6 @@ status(SubscriberId) ->
         QPid ->
             {ok, vmq_queue:status(QPid)}
     end.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% GEN_SERVER CALLBACKS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
--spec init([]) -> {ok, state()}.
-init([]) ->
-    {ok, #state{}}.
-
--spec handle_call(_, _, []) -> {reply, ok, []}.
-handle_call({ensure_queue, SubscriberId}, _From, State) ->
-    Reply =
-    case get_queue_pid(SubscriberId) of
-        not_found ->
-            {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId),
-            QPid;
-        QPid ->
-            QPid
-    end,
-    {reply, Reply, State}.
-
--spec handle_cast(_, []) -> {noreply, []}.
-handle_cast(_Req, State) ->
-    {noreply, State}.
-
--spec handle_info(_, []) -> {noreply, []}.
-handle_info(_, State) ->
-    {noreply, State}.
-
--spec terminate(_, _) -> ok.
-terminate(_Reason, _State) ->
-    ok.
-
--spec code_change(_, _, _) -> {ok, _}.
-code_change(_OldVSN, State, _Extra) ->
-    {ok, State}.
 
 -spec rate_limited_op(fun(() -> any()),
                       fun((any()) -> any())) -> any() | {error, overloaded}.

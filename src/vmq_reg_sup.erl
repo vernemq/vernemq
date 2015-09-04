@@ -114,8 +114,7 @@ stop_reg_view(ViewModule) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, {{one_for_one, 5, 10},
-          [?CHILD(vmq_reg, vmq_reg, worker, []),
+    {ok, {{one_for_one, 5, 10},[
            ?CHILD(vmq_retain_srv, vmq_retain_srv, worker, []),
            ?CHILD(vmq_reg_leader, vmq_reg_leader, worker, [])]
          }
