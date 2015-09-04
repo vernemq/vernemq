@@ -71,7 +71,8 @@ websocket_handle({binary, Bytes}, Req, State) ->
             timer:sleep(1000),
             websocket_handle({binary, HoldBackBuf}, Req,
                              State#st{parser_state= <<>>});
-        error ->
+        {error, Reason} ->
+            lager:warning("[~p] ws session stopped abnormally due to '~p'", [SessionPid, Reason]),
             {shutdown, Req, State}
     end;
 
@@ -126,8 +127,8 @@ process_bytes(SessionPid, Bytes, ParserState) ->
     case vmq_parser:parse(NewParserState) of
         more ->
             {ok, NewParserState};
-        {error, _} ->
-            error;
+        {{error, _} = Error, _} ->
+            Error;
         {Frame, Rest} ->
             Ret = vmq_session:in(SessionPid, Frame),
             case Ret of
