@@ -40,6 +40,7 @@ start_link() ->
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_write, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_delete, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 1),
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_read, 2),
 
     {ok, Pid}.
 

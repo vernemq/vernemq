@@ -89,12 +89,19 @@ queue_fifo_test(_) ->
     Parent = self(),
     SubscriberId = {"", "mock-fifo-client"},
     QueueOpts = maps:merge(#{clean_session => false}, vmq_queue:default_opts()),
-    SessionPid = spawn(fun() -> mock_session(Parent) end),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid, SubscriberId, QueueOpts),
+    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, QueueOpts),
     ok = vmq_reg:subscribe(false, "mock-user", SubscriberId, [{"test/fifo/topic", 1}]),
+    %% teardown session
+    SessionPid1 ! go_down,
+
     Msgs = publish_multi("test/fifo/topic"),
-    ok = receive_multi(QPid, 1, lists:reverse(Msgs)), %% reverse list to get fifo
+
+    SessionPid2 = spawn(fun() -> mock_session(Parent) end),
+    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, QueueOpts),
+
+    ok = receive_multi(QPid, 1, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
 queue_lifo_test(_) ->
@@ -113,7 +120,7 @@ queue_lifo_test(_) ->
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, QPid} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, QueueOpts),
 
-    ok = receive_multi(QPid, 1, Msgs), %% don't reverse list to get lifo
+    ok = receive_multi(QPid, 1, lists:reverse(Msgs)), %% reverse list to get lifo
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
 queue_fifo_offline_drop_test(_) ->
@@ -133,7 +140,7 @@ queue_fifo_offline_drop_test(_) ->
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, QPid} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, QueueOpts),
-    {KeptMsgs, _} = lists:split(10, lists:reverse(Msgs)),
+    {KeptMsgs, _} = lists:split(10, Msgs),
     ok = receive_multi(QPid, 1, KeptMsgs),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
@@ -156,7 +163,7 @@ queue_lifo_offline_drop_test(_) ->
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, QPid} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, QueueOpts),
-    {KeptMsgs, _} = lists:split(10, Msgs),
+    {KeptMsgs, _} = lists:split(10, lists:reverse(Msgs)),
     ok = receive_multi(QPid, 1, KeptMsgs),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
@@ -168,10 +175,10 @@ publish_multi(Topic, Acc) when length(Acc) < 100 ->
     Msg = msg(Topic, "test-message-"++ integer_to_list(length(Acc)), 0),
     ok = vmq_reg:publish(Msg),
     publish_multi(Topic, [Msg|Acc]);
-publish_multi(_, Acc) -> Acc.
+publish_multi(_, Acc) -> lists:reverse(Acc).
 
 receive_multi(QPid, QoS, Msgs) ->
-    PMsgs = [{deliver, QoS, Msg#vmq_msg{persisted=true}} || Msg <- Msgs],
+    PMsgs = [{deliver, QoS, Msg#vmq_msg{persisted=true, qos=1}} || Msg <- Msgs],
     receive_multi(QPid, PMsgs).
 
 receive_multi(_, []) -> ok;
@@ -182,7 +189,7 @@ receive_multi(QPid, Msgs) ->
                 {RecMsgs, RestMsgs} ->
                     receive_multi(QPid, RestMsgs);
                 _ ->
-                    ct:pal("~p", [RecMsgs]),
+                    ct:pal("~p ~p", [RecMsgs, Msgs]),
                     exit({wrong_messages, RecMsgs})
             end;
         M ->
@@ -243,6 +250,7 @@ enable_hooks() ->
     vmq_plugin_mgr:enable_module_plugin(auth_on_publish, ?MODULE, hook_auth_on_publish, 6),
     vmq_plugin_mgr:enable_module_plugin(auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3),
     vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_write, 2),
+    vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_read, 2),
     vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_delete, 2),
     vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 1).
 

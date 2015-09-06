@@ -48,9 +48,10 @@ all() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 insert_delete_test(Config) ->
     Msgs = generate_msgs(1000, []),
+    Refs = [Ref || #vmq_msg{msg_ref=Ref} <- Msgs],
     ok = store_msgs({"", "foo"}, Msgs),
     %% we should get back the exact same list
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo"}),
     %% delete all
     ok = delete_msgs({"", "foo"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo"}),
@@ -58,6 +59,7 @@ insert_delete_test(Config) ->
 
 ref_delete_test(Config) ->
     Msgs = generate_msgs(1000, []),
+    Refs = [Ref || #vmq_msg{msg_ref=Ref} <- Msgs],
     ok = store_msgs({"", "foo0"}, Msgs),
     ok = store_msgs({"", "foo1"}, Msgs),
     ok = store_msgs({"", "foo2"}, Msgs),
@@ -69,43 +71,53 @@ ref_delete_test(Config) ->
     ok = store_msgs({"", "foo8"}, Msgs),
     ok = store_msgs({"", "foo9"}, Msgs),
 
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo0"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo0"}),
+    {ok, Msgs} = read_msgs({"", "foo0"}, Refs),
     ok = delete_msgs({"", "foo0"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo0"}),
 
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo1"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo1"}),
+    {ok, Msgs} = read_msgs({"", "foo1"}, Refs),
     ok = delete_msgs({"", "foo1"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo1"}),
 
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo2"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo2"}),
+    {ok, Msgs} = read_msgs({"", "foo2"}, Refs),
     ok = delete_msgs({"", "foo2"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo2"}),
 
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo3"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo3"}),
+    {ok, Msgs} = read_msgs({"", "foo3"}, Refs),
     ok = delete_msgs({"", "foo3"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo3"}),
 
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo4"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo4"}),
+    {ok, Msgs} = read_msgs({"", "foo4"}, Refs),
     ok = delete_msgs({"", "foo4"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo4"}),
 
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo5"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo5"}),
+    {ok, Msgs} = read_msgs({"", "foo5"}, Refs),
     ok = delete_msgs({"", "foo5"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo5"}),
 
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo6"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo6"}),
+    {ok, Msgs} = read_msgs({"", "foo6"}, Refs),
     ok = delete_msgs({"", "foo6"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo6"}),
 
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo7"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo7"}),
+    {ok, Msgs} = read_msgs({"", "foo7"}, Refs),
     ok = delete_msgs({"", "foo7"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo7"}),
 
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo8"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo8"}),
+    {ok, Msgs} = read_msgs({"", "foo8"}, Refs),
     ok = delete_msgs({"", "foo8"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo8"}),
 
-    {ok, Msgs} = vmq_lvldb_store:msg_store_find({"", "foo9"}),
+    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo9"}),
+    {ok, Msgs} = read_msgs({"", "foo9"}, Refs),
     ok = delete_msgs({"", "foo9"}, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo9"}),
     Config.
@@ -131,6 +143,14 @@ delete_msgs(_, []) -> ok;
 delete_msgs(SId, [#vmq_msg{msg_ref=Ref}|Rest]) ->
     ok = vmq_lvldb_store:msg_store_delete(SId, Ref),
     delete_msgs(SId, Rest).
+
+read_msgs(SId, Refs) ->
+    read_msgs(SId, Refs, []).
+read_msgs(_, [], Acc) -> {ok, lists:reverse(Acc)};
+read_msgs(SId, [Ref|Refs], Acc) ->
+    {ok, Msg} = vmq_lvldb_store:msg_store_read(SId, Ref),
+    read_msgs(SId, Refs, [Msg|Acc]).
+
 
 random_flag() ->
     random:uniform(10) > 5.

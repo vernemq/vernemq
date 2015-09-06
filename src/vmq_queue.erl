@@ -181,7 +181,7 @@ online(Event, _From, State) ->
 wait_for_offline({enqueue, Msg}, #state{offline=Offline, id=SId} = State) ->
     %% enqueue this message directly into the offline queue
     {next_state, wait_for_offline,
-     State#state{offline=queue_insert(Msg, Offline, SId)}};
+     State#state{offline=queue_insert(false, Msg, Offline, SId)}};
 wait_for_offline(Event, State) ->
     lager:error("got unknown event in wait_for_offline state ~p", [Event]),
     {next_state, wait_for_offline, State}.
@@ -248,10 +248,9 @@ drain(Event, _From, State) ->
 
 offline(init_offline_queue, #state{id=SId} = State) ->
     case vmq_plugin:only(msg_store_find, [SId]) of
-        {ok, Msgs} ->
+        {ok, MsgRefs} ->
             {next_state, offline,
-             insert_many([{deliver, QoS, Msg}
-                          || #vmq_msg{qos=QoS} = Msg <- Msgs], State)};
+             insert_many(MsgRefs, State)};
         {error, no_matching_hook_found} ->
             % that's ok
             {next_state, offline, State};
@@ -358,7 +357,7 @@ handle_info({'DOWN', _MRef, process, SessionPid, _}, StateName,
             vmq_exo:decr_active_clients(),
             vmq_exo:incr_inactive_clients(),
             {next_state, state_change('DOWN', OldStateName, offline),
-             maybe_set_expiry_timer(NewState)};
+             maybe_set_expiry_timer(compress_offline_queue(NewState))};
         _ ->
             %% still one or more sessions online
             {next_state, StateName, NewState}
@@ -424,9 +423,9 @@ handle_waiting_acks_and_msgs(WAcks, #state{id=SId, sessions=Sessions, offline=Of
             NewOfflineQueue =
             lists:foldl(
               fun({deliver, QoS, #vmq_msg{persisted=true} = Msg}, AccOffline) ->
-                      queue_insert({deliver, QoS, Msg#vmq_msg{persisted=false}}, AccOffline, SId);
+                      queue_insert(true, {deliver, QoS, Msg#vmq_msg{persisted=false}}, AccOffline, SId);
                  (Msg, AccOffline) ->
-                      queue_insert(Msg, AccOffline, SId)
+                      queue_insert(true, Msg, AccOffline, SId)
               end, Offline, WAcks),
             State#state{offline=NewOfflineQueue};
         N ->
@@ -499,70 +498,71 @@ insert_from_queue(#queue{type=fifo, queue=Q}, State) ->
 insert_from_queue(#queue{type=lifo, queue=Q}, State) ->
     insert_from_queue(fun queue:out_r/1, queue:out_r(Q), State).
 
-insert_from_queue(F, {{value, Msg}, Q}, State) ->
+insert_from_queue(F, {{value, Msg}, Q}, State) when is_tuple(Msg) ->
     insert_from_queue(F, F(Q), insert(Msg, State));
+insert_from_queue(F, {{value, MsgRef}, Q}, #state{id=SId} = State) when is_binary(MsgRef) ->
+    case vmq_plugin:only(msg_store_read, [SId, MsgRef]) of
+        {ok, #vmq_msg{qos=QoS} = Msg} ->
+            insert_from_queue(F, F(Q), insert({deliver, QoS, Msg}, State));
+        {error, _} ->
+            insert_from_queue(F, F(Q), State)
+    end;
 insert_from_queue(_F, {empty, _}, State) ->
     State.
 
-insert_many(Msgs, State) ->
-    lists:foldl(fun(Msg, AccState) ->
-                        insert(Msg, AccState)
-                end, State, Msgs).
+insert_many(MsgsOrRefs, State) ->
+    lists:foldl(fun(MsgOrRef, AccState) ->
+                        insert(MsgOrRef, AccState)
+                end, State, MsgsOrRefs).
 
 %% Offline Queue
 insert({deliver, 0, _}, #state{offline=#queue{drop=Drop} = Offline, sessions=Sessions} = State)
   when Sessions == #{} ->
     %% no session online, drop
     State#state{offline=Offline#queue{drop=Drop + 1}};
-insert(Msg, #state{id=SId, offline=Offline, sessions=Sessions} = State)
+insert(MsgOrRef, #state{id=SId, offline=Offline, sessions=Sessions} = State)
   when Sessions == #{} ->
     %% no session online, insert in offline queue
-    State#state{offline=queue_insert(Msg, Offline, SId)};
+    State#state{offline=queue_insert(true, MsgOrRef, Offline, SId)};
 
 %% Online Queue
-insert(Msg, #state{id=SId, deliver_mode=fanout, sessions=Sessions} = State) ->
-    {NewSessions, _} = mapfold(fun session_insert/2, {Msg, SId}, Sessions),
+insert(MsgOrRef, #state{id=SId, deliver_mode=fanout, sessions=Sessions} = State) ->
+    {NewSessions, _} = session_fold(SId, fun session_insert/3, MsgOrRef, Sessions),
     State#state{sessions=NewSessions};
 
-insert(Msg, #state{id=SId, deliver_mode=balance, sessions=Sessions} = State) ->
+insert(MsgOrRef, #state{id=SId, deliver_mode=balance, sessions=Sessions} = State) ->
     Pids = maps:keys(Sessions),
     RandomPid = lists:nth(random:uniform(length(Pids)), Pids),
     RandomSession = maps:get(RandomPid, Sessions),
-    {UpdatedSession, _} = session_insert(RandomSession, {Msg, SId}),
+    {UpdatedSession, _} = session_insert(SId, RandomSession, MsgOrRef),
     State#state{sessions=maps:update(RandomPid, UpdatedSession, Sessions)}.
 
 
-session_insert(#session{status=active, queue=Q} = Session, {Msg, SId} = Acc) ->
-    {send(Session#session{queue=queue_insert(Msg, Q, SId)}), Acc};
-session_insert(#session{status=passive, queue=Q} = Session, {Msg, SId} = Acc) ->
-    {Session#session{queue=queue_insert(Msg, Q, SId)}, Acc};
-session_insert(#session{status=notify, queue=Q} = Session, {Msg, SId} = Acc) ->
-    {send_notification(Session#session{queue=queue_insert(Msg, Q, SId)}), Acc}.
+session_insert(SId, #session{status=active, queue=Q} = Session, MsgOrRef) ->
+    {send(Session#session{queue=queue_insert(false, MsgOrRef, Q, SId)}), MsgOrRef};
+session_insert(SId, #session{status=passive, queue=Q} = Session, MsgOrRef) ->
+    {Session#session{queue=queue_insert(false, MsgOrRef, Q, SId)}, MsgOrRef};
+session_insert(SId, #session{status=notify, queue=Q} = Session, MsgOrRef) ->
+    {send_notification(Session#session{queue=queue_insert(false, MsgOrRef, Q, SId)}), MsgOrRef}.
 
 %% unlimited messages accepted
-queue_insert(Msg, #queue{max=-1, size=Size, queue=Queue} = Q, SId) ->
-    Q#queue{queue=queue:in(maybe_offline_store(SId, Msg), Queue), size=Size + 1};
+queue_insert(Offline, MsgOrRef, #queue{max=-1, size=Size, queue=Queue} = Q, SId) ->
+    Q#queue{queue=queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size=Size + 1};
 %% tail drop in case of fifo
-queue_insert(Msg, #queue{type=fifo, max=Max, size=Size, drop=Drop} = Q, SId)
+queue_insert(_Offline, MsgOrRef, #queue{type=fifo, max=Max, size=Size, drop=Drop} = Q, SId)
   when Size >= Max ->
-    maybe_offline_delete(SId, Msg),
+    maybe_offline_delete(SId, MsgOrRef),
     Q#queue{drop=Drop + 1};
 %% drop oldest in case of lifo
-queue_insert(Msg, #queue{type=lifo, max=Max, size=Size, queue=Queue, drop=Drop} = Q, SId)
+queue_insert(Offline, MsgOrRef, #queue{type=lifo, max=Max, size=Size, queue=Queue, drop=Drop} = Q, SId)
   when Size >= Max ->
-    NewNewQueue =
-    case queue:out(Queue) of
-        {{value, {deliver, _, _} = OldMsg}, NewQueue} ->
-            maybe_offline_delete(SId, OldMsg),
-            NewQueue;
-        {{value, _}, NewQueue} ->
-            %% {deliver_bin, _} messages no need to delete offline
-            NewQueue
-    end,
-    Q#queue{queue=queue:in(maybe_offline_store(SId, Msg), NewNewQueue), drop=Drop + 1};
+    {{value, OldMsgOrRef}, NewQueue} = queue:out(Queue),
+    maybe_offline_delete(SId, OldMsgOrRef),
+    Q#queue{queue=queue:in(maybe_offline_store(Offline, SId, MsgOrRef), NewQueue), drop=Drop + 1};
+
 %% normal enqueue
-queue_insert(Msg, #queue{queue=Queue, size=Size} = Q, SId) ->
-    Q#queue{queue=queue:in(maybe_offline_store(SId, Msg), Queue), size=Size + 1}.
+queue_insert(Offline, MsgOrRef, #queue{queue=Queue, size=Size} = Q, SId) ->
+    Q#queue{queue=queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size=Size + 1}.
 
 send(#session{pid=Pid, queue=Q} = Session) ->
     Session#session{status=passive, queue=send(Pid, Q)}.
@@ -596,13 +596,13 @@ cleanup_queue_(SId, {{value, {deliver_bin, _}}, NewQueue}) ->
 cleanup_queue_(_, {empty, _}) -> ok.
 
 
-mapfold(Fun, Acc, Map) ->
-    mapfold(Fun, Acc, Map, maps:keys(Map)).
+session_fold(SId, Fun, Acc, Map) ->
+    session_fold(SId, Fun, Acc, Map, maps:keys(Map)).
 
-mapfold(Fun, Acc, Map, [K|Rest]) ->
-    {NewV, NewAcc} = Fun(maps:get(K, Map), Acc),
-    mapfold(Fun, NewAcc, maps:update(K, NewV, Map), Rest);
-mapfold(_, Acc, Map, []) ->
+session_fold(SId, Fun, Acc, Map, [K|Rest]) ->
+    {NewV, NewAcc} = Fun(SId, maps:get(K, Map), Acc),
+    session_fold(SId, Fun, NewAcc, maps:update(K, NewV, Map), Rest);
+session_fold(_, _, Acc, Map, []) ->
     {Map, Acc}.
 
 maybe_set_expiry_timer(#state{sessions=Sessions} = State) when Sessions == #{} ->
@@ -617,16 +617,35 @@ maybe_set_expiry_timer(ExpireAfter, State) when ExpireAfter > 0 ->
     Ref = erlang:send_after(ExpireAfter * 1000, self(), expire_session),
     State#state{expiry_timer=Ref}.
 
-maybe_offline_store(SubscriberId, {deliver, QoS, #vmq_msg{persisted=false} = Msg}) when QoS > 0 ->
+maybe_offline_store(Offline, SubscriberId, {deliver, QoS, #vmq_msg{persisted=false} = Msg}) when QoS > 0 ->
     PMsg = Msg#vmq_msg{persisted=true},
     case vmq_plugin:only(msg_store_write, [SubscriberId, PMsg#vmq_msg{qos=QoS}]) of
-        ok -> {deliver, QoS, PMsg};
-        {ok, NewMsgRef} -> {deliver, QoS, PMsg#vmq_msg{msg_ref=NewMsgRef}};
-        {error, _} -> {deliver, QoS, Msg}
+        %% in case we have no online/serving session attached
+        %% to this queue anymore we can save memory by only
+        %% keeping the message ref in the queue
+        ok when Offline ->
+            PMsg#vmq_msg.msg_ref;
+        {ok, NewMsgRef} when Offline ->
+            NewMsgRef;
+        %% in case we still have online sessions attached
+        %% to this queue, we keep the full message structure around
+        ok ->
+            {deliver, QoS, PMsg};
+        {ok, NewMsgRef} ->
+            {deliver, QoS, PMsg#vmq_msg{msg_ref=NewMsgRef}};
+        %% in case we cannot store the message we keep the
+        %% full message structure around
+        {error, _} ->
+            {deliver, QoS, Msg}
     end;
-maybe_offline_store(_, Msg) -> Msg.
+maybe_offline_store(true, _, {deliver, _, #vmq_msg{persisted=true} = Msg}) ->
+    Msg#vmq_msg.msg_ref;
+maybe_offline_store(_, _, MsgOrRef) -> MsgOrRef.
 
 maybe_offline_delete(SubscriberId, {deliver, _, #vmq_msg{persisted=true, msg_ref=MsgRef}}) ->
+    _ = vmq_plugin:only(msg_store_delete, [SubscriberId, MsgRef]),
+    ok;
+maybe_offline_delete(SubscriberId, MsgRef) when is_binary(MsgRef) ->
     _ = vmq_plugin:only(msg_store_delete, [SubscriberId, MsgRef]),
     ok;
 maybe_offline_delete(_, _) -> ok.
@@ -656,3 +675,13 @@ set_session_opts(SessionPid, #{max_online_messages := MaxOnlineMsgs,
                                        }
                                }, Sessions),
     State#state{sessions=NewSessions}.
+
+compress_offline_queue(#state{id=SId, offline=#queue{queue=Q} = Offline} = State) ->
+    NewQueue = compress_offline_queue(SId, queue:to_list(Q), []),
+    State#state{offline=Offline#queue{queue=NewQueue}}.
+
+compress_offline_queue(_, [], Acc) ->
+    queue:from_list(lists:reverse(Acc));
+compress_offline_queue(SId, [Msg|Rest], Acc) ->
+    maybe_offline_store(true, SId, Msg),
+    compress_offline_queue(SId, Rest, [Msg|Acc]).

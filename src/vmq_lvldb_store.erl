@@ -19,6 +19,7 @@
 %% API
 -export([start_link/1,
          msg_store_write/2,
+         msg_store_read/2,
          msg_store_delete/2,
          msg_store_find/1]).
 
@@ -55,6 +56,9 @@ msg_store_write(SubscriberId, #vmq_msg{msg_ref=MsgRef} = Msg) ->
 msg_store_delete(SubscriberId, MsgRef) ->
     call(MsgRef, {delete, SubscriberId, MsgRef}).
 
+msg_store_read(SubscriberId, MsgRef) ->
+    call(MsgRef, {read, SubscriberId, MsgRef}).
+
 msg_store_find(SubscriberId) ->
     Ref = make_ref(),
     {Pid, MRef} = spawn_monitor(?MODULE, msg_store_init_queue_collector,
@@ -64,8 +68,8 @@ msg_store_find(SubscriberId) ->
             {error, Reason};
         {Pid, Ref, Result} ->
             demonitor(MRef, [flush]),
-            {_, Msgs} = lists:unzip(Result),
-            {ok, Msgs}
+            {_, MsgRefs} = lists:unzip(Result),
+            {ok, MsgRefs}
     end.
 
 msg_store_init_queue_collector(ParentPid, SubscriberId, Ref) ->
@@ -305,6 +309,25 @@ handle_req({write, {MP, _} = SubscriberId,
                                     {put, RefKey, <<>>},
                                     {put, IdxKey, IdxVal}], WriteOpts)
     end;
+handle_req({read, {MP, _} = SubscriberId, MsgRef},
+           #state{ref=Bucket, read_opts=ReadOpts}) ->
+    MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
+    IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
+    case eleveldb:get(Bucket, MsgKey, ReadOpts) of
+        {ok, Val} ->
+            {RoutingKey, Payload} = binary_to_term(Val),
+            case eleveldb:get(Bucket, IdxKey, ReadOpts) of
+                {ok, IdxVal} ->
+                    {_TS, Dup, QoS} = binary_to_term(IdxVal),
+                    Msg = #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
+                                   routing_key=RoutingKey, payload=Payload, persisted=true},
+                    {ok, Msg};
+                not_found ->
+                    {error, idx_val_not_found}
+            end;
+        not_found ->
+            {error, not_found}
+    end;
 handle_req({delete, {MP, _} = SubscriberId, MsgRef},
            #state{ref=Bucket, fold_opts=FoldOpts, write_opts=WriteOpts}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
@@ -348,20 +371,14 @@ handle_req({find_for_subscriber_id, SubscriberId},
 iterate_index_items({error, _}, _, Acc, _, _) ->
     %% no need to close the iterator
     Acc;
-iterate_index_items({ok, IdxKey, IdxVal}, {MP, _} = SubscriberId, Acc, Itr,
-                    #state{ref=Bucket, read_opts=ReadOpts} = State) ->
+iterate_index_items({ok, IdxKey, IdxVal}, SubscriberId, Acc, Itr, State) ->
     case sext:decode(IdxKey) of
         {idx, SubscriberId, MsgRef} ->
-            MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
-            {TS, Dup, QoS} = binary_to_term(IdxVal),
-            {ok, Val} = eleveldb:get(Bucket, MsgKey, ReadOpts),
-            {RoutingKey, Payload} = binary_to_term(Val),
-            Msg = #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
-                           routing_key=RoutingKey, payload=Payload, persisted=true},
+            {TS, _Dup, _QoS} = binary_to_term(IdxVal),
             iterate_index_items(eleveldb:iterator_move(Itr, prefetch), SubscriberId,
-                                ordsets:add_element({TS, Msg}, Acc), Itr, State);
+                                ordsets:add_element({TS, MsgRef}, Acc), Itr, State);
         _ ->
-            %% all messages accumulated for this subscriber
+            %% all message refs accumulated for this subscriber
             eleveldb:iterator_close(Itr),
             Acc
     end.
