@@ -149,8 +149,19 @@ process(<<"msg", L:32, Bin:L/binary, Rest/binary>>) ->
     _ = RegView:fold(MP, Topic, fun publish/2, Msg),
     process(Rest);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>) ->
-    {enqueue, QueuePid, Msgs} = binary_to_term(Bin),
-    vmq_queue:enqueue_many(QueuePid, Msgs),
+    {CallerPid, Ref, {enqueue, QueuePid, Msgs}} = binary_to_term(Bin),
+    %% enqueue in own process context
+    %% to ensure that this won't block
+    %% the cluster communication.
+    spawn(fun() ->
+                  try
+                      Reply = vmq_queue:enqueue_many(QueuePid, Msgs),
+                      CallerPid ! {Ref, Reply}
+                  catch
+                      _:_ ->
+                          CallerPid ! {Ref, {error, cant_remote_enqueue}}
+                  end
+          end),
     process(Rest);
 process(<<>>) -> ok.
 

@@ -40,6 +40,8 @@
       {queue_deliver_mode, fanout}, % balance vs fanout
       {queue_type, fifo}, % fifo vs lifo
       {persistent_client_expiration, 0}, % never
+      {max_drain_time, 100}, 
+      {max_msgs_per_drain_step, 10},
 
       % default listener / clustering /system opts
       {max_connections, infinity},

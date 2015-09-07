@@ -22,15 +22,63 @@
                                                                {datatype, flag}
                                                               ]}.
 
-%% @doc If allow_multiple_sessions is enabled 'balance_sessions' will 
-%% publish to a randomly choosen client session. This acts as simple load
-%% balancer between consumers, but is limited to the sessions on a single node.
+%% @doc If allow_multiple_sessions is enabled 'queue_deliver_mode' will specify
+%% how the messages are delivered to multiple sessions. Default is 'fanout' which
+%% specifies to deliver every message to all connected sessions. 'balance' specifies
+%% that the messages will be randomly balanced to the connected sessions.
 %% (non-standard behaviour!).
-{mapping, "balance_sessions", "vmq_server.balance_sessions", [
-                                                               {default, off},
-                                                               {datatype, flag},
+{mapping, "queue_deliver_mode", "vmq_server.queue_deliver_mode", [
+                                                               {default, fanout},
+                                                               {datatype, atom},
                                                                hidden
                                                               ]}.
+
+{translation, "vmq_server.queue_deliver_mode",
+ fun(Conf) ->
+         case cuttlefish:conf_get("queue_deliver_mode", Conf) of
+             fanout -> fanout;
+             balance -> balance;
+             _ -> cuttlefish:invalid("queue_deliver_mode must be either 'fanout' or 'balance'!")
+         end
+ end}.
+
+%% @doc queue_type enables to change the default queue delivery behaviour from
+%% 'fifo' to 'lifo'. In order to make this work the underlying message store
+%% must deliver the messages in proper order.
+{mapping, "queue_type", "vmq_server.queue_type", [
+                                                  {default, fifo},
+                                                  {datatype, atom},
+                                                  hidden
+                                                 ]}.
+
+{translation, "vmq_server.queue_type", 
+ fun(Conf) ->
+         case cuttlefish:conf_get("queue_type", Conf) of
+             fifo -> fifo;
+             lifo -> lifo;
+             _ -> cuttlefish:invalid("queue_type must be either 'fifo' or 'lifo'!")
+         end
+ end}.
+
+%% @doc Due to the eventual consistent nature of the subscriber store it is 
+%% possible that during queue migration messages still arive on the old cluster 
+%% node. This parameter allows to compensate this by keeping the queue around 
+%% for some time after it was migrated to the other cluster node.
+{mapping, "max_drain_time", "vmq_server.max_drain_time", [
+                                                          {default, 500},
+                                                          {datatype, integer},
+                                                          hidden
+                                                         ]}.
+
+%% @doc Specifies the number of messages that are delviered to the remote
+%% node per drain step. A large value will provide a faster migration of a queue,
+%% but increases the waste of bandwidth in case the migration fails.
+{mapping, "max_msgs_per_drain_step", "vmq_server.max_msgs_per_drain_step", [
+                                                                            {default, 100},
+                                                                            {datatype, integer},
+                                                                            hidden
+                                                                           ]}.
+
 
 %% @doc Allows to select a new default reg_view.
 %% A view is a pre-defined way to route messages. Multiple views can be 
@@ -47,6 +95,135 @@
                                                 {datatype, string},
                                                 hidden
                                                ]}. 
+
+{translation, "vmq_server.reg_views",
+ fun(Conf) ->
+         S = cuttlefish:conf_get("reg_views", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.
+
+%% @doc Set the time in seconds VerneMQ waits before a retry, in case a (QoS=1 or QoS=2) message 
+%% delivery gets no answer.
+{mapping, "retry_interval", "vmq_server.retry_interval", [
+                                                             {default, 20},
+                                                             {commented, 20},
+                                                             {datatype, integer}
+                                                            ]}.
+
+%% @doc Set the maximum size for client IDs. MQTT v3.1 specifies a
+%% limit of 23 characters
+{mapping, "max_client_id_size", "vmq_server.max_client_id_size", [
+                                                               {default, 23},
+                                                               {commented, 23},
+                                                               {datatype, integer}
+                                                              ]}.
+
+%% @doc This option allows persistent clients ( = clean session set to 
+%% false) to be removed if they do not reconnect within 'persistent_client_expiration'. 
+%% This is a non-standard option. As far as the MQTT specification is concerned, 
+%% persistent clients persist forever.
+%% The expiration period should be an integer followed by one of 'd', 'w', 'm', 'y' for 
+%% day, week, month, and year.
+{mapping, "persistent_client_expiration", "vmq_server.persistent_client_expiration", [
+                                                                                      {default, "never"},
+                                                                                      {commented, "1w"},
+                                                                                      {datatype, string}
+                                                                                     ]}.
+
+{translation, "vmq_server.persistent_client_expiration", 
+ fun(Conf) ->
+         S = cuttlefish:conf_get("persistent_client_expiration", Conf),
+         case S of
+             "never" -> 0;
+             _ ->
+                 [Entity|T] = lists:reverse(S),
+                 case {Entity, list_to_integer(lists:reverse(T))} of
+                     {$h, D} -> D * 60 * 60;
+                     {$d, D} -> D * 24 * 60 * 60;
+                     {$w, D} -> D * 7 * 24 * 60 * 60;
+                     {$m, D} -> D * 4 * 7 * 24 * 60 * 60;
+                     {$y, D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
+                     _ -> cuttlefish:invalid(S ++ " must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year, or the string 'never'")
+                 end
+         end
+ end}.
+
+%% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being 
+%% transmitted simultaneously. This includes messages currently going through handshakes 
+%% and messages that are being retried. Defaults to 20. Set to 0 for no maximum. If set 
+%% to 1, this will guarantee in-order delivery of messages.
+{mapping, "max_inflight_messages", "vmq_server.max_inflight_messages", [
+                                                                        {default, 20},
+                                                                        {datatype, integer}
+                                                                       ]}.
+
+%% @doc The maximum number of messages to hold in the queue above 
+%% those messages that are currently in flight. Defaults to 1000. Set to 0 for 
+%% no maximum (not recommended). This option allows to control how a specific
+%% client session can deal with message bursts. As a general rule of thumb set
+%% this number a bit higher than the expected message rate a single consumer is 
+%% required to process.
+{mapping, "max_online_messages", "vmq_server.max_online_messages", [
+                                                    {default, 1000},
+                                                    {datatype, integer}
+                                                 ]}.
+
+%% @doc The maximum number of QoS 1 or 2 messages to hold in the offline queue.
+%% Defaults to 1000. Set to -1 for no maximum (not recommended). Set to 0
+%% if no messages should be stored offline.
+{mapping, "max_offline_messages", "vmq_server.max_offline_messages", [
+                                                    {default, 1000},
+                                                    {datatype, integer}
+                                                 ]}.
+
+%% @doc specify in case multiple sessions are allowed how the queue should
+%% deliver the messages. In case of 'fanout' all the attached sessions 
+%% will receive the message, in case of 'balance' an attached session is 
+%% choosen randomly.
+{mapping, "queue_deliver_mode", "vmq_server.queue_deliver_mode", [{default, fanout},
+                                                                  {datatype, atom},
+                                                                  hidden]}.
+
+%% @doc specify how the queue should process the messages, 
+%% either the 'fifo' or 'lifo' way.
+{mapping, "queue_type", "vmq_server.queue_type", [{default, fifo},
+                                                  {datatype, atom},
+                                                  hidden]}.
+
+%% @doc specifies the maximum incoming publish rate per session. Depending
+%% on the underlying network buffers this rate isn't enforced.
+%% defaults to 0, which means no rate limits apply
+{mapping, "max_message_rate", "vmq_server.max_message_rate", [
+                                                              {default, 0},
+                                                              {datatype, integer},
+                                                              hidden
+                                                             ]}.
+
+%% @doc This option sets the maximum payload size that VerneMQ will allow for publishers. 
+%% Messages that exceed this size will not be accepted by VerneMQ. The 
+%% default value is 0, which means that all valid MQTT messages are accepted. MQTT 
+%% imposes a maximum payload size of 268435455 bytes.
+{mapping, "message_size_limit", "vmq_server.message_size_limit", [
+                                                                    {default, 0},
+                                                                    {datatype, integer}
+                                                                 ]}.
+
+%% @doc If a message is published with a QoS lower than the QoS of the subscription it is
+%% delivered to, VerneMQ can upgrade the outgoing QoS. This is a non-standard option.
+{mapping, "upgrade_outgoing_qos", "vmq_server.upgrade_outgoing_qos", [
+                                                                      {default, off},
+                                                                      {datatype, flag}
+                                                                     ]}.
+
+%% @doc specifies how many size in bytes are buffered in case the remote node 
+%% is not available.
+{mapping, "outgoing_clustering_buffer_size", "vmq_server.outgoing_clustering_buffer_size", [
+                                                                                            {default, 10000},
+                                                                                            {datatype, integer},
+                                                                                            hidden
+                                                                                           ]}.
 
 %% @doc listener.max_connections is an integer or 'infinity' defining 
 %% the maximum number of concurrent connections. This option can be overridden
@@ -869,135 +1046,6 @@
           {vmqs, DropUndef(VMQS)}]
  end
 }.
-
-%% @doc Set the time in seconds VerneMQ waits before a retry, in case a (QoS=1 or QoS=2) message 
-%% delivery gets no answer.
-{mapping, "retry_interval", "vmq_server.retry_interval", [
-                                                             {default, 20},
-                                                             {commented, 20},
-                                                             {datatype, integer}
-                                                            ]}.
-
-%% @doc Set the maximum size for client IDs. MQTT v3.1 specifies a
-%% limit of 23 characters
-{mapping, "max_client_id_size", "vmq_server.max_client_id_size", [
-                                                               {default, 23},
-                                                               {commented, 23},
-                                                               {datatype, integer}
-                                                              ]}.
-
-%% @doc This option allows persistent clients ( = clean session set to 
-%% false) to be removed if they do not reconnect within 'persistent_client_expiration'. 
-%% This is a non-standard option. As far as the MQTT specification is concerned, 
-%% persistent clients persist forever.
-%% The expiration period should be an integer followed by one of 'd', 'w', 'm', 'y' for 
-%% day, week, month, and year.
-{mapping, "persistent_client_expiration", "vmq_server.persistent_client_expiration", [
-                                                                                      {default, "never"},
-                                                                                      {commented, "1w"},
-                                                                                      {datatype, string}
-                                                                                     ]}.
-
-{translation, "vmq_server.persistent_client_expiration", 
- fun(Conf) ->
-         S = cuttlefish:conf_get("persistent_client_expiration", Conf),
-         case S of
-             "never" -> 0;
-             _ ->
-                 [Entity|T] = lists:reverse(S),
-                 case {Entity, list_to_integer(lists:reverse(T))} of
-                     {$h, D} -> D * 60 * 60;
-                     {$d, D} -> D * 24 * 60 * 60;
-                     {$w, D} -> D * 7 * 24 * 60 * 60;
-                     {$m, D} -> D * 4 * 7 * 24 * 60 * 60;
-                     {$y, D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
-                     _ -> cuttlefish:invalid(S ++ " must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year, or the string 'never'")
-                 end
-         end
- end}.
-
-%% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being 
-%% transmitted simultaneously. This includes messages currently going through handshakes 
-%% and messages that are being retried. Defaults to 20. Set to 0 for no maximum. If set 
-%% to 1, this will guarantee in-order delivery of messages.
-{mapping, "max_inflight_messages", "vmq_server.max_inflight_messages", [
-                                                                        {default, 20},
-                                                                        {datatype, integer}
-                                                                       ]}.
-
-%% @doc The maximum number of messages to hold in the queue above 
-%% those messages that are currently in flight. Defaults to 1000. Set to 0 for 
-%% no maximum (not recommended). This option allows to control how a specific
-%% client session can deal with message bursts. As a general rule of thumb set
-%% this number as high as the nr of msgs/sec a single subscriber is required 
-%% to process.
-{mapping, "max_online_messages", "vmq_server.max_online_messages", [
-                                                    {default, 1000},
-                                                    {datatype, integer}
-                                                 ]}.
-
-%% @doc The maximum number of QoS 1 or 2 messages to hold in the offline queue.
-%% Defaults to 1000. Set to -1 for no maximum (not recommended). Set to 0
-%% if no messages should be stored offline.
-{mapping, "max_offline_messages", "vmq_server.max_offline_messages", [
-                                                    {default, 1000},
-                                                    {datatype, integer}
-                                                 ]}.
-
-%% @doc specify in case multiple sessions are allowed how the queue should
-%% deliver the messages. In case of 'fanout' all the attached sessions 
-%% will receive the message, in case of 'balance' an attached session is 
-%% choosen randomly.
-{mapping, "queue_deliver_mode", "vmq_server.queue_deliver_mode", [{default, fanout},
-                                                                  {datatype, atom},
-                                                                  hidden]}.
-
-%% @doc specify how the queue should process the messages, 
-%% either the 'fifo' or 'lifo' way.
-{mapping, "queue_type", "vmq_server.queue_type", [{default, fifo},
-                                                  {datatype, atom},
-                                                  hidden]}.
-
-%% @doc specifies the maximum incoming publish rate per session. Depending
-%% on the underlying network buffers this rate isn't enforced.
-%% defaults to 0, which means no rate limits apply
-{mapping, "max_message_rate", "vmq_server.max_message_rate", [
-                                                              {default, 0},
-                                                              {datatype, integer},
-                                                              hidden
-                                                             ]}.
-
-%% @doc This option sets the maximum payload size that VerneMQ will allow for publishers. 
-%% Messages that exceed this size will not be accepted by VerneMQ. The 
-%% default value is 0, which means that all valid MQTT messages are accepted. MQTT 
-%% imposes a maximum payload size of 268435455 bytes.
-{mapping, "message_size_limit", "vmq_server.message_size_limit", [
-                                                                    {default, 0},
-                                                                    {datatype, integer}
-                                                                 ]}.
-
-%% @doc If a message is published with a QoS lower than the QoS of the subscription it is
-%% delivered to, VerneMQ can upgrade the outgoing QoS. This is a non-standard option.
-{mapping, "upgrade_outgoing_qos", "vmq_server.upgrade_outgoing_qos", [
-                                                                      {default, off},
-                                                                      {datatype, flag}
-                                                                     ]}.
-
-%% @doc specifies how many size in bytes are buffered in case the remote node 
-%% is not available.
-{mapping, "outgoing_clustering_buffer_size", "vmq_server.outgoing_clustering_buffer_size", [
-                                                                                            {default, 10000},
-                                                                                            {datatype, integer},
-                                                                                            hidden
-                                                                                           ]}.
-
-{translation, "vmq_server.reg_views",
- fun(Conf) ->
-         S = cuttlefish:conf_get("reg_views", Conf),
-         {ok, T, _} = erl_scan:string(S ++ "."),
-         {ok, Term} = erl_parse:parse_term(T),
-         Term
- end}.
 
 {mapping, "tcp_listen_options", "vmq_server.tcp_listen_options", [
                                                                   {default, "[{packet, raw}, {nodelay, true}, {reuseaddr, true}, {linger, {true, 0}}, {send_timeout, 30000}, {send_timeout_close, true}]"},

@@ -95,6 +95,7 @@ queue_fifo_test(_) ->
     ok = vmq_reg:subscribe(false, "mock-user", SubscriberId, [{"test/fifo/topic", 1}]),
     %% teardown session
     SessionPid1 ! go_down,
+    timer:sleep(10),
 
     Msgs = publish_multi("test/fifo/topic"),
 
@@ -114,6 +115,7 @@ queue_lifo_test(_) ->
     ok = vmq_reg:subscribe(false, "mock-user", SubscriberId, [{"test/lifo/topic", 1}]),
     %% teardown session
     SessionPid1 ! go_down,
+    timer:sleep(10),
 
     Msgs = publish_multi("test/lifo/topic"),
 
@@ -134,6 +136,7 @@ queue_fifo_offline_drop_test(_) ->
     ok = vmq_reg:subscribe(false, "mock-user", SubscriberId, [{"test/fifo/topic", 1}]),
     %% teardown session
     SessionPid1 ! go_down,
+    timer:sleep(10),
 
     Msgs = publish_multi("test/fifo/topic"), % publish 100, only the first 10 are kept
     {offline, fanout, 10, 0} = vmq_queue:status(QPid),
@@ -157,6 +160,7 @@ queue_lifo_offline_drop_test(_) ->
     ok = vmq_reg:subscribe(false, "mock-user", SubscriberId, [{"test/lifo/topic", 1}]),
     %% teardown session
     SessionPid1 ! go_down,
+    timer:sleep(10),
 
     Msgs = publish_multi("test/lifo/topic"), % publish 100, only the first 10 are kept
     {offline, fanout, 10, 0} = vmq_queue:status(QPid),
