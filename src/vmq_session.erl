@@ -1133,9 +1133,12 @@ unflag(?true) -> true;
 unflag(?false) -> false.
 
 msg_ref() ->
-    %% uuid style msg_ref
-    R1 = crypto:rand_uniform(1, round(math:pow(2, 48))) - 1,
-    R2 = crypto:rand_uniform(1, round(math:pow(2, 12))) - 1,
-    R3 = crypto:rand_uniform(1, round(math:pow(2, 32))) - 1,
-    R4 = crypto:rand_uniform(1, round(math:pow(2, 30))) - 1,
-    <<R1:48, 4:4, R2:12, 2:2, R3:32, R4:30>>.
+    GUID =
+    case get(guid) of
+        undefined ->
+            {{node(), now()}, 0};
+        {S, I} ->
+            {S, I + 1}
+    end,
+    put(guid, GUID),
+    erlang:md5(term_to_binary(GUID)).
