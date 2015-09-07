@@ -18,8 +18,7 @@
 
 %% API
 -export([start_link/0,
-         register_subscriber/4,
-         register_subscriber_by_leader/5]).
+         register_subscriber/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -38,31 +37,32 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-register_subscriber(SessionPid, QPid, SubscriberId, CleanSession) ->
+register_subscriber(SessionPid, SubscriberId, QueueOpts) ->
     case vmq_cluster:is_ready() of
         true ->
             case vmq_cluster:nodes() of
                 [_] -> % single node system
-                    vmq_reg:register_subscriber_(SessionPid, QPid,
-                                                 SubscriberId, CleanSession);
+                    vmq_reg:register_subscriber_(SessionPid, SubscriberId, QueueOpts);
                 Nodes ->
                     I = erlang:phash2(SubscriberId) rem length(Nodes) + 1,
                     Leader = lists:nth(I, lists:sort(Nodes)),
-                    rpc:call(Leader, ?MODULE, register_subscriber_by_leader,
-                             [node(), SessionPid, QPid,
-                              SubscriberId, CleanSession], 5000)
+                    Req = {register_subscriber, node(), SessionPid, SubscriberId, QueueOpts},
+                    try gen_server:call({?MODULE, Leader}, Req, infinity) of
+                        ok ->
+                            case vmq_reg:get_queue_pid(SubscriberId) of
+                                not_found ->
+                                    exit({cant_register_subscriber_by_leader, queue_not_found});
+                                QPid ->
+                                    {ok, QPid}
+                            end
+                    catch
+                        _:_ ->
+                            %% mostly happens in case of a netsplit
+                            %% this triggers the proper CONNACK leaving the
+                            %% client to retry the CONNECT
+                            {error, not_ready}
+                    end
             end;
-        false ->
-            {error, not_ready}
-    end.
-
-register_subscriber_by_leader(Node, SessionPid, QPid,
-                              SubscriberId, CleanSession) ->
-    case vmq_cluster:is_ready() of
-        true ->
-            gen_server:call(?MODULE, {register_subscriber, Node, SessionPid,
-                                      QPid, SubscriberId, CleanSession},
-                            infinity);
         false ->
             {error, not_ready}
     end.
@@ -74,10 +74,10 @@ register_subscriber_by_leader(Node, SessionPid, QPid,
 init([]) ->
     {ok, #state{}}.
 
-handle_call({register_subscriber, Node, SessionPid, QPid,
-             SubscriberId, CleanSession}, From, State) ->
-    {noreply, schedule_register(SubscriberId, {Node, SessionPid, QPid,
-                                               CleanSession, From}, State)}.
+handle_call({register_subscriber, Node, SessionPid,
+             SubscriberId, QueueOpts}, From, State) ->
+    {noreply, schedule_register(SubscriberId, {Node, SessionPid,
+                                               QueueOpts, From}, State)}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -98,8 +98,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-schedule_register(SubscriberId, {Node, SessionPid, QPid,
-                                 CleanSession, From} = Item,
+schedule_register(SubscriberId, {Node, SessionPid,
+                                 QueueOpts, From} = Item,
                   #state{req_queue=R, monitors=M} = State) ->
     {NewR, NewM} =
     case dict:find(SubscriberId, R) of
@@ -108,12 +108,9 @@ schedule_register(SubscriberId, {Node, SessionPid, QPid,
         error ->
             %% no waiting items
             {Pid, MRef} =
-            spawn_monitor(
-              fun() ->
-                      register_subscriber_remote(Node, SubscriberId,
-                                                 SessionPid, QPid,
-                                                 CleanSession)
-              end),
+            register_subscriber_remote(Node, SubscriberId,
+                                       SessionPid,
+                                       QueueOpts),
             {dict:store(SubscriberId, queue:new(), R),
              dict:store(MRef, {SubscriberId, Pid, From}, M)}
     end,
@@ -124,13 +121,11 @@ schedule_next(SubscriberId, #state{req_queue=R, monitors=M} = State) ->
     case dict:find(SubscriberId, R) of
         {ok, Q} ->
             case queue:out(Q) of
-                {{value, {Node, SessionPid, QPid, CleanSession, From}}, NewQ} ->
+                {{value, {Node, SessionPid, QueueOpts, From}}, NewQ} ->
                     {Pid, MRef} =
-                    register_subscriber_remote_(Node,
-                                                SubscriberId,
+                    register_subscriber_remote(Node, SubscriberId,
                                                 SessionPid,
-                                                QPid,
-                                                CleanSession),
+                                                QueueOpts),
                     {dict:store(SubscriberId, NewQ, R),
                      dict:store(MRef, {SubscriberId, Pid, From}, M)};
                 {empty, Q} ->
@@ -141,15 +136,9 @@ schedule_next(SubscriberId, #state{req_queue=R, monitors=M} = State) ->
     end,
     State#state{req_queue=NewR, monitors=NewM}.
 
-register_subscriber_remote(Node, SubscriberId, SessionPid,
-                           QPid, CleanSession) ->
-    rpc:call(Node, vmq_reg, register_subscriber_,
-             [SessionPid, QPid, SubscriberId, CleanSession]).
-
-register_subscriber_remote_(Node, SubscriberId, SessionPid,
-                            QPid, CleanSession) ->
+register_subscriber_remote(Node, SubscriberId, SessionPid, QueueOpts) ->
     spawn_monitor(
       fun() ->
-              register_subscriber_remote(Node, SubscriberId, SessionPid,
-                                         QPid, CleanSession)
+              rpc:call(Node, vmq_reg, register_subscriber_,
+                       [SessionPid, SubscriberId, QueueOpts])
       end).

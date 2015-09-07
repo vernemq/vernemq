@@ -24,7 +24,7 @@
 %% Supervisor callbacks
 -export([init/1]).
 
--define(NR_OF_BUCKETS, 8).
+-define(NR_OF_BUCKETS, 12).
 -define(TABLE, vmq_lvldb_store_buckets).
 
 %% ===================================================================
@@ -37,6 +37,11 @@ start_link() ->
          {ok, CPid} = supervisor:start_child(Pid, child_spec(I)),
          ets:insert(?TABLE, {I, CPid})
      end || I <- lists:seq(1, ?NR_OF_BUCKETS)],
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_write, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_delete, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 1),
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_read, 2),
+
     {ok, Pid}.
 
 get_bucket_pid(Key) when is_binary(Key) ->

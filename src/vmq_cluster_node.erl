@@ -107,18 +107,17 @@ buffer_message(BinMsg, #state{pending=Pending, max_queue_size=Max,
 
 
 handle_message({enq, CallerPid, Ref, Term}, State) ->
-    Bin = term_to_binary(Term),
+    Bin = term_to_binary({CallerPid, Ref, Term}),
     L = byte_size(Bin),
     BinMsg = <<"enq", L:32, Bin/binary>>,
     {Dropped, NewState} = buffer_message(BinMsg, State),
-    Reply =
     case Dropped > 0 of
         true ->
-            {error, msg_dropped};
+            CallerPid ! {Ref, {error, msg_dropped}};
         false ->
-            ok
+            %% reply directly from other node
+            ignore
     end,
-    CallerPid ! {Ref, Reply},
     NewState;
 handle_message({msg, Msg}, State) ->
     Bin = term_to_binary(Msg),

@@ -89,7 +89,7 @@ multiple_connect_unclean_test(Config) ->
     io:format(user, "!!!!!!!!!!!!!!!!!!! Subs before send ~p~n", [Subs()]),
     %% publish random content to the topic
     Strd = fun() -> rpc:multicall([N || {N, _} <-Nodes],
-                                  vmq_msg_store, stored, [])
+                                  vmq_reg, stored, [{"", "connect-unclean"}])
            end,
     io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs before send ~p~n", [Strd()]),
     Payloads = publish_random(Nodes, 1000, Topic),
@@ -99,7 +99,7 @@ multiple_connect_unclean_test(Config) ->
     Procs = fun() -> rpc:multicall([N || {N, _} <-Nodes],
                                   erlang, system_info, [process_count])
            end,
-    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after send ~p~n", [Strd()]),
+    io:format(user, "~n!!!!!!!!!!!!!!!!!!! stored msgs after send ~p~n", [Strd()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
     timer:sleep(2000),
@@ -175,7 +175,7 @@ publish_random(Nodes, N, Topic) ->
 publish_random(_, 0, _, Acc) -> Acc;
 publish_random(Nodes, N, Topic, Acc) ->
     Connect = packet:gen_connect("connect-unclean-pub", [{clean_session, true},
-                                                           {keepalive, 10}]),
+                                                         {keepalive, 10}]),
     Connack = packet:gen_connack(0),
     Payload = crypto:rand_bytes(random:uniform(10000)),
     Publish = packet:gen_publish(Topic, 1, Payload, [{mid, N}]),
@@ -185,6 +185,7 @@ publish_random(Nodes, N, Topic, Acc) ->
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "puback", Puback),
     ok = gen_tcp:send(Socket, Disconnect),
+    io:format(user, ".", []),
     publish_random(Nodes, N - 1, Topic, [Payload|Acc]).
 
 receive_publishes(_, _, []) -> ok;
@@ -229,7 +230,7 @@ recv(Socket, Buf) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_uname_password_success(_, _, _, _, _) -> ok.
+hook_uname_password_success(_, _, _, _, _) -> {ok, [{max_inflight_messages, 1}]}.
 hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 hook_auth_on_subscribe(_, _, _) -> ok.
 
@@ -325,7 +326,7 @@ check_unique_client(ClientId, Nodes) ->
     Res =
     lists:foldl(
              fun({Node, _Port}, Acc) ->
-                     case rpc:call(Node, vmq_reg, get_subscriber_pids, [ClientId]) of
+                     case rpc:call(Node, vmq_reg, get_session_pids, [ClientId]) of
                          {ok, [Pid]} ->
                              [{Node, Pid}|Acc];
                          {error, not_found} ->

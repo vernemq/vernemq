@@ -42,7 +42,7 @@ setup(NetTickTime) ->
         [ok = rpc:call(Node, ?MODULE, start_app, [NetTickTime, DiscoveryNode, I])
          || {I, Node} <- lists:zip(lists:seq(1, length(Ns)), Ns)],
         wait_till_cluster_ready(Ns),
-        Ns
+        lists:sort(Ns)
     catch
         _:R ->
             stop_slaves(Ns),

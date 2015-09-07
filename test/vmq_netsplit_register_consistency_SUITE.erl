@@ -53,16 +53,25 @@ register_consistency_test(Config) ->
     %% the registration is synchronized using vmq_reg_leader, depending if
     %% we connect to a node sitting in the same partition as the leader we
     %% get disconnected earlier in the registration process.
+    %%
+    %% vmq_reg_leader will use phash2(SubscriberId) rem length(Nodes) + 1
+    %% to find the leader node... in this case this will always be the first
+    %% cluster node as phash2({"", "test-client"}) rem 5 + 1 -> 1
+    %%
+
+    %% node 1 will as long as it hasn't detected the partition
+    %% allow to connect, PortInIsland1 is of node1
+
     PortInIsland1 = vmq_netsplit_utils:get_port(Island1),
     PortInIsland2 = vmq_netsplit_utils:get_port(Island2),
 
     Connect = packet:gen_connect("test-client", [{clean_session, true},
                                                  {keepalive, 10}]),
-    Connack = packet:gen_connack(0),
-    {error, closed} = packet:do_client_connect(Connect, Connack,
-                                             [{port, PortInIsland1}]),
-
-    {error, closed} = packet:do_client_connect(Connect, Connack,
-                                               [{port, PortInIsland2}]),
+    %% Island 1 should return us the proper CONNACK(0)
+    {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(0),
+                                       [{port, PortInIsland1}]),
+    %% Island 2 should return us the proper CONNACK(3)
+    {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(3),
+                                       [{port, PortInIsland2}]),
     vmq_netsplit_utils:fix_network(Island1, Island2),
     ok.

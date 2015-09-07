@@ -240,8 +240,6 @@ change_config(Configs) ->
     Env = filter_out_unchanged(VmqServerConfig, []),
     %% change reg configurations
     _ = validate_reg_config(Env, []),
-    %% change session_expirer config
-    _ = validate_expirer_config(Env, []),
     %% change listener config
     _ = validate_listener_config(Env, []),
     ok.
@@ -370,15 +368,6 @@ validate_reg_config([_|Rest], Acc) ->
     validate_reg_config(Rest, Acc);
 validate_reg_config([], Acc) ->
     vmq_reg_sup:reconfigure_registry(Acc).
-
-validate_expirer_config([{persistent_client_expiration, Val} = Item|Rest], Acc)
-  when is_integer(Val) and Val >= 0 ->
-    validate_expirer_config(Rest, [Item|Acc]);
-validate_expirer_config([_|Rest], Acc) ->
-    validate_expirer_config(Rest, Acc);
-validate_expirer_config([], []) -> [];
-validate_expirer_config([], [{persistent_client_expiration, Duration}]) ->
-    vmq_session_expirer:change_duration(Duration).
 
 validate_listener_config([{listeners, _} = Item|Rest], Acc) ->
     validate_listener_config(Rest, [Item|Acc]);

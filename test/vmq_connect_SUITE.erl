@@ -145,7 +145,7 @@ uname_password_success_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_empty_client_id_proto_4(_, _RandomId, undefined, undefined, _) -> ok.
-hook_uname_no_password_denied(_, {"", "connect-uname-test-"}, "user", undefined, _) -> {error, invalid_credentials}.
+hook_empty_client_id_proto_4(_, _RandomId, _, _, _) -> ok.
+hook_uname_no_password_denied(_, {"", "connect-uname-test-"}, "user", "", _) -> {error, invalid_credentials}.
 hook_uname_password_denied(_, {"", "connect-uname-pwd-test"}, "user", "password9", _) -> {error, invalid_credentials}.
 hook_uname_password_success(_, {"", "connect-uname-pwd-test"}, "user", "password9", _) -> ok.

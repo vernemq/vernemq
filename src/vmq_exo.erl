@@ -17,6 +17,10 @@
 -export([incr_bytes_received/1,
          incr_bytes_sent/1,
          incr_expired_clients/0,
+         incr_active_clients/0,
+         decr_active_clients/0,
+         incr_inactive_clients/0,
+         decr_inactive_clients/0,
          incr_messages_received/1,
          incr_messages_sent/1,
          incr_publishes_dropped/1,
@@ -59,6 +63,20 @@ incr_bytes_sent(V) ->
 
 incr_expired_clients() ->
     exometer:update_or_create([clients, expired], 1).
+
+incr_active_clients() ->
+    exometer:update_or_create([clients, active], 1),
+    exometer:update_or_create([clients, total], 1).
+
+decr_active_clients() ->
+    exometer:update_or_create([clients, active], -1),
+    exometer:update_or_create([clients, total], -1).
+
+incr_inactive_clients() ->
+    exometer:update_or_create([clients, inactive], 1).
+
+decr_inactive_clients() ->
+    exometer:update_or_create([clients, inactive], -1).
 
 incr_messages_received(V) ->
     incr_item([messages, received], V).
@@ -117,9 +135,10 @@ entries(undefined) ->
                  scheduler_utilization_items()}, [{snmp, []}]},
      {[subscriptions], {function, vmq_reg, total_subscriptions, [], proplist,
                         [total]}, [{snmp, []}]},
-     {[clients], {function, vmq_reg, client_stats, [], proplist,
-                  [total, active, inactive]}, [{snmp, []}]},
-     {[clients, expired], counter, [{snmp, []}]}
+     {[clients, expired], counter, [{snmp, []}]},
+     {[clients, active], counter, [{snmp, []}]},
+     {[clients, inactive], counter, [{snmp, []}]},
+     {[clients, total], counter, [{snmp, []}]}
      | counter_entries()];
 entries({ReporterMod, Interval}) ->
     subscribe(ReporterMod, entries(undefined), Interval).

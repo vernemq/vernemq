@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_ranch).
+-include("vmq_server.hrl").
 -behaviour(ranch_protocol).
 
 %% API.
@@ -116,8 +117,7 @@ teardown(#st{session=SessionPid, socket=Socket}, Reason) ->
         shutdown ->
             lager:debug("[~p] session stopped due to shutdown", [SessionPid]);
         _ ->
-            lager:warning("[~p] session stopped
-                       abnormally due to ~p", [SessionPid, Reason])
+            lager:warning("[~p] session stopped abnormally due to '~p'", [SessionPid, Reason])
     end,
     fast_close(Socket).
 
@@ -175,8 +175,11 @@ process_bytes(SessionPid, Bytes, ParserState) ->
     case vmq_parser:parse(NewParserState) of
         more ->
             {ok, NewParserState};
-        {error, _} ->
-            error;
+        {{error, _} = Error, _} ->
+            Error;
+        {#mqtt_disconnect{} = Frame, _Rest} ->
+            vmq_session:in(SessionPid, Frame),
+            bye;
         {Frame, Rest} ->
             Ret = vmq_session:in(SessionPid, Frame),
             case Ret of
@@ -215,14 +218,16 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
         {throttled, Rest} ->
             erlang:send_after(1000, self(), restart_work),
             State#st{throttled=true, parser_state=Rest};
-        error ->
-            lager:debug("[~p][~p] parse error for data: ~p and  parser state: ~p",
-                        [Proto, SessionPid, Data, ParserState]),
-            {exit, parse_error, State}
+        bye ->
+            {exit, normal, State};
+        {error, Reason} ->
+            lager:debug("[~p][~p] parse error '~p' for data: ~p and  parser state: ~p",
+                        [Proto, SessionPid, Reason, Data, ParserState]),
+            {exit, Reason, State}
     end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
     %% we regard a tcp_closed as 'normal'
-    vmq_session:disconnect(State#st.session),
+    vmq_session:disconnect(State#st.session, true),
     {exit, normal, State};
 handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
     {exit, Error, State};
