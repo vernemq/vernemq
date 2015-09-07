@@ -531,7 +531,13 @@ get_queue_pid(SubscriberId) ->
     vmq_queue_sup:get_queue_pid(SubscriberId).
 
 total_subscriptions() ->
-    [{total, plumtree_metadata_manager:size(?SUBSCRIBER_DB)}].
+    Total = plumtree_metadata:fold(
+              fun ({_, ?TOMBSTONE}, Acc) -> Acc;
+                  ({_, Subs}, Acc) ->
+                      Acc + length(Subs)
+              end, 0, ?SUBSCRIBER_DB,
+              [{resolver, lww}]),
+    [{total, Total}].
 
 -spec retained() -> non_neg_integer().
 retained() ->
