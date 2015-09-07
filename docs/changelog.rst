@@ -1,6 +1,70 @@
 Changelog
 =========
 
+VERNEMQ 0.11.0
+--------------
+
+The queuing mechanism got a major refactoring. Prior to this version the offline
+messages were stored in a global in-memory table backed by the leveldb based
+message store. Although performance was quite ok using this approach, we were
+lacking of flexibility regarding queue control. E.g. it wasn't possible to limit
+the maximum number of offline messages per client in a straightforward way. This
+and much more is now possible. Unfortunately this breaks backward compatibility
+for the stored offline data.
+
+.. warning::
+
+    Make sure to delete (or backup) the old message store folder 
+    ``/var/lib/vernemq/msgstore`` and the old metadata folder ``/var/lib/vernemq/meta``.
+
+    We also updated the format of the exposed client metrics. Make sure
+    to adjust your monitoring setup.
+
+vmq_server
+~~~~~~~~~~
+
+- Major refactoring for Queuing Mechanism:
+    Prior to this version the offline messages were stored in a global ETS bag
+    table, which was backed by the LevelDB powered message store. The ETS table
+    served as an index to have a fast lookup for offline messages. Moreover this
+    table was also used to keep the message references. All of this changed. 
+    Before every client session was load protected by an Erlang process that
+    acted as a queue. However, once the client has disconnected this process had
+    to terminate. Now, this queue process will stay alive as long as the session
+    hasn't expired and stores all the references to the offline messages. This 
+    simplifies a lot. Namely the routing doesn't have to distinguish between
+    online and offline clients anymore, limits can be applied on a per client/queue
+    basis, gained more flexibility to deal with multiple sessions.
+
+- Major refactoring for Message Store
+    The current message store relies only on LevelDB and no intermediate
+    ETS tables are used for caching/indexing anymore. This improves overall memory
+    overhead and scalability. However this breaks backward compatibility and
+    requires to delete the message store folder.
+
+- Changed Supervisor Structure for Queue Processes
+    The supervisor structure for the queue processes changed in a way that 
+    enables much better performance regarding setup and teardown of the queue 
+    processes.
+
+- Improved Message Reference Generation Performance
+
+- Upgraded to newest verison of Plumtree
+
+- Upgraded to Lager 3.0.1 (required to pretty print maps in log messages)
+
+- Many smaller fixes and cleanups
+
+
+vmq_commons
+~~~~~~~~~~~
+
+- Better error messages in case of parsing errors
+
+- Fixed a parser bug with very small TCP segments
+
+
+
 VERNEMQ 0.10.0
 --------------
 

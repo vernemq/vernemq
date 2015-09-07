@@ -155,6 +155,25 @@ This option defines the maximum number of QoS 1 or 2 messages that can be in the
 
 Defaults to ``20`` messages, use ``0`` for no limit.
 
+Load Shedding
+-------------
+
+The maximum number of messages to hold in the queue above those messages that are currently in flight. Defaults to ``1000``. Set to ``0`` for no limit. This option enables to protect a client session from overload by dropping messages. 
+
+.. code-block:: ini
+
+    max_online_messages = 1000
+
+Defaults to ``1000`` messages, use ``0`` for no limit. This parameter was named ``max_queued_messages`` in ``0.10.*``.
+
+This option specifies the maximum number of QoS 1 and 2 messages to hold in the offline queue.
+
+.. code-block:: ini
+
+    max_offline_messages = 1000
+
+Defaults to ``1000`` messages, use ``-1`` for no limit, use ``0`` if no messages should be stored. 
+
 Message Size Limit
 ------------------
 
