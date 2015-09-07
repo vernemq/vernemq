@@ -366,6 +366,9 @@ validate_reg_config([{reg_views, Val} = Item|Rest], Acc)
     end;
 validate_reg_config([_|Rest], Acc) ->
     validate_reg_config(Rest, Acc);
+validate_reg_config([], []) ->
+    %% no need to reconfigure registry
+    ok;
 validate_reg_config([], Acc) ->
     vmq_reg_sup:reconfigure_registry(Acc).
 
@@ -375,5 +378,8 @@ validate_listener_config([{tcp_listen_options, _} = Item|Rest], Acc) ->
     validate_listener_config(Rest, [Item|Acc]);
 validate_listener_config([_|Rest], Acc) ->
     validate_listener_config(Rest, Acc);
+validate_listener_config([], []) ->
+    %% no need to reconfigure listeners
+    ok;
 validate_listener_config([], Acc) ->
     vmq_ranch_config:reconfigure_listeners(Acc).
