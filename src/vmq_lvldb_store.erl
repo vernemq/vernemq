@@ -111,7 +111,7 @@ init([InstanceId]) ->
     random:seed(now()),
 
     Opts = vmq_config:get_env(msg_store_opts, []),
-    DataDir1 = filename:join(proplists:get_value(store_dir, Opts, "./data"), "msg_store"),
+    DataDir1 = proplists:get_value(store_dir, Opts, "data/msgstore"),
     DataDir2 = filename:join(DataDir1, integer_to_list(InstanceId)),
 
     %% Initialize state
