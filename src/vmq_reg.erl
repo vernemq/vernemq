@@ -327,6 +327,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                     wait_til_ready(),
                     PluginSessionPid = spawn_link(
                                          fun() ->
+                                                 monitor(process, PluginPid),
                                                  plugin_queue_loop(PluginPid, Mod)
                                          end),
                     QueueOpts = maps:merge(vmq_queue:default_opts(),
@@ -405,6 +406,13 @@ plugin_queue_loop(PluginPid, PluginMod) ->
             ok;
         {'$gen_sync_all_state_event', _, {get_info, []}} ->
             [];
+        {'DOWN', _MRef, process, PluginPid, Reason} ->
+            case (Reason == normal) or (Reason == shutdown) of
+                true ->
+                    ok;
+                false ->
+                    lager:warning("Plugin Queue Loop for ~p stopped due to ~p", [PluginMod, Reason])
+            end;
         Other ->
             exit({unknown_msg_in_plugin_loop, Other})
     end.
