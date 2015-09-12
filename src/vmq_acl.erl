@@ -40,6 +40,8 @@
                  vmq_acl_write_user
                 ]).
 -define(TABLE_OPTS, [public, named_table, {read_concurrency, true}]).
+-define(USER_SUP, <<"%u">>).
+-define(CLIENT_SUP, <<"%c">>).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Plugin Callbacks
@@ -135,7 +137,8 @@ parse_acl_line({F, <<"topic ", Topic/binary>>}, User) ->
     in(write, User, Topic),
     parse_acl_line(F(F,read), User);
 parse_acl_line({F, <<"user ", User/binary>>}, _) ->
-    SUser = string:substr(binary_to_list(User), 1, byte_size(User) -1),
+    UserLen = byte_size(User) -1,
+    <<SUser:UserLen/binary, _/binary>> = User,
     parse_acl_line(F(F,read), SUser);
 parse_acl_line({F, <<"pattern read ", Topic/binary>>}, User) ->
     in(read, pattern, Topic),
@@ -153,7 +156,7 @@ parse_acl_line({F, eof}, _User) ->
     F(F,close),
     ok.
 
-check(Type, [Word|_] = Topic, User, ClientId) when is_list(Word) ->
+check(Type, [Word|_] = Topic, User, ClientId) when is_binary(Word) ->
     case check_all_acl(Type, Topic) of
         true -> true;
         false when User == all -> false;
@@ -162,9 +165,7 @@ check(Type, [Word|_] = Topic, User, ClientId) when is_list(Word) ->
                 true -> true;
                 false -> check_pattern_acl(Type, Topic, User, ClientId)
             end
-    end;
-check(Type, Topic, User, ClientId) ->
-    check(Type, words(Topic), User, ClientId).
+    end.
 
 check_all_acl(Type, TIn) ->
     {Tbl, _} = t(Type, all, TIn),
@@ -183,21 +184,31 @@ check_pattern_acl(Type, TIn, User, ClientId) ->
                             end).
 
 topic(User, ClientId, Topic) ->
-    subst("%u", User, subst("%c", ClientId, Topic)).
+    subst(?USER_SUP, ?CLIENT_SUP, User, ClientId, Topic, []).
 
-subst(Pat, Subs, Topic) ->
-    subst(string:str(Topic, Pat) > 0, Pat, Subs, Topic).
-
-subst(true, Pat, Subs, Topic) ->
-    re:replace(Topic, Pat, Subs, [{return, list}]);
-subst(false, _, _, Topic) -> Topic.
+subst(U, C, User, ClientId, [U|Rest], Acc) ->
+    subst(U, C, User, ClientId, Rest, [User|Acc]);
+subst(U, C, User, ClientId, [C|Rest], Acc) ->
+    subst(U, C, User, ClientId, Rest, [ClientId|Acc]);
+subst(U, C, User, ClientId, [W|Rest], Acc) ->
+    subst(U, C, User, ClientId, Rest, [W|Acc]);
+subst(_, _, _, _, [], Acc) -> lists:reverse(Acc).
 
 in(Type, User, Topic) when is_binary(Topic) ->
-    STopic = string:substr(binary_to_list(Topic), 1, byte_size(Topic) -1),
-    in(Type, User, STopic);
-in(Type, User, Topic) ->
-    {Tbl, Obj} = t(Type, User, words(Topic)),
-    ets:insert(Tbl, Obj).
+    TopicLen = byte_size(Topic) -1,
+    <<STopic:TopicLen/binary, _/binary>> = Topic,
+    case validate(Type, STopic) of
+        {ok, Words} ->
+            {Tbl, Obj} = t(Type, User, Words),
+            ets:insert(Tbl, Obj);
+        {error, Reason} ->
+            error_logger:warning_msg("can't validate ~p acl topic ~p for user ~p due to ~p", [Type, STopic, User, Reason])
+    end.
+
+validate(read, Topic) ->
+    vmq_topic:validate_topic(subscribe, Topic);
+validate(write, Topic) ->
+    vmq_topic:validate_topic(publish, Topic).
 
 t(read, all, Topic) -> {vmq_acl_read_all, {Topic, 1}};
 t(write, all, Topic) ->  {vmq_acl_write_all, {Topic, 1}};
