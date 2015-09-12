@@ -197,7 +197,7 @@ subst(_, _, _, _, [], Acc) -> lists:reverse(Acc).
 in(Type, User, Topic) when is_binary(Topic) ->
     TopicLen = byte_size(Topic) -1,
     <<STopic:TopicLen/binary, _/binary>> = Topic,
-    case validate(Type, STopic) of
+    case validate(STopic) of
         {ok, Words} ->
             {Tbl, Obj} = t(Type, User, Words),
             ets:insert(Tbl, Obj);
@@ -205,10 +205,8 @@ in(Type, User, Topic) when is_binary(Topic) ->
             error_logger:warning_msg("can't validate ~p acl topic ~p for user ~p due to ~p", [Type, STopic, User, Reason])
     end.
 
-validate(read, Topic) ->
-    vmq_topic:validate_topic(subscribe, Topic);
-validate(write, Topic) ->
-    vmq_topic:validate_topic(publish, Topic).
+validate(Topic) ->
+    vmq_topic:validate_topic(subscribe, Topic).
 
 t(read, all, Topic) -> {vmq_acl_read_all, {Topic, 1}};
 t(write, all, Topic) ->  {vmq_acl_write_all, {Topic, 1}};
