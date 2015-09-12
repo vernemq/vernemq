@@ -311,11 +311,12 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                    and is_atom(DefaultRegView) ->
             MountPoint = "",
             ClientId = fun(T) ->
-                               base64:encode_to_string(
-                                 integer_to_binary(
-                                   erlang:phash2(T)
-                                  )
-                                )
+                               list_to_binary(
+                                 base64:encode_to_string(
+                                   integer_to_binary(
+                                     erlang:phash2(T)
+                                    )
+                                  ))
                        end,
             CallingPid = self(),
             SubscriberId = {MountPoint, ClientId(CallingPid)},
@@ -339,7 +340,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             end,
 
             PublishFun =
-            fun(Topic, Payload) ->
+            fun([W|_] = Topic, Payload) when is_binary(W) and is_binary(Payload) ->
                     wait_til_ready(),
                     Msg = #vmq_msg{routing_key=Topic,
                                    mountpoint=MountPoint,
@@ -354,7 +355,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             end,
 
             SubscribeFun =
-            fun(Topic) when is_list(Topic) ->
+            fun([W|_] = Topic) when is_binary(W) ->
                     wait_til_ready(),
                     CallingPid = self(),
                     User = {plugin, Mod, CallingPid},
@@ -365,7 +366,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             end,
 
             UnsubscribeFun =
-            fun(Topic) when is_list(Topic) ->
+            fun([W|_] = Topic) when is_binary(W) ->
                     wait_til_ready(),
                     CallingPid = self(),
                     User = {plugin, Mod, CallingPid},
