@@ -9,15 +9,15 @@
 -define(false, 0).
 
 -type peer()                :: {inet:ip_address(), inet:port_number()}.
--type username()            :: string() | undefined.
--type password()            :: string() | undefined.
--type client_id()           :: string().
+-type username()            :: binary() | undefined.
+-type password()            :: binary() | undefined.
+-type client_id()           :: binary().
 -type mountpoint()          :: string().
 -type subscriber_id()       :: {mountpoint(), client_id()}.
 -type reg_view()            :: atom().
--type topic()               :: string().
+-type topic()               :: [binary()].
 -type qos()                 :: 0 | 1 | 2.
--type routing_key()         :: string().
+-type routing_key()         :: [binary()].
 -type payload()             :: binary().
 -type flag()                :: ?true | ?false | boolean().
 -type msg_ref()             :: binary().

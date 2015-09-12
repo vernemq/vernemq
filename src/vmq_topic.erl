@@ -15,8 +15,6 @@
 
 -import(lists, [reverse/1]).
 
--import(string, [rchr/2, substr/2, substr/3]).
-
 %% ------------------------------------------------------------------------
 %% Topic semantics and usage
 %% ------------------------------------------------------------------------
@@ -38,31 +36,15 @@
 %% ------------------------------------------------------------------------
 
 -export([new/1,
-		 type/1,
 		 match/2,
-		 validate/1,
-		 triples/1,
-		 words/1,
-         unword/1]).
+         validate_topic/2,
+         unword/1,
+		 triples/1]).
 
--define(MAX_LEN, 64*1024).
+-define(MAX_LEN, 65536).
 
 new(Name) when is_list(Name) ->
     {topic, Name}.
-
-%% ------------------------------------------------------------------------
-%% topic type: direct or wildcard
-%% ------------------------------------------------------------------------
-type({topic, Name}) ->
-	type(words(Name));
-type([]) ->
-	direct;
-type(["#"]) ->
-	wildcard;
-type(["+"|_T]) ->
-	wildcard;
-type([_|T]) ->
-	type(T).
 
 %% ------------------------------------------------------------------------
 %% topic match
@@ -71,9 +53,9 @@ match([], []) ->
 	true;
 match([H|T1], [H|T2]) ->
 	match(T1, T2);
-match([_H|T1], ["+"|T2]) ->
+match([_H|T1], [<<"+">>|T2]) ->
 	match(T1, T2);
-match(_, ["#"]) ->
+match(_, [<<"#">>]) ->
 	true;
 match([_H1|_], [_H2|_]) ->
 	false;
@@ -85,72 +67,73 @@ match(_, _) -> false.
 %% ------------------------------------------------------------------------
 %% topic validate
 %% ------------------------------------------------------------------------
-validate({_, ""}) ->
-	false;
-validate({_, Topic}) when length(Topic) > ?MAX_LEN ->
-	false;
-validate({Type, Topic}) when is_list(Topic) ->
-	valid(Type, words(Topic)).
+triples([Word|_] = Topic) when is_binary(Word) ->
+    triples(reverse(Topic), []).
 
-triples(S) when is_list(S) ->
-	triples(S, []).
+triples([Word], Acc) ->
+    [{root, Word, [Word]}|Acc];
+triples([Word|Rest] = Topic, Acc) ->
+    triples(Rest, [{reverse(Rest), Word, reverse(Topic)}|Acc]).
 
-triples(S, Acc) ->
-	triples(rchr(S, $/), S, Acc).
+unword([Word|_] = Topic) when is_binary(Word) ->
+    reverse(unword(Topic, []));
+unword(Topic) when is_binary(Topic) ->
+    Topic;
+unword(undefined) -> undefined;
+unword(empty) -> empty.
 
-triples(0, S, Acc) ->
-	[{root, S, S}|Acc];
-
-triples(I, S, Acc) ->
-	S1 = substr(S, 1, I-1),
-	S2 = substr(S, I+1),
-	triples(S1, [{S1, S2, S}|Acc]).
-
-words(Topic) when is_list(Topic) ->
-	words(Topic, [], []).
-
-words([], Word, ResAcc) ->
-	reverse([reverse(W) || W <- [Word|ResAcc]]);
-
-words([$/|Topic], Word, ResAcc) ->
-	words(Topic, [], [Word|ResAcc]);
-
-words([C|Topic], Word, ResAcc) ->
-	words(Topic, [C|Word], ResAcc).
-
-unword(Topic) ->
-    lists:reverse(unword(Topic, [])).
-
-unword([[]], Acc) -> Acc;
+unword([<<>>], []) -> [$/];
+unword([<<>>], Acc) -> Acc;
 unword([], Acc) -> [$/|Acc];
 unword([Word], Acc) -> [Word|Acc];
-unword([[]|Topic], Acc) ->
+unword([<<>>|Topic], Acc) ->
     unword(Topic, [$/|Acc]);
 unword([Word|Rest], Acc) ->
     unword(Rest, [$/, Word|Acc]).
 
-valid(Type, [""|Words]) -> valid2(Type, Words); %% leading '/'
-valid(Type, Words) -> valid2(Type, Words).
+validate_topic(_Type, <<>>) ->
+    {error, no_empty_topic_allowed};
+validate_topic(_Type, Topic) when byte_size(Topic) > ?MAX_LEN ->
+    {error, subscribe_topic_too_long};
+validate_topic(Type, Topic) ->
+    validate_topic(Type, Topic, 0, []).
 
-valid2(_, [""]) -> true; %% allow trailing '/'
-%valid2([""|_Words]) -> false; %% forbid '//'
-valid2(subscribe, ["#"|Words]) when length(Words) > 0 -> false;
-valid2(subscribe, ["#"]) -> true;
-valid2(subscribe, ["+"|Words]) -> valid2(subscribe, Words);
-valid2(publish, ["#"|_]) -> false;
-valid2(publish, ["+"|_]) -> false;
-valid2(Type, [Word|Words]) ->
-    case include_wildcard_char(Word) of
-        true -> false;
-        false -> valid2(Type, Words)
-    end;
-valid2(_, []) -> true.
+validate_topic(Type, Topic, L, Acc) ->
+    case Topic of
+        <<"+/", Rest/binary>> ->
+            validate_topic_word(Type, <<"+">>, Rest, Acc);
+        <<"+">> = W ->
+            validate_topic_word(Type, W, undefined, Acc);
+        <<"#">> = W ->
+            validate_topic_word(Type, W, undefined, Acc);
+        <<Word:L/binary, "/", Rest/binary>> ->
+            validate_topic_word(Type, Word, Rest, Acc);
+        <<Word:L/binary>> ->
+            validate_topic_word(Type, Word, undefined, Acc);
+        <<_:L/binary, "+", _/binary>> ->
+            {error, 'no_+_allowed_in_word'};
+        <<_:L/binary, "#", _/binary>> ->
+            {error, 'no_#_allowed_in_word'};
+        _ ->
+            validate_topic(Type, Topic, L + 1, Acc)
+    end.
 
-include_wildcard_char([]) -> false;
-include_wildcard_char([$#|_]) -> true;
-include_wildcard_char([$+|_]) -> true;
-include_wildcard_char([_|Rest]) ->
-    include_wildcard_char(Rest).
+validate_topic_word(publish, <<"+">>, _, _) ->
+    {error, 'no_+_allowed_in_publish'};
+validate_topic_word(publish, <<"#">>, _, _) ->
+    {error, 'no_#_allowed_in_publish'};
+validate_topic_word(subscribe, Word = <<"#">>, undefined, Acc) ->
+    {ok, reverse([Word|Acc])};
+validate_topic_word(subscribe, <<"#">>, _, _) ->
+    {error, 'no_#_allowed_in_subscribe'};
+validate_topic_word(_, Word, <<>>, Acc) ->
+    {ok, reverse([<<>>, Word|Acc])};
+validate_topic_word(_, Word, undefined, Acc) ->
+    {ok, reverse([Word|Acc])};
+validate_topic_word(Type, Word, Rest, Acc) ->
+    validate_topic(Type, Rest, 0, [Word|Acc]).
+
+
 
 
 -ifdef(TEST).
@@ -158,46 +141,96 @@ include_wildcard_char([_|Rest]) ->
 
 validate_no_wildcard_test() ->
     % no wildcard
-	true = validate({subscribe, "a/b/c"}),
-	true = validate({subscribe, "/a/b"}),
-    true = validate({subscribe, "test/topic/"}),
-    true = validate({subscribe, "test////a//topic"}),
-    true = validate({subscribe, "/test////a//topic"}),
-    true = validate({subscribe, "foo//bar///baz"}),
-    true = validate({subscribe, "foo//baz//"}),
-    true = validate({subscribe, "foo//baz"}),
-    true = validate({subscribe, "foo//baz/bar"}),
-    true = validate({subscribe, "////foo///bar"}).
+    {ok, [<<"a">>, <<"b">>, <<"c">>]}
+    = validate_topic(subscribe, <<"a/b/c">>),
+    {ok, [<<>>, <<"a">>, <<"b">>]}
+    = validate_topic(subscribe, <<"/a/b">>),
+    {ok, [<<"test">>, <<"topic">>, <<>>]}
+    = validate_topic(subscribe, <<"test/topic/">>),
+    {ok, [<<"test">>, <<>>, <<>>, <<>>, <<"a">>, <<>>, <<"topic">>]}
+    = validate_topic(subscribe, <<"test////a//topic">>),
+    {ok, [<<>>, <<"test">>, <<>>, <<>>, <<>>, <<"a">>, <<>>, <<"topic">>]}
+    = validate_topic(subscribe, <<"/test////a//topic">>),
+
+    {ok, [<<"foo">>, <<>>, <<"bar">>, <<>>, <<>>, <<"baz">>]}
+    = validate_topic(publish, <<"foo//bar///baz">>),
+    {ok, [<<"foo">>, <<>>, <<"baz">>, <<>>, <<>>]}
+    = validate_topic(publish, <<"foo//baz//">>),
+    {ok, [<<"foo">>, <<>>, <<"baz">>]}
+    = validate_topic(publish, <<"foo//baz">>),
+    {ok, [<<"foo">>, <<>>, <<"baz">>, <<"bar">>]}
+    = validate_topic(publish, <<"foo//baz/bar">>),
+    {ok, [<<>>, <<>>, <<>>, <<>>, <<"foo">>, <<>>, <<>>, <<"bar">>]}
+    = validate_topic(publish, <<"////foo///bar">>).
 
 validate_wildcard_test() ->
-	true = validate({subscribe, "/+/x"}),
-	true = validate({subscribe, "/a/b/c/#"}),
-    true = validate({subscribe, "#"}),
-    true = validate({subscribe, "foo/#"}),
-    true = validate({subscribe, "foo/+/baz"}),
-    true = validate({subscribe, "foo/+/baz/#"}),
-    true = validate({subscribe, "foo/foo/baz/#"}),
-    true = validate({subscribe, "foo/#"}),
-    true = validate({subscribe, "/#"}),
-    true = validate({subscribe, "test/topic/+"}),
-    true = validate({subscribe, "+/+/+/+/+/+/+/+/+/+/test"}),
+    {ok, [<<>>, <<"+">>, <<"x">>]}
+    = validate_topic(subscribe, <<"/+/x">>),
+    {ok, [<<>>, <<"a">>, <<"b">>, <<"c">>, <<"#">>]}
+    = validate_topic(subscribe, <<"/a/b/c/#">>),
+    {ok, [<<"#">>]}
+    = validate_topic(subscribe, <<"#">>),
+    {ok, [<<"foo">>, <<"#">>]}
+    = validate_topic(subscribe, <<"foo/#">>),
+    {ok, [<<"foo">>, <<"+">>, <<"baz">>]}
+    = validate_topic(subscribe, <<"foo/+/baz">>),
+    {ok, [<<"foo">>, <<"+">>, <<"baz">>, <<"#">>]}
+    = validate_topic(subscribe, <<"foo/+/baz/#">>),
+    {ok, [<<"foo">>, <<"foo">>, <<"baz">>, <<"#">>]}
+    = validate_topic(subscribe, <<"foo/foo/baz/#">>),
+    {ok, [<<"foo">>, <<"#">>]} = validate_topic(subscribe, <<"foo/#">>),
+    {ok, [<<>>, <<"#">>]} = validate_topic(subscribe, <<"/#">>),
+    {ok, [<<"test">>, <<"topic">>, <<"+">>]} = validate_topic(subscribe, <<"test/topic/+">>),
+    {ok, [<<"+">>, <<"+">>, <<"+">>, <<"+">>, <<"+">>,
+          <<"+">>, <<"+">>, <<"+">>, <<"+">>, <<"+">>, <<"test">>]}
+    = validate_topic(subscribe, <<"+/+/+/+/+/+/+/+/+/+/test">>),
 
-    false = validate({publish, "test/#-"}),
-    false = validate({publish, "test/+-"}),
-	false = validate({subscribe, "a/#/c"}),
-    false = validate({subscribe, "#testtopic"}),
-    false = validate({subscribe, "testtopic#"}),
-    false = validate({subscribe, "+testtopic"}),
-    false = validate({subscribe, "testtopic+"}),
-    false = validate({subscribe, "#testtopic/test"}),
-    false = validate({subscribe, "testtopic#/test"}),
-    false = validate({subscribe, "+testtopic/test"}),
-    false = validate({subscribe, "testtopic+/test"}),
-    false = validate({subscribe, "/test/#testtopic"}),
-    false = validate({subscribe, "/test/testtopic#"}),
-    false = validate({subscribe, "/test/+testtopic"}),
-    false = validate({subscribe, "/testtesttopic+"}).
+    {error, 'no_#_allowed_in_word'} = validate_topic(publish, <<"test/#-">>),
+    {error, 'no_+_allowed_in_word'} = validate_topic(publish, <<"test/+-">>),
+    {error, 'no_+_allowed_in_publish'} = validate_topic(publish, <<"test/+/">>),
+    {error, 'no_#_allowed_in_publish'} = validate_topic(publish, <<"test/#">>),
 
+	{error, 'no_#_allowed_in_word'} = validate_topic(subscribe, <<"a/#/c">>),
+    {error, 'no_#_allowed_in_word'} = validate_topic(subscribe, <<"#testtopic">>),
+    {error, 'no_#_allowed_in_word'} = validate_topic(subscribe, <<"testtopic#">>),
+    {error, 'no_+_allowed_in_word'} = validate_topic(subscribe, <<"+testtopic">>),
+    {error, 'no_+_allowed_in_word'} = validate_topic(subscribe, <<"testtopic+">>),
+    {error, 'no_#_allowed_in_word'} = validate_topic(subscribe, <<"#testtopic/test">>),
+    {error, 'no_#_allowed_in_word'} = validate_topic(subscribe, <<"testtopic#/test">>),
+    {error, 'no_+_allowed_in_word'} = validate_topic(subscribe, <<"+testtopic/test">>),
+    {error, 'no_+_allowed_in_word'} = validate_topic(subscribe, <<"testtopic+/test">>),
+    {error, 'no_#_allowed_in_word'} = validate_topic(subscribe, <<"/test/#testtopic">>),
+    {error, 'no_#_allowed_in_word'} = validate_topic(subscribe, <<"/test/testtopic#">>),
+    {error, 'no_+_allowed_in_word'} = validate_topic(subscribe, <<"/test/+testtopic">>),
+    {error, 'no_+_allowed_in_word'} = validate_topic(subscribe, <<"/testtesttopic+">>).
 
+validate_unword_test() ->
+    {A,B,C} = now(),
+    random:seed(A, B, C),
+    random_topics(1000),
+    ok.
+
+random_topics(0) -> ok;
+random_topics(N) when N > 0 ->
+    NWords = random:uniform(100),
+    Words =
+    lists:foldl(fun(_, AAcc) ->
+                    case random:uniform(3) of
+                        1 ->
+                            ["+/"|AAcc];
+                        _ ->
+                            [random_word(), "/"|AAcc]
+                    end
+                end, [], lists:seq(1, NWords)),
+    Topic = iolist_to_binary(Words),
+    {ok, T} = validate_topic(subscribe, Topic),
+    Topic = iolist_to_binary(unword(T)),
+    random_topics(N - 1).
+
+random_word() ->
+    Words = "abcdefghijklmnopqrstuvwxyz0123456789",
+    N = random:uniform(length(Words)),
+    S = random:uniform(length(Words) + 1 - N),
+    string:substr(Words, N, S).
 
 -endif.
