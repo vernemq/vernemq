@@ -55,23 +55,23 @@ register_consistency_test(Config) ->
     %% get disconnected earlier in the registration process.
     %%
     %% vmq_reg_leader will use phash2(SubscriberId) rem length(Nodes) + 1
-    %% to find the leader node... in this case this will always be the first
-    %% cluster node as phash2({"", "test-client"}) rem 5 + 1 -> 1
+    %% to find the leader node... in this case this will always be the third
+    %% cluster node as phash2({"", <<"test-client">>}) rem 5 + 1 -> 3
     %%
 
-    %% node 1 will as long as it hasn't detected the partition
-    %% allow to connect, PortInIsland1 is of node1
+    %% node 3 will as long as it hasn't detected the partition
+    %% allow to connect, PortInIsland2 is of node2
 
     PortInIsland1 = vmq_netsplit_utils:get_port(Island1),
     PortInIsland2 = vmq_netsplit_utils:get_port(Island2),
 
     Connect = packet:gen_connect("test-client", [{clean_session, true},
                                                  {keepalive, 10}]),
-    %% Island 1 should return us the proper CONNACK(0)
-    {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(0),
-                                       [{port, PortInIsland1}]),
-    %% Island 2 should return us the proper CONNACK(3)
+    %% Island 1 should return us the proper CONNACK(3)
     {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(3),
+                                       [{port, PortInIsland1}]),
+    %% Island 2 should return us the proper CONNACK(0)
+    {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(0),
                                        [{port, PortInIsland2}]),
     vmq_netsplit_utils:fix_network(Island1, Island2),
     ok.

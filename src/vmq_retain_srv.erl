@@ -65,10 +65,9 @@ insert(MP, RoutingKey, Message) ->
     ets:insert(?RETAIN_CACHE, {{MP, RoutingKey}, Message, true}).
 
 match_fold(FoldFun, Acc, MP, Topic) ->
-    Words = vmq_topic:words(Topic),
     ets:foldl(
       fun({{M, T}, Payload, _}, AccAcc) when M == MP ->
-              case vmq_topic:match(T, Words) of
+              case vmq_topic:match(T, Topic) of
                   true ->
                       FoldFun({T, Payload}, AccAcc);
                   false ->

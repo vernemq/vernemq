@@ -341,7 +341,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             PublishFun =
             fun(Topic, Payload) ->
                     wait_til_ready(),
-                    Msg = #vmq_msg{routing_key=vmq_topic:words(Topic),
+                    Msg = #vmq_msg{routing_key=Topic,
                                    mountpoint=MountPoint,
                                    payload=Payload,
                                    msg_ref=vmq_session:msg_ref(),
@@ -391,7 +391,7 @@ plugin_queue_loop(PluginPid, PluginMod) ->
                                                 payload=Payload,
                                                 retain=IsRetain,
                                                 dup=IsDup}}) ->
-                                  PluginPid ! {deliver, lists:flatten(vmq_topic:unword(RoutingKey)),
+                                  PluginPid ! {deliver, RoutingKey,
                                                Payload,
                                                QoS,
                                                IsRetain,

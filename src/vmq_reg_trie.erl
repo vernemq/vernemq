@@ -203,9 +203,9 @@ match(MP, Topic) when is_list(MP) and is_list(Topic) ->
 
 %% [MQTT-4.7.2-1] The Server MUST NOT match Topic Filters starting with a
 %% wildcard character (# or +) with Topic Names beginning with a $ character.
-match(MP, [[$$|_]|_] = Topic, [#trie_node{topic="#"}|Rest], Acc) ->
+match(MP, [<<"$",_/binary>>|_] = Topic, [#trie_node{topic=[<<"#">>]}|Rest], Acc) ->
     match(MP, Topic, Rest, Acc);
-match(MP, [[$$|_]|_] = Topic, [#trie_node{topic=[$+|_]}|Rest], Acc) ->
+match(MP, [<<"$",_/binary>>|_] = Topic, [#trie_node{topic=[<<"+">>|_]}|Rest], Acc) ->
     match(MP, Topic, Rest, Acc);
 
 match(MP, Topic, [#trie_node{topic=Name}|Rest], Acc) when Name =/= undefined ->
@@ -274,10 +274,10 @@ trie_match(MP, Node, [W|Words], ResAcc) ->
                   [] ->
                       Acc
               end
-      end, 'trie_match_#'(NodeId, ResAcc), [W, "+"]).
+      end, 'trie_match_#'(NodeId, ResAcc), [W, <<"+">>]).
 
 'trie_match_#'({MP, _} = NodeId, ResAcc) ->
-    case ets:lookup(vmq_trie, #trie_edge{node_id=NodeId, word="#"}) of
+    case ets:lookup(vmq_trie, #trie_edge{node_id=NodeId, word= <<"#">>}) of
         [#trie{node_id=ChildId}] ->
             ets:lookup(vmq_trie_node, {MP, ChildId}) ++ ResAcc;
         [] ->
