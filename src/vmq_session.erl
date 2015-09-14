@@ -38,6 +38,8 @@
 %% used for testing
 -export([msg_ref/0]).
 
+-import(lists, [reverse/1, sum/1]).
+
 -define(CLOSE_AFTER, 5000).
 -define(HIBERNATE_AFTER, 5000).
 -define(ALLOWED_MQTT_VERSIONS, [3, 4, 131]).
@@ -396,9 +398,9 @@ handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, State, Waiting) ->
 handle_messages([{deliver_bin, Term}|Rest], Frames, State, Waiting) ->
     handle_messages(Rest, Frames, handle_bin_message(Term, State), Waiting);
 handle_messages([], [], State, Waiting) ->
-    {State, lists:reverse(Waiting)};
+    {State, reverse(Waiting)};
 handle_messages([], Frames, State, Waiting) ->
-    {send_publish_frames(Frames, State), lists:reverse(Waiting)}.
+    {send_publish_frames(reverse(Frames), State), reverse(Waiting)}.
 
 prepare_frame(QoS, Msg, State) ->
     #state{waiting_acks=WAcks, retry_interval=RetryInterval} = State,
@@ -1093,14 +1095,14 @@ trigger_counter_update(_, {_, _, []} = Counter) ->
     Counter;
 trigger_counter_update(IncrFun, {_, Total, Vals}) ->
     L = length(Vals),
-    Avg = lists:sum(Vals) div L,
+    Avg = sum(Vals) div L,
     _ = apply(vmq_exo, IncrFun, [Avg]),
     case L < ?MAX_SAMPLES of
         true ->
             {Avg, Total, [0|Vals]};
         false ->
             % remove oldest sample
-            {Avg, Total, [0|lists:reverse(tl(lists:reverse(Vals)))]}
+            {Avg, Total, [0|reverse(tl(reverse(Vals)))]}
     end.
 
 prop_val(Key, Args, Default) when is_list(Default) ->
