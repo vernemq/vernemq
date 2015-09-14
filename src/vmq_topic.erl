@@ -95,46 +95,44 @@ validate_topic(_Type, <<>>) ->
     {error, no_empty_topic_allowed};
 validate_topic(_Type, Topic) when byte_size(Topic) > ?MAX_LEN ->
     {error, subscribe_topic_too_long};
-validate_topic(Type, Topic) ->
-    validate_topic(Type, Topic, 0, []).
+validate_topic(publish, Topic) ->
+    validate_publish_topic(Topic, 0, []);
+validate_topic(subscribe, Topic) ->
+    validate_subscribe_topic(Topic, 0, []).
 
-validate_topic(Type, Topic, L, Acc) ->
+validate_publish_topic(<<"+/", _/binary>>, _, _) -> {error, 'no_+_allowed_in_publish'};
+validate_publish_topic(<<"+">>, _, _) -> {error, 'no_+_allowed_in_publish'};
+validate_publish_topic(<<"#">>,_, _) -> {error, 'no_#_allowed_in_publish'};
+validate_publish_topic(Topic, L, Acc) ->
     case Topic of
-        <<"+/", Rest/binary>> ->
-            validate_topic_word(Type, <<"+">>, Rest, Acc);
-        <<"+">> = W ->
-            validate_topic_word(Type, W, undefined, Acc);
-        <<"#">> = W ->
-            validate_topic_word(Type, W, undefined, Acc);
         <<Word:L/binary, "/", Rest/binary>> ->
-            validate_topic_word(Type, Word, Rest, Acc);
+            validate_publish_topic(Rest, 0, [Word|Acc]);
         <<Word:L/binary>> ->
-            validate_topic_word(Type, Word, undefined, Acc);
+            {ok, lists:reverse([Word|Acc])};
         <<_:L/binary, "+", _/binary>> ->
             {error, 'no_+_allowed_in_word'};
         <<_:L/binary, "#", _/binary>> ->
             {error, 'no_#_allowed_in_word'};
         _ ->
-            validate_topic(Type, Topic, L + 1, Acc)
+            validate_publish_topic(Topic, L + 1, Acc)
     end.
 
-validate_topic_word(publish, <<"+">>, _, _) ->
-    {error, 'no_+_allowed_in_publish'};
-validate_topic_word(publish, <<"#">>, _, _) ->
-    {error, 'no_#_allowed_in_publish'};
-validate_topic_word(subscribe, Word = <<"#">>, undefined, Acc) ->
-    {ok, reverse([Word|Acc])};
-validate_topic_word(subscribe, <<"#">>, _, _) ->
-    {error, 'no_#_allowed_in_subscribe'};
-validate_topic_word(_, Word, <<>>, Acc) ->
-    {ok, reverse([<<>>, Word|Acc])};
-validate_topic_word(_, Word, undefined, Acc) ->
-    {ok, reverse([Word|Acc])};
-validate_topic_word(Type, Word, Rest, Acc) ->
-    validate_topic(Type, Rest, 0, [Word|Acc]).
-
-
-
+validate_subscribe_topic(<<"+/", Rest/binary>>, _, Acc) -> validate_subscribe_topic(Rest, 0, [<<"+">>|Acc]);
+validate_subscribe_topic(<<"+">>, _, Acc) -> {ok, reverse([<<"+">>|Acc])};
+validate_subscribe_topic(<<"#">>, _, Acc) -> {ok, reverse([<<"#">>|Acc])};
+validate_subscribe_topic(Topic, L, Acc) ->
+    case Topic of
+        <<Word:L/binary, "/", Rest/binary>> ->
+            validate_subscribe_topic(Rest, 0, [Word|Acc]);
+        <<Word:L/binary>> ->
+            {ok, lists:reverse([Word|Acc])};
+        <<_:L/binary, "+", _/binary>> ->
+            {error, 'no_+_allowed_in_word'};
+        <<_:L/binary, "#", _/binary>> ->
+            {error, 'no_#_allowed_in_word'};
+        _ ->
+            validate_subscribe_topic(Topic, L + 1, Acc)
+    end.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
