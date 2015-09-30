@@ -16,6 +16,7 @@
 -export([init/2]).
 -export([websocket_handle/3]).
 -export([websocket_info/3]).
+-export([terminate/3]).
 
 -record(st, {buffer= <<>>,
              parser_state,
@@ -109,6 +110,10 @@ websocket_info({'EXIT', _, Reason}, Req, #st{session=SessionPid} = State) ->
     {shutdown, Req, State};
 websocket_info(_Info, Req, State) ->
     {ok, Req, State}.
+
+terminate(_Reason, _Req, #st{session=SessionPid}) ->
+    vmq_session:disconnect(SessionPid, false),
+    ok.
 
 send(TransportPid, Bin) when is_binary(Bin) ->
     TransportPid ! {send, Bin},
