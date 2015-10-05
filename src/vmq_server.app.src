@@ -53,8 +53,8 @@
                    },
                     {mqtts, []},
                     {mqttws, [
-                            %  {{{127,0,0,1}, 8080}, [{max_connections, 1000},
-                            %                        {mountpoint, ""}]}
+                              {{{127,0,0,1}, 8080}, [{max_connections, 1000},
+                                                    {mountpoint, ""}]}
                              ]},
                     {mqttwss, []},
 

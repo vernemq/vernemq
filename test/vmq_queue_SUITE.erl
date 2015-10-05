@@ -202,10 +202,10 @@ receive_multi(QPid, Msgs) ->
 
 mock_session(Parent) ->
     receive
-        {mail, QPid, new_data} ->
+        {vmq_mqtt_fsm, {mail, QPid, new_data}} ->
             vmq_queue:active(QPid),
             mock_session(Parent);
-        {mail, QPid, Msgs, _, _} ->
+        {vmq_mqtt_fsm, {mail, QPid, Msgs, _, _}} ->
             vmq_queue:notify(QPid),
             timer:sleep(100),
             Parent ! {received, QPid, Msgs},
@@ -217,7 +217,7 @@ mock_session(Parent) ->
 msg(Topic, Payload, QoS) ->
     #vmq_msg{trade_consistency=false,
              reg_view=vmq_reg_trie,
-             msg_ref=vmq_session:msg_ref(),
+             msg_ref=vmq_mqtt_fsm:msg_ref(),
              mountpoint="",
              routing_key=vmq_topic:words(Topic),
              payload=Payload,

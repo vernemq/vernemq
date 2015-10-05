@@ -215,12 +215,12 @@ vmq_cluster_upgrade_cmd() ->
 vmq_session_list_cmd() ->
     Cmd = ["vmq-admin", "session", "list"],
     KeySpecs = [],
-    ValidInfoItems = vmq_session:info_items(),
+    ValidInfoItems = vmq_mqtt_fsm:info_items(),
     FlagSpecs = [{I, [{longname, atom_to_list(I)}]} || I <- ValidInfoItems],
     Callback = fun([], Flags) ->
                        InfoItems = [I || {I, undefined} <- Flags],
                        Table =
-                       vmq_session:list_sessions(InfoItems,
+                       vmq_mqtt_fsm:list_sessions(InfoItems,
                                                  fun(_, Infos, AccAcc) ->
                                                          case Infos of
                                                              [] ->
@@ -235,7 +235,7 @@ vmq_session_list_cmd() ->
 
 vmq_session_list_usage() ->
     Options = [io_lib:format("  --~p\n", [Item])
-               || Item <- vmq_session:info_items()],
+               || Item <- vmq_mqtt_fsm:info_items()],
     ["vmq-admin session list\n\n",
      "  Prints some information on running sessions\n\n",
      "Options\n\n" | Options

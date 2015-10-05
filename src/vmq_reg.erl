@@ -17,15 +17,15 @@
 
 %% API
 -export([
-         %% used in vmq_session fsm handling
+         %% used in mqtt fsm handling
          subscribe/4,
          unsubscribe/4,
          register_subscriber/2,
          delete_subscriptions/1,
-         %% used in vmq_session fsm handling
+         %% used in mqtt fsm handling
          publish/1,
 
-         %% used in vmq_session:get_info/2
+         %% used in :get_info/2
          get_session_pids/1,
          get_queue_pid/1,
 
@@ -47,7 +47,7 @@
 %% used by reg views
 -export([subscribe_subscriber_changes/0,
          fold_subscribers/2]).
-%% used by vmq_session:list_sessions
+%% used by vmq_mqtt_fsm list_sessions
 -export([fold_sessions/2]).
 
 %% exported because currently used by netsplit tests
@@ -278,7 +278,7 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS) ->
                              qos=QoS,
                              dup=false,
                              mountpoint=MP,
-                             msg_ref=vmq_session:msg_ref()},
+                             msg_ref=vmq_mqtt_fsm:msg_ref()},
               vmq_queue:enqueue(QPid, {deliver, QoS, Msg})
       end, ok, MP, Topic).
 
@@ -344,7 +344,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                     Msg = #vmq_msg{routing_key=vmq_topic:words(Topic),
                                    mountpoint=MountPoint,
                                    payload=Payload,
-                                   msg_ref=vmq_session:msg_ref(),
+                                   msg_ref=vmq_mqtt_fsm:msg_ref(),
                                    dup=false,
                                    retain=false,
                                    trade_consistency=TradeConsistency,

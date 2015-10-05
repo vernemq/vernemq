@@ -39,7 +39,7 @@ node_upgrade(InstructionFile) ->
     vmq_server_cli:command(["vmq-admin", "node", "upgrade", "--upgrade-now", "--instruction-file=" ++ InstructionFile], false).
 
 list_sessions() ->
-    list_sessions(vmq_session:info_items()).
+    list_sessions(vmq_mqtt_fsm:info_items()).
 list_sessions(InfoItems) ->
     vmq_server_cli:command(["vmq-admin", "session", "list"
              | ["--" ++ atom_to_list(I) || I <- InfoItems]], false).

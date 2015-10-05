@@ -460,7 +460,8 @@ disconnect_sessions(#state{sessions=Sessions}) ->
                       %% calling set_last_waiting_acks/2
                       %% then the 'DOWN' message gets triggerd
                       %% finally deleting the session
-                      vmq_session:disconnect(SessionPid)
+                      SessionPid ! {vmq_mqtt_fsm, disconnect},
+                      ok
               end, ok, Sessions).
 
 change_session_state(NewState, SessionPid, #state{id=SId, sessions=Sessions} = State) ->
@@ -584,15 +585,15 @@ send(#session{pid=Pid, queue=Q} = Session) ->
 
 send(Pid, #queue{type=fifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
     Msgs = queue:to_list(Queue),
-    Pid ! {mail, self(), Msgs, Count, Dropped},
+    vmq_mqtt_fsm:send(Pid, {mail, self(), Msgs, Count, Dropped}),
     Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0};
 send(Pid, #queue{type=lifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
     Msgs = lists:reverse(queue:to_list(Queue)),
-    Pid ! {mail, self(), Msgs, Count, Dropped},
+    vmq_mqtt_fsm:send(Pid, {mail, self(), Msgs, Count, Dropped}),
     Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0}.
 
 send_notification(#session{pid=Pid} = Session) ->
-    Pid ! {mail, self(), new_data},
+    vmq_mqtt_fsm:send(Pid, {mail, self(), new_data}),
     Session#session{status=passive}.
 
 cleanup_session(SubscriberId, #session{queue=#queue{queue=Q}}) ->

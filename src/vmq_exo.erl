@@ -29,6 +29,7 @@
          incr_subscription_count/0,
          decr_subscription_count/0,
          incr_socket_count/0,
+         decr_socket_count/0,
          incr_connect_received/0,
          incr_cluster_bytes_sent/1,
          incr_cluster_bytes_received/1,
@@ -101,6 +102,9 @@ decr_subscription_count() ->
 
 incr_socket_count() ->
     incr_item([sockets], 1).
+
+decr_socket_count() ->
+    incr_item([sockets], -1).
 
 incr_connect_received() ->
     incr_item([connects, received], 1).
