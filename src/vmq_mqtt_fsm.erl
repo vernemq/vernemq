@@ -185,7 +185,7 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
             %% $SYS
             {State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)}, []};
         {_, true} ->
-            Msg = #vmq_msg{routing_key=vmq_topic:words(Topic),
+            Msg = #vmq_msg{routing_key=Topic,
                            payload=Payload,
                            retain=unflag(IsRetain),
                            qos=QoS,
@@ -345,7 +345,7 @@ connected({retry, MessageId},
             {State, []};
         {_TRef, #vmq_msg{routing_key=Topic, qos=QoS, retain=Retain, payload=Payload} = Msg} ->
             Frame = #mqtt_publish{message_id=MessageId,
-                                  topic=iolist_to_binary(vmq_topic:unword(Topic)),
+                                  topic=Topic,
                                   qos=QoS,
                                   retain=Retain,
                                   dup=true,
@@ -418,7 +418,7 @@ check_client_id(#mqtt_connect{} = Frame,
     check_client_id(Frame#mqtt_connect{username=UserNameFromCert},
                     State#state{username=UserNameFromCert});
 
-check_client_id(#mqtt_connect{client_id=undefined, proto_ver=4} = F, State) ->
+check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=4} = F, State) ->
     %% [MQTT-3.1.3-8]
     %% If the Client supplies a zero-byte ClientId with CleanSession set to 0,
     %% the Server MUST respond to the >CONNECT Packet with a CONNACK return
@@ -432,13 +432,13 @@ check_client_id(#mqtt_connect{client_id=undefined, proto_ver=4} = F, State) ->
             check_user(F#mqtt_connect{client_id=RandomClientId},
                        State#state{subscriber_id=SubscriberId})
     end;
-check_client_id(#mqtt_connect{client_id=undefined, proto_ver=3}, State) ->
+check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=3}, State) ->
     lager:warning("empty client id not allowed in mqttv3 ~p",
                 [State#state.subscriber_id]),
     connack_terminate(?CONNACK_INVALID_ID, State);
 check_client_id(#mqtt_connect{client_id=ClientId, proto_ver=V} = F,
                 #state{max_client_id_size=S} = State)
-  when length(ClientId) =< S ->
+  when byte_size(ClientId) =< S ->
     SubscriberId = {State#state.mountpoint, ClientId},
     case lists:member(V, ?ALLOWED_MQTT_VERSIONS) of
         true ->
@@ -508,7 +508,7 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
     #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,
            max_message_size=MaxMessageSize, trade_consistency=Consistency,
            reg_view=RegView} = State,
-    case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=vmq_topic:words(Topic),
+    case auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                                       payload=Payload,
                                                       msg_ref=msg_ref(),
                                                       qos=Qos,
@@ -587,7 +587,8 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                     qos=ChangedQoS,
                                     retain=ChangedIsRetain,
                                     mountpoint=ChangedMountpoint}, HookArgs);
-        {error, _} ->
+        {error, Re} ->
+            lager:error("can't auth publish ~p due to ~p", [HookArgs, Re]),
             {error, not_allowed}
     end.
 
@@ -751,7 +752,7 @@ prepare_frame(QoS, Msg, State) ->
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
     {OutgoingMsgId, State1} = get_msg_id(NewQoS, State),
     Frame = #mqtt_publish{message_id=OutgoingMsgId,
-                          topic=iolist_to_binary(vmq_topic:unword(Topic)),
+                          topic=Topic,
                           qos=NewQoS,
                           retain=IsRetained,
                           dup=IsDup,

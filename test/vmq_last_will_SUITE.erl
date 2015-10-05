@@ -100,13 +100,13 @@ will_qos0_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_,{"", "will-qos0-test"}, [{"will/null/test",0}]) -> ok;
-hook_auth_on_subscribe(_,{"", "will-qos0-test"}, [{"will/qos0/test",0}]) -> ok.
+hook_auth_on_subscribe(_,{"", <<"will-qos0-test">>}, [{[<<"will">>, <<"null">>, <<"test">>],0}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"will-qos0-test">>}, [{[<<"will">>, <<"qos0">>, <<"test">>],0}]) -> ok.
 
-hook_auth_on_publish(_, _, _MsgId, ["ok"], <<"should be ok">>, false) -> ok;
-hook_auth_on_publish(_, _, _MsgId, ["will","acl","test"], <<"should be denied">>, false) -> {error, not_auth};
-hook_auth_on_publish(_, _, _MsgId, ["will","null","test"], <<>>, false) -> ok;
-hook_auth_on_publish(_, _, _MsgId, ["will","qos0","test"], <<"will-message">>, false) -> ok.
+hook_auth_on_publish(_, _, _MsgId, [<<"ok">>], <<"should be ok">>, false) -> ok;
+hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"acl">>,<<"test">>], <<"should be denied">>, false) -> {error, not_auth};
+hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"null">>,<<"test">>], <<>>, false) -> ok;
+hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"qos0">>,<<"test">>], <<"will-message">>, false) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

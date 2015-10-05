@@ -72,11 +72,11 @@ publish_rate_limit_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_register(_Peer, {"", "rate-limit-test"}, _User, _Password, _Clean) ->
+hook_auth_on_register(_Peer, {"", <<"rate-limit-test">>}, _User, _Password, _Clean) ->
     %% this will limit the publisher to 1 message/sec
     {ok, [{max_message_rate, 1}]}.
 
-hook_auth_on_publish(_, {"", "rate-limit-test"}, _MsgId, _, _, _) -> ok.
+hook_auth_on_publish(_, {"", <<"rate-limit-test">>}, _MsgId, _, _, _) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

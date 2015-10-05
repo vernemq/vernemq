@@ -44,7 +44,6 @@ start_server(StartNoAuth) ->
                                             {count,5}]}]),
     reset_all(),
     start_server_(StartNoAuth),
-    %wait_til_ready(),
     disable_all_plugins().
 
 start_server_(_StartNoAuth = true) ->
