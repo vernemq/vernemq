@@ -85,7 +85,7 @@ init(Peer, Opts) ->
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
     TRef = send_after(?CLOSE_AFTER, close_timeout),
-    {fun wait_for_connect/2, #state{peer=Peer,
+    {wait_for_connect, #state{peer=Peer,
                                      upgrade_qos=UpgradeQoS,
                                      mountpoint=string:strip(MountPoint, right, $/),
                                      allow_anonymous=AllowAnonymous,
@@ -106,7 +106,7 @@ data_in(Data, SessionState, OutAcc) ->
     case vmq_parser:parse(Data) of
         more ->
             {ok, SessionState, Data, serialise(OutAcc)};
-        {{error, Reason}, _} ->
+        {error, Reason} ->
             {error, Reason, serialise(OutAcc)};
         {Frame, Rest} ->
             case in(Frame, SessionState) of
@@ -133,8 +133,21 @@ msg_in(Msg, SessionState) ->
            {ok, NewSessionState, serialise([Out])}
    end.
 
-in(Msg, {StateFun, State}) ->
-    StateFun(Msg, State).
+%%% init  --> | wait_for_connect | --> | connected | --> terminate
+in(Msg, {connected, State}) ->
+    case connected(Msg, State) of
+        {stop, _, _} = R -> R;
+        {NewState, Out} ->
+            {{connected, set_last_time_active(NewState)}, Out}
+    end;
+in(Msg, {wait_for_connect, State}) ->
+    case wait_for_connect(Msg, State) of
+        {stop, _, _} = R -> R;
+        {NewState, Out} ->
+            %% state transition to | connected |
+            {{connected, set_last_time_active(NewState)}, Out}
+    end.
+
 
 send(SessionPid, Msg) ->
     SessionPid ! {?MODULE, Msg},
@@ -151,13 +164,15 @@ serialise([[B|T]|Frames], Acc) when is_binary(B) ->
 serialise([[F|T]|Frames], Acc) ->
     serialise([T|Frames], [vmq_parser:serialise(F)|Acc]).
 
-
+-spec wait_for_connect(mqtt_frame(), state()) ->
+    {state(), [mqtt_frame() | binary()]} | {stop, any(), [mqtt_frame() | binary()]}.
 wait_for_connect(#mqtt_connect{keep_alive=KeepAlive} = Frame,
                  #state{keep_alive_tref=TRef} = State) ->
     cancel_timer(TRef),
     _ = vmq_exo:incr_connect_received(),
     %% the client is allowed "grace" of a half a time period
     KKeepAlive = (KeepAlive + (KeepAlive div 2)) * 1000,
+    set_keepalive_timer(KKeepAlive),
     check_connect(Frame, incr_msg_recv_cnt(
                            State#state{keep_alive=KKeepAlive,
                                        keep_alive_tref=undefined}));
@@ -170,6 +185,10 @@ wait_for_connect(_, State) ->
     %% invalid handshake
     terminate(normal, State).
 
+-spec connected(mqtt_frame(), state()) ->
+    {state(), [mqtt_frame() | binary()]} |
+    {state(), {throttle, [mqtt_frame() | binary()]}} |
+    {stop, any(), [mqtt_frame() | binary()]}.
 connected(#mqtt_publish{message_id=MessageId, topic=Topic,
                         qos=QoS, retain=IsRetain,
                         payload=Payload}, State) ->
@@ -181,7 +200,7 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
     {NewState, Out} =
     case {Topic, valid_msg_size(Payload, MaxMessageSize)} of
-        {[$$|_], _} ->
+        {[<<"$", _binary>> |_], _} ->
             %% $SYS
             {State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)}, []};
         {_, true} ->
@@ -203,13 +222,13 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
     end,
     case DoThrottle of
         false ->
-            {{fun connected/2, maybe_trigger_counter_update(NewState)}, Out};
+            {NewState, Out};
         true ->
-            {{fun connected/2, maybe_trigger_counter_update(NewState)}, {throttle, Out}}
+            {NewState, {throttle, Out}}
     end;
 connected({mail, QPid, new_data}, #state{queue_pid=QPid} = State) ->
     vmq_queue:active(QPid),
-    {{fun connected/2, State}, []};
+    {State, []};
 connected({mail, QPid, Msgs, _, Dropped},
           #state{subscriber_id=SubscriberId, queue_pid=QPid} = State) ->
     NewState =
@@ -235,7 +254,7 @@ connected({mail, QPid, Msgs, _, Dropped},
             %% SEE: Comment in handle_waiting_msgs function.
             {NewState1#state{waiting_msgs=Waiting}, HandledMsgs}
     end,
-    {{fun connected/2, maybe_trigger_counter_update(NewState2)}, Out};
+    {NewState2, Out};
 connected(#mqtt_puback{message_id=MessageId}, #state{recv_cnt=RecvCnt, waiting_acks=WAcks} = State) ->
     %% qos1 flow
     case maps:get(MessageId, WAcks, not_found) of
@@ -245,7 +264,7 @@ connected(#mqtt_puback{message_id=MessageId}, #state{recv_cnt=RecvCnt, waiting_a
                                   recv_cnt=incr_msg_recv_cnt(RecvCnt),
                                   waiting_acks=maps:remove(MessageId, WAcks)});
         not_found ->
-            {{fun connected/2, incr_msg_recv_cnt(State)}, []}
+            {incr_msg_recv_cnt(State), []}
     end;
 connected(#mqtt_pubrec{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks, retry_interval=RetryInterval,
@@ -256,12 +275,11 @@ connected(#mqtt_pubrec{message_id=MessageId}, State) ->
             cancel_timer(TRef), % cancel republish timer
             PubRelFrame = #mqtt_pubrel{message_id=MessageId},
             NewRef = send_after(RetryInterval, {retry, MessageId}),
-            {{fun connected/2,
-              State#state{
-                recv_cnt=incr_msg_recv_cnt(RecvCnt),
-                send_cnt=incr_msg_sent_cnt(SendCnt),
-                waiting_acks=maps:update(MessageId, {NewRef, PubRelFrame}, WAcks)}},
-             [PubRelFrame]};
+            {State#state{
+               recv_cnt=incr_msg_recv_cnt(RecvCnt),
+               send_cnt=incr_msg_sent_cnt(SendCnt),
+               waiting_acks=maps:update(MessageId, {NewRef, PubRelFrame}, WAcks)},
+            [PubRelFrame]};
         not_found ->
             lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
             terminate(normal, incr_msg_recv_cnt(State))
@@ -275,22 +293,22 @@ connected(#mqtt_pubrel{message_id=MessageId}, State) ->
             cancel_timer(TRef),
             case publish(User, SubscriberId, Msg) of
                 {ok, _} ->
-                    {{_, NewState}, Msgs} =
+                    {NewState, Msgs} =
                     handle_waiting_msgs(
                       State#state{
                         recv_cnt=incr_msg_recv_cnt(RecvCnt),
                         send_cnt=incr_msg_sent_cnt(SendCnt),
                         waiting_acks=maps:remove({qos2, MessageId}, WAcks)}),
-                    {{fun connected/2, NewState}, [#mqtt_pubcomp{message_id=MessageId}|Msgs]};
+                    {NewState, [#mqtt_pubcomp{message_id=MessageId}|Msgs]};
                 {error, _Reason} ->
                     %% cant publish due to overload or netsplit,
                     %% client will retry
-                    {{fun connected/2, incr_msg_recv_cnt(State)}, []}
+                    {incr_msg_recv_cnt(State), []}
             end;
         not_found ->
             %% already delivered, Client expects a PUBCOMP
-            {{fun connected/2, State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt),
-                                           send_cnt=incr_msg_sent_cnt(SendCnt)}},
+            {State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt),
+                         send_cnt=incr_msg_sent_cnt(SendCnt)},
              [#mqtt_pubcomp{message_id=MessageId}]}
     end;
 connected(#mqtt_pubcomp{message_id=MessageId}, State) ->
@@ -314,11 +332,11 @@ connected(#mqtt_subscribe{message_id=MessageId, topics=Topics}, State) ->
             {_, QoSs} = lists:unzip(Topics),
             {NewState, Out} = send_frame(#mqtt_suback{message_id=MessageId,
                                                       qos_table=QoSs}, State),
-            {{fun connected/2, incr_msg_recv_cnt(NewState)}, Out};
+            {incr_msg_recv_cnt(NewState), Out};
         {error, _Reason} ->
             %% cant subscribe due to overload or netsplit,
             %% Subscribe uses QoS 1 so the client will retry
-            {{fun connected/2, incr_msg_recv_cnt(State)}, []}
+            {incr_msg_recv_cnt(State), []}
     end;
 connected(#mqtt_unsubscribe{message_id=MessageId, topics=Topics}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
@@ -326,15 +344,15 @@ connected(#mqtt_unsubscribe{message_id=MessageId, topics=Topics}, State) ->
     case vmq_reg:unsubscribe(Consistency, User, SubscriberId, Topics) of
         ok ->
             {NewState, Out} = send_frame(#mqtt_unsuback{message_id=MessageId}, State),
-            {{fun connected/2, incr_msg_recv_cnt(NewState)}, Out};
+            {incr_msg_recv_cnt(NewState), Out};
         {error, _Reason} ->
             %% cant unsubscribe due to overload or netsplit,
             %% Unsubscribe uses QoS 1 so the client will retry
-            {{fun connected/2, incr_msg_recv_cnt(State)}, []}
+            {incr_msg_recv_cnt(State), []}
     end;
 connected(#mqtt_pingreq{}, State) ->
     {NewState, Out} = send_frame(#mqtt_pingresp{}, State),
-    {{fun connected/2, incr_msg_recv_cnt(NewState)}, Out};
+    {incr_msg_recv_cnt(NewState), Out};
 connected(#mqtt_disconnect{}, State) ->
     terminate(normal, incr_msg_recv_cnt(State));
 connected({retry, MessageId},
@@ -363,18 +381,25 @@ connected({retry, MessageId},
             {State#state{waiting_acks=maps:update(MessageId, {Ref, Frame, Msg}, WAcks)},
              [Frame]}
     end,
-    {{fun connected/2, NewNewState}, Msgs};
+    {NewNewState, Msgs};
 connected(disconnect, State) ->
     lager:debug("[~p] stop due to disconnect", [self()]),
     terminate(normal, State);
-connected(keepalive_expired, State) ->
-    lager:warning("[~p] stop due to ~p ~p~n", [self(), keepalive_expired, State#state.keep_alive]),
-    terminate(normal, State);
+connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive} = State) ->
+    Now = os:timestamp(),
+    case (timer:now_diff(Now, Last) div 1000) > KeepAlive of
+        true ->
+            lager:warning("[~p] stop due to keepalive expired~n", [self()]),
+            terminate(normal, State);
+        false ->
+            set_keepalive_timer(KeepAlive),
+            {State, []}
+    end;
 connected({'DOWN', _MRef, process, QPid, Reason}, #state{queue_pid=QPid} = State) ->
     queue_down_terminate(Reason, State);
 connected({info_req, {Ref, CallerPid}, InfoItems}, State) ->
     CallerPid ! {Ref, {ok, get_info_items(InfoItems, State)}},
-    {{fun connected/2, State}, []};
+    {State, []};
 connected(Unexpected, State) ->
     lager:debug("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
     terminate({error, unexpected_message, Unexpected}, State).
@@ -502,7 +527,7 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
     end.
 
 check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, State) ->
-    {{fun connected/2, State}, [#mqtt_connack{return_code=?CONNACK_ACCEPT}]};
+    {State, [#mqtt_connack{return_code=?CONNACK_ACCEPT}]};
 check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_retain=IsRetain},
            State) ->
     #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,
@@ -521,7 +546,7 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
         {ok, #vmq_msg{payload=MaybeNewPayload} = Msg} ->
             case valid_msg_size(MaybeNewPayload, MaxMessageSize) of
                 true ->
-                    {{fun connected/2, State#state{will_msg=Msg}},
+                    {State#state{will_msg=Msg},
                      [#mqtt_connack{return_code=?CONNACK_ACCEPT}]};
                 false ->
                     lager:warning(
@@ -647,7 +672,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
             {drop(State), []}
     end.
 
--spec dispatch_publish_qos2(msg_id(), msg(), state()) -> state().
+-spec dispatch_publish_qos2(msg_id(), msg(), state()) -> {state(), list()}.
 dispatch_publish_qos2(MessageId, Msg, State) ->
     case check_in_flight(State) of
         true ->
@@ -693,20 +718,20 @@ handle_waiting_acks_and_msgs(State) ->
     catch vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime).
 
 handle_waiting_msgs(#state{waiting_msgs=[]} = State) ->
-    {{fun connected/2, State}, []};
+    {State, []};
 handle_waiting_msgs(#state{waiting_msgs=Msgs, queue_pid=QPid} = State) ->
     case handle_messages(Msgs, [], State, []) of
         {NewState, HandledMsgs, []} ->
             %% we're ready to take more
             vmq_queue:notify(QPid),
-            {{fun connected/2, NewState#state{waiting_msgs=[]}}, HandledMsgs};
+            {NewState#state{waiting_msgs=[]}, HandledMsgs};
         {NewState, HandledMsgs, Waiting} ->
             %% TODO: since we don't notfiy the queue it is now possible
             %% that ALSO QoS0 messages are getting queued up, and need
             %% to wait until check_in_flight(_) returns true again.
             %% That's unfortunate, but would need a different implementation
             %% of the vmq_queue FSM which differentiates between QoS.
-            {{fun connected/2, NewState#state{waiting_msgs=Waiting}}, HandledMsgs}
+            {NewState#state{waiting_msgs=Waiting}, HandledMsgs}
     end.
 
 handle_messages([{deliver, 0, Msg}|Rest], Frames, State, Waiting) ->
@@ -812,10 +837,15 @@ get_msg_id(_, #state{next_msg_id=65535} = State) ->
 get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
     {MsgId, State#state{next_msg_id=MsgId + 1}}.
 
--spec random_client_id() -> string().
+-spec random_client_id() -> binary().
 random_client_id() ->
-    lists:flatten(["anon-", base64:encode_to_string(crypto:rand_bytes(20))]).
+    list_to_binary(["anon-", base64:encode_to_string(crypto:rand_bytes(20))]).
 
+
+set_keepalive_timer(0) -> ok;
+set_keepalive_timer(KeepAlive) ->
+    _ = send_after(KeepAlive, check_keepalive),
+    ok.
 
 -spec send_after(non_neg_integer(), any()) -> reference().
 send_after(Time, Msg) ->
@@ -850,13 +880,13 @@ incr_cnt(IncrV, {Avg, Total, []}) ->
 incr_cnt(IncrV, {Avg, Total, [V|Vals]}) ->
     {Avg, Total + IncrV, [V + IncrV|Vals]}.
 
-maybe_trigger_counter_update(#state{last_time_active={MSecs, Secs, _}} = State) ->
-    NewTS = os:timestamp(),
-    case NewTS of
+set_last_time_active(#state{last_time_active={MSecs, Secs, _}} = State) ->
+    case os:timestamp() of
         {MSecs, Secs, _} ->
+            %% still in the same second resolution
             State;
-        _ ->
-            trigger_counter_update(State#state{last_time_active=NewTS})
+        Now ->
+            trigger_counter_update(State#state{last_time_active=Now})
     end.
 
 trigger_counter_update(State) ->
