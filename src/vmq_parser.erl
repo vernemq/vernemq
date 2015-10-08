@@ -47,7 +47,10 @@
 parse(<<Fixed:1/binary, 0:1, L1:7, Data/binary>>) ->
     case Data of
         <<Var:L1/binary, Rest/binary>> ->
-            {parse(Fixed, Var), Rest};
+            case parse(Fixed, Var) of
+                {error, _} = E -> E;
+                Frame -> {Frame, Rest}
+            end;
         _ -> more
     end;
 parse(<<Fixed:1/binary, 1:1, L1:7, 0:1, L2:7, Data/binary>>) ->
@@ -73,6 +76,7 @@ parse(<<_:8/binary, _/binary>>) ->
 parse(_) ->
     more.
 
+-spec parse(binary(), binary()) -> mqtt_frame() | {error, atom()}.
 parse(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, Payload/binary>>) ->
     case vmq_topic:validate_topic(publish, Topic) of
         {ok, ParsedTopic} ->

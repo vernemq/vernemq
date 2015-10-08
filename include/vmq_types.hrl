@@ -15,11 +15,11 @@
 -type mountpoint()          :: string().
 -type subscriber_id()       :: {mountpoint(), client_id()}.
 -type reg_view()            :: atom().
--type topic()               :: [binary()].
+-type topic()               :: [binary()] | binary().
 -type qos()                 :: 0 | 1 | 2.
 -type routing_key()         :: [binary()].
 -type payload()             :: binary().
--type flag()                :: ?true | ?false | boolean().
+-type flag()                :: ?true | ?false | boolean() | empty. % empty for test purposes
 -type msg_ref()             :: binary().
 -type proto_version()       :: 3 | 4 | 131.
 -type return_code()         :: ?CONNACK_ACCEPT
