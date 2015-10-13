@@ -69,6 +69,7 @@ init(Ref, Socket, Transport, Opts) ->
     end,
     case active_once(MaskedSocket) of
         ok ->
+            process_flag(trap_exit, true),
             _ = vmq_exo:incr_socket_count(),
             loop(#st{socket=MaskedSocket,
                      fsm_state=FsmState,
@@ -227,6 +228,9 @@ handle_message({inet_reply, _, Status}, State) ->
 handle_message(restart_work, #st{throttled=true} = State) ->
     #st{proto_tag={Proto, _, _}, socket=Socket} = State,
     handle_message({Proto, Socket, <<>>}, State#st{throttled=false});
+handle_message({'EXIT', _Parent, Reason}, #st{fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
+    _ = FsmMod:msg_in(disconnect, FsmState0),
+    {exit, Reason, State};
 handle_message(OtherMsg, #st{fsm_state=FsmState0, fsm_mod=FsmMod, pending=Pending} = State) ->
     case FsmMod:msg_in(OtherMsg, FsmState0) of
         {ok, FsmState1, Out} ->
