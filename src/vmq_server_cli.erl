@@ -241,8 +241,8 @@ check_cluster_consistency([Node|Nodes] = All, NrOfRetries) ->
             timer:sleep(1000),
             check_cluster_consistency(All, NrOfRetries - 1)
     end;
-check_cluster_consistency([], _) -> true;
-check_cluster_consistency(_, 0) -> false.
+check_cluster_consistency(_, 0) -> false;
+check_cluster_consistency([], _) -> true.
 
 
 
