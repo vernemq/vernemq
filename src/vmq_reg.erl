@@ -46,6 +46,7 @@
 -export([direct_plugin_exports/1]).
 %% used by reg views
 -export([subscribe_subscriber_changes/0,
+         fold_subscriptions/2,
          fold_subscribers/2]).
 %% used by vmq_mqtt_fsm list_sessions
 -export([fold_sessions/2]).
@@ -436,11 +437,11 @@ subscribe_subscriber_changes() ->
             ignore
     end.
 
-fold_subscribers(FoldFun, Acc) ->
+
+fold_subscriptions(FoldFun, Acc) ->
     Node = node(),
-    plumtree_metadata:fold(
-      fun ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
-          ({{MP, _} = SubscriberId, Subs}, AccAcc) ->
+    fold_subscribers(
+      fun ({MP, _} = SubscriberId, Subs, AccAcc) ->
               lists:foldl(
                 fun({Topic, QoS, N}, AccAccAcc) when Node == N ->
                         FoldFun({MP, Topic, {SubscriberId, QoS, undefined}},
@@ -448,8 +449,32 @@ fold_subscribers(FoldFun, Acc) ->
                    ({Topic, _, N}, AccAccAcc) ->
                         FoldFun({MP, Topic, N}, AccAccAcc)
                 end, AccAcc, Subs)
+      end, Acc, false).
+
+fold_subscribers(FoldFun, Acc) ->
+    fold_subscribers(FoldFun, Acc, true).
+
+fold_subscribers(FoldFun, Acc, CompactResult) ->
+    plumtree_metadata:fold(
+      fun ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
+          ({SubscriberId, Subs}, AccAcc) when CompactResult ->
+              FoldFun(SubscriberId, subscriber_nodes(Subs), AccAcc);
+          ({SubscriberId, Subs}, AccAcc) ->
+              FoldFun(SubscriberId, Subs, AccAcc)
       end, Acc, ?SUBSCRIBER_DB,
       [{resolver, lww}]).
+
+%% returns the nodes a subscriber was active
+subscriber_nodes(Subs) ->
+    subscriber_nodes(Subs, []).
+subscriber_nodes([], Nodes) -> Nodes;
+subscriber_nodes([{_, _, Node}|Rest], Nodes) ->
+    case lists:member(Node, Nodes) of
+        true ->
+            subscriber_nodes(Rest, Nodes);
+        false ->
+            subscriber_nodes(Rest, [Node|Nodes])
+    end.
 
 fold_sessions(FoldFun, Acc) ->
     vmq_queue_sup:fold_queues(

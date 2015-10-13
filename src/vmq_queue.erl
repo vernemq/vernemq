@@ -130,7 +130,8 @@ default_opts() ->
       queue_deliver_mode => vmq_config:get_env(queue_deliver_mode),
       queue_type => vmq_config:get_env(queue_type),
       max_drain_time => vmq_config:get_env(max_drain_time),
-      max_msgs_per_drain_step => vmq_config:get_env(max_msgs_per_drain_step)}.
+      max_msgs_per_drain_step => vmq_config:get_env(max_msgs_per_drain_step),
+      is_plugin => false}.
 
 %%%===================================================================
 %%% gen_fsm state callbacks
@@ -327,12 +328,13 @@ handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
 handle_sync_event(status, _From, StateName,
-                  #state{deliver_mode=Mode, offline=#queue{size=OfflineSize}, sessions=Sessions} = State) ->
+                  #state{deliver_mode=Mode, offline=#queue{size=OfflineSize},
+                         sessions=Sessions, opts=#{is_plugin := IsPlugin}} = State) ->
     TotalStoredMsgs =
     maps:fold(fun(_, #session{queue=#queue{size=Size}}, Acc) ->
                       Acc + Size
               end, OfflineSize, Sessions),
-    {reply, {StateName, Mode, TotalStoredMsgs, maps:size(Sessions)}, StateName, State};
+    {reply, {StateName, Mode, TotalStoredMsgs, maps:size(Sessions), IsPlugin}, StateName, State};
 handle_sync_event(get_sessions, _From, StateName, #state{sessions=Sessions} = State) ->
     {reply, maps:keys(Sessions), StateName, State};
 

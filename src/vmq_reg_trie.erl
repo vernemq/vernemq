@@ -78,7 +78,7 @@ init([]) ->
     Self = self(),
     spawn_link(
       fun() ->
-              ok = vmq_reg:fold_subscribers(fun initialize_trie/2, ok),
+              ok = vmq_reg:fold_subscriptions(fun initialize_trie/2, ok),
               Self ! subscribers_loaded
       end),
     EventHandler = vmq_reg:subscribe_subscriber_changes(),
