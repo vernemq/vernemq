@@ -170,11 +170,9 @@ handle_info(connected, #state{client_pid=Pid, opts=Opts,
     {noreply, State#state{subscriptions=Subscriptions}};
 handle_info({deliver_remote, Topic, Payload},
             #state{publish_fun=PublishFun, subscriptions=Subscriptions} = State) ->
-    Words = vmq_topic:words(Topic),
     lists:foreach(
       fun({{in, T}, LocalPrefix}) ->
-              TWords = vmq_topic:words(T),
-              case vmq_topic:match(Words, TWords) of
+              case vmq_topic:match(Topic, T) of
                   true ->
                       ok = PublishFun(lists:flatten([LocalPrefix, Topic]), Payload);
                   false ->
@@ -186,11 +184,9 @@ handle_info({deliver_remote, Topic, Payload},
     {noreply, State};
 handle_info({deliver, Topic, Payload, _QoS, _IsRetained, _IsDup},
             #state{subscriptions=Subscriptions, client_pid=ClientPid} = State) ->
-    Words = vmq_topic:words(Topic),
     lists:foreach(
       fun({{out, T}, QoS, RemotePrefix}) ->
-              TWords = vmq_topic:words(T),
-              case vmq_topic:match(Words, TWords) of
+              case vmq_topic:match(Topic, T) of
                   true ->
                       ok = gen_emqtt:publish(ClientPid, lists:flatten([RemotePrefix, Topic]) ,
                                              Payload, QoS);
@@ -208,20 +204,46 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-bridge_subscribe(Pid, [{Topic, in, QoS, LocalPrefix, _}|Rest],
+bridge_subscribe(Pid, [{Topic, in, QoS, LocalPrefix, _} = BT|Rest],
                  SubscribeFun, Acc) ->
-    gen_emqtt:subscribe(Pid, Topic, QoS),
-    bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, Topic}, LocalPrefix}|Acc]);
-bridge_subscribe(Pid, [{Topic, out, QoS, _, RemotePrefix}|Rest],
+    case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
+        {ok, TTopic} ->
+            gen_emqtt:subscribe(Pid, TTopic, QoS),
+            bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, TTopic},
+                                                        list_to_binary(LocalPrefix)}|Acc]);
+        {error, Reason} ->
+            error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
+                                     [BT, Reason]),
+            bridge_subscribe(Pid, Rest, SubscribeFun, Acc)
+    end;
+bridge_subscribe(Pid, [{Topic, out, QoS, _, RemotePrefix} = BT|Rest],
                  SubscribeFun, Acc) ->
-    ok = SubscribeFun(Topic),
-    bridge_subscribe(Pid, Rest, SubscribeFun, [{{out, Topic}, QoS, RemotePrefix}|Acc]);
-bridge_subscribe(Pid, [{Topic, both, QoS, LocalPrefix, RemotePrefix}|Rest],
+    case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
+        {ok, TTopic} ->
+            ok = SubscribeFun(TTopic),
+            bridge_subscribe(Pid, Rest, SubscribeFun, [{{out, TTopic}, QoS,
+                                                        list_to_binary(RemotePrefix)}|Acc]);
+        {error, Reason} ->
+            error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
+                                     [BT, Reason]),
+            bridge_subscribe(Pid, Rest, SubscribeFun, Acc)
+    end;
+
+bridge_subscribe(Pid, [{Topic, both, QoS, LocalPrefix, RemotePrefix} = BT|Rest],
                  SubscribeFun, Acc) ->
-    gen_emqtt:subscribe(Pid, Topic, QoS),
-    ok = SubscribeFun(Topic),
-    bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, Topic}, LocalPrefix},
-                                          {{out, Topic}, QoS, RemotePrefix}|Acc]);
+    case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
+        {ok, TTopic} ->
+            gen_emqtt:subscribe(Pid, TTopic, QoS),
+            ok = SubscribeFun(TTopic),
+            bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, TTopic},
+                                                        list_to_binary(LocalPrefix)},
+                                                       {{out, TTopic}, QoS,
+                                                        list_to_binary(RemotePrefix)}|Acc]);
+        {error, Reason} ->
+            error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
+                                     [BT, Reason]),
+            bridge_subscribe(Pid, Rest, SubscribeFun, Acc)
+    end;
 bridge_subscribe(_, [], _, Acc) -> Acc.
 
 

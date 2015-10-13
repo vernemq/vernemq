@@ -17,6 +17,7 @@
 
 -define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
 -export([bridge_plugin/1]).
+-export([b2br_disconnect_qos2/1]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Tests Descriptions
@@ -215,7 +216,7 @@ br2b_disconnect_qos2(_) ->
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 br2b_disconnect_helper(BridgeProc) ->
-    BridgeProc ! {deliver, "bridge/disconnect/test", <<"disconnect-message">>, 0, false, false}.
+    BridgeProc ! {deliver, [<<"bridge">>, <<"disconnect">>, <<"test">>], <<"disconnect-message">>, 0, false, false}.
 
 bridge_plugin(ReportProc) ->
     RegisterFun = fun() ->
