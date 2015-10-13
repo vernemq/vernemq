@@ -30,6 +30,7 @@
                 reachable=false,
                 pending = [],
                 max_queue_size,
+                reconnect_tref,
                 bytes_dropped={os:timestamp(), 0},
                 bytes_send={os:timestamp(), 0}}).
 
@@ -125,14 +126,21 @@ handle_message({msg, Msg}, State) ->
     BinMsg = <<"msg", L:32, Bin/binary>>,
     {_, NewState} = buffer_message(BinMsg, State),
     NewState;
-handle_message({NetEv, _}, State)
+handle_message({NetEv, _}, #state{reconnect_tref=TRef} = State)
   when
       NetEv == tcp_closed;
       NetEv == tcp_error;
       NetEv == ssl_closed;
       NetEv == ssl_error ->
-    erlang:send_after(?RECONNECT, self(), reconnect),
-    State#state{reachable=false};
+    NewTRef =
+    case TRef of
+        undefined ->
+            reconnect_timer();
+        _ ->
+            %% we're already reconnecting
+            TRef
+    end,
+    State#state{reconnect_tref=NewTRef, reachable=false};
 handle_message({nodedown, Node}, #state{node=Node} = State) ->
     erlang:send_after(?REMONITOR, self(), remonitor),
     State#state{reachable=false};
@@ -150,7 +158,7 @@ handle_message(remonitor, #state{node=Node, reachable=Reachable} = State) ->
             State#state{reachable=false}
     end;
 handle_message(reconnect, #state{reachable=false} = State) ->
-    connect(State);
+    connect(State#state{reconnect_tref=undefined});
 handle_message(Msg, #state{node=Node, reachable=Reachable} = State) ->
     lager:warning("got unknown message ~p for node ~p (reachable ~p)",
                   [Msg, Node, Reachable]),
@@ -167,7 +175,7 @@ maybe_flush(#state{pending=Pending} = State) ->
 
 internal_flush(#state{pending=[]} = State) -> State;
 internal_flush(#state{pending=Pending, node=Node, transport=Transport,
-                      socket=Socket, bytes_send={{M, S, _}, V}} = State) ->
+                      reconnect_tref=TRef, socket=Socket, bytes_send={{M, S, _}, V}} = State) ->
     L = iolist_size(Pending),
     Msg = [<<"vmq-send", L:32>>|lists:reverse(Pending)],
     case Transport:send(Socket, Msg) of
@@ -182,10 +190,15 @@ internal_flush(#state{pending=Pending, node=Node, transport=Transport,
             end,
             State#state{pending=[], bytes_send=NewBytesSend};
         {error, Reason} ->
-            erlang:send_after(?RECONNECT, self(), reconnect),
-            lager:warning("can't send ~p bytes to ~p due to ~p, reconnect!",
+            NewTRef =
+            case TRef of
+                undefined ->
+                    lager:warning("can't send ~p bytes to ~p due to ~p, reconnect!",
                           [iolist_size(Pending), Node, Reason]),
-            State#state{reachable=false}
+                    reconnect_timer();
+                _ -> TRef
+            end,
+            State#state{reachable=false, reconnect_tref=NewTRef}
     end.
 
 connect(#state{node=RemoteNode} = State) ->
@@ -208,18 +221,20 @@ connect(#state{node=RemoteNode} = State) ->
                     end;
                 {error, Reason} ->
                     lager:warning("can't connect to cluster node ~p due to ~p", [RemoteNode, Reason]),
-                    erlang:send_after(?RECONNECT, self(), reconnect),
-                    State#state{reachable=false}
+                    TRef = reconnect_timer(),
+                    State#state{reachable=false, reconnect_tref=TRef}
             end;
         {badrpc, nodedown} ->
             %% we don't scream.. vmq_cluster_mon screams
-            erlang:send_after(?RECONNECT, self(), reconnect),
-            State#state{reachable=false};
+            State#state{reachable=false, reconnect_tref=reconnect_timer()};
         E ->
             lager:warning("can't connect to cluster node ~p due to ~p", [RemoteNode, E]),
-            erlang:send_after(?RECONNECT, self(), reconnect),
-            State#state{reachable=false}
+            State#state{reachable=false, reconnect_tref=reconnect_timer()}
     end.
+
+reconnect_timer() ->
+    erlang:send_after(?RECONNECT, self(), reconnect).
+
 
 %% connect_params is called by a RPC
 connect_params(_Node) ->
