@@ -14,6 +14,7 @@
 
 -module(vmq_reg).
 -include("vmq_server.hrl").
+-behaviour(gen_server).
 
 %% API
 -export([
@@ -34,13 +35,22 @@
          retained/0,
 
          stored/1,
-         status/1
+         status/1,
+
+
         ]).
 
-%% used by/through remote calls
--export([migrate_session/2,
-         publish/2,
-         register_subscriber_/3]).
+%% gen_server
+-export([start_link/0,
+         init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
+
+%% called by vmq_cluster_com
+-export([publish/2]).
 
 %% used from plugins
 -export([direct_plugin_exports/1]).
@@ -56,6 +66,7 @@
 
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
 -define(TOMBSTONE, '$deleted').
+-define(NR_OF_REG_RETRIES, 10).
 
 -spec subscribe(flag(), username() | plugin_id(), subscriber_id(),
                 [{topic(), qos()}]) -> ok | {error, not_allowed
@@ -120,28 +131,95 @@ delete_subscriptions(SubscriberId) ->
 
 -spec register_subscriber(subscriber_id(), map()) ->
     {ok, pid()} | {error, _}.
-register_subscriber(SubscriberId, #{allow_multiple_sessions := false,
-                                    clean_session := CleanSession} = QueueOpts) ->
+register_subscriber(SubscriberId, #{allow_multiple_sessions := false} = QueueOpts) ->
     %% we don't allow multiple sessions using same subscriber id
     %% allow_multiple_sessions is needed for session balancing
-    case vmq_reg_leader:register_subscriber(self(), SubscriberId, QueueOpts) of
-        {ok, QPid} when CleanSession->
-            %% no need to remap as the session is fresh
-            {ok, QPid};
-        {ok, QPid} ->
-            remap_subscription(SubscriberId),
-            {ok, QPid};
-        R ->
-            R
+    case jobs:ask(plumtree_queue) of
+        {ok, JobId} ->
+            try
+                vmq_reg_leader:register_subscriber(self(), SubscriberId, QueueOpts)
+            after
+                jobs:done(JobId)
+            end;
+        {error, rejected} ->
+            {error, overloaded}
     end;
 register_subscriber(SubscriberId, #{allow_multiple_sessions := true} = QueueOpts) ->
     %% we allow multiple sessions using same subscriber id
     %%
     %% !!! CleanSession is disabled if multiple sessions are in use
     %%
-    register_session(SubscriberId, QueueOpts).
+    case jobs:ask(plumtree_queue) of
+        {ok, JobId} ->
+            try
+                register_session(SubscriberId, QueueOpts)
+            after
+                jobs:done(JobId)
+            end;
+        {error, rejected} ->
+            {error, overloaded}
+    end.
 
--spec register_session(subscriber_id(), map()) -> {ok, pid()} | {error, _}.
+-spec register_subscriber(pid() | undefined,
+                            subscriber_id(), map(),
+                            non_neg_integer()) -> {'ok', pid()}.
+register_subscriber(_, _, _, 0) ->
+    exit(register_subscriber_retry_exhausted);
+register_subscriber(SessionPid, SubscriberId, QueueOpts, N) ->
+    % remap subscriber... enabling that new messages will eventually
+    % reach the new queue.
+    maybe_remap_subscriber(SessionPid, SubscriberId, QueueOpts),
+    % wont create new queue in case it already exists
+    {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId),
+    case vmq_cluster:nodes() -- [node()] of
+        [] ->
+            ok;
+        Nodes ->
+            %% TODO: make this more efficient, currently we have to multi_call
+            %% REMARK: migrate_session makes sure that offline messages located at
+            %% one or more remote queues are migrated to this Queue,
+            %% if the last session attached to this queue was using clean_session=true
+            %% migrate_session will instead drop all stored messages before teardown
+            %% the queue
+            Req = {migrate_session, SubscriberId, QPid},
+            case gen_server:multi_call(Nodes, ?MODULE, Req) of
+                {Replies, []} ->
+                    rethrow_error(Replies);
+                {Replies, BadNodes} ->
+                    rethrow_error(Replies),
+                    lager:error("can't migrate session for subscriber ~p on nodes ~p",
+                                [SubscriberId, BadNodes]),
+                    exit(cant_reach_nodes_during_migration)
+            end
+    end,
+    case SessionPid of
+        undefined ->
+            %% SessionPid can be 'undefined' in case an offline session gets
+            %% forcefully migrated
+            lager:info("created 'offline' queue ~p for ~p", [SubscriberId, QPid]),
+            {ok, QPid};
+        _ ->
+            case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
+                {'EXIT', {normal, _}} ->
+                    %% queue went down in the meantime, retry
+                    register_subscriber(SessionPid, SubscriberId, QueueOpts, N -1);
+                {'EXIT', {noproc, _}} ->
+                    timer:sleep(100),
+                    %% queue was stopped in the meantime, retry
+                    register_subscriber(SessionPid, SubscriberId, QueueOpts, N -1);
+                {'EXIT', Reason} ->
+                    exit(Reason);
+                ok ->
+                    {ok, QPid}
+            end
+    end.
+
+rethrow_error([{_, {error, Reason}}|_]) -> exit(Reason);
+rethrow_error([{_, ok}|Replies]) ->
+    rethrow_error(Replies);
+rethrow_error([]) -> ok.
+
+-spec register_session(subscriber_id(), map()) -> {ok, pid()}.
 register_session(SubscriberId, QueueOpts) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
@@ -149,61 +227,6 @@ register_session(SubscriberId, QueueOpts) ->
     {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId), % wont create new queue in case it already exists
     ok = vmq_queue:add_session(QPid, SessionPid, QueueOpts),
     {ok, QPid}.
-
-migrate_session(SubscriberId, OtherQPid) ->
-    case get_queue_pid(SubscriberId) of
-        not_found ->
-            ok;
-        QPid ->
-            vmq_queue:migrate(QPid, OtherQPid)
-    end.
-
--spec register_subscriber_(pid(), subscriber_id(), map()) ->
-    {'ok', pid()} | {error, overloaded}.
-register_subscriber_(SessionPid, SubscriberId, #{clean_session := CleanSession} = QueueOpts) ->
-    %% cleanup session for this client id if needed
-    case CleanSession of
-        true ->
-            rate_limited_op(
-              fun() ->
-                      del_subscriber(SubscriberId)
-              end,
-              fun(ok) ->
-                      register_subscriber__(SessionPid, SubscriberId, QueueOpts);
-                 ({error, overloaded}) ->
-                      timer:sleep(100),
-                      register_subscriber__(SessionPid, SubscriberId, QueueOpts)
-              end);
-        false ->
-            register_subscriber__(SessionPid, SubscriberId, QueueOpts)
-    end.
-
--spec register_subscriber__(pid(), subscriber_id(), map()) -> {'ok', pid()} | {error, _}.
-register_subscriber__(SessionPid, SubscriberId, QueueOpts) ->
-    %% TODO: make this more efficient, currently we have to rpc every
-    %% node in the cluster
-    {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId), % wont create new queue in case it already exists
-    lists:foreach(
-      fun(Node) ->
-              case Node == node() of
-                  true ->
-                      ignore;
-                  false ->
-                      rpc:call(Node, ?MODULE, migrate_session, [SubscriberId, QPid])
-              end
-      end, vmq_cluster:nodes()),
-    case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
-        {'EXIT', {normal, _}} ->
-            %% queue went down in the meantime, retry
-            register_subscriber__(SessionPid, SubscriberId, QueueOpts);
-        {'EXIT', {noproc, _}} ->
-            %% queue was stopped in the meantime, retry
-            register_subscriber__(SessionPid, SubscriberId, QueueOpts);
-        {'EXIT', Reason} ->
-            exit(Reason);
-        ok ->
-            {ok, QPid}
-    end.
 
 -spec publish(msg()) -> 'ok' | {'error', _}.
 publish(#vmq_msg{trade_consistency=true,
@@ -288,8 +311,84 @@ subscriptions_for_subscriber_id(SubscriberId) ->
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% RPC Callbacks / Maintenance
+%%% GEN_SERVER,
+%%%
+%%%  this gen_server is mainly used to allow remote control over local
+%%%  registry entries.. alternatively the rpc module could have been
+%%%  used, however this allows us more control over how such remote
+%%%  calls are handled. (in fact version prior to 0.12.0 used rpc directly.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+init([]) ->
+    {ok, maps:new()}.
+
+handle_call({migrate_session, SubscriberId, OtherQPid}, From, Waiting) ->
+    %% Initiates Queue migration of the local Queue to the
+    %% Queue at 'OtherQPid'
+    case get_queue_pid(SubscriberId) of
+        not_found ->
+            {reply, ok, Waiting};
+        QPid ->
+            {MigratePid, MRef} = spawn_monitor(vmq_queue, migrate, [QPid, OtherQPid]),
+            {noreply, maps:put(MRef, {MigratePid, From}, Waiting)}
+    end;
+handle_call({finish_register_subscriber_by_leader, SessionPid, SubscriberId, QueueOpts}, From, Waiting) ->
+    %% called by vmq_reg_leader process
+    {Pid, MRef} = spawn_monitor(
+                    fun() ->
+                            register_subscriber(SessionPid, SubscriberId,
+                                                QueueOpts, ?NR_OF_REG_RETRIES)
+                    end),
+    {noreply, maps:put(MRef, {Pid, From}, Waiting)};
+handle_call({migrate_offline_queue, SubscriberId, QueueOpts}, From, Waiting) ->
+    %% only called when a cluster node leaves and the 'old' offline
+    %% queues have to be migrated to 'this' node.
+    %%
+    %% calling register_subscriber/2 will ensure that the Queue exists
+    %% on this node, as well as it will migrate all offline stored messages
+    %% to this new queue.
+    %% Moreover, register_subscriber/2 is synchronized via vmq_reg_leader,
+    %% allowing a consistent state over the migration process.
+    %%
+    %% REMARK: this mechanism ignores new subscribers with the
+    %% allow_multiple_sessions=true. In such a case the new queue process,
+    %% containing offline messages, will stay around until a subscribers
+    %% connects to this node or a subscriber connects with
+    %% allow_multiple_sessions=off
+    %%
+    %% TODO: provide a way that subscribers with allow_multiple_sessions=on
+    %% can synchronize their offline messages.
+    case vmq_cluster:is_ready() of
+        true ->
+            {RegisterPid, MRef} = spawn_monitor(vmq_reg_leader, register_subscriber,
+                                                [undefined, SubscriberId, QueueOpts]),
+            {noreply, maps:put(MRef, {RegisterPid, From}, Waiting)};
+        false ->
+            {reply, {error, not_ready}, Waiting}
+    end.
+
+handle_cast(_Req, State) ->
+    {noreply, State}.
+
+handle_info({'DOWN', MRef, process, Pid, Reason}, Waiting) ->
+    {Pid, From} = maps:get(MRef, Waiting),
+    case Reason of
+        normal ->
+            gen_server:reply(From, ok);
+        _ ->
+            gen_server:reply(From, {error, Reason})
+    end,
+    {noreply, maps:remove(MRef, Waiting)}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+
 -spec wait_til_ready() -> 'ok'.
 wait_til_ready() ->
     case catch vmq_cluster:if_ready(fun() -> true end, []) of
@@ -333,11 +432,10 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                                                  plugin_queue_loop(PluginPid, Mod)
                                          end),
                     QueueOpts = maps:merge(vmq_queue:default_opts(),
-                                           #{clean_session => true}),
-                    case register_subscriber_(PluginSessionPid, SubscriberId, QueueOpts) of
-                        {ok, _QPid} -> ok;
-                        {error, Reason} -> exit({Mod, Reason})
-                    end
+                                           #{clean_session => true,
+                                             is_plugin => true}),
+                    {ok, _} = register_subscriber(PluginSessionPid, SubscriberId,
+                                                  QueueOpts, ?NR_OF_REG_RETRIES)
             end,
 
             PublishFun =
@@ -527,27 +625,29 @@ del_subscriptions(Topics, SubscriberId) ->
                 end, [], Subs),
     plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs).
 
--spec remap_subscription(subscriber_id()) -> ok | {error, overloaded}.
-remap_subscription(SubscriberId) ->
-    rate_limited_op(
-      fun() ->
-              plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}])
-      end,
-      fun ({error, overloaded}) ->
-              timer:sleep(100),
-              remap_subscription(SubscriberId);
-          (Subs) ->
-              Node = node(),
-              NewSubs =
-              lists:foldl(fun({Topic, QoS, N}, Acc) when N /= Node ->
-                                  [{Topic, QoS, Node}|Acc];
-                             (Sub, Acc) ->
-                                  [Sub|Acc]
-                          end, [], Subs),
-              plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs)),
-              ok
-      end
-     ).
+maybe_remap_subscriber(undefined, _, _) ->
+    %% coming via queue migration, remaping was done inside
+    %% migrate_offline_queue or fix_dead_queues
+    ok;
+maybe_remap_subscriber(_, SubscriberId, #{clean_session := true}) ->
+    %% no need to remap, we can delete this subscriber
+    del_subscriber(SubscriberId);
+maybe_remap_subscriber(_, SubscriberId, _) ->
+    Subs = plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]),
+    Node = node(),
+    {NewSubs, HasChanged} =
+    lists:foldl(fun({Topic, QoS, N}, {Acc, _}) when N =/= Node ->
+                        {[{Topic, QoS, Node}|Acc], true};
+                   (Sub, {Acc, Changed}) ->
+                        {[Sub|Acc], Changed}
+                end, {[], false}, Subs),
+    case HasChanged of
+        true ->
+            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs));
+        false ->
+            ignore
+    end,
+    ok.
 
 -spec get_session_pids(subscriber_id()) ->
     {'error','not_found'} | {'ok', pid(), [pid()]}.
@@ -581,7 +681,7 @@ stored(SubscriberId) ->
     case get_queue_pid(SubscriberId) of
         not_found -> 0;
         QPid ->
-            {_, _, Queued, _} = vmq_queue:status(QPid),
+            {_, _, Queued, _, _} = vmq_queue:status(QPid),
             Queued
     end.
 
