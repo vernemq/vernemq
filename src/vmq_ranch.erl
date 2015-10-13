@@ -59,14 +59,10 @@ init(Ref, Socket, Transport, Opts) ->
 
     MaskedSocket = mask_socket(Transport, Socket),
     %% tune buffer sizes
-    case vmq_config:get_env(tune_tcp_buffer_size, false) of
-        false ->
-            ok;
-        true ->
-            {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
-            BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-            setopts(MaskedSocket, [{buffer, BufSize}])
-    end,
+    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+    setopts(MaskedSocket, [{buffer, BufSize}]),
+
     case active_once(MaskedSocket) of
         ok ->
             process_flag(trap_exit, true),

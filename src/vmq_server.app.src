@@ -73,7 +73,6 @@
             {send_timeout, 30000}, 
             {send_timeout_close, true}
         ]},
-      {tune_tcp_buffer_size, false},
 
       % default message store opts
       {msg_store_childspecs, [{vmq_lvldb_store_sup,
