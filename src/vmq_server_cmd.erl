@@ -31,7 +31,7 @@ node_join(DiscoveryNode) ->
 
 node_leave(Node) ->
     vmq_server_cli:command(["vmq-admin", "cluster", "leave", "node=" ++
-             atom_to_list(Node)], false).
+             atom_to_list(Node), "--kill_sessions"], false).
 
 node_upgrade() ->
     vmq_server_cli:command(["vmq-admin", "node", "upgrade", "--upgrade-now"], false).

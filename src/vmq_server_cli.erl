@@ -109,30 +109,106 @@ vmq_server_status_cmd() ->
     clique:register_command(Cmd, [], [], Callback).
 
 vmq_cluster_leave_cmd() ->
+    %% is must be ensured that the leaving node has NO online session e.g. by
+    %% 1. stopping the listener via vmq-admin listener stop --kill_sessions
+    %% 2. the killed sessions will reconnect to another node (external load balancer)
+    %% 3. the reconnected sessions on the other nodes remap subscriptions and
     Cmd = ["vmq-admin", "cluster", "leave"],
     KeySpecs = [{node, [{typecast, fun (Node) ->
                                            list_to_atom(Node)
                                    end}]}],
-    FlagSpecs = [],
+    FlagSpecs = [{kill, [{shortname, "k"},
+                         {longname, "kill_sessions"}]},
+                 {summary_interval, [{shortname, "i"},
+                                     {longname, "summary-interval"},
+                                     {typecast, fun(I) -> case is_integer(I) of
+                                                              true -> I * 1000;
+                                                              false ->
+                                                                  {error, {invalid_flag_value,
+                                                                           {'summary-interval', I}}}
+                                                          end
+                                                end}]},
+                 {timeout, [{shortname, "t"},
+                            {longname, "timeout"},
+                            {typecast, fun (I) -> case is_integer(I) of
+                                                      true -> I * 1000;
+                                                      false ->
+                                                          {error, {invalid_flag_value,
+                                                                   {timeout, I}}}
+                                                  end
+                                       end}]}],
     Callback = fun([], _) ->
                        Text = clique_status:text("You have to provide a node"),
                        [clique_status:alert([Text])];
-                  ([{node, Node}], []) ->
+                  ([{node, Node}], Flags) ->
+                       IsKill = lists:keymember(kill, 1, Flags),
+                       Interval = proplists:get_value(summary_interval, Flags, 5000),
+                       Timeout = proplists:get_value(timeout, Flags, 60000),
+                       N = Timeout div Interval,
+                       {ok, Local} = plumtree_peer_service_manager:get_local_state(),
+                       TargetNodes = riak_dt_orswot:value(Local) -- [Node],
                        Text =
                        case net_adm:ping(Node) of
                            pang ->
-                               % node is offline, we delete it locally and
-                               % publish the changes ourselves.
-                               leave_cluster(Node);
-                           pong ->
-                               %% node is online, we'll go the proper route
-                               case rpc:call(Node, plumtree_peer_service, leave, [unused_arg]) of
-                                   ok ->
-                                       rpc:call(Node, init, stop, []),
+                               %% node is offline, we've to ensure sessions are
+                               %% remapped and all necessary queues exist.
+                               leave_cluster(Node),
+                               case check_cluster_consistency(TargetNodes, Timeout div 1000) of
+                                   true ->
+                                       vmq_reg:fix_dead_queues([Node], TargetNodes),
                                        "Done";
-                                   {badrpc, Reason} ->
-                                       io_lib:format("~p~n", [Reason])
-                               end
+                                   false ->
+                                       "Can't fix queues because cluster is inconsistent, retry!"
+                               end;
+                           pong when IsKill ->
+                               LeaveFun =
+                               fun() ->
+                                       %% stop all MQTT sessions on Node
+                                       %% Note: ensure loadbalancing will put them on other nodes
+                                       vmq_ranch_config:stop_all_mqtt_listeners(true),
+
+                                       %% At this point, client reconnect and will drain
+                                       %% their queues located at 'Node' migrating them to
+                                       %% their new node.
+                                       case wait_till_all_offline(Interval, N) of
+                                           ok ->
+                                               %% There is no guarantee that all clients will
+                                               %% reconnect on time; we've to force migrate all
+                                               %% offline queues.
+                                               vmq_reg:migrate_offline_queues(TargetNodes),
+                                               %% node is online, we'll go the proper route
+                                               %% instead of calling leave_cluster('Node')
+                                               %% directly
+                                               _ = plumtree_peer_service:leave(unused_arg),
+                                               init:stop();
+                                           error ->
+                                               exit("error, still online queues, check the logs, and retry!")
+                                       end
+                               end,
+                               ProcName = {?MODULE, vmq_server_migration},
+                               case global:whereis_name(ProcName) of
+                                   undefined ->
+                                       case check_cluster_consistency(TargetNodes, Timeout div 1000) of
+                                           true ->
+                                               Pid = spawn(Node, LeaveFun),
+                                               MRef = monitor(process, Pid),
+                                               receive
+                                                   {'DOWN', MRef, process, Pid, normal} ->
+                                                       "Done";
+                                                   {'DOWN', MRef, process, Pid, Reason} ->
+                                                       Reason
+                                               end;
+                                           false ->
+                                               "Can't migrate queues because cluster is inconsistent, retry!"
+                                       end;
+                                   Pid ->
+                                       io_lib:format("Migration already started! ~p", [Pid])
+                               end;
+                           pong ->
+                               %% stop accepting new connections on Node
+                               %% Note: ensure new connections get balanced to other nodes
+                               rpc:call(Node, vmq_ranch_config, stop_all_mqtt_listeners, [false]),
+                               "Done! Use -k to teardown and migrate existing sessions!"
                        end,
                        [clique_status:text(Text)]
                end,
@@ -155,6 +231,33 @@ leave_cluster(Node) ->
                 _ ->
                     leave_cluster(Node)
             end
+    end.
+
+check_cluster_consistency([Node|Nodes] = All, NrOfRetries) ->
+    case rpc:call(Node, vmq_cluster, is_ready, []) of
+        true ->
+            check_cluster_consistency(Nodes, NrOfRetries);
+        false ->
+            timer:sleep(1000),
+            check_cluster_consistency(All, NrOfRetries - 1)
+    end;
+check_cluster_consistency([], _) -> true;
+check_cluster_consistency(_, 0) -> false.
+
+
+
+
+wait_till_all_offline(_, 0) -> error;
+wait_till_all_offline(Sleep, N) ->
+    case vmq_queue_sup:summary() of
+        {0, 0, Drain, Offline, Msgs} ->
+            lager:info("ALL QUEUES OFFLINE: ~p draining, ~p offline, ~p msgs",
+                       [Drain, Offline, Msgs]),
+            ok;
+        {Online, WaitForOffline, Drain, Offline, Msgs} ->
+            lager:info("QUEUE SUMMARY: ~p online, ~p wait_for_offline, ~p draining, ~p offline, ~p msgs", [Online, WaitForOffline, Drain, Offline, Msgs]),
+            timer:sleep(Sleep),
+            wait_till_all_offline(Sleep, N - 1)
     end.
 
 vmq_cluster_join_cmd() ->
@@ -264,8 +367,28 @@ join_usage() ->
     ].
 
 leave_usage() ->
-    ["vmq-admin cluster leave\n\n",
-     "  Leave this cluster.\n\n"
+    ["vmq-admin cluster leave node=<Node> [-k | --kill_sessions]\n\n",
+     "  Graceful cluster-leave and shudown of a cluster node. \n\n",
+     "  If <Node> is already offline its cluster membership gets removed,\n",
+     "  and the queues of the subscribers that have been connected at shutdown\n",
+     "  will be recreated on other cluster nodes. This might involve\n",
+     "  the disconnecting of clients that have already reconnected.\n",
+     "  \n",
+     "  If <Node> is still online all its MQTT listeners (including websockets)\n",
+     "  are stopped and wont therefore accept new connections. Established\n",
+     "  connections aren't canceled at this point. Use --kill_sessions to get\n",
+     "  into the second phase of the graceful shutdown.\n",
+     "  \n",
+     "   --kill_sessions, -k,\n",
+     "       terminates all open MQTT connections, and migrates the queues of\n",
+     "       the clients that used 'clean_session=false' to other cluster nodes.\n",
+     "   --summary-interval=<IntervalInSecs>, -i\n",
+     "       logs the status of an ongoing migration every <IntervalInSecs>\n",
+     "       seconds, defaults to 5 seconds.\n",
+     "   --timeout=<TimeoutInSecs>, -t\n",
+     "       stops the migration process afer <TimeoutInSecs> seconds, defaults\n",
+     "       to 60 seconds. The command can be reissued in case of a timeout.",
+     "\n\n"
     ].
 
 upgrade_usage() ->

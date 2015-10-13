@@ -37,6 +37,8 @@
          stored/1,
          status/1,
 
+         migrate_offline_queues/1,
+         fix_dead_queues/2
 
         ]).
 
@@ -309,6 +311,100 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS) ->
 subscriptions_for_subscriber_id(SubscriberId) ->
     plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]).
 
+migrate_offline_queues([]) -> exit(no_target_available);
+migrate_offline_queues(Targets) ->
+    {_, NrOfQueues, TotalMsgs} = vmq_queue_sup:fold_queues(fun migrate_offline_queue/3, {Targets, 0, 0}),
+    lager:info("MIGRATION SUMMARY: ~p queues migrated, ~p messages", [NrOfQueues, TotalMsgs]),
+    ok.
+
+migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = Acc) ->
+    try vmq_queue:status(QPid) of
+        {_, _, _, _, true} ->
+            %% this is a queue belonging to a plugin.. ignore it.
+            Acc;
+        {offline, _, TotalStoredMsgs, _, _} ->
+            OldNode = node(),
+            %% Remap Subscriptions, taking into account subscriptions
+            %% on other nodes by only remapping subscriptions on 'OldNode'
+            case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
+                undefined ->
+                    ignore;
+                [] ->
+                    ignore;
+                Subs ->
+                    NewSubs =
+                    lists:foldl(
+                      fun({Topic, QoS, Node}, SubsAcc) when Node == OldNode ->
+                              [{Topic, QoS, Target}|SubsAcc];
+                         (Sub, SubsAcc) ->
+                              [Sub|SubsAcc]
+                      end, [], Subs),
+                    plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs))
+            end,
+            QueueOpts = vmq_queue:get_opts(QPid),
+            Req = {migrate_offline_queue, SubscriberId,
+                   maps:put(clean_session, false, QueueOpts)},
+            case gen_server:call({?MODULE, Target}, Req, infinity) of
+                ok ->
+                    MRef = monitor(process, QPid),
+                    receive
+                        {'DOWN', MRef, process, QPid, _} ->
+                            ok
+                    end,
+                    {Targets ++ [Target], AccQs + 1, AccMsgs + TotalStoredMsgs};
+                {error, not_ready} ->
+                    timer:sleep(100),
+                    {Targets ++ [Target], AccQs, AccMsgs}
+            end;
+        _ ->
+            Acc
+    catch
+        _:_ ->
+            %% queue stopped in the meantime, that's ok.
+            Acc
+    end.
+
+fix_dead_queues(_, []) -> exit(no_target_available);
+fix_dead_queues(DeadNodes, AccTargets) ->
+    %% DeadNodes must be a list of offline VerneMQ nodes
+    %% Targets must be a list of online VerneMQ nodes
+    {_, _, N} = fold_subscribers(fun fix_dead_queue/3, {DeadNodes, AccTargets, 0}, false),
+    lager:info("FIX DEAD QUEUES SUMMARY: ~p queues fixed", [N]).
+
+fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
+    %%% Why not use maybe_remap_subscriber/3:
+    %%%  it is possible that the original subscriber has used
+    %%%  allow_multiple_sessions=true
+    %%%
+    %%%  we only remap the subscriptions on dead nodes
+    %%%  and ensure that a queue exist for such subscriptions.
+    %%%  In case allow_multiple_sessions=false (default) all
+    %%%  subscriptions will be remapped
+    {NewSubs, HasChanged} =
+    lists:foldl(
+      fun({Topic, QoS, Node} = S, {AccSubs, Changed}) ->
+              case lists:member(Node, DeadNodes) of
+                  true ->
+                      {[{Topic, QoS, Target}|AccSubs], true};
+                  false ->
+                      {[S|AccSubs], Changed}
+              end
+      end, {[], false}, Subs),
+    case HasChanged of
+        true ->
+            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs)),
+            QueueOpts = vmq_queue:default_opts(),
+            Req = {migrate_offline_queue, SubscriberId, QueueOpts},
+            case gen_server:call({?MODULE, Target}, Req, infinity) of
+                ok ->
+                    lager:info("MIGRATE QUEUE for subscriber ~p to node ~p", [SubscriberId, Target]),
+                    {DeadNodes, Targets ++ [Target], N + 1};
+                {error, not_ready} ->
+                    {DeadNodes, Targets ++ [Target], N}
+            end;
+        false ->
+            {DeadNodes, Targets, N}
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% GEN_SERVER,
