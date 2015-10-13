@@ -174,7 +174,7 @@ handle_info({deliver_remote, Topic, Payload},
       fun({{in, T}, LocalPrefix}) ->
               case vmq_topic:match(Topic, T) of
                   true ->
-                      ok = PublishFun(lists:flatten([LocalPrefix, Topic]), Payload);
+                      ok = PublishFun(routing_key(LocalPrefix, Topic), Payload);
                   false ->
                       ok
               end;
@@ -188,7 +188,7 @@ handle_info({deliver, Topic, Payload, _QoS, _IsRetained, _IsDup},
       fun({{out, T}, QoS, RemotePrefix}) ->
               case vmq_topic:match(Topic, T) of
                   true ->
-                      ok = gen_emqtt:publish(ClientPid, lists:flatten([RemotePrefix, Topic]) ,
+                      ok = gen_emqtt:publish(ClientPid, routing_key(RemotePrefix, Topic) ,
                                              Payload, QoS);
                   false ->
                       ok
@@ -210,7 +210,7 @@ bridge_subscribe(Pid, [{Topic, in, QoS, LocalPrefix, _} = BT|Rest],
         {ok, TTopic} ->
             gen_emqtt:subscribe(Pid, TTopic, QoS),
             bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, TTopic},
-                                                        list_to_binary(LocalPrefix)}|Acc]);
+                                                        validate_prefix(LocalPrefix)}|Acc]);
         {error, Reason} ->
             error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
                                      [BT, Reason]),
@@ -222,7 +222,7 @@ bridge_subscribe(Pid, [{Topic, out, QoS, _, RemotePrefix} = BT|Rest],
         {ok, TTopic} ->
             ok = SubscribeFun(TTopic),
             bridge_subscribe(Pid, Rest, SubscribeFun, [{{out, TTopic}, QoS,
-                                                        list_to_binary(RemotePrefix)}|Acc]);
+                                                        validate_prefix(RemotePrefix)}|Acc]);
         {error, Reason} ->
             error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
                                      [BT, Reason]),
@@ -236,9 +236,9 @@ bridge_subscribe(Pid, [{Topic, both, QoS, LocalPrefix, RemotePrefix} = BT|Rest],
             gen_emqtt:subscribe(Pid, TTopic, QoS),
             ok = SubscribeFun(TTopic),
             bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, TTopic},
-                                                        list_to_binary(LocalPrefix)},
+                                                        validate_prefix(LocalPrefix)},
                                                        {{out, TTopic}, QoS,
-                                                        list_to_binary(RemotePrefix)}|Acc]);
+                                                        validate_prefix(RemotePrefix)}|Acc]);
         {error, Reason} ->
             error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
                                      [BT, Reason]),
@@ -255,6 +255,21 @@ bridge_unsubscribe(Pid, [{{out, Topic}, _, _}|Rest], UnsubscribeFun) ->
     bridge_unsubscribe(Pid, Rest, UnsubscribeFun);
 bridge_unsubscribe(_, [], _) ->
     ok.
+
+validate_prefix(undefined) -> undefined;
+validate_prefix([W|_] = Prefix) when is_binary(W) -> Prefix;
+validate_prefix(Prefix) when is_list(Prefix) ->
+    validate_prefix(list_to_binary(Prefix));
+validate_prefix(Prefix) ->
+    case vmq_topic:validate_topic(publish, Prefix) of
+        {error, no_empty_topic_allowed} ->
+            undefined;
+        {ok, ParsedPrefix} ->
+            ParsedPrefix
+    end.
+
+routing_key(undefined, Topic) -> Topic;
+routing_key(Prefix, Topic) -> lists:flatten([Prefix, Topic]).
 
 client_opts(tcp, Host, Port, Opts) ->
     OOpts =
