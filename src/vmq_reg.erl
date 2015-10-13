@@ -579,10 +579,10 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
 
 plugin_queue_loop(PluginPid, PluginMod) ->
     receive
-        {mail, QPid, new_data} ->
+        {vmq_mqtt_fsm, {mail, QPid, new_data}} ->
             vmq_queue:active(QPid),
             plugin_queue_loop(PluginPid, PluginMod);
-        {mail, QPid, Msgs, _, _} ->
+        {vmq_mqtt_fsm, {mail, QPid, Msgs, _, _}} ->
             lists:foreach(fun({deliver, QoS, #vmq_msg{
                                                 routing_key=RoutingKey,
                                                 payload=Payload,
@@ -599,10 +599,11 @@ plugin_queue_loop(PluginPid, PluginMod) ->
                           end, Msgs),
             vmq_queue:notify(QPid),
             plugin_queue_loop(PluginPid, PluginMod);
-        {'$gen_all_state_event',disconnect} ->
+        {info_req, {Ref, CallerPid}, _} ->
+            CallerPid ! {Ref, {error, i_am_a_plugin}},
+            plugin_queue_loop(PluginPid, PluginMod);
+        disconnect ->
             ok;
-        {'$gen_sync_all_state_event', _, {get_info, []}} ->
-            [];
         {'DOWN', _MRef, process, PluginPid, Reason} ->
             case (Reason == normal) or (Reason == shutdown) of
                 true ->
