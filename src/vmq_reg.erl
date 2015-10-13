@@ -531,7 +531,8 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                                            #{clean_session => true,
                                              is_plugin => true}),
                     {ok, _} = register_subscriber(PluginSessionPid, SubscriberId,
-                                                  QueueOpts, ?NR_OF_REG_RETRIES)
+                                                  QueueOpts, ?NR_OF_REG_RETRIES),
+                    ok
             end,
 
             PublishFun =
