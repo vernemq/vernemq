@@ -42,6 +42,8 @@ register_consistency_test(Config) ->
 
     %% Create Partitions
     {Island1, Island2} = vmq_netsplit_utils:partition_network(Nodes),
+    %% Island1 : [vmq1@marvin, vmq2@marvin]
+    %% Island2 : [vmq3@marvin, vmq4@marvin, vmq5@marvin]
 
     %%================================%%
     %%     Window of Uncertanity      %%
@@ -60,7 +62,7 @@ register_consistency_test(Config) ->
     %%
 
     %% node 3 will as long as it hasn't detected the partition
-    %% allow to connect, PortInIsland2 is of node2
+    %% allow to connect, PortInIsland2 is of node3
 
     PortInIsland1 = vmq_netsplit_utils:get_port(Island1),
     PortInIsland2 = vmq_netsplit_utils:get_port(Island2),
