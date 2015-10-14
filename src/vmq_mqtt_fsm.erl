@@ -185,7 +185,7 @@ wait_for_connect(#mqtt_connect{keep_alive=KeepAlive} = Frame,
     cancel_timer(TRef),
     _ = vmq_exo:incr_connect_received(),
     %% the client is allowed "grace" of a half a time period
-    KKeepAlive = (KeepAlive + (KeepAlive div 2)) * 1000,
+    KKeepAlive = 1500 * KeepAlive,
     set_keepalive_timer(KKeepAlive),
     check_connect(Frame, incr_msg_recv_cnt(
                            State#state{keep_alive=KKeepAlive,
@@ -672,36 +672,26 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
 
 -spec dispatch_publish_qos1(msg_id(), msg(), state()) -> {state(), list()}.
 dispatch_publish_qos1(MessageId, Msg, State) ->
-    case check_in_flight(State) of
-        true ->
-            #state{username=User, subscriber_id=SubscriberId} = State,
-            case publish(User, SubscriberId, Msg) of
-                {ok, _} ->
-                    send_frame(#mqtt_puback{message_id=MessageId}, State);
-                {error, _Reason} ->
-                    %% can't publish due to overload or netsplit
-                    {drop(State), []}
-            end;
-        false ->
+    #state{username=User, subscriber_id=SubscriberId} = State,
+    case publish(User, SubscriberId, Msg) of
+        {ok, _} ->
+            send_frame(#mqtt_puback{message_id=MessageId}, State);
+        {error, _Reason} ->
+            %% can't publish due to overload or netsplit
             {drop(State), []}
     end.
 
 -spec dispatch_publish_qos2(msg_id(), msg(), state()) -> {state(), list()}.
 dispatch_publish_qos2(MessageId, Msg, State) ->
-    case check_in_flight(State) of
-        true ->
-            #state{waiting_acks=WAcks, retry_interval=RetryInterval,
-                   send_cnt=SendCnt} = State,
-            Ref = send_after(RetryInterval, {retry, {qos2, MessageId}}),
-            Frame = #mqtt_pubrec{message_id=MessageId},
-            {State#state{
-              send_cnt=incr_msg_sent_cnt(SendCnt),
-              waiting_acks=maps:put(
-                             {qos2, MessageId}, {Ref, Frame, Msg}, WAcks)},
-             [Frame]};
-        false ->
-            {drop(State), []}
-    end.
+    #state{waiting_acks=WAcks, retry_interval=RetryInterval,
+           send_cnt=SendCnt} = State,
+    Ref = send_after(RetryInterval, {retry, {qos2, MessageId}}),
+    Frame = #mqtt_pubrec{message_id=MessageId},
+    {State#state{
+       send_cnt=incr_msg_sent_cnt(SendCnt),
+       waiting_acks=maps:put(
+                      {qos2, MessageId}, {Ref, Frame, Msg}, WAcks)},
+     [Frame]}.
 
 drop(State) ->
     drop(1, State).
