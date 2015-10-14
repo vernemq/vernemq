@@ -118,13 +118,21 @@ unsubscribe(true, User, SubscriberId, Topics) ->
     unsubscribe_op(User, SubscriberId, Topics).
 
 unsubscribe_op(User, SubscriberId, Topics) ->
+    TTopics =
+    case vmq_plugin:all_till_ok(on_unsubscribe, [User, SubscriberId, Topics]) of
+        ok ->
+            Topics;
+        {ok, [[W|_]|_] = NewTopics} when is_binary(W) ->
+            NewTopics;
+        {error, _} ->
+            Topics
+    end,
     rate_limited_op(
       fun() ->
-              del_subscriptions(Topics, SubscriberId)
+              del_subscriptions(TTopics, SubscriberId)
       end,
       fun(_) ->
-              _ = [vmq_exo:decr_subscription_count() || _ <- Topics],
-              _ = vmq_plugin:all(on_unsubscribe, [User, SubscriberId, Topics]),
+              _ = [vmq_exo:decr_subscription_count() || _ <- TTopics],
               ok
       end).
 

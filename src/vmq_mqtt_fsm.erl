@@ -782,20 +782,36 @@ handle_bin_message({MsgId, Bin}, State) ->
                 waiting_acks=maps:put(MsgId, {Ref, Bin}, WAcks)}.
 
 prepare_frame(QoS, Msg, State) ->
-    #state{waiting_acks=WAcks, retry_interval=RetryInterval} = State,
+    #state{username=User, subscriber_id=SubscriberId, waiting_acks=WAcks,
+           retry_interval=RetryInterval} = State,
     #vmq_msg{routing_key=Topic,
              payload=Payload,
              retain=IsRetained,
              dup=IsDup,
              qos=MsgQoS} = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
+    HookArgs = [User, SubscriberId, Topic, Payload],
+    {NewTopic, NewPayload} =
+    case vmq_plugin:all_till_ok(on_deliver, HookArgs) of
+        {error, _} ->
+            %% no on_deliver hook specified... that's ok
+            {Topic, Payload};
+        ok ->
+            {Topic, Payload};
+        {ok, ChangedPayload} when is_binary(ChangedPayload) ->
+            {Topic, ChangedPayload};
+        {ok, Args} when is_list(Args) ->
+            ChangedTopic = proplists:get_value(topic, Args, Topic),
+            ChangedPayload = proplists:get_value(payload, Args, Payload),
+            {ChangedTopic, ChangedPayload}
+    end,
     {OutgoingMsgId, State1} = get_msg_id(NewQoS, State),
     Frame = #mqtt_publish{message_id=OutgoingMsgId,
-                          topic=Topic,
+                          topic=NewTopic,
                           qos=NewQoS,
                           retain=IsRetained,
                           dup=IsDup,
-                          payload=Payload},
+                          payload=NewPayload},
     case NewQoS of
         0 ->
             {Frame, State1};
