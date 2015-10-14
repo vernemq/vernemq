@@ -14,7 +14,7 @@ socket_to_common_name(Socket) ->
             extract_cn(Subject)
     end.
 
--spec extract_cn({'rdnSequence', list()}) -> undefined | list().
+-spec extract_cn({'rdnSequence', list()}) -> undefined | binary().
 extract_cn({rdnSequence, List}) ->
     extract_cn2(List).
 
@@ -22,7 +22,7 @@ extract_cn({rdnSequence, List}) ->
 extract_cn2([[#'AttributeTypeAndValue'{
                  type=?'id-at-commonName',
                  value={utf8String, CN}}]|_]) ->
-    unicode:characters_to_list(CN);
+    list_to_binary(unicode:characters_to_list(CN));
 extract_cn2([_|Rest]) ->
     extract_cn2(Rest);
 extract_cn2([]) -> undefined.

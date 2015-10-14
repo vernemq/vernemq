@@ -68,6 +68,7 @@ init([]) ->
             _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
             %% the event handler is added after the timeout
             erlang:send_after(?RECHECK_INTERVAL, self(), recheck),
+            process_flag(trap_exit, true), %% we can unregister the event handler
             {ok, #state{}, 0};
         {error, Reason} ->
             {stop, Reason}
@@ -148,7 +149,8 @@ handle_info(recheck, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(Reason, _State) ->
+    gen_event:delete_handler(plumtree_peer_service_events, vmq_cluster, [Reason]),
     ok.
 
 %%--------------------------------------------------------------------

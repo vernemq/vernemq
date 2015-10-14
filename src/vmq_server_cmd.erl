@@ -31,7 +31,7 @@ node_join(DiscoveryNode) ->
 
 node_leave(Node) ->
     vmq_server_cli:command(["vmq-admin", "cluster", "leave", "node=" ++
-             atom_to_list(Node)], false).
+             atom_to_list(Node), "--kill_sessions"], false).
 
 node_upgrade() ->
     vmq_server_cli:command(["vmq-admin", "node", "upgrade", "--upgrade-now"], false).
@@ -39,7 +39,7 @@ node_upgrade(InstructionFile) ->
     vmq_server_cli:command(["vmq-admin", "node", "upgrade", "--upgrade-now", "--instruction-file=" ++ InstructionFile], false).
 
 list_sessions() ->
-    list_sessions(vmq_session:info_items()).
+    list_sessions(vmq_mqtt_fsm:info_items()).
 list_sessions(InfoItems) ->
     vmq_server_cli:command(["vmq-admin", "session", "list"
              | ["--" ++ atom_to_list(I) || I <- InfoItems]], false).

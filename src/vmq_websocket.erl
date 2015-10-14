@@ -19,10 +19,10 @@
 -export([terminate/3]).
 
 -record(st, {buffer= <<>>,
-             parser_state,
-             session,
+             fsm_mod,
+             fsm_state,
              bytes_recv={os:timestamp(), 0},
-             bytes_send={os:timestamp(), 0}}).
+             bytes_sent={os:timestamp(), 0}}).
 
 -define(SUPPORTED_PROTOCOLS, [<<"mqttv3.1">>, <<"mqtt">>]).
 
@@ -42,104 +42,84 @@ init(Req, Opts) ->
 
 init_(Req, Opts) ->
     Peer = cowboy_req:peer(Req),
-    Self = self(),
-    SendFun = fun(F) -> send(Self, F), ok end,
-    {ok, SessionPid} = vmq_session:start_link(Peer, SendFun, Opts),
-    process_flag(trap_exit, true),
+    FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
+    FsmState = FsmMod:init(Peer, Opts),
     _ = vmq_exo:incr_socket_count(),
-    {cowboy_websocket, Req, #st{session=SessionPid}}.
+    {cowboy_websocket, Req, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
 
-websocket_handle({binary, Bytes}, Req, State) ->
-    #st{session=SessionPid,
-        parser_state=ParserState,
-        bytes_recv={TS, V}} = State,
-    case process_bytes(SessionPid, Bytes, ParserState) of
-        {ok, NewParserState} ->
-            {M, S, _} = TS,
-            NrOfBytes = byte_size(Bytes),
-            BytesRecvLastSecond = V + NrOfBytes,
-            NewBytesRecv =
-            case os:timestamp() of
-                {M, S, _} = NewTS ->
-                    {NewTS, BytesRecvLastSecond};
-                NewTS ->
-                    _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
-                    {NewTS, 0}
-            end,
-            {ok, Req, State#st{parser_state=NewParserState,
-                               bytes_recv=NewBytesRecv}};
-        {throttled, HoldBackBuf} ->
-            timer:sleep(1000),
-            websocket_handle({binary, HoldBackBuf}, Req,
-                             State#st{parser_state= <<>>});
-        {error, Reason} ->
-            lager:warning("[~p] ws session stopped abnormally due to '~p'", [SessionPid, Reason]),
-            {shutdown, Req, State}
-    end;
-
+websocket_handle({binary, Data}, Req, State) ->
+    #st{fsm_state=FsmState0,
+        fsm_mod=FsmMod,
+        buffer=Buffer,
+        bytes_recv={{M, S, _}, V}} = State,
+    NrOfBytes = byte_size(Data),
+    BytesRecvLastSecond = V + NrOfBytes,
+    NewBytesRecv =
+    case os:timestamp() of
+        {M, S, _} = NewTS ->
+            {NewTS, BytesRecvLastSecond};
+        NewTS ->
+            _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
+            {NewTS, 0}
+    end,
+    handle_fsm_return(
+      FsmMod:data_in(<<Buffer/binary, Data/binary>>, FsmState0),
+      Req, State#st{bytes_recv=NewBytesRecv});
 websocket_handle(_Data, Req, State) ->
     {ok, Req, State}.
 
-websocket_info({send, Bin}, Req, State) ->
-    {reply, {binary, Bin}, Req, State};
-websocket_info({send_frames, Frames}, Req, #st{bytes_send={{M, S, _}, V}} = State) ->
-    Data = lists:foldl(fun(Frame, Acc) ->
-                               Bin = vmq_parser:serialise(Frame),
-                               [Bin|Acc]
-                       end, [], Frames),
-    NrOfBytes = iolist_size(Data),
-    NewBytesSend =
-    case os:timestamp() of
-        {M, S, _} = TS ->
-            {TS, V + NrOfBytes};
-        TS ->
-            _ = vmq_exo:incr_bytes_sent(V + NrOfBytes),
-            {TS, 0}
-    end,
-    {reply, {binary, lists:reverse(Data)}, Req, State#st{bytes_send=NewBytesSend}};
-
-websocket_info({'EXIT', _, Reason}, Req, #st{session=SessionPid} = State) ->
-    case Reason of
-        normal ->
-            lager:debug("[~p] ws session normally stopped", [SessionPid]);
-        shutdown ->
-            lager:debug("[~p] ws session stopped due to shutdown", [SessionPid]);
-        _ ->
-            lager:warning("[~p] ws session stopped abnormally due to ~p", [SessionPid, Reason])
-    end,
+websocket_info({?MODULE, terminate}, Req, State) ->
     {shutdown, Req, State};
+websocket_info({FsmMod, Msg}, Req, #st{fsm_mod=FsmMod, fsm_state=FsmState} = State) ->
+    handle_fsm_return(FsmMod:msg_in(Msg, FsmState), Req, State);
 websocket_info(_Info, Req, State) ->
     {ok, Req, State}.
 
-terminate(_Reason, _Req, #st{session=SessionPid}) ->
-    vmq_session:disconnect(SessionPid, false),
+terminate(_Reason, _Req, #st{fsm_state=terminated}) ->
+    _ = vmq_exo:decr_socket_count(),
+    ok;
+terminate(_Reason, _Req, #st{fsm_mod=FsmMod, fsm_state=FsmState}) ->
+    _ = FsmMod:msg_in(disconnect, FsmState),
+    _ = vmq_exo:decr_socket_count(),
     ok.
 
-send(TransportPid, Bin) when is_binary(Bin) ->
-    TransportPid ! {send, Bin},
-    ok;
-send(TransportPid, [F|_] = Frames) when is_tuple(F) ->
-    TransportPid ! {send_frames, Frames},
-    ok;
-send(TransportPid, Frame) when is_tuple(Frame) ->
-    TransportPid ! {send_frames, [Frame]},
-    ok.
+handle_fsm_return({ok, FsmState, Rest, Out}, Req, State) ->
+    maybe_reply(Out, Req, State#st{fsm_state=FsmState, buffer=Rest});
+handle_fsm_return({throttle, FsmState, Rest, Out}, Req, State) ->
+    timer:sleep(1000),
+    maybe_reply(Out, Req, State#st{fsm_state=FsmState, buffer=Rest});
+handle_fsm_return({ok, FsmState, Out}, Req, State) ->
+    maybe_reply(Out, Req, State#st{fsm_state=FsmState});
+handle_fsm_return({stop, normal, Out}, Req, State) ->
+    lager:debug("[~p] ws session normally stopped", [self()]),
+    self() ! {?MODULE, terminate},
+    maybe_reply(Out, Req, State#st{fsm_state=terminated});
+handle_fsm_return({stop, shutdown, Out}, Req, State) ->
+    lager:debug("[~p] ws session stopped due to shutdown", [self()]),
+    self() ! {?MODULE, terminate},
+    maybe_reply(Out, Req, State#st{fsm_state=terminated});
+handle_fsm_return({stop, Reason, Out}, Req, State) ->
+    lager:warning("[~p] ws session stopped abnormally due to '~p'", [self(), Reason]),
+    self() ! {?MODULE, terminate},
+    maybe_reply(Out, Req, State#st{fsm_state=terminated});
+handle_fsm_return({error, Reason, Out}, Req, State) ->
+    lager:warning("[~p] ws session error, force terminate due to '~p'", [self(), Reason]),
+    self() ! {?MODULE, terminate},
+    maybe_reply(Out, Req, State#st{fsm_state=terminated}).
 
-process_bytes(SessionPid, Bytes, undefined) ->
-    process_bytes(SessionPid, Bytes, <<>>);
-process_bytes(SessionPid, Bytes, ParserState) ->
-    NewParserState = <<ParserState/binary, Bytes/binary>>,
-    case vmq_parser:parse(NewParserState) of
-        more ->
-            {ok, NewParserState};
-        {{error, _} = Error, _} ->
-            Error;
-        {Frame, Rest} ->
-            Ret = vmq_session:in(SessionPid, Frame),
-            case Ret of
-                throttle ->
-                    {throttled, Rest};
-                _ ->
-                    process_bytes(SessionPid, Rest, <<>>)
-            end
+maybe_reply(Out, Req, #st{bytes_sent={{M, S, _}, V}} = State) ->
+    case iolist_size(Out) of
+        0 ->
+            {ok, Req, State};
+        NrOfBytes ->
+            BytesSentLastSecond = V + NrOfBytes,
+            NewBytesSent =
+            case os:timestamp() of
+                {M, S, _} = NewTS ->
+                    {NewTS, BytesSentLastSecond};
+                NewTS ->
+                    _ = vmq_exo:incr_bytes_sent(BytesSentLastSecond),
+                    {NewTS, 0}
+            end,
+            {reply, {binary, Out}, Req, State#st{bytes_sent=NewBytesSent}}
     end.

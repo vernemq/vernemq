@@ -165,18 +165,18 @@ retain_qos1_qos0_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_,{"", "retain-qos0-test"}, [{"retain/qos0/test",0}]) -> ok;
-hook_auth_on_subscribe(_,{"", "retain-qos0-rep-test"}, [{"retain/qos0/test",0}]) -> ok;
-hook_auth_on_subscribe(_,{"", "retain-qos0-fresh-test"}, [{"retain/qos0/test",0}]) -> ok;
-hook_auth_on_subscribe(_,{"", "retain-clear-test"}, [{"retain/clear/test",0}]) -> ok;
-hook_auth_on_subscribe(_,{"", "retain-qos1-test"}, [{"retain/qos1/test",0}]) -> ok.
+hook_auth_on_subscribe(_,{"", <<"retain-qos0-test">>}, [{[<<"retain">>, <<"qos0">>, <<"test">>],0}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"retain-qos0-rep-test">>}, [{[<<"retain">>, <<"qos0">>, <<"test">>],0}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"retain-qos0-fresh-test">>}, [{[<<"retain">>,<<"qos0">>,<<"test">>],0}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"retain-clear-test">>}, [{[<<"retain">>,<<"clear">>,<<"test">>],0}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"retain-qos1-test">>}, [{[<<"retain">>,<<"qos1">>,<<"test">>],0}]) -> ok.
 
-hook_auth_on_publish(_, _, _MsgId, ["retain","qos0","test"], <<"retained message">>, true) -> ok;
+hook_auth_on_publish(_, _, _MsgId, [<<"retain">>,<<"qos0">>,<<"test">>], <<"retained message">>, true) -> ok;
 %% retain_qos0_clear(_) Both cases must be covered retain and clear-retain
-hook_auth_on_publish(_, _, _MsgId, ["retain","clear","test"], <<"retained message">>, true) -> ok;
-hook_auth_on_publish(_, _, _MsgId, ["retain","clear","test"], <<>>, true) -> ok;
+hook_auth_on_publish(_, _, _MsgId, [<<"retain">>,<<"clear">>,<<"test">>], <<"retained message">>, true) -> ok;
+hook_auth_on_publish(_, _, _MsgId, [<<"retain">>,<<"clear">>,<<"test">>], <<>>, true) -> ok;
 %
-hook_auth_on_publish(_, _, _MsgId, ["retain","qos1","test"], <<"retained message">>, true) -> ok.
+hook_auth_on_publish(_, _, _MsgId, [<<"retain">>,<<"qos1">>,<<"test">>], <<"retained message">>, true) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

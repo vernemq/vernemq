@@ -72,9 +72,9 @@ clean_session_qos1_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_,{"", "clean-qos1-test"}, [{"qos1/clean_session/test",1}]) -> ok.
+hook_auth_on_subscribe(_,{"", <<"clean-qos1-test">>}, [{[<<"qos1">>, <<"clean_session">>, <<"test">>],1}]) -> ok.
 
-hook_auth_on_publish(_, _, _MsgId, ["qos1","clean_session","test"], <<"clean-session-message">>, false) -> ok.
+hook_auth_on_publish(_, _, _MsgId, [<<"qos1">>,<<"clean_session">>,<<"test">>], <<"clean-session-message">>, false) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

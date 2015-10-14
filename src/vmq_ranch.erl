@@ -23,8 +23,9 @@
          loop/1]).
 
 -record(st, {socket,
-             parser_state,
-             session,
+             buffer= <<>>,
+             fsm_mod,
+             fsm_state,
              proto_tag,
              pending=[],
              throttled=false,
@@ -36,20 +37,8 @@ start_link(Ref, Socket, Transport, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
     {ok, Pid}.
 
-send(TransportPid, Bin) when is_binary(Bin) ->
-    TransportPid ! {send, Bin},
-    ok;
-send(TransportPid, Frames) when is_list(Frames) ->
-    TransportPid ! {send_frames, Frames},
-    ok;
-send(TransportPid, Frame) when is_tuple(Frame) ->
-    TransportPid ! {send_frames, [Frame]},
-    ok.
-
 init(Ref, Socket, Transport, Opts) ->
     ok = ranch:accept_ack(Ref),
-    Self = self(),
-    SendFun = fun(F) -> send(Self, F), ok end,
     NewOpts =
     case Transport of
         ranch_ssl ->
@@ -63,25 +52,24 @@ init(Ref, Socket, Transport, Opts) ->
             Opts
     end,
 
-    {ok, Peer} = Transport:peername(Socket),
-    {ok, SessionPid} = vmq_session:start_link(Peer, SendFun, NewOpts),
+    FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
 
-    process_flag(trap_exit, true),
+    {ok, Peer} = Transport:peername(Socket),
+    FsmState = FsmMod:init(Peer, NewOpts),
+
     MaskedSocket = mask_socket(Transport, Socket),
     %% tune buffer sizes
-    case vmq_config:get_env(tune_tcp_buffer_size, false) of
-        false ->
-            ok;
-        true ->
-            {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
-            BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-            setopts(MaskedSocket, [{buffer, BufSize}])
-    end,
+    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+    setopts(MaskedSocket, [{buffer, BufSize}]),
+
     case active_once(MaskedSocket) of
         ok ->
+            process_flag(trap_exit, true),
             _ = vmq_exo:incr_socket_count(),
             loop(#st{socket=MaskedSocket,
-                     session=SessionPid,
+                     fsm_state=FsmState,
+                     fsm_mod=FsmMod,
                      proto_tag=proto_tag(Transport)});
         {error, Reason} ->
             exit(Reason)
@@ -110,16 +98,19 @@ loop_({exit, Reason, State}) ->
     _ = internal_flush(State),
     teardown(State, Reason).
 
-teardown(#st{session=SessionPid, socket=Socket}, Reason) ->
+teardown(#st{socket=Socket}, Reason) ->
     case Reason of
         normal ->
-            lager:debug("[~p] session normally stopped", [SessionPid]);
+            lager:debug("[~p] session normally stopped", [self()]);
         shutdown ->
-            lager:debug("[~p] session stopped due to shutdown", [SessionPid]);
+            lager:debug("[~p] session stopped due to shutdown", [self()]);
         _ ->
-            lager:warning("[~p] session stopped abnormally due to '~p'", [SessionPid, Reason])
+            lager:warning("[~p] session stopped abnormally due to '~p'", [self(), Reason])
     end,
-    fast_close(Socket).
+    fast_close(Socket),
+    _ = vmq_exo:decr_socket_count(),
+    ok.
+
 
 
 proto_tag(ranch_tcp) -> {tcp, tcp_closed, tcp_error};
@@ -168,75 +159,64 @@ setopts({ssl, Socket}, Opts) ->
 setopts(Socket, Opts) ->
     inet:setopts(Socket, Opts).
 
-process_bytes(SessionPid, Bytes, undefined) ->
-    process_bytes(SessionPid, Bytes, <<>>);
-process_bytes(SessionPid, Bytes, ParserState) ->
-    NewParserState = <<ParserState/binary, Bytes/binary>>,
-    case vmq_parser:parse(NewParserState) of
-        more ->
-            {ok, NewParserState};
-        {{error, _} = Error, _} ->
-            Error;
-        {#mqtt_disconnect{} = Frame, _Rest} ->
-            vmq_session:in(SessionPid, Frame),
-            bye;
-        {Frame, Rest} ->
-            Ret = vmq_session:in(SessionPid, Frame),
-            case Ret of
-                throttle ->
-                    {throttled, Rest};
-                _ ->
-                    process_bytes(SessionPid, Rest, <<>>)
-            end
-    end.
-
-handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}} = State) ->
-    #st{session=SessionPid,
+handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = State) ->
+    #st{fsm_state=FsmState0,
         socket=Socket,
-        parser_state=ParserState,
-        bytes_recv={TS, V}} = State,
-    case process_bytes(SessionPid, Data, ParserState) of
-        {ok, NewParserState} ->
-            {M, S, _} = TS,
-            NrOfBytes = byte_size(Data),
-            BytesRecvLastSecond = V + NrOfBytes,
-            NewBytesRecv =
-            case os:timestamp() of
-                {M, S, _} = NewTS ->
-                    {NewTS, BytesRecvLastSecond};
-                NewTS ->
-                    _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
-                    {NewTS, 0}
-            end,
+        pending=Pending,
+        buffer=Buffer,
+        bytes_recv={{M, S, _}, V}} = State,
+    NrOfBytes = byte_size(Data),
+    BytesRecvLastSecond = V + NrOfBytes,
+    NewBytesRecv =
+    case os:timestamp() of
+        {M, S, _} = NewTS ->
+            {NewTS, BytesRecvLastSecond};
+        NewTS ->
+            _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
+            {NewTS, 0}
+    end,
+    case FsmMod:data_in(<<Buffer/binary, Data/binary>>, FsmState0) of
+        {ok, FsmState1, Rest, Out} ->
             case active_once(Socket) of
                 ok ->
-                    State#st{parser_state=NewParserState,
-                             bytes_recv=NewBytesRecv};
+                    maybe_flush(State#st{fsm_state=FsmState1,
+                                         pending=[Pending|Out],
+                                         buffer=Rest,
+                                         bytes_recv=NewBytesRecv});
                 {error, Reason} ->
-                    {exit, Reason, State}
+                    {exit, Reason, State#st{pending=[Pending|Out],
+                                               fsm_state=FsmState1}}
             end;
-        {throttled, Rest} ->
+        {stop, Reason, Out} ->
+            {exit, Reason, State#st{pending=[Pending|Out],
+                                       bytes_recv=NewBytesRecv}};
+        {throttle, FsmState1, Rest, Out} ->
             erlang:send_after(1000, self(), restart_work),
-            State#st{throttled=true, parser_state=Rest};
-        bye ->
-            {exit, normal, State};
-        {error, Reason} ->
+            maybe_flush(State#st{fsm_state=FsmState1,
+                                 pending=[Pending|Out],
+                                 throttled=true,
+                                 buffer=Rest,
+                                 bytes_recv=NewBytesRecv});
+        {error, Reason, Out} ->
             lager:debug("[~p][~p] parse error '~p' for data: ~p and  parser state: ~p",
-                        [Proto, SessionPid, Reason, Data, ParserState]),
-            {exit, Reason, State}
+                        [Proto, self(), Reason, Data, Buffer]),
+            {exit, Reason, State#st{pending=[Pending|Out],
+                                    bytes_recv=NewBytesRecv}}
     end;
-handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}} = State) ->
+handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}, fsm_mod=FsmMod} = State) ->
     %% we regard a tcp_closed as 'normal'
-    vmq_session:disconnect(State#st.session, true),
+    _ = FsmMod:msg_in(disconnect, State#st.fsm_state),
     {exit, normal, State};
 handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
     {exit, Error, State};
-handle_message({'EXIT', SessionPid, Reason}, #st{session=SessionPid} = State) ->
-    {exit, Reason, State};
-handle_message({send, Bin}, #st{pending=Pending} = State) ->
-    maybe_flush(State#st{pending=[Bin|Pending]});
-handle_message({send_frames, Frames}, State) ->
-    send_frames(Frames, State);
+handle_message({FsmMod, Msg}, #st{pending=Pending, fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
+    case FsmMod:msg_in(Msg, FsmState0) of
+        {ok, FsmState1, Out} ->
+            maybe_flush(State#st{fsm_state=FsmState1,
+                                 pending=[Pending|Out]});
+        {stop, Reason, Out} ->
+            {exit, Reason, State#st{pending=[Pending|Out]}}
+    end;
 handle_message({inet_reply, _, ok}, State) ->
     State;
 handle_message({inet_reply, _, Status}, State) ->
@@ -244,13 +224,17 @@ handle_message({inet_reply, _, Status}, State) ->
 handle_message(restart_work, #st{throttled=true} = State) ->
     #st{proto_tag={Proto, _, _}, socket=Socket} = State,
     handle_message({Proto, Socket, <<>>}, State#st{throttled=false});
-handle_message(Msg, State) ->
-    {exit, {unknown_message_type, Msg}, State}.
-
-send_frames([Frame|Frames], #st{pending=Pending} = State) ->
-    Bin = vmq_parser:serialise(Frame),
-    send_frames(Frames, maybe_flush(State#st{pending=[Bin|Pending]}));
-send_frames(_, State) -> State.
+handle_message({'EXIT', _Parent, Reason}, #st{fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
+    _ = FsmMod:msg_in(disconnect, FsmState0),
+    {exit, Reason, State};
+handle_message(OtherMsg, #st{fsm_state=FsmState0, fsm_mod=FsmMod, pending=Pending} = State) ->
+    case FsmMod:msg_in(OtherMsg, FsmState0) of
+        {ok, FsmState1, Out} ->
+            maybe_flush(State#st{fsm_state=FsmState1,
+                                 pending=[Pending|Out]});
+        {stop, Reason, Out} ->
+            {exit, Reason, State#st{pending=[Pending|Out]}}
+    end.
 
 %% This magic number is the tcp-over-ethernet MSS (1460) minus the 4 byte
 %% header of the Publish frame. The idea is that we want to flush just before
@@ -267,7 +251,7 @@ maybe_flush(#st{pending=Pending} = State) ->
 internal_flush(#st{pending=[]} = State) -> State;
 internal_flush(#st{pending=Pending, socket=Socket,
                    bytes_send={{M, S, _}, V}} = State) ->
-    case port_cmd(Socket, lists:reverse(Pending)) of
+    case port_cmd(Socket, Pending) of
         ok ->
             NrOfBytes = iolist_size(Pending),
             NewBytesSend =

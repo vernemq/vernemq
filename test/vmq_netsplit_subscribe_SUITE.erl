@@ -65,12 +65,13 @@ subscribe_clean_session_test(Config) ->
     timer:sleep(100),
     Island1Res = vmq_netsplit_utils:proxy_multicall(Island1, vmq_reg,
                                                     subscriptions_for_subscriber_id,
-                                                    [{"", "test-netsplit-client"}]),
+                                                    [{"", <<"test-netsplit-client">>}]),
     ct:pal("subscrptions on island 1: ~p", [Island1Res]),
-    Island1Res = [[{"netsplit/0/test", 0, FirstNode}] || _ <- lists:seq(1, length(Island1))],
+    Island1Res = [[{[<<"netsplit">>, <<"0">>, <<"test">>], 0, FirstNode}]
+                  || _ <- lists:seq(1, length(Island1))],
     Island2Res = vmq_netsplit_utils:proxy_multicall(Island2, vmq_reg,
                                                     subscriptions_for_subscriber_id,
-                                                    [{"", "test-netsplit-client"}]),
+                                                    [{"", <<"test-netsplit-client">>}]),
     Island2Res =  [[] || _ <- lists:seq(1, length(Island2))],
 
     %% SLEEP until cluster knows about net split
@@ -95,5 +96,6 @@ subscribe_clean_session_test(Config) ->
     timer:sleep(10000), %% wait until async rebuild triggered
     NodesRes = vmq_netsplit_utils:proxy_multicall(Nodes, vmq_reg,
                                                   subscriptions_for_subscriber_id,
-                                                  [{"", "test-netsplit-client"}]),
-    NodesRes = [[{"netsplit/0/test", 0, FirstNode}] || _ <- lists:seq(1, length(Nodes))].
+                                                  [{"", <<"test-netsplit-client">>}]),
+    NodesRes = [[{[<<"netsplit">>, <<"0">>, <<"test">>], 0, FirstNode}]
+                || _ <- lists:seq(1, length(Nodes))].

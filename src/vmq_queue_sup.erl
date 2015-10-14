@@ -18,7 +18,8 @@
 -export([start_link/3,
          start_queue/1,
          get_queue_pid/1,
-         fold_queues/2]).
+         fold_queues/2,
+         summary/0]).
 
 %% Supervisor callbacks
 -export([init/4]).
@@ -45,7 +46,7 @@ start_link(Shutdown, MaxR, MaxT) ->
         {ok, Pid} = Ret ->
             register(?MODULE, Pid),
             {InitPid, MRef} = spawn_monitor(vmq_reg, fold_subscribers,
-                                            [fun fold_subscribers/2, ok]),
+                                            [fun fold_subscribers/3, ok]),
             receive
                 {'DOWN', MRef, process, InitPid, normal} ->
                     Ret;
@@ -57,10 +58,13 @@ start_link(Shutdown, MaxR, MaxT) ->
             {error, Error}
     end.
 
-fold_subscribers({_, _, {SubscriberId, _, undefined}}, Acc) ->
-    start_queue(SubscriberId),
-    Acc;
-fold_subscribers(_, Acc) -> Acc.
+fold_subscribers(SubscriberId, Nodes, Acc) ->
+    case lists:member(node(), Nodes) of
+        true ->
+            start_queue(SubscriberId);
+        false ->
+            Acc
+    end.
 
 start_queue(SubscriberId) ->
     Ref = make_ref(),
@@ -81,6 +85,29 @@ fold_queues(FoldFun, Acc) ->
     ets:foldl(fun({SubscriberId, QPid}, AccAcc) ->
                       FoldFun(SubscriberId, QPid, AccAcc)
               end, Acc, ?QUEUE_TAB).
+
+summary() ->
+    fold_queues(
+      fun(_, QPid, {AccOnline, AccWait, AccDrain, AccOffline, AccStoredMsgs} = Acc) ->
+              try vmq_queue:status(QPid) of
+                  {_, _, _, _, true} ->
+                      %% this is a queue belonging to a plugin... ignore it
+                      Acc;
+                  {online, _, TotalStoredMsgs, _, _} ->
+                      {AccOnline + 1, AccWait, AccDrain, AccOffline, AccStoredMsgs + TotalStoredMsgs};
+                  {wait_for_offline, _, TotalStoredMsgs, _, _} ->
+                      {AccOnline, AccWait + 1, AccDrain, AccOffline, AccStoredMsgs + TotalStoredMsgs};
+                  {drain, _, TotalStoredMsgs, _, _} ->
+                      {AccOnline, AccWait, AccDrain + 1, AccOffline, AccStoredMsgs + TotalStoredMsgs};
+                  {offline, _, TotalStoredMsgs, _, _} ->
+                      {AccOnline, AccWait, AccDrain, AccOffline + 1, AccStoredMsgs + TotalStoredMsgs}
+              catch
+                  _:_ ->
+                      %% queue stopped in the meantime, that's ok.
+                      Acc
+              end
+      end, {0, 0, 0, 0, 0}).
+
 
 %%%===================================================================
 %%% Supervisor callbacks

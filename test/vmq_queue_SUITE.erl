@@ -51,98 +51,101 @@ all() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 queue_crash_test(_) ->
     Parent = self(),
-    SubscriberId = {"", "mock-client"},
+    SubscriberId = {"", <<"mock-client">>},
     QueueOpts = maps:merge(#{clean_session => false}, vmq_queue:default_opts()),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid1} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, "mock-user", SubscriberId, [{"test/topic", 1}]),
+    {ok, QPid1} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
+                           [{[<<"test">>, <<"topic">>], 1}]),
     %% at this point we've a working subscription
-    Msg = msg("test/topic", "test-message", 0),
+    timer:sleep(10),
+    Msg = msg([<<"test">>, <<"topic">>], <<"test-message">>, 0),
     ok = vmq_reg:publish(Msg),
     receive_msg(QPid1, 1, Msg),
 
     %% teardown session
     SessionPid1 ! go_down,
     timer:sleep(10),
-    {offline, fanout, 0, 0} = vmq_queue:status(QPid1),
+    {offline, fanout, 0, 0, false} = vmq_queue:status(QPid1),
 
     %% fill the offline queue
     ok = vmq_reg:publish(Msg),
-    {offline, fanout, 1, 0} = vmq_queue:status(QPid1),
+    {offline, fanout, 1, 0, false} = vmq_queue:status(QPid1),
 
     %% crash the queue
     catch gen_fsm:sync_send_all_state_event(QPid1, byebye),
     false = is_process_alive(QPid1),
     timer:sleep(10),
     NewQPid = vmq_reg:get_queue_pid(SubscriberId),
-    {offline, fanout, 1, 0} = vmq_queue:status(NewQPid),
+    {offline, fanout, 1, 0, false} = vmq_queue:status(NewQPid),
 
     %% reconnect
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
-    {ok, NewQPid} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, QueueOpts),
+    {ok, NewQPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
     receive_persisted_msg(NewQPid, 1, Msg),
-    {online, fanout, 0, 1} = vmq_queue:status(NewQPid),
+    {online, fanout, 0, 1, false} = vmq_queue:status(NewQPid),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
 queue_fifo_test(_) ->
     Parent = self(),
-    SubscriberId = {"", "mock-fifo-client"},
+    SubscriberId = {"", <<"mock-fifo-client">>},
     QueueOpts = maps:merge(#{clean_session => false}, vmq_queue:default_opts()),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, "mock-user", SubscriberId, [{"test/fifo/topic", 1}]),
+    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
+                           [{[<<"test">>, <<"fifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi("test/fifo/topic"),
+    Msgs = publish_multi([<<"test">>, <<"fifo">>, <<"topic">>]),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
-    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, QueueOpts),
+    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
 
     ok = receive_multi(QPid, 1, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
 queue_lifo_test(_) ->
     Parent = self(),
-    SubscriberId = {"", "mock-lifo-client"},
+    SubscriberId = {"", <<"mock-lifo-client">>},
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{clean_session => false, queue_type => lifo}),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, "mock-user", SubscriberId, [{"test/lifo/topic", 1}]),
+    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"lifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi("test/lifo/topic"),
+    Msgs = publish_multi([<<"test">>, <<"lifo">>, <<"topic">>]),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
-    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, QueueOpts),
+    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
 
     ok = receive_multi(QPid, 1, lists:reverse(Msgs)), %% reverse list to get lifo
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
 queue_fifo_offline_drop_test(_) ->
     Parent = self(),
-    SubscriberId = {"", "mock-fifo-client"},
+    SubscriberId = {"", <<"mock-fifo-client">>},
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{clean_session => false,
                                                        max_offline_messages => 10}),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, "mock-user", SubscriberId, [{"test/fifo/topic", 1}]),
+    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"fifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi("test/fifo/topic"), % publish 100, only the first 10 are kept
-    {offline, fanout, 10, 0} = vmq_queue:status(QPid),
+    Msgs = publish_multi([<<"test">>, <<"fifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
+    {offline, fanout, 10, 0, false} = vmq_queue:status(QPid),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
-    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, QueueOpts),
+    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
     {KeptMsgs, _} = lists:split(10, Msgs),
     ok = receive_multi(QPid, 1, KeptMsgs),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
@@ -150,23 +153,24 @@ queue_fifo_offline_drop_test(_) ->
 
 queue_lifo_offline_drop_test(_) ->
     Parent = self(),
-    SubscriberId = {"", "mock-lifo-client"},
+    SubscriberId = {"", <<"mock-lifo-client">>},
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{clean_session => false,
                                                        max_offline_messages => 10,
                                                        queue_type => lifo}),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, "mock-user", SubscriberId, [{"test/lifo/topic", 1}]),
+    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
+                           [{[<<"test">>, <<"lifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi("test/lifo/topic"), % publish 100, only the first 10 are kept
-    {offline, fanout, 10, 0} = vmq_queue:status(QPid),
+    Msgs = publish_multi([<<"test">>, <<"lifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
+    {offline, fanout, 10, 0, false} = vmq_queue:status(QPid),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
-    {ok, QPid} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, QueueOpts),
+    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
     {KeptMsgs, _} = lists:split(10, lists:reverse(Msgs)),
     ok = receive_multi(QPid, 1, KeptMsgs),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
@@ -176,7 +180,7 @@ publish_multi(Topic) ->
     publish_multi(Topic, []).
 
 publish_multi(Topic, Acc) when length(Acc) < 100 ->
-    Msg = msg(Topic, "test-message-"++ integer_to_list(length(Acc)), 0),
+    Msg = msg(Topic, list_to_binary("test-message-"++ integer_to_list(length(Acc))), 0),
     ok = vmq_reg:publish(Msg),
     publish_multi(Topic, [Msg|Acc]);
 publish_multi(_, Acc) -> lists:reverse(Acc).
@@ -202,10 +206,10 @@ receive_multi(QPid, Msgs) ->
 
 mock_session(Parent) ->
     receive
-        {mail, QPid, new_data} ->
+        {vmq_mqtt_fsm, {mail, QPid, new_data}} ->
             vmq_queue:active(QPid),
             mock_session(Parent);
-        {mail, QPid, Msgs, _, _} ->
+        {vmq_mqtt_fsm, {mail, QPid, Msgs, _, _}} ->
             vmq_queue:notify(QPid),
             timer:sleep(100),
             Parent ! {received, QPid, Msgs},
@@ -217,9 +221,9 @@ mock_session(Parent) ->
 msg(Topic, Payload, QoS) ->
     #vmq_msg{trade_consistency=false,
              reg_view=vmq_reg_trie,
-             msg_ref=vmq_session:msg_ref(),
+             msg_ref=vmq_mqtt_fsm:msg_ref(),
              mountpoint="",
-             routing_key=vmq_topic:words(Topic),
+             routing_key=Topic,
              payload=Payload,
              qos=QoS}.
 

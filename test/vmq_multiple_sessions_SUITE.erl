@@ -91,9 +91,9 @@ multiple_balanced_sessions_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_,{"", "multiple-sessions-test"}, _) -> ok.
+hook_auth_on_subscribe(_,{"", <<"multiple-sessions-test">>}, _) -> ok.
 
-hook_auth_on_publish(_, {"", "multiple-sessions-test"}, _MsgId, ["multiple","sessions", "test"], <<"message">>, false) -> ok.
+hook_auth_on_publish(_, {"", <<"multiple-sessions-test">>}, _MsgId, [<<"multiple">>,<<"sessions">>, <<"test">>], <<"message">>, false) -> ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper

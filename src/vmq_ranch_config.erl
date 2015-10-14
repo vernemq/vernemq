@@ -19,6 +19,7 @@
          reconfigure_listeners/1,
          stop_listener/2,
          stop_listener/3,
+         stop_all_mqtt_listeners/1,
          delete_listener/2,
          restart_listener/2,
          get_listener_config/2,
@@ -34,9 +35,20 @@ listener_sup_sup(Addr, Port) ->
             {ok, ListenerSupSupPid}
     end.
 
+stop_all_mqtt_listeners(KillSessions) ->
+    lists:foreach(
+      fun
+          ({mqtt, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+          ({mqtts, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+          ({mqttws, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+          ({mqttwss, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+          (_) -> ignore
+      end, listeners()).
 
 stop_listener(Addr, Port) ->
     stop_listener(Addr, Port, false).
+stop_listener(Addr, Port, KillSessions) when is_list(Port) ->
+    stop_listener(Addr, list_to_integer(Port), KillSessions);
 stop_listener(Addr, Port, KillSessions) ->
     case listener_sup_sup(Addr, Port) of
         {ok, Pid} when KillSessions ->
