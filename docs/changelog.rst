@@ -1,6 +1,91 @@
 Changelog
 =========
 
+VERNEMQ 0.12.0
+--------------
+
+This release increases overall stability and performance. Memory usage for the subscriber store
+has been reduced by 40-50%. To achieve this, we had to change the main topic structure, and unfortunately this 
+breaks backward compatibility for the stored offline data as well as the plugin system.
+
+.. warning::
+
+    Make sure to delete the old message store folder ``/var/lib/vernemq/msgstore``
+    and the old metadata folder ``/var/lib/vernemq/meta``.
+
+    If you have implemented your own plugins, make sure to adapt to the new topic
+    format. (Reach out to us if you require assistance).
+
+vmq_server
+~~~~~~~~~~
+
+- Major refactoring of the MQTT state machine:
+    We reduced the number of processes per connected client and MQTT state machine.
+    This leads to less gen_server calls, fewer inter-process messages and a reduced scheduler load.
+    Per client backpressure can be applied in a more direct way.
+
+- New topic format:
+    Topics are now essentially list of binaries e.g. the topic ``hello/+/world``
+    gets parsed to a ``[<<"hello">>, <<"+">>, <<"world">>]``.
+    Therefore every API that used a topic as an argument had to be changed.
+
+- Improved cluster leave, and queue migration:
+    This allows an operator to make a node gracefully leave the cluster. 
+    1. If the node is still online and part of the cluster a two step approach is used. 
+    During the first step, the node stops accepting new connections, but keeps serving
+    the existing ones. In the second step it actively kills the online sessions,
+    and (if possible) migrates their queue contents to the other cluster nodes. Once
+    all the queues are migrated, the node leaves the cluster and terminates itself.
+    2. If the node is already offline/crashed during a cluster leave call, the old subscriptions 
+    on that node are remapped to the other cluster nodes. VerneMQ gets the information to do
+    this mapping from the Plumtree Metadata store. No offline messages can be copied in this case.
+
+- New hook, ``on_deliver/4``:
+    Every message that gets delivered passes this hook, which allows a plugin to
+    log the message and much more if needed (change payload and topic at 
+    delivery etc)
+
+- New hook, ``on_offline_message/1``:
+    If a client has been connected with ``clean_session=false`` every message that
+    gets offline-queued triggers this hook. This would be the entrypoint to
+    call mobile push notification services.
+
+- New hook, ``on_client_wakeup/1``:
+    When an authenticated client attaches to its queue this hook is triggered.
+
+- New hook, ``on_client_offline/1``:
+    When a client with ``clean_session=false`` disconnects this hook is triggered.
+
+- New hook, ``on_client_gone/1``:
+    When a client with ``clean_session=true`` disconnects this hook is triggered.
+    
+- No RPC calls anymore during registration and queue migration flows.
+
+- Many small bug fixes and improvements.
+
+vmq_commons
+~~~~~~~~~~~
+
+- New topic parser and validator
+
+- New shared behaviours for the new hooks
+
+vmq_acl
+~~~~~~~
+
+- Adapt to use the new topic format
+
+vmq_bridge
+~~~~~~~~~~
+
+- Adapt to use the new topic format
+
+vmq_systree
+~~~~~~~~~~~
+
+- Adapt to use the new topic format
+
+
 VERNEMQ 0.11.0
 --------------
 
