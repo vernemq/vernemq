@@ -34,6 +34,8 @@
          incr_cluster_bytes_sent/1,
          incr_cluster_bytes_received/1,
          incr_cluster_bytes_dropped/1,
+         incr_online_queued_messages/1,
+         incr_offline_queued_messages/1,
          entries/0,
          entries/1]).
 
@@ -117,6 +119,12 @@ incr_cluster_bytes_sent(V) ->
 
 incr_cluster_bytes_dropped(V) ->
     incr_item([cluster, bytes, dropped], V).
+
+incr_offline_queued_messages(V) ->
+    incr_item([queues, offline, messages], V).
+
+incr_online_queued_messages(V) ->
+    incr_item([queues, online, messages], V).
 
 incr_item(Entry, Val) ->
     exometer:update_or_create(Entry ++ ['last_sec'], Val),
@@ -219,7 +227,19 @@ counter_entries() ->
      {[cluster, bytes, dropped, last_10sec], counter, [{snmp, []}]},
      {[cluster, bytes, dropped, last_30sec], counter, [{snmp, []}]},
      {[cluster, bytes, dropped, last_min], counter, [{snmp, []}]},
-     {[cluster, bytes, dropped, last_5min], counter, [{snmp, []}]}
+     {[cluster, bytes, dropped, last_5min], counter, [{snmp, []}]},
+
+     {[queues, offline, messages, last_sec], counter, [{snmp, []}]},
+     {[queues, offline, messages, last_10sec], counter, [{snmp, []}]},
+     {[queues, offline, messages, last_30sec], counter, [{snmp, []}]},
+     {[queues, offline, messages, last_min], counter, [{snmp, []}]},
+     {[queues, offline, messages, last_5min], counter, [{snmp, []}]},
+
+     {[queues, online, messages, last_sec], counter, [{snmp, []}]},
+     {[queues, online, messages, last_10sec], counter, [{snmp, []}]},
+     {[queues, online, messages, last_30sec], counter, [{snmp, []}]},
+     {[queues, online, messages, last_min], counter, [{snmp, []}]},
+     {[queues, online, messages, last_5min], counter, [{snmp, []}]}
 
     ].
 

@@ -326,6 +326,7 @@ init([SubscriberId]) ->
     random:seed(A, B, C),
     gen_fsm:send_event(self(), init_offline_queue),
     vmq_exo:incr_inactive_clients(),
+    erlang:send_after(1000, self(), report_queue_stats),
     {ok, offline,  #state{id=SubscriberId,
                           offline=OfflineQueue,
                           drain_time=DrainTime,
@@ -406,6 +407,26 @@ handle_info({'DOWN', _MRef, process, SessionPid, _}, StateName,
             %% still one or more sessions online
             {next_state, StateName, NewState}
     end;
+handle_info(report_queue_stats, offline, #state{offline=#queue{size=Size}} = State) ->
+    case Size of
+        0 -> ignore;
+        _ ->
+            vmq_exo:incr_offline_queued_messages(Size)
+    end,
+    erlang:send_after(1000, self(), report_queue_stats),
+    {next_state, offline, State};
+handle_info(report_queue_stats, StateName, #state{sessions=Sessions} = State) ->
+    OnlineSize =
+    maps:fold(fun(_, #session{queue=#queue{size=Size}}, Sum) ->
+                      Sum + Size
+              end, 0, Sessions),
+    case OnlineSize of
+        0 -> ignore;
+        _ ->
+            vmq_exo:incr_online_queued_messages(OnlineSize)
+    end,
+    erlang:send_after(1000, self(), report_queue_stats),
+    {next_state, StateName, State};
 handle_info(_Info, StateName, State) ->
     {next_state, StateName, State}.
 
