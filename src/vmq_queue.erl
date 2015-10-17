@@ -660,6 +660,9 @@ cleanup_queue_(SId, {{value, {deliver, _, _} = Msg}, NewQueue}) ->
 cleanup_queue_(SId, {{value, {deliver_bin, _}}, NewQueue}) ->
     % no need to deref
     cleanup_queue_(SId, queue:out(NewQueue));
+cleanup_queue_(SId, {{value, MsgRef}, NewQueue}) when is_binary(MsgRef) ->
+    maybe_offline_delete(SId, MsgRef),
+    cleanup_queue_(SId, queue:out(NewQueue));
 cleanup_queue_(_, {empty, _}) -> ok.
 
 
