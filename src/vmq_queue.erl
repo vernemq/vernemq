@@ -186,10 +186,8 @@ online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
 
-wait_for_offline({enqueue, Msg}, #state{offline=Offline, id=SId} = State) ->
-    %% enqueue this message directly into the offline queue
-    {next_state, wait_for_offline,
-     State#state{offline=queue_insert(false, Msg, Offline, SId)}};
+wait_for_offline({enqueue, Msg}, State) ->
+    {next_state, wait_for_offline, insert(Msg, State)};
 wait_for_offline(Event, State) ->
     lager:error("got unknown event in wait_for_offline state ~p", [Event]),
     {next_state, wait_for_offline, State}.
