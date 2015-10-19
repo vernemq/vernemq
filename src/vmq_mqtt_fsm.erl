@@ -53,6 +53,7 @@
           queue_pid                         :: pid(),
 
           last_time_active=os:timestamp()   :: timestamp(),
+          last_trigger=os:timestamp()       :: timestamp(),
 
           %% stats
           recv_cnt=init_counter()           :: counter(),
@@ -123,7 +124,7 @@ data_in(Data, SessionState, OutAcc) ->
         {error, Reason} ->
             {error, Reason, serialise(OutAcc)};
         {Frame, Rest} ->
-            case in(Frame, SessionState) of
+            case in(Frame, SessionState, true) of
                 {stop, Reason, Out} ->
                     {stop, Reason, serialise([Out|OutAcc])};
                 {NewSessionState, {throttle, Out}} ->
@@ -137,7 +138,7 @@ data_in(Data, SessionState, OutAcc) ->
     end.
 
 msg_in(Msg, SessionState) ->
-   case in(Msg, SessionState) of
+   case in(Msg, SessionState, false) of
        {stop, Reason, Out} ->
            {stop, Reason, serialise([Out])};
        {NewSessionState, {throttle, Out}} ->
@@ -148,18 +149,18 @@ msg_in(Msg, SessionState) ->
    end.
 
 %%% init  --> | wait_for_connect | --> | connected | --> terminate
-in(Msg, {connected, State}) ->
+in(Msg, {connected, State}, IsData) ->
     case connected(Msg, State) of
         {stop, _, _} = R -> R;
         {NewState, Out} ->
-            {{connected, set_last_time_active(NewState)}, Out}
+            {{connected, set_last_time_active(IsData, NewState)}, Out}
     end;
-in(Msg, {wait_for_connect, State}) ->
+in(Msg, {wait_for_connect, State}, IsData) ->
     case wait_for_connect(Msg, State) of
         {stop, _, _} = R -> R;
         {NewState, Out} ->
             %% state transition to | connected |
-            {{connected, set_last_time_active(NewState)}, Out}
+            {{connected, set_last_time_active(IsData, NewState)}, Out}
     end.
 
 
@@ -185,10 +186,10 @@ wait_for_connect(#mqtt_connect{keep_alive=KeepAlive} = Frame,
     cancel_timer(TRef),
     _ = vmq_exo:incr_connect_received(),
     %% the client is allowed "grace" of a half a time period
-    KKeepAlive = 1500 * KeepAlive,
-    set_keepalive_timer(KKeepAlive),
+    set_keepalive_timer(KeepAlive),
     check_connect(Frame, incr_msg_recv_cnt(
-                           State#state{keep_alive=KKeepAlive,
+                           State#state{last_time_active=os:timestamp(),
+                                       keep_alive=KeepAlive,
                                        keep_alive_tref=undefined}));
 wait_for_connect(close_timeout, State) ->
     lager:debug("[~p] stop due to timeout~n", [self()]),
@@ -401,9 +402,9 @@ connected(disconnect, State) ->
     terminate(normal, State);
 connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive} = State) ->
     Now = os:timestamp(),
-    case (timer:now_diff(Now, Last) div 1000) > KeepAlive of
+    case (timer:now_diff(Now, Last) div 1000000) > KeepAlive of
         true ->
-            lager:warning("[~p] stop due to keepalive expired~n", [self()]),
+            lager:warning("[~p] stop due to keepalive expired", [self()]),
             terminate(normal, State);
         false ->
             set_keepalive_timer(KeepAlive),
@@ -864,7 +865,9 @@ random_client_id() ->
 
 set_keepalive_timer(0) -> ok;
 set_keepalive_timer(KeepAlive) ->
-    _ = send_after(KeepAlive, check_keepalive),
+    %% This allows us to heavily reduce start and cancel timers,
+    %% however we're losing precision. But that's ok for the keepalive timer.
+    _ = send_after(KeepAlive * 750, check_keepalive),
     ok.
 
 -spec send_after(non_neg_integer(), any()) -> reference().
@@ -900,14 +903,17 @@ incr_cnt(IncrV, {Avg, Total, []}) ->
 incr_cnt(IncrV, {Avg, Total, [V|Vals]}) ->
     {Avg, Total + IncrV, [V + IncrV|Vals]}.
 
-set_last_time_active(#state{last_time_active={MSecs, Secs, _}} = State) ->
-    case os:timestamp() of
-        {MSecs, Secs, _} ->
-            %% still in the same second resolution
-            State;
-        Now ->
-            trigger_counter_update(State#state{last_time_active=Now})
-    end.
+set_last_time_active(true, State) ->
+    Now = os:timestamp(),
+    maybe_trigger_counter_update(Now, State#state{last_time_active=Now});
+set_last_time_active(false, State) ->
+    maybe_trigger_counter_update(os:timestamp(), State).
+
+maybe_trigger_counter_update({MSecs, Secs, _}, #state{last_trigger={MSecs, Secs, _}} = State) ->
+    %% still in the same second resolution
+    State;
+maybe_trigger_counter_update(Now, State) ->
+    trigger_counter_update(State#state{last_trigger=Now}).
 
 trigger_counter_update(State) ->
     #state{recv_cnt=RecvCnt,
