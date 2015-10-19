@@ -98,7 +98,7 @@ loop_({exit, Reason, State}) ->
     _ = internal_flush(State),
     teardown(State, Reason).
 
-teardown(#st{socket=Socket}, Reason) ->
+teardown(_, Reason) ->
     case Reason of
         normal ->
             lager:debug("[~p] session normally stopped", [self()]);
@@ -107,42 +107,11 @@ teardown(#st{socket=Socket}, Reason) ->
         _ ->
             lager:warning("[~p] session stopped abnormally due to '~p'", [self(), Reason])
     end,
-    fast_close(Socket),
     _ = vmq_exo:decr_socket_count(),
     ok.
 
-
-
 proto_tag(ranch_tcp) -> {tcp, tcp_closed, tcp_error};
 proto_tag(ranch_ssl) -> {ssl, ssl_closed, ssl_error}.
-
-fast_close({ssl, Socket}) ->
-    %% from rabbit_net.erl
-    %% We cannot simply port_close the underlying tcp socket since the
-    %% TLS protocol is quite insistent that a proper closing handshake
-    %% should take place (see RFC 5245 s7.2.1). So we call ssl:close
-    %% instead, but that can block for a very long time, e.g. when
-    %% there is lots of pending output and there is tcp backpressure,
-    %% or the ssl_connection process has entered the the
-    %% workaround_transport_delivery_problems function during
-    %% termination, which, inexplicably, does a gen_tcp:recv(Socket,
-    %% 0), which may never return if the client doesn't send a FIN or
-    %% that gets swallowed by the network. Since there is no timeout
-    %% variant of ssl:close, we construct our own.
-    {Pid, MRef} = spawn_monitor(fun () -> ssl:close(Socket) end),
-    erlang:send_after(5000, self(), {Pid, ssl_close_timeout}),
-    receive
-        {Pid, ssl_close_timeout} ->
-            erlang:demonitor(MRef, [flush]),
-            exit(Pid, kill);
-        {'DOWN', MRef, process, Pid, _Reason} ->
-            ok
-    end,
-    catch port_close(Socket),
-    ok;
-fast_close(Socket) ->
-    catch port_close(Socket),
-    ok.
 
 active_once({ssl, Socket}) ->
     ssl:setopts(Socket, [{active, once}]);
@@ -236,9 +205,8 @@ handle_message(OtherMsg, #st{fsm_state=FsmState0, fsm_mod=FsmMod, pending=Pendin
             {exit, Reason, State#st{pending=[Pending|Out]}}
     end.
 
-%% This magic number is the tcp-over-ethernet MSS (1460) minus the 4 byte
-%% header of the Publish frame. The idea is that we want to flush just before
-%% exceeding the MSS.
+%% This magic number is the tcp-over-ethernet MSS (1460)
+%% The idea is that we want to flush just before exceeding the MSS.
 -define(FLUSH_THRESHOLD, 1456).
 maybe_flush(#st{pending=Pending} = State) ->
     case iolist_size(Pending) >= ?FLUSH_THRESHOLD of
