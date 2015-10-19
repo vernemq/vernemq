@@ -60,7 +60,7 @@ queue_crash_test(_) ->
                            [{[<<"test">>, <<"topic">>], 1}]),
     %% at this point we've a working subscription
     timer:sleep(10),
-    Msg = msg([<<"test">>, <<"topic">>], <<"test-message">>, 0),
+    Msg = msg([<<"test">>, <<"topic">>], <<"test-message">>, 1),
     ok = vmq_reg:publish(Msg),
     receive_msg(QPid1, 1, Msg),
 
@@ -180,7 +180,7 @@ publish_multi(Topic) ->
     publish_multi(Topic, []).
 
 publish_multi(Topic, Acc) when length(Acc) < 100 ->
-    Msg = msg(Topic, list_to_binary("test-message-"++ integer_to_list(length(Acc))), 0),
+    Msg = msg(Topic, list_to_binary("test-message-"++ integer_to_list(length(Acc))), 1),
     ok = vmq_reg:publish(Msg),
     publish_multi(Topic, [Msg|Acc]);
 publish_multi(_, Acc) -> lists:reverse(Acc).

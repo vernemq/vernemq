@@ -581,10 +581,14 @@ insert_many(MsgsOrRefs, State) ->
                 end, State, MsgsOrRefs).
 
 %% Offline Queue
-insert({deliver, 0, _}, #state{offline=#queue{drop=Drop} = Offline, sessions=Sessions} = State)
+insert({deliver, 0, _}, #state{sessions=Sessions} = State)
   when Sessions == #{} ->
-    %% no session online, drop
-    State#state{offline=Offline#queue{drop=Drop + 1}};
+    %% no session online, skip message for QoS0 Subscription
+    State;
+insert({deliver, _, #vmq_msg{qos=0}}, #state{sessions=Sessions} = State)
+  when Sessions == #{} ->
+    %% no session online, skip QoS0 message for QoS1 or QoS2 Subscription
+    State;
 insert(MsgOrRef, #state{id=SId, offline=Offline, sessions=Sessions} = State)
   when Sessions == #{} ->
     %% no session online, insert in offline queue
