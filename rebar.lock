@@ -100,7 +100,7 @@
   0},
  {<<"vmq_server">>,
   {git,"git://github.com/erlio/vmq_server.git",
-       {ref,"e229b5a0e05509f0b916bcbfcafa6df486cbbfff"}},
+       {ref,"4dbf2ba19b15ee36c7dfb0db3b543424735dda11"}},
   0},
  {<<"vmq_passwd">>,
   {git,"git://github.com/erlio/vmq_passwd.git",
