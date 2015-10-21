@@ -49,6 +49,7 @@ User Guide
     clustering
     connect
     plugins
+    plugin_development
     tuning/overview
     community
     changelog
