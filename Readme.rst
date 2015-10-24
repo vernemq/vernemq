@@ -73,3 +73,10 @@ Note that the ``$VERNEMQ/_build/default/rel/vernemq`` directory is a complete,
 self-contained instance of VerneMQ and Erlang. It is strongly suggested that you
 move this directory outside the source tree if you plan to run a production 
 instance.
+
+Important links
+~~~~~~~~~~~~~~~~
+
+* \#vernemq on freenode IRC
+* `VerneMQ User Mailing List <http://verne.mq/mailman/listinfo/vernemq-list_verne.mq>`_ 
+* `VerneMQ Documentation <http://verne.mq/docs>`_ 
