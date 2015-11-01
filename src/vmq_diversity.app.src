@@ -1,0 +1,63 @@
+{application, 'vmq_diversity',
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {'vmq_diversity_app', []}},
+  {applications,
+   [kernel,
+    stdlib,
+    crypto,
+    public_key,
+    ssl,
+    lager,
+    poolboy,
+    emysql,
+    epgsql,
+    bson,
+    mongodb,
+    eredis,
+    hackney,
+    jsx
+   ]},
+  {env,[
+        {storage_providers, [
+                             {mysql, [{id, mysql_test},
+                                      {opts, 
+                                       [{size, 1},
+                                        {user, "test_user"},
+                                        {password, "test_password"},
+                                        {database, "test_database"},
+                                        {encoding, utf8}
+                                       ]
+                                      }]},
+                             {pgsql, [{id, postgres_test},
+                                      {opts, 
+                                       [{size, 1},
+                                        {user, "test_user"},
+                                        {password, "test_password"},
+                                        {database, "test_database"}
+                                       ]
+                                      }]},
+                             {mongodb, [{id, mongodb_test},
+                                      {opts,
+                                       [{size, 1},
+                                        {w_mode, safe}
+                                       ]
+                                      }]},
+                             {redis, [{id, redis_test},
+                                      {opts,
+                                       [{size, 1}
+                                       ]
+                                      }]},
+                             {kv, [{id, kv_test},
+                                    {opts, []}
+                                   ]},
+                             {http, [{id, http_test},
+                                     {opts,
+                                      [{size, 100}
+                                      ]
+                                     }]}
+                            ]}
+       ]},
+  {modules, []}
+ ]}.
