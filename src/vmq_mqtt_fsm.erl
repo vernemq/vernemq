@@ -245,7 +245,8 @@ connected({mail, QPid, new_data}, #state{queue_pid=QPid} = State) ->
     vmq_queue:active(QPid),
     {State, []};
 connected({mail, QPid, Msgs, _, Dropped},
-          #state{subscriber_id=SubscriberId, queue_pid=QPid} = State) ->
+          #state{subscriber_id=SubscriberId, queue_pid=QPid,
+                 waiting_msgs=Waiting} = State) ->
     NewState =
     case Dropped > 0 of
         true ->
@@ -256,18 +257,18 @@ connected({mail, QPid, Msgs, _, Dropped},
             State
     end,
     {NewState2, Out} =
-    case handle_messages(Msgs, [], NewState, []) of
+    case handle_messages(Msgs, [], NewState, Waiting) of
         {NewState1, HandledMsgs, []} ->
             vmq_queue:notify(QPid),
             {NewState1, HandledMsgs};
-        {NewState1, HandledMsgs, Waiting} ->
+        {NewState1, HandledMsgs, NewWaiting} ->
             %% messages aren't delivered (yet) but are queued in this process
             %% we tell the queue to get rid of them
             vmq_queue:notify_recv(QPid),
             %% we call vmq_queue:notify as soon as
             %% the check_in_flight returns true again
             %% SEE: Comment in handle_waiting_msgs function.
-            {NewState1#state{waiting_msgs=Waiting}, HandledMsgs}
+            {NewState1#state{waiting_msgs=NewWaiting}, HandledMsgs}
     end,
     {NewState2, Out};
 connected(#mqtt_puback{message_id=MessageId}, #state{recv_cnt=RecvCnt, waiting_acks=WAcks} = State) ->
@@ -725,7 +726,7 @@ handle_waiting_acks_and_msgs(State) ->
 handle_waiting_msgs(#state{waiting_msgs=[]} = State) ->
     {State, []};
 handle_waiting_msgs(#state{waiting_msgs=Msgs, queue_pid=QPid} = State) ->
-    case handle_messages(Msgs, [], State, []) of
+    case handle_messages(lists:reverse(Msgs), [], State, []) of
         {NewState, HandledMsgs, []} ->
             %% we're ready to take more
             vmq_queue:notify(QPid),
