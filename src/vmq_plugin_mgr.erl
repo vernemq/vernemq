@@ -882,13 +882,15 @@ vmq_plugin_test() ->
             ],
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
     %% we have to step out .eunit
-    application:set_env(vmq_plugin, plugin_dir, ".."),
+    application:set_env(vmq_plugin, plugin_dir, "."),
     {ok, _} = application:ensure_all_started(vmq_plugin),
     %% no plugin is yet registered
     call_no_hooks(),
 
     %% ENABLE PLUGIN
-    ?assertEqual(ok, vmq_plugin_mgr:enable_plugin(vmq_plugin, [".."])),
+    ?assertEqual(ok, vmq_plugin_mgr:enable_plugin(
+                       vmq_plugin,
+                       ["./_build/test/lib/vmq_plugin"])),
     ?assert(lists:keyfind(vmq_plugin, 1, application:which_applications()) /= false),
 
     io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
