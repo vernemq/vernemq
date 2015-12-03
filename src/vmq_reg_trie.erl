@@ -73,7 +73,7 @@ init([]) ->
                       {read_concurrency, true}],
     _ = ets:new(vmq_trie, [{keypos, 2}|DefaultETSOpts]),
     _ = ets:new(vmq_trie_node, [{keypos, 2}|DefaultETSOpts]),
-    _ = ets:new(vmq_trie_topic, [bag, {keypos, 1}|DefaultETSOpts]),
+    _ = ets:new(vmq_trie_topic, [{keypos, 1}|DefaultETSOpts]),
     _ = ets:new(vmq_trie_subs, [bag|DefaultETSOpts]),
     Self = self(),
     spawn_link(
@@ -209,12 +209,17 @@ match(MP, [<<"$",_/binary>>|_] = Topic, [#trie_node{topic=[<<"+">>|_]}|Rest], Ac
     match(MP, Topic, Rest, Acc);
 
 match(MP, Topic, [#trie_node{topic=Name}|Rest], Acc) when Name =/= undefined ->
-    match(MP, Topic, Rest, match_(Name, ets:lookup(vmq_trie_topic, {MP, Name}), Acc));
+    case ets:lookup(vmq_trie_topic, {MP, Name}) of
+        [] ->
+            match(MP, Topic, Rest, Acc);
+        [{_, _, _, Nodes}] ->
+            match(MP, Topic, Rest, match_(Name, Nodes, Acc))
+    end;
 match(MP, Topic, [_|Rest], Acc) ->
     match(MP, Topic, Rest, Acc);
 match(_, _, [], Acc) -> Acc.
 
-match_(Topic, [{_, Node}|Rest], Acc) ->
+match_(Topic, [Node|Rest], Acc) ->
     match_(Topic, Rest, [{Topic, Node}|Acc]);
 match_(_, [], Acc) -> Acc.
 
@@ -228,7 +233,21 @@ initialize_trie({MP, Topic, Node}, Acc) when is_atom(Node) ->
 
 add_topic(MP, Topic, Node) ->
     MPTopic = {MP, Topic},
-    ets:insert(vmq_trie_topic, {MPTopic, Node}),
+    case ets:lookup(vmq_trie_topic, MPTopic) of
+        [] ->
+            ets:insert(vmq_trie_topic, {MPTopic, 1, maps:put(Node, 1, maps:new()), [Node]});
+        [{_, TotalCnt, NodeMap, _}] ->
+            NewNodeMap =
+            case maps:find(Node, NodeMap) of
+                error ->
+                    maps:put(Node, 1, NodeMap);
+                {ok, Cnt} ->
+                    maps:put(Node, Cnt + 1, NodeMap)
+            end,
+            ets:insert(vmq_trie_topic, {MPTopic, TotalCnt + 1, NewNodeMap,
+                                        [N || {N, _} <- maps:to_list(NewNodeMap)]})
+    end,
+
     case ets:lookup(vmq_trie_node, MPTopic) of
         [#trie_node{topic=Topic}] ->
             ignore;
@@ -286,10 +305,26 @@ trie_match(MP, Node, [W|Words], ResAcc) ->
 
 del_topic(MP, Topic, Node) ->
     MPTopic = {MP, Topic},
-    ets:delete_object(vmq_trie_topic, {MPTopic, Node}),
     case ets:lookup(vmq_trie_topic, MPTopic) of
-        [] ->
-            trie_delete(MP, Topic);
+        [{_, TotalCnt, NodeMap, _}] ->
+            {NewNodeMap, NewTotalCnt} =
+            case maps:find(Node, NodeMap) of
+                error ->
+                    {NodeMap, TotalCnt};
+                {ok, 1} ->
+                    {maps:remove(Node, NodeMap), TotalCnt -1};
+                {ok, Cnt} ->
+                    {maps:put(Node, Cnt - 1, NodeMap), TotalCnt -1}
+            end,
+            case NewTotalCnt > 0 of
+                true ->
+                    ets:insert(vmq_trie_topic, {MPTopic, NewTotalCnt, NewNodeMap,
+                                                [N || {N, _} <- maps:to_list(NewNodeMap)]}),
+                    ignore;
+               false ->
+                    ets:delete(vmq_trie_topic, MPTopic),
+                    trie_delete(MP, Topic)
+            end;
         _ ->
             ignore
     end.
