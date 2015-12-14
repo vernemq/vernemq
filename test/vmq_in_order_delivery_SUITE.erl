@@ -1,4 +1,5 @@
 -module(vmq_in_order_delivery_SUITE).
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -10,12 +11,15 @@
 
 -export([in_order_offline_qos1_test/1,
          in_order_offline_qos2_test/1,
+         in_order_offline_retry_qos1_test/1,
+         in_order_offline_retry_qos2_test/1,
          in_order_online_qos1_test/1,
          in_order_online_qos2_test/1]).
 
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
 
+-define(RETRY_INTERVAL, 10).
 
 %% ===================================================================
 %% common_test callbacks
@@ -30,7 +34,7 @@ end_per_suite(_Config) ->
 init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
-    vmq_server_cmd:set_config(retry_interval, 10),
+    vmq_server_cmd:set_config(retry_interval, ?RETRY_INTERVAL),
     vmq_server_cmd:listener_start(1888, []),
 
     enable_on_subscribe(),
@@ -47,6 +51,8 @@ end_per_testcase(_, Config) ->
 all() ->
     [in_order_offline_qos1_test,
      in_order_offline_qos2_test,
+     in_order_offline_retry_qos1_test,
+     in_order_offline_retry_qos2_test,
      in_order_online_qos1_test,
      in_order_online_qos2_test].
 
@@ -56,22 +62,28 @@ all() ->
 in_order_offline_qos1_test(_) ->
     lists:foreach(fun(MaxInflightMessages) ->
                           in_order_routine(MaxInflightMessages, 1,
-                                           MaxInflightMessages * 10, true)
+                                           MaxInflightMessages * 10, true, false)
                   end, lists:seq(1, 100)).
 
 in_order_offline_qos2_test(_) ->
-    in_order_routine(1, 2, 100, true).
+    in_order_routine(1, 2, 100, true, false).
+
+in_order_offline_retry_qos1_test(_) ->
+    in_order_routine(20, 1, 100, true, true).
+
+in_order_offline_retry_qos2_test(_) ->
+    in_order_routine(20, 2, 100, true, true).
 
 in_order_online_qos1_test(_) ->
     lists:foreach(fun(MaxInflightMessages) ->
                           in_order_routine(MaxInflightMessages, 1,
-                                           MaxInflightMessages * 10, false)
+                                           MaxInflightMessages * 10, false, false)
                   end, lists:seq(1, 100)).
 
 in_order_online_qos2_test(_) ->
-    in_order_routine(1, 2, 100, false).
+    in_order_routine(1, 2, 100, false, false).
 
-in_order_routine(MaxInflightMessages, QoS, LoadLevel, GoOffline) ->
+in_order_routine(MaxInflightMessages, QoS, LoadLevel, GoOffline, LetRetry) ->
     {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMessages),
     SubConnect = packet:gen_connect("inorder-sub", [{keepalive,60}, {clean_session, false}]),
     PubConnect = packet:gen_connect("inorder-pub", [{keepalive,60}, {clean_session, true}]),
@@ -122,21 +134,70 @@ in_order_routine(MaxInflightMessages, QoS, LoadLevel, GoOffline) ->
             {ok, SubSocket0}
     end,
 
-    lists:foldl(
-      fun({I, Pub}, _) ->
-              ok = packet:expect_packet(SubSocket1, "publish", Pub),
-              case QoS of
-                  1 ->
-                      ok = gen_tcp:send(SubSocket1, packet:gen_puback(I));
-                  2 ->
-                      ok = gen_tcp:send(SubSocket1, packet:gen_pubrec(I)),
-                      ok = packet:expect_packet(SubSocket1, "pubrel",
-                                                packet:gen_pubrel(I)),
-                      ok = gen_tcp:send(SubSocket1, packet:gen_pubcomp(I))
-              end
-      end, ok, lists:reverse(Pubs)),
+    case LetRetry of
+        false ->
+              handle_inflight_messages(QoS, SubSocket1, MaxInflightMessages,
+                                       lists:reverse(Pubs));
+        true ->
+            %% we receive the messages of the max_inflight_window but dont ack them
+            {PubsInFlight, PubsRest} = lists:split(MaxInflightMessages,
+                                            lists:reverse(Pubs)),
+            PubsInFlightDup =
+            lists:map(
+              fun({I, Pub}) ->
+                      %% we don't ack the publish
+                      ok = packet:expect_packet(SubSocket1, "publish", Pub),
+                      {#mqtt_publish{} = F, _} = vmq_parser:parse(Pub),
+                      {I, iolist_to_binary(
+                         vmq_parser:serialise(F#mqtt_publish{dup=true}))}
+              end, PubsInFlight),
+
+              timer:sleep(?RETRY_INTERVAL),
+
+              handle_inflight_messages(QoS, SubSocket1, MaxInflightMessages,
+                                       PubsInFlightDup ++ PubsRest)
+    end,
     gen_tcp:close(SubSocket1),
     ok.
+
+handle_inflight_messages(1, Socket, _MaxInflightMessages, Pubs) ->
+    lists:foreach(
+      fun({I, Pub}) ->
+              ok = packet:expect_packet(Socket, "publish", Pub),
+              ok = gen_tcp:send(Socket, packet:gen_puback(I))
+      end, Pubs);
+handle_inflight_messages(2, _, _, []) ->
+    ok;
+handle_inflight_messages(2, Socket, MaxInflightMessages, Pubs) ->
+    {PubsInFlight, PubsRest} =
+    case length(Pubs) > MaxInflightMessages of
+        true ->
+            lists:split(MaxInflightMessages, Pubs);
+        false ->
+            {Pubs, []}
+    end,
+    %% right after connection is established we get
+    %% 'max_inflight_messages'-Nr offline messages delivered.
+    %% we must make sure that we send the final pubcomp once
+    %% all intermediate steps are done, otherwise 'expect_packet'
+    %% is receiving subsequent messages..
+    %%
+    %% Step 1. PUBREC
+    lists:foreach(
+      fun({I, Pub}) ->
+              ok = packet:expect_packet(Socket, "publish", Pub),
+              ok = gen_tcp:send(Socket, packet:gen_pubrec(I))
+      end, PubsInFlight),
+    %% Step 2. Receive PUBREL
+    lists:foreach(
+      fun({I, _}) ->
+              ok = packet:expect_packet(Socket, "pubrel", packet:gen_pubrel(I)),
+              ok = gen_tcp:send(Socket, packet:gen_pubcomp(I))
+      end, PubsInFlight),
+    handle_inflight_messages(2, Socket, MaxInflightMessages, PubsRest).
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
