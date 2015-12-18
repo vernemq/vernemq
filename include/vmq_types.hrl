@@ -45,6 +45,7 @@
 -type mqtt_connect()        :: #mqtt_connect{}.
 
 -record(mqtt_connack, {
+          session_present   :: flag(),
           return_code       :: return_code()
          }).
 -type mqtt_connack()        :: #mqtt_connack{}.

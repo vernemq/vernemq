@@ -5,6 +5,7 @@
 -export([gen_connect/2,
          gen_connack/0,
          gen_connack/1,
+         gen_connack/2,
          gen_publish/4,
          gen_puback/1,
          gen_pubrec/1,
@@ -160,8 +161,8 @@ parse(<<?CONNECT:4, 0:4>>,
             end;
         E -> E
     end;
-parse(<<?CONNACK:4, 0:4>>, <<0:8, ReturnCode:8/big>>) ->
-    #mqtt_connack{return_code=ReturnCode};
+parse(<<?CONNACK:4, 0:4>>, <<0:7, SP:1, ReturnCode:8/big>>) ->
+    #mqtt_connack{session_present=SP, return_code=ReturnCode};
 parse(<<?PINGREQ:4, 0:4>>, <<>>) ->
     #mqtt_pingreq{};
 parse(<<?PINGRESP:4, 0:4>>, <<>>) ->
@@ -279,8 +280,8 @@ serialise(#mqtt_connect{proto_ver=ProtoVersion,
            utf8(Password)],
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?CONNECT:4, 0:4>>, LenBytes, Var];
-serialise(#mqtt_connack{return_code=RC}) ->
-    [<<?CONNACK:4, 0:4>>, serialise_len(2), <<RC:16/big>>];
+serialise(#mqtt_connack{session_present=SP, return_code=RC}) ->
+    [<<?CONNACK:4, 0:4>>, serialise_len(2), <<0:7, (flag(SP)):1/integer>>, <<RC:8/big>>];
 serialise(#mqtt_subscribe{message_id=MessageId, topics=Topics}) ->
     SerialisedTopics = serialise_topics(?SUBSCRIBE, Topics, []),
     LenBytes = serialise_len(iolist_size(SerialisedTopics) + 2),
@@ -371,7 +372,9 @@ gen_connect(ClientId, Opts) ->
 gen_connack() ->
     gen_connack(?CONNACK_ACCEPT).
 gen_connack(RC) ->
-    iolist_to_binary(serialise(#mqtt_connack{return_code=RC})).
+    gen_connack(0, RC).
+gen_connack(SP, RC) ->
+    iolist_to_binary(serialise(#mqtt_connack{session_present=flag(SP), return_code=RC})).
 
 gen_publish(Topic, Qos, Payload, Opts) ->
     Frame = #mqtt_publish{
@@ -429,6 +432,8 @@ parser_test() ->
                                                           {username, "joe"},
                                                           {password, "secret"}])),
     compare_frame("connack", gen_connack()),
+    compare_frame("connackSessionPresentTrue", gen_connack(1, 0)),
+    compare_frame("connackSessionPresentFalse", gen_connack(0, 0)),
     compare_frame("publish1", gen_publish("test-topic", 0, <<"test-payload">>, [{dup, true}, {retain, true}])),
     compare_frame("publish2", gen_publish("test-topic", 2, crypto:rand_bytes(1000), [{dup, true}, {retain, true}])),
     compare_frame("publish3", gen_publish("test-topic", 2, crypto:rand_bytes(100000), [{dup, true}, {retain, true}])),
