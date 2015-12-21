@@ -55,7 +55,7 @@ queue_crash_test(_) ->
     QueueOpts = maps:merge(#{clean_session => false}, vmq_queue:default_opts()),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid1} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    {ok, false, QPid1} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
     ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
                            [{[<<"test">>, <<"topic">>], 1}]),
     %% at this point we've a working subscription
@@ -82,7 +82,7 @@ queue_crash_test(_) ->
 
     %% reconnect
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
-    {ok, NewQPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
+    {ok, true, NewQPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
     receive_persisted_msg(NewQPid, 1, Msg),
     {online, fanout, 0, 1, false} = vmq_queue:status(NewQPid),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
@@ -93,7 +93,7 @@ queue_fifo_test(_) ->
     QueueOpts = maps:merge(#{clean_session => false}, vmq_queue:default_opts()),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
     ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
                            [{[<<"test">>, <<"fifo">>, <<"topic">>], 1}]),
     %% teardown session
@@ -103,7 +103,7 @@ queue_fifo_test(_) ->
     Msgs = publish_multi([<<"test">>, <<"fifo">>, <<"topic">>]),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
-    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
+    {ok, true, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
 
     ok = receive_multi(QPid, 1, Msgs),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
@@ -114,7 +114,7 @@ queue_lifo_test(_) ->
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{clean_session => false, queue_type => lifo}),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
     ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"lifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
@@ -123,7 +123,7 @@ queue_lifo_test(_) ->
     Msgs = publish_multi([<<"test">>, <<"lifo">>, <<"topic">>]),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
-    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
+    {ok, true, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
 
     ok = receive_multi(QPid, 1, lists:reverse(Msgs)), %% reverse list to get lifo
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
@@ -135,7 +135,7 @@ queue_fifo_offline_drop_test(_) ->
                                                        max_offline_messages => 10}),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
     ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"fifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
@@ -145,7 +145,7 @@ queue_fifo_offline_drop_test(_) ->
     {offline, fanout, 10, 0, false} = vmq_queue:status(QPid),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
-    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
+    {ok, true, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
     {KeptMsgs, _} = lists:split(10, Msgs),
     ok = receive_multi(QPid, 1, KeptMsgs),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
@@ -159,7 +159,7 @@ queue_lifo_offline_drop_test(_) ->
                                                        queue_type => lifo}),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
-    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
     ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
                            [{[<<"test">>, <<"lifo">>, <<"topic">>], 1}]),
     %% teardown session
@@ -170,7 +170,7 @@ queue_lifo_offline_drop_test(_) ->
     {offline, fanout, 10, 0, false} = vmq_queue:status(QPid),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
-    {ok, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
+    {ok, true, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
     {KeptMsgs, _} = lists:split(10, lists:reverse(Msgs)),
     ok = receive_multi(QPid, 1, KeptMsgs),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).

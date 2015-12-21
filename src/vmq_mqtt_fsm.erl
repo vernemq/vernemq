@@ -399,7 +399,7 @@ connected(Unexpected, State) ->
 
 
 connack_terminate(RC, _State) ->
-    {stop, normal, [#mqtt_connack{return_code=RC}]}.
+    {stop, normal, [#mqtt_connack{session_present=false, return_code=RC}]}.
 
 queue_down_terminate(shutdown, State) ->
     terminate(normal, State);
@@ -475,11 +475,11 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
             case auth_on_register(User, Password, State) of
                 {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId} = NewState} ->
                     case vmq_reg:register_subscriber(SubscriberId, QueueOpts) of
-                        {ok, QPid} ->
+                        {ok, SessionPresent, QPid} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
                                                              User]),
-                            check_will(F, NewState#state{username=User, queue_pid=QPid});
+                            check_will(F, SessionPresent, NewState#state{username=User, queue_pid=QPid});
                         {error, Reason} ->
                             lager:warning("can't register client ~p with username ~p due to ~p",
                                           [SubscriberId, User, Reason]),
@@ -507,10 +507,10 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
         true ->
             #state{peer=Peer, subscriber_id=SubscriberId} = State,
             case vmq_reg:register_subscriber(SubscriberId, queue_opts(State, [])) of
-                {ok, QPid} ->
+                {ok, SessionPresent, QPid} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
-                    check_will(F, State#state{queue_pid=QPid, username=User});
+                    check_will(F, SessionPresent, State#state{queue_pid=QPid, username=User});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
                                 [SubscriberId, Reason]),
@@ -518,10 +518,10 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
             end
     end.
 
-check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, State) ->
-    {State, [#mqtt_connack{return_code=?CONNACK_ACCEPT}]};
+check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, SessionPresent, State) ->
+    {State, [#mqtt_connack{session_present=SessionPresent, return_code=?CONNACK_ACCEPT}]};
 check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_retain=IsRetain},
-           State) ->
+           SessionPresent, State) ->
     #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,
            max_message_size=MaxMessageSize, trade_consistency=Consistency,
            reg_view=RegView} = State,
@@ -539,7 +539,8 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
             case valid_msg_size(MaybeNewPayload, MaxMessageSize) of
                 true ->
                     {State#state{will_msg=Msg},
-                     [#mqtt_connack{return_code=?CONNACK_ACCEPT}]};
+                     [#mqtt_connack{session_present=SessionPresent,
+                                    return_code=?CONNACK_ACCEPT}]};
                 false ->
                     lager:warning(
                       "last will message has invalid size for subscriber ~p",
