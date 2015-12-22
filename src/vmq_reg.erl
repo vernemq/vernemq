@@ -408,9 +408,10 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
         true ->
             plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs)),
             QueueOpts = vmq_queue:default_opts(),
-            Req = {migrate_offline_queue, SubscriberId, QueueOpts},
+            Req = {migrate_offline_queue, SubscriberId,
+                   maps:put(clean_session, false, QueueOpts)},
             case gen_server:call({?MODULE, Target}, Req, infinity) of
-                ok ->
+                {ok, _, _} ->
                     lager:info("MIGRATE QUEUE for subscriber ~p to node ~p", [SubscriberId, Target]),
                     {DeadNodes, Targets ++ [Target], N + 1};
                 {error, not_ready} ->

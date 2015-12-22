@@ -122,7 +122,16 @@ set_last_waiting_acks(Queue, WAcks) ->
     gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
 
 migrate(Queue, OtherQueue) ->
-    gen_fsm:sync_send_event(Queue, {migrate, OtherQueue}, infinity).
+    case catch gen_fsm:sync_send_event(Queue, {migrate, OtherQueue}, infinity) of
+        {'EXIT', {normal, _}} ->
+            ok;
+        {'EXIT', {noproc, _}} ->
+            ok;
+        {'EXIT', Reason} ->
+            exit(Reason);
+        Ret ->
+            Ret
+    end.
 
 status(Queue) ->
     gen_fsm:sync_send_all_state_event(Queue, status, infinity).

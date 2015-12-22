@@ -286,7 +286,7 @@ receive_publishes(_, _, []) -> ok;
 receive_publishes(Nodes, Topic, Payloads) ->
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
                                                            {keepalive, 10}]),
-    Connack = packet:gen_connack(0),
+    Connack = packet:gen_connack(true, 0),
     Disconnect = packet:gen_disconnect(),
     Opts = opts(Nodes),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, Opts),
