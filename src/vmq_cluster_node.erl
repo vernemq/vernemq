@@ -162,7 +162,7 @@ internal_flush(#state{pending=Pending, node=Node, transport=Transport,
                       socket=Socket, bytes_send={{M, S, _}, V}} = State) ->
     L = iolist_size(Pending),
     Msg = [<<"vmq-send", L:32>>|lists:reverse(Pending)],
-    case Transport:send(Socket, Msg) of
+    case send(Transport, Socket, Msg) of
         ok ->
             NewBytesSend =
             case os:timestamp() of
@@ -183,13 +183,13 @@ connect(#state{node=RemoteNode} = State) ->
     ConnectOpts = vmq_config:get_env(outgoing_connect_opts),
     case rpc:call(RemoteNode, ?MODULE, connect_params, [node()]) of
         {Transport, Host, Port} ->
-            case Transport:connect(Host, Port,
+            case connect(Transport, Host, Port,
                                    lists:usort([binary, {active, true}|ConnectOpts])) of
                 {ok, Socket} ->
                     NodeName = term_to_binary(node()),
                     L = byte_size(NodeName),
                     Msg = [<<"vmq-connect">>, <<L:32, NodeName/binary>>],
-                    case Transport:send(Socket, Msg) of
+                    case send(Transport, Socket, Msg) of
                         ok ->
                             State#state{socket=Socket, transport=Transport,
                                         %% !!! remote node is reachable
@@ -241,3 +241,13 @@ connect_params(tcp, [{{Addr, Port}, _}|_]) ->
 connect_params(ssl, [{{Addr, Port}, _}|_]) ->
     {ssl, Addr, Port};
 connect_params(_, []) -> no_config.
+
+send(gen_tcp, Socket, Msg) ->
+    gen_tcp:send(Socket, Msg);
+send(ssl, Socket, Msg) ->
+    ssl:send(Socket, Msg).
+
+connect(gen_tcp, Host, Port, Opts) ->
+    gen_tcp:connect(Host, Port, Opts);
+connect(ssl, Host, Port, Opts) ->
+    gen_tcp:connect(Host, Port, Opts).

@@ -7,6 +7,7 @@
          gen_connect/2,
          gen_connack/0,
          gen_connack/1,
+         gen_connack/2,
          gen_publish/4,
          gen_puback/1,
          gen_pubrec/1,
@@ -92,6 +93,8 @@ gen_connack() ->
     gen_connack(0).
 gen_connack(RC) ->
     vmq_parser:gen_connack(RC).
+gen_connack(SessionPresent, RC) ->
+    vmq_parser:gen_connack(SessionPresent, RC).
 
 gen_publish(Topic, Qos, Payload, Opts) ->
     vmq_parser:gen_publish(Topic, Qos, Payload, Opts).

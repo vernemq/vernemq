@@ -46,18 +46,18 @@ all() ->
 
 multiple_sessions_test(_) ->
     Connect = packet:gen_connect("multiple-sessions-test", [{keepalive,10}]),
-    Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(53, "multiple/sessions/test", 0),
     Suback = packet:gen_suback(53, 0),
     enable_on_publish(),
     enable_on_subscribe(),
-    F = fun() ->
+    F = fun(SessionPresent) ->
+                Connack = packet:gen_connack(SessionPresent, 0),
                 {ok, S} = packet:do_client_connect(Connect, Connack, []),
                 ok = gen_tcp:send(S, Subscribe),
                 ok = packet:expect_packet(S, "suback", Suback),
                 S
         end,
-    [Socket|_] = Sockets = [F() || _ <- lists:seq(1, 100)],
+    [Socket|_] = Sockets = [F(I > 1) || I <- lists:seq(1, 100)],
     Publish = packet:gen_publish("multiple/sessions/test", 0, <<"message">>, []),
     gen_tcp:send(Socket, Publish),
     _ = [ok = packet:expect_packet(S, "publish", Publish) || S <- Sockets],
@@ -68,18 +68,18 @@ multiple_sessions_test(_) ->
 multiple_balanced_sessions_test(_) ->
     vmq_config:set_env(queue_deliver_mode, balance, false),
     Connect = packet:gen_connect("multiple-sessions-test", [{keepalive,10}]),
-    Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(53, "multiple/sessions/test", 0),
     Suback = packet:gen_suback(53, 0),
     enable_on_publish(),
     enable_on_subscribe(),
-    F = fun() ->
+    F = fun(SessionPresent) ->
+                Connack = packet:gen_connack(SessionPresent, 0),
                 {ok, S} = packet:do_client_connect(Connect, Connack, []),
                 ok = gen_tcp:send(S, Subscribe),
                 ok = packet:expect_packet(S, "suback", Suback),
                 S
         end,
-    Sockets = [F() || _ <- lists:seq(1, 100)],
+    Sockets = [F(I > 1) || I <- lists:seq(1, 100)],
     Publish = packet:gen_publish("multiple/sessions/test", 0, <<"message">>, []),
     _ = [gen_tcp:send(S, Publish) || S <- Sockets],
     ok = expect_packet(Sockets, Publish, length(Sockets)),

@@ -189,12 +189,12 @@ cluster_leave_test(Config) ->
     Config.
 
 cluster_leave_dead_node_test(Config) ->
-    {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
-    Topic = "cluster/leave/topic",
-    %% create 100 sessions
+    {_, [Node = {Name, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
+    Topic = "cluster/leave/dead/topic",
+    %% create 100 sessions on first Node
     _ =
     [begin
-         Connect = packet:gen_connect("connect-" ++ integer_to_list(I),
+         Connect = packet:gen_connect("connect-d-" ++ integer_to_list(I),
                                       [{clean_session, false},
                                        {keepalive, 10}]),
          Connack = packet:gen_connack(0),
@@ -203,25 +203,29 @@ cluster_leave_dead_node_test(Config) ->
          {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
          ok = gen_tcp:send(Socket, Subscribe),
          ok = packet:expect_packet(Socket, "suback", Suback),
-         Socket
+         gen_tcp:send(Socket, packet:gen_disconnect()),
+         gen_tcp:close(Socket)
      end || I <- lists:seq(1,100)],
+
     Subs = fun(Nds) -> rpc:multicall([N || {N, _} <-Nds],
                                       vmq_reg, total_subscriptions, [])
                end,
-    io:format(user, "!!!!!!!!!!!!!!!!!!! Subs before leave ~p~n", [Subs(Nodes)]),
 
     Strd = fun(Nds) -> rpc:multicall([N || {N, _} <-Nds],
                                   vmq_queue_sup, summary, [])
            end,
-    %% Node is the last started node named 'test_5'
-    {ok, _} = ct_slave:stop('test_5'),
-    timer:sleep(1000),
+
+    io:format(user, "!!!!!!!!!!!!!!!!!!! Subs before leave ~p~n", [Subs(Nodes)]),
+    io:format(user, "!!!!!!!!!!!!!!!!!!! queue summary before leave ~p~n", [Strd(Nodes)]),
+
+    %% stop first node
+    stop_node(Node),
 
     %% let first node leave the cluster, this should migrate the sessions
     [{CtrlNode, _}|_] = RestNodes,
 
     %% Node_leave might return before migration has finished
-    {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Node]),
+    {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Name]),
 
     io:format(user, "!!!!!!!!!!!!!!!!!!! Subs after leave ~p~n", [Subs(RestNodes)]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! queue summary after leave ~p~n", [Strd(RestNodes)]),
@@ -286,7 +290,7 @@ receive_publishes(_, _, []) -> ok;
 receive_publishes(Nodes, Topic, Payloads) ->
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
                                                            {keepalive, 10}]),
-    Connack = packet:gen_connack(0),
+    Connack = packet:gen_connack(true, 0),
     Disconnect = packet:gen_disconnect(),
     Opts = opts(Nodes),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, Opts),
@@ -395,18 +399,19 @@ start_node(Name, Port, DiscoveryNodes) ->
 
 stop_cluster(Nodes) ->
     error_logger:info_msg("stop cluster nodes ~p", [Nodes]),
-    lists:foreach(
-      fun({Node, _Port}) ->
-              [NodeNameStr|_] = re:split(atom_to_list(Node), "@", [{return, list}]),
-              try
-                ok = rpc:call(Node, vmq_test_utils, teardown, []),
-                ShortNodeName = list_to_existing_atom(NodeNameStr),
-                {ok, _} = ct_slave:stop(ShortNodeName)
-              catch
-                  _:_ ->
-                      ok
-              end
-      end, lists:reverse(Nodes)).
+    lists:foreach(fun stop_node/1, lists:reverse(Nodes)).
+
+stop_node({Node, _Port}) ->
+    [NodeNameStr|_] = re:split(atom_to_list(Node), "@", [{return, list}]),
+    try
+        ok = rpc:call(Node, vmq_test_utils, teardown, []),
+        ShortNodeName = list_to_existing_atom(NodeNameStr),
+        {ok, _} = ct_slave:stop(ShortNodeName)
+    catch
+        _:_ ->
+            ok
+    end.
+
 
 wait_til_ready(Node) ->
     wait_til_ready(Node, rpc:call(Node, vmq_cluster, is_ready, []), 100).

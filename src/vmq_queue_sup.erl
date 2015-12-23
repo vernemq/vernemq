@@ -127,7 +127,7 @@ loop(State = #state{parent=Parent}, NrOfChildren) ->
                     loop(State, start_queue(Caller, SubscriberId, NrOfChildren));
                 [{_, Pid}] ->
                     %% already started
-                    reply(Caller, {ok, Pid}),
+                    reply(Caller, {ok, true, Pid}),
                     loop(State, NrOfChildren)
             end;
         {'EXIT', Parent, Reason} ->
@@ -230,7 +230,7 @@ start_queue(Caller, SubscriberId, NrOfChildren) ->
         {ok, Pid} ->
             ets:insert(?QUEUE_TAB, {SubscriberId, Pid}),
             put(Pid, true),
-            reply(Caller, {ok, Pid}),
+            reply(Caller, {ok, false, Pid}),
             NrOfChildren + 1;
         Ret ->
             lager:error("vmq_queue_sup can't start vmq_queue for ~p due to ~p",

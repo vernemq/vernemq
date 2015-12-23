@@ -8,7 +8,8 @@
          all/0
         ]).
 
--export([clean_session_qos1_test/1]).
+-export([clean_session_qos1_test/1,
+         session_present_test/1]).
 
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
@@ -36,20 +37,22 @@ end_per_testcase(_, Config) ->
     Config.
 
 all() ->
-    [clean_session_qos1_test].
+    [clean_session_qos1_test,
+     session_present_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clean_session_qos1_test(_) ->
     Connect = packet:gen_connect("clean-qos1-test", [{keepalive,60}, {clean_session, false}]),
-    Connack = packet:gen_connack(0),
+    Connack1 = packet:gen_connack(0),
+    Connack2 = packet:gen_connack(true, 0),
     Disconnect = packet:gen_disconnect(),
     Subscribe = packet:gen_subscribe(109, "qos1/clean_session/test", 1),
     Suback = packet:gen_suback(109, 1),
     Publish = packet:gen_publish("qos1/clean_session/test", 1, <<"clean-session-message">>, [{mid, 1}]),
     Puback = packet:gen_puback(1),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack1, []),
     enable_on_publish(),
     enable_on_subscribe(),
     ok = gen_tcp:send(Socket, Subscribe),
@@ -62,12 +65,24 @@ clean_session_qos1_test(_) ->
 
     clean_session_qos1_helper(),
     %% Now reconnect and expect a publish message.
-    {ok, Socket1} = packet:do_client_connect(Connect, Connack, []),
+    {ok, Socket1} = packet:do_client_connect(Connect, Connack2, []),
     ok = packet:expect_packet(Socket1, "publish", Publish),
     ok = gen_tcp:send(Socket1, Puback),
     disable_on_publish(),
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket1).
+
+session_present_test(_) ->
+    Connect = packet:gen_connect("clean-sesspres-test", [{keepalive,10}, {clean_session, false}]),
+    ConnackSessionPresentFalse = packet:gen_connack(false, 0),
+    ConnackSessionPresentTrue = packet:gen_connack(true, 0),
+
+    {ok, Socket1} = packet:do_client_connect(Connect, ConnackSessionPresentFalse, []),
+    ok = gen_tcp:close(Socket1),
+
+    {ok, Socket2} = packet:do_client_connect(Connect, ConnackSessionPresentTrue, []),
+    ok = gen_tcp:close(Socket2).
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)

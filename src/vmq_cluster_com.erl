@@ -146,7 +146,7 @@ process(<<"msg", L:32, Bin:L/binary, Rest/binary>>) ->
     #vmq_msg{mountpoint=MP,
              routing_key=Topic,
              reg_view=RegView} = Msg = binary_to_term(Bin),
-    _ = RegView:fold(MP, Topic, fun publish/2, Msg),
+    _ = vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg),
     process(Rest);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>) ->
     {CallerPid, Ref, {enqueue, QueuePid, Msgs}} = binary_to_term(Bin),
@@ -165,7 +165,7 @@ process(<<"enq", L:32, Bin:L/binary, Rest/binary>>) ->
     process(Rest);
 process(<<>>) -> ok.
 
-publish({_,_} = SubscriberIdAndQoS, Msg) ->
+publish({_, _} = SubscriberIdAndQoS, Msg) ->
     vmq_reg:publish(SubscriberIdAndQoS, Msg);
 publish(_Node, Msg) ->
     %% we ignore remote subscriptions, they are already covered

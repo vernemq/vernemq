@@ -140,7 +140,7 @@ delete_subscriptions(SubscriberId) ->
     del_subscriber(SubscriberId).
 
 -spec register_subscriber(subscriber_id(), map()) ->
-    {ok, pid()} | {error, _}.
+    {ok, boolean(), pid()} | {error, _}.
 register_subscriber(SubscriberId, #{allow_multiple_sessions := false} = QueueOpts) ->
     %% we don't allow multiple sessions using same subscriber id
     %% allow_multiple_sessions is needed for session balancing
@@ -170,17 +170,15 @@ register_subscriber(SubscriberId, #{allow_multiple_sessions := true} = QueueOpts
             {error, overloaded}
     end.
 
--spec register_subscriber(pid() | undefined,
-                            subscriber_id(), map(),
-                            non_neg_integer()) -> {'ok', pid()}.
+-spec register_subscriber(pid() | undefined, subscriber_id(), map(), non_neg_integer()) ->
+    {'ok', boolean(), pid()} | {error, any()}.
 register_subscriber(_, _, _, 0) ->
-    exit(register_subscriber_retry_exhausted);
-register_subscriber(SessionPid, SubscriberId, QueueOpts, N) ->
-    % remap subscriber... enabling that new messages will eventually
-    % reach the new queue.
-    maybe_remap_subscriber(SessionPid, SubscriberId, QueueOpts),
+    {error, register_subscriber_retry_exhausted};
+register_subscriber(SessionPid, SubscriberId,
+                    #{clean_session := CleanSession} = QueueOpts, N) ->
     % wont create new queue in case it already exists
-    {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId),
+    {ok, QueuePresent, QPid} = vmq_queue_sup:start_queue(SubscriberId),
+    Ret =
     case vmq_cluster:nodes() -- [node()] of
         [] ->
             ok;
@@ -194,21 +192,25 @@ register_subscriber(SessionPid, SubscriberId, QueueOpts, N) ->
             Req = {migrate_session, SubscriberId, QPid},
             case gen_server:multi_call(Nodes, ?MODULE, Req) of
                 {Replies, []} ->
-                    rethrow_error(Replies);
-                {Replies, BadNodes} ->
-                    rethrow_error(Replies),
+                    handle_replies(Replies);
+                {_, BadNodes} ->
                     lager:error("can't migrate session for subscriber ~p on nodes ~p",
                                 [SubscriberId, BadNodes]),
-                    exit(cant_reach_nodes_during_migration)
+                    {error, cant_reach_nodes_during_migration}
             end
     end,
-    case SessionPid of
-        undefined ->
+    % remap subscriber... enabling that new messages will eventually
+    % reach the new queue.
+    SubscriptionsPresent = maybe_remap_subscriber(SessionPid, SubscriberId, QueueOpts),
+    SessionPresent1 = SubscriptionsPresent or QueuePresent,
+    SessionPresent2 = (not CleanSession and SessionPresent1),
+    case Ret of
+        ok when SessionPid == undefined ->
             %% SessionPid can be 'undefined' in case an offline session gets
             %% forcefully migrated
             lager:info("created 'offline' queue ~p for ~p", [SubscriberId, QPid]),
-            {ok, QPid};
-        _ ->
+            {ok, SessionPresent2, QPid};
+        ok ->
             case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
                 {'EXIT', {normal, _}} ->
                     %% queue went down in the meantime, retry
@@ -218,25 +220,29 @@ register_subscriber(SessionPid, SubscriberId, QueueOpts, N) ->
                     %% queue was stopped in the meantime, retry
                     register_subscriber(SessionPid, SubscriberId, QueueOpts, N -1);
                 {'EXIT', Reason} ->
-                    exit(Reason);
+                    {error, Reason};
                 ok ->
-                    {ok, QPid}
-            end
+                    {ok, SessionPresent2, QPid}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
-rethrow_error([{_, {error, Reason}}|_]) -> exit(Reason);
-rethrow_error([{_, ok}|Replies]) ->
-    rethrow_error(Replies);
-rethrow_error([]) -> ok.
+handle_replies([{_, {error, Reason}}|_]) -> {error, Reason};
+handle_replies([{_, ok}|Replies]) ->
+    handle_replies(Replies);
+handle_replies([]) -> ok.
 
 -spec register_session(subscriber_id(), map()) -> {ok, pid()}.
 register_session(SubscriberId, QueueOpts) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
     SessionPid = self(),
-    {ok, QPid} = vmq_queue_sup:start_queue(SubscriberId), % wont create new queue in case it already exists
+    {ok, QueuePresent, QPid} = vmq_queue_sup:start_queue(SubscriberId), % wont create new queue in case it already exists
     ok = vmq_queue:add_session(QPid, SessionPid, QueueOpts),
-    {ok, QPid}.
+    %% TODO: How to handle SessionPresent flag for allow_multiple_sessions=true
+    SessionPresent = QueuePresent,
+    {ok, SessionPresent, QPid}.
 
 -spec publish(msg()) -> 'ok' | {'error', _}.
 publish(#vmq_msg{trade_consistency=true,
@@ -275,7 +281,7 @@ publish(#vmq_msg{trade_consistency=false,
         true when (IsRetain == true) ->
             %% retain set action
             vmq_retain_srv:insert(MP, Topic, Payload),
-            RegView:fold(MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
             ok;
         true ->
             RegView:fold(MP, Topic, fun publish/2, Msg),
@@ -353,7 +359,7 @@ migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = A
             Req = {migrate_offline_queue, SubscriberId,
                    maps:put(clean_session, false, QueueOpts)},
             case gen_server:call({?MODULE, Target}, Req, infinity) of
-                ok ->
+                {ok, _, _} ->
                     MRef = monitor(process, QPid),
                     receive
                         {'DOWN', MRef, process, QPid, _} ->
@@ -402,9 +408,10 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
         true ->
             plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs)),
             QueueOpts = vmq_queue:default_opts(),
-            Req = {migrate_offline_queue, SubscriberId, QueueOpts},
+            Req = {migrate_offline_queue, SubscriberId,
+                   maps:put(clean_session, false, QueueOpts)},
             case gen_server:call({?MODULE, Target}, Req, infinity) of
-                ok ->
+                {ok, _, _} ->
                     lager:info("MIGRATE QUEUE for subscriber ~p to node ~p", [SubscriberId, Target]),
                     {DeadNodes, Targets ++ [Target], N + 1};
                 {error, not_ready} ->
@@ -428,6 +435,7 @@ start_link() ->
 init([]) ->
     {ok, maps:new()}.
 
+
 handle_call({migrate_session, SubscriberId, OtherQPid}, From, Waiting) ->
     %% Initiates Queue migration of the local Queue to the
     %% Queue at 'OtherQPid'
@@ -435,16 +443,19 @@ handle_call({migrate_session, SubscriberId, OtherQPid}, From, Waiting) ->
         not_found ->
             {reply, ok, Waiting};
         QPid ->
-            {MigratePid, MRef} = spawn_monitor(vmq_queue, migrate, [QPid, OtherQPid]),
+            {MigratePid, MRef} = async_op(
+                            fun() ->
+                                    vmq_queue:migrate(QPid, OtherQPid)
+                            end, From),
             {noreply, maps:put(MRef, {MigratePid, From}, Waiting)}
     end;
 handle_call({finish_register_subscriber_by_leader, SessionPid, SubscriberId, QueueOpts}, From, Waiting) ->
     %% called by vmq_reg_leader process
-    {Pid, MRef} = spawn_monitor(
+    {Pid, MRef} = async_op(
                     fun() ->
                             register_subscriber(SessionPid, SubscriberId,
                                                 QueueOpts, ?NR_OF_REG_RETRIES)
-                    end),
+                    end, From),
     {noreply, maps:put(MRef, {Pid, From}, Waiting)};
 handle_call({migrate_offline_queue, SubscriberId, QueueOpts}, From, Waiting) ->
     %% only called when a cluster node leaves and the 'old' offline
@@ -466,9 +477,12 @@ handle_call({migrate_offline_queue, SubscriberId, QueueOpts}, From, Waiting) ->
     %% can synchronize their offline messages.
     case vmq_cluster:is_ready() of
         true ->
-            {RegisterPid, MRef} = spawn_monitor(vmq_reg_leader, register_subscriber,
-                                                [undefined, SubscriberId, QueueOpts]),
-            {noreply, maps:put(MRef, {RegisterPid, From}, Waiting)};
+            {Pid, MRef} = async_op(
+                            fun() ->
+                                    vmq_reg_leader:register_subscriber(
+                                       undefined, SubscriberId, QueueOpts)
+                            end, From),
+            {noreply, maps:put(MRef, {Pid, From}, Waiting)};
         false ->
             {reply, {error, not_ready}, Waiting}
     end.
@@ -476,14 +490,7 @@ handle_call({migrate_offline_queue, SubscriberId, QueueOpts}, From, Waiting) ->
 handle_cast(_Req, State) ->
     {noreply, State}.
 
-handle_info({'DOWN', MRef, process, Pid, Reason}, Waiting) ->
-    {Pid, From} = maps:get(MRef, Waiting),
-    case Reason of
-        normal ->
-            gen_server:reply(From, ok);
-        _ ->
-            gen_server:reply(From, {error, Reason})
-    end,
+handle_info({'DOWN', MRef, process, _Pid, _}, Waiting) ->
     {noreply, maps:remove(MRef, Waiting)}.
 
 terminate(_Reason, _State) ->
@@ -492,6 +499,17 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+async_op(Fun, From) ->
+    spawn_monitor(
+      fun() ->
+              case catch Fun() of
+                  {'EXIT', Reason} ->
+                      gen_server:reply(From, {error, Reason}),
+                      exit(Reason);
+                  Ret ->
+                      gen_server:reply(From, Ret)
+              end
+      end).
 
 -spec wait_til_ready() -> 'ok'.
 wait_til_ready() ->
@@ -538,8 +556,8 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                     QueueOpts = maps:merge(vmq_queue:default_opts(),
                                            #{clean_session => true,
                                              is_plugin => true}),
-                    {ok, _} = register_subscriber(PluginSessionPid, SubscriberId,
-                                                  QueueOpts, ?NR_OF_REG_RETRIES),
+                    {ok, _, _} = register_subscriber(PluginSessionPid, SubscriberId,
+                                                     QueueOpts, ?NR_OF_REG_RETRIES),
                     ok
             end,
 
@@ -731,29 +749,38 @@ del_subscriptions(Topics, SubscriberId) ->
                 end, [], Subs),
     plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs).
 
+%% the return value is used to inform the caller
+%% if a session was already present for the given
+%% subscriber id.
+-spec maybe_remap_subscriber(pid() | undefined, subscriber_id(), map()) -> boolean().
 maybe_remap_subscriber(undefined, _, _) ->
     %% coming via queue migration, remaping was done inside
-    %% migrate_offline_queue or fix_dead_queues
-    ok;
+    %% migrate_offline_queue or fix_dead_queues,
+    false;
 maybe_remap_subscriber(_, SubscriberId, #{clean_session := true}) ->
     %% no need to remap, we can delete this subscriber
-    del_subscriber(SubscriberId);
+    del_subscriber(SubscriberId),
+    false;
 maybe_remap_subscriber(_, SubscriberId, _) ->
-    Subs = plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]),
-    Node = node(),
-    {NewSubs, HasChanged} =
-    lists:foldl(fun({Topic, QoS, N}, {Acc, _}) when N =/= Node ->
-                        {[{Topic, QoS, Node}|Acc], true};
-                   (Sub, {Acc, Changed}) ->
-                        {[Sub|Acc], Changed}
-                end, {[], false}, Subs),
-    case HasChanged of
-        true ->
-            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs));
-        false ->
-            ignore
-    end,
-    ok.
+    case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
+        undefined ->
+            false;
+        Subs ->
+            Node = node(),
+            {NewSubs, HasChanged} =
+            lists:foldl(fun({Topic, QoS, N}, {Acc, _}) when N =/= Node ->
+                                {[{Topic, QoS, Node}|Acc], true};
+                           (Sub, {Acc, Changed}) ->
+                                {[Sub|Acc], Changed}
+                        end, {[], false}, Subs),
+            case HasChanged of
+                true ->
+                    plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs));
+                false ->
+                    ignore
+            end,
+            true
+    end.
 
 -spec get_session_pids(subscriber_id()) ->
     {'error','not_found'} | {'ok', pid(), [pid()]}.

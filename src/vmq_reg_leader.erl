@@ -13,6 +13,7 @@
 %% limitations under the License.
 %%
 -module(vmq_reg_leader).
+-include("vmq_server.hrl").
 
 -behaviour(gen_server).
 
@@ -37,29 +38,29 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+-spec register_subscriber(pid(), subscriber_id(), map()) ->
+    {ok, boolean(), pid()} | {error, any()}.
 register_subscriber(SessionPid, SubscriberId, QueueOpts) ->
     case vmq_cluster:is_ready() of
         true ->
             Nodes = vmq_cluster:nodes(),
             I = erlang:phash2(SubscriberId) rem length(Nodes) + 1,
             Leader = lists:nth(I, lists:sort(Nodes)),
-            Req = {register_subscriber, node(), SessionPid, SubscriberId, QueueOpts},
-            try gen_server:call({?MODULE, Leader}, Req, infinity) of
-                ok ->
-                    case vmq_reg:get_queue_pid(SubscriberId) of
-                        not_found ->
-                            exit({cant_register_subscriber_by_leader, queue_not_found});
-                        QPid ->
-                            {ok, QPid}
-                    end
-            catch
-                _:_ ->
-                    %% mostly happens in case of a netsplit
-                    %% this triggers the proper CONNACK leaving the
-                    %% client to retry the CONNECT
-                    {error, not_ready}
-            end;
+            register_subscriber(Leader, SessionPid, SubscriberId, QueueOpts);
         false ->
+            {error, not_ready}
+    end.
+
+-spec register_subscriber(node(), pid(), subscriber_id(), map()) ->
+    {ok, boolean(), pid()} | {error, any()}.
+register_subscriber(Leader, SessionPid, SubscriberId, QueueOpts) ->
+    Req = {register_subscriber, node(), SessionPid, SubscriberId, QueueOpts},
+    try gen_server:call({?MODULE, Leader}, Req, infinity)
+    catch
+        _:_ ->
+            %% mostly happens in case of a netsplit
+            %% this triggers the proper CONNACK leaving the
+            %% client to retry the CONNECT
             {error, not_ready}
     end.
 
@@ -78,15 +79,9 @@ handle_call({register_subscriber, Node, SessionPid,
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({'DOWN', MRef, process, Pid, Reason},
+handle_info({'DOWN', MRef, process, Pid, _},
             #state{monitors=M} = State) ->
-    {ok, {SubscriberId, Pid, From}} = dict:find(MRef, M),
-    case Reason of
-        normal ->
-            gen_server:reply(From, ok);
-        _ ->
-            gen_server:reply(From, {error, Reason})
-    end,
+    {ok, {SubscriberId, Pid, _}} = dict:find(MRef, M),
     {noreply, schedule_next(SubscriberId,
                             State#state{monitors=dict:erase(MRef, M)})}.
 
@@ -109,9 +104,8 @@ schedule_register(SubscriberId, {Node, SessionPid,
         error ->
             %% no waiting items
             {Pid, MRef} =
-            register_subscriber_remote(Node, SubscriberId,
-                                       SessionPid,
-                                       QueueOpts),
+            register_subscriber_remote(Node, From, SubscriberId,
+                                       SessionPid, QueueOpts),
             {dict:store(SubscriberId, queue:new(), R),
              dict:store(MRef, {SubscriberId, Pid, From}, M)}
     end,
@@ -124,9 +118,8 @@ schedule_next(SubscriberId, #state{req_queue=R, monitors=M} = State) ->
             case queue:out(Q) of
                 {{value, {Node, SessionPid, QueueOpts, From}}, NewQ} ->
                     {Pid, MRef} =
-                    register_subscriber_remote(Node, SubscriberId,
-                                                SessionPid,
-                                                QueueOpts),
+                    register_subscriber_remote(Node, From, SubscriberId,
+                                                SessionPid, QueueOpts),
                     {dict:store(SubscriberId, NewQ, R),
                      dict:store(MRef, {SubscriberId, Pid, From}, M)};
                 {empty, Q} ->
@@ -137,9 +130,15 @@ schedule_next(SubscriberId, #state{req_queue=R, monitors=M} = State) ->
     end,
     State#state{req_queue=NewR, monitors=NewM}.
 
-register_subscriber_remote(Node, SubscriberId, SessionPid, QueueOpts) ->
+register_subscriber_remote(Node, From, SubscriberId, SessionPid, QueueOpts) ->
     spawn_monitor(
       fun() ->
               Req = {finish_register_subscriber_by_leader, SessionPid, SubscriberId, QueueOpts},
-              gen_server:call({vmq_reg, Node}, Req, infinity)
+              case catch gen_server:call({vmq_reg, Node}, Req, infinity) of
+                  {'EXIT', Reason} ->
+                      gen_server:reply(From, {error, Reason}),
+                      exit(Reason);
+                  Ret ->
+                      gen_server:reply(From, Ret)
+              end
       end).
