@@ -41,7 +41,7 @@ register_not_ready_test(Config) ->
     ok = vmq_netsplit_utils:check_connected(Nodes),
 
     %% Connect a test-client
-    Connect = packet:gen_connect("test-client", [{clean_session, true},
+    Connect = packet:gen_connect("test-client-not-ready", [{clean_session, true},
                                                  {keepalive, 10}]),
     Connack = packet:gen_connack(0),
     Port = vmq_netsplit_utils:get_port(Nodes),

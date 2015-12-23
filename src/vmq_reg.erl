@@ -176,13 +176,8 @@ register_subscriber(_, _, _, 0) ->
     {error, register_subscriber_retry_exhausted};
 register_subscriber(SessionPid, SubscriberId,
                     #{clean_session := CleanSession} = QueueOpts, N) ->
-    % remap subscriber... enabling that new messages will eventually
-    % reach the new queue.
-    SubscriptionsPresent = maybe_remap_subscriber(SessionPid, SubscriberId, QueueOpts),
     % wont create new queue in case it already exists
     {ok, QueuePresent, QPid} = vmq_queue_sup:start_queue(SubscriberId),
-    SessionPresent1 = SubscriptionsPresent or QueuePresent,
-    SessionPresent2 = (not CleanSession and SessionPresent1),
     Ret =
     case vmq_cluster:nodes() -- [node()] of
         [] ->
@@ -204,6 +199,11 @@ register_subscriber(SessionPid, SubscriberId,
                     {error, cant_reach_nodes_during_migration}
             end
     end,
+    % remap subscriber... enabling that new messages will eventually
+    % reach the new queue.
+    SubscriptionsPresent = maybe_remap_subscriber(SessionPid, SubscriberId, QueueOpts),
+    SessionPresent1 = SubscriptionsPresent or QueuePresent,
+    SessionPresent2 = (not CleanSession and SessionPresent1),
     case Ret of
         ok when SessionPid == undefined ->
             %% SessionPid can be 'undefined' in case an offline session gets
@@ -281,7 +281,7 @@ publish(#vmq_msg{trade_consistency=false,
         true when (IsRetain == true) ->
             %% retain set action
             vmq_retain_srv:insert(MP, Topic, Payload),
-            RegView:fold(MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
             ok;
         true ->
             RegView:fold(MP, Topic, fun publish/2, Msg),

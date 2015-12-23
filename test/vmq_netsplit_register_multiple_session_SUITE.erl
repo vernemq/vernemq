@@ -55,7 +55,7 @@ register_consistency_test(Config) ->
     PortInIsland1 = vmq_netsplit_utils:get_port(Island1),
     PortInIsland2 = vmq_netsplit_utils:get_port(Island2),
 
-    Connect = packet:gen_connect("test-client", [{clean_session, true},
+    Connect = packet:gen_connect("test-client-multiple", [{clean_session, true},
                                                  {keepalive, 10}]),
     Connack = packet:gen_connack(0),
     {ok, Socket1} = packet:do_client_connect(Connect, Connack,
