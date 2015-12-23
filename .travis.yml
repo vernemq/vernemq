@@ -5,4 +5,5 @@ otp_release:
     - 17.3
     - 17.4
     - 17.5
+before_script: "epmd"
 script: "./rebar3 ct"
