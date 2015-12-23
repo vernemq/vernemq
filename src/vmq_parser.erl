@@ -153,8 +153,10 @@ parse(<<?CONNECT:4, 0:4>>,
             case parse_username(Rest1, UserNameFlag, Conn1) of
                 {ok, Rest2, Conn2} ->
                     case parse_password(Rest2, UserNameFlag, PasswordFlag, Conn2) of
-                        {ok, _, Conn3} ->
+                        {ok, <<>>, Conn3} ->
                             Conn3;
+                        {ok, _, Conn3} ->
+                            {error, invalid_rest_of_binary};
                         E -> E
                     end;
                 E -> E
@@ -171,7 +173,7 @@ parse(<<?DISCONNECT:4, 0:4>>, <<>>) ->
     #mqtt_disconnect{};
 parse(_, _) -> {error, cant_parse_variable_header}.
 
-parse_last_will_topic(Rest, 0, _, _, Conn) -> {ok, Rest, Conn};
+parse_last_will_topic(Rest, 0, 0, 0, Conn) -> {ok, Rest, Conn};
 parse_last_will_topic(<<WillTopicLen:16/big, WillTopic:WillTopicLen/binary,
                         WillMsgLen:16/big, WillMsg:WillMsgLen/binary,
                         Rest/binary>>, 1, Retain, QoS, Conn) ->
@@ -184,7 +186,7 @@ parse_last_will_topic(<<WillTopicLen:16/big, WillTopic:WillTopicLen/binary,
         _ ->
             {error, cant_validate_last_will_topic}
     end;
-parse_last_will_topic(_, 1, _, _,_) ->
+parse_last_will_topic(_, _, _, _,_) ->
     {error, cant_parse_last_will}.
 
 parse_username(Rest, 0, Conn) -> {ok, Rest, Conn};
