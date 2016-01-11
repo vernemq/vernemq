@@ -27,10 +27,8 @@ fi
     ./kerl install $4 erlang/
     . erlang/activate
     
-    rm -Rf vernemq
-    git clone git://github.com/erlio/vernemq
+    if cd vernemq; then git pull; else git clone git://github.com/erlio/vernemq vernemq; fi
     cd vernemq
-    git pull
     git checkout $3
     make rel
 SCRIPT
