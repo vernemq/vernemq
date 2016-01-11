@@ -44,7 +44,6 @@ $configs = {
     :trusty => {:sys => :apt, :img => 'ubuntu/trusty64'},
     :precise => {:sys => :apt, :img => 'ubuntu/precise64'},
     :centos7 => {:sys => :yum, :img => 'puppetlabs/centos-7.0-64-nocm'},
-    :centos6 => {:sys => :yum, :img => 'puppetlabs/centos-6.6-64-nocm'}
 }
 
 Vagrant.configure(2) do |config|
