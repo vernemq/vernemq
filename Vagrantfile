@@ -27,6 +27,7 @@ fi
     ./kerl install $4 erlang/
     . erlang/activate
     
+    rm -Rf vernemq
     git clone git://github.com/erlio/vernemq
     cd vernemq
     git pull
