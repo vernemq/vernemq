@@ -8,8 +8,8 @@ if [ "$2" = "apt" ]; then
     sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
     if [ "$1" = "precise"]; then
         # precise comes with a too old version of git, not compatible with rebar3
-        apt-get install -y software-properties-common python-software-properties
-        add-apt-repository ppa:git-core/ppa
+        sudo apt-get install -y software-properties-common python-software-properties
+        sudo add-apt-repository ppa:git-core/ppa
         sudo apt-get update
     fi
     sudo apt-get -y install curl build-essential git packaging-dev libssl-dev openssl libncurses5-dev
