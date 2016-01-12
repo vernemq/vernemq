@@ -45,14 +45,16 @@ $erlang_release = '17.5'
 $configs = {
     :jessie => {:sys => :apt, :img => 'debian/jessie64'},
     :wheezy => {:sys => :apt, :img => 'debian/wheezy64'},
-    :trusty => {:sys => :apt, :img => 'ubuntu/trusty64'},
+    :trusty => {:sys => :apt, :img => 'ubuntu/trusty64', :primary => true},
     :precise => {:sys => :apt, :img => 'ubuntu/precise64'},
     :centos7 => {:sys => :yum, :img => 'puppetlabs/centos-7.0-64-nocm'},
 }
 
 Vagrant.configure(2) do |config|
     $configs.each do |dist, dist_config|
-        config.vm.define dist do |c|
+        config.vm.define dist, 
+            primary: dist_config[:primary],
+            autostart: dist_config[:primary] do |c|
             c.vm.box = dist_config[:img]
             c.vm.provision :shell do |s|
                 s.privileged = false
