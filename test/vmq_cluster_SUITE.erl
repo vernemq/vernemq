@@ -246,7 +246,7 @@ publish(Self, [Node|Rest] = Nodes, NrOfProcesses, NrOfMsgsPerProcess, Pids) ->
     publish(Self, Rest ++ [Node], NrOfProcesses -1, NrOfMsgsPerProcess, [Pid|Pids]).
 
 publish_(Self, Node, NrOfMsgsPerProcess) ->
-    {A, B, C} =  now(),
+    {A, B, C} =  os:timestamp(),
     random:seed(A, B, C),
     publish__(Self, Node, NrOfMsgsPerProcess).
 publish__(Self, _, 0) ->
