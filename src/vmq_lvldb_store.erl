@@ -108,7 +108,7 @@ call(Key, Req) ->
 %%--------------------------------------------------------------------
 init([InstanceId]) ->
     %% Initialize random seed
-    random:seed(now()),
+    random:seed(os:timestamp()),
 
     Opts = vmq_config:get_env(msg_store_opts, []),
     DataDir1 = proplists:get_value(store_dir, Opts, "data/msgstore"),

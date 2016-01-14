@@ -82,7 +82,7 @@
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 
 init(Peer, Opts) ->
-    {A, B, C} = now(),
+    {A, B, C} = os:timestamp(),
     random:seed(A, B, C),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     PreAuthUser =
@@ -1029,7 +1029,7 @@ msg_ref() ->
     GUID =
     case get(guid) of
         undefined ->
-            {{node(), now()}, 0};
+            {{node(), time_compat:timestamp()}, 0};
         {S, I} ->
             {S, I + 1}
     end,

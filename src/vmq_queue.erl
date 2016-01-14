@@ -329,7 +329,7 @@ init([SubscriberId]) ->
       max_drain_time := DrainTime,
       max_msgs_per_drain_step := MaxMsgsPerDrainStep} = Defaults,
     OfflineQueue = #queue{type=QueueType, max=MaxOfflineMsgs},
-    {A, B, C} = now(),
+    {A, B, C} = os:timestamp(),
     random:seed(A, B, C),
     gen_fsm:send_event(self(), init_offline_queue),
     vmq_exo:incr_inactive_clients(),
