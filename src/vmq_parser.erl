@@ -11,6 +11,7 @@
          gen_pubrec/1,
          gen_pubrel/1,
          gen_pubcomp/1,
+         gen_subscribe/2,
          gen_subscribe/3,
          gen_suback/2,
          gen_unsubscribe/2,
@@ -155,7 +156,7 @@ parse(<<?CONNECT:4, 0:4>>,
                     case parse_password(Rest2, UserNameFlag, PasswordFlag, Conn2) of
                         {ok, <<>>, Conn3} ->
                             Conn3;
-                        {ok, _, Conn3} ->
+                        {ok, _, _} ->
                             {error, invalid_rest_of_binary};
                         E -> E
                     end;
@@ -223,8 +224,10 @@ parse_topics(_, _, _) -> {error, cant_parse_topics}.
 
 parse_acks(<<>>, Acks) ->
     Acks;
-parse_acks(<<_:6, QoS:2, Rest/binary>>, Acks) ->
-    parse_acks(Rest, [QoS | Acks]).
+parse_acks(<<_:6, QoS:2, Rest/binary>>, Acks) when (QoS >= 0) and (QoS =< 2) ->
+    parse_acks(Rest, [QoS | Acks]);
+parse_acks(<<_:6, 128:2, Rest/binary>>, Acks) ->
+    parse_acks(Rest, [not_allowed | Acks]).
 
 -spec serialise(mqtt_frame()) -> binary() | iolist().
 serialise(#mqtt_publish{qos=0,
@@ -311,17 +314,20 @@ serialise_len(N) when N =< ?LOWBITS ->
 serialise_len(N) ->
     <<1:1, (N rem ?HIGHBIT):7, (serialise_len(N div ?HIGHBIT))/binary>>.
 
-serialise_topics(_, [], Topics) ->
-    Topics;
 serialise_topics(?SUBSCRIBE = Sub, [{Topic, QoS}|Rest], Acc) ->
     serialise_topics(Sub, Rest, [utf8(vmq_topic:unword(Topic)), <<0:6, QoS:2>>|Acc]);
 serialise_topics(?UNSUBSCRIBE = Sub, [Topic|Rest], Acc) ->
-    serialise_topics(Sub, Rest, [utf8(vmq_topic:unword(Topic))|Acc]).
+    serialise_topics(Sub, Rest, [utf8(vmq_topic:unword(Topic))|Acc]);
+serialise_topics(_, [], Topics) ->
+    Topics.
 
+serialise_acks([QoS|Rest], Acks) when (QoS >= 0) and (QoS =< 2) ->
+    serialise_acks(Rest, [<<0:6, QoS:2>>|Acks]);
+serialise_acks([_|Rest], Acks) ->
+    %% use 0x80 failure code for everything else
+    serialise_acks(Rest, [<<0:6, 128:2>>|Acks]);
 serialise_acks([], Acks) ->
-    Acks;
-serialise_acks([QoS|Rest], Acks) ->
-    serialise_acks(Rest, [<<0:6, QoS:2>>|Acks]).
+    Acks.
 
 proto(4) -> {4, ?PROTOCOL_MAGIC_311};
 proto(3) -> {6, ?PROTOCOL_MAGIC_31};
@@ -401,11 +407,16 @@ gen_pubrel(MId) ->
 gen_pubcomp(MId) ->
     iolist_to_binary(serialise(#mqtt_pubcomp{message_id=MId})).
 
-gen_subscribe(MId, Topic, Qos) ->
-    iolist_to_binary(serialise(#mqtt_subscribe{topics=[{ensure_binary(Topic), Qos}], message_id=MId})).
+gen_subscribe(MId, [{_, _}|_] = Topics) ->
+    BinTopics = [{ensure_binary(Topic), QoS} || {Topic, QoS} <- Topics],
+    iolist_to_binary(serialise(#mqtt_subscribe{topics=BinTopics, message_id=MId})).
+gen_subscribe(MId, Topic, QoS) ->
+    gen_subscribe(MId, [{Topic, QoS}]).
 
-gen_suback(MId, Qos) ->
-    iolist_to_binary(serialise(#mqtt_suback{qos_table=[Qos], message_id=MId})).
+gen_suback(MId, QoSs) when is_list(QoSs) ->
+    iolist_to_binary(serialise(#mqtt_suback{qos_table=QoSs, message_id=MId}));
+gen_suback(MId, QoS) ->
+    gen_suback(MId, [QoS]).
 
 gen_unsubscribe(MId, Topic) ->
     iolist_to_binary(serialise(#mqtt_unsubscribe{topics=[ensure_binary(Topic)], message_id=MId})).
@@ -447,7 +458,12 @@ parser_test() ->
     compare_frame("pubcomp", gen_pubcomp(123)),
 
     compare_frame("subscribe", gen_subscribe(123, "test/hello/world", 2)),
+    compare_frame("subscribe_multi", gen_subscribe(123, [{"test/1", 1}, {"test/2", 2}])),
     compare_frame("suback", gen_suback(123, 2)),
+    compare_frame("suback_multi", gen_suback(123, [0,1,2])),
+    compare_frame("suback_0x80", gen_suback(123, not_allowed)),
+    compare_frame("suback_multi_0x80", gen_suback(123, [0,not_allowed,2])),
+
     compare_frame("unsubscribe", gen_unsubscribe(123, "test/hello/world")),
     compare_frame("unsuback", gen_unsuback(123)),
 
