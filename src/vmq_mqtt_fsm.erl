@@ -341,8 +341,13 @@ connected(#mqtt_subscribe{message_id=MessageId, topics=Topics}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
            trade_consistency=Consistency} = State,
     case vmq_reg:subscribe(Consistency, User, SubscriberId, Topics) of
-        ok ->
-            {_, QoSs} = lists:unzip(Topics),
+        {ok, QoSs} ->
+            {NewState, Out} = send_frame(#mqtt_suback{message_id=MessageId,
+                                                      qos_table=QoSs}, State),
+            {incr_msg_recv_cnt(NewState), Out};
+        {error, not_allowed} ->
+            %% allow the parser to add the 0x80 Failure return code
+            QoSs = [not_allowed || _ <- Topics],
             {NewState, Out} = send_frame(#mqtt_suback{message_id=MessageId,
                                                       qos_table=QoSs}, State),
             {incr_msg_recv_cnt(NewState), Out};

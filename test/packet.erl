@@ -13,6 +13,7 @@
          gen_pubrec/1,
          gen_pubrel/1,
          gen_pubcomp/1,
+         gen_subscribe/2,
          gen_subscribe/3,
          gen_suback/2,
          gen_unsubscribe/2,
@@ -110,6 +111,9 @@ gen_pubrel(Mid) ->
 
 gen_pubcomp(Mid) ->
     vmq_parser:gen_pubcomp(Mid).
+
+gen_subscribe(MId, Topics) ->
+    vmq_parser:gen_subscribe(MId, Topics).
 
 gen_subscribe(MId, Topic, Qos) ->
     vmq_parser:gen_subscribe(MId, Topic, Qos).

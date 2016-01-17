@@ -56,8 +56,8 @@ queue_crash_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
     {ok, false, QPid1} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
-                           [{[<<"test">>, <<"topic">>], 1}]),
+    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
+                                  [{[<<"test">>, <<"topic">>], 1}]),
     %% at this point we've a working subscription
     timer:sleep(10),
     Msg = msg([<<"test">>, <<"topic">>], <<"test-message">>, 1),
@@ -94,7 +94,7 @@ queue_fifo_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
     {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
+    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
                            [{[<<"test">>, <<"fifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
@@ -115,7 +115,7 @@ queue_lifo_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
     {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"lifo">>, <<"topic">>], 1}]),
+    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"lifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
     timer:sleep(10),
@@ -136,7 +136,7 @@ queue_fifo_offline_drop_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
     {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"fifo">>, <<"topic">>], 1}]),
+    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"fifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
     timer:sleep(10),
@@ -160,7 +160,7 @@ queue_lifo_offline_drop_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
     {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
+    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
                            [{[<<"test">>, <<"lifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,

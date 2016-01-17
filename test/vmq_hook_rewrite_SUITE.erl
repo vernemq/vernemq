@@ -115,7 +115,7 @@ auth_on_subscribe_rewrite_test(_) ->
     % subscribes for sub/rewrite/me with QoS 1
     % but we'll deliver sub/rewrite/topic with QoS 0
     Subscribe = packet:gen_subscribe(3265, "sub/rewrite/me", 1),
-    Suback = packet:gen_suback(3265, 1),
+    Suback = packet:gen_suback(3265, [0]),
 
     enable_on_subscribe(),
     enable_on_publish(),
