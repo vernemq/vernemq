@@ -224,10 +224,11 @@ parse_topics(_, _, _) -> {error, cant_parse_topics}.
 
 parse_acks(<<>>, Acks) ->
     Acks;
-parse_acks(<<_:6, QoS:2, Rest/binary>>, Acks) when (QoS >= 0) and (QoS =< 2) ->
-    parse_acks(Rest, [QoS | Acks]);
-parse_acks(<<_:6, 128:2, Rest/binary>>, Acks) ->
-    parse_acks(Rest, [not_allowed | Acks]).
+parse_acks(<<128:8, Rest/binary>>, Acks) ->
+    parse_acks(Rest, [not_allowed | Acks]);
+parse_acks(<<_:6, QoS:2, Rest/binary>>, Acks)
+  when is_integer(QoS) and ((QoS >= 0) and (QoS =< 2)) ->
+    parse_acks(Rest, [QoS | Acks]).
 
 -spec serialise(mqtt_frame()) -> binary() | iolist().
 serialise(#mqtt_publish{qos=0,
@@ -321,11 +322,11 @@ serialise_topics(?UNSUBSCRIBE = Sub, [Topic|Rest], Acc) ->
 serialise_topics(_, [], Topics) ->
     Topics.
 
-serialise_acks([QoS|Rest], Acks) when (QoS >= 0) and (QoS =< 2) ->
+serialise_acks([QoS|Rest], Acks) when is_integer(QoS) and ((QoS >= 0) and (QoS =< 2)) ->
     serialise_acks(Rest, [<<0:6, QoS:2>>|Acks]);
 serialise_acks([_|Rest], Acks) ->
     %% use 0x80 failure code for everything else
-    serialise_acks(Rest, [<<0:6, 128:2>>|Acks]);
+    serialise_acks(Rest, [<<128:8>>|Acks]);
 serialise_acks([], Acks) ->
     Acks.
 
