@@ -157,7 +157,8 @@ connect_cert_auth_expired_test(_) ->
                                {keyfile, ssl_path("client.key")}])).
 
 connect_cert_auth_revoked_test(_) ->
-    assert_error_or_closed({error,{tls_alert,"certificate revoked"}},
+    assert_error_or_closed([{error,{tls_alert,"certificate revoked"}}, % pre OTP 18
+                            {error,{tls_alert,"handshake failure"}}], % Erlang 18
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
@@ -207,6 +208,14 @@ hook_preauth_success(_, {"", <<"connect-success-test">>}, <<"test client">>, und
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -compile({inline, [assert_error_or_closed/2]}).
+assert_error_or_closed([], _) -> exit({error, no_matching_error_message});
+assert_error_or_closed([Error|Rest], Val) ->
+    case catch assert_error_or_closed(Error, Val) of
+        true ->
+            true;
+        _ ->
+            assert_error_or_closed(Rest, Val)
+    end;
 assert_error_or_closed(Error, Val) ->
     true = case Val of
                {error, closed} -> true;
