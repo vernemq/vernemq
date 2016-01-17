@@ -712,7 +712,7 @@ fold_sessions(FoldFun, Acc) ->
                 end, AccAcc, vmq_queue:get_sessions(QPid))
       end, Acc).
 
--spec add_subscriber([{topic(), qos()}|not_allowed], subscriber_id()) -> ok.
+-spec add_subscriber([{topic(), qos() | not_allowed}], subscriber_id()) -> ok.
 add_subscriber(Topics, SubscriberId) ->
     NewSubs =
     case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
