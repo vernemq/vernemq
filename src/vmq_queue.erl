@@ -360,7 +360,7 @@ handle_sync_event(Event, _From, _StateName, State) ->
     {stop, {error, {unknown_sync_event, Event}}, State}.
 
 handle_info({'DOWN', _MRef, process, SessionPid, _}, StateName,
-            #state{id=SId, waiting_call=WaitingCall, offline=Offline} = State) ->
+            #state{id=SId, waiting_call=WaitingCall} = State) ->
     {NewState, DeletedSession} = del_session(SessionPid, State),
     case {maps:size(NewState#state.sessions), StateName, WaitingCall} of
         {0, wait_for_offline, {add_session, NewSessionPid, Opts, From}} ->
@@ -409,7 +409,7 @@ handle_info({'DOWN', _MRef, process, SessionPid, _}, StateName,
             vmq_exo:incr_inactive_clients(),
             _ = vmq_plugin:all(on_client_offline, [SId]),
             {next_state, state_change('DOWN', OldStateName, offline),
-             maybe_set_expiry_timer(NewState#state{offline=compress_queue(SId, Offline)})};
+             maybe_set_expiry_timer(NewState#state{offline=compress_queue(SId, NewState#state.offline)})};
         _ ->
             %% still one or more sessions online
             {next_state, StateName, NewState}
