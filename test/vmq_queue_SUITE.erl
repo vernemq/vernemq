@@ -180,7 +180,7 @@ queue_lifo_offline_drop_test(_) ->
 
 queue_offline_transition_test(_) ->
     Parent = self(),
-    SubscriberId = {"", <<"mock-lifo-client">>},
+    SubscriberId = {"", <<"mock-trans-client">>},
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{clean_session => false,
                                                        max_offline_messages => 1000,
                                                        queue_type => fifo}),
