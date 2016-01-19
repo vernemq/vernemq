@@ -13,7 +13,8 @@
          queue_fifo_test/1,
          queue_lifo_test/1,
          queue_fifo_offline_drop_test/1,
-         queue_lifo_offline_drop_test/1]).
+         queue_lifo_offline_drop_test/1,
+         queue_offline_transition_test/1]).
 
 -export([hook_auth_on_publish/6,
          hook_auth_on_subscribe/3]).
@@ -43,7 +44,8 @@ all() ->
      queue_fifo_test,
      queue_lifo_test,
      queue_fifo_offline_drop_test,
-     queue_lifo_offline_drop_test
+     queue_lifo_offline_drop_test,
+     queue_offline_transition_test
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -176,6 +178,28 @@ queue_lifo_offline_drop_test(_) ->
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
 
+queue_offline_transition_test(_) ->
+    Parent = self(),
+    SubscriberId = {"", <<"mock-trans-client">>},
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{clean_session => false,
+                                                       max_offline_messages => 1000,
+                                                       queue_type => fifo}),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
+    {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
+    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
+    timer:sleep(10), % give some time to plumtree
+
+    %% teardown session
+    catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
+    SessionPid1 ! {go_down_in, 1},
+    Msgs = publish_multi([<<"test">>, <<"transition">>]), % publish 100
+
+    SessionPid2 = spawn(fun() -> mock_session(Parent) end),
+    {ok, true, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
+    ok = receive_multi(QPid, 1, Msgs),
+    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
+
+
 publish_multi(Topic) ->
     publish_multi(Topic, []).
 
@@ -214,6 +238,8 @@ mock_session(Parent) ->
             timer:sleep(100),
             Parent ! {received, QPid, Msgs},
             mock_session(Parent);
+        {go_down_in, Ms} ->
+            timer:sleep(Ms);
         _ -> % go down
             ok
     end.
