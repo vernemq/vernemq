@@ -71,9 +71,10 @@
 -define(NR_OF_REG_RETRIES, 10).
 
 -spec subscribe(flag(), username() | plugin_id(), subscriber_id(),
-                [{topic(), qos()}]) -> ok | {error, not_allowed
-                                             | overloaded
-                                             | not_ready}.
+                [{topic(), qos()}]) -> {ok, [qos() | not_allowed]}
+                                       | {error, not_allowed
+                                       | overloaded
+                                       | not_ready}.
 
 subscribe(false, User, SubscriberId, Topics) ->
     %% trade availability for consistency
@@ -99,12 +100,16 @@ subscribe_op(User, SubscriberId, Topics) ->
               add_subscriber(Topics, SubscriberId)
       end,
       fun(_) ->
-              _ = [begin
-                       _ = vmq_exo:incr_subscription_count(),
-                       deliver_retained(SubscriberId, T, QoS)
-                   end || {T, QoS} <- Topics],
+              QoSTable =
+              lists:foldl(fun ({_, not_allowed}, AccQoSTable) ->
+                                  [not_allowed|AccQoSTable];
+                              ({T, QoS}, AccQoSTable) when is_integer(QoS) ->
+                                  _ = vmq_exo:incr_subscription_count(),
+                                  deliver_retained(SubscriberId, T, QoS),
+                                  [QoS|AccQoSTable]
+                          end, [], Topics),
               vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
-              ok
+              {ok, lists:reverse(QoSTable)}
       end).
 
 -spec unsubscribe(flag(), username() | plugin_id(),
@@ -707,14 +712,17 @@ fold_sessions(FoldFun, Acc) ->
                 end, AccAcc, vmq_queue:get_sessions(QPid))
       end, Acc).
 
--spec add_subscriber([{topic(), qos()}], subscriber_id()) -> ok.
+-spec add_subscriber([{topic(), qos() | not_allowed}], subscriber_id()) -> ok.
 add_subscriber(Topics, SubscriberId) ->
     NewSubs =
     case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined ->
-            [{Topic, QoS, node()} || {Topic, QoS} <- Topics];
+            %% not_allowed topics are filtered out here
+            [{Topic, QoS, node()} || {Topic, QoS} <- Topics, is_integer(QoS)];
         Subs ->
-            lists:foldl(fun({Topic, QoS}, NewSubsAcc) ->
+            lists:foldl(fun ({_Topic, not_allowed}, NewSubsAcc) ->
+                                NewSubsAcc;
+                            ({Topic, QoS}, NewSubsAcc) ->
                                 NewSub = {Topic, QoS, node()},
                                 case lists:member(NewSub, NewSubsAcc) of
                                     true -> NewSubsAcc;

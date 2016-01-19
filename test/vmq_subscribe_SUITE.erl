@@ -11,6 +11,8 @@
 -export([subscribe_qos0_test/1,
          subscribe_qos1_test/1,
          subscribe_qos2_test/1,
+         suback_with_nack_test/1,
+         subnack_test/1,
          unsubscribe_qos0_test/1,
          unsubscribe_qos1_test/1,
          unsubscribe_qos2_test/1,
@@ -46,6 +48,8 @@ all() ->
     [subscribe_qos0_test,
      subscribe_qos1_test,
      subscribe_qos2_test,
+     suback_with_nack_test,
+     subnack_test,
      unsubscribe_qos0_test,
      unsubscribe_qos1_test,
      unsubscribe_qos2_test,
@@ -92,6 +96,35 @@ subscribe_qos2_test(_) ->
     disable_on_subscribe(),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:close(Socket).
+
+suback_with_nack_test(_) ->
+    Connect = packet:gen_connect("subscribe-multi1-test", [{keepalive,60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(3, [{"qos0/test", 0},
+                                         {"qos1/test", 1},
+                                         {"qos2/test", 2}]),
+    SubackWithNack = packet:gen_suback(3, [0, not_allowed, 2]),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    enable_on_subscribe(),
+    ok = gen_tcp:send(Socket, Subscribe),
+    disable_on_subscribe(),
+    ok = packet:expect_packet(Socket, "subackWithNack", SubackWithNack),
+    ok = gen_tcp:close(Socket).
+
+subnack_test(_) ->
+    Connect = packet:gen_connect("subscribe-multi2-test", [{keepalive,60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(3, [{"qos0/test", 0},
+                                         {"qos1/test", 1},
+                                         {"qos2/test", 2}]),
+    SubNack = packet:gen_suback(3, [not_allowed, not_allowed, not_allowed]),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    enable_on_subscribe(),
+    ok = gen_tcp:send(Socket, Subscribe),
+    disable_on_subscribe(),
+    ok = packet:expect_packet(Socket, "subNack", SubNack),
+    ok = gen_tcp:close(Socket).
+
 
 unsubscribe_qos0_test(_) ->
     Connect = packet:gen_connect("unsubscribe-qos0-test", [{keepalive,60}]),
@@ -195,6 +228,18 @@ subpub_qos2_test(_) ->
 hook_auth_on_subscribe(_,{"", <<"subscribe-qos0-test">>}, [{[<<"qos0">>,<<"test">>], 0}]) -> ok;
 hook_auth_on_subscribe(_,{"", <<"subscribe-qos1-test">>}, [{[<<"qos1">>,<<"test">>], 1}]) -> ok;
 hook_auth_on_subscribe(_,{"", <<"subscribe-qos2-test">>}, [{[<<"qos2">>,<<"test">>], 2}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"subscribe-multi1-test">>},
+                       [{[<<"qos0">>,<<"test">>], 0},
+                        {[<<"qos1">>,<<"test">>], 1},
+                        {[<<"qos2">>,<<"test">>], 2}]) ->
+    {ok, [{[<<"qos0">>,<<"test">>], 0},
+          {[<<"qos1">>,<<"test">>], not_allowed},
+          {[<<"qos2">>,<<"test">>], 2}]};
+hook_auth_on_subscribe(_,{"", <<"subscribe-multi2-test">>},
+                       [{[<<"qos0">>,<<"test">>], 0},
+                        {[<<"qos1">>,<<"test">>], 1},
+                        {[<<"qos2">>,<<"test">>], 2}]) ->
+    {error, not_allowed};
 hook_auth_on_subscribe(_,{"", <<"subpub-qos0-test">>}, [{[<<"subpub">>,<<"qos0">>], 0}]) -> ok;
 hook_auth_on_subscribe(_,{"", <<"subpub-qos1-test">>}, [{[<<"subpub">>,<<"qos1">>], 1}]) -> ok;
 hook_auth_on_subscribe(_,{"", <<"subpub-qos2-test">>}, [{[<<"subpub">>,<<"qos2">>], 2}]) -> ok.
