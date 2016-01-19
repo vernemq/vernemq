@@ -187,8 +187,9 @@ queue_offline_transition_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
     {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
     ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
-    %% teardown session
     timer:sleep(10), % give some time to plumtree
+
+    %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
     SessionPid1 ! {go_down_in, 1},
     Msgs = publish_multi([<<"test">>, <<"transition">>]), % publish 100
@@ -196,7 +197,6 @@ queue_offline_transition_test(_) ->
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, true, QPid} = vmq_reg_leader:register_subscriber(SessionPid2, SubscriberId, QueueOpts),
     ok = receive_multi(QPid, 1, Msgs),
-    timer:sleep(10),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
 
