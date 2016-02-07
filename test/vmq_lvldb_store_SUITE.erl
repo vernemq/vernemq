@@ -30,7 +30,7 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    random:seed(now()),
+    random:seed(os:timestamp()),
     vmq_test_utils:setup(),
     Config.
 

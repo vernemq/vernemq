@@ -26,7 +26,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 setup(NetTickTime) ->
-    {A, B, C} = now(),
+    {A, B, C} = os:timestamp(),
     random:seed(A, B, C),
     os:cmd("killall epmd"),
     epmdpxy:start(?DEFAULT_EPMDPXY_PORT),
