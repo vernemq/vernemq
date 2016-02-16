@@ -25,7 +25,7 @@ about VerneMQ installation, operations, but also plugin development.
 IRC Channel
 -----------
 
-The VerneMQ channel on `Freenode`_ is also a good alternative to Twitter if you want
+The #vernemq channel on `Freenode`_ is also a good alternative to Twitter if you want
 to get in touch with the devs of VerneMQ.
 
 .. _Freenode: https://freenode.net
