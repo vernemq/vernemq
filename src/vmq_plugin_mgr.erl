@@ -536,8 +536,8 @@ check_app_plugin(App, Options) ->
     AppPaths = proplists:get_value(paths, Options, []),
     case create_paths(App, AppPaths) of
         [] ->
-            lager:debug("can't create path ~p for app ~p~n", [AppPaths, App]),
-            {error, cant_create_path};
+            lager:debug("can't create paths ~p for app ~p~n", [AppPaths, App]),
+            {error, plugin_not_found};
         Paths ->
             code:add_paths(Paths),
             case application:load(App) of
