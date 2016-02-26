@@ -179,10 +179,10 @@ handle_call(Call, _From, #state{ready=true} = State) ->
 handle_call(Call, From, #state{deferred_calls=DeferredCalls} = State) ->
     {noreply, State#state{deferred_calls=[{Call, From}|DeferredCalls]}}.
 
-handle_plugin_call({enable_plugin, Plugin, Path}, State) ->
+handle_plugin_call({enable_plugin, Plugin, Paths}, State) ->
     case enable_plugin_generic(
-           {application, Plugin, Path}, State) of
-        {ok, NewState} ->
+           {application, Plugin, Paths}, State) of
+                {ok, NewState} ->
             {reply, ok, NewState};
         {error, _} = E ->
             {reply, E, State}
@@ -536,8 +536,8 @@ check_app_plugin(App, Options) ->
     AppPaths = proplists:get_value(paths, Options, []),
     case create_paths(App, AppPaths) of
         [] ->
-            lager:debug("can't create path ~p for app ~p~n", [AppPaths, App]),
-            {error, cant_create_path};
+            lager:debug("can't create paths ~p for app ~p~n", [AppPaths, App]),
+            {error, plugin_not_found};
         Paths ->
             code:add_paths(Paths),
             case application:load(App) of
