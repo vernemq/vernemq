@@ -86,7 +86,7 @@ init([Host, Port, RegistryMFA]) ->
     {M,F,A} = RegistryMFA,
     {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}} = apply(M,F,A),
     true = is_function(RegisterFun, 0),
-    true = is_function(PublishFun, 2),
+    true = is_function(PublishFun, 3),
     true = is_function(SubscribeFun, 1),
     true = is_function(UnsubscribeFun, 1),
     ok = RegisterFun(),
@@ -174,7 +174,8 @@ handle_info({deliver_remote, Topic, Payload},
       fun({{in, T}, LocalPrefix}) ->
               case vmq_topic:match(Topic, T) of
                   true ->
-                      ok = PublishFun(routing_key(LocalPrefix, Topic), Payload);
+                      ok = PublishFun(routing_key(LocalPrefix, Topic), Payload,
+                                     #{});
                   false ->
                       ok
               end;

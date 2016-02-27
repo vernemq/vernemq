@@ -222,7 +222,7 @@ bridge_plugin(ReportProc) ->
     RegisterFun = fun() ->
                         ok
                   end,
-    PublishFun = fun(Topic, Payload) ->
+    PublishFun = fun(Topic, Payload, _Opts) ->
                          ReportProc ! {publish, Topic, Payload},
                          ok
                  end,
