@@ -31,8 +31,8 @@ setup(NetTickTime) ->
     os:cmd("killall epmd"),
     epmdpxy:start(?DEFAULT_EPMDPXY_PORT),
     timer:sleep(1000),
-    ct:pal("Started EPMDPXY on node ~p with EPMD port ~p~n",
-              [node(), ?DEFAULT_EPMDPXY_PORT]),
+    %% ct:pal("Started EPMDPXY on node ~p with EPMD port ~p~n",
+    %%         [node(), ?DEFAULT_EPMDPXY_PORT]),
     vmq_test_utils:maybe_start_distribution(vmq_ct_master),
     set_net_ticktime(NetTickTime),
     Hosts = hosts(),
@@ -95,16 +95,16 @@ ensure_not_ready(Nodes) ->
     ensure_not_ready(Nodes, 60000).
 
 ensure_not_ready(_, 0) ->
-    ct:pal("cluster can't agree on cluster state on time"),
+    error_logger:error_report("cluster can't agree on cluster state on time"),
     false;
 ensure_not_ready(Nodes, Max) ->
     Ready = proxy_multicall(Nodes, vmq_cluster, is_ready, []),
     case lists:member(true, Ready) of
         false ->
-            ct:pal("cluster is not ready anymore"),
+            %% ct:pal("cluster is not ready anymore"),
             true;
         _ ->
-            ct:pal("still no consensus about cluster state ~p", [Ready]),
+            %% ct:pal("still no consensus about cluster state ~p", [Ready]),
             timer:sleep(1000),
             ensure_not_ready(Nodes, Max - 1000)
     end.
@@ -232,10 +232,10 @@ host() ->
     list_to_atom(Host).
 
 set_net_ticktime(NetTickTime) ->
-    ct:pal("change net_ticktime on node ~p to ~p initiated", [node(), NetTickTime]),
+    %% ct:pal("change net_ticktime on node ~p to ~p initiated", [node(), NetTickTime]),
     case net_kernel:set_net_ticktime(NetTickTime, NetTickTime) of
         unchanged ->
-            ct:pal("net_ticktime on node ~p changed", [node()]),
+            %% ct:pal("net_ticktime on node ~p changed", [node()]),
             ok;
         change_initiated ->
             wait_till_net_tick_converged(NetTickTime);
@@ -246,7 +246,7 @@ set_net_ticktime(NetTickTime) ->
 wait_till_net_tick_converged(NetTickTime) ->
     case net_kernel:get_net_ticktime() of
         NetTickTime ->
-            ct:pal("net_ticktime on node ~p changed", [node()]),
+            %% ct:pal("net_ticktime on node ~p changed", [node()]),
             ok;
         {ongoing_change_to, NetTickTime} ->
             timer:sleep(1000),

@@ -221,8 +221,7 @@ receive_multi(QPid, Msgs) ->
                 {RecMsgs, RestMsgs} ->
                     receive_multi(QPid, RestMsgs);
                 _ ->
-                    ct:pal("~p ~p", [RecMsgs, Msgs]),
-                    exit({wrong_messages, RecMsgs})
+                    exit({wrong_messages, {RecMsgs, Msgs}})
             end;
         M ->
             exit({wrong_message, M})
