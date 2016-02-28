@@ -145,7 +145,8 @@ handle_info(subscribers_loaded, #state{event_handler=Handler,
     lists:foreach(fun(Event) ->
                           handle_event(Handler, Event)
                   end, queue:to_list(Q)),
-    lager:info("all subscribers loaded into ~p", [?MODULE]),
+    NrOfSubscribers = ets:info(vmq_trie_subs, size),
+    lager:info("~p subscribers loaded into ~p", [NrOfSubscribers, ?MODULE]),
     {noreply, State#state{status=ready, event_queue=undefined}};
 handle_info(Event, #state{status=init, event_queue=Q} = State) ->
     {noreply, State#state{event_queue=queue:in(Event, Q)}};
