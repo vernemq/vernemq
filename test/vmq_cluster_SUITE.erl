@@ -130,7 +130,7 @@ distributed_subscribe_test(Config) ->
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
      end || {_, Port} <- Nodes],
-    timer:sleep(100),
+    timer:sleep(1000),
     [PubSocket|Rest] = Sockets,
     Publish = packet:gen_publish(Topic, 1, <<"test-message">>, [{mid, 1}]),
     Puback = packet:gen_puback(1),
