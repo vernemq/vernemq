@@ -43,9 +43,9 @@ register_not_ready_test(Config) ->
     %% Connect a test-client
     Connect = packet:gen_connect("test-client-not-ready", [{clean_session, true},
                                                  {keepalive, 10}]),
-    Connack = packet:gen_connack(0),
+    Connack1 = packet:gen_connack(0),
     Port = vmq_netsplit_utils:get_port(Nodes),
-    {ok, _Socket} = packet:do_client_connect(Connect, Connack,
+    {ok, _Socket} = packet:do_client_connect(Connect, Connack1,
                                              [{port, Port}]),
 
     %% Create Partitions
@@ -78,11 +78,24 @@ register_not_ready_test(Config) ->
          gen_tcp:close(S)
      end || N <- Nodes],
 
-    %% we configure the nodes to trade consistency for availability
+    %% we configure the nodes to trade consistency for availability,
+    %% this call alsow sets allow_multiple_sessions=true
     ok = vmq_netsplit_utils:configure_trade_consistency(Nodes),
+    %% in this consitency mode (incl. allow_multiple_sessions) we ignore the
+    %% clean_session flag and return SessionPresent=true if we discover that a
+    %% queue already exists on the connecting node.
     [begin
          P = vmq_netsplit_utils:get_port([N]),
-         {ok, S} = packet:do_client_connect(Connect, Connack, [{port, P}]),
+         Connack2 =
+         case P == Port of
+             true ->
+                 % this node has a running queue, which triggers a
+                 % sessionPresent=true
+                 packet:gen_connack(true, 0);
+             false ->
+                 packet:gen_connack(false, 0)
+         end,
+         {ok, S} = packet:do_client_connect(Connect, Connack2, [{port, P}]),
          gen_tcp:close(S)
      end || N <- Nodes],
 
