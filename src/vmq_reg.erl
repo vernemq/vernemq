@@ -567,17 +567,27 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             end,
 
             PublishFun =
-            fun([W|_] = Topic, Payload) when is_binary(W) and is_binary(Payload) ->
+            fun([W|_] = Topic, Payload, Opts) when is_binary(W)
+                                                    and is_binary(Payload)
+                                                    and is_map(Opts) ->
                     wait_til_ready(),
-                    Msg = #vmq_msg{routing_key=Topic,
-                                   mountpoint=MountPoint,
-                                   payload=Payload,
-                                   msg_ref=vmq_mqtt_fsm:msg_ref(),
-                                   dup=false,
-                                   retain=false,
-                                   trade_consistency=TradeConsistency,
-                                   reg_view=DefaultRegView
-                                  },
+                    %% allow a plugin developer to override
+                    %% - mountpoint
+                    %% - dup flag
+                    %% - retain flag
+                    %% - trade-consistency flag
+                    %% - reg_view
+                    Msg = #vmq_msg{
+                             routing_key=Topic,
+                             mountpoint=maps:get(mountpoint, Opts, MountPoint),
+                             payload=Payload,
+                             msg_ref=vmq_mqtt_fsm:msg_ref(),
+                             dup=maps:get(dup, Opts, false),
+                             retain=maps:get(retain, Opts, false),
+                             trade_consistency=maps:get(trade_consistency, Opts,
+                                                        TradeConsistency),
+                             reg_view=maps:get(reg_view, Opts, DefaultRegView)
+                            },
                     publish(Msg)
             end,
 
