@@ -121,7 +121,7 @@ distributed_subscribe_test(Config) ->
     [begin
          Connect = packet:gen_connect("connect-" ++ integer_to_list(Port),
                                       [{clean_session, true},
-                                       {keepalive, 10}]),
+                                       {keepalive, 20}]),
          Connack = packet:gen_connack(0),
          Subscribe = packet:gen_subscribe(123, Topic, 1),
          Suback = packet:gen_suback(123, 1),
