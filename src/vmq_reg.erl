@@ -208,7 +208,13 @@ register_subscriber(SessionPid, SubscriberId,
     % reach the new queue.
     SubscriptionsPresent = maybe_remap_subscriber(SessionPid, SubscriberId, QueueOpts),
     SessionPresent1 = SubscriptionsPresent or QueuePresent,
-    SessionPresent2 = (not CleanSession and SessionPresent1),
+    SessionPresent2 =
+    case CleanSession of
+        true ->
+            false; %% SessionPresent is always false in case CleanSession=true
+        false ->
+            SessionPresent1
+    end,
     case Ret of
         ok when SessionPid == undefined ->
             %% SessionPid can be 'undefined' in case an offline session gets
