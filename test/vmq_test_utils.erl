@@ -13,7 +13,8 @@ setup_use_default_auth() ->
 start_server(StartNoAuth) ->
     os:cmd(os:find_executable("epmd")++" -daemon"),
     ok = maybe_start_distribution(vmq_server),
-    Datadir = "data/" ++ atom_to_list(node()),
+    Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
+    os:cmd("rm -rf " ++ Datadir),
     application:load(plumtree),
     application:set_env(plumtree, plumtree_data_dir, Datadir),
     application:set_env(plumtree, metadata_root, Datadir ++ "/meta/"),
@@ -42,7 +43,6 @@ start_server(StartNoAuth) ->
                                             {size,10485760},
                                             {date,"$D0"},
                                             {count,5}]}]),
-    reset_all(),
     start_server_(StartNoAuth),
     disable_all_plugins().
 
@@ -56,7 +56,14 @@ random_port() ->
 
 teardown() ->
     disable_all_plugins(),
-    vmq_server:stop().
+    vmq_server:stop(),
+    Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
+    _ = [eleveldb:destroy(Datadir ++ "/meta/" ++ integer_to_list(I), [])
+         || I <- lists:seq(0, 11)],
+    _ = [eleveldb:destroy(Datadir ++ "/msgstore/" ++ integer_to_list(I), [])
+         || I <- lists:seq(0, 11)],
+    eleveldb:destroy(Datadir ++ "/trees", []),
+    ok.
 
 disable_all_plugins() ->
     _ = [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
@@ -71,14 +78,6 @@ maybe_start_distribution(Name) ->
         _ ->
             ok
     end.
-
-reset_all() ->
-    {ok, PlumtreeDir} = application:get_env(plumtree, plumtree_data_dir),
-    filelib:ensure_dir(PlumtreeDir ++ "/ptmp"),
-    del_dir(PlumtreeDir),
-    MsgStoreDir = proplists:get_value(store_dir, application:get_env(vmq_server, msg_store_opts, [])),
-    filelib:ensure_dir(MsgStoreDir ++ "/ptmp"),
-    del_dir(MsgStoreDir).
 
 reset_tables() ->
     _ = [reset_tab(T) || T <- [subscriber, config, retain]],
@@ -97,26 +96,3 @@ reset_tab(Tab) ->
                       ok
               end
       end, ok, {vmq, Tab}).
-
-del_dir(Dir) ->
-    lists:foreach(fun(D) ->
-                          ok = file:del_dir(D)
-                  end, del_all_files([Dir], [])).
-
-del_all_files([], EmptyDirs) ->
-    EmptyDirs;
-del_all_files([Dir | T], EmptyDirs) ->
-    {ok, FilesInDir} = file:list_dir(Dir),
-    {Files, Dirs} = lists:foldl(fun(F, {Fs, Ds}) ->
-                                        Path = Dir ++ "/" ++ F,
-                                        case filelib:is_dir(Path) of
-                                            true ->
-                                                {Fs, [Path | Ds]};
-                                            false ->
-                                                {[Path | Fs], Ds}
-                                        end
-                                end, {[],[]}, FilesInDir),
-    lists:foreach(fun(F) ->
-                          ok = file:delete(F)
-                  end, Files),
-    del_all_files(T ++ Dirs, [Dir | EmptyDirs]).
