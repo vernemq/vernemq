@@ -85,8 +85,10 @@ in_order_online_qos2_test(_) ->
 
 in_order_routine(MaxInflightMessages, QoS, LoadLevel, GoOffline, LetRetry) ->
     {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMessages),
-    SubConnect = packet:gen_connect("inorder-sub", [{keepalive,60}, {clean_session, false}]),
-    PubConnect = packet:gen_connect("inorder-pub", [{keepalive,60}, {clean_session, true}]),
+    SubClientId = "inorder-sub-"++integer_to_list(QoS)++"-"++atom_to_list(GoOffline),
+    PubClientId = "inorder-pub-"++integer_to_list(QoS)++"-"++atom_to_list(GoOffline),
+    SubConnect = packet:gen_connect(SubClientId, [{keepalive,60}, {clean_session, false}]),
+    PubConnect = packet:gen_connect(PubClientId, [{keepalive,60}, {clean_session, true}]),
     Connack1 = packet:gen_connack(0),
     Connack2 = packet:gen_connack(true, 0),
     Subscribe = packet:gen_subscribe(109, "inorder/test", QoS),
@@ -160,7 +162,7 @@ in_order_routine(MaxInflightMessages, QoS, LoadLevel, GoOffline, LetRetry) ->
     end,
     gen_tcp:close(SubSocket1),
     %% clean session
-    SubConnectClean = packet:gen_connect("inorder-sub", [{clean_session, true}]),
+    SubConnectClean = packet:gen_connect(SubClientId, [{clean_session, true}]),
     {ok, SubSocket2} = packet:do_client_connect(SubConnectClean, Connack1, []),
     gen_tcp:close(SubSocket2),
     ok.
