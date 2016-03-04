@@ -1,6 +1,21 @@
 %%-*- mode: erlang -*
 %% ex: ft=erlang
 
+%% ugly mapping, to keep eleveldb.schema happy
+{mapping, "platform_data_dir", "eleveldb.data.dir", [{default,
+                                                      "{{platform_data_dir}}"},
+                                                     hidden]}.
+
+%% Overwrite definition from cuttlefish/priv/erlang-vm.schema
+
+%% @doc Cookie for distributed node communication.  All nodes in the
+%% same cluster should use the same cookie or they will not be able to
+%% communicate.
+{mapping, "distributed_cookie", "vm_args.-setcookie", [
+  {default, "vmq"}
+]}.
+
+
 %% @doc Where to emit the default log messages (typically at 'info'
 %% severity):
 %%      off: disabled
@@ -140,14 +155,3 @@
                                                                       {datatype, integer},
                                                                       hidden
                                                                      ]}.
-%% @doc Cookie for distributed node communication. All nodes in the
-%% same cluster should use the same cookie or they will not be able to
-%% communicate.
-{mapping, "distributed_cookie", "vm_args.-setcookie", [
-                                                       {default, "vmq"}
-                                                      ]}.
-%% override zdbbl from 1mb to 32mb
-{mapping, "erlang.distribution_buffer_size", "vm_args.+zdbbl", [
-                                                                {default, "32MB"},
-                                                                merge
-                                                               ]}.
