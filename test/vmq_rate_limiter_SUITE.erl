@@ -64,7 +64,7 @@ publish_rate_limit_test(_) ->
       end),
     %% this should take us more than 10 seconds
     TimeInMs = round(T / 1000),
-    ct:pal("time passed in ms/ sample ~p", [TimeInMs]),
+    io:format(user, "time passed in ms/ sample ~p", [TimeInMs]),
     true = TimeInMs > 10000,
     ok = gen_tcp:close(Socket),
     disable_hooks().

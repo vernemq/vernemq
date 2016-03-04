@@ -78,16 +78,19 @@ register_not_ready_test(Config) ->
          gen_tcp:close(S)
      end || N <- Nodes],
 
-    %% we configure the nodes to trade consistency for availability
-    ok = vmq_netsplit_utils:configure_trade_consistency(Nodes),
+
+    %% fix cables
+    vmq_netsplit_utils:fix_network(Island1, Island2),
+    timer:sleep(1000),
+    vmq_netsplit_utils:check_connected(Nodes),
+
+
+    %% connect MUST go through now.
     [begin
          P = vmq_netsplit_utils:get_port([N]),
          {ok, S} = packet:do_client_connect(Connect, Connack, [{port, P}]),
          gen_tcp:close(S)
      end || N <- Nodes],
 
-    %% fix cables
-    vmq_netsplit_utils:fix_network(Island1, Island2),
-    timer:sleep(1000),
-    vmq_netsplit_utils:check_connected(Nodes),
+
     ok.

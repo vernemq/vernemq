@@ -186,7 +186,7 @@ queue_offline_transition_test(_) ->
                                                        queue_type => fifo}),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
     {ok, false, QPid} = vmq_reg_leader:register_subscriber(SessionPid1, SubscriberId, QueueOpts),
-    ok = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
+    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
     timer:sleep(10), % give some time to plumtree
 
     %% teardown session
@@ -221,8 +221,7 @@ receive_multi(QPid, Msgs) ->
                 {RecMsgs, RestMsgs} ->
                     receive_multi(QPid, RestMsgs);
                 _ ->
-                    ct:pal("~p ~p", [RecMsgs, Msgs]),
-                    exit({wrong_messages, RecMsgs})
+                    exit({wrong_messages, {RecMsgs, Msgs}})
             end;
         M ->
             exit({wrong_message, M})

@@ -35,12 +35,14 @@ end_per_suite(_Config) ->
 
 init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
+    enable_on_subscribe(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:listener_start(1888, []),
     Config.
 
 end_per_testcase(_, Config) ->
+    disable_on_subscribe(),
     vmq_test_utils:teardown(),
     Config.
 
@@ -67,9 +69,7 @@ subscribe_qos0_test(_) ->
     Subscribe = packet:gen_subscribe(53, "qos0/test", 0),
     Suback = packet:gen_suback(53, 0),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    enable_on_subscribe(),
     ok = gen_tcp:send(Socket, Subscribe),
-    disable_on_subscribe(),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:close(Socket).
 
@@ -79,9 +79,7 @@ subscribe_qos1_test(_) ->
     Subscribe = packet:gen_subscribe(79, "qos1/test", 1),
     Suback = packet:gen_suback(79, 1),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    enable_on_subscribe(),
     ok = gen_tcp:send(Socket, Subscribe),
-    disable_on_subscribe(),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:close(Socket).
 
@@ -91,9 +89,7 @@ subscribe_qos2_test(_) ->
     Subscribe = packet:gen_subscribe(3, "qos2/test", 2),
     Suback = packet:gen_suback(3, 2),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    enable_on_subscribe(),
     ok = gen_tcp:send(Socket, Subscribe),
-    disable_on_subscribe(),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:close(Socket).
 
@@ -105,9 +101,7 @@ suback_with_nack_test(_) ->
                                          {"qos2/test", 2}]),
     SubackWithNack = packet:gen_suback(3, [0, not_allowed, 2]),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    enable_on_subscribe(),
     ok = gen_tcp:send(Socket, Subscribe),
-    disable_on_subscribe(),
     ok = packet:expect_packet(Socket, "subackWithNack", SubackWithNack),
     ok = gen_tcp:close(Socket).
 
@@ -119,9 +113,7 @@ subnack_test(_) ->
                                          {"qos2/test", 2}]),
     SubNack = packet:gen_suback(3, [not_allowed, not_allowed, not_allowed]),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    enable_on_subscribe(),
     ok = gen_tcp:send(Socket, Subscribe),
-    disable_on_subscribe(),
     ok = packet:expect_packet(Socket, "subNack", SubNack),
     ok = gen_tcp:close(Socket).
 
@@ -163,13 +155,11 @@ subpub_qos0_test(_) ->
     Suback = packet:gen_suback(53, 0),
     Publish = packet:gen_publish("subpub/qos0", 0, <<"message">>, []),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    enable_on_subscribe(),
     enable_on_publish(),
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "publish", Publish),
-    disable_on_subscribe(),
     disable_on_publish(),
     ok = gen_tcp:close(Socket).
 
@@ -182,14 +172,12 @@ subpub_qos1_test(_) ->
     Puback1 = packet:gen_puback(300),
     Publish2 = packet:gen_publish("subpub/qos1", 1, <<"message">>, [{mid, 1}]),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    enable_on_subscribe(),
     enable_on_publish(),
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:send(Socket, Publish1),
     ok = packet:expect_packet(Socket, "puback", Puback1),
     ok = packet:expect_packet(Socket, "publish", Publish2),
-    disable_on_subscribe(),
     disable_on_publish(),
     ok = gen_tcp:close(Socket).
 
@@ -207,7 +195,6 @@ subpub_qos2_test(_) ->
     Pubrel2 = packet:gen_pubrel(1),
 
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
-    enable_on_subscribe(),
     enable_on_publish(),
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
@@ -218,7 +205,6 @@ subpub_qos2_test(_) ->
     ok = packet:expect_packet(Socket, "publish2", Publish2),
     ok = gen_tcp:send(Socket, Pubrec2),
     ok = packet:expect_packet(Socket, "pubrel2", Pubrel2),
-    disable_on_subscribe(),
     disable_on_publish(),
     ok = gen_tcp:close(Socket).
 

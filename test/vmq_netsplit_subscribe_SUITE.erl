@@ -66,7 +66,7 @@ subscribe_clean_session_test(Config) ->
     Island1Res = vmq_netsplit_utils:proxy_multicall(Island1, vmq_reg,
                                                     subscriptions_for_subscriber_id,
                                                     [{"", <<"test-netsplit-client">>}]),
-    ct:pal("subscrptions on island 1: ~p", [Island1Res]),
+    io:format(user, "subscrptions on island 1: ~p", [Island1Res]),
     Island1Res = [[{[<<"netsplit">>, <<"0">>, <<"test">>], 0, FirstNode}]
                   || _ <- lists:seq(1, length(Island1))],
     Island2Res = vmq_netsplit_utils:proxy_multicall(Island2, vmq_reg,
