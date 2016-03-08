@@ -59,13 +59,6 @@ register_consistency_test(Config) ->
     %% vmq_reg_leader will use phash2(SubscriberId) rem length(Nodes) + 1
     %% to find the leader node... in this case this will always be the third
     %% cluster node as phash2({"", <<"test-client">>}) rem 5 + 1 -> 3
-    %%
-
-    %% node 3 hasn't detected the partition yet, but in the process
-    %% of the session migration all the neighbours are contacted using
-    %% a gen_server:multi_call which returns the failing nodes. In the
-    %% case of a netsplit, the failing nodes gives us an indication about
-    %% the netsplit and as a result the connect request gets rejected.
 
     PortInIsland1 = vmq_netsplit_utils:get_port(Island1),
     PortInIsland2 = vmq_netsplit_utils:get_port(Island2),
@@ -75,8 +68,9 @@ register_consistency_test(Config) ->
     %% Island 1 should return us the proper CONNACK(3)
     {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(3),
                                        [{port, PortInIsland1}]),
-    %% Island 1 should return us the proper CONNACK(3)
-    {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(3),
+    %% Island 2 should return us the proper CONACK(0) as the leader is in this
+    %% partition
+    {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(0),
                                        [{port, PortInIsland2}]),
     vmq_netsplit_utils:fix_network(Island1, Island2),
     ok.

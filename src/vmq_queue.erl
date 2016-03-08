@@ -24,6 +24,8 @@
          notify_recv/1,
          enqueue/2,
          status/1,
+         migration_status/1,
+         block_until_migrated/1,
          add_session/3,
          get_sessions/1,
          set_opts/2,
@@ -73,6 +75,7 @@
           drain_over_timer,
           max_msgs_per_drain_step,
           waiting_call,
+          migrations = [],
           opts
          }).
 
@@ -122,6 +125,13 @@ set_last_waiting_acks(Queue, WAcks) ->
     gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
 
 migrate(Queue, OtherQueue) ->
+    %% Migrate Messages of 'Queue' to 'OtherQueue'
+    %% -------------------------------------------
+
+    %% inform 'OtherQueue' about the migration process,
+    %% see 'block_until_migrated/1' how the status information is used.
+    gen_fsm:send_all_state_event(OtherQueue, {migrate_info, Queue}),
+
     case catch gen_fsm:sync_send_event(Queue, {migrate, OtherQueue}, infinity) of
         {'EXIT', {normal, _}} ->
             ok;
@@ -135,6 +145,18 @@ migrate(Queue, OtherQueue) ->
 
 status(Queue) ->
     gen_fsm:sync_send_all_state_event(Queue, status, infinity).
+
+migration_status(Queue) ->
+    gen_fsm:sync_send_all_state_event(Queue, migration_status, infinity).
+
+block_until_migrated(Queue) ->
+    timer:sleep(100),
+    case migration_status(Queue) of
+        [] ->
+            ok;
+        _ ->
+            block_until_migrated(Queue)
+    end.
 
 
 default_opts() ->
@@ -341,9 +363,18 @@ init([SubscriberId]) ->
                           max_msgs_per_drain_step=MaxMsgsPerDrainStep,
                           opts=Defaults}}.
 
+handle_event({migrate_info, RemoteQueue}, StateName,
+             #state{migrations=Migrations} = State) ->
+    NewMigrations = [RemoteQueue|Migrations],
+    {next_state, StateName, State#state{migrations=NewMigrations}};
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
+handle_sync_event(migration_status, _From, StateName,
+                  #state{migrations=Migrations} = State) ->
+    NewMigrations =
+    [MQPid || MQPid <- Migrations, rpc:pinfo(MQPid, status) /= undefined],
+    {reply, NewMigrations, StateName, State#state{migrations=NewMigrations}};
 handle_sync_event(status, _From, StateName,
                   #state{deliver_mode=Mode, offline=#queue{size=OfflineSize},
                          sessions=Sessions, opts=#{is_plugin := IsPlugin}} = State) ->
@@ -359,61 +390,8 @@ handle_sync_event(get_opts, _From, StateName, #state{opts=Opts} = State) ->
 handle_sync_event(Event, _From, _StateName, State) ->
     {stop, {error, {unknown_sync_event, Event}}, State}.
 
-handle_info({'DOWN', _MRef, process, SessionPid, _}, StateName,
-            #state{id=SId, waiting_call=WaitingCall} = State) ->
-    {NewState, DeletedSession} = del_session(SessionPid, State),
-    case {maps:size(NewState#state.sessions), StateName, WaitingCall} of
-        {0, wait_for_offline, {add_session, NewSessionPid, Opts, From}} ->
-            %% last session gone
-            %% ... but we've a new session waiting
-            %%     no need to go into offline state
-            gen_fsm:reply(From, ok),
-            case DeletedSession#session.clean of
-                true ->
-                    _ = vmq_plugin:all(on_client_gone, [SId]);
-                false ->
-                    _ = vmq_plugin:all(on_client_offline, [SId])
-            end,
-            {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
-             add_session_(NewSessionPid, Opts, NewState#state{waiting_call=undefined})};
-        {0, wait_for_offline, {migrate, _, From}} when DeletedSession#session.clean ->
-            %% last session gone
-            %% ... we dont need to migrate this one
-            vmq_exo:decr_active_clients(),
-            vmq_reg:delete_subscriptions(SId),
-            _ = vmq_plugin:all(on_client_gone, [SId]),
-            gen_fsm:reply(From, ok),
-            {stop, normal, NewState};
-        {0, wait_for_offline, {migrate, _, _}} ->
-            %% last session gone
-            %% ... but we've a migrate request waiting
-            %%     go into drain state
-            gen_fsm:send_event(self(), drain_start),
-            _ = vmq_plugin:all(on_client_offline, [SId]),
-            {next_state, state_change({'DOWN', migrate}, wait_for_offline, drain), NewState};
-        {0, _, _} when DeletedSession#session.clean ->
-            %% last session gone
-            %% ... we've to cleanup and go down
-            %%
-            %% it is assumed that all attached sessions use the same
-            %% clean session flag
-            vmq_exo:decr_active_clients(),
-            vmq_reg:delete_subscriptions(SId),
-            _ = vmq_plugin:all(on_client_gone, [SId]),
-            {stop, normal, NewState};
-        {0, OldStateName, _} ->
-            %% last session gone
-            %% ... we've to stay around and store the messages
-            %%     inside the offline queue
-            vmq_exo:decr_active_clients(),
-            vmq_exo:incr_inactive_clients(),
-            _ = vmq_plugin:all(on_client_offline, [SId]),
-            {next_state, state_change('DOWN', OldStateName, offline),
-             maybe_set_expiry_timer(NewState#state{offline=compress_queue(SId, NewState#state.offline)})};
-        _ ->
-            %% still one or more sessions online
-            {next_state, StateName, NewState}
-    end;
+handle_info({'DOWN', _MRef, process, Pid, _}, StateName, State) ->
+    handle_session_down(Pid, StateName, State);
 handle_info(report_queue_stats, offline, #state{offline=#queue{size=Size}} = State) ->
     case Size of
         0 -> ignore;
@@ -485,6 +463,62 @@ del_session(SessionPid, #state{id=SId, sessions=Sessions} = State) ->
             %% or to offline queue
             {insert_from_session(Session, State#state{sessions=NewSessions}),
              Session}
+    end.
+
+handle_session_down(SessionPid, StateName,
+                    #state{id=SId, waiting_call=WaitingCall} = State) ->
+    {NewState, DeletedSession} = del_session(SessionPid, State),
+    case {maps:size(NewState#state.sessions), StateName, WaitingCall} of
+        {0, wait_for_offline, {add_session, NewSessionPid, Opts, From}} ->
+            %% last session gone
+            %% ... but we've a new session waiting
+            %%     no need to go into offline state
+            gen_fsm:reply(From, ok),
+            case DeletedSession#session.clean of
+                true ->
+                    _ = vmq_plugin:all(on_client_gone, [SId]);
+                false ->
+                    _ = vmq_plugin:all(on_client_offline, [SId])
+            end,
+            {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
+             add_session_(NewSessionPid, Opts, NewState#state{waiting_call=undefined})};
+        {0, wait_for_offline, {migrate, _, From}} when DeletedSession#session.clean ->
+            %% last session gone
+            %% ... we dont need to migrate this one
+            vmq_exo:decr_active_clients(),
+            vmq_reg:delete_subscriptions(SId),
+            _ = vmq_plugin:all(on_client_gone, [SId]),
+            gen_fsm:reply(From, ok),
+            {stop, normal, NewState};
+        {0, wait_for_offline, {migrate, _, _}} ->
+            %% last session gone
+            %% ... but we've a migrate request waiting
+            %%     go into drain state
+            gen_fsm:send_event(self(), drain_start),
+            _ = vmq_plugin:all(on_client_offline, [SId]),
+            {next_state, state_change({'DOWN', migrate}, wait_for_offline, drain), NewState};
+        {0, _, _} when DeletedSession#session.clean ->
+            %% last session gone
+            %% ... we've to cleanup and go down
+            %%
+            %% it is assumed that all attached sessions use the same
+            %% clean session flag
+            vmq_exo:decr_active_clients(),
+            vmq_reg:delete_subscriptions(SId),
+            _ = vmq_plugin:all(on_client_gone, [SId]),
+            {stop, normal, NewState};
+        {0, OldStateName, _} ->
+            %% last session gone
+            %% ... we've to stay around and store the messages
+            %%     inside the offline queue
+            vmq_exo:decr_active_clients(),
+            vmq_exo:incr_inactive_clients(),
+            _ = vmq_plugin:all(on_client_offline, [SId]),
+            {next_state, state_change('DOWN', OldStateName, offline),
+             maybe_set_expiry_timer(NewState#state{offline=compress_queue(SId, NewState#state.offline)})};
+        _ ->
+            %% still one or more sessions online
+            {next_state, StateName, NewState}
     end.
 
 handle_waiting_acks_and_msgs(WAcks, #state{id=SId, sessions=Sessions, offline=Offline} = State) ->

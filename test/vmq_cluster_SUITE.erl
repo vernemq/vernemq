@@ -77,7 +77,7 @@ multiple_connect_unclean_test(Config) ->
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "qos1/multiple/test",
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
-                                                      {keepalive, 10}]),
+                                                      {keepalive, 60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(123, Topic, 1),
     Suback = packet:gen_suback(123, 1),
@@ -86,7 +86,7 @@ multiple_connect_unclean_test(Config) ->
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:send(Socket, Disconnect),
-    timer:sleep(500),
+    timer:sleep(2000),
     Subs = fun() -> rpc:multicall([N || {N, _} <-Nodes],
                                       vmq_reg, total_subscriptions, [])
                end,
@@ -96,7 +96,7 @@ multiple_connect_unclean_test(Config) ->
                                   vmq_reg, stored, [{"", <<"connect-unclean">>}])
            end,
     io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs before send ~p~n", [Strd()]),
-    Payloads = publish_random(Nodes, 1000, Topic),
+    Payloads = publish_random(Nodes, 50, Topic),
     Ports = fun() -> rpc:multicall([N || {N, _} <-Nodes],
                                   erlang, system_info, [port_count])
            end,
@@ -121,7 +121,7 @@ distributed_subscribe_test(Config) ->
     [begin
          Connect = packet:gen_connect("connect-" ++ integer_to_list(Port),
                                       [{clean_session, true},
-                                       {keepalive, 20}]),
+                                       {keepalive, 60}]),
          Connack = packet:gen_connack(0),
          Subscribe = packet:gen_subscribe(123, Topic, 1),
          Suback = packet:gen_suback(123, 1),
@@ -130,7 +130,7 @@ distributed_subscribe_test(Config) ->
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
      end || {_, Port} <- Nodes],
-    timer:sleep(1000),
+    timer:sleep(2000),
     [PubSocket|Rest] = Sockets,
     Publish = packet:gen_publish(Topic, 1, <<"test-message">>, [{mid, 1}]),
     Puback = packet:gen_puback(1),
@@ -151,7 +151,7 @@ cluster_leave_test(Config) ->
     [begin
          Connect = packet:gen_connect("connect-" ++ integer_to_list(I),
                                       [{clean_session, false},
-                                       {keepalive, 10}]),
+                                       {keepalive, 60}]),
          Connack = packet:gen_connack(0),
          Subscribe = packet:gen_subscribe(123, Topic, 1),
          Suback = packet:gen_suback(123, 1),
@@ -160,10 +160,14 @@ cluster_leave_test(Config) ->
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
      end || I <- lists:seq(1,100)],
+    timer:sleep(2000),
 
     Subs = fun(Nds) -> rpc:multicall([N || {N, _} <-Nds],
                                       vmq_reg, total_subscriptions, [])
                end,
+    Strd = fun(Nds) -> rpc:multicall([N || {N, _} <-Nds],
+                                  vmq_queue_sup, summary, [])
+           end,
     io:format(user, "!!!!!!!!!!!!!!!!!!! Subs before leave ~p~n", [Subs(Nodes)]),
 
     %% publish a message for every session
@@ -172,15 +176,14 @@ cluster_leave_test(Config) ->
     ok = gen_tcp:send(PubSocket, Publish),
     ok = packet:expect_packet(PubSocket, "puback", Puback),
     timer:sleep(1000), %% just to ensure that the message was routed to all subscribers
-    Strd = fun(Nds) -> rpc:multicall([N || {N, _} <-Nds],
-                                  vmq_queue_sup, summary, [])
-           end,
     %% let first node leave the cluster, this should migrate the sessions
     [{CtrlNode, _}|_] = RestNodes,
     %% Node_leave might return before migration has finished
     {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Node]),
+
     io:format(user, "!!!!!!!!!!!!!!!!!!! Subs after leave ~p~n", [Subs(RestNodes)]),
     io:format(user, "!!!!!!!!!!!!!!!!!!! queue summary after leave ~p~n", [Strd(RestNodes)]),
+
 
     %% the 100 sessions should now be migrated to the rest of the nodes
     %% each holding 25 queues each containing 1 message
@@ -196,7 +199,7 @@ cluster_leave_dead_node_test(Config) ->
     [begin
          Connect = packet:gen_connect("connect-d-" ++ integer_to_list(I),
                                       [{clean_session, false},
-                                       {keepalive, 10}]),
+                                       {keepalive, 60}]),
          Connack = packet:gen_connack(0),
          Subscribe = packet:gen_subscribe(123, Topic, 1),
          Suback = packet:gen_suback(123, 1),
@@ -206,6 +209,7 @@ cluster_leave_dead_node_test(Config) ->
          gen_tcp:send(Socket, packet:gen_disconnect()),
          gen_tcp:close(Socket)
      end || I <- lists:seq(1,100)],
+    timer:sleep(2000),
 
     Subs = fun(Nds) -> rpc:multicall([N || {N, _} <-Nds],
                                       vmq_reg, total_subscriptions, [])
@@ -287,12 +291,13 @@ publish_random(Nodes, N, Topic, Acc) ->
     publish_random(Nodes, N - 1, Topic, [Payload|Acc]).
 
 receive_publishes(_, _, []) -> ok;
-receive_publishes(Nodes, Topic, Payloads) ->
+receive_publishes([{_,Port}=N|Nodes], Topic, Payloads) ->
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
                                                            {keepalive, 10}]),
     Connack = packet:gen_connack(true, 0),
     Disconnect = packet:gen_disconnect(),
-    Opts = opts(Nodes),
+    %Opts = opts(Nodes),
+    Opts = [{port, Port}],
     {ok, Socket} = packet:do_client_connect(Connect, Connack, Opts),
     case recv(Socket, <<>>) of
         {ok, #mqtt_publish{message_id=MsgId, payload=Payload}} ->
@@ -300,9 +305,9 @@ receive_publishes(Nodes, Topic, Payloads) ->
             ok = gen_tcp:send(Socket, Disconnect),
             gen_tcp:close(Socket),
             io:format(user, "+", []),
-            receive_publishes(Nodes, Topic, Payloads -- [Payload]);
+            receive_publishes(Nodes ++ [N], Topic, Payloads -- [Payload]);
         {error, _} ->
-            receive_publishes(Nodes, Topic, Payloads)
+            receive_publishes(Nodes ++ [N], Topic, Payloads)
     end.
 
 recv(Socket, Buf) ->
