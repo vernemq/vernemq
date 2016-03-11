@@ -96,7 +96,7 @@ multiple_connect_unclean_test(Config) ->
                                   vmq_reg, stored, [{"", <<"connect-unclean">>}])
            end,
     io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs before send ~p~n", [Strd()]),
-    Payloads = publish_random(Nodes, 50, Topic),
+    Payloads = publish_random(Nodes, 1000, Topic),
     Ports = fun() -> rpc:multicall([N || {N, _} <-Nodes],
                                   erlang, system_info, [port_count])
            end,
@@ -287,7 +287,6 @@ publish_random(Nodes, N, Topic, Acc) ->
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "puback", Puback),
     ok = gen_tcp:send(Socket, Disconnect),
-    io:format(user, ".", []),
     publish_random(Nodes, N - 1, Topic, [Payload|Acc]).
 
 receive_publishes(_, _, []) -> ok;
@@ -304,7 +303,6 @@ receive_publishes([{_,Port}=N|Nodes], Topic, Payloads) ->
             ok = gen_tcp:send(Socket, packet:gen_puback(MsgId)),
             ok = gen_tcp:send(Socket, Disconnect),
             gen_tcp:close(Socket),
-            io:format(user, "+", []),
             receive_publishes(Nodes ++ [N], Topic, Payloads -- [Payload]);
         {error, _} ->
             receive_publishes(Nodes ++ [N], Topic, Payloads)
