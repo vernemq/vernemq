@@ -687,18 +687,31 @@ drop(I, #state{pub_dropped_cnt=PubDropped} = State) ->
 handle_waiting_acks_and_msgs(State) ->
     #state{waiting_acks=WAcks, waiting_msgs=WMsgs, queue_pid=QPid} = State,
     MsgsToBeDeliveredNextTime =
-    maps:fold(fun ({qos2, _}, _, Acc) ->
+    lists:foldl(fun ({{qos2, _}, _}, Acc) ->
                       Acc;
-                  (MsgId, #mqtt_pubrel{} = Frame, Acc) ->
+                  ({MsgId, #mqtt_pubrel{} = Frame}, Acc) ->
                       %% unacked PUBREL Frame
                       Bin = vmq_parser:serialise(Frame),
                       [{deliver_bin, {MsgId, Bin}}|Acc];
-                  (MsgId, Bin, Acc) when is_binary(Bin) ->
+                  ({MsgId, Bin}, Acc) when is_binary(Bin) ->
                       %% unacked PUBREL Frame
                       [{deliver_bin, {MsgId, Bin}}|Acc];
-                  (_MsgId, #vmq_msg{qos=QoS} = Msg, Acc) ->
+                  ({_MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
                       [{deliver, QoS, Msg#vmq_msg{dup=true}}|Acc]
-              end, WMsgs, WAcks),
+              end, WMsgs,
+                %% 3. the sorted list has the oldest waiting-ack at the head.
+                %% the way we add it to the accumulator 'WMsgs' we have to
+                %% reverse the list to make sure the oldest stays at the head.
+                lists:reverse(
+                  %% 2. we have to sort this list given the message id
+                  lists:keysort(1,
+                                %% 1. maps:to_list gives us an
+                                %% arbitrary ordered list, (it looks
+                                %% like it is ordered with the newest
+                                %% item at the to)
+                                maps:to_list(WAcks)
+                               )
+                 )),
     catch vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime).
 
 handle_waiting_msgs(#state{waiting_msgs=[]} = State) ->
