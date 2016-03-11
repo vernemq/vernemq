@@ -9,17 +9,16 @@
          all/0
         ]).
 
--export([in_order_offline_qos1_test/1,
-         in_order_offline_qos2_test/1,
-         in_order_offline_retry_qos1_test/1,
-         in_order_offline_retry_qos2_test/1,
-         in_order_online_qos1_test/1,
-         in_order_online_qos2_test/1]).
+-export([qos1_online/1,
+         qos2_online/1,
+         qos1_offline/1,
+         qos2_offline/1]).
 
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
 
 -define(RETRY_INTERVAL, 10).
+-define(NR_OF_MSGS, 1000).
 
 %% ===================================================================
 %% common_test callbacks
@@ -49,163 +48,176 @@ end_per_testcase(_, Config) ->
     Config.
 
 all() ->
-    [in_order_offline_qos1_test,
-     in_order_offline_qos2_test,
-     in_order_offline_retry_qos1_test,
-     in_order_offline_retry_qos2_test,
-     in_order_online_qos1_test,
-     in_order_online_qos2_test].
+    [qos1_online,
+     qos2_online,
+     qos1_offline,
+     qos2_offline].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-in_order_offline_qos1_test(_) ->
-    lists:foreach(fun(MaxInflightMessages) ->
-                          in_order_routine(MaxInflightMessages, 1,
-                                           MaxInflightMessages * 10, true, false)
-                  end, lists:seq(1, 100)).
 
-in_order_offline_qos2_test(_) ->
-    in_order_routine(1, 2, 100, true, false).
+qos1_online(_) ->
+    lists:foreach(fun qos1_online_test/1, lists:seq(1, 100)).
 
-in_order_offline_retry_qos1_test(_) ->
-    in_order_routine(20, 1, 100, true, true).
+qos2_online(_) ->
+    lists:foreach(fun qos2_online_test/1, lists:seq(1, 100)).
 
-in_order_offline_retry_qos2_test(_) ->
-    in_order_routine(20, 2, 100, true, true).
+qos1_offline(_) ->
+    lists:foreach(fun qos1_offline_test/1, lists:seq(1, 100)).
 
-in_order_online_qos1_test(_) ->
-    lists:foreach(fun(MaxInflightMessages) ->
-                          in_order_routine(MaxInflightMessages, 1,
-                                           MaxInflightMessages * 10, false, false)
-                  end, lists:seq(1, 100)).
+qos2_offline(_) ->
+    lists:foreach(fun qos2_offline_test/1, lists:seq(1, 100)).
 
-in_order_online_qos2_test(_) ->
-    in_order_routine(1, 2, 100, false, false).
 
-in_order_routine(MaxInflightMessages, QoS, LoadLevel, GoOffline, LetRetry) ->
-    {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMessages),
-    SubClientId = "inorder-sub-"++integer_to_list(QoS)++"-"++atom_to_list(GoOffline),
-    PubClientId = "inorder-pub-"++integer_to_list(QoS)++"-"++atom_to_list(GoOffline),
-    Topic = "inorder/test/"++integer_to_list(QoS)++"/"++atom_to_list(GoOffline),
-    SubConnect = packet:gen_connect(SubClientId, [{keepalive,60}, {clean_session, false}]),
-    PubConnect = packet:gen_connect(PubClientId, [{keepalive,60}, {clean_session, true}]),
-    Connack1 = packet:gen_connack(0),
-    Connack2 = packet:gen_connack(true, 0),
-    Subscribe = packet:gen_subscribe(109, Topic, QoS),
-    Suback = packet:gen_suback(109, QoS),
-    {ok, SubSocket0} = packet:do_client_connect(SubConnect, Connack1, []),
-    ok = gen_tcp:send(SubSocket0, Subscribe),
-    ok = packet:expect_packet(SubSocket0, "suback", Suback),
+qos1_online_test(MaxInflightMsgs) ->
+    {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMsgs),
+    Topic = "in/order/qos/1",
+    SubSocket = setup_con(Topic, 1),
+    PubSocket = setup_pub(Topic, fun setup_pub_qos1/3),
+    ok = recv_qos1(SubSocket, Topic, MaxInflightMsgs),
+    ok = gen_tcp:close(SubSocket),
+    ok = gen_tcp:close(PubSocket),
+    teardown_con().
 
-    case GoOffline of
-        true ->
-            ok = gen_tcp:close(SubSocket0);
-        false ->
-            ok
-    end,
+qos2_online_test(MaxInflightMsgs) ->
+    {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMsgs),
+    Topic = "in/order/qos/2",
+    SubSocket = setup_con(Topic, 2),
+    PubSocket = setup_pub(Topic, fun setup_pub_qos2/3),
+    ok = recv_qos2(SubSocket, Topic, MaxInflightMsgs),
+    ok = gen_tcp:close(SubSocket),
+    ok = gen_tcp:close(PubSocket),
+    teardown_con().
 
-    %% load the queue
-
-    {ok, PubSocket} = packet:do_client_connect(PubConnect, Connack1, []),
-
-    Pubs =
-    lists:foldl(
-      fun(I, Acc) ->
-              Payload = list_to_binary("msg" ++ integer_to_list(I)),
-              Pub = packet:gen_publish(Topic, QoS, Payload, [{mid, I}]),
-              gen_tcp:send(PubSocket, Pub),
-              case QoS of
-                  1 ->
-                      ok = packet:expect_packet(PubSocket, "puback",
-                                                packet:gen_puback(I));
-                  2 ->
-                      ok = packet:expect_packet(PubSocket, "pubrec",
-                                               packet:gen_pubrec(I)),
-                      ok = gen_tcp:send(PubSocket, packet:gen_pubrel(I)),
-                      ok = packet:expect_packet(PubSocket, "pubcomp",
-                                               packet:gen_pubcomp(I))
-              end,
-              [{I, Pub}|Acc]
-      end, [], lists:seq(1, LoadLevel)),
-    gen_tcp:close(PubSocket),
-
-    {ok, SubSocket1} =
-    case GoOffline of
-        true ->
-            packet:do_client_connect(SubConnect, Connack2, []);
-        false ->
-            {ok, SubSocket0}
-    end,
-
-    case LetRetry of
-        false ->
-              handle_inflight_messages(QoS, SubSocket1, MaxInflightMessages,
-                                       lists:reverse(Pubs));
-        true ->
-            %% we receive the messages of the max_inflight_window but dont ack them
-            {PubsInFlight, PubsRest} = lists:split(MaxInflightMessages,
-                                            lists:reverse(Pubs)),
-            PubsInFlightDup =
-            lists:map(
-              fun({I, Pub}) ->
-                      %% we don't ack the publish
-                      ok = packet:expect_packet(SubSocket1, "publish", Pub),
-                      {#mqtt_publish{} = F, _} = vmq_parser:parse(Pub),
-                      {I, iolist_to_binary(
-                         vmq_parser:serialise(F#mqtt_publish{dup=true}))}
-              end, PubsInFlight),
-
-              timer:sleep(?RETRY_INTERVAL),
-
-              handle_inflight_messages(QoS, SubSocket1, MaxInflightMessages,
-                                       PubsInFlightDup ++ PubsRest)
-    end,
+qos1_offline_test(MaxInflightMsgs) ->
+    {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMsgs),
+    Topic = "in/order/qos/1",
+    SubSocket1 = setup_con(Topic, 1),
+    PubSocket = setup_pub(Topic, fun setup_pub_qos1/3),
     gen_tcp:close(SubSocket1),
-    %% clean session
-    SubConnectClean = packet:gen_connect(SubClientId, [{clean_session, true}]),
-    {ok, SubSocket2} = packet:do_client_connect(SubConnectClean, Connack1, []),
-    gen_tcp:close(SubSocket2),
-    ok.
+    SubSocket2 = setup_con(Topic, 1, true), % session present
+    ok = recv_qos1(SubSocket2, Topic, MaxInflightMsgs, true), %% dup=true
+    ok = gen_tcp:close(SubSocket2),
+    ok = gen_tcp:close(PubSocket),
+    teardown_con().
 
-handle_inflight_messages(1, Socket, _MaxInflightMessages, Pubs) ->
-    lists:foreach(
-      fun({I, Pub}) ->
-              ok = packet:expect_packet(Socket, "publish", Pub),
-              ok = gen_tcp:send(Socket, packet:gen_puback(I))
-      end, Pubs);
-handle_inflight_messages(2, _, _, []) ->
-    ok;
-handle_inflight_messages(2, Socket, MaxInflightMessages, Pubs) ->
-    {PubsInFlight, PubsRest} =
-    case length(Pubs) > MaxInflightMessages of
-        true ->
-            lists:split(MaxInflightMessages, Pubs);
+qos2_offline_test(MaxInflightMsgs) ->
+    {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMsgs),
+    Topic = "in/order/qos/2",
+    SubSocket1 = setup_con(Topic, 2),
+    PubSocket = setup_pub(Topic, fun setup_pub_qos2/3),
+    gen_tcp:close(SubSocket1),
+    SubSocket2 = setup_con(Topic, 2, true), % session present
+    ok = recv_qos2(SubSocket2, Topic, MaxInflightMsgs, true), %% dup=true
+    ok = gen_tcp:close(SubSocket2),
+    ok = gen_tcp:close(PubSocket),
+    teardown_con().
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Internal
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+setup_pub(Topic, SetupFun) ->
+    Connect = packet:gen_connect("in-order-pub", [{keepalive,60},
+                                                  {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    lists:foreach(fun(I) -> SetupFun(Socket, Topic, I) end,
+                  lists:seq(1, ?NR_OF_MSGS)),
+    Socket.
+
+setup_pub_qos1(Socket, Topic, I) ->
+    Payload = list_to_binary("msg" ++ integer_to_list(I)),
+    Pub = packet:gen_publish(Topic, 1, Payload, [{mid, I}]),
+    gen_tcp:send(Socket, Pub),
+    ok = packet:expect_packet(Socket, "puback", packet:gen_puback(I)).
+
+setup_pub_qos2(Socket, Topic, I) ->
+    Payload = list_to_binary("msg" ++ integer_to_list(I)),
+    Pub = packet:gen_publish(Topic, 2, Payload, [{mid, I}]),
+    gen_tcp:send(Socket, Pub),
+    ok = packet:expect_packet(Socket, "pubrec", packet:gen_pubrec(I)),
+    ok = gen_tcp:send(Socket, packet:gen_pubrel(I)),
+    ok = packet:expect_packet(Socket, "pubcomp", packet:gen_pubcomp(I)).
+
+setup_con(Topic, Qos) ->
+    setup_con(Topic, Qos, false).
+setup_con(Topic, Qos, SessionPresent) ->
+    Connect = packet:gen_connect("in-order-sub", [{keepalive,60},
+                                                  {clean_session, false}]),
+    Connack = packet:gen_connack(SessionPresent, 0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    case SessionPresent of
         false ->
-            {Pubs, []}
+            Subscribe = packet:gen_subscribe(109, Topic, Qos),
+            Suback = packet:gen_suback(109, Qos),
+            ok = gen_tcp:send(Socket, Subscribe),
+            ok = packet:expect_packet(Socket, "suback", Suback);
+        true ->
+            ignore % no subscription necessary
     end,
-    %% right after connection is established we get
-    %% 'max_inflight_messages'-Nr offline messages delivered.
-    %% we must make sure that we send the final pubcomp once
-    %% all intermediate steps are done, otherwise 'expect_packet'
-    %% is receiving subsequent messages..
-    %%
-    %% Step 1. PUBREC
-    lists:foreach(
-      fun({I, Pub}) ->
-              ok = packet:expect_packet(Socket, "publish", Pub),
-              ok = gen_tcp:send(Socket, packet:gen_pubrec(I))
-      end, PubsInFlight),
-    %% Step 2. Receive PUBREL
-    lists:foreach(
-      fun({I, _}) ->
-              ok = packet:expect_packet(Socket, "pubrel", packet:gen_pubrel(I)),
-              ok = gen_tcp:send(Socket, packet:gen_pubcomp(I))
-      end, PubsInFlight),
-    handle_inflight_messages(2, Socket, MaxInflightMessages, PubsRest).
+    Socket.
+
+teardown_con() ->
+    Connect = packet:gen_connect("in-order-sub", [{keepalive,60},
+                                                  {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:close(Socket).
 
 
+recv_qos1(Socket, Topic, MaxInflightMsgs) ->
+    recv_qos1(Socket, Topic, MaxInflightMsgs, false).
 
+recv_qos1(Socket, Topic, MaxInflightMsgs, Dup) ->
+    recv(Socket, Topic, 1, MaxInflightMsgs, Dup,
+         [fun recv_pub_qos1/4, fun send_puback/4]).
+
+recv_qos2(Socket, Topic, MaxInflightMsgs) ->
+    recv_qos2(Socket, Topic, MaxInflightMsgs, false).
+recv_qos2(Socket, Topic, MaxInflightMsgs, Dup) ->
+    recv(Socket, Topic, 1, MaxInflightMsgs, Dup,
+         [fun recv_pub_qos2/4, fun send_pubrec/4,
+          fun recv_pubrel_send_pubcomp/4]).
+
+recv_pub_qos1(Socket, Topic, Id, Dup) ->
+    Payload = list_to_binary("msg" ++ integer_to_list(Id)),
+    Pub = packet:gen_publish(Topic, 1, Payload, [{mid, Id}, {dup, Dup}]),
+    ok = packet:expect_packet(Socket, "publish", Pub).
+
+recv_pub_qos2(Socket, Topic, Id, Dup) ->
+    Payload = list_to_binary("msg" ++ integer_to_list(Id)),
+    Pub = packet:gen_publish(Topic, 2, Payload, [{mid, Id}, {dup, Dup}]),
+    ok = packet:expect_packet(Socket, "publish", Pub).
+
+send_puback(Socket, _, Id, _) ->
+    ok = gen_tcp:send(Socket, packet:gen_puback(Id)).
+
+send_pubrec(Socket, _, Id, _) ->
+    ok = gen_tcp:send(Socket, packet:gen_pubrec(Id)).
+
+recv_pubrel_send_pubcomp(Socket, _, Id, _) ->
+    ok = packet:expect_packet(Socket, "pubrel", packet:gen_pubrel(Id)),
+    ok = gen_tcp:send(Socket, packet:gen_pubcomp(Id)).
+
+
+recv(_, _, Id, _, _, _) when Id > ?NR_OF_MSGS -> ok;
+recv(Socket, Topic, Id, MaxInflightMsgs, Dup, Funs) ->
+    NextId = recv(Socket, Topic, Id, MaxInflightMsgs, MaxInflightMsgs, Dup, Funs),
+    %% dup<might-be-true> only for the first batch of max-inflights,
+    %% after that the messages haven't been sent.
+    recv(Socket, Topic, NextId, MaxInflightMsgs, false, Funs).
+
+recv(Socket, Topic, Id, 0, MaxInflightMsgs, Dup, [_|Funs])
+  when Id =< ?NR_OF_MSGS ->
+    recv(Socket, Topic, Id - MaxInflightMsgs, MaxInflightMsgs, MaxInflightMsgs,
+         Dup, Funs);
+recv(Socket, Topic, Id, T, MaxInflightMsgs, Dup, [Fun|_] = Funs)
+  when Id =< ?NR_OF_MSGS ->
+    ok = Fun(Socket, Topic, Id, Dup),
+    recv(Socket, Topic, Id + 1, T - 1, MaxInflightMsgs, Dup, Funs);
+recv(_, _, Id, _, MaxInflightMsgs, _, _) -> Id + MaxInflightMsgs.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
