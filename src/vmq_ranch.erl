@@ -39,32 +39,31 @@ start_link(Ref, Socket, Transport, Opts) ->
 
 init(Ref, Socket, Transport, Opts) ->
     ok = ranch:accept_ack(Ref),
-    NewOpts =
-    case Transport of
-        ranch_ssl ->
-            case proplists:get_value(use_identity_as_username, Opts, false) of
-                false ->
-                    Opts;
-                true ->
-                    [{preauth, vmq_ssl:socket_to_common_name(Socket)}|Opts]
-            end;
-        _ ->
-            Opts
-    end,
+    case Transport:peername(Socket) of
+        {ok, Peer} ->
+            NewOpts =
+            case Transport of
+                ranch_ssl ->
+                    case proplists:get_value(use_identity_as_username, Opts, false) of
+                        false ->
+                            Opts;
+                        true ->
+                            [{preauth, vmq_ssl:socket_to_common_name(Socket)}|Opts]
+                    end;
+                _ ->
+                    Opts
+            end,
+            FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
+            FsmState = FsmMod:init(Peer, NewOpts),
 
-    FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
+            MaskedSocket = mask_socket(Transport, Socket),
+            %% tune buffer sizes
+            {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+            BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+            setopts(MaskedSocket, [{buffer, BufSize}]),
 
-    {ok, Peer} = Transport:peername(Socket),
-    FsmState = FsmMod:init(Peer, NewOpts),
-
-    MaskedSocket = mask_socket(Transport, Socket),
-    %% tune buffer sizes
-    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
-    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-    setopts(MaskedSocket, [{buffer, BufSize}]),
-
-    case active_once(MaskedSocket) of
-        ok ->
+            %% start accepting messages
+            active_once(MaskedSocket),
             process_flag(trap_exit, true),
             _ = vmq_exo:incr_socket_count(),
             loop(#st{socket=MaskedSocket,
@@ -72,7 +71,13 @@ init(Ref, Socket, Transport, Opts) ->
                      fsm_mod=FsmMod,
                      proto_tag=proto_tag(Transport)});
         {error, Reason} ->
-            exit(Reason)
+            lager:debug("Could not get socket peername: ~p", [Reason]),
+            %% It's not really "ok", but there's no reason for the
+            %% listener to crash just because this socket had an
+            %% error.
+            %%
+            %% not going through teardown, because no session was initialized
+            ok
     end.
 
 mask_socket(ranch_tcp, Socket) -> Socket;
