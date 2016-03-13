@@ -66,9 +66,7 @@
       {outgoing_connect_opts, []},
       {plumtree_jobs_opts, [{regulators, [{counter,[{limit, 20}]}]}]},
       {tcp_listen_options, [
-            {packet, raw},
             {nodelay, true},
-            {reuseaddr, true}, 
             {linger, {true, 0}}, 
             {send_timeout, 30000}, 
             {send_timeout_close, true}

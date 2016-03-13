@@ -34,7 +34,7 @@ command(Cmd, false) ->
     M1 = clique_parser:parse(M0),
     M2 = clique_parser:extract_global_flags(M1),
     M3 = clique_parser:validate(M2),
-    {Res, _} = clique_command:run(M3),
+    {Res, _, _} = clique_command:run(M3),
     parse_res(Res, Res).
 
 parse_res(error, error) ->
@@ -81,7 +81,7 @@ register_cli_usage() ->
 
 vmq_server_stop_cmd() ->
     Cmd = ["vmq-admin", "node", "stop"],
-    Callback = fun(_, _) ->
+    Callback = fun(_, _, _) ->
                        _ = ensure_all_stopped(vmq_server),
                        [clique_status:text("Done")]
                end,
@@ -89,7 +89,7 @@ vmq_server_stop_cmd() ->
 
 vmq_server_start_cmd() ->
     Cmd = ["vmq-admin", "node", "start"],
-    Callback = fun(_, _) ->
+    Callback = fun(_, _, _) ->
                        _ = application:ensure_all_started(vmq_server),
                        [clique_status:text("Done")]
                end,
@@ -97,7 +97,7 @@ vmq_server_start_cmd() ->
 
 vmq_server_status_cmd() ->
     Cmd = ["vmq-admin", "cluster", "status"],
-    Callback = fun(_, _) ->
+    Callback = fun(_, _, _) ->
                        VmqStatus = vmq_cluster:status(),
                        NodeTable =
                        lists:foldl(fun({NodeName, IsReady}, Acc) ->
@@ -137,10 +137,10 @@ vmq_cluster_leave_cmd() ->
                                                                    {timeout, I}}}
                                                   end
                                        end}]}],
-    Callback = fun([], _) ->
+    Callback = fun(_, [], _) ->
                        Text = clique_status:text("You have to provide a node"),
                        [clique_status:alert([Text])];
-                  ([{node, Node}], Flags) ->
+                  (_, [{node, Node}], Flags) ->
                        IsKill = lists:keymember(kill, 1, Flags),
                        Interval = proplists:get_value(summary_interval, Flags, 5000),
                        Timeout = proplists:get_value(timeout, Flags, 60000),
@@ -266,10 +266,10 @@ vmq_cluster_join_cmd() ->
                                                        list_to_atom(Node)
                                                end}]}],
     FlagSpecs = [],
-    Callback = fun ([], []) ->
+    Callback = fun (_, [], []) ->
                        Text = clique_status:text("You have to provide a discovery node (example discovery-node=vernemq1@127.0.0.1)"),
                        [clique_status:alert([Text])];
-                   ([{'discovery-node', Node}], _) ->
+                   (_, [{'discovery-node', Node}], _) ->
                        case plumtree_peer_service:join(Node) of
                            ok ->
                                vmq_cluster:recheck(),
@@ -295,7 +295,7 @@ vmq_cluster_upgrade_cmd() ->
                                                                            {'instruction-file', F}}}
                                                           end
                                                   end}]}],
-    Callback = fun([], Flags) ->
+    Callback = fun(_, [], Flags) ->
                        IsUpgradeNow = lists:keymember('upgrade-now', 1, Flags),
                        {Function, Args} =
                        case lists:keyfind('instruction-file', 1, Flags) of
@@ -320,7 +320,7 @@ vmq_session_list_cmd() ->
     KeySpecs = [],
     ValidInfoItems = vmq_mqtt_fsm:info_items(),
     FlagSpecs = [{I, [{longname, atom_to_list(I)}]} || I <- ValidInfoItems],
-    Callback = fun([], Flags) ->
+    Callback = fun(_, [], Flags) ->
                        InfoItems = [I || {I, undefined} <- Flags],
                        Table =
                        vmq_mqtt_fsm:list_sessions(InfoItems,

@@ -87,7 +87,7 @@ vmq_config_show_cmd() ->
                         {shortname, "k"},
                         {typecast, fun(K) -> list_to_existing_atom(K) end}]}],
     Callback =
-    fun([{app, App}], Flags) ->
+    fun(_, [{app, App}], Flags) ->
             FilterKey = lists:keyfind(key, 1, Flags),
             case application:get_env(App, vmq_config_enabled, false) of
                 true ->
@@ -135,7 +135,7 @@ vmq_config_show_cmd() ->
                     [clique_status:alert([
                         clique_status:text("App not configured via vmq_config")])]
             end;
-       ([], _) ->
+       (_, [], _) ->
             [clique_status:alert([
                                   clique_status:text("Please provide an app=<App>")])]
 
@@ -180,7 +180,7 @@ vmq_config_reset_cmd() ->
                  {global, [{longname, "global"}]}],
 
     Callback =
-    fun(Keys, Flags) ->
+    fun(_, Keys, Flags) ->
             {_, App} = lists:keyfind(app, 1, Keys),
             IsLocal = lists:keyfind(local, 1, Flags) =/= false,
             IsGlobal = lists:keyfind(global, 1, Flags) =/= false,
