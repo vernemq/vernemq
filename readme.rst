@@ -32,7 +32,7 @@ During plugin registration the ``vmq_plugin_mgr`` searches the code path for the
 
 Plugins packaged as OTP application as well as their ``included_applications`` are automatically started when enabled through ``application:ensure_all_started(PluginApp)``. If this behaviour isn't desired a custom start function can be provided at ``PluginApp:start/0``.
 
-When disabling a plugin through ``vmq_plugin_mgr:disable_plugin(PluginApp)`` the OTP application is stopped via ``application:stop(PluginApp)``. This behaviour can be changed via a custom ``PluginApp:stop/0`` function.
+When disabling a plugin through ``vmq_plugin_mgr:disable_plugin(PluginApp)`` the OTP application is stopped via ``application:stop(PluginApp)``. This behaviour can be changed via a custom ``PluginApp:stop/0`` function. All modules belonging to the application will be unloaded.
 
 
 Advanced

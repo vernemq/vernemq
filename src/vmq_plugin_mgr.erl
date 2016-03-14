@@ -494,6 +494,7 @@ start_plugin(App) ->
                 false ->
                     {ok, _} = application:ensure_all_started(App)
             end,
+            load_app_modules(App),
             ok;
         _ ->
             ok
@@ -535,6 +536,7 @@ stop_plugin(App) ->
         false ->
             application:stop(App)
     end,
+    purge_app_modules(App),
     application:unload(App),
     ok.
 
@@ -546,18 +548,46 @@ check_app_plugin(App, Options) ->
             {error, plugin_not_found};
         Paths ->
             code:add_paths(Paths),
-            case application:load(App) of
-                ok ->
-                    Hooks = application:get_env(App, vmq_plugin_hooks, []),
-                    check_app_hooks(App, Hooks, Options);
-                {error, {already_loaded, App}} ->
-                    Hooks = application:get_env(App, vmq_plugin_hooks, []),
-                    check_app_hooks(App, Hooks, Options);
-                E ->
-                    lager:debug("can't load application ~p", [E]),
-                    []
-            end
+            load_application(App, Options)
     end.
+
+load_application(App, Options) ->
+    case application:load(App) of
+        ok ->
+            case find_mod_conflicts(App) of
+                [] ->
+                    Hooks = application:get_env(App, vmq_plugin_hooks, []),
+                    check_app_hooks(App, Hooks, Options);
+                [Err|_] ->
+                    application:unload(App),
+                    {error, {module_conflict, Err}}
+            end;
+        {error, {already_loaded, App}} ->
+            Hooks = application:get_env(App, vmq_plugin_hooks, []),
+            check_app_hooks(App, Hooks, Options);
+        E ->
+            lager:debug("can't load application ~p", [E]),
+            []
+    end.
+
+find_mod_conflicts(NewApp) ->
+    LoadedApps = [A || {A,_,_} <- application:loaded_applications(), A =/= NewApp],
+    {ok, NewMods} = application:get_key(NewApp, modules),
+    find_mod_conflicts(NewMods, LoadedApps).
+
+find_mod_conflicts(NewMods, LoadedApps) ->
+    lists:filtermap(
+      fun(App) ->
+              {ok, Mods} = application:get_key(App, modules),
+              case common_elems(NewMods, Mods) of
+                  [] -> false;
+                  [E|_] -> {true, {App, E}}
+              end
+      end, LoadedApps).
+
+common_elems(L1, L2) ->
+    S1=sets:from_list(L1), S2=sets:from_list(L2),
+    sets:to_list(sets:intersection(S1,S2)).
 
 create_paths(App, []) ->
     case application:load(App) of
@@ -583,6 +613,16 @@ create_paths(Path) ->
         false ->
             []
     end.
+
+purge_app_modules(App) ->
+    {ok, Modules} = application:get_key(App, modules),
+    lager:debug("Purging modules: ~p", [Modules]),
+    [code:purge(M) || M <- Modules].
+
+load_app_modules(App) ->
+    {ok, Modules} = application:get_key(App, modules),
+    lager:info("Loading modules: ~p", [Modules]),
+    [code:load_file(M) || M <- Modules].
 
 check_app_hooks(App, Hooks, Options) ->
     Hooks = application:get_env(App, vmq_plugin_hooks, []),
