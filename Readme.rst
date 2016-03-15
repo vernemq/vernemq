@@ -1,8 +1,11 @@
-.. image:: https://badge.waffle.io/erlio/vernemq.png?label=ready&title=Ready 
- :target: https://waffle.io/erlio/vernemq
- :alt: 'Stories in Ready'
+
 VerneMQ: A Distributed MQTT Broker
 ==================================
+.. image:: https://i.imgur.com/bln3fK3.jpg
+ :target: https://verne.mq
+ :alt: 'VerneMQ Logo'
+
+VerneMQ is a high-performance, distributed MQTT message broker. It scales horizontally and vertically on commodity hardware to support a high number of concurrent publishers and consumers while maintaining low latency and fault tolerance. VerneMQ is the reliable message hub for your IoT platform or smart products.
 
 VerneMQ is an Apache2 licensed distributed `MQTT <http://www.mqtt.org>`_ broker, developed in `Erlang <http://www.erlang.org>`_.
 
