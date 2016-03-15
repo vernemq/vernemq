@@ -35,6 +35,7 @@ init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
+    vmq_server_cmd:set_config(max_client_id_size, 25),
     vmq_server_cmd:listener_start(1888, []),
     Config.
 
@@ -124,7 +125,7 @@ publish_b2c_disconnect_qos1_test(_) ->
     ok = gen_tcp:close(Socket1).
 
 publish_b2c_disconnect_qos2_test(_) ->
-    Connect = packet:gen_connect("pub-qos2-disco-test",
+    Connect = packet:gen_connect("pub-b2c-qos2-disco-test",
                                  [{keepalive, 60}, {clean_session, false}]),
     Connack1 = packet:gen_connack(0),
     Connack2 = packet:gen_connack(true, 0),
@@ -196,7 +197,7 @@ publish_b2c_timeout_qos1_test(_) ->
     ok = gen_tcp:close(Socket).
 
 publish_b2c_timeout_qos2_test(_) ->
-    Connect = packet:gen_connect("pub-qos2-timeout-test", [{keepalive, 60}]),
+    Connect = packet:gen_connect("pub-b2c-qos2-timeout-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(3265, "qos2/timeout/test", 2),
     Suback = packet:gen_suback(3265, 2),
@@ -229,7 +230,7 @@ publish_b2c_timeout_qos2_test(_) ->
     ok = gen_tcp:close(Socket).
 
 publish_c2b_disconnect_qos2_test(_) ->
-    Connect = packet:gen_connect("pub-qos2-disco-test",
+    Connect = packet:gen_connect("pub-c2b-qos2-disco-test",
                                  [{keepalive, 60}, {clean_session, false}]),
     Connack1 = packet:gen_connack(0),
     Connack2 = packet:gen_connack(true, 0),
@@ -261,7 +262,7 @@ publish_c2b_disconnect_qos2_test(_) ->
     ok = gen_tcp:close(Socket2).
 
 publish_c2b_timeout_qos2_test(_) ->
-    Connect = packet:gen_connect("pub-qos2-timeout-test", [{keepalive, 60}]),
+    Connect = packet:gen_connect("pub-c2b-qos2-timeout-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
     Publish = packet:gen_publish("pub/qos2/test", 2,
                                  <<"timeout-message">>, [{mid, 1926}]),
@@ -335,40 +336,11 @@ pattern_test(SubTopic, PubTopic) ->
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Hooks (as explicit as possible)
+%%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_, {"", <<"pub-qos1-disco-test">>},
-                       [{[<<"qos1">>, <<"disconnect">>, <<"test">>], 1}]) -> ok;
-hook_auth_on_subscribe(_, {"", <<"pub-qos2-disco-test">>},
-                       [{[<<"qos2">>, <<"disconnect">>, <<"test">>], 2}]) -> ok;
-hook_auth_on_subscribe(_, {"", <<"pub-qos1-timeout-test">>},
-                       [{[<<"qos1">>, <<"timeout">>, <<"test">>], 1}]) -> ok;
-hook_auth_on_subscribe(_, {"", <<"pub-qos2-timeout-test">>},
-                       [{[<<"qos2">>, <<"timeout">>, <<"test">>], 2}]) -> ok;
-hook_auth_on_subscribe(_, {"", <<"pattern-sub-test">>}, [{_, 0}]) -> ok.
+hook_auth_on_subscribe(_, _, _) -> ok.
+hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 
-hook_auth_on_publish(_, {"", <<"pub-qos1-test">>}, _MsgId, [<<"pub">>,<<"qos1">>,<<"test">>],
-                     <<"message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"pub-qos2-test">>}, _MsgId, [<<"pub">>,<<"qos2">>,<<"test">>],
-                     <<"message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"pub-qos1-disco-test">>}, _MsgId, [<<"qos1">>,<<"outgoing">>],
-                     <<"outgoing-message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"test-helper">>}, _MsgId, [<<"qos1">>,<<"disconnect">>,<<"test">>],
-                     <<"disconnect-message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"pub-qos2-disco-test">>}, _MsgId, [<<"qos1">>,<<"outgoing">>],
-                     <<"outgoing-message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"test-helper">>}, _MsgId, [<<"qos2">>,<<"disconnect">>,<<"test">>],
-                     <<"disconnect-message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"test-helper">>}, _MsgId, [<<"qos1">>,<<"timeout">>,<<"test">>],
-                     <<"timeout-message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"test-helper">>}, _MsgId, [<<"qos2">>,<<"timeout">>,<<"test">>],
-                     <<"timeout-message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"pub-qos2-disco-test">>}, _MsgId, [<<"qos2">>,<<"disconnect">>,<<"test">>],
-                     <<"disconnect-message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"pub-qos2-timeout-test">>}, _MsgId, [<<"pub">>,<<"qos2">>,<<"test">>],
-                     <<"timeout-message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"test-helper">>}, _MsgId, _, <<"message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"test-helper">>}, _MsgId, _, <<"message">>, true) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
