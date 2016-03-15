@@ -16,17 +16,8 @@
 -export([register_config/0]).
 
 register_config() ->
-    case clique_config:load_schema([code:lib_dir()]) of
-        {error, schema_files_not_found} ->
-            case clique_config:load_schema(application:get_env(vmq_server, schema_dirs, ["./priv"])) of
-                ok ->
-                    register_config_();
-                E ->
-                    E
-            end;
-        ok ->
-            register_config_()
-    end,
+    ok = clique_config:load_schema([code:priv_dir(vmq_server)]),
+    register_config_(),
     register_cli_usage(),
     vmq_config_show_cmd(),
     vmq_config_reset_cmd().
