@@ -39,7 +39,7 @@ vmq_plugin_show_cmd() ->
                          {typecast, fun(H) -> list_to_atom(H) end}]},
                  {internal, [{longname, "internal"}]}],
     Callback =
-    fun([], Flags) ->
+    fun(_, [], Flags) ->
             Plugins = extract_table(vmq_plugin:info(raw)),
             PluginName = proplists:get_value(plugin, Flags, []),
             HookName = proplists:get_value(hook, Flags, []),
@@ -142,7 +142,7 @@ vmq_plugin_enable_cmd() ->
     KeySpecs = [],
     FlagSpecs = vmq_plugin_flag_specs(),
     Callback =
-    fun([], Flags) ->
+    fun(_, [], Flags) ->
             Path =
             case lists:keyfind(path, 1, Flags) of
                 false -> [];
@@ -186,7 +186,7 @@ vmq_plugin_disable_cmd() ->
     KeySpecs = [],
     FlagSpecs = vmq_plugin_flag_specs(),
     Callback =
-    fun([], Flags) ->
+    fun(_, [], Flags) ->
             case lists:keyfind(name, 1, Flags) of
                 {_, Name} ->
                     case vmq_plugin_mgr:disable_plugin(Name) of
