@@ -1,8 +1,35 @@
-Changelog
-=========
+# Changelog
 
-VERNEMQ 0.12.0
---------------
+## VERNEMQ 0.12.5
+
+### vmq_server
+
+- Major refactoring that enables a more scalable and robust migration of online
+    and offline queues.
+
+- Use of new Rebar3 including the use of hex packages whenever possible.
+
+- Support for Erlang 18.
+
+- Reworked interal publish interface for plugins that require more control over
+    the way VerneMQ publishes their messages (e.g. setting the dup & retain flags).
+    Plugins which used the old 'PublishFun/2' MUST use the new 'PublishFun/3' which
+    is specified as follows: 
+        
+        `fun([Word:binary()|_] = Topic, Payload:binary(), Opts:map()) -> ok | {error, Reason}`
+
+- Several minor bug fixes.
+
+- Several third-party dependencies have been upgraded.
+
+### General
+
+- Use of new Rebar3 and use of hex packages in all our own dependencies.
+
+- The docs are now hosted on our website http://verne.mq/docs.
+
+
+## VERNEMQ 0.12.0
 
 This release increases overall stability and performance. Memory usage for the subscriber store
 has been reduced by 40-50%. To achieve this, we had to change the main topic structure, and unfortunately this 
@@ -16,8 +43,7 @@ breaks backward compatibility for the stored offline data as well as the plugin 
     If you have implemented your own plugins, make sure to adapt to the new topic
     format. (Reach out to us if you require assistance).
 
-vmq_server
-~~~~~~~~~~
+### vmq_server
 
 - Major refactoring of the MQTT state machine:
     We reduced the number of processes per connected client and MQTT state machine.
@@ -63,31 +89,26 @@ vmq_server
 
 - Many small bug fixes and improvements.
 
-vmq_commons
-~~~~~~~~~~~
+### vmq_commons
 
 - New topic parser and validator
 
 - New shared behaviours for the new hooks
 
-vmq_acl
-~~~~~~~
+### vmq_acl
 
 - Adapt to use the new topic format
 
-vmq_bridge
-~~~~~~~~~~
+### vmq_bridge
 
 - Adapt to use the new topic format
 
-vmq_systree
-~~~~~~~~~~~
+### vmq_systree
 
 - Adapt to use the new topic format
 
 
-VERNEMQ 0.11.0
---------------
+## VERNEMQ 0.11.0
 
 The queuing mechanism got a major refactoring. Prior to this version the offline
 messages were stored in a global in-memory table backed by the leveldb based
@@ -105,8 +126,7 @@ for the stored offline data.
     We also updated the format of the exposed client metrics. Make sure
     to adjust your monitoring setup.
 
-vmq_server
-~~~~~~~~~~
+### vmq_server
 
 - Major refactoring for Queuing Mechanism:
     Prior to this version the offline messages were stored in a global ETS bag
@@ -141,8 +161,7 @@ vmq_server
 - Many smaller fixes and cleanups
 
 
-vmq_commons
-~~~~~~~~~~~
+### vmq_commons
 
 - Better error messages in case of parsing errors
 
@@ -150,8 +169,7 @@ vmq_commons
 
 
 
-VERNEMQ 0.10.0
---------------
+### VERNEMQ 0.10.0
 
 We switched to the rebar3 toolchain for building VerneMQ, involving quite some 
 changes in many of our direct dependencies (``vmq_*``). Several bug fixes and
@@ -174,8 +192,7 @@ imcompatibilites:
     
     We updated the format of the exposed metrics. Make sure to adjust your monitoring setup.
 
-vmq_server
-~~~~~~~~~~
+### vmq_server
 
 - Changed application statistics:
     Use of more efficient counters. This changes the format of the values
@@ -214,8 +231,7 @@ vmq_server
 - Fixed several bugs found via dialyzer
 
 
-vmq_commons
-~~~~~~~~~~~
+### vmq_commons
 
 - Multiple conformance bug fixes:
     Topic and subscription validation
@@ -226,16 +242,14 @@ vmq_commons
 
 - Fixed bugs found via dialyzer
 
-vmq_snmp 
-~~~~~~~~~~~
+### vmq_snmp 
 
 - Merged updated SNMP reporter from feuerlabs/exometer
 
 - Cleanup of unused OTP mibs (the OTP metrics are now directly exposed by vmq_server)
 
 
-vmq_plugin
-~~~~~~~~~~
+### vmq_plugin
 
 - Minor bug fixed related to dynamically loading plugins
 
