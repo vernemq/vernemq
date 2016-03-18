@@ -549,6 +549,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                              mountpoint=maps:get(mountpoint, Opts, MountPoint),
                              payload=Payload,
                              msg_ref=vmq_mqtt_fsm:msg_ref(),
+                             qos = maps:get(qos, Opts, 0),
                              dup=maps:get(dup, Opts, false),
                              retain=maps:get(retain, Opts, false),
                              trade_consistency=maps:get(trade_consistency, Opts,
