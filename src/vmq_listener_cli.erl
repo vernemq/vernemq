@@ -120,10 +120,10 @@ vmq_listener_start_cmd() ->
                                {typecast, fun(F) -> list_to_existing_atom(F) end}]}
                 ],
     Callback =
-    fun ([], _) ->
+    fun (_, [], _) ->
             Text = lists:flatten(vmq_listener_start_usage()),
             [clique_status:alert([clique_status:text(Text)])];
-        ([{port, Port}], Flags) ->
+        (_, [{port, Port}], Flags) ->
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
             IsWebSocket = lists:keymember(websocket, 1, Flags),
             IsPlainHTTP = lists:keymember(http, 1, Flags),
@@ -193,7 +193,7 @@ vmq_listener_stop_cmd() ->
                  {kill, [{shortname, "k"},
                          {longname, "kill_sessions"}]}],
     Callback =
-    fun([], Flags) ->
+    fun(_, [], Flags) ->
             Port = proplists:get_value(port, Flags, 1883),
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
             IsKill = lists:keymember(kill, 1, Flags),
@@ -230,7 +230,7 @@ vmq_listener_delete_cmd() ->
                                                end
                                        end}]}],
     Callback =
-    fun([], Flags) ->
+    fun(_, [], Flags) ->
             Port = proplists:get_value(port, Flags, 1883),
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
             vmq_ranch_config:delete_listener(Addr, Port),
@@ -270,7 +270,7 @@ vmq_listener_restart_cmd() ->
                                                end
                                        end}]}],
     Callback =
-    fun([], Flags) ->
+    fun(_, [], Flags) ->
             Port = proplists:get_value(port, Flags, 1883),
             Addr = proplists:get_value(address, Flags, {0,0,0,0}),
             case vmq_ranch_config:restart_listener(Addr, Port) of
@@ -288,7 +288,7 @@ vmq_listener_show_cmd() ->
     KeySpecs = [],
     FlagSpecs = [],
     Callback =
-    fun([], []) ->
+    fun(_, [], []) ->
             Table =
             lists:foldl(
               fun({Type, Ip, Port, Status, MP, MaxConns}, Acc) ->
