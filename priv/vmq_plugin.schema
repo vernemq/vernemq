@@ -13,3 +13,18 @@
                                             {datatype, atom},
                                             hidden
                                             ]}.
+{mapping, "default_schema_dir", "vmq_plugin.default_schema_dir", [
+                                          {default, off},
+                                          {datatype, [directory, {atom, off}]},
+                                          hidden
+                                          ]}.
+
+{translation, "vmq_plugin.default_schema_dir",
+ fun(Conf) ->
+         case cuttlefish:conf_get("default_schema_dir", Conf) of
+             off -> [code:priv_dir(vmq_server)];
+             Dir when is_list(Dir) -> [Dir];
+             _ -> cuttlefish:invalid("default_schema_dir must be 'off' or a valid directory")
+         end
+ end}.
+

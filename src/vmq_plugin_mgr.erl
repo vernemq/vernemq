@@ -494,7 +494,7 @@ start_plugin(App) ->
     end.
 
 init_plugins_cli(CheckedPlugins) ->
-    init_plugins_cli(CheckedPlugins, [code:lib_dir()]).
+    init_plugins_cli(CheckedPlugins, application:get_env(vmq_plugin, default_schema_dir, [])).
 
 init_plugins_cli([{module, _, _}|Rest], Acc) ->
     init_plugins_cli(Rest, Acc);
