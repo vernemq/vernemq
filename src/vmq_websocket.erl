@@ -13,7 +13,8 @@
 %% limitations under the License.
 
 -module(vmq_websocket).
--export([init/2]).
+-export([init/3]).
+-export([websocket_init/3]).
 -export([websocket_handle/3]).
 -export([websocket_info/3]).
 -export([terminate/3]).
@@ -26,17 +27,21 @@
 
 -define(SUPPORTED_PROTOCOLS, [<<"mqttv3.1">>, <<"mqtt">>]).
 
-init(Req, Opts) ->
+
+init(_Type, Req, Opts) ->
+    {upgrade, protocol, cowboy_websocket, Req, Opts}.
+
+websocket_init(_Type, Req, Opts) ->
     case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req) of
-        undefined ->
-            init_(Req, Opts);
-        [SubProtocol] ->
+        {undefined, Req2} ->
+            init_(Req2, Opts);
+        {ok, [SubProtocol], Req2} ->
             case lists:member(SubProtocol, ?SUPPORTED_PROTOCOLS) of
                 true ->
-                    Req2 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, SubProtocol, Req),
-                    init_(Req2, Opts);
+                    Req3 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, SubProtocol, Req2),
+                    init_(Req3, Opts);
                 false ->
-                    {stop, Req, undefined}
+                    {shutdown, Req2}
             end
     end.
 
@@ -45,7 +50,7 @@ init_(Req, Opts) ->
     FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
     FsmState = FsmMod:init(Peer, Opts),
     _ = vmq_exo:incr_socket_count(),
-    {cowboy_websocket, Req, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
+    {ok, Req, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
 
 websocket_handle({binary, Data}, Req, State) ->
     #st{fsm_state=FsmState0,
