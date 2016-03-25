@@ -17,7 +17,7 @@
 -export([websocket_init/3]).
 -export([websocket_handle/3]).
 -export([websocket_info/3]).
--export([terminate/3]).
+-export([websocket_terminate/3]).
 
 -record(st, {buffer= <<>>,
              fsm_mod,
@@ -80,10 +80,10 @@ websocket_info({FsmMod, Msg}, Req, #st{fsm_mod=FsmMod, fsm_state=FsmState} = Sta
 websocket_info(_Info, Req, State) ->
     {ok, Req, State}.
 
-terminate(_Reason, _Req, #st{fsm_state=terminated}) ->
+websocket_terminate(_Reason, _Req, #st{fsm_state=terminated}) ->
     _ = vmq_exo:decr_socket_count(),
     ok;
-terminate(_Reason, _Req, #st{fsm_mod=FsmMod, fsm_state=FsmState}) ->
+websocket_terminate(_Reason, _Req, #st{fsm_mod=FsmMod, fsm_state=FsmState}) ->
     _ = FsmMod:msg_in(disconnect, FsmState),
     _ = vmq_exo:decr_socket_count(),
     ok.

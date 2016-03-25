@@ -1048,7 +1048,7 @@
 }.
 
 {mapping, "tcp_listen_options", "vmq_server.tcp_listen_options", [
-                                                                  {default, "[{packet, raw}, {nodelay, true}, {reuseaddr, true}, {linger, {true, 0}}, {send_timeout, 30000}, {send_timeout_close, true}]"},
+                                                                  {default, "[{nodelay, true}, {linger, {true, 0}}, {send_timeout, 30000}, {send_timeout_close, true}]"},
                                                                   {datatype, string},
                                                                   hidden
                                                                  ]}.
