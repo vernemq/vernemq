@@ -87,7 +87,7 @@
   1},
  {<<"vmq_server">>,
   {git,"git://github.com/erlio/vmq_server.git",
-       {ref,"a802b48c5e0ce92084a304fce93305dd99f26ac2"}},
+       {ref,"3372ab196a2043915d21925db1cfe076e3ea8206"}},
   0},
  {<<"vmq_snmp">>,
   {git,"git://github.com/erlio/vmq_snmp.git",
