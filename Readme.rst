@@ -32,14 +32,14 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN
 * Offline Message Storage (based on LevelDB)
 * Queue can handle messages FIFO or LIFO style.
 
-Where to find more
-------------------
+Commercial Support. Binary Packages. Documentation
+--------------------------------------------------
 
 Below you'll find a basic introduction to building and starting VerneMQ. For more
 information about the binary package installation, configuration, and administration 
-of VerneMQ, please visit our documentation at `VerneMQ Documentation <http://verne.mq/docs>`_ 
-or checkout the product page `VerneMQ <http://verne.mq>`_ if you require more
-information on the available support options.
+of VerneMQ, please visit our documentation at `VerneMQ Documentation <https://verne.mq/docs>`_ 
+or checkout the product page `VerneMQ <https://verne.mq>`_ if you require more
+information on the available commercial `support options <https://verne.mq/services.html>`_.
 
 Quick Start
 -----------
@@ -50,8 +50,7 @@ started, you need to first build VerneMQ.
 Building VerneMQ
 ~~~~~~~~~~~~~~~~
 
-Note: VerneMQ requires Erlang 17.x to be installed on your system. Erlang 18 is
-currently not supported.
+Note: VerneMQ requires Erlang 17.x or 18.x to be installed on your system. 
 
 Assuming you have a working Erlang installation, building VerneMQ should be as
 simple as:
