@@ -183,22 +183,23 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 load_script(Script) ->
-    LuaState0 = luerl:load_module([<<"package">>, <<"loaded">>, <<"_G">>, <<"mysql">>],
-                                  vmq_diversity_mysql, luerl:init()),
-    LuaState1 = luerl:load_module([<<"package">>, <<"loaded">>, <<"_G">>, <<"pgsql">>],
-                                  vmq_diversity_postgres, LuaState0),
-    LuaState2 = luerl:load_module([<<"package">>, <<"loaded">>, <<"_G">>, <<"mongodb">>],
-                                  vmq_diversity_mongo, LuaState1),
-    LuaState3 = luerl:load_module([<<"package">>, <<"loaded">>, <<"_G">>, <<"redis">>],
-                                  vmq_diversity_redis, LuaState2),
-    LuaState4 = luerl:load_module([<<"package">>, <<"loaded">>, <<"_G">>, <<"http">>],
-                                  vmq_diversity_http, LuaState3),
-    LuaState5 = luerl:load_module([<<"package">>, <<"loaded">>, <<"_G">>, <<"json">>],
-                                  vmq_diversity_json, LuaState4),
-    LuaState6 = luerl:load_module([<<"package">>, <<"loaded">>, <<"_G">>, <<"kv">>],
-                                  vmq_diversity_ets, LuaState5),
+    Libs = [
+            {vmq_diversity_mysql,       <<"mysql">>},
+            {vmq_diversity_postgres,    <<"postgres">>},
+            {vmq_diversity_mongo,       <<"mongodb">>},
+            {vmq_diversity_redis,       <<"redis">>},
+            {vmq_diversity_http,        <<"http">>},
+            {vmq_diversity_json,        <<"json">>},
+            {vmq_diversity_ets,         <<"kv">>}
+           ],
 
-    try luerl:dofile(Script, LuaState6) of
+    LuaState =
+    lists:foldl(fun({Mod, NS}, LuaStateAcc) ->
+                        luerl:load_module([<<"package">>, <<"loaded">>,
+                                           <<"_G">>, NS], Mod, LuaStateAcc)
+                end, luerl:init(), Libs),
+
+    try luerl:dofile(Script, LuaState) of
         {_, NewLuaState} ->
             case luerl:eval("return hooks", NewLuaState) of
                 {ok, [nil]} ->

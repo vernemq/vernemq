@@ -8,7 +8,10 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([start_link/0,
+         start_pool/2,
+         start_all_pools/0,
+         start_all_pools/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -30,17 +33,20 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
-    ChildSpecs = start_all_pools(),
     {ok, { {one_for_all, 0, 1},
            [
             ?CHILD(vmq_diversity_plugin, vmq_diversity_plugin, worker, []),
             ?CHILD(vmq_diversity_script_sup, vmq_diversity_script_sup, supervisor, [])
-           |ChildSpecs]}
+           ]}
     }.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+start_pool(Type, ProviderConfig) ->
+    start_all_pools([{Type, ProviderConfig}], []).
+
 start_all_pools() ->
     Providers = application:get_env(vmq_diversity, storage_providers, []),
     start_all_pools(Providers, []).
@@ -108,6 +114,7 @@ start_all_pools([{http, ProviderConfig}|Rest], Acc) ->
     start_all_pools(Rest, Acc);
 start_all_pools([_|Rest], Acc) ->
     start_all_pools(Rest, Acc);
-start_all_pools([], Acc) -> Acc.
-
-
+start_all_pools([], Acc) ->
+    lists:foreach(fun(ChildSpec) ->
+                          supervisor:start_child(?MODULE, ChildSpec)
+                  end, Acc).
