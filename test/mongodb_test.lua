@@ -1,4 +1,13 @@
+config = {
+    pool_id = "mongodb_test", 
+    size = 1, 
+    w_mode = "safe"
+}
+
+assert(mongodb.ensure_pool(config))
+
 assert(mongodb.delete("mongodb_test", "users", {}))
+
 
 doc1 = {_id = 'test-id',
        first_name = 'Jules',
@@ -13,7 +22,7 @@ doc2 = {first_name = 'John',
 
 -- insert one document
 ret = mongodb.insert("mongodb_test", "users", doc1)
-assert(#ret == 1)
+assert(ret._id ==  'test-id')
 
 -- insert multiple documents
 assert(mongodb.delete("mongodb_test", "users", {}))

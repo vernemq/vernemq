@@ -28,37 +28,37 @@ end_per_suite(_Config) ->
 
 init_per_testcase(_Case, Config) ->
     application:load(vmq_diversity),
-    application:set_env(vmq_diversity, storage_providers,
-                        [
-                         {mysql, [{id, mysql_test},
-                                  {opts, [{size, 1},
-                                          {user, "test_user"},
-                                          {password, "test_password"},
-                                          {database, "test_database"}
-                                         ]}
-                                 ]},
-                         {pgsql, [{id, postgres_test},
-                                  {opts, [{size, 1},
-                                          {user, "test_user"},
-                                          {password, "test_password"},
-                                          {database, "test_database"}
-                                         ]}
-                                 ]},
-                         {mongodb, [{id, mongodb_test},
-                                  {opts, [{size, 1},
-                                          {w_mode, safe}
-                                         ]}
-                                 ]},
-                         {redis, [{id, redis_test},
-                                  {opts, [{size, 1},
-                                          {database, 0}
-                                         ]}
-                                 ]},
-                         {kv, [{id, kv_test},
-                               {opts, []}
-                              ]}
+    %application:set_env(vmq_diversity, storage_providers,
+    %                    [
+    %                     {mysql, [{id, mysql_test},
+    %                              {opts, [{size, 1},
+    %                                      {user, "test_user"},
+    %                                      {password, "test_password"},
+    %                                      {database, "test_database"}
+    %                                     ]}
+    %                             ]},
+    %                     {pgsql, [{id, postgres_test},
+    %                              {opts, [{size, 1},
+    %                                      {user, "test_user"},
+    %                                      {password, "test_password"},
+    %                                      {database, "test_database"}
+    %                                     ]}
+    %                             ]},
+    %                     {mongodb, [{id, mongodb_test},
+    %                              {opts, [{size, 1},
+    %                                      {w_mode, safe}
+    %                                     ]}
+    %                             ]},
+    %                     {redis, [{id, redis_test},
+    %                              {opts, [{size, 1},
+    %                                      {database, 0}
+    %                                     ]}
+    %                             ]},
+    %                     {kv, [{id, kv_test},
+    %                           {opts, []}
+    %                          ]}
 
-                        ]),
+    %                    ]),
     application:ensure_all_started(vmq_diversity),
     application:ensure_all_started(vmq_plugin),
     Config.

@@ -35,6 +35,7 @@ install(St) ->
 
 table() ->
     [
+     {<<"ensure_pool">>, {function, fun ensure_pool/2}},
      {<<"insert">>, {function, fun insert/2}},
      {<<"update">>, {function, fun update/2}},
      {<<"delete">>, {function, fun delete/2}},
@@ -45,6 +46,57 @@ table() ->
      {<<"close">>, {function, fun cursor_close/2}}
     ].
 
+ensure_pool(As, St) ->
+    case As of
+        [Config0|_] ->
+            case luerl:decode(Config0, St) of
+                Config when is_list(Config) ->
+                    Options = vmq_diversity_utils:map(Config),
+                    PoolId = vmq_diversity_utils:atom(maps:get(<<"pool_id">>,
+                                                               Options,
+                                                               pool_mysql)),
+
+                    Size = vmq_diversity_utils:int(maps:get(<<"size">>,
+                                                            Options, 10)),
+                    MaxOverflow =
+                    vmq_diversity_utils:int(maps:get(<<"max_overflow">>,
+                                                            Options, 20)),
+                    Login = vmq_diversity_utils:ustr(maps:get(<<"login">>,
+                                                            Options, undefined)),
+                    Password = vmq_diversity_utils:ustr(maps:get(<<"password">>,
+                                                                Options, undefined)),
+                    Host = vmq_diversity_utils:str(maps:get(<<"host">>,
+                                                            Options, "127.0.0.1")),
+                    Port = vmq_diversity_utils:int(maps:get(<<"port">>, Options,
+                                                            27017)),
+                    Database = vmq_diversity_utils:ustr(maps:get(<<"database">>,
+                                                                 Options,
+                                                                 undefined)),
+                    WMode = vmq_diversity_utils:atom(maps:get(<<"w_mode">>,
+                                                                 Options,
+                                                                 safe)),
+                    RMode = vmq_diversity_utils:atom(maps:get(<<"r_mode">>,
+                                                                 Options,
+                                                                 master)),
+                    NewOptions =
+                    [{login, Login}, {password, Password},
+                     {host, Host}, {port, Port}, {database, Database},
+                     {w_mode, WMode}, {r_mode, RMode}],
+                    vmq_diversity_sup:start_pool(mongodb,
+                                                 [{id, PoolId},
+                                                  {size, Size},
+                                                  {max_overflow, MaxOverflow},
+                                                  {opts, NewOptions}]),
+
+                    % return to lua
+                    {[true], St};
+                _ ->
+                    badarg_error(execute_parse, As, St)
+            end;
+        _ ->
+            badarg_error(execute_parse, As, St)
+    end.
+
 insert(As, St) ->
     case As of
         [BPoolId, Collection, DocOrDocs] when is_binary(BPoolId)
@@ -53,9 +105,11 @@ insert(As, St) ->
                 [{K, V}|_] = TableOrTables when is_binary(K)
                                                 or (is_integer(K) and is_list(V)) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try insert(PoolId, Collection, map(TableOrTables, [])) of
+                    try insert(PoolId, Collection,
+                                ensure_id(vmq_diversity_utils:map(TableOrTables))) of
                         Result1 ->
-                            {Result2, NewSt} = luerl:encode(unmap(Result1, []), St),
+                            {Result2, NewSt} = luerl:encode(
+                                                 vmq_diversity_utils:unmap(Result1), St),
                             {[Result2], NewSt}
                     catch
                         E:R ->
@@ -77,8 +131,8 @@ update(As, St) ->
                 {[{SelectKey, _}|_] = Selector, [{K,_}|_] = Command}
                   when is_binary(SelectKey) and is_binary(K) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try update(PoolId, Collection, map(Selector),
-                               #{<<"$set">> => map(Command)}) of
+                    try update(PoolId, Collection, vmq_diversity_utils:map(Selector),
+                               #{<<"$set">> => vmq_diversity_utils:map(Command)}) of
                         ok ->
                             {[true], St}
                     catch
@@ -99,8 +153,15 @@ delete(As, St) ->
             case luerl:decode(Selector0, St) of
                 Selector when is_list(Selector) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    delete(PoolId, Collection, map(Selector)),
-                    {[true], St}
+                    try delete(PoolId, Collection, vmq_diversity_utils:map(Selector)) of
+                        ok ->
+                            {[true], St}
+                    catch
+                        E:R ->
+                            lager:error("can't execute delete ~p due to ~p:~p",
+                                        [Selector, E, R]),
+                            badarg_error(execute_update, As, St)
+                    end
             end;
         _ ->
             badarg_error(execute_parse, As, St)
@@ -113,7 +174,7 @@ find(As, St) ->
             case luerl:decode(Selector0, St) of
                 Selector when is_list(Selector) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try find(PoolId, Collection, map(Selector), parse_args(Args, St)) of
+                    try find(PoolId, Collection, vmq_diversity_utils:map(Selector), parse_args(Args, St)) of
                         CursorPid when is_pid(CursorPid) ->
                             %% we re passing the cursor pid as a binary to the Lua Script
                             BinPid = list_to_binary(pid_to_list(CursorPid)),
@@ -136,9 +197,10 @@ find_one(As, St) ->
             case luerl:decode(Selector0, St) of
                 Selector when is_list(Selector) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try find_one(PoolId, Collection, map(Selector), parse_args(Args, St)) of
+                    try find_one(PoolId, Collection, vmq_diversity_utils:map(Selector), parse_args(Args, St)) of
                         Result1 when map_size(Result1) > 0 ->
-                            {Result2, NewSt} = luerl:encode(unmap(Result1), St),
+                            {Result2, NewSt} = luerl:encode(
+                                                 vmq_diversity_utils:unmap(Result1), St),
                             {[Result2], NewSt};
                         _ ->
                             {[false], St}
@@ -162,7 +224,7 @@ cursor_next(As, St) ->
                 error ->
                     {[false], St};
                 {Result1} ->
-                    {Result2, NewSt} = luerl:encode(unmap(Result1), St),
+                    {Result2, NewSt} = luerl:encode(vmq_diversity_utils:unmap(Result1), St),
                     {[Result2], NewSt}
             end;
         _ ->
@@ -177,7 +239,7 @@ cursor_take(As, St) ->
                 error ->
                     {[false], St};
                 Result1 ->
-                    {Result2, NewSt} = luerl:encode(unmap(Result1, []), St),
+                    {Result2, NewSt} = luerl:encode(vmq_diversity_utils:unmap(Result1, []), St),
                     {[Result2], NewSt}
             end;
         _ ->
@@ -194,44 +256,6 @@ cursor_close(As, St) ->
         _ ->
             badarg_error(execute_parse, As, St)
     end.
-
-map([], []) -> [];
-map([{I, [{K, _}|_] = Doc}|Rest], Acc) when is_integer(I) and is_binary(K) ->
-    %% list of docs
-    map(Rest, [ensure_id(map(Doc))|Acc]);
-map([{K, _}|_] = Doc, Acc) when is_binary(K) ->
-    %% one doc
-    [ensure_id(map(Doc))|Acc];
-map([], Acc) -> lists:reverse(Acc).
-
-map([]) -> #{};
-map(Proplist) ->
-    lists:foldl(fun
-                    ({K, [{_, _}|_] = V}, AccIn) ->
-                        maps:put(K, map(V), AccIn);
-                    ({K, V}, AccIn) ->
-                        maps:put(K, V, AccIn)
-                end, #{}, Proplist).
-
-unmap([], []) -> [];
-unmap([Map|Rest], Acc) when is_map(Map) ->
-    unmap(Rest, [unmap(Map)|Acc]);
-unmap([], Acc) -> lists:reverse(Acc).
-
-unmap(Map) when map_size(Map) == 0 -> [];
-unmap(Map) ->
-    maps:fold(fun
-                  (K,V, AccIn) when is_map(V) ->
-                      [{K, unmap(V)}|AccIn];
-                  (K,V, AccIn) ->
-                      [{K, V}|AccIn]
-              end, [], Map).
-
-ensure_id(#{<<"_id">> := _} = Map) -> Map;
-ensure_id(Map) ->
-    %% we use our own _id because the autogenerated one
-    %% has the unuseful format {Key}
-    maps:put(<<"_id">>, term_to_binary(erlang:phash2(Map)), Map).
 
 pool_id(BPoolId, As, St) ->
     try list_to_existing_atom(binary_to_list(BPoolId)) of
@@ -257,7 +281,7 @@ parse_args(_, _) ->
 parse_args_([{K, V}|Rest], Acc) ->
     try list_to_existing_atom(binary_to_list(K)) of
         AK when is_list(V) ->
-            parse_args_(Rest, [{AK, map(V)}|Acc]);
+            parse_args_(Rest, [{AK, vmq_diversity_utils:map(V)}|Acc]);
         AK ->
             parse_args_(Rest, [{AK, V}|Acc])
     catch
@@ -266,4 +290,10 @@ parse_args_([{K, V}|Rest], Acc) ->
     end;
 parse_args_([], Acc) -> Acc.
 
-
+ensure_id(#{<<"_id">> := _} = Map) -> Map;
+ensure_id(Map) when is_map(Map) ->
+    %% we use our own _id because the autogenerated one
+    %% has the unuseful format {Key}
+    maps:put(<<"_id">>, term_to_binary(erlang:phash2(Map)), Map);
+ensure_id([Map|_] = Maps) when is_map(Map) ->
+    lists:foldr(fun(M, Acc) -> [ensure_id(M)|Acc] end, [], Maps).
