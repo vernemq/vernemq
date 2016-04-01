@@ -2,7 +2,7 @@
 VerneMQ: A Distributed MQTT Broker
 ==================================
 .. image:: https://i.imgur.com/bln3fK3.jpg
- :target: https://verne.mq
+ :target: https://vernemq.com
  :alt: 'VerneMQ Logo'
 
 VerneMQ is a high-performance, distributed MQTT message broker. It scales horizontally and vertically on commodity hardware to support a high number of concurrent publishers and consumers while maintaining low latency and fault tolerance. VerneMQ is the reliable message hub for your IoT platform or smart products.
