@@ -105,7 +105,7 @@ handle_call({call_function, Function, Args}, _From, #state{samples=Samples} = St
             Ts2 = os:timestamp(),
             {reply, error, State#state{luastate=NewLuaState,
                                        samples=add_ts(Function, Ts1, Ts2, Samples)}};
-        {[], NewLuaState} ->
+        {NIL, NewLuaState} when (NIL == []) or (NIL == [nil]) ->
             Ts2 = os:timestamp(),
             {reply, next, State#state{luastate=NewLuaState,
                                       samples=add_ts(Function, Ts1, Ts2, Samples)}};

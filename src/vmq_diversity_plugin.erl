@@ -30,8 +30,7 @@
 
 %% API functions
 -export([start_link/0,
-         register_hook/1,
-         unregister_hook/1
+         register_hook/1
         ]).
 
 %% gen_server callbacks
@@ -61,9 +60,6 @@ start_link() ->
 
 register_hook(HookName) ->
     gen_server:call(?MODULE, {register_hook, self(), HookName}, infinity).
-
-unregister_hook(HookName) ->
-    gen_server:call(?MODULE, {unregister_hook, self(), HookName}, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -110,27 +106,6 @@ handle_call({register_hook, OwnerPid, Hook}, _From, State) ->
     end,
     monitor(process, OwnerPid),
     Reply = ok,
-    {reply, Reply, State};
-handle_call({unregister_hook, OwnerPid, Hook}, _From, State) ->
-    HookName = list_to_atom(binary_to_list(Hook)),
-    case ets:lookup(?TBL, HookName) of
-        [] ->
-            ignore;
-        [{_, ScriptOwners}]->
-            case lists:member(OwnerPid, ScriptOwners) of
-                false ->
-                    ignore;
-                true ->
-                    case lists:delete(OwnerPid, ScriptOwners) of
-                        [] ->
-                            disable_hook(HookName),
-                            ets:delete(?TBL, HookName);
-                        NewScriptOwners ->
-                            ets:insert(?TBL, {HookName, NewScriptOwners})
-                    end
-            end
-    end,
-    Reply = ok,
     {reply, Reply, State}.
 
 %%--------------------------------------------------------------------
@@ -158,7 +133,14 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _, process, Pid, _}, State) ->
     ets:foldl(fun({HookName, ScriptOwners}, _) ->
-                      ets:insert(?TBL, {HookName, lists:delete(Pid, ScriptOwners)})
+                      ets:insert(?TBL, {HookName, lists:delete(Pid, ScriptOwners)}),
+                      case ets:lookup(?TBL, HookName) of
+                          {_, []} ->
+                            disable_hook(HookName),
+                            ets:delete(?TBL, HookName);
+                          _ ->
+                              ok
+                      end
               end, ok, ?TBL),
     {noreply, State}.
 
@@ -220,7 +202,7 @@ auth_on_subscribe(UserName, SubscriberId, Topics) ->
     all_till_ok(auth_on_subscribe, [{username, UserName},
                                     {mountpoint, MP},
                                     {client_id, ClientId},
-                                    {topics, [{unword(T), QoS}
+                                    {topics, [[unword(T), QoS]
                                               || {T, QoS} <- Topics]}]).
 
 on_register(Peer, SubscriberId, UserName) ->
@@ -247,7 +229,7 @@ on_subscribe(UserName, SubscriberId, Topics) ->
     all(on_subscribe, [{username, UserName},
                        {mountpoint, MP},
                        {client_id, ClientId},
-                       {topics, [{unword(T), QoS}
+                       {topics, [[unword(T), QoS]
                                  || {T, QoS} <- Topics]}]).
 
 on_unsubscribe(UserName, SubscriberId, Topics) ->
@@ -362,20 +344,25 @@ check_modifiers(Hook, Modifiers)
         false ->
             Modifiers
     end;
-check_modifiers(auth_on_subscribe, TopicsModifiers) ->
-    lists:foldl(fun (_, error) -> error;
-                    ({T, Q}, AccTopics) when is_binary(T) and is_number(Q) ->
-                        case vmq_topic:validate_topic(subscribe, T) of
-                            {ok, NewTopic} ->
-                                [{NewTopic, round(Q)}|AccTopics];
-                            {error, R} ->
-                                lager:error("can't rewrite topic in auth_on_subscribe due to ~p", [R]),
+check_modifiers(auth_on_subscribe, Modifiers) ->
+    case lists:keyfind(topics, 1, Modifiers) of
+        {topics, TopicsModifiers} ->
+            lists:foldl(fun (_, error) -> error;
+                            ([T, Q], AccTopics) when is_binary(T) and is_number(Q) ->
+                                case vmq_topic:validate_topic(subscribe, T) of
+                                    {ok, NewTopic} ->
+                                        [{NewTopic, round(Q)}|AccTopics];
+                                    {error, R} ->
+                                        lager:error("can't rewrite topic in auth_on_subscribe due to ~p", [R]),
+                                        error
+                                end;
+                            (T, _) ->
+                                lager:error("can't rewrite topic in auth_on_subscribe due to wrong format ~p", [T]),
                                 error
-                        end;
-                    (_, _) ->
-                        lager:error("can't rewrite topic in auth_on_subscribe due to wrong format", []),
-                        error
-                end, [], TopicsModifiers);
+                        end, [], TopicsModifiers);
+        false ->
+            Modifiers
+    end;
 check_modifiers(on_unsubscribe, TopicModifiers) ->
     lists:foldl(fun (_, error) -> error;
                     (T, AccTopics) when is_binary(T) ->
