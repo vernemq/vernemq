@@ -1,3 +1,5 @@
+redis.ensure_pool({pool_id = "redis_test"})
+
 function equals(o1, o2)
     if o1 == o2 then return true end
     local o1Type = type(o1)

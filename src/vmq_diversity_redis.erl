@@ -150,7 +150,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 table() ->
     [
-     {<<"cmd">>, {function, fun cmd/2}}
+     {<<"cmd">>, {function, fun cmd/2}},
+     {<<"ensure_pool">>, {function, fun ensure_pool/2}}
     ].
 
 cmd(As, St) ->
@@ -170,6 +171,42 @@ cmd(As, St) ->
                     {[Ret], St};
                 _ ->
                     {[false], St}
+            end;
+        _ ->
+            badarg_error(execute_parse, As, St)
+    end.
+
+ensure_pool(As, St) ->
+    case As of
+        [Config0|_] ->
+            case luerl:decode(Config0, St) of
+                Config when is_list(Config) ->
+                    Options = vmq_diversity_utils:map(Config),
+                    PoolId = vmq_diversity_utils:atom(maps:get(<<"pool_id">>,
+                                                               Options,
+                                                               pool_redis)),
+
+                    Size = vmq_diversity_utils:int(maps:get(<<"size">>,
+                                                            Options, 5)),
+                    Password = vmq_diversity_utils:str(maps:get(<<"password">>,
+                                                                Options, "")),
+                    Host = vmq_diversity_utils:str(maps:get(<<"host">>,
+                                                            Options, "127.0.0.1")),
+                    Port = vmq_diversity_utils:int(maps:get(<<"port">>, Options,
+                                                            6379)),
+                    Database = vmq_diversity_utils:int(maps:get(<<"database">>,
+                                                                 Options,
+                                                                 0)),
+                    NewOptions =
+                    [{size, Size}, {password, Password},
+                     {host, Host}, {port, Port}, {database, Database}],
+                    vmq_diversity_sup:start_all_pools(
+                      [{redis, [{id, PoolId}, {opts, NewOptions}]}], []),
+
+                    % return to lua
+                    {[true], St};
+                _ ->
+                    badarg_error(execute_parse, As, St)
             end;
         _ ->
             badarg_error(execute_parse, As, St)
