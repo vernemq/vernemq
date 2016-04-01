@@ -13,7 +13,8 @@ table() ->
      {<<"put">>, {function, fun put/2}},
      {<<"post">>, {function, fun post/2}},
      {<<"delete">>, {function, fun delete/2}},
-     {<<"body">>, {function, fun body/2}}
+     {<<"body">>, {function, fun body/2}},
+     {<<"ensure_pool">>, {function, fun ensure_pool/2}}
     ].
 
 get(As, St) ->
@@ -72,6 +73,31 @@ decode_headers([T|Rest], St) when is_tuple(T) ->
             {[], Rest}
     end;
 decode_headers(Rest, _) -> {[], Rest}.
+
+ensure_pool(As, St) ->
+    case As of
+        [Config0|_] ->
+            case luerl:decode(Config0, St) of
+                Config when is_list(Config) ->
+                    Options = vmq_diversity_utils:map(Config),
+                    PoolId = vmq_diversity_utils:atom(maps:get(<<"pool_id">>,
+                                                               Options,
+                                                               pool_http)),
+
+                    Size = vmq_diversity_utils:int(maps:get(<<"size">>,
+                                                            Options, 10)),
+                    NewOptions = [{size, Size}],
+                    vmq_diversity_sup:start_all_pools(
+                      [{http, [{id, PoolId}, {opts, NewOptions}]}], []),
+
+                    % return to lua
+                    {[true], St};
+                _ ->
+                    badarg_error(execute_parse, As, St)
+            end;
+        _ ->
+            badarg_error(execute_parse, As, St)
+    end.
 
 pool_id(BPoolId, As, St) ->
     try list_to_existing_atom(binary_to_list(BPoolId)) of
