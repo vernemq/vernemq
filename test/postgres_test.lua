@@ -1,8 +1,17 @@
+config = {
+    pool_id = "postgres_test",
+    user = "test_user",
+    password = "test_password",
+    database = "test_database"
+}
+
+postgres.ensure_pool(config)
+
 -- Drop test table
-assert(pgsql.execute("postgres_test", "DROP TABLE IF EXISTS postgres_test_lua_tbl"))
+assert(postgres.execute("postgres_test", "DROP TABLE IF EXISTS postgres_test_lua_tbl"))
 
 -- Create test table
-assert(pgsql.execute("postgres_test", 
+assert(postgres.execute("postgres_test", 
     [[CREATE TABLE postgres_test_lua_tbl(
         client_id VARCHAR(128) PRIMARY KEY,
         mountpoint VARCHAR(64),
@@ -12,7 +21,7 @@ assert(pgsql.execute("postgres_test",
      ]]))
 
 -- insert some data
-assert(pgsql.execute("postgres_test", 
+assert(postgres.execute("postgres_test", 
     [[INSERT INTO postgres_test_lua_tbl VALUES
         ('client_a', 'my_mp', 'user_a', 'password_a'),
         ('client_b', 'my_mp', 'user_b', 'password_b'),
@@ -21,7 +30,7 @@ assert(pgsql.execute("postgres_test",
     ]]))
 
 -- select
-results = pgsql.execute("postgres_test", "SELECT * FROM postgres_test_lua_tbl")
+results = postgres.execute("postgres_test", "SELECT * FROM postgres_test_lua_tbl")
 assert(#results == 4, "error in select")
 
 function assert_row(row, client_id, mountpoint, user_name, password)
@@ -42,15 +51,15 @@ end
 assert_result(results)
 
 -- same with prepared select statement
-assert(pgsql.execute("postgres_test", "PREPARE select_all AS SELECT * FROM postgres_test_lua_tbl"))
+assert(postgres.execute("postgres_test", "PREPARE select_all AS SELECT * FROM postgres_test_lua_tbl"))
 
-results = pgsql.execute("postgres_test", "EXECUTE select_all")
+results = postgres.execute("postgres_test", "EXECUTE select_all")
 assert(#results == 4, "error in select")
 assert_result(results)
 
 
 -- more complex query
-results = pgsql.execute("postgres_test", 
+results = postgres.execute("postgres_test", 
     [[SELECT * FROM postgres_test_lua_tbl 
       WHERE 
         mountpoint=$1 and

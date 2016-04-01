@@ -66,12 +66,14 @@ equery(PoolName, Stmt, Params) ->
 %%--------------------------------------------------------------------
 init(Args) ->
     process_flag(trap_exit, true),
-    Hostname = proplists:get_value(hostname, Args, "localhost"),
+    Hostname = proplists:get_value(host, Args, "localhost"),
+    Port = proplists:get_value(port, Args, 5432),
     Database = proplists:get_value(database, Args),
     Username = proplists:get_value(user, Args),
     Password = proplists:get_value(password, Args),
     {ok, Conn} = epgsql:connect(Hostname, Username, Password, [
-        {database, Database}
+        {database, Database},
+        {port, Port}
     ]),
     {ok, #state{conn=Conn}}.
 
@@ -153,7 +155,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 table() ->
     [
-     {<<"execute">>, {function, fun execute/2}}
+     {<<"execute">>, {function, fun execute/2}},
+     {<<"ensure_pool">>, {function, fun ensure_pool/2}}
     ].
 
 execute(As, St) ->
@@ -192,6 +195,44 @@ execute(As, St) ->
                 E:R ->
                     lager:error("can't execute query ~p due to ~p", [BQuery, E, R]),
                     badarg_error(execute_equery, As, St)
+            end;
+        _ ->
+            badarg_error(execute_parse, As, St)
+    end.
+
+ensure_pool(As, St) ->
+    case As of
+        [Config0|_] ->
+            case luerl:decode(Config0, St) of
+                Config when is_list(Config) ->
+                    Options = vmq_diversity_utils:map(Config),
+                    PoolId = vmq_diversity_utils:atom(maps:get(<<"pool_id">>,
+                                                               Options,
+                                                               pool_mysql)),
+
+                    Size = vmq_diversity_utils:int(maps:get(<<"size">>,
+                                                            Options, 5)),
+                    User = vmq_diversity_utils:str(maps:get(<<"user">>,
+                                                            Options, "")),
+                    Password = vmq_diversity_utils:str(maps:get(<<"password">>,
+                                                                Options, "")),
+                    Host = vmq_diversity_utils:str(maps:get(<<"host">>,
+                                                            Options, "127.0.0.1")),
+                    Port = vmq_diversity_utils:int(maps:get(<<"port">>, Options,
+                                                            5432)),
+                    Database = vmq_diversity_utils:ustr(maps:get(<<"database">>,
+                                                                 Options,
+                                                                 undefined)),
+                    NewOptions =
+                    [{size, Size}, {user, User}, {password, Password},
+                     {host, Host}, {port, Port}, {database, Database}],
+                    vmq_diversity_sup:start_all_pools(
+                      [{pgsql, [{id, PoolId}, {opts, NewOptions}]}], []),
+
+                    % return to lua
+                    {[true], St};
+                _ ->
+                    badarg_error(execute_parse, As, St)
             end;
         _ ->
             badarg_error(execute_parse, As, St)
