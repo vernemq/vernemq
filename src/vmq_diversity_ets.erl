@@ -14,7 +14,8 @@ table() ->
      {<<"insert_new">>, {function, fun insert_new/2}},
      {<<"lookup">>, {function, fun lookup/2}},
      {<<"delete">>, {function, fun delete/2}},
-     {<<"delete_all">>, {function, fun delete_all/2}}
+     {<<"delete_all">>, {function, fun delete_all/2}},
+     {<<"ensure_table">>, {function, fun ensure_table/2}}
     ].
 
 insert([BTableId, ObjectOrObjects] = As, St) when is_binary(BTableId) ->
@@ -48,11 +49,37 @@ delete_all([BTableId] = As, St) when is_binary(BTableId) ->
     TableId = table_id(BTableId, As, St),
     {[ets:delete_all_objects(TableId)], St}.
 
-table_id(BPoolId, As, St) ->
-    try list_to_existing_atom(binary_to_list(BPoolId)) of
-        APoolId -> APoolId
+ensure_table(As, St) ->
+    case As of
+        [Config0|_] ->
+            case luerl:decode(Config0, St) of
+                Config when is_list(Config) ->
+                    Options = vmq_diversity_utils:map(Config),
+                    Name = vmq_diversity_utils:str(maps:get(<<"name">>,
+                                                               Options,
+                                                               "simple_kv")),
+                    Type = vmq_diversity_utils:atom(maps:get(<<"type">>,
+                                                                Options,
+                                                                set)),
+                    AName = list_to_atom("vmq-diversity-ets" ++ Name),
+                    NewOptions = [Type],
+                    vmq_diversity_sup:start_all_pools(
+                      [{kv, [{id, AName}, {opts, NewOptions}]}], []),
+
+                    % return to lua
+                    {[true], St};
+                _ ->
+                    badarg_error(execute_parse, As, St)
+            end;
+        _ ->
+            badarg_error(execute_parse, As, St)
+    end.
+
+table_id(BTableName, As, St) ->
+    try list_to_existing_atom("vmq-diversity-ets" ++ binary_to_list(BTableName)) of
+        ATableName -> ATableName
     catch
         _:_ ->
-            lager:error("unknown pool ~p", [BPoolId]),
+            lager:error("unknown pool ~p", [BTableName]),
             badarg_error(unknown_pool, As, St)
     end.

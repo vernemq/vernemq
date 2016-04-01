@@ -1,3 +1,5 @@
+kv.ensure_table({name = "kv_test"})
+
 assert(kv.delete_all("kv_test"))
 assert(kv.insert("kv_test", {hello = "world"}))
 assert(kv.insert_new("kv_test", {hello = "earth"}) == false)
