@@ -97,23 +97,14 @@ handle_call(reload, _From, #state{script=Script} = State) ->
 handle_call({call_function, Function, Args}, _From, #state{samples=Samples} = State) ->
     Ts1 = os:timestamp(),
     try luerl:call_function([hooks, Function], [Args], State#state.luastate) of
-        {[true], NewLuaState} ->
+        {[], NewLuaState} ->
             Ts2 = os:timestamp(),
-            {reply, ok, State#state{luastate=NewLuaState,
+            {reply, undefined, State#state{luastate=NewLuaState,
                                     samples=add_ts(Function, Ts1, Ts2, Samples)}};
-        {[false], NewLuaState} ->
+        {[Val], NewLuaState} ->
             Ts2 = os:timestamp(),
-            {reply, error, State#state{luastate=NewLuaState,
-                                       samples=add_ts(Function, Ts1, Ts2, Samples)}};
-        {NIL, NewLuaState} when (NIL == []) or (NIL == [nil]) ->
-            Ts2 = os:timestamp(),
-            {reply, next, State#state{luastate=NewLuaState,
-                                      samples=add_ts(Function, Ts1, Ts2, Samples)}};
-        {[[{BinKey, _}|_] = BinPropList], NewLuaState} when is_binary(BinKey) ->
-            Ts2 = os:timestamp(),
-            {reply, convert_to_proplist(BinPropList, []),
-             State#state{luastate=NewLuaState,
-                         samples=add_ts(Function, Ts1, Ts2, Samples)}}
+            {reply, convert(Val), State#state{luastate=NewLuaState,
+                                    samples=add_ts(Function, Ts1, Ts2, Samples)}}
     catch
         error:{lua_error, Reason, _} ->
             lager:error("can't call function ~p with args ~p in ~p due to ~p",
@@ -222,17 +213,33 @@ register_hooks([_|Rest]) ->
     register_hooks(Rest);
 register_hooks([]) -> ok.
 
-convert_to_proplist([{<<"mountpoint">>, MP}|Rest], Acc) ->
-    convert_to_proplist(Rest, [{mountpoint, binary_to_list(MP)}|Acc]);
-convert_to_proplist([{BinKey, Val}|Rest], Acc) ->
+convert(Val) when is_list(Val) ->
+    convert_list(Val, []);
+convert(Val) when is_number(Val) ->
+    case round(Val) of
+        RVal when RVal == Val -> RVal;
+        _ -> Val
+    end;
+convert(Val) when is_binary(Val) -> Val;
+convert(Val) when is_boolean(Val) -> Val;
+convert(nil) -> undefined.
+
+convert_list([ListItem|Rest], Acc) ->
+    convert_list(Rest, [convert_list_item(ListItem)|Acc]);
+convert_list([], Acc) -> lists:reverse(Acc).
+
+convert_list_item({Idx, Val}) when is_integer(Idx) ->
+    %% lua array
+    convert(Val);
+convert_list_item({<<"mountpoint">>, MP}) ->
+    {mountpoint, binary_to_list(MP)};
+convert_list_item({BinKey, Val}) when is_binary(BinKey) ->
     try list_to_existing_atom(binary_to_list(BinKey)) of
-        Key ->
-            convert_to_proplist(Rest, [{Key, Val}|Acc])
+        Key -> {Key, convert(Val)}
     catch
         _:_ ->
-            convert_to_proplist(Rest, [{BinKey, Val}|Acc])
-    end;
-convert_to_proplist([], Acc) -> {ok, Acc}.
+            {BinKey, convert(Val)}
+    end.
 
 add_ts(Function, Ts1, Ts2, Samples) ->
     T = timer:now_diff(Ts2, Ts1),

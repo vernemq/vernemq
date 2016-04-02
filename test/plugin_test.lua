@@ -52,7 +52,7 @@ function auth_on_subscribe(sub)
     else
         -- we must change properties
         print("auth_on_subscribe changed called")
-        return {topics = {{"hello/world", 2}}}
+        return {{"hello/world", 2}}
     end
 end
 
@@ -85,12 +85,17 @@ function on_subscribe(sub)
 end
 
 function on_unsubscribe(usub)
-    assert(usub.client_id == "allowed-subscriber-id")
     assert(usub.mountpoint == "")
     assert(#usub.topics == 1)
     assert(usub.topics[1] == "test/topic")
-    print("on_unsubscribe called")
-    return true
+    if usub.client_id ~= "changed-subscriber-id" then
+        assert(usub.client_id == "allowed-subscriber-id")
+        print("on_unsubscribe called")
+    else
+        -- we must change properties
+        print("on_unsubscribe changed called")
+        return {"hello/world"}
+    end
 end
 
 function on_deliver(pub)

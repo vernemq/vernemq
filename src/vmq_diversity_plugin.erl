@@ -298,19 +298,19 @@ all_till_ok(HookName, Args) ->
 
 all_till_ok([Pid|Rest], HookName, Args) ->
     case vmq_diversity_script:call_function(Pid, HookName, Args) of
-        ok ->
+        true ->
             ok;
-        {ok, Modifiers} ->
+        Modifiers when is_list(Modifiers) ->
             case check_modifiers(HookName, Modifiers) of
                 error ->
                     error;
                 ValidatedModifiers ->
                     {ok, ValidatedModifiers}
             end;
-        next ->
-            all_till_ok(Rest, HookName, Args);
         error ->
-            error
+            error;
+        _ ->
+            all_till_ok(Rest, HookName, Args)
     end;
 all_till_ok([], _, _) -> next.
 
@@ -344,26 +344,21 @@ check_modifiers(Hook, Modifiers)
         false ->
             Modifiers
     end;
-check_modifiers(auth_on_subscribe, Modifiers) ->
-    case lists:keyfind(topics, 1, Modifiers) of
-        {topics, TopicsModifiers} ->
-            lists:foldl(fun (_, error) -> error;
-                            ([T, Q], AccTopics) when is_binary(T) and is_number(Q) ->
-                                case vmq_topic:validate_topic(subscribe, T) of
-                                    {ok, NewTopic} ->
-                                        [{NewTopic, round(Q)}|AccTopics];
-                                    {error, R} ->
-                                        lager:error("can't rewrite topic in auth_on_subscribe due to ~p", [R]),
-                                        error
-                                end;
-                            (T, _) ->
-                                lager:error("can't rewrite topic in auth_on_subscribe due to wrong format ~p", [T]),
+check_modifiers(auth_on_subscribe, TopicsModifiers) ->
+    lists:foldl(fun (_, error) -> error;
+                    ([T, Q], AccTopics) when is_binary(T) and is_number(Q) ->
+                        case vmq_topic:validate_topic(subscribe, T) of
+                            {ok, NewTopic} ->
+                                [{NewTopic, round(Q)}|AccTopics];
+                            {error, R} ->
+                                lager:error("can't rewrite topic in auth_on_subscribe due to ~p", [R]),
                                 error
-                        end, [], TopicsModifiers);
-        false ->
-            Modifiers
-    end;
-check_modifiers(on_unsubscribe, TopicModifiers) ->
+                        end;
+                    (T, _) ->
+                        lager:error("can't rewrite topic in auth_on_subscribe due to wrong format ~p", [T]),
+                        error
+                end, [], TopicsModifiers);
+check_modifiers(on_unsubscribe, TopicsModifiers) ->
     lists:foldl(fun (_, error) -> error;
                     (T, AccTopics) when is_binary(T) ->
                         case vmq_topic:validate_topic(subscribe, T) of
@@ -373,10 +368,10 @@ check_modifiers(on_unsubscribe, TopicModifiers) ->
                                 lager:error("can't rewrite topic in on_unsubscribe due to ~p", [R]),
                                 error
                         end;
-                    (_, _) ->
-                        lager:error("can't rewrite topic in on_unsubscribe due to wrong format", []),
+                    (T, _) ->
+                        lager:error("can't rewrite topic in on_unsubscribe due to wrong format ~p", [T]),
                         error
-                end, [], TopicModifiers);
+                end, [], TopicsModifiers);
 check_modifiers(_, Modifiers) -> Modifiers.
 
 
