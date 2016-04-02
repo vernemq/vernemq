@@ -13,7 +13,6 @@
          mongodb_test/1,
          redis_test/1,
          http_test/1,
-         json_test/1,
          kv_test/1,
          json_test/1,
          logger_test/1]).
