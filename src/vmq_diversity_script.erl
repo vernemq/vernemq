@@ -32,7 +32,8 @@
 
 -record(state, {luastate,
                 samples= #{},
-                script}).
+                script,
+                keep}).
 
 -define(MAX_SAMPLES, 100).
 
@@ -78,7 +79,8 @@ call_function(Pid, Function, Args) ->
 init([Script]) ->
     case load_script(Script) of
         {ok, LuaState} ->
-            {ok, #state{luastate=LuaState, script=Script}};
+            KeepState = application:get_env(vmq_diversity, keep_state, false),
+            {ok, #state{luastate=LuaState, script=Script, keep=KeepState}};
         {error, Reason} ->
             lager:error("can't load script ~p due to ~p", [Script, Reason]),
             %% normal stop as we don't want to exhaust the supervisor strategy
@@ -108,17 +110,15 @@ handle_call(reload, _From, #state{script=Script} = State) ->
             lager:error("can't reload script due to ~p, keeping old version", [Reason]),
             {reply, {error, Reason}, State}
     end;
-handle_call({call_function, Function, Args}, _From, #state{samples=Samples} = State) ->
+handle_call({call_function, Function, Args}, _From, State) ->
     Ts1 = os:timestamp(),
     try luerl:call_function([hooks, Function], [Args], State#state.luastate) of
         {[], NewLuaState} ->
             Ts2 = os:timestamp(),
-            {reply, undefined, State#state{luastate=NewLuaState,
-                                    samples=add_ts(Function, Ts1, Ts2, Samples)}};
+            {reply, undefined, ch_state(NewLuaState, Function, Ts1, Ts2, State)};
         {[Val], NewLuaState} ->
             Ts2 = os:timestamp(),
-            {reply, convert(Val), State#state{luastate=NewLuaState,
-                                    samples=add_ts(Function, Ts1, Ts2, Samples)}}
+            {reply, convert(Val), ch_state(NewLuaState, Function, Ts1, Ts2, State)}
     catch
         error:{lua_error, Reason, _} ->
             lager:error("can't call function ~p with args ~p in ~p due to ~p",
@@ -186,6 +186,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+ch_state(NewLuaState, Function, Ts1, Ts2, #state{keep=true, samples=Samples} = State) ->
+    State#state{luastate=luerl:gc(NewLuaState),
+                samples=add_ts(Function, Ts1, Ts2, Samples)};
+ch_state(_, Function, Ts1, Ts2, #state{keep=false, samples=Samples} = State) ->
+    State#state{samples=add_ts(Function, Ts1, Ts2, Samples)}.
 
 load_script(Script) ->
     Libs = [

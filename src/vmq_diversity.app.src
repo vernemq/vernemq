@@ -19,6 +19,6 @@
     hackney,
     jsx
    ]},
-  {env,[]},
+  {env,[{keep_state, false}]},
   {modules, []}
  ]}.
