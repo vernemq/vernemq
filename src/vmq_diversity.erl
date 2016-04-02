@@ -15,7 +15,8 @@
 -module(vmq_diversity).
 
 -export([load_script/1,
-         reload_script/1]).
+         reload_script/1,
+         unload_script/1]).
 
 load_script(Script) when is_list(Script) ->
     case filelib:is_file(Script) of
@@ -25,5 +26,8 @@ load_script(Script) when is_list(Script) ->
             {error, cant_find_script}
     end.
 
-reload_script(Script) ->
+reload_script(Script) when is_list(Script) ->
     vmq_diversity_script_sup:reload_script(Script).
+
+unload_script(Script) when is_list(Script) ->
+    vmq_diversity_script_sup:stop_script(Script).

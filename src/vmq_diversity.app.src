@@ -10,6 +10,7 @@
     public_key,
     ssl,
     lager,
+    clique,
     poolboy,
     emysql,
     epgsql,
