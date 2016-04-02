@@ -14,7 +14,9 @@
          redis_test/1,
          http_test/1,
          json_test/1,
-         kv_test/1]).
+         kv_test/1,
+         json_test/1,
+         logger_test/1]).
 
 %% ===================================================================
 %% common_test callbacks
@@ -44,7 +46,9 @@ all() ->
      redis_test,
      http_test,
      json_test,
-     kv_test].
+     kv_test,
+     json_test,
+     logger_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -65,8 +69,11 @@ redis_test(_) ->
 http_test(_) ->
     {ok, _} = vmq_diversity:load_script("../../../../test/http_test.lua").
 
+kv_test(_) ->
+    {ok, _} = vmq_diversity:load_script("../../../../test/ets_test.lua").
+
 json_test(_) ->
     {ok, _} = vmq_diversity:load_script("../../../../test/json_test.lua").
 
-kv_test(_) ->
-    {ok, _} = vmq_diversity:load_script("../../../../test/ets_test.lua").
+logger_test(_) ->
+    {ok, _} = vmq_diversity:load_script("../../../../test/log_test.lua").
