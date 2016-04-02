@@ -20,6 +20,9 @@
     hackney,
     jsx
    ]},
-  {env,[{keep_state, false}]},
+  {env,[{keep_state, false},
+        {scripts, [
+                  %% scripts to load on startup
+                  ]}]},
   {modules, []}
  ]}.

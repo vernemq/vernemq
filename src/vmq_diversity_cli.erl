@@ -17,11 +17,23 @@
 -behaviour(clique_handler).
 
 register_cli() ->
+    register_config(),
     register_cli_usage(),
     status_cmd(),
     load_cmd(),
     reload_cmd(),
     unload_cmd().
+
+register_config() ->
+    ConfigKeys =
+    ["keep_state"],
+    [clique:register_config([Key], fun register_config_callback/3)
+     || Key <- ConfigKeys],
+    ok = clique:register_config_whitelist(ConfigKeys).
+
+register_config_callback(_, _, _) ->
+    ok.
+
 
 register_cli_usage() ->
     clique:register_usage(["vmq-admin", "script"], script_usage()),

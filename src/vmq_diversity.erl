@@ -14,9 +14,15 @@
 
 -module(vmq_diversity).
 
--export([load_script/1,
+-export([start/0,
+         load_script/1,
          reload_script/1,
          unload_script/1]).
+
+start() ->
+    {ok, _} = application:ensure_all_started(vmq_diversity),
+    vmq_diversity_cli:register_cli(),
+    ok.
 
 load_script(Script) when is_list(Script) ->
     case filelib:is_file(Script) of
