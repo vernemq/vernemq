@@ -1,6 +1,6 @@
 # vmq_diversity - A ![VerneMQ](https://vernemq.com) Plugin Builder Toolkit [![Build Status](https://travis-ci.org/erlio/vmq_diversity.svg?branch=master)](https://travis-ci.org/erlio/vmq_diversity)
 
-vmq_diversity enables to develop VerneMQ plugins using the ![Lua scripting language](https://www.lua.org/). However, instead of the official Lua interpreter we're using the great ![Luerl Project](https://github.com/rvirding/luerl), which is an implementation of Lua 5.2 in pure Erlang.
+vmq_diversity enables to develop VerneMQ plugins using the ![Lua scripting language](https://www.lua.org). However, instead of the official Lua interpreter we're using the great ![Luerl Project](https://github.com/rvirding/luerl), which is an implementation of Lua 5.2 in pure Erlang.
 
 Moreover vmq_diversity provides simple Lua libraries to communicate with MySQL, PostgreSQL, MongoDB, and Redis within your Lua VerneMQ plugins. An additional Json encoding/decoding library as well as a generic HTTP client library provide your Lua scripts a great way to talk to external services.
 
