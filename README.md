@@ -94,6 +94,17 @@ hooks = {
 }
 ```
 
+## Accessing the Data Providers
+
+TODO: (see the tests/[mysql|postgres|mongodb|redis].lua)
+
+## Accessing the HTTP and Json Client Library
+
+TODO: (see the tests/[http|json].lua)
+
+## Accessing the Logger
+
+TODO: (see the tests/logger.lua)
 
 
 
