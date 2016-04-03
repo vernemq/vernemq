@@ -1,4 +1,4 @@
-vmq_diversity
+vmq_diversity [![Build Status](https://travis-ci.org/erlio/vmq_diversity.svg?branch=master)](https://travis-ci.org/erlio/vmq_diversity)
 =====
 
 An OTP application
