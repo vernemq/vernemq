@@ -10,7 +10,7 @@ before_install:
     - mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'test_user';" -uroot
     - psql -c "CREATE DATABASE test_database;" -U postgres
     - psql -c "CREATE USER test_user WITH PASSWORD 'test_password';" -U postgres
-    - psql -c "GRANT ALL PRIVILEGES ON * . * TO test_user;" -U postgres
+    - psql -c "GRANT ALL PRIVILEGES ON DATABASE test_database to test_user;" -U postgres
 
 language: erlang
 otp_release:
