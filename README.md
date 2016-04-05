@@ -4,7 +4,7 @@ vmq_diversity enables to develop VerneMQ plugins using the ![Lua scripting langu
 
 Moreover vmq_diversity provides simple Lua libraries to communicate with MySQL, PostgreSQL, MongoDB, and Redis within your Lua VerneMQ plugins. An additional Json encoding/decoding library as well as a generic HTTP client library provide your Lua scripts a great way to talk to external services.
 
-vmq_diversity comes itself as a VerneMQ plugin NOT currently shipped with the VerneMQ standard release. Therefore it has to be build as a separate dependency and registered in the VerneMQ plugin system using the `vmq-admin` tool.
+vmq_diversity itself is a VerneMQ plugin but is currently NOT shipped with the VerneMQ standard release. Therefore it has to be build as a separate dependency and registered in the VerneMQ plugin system using the `vmq-admin` tool.
 
 Building the plugin:
 
@@ -96,7 +96,7 @@ hooks = {
 
 ## Accessing the Data Providers
 
-This subsection describes the currently data providers available in a lua script.
+This subsection describes the data providers currently available to a lua script.
 Every data provider is backed by a connection pool that has to be configured by
 your script.
 
