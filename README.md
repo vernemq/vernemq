@@ -21,6 +21,8 @@ Loading a Lua script:
 Reloading a Lua script e.g. after change:
 
     $ vmq-admin script reload path=/Abs/Path/To/script.lua
+    
+Info: At start time of the vmq_diversity plugin the `/Abs/Path/To/vmq_diversity/scripts` folder is scanned for Lua scripts to automatically load during startup.
 
 ## Implementing a VerneMQ plugin
 
