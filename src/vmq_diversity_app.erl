@@ -30,7 +30,21 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
-    vmq_diversity_sup:start_link().
+    case vmq_diversity_sup:start_link() of
+        {ok, _} = Ret ->
+            DataDir = code:priv_dir(vmq_diversity) ++ "/../scripts",
+            case filelib:is_dir(DataDir) of
+                true ->
+                    lists:foreach(fun(Script) ->
+                                          vmq_diversity:load_script(Script)
+                                  end, filelib:wildcard(DataDir ++ "/*.lua"));
+                false ->
+                    lager:warning("Can't initialize Lua Scripts using ~p", [DataDir])
+            end,
+            Ret;
+        E ->
+            E
+    end.
 
 %%--------------------------------------------------------------------
 stop(_State) ->
