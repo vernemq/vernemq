@@ -1,6 +1,6 @@
-# vmq_diversity - A ![VerneMQ](https://vernemq.com) Plugin Builder Toolkit [![Build Status](https://travis-ci.org/erlio/vmq_diversity.svg?branch=master)](https://travis-ci.org/erlio/vmq_diversity)
+# vmq_diversity - A [VerneMQ](https://vernemq.com) Plugin Builder Toolkit [![Build Status](https://travis-ci.org/erlio/vmq_diversity.svg?branch=master)](https://travis-ci.org/erlio/vmq_diversity)
 
-vmq_diversity enables to develop VerneMQ plugins using the ![Lua scripting language](https://www.lua.org). However, instead of the official Lua interpreter we're using the great ![Luerl Project](https://github.com/rvirding/luerl), which is an implementation of Lua 5.2 in pure Erlang.
+vmq_diversity enables to develop VerneMQ plugins using the [Lua scripting language](https://www.lua.org). However, instead of the official Lua interpreter we're using the great [Luerl Project](https://github.com/rvirding/luerl), which is an implementation of Lua 5.2 in pure Erlang.
 
 Moreover vmq_diversity provides simple Lua libraries to communicate with MySQL, PostgreSQL, MongoDB, and Redis within your Lua VerneMQ plugins. An additional Json encoding/decoding library as well as a generic HTTP client library provide your Lua scripts a great way to talk to external services.
 
@@ -26,7 +26,7 @@ Info: At start time of the vmq_diversity plugin the `/Abs/Path/To/vmq_diversity/
 
 ## Implementing a VerneMQ plugin
 
-A VerneMQ plugin typically consists of one or more implemented VerneMQ hooks. We tried to keep the differences between the traditional Erlang based and Lua based plugins as small as possible. In any case please checkout out the ![Plugin Development Guide](https://vernemq.com/docs/plugindevelopment/) for more information about the different flows where you're allowed to hook in as well as the description of the different hooks.
+A VerneMQ plugin typically consists of one or more implemented VerneMQ hooks. We tried to keep the differences between the traditional Erlang based and Lua based plugins as small as possible. In any case please checkout out the [Plugin Development Guide](https://vernemq.com/docs/plugindevelopment/) for more information about the different flows where you're allowed to hook in as well as the description of the different hooks.
 
 ### Your first Lua plugin
 
