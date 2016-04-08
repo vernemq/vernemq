@@ -171,8 +171,7 @@ vmq_config_reset_cmd() ->
                  {global, [{longname, "global"}]}],
 
     Callback =
-    fun(_, Keys, Flags) ->
-            {_, App} = lists:keyfind(app, 1, Keys),
+    fun(_, [{app, App}], Flags) ->
             IsLocal = lists:keyfind(local, 1, Flags) =/= false,
             IsGlobal = lists:keyfind(global, 1, Flags) =/= false,
             UseKey = lists:keyfind(key, 1, Flags) =/= false,
@@ -218,8 +217,10 @@ vmq_config_reset_cmd() ->
                 false ->
                     [clique_status:alert([
                         clique_status:text("App not configured via vmq_config")])]
-            end
-
+            end;
+       (_,_,_) ->
+            Text = clique_status:text(reset_usage()),
+            [clique_status:alert([Text])]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
