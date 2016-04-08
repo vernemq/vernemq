@@ -32,24 +32,9 @@ register_server_cli() ->
 
 vmq_listener_start_cmd() ->
     Cmd = ["vmq-admin", "listener", "start"],
-    KeySpecs = [{port, [{typecast, fun(StrP) ->
-                                           case catch list_to_integer(StrP) of
-                                               P when (P >= 0) and (P=<65535) -> P;
-                                               _ -> {error, {invalid_flag_value,
-                                                             {port, StrP}}}
-                                           end
-                                   end}]}],
-    FlagSpecs = [{address, [{shortname, "a"},
-                            {longname, "address"},
-                            {typecast, fun(A) ->
-                                               case inet:parse_address(A) of
-                                                   {ok, Ip} -> Ip;
-                                                   {error, einval} ->
-                                                       {error, {invalid_flag_value,
-                                                                {address, A}}}
-                                               end
-                                       end}]},
-                 {mountpoint, [{shortname, "m"},
+    KeySpecs = [{port, [{typecast, fun parse_port/1}]},
+                {address, [{typecast, fun parse_addr/1}]}],
+    FlagSpecs = [{mountpoint, [{shortname, "m"},
                                {longname, "mountpoint"},
                                {typecast, fun(MP) -> MP end}]},
                  {max_connections, [{longname, "max_connections"},
@@ -120,34 +105,35 @@ vmq_listener_start_cmd() ->
                                {typecast, fun(F) -> list_to_existing_atom(F) end}]}
                 ],
     Callback =
-    fun (_, [], _) ->
-            Text = lists:flatten(vmq_listener_start_usage()),
-            [clique_status:alert([clique_status:text(Text)])];
-        (_, [{port, Port}], Flags) ->
-            Addr = proplists:get_value(address, Flags, {0,0,0,0}),
-            IsWebSocket = lists:keymember(websocket, 1, Flags),
-            IsPlainHTTP = lists:keymember(http, 1, Flags),
-            IsSSL = lists:keymember(ssl, 1, Flags),
-            NewOpts1 = lists:keydelete(address, 1,
-                                       lists:keydelete(port, 1,
-                                                       cleanup_flags(Flags, []))),
-
-            case IsSSL of
-                true when IsWebSocket ->
-                    start_listener(mqttwss, Addr, Port, NewOpts1);
-                true when IsPlainHTTP ->
-                    start_listener(https, Addr, Port, NewOpts1);
-                true ->
-                    start_listener(mqtts, Addr, Port, NewOpts1);
-                false when IsWebSocket ->
-                    start_listener(mqttws, Addr, Port, NewOpts1);
-                false when IsPlainHTTP ->
-                    start_listener(http, Addr, Port, NewOpts1);
-                false ->
-                    start_listener(mqtt, Addr, Port, NewOpts1)
-            end
+    fun(_, [{address, Addr},{port, Port}], Flags) ->
+            maybe_start_listener(Addr, Port, Flags);
+       (_, [{port, Port}, {address, Addr}], Flags) ->
+            maybe_start_listener(Addr, Port, Flags);
+       (_, _, _) ->
+            Text = clique_status:text(vmq_listener_start_usage()),
+            [clique_status:alert([Text])]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+maybe_start_listener(Addr, Port, Flags) ->
+    IsWebSocket = lists:keymember(websocket, 1, Flags),
+    IsPlainHTTP = lists:keymember(http, 1, Flags),
+    IsSSL = lists:keymember(ssl, 1, Flags),
+    NewOpts1 = cleanup_flags(Flags, []),
+    case IsSSL of
+        true when IsWebSocket ->
+            start_listener(mqttwss, Addr, Port, NewOpts1);
+        true when IsPlainHTTP ->
+            start_listener(https, Addr, Port, NewOpts1);
+        true ->
+            start_listener(mqtts, Addr, Port, NewOpts1);
+        false when IsWebSocket ->
+            start_listener(mqttws, Addr, Port, NewOpts1);
+        false when IsPlainHTTP ->
+            start_listener(http, Addr, Port, NewOpts1);
+        false ->
+            start_listener(mqtt, Addr, Port, NewOpts1)
+    end.
 
 start_listener(Type, Addr, Port, Opts) ->
     case vmq_ranch_config:start_listener(Type, Addr, Port, Opts) of
@@ -170,118 +156,84 @@ start_listener(Type, Addr, Port, Opts) ->
 
 vmq_listener_stop_cmd() ->
     Cmd = ["vmq-admin", "listener", "stop"],
-    KeySpecs = [],
-    FlagSpecs = [{port, [{shortname, "p"},
-                         {longname, "port"},
-                         {typecast, fun(StrP) ->
-                                            case catch list_to_integer(StrP) of
-                                                P when (P >= 0) and (P=<65535) -> P;
-                                                _ -> {error, {invalid_flag_value,
-                                                              {port, StrP}}}
-                                            end
-                                    end}]},
-                 {address, [{shortname, "a"},
-                            {longname, "address"},
-                            {typecast, fun(A) ->
-                                               case inet:parse_address(A) of
-                                                   {ok, Ip} -> Ip;
-                                                   {error, einval} ->
-                                                       {error, {invalid_flag_value,
-                                                                {address, A}}}
-                                               end
-                                       end}]},
-                 {kill, [{shortname, "k"},
+    KeySpecs = [{port, [{typecast, fun parse_port/1}]},
+                {address, [{typecast, fun parse_addr/1}]}],
+    FlagSpecs = [{kill, [{shortname, "k"},
                          {longname, "kill_sessions"}]}],
     Callback =
-    fun(_, [], Flags) ->
-            Port = proplists:get_value(port, Flags, 1883),
-            Addr = proplists:get_value(address, Flags, {0,0,0,0}),
-            IsKill = lists:keymember(kill, 1, Flags),
-            case vmq_ranch_config:stop_listener(Addr, Port, IsKill) of
-                ok ->
-                    [clique_status:text("Done")];
-                {error, Reason} ->
-                    Text = io_lib:format("can't stop listener due to '~p'", [Reason]),
-                    [clique_status:alert([clique_status:text(Text)])]
-            end
+    fun(_, [{address, Addr},{port, Port}], Flags) ->
+            stop_listener(Addr, Port, Flags);
+       (_, [{port, Port}, {address, Addr}], Flags) ->
+            stop_listener(Addr, Port, Flags);
+       (_, _, _) ->
+            Text = clique_status:text(vmq_listener_stop_usage()),
+            [clique_status:alert([Text])]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+stop_listener(Addr, Port, Flags) ->
+    IsKill = lists:keymember(kill, 1, Flags),
+    case vmq_ranch_config:stop_listener(Addr, Port, IsKill) of
+        ok ->
+            [clique_status:text("Done")];
+        {error, Reason} ->
+            Text = io_lib:format("can't stop listener due to '~p'", [Reason]),
+            [clique_status:alert([clique_status:text(Text)])]
+    end.
 
 vmq_listener_delete_cmd() ->
     Cmd = ["vmq-admin", "listener", "delete"],
-    KeySpecs = [],
-    FlagSpecs = [{port, [{shortname, "p"},
-                         {longname, "port"},
-                         {typecast, fun(StrP) ->
-                                            case catch list_to_integer(StrP) of
-                                                P when (P >= 0) and (P=<65535) -> P;
-                                                _ -> {error, {invalid_flag_value,
-                                                              {port, StrP}}}
-                                            end
-                                    end}]},
-                 {address, [{shortname, "a"},
-                            {longname, "address"},
-                            {typecast, fun(A) ->
-                                               case inet:parse_address(A) of
-                                                   {ok, Ip} -> Ip;
-                                                   {error, einval} ->
-                                                       {error, {invalid_flag_value,
-                                                                {address, A}}}
-                                               end
-                                       end}]}],
+    KeySpecs = [{port, [{typecast, fun parse_port/1}]},
+                {address, [{typecast, fun parse_addr/1}]}],
+    FlagSpecs = [],
     Callback =
-    fun(_, [], Flags) ->
-            Port = proplists:get_value(port, Flags, 1883),
-            Addr = proplists:get_value(address, Flags, {0,0,0,0}),
-            vmq_ranch_config:delete_listener(Addr, Port),
-            ListenerKey = {Addr, Port},
-            ListenerConfig = vmq_config:get_env(listeners),
-            NewListenerConfig =
-            lists:foldl(
-              fun({Type, ConfigForType}, Acc) ->
-                      NewConfigForType = lists:keydelete(ListenerKey, 1, ConfigForType),
-                      [{Type, NewConfigForType}|Acc]
-              end, [], ListenerConfig),
-            vmq_config:set_env(listeners, NewListenerConfig, false),
-            [clique_status:text("Done")]
+    fun(_, [{address, Addr},{port, Port}], []) ->
+            delete_listener(Addr, Port);
+       (_, [{port, Port}, {address, Addr}], []) ->
+            delete_listener(Addr, Port);
+       (_, _, _) ->
+            Text = clique_status:text(vmq_listener_delete_usage()),
+            [clique_status:alert([Text])]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+delete_listener(Addr, Port) ->
+    vmq_ranch_config:delete_listener(Addr, Port),
+    ListenerKey = {Addr, Port},
+    ListenerConfig = vmq_config:get_env(listeners),
+    NewListenerConfig =
+        lists:foldl(
+          fun({Type, ConfigForType}, Acc) ->
+                  NewConfigForType = lists:keydelete(ListenerKey, 1, ConfigForType),
+                  [{Type, NewConfigForType}|Acc]
+          end, [], ListenerConfig),
+    vmq_config:set_env(listeners, NewListenerConfig, false),
+    [clique_status:text("Done")].
+
 vmq_listener_restart_cmd() ->
     Cmd = ["vmq-admin", "listener", "restart"],
-    KeySpecs = [],
-    FlagSpecs = [{port, [{shortname, "p"},
-                         {longname, "port"},
-                         {typecast, fun(StrP) ->
-                                            case catch list_to_integer(StrP) of
-                                                P when (P >= 0) and (P=<65535) -> P;
-                                                _ -> {error, {invalid_flag_value,
-                                                              {port, StrP}}}
-                                            end
-                                    end}]},
-                 {address, [{shortname, "a"},
-                            {longname, "address"},
-                            {typecast, fun(A) ->
-                                               case inet:parse_address(A) of
-                                                   {ok, Ip} -> Ip;
-                                                   {error, einval} ->
-                                                       {error, {invalid_flag_value,
-                                                                {address, A}}}
-                                               end
-                                       end}]}],
+    KeySpecs = [{port, [{typecast, fun parse_port/1}]},
+                {address, [{typecast, fun parse_addr/1}]}],
+    FlagSpecs = [],
     Callback =
-    fun(_, [], Flags) ->
-            Port = proplists:get_value(port, Flags, 1883),
-            Addr = proplists:get_value(address, Flags, {0,0,0,0}),
-            case vmq_ranch_config:restart_listener(Addr, Port) of
-                ok ->
-                    [clique_status:text("Done")];
-                {error, Reason} ->
-                    Text = io_lib:format("can't restart listener due to '~p'", [Reason]),
-                    [clique_status:alert([clique_status:text(Text)])]
-            end
+    fun(_, [{address, Addr},{port, Port}], []) ->
+            restart_listener(Addr, Port);
+       (_, [{port, Port}, {address, Addr}], []) ->
+            restart_listener(Addr, Port);
+       (_, _, _) ->
+            Text = clique_status:text(vmq_listener_restart_usage()),
+            [clique_status:alert([Text])]
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+restart_listener(Addr, Port) ->
+    case vmq_ranch_config:restart_listener(Addr, Port) of
+        ok ->
+            [clique_status:text("Done")];
+        {error, Reason} ->
+            Text = io_lib:format("can't restart listener due to '~p'", [Reason]),
+            [clique_status:alert([clique_status:text(Text)])]
+    end.
 
 vmq_listener_show_cmd() ->
     Cmd = ["vmq-admin", "listener", "show"],
@@ -307,6 +259,19 @@ cleanup_flags([KV|Rest], Acc) ->
     cleanup_flags(Rest, [KV|Acc]);
 cleanup_flags([], Acc) -> Acc.
 
+parse_port(StrP) ->
+    case catch list_to_integer(StrP) of
+        P when (P >= 0) and (P=<65535) -> P;
+        _ -> {error, {invalid_args,[{port, StrP}]}}
+    end.
+
+parse_addr(StrA) ->
+    case inet:parse_address(StrA) of
+        {ok, Ip} -> Ip;
+        {error, einval} ->
+            {error, {invalid_args,[{address, StrA}]}}
+    end.
+
 vmq_listener_usage() ->
     ["vmq-admin listener <sub-command>\n\n",
      "  starts, modifies, and stops listeners.\n\n",
@@ -320,11 +285,9 @@ vmq_listener_usage() ->
     ].
 
 vmq_listener_start_usage() ->
-    ["vmq-admin listener start port=1883\n\n",
-     "  Starts a new listener or modifies an existing listener. If no option\n",
-     "  is specified a TCP listener is started listening on the given port\n\n",
+    ["vmq-admin listener start addr=IpAddr port=Port\n\n",
+     "  Starts a new listener or modifies an existing listener.\n\n",
      "General Options\n\n",
-     "  -a, --address=IpAddress\n",
      "  -m, --mountpoint=Mountpoint\n",
      "  --nr_of_acceptors=NrOfAcceptors\n",
      "  --max_connections=[infinity | MaxConnections]\n\n",
@@ -358,30 +321,19 @@ vmq_listener_start_usage() ->
     ].
 
 vmq_listener_stop_usage() ->
-    ["vmq-admin listener stop\n\n",
-     "  Stops a running listener. If no option is given, the listener\n",
-     "  listening on 0.0.0.0:1883 is stopped\n\n",
+    ["vmq-admin listener stop addr=IpAddr port=Port\n\n",
+     "  Stops a running listener.\n\n",
      "Options\n\n",
-     "  -p, --port=PortNr\n",
-     "  -a, --address=IpAddress\n"
      "  -k, --kill_sessions\n"
      "      kills all sessions accepted with this listener.\n\n"
     ].
 
 vmq_listener_delete_usage() ->
-    ["vmq-admin listener delete\n\n",
-     "  Deletes a stopped listener. If no option is given, the listener\n",
-     "  listening on 0.0.0.0:1883 is deleted\n\n",
-     "Options\n\n",
-     "  -p, --port=PortNr\n",
-     "  -a, --address=IpAddress\n\n"
+    ["vmq-admin listener delete addr=IpAddr port=Port\n\n",
+     "  Deletes a stopped listener.\n\n"
     ].
 
 vmq_listener_restart_usage() ->
-    ["vmq-admin listener restart\n\n",
-     "  Restarts a stopped listener. If no option is given, the listener\n",
-     "  listening on 0.0.0.0:1883 is restarted\n\n",
-     "Options\n\n",
-     "  -p, --port=PortNr\n",
-     "  -a, --address=IpAddress\n\n"
+    ["vmq-admin listener restart addr=IpAddr port=Port\n\n",
+     "  Restarts a stopped listener.\n\n"
     ].

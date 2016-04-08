@@ -9,8 +9,8 @@
          list_sessions/0,
          list_sessions/1,
          set_config/2,
-         listener_start/1,
          listener_start/2,
+         listener_start/3,
          listener_stop/2,
          listener_stop/3,
          listener_delete/2
@@ -55,29 +55,30 @@ set_config(Key, Val) when is_integer(Val) ->
 set_config(Key, Val) when is_list(Val) and is_atom(Key) ->
     vmq_server_cli:command(["vmq-admin", "set", atom_to_list(Key) ++ "=" ++ Val], false).
 
-listener_start(Port) ->
-    listener_start(Port, []).
+listener_start(Port, Opts) ->
+    listener_start(Port, "127.0.0.1", Opts).
 
-listener_start(Port, Opts) when is_integer(Port) and is_list(Opts) ->
+listener_start(Port, Addr, Opts) when is_integer(Port) and is_list(Addr) and is_list(Opts) ->
     vmq_server_cli:command(["vmq-admin", "listener", "start", "port=" ++
-                            integer_to_list(Port) | convert_listener_options(Opts, [])], false).
+                            integer_to_list(Port), "address=" ++ Addr
+                            | convert_listener_options(Opts, [])], false).
 
 listener_stop(Port, Address) ->
     listener_stop(Port, Address, false).
 listener_stop(Port, Address, false) when is_integer(Port) and is_list(Address) ->
     vmq_server_cli:command(["vmq-admin", "listener", "stop",
-                            "--port", integer_to_list(Port),
-                            "--address", Address], false);
+                            "port", integer_to_list(Port),
+                            "address", Address], false);
 listener_stop(Port, Address, true) when is_integer(Port) and is_list(Address) ->
     vmq_server_cli:command(["vmq-admin", "listener", "stop",
-                            "--port", integer_to_list(Port),
-                            "--address", Address,
+                            "port", integer_to_list(Port),
+                            "address", Address,
                             "--kill_sessions"], false).
 
 listener_delete(Port, Address) when is_integer(Port) and is_list(Address) ->
     vmq_server_cli:command(["vmq-admin", "listener", "delete",
-                            "--port", integer_to_list(Port),
-                            "--address", Address], false).
+                            "port", integer_to_list(Port),
+                            "address", Address], false).
 
 
 convert_listener_options([{K, true}|Rest], Acc) ->
