@@ -26,7 +26,7 @@ register_cli() ->
 
 register_config() ->
     ConfigKeys =
-    ["keep_state"],
+    ["lua.keep_state"],
     [clique:register_config([Key], fun register_config_callback/3)
      || Key <- ConfigKeys],
     ok = clique:register_config_whitelist(ConfigKeys).
