@@ -32,15 +32,34 @@
 start(_StartType, _StartArgs) ->
     case vmq_diversity_sup:start_link() of
         {ok, _} = Ret ->
-            DataDir = code:priv_dir(vmq_diversity) ++ "/../scripts",
-            case filelib:is_dir(DataDir) of
+            %% TODO: temporary hack until vmq_plugin is fixed:
+            %%     the custom vmq_diversity:start function isn't called
+            %%     which results in vmq_diversity_cli:register_cli not
+            %%     being triggered.
+            %%     As a workaround we check if vmq_plugin is started
+            %%     and execute the register_cli here:
+            case lists:keymember(vmq_plugin, 1, application:which_applications()) of
                 true ->
-                    lists:foreach(fun(Script) ->
-                                          vmq_diversity:load_script(Script)
-                                  end, filelib:wildcard(DataDir ++ "/*.lua"));
+                    %% started in context of vmq_plugin
+                    vmq_diversity_cli:register_cli();
                 false ->
-                    lager:warning("Can't initialize Lua Scripts using ~p", [DataDir])
+                    ignore
             end,
+
+            %% defer the loading of scripts, as the scripts might register plugin
+            %% hooks which would end in a deadlock situation, because vmq_diversity
+            %% is started as a plugin itself.
+            spawn(fun() ->
+                          DataDir = code:priv_dir(vmq_diversity) ++ "/../scripts",
+                          case filelib:is_dir(DataDir) of
+                              true ->
+                                  lists:foreach(fun(Script) ->
+                                                        vmq_diversity:load_script(Script)
+                                                end, filelib:wildcard(DataDir ++ "/*.lua"));
+                              false ->
+                                  lager:warning("Can't initialize Lua Scripts using ~p", [DataDir])
+                          end
+                  end),
             Ret;
         E ->
             E
