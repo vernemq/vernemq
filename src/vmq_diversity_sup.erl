@@ -117,9 +117,14 @@ start_all_pools([{redis, ProviderConfig}|Rest], Acc) ->
 start_all_pools([{kv, ProviderConfig}|Rest], Acc) ->
     TableId = proplists:get_value(id, ProviderConfig),
     TableOpts = proplists:get_value(opts, ProviderConfig, []),
-    ets:new(TableId, [named_table, public,
-                     {read_concurrency, true},
-                     {write_concurrency, true}|TableOpts]),
+    case lists:member(TableId, ets:all()) of
+        false ->
+            ets:new(TableId, [named_table, public,
+                              {read_concurrency, true},
+                              {write_concurrency, true}|TableOpts]);
+        true ->
+            ignore
+    end,
     start_all_pools(Rest, Acc);
 start_all_pools([{http, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
