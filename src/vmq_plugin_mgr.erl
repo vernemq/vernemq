@@ -475,7 +475,13 @@ start_plugins([]) -> ok.
 start_plugin(App) ->
     case lists:keyfind(App, 1, application:which_applications()) of
         false ->
-            case lists:member(App, erlang:loaded()) of
+            case lists:keyfind(App, 1, application:loaded_applications()) of
+                false ->
+                    application:load(App);
+                _ -> ok
+            end,
+            {ok, Mods} = application:get_key(App, modules),
+            case lists:member(App, Mods) of
                 true ->
                     %% does the App Module specifies a custom
                     %% start/1 function
