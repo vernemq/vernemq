@@ -93,8 +93,8 @@ ensure_pool(As, St) ->
                                                                  Options,
                                                                  master)),
                     NewOptions =
-                    [{login, Login}, {password, Password},
-                     {host, Host}, {port, Port}, {database, Database},
+                    [{login, mbin(Login)}, {password, mbin(Password)},
+                     {host, Host}, {port, Port}, {database, mbin(Database)},
                      {w_mode, WMode}, {r_mode, RMode}],
                     vmq_diversity_sup:start_pool(mongodb,
                                                  [{id, PoolId},
@@ -110,6 +110,8 @@ ensure_pool(As, St) ->
         _ ->
             badarg_error(execute_parse, As, St)
     end.
+mbin(undefined) -> undefined;
+mbin(Str) when is_list(Str) -> list_to_binary(Str).
 
 insert(As, St) ->
     case As of
@@ -120,10 +122,10 @@ insert(As, St) ->
                                                 or (is_integer(K) and is_list(V)) ->
                     PoolId = pool_id(BPoolId, As, St),
                     try insert(PoolId, Collection,
-                                ensure_id(vmq_diversity_utils:map(TableOrTables))) of
+                                check_ids(vmq_diversity_utils:map(TableOrTables))) of
                         Result1 ->
                             {Result2, NewSt} = luerl:encode(
-                                                 vmq_diversity_utils:unmap(Result1), St),
+                                                 vmq_diversity_utils:unmap(check_ids(Result1)), St),
                             {[Result2], NewSt}
                     catch
                         E:R ->
@@ -145,8 +147,8 @@ update(As, St) ->
                 {[{SelectKey, _}|_] = Selector, [{K,_}|_] = Command}
                   when is_binary(SelectKey) and is_binary(K) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try update(PoolId, Collection, vmq_diversity_utils:map(Selector),
-                               #{<<"$set">> => vmq_diversity_utils:map(Command)}) of
+                    try update(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector)),
+                               #{<<"$set">> => check_ids(vmq_diversity_utils:map(Command))}) of
                         ok ->
                             {[true], St}
                     catch
@@ -167,7 +169,7 @@ delete(As, St) ->
             case luerl:decode(Selector0, St) of
                 Selector when is_list(Selector) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try delete(PoolId, Collection, vmq_diversity_utils:map(Selector)) of
+                    try delete(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector))) of
                         ok ->
                             {[true], St}
                     catch
@@ -188,7 +190,7 @@ find(As, St) ->
             case luerl:decode(Selector0, St) of
                 Selector when is_list(Selector) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try find(PoolId, Collection, vmq_diversity_utils:map(Selector), parse_args(Args, St)) of
+                    try find(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector)), parse_args(Args, St)) of
                         CursorPid when is_pid(CursorPid) ->
                             %% we re passing the cursor pid as a binary to the Lua Script
                             BinPid = list_to_binary(pid_to_list(CursorPid)),
@@ -211,10 +213,10 @@ find_one(As, St) ->
             case luerl:decode(Selector0, St) of
                 Selector when is_list(Selector) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try find_one(PoolId, Collection, vmq_diversity_utils:map(Selector), parse_args(Args, St)) of
+                    try find_one(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector)), parse_args(Args, St)) of
                         Result1 when map_size(Result1) > 0 ->
                             {Result2, NewSt} = luerl:encode(
-                                                 vmq_diversity_utils:unmap(Result1), St),
+                                                 vmq_diversity_utils:unmap(check_ids(Result1)), St),
                             {[Result2], NewSt};
                         _ ->
                             {[false], St}
@@ -238,7 +240,7 @@ cursor_next(As, St) ->
                 error ->
                     {[false], St};
                 {Result1} ->
-                    {Result2, NewSt} = luerl:encode(vmq_diversity_utils:unmap(Result1), St),
+                    {Result2, NewSt} = luerl:encode(vmq_diversity_utils:unmap(check_ids(Result1)), St),
                     {[Result2], NewSt}
             end;
         _ ->
@@ -253,7 +255,7 @@ cursor_take(As, St) ->
                 error ->
                     {[false], St};
                 Result1 ->
-                    {Result2, NewSt} = luerl:encode(vmq_diversity_utils:unmap(Result1, []), St),
+                    {Result2, NewSt} = luerl:encode(vmq_diversity_utils:unmap(check_ids(Result1)), St),
                     {[Result2], NewSt}
             end;
         _ ->
@@ -304,10 +306,18 @@ parse_args_([{K, V}|Rest], Acc) ->
     end;
 parse_args_([], Acc) -> Acc.
 
-ensure_id(#{<<"_id">> := _} = Map) -> Map;
-ensure_id(Map) when is_map(Map) ->
-    %% we use our own _id because the autogenerated one
-    %% has the unuseful format {Key}
-    maps:put(<<"_id">>, term_to_binary(erlang:phash2(Map)), Map);
-ensure_id([Map|_] = Maps) when is_map(Map) ->
-    lists:foldr(fun(M, Acc) -> [ensure_id(M)|Acc] end, [], Maps).
+%% Remaps the MongoDB ObjectIds to a structure readable by Lua.
+%% The ObjectId is autogenerated by the MongoDB driver in case
+%% no _id element is given in the document.
+check_ids(Doc) when is_map(Doc) -> check_id(Doc);
+check_ids(Docs) when is_list(Docs) -> check_ids(Docs, []).
+
+check_ids([], Acc) -> lists:reverse(Acc);
+check_ids([Doc|Rest], Acc) ->
+    check_ids(Rest, [check_id(Doc)|Acc]).
+
+check_id(#{<<"_id">> := {ObjectId}} = Doc) ->
+    Doc#{<<"_id">> => <<"vmq-objid", ObjectId/binary>>};
+check_id(#{<<"_id">> := <<"vmq-objid", ObjectId/binary>>} = Doc) ->
+    Doc#{<<"_id">> => {ObjectId}};
+check_id(Doc) -> Doc. %% empty doc

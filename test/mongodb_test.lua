@@ -31,6 +31,11 @@ assert(#ret == 2)
 assert(ret[1]._id == 'test-id')
 assert(ret[2]._id) -- assert id was set automatically
 
+-- find one with autgenerated _id
+ret = mongodb.find_one("mongodb_test", "users", {_id = ret[2]._id})
+assert(ret.first_name == 'John')
+assert(ret.last_name == 'Doe')
+
 cursor = mongodb.find("mongodb_test", "users", {})
 ret = mongodb.take(cursor, 5)
 
