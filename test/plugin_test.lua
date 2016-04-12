@@ -26,6 +26,7 @@ function auth_on_register(reg)
 end
 
 function auth_on_publish(pub)
+    assert(pub.username == "test-user")
     assert(pub.mountpoint == "")
     assert(pub.topic == "test/topic")
     assert(pub.qos == 1)
@@ -42,6 +43,7 @@ function auth_on_publish(pub)
 end
 
 function auth_on_subscribe(sub)
+    assert(sub.username == "test-user")
     assert(sub.mountpoint == "")
     assert(#sub.topics == 1)
     assert(sub.topics[1][1] == "test/topic")
@@ -66,6 +68,7 @@ function on_register(reg)
 end
 
 function on_publish(pub)
+    assert(pub.username == "test-user")
     assert(pub.client_id == "allowed-subscriber-id")
     assert(pub.mountpoint == "")
     assert(pub.topic == "test/topic")
@@ -76,6 +79,7 @@ function on_publish(pub)
 end
 
 function on_subscribe(sub)
+    assert(sub.username == "test-user")
     assert(sub.client_id == "allowed-subscriber-id")
     assert(sub.mountpoint == "")
     assert(#sub.topics == 1)
@@ -85,6 +89,7 @@ function on_subscribe(sub)
 end
 
 function on_unsubscribe(usub)
+    assert(usub.username == "test-user")
     assert(usub.mountpoint == "")
     assert(#usub.topics == 1)
     assert(usub.topics[1] == "test/topic")
@@ -99,6 +104,7 @@ function on_unsubscribe(usub)
 end
 
 function on_deliver(pub)
+    assert(pub.username == "test-user")
     assert(pub.client_id == "allowed-subscriber-id")
     assert(pub.mountpoint == "")
     assert(pub.topic == "test/topic")

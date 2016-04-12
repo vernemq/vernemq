@@ -29,14 +29,14 @@ init_per_suite(_Config) ->
     application:load(vmq_plugin),
     ok = file:write_file("vmq_plugin.conf", <<"{plugins, []}.">>),
     application:ensure_all_started(vmq_plugin),
-    application:ensure_all_started(vmq_diversity),
+    vmq_plugin_mgr:enable_plugin(vmq_diversity),
     {ok, _} = vmq_diversity:load_script("../../../../test/plugin_test.lua"),
     cover:start(),
     _Config.
 
 end_per_suite(_Config) ->
+    vmq_plugin_mgr:disable_plugin(vmq_diversity),
     application:stop(vmq_plugin),
-    application:stop(vmq_diversity),
     _Config.
 
 init_per_testcase(_Case, Config) ->

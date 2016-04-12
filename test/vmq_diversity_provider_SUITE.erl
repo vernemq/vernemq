@@ -21,21 +21,22 @@
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(_Config) ->
+    application:load(vmq_plugin),
+    ok = file:write_file("vmq_plugin.conf", <<"{plugins, []}.">>),
+    application:ensure_all_started(vmq_plugin),
+    vmq_plugin_mgr:enable_plugin(vmq_diversity),
     cover:start(),
     _Config.
 
 end_per_suite(_Config) ->
+    vmq_plugin_mgr:disable_plugin(vmq_diversity),
+    application:stop(vmq_plugin),
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    application:load(vmq_diversity),
-    application:ensure_all_started(vmq_diversity),
-    application:ensure_all_started(vmq_plugin),
     Config.
 
 end_per_testcase(_, Config) ->
-    application:stop(vmq_plugin),
-    application:stop(vmq_diversity),
     Config.
 
 all() ->
@@ -44,7 +45,6 @@ all() ->
      mongodb_test,
      redis_test,
      http_test,
-     json_test,
      kv_test,
      json_test,
      logger_test].
