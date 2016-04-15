@@ -121,22 +121,26 @@ vmq_cluster_leave_cmd() ->
                          {longname, "kill_sessions"}]},
                  {summary_interval, [{shortname, "i"},
                                      {longname, "summary-interval"},
-                                     {typecast, fun(I) -> case is_integer(I) of
-                                                              true -> I * 1000;
-                                                              false ->
-                                                                  {error, {invalid_flag_value,
-                                                                           {'summary-interval', I}}}
-                                                          end
-                                                end}]},
+                                     {typecast,
+                                      fun(StrI) ->
+                                              case catch list_to_integer(StrI) of
+                                                  I when is_integer(I), I > 0 ->
+                                                      I * 1000;
+                                                  _ -> {{error, {invalid_flag_value,
+                                                                 {'summary-interval', StrI}}}}
+                                              end
+                                      end}]},
                  {timeout, [{shortname, "t"},
                             {longname, "timeout"},
-                            {typecast, fun (I) -> case is_integer(I) of
-                                                      true -> I * 1000;
-                                                      false ->
-                                                          {error, {invalid_flag_value,
-                                                                   {timeout, I}}}
-                                                  end
-                                       end}]}],
+                            {typecast,
+                             fun (StrI) -> case catch list_to_integer(StrI) of
+                                            I when is_integer(I), I > 0 ->
+                                                   I * 1000;
+                                            _ ->
+                                                {error, {invalid_flag_value,
+                                                         {timeout, StrI}}}
+                                        end
+                             end}]}],
     Callback = fun(_, [], _) ->
                        Text = clique_status:text("You have to provide a node"),
                        [clique_status:alert([Text])];
