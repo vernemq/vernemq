@@ -39,6 +39,20 @@
          entries/0,
          entries/1]).
 
+%% fast counters
+-export([fc_bytes_received/0
+         , fc_bytes_sent/0
+         , fc_messages_received/0
+         , fc_messages_sent/0
+         , fc_publishes_dropped/0
+         , fc_publishes_received/0
+         , fc_publishes_sent/0
+         , fc_connects_received/0
+         , fc_cluster_bytes_received/0
+         , fc_cluster_bytes_sent/0
+         , fc_cluster_bytes_dropped/0
+        ]).
+
 %% API functions
 -export([start_link/0,
          system_statistics/0,
@@ -127,11 +141,19 @@ incr_online_queued_messages(V) ->
     incr_item([queues, online, messages], V).
 
 incr_item(Entry, Val) ->
-    exometer:update_or_create(Entry ++ ['last_sec'], Val),
-    exometer:update_or_create(Entry ++ ['last_10sec'], Val),
-    exometer:update_or_create(Entry ++ ['last_30sec'], Val),
-    exometer:update_or_create(Entry ++ ['last_min'], Val),
-    exometer:update_or_create(Entry ++ ['last_5min'], Val).
+    exometer:update_or_create(Entry ++ ['last_sec'], Val).
+
+fc_bytes_received() -> ok.
+fc_bytes_sent() -> ok.
+fc_messages_received() -> ok.
+fc_messages_sent() -> ok.
+fc_publishes_dropped() -> ok.
+fc_publishes_received() -> ok.
+fc_publishes_sent() -> ok.
+fc_connects_received() -> ok.
+fc_cluster_bytes_received() -> ok.
+fc_cluster_bytes_sent() -> ok.
+fc_cluster_bytes_dropped() -> ok.
 
 entries() ->
     {ok, entries(undefined)}.
@@ -147,59 +169,59 @@ entries(undefined) ->
                  scheduler_utilization_items()}, [{snmp, []}]},
      {[subscriptions], {function, vmq_reg, total_subscriptions, [], proplist,
                         [total]}, [{snmp, []}]},
-     {[clients, expired], counter, [{snmp, []}]},
-     {[clients, active], counter, [{snmp, []}]},
+     {[clients, expired], counter,  [{snmp, []}]},
+     {[clients, active], counter,   [{snmp, []}]},
      {[clients, inactive], counter, [{snmp, []}]},
-     {[clients, total], counter, [{snmp, []}]}
+     {[clients, total], counter,    [{snmp, []}]}
      | counter_entries()];
 entries({ReporterMod, Interval}) ->
     subscribe(ReporterMod, entries(undefined), Interval).
 
 counter_entries() ->
     [
-     {[bytes, received, last_sec], counter, [{snmp, []}]},
+     {[bytes, received, last_sec], fast_counter, [{function, {?MODULE, fc_bytes_received}} ,{snmp, []}]},
      {[bytes, received, last_10sec], counter, [{snmp, []}]},
      {[bytes, received, last_30sec], counter, [{snmp, []}]},
      {[bytes, received, last_min], counter, [{snmp, []}]},
      {[bytes, received, last_5min], counter, [{snmp, []}]},
 
-     {[bytes, sent, last_sec], counter, [{snmp, []}]},
+     {[bytes, sent, last_sec], fast_counter, [{function, {?MODULE, fc_bytes_sent}} ,{snmp, []}]},
      {[bytes, sent, last_10sec], counter, [{snmp, []}]},
      {[bytes, sent, last_30sec], counter, [{snmp, []}]},
      {[bytes, sent, last_min], counter, [{snmp, []}]},
      {[bytes, sent, last_5min], counter, [{snmp, []}]},
 
-     {[messages, received, last_sec], counter, [{snmp, []}]},
+     {[messages, received, last_sec], fast_counter, [{function, {?MODULE, fc_messages_received}} ,{snmp, []}]},
      {[messages, received, last_10sec], counter, [{snmp, []}]},
      {[messages, received, last_30sec], counter, [{snmp, []}]},
      {[messages, received, last_min], counter, [{snmp, []}]},
      {[messages, received, last_5min], counter, [{snmp, []}]},
 
-     {[messages, sent, last_sec], counter, [{snmp, []}]},
+     {[messages, sent, last_sec], fast_counter, [{function, {?MODULE, fc_messages_sent}} ,{snmp, []}]},
      {[messages, sent, last_10sec], counter, [{snmp, []}]},
      {[messages, sent, last_30sec], counter, [{snmp, []}]},
      {[messages, sent, last_min], counter, [{snmp, []}]},
      {[messages, sent, last_5min], counter, [{snmp, []}]},
 
-     {[publishes, dropped, last_sec], counter, [{snmp, []}]},
+     {[publishes, dropped, last_sec], fast_counter, [{function, {?MODULE, fc_publishes_dropped}} ,{snmp, []}]},
      {[publishes, dropped, last_10sec], counter, [{snmp, []}]},
      {[publishes, dropped, last_30sec], counter, [{snmp, []}]},
      {[publishes, dropped, last_min], counter, [{snmp, []}]},
      {[publishes, dropped, last_5min], counter, [{snmp, []}]},
 
-     {[publishes, received, last_sec], counter, [{snmp, []}]},
+     {[publishes, received, last_sec], fast_counter, [{function, {?MODULE, fc_publishes_received}} ,{snmp, []}]},
      {[publishes, received, last_10sec], counter, [{snmp, []}]},
      {[publishes, received, last_30sec], counter, [{snmp, []}]},
      {[publishes, received, last_min], counter, [{snmp, []}]},
      {[publishes, received, last_5min], counter, [{snmp, []}]},
 
-     {[publishes, sent, last_sec], counter, [{snmp, []}]},
+     {[publishes, sent, last_sec], fast_counter, [{function, {?MODULE, fc_publishes_sent}} ,{snmp, []}]},
      {[publishes, sent, last_10sec], counter, [{snmp, []}]},
      {[publishes, sent, last_30sec], counter, [{snmp, []}]},
      {[publishes, sent, last_min], counter, [{snmp, []}]},
      {[publishes, sent, last_5min], counter, [{snmp, []}]},
 
-     {[connects, received, last_sec], counter, [{snmp, []}]},
+     {[connects, received, last_sec], fast_counter, [{function, {?MODULE, fc_connects_received}} ,{snmp, []}]},
      {[connects, received, last_10sec], counter, [{snmp, []}]},
      {[connects, received, last_30sec], counter, [{snmp, []}]},
      {[connects, received, last_min], counter, [{snmp, []}]},
@@ -211,19 +233,19 @@ counter_entries() ->
      {[sockets, last_min], counter, [{snmp, []}]},
      {[sockets, last_5min], counter, [{snmp, []}]},
 
-     {[cluster, bytes, received, last_sec], counter, [{snmp, []}]},
+     {[cluster, bytes, received, last_sec], fast_counter, [{function, {?MODULE, fc_cluster_bytes_received}} ,{snmp, []}]},
      {[cluster, bytes, received, last_10sec], counter, [{snmp, []}]},
      {[cluster, bytes, received, last_30sec], counter, [{snmp, []}]},
      {[cluster, bytes, received, last_min], counter, [{snmp, []}]},
      {[cluster, bytes, received, last_5min], counter, [{snmp, []}]},
 
-     {[cluster, bytes, sent, last_sec], counter, [{snmp, []}]},
+     {[cluster, bytes, sent, last_sec], fast_counter, [{function, {?MODULE, fc_cluster_bytes_sent}} ,{snmp, []}]},
      {[cluster, bytes, sent, last_10sec], counter, [{snmp, []}]},
      {[cluster, bytes, sent, last_30sec], counter, [{snmp, []}]},
      {[cluster, bytes, sent, last_min], counter, [{snmp, []}]},
      {[cluster, bytes, sent, last_5min], counter, [{snmp, []}]},
 
-     {[cluster, bytes, dropped, last_sec], counter, [{snmp, []}]},
+     {[cluster, bytes, dropped, last_sec], fast_counter, [{function, {?MODULE, fc_cluster_bytes_dropped}} ,{snmp, []}]},
      {[cluster, bytes, dropped, last_10sec], counter, [{snmp, []}]},
      {[cluster, bytes, dropped, last_30sec], counter, [{snmp, []}]},
      {[cluster, bytes, dropped, last_min], counter, [{snmp, []}]},
@@ -416,7 +438,7 @@ handle_info(calc_stats, #state{history=History} = State) ->
                           {error, not_found} ->
                               ignore;
                           {ok, [{value, Val}]} ->
-                              exometer:update(Entry, -Val),
+                              exometer:reset(Entry),
                               H1 = update_sliding_windows(last_10sec, Tail, Val, AccHistory),
                               H2 = update_sliding_windows(last_30sec, Tail, Val, H1),
                               H3 = update_sliding_windows(last_min, Tail, Val, H2),
@@ -440,15 +462,16 @@ update_sliding_windows(last_5min, Base, Val, History) ->
 update_sliding_windows(Size, MetricName, SecVal, History) ->
     case lists:keyfind(MetricName, 1, History) of
         false ->
+            exometer:update(MetricName, SecVal),
             InitSlidingWindow = [0 || _ <- lists:seq(1, Size - 1)],
             [{MetricName, [SecVal|InitSlidingWindow]}|History];
         {_, SlidingWindow} ->
-            case lists:last(SlidingWindow) of
+            case SecVal - lists:last(SlidingWindow) of
                 0 ->
                     lists:keyreplace(MetricName, 1, History ,
                                      {MetricName, [SecVal|lists:droplast(SlidingWindow)]});
-                OldestVal ->
-                    exometer:update(MetricName, -OldestVal),
+                DeltaVal ->
+                    exometer:update(MetricName, DeltaVal),
                     lists:keyreplace(MetricName, 1, History ,
                                      {MetricName, [SecVal|lists:droplast(SlidingWindow)]})
             end
