@@ -18,7 +18,6 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN
 * Bridge Support
 * $SYS Tree for monitoring and reporting
 * TLS (SSL) Encryption
-* Dynamic Topics
 * Websockets Support
 * Cluster Support
 * SNMP Monitoring
