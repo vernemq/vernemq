@@ -16,13 +16,17 @@
 -include("vmq_server.hrl").
 
 %% API
--export([dump/1]).
+-export([dump/1,
+         dump/2]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+%% dumps the message store content to the file.
 dump(FileName) ->
-    dump(FileName, [write]).
+    FileWriteOpts = [write],
+    dump(FileName, FileWriteOpts).
 
 dump(FileName, FileOpenOpts) ->
     {ok, Fd} = file:open(FileName, FileOpenOpts),
