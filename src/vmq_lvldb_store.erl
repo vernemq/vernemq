@@ -21,7 +21,8 @@
          msg_store_write/2,
          msg_store_read/2,
          msg_store_delete/2,
-         msg_store_find/1]).
+         msg_store_find/1,
+         get_ref/1]).
 
 -export([msg_store_init_queue_collector/3]).
 
@@ -83,6 +84,9 @@ msg_store_collect(SubscriberId, [Pid|Rest], Acc) ->
     Res = gen_server:call(Pid, {find_for_subscriber_id, SubscriberId}, infinity),
     msg_store_collect(SubscriberId, Rest, ordsets:union(Res, Acc)).
 
+get_ref(BucketPid) ->
+    gen_server:call(BucketPid, get_ref).
+
 call(Key, Req) ->
     case vmq_lvldb_store_sup:get_bucket_pid(Key) of
         {ok, BucketPid} ->
@@ -119,6 +123,12 @@ init([InstanceId]) ->
     process_flag(trap_exit, true),
     case open_db(Opts, S0) of
         {ok, State} ->
+            case check_store(State) of
+                0 -> ok; % no unreferenced images
+                N ->
+                    lager:info("Found and deleted ~p unreferenced messages in msg store instance ~p",
+                               [N, InstanceId])
+            end,
             {ok, State};
         {error, Reason} ->
             {stop, Reason}
@@ -138,6 +148,8 @@ init([InstanceId]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(get_ref, _From, #state{ref=Ref} = State) ->
+    {reply, Ref, State};
 handle_call(Request, _From, State) ->
     {reply, handle_req(Request, State), State}.
 
@@ -353,8 +365,11 @@ handle_req({delete, {MP, _} = SubscriberId, MsgRef},
                             eleveldb:write(Bucket, [{delete, MsgKey}], WriteOpts),
                             ok
                     end;
+                {error, invalid_iterator} ->
+                    eleveldb:write(Bucket, [{delete, MsgKey}], WriteOpts),
+                    ok;
                 {error, _} ->
-                    ok
+                    ignore
             end;
         {ok, _OtherMsgKey} ->
             lager:warning("couldn't delete ~p due to not found", [MsgRef]),
@@ -382,3 +397,36 @@ iterate_index_items({ok, IdxKey, IdxVal}, SubscriberId, Acc, Itr, State) ->
             eleveldb:iterator_close(Itr),
             Acc
     end.
+
+check_store(#state{ref=Bucket, fold_opts=FoldOpts, write_opts=WriteOpts}) ->
+    {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts, keys_only),
+    check_delete_message(Bucket, eleveldb:iterator_move(Itr, first), Itr, WriteOpts,
+                         {undefined, undefined, true}, 0).
+
+check_delete_message(Bucket, {ok, Key}, Itr, WriteOpts, {PivotMsgRef, PivotMP, HadRefs} = Pivot, N) ->
+    {NewPivot, NewN} =
+    case sext:decode(Key) of
+        {msg, PivotMsgRef, {PivotMP, ClientId}} when ClientId =/= '' ->
+            %% Inside the 'same' Message Section. This means we have found refs
+            %% for this message -> no delete required.
+            {{PivotMsgRef, PivotMP, true}, N};
+        {msg, NewPivotMsgRef, {NewPivotMP, ''}} when HadRefs ->
+            %% New Message Section started, previous section included refs
+            %% -> no delete required
+            {{NewPivotMsgRef, NewPivotMP, false}, N}; %% challenge the new message
+        {msg, NewPivotMsgRef, {NewPivotMP, ''}} -> % HadRefs == false
+            %% New Message Section started, previous section didn't include refs
+            %% -> delete required
+            eleveldb:write(Bucket, [{delete, Key}], WriteOpts),
+            {{NewPivotMsgRef, NewPivotMP, false}, N + 1}; %% challenge the new message
+        {idx, _, _} ->
+            %% ignore idx item atm.
+            {Pivot, N}
+    end,
+    check_delete_message(Bucket, eleveldb:iterator_move(Itr, next), Itr, WriteOpts, NewPivot, NewN);
+check_delete_message(Bucket, {error, invalid_iterator}, _, WriteOpts, {PivotMsgRef, PivotMP, false}, N) ->
+    Key = sext:encode({msg, PivotMsgRef, {PivotMP, ''}}),
+    eleveldb:write(Bucket, [{delete, Key}], WriteOpts),
+    N + 1;
+check_delete_message(_Bucket, {error, invalid_iterator}, _, _, {_, _, true}, N) ->
+    N.
