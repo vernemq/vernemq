@@ -46,11 +46,11 @@ websocket_init(_Type, Req, Opts) ->
     end.
 
 init_(Req, Opts) ->
-    Peer = cowboy_req:peer(Req),
+    {Peer, Req1} = cowboy_req:peer(Req),
     FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
     FsmState = FsmMod:init(Peer, Opts),
     _ = vmq_exo:incr_socket_count(),
-    {ok, Req, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
+    {ok, Req1, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
 
 websocket_handle({binary, Data}, Req, State) ->
     #st{fsm_state=FsmState0,
