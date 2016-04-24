@@ -285,7 +285,7 @@ vmq_listener_usage() ->
     ].
 
 vmq_listener_start_usage() ->
-    ["vmq-admin listener start addr=IpAddr port=Port\n\n",
+    ["vmq-admin listener start address=IpAddr port=Port\n\n",
      "  Starts a new listener or modifies an existing listener.\n\n",
      "General Options\n\n",
      "  -m, --mountpoint=Mountpoint\n",
@@ -321,7 +321,7 @@ vmq_listener_start_usage() ->
     ].
 
 vmq_listener_stop_usage() ->
-    ["vmq-admin listener stop addr=IpAddr port=Port\n\n",
+    ["vmq-admin listener stop address=IpAddr port=Port\n\n",
      "  Stops a running listener.\n\n",
      "Options\n\n",
      "  -k, --kill_sessions\n"
@@ -329,11 +329,11 @@ vmq_listener_stop_usage() ->
     ].
 
 vmq_listener_delete_usage() ->
-    ["vmq-admin listener delete addr=IpAddr port=Port\n\n",
+    ["vmq-admin listener delete address=IpAddr port=Port\n\n",
      "  Deletes a stopped listener.\n\n"
     ].
 
 vmq_listener_restart_usage() ->
-    ["vmq-admin listener restart addr=IpAddr port=Port\n\n",
+    ["vmq-admin listener restart address=IpAddr port=Port\n\n",
      "  Restarts a stopped listener.\n\n"
     ].
