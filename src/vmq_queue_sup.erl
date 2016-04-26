@@ -61,14 +61,25 @@ start_link(Shutdown, MaxR, MaxT) ->
 fold_subscribers(SubscriberId, Nodes, Acc) ->
     case lists:member(node(), Nodes) of
         true ->
-            start_queue(SubscriberId);
+            start_queue(SubscriberId, false);
         false ->
             Acc
     end.
 
 start_queue(SubscriberId) ->
+    start_queue(SubscriberId, true).
+
+start_queue(SubscriberId, Clean) ->
+    %% The Clean flag is used to distinguish between Queues created during
+    %% broker start and newly created ones.
+    %% The main difference is that the ones created at broker start have
+    %% to initialize themselves using the message store,
+    %% whereas new ones don't require to access the message store at startup
+    %%
+    %% if a queue terminates abnormally and gets restarted by this supervisor
+    %% we enforce the roundtrip to the message store.
     Ref = make_ref(),
-    ?MODULE ! {?MODULE, {self(), Ref}, {start_queue, SubscriberId}},
+    ?MODULE ! {?MODULE, {self(), Ref}, {start_queue, SubscriberId, Clean}},
     receive
         {Ref, Reply} -> Reply
     end.
@@ -121,10 +132,10 @@ init(Parent, Shutdown, MaxR, MaxT) ->
 
 loop(State = #state{parent=Parent}, NrOfChildren) ->
     receive
-        {?MODULE, Caller, {start_queue, SubscriberId}} ->
+        {?MODULE, Caller, {start_queue, SubscriberId, Clean}} ->
             case ets:lookup(?QUEUE_TAB, SubscriberId) of
                 [] ->
-                    loop(State, start_queue(Caller, SubscriberId, NrOfChildren));
+                    loop(State, start_queue(Caller, SubscriberId, Clean, NrOfChildren));
                 [{_, Pid}] ->
                     %% already started
                     reply(Caller, {ok, true, Pid}),
@@ -152,7 +163,7 @@ loop(State = #state{parent=Parent}, NrOfChildren) ->
                             report_error(SubscriberId, Pid, Reason),
                             loop(State#state{r=R + 1,
                                              reset_timer=maybe_set_reset_timer(MaxT, Reset)},
-                                 start_queue(undefined, SubscriberId, NrOfChildren - 1))
+                                 start_queue(undefined, SubscriberId, false, NrOfChildren - 1))
                     end
             end;
         {?MODULE, reset_timer} ->
@@ -225,8 +236,8 @@ wait_children(NrOfChildren) ->
             ok
     end.
 
-start_queue(Caller, SubscriberId, NrOfChildren) ->
-    try vmq_queue:start_link(SubscriberId) of
+start_queue(Caller, SubscriberId, Clean, NrOfChildren) ->
+    try vmq_queue:start_link(SubscriberId, Clean) of
         {ok, Pid} ->
             ets:insert(?QUEUE_TAB, {SubscriberId, Pid}),
             put(Pid, true),
