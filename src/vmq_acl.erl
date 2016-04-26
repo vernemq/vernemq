@@ -126,6 +126,9 @@ load_from_list(List) ->
     parse_acl_line(F(F, read), all),
     del_aged_entries().
 
+parse_acl_line({F, <<"#", _/binary>>}, User) ->
+    %% comment
+    parse_acl_line(F(F,read), User);
 parse_acl_line({F, <<"topic read ", Topic/binary>>}, User) ->
     in(read, User, Topic),
     parse_acl_line(F(F,read), User);
