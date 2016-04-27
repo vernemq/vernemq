@@ -424,7 +424,8 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-add_session_(SessionPid, Opts, #state{id=SId, offline=Offline, sessions=Sessions} = State) ->
+add_session_(SessionPid, Opts, #state{id=SId, offline=Offline,
+                                      sessions=Sessions, opts=OldOpts} = State) ->
     #{clean_session := Clean,
       max_online_messages := MaxOnlineMessages,
       max_offline_messages := MaxOfflineMsgs,
@@ -450,6 +451,7 @@ add_session_(SessionPid, Opts, #state{id=SId, offline=Offline, sessions=Sessions
                                   size=0, drop=0,
                                   queue = queue:new()
                                  },
+                        opts=maps:merge(OldOpts, Opts),
                         sessions=NewSessions}).
 
 del_session(SessionPid, #state{id=SId, sessions=Sessions} = State) ->
