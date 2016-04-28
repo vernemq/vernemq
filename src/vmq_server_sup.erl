@@ -44,6 +44,8 @@ init([]) ->
     {ok, PlumtreeJobsOpts} = application:get_env(vmq_server, plumtree_jobs_opts),
     {ok, MsgStoreChildSpecs} = application:get_env(vmq_server, msg_store_childspecs),
 
+    maybe_change_nodename(),
+
     ok = jobs:add_queue(plumtree_queue, PlumtreeJobsOpts),
     {ok, { {one_for_one, 5, 10},
            [?CHILD(vmq_config, worker, []) | MsgStoreChildSpecs]
@@ -55,4 +57,37 @@ init([]) ->
                ?CHILD(vmq_reg_sup, supervisor, []),
                ?CHILD(vmq_cluster_node_sup, supervisor, [])
               ]} }.
+
+maybe_change_nodename() ->
+    {ok, LocalState} = plumtree_peer_service_manager:get_local_state(),
+    SubscriberDB = {vmq, subscriber},
+    case riak_dt_orswot:value(LocalState) of
+        [Node] when Node =/= node() ->
+            lager:info("Rename VerneMQ Node", []),
+            {ok, Actor} = plumtree_peer_service_manager:get_actor(),
+            {ok, Merged} = riak_dt_orswot:update({update, [{remove, Node},
+                                                           {add, node()}]}, Actor, LocalState),
+            _ = gen_server:cast(plumtree_peer_service_gossip, {receive_state, Merged}),
+            vmq_reg:fold_subscribers(
+              fun(SubscriberId, Subs, _Acc) ->
+                      NewSubs =
+                      lists:foldl(
+                        fun({_, _, N}, SubsAcc) when N == node() ->
+                                SubsAcc;
+                           ({Topic, QoS, _OldNode}, SubsAcc) ->
+                                [{Topic, QoS, node()}|SubsAcc]
+                        end, [], Subs),
+                      %% writing the changed subscriptions will trigger
+                      %% vmq_reg_mgr to initiate queue migration
+                      plumtree_metadata:put(SubscriberDB, SubscriberId,
+                                            lists:usort(NewSubs))
+              end, ignored, false);
+        _ ->
+            %% we ignore if the node has the same name
+            %% or if more than one node is returned (clustered)
+            ignore
+    end.
+
+
+
 

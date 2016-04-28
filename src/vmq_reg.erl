@@ -59,7 +59,8 @@
 %% used by reg views
 -export([subscribe_subscriber_changes/0,
          fold_subscriptions/2,
-         fold_subscribers/2]).
+         fold_subscribers/2,
+         fold_subscribers/3]).
 %% used by vmq_mqtt_fsm list_sessions
 -export([fold_sessions/2]).
 
