@@ -42,6 +42,12 @@
 -define(TABLE_OPTS, [public, named_table, {read_concurrency, true}]).
 -define(USER_SUP, <<"%u">>).
 -define(CLIENT_SUP, <<"%c">>).
+-define(MOUNTPOINT_SUP, <<"%m">>).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
+-endif.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Plugin Callbacks
@@ -186,16 +192,18 @@ check_pattern_acl(Type, TIn, User, ClientId) ->
                                     match(TIn, T)
                             end).
 
-topic(User, ClientId, Topic) ->
-    subst(?USER_SUP, ?CLIENT_SUP, User, ClientId, Topic, []).
+topic(User, {MP, ClientId}, Topic) ->
+    subst(list_to_binary(MP), User, ClientId, Topic, []).
 
-subst(U, C, User, ClientId, [U|Rest], Acc) ->
-    subst(U, C, User, ClientId, Rest, [User|Acc]);
-subst(U, C, User, ClientId, [C|Rest], Acc) ->
-    subst(U, C, User, ClientId, Rest, [ClientId|Acc]);
-subst(U, C, User, ClientId, [W|Rest], Acc) ->
-    subst(U, C, User, ClientId, Rest, [W|Acc]);
-subst(_, _, _, _, [], Acc) -> lists:reverse(Acc).
+subst(MP, User, ClientId, [U|Rest], Acc) when U == ?USER_SUP ->
+    subst(MP, User, ClientId, Rest, [User|Acc]);
+subst(MP, User, ClientId, [C|Rest], Acc) when C == ?CLIENT_SUP ->
+    subst(MP, User, ClientId, Rest, [ClientId|Acc]);
+subst(MP, User, ClientId, [M|Rest], Acc) when M == ?MOUNTPOINT_SUP ->
+    subst(MP, User, ClientId, Rest, [MP|Acc]);
+subst(MP, User, ClientId, [W|Rest], Acc) ->
+    subst(MP, User, ClientId, Rest, [W|Acc]);
+subst(_, _, _, [], Acc) -> lists:reverse(Acc).
 
 in(Type, User, Topic) when is_binary(Topic) ->
     TopicLen = byte_size(Topic) -1,
@@ -262,3 +270,63 @@ iterate(_, _, '$end_of_table') -> ok;
 iterate(T, Fun, K) ->
     Fun(K),
     iterate(T, Fun, ets:next(T, K)).
+
+-ifdef(TEST).
+%%%%%%%%%%%%%
+%%% Tests
+%%%%%%%%%%%%%
+
+acl_test_() ->
+    [
+     {"Simple ACL Test",
+      ?setup(fun simple_acl/1)}
+    ].
+
+setup() -> init().
+teardown(_) ->
+    ets:delete(vmq_acl_read_all),
+    ets:delete(vmq_acl_write_all),
+    ets:delete(vmq_acl_read_user),
+    ets:delete(vmq_acl_write_user).
+
+simple_acl(_) ->
+    ACL = [<<"# simple comment\n">>,
+           <<"topic read a/b/c\n">>,
+           <<"# other comment \n">>,
+           <<"topic write a/b/c\n">>,
+           <<"\n">>,
+           <<"# ACL for user 'test'\n">>,
+           <<"user test\n">>,
+           <<"topic x/y/z/#\n">>,
+           <<"# some patterns\n">>,
+           <<"pattern read %m/%u/%c\n">>,
+           <<"pattern write %m/%u/%c\n">>
+          ],
+    load_from_list(ACL),
+    [ ?_assertEqual([[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_acl_read_all, '$1'))
+    , ?_assertEqual([[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_acl_write_all, '$1'))
+    , ?_assertEqual([[{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1}]], ets:match(vmq_acl_read_user, '$1'))
+    , ?_assertEqual([[{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1}]], ets:match(vmq_acl_write_user, '$1'))
+    , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_acl_read_pattern, '$1'))
+    , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_acl_write_pattern, '$1'))
+    %% positive auth_on_subscribe
+    , ?_assertEqual(ok, auth_on_subscribe(<<"test">>, {"", <<"my-client-id">>},
+                                          [{[<<"a">>, <<"b">>, <<"c">>], 0}
+                                           ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
+                                           ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
+    , ?_assertEqual(next, auth_on_subscribe(<<"invalid-user">>, {"", <<"my-client-id">>},
+                                          [{[<<"a">>, <<"b">>, <<"c">>], 0}
+                                           ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
+                                           ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
+    , ?_assertEqual(ok, auth_on_publish(<<"test">>, {"", <<"my-client-id">>}, 1,
+                                          [<<"a">>, <<"b">>, <<"c">>], <<"payload">>, false))
+    , ?_assertEqual(ok, auth_on_publish(<<"test">>, {"", <<"my-client-id">>}, 1,
+                                          [<<"x">>, <<"y">>, <<"z">>, <<"blabla">>], <<"payload">>, false))
+    , ?_assertEqual(ok, auth_on_publish(<<"test">>, {"", <<"my-client-id">>}, 1,
+                                          [<<"">>, <<"test">>, <<"my-client-id">>], <<"payload">>, false))
+    , ?_assertEqual(next, auth_on_publish(<<"invalid-user">>, {"", <<"my-client-id">>}, 1,
+                                          [<<"x">>, <<"y">>, <<"z">>, <<"blabla">>], <<"payload">>, false))
+    , ?_assertEqual(next, auth_on_publish(<<"invalid-user">>, {"", <<"my-client-id">>}, 1,
+                                          [<<"">>, <<"test">>, <<"my-client-id">>], <<"payload">>, false))
+    ].
+-endif.
