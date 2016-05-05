@@ -15,7 +15,8 @@
          module_plugin_mod_does_not_exist/1,
          module_plugin_function_does_not_exist/1,
          app_plugin_mod_does_not_exist/1,
-         app_plugin_function_does_not_exist/1]).
+         app_plugin_function_does_not_exist/1,
+         cannot_load_plugin_with_existing_mod/1]).
 
 -export([sample_hook_function/0,
          sample_hook_function/1,
@@ -32,7 +33,8 @@ all() ->
      module_plugin_mod_does_not_exist,
      module_plugin_function_does_not_exist,
      app_plugin_mod_does_not_exist,
-     app_plugin_function_does_not_exist].
+     app_plugin_function_does_not_exist,
+     cannot_load_plugin_with_existing_mod].
 
 init_per_suite(Config) ->
     application:ensure_all_started(lager),
@@ -143,6 +145,14 @@ app_plugin_function_does_not_exist(Config) ->
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
     {error, {no_matching_fun_in_module,vmq_plugin_SUITE,nonexistent_fun,0}} =
         vmq_plugin_mgr:enable_plugin(vmq_plugin, [code:lib_dir(vmq_plugin)]).
+
+cannot_load_plugin_with_existing_mod(Config) ->
+    ok = write_config(Config, empty_plugin_config()),
+    {ok, _} = application:ensure_all_started(vmq_plugin),
+    {error, {module_conflict, {stdlib, lists}}}
+        = vmq_plugin_mgr:enable_plugin(app_conflicting_mod,
+                                       [code:lib_dir(vmq_plugin)
+                                        ++ "/test/app_conflicting_mod"]).
 
 sample_hook_function() ->
     ok.
