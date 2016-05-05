@@ -103,7 +103,7 @@ loop_({exit, Reason, State}) ->
     _ = internal_flush(State),
     teardown(State, Reason).
 
-teardown(_, Reason) ->
+teardown(#st{socket = Socket}, Reason) ->
     case Reason of
         normal ->
             lager:debug("[~p] session normally stopped", [self()]);
@@ -113,7 +113,13 @@ teardown(_, Reason) ->
             lager:warning("[~p] session stopped abnormally due to '~p'", [self(), Reason])
     end,
     _ = vmq_exo:decr_socket_count(),
+    close(Socket),
     ok.
+
+close({ssl, Socket}) ->
+    ssl:close(Socket);
+close(Socket) ->
+    inet:close(Socket).
 
 proto_tag(ranch_tcp) -> {tcp, tcp_closed, tcp_error};
 proto_tag(ranch_ssl) -> {ssl, ssl_closed, ssl_error}.
