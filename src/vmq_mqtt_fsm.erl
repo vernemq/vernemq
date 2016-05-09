@@ -372,7 +372,7 @@ connected(#mqtt_pingreq{}, State) ->
     {NewState, Out} = send_frame(#mqtt_pingresp{}, State),
     {incr_msg_recv_cnt(NewState), Out};
 connected(#mqtt_disconnect{}, State) ->
-    terminate(normal, incr_msg_recv_cnt(State));
+    terminate(mqtt_client_disconnect, incr_msg_recv_cnt(State));
 connected(retry,
     #state{waiting_acks=WAcks, retry_interval=RetryInterval,
            retry_queue=RetryQueue, send_cnt=SendCnt} = State) ->
@@ -411,7 +411,15 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid=QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-
+terminate(mqtt_client_disconnect, #state{clean_session=CleanSession} = State) ->
+    _ = case CleanSession of
+            true -> ok;
+            false ->
+                handle_waiting_acks_and_msgs(State)
+        end,
+    trigger_counter_update(State),
+    %% TODO: the counter update is missing the last will message
+    {stop, mqtt_client_disconnect, []};
 terminate(Reason, #state{clean_session=CleanSession} = State) ->
     _ = case CleanSession of
             true -> ok;
