@@ -595,7 +595,8 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
         ok ->
             AuthSuccess(Msg, HookArgs);
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
-            AuthSuccess(Msg#vmq_msg{payload=ChangedPayload}, HookArgs);
+            HookArgs1 = [User, SubscriberId, QoS, Topic, ChangedPayload, unflag(IsRetain)],
+            AuthSuccess(Msg#vmq_msg{payload=ChangedPayload}, HookArgs1);
         {ok, Args} when is_list(Args) ->
             #vmq_msg{reg_view=RegView, mountpoint=MP} = Msg,
             ChangedTopic = proplists:get_value(topic, Args, Topic),
@@ -604,12 +605,15 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
             ChangedQoS = proplists:get_value(qos, Args, QoS),
             ChangedIsRetain = proplists:get_value(retain, Args, IsRetain),
             ChangedMountpoint = proplists:get_value(mountpoint, Args, MP),
+            HookArgs1 = [User, SubscriberId, ChangedQoS,
+                         ChangedTopic, ChangedPayload, ChangedIsRetain],
             AuthSuccess(Msg#vmq_msg{routing_key=ChangedTopic,
                                     payload=ChangedPayload,
                                     reg_view=ChangedRegView,
                                     qos=ChangedQoS,
                                     retain=ChangedIsRetain,
-                                    mountpoint=ChangedMountpoint}, HookArgs);
+                                    mountpoint=ChangedMountpoint},
+                        HookArgs1);
         {error, Re} ->
             lager:error("can't auth publish ~p due to ~p", [HookArgs, Re]),
             {error, not_allowed}
