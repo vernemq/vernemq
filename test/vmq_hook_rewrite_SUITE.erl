@@ -61,8 +61,8 @@ auth_on_publish_rewrite_payload_test(_) ->
     Subscribe = packet:gen_subscribe(3265, "pub/rewrite/payload", 0),
     Suback = packet:gen_suback(3265, 0),
 
-    enable_on_subscribe(),
-    enable_on_publish(),
+    enable_auth_on_subscribe(),
+    enable_auth_on_publish(),
 
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Subscribe),
@@ -76,8 +76,8 @@ auth_on_publish_rewrite_payload_test(_) ->
     ok = packet:expect_packet(Socket, "publish", PublishRewritten),
 
 
-    disable_on_publish(),
-    disable_on_subscribe(),
+    disable_auth_on_publish(),
+    disable_auth_on_subscribe(),
     ok = gen_tcp:close(Socket).
 
 auth_on_publish_rewrite_packet_test(_) ->
@@ -89,8 +89,8 @@ auth_on_publish_rewrite_packet_test(_) ->
     Subscribe = packet:gen_subscribe(3265, "pub/rewrite/topic", 0),
     Suback = packet:gen_suback(3265, 0),
 
-    enable_on_subscribe(),
-    enable_on_publish(),
+    enable_auth_on_subscribe(),
+    enable_auth_on_publish(),
 
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Subscribe),
@@ -103,8 +103,8 @@ auth_on_publish_rewrite_packet_test(_) ->
     PublishRewritten = packet:gen_publish("pub/rewrite/topic", 0, <<"hello world">>, [{mid, 1}]),
     ok = packet:expect_packet(Socket, "publish", PublishRewritten),
 
-    disable_on_publish(),
-    disable_on_subscribe(),
+    disable_auth_on_publish(),
+    disable_auth_on_subscribe(),
     ok = gen_tcp:close(Socket).
 
 auth_on_subscribe_rewrite_test(_) ->
@@ -117,8 +117,8 @@ auth_on_subscribe_rewrite_test(_) ->
     Subscribe = packet:gen_subscribe(3265, "sub/rewrite/me", 1),
     Suback = packet:gen_suback(3265, [0]),
 
-    enable_on_subscribe(),
-    enable_on_publish(),
+    enable_auth_on_subscribe(),
+    enable_auth_on_publish(),
 
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Subscribe),
@@ -132,8 +132,8 @@ auth_on_subscribe_rewrite_test(_) ->
     Publish1 = packet:gen_publish("sub/rewrite/topic", 0, <<"message">>, []),
     ok = packet:expect_packet(Socket, "publish", Publish1),
 
-    disable_on_publish(),
-    disable_on_subscribe(),
+    disable_auth_on_publish(),
+    disable_auth_on_subscribe(),
     ok = gen_tcp:close(Socket).
 
 
@@ -145,9 +145,9 @@ on_deliver_rewrite_payload_test(_) ->
     Subscribe = packet:gen_subscribe(3265, "dlvr/rewrite/payload", 0),
     Suback = packet:gen_suback(3265, 0),
 
-    enable_on_subscribe(),
+    enable_auth_on_subscribe(),
     enable_on_deliver(),
-    enable_on_publish(),
+    enable_auth_on_publish(),
 
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Subscribe),
@@ -161,9 +161,9 @@ on_deliver_rewrite_payload_test(_) ->
     Publish1 = packet:gen_publish("dlvr/rewrite/payload", 0, <<"hello world">>, []),
     ok = packet:expect_packet(Socket, "publish", Publish1),
 
-    disable_on_publish(),
+    disable_auth_on_publish(),
     disable_on_deliver(),
-    disable_on_subscribe(),
+    disable_auth_on_subscribe(),
     ok = gen_tcp:close(Socket).
 
 on_deliver_rewrite_packet_test(_) ->
@@ -174,9 +174,9 @@ on_deliver_rewrite_packet_test(_) ->
     Subscribe = packet:gen_subscribe(3265, "dlvr/rewrite/me", 0),
     Suback = packet:gen_suback(3265, 0),
 
-    enable_on_subscribe(),
+    enable_auth_on_subscribe(),
     enable_on_deliver(),
-    enable_on_publish(),
+    enable_auth_on_publish(),
 
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Subscribe),
@@ -190,9 +190,9 @@ on_deliver_rewrite_packet_test(_) ->
     Publish1 = packet:gen_publish("dlvr/rewrite/payload", 0, <<"hello world">>, []),
     ok = packet:expect_packet(Socket, "publish", Publish1),
 
-    disable_on_publish(),
+    disable_auth_on_publish(),
     disable_on_deliver(),
-    disable_on_subscribe(),
+    disable_auth_on_subscribe(),
     ok = gen_tcp:close(Socket).
 
 
@@ -231,19 +231,19 @@ hook_on_deliver(_, _, _, _) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-enable_on_subscribe() ->
+enable_auth_on_subscribe() ->
     vmq_plugin_mgr:enable_module_plugin(
       auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
-enable_on_publish() ->
+enable_auth_on_publish() ->
     vmq_plugin_mgr:enable_module_plugin(
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 enable_on_deliver() ->
     vmq_plugin_mgr:enable_module_plugin(
       on_deliver, ?MODULE, hook_on_deliver, 4).
-disable_on_subscribe() ->
+disable_auth_on_subscribe() ->
     vmq_plugin_mgr:disable_module_plugin(
       auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
-disable_on_publish() ->
+disable_auth_on_publish() ->
     vmq_plugin_mgr:disable_module_plugin(
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 disable_on_deliver() ->
