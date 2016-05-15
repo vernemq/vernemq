@@ -9,6 +9,7 @@
         ]).
 
 -export([will_denied_test/1,
+         will_ignored_for_normal_disconnect_test/1,
          will_null_test/1,
          will_null_topic_test/1,
          will_qos0_test/1]).
@@ -41,7 +42,7 @@ all() ->
     [will_denied_test,
      will_null_test,
      will_null_topic_test,
-     will_qos0_test].
+     will_qos0_test, will_ignored_for_normal_disconnect_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -57,6 +58,32 @@ will_denied_test(_) ->
     disable_on_publish(),
     ok = gen_tcp:close(Socket),
     ok = gen_tcp:close(SocketOK).
+
+will_ignored_for_normal_disconnect_test(_) ->
+    ConnectPub = packet:gen_connect("will-ign-pub-test", [{keepalive,60}, {will_topic, "will/ignorenormal/test"}, {will_msg, <<"should be ignored">>}]),
+    ConnackPub = packet:gen_connack(0),
+    ConnectSub = packet:gen_connect("will-ign-sub-test", [{keepalive,60}]),
+    ConnackSub = packet:gen_connack(0),
+    enable_on_subscribe(),
+    enable_on_publish(),
+    {ok, SocketPub} = packet:do_client_connect(ConnectPub, ConnackPub, []),
+    {ok, SocketSub} = packet:do_client_connect(ConnectSub, ConnackSub, []),
+    Subscribe = packet:gen_subscribe(53, "will/ignorenormal/test", 0),
+    Suback = packet:gen_suback(53, 0),
+    ok = gen_tcp:send(SocketSub, Subscribe),
+    ok = packet:expect_packet(SocketSub, "suback", Suback),
+    Disconnect = packet:gen_disconnect(),
+    ok = gen_tcp:send(SocketPub, Disconnect),
+    case gen_tcp:recv(SocketSub, 0, 2000) of
+        % we don't match on any packet, so that we crash
+        {error, timeout} -> ok;
+        {error, closed} ->
+            ok
+    end,
+    disable_on_subscribe(),
+    disable_on_publish(),
+    %% ok = gen_tcp:close(SocketPub),
+    ok = gen_tcp:close(SocketSub).
 
 will_null_test(_) ->
     Connect = packet:gen_connect("will-qos0-test", [{keepalive,60}]),
@@ -101,12 +128,14 @@ will_qos0_test(_) ->
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_auth_on_subscribe(_,{"", <<"will-qos0-test">>}, [{[<<"will">>, <<"null">>, <<"test">>],0}]) -> ok;
-hook_auth_on_subscribe(_,{"", <<"will-qos0-test">>}, [{[<<"will">>, <<"qos0">>, <<"test">>],0}]) -> ok.
+hook_auth_on_subscribe(_,{"", <<"will-qos0-test">>}, [{[<<"will">>, <<"qos0">>, <<"test">>],0}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"will-ign-sub-test">>}, [{[<<"will">>, <<"ignorenormal">>, <<"test">>], 0}]) -> ok.
 
 hook_auth_on_publish(_, _, _MsgId, [<<"ok">>], <<"should be ok">>, false) -> ok;
 hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"acl">>,<<"test">>], <<"should be denied">>, false) -> {error, not_auth};
 hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"null">>,<<"test">>], <<>>, false) -> ok;
-hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"qos0">>,<<"test">>], <<"will-message">>, false) -> ok.
+hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"qos0">>,<<"test">>], <<"will-message">>, false) -> ok;
+hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"ignorenormal">>,<<"test">>], <<"should be ignored">>, false) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
