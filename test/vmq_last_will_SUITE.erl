@@ -42,7 +42,8 @@ all() ->
     [will_denied_test,
      will_null_test,
      will_null_topic_test,
-     will_qos0_test, will_ignored_for_normal_disconnect_test].
+     will_qos0_test,
+     will_ignored_for_normal_disconnect_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -74,15 +75,12 @@ will_ignored_for_normal_disconnect_test(_) ->
     ok = packet:expect_packet(SocketSub, "suback", Suback),
     Disconnect = packet:gen_disconnect(),
     ok = gen_tcp:send(SocketPub, Disconnect),
-    case gen_tcp:recv(SocketSub, 0, 2000) of
+    case gen_tcp:recv(SocketSub, 0, 200) of
         % we don't match on any packet, so that we crash
-        {error, timeout} -> ok;
-        {error, closed} ->
-            ok
+        {error, timeout} -> ok
     end,
     disable_on_subscribe(),
     disable_on_publish(),
-    %% ok = gen_tcp:close(SocketPub),
     ok = gen_tcp:close(SocketSub).
 
 will_null_test(_) ->
