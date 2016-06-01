@@ -228,7 +228,7 @@ bridge_plugin(ReportProc) ->
                  end,
     SubscribeFun = fun(_Topic) ->
                            ReportProc ! {subscribe, self()},
-                           ok
+                           {ok, [1]}
                    end,
     UnsubscribeFun = fun(_Topic) ->
                              ReportProc ! {unsubscribe, self()},

@@ -221,7 +221,7 @@ bridge_subscribe(Pid, [{Topic, out, QoS, _, RemotePrefix} = BT|Rest],
                  SubscribeFun, Acc) ->
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
-            ok = SubscribeFun(TTopic),
+            {ok, _} = SubscribeFun(TTopic),
             bridge_subscribe(Pid, Rest, SubscribeFun, [{{out, TTopic}, QoS,
                                                         validate_prefix(RemotePrefix)}|Acc]);
         {error, Reason} ->
@@ -235,7 +235,7 @@ bridge_subscribe(Pid, [{Topic, both, QoS, LocalPrefix, RemotePrefix} = BT|Rest],
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
             gen_emqtt:subscribe(Pid, TTopic, QoS),
-            ok = SubscribeFun(TTopic),
+            {ok, _} = SubscribeFun(TTopic),
             bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, TTopic},
                                                         validate_prefix(LocalPrefix)},
                                                        {{out, TTopic}, QoS,
