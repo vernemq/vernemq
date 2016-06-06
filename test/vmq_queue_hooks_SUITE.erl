@@ -121,26 +121,22 @@ hook_auth_on_subscribe(_, _, _) -> ok.
 hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 
 hook_on_client_wakeup({"", <<"queue-client">>}) ->
-    ets:insert(?MODULE, {on_client_wakeup, true}),
-    io:format(user, "on_client_wakeup~n", []);
+    ets:insert(?MODULE, {on_client_wakeup, true});
 hook_on_client_wakeup(_) ->
     ok.
 
 hook_on_client_gone({"", <<"queue-client">>}) ->
-    ets:insert(?MODULE, {on_client_gone, true}),
-    io:format(user, "on_client_gone~n", []);
+    ets:insert(?MODULE, {on_client_gone, true});
 hook_on_client_gone(_) ->
     ok.
 
 hook_on_client_offline({"", <<"queue-client">>}) ->
-    ets:insert(?MODULE, {on_client_offline, true}),
-    io:format(user, "on_client_offline~n", []);
+    ets:insert(?MODULE, {on_client_offline, true});
 hook_on_client_offline(_) ->
     ok.
 
 hook_on_offline_message({"", <<"queue-client">>}) ->
-    ets:insert(?MODULE, {on_offline_message, true}),
-    io:format(user, "on_offline_message~n", []);
+    ets:insert(?MODULE, {on_offline_message, true});
 hook_on_offline_message(_) ->
     ok.
 
