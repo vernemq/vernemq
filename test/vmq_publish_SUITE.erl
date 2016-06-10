@@ -16,7 +16,14 @@
          publish_b2c_timeout_qos2_test/1,
          publish_c2b_disconnect_qos2_test/1,
          publish_c2b_timeout_qos2_test/1,
-         pattern_matching_test/1]).
+         pattern_matching_test/1,
+         not_allowed_publish_close_qos0_mqtt_3_1/1,
+         not_allowed_publish_close_qos1_mqtt_3_1/1,
+         not_allowed_publish_close_qos2_mqtt_3_1/1,
+         not_allowed_publish_close_qos0_mqtt_3_1_1/1,
+         not_allowed_publish_close_qos1_mqtt_3_1_1/1,
+         not_allowed_publish_close_qos2_mqtt_3_1_1/1
+        ]).
 
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
@@ -52,7 +59,14 @@ all() ->
      publish_b2c_timeout_qos2_test,
      publish_c2b_disconnect_qos2_test,
      publish_c2b_timeout_qos2_test,
-     pattern_matching_test].
+     pattern_matching_test,
+     not_allowed_publish_close_qos0_mqtt_3_1,
+     not_allowed_publish_close_qos1_mqtt_3_1,
+     not_allowed_publish_close_qos2_mqtt_3_1,
+     not_allowed_publish_close_qos0_mqtt_3_1_1,
+     not_allowed_publish_close_qos1_mqtt_3_1_1,
+     not_allowed_publish_close_qos2_mqtt_3_1_1
+    ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -332,6 +346,75 @@ pattern_test(SubTopic, PubTopic) ->
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket).
 
+not_allowed_publish_close_qos0_mqtt_3_1(_) ->
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 0, <<"message">>, []),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    {error, timeout} = gen_tcp:recv(Socket, 0, 1000),
+    gen_tcp:close(Socket).
+
+not_allowed_publish_close_qos1_mqtt_3_1(_) ->
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 1, <<"message">>, [{mid, 1}]),
+    Puback = packet:gen_puback(1),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    ok = packet:expect_packet(Socket, "puback", Puback),
+    {error, timeout} = gen_tcp:recv(Socket, 0, 1000),
+    gen_tcp:close(Socket).
+
+not_allowed_publish_close_qos2_mqtt_3_1(_) ->
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 2, <<"message">>, [{mid, 1}]),
+    Pubrec = packet:gen_pubrec(1),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    %% we receive proper pubrec
+    ok = packet:expect_packet(Socket, "pubrec", Pubrec),
+    gen_tcp:close(Socket).
+
+not_allowed_publish_close_qos0_mqtt_3_1_1(_) ->
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60},
+                                                      {proto_ver, 4}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 0, <<"message">>, []),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
+
+not_allowed_publish_close_qos1_mqtt_3_1_1(_) ->
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60},
+                                                      {proto_ver, 4}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 1, <<"message">>, [{mid, 1}]),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
+
+not_allowed_publish_close_qos2_mqtt_3_1_1(_) ->
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60},
+                                                      {proto_ver, 4}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 2, <<"message">>, [{mid, 1}]),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
 
 
 
