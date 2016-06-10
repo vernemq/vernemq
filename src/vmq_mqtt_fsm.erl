@@ -214,7 +214,7 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
            trade_consistency=Consistency} = State,
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
-    {NewState, Out} =
+    Ret =
     case {Topic, valid_msg_size(Payload, MaxMessageSize)} of
         {[<<"$", _binary>> |_], _} ->
             %% $SYS
@@ -236,10 +236,12 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
         {_, false} ->
             {State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)}, []}
     end,
-    case DoThrottle of
-        false ->
-            {NewState, Out};
-        true ->
+    case Ret of
+        {error, not_allowed, NewState} ->
+            terminate(publish_not_authorized_3_1_1, NewState);
+        _ when DoThrottle == false ->
+            Ret;
+        {NewState, Out} ->
             {NewState, {throttle, Out}}
     end;
 connected({mail, QPid, new_data}, #state{queue_pid=QPid} = State) ->
@@ -304,9 +306,11 @@ connected(#mqtt_pubrel{message_id=MessageId}, State) ->
            subscriber_id=SubscriberId} = State,
     %% qos2 flow
     case maps:get({qos2, MessageId} , WAcks, not_found) of
-        {#mqtt_pubrec{}, #vmq_msg{} = Msg} ->
-            case publish(User, SubscriberId, Msg) of
-                {ok, _} ->
+        {#mqtt_pubrec{}, #vmq_msg{routing_key=Topic, qos=QoS, payload=Payload,
+                                  retain=IsRetain} = Msg} ->
+            HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
+            case on_publish_hook(vmq_reg:publish(Msg), HookArgs) of
+                ok ->
                     {NewState, Msgs} =
                     handle_waiting_msgs(
                       State#state{
@@ -320,7 +324,8 @@ connected(#mqtt_pubrel{message_id=MessageId}, State) ->
                     {incr_msg_recv_cnt(State), []}
             end;
         not_found ->
-            %% already delivered, Client expects a PUBCOMP
+            %% already delivered OR we pretended that we delivered the message
+            %% as required by 3.1 . Client expects a PUBCOMP
             {State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt),
                          send_cnt=incr_msg_sent_cnt(SendCnt)},
              [#mqtt_pubcomp{message_id=MessageId}]}
@@ -644,11 +649,13 @@ on_publish_hook(ok, HookParams) ->
     ok;
 on_publish_hook(Other, _) -> Other.
 
--spec dispatch_publish(qos(), msg_id(), msg(), state()) -> {state(), list()}.
+-spec dispatch_publish(qos(), msg_id(), msg(), state()) ->
+    {state(), list()} | {error, not_allowed, state()}.
 dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
--spec dispatch_publish_(qos(), msg_id(), msg(), state()) -> {state(), list()}.
+-spec dispatch_publish_(qos(), msg_id(), msg(), state()) ->
+    {state(), list()} | {error, not_allowed, state()}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
 dispatch_publish_(1, MessageId, Msg, State) ->
@@ -656,22 +663,33 @@ dispatch_publish_(1, MessageId, Msg, State) ->
 dispatch_publish_(2, MessageId, Msg, State) ->
     dispatch_publish_qos2(MessageId, Msg, State).
 
--spec dispatch_publish_qos0(msg_id(), msg(), state()) -> {state(), list()}.
+-spec dispatch_publish_qos0(msg_id(), msg(), state()) ->
+    {state(), list()} | {error, not_allowed, state()}.
 dispatch_publish_qos0(_MessageId, Msg, State) ->
-    #state{username=User, subscriber_id=SubscriberId} = State,
+    #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto} = State,
     case publish(User, SubscriberId, Msg) of
         {ok, _} ->
             {State, []};
+        {error, not_allowed} when Proto == 4 ->
+            %% we have to close connection for 3.1.1
+            {error, not_allowed, drop(State)};
         {error, _Reason} ->
             {drop(State), []}
     end.
 
--spec dispatch_publish_qos1(msg_id(), msg(), state()) -> {state(), list()}.
+-spec dispatch_publish_qos1(msg_id(), msg(), state()) ->
+    {state(), list()} | {error, not_allowed, state()}.
 dispatch_publish_qos1(MessageId, Msg, State) ->
-    #state{username=User, subscriber_id=SubscriberId} = State,
+    #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto} = State,
     case publish(User, SubscriberId, Msg) of
         {ok, _} ->
             send_frame(#mqtt_puback{message_id=MessageId}, State);
+        {error, not_allowed} when Proto == 4 ->
+            %% we have to close connection for 3.1.1
+            {error, not_allowed, drop(State)};
+        {error, not_allowed} ->
+            %% we pretend as everything is ok for 3.1 and Bridge
+            send_frame(#mqtt_puback{message_id=MessageId}, drop(State));
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             {drop(State), []}
@@ -679,14 +697,30 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
 
 -spec dispatch_publish_qos2(msg_id(), msg(), state()) -> {state(), list()}.
 dispatch_publish_qos2(MessageId, Msg, State) ->
-    #state{waiting_acks=WAcks, retry_interval=RetryInterval,
+    #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto,
+           waiting_acks=WAcks, retry_interval=RetryInterval,
            retry_queue=RetryQueue, send_cnt=SendCnt} = State,
-    Frame = #mqtt_pubrec{message_id=MessageId},
-    {State#state{
-       send_cnt=incr_msg_sent_cnt(SendCnt),
-       retry_queue=set_retry({qos2, MessageId}, RetryInterval, RetryQueue),
-       waiting_acks=maps:put({qos2, MessageId}, {Frame, Msg}, WAcks)},
-     [Frame]}.
+
+    case auth_on_publish(User, SubscriberId, Msg,
+                        fun(MaybeChangedMsg, _) -> {ok, MaybeChangedMsg} end) of
+        {ok, NewMsg} ->
+            Frame = #mqtt_pubrec{message_id=MessageId},
+            {State#state{
+               send_cnt=incr_msg_sent_cnt(SendCnt),
+               retry_queue=set_retry({qos2, MessageId}, RetryInterval, RetryQueue),
+               waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
+             [Frame]};
+        {error, not_allowed} when Proto == 4 ->
+            %% we have to close connection for 3.1.1
+            {error, not_allowed, drop(State)};
+        {error, not_allowed} ->
+            %% we pretend as everything is ok for 3.1 and Bridge
+            Frame = #mqtt_pubrec{message_id=MessageId},
+            {drop(State#state{send_cnt=incr_msg_sent_cnt(SendCnt)}), [Frame]};
+        {error, _Reason} ->
+            %% can't publish due to overload or netsplit
+            {drop(State), []}
+    end.
 
 drop(State) ->
     drop(1, State).
