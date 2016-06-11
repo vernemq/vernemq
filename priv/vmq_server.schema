@@ -160,11 +160,13 @@
                                                                        ]}.
 
 %% @doc The maximum number of messages to hold in the queue above 
-%% those messages that are currently in flight. Defaults to 1000. Set to 0 for 
-%% no maximum (not recommended). This option allows to control how a specific
-%% client session can deal with message bursts. As a general rule of thumb set
+%% those messages that are currently in flight. Defaults to 1000. This affects
+%% messages of any QoS. Set to -1 for no maximum (not recommended). 
+%% This option allows to control how a specific client session can deal
+%% with message bursts. As a general rule of thumb set
 %% this number a bit higher than the expected message rate a single consumer is 
-%% required to process.
+%% required to process. Note that setting this value to 0 will totally block
+%% delivery from any queue.
 {mapping, "max_online_messages", "vmq_server.max_online_messages", [
                                                     {default, 1000},
                                                     {datatype, integer}
