@@ -20,37 +20,50 @@
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/inet.hrl").
+-include_lib("eunit/include/eunit.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
 
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(_Config) ->
+    %lager:start(),
     %% this might help, might not...
-    os:cmd(os:find_executable("epmd") ++ " -daemon"),
-    case net_kernel:start([test_master, shortnames]) of
+    os:cmd(os:find_executable("epmd")++" -daemon"),
+    {ok, Hostname} = inet:gethostname(),
+    case net_kernel:start([list_to_atom("runner@"++Hostname), shortnames]) of
         {ok, _} -> ok;
-        {error, _} -> ok
+        {error, {already_started, _}} -> ok
     end,
-    cover:start(),
+    lager:info("node name ~p", [node()]),
     _Config.
 
 end_per_suite(_Config) ->
+    application:stop(lager),
     _Config.
 
-init_per_testcase(_Case, Config) ->
-    {_MasterNode, Nodes} = start_cluster(5),
-    CoverNodes = [begin
-                      wait_til_ready(Node),
-                      Node
-                  end || {Node, _} <- Nodes],
+init_per_testcase(Case, Config) ->
+    Nodes = vmq_cluster_test_utils:pmap(
+              fun({N, P}) ->
+                      Node = vmq_cluster_test_utils:start_node(N, Config, Case),
+                      {ok, _} = rpc:call(Node, vmq_server_cmd, listener_start,
+                                         [P, []]),
+                      %% allow all
+                      ok = rpc:call(Node, vmq_auth, register_hooks, []),
+                      {Node, P}
+              end, [{test1, 18883},
+                    {test2, 18884},
+                    {test3, 18885},
+                    {test4, 18886},
+                    {test5, 18887}]),
+    {CoverNodes, _} = lists:unzip(Nodes),
     {ok, _} = ct_cover:add_nodes(CoverNodes),
     [{nodes, Nodes}|Config].
 
-end_per_testcase(_, Config) ->
-    {_, Nodes} = lists:keyfind(nodes, 1, Config),
-    stop_cluster(Nodes),
-    Config.
+end_per_testcase(_, _Config) ->
+    vmq_cluster_test_utils:pmap(fun(Node) -> ct_slave:stop(Node) end,
+                                [test1, test2, test3, test4, test5]),
+    ok.
 
 all() ->
     [multiple_connect_test
@@ -63,7 +76,21 @@ all() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ensure_cluster(Config) ->
+    [{Node1, _}|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
+    [begin
+         {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, [Node1])
+     end || {Node, _} <- OtherNodes],
+    {NodeNames, _} = lists:unzip(Nodes),
+    Expected = lists:sort(NodeNames),
+    ok = vmq_cluster_test_utils:wait_until_joined(NodeNames, Expected),
+    [?assertEqual({Node, Expected}, {Node,
+                                     lists:sort(vmq_cluster_test_utils:get_cluster_members(Node))})
+     || Node <- NodeNames],
+    ok.
+
 multiple_connect_test(Config) ->
+    ok = ensure_cluster(Config),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
     NrOfConnects = 250,
     NrOfProcesses = NrOfConnects div 50, %random:uniform(NrOfConnects),
@@ -73,7 +100,19 @@ multiple_connect_test(Config) ->
     true = check_unique_client("connect-multiple", Nodes),
     Config.
 
+wait_until_converged(Nodes, Fun, ExpectedReturn) ->
+    {NodeNames, _} = lists:unzip(Nodes),
+    vmq_cluster_test_utils:wait_until(
+      fun() ->
+              lists:all(fun(X) -> X == true end,
+                        vmq_cluster_test_utils:pmap(
+                          fun(Node) ->
+                                  ExpectedReturn == Fun(Node)
+                          end, NodeNames))
+      end, 60*2, 500).
+
 multiple_connect_unclean_test(Config) ->
+    ok = ensure_cluster(Config),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "qos1/multiple/test",
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
@@ -82,39 +121,27 @@ multiple_connect_unclean_test(Config) ->
     Subscribe = packet:gen_subscribe(123, Topic, 1),
     Suback = packet:gen_suback(123, 1),
     Disconnect = packet:gen_disconnect(),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, opts(Nodes)),
+    {RandomNode, RandomPort} = random_node(Nodes),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port,
+                                                                RandomPort}]),
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:send(Socket, Disconnect),
-    timer:sleep(2000),
-    Subs = fun() -> rpc:multicall([N || {N, _} <-Nodes],
-                                      vmq_reg, total_subscriptions, [])
-               end,
-    io:format(user, "!!!!!!!!!!!!!!!!!!! Subs before send ~p~n", [Subs()]),
-    %% publish random content to the topic
-    Strd = fun() -> rpc:multicall([N || {N, _} <-Nodes],
-                                  vmq_reg, stored, [{"", <<"connect-unclean">>}])
-           end,
-    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs before send ~p~n", [Strd()]),
-    Payloads = publish_random(Nodes, 1000, Topic),
-    Ports = fun() -> rpc:multicall([N || {N, _} <-Nodes],
-                                  erlang, system_info, [port_count])
-           end,
-    Procs = fun() -> rpc:multicall([N || {N, _} <-Nodes],
-                                  erlang, system_info, [process_count])
-           end,
-    io:format(user, "~n!!!!!!!!!!!!!!!!!!! stored msgs after send ~p~n", [Strd()]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
-    timer:sleep(2000),
-    ok = receive_publishes(Nodes, Topic, Payloads),
-    timer:sleep(2000),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! stored msgs after deliver~p~n", [Strd()]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! port_count ~p~n", [Ports()]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! process_count ~p~n", [Procs()]),
-    Config.
+    gen_tcp:close(Socket),
+    ok = wait_until_converged(Nodes,
+                         fun(N) ->
+                                 rpc:call(N, vmq_reg, total_subscriptions, [])
+                         end, [{total, 1}]),
+    Payloads = publish_random(Nodes, 100, Topic),
+    ok = vmq_cluster_test_utils:wait_until(
+           fun() ->
+                   100 == rpc:call(RandomNode, vmq_reg, stored,
+                                   [{"", <<"connect-unclean">>}])
+           end, 60, 500),
+    ok = receive_publishes(Nodes, Topic, Payloads).
 
 distributed_subscribe_test(Config) ->
+    ok = ensure_cluster(Config),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "qos1/distributed/test",
     Sockets =
@@ -130,7 +157,10 @@ distributed_subscribe_test(Config) ->
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
      end || {_, Port} <- Nodes],
-    timer:sleep(2000),
+    ok = wait_until_converged(Nodes,
+                         fun(N) ->
+                                 rpc:call(N, vmq_reg, total_subscriptions, [])
+                         end, [{total, length(Sockets)}]),
     [PubSocket|Rest] = Sockets,
     Publish = packet:gen_publish(Topic, 1, <<"test-message">>, [{mid, 1}]),
     Puback = packet:gen_puback(1),
@@ -144,10 +174,11 @@ distributed_subscribe_test(Config) ->
     Config.
 
 cluster_leave_test(Config) ->
+    ok = ensure_cluster(Config),
     {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "cluster/leave/topic",
     %% create 100 sessions
-    [PubSocket|_] =
+    [PubSocket|_] = Sockets =
     [begin
          Connect = packet:gen_connect("connect-" ++ integer_to_list(I),
                                       [{clean_session, false},
@@ -160,39 +191,33 @@ cluster_leave_test(Config) ->
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
      end || I <- lists:seq(1,100)],
-    timer:sleep(2000),
-
-    Subs = fun(Nds) -> rpc:multicall([N || {N, _} <-Nds],
-                                      vmq_reg, total_subscriptions, [])
-               end,
-    Strd = fun(Nds) -> rpc:multicall([N || {N, _} <-Nds],
-                                  vmq_queue_sup, summary, [])
-           end,
-    io:format(user, "!!!!!!!!!!!!!!!!!!! Subs before leave ~p~n", [Subs(Nodes)]),
-
+    ok = wait_until_converged(Nodes,
+                         fun(N) ->
+                                 rpc:call(N, vmq_reg, total_subscriptions, [])
+                         end, [{total, length(Sockets)}]),
     %% publish a message for every session
     Publish = packet:gen_publish(Topic, 1, <<"test-message">>, [{mid, 1}]),
     Puback = packet:gen_puback(1),
     ok = gen_tcp:send(PubSocket, Publish),
     ok = packet:expect_packet(PubSocket, "puback", Puback),
-    timer:sleep(1000), %% just to ensure that the message was routed to all subscribers
-    %% let first node leave the cluster, this should migrate the sessions
+    ok = vmq_cluster_test_utils:wait_until(
+           fun() ->
+                   {100, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup, summary, [])
+           end, 60, 500),
+    %% Pick a control node for initiating the cluster leave
     [{CtrlNode, _}|_] = RestNodes,
-    %% Node_leave might return before migration has finished
     {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Node]),
-
-    io:format(user, "!!!!!!!!!!!!!!!!!!! Subs after leave ~p~n", [Subs(RestNodes)]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! queue summary after leave ~p~n", [Strd(RestNodes)]),
-
-
-    %% the 100 sessions should now be migrated to the rest of the nodes
-    %% each holding 25 queues each containing 1 message
-    [{0, 0, 0, 25, 25} = rpc:call(N, vmq_queue_sup, summary, [])
-     || {N, _} <- RestNodes],
-    Config.
+    %% Leaving Node will disconnect all sessions and give away all messages
+    %% The disconnected sessions are equally migrated to the rest of the nodes
+    %% As the clients don't reconnect (in this test), their sessions are offline
+    ok = wait_until_converged(RestNodes,
+                              fun(N) ->
+                                      rpc:call(N, vmq_queue_sup, summary, [])
+                              end, {0, 0, 0, 25, 25}).
 
 cluster_leave_dead_node_test(Config) ->
-    {_, [Node = {Name, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
+    ok = ensure_cluster(Config),
+    {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "cluster/leave/dead/topic",
     %% create 100 sessions on first Node
     _ =
@@ -209,37 +234,24 @@ cluster_leave_dead_node_test(Config) ->
          gen_tcp:send(Socket, packet:gen_disconnect()),
          gen_tcp:close(Socket)
      end || I <- lists:seq(1,100)],
-    timer:sleep(2000),
-
-    Subs = fun(Nds) -> rpc:multicall([N || {N, _} <-Nds],
-                                      vmq_reg, total_subscriptions, [])
-               end,
-
-    Strd = fun(Nds) -> rpc:multicall([N || {N, _} <-Nds],
-                                  vmq_queue_sup, summary, [])
-           end,
-
-    io:format(user, "!!!!!!!!!!!!!!!!!!! Subs before leave ~p~n", [Subs(Nodes)]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! queue summary before leave ~p~n", [Strd(Nodes)]),
-
+    ok = wait_until_converged(Nodes,
+                         fun(N) ->
+                                 rpc:call(N, vmq_reg, total_subscriptions, [])
+                         end, [{total, 100}]),
     %% stop first node
-    stop_node(Node),
+    ct_slave:stop(Node),
 
-    %% let first node leave the cluster, this should migrate the sessions
+    %% Pick a control node for initiating the cluster leave
+    %% let first node leave the cluster, this should migrate the sessions,
+    %% but not the messages
     [{CtrlNode, _}|_] = RestNodes,
-
     %% Node_leave might return before migration has finished
-    {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Name]),
-
-    io:format(user, "!!!!!!!!!!!!!!!!!!! Subs after leave ~p~n", [Subs(RestNodes)]),
-    io:format(user, "!!!!!!!!!!!!!!!!!!! queue summary after leave ~p~n", [Strd(RestNodes)]),
-
-
-    %% the 100 sessions should now be migrated to the rest of the nodes
-    %% each holding 25 queues each containing 1 message
-    [{0, 0, 0, 25, 0} = rpc:call(N, vmq_queue_sup, summary, [])
-     || {N, _} <- RestNodes],
-    Config.
+    {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Node]),
+    %% The disconnected sessions are equally migrated to the rest of the nodes
+    ok = wait_until_converged(RestNodes,
+                              fun(N) ->
+                                      rpc:call(N, vmq_queue_sup, summary, [])
+                              end, {0, 0, 0, 25, 0}).
 
 publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess) ->
     publish(self(), Nodes, NrOfProcesses, NrOfMsgsPerProcess, []).
@@ -287,6 +299,7 @@ publish_random(Nodes, N, Topic, Acc) ->
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "puback", Puback),
     ok = gen_tcp:send(Socket, Disconnect),
+    gen_tcp:close(Socket),
     publish_random(Nodes, N - 1, Topic, [Payload|Acc]).
 
 receive_publishes(_, _, []) -> ok;
@@ -294,15 +307,11 @@ receive_publishes([{_,Port}=N|Nodes], Topic, Payloads) ->
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
                                                            {keepalive, 10}]),
     Connack = packet:gen_connack(true, 0),
-    Disconnect = packet:gen_disconnect(),
-    %Opts = opts(Nodes),
     Opts = [{port, Port}],
     {ok, Socket} = packet:do_client_connect(Connect, Connack, Opts),
     case recv(Socket, <<>>) of
         {ok, #mqtt_publish{message_id=MsgId, payload=Payload}} ->
             ok = gen_tcp:send(Socket, packet:gen_puback(MsgId)),
-            ok = gen_tcp:send(Socket, Disconnect),
-            gen_tcp:close(Socket),
             receive_publishes(Nodes ++ [N], Topic, Payloads -- [Payload]);
         {error, _} ->
             receive_publishes(Nodes ++ [N], Topic, Payloads)
@@ -338,92 +347,9 @@ hook_auth_on_subscribe(_, _, _) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-start_cluster(NrOfNodes) ->
-    Self = self(),
-    {MasterNode, Nodes} = State =
-    lists:foldl(
-      fun(I, {MasterNode, Acc}) ->
-              Name = list_to_atom("test_"++integer_to_list(I)),
-              Port = 18880 + I,
-              {NewMasterNode, Node} =
-              case MasterNode of
-                  undefined ->
-                      N = start_node(Name, Port, []),
-                      {N, N};
-                  _ ->
-                      N = start_node(Name, Port, [MasterNode]),
-                      {MasterNode, N}
-              end,
-              Self ! done,
-              {NewMasterNode, [{Node, Port}|Acc]}
-      end , {undefined, []}, lists:seq(1, NrOfNodes)),
-    receive_times(done, NrOfNodes),
-    wait_til_ready(MasterNode),
-    Readies = fun() ->
-                      RPCNodes = [N || {N, _} <- Nodes],
-                      rpc:multicall(RPCNodes, vmq_cluster, recheck, []),
-                      timer:sleep(500),
-                      rpc:multicall(RPCNodes, vmq_cluster, is_ready, [])
-              end,
-    io:format(user, "cluster state ~p~n", [Readies()]),
-    State.
+random_node(Nodes) ->
+    lists:nth(random:uniform(length(Nodes)), Nodes).
 
-start_node(Name, Port, DiscoveryNodes) ->
-    CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
-    NodeConfig = [{monitor_master, true},
-                  {startup_functions,
-                   [{code, set_path, [CodePath]}]}],
-    case ct_slave:start(Name, NodeConfig) of
-        {ok, Node} ->
-            ok = rpc:call(Node, vmq_test_utils, setup, []),
-            case DiscoveryNodes of
-                [] ->
-                    ignore;
-                _ ->
-                    {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, DiscoveryNodes)
-            end,
-            wait_til_ready(Node),
-            {ok, _} = rpc:call(Node, vmq_server_cmd, set_config, [allow_anonymous, false]),
-            {ok, _} = rpc:call(Node, vmq_server_cmd, listener_start, [Port, []]),
-
-            ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
-                          [auth_on_register, ?MODULE, hook_uname_password_success, 5]),
-            ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
-                          [auth_on_publish, ?MODULE, hook_auth_on_publish, 6]),
-            ok = rpc:call(Node, vmq_plugin_mgr, enable_module_plugin,
-                          [auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3]),
-            Node;
-        {error, already_started, Node} ->
-            ct_slave:stop(Node),
-            timer:sleep(1000),
-            start_node(Name, Port, DiscoveryNodes)
-    end.
-
-
-stop_cluster(Nodes) ->
-    error_logger:info_msg("stop cluster nodes ~p", [Nodes]),
-    lists:foreach(fun stop_node/1, lists:reverse(Nodes)).
-
-stop_node({Node, _Port}) ->
-    [NodeNameStr|_] = re:split(atom_to_list(Node), "@", [{return, list}]),
-    try
-        ok = rpc:call(Node, vmq_test_utils, teardown, []),
-        ShortNodeName = list_to_existing_atom(NodeNameStr),
-        {ok, _} = ct_slave:stop(ShortNodeName)
-    catch
-        _:_ ->
-            ok
-    end.
-
-
-wait_til_ready(Node) ->
-    wait_til_ready(Node, rpc:call(Node, vmq_cluster, is_ready, []), 100).
-wait_til_ready(_, true, _) -> ok;
-wait_til_ready(Node, false, I) when I > 0 ->
-    timer:sleep(100),
-    wait_til_ready(Node, rpc:call(Node, vmq_cluster, is_ready, []), I - 1);
-wait_til_ready(N, _, _) ->
-    exit({not_ready, N, rpc:call(N, erlang, whereis, [vmq_cluster])}).
 
 opts(Nodes) ->
     {_, Port} = lists:nth(random:uniform(length(Nodes)), Nodes),
