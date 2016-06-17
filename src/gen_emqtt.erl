@@ -481,7 +481,7 @@ handle_frame(connected, #mqtt_pubcomp{message_id=MessageId}, State) ->
 handle_frame(connected, #mqtt_publish{message_id=MessageId, topic=Topic,
     qos=QoS, payload=Payload}, State) ->
     #state{transport={Transport, _}, sock=Socket, waiting_acks=WAcks, info_fun=InfoFun} = State,
-    NewInfoFun = call_info_fun({publish_in, MessageId, Payload}, InfoFun),
+    NewInfoFun = call_info_fun({publish_in, MessageId, Payload, QoS}, InfoFun),
     case QoS of
         0 ->
             wrap_res(connected, on_publish, [Topic, Payload], State#state{info_fun=NewInfoFun});
@@ -559,7 +559,7 @@ send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, State) ->
         dup = Dup,
         payload = Payload
     },
-    NewInfoFun = call_info_fun({publish_out, MsgId}, InfoFun),
+    NewInfoFun = call_info_fun({publish_out, MsgId, QoS}, InfoFun),
     send_frame(Transport, Sock, Frame),
     case QoS of
         0 ->
