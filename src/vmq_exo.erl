@@ -54,6 +54,8 @@
 
 -record(state, {history=[]}).
 
+-define(COUNTER_TAB, ?MODULE).
+
 %%%===================================================================
 %%% API functions
 %%%===================================================================
@@ -97,10 +99,10 @@ incr_publishes_sent(V) ->
     incr_item([publishes, sent], V).
 
 incr_subscription_count() ->
-    incr_item([subscriptions], 1).
+    incr_item([subscribe, received], 1).
 
 decr_subscription_count() ->
-    incr_item([subscriptions], -1).
+    incr_item([unsubscribe, received], 1).
 
 incr_socket_count() ->
     incr_item([sockets], 1).
@@ -126,8 +128,28 @@ incr_offline_queued_messages(V) ->
 incr_online_queued_messages(V) ->
     incr_item([queues, online, messages], V).
 
+incr_item(Entry, Val) when Val >= 0->
+    safe_update_counter(Entry, {2, Val});
 incr_item(Entry, Val) ->
-    exometer:update_or_create(Entry ++ ['last_sec'], Val).
+    safe_update_counter(Entry, {2, Val, 0, 0}). %% no negatives
+
+safe_update_counter(Key, UpdateOp) ->
+    try ets:update_counter(?COUNTER_TAB, Key, UpdateOp) of
+        _ ->
+            ok
+    catch
+        _:_ ->
+            %% key or table do not exist
+            try ets:insert_new(?COUNTER_TAB, {Key, 0}) of
+                _ ->
+                    safe_update_counter(Key, UpdateOp)
+            catch
+                _:_ ->
+                    %% Table not ready, ignore
+                    ok
+            end
+    end.
+
 
 entries() ->
     {ok, entries(undefined)}.
@@ -141,8 +163,6 @@ entries(undefined) ->
                       system_statistics_items()}, [{snmp, []}]},
      {[cpuinfo], {function, ?MODULE, scheduler_utilization, [], proplist,
                  scheduler_utilization_items()}, [{snmp, []}]},
-     {[subscriptions], {function, vmq_reg, total_subscriptions, [], proplist,
-                        [total]}, [{snmp, []}]},
      {[clients, expired], counter,  [{snmp, []}]},
      {[clients, active], counter,   [{snmp, []}]},
      {[clients, inactive], counter, [{snmp, []}]},
@@ -200,6 +220,18 @@ counter_entries() ->
      {[connects, received, last_30sec], counter, [{snmp, []}]},
      {[connects, received, last_min], counter, [{snmp, []}]},
      {[connects, received, last_5min], counter, [{snmp, []}]},
+
+     {[subscribe, received, last_sec], counter, [{snmp, []}]},
+     {[subscribe, received, last_10sec], counter, [{snmp, []}]},
+     {[subscribe, received, last_30sec], counter, [{snmp, []}]},
+     {[subscribe, received, last_min], counter, [{snmp, []}]},
+     {[subscribe, received, last_5min], counter, [{snmp, []}]},
+
+     {[unsubscribe, received, last_sec], counter, [{snmp, []}]},
+     {[unsubscribe, received, last_10sec], counter, [{snmp, []}]},
+     {[unsubscribe, received, last_30sec], counter, [{snmp, []}]},
+     {[unsubscribe, received, last_min], counter, [{snmp, []}]},
+     {[unsubscribe, received, last_5min], counter, [{snmp, []}]},
 
      {[sockets, last_sec], counter, [{snmp, []}]},
      {[sockets, last_10sec], counter, [{snmp, []}]},
@@ -357,6 +389,7 @@ start_link() ->
 init([]) ->
     erlang:system_flag(scheduler_wall_time, true),
     timer:send_interval(1000, calc_stats),
+    ets:new(?COUNTER_TAB, [named_table, public, {write_concurrency, true}]),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -403,25 +436,18 @@ handle_cast(_Msg, State) ->
 handle_info(calc_stats, #state{history=History} = State) ->
     %% this is (MUST be) called every second!
     NewHistory =
-    lists:foldl(
-      fun({Entry,_,_}, AccHistory) ->
-              case lists:reverse(Entry) of
-                  [last_sec|Tail] ->
-                     %% only call this if we hit the 'last_sec' counter
-                      case exometer:get_value(Entry, [value]) of
-                          {error, not_found} ->
-                              ignore;
-                          {ok, [{value, Val}]} ->
-                              exometer:update(Entry, -Val),
-                              H1 = update_sliding_windows(last_10sec, Tail, Val, AccHistory),
-                              H2 = update_sliding_windows(last_30sec, Tail, Val, H1),
-                              H3 = update_sliding_windows(last_min, Tail, Val, H2),
-                              update_sliding_windows(last_5min, Tail, Val, H3)
-                      end;
-                  _ ->
-                      AccHistory
-              end
-      end, History, counter_entries()),
+    ets:foldl(
+      fun({Entry, Val}, AccHistory) ->
+              SecEntryName = Entry ++ [last_sec],
+              Tail = lists:reverse(Entry),
+              _ = exometer:reset(SecEntryName),
+              _ = incr_item(Entry, -Val),
+              _ = exometer:update_or_create(SecEntryName, Val),
+              H1 = update_sliding_windows(last_10sec, Tail, Val, AccHistory),
+              H2 = update_sliding_windows(last_30sec, Tail, Val, H1),
+              H3 = update_sliding_windows(last_min, Tail, Val, H2),
+              update_sliding_windows(last_5min, Tail, Val, H3)
+      end, History, ?COUNTER_TAB),
     {noreply, State#state{history=NewHistory}}.
 
 update_sliding_windows(last_10sec, Base, Val, History) ->
