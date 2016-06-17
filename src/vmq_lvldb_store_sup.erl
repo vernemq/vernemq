@@ -19,7 +19,8 @@
 %% API
 -export([start_link/0,
          get_bucket_pid/1,
-         get_bucket_pids/0]).
+         get_bucket_pids/0,
+         register_bucket_pid/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -34,8 +35,7 @@
 start_link() ->
     {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
     [begin
-         {ok, CPid} = supervisor:start_child(Pid, child_spec(I)),
-         ets:insert(?TABLE, {I, CPid})
+         {ok, _} = supervisor:start_child(Pid, child_spec(I))
      end || I <- lists:seq(1, ?NR_OF_BUCKETS)],
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_write, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_delete, 2),
@@ -55,6 +55,11 @@ get_bucket_pid(Key) when is_binary(Key) ->
 
 get_bucket_pids() ->
     [Pid || [{_, Pid}] <- ets:match(?TABLE, '$1')].
+
+register_bucket_pid(BucketId, BucketPid) ->
+    %% Called from vmq_lvldb_store:init
+    ets:insert(?TABLE, {BucketId, BucketPid}),
+    ok.
 
 %% ===================================================================
 %% Supervisor callbacks
