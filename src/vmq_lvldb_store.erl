@@ -129,6 +129,8 @@ init([InstanceId]) ->
                     lager:info("Found and deleted ~p unreferenced messages in msg store instance ~p",
                                [N, InstanceId])
             end,
+            %% Register Bucket Instance with the Bucket Registry
+            vmq_lvldb_store_sup:register_bucket_pid(InstanceId, self()),
             {ok, State};
         {error, Reason} ->
             {stop, Reason}
