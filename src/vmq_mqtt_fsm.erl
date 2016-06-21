@@ -1059,7 +1059,7 @@ msg_ref() ->
     GUID =
     case get(guid) of
         undefined ->
-            {{node(), time_compat:timestamp()}, 0};
+            {{node(), self(), time_compat:timestamp()}, 0};
         {S, I} ->
             {S, I + 1}
     end,
