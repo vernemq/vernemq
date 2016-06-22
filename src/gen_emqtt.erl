@@ -25,6 +25,7 @@
     subscribe/3,
     unsubscribe/2,
     publish/4,
+    publish/5,
     disconnect/1,
     call/2,
     cast/2]).
@@ -90,7 +91,10 @@ start(Name, Module, Args, Opts) ->
     gen_fsm:start(Name, ?MODULE, [Module, Args, Opts], GenFSMOpts).
 
 publish(P, Topic, Payload, Qos) ->
-    gen_fsm:send_event(P, {publish, Topic, Payload, Qos, false}).
+    publish(P, Topic, Payload, Qos, false).
+
+publish(P, Topic, Payload, Qos, Retain) ->
+    gen_fsm:send_event(P, {publish, Topic, Payload, Qos, Retain, false}).
 
 subscribe(P, [T|_] = Topics) when is_tuple(T) ->
     gen_fsm:send_event(P, {subscribe, Topics}).
@@ -218,12 +222,12 @@ connected({unsubscribe, Topics}, State=#state{transport={Transport, _}, sock=Soc
     {next_state, connected, State#state{msgid='++'(MsgId), waiting_acks=store(Key, {Ref, {unsubscribe, Topics}},
         WAcks), info_fun=NewInfoFun}};
 
-connected({publish, Topic, Payload, QoS, Dup}, #state{msgid=MsgId} = State) ->
-    {next_state, connected, send_publish(MsgId, Topic, Payload, QoS, Dup, State#state{msgid='++'(MsgId)})};
+connected({publish, Topic, Payload, QoS, Retain, Dup}, #state{msgid=MsgId} = State) ->
+    {next_state, connected, send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, State#state{msgid='++'(MsgId)})};
 
-connected({publish, MsgId, Topic, Payload, QoS, _}, State) ->
+connected({publish, MsgId, Topic, Payload, QoS, Retain, _}, State) ->
     %% called in case of retry
-    {next_state, connected, send_publish(MsgId, Topic, Payload, QoS, true, State)};
+    {next_state, connected, send_publish(MsgId, Topic, Payload, QoS, Retain, true, State)};
 
 connected({retry, Key}, #state{transport={Transport,_}, sock=Sock, waiting_acks=WAcks,
     retry_interval=RetryInterval} = State) ->
@@ -540,8 +544,7 @@ send_connect(State= #state{transport={Transport, _}, sock=Sock, username=Usernam
     send_frame(Transport, Sock, Frame),
     State.
 
-
-send_publish(MsgId, Topic, Payload, QoS, Dup, State) ->
+send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, State) ->
     #state{transport={Transport, _}, sock = Sock, waiting_acks=WAcks,
         retry_interval=RetryInterval, info_fun=InfoFun} = State,
     Frame = #mqtt_publish{
@@ -552,7 +555,7 @@ send_publish(MsgId, Topic, Payload, QoS, Dup, State) ->
                      end,
         topic = Topic,
         qos = QoS,
-        retain = false,
+        retain = Retain,
         dup = Dup,
         payload = Payload
     },
@@ -562,7 +565,7 @@ send_publish(MsgId, Topic, Payload, QoS, Dup, State) ->
         0 ->
             State#state{info_fun=NewInfoFun};
         _ ->
-            Msg = {publish, MsgId, Topic, Payload, QoS, true},
+            Msg = {publish, MsgId, Topic, Payload, QoS, Retain, true},
             Key = {publish, MsgId},
             Ref = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
             State#state{waiting_acks=store(Key, {Ref, Msg}, WAcks),
