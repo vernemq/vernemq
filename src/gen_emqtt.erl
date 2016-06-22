@@ -91,7 +91,7 @@ start(Name, Module, Args, Opts) ->
     gen_fsm:start(Name, ?MODULE, [Module, Args, Opts], GenFSMOpts).
 
 publish(P, Topic, Payload, Qos) ->
-    gen_fsm:send_event(P, {publish, Topic, Payload, Qos, false, false}).
+    publish(P, Topic, Payload, Qos, false).
 
 publish(P, Topic, Payload, Qos, Retain) ->
     gen_fsm:send_event(P, {publish, Topic, Payload, Qos, Retain, false}).
