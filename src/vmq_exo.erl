@@ -128,7 +128,8 @@ incr_offline_queued_messages(V) ->
 incr_online_queued_messages(V) ->
     incr_item([queues, online, messages], V).
 
-incr_item(Entry, Val) when Val >= 0->
+incr_item(_, 0) -> ok; %% don't do the update
+incr_item(Entry, Val) when Val > 0->
     safe_update_counter(Entry, {2, Val});
 incr_item(Entry, Val) ->
     safe_update_counter(Entry, {2, Val, 0, 0}). %% no negatives

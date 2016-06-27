@@ -76,6 +76,7 @@
           max_msgs_per_drain_step,
           waiting_call,
           migrations = [],
+          last_emit = os:timestamp(),
           opts
          }).
 
@@ -182,7 +183,7 @@ online({notify_recv, SessionPid}, #state{id=SId, sessions=Sessions} = State) ->
                               Sessions),
     {next_state, online, State#state{sessions=NewSessions}};
 online({enqueue, Msg}, State) ->
-    {next_state, online, insert(Msg, State)};
+    {next_state, online, maybe_emit_stats(insert(Msg, State))};
 online(Event, State) ->
     lager:error("got unknown event in online state ~p", [Event]),
     {next_state, online, State}.
@@ -212,13 +213,13 @@ online({migrate, OtherQueue}, From, State)
 online({set_last_waiting_acks, WAcks}, _From, State) ->
     {reply, ok, online, handle_waiting_acks_and_msgs(WAcks, State)};
 online({enqueue_many, Msgs}, _From, State) ->
-    {reply, ok, online, insert_many(Msgs, State)};
+    {reply, ok, online, maybe_emit_stats(insert_many(Msgs, State))};
 online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
 
 wait_for_offline({enqueue, Msg}, State) ->
-    {next_state, wait_for_offline, insert(Msg, State)};
+    {next_state, wait_for_offline, maybe_emit_stats(insert(Msg, State))};
 wait_for_offline(Event, State) ->
     lager:error("got unknown event in wait_for_offline state ~p", [Event]),
     {next_state, wait_for_offline, State}.
@@ -276,7 +277,7 @@ drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
     %% it would be lost.
     gen_fsm:cancel_timer(TRef),
     gen_fsm:send_event(self(), drain_start),
-    {next_state, drain, insert(Msg, State)};
+    {next_state, drain, maybe_emit_stats(insert(Msg, State))};
 drain(drain_over, #state{waiting_call={migrate, _, From}} =
       #state{offline=#queue{size=0}} = State) ->
     %% we're done with the migrate, offline queue is empty
@@ -311,7 +312,7 @@ offline(init_offline_queue, #state{id=SId} = State) ->
 offline({enqueue, Msg}, #state{id=SId} = State) ->
     _ = vmq_plugin:all(on_offline_message, [SId]),
     %% storing the message in the offline queue
-    {next_state, offline, insert(Msg, State)};
+    {next_state, offline, maybe_emit_stats(insert(Msg, State))};
 offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     %% session has expired cleanup and go down
     vmq_exo:decr_inactive_clients(),
@@ -333,7 +334,7 @@ offline({migrate, OtherQueue}, From, State) ->
     {next_state, state_change(migrate, offline, drain),
      State#state{waiting_call={migrate, OtherQueue, From}}};
 offline({enqueue_many, Msgs}, _From, State) ->
-    {reply, ok, offline, insert_many(Msgs, State)};
+    {reply, ok, offline, maybe_emit_stats(insert_many(Msgs, State))};
 offline(Event, _From, State) ->
     lager:error("got unknown sync event in offline state ~p", [Event]),
     {reply, {error, offline}, offline, State}.
@@ -363,7 +364,6 @@ init([SubscriberId, Clean]) ->
             gen_fsm:send_event(self(), init_offline_queue)
     end,
     vmq_exo:incr_inactive_clients(),
-    erlang:send_after(1000, self(), report_queue_stats),
     {ok, offline,  #state{id=SubscriberId,
                           offline=OfflineQueue,
                           drain_time=DrainTime,
@@ -399,27 +399,8 @@ handle_sync_event(Event, _From, _StateName, State) ->
     {stop, {error, {unknown_sync_event, Event}}, State}.
 
 handle_info({'DOWN', _MRef, process, Pid, _}, StateName, State) ->
+    _ = emit_stats(State),
     handle_session_down(Pid, StateName, State);
-handle_info(report_queue_stats, offline, #state{offline=#queue{size=Size}} = State) ->
-    case Size of
-        0 -> ignore;
-        _ ->
-            vmq_exo:incr_offline_queued_messages(Size)
-    end,
-    erlang:send_after(1000, self(), report_queue_stats),
-    {next_state, offline, State};
-handle_info(report_queue_stats, StateName, #state{sessions=Sessions} = State) ->
-    OnlineSize =
-    maps:fold(fun(_, #session{queue=#queue{size=Size}}, Sum) ->
-                      Sum + Size
-              end, 0, Sessions),
-    case OnlineSize of
-        0 -> ignore;
-        _ ->
-            vmq_exo:incr_online_queued_messages(OnlineSize)
-    end,
-    erlang:send_after(1000, self(), report_queue_stats),
-    {next_state, StateName, State};
 handle_info(_Info, StateName, State) ->
     {next_state, StateName, State}.
 
@@ -840,3 +821,38 @@ queue_split(N, Queue) ->
              L -> L
          end,
     queue:split(NN, Queue).
+
+maybe_emit_stats(#state{last_emit=LastTs} = State) ->
+    {MSecs, Secs, _} = Now = os:timestamp(),
+    case LastTs of
+        {MSecs, Secs, _} ->
+            % same second
+            State;
+        _ ->
+            emit_stats(State),
+            State#state{last_emit=Now}
+    end.
+
+emit_stats(#state{offline=Offline, sessions=Sessions}) when map_size(Sessions) == 0 ->
+    %% offline queue
+    case Offline of
+        #queue{size=0,drop=0} ->
+            % ignore
+            ignore;
+        #queue{size=OfflineSize, drop=OfflineDrop} ->
+            %% we increment the drop counter here, because we
+            %% have no session atm.
+            vmq_exo:incr_offline_queued_messages(OfflineSize),
+            vmq_exo:incr_publishes_dropped(OfflineDrop)
+    end;
+emit_stats(#state{sessions=Sessions}) ->
+    OnlineSize =
+    maps:fold(fun(_, #session{queue=#queue{size=Size}}, Sum) ->
+                      Sum + Size
+              end, 0, Sessions),
+    case OnlineSize of
+        0 -> ignore;
+        _ ->
+            %% the drop counter is incremented in the session
+            vmq_exo:incr_online_queued_messages(OnlineSize)
+    end.

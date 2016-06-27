@@ -24,15 +24,12 @@
 
 -export([msg_ref/0]).
 
--import(lists, [reverse/1, sum/1]).
-
 -define(CLOSE_AFTER, 5000).
 -define(HIBERNATE_AFTER, 5000).
 -define(ALLOWED_MQTT_VERSIONS, [3, 4, 131]).
 -define(MAX_SAMPLES, 10).
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
--type counter() :: {non_neg_integer(), non_neg_integer(), [non_neg_integer()]}.
 -type msg_id() :: undefined | 1..65535.
 
 -record(state, {
@@ -57,11 +54,11 @@
           last_trigger=os:timestamp()       :: timestamp(),
 
           %% stats
-          recv_cnt=init_counter()           :: counter(),
-          send_cnt=init_counter()           :: counter(),
-          pub_recv_cnt=init_counter()       :: counter(),
-          pub_dropped_cnt=init_counter()    :: counter(),
-          pub_send_cnt=init_counter()       :: counter(),
+          recv_cnt=0                        :: non_neg_integer(),
+          send_cnt=0                        :: non_neg_integer(),
+          pub_recv_cnt=0                    :: non_neg_integer(),
+          pub_dropped_cnt=0                 :: non_neg_integer(),
+          pub_send_cnt=0                    :: non_neg_integer(),
 
           %% config
           allow_anonymous=false             :: boolean(),
@@ -183,15 +180,15 @@ serialise([[F|T]|Frames], Acc) ->
 -spec wait_for_connect(mqtt_frame(), state()) ->
     {state(), [mqtt_frame() | binary()]} | {stop, any(), [mqtt_frame() | binary()]}.
 wait_for_connect(#mqtt_connect{keep_alive=KeepAlive} = Frame,
-                 #state{keep_alive_tref=TRef} = State) ->
+                 #state{keep_alive_tref=TRef, recv_cnt=RecvCnt} = State) ->
     cancel_timer(TRef),
     _ = vmq_exo:incr_connect_received(),
     %% the client is allowed "grace" of a half a time period
     set_keepalive_timer(KeepAlive),
-    check_connect(Frame, incr_msg_recv_cnt(
-                           State#state{last_time_active=os:timestamp(),
+    check_connect(Frame, State#state{last_time_active=os:timestamp(),
                                        keep_alive=KeepAlive,
-                                       keep_alive_tref=undefined}));
+                                       keep_alive_tref=undefined,
+                                       recv_cnt=RecvCnt + 1});
 wait_for_connect(close_timeout, State) ->
     lager:debug("[~p] stop due to timeout~n", [self()]),
     terminate(normal, State);
@@ -218,7 +215,7 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
     case {Topic, valid_msg_size(Payload, MaxMessageSize)} of
         {[<<"$", _binary>> |_], _} ->
             %% $SYS
-            {State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)}, []};
+            {State#state{recv_cnt=RecvCnt + 1}, []};
         {_, true} ->
             Msg = #vmq_msg{routing_key=Topic,
                            payload=Payload,
@@ -230,11 +227,11 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
                            msg_ref=msg_ref()},
             dispatch_publish(QoS, MessageId, Msg,
                              State#state{
-                               recv_cnt=incr_msg_recv_cnt(RecvCnt),
-                               pub_recv_cnt=incr_pub_recv_cnt(PubRecvCnt)
+                               recv_cnt=RecvCnt + 1,
+                               pub_recv_cnt=PubRecvCnt + 1
                               });
         {_, false} ->
-            {State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)}, []}
+            {State#state{recv_cnt=RecvCnt + 1}, []}
     end,
     case Ret of
         {error, not_allowed, NewState} ->
@@ -279,10 +276,10 @@ connected(#mqtt_puback{message_id=MessageId}, #state{recv_cnt=RecvCnt, waiting_a
     case maps:get(MessageId, WAcks, not_found) of
         #vmq_msg{} ->
             handle_waiting_msgs(State#state{
-                                  recv_cnt=incr_msg_recv_cnt(RecvCnt),
+                                  recv_cnt=RecvCnt + 1,
                                   waiting_acks=maps:remove(MessageId, WAcks)});
         not_found ->
-            {incr_msg_recv_cnt(State), []}
+            {State#state{recv_cnt=RecvCnt + 1}, []}
     end;
 connected(#mqtt_pubrec{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks, retry_interval=RetryInterval,
@@ -292,14 +289,14 @@ connected(#mqtt_pubrec{message_id=MessageId}, State) ->
         #vmq_msg{} ->
             PubRelFrame = #mqtt_pubrel{message_id=MessageId},
             {State#state{
-               recv_cnt=incr_msg_recv_cnt(RecvCnt),
-               send_cnt=incr_msg_sent_cnt(SendCnt),
+               recv_cnt=RecvCnt + 1,
+               send_cnt=SendCnt + 1,
                retry_queue=set_retry(MessageId, RetryInterval, RetryQueue),
                waiting_acks=maps:update(MessageId, PubRelFrame, WAcks)},
             [PubRelFrame]};
         not_found ->
             lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
-            terminate(normal, incr_msg_recv_cnt(State))
+            terminate(normal, State#state{recv_cnt=RecvCnt + 1})
     end;
 connected(#mqtt_pubrel{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks, username=User, recv_cnt=RecvCnt, send_cnt=SendCnt,
@@ -314,20 +311,20 @@ connected(#mqtt_pubrel{message_id=MessageId}, State) ->
                     {NewState, Msgs} =
                     handle_waiting_msgs(
                       State#state{
-                        recv_cnt=incr_msg_recv_cnt(RecvCnt),
-                        send_cnt=incr_msg_sent_cnt(SendCnt),
+                        recv_cnt=RecvCnt + 1,
+                        send_cnt=SendCnt + 1,
                         waiting_acks=maps:remove({qos2, MessageId}, WAcks)}),
                     {NewState, [#mqtt_pubcomp{message_id=MessageId}|Msgs]};
                 {error, _Reason} ->
                     %% cant publish due to overload or netsplit,
                     %% client will retry
-                    {incr_msg_recv_cnt(State), []}
+                    {State#state{recv_cnt=RecvCnt + 1}, []}
             end;
         not_found ->
             %% already delivered OR we pretended that we delivered the message
             %% as required by 3.1 . Client expects a PUBCOMP
-            {State#state{recv_cnt=incr_msg_recv_cnt(RecvCnt),
-                         send_cnt=incr_msg_sent_cnt(SendCnt)},
+            {State#state{recv_cnt=RecvCnt + 1,
+                         send_cnt=SendCnt + 1},
              [#mqtt_pubcomp{message_id=MessageId}]}
     end;
 connected(#mqtt_pubcomp{message_id=MessageId}, State) ->
@@ -336,53 +333,53 @@ connected(#mqtt_pubcomp{message_id=MessageId}, State) ->
     case maps:get(MessageId, WAcks, not_found) of
         #mqtt_pubrel{} ->
             handle_waiting_msgs(State#state{
-                                  recv_cnt=incr_msg_recv_cnt(RecvCnt),
+                                  recv_cnt=RecvCnt + 1,
                                   waiting_acks=maps:remove(MessageId, WAcks)});
         not_found -> % error or wrong waiting_ack, definitely not well behaving client
             lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
-            terminate(normal, incr_msg_recv_cnt(State))
+            terminate(normal, State#state{recv_cnt=RecvCnt + 1})
     end;
 connected(#mqtt_subscribe{message_id=MessageId, topics=Topics}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
-           trade_consistency=Consistency} = State,
+           trade_consistency=Consistency, recv_cnt=RecvCnt} = State,
     case vmq_reg:subscribe(Consistency, User, SubscriberId, Topics) of
         {ok, QoSs} ->
             {NewState, Out} = send_frame(#mqtt_suback{message_id=MessageId,
                                                       qos_table=QoSs}, State),
-            {incr_msg_recv_cnt(NewState), Out};
+            {NewState#state{recv_cnt=RecvCnt + 1}, Out};
         {error, not_allowed} ->
             %% allow the parser to add the 0x80 Failure return code
             QoSs = [not_allowed || _ <- Topics],
             {NewState, Out} = send_frame(#mqtt_suback{message_id=MessageId,
                                                       qos_table=QoSs}, State),
-            {incr_msg_recv_cnt(NewState), Out};
+            {NewState#state{recv_cnt=RecvCnt + 1}, Out};
         {error, _Reason} ->
             %% cant subscribe due to overload or netsplit,
             %% Subscribe uses QoS 1 so the client will retry
-            {incr_msg_recv_cnt(State), []}
+            {State#state{recv_cnt=RecvCnt + 1}, []}
     end;
 connected(#mqtt_unsubscribe{message_id=MessageId, topics=Topics}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
-           trade_consistency=Consistency} = State,
+           trade_consistency=Consistency, recv_cnt=RecvCnt} = State,
     case vmq_reg:unsubscribe(Consistency, User, SubscriberId, Topics) of
         ok ->
             {NewState, Out} = send_frame(#mqtt_unsuback{message_id=MessageId}, State),
-            {incr_msg_recv_cnt(NewState), Out};
+            {NewState#state{recv_cnt=RecvCnt + 1}, Out};
         {error, _Reason} ->
             %% cant unsubscribe due to overload or netsplit,
             %% Unsubscribe uses QoS 1 so the client will retry
-            {incr_msg_recv_cnt(State), []}
+            {State#state{recv_cnt=RecvCnt + 1}, []}
     end;
-connected(#mqtt_pingreq{}, State) ->
+connected(#mqtt_pingreq{}, #state{recv_cnt=RecvCnt} = State) ->
     {NewState, Out} = send_frame(#mqtt_pingresp{}, State),
-    {incr_msg_recv_cnt(NewState), Out};
-connected(#mqtt_disconnect{}, State) ->
-    terminate(mqtt_client_disconnect, incr_msg_recv_cnt(State));
+    {NewState#state{recv_cnt=RecvCnt + 1}, Out};
+connected(#mqtt_disconnect{}, #state{recv_cnt=RecvCnt} = State) ->
+    terminate(mqtt_client_disconnect, State#state{recv_cnt=RecvCnt + 1});
 connected(retry,
     #state{waiting_acks=WAcks, retry_interval=RetryInterval,
            retry_queue=RetryQueue, send_cnt=SendCnt} = State) ->
     {RetryFrames, NewRetryQueue} = handle_retry(RetryInterval, RetryQueue, WAcks),
-    {State#state{send_cnt=incr_msg_sent_cnt(length(RetryFrames), SendCnt),
+    {State#state{send_cnt=SendCnt + length(RetryFrames),
                  retry_queue=NewRetryQueue}, RetryFrames};
 connected(disconnect, State) ->
     lager:debug("[~p] stop due to disconnect", [self()]),
@@ -706,7 +703,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
         {ok, NewMsg} ->
             Frame = #mqtt_pubrec{message_id=MessageId},
             {State#state{
-               send_cnt=incr_msg_sent_cnt(SendCnt),
+               send_cnt=SendCnt + 1,
                retry_queue=set_retry({qos2, MessageId}, RetryInterval, RetryQueue),
                waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
              [Frame]};
@@ -716,7 +713,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
         {error, not_allowed} ->
             %% we pretend as everything is ok for 3.1 and Bridge
             Frame = #mqtt_pubrec{message_id=MessageId},
-            {drop(State#state{send_cnt=incr_msg_sent_cnt(SendCnt)}), [Frame]};
+            {drop(State#state{send_cnt=SendCnt + 1}), [Frame]};
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             {drop(State), []}
@@ -726,7 +723,7 @@ drop(State) ->
     drop(1, State).
 
 drop(I, #state{pub_dropped_cnt=PubDropped} = State) ->
-    State#state{pub_dropped_cnt=incr_pub_dropped_cnt(I, PubDropped)}.
+    State#state{pub_dropped_cnt=PubDropped + I}.
 
 
 -spec handle_waiting_acks_and_msgs(state()) -> ok.
@@ -797,17 +794,17 @@ handle_messages([], Frames,
                 #state{send_cnt=SendCnt, pub_send_cnt=PubSendCnt} = State, Waiting) ->
     NrOfFrames = length(Frames),
     {State#state{
-       send_cnt=incr_msg_sent_cnt(NrOfFrames, SendCnt),
-       pub_send_cnt=incr_pub_sent_cnt(NrOfFrames, PubSendCnt)},
+       send_cnt=SendCnt + NrOfFrames,
+       pub_send_cnt=PubSendCnt + NrOfFrames},
      Frames, Waiting}.
 
 handle_bin_message({MsgId, Bin}, State) ->
     %% this is called when a pubrel is retried after a client reconnects
     #state{waiting_acks=WAcks, retry_interval=RetryInterval,
            retry_queue=RetryQueue, send_cnt=SendCnt, pub_send_cnt=PubSendCnt} = State,
-    State#state{send_cnt=incr_msg_sent_cnt(SendCnt),
+    State#state{send_cnt=SendCnt + 1,
                 retry_queue=set_retry(MsgId, RetryInterval, RetryQueue),
-                pub_send_cnt=incr_cnt(-1, PubSendCnt), % this will be corrected
+                pub_send_cnt=PubSendCnt - 1, % this will be corrected
                 waiting_acks=maps:put(MsgId, Bin, WAcks)}.
 
 prepare_frame(QoS, Msg, State) ->
@@ -853,7 +850,7 @@ prepare_frame(QoS, Msg, State) ->
 
 -spec send_frame(mqtt_frame(), state()) -> {state(), list()}.
 send_frame(Frame, #state{send_cnt=SendCnt} = State) ->
-    {State#state{send_cnt=incr_msg_sent_cnt(SendCnt)}, [Frame]}.
+    {State#state{send_cnt=SendCnt + 1}, [Frame]}.
 
 -spec maybe_publish_last_will(state()) -> ok.
 maybe_publish_last_will(#state{will_msg=undefined}) -> ok;
@@ -922,24 +919,8 @@ valid_msg_size(Payload, Max) when byte_size(Payload) =< Max -> true;
 valid_msg_size(_, _) -> false.
 
 do_throttle(#state{max_message_rate=0}) -> false;
-do_throttle(#state{max_message_rate=Rate, pub_recv_cnt={AvgRecvCnt,_,_}}) ->
-    AvgRecvCnt > Rate.
-
-init_counter() -> {0, 0, []}.
-
-incr_msg_sent_cnt(SndCnt) -> incr_msg_sent_cnt(1, SndCnt).
-incr_msg_sent_cnt(I, SndCnt) -> incr_cnt(I, SndCnt).
-incr_msg_recv_cnt(#state{recv_cnt=RecvCnt} = St) ->
-    St#state{recv_cnt=incr_msg_recv_cnt(RecvCnt)};
-incr_msg_recv_cnt(RcvCnt) -> incr_cnt(1, RcvCnt).
-incr_pub_recv_cnt(PubRecvCnt) -> incr_cnt(1, PubRecvCnt).
-incr_pub_dropped_cnt(I, PubDroppedCnt) -> incr_cnt(I, PubDroppedCnt).
-incr_pub_sent_cnt(I, PubSendCnt) -> incr_cnt(I, PubSendCnt).
-
-incr_cnt(IncrV, {Avg, Total, []}) ->
-    {Avg, Total + IncrV, [IncrV]};
-incr_cnt(IncrV, {Avg, Total, [V|Vals]}) ->
-    {Avg, Total + IncrV, [V + IncrV|Vals]}.
+do_throttle(#state{max_message_rate=Rate, pub_recv_cnt=RecvCnt}) ->
+    RecvCnt > Rate.
 
 set_last_time_active(true, State) ->
     Now = os:timestamp(),
@@ -969,19 +950,9 @@ trigger_counter_update(State) ->
         pub_dropped_cnt=trigger_counter_update(incr_publishes_dropped,
                                                PubDroppedCnt)}.
 
-trigger_counter_update(_, {_, _, []} = Counter) ->
-    Counter;
-trigger_counter_update(IncrFun, {_, Total, Vals}) ->
-    L = length(Vals),
-    Avg = sum(Vals) div L,
-    _ = apply(vmq_exo, IncrFun, [Avg]),
-    case L < ?MAX_SAMPLES of
-        true ->
-            {Avg, Total, [0|Vals]};
-        false ->
-            % remove oldest sample
-            {Avg, Total, [0|reverse(tl(reverse(Vals)))]}
-    end.
+trigger_counter_update(IncrFun, Count) ->
+    _ = apply(vmq_exo, IncrFun, [Count]),
+    0. % reset
 
 %% Retry Mechanism:
 %%
