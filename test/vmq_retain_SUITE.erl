@@ -141,7 +141,7 @@ retain_qos0_clear_test(_) ->
     {error, timeout} = gen_tcp:recv(Socket, 256, 1000),
     disable_on_publish(),
     disable_on_subscribe(),
-    ok = ok, gen_tcp:close(Socket).
+    ok = gen_tcp:close(Socket).
 
 retain_qos1_qos0_test(_) ->
     Connect = packet:gen_connect("retain-qos1-test", [{keepalive,60}]),
