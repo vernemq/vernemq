@@ -12,7 +12,8 @@
          retain_qos0_repeated_test/1,
          retain_qos0_fresh_test/1,
          retain_qos0_clear_test/1,
-         retain_qos1_qos0_test/1]).
+         retain_qos1_qos0_test/1,
+         publish_empty_retained_msg_test/1]).
 
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
@@ -43,7 +44,8 @@ all() ->
      retain_qos0_repeated_test,
      retain_qos0_fresh_test,
      retain_qos0_clear_test,
-     retain_qos1_qos0_test].
+     retain_qos1_qos0_test,
+     publish_empty_retained_msg_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -139,7 +141,7 @@ retain_qos0_clear_test(_) ->
     {error, timeout} = gen_tcp:recv(Socket, 256, 1000),
     disable_on_publish(),
     disable_on_subscribe(),
-    ok = ok, gen_tcp:close(Socket).
+    ok = gen_tcp:close(Socket).
 
 retain_qos1_qos0_test(_) ->
     Connect = packet:gen_connect("retain-qos1-test", [{keepalive,60}]),
@@ -161,6 +163,35 @@ retain_qos1_qos0_test(_) ->
     disable_on_publish(),
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket).
+
+publish_empty_retained_msg_test(_) ->
+    Connect = packet:gen_connect("retain-clear-test", [{keepalive,60}]),
+    Connack = packet:gen_connack(0),
+    Publish = packet:gen_publish("retain/clear/test", 0, <<"retained message">>, [{retain, true}]),
+    RetainClearPub = packet:gen_publish("retain/clear/test", 0, <<>>, [{retain, true}]),
+    RetainClearSub = packet:gen_publish("retain/clear/test", 0, <<>>, [{retain, false}]),
+    Subscribe = packet:gen_subscribe(592, "retain/clear/test", 0),
+    Suback = packet:gen_suback(592, 0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+
+    enable_on_publish(),
+    enable_on_subscribe(),
+    %% Send retained message
+    ok = gen_tcp:send(Socket, Publish),
+    %% Subscribe to topic, we should get the retained message back.
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = packet:expect_packet(Socket, "publish", Publish),
+
+    %% Now clear the retained message
+    ok = gen_tcp:send(Socket, RetainClearPub),
+    %% Receive the empty payload msg as normal publish.
+    ok = packet:expect_packet(Socket, "publish", RetainClearSub),
+    {error, timeout} = gen_tcp:recv(Socket, 256, 1000),
+    disable_on_publish(),
+    disable_on_subscribe(),
+    ok = gen_tcp:close(Socket).
+    %%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)

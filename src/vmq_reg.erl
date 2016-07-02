@@ -246,14 +246,16 @@ publish(#vmq_msg{trade_consistency=true,
     case IsRetain of
         true when Payload == <<>> ->
             %% retain delete action
-            vmq_retain_srv:delete(MP, Topic);
+            vmq_retain_srv:delete(MP, Topic),
+            vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            ok;
         true ->
             %% retain set action
             vmq_retain_srv:insert(MP, Topic, Payload),
-            RegView:fold(MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
             ok;
         false ->
-            RegView:fold(MP, Topic, fun publish/2, Msg),
+            vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg),
             ok
     end;
 publish(#vmq_msg{trade_consistency=false,
@@ -266,14 +268,16 @@ publish(#vmq_msg{trade_consistency=false,
     case vmq_cluster:is_ready() of
         true when (IsRetain == true) and (Payload == <<>>) ->
             %% retain delete action
-            vmq_retain_srv:delete(MP, Topic);
+            vmq_retain_srv:delete(MP, Topic),
+            vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            ok;
         true when (IsRetain == true) ->
             %% retain set action
             vmq_retain_srv:insert(MP, Topic, Payload),
             vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
             ok;
         true ->
-            RegView:fold(MP, Topic, fun publish/2, Msg),
+            vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg),
             ok;
         false ->
             {error, not_ready}
