@@ -105,7 +105,6 @@ subscribe_op(User, SubscriberId, Topics) ->
               lists:foldl(fun ({_, not_allowed}, AccQoSTable) ->
                                   [not_allowed|AccQoSTable];
                               ({T, QoS}, AccQoSTable) when is_integer(QoS) ->
-                                  _ = vmq_exo:incr_subscription_count(),
                                   deliver_retained(SubscriberId, T, QoS),
                                   [QoS|AccQoSTable]
                           end, [], Topics),
@@ -138,7 +137,6 @@ unsubscribe_op(User, SubscriberId, Topics) ->
               del_subscriptions(TTopics, SubscriberId)
       end,
       fun(_) ->
-              _ = [vmq_exo:decr_subscription_count() || _ <- TTopics],
               ok
       end).
 

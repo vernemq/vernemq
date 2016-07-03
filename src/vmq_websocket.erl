@@ -49,27 +49,18 @@ init_(Req, Opts) ->
     {Peer, Req1} = cowboy_req:peer(Req),
     FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
     FsmState = FsmMod:init(Peer, Opts),
-    _ = vmq_exo:incr_socket_count(),
+    _ = vmq_exo:incr_socket_open(),
     {ok, Req1, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
 
 websocket_handle({binary, Data}, Req, State) ->
     #st{fsm_state=FsmState0,
         fsm_mod=FsmMod,
-        buffer=Buffer,
-        bytes_recv={{M, S, _}, V}} = State,
+        buffer=Buffer} = State,
     NrOfBytes = byte_size(Data),
-    BytesRecvLastSecond = V + NrOfBytes,
-    NewBytesRecv =
-    case os:timestamp() of
-        {M, S, _} = NewTS ->
-            {NewTS, BytesRecvLastSecond};
-        NewTS ->
-            _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
-            {NewTS, 0}
-    end,
+    _ = vmq_exo:incr_bytes_received(NrOfBytes),
     handle_fsm_return(
       FsmMod:data_in(<<Buffer/binary, Data/binary>>, FsmState0),
-      Req, State#st{bytes_recv=NewBytesRecv});
+      Req, State);
 websocket_handle(_Data, Req, State) ->
     {ok, Req, State}.
 
@@ -81,11 +72,11 @@ websocket_info(_Info, Req, State) ->
     {ok, Req, State}.
 
 websocket_terminate(_Reason, _Req, #st{fsm_state=terminated}) ->
-    _ = vmq_exo:decr_socket_count(),
+    _ = vmq_exo:incr_socket_close(),
     ok;
 websocket_terminate(_Reason, _Req, #st{fsm_mod=FsmMod, fsm_state=FsmState}) ->
     _ = FsmMod:msg_in(disconnect, FsmState),
-    _ = vmq_exo:decr_socket_count(),
+    _ = vmq_exo:incr_socket_close(),
     ok.
 
 handle_fsm_return({ok, FsmState, Rest, Out}, Req, State) ->
@@ -112,19 +103,11 @@ handle_fsm_return({error, Reason, Out}, Req, State) ->
     self() ! {?MODULE, terminate},
     maybe_reply(Out, Req, State#st{fsm_state=terminated}).
 
-maybe_reply(Out, Req, #st{bytes_sent={{M, S, _}, V}} = State) ->
+maybe_reply(Out, Req, State) ->
     case iolist_size(Out) of
         0 ->
             {ok, Req, State};
         NrOfBytes ->
-            BytesSentLastSecond = V + NrOfBytes,
-            NewBytesSent =
-            case os:timestamp() of
-                {M, S, _} = NewTS ->
-                    {NewTS, BytesSentLastSecond};
-                NewTS ->
-                    _ = vmq_exo:incr_bytes_sent(BytesSentLastSecond),
-                    {NewTS, 0}
-            end,
-            {reply, {binary, Out}, Req, State#st{bytes_sent=NewBytesSent}}
+            _ = vmq_exo:incr_bytes_sent(NrOfBytes),
+            {reply, {binary, Out}, Req, State}
     end.
