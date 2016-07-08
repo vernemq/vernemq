@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_exo).
+-module(vmq_metrics).
 -behaviour(gen_server).
 -export([
          incr_socket_open/0,
@@ -67,17 +67,18 @@
 
          incr_cluster_bytes_sent/1,
          incr_cluster_bytes_received/1,
-         incr_cluster_bytes_dropped/1,
-         entries/0,
-         reset/0,
-         metrics/0]).
+         incr_cluster_bytes_dropped/1
+        ]).
 
--export([message_rate/0]).
+-export([metrics/0,
+         check_rate/2,
+         reset_counters/0,
+         reset_counter/1,
+         reset_counter/2,
+         counter_val/1]).
 
 %% API functions
--export([start_link/0,
-         system_statistics/0,
-         scheduler_utilization/0]).
+-export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -94,21 +95,6 @@
 %%%===================================================================
 %%% API functions
 %%%===================================================================
-
-message_rate() ->
-    counter(mqtt_msg_rate).
-
-counter(Name) ->
-    CntRef =
-    case get(Name) of
-        undefined ->
-            Ref = mzmetrics:alloc_resource(0, atom_to_list(Name), 8),
-            put(Name, Ref),
-            Ref;
-        Ref ->
-            Ref
-    end,
-    mzmetrics:get_resource_counter(CntRef, 0).
 
 %%% Socket Totals
 incr_socket_open() ->
@@ -253,45 +239,67 @@ incr_item(_, 0) -> ok; %% don't do the update
 incr_item(Entry, Val) when Val > 0->
     case get(Entry) of
         undefined ->
-            CntRef = mzmetrics:alloc_resource(0, atom_to_list(Entry), 8),
-            put(Entry, CntRef),
-            incr_item(Entry, Val);
+            try ets:lookup(?MODULE, Entry) of
+               [{_, CntRef}] ->
+                    put(Entry, CntRef),
+                    incr_item(Entry, Val)
+            catch
+               _:_ ->
+                    %% we don't want to crash a session/queue
+                    %% due to an unavailable counter
+                    ok
+            end;
         CntRef when Val == 1 ->
             mzmetrics:incr_resource_counter(CntRef, 0);
         CntRef ->
             mzmetrics:update_resource_counter(CntRef, 0, Val)
     end.
 
-entries() ->
-    {ok, []}.
+check_rate(RateEntry, MaxRate) ->
+    case get(RateEntry) of
+        undefined ->
+            try ets:lookup(?MODULE, RateEntry) of
+                [{_, CntRef}] ->
+                    put(RateEntry, CntRef),
+                    check_rate(RateEntry, MaxRate)
+            catch
+                _:_ ->
+                    true
+            end;
+        CntRef ->
+            mzmetrics:get_resource_counter(CntRef, 0) =< MaxRate
+    end.
 
-reset() ->
-    lists:foreach(fun(M) ->
-                        case get(M) of
-                            undefined ->
-                                ignore;
-                            CntRef ->
-                                mzmetrics:reset_resource_counter(CntRef, 0)
-                        end
-                end, mzmetrics()).
+counter_val(Entry) ->
+    [{_, CntRef}] = ets:lookup(?MODULE, Entry),
+    mzmetrics:get_resource_counter(CntRef, 0).
+
+reset_counters() ->
+    lists:foreach(
+      fun(Entry) ->
+              reset_counter(Entry)
+      end, counter_entries()).
+
+reset_counter(Entry) ->
+    [{_, CntRef}] = ets:lookup(?MODULE, Entry),
+    mzmetrics:reset_resource_counter(CntRef, 0).
+
+reset_counter(Entry, InitVal) ->
+    reset_counter(Entry),
+    incr_item(Entry, InitVal).
+
 
 metrics() ->
-    lists:foldl(fun(M, Acc) ->
-                        CntRef =
-                        case get(M) of
-                            undefined ->
-                                Ref = mzmetrics:alloc_resource(0, atom_to_list(M), 8),
-                                put(M, Ref),
-                                Ref;
-                            Ref ->
-                                Ref
-                        end,
-                        [{counter, M, mzmetrics:get_resource_counter(CntRef,
-                                                                     0)} | Acc]
-                end, system_statistics(), mzmetrics()).
+    lists:foldl(fun(Entry, Acc) ->
+                        [{counter, Entry,
+                          try counter_val(Entry) of
+                              Value -> Value
+                          catch
+                              _:_ -> 0
+                          end} | Acc]
+                end, system_statistics(), counter_entries()).
 
-
-mzmetrics() ->
+counter_entries() ->
     [socket_open, socket_close, socket_error,
      bytes_received, bytes_sent,
 
@@ -303,7 +311,7 @@ mzmetrics() ->
 
      mqtt_publish_sent, mqtt_puback_sent,
      mqtt_pubrec_sent, mqtt_pubrel_sent, mqtt_pubcomp_sent,
-     mqtt_suback_sent, mqtt_suback_sent, mqtt_pingresp_sent,
+     mqtt_suback_sent, mqtt_pingresp_sent,
 
      mqtt_connect_auth_error,
      mqtt_publish_auth_error,
@@ -326,6 +334,9 @@ mzmetrics() ->
      cluster_bytes_received, cluster_bytes_sent, cluster_bytes_dropped
     ].
 
+rate_entries() ->
+    [msg_in_rate, byte_in_rate,
+     msg_out_rate, byte_out_rate].
 
 
 system_statistics() ->
@@ -347,20 +358,21 @@ system_statistics() ->
      {counter, system_reductions, Total_Reductions},
      {gauge,   system_run_queue, RunQueueLen},
      {counter, system_runtime, Total_Run_Time},
-     {counter, system_wallclock, Total_Wallclock_Time}|scheduler_utilization()].
+     {counter, system_wallclock, Total_Wallclock_Time}|
+     scheduler_utilization()].
 
 scheduler_utilization() ->
     WallTimeTs0 =
-    case erlang:get(vmq_exo_scheduler_wall_time) of
+    case erlang:get(vmq_metrics_scheduler_wall_time) of
         undefined ->
             erlang:system_flag(scheduler_wall_time, true),
             Ts0 = lists:sort(erlang:statistics(scheduler_wall_time)),
-            erlang:put(vmq_exo_scheduler_wall_time, Ts0),
+            erlang:put(vmq_metrics_scheduler_wall_time, Ts0),
             Ts0;
         Ts0 -> Ts0
     end,
     WallTimeTs1 = lists:sort(erlang:statistics(scheduler_wall_time)),
-    erlang:put(vmq_exo_scheduler_wall_time, WallTimeTs1),
+    erlang:put(vmq_metrics_scheduler_wall_time, WallTimeTs1),
     SchedulerUtilization = lists:map(fun({{I, A0, T0}, {I, A1, T1}}) ->
                                              Id =
                                              list_to_atom("system_utilization_scheduler_" ++ integer_to_list(I)),
@@ -398,9 +410,14 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    timer:send_interval(1000, calc_stats),
-    Ref = mzmetrics:alloc_resource(0, "mqtt_msg_rate", 8),
-    {ok, #state{msg_rate_ref=Ref}}.
+    timer:send_interval(1000, calc_rates),
+    ets:new(?MODULE, [public, named_table, {read_concurrency, true}]),
+    lists:foreach(
+      fun(Entry) ->
+              Ref = mzmetrics:alloc_resource(0, atom_to_list(Entry), 8),
+              ets:insert(?MODULE, {Entry, Ref})
+      end, rate_entries() ++ counter_entries()),
+    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -443,21 +460,22 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(calc_stats, #state{msg_rate_ref=Ref, last_pub_recv=LastPubRecv} = State) ->
+handle_info(calc_rates, State) ->
     %% this is (MUST be) called every second!
-    PubRecv = counter(mqtt_publish_received),
-    SocketOpen = counter(socket_open),
-    SocketClose = counter(socket_close),
-    MsgRate =
-    case abs(SocketOpen - SocketClose) of
-        0 ->
-            0;
-        NrOfConns ->
-            abs(PubRecv - LastPubRecv) div NrOfConns
+    SocketOpen = counter_val(socket_open),
+    SocketClose = counter_val(socket_close),
+    case SocketOpen - SocketClose of
+        V when V >= 0 ->
+            %% in theory this should always be positive
+            %% but intermediate counter resets or counter overflows
+            %% could occur
+            lists:foreach(
+              fun(RateEntry) -> calc_rate_per_conn(RateEntry, V) end,
+              rate_entries());
+        _ ->
+            lager:warning("Can't calculate message rates", [])
     end,
-    mzmetrics:reset_resource_counter(Ref, 0),
-    mzmetrics:update_resource_counter(Ref, 0, MsgRate),
-    {noreply, State#state{last_pub_recv=PubRecv}}.
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -487,3 +505,23 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+calc_rate_per_conn(Entry, 0) ->
+    reset_counter(Entry);
+calc_rate_per_conn(Entry, N) ->
+    case counter_val_since_last_call(Entry) of
+        Val when Val >= 0 ->
+            reset_counter(Entry, Val div N);
+        _ ->
+            reset_counter(Entry)
+    end.
+
+counter_val_since_last_call(Entry) ->
+    ActVal = counter_val(Entry),
+    case get({rate, Entry}) of
+        undefined ->
+            put({rate, Entry}, ActVal),
+            ActVal;
+        V ->
+            put({rate, Entry}, ActVal),
+            ActVal - V
+    end.

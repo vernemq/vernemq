@@ -180,10 +180,10 @@ online({notify_recv, SessionPid}, #state{id=SId, sessions=Sessions} = State) ->
     NewSessions = maps:update(SessionPid,
                               Session#session{queue=Queue#queue{backup=queue:new()}},
                               Sessions),
-    _ = vmq_exo:incr_queue_out(queue:len(Backup)),
+    _ = vmq_metrics:incr_queue_out(queue:len(Backup)),
     {next_state, online, State#state{sessions=NewSessions}};
 online({enqueue, Msg}, State) ->
-    _ = vmq_exo:incr_queue_in(),
+    _ = vmq_metrics:incr_queue_in(),
     {next_state, online, insert(Msg, State)};
 online(Event, State) ->
     lager:error("got unknown event in online state ~p", [Event]),
@@ -214,14 +214,14 @@ online({migrate, OtherQueue}, From, State)
 online({set_last_waiting_acks, WAcks}, _From, State) ->
     {reply, ok, online, handle_waiting_acks_and_msgs(WAcks, State)};
 online({enqueue_many, Msgs}, _From, State) ->
-    _ = vmq_exo:incr_queue_in(length(Msgs)),
+    _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, online, insert_many(Msgs, State)};
 online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
 
 wait_for_offline({enqueue, Msg}, State) ->
-    _ = vmq_exo:incr_queue_in(),
+    _ = vmq_metrics:incr_queue_in(),
     {next_state, wait_for_offline, insert(Msg, State)};
 wait_for_offline(Event, State) ->
     lager:error("got unknown event in wait_for_offline state ~p", [Event]),
@@ -247,7 +247,7 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
     case vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, Msgs}) of
         ok ->
             cleanup_queue(SId, DrainQ),
-            _ = vmq_exo:incr_queue_out(queue:len(DrainQ)),
+            _ = vmq_metrics:incr_queue_out(queue:len(DrainQ)),
             case queue:len(NewQ) of
                 L when L > 0 ->
                     gen_fsm:send_event(self(), drain_start),
@@ -281,7 +281,7 @@ drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
     %% it would be lost.
     gen_fsm:cancel_timer(TRef),
     gen_fsm:send_event(self(), drain_start),
-    _ = vmq_exo:incr_queue_in(),
+    _ = vmq_metrics:incr_queue_in(),
     {next_state, drain, insert(Msg, State)};
 drain(drain_over, #state{waiting_call={migrate, _, From}} =
       #state{offline=#queue{size=0}} = State) ->
@@ -317,13 +317,13 @@ offline(init_offline_queue, #state{id=SId} = State) ->
 offline({enqueue, Msg}, #state{id=SId} = State) ->
     _ = vmq_plugin:all(on_offline_message, [SId]),
     %% storing the message in the offline queue
-    _ = vmq_exo:incr_queue_in(),
+    _ = vmq_metrics:incr_queue_in(),
     {next_state, offline, insert(Msg, State)};
 offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     %% session has expired cleanup and go down
     vmq_reg:delete_subscriptions(SId),
     cleanup_queue(SId, Q),
-    _ = vmq_exo:incr_queue_unhandled(queue:len(Q)),
+    _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
     {stop, normal, State};
 offline(Event, State) ->
     lager:error("got unknown event in offline state ~p", [Event]),
@@ -337,7 +337,7 @@ offline({migrate, OtherQueue}, From, State) ->
     {next_state, state_change(migrate, offline, drain),
      State#state{waiting_call={migrate, OtherQueue, From}}};
 offline({enqueue_many, Msgs}, _From, State) ->
-    _ = vmq_exo:incr_queue_in(length(Msgs)),
+    _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, offline, insert_many(Msgs, State)};
 offline(Event, _From, State) ->
     lager:error("got unknown sync event in offline state ~p", [Event]),
@@ -367,7 +367,7 @@ init([SubscriberId, Clean]) ->
             %% vmq_queue_sup supervisor
             gen_fsm:send_event(self(), init_offline_queue)
     end,
-    vmq_exo:incr_queue_setup(),
+    vmq_metrics:incr_queue_setup(),
     {ok, offline,  #state{id=SubscriberId,
                           offline=OfflineQueue,
                           drain_time=DrainTime,
@@ -408,7 +408,7 @@ handle_info(_Info, StateName, State) ->
     {next_state, StateName, State}.
 
 terminate(_Reason, _StateName, _State) ->
-    vmq_exo:incr_queue_teardown(),
+    vmq_metrics:incr_queue_teardown(),
     ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
@@ -550,7 +550,7 @@ disconnect_sessions(#state{sessions=Sessions}) ->
 change_session_state(NewState, SessionPid, #state{id=SId, sessions=Sessions} = State) ->
     #session{queue=#queue{backup=Backup} = Queue} = Session = maps:get(SessionPid, Sessions),
     cleanup_queue(SId, Backup),
-    _ = vmq_exo:incr_queue_out(queue:len(Backup)),
+    _ = vmq_metrics:incr_queue_out(queue:len(Backup)),
     UpdatedSession = change_session_state(NewState,
                                           Session#session{queue=Queue#queue{backup=queue:new()}}),
     NewSessions = maps:update(SessionPid, UpdatedSession, Sessions),
@@ -655,14 +655,14 @@ queue_insert(Offline, MsgOrRef, #queue{max=-1, size=Size, queue=Queue} = Q, SId)
 %% tail drop in case of fifo
 queue_insert(_Offline, MsgOrRef, #queue{type=fifo, max=Max, size=Size, drop=Drop} = Q, SId)
   when Size >= Max ->
-    vmq_exo:incr_queue_drop(),
+    vmq_metrics:incr_queue_drop(),
     maybe_offline_delete(SId, MsgOrRef),
     Q#queue{drop=Drop + 1};
 %% drop oldest in case of lifo
 queue_insert(Offline, MsgOrRef, #queue{type=lifo, max=Max, size=Size, queue=Queue, drop=Drop} = Q, SId)
   when Size >= Max ->
     {{value, OldMsgOrRef}, NewQueue} = queue:out(Queue),
-    vmq_exo:incr_queue_drop(),
+    vmq_metrics:incr_queue_drop(),
     maybe_offline_delete(SId, OldMsgOrRef),
     Q#queue{queue=queue:in(maybe_offline_store(Offline, SId, MsgOrRef), NewQueue), drop=Drop + 1};
 
@@ -687,7 +687,7 @@ send_notification(#session{pid=Pid} = Session) ->
     Session#session{status=passive}.
 
 cleanup_session(SubscriberId, #session{queue=#queue{queue=Q}}) ->
-    _ = vmq_exo:incr_queue_unhandled(queue:len(Q)),
+    _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
     cleanup_queue(SubscriberId, Q).
 
 cleanup_queue(_, {[],[]}) -> ok; %% optimization

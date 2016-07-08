@@ -63,7 +63,7 @@ init(Ref, Socket, Transport, Opts) ->
             %% start accepting messages
             active_once(MaskedSocket),
             process_flag(trap_exit, true),
-            _ = vmq_exo:incr_socket_open(),
+            _ = vmq_metrics:incr_socket_open(),
             loop(#st{socket=MaskedSocket,
                      fsm_state=FsmState,
                      fsm_mod=FsmMod,
@@ -110,7 +110,7 @@ teardown(#st{socket = Socket}, Reason) ->
         _ ->
             lager:warning("[~p] session stopped abnormally due to '~p'", [self(), Reason])
     end,
-    _ = vmq_exo:incr_socket_close(),
+    _ = vmq_metrics:incr_socket_close(),
     close(Socket),
     ok.
 
@@ -143,7 +143,7 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = 
         pending=Pending,
         buffer=Buffer} = State,
     NrOfBytes = byte_size(Data),
-    _ = vmq_exo:incr_bytes_received(NrOfBytes),
+    _ = vmq_metrics:incr_bytes_received(NrOfBytes),
     case FsmMod:data_in(<<Buffer/binary, Data/binary>>, FsmState0) of
         {ok, FsmState1, Rest, Out} ->
             case active_once(Socket) of
@@ -173,7 +173,7 @@ handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}, fsm_mod=FsmM
     _ = FsmMod:msg_in(disconnect, State#st.fsm_state),
     {exit, normal, State};
 handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
-    _ = vmq_exo:incr_socket_error(),
+    _ = vmq_metrics:incr_socket_error(),
     {exit, Error, State};
 handle_message({FsmMod, Msg}, #st{pending=Pending, fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
     case FsmMod:msg_in(Msg, FsmState0) of
@@ -219,7 +219,7 @@ internal_flush(#st{pending=Pending, socket=Socket} = State) ->
         NrOfBytes ->
             case port_cmd(Socket, Pending) of
                 ok ->
-                    _ = vmq_exo:incr_bytes_sent(NrOfBytes),
+                    _ = vmq_metrics:incr_bytes_sent(NrOfBytes),
                     State#st{pending=[]};
                 {error, Reason} ->
                     {exit, Reason, State}

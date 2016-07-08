@@ -99,7 +99,7 @@ handle_message({Proto, _, Data}, #st{socket=Socket,
                         {M, S, _} = TS ->
                             {TS, V + L};
                         TS ->
-                            _ = vmq_exo:incr_cluster_bytes_received(V + L),
+                            _ = vmq_metrics:incr_cluster_bytes_received(V + L),
                             {TS, 0}
                     end,
                     State#st{parser_state=NewParserState, bytes_recv=NewBytesRecv};

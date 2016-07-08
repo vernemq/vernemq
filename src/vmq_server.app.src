@@ -11,7 +11,6 @@
                   os_mon,
                   riak_sysmon,
                   ssl,
-                  exometer_core,
                   jobs,
                   plumtree,
                   vmq_commons,
@@ -60,7 +59,13 @@
 
                     %% used for clustering
                     {vmq, [{{{0,0,0,0}, 18884}, []}]},
-                    {vmqs, []}
+                    {vmqs, []},
+
+                    {http, [
+                            {{{127,0,0,1}, 8888}, [{config_mod, vmq_metrics_http},
+                                                   {config_fun, routes},
+                                                   {nr_of_acceptors, 10}]}
+                           ]}
       ]},
       {outgoing_clustering_buffer_size, 10000},
       {outgoing_connect_opts, []},
@@ -80,9 +85,29 @@
                         {store_dir, "./data/msgstore"},
                         {open_retries, 30},
                         {open_retry_delay, 2000}
-                       ]},
+                       ]}
 
-      {exometer_predefined, {apply, vmq_exo, entries, []}}
-      ]}
+      ]},
+
+      % Graphite
+      {graphite, []},
+      % {graphite, [{host, HostName},                   % single mandatory prop
+      %             {port, 2003}
+      %             {connect_timeout, 5000},
+      %             {reconnect_timeout, 10000},
+      %             {interval, 20000},
+      %             {api_key, ""},
+      %             {prefix, ""}
+      %             ]}
+
+      % Systree
+      {systree, []}
+      % {systree, [{interval, 20000},
+      %            {prefix, [<<"$SYS">>, NodenameBinary]},
+      %            {mountpoint, ""},
+      %            {qos, 0},
+      %            {retain, false},
+      %            {trade_consistency, false},
+      %            {reg_view, vmq_reg_trie}]}
 
  ]}.

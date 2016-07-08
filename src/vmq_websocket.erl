@@ -49,7 +49,7 @@ init_(Req, Opts) ->
     {Peer, Req1} = cowboy_req:peer(Req),
     FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
     FsmState = FsmMod:init(Peer, Opts),
-    _ = vmq_exo:incr_socket_open(),
+    _ = vmq_metrics:incr_socket_open(),
     {ok, Req1, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
 
 websocket_handle({binary, Data}, Req, State) ->
@@ -57,7 +57,7 @@ websocket_handle({binary, Data}, Req, State) ->
         fsm_mod=FsmMod,
         buffer=Buffer} = State,
     NrOfBytes = byte_size(Data),
-    _ = vmq_exo:incr_bytes_received(NrOfBytes),
+    _ = vmq_metrics:incr_bytes_received(NrOfBytes),
     handle_fsm_return(
       FsmMod:data_in(<<Buffer/binary, Data/binary>>, FsmState0),
       Req, State);
@@ -72,11 +72,11 @@ websocket_info(_Info, Req, State) ->
     {ok, Req, State}.
 
 websocket_terminate(_Reason, _Req, #st{fsm_state=terminated}) ->
-    _ = vmq_exo:incr_socket_close(),
+    _ = vmq_metrics:incr_socket_close(),
     ok;
 websocket_terminate(_Reason, _Req, #st{fsm_mod=FsmMod, fsm_state=FsmState}) ->
     _ = FsmMod:msg_in(disconnect, FsmState),
-    _ = vmq_exo:incr_socket_close(),
+    _ = vmq_metrics:incr_socket_close(),
     ok.
 
 handle_fsm_return({ok, FsmState, Rest, Out}, Req, State) ->
@@ -108,6 +108,6 @@ maybe_reply(Out, Req, State) ->
         0 ->
             {ok, Req, State};
         NrOfBytes ->
-            _ = vmq_exo:incr_bytes_sent(NrOfBytes),
+            _ = vmq_metrics:incr_bytes_sent(NrOfBytes),
             {reply, {binary, Out}, Req, State}
     end.
