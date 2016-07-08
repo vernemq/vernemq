@@ -115,8 +115,8 @@
 %% @doc Set the maximum size for client IDs. MQTT v3.1 specifies a
 %% limit of 23 characters
 {mapping, "max_client_id_size", "vmq_server.max_client_id_size", [
-                                                               {default, 23},
-                                                               {commented, 23},
+                                                               {default, 100},
+                                                               {commented, 100},
                                                                {datatype, integer}
                                                               ]}.
 
