@@ -37,6 +37,7 @@ end_per_suite(_Config) ->
 init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, false),
+    vmq_server_cmd:set_config(max_client_id_size, 23),
     vmq_server_cmd:listener_start(1888, []),
     Config.
 
