@@ -1033,12 +1033,18 @@ handle_retry(Now, Interval, {{value, {Ts, MsgId} = Val}, RetryQueue}, WAcks, Acc
             send_after(Interval - NowDiff, retry),
             {Acc, queue:in_r(Val, RetryQueue)};
         false ->
-            NewAcc = get_retry_frame(MsgId, maps:get(MsgId, WAcks, not_found), Acc),
-            NewRetryQueue = queue:in({Now, MsgId}, RetryQueue),
-            handle_retry(Now, Interval, queue:out(NewRetryQueue), WAcks, NewAcc)
+            case get_retry_frame(MsgId, maps:get(MsgId, WAcks, not_found), Acc) of
+                already_acked ->
+                    handle_retry(Now, Interval, queue:out(RetryQueue), WAcks, Acc);
+                NewAcc ->
+                    NewRetryQueue = queue:in({Now, MsgId}, RetryQueue),
+                    handle_retry(Now, Interval, queue:out(NewRetryQueue), WAcks, NewAcc)
+            end
     end;
 handle_retry(_, Interval, {empty, Queue}, _, Acc) when length(Acc) > 0 ->
     send_after(Interval, retry),
+    {Acc, Queue};
+handle_retry(_, _, {empty, Queue}, _, Acc) ->
     {Acc, Queue}.
 
 get_retry_frame(MsgId, #vmq_msg{routing_key=Topic, qos=QoS, retain=Retain,
@@ -1056,9 +1062,9 @@ get_retry_frame(_, #mqtt_pubrec{} = Frame, Acc) ->
     [Frame|Acc];
 get_retry_frame(_, {#mqtt_pubrec{} = Frame, _}, Acc) ->
     [Frame|Acc];
-get_retry_frame(_, not_found, Acc) ->
+get_retry_frame(_, not_found, _) ->
     %% already acked
-    Acc.
+    already_acked.
 
 prop_val(Key, Args, Default) when is_list(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_list/1);
