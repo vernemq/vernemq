@@ -22,7 +22,7 @@
   {env, [
       % session opts
       {allow_anonymous, true},
-      {max_client_id_size, 23},
+      {max_client_id_size, 100},
       {retry_interval, 20},
       {max_inflight_messages, 20},
       {max_message_rate, 0}, % no rate limit

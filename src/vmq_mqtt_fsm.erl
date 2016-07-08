@@ -66,7 +66,7 @@
           %% config
           allow_anonymous=false             :: boolean(),
           mountpoint=""                     :: mountpoint(),
-          max_client_id_size=23             :: non_neg_integer(),
+          max_client_id_size=100            :: non_neg_integer(),
 
           %% changeable by auth_on_register
           max_inflight_messages=20          :: non_neg_integer(), %% 0 means unlimited
