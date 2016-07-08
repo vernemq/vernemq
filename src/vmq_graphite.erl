@@ -112,23 +112,23 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(timeout, undefined) ->
-    case vmq_config:get_env(graphite, []) of
-        [] ->
+    case vmq_config:get_env(graphite_enabled) of
+        false ->
             %% Nothing configured
             %% Retry in 30 Secs
             {noreply, undefined, 30000};
-        Opts ->
-            case proplists:get_value(host, Opts) of
+        true ->
+            case vmq_config:get_env(graphite_host) of
                 undefined ->
                     lager:error("Can't connect to Graphite due to no host configured.", []),
                     {noreply, undefined, 30000};
                 Host ->
-                    Port = proplists:get_value(port, Opts, ?DEFAULT_PORT),
-                    Timeout = proplists:get_value(connect_timeout, Opts,
+                    Port = vmq_config:get_env(graphite_port, ?DEFAULT_PORT),
+                    Timeout = vmq_config:get_env(graphite_connect_timeout,
                                                   ?DEFAULT_CONNECT_TIMEOUT),
                     case gen_tcp:connect(Host, Port, [{mode, list}], Timeout) of
                         {ok, Socket} ->
-                            Interval = proplists:get_value(interval, Opts,
+                            Interval = vmq_config:get_env(graphite_interval,
                                                            ?DEFAULT_INTERVAL),
                             {noreply, Socket, Interval};
                         {error, Reason} ->
@@ -139,15 +139,15 @@ handle_info(timeout, undefined) ->
             end
     end;
 handle_info(timeout, Socket) ->
-     case vmq_config:get_env(graphite) of
-         [] ->
+    case vmq_config:get_env(graphite_enabled) of
+         false ->
             %% Nothing configured
             %% Retry in 30 Secs
             gen_tcp:close(Socket),
             {noreply, undefined, 30000};
-         Opts ->
-             ApiKey = proplists:get_value(api_key, Opts, ""),
-             Prefix = proplists:get_value(prefix, Opts, ""),
+         true ->
+             ApiKey = vmq_config:get_env(graphie_api_key, ""),
+             Prefix = vmq_config:get_env(graphite_prefix, ""),
              DoReconnect =
              lists:foldl(
                fun (_, true) ->
@@ -166,16 +166,14 @@ handle_info(timeout, Socket) ->
              case DoReconnect of
                  true ->
                      gen_tcp:close(Socket),
-                     ReconnectTimeout = proplists:get_value(reconnect_timeout, Opts,
-                                                            ?DEFAULT_RECONNECT_TIMEOUT),
+                     ReconnectTimeout =
+                     vmq_config:get_env(graphite_reconnect_timeout, ?DEFAULT_RECONNECT_TIMEOUT),
                      {noreply, undefined, ReconnectTimeout};
                  false ->
-                     Interval = proplists:get_value(interval, Opts, ?DEFAULT_INTERVAL),
+                     Interval = vmq_config:get_env(graphite_interval, ?DEFAULT_INTERVAL),
                      {noreply, Socket, Interval}
              end
      end.
-
-
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -217,7 +215,8 @@ key(APIKey, Prefix, Metric) ->
 
 %% Add probe and datapoint within probe
 name(Metric) ->
-    [[I, $.] || I <- re:split(atom_to_list(Metric), "_", [{return, list}])].
+    [T|F] = lists:reverse(re:split(atom_to_list(Metric), "_", [{return, list}])),
+    [[I, $.] || I <- lists:reverse(F)] ++ [T].
 
 %% Add value, int or float, converted to list
 value(V) when is_integer(V) -> integer_to_list(V);

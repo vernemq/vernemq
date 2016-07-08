@@ -85,29 +85,30 @@
                         {store_dir, "./data/msgstore"},
                         {open_retries, 30},
                         {open_retry_delay, 2000}
-                       ]}
+                       ]},
 
-      ]},
 
       % Graphite
-      {graphite, []},
-      % {graphite, [{host, HostName},                   % single mandatory prop
-      %             {port, 2003}
-      %             {connect_timeout, 5000},
-      %             {reconnect_timeout, 10000},
-      %             {interval, 20000},
-      %             {api_key, ""},
-      %             {prefix, ""}
-      %             ]}
+      {graphite_enabled, false},
+      %{graphite_host, HostName},                   % single mandatory prop
+      %{graphite_port, 2003}
+      %{graphite_connect_timeout, 5000},
+      %{graphite_reconnect_timeout, 10000},
+      %{graphite_interval, 20000},
+      %{graphite_api_key, ""},
+      %{graphite_prefix, ""}
 
       % Systree
-      {systree, []}
-      % {systree, [{interval, 20000},
-      %            {prefix, [<<"$SYS">>, NodenameBinary]},
-      %            {mountpoint, ""},
-      %            {qos, 0},
-      %            {retain, false},
-      %            {trade_consistency, false},
-      %            {reg_view, vmq_reg_trie}]}
+      {systree_enabled, true}
+      %{systree_interval, 20000},
+      %{systree_prefix, [<<"$SYS">>, NodenameBinary]},
+      %{systree_mountpoint, ""},
+      %{systree_qos, 0},
+      %{systree_retain, false},
+      %{systree_trade_consistency, false},
+      %{systree_reg_view, vmq_reg_trie},
+
+      ]} % end env
+
 
  ]}.

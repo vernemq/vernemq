@@ -62,7 +62,8 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, vmq_config:get_env(enable_systree, false), 1000}.
+    Enabled = vmq_config:get_env(systree_enabled, false),
+    {ok, Enabled, 1000}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -106,30 +107,34 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(timeout, false) ->
-    {noreply, vmq_config:get_env(enable_systree, false), 30000};
+    Enabled = vmq_config:get_env(systree_enabled, false),
+    {noreply, Enabled, 30000};
 handle_info(timeout, true) ->
-    Opts = vmq_config:get_env(systree, []),
-    Interval = proplists:get_value(interval, Opts, ?DEFAULT_INTERVAL),
-    Prefix = proplists:get_value(prefix, Opts, ?DEFAULT_PREFIX),
+    case vmq_config:get_env(systree_enabled, false) of
+        true ->
+            Interval = vmq_config:get_env(systree_interval, ?DEFAULT_INTERVAL),
+            Prefix = vmq_config:get_env(systree_prefix, ?DEFAULT_PREFIX),
+            MsgTmpl = #vmq_msg{
+                         mountpoint=vmq_config:get_env(systree_mountpoint, ""),
+                         qos=vmq_config:get_env(systree_qos, 0),
+                         retain=vmq_config:get_env(systree_retain, false),
+                         trade_consistency=vmq_config:get_env(systree_trade_consistency,
+                                                              vmq_config:get_env(trade_consistency, false)),
+                         reg_view=vmq_config:get_env(systree_reg_view, vmq_reg_trie)
+                        },
+            lists:foreach(
+              fun({_Type, Metric, Val}) ->
+                      vmq_reg:publish(MsgTmpl#vmq_msg{
+                                        routing_key=key(Prefix, Metric),
+                                        payload=val(Val),
+                                        msg_ref=vmq_mqtt_fsm:msg_ref()
+                                       })
+              end, vmq_metrics:metrics()),
+            {noreply, true, Interval};
+        false ->
+            {noreply, false, 30000}
+    end.
 
-    MsgTmpl = #vmq_msg{
-       mountpoint=proplists:get_value(mountpoint, Opts, ""),
-       qos=proplists:get_value(qos, Opts, 0),
-       retain=proplists:get_value(retain, Opts, false),
-       trade_consistency=proplists:get_value(trade_consistency, Opts,
-                                             vmq_config:get_env(trade_consistency,
-                                                               false)),
-       reg_view=proplists:get_value(reg_view, Opts, vmq_reg_trie)
-      },
-    lists:foreach(
-      fun({_Type, Metric, Val}) ->
-              vmq_reg:publish(MsgTmpl#vmq_msg{
-                                routing_key=key(Prefix, Metric),
-                                payload=val(Val),
-                                msg_ref=vmq_mqtt_fsm:msg_ref()
-                               })
-      end, vmq_metrics:metrics()),
-    {noreply, vmq_config:get_env(enable_systree, false), Interval}.
 
 %%--------------------------------------------------------------------
 %% @private

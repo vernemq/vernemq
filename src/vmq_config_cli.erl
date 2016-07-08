@@ -39,7 +39,13 @@ register_config_() ->
      "queue_type",
      "max_message_rate",
      "message_size_limit",
-     "upgrade_outgoing_qos"
+     "upgrade_outgoing_qos",
+     "systree_enabled",
+     "systree_interval",
+     "graphite_enabled",
+     "graphite_host",
+     "graphite_port",
+     "graphite_interval"
     ],
     _ = [clique:register_config([Key], fun register_config_callback/3)
          || Key <- ConfigKeys],
