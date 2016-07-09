@@ -32,7 +32,6 @@
 
          %% used in vmq_server_utils
          total_subscriptions/0,
-         retained/0,
 
          stored/1,
          status/1,
@@ -790,10 +789,6 @@ total_subscriptions() ->
               end, 0, ?SUBSCRIBER_DB,
               [{resolver, lww}]),
     [{total, Total}].
-
--spec retained() -> non_neg_integer().
-retained() ->
-    vmq_retain_srv:size().
 
 stored(SubscriberId) ->
     case get_queue_pid(SubscriberId) of

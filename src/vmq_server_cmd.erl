@@ -82,7 +82,7 @@ listener_delete(Port, Address) when is_integer(Port) and is_list(Address) ->
                             "address", Address], false).
 
 metrics() ->
-    vmq_server_cli:command(["vmq-admin", "metrics"], false).
+    vmq_server_cli:command(["vmq-admin", "metrics", "show"], false).
 
 
 convert_listener_options([{K, true}|Rest], Acc) ->

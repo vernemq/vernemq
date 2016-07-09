@@ -21,7 +21,7 @@
          insert/3,
          delete/2,
          match_fold/4,
-         size/0]).
+         stats/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -77,8 +77,13 @@ match_fold(FoldFun, Acc, MP, Topic) ->
               AccAcc
       end, Acc, ?RETAIN_CACHE).
 
-size() ->
-    ets:info(?RETAIN_CACHE, size).
+stats() ->
+    case ets:info(?RETAIN_CACHE, size) of
+        undefined -> {0, 0};
+        V ->
+            M = ets:info(?RETAIN_CACHE, memory),
+            {V, M}
+    end.
 
 
 %%%===================================================================

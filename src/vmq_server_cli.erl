@@ -56,6 +56,7 @@ register_cli() ->
     vmq_server_stop_cmd(),
     vmq_server_status_cmd(),
     vmq_server_metrics_cmd(),
+    vmq_server_metrics_reset_cmd(),
     vmq_cluster_join_cmd(),
     vmq_cluster_leave_cmd(),
     vmq_cluster_upgrade_cmd(),
@@ -78,6 +79,8 @@ register_cli_usage() ->
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
     clique:register_usage(["vmq-admin", "session", "list"], vmq_session_list_usage()),
+
+    clique:register_usage(["vmq-admin", "metrics"], metrics_usage()),
     ok.
 
 vmq_server_stop_cmd() ->
@@ -110,7 +113,7 @@ vmq_server_status_cmd() ->
     clique:register_command(Cmd, [], [], Callback).
 
 vmq_server_metrics_cmd() ->
-    Cmd = ["vmq-admin", "metrics"],
+    Cmd = ["vmq-admin", "metrics", "show"],
     Callback = fun(_, _, _) ->
                        lists:foldl(
                          fun({Type, Metric, Val}, Acc) ->
@@ -128,6 +131,16 @@ vmq_server_metrics_cmd() ->
                          end, [], vmq_metrics:metrics())
                end,
     clique:register_command(Cmd, [], [], Callback).
+
+vmq_server_metrics_reset_cmd() ->
+    Cmd = ["vmq-admin", "metrics", "reset"],
+    Callback = fun(_, _, _) ->
+                       vmq_metrics:reset_counters(),
+                       [clique_status:text("Done")]
+               end,
+    clique:register_command(Cmd, [], [], Callback).
+
+
 
 vmq_cluster_leave_cmd() ->
     %% is must be ensured that the leaving node has NO online session e.g. by
@@ -463,10 +476,17 @@ session_usage() ->
     ["vmq-admin session <sub-command>\n\n",
      "  Retrieve information on live sessions.\n\n",
      "  Sub-commands:\n",
-     "    list        list all running sessions\n",
+     "    list        lists all running sessions\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 
+metrics_usage() ->
+    ["vmq-admin metrics <sub-command>\n\n",
+     "  Interact with the metrics subsystem.\n\n",
+     "  Sub-commands:\n",
+     "    show        Prints all available metrics for this VerneMQ node.\n",
+     "    reset       Resets all counter metrics.\n"
+    ].
 
 ensure_all_stopped(App)  ->
     ensure_all_stopped([App], []).

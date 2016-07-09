@@ -104,8 +104,6 @@ get_env(App, Key, Default, IgnoreDBConfig) ->
             application:set_env(App, Key, Val),
             Val;
         _ ->
-            lager:warning("Env variable ~p in app ~p not set, use default",
-                          [Key, App]),
             Default
     end.
 

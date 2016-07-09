@@ -240,7 +240,9 @@ incr_item(Entry, Val) when Val > 0->
             try ets:lookup(?MODULE, Entry) of
                [{_, CntRef}] ->
                     put(Entry, CntRef),
-                    incr_item(Entry, Val)
+                    incr_item(Entry, Val);
+                [] ->
+                    lager:error("Invalid Counter ~p", [Entry])
             catch
                _:_ ->
                     %% we don't want to crash a session/queue
@@ -253,6 +255,7 @@ incr_item(Entry, Val) when Val > 0->
             mzmetrics:update_resource_counter(CntRef, 0, Val)
     end.
 
+%% true means current rate is ok.
 check_rate(_, 0) -> true; % 0 means unlimited
 check_rate(RateEntry, MaxRate) ->
     case get(RateEntry) of
@@ -266,7 +269,7 @@ check_rate(RateEntry, MaxRate) ->
                     true
             end;
         CntRef ->
-            mzmetrics:get_resource_counter(CntRef, 0) =< MaxRate
+            mzmetrics:get_resource_counter(CntRef, 0) < MaxRate
     end.
 
 counter_val(Entry) ->
@@ -310,7 +313,7 @@ counter_entries() ->
 
      mqtt_publish_sent, mqtt_puback_sent,
      mqtt_pubrec_sent, mqtt_pubrel_sent, mqtt_pubcomp_sent,
-     mqtt_suback_sent, mqtt_pingresp_sent,
+     mqtt_suback_sent, mqtt_unsuback_sent, mqtt_pingresp_sent,
 
      mqtt_connect_auth_error,
      mqtt_publish_auth_error,
@@ -340,10 +343,13 @@ rate_entries() ->
      {byte_out_rate, bytes_sent}].
 
 misc_statistics() ->
-    {NrOfSubs, NrOfTopics, Memory} = vmq_reg_trie:stats(),
+    {NrOfSubs, NrOfTopics, SMemory} = vmq_reg_trie:stats(),
+    {NrOfRetain, RMemory} = vmq_retain_srv:stats(),
     [{gauge, router_subscriptions, NrOfSubs},
      {gauge, router_topics, NrOfTopics},
-     {gauge, router_memory, Memory},
+     {gauge, router_memory, SMemory},
+     {gauge, retain_messages, NrOfRetain},
+     {gauge, retain_memory, RMemory},
      {gauge, queue_processes, vmq_queue_sup:nr_of_queues()}].
 
 system_statistics() ->
