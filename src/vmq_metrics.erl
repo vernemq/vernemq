@@ -88,9 +88,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {msg_rate_ref, last_pub_recv=0}).
-
--define(COUNTER_TAB, ?MODULE).
+-record(state, {}).
 
 %%%===================================================================
 %%% API functions
@@ -255,6 +253,7 @@ incr_item(Entry, Val) when Val > 0->
             mzmetrics:update_resource_counter(CntRef, 0, Val)
     end.
 
+check_rate(_, 0) -> true; % 0 means unlimited
 check_rate(RateEntry, MaxRate) ->
     case get(RateEntry) of
         undefined ->
@@ -297,7 +296,7 @@ metrics() ->
                           catch
                               _:_ -> 0
                           end} | Acc]
-                end, system_statistics(), counter_entries()).
+                end, system_statistics() ++ misc_statistics(), counter_entries()).
 
 counter_entries() ->
     [socket_open, socket_close, socket_error,
@@ -335,9 +334,17 @@ counter_entries() ->
     ].
 
 rate_entries() ->
-    [msg_in_rate, byte_in_rate,
-     msg_out_rate, byte_out_rate].
+    [{msg_in_rate, mqtt_publish_received},
+     {byte_in_rate, bytes_received},
+     {msg_out_rate, mqtt_publish_sent},
+     {byte_out_rate, bytes_sent}].
 
+misc_statistics() ->
+    {NrOfSubs, NrOfTopics, Memory} = vmq_reg_trie:stats(),
+    [{gauge, router_subscriptions, NrOfSubs},
+     {gauge, router_topics, NrOfTopics},
+     {gauge, router_memory, Memory},
+     {gauge, queue_processes, vmq_queue_sup:nr_of_queues()}].
 
 system_statistics() ->
     {ContextSwitches, _} = erlang:statistics(context_switches),
@@ -412,11 +419,12 @@ start_link() ->
 init([]) ->
     timer:send_interval(1000, calc_rates),
     ets:new(?MODULE, [public, named_table, {read_concurrency, true}]),
+    {RateEntries, _} = lists:unzip(rate_entries()),
     lists:foreach(
       fun(Entry) ->
               Ref = mzmetrics:alloc_resource(0, atom_to_list(Entry), 8),
               ets:insert(?MODULE, {Entry, Ref})
-      end, rate_entries() ++ counter_entries()),
+      end, RateEntries ++ counter_entries()),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -470,7 +478,7 @@ handle_info(calc_rates, State) ->
             %% but intermediate counter resets or counter overflows
             %% could occur
             lists:foreach(
-              fun(RateEntry) -> calc_rate_per_conn(RateEntry, V) end,
+              fun({RateEntry, Entry}) -> calc_rate_per_conn(RateEntry, Entry, V) end,
               rate_entries());
         _ ->
             lager:warning("Can't calculate message rates", [])
@@ -505,14 +513,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-calc_rate_per_conn(Entry, 0) ->
-    reset_counter(Entry);
-calc_rate_per_conn(Entry, N) ->
+calc_rate_per_conn(REntry, _Entry, 0) ->
+    reset_counter(REntry);
+calc_rate_per_conn(REntry, Entry, N) ->
     case counter_val_since_last_call(Entry) of
         Val when Val >= 0 ->
-            reset_counter(Entry, Val div N);
+            reset_counter(REntry, Val div N);
         _ ->
-            reset_counter(Entry)
+            reset_counter(REntry)
     end.
 
 counter_val_since_last_call(Entry) ->

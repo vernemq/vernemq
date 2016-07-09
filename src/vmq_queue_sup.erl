@@ -19,7 +19,8 @@
          start_queue/1,
          get_queue_pid/1,
          fold_queues/2,
-         summary/0]).
+         summary/0,
+         nr_of_queues/0]).
 
 %% Supervisor callbacks
 -export([init/4]).
@@ -119,6 +120,11 @@ summary() ->
               end
       end, {0, 0, 0, 0, 0}).
 
+nr_of_queues() ->
+    case ets:info(?QUEUE_TAB, size) of
+        undefined -> 0;
+        V -> V
+    end.
 
 %%%===================================================================
 %%% Supervisor callbacks
