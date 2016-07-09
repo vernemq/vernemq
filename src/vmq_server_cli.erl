@@ -55,6 +55,7 @@ register_cli() ->
     vmq_server_start_cmd(),
     vmq_server_stop_cmd(),
     vmq_server_status_cmd(),
+    vmq_server_metrics_cmd(),
     vmq_cluster_join_cmd(),
     vmq_cluster_leave_cmd(),
     vmq_cluster_upgrade_cmd(),
@@ -105,6 +106,26 @@ vmq_server_status_cmd() ->
                                              {'Running', IsReady}]|Acc]
                                    end, [], VmqStatus),
                        [clique_status:table(NodeTable)]
+               end,
+    clique:register_command(Cmd, [], [], Callback).
+
+vmq_server_metrics_cmd() ->
+    Cmd = ["vmq-admin", "metrics"],
+    Callback = fun(_, _, _) ->
+                       lists:foldl(
+                         fun({Type, Metric, Val}, Acc) ->
+                                 SType = atom_to_list(Type),
+                                 SMetric = atom_to_list(Metric),
+                                 SVal =
+                                 case Val of
+                                     V when is_integer(V) ->
+                                         integer_to_list(V);
+                                     V when is_float(V) ->
+                                         float_to_list(V)
+                                 end,
+                                 Line = [SType, ".", SMetric, " = ", SVal],
+                                 [clique_status:text(lists:flatten(Line))|Acc]
+                         end, [], vmq_metrics:metrics())
                end,
     clique:register_command(Cmd, [], [], Callback).
 
@@ -416,6 +437,7 @@ usage() ->
      "    session     Retrieve session information\n",
      "    plugin      Manage plugin system\n",
      "    listener    Manage listener interfaces\n",
+     "    metrics     Retrieve System Metrics\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 node_usage() ->
