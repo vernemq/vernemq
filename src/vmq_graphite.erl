@@ -32,7 +32,7 @@
 
 -define(DEFAULT_PORT, 2003).
 -define(DEFAULT_CONNECT_TIMEOUT, 5000).
--define(DEFAULT_RECONNECT_TIMEOUT, 10000).
+-define(DEFAULT_RECONNECT_TIMEOUT, 2000).
 -define(DEFAULT_INTERVAL, 20000).
 
 %% calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}).
@@ -116,12 +116,12 @@ handle_info(timeout, undefined) ->
         false ->
             %% Nothing configured
             %% Retry in 30 Secs
-            {noreply, undefined, 30000};
+            {noreply, undefined, 5000};
         true ->
             case vmq_config:get_env(graphite_host) of
                 undefined ->
                     lager:error("Can't connect to Graphite due to no host configured.", []),
-                    {noreply, undefined, 30000};
+                    {noreply, undefined, 5000};
                 Host ->
                     Port = vmq_config:get_env(graphite_port, ?DEFAULT_PORT),
                     Timeout = vmq_config:get_env(graphite_connect_timeout,
@@ -134,7 +134,7 @@ handle_info(timeout, undefined) ->
                         {error, Reason} ->
                             lager:error("Can't connect to Graphite due to ~p.",
                                         [Reason]),
-                            {noreply, undefined, 30000}
+                            {noreply, undefined, 5000}
                     end
             end
     end;
