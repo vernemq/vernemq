@@ -115,7 +115,7 @@ handle_info(timeout, undefined) ->
     case vmq_config:get_env(graphite_enabled) of
         false ->
             %% Nothing configured
-            %% Retry in 30 Secs
+            %% Retry in 5 Secs
             {noreply, undefined, 5000};
         true ->
             case vmq_config:get_env(graphite_host) of
@@ -142,9 +142,9 @@ handle_info(timeout, Socket) ->
     case vmq_config:get_env(graphite_enabled) of
          false ->
             %% Nothing configured
-            %% Retry in 30 Secs
+            %% Retry in 5 Secs
             gen_tcp:close(Socket),
-            {noreply, undefined, 30000};
+            {noreply, undefined, 5000};
          true ->
              ApiKey = vmq_config:get_env(graphie_api_key, ""),
              Prefix = vmq_config:get_env(graphite_prefix, ""),
