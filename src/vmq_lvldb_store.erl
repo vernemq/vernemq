@@ -41,7 +41,7 @@
                 read_opts = [],
                 write_opts = [],
                 fold_opts = [{fill_cache, false}],
-                open_iterators = []
+                refs = ets:new(?MODULE, [])
                }).
 -type config() :: [{atom(), term()}].
 
@@ -308,19 +308,21 @@ open_db(Opts, State0, RetriesLeft, _) ->
 handle_req({write, {MP, _} = SubscriberId,
             #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
                      routing_key=RoutingKey, payload=Payload}},
-           #state{ref=Bucket, read_opts=ReadOpts, write_opts=WriteOpts}) ->
+           #state{ref=Bucket, refs=Refs, write_opts=WriteOpts}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     RefKey = sext:encode({msg, MsgRef, SubscriberId}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
     IdxVal = term_to_binary({os:timestamp(), Dup, QoS}),
-    case eleveldb:get(Bucket, MsgKey, ReadOpts) of
-        {ok, _} ->
-            eleveldb:write(Bucket, [{put, RefKey, <<>>},
-                                    {put, IdxKey, IdxVal}], WriteOpts);
-        not_found ->
+    case incr_ref(Refs, MsgRef) of
+        1 ->
+            %% new message
             Val = term_to_binary({RoutingKey, Payload}),
             eleveldb:write(Bucket, [{put, MsgKey, Val},
                                     {put, RefKey, <<>>},
+                                    {put, IdxKey, IdxVal}], WriteOpts);
+        _ ->
+            %% only write ref
+            eleveldb:write(Bucket, [{put, RefKey, <<>>},
                                     {put, IdxKey, IdxVal}], WriteOpts)
     end;
 handle_req({read, {MP, _} = SubscriberId, MsgRef},
@@ -343,40 +345,22 @@ handle_req({read, {MP, _} = SubscriberId, MsgRef},
             {error, not_found}
     end;
 handle_req({delete, {MP, _} = SubscriberId, MsgRef},
-           #state{ref=Bucket, fold_opts=FoldOpts, write_opts=WriteOpts}) ->
+           #state{ref=Bucket, refs=Refs, write_opts=WriteOpts}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     RefKey = sext:encode({msg, MsgRef, SubscriberId}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
-    eleveldb:write(Bucket, [{delete, RefKey},
-                            {delete, IdxKey}], WriteOpts),
-    {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts, keys_only),
-    case eleveldb:iterator_move(Itr, MsgKey) of
-        {error, _} ->
-            ok;
-        {ok, MsgKey} ->
-            case eleveldb:iterator_move(Itr, prefetch) of
-                {ok, OtherRefKey} ->
-                    case sext:decode(OtherRefKey) of
-                        {msg, MsgRef, {MP, _}} ->
-                            %% no need to delete
-                            eleveldb:iterator_close(Itr),
-                            ok;
-                        {msg, _, _} ->
-                            %% we deleted last reference, we can delete message
-                            eleveldb:iterator_close(Itr),
-                            eleveldb:write(Bucket, [{delete, MsgKey}], WriteOpts),
-                            ok
-                    end;
-                {error, invalid_iterator} ->
-                    eleveldb:write(Bucket, [{delete, MsgKey}], WriteOpts),
-                    ok;
-                {error, _} ->
-                    ignore
-            end;
-        {ok, _OtherMsgKey} ->
-            lager:warning("couldn't delete ~p due to not found", [MsgRef]),
-            %% we shouldn't end up here
-            ok
+    case decr_ref(Refs, MsgRef) of
+        not_found ->
+            lager:warning("couldn't delete ~p due to not found", [MsgRef]);
+        0 ->
+            %% last one to be deleted
+            eleveldb:write(Bucket, [{delete, RefKey},
+                                    {delete, IdxKey},
+                                    {delete, MsgKey}], WriteOpts);
+        _ ->
+            %% we have to keep the message, but can delete the ref and idx
+            eleveldb:write(Bucket, [{delete, RefKey},
+                                    {delete, IdxKey}], WriteOpts)
     end;
 handle_req({find_for_subscriber_id, SubscriberId},
            #state{ref=Bucket, fold_opts=FoldOpts} = State) ->
@@ -400,12 +384,13 @@ iterate_index_items({ok, IdxKey, IdxVal}, SubscriberId, Acc, Itr, State) ->
             Acc
     end.
 
-check_store(#state{ref=Bucket, fold_opts=FoldOpts, write_opts=WriteOpts}) ->
+check_store(#state{ref=Bucket, fold_opts=FoldOpts, write_opts=WriteOpts,
+                   refs=Refs}) ->
     {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts, keys_only),
-    check_delete_message(Bucket, eleveldb:iterator_move(Itr, first), Itr, WriteOpts,
+    check_store(Bucket, Refs, eleveldb:iterator_move(Itr, first), Itr, WriteOpts,
                          {undefined, undefined, true}, 0).
 
-check_delete_message(Bucket, {ok, Key}, Itr, WriteOpts, {PivotMsgRef, PivotMP, HadRefs} = Pivot, N) ->
+check_store(Bucket, Refs, {ok, Key}, Itr, WriteOpts, {PivotMsgRef, PivotMP, HadRefs} = Pivot, N) ->
     {NewPivot, NewN} =
     case sext:decode(Key) of
         {msg, PivotMsgRef, {PivotMP, ClientId}} when ClientId =/= '' ->
@@ -421,14 +406,34 @@ check_delete_message(Bucket, {ok, Key}, Itr, WriteOpts, {PivotMsgRef, PivotMP, H
             %% -> delete required
             eleveldb:write(Bucket, [{delete, Key}], WriteOpts),
             {{NewPivotMsgRef, NewPivotMP, false}, N + 1}; %% challenge the new message
-        {idx, _, _} ->
+        {idx, _, MsgRef} ->
+            incr_ref(Refs, MsgRef),
             %% ignore idx item atm.
             {Pivot, N}
     end,
-    check_delete_message(Bucket, eleveldb:iterator_move(Itr, next), Itr, WriteOpts, NewPivot, NewN);
-check_delete_message(Bucket, {error, invalid_iterator}, _, WriteOpts, {PivotMsgRef, PivotMP, false}, N) ->
+    check_store(Bucket, Refs, eleveldb:iterator_move(Itr, next), Itr, WriteOpts, NewPivot, NewN);
+check_store(Bucket, _, {error, invalid_iterator}, _, WriteOpts, {PivotMsgRef, PivotMP, false}, N) ->
     Key = sext:encode({msg, PivotMsgRef, {PivotMP, ''}}),
     eleveldb:write(Bucket, [{delete, Key}], WriteOpts),
     N + 1;
-check_delete_message(_Bucket, {error, invalid_iterator}, _, _, {_, _, true}, N) ->
+check_store(_Bucket, _, {error, invalid_iterator}, _, _, {_, _, true}, N) ->
     N.
+
+incr_ref(Refs, MsgRef) ->
+    case ets:insert_new(Refs, {MsgRef, 1}) of
+        true -> 1;
+        false ->
+            ets:update_counter(Refs, MsgRef, 1)
+    end.
+
+decr_ref(Refs, MsgRef) ->
+    try ets:update_counter(Refs, MsgRef, -1) of
+        0 ->
+            ets:delete(Refs, MsgRef),
+            0;
+        V ->
+            V
+    catch
+        _:_ ->
+            not_found
+    end.
