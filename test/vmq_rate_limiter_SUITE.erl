@@ -41,7 +41,8 @@ all() ->
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 publish_rate_limit_test(_) ->
-    Connect = packet:gen_connect("rate-limit-test", [{keepalive, 60}]),
+    %% Rate Limit is enfored in auth_on_register hook
+    Connect = packet:gen_connect("msg-rate-limit-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
     Pub = fun(Sleep, Socket, Id) ->
                   Publish = packet:gen_publish("rate/limit/test", 1,
@@ -56,13 +57,12 @@ publish_rate_limit_test(_) ->
     {T, _} =
     timer:tc(
       fun() ->
-              _ = [Pub(10, Socket, I) || I <- lists:seq(1, 100)], %% inits first movingavg slot
-
-              NrOfSamples = 10,
-              % sending 10 publishes should take us at least 10 seconds
-              _ = [Pub(10, Socket, I) || I <- lists:seq(101, 101 + NrOfSamples)]
+              %% throttling appears at the second message, that's
+              %% why we have to send 11 messages to reach a window
+              %% of 10 seconds
+              _ = [Pub(10, Socket, I) || I <- lists:seq(1, 11)]
       end),
-    %% this should take us more than 10 seconds
+    %% this should take us at least 10 seconds
     TimeInMs = round(T / 1000),
     io:format(user, "time passed in ms/ sample ~p", [TimeInMs]),
     true = TimeInMs > 10000,
@@ -72,11 +72,14 @@ publish_rate_limit_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_register(_Peer, {"", <<"rate-limit-test">>}, _User, _Password, _Clean) ->
+hook_auth_on_register(_Peer, {"", <<"msg-rate-limit-test">>}, _User, _Password, _Clean) ->
     %% this will limit the publisher to 1 message/sec
-    {ok, [{max_message_rate, 1}]}.
+    {ok, [{max_message_rate, 1}]};
+hook_auth_on_register(_Peer, {"", <<"data-rate-limit-test">>}, _User, _Password, _Clean) ->
+    %% this will limit the publisher to 1 message/sec
+    {ok, [{max_data_rate, 100}]}.
 
-hook_auth_on_publish(_, {"", <<"rate-limit-test">>}, _MsgId, _, _, _) -> ok.
+hook_auth_on_publish(_, _, _MsgId, _, _, _) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

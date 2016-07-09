@@ -921,8 +921,7 @@ valid_msg_size(_, _) -> false.
 
 do_throttle(#state{max_message_rate=0}) -> false;
 do_throttle(#state{max_message_rate=Rate}) ->
-    AvgRate = vmq_metrics:message_rate(),
-    AvgRate > Rate.
+    vmq_metrics:check_rate(msg_in_rate, Rate).
 
 set_last_time_active(true, State) ->
     Now = os:timestamp(),
