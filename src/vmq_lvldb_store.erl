@@ -22,7 +22,8 @@
          msg_store_read/2,
          msg_store_delete/2,
          msg_store_find/1,
-         get_ref/1]).
+         get_ref/1,
+         refcount/1]).
 
 -export([msg_store_init_queue_collector/3]).
 
@@ -86,6 +87,9 @@ msg_store_collect(SubscriberId, [Pid|Rest], Acc) ->
 
 get_ref(BucketPid) ->
     gen_server:call(BucketPid, get_ref).
+
+refcount(MsgRef) ->
+    call(MsgRef, {refcount, MsgRef}).
 
 call(Key, Req) ->
     case vmq_lvldb_store_sup:get_bucket_pid(Key) of
@@ -152,6 +156,13 @@ init([InstanceId]) ->
 %%--------------------------------------------------------------------
 handle_call(get_ref, _From, #state{ref=Ref} = State) ->
     {reply, Ref, State};
+handle_call({refcount, MsgRef}, _From, State) ->
+    RefCount =
+    case ets:lookup(State#state.refs, MsgRef) of
+        [] -> 0;
+        [{_, Cnt}] -> Cnt
+    end,
+    {reply, RefCount, State};
 handle_call(Request, _From, State) ->
     {reply, handle_req(Request, State), State}.
 
