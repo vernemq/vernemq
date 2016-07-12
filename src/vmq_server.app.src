@@ -15,7 +15,8 @@
                   plumtree,
                   vmq_commons,
                   vmq_plugin,
-                  clique
+                  clique,
+                  mzmetrics
                  ]},
   {mod, { vmq_server_app, []}},
   {env, [
