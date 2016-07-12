@@ -9,3 +9,5 @@ log
 logs
 .rebar
 rebar.lock
+*.o
+*.so

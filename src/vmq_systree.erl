@@ -1,4 +1,4 @@
-%% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2016 Erlio GmbH Basel Switzerland (http://erl.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -11,17 +11,14 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
-
--module(vmq_retain_srv).
+%%
+-module(vmq_systree).
+-include("vmq_server.hrl").
 
 -behaviour(gen_server).
 
-%% API functions
--export([start_link/0,
-         insert/3,
-         delete/2,
-         match_fold/4,
-         stats/0]).
+%% API
+-export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -31,13 +28,12 @@
          terminate/2,
          code_change/3]).
 
--record(state, {}).
-
--define(RETAIN_DB, {vmq, retain}).
--define(RETAIN_CACHE, ?MODULE).
+-define(SERVER, ?MODULE).
+-define(DEFAULT_INTERVAL, 20000).
+-define(DEFAULT_PREFIX, [<<"$SYS">>, list_to_binary(atom_to_list(node()))]).
 
 %%%===================================================================
-%%% API functions
+%%% API
 %%%===================================================================
 
 %%--------------------------------------------------------------------
@@ -48,43 +44,7 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-    case lists:member(?RETAIN_CACHE, ets:all()) of
-        true ->
-            ignore;
-        false ->
-            ets:new(?RETAIN_CACHE, [public, named_table,
-                                    {read_concurrency, true},
-                                    {write_concurrency, true}])
-    end,
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
-delete(MP, RoutingKey) ->
-    gen_server:call(?MODULE, {delete, {MP, RoutingKey}}, infinity).
-
-insert(MP, RoutingKey, Message) ->
-    ets:insert(?RETAIN_CACHE, {{MP, RoutingKey}, Message, true}).
-
-match_fold(FoldFun, Acc, MP, Topic) ->
-    ets:foldl(
-      fun({{M, T}, Payload, _}, AccAcc) when M == MP ->
-              case vmq_topic:match(T, Topic) of
-                  true ->
-                      FoldFun({T, Payload}, AccAcc);
-                  false ->
-                      AccAcc
-              end;
-         (_, AccAcc) ->
-              AccAcc
-      end, Acc, ?RETAIN_CACHE).
-
-stats() ->
-    case ets:info(?RETAIN_CACHE, size) of
-        undefined -> {0, 0};
-        V ->
-            M = ets:info(?RETAIN_CACHE, memory),
-            {V, M}
-    end.
-
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -102,16 +62,8 @@ stats() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    plumtree_metadata_manager:subscribe(?RETAIN_DB),
-    plumtree_metadata:fold(
-      fun({MPTopic, '$deleted'}, _) ->
-              ets:delete(?RETAIN_CACHE, MPTopic);
-         ({MPTopic, Msg}, _) ->
-              ets:insert(?RETAIN_CACHE, [{MPTopic, Msg, false}])
-      end, ok, ?RETAIN_DB, [{resolver, lww}]),
-    erlang:send_after(vmq_config:get_env(retain_persist_interval, 1000),
-                      self(), persist),
-    {ok, #state{}}.
+    Enabled = vmq_config:get_env(systree_enabled, false),
+    {ok, Enabled, 1000}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -127,9 +79,9 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({delete, MPTopic}, _From, State) ->
-    plumtree_metadata:delete(?RETAIN_DB, MPTopic),
-    {reply, ok, State}.
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -154,19 +106,35 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({deleted, ?RETAIN_DB, Key, _Val}, State) ->
-    ets:delete(?RETAIN_CACHE, Key),
-    {noreply, State};
-handle_info({updated, ?RETAIN_DB, Key, _OldVal, NewVal}, State) ->
-    ets:insert(?RETAIN_CACHE, {Key, NewVal, false}),
-    {noreply, State};
-handle_info(persist, State) ->
-    ets:foldl(fun persist/2, undefined, ?RETAIN_CACHE),
-    erlang:send_after(vmq_config:get_env(retain_persist_interval, 1000),
-                      self(), persist),
-    {noreply, State};
-handle_info(_, State) ->
-    {noreply, State}.
+handle_info(timeout, false) ->
+    Enabled = vmq_config:get_env(systree_enabled, false),
+    {noreply, Enabled, 30000};
+handle_info(timeout, true) ->
+    case vmq_config:get_env(systree_enabled, false) of
+        true ->
+            Interval = vmq_config:get_env(systree_interval, ?DEFAULT_INTERVAL),
+            Prefix = vmq_config:get_env(systree_prefix, ?DEFAULT_PREFIX),
+            MsgTmpl = #vmq_msg{
+                         mountpoint=vmq_config:get_env(systree_mountpoint, ""),
+                         qos=vmq_config:get_env(systree_qos, 0),
+                         retain=vmq_config:get_env(systree_retain, false),
+                         trade_consistency=vmq_config:get_env(systree_trade_consistency,
+                                                              vmq_config:get_env(trade_consistency, false)),
+                         reg_view=vmq_config:get_env(systree_reg_view, vmq_reg_trie)
+                        },
+            lists:foreach(
+              fun({_Type, Metric, Val}) ->
+                      vmq_reg:publish(MsgTmpl#vmq_msg{
+                                        routing_key=key(Prefix, Metric),
+                                        payload=val(Val),
+                                        msg_ref=vmq_mqtt_fsm:msg_ref()
+                                       })
+              end, vmq_metrics:metrics()),
+            {noreply, true, Interval};
+        false ->
+            {noreply, false, 30000}
+    end.
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -191,12 +159,15 @@ terminate(_Reason, _State) ->
 %% @end
 %%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+        {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-persist({MPTopic, Message, true}, Acc) ->
-    plumtree_metadata:put(?RETAIN_DB, MPTopic, Message),
-    Acc;
-persist({_, _, false}, Acc) -> Acc.
+
+key(Prefix, Metric) ->
+    Prefix ++ re:split(atom_to_list(Metric), "_").
+
+val(V) when is_integer(V) -> integer_to_binary(V);
+val(V) when is_float(V) -> float_to_binary(V);
+val(_) -> <<"0">>.

@@ -19,7 +19,8 @@
 
 %% API
 -export([start_link/0,
-         fold/4]).
+         fold/4,
+         stats/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -67,6 +68,22 @@ fold__(FoldFun, Acc, [{_, SubsIdQoS}|Rest]) ->
     fold__(FoldFun, FoldFun(SubsIdQoS, Acc), Rest);
 fold__(_, Acc, []) -> Acc.
 
+
+stats() ->
+    NrOfSubs = info(vmq_trie_subs, size),
+    NrOfTopics = info(vmq_trie_topic, size),
+    Mem1 = info(vmq_trie_subs, memory),
+    Mem2 = info(vmq_trie_topic, memory),
+    Mem3 = info(vmq_trie, memory),
+    Mem4 = info(vmq_trie_node, memory),
+    Memory = Mem1 + Mem2 + Mem3 + Mem4,
+    {NrOfSubs, NrOfTopics, Memory}.
+
+info(T, What) ->
+    case ets:info(T, What) of
+        undefined -> 0;
+        V -> V
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks

@@ -100,7 +100,7 @@ buffer_message(BinMsg, #state{pending=Pending, max_queue_size=Max,
         {M, S, _} = TS ->
             {TS, V + Dropped};
         TS ->
-            _ = vmq_exo:incr_cluster_bytes_dropped(V + Dropped),
+            _ = vmq_metrics:incr_cluster_bytes_dropped(V + Dropped),
             {TS, 0}
     end,
     {Dropped, maybe_flush(State#state{pending=NewPending, bytes_dropped=NewBytesDropped})}.
@@ -169,7 +169,7 @@ internal_flush(#state{pending=Pending, node=Node, transport=Transport,
                 {M, S, _} = TS ->
                     {TS, V + L};
                 TS ->
-                    _ = vmq_exo:incr_cluster_bytes_sent(V + L),
+                    _ = vmq_metrics:incr_cluster_bytes_sent(V + L),
                     {TS, 0}
             end,
             State#state{pending=[], bytes_send=NewBytesSend};

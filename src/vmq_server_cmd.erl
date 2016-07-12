@@ -13,7 +13,8 @@
          listener_start/3,
          listener_stop/2,
          listener_stop/3,
-         listener_delete/2
+         listener_delete/2,
+         metrics/0
         ]).
 
 node_start() ->
@@ -79,6 +80,9 @@ listener_delete(Port, Address) when is_integer(Port) and is_list(Address) ->
     vmq_server_cli:command(["vmq-admin", "listener", "delete",
                             "port", integer_to_list(Port),
                             "address", Address], false).
+
+metrics() ->
+    vmq_server_cli:command(["vmq-admin", "metrics", "show"], false).
 
 
 convert_listener_options([{K, true}|Rest], Acc) ->

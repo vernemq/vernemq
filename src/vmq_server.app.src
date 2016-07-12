@@ -11,12 +11,12 @@
                   os_mon,
                   riak_sysmon,
                   ssl,
-                  exometer_core,
                   jobs,
                   plumtree,
                   vmq_commons,
                   vmq_plugin,
-                  clique
+                  clique,
+                  mzmetrics
                  ]},
   {mod, { vmq_server_app, []}},
   {env, [
@@ -60,7 +60,13 @@
 
                     %% used for clustering
                     {vmq, [{{{0,0,0,0}, 18884}, []}]},
-                    {vmqs, []}
+                    {vmqs, []},
+
+                    {http, [
+                            {{{127,0,0,1}, 8888}, [{config_mod, vmq_metrics_http},
+                                                   {config_fun, routes},
+                                                   {nr_of_acceptors, 10}]}
+                           ]}
       ]},
       {outgoing_clustering_buffer_size, 10000},
       {outgoing_connect_opts, []},
@@ -82,7 +88,28 @@
                         {open_retry_delay, 2000}
                        ]},
 
-      {exometer_predefined, {apply, vmq_exo, entries, []}}
-      ]}
+
+      % Graphite
+      {graphite_enabled, false},
+      %{graphite_host, HostName},                   % single mandatory prop
+      %{graphite_port, 2003}
+      %{graphite_connect_timeout, 5000},
+      %{graphite_reconnect_timeout, 10000},
+      %{graphite_interval, 20000},
+      %{graphite_api_key, ""},
+      %{graphite_prefix, ""}
+
+      % Systree
+      {systree_enabled, true}
+      %{systree_interval, 20000},
+      %{systree_prefix, [<<"$SYS">>, NodenameBinary]},
+      %{systree_mountpoint, ""},
+      %{systree_qos, 0},
+      %{systree_retain, false},
+      %{systree_trade_consistency, false},
+      %{systree_reg_view, vmq_reg_trie},
+
+      ]} % end env
+
 
  ]}.

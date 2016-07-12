@@ -41,6 +41,7 @@ all() ->
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 publish_rate_limit_test(_) ->
+    %% Rate Limit is enfored in auth_on_register hook
     Connect = packet:gen_connect("rate-limit-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
     Pub = fun(Sleep, Socket, Id) ->
@@ -56,13 +57,15 @@ publish_rate_limit_test(_) ->
     {T, _} =
     timer:tc(
       fun() ->
-              _ = [Pub(10, Socket, I) || I <- lists:seq(1, 100)], %% inits first movingavg slot
-
-              NrOfSamples = 10,
-              % sending 10 publishes should take us at least 10 seconds
-              _ = [Pub(10, Socket, I) || I <- lists:seq(101, 101 + NrOfSamples)]
+              %% throttling appears at the second message, that's
+              %% why we have to send 11 messages to reach a window
+              %% of 10 seconds
+              _ = [Pub(10, Socket, I) || I <- lists:seq(1, 5)],
+              %% sleep 1 sec to ensure that the calc_rate_per_conn was triggered
+              timer:sleep(1000),
+              _ = [Pub(10, Socket, I) || I <- lists:seq(1, 10)]
       end),
-    %% this should take us more than 10 seconds
+    %% this should take us at least 10 seconds
     TimeInMs = round(T / 1000),
     io:format(user, "time passed in ms/ sample ~p", [TimeInMs]),
     true = TimeInMs > 10000,
@@ -76,7 +79,7 @@ hook_auth_on_register(_Peer, {"", <<"rate-limit-test">>}, _User, _Password, _Cle
     %% this will limit the publisher to 1 message/sec
     {ok, [{max_message_rate, 1}]}.
 
-hook_auth_on_publish(_, {"", <<"rate-limit-test">>}, _MsgId, _, _, _) -> ok.
+hook_auth_on_publish(_, _, _MsgId, _, _, _) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

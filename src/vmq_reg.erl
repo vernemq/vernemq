@@ -32,7 +32,6 @@
 
          %% used in vmq_server_utils
          total_subscriptions/0,
-         retained/0,
 
          stored/1,
          status/1,
@@ -105,7 +104,6 @@ subscribe_op(User, SubscriberId, Topics) ->
               lists:foldl(fun ({_, not_allowed}, AccQoSTable) ->
                                   [not_allowed|AccQoSTable];
                               ({T, QoS}, AccQoSTable) when is_integer(QoS) ->
-                                  _ = vmq_exo:incr_subscription_count(),
                                   deliver_retained(SubscriberId, T, QoS),
                                   [QoS|AccQoSTable]
                           end, [], Topics),
@@ -138,7 +136,6 @@ unsubscribe_op(User, SubscriberId, Topics) ->
               del_subscriptions(TTopics, SubscriberId)
       end,
       fun(_) ->
-              _ = [vmq_exo:decr_subscription_count() || _ <- TTopics],
               ok
       end).
 
@@ -792,10 +789,6 @@ total_subscriptions() ->
               end, 0, ?SUBSCRIBER_DB,
               [{resolver, lww}]),
     [{total, Total}].
-
--spec retained() -> non_neg_integer().
-retained() ->
-    vmq_retain_srv:size().
 
 stored(SubscriberId) ->
     case get_queue_pid(SubscriberId) of

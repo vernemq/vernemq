@@ -28,9 +28,7 @@
              fsm_state,
              proto_tag,
              pending=[],
-             throttled=false,
-             bytes_recv={os:timestamp(), 0},
-             bytes_send={os:timestamp(), 0}}).
+             throttled=false}).
 
 %% API.
 start_link(Ref, Socket, Transport, Opts) ->
@@ -65,7 +63,7 @@ init(Ref, Socket, Transport, Opts) ->
             %% start accepting messages
             active_once(MaskedSocket),
             process_flag(trap_exit, true),
-            _ = vmq_exo:incr_socket_count(),
+            _ = vmq_metrics:incr_socket_open(),
             loop(#st{socket=MaskedSocket,
                      fsm_state=FsmState,
                      fsm_mod=FsmMod,
@@ -112,7 +110,7 @@ teardown(#st{socket = Socket}, Reason) ->
         _ ->
             lager:warning("[~p] session stopped abnormally due to '~p'", [self(), Reason])
     end,
-    _ = vmq_exo:decr_socket_count(),
+    _ = vmq_metrics:incr_socket_close(),
     close(Socket),
     ok.
 
@@ -143,51 +141,39 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = 
     #st{fsm_state=FsmState0,
         socket=Socket,
         pending=Pending,
-        buffer=Buffer,
-        bytes_recv={{M, S, _}, V}} = State,
+        buffer=Buffer} = State,
     NrOfBytes = byte_size(Data),
-    BytesRecvLastSecond = V + NrOfBytes,
-    NewBytesRecv =
-    case os:timestamp() of
-        {M, S, _} = NewTS ->
-            {NewTS, BytesRecvLastSecond};
-        NewTS ->
-            _ = vmq_exo:incr_bytes_received(BytesRecvLastSecond),
-            {NewTS, 0}
-    end,
+    _ = vmq_metrics:incr_bytes_received(NrOfBytes),
     case FsmMod:data_in(<<Buffer/binary, Data/binary>>, FsmState0) of
         {ok, FsmState1, Rest, Out} ->
             case active_once(Socket) of
                 ok ->
                     maybe_flush(State#st{fsm_state=FsmState1,
                                          pending=[Pending|Out],
-                                         buffer=Rest,
-                                         bytes_recv=NewBytesRecv});
+                                         buffer=Rest});
                 {error, Reason} ->
                     {exit, Reason, State#st{pending=[Pending|Out],
                                                fsm_state=FsmState1}}
             end;
         {stop, Reason, Out} ->
-            {exit, Reason, State#st{pending=[Pending|Out],
-                                       bytes_recv=NewBytesRecv}};
+            {exit, Reason, State#st{pending=[Pending|Out]}};
         {throttle, FsmState1, Rest, Out} ->
             erlang:send_after(1000, self(), restart_work),
             maybe_flush(State#st{fsm_state=FsmState1,
                                  pending=[Pending|Out],
                                  throttled=true,
-                                 buffer=Rest,
-                                 bytes_recv=NewBytesRecv});
+                                 buffer=Rest});
         {error, Reason, Out} ->
             lager:debug("[~p][~p] parse error '~p' for data: ~p and  parser state: ~p",
                         [Proto, self(), Reason, Data, Buffer]),
-            {exit, Reason, State#st{pending=[Pending|Out],
-                                    bytes_recv=NewBytesRecv}}
+            {exit, Reason, State#st{pending=[Pending|Out]}}
     end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}, fsm_mod=FsmMod} = State) ->
     %% we regard a tcp_closed as 'normal'
     _ = FsmMod:msg_in(disconnect, State#st.fsm_state),
     {exit, normal, State};
 handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
+    _ = vmq_metrics:incr_socket_error(),
     {exit, Error, State};
 handle_message({FsmMod, Msg}, #st{pending=Pending, fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
     case FsmMod:msg_in(Msg, FsmState0) of
@@ -227,23 +213,17 @@ maybe_flush(#st{pending=Pending} = State) ->
             State
     end.
 
-internal_flush(#st{pending=[]} = State) -> State;
-internal_flush(#st{pending=Pending, socket=Socket,
-                   bytes_send={{M, S, _}, V}} = State) ->
-    case port_cmd(Socket, Pending) of
-        ok ->
-            NrOfBytes = iolist_size(Pending),
-            NewBytesSend =
-            case os:timestamp() of
-                {M, S, _} = TS ->
-                    {TS, V + NrOfBytes};
-                TS ->
-                    _ = vmq_exo:incr_bytes_sent(V + NrOfBytes),
-                    {TS, 0}
-            end,
-            State#st{pending=[], bytes_send=NewBytesSend};
-        {error, Reason} ->
-            {exit, Reason, State}
+internal_flush(#st{pending=Pending, socket=Socket} = State) ->
+    case iolist_size(Pending) of
+        0 -> State#st{pending=[]};
+        NrOfBytes ->
+            case port_cmd(Socket, Pending) of
+                ok ->
+                    _ = vmq_metrics:incr_bytes_sent(NrOfBytes),
+                    State#st{pending=[]};
+                {error, Reason} ->
+                    {exit, Reason, State}
+            end
     end.
 
 %% gen_tcp:send/2 does a selective receive of {inet_reply, Sock,
