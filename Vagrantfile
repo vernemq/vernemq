@@ -39,8 +39,8 @@ fi
     make rel
 SCRIPT
 
-$vernemq_release = '0.12.5p5'
-$erlang_release = '17.5'
+$vernemq_release = '0.13.1'
+$erlang_release = '18.3'
 
 $configs = {
     :jessie => {:sys => :apt, :img => 'debian/jessie64'},
