@@ -215,7 +215,7 @@ maybe_flush(#st{pending=Pending} = State) ->
 
 internal_flush(#st{pending=Pending, socket=Socket} = State) ->
     case iolist_size(Pending) of
-        0 -> State;
+        0 -> State#st{pending=[]};
         NrOfBytes ->
             case port_cmd(Socket, Pending) of
                 ok ->
