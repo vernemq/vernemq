@@ -519,7 +519,7 @@
                                                                     ]}.
 
 {mapping, "listener.http.$name.config_fun", "vmq_server.listeners", [
-                                                                     {default, vmq_metrics_http},
+                                                                     {default, routes},
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}.
