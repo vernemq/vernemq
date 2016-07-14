@@ -56,6 +56,7 @@ random_port() ->
 
 teardown() ->
     disable_all_plugins(),
+    vmq_metrics:reset_counters(),
     vmq_server:stop(),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
     _ = [eleveldb:destroy(Datadir ++ "/meta/" ++ integer_to_list(I), [])
