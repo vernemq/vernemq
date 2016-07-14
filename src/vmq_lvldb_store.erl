@@ -419,7 +419,9 @@ check_store(Bucket, Refs, {ok, Key}, Itr, WriteOpts, {PivotMsgRef, PivotMP, HadR
             {{NewPivotMsgRef, NewPivotMP, false}, N + 1}; %% challenge the new message
         {idx, _, MsgRef} ->
             incr_ref(Refs, MsgRef),
-            %% ignore idx item atm.
+            {Pivot, N};
+        Entry ->
+            lager:warning("Inconsistent message store entry detected: ~p", [Entry]),
             {Pivot, N}
     end,
     check_store(Bucket, Refs, eleveldb:iterator_move(Itr, next), Itr, WriteOpts, NewPivot, NewN);
