@@ -693,19 +693,29 @@ fold_sessions(FoldFun, Acc) ->
 
 -spec add_subscriber([{topic(), qos() | not_allowed}], subscriber_id()) -> ok.
 add_subscriber(Topics, SubscriberId) ->
+    Node = node(),
     NewSubs =
     case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined ->
             %% not_allowed topics are filtered out here
-            [{Topic, QoS, node()} || {Topic, QoS} <- Topics, is_integer(QoS)];
+            [{Topic, QoS, Node} || {Topic, QoS} <- Topics, is_integer(QoS)];
         Subs ->
             lists:foldl(fun ({_Topic, not_allowed}, NewSubsAcc) ->
                                 NewSubsAcc;
                             ({Topic, QoS}, NewSubsAcc) ->
-                                NewSub = {Topic, QoS, node()},
-                                case lists:member(NewSub, NewSubsAcc) of
-                                    true -> NewSubsAcc;
+                                NewSub = {Topic, QoS, Node},
+                                case lists:keyfind(Topic, 1, NewSubsAcc) of
+                                    NewSub ->
+                                        %% exactly the same subscription
+                                        %% ignore it
+                                        NewSubsAcc;
+                                    {Topic, _, Node} ->
+                                        %% same topic filter, but different qos
+                                        %% replace subscription: [MQTT-3.8.4-3]
+                                        lists:keyreplace(Topic, 1, NewSubsAcc,
+                                                         NewSub);
                                     false ->
+                                        %% new subscription
                                         [NewSub|NewSubsAcc]
                                 end
                         end, Subs, Topics)
