@@ -1,5 +1,83 @@
 # Changelog
 
+## VERNEMQ 0.13.0
+
+### vmq_server
+
+- Major refactoring of the metrics subsystem:
+    Graphite and Systree metric reporters are now part of vmq_server and don't
+    rely on exometer_core anymore. Instead of exometer_core a more efficient Erlang
+    NIF based counter implementation is used (mzmetrics). As a result of superseding
+    exometer_core many new metrics are available now, and most of the old ones don't
+    exist anymore. With the removal of the exometer_core dependency we gave up the
+    native support for SNMP (in vmq_snmp). In order to leverage many other available
+    monitoring solutions and don't have to bloat VerneMQ we introduce a Prometheus
+    metrics HTTP handler, which enables the great open source monitoring solution
+    Prometheus (with a rich set of reporters, including SNMP) to scrape metrics from
+    VerneMQ. Please check the documentation and adjust your monitoring solutions.
+
+- LevelDB message store performance improvement for QoS 1 and 2 message
+
+- Fix a memory leak in message retry mechanism
+
+- Fix a message leak in the LevelDB message store:
+    Since VerneMQ 0.12.5p4 the leaked messages were detected on broker start and
+    automatically garbage collected.
+
+- Simplify changing the nodename in case of a single node cluster
+
+- MQTT conformance, session present MQTT-3.2.2-2
+
+- MQTT conformance, will message must not be published if client sends
+    'DISCONNECT' message: MQTT-3.1.2-8
+
+- MQTT conformance, unauthorized publishes are positively acknowledged: MQTT-3.3.5-2
+
+- MQTT conformance, pass empty retained message on to subscribers: MQTT-3.3.1-11
+
+- Several minor bugs fixes
+
+### vmq_acl
+
+- Lines starting with '#' are treated as comments
+
+- Added mountpoint pattern '%m' support for pattern matches
+
+- Minor bug fixes
+
+### vmq_passwd
+
+- Minor bug fixes
+
+### vmq_systree
+
+- Not included anymore, systree metrics are now reported by `vmq_server`:
+    Make sure to check the new configuration for systree. Please check the 
+    documentation and adjust your monitoring solutions.
+
+### vmq_graphite
+
+- Not included anymore, graphite metrics are now reported by `vmq_server`:
+    Make sure to check the new configuration for graphite. Please check the 
+    documentation and adjust your monitoring solutions.
+
+### vmq_snmp
+
+- Not included anymore, SNMP isn't natively supported anymore:
+    `vmq_server` has a new HTTP metrics handler that exports all metrics in the
+    Prometheus format. Prometheus is an open source monitoring solution that has
+    multiple options for reporting metrics, including SNMP.
+
+### vmq_commons
+
+- Minor bug fixes
+
+### General
+
+- Binary packages are now using Erlang OTP 18.3, this requires a recompilation of
+    your custom Erlang plugins. 
+    
+
 ## VERNEMQ 0.12.5
 
 ### vmq_server
