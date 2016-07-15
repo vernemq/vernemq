@@ -420,7 +420,7 @@ terminate(mqtt_client_disconnect, #state{clean_session=CleanSession} = State) ->
             false ->
                 handle_waiting_acks_and_msgs(State)
         end,
-    {stop, mqtt_client_disconnect, []};
+    {stop, normal, []};
 terminate(Reason, #state{clean_session=CleanSession} = State) ->
     _ = case CleanSession of
             true -> ok;
