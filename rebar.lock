@@ -79,5 +79,5 @@
   1},
  {<<"vmq_server">>,
   {git,"git://github.com/erlio/vmq_server.git",
-       {ref,"af8037cd653bb34a7aadafe4b78ff60b2fbe15bc"}},
+       {ref,"470a8a2c5f2ace6607d1142a28d270595130b7d5"}},
   0}].
