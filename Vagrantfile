@@ -28,9 +28,9 @@ fi
     chmod a+x kerl
     ./kerl update releases
     ./kerl build $4 $4
-    mkdir -p erlang
-    ./kerl install $4 erlang/
-    . erlang/activate
+    mkdir -p erlang-$4
+    ./kerl install $4 erlang-$4/
+    . erlang-$4/activate
     
     if cd vernemq; then 
         git checkout master
