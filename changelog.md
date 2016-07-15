@@ -10,11 +10,11 @@
     NIF based counter implementation is used (mzmetrics). As a result of superseding
     exometer_core many new metrics are available now, and most of the old ones don't
     exist anymore. With the removal of the exometer_core dependency we gave up the
-    native support for SNMP (in vmq_snmp). In order to leverage many other available
-    monitoring solutions and don't have to bloat VerneMQ we introduce a Prometheus
-    metrics HTTP handler, which enables the great open source monitoring solution
-    Prometheus (with a rich set of reporters, including SNMP) to scrape metrics from
-    VerneMQ. Please check the documentation and adjust your monitoring solutions.
+    native support for SNMP (in vmq_snmp). We introduce a Prometheus metrics HTTP 
+    handler, which enables the great open source monitoring solution Prometheus 
+    (with a rich set of reporters, including SNMP) to scrape metrics from VerneMQ. 
+    Please check the [documentation](https://vernemq.com/docs/monitoring/) and 
+    adjust your monitoring solutions.
 
 - LevelDB message store performance improvement for QoS 1 and 2 message
 
