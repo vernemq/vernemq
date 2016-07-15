@@ -18,7 +18,8 @@
          unsubscribe_qos2_test/1,
          subpub_qos0_test/1,
          subpub_qos1_test/1,
-         subpub_qos2_test/1]).
+         subpub_qos2_test/1,
+         resubscribe_test/1]).
 
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
@@ -57,7 +58,8 @@ all() ->
      unsubscribe_qos2_test,
      subpub_qos0_test,
      subpub_qos1_test,
-     subpub_qos2_test].
+     subpub_qos2_test,
+     resubscribe_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -208,6 +210,45 @@ subpub_qos2_test(_) ->
     disable_on_publish(),
     ok = gen_tcp:close(Socket).
 
+resubscribe_test(_) ->
+    %% test that we can override a subscription
+    Connect = packet:gen_connect("sub-override-test", [{keepalive,60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(530, "sub/override/qos", 0),
+    Suback = packet:gen_suback(530, 0),
+    ReSubscribe = packet:gen_subscribe(531, "sub/override/qos", 1),
+    ReSuback = packet:gen_suback(531, 1),
+    Publish1 = packet:gen_publish("sub/override/qos", 1, <<"message">>, [{mid, 1}]),
+    Puback = packet:gen_puback(1),
+    Publish0 = packet:gen_publish("sub/override/qos", 0, <<"message">>, []),
+
+
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    enable_on_publish(),
+    %% max qos is 0, receive qos0 publish
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = gen_tcp:send(Socket, Publish1),
+    ok = packet:expect_packet(Socket, "puback", Puback),
+    ok = packet:expect_packet(Socket, "publish0", Publish0),
+
+    %% max qos is 1, receive qos1 publish
+    ok = gen_tcp:send(Socket, ReSubscribe),
+    ok = packet:expect_packet(Socket, "suback", ReSuback),
+    ok = gen_tcp:send(Socket, Publish1),
+    ok = packet:expect_packet(Socket, "puback", Puback),
+    ok = packet:expect_packet(Socket, "publish1", Publish1),
+    ok = gen_tcp:send(Socket, Puback),
+
+    disable_on_publish(),
+    ok = gen_tcp:close(Socket).
+
+
+
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -228,11 +269,14 @@ hook_auth_on_subscribe(_,{"", <<"subscribe-multi2-test">>},
     {error, not_allowed};
 hook_auth_on_subscribe(_,{"", <<"subpub-qos0-test">>}, [{[<<"subpub">>,<<"qos0">>], 0}]) -> ok;
 hook_auth_on_subscribe(_,{"", <<"subpub-qos1-test">>}, [{[<<"subpub">>,<<"qos1">>], 1}]) -> ok;
-hook_auth_on_subscribe(_,{"", <<"subpub-qos2-test">>}, [{[<<"subpub">>,<<"qos2">>], 2}]) -> ok.
+hook_auth_on_subscribe(_,{"", <<"subpub-qos2-test">>}, [{[<<"subpub">>,<<"qos2">>], 2}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"sub-override-test">>},
+                       [{[<<"sub">>,<<"override">>,<<"qos">>], _}]) -> ok.
 
 hook_auth_on_publish(_, {"", <<"subpub-qos0-test">>}, _MsgId, [<<"subpub">>,<<"qos0">>], <<"message">>, false) -> ok;
 hook_auth_on_publish(_, {"", <<"subpub-qos1-test">>}, _MsgId, [<<"subpub">>,<<"qos1">>], <<"message">>, false) -> ok;
-hook_auth_on_publish(_, {"", <<"subpub-qos2-test">>}, _MsgId, [<<"subpub">>,<<"qos2">>], <<"message">>, false) -> ok.
+hook_auth_on_publish(_, {"", <<"subpub-qos2-test">>}, _MsgId, [<<"subpub">>,<<"qos2">>], <<"message">>, false) -> ok;
+hook_auth_on_publish(_, {"", <<"sub-override-test">>}, _MsgId, [<<"sub">>,<<"override">>,<<"qos">>], <<"message">>, false) -> ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
