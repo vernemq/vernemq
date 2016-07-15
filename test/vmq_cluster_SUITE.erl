@@ -53,16 +53,14 @@ init_per_testcase(Case, Config) ->
                       {Node, P}
               end, [{test1, 18883},
                     {test2, 18884},
-                    {test3, 18885},
-                    {test4, 18886},
-                    {test5, 18887}]),
+                    {test3, 18885}]),
     {CoverNodes, _} = lists:unzip(Nodes),
     {ok, _} = ct_cover:add_nodes(CoverNodes),
     [{nodes, Nodes}|Config].
 
 end_per_testcase(_, _Config) ->
     vmq_cluster_test_utils:pmap(fun(Node) -> ct_slave:stop(Node) end,
-                                [test1, test2, test3, test4, test5]),
+                                [test1, test2, test3]),
     ok.
 
 all() ->
@@ -132,10 +130,10 @@ multiple_connect_unclean_test(Config) ->
                          fun(N) ->
                                  rpc:call(N, vmq_reg, total_subscriptions, [])
                          end, [{total, 1}]),
-    Payloads = publish_random(Nodes, 100, Topic),
+    Payloads = publish_random(Nodes, 20, Topic),
     ok = vmq_cluster_test_utils:wait_until(
            fun() ->
-                   100 == rpc:call(RandomNode, vmq_reg, stored,
+                   20 == rpc:call(RandomNode, vmq_reg, stored,
                                    [{"", <<"connect-unclean">>}])
            end, 60, 500),
     ok = receive_publishes(Nodes, Topic, Payloads).
@@ -177,7 +175,7 @@ cluster_leave_test(Config) ->
     ok = ensure_cluster(Config),
     {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "cluster/leave/topic",
-    %% create 100 sessions
+    %% create 8 sessions
     [PubSocket|_] = Sockets =
     [begin
          Connect = packet:gen_connect("connect-" ++ integer_to_list(I),
@@ -190,7 +188,7 @@ cluster_leave_test(Config) ->
          ok = gen_tcp:send(Socket, Subscribe),
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
-     end || I <- lists:seq(1,100)],
+     end || I <- lists:seq(1,8)],
     ok = wait_until_converged(Nodes,
                          fun(N) ->
                                  rpc:call(N, vmq_reg, total_subscriptions, [])
@@ -202,7 +200,7 @@ cluster_leave_test(Config) ->
     ok = packet:expect_packet(PubSocket, "puback", Puback),
     ok = vmq_cluster_test_utils:wait_until(
            fun() ->
-                   {100, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup, summary, [])
+                   {8, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup, summary, [])
            end, 60, 500),
     %% Pick a control node for initiating the cluster leave
     [{CtrlNode, _}|_] = RestNodes,
@@ -213,13 +211,13 @@ cluster_leave_test(Config) ->
     ok = wait_until_converged(RestNodes,
                               fun(N) ->
                                       rpc:call(N, vmq_queue_sup, summary, [])
-                              end, {0, 0, 0, 25, 25}).
+                              end, {0, 0, 0, 4, 4}).
 
 cluster_leave_dead_node_test(Config) ->
     ok = ensure_cluster(Config),
     {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "cluster/leave/dead/topic",
-    %% create 100 sessions on first Node
+    %% create 10 sessions on first Node
     _ =
     [begin
          Connect = packet:gen_connect("connect-d-" ++ integer_to_list(I),
@@ -233,11 +231,11 @@ cluster_leave_dead_node_test(Config) ->
          ok = packet:expect_packet(Socket, "suback", Suback),
          gen_tcp:send(Socket, packet:gen_disconnect()),
          gen_tcp:close(Socket)
-     end || I <- lists:seq(1,100)],
+     end || I <- lists:seq(1,10)],
     ok = wait_until_converged(Nodes,
                          fun(N) ->
                                  rpc:call(N, vmq_reg, total_subscriptions, [])
-                         end, [{total, 100}]),
+                         end, [{total, 10}]),
     %% stop first node
     ct_slave:stop(Node),
 
@@ -251,7 +249,7 @@ cluster_leave_dead_node_test(Config) ->
     ok = wait_until_converged(RestNodes,
                               fun(N) ->
                                       rpc:call(N, vmq_queue_sup, summary, [])
-                              end, {0, 0, 0, 25, 0}).
+                              end, {0, 0, 0, 5, 0}).
 
 publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess) ->
     publish(self(), Nodes, NrOfProcesses, NrOfMsgsPerProcess, []).
@@ -291,7 +289,7 @@ publish_random(Nodes, N, Topic, Acc) ->
     Connect = packet:gen_connect("connect-unclean-pub", [{clean_session, true},
                                                          {keepalive, 10}]),
     Connack = packet:gen_connack(0),
-    Payload = crypto:rand_bytes(random:uniform(10000)),
+    Payload = crypto:rand_bytes(random:uniform(50)),
     Publish = packet:gen_publish(Topic, 1, Payload, [{mid, N}]),
     Puback = packet:gen_puback(N),
     Disconnect = packet:gen_disconnect(),

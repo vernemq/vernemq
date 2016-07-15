@@ -58,16 +58,16 @@ all() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 qos1_online(_) ->
-    lists:foreach(fun qos1_online_test/1, lists:seq(1, 100)).
+    lists:foreach(fun qos1_online_test/1, lists:seq(1, 30)).
 
 qos2_online(_) ->
-    lists:foreach(fun qos2_online_test/1, lists:seq(1, 100)).
+    lists:foreach(fun qos2_online_test/1, lists:seq(1, 30)).
 
 qos1_offline(_) ->
-    lists:foreach(fun qos1_offline_test/1, lists:seq(1, 100)).
+    lists:foreach(fun qos1_offline_test/1, lists:seq(1, 30)).
 
 qos2_offline(_) ->
-    lists:foreach(fun qos2_offline_test/1, lists:seq(1, 100)).
+    lists:foreach(fun qos2_offline_test/1, lists:seq(1, 30)).
 
 
 qos1_online_test(MaxInflightMsgs) ->
