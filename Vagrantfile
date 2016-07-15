@@ -6,11 +6,16 @@ $script = <<SCRIPT
 if [ "$2" = "apt" ]; then
     sudo apt-get update
     sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade
-    if [ "$1" = "precise"]; then
+    if [ "$1" = "precise" ]; then
         # precise comes with a too old version of git, not compatible with rebar3
         sudo apt-get install -y software-properties-common python-software-properties
         sudo add-apt-repository -y ppa:git-core/ppa
+        # precise comes with a too old C++ compiler, not compatible with mzmetrics
+        sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
         sudo apt-get update
+        sudo apt-get -y install build-essential gcc-4.8 g++-4.8
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.8 50
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.8 50
     fi
     sudo apt-get -y install curl build-essential git packaging-dev libssl-dev openssl libncurses5-dev
 elif [ "$2" = "yum" ]; then
@@ -48,6 +53,7 @@ $configs = {
     :trusty => {:sys => :apt, :img => 'ubuntu/trusty64', :primary => true},
     :precise => {:sys => :apt, :img => 'ubuntu/precise64'},
     :centos7 => {:sys => :yum, :img => 'puppetlabs/centos-7.0-64-nocm'},
+    :xenial => {:sys => :apt, :img => 'ubuntu/xenial64'},
 }
 
 Vagrant.configure(2) do |config|
