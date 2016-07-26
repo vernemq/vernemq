@@ -1,6 +1,6 @@
 # Changelog
 
-## VERNEMQ 0.13.0
+## VERNEMQ 0.13.1
 
 ### vmq_server
 
