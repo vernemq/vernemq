@@ -11,7 +11,7 @@
   2},
  {<<"eleveldb">>,
   {git,"git://github.com/erlio/eleveldb.git",
-       {ref,"f6886d25338d09594a0fb85422cdf795b6e7753f"}},
+       {ref,"bc30c2c96636e8fd2113ab45e4b725fbba48fd2f"}},
   2},
  {<<"eper">>,{pkg,<<"eper">>,<<"0.94.0">>},0},
  {<<"getopt">>,{pkg,<<"getopt">>,<<"0.8.2">>},1},
