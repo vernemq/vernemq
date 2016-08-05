@@ -20,6 +20,7 @@
 %%
 {runner_script_dir,     "$(cd `dirname $0` ; /bin/pwd)"}.
 {runner_base_dir,       "$(cd `dirname $0` ; /bin/pwd)/.."}.
+{runner_bin_dir,        "$RUNNER_SCRIPT_DIR/"}.
 {runner_etc_dir,        "$RUNNER_BASE_DIR/etc"}.
 {runner_log_dir,        "$RUNNER_BASE_DIR/log"}.
 {runner_lib_dir,        "$RUNNER_BASE_DIR/lib"}.
@@ -38,6 +39,8 @@
 {mqtt_default_ws_port, @MQTTWSPORT@}.
 {cluster_default_ip, "0.0.0.0"}.
 {cluster_default_port, @CLUSTERPORT@}.
+{http_default_ip, "0.0.0.0"}.
+{http_default_port, @METRICSPORT@}.
 
 %% lager
 {console_log_default, both}.
