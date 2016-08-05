@@ -46,7 +46,7 @@ publish_rate_limit_test(_) ->
     Connack = packet:gen_connack(0),
     Pub = fun(Sleep, Socket, Id) ->
                   Publish = packet:gen_publish("rate/limit/test", 1,
-                                               crypto:rand_bytes(1460), [{mid, Id}]),
+                                               crypto:strong_rand_bytes(1460), [{mid, Id}]),
                   Puback = packet:gen_puback(Id),
                   ok = gen_tcp:send(Socket, Publish),
                   ok = packet:expect_packet(Socket, "puback", Puback),

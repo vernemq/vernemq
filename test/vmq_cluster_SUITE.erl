@@ -27,6 +27,7 @@
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(_Config) ->
+    {ok, rnd} = rand_compat:init(),
     %lager:start(),
     %% this might help, might not...
     os:cmd(os:find_executable("epmd")++" -daemon"),
@@ -261,7 +262,7 @@ publish(Self, [Node|Rest] = Nodes, NrOfProcesses, NrOfMsgsPerProcess, Pids) ->
 
 publish_(Self, Node, NrOfMsgsPerProcess) ->
     {A, B, C} =  os:timestamp(),
-    random:seed(A, B, C),
+    rnd:seed(A, B, C),
     publish__(Self, Node, NrOfMsgsPerProcess).
 publish__(Self, _, 0) ->
     Self ! done;
@@ -272,12 +273,12 @@ publish__(Self, {{_, Port}, Nodes} = Conf, NrOfMsgsPerProcess) ->
         {ok, Socket} ->
             check_unique_client("connect-multiple", Nodes),
             gen_tcp:close(Socket),
-            timer:sleep(random:uniform(100)),
+            timer:sleep(rnd:uniform(100)),
             publish__(Self, Conf, NrOfMsgsPerProcess - 1);
         {error, closed} ->
             %% this happens if at the same time the same client id
             %% connects to the cluster
-            timer:sleep(random:uniform(100)),
+            timer:sleep(rnd:uniform(100)),
             publish__(Self, Conf, NrOfMsgsPerProcess)
     end.
 
@@ -289,7 +290,7 @@ publish_random(Nodes, N, Topic, Acc) ->
     Connect = packet:gen_connect("connect-unclean-pub", [{clean_session, true},
                                                          {keepalive, 10}]),
     Connack = packet:gen_connack(0),
-    Payload = crypto:rand_bytes(random:uniform(50)),
+    Payload = crypto:strong_rand_bytes(rnd:uniform(50)),
     Publish = packet:gen_publish(Topic, 1, Payload, [{mid, N}]),
     Puback = packet:gen_puback(N),
     Disconnect = packet:gen_disconnect(),
@@ -346,11 +347,11 @@ hook_auth_on_subscribe(_, _, _) -> ok.
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 random_node(Nodes) ->
-    lists:nth(random:uniform(length(Nodes)), Nodes).
+    lists:nth(rnd:uniform(length(Nodes)), Nodes).
 
 
 opts(Nodes) ->
-    {_, Port} = lists:nth(random:uniform(length(Nodes)), Nodes),
+    {_, Port} = lists:nth(rnd:uniform(length(Nodes)), Nodes),
     [{port, Port}].
 
 check_unique_client(ClientId, Nodes) ->
