@@ -184,7 +184,7 @@ register_subscriber(SessionPid, SubscriberId,
     % remap subscriber... enabling that new messages will eventually
     % reach the new queue.
     % Remapping triggers remote nodes to initiate queue migration
-    {SubscriptionsPresent, _ChangedNodes} = maybe_remap_subscriber(SubscriberId, QueueOpts),
+    {SubscriptionsPresent, ChangedNodes} = maybe_remap_subscriber(SubscriberId, QueueOpts),
     SessionPresent1 = SubscriptionsPresent or QueuePresent,
     SessionPresent2 =
     case CleanSession of
@@ -196,7 +196,7 @@ register_subscriber(SessionPid, SubscriberId,
         false ->
             %wait_for_changed_nodes(SubscriberId, ChangedNodes),
             %% wait_quorum(SubscriberId),
-            vmq_queue:block_until_migrated(QPid),
+            block_until_migrated(SubscriberId, ChangedNodes),
             SessionPresent1
     end,
     case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
@@ -217,6 +217,18 @@ register_subscriber(SessionPid, SubscriberId,
             register_subscriber(SessionPid, SubscriberId, QueueOpts, N -1);
         ok ->
             {ok, SessionPresent2, QPid}
+    end.
+
+block_until_migrated(_, []) -> ok;
+block_until_migrated(SubscriberId, [Node|Rest] = ChangedNodes) ->
+    %% Typically ChangedNodes should only contain one item
+    case rpc:call(Node, ?MODULE, get_queue_pid, [SubscriberId]) of
+        not_found ->
+            %% queue has been migrated, try next node
+            block_until_migrated(SubscriberId, Rest);
+        QPid when is_pid(QPid) ->
+            timer:sleep(100),
+            block_until_migrated(SubscriberId, ChangedNodes)
     end.
 
 -spec register_session(subscriber_id(), map()) -> {ok, pid()}.
@@ -350,13 +362,7 @@ migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = A
 
                     %% block until 'Target' has changes
                     has_remote_subscriptions_changed(SubscriberId, Target),
-                    case rpc:call(Target, vmq_queue_sup, get_queue_pid, [SubscriberId])
-                    of
-                        RemoteQPid when is_pid(RemoteQPid) ->
-                            vmq_queue:block_until_migrated(RemoteQPid);
-                        _ ->
-                            ignore
-                    end
+                    block_until_migrated(SubscriberId, [OldNode])
             end,
             {Targets ++ [Target], AccQs + 1, AccMsgs + TotalStoredMsgs};
         _ ->
@@ -426,13 +432,6 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
             plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs)),
             %% block until 'Target' has changes
             has_remote_subscriptions_changed(SubscriberId, Target),
-            case rpc:call(Target, vmq_queue_sup, get_queue_pid, [SubscriberId])
-            of
-                RemoteQPid when is_pid(RemoteQPid) ->
-                    vmq_queue:block_until_migrated(RemoteQPid);
-                _ ->
-                    ignore
-            end,
             {DeadNodes, Targets ++ [Target], N + 1};
         false ->
             {DeadNodes, Targets, N}

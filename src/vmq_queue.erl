@@ -24,8 +24,6 @@
          notify_recv/1,
          enqueue/2,
          status/1,
-         migration_status/1,
-         block_until_migrated/1,
          add_session/3,
          get_sessions/1,
          set_opts/2,
@@ -75,7 +73,6 @@
           drain_over_timer,
           max_msgs_per_drain_step,
           waiting_call,
-          migrations = [],
           opts
          }).
 
@@ -127,11 +124,6 @@ set_last_waiting_acks(Queue, WAcks) ->
 migrate(Queue, OtherQueue) ->
     %% Migrate Messages of 'Queue' to 'OtherQueue'
     %% -------------------------------------------
-
-    %% inform 'OtherQueue' about the migration process,
-    %% see 'block_until_migrated/1' how the status information is used.
-    gen_fsm:send_all_state_event(OtherQueue, {migrate_info, Queue}),
-
     case catch gen_fsm:sync_send_event(Queue, {migrate, OtherQueue}, infinity) of
         {'EXIT', {normal, _}} ->
             ok;
@@ -145,19 +137,6 @@ migrate(Queue, OtherQueue) ->
 
 status(Queue) ->
     gen_fsm:sync_send_all_state_event(Queue, status, infinity).
-
-migration_status(Queue) ->
-    gen_fsm:sync_send_all_state_event(Queue, migration_status, infinity).
-
-block_until_migrated(Queue) ->
-    timer:sleep(100),
-    case migration_status(Queue) of
-        [] ->
-            ok;
-        _ ->
-            block_until_migrated(Queue)
-    end.
-
 
 default_opts() ->
     #{allow_multiple_sessions => vmq_config:get_env(allow_multiple_sessions),
@@ -375,18 +354,9 @@ init([SubscriberId, Clean]) ->
                           max_msgs_per_drain_step=MaxMsgsPerDrainStep,
                           opts=Defaults}}.
 
-handle_event({migrate_info, RemoteQueue}, StateName,
-             #state{migrations=Migrations} = State) ->
-    NewMigrations = [RemoteQueue|Migrations],
-    {next_state, StateName, State#state{migrations=NewMigrations}};
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
-handle_sync_event(migration_status, _From, StateName,
-                  #state{migrations=Migrations} = State) ->
-    NewMigrations =
-    [MQPid || MQPid <- Migrations, rpc:pinfo(MQPid, status) /= undefined],
-    {reply, NewMigrations, StateName, State#state{migrations=NewMigrations}};
 handle_sync_event(status, _From, StateName,
                   #state{deliver_mode=Mode, offline=#queue{size=OfflineSize},
                          sessions=Sessions, opts=#{is_plugin := IsPlugin}} = State) ->
