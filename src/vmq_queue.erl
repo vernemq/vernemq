@@ -218,41 +218,40 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
                           waiting_call={migrate, RemoteQueue, From}} = State) ->
     {DrainQ, NewQ} = queue_split(DrainStepSize, Q),
     #queue{queue=DecompressedDrainQ} = decompress_queue(SId, #queue{queue=DrainQ}),
+    case queue:to_list(DecompressedDrainQ) of
+        [] ->
+            %% no need to drain!
 
-    Msgs = queue:to_list(DecompressedDrainQ),
-    %% remote_enqueue triggers an enqueue_many inside the remote queue
-    %% but forces the traffic to go over the distinct communication link
-    %% instead of the erlang distribution link.
-    case vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, Msgs}) of
-        ok ->
-            cleanup_queue(SId, DrainQ),
-            _ = vmq_metrics:incr_queue_out(queue:len(DrainQ)),
-            case queue:len(NewQ) of
-                L when L > 0 ->
+            %% the extra timeout gives the chance that pending messages
+            %% in the erlang mailbox could still get enqueued and
+            %% therefore eventually transmitted to the remote queue
+            {next_state, drain,
+             State#state{drain_over_timer=gen_fsm:send_event_after(DrainTimeout, drain_over),
+                         offline=Queue#queue{size=0, drop=0, queue=queue:new()}}};
+        Msgs ->
+            %% remote_enqueue triggers an enqueue_many inside the remote queue
+            %% but forces the traffic to go over the distinct communication link
+            %% instead of the erlang distribution link.
+
+            case vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, Msgs}) of
+                ok ->
+                    cleanup_queue(SId, DrainQ),
+                    _ = vmq_metrics:incr_queue_out(queue:len(DrainQ)),
                     gen_fsm:send_event(self(), drain_start),
                     {next_state, drain,
-                     State#state{offline=Queue#queue{size=L, drop=0,
-                                                     queue=NewQ}}};
-                _ ->
-                    %% the extra timeout gives the chance that pending messages
-                    %% in the erlang mailbox could still get enqueued and
-                    %% therefore eventually transmitted to the remote queue
-                    {next_state, drain,
-                     State#state{drain_over_timer=gen_fsm:send_event_after(DrainTimeout, drain_over),
-                                 offline=Queue#queue{size=0, drop=0,
-                                                     queue=queue:new()}}}
-            end;
-        {error, Reason} ->
-            %% this shouldn't happen, as the register_subscriber is synchronized
-            %% using the vmq_reg_leader process. However this could theoretically
-            %% happen in case of an inconsistent (but un-detected) cluster state.
-            %% we don't drain in this case.
-            lager:error("can't drain queue '~p' for [~p][~p] due to ~p",
-                          [SId, self(), RemoteQueue, Reason]),
-            gen_fsm:reply(From, ok),
-            %% transition to offline, and let a future session drain this queue
-            {next_state, state_change(drain_error, drain, offline),
-             State#state{waiting_call=undefined}}
+                     State#state{offline=Queue#queue{size=queue:len(NewQ), drop=0, queue=NewQ}}};
+                {error, Reason} ->
+                    %% this shouldn't happen, as the register_subscriber is synchronized
+                    %% using the vmq_reg_leader process. However this could theoretically
+                    %% happen in case of an inconsistent (but un-detected) cluster state.
+                    %% we don't drain in this case.
+                    lager:error("can't drain queue '~p' for [~p][~p] due to ~p",
+                                [SId, self(), RemoteQueue, Reason]),
+                    gen_fsm:reply(From, ok),
+                    %% transition to offline, and let a future session drain this queue
+                    {next_state, state_change(drain_error, drain, offline),
+                     State#state{waiting_call=undefined}}
+            end
     end;
 drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
     %% even in drain state it is possible that an enqueue message
@@ -262,6 +261,7 @@ drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
     gen_fsm:send_event(self(), drain_start),
     _ = vmq_metrics:incr_queue_in(),
     {next_state, drain, insert(Msg, State)};
+
 drain(drain_over, #state{waiting_call={migrate, _, From}} =
       #state{offline=#queue{size=0}} = State) ->
     %% we're done with the migrate, offline queue is empty
@@ -275,6 +275,13 @@ drain(Event, State) ->
     lager:error("got unknown event in drain state ~p", [Event]),
     {next_state, drain, State}.
 
+drain({enqueue_many, Msgs}, _From, #state{drain_over_timer=TRef} =  State) ->
+    %% if multiple queues trigger queue migration at the 'same' time
+    %% so we've to queue those message otherwise they would be lost.
+    gen_fsm:cancel_timer(TRef),
+    gen_fsm:send_event(self(), drain_start),
+    _ = vmq_metrics:incr_queue_in(length(Msgs)),
+    {reply, ok, drain, insert_many(Msgs, State)};
 drain(Event, _From, State) ->
     lager:error("got unknown sync event in drain state ~p", [Event]),
     {reply, {error, draining}, drain, State}.

@@ -227,8 +227,14 @@ block_until_migrated(SubscriberId, [Node|Rest] = ChangedNodes) ->
             %% queue has been migrated, try next node
             block_until_migrated(SubscriberId, Rest);
         QPid when is_pid(QPid) ->
-            timer:sleep(100),
-            block_until_migrated(SubscriberId, ChangedNodes)
+            case get_queue_pid(SubscriberId) of
+                not_found ->
+                    %% our own queue died
+                    exit({error, intermediate_migrate});
+                _ ->
+                    timer:sleep(100),
+                    block_until_migrated(SubscriberId, ChangedNodes)
+            end
     end.
 
 -spec register_session(subscriber_id(), map()) -> {ok, pid()}.
@@ -709,7 +715,7 @@ add_subscriber(Topics, SubscriberId) ->
                                         %% exactly the same subscription
                                         %% ignore it
                                         NewSubsAcc;
-                                    {Topic, _, Node} ->
+                                    {Topic, _, _Node} ->
                                         %% same topic filter, but different qos
                                         %% replace subscription: [MQTT-3.8.4-3]
                                         lists:keyreplace(Topic, 1, NewSubsAcc,
