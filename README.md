@@ -111,7 +111,7 @@ mysql.ensure_pool(config)
 ```
 
 Ensures that the connection pool named ```config.pool_id``` is setup in the system.
-The ```config``` argument is a Lua table hodling the following keys:
+The ```config``` argument is a Lua table holding the following keys:
 
 - ```pool_id```: Name of the connection pool (mandatory).
 - ```size```: Size of the connection pool (default is 5).
@@ -149,7 +149,7 @@ postgres.ensure_pool(config)
 ```
 
 Ensures that the connection pool named ```config.pool_id``` is setup in the system.
-The ```config``` argument is a Lua table hodling the following keys:
+The ```config``` argument is a Lua table holding the following keys:
 
 - ```pool_id```: Name of the connection pool (mandatory).
 - ```size```: Size of the connection pool (default is 5).
@@ -185,7 +185,7 @@ mongodb.ensure_pool(config)
 ```
 
 Ensures that the connection pool named ```config.pool_id``` is setup in the system.
-The ```config``` argument is a Lua table hodling the following keys:
+The ```config``` argument is a Lua table holding the following keys:
 
 - ```pool_id```: Name of the connection pool (mandatory).
 - ```size```: Size of the connection pool (default is 5).
@@ -314,7 +314,7 @@ redis.ensure_pool(config)
 ```
 
 Ensures that the connection pool named ```config.pool_id``` is setup in the system.
-The ```config``` argument is a Lua table hodling the following keys:
+The ```config``` argument is a Lua table holding the following keys:
 
 - ```pool_id```: Name of the connection pool (mandatory).
 - ```size```: Size of the connection pool (default is 5).
@@ -342,6 +342,77 @@ This call returns a Lua table, ```true```, ```false```, or ```nil```. In case it
 parse the command a badarg error is thrown. 
 
 
+### Memcached
+
+#### ensure_pool
+
+```lua
+memcached.ensure_pool(config)
+```
+
+Ensures that the pool named ```config.pool_id``` is setup in the system, The
+```config``` argument is a lua table holding the following keys:
+
+- ```pool_id```: Name of the connection pool (mandatory).
+- ```size```: Size of the connection pool (default is 5).
+- ```host```: Host name for the Memcached server (default is localhost)
+- ```port```: Port that the Redis server is listening on (default is 11211).
+
+This call throws a badarg error in case it cannot setup the pool otherwise it
+returns ```true```.
+
+
+#### flush_all(pool_id)
+
+Flushes all data from the Memcached server. Use with care.
+
+Returns ``true``.
+
+#### get(pool_id, key)
+
+Get data for key ```key```.
+
+Returns the data for the key and otherwise ```false```.
+
+#### set(pool_id, key, value, expiration)
+
+Unconditionally set a value for a key.
+
+- ```key```: Key.
+- ```value```: Value.
+- ```expiration``` time until key/value pair is deleted in seconds. This
+  parameter is optional with default value ```0``` (no expiration).
+  
+Returns ```value```.
+
+#### add(pool_id, key, value, expiration)
+
+Add a key/value pair if the key doesn't already exist.
+
+- ```key```: Key.
+- ```value```: Value.
+- ```expiration``` time until key/value pair is deleted in seconds. This
+  parameter is optional with default value ```0``` (no expiration).
+
+Returns ```value``` if ```key``` didn't already exist, ```false``` otherwise.
+
+#### replace(pool_id, key, value, expiration)
+
+Replace a key/value pair if the key already exists.
+
+- ```key```: Key.
+- ```value```: Value.
+- ```expiration``` time until key/value pair is deleted in seconds. This
+  parameter is optional with default value ```0``` (no expiration).
+
+Returns ```value``` if ```key``` already exists, ```false``` otherwise.
+
+#### delete(pool_id, key)
+
+Delete ```key``` and the associated value.
+
+Returns ```true``` if the key/value pair was deleted, ```false``` otherwise
+
 ## Accessing the HTTP and Json Client Library
 
 ### HTTP Client
@@ -353,7 +424,7 @@ http.ensure_pool(config)
 ```
 
 Ensures that the connection pool named ```config.pool_id``` is setup in the system.
-The ```config``` argument is a Lua table hodling the following keys:
+The ```config``` argument is a Lua table holding the following keys:
 
 - ```pool_id```: Name of the connection pool (mandatory).
 - ```size```: Size of the connection pool (default is 10).
