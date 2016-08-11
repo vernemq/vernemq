@@ -114,6 +114,19 @@ start_all_pools([{redis, ProviderConfig}|Rest], Acc) ->
                 {max_overflow, MaxOverflow}],
     ChildSpec = poolboy:child_spec(PoolId, PoolArgs, WorkerArgs),
     start_all_pools(Rest, [ChildSpec|Acc]);
+start_all_pools([{memcached, ProviderConfig}|Rest], Acc) ->
+    PoolId = proplists:get_value(id, ProviderConfig),
+    PoolOpts = proplists:get_value(opts, ProviderConfig, []),
+    Size = proplists:get_value(size, ProviderConfig, 10),
+    MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
+    WorkerArgs = [proplists:get_value(host, PoolOpts),
+                  proplists:get_value(port, PoolOpts)],
+    PoolArgs = [{name, {local, PoolId}},
+                {worker_module, vmq_diversity_memcached},
+                {size, Size},
+                {max_overflow, MaxOverflow}],
+    ChildSpec = poolboy:child_spec(PoolId, PoolArgs, WorkerArgs),
+    start_all_pools(Rest, [ChildSpec|Acc]);
 start_all_pools([{kv, ProviderConfig}|Rest], Acc) ->
     TableId = proplists:get_value(id, ProviderConfig),
     TableOpts = proplists:get_value(opts, ProviderConfig, []),
