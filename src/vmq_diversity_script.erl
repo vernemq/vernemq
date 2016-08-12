@@ -202,7 +202,8 @@ load_script(Script) ->
             {vmq_diversity_http,        <<"http">>},
             {vmq_diversity_json,        <<"json">>},
             {vmq_diversity_ets,         <<"kv">>},
-            {vmq_diversity_lager,       <<"log">>}
+            {vmq_diversity_lager,       <<"log">>},
+            {vmq_diversity_memcached,   <<"memcached">>}
            ],
 
     LuaState =
