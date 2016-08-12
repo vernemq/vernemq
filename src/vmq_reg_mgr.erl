@@ -240,9 +240,13 @@ queue_migration_async(SubscriberId, QPid, Node) ->
             {_, MRef} =
             spawn_monitor(
               fun() ->
-                      case rpc:call(Node, vmq_queue_sup, start_queue,
+                      case rpc:call(Node, vmq_reg, get_queue_pid,
                                     [SubscriberId]) of
-                          {ok, _, RemoteQPid} ->
+                          not_found ->
+                              lager:warning("can't migrate due to remote queue not found for subscriber ~p",
+                                            [SubscriberId]),
+                              ok;
+                          RemoteQPid when is_pid(RemoteQPid) ->
                               vmq_queue:migrate(QPid, RemoteQPid);
                           {badrpc, Reason} ->
                               exit({cant_start_queue, Node, SubscriberId, Reason})
