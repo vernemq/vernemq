@@ -276,8 +276,6 @@ drain(Event, State) ->
     {next_state, drain, State}.
 
 drain({enqueue_many, Msgs}, _From, #state{drain_over_timer=TRef} =  State) ->
-    %% if multiple queues trigger queue migration at the 'same' time
-    %% so we've to queue those message otherwise they would be lost.
     gen_fsm:cancel_timer(TRef),
     gen_fsm:send_event(self(), drain_start),
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
