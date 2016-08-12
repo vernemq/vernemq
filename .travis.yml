@@ -3,6 +3,7 @@ services:
     - postgresql
     - mongodb
     - redis
+    - memcached
 
 before_install:
     - mysql -e "CREATE DATABASE test_database;" -uroot
