@@ -14,7 +14,6 @@
 
 -module(vmq_reg).
 -include("vmq_server.hrl").
--behaviour(gen_server).
 
 %% API
 -export([
@@ -22,6 +21,7 @@
          subscribe/4,
          unsubscribe/4,
          register_subscriber/2,
+         register_subscriber/4, %% used during testing
          delete_subscriptions/1,
          %% used in mqtt fsm handling
          publish/1,
@@ -40,15 +40,6 @@
          fix_dead_queues/2
 
         ]).
-
-%% gen_server
--export([start_link/0,
-         init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
 
 %% called by vmq_cluster_com
 -export([publish/2]).
@@ -150,7 +141,17 @@ register_subscriber(SubscriberId, #{allow_multiple_sessions := false} = QueueOpt
     case jobs:ask(plumtree_queue) of
         {ok, JobId} ->
             try
-                vmq_reg_leader:register_subscriber(self(), SubscriberId, QueueOpts)
+                SessionPid = self(),
+                case vmq_cluster:is_ready() of
+                    true ->
+                        vmq_reg_sync:sync(SubscriberId,
+                                          fun() ->
+                                                  register_subscriber(SessionPid, SubscriberId,
+                                                                      QueueOpts, ?NR_OF_REG_RETRIES)
+                                          end, 60000);
+                    false ->
+                        {error, not_ready}
+                end
             after
                 jobs:done(JobId)
             end;
@@ -184,7 +185,8 @@ register_subscriber(SessionPid, SubscriberId,
     % remap subscriber... enabling that new messages will eventually
     % reach the new queue.
     % Remapping triggers remote nodes to initiate queue migration
-    {SubscriptionsPresent, ChangedNodes} = maybe_remap_subscriber(SubscriberId, QueueOpts),
+    {SubscriptionsPresent, UpdatedSubs, ChangedNodes}
+    = maybe_remap_subscriber(SubscriberId, QueueOpts),
     SessionPresent1 = SubscriptionsPresent or QueuePresent,
     SessionPresent2 =
     case CleanSession of
@@ -196,7 +198,7 @@ register_subscriber(SessionPid, SubscriberId,
         false ->
             %wait_for_changed_nodes(SubscriberId, ChangedNodes),
             %% wait_quorum(SubscriberId),
-            block_until_migrated(SubscriberId, ChangedNodes),
+            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes),
             SessionPresent1
     end,
     case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
@@ -219,21 +221,45 @@ register_subscriber(SessionPid, SubscriberId,
             {ok, SessionPresent2, QPid}
     end.
 
-block_until_migrated(_, []) -> ok;
-block_until_migrated(SubscriberId, [Node|Rest] = ChangedNodes) ->
+block_until_migrated(_, _, []) -> ok;
+block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes) ->
+    %% the call to subscriptions_for_subscriber_id will resolve any remaining
+    %% conflicts to this this entry by broadcasting the resolved value to the
+    %% other nodes
+    case subscriptions_for_subscriber_id(SubscriberId) of
+        UpdatedSubs -> ok;
+        _ ->
+            %% in case the subscriptions were resolved elsewhere in the meantime
+            %% we'll write 'our' version of the remapped subscriptions
+            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, UpdatedSubs)
+    end,
+
     %% Typically ChangedNodes should only contain one item
     case rpc:call(Node, ?MODULE, get_queue_pid, [SubscriberId]) of
         not_found ->
             %% queue has been migrated, try next node
-            block_until_migrated(SubscriberId, Rest);
-        QPid when is_pid(QPid) ->
+            block_until_migrated(SubscriberId, UpdatedSubs, Rest);
+        RemoteQPid when is_pid(RemoteQPid) ->
             case get_queue_pid(SubscriberId) of
                 not_found ->
                     %% our own queue died
-                    exit({error, intermediate_migrate});
-                _ ->
                     timer:sleep(100),
-                    block_until_migrated(SubscriberId, ChangedNodes)
+                    block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes);
+                LocalQPid ->
+                    case vmq_queue:status(RemoteQPid) of % remote gen_fsm call
+                        {offline, _, _, _, _} ->
+                            %% remote queue hasn't yet started to migrate
+                            %% multiple reasons for this exist:
+                            %% 1. the migration trigger hasn't happend yet
+                            %%    on the remote node
+                            %% 2. a data conflict hasn't been resolved yet
+                            %%    preventing the remote node to kick of migration
+                            vmq_queue:migrate(RemoteQPid, LocalQPid),
+                            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes);
+                        _ ->
+                            timer:sleep(100),
+                            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes)
+                    end
             end
     end.
 
@@ -363,12 +389,13 @@ migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = A
                       end, [], Subs),
                     %% writing the changed subscriptions will trigger
                     %% vmq_reg_mgr to initiate queue migration
+                    NewSortedSubs = lists:usort(NewSubs),
                     plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId,
-                                          lists:usort(NewSubs)),
+                                          NewSortedSubs),
 
                     %% block until 'Target' has changes
                     has_remote_subscriptions_changed(SubscriberId, Target),
-                    block_until_migrated(SubscriberId, [OldNode])
+                    block_until_migrated(SubscriberId, NewSortedSubs, [OldNode])
             end,
             {Targets ++ [Target], AccQs + 1, AccMsgs + TotalStoredMsgs};
         _ ->
@@ -443,52 +470,6 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
             {DeadNodes, Targets, N}
     end.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% GEN_SERVER,
-%%%
-%%%  this gen_server is mainly used to allow remote control over local
-%%%  registry entries.. alternatively the rpc module could have been
-%%%  used, however this allows us more control over how such remote
-%%%  calls are handled. (in fact version prior to 0.12.0 used rpc directly.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
-init([]) ->
-    {ok, maps:new()}.
-
-handle_call({finish_register_subscriber_by_leader, SessionPid, SubscriberId, QueueOpts}, From, Waiting) ->
-    %% called by vmq_reg_leader process
-    {Pid, MRef} = async_op(
-                    fun() ->
-                            register_subscriber(SessionPid, SubscriberId,
-                                                QueueOpts, ?NR_OF_REG_RETRIES)
-                    end, From),
-    {noreply, maps:put(MRef, {Pid, From}, Waiting)}.
-
-handle_cast(_Req, State) ->
-    {noreply, State}.
-
-handle_info({'DOWN', MRef, process, _Pid, _}, Waiting) ->
-    {noreply, maps:remove(MRef, Waiting)}.
-
-terminate(_Reason, _State) ->
-    ok.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-async_op(Fun, From) ->
-    spawn_monitor(
-      fun() ->
-              case catch Fun() of
-                  {'EXIT', Reason} ->
-                      gen_server:reply(From, {error, Reason}),
-                      exit(Reason);
-                  Ret ->
-                      gen_server:reply(From, Ret)
-              end
-      end).
 
 -spec wait_til_ready() -> 'ok'.
 wait_til_ready() ->
@@ -755,11 +736,12 @@ del_subscriptions(Topics, SubscriberId) ->
 %% the return value is used to inform the caller
 %% if a session was already present for the given
 %% subscriber id.
--spec maybe_remap_subscriber(subscriber_id(), map()) -> boolean().
+-spec maybe_remap_subscriber(subscriber_id(), map()) ->
+    {boolean(), undefined | [{topic(), qos(), node()}], [node()]}.
 maybe_remap_subscriber(SubscriberId, #{clean_session := true}) ->
     %% no need to remap, we can delete this subscriber
     del_subscriber(SubscriberId),
-    {false, []};
+    {false, undefined, []};
 maybe_remap_subscriber(SubscriberId, _) ->
     case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined ->
@@ -772,13 +754,14 @@ maybe_remap_subscriber(SubscriberId, _) ->
                            (Sub, {Acc, Changed, ChNodes}) ->
                                 {[Sub|Acc], Changed, ChNodes}
                         end, {[], false, []}, Subs),
+            NewSortedSubs = lists:usort(NewSubs),
             case HasChanged of
                 true ->
-                    plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs));
+                    plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSortedSubs);
                 false ->
                     ignore
             end,
-            {true, lists:usort(ChangedNodes)}
+            {true, NewSortedSubs, lists:usort(ChangedNodes)}
     end.
 
 -spec get_session_pids(subscriber_id()) ->

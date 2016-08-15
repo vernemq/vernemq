@@ -29,8 +29,7 @@
 
 -record(state, {status=init,
                 event_handler,
-                event_queue=queue:new(),
-                migrations=maps:new()}).
+                event_queue=queue:new()}).
 
 %%%===================================================================
 %%% API functions
@@ -113,29 +112,16 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(all_queues_setup, #state{event_handler=Handler,
-                                     event_queue=Q,
-                                     migrations=Migrations} = State) ->
+                                     event_queue=Q} = State) ->
     lists:foreach(fun(Event) ->
-                          handle_event(Handler, Event, Migrations)
+                          handle_event(Handler, Event)
                   end, queue:to_list(Q)),
     {noreply, State#state{status=ready, event_queue=undefined}};
-handle_info({'DOWN', MRef, process, _Pid, Reason}, #state{migrations=Migrations} = State) ->
-    {SubscriberId, Node} = maps:get(MRef, Migrations),
-    erase(SubscriberId),
-    case Reason of
-        normal ->
-            lager:debug("Queue for subscriber ~p successfully migrated to ~p",
-                        [SubscriberId, Node]);
-        Other ->
-            lager:warning("Error during Queue migration for subscriber ~p to
-node ~p, due to ~p", [SubscriberId, Node, Other])
-    end,
-    {noreply, State#state{migrations=maps:remove(MRef, Migrations)}};
 handle_info(Event, #state{status=init, event_queue=Q} = State) ->
     {noreply, State#state{event_queue=queue:in(Event, Q)}};
-handle_info(Event, #state{event_handler=Handler, migrations=Migrations} = State) ->
-    NewMigrations = handle_event(Handler, Event, Migrations),
-    {noreply, State#state{migrations=NewMigrations}}.
+handle_info(Event, #state{event_handler=Handler} = State) ->
+    handle_event(Handler, Event),
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -173,26 +159,16 @@ setup_queue(SubscriberId, Nodes, Acc) ->
             Acc
     end.
 
-handle_event(Handler, Event, Migrations) ->
+handle_event(Handler, Event) ->
     case Handler(Event) of
         {delete, _, _} ->
             %% TODO: we might consider a queue cleanup here.
-            Migrations;
+            ignore;
         {update, _SubscriberId, [], []} ->
             %% noop
-            Migrations;
-        {update, SubscriberId, _OldSubs, NewSubs} ->
-            case ensure_queue_present(SubscriberId,
-                                 NewSubs,
-                                 local_subs(NewSubs)) of
-                ignore ->
-                    Migrations;
-                {ok, AsyncMigrateRef, NewNode} ->
-                    maps:put(AsyncMigrateRef, {SubscriberId, NewNode},
-                             Migrations)
-            end;
-        ignore ->
-            Migrations
+            ignore;
+        {update, SubscriberId, _, NewSubs} ->
+            ensure_queue_present(SubscriberId, NewSubs, local_subs(NewSubs))
     end.
 
 ensure_queue_present(SubscriberId, _, true) ->
@@ -228,35 +204,27 @@ ensure_remote_queue_present(SubscriberId, NewSubs, QPid) ->
 initiate_queue_migration(SubscriberId, QPid, [Node]) ->
     queue_migration_async(SubscriberId, QPid, Node);
 initiate_queue_migration(SubscriberId, QPid, []) ->
-    lager:warning("can't migrate the queue[~p] for subscriber ~p due to no responsible remote node found", [QPid, SubscriberId]),
-    ignore;
+    lager:warning("can't migrate the queue[~p] for subscriber ~p due to no responsible remote node found", [QPid, SubscriberId]);
 initiate_queue_migration(SubscriberId, QPid, [Node|_]) ->
     lager:warning("more than one remote nodes found for migrating queue[~p] for subscriber ~p, use ~p", [QPid, SubscriberId, Node]),
     queue_migration_async(SubscriberId, QPid, Node).
 
 queue_migration_async(SubscriberId, QPid, Node) ->
-    case get(SubscriberId) of
-        undefined ->
-            {_, MRef} =
-            spawn_monitor(
-              fun() ->
-                      case rpc:call(Node, vmq_reg, get_queue_pid,
-                                    [SubscriberId]) of
-                          not_found ->
-                              lager:warning("can't migrate due to remote queue not found for subscriber ~p",
-                                            [SubscriberId]),
-                              ok;
-                          RemoteQPid when is_pid(RemoteQPid) ->
-                              vmq_queue:migrate(QPid, RemoteQPid);
-                          {badrpc, Reason} ->
-                              exit({cant_start_queue, Node, SubscriberId, Reason})
-                      end
-              end),
-            put(SubscriberId, QPid),
-            {ok, MRef, Node};
-        _ ->
-            ignore
-    end.
+    SyncNode = Node,
+    vmq_reg_sync:async({migrate, SubscriberId},
+                      fun() ->
+                              case rpc:call(Node, vmq_reg, get_queue_pid,
+                                            [SubscriberId]) of
+                                  not_found ->
+                                      lager:warning("can't migrate due to remote queue not found for subscriber ~p",
+                                                    [SubscriberId]),
+                                      ok;
+                                  RemoteQPid when is_pid(RemoteQPid) ->
+                                      vmq_queue:migrate(QPid, RemoteQPid);
+                                  {badrpc, Reason} ->
+                                      exit({cant_start_queue, Node, SubscriberId, Reason})
+                              end
+                      end, SyncNode, 60000).
 
 local_subs(Subs) ->
     length([Node || {_, _, Node} <- Subs, Node == node()]) > 0.
