@@ -121,6 +121,9 @@ get_opts(Queue) when is_pid(Queue) ->
 set_last_waiting_acks(Queue, WAcks) ->
     gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
 
+migrate(Queue, Queue) ->
+    %% this scenario can happen, due to the eventual migration kickoff
+    ok;
 migrate(Queue, OtherQueue) ->
     %% Migrate Messages of 'Queue' to 'OtherQueue'
     %% -------------------------------------------

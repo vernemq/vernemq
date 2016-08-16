@@ -168,16 +168,13 @@ handle_event(Handler, Event) ->
             %% noop
             ignore;
         {update, SubscriberId, _, NewSubs} ->
-            ensure_queue_present(SubscriberId, NewSubs, local_subs(NewSubs))
+            ensure_queue_present(SubscriberId, NewSubs, local_subs(NewSubs));
+        ignore ->
+            ignore
     end.
 
 ensure_queue_present(SubscriberId, _, true) ->
-    ensure_local_queue_present(SubscriberId);
-ensure_queue_present(SubscriberId, NewSubs, false) ->
-    ensure_remote_queue_present(SubscriberId, NewSubs,
-                               vmq_queue_sup:get_queue_pid(SubscriberId)).
-
-ensure_local_queue_present(SubscriberId) ->
+    %% Local Subscriptions found, no need to kick of migration
     %% queue migration is triggered by the remote nodes,
     %% as they'll end up calling ensure_remote_queue_present/3
     case vmq_queue_sup:get_queue_pid(SubscriberId) of
@@ -185,7 +182,12 @@ ensure_local_queue_present(SubscriberId) ->
             vmq_queue_sup:start_queue(SubscriberId);
         Pid when is_pid(Pid) ->
             ignore
-    end.
+    end;
+ensure_queue_present(SubscriberId, NewSubs, false) ->
+    %% No local Subscriptions found,
+    %% maybe kick off migration
+    ensure_remote_queue_present(SubscriberId, NewSubs,
+                               vmq_queue_sup:get_queue_pid(SubscriberId)).
 
 ensure_remote_queue_present(_, _, not_found) ->
     ignore;

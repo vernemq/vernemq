@@ -390,14 +390,25 @@ migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = A
                     %% writing the changed subscriptions will trigger
                     %% vmq_reg_mgr to initiate queue migration
                     NewSortedSubs = lists:usort(NewSubs),
-                    plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId,
-                                          NewSortedSubs),
-
-                    %% block until 'Target' has changes
+                    %% ensure the queue is started on the Target node,
+                    %% otherwise the triggered migration may not find a
+                    %% queue on the target on time
                     has_remote_subscriptions_changed(SubscriberId, Target),
-                    block_until_migrated(SubscriberId, NewSortedSubs, [OldNode])
-            end,
-            {Targets ++ [Target], AccQs + 1, AccMsgs + TotalStoredMsgs};
+                    case rpc:call(Target, vmq_queue_sup, start_queue, [SubscriberId]) of
+                        {ok, _, _} ->
+                            % kick of migration trigger
+                            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId,
+                                                  NewSortedSubs),
+                            %% block until 'Target' has changes
+                            block_until_migrated(SubscriberId, NewSortedSubs, [Target]),
+                            {Targets ++ [Target], AccQs + 1, AccMsgs + TotalStoredMsgs};
+                        {E, Reason} when (E == error) or (E == badrpc) ->
+                            lager:warning("Can't start_queue for ~p on migration target ~p due to ~p, try next target.",
+                                          [SubscriberId, Target, Reason]),
+                            timer:sleep(1000),
+                            migrate_offline_queue(SubscriberId, QPid, {Targets ++ [Target], Acc})
+                    end
+            end;
         _ ->
             Acc
     catch
@@ -745,7 +756,7 @@ maybe_remap_subscriber(SubscriberId, #{clean_session := true}) ->
 maybe_remap_subscriber(SubscriberId, _) ->
     case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined ->
-            {false, []};
+            {false, undefined, []};
         Subs ->
             Node = node(),
             {NewSubs, HasChanged, ChangedNodes} =
