@@ -131,7 +131,7 @@ path_keyspec() ->
                                case filelib:is_file(Path) of
                                    true -> Path;
                                    false ->
-                                       {error, {invalid_key_value, 'path'}}
+                                       {error, {invalid_value, Path}}
                                end
                        end}]}.
 
