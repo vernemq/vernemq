@@ -321,6 +321,8 @@ all_till_ok([Pid|Rest], HookName, Args) ->
                 ValidatedModifiers ->
                     {ok, ValidatedModifiers}
             end;
+        false ->
+            error;
         error ->
             error;
         _ ->
