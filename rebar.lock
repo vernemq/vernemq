@@ -27,7 +27,7 @@
   0},
  {<<"mzmetrics">>,
   {git,"git://github.com/erlio/mzmetrics.git",
-       {ref,"ef6042f8211e1a0ac67090322fc1f6004c849bac"}},
+       {ref,"6687da85a8f3847ecf0968596d5d3bd9d8cdd431"}},
   1},
  {<<"node_package">>,
   {git,"git://github.com/dergraf/node_package.git",
