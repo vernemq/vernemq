@@ -6,8 +6,6 @@ ERLANG_BIN       = $(shell dirname $(shell which erl))
 OVERLAY_VARS    ?=
 REBAR ?= $(BASE_DIR)/rebar3
 
-
-
 $(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will probably not work"))
 
 .PHONY: rel docs
@@ -15,13 +13,13 @@ $(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will 
 all: compile
 
 compile:
-	$(REBAR) compile
+	$(REBAR) $(PROFILE) compile
 
 deps:
-	$(REBAR) deps
+	$(REBAR) $(PROFILE) deps
 
 install_deps:
-	$(REBAR) install_deps
+	$(REBAR) $(PROFILE) install_deps
 
 clean: testclean
 	@rm -rf ebin
@@ -29,6 +27,8 @@ clean: testclean
 distclean: clean relclean ballclean
 	@rm -rf _build
 
+rpi32: PROFILE = as rpi32
+rpi32: rel
 
 ##
 ## Test targets
@@ -53,11 +53,11 @@ test: compile testclean
 ##
 rel:
 ifeq ($(OVERLAY_VARS),)
-	$(REBAR) release --overlay_vars vars.config
+	$(REBAR) $(PROFILE) release --overlay_vars vars.config
 else
 	cat $(OVERLAY_VARS) > vars_pkg.config
 	cat vars.config >> vars_pkg.config
-	$(REBAR) release --overlay_vars vars_pkg.config
+	$(REBAR) $(PROFILE) release --overlay_vars vars_pkg.config
 	cp _build/default/rel/vernemq/bin/start_clean.boot _build/default/rel/vernemq/releases/$(MAJOR_VERSION)/start_clean.boot
 endif
 
@@ -71,7 +71,6 @@ relclean:
 ##
 docs: compile
 	(cd docs && make clean && make html)
-	
 
 ##
 ## Developer targets
@@ -81,7 +80,6 @@ dev% :
 	mkdir -p dev
 	./gen_dev $@ vars/dev_vars.config.src vars/$@_vars.config
 	(./rebar3 as $@ release --overlay_vars vars/$@_vars.config)
-
 
 APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \
 	xmerl webtool snmp public_key mnesia eunit syntax_tools compiler
