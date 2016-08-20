@@ -63,9 +63,7 @@
 
 -spec subscribe(flag(), username() | plugin_id(), subscriber_id(),
                 [{topic(), qos()}]) -> {ok, [qos() | not_allowed]}
-                                       | {error, not_allowed
-                                       | overloaded
-                                       | not_ready}.
+                                       | {error, not_allowed | not_ready}.
 
 subscribe(false, User, SubscriberId, Topics) ->
     %% trade availability for consistency
@@ -86,25 +84,19 @@ subscribe_(User, SubscriberId, Topics) ->
     end.
 
 subscribe_op(User, SubscriberId, Topics) ->
-    rate_limited_op(
-      fun() ->
-              add_subscriber(Topics, SubscriberId)
-      end,
-      fun(_) ->
-              QoSTable =
-              lists:foldl(fun ({_, not_allowed}, AccQoSTable) ->
-                                  [not_allowed|AccQoSTable];
-                              ({T, QoS}, AccQoSTable) when is_integer(QoS) ->
-                                  deliver_retained(SubscriberId, T, QoS),
-                                  [QoS|AccQoSTable]
-                          end, [], Topics),
-              vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
-              {ok, lists:reverse(QoSTable)}
-      end).
+    add_subscriber(lists:usort(Topics), SubscriberId),
+    QoSTable =
+    lists:foldl(fun ({_, not_allowed}, AccQoSTable) ->
+                        [not_allowed|AccQoSTable];
+                    ({T, QoS}, AccQoSTable) when is_integer(QoS) ->
+                        deliver_retained(SubscriberId, T, QoS),
+                        [QoS|AccQoSTable]
+                end, [], Topics),
+    vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
+    {ok, lists:reverse(QoSTable)}.
 
 -spec unsubscribe(flag(), username() | plugin_id(),
-                  subscriber_id(), [topic()]) -> ok | {error, overloaded
-                                                       | not_ready}.
+                  subscriber_id(), [topic()]) -> ok | {error, not_ready}.
 unsubscribe(false, User, SubscriberId, Topics) ->
     %% trade availability for consistency
     vmq_cluster:if_ready(fun unsubscribe_op/3, [User, SubscriberId, Topics]);
@@ -122,13 +114,7 @@ unsubscribe_op(User, SubscriberId, Topics) ->
         {error, _} ->
             Topics
     end,
-    rate_limited_op(
-      fun() ->
-              del_subscriptions(TTopics, SubscriberId)
-      end,
-      fun(_) ->
-              ok
-      end).
+    del_subscriptions(TTopics, SubscriberId).
 
 delete_subscriptions(SubscriberId) ->
     del_subscriber(SubscriberId).
@@ -138,41 +124,23 @@ delete_subscriptions(SubscriberId) ->
 register_subscriber(SubscriberId, #{allow_multiple_sessions := false} = QueueOpts) ->
     %% we don't allow multiple sessions using same subscriber id
     %% allow_multiple_sessions is needed for session balancing
-    case jobs:ask(plumtree_queue) of
-        {ok, JobId} ->
-            try
-                SessionPid = self(),
-                case vmq_cluster:is_ready() of
-                    true ->
-                        vmq_reg_sync:sync(SubscriberId,
-                                          fun() ->
-                                                  register_subscriber(SessionPid, SubscriberId,
-                                                                      QueueOpts, ?NR_OF_REG_RETRIES)
-                                          end, 60000);
-                    false ->
-                        {error, not_ready}
-                end
-            after
-                jobs:done(JobId)
-            end;
-        {error, rejected} ->
-            {error, overloaded}
+    SessionPid = self(),
+    case vmq_cluster:is_ready() of
+        true ->
+            vmq_reg_sync:sync(SubscriberId,
+                              fun() ->
+                                      register_subscriber(SessionPid, SubscriberId,
+                                                          QueueOpts, ?NR_OF_REG_RETRIES)
+                              end, 60000);
+        false ->
+            {error, not_ready}
     end;
 register_subscriber(SubscriberId, #{allow_multiple_sessions := true} = QueueOpts) ->
     %% we allow multiple sessions using same subscriber id
     %%
     %% !!! CleanSession is disabled if multiple sessions are in use
     %%
-    case jobs:ask(plumtree_queue) of
-        {ok, JobId} ->
-            try
-                register_session(SubscriberId, QueueOpts)
-            after
-                jobs:done(JobId)
-            end;
-        {error, rejected} ->
-            {error, overloaded}
-    end.
+    register_session(SubscriberId, QueueOpts).
 
 -spec register_subscriber(pid() | undefined, subscriber_id(), map(), non_neg_integer()) ->
     {'ok', boolean(), pid()} | {error, any()}.
@@ -224,7 +192,7 @@ register_subscriber(SessionPid, SubscriberId,
 block_until_migrated(_, _, []) -> ok;
 block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes) ->
     %% the call to subscriptions_for_subscriber_id will resolve any remaining
-    %% conflicts to this this entry by broadcasting the resolved value to the
+    %% conflicts to this entry by broadcasting the resolved value to the
     %% other nodes
     case subscriptions_for_subscriber_id(SubscriberId) of
         UpdatedSubs -> ok;
@@ -246,7 +214,7 @@ block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes) ->
                     timer:sleep(100),
                     block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes);
                 LocalQPid ->
-                    case vmq_queue:status(RemoteQPid) of % remote gen_fsm call
+                    case catch vmq_queue:status(RemoteQPid) of % remote gen_fsm call
                         {offline, _, _, _, _} ->
                             %% remote queue hasn't yet started to migrate
                             %% multiple reasons for this exist:
@@ -374,73 +342,26 @@ migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = A
             OldNode = node(),
             %% Remap Subscriptions, taking into account subscriptions
             %% on other nodes by only remapping subscriptions on 'OldNode'
-            case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
-                undefined ->
-                    ignore;
-                [] ->
-                    ignore;
-                Subs ->
-                    NewSubs =
-                    lists:foldl(
-                      fun({Topic, QoS, Node}, SubsAcc) when Node == OldNode ->
-                              [{Topic, QoS, Target}|SubsAcc];
-                         (Sub, SubsAcc) ->
-                              [Sub|SubsAcc]
-                      end, [], Subs),
-                    %% writing the changed subscriptions will trigger
-                    %% vmq_reg_mgr to initiate queue migration
-                    NewSortedSubs = lists:usort(NewSubs),
-                    %% ensure the queue is started on the Target node,
-                    %% otherwise the triggered migration may not find a
-                    %% queue on the target on time
-                    has_remote_subscriptions_changed(SubscriberId, Target),
-                    case rpc:call(Target, vmq_queue_sup, start_queue, [SubscriberId]) of
-                        {ok, _, _} ->
-                            % kick of migration trigger
-                            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId,
-                                                  NewSortedSubs),
-                            %% block until 'Target' has changes
-                            block_until_migrated(SubscriberId, NewSortedSubs, [Target]),
-                            {Targets ++ [Target], AccQs + 1, AccMsgs + TotalStoredMsgs};
-                        {E, Reason} when (E == error) or (E == badrpc) ->
-                            lager:warning("Can't start_queue for ~p on migration target ~p due to ~p, try next target.",
-                                          [SubscriberId, Target, Reason]),
-                            timer:sleep(1000),
-                            migrate_offline_queue(SubscriberId, QPid, {Targets ++ [Target], Acc})
-                    end
-            end;
+            Subs = plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]),
+            NewSubs =
+            lists:foldl(
+              fun({Topic, QoS, Node}, SubsAcc) when Node == OldNode ->
+                      [{Topic, QoS, Target}|SubsAcc];
+                 (Sub, SubsAcc) ->
+                      [Sub|SubsAcc]
+              end, [], Subs),
+            %% writing the changed subscriptions will trigger
+            %% vmq_reg_mgr to initiate queue migration
+            NewSortedSubs = lists:usort(NewSubs),
+            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSortedSubs),
+            block_until_migrated(SubscriberId, NewSortedSubs, [Target]),
+            {Targets ++ [Target], AccQs + 1, AccMsgs + TotalStoredMsgs};
         _ ->
             Acc
     catch
         _:_ ->
             %% queue stopped in the meantime, that's ok.
             Acc
-    end.
-
-has_remote_subscriptions_changed(SubscriberId, Node) ->
-    has_remote_subscriptions_changed(SubscriberId,
-                                     plumtree_metadata:get(?SUBSCRIBER_DB,
-                                                           SubscriberId), Node).
-
-has_remote_subscriptions_changed(_, undefined, _) -> ignore;
-has_remote_subscriptions_changed(_, [], _) -> ignore;
-has_remote_subscriptions_changed(SubscriberId, Subs, Node) ->
-    case rpc:call(Node, plumtree_metadata, get, [?SUBSCRIBER_DB, SubscriberId])
-    of
-        Subs ->
-            %% we're on the same page.
-            ok;
-        OtherSubs ->
-            case [Sub || {_, _, N} = Sub <- OtherSubs, N == node()] of
-                [] ->
-                    %% someone else interfered with our change,
-                    %% ignore, as migration will take place anyways
-                    ignore;
-                _ ->
-                    %% no change has reached 'Node' yet
-                    timer:sleep(100),
-                    has_remote_subscriptions_changed(SubscriberId, Subs, Node)
-            end
     end.
 
 fix_dead_queues(_, []) -> exit(no_target_available);
@@ -473,9 +394,10 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
         true ->
             %% writing the changed subscriptions will trigger the
             %% vmq_reg_mgr to initiate queue migration
-            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, lists:usort(NewSubs)),
             %% block until 'Target' has changes
-            has_remote_subscriptions_changed(SubscriberId, Target),
+            NewSortedSubs = lists:usort(NewSubs),
+            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSortedSubs),
+            block_until_migrated(SubscriberId, NewSortedSubs, [Target]),
             {DeadNodes, Targets ++ [Target], N + 1};
         false ->
             {DeadNodes, Targets, N}
@@ -584,7 +506,6 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             {error, invalid_config}
     end.
 
-
 plugin_queue_loop(PluginPid, PluginMod) ->
     receive
         {vmq_mqtt_fsm, {mail, QPid, new_data}} ->
@@ -623,7 +544,6 @@ plugin_queue_loop(PluginPid, PluginMod) ->
             exit({unknown_msg_in_plugin_loop, Other})
     end.
 
-
 subscribe_subscriber_changes() ->
     plumtree_metadata_manager:subscribe(?SUBSCRIBER_DB),
     fun
@@ -640,7 +560,6 @@ subscribe_subscriber_changes() ->
         (_) ->
             ignore
     end.
-
 
 fold_subscriptions(FoldFun, Acc) ->
     Node = node(),
@@ -692,34 +611,34 @@ fold_sessions(FoldFun, Acc) ->
 -spec add_subscriber([{topic(), qos() | not_allowed}], subscriber_id()) -> ok.
 add_subscriber(Topics, SubscriberId) ->
     Node = node(),
-    NewSubs =
-    case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
-        undefined ->
-            %% not_allowed topics are filtered out here
-            [{Topic, QoS, Node} || {Topic, QoS} <- Topics, is_integer(QoS)];
-        Subs ->
-            lists:foldl(fun ({_Topic, not_allowed}, NewSubsAcc) ->
-                                NewSubsAcc;
-                            ({Topic, QoS}, NewSubsAcc) ->
-                                NewSub = {Topic, QoS, Node},
-                                case lists:keyfind(Topic, 1, NewSubsAcc) of
-                                    NewSub ->
-                                        %% exactly the same subscription
-                                        %% ignore it
-                                        NewSubsAcc;
-                                    {Topic, _, _Node} ->
-                                        %% same topic filter, but different qos
-                                        %% replace subscription: [MQTT-3.8.4-3]
-                                        lists:keyreplace(Topic, 1, NewSubsAcc,
-                                                         NewSub);
-                                    false ->
-                                        %% new subscription
-                                        [NewSub|NewSubsAcc]
-                                end
-                        end, Subs, Topics)
-    end,
-    plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs).
-
+    OldSubs = plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId, [{default, []}]),
+    {NewSubs, HasChanged} =
+    lists:foldl(fun ({_Topic, not_allowed}, {NewSubsAcc, Changed}) ->
+                        {NewSubsAcc, Changed};
+                    ({Topic, QoS}, {NewSubsAcc, Changed}) ->
+                        NewSub = {Topic, QoS, Node},
+                        case lists:keyfind(Topic, 1, NewSubsAcc) of
+                            NewSub ->
+                                %% exactly the same subscription
+                                %% ignore it
+                                {NewSubsAcc, Changed};
+                            {Topic, _, _Node} ->
+                                %% same topic filter, but different qos
+                                %% replace subscription: [MQTT-3.8.4-3]
+                                {lists:keyreplace(Topic, 1, NewSubsAcc,
+                                                  NewSub), true};
+                            false ->
+                                %% new subscription
+                                {[NewSub|NewSubsAcc], true}
+                        end
+                end, {OldSubs, false}, Topics),
+    case HasChanged of
+        true ->
+            %% only store if something changed
+            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSubs);
+        false ->
+            ok
+    end.
 
 -spec del_subscriber(subscriber_id()) -> ok.
 del_subscriber(SubscriberId) ->
@@ -812,18 +731,4 @@ status(SubscriberId) ->
         not_found -> {error, not_found};
         QPid ->
             {ok, vmq_queue:status(QPid)}
-    end.
-
--spec rate_limited_op(fun(() -> any()),
-                      fun((any()) -> any())) -> any() | {error, overloaded}.
-rate_limited_op(OpFun, SuccessFun) ->
-    case jobs:ask(plumtree_queue) of
-        {ok, JobId} ->
-            try
-                SuccessFun(OpFun())
-            after
-                jobs:done(JobId)
-            end;
-        {error, rejected} ->
-            {error, overloaded}
     end.

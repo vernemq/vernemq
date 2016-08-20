@@ -51,7 +51,7 @@ start_link() ->
 %% following properties:
 %%   1. For a specific task-type only one task runs at a time
 %%   2. If a task owner dies it's running task is killed
-%%   3. If a task owner dies it's queued tasks wont be exectuted
+%%   3. If a task owner dies it's queued tasks are removed and wont be exectuted
 %%
 %% How does it work:
 %% ~~~~~~~~~~~~~~~~~
@@ -91,7 +91,7 @@ call(Node, Req) ->
     end.
 
 done(SyncPid, ActionPid, Reply) ->
-    gen_server:call(SyncPid, {done, ActionPid, Reply}).
+    gen_server:call({?SERVER, node(SyncPid)}, {done, ActionPid, Reply}).
 
 status(SyncKey) ->
     status(SyncKey, sync_node(SyncKey)).

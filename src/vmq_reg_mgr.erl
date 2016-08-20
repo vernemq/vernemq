@@ -212,21 +212,17 @@ initiate_queue_migration(SubscriberId, QPid, [Node|_]) ->
     queue_migration_async(SubscriberId, QPid, Node).
 
 queue_migration_async(SubscriberId, QPid, Node) ->
-    SyncNode = Node,
+    %% we use the Node of the 'new' Queue as SyncNode.
     vmq_reg_sync:async({migrate, SubscriberId},
                       fun() ->
-                              case rpc:call(Node, vmq_reg, get_queue_pid,
+                              case rpc:call(Node, vmq_queue_sup, start_queue,
                                             [SubscriberId]) of
-                                  not_found ->
-                                      lager:warning("can't migrate due to remote queue not found for subscriber ~p",
-                                                    [SubscriberId]),
-                                      ok;
-                                  RemoteQPid when is_pid(RemoteQPid) ->
+                                  {ok, _, RemoteQPid} ->
                                       vmq_queue:migrate(QPid, RemoteQPid);
-                                  {badrpc, Reason} ->
+                                  {E, Reason} when (E == error) or (E == badrpc) ->
                                       exit({cant_start_queue, Node, SubscriberId, Reason})
                               end
-                      end, SyncNode, 60000).
+                      end, Node, 60000).
 
 local_subs(Subs) ->
     length([Node || {_, _, Node} <- Subs, Node == node()]) > 0.

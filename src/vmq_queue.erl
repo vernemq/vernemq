@@ -211,6 +211,22 @@ wait_for_offline(Event, State) ->
 
 wait_for_offline({set_last_waiting_acks, WAcks}, _From, State) ->
     {reply, ok, wait_for_offline, handle_waiting_acks_and_msgs(WAcks, State)};
+wait_for_offline({add_session, SessionPid, Opts}, From,
+                 #state{waiting_call={migrate, _OtherQueue, MigrationFrom}} = State) ->
+    %% very racy...
+    %% we have an awaiting migration which we don't need anymore as we
+    %% have a new session added here. ( we haven't yet started to drain )
+    gen_fsm:reply(MigrationFrom, ok),
+    %% The OtherQueue gets eventually stopped
+    {next_state, wait_for_offline,
+     State#state{waiting_call={add_session, SessionPid, Opts, From}}};
+wait_for_offline({add_session, NewSessionPid, NewOpts}, From,
+                #state{waiting_call={add_session, SessionPid, _Opts, AddFrom}} = State) ->
+    %% very racy...
+    gen_fsm:reply(AddFrom, ok),
+    exit(SessionPid, normal),
+    {next_state, wait_for_offline,
+     State#state{waiting_call={add_session, NewSessionPid, NewOpts, From}}};
 wait_for_offline(Event, _From, State) ->
     lager:error("got unknown sync event in wait_for_offline state ~p", [Event]),
     {reply, {error, wait_for_offline}, wait_for_offline, State}.
