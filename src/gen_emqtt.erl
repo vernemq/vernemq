@@ -146,6 +146,8 @@ wrap_res({stop, Reason, ModState}, _StateName, State) ->
     {stop, Reason, State#state{mod_state=ModState}};
 wrap_res({stop, Reason, Reply, ModState}, _StateName, State) ->
     {stop, Reason, Reply, State#state{mod_state=ModState}};
+wrap_res({ok}, _StateName, _State) ->
+    ok;
 wrap_res(ok, _StateName, _State) ->
     ok.
 
@@ -181,6 +183,8 @@ connecting(connect, State) ->
             gen_fsm:send_event_after(3000, connect),
             wrap_res(connecting, on_connect_error, [server_not_found], State)
     end;
+connecting(disconnect, State) ->
+    {stop,  normal, State};
 connecting(_Event, State) ->
     {next_state, connecting, State}.
 
