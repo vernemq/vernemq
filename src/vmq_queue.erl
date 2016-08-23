@@ -213,16 +213,48 @@ wait_for_offline({set_last_waiting_acks, WAcks}, _From, State) ->
     {reply, ok, wait_for_offline, handle_waiting_acks_and_msgs(WAcks, State)};
 wait_for_offline({add_session, SessionPid, Opts}, From,
                  #state{waiting_call={migrate, _OtherQueue, MigrationFrom}} = State) ->
-    %% very racy...
-    %% we have an awaiting migration which we don't need anymore as we
-    %% have a new session added here. ( we haven't yet started to drain )
+    %% Reason for this case:
+    %% ---------------------
+    %% This case handles a race condition that can happen when multiple
+    %% concurrent clients (with clean_session=false) try to connect using
+    %% the same client_id at the same time. The connect itself isn't necessarily
+    %% the problem, as CONNECTs are synchronized using vmq_reg_sync. However
+    %% faulty or dumb clients (with clean_session=false) that send a SUBSCRIBE
+    %% every time after a CONNECT/CONNACK (e.g. not properly using the SessionPresent
+    %% flag in returned CONNACK) may interfere with waiting migrate or add_session
+    %% calls. The reason for this is that SUBSCRIBEs aren't synchronized while
+    %% CONNECTs are.
+    %%
+    %% Precondition:
+    %% -------------
+    %% The calling session uses trade_consistency=false for the session setup.
+    %% The racing client are using clean_session=false
+    %%
+    %% Solution:
+    %% ---------
+    %% The waiting migration call isn't required anymore as we have a new session
+    %% that can use this queue (and it's possible offline messages). As we haven't
+    %% started to drain this queue (we are not in drain state) we can reply 'ok'
+    %% to the waiting migration. The 'OtherQueue' that was part of the waiting
+    %% migration gets eventually stopped.
     gen_fsm:reply(MigrationFrom, ok),
-    %% The OtherQueue gets eventually stopped
     {next_state, wait_for_offline,
      State#state{waiting_call={add_session, SessionPid, Opts, From}}};
 wait_for_offline({add_session, NewSessionPid, NewOpts}, From,
                 #state{waiting_call={add_session, SessionPid, _Opts, AddFrom}} = State) ->
-    %% very racy...
+    %% Reason for this case:
+    %% ---------------------
+    %% See case above!
+    %%
+    %% Precondition:
+    %% -------------
+    %% See case above!
+    %%
+    %% Solution:
+    %% ---------
+    %% The waiting add_session call isn't required anymore as we have a new session
+    %% that we should attach to this queue. We can terminate the waiting add_session
+    %% and replace the waiting_call
     gen_fsm:reply(AddFrom, ok),
     exit(SessionPid, normal),
     {next_state, wait_for_offline,
