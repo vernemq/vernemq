@@ -11,7 +11,6 @@
                   os_mon,
                   riak_sysmon,
                   ssl,
-                  jobs,
                   plumtree,
                   vmq_commons,
                   vmq_plugin,
@@ -70,7 +69,6 @@
       ]},
       {outgoing_clustering_buffer_size, 10000},
       {outgoing_connect_opts, []},
-      {plumtree_jobs_opts, [{regulators, [{counter,[{limit, 20}]}]}]},
       {tcp_listen_options, [
             {nodelay, true},
             {linger, {true, 0}}, 

@@ -29,8 +29,7 @@
 
 -record(state, {status=init,
                 event_handler,
-                event_queue=queue:new(),
-                migrations=maps:new()}).
+                event_queue=queue:new()}).
 
 %%%===================================================================
 %%% API functions
@@ -113,29 +112,16 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(all_queues_setup, #state{event_handler=Handler,
-                                     event_queue=Q,
-                                     migrations=Migrations} = State) ->
+                                     event_queue=Q} = State) ->
     lists:foreach(fun(Event) ->
-                          handle_event(Handler, Event, Migrations)
+                          handle_event(Handler, Event)
                   end, queue:to_list(Q)),
     {noreply, State#state{status=ready, event_queue=undefined}};
-handle_info({'DOWN', MRef, process, _Pid, Reason}, #state{migrations=Migrations} = State) ->
-    {SubscriberId, Node} = maps:get(MRef, Migrations),
-    erase(SubscriberId),
-    case Reason of
-        normal ->
-            lager:debug("Queue for subscriber ~p successfully migrated to ~p",
-                        [SubscriberId, Node]);
-        Other ->
-            lager:warning("Error during Queue migration for subscriber ~p to
-node ~p, due to ~p", [SubscriberId, Node, Other])
-    end,
-    {noreply, State#state{migrations=maps:remove(MRef, Migrations)}};
 handle_info(Event, #state{status=init, event_queue=Q} = State) ->
     {noreply, State#state{event_queue=queue:in(Event, Q)}};
-handle_info(Event, #state{event_handler=Handler, migrations=Migrations} = State) ->
-    NewMigrations = handle_event(Handler, Event, Migrations),
-    {noreply, State#state{migrations=NewMigrations}}.
+handle_info(Event, #state{event_handler=Handler} = State) ->
+    handle_event(Handler, Event),
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -173,35 +159,22 @@ setup_queue(SubscriberId, Nodes, Acc) ->
             Acc
     end.
 
-handle_event(Handler, Event, Migrations) ->
+handle_event(Handler, Event) ->
     case Handler(Event) of
         {delete, _, _} ->
             %% TODO: we might consider a queue cleanup here.
-            Migrations;
+            ignore;
         {update, _SubscriberId, [], []} ->
             %% noop
-            Migrations;
-        {update, SubscriberId, _OldSubs, NewSubs} ->
-            case ensure_queue_present(SubscriberId,
-                                 NewSubs,
-                                 local_subs(NewSubs)) of
-                ignore ->
-                    Migrations;
-                {ok, AsyncMigrateRef, NewNode} ->
-                    maps:put(AsyncMigrateRef, {SubscriberId, NewNode},
-                             Migrations)
-            end;
+            ignore;
+        {update, SubscriberId, _, NewSubs} ->
+            ensure_queue_present(SubscriberId, NewSubs, local_subs(NewSubs));
         ignore ->
-            Migrations
+            ignore
     end.
 
 ensure_queue_present(SubscriberId, _, true) ->
-    ensure_local_queue_present(SubscriberId);
-ensure_queue_present(SubscriberId, NewSubs, false) ->
-    ensure_remote_queue_present(SubscriberId, NewSubs,
-                               vmq_queue_sup:get_queue_pid(SubscriberId)).
-
-ensure_local_queue_present(SubscriberId) ->
+    %% Local Subscriptions found, no need to kick of migration
     %% queue migration is triggered by the remote nodes,
     %% as they'll end up calling ensure_remote_queue_present/3
     case vmq_queue_sup:get_queue_pid(SubscriberId) of
@@ -209,7 +182,12 @@ ensure_local_queue_present(SubscriberId) ->
             vmq_queue_sup:start_queue(SubscriberId);
         Pid when is_pid(Pid) ->
             ignore
-    end.
+    end;
+ensure_queue_present(SubscriberId, NewSubs, false) ->
+    %% No local Subscriptions found,
+    %% maybe kick off migration
+    ensure_remote_queue_present(SubscriberId, NewSubs,
+                               vmq_queue_sup:get_queue_pid(SubscriberId)).
 
 ensure_remote_queue_present(_, _, not_found) ->
     ignore;
@@ -228,31 +206,23 @@ ensure_remote_queue_present(SubscriberId, NewSubs, QPid) ->
 initiate_queue_migration(SubscriberId, QPid, [Node]) ->
     queue_migration_async(SubscriberId, QPid, Node);
 initiate_queue_migration(SubscriberId, QPid, []) ->
-    lager:warning("can't migrate the queue[~p] for subscriber ~p due to no responsible remote node found", [QPid, SubscriberId]),
-    ignore;
+    lager:warning("can't migrate the queue[~p] for subscriber ~p due to no responsible remote node found", [QPid, SubscriberId]);
 initiate_queue_migration(SubscriberId, QPid, [Node|_]) ->
     lager:warning("more than one remote nodes found for migrating queue[~p] for subscriber ~p, use ~p", [QPid, SubscriberId, Node]),
     queue_migration_async(SubscriberId, QPid, Node).
 
 queue_migration_async(SubscriberId, QPid, Node) ->
-    case get(SubscriberId) of
-        undefined ->
-            {_, MRef} =
-            spawn_monitor(
-              fun() ->
-                      case rpc:call(Node, vmq_queue_sup, start_queue,
-                                    [SubscriberId]) of
-                          {ok, _, RemoteQPid} ->
-                              vmq_queue:migrate(QPid, RemoteQPid);
-                          {badrpc, Reason} ->
-                              exit({cant_start_queue, Node, SubscriberId, Reason})
-                      end
-              end),
-            put(SubscriberId, QPid),
-            {ok, MRef, Node};
-        _ ->
-            ignore
-    end.
+    %% we use the Node of the 'new' Queue as SyncNode.
+    vmq_reg_sync:async({migrate, SubscriberId},
+                      fun() ->
+                              case rpc:call(Node, vmq_queue_sup, start_queue,
+                                            [SubscriberId]) of
+                                  {ok, _, RemoteQPid} ->
+                                      vmq_queue:migrate(QPid, RemoteQPid);
+                                  {E, Reason} when (E == error) or (E == badrpc) ->
+                                      exit({cant_start_queue, Node, SubscriberId, Reason})
+                              end
+                      end, Node, 60000).
 
 local_subs(Subs) ->
     length([Node || {_, _, Node} <- Subs, Node == node()]) > 0.
