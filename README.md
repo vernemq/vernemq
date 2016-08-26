@@ -1,5 +1,7 @@
 # VerneMQ Webhooks
 
+[![Build Status](https://travis-ci.org/erlio/vmq_webhooks.svg?branch=master)](https://travis-ci.org/erlio/vmq_webhooks)
+
 VerneMQ Webhooks enables you to develop VerneMQ plugins in your favorite
 programming language. Java, Python, NodeJS, Go, or whatever you current weapon
 of choice is doesn't matter. All you need to do is to implement our web-hook
