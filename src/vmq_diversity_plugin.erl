@@ -170,9 +170,6 @@ handle_info({'DOWN', _, process, Pid, _}, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    ets:foldl(fun({HookName, _}, _) ->
-                      disable_hook(HookName)
-              end, ok, ?TBL),
     ok.
 
 %%--------------------------------------------------------------------
