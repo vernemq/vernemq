@@ -48,7 +48,10 @@ register_cmd() ->
                                       [Hook, Endpoint, Reason]),
                         Text = io_lib:format("can't register endpoint due to '~p'", [Reason]),
                         [clique_status:alert([clique_status:text(Text)])]
-                end
+                end;
+           (_, _, _) ->
+                Text = clique_status:text(register_usage()),
+                [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
@@ -66,7 +69,10 @@ deregister_cmd() ->
                                       [Hook, Endpoint, Reason]),
                         Text = io_lib:format("can't deregister endpoint due to '~p'", [Reason]),
                         [clique_status:alert([clique_status:text(Text)])]
-                end
+                end;
+           (_, _, _) ->
+                Text = clique_status:text(deregister_usage()),
+                [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
