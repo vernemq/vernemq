@@ -161,19 +161,20 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(stop, _From, #state{config_file=ConfigFile} = State) ->
-    case file:consult(ConfigFile) of
-        {ok, [{plugins, Plugins}]} ->
-            lists:foreach(
-              fun
-                  ({application, App, _}) ->
-                      catch stop_plugin(App);
-                  (_) ->
-                      ignore
-              end, Plugins);
-        _ ->
-            ignore
-    end,
-    {reply, ok, State};
+    NewState =
+        case file:consult(ConfigFile) of
+            {ok, [{plugins, Plugins}]} ->
+                lists:foldl(
+                  fun
+                      ({application, App, _}, AccState) ->
+                          stop_plugin(App, AccState);
+                      (_, AccState) ->
+                          AccState
+                  end, State, Plugins);
+            _ ->
+                State
+        end,
+    {reply, ok, NewState};
 handle_call(Call, _From, #state{ready=true} = State) ->
     handle_plugin_call(Call, State);
 handle_call(Call, From, #state{deferred_calls=DeferredCalls} = State) ->
@@ -200,11 +201,12 @@ handle_plugin_call({disable_plugin, PluginKey}, State) ->
     %% {HookName, ModuleName, Fun, Arity} for Module Plugins
     case disable_plugin_generic(PluginKey, State) of
         {ok, NewState} ->
-            case PluginKey of
-                {_, _, _, _} -> ignore;
-                _ -> stop_plugin(PluginKey)
-            end,
-            {reply, ok, NewState};
+            NewState1 =
+                case PluginKey of
+                    {_, _, _, _} -> NewState;
+                    _ -> stop_plugin(PluginKey, NewState)
+                end,
+            {reply, ok, NewState1};
         {error, _} = E ->
             {reply, E, State}
     end.
@@ -521,24 +523,41 @@ init_plugins_cli([], Acc) ->
     end.
 
 
-stop_plugin(vmq_plugin) -> ok;
-stop_plugin(App) ->
+stop_plugin(vmq_plugin, State) -> State;
+stop_plugin(App, State) ->
     case lists:member(App, erlang:loaded()) of
         true ->
             %% does the App Module specifies a custom
             %% stop/1 function
             case lists:member({stop, 0}, apply(App, module_info, [exports])) of
                 true ->
-                    apply(App, stop, []);
+                    catch apply(App, stop, []);
                 false ->
                     application:stop(App)
             end;
         false ->
             application:stop(App)
     end,
+    NewState = disable_app_module_plugins(App, State),
     purge_app_modules(App),
     application:unload(App),
-    ok.
+    NewState.
+
+disable_app_module_plugins(App, State) ->
+    HookModules = vmq_plugin:info(all),
+    {ok, AppMods} = application:get_key(App, modules),
+    lists:foldl(fun({_,Name,_,_} = HM, AccState) ->
+                        case lists:member(Name, AppMods) of
+                            true ->
+                                case disable_plugin_generic(HM, AccState) of
+                                    {error, _Reason} -> AccState;
+                                    {ok, OkState} -> OkState
+                                end;
+                            _ -> AccState
+                        end
+                end,
+                State,
+                HookModules).
 
 check_app_plugin(App, Options) ->
     AppPaths = proplists:get_value(paths, Options, []),
