@@ -100,6 +100,7 @@ all_hooks() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    process_flag(trap_exit, true),
     ets:new(?TBL, [public, ordered_set, named_table, {read_concurrency, true}]),
     {ok, #state{}}.
 
@@ -197,6 +198,8 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
+    {_Hooks, Endpoints} = lists:unzip(all_hooks()),
+    [ hackney_pool:stop_pool(E) || E <- lists:usort(lists:flatten(Endpoints)) ],
     ok.
 
 %%--------------------------------------------------------------------
