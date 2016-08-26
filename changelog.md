@@ -1,5 +1,26 @@
 # Changelog
 
+## VERNEMQ 0.14.1
+
+### vmq_server
+
+- BC-break: Refactoring of queue migration mechanism:
+    This change requires that all cluster nodes use 0.14.1.
+    The refactoring fixes multiple issues with multiple clients that use the same
+    client id when connecting to different cluster nodes. 
+- Metrics overflow fix
+
+### vmq_plugin
+
+- Fix shutdown of plugins:
+    Disabling of application plugins that also dynamically register module plugins 
+    (like `vmq_diversity` or `vmq_webhooks`) will properly cleanup the `vmq_plugin.conf`.
+
+### General
+
+- RaspberryPI 32bit profile
+    Use `make rpi32` target to build a VerneMQ release for RaspberryPI
+
 ## VERNEMQ 0.13.1
 
 ### vmq_server
