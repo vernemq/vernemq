@@ -3,4 +3,4 @@ otp_release:
     - 17.5
     - 18.3
 
-script: ./rebar3 ct
+script: ./rebar3 update && ./rebar3 ct
