@@ -49,11 +49,10 @@ Deregistering and endpoint:
 
 ## Webhooks
 
-All webhooks are called with method `POST`. In general all hooks need to be
-answered with the HTTP code `200` to be considered successful, although in
-practice, this only has a semantic meaning for the authentication hooks. Any
-hook called that does not return the `200` code will be logged as an error as
-will any hook with an unparseable payload.
+All webhooks are called with method `POST`. All hooks need to be answered with
+the HTTP code `200` to be considered successful. Any hook called that does not
+return the `200` code will be logged as an error as will any hook with an
+unparseable payload.
 
 All hooks are called with the header `vernemq-hook` which contains the name of
 the hook in question.
