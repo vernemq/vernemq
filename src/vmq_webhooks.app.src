@@ -1,0 +1,25 @@
+{application, vmq_webhooks,
+ [{description, "VerneMQ webhooks plugin"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { vmq_webhooks_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    sasl,
+    crypto,
+    public_key,
+    ssl,
+    lager,
+    clique,
+    poolboy,
+    jsx,
+    hackney
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.
