@@ -26,7 +26,7 @@ is to set up encrypted tunnels through which the VerneMQ Webhooks plugin can
 reach the endpoints.
 
 For the above reasons, we recommend that in your production environment you
-deploy your endpoints one the same machines where you are deploying VerneMQ and
+deploy your endpoints on the same machines where you are deploying VerneMQ and
 configure the endpoints to be reached via `localhost`.
 
 ## Usage
