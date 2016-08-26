@@ -7,7 +7,7 @@ programming language. Java, Python, NodeJS, Go, or whatever you current weapon
 of choice is doesn't matter. All you need to do is to implement our web-hook
 interface and off you go!
 
-## When to use webhooks
+## When to use VerneMQ Webhooks
 
 Webhooks has the advantage that you can implement the webhooks in any language
 you can use to implement an http interface.
