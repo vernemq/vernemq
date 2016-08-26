@@ -29,26 +29,36 @@ For the above reasons, we recommend that in your production environment you
 deploy your endpoints one the same machines where you are deploying VerneMQ and
 configure the endpoints to be reached via `localhost`.
 
-## Build
-
-TODO
-
 ## Usage
 
-TODO
+Building the plugin:
+
+    $ ./rebar3 compile
+
+Enabling the plugin:
+
+    $ vmq-admin plugin enable --name=vmq_webhooks --path=/Abs/Path/To/vmq_webhooks/_build/default/
+
+Registering a hook with an endpoint:
+
+    $ vmq-admin webhooks register hook=auth_on_register endpoint="http://localhost"
+
+Deregistering and endpoint:
+
+    $ vmq-admin webhooks deregister hook=auth_on_register endpoint="http://localhost"
 
 ## Webhooks
 
 All webhooks are called with method `POST`. In general all hooks need to be
 answered with the HTTP code `200` to be considered successful, although in
 practice, this only has a semantic meaning for the authentication hooks. Any
-hook called that does not return the `200` code will be logged as an error.
+hook called that does not return the `200` code will be logged as an error as
+will any hook with an unparseable payload.
 
 All hooks are called with the header `vernemq-hook` which contains the name of
 the hook in question.
 
-For detailed information about hook parameters and possible return values and
-modifiers, see the
+For detailed information about the hooks and when they are called, see the
 [Plugin Development Guide](http://vernemq.com/docs/plugindevelopment/) and the
 relevant subsections.
 
