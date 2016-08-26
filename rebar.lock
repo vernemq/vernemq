@@ -70,7 +70,7 @@
   0},
  {<<"vmq_plugin">>,
   {git,"git://github.com/erlio/vmq_plugin.git",
-       {ref,"2b0201e55e714c9a491dcd2b6f7e3879747cb7b9"}},
+       {ref,"a4da95452f9363489c1fc5e2f753438e1d7b0b34"}},
   1},
  {<<"vmq_server">>,
   {git,"git://github.com/erlio/vmq_server.git",
