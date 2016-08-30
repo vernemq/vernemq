@@ -400,7 +400,7 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
             block_until_migrated(SubscriberId, NewSortedSubs, [Target]),
             {DeadNodes, Targets ++ [Target], N + 1};
         false ->
-            {DeadNodes, Targets, N}
+            {DeadNodes, [Target|Targets], N}
     end.
 
 
