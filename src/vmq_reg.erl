@@ -213,7 +213,7 @@ block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes) ->
                     %% our own queue died
                     timer:sleep(100),
                     block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes);
-                LocalQPid ->
+                LocalQPid when LocalQPid =/= RemoteQPid ->
                     case catch vmq_queue:status(RemoteQPid) of % remote gen_fsm call
                         {offline, _, _, _, _} ->
                             %% remote queue hasn't yet started to migrate
@@ -227,7 +227,9 @@ block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes) ->
                         _ ->
                             timer:sleep(100),
                             block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes)
-                    end
+                    end;
+                _ ->
+                    ok
             end
     end.
 
