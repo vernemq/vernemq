@@ -23,6 +23,7 @@
 %% ===================================================================
 init_per_suite(_Config) ->
     lager:start(),
+    {ok, rnd} = rand_compat:init(),
     %% this might help, might not...
     os:cmd(os:find_executable("epmd")++" -daemon"),
     {ok, Hostname} = inet:gethostname(),
@@ -256,4 +257,4 @@ wait_until_converged(Nodes, Fun, ExpectedReturn) ->
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 random_node(Nodes) ->
-    lists:nth(random:uniform(length(Nodes)), Nodes).
+    lists:nth(rnd:uniform(length(Nodes)), Nodes).
