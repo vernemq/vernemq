@@ -392,7 +392,7 @@ init([SubscriberId, Clean]) ->
       max_msgs_per_drain_step := MaxMsgsPerDrainStep} = Defaults,
     OfflineQueue = #queue{type=QueueType, max=MaxOfflineMsgs},
     {A, B, C} = os:timestamp(),
-    random:seed(A, B, C),
+    rnd:seed(A, B, C),
     case Clean of
         true ->
             ignore;
@@ -662,7 +662,7 @@ insert(MsgOrRef, #state{id=SId, deliver_mode=fanout, sessions=Sessions} = State)
 
 insert(MsgOrRef, #state{id=SId, deliver_mode=balance, sessions=Sessions} = State) ->
     Pids = maps:keys(Sessions),
-    RandomPid = lists:nth(random:uniform(length(Pids)), Pids),
+    RandomPid = lists:nth(rnd:uniform(length(Pids)), Pids),
     RandomSession = maps:get(RandomPid, Sessions),
     {UpdatedSession, _} = session_insert(SId, RandomSession, MsgOrRef),
     State#state{sessions=maps:update(RandomPid, UpdatedSession, Sessions)}.

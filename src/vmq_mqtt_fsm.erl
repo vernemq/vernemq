@@ -73,7 +73,7 @@
 
 init(Peer, Opts) ->
     {A, B, C} = os:timestamp(),
-    random:seed(A, B, C),
+    rnd:seed(A, B, C),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     PreAuthUser =
     case lists:keyfind(preauth, 1, Opts) of
@@ -896,7 +896,7 @@ get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
 
 -spec random_client_id() -> binary().
 random_client_id() ->
-    list_to_binary(["anon-", base64:encode_to_string(crypto:rand_bytes(20))]).
+    list_to_binary(["anon-", base64:encode_to_string(crypto:strong_rand_bytes(20))]).
 
 
 set_keepalive_timer(0) -> ok;
