@@ -24,8 +24,6 @@
          notify_recv/1,
          enqueue/2,
          status/1,
-         migration_status/1,
-         block_until_migrated/1,
          add_session/3,
          get_sessions/1,
          set_opts/2,
@@ -75,7 +73,6 @@
           drain_over_timer,
           max_msgs_per_drain_step,
           waiting_call,
-          migrations = [],
           opts
          }).
 
@@ -124,14 +121,12 @@ get_opts(Queue) when is_pid(Queue) ->
 set_last_waiting_acks(Queue, WAcks) ->
     gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
 
+migrate(Queue, Queue) ->
+    %% this scenario can happen, due to the eventual migration kickoff
+    ok;
 migrate(Queue, OtherQueue) ->
     %% Migrate Messages of 'Queue' to 'OtherQueue'
     %% -------------------------------------------
-
-    %% inform 'OtherQueue' about the migration process,
-    %% see 'block_until_migrated/1' how the status information is used.
-    gen_fsm:send_all_state_event(OtherQueue, {migrate_info, Queue}),
-
     case catch gen_fsm:sync_send_event(Queue, {migrate, OtherQueue}, infinity) of
         {'EXIT', {normal, _}} ->
             ok;
@@ -145,19 +140,6 @@ migrate(Queue, OtherQueue) ->
 
 status(Queue) ->
     gen_fsm:sync_send_all_state_event(Queue, status, infinity).
-
-migration_status(Queue) ->
-    gen_fsm:sync_send_all_state_event(Queue, migration_status, infinity).
-
-block_until_migrated(Queue) ->
-    timer:sleep(100),
-    case migration_status(Queue) of
-        [] ->
-            ok;
-        _ ->
-            block_until_migrated(Queue)
-    end.
-
 
 default_opts() ->
     #{allow_multiple_sessions => vmq_config:get_env(allow_multiple_sessions),
@@ -229,6 +211,54 @@ wait_for_offline(Event, State) ->
 
 wait_for_offline({set_last_waiting_acks, WAcks}, _From, State) ->
     {reply, ok, wait_for_offline, handle_waiting_acks_and_msgs(WAcks, State)};
+wait_for_offline({add_session, SessionPid, Opts}, From,
+                 #state{waiting_call={migrate, _OtherQueue, MigrationFrom}} = State) ->
+    %% Reason for this case:
+    %% ---------------------
+    %% This case handles a race condition that can happen when multiple
+    %% concurrent clients (with clean_session=false) try to connect using
+    %% the same client_id at the same time. The connect itself isn't necessarily
+    %% the problem, as CONNECTs are synchronized using vmq_reg_sync. However
+    %% faulty or dumb clients (with clean_session=false) that send a SUBSCRIBE
+    %% every time after a CONNECT/CONNACK (e.g. not properly using the SessionPresent
+    %% flag in returned CONNACK) may interfere with waiting migrate or add_session
+    %% calls. The reason for this is that SUBSCRIBEs aren't synchronized while
+    %% CONNECTs are.
+    %%
+    %% Precondition:
+    %% -------------
+    %% The calling session uses trade_consistency=false for the session setup.
+    %% The racing client are using clean_session=false
+    %%
+    %% Solution:
+    %% ---------
+    %% The waiting migration call isn't required anymore as we have a new session
+    %% that can use this queue (and it's possible offline messages). As we haven't
+    %% started to drain this queue (we are not in drain state) we can reply 'ok'
+    %% to the waiting migration. The 'OtherQueue' that was part of the waiting
+    %% migration gets eventually stopped.
+    gen_fsm:reply(MigrationFrom, ok),
+    {next_state, wait_for_offline,
+     State#state{waiting_call={add_session, SessionPid, Opts, From}}};
+wait_for_offline({add_session, NewSessionPid, NewOpts}, From,
+                #state{waiting_call={add_session, SessionPid, _Opts, AddFrom}} = State) ->
+    %% Reason for this case:
+    %% ---------------------
+    %% See case above!
+    %%
+    %% Precondition:
+    %% -------------
+    %% See case above!
+    %%
+    %% Solution:
+    %% ---------
+    %% The waiting add_session call isn't required anymore as we have a new session
+    %% that we should attach to this queue. We can terminate the waiting add_session
+    %% and replace the waiting_call
+    gen_fsm:reply(AddFrom, ok),
+    exit(SessionPid, normal),
+    {next_state, wait_for_offline,
+     State#state{waiting_call={add_session, NewSessionPid, NewOpts, From}}};
 wait_for_offline(Event, _From, State) ->
     lager:error("got unknown sync event in wait_for_offline state ~p", [Event]),
     {reply, {error, wait_for_offline}, wait_for_offline, State}.
@@ -239,41 +269,40 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
                           waiting_call={migrate, RemoteQueue, From}} = State) ->
     {DrainQ, NewQ} = queue_split(DrainStepSize, Q),
     #queue{queue=DecompressedDrainQ} = decompress_queue(SId, #queue{queue=DrainQ}),
+    case queue:to_list(DecompressedDrainQ) of
+        [] ->
+            %% no need to drain!
 
-    Msgs = queue:to_list(DecompressedDrainQ),
-    %% remote_enqueue triggers an enqueue_many inside the remote queue
-    %% but forces the traffic to go over the distinct communication link
-    %% instead of the erlang distribution link.
-    case vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, Msgs}) of
-        ok ->
-            cleanup_queue(SId, DrainQ),
-            _ = vmq_metrics:incr_queue_out(queue:len(DrainQ)),
-            case queue:len(NewQ) of
-                L when L > 0 ->
+            %% the extra timeout gives the chance that pending messages
+            %% in the erlang mailbox could still get enqueued and
+            %% therefore eventually transmitted to the remote queue
+            {next_state, drain,
+             State#state{drain_over_timer=gen_fsm:send_event_after(DrainTimeout, drain_over),
+                         offline=Queue#queue{size=0, drop=0, queue=queue:new()}}};
+        Msgs ->
+            %% remote_enqueue triggers an enqueue_many inside the remote queue
+            %% but forces the traffic to go over the distinct communication link
+            %% instead of the erlang distribution link.
+
+            case vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, Msgs}) of
+                ok ->
+                    cleanup_queue(SId, DrainQ),
+                    _ = vmq_metrics:incr_queue_out(queue:len(DrainQ)),
                     gen_fsm:send_event(self(), drain_start),
                     {next_state, drain,
-                     State#state{offline=Queue#queue{size=L, drop=0,
-                                                     queue=NewQ}}};
-                _ ->
-                    %% the extra timeout gives the chance that pending messages
-                    %% in the erlang mailbox could still get enqueued and
-                    %% therefore eventually transmitted to the remote queue
-                    {next_state, drain,
-                     State#state{drain_over_timer=gen_fsm:send_event_after(DrainTimeout, drain_over),
-                                 offline=Queue#queue{size=0, drop=0,
-                                                     queue=queue:new()}}}
-            end;
-        {error, Reason} ->
-            %% this shouldn't happen, as the register_subscriber is synchronized
-            %% using the vmq_reg_leader process. However this could theoretically
-            %% happen in case of an inconsistent (but un-detected) cluster state.
-            %% we don't drain in this case.
-            lager:error("can't drain queue '~p' for [~p][~p] due to ~p",
-                          [SId, self(), RemoteQueue, Reason]),
-            gen_fsm:reply(From, ok),
-            %% transition to offline, and let a future session drain this queue
-            {next_state, state_change(drain_error, drain, offline),
-             State#state{waiting_call=undefined}}
+                     State#state{offline=Queue#queue{size=queue:len(NewQ), drop=0, queue=NewQ}}};
+                {error, Reason} ->
+                    %% this shouldn't happen, as the register_subscriber is synchronized
+                    %% using the vmq_reg_leader process. However this could theoretically
+                    %% happen in case of an inconsistent (but un-detected) cluster state.
+                    %% we don't drain in this case.
+                    lager:error("can't drain queue '~p' for [~p][~p] due to ~p",
+                                [SId, self(), RemoteQueue, Reason]),
+                    gen_fsm:reply(From, ok),
+                    %% transition to offline, and let a future session drain this queue
+                    {next_state, state_change(drain_error, drain, offline),
+                     State#state{waiting_call=undefined}}
+            end
     end;
 drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
     %% even in drain state it is possible that an enqueue message
@@ -283,6 +312,7 @@ drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
     gen_fsm:send_event(self(), drain_start),
     _ = vmq_metrics:incr_queue_in(),
     {next_state, drain, insert(Msg, State)};
+
 drain(drain_over, #state{waiting_call={migrate, _, From}} =
       #state{offline=#queue{size=0}} = State) ->
     %% we're done with the migrate, offline queue is empty
@@ -296,6 +326,11 @@ drain(Event, State) ->
     lager:error("got unknown event in drain state ~p", [Event]),
     {next_state, drain, State}.
 
+drain({enqueue_many, Msgs}, _From, #state{drain_over_timer=TRef} =  State) ->
+    gen_fsm:cancel_timer(TRef),
+    gen_fsm:send_event(self(), drain_start),
+    _ = vmq_metrics:incr_queue_in(length(Msgs)),
+    {reply, ok, drain, insert_many(Msgs, State)};
 drain(Event, _From, State) ->
     lager:error("got unknown sync event in drain state ~p", [Event]),
     {reply, {error, draining}, drain, State}.
@@ -375,18 +410,9 @@ init([SubscriberId, Clean]) ->
                           max_msgs_per_drain_step=MaxMsgsPerDrainStep,
                           opts=Defaults}}.
 
-handle_event({migrate_info, RemoteQueue}, StateName,
-             #state{migrations=Migrations} = State) ->
-    NewMigrations = [RemoteQueue|Migrations],
-    {next_state, StateName, State#state{migrations=NewMigrations}};
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
-handle_sync_event(migration_status, _From, StateName,
-                  #state{migrations=Migrations} = State) ->
-    NewMigrations =
-    [MQPid || MQPid <- Migrations, rpc:pinfo(MQPid, status) /= undefined],
-    {reply, NewMigrations, StateName, State#state{migrations=NewMigrations}};
 handle_sync_event(status, _From, StateName,
                   #state{deliver_mode=Mode, offline=#queue{size=OfflineSize},
                          sessions=Sessions, opts=#{is_plugin := IsPlugin}} = State) ->
