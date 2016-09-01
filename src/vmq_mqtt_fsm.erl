@@ -72,8 +72,7 @@
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 
 init(Peer, Opts) ->
-    {A, B, C} = os:timestamp(),
-    rnd:seed(A, B, C),
+    rnd:seed(os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     PreAuthUser =
     case lists:keyfind(preauth, 1, Opts) of

@@ -391,8 +391,7 @@ init([SubscriberId, Clean]) ->
       max_drain_time := DrainTime,
       max_msgs_per_drain_step := MaxMsgsPerDrainStep} = Defaults,
     OfflineQueue = #queue{type=QueueType, max=MaxOfflineMsgs},
-    {A, B, C} = os:timestamp(),
-    rnd:seed(A, B, C),
+    rnd:seed(os:timestamp()),
     case Clean of
         true ->
             ignore;
