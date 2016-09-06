@@ -25,6 +25,7 @@
 
 -spec start(_, _) -> {'error', _} | {'ok', pid()} | {'ok', pid(), _}.
 start(_StartType, _StartArgs) ->
+    {ok, rnd} = rand_compat:init(),
     vmq_server_cli:init_registry(),
     case vmq_server_sup:start_link() of
         {error, _} = E ->

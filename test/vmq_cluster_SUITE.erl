@@ -333,8 +333,7 @@ publish(Self, [Node|Rest] = Nodes, NrOfProcesses, NrOfMsgsPerProcess, Pids) ->
     publish(Self, Rest ++ [Node], NrOfProcesses -1, NrOfMsgsPerProcess, [Pid|Pids]).
 
 publish_(Self, Node, NrOfMsgsPerProcess) ->
-    {A, B, C} =  os:timestamp(),
-    rnd:seed(A, B, C),
+    rnd:seed(os:timestamp()),
     publish__(Self, Node, NrOfMsgsPerProcess).
 publish__(Self, _, 0) ->
     Self ! done;
