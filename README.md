@@ -58,6 +58,7 @@ end
 
 -- the function that implements the auth_on_publish/6 hook
 -- the pub object contains everything required to authorize a publish request
+--      pub.username: UserName e.g. "test-user"
 --      pub.mountpoint: Mountpoint e.g. ""
 --      pub.client_id: ClientId e.g. "test-id"
 --      pub.topic: Publish Topic e.g. "test/topic"
@@ -74,6 +75,7 @@ end
 
 -- the function that implements the auth_on_subscribe/3 hook
 -- the sub object contains everything required to authorize a subscribe request
+--      sub.username: UserName e.g. "test-user"
 --      sub.mountpoint: Mountpoint e.g. ""
 --      sub.client_id: ClientId e.g. "test-id"
 --      sub.topics: A list of Topic/QoS Pairs e.g. { {"topic/1", 0}, {"topic/2, 1} }
