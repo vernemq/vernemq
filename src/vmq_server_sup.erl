@@ -49,11 +49,11 @@ init([]) ->
            [?CHILD(vmq_config, worker, []) | MsgStoreChildSpecs]
            ++ [
                ?CHILD(vmq_crl_srv, worker, []),
-               ?CHILD(vmq_sysmon, worker, []),
-               ?CHILD(vmq_metrics_sup, supervisor, []),
                ?CHILD(vmq_queue_sup, supervisor, [infinity, 5, 10]),
                ?CHILD(vmq_reg_sup, supervisor, []),
-               ?CHILD(vmq_cluster_node_sup, supervisor, [])
+               ?CHILD(vmq_cluster_node_sup, supervisor, []),
+               ?CHILD(vmq_sysmon, worker, []),
+               ?CHILD(vmq_metrics_sup, supervisor, [])
               ]} }.
 
 maybe_change_nodename() ->
