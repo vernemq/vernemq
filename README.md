@@ -45,7 +45,7 @@ Registering a hook with an endpoint:
 
     $ vmq-admin webhooks register hook=auth_on_register endpoint="http://localhost"
 
-Deregistering and endpoint:
+Deregistering an endpoint:
 
     $ vmq-admin webhooks deregister hook=auth_on_register endpoint="http://localhost"
 
