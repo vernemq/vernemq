@@ -42,10 +42,7 @@ extract_cn2([_|Rest]) ->
 extract_cn2([]) -> undefined.
 
 opts(Opts) ->
-    [{cacerts, case proplists:get_value(cafile, Opts) of
-                   undefined -> undefined;
-                   CAFile -> load_cert(CAFile)
-               end},
+    [{cacertfile, proplists:get_value(cafile, Opts)},
      {certfile, proplists:get_value(certfile, Opts)},
      {keyfile, proplists:get_value(keyfile, Opts)},
      {ciphers, ciphersuite_transform(proplists:get_value(ciphers, Opts, []))},
@@ -113,21 +110,6 @@ check_user_state(UserState, Cert) ->
                 false ->
                     {fail, {bad_cert, cert_revoked}}
             end
-    end.
-
--spec load_cert(string()) -> [binary()].
-load_cert(Cert) ->
-    {ok, Bin} = file:read_file(Cert),
-    case filename:extension(Cert) of
-        ".der" ->
-            %% no decoding necessary
-            [Bin];
-        _ ->
-            %% assume PEM otherwise
-            Contents = public_key:pem_decode(Bin),
-            [DER || {Type, DER, Cipher} <-
-                    Contents, Type == 'Certificate',
-                    Cipher == 'not_encrypted']
     end.
 
 ciphers() ->
