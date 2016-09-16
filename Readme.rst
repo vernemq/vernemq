@@ -104,6 +104,9 @@ The VerneMQ project (this repository) is an umbrella for multiple subrepos. Most
 | `vmq_passwd <https://github.com/erlio/vmq_passwd>`_        | Password file based authentication plugin           | .. image:: https://travis-ci.org/erlio/vmq_passwd.svg       | yes      +
 |                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_passwd          |          +
 +------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
+| `vmq_bridge <https://github.com/erlio/vmq_bridge>`_        | Bridge VerneMQ with other MQTT brokers              | .. image:: https://travis-ci.org/erlio/vmq_bridge.svg       | yes      +
+|                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_bridge          |          +
++------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
 | `vmq_diversity <https://github.com/erlio/vmq_diversity>`_  | Implement VerneMQ plugins using Lua                 | .. image:: https://travis-ci.org/erlio/vmq_diversity.svg    | no       +
 |                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_diversity       |          +
 +------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
