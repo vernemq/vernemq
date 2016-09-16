@@ -1,5 +1,22 @@
 # Changelog
 
+## VERNEMQ 0.14.2
+
+### vmq_server
+
+- SSL/TLS Refactorings:
+    GCM cipher suites are now supported.
+    The `support_elliptic_curve` option was removed. If your setup doesn't support
+    the elliptic curve cipher suites you may do nothing, as the Erlang ssl
+    application automatically ignores the unsupported cipher suites. As an
+    alternative you may specify the supported ciphers in the `vernemq.conf` file.
+
+- VerneMQ is now compatible with Erlang 19:
+    As of the upcoming VerneMQ 0.15.0 we'll switch to Erlang 19 as the default
+    version. Backward compatibility with Erlang 17 is likely to be removed.
+
+- Bug fix in queue migration
+
 ## VERNEMQ 0.14.1
 
 ### vmq_server
