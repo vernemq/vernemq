@@ -1,3 +1,17 @@
+%% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+
 -module(vmq_ssl).
 -include_lib("public_key/include/public_key.hrl").
 -export([socket_to_common_name/1,
@@ -28,16 +42,10 @@ extract_cn2([_|Rest]) ->
 extract_cn2([]) -> undefined.
 
 opts(Opts) ->
-    [{cacerts, case proplists:get_value(cafile, Opts) of
-                   undefined -> undefined;
-                   CAFile -> load_cert(CAFile)
-               end},
+    [{cacertfile, proplists:get_value(cafile, Opts)},
      {certfile, proplists:get_value(certfile, Opts)},
      {keyfile, proplists:get_value(keyfile, Opts)},
-     {ciphers, ciphersuite_transform(
-                 proplists:get_value(support_elliptic_curves, Opts, true),
-                 proplists:get_value(ciphers, Opts, [])
-                )},
+     {ciphers, ciphersuite_transform(proplists:get_value(ciphers, Opts, []))},
      {fail_if_no_peer_cert, proplists:get_value(require_certificate,
                                                 Opts, false)},
      {verify, case
@@ -64,114 +72,27 @@ opts(Opts) ->
     ].
 
 
--spec ciphersuite_transform(boolean(), string()) -> [{atom(), atom(), atom()}].
-ciphersuite_transform(SupportEC, []) ->
-    unbroken_cipher_suites(all_ciphers(SupportEC));
-ciphersuite_transform(_, CiphersString) when is_list(CiphersString) ->
-    Ciphers = string:tokens(CiphersString, ":"),
-    unbroken_cipher_suites(ciphersuite_transform_(Ciphers, [])).
+-spec ciphersuite_transform([string()]) -> [string()].
+ciphersuite_transform([]) ->
+    filter_ciphers(ciphers());
+ciphersuite_transform(CiphersString) when is_list(CiphersString) ->
+    CiphersString.
 
--spec ciphersuite_transform_([string()],
-                             [{atom(), atom(), atom()}]) ->
-    [{atom(), atom(), atom()}].
-ciphersuite_transform_([CipherString|Rest], Acc) ->
-    Cipher = string:tokens(CipherString, "-"),
-    case cipher_ex_transform(Cipher) of
-        {ok, CipherSuite} ->
-            ciphersuite_transform_(Rest, [CipherSuite|Acc]);
-        {error, Reason} ->
-            lager:error("error parsing ciphersuite ~p, ~p~n",
-                        [CipherString, Reason]),
-            ciphersuite_transform_(Rest, Acc)
-    end;
-ciphersuite_transform_([], Acc) -> Acc.
-
--spec cipher_ex_transform([string()]) ->
-    {ok, {atom(), atom(), atom()}} |
-    {error, unknown_keyexchange |
-     unknown_cipher | unknown_cipher}.
-cipher_ex_transform(["ECDH", "ANON"|Rest]) ->
-    cipher_ci_transform(ecdh_anon, Rest);
-cipher_ex_transform(["ECDH", "ECDSA"|Rest]) ->
-    cipher_ci_transform(ecdh_ecdsa, Rest);
-cipher_ex_transform(["ECDHE", "ECDSA"|Rest]) ->
-    cipher_ci_transform(ecdhe_ecdsa, Rest);
-cipher_ex_transform(["ECDH", "RSA"|Rest]) ->
-    cipher_ci_transform(ecdh_rsa, Rest);
-cipher_ex_transform(["ECDHE", "RSA"|Rest]) ->
-    cipher_ci_transform(ecdhe_rsa, Rest);
-cipher_ex_transform(["DHE", "DSS"|Rest]) -> cipher_ci_transform(dhe_dss, Rest);
-cipher_ex_transform(["DHE", "RSA"|Rest]) -> cipher_ci_transform(dhe_rsa, Rest);
-cipher_ex_transform(["DH", "ANON"|Rest]) -> cipher_ci_transform(dh_anon, Rest);
-cipher_ex_transform(["DHE", "PSK"|Rest]) -> cipher_ci_transform(dhe_psk, Rest);
-cipher_ex_transform(["RSA", "PSK"|Rest]) -> cipher_ci_transform(rsa_psk, Rest);
-cipher_ex_transform(["SRP", "ANON"|Rest]) ->
-    cipher_ci_transform(srp_anon, Rest);
-cipher_ex_transform(["SRP", "DSS"|Rest]) -> cipher_ci_transform(srp_dss, Rest);
-cipher_ex_transform(["SRP", "RSA"|Rest]) -> cipher_ci_transform(srp_rsa, Rest);
-cipher_ex_transform(["RSA"|Rest]) -> cipher_ci_transform(rsa, Rest);
-cipher_ex_transform(["PSK"|Rest]) -> cipher_ci_transform(psk, Rest);
-cipher_ex_transform([_|Rest]) -> cipher_ex_transform(Rest);
-cipher_ex_transform([]) -> {error, unknown_keyexchange}.
-
--spec cipher_ci_transform(atom(), [string()]) ->
-    {ok, {atom(), atom(), atom()}} |
-    {error, unknown_hash | unknown_cipher}.
-cipher_ci_transform(KeyEx, ["3DES", "EDE", "CBC"|Rest]) ->
-    cipher_hash_transform(KeyEx, '3des_ede_cbc', Rest);
-cipher_ci_transform(KeyEx, ["AES128", "CBC"|Rest]) ->
-    cipher_hash_transform(KeyEx, aes_128_cbc, Rest);
-cipher_ci_transform(KeyEx, ["AES256", "CBC"|Rest]) ->
-    cipher_hash_transform(KeyEx, aes_256_cbc, Rest);
-cipher_ci_transform(KeyEx, ["RC4", "128"|Rest]) ->
-    cipher_hash_transform(KeyEx, rc4_128, Rest);
-cipher_ci_transform(KeyEx, ["DES", "CBC"|Rest]) ->
-    cipher_hash_transform(KeyEx, des_cbc, Rest);
-cipher_ci_transform(KeyEx, [_|Rest]) ->
-    cipher_ci_transform(KeyEx, Rest);
-cipher_ci_transform(_, []) -> {error, unknown_cipher}.
-
--spec cipher_hash_transform(atom(), atom(), [string()]) ->
-    {ok, {atom(), atom(), atom()}} |
-    {error, unknown_hash}.
-cipher_hash_transform(KeyEx, Cipher, ["MD5"]) -> {ok, {KeyEx, Cipher, md5}};
-cipher_hash_transform(KeyEx, Cipher, ["SHA"]) -> {ok, {KeyEx, Cipher, sha}};
-cipher_hash_transform(KeyEx, Cipher, ["SHA256"]) ->
-    {ok, {KeyEx, Cipher, sha256}};
-cipher_hash_transform(KeyEx, Cipher, ["SHA384"]) ->
-    {ok, {KeyEx, Cipher, sha384}};
-cipher_hash_transform(KeyEx, Cipher, [_|Rest]) ->
-    cipher_hash_transform(KeyEx, Cipher, Rest);
-cipher_hash_transform(_, _, []) -> {error, unknown_hash}.
-
--spec all_ciphers(boolean()) -> [{atom(), atom(), atom()}].
-all_ciphers(UseEc) ->
-    ECExchanges = [ecdh_anon, ecdh_ecdsa, ecdhe_ecdsa, ecdh_rsa, ecdhe_rsa],
-    lists:foldl(fun({Ex, _, _} = CS, Acc) ->
-                        case UseEc of
-                            true -> [CS|Acc];
-                            false ->
-                                case lists:member(Ex, ECExchanges) of
-                                    true -> Acc;
-                                    false -> [CS|Acc]
-                                end
-                        end;
-                   (_, Acc) -> Acc
-                end, [], ssl:cipher_suites()).
-
--spec unbroken_cipher_suites([atom()]) -> [{atom(), atom(), atom()}].
-unbroken_cipher_suites(CipherSuites) ->
-    %% from ranch
+filter_ciphers(Ciphers) ->
+    %% erlang 17 (ssl app version < 7.0 does not support GCM
     case proplists:get_value(ssl_app, ssl:versions()) of
-        Version when Version =:= "5.3"; Version =:= "5.3.1" ->
-            lists:filter(fun(Suite) ->
-                                 string:left(
-                                   atom_to_list(element(1,
-                                                        Suite)), 4) =/= "ecdh"
-                         end, CipherSuites);
+        [M | _] when M =:= $5; M =:= $6 ->
+            remove_gcm_ciphers(Ciphers);
         _ ->
-            CipherSuites
+            Ciphers
     end.
+
+remove_gcm_ciphers(Ciphers) ->
+    lists:filter(
+      fun(Cipher) ->
+              string:str(Cipher, "-GCM-") =:= 0
+      end,
+     Ciphers).
 
 -spec verify_ssl_peer(_, 'valid' | 'valid_peer' |
                       {'bad_cert', _} |
@@ -206,19 +127,41 @@ check_user_state(UserState, Cert) ->
             end
     end.
 
--spec load_cert(string()) -> [binary()].
-load_cert(Cert) ->
-    {ok, Bin} = file:read_file(Cert),
-    case filename:extension(Cert) of
-        ".der" ->
-            %% no decoding necessary
-            [Bin];
-        _ ->
-            %% assume PEM otherwise
-            Contents = public_key:pem_decode(Bin),
-            [DER || {Type, DER, Cipher} <-
-                    Contents, Type == 'Certificate',
-                    Cipher == 'not_encrypted']
-    end.
-
-
+ciphers() ->
+    ["ECDHE-ECDSA-AES256-GCM-SHA384"
+     ,"ECDHE-RSA-AES256-GCM-SHA384"
+     ,"ECDHE-ECDSA-AES256-SHA384"
+     ,"ECDHE-RSA-AES256-SHA384"
+     ,"ECDHE-ECDSA-DES-CBC3-SHA"
+     ,"ECDH-ECDSA-AES256-GCM-SHA384"
+     ,"ECDH-RSA-AES256-GCM-SHA384"
+     ,"ECDH-ECDSA-AES256-SHA384"
+     ,"ECDH-RSA-AES256-SHA384"
+     ,"DHE-DSS-AES256-GCM-SHA384"
+     ,"DHE-DSS-AES256-SHA256"
+     ,"AES256-GCM-SHA384"
+     ,"AES256-SHA256"
+     ,"ECDHE-ECDSA-AES128-GCM-SHA256"
+     ,"ECDHE-RSA-AES128-GCM-SHA256"
+     ,"ECDHE-ECDSA-AES128-SHA256"
+     ,"ECDHE-RSA-AES128-SHA256"
+     ,"ECDH-ECDSA-AES128-GCM-SHA256"
+     ,"ECDH-RSA-AES128-GCM-SHA256"
+     ,"ECDH-ECDSA-AES128-SHA256"
+     ,"ECDH-RSA-AES128-SHA256"
+     ,"DHE-DSS-AES128-GCM-SHA256"
+     ,"DHE-DSS-AES128-SHA256"
+     ,"AES128-GCM-SHA256"
+     ,"AES128-SHA256"
+     ,"ECDHE-ECDSA-AES256-SHA"
+     ,"ECDHE-RSA-AES256-SHA"
+     ,"DHE-DSS-AES256-SHA"
+     ,"ECDH-ECDSA-AES256-SHA"
+     ,"ECDH-RSA-AES256-SHA"
+     ,"AES256-SHA"
+     ,"ECDHE-ECDSA-AES128-SHA"
+     ,"ECDHE-RSA-AES128-SHA"
+     ,"DHE-DSS-AES128-SHA"
+     ,"ECDH-ECDSA-AES128-SHA"
+     ,"ECDH-RSA-AES128-SHA"
+     ,"AES128-SHA"].
