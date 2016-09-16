@@ -954,32 +954,6 @@
                                                                                   {datatype, flag},
                                                                                   hidden
                                                                                  ]}. 
-{mapping, "listener.ssl.support_elliptic_curves", "vmq_server.listeners", [
-                                                                           {default, on},
-                                                                           {datatype, flag},
-                                                                           hidden
-                                                                          ]}. 
-{mapping, "listener.ssl.$name.support_elliptic_curves", "vmq_server.listeners", [
-                                                                                 {datatype, flag},
-                                                                                 hidden
-                                                                                ]}. 
-{mapping, "listener.wss.support_elliptic_curves", "vmq_server.listeners", [
-                                                                           {default, on},
-                                                                           {datatype, flag},
-                                                                           hidden
-                                                                          ]}. 
-{mapping, "listener.wss.$name.support_elliptic_curves", "vmq_server.listeners", [
-                                                                                 {datatype, flag},
-                                                                                 hidden
-                                                                                ]}. 
-{mapping, "listener.vmqs.$name.support_elliptic_curves", "vmq_server.listeners", [
-                                                                                 {datatype, flag},
-                                                                                 hidden
-                                                                                ]}. 
-{mapping, "listener.https.$name.support_elliptic_curves", "vmq_server.listeners", [
-                                                                                 {datatype, flag},
-                                                                                 hidden
-                                                                                ]}. 
 
 
 {translation, "vmq_server.listeners", 
@@ -1017,7 +991,7 @@
          ExtMapps = [%% ssl listener specific
                      "cafile", "capath", "certfile", "ciphers", "crlfile",
                      "keyfile", "require_certificate", "tls_version",
-                     "use_identity_as_username", "support_elliptic_curves",
+                     "use_identity_as_username",
                      %% http listener specific
                      "config_mod", "config_fun"
                     ],
@@ -1100,7 +1074,6 @@
          {SSLIPs, SSLRequireCerts} = lists:unzip(F("listener.ssl", "require_certificate", BoolVal)),
          {SSLIPs, SSLVersions} = lists:unzip(F("listener.ssl", "tls_version", AtomVal)),
          {SSLIPs, SSLUseIdents} = lists:unzip(F("listener.ssl", "use_identity_as_username", BoolVal)),
-         {SSLIPs, SSLECSupport} = lists:unzip(F("listener.ssl", "support_elliptic_curves", BoolVal)),
 
          % WSS
          {WS_SSLIPs, WS_SSLCAFiles} = lists:unzip(F("listener.wss", "cafile", StrVal)),
@@ -1112,7 +1085,6 @@
          {WS_SSLIPs, WS_SSLRequireCerts} = lists:unzip(F("listener.wss", "require_certificate", BoolVal)),
          {WS_SSLIPs, WS_SSLVersions} = lists:unzip(F("listener.wss", "tls_version", AtomVal)),
          {WS_SSLIPs, WS_SSLUseIdents} = lists:unzip(F("listener.wss", "use_identity_as_username", BoolVal)),
-         {WS_SSLIPs, WS_SSLECSupport} = lists:unzip(F("listener.wss", "support_elliptic_curves", BoolVal)),
 
          % VMQS
          {VMQ_SSLIPs, VMQ_SSLCAFiles} = lists:unzip(F("listener.vmqs", "cafile", StrVal)),
@@ -1123,7 +1095,6 @@
          {VMQ_SSLIPs, VMQ_SSLKeyFiles} = lists:unzip(F("listener.vmqs", "keyfile", StrVal)),
          {VMQ_SSLIPs, VMQ_SSLRequireCerts} = lists:unzip(F("listener.vmqs", "require_certificate", BoolVal)),
          {VMQ_SSLIPs, VMQ_SSLVersions} = lists:unzip(F("listener.vmqs", "tls_version", AtomVal)),
-         {VMQ_SSLIPs, VMQ_SSLECSupport} = lists:unzip(F("listener.vmqs", "support_elliptic_curves", BoolVal)),
          
          % HTTPS
          {HTTP_SSLIPs, HTTP_SSLCAFiles} = lists:unzip(F("listener.https", "cafile", StrVal)),
@@ -1134,7 +1105,6 @@
          {HTTP_SSLIPs, HTTP_SSLKeyFiles} = lists:unzip(F("listener.https", "keyfile", StrVal)),
          {HTTP_SSLIPs, HTTP_SSLRequireCerts} = lists:unzip(F("listener.https", "require_certificate", BoolVal)),
          {HTTP_SSLIPs, HTTP_SSLVersions} = lists:unzip(F("listener.https", "tls_version", AtomVal)),
-         {HTTP_SSLIPs, HTTP_SSLECSupport} = lists:unzip(F("listener.https", "support_elliptic_curves", BoolVal)),
 
          TCP = lists:zip(TCPIPs, MZip([TCPMaxConns, 
                                        TCPNrOfAcceptors,
@@ -1161,8 +1131,7 @@
                                        SSLKeyFiles, 
                                        SSLRequireCerts, 
                                        SSLVersions, 
-                                       SSLUseIdents, 
-                                       SSLECSupport])),
+                                       SSLUseIdents])),
          WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns, 
                                           WS_SSLNrOfAcceptors,
                                           WS_SSLMountPoint,
@@ -1174,8 +1143,7 @@
                                           WS_SSLKeyFiles, 
                                           WS_SSLRequireCerts, 
                                           WS_SSLVersions, 
-                                          WS_SSLUseIdents, 
-                                          WS_SSLECSupport])),
+                                          WS_SSLUseIdents])),
          VMQS = lists:zip(VMQ_SSLIPs, MZip([VMQ_SSLMaxConns, 
                                           VMQ_SSLNrOfAcceptors,
                                           VMQ_SSLMountPoint,
@@ -1186,8 +1154,7 @@
                                           VMQ_SSLCrlFiles, 
                                           VMQ_SSLKeyFiles, 
                                           VMQ_SSLRequireCerts, 
-                                          VMQ_SSLVersions, 
-                                          VMQ_SSLECSupport])), 
+                                          VMQ_SSLVersions])), 
          HTTPS = lists:zip(HTTP_SSLIPs, MZip([HTTP_SSLMaxConns, 
                                           HTTP_SSLNrOfAcceptors,
                                           HTTP_SSLCAFiles, 
@@ -1198,7 +1165,6 @@
                                           HTTP_SSLKeyFiles, 
                                           HTTP_SSLRequireCerts, 
                                           HTTP_SSLVersions, 
-                                          HTTP_SSLECSupport,
                                           HTTP_SSLConfigMod,
                                           HTTP_SSLConfigFun])),
 
