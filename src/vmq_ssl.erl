@@ -74,10 +74,25 @@ opts(Opts) ->
 
 -spec ciphersuite_transform([string()]) -> [string()].
 ciphersuite_transform([]) ->
-    ciphers();
+    filter_ciphers(ciphers());
 ciphersuite_transform(CiphersString) when is_list(CiphersString) ->
     CiphersString.
 
+filter_ciphers(Ciphers) ->
+    %% erlang 17 (ssl app version < 7.0 does not support GCM
+    case proplists:get_value(ssl_app, ssl:versions()) of
+        [M | _] when M =:= $5; M =:= $6 ->
+            remove_gcm_ciphers(Ciphers);
+        _ ->
+            Ciphers
+    end.
+
+remove_gcm_ciphers(Ciphers) ->
+    lists:filter(
+      fun(Cipher) ->
+              string:str(Cipher, "-GCM-") =:= 0
+      end,
+     Ciphers).
 
 -spec verify_ssl_peer(_, 'valid' | 'valid_peer' |
                       {'bad_cert', _} |
