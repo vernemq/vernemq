@@ -166,7 +166,20 @@ register_subscriber(SessionPid, SubscriberId,
         false ->
             %wait_for_changed_nodes(SubscriberId, ChangedNodes),
             %% wait_quorum(SubscriberId),
-            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes),
+            Fun = fun(Sid, OldNode) ->
+                          case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
+                              not_found ->
+                                  case get_queue_pid(Sid) of
+                                      not_found ->
+                                          block;
+                                      LocalPid when is_pid(LocalPid) ->
+                                          done
+                                  end;
+                              OldPid when is_pid(OldPid) ->
+                                  block
+                          end
+                  end,
+            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes, Fun),
             SessionPresent1
     end,
     case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
@@ -189,8 +202,23 @@ register_subscriber(SessionPid, SubscriberId,
             {ok, SessionPresent2, QPid}
     end.
 
-block_until_migrated(_, _, []) -> ok;
-block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes) ->
+
+%% block_until_migrated/4 has three cases to consider, the logic for
+%% these cases are handled by the BlockCond function
+%%
+%% migrate queue to local node (register_subscriber):
+%%
+%%    we wait until there is no queue on the original node and until we have one locally
+%%
+%% migrate local queue to remote node (cluster leave):
+%%
+%%    we wait until there is no local queue and until there is one on the remote node.
+%%
+%% migrate dead queue (node down) to another node in cluster (including this one):
+%%
+%%    we have no local queue, but wait until the (offline) queue exists on target node.
+block_until_migrated(_, _, [], _) -> ok;
+block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, BlockCond) ->
     %% the call to subscriptions_for_subscriber_id will resolve any remaining
     %% conflicts to this entry by broadcasting the resolved value to the
     %% other nodes
@@ -202,35 +230,12 @@ block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes) ->
             plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, UpdatedSubs)
     end,
 
-    %% Typically ChangedNodes should only contain one item
-    case rpc:call(Node, ?MODULE, get_queue_pid, [SubscriberId]) of
-        not_found ->
-            %% queue has been migrated, try next node
-            block_until_migrated(SubscriberId, UpdatedSubs, Rest);
-        RemoteQPid when is_pid(RemoteQPid) ->
-            case get_queue_pid(SubscriberId) of
-                not_found ->
-                    %% our own queue died
-                    timer:sleep(100),
-                    block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes);
-                LocalQPid when LocalQPid =/= RemoteQPid ->
-                    case catch vmq_queue:status(RemoteQPid) of % remote gen_fsm call
-                        {offline, _, _, _, _} ->
-                            %% remote queue hasn't yet started to migrate
-                            %% multiple reasons for this exist:
-                            %% 1. the migration trigger hasn't happend yet
-                            %%    on the remote node
-                            %% 2. a data conflict hasn't been resolved yet
-                            %%    preventing the remote node to kick of migration
-                            vmq_queue:migrate(RemoteQPid, LocalQPid),
-                            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes);
-                        _ ->
-                            timer:sleep(100),
-                            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes)
-                    end;
-                _ ->
-                    ok
-            end
+    case BlockCond(SubscriberId, Node) of
+        block ->
+            timer:sleep(100),
+            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes, BlockCond);
+        done ->
+            block_until_migrated(SubscriberId, UpdatedSubs, Rest, BlockCond)
     end.
 
 -spec register_session(subscriber_id(), map()) -> {ok, pid()}.
@@ -355,8 +360,23 @@ migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = A
             %% writing the changed subscriptions will trigger
             %% vmq_reg_mgr to initiate queue migration
             NewSortedSubs = lists:usort(NewSubs),
-            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSortedSubs),
-            block_until_migrated(SubscriberId, NewSortedSubs, [Target]),
+            Fun =
+                fun(Sid, TargetNode) ->
+                        case get_queue_pid(Sid) of
+                            not_found ->
+                                case rpc:call(TargetNode, ?MODULE, get_queue_pid, [Sid]) of
+                                    not_found ->
+                                        lager:error("couldn't migrate queue for ~p to target node ~p",
+                                                    [Sid, TargetNode]),
+                                        done;
+                                    LocalPid when is_pid(LocalPid) ->
+                                        done
+                                end;
+                            Pid when is_pid(Pid) ->
+                                block
+                        end
+                end,
+            block_until_migrated(SubscriberId, NewSortedSubs, [Target], Fun),
             {Targets ++ [Target], AccQs + 1, AccMsgs + TotalStoredMsgs};
         _ ->
             Acc
@@ -394,12 +414,16 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
       end, {[], false}, Subs),
     case HasChanged of
         true ->
-            %% writing the changed subscriptions will trigger the
-            %% vmq_reg_mgr to initiate queue migration
-            %% block until 'Target' has changes
             NewSortedSubs = lists:usort(NewSubs),
-            plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, NewSortedSubs),
-            block_until_migrated(SubscriberId, NewSortedSubs, [Target]),
+            Fun = fun(Sid, Tgt) ->
+                          case rpc:call(Tgt, ?MODULE, get_queue_pid, [Sid]) of
+                              not_found ->
+                                  block;
+                              Pid when is_pid(Pid) ->
+                                  done
+                          end
+                  end,
+            block_until_migrated(SubscriberId, NewSortedSubs, [Target], Fun),
             {DeadNodes, Targets ++ [Target], N + 1};
         false ->
             {DeadNodes, [Target|Targets], N}

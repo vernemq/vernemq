@@ -58,7 +58,7 @@ init_per_testcase(Case, Config) ->
                     {test3, 18885}]),
     {CoverNodes, _} = lists:unzip(Nodes),
     {ok, _} = ct_cover:add_nodes(CoverNodes),
-    [{nodes, Nodes}|Config].
+    [{nodes, Nodes},{nodenames, [test1, test2, test3]}|Config].
 
 end_per_testcase(_, _Config) ->
     vmq_cluster_test_utils:pmap(fun(Node) -> ct_slave:stop(Node) end,
@@ -289,6 +289,10 @@ cluster_leave_test(Config) ->
 cluster_leave_dead_node_test(Config) ->
     ok = ensure_cluster(Config),
     {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
+    {_, [Nodename|_]} = lists:keyfind(nodenames, 1, Config),
+
+    {NodeNames, _} = lists:unzip(Nodes),
+    [ rpc:call(N, lager, set_loglevel, [lager_console_backend, debug]) || N <- NodeNames ],
     Topic = "cluster/leave/dead/topic",
     %% create 10 sessions on first Node
     _ =
@@ -310,7 +314,7 @@ cluster_leave_dead_node_test(Config) ->
                                  rpc:call(N, vmq_reg, total_subscriptions, [])
                          end, [{total, 10}]),
     %% stop first node
-    ct_slave:stop(Node),
+    {ok, Node} = ct_slave:stop(Nodename),
 
     %% Pick a control node for initiating the cluster leave
     %% let first node leave the cluster, this should migrate the sessions,
