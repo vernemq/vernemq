@@ -43,14 +43,12 @@ start_link(Shutdown, MaxR, MaxT) ->
 init([Shutdown, MaxR, MaxT]) ->
     NumSups = application:get_env(vmq_server, queue_sup_sup_children, 25),
     SupFlags =
-        #{strategy => one_for_one, intensity => 1, period => 5},
+        {one_for_one, 1, 5},
     ChildSpec =
         fun(RegName, QueueTabId) ->
-                #{id => {RegName,QueueTabId},
-                  start => {vmq_queue_sup, start_link, [Shutdown, RegName, QueueTabId, MaxR, MaxT]},
-                  restart => permanent,
-                  type => supervisor,
-                  modules => [vmq_queue_sup]}
+                {{RegName, QueueTabId},
+                 {vmq_queue_sup, start_link, [Shutdown, RegName, QueueTabId, MaxR, MaxT]},
+                 permanent, 5000, supervisor, [vmq_queue_sup]}
         end,
                     
     ChildSpecs =
