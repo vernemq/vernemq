@@ -70,7 +70,12 @@ start_queue(SubscriberId, Clean) ->
     case find_queue(SubscriberId) of
         not_found ->
             Children = supervisor:which_children(?MODULE),
-            {_Id, SupPid,_,_} = lists:nth(rnd:uniform(length(Children)), Children),
+            %% Always map the same subscriber to the same supervisor
+            %% as we may have concurrent attempts at setting up the
+            %% queue. vmq_queue_sup:start_queue/3 prevents duplicates
+            %% as long as it's under the same supervisor.
+            {_, SupPid,_,_} =
+                lists:nth(erlang:phash2(SubscriberId, length(Children)) + 1, Children),
             vmq_queue_sup:start_queue(SupPid, SubscriberId, Clean);
         {_, SupPid} ->
             vmq_queue_sup:start_queue(SupPid, SubscriberId, Clean)
