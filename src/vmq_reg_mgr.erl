@@ -154,7 +154,7 @@ code_change(_OldVsn, State, _Extra) ->
 setup_queue(SubscriberId, Nodes, Acc) ->
     case lists:member(node(), Nodes) of
         true ->
-            vmq_queue_sup:start_queue(SubscriberId);
+            vmq_queue_sup_sup:start_queue(SubscriberId);
         false ->
             Acc
     end.
@@ -177,9 +177,9 @@ ensure_queue_present(SubscriberId, _, true) ->
     %% Local Subscriptions found, no need to kick of migration
     %% queue migration is triggered by the remote nodes,
     %% as they'll end up calling ensure_remote_queue_present/3
-    case vmq_queue_sup:get_queue_pid(SubscriberId) of
+    case vmq_queue_sup_sup:get_queue_pid(SubscriberId) of
         not_found ->
-            vmq_queue_sup:start_queue(SubscriberId);
+            vmq_queue_sup_sup:start_queue(SubscriberId);
         Pid when is_pid(Pid) ->
             ignore
     end;
@@ -187,7 +187,7 @@ ensure_queue_present(SubscriberId, NewSubs, false) ->
     %% No local Subscriptions found,
     %% maybe kick off migration
     ensure_remote_queue_present(SubscriberId, NewSubs,
-                               vmq_queue_sup:get_queue_pid(SubscriberId)).
+                               vmq_queue_sup_sup:get_queue_pid(SubscriberId)).
 
 ensure_remote_queue_present(_, _, not_found) ->
     ignore;
@@ -215,7 +215,7 @@ queue_migration_async(SubscriberId, QPid, Node) ->
     %% we use the Node of the 'new' Queue as SyncNode.
     vmq_reg_sync:async({migrate, SubscriberId},
                       fun() ->
-                              case rpc:call(Node, vmq_queue_sup, start_queue,
+                              case rpc:call(Node, vmq_queue_sup_sup, start_queue,
                                             [SubscriberId]) of
                                   {ok, _, RemoteQPid} ->
                                       vmq_queue:migrate(QPid, RemoteQPid);

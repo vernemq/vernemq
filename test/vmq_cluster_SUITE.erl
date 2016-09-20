@@ -273,7 +273,7 @@ cluster_leave_test(Config) ->
     ok = packet:expect_packet(PubSocket, "puback", Puback),
     ok = vmq_cluster_test_utils:wait_until(
            fun() ->
-                   {8, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup, summary, [])
+                   {8, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup_sup, summary, [])
            end, 60, 500),
     %% Pick a control node for initiating the cluster leave
     [{CtrlNode, _}|_] = RestNodes,
@@ -283,7 +283,7 @@ cluster_leave_test(Config) ->
     %% As the clients don't reconnect (in this test), their sessions are offline
     ok = wait_until_converged(RestNodes,
                               fun(N) ->
-                                      rpc:call(N, vmq_queue_sup, summary, [])
+                                      rpc:call(N, vmq_queue_sup_sup, summary, [])
                               end, {0, 0, 0, 4, 4}).
 
 cluster_leave_dead_node_test(Config) ->
@@ -325,7 +325,7 @@ cluster_leave_dead_node_test(Config) ->
     %% The disconnected sessions are equally migrated to the rest of the nodes
     ok = wait_until_converged(RestNodes,
                               fun(N) ->
-                                      rpc:call(N, vmq_queue_sup, summary, [])
+                                      rpc:call(N, vmq_queue_sup_sup, summary, [])
                               end, {0, 0, 0, 5, 0}).
 
 publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess) ->
