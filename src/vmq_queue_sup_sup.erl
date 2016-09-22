@@ -71,25 +71,37 @@ start_queue(SubscriberId, Clean) ->
     %% as we may have concurrent attempts at setting up the
     %% queue. vmq_queue_sup:start_queue/3 prevents duplicates
     %% as long as it's under the same supervisor.
-    {_, SupPid,_,_} =
-        subscriberid_to_childsupervisor(SubscriberId),
-    vmq_queue_sup:start_queue(SupPid, SubscriberId, Clean).
+    SupName =
+        subscriberid_to_supname(SubscriberId),
+    vmq_queue_sup:start_queue(SupName, SubscriberId, Clean).
 
-subscriberid_to_childsupervisor(SubscriberId) ->
-    Children = supervisor:which_children(?MODULE),
-    lists:nth(erlang:phash2(SubscriberId, length(Children)) + 1, Children).
+num_child_sups() ->
+    application:get_env(vmq_server, queue_sup_sup_children, 25).
+
+subscriberid_to_supname(SubscriberId) ->
+    SupName = <<"vmq_queue_sup_",
+                 (integer_to_binary(erlang:phash2(SubscriberId, num_child_sups()) + 1))/binary>>,
+    erlang:binary_to_atom(SupName, utf8).
+
+gen_tabid(N) ->
+    TabId = <<"vmq_queue_sup_", (integer_to_binary(N))/binary, "_tab">>,
+    erlang:binary_to_atom(TabId, utf8).
+
+subscriberid_to_tabid(SubscriberId) ->
+    TabId = gen_tabid(erlang:phash2(SubscriberId, num_child_sups()) + 1),
+    erlang:binary_to_atom(TabId, utf8).
 
 get_queue_pid(SubscriberId) ->
-    {{_, QueueTabId},_,_,_} = subscriberid_to_childsupervisor(SubscriberId),
+    QueueTabId = subscriberid_to_tabid(SubscriberId),
     vmq_queue_sup:get_queue_pid(QueueTabId, SubscriberId).
 
 fold_queues(FoldFun, Acc) ->
     lists:foldl(
-      fun({{_,QueueTabId},_,_,_}, AccAcc) ->
+      fun(QueueTabId, AccAcc) ->
               vmq_queue_sup:fold_queues(QueueTabId, FoldFun, AccAcc)
       end,
       Acc, 
-      supervisor:which_children(?MODULE)).
+      child_tab_ids()).
 
 summary() ->
     fold_queues(
@@ -113,7 +125,10 @@ summary() ->
               end
       end, {0, 0, 0, 0, 0}).
 
+child_tab_ids() ->
+    [ gen_tabid(N) || N <- lists:seq(1, num_child_sups()) ].
+
 nr_of_queues() ->
     lists:sum(
-      [vmq_queue_sup:nr_of_queues(QueueTabId) || {{_,QueueTabId},_,_,_} <- supervisor:which_children(?MODULE)]
+      [vmq_queue_sup:nr_of_queues(QueueTabId) || QueueTabId <-child_tab_ids()]
      ).

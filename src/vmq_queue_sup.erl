@@ -40,9 +40,10 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Shutdown, _RegName, QueueTabId, MaxR, MaxT) ->
+start_link(Shutdown, RegName, QueueTabId, MaxR, MaxT) ->
     case proc_lib:start_link(?MODULE, init, [self(), Shutdown, QueueTabId, MaxR, MaxT * 1000]) of
         {ok, Pid} = Ret ->
+            register(RegName, Pid),
             {InitPid, MRef} = spawn_monitor(vmq_reg, fold_subscribers,
                                             [fun fold_subscribers/3, ok]),
             receive
