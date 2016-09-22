@@ -67,38 +67,21 @@ start_queue(SubscriberId) ->
     start_queue(SubscriberId, true).
 
 start_queue(SubscriberId, Clean) ->
-    case find_queue(SubscriberId) of
-        not_found ->
-            Children = supervisor:which_children(?MODULE),
-            %% Always map the same subscriber to the same supervisor
-            %% as we may have concurrent attempts at setting up the
-            %% queue. vmq_queue_sup:start_queue/3 prevents duplicates
-            %% as long as it's under the same supervisor.
-            {_, SupPid,_,_} =
-                lists:nth(erlang:phash2(SubscriberId, length(Children)) + 1, Children),
-            vmq_queue_sup:start_queue(SupPid, SubscriberId, Clean);
-        {_, SupPid} ->
-            vmq_queue_sup:start_queue(SupPid, SubscriberId, Clean)
-    end.
+    %% Always map the same subscriber to the same supervisor
+    %% as we may have concurrent attempts at setting up the
+    %% queue. vmq_queue_sup:start_queue/3 prevents duplicates
+    %% as long as it's under the same supervisor.
+    {_, SupPid,_,_} =
+        subscriberid_to_childsupervisor(SubscriberId),
+    vmq_queue_sup:start_queue(SupPid, SubscriberId, Clean).
+
+subscriberid_to_childsupervisor(SubscriberId) ->
+    Children = supervisor:which_children(?MODULE),
+    lists:nth(erlang:phash2(SubscriberId, length(Children)) + 1, Children).
 
 get_queue_pid(SubscriberId) ->
-    case find_queue(SubscriberId, supervisor:which_children(?MODULE)) of
-        not_found -> not_found;
-        {QueuePid, _} -> QueuePid
-    end.
-
-find_queue(SubscriberId) ->
-    find_queue(SubscriberId, supervisor:which_children(?MODULE)).
-
-find_queue(_, []) ->
-    not_found;
-find_queue(SubscriberID, [{{_, QueueTabId}, SupPid,_,_} | Rest]) ->
-    case vmq_queue_sup:get_queue_pid(QueueTabId, SubscriberID) of
-        not_found ->
-            find_queue(SubscriberID, Rest);
-        QueuePid when is_pid(QueuePid) ->
-            {QueuePid, SupPid}
-    end.
+    {{_, QueueTabId},_,_,_} = subscriberid_to_childsupervisor(SubscriberId),
+    vmq_queue_sup:get_queue_pid(QueueTabId, SubscriberId).
 
 fold_queues(FoldFun, Acc) ->
     lists:foldl(
