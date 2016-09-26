@@ -41,7 +41,7 @@ start_link(Shutdown, MaxR, MaxT) ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([Shutdown, MaxR, MaxT]) ->
-    NumSups = application:get_env(vmq_server, queue_sup_sup_children, 25),
+    NumSups = num_child_sups(),
     SupFlags =
         {one_for_one, 1, 5},
     ChildSpec =
@@ -53,10 +53,8 @@ init([Shutdown, MaxR, MaxT]) ->
                     
     ChildSpecs =
         [ChildSpec(
-           binary_to_atom(
-             <<"vmq_queue_sup_", (integer_to_binary(N))/binary>>, utf8),
-           binary_to_atom(
-             <<"vmq_queue_sup_", (integer_to_binary(N))/binary, "_tab">>, utf8))
+           gen_sup_name(N),
+           gen_queue_tab_id(N))
          || N <- lists:seq(1,NumSups)],
     {ok, {SupFlags, ChildSpecs}}.
 %%====================================================================
@@ -79,17 +77,18 @@ num_child_sups() ->
     application:get_env(vmq_server, queue_sup_sup_children, 25).
 
 subscriberid_to_supname(SubscriberId) ->
-    SupName = <<"vmq_queue_sup_",
-                 (integer_to_binary(erlang:phash2(SubscriberId, num_child_sups()) + 1))/binary>>,
-    erlang:binary_to_atom(SupName, utf8).
-
-gen_tabid(N) ->
-    TabId = <<"vmq_queue_sup_", (integer_to_binary(N))/binary, "_tab">>,
-    erlang:binary_to_atom(TabId, utf8).
+    gen_sup_name(erlang:phash2(SubscriberId, num_child_sups()) + 1).
 
 subscriberid_to_tabid(SubscriberId) ->
-    TabId = gen_tabid(erlang:phash2(SubscriberId, num_child_sups()) + 1),
-    erlang:binary_to_atom(TabId, utf8).
+    gen_queue_tab_id(erlang:phash2(SubscriberId, num_child_sups()) + 1).
+
+gen_queue_tab_id(N) ->
+    TabId = <<"vmq_queue_sup_", (integer_to_binary(N))/binary, "_tab">>,
+    erlang:binary_to_atom(TabId, latin1).
+
+gen_sup_name(N) ->
+    TabId = <<"vmq_queue_sup_", (integer_to_binary(N))/binary>>,
+    erlang:binary_to_atom(TabId, latin1).
 
 get_queue_pid(SubscriberId) ->
     QueueTabId = subscriberid_to_tabid(SubscriberId),
@@ -126,7 +125,7 @@ summary() ->
       end, {0, 0, 0, 0, 0}).
 
 child_tab_ids() ->
-    [ gen_tabid(N) || N <- lists:seq(1, num_child_sups()) ].
+    [ gen_queue_tab_id(N) || N <- lists:seq(1, num_child_sups()) ].
 
 nr_of_queues() ->
     lists:sum(
