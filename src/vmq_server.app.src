@@ -34,7 +34,7 @@
       {reg_views, [vmq_reg_trie]},
 
       % queue supervisor supervisor opts
-      {queue_sup_sup_children, 25},
+      {queue_sup_sup_children, 50},
 
       % queue opts
       {allow_multiple_sessions, false},

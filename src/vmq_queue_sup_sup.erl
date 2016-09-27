@@ -97,7 +97,7 @@ start_queue(SubscriberId, Clean) ->
     vmq_queue_sup:start_queue(SupName, SubscriberId, Clean).
 
 num_child_sups() ->
-    application:get_env(vmq_server, queue_sup_sup_children, 25).
+    application:get_env(vmq_server, queue_sup_sup_children, 50).
 
 subscriberid_to_supname(SubscriberId) ->
     gen_sup_name(erlang:phash2(SubscriberId, num_child_sups()) + 1).
