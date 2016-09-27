@@ -44,26 +44,11 @@ start_link(Shutdown, RegName, QueueTabId, MaxR, MaxT) ->
     case proc_lib:start_link(?MODULE, init, [self(), Shutdown, QueueTabId, MaxR, MaxT * 1000]) of
         {ok, Pid} = Ret ->
             register(RegName, Pid),
-            {InitPid, MRef} = spawn_monitor(vmq_reg, fold_subscribers,
-                                            [fun fold_subscribers/3, ok]),
-            receive
-                {'DOWN', MRef, process, InitPid, normal} ->
-                    Ret;
-                {'DOWN', MRef, process, InitPid, Reason} ->
-                    exit(Pid, kill),
-                    {error, {init_error, Reason}}
-            end;
+            Ret;
         {error, Error} ->
             {error, Error}
     end.
 
-fold_subscribers(SubscriberId, Nodes, Acc) ->
-    case lists:member(node(), Nodes) of
-        true ->
-            vmq_queue_sup_sup:start_queue(SubscriberId, false);
-        false ->
-            Acc
-    end.
 
 start_queue(SupPid, SubscriberId, Clean) ->
     %% The Clean flag is used to distinguish between Queues created during

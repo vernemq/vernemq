@@ -18,6 +18,7 @@
 %% API
 -export([start_link/3,
          start_queue/1,
+         start_queue/2,
          get_queue_pid/1,
          fold_queues/2,
          summary/0,
@@ -33,7 +34,29 @@
 %%====================================================================
 
 start_link(Shutdown, MaxR, MaxT) ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, [Shutdown, MaxR, MaxT]).
+    case supervisor:start_link({local, ?SERVER}, ?MODULE, [Shutdown, MaxR, MaxT]) of
+        {ok, Pid} = Ret ->
+            %% Create queues from persisted data
+            {InitPid, MRef} = spawn_monitor(vmq_reg, fold_subscribers,
+                                            [fun fold_subscribers/3, ok]),
+            receive
+                {'DOWN', MRef, process, InitPid, normal} ->
+                    Ret;
+                {'DOWN', MRef, process, InitPid, Reason} ->
+                    exit(Pid, kill),
+                    {error, {init_error, Reason}}
+            end;
+        {error, Error} ->
+            {error, Error}
+    end.
+
+fold_subscribers(SubscriberId, Nodes, Acc) ->
+    case lists:member(node(), Nodes) of
+        true ->
+            start_queue(SubscriberId, false);
+        false ->
+            Acc
+    end.
 
 %%====================================================================
 %% Supervisor callbacks
