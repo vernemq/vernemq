@@ -136,21 +136,25 @@ loop(State = #state{parent=Parent, queue_tab = QueueTab}, NrOfChildren) ->
 			sys:handle_system_msg(Request, From, Parent, ?MODULE, [],
                                   {State, NrOfChildren});
         %% Calls from the supervisor module.
-		{'$gen_call', {To, Tag}, which_children} ->
-			Pids = get_keys(true),
-			Children = [{vmq_queue, Pid, worker, [vmq_queue]}
-                        || Pid <- Pids, is_pid(Pid)],
-			To ! {Tag, Children},
-			loop(State, NrOfChildren);
-		{'$gen_call', {To, Tag}, count_children} ->
+        {'$gen_call', {To, Tag}, which_children} ->
+            Children =
+                ets:foldl(
+                  fun({_,Pid}, Acc) ->
+                          [{vmq_queue, Pid, worker, [vmq_queue]} | Acc]
+                  end,
+                  [],
+                  QueueTab),
+            To ! {Tag, Children},
+            loop(State, NrOfChildren);
+        {'$gen_call', {To, Tag}, count_children} ->
             Counts =
-            [{specs, 1}, {active, NrOfChildren},
-             {supervisors, 0}, {workers, NrOfChildren}],
+                [{specs, 1}, {active, NrOfChildren},
+                 {supervisors, 0}, {workers, NrOfChildren}],
             To ! {Tag, Counts},
-			loop(State, NrOfChildren);
-		{'$gen_call', {To, Tag}, _} ->
-			To ! {Tag, {error, ?MODULE}},
-			loop(State, NrOfChildren);
+            loop(State, NrOfChildren);
+        {'$gen_call', {To, Tag}, _} ->
+            To ! {Tag, {error, ?MODULE}},
+            loop(State, NrOfChildren);
         Msg ->
             lager:error("vmq_queue_sup received unexpected message ~p", [Msg])
     end.
@@ -162,41 +166,54 @@ loop(State = #state{parent=Parent, queue_tab = QueueTab}, NrOfChildren) ->
 %% Kill all children and then exit. We unlink first to avoid
 %% getting a message for each child getting killed.
 terminate(#state{shutdown=brutal_kill, queue_tab = QueueTab}, _, Reason) ->
-    ets:delete_all_objects(QueueTab),
-    _ = [begin
-             unlink(P),
-             exit(P, kill)
-         end || P <- get_keys(true)],
+    ets:foldl(
+      fun({_,Pid}, Acc) ->
+              unlink(Pid),
+              exit(Pid, kill),
+              Acc
+      end,
+      [],
+      QueueTab),
     exit(Reason);
 %% Attemsupervisor.htmlpt to gracefully shutdown all children.
 terminate(#state{shutdown=Shutdown, queue_tab = QueueTab}, NrOfChildren, Reason) ->
-    ets:delete_all_objects(QueueTab),
-    shutdown_children(),
+    shutdown_children(QueueTab),
     case Shutdown of
         infinity ->
             ok;
         _ ->
             erlang:send_after(Shutdown, self(), kill)
     end,
-    wait_children(NrOfChildren),
+    wait_children(NrOfChildren, QueueTab),
+    ets:delete_all_objects(QueueTab),
     exit(Reason).
 
-shutdown_children() ->
-    _ = [begin
-             monitor(process, P),
-             unlink(P),
-             exit(P, shutdown)
-         end || P <- get_keys(true)],
+shutdown_children(QueueTab) ->
+    ets:foldl(
+      fun({_,Pid}, Acc) ->
+              monitor(process, Pid),
+              unlink(Pid),
+              exit(Pid, shutdown),
+              Acc
+      end,
+      [],
+      QueueTab),
     ok.
 
-wait_children(0) -> ok;
-wait_children(NrOfChildren) ->
+wait_children(0, _Tab) -> ok;
+wait_children(NrOfChildren, Tab) ->
     receive
         {'DOWN', _, process, Pid, _} ->
-            _ = erase(Pid),
-            wait_children(NrOfChildren - 1);
+            ets:match_delete(Tab, {'_', Pid}),
+            wait_children(NrOfChildren - 1, Tab);
         kill ->
-            _ = [exit(P, kill) || P <- get_keys(true)],
+            ets:foldl(
+              fun({_,Pid}, Acc) ->
+                      exit(Pid, kill),
+                      Acc
+              end,
+              [],
+              Tab),
             ok
     end.
 
@@ -204,7 +221,6 @@ start_queue(Caller, SubscriberId, Clean, NrOfChildren, QueueTab) ->
     try vmq_queue:start_link(SubscriberId, Clean) of
         {ok, Pid} ->
             ets:insert(QueueTab, {SubscriberId, Pid}),
-            put(Pid, true),
             reply(Caller, {ok, false, Pid}),
             NrOfChildren + 1;
         Ret ->
