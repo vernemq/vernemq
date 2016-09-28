@@ -79,6 +79,19 @@
                                                                             hidden
                                                                            ]}.
 
+%% @doc Specifies the number of queue supervisors. The number of
+%% queues per supervisor should never become too large as this can
+%% lead to overload situations on massive disconnects of clients (as
+%% each supervisor needs to handle all the disconnect messages of its
+%% child queues). A reasonable max number of child queues per
+%% supervisor is probably in the range of 2k-6k, but varies depending
+%% on the hardware used.
+{mapping, "queue_sup_sup_children", "vmq_server.queue_sup_sup_children", [
+                                                                            {default, 50},
+                                                                            {datatype, integer},
+                                                                            hidden
+                                                                           ]}.
+
 
 %% @doc Allows to select a new default reg_view.
 %% A view is a pre-defined way to route messages. Multiple views can be 
