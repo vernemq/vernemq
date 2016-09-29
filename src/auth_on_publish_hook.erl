@@ -17,3 +17,5 @@
                                                       | {ok, Modifiers  :: [msg_modifier()]}
                                                       | {error, Reason  :: any()}
                                                       | next.
+
+-export_type([msg_modifier/0]).

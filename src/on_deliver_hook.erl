@@ -10,3 +10,5 @@
                                                     | {ok, Payload    :: payload()}
                                                     | {ok, Modifiers  :: [msg_modifier()]}
                                                     | next.
+
+-export_type([msg_modifier/0]).
