@@ -33,6 +33,9 @@
       {default_reg_view, vmq_reg_trie},
       {reg_views, [vmq_reg_trie]},
 
+      % queue supervisor supervisor opts
+      {queue_sup_sup_children, 50},
+
       % queue opts
       {allow_multiple_sessions, false},
       {max_online_messages, 30000},

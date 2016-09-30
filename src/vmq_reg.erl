@@ -149,7 +149,7 @@ register_subscriber(_, _, _, 0) ->
 register_subscriber(SessionPid, SubscriberId,
                     #{clean_session := CleanSession} = QueueOpts, N) ->
     % wont create new queue in case it already exists
-    {ok, QueuePresent, QPid} = vmq_queue_sup:start_queue(SubscriberId),
+    {ok, QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
     % remap subscriber... enabling that new messages will eventually
     % reach the new queue.
     % Remapping triggers remote nodes to initiate queue migration
@@ -243,7 +243,7 @@ register_session(SubscriberId, QueueOpts) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
     SessionPid = self(),
-    {ok, QueuePresent, QPid} = vmq_queue_sup:start_queue(SubscriberId), % wont create new queue in case it already exists
+    {ok, QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId), % wont create new queue in case it already exists
     ok = vmq_queue:add_session(QPid, SessionPid, QueueOpts),
     %% TODO: How to handle SessionPresent flag for allow_multiple_sessions=true
     SessionPresent = QueuePresent,
@@ -336,7 +336,7 @@ subscriptions_for_subscriber_id(SubscriberId) ->
 
 migrate_offline_queues([]) -> exit(no_target_available);
 migrate_offline_queues(Targets) ->
-    {_, NrOfQueues, TotalMsgs} = vmq_queue_sup:fold_queues(fun migrate_offline_queue/3, {Targets, 0, 0}),
+    {_, NrOfQueues, TotalMsgs} = vmq_queue_sup_sup:fold_queues(fun migrate_offline_queue/3, {Targets, 0, 0}),
     lager:info("MIGRATION SUMMARY: ~p queues migrated, ~p messages", [NrOfQueues, TotalMsgs]),
     ok.
 
@@ -626,7 +626,7 @@ subscriber_nodes([{_, _, Node}|Rest], Nodes) ->
     end.
 
 fold_sessions(FoldFun, Acc) ->
-    vmq_queue_sup:fold_queues(
+    vmq_queue_sup_sup:fold_queues(
       fun(SubscriberId, QPid, AccAcc) ->
               lists:foldl(
                 fun(SessionPid, AccAccAcc) ->
@@ -733,7 +733,7 @@ get_session_pids(SubscriberId) ->
 
 -spec get_queue_pid(subscriber_id()) -> pid() | not_found.
 get_queue_pid(SubscriberId) ->
-    vmq_queue_sup:get_queue_pid(SubscriberId).
+    vmq_queue_sup_sup:get_queue_pid(SubscriberId).
 
 total_subscriptions() ->
     Total = plumtree_metadata:fold(

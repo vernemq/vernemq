@@ -287,7 +287,7 @@ check_cluster_consistency([], _) -> true.
 
 wait_till_all_offline(_, 0) -> error;
 wait_till_all_offline(Sleep, N) ->
-    case vmq_queue_sup:summary() of
+    case vmq_queue_sup_sup:summary() of
         {0, 0, Drain, Offline, Msgs} ->
             lager:info("ALL QUEUES OFFLINE: ~p draining, ~p offline, ~p msgs",
                        [Drain, Offline, Msgs]),

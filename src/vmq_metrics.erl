@@ -350,7 +350,7 @@ misc_statistics() ->
      {gauge, router_memory, SMemory},
      {gauge, retain_messages, NrOfRetain},
      {gauge, retain_memory, RMemory},
-     {gauge, queue_processes, vmq_queue_sup:nr_of_queues()}].
+     {gauge, queue_processes, vmq_queue_sup_sup:nr_of_queues()}].
 
 system_statistics() ->
     {ContextSwitches, _} = erlang:statistics(context_switches),
