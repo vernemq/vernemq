@@ -14,3 +14,5 @@
                                                            | {ok, [reg_modifiers()]}
                                                            | {error, invalid_credentials | any()}
                                                            | next.
+
+-export_type([reg_modifiers/0]).
