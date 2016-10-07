@@ -9,6 +9,7 @@
         ]).
 
 -export([clean_session_qos1_test/1,
+         session_cleanup_test/1,
          session_present_test/1]).
 
 -export([hook_auth_on_subscribe/3,
@@ -38,6 +39,7 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [clean_session_qos1_test,
+     session_cleanup_test,
      session_present_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -71,6 +73,32 @@ clean_session_qos1_test(_) ->
     disable_on_publish(),
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket1).
+
+session_cleanup_test(_) ->
+    Connect1 = packet:gen_connect("clean-qos1-test", [{keepalive,60}, {clean_session, false}]),
+    Connect2 = packet:gen_connect("clean-qos1-test", [{keepalive,60}, {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    Disconnect = packet:gen_disconnect(),
+    Subscribe = packet:gen_subscribe(109, "qos1/clean_session/test", 1),
+    Suback = packet:gen_suback(109, 1),
+    {ok, Socket} = packet:do_client_connect(Connect1, Connack, []),
+    enable_on_publish(),
+    enable_on_subscribe(),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
+
+    clean_session_qos1_helper(),
+    timer:sleep(100),
+    {0,0,0,1,1} = vmq_queue_sup_sup:summary(),
+    {ok, Socket1} = packet:do_client_connect(Connect2, Connack, []),
+    disable_on_publish(),
+    disable_on_subscribe(),
+    ok = gen_tcp:close(Socket1),
+    timer:sleep(100),
+    %% if queue cleanup woudln't have happen, we'd see a remaining offline message
+    {0,0,0,0,0} = vmq_queue_sup_sup:summary().
 
 session_present_test(_) ->
     Connect = packet:gen_connect("clean-sesspres-test", [{keepalive,10}, {clean_session, false}]),
@@ -113,4 +141,5 @@ clean_session_qos1_helper() ->
     Puback = packet:gen_puback(128),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Publish),
-    ok = packet:expect_packet(Socket, "puback", Puback).
+    ok = packet:expect_packet(Socket, "puback", Puback),
+    gen_tcp:close(Socket).

@@ -58,7 +58,6 @@ init([]) ->
 
 maybe_change_nodename() ->
     {ok, LocalState} = plumtree_peer_service_manager:get_local_state(),
-    SubscriberDB = {vmq, subscriber},
     case riak_dt_orswot:value(LocalState) of
         [Node] when Node =/= node() ->
             lager:info("Rename VerneMQ Node", []),
@@ -67,18 +66,9 @@ maybe_change_nodename() ->
                                                            {add, node()}]}, Actor, LocalState),
             _ = gen_server:cast(plumtree_peer_service_gossip, {receive_state, Merged}),
             vmq_reg:fold_subscribers(
-              fun(SubscriberId, Subs, _Acc) ->
-                      NewSubs =
-                      lists:foldl(
-                        fun({_, _, N}, SubsAcc) when N == node() ->
-                                SubsAcc;
-                           ({Topic, QoS, _OldNode}, SubsAcc) ->
-                                [{Topic, QoS, node()}|SubsAcc]
-                        end, [], Subs),
-                      %% writing the changed subscriptions will trigger
-                      %% vmq_reg_mgr to initiate queue migration
-                      plumtree_metadata:put(SubscriberDB, SubscriberId,
-                                            lists:usort(NewSubs))
+              fun(SubscriberId, Subs, _) ->
+                      NewSubs = vmq_subscriber:change_node_all(Subs, node()),
+                      vmq_subscriber_db:store(SubscriberId, NewSubs)
               end, ignored, false);
         _ ->
             %% we ignore if the node has the same name

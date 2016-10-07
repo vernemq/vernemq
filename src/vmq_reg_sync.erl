@@ -91,7 +91,7 @@ call(Node, Req) ->
     end.
 
 done(SyncPid, ActionPid, Reply) ->
-    gen_server:call({?SERVER, node(SyncPid)}, {done, ActionPid, Reply}).
+    gen_server:call({?SERVER, node(SyncPid)}, {done, ActionPid, Reply}, infinity).
 
 status(SyncKey) ->
     status(SyncKey, sync_node(SyncKey)).

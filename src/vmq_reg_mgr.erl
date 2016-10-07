@@ -15,7 +15,6 @@
 -module(vmq_reg_mgr).
 
 -behaviour(gen_server).
-
 %% API functions
 -export([start_link/0]).
 
@@ -167,51 +166,63 @@ handle_event(Handler, Event) ->
         {update, _SubscriberId, [], []} ->
             %% noop
             ignore;
-        {update, SubscriberId, _, NewSubs} ->
-            ensure_queue_present(SubscriberId, NewSubs, local_subs(NewSubs));
+        {update, SubscriberId, _, _} ->
+            Subs = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
+            handle_new_sub_event(SubscriberId, Subs);
         ignore ->
             ignore
     end.
 
-ensure_queue_present(SubscriberId, _, true) ->
-    %% Local Subscriptions found, no need to kick of migration
-    %% queue migration is triggered by the remote nodes,
-    %% as they'll end up calling ensure_remote_queue_present/3
-    case vmq_queue_sup_sup:get_queue_pid(SubscriberId) of
-        not_found ->
-            vmq_queue_sup_sup:start_queue(SubscriberId);
-        Pid when is_pid(Pid) ->
-            ignore
-    end;
-ensure_queue_present(SubscriberId, NewSubs, false) ->
-    %% No local Subscriptions found,
-    %% maybe kick off migration
-    ensure_remote_queue_present(SubscriberId, NewSubs,
-                               vmq_queue_sup_sup:get_queue_pid(SubscriberId)).
-
-ensure_remote_queue_present(_, _, not_found) ->
-    ignore;
-ensure_remote_queue_present(SubscriberId, NewSubs, QPid) ->
-    %% no queue required on this node
-    case is_allow_multi(QPid) of
+handle_new_sub_event(SubscriberId, Subs) ->
+    Sessions = vmq_subscriber:get_sessions(Subs),
+    case lists:keymember(node(), 1, Sessions) of
         true ->
-            %% no need to migrate if we allow multiple sessions
-            ignore;
+            %% we have to ensure that we have a local queue for this subscriber
+            vmq_queue_sup_sup:start_queue(SubscriberId);
         false ->
-            %% migrate this queue
-            NewNodes = [Node || {_, _, Node} <- NewSubs],
-            initiate_queue_migration(SubscriberId, QPid, NewNodes)
+            %% we may migrate an existing queue to a remote queue
+            %% Do we have a local queue to migrate?
+            case vmq_queue_sup_sup:get_queue_pid(SubscriberId) of
+                not_found ->
+                    ignore;
+                QPid ->
+                    case is_allow_multi(QPid) of
+                        true ->
+                            %% no need to migrate if we allow multiple sessions
+                            ignore;
+                        false ->
+                            handle_new_remote_subscriber(SubscriberId, QPid, Sessions);
+                        error ->
+                            ignore
+                    end
+            end
     end.
 
-initiate_queue_migration(SubscriberId, QPid, [Node]) ->
-    queue_migration_async(SubscriberId, QPid, Node);
-initiate_queue_migration(SubscriberId, QPid, []) ->
-    lager:warning("can't migrate the queue[~p] for subscriber ~p due to no responsible remote node found", [QPid, SubscriberId]);
-initiate_queue_migration(SubscriberId, QPid, [Node|_]) ->
-    lager:warning("more than one remote nodes found for migrating queue[~p] for subscriber ~p, use ~p", [QPid, SubscriberId, Node]),
-    queue_migration_async(SubscriberId, QPid, Node).
+%% Local queue found, only migrate this queue if
+%% 1. NewQueue.clean_session = false AND
+%% 2. OldQueue.allow_multiple_sessions = false AND
+%% 3. Only one concurrent Session exist
+%% if OldQueue.clean_session = true, queue migration is
+%% aborted by the OldQueue process.
+handle_new_remote_subscriber(SubscriberId, QPid, [{NewNode, false}]) ->
+    % Case 1. AND 3.
+    migrate_queue(SubscriberId, QPid, NewNode);
+handle_new_remote_subscriber(SubscriberId, QPid, [{_NewNode, true}]) ->
+    %% New remote queue uses clean_session=true, we have to wipe this local session
+    cleanup_queue(SubscriberId, QPid);
+handle_new_remote_subscriber(SubscriberId, QPid, Sessions) ->
+    % Case Not 3.
+    %% Do we have available remote sessions
+    case [N || {N, false} <- Sessions] of
+        [NewNode|_] ->
+            %% Best bet to use this session
+            lager:warning("more than one remote nodes found for migrating queue[~p] for subscriber ~p, use ~p", [QPid, SubscriberId, NewNode]),
+            migrate_queue(SubscriberId, QPid, NewNode);
+        [] ->
+            lager:warning("can't migrate the queue[~p] for subscriber ~p due to no responsible remote node found", [QPid, SubscriberId])
+    end.
 
-queue_migration_async(SubscriberId, QPid, Node) ->
+migrate_queue(SubscriberId, QPid, Node) ->
     %% we use the Node of the 'new' Queue as SyncNode.
     vmq_reg_sync:async({migrate, SubscriberId},
                       fun() ->
@@ -224,9 +235,14 @@ queue_migration_async(SubscriberId, QPid, Node) ->
                               end
                       end, Node, 60000).
 
-local_subs(Subs) ->
-    length([Node || {_, _, Node} <- Subs, Node == node()]) > 0.
+cleanup_queue(SubscriberId, QPid) ->
+    vmq_reg_sync:async({cleanup, SubscriberId},
+                       fun() ->
+                               vmq_queue:cleanup(QPid)
+                       end, node(), 60000).
 
 is_allow_multi(QPid) ->
-    #{allow_multiple_sessions := AllowMulti} = vmq_queue:get_opts(QPid),
-    AllowMulti.
+    case vmq_queue:get_opts(QPid) of
+        #{allow_multiple_sessions := AllowMulti} -> AllowMulti;
+        {error, _} -> error
+    end.

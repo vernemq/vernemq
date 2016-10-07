@@ -202,32 +202,29 @@ code_change(_OldVsn, State, _Extra) ->
 handle_event(Handler, Event) ->
     case Handler(Event) of
         {delete, SubscriberId, Subs} ->
-            handle_delete_event(SubscriberId, Subs);
+            vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, Subs);
         {update, SubscriberId, ToRemove, ToAdd} ->
-            handle_delete_event(SubscriberId, ToRemove),
-            handle_add_event(SubscriberId, ToAdd);
+            vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, ToRemove),
+            vmq_subscriber:fold(fun handle_add_event/2, SubscriberId, ToAdd);
         ignore ->
             ok
     end.
 
-handle_delete_event({MP, _} = SubscriberId, [{Topic, QoS, Node}|Rest]) when Node == node() ->
+handle_delete_event({Topic, QoS, Node}, {MP, _} = SubscriberId) when Node == node() ->
     del_topic(MP, Topic, Node),
     del_subscriber(MP, Topic, SubscriberId, QoS),
-    handle_delete_event(SubscriberId, Rest);
-handle_delete_event({MP, _} = SubscriberId, [{Topic, _, Node}|Rest]) ->
+    SubscriberId;
+handle_delete_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     del_topic(MP, Topic, Node),
-    handle_delete_event(SubscriberId, Rest);
-handle_delete_event(_, []) -> ok.
+    SubscriberId.
 
-handle_add_event({MP, _} = SubscriberId, [{Topic, QoS, Node}|Rest]) when Node == node() ->
+handle_add_event({Topic, QoS, Node}, {MP, _} = SubscriberId) when Node == node() ->
     add_topic(MP, Topic, Node),
     add_subscriber(MP, Topic, SubscriberId, QoS),
-    handle_add_event(SubscriberId, Rest);
-handle_add_event({MP, _} = SubscriberId, [{Topic, _, Node}|Rest]) ->
+    SubscriberId;
+handle_add_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     add_topic(MP, Topic, Node),
-    handle_add_event(SubscriberId, Rest);
-handle_add_event(_, []) -> ok.
-
+    SubscriberId.
 
 
 match(MP, Topic) when is_list(MP) and is_list(Topic) ->

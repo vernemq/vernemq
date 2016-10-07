@@ -11,6 +11,7 @@
 -export([multiple_connect_test/1,
          multiple_connect_unclean_test/1,
          distributed_subscribe_test/1,
+         racing_connect_test/1,
          racing_subscriber_test/1,
          cluster_leave_test/1,
          cluster_leave_dead_node_test/1]).
@@ -69,6 +70,7 @@ all() ->
     [multiple_connect_test
      ,multiple_connect_unclean_test
      , distributed_subscribe_test
+     , racing_connect_test
      , racing_subscriber_test
      , cluster_leave_test
      , cluster_leave_dead_node_test].
@@ -174,6 +176,64 @@ distributed_subscribe_test(Config) ->
          end || Socket <- Rest],
     Config.
 
+racing_connect_test(Config) ->
+    ok = ensure_cluster(Config),
+    {_, Nodes} = lists:keyfind(nodes, 1, Config),
+    Connect = packet:gen_connect("connect-racer",
+                                 [{clean_session, false},
+                                  {keepalive, 60}]),
+    Pids =
+    [begin
+         Connack =
+         case I of
+             1 ->
+                 %% no session present
+                 packet:gen_connack(false, 0);
+             2 ->
+                 %% second iteration, wait for all nodes to catch up
+                 %% this is required to create proper connack
+                 ok = wait_until_converged(Nodes,
+                                           fun(N) ->
+                                                   case rpc:call(N, vmq_subscriber_db, read, [{"", <<"connect-racer">>}, undefined]) of
+                                                       undefined -> false;
+                                                       [{_, false, []}] -> true
+                                                   end
+                                           end, true),
+                 packet:gen_connack(true, 0);
+             _ ->
+
+                 packet:gen_connack(true, 0)
+         end,
+         spawn_link(
+           fun() ->
+                   {_RandomNode, RandomPort} = random_node(Nodes),
+                   {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port,
+                                                                               RandomPort}]),
+                   inet:setopts(Socket, [{active, true}]),
+                   receive
+                       {tcp_closed, Socket} ->
+                           %% we should be kicked out by the subsequent client
+                           ok;
+                       M ->
+                           exit({unknown_message, M})
+                   end
+           end)
+     end || I <- lists:seq(1, 25)],
+
+    LastManStanding = fun(F) ->
+                              case [Pid || Pid <- Pids, is_process_alive(Pid)] of
+                                  [LastMan] -> LastMan;
+                                  [] ->
+                                      exit({no_session_left});
+                                  _ ->
+                                      timer:sleep(10),
+                                      F(F)
+                              end
+                      end,
+    LastMan = LastManStanding(LastManStanding),
+    true = is_process_alive(LastMan),
+    Config.
+
 racing_subscriber_test(Config) ->
     ok = ensure_cluster(Config),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
@@ -226,7 +286,6 @@ racing_subscriber_test(Config) ->
                            %% a racing subscriber
                            ok
                    end
-
            end)
      end || I <- lists:seq(1, 25)],
 

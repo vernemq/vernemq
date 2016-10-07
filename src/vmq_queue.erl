@@ -31,7 +31,8 @@
          default_opts/0,
          set_last_waiting_acks/2,
          enqueue_many/2,
-         migrate/2]).
+         migrate/2,
+         cleanup/1]).
 
 -export([online/2, online/3,
          offline/2, offline/3,
@@ -116,7 +117,16 @@ set_opts(Queue, Opts) when is_pid(Queue) ->
     gen_fsm:sync_send_event(Queue, {set_opts, self(), Opts}, infinity).
 
 get_opts(Queue) when is_pid(Queue) ->
-    gen_fsm:sync_send_all_state_event(Queue, get_opts, infinity).
+    case catch gen_fsm:sync_send_all_state_event(Queue, get_opts, infinity) of
+        {'EXIT', {normal, _}} ->
+            {error, noproc};
+        {'EXIT', {noproc, _}} ->
+            {error, noproc};
+        {'EXIT', Reason} ->
+            exit(Reason);
+        Ret ->
+            Ret
+    end.
 
 set_last_waiting_acks(Queue, WAcks) ->
     gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
@@ -127,7 +137,13 @@ migrate(Queue, Queue) ->
 migrate(Queue, OtherQueue) ->
     %% Migrate Messages of 'Queue' to 'OtherQueue'
     %% -------------------------------------------
-    case catch gen_fsm:sync_send_event(Queue, {migrate, OtherQueue}, infinity) of
+    save_sync_send_event(Queue, {migrate, OtherQueue}).
+
+cleanup(Queue) ->
+    save_sync_send_event(Queue, cleanup).
+
+save_sync_send_event(Queue, Event) ->
+    case catch gen_fsm:sync_send_event(Queue, Event, infinity) of
         {'EXIT', {normal, _}} ->
             ok;
         {'EXIT', {noproc, _}} ->
@@ -198,6 +214,11 @@ online({set_last_waiting_acks, WAcks}, _From, State) ->
 online({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, online, insert_many(Msgs, State)};
+online(cleanup, From, State)
+  when State#state.waiting_call == undefined ->
+    disconnect_sessions(State),
+    {next_state, state_change(cleanup, online, wait_for_offline),
+     State#state{waiting_call={cleanup, From}}};
 online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
@@ -259,6 +280,18 @@ wait_for_offline({add_session, NewSessionPid, NewOpts}, From,
     exit(SessionPid, normal),
     {next_state, wait_for_offline,
      State#state{waiting_call={add_session, NewSessionPid, NewOpts, From}}};
+wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
+                #state{waiting_call={cleanup, _CleanupFrom}} = State) ->
+    %% Reason for this case:
+    %% ---------------------
+    %% a synchronized registration that had triggered a cleanup got
+    %% superseeded by a non-synchronized registration (e.g. allow_multiple_sessions=true)
+    %%
+    %% Solution:
+    %% ---------
+    %% We forcefully terminate the add_session call, as we have to ensure that
+    %% this queue is completely wiped, before we allow new sessions to join.
+    {reply, {error, cleanup}, wait_for_offline, State};
 wait_for_offline(Event, _From, State) ->
     lager:error("got unknown sync event in wait_for_offline state ~p", [Event]),
     {reply, {error, wait_for_offline}, wait_for_offline, State}.
@@ -374,6 +407,10 @@ offline({migrate, OtherQueue}, From, State) ->
 offline({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, offline, insert_many(Msgs, State)};
+offline(cleanup, _From, #state{id=SId, offline=#queue{queue=Q}} = State) ->
+    cleanup_queue(SId, Q),
+    _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
+    {stop, normal, ok, State};
 offline(Event, _From, State) ->
     lager:error("got unknown sync event in offline state ~p", [Event]),
     {reply, {error, offline}, offline, State}.
@@ -516,6 +553,15 @@ handle_session_down(SessionPid, StateName,
             gen_fsm:send_event(self(), drain_start),
             _ = vmq_plugin:all(on_client_offline, [SId]),
             {next_state, state_change({'DOWN', migrate}, wait_for_offline, drain), NewState};
+        {0, wait_for_offline, {cleanup, From}} ->
+            %% Forcefully cleaned up, we have to cleanup remaining offline messages
+            %% we don't cleanup subscriptions!
+            #state{offline=#queue{queue=Q}} = NewState,
+            cleanup_queue(SId, Q),
+            _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
+            gen_fsm:reply(From, ok),
+            _ = vmq_plugin:all(on_client_gone, [SId]),
+            {stop, normal, NewState};
         {0, _, _} when DeletedSession#session.clean ->
             %% last session gone
             %% ... we've to cleanup and go down
