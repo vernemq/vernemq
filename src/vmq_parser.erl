@@ -1,6 +1,6 @@
 -module(vmq_parser).
 -include("vmq_types.hrl").
--export([parse/1, serialise/1]).
+-export([parse/1, parse/2, serialise/1]).
 
 -export([gen_connect/2,
          gen_connack/0,
@@ -43,43 +43,40 @@
 -define(HIGHBIT, 2#10000000).
 -define(LOWBITS, 2#01111111).
 
--define(MAX_PACKET_SIZE, 266338304).
+-define(MAX_PACKET_SIZE, 268435455).
 
 -spec parse(binary()) -> {mqtt_frame(), binary()} | {error, atom()} | more.
-parse(<<Fixed:1/binary, 0:1, L1:7, Data/binary>>) ->
-    case Data of
-        <<Var:L1/binary, Rest/binary>> ->
-            case parse(Fixed, Var) of
-                {error, _} = E -> E;
-                Frame -> {Frame, Rest}
-            end;
-        _ -> more
-    end;
-parse(<<Fixed:1/binary, 1:1, L1:7, 0:1, L2:7, Data/binary>>) ->
-    DataSize = L1 + (L2 bsl 7),
-    case Data of
-        <<Var:DataSize/binary, Rest/binary>> -> {parse(Fixed, Var), Rest};
-        _ -> more
-    end;
-parse(<<Fixed:1/binary, 1:1, L1:7, 1:1, L2:7, 0:1, L3:7, Data/binary>>) ->
-    DataSize = L1 + (L2 bsl 7) + (L3 bsl 14),
-    case Data of
-        <<Var:DataSize/binary, Rest/binary>> -> {parse(Fixed, Var), Rest};
-        _ -> more
-    end;
-parse(<<Fixed:1/binary, 1:1, L1:7, 1:1, L2:7, 1:1, L3:7, 0:1, L4:7, Data/binary>>) ->
-    DataSize = L1 + (L2 bsl 7) + (L3 bsl 14) + (L4 bsl 21),
-    case Data of
-        <<Var:DataSize/binary, Rest/binary>> -> {parse(Fixed, Var), Rest};
-        _ -> more
-    end;
-parse(<<_:8/binary, _/binary>>) ->
+parse(Data) ->
+    parse(Data, ?MAX_PACKET_SIZE).
+
+-spec parse(binary(), non_neg_integer()) ->  {mqtt_frame(), binary()} | {error, atom()} | more.
+parse(<<Fixed:1/binary, 0:1, DataSize:7, Data/binary>>, MaxSize)->
+    parse(DataSize, MaxSize, Fixed, Data);
+parse(<<Fixed:1/binary, 1:1, L1:7, 0:1, L2:7, Data/binary>>, MaxSize) ->
+    parse(L1 + (L2 bsl 7), MaxSize, Fixed, Data);
+parse(<<Fixed:1/binary, 1:1, L1:7, 1:1, L2:7, 0:1, L3:7, Data/binary>>, MaxSize) ->
+    parse(L1 + (L2 bsl 7) + (L3 bsl 14), MaxSize, Fixed, Data);
+parse(<<Fixed:1/binary, 1:1, L1:7, 1:1, L2:7, 1:1, L3:7, 0:1, L4:7, Data/binary>>, MaxSize) ->
+    parse(L1 + (L2 bsl 7) + (L3 bsl 14) + (L4 bsl 21), MaxSize, Fixed, Data);
+parse(<<_:8/binary, _/binary>>, _) ->
     {error, cant_parse_fixed_header};
-parse(_) ->
+parse(_, _) ->
     more.
 
--spec parse(binary(), binary()) -> mqtt_frame() | {error, atom()}.
-parse(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, Payload/binary>>) ->
+parse(DataSize, 0, Fixed, Data) ->
+    %% no max size limit
+    <<Var:DataSize/binary, Rest/binary>> = Data,
+    {variable(Fixed, Var), Rest};
+parse(DataSize, MaxSize, Fixed, Data) when byte_size(Data) =< MaxSize ->
+    <<Var:DataSize/binary, Rest/binary>> = Data,
+    {variable(Fixed, Var), Rest};
+parse(DataSize, MaxSize, _, _) when DataSize > MaxSize ->
+    {error, packet_exceeds_max_size};
+parse(_, _, _, _) -> more.
+
+
+-spec variable(binary(), binary()) -> mqtt_frame() | {error, atom()}.
+variable(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, Payload/binary>>) ->
     case vmq_topic:validate_topic(publish, Topic) of
         {ok, ParsedTopic} ->
             #mqtt_publish{dup=Dup,
@@ -90,7 +87,7 @@ parse(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/bi
         {error, Reason} ->
             {error, Reason}
     end;
-parse(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Payload/binary>>)
+variable(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Payload/binary>>)
   when QoS < 3 ->
     case vmq_topic:validate_topic(publish, Topic) of
         {ok, ParsedTopic} ->
@@ -103,22 +100,22 @@ parse(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>, <<TopicLen:16/big, Topic:TopicLen/
         {error, Reason} ->
             {error, Reason}
     end;
-parse(<<?PUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_puback{message_id=MessageId};
-parse(<<?PUBREC:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_pubrec{message_id=MessageId};
-parse(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) ->
+variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) ->
     #mqtt_pubrel{message_id=MessageId};
-parse(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_pubcomp{message_id=MessageId};
-parse(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
+variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
     case parse_topics(Topics, ?SUBSCRIBE, []) of
         {ok, ParsedTopics} ->
             #mqtt_subscribe{topics=ParsedTopics,
                             message_id=MessageId};
         E -> E
     end;
-parse(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
+variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
     case parse_topics(Topics, ?UNSUBSCRIBE, []) of
         {ok, ParsedTopics} ->
             #mqtt_unsubscribe{topics=ParsedTopics,
@@ -126,17 +123,17 @@ parse(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Topics/binary>>) ->
         E ->
             E
     end;
-parse(<<?SUBACK:4, 0:4>>, <<MessageId:16/big, Acks/binary>>) ->
+variable(<<?SUBACK:4, 0:4>>, <<MessageId:16/big, Acks/binary>>) ->
     #mqtt_suback{qos_table=parse_acks(Acks, []),
                  message_id=MessageId};
-parse(<<?UNSUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
+variable(<<?UNSUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
     #mqtt_unsuback{message_id=MessageId};
-parse(<<?CONNECT:4, 0:4>>, <<L:16/big, PMagic:L/binary, _/binary>>)
+variable(<<?CONNECT:4, 0:4>>, <<L:16/big, PMagic:L/binary, _/binary>>)
   when not ((PMagic == ?PROTOCOL_MAGIC_311) or
              (PMagic == ?PROTOCOL_MAGIC_31)) ->
     {error, unknown_protocol_magic};
 
-parse(<<?CONNECT:4, 0:4>>,
+variable(<<?CONNECT:4, 0:4>>,
     <<L:16/big, _:L/binary, ProtoVersion:8,
       UserNameFlag:1, PasswordFlag:1, WillRetain:1, WillQos:2, WillFlag:1,
       CleanSession:1,
@@ -164,15 +161,15 @@ parse(<<?CONNECT:4, 0:4>>,
             end;
         E -> E
     end;
-parse(<<?CONNACK:4, 0:4>>, <<0:7, SP:1, ReturnCode:8/big>>) ->
+variable(<<?CONNACK:4, 0:4>>, <<0:7, SP:1, ReturnCode:8/big>>) ->
     #mqtt_connack{session_present=SP, return_code=ReturnCode};
-parse(<<?PINGREQ:4, 0:4>>, <<>>) ->
+variable(<<?PINGREQ:4, 0:4>>, <<>>) ->
     #mqtt_pingreq{};
-parse(<<?PINGRESP:4, 0:4>>, <<>>) ->
+variable(<<?PINGRESP:4, 0:4>>, <<>>) ->
     #mqtt_pingresp{};
-parse(<<?DISCONNECT:4, 0:4>>, <<>>) ->
+variable(<<?DISCONNECT:4, 0:4>>, <<>>) ->
     #mqtt_disconnect{};
-parse(_, _) -> {error, cant_parse_variable_header}.
+variable(_, _) -> {error, cant_parse_variable_header}.
 
 parse_last_will_topic(Rest, 0, 0, 0, Conn) -> {ok, Rest, Conn};
 parse_last_will_topic(<<WillTopicLen:16/big, WillTopic:WillTopicLen/binary,
@@ -470,7 +467,14 @@ parser_test() ->
 
     compare_frame("pingreq", gen_pingreq()),
     compare_frame("pingresp", gen_pingresp()),
-    compare_frame("disconnect", gen_disconnect()).
+    compare_frame("disconnect", gen_disconnect()),
+
+
+    P = gen_publish("test-topic", 2, crypto:rand_bytes(100), []),
+    {error, packet_exceeds_max_size} = parse(P, byte_size(P) - 3),
+
+    <<Part:128, _/binary>> = P,
+    more = parse(Part).
 
 compare_frame(Test, Frame) ->
     io:format(user, "---- compare test: ~p~n", [Test]),
