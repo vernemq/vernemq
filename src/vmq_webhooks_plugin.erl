@@ -441,7 +441,8 @@ subscriber_id({MP, ClientId}) -> {list_to_binary(MP), ClientId}.
 
 call_endpoint(Endpoint, Hook, Args) ->
     Method = post,
-    Headers = [{<<"vernemq-hook">>, atom_to_binary(Hook, utf8)}],
+    Headers = [{<<"Content-Type">>, <<"application/json">>},
+               {<<"vernemq-hook">>, atom_to_binary(Hook, utf8)}],
     Opts = [{pool, Endpoint}],
     Res =
         case hackney:request(Method, Endpoint, Headers, encode_payload(Hook, Args), Opts) of
