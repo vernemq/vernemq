@@ -250,4 +250,4 @@ send(ssl, Socket, Msg) ->
 connect(gen_tcp, Host, Port, Opts) ->
     gen_tcp:connect(Host, Port, Opts);
 connect(ssl, Host, Port, Opts) ->
-    gen_tcp:connect(Host, Port, Opts).
+    ssl:connect(Host, Port, Opts).
