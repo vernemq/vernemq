@@ -66,7 +66,7 @@
   0},
  {<<"vmq_commons">>,
   {git,"git://github.com/erlio/vmq_commons.git",
-       {ref,"a87b4911344e8e55631361e68a745cc3a7e02815"}},
+       {ref,"847d92d23ec212430bd8bace097ee91a033a8ff9"}},
   0},
  {<<"vmq_passwd">>,
   {git,"git://github.com/erlio/vmq_passwd.git",
@@ -78,5 +78,5 @@
   1},
  {<<"vmq_server">>,
   {git,"git://github.com/erlio/vmq_server.git",
-       {ref,"f5cede6961b866930488e490ac30ff7b8c0f428a"}},
+       {ref,"ad358c6b18001ce15665b28f516298968a233bfb"}},
   0}].
