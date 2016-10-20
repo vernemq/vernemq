@@ -43,20 +43,28 @@ init(Ref, Socket, Transport, Opts) ->
     ok = ranch:accept_ack(Ref),
     case Transport:peername(Socket) of
         {ok, Peer} ->
-            NewOpts =
+            FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
+            FsmState =
             case Transport of
                 ranch_ssl ->
                     case proplists:get_value(use_identity_as_username, Opts, false) of
                         false ->
-                            Opts;
+                            FsmMod:init(Peer, Opts);
                         true ->
-                            [{preauth, vmq_ssl:socket_to_common_name(Socket)}|Opts]
+                            FsmMod:init(Peer, [{preauth, vmq_ssl:socket_to_common_name(Socket)}|Opts])
+                    end;
+                vmq_ranch_proxy_protocol ->
+                    {ok, {NewPeer, _}} = vmq_ranch_proxy_protocol:proxyname(Socket),
+                    {ok, ProxyConnInfo} = vmq_ranch_proxy_protocol:connection_info(Socket),
+                    case proplists:get_value(sni_hostname, ProxyConnInfo) of
+                        undefined ->
+                            FsmMod:init(NewPeer, Opts);
+                        CN ->
+                            FsmMod:init(NewPeer, [{preauth, CN}|Opts])
                     end;
                 _ ->
-                    Opts
+                    FsmMod:init(Peer, Opts)
             end,
-            FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
-            FsmState = FsmMod:init(Peer, NewOpts),
 
             MaskedSocket = mask_socket(Transport, Socket),
             %% tune buffer sizes
@@ -71,7 +79,7 @@ init(Ref, Socket, Transport, Opts) ->
             loop(#st{socket=MaskedSocket,
                      fsm_state=FsmState,
                      fsm_mod=FsmMod,
-                     proto_tag=proto_tag(Transport)});
+                     proto_tag=Transport:messages()});
         {error, Reason} ->
             lager:debug("Could not get socket peername: ~p", [Reason]),
             %% It's not really "ok", but there's no reason for the
@@ -83,6 +91,8 @@ init(Ref, Socket, Transport, Opts) ->
     end.
 
 mask_socket(ranch_tcp, Socket) -> Socket;
+mask_socket(vmq_ranch_proxy_protocol, Socket) ->
+    vmq_ranch_proxy_protocol:get_csocket(Socket);
 mask_socket(ranch_ssl, Socket) -> {ssl, Socket}.
 
 loop(State) ->
@@ -121,20 +131,20 @@ teardown(#st{socket = Socket}, Reason) ->
 close({ssl, Socket}) ->
     ssl:close(Socket);
 close(Socket) ->
-    inet:close(Socket).
-
-proto_tag(ranch_tcp) -> {tcp, tcp_closed, tcp_error};
-proto_tag(ranch_ssl) -> {ssl, ssl_closed, ssl_error}.
+    gen_tcp:close(Socket).
 
 active_once({ssl, Socket}) ->
     ssl:setopts(Socket, [{active, once}]);
 active_once(Socket) ->
     inet:setopts(Socket, [{active, once}]).
 
+
 getopts({ssl, Socket}, Opts) ->
     ssl:getopts(Socket, Opts);
 getopts(Socket, Opts) ->
     inet:getopts(Socket, Opts).
+
+
 
 setopts({ssl, Socket}, Opts) ->
     ssl:setopts(Socket, Opts);

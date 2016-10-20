@@ -100,7 +100,12 @@ start_listener(Type, Addr, Port, {TransportOpts, Opts}) ->
                                    vmq_config:get_env(max_connections)),
     NrOfAcceptors = proplists:get_value(nr_of_acceptors, Opts,
                                         vmq_config:get_env(nr_of_acceptors)),
-    case ranch:start_listener(Ref, NrOfAcceptors, transport_for_type(Type),
+    TransportMod =
+    case proplists:get_value(proxy_protocol, Opts, false) of
+        false -> transport_for_type(Type);
+        true -> vmq_ranch_proxy_protocol
+    end,
+    case ranch:start_listener(Ref, NrOfAcceptors, TransportMod,
                               [{ip, AAddr}, {port, Port}|TransportOpts],
                               protocol_for_type(Type),
                               protocol_opts_for_type(Type, Opts)) of
@@ -109,7 +114,6 @@ start_listener(Type, Addr, Port, {TransportOpts, Opts}) ->
         E ->
             E
     end.
-
 
 listeners() ->
     lists:foldl(

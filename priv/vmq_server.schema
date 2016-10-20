@@ -496,6 +496,46 @@
                                                             hidden
                                                            ]}.
 
+%% @doc listener.tcp.proxy_protocol specifies if the listener accepts
+%% connections opened by a proxy server that supports the PROXY protocol. This
+%% enables to retrieve peer information such as source IP/Port but also for the
+%% PROXY Version 2 protocol TLS client certificate details if the proxy was used
+%% to terminate TLS (and also supports the PROXY protocol). 
+{mapping, "listener.tcp.proxy_protocol", "vmq_server.listeners", [
+                                                                  {default, off},
+                                                                  {datatype, flag},
+                                                                  hidden
+                                                                 ]}.
+{mapping, "listener.tcp.$name.proxy_protocol", "vmq_server.listeners", [
+                                                                        {default, off},
+                                                                        {datatype, flag},
+                                                                        {include_default, "default"},
+                                                                        hidden
+                                                                       ]}.
+
+{mapping, "listener.ws.proxy_protocol", "vmq_server.listeners", [
+                                                                  {default, off},
+                                                                  {datatype, flag},
+                                                                  hidden
+                                                                 ]}.
+{mapping, "listener.ws.$name.proxy_protocol", "vmq_server.listeners", [
+                                                                        {default, off},
+                                                                        {datatype, flag},
+                                                                        {include_default, "default"},
+                                                                        hidden
+                                                                       ]}.
+{mapping, "listener.http.proxy_protocol", "vmq_server.listeners", [
+                                                                  {default, off},
+                                                                  {datatype, flag},
+                                                                  hidden
+                                                                 ]}.
+{mapping, "listener.http.$name.proxy_protocol", "vmq_server.listeners", [
+                                                                        {default, off},
+                                                                        {datatype, flag},
+                                                                        {include_default, "default"},
+                                                                        hidden
+                                                                       ]}.
+
 %% @doc listener.vmq.clustering is the IP address and TCP port that
 %% the broker will bind to accept connections from other cluster
 %% nodes e.g:
@@ -936,7 +976,6 @@
                                                                      hidden
                                                                     ]}. 
 %% @doc If 'listener.ssl.require_certificate' is enabled, you may enable 
-%% @doc If 'listener.ssl.require_certificate' is enabled, you may enable 
 %% 'listener.ssl.use_identity_as_username' to use the CN value from the client 
 %% certificate as a username. If enabled other authentication plugins are not
 %% considered. The option can be specified either for all SSL listeners or for
@@ -1006,7 +1045,9 @@
                      "keyfile", "require_certificate", "tls_version",
                      "use_identity_as_username",
                      %% http listener specific
-                     "config_mod", "config_fun"
+                     "config_mod", "config_fun",
+                     %% other
+                     "proxy_protocol"
                     ],
          F = fun(Prefix, Suffix, Val) ->
                      %% get default from root of the tree
@@ -1071,6 +1112,9 @@
          {WS_SSLIPs, WS_SSLMountPoint} = lists:unzip(F("listener.wss", "mountpoint", MPVal)),
          {VMQIPs, VMQMountPoint} = lists:unzip(F("listener.vmq", "mountpoint", MPVal)),
          {VMQ_SSLIPs, VMQ_SSLMountPoint} = lists:unzip(F("listener.vmqs", "mountpoint", MPVal)),
+         {TCPIPs, TCPProxyProto} = lists:unzip(F("listener.tcp", "proxy_protocol", BoolVal)),
+         {WSIPs, WSProxyProto} = lists:unzip(F("listener.ws", "proxy_protocol", BoolVal)),
+         {HTTPIPs, HTTPProxyProto} = lists:unzip(F("listener.http", "proxy_protocol", BoolVal)),
 
          {HTTPIPs, HTTPConfigMod} = lists:unzip(F("listener.http", "config_mod", AtomVal)),
          {HTTPIPs, HTTPConfigFun} = lists:unzip(F("listener.http", "config_fun", AtomVal)),
@@ -1121,17 +1165,20 @@
 
          TCP = lists:zip(TCPIPs, MZip([TCPMaxConns, 
                                        TCPNrOfAcceptors,
-                                       TCPMountPoint])),
+                                       TCPMountPoint,
+                                       TCPProxyProto])),
          WS = lists:zip(WSIPs, MZip([WSMaxConns, 
                                      WSNrOfAcceptors,
-                                     WSMountPoint])),
+                                     WSMountPoint,
+                                     WSProxyProto])),
          VMQ = lists:zip(VMQIPs, MZip([VMQMaxConns, 
                                      VMQNrOfAcceptors,
                                      VMQMountPoint])),
          HTTP = lists:zip(HTTPIPs, MZip([HTTPMaxConns,
                                          HTTPNrOfAcceptors,
                                          HTTPConfigMod,
-                                         HTTPConfigFun])),
+                                         HTTPConfigFun,
+                                         HTTPProxyProto])),
 
          SSL = lists:zip(SSLIPs, MZip([SSLMaxConns, 
                                        SSLNrOfAcceptors,

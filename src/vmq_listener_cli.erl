@@ -47,6 +47,7 @@ vmq_listener_start_cmd() ->
                                     {typecast, fun(N) -> list_to_integer(N) end}]},
                  {websocket, [{shortname, "ws"},
                               {longname, "websocket"}]},
+                 {proxy_protocol, [{longname, "proxy_protocol"}]},
                  {http, [{shortname, "http"},
                          {longname, "http"}]},
                  {ssl, [{longname, "ssl"}]},
