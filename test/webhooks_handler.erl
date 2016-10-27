@@ -62,6 +62,17 @@ auth_on_publish(#{username := ?USERNAME,
                   retain := false
                  }) ->
     {200, #{result => <<"ok">>}};
+auth_on_publish(#{username := ?USERNAME,
+                  subscriber_id := ?BASE64_PAYLOAD_SUBSCRIBER_ID,
+                  mountpoint := ?MOUNTPOINT_BIN,
+                  qos := 1,
+                  topic := ?TOPIC,
+                  payload := Base64Payload,
+                  retain := false
+                 }) ->
+    ?PAYLOAD = base64:decode(Base64Payload),
+    {200, #{result => <<"ok">>,
+            modifiers => #{payload => base64:encode(?PAYLOAD)}}};
 auth_on_publish(#{subscriber_id := ?NOT_ALLOWED_SUBSCRIBER_ID}) ->
     {200, #{result => #{error => <<"not_allowed">>}}};
 auth_on_publish(#{subscriber_id := ?IGNORED_SUBSCRIBER_ID}) ->

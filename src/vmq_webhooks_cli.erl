@@ -37,10 +37,16 @@ status_cmd() ->
 register_cmd() ->
     Cmd = ["vmq-admin", "webhooks", "register"],
     KeySpecs = [hook_keyspec(), endpoint_keyspec()],
-    FlagSpecs = [],
+    FlagSpecs = [{encode_payload, [{longname, "encodepayload"},
+                                   {typecast,
+                                    fun("true") -> true;
+                                       ("false") -> false;
+                                       (Val) -> {{error, {invalid_flag_value, {encodepayload, Val}}}}
+                                    end}]}],
     Callback =
-        fun(_, [{hook, Hook}, {endpoint, Endpoint}], []) ->
-                case vmq_webhooks_plugin:register_endpoint(Endpoint, Hook) of
+        fun(_, [{hook, Hook}, {endpoint, Endpoint}], Flags) ->
+                Opts = get_opts(Flags),
+                case vmq_webhooks_plugin:register_endpoint(Endpoint, Hook, Opts) of
                     ok ->
                         [clique_status:text("Done")];
                     {error, Reason} ->
@@ -54,6 +60,13 @@ register_cmd() ->
                 [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+get_opts(Flags) ->
+    Defaults = #{
+      encode_payload => true
+     },
+    Keys = [encode_payload],
+    maps:merge(Defaults, maps:with(Keys, maps:from_list(Flags))).
 
 deregister_cmd() -> 
     Cmd = ["vmq-admin", "webhooks", "deregister"],
@@ -131,6 +144,9 @@ webhooks_usage() ->
 register_usage() ->
     ["vmq-admin webhooks register hook=<Hook> endpoint=<Url>\n\n",
      "  Registers a webhook endpoint with a hook.",
+     "\n\n"
+     "  --encodepayload=<true|false>\n",
+     "     base64encode the MQTT payload. Defaults to true.",
      "\n\n"
     ].
 

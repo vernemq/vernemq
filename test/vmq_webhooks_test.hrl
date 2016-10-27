@@ -5,6 +5,7 @@
 -define(PEER, {{127,0,0,1}, ?PEERPORT}).
 -define(IGNORED_SUBSCRIBER_ID, <<"ignored-subscriber-id">>).
 -define(ALLOWED_SUBSCRIBER_ID, <<"allowed-subscriber-id">>).
+-define(BASE64_PAYLOAD_SUBSCRIBER_ID, <<"payload-is-base64-encoded">>).
 -define(NOT_ALLOWED_SUBSCRIBER_ID, <<"not-allowed-subscriber-id">>).
 -define(SERVER_ERR_SUBSCIBER_ID, <<"internal-server-error">>).
 -define(MOUNTPOINT, "mountpoint").

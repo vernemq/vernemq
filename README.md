@@ -31,6 +31,10 @@ For the above reasons, we recommend that in your production environment you
 deploy your endpoints on the same machines where you are deploying VerneMQ and
 configure the endpoints to be reached via `localhost`.
 
+## Changelog
+
+See [changelog.md](./changelog.md) for changes.
+
 ## Usage
 
 Building the plugin:
@@ -48,6 +52,9 @@ Registering a hook with an endpoint:
 Deregistering an endpoint:
 
     $ vmq-admin webhooks deregister hook=auth_on_register endpoint="http://localhost"
+
+The payload is by default base64 encoded, to disable this add the
+`--encodepayload=false` flag when registering the hook.
 
 ## Webhooks
 
@@ -155,6 +162,9 @@ Other result values:
 
 Header: ```vernemq-hook: auth_on_publish```
 
+Note, in the example below the payload is not base64 encoded which is not the
+default.
+
 Webhook example payload:
 
 ```json
@@ -216,6 +226,9 @@ The response of this hook should be empty as it is ignored.
 ### on_publish
 
 Header: ```vernemq-hook: on_publish```
+
+Note, in the example below the payload is not base64 encoded which is not the
+default.
 
 Webhook example payload:
 
@@ -293,6 +306,9 @@ Other result values:
 ### on_deliver
 
 Header: ```vernemq-hook: on_deliver```
+
+Note, in the example below the payload is not base64 encoded which is not the
+default.
 
 Webhook example payload:
 

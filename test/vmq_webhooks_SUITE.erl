@@ -21,7 +21,8 @@
          on_offline_message_test/1,
          on_client_wakeup_test/1,
          on_client_offline_test/1,
-         on_client_gone_test/1
+         on_client_gone_test/1,
+         base64payload_test/1
         ]).
 
 init_per_suite(_Config) ->
@@ -60,7 +61,8 @@ all() ->
      on_offline_message_test,
      on_client_wakeup_test,
      on_client_offline_test,
-     on_client_gone_test
+     on_client_gone_test,
+     base64payload_test
     ].
 
 
@@ -175,10 +177,19 @@ on_client_gone_test(_) ->
     ok = exp_response(on_client_gone_ok),
     deregister_hook(on_client_gone, ?ENDPOINT).
 
+base64payload_test(_) ->
+    ok = clique:run(["vmq-admin", "webhooks", "register",
+                     "hook=auth_on_publish", "endpoint=" ++ ?ENDPOINT, "--encodepayload=true"]),
+    {ok, [{payload, ?PAYLOAD}]} =
+        vmq_plugin:all_till_ok(
+          auth_on_publish,
+          [?USERNAME, {?MOUNTPOINT, ?BASE64_PAYLOAD_SUBSCRIBER_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+    deregister_hook(auth_on_publish, ?ENDPOINT).
+
 %% helper functions
 register_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
-                     "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint]).
+                     "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint, "--encodepayload=false"]).
 
 deregister_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "deregister",
