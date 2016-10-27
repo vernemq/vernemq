@@ -44,8 +44,16 @@ start_link(RemoteNode) ->
     proc_lib:start_link(?MODULE, init, [[self(), RemoteNode]]).
 
 publish(Pid, Msg) ->
-    Pid ! {msg, Msg},
-    ok.
+    Ref = make_ref(),
+    MRef = monitor(process, Pid),
+    Pid ! {msg, self(), Ref, Msg},
+    receive
+        {Ref, Reply} ->
+            demonitor(MRef, [flush]),
+            Reply;
+        {'DOWN', MRef, process, Pid, Reason} ->
+            {error, Reason}
+    end.
 
 enqueue(Pid, Term) ->
     Ref = make_ref(),
@@ -119,11 +127,17 @@ handle_message({enq, CallerPid, Ref, Term}, State) ->
             ignore
     end,
     NewState;
-handle_message({msg, Msg}, State) ->
+handle_message({msg, CallerPid, Ref, Msg}, State) ->
     Bin = term_to_binary(Msg),
     L = byte_size(Bin),
     BinMsg = <<"msg", L:32, Bin/binary>>,
-    {_, NewState} = buffer_message(BinMsg, State),
+    {Dropped, NewState} = buffer_message(BinMsg, State),
+    case Dropped > 0 of
+        true ->
+            CallerPid ! {Ref, {error, msg_dropped}};
+        false ->
+            CallerPid ! {Ref, ok}
+    end,
     NewState;
 handle_message({NetEv, _}, #state{reconnect_tref=TRef} = State)
   when
