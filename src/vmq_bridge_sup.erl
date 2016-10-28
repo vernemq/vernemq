@@ -52,7 +52,9 @@ change_config(Configs) ->
             stop_and_delete_unused(Bridges, lists:flatten([TCP, SSL]))
     end.
 
-reconfigure_bridges(Type, Bridges, [{{Host, Port}, Opts}|Rest]) ->
+reconfigure_bridges(Type, Bridges, [{HostString, Opts}|Rest]) ->
+    {Host,PortString} = list_to_tuple(string:tokens(HostString, ":")),
+    {Port,_}=string:to_integer(PortString),
     Ref = ref(Host, Port),
     case lists:keyfind(Ref, 1, Bridges) of
         false ->
@@ -84,7 +86,9 @@ start_bridge(Type, Ref, Host, Port, Opts) ->
 
 stop_and_delete_unused(Bridges, Config) ->
     BridgesToDelete =
-    lists:foldl(fun({{Host, Port}, _}, Acc) ->
+    lists:foldl(fun({HostString, _}, Acc) ->
+                        {Host,PortString} = list_to_tuple(string:tokens(HostString, ":")),
+                        {Port,_}=string:to_integer(PortString),
                         Ref = ref(Host, Port),
                         lists:keydelete(Ref, 1, Acc)
                 end, Bridges, Config),

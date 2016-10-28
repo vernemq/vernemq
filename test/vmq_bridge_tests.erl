@@ -243,7 +243,7 @@ start_bridge_plugin(QoS) ->
     application:set_env(vmq_bridge, config,
                         {[
                           %% TCP Bridges
-                          {{"127.0.0.1", 1890}, [{topics, [{"bridge/#", both, QoS, "", ""}]},
+                          {"127.0.0.1:1890", [{topics, [{"bridge/#", both, QoS, "", ""}]},
                                                  {restart_timeout, 5},
                                                  {client_id, "bridge-test"}]}
                          ],

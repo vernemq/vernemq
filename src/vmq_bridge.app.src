@@ -16,7 +16,7 @@
         {config, { 
             [
             %% TCP Bridges
-                %% {{StrIp, Port}, [{clean_session, true|false},
+                %% {StrIp, [{clean_session, true|false},
                 %%                  {client_id, "my_client_id"},
                 %%                  {keepalive_interval, 60},       % seconds
                 %%                  {restart_timeout, 10},          % seconds
