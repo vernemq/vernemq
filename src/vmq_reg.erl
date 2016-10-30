@@ -20,11 +20,11 @@
          %% used in mqtt fsm handling
          subscribe/4,
          unsubscribe/4,
-         register_subscriber/2,
+         register_subscriber/3,
          register_subscriber/4, %% used during testing
          delete_subscriptions/1,
          %% used in mqtt fsm handling
-         publish/1,
+         publish/3,
 
          %% used in :get_info/2
          get_session_pids/1,
@@ -117,9 +117,9 @@ unsubscribe_op(User, SubscriberId, Topics) ->
 delete_subscriptions(SubscriberId) ->
     del_subscriber(SubscriberId).
 
--spec register_subscriber(subscriber_id(), map()) ->
+-spec register_subscriber(flag(), subscriber_id(), map()) ->
     {ok, boolean(), pid()} | {error, _}.
-register_subscriber(SubscriberId, #{allow_multiple_sessions := false} = QueueOpts) ->
+register_subscriber(CAPAllowRegister, SubscriberId, #{allow_multiple_sessions := false} = QueueOpts) ->
     %% we don't allow multiple sessions using same subscriber id
     %% allow_multiple_sessions is needed for session balancing
     SessionPid = self(),
@@ -130,15 +130,27 @@ register_subscriber(SubscriberId, #{allow_multiple_sessions := false} = QueueOpt
                                       register_subscriber(SessionPid, SubscriberId,
                                                           QueueOpts, ?NR_OF_REG_RETRIES)
                               end, 60000);
+        false when CAPAllowRegister ->
+            %% synchronize action on this node
+            vmq_reg_sync:sync(SubscriberId,
+                              fun() ->
+                                      register_subscriber(SessionPid, SubscriberId,
+                                                          QueueOpts, ?NR_OF_REG_RETRIES)
+                              end, node(), 60000);
         false ->
             {error, not_ready}
     end;
-register_subscriber(SubscriberId, #{allow_multiple_sessions := true} = QueueOpts) ->
+register_subscriber(CAPAllowRegister, SubscriberId, #{allow_multiple_sessions := true} = QueueOpts) ->
     %% we allow multiple sessions using same subscriber id
     %%
     %% !!! CleanSession is disabled if multiple sessions are in use
     %%
-    register_session(SubscriberId, QueueOpts).
+    case vmq_cluster:is_ready() or CAPAllowRegister of
+        true ->
+            register_session(SubscriberId, QueueOpts);
+        false ->
+            {error, not_ready}
+    end.
 
 -spec register_subscriber(pid() | undefined, subscriber_id(), map(), non_neg_integer()) ->
     {'ok', boolean(), pid()} | {error, any()}.
@@ -256,13 +268,11 @@ register_session(SubscriberId, QueueOpts) ->
     SessionPresent = QueuePresent,
     {ok, SessionPresent, QPid}.
 
--spec publish(msg()) -> 'ok' | {'error', _}.
-publish(#vmq_msg{trade_consistency=true,
-                 reg_view=RegView,
-                 mountpoint=MP,
-                 routing_key=Topic,
-                 payload=Payload,
-                 retain=IsRetain} = Msg) ->
+-spec publish(flag(), module(), msg()) -> 'ok' | {'error', _}.
+publish(true, RegView, #vmq_msg{mountpoint=MP,
+                                routing_key=Topic,
+                                payload=Payload,
+                                retain=IsRetain} = Msg) ->
     %% trade consistency for availability
     %% if the cluster is not consistent at the moment, it is possible
     %% that subscribers connected to other nodes won't get this message
@@ -281,12 +291,10 @@ publish(#vmq_msg{trade_consistency=true,
             vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg),
             ok
     end;
-publish(#vmq_msg{trade_consistency=false,
-                 reg_view=RegView,
-                 mountpoint=MP,
-                 routing_key=Topic,
-                 payload=Payload,
-                 retain=IsRetain} = Msg) ->
+publish(false, RegView, #vmq_msg{mountpoint=MP,
+                                 routing_key=Topic,
+                                 payload=Payload,
+                                 retain=IsRetain} = Msg) ->
     %% don't trade consistency for availability
     case vmq_cluster:is_ready() of
         true when (IsRetain == true) and (Payload == <<>>) ->
@@ -308,7 +316,12 @@ publish(#vmq_msg{trade_consistency=false,
 
 %% publish/2 is used as the fold function in RegView:fold/4
 publish({SubscriberId, QoS}, Msg) ->
-    publish(Msg, QoS, get_queue_pid(SubscriberId));
+    case get_queue_pid(SubscriberId) of
+        not_found -> Msg;
+        QPid ->
+            ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg}),
+            Msg
+    end;
 publish(Node, Msg) ->
     case vmq_cluster:publish(Node, Msg) of
         ok ->
@@ -317,11 +330,6 @@ publish(Node, Msg) ->
             lager:warning("can't publish to remote node ~p due to '~p'", [Node, Reason]),
             Msg
     end.
-
-publish(Msg, _, not_found) -> Msg;
-publish(Msg, QoS, QPid) ->
-    ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg}),
-    Msg.
 
 -spec deliver_retained(subscriber_id(), topic(), qos()) -> 'ok'.
 deliver_retained({MP, _} = SubscriberId, Topic, QoS) ->
@@ -446,92 +454,85 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
     %% This Function exports a generic Register, Publish, and Subscribe
     %% Fun, that a plugin can use if needed. Currently all functions
     %% block until the cluster is ready.
-    case {vmq_config:get_env(trade_consistency, false),
-          vmq_config:get_env(default_reg_view, vmq_reg_trie)} of
-        {TradeConsistency, DefaultRegView}
-              when is_boolean(TradeConsistency)
-                   and is_atom(DefaultRegView) ->
-            MountPoint = "",
-            ClientId = fun(T) ->
-                               list_to_binary(
-                                 base64:encode_to_string(
-                                   integer_to_binary(
-                                     erlang:phash2(T)
-                                    )
-                                  ))
-                       end,
+    CAPPublish = vmq_config:get_env(allow_publish_during_netsplit, false),
+    CAPSubscribe = vmq_config:get_env(allow_subscribe_during_netsplit, false),
+    CAPUnsubscribe = vmq_config:get_env(allow_unsubscribe_during_netsplit, false),
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    MountPoint = "",
+    ClientId = fun(T) ->
+                       list_to_binary(
+                         base64:encode_to_string(
+                           integer_to_binary(
+                             erlang:phash2(T)
+                            )
+                          ))
+               end,
+    CallingPid = self(),
+    SubscriberId = {MountPoint, ClientId(CallingPid)},
+    User = {plugin, Mod, CallingPid},
+
+    RegisterFun =
+    fun() ->
+            PluginPid = self(),
+            wait_til_ready(),
+            PluginSessionPid = spawn_link(
+                                 fun() ->
+                                         monitor(process, PluginPid),
+                                         plugin_queue_loop(PluginPid, Mod)
+                                 end),
+            QueueOpts = maps:merge(vmq_queue:default_opts(),
+                                   #{clean_session => true,
+                                     is_plugin => true}),
+            {ok, _, _} = register_subscriber(PluginSessionPid, SubscriberId,
+                                             QueueOpts, ?NR_OF_REG_RETRIES),
+            ok
+    end,
+
+    PublishFun =
+    fun([W|_] = Topic, Payload, Opts) when is_binary(W)
+                                            and is_binary(Payload)
+                                            and is_map(Opts) ->
+            wait_til_ready(),
+            %% allow a plugin developer to override
+            %% - mountpoint
+            %% - dup flag
+            %% - retain flag
+            %% - trade-consistency flag
+            %% - reg_view
+            Msg = #vmq_msg{
+                     routing_key=Topic,
+                     mountpoint=maps:get(mountpoint, Opts, MountPoint),
+                     payload=Payload,
+                     msg_ref=vmq_mqtt_fsm:msg_ref(),
+                     qos = maps:get(qos, Opts, 0),
+                     dup=maps:get(dup, Opts, false),
+                     retain=maps:get(retain, Opts, false)
+                    },
+            publish(CAPPublish, RegView, Msg)
+    end,
+
+    SubscribeFun =
+    fun([W|_] = Topic) when is_binary(W) ->
+            wait_til_ready(),
             CallingPid = self(),
-            SubscriberId = {MountPoint, ClientId(CallingPid)},
             User = {plugin, Mod, CallingPid},
+            subscribe(CAPSubscribe, User,
+                      {MountPoint, ClientId(CallingPid)}, [{Topic, 0}]);
+       (_) ->
+            {error, invalid_topic}
+    end,
 
-            RegisterFun =
-            fun() ->
-                    PluginPid = self(),
-                    wait_til_ready(),
-                    PluginSessionPid = spawn_link(
-                                         fun() ->
-                                                 monitor(process, PluginPid),
-                                                 plugin_queue_loop(PluginPid, Mod)
-                                         end),
-                    QueueOpts = maps:merge(vmq_queue:default_opts(),
-                                           #{clean_session => true,
-                                             is_plugin => true}),
-                    {ok, _, _} = register_subscriber(PluginSessionPid, SubscriberId,
-                                                     QueueOpts, ?NR_OF_REG_RETRIES),
-                    ok
-            end,
-
-            PublishFun =
-            fun([W|_] = Topic, Payload, Opts) when is_binary(W)
-                                                    and is_binary(Payload)
-                                                    and is_map(Opts) ->
-                    wait_til_ready(),
-                    %% allow a plugin developer to override
-                    %% - mountpoint
-                    %% - dup flag
-                    %% - retain flag
-                    %% - trade-consistency flag
-                    %% - reg_view
-                    Msg = #vmq_msg{
-                             routing_key=Topic,
-                             mountpoint=maps:get(mountpoint, Opts, MountPoint),
-                             payload=Payload,
-                             msg_ref=vmq_mqtt_fsm:msg_ref(),
-                             qos = maps:get(qos, Opts, 0),
-                             dup=maps:get(dup, Opts, false),
-                             retain=maps:get(retain, Opts, false),
-                             trade_consistency=maps:get(trade_consistency, Opts,
-                                                        TradeConsistency),
-                             reg_view=maps:get(reg_view, Opts, DefaultRegView)
-                            },
-                    publish(Msg)
-            end,
-
-            SubscribeFun =
-            fun([W|_] = Topic) when is_binary(W) ->
-                    wait_til_ready(),
-                    CallingPid = self(),
-                    User = {plugin, Mod, CallingPid},
-                    subscribe(TradeConsistency, User,
-                              {MountPoint, ClientId(CallingPid)}, [{Topic, 0}]);
-               (_) ->
-                    {error, invalid_topic}
-            end,
-
-            UnsubscribeFun =
-            fun([W|_] = Topic) when is_binary(W) ->
-                    wait_til_ready(),
-                    CallingPid = self(),
-                    User = {plugin, Mod, CallingPid},
-                    unsubscribe(TradeConsistency, User,
-                                {MountPoint, ClientId(CallingPid)}, [Topic]);
-               (_) ->
-                    {error, invalid_topic}
-            end,
-            {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}};
-        _ ->
-            {error, invalid_config}
-    end.
+    UnsubscribeFun =
+    fun([W|_] = Topic) when is_binary(W) ->
+            wait_til_ready(),
+            CallingPid = self(),
+            User = {plugin, Mod, CallingPid},
+            unsubscribe(CAPUnsubscribe, User,
+                        {MountPoint, ClientId(CallingPid)}, [Topic]);
+       (_) ->
+            {error, invalid_topic}
+    end,
+    {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}}.
 
 plugin_queue_loop(PluginPid, PluginMod) ->
     receive

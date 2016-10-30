@@ -8,8 +8,6 @@
           retain=false          :: flag(),
           dup=false             :: flag(),
           qos                   :: qos(),
-          trade_consistency=false :: boolean(),
-          reg_view=vmq_reg_trie   :: atom(),
           mountpoint            :: mountpoint(),
           persisted=false       :: flag()
          }).

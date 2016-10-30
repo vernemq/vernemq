@@ -114,17 +114,17 @@ handle_info(timeout, true) ->
         true ->
             Interval = vmq_config:get_env(systree_interval, ?DEFAULT_INTERVAL),
             Prefix = vmq_config:get_env(systree_prefix, ?DEFAULT_PREFIX),
+            RegView =vmq_config:get_env(systree_reg_view,
+                                        vmq_config:get_env(default_reg_view, vmq_reg_trie)),
             MsgTmpl = #vmq_msg{
                          mountpoint=vmq_config:get_env(systree_mountpoint, ""),
                          qos=vmq_config:get_env(systree_qos, 0),
-                         retain=vmq_config:get_env(systree_retain, false),
-                         trade_consistency=vmq_config:get_env(systree_trade_consistency,
-                                                              vmq_config:get_env(trade_consistency, false)),
-                         reg_view=vmq_config:get_env(systree_reg_view, vmq_reg_trie)
+                         retain=vmq_config:get_env(systree_retain, false)
                         },
             lists:foreach(
               fun({_Type, Metric, Val}) ->
-                      vmq_reg:publish(MsgTmpl#vmq_msg{
+                      CAPPublish = true,
+                      vmq_reg:publish(CAPPublish, RegView, MsgTmpl#vmq_msg{
                                         routing_key=key(Prefix, Metric),
                                         payload=val(Val),
                                         msg_ref=vmq_mqtt_fsm:msg_ref()

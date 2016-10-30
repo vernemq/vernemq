@@ -110,8 +110,7 @@ register_consistency_multiple_sessions_test(Config) ->
     {Island1, Island2} = lists:split(length(Nodes) div 2, Nodes),
 
     %% we configure the nodes to trade consistency for availability
-    set_config(trade_consistency, true),
-    set_config(allow_multiple_sessions, true),
+    set_config(allow_register_during_netsplit, true),
 
     %% Create Partitions
     {Island1Names, _} = lists:unzip(Island1),
@@ -209,8 +208,8 @@ publish_qos0_test(Config) ->
                          end, false),
 
     {_, Island2Port} = random_node(Island2),
-    set_config(trade_consistency, true),
-    set_config(allow_multiple_sessions, true),
+    set_config(allow_register_during_netsplit, true),
+    set_config(allow_publish_during_netsplit, true),
     Publish = packet:gen_publish("netsplit/0/test", 0, <<"message">>,
                                  [{mid, 1}]),
     helper_pub_qos1("test-netsplit-sender", Publish, Island2Port),

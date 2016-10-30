@@ -28,7 +28,10 @@
       {max_message_rate, 0}, % no rate limit
       {message_size_limit, 0},
       {upgrade_outgoing_qos, false},
-      {trade_consistency, false},
+      {allow_register_during_netsplit, false},
+      {allow_publish_during_netsplit, false},
+      {allow_subscribe_during_netsplit, false},
+      {allow_unsubscribe_during_netsplit, false},
       {vmq_config_enabled, true},
       {default_reg_view, vmq_reg_trie},
       {reg_views, [vmq_reg_trie]},
@@ -51,13 +54,15 @@
       {nr_of_acceptors, 10},
       {listeners, [{mqtt, [
                            {{{127,0,0,1}, 1889}, [{max_connections, infinity}, 
-                                              {mountpoint, ""}]}
+                                              {mountpoint, ""},
+                                                  {proxy_protocol, true}]}
                           ]
                    },
                     {mqtts, []},
                     {mqttws, [
                               {{{127,0,0,1}, 8080}, [{max_connections, 1000},
-                                                    {mountpoint, ""}]}
+                                                    {mountpoint, ""},
+                                                    {proxy_protocol, true}]}
                              ]},
                     {mqttwss, []},
 
@@ -108,7 +113,6 @@
       %{systree_mountpoint, ""},
       %{systree_qos, 0},
       %{systree_retain, false},
-      %{systree_trade_consistency, false},
       %{systree_reg_view, vmq_reg_trie},
 
       ]} % end env

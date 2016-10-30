@@ -25,6 +25,7 @@
 -record(st, {socket,
              buffer= <<>>,
              parser_state,
+             reg_view,
              proto_tag,
              pending=[],
              throttled=false,
@@ -38,6 +39,8 @@ start_link(Ref, Socket, Transport, Opts) ->
 init(Ref, Socket, Transport, _Opts) ->
     ok = ranch:accept_ack(Ref),
 
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+
     process_flag(trap_exit, true),
     MaskedSocket = mask_socket(Transport, Socket),
     %% tune buffer sizes
@@ -46,7 +49,8 @@ init(Ref, Socket, Transport, _Opts) ->
     setopts(MaskedSocket, [{buffer, BufSize}]),
     case active_once(MaskedSocket) of
         ok ->
-            loop(#st{socket=MaskedSocket, proto_tag=proto_tag(Transport)});
+            loop(#st{socket=MaskedSocket, reg_view=RegView,
+                     proto_tag=proto_tag(Transport)});
         {error, Reason} ->
             exit(Reason)
     end.
@@ -89,7 +93,7 @@ handle_message({Proto, _, Data}, #st{socket=Socket,
                                      parser_state=ParserState,
                                      proto_tag={Proto, _, _},
                                      bytes_recv={{M, S, _}, V}} = State) ->
-    case process_bytes(Data, ParserState) of
+    case process_bytes(Data, ParserState, State) of
         {ok, NewParserState} ->
             case active_once(Socket) of
                 ok ->
@@ -121,34 +125,33 @@ handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
 handle_message({'DOWN', _, process, _ClusterNodePid, Reason}, State) ->
     {exit, Reason, State}.
 
-process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefined) ->
+process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefined, St) ->
     NodeName = binary_to_term(BNodeName),
     case vmq_cluster_node_sup:get_cluster_node(NodeName) of
         {ok, ClusterNodePid} ->
             monitor(process, ClusterNodePid),
-            process_bytes(Rest, <<>>);
+            process_bytes(Rest, <<>>, St);
         {error, not_found} ->
             lager:debug("got connect request from unknown cluster node ~p", [NodeName]),
             {error, remote_node_not_available}
     end;
-process_bytes(Bytes, Buffer) ->
+process_bytes(Bytes, Buffer, St) ->
     NewBuffer = <<Buffer/binary, Bytes/binary>>,
     case NewBuffer of
         <<"vmq-send", L:32, BFrames:L/binary, Rest/binary>> ->
-            process(BFrames),
-            process_bytes(Rest, <<>>);
+            process(BFrames, St),
+            process_bytes(Rest, <<>>, St);
         _ ->
             {ok, NewBuffer}
     end.
 
 
-process(<<"msg", L:32, Bin:L/binary, Rest/binary>>) ->
+process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
     #vmq_msg{mountpoint=MP,
-             routing_key=Topic,
-             reg_view=RegView} = Msg = binary_to_term(Bin),
-    _ = vmq_reg_view:fold(RegView, MP, Topic, fun publish/2, Msg),
-    process(Rest);
-process(<<"enq", L:32, Bin:L/binary, Rest/binary>>) ->
+             routing_key=Topic} = Msg = binary_to_term(Bin),
+    _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, Msg),
+    process(Rest, St);
+process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
     {CallerPid, Ref, {enqueue, QueuePid, Msgs}} = binary_to_term(Bin),
     %% enqueue in own process context
     %% to ensure that this won't block
@@ -162,8 +165,8 @@ process(<<"enq", L:32, Bin:L/binary, Rest/binary>>) ->
                           CallerPid ! {Ref, {error, cant_remote_enqueue}}
                   end
           end),
-    process(Rest);
-process(<<>>) -> ok.
+    process(Rest, St);
+process(<<>>, _) -> ok.
 
 publish({_, _} = SubscriberIdAndQoS, Msg) ->
     vmq_reg:publish(SubscriberIdAndQoS, Msg);

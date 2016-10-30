@@ -7,13 +7,29 @@
                                                                {datatype, flag}
                                                               ]}.
 
-%% @doc Allow operation even when a VerneMQ cluster is inconsistent,
-%% by removing consistency checks while registering new
-%% clients or subscribing/unsubscribing from topics
-{mapping, "trade_consistency", "vmq_server.trade_consistency", [
-                                                               {default, off},
-                                                               {datatype, flag}
-                                                              ]}.
+%% @doc Allow new client connections even when a VerneMQ cluster is inconsistent.
+{mapping, "allow_register_during_netsplit", "vmq_server.allow_register_during_netsplit", [
+                                                                                          {default, off},
+                                                                                          {datatype, flag}
+                                                                                         ]}.
+
+%% @doc Allow message publishs even when a VerneMQ cluster is inconsistent.
+{mapping, "allow_publish_during_netsplit", "vmq_server.allow_publish_during_netsplit", [
+                                                                                        {default, off},
+                                                                                        {datatype, flag}
+                                                                                       ]}.
+
+%% @doc Allow new subscriptions even when a VerneMQ cluster is inconsistent.
+{mapping, "allow_subscribe_during_netsplit", "vmq_server.allow_subscribe_during_netsplit", [
+                                                                                            {default, off},
+                                                                                            {datatype, flag}
+                                                                                           ]}.
+
+%% @doc Allow clients to unsubscribe when a VerneMQ cluster is inconsistent.
+{mapping, "allow_unsubscribe_during_netsplit", "vmq_server.allow_unsubscribe_during_netsplit", [
+                                                                                                {default, off},
+                                                                                                {datatype, flag}
+                                                                                               ]}.
 
 %% @doc Allows a client to logon multiple times using the same client id
 %% (non-standard behaviour!).
@@ -1265,11 +1281,6 @@
                                                        hidden
                                                       ]}.
 {mapping, "systree_retain", "vmq_server.systree_retain", [
-                                                       {default, off},
-                                                       {datatype, flag},
-                                                       hidden
-                                                      ]}.
-{mapping, "systree_trade_consistency", "vmq_server.systree_trade_consistency", [
                                                        {default, off},
                                                        {datatype, flag},
                                                        hidden

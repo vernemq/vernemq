@@ -63,7 +63,7 @@ queue_crash_test(_) ->
     %% at this point we've a working subscription
     timer:sleep(10),
     Msg = msg([<<"test">>, <<"topic">>], <<"test-message">>, 1),
-    ok = vmq_reg:publish(Msg),
+    ok = vmq_reg:publish(true, vmq_reg_trie, Msg),
     receive_msg(QPid1, 1, Msg),
 
     %% teardown session
@@ -72,7 +72,7 @@ queue_crash_test(_) ->
     {offline, fanout, 0, 0, false} = vmq_queue:status(QPid1),
 
     %% fill the offline queue
-    ok = vmq_reg:publish(Msg),
+    ok = vmq_reg:publish(true, vmq_reg_trie, Msg),
     {offline, fanout, 1, 0, false} = vmq_queue:status(QPid1),
 
     %% crash the queue
@@ -205,7 +205,7 @@ publish_multi(Topic) ->
 
 publish_multi(Topic, Acc) when length(Acc) < 100 ->
     Msg = msg(Topic, list_to_binary("test-message-"++ integer_to_list(length(Acc))), 1),
-    ok = vmq_reg:publish(Msg),
+    ok = vmq_reg:publish(true, vmq_reg_trie, Msg),
     publish_multi(Topic, [Msg|Acc]);
 publish_multi(_, Acc) -> lists:reverse(Acc).
 
@@ -244,9 +244,7 @@ mock_session(Parent) ->
     end.
 
 msg(Topic, Payload, QoS) ->
-    #vmq_msg{trade_consistency=false,
-             reg_view=vmq_reg_trie,
-             msg_ref=vmq_mqtt_fsm:msg_ref(),
+    #vmq_msg{msg_ref=vmq_mqtt_fsm:msg_ref(),
              mountpoint="",
              routing_key=Topic,
              payload=Payload,

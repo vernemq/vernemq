@@ -248,7 +248,7 @@ wait_for_offline({add_session, SessionPid, Opts}, From,
     %%
     %% Precondition:
     %% -------------
-    %% The calling session uses trade_consistency=false for the session setup.
+    %% The calling session uses allow_register_during_netsplit=false for the session setup.
     %% The racing client are using clean_session=false
     %%
     %% Solution:
