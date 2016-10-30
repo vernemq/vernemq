@@ -490,7 +490,7 @@ pp2_type(_) ->
 pp2_value(?PP2_TYPE_SSL, <<Client:1/binary, _:32, Rest/binary>>) ->
     case pp2_client(Client) of % validates bitfield format, but ignores data
         invalid_client ->
-            invalid;
+            [];
         _ ->
             %% Fetches TLV values attached, regardless of if the client
             %% specified SSL. If this is a problem, then we should fix,
