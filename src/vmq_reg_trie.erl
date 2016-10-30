@@ -14,7 +14,7 @@
 
 -module(vmq_reg_trie).
 
--behaviour(gen_server).
+-behaviour(gen_server2).
 -behaviour(vmq_reg_view).
 
 %% API
@@ -50,7 +50,7 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 fold(MP, Topic, FoldFun, Acc) when is_list(Topic) ->
     fold_(MP, FoldFun, Acc, match(MP, Topic)).
