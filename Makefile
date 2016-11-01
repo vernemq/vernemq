@@ -241,4 +241,25 @@ export PKG_VERSION PKG_ID PKG_BUILD BASE_DIR ERLANG_BIN REBAR OVERLAY_VARS RELEA
 pkg-devrel: devrel
 	tar -czf $(PKG_ID)-devrel.tar.gz dev/
 
+VERNEROOT := ${CURDIR}
+prep_dirty_package:
+	rm -rf /tmp/vernemq-dirty-package
+	rm -rf ./distdir/$(PKG_ID)
+	rsync -a . /tmp/vernemq-dirty-package --exclude distdir
+	mkdir -p distdir
+	cp -aR /tmp/vernemq-dirty-package distdir/$(PKG_ID)
+	for co in distdir/$(PKG_ID)/_checkouts/* ; do \
+	   mv $${co} distdir/$(PKG_ID)/_build/default/lib/; \
+	done
+	for dep in distdir/$(PKG_ID)/_build/default/lib/*; do \
+	    mkdir -p $${dep}/priv; \
+	    cd $${dep}; \
+	    printf "`git describe --long --tags 2>/dev/null || git rev-parse HEAD`" > priv/vsn.git; \
+	    cd $(VERNEROOT); \
+	done
+	tar -C distdir -czf distdir/$(PKG_ID).tar.gz $(PKG_ID)
 
+dirty_package: PKG_ID = $(REPO)-$(shell git describe --tags)-dirty
+dirty_package: compile prep_dirty_package
+	ln -s distdir package
+	${MAKE} -C package -f $(PKG_ID)/_build/default/lib/node_package/Makefile  DEPS_DIR=_build/default/lib
