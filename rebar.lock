@@ -62,7 +62,7 @@
   0},
  {<<"vmq_bridge">>,
   {git,"git://github.com/erlio/vmq_bridge.git",
-       {ref,"0513dfa82bbd47b54d0b65de108c9b3567e0b05e"}},
+       {ref,"067c9488d8821bb238c4d6df1711781cae7cefcc"}},
   0},
  {<<"vmq_commons">>,
   {git,"git://github.com/erlio/vmq_commons.git",
