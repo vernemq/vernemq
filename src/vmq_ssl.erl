@@ -37,6 +37,10 @@ extract_cn2([[#'AttributeTypeAndValue'{
                  type=?'id-at-commonName',
                  value={utf8String, CN}}]|_]) ->
     list_to_binary(unicode:characters_to_list(CN));
+extract_cn2([[#'AttributeTypeAndValue'{
+                 type=?'id-at-commonName',
+                 value={printableString, CN}}]|_]) ->
+    list_to_binary(unicode:characters_to_list(CN));
 extract_cn2([_|Rest]) ->
     extract_cn2(Rest);
 extract_cn2([]) -> undefined.
