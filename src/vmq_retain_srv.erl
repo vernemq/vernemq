@@ -14,7 +14,7 @@
 
 -module(vmq_retain_srv).
 
--behaviour(gen_server).
+-behaviour(gen_server2).
 
 %% API functions
 -export([start_link/0,
@@ -35,6 +35,7 @@
 
 -define(RETAIN_DB, {vmq, retain}).
 -define(RETAIN_CACHE, ?MODULE).
+-define(RETAIN_UPDATE, vmq_retain_srv_updates).
 
 %%%===================================================================
 %%% API functions
@@ -54,28 +55,45 @@ start_link() ->
         false ->
             ets:new(?RETAIN_CACHE, [public, named_table,
                                     {read_concurrency, true},
-                                    {write_concurrency, true}])
+                                    {write_concurrency, true}]),
+            ets:new(?RETAIN_UPDATE, [public, named_table,
+                                     {write_concurrency, true}])
     end,
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 delete(MP, RoutingKey) ->
-    gen_server:call(?MODULE, {delete, {MP, RoutingKey}}, infinity).
+    Key = {MP, RoutingKey},
+    ets:delete(?RETAIN_CACHE, Key),
+    ets:insert(?RETAIN_UPDATE, {Key}).
 
 insert(MP, RoutingKey, Message) ->
-    ets:insert(?RETAIN_CACHE, {{MP, RoutingKey}, Message, true}).
+    Key = {MP, RoutingKey},
+    ets:insert(?RETAIN_CACHE, {Key, Message}),
+    ets:insert(?RETAIN_UPDATE, {Key}).
 
 match_fold(FoldFun, Acc, MP, Topic) ->
-    ets:foldl(
-      fun({{M, T}, Payload, _}, AccAcc) when M == MP ->
-              case vmq_topic:match(T, Topic) of
-                  true ->
-                      FoldFun({T, Payload}, AccAcc);
-                  false ->
-                      AccAcc
-              end;
-         (_, AccAcc) ->
-              AccAcc
-      end, Acc, ?RETAIN_CACHE).
+    case has_wildcard(Topic) of
+        true ->
+            FFoldFun = fun({{M, T}, Payload}, AccAcc) when M == MP ->
+                               case vmq_topic:match(T, Topic) of
+                                   true ->
+                                       FoldFun({T, Payload}, AccAcc);
+                                   false ->
+                                       AccAcc
+                               end;
+                          (_, AccAcc) ->
+                               AccAcc
+                       end,
+            %% full table scan.
+            %% TODO: optimize
+            ets:foldl(FFoldFun, Acc, ?RETAIN_CACHE);
+        false ->
+            case ets:lookup(?RETAIN_CACHE, {MP, Topic}) of
+                 [] -> Acc;
+                 [{_, Payload}] ->
+                    FoldFun({Topic, Payload}, Acc)
+            end
+    end.
 
 stats() ->
     case ets:info(?RETAIN_CACHE, size) of
@@ -127,9 +145,8 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({delete, MPTopic}, _From, State) ->
-    plumtree_metadata:delete(?RETAIN_DB, MPTopic),
-    {reply, ok, State}.
+handle_call(_Req, _From, State) ->
+    {reply, {error, not_implemented}, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -161,7 +178,8 @@ handle_info({updated, ?RETAIN_DB, Key, _OldVal, NewVal}, State) ->
     ets:insert(?RETAIN_CACHE, {Key, NewVal, false}),
     {noreply, State};
 handle_info(persist, State) ->
-    ets:foldl(fun persist/2, undefined, ?RETAIN_CACHE),
+    ets:foldl(fun persist/2, ignore, ?RETAIN_UPDATE),
+    ets:delete_all_objects(?RETAIN_UPDATE),
     erlang:send_after(vmq_config:get_env(retain_persist_interval, 1000),
                       self(), persist),
     {noreply, State};
@@ -196,7 +214,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-persist({MPTopic, Message, true}, Acc) ->
-    plumtree_metadata:put(?RETAIN_DB, MPTopic, Message),
-    Acc;
-persist({_, _, false}, Acc) -> Acc.
+persist({Key}, _) ->
+    case ets:lookup(?RETAIN_CACHE, Key) of
+        [] ->
+            %% cache line was deleted
+            plumtree_metadata:delete(?RETAIN_DB, Key);
+        [{_, Message}] ->
+            plumtree_metadata:put(?RETAIN_DB, Key, Message)
+    end.
+
+has_wildcard([<<"+">>|_]) -> true;
+has_wildcard([<<"#">>]) -> true;
+has_wildcard([_|Rest]) -> has_wildcard(Rest);
+has_wildcard([]) -> false.

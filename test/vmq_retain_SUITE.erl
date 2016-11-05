@@ -13,6 +13,7 @@
          retain_qos0_fresh_test/1,
          retain_qos0_clear_test/1,
          retain_qos1_qos0_test/1,
+         retain_wildcard_test/1,
          publish_empty_retained_msg_test/1]).
 
 -export([hook_auth_on_subscribe/3,
@@ -45,6 +46,7 @@ all() ->
      retain_qos0_fresh_test,
      retain_qos0_clear_test,
      retain_qos1_qos0_test,
+     retain_wildcard_test,
      publish_empty_retained_msg_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -191,7 +193,24 @@ publish_empty_retained_msg_test(_) ->
     disable_on_publish(),
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket).
-    %%
+
+retain_wildcard_test(_) ->
+    Connect = packet:gen_connect("retain-wildcard-test", [{keepalive,60}]),
+    Connack = packet:gen_connack(0),
+    Publish = packet:gen_publish("retain/wildcard/test", 0, <<"retained message">>, [{retain, true}]),
+    Subscribe = packet:gen_subscribe(16, "retain/+/#", 0),
+    Suback = packet:gen_suback(16, 0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    enable_on_publish(),
+    enable_on_subscribe(),
+    %% Send retained message
+    ok = gen_tcp:send(Socket, Publish),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = packet:expect_packet(Socket, "publish", Publish),
+    disable_on_publish(),
+    disable_on_subscribe(),
+    ok = gen_tcp:close(Socket).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
@@ -200,14 +219,16 @@ hook_auth_on_subscribe(_,{"", <<"retain-qos0-test">>}, [{[<<"retain">>, <<"qos0"
 hook_auth_on_subscribe(_,{"", <<"retain-qos0-rep-test">>}, [{[<<"retain">>, <<"qos0">>, <<"test">>],0}]) -> ok;
 hook_auth_on_subscribe(_,{"", <<"retain-qos0-fresh-test">>}, [{[<<"retain">>,<<"qos0">>,<<"test">>],0}]) -> ok;
 hook_auth_on_subscribe(_,{"", <<"retain-clear-test">>}, [{[<<"retain">>,<<"clear">>,<<"test">>],0}]) -> ok;
-hook_auth_on_subscribe(_,{"", <<"retain-qos1-test">>}, [{[<<"retain">>,<<"qos1">>,<<"test">>],0}]) -> ok.
+hook_auth_on_subscribe(_,{"", <<"retain-qos1-test">>}, [{[<<"retain">>,<<"qos1">>,<<"test">>],0}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"retain-wildcard-test">>}, [{[<<"retain">>, <<"+">>, <<"#">>],0}]) -> ok.
 
 hook_auth_on_publish(_, _, _MsgId, [<<"retain">>,<<"qos0">>,<<"test">>], <<"retained message">>, true) -> ok;
 %% retain_qos0_clear(_) Both cases must be covered retain and clear-retain
 hook_auth_on_publish(_, _, _MsgId, [<<"retain">>,<<"clear">>,<<"test">>], <<"retained message">>, true) -> ok;
 hook_auth_on_publish(_, _, _MsgId, [<<"retain">>,<<"clear">>,<<"test">>], <<>>, true) -> ok;
 %
-hook_auth_on_publish(_, _, _MsgId, [<<"retain">>,<<"qos1">>,<<"test">>], <<"retained message">>, true) -> ok.
+hook_auth_on_publish(_, _, _MsgId, [<<"retain">>,<<"qos1">>,<<"test">>], <<"retained message">>, true) -> ok;
+hook_auth_on_publish(_, _, _MsgId, [<<"retain">>,<<"wildcard">>,<<"test">>], <<"retained message">>, true) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
