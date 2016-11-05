@@ -68,7 +68,6 @@
 
           %% changeable by auth_on_register
           max_inflight_messages=20          :: non_neg_integer(), %% 0 means unlimited
-          max_message_size=0                :: non_neg_integer(), %% 0 means unlimited
           max_message_rate=0                :: non_neg_integer(), %% 0 means unlimited
           retry_interval=20000              :: pos_integer(),
           upgrade_qos=false                 :: boolean(),
@@ -109,12 +108,12 @@ init(Peer, Opts) ->
                     },
 
     TRef = send_after(?CLOSE_AFTER, close_timeout),
+    set_max_msg_size(MaxMessageSize),
     {wait_for_connect, #state{peer=Peer,
                                      upgrade_qos=UpgradeQoS,
                                      mountpoint=string:strip(MountPoint, right, $/),
                                      allow_anonymous=AllowAnonymous,
                                      max_inflight_messages=MaxInflightMsgs,
-                                     max_message_size=MaxMessageSize,
                                      max_message_rate=MaxMessageRate,
                                      username=PreAuthUser,
                                      max_client_id_size=MaxClientIdSize,
@@ -127,9 +126,12 @@ data_in(Data, SessionState) when is_binary(Data) ->
     data_in(Data, SessionState, []).
 
 data_in(Data, SessionState, OutAcc) ->
-    case vmq_parser:parse(Data) of
+    case vmq_parser:parse(Data, max_msg_size()) of
         more ->
             {ok, SessionState, Data, serialise(OutAcc)};
+        {error, packet_exceeds_max_size} = E ->
+            _ = vmq_metrics:incr_mqtt_error_invalid_msg_size(),
+            E;
         {error, Reason} ->
             {error, Reason, serialise(OutAcc)};
         {Frame, Rest} ->
@@ -216,26 +218,23 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
                         qos=QoS, retain=IsRetain,
                         payload=Payload}, State) ->
     DoThrottle = do_throttle(State),
-    #state{mountpoint=MountPoint, max_message_size=MaxMessageSize} = State,
+    #state{mountpoint=MountPoint} = State,
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
     _ = vmq_metrics:incr_mqtt_publish_received(),
     Ret =
-    case {Topic, valid_msg_size(Payload, MaxMessageSize)} of
-        {[<<"$", _binary>> |_], _} ->
+    case Topic of
+        [<<"$", _binary>> |_] ->
             %% $SYS
             [];
-        {_, true} ->
+        _ ->
             Msg = #vmq_msg{routing_key=Topic,
                            payload=Payload,
                            retain=unflag(IsRetain),
                            qos=QoS,
                            mountpoint=MountPoint,
                            msg_ref=msg_ref()},
-            dispatch_publish(QoS, MessageId, Msg, State);
-        {_, false} ->
-            _ = vmq_metrics:incr_mqtt_error_invalid_msg_size(),
-            []
+            dispatch_publish(QoS, MessageId, Msg, State)
     end,
     case Ret of
         {error, not_allowed} ->
@@ -557,8 +556,7 @@ check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, SessionPrese
     {State, [#mqtt_connack{session_present=SessionPresent, return_code=?CONNACK_ACCEPT}]};
 check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_retain=IsRetain},
            SessionPresent, State) ->
-    #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId,
-           max_message_size=MaxMessageSize} = State,
+    #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId} = State,
     case auth_on_publish(User, SubscriberId,
                          #vmq_msg{routing_key=Topic,
                                   payload=Payload,
@@ -568,18 +566,10 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
                                   mountpoint=MountPoint
                                  },
                          fun(Msg, _) -> {ok, Msg} end) of
-        {ok, #vmq_msg{payload=MaybeNewPayload} = Msg} ->
-            case valid_msg_size(MaybeNewPayload, MaxMessageSize) of
-                true ->
-                    {State#state{will_msg=Msg},
-                     [#mqtt_connack{session_present=SessionPresent,
-                                    return_code=?CONNACK_ACCEPT}]};
-                false ->
-                    lager:warning(
-                      "last will message has invalid size for subscriber ~p",
-                      [SubscriberId]),
-                    connack_terminate(?CONNACK_SERVER, State)
-            end;
+        {ok, Msg} ->
+            {State#state{will_msg=Msg},
+             [#mqtt_connack{session_present=SessionPresent,
+                            return_code=?CONNACK_ACCEPT}]};
         {error, Reason} ->
             lager:warning("can't authenticate last will
                           for client ~p due to ~p", [SubscriberId, Reason]),
@@ -601,12 +591,15 @@ auth_on_register(User, Password, State) ->
                 allow_subscribe=?cap_val(allow_subscribe, Args, CAPSettings),
                 allow_unsubscribe=?cap_val(allow_unsubscribe, Args, CAPSettings)
                },
+
+            %% for efficiency reason the max_message_size isn't kept in the state
+            set_max_msg_size(prop_val(max_message_size, Args, max_msg_size())),
+
             ChangedState = State#state{
                              subscriber_id={?state_val(mountpoint, Args, State), ClientId},
                              mountpoint=?state_val(mountpoint, Args, State),
                              clean_session=?state_val(clean_session, Args, State),
                              reg_view=?state_val(reg_view, Args, State),
-                             max_message_size=?state_val(max_message_size, Args, State),
                              max_message_rate=?state_val(max_message_rate, Args, State),
                              max_inflight_messages=?state_val(max_inflight_messages, Args, State),
                              retry_interval=?state_val(retry_interval, Args, State),
@@ -939,11 +932,6 @@ send_after(Time, Msg) ->
 cancel_timer(undefined) -> ok;
 cancel_timer(TRef) -> _ = erlang:cancel_timer(TRef), ok.
 
--spec valid_msg_size(binary(), non_neg_integer()) -> boolean().
-valid_msg_size(_, 0) -> true;
-valid_msg_size(Payload, Max) when byte_size(Payload) =< Max -> true;
-valid_msg_size(_, _) -> false.
-
 do_throttle(#state{max_message_rate=0}) -> false;
 do_throttle(#state{max_message_rate=Rate}) ->
     not vmq_metrics:check_rate(msg_in_rate, Rate).
@@ -1078,6 +1066,18 @@ msg_ref() ->
     end,
     put(guid, GUID),
     erlang:md5(term_to_binary(GUID)).
+
+max_msg_size() ->
+    case get(max_msg_size) of
+        undefined ->
+            %% no limit
+            0;
+        V -> V
+    end.
+
+set_max_msg_size(MaxMsgSize) when MaxMsgSize >= 0 ->
+    put(max_msg_size, MaxMsgSize),
+    MaxMsgSize.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% info items

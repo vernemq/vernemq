@@ -177,7 +177,7 @@ incr_mqtt_error_auth_subscribe() ->
     incr_item(mqtt_subscribe_auth_error, 1).
 
 incr_mqtt_error_invalid_msg_size() ->
-    incr_item(mqtt_publish_invalid_msg_size_error, 1).
+    incr_item(mqtt_invalid_msg_size_error, 1).
 
 incr_mqtt_error_invalid_puback() ->
     incr_item(mqtt_puback_invalid_error, 1).
@@ -318,7 +318,7 @@ counter_entries() ->
      mqtt_connect_auth_error,
      mqtt_publish_auth_error,
      mqtt_subscribe_auth_error,
-     mqtt_publish_invalid_msg_size_error,
+     mqtt_invalid_msg_size_error,
      mqtt_puback_invalid_error, mqtt_pubrec_invalid_error,
      mqtt_pubcomp_invalid_error,
 

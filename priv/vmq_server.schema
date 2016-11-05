@@ -232,6 +232,14 @@
                                                               hidden
                                                              ]}.
 
+%% @doc specifies the maximum incoming MQTT message size.
+%% defaults to 0, which means no limits apply
+{mapping, "max_message_size", "vmq_server.max_message_size", [
+                                                              {default, 0},
+                                                              {datatype, integer},
+                                                              hidden
+                                                             ]}.
+
 %% @doc This option sets the maximum payload size that VerneMQ will allow for publishers. 
 %% Messages that exceed this size will not be accepted by VerneMQ. The 
 %% default value is 0, which means that all valid MQTT messages are accepted. MQTT 

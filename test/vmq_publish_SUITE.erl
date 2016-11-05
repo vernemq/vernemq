@@ -22,7 +22,8 @@
          not_allowed_publish_close_qos2_mqtt_3_1/1,
          not_allowed_publish_close_qos0_mqtt_3_1_1/1,
          not_allowed_publish_close_qos1_mqtt_3_1_1/1,
-         not_allowed_publish_close_qos2_mqtt_3_1_1/1
+         not_allowed_publish_close_qos2_mqtt_3_1_1/1,
+         message_size_exceeded_close/1
         ]).
 
 -export([hook_auth_on_subscribe/3,
@@ -65,7 +66,8 @@ all() ->
      not_allowed_publish_close_qos2_mqtt_3_1,
      not_allowed_publish_close_qos0_mqtt_3_1_1,
      not_allowed_publish_close_qos1_mqtt_3_1_1,
-     not_allowed_publish_close_qos2_mqtt_3_1_1
+     not_allowed_publish_close_qos2_mqtt_3_1_1,
+     message_size_exceeded_close
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -416,7 +418,17 @@ not_allowed_publish_close_qos2_mqtt_3_1_1(_) ->
     gen_tcp:send(Socket, Publish),
     {error, closed} = gen_tcp:recv(Socket, 0, 1000).
 
-
+message_size_exceeded_close(_) ->
+    vmq_config:set_env(message_size_limit, 1024, false),
+    Connect = packet:gen_connect("pub-excessive-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Publish = packet:gen_publish("pub/excessive/test", 0, crypto:rand_bytes(1024),
+                                 [{mid, 19}]),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    enable_on_publish(),
+    ok = gen_tcp:send(Socket, Publish),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000),
+    true = lists:member({counter, mqtt_invalid_msg_size_error, 1}, vmq_metrics:metrics()).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
