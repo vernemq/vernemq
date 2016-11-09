@@ -248,9 +248,9 @@ prep_dirty_package:
 	rsync -a . /tmp/vernemq-dirty-package --exclude distdir
 	mkdir -p distdir
 	cp -aR /tmp/vernemq-dirty-package distdir/$(PKG_ID)
-	if [ -d distdir/$(PKG_ID)/_checkouts ]; then \
+	if [ -d "distdir/$(PKG_ID)/_checkouts" ]; then \
 	  for co in distdir/$(PKG_ID)/_checkouts/* ; do \
-	     mv $${co} distdir/$(PKG_ID)/_build/default/lib/; \
+	     cp -R $${co} distdir/$(PKG_ID)/_build/default/lib/; \
 	  done \
 	fi
 	for dep in distdir/$(PKG_ID)/_build/default/lib/*; do \
