@@ -1,0 +1,14 @@
+_build
+*.beam
+.eunit
+*.app
+deps
+Mnesia.*
+erl_crash.dump
+data
+log
+logs
+.rebar
+rebar.lock
+*.o
+*.so

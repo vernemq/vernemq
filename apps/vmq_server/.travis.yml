@@ -1,0 +1,10 @@
+sudo: required
+dist: trusty
+language: erlang
+install: true
+otp_release:
+    - 17.5
+    - 18.3
+    - 19.0
+before_script: "epmd -daemon"
+script: "./rebar3 ct"
