@@ -1,0 +1,14 @@
+{application, vmq_commons,
+ [
+  {description, "Common Functionality for the VerneMQ MQTT broker"},
+  {vsn, "1.0.0"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []},
+  {maintainers, ["Andre Graf", "Andre Fatton", "Lars Hesel Christensen"]},
+  {licenses, ["Apache License 2.0"]},
+  {links, [{"Github", "https://github.com/erlio/vmq_commons"}]}
+ ]}.
