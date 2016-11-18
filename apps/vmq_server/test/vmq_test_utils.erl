@@ -12,7 +12,8 @@ setup_use_default_auth() ->
 
 start_server(StartNoAuth) ->
     os:cmd(os:find_executable("epmd")++" -daemon"),
-    ok = maybe_start_distribution(vmq_server),
+    NodeName = list_to_atom("vmq_server-" ++ integer_to_list(erlang:phash2(os:timestamp()))),
+    ok = maybe_start_distribution(NodeName),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
     os:cmd("rm -rf " ++ Datadir),
     application:load(plumtree),
@@ -58,6 +59,8 @@ teardown() ->
     disable_all_plugins(),
     vmq_metrics:reset_counters(),
     vmq_server:stop(),
+    application:unload(vmq_server),
+    application:unload(plumtree),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
     _ = [eleveldb:destroy(Datadir ++ "/meta/" ++ integer_to_list(I), [])
          || I <- lists:seq(0, 11)],

@@ -1,3 +1,3 @@
 
 compile:
-	gcc $(CFLAGS) vmq_passwd.c -lcrypto -o vmq_passwd
+	gcc $(CFLAGS) vmq_passwd.c -lcrypto -o ../priv/vmq_passwd

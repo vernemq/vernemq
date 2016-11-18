@@ -180,7 +180,11 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = 
         {error, Reason, Out} ->
             lager:debug("[~p][~p] parse error '~p' for data: ~p and  parser state: ~p",
                         [Proto, self(), Reason, Data, Buffer]),
-            {exit, Reason, State#st{pending=[Pending|Out]}}
+            {exit, Reason, State#st{pending=[Pending|Out]}};
+        {error, Reason} ->
+            lager:debug("[~p][~p] parse error '~p' for data: ~p and  parser state: ~p",
+                        [Proto, self(), Reason, Data, Buffer]),
+            {exit, Reason, State}
     end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}, fsm_mod=FsmMod} = State) ->
     %% we regard a tcp_closed as 'normal'

@@ -1,7 +1,7 @@
 {application, vmq_commons,
  [
   {description, "Common Functionality for the VerneMQ MQTT broker"},
-  {vsn, "1.0.0"},
+  {vsn, git},
   {registered, []},
   {applications, [
                   kernel,

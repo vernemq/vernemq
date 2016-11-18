@@ -947,7 +947,7 @@ vmq_plugin_test() ->
             ],
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
     %% we have to step out .eunit
-    application:set_env(vmq_plugin, plugin_dir, "."),
+    application:set_env(vmq_plugin, plugin_dir, "apps/vmq_plugin"),
     {ok, _} = application:ensure_all_started(vmq_plugin),
     %% no plugin is yet registered
     call_no_hooks(),

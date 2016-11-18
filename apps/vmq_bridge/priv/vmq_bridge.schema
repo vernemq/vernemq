@@ -5,13 +5,13 @@
 %% bridges can configured by using different bridge names (e.g. br0). If the 
 %% connection supports SSL encryption bridge.ssl.<name> can be used.
 {mapping, "bridge.tcp.$name", "vmq_bridge.config", [
-                                                    {default, {"127.0.0.1:1889"}},
+                                                    {default, "127.0.0.1:1889"},
                                                     {datatype, string},
                                                     {include_default, "br0"},
                                                     {commented, "127.0.0.1:1889"}
                                                    ]}. 
 {mapping, "bridge.ssl.$name", "vmq_bridge.config", [
-                                                    {default, {"127.0.0.1:1889"}},
+                                                    {default, "127.0.0.1:1889"},
                                                     {datatype, string},
                                                     hidden
                                                    ]}. 
