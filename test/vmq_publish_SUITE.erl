@@ -423,7 +423,7 @@ message_size_exceeded_close(_) ->
     vmq_config:set_env(message_size_limit, 1024, false),
     Connect = packet:gen_connect("pub-excessive-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
-    Publish = packet:gen_publish("pub/excessive/test", 0, crypto:rand_bytes(1024),
+    Publish = packet:gen_publish("pub/excessive/test", 0, crypto:strong_rand_bytes(1024),
                                  [{mid, 19}]),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     enable_on_publish(),
