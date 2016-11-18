@@ -584,6 +584,7 @@ auth_on_register(User, Password, State) ->
         ok ->
             {ok, queue_opts(State, []), State};
         {ok, Args} ->
+            set_sock_opts(prop_val(tcp_opts, Args, [])),
             ChangedCAPSettings
             = CAPSettings#cap_settings{
                 allow_register=?cap_val(allow_register, Args, CAPSettings),
@@ -610,6 +611,9 @@ auth_on_register(User, Password, State) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+set_sock_opts(Opts) ->
+    self() ! {set_sock_opts, Opts}.
 
 -spec auth_on_publish(username(), subscriber_id(), msg(),
                       fun((msg(), list()) -> {ok, msg()} | {error, atom()})

@@ -201,6 +201,9 @@ handle_message({inet_reply, _, ok}, State) ->
     State;
 handle_message({inet_reply, _, Status}, State) ->
     {exit, {send_failed, Status}, State};
+handle_message({set_sock_opts, Opts}, #st{socket=S} = State) ->
+    setopts(S, Opts),
+    State;
 handle_message(restart_work, #st{throttled=true} = State) ->
     #st{proto_tag={Proto, _, _}, socket=Socket} = State,
     handle_message({Proto, Socket, <<>>}, State#st{throttled=false});
