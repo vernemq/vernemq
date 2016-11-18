@@ -761,6 +761,52 @@
                                                                 hidden
                                                                ]}. 
 
+%% @doc When dealing with an intermediate CA, it might be required to
+%% increase the peer verification depth to have a client certificate
+%% correctly validated. The default value (1) means that only certificates
+%% signed by the root CA will be accepted, whereas an higher value allows
+%% for a deeper verification chain. Please refer to http://erlang.org/doc/man/ssl.html
+%% for further documentation. Set the certificate
+%% verification depth on the protocol level or on the listener level:
+%%
+%%     - listener.ssl.depth
+%%     - listener.wss.depth
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.depth
+%%     - listener.wss.my_wss_listener.depth
+{mapping, "listener.ssl.depth", "vmq_server.listeners", [
+                                                          {default, 1},
+                                                          {datatype, integer}
+                                                         ]}.
+
+{mapping, "listener.ssl.$name.depth", "vmq_server.listeners", [
+                                                                {default, 1},
+                                                                {datatype, integer},
+                                                                hidden
+                                                               ]}.
+{mapping, "listener.wss.depth", "vmq_server.listeners", [
+                                                          {default, 1},
+                                                          {datatype, integer},
+                                                          hidden
+                                                         ]}.
+{mapping, "listener.wss.$name.depth", "vmq_server.listeners", [
+                                                                {default, 1},
+                                                                {datatype, integer},
+                                                                hidden
+                                                               ]}.
+{mapping, "listener.vmqs.$name.depth", "vmq_server.listeners", [
+                                                                {default, 1},
+                                                                {datatype, integer},
+                                                                hidden
+                                                               ]}.
+{mapping, "listener.https.$name.depth", "vmq_server.listeners", [
+                                                                {default, 1},
+                                                                {datatype, integer},
+                                                                hidden
+                                                               ]}.
+
 %% @doc Set the path to the PEM encoded server certificate
 %% on the protocol level or on the listener level:
 %%
@@ -1065,7 +1111,7 @@
 
          Mappings = ["max_connections", "nr_of_acceptors", "mountpoint"],
          ExtMapps = [%% ssl listener specific
-                     "cafile", "capath", "certfile", "ciphers", "crlfile",
+                     "cafile", "capath", "depth", "certfile", "ciphers", "crlfile",
                      "keyfile", "require_certificate", "tls_version",
                      "use_identity_as_username",
                      %% http listener specific
@@ -1148,6 +1194,7 @@
          % SSL
          {SSLIPs, SSLCAFiles} = lists:unzip(F("listener.ssl", "cafile", StrVal)),
          {SSLIPs, SSLCAPaths} = lists:unzip(F("listener.ssl", "capath", StrVal)),
+         {SSLIPs, SSLDepths} = lists:unzip(F("listener.ssl", "depth", StrVal)),
          {SSLIPs, SSLCertFiles} = lists:unzip(F("listener.ssl", "certfile", StrVal)),
          {SSLIPs, SSLCiphers} = lists:unzip(F("listener.ssl", "ciphers", StrVal)),
          {SSLIPs, SSLCrlFiles} = lists:unzip(F("listener.ssl", "crlfile", StrVal)),
@@ -1159,6 +1206,7 @@
          % WSS
          {WS_SSLIPs, WS_SSLCAFiles} = lists:unzip(F("listener.wss", "cafile", StrVal)),
          {WS_SSLIPs, WS_SSLCAPaths} = lists:unzip(F("listener.wss", "capath", StrVal)),
+         {WS_SSLIPs, WS_SSLDepths} = lists:unzip(F("listener.wss", "depth", StrVal)),
          {WS_SSLIPs, WS_SSLCertFiles} = lists:unzip(F("listener.wss", "certfile", StrVal)),
          {WS_SSLIPs, WS_SSLCiphers} = lists:unzip(F("listener.wss", "ciphers", StrVal)),
          {WS_SSLIPs, WS_SSLCrlFiles} = lists:unzip(F("listener.wss", "crlfile", StrVal)),
@@ -1170,6 +1218,7 @@
          % VMQS
          {VMQ_SSLIPs, VMQ_SSLCAFiles} = lists:unzip(F("listener.vmqs", "cafile", StrVal)),
          {VMQ_SSLIPs, VMQ_SSLCAPaths} = lists:unzip(F("listener.vmqs", "capath", StrVal)),
+         {VMQ_SSLIPs, VMQ_SSLDepths} = lists:unzip(F("listener.vmqs", "depth", StrVal)),
          {VMQ_SSLIPs, VMQ_SSLCertFiles} = lists:unzip(F("listener.vmqs", "certfile", StrVal)),
          {VMQ_SSLIPs, VMQ_SSLCiphers} = lists:unzip(F("listener.vmqs", "ciphers", StrVal)),
          {VMQ_SSLIPs, VMQ_SSLCrlFiles} = lists:unzip(F("listener.vmqs", "crlfile", StrVal)),
@@ -1180,6 +1229,7 @@
          % HTTPS
          {HTTP_SSLIPs, HTTP_SSLCAFiles} = lists:unzip(F("listener.https", "cafile", StrVal)),
          {HTTP_SSLIPs, HTTP_SSLCAPaths} = lists:unzip(F("listener.https", "capath", StrVal)),
+         {HTTP_SSLIPs, HTTP_SSLDepths} = lists:unzip(F("listener.https", "depth", StrVal)),
          {HTTP_SSLIPs, HTTP_SSLCertFiles} = lists:unzip(F("listener.https", "certfile", StrVal)),
          {HTTP_SSLIPs, HTTP_SSLCiphers} = lists:unzip(F("listener.https", "ciphers", StrVal)),
          {HTTP_SSLIPs, HTTP_SSLCrlFiles} = lists:unzip(F("listener.https", "crlfile", StrVal)),
@@ -1209,6 +1259,7 @@
                                        SSLMountPoint,
                                        SSLCAFiles, 
                                        SSLCAPaths, 
+                                       SSLDepths,
                                        SSLCertFiles, 
                                        SSLCiphers, 
                                        SSLCrlFiles, 
@@ -1221,6 +1272,7 @@
                                           WS_SSLMountPoint,
                                           WS_SSLCAFiles, 
                                           WS_SSLCAPaths, 
+                                          WS_SSLDepths,
                                           WS_SSLCertFiles, 
                                           WS_SSLCiphers, 
                                           WS_SSLCrlFiles, 
@@ -1233,6 +1285,7 @@
                                           VMQ_SSLMountPoint,
                                           VMQ_SSLCAFiles, 
                                           VMQ_SSLCAPaths, 
+                                          VMQ_SSLDepths,
                                           VMQ_SSLCertFiles, 
                                           VMQ_SSLCiphers, 
                                           VMQ_SSLCrlFiles, 
@@ -1243,6 +1296,7 @@
                                           HTTP_SSLNrOfAcceptors,
                                           HTTP_SSLCAFiles, 
                                           HTTP_SSLCAPaths, 
+                                          HTTP_SSLDepths,
                                           HTTP_SSLCertFiles, 
                                           HTTP_SSLCiphers, 
                                           HTTP_SSLCrlFiles, 

@@ -61,6 +61,7 @@ opts(Opts) ->
               end},
      {verify_fun, {fun verify_ssl_peer/3,
                    proplists:get_value(crlfile, Opts, no_crl)}},
+     {depth, proplists:get_value(depth, Opts, 1)},
      {versions, [proplists:get_value(tls_version, Opts, 'tlsv1.2')]}
      |
      []
