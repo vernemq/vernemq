@@ -1,0 +1,397 @@
+%%-*- mode: erlang -*
+%% ex: ft=erlang
+
+%% @doc Specify the address and port of the bridge to connect to. Several 
+%% bridges can configured by using different bridge names (e.g. br0). If the 
+%% connection supports SSL encryption bridge.ssl.<name> can be used.
+{mapping, "bridge.tcp.$name", "vmq_bridge.config", [
+                                                    {default, {"127.0.0.1:1889"}},
+                                                    {datatype, string},
+                                                    {include_default, "br0"},
+                                                    {commented, "127.0.0.1:1889"}
+                                                   ]}. 
+{mapping, "bridge.ssl.$name", "vmq_bridge.config", [
+                                                    {default, {"127.0.0.1:1889"}},
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}. 
+
+%% @doc Set the clean session option for the bridge. By default this is disabled, 
+%% which means that all subscriptions on the remote broker are kept in case of 
+%% the network connection dropping. If enabled, all subscriptions and messages 
+%% on the remote broker will be cleaned up if the connection drops. 
+{mapping, "bridge.tcp.$name.cleansession", "vmq_bridge.config", [
+                                                                 {default, off},
+                                                                 {datatype, flag},
+                                                                 {include_default, "br0"},
+                                                                 {commented, off}
+                                                                ]}. 
+{mapping, "bridge.ssl.$name.cleansession", "vmq_bridge.config", [
+                                                       {default, off},
+                                                       {datatype, flag},
+                                                       hidden
+                                                      ]}. 
+
+%% @doc Set the client id for this bridge connection. If not defined, this 
+%% defaults to 'name.hostname', where name is the connection name and hostname 
+%% is the hostname of this computer.
+{mapping, "bridge.tcp.$name.client_id", "vmq_bridge.config", [
+                                                              {default, "auto"},
+                                                              {datatype, string},
+                                                              {include_default, "br0"},
+                                                              {commented, "auto"}
+                                                             ]}. 
+{mapping, "bridge.ssl.$name.client_id", "vmq_bridge.config", [
+                                                       {default, "auto"},
+                                                       {datatype, string},
+                                                       hidden
+                                                      ]}. 
+
+%% @doc Set the number of seconds after which the bridge should send a ping if 
+%% no other traffic has occurred.
+{mapping, "bridge.tcp.$name.keepalive_interval", "vmq_bridge.config", [
+                                                                       {default, 60},
+                                                                       {datatype, integer},
+                                                                       {include_default, "br0"},
+                                                                       {commented, 60}
+                                                                      ]}. 
+{mapping, "bridge.ssl.$name.keepalive_interval", "vmq_bridge.config", [
+                                                       {default, 60},
+                                                       {datatype, integer},
+                                                       hidden
+                                                      ]}. 
+
+%% @doc Configure a username for the bridge. This is used for authentication 
+%% purposes when connecting to a broker that support MQTT v3.1 and requires a 
+%% username and/or password to connect. See also the password option.
+{mapping, "bridge.tcp.$name.username", "vmq_bridge.config", [
+                                                             {datatype, string},
+                                                             {include_default, "br0"},
+                                                             {commented, "my_remote_user"}
+                                                            ]}. 
+{mapping, "bridge.ssl.$name.username", "vmq_bridge.config", [
+                                                       {datatype, string},
+                                                       {include_default, "sbr0"},
+                                                       hidden
+                                                      ]}. 
+
+%% @doc Configure a password for the bridge. This is used for authentication 
+%% purposes when connecting to a broker that support MQTT v3.1 and requires a 
+%% username and/or password to connect. This option is only valid if a username 
+%% is also supplied.
+{mapping, "bridge.tcp.$name.password", "vmq_bridge.config", [
+                                                             {datatype, string},
+                                                             {include_default, "br0"},
+                                                             {commented, "my_remote_password"}
+                                                            ]}. 
+{mapping, "bridge.ssl.$name.password", "vmq_bridge.config", [
+                                                       {datatype, string},
+                                                       {include_default, "sbr0"},
+                                                       hidden
+                                                      ]}. 
+
+%% @doc Define one or more topic pattern to be shared between the two brokers. 
+%% Any topics matching the pattern (including wildcards) are shared. 
+%% The following format is used:
+%%
+%%  pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]
+%%
+%%  [ out | in | both ] specifies that this bridge exports messages (out), imports
+%%                      messages (in) or shared in both directions (both).
+%%                      If undefined we default to export (out).
+%%
+%%  qos-level           specifies the publish/subscribe QoS level used for this
+%%                      topic. If undefined we default to QoS 0.
+%%
+%%  local-prefix and remote-prefix:
+%%      For incoming topics, the bridge will prepend the pattern with the 
+%%      remote prefix and subscribe to the resulting topic on the remote broker. 
+%%      When a matching incoming message is received, the remote prefix will be 
+%%      removed from the topic and then the local prefix added.
+%%
+%%      For outgoing topics, the bridge will prepend the pattern with the local 
+%%      prefix and subscribe to the resulting topic on the local broker. When an 
+%%      outgoing message is processed, the local prefix will be removed from the 
+%%      topic then the remote prefix added.
+{mapping, "bridge.tcp.$name.topic.$topic_id", "vmq_bridge.config", [
+                                                                    {datatype, string},
+                                                                    {include_default, "1"}
+                                                                   ]}. 
+{mapping, "bridge.ssl.$name.topic.$topic_id", "vmq_bridge.config", [
+                                                       {datatype, string},
+                                                       hidden
+                                                      ]}. 
+
+%% @doc Set the amount of time a bridge using the automatic start type will wait 
+%% until attempting to reconnect. Defaults to 30 seconds.
+{mapping, "bridge.tcp.$name.restart_timeout", "vmq_bridge.config", [
+                                                                    {datatype, integer},
+                                                                    {default, 10},
+                                                                    {include_default, "br0"},
+                                                                    {commented, 10}
+                                                                   ]}.
+{mapping, "bridge.ssl.$name.restart_timeout", "vmq_bridge.config", [
+                                                                       {datatype, integer},
+                                                                       {default, 10},
+                                                                       hidden
+                                                                      ]}.
+
+%% @doc If try_private is enabled, the bridge will attempt to indicate to the 
+%% remote broker that it is a bridge not an ordinary client. 
+%% Note that loop detection for bridges is not yet implemented. 
+{mapping, "bridge.tcp.$name.try_private", "vmq_bridge.config", [
+                                                                {datatype, flag},
+                                                                {default, on},
+                                                                {include_default, "br0"},
+                                                                {commented, on}
+                                                               ]}.
+{mapping, "bridge.ssl.$name.try_private", "vmq_bridge.config", [
+                                                                   {datatype, flag},
+                                                                   {default, on},
+                                                                   hidden
+                                                                  ]}.
+%% @doc The cafile is used to define the path to a file containing 
+%% the PEM encoded CA certificates that are trusted. 
+{mapping, "bridge.ssl.$name.cafile", "vmq_bridge.config", [
+                                                              {default, ""},
+                                                              {datatype, file},
+                                                              {include_default, "sbr0"},
+                                                              {commented, "{{platform_etc_dir}}/cacerts.pem"}
+                                                             ]}. 
+
+%% @doc Define the path to a folder containing 
+%% the PEM encoded CA certificates that are trusted. 
+{mapping, "bridge.ssl.$name.capath", "vmq_bridge.config", [
+                                                              {default, ""},
+                                                              {datatype, file},
+                                                              {include_default, "sbr0"},
+                                                              {commented, "{{platform_etc_dir}}/cacerts"}
+                                                             ]}. 
+
+%% @doc Set the path to the PEM encoded server certificate.
+{mapping, "bridge.ssl.$name.certfile", "vmq_bridge.config", [
+                                                                {default, ""},
+                                                                {datatype, file},
+                                                                {include_default, "sbr0"},
+                                                                {commented, "{{platform_etc_dir}}/cert.pem"}
+                                                               ]}. 
+%% @doc Set the path to the PEM encoded key file. 
+{mapping, "bridge.ssl.$name.keyfile", "vmq_bridge.config", [
+                                                               {default, ""},
+                                                               {datatype, file},
+                                                               {include_default, "sbr0"},
+                                                               {commented, "{{platform_etc_dir}}/key.pem"}
+                                                              ]}. 
+%% @doc When using certificate based TLS, the bridge will attempt to verify the 
+%% hostname provided in the remote certificate matches the host/address being 
+%% connected to. This may cause problems in testing scenarios, so this option 
+%% may be enabled to disable the hostname verification.
+%%
+%% Setting this option to true means that a malicious third party could 
+%% potentially inpersonate your server, so it should always be disabled in 
+%% production environments.
+{mapping, "bridge.ssl.$name.insecure", "vmq_bridge.config", [
+                                                                {default, off},
+                                                                {datatype, flag},
+                                                                {include_default, "sbr0"},
+                                                                {commented, off}
+                                                               ]}. 
+%% @doc Configure the TLS protocol version (tlsv1, tlsv1.1, or tlsv1.2) to be 
+%% used for this bridge.
+{mapping, "bridge.ssl.$name.tls_version", "vmq_bridge.config", [
+                                                                   {default, 'tlsv1.2'},
+                                                                   {datatype, atom},
+                                                                   {include_default, "sbr0"},
+                                                                   {commented, 'tlsv1.2'}
+                                                                  ]}. 
+%% @doc Pre-shared-key encryption provides an alternative to certificate based 
+%% encryption. This option specifies the identity used. 
+{mapping, "bridge.ssl.$name.identity", "vmq_bridge.config", [
+                                                                {default, ""},
+                                                                {datatype, string},
+                                                                {include_default, "sbr0"},
+                                                                {commented, ""}
+                                                               ]}. 
+%% @doc Pre-shared-key encryption provides an alternative to certificate based 
+%% encryption. This option specifies the shared secret used in hexadecimal
+%% format without leading '0x'. 
+{mapping, "bridge.ssl.$name.psk", "vmq_bridge.config", [
+                                                           {default, ""},
+                                                           {datatype, string},
+                                                           {include_default, "sbr0"},
+                                                           {commented, ""}
+                                                          ]}. 
+
+{mapping, "bridge.registry_mfa", "vmq_bridge.registry_mfa", 
+ [
+  {default, "{vmq_reg,direct_plugin_exports,[vmq_bridge]}"},
+  {datatype, string},
+  hidden
+ ]}. 
+
+{translation, "vmq_bridge.registry_mfa", 
+ fun(Conf) ->
+         S = cuttlefish:conf_get("bridge.registry_mfa", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.
+
+{translation, "vmq_bridge.config", 
+ fun(Conf) ->
+         BoolVal = fun(_, B) when is_boolean(B) -> B end,
+         StringVal = fun(_, "") -> undefined;
+                        (_, S) when is_list(S) -> S; 
+                        (_, undefined) -> undefined end,
+         IntVal = fun(_, I) when is_integer(I) -> I;
+                     (_, undefined) -> undefined end,
+         AtomVal = fun(_, A) when is_atom(A) -> A end,
+         ClientIdVal = fun(Name, "auto") -> 
+                               {ok, HostName} = inet:gethostname(),
+                               lists:flatten([HostName, ".", Name]);
+                          (_, L) when is_list(L) -> L
+                       end,
+
+         TopicVal = fun
+                        (_, TopicString) when is_list(TopicString) ->
+                            TTopicString = re:replace(TopicString, "\\*", "#", [{return, list}]),
+                            Directions = ["out", "in", "both"],
+                            QoSs = ["0", "1", "2"],
+                            [Pattern|Rest0] = string:tokens(TTopicString, " "),
+                            case Rest0 of
+                                [MaybeDirection|Rest1] ->
+                                    {Direction, Rest2} =
+                                    case lists:member(MaybeDirection, Directions) of
+                                        true -> 
+                                            {list_to_atom(MaybeDirection), Rest1};
+                                        false ->
+                                            {out, Rest0}
+                                    end,
+                                    {QoS, Rest3} =
+                                    case Rest2 of
+                                        [] ->
+                                            {0, []};
+                                        [MaybeQoS|Rest4] ->
+                                            case lists:member(MaybeQoS, QoSs) of
+                                                true ->
+                                                    {list_to_integer(MaybeQoS), Rest4};
+                                                false ->
+                                                    {0, Rest4}
+                                            end
+                                    end,
+                                    case Rest3 of
+                                        [] ->
+                                            {Pattern, Direction, QoS, "", ""};
+                                        [LocalPrefix, RemotePrefix] ->
+                                            {Pattern, Direction, QoS, LocalPrefix, RemotePrefix};
+                                        _ ->
+                                            cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
+                                    end;
+                                [] ->
+                                    {Pattern, out, 0, "", ""}
+                            end;
+                        (_, _) ->
+                            cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
+                    end,
+
+         Mappings = ["clean_session", "client_id", "keepalive_interval", 
+                    "username", "password", "restart_timeout", "try_private", "topic"],
+                    %% SSL specific
+         SSLMapps = ["cafile", "capath", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk"],
+         F = fun(Prefix, Suffix, Validator) ->
+                     %% get the name value pairs
+                     Prefix3 = lists:flatten([Prefix, ".$name"]),
+                     [begin
+                          case lists:prefix("topic", Suffix) of
+                              true ->
+                                  BrConfigs =
+                                  [begin
+                                       P = lists:flatten(
+                                             [Prefix, ".", Name, ".topic.", integer_to_list(I)]
+                                            ), 
+                                       cuttlefish:conf_get(P, Conf, undefined)
+                                   end || I <- lists:seq(1,100)],
+                                  {AddrPort, {topics, [Validator(Name, C) || C <- BrConfigs, C /= undefined]}};
+                              false ->
+                                  Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
+                                  Val = Validator(Name, cuttlefish:conf_get(Prefix4, Conf, undefined)),
+                                  {AddrPort, {list_to_atom(Suffix), Val}}
+                          end
+                      end 
+                      || {[_, _, Name], AddrPort} <- lists:filter(
+                                                            fun({K, _V}) ->
+                                                                    cuttlefish_variable:is_fuzzy_match(K, string:tokens(Prefix3, "."))
+                                                            end, Conf), not lists:member(Name, Mappings ++ SSLMapps)]
+             end,
+
+         MZip = fun([H|_] = ListOfLists) ->
+                        Size = length(H), %% get default size
+                        ListOfLists = [L || L <- ListOfLists, length(L) == Size],
+                        [
+                           lists:reverse(
+                             lists:foldl(
+                               fun(L, Acc) ->
+                                       [lists:nth(I, L)|Acc]
+                               end, [], ListOfLists))
+                         || I <- lists:seq(1, Size)]
+                end,
+
+         {TCPIPs, TCPCleanSessions} = lists:unzip(F("bridge.tcp", "cleansession", BoolVal)),
+         {TCPIPs, TCPClientIds} = lists:unzip(F("bridge.tcp", "client_id", ClientIdVal)),
+         {TCPIPs, TCPKeepAlive} = lists:unzip(F("bridge.tcp", "keepalive_interval", IntVal)),
+         {TCPIPs, TCPUserNames} = lists:unzip(F("bridge.tcp", "username", StringVal)),
+         {TCPIPs, TCPPasswords} = lists:unzip(F("bridge.tcp", "password", StringVal)),
+         {TCPIPs, TCPRestartTimeouts} = lists:unzip(F("bridge.tcp", "restart_timeout", IntVal)),
+         {TCPIPs, TCPTryPrivates} = lists:unzip(F("bridge.tcp", "try_private", BoolVal)),
+         {TCPIPs, TCPTopics} = lists:unzip(lists:usort(F("bridge.tcp", "topic", TopicVal))),
+
+         {SSLIPs, SSLCleanSessions} = lists:unzip(F("bridge.ssl", "cleansession", BoolVal)),
+         {SSLIPs, SSLClientIds} = lists:unzip(F("bridge.ssl", "client_id", ClientIdVal)),
+         {SSLIPs, SSLKeepAlive} = lists:unzip(F("bridge.ssl", "keepalive_interval", IntVal)),
+         {SSLIPs, SSLUserNames} = lists:unzip(F("bridge.ssl", "username", StringVal)),
+         {SSLIPs, SSLPasswords} = lists:unzip(F("bridge.ssl", "password", StringVal)),
+         {SSLIPs, SSLRestartTimeouts} = lists:unzip(F("bridge.ssl", "restart_timeout", IntVal)),
+         {SSLIPs, SSLTryPrivates} = lists:unzip(F("bridge.ssl", "try_private", BoolVal)),
+         {SSLIPs, SSLTopics} = lists:unzip(lists:usort(F("bridge.ssl", "topic", TopicVal))),
+
+         % SSL
+         {SSLIPs, SSLCAFiles} = lists:unzip(F("bridge.ssl", "cafile", StringVal)),
+         {SSLIPs, SSLCAPaths} = lists:unzip(F("bridge.ssl", "capath", StringVal)),
+         {SSLIPs, SSLCertFiles} = lists:unzip(F("bridge.ssl", "certfile", StringVal)),
+         {SSLIPs, SSLKeyFiles} = lists:unzip(F("bridge.ssl", "keyfile", StringVal)),
+         {SSLIPs, SSLInsecures} = lists:unzip(F("bridge.ssl", "insecure", BoolVal)),
+         {SSLIPs, SSLVersions} = lists:unzip(F("bridge.ssl", "tls_version", AtomVal)),
+         {SSLIPs, SSLIdentities} = lists:unzip(F("bridge.ssl", "identity", StringVal)),
+         {SSLIPs, SSLPSKs} = lists:unzip(F("bridge.ssl", "psk", StringVal)),
+
+         TCP = lists:zip(TCPIPs, MZip([TCPCleanSessions, 
+                                       TCPClientIds, 
+                                       TCPKeepAlive, 
+                                       TCPRestartTimeouts,
+                                       TCPUserNames, 
+                                       TCPPasswords,
+                                       TCPTryPrivates,
+                                       TCPTopics])), 
+
+         SSL = lists:zip(SSLIPs, MZip([SSLCleanSessions, 
+                                       SSLClientIds, 
+                                       SSLKeepAlive, 
+                                       SSLRestartTimeouts,
+                                       SSLUserNames, 
+                                       SSLPasswords,
+                                       SSLTryPrivates,
+                                       SSLTopics,
+                                       SSLCAFiles, 
+                                       SSLCAPaths, 
+                                       SSLCertFiles, 
+                                       SSLKeyFiles, 
+                                       SSLInsecures, 
+                                       SSLVersions, 
+                                       SSLIdentities, 
+                                       SSLPSKs])),
+         DropUndef = fun(L) ->
+                             [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
+                     end,
+         {DropUndef(TCP), DropUndef(SSL)}
+ end
+}.
