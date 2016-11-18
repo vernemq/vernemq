@@ -1,0 +1,9 @@
+topic read /test/+/nana
+topic write /test/1/nana
+
+user graf
+topic /tmp/all
+
+pattern read /test/%u/user
+pattern write /test/%c/user/%u
+pattern write /test/graf/user
