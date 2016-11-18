@@ -1,5 +1,56 @@
 # Changelog
 
+## VERNEMQ 0.15.1
+
+The VerneMQ dependencies vmq_server, vmq_acl, vmq_passwd, vmq_plugin,
+vmq_commons were moved to the erlio/vernemq apps folder. The repos are kept
+around for some time, and the issue trackers are moved to erlio/vernemq.
+
+This release contains some backward-incompatibilities with 0.14.2. Get in touch
+if professional support is required for upgrading. 
+
+### vmq_server
+
+- BC-break: New Subscriber format, the old format gets automatically translated 
+    to the new format. However in a clustered setting nodes running the old
+    format can not deal with the new format once those records are replicated.
+- BC-break: More control over behaviour during netsplits:
+    New configuration parameters 
+    - `allow_register_during_netsplit`
+    - `allow_subscribe_during_netsplit`
+    - `allow_unsubscribe_during_netsplit`
+    - `allow_publish_during_netsplit`
+    obsolete the `trade_consistency` configuration parameter. Which was often
+    misused together with `allow_multiple_sessions` in order to reach high
+    availability. With the new configuration parameters the behaviour has to be
+    explicitly configured. The old `trade_consistency` configuration parameter
+    is not supported anymore.
+- BC-break: `on_offline_message/1` hook replaced with `on_offline_message/5`
+    The new hook includes the SubscriberId, QoS, Topic, Payload, and RetainFlag.
+- Stability and performance improvements:
+    In order to protect the broker from reconnect storms multiple processes
+    implement the gen_server2 behaviour instead of gen_server. Moreover
+    the queue subscriber is now load balanced to be able to cope with massive
+    amounts of firing dead links. 
+    Improved retain performance for subscriptions without wildcards
+- Support for PROXY protocol
+- TLS certificate verification depth can be specified in vernemq.conf
+- The `max_message_size` configuration now acts on the MQTT frame level instead of
+  the MQTT payload. This has the benefit of preventing that too big messages
+  reach the MQTT state machine. However this now includes every MQTT frame not
+  only the publish payload.
+- TCP Socket options can now be configured on a session level by returning
+  a `{tcp_opts, list()}` modifier in the `auth_on_register` hook.
+
+### vmq_bridge
+
+- New configuration format enables to use host strings instead of only IP
+  addresses.
+
+### plumtree
+
+- Protect broadcast module from overloading
+
 ## VERNEMQ 0.14.2
 
 ### vmq_server

@@ -17,7 +17,7 @@
          hook_on_client_gone/1,
          hook_on_client_offline/1,
          hook_on_client_wakeup/1,
-         hook_on_offline_message/1]).
+         hook_on_offline_message/5]).
 
 %% ===================================================================
 %% common_test callbacks
@@ -135,9 +135,10 @@ hook_on_client_offline({"", <<"queue-client">>}) ->
 hook_on_client_offline(_) ->
     ok.
 
-hook_on_offline_message({"", <<"queue-client">>}) ->
+hook_on_offline_message({"", <<"queue-client">>}, 1,
+                        [<<"queue">>, <<"hook">>, <<"test">>], <<"message">>, false) ->
     ets:insert(?MODULE, {on_offline_message, true});
-hook_on_offline_message(_) ->
+hook_on_offline_message(_, _, _, _, _) ->
     ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -164,7 +165,7 @@ enable_queue_hooks() ->
     vmq_plugin_mgr:enable_module_plugin(
       on_client_wakeup, ?MODULE, hook_on_client_wakeup, 1),
     vmq_plugin_mgr:enable_module_plugin(
-      on_offline_message, ?MODULE, hook_on_offline_message, 1).
+      on_offline_message, ?MODULE, hook_on_offline_message, 5).
 
 disable_queue_hooks() ->
     vmq_plugin_mgr:disable_module_plugin(
@@ -174,5 +175,5 @@ disable_queue_hooks() ->
     vmq_plugin_mgr:disable_module_plugin(
       on_client_wakeup, ?MODULE, hook_on_client_wakeup, 1),
     vmq_plugin_mgr:disable_module_plugin(
-      on_offline_message, ?MODULE, hook_on_offline_message, 1).
+      on_offline_message, ?MODULE, hook_on_offline_message, 5).
 

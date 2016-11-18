@@ -36,7 +36,7 @@
   0},
  {<<"plumtree">>,
   {git,"git://github.com/erlio/plumtree.git",
-       {ref,"5ac7fb4939a5c5db6c6e235afab44169949d9802"}},
+       {ref,"4674458566535ed5b03d38fa1381d1cbea3bb620"}},
   0},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.2.1">>},0},
  {<<"rand_compat">>,
