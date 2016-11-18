@@ -419,6 +419,7 @@ not_allowed_publish_close_qos2_mqtt_3_1_1(_) ->
     {error, closed} = gen_tcp:recv(Socket, 0, 1000).
 
 message_size_exceeded_close(_) ->
+    OldLimit = vmq_config:get_env(message_size_limit),
     vmq_config:set_env(message_size_limit, 1024, false),
     Connect = packet:gen_connect("pub-excessive-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
@@ -428,7 +429,8 @@ message_size_exceeded_close(_) ->
     enable_on_publish(),
     ok = gen_tcp:send(Socket, Publish),
     {error, closed} = gen_tcp:recv(Socket, 0, 1000),
-    true = lists:member({counter, mqtt_invalid_msg_size_error, 1}, vmq_metrics:metrics()).
+    true = lists:member({counter, mqtt_invalid_msg_size_error, 1}, vmq_metrics:metrics()),
+    vmq_config:set_env(message_size_limit, OldLimit, false).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
