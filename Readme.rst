@@ -24,7 +24,6 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN
 * TLS (SSL) Encryption
 * Websockets Support
 * Cluster Support
-* SNMP Monitoring
 * Logging (Console, Files, Syslog)
 * Reporting to Graphite
 * Extensible Plugin architecture
