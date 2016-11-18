@@ -1,6 +1,10 @@
 
 VerneMQ: A Distributed MQTT Broker
 ==================================
+
+.. image:: https://travis-ci.org/erlio/vernemq.svg
+ :target: https://travis-ci.org/erlio/vernemq
+
 .. image:: https://i.imgur.com/bln3fK3.jpg
  :target: https://vernemq.com
  :alt: 'VerneMQ Logo'
@@ -84,29 +88,11 @@ instance.
 Project
 ~~~~~~~
 
-The VerneMQ project (this repository) is an umbrella for multiple subrepos. Most of them are automatically included as a build dependency during the build. Others are not part of the official release package, but are officially supported and require to be downloaded and built separately.
+The following VerneMQ plugins are not part of the official release package, but are officially supported and require to be downloaded and built separately.
 
 +------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
 | Subproject                                                 | Description                                         | Build Status                                                | Included |
 +============================================================+=====================================================+=============================================================+==========+
-| `vmq_server <https://github.com/erlio/vmq_server>`_        | The VerneMQ core                                    | .. image:: https://travis-ci.org/erlio/vmq_server.svg       | yes      +
-|                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_server          |          +
-+------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
-| `vmq_commons <https://github.com/erlio/vmq_commons>`_      | Common functionality, e.g. MQTT parser              | .. image:: https://travis-ci.org/erlio/vmq_commons.svg      | yes      +
-|                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_commons         |          +
-+------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
-| `vmq_plugin <https://github.com/erlio/vmq_plugin>`_        | The Plugin framework                                | .. image:: https://travis-ci.org/erlio/vmq_plugin.svg       | yes      +
-|                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_plugin          |          +
-+------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
-| `vmq_acl <https://github.com/erlio/vmq_acl>`_              | ACL authorization plugin                            | .. image:: https://travis-ci.org/erlio/vmq_acl.svg          | yes      +
-|                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_acl             |          +
-+------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
-| `vmq_passwd <https://github.com/erlio/vmq_passwd>`_        | Password file based authentication plugin           | .. image:: https://travis-ci.org/erlio/vmq_passwd.svg       | yes      +
-|                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_passwd          |          +
-+------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
-| `vmq_bridge <https://github.com/erlio/vmq_bridge>`_        | Bridge VerneMQ with other MQTT brokers              | .. image:: https://travis-ci.org/erlio/vmq_bridge.svg       | yes      +
-|                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_bridge          |          +
-+------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
 | `vmq_diversity <https://github.com/erlio/vmq_diversity>`_  | Implement VerneMQ plugins using Lua                 | .. image:: https://travis-ci.org/erlio/vmq_diversity.svg    | no       +
 |                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_diversity       |          +
 +------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
