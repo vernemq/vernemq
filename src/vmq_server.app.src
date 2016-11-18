@@ -16,7 +16,8 @@
                   vmq_plugin,
                   clique,
                   mzmetrics,
-                  rand_compat
+                  rand_compat,
+                  gen_server2
                  ]},
   {mod, { vmq_server_app, []}},
   {env, [
