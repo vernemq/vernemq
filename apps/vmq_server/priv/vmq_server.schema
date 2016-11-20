@@ -778,7 +778,8 @@
 %%     - listener.wss.my_wss_listener.depth
 {mapping, "listener.ssl.depth", "vmq_server.listeners", [
                                                           {default, 1},
-                                                          {datatype, integer}
+                                                          {datatype, integer},
+                                                          hidden
                                                          ]}.
 
 {mapping, "listener.ssl.$name.depth", "vmq_server.listeners", [
@@ -1106,7 +1107,10 @@
                      (_, undefined, Def) -> Def end,
          BoolVal = fun(_, B, _) when is_boolean(B) -> B;
                       (_, undefined, Def) -> Def end,
-         AtomVal = fun(_, A, _) when is_atom(A) -> A end,
+         AtomVal = fun(_, A, _) when is_atom(A) -> A;
+                      (_, undefined, Def) -> Def end,
+         IntVal = fun(_, I, _) when is_integer(I) -> I;
+                     (_, undefined, Def) -> Def end,
 
 
          Mappings = ["max_connections", "nr_of_acceptors", "mountpoint"],
@@ -1194,7 +1198,7 @@
          % SSL
          {SSLIPs, SSLCAFiles} = lists:unzip(F("listener.ssl", "cafile", StrVal)),
          {SSLIPs, SSLCAPaths} = lists:unzip(F("listener.ssl", "capath", StrVal)),
-         {SSLIPs, SSLDepths} = lists:unzip(F("listener.ssl", "depth", StrVal)),
+         {SSLIPs, SSLDepths} = lists:unzip(F("listener.ssl", "depth", IntVal)),
          {SSLIPs, SSLCertFiles} = lists:unzip(F("listener.ssl", "certfile", StrVal)),
          {SSLIPs, SSLCiphers} = lists:unzip(F("listener.ssl", "ciphers", StrVal)),
          {SSLIPs, SSLCrlFiles} = lists:unzip(F("listener.ssl", "crlfile", StrVal)),
@@ -1206,7 +1210,7 @@
          % WSS
          {WS_SSLIPs, WS_SSLCAFiles} = lists:unzip(F("listener.wss", "cafile", StrVal)),
          {WS_SSLIPs, WS_SSLCAPaths} = lists:unzip(F("listener.wss", "capath", StrVal)),
-         {WS_SSLIPs, WS_SSLDepths} = lists:unzip(F("listener.wss", "depth", StrVal)),
+         {WS_SSLIPs, WS_SSLDepths} = lists:unzip(F("listener.wss", "depth", IntVal)),
          {WS_SSLIPs, WS_SSLCertFiles} = lists:unzip(F("listener.wss", "certfile", StrVal)),
          {WS_SSLIPs, WS_SSLCiphers} = lists:unzip(F("listener.wss", "ciphers", StrVal)),
          {WS_SSLIPs, WS_SSLCrlFiles} = lists:unzip(F("listener.wss", "crlfile", StrVal)),
@@ -1218,7 +1222,7 @@
          % VMQS
          {VMQ_SSLIPs, VMQ_SSLCAFiles} = lists:unzip(F("listener.vmqs", "cafile", StrVal)),
          {VMQ_SSLIPs, VMQ_SSLCAPaths} = lists:unzip(F("listener.vmqs", "capath", StrVal)),
-         {VMQ_SSLIPs, VMQ_SSLDepths} = lists:unzip(F("listener.vmqs", "depth", StrVal)),
+         {VMQ_SSLIPs, VMQ_SSLDepths} = lists:unzip(F("listener.vmqs", "depth", IntVal)),
          {VMQ_SSLIPs, VMQ_SSLCertFiles} = lists:unzip(F("listener.vmqs", "certfile", StrVal)),
          {VMQ_SSLIPs, VMQ_SSLCiphers} = lists:unzip(F("listener.vmqs", "ciphers", StrVal)),
          {VMQ_SSLIPs, VMQ_SSLCrlFiles} = lists:unzip(F("listener.vmqs", "crlfile", StrVal)),
@@ -1229,7 +1233,7 @@
          % HTTPS
          {HTTP_SSLIPs, HTTP_SSLCAFiles} = lists:unzip(F("listener.https", "cafile", StrVal)),
          {HTTP_SSLIPs, HTTP_SSLCAPaths} = lists:unzip(F("listener.https", "capath", StrVal)),
-         {HTTP_SSLIPs, HTTP_SSLDepths} = lists:unzip(F("listener.https", "depth", StrVal)),
+         {HTTP_SSLIPs, HTTP_SSLDepths} = lists:unzip(F("listener.https", "depth", IntVal)),
          {HTTP_SSLIPs, HTTP_SSLCertFiles} = lists:unzip(F("listener.https", "certfile", StrVal)),
          {HTTP_SSLIPs, HTTP_SSLCiphers} = lists:unzip(F("listener.https", "ciphers", StrVal)),
          {HTTP_SSLIPs, HTTP_SSLCrlFiles} = lists:unzip(F("listener.https", "crlfile", StrVal)),
