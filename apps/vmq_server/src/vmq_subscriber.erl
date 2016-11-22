@@ -135,7 +135,8 @@ check_format([{Topic, QoS, Node}|Version0Subs], NewStyleSubs) ->
     check_format(Version0Subs, NewSubs);
 check_format([], NewStyleSubs) -> NewStyleSubs.
 
-%% returns only the Subscriptions of Subs1 that are not also Subscriptions of Subs2
+%% returns only the Subscriptions of Subs1 that are not also
+%% Subscriptions of Subs2. Assumes the subs are sorted by nodenames.
 subtract(Subs1, Subs2) ->
     subtract(Subs1, Subs2, []).
 
@@ -150,9 +151,12 @@ subtract([{N, _, NSubs1}|Subs1], [{N, _, NSubs2}|Subs2], Acc) ->
         NewNSubs ->
             subtract(Subs1, Subs2, [{N, NewNSubs}|Acc])
     end;
-subtract([{N, _, NSubs}|Subs1], [_|Subs2], Acc) ->
-    subtract(Subs1, Subs2, [{N, NSubs}|Acc]);
+subtract([{N1, _, _}|_] = Subs1, [{N2,_,_}|T2], Acc) when N1 > N2->
+    subtract(Subs1, T2, Acc);
+subtract([{N, _, NSubs1}|Subs1], Subs2, Acc) ->
+    subtract(Subs1, Subs2, [{N, NSubs1}|Acc]);
 subtract([], _, Acc) -> lists:reverse(Acc).
+
 
 get_nodes(Subs) ->
     lists:foldl(fun({N, _, _}, Acc) -> [N|Acc] end, [], Subs).
@@ -225,6 +229,37 @@ get_changes_test_() ->
        [{node_a, [{a,1}]}],
        % Added
        []
+      }, get_changes(Old, New)).
+
+get_changes_2_test_() ->
+    Old = [{node_a, true, [{a,1}]}, {node_b, true, [{b,1}]}],
+    New = [{node_a, true, [{a,1}]}, {node_c, true, [{c,1}]}],
+    ?_assertEqual({
+       % Removed
+       [{node_b, [{b,1}]}],
+       % Added
+       [{node_c, [{c,1}]}]
+      }, get_changes(Old, New)).
+
+
+get_changes_3_test_() ->
+    Old = [{node_a, true, [{a,1}]}, {node_b, true, [{b,1}]}, {node_c, true, [{c,1}]}],
+    New = [{node_b, true, [{b,1}]}],
+    ?_assertEqual({
+       % Removed
+       [{node_a, [{a,1}]}, {node_c, [{c, 1}]}],
+       % Added
+       []
+      }, get_changes(Old, New)).
+
+get_changes_4_test_() ->
+    Old = [{node_b, true, [{b,1}]}, {node_c, true, [{c,1}]}],
+    New = [{node_a, true, [{a,1}]}, {node_c, true, [{c,1}]}],
+    ?_assertEqual({
+       % Removed
+       [{node_b, [{b,1}]}],
+       % Added
+       [{node_a, [{a,1}]}]
       }, get_changes(Old, New)).
 
 change_node_test_() ->
