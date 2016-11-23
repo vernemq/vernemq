@@ -3,7 +3,10 @@
          setup_use_default_auth/0,
          teardown/0,
          reset_tables/0,
-         maybe_start_distribution/1]).
+         maybe_start_distribution/1,
+         get_suite_rand_seed/0,
+         seed_rand/1,
+         rand_bytes/1]).
 
 setup() ->
     start_server(true).
@@ -100,3 +103,33 @@ reset_tab(Tab) ->
                       ok
               end
       end, ok, {vmq, Tab}).
+
+get_suite_rand_seed() ->
+    %% To set the seed when running a test from the command line,
+    %% create a config.cfg file containing `{seed, {x,y,z}}.` with the
+    %% desired seed in there. Then run the tests like this:
+    %%
+    %% `./rebar3 ct --config config.cfg ...`
+    Seed =
+        case ct:get_config(seed, undefined) of
+            undefined ->
+                os:timestamp();
+            X ->
+                X
+        end,
+    {ok, rnd} = rand_compat:init(),
+    io:format(user, "Suite random seed: ~p~n", [Seed]),
+    {seed, Seed}.
+
+seed_rand(Config) ->
+    Seed =
+        case proplists:get_value(seed, Config, undefined) of
+            undefined ->
+                throw("No seed found in Config");
+            S -> S
+        end,
+    rnd:seed(Seed).
+
+rand_bytes(N) ->
+    L = [ rnd:uniform(256)-1 || _ <- lists:seq(1,N)],
+    list_to_binary(L).

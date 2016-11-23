@@ -16,14 +16,16 @@
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
-init_per_suite(_Config) ->
+init_per_suite(Config) ->
+    S = vmq_test_utils:get_suite_rand_seed(),
     cover:start(),
-    _Config.
+    [S|Config].
 
 end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
+    vmq_test_utils:seed_rand(Config),
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:set_config(allow_anonymous, false),
@@ -46,7 +48,7 @@ publish_rate_limit_test(_) ->
     Connack = packet:gen_connack(0),
     Pub = fun(Sleep, Socket, Id) ->
                   Publish = packet:gen_publish("rate/limit/test", 1,
-                                               crypto:strong_rand_bytes(1460), [{mid, Id}]),
+                                               vmq_test_utils:rand_bytes(1460), [{mid, Id}]),
                   Puback = packet:gen_puback(Id),
                   ok = gen_tcp:send(Socket, Publish),
                   ok = packet:expect_packet(Socket, "puback", Puback),

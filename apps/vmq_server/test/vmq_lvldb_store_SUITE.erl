@@ -16,8 +16,8 @@
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
-init_per_suite(_Config) ->
-    {ok, rnd} = rand_compat:init(),
+init_per_suite(Config) ->
+    S = vmq_test_utils:get_suite_rand_seed(),
     %% this might help, might not...
     os:cmd(os:find_executable("epmd")++" -daemon"),
     case net_kernel:start([lvldb_test, shortnames]) of
@@ -25,13 +25,13 @@ init_per_suite(_Config) ->
         {error, _} -> ok
     end,
     cover:start(),
-    _Config.
+    [S|Config].
 
 end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    rnd:seed(os:timestamp()),
+    vmq_test_utils:seed_rand(Config),
     vmq_test_utils:setup(),
     Config.
 
@@ -170,8 +170,8 @@ ref_delete_test(Config) ->
 generate_msgs(0, Acc) -> Acc;
 generate_msgs(N, Acc) ->
     Msg = #vmq_msg{msg_ref=vmq_mqtt_fsm:msg_ref(),
-                   routing_key=crypto:strong_rand_bytes(10),
-                   payload = crypto:strong_rand_bytes(100),
+                   routing_key=vmq_test_utils:rand_bytes(10),
+                   payload = vmq_test_utils:rand_bytes(100),
                    mountpoint = "",
                    dup = random_flag(),
                    qos = random_qos(),
