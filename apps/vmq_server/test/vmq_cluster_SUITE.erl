@@ -28,8 +28,8 @@
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
-init_per_suite(_Config) ->
-    {ok, rnd} = rand_compat:init(),
+init_per_suite(Config) ->
+    S = vmq_test_utils:get_suite_rand_seed(),
     %lager:start(),
     %% this might help, might not...
     os:cmd(os:find_executable("epmd")++" -daemon"),
@@ -39,13 +39,14 @@ init_per_suite(_Config) ->
         {error, {already_started, _}} -> ok
     end,
     lager:info("node name ~p", [node()]),
-    _Config.
+    [S|Config].
 
 end_per_suite(_Config) ->
     application:stop(lager),
     _Config.
 
 init_per_testcase(Case, Config) ->
+    vmq_test_utils:seed_rand(Config),
     Nodes = vmq_cluster_test_utils:pmap(
               fun({N, P}) ->
                       Node = vmq_cluster_test_utils:start_node(N, Config, Case),
@@ -396,7 +397,6 @@ publish(Self, [Node|Rest] = Nodes, NrOfProcesses, NrOfMsgsPerProcess, Pids) ->
     publish(Self, Rest ++ [Node], NrOfProcesses -1, NrOfMsgsPerProcess, [Pid|Pids]).
 
 publish_(Self, Node, NrOfMsgsPerProcess) ->
-    rnd:seed(os:timestamp()),
     publish__(Self, Node, NrOfMsgsPerProcess).
 publish__(Self, _, 0) ->
     Self ! done;
@@ -424,7 +424,7 @@ publish_random(Nodes, N, Topic, Acc) ->
     Connect = packet:gen_connect("connect-unclean-pub", [{clean_session, true},
                                                          {keepalive, 10}]),
     Connack = packet:gen_connack(0),
-    Payload = crypto:strong_rand_bytes(rnd:uniform(50)),
+    Payload = vmq_test_utils:rand_bytes(rnd:uniform(50)),
     Publish = packet:gen_publish(Topic, 1, Payload, [{mid, N}]),
     Puback = packet:gen_puback(N),
     Disconnect = packet:gen_disconnect(),

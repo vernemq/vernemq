@@ -32,14 +32,16 @@
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
-init_per_suite(_Config) ->
+init_per_suite(Config) ->
+    S = vmq_test_utils:get_suite_rand_seed(),
     cover:start(),
-    _Config.
+    [S|Config].
 
 end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
+    vmq_test_utils:seed_rand(Config),
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
@@ -423,7 +425,7 @@ message_size_exceeded_close(_) ->
     vmq_config:set_env(message_size_limit, 1024, false),
     Connect = packet:gen_connect("pub-excessive-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
-    Publish = packet:gen_publish("pub/excessive/test", 0, crypto:strong_rand_bytes(1024),
+    Publish = packet:gen_publish("pub/excessive/test", 0, vmq_test_utils:rand_bytes(1024),
                                  [{mid, 19}]),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     enable_on_publish(),

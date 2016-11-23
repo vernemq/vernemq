@@ -21,9 +21,9 @@
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
-init_per_suite(_Config) ->
+init_per_suite(Config) ->
+    S = vmq_test_utils:get_suite_rand_seed(),
     lager:start(),
-    {ok, rnd} = rand_compat:init(),
     %% this might help, might not...
     os:cmd(os:find_executable("epmd")++" -daemon"),
     {ok, Hostname} = inet:gethostname(),
@@ -32,13 +32,14 @@ init_per_suite(_Config) ->
         {error, {already_started, _}} -> ok
     end,
     lager:info("node name ~p", [node()]),
-    _Config.
+    [S | Config].
 
 end_per_suite(_Config) ->
     application:stop(lager),
     _Config.
 
 init_per_testcase(Case, Config) ->
+    vmq_test_utils:seed_rand(Config),
     Nodes = vmq_cluster_test_utils:pmap(
               fun({N, P}) ->
                       Node = vmq_cluster_test_utils:start_node(N, Config, Case),
