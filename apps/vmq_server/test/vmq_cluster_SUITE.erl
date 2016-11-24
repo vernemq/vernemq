@@ -276,6 +276,8 @@ racing_subscriber_test(Config) ->
                                        {tcp_closed, Socket} ->
                                            %% we should be kicked out by the subsequent client
                                            ok;
+                                       {lastman, test_over} ->
+                                           ok;
                                        M ->
                                            exit({unknown_message, M})
                                    end;
@@ -301,7 +303,18 @@ racing_subscriber_test(Config) ->
                               end
                       end,
     LastMan = LastManStanding(LastManStanding),
-    true = is_process_alive(LastMan),
+    %% Tell the last process the test is over and wait for it to
+    %% terminate before ending the test and tearing down the test
+    %% nodes.
+    LastManRef = monitor(process, LastMan),
+    LastMan ! {lastman, test_over},
+    receive
+        {'DOWN', LastManRef, process, _, normal} ->
+            ok
+    after
+        3000 ->
+            throw("no DOWN msg received from LastMan")
+    end,
     Config.
 
 cluster_leave_test(Config) ->
