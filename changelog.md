@@ -1,5 +1,11 @@
 # Changelog
 
+## VERNEMQ 0.15.2
+
+### vmq_server
+
+- Fix a queue migration corner case with racing subscribers
+
 ## VERNEMQ 0.15.1
 
 The VerneMQ dependencies vmq_server, vmq_acl, vmq_passwd, vmq_plugin,
