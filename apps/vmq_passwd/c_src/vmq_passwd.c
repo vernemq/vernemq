@@ -109,9 +109,9 @@ int base64_encode(unsigned char *in, unsigned int in_len, char **encoded)
 
 void print_usage(void)
 {
-	printf("vmq_passwd is a tool for managing password files for VerneMQ.\n\n");
-	printf("Usage: vmq_passwd [-c | -D] passwordfile username\n");
-	printf("       vmq_passwd -U passwordfile\n");
+	printf("vmq-passwd is a tool for managing password files for VerneMQ.\n\n");
+	printf("Usage: vmq-passwd [-c | -D] passwordfile username\n");
+	printf("       vmq-passwd -U passwordfile\n");
 	printf(" -c : create a new password file. This will overwrite existing files.\n");
 	printf(" -D : delete the username rather than adding/updating its password.\n");
 	printf(" -U : update a plain text password file to use hashed passwords.\n");
