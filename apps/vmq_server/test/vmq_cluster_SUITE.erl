@@ -116,6 +116,9 @@ wait_until_converged(Nodes, Fun, ExpectedReturn) ->
       end, 60*2, 500).
 
 multiple_connect_unclean_test(Config) ->
+    %% This test makes sure that a cs false subscriber can receive QoS
+    %% 1 messages, one message at a time only acknowleding one message
+    %% per connection.
     ok = ensure_cluster(Config),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "qos1/multiple/test",
@@ -136,7 +139,8 @@ multiple_connect_unclean_test(Config) ->
                          fun(N) ->
                                  rpc:call(N, vmq_reg, total_subscriptions, [])
                          end, [{total, 1}]),
-    Payloads = publish_random(Nodes, 20, Topic),
+    [PublishNode|_] = Nodes,
+    Payloads = publish_random([PublishNode], 20, Topic),
     ok = vmq_cluster_test_utils:wait_until(
            fun() ->
                    20 == rpc:call(RandomNode, vmq_reg, stored,
