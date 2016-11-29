@@ -51,8 +51,33 @@ POSSIBILITY OF SUCH DAMAGE.
 #  include <termios.h>
 #endif
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+/* Compatibility functionality for pre 1.1 openssl versions. */
+
+static void *OPENSSL_zalloc(size_t num)
+{
+	void *ret = OPENSSL_malloc(num);
+
+	if (ret != NULL)
+		memset(ret, 0, num);
+	return ret;
+}
+
+EVP_MD_CTX *EVP_MD_CTX_new(void)
+{
+	return OPENSSL_zalloc(sizeof(EVP_MD_CTX));
+}
+
+void EVP_MD_CTX_free(EVP_MD_CTX *ctx)
+{
+	EVP_MD_CTX_cleanup(ctx);
+	OPENSSL_free(ctx);
+}
+#endif
+
 #define MAX_BUFFER_LEN 1024
 #define SALT_LEN 12
+
 
 int base64_encode(unsigned char *in, unsigned int in_len, char **encoded)
 {
@@ -100,7 +125,8 @@ int output_new_password(FILE *fptr, const char *username, const char *password)
 	unsigned char hash[EVP_MAX_MD_SIZE];
 	unsigned int hash_len;
 	const EVP_MD *digest;
-	EVP_MD_CTX context;
+	EVP_MD_CTX *context;
+	context = EVP_MD_CTX_new();
 
 	rc = RAND_bytes(salt, SALT_LEN);
 	if(!rc){
@@ -122,12 +148,12 @@ int output_new_password(FILE *fptr, const char *username, const char *password)
 		return 1;
 	}
 
-	EVP_MD_CTX_init(&context);
-	EVP_DigestInit_ex(&context, digest, NULL);
-	EVP_DigestUpdate(&context, password, strlen(password));
-	EVP_DigestUpdate(&context, salt, SALT_LEN);
-	EVP_DigestFinal_ex(&context, hash, &hash_len);
-	EVP_MD_CTX_cleanup(&context);
+	EVP_MD_CTX_init(context);
+	EVP_DigestInit_ex(context, digest, NULL);
+	EVP_DigestUpdate(context, password, strlen(password));
+	EVP_DigestUpdate(context, salt, SALT_LEN);
+	EVP_DigestFinal_ex(context, hash, &hash_len);
+	EVP_MD_CTX_free(context);
 
 	rc = base64_encode(hash, hash_len, &hash64);
 	if(rc){
