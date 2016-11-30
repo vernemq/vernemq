@@ -5,6 +5,9 @@ VerneMQ: A Distributed MQTT Broker
 .. image:: https://travis-ci.org/erlio/vernemq.svg
  :target: https://travis-ci.org/erlio/vernemq
 
+.. image:: https://slack-invite.vernemq.com/badge.svg
+ :target: https://slack-invite.vernemq.com
+
 .. image:: https://i.imgur.com/bln3fK3.jpg
  :target: https://vernemq.com
  :alt: 'VerneMQ Logo'
