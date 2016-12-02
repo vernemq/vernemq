@@ -54,7 +54,14 @@ Deregistering an endpoint:
     $ vmq-admin webhooks deregister hook=auth_on_register endpoint="http://localhost"
 
 The payload is by default base64 encoded, to disable this add the
-`--encodepayload=false` flag when registering the hook.
+`--base64payload=false` flag when registering the hook.
+
+## Persisting hooks across VerneMQ restarts
+
+Webhooks added with `vmq-plugin` command line tool are not persisted across
+VerneMQ restarts. To make hooks persistent they can be added to the
+`priv/vmq_webhooks.conf` file. It contains an example and is hopefully
+self-explanatory.
 
 ## Webhooks
 

@@ -179,7 +179,7 @@ on_client_gone_test(_) ->
 
 base64payload_test(_) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
-                     "hook=auth_on_publish", "endpoint=" ++ ?ENDPOINT, "--encodepayload=true"]),
+                     "hook=auth_on_publish", "endpoint=" ++ ?ENDPOINT, "--base64payload=true"]),
     {ok, [{payload, ?PAYLOAD}]} =
         vmq_plugin:all_till_ok(
           auth_on_publish,
@@ -189,7 +189,7 @@ base64payload_test(_) ->
 %% helper functions
 register_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
-                     "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint, "--encodepayload=false"]).
+                     "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint, "--base64payload=false"]).
 
 deregister_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "deregister",

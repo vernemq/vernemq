@@ -27,21 +27,26 @@ status_cmd() ->
     Callback =
         fun(_, [], []) ->
                 Table = 
-                    [[{hook, Hook}, {endpoint, binary_to_list(Endpoint)}] ||
+                    [[{hook, Hook}, {endpoint, binary_to_list(Endpoint)},
+                      {base64payload, b64opt(Opts)}] ||
                         {Hook, Endpoints} <- vmq_webhooks_plugin:all_hooks(),
-                        Endpoint <- Endpoints],
+                        {Endpoint, Opts} <- Endpoints],
                 [clique_status:table(Table)]
         end,
     clique:register_command(Cmd, [], [], Callback).
 
+b64opt(#{base64_payload := Val}) ->
+    Val;
+b64opt(_) -> false.
+
 register_cmd() ->
     Cmd = ["vmq-admin", "webhooks", "register"],
     KeySpecs = [hook_keyspec(), endpoint_keyspec()],
-    FlagSpecs = [{encode_payload, [{longname, "encodepayload"},
+    FlagSpecs = [{base64_payload, [{longname, "base64payload"},
                                    {typecast,
                                     fun("true") -> true;
                                        ("false") -> false;
-                                       (Val) -> {{error, {invalid_flag_value, {encodepayload, Val}}}}
+                                       (Val) -> {{error, {invalid_flag_value, {base64payload, Val}}}}
                                     end}]}],
     Callback =
         fun(_, [{hook, Hook}, {endpoint, Endpoint}], Flags) ->
@@ -63,9 +68,9 @@ register_cmd() ->
 
 get_opts(Flags) ->
     Defaults = #{
-      encode_payload => true
+      base64_payload => true
      },
-    Keys = [encode_payload],
+    Keys = [base64_payload],
     maps:merge(Defaults, maps:with(Keys, maps:from_list(Flags))).
 
 deregister_cmd() -> 
@@ -145,8 +150,8 @@ register_usage() ->
     ["vmq-admin webhooks register hook=<Hook> endpoint=<Url>\n\n",
      "  Registers a webhook endpoint with a hook.",
      "\n\n"
-     "  --encodepayload=<true|false>\n",
-     "     base64encode the MQTT payload. Defaults to true.",
+     "  --base64payload=<true|false>\n",
+     "     base64 encode the MQTT payload. Defaults to true.",
      "\n\n"
     ].
 

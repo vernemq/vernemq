@@ -565,12 +565,12 @@ encode_payload(_, Args, Opts) ->
           Args),
     jsx:encode(RemappedKeys).
 
-b64encode(V, #{encode_payload := false}) ->
+b64encode(V, #{base64_payload := false}) ->
     V;
 b64encode(V, _) -> 
     base64:encode(V).
 
-b64decode(V, #{encode_payload := false}) ->
+b64decode(V, #{base64_payload := false}) ->
     V;
 b64decode(V, _) -> 
     base64:decode(V).
