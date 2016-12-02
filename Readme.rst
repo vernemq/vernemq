@@ -61,7 +61,7 @@ started, you need to first build VerneMQ.
 Building VerneMQ
 ~~~~~~~~~~~~~~~~
 
-Note: VerneMQ requires Erlang 17.x or 18.x to be installed on your system. 
+Note: VerneMQ requires Erlang 17.x, 18.x or 19.x to be installed on your system. 
 
 Assuming you have a working Erlang installation, building VerneMQ should be as
 simple as:
