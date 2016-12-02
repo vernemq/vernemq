@@ -542,7 +542,7 @@ encode_payload(Hook, Args, _Opts)
                                       {qos, Q}]
                              end,
                      Topics)};
-             ({client_id, V}) -> {subscriber_id, V};
+             ({client_id, V}) -> {client_id, V};
              (V) -> V
           end,
           Args),
@@ -552,7 +552,7 @@ encode_payload(_, Args, Opts) ->
         lists:map(
           fun({addr, V}) -> {peer_addr, V};
              ({port, V}) -> {peer_port, V};
-             ({client_id, V}) -> {subscriber_id, V};
+             ({client_id, V}) -> {client_id, V};
              ({payload, V}) ->
                   {payload, b64encode(V, Opts)};
              (V) -> V

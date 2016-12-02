@@ -80,7 +80,7 @@ Webhook example payload:
 {
     "peer_addr": "127.0.0.1",
     "peer_port": 8888,
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "username": "username",
     "password": "password",
     "mountpoint": "",
@@ -95,7 +95,7 @@ Example response:
     "result": "ok",
     "modifiers": {
         "mountpoint": "newmountpoint"
-        "subscriber_id": "subscriber_id",
+        "client_id": "clientid",
         "reg_view": "reg_view",
         "clean_session": false,
         "max_message_size": 65535,
@@ -126,7 +126,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "username": "username",
     "topics":
@@ -170,7 +170,7 @@ Webhook example payload:
 ```json
 {
     "username": "username",
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "qos": 1,
     "topic": "a/b",
@@ -217,7 +217,7 @@ Webhook example payload:
     "peer_port": 8888,
     "username": "username",
     "mountpoint": "",
-    "subscriber_id": "subscriberid"
+    "client_id": "clientid"
 }
 ```
 
@@ -235,7 +235,7 @@ Webhook example payload:
 ```json
 {
     "username": "username",
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "qos": 1,
     "topic": "a/b",
@@ -254,7 +254,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "username": "username",
     "topics":
@@ -276,7 +276,7 @@ Webhook example payload:
 ```json
 {
     "username": "username",
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "topics":
         ["a/b", "c/d"]
@@ -315,7 +315,7 @@ Webhook example payload:
 ```json
 {
     "username": "username",
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "topic": "a/b",
     "payload": "hello"
@@ -348,7 +348,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": ""
 }
 ```
@@ -363,7 +363,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": ""
 }
 ```
@@ -378,7 +378,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": ""
 }
 ```
@@ -393,7 +393,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": ""
 }
 ```
