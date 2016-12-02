@@ -112,7 +112,8 @@ on_deliver_test(_) ->
                                 [username(), allowed_subscriber_id(), topic(), payload()]).
 
 on_offline_message_test(_) ->
-    [next] = vmq_plugin:all(on_offline_message, [allowed_subscriber_id()]).
+    [next] = vmq_plugin:all(on_offline_message, [allowed_subscriber_id(), 2,
+                                                 topic(), payload(), false]).
 on_client_wakeup_test(_) ->
     [next] = vmq_plugin:all(on_client_wakeup, [allowed_subscriber_id()]).
 on_client_offline_test(_) ->

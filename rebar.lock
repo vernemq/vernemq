@@ -45,7 +45,7 @@
   1},
  {<<"poolboy">>,{pkg,<<"poolboy">>,<<"1.5.1">>},0},
  {<<"ssl_verify_fun">>,{pkg,<<"ssl_verify_fun">>,<<"1.1.0">>},1},
- {<<"vmq_commons">>,
-  {git,"git://github.com/erlio/vmq_commons.git",
-       {ref,"63e9a0ed9d2b1c433ee292806e188d3578388d4b"}},
+ {<<"vernemq_dev">>,
+  {git,"git://github.com/erlio/vernemq_dev.git",
+       {ref,"087fb0f84a2a848b71cc5e2391c4a3bac916a52f"}},
   0}].
