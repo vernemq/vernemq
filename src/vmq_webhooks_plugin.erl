@@ -36,7 +36,7 @@
          on_subscribe/3,
          on_unsubscribe/3,
          on_deliver/4,
-         on_offline_message/1,
+         on_offline_message/5,
          on_client_wakeup/1,
          on_client_offline/1,
          on_client_gone/1]).
@@ -291,10 +291,14 @@ on_deliver(UserName, SubscriberId, Topic, Payload) ->
                              {topic, unword(Topic)},
                              {payload, Payload}]).
 
-on_offline_message(SubscriberId) ->
+on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_offline_message, [{mountpoint, MP},
-                             {client_id, ClientId}]).
+                             {client_id, ClientId},
+                             {qos, QoS},
+                             {topic, unword(Topic)},
+                             {payload, Payload},
+                             {retain, IsRetain}]).
 
 on_client_wakeup(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -387,7 +391,8 @@ unword(T) ->
     iolist_to_binary(vmq_topic:unword(T)).
 
 check_modifiers(Hook, Modifiers)
-  when (Hook == auth_on_publish) or (Hook == on_deliver) ->
+  when (Hook == auth_on_publish) or (Hook == on_deliver)
+       or (Hook == on_offline_message) ->
     case lists:keyfind(topic, 1, Modifiers) of
         {topic, T} when is_binary(T) ->
             case vmq_topic:validate_topic(publish, T) of

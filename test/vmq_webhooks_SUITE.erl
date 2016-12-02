@@ -152,7 +152,7 @@ on_deliver_test(_) ->
 on_offline_message_test(_) ->
     register_hook(on_offline_message, ?ENDPOINT),
     Self = pid_to_bin(self()),
-    [next] = vmq_plugin:all(on_offline_message, [{?MOUNTPOINT, Self}]),
+    [next] = vmq_plugin:all(on_offline_message, [{?MOUNTPOINT, Self}, 1, ?TOPIC, ?PAYLOAD, false]),
     ok = exp_response(on_offline_message_ok),
     deregister_hook(on_offline_message, ?ENDPOINT).
 

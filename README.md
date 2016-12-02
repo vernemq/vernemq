@@ -344,12 +344,19 @@ Other result values:
 
 Header: ```vernemq-hook: on_offline_message```
 
+Note, in the example below the payload is not base64 encoded which is not the
+default.
+
 Webhook example payload:
 
 ```json
 {
     "client_id": "clientid",
-    "mountpoint": ""
+    "mountpoint": "",
+    "qos": "1",
+    "topic": "sometopic",
+    "payload": "payload",
+    "retain": false
 }
 ```
 

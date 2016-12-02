@@ -12,9 +12,9 @@
  {<<"mimerl">>,{pkg,<<"mimerl">>,<<"1.0.2">>},1},
  {<<"poolboy">>,{pkg,<<"poolboy">>,<<"1.5.1">>},0},
  {<<"ssl_verify_fun">>,{pkg,<<"ssl_verify_fun">>,<<"1.1.0">>},1},
- {<<"vmq_commons">>,
-  {git,"git://github.com/erlio/vmq_commons.git",
-       {ref,"a87b4911344e8e55631361e68a745cc3a7e02815"}},
+ {<<"vernemq_dev">>,
+  {git,"git://github.com/erlio/vernemq_dev.git",
+       {ref,"087fb0f84a2a848b71cc5e2391c4a3bac916a52f"}},
   0}]}.
 [
 {pkg_hash,[
