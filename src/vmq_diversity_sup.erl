@@ -24,7 +24,6 @@
 %% API
 -export([start_link/0,
          start_pool/2,
-         start_all_pools/0,
          start_all_pools/2]).
 
 %% Supervisor callbacks
@@ -60,10 +59,6 @@ init([]) ->
 
 start_pool(Type, ProviderConfig) ->
     start_all_pools([{Type, ProviderConfig}], []).
-
-start_all_pools() ->
-    Providers = application:get_env(vmq_diversity, storage_providers, []),
-    start_all_pools(Providers, []).
 
 start_all_pools([{mysql, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
