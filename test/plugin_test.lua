@@ -116,6 +116,10 @@ end
 function on_offline_message(ev)
     assert(ev.client_id == "allowed-subscriber-id")
     assert(ev.mountpoint == "")
+    assert(ev.topic == "test/topic")
+    assert(ev.payload == "hello world")
+    assert(ev.qos == 2)
+    assert(ev.retain == false)
     print("on_offline_message called")
 end
 
