@@ -15,9 +15,8 @@ before_install:
 
 language: erlang
 otp_release:
-    - 17.3
-    - 17.4
     - 17.5
     - 18.2.1
+    - 19.0
 
 script: ./rebar3 ct
