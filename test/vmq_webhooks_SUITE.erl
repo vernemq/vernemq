@@ -21,7 +21,8 @@
          on_offline_message_test/1,
          on_client_wakeup_test/1,
          on_client_offline_test/1,
-         on_client_gone_test/1
+         on_client_gone_test/1,
+         base64payload_test/1
         ]).
 
 init_per_suite(_Config) ->
@@ -60,7 +61,8 @@ all() ->
      on_offline_message_test,
      on_client_wakeup_test,
      on_client_offline_test,
-     on_client_gone_test
+     on_client_gone_test,
+     base64payload_test
     ].
 
 
@@ -74,44 +76,44 @@ stop_endpoint() ->
 auth_on_register_test(_) ->
     register_hook(auth_on_register, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(auth_on_register,
-                      [?PEER, {?MOUNTPOINT, ?ALLOWED_SUBSCRIBER_ID}, ?USERNAME, ?PASSWORD, true]),
+                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
     {error, [error]} = vmq_plugin:all_till_ok(auth_on_register,
-                      [?PEER, {?MOUNTPOINT, ?NOT_ALLOWED_SUBSCRIBER_ID}, ?USERNAME, ?PASSWORD, true]),
+                      [?PEER, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
     {error, [next]} = vmq_plugin:all_till_ok(auth_on_register,
-                      [?PEER, {?MOUNTPOINT, ?IGNORED_SUBSCRIBER_ID}, ?USERNAME, ?PASSWORD, true]),
+                      [?PEER, {?MOUNTPOINT, ?IGNORED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
     {ok, [{mountpoint, "mynewmount"}]} = vmq_plugin:all_till_ok(auth_on_register,
-                      [?PEER, {?MOUNTPOINT, ?CHANGED_SUBSCRIBER_ID}, ?USERNAME, ?PASSWORD, true]),
+                      [?PEER, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
     deregister_hook(auth_on_register, ?ENDPOINT).
 
 auth_on_publish_test(_) ->
     register_hook(auth_on_publish, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(auth_on_publish,
-                      [?USERNAME, {?MOUNTPOINT, ?ALLOWED_SUBSCRIBER_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+                      [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     {error, [error]} = vmq_plugin:all_till_ok(auth_on_publish,
-                      [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_SUBSCRIBER_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+                      [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     {error, [next]} = vmq_plugin:all_till_ok(auth_on_publish,
-                      [?USERNAME, {?MOUNTPOINT, ?IGNORED_SUBSCRIBER_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+                      [?USERNAME, {?MOUNTPOINT, ?IGNORED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     {ok, [{topic, [<<"rewritten">>, <<"topic">>]}]} = vmq_plugin:all_till_ok(auth_on_publish,
-                      [?USERNAME, {?MOUNTPOINT, ?CHANGED_SUBSCRIBER_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+                      [?USERNAME, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     deregister_hook(auth_on_publish, ?ENDPOINT).
 
 auth_on_subscribe_test(_) ->
     register_hook(auth_on_subscribe, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(auth_on_subscribe,
-                      [?USERNAME, {?MOUNTPOINT, ?ALLOWED_SUBSCRIBER_ID}, [{?TOPIC, 1}]]),
+                      [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1}]]),
     {error, [error]} = vmq_plugin:all_till_ok(auth_on_subscribe,
-                      [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_SUBSCRIBER_ID}, [{?TOPIC, 1}]]),
+                      [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, [{?TOPIC, 1}]]),
     {error, [next]} = vmq_plugin:all_till_ok(auth_on_subscribe,
-                      [?USERNAME, {?MOUNTPOINT, ?IGNORED_SUBSCRIBER_ID}, [{?TOPIC, 1}]]),
+                      [?USERNAME, {?MOUNTPOINT, ?IGNORED_CLIENT_ID}, [{?TOPIC, 1}]]),
     {ok, [{[<<"rewritten">>, <<"topic">>], 2}]} = vmq_plugin:all_till_ok(auth_on_subscribe,
-                      [?USERNAME, {?MOUNTPOINT, ?CHANGED_SUBSCRIBER_ID}, [{?TOPIC, 1}]]),
+                      [?USERNAME, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, [{?TOPIC, 1}]]),
     deregister_hook(auth_on_subscribe, ?ENDPOINT).
 
 on_register_test(_) ->
     register_hook(on_register, ?ENDPOINT),
     Self = pid_to_bin(self()),
     [next] = vmq_plugin:all(on_register,
-                            [?PEER, {?MOUNTPOINT, ?ALLOWED_SUBSCRIBER_ID}, Self]),
+                            [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self]),
     ok = exp_response(on_register_ok),
     deregister_hook(on_register, ?ENDPOINT).
 
@@ -119,7 +121,7 @@ on_publish_test(_) ->
     register_hook(on_publish, ?ENDPOINT),
     Self = pid_to_bin(self()),
     [next] = vmq_plugin:all(on_publish,
-                           [Self, {?MOUNTPOINT, ?ALLOWED_SUBSCRIBER_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+                           [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     ok = exp_response(on_publish_ok),
     deregister_hook(on_publish, ?ENDPOINT).
 
@@ -127,30 +129,30 @@ on_subscribe_test(_) ->
     register_hook(on_subscribe, ?ENDPOINT),
     Self = pid_to_bin(self()),
     [next] = vmq_plugin:all(on_subscribe,
-                            [Self, {?MOUNTPOINT, ?ALLOWED_SUBSCRIBER_ID}, [{?TOPIC, 1}]]),
+                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1}]]),
     ok = exp_response(on_subscribe_ok),
     deregister_hook(on_subscribe, ?ENDPOINT).
 
 on_unsubscribe_test(_) ->
     register_hook(on_unsubscribe, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(on_unsubscribe,
-                                [?USERNAME, {?MOUNTPOINT, ?ALLOWED_SUBSCRIBER_ID}, [?TOPIC]]),
+                                [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [?TOPIC]]),
     {ok, [[<<"rewritten">>, <<"topic">>]]} = vmq_plugin:all_till_ok(on_unsubscribe,
-                      [?USERNAME, {?MOUNTPOINT, ?CHANGED_SUBSCRIBER_ID}, [?TOPIC]]),
+                      [?USERNAME, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, [?TOPIC]]),
     deregister_hook(on_unsubscribe, ?ENDPOINT).
 
 on_deliver_test(_) ->
     register_hook(on_deliver, ?ENDPOINT),
     Self = pid_to_bin(self()),
     ok = vmq_plugin:all_till_ok(on_deliver,
-                                [Self, {?MOUNTPOINT, ?ALLOWED_SUBSCRIBER_ID}, ?TOPIC, ?PAYLOAD]),
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?TOPIC, ?PAYLOAD]),
     ok = exp_response(on_deliver_ok),
     deregister_hook(on_deliver, ?ENDPOINT).
 
 on_offline_message_test(_) ->
     register_hook(on_offline_message, ?ENDPOINT),
     Self = pid_to_bin(self()),
-    [next] = vmq_plugin:all(on_offline_message, [{?MOUNTPOINT, Self}]),
+    [next] = vmq_plugin:all(on_offline_message, [{?MOUNTPOINT, Self}, 1, ?TOPIC, ?PAYLOAD, false]),
     ok = exp_response(on_offline_message_ok),
     deregister_hook(on_offline_message, ?ENDPOINT).
 
@@ -175,10 +177,19 @@ on_client_gone_test(_) ->
     ok = exp_response(on_client_gone_ok),
     deregister_hook(on_client_gone, ?ENDPOINT).
 
+base64payload_test(_) ->
+    ok = clique:run(["vmq-admin", "webhooks", "register",
+                     "hook=auth_on_publish", "endpoint=" ++ ?ENDPOINT, "--base64payload=true"]),
+    {ok, [{payload, ?PAYLOAD}]} =
+        vmq_plugin:all_till_ok(
+          auth_on_publish,
+          [?USERNAME, {?MOUNTPOINT, ?BASE64_PAYLOAD_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+    deregister_hook(auth_on_publish, ?ENDPOINT).
+
 %% helper functions
 register_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
-                     "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint]).
+                     "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint, "--base64payload=false"]).
 
 deregister_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "deregister",

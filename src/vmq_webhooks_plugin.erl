@@ -36,14 +36,14 @@
          on_subscribe/3,
          on_unsubscribe/3,
          on_deliver/4,
-         on_offline_message/1,
+         on_offline_message/5,
          on_client_wakeup/1,
          on_client_offline/1,
          on_client_gone/1]).
 
 %% API
 -export([start_link/0
-        ,register_endpoint/2
+        ,register_endpoint/3
         ,deregister_endpoint/2
         ,all_hooks/0
         ]).
@@ -71,8 +71,8 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-register_endpoint(Endpoint, HookName) when is_binary(Endpoint), is_atom(HookName) ->
-    gen_server:call(?MODULE, {register_endpoint, Endpoint, HookName}).
+register_endpoint(Endpoint, HookName, Opts) when is_binary(Endpoint), is_atom(HookName) ->
+    gen_server:call(?MODULE, {register_endpoint, Endpoint, HookName, Opts}).
 
 deregister_endpoint(Endpoint, HookName) when is_binary(Endpoint), is_atom(HookName) ->
     gen_server:call(?MODULE, {deregister_endpoint, Endpoint, HookName}).
@@ -118,19 +118,20 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({register_endpoint, Endpoint, Hook}, _From, State) ->
+
+handle_call({register_endpoint, Endpoint, Hook, Opts}, _From, State) ->
     Reply =
         case ets:lookup(?TBL, Hook) of
             [] ->
                 enable_hook(Hook),
-                ets:insert(?TBL, {Hook, [Endpoint]}),
+                ets:insert(?TBL, {Hook, [{Endpoint, Opts}]}),
                 ok;
             [{_, Endpoints}] ->
-                case lists:member(Endpoint, Endpoints) of
+                case lists:keymember(Endpoint, 1, Endpoints) of
                     false -> 
                         %% Hooks/endpoints are invoked in list order
                         %% and oldest should be invoked first.
-                        NewEndpoints = Endpoints ++ [Endpoint],
+                        NewEndpoints = Endpoints ++ [{Endpoint, Opts}],
                         ets:insert(?TBL, {Hook, NewEndpoints}),
                         ok;
                     true ->
@@ -144,16 +145,16 @@ handle_call({deregister_endpoint, Endpoint, Hook}, _From, State) ->
         case ets:lookup(?TBL, Hook) of
             [] ->
                 {error, not_found};
-            [{_, [Endpoint]}] ->
+            [{_, [{Endpoint, _}]}] ->
                 disable_hook(Hook),
                 ets:delete(?TBL, Hook),
                 ok;
             [{_, Endpoints}] ->
-                case lists:member(Endpoint, Endpoints) of
+                case lists:keymember(Endpoint, 1, Endpoints) of
                     false ->
                         {error, not_found};
                     true ->
-                        ets:insert(?TBL, {Hook, lists:delete(Endpoint, Endpoints)}),
+                        ets:insert(?TBL, {Hook, lists:keydelete(Endpoint, 1, Endpoints)}),
                         ok
                 end
         end,
@@ -198,8 +199,9 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    {_Hooks, Endpoints} = lists:unzip(all_hooks()),
-    [ hackney_pool:stop_pool(E) || E <- lists:usort(lists:flatten(Endpoints)) ],
+    {_Hooks, Vals} = lists:unzip(all_hooks()),
+    {Endpoints, _Opts} = lists:unzip(Vals),
+    [ hackney_pool:stop_pool(E) || {E,_} <- lists:usort(lists:flatten(Endpoints)) ],
     ok.
 
 %%--------------------------------------------------------------------
@@ -289,10 +291,14 @@ on_deliver(UserName, SubscriberId, Topic, Payload) ->
                              {topic, unword(Topic)},
                              {payload, Payload}]).
 
-on_offline_message(SubscriberId) ->
+on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_offline_message, [{mountpoint, MP},
-                             {client_id, ClientId}]).
+                             {client_id, ClientId},
+                             {qos, QoS},
+                             {topic, unword(Topic)},
+                             {payload, Payload},
+                             {retain, IsRetain}]).
 
 on_client_wakeup(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -318,7 +324,7 @@ maybe_start_pool(Endpoint) ->
 
 maybe_stop_pool(Endpoint) ->
     InUse = lists:filter(fun({_, Endpoints}) ->
-                                 lists:member(Endpoint, Endpoints)
+                                 lists:keymember(Endpoint, 1, Endpoints)
                          end, all_hooks()),
     case InUse of
         [] -> hackney_pool:stop_pool(Endpoint);
@@ -350,8 +356,8 @@ all_till_ok(HookName, Args) ->
             all_till_ok(Endpoints, HookName, Args)
     end.
 
-all_till_ok([Endpoint|Rest], HookName, Args) ->
-    case call_endpoint(Endpoint, HookName, Args) of
+all_till_ok([{Endpoint,EOpts}|Rest], HookName, Args) ->
+    case call_endpoint(Endpoint, EOpts, HookName, Args) of
         true ->
             ok;
         Modifiers when is_list(Modifiers) ->
@@ -376,8 +382,8 @@ all(HookName, Args) ->
             all(Endpoints, HookName, Args)
     end.
 
-all([Endpoint|Rest], HookName, Args) ->
-    _ = call_endpoint(Endpoint, HookName, Args),
+all([{Endpoint,EOpts}|Rest], HookName, Args) ->
+    _ = call_endpoint(Endpoint, EOpts, HookName, Args),
     all(Rest, HookName, Args);
 all([], _, _) -> next.
 
@@ -385,7 +391,8 @@ unword(T) ->
     iolist_to_binary(vmq_topic:unword(T)).
 
 check_modifiers(Hook, Modifiers)
-  when (Hook == auth_on_publish) or (Hook == on_deliver) ->
+  when (Hook == auth_on_publish) or (Hook == on_deliver)
+       or (Hook == on_offline_message) ->
     case lists:keyfind(topic, 1, Modifiers) of
         {topic, T} when is_binary(T) ->
             case vmq_topic:validate_topic(publish, T) of
@@ -439,19 +446,19 @@ peer({Peer, Port}) when is_tuple(Peer) and is_integer(Port) ->
 subscriber_id({"", ClientId}) -> {<<>>, ClientId};
 subscriber_id({MP, ClientId}) -> {list_to_binary(MP), ClientId}.
 
-call_endpoint(Endpoint, Hook, Args) ->
+call_endpoint(Endpoint, EOpts, Hook, Args) ->
     Method = post,
     Headers = [{<<"Content-Type">>, <<"application/json">>},
                {<<"vernemq-hook">>, atom_to_binary(Hook, utf8)}],
     Opts = [{pool, Endpoint}],
     Res =
-        case hackney:request(Method, Endpoint, Headers, encode_payload(Hook, Args), Opts) of
+        case hackney:request(Method, Endpoint, Headers, encode_payload(Hook, Args, EOpts), Opts) of
             {ok, 200, _RespHeaders, CRef} ->
                 case hackney:body(CRef) of
                     {ok, Body} ->
                         case jsx:is_json(Body) of
                             true ->
-                                handle_response(Hook, jsx:decode(Body, [{labels, atom}]));
+                                handle_response(Hook, jsx:decode(Body, [{labels, atom}]), EOpts);
                             false ->
                                 {error, received_payload_not_json}
                         end;
@@ -476,53 +483,59 @@ call_endpoint(Endpoint, Hook, Args) ->
             Res
     end.
 
-handle_response(Hook, Decoded) 
+handle_response(Hook, Decoded, EOpts) 
   when Hook =:= auth_on_register; Hook =:= auth_on_publish;
        Hook =:= on_deliver ->
     case proplists:get_value(result, Decoded) of
         <<"ok">> ->
-            normalize_modifiers(Hook, proplists:get_value(modifiers, Decoded, []));
+            normalize_modifiers(Hook, proplists:get_value(modifiers, Decoded, []), EOpts);
         <<"next">> -> next;
         Result when is_list(Result) ->
             {decoded_error, proplists:get_value(error, Result, unknown_error)}
     end;
-handle_response(Hook, Decoded)
+handle_response(Hook, Decoded, EOpts)
   when Hook =:= auth_on_subscribe; Hook =:= on_unsubscribe ->
     case proplists:get_value(result, Decoded) of
         <<"ok">> ->
-            normalize_modifiers(Hook, proplists:get_value(topics, Decoded, []));
+            normalize_modifiers(Hook, proplists:get_value(topics, Decoded, []), EOpts);
         <<"next">> -> next;
         Result when is_list(Result) ->
             {decoded_error, proplists:get_value(error, Result, unknown_error)}
     end;
-handle_response(_Hook, _Decoded) ->
+handle_response(_Hook, _Decoded, _) ->
     next.
 
-normalize_modifiers(auth_on_register, Mods) ->
+normalize_modifiers(auth_on_register, Mods, _) ->
     lists:map(
       fun({mountpoint, Mountpoint}) ->
               {mountpoint, binary_to_list(Mountpoint)};
          (E) -> E
       end, Mods);
-normalize_modifiers(auth_on_subscribe, Topics) ->
+normalize_modifiers(auth_on_subscribe, Topics, _) ->
     lists:map(
       fun(PL) ->
               [proplists:get_value(topic, PL),
                proplists:get_value(qos, PL)]
       end,
       Topics);
-normalize_modifiers(auth_on_publish, Mods) ->
+normalize_modifiers(auth_on_publish, Mods, EOpts) ->
     lists:map(
       fun({mountpoint, Mountpoint}) ->
               {mountpoint, binary_to_list(Mountpoint)};
+         ({payload, Payload}) ->
+              {payload, b64decode(Payload, EOpts)};
          (E) -> E
       end, Mods);
-normalize_modifiers(on_unsubscribe, Mods) ->
-    Mods;
-normalize_modifiers(on_deliver, Mods) ->
+normalize_modifiers(on_deliver, Mods, EOpts) ->
+    lists:map(
+      fun({payload, Payload}) ->
+              {payload, b64decode(Payload, EOpts)};
+         (E) -> E
+      end, Mods);
+normalize_modifiers(on_unsubscribe, Mods, _) ->
     Mods.
 
-encode_payload(Hook, Args)
+encode_payload(Hook, Args, _Opts)
   when Hook =:= auth_on_subscribe; Hook =:= on_subscribe ->
     RemappedKeys = 
         lists:map(
@@ -534,18 +547,30 @@ encode_payload(Hook, Args)
                                       {qos, Q}]
                              end,
                      Topics)};
-             ({client_id, V}) -> {subscriber_id, V};
+             ({client_id, V}) -> {client_id, V};
              (V) -> V
           end,
           Args),
     jsx:encode(RemappedKeys);
-encode_payload(_, Args) ->
+encode_payload(_, Args, Opts) ->
     RemappedKeys = 
         lists:map(
           fun({addr, V}) -> {peer_addr, V};
              ({port, V}) -> {peer_port, V};
-             ({client_id, V}) -> {subscriber_id, V};
+             ({client_id, V}) -> {client_id, V};
+             ({payload, V}) ->
+                  {payload, b64encode(V, Opts)};
              (V) -> V
           end,
           Args),
     jsx:encode(RemappedKeys).
+
+b64encode(V, #{base64_payload := false}) ->
+    V;
+b64encode(V, _) -> 
+    base64:encode(V).
+
+b64decode(V, #{base64_payload := false}) ->
+    V;
+b64decode(V, _) -> 
+    base64:decode(V).

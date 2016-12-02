@@ -36,25 +36,25 @@ handle(Req, State) ->
 %% callbacks for each hook
 auth_on_register(#{peer_addr := ?PEER_BIN,
                    peer_port := ?PEERPORT,
-                   subscriber_id := ?ALLOWED_SUBSCRIBER_ID,
+                   client_id := ?ALLOWED_CLIENT_ID,
                    mountpoint := ?MOUNTPOINT_BIN,
                    username := ?USERNAME,
                    password := ?PASSWORD,
                    clean_session := true
                  }) ->
     {200, #{result => <<"ok">>}};
-auth_on_register(#{subscriber_id := ?NOT_ALLOWED_SUBSCRIBER_ID}) ->
+auth_on_register(#{client_id := ?NOT_ALLOWED_CLIENT_ID}) ->
     {200, #{result => #{error => <<"not_allowed">>}}};
-auth_on_register(#{subscriber_id := ?IGNORED_SUBSCRIBER_ID}) ->
+auth_on_register(#{client_id := ?IGNORED_CLIENT_ID}) ->
     {200, #{result => <<"next">>}};
-auth_on_register(#{subscriber_id := ?CHANGED_SUBSCRIBER_ID}) ->
+auth_on_register(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
             modifiers => #{mountpoint => <<"mynewmount">>}}};
 auth_on_register(#{subscriberid := <<"internal_server_error">>}) ->
     throw(internal_server_error).
 
 auth_on_publish(#{username := ?USERNAME,
-                  subscriber_id := ?ALLOWED_SUBSCRIBER_ID,
+                  client_id := ?ALLOWED_CLIENT_ID,
                   mountpoint := ?MOUNTPOINT_BIN,
                   qos := 1,
                   topic := ?TOPIC,
@@ -62,27 +62,38 @@ auth_on_publish(#{username := ?USERNAME,
                   retain := false
                  }) ->
     {200, #{result => <<"ok">>}};
-auth_on_publish(#{subscriber_id := ?NOT_ALLOWED_SUBSCRIBER_ID}) ->
+auth_on_publish(#{username := ?USERNAME,
+                  client_id := ?BASE64_PAYLOAD_CLIENT_ID,
+                  mountpoint := ?MOUNTPOINT_BIN,
+                  qos := 1,
+                  topic := ?TOPIC,
+                  payload := Base64Payload,
+                  retain := false
+                 }) ->
+    ?PAYLOAD = base64:decode(Base64Payload),
+    {200, #{result => <<"ok">>,
+            modifiers => #{payload => base64:encode(?PAYLOAD)}}};
+auth_on_publish(#{client_id := ?NOT_ALLOWED_CLIENT_ID}) ->
     {200, #{result => #{error => <<"not_allowed">>}}};
-auth_on_publish(#{subscriber_id := ?IGNORED_SUBSCRIBER_ID}) ->
+auth_on_publish(#{client_id := ?IGNORED_CLIENT_ID}) ->
     {200, #{result => <<"next">>}};
-auth_on_publish(#{subscriber_id := ?CHANGED_SUBSCRIBER_ID}) ->
+auth_on_publish(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
             modifiers => #{topic => <<"rewritten/topic">>}}};
 auth_on_publish(#{subscriberid := <<"internal_server_error">>}) ->
     throw(internal_server_error).
 
 auth_on_subscribe(#{username := ?USERNAME,
-                    subscriber_id := ?ALLOWED_SUBSCRIBER_ID,
+                    client_id := ?ALLOWED_CLIENT_ID,
                     mountpoint := ?MOUNTPOINT_BIN,
                     topics := [#{topic := ?TOPIC, qos := 1}]
                  }) ->
     {200, #{result => <<"ok">>}};
-auth_on_subscribe(#{subscriber_id := ?NOT_ALLOWED_SUBSCRIBER_ID}) ->
+auth_on_subscribe(#{client_id := ?NOT_ALLOWED_CLIENT_ID}) ->
     {200, #{result => #{error => <<"not_allowed">>}}};
-auth_on_subscribe(#{subscriber_id := ?IGNORED_SUBSCRIBER_ID}) ->
+auth_on_subscribe(#{client_id := ?IGNORED_CLIENT_ID}) ->
     {200, #{result => <<"next">>}};
-auth_on_subscribe(#{subscriber_id := ?CHANGED_SUBSCRIBER_ID}) ->
+auth_on_subscribe(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
             topics =>
                 [#{topic => <<"rewritten/topic">>,
@@ -93,7 +104,7 @@ auth_on_subscribe(#{subscriberid := <<"internal_server_error">>}) ->
 on_register(#{peer_addr := ?PEER_BIN,
               peer_port := ?PEERPORT,
               mountpoint := ?MOUNTPOINT_BIN,
-              subscriber_id := ?ALLOWED_SUBSCRIBER_ID,
+              client_id := ?ALLOWED_CLIENT_ID,
               username := BinPid}) -> 
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_register_ok,
@@ -101,7 +112,7 @@ on_register(#{peer_addr := ?PEER_BIN,
 
 on_publish(#{username := BinPid,
              mountpoint := ?MOUNTPOINT_BIN,
-             subscriber_id := ?ALLOWED_SUBSCRIBER_ID,
+             client_id := ?ALLOWED_CLIENT_ID,
              topic := ?TOPIC,
              qos := 1,
              payload := ?PAYLOAD,
@@ -112,22 +123,22 @@ on_publish(#{username := BinPid,
 
 on_subscribe(#{username := BinPid,
                mountpoint := ?MOUNTPOINT_BIN,
-               subscriber_id := ?ALLOWED_SUBSCRIBER_ID,
+               client_id := ?ALLOWED_CLIENT_ID,
                topics := [#{topic := ?TOPIC, qos := 1}]
               }) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_subscribe_ok,
     {200, #{}}.
 
-on_unsubscribe(#{subscriber_id := ?ALLOWED_SUBSCRIBER_ID}) ->
+on_unsubscribe(#{client_id := ?ALLOWED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>}};
-on_unsubscribe(#{subscriber_id := ?CHANGED_SUBSCRIBER_ID}) ->
+on_unsubscribe(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
             topics => [<<"rewritten/topic">>]}}.
 
 on_deliver(#{username := BinPid,
              mountpoint := ?MOUNTPOINT_BIN,
-             subscriber_id := ?ALLOWED_SUBSCRIBER_ID,
+             client_id := ?ALLOWED_CLIENT_ID,
              topic := ?TOPIC,
              payload := ?PAYLOAD}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
@@ -135,25 +146,25 @@ on_deliver(#{username := BinPid,
     {200, #{result => <<"ok">>}}.
 
 on_offline_message(#{mountpoint := ?MOUNTPOINT_BIN,
-                     subscriber_id := BinPid}) ->
+                     client_id := BinPid}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_offline_message_ok,
     {200, #{}}.
 
 on_client_wakeup(#{mountpoint := ?MOUNTPOINT_BIN,
-                   subscriber_id := BinPid}) ->
+                   client_id := BinPid}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_client_wakeup_ok,
     {200, #{}}.
 
 on_client_offline(#{mountpoint := ?MOUNTPOINT_BIN,
-                   subscriber_id := BinPid}) ->
+                   client_id := BinPid}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_client_offline_ok,
     {200, #{}}.
 
 on_client_gone(#{mountpoint := ?MOUNTPOINT_BIN,
-                 subscriber_id := BinPid}) ->
+                 client_id := BinPid}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_client_gone_ok,
     {200, #{}}.

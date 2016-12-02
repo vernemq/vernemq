@@ -27,20 +27,31 @@ status_cmd() ->
     Callback =
         fun(_, [], []) ->
                 Table = 
-                    [[{hook, Hook}, {endpoint, binary_to_list(Endpoint)}] ||
+                    [[{hook, Hook}, {endpoint, binary_to_list(Endpoint)},
+                      {base64payload, b64opt(Opts)}] ||
                         {Hook, Endpoints} <- vmq_webhooks_plugin:all_hooks(),
-                        Endpoint <- Endpoints],
+                        {Endpoint, Opts} <- Endpoints],
                 [clique_status:table(Table)]
         end,
     clique:register_command(Cmd, [], [], Callback).
 
+b64opt(#{base64_payload := Val}) ->
+    Val;
+b64opt(_) -> false.
+
 register_cmd() ->
     Cmd = ["vmq-admin", "webhooks", "register"],
     KeySpecs = [hook_keyspec(), endpoint_keyspec()],
-    FlagSpecs = [],
+    FlagSpecs = [{base64_payload, [{longname, "base64payload"},
+                                   {typecast,
+                                    fun("true") -> true;
+                                       ("false") -> false;
+                                       (Val) -> {{error, {invalid_flag_value, {base64payload, Val}}}}
+                                    end}]}],
     Callback =
-        fun(_, [{hook, Hook}, {endpoint, Endpoint}], []) ->
-                case vmq_webhooks_plugin:register_endpoint(Endpoint, Hook) of
+        fun(_, [{hook, Hook}, {endpoint, Endpoint}], Flags) ->
+                Opts = get_opts(Flags),
+                case vmq_webhooks_plugin:register_endpoint(Endpoint, Hook, Opts) of
                     ok ->
                         [clique_status:text("Done")];
                     {error, Reason} ->
@@ -54,6 +65,13 @@ register_cmd() ->
                 [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+get_opts(Flags) ->
+    Defaults = #{
+      base64_payload => true
+     },
+    Keys = [base64_payload],
+    maps:merge(Defaults, maps:with(Keys, maps:from_list(Flags))).
 
 deregister_cmd() -> 
     Cmd = ["vmq-admin", "webhooks", "deregister"],
@@ -131,6 +149,9 @@ webhooks_usage() ->
 register_usage() ->
     ["vmq-admin webhooks register hook=<Hook> endpoint=<Url>\n\n",
      "  Registers a webhook endpoint with a hook.",
+     "\n\n"
+     "  --base64payload=<true|false>\n",
+     "     base64 encode the MQTT payload. Defaults to true.",
      "\n\n"
     ].
 

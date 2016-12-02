@@ -31,6 +31,10 @@ For the above reasons, we recommend that in your production environment you
 deploy your endpoints on the same machines where you are deploying VerneMQ and
 configure the endpoints to be reached via `localhost`.
 
+## Changelog
+
+See [changelog.md](./changelog.md) for changes.
+
 ## Usage
 
 Building the plugin:
@@ -48,6 +52,16 @@ Registering a hook with an endpoint:
 Deregistering an endpoint:
 
     $ vmq-admin webhooks deregister hook=auth_on_register endpoint="http://localhost"
+
+The payload is by default base64 encoded, to disable this add the
+`--base64payload=false` flag when registering the hook.
+
+## Persisting hooks across VerneMQ restarts
+
+Webhooks added with `vmq-plugin` command line tool are not persisted across
+VerneMQ restarts. To make hooks persistent they can be added to the
+`priv/vmq_webhooks.conf` file. It contains an example and is hopefully
+self-explanatory.
 
 ## Webhooks
 
@@ -73,7 +87,7 @@ Webhook example payload:
 {
     "peer_addr": "127.0.0.1",
     "peer_port": 8888,
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "username": "username",
     "password": "password",
     "mountpoint": "",
@@ -88,7 +102,7 @@ Example response:
     "result": "ok",
     "modifiers": {
         "mountpoint": "newmountpoint"
-        "subscriber_id": "subscriber_id",
+        "client_id": "clientid",
         "reg_view": "reg_view",
         "clean_session": false,
         "max_message_size": 65535,
@@ -119,7 +133,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "username": "username",
     "topics":
@@ -155,12 +169,15 @@ Other result values:
 
 Header: ```vernemq-hook: auth_on_publish```
 
+Note, in the example below the payload is not base64 encoded which is not the
+default.
+
 Webhook example payload:
 
 ```json
 {
     "username": "username",
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "qos": 1,
     "topic": "a/b",
@@ -207,7 +224,7 @@ Webhook example payload:
     "peer_port": 8888,
     "username": "username",
     "mountpoint": "",
-    "subscriber_id": "subscriberid"
+    "client_id": "clientid"
 }
 ```
 
@@ -217,12 +234,15 @@ The response of this hook should be empty as it is ignored.
 
 Header: ```vernemq-hook: on_publish```
 
+Note, in the example below the payload is not base64 encoded which is not the
+default.
+
 Webhook example payload:
 
 ```json
 {
     "username": "username",
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "qos": 1,
     "topic": "a/b",
@@ -241,7 +261,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "username": "username",
     "topics":
@@ -263,7 +283,7 @@ Webhook example payload:
 ```json
 {
     "username": "username",
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "topics":
         ["a/b", "c/d"]
@@ -294,12 +314,15 @@ Other result values:
 
 Header: ```vernemq-hook: on_deliver```
 
+Note, in the example below the payload is not base64 encoded which is not the
+default.
+
 Webhook example payload:
 
 ```json
 {
     "username": "username",
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": "",
     "topic": "a/b",
     "payload": "hello"
@@ -328,12 +351,19 @@ Other result values:
 
 Header: ```vernemq-hook: on_offline_message```
 
+Note, in the example below the payload is not base64 encoded which is not the
+default.
+
 Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
-    "mountpoint": ""
+    "client_id": "clientid",
+    "mountpoint": "",
+    "qos": "1",
+    "topic": "sometopic",
+    "payload": "payload",
+    "retain": false
 }
 ```
 
@@ -347,7 +377,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": ""
 }
 ```
@@ -362,7 +392,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": ""
 }
 ```
@@ -377,7 +407,7 @@ Webhook example payload:
 
 ```json
 {
-    "subscriber_id": "subscriberid",
+    "client_id": "clientid",
     "mountpoint": ""
 }
 ```
