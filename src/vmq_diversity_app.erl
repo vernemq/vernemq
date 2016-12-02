@@ -50,7 +50,8 @@ start(_StartType, _StartArgs) ->
             %% hooks which would end in a deadlock situation, because vmq_diversity
             %% is started as a plugin itself.
             spawn(fun() ->
-                          DataDir = code:priv_dir(vmq_diversity) ++ "/../scripts",
+                          DataDir = application:get_env(vmq_diversity, script_dir,
+                                                        code:priv_dir(vmq_diversity) ++ "/../scripts"),
                           case filelib:is_dir(DataDir) of
                               true ->
                                   lists:foreach(fun(Script) ->

@@ -6,3 +6,8 @@
                                           {default, off},
                                           {datatype, flag}
                                          ]}.
+%% @doc The script dir is searched for Lua scripts and automatically loaded.
+{mapping, "lua.script_dir", "vmq_diversity.script_dir", [
+                                          {default, "{{platform_data_dir}}/scripts"},
+                                          {datatype, directory}
+                                        ]}.
