@@ -17,12 +17,15 @@
          invalid_protonum_test/1,
          uname_no_password_denied_test/1,
          uname_password_denied_test/1,
-         uname_password_success_test/1]).
+         uname_password_success_test/1,
+         change_subscriber_id_test/1]).
 
 -export([hook_empty_client_id_proto_4/5,
          hook_uname_no_password_denied/5,
          hook_uname_password_denied/5,
-         hook_uname_password_success/5]).
+         hook_uname_password_success/5,
+         hook_change_subscriber_id/5,
+         hook_on_register_changed_subscriber_id/3]).
 
 %% ===================================================================
 %% common_test callbacks
@@ -55,7 +58,8 @@ all() ->
      invalid_protonum_test,
      uname_no_password_denied_test,
      uname_password_denied_test,
-     uname_password_success_test].
+     uname_password_success_test,
+     change_subscriber_id_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -142,6 +146,21 @@ uname_password_success_test(_) ->
       auth_on_register, ?MODULE, hook_uname_password_success, 5),
     ok = gen_tcp:close(Socket).
 
+change_subscriber_id_test(_) ->
+    Connect = packet:gen_connect("change-sub-id-test",
+                                 [{keepalive,10}, {username, "whatever"},
+                                  {password, "whatever"}]),
+    Connack = packet:gen_connack(0),
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_change_subscriber_id, 5),
+    vmq_plugin_mgr:enable_module_plugin(
+      on_register, ?MODULE, hook_on_register_changed_subscriber_id, 3),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    vmq_plugin_mgr:disable_module_plugin(
+      on_register, ?MODULE, hook_on_register_changed_subscriber_id, 5),
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_change_subscriber_id, 5),
+    ok = gen_tcp:close(Socket).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
@@ -150,3 +169,7 @@ hook_empty_client_id_proto_4(_, _RandomId, _, _, _) -> ok.
 hook_uname_no_password_denied(_, {"", <<"connect-uname-test-">>}, <<"user">>, undefined, _) -> {error, invalid_credentials}.
 hook_uname_password_denied(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _) -> {error, invalid_credentials}.
 hook_uname_password_success(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _) -> ok.
+hook_change_subscriber_id(_, {"", <<"change-sub-id-test">>}, _, _, _) ->
+    {ok, [{subscriber_id, {"newmp", <<"changed-client-id">>}}]}.
+hook_on_register_changed_subscriber_id(_, {"newmp", <<"changed-client-id">>}, _) ->
+    ok.
