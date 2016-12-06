@@ -63,7 +63,6 @@
 
           %% config
           allow_anonymous=false             :: boolean(),
-          mountpoint=""                     :: mountpoint(),
           max_client_id_size=100            :: non_neg_integer(),
 
           %% changeable by auth_on_register
@@ -82,6 +81,7 @@
 init(Peer, Opts) ->
     rnd:seed(os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
+    SubscriberId = {string:strip(MountPoint, right, $/), undefined},
     PreAuthUser =
     case lists:keyfind(preauth, 1, Opts) of
         false -> undefined;
@@ -111,7 +111,7 @@ init(Peer, Opts) ->
     set_max_msg_size(MaxMessageSize),
     {wait_for_connect, #state{peer=Peer,
                                      upgrade_qos=UpgradeQoS,
-                                     mountpoint=string:strip(MountPoint, right, $/),
+                                     subscriber_id=SubscriberId,
                                      allow_anonymous=AllowAnonymous,
                                      max_inflight_messages=MaxInflightMsgs,
                                      max_message_rate=MaxMessageRate,
@@ -218,7 +218,7 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
                         qos=QoS, retain=IsRetain,
                         payload=Payload}, State) ->
     DoThrottle = do_throttle(State),
-    #state{mountpoint=MountPoint} = State,
+    #state{subscriber_id={MountPoint, _}} = State,
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
     _ = vmq_metrics:incr_mqtt_publish_received(),
@@ -472,7 +472,8 @@ check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=4} = F, State) ->
             connack_terminate(?CONNACK_INVALID_ID, State);
         true ->
             RandomClientId = random_client_id(),
-            SubscriberId = {State#state.mountpoint, RandomClientId},
+            {MountPoint, _} = State#state.subscriber_id,
+            SubscriberId = {MountPoint, RandomClientId},
             check_user(F#mqtt_connect{client_id=RandomClientId},
                        State#state{subscriber_id=SubscriberId})
     end;
@@ -483,7 +484,8 @@ check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=3}, State) ->
 check_client_id(#mqtt_connect{client_id=ClientId, proto_ver=V} = F,
                 #state{max_client_id_size=S} = State)
   when byte_size(ClientId) =< S ->
-    SubscriberId = {State#state.mountpoint, ClientId},
+    {MountPoint, _} = State#state.subscriber_id,
+    SubscriberId = {MountPoint, ClientId},
     case lists:member(V, ?ALLOWED_MQTT_VERSIONS) of
         true ->
             check_user(F, State#state{subscriber_id=SubscriberId});
@@ -556,7 +558,7 @@ check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, SessionPrese
     {State, [#mqtt_connack{session_present=SessionPresent, return_code=?CONNACK_ACCEPT}]};
 check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_retain=IsRetain},
            SessionPresent, State) ->
-    #state{mountpoint=MountPoint, username=User, subscriber_id=SubscriberId} = State,
+    #state{username=User, subscriber_id={MountPoint, _}=SubscriberId} = State,
     case auth_on_publish(User, SubscriberId,
                          #vmq_msg{routing_key=Topic,
                                   payload=Payload,
@@ -578,7 +580,7 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
 
 auth_on_register(User, Password, State) ->
     #state{clean_session=Clean, peer=Peer, cap_settings=CAPSettings,
-           subscriber_id={_, ClientId} = SubscriberId} = State,
+           subscriber_id=SubscriberId} = State,
     HookArgs = [Peer, SubscriberId, User, Password, Clean],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
@@ -597,8 +599,7 @@ auth_on_register(User, Password, State) ->
             set_max_msg_size(prop_val(max_message_size, Args, max_msg_size())),
 
             ChangedState = State#state{
-                             subscriber_id={?state_val(mountpoint, Args, State), ClientId},
-                             mountpoint=?state_val(mountpoint, Args, State),
+                             subscriber_id=?state_val(subscriber_id, Args, State),
                              clean_session=?state_val(clean_session, Args, State),
                              reg_view=?state_val(reg_view, Args, State),
                              max_message_rate=?state_val(max_message_rate, Args, State),
@@ -1033,6 +1034,8 @@ get_retry_frame(_, not_found, _) ->
     %% already acked
     already_acked.
 
+prop_val(Key, Args, Default) when is_tuple(Default) ->
+    prop_val(Key, Args, Default, fun erlang:is_tuple/1);
 prop_val(Key, Args, Default) when is_list(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_list/1);
 prop_val(Key, Args, Default) when is_integer(Default) ->
