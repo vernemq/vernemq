@@ -125,7 +125,7 @@ init([]) ->
       fun({MPTopic, '$deleted'}, _) ->
               ets:delete(?RETAIN_CACHE, MPTopic);
          ({MPTopic, Msg}, _) ->
-              ets:insert(?RETAIN_CACHE, [{MPTopic, Msg, false}])
+              ets:insert(?RETAIN_CACHE, [{MPTopic, Msg}])
       end, ok, ?RETAIN_DB, [{resolver, lww}]),
     erlang:send_after(vmq_config:get_env(retain_persist_interval, 1000),
                       self(), persist),
@@ -175,7 +175,7 @@ handle_info({deleted, ?RETAIN_DB, Key, _Val}, State) ->
     ets:delete(?RETAIN_CACHE, Key),
     {noreply, State};
 handle_info({updated, ?RETAIN_DB, Key, _OldVal, NewVal}, State) ->
-    ets:insert(?RETAIN_CACHE, {Key, NewVal, false}),
+    ets:insert(?RETAIN_CACHE, {Key, NewVal}),
     {noreply, State};
 handle_info(persist, State) ->
     ets:foldl(fun persist/2, ignore, ?RETAIN_UPDATE),
