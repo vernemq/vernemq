@@ -63,11 +63,13 @@ parse(<<_:8/binary, _/binary>>, _) ->
 parse(_, _) ->
     more.
 
-parse(DataSize, 0, Fixed, Data) ->
+parse(DataSize, 0, Fixed, Data) when byte_size(Data) >= DataSize ->
     %% no max size limit
     <<Var:DataSize/binary, Rest/binary>> = Data,
     {variable(Fixed, Var), Rest};
-parse(DataSize, MaxSize, Fixed, Data) when byte_size(Data) =< MaxSize ->
+parse(DataSize, MaxSize, Fixed, Data)
+  when byte_size(Data) >= DataSize,
+       byte_size(Data) =< MaxSize ->
     <<Var:DataSize/binary, Rest/binary>> = Data,
     {variable(Fixed, Var), Rest};
 parse(DataSize, MaxSize, _, _) when DataSize > MaxSize ->
@@ -430,56 +432,3 @@ gen_pingresp() ->
 
 gen_disconnect() ->
     iolist_to_binary(serialise(#mqtt_disconnect{})).
-
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
-
-parser_test() ->
-    compare_frame("connect1", gen_connect("test-client", [])),
-    compare_frame("connect2", gen_connect("test-client", [{will_topic, "test-will-topic"},
-                                                          {will_msg, "this is a samp"},
-                                                          {will_qos, 2},
-                                                          {username, "joe"},
-                                                          {password, "secret"}])),
-    compare_frame("connack", gen_connack()),
-    compare_frame("connackSessionPresentTrue", gen_connack(1, 0)),
-    compare_frame("connackSessionPresentFalse", gen_connack(0, 0)),
-    compare_frame("publish1", gen_publish("test-topic", 0, <<"test-payload">>, [{dup, true}, {retain, true}])),
-    compare_frame("publish2", gen_publish("test-topic", 2, crypto:rand_bytes(1000), [{dup, true}, {retain, true}])),
-    compare_frame("publish3", gen_publish("test-topic", 2, crypto:rand_bytes(100000), [{dup, true}, {retain, true}])),
-    compare_frame("publish4", gen_publish("test-topic", 2, crypto:rand_bytes(2097153), [{dup, true}, {retain, true}])),
-
-    compare_frame("puback", gen_puback(123)),
-    compare_frame("pubrec", gen_pubrec(123)),
-    compare_frame("pubrel1", gen_pubrel(123)),
-    compare_frame("pubcomp", gen_pubcomp(123)),
-
-    compare_frame("subscribe", gen_subscribe(123, "test/hello/world", 2)),
-    compare_frame("subscribe_multi", gen_subscribe(123, [{"test/1", 1}, {"test/2", 2}])),
-    compare_frame("suback", gen_suback(123, 2)),
-    compare_frame("suback_multi", gen_suback(123, [0,1,2])),
-    compare_frame("suback_0x80", gen_suback(123, not_allowed)),
-    compare_frame("suback_multi_0x80", gen_suback(123, [0,not_allowed,2])),
-
-    compare_frame("unsubscribe", gen_unsubscribe(123, "test/hello/world")),
-    compare_frame("unsuback", gen_unsuback(123)),
-
-    compare_frame("pingreq", gen_pingreq()),
-    compare_frame("pingresp", gen_pingresp()),
-    compare_frame("disconnect", gen_disconnect()),
-
-
-    P = gen_publish("test-topic", 2, crypto:rand_bytes(100), []),
-    {error, packet_exceeds_max_size} = parse(P, byte_size(P) - 3),
-
-    <<Part:128, _/binary>> = P,
-    more = parse(Part).
-
-compare_frame(Test, Frame) ->
-    io:format(user, "---- compare test: ~p~n", [Test]),
-    {ParsedFrame, <<>>} = parse(Frame),
-    SerializedFrame = iolist_to_binary(serialise(ParsedFrame)),
-    compare_frame(Test, Frame, SerializedFrame).
-compare_frame(_, F, F) -> true.
--endif.
