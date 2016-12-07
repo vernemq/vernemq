@@ -1,3 +1,4 @@
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 %% connect return codes
 -define(CONNACK_ACCEPT,      0).
 -define(CONNACK_PROTO_VER,   1). %% unacceptable protocol version
@@ -8,19 +9,7 @@
 -define(true, 1).
 -define(false, 0).
 
--type peer()                :: {inet:ip_address(), inet:port_number()}.
--type username()            :: binary() | undefined.
--type password()            :: binary() | undefined.
--type client_id()           :: binary().
--type mountpoint()          :: string().
--type subscriber_id()       :: {mountpoint(), client_id()}.
--type reg_view()            :: atom().
--type topic()               :: [binary()] | binary().
--type qos()                 :: 0 | 1 | 2.
--type routing_key()         :: [binary()].
--type payload()             :: binary().
--type flag()                :: ?true | ?false | boolean() | empty. % empty for test purposes
--type msg_ref()             :: binary().
+-type fflag()               :: flag() | ?true | ?false | empty. % empty for test purposes
 -type proto_version()       :: 3 | 4 | 131.
 -type return_code()         :: ?CONNACK_ACCEPT
                             | ?CONNACK_PROTO_VER
@@ -34,10 +23,10 @@
           proto_ver         :: proto_version(),
           username          :: username(),
           password          :: password(),
-          clean_session     :: flag(),
+          clean_session     :: fflag(),
           keep_alive        :: non_neg_integer(),
           client_id         :: client_id(),
-          will_retain       :: flag(),
+          will_retain       :: fflag(),
           will_qos          :: qos(),
           will_topic        :: topic(),
           will_msg          :: payload()
@@ -45,7 +34,7 @@
 -type mqtt_connect()        :: #mqtt_connect{}.
 
 -record(mqtt_connack, {
-          session_present   :: flag(),
+          session_present   :: fflag(),
           return_code       :: return_code()
          }).
 -type mqtt_connack()        :: #mqtt_connack{}.
@@ -54,8 +43,8 @@
           message_id        :: message_id(),
           topic             :: topic(),
           qos               :: qos(),
-          retain            :: flag(),
-          dup               :: flag(),
+          retain            :: fflag(),
+          dup               :: fflag(),
           payload           :: payload()
         }).
 -type mqtt_publish()        :: #mqtt_publish{}.
