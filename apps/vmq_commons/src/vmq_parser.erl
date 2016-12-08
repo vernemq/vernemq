@@ -67,12 +67,15 @@ parse(DataSize, 0, Fixed, Data) when byte_size(Data) >= DataSize ->
     %% no max size limit
     <<Var:DataSize/binary, Rest/binary>> = Data,
     {variable(Fixed, Var), Rest};
+parse(DataSize, 0, Fixed, Data) when byte_size(Data) < DataSize ->
+    more;
 parse(DataSize, MaxSize, Fixed, Data)
   when byte_size(Data) >= DataSize,
        byte_size(Data) =< MaxSize ->
     <<Var:DataSize/binary, Rest/binary>> = Data,
     {variable(Fixed, Var), Rest};
-parse(DataSize, MaxSize, _, _) when DataSize > MaxSize ->
+parse(DataSize, MaxSize, _, _)
+  when DataSize > MaxSize ->
     {error, packet_exceeds_max_size};
 parse(_, _, _, _) -> more.
 
