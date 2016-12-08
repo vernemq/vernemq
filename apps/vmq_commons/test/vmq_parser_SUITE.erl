@@ -21,19 +21,49 @@ end_per_testcase(_TestCase, _Config) ->
     ok.
 
 all() ->
-    [more_data_test,
-     parse_unparse_tests].
-
+    [
+     no_max_size_more_data,
+     no_max_size_ok,
+     enough_data_max_exceeded,
+     enough_data_max_not_exceeded,
+     not_enough_data_max_exceeded,
+     not_enough_data_max_not_exceeded,
+     parse_unparse_tests     
+    ].
 
 %%--------------------------------------------------------------------
 %% TEST CASES
 %%--------------------------------------------------------------------
 
-more_data_test(_Config) ->
+no_max_size_more_data(_Config) ->
     CompletePacket = packet:gen_publish(<<"a nice topic">>, 1, <<"a complete payload">>, []),
     PartialSize = byte_size(CompletePacket) - 1,
     <<IncompletePacket:PartialSize/binary, _LastByte/binary>> = CompletePacket,
-    more = vmq_parser:parse(IncompletePacket).
+    more = vmq_parser:parse(IncompletePacket, 0).
+
+no_max_size_ok(_Config) ->
+    CompletePacket = packet:gen_publish(<<"a nice topic">>, 1, <<"a complete payload">>, []),
+    {_, <<>>} = vmq_parser:parse(CompletePacket, 0).
+
+enough_data_max_exceeded(_Config) ->
+    CompletePacket = packet:gen_publish(<<"a nice topic">>, 1, <<"a complete payload">>, []),
+    {error, packet_exceeds_max_size} = vmq_parser:parse(CompletePacket, 10).
+
+enough_data_max_not_exceeded(_Config) ->
+    CompletePacket = packet:gen_publish(<<"a nice topic">>, 1, <<"a complete payload">>, []),
+    {_, <<>>} = vmq_parser:parse(CompletePacket, byte_size(CompletePacket)).
+
+not_enough_data_max_exceeded(_Config) ->
+    CompletePacket = packet:gen_publish(<<"a nice topic">>, 1, <<"a complete payload">>, []),
+    PartialSize = byte_size(CompletePacket) - 1,
+    <<IncompletePacket:PartialSize/binary, _LastByte/binary>> = CompletePacket,
+    {error, packet_exceeds_max_size} = vmq_parser:parse(IncompletePacket, 3).
+
+not_enough_data_max_not_exceeded(_Config) ->
+    CompletePacket = packet:gen_publish(<<"a nice topic">>, 1, <<"a complete payload">>, []),
+    PartialSize = byte_size(CompletePacket) - 1,
+    <<IncompletePacket:PartialSize/binary, _LastByte/binary>> = CompletePacket,
+    more  = vmq_parser:parse(IncompletePacket, byte_size(CompletePacket)).
 
 parse_unparse_tests(_Config) ->
     compare_frame("connect1", vmq_parser:gen_connect("test-client", [])),
@@ -67,14 +97,7 @@ parse_unparse_tests(_Config) ->
 
     compare_frame("pingreq", vmq_parser:gen_pingreq()),
     compare_frame("pingresp", vmq_parser:gen_pingresp()),
-    compare_frame("disconnect", vmq_parser:gen_disconnect()),
-
-
-    P = vmq_parser:gen_publish("test-topic", 2, crypto:rand_bytes(100), []),
-    {error, packet_exceeds_max_size} = vmq_parser:parse(P, byte_size(P) - 3),
-
-    <<Part:128, _/binary>> = P,
-    more = vmq_parser:parse(Part).
+    compare_frame("disconnect", vmq_parser:gen_disconnect()).
 
 compare_frame(Test, Frame) ->
     io:format(user, "---- compare test: ~p~n", [Test]),
