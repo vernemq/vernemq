@@ -48,7 +48,8 @@ register_config_() ->
      "graphite_enabled",
      "graphite_host",
      "graphite_port",
-     "graphite_interval"
+     "graphite_interval",
+     "shared_subscription_policy"
     ],
     _ = [clique:register_config([Key], fun register_config_callback/3)
          || Key <- ConfigKeys],

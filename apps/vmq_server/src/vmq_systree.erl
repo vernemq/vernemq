@@ -119,7 +119,8 @@ handle_info(timeout, true) ->
             MsgTmpl = #vmq_msg{
                          mountpoint=vmq_config:get_env(systree_mountpoint, ""),
                          qos=vmq_config:get_env(systree_qos, 0),
-                         retain=vmq_config:get_env(systree_retain, false)
+                         retain=vmq_config:get_env(systree_retain, false),
+                         sg_policy=vmq_config:get_env(shared_subscription_policy, prefer_local)
                         },
             lists:foreach(
               fun({_Type, Metric, Val}) ->

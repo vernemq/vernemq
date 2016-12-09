@@ -1460,3 +1460,12 @@
          {ok, Term} = erl_parse:parse_term(T),
          Term
  end}.
+
+%% @doc Distribution policy for shared subscriptions. Default is
+%% 'prefer_local' which will ensure that local subscribers will be
+%% used if any are available. 'random' will randomly choose between
+%% all available subscribers.
+{mapping, "shared_subscription_policy", "vmq_server.shared_subscription_policy", [
+                                                                                  {default, prefer_local},
+                                                                                  {datatype, atom}
+                                                                                 ]}.

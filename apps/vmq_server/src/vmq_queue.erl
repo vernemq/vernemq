@@ -31,6 +31,7 @@
          default_opts/0,
          set_last_waiting_acks/2,
          enqueue_many/2,
+         enqueue_many/3,
          migrate/2,
          cleanup/1]).
 
@@ -106,6 +107,9 @@ enqueue(Queue, Msg) when is_pid(Queue) ->
 
 enqueue_many(Queue, Msgs) when is_pid(Queue) and is_list(Msgs) ->
     gen_fsm:sync_send_event(Queue, {enqueue_many, Msgs}, infinity).
+
+enqueue_many(Queue, Msgs, Opts) when is_pid(Queue), is_list(Msgs), is_map(Opts) ->
+    gen_fsm:sync_send_event(Queue, {enqueue_many, Msgs, Opts}, infinity).
 
 add_session(Queue, SessionPid, Opts) when is_pid(Queue) ->
     gen_fsm:sync_send_event(Queue, {add_session, SessionPid, Opts}, infinity).
@@ -214,6 +218,14 @@ online({set_last_waiting_acks, WAcks}, _From, State) ->
 online({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, online, insert_many(Msgs, State)};
+online({enqueue_many, Msgs, #{states := ES}}, _From, State) ->
+    case lists:member(online, ES) of
+        true ->
+            _ = vmq_metrics:incr_queue_in(length(Msgs)),
+            {reply, ok, online, insert_many(Msgs, State)};
+        false ->
+            {reply, {error, online}, State}
+    end;
 online(cleanup, From, State)
   when State#state.waiting_call == undefined ->
     disconnect_sessions(State),

@@ -55,6 +55,11 @@ start_link() ->
 fold(MP, Topic, FoldFun, Acc) when is_list(Topic) ->
     fold_(MP, FoldFun, Acc, match(MP, Topic)).
 
+fold_(MP, FoldFun, Acc, [{Topic, {_Node, Group}}|MatchedTopics]) ->
+    fold_(MP, FoldFun,
+          fold__(FoldFun, Acc,
+                 ets:lookup(vmq_trie_subs, {MP, Group, Topic})),
+          MatchedTopics);
 fold_(MP, FoldFun, Acc, [{Topic, Node}|MatchedTopics]) when Node == node() ->
     fold_(MP, FoldFun,
           fold__(FoldFun, Acc,
@@ -210,14 +215,10 @@ handle_event(Handler, Event) ->
             ok
     end.
 
-handle_delete_event({Topic, QoS, Node}, {MP, _} = SubscriberId) when Node == node() ->
-    del_topic(MP, Topic, Node),
-    del_subscriber(MP, Topic, SubscriberId, QoS),
+handle_add_event({[<<"$share">>, Group|Topic], QoS, Node}, {MP, _} = SubscriberId) ->
+    add_topic(MP, Topic, {Node, Group}), 
+    add_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS),
     SubscriberId;
-handle_delete_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
-    del_topic(MP, Topic, Node),
-    SubscriberId.
-
 handle_add_event({Topic, QoS, Node}, {MP, _} = SubscriberId) when Node == node() ->
     add_topic(MP, Topic, Node),
     add_subscriber(MP, Topic, SubscriberId, QoS),
@@ -226,6 +227,17 @@ handle_add_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     add_topic(MP, Topic, Node),
     SubscriberId.
 
+handle_delete_event({[<<"$share">>, Group|Topic], QoS, Node}, {MP, _} = SubscriberId) ->
+    del_topic(MP, Topic, {Node, Group}),
+    del_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS),
+    SubscriberId;
+handle_delete_event({Topic, QoS, Node}, {MP, _} = SubscriberId) when Node == node() ->
+    del_topic(MP, Topic, Node),
+    del_subscriber(MP, Topic, SubscriberId, QoS),
+    SubscriberId;
+handle_delete_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
+    del_topic(MP, Topic, Node),
+    SubscriberId.
 
 match(MP, Topic) when is_list(MP) and is_list(Topic) ->
     TrieNodes = trie_match(MP, Topic),
@@ -242,17 +254,21 @@ match(MP, Topic, [#trie_node{topic=Name}|Rest], Acc) when Name =/= undefined ->
     case ets:lookup(vmq_trie_topic, {MP, Name}) of
         [] ->
             match(MP, Topic, Rest, Acc);
-        [{_, _, _, Nodes}] ->
-            match(MP, Topic, Rest, match_(Name, Nodes, Acc))
+        [{_, _, _, NodesOrGroups}] ->
+            match(MP, Topic, Rest, match_(Name, NodesOrGroups, Acc))
     end;
 match(MP, Topic, [_|Rest], Acc) ->
     match(MP, Topic, Rest, Acc);
 match(_, _, [], Acc) -> Acc.
 
-match_(Topic, [Node|Rest], Acc) ->
-    match_(Topic, Rest, [{Topic, Node}|Acc]);
+match_(Topic, [NodeOrGroup|Rest], Acc) ->
+    match_(Topic, Rest, [{Topic, NodeOrGroup}|Acc]);
 match_(_, [], Acc) -> Acc.
 
+initialize_trie({MP, Group, Topic, {SubscriberId, QoS, _}}, Acc) ->
+    add_topic(MP, Topic, {SubscriberId, QoS, node()}),
+    add_subscriber_group(MP, node(), Group, Topic, SubscriberId, QoS),
+    Acc;
 initialize_trie({MP, Topic, {SubscriberId, QoS, _}}, Acc) ->
     add_topic(MP, Topic, node()),
     add_subscriber(MP, Topic, SubscriberId, QoS),
@@ -333,18 +349,18 @@ trie_match(MP, Node, [W|Words], ResAcc) ->
             ResAcc
     end.
 
-del_topic(MP, Topic, Node) ->
+del_topic(MP, Topic, NodeOrGroup) ->
     MPTopic = {MP, Topic},
     case ets:lookup(vmq_trie_topic, MPTopic) of
         [{_, TotalCnt, NodeMap, _}] ->
             {NewNodeMap, NewTotalCnt} =
-            case maps:find(Node, NodeMap) of
+            case maps:find(NodeOrGroup, NodeMap) of
                 error ->
                     {NodeMap, TotalCnt};
                 {ok, 1} ->
-                    {maps:remove(Node, NodeMap), TotalCnt -1};
+                    {maps:remove(NodeOrGroup, NodeMap), TotalCnt -1};
                 {ok, Cnt} ->
-                    {maps:put(Node, Cnt - 1, NodeMap), TotalCnt -1}
+                    {maps:put(NodeOrGroup, Cnt - 1, NodeMap), TotalCnt -1}
             end,
             case NewTotalCnt > 0 of
                 true ->
@@ -385,6 +401,12 @@ trie_delete_path(MP, [{Node, Word, _}|RestPath]) ->
             lager:debug("NodeId ~p not found", [NodeId]),
             ignore
     end.
+
+add_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS) ->
+    ets:insert(vmq_trie_subs, {{MP, Group, Topic}, {Node, Group, SubscriberId, QoS}}).
+
+del_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS) ->
+    ets:delete_object(vmq_trie_subs, {{MP, Group, Topic}, {Node, Group, SubscriberId, QoS}}).
 
 add_subscriber(MP, Topic, SubscriberId, QoS) ->
     ets:insert(vmq_trie_subs, {{MP, Topic}, {SubscriberId, QoS}}).
