@@ -67,7 +67,6 @@ enqueue(Pid, Term) ->
             {error, Reason}
     end.
 
-
 init([Parent, RemoteNode]) ->
     MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
     proc_lib:init_ack(Parent, {ok, self()}),
