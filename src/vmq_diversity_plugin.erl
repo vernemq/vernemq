@@ -308,7 +308,7 @@ all_till_ok(HookName, Args) ->
     case ets:lookup(?TBL, HookName) of
         [] -> next;
         [{_, ScriptOwners}] ->
-            all_till_ok(ScriptOwners, HookName, Args)
+            all_till_ok(lists:reverse(ScriptOwners), HookName, Args)
     end.
 
 all_till_ok([Pid|Rest], HookName, Args) ->
@@ -336,7 +336,7 @@ all(HookName, Args) ->
         [] ->
             next;
         [{_, ScriptOwners}] ->
-            all(ScriptOwners, HookName, Args)
+            all(lists:reverse(ScriptOwners), HookName, Args)
     end.
 
 all([Pid|Rest], HookName, Args) ->
