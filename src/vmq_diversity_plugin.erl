@@ -111,7 +111,7 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call({register_hook, OwnerPid, Hook}, _From, State) ->
     HookName = list_to_atom(binary_to_list(Hook)),
-    case ets:lookup(?TBL, Hook) of
+    case ets:lookup(?TBL, HookName) of
         [] ->
             enable_hook(HookName),
             ets:insert(?TBL, {HookName, [OwnerPid]});
