@@ -37,7 +37,7 @@ read(SubscriberId, Default) ->
     case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined -> Default;
         Subs ->
-            vmq_subscriber:check_format(get_right_subs(Subs))
+            vmq_subscriber:check_format(Subs)
     end.
 
 -spec delete(subscriber_id()) -> ok.
@@ -48,7 +48,7 @@ fold(FoldFun, Acc) ->
     plumtree_metadata:fold(
       fun ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
           ({SubscriberId, Subs}, AccAcc) ->
-              FoldFun({SubscriberId, vmq_subscriber:check_format(get_right_subs(Subs))}, AccAcc)
+              FoldFun({SubscriberId, vmq_subscriber:check_format(Subs)}, AccAcc)
       end, Acc, ?SUBSCRIBER_DB,
       [{resolver, lww}]).
 
@@ -59,23 +59,17 @@ subscribe_db_events() ->
           when (Val == ?TOMBSTONE) or (Val == undefined) ->
             ignore;
         ({deleted, ?SUBSCRIBER_DB, SubscriberId, Subscriptions}) ->
-            Deleted = vmq_subscriber:get_changes(get_right_subs(Subscriptions)),
+            Deleted = vmq_subscriber:get_changes(Subscriptions),
             {delete, SubscriberId, Deleted};
         ({updated, ?SUBSCRIBER_DB, SubscriberId, OldVal, NewSubs})
           when (OldVal == ?TOMBSTONE) or (OldVal == undefined) ->
-            Added = vmq_subscriber:get_changes(get_right_subs(NewSubs)),
+            Added = vmq_subscriber:get_changes(NewSubs),
             {update, SubscriberId, [], Added};
         ({updated, ?SUBSCRIBER_DB, SubscriberId, OldSubs, NewSubs}) ->
-            {Removed, Added} = vmq_subscriber:get_changes(get_right_subs(OldSubs), get_right_subs(NewSubs)),
+            {Removed, Added} = vmq_subscriber:get_changes(OldSubs, NewSubs),
             {update, SubscriberId, Removed, Added};
         (_) ->
             ignore
     end.
-
-get_right_subs(Subs) when is_list(Subs) ->
-    Subs;
-get_right_subs(Subs) ->
-    {RSubs, _} = Subs,
-    RSubs.
 
 
