@@ -67,7 +67,7 @@ maybe_change_nodename() ->
             _ = gen_server:cast(plumtree_peer_service_gossip, {receive_state, Merged}),
             vmq_reg:fold_subscribers(
               fun(SubscriberId, Subs, _) ->
-                      NewSubs = vmq_subscriber:change_node_all(Subs, node()),
+                      {NewSubs, _} = vmq_subscriber:change_node_all(Subs, node(), false),
                       vmq_subscriber_db:store(SubscriberId, NewSubs)
               end, ignored, false);
         _ ->
