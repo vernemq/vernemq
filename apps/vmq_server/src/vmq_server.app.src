@@ -16,6 +16,7 @@
                   vmq_plugin,
                   clique,
                   mzmetrics,
+                  jsx,
                   rand_compat,
                   gen_server2
                  ]},
@@ -72,11 +73,12 @@
                     {vmqs, []},
 
                     {http, [
-                            {{{127,0,0,1}, 8888}, [{config_mod, vmq_metrics_http},
-                                                   {config_fun, routes},
+                            {{{127,0,0,1}, 8888}, [{config_mod, vmq_http_config},
+                                                   {config_fun, config},
                                                    {nr_of_acceptors, 10}]}
                            ]}
       ]},
+      {http_modules, [vmq_metrics_http, vmq_http_mgmt_api]},
       {outgoing_clustering_buffer_size, 10000},
       {outgoing_connect_opts, []},
       {tcp_listen_options, [

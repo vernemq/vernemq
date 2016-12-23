@@ -263,6 +263,19 @@
                                                                                             {datatype, integer},
                                                                                             hidden
                                                                                            ]}.
+%% @doc specifies the modules that should be evaluated when setting up the cowboy routes
+{mapping, "http_modules", "vmq_server.http_modules", [
+                                                      {default, "[vmq_metrics_http,vmq_http_mgmt_api]"},
+                                                      {datatype, string},
+                                                      hidden
+                                                     ]}.
+{translation, "vmq_server.http_modules", 
+ fun(Conf) ->
+         S = cuttlefish:conf_get("http_modules", Conf),
+         {ok, T, _} = erl_scan:string(S ++ "."),
+         {ok, Term} = erl_parse:parse_term(T),
+         Term
+ end}.
 
 %% @doc listener.max_connections is an integer or 'infinity' defining 
 %% the maximum number of concurrent connections. This option can be overridden
@@ -577,26 +590,25 @@
                                                            hidden
                                                           ]}.
 
-%% @doc listener.http.metrics is the IP address and TCP port that
-%% the broker will bind to accept HTTP connections from metrics collectors
-%% such as Prometheus e.g:
-%% - listener.http.metrics = 0.0.0.0:8888
+%% @doc listener.http.default is the IP address and TCP port that
+%% the broker will bind to accept HTTP connections
+%% - listener.http.default = 0.0.0.0:8888
 %% This also works for SSL listeners:
-%% - listener.https.metrics= 0.0.0.0:8889
+%% - listener.https.default= 0.0.0.0:8889
 {mapping, "listener.http.$name", "vmq_server.listeners", [
                                                           {default, { "{{http_default_ip}}", {{http_default_port}} }},
                                                           {datatype, ip},
-                                                          {include_default, "metrics"}
+                                                          {include_default, "default"}
                                                          ]}.
 
 {mapping, "listener.http.$name.config_mod", "vmq_server.listeners", [
-                                                                     {default, vmq_metrics_http},
+                                                                     {default, vmq_http_config},
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}.
 
 {mapping, "listener.http.$name.config_fun", "vmq_server.listeners", [
-                                                                     {default, routes},
+                                                                     {default, config},
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}.
@@ -608,13 +620,13 @@
                                                          ]}.
 
 {mapping, "listener.https.$name.config_mod", "vmq_server.listeners", [
-                                                                     {default, vmq_metrics_http},
+                                                                     {default, vmq_http_config},
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}.
 
 {mapping, "listener.https.$name.config_fun", "vmq_server.listeners", [
-                                                                     {default, vmq_metrics_http},
+                                                                     {default, config},
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}.
