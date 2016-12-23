@@ -141,7 +141,7 @@ routes() ->
 create_api_key() ->
     Chars = list_to_tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
     Size = size(Chars),
-    F = fun(_, R) -> [element(random:uniform(Size), Chars) | R] end,
+    F = fun(_, R) -> [element(rnd:uniform(Size), Chars) | R] end,
     ApiKey = list_to_binary(lists:foldl(F, "", lists:seq(1, 32))),
     Keys = vmq_config:get_env(vmq_server, ?ENV_API_KEYS, []),
     vmq_config:set_global_env(vmq_server, ?ENV_API_KEYS, [ApiKey|Keys], true),
