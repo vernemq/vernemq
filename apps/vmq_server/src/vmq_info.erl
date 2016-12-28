@@ -406,7 +406,6 @@ subscription_row_init(Row) ->
                                                    qos => QoS})|Acc]
                         end, [], Subs).
 
-
 message_ref_row_init(Row) ->
     SubscriberId = {maps:get(mountpoint, Row), maps:get(client_id, Row)},
     case vmq_plugin:only(msg_store_find, [SubscriberId]) of
