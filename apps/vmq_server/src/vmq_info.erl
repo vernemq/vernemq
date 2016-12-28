@@ -63,7 +63,7 @@ raise_enough_data(_, _, _, _) -> ignore.
 
 
 required_fields(Where) ->
-    lists:foldl(fun(A, Atoms) when is_atom(A) ->
+    lists:foldl(fun(A, Atoms) when not is_boolean(A) ->
                         [A|Atoms];
                    (_, Atoms) -> Atoms
                 end, [], prepare(Where, [])).
@@ -81,8 +81,6 @@ filter_row([all], EmptyResultRow, Row) ->
     maps:merge(EmptyResultRow, Row);
 filter_row(Fields, EmptyResultRow, Row) ->
     maps:merge(EmptyResultRow, maps:with(Fields, Row)).
-
-
 
 eval_query([]) ->
     %% No WHERE clause was specified
@@ -159,6 +157,32 @@ lookup_ident(Ident) ->
     case maps:find(Ident, Row) of
         error -> undefined;
         {ok, V} -> V
+    end.
+
+load_all(FieldConfig, Row) ->
+    load_all(FieldConfig, Row, []).
+
+load_all([], Row, Acc) -> lists:flatten([Row|Acc]);
+load_all([{Fields, InitFun}|Rest], Row, Acc) ->
+      lists:foldl(fun(R, AccAcc) ->
+                        AccAcc ++ load_all(Rest, R, [])
+                end, Acc, InitFun(Fields, Row)).
+
+load_rows([], _, _, Acc) -> lists:flatten(Acc);
+load_rows(_, [], _, Acc) -> lists:flatten(Acc);
+load_rows(_, _, [], Acc) -> lists:flatten(Acc);
+load_rows(FieldConfig, RequiredFields, [Row|Rows], Acc) ->
+    load_rows(FieldConfig, RequiredFields, Rows,
+              [load_row(FieldConfig, RequiredFields, Row)|Acc]).
+
+load_row([{Fields, InitFun}|Rest], RequiredFields, Row) ->
+    Rows = InitFun(Fields, Row),
+    case RequiredFields -- Fields of
+        [] ->
+            %% all data fetched to meet this query
+            Rows;
+        UpdatedRequiredFields ->
+            load_rows(Rest, UpdatedRequiredFields, Rows, [])
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -333,15 +357,8 @@ select(Fields, sessions, Where, OrderBy, Limit) ->
           end, [], Results)
     catch
         exit:{enough_data, Res} ->
-            Res;
-        E2:R2 ->
-            ets:delete(Results),
-            lager:error("Can't combine select query results due to ~p ~p", [E2, R2]),
-            exit({E2, R2})
-    end,
-    ets:delete(Results),
-    Return.
-
+            Res
+    end.
 
 empty_result_row([all]) ->
     Fields = lists:flatten([Fs || {Fs, _} <- session_fields_config()]),
@@ -416,8 +433,3 @@ message_row_init(Row) ->
         _ ->
             [Row]
     end.
-
-
-
-
-
