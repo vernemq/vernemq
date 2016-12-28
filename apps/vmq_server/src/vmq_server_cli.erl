@@ -59,13 +59,12 @@ register_cli() ->
     vmq_cluster_leave_cmd(),
     vmq_cluster_upgrade_cmd(),
 
-    vmq_session_list_cmd(),
-
     vmq_mgmt_create_api_key_cmd(),
     vmq_mgmt_delete_api_key_cmd(),
     vmq_mgmt_list_api_keys_cmd(),
 
     vmq_listener_cli:register_server_cli(),
+    vmq_info_cli:register_cli(),
     ok.
 
 register_cli_usage() ->
@@ -79,8 +78,6 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "cluster", "join"], join_usage()),
     clique:register_usage(["vmq-admin", "cluster", "leave"], leave_usage()),
 
-    clique:register_usage(["vmq-admin", "session"], session_usage()),
-    clique:register_usage(["vmq-admin", "session", "list"], vmq_session_list_usage()),
 
     clique:register_usage(["vmq-admin", "metrics"], metrics_usage()),
 
@@ -358,28 +355,6 @@ vmq_cluster_upgrade_cmd() ->
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 
-vmq_session_list_cmd() ->
-    Cmd = ["vmq-admin", "session", "list"],
-    KeySpecs = [],
-    ValidInfoItems = vmq_mqtt_fsm:info_items(),
-    FlagSpecs = [{I, [{longname, atom_to_list(I)}]} || I <- ValidInfoItems],
-    Callback = fun(_, [], Flags) ->
-                       InfoItems = [I || {I, undefined} <- Flags],
-                       Table =
-                       vmq_mqtt_fsm:list_sessions(InfoItems,
-                                                 fun(_, Infos, AccAcc) ->
-                                                         case Infos of
-                                                             [] ->
-                                                                 AccAcc;
-                                                             _ ->
-                                                                 [Infos|AccAcc]
-                                                         end
-                                                 end, []),
-                       [clique_status:table(Table)]
-               end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-
 vmq_mgmt_create_api_key_cmd() ->
     Cmd = ["vmq-admin", "api", "create-key"],
     KeySpecs = [],
@@ -415,16 +390,6 @@ vmq_mgmt_list_api_keys_cmd() ->
                        [clique_status:table(KeyTable)]
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-
-vmq_session_list_usage() ->
-    Options = [io_lib:format("  --~p\n", [Item])
-               || Item <- vmq_mqtt_fsm:info_items()],
-    ["vmq-admin session list\n\n",
-     "  Prints some information on running sessions\n\n",
-     "Options\n\n" | Options
-    ].
-
 
 
 start_usage() ->
@@ -514,14 +479,6 @@ cluster_usage() ->
      "    status      Prints cluster status information\n",
      "    join        Join a cluster\n",
      "    leave       Leave the cluster\n\n",
-     "  Use --help after a sub-command for more details.\n"
-    ].
-
-session_usage() ->
-    ["vmq-admin session <sub-command>\n\n",
-     "  Retrieve information on live sessions.\n\n",
-     "  Sub-commands:\n",
-     "    list        lists all running sessions\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 

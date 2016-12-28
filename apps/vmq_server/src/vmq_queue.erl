@@ -24,6 +24,7 @@
          notify_recv/1,
          enqueue/2,
          status/1,
+         info/1,
          add_session/3,
          get_sessions/1,
          set_opts/2,
@@ -160,6 +161,9 @@ save_sync_send_event(Queue, Event) ->
 
 status(Queue) ->
     gen_fsm:sync_send_all_state_event(Queue, status, infinity).
+
+info(Queue) ->
+    gen_fsm:sync_send_all_state_event(Queue, info, infinity).
 
 default_opts() ->
     #{allow_multiple_sessions => vmq_config:get_env(allow_multiple_sessions),
@@ -477,6 +481,27 @@ handle_sync_event(status, _From, StateName,
                       Acc + Size
               end, OfflineSize, Sessions),
     {reply, {StateName, Mode, TotalStoredMsgs, maps:size(Sessions), IsPlugin}, StateName, State};
+handle_sync_event(info, _From, StateName,
+                  #state{deliver_mode=Mode,
+                         offline=#queue{size=OfflineSize},
+                         sessions=Sessions,
+                         opts=#{is_plugin := IsPlugin}} = State) ->
+    {OnlineMessages, SessionInfo} =
+    maps:fold(fun(_, #session{pid=SessPid, clean=Clean,
+                              queue=#queue{size=Size}}, {AccN, AccSess}) ->
+                      {AccN + Size, [{SessPid, Clean}|AccSess]}
+              end, {0, []}, Sessions),
+    Info = #{is_offline => (StateName == offline),
+             is_online => (StateName /= offline),
+             statename => StateName,
+             deliver_mode => Mode,
+             offline_messages => OfflineSize,
+             online_messages => OnlineMessages,
+             num_sessions => length(SessionInfo),
+             is_plugin => IsPlugin,
+             sessions => SessionInfo},
+    {reply, Info, StateName, State};
+
 handle_sync_event(get_sessions, _From, StateName, #state{sessions=Sessions} = State) ->
     {reply, maps:keys(Sessions), StateName, State};
 handle_sync_event(get_opts, _From, StateName, #state{opts=Opts} = State) ->
