@@ -202,7 +202,9 @@ session_fields_config() ->
        peer_host,
        peer_port,
        protocol,
-       waiting_acks], fun session_row_init/2}
+       waiting_acks], fun session_row_init/2},
+     {[topic,
+       qos], fun subscription_row_init/2}
     ].
 
 session_info_items() ->
@@ -291,3 +293,12 @@ session_row_init(_, Row) ->
                                                              waiting_acks]),
             [maps:merge(Row, maps:from_list(InfoItems))]
     end.
+
+subscription_row_init(_, Row) ->
+    SubscriberId = {maps:get(mountpoint, Row), maps:get(client_id, Row)},
+    Subs = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
+    vmq_subscriber:fold(fun({Topic, QoS, _Node}, Acc) ->
+                                [maps:merge(Row, #{topic => vmq_topic:unword(Topic),
+                                                   qos => QoS})|Acc]
+                        end, [], Subs).
+
