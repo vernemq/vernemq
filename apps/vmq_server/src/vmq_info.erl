@@ -63,7 +63,7 @@ raise_enough_data(_, _, _, _) -> ignore.
 
 
 required_fields(Where) ->
-    lists:foldl(fun(A, Atoms) when not is_boolean(A) ->
+    lists:foldl(fun(A, Atoms) when is_atom(A) ->
                         [A|Atoms];
                    (_, Atoms) -> Atoms
                 end, [], prepare(Where, [])).
