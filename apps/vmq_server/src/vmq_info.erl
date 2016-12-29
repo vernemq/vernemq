@@ -159,32 +159,6 @@ lookup_ident(Ident) ->
         {ok, V} -> V
     end.
 
-load_all(FieldConfig, Row) ->
-    load_all(FieldConfig, Row, []).
-
-load_all([], Row, Acc) -> lists:flatten([Row|Acc]);
-load_all([{Fields, InitFun}|Rest], Row, Acc) ->
-      lists:foldl(fun(R, AccAcc) ->
-                        AccAcc ++ load_all(Rest, R, [])
-                end, Acc, InitFun(Fields, Row)).
-
-load_rows([], _, _, Acc) -> lists:flatten(Acc);
-load_rows(_, [], _, Acc) -> lists:flatten(Acc);
-load_rows(_, _, [], Acc) -> lists:flatten(Acc);
-load_rows(FieldConfig, RequiredFields, [Row|Rows], Acc) ->
-    load_rows(FieldConfig, RequiredFields, Rows,
-              [load_row(FieldConfig, RequiredFields, Row)|Acc]).
-
-load_row([{Fields, InitFun}|Rest], RequiredFields, Row) ->
-    Rows = InitFun(Fields, Row),
-    case RequiredFields -- Fields of
-        [] ->
-            %% all data fetched to meet this query
-            Rows;
-        UpdatedRequiredFields ->
-            load_rows(Rest, UpdatedRequiredFields, Rows, [])
-    end.
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% VMQ Sessions specific
 %%%
