@@ -36,6 +36,15 @@ handle(Req, State) ->
 %% callbacks for each hook
 auth_on_register(#{peer_addr := ?PEER_BIN,
                    peer_port := ?PEERPORT,
+                   client_id := <<"undefined_creds">>,
+                   mountpoint := ?MOUNTPOINT_BIN,
+                   username := null,
+                   password := null,
+                   clean_session := true
+                 }) ->
+    {200, #{result => <<"ok">>}};
+auth_on_register(#{peer_addr := ?PEER_BIN,
+                   peer_port := ?PEERPORT,
                    client_id := ?ALLOWED_CLIENT_ID,
                    mountpoint := ?MOUNTPOINT_BIN,
                    username := ?USERNAME,
@@ -49,7 +58,8 @@ auth_on_register(#{client_id := ?IGNORED_CLIENT_ID}) ->
     {200, #{result => <<"next">>}};
 auth_on_register(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
-            modifiers => #{mountpoint => <<"mynewmount">>}}};
+            modifiers => #{mountpoint => <<"mynewmount">>,
+                           client_id => <<"changed_client_id">>}}};
 auth_on_register(#{subscriberid := <<"internal_server_error">>}) ->
     throw(internal_server_error).
 

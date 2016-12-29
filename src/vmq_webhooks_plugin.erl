@@ -219,6 +219,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Hook functions
 %%%===================================================================
 %% called as an all_till_ok hook
+
+nullify(undefined) ->
+    null;
+nullify(Val) ->
+    Val.
+
 auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -226,13 +232,13 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
                                    {port, Port},
                                    {mountpoint, MP},
                                    {client_id, ClientId},
-                                   {username, UserName},
-                                   {password, Password},
+                                   {username, nullify(UserName)},
+                                   {password, nullify(Password)},
                                    {clean_session, CleanSession}]).
 
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(auth_on_publish, [{username, UserName},
+    all_till_ok(auth_on_publish, [{username, nullify(UserName)},
                                   {mountpoint, MP},
                                   {client_id, ClientId},
                                   {qos, QoS},
@@ -242,7 +248,7 @@ auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
 
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(auth_on_subscribe, [{username, UserName},
+    all_till_ok(auth_on_subscribe, [{username, nullify(UserName)},
                                     {mountpoint, MP},
                                     {client_id, ClientId},
                                     {topics, [[unword(T), QoS]
@@ -255,11 +261,11 @@ on_register(Peer, SubscriberId, UserName) ->
                            {port, Port},
                            {mountpoint, MP},
                            {client_id, ClientId},
-                           {username, UserName}]).
+                           {username, nullify(UserName)}]).
 
 on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all(on_publish, [{username, UserName},
+    all(on_publish, [{username, nullify(UserName)},
                      {mountpoint, MP},
                      {client_id, ClientId},
                      {qos, QoS},
@@ -269,7 +275,7 @@ on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
 
 on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all(on_subscribe, [{username, UserName},
+    all(on_subscribe, [{username, nullify(UserName)},
                        {mountpoint, MP},
                        {client_id, ClientId},
                        {topics, [[unword(T), QoS]
@@ -277,7 +283,7 @@ on_subscribe(UserName, SubscriberId, Topics) ->
 
 on_unsubscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(on_unsubscribe, [{username, UserName},
+    all_till_ok(on_unsubscribe, [{username, nullify(UserName)},
                                  {mountpoint, MP},
                                  {client_id, ClientId},
                                  {topics, [unword(T)
@@ -285,7 +291,7 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
 
 on_deliver(UserName, SubscriberId, Topic, Payload) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(on_deliver, [{username, UserName},
+    all_till_ok(on_deliver, [{username, nullify(UserName)},
                              {mountpoint, MP},
                              {client_id, ClientId},
                              {topic, unword(Topic)},

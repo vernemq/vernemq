@@ -22,7 +22,8 @@
          on_client_wakeup_test/1,
          on_client_offline_test/1,
          on_client_gone_test/1,
-         base64payload_test/1
+         base64payload_test/1,
+         auth_on_register_undefined_creds_test/1
         ]).
 
 init_per_suite(_Config) ->
@@ -62,7 +63,8 @@ all() ->
      on_client_wakeup_test,
      on_client_offline_test,
      on_client_gone_test,
-     base64payload_test
+     base64payload_test,
+     auth_on_register_undefined_creds_test
     ].
 
 
@@ -73,6 +75,7 @@ stop_endpoint() ->
     webhooks_handler:stop_endpoint().
 
 %% Test cases
+
 auth_on_register_test(_) ->
     register_hook(auth_on_register, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(auth_on_register,
@@ -81,7 +84,8 @@ auth_on_register_test(_) ->
                       [?PEER, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
     {error, [next]} = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, ?IGNORED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
-    {ok, [{mountpoint, "mynewmount"}]} = vmq_plugin:all_till_ok(auth_on_register,
+    {ok, [{client_id, <<"changed_client_id">>},
+          {mountpoint, "mynewmount"}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
     deregister_hook(auth_on_register, ?ENDPOINT).
 
@@ -186,6 +190,14 @@ base64payload_test(_) ->
           [?USERNAME, {?MOUNTPOINT, ?BASE64_PAYLOAD_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     deregister_hook(auth_on_publish, ?ENDPOINT).
 
+auth_on_register_undefined_creds_test(_) ->
+    register_hook(auth_on_register, ?ENDPOINT),
+    Username = undefined,
+    Password = undefined,
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                      [?PEER, {?MOUNTPOINT, <<"undefined_creds">>}, Username, Password, true]),
+    deregister_hook(auth_on_register, ?ENDPOINT).
+    
 %% helper functions
 register_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
