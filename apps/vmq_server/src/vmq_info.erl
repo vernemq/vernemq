@@ -18,6 +18,17 @@
 
 -export([session_info_items/0]).
 
+-export([session_fields_config/0,
+         depends/2]).
+
+-record(vmq_info_table, {
+          name,
+          depends_on,
+          provides = [],
+          init_fun,
+          include_if_all = true
+         }).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%    _   ____  _______    __
@@ -65,11 +76,11 @@ prepare([{_, {op, V1, _Op, V2}}|Rest], Acc) ->
 prepare([{_, Ops}|Rest], Acc) when is_list(Ops) ->
     prepare(Rest, prepare(Ops, Acc)).
 
-
 filter_row([all], EmptyResultRow, Row) ->
     maps:merge(EmptyResultRow, Row);
 filter_row(Fields, EmptyResultRow, Row) ->
     maps:merge(EmptyResultRow, maps:with(Fields, Row)).
+
 
 
 eval_query([]) ->
@@ -149,32 +160,6 @@ lookup_ident(Ident) ->
         {ok, V} -> V
     end.
 
-load_all(FieldConfig, Row) ->
-    load_all(FieldConfig, Row, []).
-
-load_all([], Row, Acc) -> lists:flatten([Row|Acc]);
-load_all([{Fields, InitFun}|Rest], Row, Acc) ->
-      lists:foldl(fun(R, AccAcc) ->
-                        AccAcc ++ load_all(Rest, R, [])
-                end, Acc, InitFun(Fields, Row)).
-
-load_rows([], _, _, Acc) -> lists:flatten(Acc);
-load_rows(_, [], _, Acc) -> lists:flatten(Acc);
-load_rows(_, _, [], Acc) -> lists:flatten(Acc);
-load_rows(FieldConfig, RequiredFields, [Row|Rows], Acc) ->
-    load_rows(FieldConfig, RequiredFields, Rows,
-              [load_row(FieldConfig, RequiredFields, Row)|Acc]).
-
-load_row([{Fields, InitFun}|Rest], RequiredFields, Row) ->
-    Rows = InitFun(Fields, Row),
-    case RequiredFields -- Fields of
-        [] ->
-            %% all data fetched to meet this query
-            Rows;
-        UpdatedRequiredFields ->
-            load_rows(Rest, UpdatedRequiredFields, Rows, [])
-    end.
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% VMQ Sessions specific
 %%%
@@ -182,39 +167,117 @@ load_row([{Fields, InitFun}|Rest], RequiredFields, Row) ->
 %%% TODO: Create a own vmql behaviour
 
 session_fields_config() ->
-    [{[mountpoint,
-       client_id,
-       queue_pid], fun row_init/2},
-     {[status,
-       deliver_mode,
-       queue_size,
-       session_pid,
-       is_offline,
-       is_online,
-       statename,
-       deliver_mode,
-       offline_messages,
-       online_messages,
-       num_sessions,
-       clean_session,
-       is_plugin],  fun queue_row_init/2},
-     {[user,
-       peer_host,
-       peer_port,
-       protocol,
-       waiting_acks], fun session_row_init/2},
-     {[topic,
-       qos], fun subscription_row_init/2}
-    ].
+    QueueBase = #vmq_info_table{
+                   name =       queue_base,
+                   depends_on = [],
+                   provides =   [mountpoint,client_id, queue_pid],
+                   init_fun =   fun row_init/1,
+                   include_if_all = true
+                  },
+    Queues = #vmq_info_table{
+                   name =       queues,
+                   depends_on = [QueueBase],
+                   provides = [status,
+                               deliver_mode,
+                               queue_size,
+                               session_pid,
+                               is_offline,
+                               is_online,
+                               statename,
+                               deliver_mode,
+                               offline_messages,
+                               online_messages,
+                               num_sessions,
+                               clean_session,
+                               is_plugin],
+                   init_fun = fun queue_row_init/1,
+                   include_if_all = true
+               },
+    Sessions = #vmq_info_table{
+                    name =      sessions,
+                    depends_on = [Queues],
+                    provides = [user,
+                                peer_host,
+                                peer_port,
+                                protocol,
+                                waiting_acks],
+                    init_fun = fun session_row_init/1,
+                    include_if_all = false
+                 },
+    Subscriptions = #vmq_info_table{
+                    name =      subscriptions,
+                    depends_on = [QueueBase],
+                    provides = [topic, qos],
+                    init_fun = fun subscription_row_init/1,
+                    include_if_all = false
+                    },
+    [QueueBase, Queues, Sessions, Subscriptions].
+
+get_row_initializer(FieldConfig, RequiredFields) ->
+    DependsWithDuplicates =
+    lists:foldl(
+      fun(Field, Acc) ->
+              Acc ++ depends(lists:filter(
+                               fun(#vmq_info_table{provides=Fields}) ->
+                                       lists:member(Field, Fields)
+                               end, FieldConfig), [])
+      end, [], RequiredFields),
+    % DependsWithDuplicates can look like [a,b,a,b,c,c]
+    % and has to be transformed to [a,b,c]
+    % Note lists:usort doesn't work here
+    lists:reverse(
+      lists:foldl(
+        fun(InitFun, Acc) ->
+                case lists:member(InitFun, Acc) of
+                    false ->
+                        [InitFun|Acc];
+                    true ->
+                        Acc
+                end
+        end, [], DependsWithDuplicates)).
+
+depends([#vmq_info_table{depends_on=Depends, init_fun=InitFun}|Rest], Acc) ->
+    depends(Rest, [depends(Depends, [InitFun])|Acc]);
+depends([], Acc) -> lists:flatten(Acc).
+
+include_fields(FieldConfig, Fields) ->
+    include_fields(FieldConfig, Fields, []).
+include_fields(FieldConfig, [all|Rest], Acc) ->
+    include_fields(FieldConfig, Rest,
+                   lists:foldl(fun(#vmq_info_table{include_if_all=true,
+                                                   provides=Fields}, AccAcc) ->
+                                       Fields ++ AccAcc;
+                                  (_, AccAcc) ->
+                                       AccAcc
+                               end, Acc, FieldConfig));
+include_fields(FieldConfig, [F|Rest], Acc) ->
+    include_fields(FieldConfig, Rest, [F|Acc]);
+include_fields(_, [], Acc) -> Acc.
+
+
+initialize_row([InitFun], Row) ->
+    InitFun(Row);
+initialize_row([InitFun|Rest], Row) ->
+    Rows = InitFun(Row),
+    initialize_rows(Rest, Rows, []).
+
+initialize_rows([], _, Acc) -> lists:flatten(Acc);
+initialize_rows(_, [], Acc) -> lists:flatten(Acc);
+initialize_rows(Initializer, [Row|Rows], Acc) ->
+    initialize_rows(Initializer, Rows,
+                    [initialize_row(Initializer, Row)|Acc]).
+
 
 session_info_items() ->
     %% used in vmq_info_cli
-    lists:flatten([Fields || {Fields, _} <- session_fields_config()]).
+    lists:flatten([Fields || #vmq_info_table{provides=Fields} <- session_fields_config()]).
 
 select(Fields, sessions, Where, OrderBy, Limit) ->
+    FieldsConfig = session_fields_config(),
     RequiredFields = lists:usort((required_fields(Where)
-                                  ++ Fields
-                                  ++ OrderBy) -- [all]),
+                                  ++ include_fields(FieldsConfig, Fields)
+                                  ++ OrderBy)) -- [all],
+    RowInitializer = get_row_initializer(FieldsConfig, RequiredFields),
     EmptyResultRow = empty_result_row(Fields),
     Results = ets:new(?MODULE, []),
     try vmq_queue_sup_sup:fold_queues(
@@ -222,13 +285,7 @@ select(Fields, sessions, Where, OrderBy, Limit) ->
               InitRow = #{mountpoint => MP,
                           client_id => ClientId,
                           queue_pid => QPid},
-              PreparedRows =
-              case lists:member(all, Fields) of
-                  true ->
-                      load_all(session_fields_config(), InitRow);
-                  false ->
-                      load_row(session_fields_config(), RequiredFields, InitRow)
-              end,
+              PreparedRows = initialize_row(RowInitializer, InitRow),
               lists:foldl(fun(Row, AccIdx) ->
                                    put({?MODULE, row_data}, Row),
                                    case eval_query(Where) of
@@ -262,10 +319,10 @@ empty_result_row([all]) ->
 empty_result_row(Fields) ->
     maps:from_list([{F, null} || F <- Fields]).
 
-row_init(_, Row) ->
+row_init(Row) ->
     [Row].
 
-queue_row_init(_, Row) ->
+queue_row_init(Row) ->
    QPid = maps:get(queue_pid, Row),
    QueueData = vmq_queue:info(QPid),
    case maps:get('sessions', QueueData) of
@@ -281,7 +338,7 @@ queue_row_init(_, Row) ->
                        end, [], Sessions)
    end.
 
-session_row_init(_, Row) ->
+session_row_init(Row) ->
     case maps:find(session_pid, Row) of
         error ->
             [Row];
@@ -294,7 +351,7 @@ session_row_init(_, Row) ->
             [maps:merge(Row, maps:from_list(InfoItems))]
     end.
 
-subscription_row_init(_, Row) ->
+subscription_row_init(Row) ->
     SubscriberId = {maps:get(mountpoint, Row), maps:get(client_id, Row)},
     Subs = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
     vmq_subscriber:fold(fun({Topic, QoS, _Node}, Acc) ->
