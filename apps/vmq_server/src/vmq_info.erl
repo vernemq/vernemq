@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_info).
+-include("vmq_server.hrl").
 
 -export([query/1]).
 
@@ -211,7 +212,22 @@ session_fields_config() ->
                     init_fun = fun subscription_row_init/1,
                     include_if_all = false
                     },
-    [QueueBase, Queues, Sessions, Subscriptions].
+    MessageRefs = #vmq_info_table{
+                    name =      message_refs,
+                    depends_on = [QueueBase],
+                    provides = [msg_ref],
+                    init_fun = fun message_ref_row_init/1,
+                    include_if_all = false
+                    },
+    Messages = #vmq_info_table{
+                    name =      messages,
+                    depends_on = [MessageRefs],
+                    provides = [msg_qos, routing_key, dup, payload],
+                    init_fun = fun message_row_init/1,
+                    include_if_all = false
+                    },
+
+    [QueueBase, Queues, Sessions, Subscriptions, MessageRefs, Messages].
 
 get_row_initializer(FieldConfig, RequiredFields) ->
     DependsWithDuplicates =
@@ -280,29 +296,36 @@ select(Fields, sessions, Where, OrderBy, Limit) ->
     RowInitializer = get_row_initializer(FieldsConfig, RequiredFields),
     EmptyResultRow = empty_result_row(Fields),
     Results = ets:new(?MODULE, []),
-    try vmq_queue_sup_sup:fold_queues(
-      fun({MP, ClientId}, QPid, Idx) ->
-              InitRow = #{mountpoint => MP,
-                          client_id => ClientId,
-                          queue_pid => QPid},
-              PreparedRows = initialize_row(RowInitializer, InitRow),
-              lists:foldl(fun(Row, AccIdx) ->
-                                   put({?MODULE, row_data}, Row),
-                                   case eval_query(Where) of
-                                       true ->
-                                           raise_enough_data(Idx, OrderBy, Limit, enough_data),
-                                           Key = order_by_key(Idx, OrderBy, Row),
-                                           ets:insert(Results,
-                                                      {Key, filter_row(Fields, EmptyResultRow, Row)}),
-                                           AccIdx + 1;
-                                       false -> AccIdx
-                                   end
-                           end, Idx, PreparedRows)
-      end, 1) catch
+    try
+        vmq_queue_sup_sup:fold_queues(
+          fun({MP, ClientId}, QPid, Idx) ->
+                  InitRow = #{mountpoint => MP,
+                              client_id => ClientId,
+                              queue_pid => QPid},
+                  PreparedRows = initialize_row(RowInitializer, InitRow),
+                  lists:foldl(fun(Row, AccIdx) ->
+                                      put({?MODULE, row_data}, Row),
+                                      case eval_query(Where) of
+                                          true ->
+                                              raise_enough_data(AccIdx, OrderBy, Limit, enough_data),
+                                              Key = order_by_key(AccIdx, OrderBy, Row),
+                                              ets:insert(Results,
+                                                         {Key, filter_row(Fields, EmptyResultRow, Row)}),
+                                              AccIdx + 1;
+                                          false -> AccIdx
+                                      end
+                              end, Idx, PreparedRows)
+          end, 1)
+    catch
         exit:enough_data ->
             %% Raising inside an ets:fold allows us to stop the fold
-            ok
+            ok;
+        E1:R1 ->
+            ets:delete(Results),
+            lager:error("Select query terminated due to ~p ~p", [E1, R1]),
+            exit({E1, R1})
     end,
+    Return =
     try ets:foldl(
           fun({_, Row}, Acc) ->
                   raise_enough_data(length(Acc) + 1, [], Limit, {enough_data, Acc}),
@@ -310,8 +333,15 @@ select(Fields, sessions, Where, OrderBy, Limit) ->
           end, [], Results)
     catch
         exit:{enough_data, Res} ->
-            Res
-    end.
+            Res;
+        E2:R2 ->
+            ets:delete(Results),
+            lager:error("Can't combine select query results due to ~p ~p", [E2, R2]),
+            exit({E2, R2})
+    end,
+    ets:delete(Results),
+    Return.
+
 
 empty_result_row([all]) ->
     Fields = lists:flatten([Fs || {Fs, _} <- session_fields_config()]),
@@ -358,4 +388,36 @@ subscription_row_init(Row) ->
                                 [maps:merge(Row, #{topic => vmq_topic:unword(Topic),
                                                    qos => QoS})|Acc]
                         end, [], Subs).
+
+
+message_ref_row_init(Row) ->
+    SubscriberId = {maps:get(mountpoint, Row), maps:get(client_id, Row)},
+    case vmq_plugin:only(msg_store_find, [SubscriberId]) of
+        {ok, MsgRefs} ->
+            lists:foldl(fun(MsgRef, Acc) ->
+                                [maps:merge(Row, #{'__msg_ref' => MsgRef,
+                                                   'msg_ref' => base64:encode_to_string(MsgRef)})|Acc]
+                        end, [], MsgRefs);
+        {error, _} ->
+            [Row]
+    end.
+
+message_row_init(Row) ->
+    SubscriberId = {maps:get(mountpoint, Row), maps:get(client_id, Row)},
+    MsgRef = maps:get('__msg_ref', Row),
+    case vmq_plugin:only(msg_store_read, [SubscriberId, MsgRef]) of
+        {ok, #vmq_msg{msg_ref=MsgRef, qos=QoS,
+                      dup=Dup, routing_key=RoutingKey,
+                      payload=Payload}} ->
+            [maps:merge(Row, #{msg_qos => QoS,
+                               routing_key => vmq_topic:unword(RoutingKey),
+                               dup => Dup,
+                               payload => Payload})];
+        _ ->
+            [Row]
+    end.
+
+
+
+
 
