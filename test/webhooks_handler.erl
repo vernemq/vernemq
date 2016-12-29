@@ -36,6 +36,15 @@ handle(Req, State) ->
 %% callbacks for each hook
 auth_on_register(#{peer_addr := ?PEER_BIN,
                    peer_port := ?PEERPORT,
+                   client_id := <<"undefined_creds">>,
+                   mountpoint := ?MOUNTPOINT_BIN,
+                   username := null,
+                   password := null,
+                   clean_session := true
+                 }) ->
+    {200, #{result => <<"ok">>}};
+auth_on_register(#{peer_addr := ?PEER_BIN,
+                   peer_port := ?PEERPORT,
                    client_id := ?ALLOWED_CLIENT_ID,
                    mountpoint := ?MOUNTPOINT_BIN,
                    username := ?USERNAME,
