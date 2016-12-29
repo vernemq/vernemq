@@ -58,7 +58,8 @@ auth_on_register(#{client_id := ?IGNORED_CLIENT_ID}) ->
     {200, #{result => <<"next">>}};
 auth_on_register(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
-            modifiers => #{mountpoint => <<"mynewmount">>}}};
+            modifiers => #{mountpoint => <<"mynewmount">>,
+                           client_id => <<"changed_client_id">>}}};
 auth_on_register(#{subscriberid := <<"internal_server_error">>}) ->
     throw(internal_server_error).
 
