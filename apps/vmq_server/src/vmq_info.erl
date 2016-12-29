@@ -331,8 +331,15 @@ select(Fields, sessions, Where, OrderBy, Limit) ->
           end, [], Results)
     catch
         exit:{enough_data, Res} ->
-            Res
-    end.
+            Res;
+        E2:R2 ->
+            ets:delete(Results),
+            lager:error("Can't combine select query results due to ~p ~p", [E2, R2]),
+            exit({E2, R2})
+    end,
+    ets:delete(Results),
+    Return.
+
 
 empty_result_row([all]) ->
     Fields = lists:flatten([Fs || {Fs, _} <- session_fields_config()]),
