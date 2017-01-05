@@ -41,7 +41,8 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications, integration of MQTT-SN
 * MySQL integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
 * PostgreSQL integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
 * Memcached integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
-* Webhooks (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
+* HTTP integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
+* HTTP Webhooks (via. `vmq_webhooks <https://github.com/erlio/vmq_webhooks>`_)
 
 Commercial Support. Binary Packages. Documentation
 --------------------------------------------------
