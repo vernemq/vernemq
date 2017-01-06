@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_metrics_http).
+-behaviour(vmq_http_config).
 
 -export([routes/0]).
 -export([init/3,
