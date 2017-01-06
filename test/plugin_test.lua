@@ -12,6 +12,11 @@ function auth_on_register(reg)
     assert(reg.addr == "192.168.123.123")
     assert(reg.port == 12345)
     assert(reg.mountpoint == "")
+    if reg.client_id == "undefined_creds" then
+       assert(reg.username == nil)
+       assert(reg.password == nil)
+       return true
+    end
     assert(reg.username == "test-user")
     assert(reg.password == "test-password")
     assert(reg.clean_session == true)

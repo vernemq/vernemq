@@ -19,7 +19,8 @@
          on_offline_message_test/1,
          on_client_wakeup_test/1,
          on_client_offline_test/1,
-         on_client_gone_test/1
+         on_client_gone_test/1,
+         auth_on_register_undefined_creds_test/1
         ]).
 
 %% ===================================================================
@@ -57,7 +58,8 @@ all() ->
      on_offline_message_test,
      on_client_wakeup_test,
      on_client_offline_test,
-     on_client_gone_test
+     on_client_gone_test,
+     auth_on_register_undefined_creds_test
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -121,6 +123,11 @@ on_client_offline_test(_) ->
 on_client_gone_test(_) ->
     [next] = vmq_plugin:all(on_client_gone, [allowed_subscriber_id()]).
 
+auth_on_register_undefined_creds_test(_) ->
+    Username = undefined,
+    Password = undefined,
+    ok = vmq_plugin:all_till_ok(auth_on_register,
+                      [peer(), {"", <<"undefined_creds">>}, Username, Password, true]).
 
 peer() -> {{192, 168, 123, 123}, 12345}.
 
