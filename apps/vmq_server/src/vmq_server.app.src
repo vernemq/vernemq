@@ -13,6 +13,7 @@
                   ssl,
                   plumtree,
                   vmq_commons,
+                  vmq_ql,
                   vmq_plugin,
                   clique,
                   mzmetrics,

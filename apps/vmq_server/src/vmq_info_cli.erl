@@ -14,8 +14,7 @@
 
 -module(vmq_info_cli).
 
--export([register_cli/0,
-         vmql_repl/1]).
+-export([register_cli/0]).
 
 register_cli() ->
     vmq_session_list_cmd(),
@@ -70,32 +69,6 @@ vmql_cli_cmd() ->
     KeySpecs = [],
     FlagSpecs = [],
     Callback = fun(_, _, _) ->
-                       io:put_chars(lists:flatten([
-"   _   ____  _______    __  \n",
-"  | | / /  |/  / __ \\  / /  \n",
-"  | |/ / /|_/ / /_/ / / /__ \n",
-"  |___/_/  /_/\\___\\_\\/____/ \n",
-"                            \n"
-                                                  ])),
-                       vmql_repl()
+                       vmq_ql_repl:start()
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-vmql_repl(_Args) ->
-    vmql_repl().
-vmql_repl() ->
-    QueryString = io:get_line("vmql> "),
-    try
-        Ret = vmq_info:query(QueryString),
-        Table =
-        lists:foldl(fun(Row, Acc) ->
-                            [maps:to_list(Row)|Acc]
-                    end, [], Ret),
-        {StdOut, _} = clique_writer:write([clique_status:table(Table)], "human"),
-        io:put_chars(StdOut)
-    catch
-        E:R ->
-            io:format("~p:~p~n", [E, R])
-    end,
-    vmql_repl().
-

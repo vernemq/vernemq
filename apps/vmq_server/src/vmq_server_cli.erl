@@ -354,7 +354,6 @@ vmq_cluster_upgrade_cmd() ->
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
-
 vmq_mgmt_create_api_key_cmd() ->
     Cmd = ["vmq-admin", "api", "create-key"],
     KeySpecs = [],
