@@ -14,6 +14,8 @@
 
 -module(vmq_http_mgmt_api).
 -behaviour(vmq_http_config).
+
+%% cowboy rest handler callbacks
 -export([init/3,
          rest_init/2,
          allowed_methods/2,
@@ -21,8 +23,7 @@
          options/2,
          is_authorized/2,
          malformed_request/2,
-         to_json/2,
-         to_html/2]).
+         to_json/2]).
 
 -export([routes/0,
          create_api_key/0,
@@ -44,8 +45,7 @@ allowed_methods(Req, State) ->
     {[<<"POST">>, <<"GET">>, <<"OPTIONS">>, <<"HEAD">>], Req, State}.
 
 content_types_provided(Req, State) ->
-    {[{<<"application/json">>, to_json},
-      {<<"text/html">>, to_html}], Req, State}.
+    {[{<<"application/json">>, to_json}], Req, State}.
 
 options(Req0, State) ->
     %% CORS Headers
@@ -95,9 +95,6 @@ to_json(Req, State) ->
             {iolist_to_binary(StdErr), Req1, State}
     end.
 
-to_html(Req, State) ->
-    to_json(Req, State).
-
 validate_command(Command, QsVals) ->
     ParamsAndFlags= parse_qs(QsVals),
     M0 = clique_command:match(parse_command(Command)
@@ -141,8 +138,8 @@ routes() ->
 create_api_key() ->
     Chars = list_to_tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
     Size = size(Chars),
-    F = fun(_, R) -> [element(rnd:uniform(Size), Chars) | R] end,
-    ApiKey = list_to_binary(lists:foldl(F, "", lists:seq(1, 32))),
+    F = fun() -> element(rand:uniform(Size), Chars) end,
+    ApiKey = list_to_binary([ F() || _ <- lists:seq(1,32) ]),
     Keys = vmq_config:get_env(vmq_server, ?ENV_API_KEYS, []),
     vmq_config:set_global_env(vmq_server, ?ENV_API_KEYS, [ApiKey|Keys], true),
     ApiKey.

@@ -494,6 +494,7 @@ usage() ->
      "    plugin      Manage plugin system\n",
      "    listener    Manage listener interfaces\n",
      "    metrics     Retrieve System Metrics\n",
+     "    api         Manage API keys for the HTTP management interface\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 node_usage() ->
@@ -533,7 +534,7 @@ metrics_usage() ->
 
 api_usage() ->
     ["vmq-admin api <sub-command>\n\n",
-     "  Create, delete, and show API keys.\n\n",
+     "  Create, delete, and show API keys for the HTTP management interface.\n\n",
      "  Sub-commands:\n",
      "    create-key  Creates a new API key.\n",
      "    delete-key  Deletes an existing API key.\n",
