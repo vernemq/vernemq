@@ -18,7 +18,6 @@
 
 register_cli() ->
     vmq_session_list_cmd(),
-    vmql_cli_cmd(),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
     clique:register_usage(["vmq-admin", "session", "list"], vmq_session_list_usage()).
@@ -94,12 +93,3 @@ vmq_session_list_usage() ->
      "  Prints some information on running sessions\n\n",
      "Options\n\n" | Options
     ].
-
-vmql_cli_cmd() ->
-    Cmd = ["vmq-admin", "vmql"],
-    KeySpecs = [],
-    FlagSpecs = [],
-    Callback = fun(_, _, _) ->
-                       vmq_ql_repl:start()
-               end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
