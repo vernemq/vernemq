@@ -365,7 +365,12 @@ v(V) when is_atom(V) ->
     lookup_ident(V);
 v(V) when is_pid(V) ->
     list_to_binary(pid_to_list(V));
-v(V) -> V.
+v(V) ->
+    try
+        binary_to_existing_atom(V, utf8)
+    catch
+        _:_ -> V
+    end.
 
 lookup_ident(Ident) ->
     Row = get({?MODULE, row_data}),

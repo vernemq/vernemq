@@ -27,7 +27,7 @@ fields_config() ->
     QueueBase = #vmq_ql_table{
                    name =       queue_base,
                    depends_on = [],
-                   provides =   [node, mountpoint,client_id, queue_pid],
+                   provides =   [node, mountpoint, client_id, queue_pid],
                    init_fun =   fun row_init/1,
                    include_if_all = true
                   },
@@ -93,8 +93,9 @@ session_info_items() ->
 fold_init_rows(Fun, Acc) ->
     vmq_queue_sup_sup:fold_queues(
       fun({MP, ClientId}, QPid, AccAcc) ->
-              InitRow = #{node => atom_to_binary(node(), utf8),
+              InitRow = #{node => node(),
                           mountpoint => list_to_binary(MP),
+                          '__mountpoint' => MP,
                           client_id => ClientId,
                           queue_pid => QPid},
               Fun(InitRow, AccAcc)
@@ -133,7 +134,7 @@ session_row_init(Row) ->
     end.
 
 subscription_row_init(Row) ->
-    SubscriberId = {maps:get(mountpoint, Row), maps:get(client_id, Row)},
+    SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
     Subs = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
     vmq_subscriber:fold(fun({Topic, QoS, _Node}, Acc) ->
                                 [maps:merge(Row, #{topic => vmq_topic:unword(Topic),
@@ -141,7 +142,7 @@ subscription_row_init(Row) ->
                         end, [], Subs).
 
 message_ref_row_init(Row) ->
-    SubscriberId = {maps:get(mountpoint, Row), maps:get(client_id, Row)},
+    SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
     case vmq_plugin:only(msg_store_find, [SubscriberId]) of
         {ok, MsgRefs} ->
             lists:foldl(fun(MsgRef, Acc) ->
@@ -153,7 +154,7 @@ message_ref_row_init(Row) ->
     end.
 
 message_row_init(Row) ->
-    SubscriberId = {maps:get(mountpoint, Row), maps:get(client_id, Row)},
+    SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
     MsgRef = maps:get('__msg_ref', Row),
     case vmq_plugin:only(msg_store_read, [SubscriberId, MsgRef]) of
         {ok, #vmq_msg{msg_ref=MsgRef, qos=QoS,

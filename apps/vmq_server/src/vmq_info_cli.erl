@@ -31,22 +31,53 @@ vmq_session_list_cmd() ->
     Callback = fun(_, [], Flags) ->
                        Limit = proplists:get_value(limit, Flags, "100"),
                        _ = list_to_integer(Limit),
-                       Fields =
+                       {Fields, Where} =
                        case Flags of
+                           [] ->
+                               {["*"], []};
+                           _ ->
+                               lists:foldl(
+                                 fun({Flag, undefined}, {AccFields, AccWhere}) ->
+                                         {[atom_to_list(Flag)|AccFields], AccWhere};
+                                    ({Flag, Val}, {AccFields, AccWhere}) ->
+                                         {AccFields, [{atom_to_list(Flag), v(Val)}|AccWhere]}
+                                 end, {[],[]}, Flags)
+                       end,
+                       FFields =
+                       case Fields of
                            [] ->
                                "*";
                            _ ->
-                               lists:flatten(string:join([[atom_to_list(I)] || {I, undefined} <- Flags], ","))
+                               string:join(Fields, ",")
                        end,
-                       QueryString = "SELECT " ++ Fields ++ " FROM sessions LIMIT " ++Limit,
-                       Ret = vmq_info:query(QueryString),
+                       WWhere =
+                       case Where of
+                           [] ->
+                               [];
+                           _ ->
+                               "WHERE " ++ lists:flatten(
+                                  string:join([[W, "=", V] || {W,V} <- Where], " AND "))
+                       end,
+                       QueryString = "SELECT " ++ FFields ++ " FROM sessions " ++ WWhere ++ " LIMIT " ++Limit,
                        Table =
-                       lists:foldl(fun(Row, Acc) ->
-                                           [maps:to_list(Row)|Acc]
-                                   end, [], Ret),
+                       vmq_ql_query_mgr:fold_query(
+                         fun(Row, Acc) ->
+                                 [maps:to_list(Row)|Acc]
+                         end, [], QueryString),
                        [clique_status:table(Table)]
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+v("true" = V) -> V;
+v("false" = V) -> V;
+v(V) ->
+    try
+        _ = list_to_integer(V),
+        V
+    catch
+        _:_ ->
+            "\"" ++ V ++ "\""
+    end.
 
 session_usage() ->
     ["vmq-admin session <sub-command>\n\n",
