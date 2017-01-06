@@ -6,8 +6,6 @@
          node_leave/1,
          node_upgrade/0,
          node_upgrade/1,
-         list_sessions/0,
-         list_sessions/1,
          set_config/2,
          listener_start/2,
          listener_start/3,
@@ -38,12 +36,6 @@ node_upgrade() ->
     vmq_server_cli:command(["vmq-admin", "node", "upgrade", "--upgrade-now"], false).
 node_upgrade(InstructionFile) ->
     vmq_server_cli:command(["vmq-admin", "node", "upgrade", "--upgrade-now", "--instruction-file=" ++ InstructionFile], false).
-
-list_sessions() ->
-    list_sessions(vmq_mqtt_fsm:info_items()).
-list_sessions(InfoItems) ->
-    vmq_server_cli:command(["vmq-admin", "session", "list"
-             | ["--" ++ atom_to_list(I) || I <- InfoItems]], false).
 
 set_config(Key, true) ->
     set_config(Key, "on");

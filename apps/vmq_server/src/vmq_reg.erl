@@ -51,8 +51,6 @@
          fold_subscriptions/2,
          fold_subscribers/2,
          fold_subscribers/3]).
-%% used by vmq_mqtt_fsm list_sessions
--export([fold_sessions/2]).
 
 %% exported because currently used by netsplit tests
 -export([subscriptions_for_subscriber_id/1]).
@@ -620,15 +618,6 @@ fold_subscribers(FoldFun, Acc, CompactResult) ->
               FoldFun(SubscriberId, vmq_subscriber:get_nodes(Subs), AccAcc);
           ({SubscriberId, Subs}, AccAcc) ->
               FoldFun(SubscriberId, Subs, AccAcc)
-      end, Acc).
-
-fold_sessions(FoldFun, Acc) ->
-    vmq_queue_sup_sup:fold_queues(
-      fun(SubscriberId, QPid, AccAcc) ->
-              lists:foldl(
-                fun(SessionPid, AccAccAcc) ->
-                        FoldFun(SubscriberId, SessionPid, AccAccAcc)
-                end, AccAcc, vmq_queue:get_sessions(QPid))
       end, Acc).
 
 -spec add_subscriber([{topic(), qos() | not_allowed}], subscriber_id()) -> ok.
