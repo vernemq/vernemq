@@ -1,5 +1,22 @@
 # Changelog
 
+## VerneMQ 0.15.3
+
+### vmq_server
+
+- Fix a bug in the retain messages fastpath code.
+- Add the first version of the VerneMQ HTTP admin API (BETA).
+- Fix a nodename change bug, fix contributed by @dcy.
+- Fix an oversight preventing the client id from being overridable in `auth_on_register`.
+
+### vmq_commons
+
+- Fix a bug in the MQTT parser.
+
+### vmq_passwd
+
+- Make compatible with the OpenSSL 1.1 API.
+
 ## VERNEMQ 0.15.2
 
 ### vmq_server
