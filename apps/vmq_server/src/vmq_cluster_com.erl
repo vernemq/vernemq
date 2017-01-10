@@ -147,18 +147,27 @@ process_bytes(Bytes, Buffer, St) ->
 
 
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
-    #vmq_msg{mountpoint=MP,
-             routing_key=Topic} = Msg = binary_to_term(Bin),
-    _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, Msg),
+    case binary_to_term(Bin) of
+        #vmq_msg{mountpoint=MP,
+                 routing_key=Topic} = Msg ->
+            _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, Msg);
+        CompatMsg ->
+            #vmq_msg{mountpoint=MP,
+                     routing_key=Topic} = Msg = compat_msg(CompatMsg),
+            _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, Msg)
+    end,
     process(Rest, St);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
     {CallerPid, Ref, {enqueue, QueuePid, Msgs}} = binary_to_term(Bin),
     %% enqueue in own process context
     %% to ensure that this won't block
     %% the cluster communication.
+    CompatMsgs = lists:map(fun({deliver, Qos, Msg}) ->
+                                   {deliver, Qos, compat_msg(Msg)}
+                           end, Msgs),
     spawn(fun() ->
                   try
-                      Reply = vmq_queue:enqueue_many(QueuePid, Msgs),
+                      Reply = vmq_queue:enqueue_many(QueuePid, CompatMsgs),
                       CallerPid ! {Ref, Reply}
                   catch
                       _:_ ->
@@ -167,6 +176,21 @@ process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
           end),
     process(Rest, St);
 process(<<>>, _) -> ok.
+
+%% Convert vmq_msg records coming from nodes implementing the
+%% subscriber groups feature into a #vmq_msg{} record without the
+%% sg_policy member.
+compat_msg(#vmq_msg{} = Msg) -> Msg;
+compat_msg({vmq_msg, MsgRef, RoutingKey, Payload, Retain, Dup, QoS, Mountpoint, Persisted, _SGPolicy}) ->
+    #vmq_msg{
+       msg_ref = MsgRef,
+       routing_key = RoutingKey,
+       payload = Payload,
+       retain = Retain,
+       dup = Dup,
+       qos = QoS,
+       mountpoint = Mountpoint,
+       persisted = Persisted}.
 
 publish({_, _} = SubscriberIdAndQoS, Msg) ->
     vmq_reg:publish(SubscriberIdAndQoS, Msg);
