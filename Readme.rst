@@ -43,6 +43,7 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications. Currently the followin
 * Memcached integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
 * HTTP integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
 * HTTP Webhooks (via. `vmq_webhooks <https://github.com/erlio/vmq_webhooks>`_)
+* Administration HTTP API (BETA)
 
 Commercial Support. Binary Packages. Documentation
 --------------------------------------------------
