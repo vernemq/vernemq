@@ -38,6 +38,7 @@
 -export([new/1,
 		 match/2,
          validate_topic/2,
+         contains_wildcard/1,
          unword/1,
 		 triples/1]).
 
@@ -99,6 +100,12 @@ validate_topic(publish, Topic) ->
     validate_publish_topic(Topic, 0, []);
 validate_topic(subscribe, Topic) ->
     validate_subscribe_topic(Topic, 0, []).
+
+contains_wildcard([<<"+">>|_]) -> true;
+contains_wildcard([<<"#">>]) -> true;
+contains_wildcard([_|Rest]) ->
+    contains_wildcard(Rest);
+contains_wildcard([]) -> false.
 
 validate_publish_topic(<<"+/", _/binary>>, _, _) -> {error, 'no_+_allowed_in_publish'};
 validate_publish_topic(<<"+">>, _, _) -> {error, 'no_+_allowed_in_publish'};
@@ -207,6 +214,11 @@ validate_unword_test() ->
     random:seed(A, B, C),
     random_topics(1000),
     ok.
+
+contains_wildcard_test() ->
+    true = contains_wildcard([<<"a">>, <<"+">>, <<"b">>]),
+    true = contains_wildcard([<<"#">>]),
+    false = contains_wildcard([<<"a">>, <<"b">>, <<"c">>]).
 
 random_topics(0) -> ok;
 random_topics(N) when N > 0 ->
