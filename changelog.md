@@ -24,6 +24,10 @@
   NOTE: To upgrade a live cluster all nodes must already be running 0.15.3 or
   newer! This feature is incompatible with older releases.
 
+- Use of specific routing tables for non-wildcard topics. This improvement 
+  results in faster routing table lookups for non-wildcard subscriptions, and
+  reduces overall memory consumption of the routing tables.
+
 ## VERNEMQ 0.15.3
 
 ### vmq_server
