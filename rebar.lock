@@ -60,4 +60,8 @@
  {<<"time_compat">>,
   {git,"git://github.com/lasp-lang/time_compat.git",
        {ref,"6007f68892104ebb6fa2366cebf9d928d8856273"}},
+  0},
+ {<<"vernemq_dev">>,
+  {git,"git://github.com/erlio/vernemq_dev.git",
+       {ref,"087fb0f84a2a848b71cc5e2391c4a3bac916a52f"}},
   0}].
