@@ -1,5 +1,29 @@
 # Changelog
 
+## Nightly (will become next release)
+
+### vmq_server
+
+- Add implementation of shared subscriptions as specified in the MQTTv5 draft
+  spec. Currently two different distribution policies are supported:
+
+  - `prefer_local` which will, if possible, deliver the message to a random
+    local subscriber in the shared subscription group, otherwise the message
+    will be delivered to a random remote subscriber of the shared
+    subscription (if any).
+  - `random` will distribute the messages random between all members of the
+    shared supscription regardless if they are local or are subscribed via
+    another node.
+
+  Currently, only members of the shared subscription that are online are
+  eligible as receivers of shared subscription messages. This means it's
+  currently not possible to have the messages stored as offline messages. We may
+  change this semantics in the future and because of this and because of the
+  fact that the MQTTv5 is not yet final, this feature is marked as BETA.
+
+  NOTE: To upgrade a live cluster all nodes must already be running 0.15.3 or
+  newer! This feature is incompatible with older releases.
+
 ## VERNEMQ 0.15.3
 
 ### vmq_server

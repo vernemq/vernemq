@@ -60,6 +60,11 @@ fold(MP, Topic, FoldFun, Acc) when is_list(Topic) ->
               get_remote_subscribers(MP, Topic)) %% remote subscriptions without wildcards
           ], []).
 
+fold_(MP, FoldFun, Acc, [{Topic, {_Node, Group}}|MatchedTopics], Remotes) ->
+    fold_(MP, FoldFun,
+          fold__(FoldFun, Acc,
+                 ets:lookup(vmq_trie_subs, {MP, Group, Topic})),
+          MatchedTopics, Remotes);
 fold_(MP, FoldFun, Acc, [{Topic, Node}|MatchedTopics], Remotes) when Node == node() ->
     fold_(MP, FoldFun,
           fold__(FoldFun, Acc,
@@ -221,22 +226,30 @@ handle_event(Handler, Event) ->
             ok
     end.
 
-handle_delete_event({Topic, QoS, Node}, {MP, _} = SubscriberId) when Node == node() ->
-    del_wildcard_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
-    del_subscriber(MP, Topic, SubscriberId, QoS),
+handle_add_event({[<<"$share">>, Group|Topic], QoS, Node}, {MP, _} = SubscriberId) ->
+    add_complex_topic(MP, Topic, {Node, Group}, true),
+    add_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS),
     SubscriberId;
-handle_delete_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
-    del_wildcard_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
-    del_remote_subscriber(MP, Topic, Node),
-    SubscriberId.
-
 handle_add_event({Topic, QoS, Node}, {MP, _} = SubscriberId) when Node == node() ->
-    add_wildcard_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
+    add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_subscriber(MP, Topic, SubscriberId, QoS),
     SubscriberId;
 handle_add_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
-    add_wildcard_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
+    add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_remote_subscriber(MP, Topic, Node),
+    SubscriberId.
+
+handle_delete_event({[<<"$share">>, Group|Topic], QoS, Node}, {MP, _} = SubscriberId) ->
+    del_complex_topic(MP, Topic, {Node, Group}, true),
+    del_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS),
+    SubscriberId;
+handle_delete_event({Topic, QoS, Node}, {MP, _} = SubscriberId) when Node == node() ->
+    del_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
+    del_subscriber(MP, Topic, SubscriberId, QoS),
+    SubscriberId;
+handle_delete_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
+    del_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
+    del_remote_subscriber(MP, Topic, Node),
     SubscriberId.
 
 match(MP, Topic) when is_list(MP) and is_list(Topic) ->
@@ -254,42 +267,39 @@ match(MP, Topic, [#trie_node{topic=Name}|Rest], Acc) when Name =/= undefined ->
     case ets:lookup(vmq_trie_topic, {MP, Name}) of
         [] ->
             match(MP, Topic, Rest, Acc);
-        [{_, _, _, Nodes}] ->
+        [{_, _, Nodes}] ->
             match(MP, Topic, Rest, match_(Name, Nodes, Acc))
     end;
 match(MP, Topic, [_|Rest], Acc) ->
     match(MP, Topic, Rest, Acc);
 match(_, _, [], Acc) -> Acc.
 
-match_(Topic, [Node|Rest], Acc) ->
-    match_(Topic, Rest, [{Topic, Node}|Acc]);
+match_(Topic, [{NodeOrGroup,_}|Rest], Acc) ->
+    match_(Topic, Rest, [{Topic, NodeOrGroup}|Acc]);
 match_(_, [], Acc) -> Acc.
 
+initialize_trie({MP, Group, Topic, {SubscriberId, QoS, _}}, Acc) ->
+    add_complex_topic(MP, Topic, {SubscriberId, QoS, node()}, vmq_topic:contains_wildcard(Topic)),
+    add_subscriber_group(MP, node(), Group, Topic, SubscriberId, QoS),
+    Acc;
 initialize_trie({MP, Topic, {SubscriberId, QoS, _}}, Acc) ->
-    add_wildcard_topic(MP, Topic, node(), vmq_topic:contains_wildcard(Topic)),
+    add_complex_topic(MP, Topic, node(), vmq_topic:contains_wildcard(Topic)),
     add_subscriber(MP, Topic, SubscriberId, QoS),
     Acc;
 initialize_trie({MP, Topic, Node}, Acc) when is_atom(Node) ->
-    add_wildcard_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
+    add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_remote_subscriber(MP, Topic, Node),
     Acc.
 
-add_wildcard_topic(_, _, _, false) -> ignore;
-add_wildcard_topic(MP, Topic, Node, true) ->
+add_complex_topic(_, _, _, false) -> ignore;
+add_complex_topic(MP, Topic, Node, true) ->
     MPTopic = {MP, Topic},
     case ets:lookup(vmq_trie_topic, MPTopic) of
         [] ->
-            ets:insert(vmq_trie_topic, {MPTopic, 1, maps:put(Node, 1, maps:new()), [Node]});
-        [{_, TotalCnt, NodeMap, _}] ->
-            NewNodeMap =
-            case maps:find(Node, NodeMap) of
-                error ->
-                    maps:put(Node, 1, NodeMap);
-                {ok, Cnt} ->
-                    maps:put(Node, Cnt + 1, NodeMap)
-            end,
-            ets:insert(vmq_trie_topic, {MPTopic, TotalCnt + 1, NewNodeMap,
-                                        [N || {N, _} <- maps:to_list(NewNodeMap)]})
+            ets:insert(vmq_trie_topic, {MPTopic, 1, [{Node, 1}]});
+        [{_, TotalCnt, Nodes}] ->
+            NewNodes = add_and_inc(Node, Nodes),
+            ets:insert(vmq_trie_topic, {MPTopic, TotalCnt + 1, NewNodes})
     end,
 
     case ets:lookup(vmq_trie_node, MPTopic) of
@@ -301,6 +311,7 @@ add_wildcard_topic(MP, Topic, Node, true) ->
             %% add last node
             ets:insert(vmq_trie_node, #trie_node{node_id=MPTopic, topic=Topic})
     end.
+
 
 trie_add_path(MP, {Node, Word, Child}) ->
     NodeId = {MP, Node},
@@ -347,31 +358,36 @@ trie_match(MP, Node, [W|Words], ResAcc) ->
             ResAcc
     end.
 
-del_wildcard_topic(_, _, _, false) -> ignore;
-del_wildcard_topic(MP, Topic, Node, true) ->
+del_complex_topic(_, _, _, false) -> ignore;
+del_complex_topic(MP, Topic, NodeOrGroup, true) ->
     MPTopic = {MP, Topic},
     case ets:lookup(vmq_trie_topic, MPTopic) of
-        [{_, TotalCnt, NodeMap, _}] ->
-            {NewNodeMap, NewTotalCnt} =
-            case maps:find(Node, NodeMap) of
-                error ->
-                    {NodeMap, TotalCnt};
-                {ok, 1} ->
-                    {maps:remove(Node, NodeMap), TotalCnt -1};
-                {ok, Cnt} ->
-                    {maps:put(Node, Cnt - 1, NodeMap), TotalCnt -1}
-            end,
-            case NewTotalCnt > 0 of
-                true ->
-                    ets:insert(vmq_trie_topic, {MPTopic, NewTotalCnt, NewNodeMap,
-                                                [N || {N, _} <- maps:to_list(NewNodeMap)]}),
-                    ignore;
-               false ->
-                    ets:delete(vmq_trie_topic, MPTopic),
-                    trie_delete(MP, Topic)
-            end;
+        [{_, TotalCnt, Nodes}] when TotalCnt > 1 ->
+            NewNodes = rem_and_dec(NodeOrGroup, Nodes),
+            ets:insert(vmq_trie_topic, {MPTopic, TotalCnt - 1, NewNodes});
+        [{_, 1, _}] ->
+            ets:delete(vmq_trie_topic, MPTopic),
+            trie_delete(MP, Topic);
         _ ->
             ignore
+    end.
+
+rem_and_dec(Node, Nodes) ->
+    case lists:keysearch(Node, 1, Nodes) of
+        {value, {_, 1}} ->
+            lists:keydelete(Node, 1, Nodes);
+        {value, {N, C}} ->
+            lists:keyreplace(Node, 1, Nodes, {N, C - 1});
+        false ->
+            Nodes
+    end.
+
+add_and_inc(Node, Nodes) ->
+    case lists:keysearch(Node, 1, Nodes) of
+        {value, {N, C}} ->
+            lists:keyreplace(Node, 1, Nodes, {N, C + 1});
+        false ->
+            [{Node, 1}|Nodes]
     end.
 
 trie_delete(MP, Topic) ->
@@ -401,6 +417,12 @@ trie_delete_path(MP, [{Node, Word, _}|RestPath]) ->
             ignore
     end.
 
+add_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS) ->
+    ets:insert(vmq_trie_subs, {{MP, Group, Topic}, {Node, Group, SubscriberId, QoS}}).
+
+del_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS) ->
+    ets:delete_object(vmq_trie_subs, {{MP, Group, Topic}, {Node, Group, SubscriberId, QoS}}).
+
 add_subscriber(MP, Topic, SubscriberId, QoS) ->
     ets:insert(vmq_trie_subs, {{MP, Topic}, {SubscriberId, QoS}}).
 
@@ -411,12 +433,7 @@ add_remote_subscriber(MP, Topic, Node) ->
         [] ->
             [{Node, 1}];
         [{_, Remotes}] ->
-            case lists:keyfind(Node, 1, Remotes) of
-                {Node, C} ->
-                    lists:keyreplace(Node, 1, Remotes, {Node, C + 1});
-                false ->
-                    [{Node, 1}|Remotes]
-            end
+            add_and_inc(Node, Remotes)
     end,
     ets:insert(vmq_trie_remote_subs, {Key, NewRemotes}).
 
@@ -438,17 +455,10 @@ del_remote_subscriber(MP, Topic, Node) ->
         [] ->
             ignore;
         [{_, Remotes}] ->
-            case lists:keyfind(Node, 1, Remotes) of
-                {Node, 1} ->
-                    case lists:keydelete(Node, 1, Remotes) of
-                        [] ->
-                            ets:delete(vmq_trie_remote_subs, Key);
-                        NewRemotes ->
-                            ets:insert(vmq_trie_remote_subs, {Key, NewRemotes})
-                    end;
-                {Node, C} ->
-                    NewRemotes =
-                    lists:keyreplace(Node, 1, Remotes, {Node, C - 1}),
+            case rem_and_dec(Node, Remotes) of
+                [] ->
+                    ets:delete(vmq_trie_remote_subs, Key);
+                NewRemotes ->
                     ets:insert(vmq_trie_remote_subs, {Key, NewRemotes})
             end
     end.

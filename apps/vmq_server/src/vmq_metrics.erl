@@ -346,7 +346,6 @@ misc_statistics() ->
     {NrOfSubs, SMemory} = vmq_reg_trie:stats(),
     {NrOfRetain, RMemory} = vmq_retain_srv:stats(),
     [{gauge, router_subscriptions, NrOfSubs},
-     {gauge, router_topics, NrOfTopics},
      {gauge, router_memory, SMemory},
      {gauge, retain_messages, NrOfRetain},
      {gauge, retain_memory, RMemory},

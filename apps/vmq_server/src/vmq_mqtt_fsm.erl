@@ -66,6 +66,7 @@
           max_client_id_size=100            :: non_neg_integer(),
 
           %% changeable by auth_on_register
+          shared_subscription_policy=prefer_local :: sg_policy(),
           max_inflight_messages=20          :: non_neg_integer(), %% 0 means unlimited
           max_message_rate=0                :: non_neg_integer(), %% 0 means unlimited
           retry_interval=20000              :: pos_integer(),
@@ -89,6 +90,7 @@ init(Peer, Opts) ->
         {_, PreAuth} -> {preauth, PreAuth}
     end,
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
+    SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
     RetryInterval = vmq_config:get_env(retry_interval, 20),
     MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
@@ -113,6 +115,7 @@ init(Peer, Opts) ->
                                      upgrade_qos=UpgradeQoS,
                                      subscriber_id=SubscriberId,
                                      allow_anonymous=AllowAnonymous,
+                                     shared_subscription_policy=SharedSubPolicy,
                                      max_inflight_messages=MaxInflightMsgs,
                                      max_message_rate=MaxMessageRate,
                                      username=PreAuthUser,
@@ -216,9 +219,10 @@ wait_for_connect(_, State) ->
     {stop, any(), [mqtt_frame() | binary()]}.
 connected(#mqtt_publish{message_id=MessageId, topic=Topic,
                         qos=QoS, retain=IsRetain,
-                        payload=Payload}, State) ->
+                        payload=Payload},
+          #state{subscriber_id={MountPoint,_},
+                 shared_subscription_policy=SGPolicy} = State) ->
     DoThrottle = do_throttle(State),
-    #state{subscriber_id={MountPoint, _}} = State,
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
     _ = vmq_metrics:incr_mqtt_publish_received(),
@@ -233,7 +237,8 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
                            retain=unflag(IsRetain),
                            qos=QoS,
                            mountpoint=MountPoint,
-                           msg_ref=msg_ref()},
+                           msg_ref=msg_ref(),
+                           sg_policy=SGPolicy},
             dispatch_publish(QoS, MessageId, Msg, State)
     end,
     case Ret of
@@ -604,6 +609,7 @@ auth_on_register(User, Password, State) ->
                              reg_view=?state_val(reg_view, Args, State),
                              max_message_rate=?state_val(max_message_rate, Args, State),
                              max_inflight_messages=?state_val(max_inflight_messages, Args, State),
+                             shared_subscription_policy=?state_val(shared_subscription_policy, Args, State),
                              retry_interval=?state_val(retry_interval, Args, State),
                              upgrade_qos=?state_val(upgrade_qos, Args, State),
                              cap_settings=ChangedCAPSettings
