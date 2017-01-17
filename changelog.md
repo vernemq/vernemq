@@ -22,7 +22,7 @@
   fact that the MQTTv5 is not yet final, this feature is marked as BETA.
 
   NOTE: To upgrade a live cluster all nodes must already be running 0.15.3 or
-  never! This feature is incompatible with older releases.
+  newer! This feature is incompatible with older releases.
 
 ## VERNEMQ 0.15.3
 
