@@ -113,7 +113,7 @@ parse_qs([{<<"--", Opt/binary>>, Val}|Rest], Acc) ->
     parse_qs(Rest, ["--" ++ binary_to_list(Opt) ++ "=" ++ binary_to_list(Val)|Acc]);
 parse_qs([{Param, Val}|Rest], Acc) ->
     parse_qs(Rest, [binary_to_list(Param) ++ "=" ++ binary_to_list(Val)|Acc]);
-parse_qs([], Acc) -> Acc.
+parse_qs([], Acc) -> lists:reverse(Acc).
 
 run_command(M3) ->
     {Res, _, _} = clique_command:run(M3),
