@@ -42,7 +42,7 @@ rest_init(Req, _Opts) ->
     {ok, Req, undefined}.
 
 allowed_methods(Req, State) ->
-    {[<<"POST">>, <<"GET">>, <<"OPTIONS">>, <<"HEAD">>], Req, State}.
+    {[<<"GET">>, <<"OPTIONS">>, <<"HEAD">>], Req, State}.
 
 content_types_provided(Req, State) ->
     {[{<<"application/json">>, to_json}], Req, State}.
@@ -50,7 +50,7 @@ content_types_provided(Req, State) ->
 options(Req0, State) ->
     %% CORS Headers
     Req1 = cowboy_req:set_resp_header(<<"access-control-max-age">>, <<"1728000">>, Req0),
-    Req2 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET, POST">>, Req1),
+    Req2 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET">>, Req1),
     Req3 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"content-type, authorization">>, Req2),
     Req4 = cowboy_req:set_resp_header(<<"access-control-allow-origin">>, <<$*>>, Req3),
 
