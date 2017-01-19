@@ -145,7 +145,7 @@ create_api_key() ->
     ApiKey.
 
 delete_api_key(ApiKey) ->
-    case vmq_config:get_env(vmq_server, ?ENV_API_KEYS) of
+    case vmq_config:get_env(?ENV_API_KEYS, []) of
         undefined -> ok;
         Keys when is_list(Keys) ->
             vmq_config:set_global_env(vmq_server, ?ENV_API_KEYS, Keys -- [ApiKey], true)
