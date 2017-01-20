@@ -1,7 +1,7 @@
 -include_lib("vmq_commons/include/vmq_types.hrl").
 -type plugin_id()       :: {plugin, atom(), pid()}.
 
--type sg_policy() :: prefer_local | random.
+-type sg_policy() :: prefer_local | local_only | random.
 -record(vmq_msg, {
           msg_ref               :: msg_ref(),
           routing_key           :: routing_key(),

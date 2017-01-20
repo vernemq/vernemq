@@ -76,7 +76,12 @@ publish_(Msg, {Node, SubscriberId, QoS}, QState) when Node == node() ->
         not_found ->
             {error, not_found};
         QPid ->
-            vmq_queue:enqueue_many(QPid, [{deliver, QoS, Msg}], #{states => [QState]})
+            try
+                vmq_queue:enqueue_many(QPid, [{deliver, QoS, Msg}], #{states => [QState]})
+            catch
+                _:_ ->
+                    {error, cant_enqueue}
+            end
     end;
 publish_(Msg, {Node, SubscriberId, QoS}, QState) ->
     Term = {enqueue_many, SubscriberId, [{deliver, QoS, Msg}], #{states => [QState]}},
@@ -93,4 +98,10 @@ filter_subscribers(Subscribers, prefer_local) ->
     case LocalSubscribers of
         [] -> Subscribers;
         _ -> LocalSubscribers
-    end.
+    end;
+filter_subscribers(Subscribers, local_only) ->
+    Node = node(),
+    lists:filter(fun({N, _, _}) when N == Node -> true;
+                    (_) -> false
+                 end, Subscribers).
+
