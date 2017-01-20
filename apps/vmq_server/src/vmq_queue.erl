@@ -218,14 +218,8 @@ online({set_last_waiting_acks, WAcks}, _From, State) ->
 online({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, online, insert_many(Msgs, State)};
-online({enqueue_many, Msgs, #{states := ES}}, _From, State) ->
-    case lists:member(online, ES) of
-        true ->
-            _ = vmq_metrics:incr_queue_in(length(Msgs)),
-            {reply, ok, online, insert_many(Msgs, State)};
-        false ->
-            {reply, {error, online}, State}
-    end;
+online({enqueue_many, Msgs, Opts}, _From, State) ->
+    enqueue_many_(Msgs, online, Opts, State);
 online(cleanup, From, State)
   when State#state.waiting_call == undefined ->
     disconnect_sessions(State),
@@ -241,6 +235,7 @@ wait_for_offline({enqueue, Msg}, State) ->
 wait_for_offline(Event, State) ->
     lager:error("got unknown event in wait_for_offline state ~p", [Event]),
     {next_state, wait_for_offline, State}.
+
 
 wait_for_offline({set_last_waiting_acks, WAcks}, _From, State) ->
     {reply, ok, wait_for_offline, handle_waiting_acks_and_msgs(WAcks, State)};
@@ -376,6 +371,10 @@ drain({enqueue_many, Msgs}, _From, #state{drain_over_timer=TRef} =  State) ->
     gen_fsm:send_event(self(), drain_start),
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, drain, insert_many(Msgs, State)};
+drain({enqueue_many, Msgs, Opts}, _From, #state{drain_over_timer=TRef} =  State) ->
+    gen_fsm:cancel_timer(TRef),
+    gen_fsm:send_event(self(), drain_start),
+    enqueue_many_(Msgs, drain, Opts, State);
 drain(Event, _From, State) ->
     lager:error("got unknown sync event in drain state ~p", [Event]),
     {reply, {error, draining}, drain, State}.
@@ -426,6 +425,8 @@ offline({migrate, OtherQueue}, From, State) ->
 offline({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, offline, insert_many(Msgs, State)};
+offline({enqueue_many, Msgs, Opts}, _From, State) ->
+    enqueue_many_(Msgs, offline, Opts, State);
 offline(cleanup, _From, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     cleanup_queue(SId, Q),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
@@ -498,6 +499,19 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+enqueue_many_(Msgs, FsmState, #{states := AllowedStates}, State) ->
+    case allowed_state(FsmState, AllowedStates) of
+        true ->
+            _ = vmq_metrics:incr_queue_in(length(Msgs)),
+            {reply, ok, FsmState, insert_many(Msgs, State)};
+        false ->
+            {reply, {error, FsmState}, State}
+    end.
+
+allowed_state(FsmState, AllowedStates) ->
+    Any = lists:member(any, AllowedStates),
+    Any orelse lists:member(FsmState, AllowedStates).
+
 add_session_(SessionPid, Opts, #state{id=SId, offline=Offline,
                                       sessions=Sessions, opts=OldOpts} = State) ->
     #{clean_session := Clean,

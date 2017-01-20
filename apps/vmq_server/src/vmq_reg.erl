@@ -271,57 +271,9 @@ register_session(SubscriberId, QueueOpts) ->
 publish(RegView, MP, Topic, FoldFun, #vmq_msg{sg_policy = SGPolicy} = Msg) ->
     Acc = publish_fold_acc(Msg),
     {NewMsg, SubscriberGroups} = vmq_reg_view:fold(RegView, MP, Topic, FoldFun, Acc),
-    publish_to_subscriber_groups(NewMsg, SGPolicy, SubscriberGroups).
+    shared_subscriptions:publish(NewMsg, SGPolicy, SubscriberGroups).
 
 publish_fold_acc(Msg) -> {Msg, undefined}.
-
-publish_to_subscriber_groups(_,_, undefined) -> ok;
-publish_to_subscriber_groups(Msg, Policy, SubscriberGroups) when is_map(SubscriberGroups) ->
-    publish_to_subscriber_groups(Msg, Policy, maps:to_list(SubscriberGroups));
-publish_to_subscriber_groups(_,_, []) -> ok;
-publish_to_subscriber_groups(Msg, Policy, [{Group, []}|Rest]) ->
-    lager:debug("can't publish to shared subscription ~p, no subscribers: ~p", [Group, Msg]),
-    publish_to_subscriber_groups(Msg, Policy, Rest);
-publish_to_subscriber_groups(Msg, Policy, [{Group, SubscriberGroup}|Rest]) ->
-    Subscribers = filter_subscribers(SubscriberGroup, Policy),
-    N = rnd:uniform(length(Subscribers)),
-    case lists:nth(N, Subscribers) of
-        {Node, SubscriberId, QoS} = Sub when Node == node() ->
-            case get_queue_pid(SubscriberId) of
-                not_found ->
-                    NewSubscriberGroup = lists:delete(Sub, SubscriberGroup),
-                    %% retry with other members of this group
-                    publish_to_subscriber_groups(Msg, Policy, [{Group, NewSubscriberGroup}|Rest]);
-                QPid ->
-                    ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg}),
-                    publish_to_subscriber_groups(Msg, Policy, Rest)
-            end;
-        {Node, SubscriberId, QoS} = Sub ->
-            Term = {enqueue_many, SubscriberId, [{deliver, QoS, Msg}], #{states => [online]}},
-            case vmq_cluster:remote_enqueue(Node, Term) of
-                ok ->
-                    publish_to_subscriber_groups(Msg, Policy, Rest);
-                {error, Reason} ->
-                    lager:debug("can't publish to shared subscription on remote node ~p due to '~p'",
-                                  [Node, Reason]),
-                    NewSubscriberGroup = lists:delete(Sub, SubscriberGroup),
-                    %% retry with other members of this group
-                    publish_to_subscriber_groups(Msg, Policy, [{Group, NewSubscriberGroup}|Rest])
-            end
-    end.
-
-filter_subscribers(Subscribers, random) ->
-    Subscribers;
-filter_subscribers(Subscribers, prefer_local) ->
-    Node = node(),
-    LocalSubscribers = 
-        lists:filter(fun({N, _, _}) when N == Node -> true;
-                        (_) -> false
-                     end, Subscribers),
-    case LocalSubscribers of
-        [] -> Subscribers;
-        _ -> LocalSubscribers
-    end.
 
 -spec publish(flag(), module(), msg()) -> 'ok' | {'error', _}.
 publish(true, RegView, #vmq_msg{mountpoint=MP,
