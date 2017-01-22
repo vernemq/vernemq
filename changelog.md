@@ -14,12 +14,14 @@
   - `random` will distribute the messages random between all members of the
     shared supscription regardless if they are local or are subscribed via
     another node.
+  - `local_only` will consider only node-local members of the subscriber group
+    for delivery.
 
-  Currently, only members of the shared subscription that are online are
-  eligible as receivers of shared subscription messages. This means it's
-  currently not possible to have the messages stored as offline messages. We may
-  change this semantics in the future and because of this and because of the
-  fact that the MQTTv5 is not yet final, this feature is marked as BETA.
+  A message published to a shared subscription will first be delivered to online
+  members of the shared subscription if any exist, failing that, the message
+  will be delivered to an offline subscriber of the shared subscription. Due to
+  the fact that the MQTTv5 spec is not yet final, this feature is marked as
+  BETA.
 
   NOTE: To upgrade a live cluster all nodes must already be running 0.15.3 or
   newer! This feature is incompatible with older releases.
