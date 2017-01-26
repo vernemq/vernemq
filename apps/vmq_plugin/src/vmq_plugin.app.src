@@ -11,8 +11,6 @@
                  ]},
   {mod, { vmq_plugin_app, []}},
   {env, [
-        {plugin_dir, "."},
-        {plugin_config, "vmq_plugin.conf"},
         {wait_for_proc, init},
         {default_schema_dir, []}
     ]}

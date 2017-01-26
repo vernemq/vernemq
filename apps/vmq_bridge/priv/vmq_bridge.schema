@@ -4,13 +4,13 @@
 %% @doc Specify the address and port of the bridge to connect to. Several 
 %% bridges can configured by using different bridge names (e.g. br0). If the 
 %% connection supports SSL encryption bridge.ssl.<name> can be used.
-{mapping, "bridge.tcp.$name", "vmq_bridge.config", [
+{mapping, "vmq_bridge.tcp.$name", "vmq_bridge.config", [
                                                     {default, "127.0.0.1:1889"},
                                                     {datatype, string},
                                                     {include_default, "br0"},
                                                     {commented, "127.0.0.1:1889"}
                                                    ]}. 
-{mapping, "bridge.ssl.$name", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name", "vmq_bridge.config", [
                                                     {default, "127.0.0.1:1889"},
                                                     {datatype, string},
                                                     hidden
@@ -20,13 +20,13 @@
 %% which means that all subscriptions on the remote broker are kept in case of 
 %% the network connection dropping. If enabled, all subscriptions and messages 
 %% on the remote broker will be cleaned up if the connection drops. 
-{mapping, "bridge.tcp.$name.cleansession", "vmq_bridge.config", [
+{mapping, "vmq_bridge.tcp.$name.cleansession", "vmq_bridge.config", [
                                                                  {default, off},
                                                                  {datatype, flag},
                                                                  {include_default, "br0"},
                                                                  {commented, off}
                                                                 ]}. 
-{mapping, "bridge.ssl.$name.cleansession", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.cleansession", "vmq_bridge.config", [
                                                        {default, off},
                                                        {datatype, flag},
                                                        hidden
@@ -35,13 +35,13 @@
 %% @doc Set the client id for this bridge connection. If not defined, this 
 %% defaults to 'name.hostname', where name is the connection name and hostname 
 %% is the hostname of this computer.
-{mapping, "bridge.tcp.$name.client_id", "vmq_bridge.config", [
+{mapping, "vmq_bridge.tcp.$name.client_id", "vmq_bridge.config", [
                                                               {default, "auto"},
                                                               {datatype, string},
                                                               {include_default, "br0"},
                                                               {commented, "auto"}
                                                              ]}. 
-{mapping, "bridge.ssl.$name.client_id", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.client_id", "vmq_bridge.config", [
                                                        {default, "auto"},
                                                        {datatype, string},
                                                        hidden
@@ -49,13 +49,13 @@
 
 %% @doc Set the number of seconds after which the bridge should send a ping if 
 %% no other traffic has occurred.
-{mapping, "bridge.tcp.$name.keepalive_interval", "vmq_bridge.config", [
+{mapping, "vmq_bridge.tcp.$name.keepalive_interval", "vmq_bridge.config", [
                                                                        {default, 60},
                                                                        {datatype, integer},
                                                                        {include_default, "br0"},
                                                                        {commented, 60}
                                                                       ]}. 
-{mapping, "bridge.ssl.$name.keepalive_interval", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.keepalive_interval", "vmq_bridge.config", [
                                                        {default, 60},
                                                        {datatype, integer},
                                                        hidden
@@ -64,12 +64,12 @@
 %% @doc Configure a username for the bridge. This is used for authentication 
 %% purposes when connecting to a broker that support MQTT v3.1 and requires a 
 %% username and/or password to connect. See also the password option.
-{mapping, "bridge.tcp.$name.username", "vmq_bridge.config", [
+{mapping, "vmq_bridge.tcp.$name.username", "vmq_bridge.config", [
                                                              {datatype, string},
                                                              {include_default, "br0"},
                                                              {commented, "my_remote_user"}
                                                             ]}. 
-{mapping, "bridge.ssl.$name.username", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.username", "vmq_bridge.config", [
                                                        {datatype, string},
                                                        {include_default, "sbr0"},
                                                        hidden
@@ -79,12 +79,12 @@
 %% purposes when connecting to a broker that support MQTT v3.1 and requires a 
 %% username and/or password to connect. This option is only valid if a username 
 %% is also supplied.
-{mapping, "bridge.tcp.$name.password", "vmq_bridge.config", [
+{mapping, "vmq_bridge.tcp.$name.password", "vmq_bridge.config", [
                                                              {datatype, string},
                                                              {include_default, "br0"},
                                                              {commented, "my_remote_password"}
                                                             ]}. 
-{mapping, "bridge.ssl.$name.password", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.password", "vmq_bridge.config", [
                                                        {datatype, string},
                                                        {include_default, "sbr0"},
                                                        hidden
@@ -113,24 +113,24 @@
 %%      prefix and subscribe to the resulting topic on the local broker. When an 
 %%      outgoing message is processed, the local prefix will be removed from the 
 %%      topic then the remote prefix added.
-{mapping, "bridge.tcp.$name.topic.$topic_id", "vmq_bridge.config", [
+{mapping, "vmq_bridge.tcp.$name.topic.$topic_id", "vmq_bridge.config", [
                                                                     {datatype, string},
                                                                     {include_default, "1"}
                                                                    ]}. 
-{mapping, "bridge.ssl.$name.topic.$topic_id", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.topic.$topic_id", "vmq_bridge.config", [
                                                        {datatype, string},
                                                        hidden
                                                       ]}. 
 
 %% @doc Set the amount of time a bridge using the automatic start type will wait 
 %% until attempting to reconnect. Defaults to 30 seconds.
-{mapping, "bridge.tcp.$name.restart_timeout", "vmq_bridge.config", [
+{mapping, "vmq_bridge.tcp.$name.restart_timeout", "vmq_bridge.config", [
                                                                     {datatype, integer},
                                                                     {default, 10},
                                                                     {include_default, "br0"},
                                                                     {commented, 10}
                                                                    ]}.
-{mapping, "bridge.ssl.$name.restart_timeout", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.restart_timeout", "vmq_bridge.config", [
                                                                        {datatype, integer},
                                                                        {default, 10},
                                                                        hidden
@@ -139,20 +139,20 @@
 %% @doc If try_private is enabled, the bridge will attempt to indicate to the 
 %% remote broker that it is a bridge not an ordinary client. 
 %% Note that loop detection for bridges is not yet implemented. 
-{mapping, "bridge.tcp.$name.try_private", "vmq_bridge.config", [
+{mapping, "vmq_bridge.tcp.$name.try_private", "vmq_bridge.config", [
                                                                 {datatype, flag},
                                                                 {default, on},
                                                                 {include_default, "br0"},
                                                                 {commented, on}
                                                                ]}.
-{mapping, "bridge.ssl.$name.try_private", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.try_private", "vmq_bridge.config", [
                                                                    {datatype, flag},
                                                                    {default, on},
                                                                    hidden
                                                                   ]}.
 %% @doc The cafile is used to define the path to a file containing 
 %% the PEM encoded CA certificates that are trusted. 
-{mapping, "bridge.ssl.$name.cafile", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.cafile", "vmq_bridge.config", [
                                                               {default, ""},
                                                               {datatype, file},
                                                               {include_default, "sbr0"},
@@ -161,7 +161,7 @@
 
 %% @doc Define the path to a folder containing 
 %% the PEM encoded CA certificates that are trusted. 
-{mapping, "bridge.ssl.$name.capath", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.capath", "vmq_bridge.config", [
                                                               {default, ""},
                                                               {datatype, file},
                                                               {include_default, "sbr0"},
@@ -169,14 +169,14 @@
                                                              ]}. 
 
 %% @doc Set the path to the PEM encoded server certificate.
-{mapping, "bridge.ssl.$name.certfile", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.certfile", "vmq_bridge.config", [
                                                                 {default, ""},
                                                                 {datatype, file},
                                                                 {include_default, "sbr0"},
                                                                 {commented, "{{platform_etc_dir}}/cert.pem"}
                                                                ]}. 
 %% @doc Set the path to the PEM encoded key file. 
-{mapping, "bridge.ssl.$name.keyfile", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.keyfile", "vmq_bridge.config", [
                                                                {default, ""},
                                                                {datatype, file},
                                                                {include_default, "sbr0"},
@@ -190,7 +190,7 @@
 %% Setting this option to true means that a malicious third party could 
 %% potentially inpersonate your server, so it should always be disabled in 
 %% production environments.
-{mapping, "bridge.ssl.$name.insecure", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.insecure", "vmq_bridge.config", [
                                                                 {default, off},
                                                                 {datatype, flag},
                                                                 {include_default, "sbr0"},
@@ -198,7 +198,7 @@
                                                                ]}. 
 %% @doc Configure the TLS protocol version (tlsv1, tlsv1.1, or tlsv1.2) to be 
 %% used for this bridge.
-{mapping, "bridge.ssl.$name.tls_version", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.tls_version", "vmq_bridge.config", [
                                                                    {default, 'tlsv1.2'},
                                                                    {datatype, atom},
                                                                    {include_default, "sbr0"},
@@ -206,7 +206,7 @@
                                                                   ]}. 
 %% @doc Pre-shared-key encryption provides an alternative to certificate based 
 %% encryption. This option specifies the identity used. 
-{mapping, "bridge.ssl.$name.identity", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.identity", "vmq_bridge.config", [
                                                                 {default, ""},
                                                                 {datatype, string},
                                                                 {include_default, "sbr0"},
@@ -215,14 +215,14 @@
 %% @doc Pre-shared-key encryption provides an alternative to certificate based 
 %% encryption. This option specifies the shared secret used in hexadecimal
 %% format without leading '0x'. 
-{mapping, "bridge.ssl.$name.psk", "vmq_bridge.config", [
+{mapping, "vmq_bridge.ssl.$name.psk", "vmq_bridge.config", [
                                                            {default, ""},
                                                            {datatype, string},
                                                            {include_default, "sbr0"},
                                                            {commented, ""}
                                                           ]}. 
 
-{mapping, "bridge.registry_mfa", "vmq_bridge.registry_mfa", 
+{mapping, "vmq_bridge.registry_mfa", "vmq_bridge.registry_mfa", 
  [
   {default, "{vmq_reg,direct_plugin_exports,[vmq_bridge]}"},
   {datatype, string},
@@ -231,7 +231,7 @@
 
 {translation, "vmq_bridge.registry_mfa", 
  fun(Conf) ->
-         S = cuttlefish:conf_get("bridge.registry_mfa", Conf),
+         S = cuttlefish:conf_get("vmq_bridge.registry_mfa", Conf),
          {ok, T, _} = erl_scan:string(S ++ "."),
          {ok, Term} = erl_parse:parse_term(T),
          Term
@@ -336,33 +336,33 @@
                          || I <- lists:seq(1, Size)]
                 end,
 
-         {TCPIPs, TCPCleanSessions} = lists:unzip(F("bridge.tcp", "cleansession", BoolVal)),
-         {TCPIPs, TCPClientIds} = lists:unzip(F("bridge.tcp", "client_id", ClientIdVal)),
-         {TCPIPs, TCPKeepAlive} = lists:unzip(F("bridge.tcp", "keepalive_interval", IntVal)),
-         {TCPIPs, TCPUserNames} = lists:unzip(F("bridge.tcp", "username", StringVal)),
-         {TCPIPs, TCPPasswords} = lists:unzip(F("bridge.tcp", "password", StringVal)),
-         {TCPIPs, TCPRestartTimeouts} = lists:unzip(F("bridge.tcp", "restart_timeout", IntVal)),
-         {TCPIPs, TCPTryPrivates} = lists:unzip(F("bridge.tcp", "try_private", BoolVal)),
-         {TCPIPs, TCPTopics} = lists:unzip(lists:usort(F("bridge.tcp", "topic", TopicVal))),
+         {TCPIPs, TCPCleanSessions} = lists:unzip(F("vmq_bridge.tcp", "cleansession", BoolVal)),
+         {TCPIPs, TCPClientIds} = lists:unzip(F("vmq_bridge.tcp", "client_id", ClientIdVal)),
+         {TCPIPs, TCPKeepAlive} = lists:unzip(F("vmq_bridge.tcp", "keepalive_interval", IntVal)),
+         {TCPIPs, TCPUserNames} = lists:unzip(F("vmq_bridge.tcp", "username", StringVal)),
+         {TCPIPs, TCPPasswords} = lists:unzip(F("vmq_bridge.tcp", "password", StringVal)),
+         {TCPIPs, TCPRestartTimeouts} = lists:unzip(F("vmq_bridge.tcp", "restart_timeout", IntVal)),
+         {TCPIPs, TCPTryPrivates} = lists:unzip(F("vmq_bridge.tcp", "try_private", BoolVal)),
+         {TCPIPs, TCPTopics} = lists:unzip(lists:usort(F("vmq_bridge.tcp", "topic", TopicVal))),
 
-         {SSLIPs, SSLCleanSessions} = lists:unzip(F("bridge.ssl", "cleansession", BoolVal)),
-         {SSLIPs, SSLClientIds} = lists:unzip(F("bridge.ssl", "client_id", ClientIdVal)),
-         {SSLIPs, SSLKeepAlive} = lists:unzip(F("bridge.ssl", "keepalive_interval", IntVal)),
-         {SSLIPs, SSLUserNames} = lists:unzip(F("bridge.ssl", "username", StringVal)),
-         {SSLIPs, SSLPasswords} = lists:unzip(F("bridge.ssl", "password", StringVal)),
-         {SSLIPs, SSLRestartTimeouts} = lists:unzip(F("bridge.ssl", "restart_timeout", IntVal)),
-         {SSLIPs, SSLTryPrivates} = lists:unzip(F("bridge.ssl", "try_private", BoolVal)),
-         {SSLIPs, SSLTopics} = lists:unzip(lists:usort(F("bridge.ssl", "topic", TopicVal))),
+         {SSLIPs, SSLCleanSessions} = lists:unzip(F("vmq_bridge.ssl", "cleansession", BoolVal)),
+         {SSLIPs, SSLClientIds} = lists:unzip(F("vmq_bridge.ssl", "client_id", ClientIdVal)),
+         {SSLIPs, SSLKeepAlive} = lists:unzip(F("vmq_bridge.ssl", "keepalive_interval", IntVal)),
+         {SSLIPs, SSLUserNames} = lists:unzip(F("vmq_bridge.ssl", "username", StringVal)),
+         {SSLIPs, SSLPasswords} = lists:unzip(F("vmq_bridge.ssl", "password", StringVal)),
+         {SSLIPs, SSLRestartTimeouts} = lists:unzip(F("vmq_bridge.ssl", "restart_timeout", IntVal)),
+         {SSLIPs, SSLTryPrivates} = lists:unzip(F("vmq_bridge.ssl", "try_private", BoolVal)),
+         {SSLIPs, SSLTopics} = lists:unzip(lists:usort(F("vmq_bridge.ssl", "topic", TopicVal))),
 
          % SSL
-         {SSLIPs, SSLCAFiles} = lists:unzip(F("bridge.ssl", "cafile", StringVal)),
-         {SSLIPs, SSLCAPaths} = lists:unzip(F("bridge.ssl", "capath", StringVal)),
-         {SSLIPs, SSLCertFiles} = lists:unzip(F("bridge.ssl", "certfile", StringVal)),
-         {SSLIPs, SSLKeyFiles} = lists:unzip(F("bridge.ssl", "keyfile", StringVal)),
-         {SSLIPs, SSLInsecures} = lists:unzip(F("bridge.ssl", "insecure", BoolVal)),
-         {SSLIPs, SSLVersions} = lists:unzip(F("bridge.ssl", "tls_version", AtomVal)),
-         {SSLIPs, SSLIdentities} = lists:unzip(F("bridge.ssl", "identity", StringVal)),
-         {SSLIPs, SSLPSKs} = lists:unzip(F("bridge.ssl", "psk", StringVal)),
+         {SSLIPs, SSLCAFiles} = lists:unzip(F("vmq_bridge.ssl", "cafile", StringVal)),
+         {SSLIPs, SSLCAPaths} = lists:unzip(F("vmq_bridge.ssl", "capath", StringVal)),
+         {SSLIPs, SSLCertFiles} = lists:unzip(F("vmq_bridge.ssl", "certfile", StringVal)),
+         {SSLIPs, SSLKeyFiles} = lists:unzip(F("vmq_bridge.ssl", "keyfile", StringVal)),
+         {SSLIPs, SSLInsecures} = lists:unzip(F("vmq_bridge.ssl", "insecure", BoolVal)),
+         {SSLIPs, SSLVersions} = lists:unzip(F("vmq_bridge.ssl", "tls_version", AtomVal)),
+         {SSLIPs, SSLIdentities} = lists:unzip(F("vmq_bridge.ssl", "identity", StringVal)),
+         {SSLIPs, SSLPSKs} = lists:unzip(F("vmq_bridge.ssl", "psk", StringVal)),
 
          TCP = lists:zip(TCPIPs, MZip([TCPCleanSessions, 
                                        TCPClientIds, 

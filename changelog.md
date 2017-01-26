@@ -4,6 +4,38 @@
 
 ### vmq_server
 
+- Change to plugin administration. To make VerneMQ configuration more consistent
+  and simpler to configure it is now possible to configure plugins directly in
+  the `vernemq.conf` file.
+  
+  - The `lib/vmq_plugin.conf` file is obsolete and no longer in use.
+  - plugins are no longer persisted when enabled via the `vmq-admin` tool, but
+    have to be added to the `vernemq.conf` file manually like any other
+    configuration. An example looks like:
+    
+    `plugins.mypluginname.name = myplugin`
+    `plugins.mypluginname.path = /path/to/plugin`
+    
+    Where `mypluginname` is used to associate `name` and `path` values as well
+    as determine the start order of the plugin, i.e., the plugin defined by
+    `plugins.mypluginname1.name` would be started before
+    `plugins.mypluginname2.name`.
+    
+    Configuration specific settings are then configured like this:
+    
+    `myplugin.setting = ...`
+
+  - The above changes has the following impact on existing settings in the
+    `vernemq.conf` file:
+    - The `acl_file` setting is replaced by `vmq_acl.acl_file`.
+    - The `acl_reload_interval` setting is replaced by
+      `vmq_acl.acl_reload_interval`
+    - The `password_file` setting is replaced by `vmq_passwd.password_file`
+    - The `password_reload_interval` setting is replaced by
+      `vmq_passwd.password_reload_interval`.
+      
+      Make sure to update the configuration file accordingly.
+
 - Add implementation of shared subscriptions as specified in the MQTTv5 draft
   spec. Currently two different distribution policies are supported:
 

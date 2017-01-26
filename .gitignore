@@ -11,4 +11,4 @@ docs/plugins/vmq_*
 distdir
 package
 .ropeproject
-
+*~

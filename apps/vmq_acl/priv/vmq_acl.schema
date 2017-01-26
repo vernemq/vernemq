@@ -1,11 +1,12 @@
-%% @doc Set the path to an access control list file. 
-{mapping, "acl_file", "vmq_acl.file", [
-                                          {default, "{{platform_etc_dir}}/vmq.acl"},
-                                          {datatype, file}
-                                         ]}.
-%% @doc set the acl reload interval in seconds, the value 0 disables the
-%% automatic reloading of the acl file.
-{mapping, "acl_reload_interval", "vmq_acl.interval", [
-                                          {default, 10},
-                                          {datatype, integer}
-                                            ]}.
+%% @doc Set the path to an access control list file.
+{mapping, "vmq_acl.acl_file", "vmq_acl.file", [
+                                               {default, "{{platform_etc_dir}}/vmq.acl"},
+                                               {datatype, file}
+                                              ]}.
+
+%% @doc set the acl reload interval in seconds, the value 0 disables
+%% the automatic reloading of the acl file.
+{mapping, "vmq_acl.acl_reload_interval", "vmq_acl.interval", [
+                                                              {default, 10},
+                                                              {datatype, integer}
+                                                             ]}.
