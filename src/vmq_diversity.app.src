@@ -12,6 +12,7 @@
     lager,
     clique,
     poolboy,
+    luerl,
     emysql,
     epgsql,
     bson,
