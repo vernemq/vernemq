@@ -35,13 +35,16 @@
          migrate/2,
          cleanup/1]).
 
-%% gen_server callbacks
+%% gen_server2 callbacks
 -export([init/1,
          handle_call/3,
          handle_cast/2,
          handle_info/2,
          terminate/2,
-         code_change/3]).
+         code_change/3,
+         prioritize_call/3,
+         prioritize_cast/2,
+         prioritize_info/2]).
 
 
 -record(queue, {
@@ -494,6 +497,20 @@ init([SubscriberId, Clean]) ->
                 deliver_mode=DeliverMode,
                 max_msgs_per_drain_step=MaxMsgsPerDrainStep,
                 opts=Defaults}}.
+
+
+
+prioritize_call({state_event, cleanup}, _, _) -> 10;
+prioritize_call({state_event, {add_session, _, _}}, _, _) -> 10;
+prioritize_call({state_event, _}, _, _) -> 0;
+prioritize_call(_, _, _) -> 10. % everything else is important
+
+prioritize_cast({state_event, {change_state, _, _}}, _) -> 10;
+prioritize_cast({state_event, {notify_recv, _}}, _) -> 10;
+prioritize_cast(_, _) -> 0.
+
+prioritize_info({'DOWN', _, _, _, _}, _) -> 10;
+prioritize_info(_, _) -> 0.
 
 handle_cast({state_event, Req}, #state{statename=Statename} = State) ->
     handle_state_event(Statename, Req, State);
