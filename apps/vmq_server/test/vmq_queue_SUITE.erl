@@ -76,7 +76,7 @@ queue_crash_test(_) ->
     {offline, fanout, 1, 0, false} = vmq_queue:status(QPid1),
 
     %% crash the queue
-    catch gen_fsm:sync_send_all_state_event(QPid1, byebye),
+    catch gen_server2:call(QPid1, byebye),
     false = is_process_alive(QPid1),
     timer:sleep(10),
     NewQPid = vmq_reg:get_queue_pid(SubscriberId),
