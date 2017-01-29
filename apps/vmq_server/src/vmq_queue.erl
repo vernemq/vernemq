@@ -42,9 +42,9 @@
          handle_info/2,
          terminate/2,
          code_change/3,
-         prioritize_call/3,
-         prioritize_cast/2,
-         prioritize_info/2]).
+         prioritise_call/3,
+         prioritise_cast/2,
+         prioritise_info/2]).
 
 
 -record(queue, {
@@ -158,13 +158,13 @@ default_opts() ->
       is_plugin => false}.
 
 send_event(Queue, Event) ->
-    gen_server2:cast(Queue, {state_event, Event}).
+    gen_server2:cast(Queue, Event).
 
 sync_send_event(Queue, Event, Timeout) ->
-    gen_server2:call(Queue, {state_event, Event}, Timeout).
+    gen_server2:call(Queue, Event, Timeout).
 
 sync_send_all_state_event(Queue, Event, Timeout) ->
-    gen_server2:call(Queue, Event, Timeout).
+    gen_server2:call(Queue, {all_state, Event}, Timeout).
 
 save_sync_send_event(Queue, Event) ->
     case catch sync_send_event(Queue, Event, infinity) of
@@ -179,7 +179,7 @@ save_sync_send_event(Queue, Event) ->
     end.
 
 send_event_after(Timeout, Event) ->
-    erlang:send_after(Timeout, self(), {state_event, Event}).
+    erlang:send_after(Timeout, self(), Event).
 
 cancel_timer(TimerRef) ->
     erlang:cancel_timer(TimerRef).
@@ -500,34 +500,34 @@ init([SubscriberId, Clean]) ->
 
 
 
-prioritize_call({state_event, cleanup}, _, _) -> 10;
-prioritize_call({state_event, {add_session, _, _}}, _, _) -> 10;
-prioritize_call({state_event, _}, _, _) -> 0;
-prioritize_call(_, _, _) -> 10. % everything else is important
+prioritise_call(cleanup, _, _) -> 10;
+prioritise_call({add_session, _, _}, _, _) -> 10;
+prioritise_call({all_state, _}, _, _) -> 10;
+prioritise_call(_, _, _) -> 0.
 
-prioritize_cast({state_event, {change_state, _, _}}, _) -> 10;
-prioritize_cast({state_event, {notify_recv, _}}, _) -> 10;
-prioritize_cast(_, _) -> 0.
+prioritise_cast({change_state, _, _}, _) -> 10;
+prioritise_cast({notify_recv, _}, _) -> 10;
+prioritise_cast(_, _) -> 0.
 
-prioritize_info({'DOWN', _, _, _, _}, _) -> 10;
-prioritize_info(_, _) -> 0.
+prioritise_info({'DOWN', _, _, _, _}, _) -> 10;
+prioritise_info(_, _) -> 0.
 
-handle_cast({state_event, Req}, #state{statename=Statename} = State) ->
-    handle_state_event(Statename, Req, State);
-handle_cast(_Req, State) ->
-    {noreply, State}.
+handle_cast({all_state, _}, State) ->
+    {noreply, State};
+handle_cast(Req, #state{statename=Statename} = State) ->
+    handle_state_event(Statename, Req, State).
 
-handle_call({state_event, Req}, From, #state{statename=Statename} = State) ->
-    handle_sync_state_event(Statename, Req, From, State);
-handle_call(Req, From, State) ->
-    handle_sync_event(Req, From, State).
+handle_call({all_state, Req}, From, State) ->
+    handle_sync_event(Req, From, State);
+handle_call(Req, From, #state{statename=Statename} = State) ->
+    handle_sync_state_event(Statename, Req, From, State).
 
-handle_info({state_event, Req}, #state{statename=Statename} = State) ->
-    handle_state_event(Statename, Req, State);
+handle_info({all_state, _}, State) ->
+    {noreply, State};
 handle_info({'DOWN', _MRef, process, Pid, _}, State) ->
     handle_session_down(Pid, State);
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info(Req, #state{statename=Statename} = State) ->
+    handle_state_event(Statename, Req, State).
 
 terminate(_Reason, _State) ->
     vmq_metrics:incr_queue_teardown(),
