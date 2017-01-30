@@ -134,7 +134,8 @@ on_subscribe_test(_) ->
     register_hook(on_subscribe, ?ENDPOINT),
     Self = pid_to_bin(self()),
     [next] = vmq_plugin:all(on_subscribe,
-                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1}]]),
+                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1},
+                                                                       {?TOPIC, not_allowed}]]),
     ok = exp_response(on_subscribe_ok),
     deregister_hook(on_subscribe, ?ENDPOINT).
 

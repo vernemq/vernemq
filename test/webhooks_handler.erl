@@ -136,7 +136,8 @@ on_publish(#{username := BinPid,
 on_subscribe(#{username := BinPid,
                mountpoint := ?MOUNTPOINT_BIN,
                client_id := ?ALLOWED_CLIENT_ID,
-               topics := [#{topic := ?TOPIC, qos := 1}]
+               topics := [#{topic := ?TOPIC, qos := 1},
+                          #{topic := ?TOPIC, qos := 128}]
               }) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_subscribe_ok,

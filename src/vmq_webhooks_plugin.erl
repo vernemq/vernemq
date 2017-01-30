@@ -278,7 +278,7 @@ on_subscribe(UserName, SubscriberId, Topics) ->
     all(on_subscribe, [{username, nullify(UserName)},
                        {mountpoint, MP},
                        {client_id, ClientId},
-                       {topics, [[unword(T), QoS]
+                       {topics, [[unword(T), from_internal_qos(QoS)]
                                  || {T, QoS} <- Topics]}]).
 
 on_unsubscribe(UserName, SubscriberId, Topics) ->
@@ -416,7 +416,7 @@ check_modifiers(auth_on_subscribe, TopicsModifiers) ->
                     ([T, Q], AccTopics) when is_binary(T) and is_number(Q) ->
                         case vmq_topic:validate_topic(subscribe, T) of
                             {ok, NewTopic} ->
-                                [{NewTopic, internal_qos(round(Q))}|AccTopics];
+                                [{NewTopic, to_internal_qos(round(Q))}|AccTopics];
                             {error, R} ->
                                 lager:error("can't rewrite topic in auth_on_subscribe due to ~p", [R]),
                                 error
@@ -581,7 +581,12 @@ b64decode(V, #{base64_payload := false}) ->
 b64decode(V, _) -> 
     base64:decode(V).
 
-internal_qos(128) ->
+to_internal_qos(128) ->
     not_allowed;
-internal_qos(V) when is_integer(V) ->
+to_internal_qos(V) when is_integer(V) ->
+    V.
+
+from_internal_qos(not_allowed) ->
+    128;
+from_internal_qos(V) when is_integer(V) ->
     V.
