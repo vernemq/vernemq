@@ -109,7 +109,8 @@ auth_on_subscribe_test(_) ->
                       [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, [{?TOPIC, 1}]]),
     {error, [next]} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [?USERNAME, {?MOUNTPOINT, ?IGNORED_CLIENT_ID}, [{?TOPIC, 1}]]),
-    {ok, [{[<<"rewritten">>, <<"topic">>], 2}]} = vmq_plugin:all_till_ok(auth_on_subscribe,
+    {ok, [{[<<"forbidden">>, <<"topic">>], not_allowed},
+          {[<<"rewritten">>, <<"topic">>], 2}]} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [?USERNAME, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, [{?TOPIC, 1}]]),
     deregister_hook(auth_on_subscribe, ?ENDPOINT).
 

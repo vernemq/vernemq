@@ -107,7 +107,9 @@ auth_on_subscribe(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
             topics =>
                 [#{topic => <<"rewritten/topic">>,
-                   qos => 2}]}};
+                   qos => 2},
+                 #{topic => <<"forbidden/topic">>,
+                   qos => 128}]}};
 auth_on_subscribe(#{subscriberid := <<"internal_server_error">>}) ->
     throw(internal_server_error).
 

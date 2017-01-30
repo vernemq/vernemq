@@ -109,8 +109,7 @@ Example response:
         "max_message_rate": 10000,
         "max_inflight_messages": 100,
         "retry_interval": 100,
-        "upgrade_qos": false,
-        "trade_consistency": false
+        "upgrade_qos": false
     }
 }
 ```
@@ -154,6 +153,9 @@ Example response:
           "qos": 0}]
 }
 ```
+
+Note, you can also pass a `qos` with value `128` which means it was either not
+possible or it was not allowed to subscribe to the topic in question.
 
 Other result values:
 
