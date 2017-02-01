@@ -26,7 +26,7 @@ Your plugin has to announce at the ``vmq_plugin_mgr`` that is is serving a hook.
 ``Hooks`` is a list containing either ``{Module, Function, Arity}`` or ``{HookName, Module, Function, Arity}``. In the first case the ``HookName`` defaults to the ``Function`` name.
 In case your plugin is as simple as a single module, a call to ``vmq_plugin_mgr:enable_module_plugin(Module, Function, Arity)`` or ``vmq_plugin_mgr:enable_module_plugin(HookName, Module, Function, Arity)`` will register the plugin.
 
-When registering a plugin as above a background process reprogrammes, recompiles, and reloads the ``vmq_plugin`` module. Moreover the whole configuration is written to a specifig config file, that can be inspected and modified if needed. It defaults to ``./vmq_plugin.conf`` and can be configured using the ``plugin_config`` environment variable.
+When registering a plugin as above a background process reprogrammes, recompiles, and reloads the ``vmq_plugin`` module.
 
 During plugin registration the ``vmq_plugin_mgr`` searches the code path for the plugin. If the beam files are not yet part of the code path, ``vmq_plugin_mgr:enable_plugin(PluginApp, Path)`` could be used. The default path can be changed using the ``plugin_dir`` environment variable.
 
