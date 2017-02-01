@@ -369,8 +369,8 @@ wait_until_ready(#state{ready=false} = State) ->
 wait_until_ready(#state{ready={waiting,_Pid}} = State) ->
     %% we currently wait for the registered process to become alive
     {ok, State};
-wait_until_ready(State) ->
-    {ok, State}.
+wait_until_ready(#state{ready=true} = State) ->
+    {ok, handle_deferred_calls(State)}.
 
 check_updated_plugins(Plugins, State) ->
     case check_plugins(Plugins, []) of
