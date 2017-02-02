@@ -37,7 +37,29 @@ start(_StartType, _StartArgs) ->
             %% to be registered.
             timer:sleep(500),
             vmq_config:configure_node(),
+            start_user_plugins(),
             R
+    end.
+
+start_user_plugins() ->
+    Plugins = application:get_env(vmq_server, user_plugins, []),
+    [ start_user_plugin(P) || P <- Plugins ].
+
+start_user_plugin({Name, #{name := undefined}}) ->
+    lager:warning("Could not start plugin ~p due to missing name", [Name]);
+start_user_plugin({Name, #{path := Path,
+                           name := PluginName}}) ->
+    Res = case Path of
+              undefined ->
+                  vmq_plugin_mgr:enable_plugin(PluginName);
+              _ ->
+                  vmq_plugin_mgr:enable_plugin(PluginName, [Path])
+          end,
+    case Res of
+        ok ->
+            ok;
+        {error, Reason} ->
+            lager:warning("Could not start plugin ~p with name ~p due to ~p", [Name, PluginName, Reason])
     end.
 
 -spec stop(_) -> 'ok'.

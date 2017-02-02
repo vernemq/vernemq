@@ -1470,3 +1470,38 @@
                                                                                   {default, prefer_local},
                                                                                   {datatype, atom}
                                                                                  ]}.
+
+{mapping, "plugin.1vmq_acl.name", "vmq_server.user_plugins", [
+                                                                {datatype, atom},
+                                                                {default, vmq_acl}
+                                                               ]}.
+
+{mapping, "plugin.2vmq_passwd.name", "vmq_server.user_plugins", [
+                                                                 {datatype, atom},
+                                                                 {default, vmq_passwd}
+                                                                ]}.
+
+{mapping, "plugin.$name.name", "vmq_server.user_plugins", [
+                                                           {datatype, atom},
+                                                           hidden
+                                                          ]}.
+
+{mapping, "plugin.$name.path", "vmq_server.user_plugins", [
+                                                           {datatype, string},
+                                                           hidden
+                                                          ]}.
+{translation,
+ "vmq_server.user_plugins",
+ fun(Conf) ->
+         PluginNames =
+             proplists:get_all_values("$name",
+                                      cuttlefish_variable:fuzzy_matches(["plugin", "$name", "name"], Conf)),
+         Plugins =
+             lists:map(fun(SortName) ->
+                               {SortName,
+                                #{path => cuttlefish:conf_get("plugin." ++ SortName ++ ".path", Conf, undefined),
+                                  name => cuttlefish:conf_get("plugin." ++ SortName ++ ".name", Conf, undefined)}}
+                       end,
+                       PluginNames),
+         lists:keysort(1, Plugins)
+ end}.
