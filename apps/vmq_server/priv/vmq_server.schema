@@ -1,4 +1,4 @@
-%%-*- mode: erlang -*
+%% -*- mode: erlang -*-
 %% ex: ft=erlang
 
 %% @doc Allow anonymous users to connect, default is 'off'
@@ -1471,37 +1471,58 @@
                                                                                   {datatype, atom}
                                                                                  ]}.
 
-{mapping, "plugin.1vmq_acl.name", "vmq_server.user_plugins", [
+%% @doc plugins.<name>.plugin = <plugin> enables the plugin <plugin>
+%% and associates it with the name <name>. Plugins are started in the
+%% order defined by the names given, i.e., the plugin with <name>
+%% 'plugin1' is started before the plugin with <name> 'plugin2'.
+%%
+%%
+%% Plugin specific settings are set via the plugin itself, i.e., to
+%% set the 'file' setting for the myplugin plugin, add a line like:
+%%
+%%
+%% myplugin.file = /path/to/file
+{mapping, "plugins.$name.plugin", "vmq_server.user_plugins", [
+                                                              {datatype, atom},
+                                                              {commented, "myplugin"},
+                                                              {include_default, "mypluginname"}
+                                                             ]}.
+
+%% @doc plugins.<name>.path defines the location of the plugin
+%% associated with <name>. This is needed for plugins that are not
+%% shipped with VerneMQ.
+{mapping, "plugins.$name.path", "vmq_server.user_plugins", [
+                                                            {datatype, string},
+                                                            {commented, "/path/to/myplugin"},
+                                                            {include_default, "mypluginname"}
+                                                          ]}.
+
+%% @doc File based authentication plugin. Enabled by default. Comment
+%% out to disable.  
+{mapping, "plugins.plugin1.plugin", "vmq_server.user_plugins", [
+                                                                {datatype, atom},
+                                                                {default, vmq_passwd}
+                                                               ]}.
+
+%% @doc File based authorization plugin. Enabled by default. Comment
+%% out to disable.
+{mapping, "plugins.plugin2.plugin", "vmq_server.user_plugins", [
                                                                 {datatype, atom},
                                                                 {default, vmq_acl}
                                                                ]}.
 
-{mapping, "plugin.2vmq_passwd.name", "vmq_server.user_plugins", [
-                                                                 {datatype, atom},
-                                                                 {default, vmq_passwd}
-                                                                ]}.
 
-{mapping, "plugin.$name.name", "vmq_server.user_plugins", [
-                                                           {datatype, atom},
-                                                           hidden
-                                                          ]}.
-
-{mapping, "plugin.$name.path", "vmq_server.user_plugins", [
-                                                           {datatype, string},
-                                                           hidden
-                                                          ]}.
 {translation,
  "vmq_server.user_plugins",
  fun(Conf) ->
          PluginNames =
-             proplists:get_all_values("$name",
-                                      cuttlefish_variable:fuzzy_matches(["plugin", "$name", "name"], Conf)),
+             proplists:get_all_values(
+               "$name",
+               cuttlefish_variable:fuzzy_matches(["plugins", "$name", "plugin"], Conf)),
          Plugins =
-             lists:map(fun(SortName) ->
-                               {SortName,
-                                #{path => cuttlefish:conf_get("plugin." ++ SortName ++ ".path", Conf, undefined),
-                                  name => cuttlefish:conf_get("plugin." ++ SortName ++ ".name", Conf, undefined)}}
-                       end,
-                       PluginNames),
+             [ {SortName,
+                #{path => cuttlefish:conf_get("plugins." ++ SortName ++ ".path", Conf, undefined),
+                  name => cuttlefish:conf_get("plugins." ++ SortName ++ ".plugin", Conf, undefined)}}
+               || SortName <- PluginNames ],
          lists:keysort(1, Plugins)
  end}.
