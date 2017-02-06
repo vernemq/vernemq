@@ -1492,7 +1492,7 @@
 %% associated with <name>. This is needed for plugins that are not
 %% shipped with VerneMQ.
 {mapping, "plugins.$name.path", "vmq_server.user_plugins", [
-                                                            {datatype, string},
+                                                            {datatype, directory},
                                                             {commented, "/path/to/myplugin"},
                                                             {include_default, "mypluginname"}
                                                           ]}.
@@ -1509,6 +1509,13 @@
 {mapping, "plugins.plugin2.plugin", "vmq_server.user_plugins", [
                                                                 {datatype, atom},
                                                                 {default, vmq_acl}
+                                                               ]}.
+
+%% @doc Lua based plugins. Disabled by default. Comment out to enable.
+{mapping, "plugins.plugin3.plugin", "vmq_server.user_plugins", [
+                                                                {commented, "vmq_diversity"},
+                                                                {datatype, atom},
+                                                                {include_default, vmq_diversity}
                                                                ]}.
 
 
