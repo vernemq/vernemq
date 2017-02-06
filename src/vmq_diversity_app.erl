@@ -55,11 +55,14 @@ start(_StartType, _StartArgs) ->
                           case filelib:is_dir(DataDir) of
                               true ->
                                   lists:foreach(fun(Script) ->
-                                                        vmq_diversity:load_script(Script)
+                                                        load_script(Script)
                                                 end, filelib:wildcard(DataDir ++ "/*.lua"));
                               false ->
                                   lager:warning("Can't initialize Lua Scripts using ~p", [DataDir])
-                          end
+                          end,
+                          lists:foreach(fun({_Name, Script}) ->
+                                                load_script(Script)
+                                        end, application:get_env(vmq_diversity, user_scripts, []))
                   end),
             Ret;
         E ->
@@ -73,3 +76,10 @@ stop(_State) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+load_script(Script) ->
+    case vmq_diversity:load_script(Script) of
+        {ok, _Pid} ->
+            ok;
+        {error, Reason} ->
+            lager:error("Could not load script ~p due to ~p", [Script, Reason])
+    end.

@@ -2,12 +2,41 @@
 %% to set global variables and reuse them in a later callback call or 
 %% even in a different callback. Default is 'off' enabling that no Lua
 %% garbage collection is triggered. 
-{mapping, "lua.keep_state", "vmq_diversity.keep_state", [
-                                          {default, off},
-                                          {datatype, flag}
-                                         ]}.
-%% @doc The script dir is searched for Lua scripts and automatically loaded.
-{mapping, "lua.script_dir", "vmq_diversity.script_dir", [
-                                          {default, "{{platform_data_dir}}/scripts"},
-                                          {datatype, directory}
-                                        ]}.
+{mapping, "vmq_diversity.keep_state", "vmq_diversity.keep_state", [
+                                                                   {default, off},
+                                                                   {datatype, flag},
+                                                                   hidden
+                                                                  ]}.
+%% @doc Configure the vmq_diversity plugin script dir. The script dir
+%% is searched for Lua scripts which are automatically loaded when the
+%% plugin is enabled.
+{mapping, "vmq_diversity.script_dir", "vmq_diversity.script_dir", [
+                                                                   {default, "{{luascripts_dir}}"},
+                                                                   {datatype, directory}
+                                                                  ]}.
+
+%% @doc vmq_diversity.<name>.plugin = <file> loads a specific lua
+%% script when `vmq_diversity` starts. The scripts are loaded in the
+%% order defined by the names given, i.e., the script with <name>
+%% 'script1' is started before the plugin with <name> 'script2'.
+%%
+%% Scripts loaded like this are loaded after the scripts in the
+%% default script dir.
+{mapping, "vmq_diversity.$script.file", "vmq_diversity.user_scripts", [
+                                                                       {datatype, file},
+                                                                       {commented, "/path/to/my/script.lua"},
+                                                                       {include_default, "script1"}
+                                                                      ]}.
+
+{translation,
+ "vmq_diversity.user_scripts",
+ fun(Conf) ->
+         ScriptNames =
+             proplists:get_all_values(
+               "$script",
+               cuttlefish_variable:fuzzy_matches(["vmq_diversity", "$script", "file"], Conf)),
+         Scripts =
+             [ {SortName, cuttlefish:conf_get("vmq_diversity." ++ SortName ++ ".file", Conf, undefined)}
+               || SortName <- ScriptNames ],
+         lists:keysort(1, Scripts)
+ end}.

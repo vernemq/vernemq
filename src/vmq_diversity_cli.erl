@@ -26,7 +26,7 @@ register_cli() ->
 
 register_config() ->
     ConfigKeys =
-    ["lua.keep_state"],
+    ["vmq_diversity.keep_state"],
     [clique:register_config([Key], fun register_config_callback/3)
      || Key <- ConfigKeys],
     ok = clique:register_config_whitelist(ConfigKeys).
