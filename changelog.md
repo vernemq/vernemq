@@ -1,5 +1,10 @@
 # Changelog
 
+ - Move persistence of webhooks to the `vernemq.conf` main file. This means
+   adding hooks using the `vmq-admin` tool no longer persists the webhooks and
+   they have to be manually added to the `vernemq.conf` file.
+ - Make it possible to reject individual topics when subscribing.
+
 ## vmq_webhooks 0.2.0
 
 Backwards incompatible changes:

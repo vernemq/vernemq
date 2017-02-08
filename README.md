@@ -37,6 +37,12 @@ See [changelog.md](./changelog.md) for changes.
 
 ## Usage
 
+Note, this plugin is now distributed as part of VerneMQ - this means you don't
+have to manually build it. Enabling the plugin and registering webhooks is
+documented within the `vernemq.conf` configuration file itself. You can of
+course still use the `vmq-admin` command to register and deregister webhooks at
+runtime.
+
 Building the plugin:
 
     $ ./rebar3 compile
@@ -59,9 +65,15 @@ The payload is by default base64 encoded, to disable this add the
 ## Persisting hooks across VerneMQ restarts
 
 Webhooks added with `vmq-plugin` command line tool are not persisted across
-VerneMQ restarts. To make hooks persistent they can be added to the
-`priv/vmq_webhooks.conf` file. It contains an example and is hopefully
-self-explanatory.
+VerneMQ restarts. To persist webhooks add them to the main `vernemq.conf`
+file. An example looks like:
+
+``` yaml
+vmq_webhooks.webhook1.hook = auth_on_publish
+vmq_webhooks.webhook1.endpoint = http://localhost:8080
+```
+
+See the `vernemq.conf` file for details.
 
 ## Webhooks
 

@@ -28,7 +28,6 @@
 
 init_per_suite(_Config) ->
     ok = application:load(vmq_plugin),
-    ok = file:write_file("vmq_plugin.conf", <<"{plugins, []}.">>),
     {ok, _} = application:ensure_all_started(vmq_plugin),
     ok = vmq_plugin_mgr:enable_plugin(vmq_webhooks),
     {ok, _} = application:ensure_all_started(cowboy),
