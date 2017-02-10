@@ -1512,11 +1512,26 @@
                                                               {default, vmq_acl}
                                                              ]}.
 
-%% @doc Lua based plugins. Disabled by default. Comment out to enable.
+%% @doc Lua based plugins. Disabled by default. Uncomment to enable.
 {mapping, "plugins.plugin3.name", "vmq_server.user_plugins", [
                                                               {commented, "vmq_diversity"},
                                                               {datatype, atom},
                                                                 {include_default, vmq_diversity}
+                                                             ]}.
+
+%% @doc Webhook based plugins. Disabled by default. Uncomment to
+%% enable.
+{mapping, "plugins.plugin4.name", "vmq_server.user_plugins", [
+                                                              {commented, "vmq_webhooks"},
+                                                              {datatype, atom},
+                                                                {include_default, vmq_webhooks}
+                                                             ]}.
+%% @doc The VerneMQ bridge plugin. Disabled by default. Uncomment to
+%% enable.
+{mapping, "plugins.plugin5.name", "vmq_server.user_plugins", [
+                                                              {commented, "vmq_bridge"},
+                                                              {datatype, atom},
+                                                                {include_default, vmq_bridge}
                                                              ]}.
 
 {translation,
