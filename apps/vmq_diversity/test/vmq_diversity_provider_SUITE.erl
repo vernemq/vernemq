@@ -40,6 +40,7 @@ init_per_testcase(_Case, Config) ->
 end_per_testcase(_, Config) ->
     Config.
 
+-ifdef('DO_TEST').
 all() ->
     [mysql_test,
      postgres_test,
@@ -50,6 +51,9 @@ all() ->
      json_test,
      logger_test,
      memcached_test].
+-else.
+all() -> [].
+-endif.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests

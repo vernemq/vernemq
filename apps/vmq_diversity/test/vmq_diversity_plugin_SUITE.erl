@@ -46,6 +46,7 @@ init_per_testcase(_Case, Config) ->
 end_per_testcase(_, Config) ->
     Config.
 
+-ifdef('DO_TEST').
 all() ->
     [auth_on_register_test,
      auth_on_publish_test,
@@ -61,6 +62,9 @@ all() ->
      on_client_gone_test,
      auth_on_register_undefined_creds_test
     ].
+-else.
+all() -> [].
+-endif.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests

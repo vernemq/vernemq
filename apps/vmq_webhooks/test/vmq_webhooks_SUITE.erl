@@ -27,19 +27,19 @@
         ]).
 
 init_per_suite(_Config) ->
-    ok = application:load(vmq_plugin),
-    {ok, _} = application:ensure_all_started(vmq_plugin),
+    {ok, StartedApps} = application:ensure_all_started(vmq_server),
     ok = vmq_plugin_mgr:enable_plugin(vmq_webhooks),
     {ok, _} = application:ensure_all_started(cowboy),
     start_endpoint(),
     cover:start(),
-    _Config.
+    [{started_apps, StartedApps} |_Config].
 
 end_per_suite(_Config) ->
     vmq_plugin_mgr:disable_plugin(vmq_webhooks),
     stop_endpoint(),
     application:stop(cowboy),
-    application:stop(vmq_plugin), 
+    application:stop(vmq_server),
+    [ application:stop(App) || App <- proplists:get_value(started_apps, _Config, []) ],
    _Config.
 
 init_per_testcase(_Case, Config) ->
