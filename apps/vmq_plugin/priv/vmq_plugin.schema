@@ -1,13 +1,3 @@
-{mapping, "plugin_dir", "vmq_plugin.plugin_dir", [
-                                          {default, "{{platform_lib_dir}}"},
-                                          {datatype, directory},
-                                          hidden
-                                         ]}.
-{mapping, "plugin_config", "vmq_plugin.plugin_config", [
-                                          {default, "vmq_plugin.conf"},
-                                          {datatype, file},
-                                          hidden
-                                         ]}.
 {mapping, "wait_for_proc", "vmq_plugin.wait_for_proc", [
                                             {default, vmq_server_sup},
                                             {datatype, atom},

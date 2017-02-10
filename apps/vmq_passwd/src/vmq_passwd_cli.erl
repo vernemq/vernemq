@@ -17,8 +17,8 @@
 
 register() ->
     ConfigKeys =
-    ["password_file",
-     "password_reload_interval"],
+    ["vmq_passwd.password_file",
+     "vmq_passwd.password_reload_interval"],
     [clique:register_config([Key], fun register_config_callback/3)
      || Key <- ConfigKeys],
     ok = clique:register_config_whitelist(ConfigKeys).
