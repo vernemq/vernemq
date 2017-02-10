@@ -1471,10 +1471,11 @@
                                                                                   {datatype, atom}
                                                                                  ]}.
 
-%% @doc plugins.<name>.plugin = <plugin> enables the plugin <plugin>
-%% and associates it with the name <name>. Plugins are started in the
-%% order defined by the names given, i.e., the plugin with <name>
-%% 'plugin1' is started before the plugin with <name> 'plugin2'.
+%% @doc plugins.<configname>.name = <plugin> enables the plugin
+%% <plugin> and associates it with the name <configname>. Plugins are
+%% started in the order defined by the configurations names given,
+%% i.e., the plugin with <configname> 'plugin1' is started before the
+%% plugin with <configname> 'plugin2'.
 %%
 %%
 %% Plugin specific settings are set via the plugin itself, i.e., to
@@ -1482,11 +1483,11 @@
 %%
 %%
 %% myplugin.file = /path/to/file
-{mapping, "plugins.$name.plugin", "vmq_server.user_plugins", [
-                                                              {datatype, atom},
-                                                              {commented, "myplugin"},
-                                                              {include_default, "mypluginname"}
-                                                             ]}.
+{mapping, "plugins.$name.name", "vmq_server.user_plugins", [
+                                                            {datatype, atom},
+                                                            {commented, "myplugin"},
+                                                            {include_default, "mypluginname"}
+                                                           ]}.
 
 %% @doc plugins.<name>.path defines the location of the plugin
 %% associated with <name>. This is needed for plugins that are not
@@ -1499,25 +1500,24 @@
 
 %% @doc File based authentication plugin. Enabled by default. Comment
 %% out to disable.  
-{mapping, "plugins.plugin1.plugin", "vmq_server.user_plugins", [
-                                                                {datatype, atom},
-                                                                {default, vmq_passwd}
-                                                               ]}.
+{mapping, "plugins.plugin1.name", "vmq_server.user_plugins", [
+                                                              {datatype, atom},
+                                                              {default, vmq_passwd}
+                                                             ]}.
 
 %% @doc File based authorization plugin. Enabled by default. Comment
 %% out to disable.
-{mapping, "plugins.plugin2.plugin", "vmq_server.user_plugins", [
-                                                                {datatype, atom},
-                                                                {default, vmq_acl}
-                                                               ]}.
+{mapping, "plugins.plugin2.name", "vmq_server.user_plugins", [
+                                                              {datatype, atom},
+                                                              {default, vmq_acl}
+                                                             ]}.
 
 %% @doc Lua based plugins. Disabled by default. Comment out to enable.
-{mapping, "plugins.plugin3.plugin", "vmq_server.user_plugins", [
-                                                                {commented, "vmq_diversity"},
-                                                                {datatype, atom},
+{mapping, "plugins.plugin3.name", "vmq_server.user_plugins", [
+                                                              {commented, "vmq_diversity"},
+                                                              {datatype, atom},
                                                                 {include_default, vmq_diversity}
-                                                               ]}.
-
+                                                             ]}.
 
 {translation,
  "vmq_server.user_plugins",
@@ -1525,11 +1525,11 @@
          PluginNames =
              proplists:get_all_values(
                "$name",
-               cuttlefish_variable:fuzzy_matches(["plugins", "$name", "plugin"], Conf)),
+               cuttlefish_variable:fuzzy_matches(["plugins", "$name", "name"], Conf)),
          Plugins =
              [ {SortName,
                 #{path => cuttlefish:conf_get("plugins." ++ SortName ++ ".path", Conf, undefined),
-                  name => cuttlefish:conf_get("plugins." ++ SortName ++ ".plugin", Conf, undefined)}}
+                  name => cuttlefish:conf_get("plugins." ++ SortName ++ ".name", Conf, undefined)}}
                || SortName <- PluginNames ],
          lists:keysort(1, Plugins)
  end}.

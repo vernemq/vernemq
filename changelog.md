@@ -13,13 +13,13 @@
     have to be added to the `vernemq.conf` file manually like any other
     configuration. An example looks like:
     
-    `plugins.mypluginname.plugin = myplugin`
+    `plugins.mypluginname.name = myplugin`
     `plugins.mypluginname.path = /path/to/plugin`
     
-    Where `mypluginname` is used to associate `plugin` and `path` values as well
+    Where `mypluginname` is used to associate `name` and `path` values as well
     as determine the start order of the plugin, i.e., the plugin defined by
-    `plugins.mypluginname1.plugin` would be started before
-    `plugins.mypluginname2.plugin`.
+    `plugins.mypluginname1.name` would be started before
+    `plugins.mypluginname2.name`.
     
     Configuration specific settings are then configured like this:
     
