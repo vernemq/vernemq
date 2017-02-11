@@ -23,11 +23,23 @@
 %% order defined by the names given, i.e., the script with <name>
 %% 'script1' is started before the plugin with <name> 'script2'.
 %%
+%%
 %% Scripts loaded like this are loaded after the scripts in the
 %% default script dir.
+%%
+%% 
+%% Several default scripts are bundled with VerneMQ to authenticate
+%% against Postgres, MySQL, MongoDB, and Redis. Adapt the database configuration
+%% at the top of the script to match your setup.
+%%
+%%
+%% For PostgreSQL:
+%%   vmq_diversity.postgres.file = {{luascripts_dir}}/auth/postgres.lua
+%%
+%%
 {mapping, "vmq_diversity.$script.file", "vmq_diversity.user_scripts", [
                                                                        {datatype, file},
-                                                                       {commented, "/path/to/my/script.lua"},
+                                                                       {commented, "path/to/my/script.lua"},
                                                                        {include_default, "script1"}
                                                                       ]}.
 
