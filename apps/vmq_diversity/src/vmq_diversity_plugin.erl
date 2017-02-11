@@ -200,21 +200,47 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
 
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(auth_on_publish, [{username, nilify(UserName)},
-                                  {mountpoint, MP},
-                                  {client_id, ClientId},
-                                  {qos, QoS},
-                                  {topic, unword(Topic)},
-                                  {payload, Payload},
-                                  {retain, IsRetain}]).
+    case vmq_diversity_cache:match_publish_acl(MP, ClientId, Topic) of
+        true ->
+            %% Found a valid cache entry which grants this publish
+            ok;
+        false ->
+            %% Found a valid cache entry which rejects this publish
+            error;
+        no_cache ->
+            all_till_ok(auth_on_publish, [{username, nilify(UserName)},
+                                          {mountpoint, MP},
+                                          {client_id, ClientId},
+                                          {qos, QoS},
+                                          {topic, unword(Topic)},
+                                          {payload, Payload},
+                                          {retain, IsRetain}])
+    end.
 
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(auth_on_subscribe, [{username, nilify(UserName)},
-                                    {mountpoint, MP},
-                                    {client_id, ClientId},
-                                    {topics, [[unword(T), QoS]
-                                              || {T, QoS} <- Topics]}]).
+    CacheRet =
+    lists:foldl(
+      fun({T, _}, true) ->
+              vmq_diversity_cache:match_subscribe_acl(MP, ClientId, T);
+         (_, false) -> false;
+         (_, no_cache) -> no_cache
+      end, true, Topics),
+    case CacheRet of
+        true ->
+            %% all provided topics match a cache entry which grants this subscribe
+            ok;
+        false ->
+            %% one of the provided topics doesn't match a cache entry which
+            %% rejects this subscribe
+            error;
+        no_cache ->
+            all_till_ok(auth_on_subscribe, [{username, nilify(UserName)},
+                                            {mountpoint, MP},
+                                            {client_id, ClientId},
+                                            {topics, [[unword(T), QoS]
+                                                      || {T, QoS} <- Topics]}])
+    end.
 
 on_register(Peer, SubscriberId, UserName) ->
     {PPeer, Port} = peer(Peer),
@@ -275,11 +301,13 @@ on_client_wakeup(SubscriberId) ->
 
 on_client_offline(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
+    vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_client_offline, [{mountpoint, MP},
                             {client_id, ClientId}]).
 
 on_client_gone(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
+    vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_client_gone, [{mountpoint, MP},
                          {client_id, ClientId}]).
 

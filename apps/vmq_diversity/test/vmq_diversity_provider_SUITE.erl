@@ -16,7 +16,8 @@
          kv_test/1,
          json_test/1,
          logger_test/1,
-         memcached_test/1]).
+         memcached_test/1,
+         auth_cache_test/1]).
 
 %% ===================================================================
 %% common_test callbacks
@@ -92,3 +93,6 @@ logger_test(_) ->
 
 memcached_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("memcached_test.lua")).
+
+auth_cache_test(_) ->
+    {ok, _} = vmq_diversity:load_script(test_script("cache_test.lua")).
