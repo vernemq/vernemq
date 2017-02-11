@@ -36,6 +36,8 @@
 %% For PostgreSQL:
 %%   vmq_diversity.postgres.file = {{luascripts_dir}}/auth/postgres.lua
 %%
+%% For MySQL:
+%%   vmq_diversity.mysql.file = {{luascripts_dir}}/auth/mysql.lua
 %%
 {mapping, "vmq_diversity.$script.file", "vmq_diversity.user_scripts", [
                                                                        {datatype, file},
