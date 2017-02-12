@@ -42,6 +42,9 @@
 %% For MongoDB:
 %%   vmq_diversity.mongodb.file = {{luascripts_dir}}/auth/mongodb.lua
 %%
+%% For Redis:
+%%   vmq_diversity.redis.file = {{luascripts_dir}}/auth/redis.lua
+%%
 {mapping, "vmq_diversity.$script.file", "vmq_diversity.user_scripts", [
                                                                        {datatype, file},
                                                                        {commented, "path/to/my/script.lua"},
