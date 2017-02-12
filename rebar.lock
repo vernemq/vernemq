@@ -1,5 +1,6 @@
 {"1.1.0",
-[{<<"bson">>,
+[{<<"bcrypt">>,{pkg,<<"bcrypt">>,<<"0.5.0-p3a">>},0},
+ {<<"bson">>,
   {git,"git://github.com/vintenove/bson-erlang",
        {ref,"01bd54a53112e5f2615f7ecb382f0cbf148bb7ce"}},
   1},
@@ -82,7 +83,7 @@
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.2.1">>},0},
  {<<"rand_compat">>,
   {git,"git://github.com/tuncer/erlang-rand-compat.git",
-       {ref,"123fbf1cf6b666ff55f995c430142dadfaf9277b"}},
+       {ref,"dbaf898d3c7608b26dbf6fd677fb3dc6336aa9c3"}},
   0},
  {<<"recon">>,{pkg,<<"recon">>,<<"2.2.1">>},0},
  {<<"riak_dt">>,
@@ -109,6 +110,7 @@
   0}]}.
 [
 {pkg_hash,[
+ {<<"bcrypt">>, <<"A9D4D17749F5FF565F277960A068388EDB563B8FBA3BE901B9B4E0DE19848735">>},
  {<<"certifi">>, <<"A7966EFB868B179023618D29A407548F70C52466BF1849B9E8EBD0E34B7EA11F">>},
  {<<"cowboy">>, <<"A324A8DF9F2316C833A470D918AAF73AE894278B8AA6226CE7A9BF699388F878">>},
  {<<"cowlib">>, <<"9D769A1D062C9C3AC753096F868CA121E2730B9A377DE23DEC0F7E08B1DF84EE">>},
