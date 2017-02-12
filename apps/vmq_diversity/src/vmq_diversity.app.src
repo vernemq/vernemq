@@ -19,7 +19,8 @@
     mongodb,
     eredis,
     hackney,
-    jsx
+    jsx,
+    bcrypt
    ]},
   {env,[{keep_state, false}]},
   {modules, []}

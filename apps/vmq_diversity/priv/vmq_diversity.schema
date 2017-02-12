@@ -39,6 +39,9 @@
 %% For MySQL:
 %%   vmq_diversity.mysql.file = {{luascripts_dir}}/auth/mysql.lua
 %%
+%% For MongoDB:
+%%   vmq_diversity.mongodb.file = {{luascripts_dir}}/auth/mongodb.lua
+%%
 {mapping, "vmq_diversity.$script.file", "vmq_diversity.user_scripts", [
                                                                        {datatype, file},
                                                                        {commented, "path/to/my/script.lua"},

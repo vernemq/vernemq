@@ -55,9 +55,14 @@ unmap_(Map) ->
     maps:fold(fun
                   (K,V, AccIn) when is_map(V) ->
                       [{K, unmap_(V)}|AccIn];
+                  (K, V, AccIn) when is_list(V) ->
+                      [{K, unlist_(V)}|AccIn];
                   (K,V, AccIn) ->
                       [{K, V}|AccIn]
               end, [], Map).
+
+unlist_(List) ->
+    lists:zip(lists:seq(1, length(List)), List).
 
 int(I) when is_integer(I) -> I;
 int(I) when is_number(I) -> round(I).

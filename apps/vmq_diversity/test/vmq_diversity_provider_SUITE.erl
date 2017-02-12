@@ -15,6 +15,7 @@
          http_test/1,
          kv_test/1,
          json_test/1,
+         bcrypt_test/1,
          logger_test/1,
          memcached_test/1,
          auth_cache_test/1]).
@@ -54,10 +55,18 @@ all() ->
              http_test,
              kv_test,
              json_test,
+             bcrypt_test,
              logger_test,
-             memcached_test];
+             memcached_test,
+             auth_cache_test];
         _ ->
-            {skip, "Database tests skipped"}
+            [http_test,
+             kv_test,
+             json_test,
+             bcrypt_test,
+             logger_test,
+             auth_cache_test,
+            {skip, "Database tests skipped"}]
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -87,6 +96,9 @@ kv_test(_) ->
 
 json_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("json_test.lua")).
+
+bcrypt_test(_) ->
+    {ok, _} = vmq_diversity:load_script(test_script("bcrypt_test.lua")).
 
 logger_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("log_test.lua")).
