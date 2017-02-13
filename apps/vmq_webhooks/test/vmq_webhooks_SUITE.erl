@@ -23,7 +23,11 @@
          on_client_offline_test/1,
          on_client_gone_test/1,
          base64payload_test/1,
-         auth_on_register_undefined_creds_test/1
+         auth_on_register_undefined_creds_test/1,
+         cache_auth_on_register/1,
+         cache_auth_on_publish/1,
+         cache_auth_on_subscribe/1,
+         cache_expired_entry/1
         ]).
 
 init_per_suite(_Config) ->
@@ -43,6 +47,7 @@ end_per_suite(_Config) ->
    _Config.
 
 init_per_testcase(_Case, Config) ->
+    vmq_webhooks_cache:purge_all(),
     Config.
 
 end_per_testcase(_, Config) ->
@@ -63,7 +68,11 @@ all() ->
      on_client_offline_test,
      on_client_gone_test,
      base64payload_test,
-     auth_on_register_undefined_creds_test
+     auth_on_register_undefined_creds_test,
+     cache_auth_on_register,
+     cache_auth_on_publish,
+     cache_auth_on_subscribe,
+     cache_expired_entry
     ].
 
 
@@ -74,10 +83,87 @@ stop_endpoint() ->
     webhooks_handler:stop_endpoint().
 
 %% Test cases
+cache_expired_entry(_) ->
+    Endpoint = ?ENDPOINT ++ "/cache1s",
+    Self = pid_to_bin(self()),
+    register_hook(auth_on_register, Endpoint),
+    {ok, []} = vmq_plugin:all_till_ok(auth_on_register,
+                                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, ?PASSWORD, true]),
+    exp_response(cache_auth_on_register_ok),
+    %% wait until the entry was expired
+    timer:sleep(1100),
+    {ok ,[]} = vmq_plugin:all_till_ok(auth_on_register,
+                                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, ?PASSWORD, true]),
+    exp_response(cache_auth_on_register_ok),
+    {ok ,[]} = vmq_plugin:all_till_ok(auth_on_register,
+                                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, ?PASSWORD, true]),
+    exp_response(cache_auth_on_register_ok),
+    ok = exp_nothing(200),
+    #{{entries,<<"http://localhost:34567/cache1s">>,
+       auth_on_register} := 1,
+      {hits,<<"http://localhost:34567/cache1s">>,
+       auth_on_register} := 1,
+      {misses,<<"http://localhost:34567/cache1s">>,
+       auth_on_register} := 2} = vmq_webhooks_cache:stats(),
+    deregister_hook(auth_on_register, Endpoint).
+
+cache_auth_on_register(_) ->
+    Endpoint = ?ENDPOINT ++ "/cache",
+    Self = pid_to_bin(self()),
+    register_hook(auth_on_register, Endpoint),
+    {ok, []} = vmq_plugin:all_till_ok(auth_on_register,
+                                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, ?PASSWORD, true]),
+    exp_response(cache_auth_on_register_ok),
+    {ok ,[]} = vmq_plugin:all_till_ok(auth_on_register,
+                                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, ?PASSWORD, true]),
+    ok = exp_nothing(200),
+    #{{entries,<<"http://localhost:34567/cache">>,
+       auth_on_register} := 1,
+      {hits,<<"http://localhost:34567/cache">>,
+       auth_on_register} := 1,
+      {misses,<<"http://localhost:34567/cache">>,
+       auth_on_register} := 1} = vmq_webhooks_cache:stats(),
+    deregister_hook(auth_on_register, Endpoint).
+
+cache_auth_on_publish(_) ->
+    Endpoint = ?ENDPOINT ++ "/cache",
+    Self = pid_to_bin(self()),
+    register_hook(auth_on_publish, Endpoint),
+    {ok, []} = vmq_plugin:all_till_ok(auth_on_publish,
+                      [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+    exp_response(cache_auth_on_publish_ok),
+    {ok, []} = vmq_plugin:all_till_ok(auth_on_publish,
+                      [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+    ok = exp_nothing(200),
+    #{{entries,<<"http://localhost:34567/cache">>,
+       auth_on_publish} := 1,
+      {hits,<<"http://localhost:34567/cache">>,
+       auth_on_publish} := 1,
+      {misses,<<"http://localhost:34567/cache">>,
+       auth_on_publish} := 1} = vmq_webhooks_cache:stats(),
+    deregister_hook(auth_on_publish, Endpoint).
+
+cache_auth_on_subscribe(_) ->
+    Endpoint = ?ENDPOINT ++ "/cache",
+    Self = pid_to_bin(self()),
+    register_hook(auth_on_subscribe, Endpoint),
+    {ok, []} = vmq_plugin:all_till_ok(auth_on_subscribe,
+                      [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1}]]),
+    exp_response(cache_auth_on_subscribe_ok),
+    {ok, []} = vmq_plugin:all_till_ok(auth_on_subscribe,
+                      [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1}]]),
+    ok = exp_nothing(200),
+    #{{entries,<<"http://localhost:34567/cache">>,
+       auth_on_subscribe} := 1,
+      {hits,<<"http://localhost:34567/cache">>,
+       auth_on_subscribe} := 1,
+      {misses,<<"http://localhost:34567/cache">>,
+       auth_on_subscribe} := 1} = vmq_webhooks_cache:stats(),
+    deregister_hook(auth_on_subscribe, Endpoint).
 
 auth_on_register_test(_) ->
     register_hook(auth_on_register, ?ENDPOINT),
-    ok = vmq_plugin:all_till_ok(auth_on_register,
+    {ok, []} = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
     {error, [error]} = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
@@ -90,7 +176,7 @@ auth_on_register_test(_) ->
 
 auth_on_publish_test(_) ->
     register_hook(auth_on_publish, ?ENDPOINT),
-    ok = vmq_plugin:all_till_ok(auth_on_publish,
+    {ok, []} = vmq_plugin:all_till_ok(auth_on_publish,
                       [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     {error, [error]} = vmq_plugin:all_till_ok(auth_on_publish,
                       [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
@@ -102,7 +188,7 @@ auth_on_publish_test(_) ->
 
 auth_on_subscribe_test(_) ->
     register_hook(auth_on_subscribe, ?ENDPOINT),
-    ok = vmq_plugin:all_till_ok(auth_on_subscribe,
+    {ok, []} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1}]]),
     {error, [error]} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, [{?TOPIC, 1}]]),
@@ -140,7 +226,7 @@ on_subscribe_test(_) ->
 
 on_unsubscribe_test(_) ->
     register_hook(on_unsubscribe, ?ENDPOINT),
-    ok = vmq_plugin:all_till_ok(on_unsubscribe,
+    {ok, []} = vmq_plugin:all_till_ok(on_unsubscribe,
                                 [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [?TOPIC]]),
     {ok, [[<<"rewritten">>, <<"topic">>]]} = vmq_plugin:all_till_ok(on_unsubscribe,
                       [?USERNAME, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, [?TOPIC]]),
@@ -149,7 +235,7 @@ on_unsubscribe_test(_) ->
 on_deliver_test(_) ->
     register_hook(on_deliver, ?ENDPOINT),
     Self = pid_to_bin(self()),
-    ok = vmq_plugin:all_till_ok(on_deliver,
+    {ok, []} = vmq_plugin:all_till_ok(on_deliver,
                                 [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?TOPIC, ?PAYLOAD]),
     ok = exp_response(on_deliver_ok),
     deregister_hook(on_deliver, ?ENDPOINT).
@@ -195,7 +281,7 @@ auth_on_register_undefined_creds_test(_) ->
     register_hook(auth_on_register, ?ENDPOINT),
     Username = undefined,
     Password = undefined,
-    ok = vmq_plugin:all_till_ok(auth_on_register,
+    {ok, []} = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, <<"undefined_creds">>}, Username, Password, true]),
     deregister_hook(auth_on_register, ?ENDPOINT).
     
@@ -220,4 +306,14 @@ exp_response(Exp) ->
         1000 ->
             {didnt_receive_response, Exp}
     end.
-    
+
+exp_nothing(Timeout) ->    
+    receive
+        Got ->
+            {received, Got, expected, nothing}
+    after
+        Timeout ->
+            ok
+    end.
+                              
+                             

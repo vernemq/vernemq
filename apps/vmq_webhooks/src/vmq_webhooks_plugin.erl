@@ -1,4 +1,4 @@
-%% Copyright 2016 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2017 Erlio GmbH Basel Switzerland (http://erl.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -102,6 +102,7 @@ all_hooks() ->
 init([]) ->
     process_flag(trap_exit, true),
     ets:new(?TBL, [public, ordered_set, named_table, {read_concurrency, true}]),
+    ok = vmq_webhooks_cache:new(),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -363,9 +364,7 @@ all_till_ok(HookName, Args) ->
     end.
 
 all_till_ok([{Endpoint,EOpts}|Rest], HookName, Args) ->
-    case call_endpoint(Endpoint, EOpts, HookName, Args) of
-        true ->
-            ok;
+    case maybe_call_endpoint(Endpoint, EOpts, HookName, Args) of
         Modifiers when is_list(Modifiers) ->
             case check_modifiers(HookName, Modifiers) of
                 error ->
@@ -452,6 +451,26 @@ peer({Peer, Port}) when is_tuple(Peer) and is_integer(Port) ->
 subscriber_id({"", ClientId}) -> {<<>>, ClientId};
 subscriber_id({MP, ClientId}) -> {list_to_binary(MP), ClientId}.
 
+
+maybe_call_endpoint(Endpoint, EOpts, Hook, Args)
+  when Hook =:= auth_on_register;
+       Hook =:= auth_on_publish;
+       Hook =:= auth_on_subscribe ->
+    case vmq_webhooks_cache:lookup(Endpoint, Hook, Args) of
+        not_found ->
+            case call_endpoint(Endpoint, EOpts, Hook, Args) of
+                {Modifiers, ExpiryInSecs} when is_list(Modifiers) ->
+                    vmq_webhooks_cache:insert(Endpoint, Hook, Args, ExpiryInSecs, Modifiers),
+                    Modifiers;
+                Res ->
+                    Res
+            end;
+        Modifiers ->
+            Modifiers
+    end;
+maybe_call_endpoint(Endpoint, EOpts, Hook, Args) ->
+    call_endpoint(Endpoint, EOpts, Hook, Args).
+
 call_endpoint(Endpoint, EOpts, Hook, Args) ->
     Method = post,
     Headers = [{<<"Content-Type">>, <<"application/json">>},
@@ -459,12 +478,15 @@ call_endpoint(Endpoint, EOpts, Hook, Args) ->
     Opts = [{pool, Endpoint}],
     Res =
         case hackney:request(Method, Endpoint, Headers, encode_payload(Hook, Args, EOpts), Opts) of
-            {ok, 200, _RespHeaders, CRef} ->
+            {ok, 200, RespHeaders, CRef} ->
                 case hackney:body(CRef) of
                     {ok, Body} ->
                         case jsx:is_json(Body) of
                             true ->
-                                handle_response(Hook, jsx:decode(Body, [{labels, atom}]), EOpts);
+                                handle_response(Hook,
+                                                parse_headers(RespHeaders),
+                                                jsx:decode(Body, [{labels, atom}]),
+                                                EOpts);
                             false ->
                                 {error, received_payload_not_json}
                         end;
@@ -483,11 +505,29 @@ call_endpoint(Endpoint, EOpts, Hook, Args) ->
         {error, Reason} ->
             lager:error("calling endpoint failed due to: ~p", [Reason]),
             error;
-        [] ->
-            true;
         Res ->
             Res
     end.
+
+parse_headers(Headers) ->
+    case hackney_headers:parse(<<"cache-control">>, Headers) of
+        <<"max-age=", MaxAgeBin/binary>> ->
+            #{max_age => erlang:binary_to_integer(MaxAgeBin)};
+        _ -> #{}
+    end.
+
+handle_response(Hook, #{max_age := MaxAge}, Decoded, EOpts)
+  when Hook =:= auth_on_register;
+       Hook =:= auth_on_publish;
+       Hook =:= auth_on_subscribe ->
+    case handle_response(Hook, Decoded, EOpts) of
+        Res when is_list(Res) ->
+            {Res, MaxAge};
+        Res ->
+            Res
+    end;
+handle_response(Hook, _, Decoded, EOpts) ->
+    handle_response(Hook, Decoded, EOpts).
 
 handle_response(Hook, Decoded, EOpts) 
   when Hook =:= auth_on_register; Hook =:= auth_on_publish;

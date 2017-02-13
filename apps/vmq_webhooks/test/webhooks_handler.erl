@@ -10,7 +10,9 @@
 
 start_endpoint() ->
     Dispatch = cowboy_router:compile(
-                 [{'_', [{"/", ?MODULE, []}]}]),
+                 [{'_', [{"/", ?MODULE, []},
+                         {"/cache", ?MODULE, []},
+                         {"/cache1s", ?MODULE, []}]}]),
     {ok, _} = cowboy:start_http(http, 1, [{port, 34567}],
         [{env, [{dispatch, Dispatch}]}]
     ).
@@ -23,15 +25,48 @@ init(_Type, Req, []) ->
 	{ok, Req, undefined}.
 
 handle(Req, State) ->
+    Path = cowboy_req:path(Req),
     {Hook, Req2} = cowboy_req:header(<<"vernemq-hook">>, Req),
     {ok, Body, Req3} = cowboy_req:body(Req2),
-    {Code, Resp} = process_hook(Hook, jsx:decode(Body, [{labels, atom}, return_maps])),
-    {ok, Req4} =
-        cowboy_req:reply(Code,
-                         [
-                          {<<"content-type">>, <<"text/json">>}
-                         ], jsx:encode(Resp), Req3),
-    {ok, Req4, State}.
+    case Path of
+        {<<"/">>, _} ->
+            {Code, Resp} = process_hook(Hook, jsx:decode(Body, [{labels, atom}, return_maps])),
+            {ok, Req4} =
+                cowboy_req:reply(Code,
+                                 [
+                                  {<<"content-type">>, <<"text/json">>}
+                                 ], jsx:encode(Resp), Req3),
+            {ok, Req4, State};
+        {<<"/cache">>,_} ->
+            {Code, Resp} = process_cache_hook(Hook, jsx:decode(Body, [{labels, atom}, return_maps])),
+            {ok, Req4} =
+                cowboy_req:reply(Code,
+                                 [{<<"content-type">>, <<"text/json">>},
+                                  {<<"Cache-control">>, <<"max-age=86400">>}],
+                                 jsx:encode(Resp), Req3),
+            {ok, Req4, State};
+        {<<"/cache1s">>,_} ->
+            {Code, Resp} = process_cache_hook(Hook, jsx:decode(Body, [{labels, atom}, return_maps])),
+            {ok, Req4} =
+                cowboy_req:reply(Code,
+                                 [{<<"content-type">>, <<"text/json">>},
+                                  {<<"Cache-control">>, <<"max-age=1">>}],
+                                 jsx:encode(Resp), Req3),
+            {ok, Req4, State}
+    end.
+
+process_cache_hook(<<"auth_on_register">>, #{username := SenderPid}) ->
+    Pid = list_to_pid(binary_to_list(SenderPid)),
+    Pid ! cache_auth_on_register_ok,
+    {200, #{result => <<"ok">>}};
+process_cache_hook(<<"auth_on_publish">>, #{username := SenderPid}) ->
+    Pid = list_to_pid(binary_to_list(SenderPid)),
+    Pid ! cache_auth_on_publish_ok,
+    {200, #{result => <<"ok">>}};
+process_cache_hook(<<"auth_on_subscribe">>, #{username := SenderPid}) ->
+    Pid = list_to_pid(binary_to_list(SenderPid)),
+    Pid ! cache_auth_on_subscribe_ok,
+    {200, #{result => <<"ok">>}}.
 
 %% callbacks for each hook
 auth_on_register(#{peer_addr := ?PEER_BIN,
