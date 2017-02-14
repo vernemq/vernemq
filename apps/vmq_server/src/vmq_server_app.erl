@@ -45,10 +45,8 @@ start_user_plugins() ->
     Plugins = application:get_env(vmq_server, user_plugins, []),
     [ start_user_plugin(P) || P <- Plugins ].
 
-start_user_plugin({Name, #{name := undefined}}) ->
-    lager:warning("Could not start plugin ~p due to missing name", [Name]);
-start_user_plugin({Name, #{path := Path,
-                           name := PluginName}}) ->
+start_user_plugin({_Order, #{path := Path,
+                             name := PluginName}}) ->
     Res = case Path of
               undefined ->
                   vmq_plugin_mgr:enable_plugin(PluginName);
@@ -59,7 +57,7 @@ start_user_plugin({Name, #{path := Path,
         ok ->
             ok;
         {error, Reason} ->
-            lager:warning("Could not start plugin ~p with name ~p due to ~p", [Name, PluginName, Reason])
+            lager:warning("Could not start plugin ~p due to ~p", [PluginName, Reason])
     end.
 
 -spec stop(_) -> 'ok'.
