@@ -2,6 +2,8 @@
 
 ## Nightly (will become next release)
 
+- Erlang 17.x is no longer officially supported.
+
 ### vmq_server
 
 - Change to plugin administration. To make VerneMQ configuration more consistent
