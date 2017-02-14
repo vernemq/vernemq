@@ -55,8 +55,8 @@ rel:
 ifeq ($(OVERLAY_VARS),)
 	$(REBAR) $(PROFILE) release --overlay_vars vars.config
 else
-	cat $(OVERLAY_VARS) > vars_pkg.config
-	cat vars.config >> vars_pkg.config
+	cat vars.config > vars_pkg.config
+	cat $(OVERLAY_VARS) >> vars_pkg.config
 	$(REBAR) $(PROFILE) release --overlay_vars vars_pkg.config
 	cp _build/default/rel/vernemq/bin/start_clean.boot _build/default/rel/vernemq/releases/$(MAJOR_VERSION)/start_clean.boot
 endif
