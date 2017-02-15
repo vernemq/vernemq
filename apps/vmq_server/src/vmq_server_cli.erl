@@ -69,7 +69,7 @@ register_cli() ->
     ok.
 
 register_cli_usage() ->
-    clique:register_usage(["vmq-admin"], usage()),
+    clique:register_usage(["vmq-admin"], fun usage/0),
     clique:register_usage(["vmq-admin", "node"], node_usage()),
     clique:register_usage(["vmq-admin", "node", "start"], start_usage()),
     clique:register_usage(["vmq-admin", "node", "stop"], stop_usage()),
@@ -495,6 +495,7 @@ usage() ->
      "    listener    Manage listener interfaces\n",
      "    metrics     Retrieve System Metrics\n",
      "    api         Manage API keys for the HTTP management interface\n",
+     remove_ok(vmq_plugin_mgr:get_usage_lead_lines()),
      "  Use --help after a sub-command for more details.\n"
     ].
 node_usage() ->
@@ -570,3 +571,6 @@ ensure_all_stopped([App|Apps], Res)  ->
     ensure_all_stopped(Apps -- Stopped, [[App|Stopped]|Res]);
 ensure_all_stopped([], Res) -> Res.
 
+
+remove_ok({ok, Res}) ->
+    Res.

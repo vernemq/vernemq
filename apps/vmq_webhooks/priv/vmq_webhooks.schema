@@ -78,3 +78,8 @@
                    {SortName, maps:update(endpoint, list_to_binary(Endpoint), WH)}
            end, Webhooks)
  end}.
+
+{mapping, "vmq_webhooks.clique_lead_line", "vmq_webhooks.clique_lead_line",
+ [{datatype, string},
+  hidden,
+  {default, "    webhooks    Manage webhooks\n"}]}.

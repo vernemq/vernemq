@@ -1,3 +1,6 @@
+%% -*- mode: erlang -*-
+%% ex: ft=erlang
+
 %% @doc Enable to keep the Lua state between calls. This would allow to
 %% to set global variables and reuse them in a later callback call or 
 %% even in a different callback. Default is 'off' enabling that no Lua
@@ -40,3 +43,8 @@
                || SortName <- ScriptNames ],
          lists:keysort(1, Scripts)
  end}.
+
+{mapping, "vmq_diversity.clique_lead_line", "vmq_diversity.clique_lead_line",
+ [{datatype, string},
+  hidden,
+  {default, "    script      Manage lua scripts\n"}]}.
