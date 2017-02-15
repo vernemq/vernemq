@@ -24,7 +24,8 @@
          enable_module_plugin/4,
          disable_plugin/1,
          disable_module_plugin/3,
-         disable_module_plugin/4]).
+         disable_module_plugin/4,
+         get_usage_lead_lines/0]).
 
 %% exported for testing purposes.
 -export([get_plugins/0]).
@@ -118,6 +119,9 @@ disable_module_plugin(HookName, Module, Fun, Arity) when
 disable_plugin(Plugin) when is_atom(Plugin) or is_tuple(Plugin) ->
     gen_server:call(?MODULE, {disable_plugin, Plugin}, infinity).
 
+get_usage_lead_lines() ->
+    gen_server:call(?MODULE, get_usage_lead_lines).
+
 get_plugins() ->
     gen_server:call(?MODULE, get_plugins).
 
@@ -166,6 +170,18 @@ handle_call(stop, _From, #state{plugins=Plugins} = State) ->
     {reply, ok, NewState};
 handle_call(get_plugins, _From, #state{plugins=Plugins} = State) ->
     {reply, {ok, Plugins}, State};
+handle_call(get_usage_lead_lines, _From, #state{plugins=Plugins} = State) ->
+    LeadLines =
+        lists:filtermap(
+          fun({application, App, _}) ->
+                  case application:get_env(App, clique_lead_line, undefined) of
+                      undefined -> false;
+                      Line -> {true, Line}
+                  end;
+             (_) -> false
+          end,
+          Plugins),
+    {reply, {ok, LeadLines}, State};
 handle_call(Call, _From, #state{ready=true} = State) ->
     handle_plugin_call(Call, State);
 handle_call(Call, From, #state{deferred_calls=DeferredCalls} = State) ->
