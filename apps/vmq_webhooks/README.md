@@ -62,6 +62,27 @@ Deregistering an endpoint:
 The payload is by default base64 encoded, to disable this add the
 `--base64payload=false` flag when registering the hook.
 
+## Caching
+
+VerneMQ webhooks support caching of the `auth_on_register`, `auth_on_publish`
+and `auth_on_subscribe` hooks.
+
+This can be used to speed up authentication and authorization tremendously. All
+data passed to these hooks is used to look if the call is in the cache, except
+in the case of the `auth_on_publish` where the payload is omitted.
+
+To enable caching for an endpoint simply return the `cache-control:
+max-age=<seconds>` in the response headers to one of the mentioned hooks. If the
+call was successful (authentication granted), the request will be cached
+together with any modifiers, except for the `payload` modifier in the
+`auth_on_publish` hook.
+
+Whenever a non-expired entry is looked up in the cache the endpoint will not be
+called and the modifiers of the cached entry will be returned, if any.
+
+Note, cache entries are currently not actively disposed on after expiry and will
+remain in memory.
+
 ## Persisting hooks across VerneMQ restarts
 
 Webhooks added with `vmq-plugin` command line tool are not persisted across
