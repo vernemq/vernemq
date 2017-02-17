@@ -3,6 +3,7 @@
 ## Nightly (will become next release)
 
 - Erlang 17.x is no longer officially supported.
+- New `rebar3` version (3.3.5), required to upgrade `node_package` dependency.
 
 ### vmq_server
 
