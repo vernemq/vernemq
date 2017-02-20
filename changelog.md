@@ -4,6 +4,8 @@
 
 - Erlang 17.x is no longer officially supported.
 - New `rebar3` version (3.3.5), required to upgrade `node_package` dependency.
+- The plugins `vmq_webhooks` and `vmq_diversity` are now shipped as part of
+  VerneMQ itself.
 
 ### vmq_server
 
@@ -31,6 +33,7 @@
     - The `password_file` setting is replaced by `vmq_passwd.password_file`
     - The `password_reload_interval` setting is replaced by
       `vmq_passwd.password_reload_interval`.
+    - The `bridge` prefix has been replaced by the `vmq_bridge` prefix.
       
       Make sure to update the configuration file accordingly.
 
