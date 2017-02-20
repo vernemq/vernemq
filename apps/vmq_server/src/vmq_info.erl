@@ -34,8 +34,7 @@ fields_config() ->
     Queues = #vmq_ql_table{
                    name =       queues,
                    depends_on = [QueueBase],
-                   provides = [status,
-                               deliver_mode,
+                   provides = [deliver_mode,
                                queue_size,
                                session_pid,
                                is_offline,
