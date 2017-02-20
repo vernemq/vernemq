@@ -26,6 +26,9 @@ vmq_session_list_cmd() ->
     Cmd = ["vmq-admin", "session", "list"],
     KeySpecs = [],
     ValidInfoItems = vmq_info:session_info_items(),
+
+    DefaultFields =
+        ["peer_port", "peer_host", "user", "mountpoint", "client_id", "is_online"],
     FlagSpecs = [{I, [{longname, atom_to_list(I)}]} || I <- [limit|ValidInfoItems]],
     Callback = fun(_, [], Flags) ->
                        Limit = proplists:get_value(limit, Flags, "100"),
@@ -33,7 +36,7 @@ vmq_session_list_cmd() ->
                        {Fields, Where} =
                        case Flags of
                            [] ->
-                               {["*"], []};
+                               {DefaultFields, []};
                            _ ->
                                lists:foldl(
                                  fun({Flag, undefined}, {AccFields, AccWhere}) ->
@@ -91,5 +94,7 @@ vmq_session_list_usage() ->
                || Item <- vmq_info:session_info_items()],
     ["vmq-admin session list\n\n",
      "  Prints some information on running sessions\n\n",
+     "Default options:\n"
+     "  --client_id --is_online --mountpoint --peer_host --peer_port --user\n\n"
      "Options\n\n" | Options
     ].
