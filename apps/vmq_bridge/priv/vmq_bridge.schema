@@ -1,4 +1,4 @@
-%%-*- mode: erlang -*
+%%-*- mode: erlang -*-
 %% ex: ft=erlang
 
 %% @doc Specify the address and port of the bridge to connect to. Several 
@@ -301,27 +301,31 @@
          F = fun(Prefix, Suffix, Validator) ->
                      %% get the name value pairs
                      Prefix3 = lists:flatten([Prefix, ".$name"]),
-                     [begin
-                          case lists:prefix("topic", Suffix) of
-                              true ->
-                                  BrConfigs =
-                                  [begin
-                                       P = lists:flatten(
-                                             [Prefix, ".", Name, ".topic.", integer_to_list(I)]
-                                            ), 
-                                       cuttlefish:conf_get(P, Conf, undefined)
-                                   end || I <- lists:seq(1,100)],
-                                  {AddrPort, {topics, [Validator(Name, C) || C <- BrConfigs, C /= undefined]}};
-                              false ->
-                                  Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
-                                  Val = Validator(Name, cuttlefish:conf_get(Prefix4, Conf, undefined)),
-                                  {AddrPort, {list_to_atom(Suffix), Val}}
+                     Res =
+                         [begin
+                              case lists:prefix("topic", Suffix) of
+                                  true ->
+                                      BrConfigs =
+                                          [begin
+                                               P = lists:flatten(
+                                                     [Prefix, ".", Name, ".topic.", integer_to_list(I)]
+                                                    ),
+                                               cuttlefish:conf_get(P, Conf, undefined)
+                                           end || I <- lists:seq(1,100)],
+                                      {AddrPort, {topics, [Validator(Name, C) || C <- BrConfigs, C /= undefined]}};
+                                  false ->
+                                      Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
+                                      Val = Validator(Name, cuttlefish:conf_get(Prefix4, Conf, undefined)),
+                                      {AddrPort, {list_to_atom(Suffix), Val}}
+                              end
                           end
-                      end 
-                      || {[_, _, Name], AddrPort} <- lists:filter(
-                                                            fun({K, _V}) ->
-                                                                    cuttlefish_variable:is_fuzzy_match(K, string:tokens(Prefix3, "."))
-                                                            end, Conf), not lists:member(Name, Mappings ++ SSLMapps)]
+                          || {[_, _, Name], AddrPort} <- lists:filter(
+                                                           fun({K, _V}) ->
+                                                                   cuttlefish_variable:is_fuzzy_match(K, string:tokens(Prefix3, "."))
+                                                           end, Conf), not lists:member(Name, Mappings ++ SSLMapps)],
+                     %% Remove duplicates as a value is generated for
+                     %% each setting on a bridge definition.
+                     lists:usort(Res)
              end,
 
          MZip = fun([H|_] = ListOfLists) ->
