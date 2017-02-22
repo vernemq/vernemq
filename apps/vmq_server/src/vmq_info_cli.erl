@@ -98,5 +98,9 @@ vmq_session_list_usage() ->
      "  Prints some information on running sessions\n\n",
      "Default options:\n"
      "  --client_id --is_online --mountpoint --peer_host --peer_port --user\n\n"
-     "Options\n\n" | Options
+     "Options\n\n"
+     "  --limit=<NumberOfResults>\n"
+     "      Limit the number of results returned from each node in the cluster.\n"
+     "      Defaults is 100.\n"
+     | Options
     ].
