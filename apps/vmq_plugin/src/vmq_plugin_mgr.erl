@@ -938,7 +938,7 @@ vmq_plugin_test() ->
     %% ENABLE PLUGIN
     ?assertEqual(ok, vmq_plugin_mgr:enable_plugin(
                        vmq_plugin,
-                       ["./_build/test/lib/vmq_plugin"])),
+                       [code:lib_dir(vmq_plugin)])),
     ?assert(lists:keyfind(vmq_plugin, 1, application:which_applications()) /= false),
 
     io:format(user, "info all ~p~n", [vmq_plugin:info(all)]),
