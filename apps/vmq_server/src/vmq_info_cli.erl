@@ -39,7 +39,9 @@ vmq_session_list_cmd() ->
                                {DefaultFields, []};
                            _ ->
                                lists:foldl(
-                                 fun({Flag, undefined}, {AccFields, AccWhere}) ->
+                                 fun({limit, _}, Acc) ->
+                                         Acc;
+                                    ({Flag, undefined}, {AccFields, AccWhere}) ->
                                          {[atom_to_list(Flag)|AccFields], AccWhere};
                                     ({Flag, Val}, {AccFields, AccWhere}) ->
                                          {AccFields, [{atom_to_list(Flag), v(Val)}|AccWhere]}
