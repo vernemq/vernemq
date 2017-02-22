@@ -9,6 +9,8 @@
 
 ### vmq_server
 
+- Improved the `vmq-admin list session` command with customizable fields.
+
 - Change to plugin administration. To make VerneMQ configuration more consistent
   and simpler to configure it is now possible to configure plugins directly in
   the `vernemq.conf` file.
