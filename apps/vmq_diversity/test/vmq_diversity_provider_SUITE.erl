@@ -23,7 +23,6 @@
 %% ===================================================================
 init_per_suite(_Config) ->
     application:load(vmq_plugin),
-    ok = file:write_file("vmq_plugin.conf", <<"{plugins, []}.">>),
     application:ensure_all_started(vmq_plugin),
     vmq_plugin_mgr:enable_plugin(vmq_diversity),
     cover:start(),
@@ -40,48 +39,56 @@ init_per_testcase(_Case, Config) ->
 end_per_testcase(_, Config) ->
     Config.
 
--ifdef('DO_TEST').
-all() ->
-    [mysql_test,
-     postgres_test,
-     mongodb_test,
-     redis_test,
-     http_test,
-     kv_test,
-     json_test,
-     logger_test,
-     memcached_test].
--else.
-all() -> [].
+-ifndef(run_all_tests).
+-define(run_all_tests, false).
 -endif.
+
+all() ->
+    case ?run_all_tests of
+        true ->
+            [mysql_test,
+             postgres_test,
+             mongodb_test,
+             redis_test,
+             http_test,
+             kv_test,
+             json_test,
+             logger_test,
+             memcached_test];
+        _ ->
+            {skip, "Database tests skipped"}
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+test_script(File) ->
+    code:lib_dir(vmq_diversity) ++ "/test/" ++ File.
+
 mysql_test(_) ->
-    {ok, _} = vmq_diversity:load_script("../../../../test/mysql_test.lua").
+    {ok, _} = vmq_diversity:load_script(test_script("mysql_test.lua")).
 
 postgres_test(_) ->
-    {ok, _} = vmq_diversity:load_script("../../../../test/postgres_test.lua").
+    {ok, _} = vmq_diversity:load_script(test_script("postgres_test.lua")).
 
 mongodb_test(_) ->
-    {ok, _} = vmq_diversity:load_script("../../../../test/mongodb_test.lua").
+    {ok, _} = vmq_diversity:load_script(test_script("mongodb_test.lua")).
 
 redis_test(_) ->
-    {ok, _} = vmq_diversity:load_script("../../../../test/redis_test.lua").
+    {ok, _} = vmq_diversity:load_script(test_script("redis_test.lua")).
 
 http_test(_) ->
-    {ok, _} = vmq_diversity:load_script("../../../../test/http_test.lua").
+    {ok, _} = vmq_diversity:load_script(test_script("http_test.lua")).
 
 kv_test(_) ->
-    {ok, _} = vmq_diversity:load_script("../../../../test/ets_test.lua").
+    {ok, _} = vmq_diversity:load_script(test_script("ets_test.lua")).
 
 json_test(_) ->
-    {ok, _} = vmq_diversity:load_script("../../../../test/json_test.lua").
+    {ok, _} = vmq_diversity:load_script(test_script("json_test.lua")).
 
 logger_test(_) ->
-    {ok, _} = vmq_diversity:load_script("../../../../test/log_test.lua").
+    {ok, _} = vmq_diversity:load_script(test_script("log_test.lua")).
 
 memcached_test(_) ->
-    {ok, _} = vmq_diversity:load_script("../../../../test/memcached_test.lua").
+    {ok, _} = vmq_diversity:load_script(test_script("memcached_test.lua")).
