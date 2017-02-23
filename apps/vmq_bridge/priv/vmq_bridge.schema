@@ -116,7 +116,8 @@
 {mapping, "vmq_bridge.tcp.$name.topic.$topic_id", "vmq_bridge.config", [
                                                                     {datatype, string},
                                                                     {include_default, "1"}
-                                                                   ]}. 
+                                                                   ]}.
+
 {mapping, "vmq_bridge.ssl.$name.topic.$topic_id", "vmq_bridge.config", [
                                                        {datatype, string},
                                                        hidden
@@ -276,14 +277,19 @@
                                                 true ->
                                                     {list_to_integer(MaybeQoS), Rest4};
                                                 false ->
-                                                    {0, Rest4}
+                                                    {0, Rest2}
                                             end
                                     end,
+                                    Empty = fun("$empty") ->
+                                                    "";
+                                               (V) -> V
+                                            end,
                                     case Rest3 of
                                         [] ->
                                             {Pattern, Direction, QoS, "", ""};
                                         [LocalPrefix, RemotePrefix] ->
-                                            {Pattern, Direction, QoS, LocalPrefix, RemotePrefix};
+                                            {Pattern, Direction, QoS,
+                                             Empty(LocalPrefix), Empty(RemotePrefix)};
                                         _ ->
                                             cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
                                     end;
