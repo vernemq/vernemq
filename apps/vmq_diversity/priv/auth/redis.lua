@@ -12,6 +12,8 @@
 
 -- Redis Configuration, read the documentation below to properly
 -- provision your database.
+require "auth/auth_commons"
+
 HOST = "127.0.0.1"
 PORT = 6379
 PASSWORD = ""
@@ -22,11 +24,11 @@ DATABASE = 0
 -- the following properties as Redis Value:
 --
 --  - passhash: STRING (bcrypt)
---  - publish_acl: [STRING]  (Array of Strings)
---  - subscribe_acl: [STRING]  (Array of Strings)
+--  - publish_acl: [ACL]  (Array of ACL JSON Objects)
+--  - subscribe_acl: [ACL]  (Array of ACL JSON Objects)
 --
--- 	The JSON array passed as publish/subscribe ACL contains the topic patterns
--- 	allowed for this particular user. MQTT wildcards as well as the variable 
+-- 	The JSON array passed as publish/subscribe ACL contains the ACL objects topic
+-- 	for this particular user. MQTT wildcards as well as the variable 
 -- 	substitution for %m (mountpoint), %c (client_id), %u (username) are allowed
 -- 	inside a pattern. 
 --
@@ -39,10 +41,9 @@ function auth_on_register(reg)
         key = json.encode({reg.mountpoint, reg.client_id, reg.username})
         res = redis.cmd(pool, "get " .. key)
         if res then
-            print(res)
             res = json.decode(res)
             if res.passhash == bcrypt.hashpw(reg.password, res.passhash) then
-                auth_cache.insert(
+                cache_insert(
                     reg.mountpoint, 
                     reg.client_id, 
                     reg.username,
@@ -70,17 +71,16 @@ end
 function on_client_offline(c)
 end
 
-pool = "auth_mongodb"
+pool = "auth_redis"
 config = {
     pool_id = pool,
-    login = USER,
     password = PASSWORD,
     database = DATABASE,
     host = HOST,
     port = PORT
 }
 
-mongodb.ensure_pool(config)
+redis.ensure_pool(config)
 hooks = {
     auth_on_register = auth_on_register,
     auth_on_publish = auth_on_publish,

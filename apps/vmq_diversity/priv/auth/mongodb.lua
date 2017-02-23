@@ -12,13 +12,15 @@
 
 -- MongoDB Configuration, read the documentation below to properly
 -- provision your database.
+
+require "auth/auth_commons"
+
 HOST = "127.0.0.1"
 PORT = 27017
 COLLECTION = "vmq_acl_auth"
 USER = nil
 PASSWORD = nil
 DATABASE = nil
-
 
 -- In order to use this Lua plugin your MongoDB docs used for authentication 
 -- and authorization must contain the following properties:
@@ -27,13 +29,44 @@ DATABASE = nil
 --  - client_id: STRING
 --  - username: STRING
 --  - passhash: STRING (bcrypt)
---  - publish_acl: [STRING]  (Array of Strings)
---  - subscribe_acl: [STRING]  (Array of Strings)
+--  - publish_acl: [PubAclObj]  (Array of PubAclObj)
+--  - subscribe_acl: [SubAclObj]  (Array of SubAclObj)
 --
--- 	The BSON array passed as publish/subscribe ACL contains the topic patterns
--- 	allowed for this particular user. MQTT wildcards as well as the variable 
--- 	substitution for %m (mountpoint), %c (client_id), %u (username) are allowed
--- 	inside a pattern. 
+-- 	The BSON array passed as publish/subscribe ACL contains the ACL objects 
+-- 	for this particular user. 
+--
+--  PubAclObj = {
+--      // required
+--      pattern: STRING  (use wildcards +/# and substitutions %m/%c/%u)
+--
+--      // optional rules
+--      max_qos: INT
+--      max_payload_size: INT
+--      allowed_retain: BOOL
+--
+--      // optional modifiers, override properties of the publish
+--      modifiers: {
+--          topic: STRING (no wildcards ofc.)
+--          payload: STRING
+--          qos: INT
+--          retain: BOOL
+--          mountpoint: STRING
+--      }
+--  }
+--
+--  SubAclObj = {
+--      // required
+--      pattern: STRING  (use wildcards +/# and substitutions %m/%c/%u)
+--
+--      // optional rules
+--      max_qos: INT
+--
+--      // optional modifiers, override properties of the subscribe
+--      modifiers: [
+--          {Topic : STRING, QoS : INT}
+--      ]
+--
+--  }
 -- 
 -- IF YOU USE THE DOCUMENT SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED IN THE
 -- FOLLOWING SCRIPT.
@@ -45,7 +78,7 @@ function auth_on_register(reg)
                                  username = reg.username})
         if doc ~= false then
             if doc.passhash == bcrypt.hashpw(reg.password, doc.passhash) then
-                auth_cache.insert(
+                cache_insert(
                     reg.mountpoint, 
                     reg.client_id, 
                     reg.username,

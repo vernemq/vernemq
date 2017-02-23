@@ -22,6 +22,9 @@
     jsx,
     bcrypt
    ]},
-  {env,[{keep_state, false}]},
+  {env,[
+      {keep_state, false},
+      {script_dir, "priv"}
+  ]},
   {modules, []}
  ]}.

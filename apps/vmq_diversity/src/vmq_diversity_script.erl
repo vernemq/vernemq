@@ -208,11 +208,16 @@ load_script(Script) ->
             {vmq_diversity_cache,       <<"auth_cache">>}
            ],
 
+    {ok, ScriptsDir} = application:get_env(vmq_diversity, script_dir),
+    AbsScriptDir = filename:absname(ScriptsDir),
+    Do = "package.path = package.path .. \";" ++ AbsScriptDir ++ "/?.lua\"",
+    {_, InitState} = luerl:do(Do),
+
     LuaState =
     lists:foldl(fun({Mod, NS}, LuaStateAcc) ->
                         luerl:load_module([<<"package">>, <<"loaded">>,
                                            <<"_G">>, NS], Mod, LuaStateAcc)
-                end, luerl:init(), Libs),
+                end, InitState, Libs),
 
     try luerl:dofile(Script, LuaState) of
         {_, NewLuaState} ->

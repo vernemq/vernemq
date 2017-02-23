@@ -119,16 +119,18 @@ table() ->
      {<<"match_publish">>, {function, fun match_publish/2}}
     ].
 
+decode_acl(Acl, St) when is_tuple(Acl) ->
+    luerl:decode(Acl, St);
+decode_acl(_, _) -> undefined.
+
 insert(As, St) ->
     case As of
         [MP, ClientId, User, PubAcls, SubAcls]
           when is_binary(MP)
                and is_binary(ClientId)
-               and is_binary(User)
-               and is_tuple(PubAcls)
-               and is_tuple(SubAcls) ->
-            case {validate_acls(MP, User, ClientId, #publish_acl{}, luerl:decode(PubAcls, St), []),
-                  validate_acls(MP, User, ClientId, #subscribe_acl{}, luerl:decode(SubAcls, St), [])} of
+               and is_binary(User) ->
+            case {validate_acls(MP, User, ClientId, #publish_acl{}, decode_acl(PubAcls, St), []),
+                  validate_acls(MP, User, ClientId, #subscribe_acl{}, decode_acl(SubAcls, St), [])} of
                 {error, _} ->
                     badarg_error(execute_parse, As, St);
                 {_, error} ->
@@ -229,6 +231,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+validate_acls(_, _, _, _, undefined, Acc) -> Acc;
 validate_acls(MP, User, ClientId, AclRec, [{_, Acl}|Rest], Acc) 
   when is_list(Acl) ->
     validate_acls(MP, User, ClientId, AclRec, Rest,     

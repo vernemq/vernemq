@@ -14,6 +14,8 @@
 
 -- MySQL Configuration, read the documentation below to properly
 -- provision your database.
+require "auth/auth_commons"
+
 USER = "vernemq"
 PASSWORD = "vernemq"
 DATABASE = "vernemq_db"
@@ -22,27 +24,30 @@ PORT = 3306
 
 -- In order to use this Lua plugin you must deploy the following database
 -- schema and grant the user configured above with the required privileges:
--- 
--- CREATE TABLE vmq_auth_acl
--- (
---   mountpoint VARCHAR(10) NOT NULL,
---   client_id VARCHAR(128) NOT NULL,
---   username VARCHAR(128) NOT NULL,
---   password VARCHAR(128),
---   publish_acl TEXT,
---   subscribe_acl TEXT,
---   CONSTRAINT vmq_auth_acl_primary_key PRIMARY KEY (mountpoint, client_id, username)
--- )
---
+--[[ 
+   CREATE TABLE vmq_auth_acl
+   (
+     mountpoint VARCHAR(10) NOT NULL,
+     client_id VARCHAR(128) NOT NULL,
+     username VARCHAR(128) NOT NULL,
+     password VARCHAR(128),
+     publish_acl TEXT,
+     subscribe_acl TEXT,
+     CONSTRAINT vmq_auth_acl_primary_key PRIMARY KEY (mountpoint, client_id, username)
+   )
+  ]] --
 -- To insert a client ACL use a similar SQL statement:
+--[[
 --
--- INSERT INTO vmq_auth_acl 
---   (mountpoint, client_id, username, 
---    password, publish_acl, subscribe_acl)
--- VALUES 
---   ('', 'test-client', 'test-user', 
---    PASSWORD('123'), '["a/b/c","c/b/#"]', '["a/b/c","c/b/#"]');
---
+   INSERT INTO vmq_auth_acl 
+   (mountpoint, client_id, username, 
+    password, publish_acl, subscribe_acl)
+ VALUES 
+   ('', 'test-client', 'test-user', 
+    PASSWORD('123'), '[{"pattern":"a/b/c"},{"pattern":"c/b/#"}]', 
+                     '[{"pattern":"a/b/c"},{"pattern":"c/b/#"}]');
+
+]]--
 -- 	The JSON array passed as publish/subscribe ACL contains the topic patterns
 -- 	allowed for this particular user. MQTT wildcards as well as the variable 
 -- 	substitution for %m (mountpoint), %c (client_id), %u (username) are allowed
@@ -70,7 +75,7 @@ function auth_on_register(reg)
             row = results[1]
             publish_acl = json.decode(row.publish_acl)
             subscribe_acl = json.decode(row.subscribe_acl)
-            auth_cache.insert(
+            cache_insert(
                 reg.mountpoint, 
                 reg.client_id, 
                 reg.username,
