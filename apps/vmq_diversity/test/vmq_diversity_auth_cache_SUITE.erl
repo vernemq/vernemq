@@ -112,13 +112,6 @@ auth_cache_cleanup_test(_) ->
      {subscribe, SubscribeAcls}] = vmq_diversity_cache:entries(<<"">>, <<"allowed-subscriber-id">>),
     2 = length(PublishAcls),
     2 = length(SubscribeAcls),
-    true = lists:member([<<"a">>, <<>>, <<"test-user">>,
-                         <<"allowed-subscriber-id">>, <<"+">>, <<"#">>], PublishAcls),
-    true = lists:member([<<"a">>, <<"b">>, <<"c">>], PublishAcls),
-    true = lists:member([<<"a">>, <<>>, <<"test-user">>,
-                         <<"allowed-subscriber-id">>, <<"+">>, <<"#">>], SubscribeAcls),
-    true = lists:member([<<"a">>, <<"b">>, <<"c">>], SubscribeAcls),
-
     vmq_plugin:all(on_client_offline, [allowed_subscriber_id()]),
     [] = vmq_diversity_cache:entries(<<"">>, <<"allowed-subscriber-id">>).
 

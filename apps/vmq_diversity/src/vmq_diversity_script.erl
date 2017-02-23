@@ -255,8 +255,6 @@ convert_list([], Acc) -> lists:reverse(Acc).
 convert_list_item({Idx, Val}) when is_integer(Idx) ->
     %% lua array
     convert(Val);
-convert_list_item({<<"mountpoint">>, MP}) ->
-    {mountpoint, binary_to_list(MP)};
 convert_list_item({BinKey, Val}) when is_binary(BinKey) ->
     try list_to_existing_atom(binary_to_list(BinKey)) of
         Key -> {Key, convert(Val)}

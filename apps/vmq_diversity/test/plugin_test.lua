@@ -26,7 +26,7 @@ function auth_on_register(reg)
     else
         -- we must change properties
         print("auth_on_register changed called")
-        return {mountpoint = "mynewmount"}
+        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
     end
 end
 
