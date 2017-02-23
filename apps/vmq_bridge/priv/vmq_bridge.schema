@@ -96,27 +96,33 @@
 %%
 %%  pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]
 %%
-%%  [ out | in | both ] specifies that this bridge exports messages (out), imports
-%%                      messages (in) or shared in both directions (both).
-%%                      If undefined we default to export (out).
+%%  [ out | in | both ]: specifies that this bridge exports messages (out), imports
+%%  messages (in) or shared in both directions (both). If undefined we default to 
+%%  export (out).
 %%
-%%  qos-level           specifies the publish/subscribe QoS level used for this
-%%                      topic. If undefined we default to QoS 0.
+%%  qos-level: specifies the publish/subscribe QoS level used for this
+%%  toppic. If undefined we default to QoS 0.
 %%
-%%  local-prefix and remote-prefix:
-%%      For incoming topics, the bridge will prepend the pattern with the 
-%%      remote prefix and subscribe to the resulting topic on the remote broker. 
-%%      When a matching incoming message is received, the remote prefix will be 
-%%      removed from the topic and then the local prefix added.
+%%  local-prefix and remote-prefix: For incoming topics, the bridge
+%%  will prepend the pattern with the remote prefix and subscribe to
+%%  the resulting topic on the remote broker.  When a matching
+%%  incoming message is received, the remote prefix will be removed
+%%  from the topic and then the local prefix added.
 %%
-%%      For outgoing topics, the bridge will prepend the pattern with the local 
-%%      prefix and subscribe to the resulting topic on the local broker. When an 
-%%      outgoing message is processed, the local prefix will be removed from the 
-%%      topic then the remote prefix added.
+%%  For outgoing topics, the bridge will prepend the pattern with the
+%%  local prefix and subscribe to the resulting topic on the local
+%%  broker. When an outgoing message is processed, the local prefix
+%%  will be removed from the topic then the remote prefix added.
+{mapping, "vmq_bridge.tcp.br0.topic.1", "vmq_bridge.config", [
+                                                              {datatype, string},
+                                                              {commented, "topic"}
+                                                             ]}.
+
 {mapping, "vmq_bridge.tcp.$name.topic.$topic_id", "vmq_bridge.config", [
-                                                                    {datatype, string},
-                                                                    {include_default, "1"}
-                                                                   ]}.
+                                                                        {datatype, string},
+                                                                        {include_default, "1"},
+                                                                        hidden
+                                                                       ]}.
 
 {mapping, "vmq_bridge.ssl.$name.topic.$topic_id", "vmq_bridge.config", [
                                                        {datatype, string},
