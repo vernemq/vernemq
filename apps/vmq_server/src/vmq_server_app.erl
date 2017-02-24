@@ -36,8 +36,8 @@ start(_StartType, _StartArgs) ->
             %% vmq_plugin_mgr waits for the 'vmq_server_sup' process
             %% to be registered.
             timer:sleep(500),
-            vmq_config:configure_node(),
             start_user_plugins(),
+            vmq_config:configure_node(),
             R
     end.
 

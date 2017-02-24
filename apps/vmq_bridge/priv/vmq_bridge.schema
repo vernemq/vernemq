@@ -1,4 +1,4 @@
-%%-*- mode: erlang -*
+%%-*- mode: erlang -*-
 %% ex: ft=erlang
 
 %% @doc Specify the address and port of the bridge to connect to. Several 
@@ -96,27 +96,34 @@
 %%
 %%  pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]
 %%
-%%  [ out | in | both ] specifies that this bridge exports messages (out), imports
-%%                      messages (in) or shared in both directions (both).
-%%                      If undefined we default to export (out).
+%%  [ out | in | both ]: specifies that this bridge exports messages (out), imports
+%%  messages (in) or shared in both directions (both). If undefined we default to 
+%%  export (out).
 %%
-%%  qos-level           specifies the publish/subscribe QoS level used for this
-%%                      topic. If undefined we default to QoS 0.
+%%  qos-level: specifies the publish/subscribe QoS level used for this
+%%  toppic. If undefined we default to QoS 0.
 %%
-%%  local-prefix and remote-prefix:
-%%      For incoming topics, the bridge will prepend the pattern with the 
-%%      remote prefix and subscribe to the resulting topic on the remote broker. 
-%%      When a matching incoming message is received, the remote prefix will be 
-%%      removed from the topic and then the local prefix added.
+%%  local-prefix and remote-prefix: For incoming topics, the bridge
+%%  will prepend the pattern with the remote prefix and subscribe to
+%%  the resulting topic on the remote broker.  When a matching
+%%  incoming message is received, the remote prefix will be removed
+%%  from the topic and then the local prefix added.
 %%
-%%      For outgoing topics, the bridge will prepend the pattern with the local 
-%%      prefix and subscribe to the resulting topic on the local broker. When an 
-%%      outgoing message is processed, the local prefix will be removed from the 
-%%      topic then the remote prefix added.
+%%  For outgoing topics, the bridge will prepend the pattern with the
+%%  local prefix and subscribe to the resulting topic on the local
+%%  broker. When an outgoing message is processed, the local prefix
+%%  will be removed from the topic then the remote prefix added.
+{mapping, "vmq_bridge.tcp.br0.topic.1", "vmq_bridge.config", [
+                                                              {datatype, string},
+                                                              {commented, "topic"}
+                                                             ]}.
+
 {mapping, "vmq_bridge.tcp.$name.topic.$topic_id", "vmq_bridge.config", [
-                                                                    {datatype, string},
-                                                                    {include_default, "1"}
-                                                                   ]}. 
+                                                                        {datatype, string},
+                                                                        {include_default, "1"},
+                                                                        hidden
+                                                                       ]}.
+
 {mapping, "vmq_bridge.ssl.$name.topic.$topic_id", "vmq_bridge.config", [
                                                        {datatype, string},
                                                        hidden
@@ -276,14 +283,19 @@
                                                 true ->
                                                     {list_to_integer(MaybeQoS), Rest4};
                                                 false ->
-                                                    {0, Rest4}
+                                                    {0, Rest2}
                                             end
                                     end,
+                                    Empty = fun("$empty") ->
+                                                    "";
+                                               (V) -> V
+                                            end,
                                     case Rest3 of
                                         [] ->
                                             {Pattern, Direction, QoS, "", ""};
                                         [LocalPrefix, RemotePrefix] ->
-                                            {Pattern, Direction, QoS, LocalPrefix, RemotePrefix};
+                                            {Pattern, Direction, QoS,
+                                             Empty(LocalPrefix), Empty(RemotePrefix)};
                                         _ ->
                                             cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
                                     end;
@@ -301,27 +313,31 @@
          F = fun(Prefix, Suffix, Validator) ->
                      %% get the name value pairs
                      Prefix3 = lists:flatten([Prefix, ".$name"]),
-                     [begin
-                          case lists:prefix("topic", Suffix) of
-                              true ->
-                                  BrConfigs =
-                                  [begin
-                                       P = lists:flatten(
-                                             [Prefix, ".", Name, ".topic.", integer_to_list(I)]
-                                            ), 
-                                       cuttlefish:conf_get(P, Conf, undefined)
-                                   end || I <- lists:seq(1,100)],
-                                  {AddrPort, {topics, [Validator(Name, C) || C <- BrConfigs, C /= undefined]}};
-                              false ->
-                                  Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
-                                  Val = Validator(Name, cuttlefish:conf_get(Prefix4, Conf, undefined)),
-                                  {AddrPort, {list_to_atom(Suffix), Val}}
+                     Res =
+                         [begin
+                              case lists:prefix("topic", Suffix) of
+                                  true ->
+                                      BrConfigs =
+                                          [begin
+                                               P = lists:flatten(
+                                                     [Prefix, ".", Name, ".topic.", integer_to_list(I)]
+                                                    ),
+                                               cuttlefish:conf_get(P, Conf, undefined)
+                                           end || I <- lists:seq(1,100)],
+                                      {AddrPort, {topics, [Validator(Name, C) || C <- BrConfigs, C /= undefined]}};
+                                  false ->
+                                      Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
+                                      Val = Validator(Name, cuttlefish:conf_get(Prefix4, Conf, undefined)),
+                                      {AddrPort, {list_to_atom(Suffix), Val}}
+                              end
                           end
-                      end 
-                      || {[_, _, Name], AddrPort} <- lists:filter(
-                                                            fun({K, _V}) ->
-                                                                    cuttlefish_variable:is_fuzzy_match(K, string:tokens(Prefix3, "."))
-                                                            end, Conf), not lists:member(Name, Mappings ++ SSLMapps)]
+                          || {[_, _, Name], AddrPort} <- lists:filter(
+                                                           fun({K, _V}) ->
+                                                                   cuttlefish_variable:is_fuzzy_match(K, string:tokens(Prefix3, "."))
+                                                           end, Conf), not lists:member(Name, Mappings ++ SSLMapps)],
+                     %% Remove duplicates as a value is generated for
+                     %% each setting on a bridge definition.
+                     lists:usort(Res)
              end,
 
          MZip = fun([H|_] = ListOfLists) ->
