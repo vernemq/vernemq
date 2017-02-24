@@ -1,4 +1,4 @@
-%% Copyright 2014 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2017 Erlio GmbH Basel Switzerland (http://erl.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 -module(vmq_queue).
 -include("vmq_server.hrl").
 
--behaviour(gen_fsm).
+-behaviour(gen_server2).
 
 %% API functions
 -export([start_link/2,
@@ -35,18 +35,16 @@
          migrate/2,
          cleanup/1]).
 
--export([online/2, online/3,
-         offline/2, offline/3,
-         wait_for_offline/2, wait_for_offline/3,
-         drain/2, drain/3]).
-
-%% gen_server callbacks
+%% gen_server2 callbacks
 -export([init/1,
-         handle_sync_event/4,
-         handle_event/3,
-         handle_info/3,
-         terminate/3,
-         code_change/4]).
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3,
+         prioritise_call/3,
+         prioritise_cast/2,
+         prioritise_info/2]).
 
 
 -record(queue, {
@@ -67,6 +65,7 @@
 
 -record(state, {
           id,
+          statename,
           offline = #queue{},
           deliver_mode = fanout,
           sessions = maps:new(),
@@ -90,38 +89,37 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link(SubscriberId, Clean) ->
-    gen_fsm:start_link(?MODULE, [SubscriberId, Clean], []).
-
+    gen_server2:start_link(?MODULE, [SubscriberId, Clean], []).
 
 active(Queue) when is_pid(Queue) ->
-    gen_fsm:send_event(Queue, {change_state, active, self()}).
+    send_event(Queue, {change_state, active, self()}).
 
 notify(Queue) when is_pid(Queue) ->
-    gen_fsm:send_event(Queue, {change_state, notify, self()}).
+    send_event(Queue, {change_state, notify, self()}).
 
 notify_recv(Queue) when is_pid(Queue) ->
-    gen_fsm:send_event(Queue, {notify_recv, self()}).
+    send_event(Queue, {notify_recv, self()}).
 
 enqueue(Queue, Msg) when is_pid(Queue) ->
-    gen_fsm:send_event(Queue, {enqueue, Msg}).
+    send_event(Queue, {enqueue, Msg}).
 
 enqueue_many(Queue, Msgs) when is_pid(Queue) and is_list(Msgs) ->
-    gen_fsm:sync_send_event(Queue, {enqueue_many, Msgs}, infinity).
+    sync_send_event(Queue, {enqueue_many, Msgs}, infinity).
 
 enqueue_many(Queue, Msgs, Opts) when is_pid(Queue), is_list(Msgs), is_map(Opts) ->
-    gen_fsm:sync_send_event(Queue, {enqueue_many, Msgs, Opts}, infinity).
+    sync_send_event(Queue, {enqueue_many, Msgs, Opts}, infinity).
 
 add_session(Queue, SessionPid, Opts) when is_pid(Queue) ->
-    gen_fsm:sync_send_event(Queue, {add_session, SessionPid, Opts}, infinity).
+    sync_send_event(Queue, {add_session, SessionPid, Opts}, infinity).
 
 get_sessions(Queue) when is_pid(Queue) ->
-    gen_fsm:sync_send_all_state_event(Queue, get_sessions, infinity).
+    sync_send_all_state_event(Queue, get_sessions, infinity).
 
 set_opts(Queue, Opts) when is_pid(Queue) ->
-    gen_fsm:sync_send_event(Queue, {set_opts, self(), Opts}, infinity).
+    sync_send_event(Queue, {set_opts, self(), Opts}, infinity).
 
 get_opts(Queue) when is_pid(Queue) ->
-    case catch gen_fsm:sync_send_all_state_event(Queue, get_opts, infinity) of
+    case catch sync_send_all_state_event(Queue, get_opts, infinity) of
         {'EXIT', {normal, _}} ->
             {error, noproc};
         {'EXIT', {noproc, _}} ->
@@ -133,7 +131,7 @@ get_opts(Queue) when is_pid(Queue) ->
     end.
 
 set_last_waiting_acks(Queue, WAcks) ->
-    gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
+    sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
 
 migrate(Queue, Queue) ->
     %% this scenario can happen, due to the eventual migration kickoff
@@ -146,20 +144,8 @@ migrate(Queue, OtherQueue) ->
 cleanup(Queue) ->
     save_sync_send_event(Queue, cleanup).
 
-save_sync_send_event(Queue, Event) ->
-    case catch gen_fsm:sync_send_event(Queue, Event, infinity) of
-        {'EXIT', {normal, _}} ->
-            ok;
-        {'EXIT', {noproc, _}} ->
-            ok;
-        {'EXIT', Reason} ->
-            exit(Reason);
-        Ret ->
-            Ret
-    end.
-
 status(Queue) ->
-    gen_fsm:sync_send_all_state_event(Queue, status, infinity).
+    sync_send_all_state_event(Queue, status, infinity).
 
 default_opts() ->
     #{allow_multiple_sessions => vmq_config:get_env(allow_multiple_sessions),
@@ -171,11 +157,59 @@ default_opts() ->
       max_msgs_per_drain_step => vmq_config:get_env(max_msgs_per_drain_step),
       is_plugin => false}.
 
+send_event(Queue, Event) ->
+    gen_server2:cast(Queue, Event).
+
+sync_send_event(Queue, Event, Timeout) ->
+    gen_server2:call(Queue, Event, Timeout).
+
+sync_send_all_state_event(Queue, Event, Timeout) ->
+    gen_server2:call(Queue, {all_state, Event}, Timeout).
+
+save_sync_send_event(Queue, Event) ->
+    case catch sync_send_event(Queue, Event, infinity) of
+        {'EXIT', {normal, _}} ->
+            ok;
+        {'EXIT', {noproc, _}} ->
+            ok;
+        {'EXIT', Reason} ->
+            exit(Reason);
+        Ret ->
+            Ret
+    end.
+
+send_event_after(Timeout, Event) ->
+    erlang:send_after(Timeout, self(), Event).
+
+cancel_timer(TimerRef) ->
+    erlang:cancel_timer(TimerRef).
+
 %%%===================================================================
-%%% gen_fsm state callbacks
+%%% state callbacks
 %%%===================================================================
+
+handle_state_event(online, Req, State) ->
+    online(Req, State);
+handle_state_event(wait_for_offline, Req, State) ->
+    wait_for_offline(Req, State);
+handle_state_event(drain, Req, State) ->
+    drain(Req, State);
+handle_state_event(offline, Req, State) ->
+    offline(Req, State).
+
+handle_sync_state_event(online, Req, From, State) ->
+    online(Req, From, State);
+handle_sync_state_event(wait_for_offline, Req, From, State) ->
+    wait_for_offline(Req, From, State);
+handle_sync_state_event(drain, Req, From, State) ->
+    drain(Req, From, State);
+handle_sync_state_event(offline, Req, From, State) ->
+    offline(Req, From, State).
+
+
+
 online({change_state, NewSessionState, SessionPid}, State) ->
-    {next_state, online, change_session_state(NewSessionState, SessionPid, State)};
+    {noreply, change_session_state(NewSessionState, SessionPid, State)};
 online({notify_recv, SessionPid}, #state{id=SId, sessions=Sessions} = State) ->
     #session{queue=#queue{backup=Backup} = Queue} = Session = maps:get(SessionPid, Sessions),
     cleanup_queue(SId, Backup),
@@ -183,22 +217,22 @@ online({notify_recv, SessionPid}, #state{id=SId, sessions=Sessions} = State) ->
                               Session#session{queue=Queue#queue{backup=queue:new()}},
                               Sessions),
     _ = vmq_metrics:incr_queue_out(queue:len(Backup)),
-    {next_state, online, State#state{sessions=NewSessions}};
+    {noreply, State#state{sessions=NewSessions}};
 online({enqueue, Msg}, State) ->
     _ = vmq_metrics:incr_queue_in(),
-    {next_state, online, insert(Msg, State)};
+    {noreply, insert(Msg, State)};
 online(Event, State) ->
     lager:error("got unknown event in online state ~p", [Event]),
-    {next_state, online, State}.
+    {noreply, State}.
 
 online({set_opts, SessionPid, Opts}, _From, #state{opts=OldOpts} = State) ->
     MergedOpts = maps:merge(OldOpts, Opts),
     NewState1 = set_general_opts(MergedOpts, #state{opts=MergedOpts} = State),
     NewState2 = set_session_opts(SessionPid, MergedOpts, NewState1),
-    {reply, ok, online, NewState2};
+    {reply, ok, NewState2};
 online({add_session, SessionPid, #{allow_multiple_sessions := true} = Opts}, _From, State) ->
     %% allow multiple sessions per queue
-    {reply, ok, online, unset_expiry_timer(add_session_(SessionPid, Opts, State))};
+    {reply, ok, unset_expiry_timer(add_session_(SessionPid, Opts, State))};
 online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, From, State)
   when State#state.waiting_call == undefined ->
     %% forbid multiple sessions per queue,
@@ -206,39 +240,39 @@ online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, Fr
     %% and wait with the reply until all the sessions
     %% have been disconnected
     disconnect_sessions(State),
-    {next_state, state_change(add_session, online, wait_for_offline),
-     State#state{waiting_call={add_session, SessionPid, Opts, From}}};
+    {noreply, State#state{statename=state_change(add_session, online, wait_for_offline),
+                          waiting_call={add_session, SessionPid, Opts, From}}};
 online({migrate, OtherQueue}, From, State)
   when State#state.waiting_call == undefined ->
     disconnect_sessions(State),
-    {next_state, state_change(migrate, online, wait_for_offline),
-     State#state{waiting_call={migrate, OtherQueue, From}}};
+    {noreply, State#state{statename=state_change(migrate, online, wait_for_offline),
+                          waiting_call={migrate, OtherQueue, From}}};
 online({set_last_waiting_acks, WAcks}, _From, State) ->
-    {reply, ok, online, handle_waiting_acks_and_msgs(WAcks, State)};
+    {reply, ok, handle_waiting_acks_and_msgs(WAcks, State)};
 online({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
-    {reply, ok, online, insert_many(Msgs, State)};
+    {reply, ok, insert_many(Msgs, State)};
 online({enqueue_many, Msgs, Opts}, _From, State) ->
     enqueue_many_(Msgs, online, Opts, State);
 online(cleanup, From, State)
   when State#state.waiting_call == undefined ->
     disconnect_sessions(State),
-    {next_state, state_change(cleanup, online, wait_for_offline),
-     State#state{waiting_call={cleanup, From}}};
+    {noreply, State#state{statename=state_change(cleanup, online, wait_for_offline),
+                          waiting_call={cleanup, From}}};
 online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
 
 wait_for_offline({enqueue, Msg}, State) ->
     _ = vmq_metrics:incr_queue_in(),
-    {next_state, wait_for_offline, insert(Msg, State)};
+    {noreply, insert(Msg, State)};
 wait_for_offline(Event, State) ->
     lager:error("got unknown event in wait_for_offline state ~p", [Event]),
-    {next_state, wait_for_offline, State}.
+    {noreply, State}.
 
 
 wait_for_offline({set_last_waiting_acks, WAcks}, _From, State) ->
-    {reply, ok, wait_for_offline, handle_waiting_acks_and_msgs(WAcks, State)};
+    {reply, ok, handle_waiting_acks_and_msgs(WAcks, State)};
 wait_for_offline({add_session, SessionPid, Opts}, From,
                  #state{waiting_call={migrate, _OtherQueue, MigrationFrom}} = State) ->
     %% Reason for this case:
@@ -265,9 +299,8 @@ wait_for_offline({add_session, SessionPid, Opts}, From,
     %% started to drain this queue (we are not in drain state) we can reply 'ok'
     %% to the waiting migration. The 'OtherQueue' that was part of the waiting
     %% migration gets eventually stopped.
-    gen_fsm:reply(MigrationFrom, ok),
-    {next_state, wait_for_offline,
-     State#state{waiting_call={add_session, SessionPid, Opts, From}}};
+    gen_server2:reply(MigrationFrom, ok),
+    {noreply, State#state{waiting_call={add_session, SessionPid, Opts, From}}};
 wait_for_offline({add_session, NewSessionPid, NewOpts}, From,
                 #state{waiting_call={add_session, SessionPid, _Opts, AddFrom}} = State) ->
     %% Reason for this case:
@@ -283,10 +316,9 @@ wait_for_offline({add_session, NewSessionPid, NewOpts}, From,
     %% The waiting add_session call isn't required anymore as we have a new session
     %% that we should attach to this queue. We can terminate the waiting add_session
     %% and replace the waiting_call
-    gen_fsm:reply(AddFrom, ok),
+    gen_server2:reply(AddFrom, ok),
     exit(SessionPid, normal),
-    {next_state, wait_for_offline,
-     State#state{waiting_call={add_session, NewSessionPid, NewOpts, From}}};
+    {noreply, State#state{waiting_call={add_session, NewSessionPid, NewOpts, From}}};
 wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
                 #state{waiting_call={cleanup, _CleanupFrom}} = State) ->
     %% Reason for this case:
@@ -298,10 +330,10 @@ wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
     %% ---------
     %% We forcefully terminate the add_session call, as we have to ensure that
     %% this queue is completely wiped, before we allow new sessions to join.
-    {reply, {error, cleanup}, wait_for_offline, State};
+    {reply, {error, cleanup}, State};
 wait_for_offline(Event, _From, State) ->
     lager:error("got unknown sync event in wait_for_offline state ~p", [Event]),
-    {reply, {error, wait_for_offline}, wait_for_offline, State}.
+    {reply, {error, wait_for_offline}, State}.
 
 drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
                           drain_time=DrainTimeout,
@@ -316,9 +348,8 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
             %% the extra timeout gives the chance that pending messages
             %% in the erlang mailbox could still get enqueued and
             %% therefore eventually transmitted to the remote queue
-            {next_state, drain,
-             State#state{drain_over_timer=gen_fsm:send_event_after(DrainTimeout, drain_over),
-                         offline=Queue#queue{size=0, drop=0, queue=queue:new()}}};
+            {noreply, State#state{drain_over_timer=send_event_after(DrainTimeout, drain_over),
+                                  offline=Queue#queue{size=0, drop=0, queue=queue:new()}}};
         Msgs ->
             %% remote_enqueue triggers an enqueue_many inside the remote queue
             %% but forces the traffic to go over the distinct communication link
@@ -328,9 +359,8 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
                 ok ->
                     cleanup_queue(SId, DrainQ),
                     _ = vmq_metrics:incr_queue_out(queue:len(DrainQ)),
-                    gen_fsm:send_event(self(), drain_start),
-                    {next_state, drain,
-                     State#state{offline=Queue#queue{size=queue:len(NewQ), drop=0, queue=NewQ}}};
+                    send_event(self(), drain_start),
+                    {noreply, State#state{offline=Queue#queue{size=queue:len(NewQ), drop=0, queue=NewQ}}};
                 {error, Reason} ->
                     %% this shouldn't happen, as the register_subscriber is synchronized
                     %% using the vmq_reg_leader process. However this could theoretically
@@ -338,60 +368,59 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
                     %% we don't drain in this case.
                     lager:error("can't drain queue '~p' for [~p][~p] due to ~p",
                                 [SId, self(), RemoteQueue, Reason]),
-                    gen_fsm:reply(From, ok),
+                    gen_server2:reply(From, ok),
                     %% transition to offline, and let a future session drain this queue
-                    {next_state, state_change(drain_error, drain, offline),
-                     State#state{waiting_call=undefined}}
+                    {noreply, State#state{statename=state_change(drain_error, drain, offline),
+                                          waiting_call=undefined}}
             end
     end;
 drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
     %% even in drain state it is possible that an enqueue message
     %% reaches this process, so we've to queue this message otherwise
     %% it would be lost.
-    gen_fsm:cancel_timer(TRef),
-    gen_fsm:send_event(self(), drain_start),
+    cancel_timer(TRef),
+    send_event(self(), drain_start),
     _ = vmq_metrics:incr_queue_in(),
-    {next_state, drain, insert(Msg, State)};
+    {noreply, insert(Msg, State)};
 
 drain(drain_over, #state{waiting_call={migrate, _, From}} =
       #state{offline=#queue{size=0}} = State) ->
     %% we're done with the migrate, offline queue is empty
-    gen_fsm:reply(From, ok),
+    gen_server2:reply(From, ok),
     {stop, normal, State};
 drain(drain_over, State) ->
     %% we still have undrained messages in the offline queue
-    gen_fsm:send_event(self(), drain_start),
-    {next_state, drain, State};
+    send_event(self(), drain_start),
+    {noreply, State};
 drain(Event, State) ->
     lager:error("got unknown event in drain state ~p", [Event]),
-    {next_state, drain, State}.
+    {noreply, State}.
 
 drain({enqueue_many, Msgs}, _From, #state{drain_over_timer=TRef} =  State) ->
-    gen_fsm:cancel_timer(TRef),
-    gen_fsm:send_event(self(), drain_start),
+    cancel_timer(TRef),
+    send_event(self(), drain_start),
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
-    {reply, ok, drain, insert_many(Msgs, State)};
+    {reply, ok, insert_many(Msgs, State)};
 drain({enqueue_many, Msgs, Opts}, _From, #state{drain_over_timer=TRef} =  State) ->
-    gen_fsm:cancel_timer(TRef),
-    gen_fsm:send_event(self(), drain_start),
+    cancel_timer(TRef),
+    send_event(self(), drain_start),
     enqueue_many_(Msgs, drain, Opts, State);
 drain(Event, _From, State) ->
     lager:error("got unknown sync event in drain state ~p", [Event]),
-    {reply, {error, draining}, drain, State}.
+    {reply, {error, draining}, State}.
 
 
 offline(init_offline_queue, #state{id=SId} = State) ->
     case vmq_plugin:only(msg_store_find, [SId]) of
         {ok, MsgRefs} ->
-            {next_state, offline,
-             insert_many(MsgRefs, State)};
+            {noreply, insert_many(MsgRefs, State)};
         {error, no_matching_hook_found} ->
             % that's ok
-            {next_state, offline, State};
+            {noreply, State};
         {error, Reason} ->
             lager:error("can't initialize queue from offline storage due to ~p, retry in 1 sec", [Reason]),
-            gen_fsm:send_event_after(1000, init_offline_queue),
-            {next_state, offline, State}
+            send_event_after(1000, init_offline_queue),
+            {noreply, State}
     end;
 offline({enqueue, Msg}, #state{id=SId} = State) ->
     case Msg of
@@ -404,7 +433,7 @@ offline({enqueue, Msg}, #state{id=SId} = State) ->
     end,
     %% storing the message in the offline queue
     _ = vmq_metrics:incr_queue_in(),
-    {next_state, offline, insert(Msg, State)};
+    {noreply, insert(Msg, State)};
 offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     %% session has expired cleanup and go down
     vmq_reg:delete_subscriptions(SId),
@@ -413,18 +442,20 @@ offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     {stop, normal, State};
 offline(Event, State) ->
     lager:error("got unknown event in offline state ~p", [Event]),
-    {next_state, offline, State}.
+    {noreply, State}.
 
 offline({add_session, SessionPid, Opts}, _From, State) ->
-    {reply, ok, state_change(add_session, offline, online),
-     unset_expiry_timer(add_session_(SessionPid, Opts, State))};
+    NewState = add_session_(SessionPid, Opts, State),
+    NewStatename = state_change(add_session, offline, online),
+    {reply, ok, unset_expiry_timer(NewState#state{statename=NewStatename})};
 offline({migrate, OtherQueue}, From, State) ->
-    gen_fsm:send_event(self(), drain_start),
-    {next_state, state_change(migrate, offline, drain),
-     State#state{waiting_call={migrate, OtherQueue, From}}};
+    send_event(self(), drain_start),
+    {noreply, State#state{statename=state_change(migrate, offline, drain),
+                          waiting_call={migrate, OtherQueue, From}}};
+
 offline({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
-    {reply, ok, offline, insert_many(Msgs, State)};
+    {reply, ok, insert_many(Msgs, State)};
 offline({enqueue_many, Msgs, Opts}, _From, State) ->
     enqueue_many_(Msgs, offline, Opts, State);
 offline(cleanup, _From, #state{id=SId, offline=#queue{queue=Q}} = State) ->
@@ -433,11 +464,11 @@ offline(cleanup, _From, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     {stop, normal, ok, State};
 offline(Event, _From, State) ->
     lager:error("got unknown sync event in offline state ~p", [Event]),
-    {reply, {error, offline}, offline, State}.
+    {reply, {error, offline}, State}.
 
 
 %%%===================================================================
-%%% gen_fsm callbacks
+%%% gen_server2 callbacks
 %%%===================================================================
 
 init([SubscriberId, Clean]) ->
@@ -456,54 +487,80 @@ init([SubscriberId, Clean]) ->
             %% only init offline queue if this is a queue generated
             %% during broker startup or we were restarted by the
             %% vmq_queue_sup supervisor
-            gen_fsm:send_event(self(), init_offline_queue)
+            send_event(self(), init_offline_queue)
     end,
     vmq_metrics:incr_queue_setup(),
-    {ok, offline,  #state{id=SubscriberId,
-                          offline=OfflineQueue,
-                          drain_time=DrainTime,
-                          deliver_mode=DeliverMode,
-                          max_msgs_per_drain_step=MaxMsgsPerDrainStep,
-                          opts=Defaults}}.
+    {ok, #state{id=SubscriberId,
+                statename=offline,
+                offline=OfflineQueue,
+                drain_time=DrainTime,
+                deliver_mode=DeliverMode,
+                max_msgs_per_drain_step=MaxMsgsPerDrainStep,
+                opts=Defaults}}.
 
-handle_event(_Event, StateName, State) ->
-    {next_state, StateName, State}.
 
-handle_sync_event(status, _From, StateName,
-                  #state{deliver_mode=Mode, offline=#queue{size=OfflineSize},
-                         sessions=Sessions, opts=#{is_plugin := IsPlugin}} = State) ->
-    TotalStoredMsgs =
-    maps:fold(fun(_, #session{queue=#queue{size=Size}}, Acc) ->
-                      Acc + Size
-              end, OfflineSize, Sessions),
-    {reply, {StateName, Mode, TotalStoredMsgs, maps:size(Sessions), IsPlugin}, StateName, State};
-handle_sync_event(get_sessions, _From, StateName, #state{sessions=Sessions} = State) ->
-    {reply, maps:keys(Sessions), StateName, State};
-handle_sync_event(get_opts, _From, StateName, #state{opts=Opts} = State) ->
-    {reply, Opts, StateName, State};
-handle_sync_event(Event, _From, _StateName, State) ->
-    {stop, {error, {unknown_sync_event, Event}}, State}.
 
-handle_info({'DOWN', _MRef, process, Pid, _}, StateName, State) ->
-    handle_session_down(Pid, StateName, State);
-handle_info(_Info, StateName, State) ->
-    {next_state, StateName, State}.
+prioritise_call(cleanup, _, _) -> 10;
+prioritise_call({add_session, _, _}, _, _) -> 10;
+prioritise_call({all_state, _}, _, _) -> 10;
+prioritise_call(_, _, _) -> 0.
 
-terminate(_Reason, _StateName, _State) ->
+prioritise_cast({change_state, _, _}, _) -> 10;
+prioritise_cast({notify_recv, _}, _) -> 10;
+prioritise_cast(_, _) -> 0.
+
+prioritise_info({'DOWN', _, _, _, _}, _) -> 10;
+prioritise_info(_, _) -> 0.
+
+handle_cast({all_state, _}, State) ->
+    {noreply, State};
+handle_cast(Req, #state{statename=Statename} = State) ->
+    handle_state_event(Statename, Req, State).
+
+handle_call({all_state, Req}, From, State) ->
+    handle_sync_event(Req, From, State);
+handle_call(Req, From, #state{statename=Statename} = State) ->
+    handle_sync_state_event(Statename, Req, From, State).
+
+handle_info({all_state, _}, State) ->
+    {noreply, State};
+handle_info({'DOWN', _MRef, process, Pid, _}, State) ->
+    handle_session_down(Pid, State);
+handle_info(Req, #state{statename=Statename} = State) ->
+    handle_state_event(Statename, Req, State).
+
+terminate(_Reason, _State) ->
     vmq_metrics:incr_queue_teardown(),
     ok.
 
-code_change(_OldVsn, StateName, State, _Extra) ->
-    {ok, StateName, State}.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+handle_sync_event(status, _From, #state{statename=StateName, deliver_mode=Mode,
+                                        offline=#queue{size=OfflineSize},
+                                        sessions=Sessions,
+                                        opts=#{is_plugin := IsPlugin}} = State) ->
+    TotalStoredMsgs =
+    maps:fold(fun(_, #session{queue=#queue{size=Size}}, Acc) ->
+                      Acc + Size
+              end, OfflineSize, Sessions),
+    {reply, {StateName, Mode, TotalStoredMsgs, maps:size(Sessions), IsPlugin}, State};
+handle_sync_event(get_sessions, _From, #state{sessions=Sessions} = State) ->
+    {reply, maps:keys(Sessions), State};
+handle_sync_event(get_opts, _From, #state{opts=Opts} = State) ->
+    {reply, Opts, State};
+handle_sync_event(Event, _From, State) ->
+    {stop, {error, {unknown_sync_event, Event}}, State}.
+
+
 enqueue_many_(Msgs, FsmState, #{states := AllowedStates}, State) ->
     case allowed_state(FsmState, AllowedStates) of
         true ->
             _ = vmq_metrics:incr_queue_in(length(Msgs)),
-            {reply, ok, FsmState, insert_many(Msgs, State)};
+            {reply, ok, insert_many(Msgs, State)};
         false ->
             {reply, {error, FsmState}, State}
     end.
@@ -555,44 +612,46 @@ del_session(SessionPid, #state{id=SId, sessions=Sessions} = State) ->
              Session}
     end.
 
-handle_session_down(SessionPid, StateName,
-                    #state{id=SId, waiting_call=WaitingCall} = State) ->
+handle_session_down(SessionPid,
+                    #state{id=SId, statename=StateName, waiting_call=WaitingCall} = State) ->
     {NewState, DeletedSession} = del_session(SessionPid, State),
     case {maps:size(NewState#state.sessions), StateName, WaitingCall} of
         {0, wait_for_offline, {add_session, NewSessionPid, Opts, From}} ->
             %% last session gone
             %% ... but we've a new session waiting
             %%     no need to go into offline state
-            gen_fsm:reply(From, ok),
+            gen_server2:reply(From, ok),
             case DeletedSession#session.clean of
                 true ->
                     _ = vmq_plugin:all(on_client_gone, [SId]);
                 false ->
                     _ = vmq_plugin:all(on_client_offline, [SId])
             end,
-            {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
-             add_session_(NewSessionPid, Opts, NewState#state{waiting_call=undefined})};
+            {noreply, add_session_(NewSessionPid, Opts,
+                                   NewState#state{statename=state_change({'DOWN', add_session}, wait_for_offline, online),
+                                                  waiting_call=undefined})};
         {0, wait_for_offline, {migrate, _, From}} when DeletedSession#session.clean ->
             %% last session gone
             %% ... we dont need to migrate this one
             vmq_reg:delete_subscriptions(SId),
             _ = vmq_plugin:all(on_client_gone, [SId]),
-            gen_fsm:reply(From, ok),
+            gen_server2:reply(From, ok),
             {stop, normal, NewState};
         {0, wait_for_offline, {migrate, _, _}} ->
             %% last session gone
             %% ... but we've a migrate request waiting
             %%     go into drain state
-            gen_fsm:send_event(self(), drain_start),
+            send_event(self(), drain_start),
             _ = vmq_plugin:all(on_client_offline, [SId]),
-            {next_state, state_change({'DOWN', migrate}, wait_for_offline, drain), NewState};
+            {noreply, NewState#state{
+                        statename=state_change({'DOWN', migrate}, wait_for_offline, drain)}};
         {0, wait_for_offline, {cleanup, From}} ->
             %% Forcefully cleaned up, we have to cleanup remaining offline messages
             %% we don't cleanup subscriptions!
             #state{offline=#queue{queue=Q}} = NewState,
             cleanup_queue(SId, Q),
             _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
-            gen_fsm:reply(From, ok),
+            gen_server2:reply(From, ok),
             _ = vmq_plugin:all(on_client_gone, [SId]),
             {stop, normal, NewState};
         {0, _, _} when DeletedSession#session.clean ->
@@ -609,11 +668,12 @@ handle_session_down(SessionPid, StateName,
             %% ... we've to stay around and store the messages
             %%     inside the offline queue
             _ = vmq_plugin:all(on_client_offline, [SId]),
-            {next_state, state_change('DOWN', OldStateName, offline),
-             maybe_set_expiry_timer(NewState#state{offline=compress_queue(SId, NewState#state.offline)})};
+            {noreply, maybe_set_expiry_timer(
+                        NewState#state{statename=state_change('DOWN', OldStateName, offline),
+                                       offline=compress_queue(SId, NewState#state.offline)})};
         _ ->
             %% still one or more sessions online
-            {next_state, StateName, NewState}
+            {noreply, NewState}
     end.
 
 handle_waiting_acks_and_msgs(WAcks, #state{id=SId, sessions=Sessions, offline=Offline} = State) ->
@@ -929,3 +989,4 @@ queue_split(N, Queue) ->
              L -> L
          end,
     queue:split(NN, Queue).
+

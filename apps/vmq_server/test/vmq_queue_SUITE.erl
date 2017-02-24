@@ -73,10 +73,11 @@ queue_crash_test(_) ->
 
     %% fill the offline queue
     ok = vmq_reg:publish(true, vmq_reg_trie, Msg),
+    timer:sleep(10),
     {offline, fanout, 1, 0, false} = vmq_queue:status(QPid1),
 
     %% crash the queue
-    catch gen_fsm:sync_send_all_state_event(QPid1, byebye),
+    catch gen_server2:call(QPid1, {all_state, byebye}),
     false = is_process_alive(QPid1),
     timer:sleep(10),
     NewQPid = vmq_reg:get_queue_pid(SubscriberId),
@@ -103,6 +104,7 @@ queue_fifo_test(_) ->
     timer:sleep(10),
 
     Msgs = publish_multi([<<"test">>, <<"fifo">>, <<"topic">>]),
+    timer:sleep(10),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, true, QPid} = vmq_reg:register_subscriber(SessionPid2, SubscriberId, QueueOpts, 10),
@@ -123,6 +125,7 @@ queue_lifo_test(_) ->
     timer:sleep(10),
 
     Msgs = publish_multi([<<"test">>, <<"lifo">>, <<"topic">>]),
+    timer:sleep(10),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, true, QPid} = vmq_reg:register_subscriber(SessionPid2, SubscriberId, QueueOpts, 10),
@@ -144,6 +147,7 @@ queue_fifo_offline_drop_test(_) ->
     timer:sleep(10),
 
     Msgs = publish_multi([<<"test">>, <<"fifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
+    timer:sleep(10),
     {offline, fanout, 10, 0, false} = vmq_queue:status(QPid),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -169,6 +173,7 @@ queue_lifo_offline_drop_test(_) ->
     timer:sleep(10),
 
     Msgs = publish_multi([<<"test">>, <<"lifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
+    timer:sleep(10),
     {offline, fanout, 10, 0, false} = vmq_queue:status(QPid),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -193,6 +198,7 @@ queue_offline_transition_test(_) ->
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
     SessionPid1 ! {go_down_in, 1},
     Msgs = publish_multi([<<"test">>, <<"transition">>]), % publish 100
+    timer:sleep(10),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, true, QPid} = vmq_reg:register_subscriber(SessionPid2, SubscriberId, QueueOpts, 10),
