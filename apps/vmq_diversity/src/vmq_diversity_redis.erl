@@ -195,22 +195,32 @@ ensure_pool(As, St) ->
         [Config0|_] ->
             case luerl:decode(Config0, St) of
                 Config when is_list(Config) ->
+                    {ok, AuthConfigs} = application:get_env(vmq_diversity, db_config),
+                    DefaultConf = proplists:get_value(redis, AuthConfigs),
                     Options = vmq_diversity_utils:map(Config),
                     PoolId = vmq_diversity_utils:atom(maps:get(<<"pool_id">>,
                                                                Options,
                                                                pool_redis)),
 
-                    Size = vmq_diversity_utils:int(maps:get(<<"size">>,
-                                                            Options, 5)),
-                    Password = vmq_diversity_utils:str(maps:get(<<"password">>,
-                                                                Options, "")),
-                    Host = vmq_diversity_utils:str(maps:get(<<"host">>,
-                                                            Options, "127.0.0.1")),
-                    Port = vmq_diversity_utils:int(maps:get(<<"port">>, Options,
-                                                            6379)),
-                    Database = vmq_diversity_utils:int(maps:get(<<"database">>,
-                                                                 Options,
-                                                                 0)),
+                    Size = vmq_diversity_utils:int(
+                             maps:get(<<"size">>,
+                                      Options,
+                                      proplists:get_value(pool_size, DefaultConf))),
+                    Password = vmq_diversity_utils:str(
+                                 maps:get(<<"password">>,
+                                          Options,
+                                         proplists:get_value(password, DefaultConf))),
+                    Host = vmq_diversity_utils:str(
+                             maps:get(<<"host">>,
+                                      Options,
+                                     proplists:get_value(host, DefaultConf))),
+                    Port = vmq_diversity_utils:int(
+                             maps:get(<<"port">>, Options,
+                                      proplists:get_value(port, DefaultConf))),
+                    Database = vmq_diversity_utils:int(
+                                 maps:get(<<"database">>,
+                                          Options,
+                                          proplists:get_value(database, DefaultConf))),
                     NewOptions =
                     [{size, Size}, {password, Password},
                      {host, Host}, {port, Port}, {database, Database}],

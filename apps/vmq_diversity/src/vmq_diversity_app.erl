@@ -61,8 +61,20 @@ start(_StartType, _StartArgs) ->
                                   lager:warning("Can't initialize Lua Scripts using ~p", [DataDir])
                           end,
                           lists:foreach(fun({_Name, Script}) ->
+                                                lager:info("enable script for ~p~n", [Script]),
                                                 load_script(Script)
-                                        end, application:get_env(vmq_diversity, user_scripts, []))
+                                        end, application:get_env(vmq_diversity, user_scripts, [])),
+                          lists:foreach(fun({M, AuthScriptConfig}) ->
+                                                case proplists:get_value(enabled, AuthScriptConfig, false) of
+                                                    true ->
+                                                        Script = proplists:get_value(file, AuthScriptConfig),
+                                                        lager:info("enable auth script for ~p ~p~n", [M, Script]),
+                                                        load_script(Script);
+                                                    false ->
+                                                        ignore
+                                                end
+                                        end, application:get_env(vmq_diversity, auth_cache, []))
+
                   end),
             Ret;
         E ->
