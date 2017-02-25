@@ -68,13 +68,13 @@ install(St) ->
 -spec match_publish_acl(binary(), binary(), 0|1|2, [binary()], binary(), boolean()) ->
     true | [{atom(), any()}] | false | no_cache.
 match_publish_acl(MP, ClientId, QoS, Topic, Payload, IsRetain) ->
-    match_acl(MP, ClientId, 
-              #publish_acl{pattern=Topic, max_qos=QoS, 
+    match_acl(MP, ClientId,
+              #publish_acl{pattern=Topic, max_qos=QoS,
                            max_payload_size=byte_size(Payload),
                            allowed_retain=bit(IsRetain)}).
 
 -spec match_subscribe_acl(binary(), binary(), [binary()], 0|1|2) ->
-    true | false | no_cache.
+    true | [{[binary()], 0|1|2}] | false | no_cache.
 match_subscribe_acl(MP, ClientId, Topic, QoS) ->
     match_acl(MP, ClientId, #subscribe_acl{pattern=Topic, max_qos=QoS}).
 
@@ -172,12 +172,12 @@ match_subscribe(As, St) ->
 
 match_publish(As, St) ->
     case As of
-        [MP, ClientId, Topic, QoS, Payload, IsRetain] 
-          when is_binary(MP) 
-               and is_binary(ClientId) 
-               and is_number(QoS) 
-               and is_binary(Topic) 
-               and is_binary(Payload) 
+        [MP, ClientId, Topic, QoS, Payload, IsRetain]
+          when is_binary(MP)
+               and is_binary(ClientId)
+               and is_number(QoS)
+               and is_binary(Topic)
+               and is_binary(Payload)
                and is_boolean(IsRetain) ->
             case vmq_topic:validate_topic(publish, Topic) of
                 {ok, Words} ->
@@ -232,10 +232,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 validate_acls(_, _, _, _, undefined, Acc) -> Acc;
-validate_acls(MP, User, ClientId, AclRec, [{_, Acl}|Rest], Acc) 
+validate_acls(MP, User, ClientId, AclRec, [{_, Acl}|Rest], Acc)
   when is_list(Acl) ->
-    validate_acls(MP, User, ClientId, AclRec, Rest,     
-                  [validate_acl(MP, User, ClientId, AclRec, 
+    validate_acls(MP, User, ClientId, AclRec, Rest,
+                  [validate_acl(MP, User, ClientId, AclRec,
                                 Acl)|Acc]);
 validate_acls(_, _, _, _, [], Acc) -> Acc.
 
@@ -254,16 +254,18 @@ validate_acl(MP, User, ClientId, Rec0, [{<<"modifiers">>, Modifiers}|Rest]) when
     Rec1 =
     case type(Rec0) of
         publish ->
-            Rec0#publish_acl{modifiers=Modifiers};
+            Rec0#publish_acl{
+              modifiers=validate_modifiers(publish, Modifiers)};
         subscribe ->
-            Rec0#subscribe_acl{modifiers=Modifiers}
+            Rec0#subscribe_acl{
+              modifiers=validate_modifiers(subscribe, Modifiers)}
     end,
     validate_acl(MP, User, ClientId, Rec1, Rest);
-validate_acl(MP, User, ClientId, #publish_acl{} = Rec0, [{<<"max_payload_size">>, MaxSize}|Rest]) 
+validate_acl(MP, User, ClientId, #publish_acl{} = Rec0, [{<<"max_payload_size">>, MaxSize}|Rest])
   when is_number(MaxSize) and (MaxSize >= 0) and (MaxSize =< ?MAX_PAYLOAD_SIZE) ->
     Rec1 = Rec0#publish_acl{max_payload_size=trunc(MaxSize)},
     validate_acl(MP, User, ClientId, Rec1, Rest);
-validate_acl(MP, User, ClientId, #publish_acl{} = Rec0, [{<<"allowed_retain">>, AllowedRetain}|Rest]) 
+validate_acl(MP, User, ClientId, #publish_acl{} = Rec0, [{<<"allowed_retain">>, AllowedRetain}|Rest])
   when is_boolean(AllowedRetain) ->
     Rec1 = Rec0#publish_acl{
              allowed_retain=bit(AllowedRetain)},
@@ -288,6 +290,26 @@ validate_acl(MP, User, ClientId, Rec, [UnknownProp|Rest]) ->
     lager:warning("unknown property ~p for acl ~p", [UnknownProp, Rec]),
     validate_acl(MP, User, ClientId, Rec, Rest);
 validate_acl(_, _, _, Rec, []) -> Rec.
+
+validate_modifiers(Type, Modifiers) ->
+    NewModifiers = vmq_diversity_utils:convert(Modifiers),
+    Ret =
+    case Type of
+        publish ->
+            vmq_diversity_plugin:check_modifiers(auth_on_publish, NewModifiers);
+        subscribe ->
+            %% massage the modifiers to take the same form as it were returned by
+            %% the callback directly
+            %% in Lua: { {topic, qos}, ... }
+            vmq_diversity_plugin:check_modifiers(auth_on_subscribe, NewModifiers)
+    end,
+    case Ret of
+        error ->
+            lager:error("can't validate modifiers ~p for ~p ACL", [Type, Modifiers]),
+            undefined;
+        _ ->
+            NewModifiers
+    end.
 
 subst(MP, User, ClientId, [<<"%u">>|Rest], Acc) ->
     subst(MP, User, ClientId, Rest, [User|Acc]);
@@ -335,8 +357,8 @@ match_input_with_acl(
   #publish_acl{pattern=AclTopic, max_qos=MaxQoS,
                max_payload_size=MaxPayloadSize,
                allowed_retain=AllowedRetain,
-               modifiers=Modifiers}) 
-  when (InputQoS =< MaxQoS) 
+               modifiers=Modifiers})
+  when (InputQoS =< MaxQoS)
        and (InputPayloadSize =< MaxPayloadSize)
        and (InputRetain =< AllowedRetain) ->
     case vmq_topic:match(InputTopic, AclTopic) of

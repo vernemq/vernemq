@@ -118,17 +118,17 @@
 
 {mapping, "vmq_diversity.mongodb.login", "vmq_diversity.db_config.mongodb.login", 
  [{datatype, string},
-  {default, ""},
+  {default, undefined},
   {commented, ""}]}.
 
 {mapping, "vmq_diversity.mongodb.password", "vmq_diversity.db_config.mongodb.password", 
  [{datatype, string},
-  {default, ""},
+  {default, undefined},
   {commented, ""}]}.
 
 {mapping, "vmq_diversity.mongodb.database", "vmq_diversity.db_config.mongodb.database", 
  [{datatype, string},
-  {default, ""},
+  {default, undefined},
   {commented, ""}]}.
 
 {mapping, "vmq_diversity.mongodb.pool_size", "vmq_diversity.db_config.mongodb.pool_size", 

@@ -51,20 +51,6 @@ function auth_on_register(reg)
     return false
 end
 
-function auth_on_publish(pub)
-    return false
-end
-
-function auth_on_subscribe(sub)
-    return false
-end
-
-function on_client_gone(c)
-end
-
-function on_client_offline(c)
-end
-
 pool = "auth_redis"
 config = {
     pool_id = pool
@@ -75,6 +61,7 @@ hooks = {
     auth_on_register = auth_on_register,
     auth_on_publish = auth_on_publish,
     auth_on_subscribe = auth_on_subscribe,
+    on_unsubscribe = on_unsubscribe,
     on_client_gone = on_client_gone,
     on_client_offline = on_client_offline
 }

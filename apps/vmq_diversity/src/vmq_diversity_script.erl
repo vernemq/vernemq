@@ -118,7 +118,7 @@ handle_call({call_function, Function, Args}, _From, State) ->
             {reply, undefined, ch_state(NewLuaState, Function, Ts1, Ts2, State)};
         {[Val], NewLuaState} ->
             Ts2 = os:timestamp(),
-            {reply, convert(Val), ch_state(NewLuaState, Function, Ts1, Ts2, State)}
+            {reply, vmq_diversity_utils:convert(Val), ch_state(NewLuaState, Function, Ts1, Ts2, State)}
     catch
         error:{lua_error, Reason, _} ->
             lager:error("can't call function ~p with args ~p in ~p due to ~p",
@@ -241,32 +241,6 @@ register_hooks([{Hook, {function, _}}|Rest]) ->
 register_hooks([_|Rest]) ->
     register_hooks(Rest);
 register_hooks([]) -> ok.
-
-convert(Val) when is_list(Val) ->
-    convert_list(Val, []);
-convert(Val) when is_number(Val) ->
-    case round(Val) of
-        RVal when RVal == Val -> RVal;
-        _ -> Val
-    end;
-convert(Val) when is_binary(Val) -> Val;
-convert(Val) when is_boolean(Val) -> Val;
-convert(nil) -> undefined.
-
-convert_list([ListItem|Rest], Acc) ->
-    convert_list(Rest, [convert_list_item(ListItem)|Acc]);
-convert_list([], Acc) -> lists:reverse(Acc).
-
-convert_list_item({Idx, Val}) when is_integer(Idx) ->
-    %% lua array
-    convert(Val);
-convert_list_item({BinKey, Val}) when is_binary(BinKey) ->
-    try list_to_existing_atom(binary_to_list(BinKey)) of
-        Key -> {Key, convert(Val)}
-    catch
-        _:_ ->
-            {BinKey, convert(Val)}
-    end.
 
 add_ts(Function, Ts1, Ts2, Samples) ->
     T = timer:now_diff(Ts2, Ts1),

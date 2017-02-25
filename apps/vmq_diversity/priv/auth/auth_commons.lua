@@ -44,3 +44,22 @@ function validate_acls(acls)
     end
 end
 
+-- included in every DB auth handler
+
+function auth_on_publish(pub)
+    return false
+end
+
+function auth_on_subscribe(sub)
+    return false
+end
+
+function on_unsubscribe(sub)
+end
+
+function on_client_gone(c)
+end
+
+function on_client_offline(c)
+end
+

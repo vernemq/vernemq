@@ -47,6 +47,9 @@
          register_hook/1
         ]).
 
+%% used by vmq_diversity_cache
+-export([check_modifiers/2]).
+
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -204,6 +207,9 @@ auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
         true ->
             %% Found a valid cache entry which grants this publish
             ok;
+        Modifiers when is_list(Modifiers) ->
+            %% Found a valid cache entry containing modifiers
+            {ok, Modifiers};
         false ->
             %% Found a valid cache entry which rejects this publish
             error;
@@ -224,13 +230,21 @@ auth_on_subscribe(UserName, SubscriberId, Topics) ->
       fun
           (_, false) -> false;
           (_, no_cache) -> no_cache;
-          ({Topic, QoS}, _) ->
-              vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, QoS)
-      end, true, Topics),
+          ({Topic, QoS}, Acc) ->
+              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, QoS) of
+                  Mods when is_list(Mods) ->
+                      Acc ++ Mods;
+                  Ret ->
+                      Ret
+              end
+      end, [], Topics),
     case CacheRet of
         true ->
             %% all provided topics match a cache entry which grants this subscribe
             ok;
+        Modifiers when is_list(Modifiers) ->
+            %% Found a valid cache entry containing modifiers
+            {ok, Modifiers};
         false ->
             %% one of the provided topics doesn't match a cache entry which
             %% rejects this subscribe
@@ -272,11 +286,37 @@ on_subscribe(UserName, SubscriberId, Topics) ->
 
 on_unsubscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(on_unsubscribe, [{username, nilify(UserName)},
-                                 {mountpoint, MP},
-                                 {client_id, ClientId},
-                                 {topics, [unword(T)
-                                           || T <- Topics]}]).
+    CacheRet =
+    lists:foldl(
+      fun
+          (_, false) -> false;
+          (_, no_cache) -> no_cache;
+          (Topic, Acc) ->
+              %% We have to rewrite topics
+              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, 0) of
+                  Mods when is_list(Mods) ->
+                      Acc ++ [T || {T, _QoS} <- Mods];
+                  Ret ->
+                      Ret
+              end
+      end, [], Topics),
+    case CacheRet of
+        true ->
+            ok;
+        Modifiers when is_list(Modifiers) ->
+            %% Found a valid cache entry containing modifiers
+            {ok, Modifiers};
+        false ->
+            %% one of the provided topics doesn't match a cache entry which
+            %% rejects this subscribe
+            error;
+        no_cache ->
+            all_till_ok(on_unsubscribe, [{username, nilify(UserName)},
+                                         {mountpoint, MP},
+                                         {client_id, ClientId},
+                                         {topics, [unword(T)
+                                                   || T <- Topics]}])
+    end.
 
 on_deliver(UserName, SubscriberId, Topic, Payload) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -386,8 +426,8 @@ val_binary(B) -> is_binary(B).
 val_string(B) when is_binary(B) -> {ok, binary_to_list(B)};
 val_string(_) -> false.
 
-val_qos(N) when is_number(N) 
-                and (N >= 0) and (N =< 2) -> {ok, round(N)}; 
+val_qos(N) when is_number(N)
+                and (N >= 0) and (N =< 2) -> {ok, round(N)};
 val_qos(_) -> false.
 
 val_int(I) when is_integer(I) -> true;
@@ -477,13 +517,13 @@ check_modifiers(Hook, [{_,_}|_] = Modifiers) ->
     lists:foldl(fun (_, error) -> error;
                     ({ModKey, ModVal}, Acc) ->
                         case lists:keyfind(ModKey, 1, AllowedModifiers) of
-                            false -> 
+                            false ->
                                 error;
                             {_, ValidatorFun} ->
                                 case ValidatorFun(ModVal) of
-                                    true -> 
+                                    true ->
                                         [{ModKey, ModVal}|Acc];
-                                    false -> 
+                                    false ->
                                         lager:error("can't validate modifier ~p ~p ~p", [Hook, ModKey, ModVal]),
                                         error;
                                     {ok, NewModVal} ->
@@ -491,7 +531,7 @@ check_modifiers(Hook, [{_,_}|_] = Modifiers) ->
                                 end
                         end
                 end, [], Modifiers);
-check_modifiers(Hook, Modifiers) -> 
+check_modifiers(Hook, Modifiers) ->
     lager:error("can't check modifiers ~p for hook ~p~n", [Hook, Modifiers]),
     error.
 
