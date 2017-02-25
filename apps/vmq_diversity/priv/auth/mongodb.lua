@@ -15,13 +15,6 @@
 
 require "auth/auth_commons"
 
-HOST = "127.0.0.1"
-PORT = 27017
-COLLECTION = "vmq_acl_auth"
-USER = nil
-PASSWORD = nil
-DATABASE = nil
-
 -- In order to use this Lua plugin your MongoDB docs used for authentication 
 -- and authorization must contain the following properties:
 --
@@ -108,12 +101,7 @@ end
 
 pool = "auth_mongodb"
 config = {
-    pool_id = pool,
-    login = USER,
-    password = PASSWORD,
-    database = DATABASE,
-    host = HOST,
-    port = PORT
+    pool_id = pool
 }
 
 mongodb.ensure_pool(config)

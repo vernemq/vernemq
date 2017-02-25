@@ -16,12 +16,6 @@
 -- provision your database.
 require "auth/auth_commons"
 
-USER = "vernemq"
-PASSWORD = "vernemq"
-DATABASE = "vernemq_db"
-HOST = "127.0.0.1"
-PORT = 3306
-
 -- In order to use this Lua plugin you must deploy the following database
 -- schema and grant the user configured above with the required privileges:
 --[[ 
@@ -105,12 +99,7 @@ end
 
 pool = "auth_mysql"
 config = {
-    pool_id = pool,
-    user = USER,
-    password = PASSWORD,
-    database = DATABASE,
-    host = HOST,
-    port = PORT
+    pool_id = pool
 }
 
 mysql.ensure_pool(config)
@@ -121,4 +110,3 @@ hooks = {
     on_client_gone = on_client_gone,
     on_client_offline = on_client_offline
 }
-

@@ -16,12 +16,6 @@
 -- provision your database.
 require "auth/auth_commons"
 
-USER = "vernemq"
-PASSWORD = "vernemq"
-DATABASE = "vernemq_db"
-HOST = "127.0.0.1"
-PORT = 5432
-
 -- In order to use this Lua plugin you must deploy the following database
 -- schema and grant the user configured above with the required privileges:
 --[[ 
@@ -121,11 +115,6 @@ end
 pool = "auth_postgres"
 config = {
     pool_id = pool,
-    user = USER,
-    password = PASSWORD,
-    database = DATABASE,
-    host = HOST,
-    port = PORT
 }
 
 postgres.ensure_pool(config)

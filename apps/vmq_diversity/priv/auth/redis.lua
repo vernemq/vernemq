@@ -14,12 +14,6 @@
 -- provision your database.
 require "auth/auth_commons"
 
-HOST = "127.0.0.1"
-PORT = 6379
-PASSWORD = ""
-DATABASE = 0
-
-
 -- In order to use this Lua plugin you must store a JSON Object containing 
 -- the following properties as Redis Value:
 --
@@ -73,11 +67,7 @@ end
 
 pool = "auth_redis"
 config = {
-    pool_id = pool,
-    password = PASSWORD,
-    database = DATABASE,
-    host = HOST,
-    port = PORT
+    pool_id = pool
 }
 
 redis.ensure_pool(config)
@@ -88,6 +78,3 @@ hooks = {
     on_client_gone = on_client_gone,
     on_client_offline = on_client_offline
 }
-
-
-
