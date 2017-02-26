@@ -46,9 +46,9 @@
               {mongodb, [
                           {host, "localhost"},
                           {port, 27017},
-                          {login, ""},
-                          {password, ""},
-                          {database, ""},
+                          {login, undefined},
+                          {password, undefined},
+                          {database, undefined},
                           {pool_size, 5},
                           {r_mode, master},
                           {w_mode, safe}
