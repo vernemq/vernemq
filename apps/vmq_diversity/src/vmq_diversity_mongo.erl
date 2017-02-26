@@ -71,7 +71,7 @@ ensure_pool(As, St) ->
                     PoolId = vmq_diversity_utils:atom(
                                maps:get(<<"pool_id">>,
                                         Options,
-                                        pool_mysql)),
+                                        pool_mongodb)),
 
                     Size = vmq_diversity_utils:int(
                              maps:get(<<"size">>,
