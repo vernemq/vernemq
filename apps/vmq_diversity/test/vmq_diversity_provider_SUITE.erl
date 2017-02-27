@@ -65,8 +65,7 @@ all() ->
              json_test,
              bcrypt_test,
              logger_test,
-             auth_cache_test,
-            {skip, "Database tests skipped"}]
+             auth_cache_test]
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
