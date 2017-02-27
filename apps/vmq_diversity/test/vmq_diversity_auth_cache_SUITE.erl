@@ -20,7 +20,7 @@ init_per_suite(_Config) ->
     application:load(vmq_plugin),
     application:ensure_all_started(vmq_plugin),
     vmq_plugin_mgr:enable_plugin(vmq_diversity),
-    {ok, _} = vmq_diversity:load_script("../../../../apps/vmq_diversity/test/cache_test.lua"),
+    {ok, _} = vmq_diversity:load_script(code:lib_dir(vmq_diversity) ++ "/test/cache_test.lua"),
     cover:start(),
     _Config.
 
