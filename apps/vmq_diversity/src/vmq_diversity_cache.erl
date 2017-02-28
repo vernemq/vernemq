@@ -115,6 +115,7 @@ entries_(Type, Hashes) ->
 table() ->
     [
      {<<"insert">>, {function, fun insert/2}},
+     %% only for testing purposes
      {<<"match_subscribe">>, {function, fun match_subscribe/2}},
      {<<"match_publish">>, {function, fun match_publish/2}}
     ].
@@ -158,8 +159,16 @@ match_subscribe(As, St) ->
                         true ->
                             {[true], St};
                         Modifiers0 when is_list(Modifiers0) ->
-                            {Modifiers1, NewSt} = luerl:encode(Modifiers0, St),
-                            {[Modifiers1], NewSt};
+                            %% the subscribe-modifiers have the form:
+                            %% [{Topic :: list(binary), QoS :: 0 | 1 | 2}, ...]
+                            %% and have to be transposed to
+                            %% [[Topic :: binary, QoS], ...]
+                            Modifiers1 =
+                            [begin
+                                 [iolist_to_binary(vmq_topic:unword(ModT)), ModQ]
+                             end || {ModT, ModQ} <- Modifiers0],
+                            {Modifiers2, NewSt} = luerl:encode(Modifiers1, St),
+                            {[Modifiers2], NewSt};
                         _ ->
                             {[false], St}
                     end;
@@ -185,8 +194,22 @@ match_publish(As, St) ->
                         true ->
                             {[true], St};
                         Modifiers0 when is_list(Modifiers0) ->
-                            {Modifiers1, NewSt} = luerl:encode(Modifiers0, St),
-                            {[Modifiers1], NewSt};
+                            Modifiers1 =
+                            case lists:keyfind(topic, 1, Modifiers0) of
+                                false -> Modifiers0;
+                                {_, ModT} ->
+                                    lists:keyreplace(topic, 1, Modifiers0,
+                                                     {topic, iolist_to_binary(vmq_topic:unword(ModT))})
+                            end,
+                            Modifiers2 =
+                            case lists:keyfind(mountpoint, 1, Modifiers1) of
+                                false -> Modifiers1;
+                                {_, ModMP} ->
+                                    lists:keyreplace(mountpoint, 1, Modifiers1,
+                                                     {mountpoint, list_to_binary(ModMP)})
+                            end,
+                            {Modifiers3, NewSt} = luerl:encode(Modifiers2, St),
+                            {[Modifiers3], NewSt};
                         _ ->
                             {[false], St}
                     end;
