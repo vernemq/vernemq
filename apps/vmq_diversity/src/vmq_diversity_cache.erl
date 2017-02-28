@@ -308,7 +308,7 @@ validate_modifiers(Type, Modifiers) ->
             lager:error("can't validate modifiers ~p for ~p ACL", [Type, Modifiers]),
             undefined;
         _ ->
-            NewModifiers
+            Ret
     end.
 
 subst(MP, User, ClientId, [<<"%u">>|Rest], Acc) ->
