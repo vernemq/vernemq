@@ -32,6 +32,7 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications. Currently the followin
 * Extensible Plugin architecture
 * Multiple Sessions per ClientId
 * Session Balancing
+* Shared subscriptions (BETA)
 * Message load regulation
 * Message load shedding (for system protection)
 * Offline Message Storage (based on LevelDB)
@@ -63,7 +64,7 @@ started, you need to first build VerneMQ.
 Building VerneMQ
 ~~~~~~~~~~~~~~~~
 
-Note: VerneMQ requires Erlang 17.x, 18.x or 19.x to be installed on your system. 
+Note: VerneMQ requires Erlang 18.x or 19.x to be installed on your system. 
 
 Assuming you have a working Erlang installation, building VerneMQ should be as
 simple as:

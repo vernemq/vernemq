@@ -18,8 +18,6 @@
          data_in/2,
          msg_in/2,
          send/2,
-         info_items/0,
-         list_sessions/3,
          info/2]).
 
 -export([msg_ref/0]).
@@ -66,6 +64,7 @@
           max_client_id_size=100            :: non_neg_integer(),
 
           %% changeable by auth_on_register
+          shared_subscription_policy=prefer_local :: sg_policy(),
           max_inflight_messages=20          :: non_neg_integer(), %% 0 means unlimited
           max_message_rate=0                :: non_neg_integer(), %% 0 means unlimited
           retry_interval=20000              :: pos_integer(),
@@ -89,6 +88,7 @@ init(Peer, Opts) ->
         {_, PreAuth} -> {preauth, PreAuth}
     end,
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
+    SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
     RetryInterval = vmq_config:get_env(retry_interval, 20),
     MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
@@ -113,6 +113,7 @@ init(Peer, Opts) ->
                                      upgrade_qos=UpgradeQoS,
                                      subscriber_id=SubscriberId,
                                      allow_anonymous=AllowAnonymous,
+                                     shared_subscription_policy=SharedSubPolicy,
                                      max_inflight_messages=MaxInflightMsgs,
                                      max_message_rate=MaxMessageRate,
                                      username=PreAuthUser,
@@ -216,9 +217,10 @@ wait_for_connect(_, State) ->
     {stop, any(), [mqtt_frame() | binary()]}.
 connected(#mqtt_publish{message_id=MessageId, topic=Topic,
                         qos=QoS, retain=IsRetain,
-                        payload=Payload}, State) ->
+                        payload=Payload},
+          #state{subscriber_id={MountPoint,_},
+                 shared_subscription_policy=SGPolicy} = State) ->
     DoThrottle = do_throttle(State),
-    #state{subscriber_id={MountPoint, _}} = State,
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
     _ = vmq_metrics:incr_mqtt_publish_received(),
@@ -233,7 +235,8 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
                            retain=unflag(IsRetain),
                            qos=QoS,
                            mountpoint=MountPoint,
-                           msg_ref=msg_ref()},
+                           msg_ref=msg_ref(),
+                           sg_policy=SGPolicy},
             dispatch_publish(QoS, MessageId, Msg, State)
     end,
     case Ret of
@@ -604,6 +607,7 @@ auth_on_register(User, Password, State) ->
                              reg_view=?state_val(reg_view, Args, State),
                              max_message_rate=?state_val(max_message_rate, Args, State),
                              max_inflight_messages=?state_val(max_inflight_messages, Args, State),
+                             shared_subscription_policy=?state_val(shared_subscription_policy, Args, State),
                              retry_interval=?state_val(retry_interval, Args, State),
                              upgrade_qos=?state_val(upgrade_qos, Args, State),
                              cap_settings=ChangedCAPSettings
@@ -1085,61 +1089,6 @@ max_msg_size() ->
 set_max_msg_size(MaxMsgSize) when MaxMsgSize >= 0 ->
     put(max_msg_size, MaxMsgSize),
     MaxMsgSize.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% info items
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-info_items() ->
-    [pid, client_id, user, peer_host, peer_port,
-     mountpoint, node, protocol, timeout, retry_timeout,
-     waiting_acks].
-
--spec list_sessions([atom()|string()], function(), any()) -> any().
-list_sessions(InfoItems, Fun, Acc) ->
-    list_sessions(vmq_cluster:nodes(), InfoItems, Fun, Acc).
-list_sessions([Node|Nodes], InfoItems, Fun, Acc) when Node == node() ->
-    NewAcc = list_sessions_(InfoItems, Fun, Acc),
-    list_sessions(Nodes, InfoItems, Fun, NewAcc);
-list_sessions([Node|Nodes], InfoItems, Fun, Acc) ->
-    Self = self(),
-    F = fun(SubscriberId, Infos, NrOfSessions) ->
-                Self ! {session_info, SubscriberId, Infos},
-                NrOfSessions + 1
-        end,
-    Key = rpc:async_call(Node, ?MODULE, list_sessions_, [InfoItems, F, 0]),
-    NewAcc = list_session_recv_loop(Key, Fun, Acc),
-    list_sessions(Nodes, InfoItems, Fun, NewAcc);
-list_sessions([], _, _, Acc) -> Acc.
-
-list_sessions_(InfoItems, Fun, Acc) ->
-    vmq_reg:fold_sessions(
-      fun(SubscriberId, Pid, AccAcc) when is_pid(Pid) ->
-              case info(Pid, InfoItems) of
-                  {ok, Res} ->
-                      Fun(SubscriberId, Res, AccAcc);
-                  {error, _Reason} ->
-                      %% session went down in the meantime
-                      AccAcc
-              end;
-         (_, _, AccAcc) ->
-              AccAcc
-      end, Acc).
-
-list_session_recv_loop(RPCKey, Fun, Acc) ->
-    case rpc:nb_yield(RPCKey) of
-        {value, _NrOfSessions} ->
-            Acc;
-        timeout ->
-            receive
-                {session_info, SubscriberId, Infos} ->
-                    list_session_recv_loop(RPCKey, Fun,
-                                           Fun(SubscriberId, Infos, Acc));
-                _ ->
-                    Acc
-            end
-    end.
-
 
 info(Pid, Items) ->
     Ref = make_ref(),

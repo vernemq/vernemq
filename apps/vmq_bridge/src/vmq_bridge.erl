@@ -66,7 +66,8 @@ on_connect({coord, CoordinatorPid} = State) ->
     CoordinatorPid ! connected,
     {ok, State}.
 
-on_connect_error(_Reason, State) ->
+on_connect_error(Reason, State) ->
+    lager:error("connection failed due to: ~p", [Reason]),
     {ok, State}.
 
 on_disconnect(State) ->
@@ -164,7 +165,9 @@ handle_cast(_Req, State) ->
     {noreply, State}.
 
 handle_info(connected, #state{client_pid=Pid, opts=Opts,
-                              subscribe_fun=SubscribeFun} = State) ->
+                              subscribe_fun=SubscribeFun,
+                              host=Host, port=Port} = State) ->
+    lager:debug("connected to: ~s:~p", [Host,Port]),
     Topics = proplists:get_value(topics, Opts),
     Subscriptions = bridge_subscribe(Pid, Topics, SubscribeFun, []),
     {noreply, State#state{subscriptions=Subscriptions}};

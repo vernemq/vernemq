@@ -142,9 +142,10 @@ process_bytes(Bytes, Buffer, St) ->
             process(BFrames, St),
             process_bytes(Rest, <<>>, St);
         _ ->
+            %% if we have received something else than "vmq-send" we
+            %% will buffer everything unbounded forever and ever!
             {ok, NewBuffer}
     end.
-
 
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
     case binary_to_term(Bin) of
@@ -152,36 +153,65 @@ process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
                  routing_key=Topic} = Msg ->
             _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, Msg);
         CompatMsg ->
+            SGPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
             #vmq_msg{mountpoint=MP,
-                     routing_key=Topic} = Msg = compat_msg(CompatMsg),
+                     routing_key=Topic} = Msg = compat_msg(CompatMsg, SGPolicy),
             _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, Msg)
     end,
     process(Rest, St);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
-    {CallerPid, Ref, {enqueue, QueuePid, Msgs}} = binary_to_term(Bin),
-    %% enqueue in own process context
-    %% to ensure that this won't block
-    %% the cluster communication.
-    CompatMsgs = lists:map(fun({deliver, Qos, Msg}) ->
-                                   {deliver, Qos, compat_msg(Msg)}
-                           end, Msgs),
-    spawn(fun() ->
-                  try
-                      Reply = vmq_queue:enqueue_many(QueuePid, CompatMsgs),
-                      CallerPid ! {Ref, Reply}
-                  catch
-                      _:_ ->
-                          CallerPid ! {Ref, {error, cant_remote_enqueue}}
-                  end
-          end),
+    case binary_to_term(Bin) of
+        {CallerPid, Ref, {enqueue, QueuePid, Msgs}} ->
+            %% enqueue in own process context
+            %% to ensure that this won't block
+            %% the cluster communication.
+            spawn(fun() ->
+                          try
+                              SGPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
+                              CompatMsgs = compat_msgs(Msgs, SGPolicy),
+                              Reply = vmq_queue:enqueue_many(QueuePid, CompatMsgs),
+                              CallerPid ! {Ref, Reply}
+                          catch
+                              _:_ ->
+                                  CallerPid ! {Ref, {error, cant_remote_enqueue}}
+                          end
+                  end);
+        {CallerPid, Ref, {enqueue_many, SubscriberId, Msgs, Opts}} ->
+            %% enqueue in own process context
+            %% to ensure that this won't block
+            %% the cluster communication.
+            spawn(fun() ->
+                          try
+                              case vmq_queue_sup_sup:get_queue_pid(SubscriberId) of
+                                  QueuePid when is_pid(QueuePid) ->
+                                      SGPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
+                                      CompatMsgs = compat_msgs(Msgs, SGPolicy),
+                                      Reply = vmq_queue:enqueue_many(QueuePid, CompatMsgs, Opts),
+                                      CallerPid ! {Ref, Reply}
+                              end
+                          catch
+                              _:_ ->
+                                  CallerPid ! {Ref, {error, cant_remote_enqueue}}
+                          end
+                  end);
+        Unknown ->
+            lager:warning("unknown enqueue message: ~p", [Unknown])
+    end,
     process(Rest, St);
-process(<<>>, _) -> ok.
+process(<<>>, _) -> ok;
+process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St) ->
+    lager:warning("unknown message: ~p", [Cmd]),
+    process(Rest, St).
 
-%% Convert vmq_msg records coming from nodes implementing the
-%% subscriber groups feature into a #vmq_msg{} record without the
-%% sg_policy member.
-compat_msg(#vmq_msg{} = Msg) -> Msg;
-compat_msg({vmq_msg, MsgRef, RoutingKey, Payload, Retain, Dup, QoS, Mountpoint, Persisted, _SGPolicy}) ->
+compat_msgs(Msgs, SGPolicy) ->
+    lists:map(fun({deliver, Qos, Msg}) ->
+                      {deliver, Qos, compat_msg(Msg, SGPolicy)}
+              end, Msgs).
+    
+%% Convert #vmq_msg{} records coming from pre-subscriber group nodes
+%% owhich don't have the sg_policy member
+compat_msg(#vmq_msg{} = Msg, _) -> Msg;
+compat_msg({vmq_msg, MsgRef, RoutingKey, Payload, Retain, Dup, QoS, Mountpoint, Persisted}, SGPolicy) ->
     #vmq_msg{
        msg_ref = MsgRef,
        routing_key = RoutingKey,
@@ -190,10 +220,11 @@ compat_msg({vmq_msg, MsgRef, RoutingKey, Payload, Retain, Dup, QoS, Mountpoint, 
        dup = Dup,
        qos = QoS,
        mountpoint = Mountpoint,
-       persisted = Persisted}.
+       persisted = Persisted,
+       sg_policy = SGPolicy}.
 
 publish({_, _} = SubscriberIdAndQoS, Msg) ->
-    vmq_reg:publish(SubscriberIdAndQoS, Msg);
+    vmq_reg:publish(SubscriberIdAndQoS, {Msg,undefined});
 publish(_Node, Msg) ->
     %% we ignore remote subscriptions, they are already covered
     %% by original publisher

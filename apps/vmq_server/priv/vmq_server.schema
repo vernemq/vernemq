@@ -1,4 +1,4 @@
-%%-*- mode: erlang -*
+%% -*- mode: erlang -*-
 %% ex: ft=erlang
 
 %% @doc Allow anonymous users to connect, default is 'off'
@@ -1459,4 +1459,96 @@
          {ok, T, _} = erl_scan:string(S ++ "."),
          {ok, Term} = erl_parse:parse_term(T),
          Term
+ end}.
+
+%% @doc Distribution policy for shared subscriptions. Default is
+%% 'prefer_local' which will ensure that local subscribers will be
+%% used if any are available. 'local_only' will select a random local
+%% subscriber if any are available. 'random' will randomly choose
+%% between all available subscribers.
+{mapping, "shared_subscription_policy", "vmq_server.shared_subscription_policy", [
+                                                                                  {default, prefer_local},
+                                                                                  {datatype, atom}
+                                                                                 ]}.
+
+%% @doc plugins.<plugin> enables/disables a plugin.
+%%
+%% Plugin specific settings are set via the plugin itself, i.e., to
+%% set the 'file' setting for the myplugin plugin, add a line like:
+%%
+%%
+%% myplugin.file = /path/to/file
+{mapping, "plugins.$name", "vmq_server.user_plugins", [
+                                                       {datatype, flag},
+                                                       {commented, on}
+                                                      ]}.
+
+%% @doc plugins.<name>.path defines the location of the plugin
+%% associated with <name>. This is needed for plugins that are not
+%% shipped with VerneMQ.
+{mapping, "plugins.$name.path", "vmq_server.user_plugins", [
+                                                            {datatype, directory},
+                                                            {commented, "/path/to/myplugin"},
+                                                            {include_default, "mypluginname"}
+                                                          ]}.
+
+%% @doc plugins.<name>.priority defines the load order of the
+%% plugins. Plugins are loaded by priority. If no priority is given
+%% the load order is undefined. Prioritized plugins will always be
+%% loaded before plugins with no defined priority.
+{mapping, "plugins.$name.priority", "vmq_server.user_plugins", [
+                                                                {datatype, integer},
+                                                                {commented, "5"},
+                                                                {include_default, "mypluginname"}
+                                                               ]}.
+
+
+
+%% @doc File based authentication plugin.
+{mapping, "plugins.vmq_passwd", "vmq_server.user_plugins", [
+                                                            {datatype, flag},
+                                                            {default, on}
+                                                           ]}.
+
+%% @doc File based authorization plugin.
+{mapping, "plugins.vmq_acl", "vmq_server.user_plugins", [
+                                                         {datatype, flag},
+                                                         {default, on}
+                                                        ]}.
+
+%% @doc Lua based plugins.
+{mapping, "plugins.vmq_diversity", "vmq_server.user_plugins", [
+                                                               {datatype, flag},
+                                                               {default, off}
+                                                              ]}.
+
+%% @doc Webhook based plugins.
+{mapping, "plugins.vmq_webhooks", "vmq_server.user_plugins", [
+                                                               {datatype, flag},
+                                                               {default, off}
+                                                             ]}.
+%% @doc The VerneMQ bridge plugin.
+{mapping, "plugins.vmq_bridge", "vmq_server.user_plugins", [
+                                                            {datatype, flag},
+                                                            {default, off}
+                                                           ]}.
+
+{translation,
+ "vmq_server.user_plugins",
+ fun(Conf) ->
+         PluginNames =
+             proplists:get_all_values(
+               "$name",
+               cuttlefish_variable:fuzzy_matches(["plugins", "$name"], Conf)),
+         EnabledPlugins =
+             lists:filter(fun(Name) ->
+                                  cuttlefish:conf_get("plugins." ++ Name, Conf, false)
+                          end,
+                          PluginNames),
+         Plugins =
+             [ {cuttlefish:conf_get("plugins." ++ Name ++ ".priority", Conf, Name),
+                #{path => cuttlefish:conf_get("plugins." ++ Name ++ ".path", Conf, undefined),
+                  name => erlang:list_to_atom(Name)}}
+               || Name <- EnabledPlugins ],
+         lists:keysort(1, Plugins)
  end}.

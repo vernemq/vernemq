@@ -1,0 +1,85 @@
+%% -*- mode: erlang -*-
+%% ex: ft=erlang
+
+%% @doc To configure and register a webhook a hook and an endpoint
+%% need to be configured and this is achieved by associating both with
+%% a name. vmq_webhooks.<name>.hook = <hook> associates the hook
+%% <hook> with the name <name>. Webhooks are registered in the order
+%% of the name given to it. Therefore a webhook with name 'webhook1'
+%% is regisered before a webhook with the name 'webhook2'.
+{mapping, "vmq_webhooks.$name.hook", "vmq_webhooks.user_webhooks", [
+                                                                    {datatype, {enum,
+                                                                                [auth_on_register,
+                                                                                 auth_on_publish,
+                                                                                 auth_on_subscribe,
+                                                                                 on_register,
+                                                                                 on_publish,
+                                                                                 on_subscribe,
+                                                                                 on_unsubscribe,
+                                                                                 on_deliver,
+                                                                                 on_offline_message,
+                                                                                 on_client_wakeup,
+                                                                                 on_client_offline,
+                                                                                 on_client_gone]}},
+                                                                    {commented, "auth_on_register"},
+                                                                    {include_default, "webhook1"}
+                                                                   ]}.
+
+%% @doc Associate an endpoint with a name.
+{mapping, "vmq_webhooks.$name.endpoint", "vmq_webhooks.user_webhooks", [
+                                                                        {datatype, string},
+                                                                        {commented, "http://localhost/myendpoints"},
+                                                                        {include_default, "webhook1"}
+                                                                       ]}.
+
+%% @doc Control if the payload should be base64 encoded.
+{mapping, "vmq_webhooks.$name.base64encode", "vmq_webhooks.user_webhooks", [
+                                                                            {datatype, flag},
+                                                                            {default, on},
+                                                                            {commented, "false"},
+                                                                            {include_default, "webhook1"},
+                                                                            hidden
+                                                                           ]}.
+
+{translation,
+ "vmq_webhooks.user_webhooks",
+ fun(Conf) ->
+         Suffixes = ["hook", "endpoint", "base64encode"],
+         UNames =
+             [
+              proplists:get_all_values(
+                "$name",
+                cuttlefish_variable:fuzzy_matches(["vmq_webhooks", "$name", Suffix], Conf))
+               || Suffix <- Suffixes ],
+         HookNames = lists:usort(lists:append(UNames)),
+         Webhooks =
+             [ {SortName,
+                #{
+                  hook => cuttlefish:conf_get("vmq_webhooks." ++ SortName ++ ".hook", Conf, undefined),
+                  endpoint => cuttlefish:conf_get("vmq_webhooks." ++ SortName ++ ".endpoint", Conf, undefined),
+                  options => 
+                      #{ base64_payload =>
+                             cuttlefish:conf_get("vmq_webhooks." ++ SortName ++ ".base64encode", Conf, true)
+                       }
+                 }}
+               || SortName <- HookNames ],
+         %% I know of no other way to abort the translation phase and
+         %% report an error back to the user than using throw. Though
+         %% it's not too pretty I think it's nicer than just warning
+         %% that something is configured incorrectly.
+         lists:map(
+           fun({SortName, #{endpoint := undefined}}) ->
+                   throw("Invalid configuration: vmq_webhooks."
+                         ++ SortName ++ ".endpoint is not defined");
+              ({SortName, #{hook := undefined}}) ->
+                   throw("Invalid configuration: vmq_webhooks."
+                         ++ SortName ++ ".hook is not defined");
+              ({SortName, #{endpoint := Endpoint} = WH}) ->
+                   {SortName, maps:update(endpoint, list_to_binary(Endpoint), WH)}
+           end, Webhooks)
+ end}.
+
+{mapping, "vmq_webhooks.clique_lead_line", "vmq_webhooks.clique_lead_line",
+ [{datatype, string},
+  hidden,
+  {default, "    webhooks    Manage webhooks\n"}]}.

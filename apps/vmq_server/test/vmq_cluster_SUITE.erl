@@ -14,7 +14,10 @@
          racing_connect_test/1,
          racing_subscriber_test/1,
          cluster_leave_test/1,
-         cluster_leave_dead_node_test/1]).
+         cluster_leave_dead_node_test/1,
+         shared_subs_random_policy_test/1,
+         shared_subs_prefer_local_policy_test/1,
+         shared_subs_local_only_policy_test/1]).
 
 -export([hook_uname_password_success/5,
          hook_auth_on_publish/6,
@@ -69,12 +72,16 @@ end_per_testcase(_, _Config) ->
 
 all() ->
     [multiple_connect_test
-     ,multiple_connect_unclean_test
-     , distributed_subscribe_test
-     , racing_connect_test
-     , racing_subscriber_test
-     , cluster_leave_test
-     , cluster_leave_dead_node_test].
+    ,multiple_connect_unclean_test
+    ,distributed_subscribe_test
+    ,racing_connect_test
+    ,racing_subscriber_test
+    ,cluster_leave_test
+    ,cluster_leave_dead_node_test
+    ,shared_subs_random_policy_test
+    ,shared_subs_prefer_local_policy_test
+    ,shared_subs_local_only_policy_test
+    ].
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -418,6 +425,206 @@ cluster_leave_dead_node_test(Config) ->
                                       rpc:call(N, vmq_queue_sup_sup, summary, [])
                               end, {0, 0, 0, 5, 0}).
 
+shared_subs_prefer_local_policy_test(Config) ->
+    ensure_cluster(Config),
+    [LocalNode|OtherNodes] = Nodes = nodes_(Config),
+    set_shared_subs_policy(prefer_local, nodenames(Config)),
+
+    LocalSubscriberSockets = connect_shared_subscribers(<<"$share/share/sharedtopic">>, 5, [LocalNode]),
+    RemoteSubscriberSockets = connect_shared_subscribers(<<"$share/share/sharedtopic">>, 5, OtherNodes),
+    
+    %% Make sure subscriptions have propagated to all nodes
+    ok = wait_until_converged(Nodes,
+                              fun(N) ->
+                                      rpc:call(N, vmq_reg, total_subscriptions, [])
+                              end, [{total, 10}]),
+
+    %% publish to shared topic on local node
+    {_, LocalPort} = LocalNode,
+    Connect = packet:gen_connect("ss-publisher",
+                                 [{keepalive, 60}, {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, LocalPort}]),
+    Payloads = publish_to_shared_topic(Socket, <<"sharedtopic">>, 10),
+    Disconnect = packet:gen_disconnect(),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
+
+    %% receive on subscriber sockets.
+    spawn_receivers(LocalSubscriberSockets),
+    receive_shared_sub_messages(Payloads),
+    receive_nothing(200),
+    spawn_receivers(RemoteSubscriberSockets),
+    receive_nothing(200),
+
+    %% cleanup
+    [ ok = gen_tcp:close(S) || S <- LocalSubscriberSockets ++ RemoteSubscriberSockets ],
+    ok.
+
+shared_subs_local_only_policy_test(Config) ->
+    ensure_cluster(Config),
+    [LocalNode|OtherNodes] = Nodes = nodes_(Config),
+    set_shared_subs_policy(local_only, nodenames(Config)),
+
+    LocalSubscriberSockets = connect_shared_subscribers(<<"$share/share/sharedtopic">>, 5, [LocalNode]),
+    RemoteSubscriberSockets = connect_shared_subscribers(<<"$share/share/sharedtopic">>, 5, OtherNodes),
+
+    %% Make sure subscriptions have propagated to all nodes
+    ok = wait_until_converged(Nodes,
+                              fun(N) ->
+                                      rpc:call(N, vmq_reg, total_subscriptions, [])
+                              end, [{total, 10}]),
+
+    %% publish to shared topic on local node
+    {_, LocalPort} = LocalNode,
+    Connect = packet:gen_connect("ss-publisher",
+                                 [{keepalive, 60}, {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, LocalPort}]),
+    Payloads = publish_to_shared_topic(Socket, <<"sharedtopic">>, 10),
+
+    %% receive on subscriber sockets.
+    spawn_receivers(LocalSubscriberSockets),
+    receive_shared_sub_messages(Payloads),
+    receive_nothing(200),
+    spawn_receivers(RemoteSubscriberSockets),
+    receive_nothing(200),
+
+    %% disconnect all locals
+    Disconnect = packet:gen_disconnect(),
+    [begin
+         ok = gen_tcp:send(S, Disconnect),
+         ok = gen_tcp:close(S)
+     end || S <- LocalSubscriberSockets],
+
+    _ = publish_to_shared_topic(Socket, <<"sharedtopic">>, 11, 20),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
+
+    %% receive nothing as policy was local_only
+    receive_nothing(200),
+
+    %% cleanup
+    [ ok = gen_tcp:close(S) || S <- RemoteSubscriberSockets ],
+    ok.
+
+shared_subs_random_policy_test(Config) ->
+    ensure_cluster(Config),
+    Nodes = nodes_(Config),
+    set_shared_subs_policy(random, nodenames(Config)),
+
+    SubscriberSockets = connect_shared_subscribers(<<"$share/share/sharedtopic">>, 10, Nodes),
+
+    %% Make sure subscriptions have propagated to all nodes
+    ok = wait_until_converged(Nodes,
+                              fun(N) ->
+                                      rpc:call(N, vmq_reg, total_subscriptions, [])
+                              end, [{total, 10}]),
+
+    %% publish to shared topic on random node
+    {_, Port} = random_node(Nodes),
+    Connect = packet:gen_connect("ss-publisher",
+                                 [{keepalive, 60}, {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+    Payloads = publish_to_shared_topic(Socket, <<"sharedtopic">>, 10),
+    Disconnect = packet:gen_disconnect(),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
+
+    %% receive on subscriber sockets.
+    spawn_receivers(SubscriberSockets),
+    receive_shared_sub_messages(Payloads),
+    receive_nothing(200),
+    
+    %% cleanup
+    [ ok = gen_tcp:close(S) || S <- SubscriberSockets ],
+    ok.
+
+connect_shared_subscribers(Topic, Number, Nodes) ->
+    [begin
+         
+         {_, Port} = random_node(Nodes),
+         Connect = packet:gen_connect("ss-subscriber-" ++ integer_to_list(I) ++ "-node-" ++ 
+                                          integer_to_list(Port),
+                                      [{keepalive, 60}, {clean_session, true}]),
+         Connack = packet:gen_connack(0),
+         Subscribe = packet:gen_subscribe(1, [Topic], 1),
+         Suback = packet:gen_suback(1, 1),
+         %% TODO: make it connect to random node instead
+         {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+         ok = gen_tcp:send(Socket, Subscribe),
+         ok = packet:expect_packet(Socket, "suback", Suback),
+         Socket
+     end || I <- lists:seq(1,Number)].
+
+publish_to_shared_topic(Socket, Topic, Number) when Number > 1 ->
+    publish_to_shared_topic(Socket, Topic, 1, Number).
+
+publish_to_shared_topic(Socket, Topic, Begin, End) when Begin < End ->
+    [begin
+         Payload = vmq_test_utils:rand_bytes(5),
+         Publish = packet:gen_publish(Topic, 1, Payload, [{mid, I}]),
+         io:format(user, "publish_to_shared: ~p ~p~n", [I, Publish]),
+         Puback = packet:gen_puback(I),
+         ok = gen_tcp:send(Socket, Publish),
+         ok = packet:expect_packet(Socket, "puback", Puback),
+         Payload
+     end || I <- lists:seq(Begin,End)].
+
+set_shared_subs_policy(Policy, Nodes) ->
+    lists:foreach(
+      fun(N) ->
+              {ok, []} = rpc:call(N, vmq_server_cmd, set_config, [shared_subscription_policy, Policy])
+      end,
+      Nodes).
+
+nodenames(Config) ->
+    {NodeNames, _} = lists:unzip(nodes_(Config)),
+    NodeNames.
+
+nodes_(Config) ->
+    {_, Nodes} = lists:keyfind(nodes, 1, Config),
+    Nodes.
+
+spawn_receivers(ReceiverSockets) ->
+    Master = self(),
+    lists:map(
+      fun(S) ->
+              spawn_link(fun() -> recv_and_forward_msg(S, Master, <<>>) end)
+      end,
+      ReceiverSockets).
+
+receive_shared_sub_messages([]) ->
+    ok;
+receive_shared_sub_messages(Payloads) ->
+    receive
+        #mqtt_publish{payload=Payload} ->
+            true = lists:member(Payload, Payloads),
+            receive_shared_sub_messages(Payloads -- [Payload])
+    end.
+
+receive_nothing(Wait) ->
+    receive
+        X -> throw({received_unexpected_msgs, X})
+    after
+        Wait -> ok
+    end.
+
+recv_and_forward_msg(Socket, Dest, Rest) ->
+    case recv_all(Socket, Rest) of
+        {ok, Frames, Rest} ->
+            lists:foreach(
+              fun(#mqtt_publish{message_id = MsgId} = Msg) ->
+                      ok = gen_tcp:send(Socket, packet:gen_puback(MsgId)),
+                      Dest ! Msg
+              end,
+              Frames),
+            recv_and_forward_msg(Socket, Dest, Rest);
+        {error, _Reason} ->
+            ok
+    end.
+
 publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess) ->
     publish(self(), Nodes, NrOfProcesses, NrOfMsgsPerProcess, []).
 
@@ -481,22 +688,36 @@ receive_publishes([{_,Port}=N|Nodes], Topic, Payloads) ->
     end.
 
 recv(Socket, Buf) ->
+    case recv_all(Socket, Buf) of
+        {ok, [], Rest} ->
+            recv_all(Socket, Rest);
+        {ok, [Frame|_], _Rest} ->
+            {ok, Frame};
+        E -> E
+    end.
+
+recv_all(Socket, Buf) ->
     case gen_tcp:recv(Socket, 0) of
         {ok, Data} ->
             NewData = <<Buf/binary, Data/binary>>,
-            case vmq_parser:parse(NewData) of
-                more ->
-                    recv(Socket, NewData);
-                {error, _Rest} ->
-                    {error, parse_error};
-                error ->
-                    {error, parse_error};
-                {Frame, _Rest} ->
-                    {ok, Frame}
-            end;
+            parse_all(NewData);
         {error, Reason} -> {error, Reason}
     end.
 
+parse_all(Data) ->
+    parse_all(Data, []).
+
+parse_all(Data, Frames) ->
+    case vmq_parser:parse(Data) of
+        more ->
+            {ok, lists:reverse(Frames), Data};
+        {error, _Rest} ->
+            {error, parse_error};
+        error ->
+            {error, parse_error};
+        {Frame, Rest} ->
+            parse_all(Rest, [Frame|Frames])
+    end.
 
 
 

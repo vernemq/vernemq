@@ -1,6 +1,73 @@
 # Changelog
 
-## VerneMQ 0.15.3
+## Nightly (will become next release)
+
+- Erlang 17.x is no longer officially supported.
+- New `rebar3` version (3.3.5), required to upgrade `node_package` dependency.
+- The plugins `vmq_webhooks` and `vmq_diversity` are now shipped as part of
+  VerneMQ itself.
+
+### vmq_server
+
+- Improved the `vmq-admin list session` command with a limit option controlling
+  the returned number of sessions as well as the possibilty to customize which
+  session data is returned.
+
+- Change to plugin administration. To make VerneMQ configuration more consistent
+  and simpler to configure it is now possible to configure plugins directly in
+  the `vernemq.conf` file.
+  
+  - The `lib/vmq_plugin.conf` file is obsolete and no longer in use.
+  - plugins are no longer persisted when enabled via the `vmq-admin` tool, but
+    have to be added to the `vernemq.conf` file manually like any other
+    configuration. An example looks like:
+    
+    `plugins.myplugin = on`
+    `plugins.myplugin.path = /path/to/plugin`
+    
+    Configuration specific settings are then configured like this:
+    
+    `myplugin.setting = ...`
+
+  - The above changes has the following impact on existing settings in the
+    `vernemq.conf` file:
+    - The `acl_file` setting is replaced by `vmq_acl.acl_file`.
+    - The `acl_reload_interval` setting is replaced by
+      `vmq_acl.acl_reload_interval`
+    - The `password_file` setting is replaced by `vmq_passwd.password_file`
+    - The `password_reload_interval` setting is replaced by
+      `vmq_passwd.password_reload_interval`.
+    - The `bridge` prefix has been replaced by the `vmq_bridge` prefix.
+      
+      Make sure to update the configuration file accordingly.
+
+- Add implementation of shared subscriptions as specified in the MQTTv5 draft
+  spec. Currently two different distribution policies are supported:
+
+  - `prefer_local` which will, if possible, deliver the message to a random
+    local subscriber in the shared subscription group, otherwise the message
+    will be delivered to a random remote subscriber of the shared
+    subscription (if any).
+  - `random` will distribute the messages random between all members of the
+    shared supscription regardless if they are local or are subscribed via
+    another node.
+  - `local_only` will consider only node-local members of the subscriber group
+    for delivery.
+
+  A message published to a shared subscription will first be delivered to online
+  members of the shared subscription if any exist, failing that, the message
+  will be delivered to an offline subscriber of the shared subscription. Due to
+  the fact that the MQTTv5 spec is not yet final, this feature is marked as
+  BETA.
+
+  NOTE: To upgrade a live cluster all nodes must already be running 0.15.3 or
+  newer! This feature is incompatible with older releases.
+
+- Use of specific routing tables for non-wildcard topics. This improvement 
+  results in faster routing table lookups for non-wildcard subscriptions, and
+  reduces overall memory consumption of the routing tables.
+
+## VERNEMQ 0.15.3
 
 ### vmq_server
 

@@ -1,0 +1,106 @@
+start <- stmt ~;
+stmt <- select_stmt ~;
+
+select_stmt <- _ select_token _ x:select_field xs:select_field_rest* _ from_token _ from:identifier _ where:where_expr? _ orderby:orderby_expr? _ limit:limit_expr?
+ (_ limit_token _ limit:pos_integer)?
+`
+[{type, "SELECT"}, 
+ {fields, [proplists:get_value(x, Node)] ++ proplists:get_value(xs, Node, [])},
+ {from, proplists:get_value(from, Node)},
+ {where, proplists:get_value(where, Node)},
+ {orderby, proplists:get_value(orderby, Node)},
+ {limit, proplists:get_value(limit, Node)}]
+`;
+select_field <- identifier / select_wildcard ~;
+select_field_rest <- _ separator_token _ s:select_field
+`proplists:get_value(s, Node)`;
+
+select_wildcard <- '*' `all`;
+
+orderby_expr <- orderby_token _ x:orderby_field
+`
+[proplists:get_value(x, Node)]
+`;
+orderby_field <- identifier ~;
+
+limit_expr <- limit_token _ x:pos_integer _
+`
+list_to_integer(binary_to_list(iolist_to_binary(proplists:get_value(x, Node))))
+`;
+
+where_expr <- where_token x:logic_expr+
+`
+proplists:get_value(x, Node)
+`;
+
+logic_expr <- _ '(' _ x:logic_expr+ _ ')' _ / _ left:expr _ op:operator _ right:(logic_expr / expr) _
+`
+case proplists:get_value(x, Node) of
+  undefined -> 
+    {op,
+     proplists:get_value(left, Node),
+     proplists:get_value(op, Node),
+     proplists:get_value(right, Node)};
+  X ->
+    [X] ++ proplists:get_value(xs, Node, [])
+end
+`;
+operator <- '!=' / '=<' / '>=' / '=' / '>' / '<' / or_token / and_token / like_token
+`
+case Node of
+  <<"!=">> -> 'not_equals';
+  <<"=">> -> 'equals';
+  <<"<">> -> 'lesser';
+  <<"=<">> -> 'lesser_equals';
+  <<">">> -> 'greater';
+  <<">=">> -> 'greater_equals';
+  [<<"OR">>, []] -> 'or';
+  [<<"AND">>, []] -> 'and';
+  [<<"LIKE">>, []] -> 'like'
+end
+`;
+
+expr <- number / bool / identifier / string ~;
+number <- integer frac? exp?
+`
+case Node of
+  [Int, [], []] -> list_to_integer(binary_to_list(iolist_to_binary(Int)));
+  [Int, Frac, []] -> list_to_float(binary_to_list(iolist_to_binary([Int, Frac])));
+  [Int, _, Exp] -> list_to_float(binary_to_list(iolist_to_binary([Int, ".0", Exp])));
+  _ -> list_to_float(binary_to_list(iolist_to_binary(Node)))
+end
+`;
+pos_integer <- (non_zero_digit digit+) / digit+ ~;
+integer <- '-'? (non_zero_digit digit+) / digit+ ~;
+frac <- '.' digit+ ~;
+exp <- e digit+  ~;
+e <- [eE] ('+' / '-')? ~;
+non_zero_digit <- [1-9] ~;
+digit <- [0-9] ~;
+bool <- true / false ~;
+true <- 'true' `true`;
+false <- 'false' `false`;
+string <- '"' chars:(!'"' ("\\\\" / '\\"' / .))* '"' `iolist_to_binary(proplists:get_value(chars, Node))`;
+
+select_token <- 'SELECT' !ident_rest ~;
+separator_token <- ',' ~;
+from_token <- 'FROM' !ident_rest ~;
+where_token <- 'WHERE' !ident_rest ~;
+like_token <- 'LIKE' !ident_rest ~;
+or_token <- 'OR' !ident_rest ~;
+and_token <- 'AND' !ident_rest ~;
+orderby_token <- 'ORDER BY' !ident_rest ~;
+limit_token <- 'LIMIT' !ident_rest ~;
+
+identifier <- x:ident_start xs:ident_rest*
+`
+binary_to_existing_atom(iolist_to_binary([
+    proplists:get_value(x, Node),
+    proplists:get_value(xs, Node, [])
+]), utf8)
+`;
+ident_start <- [a-z_] ~;
+ident_rest <- [a-z0-9_] ~;
+_ <- ( newline / whitespace )* ~;
+newline <- '\r\n' / '\r' / '\n' / '\u2028' / '\u2029' ~;
+whitespace <- ' ' / '\t' / '\v' / '\f' ~;
