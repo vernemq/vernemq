@@ -18,8 +18,6 @@
          data_in/2,
          msg_in/2,
          send/2,
-         info_items/0,
-         list_sessions/3,
          info/2]).
 
 -export([msg_ref/0]).
@@ -1091,61 +1089,6 @@ max_msg_size() ->
 set_max_msg_size(MaxMsgSize) when MaxMsgSize >= 0 ->
     put(max_msg_size, MaxMsgSize),
     MaxMsgSize.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% info items
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-info_items() ->
-    [pid, client_id, user, peer_host, peer_port,
-     mountpoint, node, protocol, timeout, retry_timeout,
-     waiting_acks].
-
--spec list_sessions([atom()|string()], function(), any()) -> any().
-list_sessions(InfoItems, Fun, Acc) ->
-    list_sessions(vmq_cluster:nodes(), InfoItems, Fun, Acc).
-list_sessions([Node|Nodes], InfoItems, Fun, Acc) when Node == node() ->
-    NewAcc = list_sessions_(InfoItems, Fun, Acc),
-    list_sessions(Nodes, InfoItems, Fun, NewAcc);
-list_sessions([Node|Nodes], InfoItems, Fun, Acc) ->
-    Self = self(),
-    F = fun(SubscriberId, Infos, NrOfSessions) ->
-                Self ! {session_info, SubscriberId, Infos},
-                NrOfSessions + 1
-        end,
-    Key = rpc:async_call(Node, ?MODULE, list_sessions_, [InfoItems, F, 0]),
-    NewAcc = list_session_recv_loop(Key, Fun, Acc),
-    list_sessions(Nodes, InfoItems, Fun, NewAcc);
-list_sessions([], _, _, Acc) -> Acc.
-
-list_sessions_(InfoItems, Fun, Acc) ->
-    vmq_reg:fold_sessions(
-      fun(SubscriberId, Pid, AccAcc) when is_pid(Pid) ->
-              case info(Pid, InfoItems) of
-                  {ok, Res} ->
-                      Fun(SubscriberId, Res, AccAcc);
-                  {error, _Reason} ->
-                      %% session went down in the meantime
-                      AccAcc
-              end;
-         (_, _, AccAcc) ->
-              AccAcc
-      end, Acc).
-
-list_session_recv_loop(RPCKey, Fun, Acc) ->
-    case rpc:nb_yield(RPCKey) of
-        {value, _NrOfSessions} ->
-            Acc;
-        timeout ->
-            receive
-                {session_info, SubscriberId, Infos} ->
-                    list_session_recv_loop(RPCKey, Fun,
-                                           Fun(SubscriberId, Infos, Acc));
-                _ ->
-                    Acc
-            end
-    end.
-
 
 info(Pid, Items) ->
     Ref = make_ref(),
