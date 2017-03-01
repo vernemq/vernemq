@@ -65,33 +65,50 @@ ensure_pool(As, St) ->
         [Config0|_] ->
             case luerl:decode(Config0, St) of
                 Config when is_list(Config) ->
+                    {ok, AuthConfigs} = application:get_env(vmq_diversity, db_config),
+                    DefaultConf = proplists:get_value(mongodb, AuthConfigs),
                     Options = vmq_diversity_utils:map(Config),
-                    PoolId = vmq_diversity_utils:atom(maps:get(<<"pool_id">>,
-                                                               Options,
-                                                               pool_mysql)),
+                    PoolId = vmq_diversity_utils:atom(
+                               maps:get(<<"pool_id">>,
+                                        Options,
+                                        pool_mongodb)),
 
-                    Size = vmq_diversity_utils:int(maps:get(<<"size">>,
-                                                            Options, 10)),
+                    Size = vmq_diversity_utils:int(
+                             maps:get(<<"size">>,
+                                      Options,
+                                      proplists:get_value(pool_size, DefaultConf))),
                     MaxOverflow =
-                    vmq_diversity_utils:int(maps:get(<<"max_overflow">>,
-                                                            Options, 20)),
-                    Login = vmq_diversity_utils:ustr(maps:get(<<"login">>,
-                                                            Options, undefined)),
-                    Password = vmq_diversity_utils:ustr(maps:get(<<"password">>,
-                                                                Options, undefined)),
-                    Host = vmq_diversity_utils:str(maps:get(<<"host">>,
-                                                            Options, "127.0.0.1")),
-                    Port = vmq_diversity_utils:int(maps:get(<<"port">>, Options,
-                                                            27017)),
-                    Database = vmq_diversity_utils:ustr(maps:get(<<"database">>,
-                                                                 Options,
-                                                                 undefined)),
-                    WMode = vmq_diversity_utils:atom(maps:get(<<"w_mode">>,
-                                                                 Options,
-                                                                 safe)),
-                    RMode = vmq_diversity_utils:atom(maps:get(<<"r_mode">>,
-                                                                 Options,
-                                                                 master)),
+                    vmq_diversity_utils:int(
+                      maps:get(<<"max_overflow">>,
+                               Options, 20)),
+                    Login = vmq_diversity_utils:ustr(
+                              maps:get(<<"login">>,
+                                       Options,
+                                       proplists:get_value(login, DefaultConf))),
+                    Password = vmq_diversity_utils:ustr(
+                                 maps:get(<<"password">>,
+                                          Options,
+                                          proplists:get_value(password, DefaultConf))),
+                    Host = vmq_diversity_utils:str(
+                             maps:get(<<"host">>,
+                                      Options,
+                                      proplists:get_value(host, DefaultConf))),
+                    Port = vmq_diversity_utils:int(
+                             maps:get(<<"port">>,
+                                      Options,
+                                      proplists:get_value(port, DefaultConf))),
+                    Database = vmq_diversity_utils:ustr(
+                                 maps:get(<<"database">>,
+                                          Options,
+                                          proplists:get_value(database, DefaultConf))),
+                    WMode = vmq_diversity_utils:atom(
+                              maps:get(<<"w_mode">>,
+                                       Options,
+                                       proplists:get_value(w_mode, DefaultConf))),
+                    RMode = vmq_diversity_utils:atom(
+                              maps:get(<<"r_mode">>,
+                                       Options,
+                                       proplists:get_value(r_mode, DefaultConf))),
                     NewOptions =
                     [{login, mbin(Login)}, {password, mbin(Password)},
                      {host, Host}, {port, Port}, {database, mbin(Database)},

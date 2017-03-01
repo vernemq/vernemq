@@ -71,7 +71,7 @@ auth_on_register_test(_) ->
                       [peer(), not_allowed_subscriber_id(), username(), password(), true]),
     {error, [next]} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), ignored_subscriber_id(), username(), password(), true]),
-    {ok, [{mountpoint, "mynewmount"}]} = vmq_plugin:all_till_ok(auth_on_register,
+    {ok, [{subscriber_id, {"override-mountpoint", <<"override-client-id">>}}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), changed_subscriber_id(), username(), password(), true]).
 
 auth_on_publish_test(_) ->

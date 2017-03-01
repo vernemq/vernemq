@@ -2,6 +2,8 @@
 
 ## Nightly (will become next release)
 
+- Add out-of-the-box authentication and authorization support for Postgres, 
+  MySQL, MongoDB, and Redis via `vmq_diversity`. 
 - Erlang 17.x is no longer officially supported.
 - New `rebar3` version (3.3.5), required to upgrade `node_package` dependency.
 - The plugins `vmq_webhooks` and `vmq_diversity` are now shipped as part of
@@ -66,6 +68,13 @@
 - Use of specific routing tables for non-wildcard topics. This improvement 
   results in faster routing table lookups for non-wildcard subscriptions, and
   reduces overall memory consumption of the routing tables.
+  
+### vmq_diversity
+
+- Minor fixes and improvements.
+- Add support for caching ACLs in lua scripts.
+- Add support for bcrypt password hashes.
+
 
 ## VERNEMQ 0.15.3
 

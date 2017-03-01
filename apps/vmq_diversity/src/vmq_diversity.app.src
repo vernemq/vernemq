@@ -19,8 +19,71 @@
     mongodb,
     eredis,
     hackney,
-    jsx
+    jsx,
+    bcrypt
    ]},
-  {env,[{keep_state, false}]},
+  {env,[
+      {keep_state, false},
+      {script_dir, "priv"},
+      {db_config, [
+              {postgres, [
+                          {host, "localhost"},
+                          {port, 5432},
+                          {user, "root"},
+                          {password, "password"},
+                          {database, "vernemq_db"},
+                          {pool_size, 5}
+                         ]},
+              {mysql, [
+                          {host, "localhost"},
+                          {port, 3306},
+                          {user, "root"},
+                          {password, "password"},
+                          {database, "vernemq_db"},
+                          {pool_size, 5},
+                          {encoding, utf8}
+                         ]},
+              {mongodb, [
+                          {host, "localhost"},
+                          {port, 27017},
+                          {login, undefined},
+                          {password, undefined},
+                          {database, undefined},
+                          {pool_size, 5},
+                          {r_mode, master},
+                          {w_mode, safe}
+                         ]},
+              {memcache, [
+                          {host, "localhost"},
+                          {port, 11211}
+                         ]},
+              {redis, [
+                          {host, "localhost"},
+                          {port, 6379},
+                          {password, ""},
+                          {database, 0},
+                          {pool_size, 5}
+                         ]}
+             ]},
+      {auth_cache, [
+              {postgres, [
+                          {enabled, false},
+                          {file, "priv/auth/postgres.lua"}
+                         ]},
+              {mysql, [
+                          {enabled, false},
+                          {file, "priv/auth/mysql.lua"}
+                         ]},
+              {mongodb, [
+                          {enabled, false},
+                          {file, "priv/auth/mongodb.lua"}
+                         ]},
+              {redis, [
+                          {enabled, false},
+                          {file, "priv/auth/redis.lua"}
+                         ]}
+             ]}
+
+  ]},
   {modules, []}
  ]}.

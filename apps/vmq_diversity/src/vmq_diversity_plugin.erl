@@ -47,6 +47,9 @@
          register_hook/1
         ]).
 
+%% used by vmq_diversity_cache
+-export([check_modifiers/2]).
+
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -200,21 +203,59 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
 
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(auth_on_publish, [{username, nilify(UserName)},
-                                  {mountpoint, MP},
-                                  {client_id, ClientId},
-                                  {qos, QoS},
-                                  {topic, unword(Topic)},
-                                  {payload, Payload},
-                                  {retain, IsRetain}]).
+    case vmq_diversity_cache:match_publish_acl(MP, ClientId, QoS, Topic, Payload, IsRetain) of
+        true ->
+            %% Found a valid cache entry which grants this publish
+            ok;
+        Modifiers when is_list(Modifiers) ->
+            %% Found a valid cache entry containing modifiers
+            {ok, Modifiers};
+        false ->
+            %% Found a valid cache entry which rejects this publish
+            error;
+        no_cache ->
+            all_till_ok(auth_on_publish, [{username, nilify(UserName)},
+                                          {mountpoint, MP},
+                                          {client_id, ClientId},
+                                          {qos, QoS},
+                                          {topic, unword(Topic)},
+                                          {payload, Payload},
+                                          {retain, IsRetain}])
+    end.
 
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(auth_on_subscribe, [{username, nilify(UserName)},
-                                    {mountpoint, MP},
-                                    {client_id, ClientId},
-                                    {topics, [[unword(T), QoS]
-                                              || {T, QoS} <- Topics]}]).
+    CacheRet =
+    lists:foldl(
+      fun
+          (_, false) -> false;
+          (_, no_cache) -> no_cache;
+          ({Topic, QoS}, Acc) ->
+              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, QoS) of
+                  Mods when is_list(Mods) ->
+                      Acc ++ Mods;
+                  Ret ->
+                      Ret
+              end
+      end, [], Topics),
+    case CacheRet of
+        true ->
+            %% all provided topics match a cache entry which grants this subscribe
+            ok;
+        Modifiers when is_list(Modifiers) ->
+            %% Found a valid cache entry containing modifiers
+            {ok, Modifiers};
+        false ->
+            %% one of the provided topics doesn't match a cache entry which
+            %% rejects this subscribe
+            error;
+        no_cache ->
+            all_till_ok(auth_on_subscribe, [{username, nilify(UserName)},
+                                            {mountpoint, MP},
+                                            {client_id, ClientId},
+                                            {topics, [[unword(T), QoS]
+                                                      || {T, QoS} <- Topics]}])
+    end.
 
 on_register(Peer, SubscriberId, UserName) ->
     {PPeer, Port} = peer(Peer),
@@ -245,11 +286,37 @@ on_subscribe(UserName, SubscriberId, Topics) ->
 
 on_unsubscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(on_unsubscribe, [{username, nilify(UserName)},
-                                 {mountpoint, MP},
-                                 {client_id, ClientId},
-                                 {topics, [unword(T)
-                                           || T <- Topics]}]).
+    CacheRet =
+    lists:foldl(
+      fun
+          (_, false) -> false;
+          (_, no_cache) -> no_cache;
+          (Topic, Acc) ->
+              %% We have to rewrite topics
+              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, 0) of
+                  Mods when is_list(Mods) ->
+                      Acc ++ [T || {T, _QoS} <- Mods];
+                  Ret ->
+                      Ret
+              end
+      end, [], Topics),
+    case CacheRet of
+        true ->
+            ok;
+        Modifiers when is_list(Modifiers) ->
+            %% Found a valid cache entry containing modifiers
+            {ok, Modifiers};
+        false ->
+            %% one of the provided topics doesn't match a cache entry which
+            %% rejects this subscribe
+            error;
+        no_cache ->
+            all_till_ok(on_unsubscribe, [{username, nilify(UserName)},
+                                         {mountpoint, MP},
+                                         {client_id, ClientId},
+                                         {topics, [unword(T)
+                                                   || T <- Topics]}])
+    end.
 
 on_deliver(UserName, SubscriberId, Topic, Payload) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -275,11 +342,13 @@ on_client_wakeup(SubscriberId) ->
 
 on_client_offline(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
+    vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_client_offline, [{mountpoint, MP},
                             {client_id, ClientId}]).
 
 on_client_gone(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
+    vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_client_gone, [{mountpoint, MP},
                          {client_id, ClientId}]).
 
@@ -317,10 +386,9 @@ all_till_ok([Pid|Rest], HookName, Args) ->
             ok;
         Modifiers when is_list(Modifiers) ->
             case check_modifiers(HookName, Modifiers) of
-                error ->
-                    error;
-                ValidatedModifiers ->
-                    {ok, ValidatedModifiers}
+                error -> error;
+                CheckedModifiers ->
+                    {ok, CheckedModifiers}
             end;
         false ->
             error;
@@ -347,50 +415,125 @@ all([], _, _) -> next.
 unword(T) ->
     iolist_to_binary(vmq_topic:unword(T)).
 
-check_modifiers(Hook, Modifiers)
-  when (Hook == auth_on_publish) or (Hook == on_deliver) ->
-    case lists:keyfind(topic, 1, Modifiers) of
-        {topic, T} when is_binary(T) ->
-            case vmq_topic:validate_topic(publish, T) of
-                {ok, NewT} ->
-                    lists:keyreplace(topic, 1, Modifiers, {topic, NewT});
-                {error, R} ->
-                    lager:error("can't rewrite topic in ~p due to ~p", [Hook, R]),
-                    error
-            end;
-        false ->
-            Modifiers
+%% Validators For the Modifiers
+val_bool(B) -> is_boolean(B).
+
+val_atom(B) when is_binary(B) -> {ok, binary_to_existing_atom(B, utf8)};
+val_atom(_) -> false.
+
+val_binary(B) -> is_binary(B).
+
+val_string(B) when is_binary(B) -> {ok, binary_to_list(B)};
+val_string(_) -> false.
+
+val_qos(N) when is_number(N)
+                and (N >= 0) and (N =< 2) -> {ok, round(N)};
+val_qos(_) -> false.
+
+val_int(I) when is_integer(I) -> true;
+val_int(N) when is_number(N) -> {ok, round(N)};
+val_int(_) -> false.
+
+val_subscriber_id([{_, _}|_] = SubscriberIdModifier) ->
+    case {lists:keyfind(client_id, 1, SubscriberIdModifier),
+          lists:keyfind(mountpoint, 1, SubscriberIdModifier)} of
+        {{_, ClientId}, {_, Mountpoint}} when is_binary(ClientId) and is_binary(Mountpoint) ->
+            {ok, {binary_to_list(Mountpoint), ClientId}};
+        _ ->
+            false
     end;
-check_modifiers(auth_on_subscribe, TopicsModifiers) ->
+val_subscriber_id(_) -> false.
+
+val_pub_topic(B) when is_binary(B) ->
+    case vmq_topic:validate_topic(publish, B) of
+        {ok, T} -> {ok, T};
+        _ -> false
+    end;
+val_pub_topic(_) -> false.
+
+modifiers(auth_on_register) ->
+    [{allow_register, fun val_bool/1},
+     {allow_publish, fun val_bool/1},
+     {allow_subscribe, fun val_bool/1},
+     {allow_unsubscribe, fun val_bool/1},
+     {max_message_size, fun val_int/1},
+     {subscriber_id, fun val_subscriber_id/1},
+     {clean_session, fun val_bool/1},
+     {max_message_rate, fun val_int/1},
+     {max_inflight_messages, fun val_int/1},
+     {shared_subscription_policy, fun val_atom/1},
+     {retry_interval, fun val_int/1},
+     {upgrade_qos, fun val_bool/1},
+     {allow_multiple_sessions, fun val_bool/1},
+     {max_online_messages, fun val_int/1},
+     {max_offline_messages, fun val_int/1},
+     {queue_deliver_mode, fun val_atom/1},
+     {queue_type, fun val_atom/1},
+     {max_drain_time, fun val_int/1},
+     {max_msgs_per_drain_step, fun val_int/1}];
+modifiers(auth_on_publish) ->
+    [{topic, fun val_pub_topic/1},
+     {payload, fun val_binary/1},
+     {qos, fun val_qos/1},
+     {retain, fun val_bool/1},
+     {mountpoint, fun val_string/1}];
+modifiers(on_deliver) ->
+    [{topic, fun val_pub_topic/1},
+     {payload, fun val_binary/1}];
+modifiers(_) -> [].
+
+check_modifiers(auth_on_subscribe, Modifiers) ->
+    %% auth_on_subscribe take a special form
     lists:foldl(fun (_, error) -> error;
-                    ([T, Q], AccTopics) when is_binary(T) and is_number(Q) ->
+                    ([T, Q], Acc) when is_binary(T) and is_number(Q) ->
                         case vmq_topic:validate_topic(subscribe, T) of
-                            {ok, NewTopic} ->
-                                [{NewTopic, round(Q)}|AccTopics];
-                            {error, R} ->
-                                lager:error("can't rewrite topic in auth_on_subscribe due to ~p", [R]),
+                            {ok, Topic} ->
+                                [{Topic, round(Q)}|Acc];
+                            {error, Reason} ->
+                                lager:error("can't parse topic ~p in auth_on_subscribe", [{T, Q}, Reason]),
                                 error
                         end;
-                    (T, _) ->
+                   (T, _) ->
                         lager:error("can't rewrite topic in auth_on_subscribe due to wrong format ~p", [T]),
                         error
-                end, [], TopicsModifiers);
-check_modifiers(on_unsubscribe, TopicsModifiers) ->
+                end, [], Modifiers);
+check_modifiers(on_unsubscribe, Modifiers) ->
+    %% on_unsubscribe take a special form
     lists:foldl(fun (_, error) -> error;
-                    (T, AccTopics) when is_binary(T) ->
+                    (T, Acc) when is_binary(T) ->
                         case vmq_topic:validate_topic(subscribe, T) of
-                            {ok, NewTopic} ->
-                                [NewTopic|AccTopics];
-                            {error, R} ->
-                                lager:error("can't rewrite topic in on_unsubscribe due to ~p", [R]),
+                            {ok, Topic} ->
+                                [Topic|Acc];
+                            {error, Reason} ->
+                                lager:error("can't parse topic ~p in on_unsubscribe", [T, Reason]),
                                 error
                         end;
-                    (T, _) ->
+                   (T, _) ->
                         lager:error("can't rewrite topic in on_unsubscribe due to wrong format ~p", [T]),
                         error
-                end, [], TopicsModifiers);
-check_modifiers(_, Modifiers) -> Modifiers.
-
+                end, [], Modifiers);
+check_modifiers(Hook, [{_,_}|_] = Modifiers) ->
+    AllowedModifiers = modifiers(Hook),
+    lists:foldl(fun (_, error) -> error;
+                    ({ModKey, ModVal}, Acc) ->
+                        case lists:keyfind(ModKey, 1, AllowedModifiers) of
+                            false ->
+                                error;
+                            {_, ValidatorFun} ->
+                                case ValidatorFun(ModVal) of
+                                    true ->
+                                        [{ModKey, ModVal}|Acc];
+                                    false ->
+                                        lager:error("can't validate modifier ~p ~p ~p", [Hook, ModKey, ModVal]),
+                                        error;
+                                    {ok, NewModVal} ->
+                                        [{ModKey, NewModVal}|Acc]
+                                end
+                        end
+                end, [], Modifiers);
+check_modifiers(Hook, Modifiers) ->
+    lager:error("can't check modifiers ~p for hook ~p~n", [Hook, Modifiers]),
+    error.
 
 peer({Peer, Port}) when is_tuple(Peer) and is_integer(Port) ->
     case inet:ntoa(Peer) of

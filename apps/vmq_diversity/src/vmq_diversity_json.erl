@@ -33,7 +33,7 @@ decode([Bin|_], St) when is_binary(Bin) ->
             {[Result1], NewSt}
     catch
         _:_ ->
-            {[false], St}
+            {[nil], St}
     end.
 
 encode([T|_], St) when is_tuple(T) ->
@@ -42,7 +42,7 @@ encode([T|_], St) when is_tuple(T) ->
             {[Result0], St}
     catch
         _:_ ->
-            {[false], St}
+            {[nil], St}
     end.
 
 encode_value(V) when is_list(V) ->

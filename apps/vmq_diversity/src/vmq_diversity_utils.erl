@@ -15,6 +15,33 @@
 -module(vmq_diversity_utils).
 -compile(export_all).
 
+convert(Val) when is_list(Val) ->
+    convert_list(Val, []);
+convert(Val) when is_number(Val) ->
+    case round(Val) of
+        RVal when RVal == Val -> RVal;
+        _ -> Val
+    end;
+convert(Val) when is_binary(Val) -> Val;
+convert(Val) when is_boolean(Val) -> Val;
+convert(nil) -> undefined.
+
+convert_list([ListItem|Rest], Acc) ->
+    convert_list(Rest, [convert_list_item(ListItem)|Acc]);
+convert_list([], Acc) -> lists:reverse(Acc).
+
+convert_list_item({Idx, Val}) when is_integer(Idx) ->
+    %% lua array
+    convert(Val);
+convert_list_item({BinKey, Val}) when is_binary(BinKey) ->
+    try list_to_existing_atom(binary_to_list(BinKey)) of
+        Key -> {Key, convert(Val)}
+    catch
+        _:_ ->
+            {BinKey, convert(Val)}
+    end.
+
+%% map / unmap is currently only used by the mongodb
 map(TableOrTables) ->
     case map(TableOrTables, []) of
         [Map] -> Map;
@@ -40,24 +67,23 @@ map_(Proplist) ->
                         maps:put(K, V, AccIn)
                 end, #{}, Proplist).
 
-unmap(MapOrMaps) ->
-    unmap(MapOrMaps, []).
+unmap(Map) when is_map(Map) ->
+    unmap(maps:to_list(Map), []);
+unmap([Map|_] = Maps) when is_map(Map) ->
+    {_, Ret} =
+    lists:foldl(fun(M, {I, Acc}) ->
+                        NextI = I + 1,
+                        {NextI, [{NextI, unmap(M)}|Acc]}
+                end, {0, []}, Maps),
+    Ret.
 
-unmap([], []) -> [];
-unmap([Map|Rest], Acc) when is_map(Map) ->
-    unmap(Rest, [unmap_(Map)|Acc]);
-unmap([], Acc) -> lists:reverse(Acc);
-unmap(Map, []) when is_map(Map) ->
-    unmap_(Map).
-
-unmap_(Map) when map_size(Map) == 0 -> [];
-unmap_(Map) ->
-    maps:fold(fun
-                  (K,V, AccIn) when is_map(V) ->
-                      [{K, unmap_(V)}|AccIn];
-                  (K,V, AccIn) ->
-                      [{K, V}|AccIn]
-              end, [], Map).
+unmap([{K, Map}|Rest], Acc) when is_map(Map) ->
+    unmap(Rest, [{K, unmap(Map)}|Acc]);
+unmap([{K, [Map|_] = Maps}|Rest], Acc) when is_map(Map) ->
+    unmap(Rest, [{K, unmap(Maps)}|Acc]);
+unmap([{K, V}|Rest], Acc) ->
+    unmap(Rest, [{K, V}|Acc]);
+unmap([], Acc) -> lists:reverse(Acc).
 
 int(I) when is_integer(I) -> I;
 int(I) when is_number(I) -> round(I).
