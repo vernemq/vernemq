@@ -33,7 +33,7 @@ init(_Type, Req, Opts) ->
 
 websocket_init(_Type, Req, Opts) ->
     case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req) of
-        {undefined, Req2} ->
+        {undefined, _, Req2} ->
             init_(Req2, Opts);
         {ok, [SubProtocol], Req2} ->
             case lists:member(SubProtocol, ?SUPPORTED_PROTOCOLS) of
