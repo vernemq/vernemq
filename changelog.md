@@ -1,6 +1,6 @@
 # Changelog
 
-## Nightly (will become next release)
+## VERNEMQ 1.0.0rc1
 
 - Add out-of-the-box authentication and authorization support for Postgres, 
   MySQL, MongoDB, and Redis via `vmq_diversity`. 
@@ -8,6 +8,7 @@
 - New `rebar3` version (3.3.5), required to upgrade `node_package` dependency.
 - The plugins `vmq_webhooks` and `vmq_diversity` are now shipped as part of
   VerneMQ itself.
+- Packages are now built using Erlang/OTP 19.2.
 
 ### vmq_server
 
