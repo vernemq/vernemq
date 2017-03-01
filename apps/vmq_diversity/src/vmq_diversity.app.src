@@ -20,7 +20,8 @@
     eredis,
     hackney,
     jsx,
-    bcrypt
+    bcrypt,
+    gen_server2
    ]},
   {env,[
       {keep_state, false},

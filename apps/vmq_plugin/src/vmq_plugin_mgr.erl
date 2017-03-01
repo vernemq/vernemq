@@ -248,10 +248,8 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(ready, State) ->
-    case wait_until_ready(State#state{ready=true}) of
-        {ok, NewState} -> {noreply, NewState};
-        {error, Reason} -> {stop, Reason}
-    end;
+    {ok, NewState} = wait_until_ready(State#state{ready=true}),
+    {noreply, NewState};
 handle_info(_Info, State) ->
     {noreply, State}.
 

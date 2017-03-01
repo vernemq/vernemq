@@ -687,7 +687,9 @@ dispatch_publish_(2, MessageId, Msg, State) ->
     dispatch_publish_qos2(MessageId, Msg, State).
 
 -spec dispatch_publish_qos0(msg_id(), msg(), state()) ->
-    list() | {error, not_allowed}.
+    list()
+    | {state(), list()}
+    | {error, not_allowed}.
 dispatch_publish_qos0(_MessageId, Msg, State) ->
     #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto,
            cap_settings=CAPSettings, reg_view=RegView} = State,
