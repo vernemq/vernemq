@@ -152,7 +152,7 @@ handle_info({'DOWN', _, process, Pid, _}, State) ->
     ets:foldl(fun({HookName, ScriptOwners}, _) ->
                       ets:insert(?TBL, {HookName, lists:delete(Pid, ScriptOwners)}),
                       case ets:lookup(?TBL, HookName) of
-                          {_, []} ->
+                          [{_, []}] ->
                             disable_hook(HookName),
                             ets:delete(?TBL, HookName);
                           _ ->
