@@ -41,7 +41,7 @@
 -record(state, {
           %% mqtt layer requirements
           next_msg_id=1                     :: msg_id(),
-          subscriber_id                     :: undefined | subscriber_id(),
+          subscriber_id                     :: undefined | subscriber_id() | {mountpoint(), undefined},
           will_msg                          :: undefined | msg(),
           waiting_acks=maps:new()           :: map(),
           waiting_msgs=[]                   :: list(),
@@ -54,7 +54,7 @@
           retry_queue=queue:new()           :: queue:queue(),
           clean_session=false               :: flag(),
           proto_ver                         :: undefined | pos_integer(),
-          queue_pid                         :: pid(),
+          queue_pid                         :: pid() | undefined,
 
           last_time_active=os:timestamp()   :: timestamp(),
           last_trigger=os:timestamp()       :: timestamp(),
