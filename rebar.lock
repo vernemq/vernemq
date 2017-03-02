@@ -69,7 +69,7 @@
   0},
  {<<"node_package">>,
   {git,"git://github.com/dergraf/node_package.git",
-       {ref,"75e54feeb19ef9518d817a34a31f4865a9b09a29"}},
+       {ref,"f9fce2e545eb9f3b0a845ac39c3310aae1d41ae3"}},
   0},
  {<<"pbkdf2">>,
   {git,"https://github.com/basho/erlang-pbkdf2.git",

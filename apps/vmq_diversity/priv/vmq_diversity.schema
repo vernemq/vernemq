@@ -14,7 +14,7 @@
 %% is searched for Lua scripts which are automatically loaded when the
 %% plugin is enabled.
 {mapping, "vmq_diversity.script_dir", "vmq_diversity.script_dir", [
-                                                                   {default, "{{luascripts_dir}}"},
+                                                                   {default, "{{platform_share_dir}}/lua"},
                                                                    {datatype, directory}
                                                                   ]}.
 
@@ -23,7 +23,7 @@
   {default, off}]}.
 {mapping, "vmq_diversity.auth_postgres.script", "vmq_diversity.auth_cache.postgres.file", 
  [{datatype, file},
-  {default, "{{luascripts_dir}}/auth/postgres.lua"},
+  {default, "{{platform_share_dir}}/lua/auth/postgres.lua"},
   hidden
  ]}.
 
@@ -62,7 +62,7 @@
   {default, off}]}.
 {mapping, "vmq_diversity.auth_mysql.script", "vmq_diversity.auth_cache.mysql.file", 
  [{datatype, file},
-  {default, "{{luascripts_dir}}/auth/mysql.lua"},
+  {default, "{{platform_share_dir}}/lua/auth/mysql.lua"},
   hidden
  ]}.
 
@@ -102,7 +102,7 @@
   {default, off}]}.
 {mapping, "vmq_diversity.auth_mongodb.script", "vmq_diversity.auth_cache.mongodb.file", 
  [{datatype, file},
-  {default, "{{luascripts_dir}}/auth/mongodb.lua"},
+  {default, "{{platform_share_dir}}/lua/auth/mongodb.lua"},
   hidden
  ]}.
 
@@ -152,7 +152,7 @@
   {default, off}]}.
 {mapping, "vmq_diversity.auth_redis.script", "vmq_diversity.auth_cache.redis.file", 
  [{datatype, file},
-  {default, "{{luascripts_dir}}/auth/redis.lua"},
+  {default, "{{platform_share_dir}}/lua/auth/redis.lua"},
   hidden
  ]}.
 
