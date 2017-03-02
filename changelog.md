@@ -1,5 +1,9 @@
 # Changelog
 
+## Nightly (will become next release)
+
+- Fix wrong lua paths in generated packages.
+
 ## VERNEMQ 1.0.0rc1
 
 - Add out-of-the-box authentication and authorization support for Postgres, 
