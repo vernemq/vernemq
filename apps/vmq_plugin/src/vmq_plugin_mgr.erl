@@ -55,7 +55,7 @@
 -endif.
 
 -record(state, {
-          ready=false,
+          ready :: boolean(),
           deferred_calls=[],
           plugins=[]}).
 
@@ -142,7 +142,7 @@ get_plugins() ->
 %%--------------------------------------------------------------------
 init([]) ->
     Plugins = application:get_env(vmq_plugin, plugins, []),
-    wait_until_ready(#state{plugins = Plugins}).
+    wait_until_ready(#state{plugins = Plugins, ready=false}).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -369,20 +369,17 @@ wait_until_ready(#state{ready=false} = State) ->
     {ok, RegisteredProcess} = application:get_env(vmq_plugin, wait_for_proc),
     %% we start initializing the plugins as soon as
     %% the registered process is alive
-    case whereis(RegisteredProcess) of
+    case erlang:whereis(RegisteredProcess) of
         undefined ->
             Self = self(),
-            Pid = spawn_link(
-                    fun() ->
-                            init_when_ready(Self, RegisteredProcess)
-                    end),
-            {ok, State#state{ready={waiting, Pid}}};
+            spawn_link(
+              fun() ->
+                      init_when_ready(Self, RegisteredProcess)
+              end),
+            {ok, State};
         _ ->
             {ok, handle_deferred_calls(State#state{ready=true})}
     end;
-wait_until_ready(#state{ready={waiting,_Pid}} = State) ->
-    %% we currently wait for the registered process to become alive
-    {ok, State};
 wait_until_ready(#state{ready=true} = State) ->
     {ok, handle_deferred_calls(State)}.
 
