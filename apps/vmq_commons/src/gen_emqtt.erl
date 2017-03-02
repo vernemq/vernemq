@@ -180,6 +180,7 @@ connecting(connect, State) ->
             active_once(Transport, Sock),
             {next_state, waiting_for_connack, NewState};
         {error, _Reason} ->
+            error_logger:error_msg("connection to ~p:~p failed due to ~p", [Host, Port, _Reason]),
             gen_fsm:send_event_after(3000, connect),
             wrap_res(connecting, on_connect_error, [server_not_found], State)
     end;
