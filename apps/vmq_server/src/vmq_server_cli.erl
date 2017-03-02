@@ -38,7 +38,7 @@ command(Cmd, false) ->
     {Res, _, _} = clique_command:run(M3),
     parse_res(Res, Res).
 
-parse_res(error, error) ->
+parse_res({error,_}, {error,_}) ->
     {error, unhandled_clique_error};
 parse_res([{alert, _}|_], Res) ->
     {error, Res};
