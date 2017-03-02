@@ -148,11 +148,11 @@ get_sync_queue(SyncKey, #state{sync_queues=SyncQs}) ->
             queue:new()
     end.
 
-update_sync_queue(SyncKey, {[],[]}, #state{sync_queues=SyncQs} = State) ->
-    State#state{sync_queues=maps:remove(SyncKey, SyncQs)};
 update_sync_queue(SyncKey, SyncQ, #state{sync_queues=SyncQs} = State) ->
-    State#state{sync_queues=maps:put(SyncKey, SyncQ, SyncQs)}.
-
+    case queue:is_empty(SyncQ) of
+        true -> State#state{sync_queues=maps:remove(SyncKey, SyncQs)};
+        false -> State#state{sync_queues=maps:put(SyncKey, SyncQ, SyncQs)}
+    end.
 
 sync_queue_in(SyncKey, QItem, State) ->
     SyncQ = get_sync_queue(SyncKey, State),

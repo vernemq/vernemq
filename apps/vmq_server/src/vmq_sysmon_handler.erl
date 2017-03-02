@@ -29,7 +29,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {timer_ref :: reference()}).
+-record(state, {timer_ref :: reference() | 'undefined'}).
 
 -define(INACTIVITY_TIMEOUT, 5000).
 

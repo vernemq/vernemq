@@ -3,9 +3,9 @@
 
 -type sg_policy() :: prefer_local | local_only | random.
 -record(vmq_msg, {
-          msg_ref               :: msg_ref(),
-          routing_key           :: routing_key(),
-          payload               :: payload(),
+          msg_ref               :: msg_ref() | 'undefined', % OTP-12719
+          routing_key           :: routing_key() | 'undefined',
+          payload               :: payload() | 'undefined',
           retain=false          :: flag(),
           dup=false             :: flag(),
           qos                   :: qos(),
