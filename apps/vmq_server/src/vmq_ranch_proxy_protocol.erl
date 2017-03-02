@@ -178,7 +178,7 @@ name() ->
 secure() ->
     false.
 
--spec messages() -> tuple().
+-spec messages() -> {OK::atom(), Closed::atom(), Error::atom()}.
 messages() ->
     ranch_tcp:messages().
 

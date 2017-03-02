@@ -8,6 +8,7 @@
                   stdlib,
                   lager,
                   cowboy,
+                  ranch,
                   os_mon,
                   riak_sysmon,
                   ssl,
