@@ -198,7 +198,7 @@ wait_for_connect(#mqtt_connect{keep_alive=KeepAlive} = Frame,
     cancel_timer(TRef),
     _ = vmq_metrics:incr_mqtt_connect_received(),
     %% the client is allowed "grace" of a half a time period
-    set_keepalive_timer(KeepAlive),
+    set_keepalive_check_timer(KeepAlive),
     check_connect(Frame, State#state{last_time_active=os:timestamp(),
                                        keep_alive=KeepAlive,
                                        keep_alive_tref=undefined});
@@ -404,12 +404,12 @@ connected(disconnect, State) ->
     terminate(normal, State);
 connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive} = State) ->
     Now = os:timestamp(),
-    case (timer:now_diff(Now, Last) div 1000000) > KeepAlive of
+    case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
         true ->
             lager:warning("[~p] stop due to keepalive expired", [self()]),
             terminate(normal, State);
         false ->
-            set_keepalive_timer(KeepAlive),
+            set_keepalive_check_timer(KeepAlive),
             {State, []}
     end;
 connected({'DOWN', _MRef, process, QPid, Reason}, #state{queue_pid=QPid} = State) ->
@@ -926,8 +926,8 @@ random_client_id() ->
     list_to_binary(["anon-", base64:encode_to_string(crypto:strong_rand_bytes(20))]).
 
 
-set_keepalive_timer(0) -> ok;
-set_keepalive_timer(KeepAlive) ->
+set_keepalive_check_timer(0) -> ok;
+set_keepalive_check_timer(KeepAlive) ->
     %% This allows us to heavily reduce start and cancel timers,
     %% however we're losing precision. But that's ok for the keepalive timer.
     _ = send_after(KeepAlive * 750, check_keepalive),
