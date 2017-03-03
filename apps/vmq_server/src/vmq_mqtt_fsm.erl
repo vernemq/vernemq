@@ -172,6 +172,7 @@ in(Msg, {wait_for_connect, State}, IsData) ->
         {stop, _, _} = R -> R;
         {NewState, Out} ->
             %% state transition to | connected |
+            _ = vmq_metrics:incr_mqtt_connack_sent(?CONNACK_ACCEPT),
             {{connected, set_last_time_active(IsData, NewState)}, Out}
     end.
 
@@ -424,6 +425,7 @@ connected(Unexpected, State) ->
 
 
 connack_terminate(RC, _State) ->
+    _ = vmq_metrics:incr_mqtt_connack_sent(RC),
     {stop, normal, [#mqtt_connack{session_present=false, return_code=RC}]}.
 
 queue_down_terminate(shutdown, State) ->
@@ -516,13 +518,11 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                         {error, Reason} ->
                             lager:warning("can't register client ~p with username ~p due to ~p",
                                           [SubscriberId, User, Reason]),
-                            _ = vmq_metrics:incr_mqtt_error_connect(),
                             connack_terminate(?CONNACK_SERVER, State)
                     end;
                 {error, no_matching_hook_found} ->
                     lager:error("can't authenticate client ~p due to
                                 no_matching_hook_found", [State#state.subscriber_id]),
-                    _ = vmq_metrics:incr_mqtt_error_auth_connect(),
                     connack_terminate(?CONNACK_AUTH, State);
                 {error, Errors} ->
                     case lists:keyfind(invalid_credentials, 2, Errors) of
@@ -530,14 +530,12 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                             lager:warning(
                               "can't authenticate client ~p due to
                               invalid_credentials", [State#state.subscriber_id]),
-                            _ = vmq_metrics:incr_mqtt_error_auth_connect(),
                             connack_terminate(?CONNACK_CREDENTIALS, State);
                         false ->
                             %% can't authenticate due to other reasons
                             lager:warning(
                               "can't authenticate client ~p due to ~p",
                               [State#state.subscriber_id, Errors]),
-                            _ = vmq_metrics:incr_mqtt_error_auth_connect(),
                             connack_terminate(?CONNACK_AUTH, State)
                     end
             end;
@@ -552,13 +550,11 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
                                 [SubscriberId, Reason]),
-                    _ = vmq_metrics:incr_mqtt_error_connect(),
                     connack_terminate(?CONNACK_SERVER, State)
             end
     end.
 
 check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, SessionPresent, State) ->
-    _ = vmq_metrics:incr_mqtt_connack_sent(),
     {State, [#mqtt_connack{session_present=SessionPresent, return_code=?CONNACK_ACCEPT}]};
 check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_retain=IsRetain},
            SessionPresent, State) ->
@@ -573,7 +569,6 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
                                  },
                          fun(Msg, _) -> {ok, Msg} end) of
         {ok, Msg} ->
-            _ = vmq_metrics:incr_mqtt_connack_sent(),
             {State#state{will_msg=Msg},
              [#mqtt_connack{session_present=SessionPresent,
                             return_code=?CONNACK_ACCEPT}]};
