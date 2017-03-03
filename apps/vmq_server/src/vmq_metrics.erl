@@ -13,6 +13,8 @@
 %% limitations under the License.
 
 -module(vmq_metrics).
+-include("vmq_server.hrl").
+
 -behaviour(gen_server).
 -export([
          incr_socket_open/0,
@@ -32,6 +34,7 @@
          incr_mqtt_pingreq_received/0,
          incr_mqtt_disconnect_received/0,
 
+         incr_mqtt_connack_sent/1,
          incr_mqtt_publish_sent/0,
          incr_mqtt_publishes_sent/1,
          incr_mqtt_puback_sent/0,
@@ -42,7 +45,6 @@
          incr_mqtt_unsuback_sent/0,
          incr_mqtt_pingresp_sent/0,
 
-         incr_mqtt_error_auth_connect/0,
          incr_mqtt_error_auth_publish/0,
          incr_mqtt_error_auth_subscribe/0,
          incr_mqtt_error_invalid_msg_size/0,
@@ -50,7 +52,6 @@
          incr_mqtt_error_invalid_pubrec/0,
          incr_mqtt_error_invalid_pubcomp/0,
 
-         incr_mqtt_error_connect/0,
          incr_mqtt_error_publish/0,
          incr_mqtt_error_subscribe/0,
          incr_mqtt_error_unsubscribe/0,
@@ -141,6 +142,19 @@ incr_mqtt_pingreq_received() ->
 incr_mqtt_disconnect_received() ->
     incr_item(mqtt_disconnect_received, 1).
 
+incr_mqtt_connack_sent(?CONNACK_ACCEPT) ->
+    incr_item(mqtt_connack_accepted_sent, 1);
+incr_mqtt_connack_sent(?CONNACK_PROTO_VER) ->
+    incr_item(mqtt_connack_unacceptable_protocol_sent, 1);
+incr_mqtt_connack_sent(?CONNACK_INVALID_ID) ->
+    incr_item(mqtt_connack_identifier_rejected_sent, 1);
+incr_mqtt_connack_sent(?CONNACK_SERVER) ->
+    incr_item(mqtt_connack_server_unavailable_sent, 1);
+incr_mqtt_connack_sent(?CONNACK_CREDENTIALS) ->
+    incr_item(mqtt_connack_bad_credentials_sent, 1);
+incr_mqtt_connack_sent(?CONNACK_AUTH) ->
+    incr_item(mqtt_connack_not_authorized_sent, 1).
+
 incr_mqtt_publish_sent() ->
     incr_item(mqtt_publish_sent, 1).
 incr_mqtt_publishes_sent(N) ->
@@ -167,9 +181,6 @@ incr_mqtt_unsuback_sent() ->
 incr_mqtt_pingresp_sent() ->
     incr_item(mqtt_pingresp_sent, 1).
 
-incr_mqtt_error_auth_connect() ->
-    incr_item(mqtt_connect_auth_error, 1).
-
 incr_mqtt_error_auth_publish() ->
     incr_item(mqtt_publish_auth_error, 1).
 
@@ -187,9 +198,6 @@ incr_mqtt_error_invalid_pubrec() ->
 
 incr_mqtt_error_invalid_pubcomp() ->
     incr_item(mqtt_pubcomp_invalid_error, 1).
-
-incr_mqtt_error_connect() ->
-    incr_item(mqtt_connect_error, 1).
 
 incr_mqtt_error_publish() ->
     incr_item(mqtt_publish_error, 1).
@@ -311,18 +319,20 @@ counter_entries() ->
      mqtt_subscribe_received, mqtt_unsubscribe_received,
      mqtt_pingreq_received, mqtt_disconnect_received,
 
+     mqtt_connack_accepted_sent, mqtt_connack_unacceptable_protocol_sent,
+     mqtt_connack_identifier_rejected_sent,mqtt_connack_server_unavailable_sent,
+     mqtt_connack_bad_credentials_sent,mqtt_connack_not_authorized_sent,
+
      mqtt_publish_sent, mqtt_puback_sent,
      mqtt_pubrec_sent, mqtt_pubrel_sent, mqtt_pubcomp_sent,
      mqtt_suback_sent, mqtt_unsuback_sent, mqtt_pingresp_sent,
 
-     mqtt_connect_auth_error,
      mqtt_publish_auth_error,
      mqtt_subscribe_auth_error,
      mqtt_invalid_msg_size_error,
      mqtt_puback_invalid_error, mqtt_pubrec_invalid_error,
      mqtt_pubcomp_invalid_error,
 
-     mqtt_connect_error,
      mqtt_publish_error,
      mqtt_subscribe_error,
      mqtt_unsubscribe_error,
