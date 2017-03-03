@@ -558,6 +558,7 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
     end.
 
 check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, SessionPresent, State) ->
+    _ = vmq_metrics:incr_mqtt_connack_sent(),
     {State, [#mqtt_connack{session_present=SessionPresent, return_code=?CONNACK_ACCEPT}]};
 check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_retain=IsRetain},
            SessionPresent, State) ->
@@ -572,6 +573,7 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
                                  },
                          fun(Msg, _) -> {ok, Msg} end) of
         {ok, Msg} ->
+            _ = vmq_metrics:incr_mqtt_connack_sent(),
             {State#state{will_msg=Msg},
              [#mqtt_connack{session_present=SessionPresent,
                             return_code=?CONNACK_ACCEPT}]};

@@ -32,6 +32,7 @@
          incr_mqtt_pingreq_received/0,
          incr_mqtt_disconnect_received/0,
 
+         incr_mqtt_connack_sent/0,
          incr_mqtt_publish_sent/0,
          incr_mqtt_publishes_sent/1,
          incr_mqtt_puback_sent/0,
@@ -140,6 +141,9 @@ incr_mqtt_pingreq_received() ->
 
 incr_mqtt_disconnect_received() ->
     incr_item(mqtt_disconnect_received, 1).
+
+incr_mqtt_connack_sent() ->
+    incr_item(mqtt_connack_sent, 1).
 
 incr_mqtt_publish_sent() ->
     incr_item(mqtt_publish_sent, 1).
@@ -311,7 +315,7 @@ counter_entries() ->
      mqtt_subscribe_received, mqtt_unsubscribe_received,
      mqtt_pingreq_received, mqtt_disconnect_received,
 
-     mqtt_publish_sent, mqtt_puback_sent,
+     mqtt_connack_sent, mqtt_publish_sent, mqtt_puback_sent,
      mqtt_pubrec_sent, mqtt_pubrel_sent, mqtt_pubcomp_sent,
      mqtt_suback_sent, mqtt_unsuback_sent, mqtt_pingresp_sent,
 
