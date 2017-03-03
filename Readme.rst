@@ -18,7 +18,9 @@ VerneMQ is an Apache2 licensed distributed `MQTT <http://www.mqtt.org>`_ broker,
 
 MQTT used to stand for MQ Telemetry Transport, but it no longer is an acronym. It is an extremely simple and lightweight publish/subscribe messaging protocol, that was invented at IBM and Arcom (now Eurotech) to connect restricted devices in low bandwidth, high-latency or unreliable networks.
 
-VerneMQ implements the MQTT 3.1 and 3.1.1 specifications. Currently the following features are implemented:
+VerneMQ implements the MQTT 3.1 and 3.1.1 specifications. Currently
+the following features are implemented and delivered as part of
+VerneMQ:
 
 * QoS 0, QoS 1, QoS 2
 * Basic Authentication and Authorization
@@ -37,13 +39,13 @@ VerneMQ implements the MQTT 3.1 and 3.1.1 specifications. Currently the followin
 * Message load shedding (for system protection)
 * Offline Message Storage (based on LevelDB)
 * Queue can handle messages FIFO or LIFO style.
-* MongoDB integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
-* Redis integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
-* MySQL integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
-* PostgreSQL integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
-* Memcached integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
-* HTTP integration (via. `vmq_diversity <https://github.com/erlio/vmq_diversity>`_)
-* HTTP Webhooks (via. `vmq_webhooks <https://github.com/erlio/vmq_webhooks>`_)
+* MongoDB auth & integration
+* Redis auth & integration
+* MySQL auth & integration
+* PostgreSQL auth & integration
+* Memcached integration
+* HTTP integration
+* HTTP Webhooks
 * Administration HTTP API (BETA)
 
 Commercial Support. Binary Packages. Documentation
@@ -89,21 +91,6 @@ Note that the ``$VERNEMQ/_build/default/rel/vernemq`` directory is a complete,
 self-contained instance of VerneMQ and Erlang. It is strongly suggested that you
 move this directory outside the source tree if you plan to run a production 
 instance.
-
-Project
-~~~~~~~
-
-The following VerneMQ plugins are not part of the official release package, but are officially supported and require to be downloaded and built separately.
-
-+------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
-| Subproject                                                 | Description                                         | Build Status                                                | Included |
-+============================================================+=====================================================+=============================================================+==========+
-| `vmq_diversity <https://github.com/erlio/vmq_diversity>`_  | Implement VerneMQ plugins using Lua                 | .. image:: https://travis-ci.org/erlio/vmq_diversity.svg    | no       +
-|                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_diversity       |          +
-+------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
-| `vmq_webhooks <https://github.com/erlio/vmq_webhooks>`_    | Let VerneMQ call your HTTP endpoints                | .. image:: https://travis-ci.org/erlio/vmq_webhooks.svg     | no       +
-|                                                            |                                                     |    :target: https://travis-ci.org/erlio/vmq_webhooks        |          +
-+------------------------------------------------------------+-----------------------------------------------------+-------------------------------------------------------------+----------+
 
 Important links
 ~~~~~~~~~~~~~~~~
