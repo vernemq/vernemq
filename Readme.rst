@@ -46,6 +46,7 @@ VerneMQ:
 * Memcached integration
 * HTTP integration
 * HTTP Webhooks
+* PROXY Protocol v2
 * Administration HTTP API (BETA)
 
 Commercial Support. Binary Packages. Documentation
