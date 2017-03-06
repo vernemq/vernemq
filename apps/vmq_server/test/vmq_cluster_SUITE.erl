@@ -565,7 +565,6 @@ publish_to_shared_topic(Socket, Topic, Begin, End) when Begin < End ->
     [begin
          Payload = vmq_test_utils:rand_bytes(5),
          Publish = packet:gen_publish(Topic, 1, Payload, [{mid, I}]),
-         io:format(user, "publish_to_shared: ~p ~p~n", [I, Publish]),
          Puback = packet:gen_puback(I),
          ok = gen_tcp:send(Socket, Publish),
          ok = packet:expect_packet(Socket, "puback", Puback),

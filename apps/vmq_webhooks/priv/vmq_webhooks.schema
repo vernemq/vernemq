@@ -69,11 +69,11 @@
          %% that something is configured incorrectly.
          lists:map(
            fun({SortName, #{endpoint := undefined}}) ->
-                   throw("Invalid configuration: vmq_webhooks."
-                         ++ SortName ++ ".endpoint is not defined");
+                   cuttlefish:invalid("vmq_webhooks."
+                                      ++ SortName ++ ".endpoint is not defined");
               ({SortName, #{hook := undefined}}) ->
-                   throw("Invalid configuration: vmq_webhooks."
-                         ++ SortName ++ ".hook is not defined");
+                   cuttlefish:invalid("vmq_webhooks."
+                                      ++ SortName ++ ".hook is not defined");
               ({SortName, #{endpoint := Endpoint} = WH}) ->
                    {SortName, maps:update(endpoint, list_to_binary(Endpoint), WH)}
            end, Webhooks)
