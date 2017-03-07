@@ -1,8 +1,12 @@
 # Changelog
 
-## Nightly (will become next release)
+## VERNEMQ 1.0.0rc2
 
 - Fix wrong lua paths in generated packages.
+- Fix connack counter metric
+- Fix keepalive timer to fire earliest at 1.5 times the keepalive value
+- Improve error reporting for wrong configuration parameters in vernemq.conf
+- Fix various Dialyzer type errors
 
 ## VERNEMQ 1.0.0rc1
 
