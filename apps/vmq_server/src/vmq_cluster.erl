@@ -93,8 +93,8 @@ publish(Node, Msg) ->
     end.
 
 -spec remote_enqueue(node(), Term)
-        -> {ok, pid()} | {error, term()}
-        when Term::{enqueue_many, subscriber_id(), Msgs::term(), Opts::list()}
+        -> ok | {error, term()}
+        when Term::{enqueue_many, subscriber_id(), Msgs::term(), Opts::map()}
                  | {enqueue, Queue::term(), Msgs::term()}.
 remote_enqueue(Node, Term) ->
     case vmq_cluster_node_sup:get_cluster_node(Node) of

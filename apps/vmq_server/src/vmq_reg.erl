@@ -255,7 +255,7 @@ block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, Bloc
             block_until_migrated(SubscriberId, UpdatedSubs, Rest, BlockCond)
     end.
 
--spec register_session(subscriber_id(), map()) -> {ok, pid()}.
+-spec register_session(subscriber_id(), map()) -> {ok, boolean(), pid()}.
 register_session(SubscriberId, QueueOpts) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
@@ -269,7 +269,7 @@ register_session(SubscriberId, QueueOpts) ->
 publish(RegView, MP, Topic, FoldFun, #vmq_msg{sg_policy = SGPolicy} = Msg) ->
     Acc = publish_fold_acc(Msg),
     {NewMsg, SubscriberGroups} = vmq_reg_view:fold(RegView, MP, Topic, FoldFun, Acc),
-    shared_subscriptions:publish(NewMsg, SGPolicy, SubscriberGroups).
+    vmq_shared_subscriptions:publish(NewMsg, SGPolicy, SubscriberGroups).
 
 publish_fold_acc(Msg) -> {Msg, undefined}.
 
@@ -285,7 +285,7 @@ publish(true, RegView, #vmq_msg{mountpoint=MP,
         true when Payload == <<>> ->
             %% retain delete action
             vmq_retain_srv:delete(MP, Topic),
-            
+
             publish(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
             ok;
         true ->

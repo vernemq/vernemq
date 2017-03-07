@@ -307,7 +307,7 @@ client_opts(ssl, Host, Port, Opts) ->
                               V -> [V]
                           end},
                {psk_identity, proplists:get_value(identity, Opts)},
-               {user_lookup_fun, case {proplists:get_value(identity, Opts) == undefined,
+               {user_lookup_fun, case {proplists:get_value(identity, Opts),
                                        proplists:get_value(psk, Opts)}
                                  of
                                      {Identity, Psk}

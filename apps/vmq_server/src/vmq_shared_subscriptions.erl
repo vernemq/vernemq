@@ -11,7 +11,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
--module(shared_subscriptions).
+-module(vmq_shared_subscriptions).
 
 -export([publish/3]).
 

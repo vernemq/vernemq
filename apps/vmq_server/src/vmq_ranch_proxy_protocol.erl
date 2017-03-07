@@ -64,14 +64,14 @@
          set_csocket/2]).
 
 -type opts() :: ranch_ssl:opts()|ranch_tcp:opts().
--record(proxy_socket, { lsocket :: inet:socket()|ssl:sslsocket(),
-                        csocket :: inet:socket()|ssl:sslsocket(),
-                        opts :: opts(),
-                        inet_version :: ipv4|ipv6,
-                        source_address :: inet:ip_address(),
-                        dest_address :: inet:ip_address(),
-                        source_port :: inet:port_number(),
-                        dest_port :: inet:port_number(),
+-record(proxy_socket, { lsocket :: inet:socket()|ssl:sslsocket()|'undefined',
+                        csocket :: inet:socket()|ssl:sslsocket()|'undefined',
+                        opts :: opts()|'undefined',
+                        inet_version :: ipv4|ipv6|'undefined',
+                        source_address :: inet:ip_address()|'undefined',
+                        dest_address :: inet:ip_address()|'undefined',
+                        source_port :: inet:port_number()|'undefined',
+                        dest_port :: inet:port_number()|'undefined',
                         connection_info = []}).
 -type proxy_opts() :: [{source_address, inet:ip_address()} |
                        {source_port, inet:port_number()} |
@@ -178,7 +178,7 @@ name() ->
 secure() ->
     false.
 
--spec messages() -> tuple().
+-spec messages() -> {OK::atom(), Closed::atom(), Error::atom()}.
 messages() ->
     ranch_tcp:messages().
 
@@ -282,18 +282,13 @@ connect(Host, Port, Opts, ProxyOpts) when is_integer(Port) ->
             DestAddress = proplists:get_value(dest_address, ProxyOpts),
             SourcePort = proplists:get_value(source_port, ProxyOpts),
             DestPort = proplists:get_value(dest_port, ProxyOpts),
-            case create_proxy_protocol_header(SourceAddress, DestAddress,
-                                              SourcePort, DestPort) of
-                {ok, ProxyHeader} ->
-                    ranch_tcp:send(Socket, ProxyHeader),
-                    {ok, ProxySocket#proxy_socket{source_address = SourceAddress,
-                                                  dest_address = DestAddress,
-                                                  source_port = SourcePort,
-                                                  dest_port = DestPort}};
-                {error, invalid_proxy_information} ->
-                    ranch_tcp:send(Socket, <<"PROXY UNKNOWN\r\n">>),
-                    {ok, #proxy_socket{csocket = Socket}}
-            end;
+            {ok, ProxyHeader} = create_proxy_protocol_header(SourceAddress, DestAddress,
+                                                             SourcePort, DestPort),
+            ranch_tcp:send(Socket, ProxyHeader),
+            {ok, ProxySocket#proxy_socket{source_address = SourceAddress,
+                                          dest_address = DestAddress,
+                                          source_port = SourcePort,
+                                          dest_port = DestPort}};
         {error, Error} ->
             io:format("Timeout"),
             {error, Error}
@@ -413,9 +408,7 @@ create_proxy_protocol_header(ipv4, SourceAddress, DestAddress, SourcePort,
 create_proxy_protocol_header(ipv6, SourceAddress, DestAddress, SourcePort,
                              DestPort) ->
     {ok, io_lib:format("PROXY TCP6 ~s ~s ~s ~s\r\n",
-                       [SourceAddress, DestAddress, SourcePort, DestPort])};
-create_proxy_protocol_header(_, _, _, _, _) ->
-    {error, invalid_proxy_information}.
+                       [SourceAddress, DestAddress, SourcePort, DestPort])}.
 
 get_protocol(SourceAddress, DestAddress) when tuple_size(SourceAddress) =:= 8,
                                               tuple_size(DestAddress) =:= 8 ->

@@ -130,18 +130,12 @@ insert(As, St) ->
           when is_binary(MP)
                and is_binary(ClientId)
                and is_binary(User) ->
-            case {validate_acls(MP, User, ClientId, #publish_acl{}, decode_acl(PubAcls, St), []),
-                  validate_acls(MP, User, ClientId, #subscribe_acl{}, decode_acl(SubAcls, St), [])} of
-                {error, _} ->
-                    badarg_error(execute_parse, As, St);
-                {_, error} ->
-                    badarg_error(execute_parse, As, St);
-                {VPubAcls, VSubAcls} ->
-                    Key = key(MP, ClientId),
-                    gen_server2:call(?MODULE,
-                                     {insert_cache, Key, VPubAcls, VSubAcls}),
-                    {[true], St}
-            end;
+            VPubAcls = validate_acls(MP, User, ClientId, #publish_acl{}, decode_acl(PubAcls, St), []),
+            VSubAcls = validate_acls(MP, User, ClientId, #subscribe_acl{}, decode_acl(SubAcls, St), []),
+            Key = key(MP, ClientId),
+            gen_server2:call(?MODULE,
+                             {insert_cache, Key, VPubAcls, VSubAcls}),
+            {[true], St};
         _ ->
             badarg_error(execute_parse, As, St)
     end.

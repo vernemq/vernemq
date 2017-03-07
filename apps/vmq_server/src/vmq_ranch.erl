@@ -19,7 +19,7 @@
 %% API.
 -export([start_link/4]).
 
--export([init/4,
+-export([init/5,
          loop/1]).
 
 -export([system_continue/3]).
@@ -32,14 +32,15 @@
              fsm_state,
              proto_tag,
              pending=[],
-             throttled=false}).
+             throttled=false,
+             parent :: pid()}).
 
 %% API.
 start_link(Ref, Socket, Transport, Opts) ->
-    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
+    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Socket, Transport, Opts]),
     {ok, Pid}.
 
-init(Ref, Socket, Transport, Opts) ->
+init(Ref, Parent, Socket, Transport, Opts) ->
     ok = ranch:accept_ack(Ref),
     case Transport:peername(Socket) of
         {ok, Peer} ->
@@ -79,7 +80,8 @@ init(Ref, Socket, Transport, Opts) ->
             loop(#st{socket=MaskedSocket,
                      fsm_state=FsmState,
                      fsm_mod=FsmMod,
-                     proto_tag=Transport:messages()});
+                     proto_tag=Transport:messages(),
+                     parent=Parent});
         {error, Reason} ->
             lager:debug("Could not get socket peername: ~p", [Reason]),
             %% It's not really "ok", but there's no reason for the
@@ -214,10 +216,7 @@ handle_message(restart_work, #st{throttled=true} = State) ->
 handle_message({'EXIT', _Parent, Reason}, #st{fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
     _ = FsmMod:msg_in(disconnect, FsmState0),
     {exit, Reason, State};
-handle_message({system, From, Request}, State) ->
-    %% Not sure if passing the parent as undefined is really allowed,
-    %% but process state inspection at least seem to work fine.
-    Parent = undefined,
+handle_message({system, From, Request}, #st{parent=Parent}= State) ->
     sys:handle_system_msg(Request, From, Parent, ?MODULE, [], State);
 handle_message(OtherMsg, #st{fsm_state=FsmState0, fsm_mod=FsmMod, pending=Pending} = State) ->
     case FsmMod:msg_in(OtherMsg, FsmState0) of
