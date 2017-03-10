@@ -130,7 +130,7 @@ init([InstanceId]) ->
             case check_store(State) of
                 0 -> ok; % no unreferenced images
                 N ->
-                    lager:info("Found and deleted ~p unreferenced messages in msg store instance ~p",
+                    lager:info("found and deleted ~p unreferenced messages in msg store instance ~p",
                                [N, InstanceId])
             end,
             %% Register Bucket Instance with the Bucket Registry
@@ -269,7 +269,7 @@ init_state(DataRoot, Config) ->
     end,
 
     %% Generate a debug message with the options we'll use for each operation
-    lager:debug("Datadir ~s options for LevelDB: ~p\n",
+    lager:debug("datadir ~s options for LevelDB: ~p\n",
                 [DataRoot, [{open, OpenOpts}, {read, ReadOpts}, {write, WriteOpts}, {fold, FoldOpts}]]),
     #state { data_root = DataRoot,
              open_opts = OpenOpts,
@@ -304,7 +304,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
             case lists:prefix("IO error: lock ", OpenErr) of
                 true ->
                     SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
-                    lager:debug("VerneMQ Leveldb backend retrying ~p in ~p ms after error ~s\n",
+                    lager:debug("VerneMQ LevelDB backend retrying ~p in ~p ms after error ~s\n",
                                 [State0#state.data_root, SleepFor, OpenErr]),
                     timer:sleep(SleepFor),
                     open_db(Opts, State0, RetriesLeft - 1, Reason);
@@ -362,7 +362,7 @@ handle_req({delete, {MP, _} = SubscriberId, MsgRef},
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
     case decr_ref(Refs, MsgRef) of
         not_found ->
-            lager:warning("couldn't delete ~p due to not found", [MsgRef]);
+            lager:warning("delete failed ~p due to not found", [MsgRef]);
         0 ->
             %% last one to be deleted
             eleveldb:write(Bucket, [{delete, RefKey},
@@ -421,7 +421,7 @@ check_store(Bucket, Refs, {ok, Key}, Itr, WriteOpts, {PivotMsgRef, PivotMP, HadR
             incr_ref(Refs, MsgRef),
             {Pivot, N};
         Entry ->
-            lager:warning("Inconsistent message store entry detected: ~p", [Entry]),
+            lager:warning("inconsistent message store entry detected: ~p", [Entry]),
             {Pivot, N}
     end,
     check_store(Bucket, Refs, eleveldb:iterator_move(Itr, next), Itr, WriteOpts, NewPivot, NewN);

@@ -149,7 +149,7 @@ start_listener(Type, Addr, Port, Opts) ->
             vmq_config:set_env(listeners, NewListenerConfig, false),
             [clique_status:text("Done")];
         {error, Reason} ->
-            lager:warning("Can't start listener ~p ~p ~p ~p due to ~p",
+            lager:warning("can't start listener ~p ~p ~p ~p due to ~p",
                           [Type, Addr, Port, Opts, Reason]),
             Text = io_lib:format("can't start listener due to '~p'", [Reason]),
             [clique_status:alert([clique_status:text(Text)])]

@@ -500,10 +500,10 @@ call_endpoint(Endpoint, EOpts, Hook, Args) ->
         end,
     case Res of
         {decoded_error, Reason} ->
-            lager:debug("calling endpoint received error with reason: ~p", [Reason]),
+            lager:debug("calling endpoint received error due to ~p", [Reason]),
             error;
         {error, Reason} ->
-            lager:error("calling endpoint failed due to: ~p", [Reason]),
+            lager:error("calling endpoint failed due to ~p", [Reason]),
             error;
         Res ->
             Res

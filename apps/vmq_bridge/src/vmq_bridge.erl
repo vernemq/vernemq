@@ -67,7 +67,7 @@ on_connect({coord, CoordinatorPid} = State) ->
     {ok, State}.
 
 on_connect_error(Reason, State) ->
-    lager:error("connection failed due to: ~p", [Reason]),
+    lager:error("connection failed due to ~p", [Reason]),
     {ok, State}.
 
 on_disconnect(State) ->

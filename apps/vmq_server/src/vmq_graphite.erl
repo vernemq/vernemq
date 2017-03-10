@@ -120,7 +120,7 @@ handle_info(timeout, undefined) ->
         true ->
             case vmq_config:get_env(graphite_host) of
                 undefined ->
-                    lager:error("Can't connect to Graphite due to no host configured.", []),
+                    lager:error("can't connect to Graphite due to no host configured.", []),
                     {noreply, undefined, 5000};
                 Host ->
                     Port = vmq_config:get_env(graphite_port, ?DEFAULT_PORT),
@@ -132,7 +132,7 @@ handle_info(timeout, undefined) ->
                                                            ?DEFAULT_INTERVAL),
                             {noreply, Socket, Interval};
                         {error, Reason} ->
-                            lager:error("Can't connect to Graphite due to ~p.",
+                            lager:error("can't connect to Graphite due to ~p.",
                                         [Reason]),
                             {noreply, undefined, 5000}
                     end

@@ -104,7 +104,7 @@ init([Script]) ->
 handle_call(reload, _From, #state{script=Script} = State) ->
     case load_script(Script) of
         {ok, LuaState} ->
-            lager:info("successfully reloaded ~p", [Script]),
+            lager:info("successfully reloaded script ~p", [Script]),
             {reply, ok, State#state{luastate=LuaState}};
         {error, Reason} ->
             lager:error("can't reload script due to ~p, keeping old version", [Reason]),

@@ -49,7 +49,7 @@ recheck() ->
     case gen_event:call(plumtree_peer_service_events, ?MODULE, recheck, infinity) of
         ok -> ok;
         E ->
-            lager:warning("error happened during cluster checkup ~p", [E]),
+            lager:warning("error during cluster checkup due to ~p", [E]),
             E
     end.
 

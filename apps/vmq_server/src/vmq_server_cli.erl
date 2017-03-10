@@ -291,11 +291,11 @@ wait_till_all_offline(_, 0) -> error;
 wait_till_all_offline(Sleep, N) ->
     case vmq_queue_sup_sup:summary() of
         {0, 0, Drain, Offline, Msgs} ->
-            lager:info("ALL QUEUES OFFLINE: ~p draining, ~p offline, ~p msgs",
+            lager:info("all queues offline: ~p draining, ~p offline, ~p msgs",
                        [Drain, Offline, Msgs]),
             ok;
         {Online, WaitForOffline, Drain, Offline, Msgs} ->
-            lager:info("QUEUE SUMMARY: ~p online, ~p wait_for_offline, ~p draining, ~p offline, ~p msgs", [Online, WaitForOffline, Drain, Offline, Msgs]),
+            lager:info("intermediate queue summary: ~p online, ~p wait_for_offline, ~p draining, ~p offline, ~p msgs", [Online, WaitForOffline, Drain, Offline, Msgs]),
             timer:sleep(Sleep),
             wait_till_all_offline(Sleep, N - 1)
     end.

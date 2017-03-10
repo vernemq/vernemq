@@ -298,13 +298,13 @@ validate_acl(MP, User, ClientId, Rec0, [{<<"pattern">>, Pattern}|Rest]) when is_
         {ok, Words} when Type == subscribe ->
             Rec0#subscribe_acl{pattern=subst(MP, User, ClientId, Words, [])};
         {error, Reason} ->
-            lager:error("Can't validate ACL topic ~p for client ~p due to ~p",
+            lager:error("can't validate ACL topic ~p for client ~p due to ~p",
                         [Pattern, ClientId, Reason]),
             Rec0
     end,
     validate_acl(MP, User, ClientId, Rec1, Rest);
 validate_acl(MP, User, ClientId, Rec, [UnknownProp|Rest]) ->
-    lager:warning("unknown property ~p for acl ~p", [UnknownProp, Rec]),
+    lager:warning("unknown property ~p for ACL ~p", [UnknownProp, Rec]),
     validate_acl(MP, User, ClientId, Rec, Rest);
 validate_acl(_, _, _, Rec, []) -> Rec.
 

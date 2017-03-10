@@ -75,10 +75,10 @@ read_script(Filename) ->
 	{ok, HLinstrs} ->
 	    HLinstrs;
 	{error, Error} when is_tuple(Error) ->
-        error_logger:error_msg("Failed to parse line ~s~n", [file:format_error(Error)]),
+        error_logger:error_msg("failed to parse line ~s~n", [file:format_error(Error)]),
 	    exit(parse_error);
 	{error, Error} ->
-        error_logger:error_msg("Failed to open file ~s~n", [file:format_error(Error)]),
+        error_logger:error_msg("failed to open file ~s~n", [file:format_error(Error)]),
 	    exit(Error)
     end.
 
@@ -194,7 +194,7 @@ find_app_modules(App) ->
 	    Files = filelib:wildcard("*" ++ Ext, Path),
 	    [ list_to_atom(filename:basename(F, Ext)) || F <- Files ];
 	{error, _} ->
-        error_logger:error_msg("Can't find lib dir for application '~s'~n", [App]),
+        error_logger:error_msg("can't find lib dir for application '~s'~n", [App]),
 	    exit({unknown_application, App})
     end.
 

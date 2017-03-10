@@ -397,7 +397,7 @@ check_updated_plugins(Plugins, State) ->
 check_plugins([{module, ModuleName, Options} = Plugin|Rest], Acc) ->
     case check_module_plugin(ModuleName, Options) of
         {error, Reason} ->
-            lager:warning("can't load module plugin \"~p\": ~p", [ModuleName, Reason]),
+            lager:warning("can't load module plugin ~p due to ~p", [ModuleName, Reason]),
             {error, Reason};
          plugin_ok ->
             check_plugins(Rest, [Plugin|Acc])
@@ -405,7 +405,7 @@ check_plugins([{module, ModuleName, Options} = Plugin|Rest], Acc) ->
 check_plugins([{application, App, Options}|Rest], Acc) ->
     case check_app_plugin(App, Options) of
         {error, Reason} ->
-            lager:warning("can't load application plugin \"~p\": ~p", [App, Reason]),
+            lager:warning("can't load application plugin ~p due to ~p", [App, Reason]),
             {error, Reason};
         CheckedPlugin ->
             check_plugins(Rest, [CheckedPlugin|Acc])
@@ -541,7 +541,7 @@ check_app_plugin(App, Options) ->
     AppPaths = proplists:get_value(paths, Options, []),
     case create_paths(App, AppPaths) of
         [] ->
-            lager:debug("can't create paths ~p for app ~p~n", [AppPaths, App]),
+            lager:debug("can't create paths ~p for app ~p", [AppPaths, App]),
             {error, plugin_not_found};
         Paths ->
             code:add_paths(Paths),
@@ -613,12 +613,12 @@ create_paths(Path) ->
 
 purge_app_modules(App) ->
     {ok, Modules} = application:get_key(App, modules),
-    lager:debug("Purging modules: ~p", [Modules]),
+    lager:debug("purging modules: ~p", [Modules]),
     [code:purge(M) || M <- Modules].
 
 load_app_modules(App) ->
     {ok, Modules} = application:get_key(App, modules),
-    lager:info("Loading modules: ~p", [Modules]),
+    lager:debug("loading modules: ~p", [Modules]),
     [code:load_file(M) || M <- Modules].
 
 check_app_hooks(App, Hooks, Options) ->

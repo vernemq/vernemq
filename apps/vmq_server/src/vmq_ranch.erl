@@ -83,7 +83,7 @@ init(Ref, Parent, Socket, Transport, Opts) ->
                      proto_tag=Transport:messages(),
                      parent=Parent});
         {error, Reason} ->
-            lager:debug("Could not get socket peername: ~p", [Reason]),
+            lager:debug("could not get socket peername: ~p", [Reason]),
             %% It's not really "ok", but there's no reason for the
             %% listener to crash just because this socket had an
             %% error.
@@ -120,11 +120,11 @@ loop_({exit, Reason, State}) ->
 teardown(#st{socket = Socket}, Reason) ->
     case Reason of
         normal ->
-            lager:debug("[~p] session normally stopped", [self()]);
+            lager:debug("session normally stopped", []);
         shutdown ->
-            lager:debug("[~p] session stopped due to shutdown", [self()]);
+            lager:debug("session stopped due to shutdown", []);
         _ ->
-            lager:warning("[~p] session stopped abnormally due to '~p'", [self(), Reason])
+            lager:warning("session stopped abnormally due to '~p'", [Reason])
     end,
     _ = vmq_metrics:incr_socket_close(),
     close(Socket),
@@ -180,12 +180,12 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = 
                                  throttled=true,
                                  buffer=Rest});
         {error, Reason, Out} ->
-            lager:debug("[~p][~p] parse error '~p' for data: ~p and  parser state: ~p",
-                        [Proto, self(), Reason, Data, Buffer]),
+            lager:debug("[~p] parse error '~p' for data: ~p and  parser state: ~p",
+                        [Proto, Reason, Data, Buffer]),
             {exit, Reason, State#st{pending=[Pending|Out]}};
         {error, Reason} ->
-            lager:debug("[~p][~p] parse error '~p' for data: ~p and  parser state: ~p",
-                        [Proto, self(), Reason, Data, Buffer]),
+            lager:debug("[~p] parse error '~p' for data: ~p and  parser state: ~p",
+                        [Proto, Reason, Data, Buffer]),
             {exit, Reason, State}
     end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}, fsm_mod=FsmMod} = State) ->

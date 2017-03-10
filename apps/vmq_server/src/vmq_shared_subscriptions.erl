@@ -20,7 +20,7 @@ publish(Msg, Policy, SubscriberGroups) when is_map(SubscriberGroups) ->
     publish(Msg, Policy, maps:to_list(SubscriberGroups));
 publish(_,_, []) -> ok;
 publish(Msg, Policy, [{Group, []}|Rest]) ->
-    lager:debug("can't publish to shared subscription ~p, no subscribers: ~p", [Group, Msg]),
+    lager:debug("can't publish to shared subscription ~p due to no subscribers, msg: ~p", [Group, Msg]),
     publish(Msg, Policy, Rest);
 publish(Msg, Policy, [{Group, SubscriberGroup}|Rest]) ->
     Subscribers = filter_subscribers(SubscriberGroup, Policy),
@@ -30,7 +30,7 @@ publish(Msg, Policy, [{Group, SubscriberGroup}|Rest]) ->
         ok ->
             publish(Msg, Policy, Rest);
         {error, Reason} ->
-            lager:debug("can't publish to shared subscription ~p due to '~p': Msg",
+            lager:debug("can't publish to shared subscription ~p due to '~p', msg: Msg",
                         [Group, Reason, Msg]),
             publish(Msg, Policy, Rest)
     end.
