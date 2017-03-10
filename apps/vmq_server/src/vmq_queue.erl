@@ -895,7 +895,7 @@ unset_expiry_timer(#state{expiry_timer=Ref} = State) ->
     State#state{expiry_timer=undefined}.
 
 state_change(Msg, OldStateName, NewStateName) ->
-    lager:debug("[~p] transition from ~p --> ~p because of ~p", [self(), OldStateName, NewStateName, Msg]),
+    lager:debug("transition from ~p --> ~p because of ~p", [OldStateName, NewStateName, Msg]),
     NewStateName.
 
 set_general_opts(#{queue_deliver_mode := DeliverMode,

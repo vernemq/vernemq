@@ -250,7 +250,7 @@ incr_item(Entry, Val) when Val > 0->
                     put(Entry, CntRef),
                     incr_item(Entry, Val);
                 [] ->
-                    lager:error("Invalid Counter ~p", [Entry])
+                    lager:error("invalid counter ~p", [Entry])
             catch
                _:_ ->
                     %% we don't want to crash a session/queue
@@ -496,7 +496,7 @@ handle_info(calc_rates, State) ->
               fun({RateEntry, Entry}) -> calc_rate_per_conn(RateEntry, Entry, V) end,
               rate_entries());
         _ ->
-            lager:warning("Can't calculate message rates", [])
+            lager:warning("can't calculate message rates", [])
     end,
     {noreply, State}.
 

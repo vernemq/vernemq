@@ -92,7 +92,7 @@ handle_event({monitor, Pid, Type, Info}, State=#state{timer_ref=TimerRef}) ->
     {ok, State#state{timer_ref=NewTimerRef}};
 handle_event(Event, State=#state{timer_ref=TimerRef}) ->
     NewTimerRef = reset_timer(TimerRef),
-    lager:info("Monitor got ~p", [Event]),
+    lager:info("monitor got ~p", [Event]),
     {ok, State#state{timer_ref=NewTimerRef}}.
 
 %%--------------------------------------------------------------------

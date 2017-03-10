@@ -91,19 +91,19 @@ handle_fsm_return({throttle, FsmState, Rest, Out}, Req, State) ->
 handle_fsm_return({ok, FsmState, Out}, Req, State) ->
     maybe_reply(Out, Req, State#st{fsm_state=FsmState});
 handle_fsm_return({stop, normal, Out}, Req, State) ->
-    lager:debug("[~p] ws session normally stopped", [self()]),
+    lager:debug("ws session normally stopped", []),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, Req, State#st{fsm_state=terminated});
 handle_fsm_return({stop, shutdown, Out}, Req, State) ->
-    lager:debug("[~p] ws session stopped due to shutdown", [self()]),
+    lager:debug("ws session stopped due to shutdown", []),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, Req, State#st{fsm_state=terminated});
 handle_fsm_return({stop, Reason, Out}, Req, State) ->
-    lager:warning("[~p] ws session stopped abnormally due to '~p'", [self(), Reason]),
+    lager:warning("ws session stopped abnormally due to '~p'", [Reason]),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, Req, State#st{fsm_state=terminated});
 handle_fsm_return({error, Reason, Out}, Req, State) ->
-    lager:warning("[~p] ws session error, force terminate due to '~p'", [self(), Reason]),
+    lager:warning("ws session error, force terminate due to '~p'", [Reason]),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, Req, State#st{fsm_state=terminated}).
 

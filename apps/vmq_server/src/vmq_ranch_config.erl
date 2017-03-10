@@ -235,7 +235,7 @@ protocol_opts(cowboy_protocol, _, Opts) ->
                 apply(ConfigMod, ConfigFun, [])
             catch
                 E:R ->
-                    lager:error("Can't setup HTTP modules due to ~p:~p", [E, R]),
+                    lager:error("can't setup HTTP modules due to ~p:~p", [E, R]),
                     []
             end;
         _ ->

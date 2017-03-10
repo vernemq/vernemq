@@ -132,7 +132,7 @@ process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefine
             monitor(process, ClusterNodePid),
             process_bytes(Rest, <<>>, St);
         {error, not_found} ->
-            lager:debug("got connect request from unknown cluster node ~p", [NodeName]),
+            lager:debug("connect request from unknown cluster node ~p", [NodeName]),
             {error, remote_node_not_available}
     end;
 process_bytes(Bytes, Buffer, St) ->

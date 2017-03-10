@@ -27,7 +27,7 @@ config([HttpModule|Rest], Routes) when is_atom(HttpModule) ->
         config(Rest, Routes ++ ModRoutes)
     catch
         E:R ->
-            lager:error("Can't evaluate ~p:routes() due to ~p ~p", [E, R]),
+            lager:error("can't call ~p:routes() due to ~p ~p", [E, R]),
             config(Rest, Routes)
     end;
 config([], Routes) ->

@@ -57,7 +57,7 @@ start_user_plugin({_Order, #{path := Path,
         ok ->
             ok;
         {error, Reason} ->
-            lager:warning("Could not start plugin ~p due to ~p", [PluginName, Reason])
+            lager:warning("could not start plugin ~p due to ~p", [PluginName, Reason])
     end.
 
 -spec stop(_) -> 'ok'.

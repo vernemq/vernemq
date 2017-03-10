@@ -245,7 +245,7 @@ reply({CallerPid, CallerRef}, Reply) ->
 reply(undefined, Reply) -> Reply.
 
 report_error(SubscriberID, Pid, Reason) ->
-    lager:error("vmq_queue_sup had vmq_queue process ~p for subscriber ~p exit with reason: ~p",
+    lager:error("vmq_queue process ~p exit for subscriber ~p due to ~p",
                 [Pid, SubscriberID, Reason]).
 
 system_continue(_, _, {State, NrOfChildren}) ->

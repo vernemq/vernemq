@@ -204,7 +204,7 @@ wait_for_connect(#mqtt_connect{keep_alive=KeepAlive} = Frame,
                                        keep_alive=KeepAlive,
                                        keep_alive_tref=undefined});
 wait_for_connect(close_timeout, State) ->
-    lager:debug("[~p] stop due to timeout~n", [self()]),
+    lager:debug("stop due to timeout", []),
     terminate(normal, State);
 wait_for_connect({'DOWN', _MRef, process, QPid, Reason}, #state{queue_pid=QPid} = State) ->
     queue_down_terminate(Reason, State);
@@ -261,7 +261,7 @@ connected({mail, QPid, Msgs, _, Dropped},
     NewState =
     case Dropped > 0 of
         true ->
-            lager:warning("subscriber ~p dropped ~p messages~n",
+            lager:warning("subscriber ~p dropped ~p messages",
                           [SubscriberId, Dropped]),
             State;
         false ->
@@ -401,13 +401,13 @@ connected(retry,
     {RetryFrames, NewRetryQueue} = handle_retry(RetryInterval, RetryQueue, WAcks),
     {State#state{retry_queue=NewRetryQueue}, RetryFrames};
 connected(disconnect, State) ->
-    lager:debug("[~p] stop due to disconnect", [self()]),
+    lager:debug("stop due to disconnect", []),
     terminate(normal, State);
 connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive} = State) ->
     Now = os:timestamp(),
     case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
         true ->
-            lager:warning("[~p] stop due to keepalive expired", [self()]),
+            lager:warning("stop due to keepalive expired", []),
             terminate(normal, State);
         false ->
             set_keepalive_check_timer(KeepAlive),

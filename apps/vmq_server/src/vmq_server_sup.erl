@@ -60,7 +60,7 @@ maybe_change_nodename() ->
     {ok, LocalState} = plumtree_peer_service_manager:get_local_state(),
     case riak_dt_orswot:value(LocalState) of
         [Node] when Node =/= node() ->
-            lager:info("Rename VerneMQ Node", []),
+            lager:info("rename VerneMQ node from ~p to ~p", [Node, node()]),
             {ok, Actor} = plumtree_peer_service_manager:get_actor(),
             {ok, Merged} = riak_dt_orswot:update({update, [{remove, Node},
                                                            {add, node()}]}, Actor, LocalState),

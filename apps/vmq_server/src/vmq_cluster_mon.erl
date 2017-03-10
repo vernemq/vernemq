@@ -119,11 +119,11 @@ handle_info(timeout, State) ->
     plumtree_peer_service_events:add_sup_handler(vmq_cluster, []),
     {noreply, State};
 handle_info({nodedown, Node}, State) ->
-    lager:warning("Cluster Node ~p DOWN", [Node]),
+    lager:warning("cluster node ~p DOWN", [Node]),
     vmq_cluster:recheck(),
     {noreply, State};
 handle_info({nodeup, Node}, State) ->
-    lager:info("Cluster Node ~p UP", [Node]),
+    lager:info("cluster node ~p UP", [Node]),
     vmq_cluster:recheck(),
     {noreply, State};
 handle_info({gen_event_EXIT, vmq_cluster, _}, State) ->

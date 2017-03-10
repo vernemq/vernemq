@@ -84,7 +84,7 @@ register_cmd() ->
                     ok ->
                         [clique_status:text("Done")];
                     {error, Reason} ->
-                        lager:warning("Can't register endpoint ~p ~p due to ~p",
+                        lager:warning("can't register endpoint ~p ~p due to ~p",
                                       [Hook, Endpoint, Reason]),
                         Text = io_lib:format("can't register endpoint due to '~p'", [Reason]),
                         [clique_status:alert([clique_status:text(Text)])]
@@ -112,7 +112,7 @@ deregister_cmd() ->
                     ok ->
                         [clique_status:text("Done")];
                     {error, Reason} ->
-                        lager:warning("Can't deregister endpoint ~p ~p due to ~p",
+                        lager:warning("can't deregister endpoint ~p ~p due to ~p",
                                       [Hook, Endpoint, Reason]),
                         Text = io_lib:format("can't deregister endpoint due to '~p'", [Reason]),
                         [clique_status:alert([clique_status:text(Text)])]

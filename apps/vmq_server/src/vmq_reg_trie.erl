@@ -179,7 +179,7 @@ handle_info(subscribers_loaded, #state{event_handler=Handler,
                           handle_event(Handler, Event)
                   end, queue:to_list(Q)),
     NrOfSubscribers = ets:info(vmq_trie_subs, size),
-    lager:info("~p subscriptions loaded into ~p", [NrOfSubscribers, ?MODULE]),
+    lager:info("loaded ~p subscriptions into ~p", [NrOfSubscribers, ?MODULE]),
     {noreply, State#state{status=ready, event_queue=undefined}};
 handle_info(Event, #state{status=init, event_queue=Q} = State) ->
     {noreply, State#state{event_queue=queue:in(Event, Q)}};
@@ -413,7 +413,6 @@ trie_delete_path(MP, [{Node, Word, _}|RestPath]) ->
         [#trie_node{edge_count=Count} = TrieNode] ->
             ets:insert(vmq_trie_node, TrieNode#trie_node{edge_count=Count-1});
         [] ->
-            lager:debug("NodeId ~p not found", [NodeId]),
             ignore
     end.
 

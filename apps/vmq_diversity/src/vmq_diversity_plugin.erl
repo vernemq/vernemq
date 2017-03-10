@@ -532,7 +532,7 @@ check_modifiers(Hook, [{_,_}|_] = Modifiers) ->
                         end
                 end, [], Modifiers);
 check_modifiers(Hook, Modifiers) ->
-    lager:error("can't check modifiers ~p for hook ~p~n", [Hook, Modifiers]),
+    lager:error("can't check modifiers ~p for hook ~p", [Hook, Modifiers]),
     error.
 
 peer({Peer, Port}) when is_tuple(Peer) and is_integer(Port) ->

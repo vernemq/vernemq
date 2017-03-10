@@ -372,7 +372,7 @@ subscriptions_for_subscriber_id(SubscriberId) ->
 migrate_offline_queues([]) -> exit(no_target_available);
 migrate_offline_queues(Targets) ->
     {_, NrOfQueues, TotalMsgs} = vmq_queue_sup_sup:fold_queues(fun migrate_offline_queue/3, {Targets, 0, 0}),
-    lager:info("MIGRATION SUMMARY: ~p queues migrated, ~p messages", [NrOfQueues, TotalMsgs]),
+    lager:info("migration summary: ~p queues migrated, ~p messages", [NrOfQueues, TotalMsgs]),
     ok.
 
 migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = Acc) ->
@@ -420,7 +420,7 @@ fix_dead_queues(DeadNodes, AccTargets) ->
     %% DeadNodes must be a list of offline VerneMQ nodes
     %% Targets must be a list of online VerneMQ nodes
     {_, _, N} = fold_subscribers(fun fix_dead_queue/3, {DeadNodes, AccTargets, 0}, false),
-    lager:info("FIX DEAD QUEUES SUMMARY: ~p queues fixed", [N]).
+    lager:info("dead queues summary: ~p queues fixed", [N]).
 
 fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
     %%% Why not use maybe_remap_subscriber/2:
@@ -573,7 +573,7 @@ plugin_queue_loop(PluginPid, PluginMod) ->
                                                IsRetain,
                                                IsDup};
                              (Msg) ->
-                                  lager:warning("drop message ~p for plugin ~p", [Msg, PluginMod]),
+                                  lager:warning("dropped message ~p for plugin ~p", [Msg, PluginMod]),
                                   ok
                           end, Msgs),
             vmq_queue:notify(QPid),
@@ -588,7 +588,7 @@ plugin_queue_loop(PluginPid, PluginMod) ->
                 true ->
                     ok;
                 false ->
-                    lager:warning("Plugin Queue Loop for ~p stopped due to ~p", [PluginMod, Reason])
+                    lager:warning("plugin queue loop for ~p stopped due to ~p", [PluginMod, Reason])
             end;
         Other ->
             exit({unknown_msg_in_plugin_loop, Other})
