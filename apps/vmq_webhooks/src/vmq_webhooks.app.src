@@ -1,6 +1,6 @@
 {application, vmq_webhooks,
  [{description, "VerneMQ webhooks plugin"},
-  {vsn, "0.2.0"},
+  {vsn, git},
   {registered, []},
   {mod, { vmq_webhooks_app, []}},
   {applications,

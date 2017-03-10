@@ -1,6 +1,6 @@
 {application, 'vmq_diversity',
  [{description, "A VerneMQ Plugin Builder Toolkit"},
-  {vsn, "0.1.0"},
+  {vsn, git},
   {registered, []},
   {mod, {'vmq_diversity_app', []}},
   {applications,
