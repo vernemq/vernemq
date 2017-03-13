@@ -65,6 +65,8 @@ register_cli() ->
 
     vmq_listener_cli:register_server_cli(),
     vmq_info_cli:register_cli(),
+
+    vmq_tracer_cli:register_cli(),
     ok.
 
 register_cli_usage() ->
@@ -459,9 +461,11 @@ usage() ->
      "    listener    Manage listener interfaces\n",
      "    metrics     Retrieve System Metrics\n",
      "    api-key     Manage API keys for the HTTP management interface\n",
+     "    trace       Trace various aspects of VerneMQ\n",
      remove_ok(vmq_plugin_mgr:get_usage_lead_lines()),
      "  Use --help after a sub-command for more details.\n"
     ].
+
 node_usage() ->
     ["vmq-admin node <sub-command>\n\n",
      "  Administrate this VerneMQ node.\n\n",
