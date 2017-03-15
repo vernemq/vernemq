@@ -17,6 +17,7 @@
     epgsql,
     bson,
     mongodb,
+    pbkdf2, %% needed by mongodb but is not declared as a dep there
     eredis,
     hackney,
     jsx,

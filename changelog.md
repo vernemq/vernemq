@@ -1,5 +1,11 @@
 # Changelog
 
+## Nightly (will become next release)
+
+### vmq_diversity
+
+- Fix mongodb authentication problem due to a missing dependency.
+
 ## VERNEMQ 1.0.0rc2
 
 - Fix wrong lua paths in generated packages.
