@@ -2,7 +2,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -export([init_per_testcase/2, end_per_testcase/2,
-         init_per_suite/1,
+         init_per_suite/1, end_per_suite/1,
          all/0]).
 
 -export([app_hook_without_proplist/1,
@@ -44,6 +44,9 @@ init_per_testcase(_, Config) ->
 end_per_testcase(_, _Config) ->
     application:stop(vmq_plugin),
     application:unload(vmq_plugin),
+    ok.
+
+end_per_suite(_Config) ->
     ok.
 
 %% Tests
