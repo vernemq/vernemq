@@ -20,10 +20,10 @@ register_cli() ->
     vmq_session_list_cmd(),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
-    clique:register_usage(["vmq-admin", "session", "list"], vmq_session_list_usage()).
+    clique:register_usage(["vmq-admin", "session", "show"], vmq_session_show_usage()).
 
 vmq_session_list_cmd() ->
-    Cmd = ["vmq-admin", "session", "list"],
+    Cmd = ["vmq-admin", "session", "show"],
     KeySpecs = [],
     ValidInfoItems = vmq_info:session_info_items(),
 
@@ -91,11 +91,11 @@ session_usage() ->
      "  Use --help after a sub-command for more details.\n"
     ].
 
-vmq_session_list_usage() ->
+vmq_session_show_usage() ->
     Options = [io_lib:format("  --~p\n", [Item])
                || Item <- vmq_info:session_info_items()],
     ["vmq-admin session list\n\n",
-     "  Prints some information on running sessions\n\n",
+     "  Show and filter information about MQTT sessions\n\n",
      "Default options:\n"
      "  --client_id --is_online --mountpoint --peer_host --peer_port --user\n\n"
      "Options\n\n"

@@ -40,10 +40,10 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "script", "load"], load_usage()),
     clique:register_usage(["vmq-admin", "script", "reload"], reload_usage()),
     clique:register_usage(["vmq-admin", "script", "unload"], unload_usage()),
-    clique:register_usage(["vmq-admin", "script", "status"], status_usage()).
+    clique:register_usage(["vmq-admin", "script", "show"], show_usage()).
 
 status_cmd() ->
-    Cmd = ["vmq-admin", "script", "status"],
+    Cmd = ["vmq-admin", "script", "show"],
     Callback = fun(_, _, _) ->
                        AllStats = vmq_diversity_script_sup:stats(),
                        lists:foldl(fun({Script, Stats}, Acc) ->
@@ -120,8 +120,8 @@ unload_usage() ->
      "\n\n"
     ].
 
-status_usage() ->
-    ["vmq-admin script status\n\n",
+show_usage() ->
+    ["vmq-admin script show\n\n",
      "  Shows the information of the loaded scripts.",
      "\n\n"
     ].

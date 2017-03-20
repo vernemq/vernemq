@@ -52,7 +52,7 @@ register_cli() ->
     register_cli_usage(),
     vmq_server_start_cmd(),
     vmq_server_stop_cmd(),
-    vmq_server_status_cmd(),
+    vmq_server_show_cmd(),
     vmq_server_metrics_cmd(),
     vmq_server_metrics_reset_cmd(),
     vmq_cluster_join_cmd(),
@@ -81,8 +81,8 @@ register_cli_usage() ->
 
     clique:register_usage(["vmq-admin", "metrics"], metrics_usage()),
 
-    clique:register_usage(["vmq-admin", "api"], api_usage()),
-    clique:register_usage(["vmq-admin", "api", "delete-key"], api_delete_key_usage()),
+    clique:register_usage(["vmq-admin", "api-key"], api_usage()),
+    clique:register_usage(["vmq-admin", "api-key", "delete"], api_delete_key_usage()),
     ok.
 
 vmq_server_stop_cmd() ->
@@ -101,8 +101,8 @@ vmq_server_start_cmd() ->
                end,
     clique:register_command(Cmd, [], [], Callback).
 
-vmq_server_status_cmd() ->
-    Cmd = ["vmq-admin", "cluster", "status"],
+vmq_server_show_cmd() ->
+    Cmd = ["vmq-admin", "cluster", "show"],
     Callback = fun(_, _, _) ->
                        VmqStatus = vmq_cluster:status(),
                        NodeTable =
@@ -355,7 +355,7 @@ vmq_cluster_upgrade_cmd() ->
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 vmq_mgmt_create_api_key_cmd() ->
-    Cmd = ["vmq-admin", "api", "create-key"],
+    Cmd = ["vmq-admin", "api-key", "create"],
     KeySpecs = [],
     FlagSpecs = [],
     Callback = fun(_, [], []) ->
@@ -365,7 +365,7 @@ vmq_mgmt_create_api_key_cmd() ->
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 vmq_mgmt_delete_api_key_cmd() ->
-    Cmd = ["vmq-admin", "api", "delete-key"],
+    Cmd = ["vmq-admin", "api-key", "delete"],
     KeySpecs = [{'key', [{typecast, fun(Key) ->
                                             list_to_binary(Key)
                                     end}]}],
@@ -377,7 +377,7 @@ vmq_mgmt_delete_api_key_cmd() ->
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 vmq_mgmt_list_api_keys_cmd() ->
-    Cmd = ["vmq-admin", "api", "list-keys"],
+    Cmd = ["vmq-admin", "api-key", "show"],
     KeySpecs = [],
     FlagSpecs = [],
     Callback = fun(_, _, _) ->
@@ -458,7 +458,7 @@ usage() ->
      "    plugin      Manage plugin system\n",
      "    listener    Manage listener interfaces\n",
      "    metrics     Retrieve System Metrics\n",
-     "    api         Manage API keys for the HTTP management interface\n",
+     "    api-key     Manage API keys for the HTTP management interface\n",
      remove_ok(vmq_plugin_mgr:get_usage_lead_lines()),
      "  Use --help after a sub-command for more details.\n"
     ].
@@ -475,7 +475,7 @@ cluster_usage() ->
     ["vmq-admin cluster <sub-command>\n\n",
      "  Administrate cluster membership for this particular VerneMQ node.\n\n",
      "  Sub-commands:\n",
-     "    status      Prints cluster status information\n",
+     "    show        Prints cluster information\n",
      "    join        Join a cluster\n",
      "    leave       Leave the cluster\n\n",
      "  Use --help after a sub-command for more details.\n"
@@ -490,16 +490,16 @@ metrics_usage() ->
     ].
 
 api_usage() ->
-    ["vmq-admin api <sub-command>\n\n",
+    ["vmq-admin api-key <sub-command>\n\n",
      "  Create, delete, and show API keys for the HTTP management interface.\n\n",
      "  Sub-commands:\n",
-     "    create-key  Creates a new API key.\n",
-     "    delete-key  Deletes an existing API key.\n",
-     "    list-keys   Shows all API keys.\n"
+     "    create      Creates a new API key.\n",
+     "    delete      Deletes an existing API key.\n",
+     "    show        Shows all API keys.\n"
     ].
 
 api_delete_key_usage() ->
-    ["vmq-admin api delete-key key=<API Key>\n\n",
+    ["vmq-admin api-key delete key=<API Key>\n\n",
      "  Deletes an existing API Key.\n\n"
     ].
 

@@ -2,6 +2,18 @@
 
 ## Nightly (will become next release)
 
+- To make the `vmq-admin` tool more consistent, the following changes have been
+  made:
+  
+  vmq-admin script status -> vmq-admin script show
+  vmq-admin session list -> vmq-admin session show
+  vmq-admin cluster status -> vmq-admin cluster show
+  vmq-admin webhooks status -> vmq-admin webhooks show
+  vmq-admin webhooks cache stats -> vmq-admin webhooks cache show
+  vmq-admin api create-key -> vmq-admin api-key create
+  vmq-admin api delete-key -> vmq-admin api-key delete
+  vmq-admin api list-keys -> vmq-admin api-key show
+
 ### vmq_diversity
 
 - Fix mongodb authentication problem due to a missing dependency.
