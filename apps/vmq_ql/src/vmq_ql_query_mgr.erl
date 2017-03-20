@@ -213,14 +213,6 @@ fetch_results(Limit, #state{idx=Idx, result=ResultTab, ready=Ready} = State) ->
                 fun({RowKey, Row}, AccAccIdx) ->
                         ets:insert(ResultTab, {{RowKey, AccAccIdx}, Row}),
                         AccAccIdx + 1
-                end, AccIdx, safe_fetch(Pid, desc, Limit))
+                end, AccIdx, vmq_ql_query:fetch(Pid, desc, Limit))
       end, Idx, Ready),
     State#state{idx=NewIdx}.
-
-safe_fetch(Pid, Order, Limit) ->
-    case is_process_alive(Pid) of
-        true ->
-            vmq_ql_query:fetch(Pid, Order, Limit);
-        false ->
-            []
-    end.
