@@ -24,7 +24,7 @@ register_cli() ->
     deregister_cmd().
 
 cache_stats_cmd() ->
-    Cmd = ["vmq-admin", "webhooks", "cache", "stats"],
+    Cmd = ["vmq-admin", "webhooks", "cache", "show"],
     FlagSpecs = [{reset, [{longname, "reset"}]}],
     Callback =
         fun(_, [], []) ->
@@ -49,7 +49,7 @@ cache_stats_cmd() ->
     clique:register_command(Cmd, [], FlagSpecs, Callback).
 
 status_cmd() ->
-    Cmd = ["vmq-admin", "webhooks", "status"],
+    Cmd = ["vmq-admin", "webhooks", "show"],
     Callback =
         fun(_, [], []) ->
                 Table = 
@@ -163,14 +163,14 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "webhooks"], webhooks_usage()),
     clique:register_usage(["vmq-admin", "webhooks", "register"], register_usage()),
     clique:register_usage(["vmq-admin", "webhooks", "deregister"], deregister_usage()),
-    clique:register_usage(["vmq-admin", "webhooks", "status"], status_usage()),
+    clique:register_usage(["vmq-admin", "webhooks", "show"], show_usage()),
     clique:register_usage(["vmq-admin", "webhooks", "cache"], cache_usage()).
 
 webhooks_usage() ->
     ["vmq-admin webhooks <sub-command>\n\n",
      "  Manage VerneMQ Webhooks.\n\n",
      "  Sub-commands:\n",
-     "    status      Show the status of registered webhooks\n",
+     "    show        Show all registered webhooks\n",
      "    register    Register a webhook\n",
      "    deregister  Deregister a webhook\n",
      "    cache       Manage the webhooks cache\n\n",
@@ -192,8 +192,8 @@ deregister_usage() ->
      "\n\n"
     ].
 
-status_usage() ->
-    ["vmq-admin webhooks status\n\n",
+show_usage() ->
+    ["vmq-admin webhooks show\n\n",
      "  Shows the information of the registered webhooks.",
      "\n\n"
     ].
@@ -203,5 +203,5 @@ cache_usage() ->
      "  Manage the webhooks cache."
      "\n\n",
      "  Sub-commands:\n",
-     "    stats       Show statistics about the cache\n"
+     "    show       Show statistics about the cache\n"
     ].
