@@ -13,6 +13,7 @@
   vmq-admin api create-key -> vmq-admin api-key create
   vmq-admin api delete-key -> vmq-admin api-key delete
   vmq-admin api list-keys -> vmq-admin api-key show
+- Fix a bug in `vmq-admin session list` triggered when running in a cluster.
 
 ### vmq_diversity
 
