@@ -524,20 +524,17 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                     lager:error("can't authenticate client ~p due to
                                 no_matching_hook_found", [State#state.subscriber_id]),
                     connack_terminate(?CONNACK_AUTH, State);
-                {error, Errors} ->
-                    case lists:keyfind(invalid_credentials, 2, Errors) of
-                        {error, invalid_credentials} ->
-                            lager:warning(
-                              "can't authenticate client ~p due to
+                {error, invalid_credentials} ->
+                    lager:warning(
+                      "can't authenticate client ~p due to
                               invalid_credentials", [State#state.subscriber_id]),
-                            connack_terminate(?CONNACK_CREDENTIALS, State);
-                        false ->
-                            %% can't authenticate due to other reasons
-                            lager:warning(
-                              "can't authenticate client ~p due to ~p",
-                              [State#state.subscriber_id, Errors]),
-                            connack_terminate(?CONNACK_AUTH, State)
-                    end
+                    connack_terminate(?CONNACK_CREDENTIALS, State);
+                {error, Error} ->
+                    %% can't authenticate due to other reason
+                    lager:warning(
+                      "can't authenticate client ~p due to ~p",
+                      [State#state.subscriber_id, Error]),
+                    connack_terminate(?CONNACK_AUTH, State)
             end;
         true ->
             #state{peer=Peer, subscriber_id=SubscriberId,

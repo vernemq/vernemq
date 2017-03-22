@@ -67,9 +67,9 @@ all() ->
 auth_on_register_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), allowed_subscriber_id(), username(), password(), true]),
-    {error, [error]} = vmq_plugin:all_till_ok(auth_on_register,
+    {error, error} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), not_allowed_subscriber_id(), username(), password(), true]),
-    {error, [next]} = vmq_plugin:all_till_ok(auth_on_register,
+    {error, next} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), ignored_subscriber_id(), username(), password(), true]),
     {ok, [{subscriber_id, {"override-mountpoint", <<"override-client-id">>}}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), changed_subscriber_id(), username(), password(), true]).
@@ -77,18 +77,18 @@ auth_on_register_test(_) ->
 auth_on_publish_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), allowed_subscriber_id(), 1, topic(), payload(), false]),
-    {error, [error]} = vmq_plugin:all_till_ok(auth_on_publish,
+    {error, error} = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), not_allowed_subscriber_id(), 1, topic(), payload(), false]),
-    {error, [next]} = vmq_plugin:all_till_ok(auth_on_publish,
+    {error, next} = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), ignored_subscriber_id(), 1, topic(), payload(), false]),
     {ok, [{topic, [<<"hello">>, <<"world">>]}]} = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), changed_subscriber_id(), 1, topic(), payload(), false]).
 auth_on_subscribe_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [username(), allowed_subscriber_id(), [{topic(), 1}]]),
-    {error, [error]} = vmq_plugin:all_till_ok(auth_on_subscribe,
+    {error, error} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [username(), not_allowed_subscriber_id(), [{topic(), 1}]]),
-    {error, [next]} = vmq_plugin:all_till_ok(auth_on_subscribe,
+    {error, next} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [username(), ignored_subscriber_id(), [{topic(), 1}]]),
     {ok, [{[<<"hello">>, <<"world">>], 2}]} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [username(), changed_subscriber_id(), [{topic(), 1}]]).
@@ -103,7 +103,7 @@ on_subscribe_test(_) ->
                             [username(), allowed_subscriber_id(), [{topic(), 1}]]).
 
 on_unsubscribe_test(_) ->
-    {error, [next]} = vmq_plugin:all_till_ok(on_unsubscribe,
+    {error, next} = vmq_plugin:all_till_ok(on_unsubscribe,
                                              [username(), allowed_subscriber_id(), [topic()]]),
     {ok, [[<<"hello">>, <<"world">>]]} = vmq_plugin:all_till_ok(on_unsubscribe,
                       [username(), changed_subscriber_id(), [topic()]]).

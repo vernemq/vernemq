@@ -16,6 +16,8 @@
 - Fix a bug in `vmq-admin session list` triggered when running in a cluster.
 - Add automatic CRL refreshing, configurable via the hidden
   `crl_refresh_interval` config option. Default is 60 seconds.
+- Stop `all_till_ok` hook evaluation if a hook returns anything else than
+  `next`.
 
 ### vmq_diversity
 

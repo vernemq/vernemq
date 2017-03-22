@@ -23,13 +23,13 @@ all([{Module, Fun}|Rest], Params, Acc) ->
     all(Rest, Params, [Res|Acc]);
 all([], _, Acc) -> lists:reverse(Acc).
 
-all_till_ok(Hooks, Params) ->
-    all_till_ok(Hooks, Params, []).
-all_till_ok([{Module, Fun}|Rest], Params, ErrAcc) ->
+all_till_ok([{Module, Fun}|Rest], Params) ->
     case apply(Module, Fun, Params) of
         ok -> ok;
         {ok, V} -> {ok, V};
-        E -> all_till_ok(Rest, Params, [E|ErrAcc])
+        {error, Error} -> {error, Error};
+        next -> all_till_ok(Rest, Params);
+        E -> {error, E}
     end;
-all_till_ok([], _, ErrAcc) ->
-    {error, ErrAcc}.
+all_till_ok([], _) ->
+    {error, next}.

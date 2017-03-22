@@ -47,10 +47,11 @@
          other_sample_hook_a/1,
          other_sample_hook_b/1,
          other_sample_hook_c/1,
-         other_sample_hook_d/1,
-         other_sample_hook_e/1,
-         other_sample_hook_f/1,
-         other_sample_hook_x/1
+         all_till_ok_next_1/1,
+         all_till_ok_next_2/1,
+         all_till_ok_ok_1/1,
+         all_till_ok_error_1/1,
+         all_till_ok_throw_1/1
         ]).
 -endif.
 
@@ -852,20 +853,25 @@ other_sample_hook_c(V) ->
     io:format(user, "called other_sample_hook_c(~p)~n", [V]),
     {other_sample_hook_c, 1, V}.
 
-other_sample_hook_d(V) ->
-    io:format(user, "called other_sample_hook_d(~p)~n", [V]),
-    {error, not_ok}.
+all_till_ok_next_1(V) ->
+    io:format(user, "called all_till_next_1(~p)~n", [V]),
+    next.
 
-other_sample_hook_e(V) ->
-    io:format(user, "called other_sample_hook_e(~p)~n", [V]),
-    {error, not_ok}.
+all_till_ok_next_2(V) ->
+    io:format(user, "called all_till_next_2(~p)~n", [V]),
+    next.
 
-other_sample_hook_f(V) ->
-    io:format(user, "called other_sample_hook_f(~p)~n", [V]),
+all_till_ok_ok_1(V) ->
+    io:format(user, "called all_till_ok_ok_1(~p)~n", [V]),
     ok.
 
-other_sample_hook_x(V) ->
-    exit({other_sampl_hook_x_called_but_should_not, V}).
+all_till_ok_error_1(V) ->
+    io:format(user, "called all_till_ok_ok_1(~p)~n", [V]),
+    error.
+
+%% Is never called as Ok is returned
+all_till_ok_throw_1(V) ->
+    exit({all_til_ok_throw_1_should_never_be_called, V}).
 
 
 check_plugin_for_app_plugins_test() ->
@@ -876,10 +882,14 @@ check_plugin_for_app_plugins_test() ->
              {sample_all_hook, ?MODULE, other_sample_hook_a, 1, []},
              {sample_all_hook, ?MODULE, other_sample_hook_b, 1, []},
              {sample_all_hook, ?MODULE, other_sample_hook_c, 1, []},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1, []},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1, []},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1, []},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1, []}
+             {sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_next_1, 1, []},
+             {sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_next_2, 1, []},
+             {sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_ok_1, 1, []},
+             {sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_throw_1, 1, []},
+             {sample_all_till_ok_error_hook, ?MODULE, all_till_ok_next_1, 1, []},
+             {sample_all_till_ok_error_hook, ?MODULE, all_till_ok_next_2, 1, []},
+             {sample_all_till_ok_error_hook, ?MODULE, all_till_ok_error_1, 1, []},
+             {sample_all_till_ok_error_hook, ?MODULE, all_till_ok_throw_1, 1, []}
             ],
     application:load(vmq_plugin),
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
@@ -893,10 +903,15 @@ check_plugin_for_app_plugins_test() ->
                      {sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1, []},
                      {sample_all_hook,vmq_plugin_mgr,other_sample_hook_b,1, []},
                      {sample_all_hook,vmq_plugin_mgr,other_sample_hook_c,1, []},
-                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_d,1, []},
-                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_e,1, []},
-                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_f,1, []},
-                     {sample_all_till_ok_hook,vmq_plugin_mgr, other_sample_hook_x,1, []}]}]}],
+                     {sample_all_till_ok_ok_hook,vmq_plugin_mgr, all_till_ok_next_1,1, []},
+                     {sample_all_till_ok_ok_hook,vmq_plugin_mgr, all_till_ok_next_2,1, []},
+                     {sample_all_till_ok_ok_hook,vmq_plugin_mgr, all_till_ok_ok_1,1, []},
+                     {sample_all_till_ok_ok_hook,vmq_plugin_mgr, all_till_ok_throw_1,1, []},
+                     {sample_all_till_ok_error_hook,vmq_plugin_mgr, all_till_ok_next_1,1, []},
+                     {sample_all_till_ok_error_hook,vmq_plugin_mgr, all_till_ok_next_2,1, []},
+                     {sample_all_till_ok_error_hook,vmq_plugin_mgr, all_till_ok_error_1,1, []},
+                     {sample_all_till_ok_error_hook,vmq_plugin_mgr, all_till_ok_throw_1,1, []}
+                    ]}]}],
                  CheckedPlugins),
     application:unload(vmq_plugin).
 
@@ -918,10 +933,14 @@ vmq_plugin_test() ->
              {sample_all_hook, ?MODULE, other_sample_hook_a, 1, []},
              {sample_all_hook, ?MODULE, other_sample_hook_b, 1, []},
              {sample_all_hook, ?MODULE, other_sample_hook_c, 1, []},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1, []},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1, []},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1, []},
-             {sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1, []}
+             {sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_next_1, 1, []},
+             {sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_next_2, 1, []},
+             {sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_ok_1, 1, []},
+             {sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_throw_1, 1, []},
+             {sample_all_till_ok_error_hook, ?MODULE, all_till_ok_next_1, 1, []},
+             {sample_all_till_ok_error_hook, ?MODULE, all_till_ok_next_2, 1, []},
+             {sample_all_till_ok_error_hook, ?MODULE, all_till_ok_error_1, 1, []},
+             {sample_all_till_ok_error_hook, ?MODULE, all_till_ok_throw_1, 1, []}
             ],
     application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
     %% we have to step out .eunit
@@ -943,10 +962,14 @@ vmq_plugin_test() ->
     ?assertEqual([{sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1},
                   {sample_all_hook,vmq_plugin_mgr,other_sample_hook_b,1},
                   {sample_all_hook,vmq_plugin_mgr,other_sample_hook_c,1},
-                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_d,1},
-                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_e,1},
-                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_f,1},
-                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_x,1},
+                  {sample_all_till_ok_error_hook,vmq_plugin_mgr,all_till_ok_next_1,1},
+                  {sample_all_till_ok_error_hook,vmq_plugin_mgr,all_till_ok_next_2,1},
+                  {sample_all_till_ok_error_hook,vmq_plugin_mgr,all_till_ok_error_1,1},
+                  {sample_all_till_ok_error_hook,vmq_plugin_mgr,all_till_ok_throw_1,1},
+                  {sample_all_till_ok_ok_hook,vmq_plugin_mgr,all_till_ok_next_1,1},
+                  {sample_all_till_ok_ok_hook,vmq_plugin_mgr,all_till_ok_next_2,1},
+                  {sample_all_till_ok_ok_hook,vmq_plugin_mgr,all_till_ok_ok_1,1},
+                  {sample_all_till_ok_ok_hook,vmq_plugin_mgr,all_till_ok_throw_1,1},
                   {sample_hook,vmq_plugin_mgr,sample_hook,0},
                   {sample_hook,vmq_plugin_mgr,sample_hook,1},
                   {sample_hook,vmq_plugin_mgr,sample_hook,2},
@@ -954,7 +977,8 @@ vmq_plugin_test() ->
 
     %% the plugins are sorted (stable) by the plugin name.
     ?assertEqual([{sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1},
-                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_d,1},
+                  {sample_all_till_ok_error_hook,vmq_plugin_mgr,all_till_ok_next_1,1},
+                  {sample_all_till_ok_ok_hook,vmq_plugin_mgr,all_till_ok_next_1,1},
                   {sample_hook,vmq_plugin_mgr,sample_hook,0},
                   {sample_hook,vmq_plugin_mgr,sample_hook,1},
                   {sample_hook,vmq_plugin_mgr,sample_hook,2},
@@ -981,19 +1005,28 @@ vmq_module_plugin_test() ->
     vmq_plugin_mgr:enable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_b, 1),
     vmq_plugin_mgr:enable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_c, 1),
     %% ordering matters, we don't want other_sample_hook_x to be called
-    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1),
-    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1),
-    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1),
-    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_next_1, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_next_2, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_ok_1, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_throw_1, 1),
+
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_error_hook, ?MODULE, all_till_ok_next_1, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_error_hook, ?MODULE, all_till_ok_next_2, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_error_hook, ?MODULE, all_till_ok_error_1, 1),
+    vmq_plugin_mgr:enable_module_plugin(sample_all_till_ok_error_hook, ?MODULE, all_till_ok_throw_1, 1),
 
     %% the plugins are sorted (stable) by the plugin name.
     ?assertEqual([{sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1},
                   {sample_all_hook,vmq_plugin_mgr,other_sample_hook_b,1},
                   {sample_all_hook,vmq_plugin_mgr,other_sample_hook_c,1},
-                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_d,1},
-                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_e,1},
-                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_f,1},
-                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_x,1},
+                  {sample_all_till_ok_error_hook,vmq_plugin_mgr,all_till_ok_next_1,1},
+                  {sample_all_till_ok_error_hook,vmq_plugin_mgr,all_till_ok_next_2,1},
+                  {sample_all_till_ok_error_hook,vmq_plugin_mgr,all_till_ok_error_1,1},
+                  {sample_all_till_ok_error_hook,vmq_plugin_mgr,all_till_ok_throw_1,1},
+                  {sample_all_till_ok_ok_hook,vmq_plugin_mgr,all_till_ok_next_1,1},
+                  {sample_all_till_ok_ok_hook,vmq_plugin_mgr,all_till_ok_next_2,1},
+                  {sample_all_till_ok_ok_hook,vmq_plugin_mgr,all_till_ok_ok_1,1},
+                  {sample_all_till_ok_ok_hook,vmq_plugin_mgr,all_till_ok_throw_1,1},
                   {sample_hook,vmq_plugin_mgr,sample_hook,0},
                   {sample_hook,vmq_plugin_mgr,sample_hook,1},
                   {sample_hook,vmq_plugin_mgr,sample_hook,2},
@@ -1001,7 +1034,8 @@ vmq_module_plugin_test() ->
 
     %% the plugins are sorted (stable) by the plugin name.
     ?assertEqual([{sample_all_hook,vmq_plugin_mgr,other_sample_hook_a,1},
-                  {sample_all_till_ok_hook,vmq_plugin_mgr,other_sample_hook_d,1},
+                  {sample_all_till_ok_error_hook,vmq_plugin_mgr,all_till_ok_next_1,1},
+                  {sample_all_till_ok_ok_hook,vmq_plugin_mgr,all_till_ok_next_1,1},
                   {sample_hook,vmq_plugin_mgr,sample_hook,0},
                   {sample_hook,vmq_plugin_mgr,sample_hook,1},
                   {sample_hook,vmq_plugin_mgr,sample_hook,2},
@@ -1017,10 +1051,14 @@ vmq_module_plugin_test() ->
     vmq_plugin_mgr:disable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_a, 1),
     vmq_plugin_mgr:disable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_b, 1),
     vmq_plugin_mgr:disable_module_plugin(sample_all_hook, ?MODULE, other_sample_hook_c, 1),
-    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_d, 1),
-    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_e, 1),
-    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_f, 1),
-    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_hook, ?MODULE, other_sample_hook_x, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_next_1, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_next_2, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_ok_1, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_ok_hook, ?MODULE, all_till_ok_trow_1, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_error_hook, ?MODULE, all_till_ok_next_1, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_error_hook, ?MODULE, all_till_ok_next_2, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_error_hook, ?MODULE, all_till_ok_error_1, 1),
+    vmq_plugin_mgr:disable_module_plugin(sample_all_till_ok_error_hook, ?MODULE, all_till_ok_trow_1, 1),
     call_no_hooks().
 
 call_no_hooks() ->
@@ -1065,5 +1103,6 @@ call_hooks() ->
                   {other_sample_hook_c, 1, 10}], vmq_plugin:all(sample_all_hook, [10])),
 
     %% ALL_TILL_OK Hook Tests
-    ?assertEqual(ok, vmq_plugin:all_till_ok(sample_all_till_ok_hook, [10])).
+    ?assertEqual(ok, vmq_plugin:all_till_ok(sample_all_till_ok_ok_hook, [10])),
+    ?assertEqual({error,error}, vmq_plugin:all_till_ok(sample_all_till_ok_error_hook, [10])).
 -endif.
