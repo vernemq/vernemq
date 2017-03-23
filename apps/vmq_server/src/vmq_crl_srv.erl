@@ -19,7 +19,8 @@
 
 %% API
 -export([start_link/0,
-         check_crl/2]).
+         check_crl/2,
+         refresh_crls/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -29,7 +30,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {refs=[]}).
+-record(state, {}).
 -define(TAB, ?MODULE).
 
 -type state() :: #state{}.
@@ -55,7 +56,8 @@ check_crl(File, #'OTPCertificate'{tbsCertificate=TBSCert} = Cert) ->
             check_crl(File, Cert)
     end.
 
-
+refresh_crls() ->
+    gen_server:call(?MODULE, purge_crls).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -64,7 +66,9 @@ check_crl(File, #'OTPCertificate'{tbsCertificate=TBSCert} = Cert) ->
 -spec init([]) -> {'ok', state()}.
 init([]) ->
     _ = ets:new(?TAB, [public, named_table, {read_concurrency, true}]),
+    schedule_crl_purge_tick(),
     {ok, #state{}}.
+
 
 -spec handle_call({'add_crl',atom() | binary() |
 [atom() | [any()] | char()]}, _, _) -> {'reply','ok', _}.
@@ -81,13 +85,20 @@ handle_call({add_crl, File}, _From, State) ->
                    end || E <- public_key:pem_decode(Bin)]),
     ets:insert(?TAB, {File, Serials}),
     Reply = ok,
-    {reply, Reply, State}.
+    {reply, Reply, State};
+handle_call(purge_crls, _From, State) ->
+    purge_crls(),
+    {reply, ok, State}.
 
 -spec handle_cast(_, _) -> {'noreply', _}.
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
 -spec handle_info(_, _) -> {'noreply', _}.
+handle_info(crl_purge_tick, State) ->
+    purge_crls(),
+    schedule_crl_purge_tick(),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -102,3 +113,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+schedule_crl_purge_tick() ->
+    TickMS = vmq_config:get_env(crl_refresh_interval, 60000),
+    case TickMS of
+        0 -> ok;
+        _ ->
+            erlang:send_after(TickMS, ?MODULE, crl_purge_tick)
+    end.
+
+purge_crls() ->
+    ets:delete_all_objects(?TAB).

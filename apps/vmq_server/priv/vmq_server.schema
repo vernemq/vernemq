@@ -1336,6 +1336,22 @@
  end
 }.
 
+%% @doc The integer number of milli-seconds between certificate
+%% revocation list refreshes. A value of 0 disables the automatic
+%% refresh completely.
+{mapping, "crl_refresh_interval", "vmq_server.crl_refresh_interval", [
+                                                                      {default, 60000},
+                                                                      {datatype, integer},
+                                                                      {validators, ["non-neg-integer"]},
+                                                                      hidden
+                                                                     ]}.
+
+{validator, "non-neg-integer", "must be a non-negative integer",
+ fun(Integer) ->
+         Integer >= 0
+ end}.
+
+
 %% @doc Enable the $SYSTree Reporter. 
 {mapping, "systree_enabled", "vmq_server.systree_enabled", [
                                                         {default, on},
