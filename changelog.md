@@ -14,6 +14,8 @@
   vmq-admin api delete-key -> vmq-admin api-key delete
   vmq-admin api list-keys -> vmq-admin api-key show
 - Fix a bug in `vmq-admin session list` triggered when running in a cluster.
+- Add automatic CRL refreshing, configurable via the hidden
+  `crl_refresh_interval` config option. Default is 60 seconds.
 
 ### vmq_diversity
 
