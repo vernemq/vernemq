@@ -485,8 +485,7 @@ metrics_usage() ->
     ["vmq-admin metrics <sub-command>\n\n",
      "  Interact with the metrics subsystem.\n\n",
      "  Sub-commands:\n",
-     "    show        Prints all available metrics for this VerneMQ node.\n",
-     "    reset       Resets all counter metrics.\n"
+     "    show        Prints all available metrics for this VerneMQ node.\n"
     ].
 
 api_usage() ->
