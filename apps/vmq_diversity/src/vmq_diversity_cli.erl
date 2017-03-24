@@ -96,7 +96,7 @@ script_usage() ->
     ["vmq-admin script <sub-command>\n\n",
      "  Manage the plugin scripts on this VerneMQ node.\n\n",
      "  Sub-commands:\n",
-     "    status      Show the status of loaded scripts\n",
+     "    show        Show the status of loaded scripts\n",
      "    load        Load a script file\n",
      "    unload      Unload a script file\n\n",
      "  Use --help after a sub-command for more details.\n"
