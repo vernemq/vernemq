@@ -32,4 +32,4 @@ all_till_ok([{Module, Fun}|Rest], Params) ->
         E -> {error, E}
     end;
 all_till_ok([], _) ->
-    {error, next}.
+    {error, chain_exhausted}.
