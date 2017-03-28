@@ -48,6 +48,7 @@ VerneMQ:
 * HTTP Webhooks
 * PROXY Protocol v2
 * Administration HTTP API (BETA)
+* Real-time MQTT session tracing
 
 Commercial Support. Binary Packages. Documentation
 --------------------------------------------------
