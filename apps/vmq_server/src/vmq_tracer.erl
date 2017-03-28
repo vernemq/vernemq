@@ -558,7 +558,7 @@ f(true) -> 1;
 f(false) -> 0.
 
 jtopic(T) when is_list(T) ->
-    lists:join(<<"/">>, T).
+    erlang:iolist_to_binary(vmq_topic:unword(T)).
 
 ftopics(Topics) ->
     lists:foldl(
