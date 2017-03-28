@@ -277,17 +277,17 @@ vmq_listener_usage() ->
     ["vmq-admin listener <sub-command>\n\n",
      "  starts, modifies, and stops listeners.\n\n",
      "  Sub-commands:\n",
-     "    start       Starts or modifies a listener\n",
-     "    stop        Stops a listener\n",
-     "    restart     Restarts a listener\n",
-     "    delete      Deletes a stopped listener\n",
-     "    show        Shows all intalled listeners\n",
+     "    start       Create and start a listener\n",
+     "    stop        Stop accepting new connections for a listener\n",
+     "    restart     Restart accepting new connections for a listener\n",
+     "    delete      Delete a stopped listener\n",
+     "    show        Show all listeners\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 
 vmq_listener_start_usage() ->
     ["vmq-admin listener start address=IpAddr port=Port\n\n",
-     "  Starts a new listener or modifies an existing listener.\n\n",
+     "  Creates and starts a new listener.\n\n",
      "General Options\n\n",
      "  -m, --mountpoint=Mountpoint\n",
      "  --nr_of_acceptors=NrOfAcceptors\n",
@@ -323,7 +323,7 @@ vmq_listener_start_usage() ->
 
 vmq_listener_stop_usage() ->
     ["vmq-admin listener stop address=IpAddr port=Port\n\n",
-     "  Stops a running listener.\n\n",
+     "  Stops accepting new connections on a running listener.\n\n",
      "Options\n\n",
      "  -k, --kill_sessions\n"
      "      kills all sessions accepted with this listener.\n\n"
@@ -336,5 +336,5 @@ vmq_listener_delete_usage() ->
 
 vmq_listener_restart_usage() ->
     ["vmq-admin listener restart address=IpAddr port=Port\n\n",
-     "  Restarts a stopped listener.\n\n"
+     "  Restarts accepting new connections on a previously stopped listener.\n\n"
     ].
