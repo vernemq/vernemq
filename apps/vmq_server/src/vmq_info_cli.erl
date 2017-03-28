@@ -87,14 +87,14 @@ session_usage() ->
     ["vmq-admin session <sub-command>\n\n",
      "  Retrieve information on live sessions.\n\n",
      "  Sub-commands:\n",
-     "    list        lists all running sessions\n",
+     "    show        Show and filter running sessions\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 
 vmq_session_show_usage() ->
     Options = [io_lib:format("  --~p\n", [Item])
                || Item <- vmq_info:session_info_items()],
-    ["vmq-admin session list\n\n",
+    ["vmq-admin session show\n\n",
      "  Show and filter information about MQTT sessions\n\n",
      "Default options:\n"
      "  --client_id --is_online --mountpoint --peer_host --peer_port --user\n\n"
