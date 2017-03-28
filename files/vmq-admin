@@ -21,4 +21,10 @@ cd $RUNNER_BASE_DIR
 # Identify the script name
 SCRIPT=`basename $0`
 
-$NODETOOL rpc vmq_server_cli command $SCRIPT $@
+case $1 in
+    "trace")
+        $NODETOOL rpc_infinity vmq_server_cli command $SCRIPT $@;;
+    *)
+        $NODETOOL rpc vmq_server_cli command $SCRIPT $@;;
+esac
+

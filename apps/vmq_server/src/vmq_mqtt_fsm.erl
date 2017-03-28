@@ -70,7 +70,9 @@
           retry_interval=20000              :: pos_integer(),
           upgrade_qos=false                 :: boolean(),
           reg_view=vmq_reg_trie             :: atom(),
-          cap_settings=#cap_settings{}      :: cap_settings()
+          cap_settings=#cap_settings{}      :: cap_settings(),
+
+          trace_fun                        :: undefined | any() %% TODO
          }).
 
 -type state() :: #state{}.
@@ -106,22 +108,24 @@ init(Peer, Opts) ->
                      allow_subscribe=CAPSubscribe,
                      allow_unsubscribe=CAPUnsubscribe
                     },
+    TraceFun = vmq_config:get_env(trace_fun, undefined),
 
     TRef = send_after(?CLOSE_AFTER, close_timeout),
     set_max_msg_size(MaxMessageSize),
     {wait_for_connect, #state{peer=Peer,
-                                     upgrade_qos=UpgradeQoS,
-                                     subscriber_id=SubscriberId,
-                                     allow_anonymous=AllowAnonymous,
-                                     shared_subscription_policy=SharedSubPolicy,
-                                     max_inflight_messages=MaxInflightMsgs,
-                                     max_message_rate=MaxMessageRate,
-                                     username=PreAuthUser,
-                                     max_client_id_size=MaxClientIdSize,
-                                     keep_alive_tref=TRef,
-                                     retry_interval=1000 * RetryInterval,
-                                     cap_settings=CAPSettings,
-                                     reg_view=RegView}}.
+                              upgrade_qos=UpgradeQoS,
+                              subscriber_id=SubscriberId,
+                              allow_anonymous=AllowAnonymous,
+                              shared_subscription_policy=SharedSubPolicy,
+                              max_inflight_messages=MaxInflightMsgs,
+                              max_message_rate=MaxMessageRate,
+                              username=PreAuthUser,
+                              max_client_id_size=MaxClientIdSize,
+                              keep_alive_tref=TRef,
+                              retry_interval=1000 * RetryInterval,
+                              cap_settings=CAPSettings,
+                              reg_view=RegView,
+                              trace_fun=TraceFun}}.
 
 data_in(Data, SessionState) when is_binary(Data) ->
     data_in(Data, SessionState, []).
@@ -195,8 +199,10 @@ serialise([[F|T]|Frames], Acc) ->
 -spec wait_for_connect(mqtt_frame(), state()) ->
     {state(), [mqtt_frame() | binary()]} | {stop, any(), [mqtt_frame() | binary()]}.
 wait_for_connect(#mqtt_connect{keep_alive=KeepAlive} = Frame,
-                 #state{keep_alive_tref=TRef} = State) ->
+                 #state{keep_alive_tref=TRef,
+                        trace_fun=TraceFun} = State) ->
     cancel_timer(TRef),
+    maybe_initiate_trace(Frame, TraceFun),
     _ = vmq_metrics:incr_mqtt_connect_received(),
     %% the client is allowed "grace" of a half a time period
     set_keepalive_check_timer(KeepAlive),
@@ -211,6 +217,11 @@ wait_for_connect({'DOWN', _MRef, process, QPid, Reason}, #state{queue_pid=QPid} 
 wait_for_connect(_, State) ->
     %% invalid handshake
     terminate(normal, State).
+
+maybe_initiate_trace(_Frame, undefined) ->
+    ok;
+maybe_initiate_trace(Frame, TraceFun) ->
+    TraceFun(self(), Frame).
 
 -spec connected(mqtt_frame(), state()) ->
     {state(), [mqtt_frame() | binary()]} |
