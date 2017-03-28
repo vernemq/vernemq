@@ -19,6 +19,7 @@
 - Stop `all_till_ok` hook evaluation if a hook returns anything else than
 	`next`.
 - Add `vmq-admin trace` tracing sub-system.
+- Improve help texts for `vmq-admin listener` command.
 
 ### vmq_diversity
 
