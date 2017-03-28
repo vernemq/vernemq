@@ -1,6 +1,6 @@
 # Changelog
 
-## Nightly (will become next release)
+## VERNEMQ 1.0.0
 
 - To make the `vmq-admin` tool more consistent, the following changes have been
   made:
