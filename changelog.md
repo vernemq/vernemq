@@ -1,5 +1,9 @@
 # Changelog
 
+## Nightly
+
+- Handle empty modifier list correctly in `vmq_webhooks` (#339).
+
 ## VERNEMQ 1.0.0
 
 - To make the `vmq-admin` tool more consistent, the following changes have been
