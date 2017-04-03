@@ -505,11 +505,11 @@ format_mqtt_(#mqtt_connect{proto_ver = Ver, username = Username,
       [ClientId, Ver, Username, Password, CleanSession, KeepAlive]},
      format_lwt(WillRetain, WillQoS, WillTopic, WillMsg, Opts)];
 format_mqtt_(#mqtt_connack{session_present = SP, return_code = RC}, _) ->
-    {"CONNACK(sp: ~p, rc: ~p)~n", [f(SP), RC]};
+    {"CONNACK(sp: ~p, rc: ~p)~n", [fflag(SP), RC]};
 format_mqtt_(#mqtt_publish{message_id = MId, topic = Topic, qos = QoS, retain = Retain,
                             dup = Dup, payload = Payload}, #{payload_limit := Limit}) ->
     {"PUBLISH(d~p, q~p, r~p, m~p, \"~s\") with payload:~n"
-     "    ~s~n", [f(Dup), QoS, f(Retain), MId, jtopic(Topic), trunc_payload(Payload, Limit)]};
+     "    ~s~n", [fflag(Dup), QoS, fflag(Retain), MId, jtopic(Topic), trunc_payload(Payload, Limit)]};
 format_mqtt_(#mqtt_puback{message_id = MId}, _) ->
     {"PUBACK(m~p)~n", [MId]};
 format_mqtt_(#mqtt_pubrec{message_id = MId}, _) ->
@@ -527,7 +527,7 @@ format_mqtt_(#mqtt_unsubscribe{message_id = MId}, _) ->
 format_mqtt_(#mqtt_unsuback{message_id = MId}, _) ->
     {"UNSUBACK(m~p)~n", [MId]};
 format_mqtt_(#mqtt_disconnect{}, _) ->
-    {"DISCONNECT()~n"}.
+    {"DISCONNECT()~n", []}.
 
 trunc_payload(Payload, Limit) when byte_size(Payload) =< Limit ->
     Payload;
@@ -554,8 +554,10 @@ prepf(L) ->
 r(S) ->
     {S, []}.
 
-f(true) -> 1;
-f(false) -> 0.
+fflag(1) -> 1;
+fflag(0) -> 0;
+fflag(true) -> 1;
+fflag(false) -> 0.
 
 jtopic(T) when is_list(T) ->
     erlang:iolist_to_binary(vmq_topic:unword(T)).
