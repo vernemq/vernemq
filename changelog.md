@@ -1,5 +1,9 @@
 # Changelog
 
+## Nightly
+
+- Fix formatting bug in the 'vmq-admin trace` command.
+
 ## VERNEMQ 1.0.0
 
 - To make the `vmq-admin` tool more consistent, the following changes have been
