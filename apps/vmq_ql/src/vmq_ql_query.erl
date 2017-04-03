@@ -29,6 +29,9 @@
          terminate/2,
          code_change/3]).
 
+%% testing
+-export([required_fields/1, include_fields/2]).
+
 -callback fields_config() -> [info_table()].
 -callback fold_init_rows(function(), any()) -> any().
 
@@ -276,19 +279,17 @@ raise_enough_data(_, _, _, _) -> ignore.
 
 
 required_fields(Where) ->
-    lists:foldl(fun(A, Atoms) when is_atom(A) ->
-                        [A|Atoms];
-                   (_, Atoms) -> Atoms
-                end, [], prepare(Where, [])).
+    [A || A <- prepare(Where, []), is_atom(A)].
 
 prepare([], Acc) -> lists:usort(Acc);
+
+prepare([Ops|Rest], Acc) when is_list(Ops) ->
+    prepare(Rest, prepare(Ops, Acc));
 
 prepare([{op, V1, _Op, V2}|Rest], Acc) ->
     prepare(Rest, [V1, V2|Acc]);
 prepare([{_, {op, V1, _Op, V2}}|Rest], Acc) ->
-    prepare(Rest, [V1, V2|Acc]);
-prepare([{_, Ops}|Rest], Acc) when is_list(Ops) ->
-    prepare(Rest, prepare(Ops, Acc)).
+    prepare(Rest, [V1, V2|Acc]).
 
 filter_row([all], EmptyResultRow, Row) ->
     maps:merge(EmptyResultRow, Row);
