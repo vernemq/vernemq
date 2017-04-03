@@ -369,6 +369,8 @@ all_till_ok([{Endpoint,EOpts}|Rest], HookName, Args) ->
             case check_modifiers(HookName, Modifiers) of
                 error ->
                     error;
+                [] ->
+                    ok;
                 ValidatedModifiers ->
                     {ok, ValidatedModifiers}
             end;
