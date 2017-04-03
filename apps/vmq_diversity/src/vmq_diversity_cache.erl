@@ -313,12 +313,12 @@ validate_modifiers(Type, Modifiers) ->
     Ret =
     case Type of
         publish ->
-            vmq_diversity_plugin:check_modifiers(auth_on_publish, NewModifiers);
+            vmq_plugin_util:check_modifiers(auth_on_publish, NewModifiers);
         subscribe ->
             %% massage the modifiers to take the same form as it were returned by
             %% the callback directly
             %% in Lua: { {topic, qos}, ... }
-            vmq_diversity_plugin:check_modifiers(auth_on_subscribe, NewModifiers)
+            vmq_plugin_util:check_modifiers(auth_on_subscribe, NewModifiers)
     end,
     case Ret of
         error ->

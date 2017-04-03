@@ -3,6 +3,8 @@
 ## Nightly
 
 - Fix formatting bug in the 'vmq-admin trace` command.
+- Handle empty modifier list correctly in `vmq_webhooks` (#339).
+- Handle client_id and mountpoint modifiers correctly in `vmq_webhooks` (#332).
 
 ## VERNEMQ 1.0.0
 
