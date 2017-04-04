@@ -18,7 +18,8 @@
          shared_subs_random_policy_test/1,
          shared_subs_prefer_local_policy_test/1,
          shared_subs_local_only_policy_test/1,
-         cross_node_publish_subscribe/1]).
+         cross_node_publish_subscribe/1,
+         restarted_node_has_no_stale_sessions/1]).
 
 -export([hook_uname_password_success/5,
          hook_auth_on_publish/6,
@@ -83,6 +84,7 @@ all() ->
     ,shared_subs_prefer_local_policy_test
     ,shared_subs_local_only_policy_test
     ,cross_node_publish_subscribe
+    ,restarted_node_has_no_stale_sessions
     ].
 
 
@@ -543,6 +545,54 @@ shared_subs_random_policy_test(Config) ->
     [ ok = gen_tcp:close(S) || S <- SubscriberSockets ],
     ok.
 
+restarted_node_has_no_stale_sessions(Config) ->
+    ok = ensure_cluster(Config),
+    {_, Nodes} = lists:keyfind(nodes, 1, Config),
+    [{RestartNodeName, RestartNodePort},
+     {_, OtherNodePort}|_] = Nodes,
+
+    %% Connect and subscribe on a node with cs true
+    Topic = <<"topic">>,
+    ClientId = "cs-true-client-id",
+    ClientConn = connect(RestartNodePort, ClientId, [{keepalive, 60}, {clean_session, true}]),
+    subscribe(ClientConn, Topic, 1),
+
+    ClientIds = fun(L) ->
+                        lists:map(
+                          fun(#{client_id := C}) ->
+                                  C
+                          end,
+                          L)
+                end,
+
+    ToRemain = [#{client_id => <<"cs-false-client-id">>,
+                  port => RestartNodePort,
+                  clean_session => false},
+                #{client_id => <<"cs-true-false-client-id">>,
+                  port => OtherNodePort,
+                  clean_session => false}],
+    [ begin
+          Conn = connect(P, C, [{keepalive, 60}, {clean_session, CS}]),
+          subscribe(Conn, Topic, 1)
+      end || #{client_id := C, port := P, clean_session := CS} <- ToRemain ],
+
+    %% Make sure subscriptions have propagated to all nodes
+    ok = wait_until_converged(Nodes,
+                              fun(N) ->
+                                      rpc:call(N, vmq_reg, total_subscriptions, [])
+                              end, [{total, 3}]),
+
+    %% Restart the node.
+    {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_stop, []),
+    {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_start, []),
+    Sessions = rpc:call(RestartNodeName, vmq_ql_query_mgr, fold_query,
+                        [fun(V, Acc) -> [V|Acc] end, [], "SELECT * FROM sessions"]),
+
+    %% Make sure only the expected sessions are now present.
+    Want = lists:sort(ClientIds(ToRemain)),
+    Got = lists:sort(ClientIds(Sessions)),
+    Want = Got.
+
 cross_node_publish_subscribe(Config) ->
     %% Make sure all subscribers on a cross-node publish receive the
     %% published messages.
@@ -584,6 +634,10 @@ cross_node_publish_subscribe(Config) ->
                  ++ Payloads
                  ++ Payloads),
     receive_nothing(200).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Internal
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 connect_subscribers(Topic, Number, Nodes) ->
     [begin
@@ -762,7 +816,17 @@ parse_all(Data, Frames) ->
             parse_all(Rest, [Frame|Frames])
     end.
 
+connect(Port, ClientId, Opts) ->
+    Connect = packet:gen_connect(ClientId, Opts),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+    Socket.
 
+subscribe(Socket, Topic, QoS) ->
+    Subscribe = packet:gen_subscribe(1, [Topic], QoS),
+    Suback = packet:gen_suback(1, QoS),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
@@ -771,9 +835,6 @@ hook_uname_password_success(_, _, _, _, _) -> {ok, [{max_inflight_messages, 1}]}
 hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 hook_auth_on_subscribe(_, _, _) -> ok.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Internal
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 random_node(Nodes) ->
     lists:nth(rnd:uniform(length(Nodes)), Nodes).
 

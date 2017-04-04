@@ -44,6 +44,7 @@ init([]) ->
     {ok, MsgStoreChildSpecs} = application:get_env(vmq_server, msg_store_childspecs),
 
     maybe_change_nodename(),
+    purge_stale_subscriber_data(),
 
     {ok, { {one_for_one, 5, 10},
            [?CHILD(vmq_config, worker, []) | MsgStoreChildSpecs]
@@ -77,5 +78,39 @@ maybe_change_nodename() ->
     end.
 
 
-
-
+purge_stale_subscriber_data() ->
+    Node = node(),
+    FoldFun = fun(SubscriberId,Subs,_) ->
+                      SortedSubs =
+                          lists:foldl(fun({N, _, _}, AccAcc) when Node =/= N ->
+                                              AccAcc;
+                                         ({_N, CS, InnerSubs}, {CSFAcc, CSTAcc}) ->
+                                              Topics = [T || {T,_} <- InnerSubs],
+                                              case CS of
+                                                  true ->
+                                                      {CSFAcc,[Topics|CSTAcc]};
+                                                  false ->
+                                                      {[Topics|CSFAcc],CSTAcc}
+                                              end
+                                      end,
+                                      {[], []},
+                                      Subs),
+                      case SortedSubs of
+                          {[],_} ->
+                              vmq_reg:delete_subscriptions(SubscriberId);
+                          {_,CST} ->
+                              lists:foreach(
+                                fun(Topics) ->
+                                        OldSubs = vmq_subscriber_db:read(SubscriberId, []),
+                                        case vmq_subscriber:remove(OldSubs, Topics) of
+                                            {NewSubs, true} ->
+                                                vmq_subscriber_db:store(SubscriberId, NewSubs);
+                                            _ ->
+                                                ok
+                                        end
+                                end,
+                                CST)
+                      end,
+                      ignore
+              end,
+    vmq_reg:fold_subscribers(FoldFun, [], false).
