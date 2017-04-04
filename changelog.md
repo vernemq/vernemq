@@ -2,6 +2,8 @@
 
 ## Nightly
 
+- Purge node-local clean session true subscriber data when restarting
+  VerneMQ as these would otherwise erroneously still exist.
 - The metrics reporting sizes of retained messages `gauge.retain_memory` and
   routes `gauge.router_memory` were incorrectly done in system word sizes
   instead of in bytes. This has been corrected. Further the
@@ -12,7 +14,7 @@
 - Fix bug occurring when publishing across nodes where more than one subscriber
   are on one node and the publisher on another. In this case only one of the
   subscribers would receive the message.
-- Fix formatting bug in the 'vmq-admin trace` command.
+- Fix formatting bug in the `vmq-admin trace` command.
 - Handle empty modifier list correctly in `vmq_webhooks` (#339).
 - Handle client_id and mountpoint modifiers correctly in `vmq_webhooks` (#332).
 

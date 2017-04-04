@@ -38,7 +38,6 @@
 
          migrate_offline_queues/1,
          fix_dead_queues/2
-
         ]).
 
 %% called by vmq_cluster_com
@@ -711,3 +710,4 @@ status(SubscriberId) ->
         QPid ->
             {ok, vmq_queue:status(QPid)}
     end.
+
