@@ -9,22 +9,28 @@
 -export([
          query_prepare_test/1,
          query_select_all_test/1,
-         query_select_by_id_test/1
+         query_select_by_id_test/1,
+         query_select_match_test/1,
+         query_select_by_atom_test/1,
+         query_select_by_pid_test/1
         ]).
 
 %% vmq_ql exports
--export([fields_config/0, fold_init_rows/2]).
+-export([fields_config/0, fold_init_rows/3]).
 
 -include("vmq_ql.hrl").
 -include_lib("common_test/include/ct.hrl").
 
--define(NR_SAMPLES, 1000).
+-define(NR_SAMPLES, 500).
 
 all() ->
     [
      query_prepare_test,
-     query_select_all_test
-     %query_select_by_id_test
+     query_select_all_test,
+     query_select_by_id_test,
+     query_select_match_test,
+     query_select_by_atom_test,
+     query_select_by_pid_test
     ].
 
 
@@ -32,7 +38,9 @@ all() ->
 %%% Overall setup/teardown
 %%%===================================================================
 init_per_suite(Config) ->
-    application:set_env(vmq_ql, table_map, [{foobar, ?MODULE}]),
+    application:set_env(vmq_ql, table_map, [{foobar, ?MODULE},
+                                            {modules, ?MODULE},
+                                            {proc, vmq_ql_sys_info}]),
     Config.
 
 end_per_suite(_Config) ->
@@ -64,10 +72,30 @@ query_select_by_id_test(_) ->
                           [{1, #{id := Id}}] = fetch(Pid, Limit)
                   end, lists:seq(1, ?NR_SAMPLES)).
 
+query_select_match_test(_) ->
+    Query = "SELECT * FROM modules WHERE path MATCH \".+" ++ atom_to_list(?MODULE) ++ ".beam\"",
+    Pid =  query(Query),
+    [{1, #{module := ?MODULE}}] = fetch(Pid, 10).
+
+query_select_by_atom_test(_) ->
+    Query = "SELECT * FROM modules WHERE module = \"" ++ atom_to_list(?MODULE) ++ "\"",
+    Pid =  query(Query),
+    [{1, #{module := ?MODULE}}] = fetch(Pid, 10).
+
+query_select_by_pid_test(_) ->
+    [QPid|_] = erlang:processes(),
+    Query = "SELECT * FROM proc WHERE pid = \"" ++ pid_to_list(QPid) ++ "\"",
+    Pid = query(Query),
+    [{1, #{pid := QPid}}] = fetch(Pid, 10).
 
 query(String) ->
     {ok, Pid} = vmq_ql_query:start_link(self(), String),
-    Pid.
+    receive
+        {results_ready, _, Pid, _} ->
+            Pid;
+        {query_error, _, Pid, Reason} ->
+            {error, Reason}
+    end.
 
 fetch(Pid, Limit) ->
     vmq_ql_query:fetch(Pid, desc, Limit).
@@ -87,13 +115,23 @@ fields_config() ->
              init_fun = fun init_bar_row/1,
              include_if_all = false         %% is excluded in SELECT * foobar
             },
-    [Foo, Bar].
+    Mods = #vmq_ql_table{name=modules,
+              provides = [module, path],
+              init_fun = fun init_mod_row/1,
+              include_if_all = true     %% is included in SELECT * modules
+             },
+    [Foo, Bar, Mods].
 
-fold_init_rows(Fun, Acc) ->
+fold_init_rows(foobar, Fun, Acc) ->
     lists:foldl(fun(I, AccAcc) ->
                         InitRow = #{id => I},
                         Fun(InitRow, AccAcc)
-                end, Acc, lists:seq(1, ?NR_SAMPLES)).
+                end, Acc, lists:seq(1, ?NR_SAMPLES));
+fold_init_rows(modules, Fun, Acc) ->
+    lists:foldl(fun({Mod, Path}, AccAcc) ->
+                        InitRow = #{module => Mod, path => Path},
+                        Fun(InitRow, AccAcc)
+                end, Acc, code:all_loaded()).
 
 init_foo_row(Row) ->
     FooRow = #{a => rand_bool(), b => rand_int(), c => rand_float()},
@@ -103,6 +141,8 @@ init_bar_row(Row) ->
     {RandAtom, RandString} = rand_mod(),
     BarRow = #{x => RandAtom, y => rand_pid(), z => RandString},
     [maps:merge(Row, BarRow)].
+
+init_mod_row(Row) -> [Row].
 
 
 rand_bool() ->

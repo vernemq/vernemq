@@ -18,7 +18,7 @@
 -include_lib("vmq_ql/include/vmq_ql.hrl").
 
 -export([fields_config/0,
-         fold_init_rows/2]).
+         fold_init_rows/3]).
 
 %% used by vmq_info_cli
 -export([session_info_items/0]).
@@ -89,7 +89,7 @@ session_info_items() ->
     %% used in vmq_info_cli
     lists:flatten([Fields || #vmq_ql_table{provides=Fields} <- fields_config()]).
 
-fold_init_rows(Fun, Acc) ->
+fold_init_rows(_, Fun, Acc) ->
     vmq_queue_sup_sup:fold_queues(
       fun({MP, ClientId}, QPid, AccAcc) ->
               InitRow = #{node => node(),

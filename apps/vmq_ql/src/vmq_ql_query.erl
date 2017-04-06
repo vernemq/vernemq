@@ -33,7 +33,7 @@
 -export([required_fields/1, include_fields/2]).
 
 -callback fields_config() -> [info_table()].
--callback fold_init_rows(function(), any()) -> any().
+-callback fold_init_rows(atom(), function(), any()) -> any().
 
 -record(state, {mgr, query, next, result_table}).
 
@@ -148,9 +148,10 @@ eval("SELECT", Query) ->
     Where = proplists:get_value(where, Query),
     OrderBy = proplists:get_value(orderby, Query),
     Limit = proplists:get_value(limit, Query),
-    select(Fields, module(From), Where, OrderBy, Limit).
+    select(Fields, From, Where, OrderBy, Limit).
 
-select(Fields, Module, Where, OrderBy, Limit) ->
+select(Fields, From, Where, OrderBy, Limit) ->
+    Module = module(From),
     FieldsConfig = Module:fields_config(),
     RequiredFields = lists:usort((required_fields(Where)
                                   ++ include_fields(FieldsConfig, Fields)
@@ -159,7 +160,7 @@ select(Fields, Module, Where, OrderBy, Limit) ->
     EmptyResultRow = empty_result_row(FieldsConfig, Fields),
     Results = ets:new(?MODULE, [ordered_set]),
     try
-        Module:fold_init_rows(
+        Module:fold_init_rows(From,
           fun(InitRow, Idx) ->
                   PreparedRows = initialize_row(RowInitializer, InitRow),
                   lists:foldl(
@@ -182,7 +183,7 @@ select(Fields, Module, Where, OrderBy, Limit) ->
             ok;
         E1:R1 ->
             ets:delete(Results),
-            lager:error("Select query terminated due to ~p ~p", [E1, R1]),
+            lager:error("Select query terminated due to ~p ~p, stacktrace: ~p", [E1, R1]),
             exit({E1, R1})
     end,
     case is_integer(Limit) of
@@ -337,8 +338,8 @@ eval_op(lesser, V1, V2) -> v(V1) < v(V2);
 eval_op(lesser_equals, V1, V2) -> v(V1) =< v(V2);
 eval_op(greater, V1, V2) -> v(V1) > v(V2);
 eval_op(greater_equals, V1, V2) -> v(V1) >= v(V2);
-eval_op(like, V, V) -> true;
-eval_op(like, V1, V2) ->
+eval_op(match, V, V) -> true;
+eval_op(match, V1, V2) ->
     case {v(V1), v(V2)} of
         {V, P} when (is_list(V) or is_binary(V))
                 and (is_list(P) or is_binary(P)) ->
@@ -364,8 +365,12 @@ v(false) -> false;
 v(undefined) -> null;
 v(V) when is_atom(V) ->
     lookup_ident(V);
-v(V) when is_pid(V) ->
-    list_to_binary(pid_to_list(V));
+v(<<"<", _/binary>> = MaybePid) ->
+    try
+        list_to_pid(binary_to_list(MaybePid))
+    catch
+        _:_ -> MaybePid
+    end;
 v(V) ->
     try
         binary_to_existing_atom(V, utf8)

@@ -60,7 +60,7 @@ case Node of
 end
 `;
 
-operator <- '!=' / '=<' / '>=' / '=' / '>' / '<' / like_token
+operator <- '!=' / '=<' / '>=' / '=' / '>' / '<' / match_token
 `
 case Node of
   <<"!=">> -> 'not_equals';
@@ -69,7 +69,7 @@ case Node of
   <<"=<">> -> 'lesser_equals';
   <<">">> -> 'greater';
   <<">=">> -> 'greater_equals';
-  [<<"LIKE">>, []] -> 'like'
+  [<<"MATCH">>, []] -> 'match'
 end
 `;
 
@@ -99,7 +99,7 @@ select_token <- 'SELECT' !ident_rest ~;
 separator_token <- ',' ~;
 from_token <- 'FROM' !ident_rest ~;
 where_token <- 'WHERE' !ident_rest ~;
-like_token <- 'LIKE' !ident_rest ~;
+match_token <- 'MATCH' !ident_rest ~;
 or_token <- 'OR' !ident_rest ~;
 and_token <- 'AND' !ident_rest ~;
 orderby_token <- 'ORDER BY' !ident_rest ~;
