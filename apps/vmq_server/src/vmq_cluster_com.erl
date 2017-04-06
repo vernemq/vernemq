@@ -151,12 +151,12 @@ process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
     case binary_to_term(Bin) of
         #vmq_msg{mountpoint=MP,
                  routing_key=Topic} = Msg ->
-            _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, Msg);
+            _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, {Msg, undefined});
         CompatMsg ->
             SGPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
             #vmq_msg{mountpoint=MP,
                      routing_key=Topic} = Msg = compat_msg(CompatMsg, SGPolicy),
-            _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, Msg)
+            _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, {Msg, undefined})
     end,
     process(Rest, St);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
@@ -224,7 +224,7 @@ compat_msg({vmq_msg, MsgRef, RoutingKey, Payload, Retain, Dup, QoS, Mountpoint, 
        sg_policy = SGPolicy}.
 
 publish({_, _} = SubscriberIdAndQoS, Msg) ->
-    vmq_reg:publish(SubscriberIdAndQoS, {Msg,undefined});
+    vmq_reg:publish(SubscriberIdAndQoS, Msg);
 publish(_Node, Msg) ->
     %% we ignore remote subscriptions, they are already covered
     %% by original publisher

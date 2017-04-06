@@ -2,6 +2,9 @@
 
 ## Nightly
 
+- Fix bug occurring when publishing across nodes where more than one subscriber
+  are on one node and the publisher on another. In this case only one of the
+  subscribers would receive the message.
 - Fix formatting bug in the 'vmq-admin trace` command.
 - Handle empty modifier list correctly in `vmq_webhooks` (#339).
 - Handle client_id and mountpoint modifiers correctly in `vmq_webhooks` (#332).
