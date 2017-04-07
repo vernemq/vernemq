@@ -192,6 +192,10 @@ handle_plugin_call({enable_plugin, Plugin, Paths}, State) ->
     case enable_plugin_generic(
            {application, Plugin, Paths}, State) of
                 {ok, NewState} ->
+            case application:get_env(Plugin, http_modules) of
+                undefined -> ok;
+                {ok, Mods} -> handle_add_http_modules(Mods)
+            end,
             {reply, ok, NewState};
         {error, _} = E ->
             {reply, E, State}
@@ -209,6 +213,10 @@ handle_plugin_call({disable_plugin, PluginKey}, State) ->
     %% {HookName, ModuleName, Fun, Arity} for Module Plugins
     case disable_plugin_generic(PluginKey, State) of
         {ok, NewState} ->
+            case application:get_env(PluginKey, http_modules) of
+                undefined -> ok;
+                {ok, Mods} -> handle_del_http_modules(Mods)
+            end,
             NewState1 =
                 case PluginKey of
                     {_, _, _, _} -> NewState;
@@ -820,6 +828,26 @@ list_const(true, [{Name, Module, Fun, Arity}|Rest]) ->
        {atom, 1, Fun},
        {integer, 1, Arity}]
      }, list_const(true, Rest)}.
+
+handle_add_http_modules(Mods) ->
+    OriMods = vmq_config:get_env(http_modules),
+    NewMods = OriMods ++ Mods,
+    vmq_config:set_env(http_modules, NewMods, false),
+    {ok, ListenerConf} = application:get_env(vmq_server, listeners),
+    [{{IP, Port}, Opts}]= proplists:get_value(http, ListenerConf),
+    vmq_ranch_config:delete_listener(IP, Port),
+    vmq_ranch_config:start_listener(http, IP, Port, Opts),
+    ok.
+
+handle_del_http_modules(Mods) ->
+    OriMods = vmq_config:get_env(http_modules),
+    NewMods = OriMods -- Mods,
+    vmq_config:set_env(http_modules, NewMods, false),
+    {ok, ListenerConf} = application:get_env(vmq_server, listeners),
+    [{{IP, Port}, Opts}]= proplists:get_value(http, ListenerConf),
+    vmq_ranch_config:delete_listener(IP, Port),
+    vmq_ranch_config:start_listener(http, IP, Port, Opts),
+    ok.
 
 -ifdef(TEST).
 %%%===================================================================
