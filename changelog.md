@@ -2,6 +2,8 @@
 
 ## Nightly
 
+- Fix bug causing hooks to be registered multiple times when reloading lua
+  scripts (#348).
 - Fix bug occurring when publishing across nodes where more than one subscriber
   are on one node and the publisher on another. In this case only one of the
   subscribers would receive the message.

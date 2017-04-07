@@ -116,7 +116,12 @@ handle_call({register_hook, OwnerPid, Hook}, _From, State) ->
             enable_hook(HookName),
             ets:insert(?TBL, {HookName, [OwnerPid]});
         [{_, ScriptOwners}] ->
-            ets:insert(?TBL, {HookName, [OwnerPid|ScriptOwners]})
+            case lists:member(OwnerPid, ScriptOwners) of
+                true ->
+                    ok;
+                false ->
+                    ets:insert(?TBL, {HookName, [OwnerPid|ScriptOwners]})
+            end
     end,
     monitor(process, OwnerPid),
     Reply = ok,
