@@ -288,9 +288,12 @@ prepare([Ops|Rest], Acc) when is_list(Ops) ->
     prepare(Rest, prepare(Ops, Acc));
 
 prepare([{op, V1, _Op, V2}|Rest], Acc) ->
-    prepare(Rest, [V1, V2|Acc]);
+    prepare(Rest, prepare(V2, [V1|Acc]));
 prepare([{_, {op, V1, _Op, V2}}|Rest], Acc) ->
-    prepare(Rest, [V1, V2|Acc]).
+    prepare(Rest, prepare(V2, [V1|Acc]));
+prepare({op, V1, _Op, V2}, Acc) ->
+    prepare(V2, [V1|Acc]);
+prepare(V, Acc) -> [V|Acc].
 
 filter_row([all], EmptyResultRow, Row) ->
     maps:merge(EmptyResultRow, Row);

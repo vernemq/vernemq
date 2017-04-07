@@ -20,6 +20,7 @@
 	`next`.
 - Add `vmq-admin trace` tracing sub-system.
 - Improve help texts for `vmq-admin listener` command.
+- Fix vmq-admin session show when multiple filters are applied
 
 ### vmq_diversity
 

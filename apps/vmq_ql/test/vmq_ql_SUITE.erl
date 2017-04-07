@@ -146,21 +146,21 @@ init_mod_row(Row) -> [Row].
 
 
 rand_bool() ->
-    random:uniform(10) > 5.
+    rand:uniform(10) > 5.
 
 rand_int() ->
-    (case rand_bool() of true -> 1; false -> -1 end) * random:uniform(1000).
+    (case rand_bool() of true -> 1; false -> -1 end) * rand:uniform(1000).
 
 rand_float() ->
     rand_int() / rand_int().
 
 rand_mod() ->
     Mods = code:all_loaded(),
-    lists:nth(random:uniform(length(Mods)), Mods).
+    lists:nth(rand:uniform(length(Mods)), Mods).
 
 rand_pid() ->
     Pids = erlang:processes(),
-    lists:nth(random:uniform(length(Pids)), Pids).
+    lists:nth(rand:uniform(length(Pids)), Pids).
 
 
 
