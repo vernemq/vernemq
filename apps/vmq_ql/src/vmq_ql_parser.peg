@@ -28,15 +28,15 @@ limit_expr <- limit_token _ x:pos_integer _
 list_to_integer(binary_to_list(iolist_to_binary(proplists:get_value(x, Node))))
 `;
 
-where_expr <- where_token x:logic_expr+
+where_expr <- where_token x:logic_expr xs:logic_expr_rest*
 `
-proplists:get_value(x, Node)
+[proplists:get_value(x, Node)] ++ proplists:get_value(xs, Node, [])
 `;
 
-logic_expr <- _ '(' _ x:logic_expr+ _ ')' _ / _ left:expr _ op:operator _ right:(logic_expr / expr) _
+logic_expr <- _ '(' _ x:logic_expr xs:logic_expr_rest* _ ')' _ / _ left:expr _ op:operator _ right:expr _
 `
 case proplists:get_value(x, Node) of
-  undefined -> 
+  undefined ->
     {op,
      proplists:get_value(left, Node),
      proplists:get_value(op, Node),
@@ -45,7 +45,22 @@ case proplists:get_value(x, Node) of
     [X] ++ proplists:get_value(xs, Node, [])
 end
 `;
-operator <- '!=' / '=<' / '>=' / '=' / '>' / '<' / or_token / and_token / like_token
+
+logic_expr_rest <- _ j:joiner _ l:logic_expr
+`
+{proplists:get_value(j, Node),
+ proplists:get_value(l,Node)}
+`;
+
+joiner <- or_token / and_token
+`
+case Node of
+  [<<"OR">>, []] -> 'or';
+  [<<"AND">>, []] -> 'and'
+end
+`;
+
+operator <- '!=' / '=<' / '>=' / '=' / '>' / '<' / match_token
 `
 case Node of
   <<"!=">> -> 'not_equals';
@@ -54,9 +69,7 @@ case Node of
   <<"=<">> -> 'lesser_equals';
   <<">">> -> 'greater';
   <<">=">> -> 'greater_equals';
-  [<<"OR">>, []] -> 'or';
-  [<<"AND">>, []] -> 'and';
-  [<<"LIKE">>, []] -> 'like'
+  [<<"MATCH">>, []] -> 'match'
 end
 `;
 
@@ -86,7 +99,7 @@ select_token <- 'SELECT' !ident_rest ~;
 separator_token <- ',' ~;
 from_token <- 'FROM' !ident_rest ~;
 where_token <- 'WHERE' !ident_rest ~;
-like_token <- 'LIKE' !ident_rest ~;
+match_token <- 'MATCH' !ident_rest ~;
 or_token <- 'OR' !ident_rest ~;
 and_token <- 'AND' !ident_rest ~;
 orderby_token <- 'ORDER BY' !ident_rest ~;
