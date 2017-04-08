@@ -2,8 +2,11 @@
 
 ## Nightly
 
-- Fix incorrect metrics reporting ets table sizes. These should be in bytes, but
-  where reported in word-sizes.
+- The metrics reporting sizes of retained messages `gauge.retain_memory` and
+  routes `gauge.router_memory` were incorrectly done in system word sizes
+  instead of in bytes. This has been corrected. Further the
+  `gauge.retain_memory` metric now also includes temporary storage used before
+  persisting messages to disk.
 - Fix bug causing hooks to be registered multiple times when reloading lua
   scripts (#348).
 - Fix bug occurring when publishing across nodes where more than one subscriber
