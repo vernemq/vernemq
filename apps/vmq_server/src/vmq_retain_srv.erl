@@ -99,8 +99,13 @@ stats() ->
     case ets:info(?RETAIN_CACHE, size) of
         undefined -> {0, 0};
         V ->
-            M = ets:info(?RETAIN_CACHE, memory)*erlang:system_info(wordsize),
-            {V, M}
+            MC = ets:info(?RETAIN_CACHE, memory),
+            case ets:info(?RETAIN_UPDATE, memory) of
+                undefined ->
+                    {V, MC*erlang:system_info(wordsize)};
+                MU ->
+                    {V, (MC+MU)*erlang:system_info(wordsize)}
+            end
     end.
 
 
