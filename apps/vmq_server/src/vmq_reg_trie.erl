@@ -92,7 +92,8 @@ stats() ->
     Mem4 = info(vmq_trie_node, memory),
     Mem5 = info(vmq_trie_remote_subs, memory),
     Memory = Mem1 + Mem2 + Mem3 + Mem4 + Mem5,
-    {NrOfSubs, Memory}.
+    WordSize = erlang:system_info(wordsize),
+    {NrOfSubs, Memory*WordSize}.
 
 info(T, What) ->
     case ets:info(T, What) of
