@@ -72,6 +72,7 @@
         ]).
 
 -export([metrics/0,
+         metrics/1,
          check_rate/2,
          reset_counters/0,
          reset_counter/1,
@@ -300,14 +301,27 @@ reset_counter(Entry, InitVal) ->
 
 
 metrics() ->
-    lists:foldl(fun(Entry, Acc) ->
-                        [{counter, Entry,
-                          try counter_val(Entry) of
-                              Value -> Value
-                          catch
-                              _:_ -> 0
-                          end} | Acc]
-                end, system_statistics() ++ misc_statistics(), counter_entries()).
+    metrics(false).
+
+metrics(WithDescriptions) ->
+    Metrics =
+        lists:foldl(fun(Entry, Acc) ->
+                            [{counter, Entry,
+                              try counter_val(Entry) of
+                                  Value -> Value
+                              catch
+                                  _:_ -> 0
+                              end} | Acc]
+                    end, system_statistics() ++ misc_statistics(), counter_entries()),
+    case WithDescriptions of
+        true ->
+            lists:map(
+              fun({Type, Metric, Val}) ->
+                      {Type, Metric, Val, describe({Type, Metric})}
+              end,
+              Metrics);
+        _ -> Metrics
+    end.
 
 counter_entries() ->
     [socket_open, socket_close, socket_error,
@@ -548,3 +562,137 @@ counter_val_since_last_call(Entry) ->
             put({rate, Entry}, ActVal),
             ActVal - V
     end.
+
+describe({counter,cluster_bytes_dropped}) ->
+    <<"The number of bytes dropped while sending data to other cluster nodes.">>;
+describe({counter,cluster_bytes_sent}) ->
+    <<"The number of bytes send to other cluster nodes.">>;
+describe({counter,cluster_bytes_received}) ->
+    <<"The number of bytes recevied from other cluster nodes.">>;
+describe({counter,client_expired}) ->
+    <<"Not in use (deprecated)">>;
+describe({counter,queue_message_out}) ->
+    <<"The number of PUBLISH packets sent from MQTT queue processes.">>;
+describe({counter,queue_message_in}) ->
+    <<"The number of PUBLISH packets received by MQTT queue processes.">>;
+describe({counter,queue_message_unhandled}) ->
+    <<"The number of unhandled messages when connecting with clean session=true.">>;
+describe({counter,queue_message_drop}) ->
+    <<"The number of messages dropped due to full queues.">>;
+describe({counter,queue_teardown}) ->
+    <<"The number of times a MQTT queue process has been terminated.">>;
+describe({counter,queue_setup}) ->
+    <<"The number of times a MQTT queue process has been started.">>;
+describe({counter,mqtt_unsubscribe_error}) ->
+    <<"The number of times an UNSUBSCRIBE operation failed due to a netsplit.">>;
+describe({counter,mqtt_subscribe_error}) ->
+    <<"The number of times a SUBSCRIBE operation failed due to a netsplit.">>;
+describe({counter,mqtt_publish_error}) ->
+    <<"The number of times a PUBLISH operation failed due to a netsplit.">>;
+describe({counter,mqtt_pubcomp_invalid_error}) ->
+    <<"The number of unexpected PUBCOMP messages received.">>;
+describe({counter,mqtt_pubrec_invalid_error}) ->
+    <<"The number of unexpected PUBCOMP messages received.">>;
+describe({counter,mqtt_puback_invalid_error}) ->
+    <<"The number of unexpected PUBACK messages received.">>;
+describe({counter,mqtt_invalid_msg_size_error}) ->
+    <<"The number of packges exceeding the maximum allowed size.">>;
+describe({counter,mqtt_subscribe_auth_error}) ->
+    <<"The number of unauthorized subscription attempts.">>;
+describe({counter,mqtt_publish_auth_error}) ->
+    <<"The number of unauthorized publish attempts.">>;
+describe({counter,mqtt_pingresp_sent}) ->
+    <<"The number of PINGRESP packets sent.">>;
+describe({counter,mqtt_unsuback_sent}) ->
+    <<"The number of UNSUBACK packets sent.">>;
+describe({counter,mqtt_suback_sent}) ->
+    <<"The number of SUBACK packets sent.">>;
+describe({counter,mqtt_pubcomp_sent}) ->
+    <<"The number of PUBCOMP packets sent.">>;
+describe({counter,mqtt_pubrel_sent}) ->
+    <<"The number of PUBREL packets sent.">>;
+describe({counter,mqtt_pubrec_sent}) ->
+    <<"The number of PUBREC packets sent.">>;
+describe({counter,mqtt_puback_sent}) ->
+    <<"The number of PUBACK packets sent.">>;
+describe({counter,mqtt_publish_sent}) ->
+    <<"The number of PUBLISH packets sent.">>;
+describe({counter,mqtt_connack_not_authorized_sent}) ->
+    <<"The number of times a client was rejected due to insufficient authorization.">>;
+describe({counter,mqtt_connack_bad_credentials_sent}) ->
+    <<"The number of times a client sent bad credentials.">>;
+describe({counter,mqtt_connack_server_unavailable_sent}) ->
+    <<"The number of times a client was rejected due the the broker being unavailable.">>;
+describe({counter,mqtt_connack_identifier_rejected_sent}) ->
+    <<"The number of times a client was rejected due to a unacceptable identifier.">>;
+describe({counter,mqtt_connack_unacceptable_protocol_sent}) ->
+    <<"The number of times the broker is not able to support the requested protocol.">>;
+describe({counter,mqtt_connack_accepted_sent}) ->
+    <<"The number of times a connection has been accepted.">>;
+describe({counter,mqtt_disconnect_received}) ->
+    <<"The number of DISCONNECT packets sent.">>;
+describe({counter,mqtt_pingreq_received}) ->
+    <<"The number of PINGREQ packets received.">>;
+describe({counter,mqtt_unsubscribe_received}) ->
+    <<"The number of UNSUBSCRIBE packets received.">>;
+describe({counter,mqtt_subscribe_received}) ->
+    <<"The number of SUBSCRIBE packets received.">>;
+describe({counter,mqtt_pubcomp_received}) ->
+    <<"The number of PUBCOMP packets received.">>;
+describe({counter,mqtt_pubrel_received}) ->
+    <<"The number of PUBREL packets received.">>;
+describe({counter,mqtt_pubrec_received}) ->
+    <<"The number of PUBREC packets received.">>;
+describe({counter,mqtt_puback_received}) ->
+    <<"The number of PUBACK packets received.">>;
+describe({counter,mqtt_publish_received}) ->
+    <<"The number of PUBLISH packets received.">>;
+describe({counter,mqtt_connect_received}) ->
+    <<"The number of CONNECT packets received.">>;
+describe({counter,bytes_sent}) ->
+    <<"The total number of bytes sent.">>;
+describe({counter,bytes_received}) ->
+    <<"The total number of bytes received.">>;
+describe({counter,socket_error}) ->
+    <<"The total number of socket errors that have occurred.">>;
+describe({counter,socket_close}) ->
+    <<"The number of times an MQTT socket has been closed.">>;
+describe({counter,socket_open}) ->
+    <<"The number of times an MQTT socket has been opened.">>;
+describe({counter,system_context_switches}) ->
+    <<"The total number of context switches.">>;
+describe({counter,system_exact_reductions}) ->
+    <<"The exact number of reductions performed.">>;
+describe({counter,system_gc_count}) ->
+    <<"The number of garbage collections performed.">>;
+describe({counter,system_words_reclaimed_by_gc}) ->
+    <<"The number of words reclaimed by the garbage collector.">>;
+describe({counter,system_io_in}) ->
+    <<"The total number of bytes received through ports.">>;
+describe({counter,system_io_out}) ->
+    <<"The total number of bytes sent through ports.">>;
+describe({counter,system_reductions}) ->
+    <<"The number of reductions performed in the VM since the node was started.">>;
+describe({gauge,system_run_queue}) ->
+    <<"The total number of processes and ports ready to run on all run-queues.">>;
+describe({counter,system_runtime}) ->
+    <<"The sum of the runtime for all threads in the Erlang runtime system.">>;
+describe({counter,system_wallclock}) ->
+    <<"The number of milli-seconds passed since the node was started.">>;
+describe({gauge,system_utilization}) ->
+    <<"The average system (scheduler) utilization (percentage).">>;
+describe({gauge,router_subscriptions}) ->
+    <<"The number of subscriptions in the routing table.">>;
+describe({gauge,router_memory}) ->
+    <<"The number of bytes used by the routing table.">>;
+describe({gauge,retain_messages}) ->
+    <<"The number of currently stored retained messages.">>;
+describe({gauge,retain_memory}) ->
+    <<"The number of bytes used for storing retained messages.">>;
+describe({gauge,queue_processes}) ->
+    <<"The number of MQTT queue processes.">>;
+describe({Type, Metric}) ->
+    describe_dynamic({Type, atom_to_binary(Metric, utf8)}).
+
+describe_dynamic({gauge,<<"system_utilization_scheduler_", Number/binary>>}) ->
+    <<"Scheduler ", Number/binary, " utilization (percentage)">>.

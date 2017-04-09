@@ -82,6 +82,7 @@ register_cli_usage() ->
 
 
     clique:register_usage(["vmq-admin", "metrics"], metrics_usage()),
+    clique:register_usage(["vmq-admin", "metrics", "show"], metrics_show_usage()),
 
     clique:register_usage(["vmq-admin", "api-key"], api_usage()),
     clique:register_usage(["vmq-admin", "api-key", "delete"], api_delete_key_usage()),
@@ -118,23 +119,41 @@ vmq_server_show_cmd() ->
 
 vmq_server_metrics_cmd() ->
     Cmd = ["vmq-admin", "metrics", "show"],
-    Callback = fun(_, _, _) ->
+    FlagSpecs = [{describe, [{shortname, "d"},
+                             {longname, "with-descriptions"}]}],
+    Callback = fun(_, _, Flags) ->
+                       Normalize = fun({T,M,V}) ->
+                                           {T,M,V,undefined};
+                                      ({T,M,V,D}) ->
+                                           {T,M,V,D}
+                                    end,
+                       Describe = lists:keymember(describe, 1, Flags),
                        lists:foldl(
-                         fun({Type, Metric, Val}, Acc) ->
+                         fun(M, Acc) ->
+                                 {Type, Metric, Val, Description} = Normalize(M),
                                  SType = atom_to_list(Type),
                                  SMetric = atom_to_list(Metric),
                                  SVal =
-                                 case Val of
-                                     V when is_integer(V) ->
-                                         integer_to_list(V);
-                                     V when is_float(V) ->
-                                         float_to_list(V)
-                                 end,
+                                     case Val of
+                                         V when is_integer(V) ->
+                                             integer_to_list(V);
+                                         V when is_float(V) ->
+                                             float_to_list(V)
+                                     end,
                                  Line = [SType, ".", SMetric, " = ", SVal],
-                                 [clique_status:text(lists:flatten(Line))|Acc]
-                         end, [], vmq_metrics:metrics())
+                                 case Describe of 
+                                     true ->
+                                         [clique_status:text(lists:flatten(["# ", Description])),
+                                          clique_status:text(lists:flatten([Line, "\n"]))|Acc];
+                                     false ->
+                                         [clique_status:text(lists:flatten(Line))|Acc]
+                                 end
+                         end,
+                         [],
+                         vmq_metrics:metrics(Describe))
                end,
-    clique:register_command(Cmd, [], [], Callback).
+    clique:register_command(Cmd, [], FlagSpecs, Callback).
+
 
 vmq_server_metrics_reset_cmd() ->
     Cmd = ["vmq-admin", "metrics", "reset"],
@@ -490,6 +509,14 @@ metrics_usage() ->
      "  Interact with the metrics subsystem.\n\n",
      "  Sub-commands:\n",
      "    show        Prints all available metrics for this VerneMQ node.\n"
+    ].
+
+metrics_show_usage() ->
+    ["vmq-admin metrics show\n\n",
+     "  Prints all available metrics for this VerneMQ node.\n\n",
+     "Options\n\n",
+     "  --with-descriptions, -d,\n"
+     "    Show metrics annotated with descriptions.\n"
     ].
 
 api_usage() ->

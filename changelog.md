@@ -1,5 +1,13 @@
 # Changelog
 
+=======
+
+## Nightly (1.1.0)
+
+- Add descriptions to all available metrics via `vmq-admin metrics show
+  --with-descriptions`.
+- Add Prometheus HELP lines for every metric.
+
 ## VERNEMQ 1.0.1
 
 - Purge node-local clean session true subscriber data when restarting
