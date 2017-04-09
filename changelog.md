@@ -1,11 +1,15 @@
 # Changelog
 
-## VERNEMQ 1.0.2
+## VERNEMQ 1.1.0
+
 - Add more detail to the client expiration log message.
 - Safeguard Lua function calls
 - Fix bug where websocket connections were incorrectly terminated (#387).
 - Fix breakage of event hook chain in `vmq_passwd` (#396).
 - Lua script balancing for improved Lua hook performance.
+- Add descriptions to all available metrics via `vmq-admin metrics show
+  --with-descriptions`.
+- Add Prometheus HELP lines for every metric.
 
 ## VERNEMQ 1.0.1
 

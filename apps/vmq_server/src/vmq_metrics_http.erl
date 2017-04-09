@@ -36,7 +36,7 @@ terminate(_Reason, _Req, _State) ->
 
 reply(Req, <<"text/plain">>) ->
     %% Prometheus output
-    Metrics = vmq_metrics:metrics(),
+    Metrics = vmq_metrics:metrics(true),
     Output = prometheus_output(Metrics, []),
     {ok, Req2} = cowboy_req:reply(200, [{<<"content-type">>, <<"text/plain">>}],
                                   Output, Req),
@@ -44,20 +44,22 @@ reply(Req, <<"text/plain">>) ->
 
 
 
-prometheus_output([{counter, Metric, Val}|Metrics], Acc) ->
+prometheus_output([{counter, Metric, Val, Descr}|Metrics], Acc) ->
     BinMetric = atom_to_binary(Metric, utf8),
     BinVal = integer_to_binary(Val),
     Node = atom_to_binary(node(), utf8),
+    HelpLine = [<<"# HELP ">>, BinMetric, <<" ", Descr/binary, "\n">>],
     TypeLine = [<<"# TYPE ">>, BinMetric, <<" counter\n">>],
     CounterLine = [BinMetric, <<"{node=\"", Node/binary, "\"} ", BinVal/binary, "\n">>],
-    prometheus_output(Metrics, [TypeLine, CounterLine|Acc]);
-prometheus_output([{gauge, Metric, Val}|Metrics], Acc) ->
+    prometheus_output(Metrics, [HelpLine, TypeLine, CounterLine|Acc]);
+prometheus_output([{gauge, Metric, Val, Descr}|Metrics], Acc) ->
     BinMetric = atom_to_binary(Metric, utf8),
     BinVal = integer_to_binary(Val),
     Node = atom_to_binary(node(), utf8),
+    HelpLine = [<<"# HELP ">>, BinMetric, <<" ", Descr/binary, "\n">>],
     TypeLine = [<<"# TYPE ">>, BinMetric, <<" gauge\n">>],
     CounterLine = [BinMetric, <<"{node=\"", Node/binary, "\"} ", BinVal/binary, "\n">>],
-    prometheus_output(Metrics, [TypeLine, CounterLine|Acc]);
+    prometheus_output(Metrics, [HelpLine, TypeLine, CounterLine|Acc]);
 prometheus_output([], Acc) -> Acc.
 
 

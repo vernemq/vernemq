@@ -11,7 +11,8 @@
 -export([simple_systree_test/1,
          simple_graphite_test/1,
          simple_prometheus_test/1,
-         simple_cli_test/1]).
+         simple_cli_test/1,
+         all_metrics_have_descriptions/1]).
 
 -export([hook_auth_on_subscribe/3]).
 
@@ -40,7 +41,8 @@ all() ->
     [simple_systree_test,
      simple_graphite_test,
      simple_prometheus_test,
-     simple_cli_test].
+     simple_cli_test,
+     all_metrics_have_descriptions].
 
 simple_systree_test(_) ->
     Socket = sample_subscribe(),
@@ -106,6 +108,10 @@ simple_cli_test(_) ->
                 end, false, Ret),
     gen_tcp:close(SubSocket).
 
+all_metrics_have_descriptions(_) ->
+    %% This will retrieve all metrics with descriptions and blow up if
+    %% some are missing.
+    _ = vmq_metrics:metrics(true).
 
 enable_on_subscribe() ->
     vmq_plugin_mgr:enable_module_plugin(
