@@ -286,7 +286,8 @@ aborted_queue_migration_test(Config) ->
                               end, [{total, 1}]),
     gen_tcp:close(Socket1),
     %% publish 10 messages
-    _Payloads = publish_random(Nodes, 10, Topic, []),
+    [PublishNode|_] = RestNodes,
+    _Payloads = publish_random([PublishNode], 10, Topic),
 
     %% wait until the queue has all 10 messages stored
     ok = vmq_cluster_test_utils:wait_until(
