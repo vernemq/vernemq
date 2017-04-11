@@ -18,6 +18,8 @@
 - Handle empty modifier list correctly in `vmq_webhooks` (#339).
 - Handle client_id and mountpoint modifiers correctly in `vmq_webhooks` (#332).
 - Fix vmq-admin session show when multiple filters are applied
+- Fix bug where an aborted connection handshake caused queued offline messages 
+  not being migrated to remote node.
 
 ## VERNEMQ 1.0.0
 
