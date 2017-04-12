@@ -17,6 +17,7 @@
 - Fix formatting bug in the `vmq-admin trace` command.
 - Handle empty modifier list correctly in `vmq_webhooks` (#339).
 - Handle client_id and mountpoint modifiers correctly in `vmq_webhooks` (#332).
+- Fix vmq-admin session show when multiple filters are applied
 
 ## VERNEMQ 1.0.0
 
@@ -38,7 +39,6 @@
 	`next`.
 - Add `vmq-admin trace` tracing sub-system.
 - Improve help texts for `vmq-admin listener` command.
-- Fix vmq-admin session show when multiple filters are applied
 
 ### vmq_diversity
 
