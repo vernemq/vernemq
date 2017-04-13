@@ -722,10 +722,10 @@ insert_from_session(#session{queue=Queue},
     %% allow other sessions to balance the messages of the dead queue
     insert_from_queue(Queue, State).
 
-insert_from_queue(#queue{type=fifo, queue=Q}, State) ->
-    insert_from_queue(fun queue:out/1, queue:out(Q), State);
-insert_from_queue(#queue{type=lifo, queue=Q}, State) ->
-    insert_from_queue(fun queue:out_r/1, queue:out_r(Q), State).
+insert_from_queue(#queue{type=fifo, queue=Q, backup=BQ}, State) ->
+    insert_from_queue(fun queue:out/1, queue:out(queue:join(BQ, Q)), State);
+insert_from_queue(#queue{type=lifo, queue=Q, backup=BQ}, State) ->
+    insert_from_queue(fun queue:out_r/1, queue:out_r(queue:join(BQ, Q)), State).
 
 insert_from_queue(F, {{value, Msg}, Q}, State) when is_tuple(Msg) ->
     insert_from_queue(F, F(Q), insert(Msg, State));
@@ -815,9 +815,10 @@ send_notification(#session{pid=Pid} = Session) ->
     vmq_mqtt_fsm:send(Pid, {mail, self(), new_data}),
     Session#session{status=passive}.
 
-cleanup_session(SubscriberId, #session{queue=#queue{queue=Q}}) ->
+cleanup_session(SubscriberId, #session{queue=#queue{queue=Q, backup=BQ}}) ->
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
-    cleanup_queue(SubscriberId, Q).
+    %% it's possible that the backup queue isn't cleaned up yet.
+    cleanup_queue(SubscriberId, queue:join(Q, BQ)).
 
 cleanup_queue(_, {[],[]}) -> ok; %% optimization
 cleanup_queue(SId, Queue) ->
