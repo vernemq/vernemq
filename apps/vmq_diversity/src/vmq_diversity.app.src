@@ -9,6 +9,7 @@
     crypto,
     public_key,
     ssl,
+    eldap,
     lager,
     clique,
     poolboy,
