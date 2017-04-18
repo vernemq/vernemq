@@ -1,6 +1,6 @@
 # Changelog
 
-## Nightly
+## VERNEMQ 1.0.1
 
 - Purge node-local clean session true subscriber data when restarting
   VerneMQ as these would otherwise erroneously still exist.
