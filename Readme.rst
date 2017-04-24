@@ -98,7 +98,6 @@ Important links
 ~~~~~~~~~~~~~~~~
 
 * \#vernemq on freenode IRC
-* `VerneMQ User Mailing List <http://vernemq.com/mailman/listinfo/vernemq-list_verne.mq>`_ 
 * `VerneMQ Documentation <http://vernemq.com/docs>`_ 
 * `Follow us on Twitter (@vernemq)! <https://twitter.com/vernemq>`_ 
 
