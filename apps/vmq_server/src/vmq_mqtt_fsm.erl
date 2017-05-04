@@ -414,11 +414,12 @@ connected(retry,
 connected(disconnect, State) ->
     lager:debug("stop due to disconnect", []),
     terminate(normal, State);
-connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive} = State) ->
+connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive,
+                                  subscriber_id=SubscriberId, username=UserName} = State) ->
     Now = os:timestamp(),
     case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
         true ->
-            lager:warning("stop due to keepalive expired", []),
+            lager:warning("client ~p with username ~p stopped due to keepalive expired", [SubscriberId, UserName]),
             terminate(normal, State);
         false ->
             set_keepalive_check_timer(KeepAlive),

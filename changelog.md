@@ -1,5 +1,8 @@
 # Changelog
 
+## VERNEMQ 1.0.2
+- Add more detail to the client expiration log message.
+
 ## VERNEMQ 1.0.1
 
 - Purge node-local clean session true subscriber data when restarting
