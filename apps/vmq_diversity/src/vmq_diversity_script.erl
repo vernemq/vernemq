@@ -59,7 +59,18 @@ stats(Pid) ->
     gen_server:call(Pid, stats, infinity).
 
 call_function(Pid, Function, Args) ->
-    gen_server:call(Pid, {call_function, Function, Args}).
+    %% Sandbox the gen_server call and ensure that we don't crash.
+    %% As vmq_plugin calls are not executed within a try-catch an
+    %% error in the plugin code can crash session/queue. As the Lua
+    %% support should provide a sandboxed environment we saveguard
+    %% calls into the Lua environment.
+    case catch gen_server:call(Pid, {call_function, Function, Args}) of
+        {'EXIT', Reason} ->
+            lager:error("can't call into Lua sandbox for function ~p due to ~p", [Function, Reason]),
+            error;
+        Ret ->
+            Ret
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks
