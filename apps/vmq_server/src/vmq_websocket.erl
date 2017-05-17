@@ -70,6 +70,9 @@ websocket_info({set_sock_opts, Opts}, Req, State) ->
     [Socket, Transport] = cowboy_req:get([socket, transport], Req),
     Transport:setopts(Socket, Opts),
     {ok, Req, State};
+websocket_info({FsmMod, _}, Req, #st{fsm_mod=FsmMod, fsm_state=terminated} = State) ->
+    % we got an intermediate message before retrieving {?MODULE, terminate}
+    {shutdown, Req, State};
 websocket_info({FsmMod, Msg}, Req, #st{fsm_mod=FsmMod, fsm_state=FsmState} = State) ->
     handle_fsm_return(FsmMod:msg_in(Msg, FsmState), Req, State);
 websocket_info(_Info, Req, State) ->
