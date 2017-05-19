@@ -71,7 +71,18 @@ websocket_info({set_sock_opts, Opts}, Req, State) ->
     Transport:setopts(Socket, Opts),
     {ok, Req, State};
 websocket_info({FsmMod, _}, Req, #st{fsm_mod=FsmMod, fsm_state=terminated} = State) ->
-    % we got an intermediate message before retrieving {?MODULE, terminate}
+    % We got an intermediate message before retrieving {?MODULE, terminate}.
+    %
+    % The reason for this is that cowboy doesn't provide an equivalent to
+    % the gen_server {stop, Reason, Reply, State} which would enable to
+    % terminate the websocket session but previously send out some final
+    % bytes over the socket.
+    %
+    % In order to overcome this limitation, we don't immediatly return a
+    % {shutdown, Req, State} when we handle a {stop, Reason, Reply} message
+    % but send the date out and transition into `fsm_state=terminated`. To
+    % finally shutdown the session we send a {?MODULE, terminate} message
+    % to ourself that is handled here.
     {shutdown, Req, State};
 websocket_info({FsmMod, Msg}, Req, #st{fsm_mod=FsmMod, fsm_state=FsmState} = State) ->
     handle_fsm_return(FsmMod:msg_in(Msg, FsmState), Req, State);

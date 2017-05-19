@@ -3,6 +3,7 @@
 ## VERNEMQ 1.0.2
 - Add more detail to the client expiration log message.
 - Safeguard Lua function calls
+- Fix bug where websocket connections were incorrectly terminated (#387).
 
 ## VERNEMQ 1.0.1
 
