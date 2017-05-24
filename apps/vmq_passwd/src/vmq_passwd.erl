@@ -99,9 +99,9 @@ load_from_list(List) ->
     del_aged_entries().
 
 check(undefined, _) ->
-    {error, not_authorized};
+    next;
 check(_, undefined) ->
-    {error, invalid_credentials};
+    next;
 check(User, Password) ->
     case ets:lookup(?TABLE, ensure_binary(User)) of
         [{_, SaltB64, EncPassword, _}] ->
