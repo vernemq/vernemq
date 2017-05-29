@@ -67,7 +67,7 @@ parse(DataSize, 0, Fixed, Data) when byte_size(Data) >= DataSize ->
     %% no max size limit
     <<Var:DataSize/binary, Rest/binary>> = Data,
     {variable(Fixed, Var), Rest};
-parse(DataSize, 0, Fixed, Data) when byte_size(Data) < DataSize ->
+parse(DataSize, 0, _Fixed, Data) when byte_size(Data) < DataSize ->
     more;
 parse(DataSize, MaxSize, Fixed, Data)
   when byte_size(Data) >= DataSize,
