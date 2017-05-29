@@ -43,7 +43,7 @@
           client_id :: client_id(),
           mountpoint :: mountpoint(),
           payload_limit :: non_neg_integer(),
-          tracer :: function(),
+          tracer :: pid(),
           %% A map of all the sessions we are currently tracing. The
           %% key is the pid of the session
           sessions :: list({pid(), reference()}),
