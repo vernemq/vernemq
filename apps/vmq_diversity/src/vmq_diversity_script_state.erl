@@ -118,7 +118,9 @@ handle_call(get_num_states, _From, #state{luastate=LuaState, keep=Keep} = State)
     NumStates =
     case lua_num_states(LuaState) of
         undefined when Keep -> 1;
-        undefined ->  application:get_env(vmq_diversity, nr_lua_states);
+        undefined ->
+            {ok, N} = application:get_env(vmq_diversity, nr_lua_states),
+            N;
         N when N > 0 -> N
     end,
     {reply, NumStates, State};
