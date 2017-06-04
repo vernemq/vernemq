@@ -98,6 +98,7 @@ script_usage() ->
      "  Sub-commands:\n",
      "    show        Show the status of loaded scripts\n",
      "    load        Load a script file\n",
+     "    reload      Reload a script file\n",
      "    unload      Unload a script file\n\n",
      "  Use --help after a sub-command for more details.\n"
     ].

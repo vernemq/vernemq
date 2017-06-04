@@ -10,6 +10,15 @@
                                                                    {datatype, flag},
                                                                    hidden
                                                                   ]}.
+
+%% @doc Configures the numer of parallel Lua states that are used for the
+%% same script. This can be useful for load balancing.
+{mapping, "vmq_diversity.nr_lua_states", "vmq_diversity.nr_lua_states", [
+                                                                         {default, 10},
+                                                                         {datatype, integer},
+                                                                         hidden
+                                                                        ]}.
+
 %% @doc Configure the vmq_diversity plugin script dir. The script dir
 %% is searched for Lua scripts which are automatically loaded when the
 %% plugin is enabled.

@@ -18,7 +18,6 @@
 
 %% API functions
 -export([start_link/1,
-         reload/1,
          stats/1,
          call_function/3]).
 
@@ -30,13 +29,12 @@
          terminate/2,
          code_change/3]).
 
--record(state, {luastate,
-                samples= #{},
-                script,
-                keep}).
+-record(state, {luastates=[],
+                working_luastates=[],
+                queue=[],
+                samples= #{}}).
 
 -define(MAX_SAMPLES, 100).
-
 
 %%%===================================================================
 %%% API functions
@@ -49,11 +47,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Script) ->
-    gen_server:start_link(?MODULE, [Script], []).
-
-reload(Pid) ->
-    gen_server:call(Pid, reload).
+start_link(StatePids) ->
+    gen_server:start_link(?MODULE, [StatePids], []).
 
 stats(Pid) ->
     gen_server:call(Pid, stats, infinity).
@@ -87,16 +82,8 @@ call_function(Pid, Function, Args) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Script]) ->
-    case load_script(Script) of
-        {ok, LuaState} ->
-            KeepState = application:get_env(vmq_diversity, keep_state, false),
-            {ok, #state{luastate=LuaState, script=Script, keep=KeepState}};
-        {error, Reason} ->
-            lager:error("can't load script ~p due to ~p", [Script, Reason]),
-            %% normal stop as we don't want to exhaust the supervisor strategy
-            {stop, normal}
-    end.
+init([StatePids]) ->
+    {ok, #state{luastates=StatePids}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -112,34 +99,9 @@ init([Script]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call(reload, _From, #state{script=Script} = State) ->
-    case load_script(Script) of
-        {ok, LuaState} ->
-            lager:info("successfully reloaded script ~p", [Script]),
-            {reply, ok, State#state{luastate=LuaState}};
-        {error, Reason} ->
-            lager:error("can't reload script due to ~p, keeping old version", [Reason]),
-            {reply, {error, Reason}, State}
-    end;
-handle_call({call_function, Function, Args}, _From, State) ->
-    Ts1 = os:timestamp(),
-    try luerl:call_function([hooks, Function], [Args], State#state.luastate) of
-        {[], NewLuaState} ->
-            Ts2 = os:timestamp(),
-            {reply, undefined, ch_state(NewLuaState, Function, Ts1, Ts2, State)};
-        {[Val], NewLuaState} ->
-            Ts2 = os:timestamp(),
-            {reply, vmq_diversity_utils:convert(Val), ch_state(NewLuaState, Function, Ts1, Ts2, State)}
-    catch
-        error:{lua_error, Reason, _} ->
-            lager:error("can't call function ~p with args ~p in ~p due to ~p",
-                        [Function, Args, State#state.script, Reason]),
-            {reply, error, State};
-        E:R ->
-            lager:error("can't call function ~p with args ~p in ~p due to ~p",
-                        [Function, Args, State#state.script, {E,R}]),
-            {reply, error, State}
-    end;
+handle_call({call_function, Function, Args}, From, State) ->
+    NewState = queue_function_call(Function, Args, From, State),
+    {noreply, schedule_function_call(NewState)};
 handle_call(stats, _From, #state{samples=Samples} = State) ->
     {reply, avg_t(Samples), State#state{samples=#{}}}.
 
@@ -166,8 +128,24 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info({call_function_response, Ref, Reply},
+            #state{luastates=LuaStates, working_luastates=WorkingLuaStates} = State) ->
+    case lists:keyfind(Ref, 1, WorkingLuaStates) of
+        false ->
+            {noreply, State};
+        {Ref, LuaStatePid, Item} ->
+            {From, Function, _, Ts1} = Item,
+            Ts2 = os:timestamp(),
+            gen_server:reply(From, Reply),
+            {noreply, schedule_function_call(
+                        ch_state(Function, Ts1, Ts2,
+                                 State#state{
+                                   %% round-robin: append instead of prepend
+                                   luastates=LuaStates ++ [LuaStatePid],
+                                   working_luastates=lists:keydelete(
+                                                       Ref, 1, WorkingLuaStates
+                                                      )}))}
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -198,60 +176,26 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-ch_state(NewLuaState, Function, Ts1, Ts2, #state{keep=true, samples=Samples} = State) ->
-    State#state{luastate=luerl:gc(NewLuaState),
-                samples=add_ts(Function, Ts1, Ts2, Samples)};
-ch_state(_, Function, Ts1, Ts2, #state{keep=false, samples=Samples} = State) ->
+queue_function_call(Function, Args, From, #state{queue=Queue} = State) ->
+    Item = {From, Function, Args, os:timestamp()},
+    State#state{queue=[Item|Queue]}.
+
+schedule_function_call(#state{queue=Queue, luastates=[LuaStatePid|LuaStatesRest],
+                              working_luastates=WorkingLuaStates} = State)
+  when length(Queue) > 0 ->
+    [{_From, Function, Args, _Ts} = Item|NewQueueRev] = lists:reverse(Queue),
+    Ref = vmq_diversity_script_state:call_function(LuaStatePid, Function, Args),
+    State#state{
+      queue=lists:reverse(NewQueueRev),
+      luastates=LuaStatesRest,
+      working_luastates=[{Ref, LuaStatePid, Item}|WorkingLuaStates]};
+schedule_function_call(State) ->
+    %% All LuaStates currently occupied or no item in the queue
+   State.
+
+ch_state(Function, Ts1, Ts2, #state{samples=Samples} = State) ->
     State#state{samples=add_ts(Function, Ts1, Ts2, Samples)}.
 
-load_script(Script) ->
-    Libs = [
-            {vmq_diversity_mysql,       <<"mysql">>},
-            {vmq_diversity_postgres,    <<"postgres">>},
-            {vmq_diversity_mongo,       <<"mongodb">>},
-            {vmq_diversity_redis,       <<"redis">>},
-            {vmq_diversity_http,        <<"http">>},
-            {vmq_diversity_json,        <<"json">>},
-            {vmq_diversity_bcrypt,      <<"bcrypt">>},
-            {vmq_diversity_ets,         <<"kv">>},
-            {vmq_diversity_lager,       <<"log">>},
-            {vmq_diversity_memcached,   <<"memcached">>},
-            {vmq_diversity_cache,       <<"auth_cache">>}
-           ],
-
-    {ok, ScriptsDir} = application:get_env(vmq_diversity, script_dir),
-    AbsScriptDir = filename:absname(ScriptsDir),
-    Do = "package.path = package.path .. \";" ++ AbsScriptDir ++ "/?.lua\"",
-    {_, InitState} = luerl:do(Do),
-
-    LuaState =
-    lists:foldl(fun({Mod, NS}, LuaStateAcc) ->
-                        luerl:load_module([<<"package">>, <<"loaded">>,
-                                           <<"_G">>, NS], Mod, LuaStateAcc)
-                end, InitState, Libs),
-
-    try luerl:dofile(Script, LuaState) of
-        {_, NewLuaState} ->
-            case luerl:eval("return hooks", NewLuaState) of
-                {ok, [nil]} ->
-                    [];
-                {ok, [Hooks]} ->
-                    register_hooks(Hooks)
-            end,
-            {ok, NewLuaState}
-    catch
-        error:{lua_error, Reason, _} ->
-            {error, Reason};
-        E:R ->
-            {error, {E, R}}
-    end.
-
-register_hooks([{Hook, {function, _}}|Rest]) ->
-    vmq_diversity_plugin:register_hook(Hook),
-    register_hooks(Rest);
-register_hooks([_|Rest]) ->
-    register_hooks(Rest);
-register_hooks([]) -> ok.
 
 add_ts(Function, Ts1, Ts2, Samples) ->
     T = timer:now_diff(Ts2, Ts1),
