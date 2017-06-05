@@ -63,3 +63,6 @@ end
 function on_client_offline(c)
 end
 
+-- set for every DB auth handler
+num_states = 10
+keep_state = false
