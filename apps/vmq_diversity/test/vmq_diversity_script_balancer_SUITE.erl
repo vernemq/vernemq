@@ -67,7 +67,9 @@ load_balancing_test_simple(_) ->
                       maps:put(I, N + 1, Hist)
               end
       end, #{}, lists:seq(1, NumCalls)),
-    true = chi_square_err(NumCalls, Hist) < 1.0.
+    E = chi_square_err(NumCalls, Hist),
+    io:format(user, "ChiSquare Error ~p~n", [E]),
+    true = E < 2.
 
 chi_square_err(NumSamples, Observed) ->
     %% Use ChiSquare to check uniformness of histogram
