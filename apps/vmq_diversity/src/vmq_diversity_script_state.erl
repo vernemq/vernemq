@@ -17,7 +17,7 @@
 -behaviour(gen_server).
 
 %% API functions
--export([start_link/1,
+-export([start_link/2,
          reload/1,
          get_hooks/1,
          get_num_states/1,
@@ -31,7 +31,8 @@
          terminate/2,
          code_change/3]).
 
--record(state, {luastate,
+-record(state, {id,
+                luastate,
                 script,
                 keep,
                 owner}).
@@ -47,8 +48,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Script) ->
-    gen_server:start_link(?MODULE, [Script], []).
+start_link(Id, Script) ->
+    gen_server:start_link(?MODULE, [Id, Script], []).
 
 reload(Pid) ->
     gen_server:call(Pid, reload, infinity).
@@ -79,8 +80,8 @@ call_function(Pid, Function, Args) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Script]) ->
-    case load_script(Script) of
+init([Id, Script]) ->
+    case load_script(Id, Script) of
         {ok, LuaState} ->
             KeepState =
             case lua_keep_state(LuaState) of
@@ -89,8 +90,8 @@ init([Script]) ->
                 KS ->
                     KS
             end,
-            {ok, #state{luastate=LuaState, script=Script,
-                        keep=KeepState}};
+            {ok, #state{id=Id, luastate=LuaState,
+                        script=Script, keep=KeepState}};
         {error, Reason} ->
             lager:error("can't load script ~p due to ~p", [Script, Reason]),
             %% normal stop as we don't want to exhaust the supervisor strategy
@@ -124,8 +125,8 @@ handle_call(get_num_states, _From, #state{luastate=LuaState, keep=Keep} = State)
         N when N > 0 -> N
     end,
     {reply, NumStates, State};
-handle_call(reload, _From, #state{script=Script} = State) ->
-    case load_script(Script) of
+handle_call(reload, _From, #state{id=Id, script=Script} = State) ->
+    case load_script(Id, Script) of
         {ok, LuaState} ->
             lager:info("successfully reloaded script ~p", [Script]),
             {reply, ok, State#state{luastate=LuaState}};
@@ -212,7 +213,7 @@ ch_state(NewLuaState, #state{keep=true} = State) ->
 ch_state(_, #state{keep=false} = State) ->
     State.
 
-load_script(Script) ->
+load_script(Id, Script) ->
     Libs = [
             {vmq_diversity_mysql,       <<"mysql">>},
             {vmq_diversity_postgres,    <<"postgres">>},
@@ -229,14 +230,16 @@ load_script(Script) ->
 
     {ok, ScriptsDir} = application:get_env(vmq_diversity, script_dir),
     AbsScriptDir = filename:absname(ScriptsDir),
-    Do = "package.path = package.path .. \";" ++ AbsScriptDir ++ "/?.lua\"",
-    {_, InitState} = luerl:do(Do),
+    Do1 = "package.path = package.path .. \";" ++ AbsScriptDir ++ "/?.lua\"",
+    {_, InitState1} = luerl:do(Do1),
+    Do2 = "__SCRIPT_INSTANCE_ID__ = " ++ integer_to_list(Id),
+    {_, InitState2} = luerl:do(Do2, InitState1),
 
     LuaState =
     lists:foldl(fun({Mod, NS}, LuaStateAcc) ->
                         luerl:load_module([<<"package">>, <<"loaded">>,
                                            <<"_G">>, NS], Mod, LuaStateAcc)
-                end, InitState, Libs),
+                end, InitState2, Libs),
 
     try luerl:dofile(Script, LuaState) of
         {_, NewLuaState} ->

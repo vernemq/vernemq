@@ -20,7 +20,8 @@
 -export([start_link/1,
          reload_script/1,
          stats/1,
-         start_state/3]).
+         start_state/3,
+         get_state_mgr/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -69,7 +70,17 @@ start_state_mgr(SupPid, Script, StatePids) ->
 start_state(SupPid, Id, Script) ->
     supervisor:start_child(SupPid, ?CHILD({vmq_diversity_script_state, Id},
                                           vmq_diversity_script_state, worker,
-                                          [Script])).
+                                          [Id, Script])).
+
+get_state_mgr(SupPid) ->
+    lists:foldl(fun
+                    ({{vmq_diversity_script, _}, Child, _, _}, undefined)
+                      when is_pid(Child) ->
+                        Child;
+                    (_, Acc) ->
+                        Acc
+                end, undefined, supervisor:which_children(SupPid)).
+
 
 
 %%%===================================================================
@@ -88,10 +99,13 @@ setup_lua_states(ScriptSup, Script) ->
         1 ->
             [FirstLuaStatePid];
         NumLuaStates when NumLuaStates > 1 ->
-            [begin
-                 {ok, LuaStatePid} = start_state(ScriptSup, I, Script),
-                 LuaStatePid
-             end || I <- lists:seq(2, NumLuaStates)]
+            LuaStatePids =
+            lists:foldl(
+              fun(Id, Acc) ->
+                      {ok, LuaStatePid} = start_state(ScriptSup, Id, Script),
+                      [LuaStatePid|Acc]
+              end, [FirstLuaStatePid], lists:seq(2, NumLuaStates)),
+            lists:reverse(LuaStatePids)
     end.
 
 maybe_register_hooks(StateMgrPid, [FirstLuaStatePid|_]) ->
