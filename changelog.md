@@ -5,6 +5,7 @@
 - Safeguard Lua function calls
 - Fix bug where websocket connections were incorrectly terminated (#387).
 - Fix breakage of event hook chain in `vmq_passwd` (#396).
+- Lua script balancing for improved Lua hook performance.
 
 ## VERNEMQ 1.0.1
 
