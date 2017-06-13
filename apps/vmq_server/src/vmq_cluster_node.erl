@@ -204,6 +204,7 @@ connect(#state{node=RemoteNode} = State) ->
                     Msg = [<<"vmq-connect">>, <<L:32, NodeName/binary>>],
                     case send(Transport, Socket, Msg) of
                         ok ->
+                            lager:info("successfully connected to cluster node ~p", [RemoteNode]),
                             State#state{socket=Socket, transport=Transport,
                                         %% !!! remote node is reachable
                                         reachable=true};

@@ -10,6 +10,8 @@
 - Add descriptions to all available metrics via `vmq-admin metrics show
   --with-descriptions`.
 - Add Prometheus HELP lines for every metric.
+- Add a log message (info level) indicating that connectivity to a remote node
+  has been restored.
 
 ## VERNEMQ 1.0.1
 
