@@ -5,11 +5,24 @@
 %% to set global variables and reuse them in a later callback call or 
 %% even in a different callback. Default is 'off' enabling that no Lua
 %% garbage collection is triggered. 
+%% Scripts can override this configuration by setting `keep_state = true`
+%% global variable in Lua script
 {mapping, "vmq_diversity.keep_state", "vmq_diversity.keep_state", [
                                                                    {default, off},
                                                                    {datatype, flag},
                                                                    hidden
                                                                   ]}.
+
+%% @doc Configures the number of parallel Lua states that are used for the
+%% same script. This can be useful for load balancing. Defaults to 1.
+%% Scripts can override this configuration by setting `num_states = 10`
+%% global variable in Lua script.
+{mapping, "vmq_diversity.nr_lua_states", "vmq_diversity.nr_lua_states", [
+                                                                         {default, 1},
+                                                                         {datatype, integer},
+                                                                         hidden
+                                                                        ]}.
+
 %% @doc Configure the vmq_diversity plugin script dir. The script dir
 %% is searched for Lua scripts which are automatically loaded when the
 %% plugin is enabled.

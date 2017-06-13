@@ -1,6 +1,8 @@
 -- every Lua script in this folder get's automatically 
 -- initialized when the vmq_diversity plugin is started.
 
+num_states = 1
+
 print(" __      ____  __  ____         _____ _______      ________ _____   _____ _____ _________     __")
 print(" \\ \\    / /  \\/  |/ __ \\       |  __ \\_   _\\ \\    / /  ____|  __ \\ / ____|_   _|__   __\\ \\   / /")
 print("  \\ \\  / /| \\  / | |  | |______| |  | || |  \\ \\  / /| |__  | |__) | (___   | |    | |   \\ \\_/ / ")

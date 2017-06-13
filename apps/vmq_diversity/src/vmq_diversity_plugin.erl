@@ -44,7 +44,7 @@
 
 %% API functions
 -export([start_link/0,
-         register_hook/1
+         register_hook/2
         ]).
 
 %% gen_server callbacks
@@ -72,8 +72,8 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-register_hook(HookName) ->
-    gen_server:call(?MODULE, {register_hook, self(), HookName}, infinity).
+register_hook(ScriptMgrPid, HookName) ->
+    gen_server:call(?MODULE, {register_hook, ScriptMgrPid, HookName}, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks

@@ -27,6 +27,7 @@
    ]},
   {env,[
       {keep_state, false},
+      {nr_lua_states, 1},
       {script_dir, "priv"},
       {db_config, [
               {postgres, [

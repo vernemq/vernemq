@@ -51,11 +51,11 @@ end
 assert_result(results)
 
 -- same with prepared select statement
-assert(postgres.execute("postgres_test", "PREPARE select_all AS SELECT * FROM postgres_test_lua_tbl"))
-
-results = postgres.execute("postgres_test", "EXECUTE select_all")
-assert(#results == 4, "error in select")
-assert_result(results)
+--assert(postgres.execute("postgres_test", "PREPARE select_all AS SELECT * FROM postgres_test_lua_tbl"))
+--
+--results = postgres.execute("postgres_test", "EXECUTE select_all")
+--assert(#results == 4, "error in select")
+--assert_result(results)
 
 
 -- more complex query

@@ -44,30 +44,30 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 start_script(Script) ->
-    supervisor:start_child(?MODULE, ?CHILD({vmq_diversity_script, Script},
-                                           vmq_diversity_script, worker, [Script])).
+    supervisor:start_child(?MODULE, ?CHILD({vmq_diversity_script_sup_sup, Script},
+                                           vmq_diversity_script_sup_sup, supervisor, [Script])).
 
 reload_script(Script) ->
-    case lists:keyfind({vmq_diversity_script, Script}, 1,
+    case lists:keyfind({vmq_diversity_script_sup_sup, Script}, 1,
                        supervisor:which_children(?MODULE)) of
-        {_, Pid, worker, _} when is_pid(Pid) ->
-            vmq_diversity_script:reload(Pid);
+        {_, Pid, supervisor, _} when is_pid(Pid) ->
+            vmq_diversity_script_sup_sup:reload_script(Pid);
         _ ->
             {error, script_not_found}
     end.
 
 stop_script(Script) ->
-    case supervisor:terminate_child(?MODULE, {vmq_diversity_script, Script}) of
+    case supervisor:terminate_child(?MODULE, {vmq_diversity_script_sup_sup, Script}) of
         ok ->
-            supervisor:delete_child(?MODULE, {vmq_diversity_script, Script});
+            supervisor:delete_child(?MODULE, {vmq_diversity_script_sup_sup, Script});
         E ->
             E
     end.
 
 stats() ->
     lists:foldl(fun
-                    ({{vmq_diversity_script, Script}, Child, _, _}, Acc) when is_pid(Child) ->
-                        [{Script, vmq_diversity_script:stats(Child)}|Acc];
+                    ({{vmq_diversity_script_sup_sup, _}, Child, _, _}, Acc) when is_pid(Child) ->
+                        Acc ++ vmq_diversity_script_sup_sup:stats(Child);
                     (_, Acc) ->
                         Acc
                 end, [], supervisor:which_children(?MODULE)).
