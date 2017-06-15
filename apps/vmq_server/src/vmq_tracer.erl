@@ -501,7 +501,7 @@ format_mqtt_(#mqtt_connect{proto_ver = Ver, username = Username,
                            password = Password, clean_session = CleanSession,
                            keep_alive = KeepAlive, client_id = ClientId, will_retain = WillRetain,
                            will_qos = WillQoS, will_topic = WillTopic, will_msg = WillMsg}, Opts) ->
-    [{"CONNECT(clientid: ~s ver: ~p, user: ~s, pass: ~s, cs: ~p, ka: ~p)~n",
+    [{"CONNECT(c: ~s, v: ~p, u: ~s, p: ~s, cs: ~p, ka: ~p)~n",
       [ClientId, Ver, Username, Password, CleanSession, KeepAlive]},
      format_lwt(WillRetain, WillQoS, WillTopic, WillMsg, Opts)];
 format_mqtt_(#mqtt_connack{session_present = SP, return_code = RC}, _) ->
