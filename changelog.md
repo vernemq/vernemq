@@ -12,6 +12,7 @@
 - Add Prometheus HELP lines for every metric.
 - Add a log message (info level) indicating that connectivity to a remote node
   has been restored.
+- Minor changes to the formatting of the tracer output.
 
 ## VERNEMQ 1.0.1
 
