@@ -23,9 +23,7 @@
 -export([msg_ref/0]).
 
 -define(CLOSE_AFTER, 5000).
--define(HIBERNATE_AFTER, 5000).
 -define(ALLOWED_MQTT_VERSIONS, [3, 4, 131]).
--define(MAX_SAMPLES, 10).
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 -type msg_id() :: undefined | 1..65535.
