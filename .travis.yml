@@ -19,7 +19,6 @@ language: erlang
 install: true
 otp_release:
     - 18.3
-    - 19.2
     - 19.3
 before_script: "epmd -daemon"
 script: "./rebar3 as all_tests do eunit, ct"
