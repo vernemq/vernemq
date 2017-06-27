@@ -92,7 +92,7 @@ init(Peer, Opts) ->
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
     RetryInterval = vmq_config:get_env(retry_interval, 20),
     MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
-    MaxMessageSize = vmq_config:get_env(message_size_limit, 0),
+    MaxMessageSize = vmq_config:get_env(max_message_size, 0),
     MaxMessageRate = vmq_config:get_env(max_message_rate, 0),
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),

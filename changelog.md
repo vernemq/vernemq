@@ -6,6 +6,9 @@
 - Fix tracer `mountpoint` parameter bug.
 - Make it possible to add/inject HTTP API keys.
 - Add Erlang VM memory usage stats to the exposed metrics.
+- Fix bug with `max_message_size` and `message_size_limit` only one of these
+  should exist and `message_size_limit` has now been
+  deprecated. `max_message_size` should be used instead.
 
 ## VERNEMQ 1.1.1
 

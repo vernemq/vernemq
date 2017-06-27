@@ -41,7 +41,7 @@ register_config_() ->
      "queue_deliver_mode",
      "queue_type",
      "max_message_rate",
-     "message_size_limit",
+     "max_message_size",
      "upgrade_outgoing_qos",
      "systree_enabled",
      "systree_interval",

@@ -30,7 +30,7 @@
       {retry_interval, 20},
       {max_inflight_messages, 20},
       {max_message_rate, 0}, % no rate limit
-      {message_size_limit, 0},
+      {max_message_size, 0}, % no max msg size
       {upgrade_outgoing_qos, false},
       {allow_register_during_netsplit, false},
       {allow_publish_during_netsplit, false},

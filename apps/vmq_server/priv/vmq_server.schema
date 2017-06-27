@@ -232,22 +232,28 @@
                                                               hidden
                                                              ]}.
 
-%% @doc specifies the maximum incoming MQTT message size.
-%% defaults to 0, which means no limits apply
+%% @doc This option sets the maximum MQTT size that VerneMQ will
+%% allow.  Messages that exceed this size will not be accepted by
+%% VerneMQ. The default value is 0, which means that all valid MQTT
+%% messages are accepted. MQTT imposes a maximum payload size of
+%% 268435455 bytes.
 {mapping, "max_message_size", "vmq_server.max_message_size", [
                                                               {default, 0},
-                                                              {datatype, integer},
-                                                              hidden
+                                                              {datatype, integer}
                                                              ]}.
 
-%% @doc This option sets the maximum payload size that VerneMQ will allow for publishers. 
-%% Messages that exceed this size will not be accepted by VerneMQ. The 
-%% default value is 0, which means that all valid MQTT messages are accepted. MQTT 
-%% imposes a maximum payload size of 268435455 bytes.
+%% @doc deprecated - use `max_message_size` instead.
 {mapping, "message_size_limit", "vmq_server.message_size_limit", [
-                                                                    {default, 0},
-                                                                    {datatype, integer}
+                                                                  {default, 0},
+                                                                  {datatype, integer},
+                                                                  hidden
                                                                  ]}.
+{translation, "vmq_server.message_size_limit",
+ fun(Conf) ->
+         S = cuttlefish:conf_get("message_size_limit", Conf),
+         cuttlefish:warn("message_size_limit is deprecated and has no effect, use max_message_size instead"),
+         S
+ end}.
 
 %% @doc If a message is published with a QoS lower than the QoS of the subscription it is
 %% delivered to, VerneMQ can upgrade the outgoing QoS. This is a non-standard option.
