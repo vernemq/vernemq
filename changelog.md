@@ -1,5 +1,10 @@
 # Changelog
 
+## Not yet released
+
+- Update `plumtree` with a fix to make the plumtree mailbox traversal
+  measurement more accurate and therefore less spammy.
+
 ## VERNEMQ 1.1.0
 
 - Add more detail to the client expiration log message.
