@@ -545,7 +545,7 @@ check_app_plugin(App, Options) ->
             lager:debug("can't create paths ~p for app ~p", [AppPaths, App]),
             {error, plugin_not_found};
         Paths ->
-            code:add_paths(Paths),
+            code:add_pathsa(Paths),
             load_application(App, Options)
     end.
 

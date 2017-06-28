@@ -2,6 +2,7 @@
 
 ## Not yet released
 
+- Fix code path bug related to upgrading plugins.
 - Update `plumtree` with a fix to make the plumtree mailbox traversal
   measurement more accurate and therefore less spammy.
 
