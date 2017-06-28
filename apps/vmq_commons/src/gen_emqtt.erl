@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 -module(gen_emqtt).
--behavior(gen_fsm).
+-behavior(gen_statem).
 -include("vmq_types.hrl").
 
 %startup
@@ -31,7 +31,7 @@
     cast/2]).
 
 
-%% gen_fsm callbacks
+%% gen_statem callbacks
 -export([init/1,
     handle_info/3,
     handle_event/3,
@@ -75,46 +75,46 @@
     info_fun}).
 
 start_link(Module, Args, Opts) ->
-    GenFSMOpts = proplists:get_value(gen_fsm, Opts, []),
-    gen_fsm:start_link(?MODULE, [Module, Args, Opts], GenFSMOpts).
+    GenFSMOpts = proplists:get_value(gen_statem, Opts, []),
+    gen_statem:start_link(?MODULE, [Module, Args, Opts], GenFSMOpts).
 
 start_link(Name, Module, Args, Opts) ->
-    GenFSMOpts = proplists:get_value(gen_fsm, Opts, []),
-    gen_fsm:start_link(Name, ?MODULE, [Module, Args, Opts], GenFSMOpts).
+    GenFSMOpts = proplists:get_value(gen_statem, Opts, []),
+    gen_statem:start_link(Name, ?MODULE, [Module, Args, Opts], GenFSMOpts).
 
 start(Module, Args, Opts) ->
-    GenFSMOpts = proplists:get_value(gen_fsm, Opts, []),
-    gen_fsm:start(?MODULE, [Module, Args, Opts], GenFSMOpts).
+    GenFSMOpts = proplists:get_value(gen_statem, Opts, []),
+    gen_statem:start(?MODULE, [Module, Args, Opts], GenFSMOpts).
 
 start(Name, Module, Args, Opts) ->
-    GenFSMOpts = proplists:get_value(gen_fsm, Opts, []),
-    gen_fsm:start(Name, ?MODULE, [Module, Args, Opts], GenFSMOpts).
+    GenFSMOpts = proplists:get_value(gen_statem, Opts, []),
+    gen_statem:start(Name, ?MODULE, [Module, Args, Opts], GenFSMOpts).
 
 publish(P, Topic, Payload, Qos) ->
     publish(P, Topic, Payload, Qos, false).
 
 publish(P, Topic, Payload, Qos, Retain) ->
-    gen_fsm:send_event(P, {publish, Topic, Payload, Qos, Retain, false}).
+    gen_statem:send_event(P, {publish, Topic, Payload, Qos, Retain, false}).
 
 subscribe(P, [T|_] = Topics) when is_tuple(T) ->
-    gen_fsm:send_event(P, {subscribe, Topics}).
+    gen_statem:send_event(P, {subscribe, Topics}).
 
 subscribe(P, Topic, QoS) ->
     subscribe(P, [{Topic, QoS}]).
 
 unsubscribe(P, [T|_] = Topics) when is_list(T) ->
-    gen_fsm:send_event(P, {unsubscribe, Topics});
+    gen_statem:send_event(P, {unsubscribe, Topics});
 unsubscribe(P, Topic) ->
     unsubscribe(P, [Topic]).
 
 disconnect(P) ->
-    gen_fsm:send_event(P, disconnect).
+    gen_statem:send_event(P, disconnect).
 
 call(P, Req) ->
-    gen_fsm:sync_send_all_state_event(P, Req).
+    gen_statem:sync_send_all_state_event(P, Req).
 
 cast(P, Req) ->
-    gen_fsm:send_all_state_event(P, Req).
+    gen_statem:send_all_state_event(P, Req).
 
 wrap_res(StateName, init, Args, #state{mod=Mod} = State) ->
     case erlang:apply(Mod, init, Args) of
@@ -181,7 +181,7 @@ connecting(connect, State) ->
             {next_state, waiting_for_connack, NewState};
         {error, _Reason} ->
             error_logger:error_msg("connection to ~p:~p failed due to ~p", [Host, Port, _Reason]),
-            gen_fsm:send_event_after(3000, connect),
+            gen_statem:send_event_after(3000, connect),
             wrap_res(connecting, on_connect_error, [server_not_found], State)
     end;
 connecting(disconnect, State) ->
@@ -208,7 +208,7 @@ connected({subscribe, Topics}, State=#state{transport={Transport,_}, msgid=MsgId
     NewInfoFun = call_info_fun({subscribe_out, MsgId}, InfoFun),
     send_frame(Transport, Sock, Frame),
     Key = {subscribe, MsgId},
-    Ref = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
+    Ref = gen_statem:send_event_after(RetryInterval, {retry, Key}),
     {next_state, connected, State#state{msgid='++'(MsgId), waiting_acks=store(Key, {Ref, {subscribe, Topics}}, WAcks),
         info_fun=NewInfoFun}};
 
@@ -223,7 +223,7 @@ connected({unsubscribe, Topics}, State=#state{transport={Transport, _}, sock=Soc
     NewInfoFun = call_info_fun({unsubscribe_out, MsgId}, InfoFun),
     send_frame(Transport, Sock, Frame),
     Key = {unsubscribe, MsgId},
-    Ref = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
+    Ref = gen_statem:send_event_after(RetryInterval, {retry, Key}),
     {next_state, connected, State#state{msgid='++'(MsgId), waiting_acks=store(Key, {Ref, {unsubscribe, Topics}},
         WAcks), info_fun=NewInfoFun}};
 
@@ -241,16 +241,16 @@ connected({retry, Key}, #state{transport={Transport,_}, sock=Sock, waiting_acks=
             {next_state, connected, State};
         {ok, {_Ref, #mqtt_publish{} = Frame}} ->
             send_frame(Transport, Sock, Frame#mqtt_publish{dup = true}),
-            NewRef = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
+            NewRef = gen_statem:send_event_after(RetryInterval, {retry, Key}),
             NewDict = erase(Key, WAcks),
             {next_state, connected, State#state{waiting_acks=store(Key, {NewRef, Frame}, NewDict)}};
         {ok, {_Ref, #mqtt_pubrel{} = Frame}} ->
             send_frame(Transport, Sock, Frame),
-            NewRef = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
+            NewRef = gen_statem:send_event_after(RetryInterval, {retry, Key}),
             NewDict = erase(Key, WAcks),
             {next_state, connected, State#state{waiting_acks=store(Key, {NewRef, Frame}, NewDict)}};
         {ok, {_Ref, Msg}} ->
-            gen_fsm:send_event(self(), Msg),
+            gen_statem:send_event(self(), Msg),
             {next_state, connected, State#state{waiting_acks=erase(Key, WAcks)}}
     end;
 
@@ -260,7 +260,7 @@ connected({ack, _MsgId}, State) ->
 connected(ping, #state{transport={Transport, _}, sock=Sock,
     waiting_acks=WAcks, keepalive_interval=Int} = State) ->
     send_ping(Transport, Sock),
-    Ref = gen_fsm:send_event_after(Int, ping),
+    Ref = gen_statem:send_event_after(Int, ping),
     {next_state, connected,
         State#state{waiting_acks=store(ping, Ref, WAcks)}};
 
@@ -274,7 +274,7 @@ connected(maybe_reconnect, #state{client=ClientId, reconnect_timeout=Timeout, tr
             {stop, normal, State};
         _ ->
             Transport:close(State#state.sock),
-            gen_fsm:send_event_after(Timeout, connect),
+            gen_statem:send_event_after(Timeout, connect),
             NewInfoFun = call_info_fun({reconnect, ClientId}, InfoFun),
             wrap_res(connecting, on_disconnect, [], State#state{sock=undefined, info_fun=NewInfoFun})
     end;
@@ -283,7 +283,7 @@ connected(_Event, State) ->
     {stop, unknown_event, State}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% gen_fsm callbacks
+%% gen_statem callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init([Mod, Args, Opts]) ->
     Host = proplists:get_value(host, Opts, "localhost"),
@@ -311,7 +311,7 @@ init([Mod, Args, Opts]) ->
         retry_interval=1000* RetryInterval, transport={Transport, TransportOpts},
         info_fun=InfoFun},
     Res = wrap_res(connecting, init, [Args], State),
-    gen_fsm:send_event_after(0, connect),
+    gen_statem:send_event_after(0, connect),
     Res.
 
 
@@ -328,12 +328,12 @@ handle_info({tcp, Socket, Bin}, StateName, #state{sock=Socket} = State) ->
 handle_info({ssl_closed, Sock}, _, State=#state{sock=Sock, reconnect_timeout=undefined}) ->
     {stop, normal, State};
 handle_info({ssl_closed, Sock}, _, State=#state{sock=Sock, reconnect_timeout=Timeout}) ->
-    gen_fsm:send_event_after(Timeout, connect),
+    gen_statem:send_event_after(Timeout, connect),
     wrap_res(connecting, on_disconnect, [], State#state{sock=undefined});
 handle_info({tcp_closed, Sock}, _, State=#state{sock=Sock, reconnect_timeout=undefined}) ->
     {stop, normal, State};
 handle_info({tcp_closed, Sock}, _, State=#state{sock=Sock, reconnect_timeout=Timeout}) ->
-    gen_fsm:send_event_after(Timeout, connect),
+    gen_statem:send_event_after(Timeout, connect),
     wrap_res(connecting, on_disconnect, [], State#state{sock=undefined});
 
 handle_info(Info, StateName, State) ->
@@ -360,22 +360,22 @@ handle_frame(waiting_for_connack, #mqtt_connack{return_code=ReturnCode}, State) 
             wrap_res(connected, on_connect, [], State#state{info_fun=NewInfoFun});
         ?CONNACK_ACCEPT ->
             NewInfoFun = call_info_fun({connack_in, ClientId}, InfoFun),
-            Ref = gen_fsm:send_event_after(Int, ping),
+            Ref = gen_statem:send_event_after(Int, ping),
             wrap_res(connected, on_connect, [], State#state{waiting_acks=store(ping, Ref, WAcks), info_fun=NewInfoFun});
         ?CONNACK_PROTO_VER ->
-            gen_fsm:send_event_after(0, {error, {connect_error, ?CONNACK_PROTO_VER}}),
+            gen_statem:send_event_after(0, {error, {connect_error, ?CONNACK_PROTO_VER}}),
             wrap_res(disconnecting, on_connect_error, [wrong_protocol_version], State);
         ?CONNACK_INVALID_ID ->
-            gen_fsm:send_event_after(0, {error, {connect_error, ?CONNACK_INVALID_ID}}),
+            gen_statem:send_event_after(0, {error, {connect_error, ?CONNACK_INVALID_ID}}),
             wrap_res(disconnecting, on_connect_error, [invalid_id], State);
         ?CONNACK_SERVER ->
-            gen_fsm:send_event_after(0, {error, {connect_error, ?CONNACK_SERVER}}),
+            gen_statem:send_event_after(0, {error, {connect_error, ?CONNACK_SERVER}}),
             wrap_res(disconnecting, on_connect_error, [server_not_available], State);
         ?CONNACK_CREDENTIALS ->
-            gen_fsm:send_event_after(0, {error, {connect_error, ?CONNACK_CREDENTIALS}}),
+            gen_statem:send_event_after(0, {error, {connect_error, ?CONNACK_CREDENTIALS}}),
             wrap_res(disconnecting, on_connect_error, [invalid_credentials], State);
         ?CONNACK_AUTH ->
-            gen_fsm:send_event_after(0, {error, {connect_error, ?CONNACK_AUTH}}),
+            gen_statem:send_event_after(0, {error, {connect_error, ?CONNACK_AUTH}}),
             wrap_res(disconnecting, on_connect_error, [not_authorized], State)
     end;
 
@@ -384,7 +384,7 @@ handle_frame(connected, #mqtt_suback{message_id=MsgId, qos_table=QoSTable}, Stat
     Key = {subscribe, MsgId},
     case dict:find(Key, WAcks) of
         {ok, {Ref, {subscribe, Topics}}} ->
-            gen_fsm:cancel_timer(Ref),
+            gen_statem:cancel_timer(Ref),
             NewInfoFun = call_info_fun({suback, MsgId}, InfoFun),
             {TopicNames, _} = lists:unzip(Topics),
             case length(TopicNames) == length(QoSTable) of
@@ -407,7 +407,7 @@ handle_frame(connected, #mqtt_unsuback{message_id=MsgId}, State) ->
     case dict:find(Key, WAcks) of
         {ok, {Ref, {unsubscribe, Topics}}} ->
             NewInfoFun = call_info_fun({unsuback, MsgId}, InfoFun),
-            gen_fsm:cancel_timer(Ref),
+            gen_statem:cancel_timer(Ref),
             wrap_res(connected, on_unsubscribe, [Topics],
                 State#state{waiting_acks=erase(Key, WAcks),
                     info_fun=NewInfoFun});
@@ -422,7 +422,7 @@ handle_frame(connected, #mqtt_puback{message_id=MessageId}, State) ->
     case dict:find(Key, WAcks) of
         {ok, {Ref, _}} ->
             NewInfoFun = call_info_fun({puback_in, MessageId}, InfoFun),
-            gen_fsm:cancel_timer(Ref),
+            gen_statem:cancel_timer(Ref),
             {next_state, connected, State#state{waiting_acks=erase(Key, WAcks),
                 info_fun=NewInfoFun}};
         error ->
@@ -438,13 +438,13 @@ handle_frame(connected, #mqtt_pubrec{message_id=MessageId}, State) ->
     case dict:find(Key, WAcks) of
         {ok, {Ref, _}} ->
             NewInfoFun0 = call_info_fun({pubrec_in, MessageId}, InfoFun),
-            gen_fsm:cancel_timer(Ref), % cancel republish timer
+            gen_statem:cancel_timer(Ref), % cancel republish timer
             PubRelFrame = #mqtt_pubrel{message_id=MessageId},
             NewInfoFun1 = call_info_fun({pubrel_out, MessageId}, NewInfoFun0),
             send_frame(Transport, Socket, PubRelFrame),
             NewWAcks = erase(Key, WAcks),
             NewKey = {pubrel, MessageId},
-            NewRef = gen_fsm:send_event_after(RetryInterval, {retry, NewKey}),
+            NewRef = gen_statem:send_event_after(RetryInterval, {retry, NewKey}),
             {next_state, connected, State#state{
                 waiting_acks=store(NewKey, {NewRef, PubRelFrame}, NewWAcks),
                 info_fun=NewInfoFun1}};
@@ -476,7 +476,7 @@ handle_frame(connected, #mqtt_pubcomp{message_id=MessageId}, State) ->
     case dict:find(Key, WAcks) of
         {ok, {Ref, _}} ->
             NewInfoFun = call_info_fun({pubcomp_in, MessageId}, InfoFun),
-            gen_fsm:cancel_timer(Ref), % cancel republish timer
+            gen_statem:cancel_timer(Ref), % cancel republish timer
             {next_state, connected, State#state{waiting_acks=erase(Key, WAcks),
                 info_fun=NewInfoFun}};
         error ->
@@ -508,7 +508,7 @@ handle_frame(connected, #mqtt_pingresp{}, State) ->
     {next_state, connected, State};
 
 handle_frame(connected, #mqtt_disconnect{}, State) ->
-    gen_fsm:send_event_after(5000, connect),
+    gen_statem:send_event_after(5000, connect),
     wrap_res(connecting, on_disconnect, [], State).
 
 handle_event(Event, StateName, State) ->
@@ -572,7 +572,7 @@ send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, State) ->
         _ ->
             Msg = {publish, MsgId, Topic, Payload, QoS, Retain, true},
             Key = {publish, MsgId},
-            Ref = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
+            Ref = gen_statem:send_event_after(RetryInterval, {retry, Key}),
             State#state{waiting_acks=store(Key, {Ref, Msg}, WAcks),
                 info_fun=NewInfoFun}
     end.
@@ -588,7 +588,7 @@ send_frame(Transport, Sock, Frame) ->
         ok ->
             ok;
         {error, _} ->
-            gen_fsm:send_event(self(), maybe_reconnect)
+            gen_statem:send_event(self(), maybe_reconnect)
     end.
 
 
