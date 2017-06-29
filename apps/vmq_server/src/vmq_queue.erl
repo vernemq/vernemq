@@ -43,6 +43,7 @@
 
 %% gen_server callbacks
 -export([init/1,
+         callback_mode/0,
          handle_sync_event/4,
          handle_event/3,
          handle_info/3,
@@ -83,6 +84,8 @@
 %%% API functions
 %%%===================================================================
 
+callback_mode() ->
+  state_functions.
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
