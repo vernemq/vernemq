@@ -33,6 +33,7 @@
 
 %% gen_statem callbacks
 -export([init/1,
+    callback_mode/0,
     handle_info/3,
     handle_event/3,
     handle_sync_event/4,
@@ -73,6 +74,9 @@
     parser = <<>>,
     waiting_acks = dict:new(),
     info_fun}).
+
+callback_mode() ->
+    state_functions.
 
 start_link(Module, Args, Opts) ->
     GenFSMOpts = proplists:get_value(gen_statem, Opts, []),
