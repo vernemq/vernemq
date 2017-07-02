@@ -3,7 +3,7 @@ dist: trusty
 language: erlang
 install: true
 otp_release:
-    - 19.0
+    - 19.3
     - 20.0
 before_script: "epmd -daemon"
 script: "./rebar3 ct"
