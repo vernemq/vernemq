@@ -16,6 +16,19 @@
 -behavior(gen_fsm).
 -include("vmq_types.hrl").
 
+-ifdef(otp20).
+-compile([{nowarn_deprecated_function,
+          [{gen_fsm,start,3},
+           {gen_fsm,start,4},
+           {gen_fsm,start_link,3},
+           {gen_fsm,start_link,4},
+           {gen_fsm,send_event,2},
+           {gen_fsm,send_all_state_event,2},
+           {gen_fsm,sync_send_all_state_event,2},
+           {gen_fsm,send_event_after,2},
+           {gen_fsm,cancel_timer,1}]}]).
+-endif.
+
 %startup
 -export([start_link/3,
     start_link/4,

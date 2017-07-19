@@ -1,9 +1,6 @@
 vmq_plugin
 ==========
 
-.. image:: https://travis-ci.org/erlio/vmq_plugin.svg
-    :target: https://travis-ci.org/erlio/vmq_plugin
-
 vmq_plugin is a simple plugin framework for Erlang OTP projects.
 
 A plugin takes the form of an Erlang OTP application or just a plain MFA.

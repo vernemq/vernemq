@@ -76,9 +76,9 @@ parse_unparse_tests(_Config) ->
     compare_frame("connackSessionPresentTrue", vmq_parser:gen_connack(1, 0)),
     compare_frame("connackSessionPresentFalse", vmq_parser:gen_connack(0, 0)),
     compare_frame("publish1", vmq_parser:gen_publish("test-topic", 0, <<"test-payload">>, [{dup, true}, {retain, true}])),
-    compare_frame("publish2", vmq_parser:gen_publish("test-topic", 2, crypto:rand_bytes(1000), [{dup, true}, {retain, true}])),
-    compare_frame("publish3", vmq_parser:gen_publish("test-topic", 2, crypto:rand_bytes(100000), [{dup, true}, {retain, true}])),
-    compare_frame("publish4", vmq_parser:gen_publish("test-topic", 2, crypto:rand_bytes(2097153), [{dup, true}, {retain, true}])),
+    compare_frame("publish2", vmq_parser:gen_publish("test-topic", 2, crypto:strong_rand_bytes(1000), [{dup, true}, {retain, true}])),
+    compare_frame("publish3", vmq_parser:gen_publish("test-topic", 2, crypto:strong_rand_bytes(100000), [{dup, true}, {retain, true}])),
+    compare_frame("publish4", vmq_parser:gen_publish("test-topic", 2, crypto:strong_rand_bytes(2097153), [{dup, true}, {retain, true}])),
 
     compare_frame("puback", vmq_parser:gen_puback(123)),
     compare_frame("pubrec", vmq_parser:gen_pubrec(123)),

@@ -1,5 +1,11 @@
 -module(vmq_queue_SUITE).
 -include("src/vmq_server.hrl").
+
+-ifdef(otp20).
+-compile([{nowarn_deprecated_function,
+          [{gen_fsm,sync_send_all_state_event,2}]}]).
+-endif.
+
 -export([
          %% suite/0,
          init_per_suite/1,

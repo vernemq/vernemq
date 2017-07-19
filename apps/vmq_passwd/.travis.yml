@@ -1,7 +1,0 @@
-language: erlang
-otp_release:
-    - 17.5
-    - 18.3
-    - 19.0
-
-script: ./rebar3 compile
