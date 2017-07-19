@@ -17,6 +17,18 @@
 
 -behaviour(gen_fsm).
 
+-ifdef(otp20).
+-compile([{nowarn_deprecated_function,
+          [{gen_fsm,start_link,3},
+           {gen_fsm,reply,2},
+           {gen_fsm,send_event,2},
+           {gen_fsm,sync_send_event,3},
+           {gen_fsm,send_all_state_event,2},
+           {gen_fsm,sync_send_all_state_event,3},
+           {gen_fsm,send_event_after,2},
+           {gen_fsm,cancel_timer,1}]}]).
+-endif.
+
 %% API functions
 -export([start_link/2,
          active/1,
