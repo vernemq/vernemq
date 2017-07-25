@@ -12,3 +12,5 @@ distdir
 package
 .ropeproject
 *~
+.idea/
+*.iml

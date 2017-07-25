@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_utils).
--compile(export_all).
+-compile([nowarn_export_all, export_all]).
 
 convert(Val) when is_list(Val) ->
     convert_list(Val, []);
