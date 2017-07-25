@@ -46,7 +46,7 @@ trace_client_cmd() ->
                 MP = proplists:get_value(mountpoint, Flags, ""),
                 case proplists:get_value('client-id', Keys) of
                     undefined ->
-                        Text = clique_status:text("You have to provide a client-id (example client-id=myclientid)"),
+                        Text = clique_status:text(trace_client_usage()),
                         [clique_status:alert([Text])];
                     CId ->
                         %% the group leader comes from the calling node

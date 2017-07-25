@@ -2,6 +2,7 @@
 
 ## Not yet released
 
+- Improve tracer usage text.
 - Fix `vmq_diversity` memcached issue (#460).
 - Fix RPM package issue preventing a clean upgrade.
 - Fix code path bug related to upgrading plugins.
