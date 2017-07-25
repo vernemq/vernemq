@@ -112,7 +112,7 @@ trace_client_usage() ->
      "  --rate-interval=<RateIntervalMS>\n",
      "      the interval in milliseconds over which the max number of messages\n",
      "      is allowed. Defaults to 100.\n",
-     "  --trunc-payload=<SizeInByts>\n",
+     "  --trunc-payload=<SizeInBytes>\n",
      "      control when the payload should be truncated for display.\n",
      "      Defaults to 200.\n"
     ].
