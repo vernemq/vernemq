@@ -2,6 +2,7 @@
 
 ## Not yet released
 
+- Fix `vmq_diversity` memcached issue (#460).
 - Fix RPM package issue preventing a clean upgrade.
 - Fix code path bug related to upgrading plugins.
 - Update `plumtree` with a fix to make the plumtree mailbox traversal
