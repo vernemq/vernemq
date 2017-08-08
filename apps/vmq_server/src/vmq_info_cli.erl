@@ -29,10 +29,12 @@ vmq_session_list_cmd() ->
 
     DefaultFields =
         ["peer_port", "peer_host", "user", "mountpoint", "client_id", "is_online"],
-    FlagSpecs = [{I, [{longname, atom_to_list(I)}]} || I <- [limit|ValidInfoItems]],
+    FlagSpecs = [{I, [{longname, atom_to_list(I)}]} || I <- [limit,rowtimeout|ValidInfoItems]],
     Callback = fun(_, [], Flags) ->
                        Limit = proplists:get_value(limit, Flags, "100"),
+                       RowTimeout = proplists:get_value(rowtimeout, Flags, "100"),
                        _ = list_to_integer(Limit),
+                       _ = list_to_integer(RowTimeout),
                        {Fields, Where} =
                        case Flags of
                            [] ->
@@ -40,6 +42,8 @@ vmq_session_list_cmd() ->
                            _ ->
                                lists:foldl(
                                  fun({limit, _}, Acc) ->
+                                         Acc;
+                                    ({rowtimeout, _}, Acc) ->
                                          Acc;
                                     ({Flag, undefined}, {AccFields, AccWhere}) ->
                                          {[atom_to_list(Flag)|AccFields], AccWhere};
@@ -62,7 +66,7 @@ vmq_session_list_cmd() ->
                                "WHERE " ++ lists:flatten(
                                   string:join([[W, "=", V] || {W,V} <- Where], " AND "))
                        end,
-                       QueryString = "SELECT " ++ FFields ++ " FROM sessions " ++ WWhere ++ " LIMIT " ++Limit,
+                       QueryString = "SELECT " ++ FFields ++ " FROM sessions " ++ WWhere ++ " LIMIT " ++ Limit ++ " ROWTIMEOUT " ++ RowTimeout,
                        Table =
                        vmq_ql_query_mgr:fold_query(
                          fun(Row, Acc) ->
@@ -101,6 +105,9 @@ vmq_session_show_usage() ->
      "Options\n\n"
      "  --limit=<NumberOfResults>\n"
      "      Limit the number of results returned from each node in the cluster.\n"
-     "      Defaults is 100.\n"
+     "      Defaults is 100.\n\n"
+     "  --rowtimeout=<NumberOfMilliseconds>\n"
+     "      Limits the time spent when fetching a single row.\n"
+     "      Default is 100 milliseconds.\n"
      | Options
     ].

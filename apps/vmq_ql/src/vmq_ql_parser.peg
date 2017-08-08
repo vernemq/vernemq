@@ -1,15 +1,16 @@
 start <- stmt ~;
 stmt <- select_stmt ~;
 
-select_stmt <- _ select_token _ x:select_field xs:select_field_rest* _ from_token _ from:identifier _ where:where_expr? _ orderby:orderby_expr? _ limit:limit_expr?
- (_ limit_token _ limit:pos_integer)?
+select_stmt <- _ select_token _ x:select_field xs:select_field_rest* _ from_token _ from:identifier _ where:where_expr? _ orderby:orderby_expr? _ limit:limit_expr? _ rowtimeout:rowtimeout_expr?
+
 `
 [{type, "SELECT"}, 
  {fields, [proplists:get_value(x, Node)] ++ proplists:get_value(xs, Node, [])},
  {from, proplists:get_value(from, Node)},
  {where, proplists:get_value(where, Node)},
  {orderby, proplists:get_value(orderby, Node)},
- {limit, proplists:get_value(limit, Node)}]
+ {limit, proplists:get_value(limit, Node)},
+ {rowtimeout, proplists:get_value(rowtimeout, Node)}]
 `;
 select_field <- identifier / select_wildcard ~;
 select_field_rest <- _ separator_token _ s:select_field
@@ -24,6 +25,11 @@ orderby_expr <- orderby_token _ x:orderby_field
 orderby_field <- identifier ~;
 
 limit_expr <- limit_token _ x:pos_integer _
+`
+list_to_integer(binary_to_list(iolist_to_binary(proplists:get_value(x, Node))))
+`;
+
+rowtimeout_expr <- rowtimeout_token _ x:pos_integer _
 `
 list_to_integer(binary_to_list(iolist_to_binary(proplists:get_value(x, Node))))
 `;
@@ -104,6 +110,7 @@ or_token <- 'OR' !ident_rest ~;
 and_token <- 'AND' !ident_rest ~;
 orderby_token <- 'ORDER BY' !ident_rest ~;
 limit_token <- 'LIMIT' !ident_rest ~;
+rowtimeout_token <- 'ROWTIMEOUT' !ident_rest ~;
 
 identifier <- x:ident_start xs:ident_rest*
 `
