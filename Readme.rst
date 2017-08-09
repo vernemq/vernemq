@@ -68,7 +68,8 @@ started, you need to first build VerneMQ.
 Building VerneMQ
 ~~~~~~~~~~~~~~~~
 
-Note: VerneMQ requires Erlang 18.x or 19.x to be installed on your system. 
+Note: VerneMQ is compatible with Erlang/OTP 18, 19 and 20 and one of
+these versions is requred to be installed on your system.
 
 Assuming you have a working Erlang installation, building VerneMQ should be as
 simple as:
