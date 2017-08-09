@@ -2,6 +2,9 @@
 
 ## Not yet released
 
+- Make `vmq-admin session show` more robust when sessions are overloaded by
+  limiting the time allowed to query each session. The default query timeout is
+  100ms, but can be overriden using `--rowtimeout=<TimeoutInMilliseconds>`.
 - Add support for Erlang/OTP20.
 - Improve tracer usage text.
 - Fix `vmq_diversity` memcached issue (#460).

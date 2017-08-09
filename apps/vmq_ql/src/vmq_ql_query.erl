@@ -36,6 +36,7 @@
 -callback fold_init_rows(atom(), function(), any()) -> any().
 
 -record(state, {mgr, query, next, result_table}).
+-define(ROWQUERYTIMEOUT, 100).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -148,9 +149,14 @@ eval("SELECT", Query) ->
     Where = proplists:get_value(where, Query),
     OrderBy = proplists:get_value(orderby, Query),
     Limit = proplists:get_value(limit, Query),
-    select(Fields, From, Where, OrderBy, Limit).
+    RowQueryTimeout =
+        case proplists:get_value(rowtimeout, Query) of
+            [] -> ?ROWQUERYTIMEOUT;
+            Val -> Val
+        end,
+    select(Fields, From, Where, OrderBy, Limit, RowQueryTimeout).
 
-select(Fields, From, Where, OrderBy, Limit) ->
+select(Fields, From, Where, OrderBy, Limit, RowQueryTimeout) ->
     Module = module(From),
     FieldsConfig = Module:fields_config(),
     RequiredFields = lists:usort((required_fields(Where)
@@ -162,20 +168,35 @@ select(Fields, From, Where, OrderBy, Limit) ->
     try
         Module:fold_init_rows(From,
           fun(InitRow, Idx) ->
-                  PreparedRows = initialize_row(RowInitializer, InitRow),
-                  lists:foldl(
-                    fun(Row, AccIdx) ->
-                            put({?MODULE, row_data}, Row),
-                            case eval_query(Where) of
-                                true ->
-                                    raise_enough_data(AccIdx, OrderBy, Limit, enough_data),
-                                    Key = order_by_key(AccIdx, OrderBy, Row),
-                                    ets:insert(Results,
-                                               {Key, filter_row(Fields, EmptyResultRow, Row)}),
-                                    AccIdx + 1;
-                                false -> AccIdx
-                            end
-                    end, Idx, PreparedRows)
+                  CallerRef = make_ref(),
+                  Self = self(),
+                  Pid = spawn_link(fun() -> spawn_initialize_row(CallerRef, Self, RowInitializer, InitRow) end),
+                  receive
+                      {CallerRef, {ok, PreparedRows}} ->
+                          lists:foldl(
+                            fun(Row, AccIdx) ->
+                                    put({?MODULE, row_data}, Row),
+                                    case eval_query(Where) of
+                                        true ->
+                                            raise_enough_data(AccIdx, OrderBy, Limit, enough_data),
+                                            Key = order_by_key(AccIdx, OrderBy, Row),
+                                            ets:insert(Results,
+                                                       {Key, filter_row(Fields, EmptyResultRow, Row)}),
+                                            AccIdx + 1;
+                                        false -> AccIdx
+                                    end
+                            end, Idx, PreparedRows);
+                      {CallerRef, {error, _}} ->
+                          Idx
+                  after
+                      RowQueryTimeout ->
+                          unlink(Pid),
+                          exit(Pid, kill),
+                          %% TODO: This warning needs more detailed
+                          %% information to be really useful.
+                          lager:warning("Subquery failed due to timeout"),
+                          Idx
+                  end
           end, 1)
     catch
         exit:enough_data ->
@@ -183,7 +204,7 @@ select(Fields, From, Where, OrderBy, Limit) ->
             ok;
         E1:R1 ->
             ets:delete(Results),
-            lager:error("Select query terminated due to ~p ~p, stacktrace: ~p", [E1, R1]),
+            lager:error("Select query terminated due to ~p ~p, stacktrace: ~p", [E1, R1, erlang:get_stacktrace()]),
             exit({E1, R1})
     end,
     case is_integer(Limit) of
@@ -255,6 +276,16 @@ include_fields(FieldConfig, [all|Rest], Acc) ->
 include_fields(FieldConfig, [F|Rest], Acc) ->
     include_fields(FieldConfig, Rest, [F|Acc]);
 include_fields(_, [], Acc) -> Acc.
+
+spawn_initialize_row(CallerRef, CallerPid, RowInitializer, InitRow) ->
+    try
+        CallerPid ! {CallerRef, {ok, initialize_row(RowInitializer, InitRow)}}
+    catch
+        C:E ->
+            lager:warning("Subquery failed. ~nStacktrace:~s",
+                          [lager:pr_stacktrace(erlang:get_stacktrace(), {C,E})]),
+            CallerPid ! {CallerRef, {error, E}}
+    end.
 
 initialize_row([InitFun], Row) ->
     InitFun(Row);
