@@ -8,7 +8,6 @@ assert(mongodb.ensure_pool(config))
 
 assert(mongodb.delete("mongodb_test", "users", {}))
 
-
 doc1 = {_id = 'test-id',
        first_name = 'Jules',
        last_name = 'Verne',

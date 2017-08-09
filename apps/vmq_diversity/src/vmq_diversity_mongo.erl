@@ -21,27 +21,27 @@
 
 insert(PoolName, Collection, DocOrDocs) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          vmq_diversity_worker_wrapper:apply(Worker, mongo, insert, [Collection, DocOrDocs])
+                                          vmq_diversity_worker_wrapper:apply(Worker, mc_worker_api, insert, [Collection, DocOrDocs])
                                   end).
 
 update(PoolName, Collection, Selector, Command) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          vmq_diversity_worker_wrapper:apply(Worker, mongo, update, [Collection, Selector, Command])
+                                          vmq_diversity_worker_wrapper:apply(Worker, mc_worker_api, update, [Collection, Selector, Command])
                                   end).
 
 delete(PoolName, Collection, Selector) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          vmq_diversity_worker_wrapper:apply(Worker, mongo, delete, [Collection, Selector])
+                                          vmq_diversity_worker_wrapper:apply(Worker, mc_worker_api, delete, [Collection, Selector])
                                   end).
 
 find(PoolName, Collection, Selector, Args) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          vmq_diversity_worker_wrapper:apply(Worker, mongo, find, [Collection, Selector, Args])
+                                          vmq_diversity_worker_wrapper:apply(Worker, mc_worker_api, find, [Collection, Selector, Args])
                                   end).
 
 find_one(PoolName, Collection, Selector, Args) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          vmq_diversity_worker_wrapper:apply(Worker, mongo, find_one, [Collection, Selector, Args])
+                                          vmq_diversity_worker_wrapper:apply(Worker, mc_worker_api, find_one, [Collection, Selector, Args])
                                   end).
 
 install(St) ->
@@ -140,7 +140,7 @@ insert(As, St) ->
                     PoolId = pool_id(BPoolId, As, St),
                     try insert(PoolId, Collection,
                                 check_ids(vmq_diversity_utils:map(TableOrTables))) of
-                        Result1 ->
+                        {{true, _}, Result1} ->
                             {Result2, NewSt} = luerl:encode(
                                                  vmq_diversity_utils:unmap(check_ids(Result1)), St),
                             {[Result2], NewSt}
@@ -166,7 +166,7 @@ update(As, St) ->
                     PoolId = pool_id(BPoolId, As, St),
                     try update(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector)),
                                #{<<"$set">> => check_ids(vmq_diversity_utils:map(Command))}) of
-                        ok ->
+                        {true,_} ->
                             {[true], St}
                     catch
                         E:R ->
@@ -187,7 +187,7 @@ delete(As, St) ->
                 Selector when is_list(Selector) ->
                     PoolId = pool_id(BPoolId, As, St),
                     try delete(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector))) of
-                        ok ->
+                        {true, _} ->
                             {[true], St}
                     catch
                         E:R ->
@@ -207,8 +207,8 @@ find(As, St) ->
             case luerl:decode(Selector0, St) of
                 Selector when is_list(Selector) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try find(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector)), parse_args(Args, St)) of
-                        CursorPid when is_pid(CursorPid) ->
+                    try find(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector)), maps:from_list(parse_args(Args, St))) of
+                        {ok, CursorPid} when is_pid(CursorPid) ->
                             %% we re passing the cursor pid as a binary to the Lua Script
                             BinPid = list_to_binary(pid_to_list(CursorPid)),
                             {[<<"mongo-cursor-", BinPid/binary>>], St}
@@ -230,7 +230,7 @@ find_one(As, St) ->
             case luerl:decode(Selector0, St) of
                 Selector when is_list(Selector) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try find_one(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector)), parse_args(Args, St)) of
+                    try find_one(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector)), maps:from_list(parse_args(Args, St))) of
                         Result1 when map_size(Result1) > 0 ->
                             {Result2, NewSt} = luerl:encode(
                                                  vmq_diversity_utils:unmap(check_ids(Result1)), St),

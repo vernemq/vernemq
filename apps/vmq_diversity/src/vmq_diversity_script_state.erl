@@ -179,6 +179,7 @@ handle_info({call_function, Ref, CallerPid, Function, Args}, State) ->
     CallerPid ! {call_function_response, Ref, Reply},
     {noreply, NewState}.
 
+
 %%--------------------------------------------------------------------
 %% @private
 %% @doc

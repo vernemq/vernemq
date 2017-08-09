@@ -2,6 +2,7 @@
 
 ## Not yet released
 
+- Upgrade MongoDB driver.
 - Prevent unbounded memory growth in a netsplit situation by putting an explicit
   limit (250K) on the number of outstanding plumtree-msgs in plumtree. If this
   limit is exceeded, delayed replication will be handled by active entropy.
