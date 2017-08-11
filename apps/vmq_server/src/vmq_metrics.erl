@@ -384,7 +384,16 @@ system_statistics() ->
     RunQueueLen = erlang:statistics(run_queue),
     {Total_Run_Time, _} = erlang:statistics(runtime),
     {Total_Wallclock_Time, _} = erlang:statistics(wall_clock),
-
+    #{total := ErlangMemTotal,
+      processes := ErlangMemProcesses,
+      processes_used := ErlangMemProcessesUsed,
+      system := ErlangMemSystem,
+      atom := ErlangMemAtom,
+      atom_used := ErlangMemAtomUsed,
+      binary := ErlangMemBinary,
+      code := ErlangMemCode,
+      ets := ErlangMemEts} = maps:from_list(erlang:memory()),
+    
     [{counter, system_context_switches, ContextSwitches},
      {counter, system_exact_reductions, TotalExactReductions},
      {counter, system_gc_count, Number_of_GCs},
@@ -394,7 +403,16 @@ system_statistics() ->
      {counter, system_reductions, Total_Reductions},
      {gauge,   system_run_queue, RunQueueLen},
      {counter, system_runtime, Total_Run_Time},
-     {counter, system_wallclock, Total_Wallclock_Time}|
+     {counter, system_wallclock, Total_Wallclock_Time},
+     {gauge, vm_memory_total, ErlangMemTotal},
+     {gauge, vm_memory_processes, ErlangMemProcesses},
+     {gauge, vm_memory_processes_used, ErlangMemProcessesUsed},
+     {gauge, vm_memory_system, ErlangMemSystem},
+     {gauge, vm_memory_atom, ErlangMemAtom},
+     {gauge, vm_memory_atom_used, ErlangMemAtomUsed},
+     {gauge, vm_memory_binary, ErlangMemBinary},
+     {gauge, vm_memory_code, ErlangMemCode},
+     {gauge, vm_memory_ets, ErlangMemEts}|
      scheduler_utilization()].
 
 scheduler_utilization() ->
@@ -691,6 +709,24 @@ describe({gauge,retain_memory}) ->
     <<"The number of bytes used for storing retained messages.">>;
 describe({gauge,queue_processes}) ->
     <<"The number of MQTT queue processes.">>;
+describe({gauge, vm_memory_total}) ->
+    <<"The total amount of memory allocated.">>;
+describe({gauge, vm_memory_processes}) ->
+    <<"The amount of memory allocated for processes.">>;
+describe({gauge, vm_memory_processes_used}) ->
+    <<"The amount of memory used by processes.">>;
+describe({gauge, vm_memory_system}) ->
+    <<"The amount of memory allocated for the emulator.">>;
+describe({gauge, vm_memory_atom}) ->
+    <<"The amount of memory allocated for atoms.">>;
+describe({gauge, vm_memory_atom_used}) ->
+    <<"The amount of memory used by atoms.">>;
+describe({gauge, vm_memory_binary}) ->
+    <<"The amount of memory allocated for binaries.">>;
+describe({gauge, vm_memory_code}) ->
+    <<"The amount of memory allocated for code.">>;
+describe({gauge, vm_memory_ets}) ->
+    <<"The amount of memory allocated for ETS tables.">>;
 describe({Type, Metric}) ->
     describe_dynamic({Type, atom_to_binary(Metric, utf8)}).
 

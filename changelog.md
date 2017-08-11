@@ -5,6 +5,7 @@
 - Log when a client is disconnected and multiple sessions are not allowed.
 - Fix tracer `mountpoint` parameter bug.
 - Make it possible to add/inject HTTP API keys.
+- Add Erlang VM memory usage stats to the exposed metrics.
 
 ## VERNEMQ 1.1.1
 
