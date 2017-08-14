@@ -27,6 +27,7 @@
 
 -export([routes/0,
          create_api_key/0,
+         add_api_key/1,
          delete_api_key/1,
          list_api_keys/0]).
 
@@ -140,9 +141,13 @@ create_api_key() ->
     Size = size(Chars),
     F = fun() -> element(rand:uniform(Size), Chars) end,
     ApiKey = list_to_binary([ F() || _ <- lists:seq(1,32) ]),
-    Keys = vmq_config:get_env(vmq_server, ?ENV_API_KEYS, []),
-    vmq_config:set_global_env(vmq_server, ?ENV_API_KEYS, [ApiKey|Keys], true),
+    add_api_key(ApiKey),
     ApiKey.
+
+add_api_key(ApiKey) when is_binary(ApiKey) ->
+    Keys = vmq_config:get_env(vmq_server, ?ENV_API_KEYS, []),
+    Keys1 = lists:delete(ApiKey, Keys),
+    vmq_config:set_global_env(vmq_server, ?ENV_API_KEYS, [ApiKey|Keys1], true).
 
 delete_api_key(ApiKey) ->
     case vmq_config:get_env(?ENV_API_KEYS, []) of
