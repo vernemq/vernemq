@@ -20,7 +20,8 @@
          queue_lifo_test/1,
          queue_fifo_offline_drop_test/1,
          queue_lifo_offline_drop_test/1,
-         queue_offline_transition_test/1]).
+         queue_offline_transition_test/1,
+         queue_persistent_client_expiration_test/1]).
 
 -export([hook_auth_on_publish/6,
          hook_auth_on_subscribe/3]).
@@ -51,7 +52,8 @@ all() ->
      queue_lifo_test,
      queue_fifo_offline_drop_test,
      queue_lifo_offline_drop_test,
-     queue_offline_transition_test
+     queue_offline_transition_test,
+     queue_persistent_client_expiration_test
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -203,6 +205,35 @@ queue_offline_transition_test(_) ->
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, true, QPid} = vmq_reg:register_subscriber(SessionPid2, SubscriberId, QueueOpts, 10),
     ok = receive_multi(QPid, 1, Msgs),
+    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
+
+queue_persistent_client_expiration_test(_) ->
+    Parent = self(),
+    SubscriberId = {"", <<"persistent-client-expiration">>},
+    %% Set the persistent client to expire after 15 seconds
+    application:set_env(vmq_server, persistent_client_expiration, 2),
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{clean_session => false,
+                                                       max_offline_messages => 1000,
+                                                       queue_type => fifo}),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
+    {ok, false, QPid} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
+    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
+    timer:sleep(10), % give some time to plumtree
+
+    %% teardown session
+    catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
+    SessionPid1 ! {go_down_in, 1},
+    Msgs = publish_multi([<<"test">>, <<"transition">>]),
+    NumPubbedMsgs = length(Msgs),
+    
+    timer:sleep(10), % give some time to plumtree
+    {ok, FoundMsgs} = vmq_lvldb_store:msg_store_find(SubscriberId),
+    NumPubbedMsgs = length(FoundMsgs),
+
+    %% let's wait for the persistent-client-expiration to kick in
+    timer:sleep(3000),
+
+    not_found = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
 
