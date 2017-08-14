@@ -2,6 +2,8 @@
 
 ## Not yet released
 
+- Fix bug preventing persistent session expiration
+  (`persistent_client_expiration` in `vernemq.conf`) from being executed.
 - Make `vmq-admin session show` more robust when sessions are overloaded by
   limiting the time allowed to query each session. The default query timeout is
   100ms, but can be overriden using `--rowtimeout=<TimeoutInMilliseconds>`.

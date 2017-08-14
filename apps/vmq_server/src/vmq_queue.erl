@@ -866,7 +866,7 @@ maybe_set_expiry_timer(0, State) ->
     %% never expire
     State;
 maybe_set_expiry_timer(ExpireAfter, State) when ExpireAfter > 0 ->
-    Ref = erlang:send_after(ExpireAfter * 1000, self(), expire_session),
+    Ref = gen_fsm:send_event_after(ExpireAfter * 1000, expire_session),
     State#state{expiry_timer=Ref}.
 
 maybe_offline_store(Offline, SubscriberId, {deliver, QoS, #vmq_msg{persisted=false} = Msg}) when QoS > 0 ->
@@ -904,7 +904,7 @@ maybe_offline_delete(_, _) -> ok.
 
 unset_expiry_timer(#state{expiry_timer=undefined} = State) -> State;
 unset_expiry_timer(#state{expiry_timer=Ref} = State) ->
-    erlang:cancel_timer(Ref),
+    gen_fsm:cancel_timer(Ref),
     State#state{expiry_timer=undefined}.
 
 state_change(Msg, OldStateName, NewStateName) ->
