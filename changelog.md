@@ -1,6 +1,6 @@
 # Changelog
 
-## Not yet released
+## VERNEMQ 1.1.1
 
 - Fix bug preventing persistent session expiration
   (`persistent_client_expiration` in `vernemq.conf`) from being executed.
