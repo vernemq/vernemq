@@ -3,6 +3,7 @@
 ## Not yet released
 
 - Log when a client is disconnected and multiple sessions are not allowed.
+- Fix tracer `mountpoint` parameter bug.
 
 ## VERNEMQ 1.1.1
 

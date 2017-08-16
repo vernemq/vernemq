@@ -30,8 +30,8 @@ trace_client_cmd() ->
         [
          {rate_max, [{longname, "rate-max"},
                      {typecast, fun(RM) -> list_to_integer(RM) end}]},
-         {mountpoint, [{longname, "mountpount"},
-                     {typecast, fun(MP) -> MP end}]},
+         {mountpoint, [{longname, "mountpoint"},
+                       {typecast, fun(MP) -> MP end}]},
          {rate_interval, [{longname, "rate-interval"},
                           {typecast, fun(RI) -> list_to_integer(RI) end}]},
          {trunc_payload, [{longname, "trunc-payload"},
