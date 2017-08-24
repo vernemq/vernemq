@@ -78,11 +78,27 @@ start_all_pools([{pgsql, ProviderConfig}|Rest], Acc) ->
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = lists:keydelete(size, 1,
                                  lists:keydelete(max_overflow, 1, PoolOpts)),
+    StartFun = fun() ->
+                       Hostname = proplists:get_value(host, WorkerArgs, "localhost"),
+                       Port = proplists:get_value(port, WorkerArgs, 5432),
+                       Database = proplists:get_value(database, WorkerArgs),
+                       Username = proplists:get_value(user, WorkerArgs),
+                       Password = proplists:get_value(password, WorkerArgs),
+                       epgsql:connect(Hostname, Username, Password, [
+                           {database, Database},
+                           {port, Port}
+                       ])
+               end,
+    TerminateFun = fun(Pid) -> ok = epgsql:close(Pid) end,
+    WrapperArgs = [{reconnect_timeout, 1000},
+                   {name, postgresql},
+                   {start_fun, StartFun},
+                   {terminate_fun, TerminateFun}],
     PoolArgs = [{name, {local, PoolId}},
-                {worker_module, vmq_diversity_postgres},
+                {worker_module, vmq_diversity_worker_wrapper},
                 {size, Size},
                 {max_overflow, MaxOverflow}],
-    ChildSpec = poolboy:child_spec(PoolId, PoolArgs, WorkerArgs),
+    ChildSpec = poolboy:child_spec(PoolId, PoolArgs, WrapperArgs),
     start_all_pools(Rest, [ChildSpec|Acc]);
 start_all_pools([{mongodb, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
@@ -91,11 +107,17 @@ start_all_pools([{mongodb, ProviderConfig}|Rest], Acc) ->
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = lists:keydelete(size, 1,
                                  lists:keydelete(max_overflow, 1, PoolOpts)),
+    StartFun = fun() -> mc_worker:start_link(WorkerArgs) end,
+    TerminateFun = fun(Pid) -> mc_worker:disconnect(Pid) end,
+    WrapperArgs = [{reconnect_timeout, 1000},
+                   {name, mongodb},
+                   {start_fun, StartFun},
+                   {terminate_fun, TerminateFun}],
     PoolArgs = [{name, {local, PoolId}},
-                {worker_module, mc_worker},
+                {worker_module, vmq_diversity_worker_wrapper},
                 {size, Size},
                 {max_overflow, MaxOverflow}],
-    ChildSpec = poolboy:child_spec(PoolId, PoolArgs, WorkerArgs),
+    ChildSpec = poolboy:child_spec(PoolId, PoolArgs, WrapperArgs),
     start_all_pools(Rest, [ChildSpec|Acc]);
 start_all_pools([{redis, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),

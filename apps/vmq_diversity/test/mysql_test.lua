@@ -2,9 +2,9 @@
 config = {
     pool_id = "mysql_test",
     size = 5,
-    user = "test_user",
-    password = "test_password",
-    database = "test_database",
+    user = "vmq_test_user",
+    password = "vmq_test_password",
+    database = "vmq_test_database",
     host = "localhost",
     port = 3306
 }
