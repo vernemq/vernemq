@@ -1,8 +1,8 @@
 config = {
     pool_id = "postgres_test",
-    user = "test_user",
-    password = "test_password",
-    database = "test_database"
+    user = "vmq_test_user",
+    password = "vmq_test_password",
+    database = "vmq_test_database"
 }
 
 postgres.ensure_pool(config)

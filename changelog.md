@@ -11,6 +11,10 @@
 - Fix bug with `max_message_size` and `message_size_limit` only one of these
   should exist and `message_size_limit` has now been
   deprecated. `max_message_size` should be used instead.
+- Fix bug in `vmq_diversity` where the MongoDB client pool would not reconnect
+  after a MongDB restart (#475).
+- Fix bug in `vmq_diversity` where the PostgreSQL client pool would not reconnect
+  after a PostgreSQL restart (same as #475).
 
 ## VERNEMQ 1.1.1
 

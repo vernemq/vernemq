@@ -21,27 +21,27 @@
 
 insert(PoolName, Collection, DocOrDocs) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          mongo:insert(Worker, Collection, DocOrDocs)
+                                          vmq_diversity_worker_wrapper:apply(Worker, mongo, insert, [Collection, DocOrDocs])
                                   end).
 
 update(PoolName, Collection, Selector, Command) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          mongo:update(Worker, Collection, Selector, Command)
+                                          vmq_diversity_worker_wrapper:apply(Worker, mongo, update, [Collection, Selector, Command])
                                   end).
 
 delete(PoolName, Collection, Selector) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          mongo:delete(Worker, Collection, Selector)
+                                          vmq_diversity_worker_wrapper:apply(Worker, mongo, delete, [Collection, Selector])
                                   end).
 
 find(PoolName, Collection, Selector, Args) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          mongo:find(Worker, Collection, Selector, Args)
+                                          vmq_diversity_worker_wrapper:apply(Worker, mongo, find, [Collection, Selector, Args])
                                   end).
 
 find_one(PoolName, Collection, Selector, Args) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          mongo:find_one(Worker, Collection, Selector, Args)
+                                          vmq_diversity_worker_wrapper:apply(Worker, mongo, find_one, [Collection, Selector, Args])
                                   end).
 
 install(St) ->

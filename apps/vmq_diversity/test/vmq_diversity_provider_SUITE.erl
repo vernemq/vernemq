@@ -10,7 +10,9 @@
 
 -export([mysql_test/1,
          postgres_test/1,
+         postgres_error_test/1,
          mongodb_test/1,
+         mongodb_error_test/1,
          redis_test/1,
          http_test/1,
          kv_test/1,
@@ -81,8 +83,16 @@ mysql_test(_) ->
 postgres_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("postgres_test.lua")).
 
+postgres_error_test(_) ->
+    {ok, _} = vmq_diversity:load_script(test_script("postgres_error_test.lua")),
+    error = vmq_diversity_plugin:auth_on_register({{127,0,0,1}, 1234}, {"", <<"clientid">>}, <<"username">>, <<"password">>, true).
+
 mongodb_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("mongodb_test.lua")).
+
+mongodb_error_test(_) ->
+    {ok, _} = vmq_diversity:load_script(test_script("mongodb_error_test.lua")),
+    error = vmq_diversity_plugin:auth_on_register({{127,0,0,1}, 1234}, {"", <<"clientid">>}, <<"username">>, <<"password">>, true).
 
 redis_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("redis_test.lua")).
