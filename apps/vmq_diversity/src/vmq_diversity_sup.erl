@@ -48,8 +48,8 @@ start_link() ->
 init([]) ->
     {ok, { {one_for_all, 0, 1},
            [
-            ?CHILD(vmq_diversity_plugin, vmq_diversity_plugin, worker, []),
             ?CHILD(vmq_diversity_script_sup, vmq_diversity_script_sup, supervisor, []),
+            ?CHILD(vmq_diversity_plugin, vmq_diversity_plugin, worker, []),
             ?CHILD(vmq_diversity_cache, vmq_diversity_cache, worker, [])
            ]}
     }.
