@@ -1,8 +1,8 @@
 # Changelog
 
-## Not yet release
+## Not yet released
 
-- Log client disconnected by same client_id
+- Log when a client is disconnected and multiple sessions are not allowed.
 
 ## VERNEMQ 1.1.1
 
