@@ -221,6 +221,8 @@ online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, Fr
     %% we've to disconnect currently attached sessions
     %% and wait with the reply until all the sessions
     %% have been disconnected
+    #state{id = SubscriberId} = State,
+    lager:warning("SubscriberId ~p disconnected by same client_id", [SubscriberId]),
     disconnect_sessions(State),
     {next_state, state_change(add_session, online, wait_for_offline),
      State#state{waiting_call={add_session, SessionPid, Opts, From}}};
