@@ -1,5 +1,10 @@
 # Changelog
 
+## Not yet released
+
+- Fix bug in TCP socket handler which prevented the MQTT state machine to
+  properly terminate when receiving a socket error.
+
 ## VERNEMQ 1.1.1
 
 - Fix bug preventing persistent session expiration

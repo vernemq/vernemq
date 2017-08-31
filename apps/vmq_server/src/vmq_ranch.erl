@@ -192,8 +192,9 @@ handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}, fsm_mod=FsmM
     %% we regard a tcp_closed as 'normal'
     _ = FsmMod:msg_in(disconnect, State#st.fsm_state),
     {exit, normal, State};
-handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
+handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}, fsm_mod=FsmMod} = State) ->
     _ = vmq_metrics:incr_socket_error(),
+    _ = FsmMod:msg_in(disconnect, State#st.fsm_state),
     {exit, Error, State};
 handle_message({FsmMod, Msg}, #st{pending=Pending, fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
     case FsmMod:msg_in(Msg, FsmState0) of
