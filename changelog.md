@@ -1,5 +1,9 @@
 # Changelog
 
+## Not yet released
+
+- Log when a client is disconnected and multiple sessions are not allowed.
+
 ## VERNEMQ 1.1.1
 
 - Fix bug preventing persistent session expiration
