@@ -64,12 +64,12 @@ start_link() ->
 delete(MP, RoutingKey) ->
     Key = {MP, RoutingKey},
     ets:delete(?RETAIN_CACHE, Key),
-    ets:insert(?RETAIN_UPDATE, {Key}).
+    ets:update_counter(?RETAIN_UPDATE, Key, 1, {Key, 0}).
 
 insert(MP, RoutingKey, Message) ->
     Key = {MP, RoutingKey},
     ets:insert(?RETAIN_CACHE, {Key, Message}),
-    ets:insert(?RETAIN_UPDATE, {Key}).
+    ets:update_counter(?RETAIN_UPDATE, Key, 1, {Key, 0}).
 
 match_fold(FoldFun, Acc, MP, Topic) ->
     case has_wildcard(Topic) of
@@ -184,7 +184,7 @@ handle_info({updated, ?RETAIN_DB, Key, _OldVal, NewVal}, State) ->
     {noreply, State};
 handle_info(persist, State) ->
     ets:foldl(fun persist/2, ignore, ?RETAIN_UPDATE),
-    ets:delete_all_objects(?RETAIN_UPDATE),
+    ets:match_delete(?RETAIN_UPDATE, {'_', 0}),
     erlang:send_after(vmq_config:get_env(retain_persist_interval, 1000),
                       self(), persist),
     {noreply, State};
@@ -219,14 +219,21 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-persist({Key}, _) ->
+persist({Key, Counter}, _) ->
     case ets:lookup(?RETAIN_CACHE, Key) of
         [] ->
             %% cache line was deleted
             plumtree_metadata:delete(?RETAIN_DB, Key);
         [{_, Message}] ->
             plumtree_metadata:put(?RETAIN_DB, Key, Message)
-    end.
+    end,
+    %% If a concurrent insert happened during the fold then the
+    %% current counter value will be bigger than Counter, So
+    %% decrementing by Counter means the resulting value will be
+    %% greater than zero and the key/value will be persisted in the
+    %% next persistence loop. In other words it is recorded that we
+    %% have persisted Counter updates, but not more than that.
+    ets:update_counter(?RETAIN_UPDATE, Key, -Counter).
 
 has_wildcard([<<"+">>|_]) -> true;
 has_wildcard([<<"#">>]) -> true;

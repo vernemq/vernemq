@@ -2,6 +2,8 @@
 
 ## Not yet released
 
+- Fix retain msg server race condition preventing some messages from being
+  persisted and replicated to other nodes in the cluster (#507).
 - Log when a client is disconnected and multiple sessions are not allowed.
 - Fix tracer `mountpoint` parameter bug.
 - Make it possible to add/inject HTTP API keys.
