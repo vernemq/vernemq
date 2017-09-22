@@ -10,7 +10,8 @@
 
 -export([clean_session_qos1_test/1,
          session_cleanup_test/1,
-         session_present_test/1]).
+         session_present_test/1,
+         waiting_ack_qos2_disconnect_test/1]).
 
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6]).
@@ -40,7 +41,9 @@ end_per_testcase(_, Config) ->
 all() ->
     [clean_session_qos1_test,
      session_cleanup_test,
-     session_present_test].
+     session_present_test,
+     waiting_ack_qos2_disconnect_test
+    ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -111,13 +114,57 @@ session_present_test(_) ->
     {ok, Socket2} = packet:do_client_connect(Connect, ConnackSessionPresentTrue, []),
     ok = gen_tcp:close(Socket2).
 
+waiting_ack_qos2_disconnect_test(_) ->
+    %% This test makes sure an interrupted before qos2 publish is
+    %% resumed after having been disconnected before the pubrel frame
+    %% has arrived at the broker.
+    enable_on_publish(),
+    enable_on_subscribe(),
+    ConnectP = packet:gen_connect("wack-qos2-disconnect-pub-test", [{keepalive, 10}, {clean_session, false}]),
+    ConnectS = packet:gen_connect("wack-qos2-disconnect-sub-test", [{keepalive, 10}, {clean_session, false}]),
+    Connack = packet:gen_connack(false, 0),
+    ConnackSessionPresent = packet:gen_connack(true, 0),
+    Disconnect = packet:gen_disconnect(),
+    Subscribe = packet:gen_subscribe(109, "qos2/test", 2),
+    Suback = packet:gen_suback(109, 2),
+
+    PPublish = packet:gen_publish("qos2/test", 2, <<"message">>,
+                                  [{mid, 312}]),
+    SPublish = packet:gen_publish("qos2/test", 2, <<"message">>, [{mid, 1}]),
+
+    Pubrec = packet:gen_pubrec(312),
+    Pubrel = packet:gen_pubrel(312),
+    Pubcomp = packet:gen_pubcomp(312),
+
+    {ok, SocketS} = packet:do_client_connect(ConnectS, Connack, []),
+    ok = gen_tcp:send(SocketS, Subscribe),
+    ok = packet:expect_packet(SocketS, "suback", Suback),
+
+    {ok, SocketP} = packet:do_client_connect(ConnectP, Connack, []),
+    ok = gen_tcp:send(SocketP, PPublish),
+    ok = packet:expect_packet(SocketP, "pubrec", Pubrec),
+    ok = gen_tcp:send(SocketP, Disconnect),
+    ok = gen_tcp:close(SocketP),
+    
+    {ok, SocketP1} = packet:do_client_connect(ConnectP, ConnackSessionPresent, []),
+    ok = gen_tcp:send(SocketP1, Pubrel),
+    ok = packet:expect_packet(SocketP1, "pubcomp", Pubcomp),
+    ok = gen_tcp:send(SocketP1, Disconnect),
+    ok = gen_tcp:close(SocketP1),
+    
+    ok = packet:expect_packet(gen_tcp, SocketS, "publish", SPublish, 100),
+    ok = gen_tcp:send(SocketS, Disconnect),
+    ok = gen_tcp:close(SocketS).    
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_,{"", <<"clean-qos1-test">>}, [{[<<"qos1">>, <<"clean_session">>, <<"test">>],1}]) -> ok.
+hook_auth_on_subscribe(_,{"", <<"clean-qos1-test">>}, [{[<<"qos1">>, <<"clean_session">>, <<"test">>],1}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"wack-qos2-disconnect-sub-test">>}, [{[<<"qos2">>, <<"test">>],2}]) -> ok.
 
-hook_auth_on_publish(_, _, _MsgId, [<<"qos1">>,<<"clean_session">>,<<"test">>], <<"clean-session-message">>, false) -> ok.
+hook_auth_on_publish(_, _, _MsgId, [<<"qos1">>,<<"clean_session">>,<<"test">>], <<"clean-session-message">>, false) -> ok;
+hook_auth_on_publish(_, {"", <<"wack-qos2-disconnect-pub-test">>}, _MsgId, [<<"qos2">>, <<"test">>], <<"message">>, false) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
