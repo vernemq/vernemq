@@ -44,7 +44,7 @@ fi
     make rel
 SCRIPT
 
-$vernemq_release = '1.1.1'
+$vernemq_release = '1.2.0'
 $erlang_release = '19.3'
 
 $configs = {

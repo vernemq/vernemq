@@ -1,6 +1,6 @@
 # Changelog
 
-## Not yet released
+## VERNEMQ 1.2.0
 
 - Fix retain msg server race condition preventing some messages from being
   persisted and replicated to other nodes in the cluster (#507).
@@ -9,8 +9,8 @@
 - Make it possible to add/inject HTTP API keys.
 - Add Erlang VM memory usage stats to the exposed metrics.
 - Fix bug with `max_message_size` and `message_size_limit` only one of these
-  should exist and `message_size_limit` has now been
-  deprecated. `max_message_size` should be used instead.
+  should exist and `message_size_limit` has now been deprecated and no longer
+  has any effect. `max_message_size` should be used instead.
 - Fix bug in `vmq_diversity` where the MongoDB client pool would not reconnect
   after a MongDB restart (#475).
 - Fix bug in `vmq_diversity` where the PostgreSQL client pool would not reconnect
