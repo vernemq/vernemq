@@ -2,6 +2,8 @@
 
 ## Not yet released
 
+- Plugin workflow improvements: move plugin development specific things into
+  `vernemq_dev`.
 - Fix error in the HTTP API interface. The alias `/api/v1/sessions` mapped to
   `session list` which is deprecated for `session show`.
 - Fix `max-age` parse issue in `vmq_webhooks` (#527).

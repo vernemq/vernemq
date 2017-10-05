@@ -1,3 +1,8 @@
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
+
+-type routing_key()         :: [binary()].
+-type msg_ref()             :: binary().
+
 %% connect return codes
 -define(CONNACK_ACCEPT,      0).
 -define(CONNACK_PROTO_VER,   1). %% unacceptable protocol version
@@ -5,22 +10,7 @@
 -define(CONNACK_SERVER,      3). %% server unavailable
 -define(CONNACK_CREDENTIALS, 4). %% bad user name or password
 -define(CONNACK_AUTH,        5). %% not authorized
--define(true, 1).
--define(false, 0).
 
--type peer()                :: {inet:ip_address(), inet:port_number()}.
--type username()            :: binary() | undefined.
--type password()            :: binary() | undefined.
--type client_id()           :: binary().
--type mountpoint()          :: string().
--type subscriber_id()       :: {mountpoint(), client_id()}.
--type reg_view()            :: atom().
--type topic()               :: [binary()] | binary().
--type qos()                 :: 0 | 1 | 2.
--type routing_key()         :: [binary()].
--type payload()             :: binary().
--type flag()                :: ?true | ?false | boolean() | empty. % empty for test purposes
--type msg_ref()             :: binary().
 -type proto_version()       :: 3 | 4 | 131.
 -type return_code()         :: ?CONNACK_ACCEPT
                             | ?CONNACK_PROTO_VER

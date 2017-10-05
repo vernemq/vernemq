@@ -36,11 +36,11 @@
 %% ------------------------------------------------------------------------
 
 -export([new/1,
-		 match/2,
+         match/2,
          validate_topic/2,
          contains_wildcard/1,
          unword/1,
-		 triples/1]).
+         triples/1]).
 
 -define(MAX_LEN, 65536).
 
@@ -76,21 +76,8 @@ triples([Word], Acc) ->
 triples([Word|Rest] = Topic, Acc) ->
     triples(Rest, [{reverse(Rest), Word, reverse(Topic)}|Acc]).
 
-unword([Word|_] = Topic) when is_binary(Word) ->
-    reverse(unword(Topic, []));
-unword(Topic) when is_binary(Topic) ->
-    Topic;
-unword(undefined) -> undefined;
-unword(empty) -> empty.
-
-unword([<<>>], []) -> [$/];
-unword([<<>>], Acc) -> Acc;
-unword([], Acc) -> [$/|Acc];
-unword([Word], Acc) -> [Word|Acc];
-unword([<<>>|Topic], Acc) ->
-    unword(Topic, [$/|Acc]);
-unword([Word|Rest], Acc) ->
-    unword(Rest, [$/, Word|Acc]).
+unword(Topic) ->
+    vernemq_dev_topic:unword(Topic).
 
 validate_topic(_Type, <<>>) ->
     {error, no_empty_topic_allowed};
