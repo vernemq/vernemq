@@ -52,6 +52,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(SERVER, ?MODULE).
 
 -record(state, {}).
@@ -481,10 +485,27 @@ call_endpoint(Endpoint, EOpts, Hook, Args) ->
 
 parse_headers(Headers) ->
     case hackney_headers:parse(<<"cache-control">>, Headers) of
-        <<"max-age=", MaxAgeBin/binary>> ->
-            #{max_age => erlang:binary_to_integer(MaxAgeBin)};
+        CC when is_binary(CC) ->
+            case parse_max_age(CC) of
+                MaxAge when is_integer(MaxAge) -> #{max_age => MaxAge};
+                _ -> #{}
+            end;
         _ -> #{}
     end.
+
+parse_max_age(<<>>) -> undefined;
+parse_max_age(<<"max-age=", MaxAgeVal/binary>>) ->
+    digits(MaxAgeVal);
+parse_max_age(<<_,Rest/binary>>) ->
+    parse_max_age(Rest).
+
+digits(<<D, Rest/binary>>) when D>=$0, D=<$9 ->
+    digits(Rest, D - $0);
+digits(_Data) -> {error, badarg}.
+
+digits(<<D, Rest/binary>>, Acc) when D>=$0, D=<$9 ->
+    digits(Rest, Acc*10 + (D - $0));
+digits(_, Acc) -> Acc.
 
 handle_response(Hook, #{max_age := MaxAge}, Decoded, EOpts)
   when Hook =:= auth_on_register;
@@ -589,3 +610,12 @@ from_internal_qos(not_allowed) ->
     128;
 from_internal_qos(V) when is_integer(V) ->
     V.
+
+-ifdef(TEST).
+parse_max_age_test() ->
+    ?assertEqual(undefined, parse_max_age(<<>>)),
+    ?assertEqual({error, badarg}, parse_max_age(<<"max-age=">>)),
+    ?assertEqual({error, badarg}, parse_max_age(<<"max-age=x">>)),
+    ?assertEqual(45, parse_max_age(<<"  max-age=45,sthelse">>)),
+    ?assertEqual(45, parse_max_age(<<"max-age=45">>)).
+-endif.

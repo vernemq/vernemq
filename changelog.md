@@ -4,6 +4,7 @@
 
 - Fix error in the HTTP API interface. The alias `/api/v1/sessions` mapped to
   `session list` which is deprecated for `session show`.
+- Fix `max-age` parse issue in `vmq_webhooks` (#527).
 
 ## VERNEMQ 1.2.0
 
