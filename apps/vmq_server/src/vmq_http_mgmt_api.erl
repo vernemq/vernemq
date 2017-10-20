@@ -122,7 +122,7 @@ run_command(M3) ->
 
 %% Command Aliases
 parse_command([<<"cluster">>]) -> parse_command([<<"cluster">>, <<"status">>]);
-parse_command([<<"sessions">>]) -> parse_command([<<"session">>, <<"list">>]);
+parse_command([<<"sessions">>]) -> parse_command([<<"session">>, <<"show">>]);
 parse_command([<<"sessions">>|Rest]) -> parse_command([<<"session">>|Rest]);
 parse_command([<<"listeners">>]) -> parse_command([<<"listener">>, <<"show">>]);
 parse_command([<<"listeners">>|Rest]) -> parse_command([<<"listener">>|Rest]);

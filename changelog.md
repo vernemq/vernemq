@@ -1,5 +1,10 @@
 # Changelog
 
+## Not yet released
+
+- Fix error in the HTTP API interface. The alias `/api/v1/sessions` mapped to
+  `session list` which is deprecated for `session show`.
+
 ## VERNEMQ 1.2.0
 
 - Fix retain msg server race condition preventing some messages from being
