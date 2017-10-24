@@ -2,6 +2,9 @@
 
 ## Not yet released
 
+- Fix issue causing too few results to be returned from `vmq-admin session show`
+  when used with filter options. This could happen when terms included in the
+  filters also existed as erlang atoms.
 - Plugin workflow improvements: move plugin development specific things into
   `vernemq_dev`.
 - Fix error in the HTTP API interface. The alias `/api/v1/sessions` mapped to

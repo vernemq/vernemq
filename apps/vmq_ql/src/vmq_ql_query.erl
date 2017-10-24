@@ -405,12 +405,7 @@ v(<<"<", _/binary>> = MaybePid) ->
     catch
         _:_ -> MaybePid
     end;
-v(V) ->
-    try
-        binary_to_existing_atom(V, utf8)
-    catch
-        _:_ -> V
-    end.
+v(V) -> V.
 
 lookup_ident(Ident) ->
     Row = get({?MODULE, row_data}),

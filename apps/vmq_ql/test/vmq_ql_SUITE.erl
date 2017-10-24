@@ -11,7 +11,6 @@
          query_select_all_test/1,
          query_select_by_id_test/1,
          query_select_match_test/1,
-         query_select_by_atom_test/1,
          query_select_by_pid_test/1
         ]).
 
@@ -29,7 +28,6 @@ all() ->
      query_select_all_test,
      query_select_by_id_test,
      query_select_match_test,
-     query_select_by_atom_test,
      query_select_by_pid_test
     ].
 
@@ -74,11 +72,6 @@ query_select_by_id_test(_) ->
 
 query_select_match_test(_) ->
     Query = "SELECT * FROM modules WHERE path MATCH \".+" ++ atom_to_list(?MODULE) ++ ".beam\"",
-    Pid =  query(Query),
-    [{1, #{module := ?MODULE}}] = fetch(Pid, 10).
-
-query_select_by_atom_test(_) ->
-    Query = "SELECT * FROM modules WHERE module = \"" ++ atom_to_list(?MODULE) ++ "\"",
     Pid =  query(Query),
     [{1, #{module := ?MODULE}}] = fetch(Pid, 10).
 

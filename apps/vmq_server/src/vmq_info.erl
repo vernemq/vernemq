@@ -92,7 +92,7 @@ session_info_items() ->
 fold_init_rows(_, Fun, Acc) ->
     vmq_queue_sup_sup:fold_queues(
       fun({MP, ClientId}, QPid, AccAcc) ->
-              InitRow = #{node => node(),
+              InitRow = #{node => atom_to_binary(node(),utf8),
                           mountpoint => list_to_binary(MP),
                           '__mountpoint' => MP,
                           client_id => ClientId,
