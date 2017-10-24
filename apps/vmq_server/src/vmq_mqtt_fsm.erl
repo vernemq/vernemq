@@ -1138,7 +1138,7 @@ get_info_items([peer_host|Rest], State, Acc) ->
     Host =
     case inet:gethostbyaddr(PeerIp) of
         {ok, {hostent, HostName, _, inet, _, _}} ->  HostName;
-        _ -> PeerIp
+        _ -> list_to_binary(inet:ntoa(PeerIp))
     end,
     get_info_items(Rest, State, [{peer_host, Host}|Acc]);
 get_info_items([protocol|Rest], State, Acc) ->

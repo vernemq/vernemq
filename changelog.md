@@ -2,7 +2,9 @@
 
 ## Not yet released
 
-- Fix issue causing too few results to be returned from `vmq-admin session show`
+- Make sure the `peer_host` can always be retrieved via the HTTP API. It was
+  returned as an erlang tuple which caused the conversion to JSON to fail.
+- Fix issue causing too few results to be returned from `vmq-admin sessiono show`
   when used with filter options. This could happen when terms included in the
   filters also existed as erlang atoms.
 - Plugin workflow improvements: move plugin development specific things into
