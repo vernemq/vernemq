@@ -77,7 +77,7 @@ triples([Word|Rest] = Topic, Acc) ->
     triples(Rest, [{reverse(Rest), Word, reverse(Topic)}|Acc]).
 
 unword(Topic) ->
-    vernemq_dev_topic:unword(Topic).
+    vernemq_dev_api:unword_topic(Topic).
 
 validate_topic(_Type, <<>>) ->
     {error, no_empty_topic_allowed};
