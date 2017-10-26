@@ -136,6 +136,8 @@ internal_query(Str) ->
     try vmq_ql_parser:parse(Str) of
         {fail, E} ->
             {error, E};
+        {_Parsed,Unparsed,Loc} ->
+            {error, {parse_error,Unparsed,Loc}};
         Parsed when is_list(Parsed) ->
             eval(proplists:get_value(type, Parsed), Parsed)
     catch
