@@ -1455,6 +1455,12 @@
                                              hidden
                                             ]}.
 
+{mapping, "plumtree.outstandind_limit", "plumtree.outstanding_limit", [
+                                                                       {default, 250000},
+                                                                       {datatype, integer},
+                                                                       hidden
+                                                                      ]}.
+
 %% the setup utility will call hooks to create the default directories,
 %% however the setup defaults e.g. data.<nodename> are not matching with our 
 %% defaults, so we need to override them.

@@ -2,6 +2,9 @@
 
 ## Not yet released
 
+- Prevent unbounded memory growth in a netsplit situation by putting an explicit
+  limit (250K) on the number of outstanding plumtree-msgs in plumtree. If this
+  limit is exceeded, delayed replication will be handled by active entropy.
 - Handle uncaught error type in the `vmq_ql_query` handler.
 - Make sure the `peer_host` can always be retrieved via the HTTP API. It was
   returned as an erlang tuple which caused the conversion to JSON to fail.
