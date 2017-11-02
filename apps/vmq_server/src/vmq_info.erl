@@ -18,7 +18,7 @@
 -include_lib("vmq_ql/include/vmq_ql.hrl").
 
 -export([fields_config/0,
-         fold_init_rows/3]).
+         fold_init_rows/4]).
 
 %% used by vmq_info_cli
 -export([session_info_items/0]).
@@ -88,7 +88,21 @@ session_info_items() ->
     %% used in vmq_info_cli
     lists:flatten([Fields || #vmq_ql_table{provides=Fields} <- fields_config()]).
 
-fold_init_rows(_, Fun, Acc) ->
+%% For now we only optimize the exact case with the predicates in a
+%% specific order (MP,ClientID).
+fold_init_rows(_, Fun, Acc, [#{{mountpoint,equals} := MP,
+                               {client_id,equals} := ClientId}]) ->
+    case vmq_queue_sup_sup:get_queue_pid({MP, ClientId}) of
+        not_found -> [];
+        QPid ->
+            InitRow = #{node => atom_to_binary(node(),utf8),
+                        mountpoint => list_to_binary(MP),
+                        '__mountpoint' => MP,
+                        client_id => ClientId,
+                        queue_pid => QPid},
+            [Fun(InitRow, Acc)]
+    end;
+fold_init_rows(_, Fun, Acc,_) ->
     vmq_queue_sup_sup:fold_queues(
       fun({MP, ClientId}, QPid, AccAcc) ->
               InitRow = #{node => atom_to_binary(node(),utf8),

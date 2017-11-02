@@ -17,7 +17,7 @@
 -include("vmq_ql.hrl").
 
 -export([fields_config/0,
-         fold_init_rows/3]).
+         fold_init_rows/4]).
 
 fields_config() ->
     ProcessBase = #vmq_ql_table{
@@ -31,7 +31,7 @@ fields_config() ->
 
     [ProcessBase].
 
-fold_init_rows(_, Fun, Acc) ->
+fold_init_rows(_, Fun, Acc, _) ->
     lists:foldl(
       fun(Pid, AccAcc) ->
               InitRow = #{node => atom_to_binary(node(), utf8),

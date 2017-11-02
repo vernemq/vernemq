@@ -15,7 +15,7 @@
         ]).
 
 %% vmq_ql exports
--export([fields_config/0, fold_init_rows/3]).
+-export([fields_config/0, fold_init_rows/4]).
 
 -include("vmq_ql.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -115,12 +115,12 @@ fields_config() ->
              },
     [Foo, Bar, Mods].
 
-fold_init_rows(foobar, Fun, Acc) ->
+fold_init_rows(foobar, Fun, Acc,_) ->
     lists:foldl(fun(I, AccAcc) ->
                         InitRow = #{id => I},
                         Fun(InitRow, AccAcc)
                 end, Acc, lists:seq(1, ?NR_SAMPLES));
-fold_init_rows(modules, Fun, Acc) ->
+fold_init_rows(modules, Fun, Acc,_) ->
     lists:foldl(fun({Mod, Path}, AccAcc) ->
                         InitRow = #{module => Mod, path => Path},
                         Fun(InitRow, AccAcc)

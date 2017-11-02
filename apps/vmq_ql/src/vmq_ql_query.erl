@@ -33,7 +33,7 @@
 -export([required_fields/1, include_fields/2]).
 
 -callback fields_config() -> [info_table()].
--callback fold_init_rows(atom(), function(), any()) -> any().
+-callback fold_init_rows(atom(), function(), any(), list(map())) -> any().
 
 -record(state, {mgr, query, next, result_table}).
 -define(ROWQUERYTIMEOUT, 100).
@@ -199,7 +199,7 @@ select(Fields, From, Where, OrderBy, Limit, RowQueryTimeout) ->
                           lager:warning("Subquery failed due to timeout"),
                           Idx
                   end
-          end, 1)
+          end, 1, dnf_hint(Where))
     catch
         exit:enough_data ->
             %% Raising inside an ets:fold allows us to stop the fold
@@ -231,6 +231,25 @@ select(Fields, From, Where, OrderBy, Limit, RowQueryTimeout) ->
             end
     end,
     {ok, {select, Results}}.
+
+%% A dnf_hint is a where clause converted to disjunctive normal form.
+%% The format is [map(),map(), ...] where each inner map is a set of
+%% AND predicates. Currently we only convert simple where clauses
+%% containing only AND predicates (which is basically already a DNF).
+dnf_hint(Where) ->
+    dnf_hint(Where, []).
+
+dnf_hint([], Acc) ->
+    %% As the rest of the hint code only ever can return one clause of
+    %% a DNF we need to pack it into a list so it has the form
+    %% [map(), map(),...].
+    [maps:from_list(Acc)];
+dnf_hint([{op,LH,Op,RH}|Rest], Acc) ->
+    dnf_hint(Rest, [{{LH,Op},RH}|Acc]);
+dnf_hint([{'and',{op,LH,Op,RH}}|Rest], Acc) ->
+    dnf_hint(Rest, [{{LH,Op},RH}|Acc]);
+dnf_hint(_,_) ->
+    [].
 
 get_row_initializer(FieldConfig, RequiredFields) ->
     DependsWithDuplicates =
