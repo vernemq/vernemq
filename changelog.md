@@ -1,6 +1,6 @@
 # Changelog
 
-## Not yet released
+## VERNEMQ 1.2.1
 
 - Upgrade MongoDB driver.
 - Prevent unbounded memory growth in a netsplit situation by putting an explicit
