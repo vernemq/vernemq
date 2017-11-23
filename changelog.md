@@ -1,5 +1,10 @@
 # Changelog
 
+## Not yet released
+
+- Do not log getting a client peername failed because the client already
+  disconnected.
+
 ## VERNEMQ 1.2.1
 
 - Upgrade MongoDB driver.

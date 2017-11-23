@@ -82,6 +82,10 @@ init(Ref, Parent, Socket, Transport, Opts) ->
                      fsm_mod=FsmMod,
                      proto_tag=Transport:messages(),
                      parent=Parent});
+        {error, enotconn} ->
+            %% If the client already disconnected we don't want to
+            %% know about it - it's not an error.
+            ok;
         {error, Reason} ->
             lager:debug("could not get socket peername: ~p", [Reason]),
             %% It's not really "ok", but there's no reason for the
