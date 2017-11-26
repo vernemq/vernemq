@@ -2,6 +2,7 @@
 
 ## Not yet released
 
+- Fix node startup routine to cleanup stale subscriber data.
 - Do not log getting a client peername failed because the client already
   disconnected.
 
@@ -10,7 +11,7 @@
 - Upgrade MongoDB driver.
 - Prevent unbounded memory growth in a netsplit situation by putting an explicit
   limit (250K) on the number of outstanding plumtree-msgs in plumtree. If this
-  limit is exceeded, delayed replication will be handled by active entropy.
+  limit is exceeded, delayed replication will be handled by active anti-entropy.
 - Handle uncaught error type in the `vmq_ql_query` handler.
 - Make sure the `peer_host` can always be retrieved via the HTTP API. It was
   returned as an erlang tuple which caused the conversion to JSON to fail.

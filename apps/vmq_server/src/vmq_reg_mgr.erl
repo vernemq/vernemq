@@ -63,7 +63,7 @@ init([]) ->
     Self = self(),
     spawn_link(
       fun() ->
-              vmq_reg:fold_subscribers(fun setup_queue/3, ignore),
+              vmq_reg:fold_subscribers(fun setup_queue/3, ignore, false),
               Self ! all_queues_setup
       end),
     EventHandler = vmq_reg:subscribe_subscriber_changes(),
@@ -150,11 +150,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-setup_queue(SubscriberId, Nodes, Acc) ->
-    case lists:member(node(), Nodes) of
-        true ->
+setup_queue(SubscriberId, Subs, Acc) ->
+    lager:warning("setup_queue: ~p", [SubscriberId]),
+    case lists:keyfind(node(), 1, Subs) of
+        {_Node, false, _Subs} ->
+            lager:warning("setup_queue (false): ~p", [SubscriberId]),
             vmq_queue_sup_sup:start_queue(SubscriberId);
-        false ->
+        _ ->
             Acc
     end.
 

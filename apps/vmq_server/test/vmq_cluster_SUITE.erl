@@ -604,18 +604,20 @@ restarted_node_has_no_stale_sessions(Config) ->
 
     ClientIds = fun(L) ->
                         lists:map(
-                          fun(#{client_id := C}) ->
-                                  C
+                          fun(#{client_id := C, topic := Topics}) ->
+                                  {C, Topics}
                           end,
                           L)
                 end,
 
-    ToRemain = [#{client_id => <<"cs-false-client-id">>,
+    ToRemain = [#{client_id => <<"restart-node-cs-false-client-id">>,
                   port => RestartNodePort,
-                  clean_session => false},
-                #{client_id => <<"cs-true-false-client-id">>,
+                  clean_session => false,
+                  topic => [Topic]},
+                #{client_id => <<"other-node-cs-false-client-id">>,
                   port => OtherNodePort,
-                  clean_session => false}],
+                  clean_session => false,
+                  topic => [Topic]}],
     [ begin
           Conn = connect(P, C, [{keepalive, 60}, {clean_session, CS}]),
           subscribe(Conn, Topic, 1)
@@ -630,8 +632,9 @@ restarted_node_has_no_stale_sessions(Config) ->
     %% Restart the node.
     {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_stop, []),
     {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_start, []),
+
     Sessions = rpc:call(RestartNodeName, vmq_ql_query_mgr, fold_query,
-                        [fun(V, Acc) -> [V|Acc] end, [], "SELECT * FROM sessions"]),
+                        [fun(V, Acc) -> [V|Acc] end, [], "SELECT client_id, topic FROM sessions"]),
 
     %% Make sure only the expected sessions are now present.
     Want = lists:sort(ClientIds(ToRemain)),
