@@ -34,8 +34,7 @@ fields_config() ->
     Queues = #vmq_ql_table{
                    name =       queues,
                    depends_on = [QueueBase],
-                   provides = [deliver_mode,
-                               queue_size,
+                   provides = [queue_size,
                                session_pid,
                                is_offline,
                                is_online,
@@ -136,7 +135,7 @@ subscription_row_init(Row) ->
     SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
     Subs = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
     vmq_subscriber:fold(fun({Topic, QoS, _Node}, Acc) ->
-                                [maps:merge(Row, #{topic => vmq_topic:unword(Topic),
+                                [maps:merge(Row, #{topic => iolist_to_binary(vmq_topic:unword(Topic)),
                                                    qos => QoS})|Acc]
                         end, [], Subs).
 
@@ -160,7 +159,7 @@ message_row_init(Row) ->
                       dup=Dup, routing_key=RoutingKey,
                       payload=Payload}} ->
             [maps:merge(Row, #{msg_qos => QoS,
-                               routing_key => vmq_topic:unword(RoutingKey),
+                               routing_key => iolist_to_binary(vmq_topic:unword(RoutingKey)),
                                dup => Dup,
                                payload => Payload})];
         _ ->

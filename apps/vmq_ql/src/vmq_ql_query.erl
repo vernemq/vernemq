@@ -368,12 +368,6 @@ eval_query([{'or', Ops}|Rest], false) when is_list(Ops) ->
 eval_query([{'and', _}|_], false) -> false; % Always false
 eval_query([{'or', _}|_], true) -> true. % Always true
 
-eval_op(equals, V1, V2) -> v(V1) == v(V2);
-eval_op(not_equals, V1, V2) -> v(V1) /= v(V2);
-eval_op(lesser, V1, V2) -> v(V1) < v(V2);
-eval_op(lesser_equals, V1, V2) -> v(V1) =< v(V2);
-eval_op(greater, V1, V2) -> v(V1) > v(V2);
-eval_op(greater_equals, V1, V2) -> v(V1) >= v(V2);
 eval_op(match, V, V) -> true;
 eval_op(match, V1, V2) ->
     case {v(V1), v(V2)} of
@@ -394,7 +388,27 @@ eval_op(match, V1, V2) ->
             end;
         _ ->
             false
-    end.
+    end;
+eval_op(Op, V1, V2) ->
+    eval_op_norm(Op, v(V1), v(V2)).
+
+eval_op_norm(Op, V1, V2) when is_atom(V1), is_binary(V2) ->
+    eval_op_(Op, atom_to_binary(V1, utf8), V2);
+eval_op_norm(Op, V1, V2) when is_binary(V1), is_atom(V1) ->
+    eval_op_(Op, V1, atom_to_binary(V2, utf8));
+eval_op_norm(Op, V1, V2) when is_list(V1), is_binary(V2) ->
+    eval_op_(Op, list_to_binary(V1), V2);
+eval_op_norm(Op, V1, V2) when is_binary(V1), is_list(V1) ->
+    eval_op_(Op, V1, list_to_binary(V2));
+eval_op_norm(Op, V1, V2) ->
+    eval_op_(Op, V1, V2).
+
+eval_op_(equals, V1, V2) -> V1 == V2;
+eval_op_(not_equals, V1, V2) -> V1 /= V2;
+eval_op_(lesser, V1, V2) -> V1 < V2;
+eval_op_(lesser_equals, V1, V2) -> V1 =< V2;
+eval_op_(greater, V1, V2) -> V1 > V2;
+eval_op_(greater_equals, V1, V2) -> V1 >= V2.
 
 v(true) -> true;
 v(false) -> false;

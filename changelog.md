@@ -2,6 +2,8 @@
 
 ## Not yet released
 
+- Fixed a number issues when filtering `vmq-admin session show` results. Note
+  `msg_ref` filtering is currently broken.
 - Fix node startup routine to cleanup stale subscriber data.
 - Do not log getting a client peername failed because the client already
   disconnected.

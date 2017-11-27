@@ -597,7 +597,7 @@ restarted_node_has_no_stale_sessions(Config) ->
      {_, OtherNodePort}|_] = Nodes,
 
     %% Connect and subscribe on a node with cs true
-    Topic = <<"topic">>,
+    Topic = <<"topic/sub">>,
     ClientId = "cs-true-client-id",
     ClientConn = connect(RestartNodePort, ClientId, [{keepalive, 60}, {clean_session, true}]),
     subscribe(ClientConn, Topic, 1),
@@ -613,11 +613,11 @@ restarted_node_has_no_stale_sessions(Config) ->
     ToRemain = [#{client_id => <<"restart-node-cs-false-client-id">>,
                   port => RestartNodePort,
                   clean_session => false,
-                  topic => [Topic]},
+                  topic => Topic},
                 #{client_id => <<"other-node-cs-false-client-id">>,
                   port => OtherNodePort,
                   clean_session => false,
-                  topic => [Topic]}],
+                  topic => Topic}],
     [ begin
           Conn = connect(P, C, [{keepalive, 60}, {clean_session, CS}]),
           subscribe(Conn, Topic, 1)
