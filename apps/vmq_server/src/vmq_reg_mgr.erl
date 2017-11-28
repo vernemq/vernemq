@@ -151,10 +151,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 setup_queue(SubscriberId, Subs, Acc) ->
-    lager:warning("setup_queue: ~p", [SubscriberId]),
     case lists:keyfind(node(), 1, Subs) of
         {_Node, false, _Subs} ->
-            lager:warning("setup_queue (false): ~p", [SubscriberId]),
             vmq_queue_sup_sup:start_queue(SubscriberId);
         _ ->
             Acc
