@@ -48,8 +48,7 @@
 %% used by reg views
 -export([subscribe_subscriber_changes/0,
          fold_subscriptions/2,
-         fold_subscribers/2,
-         fold_subscribers/3]).
+         fold_subscribers/2]).
 
 %% exported because currently used by netsplit tests
 -export([subscriptions_for_subscriber_id/1]).
@@ -418,7 +417,7 @@ fix_dead_queues(_, []) -> exit(no_target_available);
 fix_dead_queues(DeadNodes, AccTargets) ->
     %% DeadNodes must be a list of offline VerneMQ nodes
     %% Targets must be a list of online VerneMQ nodes
-    {_, _, N} = fold_subscribers(fun fix_dead_queue/3, {DeadNodes, AccTargets, 0}, false),
+    {_, _, N} = fold_subscribers(fun fix_dead_queue/3, {DeadNodes, AccTargets, 0}),
     lager:info("dead queues summary: ~p queues fixed", [N]).
 
 fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
@@ -606,16 +605,11 @@ fold_subscriptions(FoldFun, Acc) ->
                    ({Topic, _QoS, N}, AAAcc) ->
                         FoldFun({MP, Topic, N}, AAAcc)
                 end, AAcc, Subs)
-      end, Acc, false).
+      end, Acc).
 
 fold_subscribers(FoldFun, Acc) ->
-    fold_subscribers(FoldFun, Acc, true).
-
-fold_subscribers(FoldFun, Acc, CompactResult) ->
     vmq_subscriber_db:fold(
-      fun ({SubscriberId, Subs}, AccAcc) when CompactResult ->
-              FoldFun(SubscriberId, vmq_subscriber:get_nodes(Subs), AccAcc);
-          ({SubscriberId, Subs}, AccAcc) ->
+      fun ({SubscriberId, Subs}, AccAcc) ->
               FoldFun(SubscriberId, Subs, AccAcc)
       end, Acc).
 

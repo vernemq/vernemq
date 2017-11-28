@@ -63,7 +63,7 @@ init([]) ->
     Self = self(),
     spawn_link(
       fun() ->
-              vmq_reg:fold_subscribers(fun setup_queue/3, ignore, false),
+              vmq_reg:fold_subscribers(fun setup_queue/3, ignore),
               Self ! all_queues_setup
       end),
     EventHandler = vmq_reg:subscribe_subscriber_changes(),

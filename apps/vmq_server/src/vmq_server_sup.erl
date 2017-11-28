@@ -69,7 +69,7 @@ maybe_change_nodename() ->
               fun(SubscriberId, Subs, _) ->
                       {NewSubs, _} = vmq_subscriber:change_node_all(Subs, node(), false),
                       vmq_subscriber_db:store(SubscriberId, NewSubs)
-              end, ignored, false);
+              end, ignored);
         _ ->
             %% we ignore if the node has the same name
             %% or if more than one node is returned (clustered)
