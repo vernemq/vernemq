@@ -218,7 +218,7 @@ queue_persistent_client_expiration_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
     {ok, false, QPid} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
     {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
-    timer:sleep(10), % give some time to plumtree
+    timer:sleep(50), % give some time to plumtree
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
@@ -226,7 +226,7 @@ queue_persistent_client_expiration_test(_) ->
     Msgs = publish_multi([<<"test">>, <<"transition">>]),
     NumPubbedMsgs = length(Msgs),
     
-    timer:sleep(10), % give some time to plumtree
+    timer:sleep(50), % give some time to plumtree
     {ok, FoundMsgs} = vmq_lvldb_store:msg_store_find(SubscriberId),
     NumPubbedMsgs = length(FoundMsgs),
 
