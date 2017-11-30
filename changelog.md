@@ -1,6 +1,6 @@
 # Changelog
 
-## Not yet released
+## VERNEMQ 1.2.2
 
 - Fixed a number issues when filtering `vmq-admin session show` results. Note
   `msg_ref` filtering is currently broken.
