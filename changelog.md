@@ -1,5 +1,10 @@
 # Changelog
 
+## Not yet released
+
+- Do not resolve host names when including peer host in an `vmq-admin session
+  show` query as this can lead to a timeout.
+
 ## VERNEMQ 1.2.2
 
 - Fixed a number issues when filtering `vmq-admin session show` results. Note
