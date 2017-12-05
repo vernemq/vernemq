@@ -21,7 +21,9 @@
          queue_fifo_offline_drop_test/1,
          queue_lifo_offline_drop_test/1,
          queue_offline_transition_test/1,
-         queue_persistent_client_expiration_test/1]).
+         queue_persistent_client_expiration_test/1,
+         queue_force_disconnect_test/1,
+         queue_force_disconnect_cleanup_test/1]).
 
 -export([hook_auth_on_publish/6,
          hook_auth_on_subscribe/3]).
@@ -53,7 +55,9 @@ all() ->
      queue_fifo_offline_drop_test,
      queue_lifo_offline_drop_test,
      queue_offline_transition_test,
-     queue_persistent_client_expiration_test
+     queue_persistent_client_expiration_test,
+     queue_force_disconnect_test,
+     queue_force_disconnect_cleanup_test
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -225,7 +229,7 @@ queue_persistent_client_expiration_test(_) ->
     SessionPid1 ! {go_down_in, 1},
     Msgs = publish_multi([<<"test">>, <<"transition">>]),
     NumPubbedMsgs = length(Msgs),
-    
+
     timer:sleep(50), % give some time to plumtree
     {ok, FoundMsgs} = vmq_lvldb_store:msg_store_find(SubscriberId),
     NumPubbedMsgs = length(FoundMsgs),
@@ -236,6 +240,58 @@ queue_persistent_client_expiration_test(_) ->
     not_found = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
+queue_force_disconnect_test(_) ->
+    Parent = self(),
+    SubscriberId = {"", <<"force-client-disconnect">>},
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{clean_session => false,
+                                                       max_offline_messages => 1000,
+                                                       queue_type => fifo}),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
+    {ok, false, QPid0} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
+    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"disconnect">>], 1}]),
+    timer:sleep(50), % give some time to plumtree
+
+    monitor(process, SessionPid1),
+    vmq_queue:force_disconnect(QPid0),
+
+    % ensure we got disconnected
+    receive
+        {'DOWN', _MRef, process, SessionPid1, _} -> ok
+    end,
+
+    % Reconnect and ensure SessionPresent, and same QueuePid
+    {ok, true, QPid0} = vmq_reg:register_subscriber(Parent, SubscriberId, QueueOpts, 10).
+
+
+queue_force_disconnect_cleanup_test(_) ->
+    NonConsumingSessionPid = self(),
+    SubscriberId = {"", <<"force-client-discleanup">>},
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{clean_session => false,
+                                                       max_offline_messages => 1000,
+                                                       queue_type => fifo}),
+    SessionPresent = false,
+    {ok, SessionPresent, QPid0} = vmq_reg:register_subscriber(NonConsumingSessionPid, SubscriberId, QueueOpts, 10),
+    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"discleanup">>], 1}]),
+    timer:sleep(50), % give some time to plumtree
+
+    Msgs = publish_multi([<<"test">>, <<"discleanup">>]),
+    NumPubbedMsgs = length(Msgs),
+
+    timer:sleep(50), % give some time to plumtree
+    {ok, FoundMsgs} = vmq_lvldb_store:msg_store_find(SubscriberId),
+    NumPubbedMsgs = length(FoundMsgs),
+
+    vmq_queue:force_disconnect(QPid0, true),
+
+    % Ensure all Subscriptions are gone
+    [] = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
+
+    % SessionPresent should be again `false` and we should get a new Queue Pid
+    {ok, SessionPresent, QPid1} = vmq_reg:register_subscriber(NonConsumingSessionPid, SubscriberId, QueueOpts, 10),
+    true = (QPid0 =/= QPid1),
+    false = is_process_alive(QPid0),
+
+    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
 publish_multi(Topic) ->
     publish_multi(Topic, []).

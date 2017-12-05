@@ -50,7 +50,7 @@
          fold_subscriptions/2,
          fold_subscribers/2]).
 
-%% exported because currently used by netsplit tests
+%% exported because currently used by queue & netsplit tests
 -export([subscriptions_for_subscriber_id/1]).
 
 -define(NR_OF_REG_RETRIES, 10).
