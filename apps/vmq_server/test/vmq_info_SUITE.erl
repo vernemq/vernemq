@@ -93,7 +93,7 @@ filtering_works(_Config) ->
     [#{client_id := <<"vmq-info-client">>, peer_host := PeerHost}] =
         execute(["vmq-admin", "session", "show", "--client_id", "--peer_host"]),
     [#{client_id := <<"vmq-info-client">>, peer_host := PeerHost}] =
-        execute(["vmq-admin", "session", "show", "--peer_host=" ++ PeerHost]),
+        execute(["vmq-admin", "session", "show", "--peer_host=" ++ binary_to_list(PeerHost)]),
 
     [#{client_id := <<"vmq-info-client">>, peer_port := PeerPort}] =
         execute(["vmq-admin", "session", "show", "--client_id", "--peer_port"]),

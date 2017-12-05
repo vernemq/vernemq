@@ -1135,11 +1135,7 @@ get_info_items([peer_port|Rest], State, Acc) ->
     get_info_items(Rest, State, [{peer_port, PeerPort}|Acc]);
 get_info_items([peer_host|Rest], State, Acc) ->
     {PeerIp, _} = State#state.peer,
-    Host =
-    case inet:gethostbyaddr(PeerIp) of
-        {ok, {hostent, HostName, _, inet, _, _}} ->  HostName;
-        _ -> list_to_binary(inet:ntoa(PeerIp))
-    end,
+    Host = list_to_binary(inet:ntoa(PeerIp)),
     get_info_items(Rest, State, [{peer_host, Host}|Acc]);
 get_info_items([protocol|Rest], State, Acc) ->
     get_info_items(Rest, State, [{protocol, State#state.proto_ver}|Acc]);
