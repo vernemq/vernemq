@@ -46,7 +46,9 @@
          enqueue_many/2,
          enqueue_many/3,
          migrate/2,
-         cleanup/1]).
+         cleanup/1,
+         force_disconnect/1,
+         force_disconnect/2]).
 
 -export([online/2, online/3,
          offline/2, offline/3,
@@ -144,6 +146,11 @@ get_opts(Queue) when is_pid(Queue) ->
         Ret ->
             Ret
     end.
+
+force_disconnect(Queue) when is_pid(Queue) ->
+    force_disconnect(Queue, false).
+force_disconnect(Queue, DoCleanup) when is_pid(Queue) and is_boolean(DoCleanup) ->
+    gen_fsm:sync_send_all_state_event(Queue, {force_disconnect, DoCleanup}, infinity).
 
 set_last_waiting_acks(Queue, WAcks) ->
     gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
@@ -524,6 +531,24 @@ handle_sync_event(get_sessions, _From, StateName, #state{sessions=Sessions} = St
     {reply, maps:keys(Sessions), StateName, State};
 handle_sync_event(get_opts, _From, StateName, #state{opts=Opts} = State) ->
     {reply, Opts, StateName, State};
+handle_sync_event({force_disconnect, DoCleanup}, _From, StateName,
+                  #state{id=SId, sessions=Sessions, offline=#queue{queue=OfflineQ}} = State) ->
+    %% Forcefully disconnect all sessions and cleanup all state
+    case DoCleanup of
+        true ->
+            vmq_reg:delete_subscriptions(SId),
+            %% Collect all queues, make sure to include the backups
+            SessionQueues = [queue:join(BQ, Q) || #session{queue=#queue{queue=Q, backup=BQ}} <- maps:values(Sessions)],
+            lists:foreach(
+              fun(Q) ->
+                      cleanup_queue(SId, Q),
+                      _ = vmq_metrics:incr_queue_unhandled(queue:len(Q))
+              end, [OfflineQ | SessionQueues]),
+            {stop, normal, ok, State};
+        false ->
+            disconnect_sessions(State),
+            {reply, ok, StateName, State}
+    end;
 handle_sync_event(Event, _From, _StateName, State) ->
     {stop, {error, {unknown_sync_event, Event}}, State}.
 

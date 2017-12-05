@@ -2,6 +2,7 @@
 
 ## Not yet released
 
+- New `vmq-admin` command to forcefully disconnect and cleanup sessions.
 - Fix issue preventing ssl settings being inheritable on the listener level
   (#583).
 - Fix issue where enqueuing data to a queue on a remote cluster node could cause

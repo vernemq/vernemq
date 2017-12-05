@@ -18,9 +18,11 @@
 
 register_cli() ->
     vmq_session_list_cmd(),
+    vmq_session_disconnect_cmd(),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
-    clique:register_usage(["vmq-admin", "session", "show"], vmq_session_show_usage()).
+    clique:register_usage(["vmq-admin", "session", "show"], vmq_session_show_usage()),
+    clique:register_usage(["vmq-admin", "session", "disconnect"], vmq_session_disconnect_usage()).
 
 vmq_session_list_cmd() ->
     Cmd = ["vmq-admin", "session", "show"],
@@ -76,6 +78,40 @@ vmq_session_list_cmd() ->
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+vmq_session_disconnect_cmd() ->
+    Cmd = ["vmq-admin", "session", "disconnect"],
+    KeySpecs = [{'client-id', [{typecast, fun(ClientId) -> ClientId end}]}],
+    FlagSpecs = [{cleanup, [{shortname, "c"},
+                            {longname, "cleanup"}]},
+                 {mountpoint, [{shortname, "m"},
+                               {longname, "mountpoint"},
+                               {typecast,
+                                fun(Mountpoint) -> Mountpoint end}]}],
+
+    Callback = fun(_, [{'client-id', ClientId}], Flags) ->
+                       DoCleanup = lists:keymember(cleanup, 1, Flags),
+                       QueryString0 = "SELECT queue_pid FROM sessions WHERE client_id =\"" ++ ClientId ++ "\"",
+                       QueryString1 =
+                       case proplists:get_value(mountpoint, Flags) of
+                           undefined ->
+                               QueryString0;
+                           Mountpoint ->
+                               QueryString0 ++ " AND mountpoint=\"" ++ Mountpoint ++ "\""
+                       end,
+
+                       vmq_ql_query_mgr:fold_query(
+                         fun(Row, _) ->
+                                 QueuePid = maps:get(queue_pid, Row),
+                                 vmq_queue:force_disconnect(QueuePid, DoCleanup)
+                         end, ok, QueryString1),
+                       [clique_status:text("Done")];
+                  (_,_,_) ->
+                       Text = clique_status:text(vmq_session_disconnect_usage()),
+                       [clique_status:alert([Text])]
+               end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+
 v("true" = V) -> V;
 v("false" = V) -> V;
 v(V) ->
@@ -89,9 +125,10 @@ v(V) ->
 
 session_usage() ->
     ["vmq-admin session <sub-command>\n\n",
-     "  Retrieve information on live sessions.\n\n",
+     "  Manage MQTT sessions.\n\n",
      "  Sub-commands:\n",
      "    show        Show and filter running sessions\n",
+     "    disconnect  Forcefully disconnect a session\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 
@@ -110,4 +147,15 @@ vmq_session_show_usage() ->
      "      Limits the time spent when fetching a single row.\n"
      "      Default is 100 milliseconds.\n"
      | Options
+    ].
+
+vmq_session_disconnect_usage() ->
+    ["vmq-admin session disconnect client-id=<ClientId>\n\n",
+     "  Forcefully disconnects a client from the cluster. \n\n",
+     "  --mountpoint=<Mountpoint>, -m\n",
+     "      specifies the mountpoint, defaults to the default mountpoint\n",
+     "  --cleanup, -c\n",
+     "      removes the stored cluster state of this client like stored\n",
+     "      messages and subscriptions.",
+     "\n\n"
     ].
