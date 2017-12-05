@@ -187,7 +187,7 @@ listen(Opts) ->
     case ranch_tcp:listen(Opts) of
         {ok, LSocket} ->
             {ok, #proxy_socket{lsocket   = LSocket,
-                               opts      = Opts}};
+                               opts      = filter(Opts)}};
         {error, Error} ->
             {error, Error}
     end.
@@ -197,7 +197,7 @@ listen(Opts) ->
                                        not_proxy_protocol |
                                        {timeout, proxy_handshake} | atom()}.
 accept(#proxy_socket{lsocket = LSocket,
-                                opts = Opts}, Timeout) ->
+                     opts = Opts}, Timeout) ->
     Started = os:timestamp(),
     case ranch_tcp:accept(LSocket, Timeout) of
         {ok, CSocket} ->
@@ -584,3 +584,15 @@ dest_from_socket(Socket) ->
                   {dest_port, Port}]};
         Err -> Err
     end.
+
+filter(Opts) ->
+    filter(Opts, []).
+
+filter([], Acc) ->
+    lists:reverse(Acc);
+filter([{ip,_}|Rest], Acc) ->
+    filter(Rest, Acc);
+filter([{port, _}|Rest], Acc) ->
+    filter(Rest, Acc);
+filter([O|Rest], Acc) ->
+    filter(Rest, [O|Acc]).
