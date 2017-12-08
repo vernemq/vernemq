@@ -153,7 +153,7 @@ code_change(_OldVsn, State, _Extra) ->
 setup_queue(SubscriberId, Subs, Acc) ->
     case lists:keyfind(node(), 1, Subs) of
         {_Node, false, _Subs} ->
-            vmq_queue_sup_sup:start_queue(SubscriberId);
+            vmq_queue_sup_sup:start_queue(SubscriberId, false);
         _ ->
             Acc
     end.

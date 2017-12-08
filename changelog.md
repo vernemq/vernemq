@@ -2,6 +2,9 @@
 
 ## Not yet released
 
+- Fix issue in the queue initialization introduced in VerneMQ 1.2.2 which meant
+  offline messages were not being read into the queue process after a node
+  restart. Added tests to prevent this issue from occurring again.
 - Fix crash in cleanup of the `vmq_webhooks` plugin when the plugin is being
   stopped or the broker is shutting down (#556).
 - Fix incorrect format strings in `vmq_reg_sup` log statements.
