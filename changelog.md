@@ -2,6 +2,7 @@
 
 ## Not yet released
 
+- Add missing argument to HTTP module configuration log statement.
 - Do not resolve host names when including peer host in an `vmq-admin session
   show` query as this can lead to a timeout.
 - Remove superfluous warnings for ip and port when using the proxy protocol.
