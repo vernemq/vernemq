@@ -205,8 +205,8 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
     {_Hooks, Vals} = lists:unzip(all_hooks()),
-    {Endpoints, _Opts} = lists:unzip(Vals),
-    [ hackney_pool:stop_pool(E) || {E,_} <- lists:usort(lists:flatten(Endpoints)) ],
+    {Endpoints, _Opts} = lists:unzip(lists:flatten(Vals)),
+    [ hackney_pool:stop_pool(E) || {E,_} <- lists:usort(Endpoints) ],
     ok.
 
 %%--------------------------------------------------------------------

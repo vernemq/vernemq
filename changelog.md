@@ -2,6 +2,8 @@
 
 ## Not yet released
 
+- Fix crash in cleanup of the `vmq_webhooks` plugin when the plugin is being
+  stopped or the broker is shutting down (#556).
 - Fix incorrect format strings in `vmq_reg_sup` log statements.
 - Add missing argument to HTTP module configuration log statement.
 - Do not resolve host names when including peer host in an `vmq-admin session
