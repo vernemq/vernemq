@@ -2,6 +2,7 @@
 
 ## Not yet released
 
+- Fix incorrect format strings in `vmq_reg_sup` log statements.
 - Add missing argument to HTTP module configuration log statement.
 - Do not resolve host names when including peer host in an `vmq-admin session
   show` query as this can lead to a timeout.
