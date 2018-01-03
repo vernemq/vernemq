@@ -2,6 +2,9 @@
 
 ## Not yet released
 
+- Remove time and randomness related dependencies for backwards compatibility
+  for OTP 17. These are no longer required as OTP 17 support was removed before
+  VerneMQ 1.0.
 - Minor opmizations.
 - Fix issue in the queue initialization introduced in VerneMQ 1.2.2 which meant
   offline messages were not being read into the queue process after a node
