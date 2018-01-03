@@ -110,7 +110,7 @@ multiple_connect_test(Config) ->
     ok = ensure_cluster(Config),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
     NrOfConnects = 250,
-    NrOfProcesses = NrOfConnects div 50, %random:uniform(NrOfConnects),
+    NrOfProcesses = NrOfConnects div 50, %rand:uniform(NrOfConnects),
     NrOfMsgsPerProcess = NrOfConnects div NrOfProcesses,
     publish(Nodes, NrOfProcesses, NrOfMsgsPerProcess),
     done = receive_times(done, NrOfProcesses),

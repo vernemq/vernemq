@@ -197,8 +197,7 @@ validate_wildcard_test() ->
     {error, 'no_+_allowed_in_word'} = validate_topic(subscribe, <<"/testtesttopic+">>).
 
 validate_unword_test() ->
-    {A,B,C} = now(),
-    random:seed(A, B, C),
+    rand:seed(exsplus, erlang:timestamp()),
     random_topics(1000),
     ok.
 
@@ -209,10 +208,10 @@ contains_wildcard_test() ->
 
 random_topics(0) -> ok;
 random_topics(N) when N > 0 ->
-    NWords = random:uniform(100),
+    NWords = rand:uniform(100),
     Words =
     lists:foldl(fun(_, AAcc) ->
-                    case random:uniform(3) of
+                    case rand:uniform(3) of
                         1 ->
                             ["+/"|AAcc];
                         _ ->
@@ -226,8 +225,8 @@ random_topics(N) when N > 0 ->
 
 random_word() ->
     Words = "abcdefghijklmnopqrstuvwxyz0123456789",
-    N = random:uniform(length(Words)),
-    S = random:uniform(length(Words) + 1 - N),
+    N = rand:uniform(length(Words)),
+    S = rand:uniform(length(Words) + 1 - N),
     string:substr(Words, N, S).
 
 -endif.
