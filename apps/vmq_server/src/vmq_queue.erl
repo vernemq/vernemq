@@ -779,7 +779,7 @@ insert(MsgOrRef, #state{id=SId, deliver_mode=fanout, sessions=Sessions} = State)
 
 insert(MsgOrRef, #state{id=SId, deliver_mode=balance, sessions=Sessions} = State) ->
     Pids = maps:keys(Sessions),
-    RandomPid = lists:nth(rnd:uniform(length(Pids)), Pids),
+    RandomPid = lists:nth(rnd:uniform(maps:size(Sessions)), Pids),
     RandomSession = maps:get(RandomPid, Sessions),
     {UpdatedSession, _} = session_insert(SId, RandomSession, MsgOrRef),
     State#state{sessions=maps:update(RandomPid, UpdatedSession, Sessions)}.

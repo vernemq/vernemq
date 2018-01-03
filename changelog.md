@@ -2,6 +2,7 @@
 
 ## Not yet released
 
+- Minor opmizations.
 - Fix issue in the queue initialization introduced in VerneMQ 1.2.2 which meant
   offline messages were not being read into the queue process after a node
   restart. Added tests to prevent this issue from occurring again.
