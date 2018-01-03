@@ -116,7 +116,7 @@ call(Key, Req) ->
 %%--------------------------------------------------------------------
 init([InstanceId]) ->
     %% Initialize random seed
-    rnd:seed(os:timestamp()),
+    rand:seed(exsplus, os:timestamp()),
 
     Opts = vmq_config:get_env(msg_store_opts, []),
     DataDir1 = proplists:get_value(store_dir, Opts, "data/msgstore"),
@@ -238,7 +238,7 @@ init_state(DataRoot, Config) ->
     %% under heavy uniform load...
     WriteBufferMin = config_value(write_buffer_size_min, MergedConfig, 30 * 1024 * 1024),
     WriteBufferMax = config_value(write_buffer_size_max, MergedConfig, 60 * 1024 * 1024),
-    WriteBufferSize = WriteBufferMin + rnd:uniform(1 + WriteBufferMax - WriteBufferMin),
+    WriteBufferSize = WriteBufferMin + rand:uniform(1 + WriteBufferMax - WriteBufferMin),
 
     %% Update the write buffer size in the merged config and make sure create_if_missing is set
     %% to true

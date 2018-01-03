@@ -789,12 +789,12 @@ publish__(Self, {{_, Port}, Nodes} = Conf, NrOfMsgsPerProcess) ->
         {ok, Socket} ->
             check_unique_client("connect-multiple", Nodes),
             gen_tcp:close(Socket),
-            timer:sleep(rnd:uniform(100)),
+            timer:sleep(rand:uniform(100)),
             publish__(Self, Conf, NrOfMsgsPerProcess - 1);
         {error, closed} ->
             %% this happens if at the same time the same client id
             %% connects to the cluster
-            timer:sleep(rnd:uniform(100)),
+            timer:sleep(rand:uniform(100)),
             publish__(Self, Conf, NrOfMsgsPerProcess)
     end.
 
@@ -806,7 +806,7 @@ publish_random(Nodes, N, Topic, Acc) ->
     Connect = packet:gen_connect("connect-unclean-pub", [{clean_session, true},
                                                          {keepalive, 10}]),
     Connack = packet:gen_connack(0),
-    Payload = vmq_test_utils:rand_bytes(rnd:uniform(50)),
+    Payload = vmq_test_utils:rand_bytes(rand:uniform(50)),
     Publish = packet:gen_publish(Topic, 1, Payload, [{mid, N}]),
     Puback = packet:gen_puback(N),
     Disconnect = packet:gen_disconnect(),
@@ -884,11 +884,11 @@ hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 hook_auth_on_subscribe(_, _, _) -> ok.
 
 random_node(Nodes) ->
-    lists:nth(rnd:uniform(length(Nodes)), Nodes).
+    lists:nth(rand:uniform(length(Nodes)), Nodes).
 
 
 opts(Nodes) ->
-    {_, Port} = lists:nth(rnd:uniform(length(Nodes)), Nodes),
+    {_, Port} = lists:nth(rand:uniform(length(Nodes)), Nodes),
     [{port, Port}].
 
 check_unique_client(ClientId, Nodes) ->

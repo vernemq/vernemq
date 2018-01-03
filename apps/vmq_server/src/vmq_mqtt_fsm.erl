@@ -78,7 +78,7 @@
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 
 init(Peer, Opts) ->
-    rnd:seed(os:timestamp()),
+    rand:seed(exsplus, os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
     PreAuthUser =

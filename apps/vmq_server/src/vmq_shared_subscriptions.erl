@@ -25,7 +25,7 @@ publish(Msg, Policy, [{Group, []}|Rest]) ->
 publish(Msg, Policy, [{Group, SubscriberGroup}|Rest]) ->
     Subscribers = filter_subscribers(SubscriberGroup, Policy),
     %% Randomize subscribers once.
-    RandSubscribers = [S||{_,S} <- lists:sort([{rnd:uniform(), N} || N <- Subscribers])],
+    RandSubscribers = [S||{_,S} <- lists:sort([{rand:uniform(), N} || N <- Subscribers])],
     case publish_to_group(Msg, RandSubscribers) of
         ok ->
             publish(Msg, Policy, Rest);

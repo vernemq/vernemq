@@ -19,7 +19,6 @@
                   clique,
                   mzmetrics,
                   jsx,
-                  rand_compat,
                   gen_server2
                  ]},
   {mod, { vmq_server_app, []}},

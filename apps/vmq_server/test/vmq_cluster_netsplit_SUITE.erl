@@ -257,4 +257,4 @@ wait_until_converged(Nodes, Fun, ExpectedReturn) ->
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 random_node(Nodes) ->
-    lists:nth(rnd:uniform(length(Nodes)), Nodes).
+    lists:nth(rand:uniform(length(Nodes)), Nodes).

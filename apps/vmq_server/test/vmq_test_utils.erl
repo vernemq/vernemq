@@ -117,7 +117,6 @@ get_suite_rand_seed() ->
             X ->
                 X
         end,
-    {ok, rnd} = rand_compat:init(),
     io:format(user, "Suite random seed: ~p~n", [Seed]),
     {seed, Seed}.
 
@@ -128,8 +127,8 @@ seed_rand(Config) ->
                 throw("No seed found in Config");
             S -> S
         end,
-    rnd:seed(Seed).
+    rand:seed(exsplus, Seed).
 
 rand_bytes(N) ->
-    L = [ rnd:uniform(256)-1 || _ <- lists:seq(1,N)],
+    L = [ rand:uniform(256)-1 || _ <- lists:seq(1,N)],
     list_to_binary(L).

@@ -201,10 +201,10 @@ refcount([], Cnt) -> Cnt.
 
 
 random_flag() ->
-    rnd:uniform(10) > 5.
+    rand:uniform(10) > 5.
 
 random_qos() ->
-    rnd:uniform(3) - 1.
+    rand:uniform(3) - 1.
 
 store_summary() ->
     vmq_lvldb_store_utils:full_table_scan(
