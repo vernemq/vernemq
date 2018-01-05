@@ -148,16 +148,9 @@ process_bytes(Bytes, Buffer, St) ->
     end.
 
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
-    case binary_to_term(Bin) of
-        #vmq_msg{mountpoint=MP,
-                 routing_key=Topic} = Msg ->
-            _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, {Msg, undefined});
-        CompatMsg ->
-            SGPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
-            #vmq_msg{mountpoint=MP,
-                     routing_key=Topic} = Msg = compat_msg(CompatMsg, SGPolicy),
-            _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, {Msg, undefined})
-    end,
+    #vmq_msg{mountpoint=MP,
+             routing_key=Topic} = Msg = binary_to_term(Bin),
+    _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, {Msg, undefined}),
     process(Rest, St);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
     case binary_to_term(Bin) of
@@ -167,9 +160,7 @@ process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
             %% the cluster communication.
             spawn(fun() ->
                           try
-                              SGPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
-                              CompatMsgs = compat_msgs(Msgs, SGPolicy),
-                              Reply = vmq_queue:enqueue_many(QueuePid, CompatMsgs),
+                              Reply = vmq_queue:enqueue_many(QueuePid, Msgs),
                               CallerPid ! {Ref, Reply}
                           catch
                               _:_ ->
@@ -184,9 +175,7 @@ process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
                           try
                               case vmq_queue_sup_sup:get_queue_pid(SubscriberId) of
                                   QueuePid when is_pid(QueuePid) ->
-                                      SGPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
-                                      CompatMsgs = compat_msgs(Msgs, SGPolicy),
-                                      Reply = vmq_queue:enqueue_many(QueuePid, CompatMsgs, Opts),
+                                      Reply = vmq_queue:enqueue_many(QueuePid, Msgs, Opts),
                                       CallerPid ! {Ref, Reply}
                               end
                           catch
@@ -202,26 +191,6 @@ process(<<>>, _) -> ok;
 process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St) ->
     lager:warning("unknown message: ~p", [Cmd]),
     process(Rest, St).
-
-compat_msgs(Msgs, SGPolicy) ->
-    lists:map(fun({deliver, Qos, Msg}) ->
-                      {deliver, Qos, compat_msg(Msg, SGPolicy)}
-              end, Msgs).
-    
-%% Convert #vmq_msg{} records coming from pre-subscriber group nodes
-%% owhich don't have the sg_policy member
-compat_msg(#vmq_msg{} = Msg, _) -> Msg;
-compat_msg({vmq_msg, MsgRef, RoutingKey, Payload, Retain, Dup, QoS, Mountpoint, Persisted}, SGPolicy) ->
-    #vmq_msg{
-       msg_ref = MsgRef,
-       routing_key = RoutingKey,
-       payload = Payload,
-       retain = Retain,
-       dup = Dup,
-       qos = QoS,
-       mountpoint = Mountpoint,
-       persisted = Persisted,
-       sg_policy = SGPolicy}.
 
 publish({_, _} = SubscriberIdAndQoS, Msg) ->
     vmq_reg:publish(SubscriberIdAndQoS, Msg);

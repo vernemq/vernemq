@@ -2,6 +2,12 @@
 
 ## Not yet released
 
+- Remove shared subscriptions backwards compatibility code. Introducing shared
+  subscriptions changed some internals and code ensuring backwards compatibility
+  had to be written. This code has existed since VerneMQ 1.0.0rc1 and anyone
+  needing to upgrade a running cluster from older versions than 1.0.0rc1 of
+  VerneMQ will have to first do an intermediate upgrade to a version containing
+  the compatibility code.
 - Remove time and randomness related dependencies for backwards compatibility
   for OTP 17. These are no longer required as OTP 17 support was removed before
   VerneMQ 1.0.
