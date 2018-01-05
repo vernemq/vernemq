@@ -2,6 +2,8 @@
 
 ## Not yet released
 
+- Fix issue preventing the proxy_protocol setting (`listener.tcp.proxy_protocol
+  = on`) being inherited by specific listeners (#516).
 - Remove shared subscriptions backwards compatibility code. Introducing shared
   subscriptions changed some internals and code ensuring backwards compatibility
   had to be written. This code has existed since VerneMQ 1.0.0rc1 and anyone

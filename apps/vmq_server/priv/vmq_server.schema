@@ -550,9 +550,7 @@
                                                                   hidden
                                                                  ]}.
 {mapping, "listener.tcp.$name.proxy_protocol", "vmq_server.listeners", [
-                                                                        {default, off},
                                                                         {datatype, flag},
-                                                                        {include_default, "default"},
                                                                         hidden
                                                                        ]}.
 
@@ -562,9 +560,7 @@
                                                                   hidden
                                                                  ]}.
 {mapping, "listener.ws.$name.proxy_protocol", "vmq_server.listeners", [
-                                                                        {default, off},
                                                                         {datatype, flag},
-                                                                        {include_default, "default"},
                                                                         hidden
                                                                        ]}.
 {mapping, "listener.http.proxy_protocol", "vmq_server.listeners", [
@@ -573,9 +569,7 @@
                                                                   hidden
                                                                  ]}.
 {mapping, "listener.http.$name.proxy_protocol", "vmq_server.listeners", [
-                                                                        {default, off},
                                                                         {datatype, flag},
-                                                                        {include_default, "default"},
                                                                         hidden
                                                                        ]}.
 
