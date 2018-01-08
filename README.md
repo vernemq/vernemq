@@ -34,7 +34,7 @@ following features are implemented and delivered as part of VerneMQ:
 * Extensible Plugin architecture
 * Multiple Sessions per ClientId
 * Session Balancing
-* Shared subscriptions (BETA)
+* Shared subscriptions
 * Message load regulation
 * Message load shedding (for system protection)
 * Offline Message Storage (based on LevelDB)

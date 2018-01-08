@@ -2,6 +2,7 @@
 
 ## Not yet released
 
+- The shared subscriber feature is no longer marked as in beta.
 - Strengthen check verifying if a remote node is available or not. The new check
   verifies that a data connection to the remote node has been established, in
   addition to the current check which verifies that a specific process is running
