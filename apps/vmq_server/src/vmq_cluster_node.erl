@@ -19,7 +19,8 @@
 -export([start_link/1,
          publish/2,
          enqueue/2,
-         connect_params/1]).
+         connect_params/1,
+         is_reachable/1]).
 
 %% gen_server callbacks
 -export([init/1]).
@@ -59,6 +60,18 @@ enqueue(Pid, Term) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
     Pid ! {enq, self(), Ref, Term},
+    receive
+        {Ref, Reply} ->
+            demonitor(MRef, [flush]),
+            Reply;
+        {'DOWN', MRef, process, Pid, Reason} ->
+            {error, Reason}
+    end.
+
+is_reachable(Pid) ->
+    Ref = make_ref(),
+    MRef = monitor(process, Pid),
+    Pid ! {is_reachable, self(), Ref},
     receive
         {Ref, Reply} ->
             demonitor(MRef, [flush]),
@@ -155,6 +168,9 @@ handle_message({NetEv, _}, #state{reconnect_tref=TRef} = State)
     State#state{reachable=false, reconnect_tref=NewTRef};
 handle_message(reconnect, #state{reachable=false} = State) ->
     connect(State#state{reconnect_tref=undefined});
+handle_message({is_reachable, CallerPid, Ref}, #state{reachable=Reachable}=State) ->
+    CallerPid ! {Ref, Reachable},
+    State;
 handle_message(Msg, #state{node=Node, reachable=Reachable} = State) ->
     lager:warning("got unknown message ~p for node ~p (reachable ~p)",
                   [Msg, Node, Reachable]),

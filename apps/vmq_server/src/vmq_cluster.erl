@@ -167,7 +167,10 @@ check_ready([Node|Rest], Acc) ->
                        _ -> false
                    end,
     ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
-    check_ready(Rest, [{Node, IsReady}|Acc]);
+    %% We should only say we're ready if we've established a
+    %% connection to the remote node.
+    IsReady1 = IsReady andalso vmq_cluster_node_sup:is_reachable(Node),
+    check_ready(Rest, [{Node, IsReady1}|Acc]);
 check_ready([], Acc) ->
     ClusterReady =
     case lists:keyfind(false, 2, Acc) of

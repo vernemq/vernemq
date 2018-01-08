@@ -2,6 +2,12 @@
 
 ## Not yet released
 
+- Strengthen check verifying if a remote node is available or not. The new check
+  verifies that a data connection to the remote node has been established, in
+  addition to the current check which verifies that a specific process is running
+  on the remote node. This new check will make it more visible if, for instance,
+  the IP an port configured via `listener.vmq.clustering` is not reachable or a
+  listener was not able to be started.
 - Fix issue preventing the proxy_protocol setting (`listener.tcp.proxy_protocol
   = on`) being inherited by specific listeners (#516).
 - Remove shared subscriptions backwards compatibility code. Introducing shared
@@ -13,7 +19,7 @@
 - Remove time and randomness related dependencies for backwards compatibility
   for OTP 17. These are no longer required as OTP 17 support was removed before
   VerneMQ 1.0.
-- Minor opmizations.
+- Minor optimizations.
 - Fix issue in the queue initialization introduced in VerneMQ 1.2.2 which meant
   offline messages were not being read into the queue process after a node
   restart. Added tests to prevent this issue from occurring again.
