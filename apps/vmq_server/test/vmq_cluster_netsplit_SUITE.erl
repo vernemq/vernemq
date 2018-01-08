@@ -230,17 +230,7 @@ helper_pub_qos1(ClientId, Publish, Port) ->
     gen_tcp:close(Socket).
 
 ensure_cluster(Config) ->
-    [{Node1, _}|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
-    [begin
-         {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, [Node1])
-     end || {Node, _} <- OtherNodes],
-    {NodeNames, _} = lists:unzip(Nodes),
-    Expected = lists:sort(NodeNames),
-    ok = vmq_cluster_test_utils:wait_until_joined(NodeNames, Expected),
-    [?assertEqual({Node, Expected}, {Node,
-                                     lists:sort(vmq_cluster_test_utils:get_cluster_members(Node))})
-     || Node <- NodeNames],
-    ok.
+    vmq_cluster_test_utils:ensure_cluster(Config).
 
 wait_until_converged(Nodes, Fun, ExpectedReturn) ->
     {NodeNames, _} = lists:unzip(Nodes),

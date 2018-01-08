@@ -26,13 +26,18 @@
     wait_until/3,
     wait_until_left/2,
     wait_until_joined/2,
+    wait_until_ready/1,
     wait_until_offline/1,
     wait_until_disconnected/2,
     wait_until_connected/2,
     start_node/3,
     partition_cluster/2,
-    heal_cluster/2
+    heal_cluster/2,
+    ensure_cluster/1
     ]).
+
+-include_lib("eunit/include/eunit.hrl").
+
 get_cluster_members(Node) ->
     {Node, {ok, Res}} = {Node, rpc:call(Node, plumtree_peer_service_manager, get_local_state, [])},
     riak_dt_orswot:value(Res).
@@ -80,6 +85,12 @@ wait_until_joined(Nodes, ExpectedCluster) ->
                                 lists:sort(get_cluster_members(Node))
                         end, Nodes))
         end, 60*2, 500).
+
+wait_until_ready(Nodes) ->
+    wait_until(fun() ->
+                       NodeStates = [rpc:call(N, vmq_cluster, is_ready, []) || N <- Nodes],
+                       lists:all(fun(Bool) -> Bool end, NodeStates)
+               end, 60*10, 100).
 
 wait_until_offline(Node) ->
     wait_until(fun() ->
@@ -180,6 +191,21 @@ heal_cluster(ANodes, BNodes) ->
         end,
          [{Node1, Node2} || Node1 <- ANodes, Node2 <- BNodes]),
     ok.
+
+ensure_cluster(Config) ->
+    [{Node1, _}|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
+    [begin
+         {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, [Node1])
+     end || {Node, _} <- OtherNodes],
+    {NodeNames, _} = lists:unzip(Nodes),
+    Expected = lists:sort(NodeNames),
+    ok = vmq_cluster_test_utils:wait_until_joined(NodeNames, Expected),
+    [?assertEqual({Node, Expected}, {Node,
+                                     lists:sort(vmq_cluster_test_utils:get_cluster_members(Node))})
+     || Node <- NodeNames],
+    vmq_cluster_test_utils:wait_until_ready(NodeNames),
+    ok.
+
 
 random_port(Node) ->
     10000 + (erlang:phash2(Node) rem 10000).

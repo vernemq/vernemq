@@ -93,19 +93,6 @@ all() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-ensure_cluster(Config) ->
-    [{Node1, _}|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
-    [begin
-         {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, [Node1])
-     end || {Node, _} <- OtherNodes],
-    {NodeNames, _} = lists:unzip(Nodes),
-    Expected = lists:sort(NodeNames),
-    ok = vmq_cluster_test_utils:wait_until_joined(NodeNames, Expected),
-    [?assertEqual({Node, Expected}, {Node,
-                                     lists:sort(vmq_cluster_test_utils:get_cluster_members(Node))})
-     || Node <- NodeNames],
-    ok.
-
 multiple_connect_test(Config) ->
     ok = ensure_cluster(Config),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
@@ -876,6 +863,9 @@ subscribe(Socket, Topic, QoS) ->
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback).
 
+ensure_cluster(Config) ->
+    vmq_cluster_test_utils:ensure_cluster(Config).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -885,7 +875,6 @@ hook_auth_on_subscribe(_, _, _) -> ok.
 
 random_node(Nodes) ->
     lists:nth(rand:uniform(length(Nodes)), Nodes).
-
 
 opts(Nodes) ->
     {_, Port} = lists:nth(rand:uniform(length(Nodes)), Nodes),
