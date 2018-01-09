@@ -413,11 +413,11 @@ eval_op(Op, V1, V2) ->
 
 eval_op_norm(Op, V1, V2) when is_atom(V1), is_binary(V2) ->
     eval_op_(Op, atom_to_binary(V1, utf8), V2);
-eval_op_norm(Op, V1, V2) when is_binary(V1), is_atom(V1) ->
+eval_op_norm(Op, V1, V2) when is_binary(V1), is_atom(V2) ->
     eval_op_(Op, V1, atom_to_binary(V2, utf8));
 eval_op_norm(Op, V1, V2) when is_list(V1), is_binary(V2) ->
     eval_op_(Op, list_to_binary(V1), V2);
-eval_op_norm(Op, V1, V2) when is_binary(V1), is_list(V1) ->
+eval_op_norm(Op, V1, V2) when is_binary(V1), is_list(V2) ->
     eval_op_(Op, V1, list_to_binary(V2));
 eval_op_norm(Op, V1, V2) ->
     eval_op_(Op, V1, V2).
