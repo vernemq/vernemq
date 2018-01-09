@@ -49,6 +49,7 @@ following features are implemented and delivered as part of VerneMQ:
 * PROXY Protocol v2
 * Administration HTTP API (BETA)
 * Real-time MQTT session tracing
+* Full multitenancy
 
 ## Commercial Support. Binary Packages. Documentation
 
