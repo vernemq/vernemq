@@ -1,6 +1,6 @@
 # Changelog
 
-## Not yet released
+## VerneMQ 1.2.3
 
 - The shared subscriber feature is no longer marked as in beta.
 - Strengthen check verifying if a remote node is available or not. The new check
