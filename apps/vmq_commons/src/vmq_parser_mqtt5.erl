@@ -26,7 +26,7 @@
 -include("vmq_parser_mqtt5.hrl").
 
 -spec parse(binary()) -> {mqtt5_frame(), binary()} |
-                         {error, {reason_type, reason_type()}} |
+                         {error, any()} |
                          more.
 parse(Data) ->
     parse(Data, ?MAX_PACKET_SIZE).
@@ -138,7 +138,7 @@ variable(<<?CONNECT:4, 0:4>>, <<4:16/big, "MQTT", ?PROTOCOL_5:8,
                                                 client_id = ClientId},
                     parse_will_properties(Rest2, Flags, Conn1);
                 _ ->
-                    {error, {reason_code, ?MALFORMED_PACKET}}
+                    {error, cant_parse_client_id}
             end;
         E -> E
     end;
@@ -153,7 +153,7 @@ variable(<<?CONNECT:4, 0:4>>, <<4:16/big, "MQTT", ?PROTOCOL_5:8,
 %%     #mqtt5_disconnect{};
 variable(_, _) ->
     %% Covers: MQTT5-3.1.2.3
-    {error, {reason_code, ?MALFORMED_PACKET}}.
+    {error,  cant_parse_varint}.
 
 parse_will_properties(Rest0, Flags, Conn0) ->
     case parse_properties(Rest0) of
@@ -195,7 +195,7 @@ parse_username(_, _, _) ->
     %% FIXME: return correct error here
     {error, cant_parse_username}.
 
-parse_password(Rest, <<_:1, 0:1, _:4>>, Conn) ->
+parse_password(<<>>, <<_:1, 0:1, _:4>>, Conn) ->
     Conn;
 parse_password(<<Len:16/big, Password:Len/binary>>, <<_:1, 1:1, _:4>>, Conn) ->
     Conn#mqtt5_connect{password=Password};
@@ -257,16 +257,17 @@ parse_password(_, _, _) ->
 %% serialise(#mqtt5_pubcomp{message_id=MessageId}) ->
 %%     <<?PUBCOMP:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_connect{proto_ver=ProtoVersion,
-                        username=UserName,
-                        password=Password,
-                        will_retain=WillRetain,
-                        will_qos=WillQos,
-                        clean_start=CleanSession,
-                        keep_alive=KeepAlive,
-                        client_id=ClientId,
-                        will_topic=WillTopic,
-                        will_msg=WillMsg,
-                        properties=Properties}) ->
+                         username=UserName,
+                         password=Password,
+                         will_retain=WillRetain,
+                         will_qos=WillQos,
+                         clean_start=CleanSession,
+                         keep_alive=KeepAlive,
+                         client_id=ClientId,
+                         will_properties=WillProperties,
+                         will_topic=WillTopic,
+                         will_msg=WillMsg,
+                         properties=Properties}) ->
     {PMagicL, PMagic} = proto(ProtoVersion),
     Var = [<<PMagicL:16/big-unsigned-integer, PMagic/binary,
              ProtoVersion:8/unsigned-integer,
@@ -280,6 +281,7 @@ serialise(#mqtt5_connect{proto_ver=ProtoVersion,
              (default(KeepAlive, 0)):16/big-unsigned-integer>>,
            properties(Properties),
            utf8(ClientId),
+           properties(WillProperties),
            utf8(vmq_topic:unword(WillTopic)),
            utf8(WillMsg),
            utf8(UserName),
@@ -365,9 +367,9 @@ ensure_binary(undefined) -> undefined;
 ensure_binary(empty) -> empty. % for test purposes
 
 properties(undefined) ->
-    <<0:16>>;
+    <<0:8>>;
 properties([]) ->
-    <<0:16>>.
+    <<0:8>>.
 
 %%%%%%% packet generator functions (useful for testing)
 gen_connect(ClientId, Opts) ->
@@ -444,7 +446,7 @@ gen_connect(ClientId, Opts) ->
 
 
 -spec parse_properties(binary()) -> {ok, [mqtt5_property()], binary} |
-                                    {error, {reason_code, reason_type()}}.
+                                    {error, any()}.
 parse_properties(Data) ->
     case parse_varint(Data) of
         {PropertiesData, Rest} ->
@@ -454,12 +456,12 @@ parse_properties(Data) ->
                 {error, _} = E ->
                     E
             end;
-        E -> {error, {reason_code, ?MALFORMED_PACKET}}
+        {error, _} -> {error, cant_parse_properties}
     end.
 
 -spec parse_properties(binary(), [mqtt5_property()])
     -> [mqtt5_property()] |
-       {error, {reason_code, reason_type()}}.
+       {error, any()}.
 parse_properties(<<>>, Acc) ->
     lists:reverse(Acc);
 %% Note, the property ids are specified as a varint, but in MQTT5 all
@@ -474,7 +476,7 @@ parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) -
             P = #p_payload_format_indicator{value = utf8},
             parse_properties(Rest, [P|Acc]);
         _ ->
-            {error, {reason_code, ?MALFORMED_PACKET}}
+            {error, cant_parse_properties}
     end;
 parse_properties(<<?M5P_MESSAGE_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
     P = #p_message_expiry_interval{value = Val},
@@ -489,7 +491,7 @@ parse_properties(<<?M5P_CORRELATION_DATA:8, Len:16/big, Val:Len/binary, Rest/bin
     P = #p_correlation_data{value = Val},
     parse_properties(Rest, [P|Acc]);
 parse_properties(_, _) ->
-    {error, {reason_code, ?MALFORMED_PACKET}}.
+    {error, cant_parse_properties}.
 
 
 parse_varint(<<0:1, DataSize:7, Data:DataSize/binary, Rest/binary>>) ->
