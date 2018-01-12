@@ -12,6 +12,7 @@
           clean_start       :: flag(),
           keep_alive        :: non_neg_integer(),
           client_id         :: client_id(),
+          will_properties   :: [mqtt5_will_property()],
           will_retain       :: flag(),
           will_qos          :: qos(),
           will_topic        :: topic(),
@@ -19,6 +20,14 @@
           properties        :: [mqtt5_property()] | undefined
          }).
 -type mqtt5_connect()        :: #mqtt5_connect{}.
+
+-type mqtt5_will_property() :: p_will_delay_interval()
+                             | p_payload_format_indicator()
+                             | p_message_expiry_interval()
+                             | p_content_type()
+                             | p_response_topic()
+                             | p_correlation_data()
+                             | user_property().
 
 %% -record(mqtt5_connack, {
 %%           session_present   :: flag(),
