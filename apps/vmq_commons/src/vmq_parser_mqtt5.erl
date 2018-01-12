@@ -366,25 +366,32 @@ ensure_binary(B) when is_binary(B) -> B;
 ensure_binary(undefined) -> undefined;
 ensure_binary(empty) -> empty. % for test purposes
 
-properties(undefined) ->
-    <<0:8>>;
-properties([]) ->
-    <<0:8>>.
+properties(undefined) ->   <<0:8>>;
+properties([]) -> <<0:8>>;
+properties(Properties) ->
+    IoProps = enc_properties(Properties),
+    [serialise_len(iolist_size(IoProps)), IoProps].
+
+enc_properties([]) ->
+    <<>>;
+enc_properties([#p_session_expiry_interval{value = Val}|Rest]) ->
+    [<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big>>|enc_properties(Rest)].
 
 %%%%%%% packet generator functions (useful for testing)
 gen_connect(ClientId, Opts) ->
     Frame = #mqtt5_connect{
-               client_id =      ensure_binary(ClientId),
-               clean_start =    proplists:get_value(clean_session, Opts, true),
-               keep_alive =     proplists:get_value(keepalive, Opts, 60),
-               username =       ensure_binary(proplists:get_value(username, Opts)),
-               password =       ensure_binary(proplists:get_value(password, Opts)),
-               proto_ver =      5,
-               will_topic =     ensure_binary(proplists:get_value(will_topic, Opts)),
-               will_qos =       proplists:get_value(will_qos, Opts, 0),
-               will_retain =    proplists:get_value(will_retain, Opts, false),
-               will_msg =       ensure_binary(proplists:get_value(will_msg, Opts)),
-               properties =     proplists:get_value(properties, Opts)
+               client_id       = ensure_binary(ClientId),
+               clean_start     = proplists:get_value(clean_session, Opts, true),
+               keep_alive      = proplists:get_value(keepalive, Opts, 60),
+               username        = ensure_binary(proplists:get_value(username, Opts)),
+               password        = ensure_binary(proplists:get_value(password, Opts)),
+               proto_ver       = ?PROTOCOL_5,
+               will_properties = proplists:get_value(will_properties, Opts),
+               will_topic      = ensure_binary(proplists:get_value(will_topic, Opts)),
+               will_qos        = proplists:get_value(will_qos, Opts, 0),
+               will_retain     = proplists:get_value(will_retain, Opts, false),
+               will_msg        = ensure_binary(proplists:get_value(will_msg, Opts)),
+               properties      = proplists:get_value(properties, Opts)
               },
     iolist_to_binary(serialise(Frame)).
 
@@ -467,6 +474,9 @@ parse_properties(<<>>, Acc) ->
 %% Note, the property ids are specified as a varint, but in MQTT5 all
 %% indicator ids fit within one byte, so we parse it as such to keep
 %% things simple.
+parse_properties(<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
+    P = #p_session_expiry_interval{value = Val},
+    parse_properties(Rest, [P|Acc]);
 parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) ->
     case Val of
         0 ->

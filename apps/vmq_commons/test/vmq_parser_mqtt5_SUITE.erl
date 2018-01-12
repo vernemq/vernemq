@@ -3,6 +3,7 @@
 -compile(export_all).
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 
 init_per_suite(Config) ->
     Config.
@@ -24,7 +25,8 @@ all() ->
 
 
 parse_unparse_tests(_Config) ->
-    parse_unparse("connect", vmq_parser_mqtt5:gen_connect("test-client", [])).
+    Properties = {properties, [#p_session_expiry_interval{value = 12341234}]},
+    parse_unparse("connect", vmq_parser_mqtt5:gen_connect("test-client", [Properties])).
 
 parse_unparse(Test, Frame) ->
     io:format(user, "parse/unparse: ~p~n", [Test]),
