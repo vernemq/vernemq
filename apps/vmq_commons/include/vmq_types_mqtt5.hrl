@@ -219,7 +219,7 @@
 -record(p_content_type, {value :: utf8string()}).
 -type p_content_type() :: #p_content_type{}.
 
--record(p_response_topic, {value :: utf8string()}).
+-record(p_response_topic, {value :: topic()}).
 -type p_response_topic() :: #p_content_type{}.
 
 -record(p_correlation_data, {value :: binary()}).
@@ -283,7 +283,7 @@
 -record(p_retain_available, {value :: boolean()}).
 -type p_retain_available() :: #p_retain_available{}.
 
--record(p_user_property, {value :: [user_property()]}).
+-record(p_user_property, {value :: user_property()}).
 -type p_user_property() :: #p_user_property{}.
 
 -record(p_max_packet_size, {value :: 1..4294967296}).

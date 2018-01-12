@@ -361,6 +361,11 @@ utf8(IoList) when is_list(IoList) ->
 utf8(Bin) when is_binary(Bin) ->
     <<(byte_size(Bin)):16/big, Bin/binary>>.
 
+binary(X) ->
+    %% We encode MQTT binaries the same as utf8, but use this function
+    %% to document the difference.
+    utf8(X).
+
 ensure_binary(L) when is_list(L) -> list_to_binary(L);
 ensure_binary(B) when is_binary(B) -> B;
 ensure_binary(undefined) -> undefined;
@@ -374,8 +379,74 @@ properties(Properties) ->
 
 enc_properties([]) ->
     <<>>;
+enc_properties([#p_payload_format_indicator{value = Val}|Rest]) ->
+    Indicator =
+    case Val of
+        utf8 -> 1;
+        unspecified -> 0
+    end,
+    [<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Indicator:8/big>>|enc_properties(Rest)];
+enc_properties([#p_message_expiry_interval{value = Val}|Rest]) ->
+    [<<?M5P_MESSAGE_EXPIRY_INTERVAL:8, Val:32/big>>|enc_properties(Rest)];
+enc_properties([#p_content_type{value = Val}|Rest]) ->
+    [<<?M5P_CONTENT_TYPE:8>>, utf8(Val)|enc_properties(Rest)];
+enc_properties([#p_response_topic{value = Topic}|Rest]) ->
+    [<<?M5P_CONTENT_TYPE:8>>, utf8(vmq_topic:unword(Topic))|enc_properties(Rest)];
+enc_properties([#p_correlation_data{value = Data}|Rest]) ->
+    [<<?M5P_CORRELATION_DATA:8>>, binary(Data)|enc_properties(Rest)];
+enc_properties([#p_subscription_id{value = Id}|Rest]) when 1 =< Id, Id =< 268435455 ->
+    [<<?M5P_CORRELATION_DATA:8>>, serialise_len(Id) |enc_properties(Rest)];
 enc_properties([#p_session_expiry_interval{value = Val}|Rest]) ->
-    [<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big>>|enc_properties(Rest)].
+    [<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big>>|enc_properties(Rest)];
+enc_properties([#p_assigned_client_id{value = Val}|Rest]) ->
+    [<<?M5P_ASSIGNED_CLIENT_ID:8>>, utf8(Val)|enc_properties(Rest)];
+enc_properties([#p_server_keep_alive{value = Val}|Rest]) ->
+    [<<?M5P_SERVER_KEEP_ALIVE:8, Val:16/big>>|enc_properties(Rest)];
+enc_properties([#p_authentication_method{value = Val}|Rest]) ->
+    [<<?M5P_AUTHENTICATION_METHOD:8>>, utf8(Val)|enc_properties(Rest)];
+enc_properties([#p_authentication_data{value = Val}|Rest]) ->
+    [<<?M5P_AUTHENTICATION_DATA:8>>, binary(Val)|enc_properties(Rest)];
+enc_properties([#p_request_problem_info{value = Bool}|Rest]) ->
+    Val = flag(Bool),
+    [<<?M5P_REQUEST_PROBLEM_INFO:8, Val:8>>|enc_properties(Rest)];
+enc_properties([#p_will_delay_interval{value = Val}|Rest]) ->
+    [<<?M5P_WILL_DELAY_INTERVAL:8, Val:32/big>>|enc_properties(Rest)];
+enc_properties([#p_request_response_info{value = Bool}|Rest]) ->
+    Val = flag(Bool),
+    [<<?M5P_REQUEST_RESPONSE_INFO:8, Val:8>>|enc_properties(Rest)];
+enc_properties([#p_response_info{value = Val}|Rest]) ->
+    [<<?M5P_RESPONSE_INFO:8>>, utf8(Val)|enc_properties(Rest)];
+enc_properties([#p_server_ref{value = Val}|Rest]) ->
+    [<<?M5P_SERVER_REF:8>>, utf8(Val)|enc_properties(Rest)];
+enc_properties([#p_reason_string{value = Val}|Rest]) ->
+    [<<?M5P_REASON_STRING:8>>, utf8(Val)|enc_properties(Rest)];
+enc_properties([#p_receive_max{value = Val}|Rest]) ->
+    [<<?M5P_RECEIVE_MAX:8, Val:16/big>>|enc_properties(Rest)];
+enc_properties([#p_topic_alias_max{value = Val}|Rest]) ->
+    [<<?M5P_TOPIC_ALIAS_MAX:8, Val:16/big>>|enc_properties(Rest)];
+enc_properties([#p_topic_alias{value = Val}|Rest]) ->
+    [<<?M5P_TOPIC_ALIAS:8, Val:16/big>>|enc_properties(Rest)];
+enc_properties([#p_max_qos{value = Val}|Rest]) ->
+    [<<?M5P_MAXIMUM_QOS:8, Val:8>>|enc_properties(Rest)];
+enc_properties([#p_retain_available{value = Bool}|Rest]) ->
+    Val = flag(Bool),
+    [<<?M5P_RETAIN_AVAILABLE:8, Val:8>>|enc_properties(Rest)];
+enc_properties([#p_user_property{value = {Key,Val}}|Rest]) ->
+    [<<?M5P_USER_PROPERTY:8>>, utf8(Key), utf8(Val)|enc_properties(Rest)];
+enc_properties([#p_max_packet_size{value = Val}|Rest]) ->
+    [<<?M5P_MAX_PACKET_SIZE:8, Val:32/big>>|enc_properties(Rest)];
+enc_properties([#p_wildcard_subs_available{value = Bool}|Rest]) ->
+    Val = flag(Bool),
+    [<<?M5P_WILDCARD_SUBS_AVAILABLE:8, Val:8>>|enc_properties(Rest)];
+enc_properties([#p_sub_ids_available{value = Bool}|Rest]) ->
+    Val = flag(Bool),
+    [<<?M5P_SUB_IDS_AVAILABLE:8, Val:8>>|enc_properties(Rest)];
+enc_properties([#p_shared_subs_available{value = Bool}|Rest]) ->
+    Val = flag(Bool),
+    [<<?M5P_SHARED_SUBS_AVAILABLE:8, Val:8>>|enc_properties(Rest)].
+
+
+
 
 %%%%%%% packet generator functions (useful for testing)
 gen_connect(ClientId, Opts) ->
