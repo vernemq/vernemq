@@ -31,24 +31,38 @@
 init(_Type, Req, Opts) ->
     {upgrade, protocol, cowboy_websocket, Req, Opts}.
 
-websocket_init(_Type, Req, Opts) ->
+websocket_init(Type, Req, Opts) ->
     case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req) of
         {undefined, _, Req2} ->
-            init_(Req2, Opts);
+            init_(Type, Req2, Opts);
         {ok, [SubProtocol], Req2} ->
             case lists:member(SubProtocol, ?SUPPORTED_PROTOCOLS) of
                 true ->
                     Req3 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, SubProtocol, Req2),
-                    init_(Req3, Opts);
+                    init_(Type, Req3, Opts);
                 false ->
                     {shutdown, Req2}
             end
     end.
 
-init_(Req, Opts) ->
+init_(Type, Req, Opts) ->
     {Peer, Req1} = cowboy_req:peer(Req),
     FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
-    FsmState = FsmMod:init(Peer, Opts),
+    FsmState =
+    case Type of
+        ssl ->
+            case proplists:get_value(use_identity_as_username, Opts, false) of
+                false ->
+                    FsmMod:init(Peer, Opts);
+                true ->
+                    %% Hacky to use the private set/2 function, but
+                    %% didn't have a better solution to get at the socket.
+                    SSLSocket = cowboy_req:get(socket, Req),
+                    FsmMod:init(Peer, [{preauth, vmq_ssl:socket_to_common_name(SSLSocket)}|Opts])
+            end;
+        _ ->
+            FsmMod:init(Peer, Opts)
+    end,
     _ = vmq_metrics:incr_socket_open(),
     {ok, Req1, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
 

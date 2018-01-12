@@ -223,7 +223,7 @@ protocol_opts(vmq_ranch, _, Opts) -> default_session_opts(Opts);
 protocol_opts(cowboy_protocol, Type, Opts)
   when (Type == mqttws) or (Type == mqttwss) ->
     Dispatch = cowboy_router:compile(
-                 [{'_', [{"/mqtt", vmq_websocket, [default_session_opts(Opts)]}]}
+                 [{'_', [{"/mqtt", vmq_websocket, default_session_opts(Opts)}]}
                  ]),
     [{env, [{dispatch, Dispatch}]}];
 protocol_opts(cowboy_protocol, _, Opts) ->

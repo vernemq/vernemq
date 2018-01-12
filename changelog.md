@@ -20,6 +20,8 @@
   the original client received the message, but the acknowledgement was lost.
 - Fix typo in configuration name `plumtree.outstandind_limit` should be
   `plumtree.outstanding_limit`.
+- Fix bug preventing `use_identity_as_username` from working on WSS sockets
+  (#563).
 
 ## VerneMQ 1.2.3
 
