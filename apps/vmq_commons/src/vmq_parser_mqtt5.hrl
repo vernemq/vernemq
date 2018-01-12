@@ -23,9 +23,9 @@
 -define(M5P_RETAIN_AVAILABLE,         37).
 -define(M5P_USER_PROPERTY,            38).
 -define(M5P_MAX_PACKET_SIZE,          39).
--define(M5P_WILDCARD_SUB_AVAILABLE,   40).
--define(M5P_SUB_ID_AVAILABLE,         41).
--define(M5P_SHARED_SUB_AVAILABLE,     42).
+-define(M5P_WILDCARD_SUBS_AVAILABLE,  40).
+-define(M5P_SUB_IDS_AVAILABLE,        41).
+-define(M5P_SHARED_SUBS_AVAILABLE,    42).
 
 %% Reason codes
 -define(M5_GRANTED_QOS0,                   16#00).
