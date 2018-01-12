@@ -1,0 +1,146 @@
+%% MQTT5 property identifiers.
+-define(M5P_PAYLOAD_FORMAT_INDICATOR, 1).
+-define(M5P_MESSAGE_EXPIRY_INTERVAL,  2).
+-define(M5P_CONTENT_TYPE,             3).
+-define(M5P_RESPONSE_TOPIC,           8).
+-define(M5P_CORRELATION_DATA,         9).
+-define(M5P_SUBSCRIPTION_ID,          11).
+-define(M5P_SESSION_EXPIRY_INTERVAL,  17).
+-define(M5P_ASSIGNED_CLIENT_ID,       18).
+-define(M5P_SERVER_KEEP_ALIVE,        19).
+-define(M5P_AUTHENTICATION_METHOD,    21).
+-define(M5P_AUTHENTICATION_DATA,      22).
+-define(M5P_REQUEST_PROBLEM_INFO,     23).
+-define(M5P_WILL_DELAY_INTERVAL,      24).
+-define(M5P_REQUEST_RESPONSE_INFO,    25).
+-define(M5P_RESPONSE_INFO,            26).
+-define(M5P_SERVER_REF,               28).
+-define(M5P_REASON_STRING,            31).
+-define(M5P_RECEIVE_MAX,              33).
+-define(M5P_TOPIC_ALIAS_MAX,          34).
+-define(M5P_TOPIC_ALIAS,              35).
+-define(M5P_MAXIMUM_QOS,              36).
+-define(M5P_RETAIN_AVAILABLE,         37).
+-define(M5P_USER_PROPERTY,            38).
+-define(M5P_MAX_PACKET_SIZE,          39).
+-define(M5P_WILDCARD_SUB_AVAILABLE,   40).
+-define(M5P_SUB_ID_AVAILABLE,         41).
+-define(M5P_SHARED_SUB_AVAILABLE,     42).
+
+%% Reason codes
+-define(M5_GRANTED_QOS0,                   16#00).
+-define(M5_GRANTED_QOS1,                   16#01).
+-define(M5_GRANTED_QOS2,                   16#02).
+-define(M5_DISCONNECT_WITH_WILL_MSG,       16#04).
+-define(M5_NO_MATCHING_SUBSCRIBERS,        16#10).
+-define(M5_NO_SUBSCRIPTION_EXISTED,        16#11).
+-define(M5_CONTINUE_AUTHENTICATION,        16#18).
+-define(M5_REAUTHENTICATE,                 16#19).
+-define(M5_UNSPECIFIED_ERROR,              16#80).
+-define(M5_MALFORMED_PACKET,               16#81).
+-define(M5_PROTOCOL_ERROR,                 16#82).
+-define(M5_IMPL_SPECIFIC_ERROR,            16#83).
+-define(M5_UNSUPPORTED_PROTOCOL_VERSION,   16#84).
+-define(M5_CLIENT_IDENTIFIER_NOT_VALID,    16#85).
+-define(M5_BAD_USERNAME_OR_PASSWORD,       16#86).
+-define(M5_NOT_AUTHORIZED,                 16#87).
+-define(M5_SERVER_UNAVAILABLE,             16#88).
+-define(M5_SERVER_BUSY,                    16#89).
+-define(M5_BANNED,                         16#8A).
+-define(M5_SERVER_SHUTTING_DOWN,           16#8B).
+-define(M5_BAD_AUTHENTICATION_METHOD,      16#8C).
+-define(M5_KEEP_ALIVE_TIMEOUT,             16#8D).
+-define(M5_SESSION_TAKEN_OVER,             16#8E).
+-define(M5_TOPIC_FILTER_INVALID,           16#8F).
+-define(M5_TOPIC_NAME_INVALID,             16#90).
+-define(M5_PACKET_ID_IN_USE,               16#91).
+-define(M5_PACKET_ID_NOT_FOUND,            16#92).
+-define(M5_RECEIVE_MAX_EXCEEDED,           16#93).
+-define(M5_TOPIC_ALIAS_INVALID,            16#94).
+-define(M5_PACKET_TOO_LARGE,               16#95).
+-define(M5_MESSAGE_RATE_TOO_HIGH,          16#96).
+-define(M5_QUOTA_EXCEEDED,                 16#97).
+-define(M5_ADMINISTRATIVE_ACTION,          16#98).
+-define(M5_PAYLOAD_FORMAT_INVALID,         16#99).
+-define(M5_RETAIN_NOT_SUPPORTED,           16#9A).
+-define(M5_QOS_NOT_SUPPORTED,              16#9B).
+-define(M5_USE_ANOTHER_SERVER,             16#9C).
+-define(M5_SERVER_MOVED,                   16#9D).
+-define(M5_SHARED_SUBS_NOT_SUPPORTED,      16#9E).
+-define(M5_CONNECTION_RATE_EXCEEDED,       16#9F).
+-define(M5_MAX_CONNECT_TIME,               16#A0).
+-define(M5_SUBSCRIPTION_IDS_NOT_SUPPORTED, 16#A1).
+-define(M5_WILDCARD_SUBS_NOT_SUPPORTED,    16#A2).
+
+-type reason_code()         :: ?M5_GRANTED_QOS0
+                             | ?M5_GRANTED_QOS1
+                             | ?M5_GRANTED_QOS2
+                             | ?M5_DISCONNECT_WITH_WILL_MSG
+                             | ?M5_NO_MATCHING_SUBSCRIBERS
+                             | ?M5_NO_SUBSCRIPTION_EXISTED
+                             | ?M5_CONTINUE_AUTHENTICATION
+                             | ?M5_REAUTHENTICATE
+                             | ?M5_UNSPECIFIED_ERROR
+                             | ?M5_MALFORMED_PACKET
+                             | ?M5_PROTOCOL_ERROR
+                             | ?M5_IMPL_SPECIFIC_ERROR
+                             | ?M5_UNSUPPORTED_PROTOCOL_VERSION
+                             | ?M5_CLIENT_IDENTIFIER_NOT_VALID
+                             | ?M5_BAD_USERNAME_OR_PASSWORD
+                             | ?M5_NOT_AUTHORIZED
+                             | ?M5_SERVER_UNAVAILABLE
+                             | ?M5_SERVER_BUSY
+                             | ?M5_BANNED
+                             | ?M5_SERVER_SHUTTING_DOWN
+                             | ?M5_BAD_AUTHENTICATION_METHOD
+                             | ?M5_KEEP_ALIVE_TIMEOUT
+                             | ?M5_SESSION_TAKEN_OVER
+                             | ?M5_TOPIC_FILTER_INVALID
+                             | ?M5_TOPIC_NAME_INVALID
+                             | ?M5_PACKET_ID_IN_USE
+                             | ?M5_PACKET_ID_NOT_FOUND
+                             | ?M5_RECEIVE_MAX_EXCEEDED
+                             | ?M5_TOPIC_ALIAS_INVALID
+                             | ?M5_PACKET_TOO_LARGE
+                             | ?M5_MESSAGE_RATE_TOO_HIGH
+                             | ?M5_QUOTA_EXCEEDED
+                             | ?M5_ADMINISTRATIVE_ACTION
+                             | ?M5_PAYLOAD_FORMAT_INVALID
+                             | ?M5_RETAIN_NOT_SUPPORTED
+                             | ?M5_QOS_NOT_SUPPORTED
+                             | ?M5_USE_ANOTHER_SERVER
+                             | ?M5_SERVER_MOVED
+                             | ?M5_SHARED_SUBS_NOT_SUPPORTED
+                             | ?M5_CONNECTION_RATE_EXCEEDED
+                             | ?M5_MAX_CONNECT_TIME
+                             | ?M5_SUBSCRIPTION_IDS_NOT_SUPPORTED
+                             | ?M5_WILDCARD_SUBS_NOT_SUPPORTED.
+
+
+%% frame types
+-define(CONNECT,      1).
+-define(CONNACK,      2).
+-define(PUBLISH,      3).
+-define(PUBACK,       4).
+-define(PUBREC,       5).
+-define(PUBREL,       6).
+-define(PUBCOMP,      7).
+-define(SUBSCRIBE,    8).
+-define(SUBACK,       9).
+-define(UNSUBSCRIBE, 10).
+-define(UNSUBACK,    11).
+-define(PINGREQ,     12).
+-define(PINGRESP,    13).
+-define(DISCONNECT,  14).
+-define(AUTH,        15).
+
+-define(RESERVED, 0).
+-define(PROTOCOL_MAGIC_31, <<"MQIsdp">>).
+-define(PROTOCOL_MAGIC_311, <<"MQTT">>).
+-define(PROTOCOL_MAGIC_5,   <<"MQTT">>).
+-define(PROTOCOL_5, 5).
+-define(MAX_LEN, 16#fffffff).
+-define(HIGHBIT, 2#10000000).
+-define(LOWBITS, 2#01111111).
+
+-define(MAX_PACKET_SIZE, 268435455).
