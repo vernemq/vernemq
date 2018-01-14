@@ -526,7 +526,7 @@ gen_connect(ClientId, Opts) ->
 -spec parse_properties(binary()) -> {ok, [mqtt5_property()], binary} |
                                     {error, any()}.
 parse_properties(Data) ->
-    case parse_varint(Data) of
+    case varint_data(Data) of
         {PropertiesData, Rest} ->
             case parse_properties(PropertiesData, []) of
                 Properties when is_list(Properties) ->
@@ -574,24 +574,32 @@ parse_properties(<<?M5P_CORRELATION_DATA:8, Len:16/big, Val:Len/binary, Rest/bin
 parse_properties(_, _) ->
     {error, cant_parse_properties}.
 
+%% @doc parse a varint and return the following data as well as any
+%% remaining data.
+-spec varint_data(binary()) -> {binary(), binary()} | error.
+varint_data(Data) ->
+    case varint(Data) of
+        {VarInt, Rest} when byte_size(Rest) >= VarInt ->
+            <<VarData:VarInt/binary, Rest1/binary>> = Rest,
+            {VarData, Rest1};
+        error -> {error, cant_parse_varint}
+    end.
 
-parse_varint(<<0:1, DataSize:7, Data:DataSize/binary, Rest/binary>>) ->
-    {Data, Rest};
-parse_varint(<<1:1, L1:7, 0:1, L2:7, Rest/binary>>) ->
+%% @doc parse a varint and return if and with any remaining data.
+-spec varint(binary()) -> {non_neg_integer(), binary()} | error.
+varint(<<0:1, DataSize:7, Rest/binary>>) ->
+    {DataSize, Rest};
+varint(<<1:1, L1:7, 0:1, L2:7, Rest/binary>>) ->
     Len = L1 + (L2 bsl 7),
-    parse_varint(Len, Rest);
-parse_varint(<<1:1, L1:7, 1:1, L2:7, 0:1, L3:7, Rest/binary>>) ->
+    {Len, Rest};
+varint(<<1:1, L1:7, 1:1, L2:7, 0:1, L3:7, Rest/binary>>) ->
     Len = L1 + (L2 bsl 7) + (L3 bsl 14),
-    parse_varint(Len, Rest);
-parse_varint(<<1:1, L1:7, 1:1, L2:7, 1:1, L3:7, 0:1, L4:7, Rest/binary>>) ->
+    {Len, Rest};
+varint(<<1:1, L1:7, 1:1, L2:7, 1:1, L3:7, 0:1, L4:7, Rest/binary>>) ->
     Len = L1 + (L2 bsl 7) + (L3 bsl 14) + (L4 bsl 21),
-    parse_varint(Len, Rest);
-parse_varint(_) ->
+    {Len, Rest};
+varint(_) ->
     error.
-
-parse_varint(Len, Data) when byte_size(Data) >= Len ->
-    <<Var:Len/binary, Rest/binary>> = Data,
-    {Var, Rest}.
 
 -spec reason_code(reason_type()) -> reason_code().
 reason_code(granted_qos0)                   -> ?M5_GRANTED_QOS0;
