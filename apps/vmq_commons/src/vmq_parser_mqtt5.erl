@@ -25,6 +25,10 @@
 -include("vmq_types_mqtt5.hrl").
 -include("vmq_parser_mqtt5.hrl").
 
+%% exported for testing
+-export([parse_properties/2,
+         enc_properties/1]).
+
 -spec parse(binary()) -> {mqtt5_frame(), binary()} |
                          {error, any()} |
                          more.
@@ -152,8 +156,7 @@ variable(<<?CONNECT:4, 0:4>>, <<4:16/big, "MQTT", ?PROTOCOL_5:8,
 %% variable(<<?DISCONNECT:4, 0:4>>, <<>>) ->
 %%     #mqtt5_disconnect{};
 variable(_, _) ->
-    %% Covers: MQTT5-3.1.2.3
-    {error,  cant_parse_varint}.
+    {error,  cant_parse_frame}.
 
 parse_will_properties(Rest0, Flags, Conn0) ->
     case parse_properties(Rest0) of
@@ -391,11 +394,11 @@ enc_properties([#p_message_expiry_interval{value = Val}|Rest]) ->
 enc_properties([#p_content_type{value = Val}|Rest]) ->
     [<<?M5P_CONTENT_TYPE:8>>, utf8(Val)|enc_properties(Rest)];
 enc_properties([#p_response_topic{value = Topic}|Rest]) ->
-    [<<?M5P_CONTENT_TYPE:8>>, utf8(vmq_topic:unword(Topic))|enc_properties(Rest)];
+    [<<?M5P_RESPONSE_TOPIC:8>>, utf8(vmq_topic:unword(Topic))|enc_properties(Rest)];
 enc_properties([#p_correlation_data{value = Data}|Rest]) ->
     [<<?M5P_CORRELATION_DATA:8>>, binary(Data)|enc_properties(Rest)];
 enc_properties([#p_subscription_id{value = Id}|Rest]) when 1 =< Id, Id =< 268435455 ->
-    [<<?M5P_CORRELATION_DATA:8>>, serialise_len(Id) |enc_properties(Rest)];
+    [<<?M5P_SUBSCRIPTION_ID:8>>, serialise_len(Id) |enc_properties(Rest)];
 enc_properties([#p_session_expiry_interval{value = Val}|Rest]) ->
     [<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big>>|enc_properties(Rest)];
 enc_properties([#p_assigned_client_id{value = Val}|Rest]) ->
@@ -545,19 +548,14 @@ parse_properties(<<>>, Acc) ->
 %% Note, the property ids are specified as a varint, but in MQTT5 all
 %% indicator ids fit within one byte, so we parse it as such to keep
 %% things simple.
-parse_properties(<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
-    P = #p_session_expiry_interval{value = Val},
-    parse_properties(Rest, [P|Acc]);
-parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) ->
+parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1->
     case Val of
         0 ->
             P = #p_payload_format_indicator{value = unspecified},
             parse_properties(Rest, [P|Acc]);
         1 ->
             P = #p_payload_format_indicator{value = utf8},
-            parse_properties(Rest, [P|Acc]);
-        _ ->
-            {error, cant_parse_properties}
+            parse_properties(Rest, [P|Acc])
     end;
 parse_properties(<<?M5P_MESSAGE_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
     P = #p_message_expiry_interval{value = Val},
@@ -570,6 +568,74 @@ parse_properties(<<?M5P_RESPONSE_TOPIC:8, Len:16/big, Val:Len/binary, Rest/binar
     parse_properties(Rest, [P|Acc]);
 parse_properties(<<?M5P_CORRELATION_DATA:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
     P = #p_correlation_data{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_SUBSCRIPTION_ID:8, Data/binary>>, Acc) ->
+    case varint(Data) of
+        {VarInt, Rest} ->
+            P = #p_subscription_id{value = VarInt},
+            parse_properties(Rest, [P|Acc]);
+        error -> {error, cant_parse_properties}
+    end;
+parse_properties(<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
+    P = #p_session_expiry_interval{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_ASSIGNED_CLIENT_ID:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
+    P = #p_assigned_client_id{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_SERVER_KEEP_ALIVE:8, Val:16/big, Rest/binary>>, Acc) ->
+    P = #p_server_keep_alive{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_AUTHENTICATION_METHOD:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
+    P = #p_authentication_method{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_AUTHENTICATION_DATA:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
+    P = #p_authentication_data{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_REQUEST_PROBLEM_INFO:8, Val:8/big, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
+    P = #p_request_problem_info{value = Val == 1},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_WILL_DELAY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
+    P = #p_will_delay_interval{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_REQUEST_RESPONSE_INFO:8, Val:8/big, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
+    P = #p_request_response_info{value = Val == 1},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_SERVER_REF:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
+    P = #p_server_ref{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_REASON_STRING:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
+    P = #p_reason_string{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_RECEIVE_MAX:8, Val:16/big, Rest/binary>>, Acc) when Val > 0 ->
+    P = #p_receive_max{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_TOPIC_ALIAS_MAX:8, Val:16/big, Rest/binary>>, Acc) ->
+    P = #p_topic_alias_max{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_TOPIC_ALIAS:8, Val:16/big, Rest/binary>>, Acc) ->
+    P = #p_topic_alias{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_MAXIMUM_QOS:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
+    P = #p_max_qos{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_RETAIN_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
+    P = #p_retain_available{value = Val == 1},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_USER_PROPERTY:8, KLen:16/big, Key:KLen/binary,
+                   VLen:16/big, Val:VLen/binary, Rest/binary>>, Acc) ->
+    P = #p_user_property{value = {Key,Val}},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_MAX_PACKET_SIZE:8, Val:32/big, Rest/binary>>, Acc) when Val > 0 ->
+    P = #p_max_packet_size{value = Val},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_WILDCARD_SUBS_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
+    P = #p_wildcard_subs_available{value = Val == 1},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_SUB_IDS_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
+    P = #p_sub_ids_available{value = Val == 1},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_SHARED_SUBS_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
+    P = #p_shared_subs_available{value = Val == 1},
     parse_properties(Rest, [P|Acc]);
 parse_properties(_, _) ->
     {error, cant_parse_properties}.
