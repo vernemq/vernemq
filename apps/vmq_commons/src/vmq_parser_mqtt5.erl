@@ -544,19 +544,17 @@ parse_properties(Data) ->
     -> [mqtt5_property()] |
        {error, any()}.
 parse_properties(<<>>, Acc) ->
+    %% TODO: Is it required to preserve order?
     lists:reverse(Acc);
 %% Note, the property ids are specified as a varint, but in MQTT5 all
 %% indicator ids fit within one byte, so we parse it as such to keep
 %% things simple.
-parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1->
-    case Val of
-        0 ->
-            P = #p_payload_format_indicator{value = unspecified},
-            parse_properties(Rest, [P|Acc]);
-        1 ->
-            P = #p_payload_format_indicator{value = utf8},
-            parse_properties(Rest, [P|Acc])
-    end;
+parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) when Val == 0 ->
+    P = #p_payload_format_indicator{value = unspecified},
+    parse_properties(Rest, [P|Acc]);
+parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) when Val == 1 ->
+    P = #p_payload_format_indicator{value = utf8},
+    parse_properties(Rest, [P|Acc]);
 parse_properties(<<?M5P_MESSAGE_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
     P = #p_message_expiry_interval{value = Val},
     parse_properties(Rest, [P|Acc]);
@@ -571,7 +569,7 @@ parse_properties(<<?M5P_CORRELATION_DATA:8, Len:16/big, Val:Len/binary, Rest/bin
     parse_properties(Rest, [P|Acc]);
 parse_properties(<<?M5P_SUBSCRIPTION_ID:8, Data/binary>>, Acc) ->
     case varint(Data) of
-        {VarInt, Rest} ->
+        {VarInt, Rest} when 1 =< VarInt, VarInt =< 268435455 ->
             P = #p_subscription_id{value = VarInt},
             parse_properties(Rest, [P|Acc]);
         error -> {error, cant_parse_properties}
