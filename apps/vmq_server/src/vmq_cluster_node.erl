@@ -23,17 +23,24 @@
          is_reachable/1]).
 
 %% gen_server callbacks
--export([init/1]).
+-export([init/1,
+         loop/1]).
 
--record(state, {node,
-                socket,
-                transport,
-                reachable=false,
-                pending = [],
-                max_queue_size,
-                reconnect_tref,
-                bytes_dropped={os:timestamp(), 0},
-                bytes_send={os:timestamp(), 0}}).
+-export([system_continue/3]).
+-export([system_terminate/4]).
+-export([system_code_change/4]).
+
+-record(state, {
+          parent,
+          node,
+          socket,
+          transport,
+          reachable=false,
+          pending = [],
+          max_queue_size,
+          reconnect_tref,
+          bytes_dropped={os:timestamp(), 0},
+          bytes_send={os:timestamp(), 0}}).
 
 -define(RECONNECT, 1000).
 
@@ -90,7 +97,7 @@ init([Parent, RemoteNode]) ->
     MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
     proc_lib:init_ack(Parent, {ok, self()}),
     self() ! reconnect, %% initial connect
-    loop(#state{node=RemoteNode, max_queue_size=MaxQueueSize}).
+    loop(#state{parent=Parent, node=RemoteNode, max_queue_size=MaxQueueSize}).
 
 loop(#state{pending=[]} = State) ->
     receive
@@ -183,6 +190,8 @@ handle_message(reconnect, #state{reachable=false} = State) ->
 handle_message({is_reachable, CallerPid, Ref}, #state{reachable=Reachable}=State) ->
     CallerPid ! {Ref, Reachable},
     State;
+handle_message({system, From, Request}, #state{parent=Parent}= State) ->
+    sys:handle_system_msg(Request, From, Parent, ?MODULE, [], State);
 handle_message(Msg, #state{node=Node, reachable=Reachable} = State) ->
     lager:warning("got unknown message ~p for node ~p (reachable ~p)",
                   [Msg, Node, Reachable]),
@@ -289,7 +298,33 @@ send(gen_tcp, Socket, Msg) ->
 send(ssl, Socket, Msg) ->
     ssl:send(Socket, Msg).
 
+close(gen_tcp, Socket) ->
+    gen_tcp:close(Socket);
+close(ssl, Socket) ->
+    ssl:close(Socket).
+
 connect(gen_tcp, Host, Port, Opts) ->
     gen_tcp:connect(Host, Port, Opts);
 connect(ssl, Host, Port, Opts) ->
     ssl:connect(Host, Port, Opts).
+
+teardown(#state{socket = Socket, transport = Transport}, Reason) ->
+    case Reason of
+        normal ->
+            lager:debug("normally stopped", []);
+        shutdown ->
+            lager:debug("stopped due to shutdown", []);
+        _ ->
+            lager:warning("stopped abnormally due to '~p'", [Reason])
+    end,
+    close(Transport, Socket),
+    ok.
+
+system_continue(_, _, State) ->
+	loop(State).
+
+-spec system_terminate(any(), _, _, _) -> no_return().
+system_terminate(Reason, _, _, State) -> teardown(State, Reason).
+
+system_code_change(Misc, _, _, _) ->
+	{ok, Misc}.

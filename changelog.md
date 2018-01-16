@@ -20,6 +20,8 @@
   the original client received the message, but the acknowledgement was lost.
 - Fix typo in configuration name `plumtree.outstandind_limit` should be
   `plumtree.outstanding_limit`.
+- Make the `vmq_cluster_node` processes able to handle system messages to make
+  it easier inspect the process behaviour at run-time.
 - Fix bug preventing `use_identity_as_username` from working on WSS sockets
   (#563).
 
