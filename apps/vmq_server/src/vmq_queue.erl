@@ -342,13 +342,17 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
             %% but forces the traffic to go over the distinct communication link
             %% instead of the erlang distribution link.
 
-            case vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, Msgs}) of
+            case vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, Msgs}, false) of
                 ok ->
                     cleanup_queue(SId, DrainQ),
                     _ = vmq_metrics:incr_queue_out(queue:len(DrainQ)),
                     gen_fsm:send_event(self(), drain_start),
                     {next_state, drain,
                      State#state{offline=Queue#queue{size=queue:len(NewQ), drop=0, queue=NewQ}}};
+                {error, Reason} when Reason =:= timeout;
+                                     Reason =:= not_reachable ->
+                    gen_fsm:send_event_after(DrainTimeout, drain_start),
+                    {next_state, drain, State};
                 {error, Reason} ->
                     %% this shouldn't happen, as the register_subscriber is synchronized
                     %% using the vmq_reg_leader process. However this could theoretically
@@ -526,6 +530,12 @@ handle_sync_event(Event, _From, _StateName, State) ->
 handle_info({'DOWN', _MRef, process, Pid, _}, StateName, State) ->
     handle_session_down(Pid, StateName, State);
 handle_info(_Info, StateName, State) ->
+    %% Here we handle late arrival of the ack after enqueuing to a
+    %% remote queue. The acks are on the form `{reference(), ok}` or
+    %% `{reference(), {error, cant_remote_enqueue}}`.
+    %%
+    %% TODO: this should be cleaned up for 2.0 as changing this is
+    %% likely backwards incompatible.
     {next_state, StateName, State}.
 
 terminate(_Reason, _StateName, _State) ->

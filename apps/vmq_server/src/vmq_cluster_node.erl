@@ -18,7 +18,7 @@
 %% API
 -export([start_link/1,
          publish/2,
-         enqueue/2,
+         enqueue/3,
          connect_params/1,
          is_reachable/1]).
 
@@ -56,16 +56,22 @@ publish(Pid, Msg) ->
             {error, Reason}
     end.
 
-enqueue(Pid, Term) ->
+enqueue(Pid, Term, BufferIfUnreachable) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
-    Pid ! {enq, self(), Ref, Term},
+    Pid ! {enq, self(), Ref, Term, BufferIfUnreachable},
+    %% TODO: This should likely be moved out as retrieving configs
+    %% from the app_env can be a bottleneck. We should look at this
+    %% for 2.0 as this might be a backwards incompatible change.
+    Timeout = vmq_config:get_env(remote_enqueue_timeout),
     receive
         {Ref, Reply} ->
             demonitor(MRef, [flush]),
             Reply;
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason}
+    after
+        Timeout -> {error, timeout}
     end.
 
 is_reachable(Pid) ->
@@ -125,11 +131,17 @@ buffer_message(BinMsg, #state{pending=Pending, max_queue_size=Max,
     end,
     {Dropped, maybe_flush(State#state{pending=NewPending, bytes_dropped=NewBytesDropped})}.
 
-
-handle_message({enq, CallerPid, Ref, Term}, State) ->
+handle_message({enq, CallerPid, Ref, _, BufferIfUnreachable},
+               #state{reachable=false} = State)
+  when BufferIfUnreachable =:= false ->
+    CallerPid ! {Ref, {error, not_reachable}},
+    State;
+handle_message({enq, CallerPid, Ref, Term, _}, State) ->
     Bin = term_to_binary({CallerPid, Ref, Term}),
     L = byte_size(Bin),
     BinMsg = <<"enq", L:32, Bin/binary>>,
+    %% buffering is allowed, but will only happen if the remote node
+    %% is unreachable
     {Dropped, NewState} = buffer_message(BinMsg, State),
     case Dropped > 0 of
         true ->

@@ -33,7 +33,7 @@
          if_ready/2,
          if_ready/3,
          publish/2,
-         remote_enqueue/2]).
+         remote_enqueue/3]).
 
 -define(SERVER, ?MODULE).
 -define(VMQ_CLUSTER_STATUS, vmq_status). %% table is owned by vmq_cluster_mon
@@ -92,16 +92,17 @@ publish(Node, Msg) ->
             vmq_cluster_node:publish(Pid, Msg)
     end.
 
--spec remote_enqueue(node(), Term)
+-spec remote_enqueue(node(), Term, BufferIfUnreachable)
         -> ok | {error, term()}
-        when Term::{enqueue_many, subscriber_id(), Msgs::term(), Opts::map()}
-                 | {enqueue, Queue::term(), Msgs::term()}.
-remote_enqueue(Node, Term) ->
+        when Term :: {enqueue_many, subscriber_id(), Msgs::term(), Opts::map()}
+                   | {enqueue, Queue::term(), Msgs::term()},
+             BufferIfUnreachable :: boolean().
+remote_enqueue(Node, Term, BufferIfUnreachable) ->
     case vmq_cluster_node_sup:get_cluster_node(Node) of
         {error, not_found} ->
             {error, not_found};
         {ok, Pid} ->
-            vmq_cluster_node:enqueue(Pid, Term)
+            vmq_cluster_node:enqueue(Pid, Term, BufferIfUnreachable)
     end.
 
 %%%===================================================================

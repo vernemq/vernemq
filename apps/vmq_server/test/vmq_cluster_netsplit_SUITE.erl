@@ -11,7 +11,9 @@
 -export([publish_qos0_test/1,
          register_consistency_test/1,
          register_consistency_multiple_sessions_test/1,
-         register_not_ready_test/1]).
+         register_not_ready_test/1,
+         remote_enqueue_cant_block_the_publisher/1
+        ]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/inet.hrl").
@@ -66,7 +68,8 @@ all() ->
     [publish_qos0_test,
      register_consistency_test,
      register_consistency_multiple_sessions_test,
-     register_not_ready_test].
+     register_not_ready_test,
+     remote_enqueue_cant_block_the_publisher].
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -221,6 +224,63 @@ publish_qos0_test(Config) ->
     %% the publish is expected once the netsplit is fixed
     ok = packet:expect_packet(Socket, "publish", Publish).
 
+remote_enqueue_cant_block_the_publisher(Config) ->
+    ok = ensure_cluster(Config),
+
+    set_config(allow_publish_during_netsplit, true),
+    set_config(remote_enqueue_timeout, 500),
+
+    %% Partition the nodenames into two sets
+    {_, Nodes} = lists:keyfind(nodes, 1, Config),
+    {Island1, Island2} = lists:split(length(Nodes) div 2, Nodes),
+
+    %% Connect shared subscriber to the other side of the cluster
+    %% (publishes to a shared subscriber are delivered using
+    %% the enqueue_remote function in the vmq_cluster mod).
+    ConnectSub = packet:gen_connect("netsplit-shared-sub", [{clean_session, true},
+                                                            {keepalive, 10}]),
+    Connack = packet:gen_connack(0),
+    {_, PortSub} = random_node(Island1),
+    {ok, SubSocket} = packet:do_client_connect(ConnectSub, Connack,
+                                             [{port, PortSub}]),
+    Subscribe = packet:gen_subscribe(53, "$share/group1/topic", 1),
+    Suback = packet:gen_suback(53, 1),
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    ok = packet:expect_packet(SubSocket, "suback", Suback),
+
+    %% Connect publisher to one side of the cluster
+    ConnectPub = packet:gen_connect("netsplit-publisher", [{clean_session, true},
+                                                           {keepalive, 10}]),
+    {_, PortPub} = random_node(Island2),
+    {ok, PubSocket} = packet:do_client_connect(ConnectPub, Connack,
+                                               [{port, PortPub}]),
+
+    %% Let the cluster metadata converge.
+    ok = wait_until_converged(Nodes,
+                              fun(N) ->
+                                      rpc:call(N, vmq_reg, total_subscriptions, [])
+                              end, [{total, 1}]),
+
+    %% Start the actual partition of the nodes.
+    {Island1Names, _} = lists:unzip(Island1),
+    {Island2Names, _} = lists:unzip(Island2),
+    vmq_cluster_test_utils:partition_cluster(Island1Names, Island2Names),
+    ok = wait_until_converged(Nodes,
+                              fun(N) ->
+                                      rpc:call(N, vmq_cluster, is_ready, [])
+                              end, false),
+
+    %% Publish
+    Publish = packet:gen_publish("topic", 1, <<"message">>,
+                                 [{mid, 1}]),
+    Puback = packet:gen_puback(1),
+    ok = gen_tcp:send(PubSocket, Publish),
+    %% The ack should arrive fast as we'll at most blocked up to
+    %% `remote_enqueue_timeout` trying to enqueue the msg one the
+    %% remote node.
+    ok = packet:expect_packet(gen_tcp, PubSocket, "puback", Puback, 5000),
+    gen_tcp:close(PubSocket),
+    ok.
 
 helper_pub_qos1(ClientId, Publish, Port) ->
     Connect = packet:gen_connect(ClientId, [{keepalive, 60}]),

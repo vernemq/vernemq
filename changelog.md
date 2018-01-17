@@ -2,6 +2,22 @@
 
 ## Not yet released
 
+- Fix issue where enqueuing data to a queue on a remote cluster node could cause
+  the calling process to be blocked for a long time in case of the remote
+  cluster node being overloaded or if a net-split has occurred.
+  
+  This issue can occur while delivering a shared subscriber message to a remote
+  subscriber in the cluster (blocking the publishing client) or when migrating
+  queue data to to another node in the cluster. In the case of shared
+  subscribers a new (hidden) configuration parameter
+  (`shared_subscription_timeout_action`) has been added which decides which
+  action to take if enqueuing on a remote note times out waiting for the
+  receiving node to acknowledge the message. The possibilities are to either
+  `ignore` the timeout or `requeue` the message.  Ignoring the timeout can
+  potentially lead to losing the message if the message was still in flight
+  between the two nodes and the connection was lost due to a
+  net-split. Requeueing may lead to the same message being delivered twice if
+  the original client received the message, but the acknowledgement was lost.
 - Fix typo in configuration name `plumtree.outstandind_limit` should be
   `plumtree.outstanding_limit`.
 

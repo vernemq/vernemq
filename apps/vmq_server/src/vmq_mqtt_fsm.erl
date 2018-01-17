@@ -178,7 +178,6 @@ in(Msg, {wait_for_connect, State}, IsData) ->
             {{connected, set_last_time_active(IsData, NewState)}, Out}
     end.
 
-
 send(SessionPid, Msg) ->
     SessionPid ! {?MODULE, Msg},
     ok.
@@ -428,11 +427,23 @@ connected({'DOWN', _MRef, process, QPid, Reason}, #state{queue_pid=QPid} = State
 connected({info_req, {Ref, CallerPid}, InfoItems}, State) ->
     CallerPid ! {Ref, {ok, get_info_items(InfoItems, State)}},
     {State, []};
+connected({Ref, ok}, State) when is_reference(Ref) ->
+    %% Late arrival of ack after enqueueing to a remote
+    %% queue.
+    %%
+    %% TODO: this should be cleaned up for 2.0 as changing this is
+    %% likely backwards incompatible.
+    {State, []};
+connected({Ref, {error, cant_remote_enqueue}}, State) when is_reference(Ref) ->
+    %% Late arrival of negative ack after enqueueing to a remote
+    %% queue.
+    %%
+    %% TODO: this should be cleaned up for 2.0 as changing this is
+    %% likely backwards incompatible.
+    {State, []};
 connected(Unexpected, State) ->
     lager:debug("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
     terminate({error, unexpected_message, Unexpected}, State).
-
-
 
 connack_terminate(RC, _State) ->
     _ = vmq_metrics:incr_mqtt_connack_sent(RC),

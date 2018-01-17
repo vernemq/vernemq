@@ -85,7 +85,7 @@ publish_(Msg, {Node, SubscriberId, QoS}, QState) when Node == node() ->
     end;
 publish_(Msg, {Node, SubscriberId, QoS}, QState) ->
     Term = {enqueue_many, SubscriberId, [{deliver, QoS, Msg}], #{states => [QState]}},
-    vmq_cluster:remote_enqueue(Node, Term).
+    vmq_cluster:remote_enqueue(Node, Term, true).
 
 filter_subscribers(Subscribers, random) ->
     Subscribers;

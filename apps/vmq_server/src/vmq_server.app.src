@@ -81,7 +81,11 @@
       ]},
       {http_modules, [vmq_metrics_http, vmq_http_mgmt_api]},
       {outgoing_clustering_buffer_size, 10000},
+      {remote_enqueue_timeout, 5000},
       {outgoing_connect_opts, []},
+      {shared_subscription_policy, prefer_local},
+      {shared_subscription_timeout_action, ignore},
+
       {tcp_listen_options, [
             {nodelay, true},
             {linger, {true, 0}}, 

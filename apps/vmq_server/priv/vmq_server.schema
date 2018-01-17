@@ -269,6 +269,14 @@
                                                                                             {datatype, integer},
                                                                                             hidden
                                                                                            ]}.
+
+%% @doc specifies the timeout for enqueing something in a queue on a remote node.
+{mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [
+                                                                          {default, 5000},
+                                                                          {datatype, integer},
+                                                                          hidden
+                                                                         ]}.
+
 %% @doc specifies the modules that should be evaluated when setting up the cowboy routes
 {mapping, "http_modules", "vmq_server.http_modules", [
                                                       {default, "[vmq_metrics_http,vmq_http_mgmt_api]"},
@@ -1252,6 +1260,21 @@
                                                                                   {default, prefer_local},
                                                                                   {datatype, atom}
                                                                                  ]}.
+
+%% @doc What action should be taken if enqueing a shared subscriber
+%% message to a subscriber on a remote node fails due to a timeout. If
+%% this happens it is not certain if the remote subscriber has
+%% received the message or not. If the remote subscriber has not
+%% received the message and the action is `ignore`, the message will
+%% be lost. If the remote subscriber did receive the message and the
+%% action is `requeue` and a subscriber successfully accepts the
+%% message, the message will be delivered to both shared subscribers.
+{mapping, "shared_subscription_timeout_action",
+ "vmq_server.shared_subscription_timeout_action", [
+                                                   {default, ignore},
+                                                   {datatype, {enum, [ignore, requeue]}},
+                                                   hidden
+                                                  ]}.
 
 %% @doc plugins.<plugin> enables/disables a plugin.
 %%
