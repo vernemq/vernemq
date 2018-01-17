@@ -1,5 +1,10 @@
 # Changelog
 
+## Not yet released
+
+- Fix typo in configuration name `plumtree.outstandind_limit` should be
+  `plumtree.outstanding_limit`.
+
 ## VerneMQ 1.2.3
 
 - The shared subscriber feature is no longer marked as in beta.
