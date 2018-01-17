@@ -1209,7 +1209,7 @@
                                              hidden
                                             ]}.
 
-{mapping, "plumtree.outstandind_limit", "plumtree.outstanding_limit", [
+{mapping, "plumtree.outstanding_limit", "plumtree.outstanding_limit", [
                                                                        {default, 250000},
                                                                        {datatype, integer},
                                                                        hidden
