@@ -80,9 +80,6 @@ metrics() ->
 convert_listener_options([{K, true}|Rest], Acc) ->
     %% e.g. "--websocket"
     convert_listener_options(Rest, ["--" ++ atom_to_list(K) | Acc]);
-convert_listener_options([{_K, false}|Rest], Acc) ->
-    %% setting Val == false is the same as not setting the prop at all
-    convert_listener_options(Rest, Acc);
 convert_listener_options([{K, V}|Rest], Acc) when is_atom(V) ->
     convert_listener_options(Rest, ["--" ++ atom_to_list(K), atom_to_list(V) | Acc]);
 convert_listener_options([{K, V}|Rest], Acc) when is_integer(V) ->

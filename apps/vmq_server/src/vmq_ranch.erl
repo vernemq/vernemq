@@ -61,7 +61,12 @@ init(Ref, Parent, Socket, Transport, Opts) ->
                         undefined ->
                             FsmMod:init(NewPeer, Opts);
                         CN ->
-                            FsmMod:init(NewPeer, [{preauth, CN}|Opts])
+                            case proplists:get_value(proxy_protocol_use_cn_as_username, Opts, true) of
+                                false ->
+                                    FsmMod:init(NewPeer, Opts);
+                                true ->
+                                    FsmMod:init(NewPeer, [{preauth, CN}|Opts])
+                            end
                     end;
                 _ ->
                     FsmMod:init(Peer, Opts)

@@ -252,5 +252,10 @@ default_session_opts(Opts) ->
         false -> [];
         {_, V} -> [{use_identity_as_username, V}]
     end,
+    MaybeProxyDefaults =
+        case lists:keyfind(proxy_protocol_use_cn_as_username, 1, Opts) of
+            false -> MaybeSSLDefaults;
+            {_, V1} -> [{proxy_protocol_use_cn_as_username, V1}|MaybeSSLDefaults]
+        end,
     %% currently only the mountpoint option is supported
-    [{mountpoint, proplists:get_value(mountpoint, Opts, "")}|MaybeSSLDefaults].
+    [{mountpoint, proplists:get_value(mountpoint, Opts, "")}|MaybeProxyDefaults].

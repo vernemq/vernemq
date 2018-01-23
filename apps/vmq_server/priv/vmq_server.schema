@@ -581,6 +581,52 @@
                                                                         hidden
                                                                        ]}.
 
+%% @doc If 'listener.tcp.proxy_protocol' is enabled, you may enable
+%% 'listener.tcp.proxy_protocol_use_cn_as_username' to use the CN
+%% (sni_hostname) passed via the PROXY protocol instead of the MQTT
+%% username. The option can be specified either for all tcp or
+%% websocket listeners:
+%%
+%%     - listener.tcp.proxy_protocol_use_cn_as_username
+%%     - listener.ws.proxy_protocol_use_cn_as_username
+%%
+%% or for a specific listener:
+%%
+%%     - listener.tcp.my_tcp_listener.use_cn_as_username
+%%     - listener.ws.my_ws_listener.use_cn_as_username
+{mapping, "listener.tcp.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
+                                                                            {default, on},
+                                                                            {datatype, flag},
+                                                                            hidden
+                                                                           ]}.
+
+{mapping, "listener.tcp.$name.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
+                                                                                  {datatype, flag},
+                                                                                  hidden
+                                                                                 ]}.
+
+{mapping, "listener.ws.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
+                                                                           {default, on},
+                                                                           {datatype, flag},
+                                                                           hidden
+                                                                          ]}.
+
+{mapping, "listener.ws.$name.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
+                                                                                 {datatype, flag},
+                                                                                 hidden
+                                                                                ]}.
+{mapping, "listener.http.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
+                                                                             {default, on},
+                                                                             {datatype, flag},
+                                                                             hidden
+                                                                            ]}.
+
+{mapping, "listener.http.$name.proxy_protocol_use_cn_as_username", "vmq_server.listeners", [
+                                                                                   {datatype, flag},
+                                                                                   hidden
+                                                                                  ]}.
+
+
 %% @doc listener.vmq.clustering is the IP address and TCP port that
 %% the broker will bind to accept connections from other cluster
 %% nodes e.g:
