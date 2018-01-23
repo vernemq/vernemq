@@ -756,7 +756,6 @@
                                                          ]}. 
 
 {mapping, "listener.ssl.$name.cafile", "vmq_server.listeners", [
-                                                                {default, ""},
                                                                 {datatype, string},
                                                                 hidden
                                                                ]}. 
@@ -766,17 +765,25 @@
                                                           hidden
                                                          ]}. 
 {mapping, "listener.wss.$name.cafile", "vmq_server.listeners", [
-                                                                {default, ""},
                                                                 {datatype, string},
                                                                 hidden
                                                                ]}. 
+{mapping, "listener.vmqs.cafile", "vmq_server.listeners", [
+                                                           {default, ""},
+                                                           {datatype, file},
+                                                           hidden
+                                                          ]}. 
 {mapping, "listener.vmqs.$name.cafile", "vmq_server.listeners", [
-                                                                {default, ""},
                                                                 {datatype, string},
                                                                 hidden
                                                                ]}. 
+{mapping, "listener.https.cafile", "vmq_server.listeners", [
+                                                            {default, ""},
+                                                            {datatype, file},
+                                                            {commented, "{{platform_etc_dir}}/cacerts.pem"}
+                                                           ]}. 
+
 {mapping, "listener.https.$name.cafile", "vmq_server.listeners", [
-                                                                {default, ""},
                                                                 {datatype, string},
                                                                 hidden
                                                                ]}. 
@@ -803,27 +810,33 @@
                                                          ]}.
 
 {mapping, "listener.ssl.$name.depth", "vmq_server.listeners", [
-                                                                {default, 1},
                                                                 {datatype, integer},
                                                                 hidden
                                                                ]}.
 {mapping, "listener.wss.depth", "vmq_server.listeners", [
+                                                         {default, 1},
+                                                         {datatype, integer},
+                                                         hidden
+                                                        ]}.
+{mapping, "listener.wss.$name.depth", "vmq_server.listeners", [
+                                                                {datatype, integer},
+                                                                hidden
+                                                               ]}.
+{mapping, "listener.vmqs.depth", "vmq_server.listeners", [
                                                           {default, 1},
                                                           {datatype, integer},
                                                           hidden
                                                          ]}.
-{mapping, "listener.wss.$name.depth", "vmq_server.listeners", [
-                                                                {default, 1},
-                                                                {datatype, integer},
-                                                                hidden
-                                                               ]}.
 {mapping, "listener.vmqs.$name.depth", "vmq_server.listeners", [
-                                                                {default, 1},
                                                                 {datatype, integer},
                                                                 hidden
                                                                ]}.
+{mapping, "listener.https.depth", "vmq_server.listeners", [
+                                                          {default, 1},
+                                                          {datatype, integer},
+                                                          hidden
+                                                         ]}.
 {mapping, "listener.https.$name.depth", "vmq_server.listeners", [
-                                                                {default, 1},
                                                                 {datatype, integer},
                                                                 hidden
                                                                ]}.
@@ -844,7 +857,6 @@
                                                             {commented, "{{platform_etc_dir}}/cert.pem"}
                                                            ]}. 
 {mapping, "listener.ssl.$name.certfile", "vmq_server.listeners", [
-                                                                  {default, ""},
                                                                   {datatype, file},
                                                                   hidden
                                                                  ]}. 
@@ -854,17 +866,24 @@
                                                             hidden
                                                            ]}. 
 {mapping, "listener.wss.$name.certfile", "vmq_server.listeners", [
-                                                                  {default, ""},
                                                                   {datatype, file},
                                                                   hidden
                                                                  ]}. 
+{mapping, "listener.vmqs.certfile", "vmq_server.listeners", [
+                                                             {default, ""},
+                                                             {datatype, file},
+                                                             hidden
+                                                            ]}. 
 {mapping, "listener.vmqs.$name.certfile", "vmq_server.listeners", [
-                                                                  {default, ""},
                                                                   {datatype, file},
                                                                   hidden
                                                                  ]}. 
+{mapping, "listener.https.certfile", "vmq_server.listeners", [
+                                                              {default, ""},
+                                                              {datatype, file},
+                                                              {commented, "{{platform_etc_dir}}/cert.pem"}
+                                                             ]}. 
 {mapping, "listener.https.$name.certfile", "vmq_server.listeners", [
-                                                                  {default, ""},
                                                                   {datatype, file},
                                                                   hidden
                                                                  ]}. 
@@ -884,7 +903,6 @@
                                                            {commented, "{{platform_etc_dir}}/key.pem"}
                                                           ]}. 
 {mapping, "listener.ssl.$name.keyfile", "vmq_server.listeners", [
-                                                                 {default, ""},
                                                                  {datatype, file},
                                                                  hidden
                                                                 ]}. 
@@ -894,20 +912,27 @@
                                                            hidden
                                                           ]}. 
 {mapping, "listener.wss.$name.keyfile", "vmq_server.listeners", [
-                                                                 {default, ""},
                                                                  {datatype, file},
                                                                  hidden
                                                                 ]}. 
+{mapping, "listener.vmqs.keyfile", "vmq_server.listeners", [
+                                                            {default, ""},
+                                                            {datatype, file},
+                                                            {commented, "{{platform_etc_dir}}/key.pem"}
+                                                           ]}. 
 {mapping, "listener.vmqs.$name.keyfile", "vmq_server.listeners", [
-                                                                 {default, ""},
-                                                                 {datatype, file},
-                                                                 hidden
+                                                                  {datatype, file},
+                                                                  hidden
                                                                 ]}. 
+{mapping, "listener.https.keyfile", "vmq_server.listeners", [
+                                                             {default, ""},
+                                                             {datatype, file},
+                                                             {commented, "{{platform_etc_dir}}/key.pem"}
+                                                            ]}. 
 {mapping, "listener.https.$name.keyfile", "vmq_server.listeners", [
-                                                                 {default, ""},
-                                                                 {datatype, file},
-                                                                 hidden
-                                                                ]}. 
+                                                                   {datatype, file},
+                                                                   hidden
+                                                                  ]}. 
 %% @doc Set the list of allowed ciphers (each separated with a colon),
 %% on the protocol level or on the listener level. Reasonable defaults
 %% are used if nothing is specified:
@@ -920,32 +945,38 @@
 %%     - listener.ssl.my_ssl_listener.ciphers
 %%     - listener.wss.my_wss_listener.ciphers
 {mapping, "listener.ssl.ciphers", "vmq_server.listeners", [
-                                                              {default, ""},
-                                                              {datatype, string},
-                                                              {commented, ""}
-                                                             ]}. 
+                                                           {default, ""},
+                                                           {datatype, string},
+                                                           {commented, ""}
+                                                          ]}. 
 {mapping, "listener.ssl.$name.ciphers", "vmq_server.listeners", [
-                                                              {default, ""},
-                                                                    {datatype, string},
-                                                                    hidden
-                                                                   ]}. 
+                                                                 {datatype, string},
+                                                                 hidden
+                                                                ]}. 
 {mapping, "listener.wss.ciphers", "vmq_server.listeners", [
                                                            {default, ""},
                                                            {datatype, string},
                                                            hidden
                                                           ]}. 
 {mapping, "listener.wss.$name.ciphers", "vmq_server.listeners", [
-                                                                 {default, ""},
                                                                  {datatype, string},
                                                                  hidden
                                                                 ]}. 
+{mapping, "listener.vmqs.ciphers", "vmq_server.listeners", [
+                                                            {default, ""},
+                                                            {datatype, string},
+                                                            {commented, ""}
+                                                           ]}. 
 {mapping, "listener.vmqs.$name.ciphers", "vmq_server.listeners", [
-                                                                 {default, ""},
                                                                  {datatype, string},
                                                                  hidden
                                                                 ]}. 
+{mapping, "listener.https.ciphers", "vmq_server.listeners", [
+                                                              {default, ""},
+                                                              {datatype, string},
+                                                              {commented, ""}
+                                                             ]}. 
 {mapping, "listener.https.$name.ciphers", "vmq_server.listeners", [
-                                                                 {default, ""},
                                                                  {datatype, string},
                                                                  hidden
                                                                 ]}. 
@@ -968,7 +999,6 @@
                                                            {commented, ""}
                                                           ]}. 
 {mapping, "listener.ssl.$name.crlfile", "vmq_server.listeners", [
-                                                                 {default, ""},
                                                                  {datatype, string},
                                                                  hidden
                                                                 ]}. 
@@ -978,20 +1008,27 @@
                                                            hidden
                                                           ]}. 
 {mapping, "listener.wss.$name.crlfile", "vmq_server.listeners", [
-                                                                 {default, ""},
                                                                  {datatype, string},
                                                                  hidden
                                                                 ]}. 
+{mapping, "listener.vmqs.crlfile", "vmq_server.listeners", [
+                                                            {default, ""},
+                                                            {datatype, string},
+                                                            hidden
+                                                           ]}. 
 {mapping, "listener.vmqs.$name.crlfile", "vmq_server.listeners", [
-                                                                 {default, ""},
                                                                  {datatype, string},
                                                                  hidden
                                                                 ]}. 
+{mapping, "listener.https.crlfile", "vmq_server.listeners", [
+                                                             {default, ""},
+                                                             {datatype, string},
+                                                             hidden
+                                                            ]}. 
 {mapping, "listener.https.$name.crlfile", "vmq_server.listeners", [
-                                                                 {default, ""},
-                                                                 {datatype, string},
-                                                                 hidden
-                                                                ]}. 
+                                                                   {datatype, string},
+                                                                   hidden
+                                                                  ]}. 
 %% @doc Enable this option if you want to use SSL client certificates 
 %% to authenticate your clients. This can be done on the protocol level
 %% or on the listener level.
@@ -1021,10 +1058,20 @@
                                                                              {datatype, flag},
                                                                              hidden
                                                                             ]}. 
+{mapping, "listener.vmqs.require_certificate", "vmq_server.listeners", [
+                                                                        {default, off},
+                                                                        {datatype, flag},
+                                                                        {commented, off}
+                                                                       ]}. 
 {mapping, "listener.vmqs.$name.require_certificate", "vmq_server.listeners", [
                                                                              {datatype, flag},
                                                                              hidden
                                                                             ]}. 
+{mapping, "listener.https.require_certificate", "vmq_server.listeners", [
+                                                                         {default, off},
+                                                                         {datatype, flag},
+                                                                         {commented, off}
+                                                                        ]}. 
 {mapping, "listener.https.$name.require_certificate", "vmq_server.listeners", [
                                                                              {datatype, flag},
                                                                              hidden
@@ -1058,10 +1105,20 @@
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}. 
+{mapping, "listener.vmqs.tls_version", "vmq_server.listeners", [
+                                                                {default, 'tlsv1.2'},
+                                                                {datatype, atom},
+                                                                {commented, 'tlsv1.2'}
+                                                               ]}. 
 {mapping, "listener.vmqs.$name.tls_version", "vmq_server.listeners", [
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}. 
+{mapping, "listener.https.tls_version", "vmq_server.listeners", [
+                                                                 {default, 'tlsv1.2'},
+                                                                 {datatype, atom},
+                                                                 {commented, 'tlsv1.2'}
+                                                                ]}. 
 {mapping, "listener.https.$name.tls_version", "vmq_server.listeners", [
                                                                      {datatype, atom},
                                                                      hidden

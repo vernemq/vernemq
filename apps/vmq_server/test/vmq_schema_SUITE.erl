@@ -36,7 +36,116 @@ groups() ->
 
 all() ->
     [proxy_protocol_inheritance_test,
-     proxy_protocol_override_test].
+     proxy_protocol_override_test,
+     ssl_certs_opts_inheritance_test,
+     ssl_certs_opts_override_test].
+
+
+ssl_certs_opts_inheritance_test(_Config) ->
+    ConfFun =
+        fun(LType) ->
+                [%% required settings the listener translator.
+                 {["listener", "max_connections"], "10000"},
+                 {["listener", "nr_of_acceptors"], "100"},
+                 {["listener", LType, "certfile"], "certfile"},
+                 {["listener", LType, "cafile"], "cafile"},
+                 {["listener", LType, "keyfile"], "keyfile"},
+                 {["listener", LType, "depth"], 10},
+
+                 {["listener", LType, "ciphers"], "ciphers"},
+                 {["listener", LType, "crlfile"], "crlfile"},
+                 {["listener", LType, "require_certificate"], "on"},
+
+                 {["listener", LType, "tls_version"], "tlsv1.1"},
+                 {["listener", LType, "default"], "127.0.0.1:1234"}
+                ]
+        end,
+    TestFun =
+        fun(Conf, IntName) ->
+                "certfile" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, certfile]),
+                "cafile"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
+                "keyfile"  = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
+                10         = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, depth]),
+                "ciphers"  = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
+                "crlfile"  = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
+                true       = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
+                'tlsv1.1'  = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version])
+        end,
+
+    lists:foreach(
+      fun({ConfName, IntName} = L) ->
+              try
+                  TestFun(ConfFun(ConfName), IntName)
+              catch C:E ->
+                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, erlang:get_stacktrace()}]),
+                      throw(E)
+              end
+      end,
+      [
+       {"vmqs", vmqs},
+       {"ssl", mqtts},
+       {"wss", mqttwss},
+       {"https", https}
+      ]).
+
+ssl_certs_opts_override_test(_Config) ->
+    ConfFun =
+        fun(LType) ->
+                [%% required settings the listener translator.
+                 {["listener", "max_connections"], "10000"},
+                 {["listener", "nr_of_acceptors"], "100"},
+
+                 %% protocol defaults
+                 {["listener", LType, "certfile"], "certfile"},
+                 {["listener", LType, "cafile"], "cafile"},
+                 {["listener", LType, "keyfile"], "keyfile"},
+                 {["listener", LType, "depth"], 10},
+                 {["listener", LType, "ciphers"], "ciphers"},
+                 {["listener", LType, "crlfile"], "crlfile"},
+                 {["listener", LType, "require_certificate"], "on"},
+                 {["listener", LType, "tls_version"], "tlsv1.1"},
+
+                 %% listener overrides
+                 {["listener", LType, "mylistener", "certfile"], "overridden"},
+                 {["listener", LType, "mylistener", "cafile"], "overridden"},
+                 {["listener", LType, "mylistener", "keyfile"], "overridden"},
+                 {["listener", LType, "mylistener", "depth"], 20},
+                 {["listener", LType, "mylistener", "ciphers"], "overridden"},
+                 {["listener", LType, "mylistener", "crlfile"], "overridden"},
+                 {["listener", LType, "mylistener", "require_certificate"], "off"},
+                 {["listener", LType, "mylistener", "tls_version"], "tlsv1.2"},
+
+                 {["listener", LType, "mylistener"], "127.0.0.1:1234"}
+                ]
+        end,
+    TestFun =
+        fun(Conf, IntName) ->
+                "overridden" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, certfile]),
+                "overridden" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
+                "overridden" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
+                20           = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, depth]),
+                "overridden" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
+                "overridden" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
+                false        = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
+                'tlsv1.2'    = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version])
+        end,
+
+    lists:foreach(
+      fun({ConfName, IntName} = L) ->
+              try
+                  TestFun(ConfFun(ConfName), IntName)
+              catch C:E ->
+                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, erlang:get_stacktrace()}]),
+                      throw(E)
+              end
+      end,
+      [
+       {"vmqs", vmqs},
+       {"ssl", mqtts},
+       {"wss", mqttwss},
+       {"https", https}
+      ]).
+
 
 proxy_protocol_inheritance_test(_Config) ->
     Conf = [%% required settings the listener translator.

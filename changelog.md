@@ -2,6 +2,8 @@
 
 ## Not yet released
 
+- Fix issue preventing ssl settings being inheritable on the listener level
+  (#583).
 - Fix issue where enqueuing data to a queue on a remote cluster node could cause
   the calling process to be blocked for a long time in case of the remote
   cluster node being overloaded or if a net-split has occurred.
