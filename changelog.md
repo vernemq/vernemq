@@ -1,15 +1,12 @@
 # Changelog
 
-## Next minor version
+## VerneMQ 1.3.0
 
 - Add `proxy_protocol_use_cn_as_username` feature which for `proxy_protocol`
   enabled listeners enable or disable using the common name forwarded by the
   PROXY protocol instead of the MQTT username. To ensure backward compatibility
   this setting is enabled by default. This feature was kindly contributed by
   SoftAtHome (https://softathome.com/).
-
-## Not yet released
-
 - New `vmq-admin` command to forcefully disconnect and cleanup sessions.
 - Fix issue preventing ssl settings being inheritable on the listener level
   (#583).
