@@ -25,7 +25,8 @@
   potentially lead to losing the message if the message was still in flight
   between the two nodes and the connection was lost due to a
   net-split. Requeueing may lead to the same message being delivered twice if
-  the original client received the message, but the acknowledgement was lost.
+  the original client received the message, but the acknowledgement was
+  lost. This fix was kindly contributed by SoftAtHome (https://softathome.com/).
 - Fix typo in configuration name `plumtree.outstandind_limit` should be
   `plumtree.outstanding_limit`.
 - Make the `vmq_cluster_node` processes able to handle system messages to make
