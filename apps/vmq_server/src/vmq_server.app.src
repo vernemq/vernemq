@@ -98,15 +98,13 @@
         ]},
 
       % default message store opts
-      {msg_store_childspecs, [{vmq_lvldb_store_sup,
-                               {vmq_lvldb_store_sup, start_link, []},
-                               permanent, 5000, supervisor, [vmq_lvldb_store_sup]}]},
-      {msg_store_opts, [
-                        {store_dir, "./data/msgstore"},
-                        {open_retries, 30},
-                        {open_retry_delay, 2000}
-                       ]},
-
+      {message_store, [{child_specs, [{vmq_lvldb_store_sup,
+                                       {vmq_lvldb_store_sup, start_link, []},
+                                       permanent, 5000, supervisor, [vmq_lvldb_store_sup]}]},
+                       {opts, [{store_dir, "./data/msgstore"},
+                               {open_retries, 30},
+                               {open_retry_delay, 2000}
+                              ]}]},
 
       % Graphite
       {graphite_enabled, false},

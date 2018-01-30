@@ -41,7 +41,8 @@ start_link() ->
                          [{atom(), {atom(), atom(), list()},
                            permanent, pos_integer(), worker, [atom()]}]}}.
 init([]) ->
-    {ok, MsgStoreChildSpecs} = application:get_env(vmq_server, msg_store_childspecs),
+    {ok, Backend} = application:get_env(vmq_server, message_store),
+    MsgStoreChildSpecs = proplists:get_value(child_specs, Backend, []),
 
     maybe_change_nodename(),
 

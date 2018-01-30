@@ -52,6 +52,8 @@
 - Fix error when tracing clients connecting with a LWT.
 - Add file validation to check if files in the `vernemq.conf` exist and are
   readable.
+- Add new hidden configuration `message_store` which makes it possible to select
+  the message store backend. Possible values are `leveldb` and `none`.
 
 ## VerneMQ 1.7.0
 

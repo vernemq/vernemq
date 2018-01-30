@@ -1696,3 +1696,28 @@
          true;
     (Name) -> vmq_schema_util:file_is_readable(Name)
  end}.
+
+%% @doc Select the message store backend.
+{mapping, "message_store", "vmq_server.message_store", [
+                                                        {default, leveldb},
+                                                        {datatype, {enum, [leveldb, none]}},
+                                                        hidden
+                                                       ]}.
+
+{translation,
+ "vmq_server.message_store",
+ fun(Conf) ->
+         Backend = cuttlefish:conf_get("message_store", Conf),
+         case Backend of
+             leveldb ->
+                 [{child_specs, [{vmq_lvldb_store_sup,
+                                  {vmq_lvldb_store_sup, start_link, []},
+                                  permanent, 5000, supervisor, [vmq_lvldb_store_sup]}]},
+                  {opts, [{store_dir, "./data/msgstore"},
+                          {open_retries, 30},
+                          {open_retry_delay, 2000}
+                         ]}];
+             none ->
+                 []
+         end
+ end}.
