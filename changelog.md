@@ -3,6 +3,8 @@
 ## Not yet released (VerneMQ 1.4.0)
 
 - Fix some Dialyzer issues.
+- Reduce replication load during a netsplit by making sure data is not attempted
+  to be replicated to unreachable nodes.
 
 ## VerneMQ 1.3.0
 
