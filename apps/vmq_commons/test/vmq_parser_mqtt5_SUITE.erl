@@ -41,8 +41,9 @@ all() ->
      parse_unparse_auth_test].
 
 parse_unparse_tests(_Config) ->
-    Properties = {properties, [#p_session_expiry_interval{value = 12341234}]},
-    parse_unparse("connect", vmq_parser_mqtt5:gen_connect("test-client", [Properties])),
+    Properties = [#p_session_expiry_interval{value = 12341234}],
+    Opts = [{properties, Properties}],
+    parse_unparse("connect", vmq_parser_mqtt5:gen_connect("test-client", Opts)),
 
     parse_unparse("connack", vmq_parser_mqtt5:gen_connack()),
     parse_unparse("connack SP=0", vmq_parser_mqtt5:gen_connack(0)),

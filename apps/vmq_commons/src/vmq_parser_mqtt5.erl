@@ -231,19 +231,26 @@ variable(<<?UNSUBACK:4, 0:4>>, <<MessageId:16/big, Rest/binary>>) ->
 variable(<<?CONNECT:4, 0:4>>, <<4:16/big, "MQTT", ?PROTOCOL_5:8,
                                 Flags:6/bitstring, CleanStart:1, 0:1, %% bit 0 is reserved
                                 KeepAlive: 16/big, Rest0/binary>>) ->
-    Conn0 = #mqtt5_connect{proto_ver=?PROTOCOL_5,
-                           clean_start=CleanStart == 1,
-                           keep_alive=KeepAlive},
-
     %% The properties are the last element of the variable header.
     case parse_properties(Rest0) of
         {ok, Properties, Rest1} ->
             %% Parse the payload.
             case Rest1 of
                 <<ClientIdLen:16/big, ClientId:ClientIdLen/binary, Rest2/binary>> ->
-                    Conn1 = Conn0#mqtt5_connect{properties = Properties,
-                                                client_id = ClientId},
-                    parse_will_properties(Rest2, Flags, Conn1);
+                    case parse_will_properties(Rest2, Flags) of
+                        #{lwt := LWT,
+                          username := Username,
+                          password := Password} ->
+                        #mqtt5_connect{proto_ver=?PROTOCOL_5,
+                                       username=Username,
+                                       password=Password,
+                                       clean_start=CleanStart == 1,
+                                       keep_alive=KeepAlive,
+                                       client_id=ClientId,
+                                       lwt=LWT,
+                                       properties=Properties};
+                        {error, _} = E -> E
+                    end;
                 _ ->
                     {error, cant_parse_client_id}
             end;
@@ -282,50 +289,44 @@ variable(<<?AUTH:4, 0:4>>, <<RC:8, Rest/binary>>) ->
 variable(_, _) ->
     {error,  cant_parse_frame}.
 
-parse_will_properties(Rest0, Flags, Conn0) ->
+parse_will_properties(Rest0, <<_:2, 0:4>> = Flags) ->
+    %% All will flags are zero, no last will.
+    parse_username(Rest0, Flags, #{lwt => undefined});
+parse_will_properties(Rest0, <<_:2, Retain:1, QoS:2, 1:1>> = Flags) ->
     case parse_properties(Rest0) of
-        {ok, WillProperties, Rest1} ->
-            Conn1 = Conn0#mqtt5_connect{will_properties = WillProperties},
-            parse_last_will_topic(Rest1, Flags, Conn1);
+        {ok, WillProperties,
+         <<WillTopicLen:16/big, WillTopic:WillTopicLen/binary,
+           WillMsgLen:16/big, WillMsg:WillMsgLen/binary,
+           Rest1/binary>>} ->
+            case vmq_topic:validate_topic(publish, WillTopic) of
+                {ok, ParsedTopic} ->
+                    M = #{
+                      lwt => #mqtt5_lwt{will_properties = WillProperties,
+                                        will_msg = WillMsg,
+                                        will_topic = ParsedTopic,
+                                        will_retain = Retain == 1,
+                                        will_qos = QoS}},
+                    parse_username(Rest1, Flags, M);
+                _ ->
+                    %% FIXME: return correct error here
+                    {error, cant_validate_last_will_topic}
+            end;
         E -> E
     end.
 
-parse_last_will_topic(Rest, <<_:2, 0:4>> = Flags, Conn) ->
-    %% All will flags are zero, no last will.
-    parse_username(Rest, Flags, Conn);
-parse_last_will_topic(<<WillTopicLen:16/big, WillTopic:WillTopicLen/binary,
-                        WillMsgLen:16/big, WillMsg:WillMsgLen/binary,
-                        Rest/binary>>,
-                      <<_:2, Retain:1, QoS:2, 1:1>> = Flags,
-                      Conn) ->
-    case vmq_topic:validate_topic(publish, WillTopic) of
-        {ok, ParsedTopic} ->
-            Conn1 = Conn#mqtt5_connect{will_msg=WillMsg,
-                                       will_topic=ParsedTopic,
-                                       will_retain=Retain == 1,
-                                       will_qos=QoS},
-            parse_username(Rest, Flags, Conn1);
-        _ ->
-            %% FIXME: return correct error here
-            {error, cant_validate_last_will_topic}
-    end;
-parse_last_will_topic(_, _, _) ->
-    %% FIXME: return correct error here
-    {error, cant_parse_last_will}.
-
-parse_username(Rest, <<0:1, _:5>> = Flags, Conn) ->
+parse_username(Rest, <<0:1, _:5>> = Flags, M) ->
     %% Username bit is zero, no username.
-    parse_password(Rest, Flags, Conn);
-parse_username(<<Len:16/big, UserName:Len/binary, Rest/binary>>, <<1:1, _:5>> = Flags, Conn) ->
-    parse_password(Rest, Flags, Conn#mqtt5_connect{username=UserName});
+    parse_password(Rest, Flags, M#{username=>undefined});
+parse_username(<<Len:16/big, UserName:Len/binary, Rest/binary>>, <<1:1, _:5>> = Flags, M) ->
+    parse_password(Rest, Flags, M#{username=>UserName});
 parse_username(_, _, _) ->
     %% FIXME: return correct error here
     {error, cant_parse_username}.
 
-parse_password(<<>>, <<_:1, 0:1, _:4>>, Conn) ->
-    Conn;
-parse_password(<<Len:16/big, Password:Len/binary>>, <<_:1, 1:1, _:4>>, Conn) ->
-    Conn#mqtt5_connect{password=Password};
+parse_password(<<>>, <<_:1, 0:1, _:4>>, M) ->
+    M#{password=>undefined};
+parse_password(<<Len:16/big, Password:Len/binary>>, <<_:1, 1:1, _:4>>, M) ->
+    M#{password=>Password};
 parse_password(_, _, _) ->
     %% FIXME: return correct error here
     {error, cant_parse_password}.
@@ -387,7 +388,7 @@ serialise(#mqtt5_publish{message_id=MessageId,
     Var = [utf8(vmq_topic:unword(Topic)), msg_id(MessageId), properties(Properties), Payload],
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?PUBLISH:4, (flag(Dup)):1/integer,
-       (default(QoS, 0)):2/integer, (flag(Retain)):1/integer>>, LenBytes, Var];
+       QoS:2/integer, (flag(Retain)):1/integer>>, LenBytes, Var];
 serialise(#mqtt5_puback{message_id=MessageId, reason_code=?M5_SUCCESS, properties=undefined}) ->
     <<?PUBACK:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_puback{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]}) ->
@@ -423,31 +424,27 @@ serialise(#mqtt5_pubcomp{message_id=MessageId, reason_code=ReasonCode, propertie
 serialise(#mqtt5_connect{proto_ver=ProtoVersion,
                          username=UserName,
                          password=Password,
-                         will_retain=WillRetain,
-                         will_qos=WillQos,
+                         lwt=LWT,
                          clean_start=CleanSession,
                          keep_alive=KeepAlive,
                          client_id=ClientId,
-                         will_properties=WillProperties,
-                         will_topic=WillTopic,
-                         will_msg=WillMsg,
                          properties=Properties}) ->
     {PMagicL, PMagic} = proto(ProtoVersion),
     Var = [<<PMagicL:16/big-unsigned-integer, PMagic/binary,
              ProtoVersion:8/unsigned-integer,
              (flag(UserName)):1/integer,
              (flag(Password)):1/integer,
-             (flag(WillRetain)):1/integer,
-             (default(WillQos, 0)):2/integer,
-             (flag(WillTopic)):1/integer,
+             (flag(lwt_retain(LWT))):1/integer,
+             (lwt_qos(LWT)):2/integer,
+             (flag(lwt_flag(LWT))):1/integer,
              (flag(CleanSession)):1/integer,
              0:1,  % reserved
-             (default(KeepAlive, 0)):16/big-unsigned-integer>>,
+             KeepAlive:16/big-unsigned-integer>>,
            properties(Properties),
            utf8(ClientId),
-           properties(WillProperties),
-           utf8(vmq_topic:unword(WillTopic)),
-           utf8(WillMsg),
+           lwt_properties(LWT),
+           lwt_topic(LWT),
+           lwt_msg(LWT),
            utf8(UserName),
            utf8(Password)],
     LenBytes = serialise_len(iolist_size(Var)),
@@ -539,10 +536,22 @@ serialise_acks([RC|Rest], Acks) when is_integer(RC),
 serialise_acks([], Acks) ->
     Acks.
 
-proto(5) -> {4, ?PROTOCOL_MAGIC_5};
-proto(4) -> {4, ?PROTOCOL_MAGIC_311};
-proto(3) -> {6, ?PROTOCOL_MAGIC_31};
-proto(131) -> {6, ?PROTOCOL_MAGIC_31}.
+proto(5) -> {4, ?PROTOCOL_MAGIC_5}.
+
+lwt_qos(undefined) -> 0;
+lwt_qos(#mqtt5_lwt{will_qos=QoS}) -> QoS.
+lwt_retain(undefined) -> 0;
+lwt_retain(#mqtt5_lwt{will_retain=QoS}) -> QoS.
+lwt_properties(undefined) -> <<>>;
+lwt_properties(#mqtt5_lwt{will_properties=P}) ->
+    properties(P).
+lwt_flag(undefined) -> 0;
+lwt_flag(#mqtt5_lwt{}) -> 1.
+lwt_topic(undefined) -> <<>>;
+lwt_topic(#mqtt5_lwt{will_topic=Topic}) ->
+    utf8(vmq_topic:unword(Topic)).
+lwt_msg(undefined) -> <<>>;
+lwt_msg(#mqtt5_lwt{will_msg=Msg}) -> utf8(Msg).
 
 flag(<<>>) -> 0;
 flag(undefined) -> 0;
@@ -560,12 +569,8 @@ to_bool(1) -> true.
 msg_id(undefined) -> <<>>;
 msg_id(MsgId) -> <<MsgId:16/big>>.
 
-default(undefined, Default) -> Default;
-default(Val, _) -> Val.
-
 utf8(<<>>) -> <<>>;
 utf8(undefined) -> <<>>;
-utf8(empty) -> <<0:16/big>>; %% for test purposes, useful if you want to encode an empty string..
 utf8(IoList) when is_list(IoList) ->
     [<<(iolist_size(IoList)):16/big>>, IoList];
 utf8(Bin) when is_binary(Bin) ->
@@ -588,7 +593,7 @@ properties(Properties) ->
     [serialise_len(iolist_size(IoProps)), IoProps].
 
 enc_properties([]) ->
-    <<>>;
+    [];
 enc_properties([#p_payload_format_indicator{value = Val}|Rest]) ->
     Indicator =
     case Val of
@@ -667,11 +672,7 @@ gen_connect(ClientId, Opts) ->
                username        = ensure_binary(proplists:get_value(username, Opts)),
                password        = ensure_binary(proplists:get_value(password, Opts)),
                proto_ver       = ?PROTOCOL_5,
-               will_properties = proplists:get_value(will_properties, Opts),
-               will_topic      = ensure_binary(proplists:get_value(will_topic, Opts)),
-               will_qos        = proplists:get_value(will_qos, Opts, 0),
-               will_retain     = proplists:get_value(will_retain, Opts, false),
-               will_msg        = ensure_binary(proplists:get_value(will_msg, Opts)),
+               lwt             = proplists:get_value(lwt, Opts, undefined),
                properties      = proplists:get_value(properties, Opts)
               },
     iolist_to_binary(serialise(Frame)).
@@ -779,7 +780,7 @@ gen_auth(RC, Properties) ->
         #mqtt5_auth{reason_code=RC,
                     properties=Properties})).
 
--spec parse_properties(binary()) -> {ok, [mqtt5_property()], binary} |
+-spec parse_properties(binary()) -> {ok, [mqtt5_property()], binary()} |
                                     {error, any()}.
 parse_properties(Data) ->
     case varint_data(Data) of
@@ -900,7 +901,7 @@ parse_properties(_, _) ->
 
 %% @doc parse a varint and return the following data as well as any
 %% remaining data.
--spec varint_data(binary()) -> {binary(), binary()} | error.
+-spec varint_data(binary()) -> {binary(), binary()} | {error, any()}.
 varint_data(Data) ->
     case varint(Data) of
         {VarInt, Rest} when byte_size(Rest) >= VarInt ->
