@@ -54,6 +54,17 @@
 
 -type message_id()          :: undefined | 0..65535.
 
+-record(mqtt5_lwt, {
+          will_properties   :: [mqtt5_will_property()],
+          will_retain       :: flag(),
+          will_qos          :: qos(),
+          will_topic        :: topic(),
+          will_msg          :: payload()
+         }).
+
+-type mqtt5_lwt() :: #mqtt5_lwt{}.
+
+
 -record(mqtt5_connect, {
           proto_ver         :: 5,
           username          :: username(),
@@ -61,11 +72,7 @@
           clean_start       :: flag(),
           keep_alive        :: non_neg_integer(),
           client_id         :: client_id(),
-          will_properties   :: [mqtt5_will_property()],
-          will_retain       :: flag(),
-          will_qos          :: qos(),
-          will_topic        :: topic(),
-          will_msg          :: payload(),
+          lwt               :: mqtt5_lwt() | undefined,
           properties        :: [mqtt5_property()] | undefined
          }).
 -type mqtt5_connect()        :: #mqtt5_connect{}.
