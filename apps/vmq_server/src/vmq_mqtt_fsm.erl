@@ -14,7 +14,7 @@
 
 -module(vmq_mqtt_fsm).
 -include("vmq_server.hrl").
--export([init/2,
+-export([init/3,
          data_in/2,
          msg_in/2,
          info/2]).
@@ -74,7 +74,7 @@
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 
-init(Peer, Opts) ->
+init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
     rand:seed(exsplus, os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
@@ -107,24 +107,37 @@ init(Peer, Opts) ->
                      allow_unsubscribe=CAPUnsubscribe
                     },
     TraceFun = vmq_config:get_env(trace_fun, undefined),
-
-    TRef = vmq_mqtt_fsm_util:send_after(?CLOSE_AFTER, close_timeout),
+    maybe_initiate_trace(ConnectFrame, TraceFun),
     set_max_msg_size(MaxMessageSize),
-    {wait_for_connect, #state{peer=Peer,
-                              upgrade_qos=UpgradeQoS,
-                              subscriber_id=SubscriberId,
-                              allow_anonymous=AllowAnonymous,
-                              shared_subscription_policy=SharedSubPolicy,
-                              max_inflight_messages=MaxInflightMsgs,
-                              max_message_rate=MaxMessageRate,
-                              username=PreAuthUser,
-                              max_client_id_size=MaxClientIdSize,
-                              keep_alive_tref=TRef,
-                              retry_interval=1000 * RetryInterval,
-                              cap_settings=CAPSettings,
-                              reg_view=RegView,
-                              allowed_protocol_versions=AllowedProtocolVersions,
-                              trace_fun=TraceFun}}.
+
+    _ = vmq_metrics:incr_mqtt_connect_received(),
+    %% the client is allowed "grace" of a half a time period
+    set_keepalive_check_timer(KeepAlive),
+
+    State = #state{peer=Peer,
+                   upgrade_qos=UpgradeQoS,
+                   subscriber_id=SubscriberId,
+                   allow_anonymous=AllowAnonymous,
+                   shared_subscription_policy=SharedSubPolicy,
+                   max_inflight_messages=MaxInflightMsgs,
+                   max_message_rate=MaxMessageRate,
+                   username=PreAuthUser,
+                   max_client_id_size=MaxClientIdSize,
+                   keep_alive=KeepAlive,
+                   keep_alive_tref=undefined,
+                   retry_interval=1000 * RetryInterval,
+                   cap_settings=CAPSettings,
+                   reg_view=RegView,
+                   allowed_protocol_versions=AllowedProtocolVersions,
+                   trace_fun=TraceFun},
+
+
+
+    case check_connect(ConnectFrame, State) of
+        {stop, _, _} = R -> R;
+        {NewState, Out} ->
+            {{connected, set_last_time_active(true, NewState)}, Out}
+    end.
 
 data_in(Data, SessionState) when is_binary(Data) ->
     data_in(Data, SessionState, []).
@@ -163,19 +176,11 @@ msg_in(Msg, SessionState) ->
            {ok, NewSessionState, serialise([Out])}
    end.
 
-%%% init  --> | wait_for_connect | --> | connected | --> terminate
+%%% init --> | connected | --> terminate
 in(Msg, {connected, State}, IsData) ->
     case connected(Msg, State) of
         {stop, _, _} = R -> R;
         {NewState, Out} ->
-            {{connected, set_last_time_active(IsData, NewState)}, Out}
-    end;
-in(Msg, {wait_for_connect, State}, IsData) ->
-    case wait_for_connect(Msg, State) of
-        {stop, _, _} = R -> R;
-        {NewState, Out} ->
-            %% state transition to | connected |
-            _ = vmq_metrics:incr_mqtt_connack_sent(?CONNACK_ACCEPT),
             {{connected, set_last_time_active(IsData, NewState)}, Out}
     end.
 
@@ -189,28 +194,6 @@ serialise([[B|T]|Frames], Acc) when is_binary(B) ->
     serialise([T|Frames], [B|Acc]);
 serialise([[F|T]|Frames], Acc) ->
     serialise([T|Frames], [vmq_parser:serialise(F)|Acc]).
-
--spec wait_for_connect(mqtt_frame(), state()) ->
-    {state(), [mqtt_frame() | binary()]} | {stop, any(), [mqtt_frame() | binary()]}.
-wait_for_connect(#mqtt_connect{keep_alive=KeepAlive} = Frame,
-                 #state{keep_alive_tref=TRef,
-                        trace_fun=TraceFun} = State) ->
-    cancel_timer(TRef),
-    maybe_initiate_trace(Frame, TraceFun),
-    _ = vmq_metrics:incr_mqtt_connect_received(),
-    %% the client is allowed "grace" of a half a time period
-    set_keepalive_check_timer(KeepAlive),
-    check_connect(Frame, State#state{last_time_active=os:timestamp(),
-                                       keep_alive=KeepAlive,
-                                       keep_alive_tref=undefined});
-wait_for_connect(close_timeout, State) ->
-    lager:debug("stop due to timeout", []),
-    terminate(normal, State);
-wait_for_connect({'DOWN', _MRef, process, QPid, Reason}, #state{queue_pid=QPid} = State) ->
-    queue_down_terminate(Reason, State);
-wait_for_connect(_, State) ->
-    %% invalid handshake
-    terminate(normal, State).
 
 maybe_initiate_trace(_Frame, undefined) ->
     ok;
@@ -480,10 +463,6 @@ terminate(Reason, #state{clean_session=CleanSession} = State) ->
     %% TODO: the counter update is missing the last will message
     maybe_publish_last_will(State),
     {stop, Reason, []}.
-
-
-
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal
@@ -994,9 +973,9 @@ set_keepalive_check_timer(KeepAlive) ->
     _ = vmq_mqtt_fsm_util:send_after(KeepAlive * 750, check_keepalive),
     ok.
 
--spec cancel_timer('undefined' | reference()) -> 'ok'.
-cancel_timer(undefined) -> ok;
-cancel_timer(TRef) -> _ = erlang:cancel_timer(TRef), ok.
+-spec send_after(non_neg_integer(), any()) -> reference().
+send_after(Time, Msg) ->
+    erlang:send_after(Time, self(), {?MODULE, Msg}).
 
 do_throttle(#state{max_message_rate=0}) -> false;
 do_throttle(#state{max_message_rate=Rate}) ->
