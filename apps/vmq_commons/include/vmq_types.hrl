@@ -27,10 +27,10 @@
           clean_session     :: flag(),
           keep_alive        :: non_neg_integer(),
           client_id         :: client_id(),
-          will_retain       :: flag(),
-          will_qos          :: qos(),
-          will_topic        :: topic(),
-          will_msg          :: payload()
+          will_retain       :: flag() | undefined,
+          will_qos          :: qos() | undefined,
+          will_topic        :: topic() | undefined,
+          will_msg          :: payload() | undefined
          }).
 -type mqtt_connect()        :: #mqtt_connect{}.
 

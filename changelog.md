@@ -1,5 +1,9 @@
 # Changelog
 
+## Not yet released (VerneMQ 1.4.0)
+
+- Fix some Dialyzer issues.
+
 ## VerneMQ 1.3.0
 
 - Add `proxy_protocol_use_cn_as_username` feature which for `proxy_protocol`
