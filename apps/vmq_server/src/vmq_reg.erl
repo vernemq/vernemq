@@ -596,14 +596,11 @@ subscribe_subscriber_changes() ->
     vmq_subscriber_db:subscribe_db_events().
 
 fold_subscriptions(FoldFun, Acc) ->
-    Node = node(),
     fold_subscribers(
       fun ({MP, _} = SubscriberId, Subs, AAcc) ->
               vmq_subscriber:fold(
-                fun({Topic, QoS, N}, AAAcc) when Node == N ->
-                        FoldFun({MP, Topic, {SubscriberId, QoS, undefined}}, AAAcc);
-                   ({Topic, _QoS, N}, AAAcc) ->
-                        FoldFun({MP, Topic, N}, AAAcc)
+                fun({Topic, QoS, Node}, AAAcc) ->
+                        FoldFun({MP, Topic, {SubscriberId, QoS, Node}}, AAAcc)
                 end, AAcc, Subs)
       end, Acc).
 

@@ -20,7 +20,8 @@
          shared_subs_prefer_local_policy_test/1,
          shared_subs_local_only_policy_test/1,
          cross_node_publish_subscribe/1,
-         restarted_node_has_no_stale_sessions/1]).
+         restarted_node_has_no_stale_sessions/1,
+         routing_table_survives_node_restart/1]).
 
 -export([hook_uname_password_success/5,
          hook_auth_on_publish/6,
@@ -87,6 +88,7 @@ all() ->
     ,shared_subs_local_only_policy_test
     ,cross_node_publish_subscribe
     ,restarted_node_has_no_stale_sessions
+    ,routing_table_survives_node_restart
     ].
 
 
@@ -628,6 +630,58 @@ restarted_node_has_no_stale_sessions(Config) ->
     Got = lists:sort(ClientIds(Sessions)),
     Want = Got.
 
+
+routing_table_survives_node_restart(Config) ->
+    %% Ensure that we subscribers can still receive publishes from a
+    %% node that has been restarted. I.e., this ensures that the
+    %% routing table of the restarted node is intact.
+    ok = ensure_cluster(Config),
+    {_, Nodes} = lists:keyfind(nodes, 1, Config),
+    [{RestartNodeName, RestartNodePort},
+     {_, OtherNodePort}|_] = Nodes,
+
+    %% Connect and subscribe on a node with cs true
+    Topic = <<"topic/sub">>,
+    SharedTopic = <<"$share/group/sharedtopic">>,
+    ClientId = "restart-node-test-subscriber",
+    SubSocket = connect(OtherNodePort, ClientId, [{keepalive, 60}, {clean_session, true}]),
+    subscribe(SubSocket, Topic, 1),
+    subscribe(SubSocket, SharedTopic, 1),
+
+    %% Make sure subscriptions have propagated to all nodes
+    ok = wait_until_converged(Nodes,
+                              fun(N) ->
+                                      rpc:call(N, vmq_reg, total_subscriptions, [])
+                              end, [{total, 2}]),
+
+    %% Restart the node.
+    _ = ct_slave:stop(RestartNodeName),
+    RestartNodeName = vmq_cluster_test_utils:start_node(RestartNodeName, Config,
+                                                        routing_table_survives_node_restart),
+    {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, listener_start, [RestartNodePort, []]),
+    ok = rpc:call(RestartNodeName, vmq_auth, register_hooks, []),
+
+    ok = wait_until_converged(Nodes,
+                              fun(N) ->
+                                      rpc:call(N, vmq_reg, total_subscriptions, [])
+                              end, [{total, 2}]),
+
+    %% Publish to the subscribed topics
+    Connect = packet:gen_connect("restart-node-test-publisher",
+                                 [{keepalive, 60}, {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, RestartNodePort}]),
+    Payloads = publish_to_topic(Socket, Topic, 1, 5),
+    PayloadsShared = publish_to_topic(Socket, <<"sharedtopic">>, 6, 10),
+    Disconnect = packet:gen_disconnect(),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
+
+    %% Make sure everything arrives successfully
+    spawn_receivers([SubSocket]),
+    receive_msgs(Payloads ++ PayloadsShared),
+    receive_nothing(200).
+
 cross_node_publish_subscribe(Config) ->
     %% Make sure all subscribers on a cross-node publish receive the
     %% published messages.
@@ -727,18 +781,24 @@ spawn_receivers(ReceiverSockets) ->
       end,
       ReceiverSockets).
 
-receive_msgs([]) ->
-    ok;
+
 receive_msgs(Payloads) ->
+    receive_msgs(Payloads, 5000).
+
+receive_msgs([], _Wait) ->
+    ok;
+receive_msgs(Payloads, Wait) ->
     receive
         #mqtt_publish{payload=Payload} ->
             true = lists:member(Payload, Payloads),
             receive_msgs(Payloads -- [Payload])
+    after
+        Wait -> throw({wait_for_messages_timeout, Payloads, erlang:get_stacktrace()})
     end.
 
 receive_nothing(Wait) ->
     receive
-        X -> throw({received_unexpected_msgs, X})
+        X -> throw({received_unexpected_msgs, X, erlang:get_stacktrace()})
     after
         Wait -> ok
     end.

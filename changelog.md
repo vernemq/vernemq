@@ -5,6 +5,9 @@
 - Fix some Dialyzer issues.
 - Reduce replication load during a netsplit by making sure data is not attempted
   to be replicated to unreachable nodes.
+- Bugfix: Fix routing table initialization issue after restarting a node
+  preventing shared subscriptions on a remote node from being included in the
+  routing table (#595).
 
 ## VerneMQ 1.3.0
 

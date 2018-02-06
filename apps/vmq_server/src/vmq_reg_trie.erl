@@ -279,15 +279,15 @@ match_(Topic, [{NodeOrGroup,_}|Rest], Acc) ->
     match_(Topic, Rest, [{Topic, NodeOrGroup}|Acc]);
 match_(_, [], Acc) -> Acc.
 
-initialize_trie({MP, Group, Topic, {SubscriberId, QoS, _}}, Acc) ->
-    add_complex_topic(MP, Topic, {SubscriberId, QoS, node()}, vmq_topic:contains_wildcard(Topic)),
-    add_subscriber_group(MP, node(), Group, Topic, SubscriberId, QoS),
+initialize_trie({MP, [<<"$share">>,Group|Topic], {SubscriberId, QoS, Node}}, Acc) ->
+    add_complex_topic(MP, Topic, {Node, Group}, true),
+    add_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS),
     Acc;
-initialize_trie({MP, Topic, {SubscriberId, QoS, _}}, Acc) ->
-    add_complex_topic(MP, Topic, node(), vmq_topic:contains_wildcard(Topic)),
+initialize_trie({MP, Topic, {SubscriberId, QoS, Node}}, Acc) when Node =:= node() ->
+    add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_subscriber(MP, Topic, SubscriberId, QoS),
     Acc;
-initialize_trie({MP, Topic, Node}, Acc) when is_atom(Node) ->
+initialize_trie({MP, Topic, {_SubscriberId, _QoS, Node}}, Acc)  ->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_remote_subscriber(MP, Topic, Node),
     Acc.
