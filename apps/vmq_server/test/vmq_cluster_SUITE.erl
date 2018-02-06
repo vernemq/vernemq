@@ -656,7 +656,7 @@ routing_table_survives_node_restart(Config) ->
 
     %% Restart the node.
     _ = ct_slave:stop(RestartNodeName),
-    RestartNodeName = vmq_cluster_test_utils:start_node(RestartNodeName, Config,
+    RestartNodeName = vmq_cluster_test_utils:start_node(nodename(RestartNodeName), Config,
                                                         routing_table_survives_node_restart),
     {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, listener_start, [RestartNodePort, []]),
     ok = rpc:call(RestartNodeName, vmq_auth, register_hooks, []),
@@ -967,3 +967,9 @@ receive_times(Msg, N) ->
             receive_times(Msg, N-1)
     end.
 
+%% Get the nodename part of nodename@host. This is a hack due to the
+%% fact that PRE erlang 20 ct_slave:start/2, the hostname would be
+%% unconditionally appended to the nodename forming invalid names such
+%% as nodename@host@host.
+nodename(Node) when is_atom(Node) ->
+    list_to_atom(lists:takewhile(fun(C) -> C =/= $@ end, atom_to_list(Node))).
