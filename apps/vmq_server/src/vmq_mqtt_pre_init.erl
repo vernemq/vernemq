@@ -14,6 +14,7 @@
 -module(vmq_mqtt_pre_init).
 
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 
 -export([init/2,
          data_in/2,
@@ -48,6 +49,14 @@ data_in(Data, #state{peer = Peer,
             E;
         {error, Reason} ->
             {error, Reason, []};
+        {#mqtt5_connect{} = ConnectFrame, Rest} ->
+            erlang:cancel_timer(TRef),
+            case vmq_mqtt5_fsm:init(Peer, Opts, ConnectFrame) of
+                {stop, Reason, Out} ->
+                    {stop, Reason, serialize_mqtt5(Out)};
+                {FsmState1, Out} ->
+                    {switch_fsm, vmq_mqtt5_fsm, FsmState1, Rest, serialize_mqtt5(Out)}
+            end;
         {#mqtt_connect{} = ConnectFrame, Rest} ->
             erlang:cancel_timer(TRef),
             case vmq_mqtt_fsm:init(Peer, Opts, ConnectFrame) of
@@ -61,10 +70,15 @@ data_in(Data, #state{peer = Peer,
 serialize([Out]) ->
     [vmq_parser:serialise(Out)].
 
+serialize_mqtt5([Out]) ->
+    [vmq_parser_mqtt5:serialise(Out)].
+
 parse_connect_frame(Data, MaxMessageSize) ->
     case vmq_parser:parse(Data, MaxMessageSize) of
         more ->
             more;
+        {{error, is_mqtt5}, _} ->
+            vmq_parser_mqtt5:parse(Data, MaxMessageSize);
         {error, _} = E ->
             E;
         {Frame, Rest} ->

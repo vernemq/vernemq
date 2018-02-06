@@ -49,10 +49,7 @@
 -define(M5_WILDCARD_SUBS_NOT_SUPPORTED,    16#A2).
 
 
--type routing_key()         :: [binary()].
--type msg_ref()             :: binary().
-
--type message_id()          :: undefined | 0..65535.
+-type msg_id()          :: undefined | 0..65535.
 
 -record(mqtt5_lwt, {
           will_properties   :: [mqtt5_will_property()],
@@ -93,7 +90,7 @@
 -type mqtt5_connack()       :: #mqtt5_connack{}.
 
 -record(mqtt5_publish, {
-          message_id        :: message_id(),
+          message_id        :: msg_id(),
           topic             :: topic(),
           qos               :: qos(),
           retain            :: flag(),
@@ -104,28 +101,28 @@
 -type mqtt5_publish()       :: #mqtt5_publish{}.
 
 -record(mqtt5_puback, {
-          message_id        :: message_id(),
+          message_id        :: msg_id(),
           reason_code       :: reason_code(),
           properties        :: [mqtt5_property()] | undefined
          }).
 -type mqtt5_puback()        :: #mqtt5_puback{}.
 
 -record(mqtt5_pubrec, {
-          message_id        :: message_id(),
+          message_id        :: msg_id(),
           reason_code       :: reason_code(),
           properties        :: [mqtt5_property()] | undefined
          }).
 -type mqtt5_pubrec()        :: #mqtt5_pubrec{}.
 
 -record(mqtt5_pubrel, {
-          message_id        :: message_id(),
+          message_id        :: msg_id(),
           reason_code       :: reason_code(),
           properties        :: [mqtt5_property()] | undefined
          }).
 -type mqtt5_pubrel()        :: #mqtt5_pubrel{}.
 
 -record(mqtt5_pubcomp, {
-          message_id        :: message_id(),
+          message_id        :: msg_id(),
           reason_code       :: reason_code(),
           properties        :: [mqtt5_property()] | undefined
          }).
@@ -145,14 +142,14 @@
 -type mqtt5_subscribe_topic() :: #mqtt5_subscribe_topic{}.
 
 -record(mqtt5_subscribe, {
-          message_id        :: message_id(),
+          message_id        :: msg_id(),
           topics=[]         :: [mqtt5_subscribe_topic()],
           properties        :: [mqtt5_property()] | undefined
          }).
 -type mqtt5_subscribe()     :: #mqtt5_subscribe{}.
 
 -record(mqtt5_suback, {
-          message_id        :: message_id(),
+          message_id        :: msg_id(),
           reason_codes=[]   :: [?M5_GRANTED_QOS0 |
                                 ?M5_GRANTED_QOS1 |
                                 ?M5_GRANTED_QOS2 |
@@ -172,14 +169,14 @@
 -type mqtt5_suback()        :: #mqtt5_suback{}.
 
 -record(mqtt5_unsubscribe, {
-          message_id        :: message_id(),
+          message_id        :: msg_id(),
           topics=[]         :: [topic()],
           properties        :: [mqtt5_property()] | undefined
          }).
 -type mqtt5_unsubscribe()   :: #mqtt5_unsubscribe{}.
 
 -record(mqtt5_unsuback, {
-          message_id        :: message_id(),
+          message_id        :: msg_id(),
           reason_codes=[]   :: [?M5_SUCCESS |
                                 ?M5_NO_SUBSCRIPTION_EXISTED |
                                 ?M5_UNSPECIFIED_ERROR |
