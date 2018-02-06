@@ -18,7 +18,7 @@
 %% borrowed some small bits and pieces from there.
 -module(vmq_tracer).
 -include_lib("stdlib/include/ms_transform.hrl").
--include("vmq_server.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 
 -behaviour(gen_server).
 

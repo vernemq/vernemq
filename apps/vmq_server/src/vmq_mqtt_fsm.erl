@@ -13,7 +13,10 @@
 %% limitations under the License.
 
 -module(vmq_mqtt_fsm).
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_server.hrl").
+
+
 -export([init/3,
          data_in/2,
          msg_in/2,
