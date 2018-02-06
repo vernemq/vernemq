@@ -1,4 +1,7 @@
--include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-type routing_key()         :: [binary()].
+-type msg_ref()             :: binary().
+
 -type plugin_id()       :: {plugin, atom(), pid()}.
 
 -type sg_policy() :: prefer_local | local_only | random.

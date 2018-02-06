@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_metrics).
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_server.hrl").
 
 -behaviour(gen_server).
