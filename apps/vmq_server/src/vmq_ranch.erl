@@ -181,7 +181,7 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = 
                                          buffer=Rest});
                 {error, Reason} ->
                     {exit, Reason, State#st{pending=[Pending|Out],
-                                               fsm_state=FsmState1}}
+                                            fsm_state=FsmState1}}
             end;
         {ok, FsmState1, Rest, Out} ->
             case active_once(Socket) of
