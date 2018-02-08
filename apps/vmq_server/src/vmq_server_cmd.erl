@@ -60,18 +60,18 @@ listener_stop(Port, Address) ->
     listener_stop(Port, Address, false).
 listener_stop(Port, Address, false) when is_integer(Port) and is_list(Address) ->
     vmq_server_cli:command(["vmq-admin", "listener", "stop",
-                            "port", integer_to_list(Port),
-                            "address", Address], false);
+                            "port=" ++ integer_to_list(Port),
+                            "address=" ++ Address], false);
 listener_stop(Port, Address, true) when is_integer(Port) and is_list(Address) ->
     vmq_server_cli:command(["vmq-admin", "listener", "stop",
-                            "port", integer_to_list(Port),
-                            "address", Address,
+                            "port=" ++ integer_to_list(Port),
+                            "address=" ++ Address,
                             "--kill_sessions"], false).
 
 listener_delete(Port, Address) when is_integer(Port) and is_list(Address) ->
     vmq_server_cli:command(["vmq-admin", "listener", "delete",
-                            "port", integer_to_list(Port),
-                            "address", Address], false).
+                            "port=" ++ integer_to_list(Port),
+                            "address=" ++ Address], false).
 
 metrics() ->
     vmq_server_cli:command(["vmq-admin", "metrics", "show"], false).
