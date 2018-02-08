@@ -571,6 +571,7 @@ msg_id(MsgId) -> <<MsgId:16/big>>.
 
 utf8(<<>>) -> <<>>;
 utf8(undefined) -> <<>>;
+utf8(empty) -> <<0:16/big>>; %% for test purposes, useful if you want to encode an empty string..
 utf8(IoList) when is_list(IoList) ->
     [<<(iolist_size(IoList)):16/big>>, IoList];
 utf8(Bin) when is_binary(Bin) ->
@@ -667,7 +668,7 @@ enc_properties([#p_shared_subs_available{value = Bool}|Rest]) ->
 gen_connect(ClientId, Opts) ->
     Frame = #mqtt5_connect{
                client_id       = ensure_binary(ClientId),
-               clean_start     = proplists:get_value(clean_session, Opts, true),
+               clean_start     = proplists:get_value(clean_start, Opts, true),
                keep_alive      = proplists:get_value(keepalive, Opts, 60),
                username        = ensure_binary(proplists:get_value(username, Opts)),
                password        = ensure_binary(proplists:get_value(password, Opts)),

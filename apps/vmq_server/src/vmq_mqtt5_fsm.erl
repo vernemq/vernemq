@@ -429,9 +429,16 @@ connected(Unexpected, State) ->
     lager:debug("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
     terminate({error, unexpected_message, Unexpected}, State).
 
-connack_terminate(RC, _State) ->
-    _ = vmq_metrics:incr_mqtt_connack_sent(RC),
-    {stop, normal, [#mqtt_connack{session_present=false, return_code=RC}]}.
+connack_terminate(RC, State) ->
+    connack_terminate(RC, [], State).
+
+connack_terminate(RC, Properties, _State) ->
+    %% TODO: we need to be able to handle the MQTT 5 reason codes in
+    %% the metrics.
+    %% _ = vmq_metrics:incr_mqtt_connack_sent(RC),
+    {stop, normal, [#mqtt5_connack{session_present=false,
+                                   reason_code=RC,
+                                   properties=Properties}]}.
 
 queue_down_terminate(shutdown, State) ->
     terminate(normal, State);
@@ -461,46 +468,45 @@ terminate(Reason, #state{clean_session=CleanSession} = State) ->
 
 check_connect(#mqtt5_connect{proto_ver=Ver, clean_start=CleanStart} = F, State) ->
     CCleanStart = unflag(CleanStart),
-    check_client_id(F, State#state{clean_session=CCleanStart, proto_ver=Ver}).
+    check_client_id(F, [], State#state{clean_session=CCleanStart, proto_ver=Ver}).
 
 check_client_id(#mqtt5_connect{} = Frame,
+                AckProps,
                 #state{username={preauth, UserNameFromCert}} = State) ->
     check_client_id(Frame#mqtt5_connect{username=UserNameFromCert},
+                    AckProps,
                     State#state{username=UserNameFromCert});
 
-check_client_id(#mqtt5_connect{client_id= <<>>, proto_ver=5} = F, State) ->
-    %% [MQTT-3.1.3-8]
-    %% If the Client supplies a zero-byte ClientId with CleanSession set to 0,
-    %% the Server MUST respond to the >CONNECT Packet with a CONNACK return
-    %% code 0x02 (Identifier rejected) and then close the Network
-    case State#state.clean_session of
-        false ->
-            connack_terminate(?CONNACK_INVALID_ID, State);
-        true ->
-            RandomClientId = random_client_id(),
-            {MountPoint, _} = State#state.subscriber_id,
-            SubscriberId = {MountPoint, RandomClientId},
-            check_user(F#mqtt_connect{client_id=RandomClientId},
-                       State#state{subscriber_id=SubscriberId})
-    end;
+check_client_id(#mqtt5_connect{client_id= <<>>, proto_ver=5} = F,
+                AckProps,
+                State) ->
+    RandomClientId = random_client_id(),
+    {MountPoint, _} = State#state.subscriber_id,
+    SubscriberId = {MountPoint, RandomClientId},
+    check_user(F#mqtt5_connect{client_id=RandomClientId},
+               [#p_assigned_client_id{value=RandomClientId}|AckProps],
+               State#state{subscriber_id=SubscriberId});
 check_client_id(#mqtt5_connect{client_id=ClientId, proto_ver=V} = F,
+                AckProps,
                 #state{max_client_id_size=S} = State)
   when byte_size(ClientId) =< S ->
     {MountPoint, _} = State#state.subscriber_id,
     SubscriberId = {MountPoint, ClientId},
     case lists:member(V, ?ALLOWED_MQTT_VERSIONS) of
         true ->
-            check_user(F, State#state{subscriber_id=SubscriberId});
+            check_user(F, AckProps, State#state{subscriber_id=SubscriberId});
         false ->
             lager:warning("invalid protocol version for ~p ~p",
                           [SubscriberId, V]),
-            connack_terminate(?CONNACK_PROTO_VER, State)
+            connack_terminate(?M5_UNSUPPORTED_PROTOCOL_VERSION, State)
     end;
-check_client_id(#mqtt5_connect{client_id=Id}, State) ->
+check_client_id(#mqtt5_connect{client_id=Id}, _AckProps, State) ->
     lager:warning("invalid client id ~p", [Id]),
-    connack_terminate(?CONNACK_INVALID_ID, State).
+    connack_terminate(?M5_CLIENT_IDENTIFIER_NOT_VALID, State).
 
-check_user(#mqtt5_connect{username=User, password=Password} = F, State) ->
+check_user(#mqtt5_connect{username=User, password=Password} = F,
+           AckProps,
+           State) ->
     case State#state.allow_anonymous of
         false ->
             case auth_on_register(User, Password, State) of
@@ -511,27 +517,27 @@ check_user(#mqtt5_connect{username=User, password=Password} = F, State) ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
                                                              User]),
-                            check_will(F, SessionPresent, NewState#state{username=User, queue_pid=QPid});
+                            check_will(F, SessionPresent, AckProps, NewState#state{username=User, queue_pid=QPid});
                         {error, Reason} ->
                             lager:warning("can't register client ~p with username ~p due to ~p",
                                           [SubscriberId, User, Reason]),
-                            connack_terminate(?CONNACK_SERVER, State)
+                            connack_terminate(?M5_SERVER_UNAVAILABLE, State)
                     end;
                 {error, no_matching_hook_found} ->
                     lager:error("can't authenticate client ~p due to
                                 no_matching_hook_found", [State#state.subscriber_id]),
-                    connack_terminate(?CONNACK_AUTH, State);
+                    connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State);
                 {error, invalid_credentials} ->
                     lager:warning(
                       "can't authenticate client ~p due to
                               invalid_credentials", [State#state.subscriber_id]),
-                    connack_terminate(?CONNACK_CREDENTIALS, State);
+                    connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State);
                 {error, Error} ->
                     %% can't authenticate due to other reason
                     lager:warning(
                       "can't authenticate client ~p due to ~p",
                       [State#state.subscriber_id, Error]),
-                    connack_terminate(?CONNACK_AUTH, State)
+                    connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
             #state{peer=Peer, subscriber_id=SubscriberId,
@@ -540,20 +546,24 @@ check_user(#mqtt5_connect{username=User, password=Password} = F, State) ->
                 {ok, SessionPresent, QPid} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
-                    check_will(F, SessionPresent, State#state{queue_pid=QPid, username=User});
+                    check_will(F, SessionPresent, AckProps, State#state{queue_pid=QPid, username=User});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
                                 [SubscriberId, Reason]),
-                    connack_terminate(?CONNACK_SERVER, State)
+                    connack_terminate(?M5_SERVER_UNAVAILABLE, State)
             end
     end.
 
-check_will(#mqtt5_connect{lwt=undefined}, SessionPresent, State) ->
-    {State, [#mqtt5_connack{session_present=SessionPresent, reason_code=?M5_CONNACK_ACCEPT}]};
+check_will(#mqtt5_connect{lwt=undefined}, SessionPresent, AckProps, State) ->
+    {State, [#mqtt5_connack{session_present=SessionPresent,
+                            reason_code=?M5_CONNACK_ACCEPT,
+                            properties=AckProps}]};
 check_will(#mqtt5_connect{
               lwt=#mqtt5_lwt{will_topic=Topic, will_msg=Payload, will_qos=Qos,
                              will_retain=IsRetain,will_properties=_Properties}},
-           SessionPresent, State) ->
+           SessionPresent,
+           AckProps,
+           State) ->
     #state{username=User, subscriber_id={MountPoint, _}=SubscriberId} = State,
     case auth_on_publish(User, SubscriberId,
                          #vmq_msg{routing_key=Topic,
@@ -567,11 +577,12 @@ check_will(#mqtt5_connect{
         {ok, Msg} ->
             {State#state{will_msg=Msg},
              [#mqtt5_connack{session_present=SessionPresent,
-                             reason_code=?M5_CONNACK_ACCEPT}]};
+                             reason_code=?M5_CONNACK_ACCEPT,
+                             properties=AckProps}]};
         {error, Reason} ->
             lager:warning("can't authenticate last will
                           for client ~p due to ~p", [SubscriberId, Reason]),
-            connack_terminate(?CONNACK_AUTH, State)
+            connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State)
     end.
 
 auth_on_register(User, Password, State) ->
