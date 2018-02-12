@@ -976,10 +976,6 @@ set_keepalive_check_timer(KeepAlive) ->
     _ = vmq_mqtt_fsm_util:send_after(KeepAlive * 750, check_keepalive),
     ok.
 
--spec send_after(non_neg_integer(), any()) -> reference().
-send_after(Time, Msg) ->
-    erlang:send_after(Time, self(), {?MODULE, Msg}).
-
 do_throttle(#state{max_message_rate=0}) -> false;
 do_throttle(#state{max_message_rate=Rate}) ->
     not vmq_metrics:check_rate(msg_in_rate, Rate).
