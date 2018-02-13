@@ -1,33 +1,7 @@
 -module(vmq_publish_SUITE).
--export([
-         %% suite/0,
-         init_per_suite/1,
-         end_per_suite/1,
-         init_per_testcase/2,
-         end_per_testcase/2,
-         all/0
-        ]).
 
--export([publish_qos1_test/1,
-         publish_qos2_test/1,
-         publish_b2c_disconnect_qos1_test/1,
-         publish_b2c_disconnect_qos2_test/1,
-         publish_b2c_timeout_qos1_test/1,
-         publish_b2c_timeout_qos2_test/1,
-         publish_c2b_disconnect_qos2_test/1,
-         publish_c2b_timeout_qos2_test/1,
-         pattern_matching_test/1,
-         not_allowed_publish_close_qos0_mqtt_3_1/1,
-         not_allowed_publish_close_qos1_mqtt_3_1/1,
-         not_allowed_publish_close_qos2_mqtt_3_1/1,
-         not_allowed_publish_close_qos0_mqtt_3_1_1/1,
-         not_allowed_publish_close_qos1_mqtt_3_1_1/1,
-         not_allowed_publish_close_qos2_mqtt_3_1_1/1,
-         message_size_exceeded_close/1
-        ]).
-
--export([hook_auth_on_subscribe/3,
-         hook_auth_on_publish/6]).
+-compile(export_all).
+-compile(nowarn_export_all).
 
 %% ===================================================================
 %% common_test callbacks
@@ -35,41 +9,57 @@
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
     cover:start(),
+    vmq_test_utils:setup(),
+    vmq_server_cmd:listener_start(1888, []),
     [S|Config].
 
 end_per_suite(_Config) ->
+    vmq_server_cmd:listener_stop(1888, "127.0.0.1", false),
+    vmq_test_utils:teardown(),
     _Config.
+
+init_per_group(_Group, _Config) ->
+    ok.
+
+end_per_group(_Group, _Config) ->
+    ok.
 
 init_per_testcase(_Case, Config) ->
     vmq_test_utils:seed_rand(Config),
-    vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
-    vmq_server_cmd:set_config(retry_interval, 10),
+    vmq_server_cmd:set_config(retry_interval, 2),
     vmq_server_cmd:set_config(max_client_id_size, 25),
-    vmq_server_cmd:listener_start(1888, []),
     Config.
 
 end_per_testcase(_, Config) ->
-    vmq_test_utils:teardown(),
     Config.
 
 all() ->
-    [publish_qos1_test,
-     publish_qos2_test,
-     publish_b2c_disconnect_qos1_test,
-     publish_b2c_disconnect_qos2_test,
-     publish_b2c_timeout_qos1_test,
-     publish_b2c_timeout_qos2_test,
-     publish_c2b_disconnect_qos2_test,
-     publish_c2b_timeout_qos2_test,
-     pattern_matching_test,
-     not_allowed_publish_close_qos0_mqtt_3_1,
-     not_allowed_publish_close_qos1_mqtt_3_1,
-     not_allowed_publish_close_qos2_mqtt_3_1,
-     not_allowed_publish_close_qos0_mqtt_3_1_1,
-     not_allowed_publish_close_qos1_mqtt_3_1_1,
-     not_allowed_publish_close_qos2_mqtt_3_1_1,
-     message_size_exceeded_close
+    [
+     {group, mqtt}
+    ].
+
+groups() ->
+    Tests =
+        [publish_qos1_test,
+         publish_qos2_test,
+         publish_b2c_disconnect_qos1_test,
+         publish_b2c_disconnect_qos2_test,
+         publish_b2c_timeout_qos1_test,
+         publish_b2c_timeout_qos2_test,
+         publish_c2b_disconnect_qos2_test,
+         publish_c2b_timeout_qos2_test,
+         pattern_matching_test,
+         not_allowed_publish_close_qos0_mqtt_3_1,
+         not_allowed_publish_close_qos1_mqtt_3_1,
+         not_allowed_publish_close_qos2_mqtt_3_1,
+         not_allowed_publish_close_qos0_mqtt_3_1_1,
+         not_allowed_publish_close_qos1_mqtt_3_1_1,
+         not_allowed_publish_close_qos2_mqtt_3_1_1,
+         message_size_exceeded_close
+        ],
+    [
+     {mqtt, [shuffle,sequence], Tests}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -432,7 +422,8 @@ message_size_exceeded_close(_) ->
     ok = gen_tcp:send(Socket, Publish),
     {error, closed} = gen_tcp:recv(Socket, 0, 1000),
     true = lists:member({counter, mqtt_invalid_msg_size_error, 1}, vmq_metrics:metrics()),
-    vmq_config:set_env(max_message_size, OldLimit, false).
+    vmq_config:set_env(max_message_size, OldLimit, false),
+    disable_on_publish().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
@@ -444,16 +435,16 @@ hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 enable_on_subscribe() ->
-    vmq_plugin_mgr:enable_module_plugin(
+    ok = vmq_plugin_mgr:enable_module_plugin(
       auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
 enable_on_publish() ->
-    vmq_plugin_mgr:enable_module_plugin(
+    ok = vmq_plugin_mgr:enable_module_plugin(
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 disable_on_subscribe() ->
-    vmq_plugin_mgr:disable_module_plugin(
+    ok = vmq_plugin_mgr:disable_module_plugin(
       auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
 disable_on_publish() ->
-    vmq_plugin_mgr:disable_module_plugin(
+    ok = vmq_plugin_mgr:disable_module_plugin(
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 
 helper_pub_qos1(ClientId, Mid, Publish) ->
