@@ -1,36 +1,18 @@
 -module(vmq_in_order_delivery_SUITE).
+
+-compile(export_all).
+-compile(nowarn_export_all).
+
 -include_lib("vmq_commons/include/vmq_types.hrl").
--export([
-         %% suite/0,
-         init_per_suite/1,
-         end_per_suite/1,
-         init_per_testcase/2,
-         end_per_testcase/2,
-         all/0
-        ]).
 
--export([qos1_online/1,
-         qos2_online/1,
-         qos1_offline/1,
-         qos2_offline/1]).
-
--export([hook_auth_on_subscribe/3,
-         hook_auth_on_publish/6]).
-
--define(RETRY_INTERVAL, 10).
--define(NR_OF_MSGS, 1000).
+-define(RETRY_INTERVAL, 2).
+-define(NR_OF_MSGS, 400).
 
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(_Config) ->
     cover:start(),
-    _Config.
-
-end_per_suite(_Config) ->
-    _Config.
-
-init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, ?RETRY_INTERVAL),
@@ -38,20 +20,34 @@ init_per_testcase(_Case, Config) ->
 
     enable_on_subscribe(),
     enable_on_publish(),
+    _Config.
 
-    Config.
-
-end_per_testcase(_, Config) ->
+end_per_suite(_Config) ->
     disable_on_subscribe(),
     disable_on_publish(),
     vmq_test_utils:teardown(),
+    _Config.
+
+init_per_testcase(_Case, Config) ->
+    Config.
+
+end_per_testcase(_, Config) ->
     Config.
 
 all() ->
-    [qos1_online,
-     qos2_online,
-     qos1_offline,
-     qos2_offline].
+    [
+     {group, mqtt}
+    ].
+
+groups() ->
+    Tests = 
+        [qos1_online,
+         qos2_online,
+         qos1_offline,
+         qos2_offline],
+    [
+     {mqtt, [shuffle, sequence], Tests}
+    ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -72,7 +68,7 @@ qos2_offline(_) ->
 
 qos1_online_test(MaxInflightMsgs) ->
     {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMsgs),
-    Topic = "in/order/qos/1",
+    Topic = "in/order/online/qos/1",
     SubSocket = setup_con(Topic, 1),
     PubSocket = setup_pub(Topic, fun setup_pub_qos1/3),
     ok = recv_qos1(SubSocket, Topic, MaxInflightMsgs),
@@ -82,7 +78,7 @@ qos1_online_test(MaxInflightMsgs) ->
 
 qos2_online_test(MaxInflightMsgs) ->
     {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMsgs),
-    Topic = "in/order/qos/2",
+    Topic = "in/order/online/qos/2",
     SubSocket = setup_con(Topic, 2),
     PubSocket = setup_pub(Topic, fun setup_pub_qos2/3),
     ok = recv_qos2(SubSocket, Topic, MaxInflightMsgs),
@@ -92,7 +88,7 @@ qos2_online_test(MaxInflightMsgs) ->
 
 qos1_offline_test(MaxInflightMsgs) ->
     {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMsgs),
-    Topic = "in/order/qos/1",
+    Topic = "in/order/offline/qos/1",
     SubSocket1 = setup_con(Topic, 1),
     PubSocket = setup_pub(Topic, fun setup_pub_qos1/3),
     gen_tcp:close(SubSocket1),
@@ -104,7 +100,7 @@ qos1_offline_test(MaxInflightMsgs) ->
 
 qos2_offline_test(MaxInflightMsgs) ->
     {ok, _} = vmq_server_cmd:set_config(max_inflight_messages, MaxInflightMsgs),
-    Topic = "in/order/qos/2",
+    Topic = "in/order/offline/qos/2",
     SubSocket1 = setup_con(Topic, 2),
     PubSocket = setup_pub(Topic, fun setup_pub_qos2/3),
     gen_tcp:close(SubSocket1),
