@@ -1,65 +1,53 @@
 -module(vmq_subscribe_SUITE).
--export([
-         %% suite/0,
-         init_per_suite/1,
-         end_per_suite/1,
-         init_per_testcase/2,
-         end_per_testcase/2,
-         all/0
-        ]).
 
--export([subscribe_qos0_test/1,
-         subscribe_qos1_test/1,
-         subscribe_qos2_test/1,
-         suback_with_nack_test/1,
-         subnack_test/1,
-         unsubscribe_qos0_test/1,
-         unsubscribe_qos1_test/1,
-         unsubscribe_qos2_test/1,
-         subpub_qos0_test/1,
-         subpub_qos1_test/1,
-         subpub_qos2_test/1,
-         resubscribe_test/1]).
-
--export([hook_auth_on_subscribe/3,
-         hook_auth_on_publish/6]).
+-compile(export_all).
+-compile(nowarn_export_all).
 
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(_Config) ->
     cover:start(),
+    vmq_test_utils:setup(),
+    vmq_server_cmd:listener_start(1888, []),
+    enable_on_subscribe(),
     _Config.
 
 end_per_suite(_Config) ->
+    disable_on_subscribe(),
+    vmq_test_utils:teardown(),
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    vmq_test_utils:setup(),
-    enable_on_subscribe(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
-    vmq_server_cmd:listener_start(1888, []),
     Config.
 
 end_per_testcase(_, Config) ->
-    disable_on_subscribe(),
-    vmq_test_utils:teardown(),
     Config.
 
 all() ->
-    [subscribe_qos0_test,
-     subscribe_qos1_test,
-     subscribe_qos2_test,
-     suback_with_nack_test,
-     subnack_test,
-     unsubscribe_qos0_test,
-     unsubscribe_qos1_test,
-     unsubscribe_qos2_test,
-     subpub_qos0_test,
-     subpub_qos1_test,
-     subpub_qos2_test,
-     resubscribe_test].
+    [
+     {group, mqtt}
+    ].
+
+groups() ->
+    Tests =
+        [subscribe_qos0_test,
+         subscribe_qos1_test,
+         subscribe_qos2_test,
+         suback_with_nack_test,
+         subnack_test,
+         unsubscribe_qos0_test,
+         unsubscribe_qos1_test,
+         unsubscribe_qos2_test,
+         subpub_qos0_test,
+         subpub_qos1_test,
+         subpub_qos2_test,
+         resubscribe_test],
+    [
+     {mqtt, [shuffle,sequence], Tests}
+    ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -242,12 +230,6 @@ resubscribe_test(_) ->
 
     disable_on_publish(),
     ok = gen_tcp:close(Socket).
-
-
-
-
-
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
