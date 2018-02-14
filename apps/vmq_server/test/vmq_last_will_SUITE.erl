@@ -1,49 +1,45 @@
 -module(vmq_last_will_SUITE).
--export([
-         %% suite/0,
-         init_per_suite/1,
-         end_per_suite/1,
-         init_per_testcase/2,
-         end_per_testcase/2,
-         all/0
-        ]).
 
--export([will_denied_test/1,
-         will_ignored_for_normal_disconnect_test/1,
-         will_null_test/1,
-         will_null_topic_test/1,
-         will_qos0_test/1]).
-
--export([hook_auth_on_subscribe/3,
-         hook_auth_on_publish/6]).
+-compile(export_all).
+-compile(nowarn_export_all).
 
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(_Config) ->
     cover:start(),
-    _Config.
-
-end_per_suite(_Config) ->
-    _Config.
-
-init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:listener_start(1888, []),
+    _Config.
+
+end_per_suite(_Config) ->
+    vmq_test_utils:teardown(),
+    _Config.
+
+init_per_testcase(_Case, Config) ->
     Config.
 
 end_per_testcase(_, Config) ->
-    vmq_test_utils:teardown(),
     Config.
 
 all() ->
-    [will_denied_test,
-     will_null_test,
-     will_null_topic_test,
-     will_qos0_test,
-     will_ignored_for_normal_disconnect_test].
+    [
+     {group, mqtt}
+    ].
+
+groups() ->
+    Tests = 
+        [will_denied_test,
+         will_null_test,
+         will_null_topic_test,
+         will_qos0_test,
+         will_ignored_for_normal_disconnect_test],
+    [
+     {mqtt, [shuffle, sequence], Tests}
+    ].
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
