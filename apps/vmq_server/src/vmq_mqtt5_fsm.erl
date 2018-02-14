@@ -20,7 +20,6 @@
 -export([init/3,
          data_in/2,
          msg_in/2,
-         send/2,
          info/2]).
 
 -export([msg_ref/0]).
@@ -183,10 +182,6 @@ in(Msg, {connected, State}, IsData) ->
         {NewState, Out} ->
             {{connected, set_last_time_active(IsData, NewState)}, Out}
     end.
-
-send(SessionPid, Msg) ->
-    SessionPid ! {?MODULE, Msg},
-    ok.
 
 serialise(Frames) ->
     serialise(Frames, []).
@@ -392,16 +387,16 @@ connected(retry,
            retry_queue=RetryQueue} = State) ->
     {RetryFrames, NewRetryQueue} = handle_retry(RetryInterval, RetryQueue, WAcks),
     {State#state{retry_queue=NewRetryQueue}, RetryFrames};
-connected(disconnect, State) ->
+connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
-    terminate(normal, State);
+    terminate(Reason, State);
 connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive,
                                   subscriber_id=SubscriberId, username=UserName} = State) ->
     Now = os:timestamp(),
     case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
         true ->
             lager:warning("client ~p with username ~p stopped due to keepalive expired", [SubscriberId, UserName]),
-            terminate(normal, State);
+            terminate(?DISCONNECT_KEEP_ALIVE, State);
         false ->
             set_keepalive_check_timer(KeepAlive),
             {State, []}
@@ -460,7 +455,8 @@ terminate(Reason, #state{clean_session=CleanSession} = State) ->
         end,
     %% TODO: the counter update is missing the last will message
     maybe_publish_last_will(State),
-    {stop, Reason, []}.
+    Disconnect = gen_disconnect(Reason),
+    {stop, Reason, [Disconnect]}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal
@@ -1148,3 +1144,13 @@ get_info_items([waiting_acks|Rest], State, Acc) ->
 get_info_items([_|Rest], State, Acc) ->
     get_info_items(Rest, State, Acc);
 get_info_items([], _, Acc) -> Acc.
+
+gen_disconnect(?NORMAL_DISCONNECT) -> gen_disconnect_(?M5_NORMAL_DISCONNECT);
+gen_disconnect(?SESSION_TAKEN_OVER) -> gen_disconnect_(?M5_SESSION_TAKEN_OVER);
+gen_disconnect(?ADMINISTRATIVE_ACTION) -> gen_disconnect_(?M5_ADMINISTRATIVE_ACTION);
+gen_disconnect(?DISCONNECT_KEEP_ALIVE) -> gen_disconnect_(?M5_KEEP_ALIVE_TIMEOUT).
+
+gen_disconnect_(RC) ->
+    #mqtt5_disconnect{reason_code = RC, properties = []}.
+
+

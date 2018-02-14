@@ -27,16 +27,15 @@ end_per_testcase(_TestCase, _Config) ->
 
 all() ->
     [
-     {group, mqtt}%% ,
-     %% {group, mqtts}
+     {group, mqtt}
     ].
 
 groups() ->
     Tests = 
     [anon_success,
      empty_client_id,
-     invalid_id%% ,
-     %% session_take_over,
+     invalid_id,
+     session_take_over
      %% uname_no_password_success,
      %% password_no_uname_success,
      %% uname_password_denied,
@@ -44,8 +43,7 @@ groups() ->
      %% change_subscriber_id
     ],
     [
-     {mqtt, [], Tests}
-     %%{mqtts, [], Tests}
+     {mqtt, [shuffle,sequence], Tests}
     ].
 
 anon_success(_Config) ->
@@ -120,7 +118,7 @@ session_take_over(_Config) ->
                    reason_code = ?M5_CONNACK_ACCEPT,
                    properties = []}
         = Connack,
-    {ok, Socket, Disconnect, <<>>} = packetv5:receive_frame(Socket),
+    {ok, Disconnect, <<>>} = packetv5:receive_frame(Socket),
     #mqtt5_disconnect{reason_code = ?M5_SESSION_TAKEN_OVER,
                       properties = []}
         = Disconnect,
