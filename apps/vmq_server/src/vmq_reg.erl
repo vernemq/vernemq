@@ -136,7 +136,7 @@ register_subscriber(SessionPid, SubscriberId,
     case vmq_queue_sup_sup:start_queue(SubscriberId) of
         {ok, true, OldQPid} when CleanSession ->
             %% cleanup queue
-            vmq_queue:cleanup(OldQPid),
+            vmq_queue:cleanup(OldQPid, ?SESSION_TAKEN_OVER),
             vmq_queue_sup_sup:start_queue(SubscriberId);
         Ret -> Ret
     end,

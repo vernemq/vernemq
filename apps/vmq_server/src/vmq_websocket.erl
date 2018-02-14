@@ -13,6 +13,8 @@
 %% limitations under the License.
 
 -module(vmq_websocket).
+-include("vmq_server.hrl").
+
 -export([init/3]).
 -export([websocket_init/3]).
 -export([websocket_handle/3]).
@@ -108,7 +110,7 @@ websocket_terminate(_Reason, _Req, #st{fsm_state=terminated}) ->
     _ = vmq_metrics:incr_socket_close(),
     ok;
 websocket_terminate(_Reason, _Req, #st{fsm_mod=FsmMod, fsm_state=FsmState}) ->
-    _ = FsmMod:msg_in(disconnect, FsmState),
+    _ = FsmMod:msg_in({disconnect, ?NORMAL_DISCONNECT}, FsmState),
     _ = vmq_metrics:incr_socket_close(),
     ok.
 
