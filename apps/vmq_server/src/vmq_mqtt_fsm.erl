@@ -407,7 +407,7 @@ connected(retry,
            retry_queue=RetryQueue} = State) ->
     {RetryFrames, NewRetryQueue} = handle_retry(RetryInterval, RetryQueue, WAcks),
     {State#state{retry_queue=NewRetryQueue}, RetryFrames};
-connected(disconnect, State) ->
+connected({disconnect, _Reason}, State) ->
     lager:debug("stop due to disconnect", []),
     terminate(normal, State);
 connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive,

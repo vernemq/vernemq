@@ -46,9 +46,9 @@
          enqueue_many/2,
          enqueue_many/3,
          migrate/2,
-         cleanup/1,
-         force_disconnect/1,
-         force_disconnect/2]).
+         cleanup/2,
+         force_disconnect/2,
+         force_disconnect/3]).
 
 -export([online/2, online/3,
          offline/2, offline/3,
@@ -147,10 +147,10 @@ get_opts(Queue) when is_pid(Queue) ->
             Ret
     end.
 
-force_disconnect(Queue) when is_pid(Queue) ->
-    force_disconnect(Queue, false).
-force_disconnect(Queue, DoCleanup) when is_pid(Queue) and is_boolean(DoCleanup) ->
-    gen_fsm:sync_send_all_state_event(Queue, {force_disconnect, DoCleanup}, infinity).
+force_disconnect(Queue, Reason) when is_pid(Queue) ->
+    force_disconnect(Queue, Reason, false).
+force_disconnect(Queue, Reason, DoCleanup) when is_pid(Queue) and is_boolean(DoCleanup) ->
+    gen_fsm:sync_send_all_state_event(Queue, {force_disconnect, Reason, DoCleanup}, infinity).
 
 set_last_waiting_acks(Queue, WAcks) ->
     gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
@@ -163,8 +163,8 @@ migrate(Queue, OtherQueue) ->
     %% -------------------------------------------
     save_sync_send_event(Queue, {migrate, OtherQueue}).
 
-cleanup(Queue) ->
-    save_sync_send_event(Queue, cleanup).
+cleanup(Queue, Reason) ->
+    save_sync_send_event(Queue, {cleanup, Reason}).
 
 save_sync_send_event(Queue, Event) ->
     case catch gen_fsm:sync_send_event(Queue, Event, infinity) of
@@ -230,12 +230,12 @@ online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, Fr
     %% have been disconnected
     #state{id = SubscriberId} = State,
     lager:debug("client ~p disconnected due to multiple sessions not allowed", [SubscriberId]),
-    disconnect_sessions(State),
+    disconnect_sessions(?SESSION_TAKEN_OVER, State),
     {next_state, state_change(add_session, online, wait_for_offline),
      State#state{waiting_call={add_session, SessionPid, Opts, From}}};
 online({migrate, OtherQueue}, From, State)
   when State#state.waiting_call == undefined ->
-    disconnect_sessions(State),
+    disconnect_sessions(?DISCONNECT_MIGRATION, State),
     {next_state, state_change(migrate, online, wait_for_offline),
      State#state{waiting_call={migrate, OtherQueue, From}}};
 online({set_last_waiting_acks, WAcks}, _From, State) ->
@@ -245,11 +245,11 @@ online({enqueue_many, Msgs}, _From, State) ->
     {reply, ok, online, insert_many(Msgs, State)};
 online({enqueue_many, Msgs, Opts}, _From, State) ->
     enqueue_many_(Msgs, online, Opts, State);
-online(cleanup, From, State)
+online({cleanup, Reason}, From, State)
   when State#state.waiting_call == undefined ->
-    disconnect_sessions(State),
+    disconnect_sessions(Reason, State),
     {next_state, state_change(cleanup, online, wait_for_offline),
-     State#state{waiting_call={cleanup, From}}};
+     State#state{waiting_call={{cleanup, Reason}, From}}};
 online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
@@ -313,7 +313,7 @@ wait_for_offline({add_session, NewSessionPid, NewOpts}, From,
     {next_state, wait_for_offline,
      State#state{waiting_call={add_session, NewSessionPid, NewOpts, From}}};
 wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
-                #state{waiting_call={cleanup, _CleanupFrom}} = State) ->
+                #state{waiting_call={{cleanup, Reason}, _CleanupFrom}} = State) ->
     %% Reason for this case:
     %% ---------------------
     %% a synchronized registration that had triggered a cleanup got
@@ -323,7 +323,7 @@ wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
     %% ---------
     %% We forcefully terminate the add_session call, as we have to ensure that
     %% this queue is completely wiped, before we allow new sessions to join.
-    {reply, {error, cleanup}, wait_for_offline, State};
+    {reply, {error, {cleanup, Reason}}, wait_for_offline, State};
 wait_for_offline(Event, _From, State) ->
     lager:error("got unknown sync event in wait_for_offline state ~p", [Event]),
     {reply, {error, wait_for_offline}, wait_for_offline, State}.
@@ -456,7 +456,7 @@ offline({enqueue_many, Msgs}, _From, State) ->
     {reply, ok, offline, insert_many(Msgs, State)};
 offline({enqueue_many, Msgs, Opts}, _From, State) ->
     enqueue_many_(Msgs, offline, Opts, State);
-offline(cleanup, _From, #state{id=SId, offline=#queue{queue=Q}} = State) ->
+offline({cleanup, _Reason}, _From, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     cleanup_queue(SId, Q),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
     {stop, normal, ok, State};
@@ -531,7 +531,7 @@ handle_sync_event(get_sessions, _From, StateName, #state{sessions=Sessions} = St
     {reply, maps:keys(Sessions), StateName, State};
 handle_sync_event(get_opts, _From, StateName, #state{opts=Opts} = State) ->
     {reply, Opts, StateName, State};
-handle_sync_event({force_disconnect, DoCleanup}, _From, StateName,
+handle_sync_event({force_disconnect, Reason, DoCleanup}, _From, StateName,
                   #state{id=SId, sessions=Sessions, offline=#queue{queue=OfflineQ}} = State) ->
     %% Forcefully disconnect all sessions and cleanup all state
     case DoCleanup of
@@ -546,7 +546,7 @@ handle_sync_event({force_disconnect, DoCleanup}, _From, StateName,
               end, [OfflineQ | SessionQueues]),
             {stop, normal, ok, State};
         false ->
-            disconnect_sessions(State),
+            disconnect_sessions(Reason, State),
             {reply, ok, StateName, State}
     end;
 handle_sync_event(Event, _From, _StateName, State) ->
@@ -713,7 +713,7 @@ handle_waiting_acks_and_msgs(WAcks, #state{id=SId, sessions=Sessions, offline=Of
             State
     end.
 
-disconnect_sessions(#state{sessions=Sessions}) ->
+disconnect_sessions(Reason, #state{sessions=Sessions}) ->
     maps:fold(fun(SessionPid, #session{}, _) ->
                       %% before the session is going to die it
                       %% will send out LWT messages and will give
@@ -721,7 +721,7 @@ disconnect_sessions(#state{sessions=Sessions}) ->
                       %% calling set_last_waiting_acks/2
                       %% then the 'DOWN' message gets triggerd
                       %% finally deleting the session
-                      vmq_mqtt_fsm_util:send(SessionPid, disconnect),
+                      vmq_mqtt_fsm_util:send(SessionPid, {disconnect, Reason}),
                       ok
               end, ok, Sessions).
 

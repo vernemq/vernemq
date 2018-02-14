@@ -252,7 +252,7 @@ queue_force_disconnect_test(_) ->
     timer:sleep(50), % give some time to plumtree
 
     monitor(process, SessionPid1),
-    vmq_queue:force_disconnect(QPid0),
+    vmq_queue:force_disconnect(QPid0, ?ADMINISTRATIVE_ACTION),
 
     % ensure we got disconnected
     receive
@@ -281,7 +281,7 @@ queue_force_disconnect_cleanup_test(_) ->
     {ok, FoundMsgs} = vmq_lvldb_store:msg_store_find(SubscriberId),
     NumPubbedMsgs = length(FoundMsgs),
 
-    vmq_queue:force_disconnect(QPid0, true),
+    vmq_queue:force_disconnect(QPid0, ?ADMINISTRATIVE_ACTION, true),
 
     % Ensure all Subscriptions are gone
     [] = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
