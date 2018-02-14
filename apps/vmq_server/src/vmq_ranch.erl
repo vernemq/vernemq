@@ -212,7 +212,7 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = 
     end;
 handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}, fsm_mod=FsmMod} = State) ->
     %% we regard a tcp_closed as 'normal'
-    _ = FsmMod:msg_in(disconnect, State#st.fsm_state),
+    _ = FsmMod:msg_in({disconnect, ?NORMAL_DISCONNECT}, State#st.fsm_state),
     {exit, normal, State};
 handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
     _ = vmq_metrics:incr_socket_error(),
@@ -236,7 +236,8 @@ handle_message(restart_work, #st{throttled=true} = State) ->
     #st{proto_tag={Proto, _, _}, socket=Socket} = State,
     handle_message({Proto, Socket, <<>>}, State#st{throttled=false});
 handle_message({'EXIT', _Parent, Reason}, #st{fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
-    _ = FsmMod:msg_in(disconnect, FsmState0),
+    %% TODO: this should probably not be a normal disconnect...
+    _ = FsmMod:msg_in({disconnect, ?NORMAL_DISCONNECT}, FsmState0),
     {exit, Reason, State};
 handle_message({system, From, Request}, #st{parent=Parent}= State) ->
     sys:handle_system_msg(Request, From, Parent, ?MODULE, [], State);
