@@ -21,7 +21,6 @@
 -define(ADMINISTRATIVE_ACTION,    administrative_action).
 -define(DISCONNECT_KEEP_ALIVE,    disconnect_keep_alive).
 -define(DISCONNECT_MIGRATION,     disconnect_migration).
--define(CLIENT_DISCONNECT,        mqtt_client_disconnect).
 
 -type disconnect_reasons() ::
         ?NORMAL_DISCONNECT |
