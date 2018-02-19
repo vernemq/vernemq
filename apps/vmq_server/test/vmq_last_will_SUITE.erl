@@ -13,6 +13,8 @@
          expect_packet/4,
          do_client_connect/4]).
 
+-include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
@@ -36,6 +38,8 @@ init_per_group(mqttv5, Config) ->
 end_per_group(_, _Config) ->
     ok.
 
+init_per_testcase(will_delay_v5_test, _) ->
+    {skip, "will delay feature not yet implemented"};
 init_per_testcase(_Case, Config) ->
     Config.
 
@@ -57,7 +61,10 @@ groups() ->
          will_qos0_test],
     [
      {mqttv4, [shuffle, sequence], Tests},
-     {mqttv5, [shuffle, sequence], Tests}
+     {mqttv5, [shuffle, sequence], Tests
+     ++ [
+         will_delay_v5_test
+        ]}
     ].
 
 
@@ -146,18 +153,82 @@ will_qos0_test(Config) ->
     disable_on_publish(),
     ok = gen_tcp:close(Socket).
 
+will_delay_v5_test(_Config) ->
+    WillTopic = <<"will/delay/test/0">>,
+
+    enable_on_subscribe(),
+    enable_on_publish(),
+
+    %% connect subscriber
+    SubTopic = #mqtt5_subscribe_topic{
+       topic = WillTopic,
+       qos = 0,
+       no_local = false,
+       rap = false,
+       retain_handling = send_retain
+      },
+
+    Subscribe = vmq_parser_mqtt5:gen_subscribe(53, [SubTopic], []),
+    SubConnect = vmq_parser_mqtt5:gen_connect("will-delay-test-sub",
+                                              [{keepalive, 60}]),
+    {ok, SubSocket, SubConnack, <<>>} = packetv5:do_client_connect(SubConnect, []),
+    #mqtt5_connack{reason_code = ?M5_CONNACK_ACCEPT} = SubConnack,
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    {ok, SubAck, <<>>} = packetv5:receive_frame(SubSocket),
+    #mqtt5_suback{message_id = 53, reason_codes=[0], properties=[]} = SubAck,
+
+    %% connect client with delayed last will
+    WillMsg = <<"delayed_msg">>,
+    WillDelay = 1, %% secs
+    WillProperties = [#p_will_delay_interval{value = WillDelay}],
+    LastWill = #mqtt5_lwt{
+                  will_properties = WillProperties,
+                  will_retain = false,
+                  will_qos = 0,
+                  will_topic = WillTopic,
+                  will_msg = WillMsg},
+    WillConnect = vmq_parser_mqtt5:gen_connect("will-delay-test",
+                                               [{keepalive, 60},
+                                                {lwt, LastWill}]),
+    {ok, Socket, Connack, <<>>} = packetv5:do_client_connect(WillConnect, []),
+    #mqtt5_connack{reason_code = ?M5_CONNACK_ACCEPT} = Connack,
+
+    %% Disconnect and measure that it takes at least the delay time
+    %% for the message to arrive.
+    T1 = ts(),
+    ok = gen_tcp:close(Socket),
+    {ok, LastWillPub, <<>>} = packetv5:receive_frame(gen_tcp, SubSocket, 3000),
+    #mqtt5_publish{topic = _,
+                   payload = WillMsg,
+                   qos = 0} = LastWillPub,
+    T2 = ts(),
+    assert_ge(T2 - T1, WillDelay*1000),
+    disable_on_publish(),
+    disable_on_subscribe().
+
+assert_ge(V1, V2) when V1 >= V2 -> true.
+
+ts() ->
+    ts(millisecond).
+
+ts(millisecond) ->
+    erlang:monotonic_time(millisecond).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_auth_on_subscribe(_,{"", <<"will-qos0-test">>}, [{[<<"will">>, <<"null">>, <<"test">>],0}]) -> ok;
 hook_auth_on_subscribe(_,{"", <<"will-qos0-test">>}, [{[<<"will">>, <<"qos0">>, <<"test">>],0}]) -> ok;
-hook_auth_on_subscribe(_,{"", <<"will-ign-sub-test">>}, [{[<<"will">>, <<"ignorenormal">>, <<"test">>], 0}]) -> ok.
+hook_auth_on_subscribe(_,{"", <<"will-ign-sub-test">>}, [{[<<"will">>, <<"ignorenormal">>, <<"test">>], 0}]) -> ok;
+hook_auth_on_subscribe(_,{"", <<"will-delay-test-sub">>}, [{[<<"will">>, <<"delay">>, <<"test">>, <<"0">>], 0}]) -> ok.
 
 hook_auth_on_publish(_, _, _MsgId, [<<"ok">>], <<"should be ok">>, false) -> ok;
 hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"acl">>,<<"test">>], <<"should be denied">>, false) -> {error, not_auth};
 hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"null">>,<<"test">>], <<>>, false) -> ok;
 hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"qos0">>,<<"test">>], <<"will-message">>, false) -> ok;
-hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"ignorenormal">>,<<"test">>], <<"should be ignored">>, false) -> ok.
+hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"ignorenormal">>,<<"test">>], <<"should be ignored">>, false) -> ok;
+hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"delay">>,<<"test">>,<<"0">>], <<"delayed_msg">>, false) -> ok.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

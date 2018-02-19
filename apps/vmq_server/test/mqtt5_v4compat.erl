@@ -60,8 +60,9 @@ gen_connect_(5, ClientId, Opts) ->
                                   WillTopic =/= undefined ->
             WillQoS = proplists:get_value(will_qos, Opts, 0),
             WillRetain = proplists:get_value(will_retain, Opts, false),
+            WillProperties = proplists:get_value(will_properties, Opts, []),
             LWT = #mqtt5_lwt{
-                     will_properties = [],
+                     will_properties = WillProperties,
                      will_retain = WillRetain,
                      will_qos = WillQoS,
                      will_topic = ensure_binary(WillTopic),

@@ -1,7 +1,8 @@
 -module(packetv5).
 -include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 -export([do_client_connect/2,
-         receive_frame/1]).
+         receive_frame/1,
+         receive_frame/3]).
 
 do_client_connect(ConnectPacket, Opts) ->
     Host = proplists:get_value(hostname, Opts, "localhost"),
