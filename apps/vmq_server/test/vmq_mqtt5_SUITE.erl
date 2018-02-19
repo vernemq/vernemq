@@ -31,7 +31,7 @@ all() ->
     ].
 
 groups() ->
-    Tests = 
+    ConnectTests =
     [anon_success,
      empty_client_id,
      invalid_id,
@@ -43,7 +43,7 @@ groups() ->
      %% change_subscriber_id
     ],
     [
-     {mqtt, [shuffle,sequence], Tests}
+     {mqtt, [shuffle,sequence], ConnectTests}
     ].
 
 anon_success(_Config) ->
@@ -74,7 +74,7 @@ empty_client_id(_Config) ->
                    properties = [#p_assigned_client_id{value = _}]}
         = Connack0,
     ok = gen_tcp:close(Socket0),
-    
+
     CSFalse = vmq_parser_mqtt5:gen_connect(empty, [{keepalive,10}, {clean_start, false}]),
     {ok, Socket1, Connack1, <<>>} = packetv5:do_client_connect(CSFalse, []),
     #mqtt5_connack{session_present = 0,
@@ -97,7 +97,7 @@ invalid_id(_Config) ->
                    properties = []}
         = Connack,
     ok = gen_tcp:close(Socket).
-    
+
 session_take_over(_Config) ->
     %% If the ClientID represents a Client already connected to the
     %% Server, the Server send a DISCONNECT packet to the existing
@@ -149,6 +149,3 @@ change_subscriber_id(_Config) ->
     %% TODO: should we be allowed to do this? If we should, should we
     %% then respond with the assigned_client_id property?
     throw(not_implemented).
-
-
-    

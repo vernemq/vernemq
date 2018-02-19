@@ -3,6 +3,16 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
+-import(mqtt5_v4compat,
+        [gen_connect/3,
+         gen_connack/2,
+         gen_subscribe/4,
+         gen_suback/3,
+         gen_publish/5,
+         gen_disconnect/1,
+         expect_packet/4,
+         do_client_connect/4]).
+
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
@@ -18,6 +28,14 @@ end_per_suite(_Config) ->
     vmq_test_utils:teardown(),
     _Config.
 
+init_per_group(mqttv4, Config) ->
+    [{protover, 4}|Config];
+init_per_group(mqttv5, Config) ->
+    [{protover, 5}|Config].
+
+end_per_group(_, _Config) ->
+    ok.
+
 init_per_testcase(_Case, Config) ->
     Config.
 
@@ -26,94 +44,104 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [
-     {group, mqtt}
+     {group, mqttv4},
+     {group, mqttv5}
     ].
 
 groups() ->
     Tests = 
         [will_denied_test,
+         will_ignored_for_normal_disconnect_test,
          will_null_test,
          will_null_topic_test,
-         will_qos0_test,
-         will_ignored_for_normal_disconnect_test],
+         will_qos0_test],
     [
-     {mqtt, [shuffle, sequence], Tests}
+     {mqttv4, [shuffle, sequence], Tests},
+     {mqttv5, [shuffle, sequence], Tests}
     ].
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-will_denied_test(_) ->
-    ConnectOK = packet:gen_connect("will-acl-test", [{keepalive,60}, {will_topic, "ok"}, {will_msg, <<"should be ok">>}]),
-    ConnackOK = packet:gen_connack(0),
-    Connect = packet:gen_connect("will-acl-test", [{keepalive,60}, {will_topic, "will/acl/test"}, {will_msg, <<"should be denied">>}]),
-    Connack = packet:gen_connack(5),
+will_denied_test(Config) ->
+    ConnectOK = gen_connect("will-acl-test",
+                            [{keepalive,60}, {will_topic, "ok"}, {will_msg, <<"should be ok">>}],
+                            Config),
+    ConnackOK = gen_connack(success, Config),
+    Connect = gen_connect("will-acl-test",
+                          [{keepalive,60}, {will_topic, "will/acl/test"}, {will_msg, <<"should be denied">>}],
+                          Config),
+    Connack = gen_connack(not_authorized, Config),
     enable_on_publish(),
-    {ok, SocketOK} = packet:do_client_connect(ConnectOK, ConnackOK, []),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    {ok, SocketOK} = do_client_connect(ConnectOK, ConnackOK, [], Config),
+    {ok, Socket} = do_client_connect(Connect, Connack, [], Config),
     disable_on_publish(),
     ok = gen_tcp:close(Socket),
     ok = gen_tcp:close(SocketOK).
 
-will_ignored_for_normal_disconnect_test(_) ->
-    ConnectPub = packet:gen_connect("will-ign-pub-test", [{keepalive,60}, {will_topic, "will/ignorenormal/test"}, {will_msg, <<"should be ignored">>}]),
-    ConnackPub = packet:gen_connack(0),
-    ConnectSub = packet:gen_connect("will-ign-sub-test", [{keepalive,60}]),
-    ConnackSub = packet:gen_connack(0),
+will_ignored_for_normal_disconnect_test(Config) ->
+    ConnectPub = gen_connect("will-ign-pub-test",
+                             [{keepalive,60},
+                              {will_topic, "will/ignorenormal/test"},
+                              {will_msg, <<"should be ignored">>}],
+                             Config),
+    ConnackPub = gen_connack(success, Config),
+    ConnectSub = gen_connect("will-ign-sub-test", [{keepalive,60}], Config),
+    ConnackSub = gen_connack(success, Config),
     enable_on_subscribe(),
     enable_on_publish(),
-    {ok, SocketPub} = packet:do_client_connect(ConnectPub, ConnackPub, []),
-    {ok, SocketSub} = packet:do_client_connect(ConnectSub, ConnackSub, []),
-    Subscribe = packet:gen_subscribe(53, "will/ignorenormal/test", 0),
-    Suback = packet:gen_suback(53, 0),
+    {ok, SocketPub} = do_client_connect(ConnectPub, ConnackPub, [], Config),
+    {ok, SocketSub} = do_client_connect(ConnectSub, ConnackSub, [], Config),
+    Subscribe = gen_subscribe(53, "will/ignorenormal/test", 0, Config),
+    Suback = gen_suback(53, 0, Config),
     ok = gen_tcp:send(SocketSub, Subscribe),
-    ok = packet:expect_packet(SocketSub, "suback", Suback),
-    Disconnect = packet:gen_disconnect(),
+    ok = expect_packet(SocketSub, "suback", Suback, Config),
+    Disconnect = gen_disconnect(Config),
     ok = gen_tcp:send(SocketPub, Disconnect),
-    case gen_tcp:recv(SocketSub, 0, 200) of
-        % we don't match on any packet, so that we crash
-        {error, timeout} -> ok
-    end,
+    %% we don't match on any packet, so that we crash
+    {error, timeout} = gen_tcp:recv(SocketSub, 0, 200),
     disable_on_subscribe(),
     disable_on_publish(),
     ok = gen_tcp:close(SocketSub).
 
-will_null_test(_) ->
-    Connect = packet:gen_connect("will-qos0-test", [{keepalive,60}]),
-    Connack = packet:gen_connack(0),
-    Subscribe = packet:gen_subscribe(53, "will/null/test", 0),
-    Suback = packet:gen_suback(53, 0),
-    Publish = packet:gen_publish("will/null/test", 0, <<>>, []),
+will_null_test(Config) ->
+    Connect = gen_connect("will-qos0-test", [{keepalive,60}], Config),
+    Connack = gen_connack(success, Config),
+    Subscribe = gen_subscribe(53, "will/null/test", 0, Config),
+    Suback = gen_suback(53, 0, Config),
+    Publish = gen_publish("will/null/test", 0, <<>>, [], Config),
     enable_on_subscribe(),
     enable_on_publish(),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    {ok, Socket} = do_client_connect(Connect, Connack, [], Config),
     ok = gen_tcp:send(Socket, Subscribe),
-    ok = packet:expect_packet(Socket, "suback", Suback),
-    will_null_helper(),
-    ok = packet:expect_packet(Socket, "publish", Publish),
+    ok = expect_packet(Socket, "suback", Suback, Config),
+    will_null_helper(Config),
+    ok = expect_packet(Socket, "publish", Publish, Config),
     disable_on_subscribe(),
     disable_on_publish(),
     ok = gen_tcp:close(Socket).
 
-will_null_topic_test(_) ->
-    Connect = packet:gen_connect("will-null-topic", [{keepalive,60}, {will_topic, empty}, {will_msg, <<"will message">>}]),
-    Connack = packet:gen_connack(2),
-    {error, closed} = packet:do_client_connect(Connect, Connack, []).
+will_null_topic_test(Config) ->
+    Connect = gen_connect("will-null-topic", [{keepalive,60}, {will_topic, empty}, {will_msg, <<"will message">>}], Config),
+    %% doesn't matter which connack code we specify as the connection
+    %% will be closed.
+    Connack = gen_connack(bad_identifier, Config),
+    {error, closed} = do_client_connect(Connect, Connack, [], Config).
 
-will_qos0_test(_) ->
-    Connect = packet:gen_connect("will-qos0-test", [{keepalive,60}]),
-    Connack = packet:gen_connack(0),
-    Subscribe = packet:gen_subscribe(53, "will/qos0/test", 0),
-    Suback = packet:gen_suback(53, 0),
-    Publish = packet:gen_publish("will/qos0/test", 0, <<"will-message">>, []),
+will_qos0_test(Config) ->
+    Connect = gen_connect("will-qos0-test", [{keepalive,60}], Config),
+    Connack = gen_connack(success, Config),
+    Subscribe = gen_subscribe(53, "will/qos0/test", 0, Config),
+    Suback = gen_suback(53, 0, Config),
+    Publish = gen_publish("will/qos0/test", 0, <<"will-message">>, [], Config),
     enable_on_subscribe(),
     enable_on_publish(),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    {ok, Socket} = do_client_connect(Connect, Connack, [], Config),
     ok = gen_tcp:send(Socket, Subscribe),
-    ok = packet:expect_packet(Socket, "suback", Suback),
-    will_qos0_helper(),
-    ok = packet:expect_packet(Socket, "publish", Publish),
+    ok = expect_packet(Socket, "suback", Suback, Config),
+    will_qos0_helper(Config),
+    ok = expect_packet(Socket, "publish", Publish, Config),
     disable_on_subscribe(),
     disable_on_publish(),
     ok = gen_tcp:close(Socket).
@@ -146,15 +174,15 @@ disable_on_publish() ->
     vmq_plugin_mgr:disable_module_plugin(
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 
-will_null_helper() ->
-    Connect = packet:gen_connect("test-helper", [{keepalive,60}, {will_topic, "will/null/test"}, {will_msg, empty}]),
-    Connack = packet:gen_connack(0),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+will_null_helper(Config) ->
+    Connect = gen_connect("test-helper", [{keepalive,60}, {will_topic, "will/null/test"}, {will_msg, empty}], Config),
+    Connack = gen_connack(success, Config),
+    {ok, Socket} = do_client_connect(Connect, Connack, [], Config),
     gen_tcp:close(Socket).
 
-will_qos0_helper() ->
-    Connect = packet:gen_connect("test-helper", [{keepalive,60}, {will_topic, "will/qos0/test"}, {will_msg, <<"will-message">>}]),
-    Connack = packet:gen_connack(0),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+will_qos0_helper(Config) ->
+    Connect = gen_connect("test-helper", [{keepalive,60}, {will_topic, "will/qos0/test"}, {will_msg, <<"will-message">>}], Config),
+    Connack = gen_connack(success, Config),
+    {ok, Socket} = do_client_connect(Connect, Connack, [], Config),
     gen_tcp:close(Socket).
 

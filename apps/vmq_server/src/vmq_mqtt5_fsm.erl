@@ -142,7 +142,7 @@ data_in(Data, SessionState) when is_binary(Data) ->
     data_in(Data, SessionState, []).
 
 data_in(Data, SessionState, OutAcc) ->
-    case vmq_parser:parse(Data, max_msg_size()) of
+    case vmq_parser_mqtt5:parse(Data, max_msg_size()) of
         more ->
             {ok, SessionState, Data, serialise(OutAcc)};
         {error, packet_exceeds_max_size} = E ->
@@ -338,19 +338,20 @@ connected(#mqtt_pubcomp{message_id=MessageId}, State) ->
             _ = vmq_metrics:incr_mqtt_error_invalid_pubcomp(),
             terminate(normal, State)
     end;
-connected(#mqtt_subscribe{message_id=MessageId, topics=Topics}, State) ->
+connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Properties}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
-    case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, User, SubscriberId, Topics) of
+    case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, User, SubscriberId,
+                           convert_to_v4(Topics), Properties) of
         {ok, QoSs} ->
-            Frame = #mqtt_suback{message_id=MessageId, qos_table=QoSs},
+            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs},
             _ = vmq_metrics:incr_mqtt_suback_sent(),
             {State, [Frame]};
         {error, not_allowed} ->
             %% allow the parser to add the 0x80 Failure return code
             QoSs = [not_allowed || _ <- Topics],
-            Frame = #mqtt_suback{message_id=MessageId, qos_table=QoSs},
+            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs},
             _ = vmq_metrics:incr_mqtt_error_auth_subscribe(),
             {State, [Frame]};
         {error, _Reason} ->
@@ -379,7 +380,7 @@ connected(#mqtt_pingreq{}, State) ->
     Frame = #mqtt_pingresp{},
     _ = vmq_metrics:incr_mqtt_pingresp_sent(),
     {State, [Frame]};
-connected(#mqtt_disconnect{}, State) ->
+connected(#mqtt5_disconnect{}, State) ->
     _ = vmq_metrics:incr_mqtt_disconnect_received(),
     terminate(mqtt_client_disconnect, State);
 connected(retry,
@@ -578,7 +579,7 @@ check_will(#mqtt5_connect{
         {error, Reason} ->
             lager:warning("can't authenticate last will
                           for client ~p due to ~p", [SubscriberId, Reason]),
-            connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State)
+            connack_terminate(?M5_NOT_AUTHORIZED, State)
     end.
 
 auth_on_register(User, Password, State) ->
@@ -864,12 +865,12 @@ prepare_frame(QoS, Msg, State) ->
             {ChangedTopic, ChangedPayload}
     end,
     {OutgoingMsgId, State1} = get_msg_id(NewQoS, State),
-    Frame = #mqtt_publish{message_id=OutgoingMsgId,
-                          topic=NewTopic,
-                          qos=NewQoS,
-                          retain=IsRetained,
-                          dup=IsDup,
-                          payload=NewPayload},
+    Frame = #mqtt5_publish{message_id=OutgoingMsgId,
+                           topic=NewTopic,
+                           qos=NewQoS,
+                           retain=IsRetained,
+                           dup=IsDup,
+                           payload=NewPayload},
     case NewQoS of
         0 ->
             {Frame, State1};
@@ -1153,4 +1154,11 @@ gen_disconnect(?DISCONNECT_KEEP_ALIVE) -> gen_disconnect_(?M5_KEEP_ALIVE_TIMEOUT
 gen_disconnect_(RC) ->
     #mqtt5_disconnect{reason_code = RC, properties = []}.
 
-
+convert_to_v4(Topics) ->
+    %% TODO: this compatibility function is only here temporarily to
+    %% not break existing tests during v5 development. Must be removed
+    %% and tests fixed.
+    lists:map(fun(#mqtt5_subscribe_topic{topic = T, qos = QoS}) -> {T, QoS};
+                 (V4) -> V4
+              end,
+              Topics).

@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_reg).
+-include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 -include("vmq_server.hrl").
 
 %% API
@@ -54,6 +55,7 @@
 -export([subscriptions_for_subscriber_id/1]).
 
 -define(NR_OF_REG_RETRIES, 10).
+
 
 -spec subscribe(flag(), subscriber_id(),
                 [{topic(), qos()}]) -> {ok, [qos() | not_allowed]} |
