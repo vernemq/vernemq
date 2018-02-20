@@ -1,5 +1,7 @@
 -module(vmq_publish_SUITE).
 
+-include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+
 -compile(export_all).
 -compile(nowarn_export_all).
 
@@ -36,7 +38,8 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [
-     {group, mqtt}
+     {group, mqttv4},
+     {group, mqttv5}
     ].
 
 groups() ->
@@ -61,7 +64,12 @@ groups() ->
          shared_subscription_online_first
         ],
     [
-     {mqtt, [shuffle,sequence], Tests}
+     {mqttv4, [shuffle,sequence], Tests},
+     {mqttv5, [shuffle,sequence],
+      [
+       message_expiry
+      ]
+     }
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -510,6 +518,84 @@ shared_subscription_online_first(_) ->
          Puback = packet:gen_puback(Mid),
          ok = gen_tcp:send(SubSocketOnline, Puback)
      end || {Mid, Expect} <- Published ],
+    disable_on_publish(),
+    disable_on_subscribe().
+
+message_expiry(_) ->
+    %% If the Message Expiry Interval has passed and the Server has
+    %% not managed to start onward delivery to a matching subscriber,
+    %% then it MUST delete the copy of the message for that subscriber
+    %% [MQTT-3.3.2-5].
+
+    %% The PUBLISH packet sent to a Client by the Server MUST contain
+    %% a Message Expiry Interval set to thereceived value minus the
+    %% time that the Application Message has been waiting in the
+    %% Server [MQTT-3.3.2-6].
+    enable_on_publish(),
+    enable_on_subscribe(),
+
+    %% set up subscriber
+    SubConnect = vmq_parser_mqtt5:gen_connect("message-expiry-sub", [{keepalive, 60},
+                                                                     {clean_start,false}]),
+    {ok, SubSocket, SubConnack, <<>>} = packetv5:do_client_connect(SubConnect, []),
+    #mqtt5_connack{reason_code = ?M5_CONNACK_ACCEPT} = SubConnack,
+    SubTopic = #mqtt5_subscribe_topic{
+       topic = <<"message/expiry/#">>, qos = 1, no_local = false,
+       rap = false, retain_handling = send_retain},
+    SubscribeAll = vmq_parser_mqtt5:gen_subscribe(10, [SubTopic], []),
+    ok = gen_tcp:send(SubSocket, SubscribeAll),
+    {ok, SubAck, <<>>} = packetv5:receive_frame(SubSocket),
+    #mqtt5_suback{message_id = 10, reason_codes=[1], properties=[]} = SubAck,
+    Disconnect = vmq_parser_mqtt5:gen_disconnect(),
+    ok = gen_tcp:send(SubSocket, Disconnect),
+    ok = gen_tcp:close(SubSocket),
+
+    %% set up publisher
+    PubConnect = vmq_parser_mqtt5:gen_connect("message-expiry-pub", [{keepalive, 60}]),
+    {ok, PubSocket, PubConnack, <<>>} = packetv5:do_client_connect(PubConnect, []),
+    #mqtt5_connack{reason_code = ?M5_CONNACK_ACCEPT} = PubConnack,
+
+    %% Publish some messages
+    Expiry60s = #p_message_expiry_interval{value = 60},
+    PE60s = vmq_parser_mqtt5:gen_publish(<<"message/expiry/60s">>, 1, <<"e60s">>,
+                                         [{properties, [Expiry60s]}, {mid, 0}]),
+    ok = gen_tcp:send(PubSocket, PE60s),
+    {ok, Puback0, <<>>} = packetv5:receive_frame(PubSocket),
+    #mqtt5_puback{message_id = 0} = Puback0,
+
+    Expiry1s = #p_message_expiry_interval{value = 1},
+    PE1s = vmq_parser_mqtt5:gen_publish(<<"message/expiry/1s">>, 1, <<"e1s">>,
+                                        [{properties, [Expiry1s]}, {mid, 1}]),
+    ok = gen_tcp:send(PubSocket, PE1s),
+    {ok, Puback1, <<>>} = packetv5:receive_frame(PubSocket),
+    #mqtt5_puback{message_id = 1} = Puback1,
+    ok = gen_tcp:close(PubSocket),
+
+    %% Wait a bit to ensure the messages will have been held long
+    %% enough in the queue of the offline session
+    timer:sleep(1100),
+
+    %% reconnect subscriber
+    {ok, SubSocket1, SubConnack1, <<>>} = packetv5:do_client_connect(SubConnect, []),
+    #mqtt5_connack{reason_code = ?M5_CONNACK_ACCEPT,
+                   session_present = 1} = SubConnack1,
+
+    %% receive the message with a long expiry interval
+    {ok, RPE60s, <<>>} = packetv5:receive_frame(SubSocket1),
+    #mqtt5_publish{topic = [<<"message">>, <<"expiry">>, <<"60s">>],
+                   qos = 1,
+                   properties = [#p_message_expiry_interval{value = Remaining}]} = RPE60s,
+    true = Remaining < 60,
+
+    %% The 1s message shouldn't arrive, but let's just block a bit to
+    %% make sure.
+    {error, timeout} = gen_tcp:recv(SubSocket1, 0, 500),
+
+    %% check that a message was really expired:
+    1 = vmq_metrics:counter_val(queue_message_expired),
+
+    ok = gen_tcp:close(SubSocket1),
+
     disable_on_publish(),
     disable_on_subscribe().
 

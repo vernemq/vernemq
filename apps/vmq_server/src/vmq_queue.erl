@@ -805,20 +805,19 @@ insert({deliver, _, #vmq_msg{qos=0}}, #state{sessions=Sessions} = State)
 insert(MsgOrRef, #state{id=SId, offline=Offline, sessions=Sessions} = State)
   when Sessions == #{} ->
     %% no session online, insert in offline queue
-    State#state{offline=queue_insert(true, MsgOrRef, Offline, SId)};
+    State#state{offline=queue_insert(true, maybe_set_expiry_ts(MsgOrRef), Offline, SId)};
 
 %% Online Queue
 insert(MsgOrRef, #state{id=SId, deliver_mode=fanout, sessions=Sessions} = State) ->
-    {NewSessions, _} = session_fold(SId, fun session_insert/3, MsgOrRef, Sessions),
+    {NewSessions, _} = session_fold(SId, fun session_insert/3, maybe_set_expiry_ts(MsgOrRef), Sessions),
     State#state{sessions=NewSessions};
 
 insert(MsgOrRef, #state{id=SId, deliver_mode=balance, sessions=Sessions} = State) ->
     Pids = maps:keys(Sessions),
     RandomPid = lists:nth(rand:uniform(maps:size(Sessions)), Pids),
     RandomSession = maps:get(RandomPid, Sessions),
-    {UpdatedSession, _} = session_insert(SId, RandomSession, MsgOrRef),
+    {UpdatedSession, _} = session_insert(SId, RandomSession, maybe_set_expiry_ts(MsgOrRef)),
     State#state{sessions=maps:update(RandomPid, UpdatedSession, Sessions)}.
-
 
 session_insert(SId, #session{status=active, queue=Q} = Session, MsgOrRef) ->
     {send(Session#session{queue=queue_insert(false, MsgOrRef, Q, SId)}), MsgOrRef};
@@ -852,11 +851,11 @@ send(#session{pid=Pid, queue=Q} = Session) ->
     Session#session{status=passive, queue=send(Pid, Q)}.
 
 send(Pid, #queue{type=fifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
-    Msgs = queue:to_list(Queue),
+    Msgs = maybe_expire_msgs(queue:to_list(Queue)),
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), Msgs, Count, Dropped}),
     Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0};
 send(Pid, #queue{type=lifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
-    Msgs = lists:reverse(queue:to_list(Queue)),
+    Msgs = maybe_expire_msgs(lists:reverse(queue:to_list(Queue))),
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), Msgs, Count, Dropped}),
     Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0}.
 
@@ -1004,3 +1003,33 @@ queue_split(N, Queue) ->
              L -> L
          end,
     queue:split(NN, Queue).
+
+maybe_set_expiry_ts({deliver, QoS, #vmq_msg{expiry_ts={expire_after, ExpireAfter}} = Msg}) ->
+    {deliver, QoS, Msg#vmq_msg{expiry_ts = {timestamp(second) + ExpireAfter, ExpireAfter}}};
+maybe_set_expiry_ts(Msg) ->
+    Msg.
+
+maybe_expire_msgs(Msgs) ->
+    {ToKeep, Expired} =
+    lists:foldl(
+      fun({deliver, _, #vmq_msg{expiry_ts=undefined}} = M, {Keep, Expired}) ->
+              {[M|Keep], Expired};
+         ({deliver, QoS, #vmq_msg{expiry_ts={ExpiryTS, _}} = M}, {Keep, Expired}) ->
+              Now = timestamp(second),
+              case Now >= ExpiryTS of
+                  true ->
+                      {Keep, Expired + 1};
+                  false ->
+                      {[{deliver, QoS, M#vmq_msg{expiry_ts={ExpiryTS, ExpiryTS - Now}}}|Keep], Expired}
+              end;
+         (M, {Keep, Expired}) -> {[M|Keep], Expired}
+      end, {[], 0}, Msgs),
+    _ = vmq_metrics:incr_queue_msg_expired(Expired),
+    lists:reverse(ToKeep).
+
+timestamp(Unit) ->
+    %% We need to get actual time, not plain monotonic time, as
+    %% monotonic time isn't portable between systems during queue
+    %% migrations.
+    erlang:time_offset(Unit) + erlang:monotonic_time(Unit).
+
