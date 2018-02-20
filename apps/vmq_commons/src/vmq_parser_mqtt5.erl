@@ -701,7 +701,7 @@ gen_publish(Topic, Qos, Payload, Opts) ->
     iolist_to_binary(serialise(Frame)).
 
 gen_puback(MId) ->
-    gen_puback(MId, ?M5_SUCCESS, undefined).
+    gen_puback(MId, ?M5_SUCCESS, []).
 
 gen_puback(MId, ReasonCode, Properties) ->
     iolist_to_binary(serialise(#mqtt5_puback{message_id=MId,

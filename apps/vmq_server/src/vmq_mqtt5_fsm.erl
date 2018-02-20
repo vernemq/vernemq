@@ -203,9 +203,10 @@ maybe_initiate_trace(Frame, TraceFun) ->
     {state(), [mqtt_frame() | binary()]} |
     {state(), {throttle, [mqtt_frame() | binary()]}} |
     {stop, any(), [mqtt_frame() | binary()]}.
-connected(#mqtt_publish{message_id=MessageId, topic=Topic,
-                        qos=QoS, retain=IsRetain,
-                        payload=Payload},
+connected(#mqtt5_publish{message_id=MessageId, topic=Topic,
+                         qos=QoS, retain=IsRetain,
+                         payload=Payload,
+                         properties=Properties},
           #state{subscriber_id={MountPoint,_},
                  shared_subscription_policy=SGPolicy} = State) ->
     DoThrottle = do_throttle(State),
@@ -224,7 +225,9 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
                            qos=QoS,
                            mountpoint=MountPoint,
                            msg_ref=msg_ref(),
-                           sg_policy=SGPolicy},
+                           sg_policy=SGPolicy,
+                           properties=Properties,
+                           expiry_ts=msg_expiration(Properties)},
             dispatch_publish(QoS, MessageId, Msg, State)
     end,
     case Ret of
@@ -715,7 +718,9 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
         {ok, _} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
-            [#mqtt_puback{message_id=MessageId}];
+            [#mqtt5_puback{message_id=MessageId,
+                           reason_code=?M5_SUCCESS,
+                           properties=[]}];
         {error, not_allowed} when Proto == 4 ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
@@ -847,7 +852,9 @@ prepare_frame(QoS, Msg, State) ->
              payload=Payload,
              retain=IsRetained,
              dup=IsDup,
-             qos=MsgQoS} = Msg,
+             qos=MsgQoS,
+             properties=Properties,
+             expiry_ts=ExpiryTS} = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
     HookArgs = [User, SubscriberId, Topic, Payload],
     {NewTopic, NewPayload} =
@@ -870,7 +877,8 @@ prepare_frame(QoS, Msg, State) ->
                            qos=NewQoS,
                            retain=IsRetained,
                            dup=IsDup,
-                           payload=NewPayload},
+                           payload=NewPayload,
+                           properties=update_expiry_interval(Properties, ExpiryTS)},
     case NewQoS of
         0 ->
             {Frame, State1};
@@ -1162,3 +1170,18 @@ convert_to_v4(Topics) ->
                  (V4) -> V4
               end,
               Topics).
+
+msg_expiration([]) ->
+    undefined;
+msg_expiration([#p_message_expiry_interval{value = ExpireAfter}|_]) ->
+    {expire_after, ExpireAfter};
+msg_expiration([_|Tail]) ->
+    msg_expiration(Tail).
+
+update_expiry_interval(Properties, undefined) -> Properties;
+update_expiry_interval(Properties, {_, Remaining}) ->
+    lists:map(fun({p_message_expiry_interval, _OldInterval}) ->
+                      {p_message_expiry_interval, Remaining};
+                 (V) -> V
+              end,
+              Properties).

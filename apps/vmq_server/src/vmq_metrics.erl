@@ -60,6 +60,7 @@
          incr_queue_setup/0,
          incr_queue_teardown/0,
          incr_queue_drop/0,
+         incr_queue_msg_expired/1,
          incr_queue_unhandled/1,
          incr_queue_in/0,
          incr_queue_in/1,
@@ -219,6 +220,9 @@ incr_queue_teardown() ->
 incr_queue_drop() ->
     incr_item(queue_message_drop, 1).
 
+incr_queue_msg_expired(N) ->
+    incr_item(queue_message_expired, N).
+
 incr_queue_unhandled(N) ->
     incr_item(queue_message_unhandled, N).
 
@@ -354,6 +358,7 @@ counter_entries() ->
 
      queue_setup, queue_teardown,
      queue_message_drop, queue_message_unhandled,
+     queue_message_expired,
      queue_message_in, queue_message_out,
 
      client_expired,
@@ -598,6 +603,8 @@ describe({counter,queue_message_unhandled}) ->
     <<"The number of unhandled messages when connecting with clean session=true.">>;
 describe({counter,queue_message_drop}) ->
     <<"The number of messages dropped due to full queues.">>;
+describe({counter,queue_message_expired}) ->
+    <<"The number of messages which expired before delivery.">>;
 describe({counter,queue_teardown}) ->
     <<"The number of times a MQTT queue process has been terminated.">>;
 describe({counter,queue_setup}) ->
