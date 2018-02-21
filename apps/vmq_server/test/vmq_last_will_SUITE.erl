@@ -168,14 +168,15 @@ will_delay_v5_test(_Config) ->
        retain_handling = send_retain
       },
 
-    Subscribe = vmq_parser_mqtt5:gen_subscribe(53, [SubTopic], []),
-    SubConnect = vmq_parser_mqtt5:gen_connect("will-delay-test-sub",
-                                              [{keepalive, 60}]),
-    {ok, SubSocket, SubConnack, <<>>} = packetv5:do_client_connect(SubConnect, []),
-    #mqtt5_connack{reason_code = ?M5_CONNACK_ACCEPT} = SubConnack,
+    Connack = packetv5:gen_connack(),
+    Subscribe = packetv5:gen_subscribe(53, [SubTopic], []),
+    SubConnect = packetv5:gen_connect("will-delay-test-sub",
+                                      [{keepalive, 60}]),
+    
+    {ok, SubSocket} = packetv5:do_client_connect(SubConnect, Connack, []),
     ok = gen_tcp:send(SubSocket, Subscribe),
-    {ok, SubAck, <<>>} = packetv5:receive_frame(SubSocket),
-    #mqtt5_suback{message_id = 53, reason_codes=[0], properties=[]} = SubAck,
+    SubAck = packetv5:gen_suback(53, [0], []),
+    {ok, SubAck, <<>>} = packetv5:expect_frame(SubSocket, SubAck),
 
     %% connect client with delayed last will
     WillMsg = <<"delayed_msg">>,
@@ -187,20 +188,17 @@ will_delay_v5_test(_Config) ->
                   will_qos = 0,
                   will_topic = WillTopic,
                   will_msg = WillMsg},
-    WillConnect = vmq_parser_mqtt5:gen_connect("will-delay-test",
-                                               [{keepalive, 60},
-                                                {lwt, LastWill}]),
-    {ok, Socket, Connack, <<>>} = packetv5:do_client_connect(WillConnect, []),
-    #mqtt5_connack{reason_code = ?M5_CONNACK_ACCEPT} = Connack,
+    WillConnect = packetv5:gen_connect("will-delay-test",
+                                       [{keepalive, 60},
+                                        {lwt, LastWill}]),
+    {ok, Socket} = packetv5:do_client_connect(WillConnect, Connack, []),
 
     %% Disconnect and measure that it takes at least the delay time
     %% for the message to arrive.
     T1 = ts(),
     ok = gen_tcp:close(Socket),
-    {ok, LastWillPub, <<>>} = packetv5:receive_frame(gen_tcp, SubSocket, 3000),
-    #mqtt5_publish{topic = _,
-                   payload = WillMsg,
-                   qos = 0} = LastWillPub,
+    LastWillPub = packetv5:gen_publish(WillTopic, 0, WillMsg, []),
+    {ok, LastWillPub, <<>>} = packetv5:expect_frame(SubSocket, LastWillPub),
     T2 = ts(),
     assert_ge(T2 - T1, WillDelay*1000),
     disable_on_publish(),

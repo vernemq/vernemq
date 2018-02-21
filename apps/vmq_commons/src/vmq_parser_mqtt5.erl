@@ -3,18 +3,11 @@
 -export([parse/1, parse/2, serialise/1]).
 
 -export([gen_connect/2,
-         gen_connack/0,
-         gen_connack/1,
-         gen_connack/2,
          gen_connack/3,
          gen_publish/4,
-         gen_puback/1,
          gen_puback/3,
-         gen_pubrec/1,
          gen_pubrec/3,
-         gen_pubrel/1,
          gen_pubrel/3,
-         gen_pubcomp/1,
          gen_pubcomp/3,
          gen_subscribe/3,
          gen_suback/3,
@@ -22,9 +15,7 @@
          gen_unsuback/3,
          gen_pingreq/0,
          gen_pingresp/0,
-         gen_disconnect/0,
          gen_disconnect/2,
-         gen_auth/0,
          gen_auth/2
         ]).
 
@@ -678,12 +669,6 @@ gen_connect(ClientId, Opts) ->
               },
     iolist_to_binary(serialise(Frame)).
 
-gen_connack() ->
-    gen_connack(?M5_CONNACK_ACCEPT).
-gen_connack(RC) ->
-    gen_connack(0, RC).
-gen_connack(SP, RC) ->
-    gen_connack(SP, RC, []).
 gen_connack(SP, RC, Properties) ->
     iolist_to_binary(serialise(#mqtt5_connack{session_present=flag(SP), reason_code=RC,
                                               properties = Properties})).
@@ -700,33 +685,21 @@ gen_publish(Topic, Qos, Payload, Opts) ->
               },
     iolist_to_binary(serialise(Frame)).
 
-gen_puback(MId) ->
-    gen_puback(MId, ?M5_SUCCESS, []).
-
 gen_puback(MId, ReasonCode, Properties) ->
     iolist_to_binary(serialise(#mqtt5_puback{message_id=MId,
                                              reason_code=ReasonCode,
                                              properties=Properties
                                             })).
 
-gen_pubrec(MId) ->
-    gen_pubrec(MId, ?M5_SUCCESS, undefined).
-
 gen_pubrec(MId, ReasonCode, Properties) ->
     iolist_to_binary(serialise(#mqtt5_pubrec{message_id=MId,
                                              reason_code=ReasonCode,
                                              properties=Properties})).
 
-gen_pubrel(MId) ->
-    gen_pubrel(MId, ?M5_SUCCESS, undefined).
-
 gen_pubrel(MId, ReasonCode, Properties) ->
     iolist_to_binary(serialise(#mqtt5_pubrel{message_id=MId,
                                              reason_code=ReasonCode,
                                              properties=Properties})).
-
-gen_pubcomp(MId) ->
-    gen_pubcomp(MId, ?M5_SUCCESS, undefined).
 
 gen_pubcomp(MId, ReasonCode, Properties) ->
     iolist_to_binary(serialise(#mqtt5_pubcomp{message_id=MId,
@@ -763,17 +736,11 @@ gen_pingreq() ->
 gen_pingresp() ->
     iolist_to_binary(serialise(#mqtt5_pingresp{})).
 
-gen_disconnect() ->
-    gen_disconnect(?M5_NORMAL_DISCONNECT, []).
-
 gen_disconnect(RC, Properties) ->
     iolist_to_binary(
       serialise(
         #mqtt5_disconnect{reason_code=RC,
                           properties=Properties})).
-
-gen_auth() ->
-    gen_auth(?M5_SUCCESS, []).
 
 gen_auth(RC, Properties) ->
     iolist_to_binary(

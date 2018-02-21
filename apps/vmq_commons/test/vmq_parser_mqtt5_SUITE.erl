@@ -45,12 +45,10 @@ parse_unparse_tests(_Config) ->
     Opts = [{properties, Properties}],
     parse_unparse("connect", vmq_parser_mqtt5:gen_connect("test-client", Opts)),
 
-    parse_unparse("connack", vmq_parser_mqtt5:gen_connack()),
-    parse_unparse("connack SP=0", vmq_parser_mqtt5:gen_connack(0)),
-    parse_unparse("connack SP=1", vmq_parser_mqtt5:gen_connack(1)),
-    parse_unparse("connack SP=0, RC=0", vmq_parser_mqtt5:gen_connack(0, ?M5_CONNACK_ACCEPT)),
+    parse_unparse("connack SP=0, RC=0", vmq_parser_mqtt5:gen_connack(0, ?M5_CONNACK_ACCEPT, [])),
+    parse_unparse("connack SP=1, RC=0", vmq_parser_mqtt5:gen_connack(1, ?M5_CONNACK_ACCEPT, [])),
     parse_unparse("connack SP=0, RC=16#81 (malformed packet)",
-                  vmq_parser_mqtt5:gen_connack(0, ?M5_MALFORMED_PACKET)),
+                  vmq_parser_mqtt5:gen_connack(0, ?M5_MALFORMED_PACKET, [])),
     ConnAckProps =
         [#p_session_expiry_interval{value=3600},
          #p_receive_max{value=10},
@@ -87,28 +85,28 @@ parse_unparse_publish_test(_Config) ->
                   vmq_parser_mqtt5:gen_publish(<<"some/topic">>, 2, <<"payload">>, [{properties, Properties}])).
 
 parse_unparse_puback_test(_Config) ->
-    parse_unparse("puback", vmq_parser_mqtt5:gen_puback(5)),
+    parse_unparse("puback", vmq_parser_mqtt5:gen_puback(5, ?M5_GRANTED_QOS0, [])),
     Properties = [#p_reason_string{value= <<"no subscribers for topic /topic">>},
                   #p_user_property{value={<<"key">>, <<"val">>}}],
     parse_unparse("puback with reason_code and properties",
                   vmq_parser_mqtt5:gen_puback(5, ?M5_NO_MATCHING_SUBSCRIBERS, Properties)).
 
 parse_unparse_pubrec_test(_Config) ->
-    parse_unparse("pubrec", vmq_parser_mqtt5:gen_pubrec(5)),
+    parse_unparse("pubrec", vmq_parser_mqtt5:gen_pubrec(5, 0, [])),
     Properties = [#p_reason_string{value= <<"no subscribers for topic /topic">>},
                   #p_user_property{value={<<"key">>, <<"val">>}}],
     parse_unparse("pubrec with reason_code and properties",
                   vmq_parser_mqtt5:gen_pubrec(5, ?M5_NO_MATCHING_SUBSCRIBERS, Properties)).
 
 parse_unparse_pubrel_test(_Config) ->
-    parse_unparse("pubrel", vmq_parser_mqtt5:gen_pubrel(5)),
+    parse_unparse("pubrel", vmq_parser_mqtt5:gen_pubrel(5, 0, [])),
     Properties = [#p_reason_string{value= <<"no subscribers for topic /topic">>},
                   #p_user_property{value={<<"key">>, <<"val">>}}],
     parse_unparse("pubrel with reason_code and properties",
                   vmq_parser_mqtt5:gen_pubrel(5, ?M5_NO_MATCHING_SUBSCRIBERS, Properties)).
 
 parse_unparse_pubcomp_test(_Config) ->
-    parse_unparse("pubcomp", vmq_parser_mqtt5:gen_pubcomp(5)),
+    parse_unparse("pubcomp", vmq_parser_mqtt5:gen_pubcomp(5, 0, [])),
     Properties = [#p_reason_string{value= <<"no subscribers for topic /topic">>},
                   #p_user_property{value={<<"key">>, <<"val">>}}],
     parse_unparse("pubcomp with reason_code and properties",
@@ -187,16 +185,14 @@ parse_unparse_disconnect_test(_Config) ->
                   #p_reason_string{value= <<"a great reason">>},
                   #p_user_property{value={<<"key">>, <<"val">>}},
                   #p_server_ref{value= <<"some other server">>}],
-    parse_unparse("disconnect with properties", vmq_parser_mqtt5:gen_disconnect(?M5_NORMAL_DISCONNECT, Properties)),
-    parse_unparse("disconnect simple", vmq_parser_mqtt5:gen_disconnect()).
+    parse_unparse("disconnect with properties", vmq_parser_mqtt5:gen_disconnect(?M5_NORMAL_DISCONNECT, Properties)).
 
 parse_unparse_auth_test(_Config) ->
     Properties = [#p_authentication_method{value= <<"auth method">>},
                   #p_authentication_data{value= <<"auth data">>},
                   #p_reason_string{value= <<"a great reason">>},
                   #p_user_property{value={<<"key">>, <<"val">>}}],
-    parse_unparse("auth with properties", vmq_parser_mqtt5:gen_auth(?M5_SUCCESS, Properties)),
-    parse_unparse("auth", vmq_parser_mqtt5:gen_auth()).
+    parse_unparse("auth with properties", vmq_parser_mqtt5:gen_auth(?M5_SUCCESS, Properties)).
 
 parse_unparse_properties_test(_Config) ->
     parse_unparse_property(#p_payload_format_indicator{value = utf8}),
