@@ -49,7 +49,7 @@ groups() ->
 anon_success(_Config) ->
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_config:configure_node(),
-    Connect = vmq_parser_mqtt5:gen_connect("connect-success-test", [{keepalive,10}]),
+    Connect = packetv5:gen_connect("connect-success-test", [{keepalive,10}]),
     {ok, Socket, Connack, <<>>} = packetv5:do_client_connect(Connect, []),
     #mqtt5_connack{session_present = 0,
                    reason_code = ?M5_CONNACK_ACCEPT,
@@ -67,7 +67,7 @@ empty_client_id(_Config) ->
     %% packet [MQTT-3.1.3-7].
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_config:configure_node(),
-    CSTrue = vmq_parser_mqtt5:gen_connect(empty, [{keepalive,10}, {clean_start, true}]),
+    CSTrue = packetv5:gen_connect(empty, [{keepalive,10}, {clean_start, true}]),
     {ok, Socket0, Connack0, <<>>} = packetv5:do_client_connect(CSTrue, []),
     #mqtt5_connack{session_present = 0,
                    reason_code = ?M5_CONNACK_ACCEPT,
@@ -75,7 +75,7 @@ empty_client_id(_Config) ->
         = Connack0,
     ok = gen_tcp:close(Socket0),
 
-    CSFalse = vmq_parser_mqtt5:gen_connect(empty, [{keepalive,10}, {clean_start, false}]),
+    CSFalse = packetv5:gen_connect(empty, [{keepalive,10}, {clean_start, false}]),
     {ok, Socket1, Connack1, <<>>} = packetv5:do_client_connect(CSFalse, []),
     #mqtt5_connack{session_present = 0,
                    reason_code = ?M5_CONNACK_ACCEPT,
@@ -90,12 +90,9 @@ invalid_id(_Config) ->
     %% errors, and then itMUST close the Network Connection
     %% [MQTT-3.1.3-8].
     Id = <<"this client id is longer than the set limit of 23 bytes and thus invalid">>,
-    Connect = vmq_parser_mqtt5:gen_connect(Id, [{keepalive,10}]),
-    {ok, Socket, Connack, <<>>} = packetv5:do_client_connect(Connect, []),
-    #mqtt5_connack{session_present = 0,
-                   reason_code = ?M5_CLIENT_IDENTIFIER_NOT_VALID,
-                   properties = []}
-        = Connack,
+    Connect = packetv5:gen_connect(Id, [{keepalive,10}]),
+    Connack = packetv5:gen_connack(0, ?M5_CLIENT_IDENTIFIER_NOT_VALID),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:close(Socket).
 
 session_take_over(_Config) ->
@@ -107,21 +104,12 @@ session_take_over(_Config) ->
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(max_client_id_size, 50),
     vmq_config:configure_node(),
-    Connect = vmq_parser_mqtt5:gen_connect("connect-session-takeover", [{keepalive,10}]),
-    {ok, Socket, Connack, <<>>} = packetv5:do_client_connect(Connect, []),
-    #mqtt5_connack{session_present = 0,
-                   reason_code = ?M5_CONNACK_ACCEPT,
-                   properties = []}
-        = Connack,
-    {ok, NewSocket, Connack, <<>>} = packetv5:do_client_connect(Connect, []),
-    #mqtt5_connack{session_present = 0,
-                   reason_code = ?M5_CONNACK_ACCEPT,
-                   properties = []}
-        = Connack,
-    {ok, Disconnect, <<>>} = packetv5:receive_frame(Socket),
-    #mqtt5_disconnect{reason_code = ?M5_SESSION_TAKEN_OVER,
-                      properties = []}
-        = Disconnect,
+    Connect = packetv5:gen_connect("connect-session-takeover", [{keepalive,10}]),
+    Connack = packetv5:gen_connack(),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    {ok, NewSocket} = packetv5:do_client_connect(Connect, Connack, []),
+    Disconnect = packetv5:gen_disconnect(?M5_SESSION_TAKEN_OVER, []),
+    ok = packetv5:expect_frame(Socket, Disconnect),
     ok = gen_tcp:close(Socket),
     ok = gen_tcp:close(NewSocket).
 

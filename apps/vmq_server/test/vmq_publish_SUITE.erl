@@ -535,40 +535,39 @@ message_expiry(_) ->
     enable_on_subscribe(),
 
     %% set up subscriber
-    SubConnect = vmq_parser_mqtt5:gen_connect("message-expiry-sub", [{keepalive, 60},
-                                                                     {clean_start,false}]),
-    {ok, SubSocket, SubConnack, <<>>} = packetv5:do_client_connect(SubConnect, []),
-    #mqtt5_connack{reason_code = ?M5_CONNACK_ACCEPT} = SubConnack,
-    SubTopic = #mqtt5_subscribe_topic{
-       topic = <<"message/expiry/#">>, qos = 1, no_local = false,
-       rap = false, retain_handling = send_retain},
-    SubscribeAll = vmq_parser_mqtt5:gen_subscribe(10, [SubTopic], []),
+    SubConnect = packetv5:gen_connect("message-expiry-sub", [{keepalive, 60},
+                                                             {clean_start,false}]),
+    Connack = packetv5:gen_connack(?M5_CONNACK_ACCEPT),
+    {ok, SubSocket} = packetv5:do_client_connect(SubConnect, Connack, []),
+    SubTopic60s = packetv5:gen_subtopic(<<"message/expiry/60s">>, 1),
+    SubTopic1s = packetv5:gen_subtopic(<<"message/expiry/1s">>, 1),
+    SubscribeAll = packetv5:gen_subscribe(10, [SubTopic60s, SubTopic1s], []),
     ok = gen_tcp:send(SubSocket, SubscribeAll),
-    {ok, SubAck, <<>>} = packetv5:receive_frame(SubSocket),
-    #mqtt5_suback{message_id = 10, reason_codes=[1], properties=[]} = SubAck,
-    Disconnect = vmq_parser_mqtt5:gen_disconnect(),
+
+    SubAck = packetv5:gen_suback(10, [1,1], []),
+    ok = packetv5:expect_frame(SubSocket, SubAck),
+    Disconnect = packetv5:gen_disconnect(),
     ok = gen_tcp:send(SubSocket, Disconnect),
     ok = gen_tcp:close(SubSocket),
 
     %% set up publisher
-    PubConnect = vmq_parser_mqtt5:gen_connect("message-expiry-pub", [{keepalive, 60}]),
-    {ok, PubSocket, PubConnack, <<>>} = packetv5:do_client_connect(PubConnect, []),
-    #mqtt5_connack{reason_code = ?M5_CONNACK_ACCEPT} = PubConnack,
+    PubConnect = packetv5:gen_connect("message-expiry-pub", [{keepalive, 60}]),
+    {ok, PubSocket} = packetv5:do_client_connect(PubConnect, Connack, []),
 
     %% Publish some messages
     Expiry60s = #p_message_expiry_interval{value = 60},
-    PE60s = vmq_parser_mqtt5:gen_publish(<<"message/expiry/60s">>, 1, <<"e60s">>,
-                                         [{properties, [Expiry60s]}, {mid, 0}]),
+    PE60s = packetv5:gen_publish(<<"message/expiry/60s">>, 1, <<"e60s">>,
+                                 [{properties, [Expiry60s]}, {mid, 0}]),
     ok = gen_tcp:send(PubSocket, PE60s),
-    {ok, Puback0, <<>>} = packetv5:receive_frame(PubSocket),
-    #mqtt5_puback{message_id = 0} = Puback0,
+    Puback0 = packetv5:gen_puback(0),
+    ok = packetv5:expect_frame(PubSocket, Puback0),
 
     Expiry1s = #p_message_expiry_interval{value = 1},
-    PE1s = vmq_parser_mqtt5:gen_publish(<<"message/expiry/1s">>, 1, <<"e1s">>,
-                                        [{properties, [Expiry1s]}, {mid, 1}]),
+    PE1s = packetv5:gen_publish(<<"message/expiry/1s">>, 1, <<"e1s">>,
+                                [{properties, [Expiry1s]}, {mid, 1}]),
     ok = gen_tcp:send(PubSocket, PE1s),
-    {ok, Puback1, <<>>} = packetv5:receive_frame(PubSocket),
-    #mqtt5_puback{message_id = 1} = Puback1,
+    Puback1 = packetv5:gen_puback(1),
+    ok = packetv5:expect_frame(PubSocket, Puback1),
     ok = gen_tcp:close(PubSocket),
 
     %% Wait a bit to ensure the messages will have been held long
@@ -576,9 +575,8 @@ message_expiry(_) ->
     timer:sleep(1100),
 
     %% reconnect subscriber
-    {ok, SubSocket1, SubConnack1, <<>>} = packetv5:do_client_connect(SubConnect, []),
-    #mqtt5_connack{reason_code = ?M5_CONNACK_ACCEPT,
-                   session_present = 1} = SubConnack1,
+    ConnackSP = packetv5:gen_connack(1, ?M5_CONNACK_ACCEPT),
+    {ok, SubSocket1} = packetv5:do_client_connect(SubConnect, ConnackSP, []),
 
     %% receive the message with a long expiry interval
     {ok, RPE60s, <<>>} = packetv5:receive_frame(SubSocket1),

@@ -55,7 +55,7 @@ gen_connect_(5, ClientId, Opts) ->
     WillTopic = proplists:get_value(will_topic, Opts),
     case {WillMsg, WillTopic} of
         {undefined, undefined} ->
-            vmq_parser_mqtt5:gen_connect(ClientId, Opts);
+            packetv5:gen_connect(ClientId, Opts);
         {WillMsg, WillTopic} when WillMsg =/= undefined,
                                   WillTopic =/= undefined ->
             WillQoS = proplists:get_value(will_qos, Opts, 0),
@@ -67,7 +67,7 @@ gen_connect_(5, ClientId, Opts) ->
                      will_qos = WillQoS,
                      will_topic = ensure_binary(WillTopic),
                      will_msg = ensure_binary(WillMsg)},
-            vmq_parser_mqtt5:gen_connect(ClientId, [{lwt, LWT}|Opts])
+            packetv5:gen_connect(ClientId, [{lwt, LWT}|Opts])
     end.
 
 gen_connack(RC, Config) ->
@@ -93,7 +93,7 @@ gen_connack_(5, RC) ->
             server_unavailable -> 16#88;
             not_authorized -> 16#87
         end,
-    vmq_parser_mqtt5:gen_connack(RCv5).
+    packetv5:gen_connack(RCv5).
 
 gen_subscribe(Mid, Topic, QoS, Config) ->
     gen_subscribe_(protover(Config), Mid, Topic, QoS).
@@ -108,7 +108,7 @@ gen_subscribe_(5, Mid, Topic, QoS) ->
                  rap=false,
                  retain_handling=send_retain
                 }],
-    vmq_parser_mqtt5:gen_subscribe(Mid, Topics, []).
+    packetv5:gen_subscribe(Mid, Topics, []).
 
 gen_suback(Mid, Exp, Config) ->
     gen_suback_(protover(Config), Mid, Exp).
@@ -116,7 +116,7 @@ gen_suback(Mid, Exp, Config) ->
 gen_suback_(4, Mid, RC) ->
     packet:gen_suback(Mid, RC);
 gen_suback_(5, Mid, RC) ->
-    vmq_parser_mqtt5:gen_suback(Mid, [RC], []).
+    packetv5:gen_suback(Mid, [RC], []).
 
 gen_publish(Topic, QoS, Payload, Opts, Config) ->
     gen_publish_(protover(Config), Topic, QoS, Payload, Opts).
@@ -124,12 +124,12 @@ gen_publish(Topic, QoS, Payload, Opts, Config) ->
 gen_publish_(4, Topic, QoS, Payload, Opts) ->
     packet:gen_publish(Topic, QoS, Payload, Opts);
 gen_publish_(5, Topic, QoS, Payload, Opts) ->
-    vmq_parser_mqtt5:gen_publish(Topic, QoS, Payload, Opts).
+    packetv5:gen_publish(Topic, QoS, Payload, Opts).
 
 gen_disconnect(Config) ->
     case protover(Config) of
         4 -> packet:gen_disconnect();
-        5 -> vmq_parser_mqtt5:gen_disconnect()
+        5 -> packetv5:gen_disconnect()
     end.
 
 ensure_binary(L) when is_list(L) -> list_to_binary(L);

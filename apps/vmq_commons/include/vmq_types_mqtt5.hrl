@@ -85,7 +85,7 @@
 -record(mqtt5_connack, {
           session_present   :: flag(),
           reason_code       :: reason_code(),
-          properties        :: [mqtt5_property] | undefined
+          properties = []   :: [mqtt5_property] | undefined
          }).
 -type mqtt5_connack()       :: #mqtt5_connack{}.
 
