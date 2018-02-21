@@ -1,55 +1,45 @@
 -module(vmq_hook_rewrite_SUITE).
--export([
-         %% suite/0,
-         init_per_suite/1,
-         end_per_suite/1,
-         init_per_testcase/2,
-         end_per_testcase/2,
-         all/0
-        ]).
 
--export([auth_on_publish_rewrite_payload_test/1
-         , auth_on_publish_rewrite_packet_test/1
-         , auth_on_subscribe_rewrite_test/1
-         , on_deliver_rewrite_payload_test/1
-         , on_deliver_rewrite_packet_test/1
-        ]).
-
-
--export([hook_auth_on_subscribe/3
-        , hook_auth_on_publish/6
-        , hook_on_deliver/4
-        , hook_on_publish_modified_payload/6
-        ]).
+-compile(export_all).
+-compile(nowarn_export_all).
 
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(_Config) ->
+    vmq_test_utils:setup(),
     cover:start(),
     _Config.
 
 end_per_suite(_Config) ->
+    vmq_test_utils:teardown(),
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:listener_start(1888, []),
     Config.
 
 end_per_testcase(_, Config) ->
-    vmq_test_utils:teardown(),
     Config.
 
 all() ->
-    [auth_on_publish_rewrite_payload_test
-     , auth_on_publish_rewrite_packet_test
-     , auth_on_subscribe_rewrite_test
-     , on_deliver_rewrite_payload_test
-     , on_deliver_rewrite_packet_test
-     ].
+    [
+     {group, mqtt}
+    ].
+
+groups() ->
+    Tests =
+        [auth_on_publish_rewrite_payload_test
+        , auth_on_publish_rewrite_packet_test
+        , auth_on_subscribe_rewrite_test
+        , on_deliver_rewrite_payload_test
+        , on_deliver_rewrite_packet_test
+        ],
+    [
+     {mqtt, [shuffle,sequence], Tests}
+    ].
 
 auth_on_publish_rewrite_payload_test(_) ->
     Connect = packet:gen_connect("pub-rewrite-test", [{keepalive, 60}]),
@@ -241,28 +231,28 @@ hook_on_deliver(_, _, _, _) -> ok.
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 enable_auth_on_subscribe() ->
-    vmq_plugin_mgr:enable_module_plugin(
+    ok = vmq_plugin_mgr:enable_module_plugin(
       auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
 enable_auth_on_publish() ->
-    vmq_plugin_mgr:enable_module_plugin(
+    ok = vmq_plugin_mgr:enable_module_plugin(
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 enable_on_deliver() ->
-    vmq_plugin_mgr:enable_module_plugin(
+    ok = vmq_plugin_mgr:enable_module_plugin(
       on_deliver, ?MODULE, hook_on_deliver, 4).
 enable_hook_on_publish_modified_payload() ->
-    vmq_plugin_mgr:enable_module_plugin(
+    ok = vmq_plugin_mgr:enable_module_plugin(
       on_publish, ?MODULE, hook_on_publish_modified_payload, 6).
 disable_auth_on_subscribe() ->
-    vmq_plugin_mgr:disable_module_plugin(
+    ok = vmq_plugin_mgr:disable_module_plugin(
       auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
 disable_auth_on_publish() ->
-    vmq_plugin_mgr:disable_module_plugin(
+    ok = vmq_plugin_mgr:disable_module_plugin(
       auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
 disable_on_deliver() ->
-    vmq_plugin_mgr:disable_module_plugin(
+    ok = vmq_plugin_mgr:disable_module_plugin(
       on_deliver, ?MODULE, hook_on_deliver, 4).
 disable_hook_on_publish_modified_payload() ->
-    vmq_plugin_mgr:disable_module_plugin(
+    ok = vmq_plugin_mgr:disable_module_plugin(
       on_publish, ?MODULE, hook_on_publish_modified_payload, 6).
 
 
