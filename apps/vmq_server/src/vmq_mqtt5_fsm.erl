@@ -199,10 +199,10 @@ maybe_initiate_trace(_Frame, undefined) ->
 maybe_initiate_trace(Frame, TraceFun) ->
     TraceFun(self(), Frame).
 
--spec connected(mqtt_frame(), state()) ->
-    {state(), [mqtt_frame() | binary()]} |
-    {state(), {throttle, [mqtt_frame() | binary()]}} |
-    {stop, any(), [mqtt_frame() | binary()]}.
+-spec connected(mqtt5_frame(), state()) ->
+    {state(), [mqtt5_frame() | binary()]} |
+    {state(), {throttle, [mqtt5_frame() | binary()]}} |
+    {stop, any(), [mqtt5_frame() | binary()]}.
 connected(#mqtt5_publish{message_id=MessageId, topic=Topic,
                          qos=QoS, retain=IsRetain,
                          payload=Payload,
