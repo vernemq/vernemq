@@ -1111,7 +1111,7 @@ info(Pid, Items) ->
     Ref = make_ref(),
     CallerRef = {Ref, self()},
     MRef = monitor(process, Pid),
-    Pid ! {info_req, CallerRef, Items},
+    send(Pid, {info_req, CallerRef, Items}),
     receive
         {Ref, Ret} -> Ret;
         {'DOWN', MRef, process, Pid, Reason} ->
