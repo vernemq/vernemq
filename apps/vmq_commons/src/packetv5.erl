@@ -67,7 +67,7 @@ gen_pubrel(MId, ReasonCode, Properties) ->
     vmq_parser_mqtt5:gen_pubrel(MId, ReasonCode, Properties).
 
 gen_pubcomp(MId) ->
-    gen_pubcomp(MId, ?M5_SUCCESS, undefined).
+    gen_pubcomp(MId, ?M5_SUCCESS, []).
 gen_pubcomp(MId, ReasonCode, Properties) ->
     vmq_parser_mqtt5:gen_pubcomp(MId, ReasonCode, Properties).
 

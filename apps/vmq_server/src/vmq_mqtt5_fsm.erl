@@ -348,13 +348,13 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Prope
     case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, User, SubscriberId,
                            convert_to_v4(Topics), Properties) of
         {ok, QoSs} ->
-            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs},
+            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=[]},
             _ = vmq_metrics:incr_mqtt_suback_sent(),
             {State, [Frame]};
         {error, not_allowed} ->
             %% allow the parser to add the 0x80 Failure return code
             QoSs = [not_allowed || _ <- Topics],
-            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs},
+            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=[]},
             _ = vmq_metrics:incr_mqtt_error_auth_subscribe(),
             {State, [Frame]};
         {error, _Reason} ->
