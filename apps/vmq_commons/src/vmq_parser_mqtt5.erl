@@ -105,11 +105,11 @@ variable(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>,
 variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
      #mqtt5_puback{message_id=MessageId,
                    reason_code=?M5_SUCCESS,
-                   properties=undefined};
+                   properties=[]};
 variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
      #mqtt5_puback{message_id=MessageId,
                    reason_code=ReasonCode,
-                   properties=undefined};
+                   properties=[]};
 variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
     case parse_properties(Rest) of
         {ok, Properties, <<>>} ->
@@ -122,11 +122,11 @@ variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
 variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big>>) ->
      #mqtt5_pubrec{message_id=MessageId,
                    reason_code=?M5_SUCCESS,
-                   properties=undefined};
+                   properties=[]};
 variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
      #mqtt5_pubrec{message_id=MessageId,
                    reason_code=ReasonCode,
-                   properties=undefined};
+                   properties=[]};
 variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
     case parse_properties(Rest) of
         {ok, Properties, <<>>} ->
@@ -139,11 +139,11 @@ variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
 variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) ->
      #mqtt5_pubrel{message_id=MessageId,
                    reason_code=?M5_SUCCESS,
-                   properties=undefined};
+                   properties=[]};
 variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8>>) ->
      #mqtt5_pubrel{message_id=MessageId,
                    reason_code=ReasonCode,
-                   properties=undefined};
+                   properties=[]};
 variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
     case parse_properties(Rest) of
         {ok, Properties, <<>>} ->
@@ -156,11 +156,11 @@ variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8, Rest/bi
 variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) ->
      #mqtt5_pubcomp{message_id=MessageId,
                     reason_code=?M5_SUCCESS,
-                    properties=undefined};
+                    properties=[]};
 variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
      #mqtt5_pubcomp{message_id=MessageId,
                     reason_code=ReasonCode,
-                    properties=undefined};
+                    properties=[]};
 variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
     case parse_properties(Rest) of
         {ok, Properties, <<>>} ->
@@ -380,32 +380,24 @@ serialise(#mqtt5_publish{message_id=MessageId,
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?PUBLISH:4, (flag(Dup)):1/integer,
        QoS:2/integer, (flag(Retain)):1/integer>>, LenBytes, Var];
-serialise(#mqtt5_puback{message_id=MessageId, reason_code=?M5_SUCCESS, properties=undefined}) ->
-    <<?PUBACK:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_puback{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]}) ->
     <<?PUBACK:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_puback{message_id=MessageId, reason_code=ReasonCode, properties=Properties}) ->
     Var = [<<MessageId:16/big, ReasonCode:8/integer>>, properties(Properties)],
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?PUBACK:4, 0:4>>, LenBytes, Var];
-serialise(#mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=undefined}) ->
-    <<?PUBREC:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]}) ->
     <<?PUBREC:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_pubrec{message_id=MessageId, reason_code=ReasonCode, properties=Properties}) ->
     Var = [<<MessageId:16/big, ReasonCode:8/integer>>, properties(Properties)],
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?PUBREC:4, 0:4>>, LenBytes, Var];
-serialise(#mqtt5_pubrel{message_id=MessageId, reason_code=?M5_SUCCESS, properties=undefined}) ->
-    <<?PUBREL:4, 0:2, 1:1, 0:1, 2, MessageId:16/big>>;
 serialise(#mqtt5_pubrel{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]}) ->
     <<?PUBREL:4, 0:2, 1:1, 0:1, 2, MessageId:16/big>>;
 serialise(#mqtt5_pubrel{message_id=MessageId, reason_code=ReasonCode, properties=Properties}) ->
     Var = [<<MessageId:16/big, ReasonCode:8/integer>>, properties(Properties)],
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?PUBREL:4, 0:2, 1:1, 0:1>>, LenBytes, Var];
-serialise(#mqtt5_pubcomp{message_id=MessageId, reason_code=?M5_SUCCESS, properties=undefined}) ->
-    <<?PUBCOMP:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_pubcomp{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]}) ->
     <<?PUBCOMP:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_pubcomp{message_id=MessageId, reason_code=ReasonCode, properties=Properties}) ->
@@ -475,8 +467,7 @@ serialise(#mqtt5_pingreq{}) ->
 serialise(#mqtt5_pingresp{}) ->
     <<?PINGRESP:4, 0:4, 0>>;
 serialise(#mqtt5_disconnect{reason_code=?M5_NORMAL_DISCONNECT, properties=Properties})
-  when Properties =:= [];
-       Properties =:= undefined ->
+  when Properties =:= [] ->
     <<?DISCONNECT:4, 0:4, 0>>;
 serialise(#mqtt5_disconnect{reason_code=RC, properties=Properties}) ->
     Var = [<<RC:8>>,
@@ -484,8 +475,7 @@ serialise(#mqtt5_disconnect{reason_code=RC, properties=Properties}) ->
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?DISCONNECT:4, 0:4>>, LenBytes, Var];
 serialise(#mqtt5_auth{reason_code=?M5_SUCCESS, properties=Properties})
-  when Properties =:= [];
-       Properties =:= undefined ->
+  when Properties =:= [] ->
     <<?AUTH:4, 0:4, 0>>;
 serialise(#mqtt5_auth{reason_code=RC, properties=Properties}) ->
     Var = [<<RC:8>>,
@@ -578,7 +568,6 @@ ensure_binary(B) when is_binary(B) -> B;
 ensure_binary(undefined) -> undefined;
 ensure_binary(empty) -> empty. % for test purposes
 
-properties(undefined) -> <<0:8>>;
 properties([]) -> <<0:8>>;
 properties(Properties) ->
     IoProps = enc_properties(Properties),
@@ -665,7 +654,7 @@ gen_connect(ClientId, Opts) ->
                password        = ensure_binary(proplists:get_value(password, Opts)),
                proto_ver       = ?PROTOCOL_5,
                lwt             = proplists:get_value(lwt, Opts, undefined),
-               properties      = proplists:get_value(properties, Opts)
+               properties      = proplists:get_value(properties, Opts, [])
               },
     iolist_to_binary(serialise(Frame)).
 
@@ -680,7 +669,7 @@ gen_publish(Topic, Qos, Payload, Opts) ->
                qos               = Qos,
                retain            = proplists:get_value(retain, Opts, false),
                dup               = proplists:get_value(dup, Opts, false),
-               properties        = proplists:get_value(properties, Opts),
+               properties        = proplists:get_value(properties, Opts, []),
                payload           = ensure_binary(Payload)
               },
     iolist_to_binary(serialise(Frame)).
