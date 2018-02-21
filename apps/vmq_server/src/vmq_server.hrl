@@ -16,8 +16,10 @@
           persisted=false       :: flag(),
           sg_policy=prefer_local:: sg_policy(),
           %% TODOv5: need to import the mqtt5 property typespec?
-          properties            :: any(),
-          expiry_ts             :: undefined | {non_neg_integer(), non_neg_integer()}
+          properties=[]         :: [any()],
+          expiry_ts             :: undefined
+                                 | {expire_after, non_neg_integer()}
+                                 | {non_neg_integer(), non_neg_integer()}
          }).
 -type msg()             :: #vmq_msg{}.
 
