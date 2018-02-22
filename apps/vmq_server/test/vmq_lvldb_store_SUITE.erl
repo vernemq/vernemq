@@ -169,7 +169,7 @@ ref_delete_test(Config) ->
 
 generate_msgs(0, Acc) -> Acc;
 generate_msgs(N, Acc) ->
-    Msg = #vmq_msg{msg_ref=vmq_mqtt_fsm:msg_ref(),
+    Msg = #vmq_msg{msg_ref=vmq_mqtt_fsm_util:msg_ref(),
                    routing_key=vmq_test_utils:rand_bytes(10),
                    payload = vmq_test_utils:rand_bytes(100),
                    mountpoint = "",

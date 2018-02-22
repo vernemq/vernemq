@@ -26,6 +26,8 @@
 -export([system_terminate/4]).
 -export([system_code_change/4]).
 
+-define(TO_SESSION, to_session_fsm).
+
 -record(st, {socket,
              buffer= <<>>,
              fsm_mod,
@@ -204,7 +206,7 @@ handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}, fsm_mod=FsmM
 handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
     _ = vmq_metrics:incr_socket_error(),
     {exit, Error, State};
-handle_message({FsmMod, Msg}, #st{pending=Pending, fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
+handle_message({?TO_SESSION, Msg}, #st{pending=Pending, fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
     case FsmMod:msg_in(Msg, FsmState0) of
         {ok, FsmState1, Out} ->
             maybe_flush(State#st{fsm_state=FsmState1,
