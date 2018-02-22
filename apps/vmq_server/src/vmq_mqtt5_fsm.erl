@@ -272,7 +272,7 @@ connected({mail, QPid, Msgs, _, Dropped},
             {NewState1#state{waiting_msgs=NewWaiting}, HandledMsgs}
     end,
     {NewState2, Out};
-connected(#mqtt_puback{message_id=MessageId}, #state{waiting_acks=WAcks} = State) ->
+connected(#mqtt5_puback{message_id=MessageId}, #state{waiting_acks=WAcks} = State) ->
     %% qos1 flow
     _ = vmq_metrics:incr_mqtt_puback_received(),
     case maps:get(MessageId, WAcks, not_found) of
@@ -282,14 +282,14 @@ connected(#mqtt_puback{message_id=MessageId}, #state{waiting_acks=WAcks} = State
             _ = vmq_metrics:incr_mqtt_error_invalid_puback(),
             {State, []}
     end;
-connected(#mqtt_pubrec{message_id=MessageId}, State) ->
+connected(#mqtt5_pubrec{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks, retry_interval=RetryInterval,
            retry_queue=RetryQueue} = State,
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrec_received(),
     case maps:get(MessageId, WAcks, not_found) of
         #vmq_msg{} ->
-            PubRelFrame = #mqtt_pubrel{message_id=MessageId},
+            PubRelFrame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]},
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
             {State#state{
                retry_queue=set_retry(MessageId, RetryInterval, RetryQueue),
@@ -300,13 +300,13 @@ connected(#mqtt_pubrec{message_id=MessageId}, State) ->
             _ = vmq_metrics:incr_mqtt_error_invalid_pubrec(),
             terminate(normal, State)
     end;
-connected(#mqtt_pubrel{message_id=MessageId}, State) ->
+connected(#mqtt5_pubrel{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks, username=User, reg_view=RegView,
            subscriber_id=SubscriberId, cap_settings=CAPSettings} = State,
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrel_received(),
     case maps:get({qos2, MessageId} , WAcks, not_found) of
-        {#mqtt_pubrec{}, #vmq_msg{routing_key=Topic, qos=QoS, payload=Payload,
+        {#mqtt5_pubrec{}, #vmq_msg{routing_key=Topic, qos=QoS, payload=Payload,
                                   retain=IsRetain} = Msg} ->
             HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
             case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, Msg), HookArgs) of
@@ -316,7 +316,8 @@ connected(#mqtt_pubrel{message_id=MessageId}, State) ->
                       State#state{
                         waiting_acks=maps:remove({qos2, MessageId}, WAcks)}),
                     _ = vmq_metrics:incr_mqtt_pubcomp_sent(),
-                    {NewState, [#mqtt_pubcomp{message_id=MessageId}|Msgs]};
+                    {NewState, [#mqtt5_pubcomp{message_id=MessageId,
+                                               reason_code=?M5_SUCCESS}|Msgs]};
                 {error, _Reason} ->
                     %% cant publish due to overload or netsplit,
                     %% client will retry
@@ -326,14 +327,15 @@ connected(#mqtt_pubrel{message_id=MessageId}, State) ->
         not_found ->
             %% already delivered OR we pretended that we delivered the message
             %% as required by 3.1 . Client expects a PUBCOMP
-            {State, [#mqtt_pubcomp{message_id=MessageId}]}
+            {State, [#mqtt5_pubcomp{message_id=MessageId,
+                                    reason_code=?M5_SUCCESS}]}
     end;
-connected(#mqtt_pubcomp{message_id=MessageId}, State) ->
+connected(#mqtt5_pubcomp{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks} = State,
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubcomp_received(),
     case maps:get(MessageId, WAcks, not_found) of
-        #mqtt_pubrel{} ->
+        #mqtt5_pubrel{} ->
             handle_waiting_msgs(State#state{
                                   waiting_acks=maps:remove(MessageId, WAcks)});
         not_found -> % error or wrong waiting_ack, definitely not well behaving client
@@ -363,13 +365,14 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Prope
             _ = vmq_metrics:incr_mqtt_error_subscribe(),
             {State, []}
     end;
-connected(#mqtt_unsubscribe{message_id=MessageId, topics=Topics}, State) ->
+connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties =_Properties}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
     _ = vmq_metrics:incr_mqtt_unsubscribe_received(),
     case vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, User, SubscriberId, Topics) of
         ok ->
-            Frame = #mqtt_unsuback{message_id=MessageId},
+            ReasonCodes = [?M5_SUCCESS || _ <- Topics],
+            Frame = #mqtt5_unsuback{message_id=MessageId, reason_codes=ReasonCodes, properties=[]},
             _ = vmq_metrics:incr_mqtt_unsuback_sent(),
             {State, [Frame]};
         {error, _Reason} ->
@@ -729,7 +732,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
             %% we pretend as everything is ok for 3.1 and Bridge
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             _ = vmq_metrics:incr_mqtt_puback_sent(),
-            [#mqtt_puback{message_id=MessageId}];
+            [#mqtt5_puback{message_id=MessageId}];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             _ = vmq_metrics:incr_mqtt_error_publish(),
@@ -747,7 +750,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
     case auth_on_publish(User, SubscriberId, Msg,
                         fun(MaybeChangedMsg, _) -> {ok, MaybeChangedMsg} end) of
         {ok, NewMsg} ->
-            Frame = #mqtt_pubrec{message_id=MessageId},
+            Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]},
             _ = vmq_metrics:incr_mqtt_pubrec_sent(),
             {State#state{
                retry_queue=set_retry({qos2, MessageId}, RetryInterval, RetryQueue),
@@ -761,7 +764,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
             %% we pretend as everything is ok for 3.1 and Bridge
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             _ = vmq_metrics:incr_mqtt_pubrec_sent(),
-            Frame = #mqtt_pubrec{message_id=MessageId},
+            Frame = #mqtt5_pubrec{message_id=MessageId},
             [Frame];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
@@ -775,9 +778,9 @@ handle_waiting_acks_and_msgs(State) ->
     MsgsToBeDeliveredNextTime =
     lists:foldl(fun ({{qos2, _}, _}, Acc) ->
                       Acc;
-                  ({MsgId, #mqtt_pubrel{} = Frame}, Acc) ->
+                  ({MsgId, #mqtt5_pubrel{} = Frame}, Acc) ->
                       %% unacked PUBREL Frame
-                      Bin = vmq_parser:serialise(Frame),
+                      Bin = vmq_parser_mqtt5:serialise(Frame),
                       [{deliver_bin, {MsgId, Bin}}|Acc];
                   ({MsgId, Bin}, Acc) when is_binary(Bin) ->
                       %% unacked PUBREL Frame
@@ -946,7 +949,7 @@ set_keepalive_check_timer(KeepAlive) ->
 
 -spec send_after(non_neg_integer(), any()) -> reference().
 send_after(Time, Msg) ->
-    erlang:send_after(Time, self(), {?MODULE, Msg}).
+    vmq_mqtt_fsm_util:send_after(Time, Msg).
 
 do_throttle(#state{max_message_rate=0}) -> false;
 do_throttle(#state{max_message_rate=Rate}) ->
@@ -1025,20 +1028,20 @@ handle_retry(_, _, {empty, Queue}, _, Acc) ->
 get_retry_frame(MsgId, #vmq_msg{routing_key=Topic, qos=QoS, retain=Retain,
                          payload=Payload}, Acc) ->
     _ = vmq_metrics:incr_mqtt_publish_sent(),
-    Frame = #mqtt_publish{message_id=MsgId,
+    Frame = #mqtt5_publish{message_id=MsgId,
                           topic=Topic,
                           qos=QoS,
                           retain=Retain,
                           dup=true,
                           payload=Payload},
     [Frame|Acc];
-get_retry_frame(_, #mqtt_pubrel{} = Frame, Acc) ->
+get_retry_frame(_, #mqtt5_pubrel{} = Frame, Acc) ->
     _ = vmq_metrics:incr_mqtt_pubrel_sent(),
     [Frame|Acc];
-get_retry_frame(_, #mqtt_pubrec{} = Frame, Acc) ->
+get_retry_frame(_, #mqtt5_pubrec{} = Frame, Acc) ->
     _ = vmq_metrics:incr_mqtt_pubrec_sent(),
     [Frame|Acc];
-get_retry_frame(_, {#mqtt_pubrec{} = Frame, _}, Acc) ->
+get_retry_frame(_, {#mqtt5_pubrec{} = Frame, _}, Acc) ->
     _ = vmq_metrics:incr_mqtt_pubrec_sent(),
     [Frame|Acc];
 get_retry_frame(_, not_found, _) ->

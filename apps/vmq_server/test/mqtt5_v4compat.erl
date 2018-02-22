@@ -5,10 +5,19 @@
          expect_packet/4,
          gen_connect/3,
          gen_connack/2,
+         gen_connack/3,
          gen_subscribe/4,
          gen_suback/3,
+         gen_unsubscribe/3,
+         gen_unsuback/2,
          gen_publish/5,
+         gen_puback/2,
+         gen_pubrec/2,
+         gen_pubrel/2,
+         gen_pubcomp/2,
          gen_disconnect/1]).
+
+-export([groupify/2]).
 
 -include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 
@@ -18,17 +27,7 @@ do_client_connect(Connect, Connack, Opts, Config) ->
 do_client_connect_(4, Connect, Connack, Opts) ->
     packet:do_client_connect(Connect, Connack, Opts);
 do_client_connect_(5, Connect, Connack, Opts) ->
-    {ExpectedFrame, <<>>} = vmq_parser_mqtt5:parse(Connack),
-    case packetv5:do_client_connect(Connect, Opts) of
-        {ok, Socket, Frame, <<>>} ->
-            case ExpectedFrame of
-                Frame ->
-                    {ok, Socket};
-                _ ->
-                    {error, not_equal, ExpectedFrame, Frame}
-            end;
-        E -> E
-    end.
+    packetv5:do_client_connect(Connect, Connack, Opts).
 
 expect_packet(Socket, Name, Frame, Config) ->
     expect_packet_(protover(Config), Socket, Name, Frame).
@@ -36,14 +35,7 @@ expect_packet(Socket, Name, Frame, Config) ->
 expect_packet_(4, Socket, Name, Packet) ->
     packet:expect_packet(Socket, Name, Packet);
 expect_packet_(5, Socket, _Name, ExpectedPacket) ->
-    ExpectedFrame = vmq_parser_mqtt5:parse(ExpectedPacket),
-    {ok, GotFrame, <<>>} = packetv5:receive_frame(Socket),
-    case ExpectedFrame of
-        {GotFrame, <<>>} ->
-            ok;
-        _ ->
-            {error, not_equal, ExpectedFrame, GotFrame}
-    end.
+    packetv5:expect_frame(Socket, ExpectedPacket).
 
 gen_connect(ClientId, Opts, Config) ->
     gen_connect_(protover(Config), ClientId, Opts).
@@ -55,7 +47,7 @@ gen_connect_(5, ClientId, Opts) ->
     WillTopic = proplists:get_value(will_topic, Opts),
     case {WillMsg, WillTopic} of
         {undefined, undefined} ->
-            packetv5:gen_connect(ClientId, Opts);
+            packetv5:gen_connect(ClientId, fixup_v4_opts(Opts));
         {WillMsg, WillTopic} when WillMsg =/= undefined,
                                   WillTopic =/= undefined ->
             WillQoS = proplists:get_value(will_qos, Opts, 0),
@@ -67,13 +59,23 @@ gen_connect_(5, ClientId, Opts) ->
                      will_qos = WillQoS,
                      will_topic = ensure_binary(WillTopic),
                      will_msg = ensure_binary(WillMsg)},
-            packetv5:gen_connect(ClientId, [{lwt, LWT}|Opts])
+            packetv5:gen_connect(ClientId, [{lwt, LWT}|fixup_v4_opts(Opts)])
     end.
 
-gen_connack(RC, Config) ->
-    gen_connack_(protover(Config), RC).
+fixup_v4_opts(Opts) ->
+    lists:map(
+      fun({clean_session, Val}) ->
+              {clean_start, Val};
+         (V) -> V
+      end, Opts).
 
-gen_connack_(4, RC) ->
+gen_connack(RC, Config) ->
+    gen_connack(false, RC, Config).
+
+gen_connack(SP, RC, Config) ->
+    gen_connack_(protover(Config), SP, RC).
+
+gen_connack_(4, SP, RC) ->
     RCv4 =
         case RC of
             success -> 0;
@@ -83,8 +85,8 @@ gen_connack_(4, RC) ->
             malformed_credentials -> 4;
             not_authorized -> 5
     end,
-    packet:gen_connack(RCv4);
-gen_connack_(5, RC) ->
+    packet:gen_connack(SP, RCv4);
+gen_connack_(5, SP, RC) ->
     RCv5 =
         case RC of
             success -> 16#00;
@@ -93,7 +95,11 @@ gen_connack_(5, RC) ->
             server_unavailable -> 16#88;
             not_authorized -> 16#87
         end,
-    packetv5:gen_connack(RCv5).
+    SPv5 = case SP of
+               true -> 1;
+               false -> 0
+           end,
+    packetv5:gen_connack(SPv5, RCv5).
 
 gen_subscribe(Mid, Topic, QoS, Config) ->
     gen_subscribe_(protover(Config), Mid, Topic, QoS).
@@ -118,6 +124,22 @@ gen_suback_(4, Mid, RC) ->
 gen_suback_(5, Mid, RC) ->
     packetv5:gen_suback(Mid, [RC], []).
 
+gen_unsubscribe(MId, Topic, Config) ->
+    gen_unsubscribe_(protover(Config), MId, Topic).
+
+gen_unsubscribe_(4, MId, Topic) ->
+    packet:gen_unsubscribe(MId, Topic);
+gen_unsubscribe_(5, MId, Topic) ->
+    packetv5:gen_unsubscribe(MId, [Topic], []).
+
+gen_unsuback(Mid, Config) ->
+    gen_unsuback_(protover(Config), Mid).
+
+gen_unsuback_(4, Mid) ->
+    packet:gen_unsuback(Mid);
+gen_unsuback_(5, Mid) ->
+    packetv5:gen_unsuback(Mid, [?M5_SUCCESS], []).
+
 gen_publish(Topic, QoS, Payload, Opts, Config) ->
     gen_publish_(protover(Config), Topic, QoS, Payload, Opts).
 
@@ -125,6 +147,38 @@ gen_publish_(4, Topic, QoS, Payload, Opts) ->
     packet:gen_publish(Topic, QoS, Payload, Opts);
 gen_publish_(5, Topic, QoS, Payload, Opts) ->
     packetv5:gen_publish(Topic, QoS, Payload, Opts).
+
+gen_puback(MId, Config) ->
+    gen_puback_(protover(Config), MId).
+
+gen_puback_(4, MId) ->
+    packet:gen_puback(MId);
+gen_puback_(5, MId) ->
+    packetv5:gen_puback(MId).
+
+gen_pubrec(MId, Config) ->
+    gen_pubrec_(protover(Config), MId).
+
+gen_pubrec_(4, MId) ->
+    packet:gen_pubrec(MId);
+gen_pubrec_(5, MId) ->
+    packetv5:gen_pubrec(MId).
+
+gen_pubrel(MId, Config) ->
+    gen_pubrel_(protover(Config), MId).
+
+gen_pubrel_(4, MId) ->
+    packet:gen_pubrel(MId);
+gen_pubrel_(5, MId) ->
+    packetv5:gen_pubrel(MId).
+
+gen_pubcomp(MId, Config) ->
+    gen_pubcomp_(protover(Config), MId).
+
+gen_pubcomp_(4, MId) ->
+    packet:gen_pubcomp(MId);
+gen_pubcomp_(5, MId) ->
+    packetv5:gen_pubcomp(MId).
 
 gen_disconnect(Config) ->
     case protover(Config) of
@@ -138,3 +192,9 @@ ensure_binary(empty) -> empty. % for test purposes
 
 protover(Config) ->
     proplists:get_value(protover, Config).
+
+groupify(String, Config) when is_list(String) ->
+    case protover(Config) of
+        4 -> String ++ "-mqttv4";
+        5 -> String ++ "-mqttv5"
+    end.
