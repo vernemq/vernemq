@@ -17,10 +17,7 @@
 -export([init/2,
          data_in/2,
          msg_in/2,
-         send/2,
          info/2]).
-
--export([msg_ref/0]).
 
 -define(CLOSE_AFTER, 5000).
 -define(ALLOWED_MQTT_VERSIONS, [3, 4, 131]).
@@ -108,7 +105,7 @@ init(Peer, Opts) ->
                     },
     TraceFun = vmq_config:get_env(trace_fun, undefined),
 
-    TRef = send_after(?CLOSE_AFTER, close_timeout),
+    TRef = vmq_mqtt_fsm_util:send_after(?CLOSE_AFTER, close_timeout),
     set_max_msg_size(MaxMessageSize),
     {wait_for_connect, #state{peer=Peer,
                               upgrade_qos=UpgradeQoS,
@@ -178,10 +175,6 @@ in(Msg, {wait_for_connect, State}, IsData) ->
             {{connected, set_last_time_active(IsData, NewState)}, Out}
     end.
 
-send(SessionPid, Msg) ->
-    SessionPid ! {?MODULE, Msg},
-    ok.
-
 serialise(Frames) ->
     serialise(Frames, []).
 
@@ -244,7 +237,7 @@ connected(#mqtt_publish{message_id=MessageId, topic=Topic,
                            retain=unflag(IsRetain),
                            qos=QoS,
                            mountpoint=MountPoint,
-                           msg_ref=msg_ref(),
+                           msg_ref=vmq_mqtt_fsm_util:msg_ref(),
                            sg_policy=SGPolicy},
             dispatch_publish(QoS, MessageId, Msg, State)
     end,
@@ -580,7 +573,7 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
     case auth_on_publish(User, SubscriberId,
                          #vmq_msg{routing_key=Topic,
                                   payload=Payload,
-                                  msg_ref=msg_ref(),
+                                  msg_ref=vmq_mqtt_fsm_util:msg_ref(),
                                   qos=Qos,
                                   retain=unflag(IsRetain),
                                   mountpoint=MountPoint
@@ -947,12 +940,8 @@ set_keepalive_check_timer(0) -> ok;
 set_keepalive_check_timer(KeepAlive) ->
     %% This allows us to heavily reduce start and cancel timers,
     %% however we're losing precision. But that's ok for the keepalive timer.
-    _ = send_after(KeepAlive * 750, check_keepalive),
+    _ = vmq_mqtt_fsm_util:send_after(KeepAlive * 750, check_keepalive),
     ok.
-
--spec send_after(non_neg_integer(), any()) -> reference().
-send_after(Time, Msg) ->
-    erlang:send_after(Time, self(), {?MODULE, Msg}).
 
 -spec cancel_timer('undefined' | reference()) -> 'ok'.
 cancel_timer(undefined) -> ok;
@@ -999,7 +988,7 @@ set_last_time_active(false, State) ->
 %%
 set_retry(MsgId, Interval, {[],[]} = RetryQueue) ->
     %% no waiting ack
-    send_after(Interval, retry),
+    vmq_mqtt_fsm_util:send_after(Interval, retry),
     Now = os:timestamp(),
     queue:in({Now, MsgId}, RetryQueue);
 set_retry(MsgId, _, RetryQueue) ->
@@ -1015,7 +1004,7 @@ handle_retry(Now, Interval, {{value, {Ts, MsgId} = Val}, RetryQueue}, WAcks, Acc
     NowDiff = timer:now_diff(Now, Ts) div 1000,
     case NowDiff < Interval of
         true ->
-            send_after(Interval - NowDiff, retry),
+            vmq_mqtt_fsm_util:send_after(Interval - NowDiff, retry),
             {Acc, queue:in_r(Val, RetryQueue)};
         false ->
             case get_retry_frame(MsgId, maps:get(MsgId, WAcks, not_found), Acc) of
@@ -1027,7 +1016,7 @@ handle_retry(Now, Interval, {{value, {Ts, MsgId} = Val}, RetryQueue}, WAcks, Acc
             end
     end;
 handle_retry(_, Interval, {empty, Queue}, _, Acc) when length(Acc) > 0 ->
-    send_after(Interval, retry),
+    vmq_mqtt_fsm_util:send_after(Interval, retry),
     {Acc, Queue};
 handle_retry(_, _, {empty, Queue}, _, Acc) ->
     {Acc, Queue}.
@@ -1084,17 +1073,6 @@ unflag(false) -> false;
 unflag(?true) -> true;
 unflag(?false) -> false.
 
-msg_ref() ->
-    GUID =
-    case get(guid) of
-        undefined ->
-            {{node(), self(), erlang:timestamp()}, 0};
-        {S, I} ->
-            {S, I + 1}
-    end,
-    put(guid, GUID),
-    erlang:md5(term_to_binary(GUID)).
-
 max_msg_size() ->
     case get(max_msg_size) of
         undefined ->
@@ -1111,7 +1089,7 @@ info(Pid, Items) ->
     Ref = make_ref(),
     CallerRef = {Ref, self()},
     MRef = monitor(process, Pid),
-    send(Pid, {info_req, CallerRef, Items}),
+    vmq_mqtt_fsm_util:send(Pid, {info_req, CallerRef, Items}),
     receive
         {Ref, Ret} -> Ret;
         {'DOWN', MRef, process, Pid, Reason} ->

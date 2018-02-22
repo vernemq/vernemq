@@ -359,7 +359,7 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS) ->
                              qos=QoS,
                              dup=false,
                              mountpoint=MP,
-                             msg_ref=vmq_mqtt_fsm:msg_ref()},
+                             msg_ref=vmq_mqtt_fsm_util:msg_ref()},
               vmq_queue:enqueue(QPid, {deliver, QoS, Msg})
       end, ok, MP, Topic).
 
@@ -496,7 +496,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             PluginSessionPid = spawn_link(
                                  fun() ->
                                          monitor(process, PluginPid),
-                                         plugin_queue_loop(PluginPid, Mod)
+                                         vmq_mqtt_fsm_util:plugin_receive_loop(PluginPid, Mod)
                                  end),
             QueueOpts = maps:merge(vmq_queue:default_opts(),
                                    #{clean_session => true,
@@ -522,7 +522,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                      routing_key=Topic,
                      mountpoint=maps:get(mountpoint, Opts, MountPoint),
                      payload=Payload,
-                     msg_ref=vmq_mqtt_fsm:msg_ref(),
+                     msg_ref=vmq_mqtt_fsm_util:msg_ref(),
                      qos = maps:get(qos, Opts, 0),
                      dup=maps:get(dup, Opts, false),
                      retain=maps:get(retain, Opts, false),
@@ -553,44 +553,6 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             {error, invalid_topic}
     end,
     {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}}.
-
-plugin_queue_loop(PluginPid, PluginMod) ->
-    receive
-        {vmq_mqtt_fsm, {mail, QPid, new_data}} ->
-            vmq_queue:active(QPid),
-            plugin_queue_loop(PluginPid, PluginMod);
-        {vmq_mqtt_fsm, {mail, QPid, Msgs, _, _}} ->
-            lists:foreach(fun({deliver, QoS, #vmq_msg{
-                                                routing_key=RoutingKey,
-                                                payload=Payload,
-                                                retain=IsRetain,
-                                                dup=IsDup}}) ->
-                                  PluginPid ! {deliver, RoutingKey,
-                                               Payload,
-                                               QoS,
-                                               IsRetain,
-                                               IsDup};
-                             (Msg) ->
-                                  lager:warning("dropped message ~p for plugin ~p", [Msg, PluginMod]),
-                                  ok
-                          end, Msgs),
-            vmq_queue:notify(QPid),
-            plugin_queue_loop(PluginPid, PluginMod);
-        {info_req, {Ref, CallerPid}, _} ->
-            CallerPid ! {Ref, {error, i_am_a_plugin}},
-            plugin_queue_loop(PluginPid, PluginMod);
-        disconnect ->
-            ok;
-        {'DOWN', _MRef, process, PluginPid, Reason} ->
-            case (Reason == normal) or (Reason == shutdown) of
-                true ->
-                    ok;
-                false ->
-                    lager:warning("plugin queue loop for ~p stopped due to ~p", [PluginMod, Reason])
-            end;
-        Other ->
-            exit({unknown_msg_in_plugin_loop, Other})
-    end.
 
 subscribe_subscriber_changes() ->
     vmq_subscriber_db:subscribe_db_events().

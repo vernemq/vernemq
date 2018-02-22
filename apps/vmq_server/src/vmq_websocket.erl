@@ -25,6 +25,7 @@
              bytes_recv={os:timestamp(), 0},
              bytes_sent={os:timestamp(), 0}}).
 
+-define(TO_SESSION, to_session_fsm).
 -define(SUPPORTED_PROTOCOLS, [<<"mqttv3.1">>, <<"mqtt">>]).
 
 
@@ -84,7 +85,7 @@ websocket_info({set_sock_opts, Opts}, Req, State) ->
     [Socket, Transport] = cowboy_req:get([socket, transport], Req),
     Transport:setopts(Socket, Opts),
     {ok, Req, State};
-websocket_info({FsmMod, _}, Req, #st{fsm_mod=FsmMod, fsm_state=terminated} = State) ->
+websocket_info({?TO_SESSION, _}, Req, #st{fsm_state=terminated} = State) ->
     % We got an intermediate message before retrieving {?MODULE, terminate}.
     %
     % The reason for this is that cowboy doesn't provide an equivalent to
@@ -98,7 +99,7 @@ websocket_info({FsmMod, _}, Req, #st{fsm_mod=FsmMod, fsm_state=terminated} = Sta
     % finally shutdown the session we send a {?MODULE, terminate} message
     % to ourself that is handled here.
     {shutdown, Req, State};
-websocket_info({FsmMod, Msg}, Req, #st{fsm_mod=FsmMod, fsm_state=FsmState} = State) ->
+websocket_info({?TO_SESSION, Msg}, Req, #st{fsm_mod=FsmMod, fsm_state=FsmState} = State) ->
     handle_fsm_return(FsmMod:msg_in(Msg, FsmState), Req, State);
 websocket_info(_Info, Req, State) ->
     {ok, Req, State}.
