@@ -112,13 +112,22 @@ gen_auth(RC, Properties) ->
     vmq_parser_mqtt5:gen_auth(RC, Properties).
 
 do_client_connect(ConnectPacket, Connack, Opts) ->
-    {ok, Socket, GotPacket, <<>>} = do_client_connect(ConnectPacket, Opts),
-    {ParsedConnack, <<>>} = vmq_parser_mqtt5:parse(Connack),
-    case compare_packets(ParsedConnack, GotPacket) of
-        ok ->
-            {ok, Socket};
-        E ->
-            E
+    Host = proplists:get_value(hostname, Opts, "localhost"),
+    Port = proplists:get_value(port, Opts, 1888),
+    Timeout = proplists:get_value(timeout, Opts, 60000),
+    Transport = proplists:get_value(transport, Opts, gen_tcp),
+    ConnOpts = [binary, {reuseaddr, true},{active, false}, {packet, raw}|
+                proplists:get_value(conn_opts, Opts, [])],
+    case Transport:connect(Host, Port, ConnOpts, Timeout) of
+        {ok, Socket} ->
+            Transport:send(Socket, ConnectPacket),
+            case expect_frame(Transport, Socket, Connack) of
+                ok ->
+                    {ok, Socket};
+                E ->
+                    Transport:close(Socket),
+                    E
+            end
     end.
 
 do_client_connect(ConnectPacket, Opts) ->
@@ -158,7 +167,8 @@ expect_frame(Transport, Socket, Want, Timeout) ->
                     io:format(user, "want ~p: got: ~p~n", [Want, Got]),
                     io:format(user, "want ~p: got: ~p~n", [WantPacket, GotPacket]),
                     E
-            end
+            end;
+        E -> E
     end.
 
 receive_frame(Socket) ->
