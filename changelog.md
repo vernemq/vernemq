@@ -2,6 +2,9 @@
 
 ## Not yet released (VerneMQ 1.4.0)
 
+- Bugfix: Fix issue preventing messages delivered to a subscriber group from
+  being delivered to the online group members first before attempting delivery
+  to offline queues (#618).
 - Fix some Dialyzer issues.
 - Reduce replication load during a netsplit by making sure data is not attempted
   to be replicated to unreachable nodes.

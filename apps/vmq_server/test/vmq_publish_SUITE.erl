@@ -56,7 +56,8 @@ groups() ->
          not_allowed_publish_close_qos0_mqtt_3_1_1,
          not_allowed_publish_close_qos1_mqtt_3_1_1,
          not_allowed_publish_close_qos2_mqtt_3_1_1,
-         message_size_exceeded_close
+         message_size_exceeded_close,
+         shared_subscription_online_first
         ],
     [
      {mqtt, [shuffle,sequence], Tests}
@@ -424,6 +425,52 @@ message_size_exceeded_close(_) ->
     true = lists:member({counter, mqtt_invalid_msg_size_error, 1}, vmq_metrics:metrics()),
     vmq_config:set_env(max_message_size, OldLimit, false),
     disable_on_publish().
+
+shared_subscription_online_first(_) ->
+    enable_on_publish(),
+    enable_on_subscribe(),
+    Connack = packet:gen_connack(0),
+    PubConnect = packet:gen_connect("shared-sub-pub", [{keepalive, 60},
+                                                       {proto_ver, 4}]),
+    SubConnectOnline = packet:gen_connect("shared-sub-sub-online", [{keepalive, 60},
+                                                                    {proto_ver, 4},
+                                                                    {clean_session, false}]),
+    SubConnectOffline = packet:gen_connect("shared-sub-sub-offline", [{keepalive, 60},
+                                                                      {proto_ver, 4},
+                                                                      {clean_session, false}]),
+    Subscription = "$share/group/shared_sub_topic",
+    {ok, PubSocket} = packet:do_client_connect(PubConnect, Connack, []),
+    {ok, SubSocketOnline} = packet:do_client_connect(SubConnectOnline, Connack, []),
+    {ok, SubSocketOffline} = packet:do_client_connect(SubConnectOffline, Connack, []),
+    Subscribe = packet:gen_subscribe(1, Subscription, 1),
+    Suback = packet:gen_suback(1, 1),
+    ok = gen_tcp:send(SubSocketOffline, Subscribe),
+    ok = packet:expect_packet(SubSocketOffline, "suback", Suback),
+    ok = gen_tcp:send(SubSocketOnline, Subscribe),
+    ok = packet:expect_packet(SubSocketOnline, "suback", Suback),
+    Disconnect = packet:gen_disconnect(),
+    ok = gen_tcp:send(SubSocketOffline, Disconnect),
+
+    PubFun
+        = fun(Socket, Mid) ->
+                  Publish = packet:gen_publish("shared_sub_topic", 1,
+                                               vmq_test_utils:rand_bytes(1024),
+                                               [{mid, Mid}]),
+                  Puback = packet:gen_puback(Mid),
+                  ok = gen_tcp:send(Socket, Publish),
+                  ok = packet:expect_packet(Socket, "puback", Puback),
+                  {Mid, Publish}
+          end,
+    Published = [PubFun(PubSocket, Mid) || Mid <- lists:seq(1,10)],
+    %% since all messages should end up with the online subscriber, we
+    %% can check they arrived one by one in the publish order.
+    [begin
+         ok = packet:expect_packet(SubSocketOnline, "publish", Expect),
+         Puback = packet:gen_puback(Mid),
+         ok = gen_tcp:send(SubSocketOnline, Puback)
+     end || {Mid, Expect} <- Published ],
+    disable_on_publish(),
+    disable_on_subscribe().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks

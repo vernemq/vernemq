@@ -57,7 +57,7 @@ publish_online(Msg, Subscribers) ->
                       _ ->
                           Acc
                   end
-          end, Subscribers, [])
+          end, [], Subscribers)
     catch
         done -> ok
     end.
