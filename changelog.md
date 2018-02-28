@@ -1,5 +1,21 @@
 # Changelog
 
+## VerneMQ 2.0.0
+
+- Topic aliases
+
+VerneMQ supports topic aliases from both the client to the broker and from the
+broker to the client.
+
+When a client connects to the broker, the broker will inform the client of the
+maximum allowed topic alias using the topic alias max property on the CONNACK
+packet (if it has been set to a non-zero value). The topic alias maximum
+property can be configured through the `topic_alias_max` configuration variable
+or overriden in a plugin in the `auth_on_register` hook. The broker will then
+handle topic aliases from the client as per the MQTTv5 spec.
+
+
+
 ## Not yet released (VerneMQ 1.4.0)
 
 - Small refactoring moving the calling of plugin hooks into the fsm code. This

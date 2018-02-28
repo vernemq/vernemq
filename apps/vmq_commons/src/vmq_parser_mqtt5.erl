@@ -61,12 +61,11 @@ parse(DataSize, MaxSize, _, _)
     {error, packet_exceeds_max_size};
 parse(_, _, _, _) -> more.
 
-
 -spec variable(binary(), binary()) -> mqtt5_frame() | {error, atom()}.
 variable(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>,
          <<TopicLen:16/big, Topic:TopicLen/binary, Rest/binary>>) ->
     %% QoS 0
-    case vmq_topic:validate_topic(publish, Topic) of
+    case validate_publish_topic(Topic) of
         {ok, ParsedTopic} ->
             case parse_properties(Rest) of
                 {ok, Properties, Payload} ->
@@ -85,7 +84,7 @@ variable(<<?PUBLISH:4, Dup:1, 0:2, Retain:1>>,
 variable(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>,
          <<TopicLen:16/big, Topic:TopicLen/binary, MessageId:16/big, Rest/binary>>)
   when QoS < 3 ->
-    case vmq_topic:validate_topic(publish, Topic) of
+    case validate_publish_topic(Topic) of
         {ok, ParsedTopic} ->
             case parse_properties(Rest) of
                 {ok, Properties, Payload} ->
@@ -550,7 +549,7 @@ to_bool(1) -> true.
 msg_id(undefined) -> <<>>;
 msg_id(MsgId) -> <<MsgId:16/big>>.
 
-utf8(<<>>) -> <<>>;
+utf8(<<>>) -> <<0:16/big>>;
 utf8(undefined) -> <<>>;
 utf8(empty) -> <<0:16/big>>; %% for test purposes, useful if you want to encode an empty string..
 utf8(IoList) when is_list(IoList) ->
@@ -882,6 +881,13 @@ varint(<<1:1, L1:7, 1:1, L2:7, 1:1, L3:7, 0:1, L4:7, Rest/binary>>) ->
     {Len, Rest};
 varint(_) ->
     error.
+
+validate_publish_topic(<<>>) ->
+    %% empty topics are allowed in mqttv5 if used together with topic
+    %% aliases.
+    {ok, []};
+validate_publish_topic(Topic) ->
+    vmq_topic:validate_topic(publish, Topic).
 
 %% -spec reason_code(reason_type()) -> reason_code().
 %% reason_code(granted_qos0)                   -> ?M5_GRANTED_QOS0;

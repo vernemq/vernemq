@@ -151,7 +151,7 @@ expect_frame(Socket, Want) ->
     expect_frame(gen_tcp, Socket, Want).
 
 expect_frame(Transport, Socket, Want) ->
-    expect_frame(Transport, Socket, Want, 60000).
+    expect_frame(Transport, Socket, Want, 5000).
 
 expect_frame(Transport, Socket, Want, Timeout) ->
     case Transport:recv(Socket, byte_size(Want), Timeout) of
@@ -164,7 +164,6 @@ expect_frame(Transport, Socket, Want, Timeout) ->
                 ok ->
                     ok;
                 E ->
-                    io:format(user, "want ~p: got: ~p~n", [Want, Got]),
                     io:format(user, "want ~p: got: ~p~n", [WantPacket, GotPacket]),
                     E
             end;

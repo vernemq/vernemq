@@ -82,7 +82,9 @@ parse_unparse_publish_test(_Config) ->
                   #p_correlation_data{value= <<"correlation data">>}],
 
     parse_unparse("publish with properties",
-                  vmq_parser_mqtt5:gen_publish(<<"some/topic">>, 2, <<"payload">>, [{properties, Properties}])).
+                  vmq_parser_mqtt5:gen_publish(<<"some/topic">>, 2, <<"payload">>, [{properties, Properties}])),
+    parse_unparse("publish topic alias",
+                  vmq_parser_mqtt5:gen_publish(<<>>, 1, <<"topic alias payload">>, [{properties, [#p_topic_alias{value=3}]}, {mid, 6}])).
 
 parse_unparse_puback_test(_Config) ->
     parse_unparse("puback", vmq_parser_mqtt5:gen_puback(5, ?M5_GRANTED_QOS0, [])),
@@ -273,4 +275,6 @@ parse_unparse(Test, Frame) ->
     SerializedFrame = iolist_to_binary(vmq_parser_mqtt5:serialise(ParsedFrame)),
     compare_frame(Test, Frame, SerializedFrame).
 
-compare_frame(_, F, F) -> true.
+compare_frame(_, F, F) -> true;
+compare_frame(_, F1, F2) ->
+    throw({not_equal, F1, F2, {parsed, vmq_parser_mqtt5:parse(F1), vmq_parser_mqtt5:parse(F2)}}).
