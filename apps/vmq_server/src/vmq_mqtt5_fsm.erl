@@ -37,6 +37,8 @@
          }).
 -type cap_settings() :: #cap_settings{}.
 
+-type topic_aliases_in() :: map().
+
 -record(state, {
           %% mqtt layer requirements
           next_msg_id=1                     :: msg_id(),
@@ -70,6 +72,8 @@
           upgrade_qos=false                 :: boolean(),
           reg_view=vmq_reg_trie             :: atom(),
           cap_settings=#cap_settings{}      :: cap_settings(),
+          topic_alias_max                   :: non_neg_integer(), %% 0 means no topic aliases allowed.
+          topic_aliases_in=#{}              :: topic_aliases_in(), %% topic aliases used from client to broker.
 
           trace_fun                        :: undefined | any() %% TODO
          }).
@@ -107,6 +111,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                      allow_subscribe=CAPSubscribe,
                      allow_unsubscribe=CAPUnsubscribe
                     },
+    TopicAliasMax = vmq_config:get_env(topic_alias_max, 0),
     TraceFun = vmq_config:get_env(trace_fun, undefined),
     maybe_initiate_trace(ConnectFrame, TraceFun),
     set_max_msg_size(MaxMessageSize),
@@ -128,6 +133,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                    keep_alive_tref=undefined,
                    retry_interval=1000 * RetryInterval,
                    cap_settings=CAPSettings,
+                   topic_alias_max=TopicAliasMax,
                    reg_view=RegView,
                    trace_fun=TraceFun,
                    last_time_active=os:timestamp()},
@@ -558,9 +564,10 @@ check_user(#mqtt5_connect{username=User, password=Password} = F,
     end.
 
 check_will(#mqtt5_connect{lwt=undefined}, SessionPresent, AckProps, State) ->
+    AckProps0 = maybe_add_topic_alias_max(AckProps, State),
     {State, [#mqtt5_connack{session_present=SessionPresent,
                             reason_code=?M5_CONNACK_ACCEPT,
-                            properties=AckProps}]};
+                            properties=AckProps0}]};
 check_will(#mqtt5_connect{
               lwt=#mqtt5_lwt{will_topic=Topic, will_msg=Payload, will_qos=Qos,
                              will_retain=IsRetain,will_properties=_Properties}},
@@ -568,24 +575,59 @@ check_will(#mqtt5_connect{
            AckProps,
            State) ->
     #state{username=User, subscriber_id={MountPoint, _}=SubscriberId} = State,
-    case auth_on_publish(User, SubscriberId,
-                         #vmq_msg{routing_key=Topic,
-                                  payload=Payload,
-                                  msg_ref=msg_ref(),
-                                  qos=Qos,
-                                  retain=unflag(IsRetain),
-                                  mountpoint=MountPoint
+    case maybe_apply_topic_alias(User, SubscriberId,
+                                 #vmq_msg{routing_key=Topic,
+                                          payload=Payload,
+                                          msg_ref=msg_ref(),
+                                          qos=Qos,
+                                          retain=unflag(IsRetain),
+                                          mountpoint=MountPoint
                                  },
-                         fun(Msg, _) -> {ok, Msg} end) of
-        {ok, Msg} ->
-            {State#state{will_msg=Msg},
+                                 fun(Msg, _) -> {ok, Msg} end,
+                                 State) of
+        {ok, Msg, NewState} ->
+            AckProps0 = maybe_add_topic_alias_max(AckProps, State),
+            {NewState#state{will_msg=Msg},
              [#mqtt5_connack{session_present=SessionPresent,
                              reason_code=?M5_CONNACK_ACCEPT,
-                             properties=AckProps}]};
+                             properties=AckProps0}]};
         {error, Reason} ->
             lager:warning("can't authenticate last will
                           for client ~p due to ~p", [SubscriberId, Reason]),
             connack_terminate(?M5_NOT_AUTHORIZED, State)
+    end.
+
+-spec maybe_apply_topic_alias(username(), password(), msg(), fun(), state()) ->
+                                     {ok, msg(), state()} |
+                                     {error, any()}.
+maybe_apply_topic_alias(User, SubscriberId, #vmq_msg{routing_key = Topic,
+                                                     properties = Properties} = Msg, Fun,
+                        #state{topic_aliases_in = TA} = State) ->
+    case {Topic, lists:keyfind(p_topic_alias, 1, Properties)} of
+        {[], #p_topic_alias{value = AliasId}} ->
+            case maps:find(AliasId, TA) of
+                {ok, AliasedTopic} ->
+                    case auth_on_publish(User, SubscriberId, Msg#vmq_msg{routing_key = AliasedTopic}, Fun) of
+                        {ok, NewMsg} ->
+                            {ok, NewMsg, State};
+                        {error, _} = E -> E
+                    end;
+                error ->
+                    %% TODOv5 check the error code and add test case
+                    %% for it
+                    {error, ?M5_TOPIC_ALIAS_INVALID}
+            end;
+        {[], false} ->
+            %% TODOv5 this is an error check it is handled correctly
+            %% and add test-case
+            {error, ?M5_TOPIC_FILTER_INVALID};
+        {_NonEmptyTopic, #p_topic_alias{value = AliasId}} ->
+            case auth_on_publish(User, SubscriberId, Msg, Fun) of
+                {ok, #vmq_msg{routing_key=MaybeChangedTopic}=NewMsg} ->
+                    %% TODOv5: Should we check here that the topic isn't empty?
+                    {ok, NewMsg, State#state{topic_aliases_in = TA#{AliasId => MaybeChangedTopic}}};
+                {error, E} = E -> E
+            end
     end.
 
 auth_on_register(User, Password, State) ->
@@ -617,6 +659,8 @@ auth_on_register(User, Password, State) ->
                              shared_subscription_policy=?state_val(shared_subscription_policy, Args, State),
                              retry_interval=?state_val(retry_interval, Args, State),
                              upgrade_qos=?state_val(upgrade_qos, Args, State),
+                             topic_alias_max=?state_val(topic_alias_max, Args, State),
+                             topic_aliases_in=?state_val(topic_aliases_in, Args, State),
                              cap_settings=ChangedCAPSettings
                             },
             {ok, queue_opts(ChangedState, Args), ChangedState};
@@ -635,6 +679,7 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                              qos=QoS,
                                              retain=IsRetain} = Msg,
                 AuthSuccess) ->
+    
     HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
     case vmq_plugin:all_till_ok(auth_on_publish, HookArgs) of
         ok ->
@@ -662,16 +707,18 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
             {error, not_allowed}
     end.
 
--spec publish(cap_settings(), module(), username(), subscriber_id(), msg()) ->  {ok, msg()} | {error, atom()}.
-publish(CAPSettings, RegView, User, SubscriberId, Msg) ->
-    auth_on_publish(User, SubscriberId, Msg,
-                    fun(MaybeChangedMsg, HookArgs) ->
-                            case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, MaybeChangedMsg),
-                                            HookArgs) of
-                                ok -> {ok, MaybeChangedMsg};
-                                E -> E
-                            end
-                    end).
+-spec publish(cap_settings(), module(), username(), subscriber_id(), msg(), state()) ->
+                     {ok, msg(), state()} | {error, atom()}.
+publish(CAPSettings, RegView, User, SubscriberId, Msg, State) ->
+    maybe_apply_topic_alias(User, SubscriberId, Msg,
+                            fun(MaybeChangedMsg, HookArgs) ->
+                                    case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, MaybeChangedMsg),
+                                                         HookArgs) of
+                                        ok -> {ok, MaybeChangedMsg};
+                                        E -> E
+                                    end
+                            end,
+                            State).
 
 -spec on_publish_hook(ok | {error, _}, list()) -> ok | {error, _}.
 on_publish_hook(ok, HookParams) ->
@@ -700,9 +747,9 @@ dispatch_publish_(2, MessageId, Msg, State) ->
 dispatch_publish_qos0(_MessageId, Msg, State) ->
     #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto,
            cap_settings=CAPSettings, reg_view=RegView} = State,
-    case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
-        {ok, _} ->
-            [];
+    case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
+        {ok, _, NewState} ->
+            {NewState, []};
         {error, not_allowed} when Proto == 4 ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
@@ -718,12 +765,12 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
 dispatch_publish_qos1(MessageId, Msg, State) ->
         #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto,
                cap_settings=CAPSettings, reg_view=RegView} = State,
-        case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
-        {ok, _} ->
+        case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
+        {ok, _, NewState} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
-            [#mqtt5_puback{message_id=MessageId,
-                           reason_code=?M5_SUCCESS,
-                           properties=[]}];
+                {NewState, [#mqtt5_puback{message_id=MessageId,
+                                          reason_code=?M5_SUCCESS,
+                                          properties=[]}]};
         {error, not_allowed} when Proto == 4 ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
@@ -747,12 +794,13 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
            waiting_acks=WAcks, retry_interval=RetryInterval,
            retry_queue=RetryQueue} = State,
 
-    case auth_on_publish(User, SubscriberId, Msg,
-                        fun(MaybeChangedMsg, _) -> {ok, MaybeChangedMsg} end) of
-        {ok, NewMsg} ->
+    case maybe_apply_topic_alias(User, SubscriberId, Msg,
+                                 fun(MaybeChangedMsg, _) -> {ok, MaybeChangedMsg} end,
+                                 State) of
+        {ok, NewMsg, State0} ->
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]},
             _ = vmq_metrics:incr_mqtt_pubrec_sent(),
-            {State#state{
+            {State0#state{
                retry_queue=set_retry({qos2, MessageId}, RetryInterval, RetryQueue),
                waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
              [Frame]};
@@ -1188,3 +1236,8 @@ update_expiry_interval(Properties, {_, Remaining}) ->
                  (V) -> V
               end,
               Properties).
+
+maybe_add_topic_alias_max(Props, #state{topic_alias_max=0}) ->
+    Props;
+maybe_add_topic_alias_max(Props, #state{topic_alias_max=Max}) ->
+    [#p_topic_alias_max{value=Max}|Props].
