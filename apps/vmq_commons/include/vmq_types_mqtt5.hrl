@@ -52,7 +52,7 @@
 -type msg_id()          :: undefined | 0..65535.
 
 -record(mqtt5_lwt, {
-          will_properties   :: [mqtt5_will_property()],
+          will_properties=#{} :: map(),
           will_retain       :: flag(),
           will_qos          :: qos(),
           will_topic        :: topic(),
@@ -70,7 +70,7 @@
           keep_alive        :: non_neg_integer(),
           client_id         :: client_id(),
           lwt               :: mqtt5_lwt() | undefined,
-          properties        :: [mqtt5_property()]
+          properties=#{}    :: map()
          }).
 -type mqtt5_connect()        :: #mqtt5_connect{}.
 
@@ -85,7 +85,7 @@
 -record(mqtt5_connack, {
           session_present   :: flag(),
           reason_code       :: reason_code(),
-          properties=[]     :: [mqtt5_property]
+          properties=#{}     :: [mqtt5_property]
          }).
 -type mqtt5_connack()       :: #mqtt5_connack{}.
 
@@ -95,7 +95,7 @@
           qos               :: qos(),
           retain            :: flag(),
           dup               :: flag(),
-          properties=[]     :: [mqtt5_property()],
+          properties=#{}    :: map(),
           payload           :: payload()
         }).
 -type mqtt5_publish()       :: #mqtt5_publish{}.
@@ -103,28 +103,28 @@
 -record(mqtt5_puback, {
           message_id        :: msg_id(),
           reason_code       :: reason_code(),
-          properties=[]     :: [mqtt5_property()]
+          properties=#{}    :: map()
          }).
 -type mqtt5_puback()        :: #mqtt5_puback{}.
 
 -record(mqtt5_pubrec, {
           message_id        :: msg_id(),
           reason_code       :: reason_code(),
-          properties=[]     :: [mqtt5_property()]
+          properties=#{}    :: map()
          }).
 -type mqtt5_pubrec()        :: #mqtt5_pubrec{}.
 
 -record(mqtt5_pubrel, {
           message_id        :: msg_id(),
           reason_code       :: reason_code(),
-          properties=[]     :: [mqtt5_property()]
+          properties=#{}    :: map()
          }).
 -type mqtt5_pubrel()        :: #mqtt5_pubrel{}.
 
 -record(mqtt5_pubcomp, {
           message_id        :: msg_id(),
           reason_code       :: reason_code(),
-          properties=[]     :: [mqtt5_property()]
+          properties=#{}    :: map()
          }).
 -type mqtt5_pubcomp()       :: #mqtt5_pubcomp{}.
 
@@ -144,7 +144,7 @@
 -record(mqtt5_subscribe, {
           message_id        :: msg_id(),
           topics=[]         :: [mqtt5_subscribe_topic()],
-          properties=[]     :: [mqtt5_property()]
+          properties=#{}     :: map()
          }).
 -type mqtt5_subscribe()     :: #mqtt5_subscribe{}.
 
@@ -162,15 +162,14 @@
                                 ?M5_SHARED_SUBS_NOT_SUPPORTED |
                                 ?M5_SUBSCRIPTION_IDS_NOT_SUPPORTED |
                                 ?M5_WILDCARD_SUBS_NOT_SUPPORTED],
-          properties=[]     :: [p_reason_string() |
-                                p_user_property() ]
+          properties=#{}     :: map()
          }).
 -type mqtt5_suback()        :: #mqtt5_suback{}.
 
 -record(mqtt5_unsubscribe, {
           message_id        :: msg_id(),
           topics=[]         :: [topic()],
-          properties=[]     :: [mqtt5_property()]
+          properties=#{}     :: [mqtt5_property()]
          }).
 -type mqtt5_unsubscribe()   :: #mqtt5_unsubscribe{}.
 
@@ -184,8 +183,7 @@
                                 ?M5_TOPIC_FILTER_INVALID |
                                 ?M5_PACKET_ID_IN_USE |
                                 ?M5_QUOTA_EXCEEDED],
-          properties=[]     :: [p_reason_string() |
-                                p_user_property()]
+          properties=#{}     :: map()
          }).
 -type mqtt5_unsuback()      :: #mqtt5_unsuback{}.
 
@@ -226,10 +224,7 @@
                                ?M5_MAX_CONNECT_TIME |
                                ?M5_SUBSCRIPTION_IDS_NOT_SUPPORTED |
                                ?M5_WILDCARD_SUBS_NOT_SUPPORTED,
-          properties=[]     :: [p_session_expiry_interval() |
-                                p_reason_string() |
-                                p_user_property() |
-                                p_server_ref()]
+          properties=#{}     :: map()
          }).
 -type mqtt5_disconnect()    :: #mqtt5_disconnect{}.
 
@@ -237,10 +232,7 @@
          reason_code        :: ?M5_SUCCESS |
                                ?M5_CONTINUE_AUTHENTICATION |
                                ?M5_REAUTHENTICATE,
-         properties=[]      :: [p_authentication_method() |
-                                p_authentication_data() |
-                                p_reason_string() |
-                                p_user_property()]
+         properties=#{}      :: map()
          }).
 -type mqtt5_auth()          :: #mqtt5_auth{}.
 

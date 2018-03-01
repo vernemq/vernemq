@@ -175,6 +175,7 @@ generate_msgs(N, Acc) ->
                    mountpoint = "",
                    dup = random_flag(),
                    qos = random_qos(),
+                   properties=#{},
                    persisted=true},
     generate_msgs(N - 1, [Msg|Acc]).
 

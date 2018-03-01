@@ -42,33 +42,33 @@ gen_connack() ->
 gen_connack(RC) ->
     gen_connack(0, RC).
 gen_connack(SP, RC) ->
-    gen_connack(SP, RC, []).
-gen_connack(SP, RC, Properties) ->
+    gen_connack(SP, RC, #{}).
+gen_connack(SP, RC, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_connack(SP, RC, Properties).
 
 gen_publish(Topic, QoS, Payload, Opts) ->
     vmq_parser_mqtt5:gen_publish(Topic, QoS, Payload, Opts).
 
 gen_puback(MId) ->
-    gen_puback(MId, ?M5_SUCCESS, []).
+    gen_puback(MId, ?M5_SUCCESS, #{}).
 
-gen_puback(MId, ReasonCode, Properties) ->
+gen_puback(MId, ReasonCode, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_puback(MId, ReasonCode, Properties).
 
 
 gen_pubrec(MId) ->
-    gen_pubrec(MId, ?M5_SUCCESS, []).
-gen_pubrec(MId, ReasonCode, Properties) ->
+    gen_pubrec(MId, ?M5_SUCCESS, #{}).
+gen_pubrec(MId, ReasonCode, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_pubrec(MId, ReasonCode, Properties).
 
 gen_pubrel(MId) ->
-    gen_pubrel(MId, ?M5_SUCCESS, []).
-gen_pubrel(MId, ReasonCode, Properties) ->
+    gen_pubrel(MId, ?M5_SUCCESS, #{}).
+gen_pubrel(MId, ReasonCode, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_pubrel(MId, ReasonCode, Properties).
 
 gen_pubcomp(MId) ->
-    gen_pubcomp(MId, ?M5_SUCCESS, []).
-gen_pubcomp(MId, ReasonCode, Properties) ->
+    gen_pubcomp(MId, ?M5_SUCCESS, #{}).
+gen_pubcomp(MId, ReasonCode, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_pubcomp(MId, ReasonCode, Properties).
 
 gen_subtopic(Topic, QoS) ->
@@ -81,16 +81,16 @@ gen_subtopic(Topic, QoS, NL, Rap, RH) ->
        rap = Rap,
        retain_handling = RH}.
 
-gen_subscribe(Mid, Topics, Properties) ->
+gen_subscribe(Mid, Topics, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_subscribe(Mid, Topics, Properties).
 
-gen_suback(MId, ReasonCodes, Properties) ->
+gen_suback(MId, ReasonCodes, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_suback(MId, ReasonCodes, Properties).
 
-gen_unsubscribe(MId, Topics, Properties) ->
+gen_unsubscribe(MId, Topics, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_unsubscribe(MId, Topics, Properties).
 
-gen_unsuback(MId, ReasonCodes, Properties) ->
+gen_unsuback(MId, ReasonCodes, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_unsuback(MId, ReasonCodes, Properties).
 
 gen_pingreq() ->
@@ -100,15 +100,15 @@ gen_pingresp() ->
     vmq_parser_mqtt5:gen_pingresp().
 
 gen_disconnect() ->
-    gen_disconnect(?M5_NORMAL_DISCONNECT, []).
+    gen_disconnect(?M5_NORMAL_DISCONNECT, #{}).
 
-gen_disconnect(RC, Properties) ->
+gen_disconnect(RC, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_disconnect(RC, Properties).
 
 gen_auth() ->
-    gen_auth(?M5_SUCCESS, []).
+    gen_auth(?M5_SUCCESS, #{}).
 
-gen_auth(RC, Properties) ->
+gen_auth(RC, Properties) when is_map(Properties) ->
     vmq_parser_mqtt5:gen_auth(RC, Properties).
 
 do_client_connect(ConnectPacket, Connack, Opts) ->
@@ -173,7 +173,7 @@ expect_frame(Transport, Socket, Want, Timeout) ->
 receive_frame(Socket) ->
     receive_frame(gen_tcp, Socket).
 receive_frame(Transport, Socket) ->
-    receive_frame(Transport, Socket, 60000).
+    receive_frame(Transport, Socket, 5000).
 receive_frame(Transport, Socket, Timeout) ->
     receive_frame_(Transport, Socket, Timeout, <<>>).
 

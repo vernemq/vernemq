@@ -295,7 +295,7 @@ connected(#mqtt5_pubrec{message_id=MessageId}, State) ->
     _ = vmq_metrics:incr_mqtt_pubrec_received(),
     case maps:get(MessageId, WAcks, not_found) of
         #vmq_msg{} ->
-            PubRelFrame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]},
+            PubRelFrame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
             {State#state{
                retry_queue=set_retry(MessageId, RetryInterval, RetryQueue),
@@ -356,13 +356,13 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Prope
     case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, User, SubscriberId,
                            convert_to_v4(Topics), Properties) of
         {ok, QoSs} ->
-            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=[]},
+            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
             _ = vmq_metrics:incr_mqtt_suback_sent(),
             {State, [Frame]};
         {error, not_allowed} ->
             %% allow the parser to add the 0x80 Failure return code
             QoSs = [not_allowed || _ <- Topics],
-            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=[]},
+            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
             _ = vmq_metrics:incr_mqtt_error_auth_subscribe(),
             {State, [Frame]};
         {error, _Reason} ->
@@ -378,7 +378,7 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties =_P
     case vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, User, SubscriberId, Topics) of
         ok ->
             ReasonCodes = [?M5_SUCCESS || _ <- Topics],
-            Frame = #mqtt5_unsuback{message_id=MessageId, reason_codes=ReasonCodes, properties=[]},
+            Frame = #mqtt5_unsuback{message_id=MessageId, reason_codes=ReasonCodes, properties=#{}},
             _ = vmq_metrics:incr_mqtt_unsuback_sent(),
             {State, [Frame]};
         {error, _Reason} ->
@@ -477,7 +477,7 @@ terminate(Reason, #state{clean_session=CleanSession} = State) ->
 
 check_connect(#mqtt5_connect{proto_ver=Ver, clean_start=CleanStart} = F, State) ->
     CCleanStart = unflag(CleanStart),
-    check_client_id(F, [], State#state{clean_session=CCleanStart, proto_ver=Ver}).
+    check_client_id(F, #{}, State#state{clean_session=CCleanStart, proto_ver=Ver}).
 
 check_client_id(#mqtt5_connect{} = Frame,
                 AckProps,
@@ -493,7 +493,7 @@ check_client_id(#mqtt5_connect{client_id= <<>>, proto_ver=5} = F,
     {MountPoint, _} = State#state.subscriber_id,
     SubscriberId = {MountPoint, RandomClientId},
     check_user(F#mqtt5_connect{client_id=RandomClientId},
-               [#p_assigned_client_id{value=RandomClientId}|AckProps],
+               AckProps#{p_assigned_client_id => RandomClientId},
                State#state{subscriber_id=SubscriberId});
 check_client_id(#mqtt5_connect{client_id=ClientId, proto_ver=V} = F,
                 AckProps,
@@ -600,35 +600,50 @@ check_will(#mqtt5_connect{
 -spec maybe_apply_topic_alias(username(), password(), msg(), fun(), state()) ->
                                      {ok, msg(), state()} |
                                      {error, any()}.
-maybe_apply_topic_alias(User, SubscriberId, #vmq_msg{routing_key = Topic,
-                                                     properties = Properties} = Msg, Fun,
-                        #state{topic_aliases_in = TA} = State) ->
-    case {Topic, lists:keyfind(p_topic_alias, 1, Properties)} of
-        {[], #p_topic_alias{value = AliasId}} ->
-            case maps:find(AliasId, TA) of
-                {ok, AliasedTopic} ->
-                    case auth_on_publish(User, SubscriberId, Msg#vmq_msg{routing_key = AliasedTopic}, Fun) of
-                        {ok, NewMsg} ->
-                            {ok, NewMsg, State};
-                        {error, _} = E -> E
-                    end;
-                error ->
-                    %% TODOv5 check the error code and add test case
-                    %% for it
-                    {error, ?M5_TOPIC_ALIAS_INVALID}
+maybe_apply_topic_alias(User, SubscriberId,
+                        #vmq_msg{routing_key = [],
+                                 properties = #{p_topic_alias := AliasId}} = Msg,
+                        Fun, #state{topic_aliases_in = TA} = State) ->
+    case maps:find(AliasId, TA) of
+        {ok, AliasedTopic} ->
+            case auth_on_publish(User, SubscriberId,
+                                 remove_property(p_topic_alias, Msg#vmq_msg{routing_key = AliasedTopic}), Fun)
+            of
+                {ok, NewMsg} ->
+                    {ok, NewMsg, State};
+                {error, _} = E -> E
             end;
-        {[], false} ->
-            %% TODOv5 this is an error check it is handled correctly
-            %% and add test-case
-            {error, ?M5_TOPIC_FILTER_INVALID};
-        {_NonEmptyTopic, #p_topic_alias{value = AliasId}} ->
-            case auth_on_publish(User, SubscriberId, Msg, Fun) of
-                {ok, #vmq_msg{routing_key=MaybeChangedTopic}=NewMsg} ->
-                    %% TODOv5: Should we check here that the topic isn't empty?
-                    {ok, NewMsg, State#state{topic_aliases_in = TA#{AliasId => MaybeChangedTopic}}};
-                {error, E} = E -> E
-            end
+        error ->
+            %% TODOv5 check the error code and add test case
+            %% for it
+            {error, ?M5_TOPIC_ALIAS_INVALID}
+    end;
+maybe_apply_topic_alias(User, SubscriberId,
+                        #vmq_msg{properties = #{p_topic_alias := AliasId}} = Msg,
+                        Fun, #state{topic_aliases_in = TA} = State) ->
+    case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun) of
+        {ok, #vmq_msg{routing_key=MaybeChangedTopic}=NewMsg} ->
+            %% TODOv5: Should we check here that the topic isn't empty?
+            {ok, NewMsg, State#state{topic_aliases_in = TA#{AliasId => MaybeChangedTopic}}};
+        {error, E} = E -> E
+    end;
+maybe_apply_topic_alias(_User, _SubscriberId, #vmq_msg{routing_key = []},
+                        _Fun, _State) ->
+    %% Empty topic but no topic alias property (handled above).
+    %% TODOv5 this is an error check it is handled correctly
+    %% and add test-case
+    {error, ?M5_TOPIC_FILTER_INVALID};
+maybe_apply_topic_alias(User, SubscriberId, Msg,
+                        Fun, State) ->
+    %% normal publish
+    case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun) of
+        {ok, NewMsg} ->
+            {ok, NewMsg, State};
+        {error, _} = E -> E
     end.
+
+remove_property(p_topic_alias, #vmq_msg{properties = Properties} = Msg) ->
+    Msg#vmq_msg{properties = maps:remove(p_topic_alias, Properties)}.
 
 auth_on_register(User, Password, State) ->
     #state{clean_session=Clean, peer=Peer, cap_settings=CAPSettings,
@@ -765,12 +780,12 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
 dispatch_publish_qos1(MessageId, Msg, State) ->
         #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto,
                cap_settings=CAPSettings, reg_view=RegView} = State,
-        case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
+    case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
         {ok, _, NewState} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
                 {NewState, [#mqtt5_puback{message_id=MessageId,
                                           reason_code=?M5_SUCCESS,
-                                          properties=[]}]};
+                                          properties=#{}}]};
         {error, not_allowed} when Proto == 4 ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
@@ -798,7 +813,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
                                  fun(MaybeChangedMsg, _) -> {ok, MaybeChangedMsg} end,
                                  State) of
         {ok, NewMsg, State0} ->
-            Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]},
+            Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
             _ = vmq_metrics:incr_mqtt_pubrec_sent(),
             {State0#state{
                retry_queue=set_retry({qos2, MessageId}, RetryInterval, RetryQueue),
@@ -1222,22 +1237,16 @@ convert_to_v4(Topics) ->
               end,
               Topics).
 
-msg_expiration([]) ->
-    undefined;
-msg_expiration([#p_message_expiry_interval{value = ExpireAfter}|_]) ->
+msg_expiration(#{p_message_expiry_interval := ExpireAfter}) ->
     {expire_after, ExpireAfter};
-msg_expiration([_|Tail]) ->
-    msg_expiration(Tail).
+msg_expiration(_) ->
+    undefined.
 
 update_expiry_interval(Properties, undefined) -> Properties;
 update_expiry_interval(Properties, {_, Remaining}) ->
-    lists:map(fun({p_message_expiry_interval, _OldInterval}) ->
-                      {p_message_expiry_interval, Remaining};
-                 (V) -> V
-              end,
-              Properties).
+    Properties#{p_message_expiry_interval => Remaining}.
 
 maybe_add_topic_alias_max(Props, #state{topic_alias_max=0}) ->
     Props;
 maybe_add_topic_alias_max(Props, #state{topic_alias_max=Max}) ->
-    [#p_topic_alias_max{value=Max}|Props].
+    Props#{p_topic_alias_max => Max}.

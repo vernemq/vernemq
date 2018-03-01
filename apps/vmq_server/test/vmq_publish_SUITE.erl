@@ -75,7 +75,7 @@ groups() ->
                    not_allowed_publish_close_qos2_mqtt_3_1_1,
                    message_size_exceeded_close
                   ] ++  V4V5Tests },
-     {mqttv5, [shuffle,sequence],
+     {mqttv5, [sequence],
       [message_expiry,
        publish_c2b_topic_alias|
        V4V5Tests]}
@@ -555,10 +555,10 @@ message_expiry(_) ->
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, Connack, []),
     SubTopic60s = packetv5:gen_subtopic(<<"message/expiry/60s">>, 1),
     SubTopic1s = packetv5:gen_subtopic(<<"message/expiry/1s">>, 1),
-    SubscribeAll = packetv5:gen_subscribe(10, [SubTopic60s, SubTopic1s], []),
+    SubscribeAll = packetv5:gen_subscribe(10, [SubTopic60s, SubTopic1s], #{}),
     ok = gen_tcp:send(SubSocket, SubscribeAll),
 
-    SubAck = packetv5:gen_suback(10, [1,1], []),
+    SubAck = packetv5:gen_suback(10, [1,1], #{}),
     ok = packetv5:expect_frame(SubSocket, SubAck),
     Disconnect = packetv5:gen_disconnect(),
     ok = gen_tcp:send(SubSocket, Disconnect),
@@ -569,16 +569,16 @@ message_expiry(_) ->
     {ok, PubSocket} = packetv5:do_client_connect(PubConnect, Connack, []),
 
     %% Publish some messages
-    Expiry60s = #p_message_expiry_interval{value = 60},
+    Expiry60s = #{p_message_expiry_interval => 60},
     PE60s = packetv5:gen_publish(<<"message/expiry/60s">>, 1, <<"e60s">>,
-                                 [{properties, [Expiry60s]}, {mid, 0}]),
+                                 [{properties, Expiry60s}, {mid, 0}]),
     ok = gen_tcp:send(PubSocket, PE60s),
     Puback0 = packetv5:gen_puback(0),
     ok = packetv5:expect_frame(PubSocket, Puback0),
 
-    Expiry1s = #p_message_expiry_interval{value = 1},
+    Expiry1s = #{p_message_expiry_interval => 1},
     PE1s = packetv5:gen_publish(<<"message/expiry/1s">>, 1, <<"e1s">>,
-                                [{properties, [Expiry1s]}, {mid, 1}]),
+                                [{properties, Expiry1s}, {mid, 1}]),
     ok = gen_tcp:send(PubSocket, PE1s),
     Puback1 = packetv5:gen_puback(1),
     ok = packetv5:expect_frame(PubSocket, Puback1),
@@ -596,7 +596,7 @@ message_expiry(_) ->
     {ok, RPE60s, <<>>} = packetv5:receive_frame(SubSocket1),
     #mqtt5_publish{topic = [<<"message">>, <<"expiry">>, <<"60s">>],
                    qos = 1,
-                   properties = [#p_message_expiry_interval{value = Remaining}]} = RPE60s,
+                   properties = #{p_message_expiry_interval := Remaining}} = RPE60s,
     true = Remaining < 60,
 
     %% The 1s message shouldn't arrive, but let's just block a bit to
@@ -620,36 +620,31 @@ publish_c2b_topic_alias(_Config) ->
 
     %% setup the subscriber
     SubConnect = packetv5:gen_connect("publish-c2b-topic-alias-subscriber", [{keepalive, 60}]),
-    SubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, [#p_topic_alias_max{value=3}]),
+    SubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{p_topic_alias_max => 3}),
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, SubConnack, []),
-    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,1)], []),
+    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)], #{}),
     ok = gen_tcp:send(SubSocket, Subscribe),
-    SubAck = packetv5:gen_suback(77, [1], []),
+    SubAck = packetv5:gen_suback(77, [0], #{}),
     ok = packetv5:expect_frame(SubSocket, SubAck),
     
     PubConnect = packetv5:gen_connect("publish-c2b-topic-alias", [{keepalive, 60}]),
-    PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, [#p_topic_alias_max{value=3}]),
+    PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{p_topic_alias_max => 3}),
     {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
 
-    TA1 = #p_topic_alias{value = 1},
-    TASetup = packetv5:gen_publish(Topic, 1, <<"publish alias setup">>,
-                                   [{properties, [TA1]}, {mid, 1}]),
-    
-    TAPub = packetv5:gen_publish(<<>>, 1, <<"publish alias pub">>,
-                                 [{properties, [TA1]}, {mid, 2}]),
+    TA1 = #{p_topic_alias => 1},
+    TASetup = packetv5:gen_publish(Topic, 0, <<"publish alias setup">>,
+                                   [{properties, TA1}]),
+    TAPub = packetv5:gen_publish(<<>>, 0, <<"publish alias pub">>,
+                                 [{properties, TA1}]),
     
     ok = gen_tcp:send(PubSocket, TASetup),
-    Puback1 = packetv5:gen_puback(1),
-    ok = packetv5:expect_frame(PubSocket, Puback1),
-
     ok = gen_tcp:send(PubSocket, TAPub),
-    Puback2 = packetv5:gen_puback(2),
-    ok = packetv5:expect_frame(PubSocket, Puback2),
+
+    ExpectSetupPub = packetv5:gen_publish(Topic, 0, <<"publish alias setup">>, []),
+    ExpectTAPub = packetv5:gen_publish(Topic, 0, <<"publish alias pub">>, []),
     
-    %% TODO: suppose we need to send pubacks to the broker here?
-    ok = packetv5:expect_frame(SubSocket, TASetup),
-    {ok, TAPubReceived, <<>>} = packetv5:receive_frame(SubSocket),
-    throw({diff, vmq_parser_mqtt5:parse(TAPub), TAPubReceived}),
+    ok = packetv5:expect_frame(SubSocket, ExpectSetupPub),
+    ok = packetv5:expect_frame(SubSocket, ExpectTAPub),
 
     ok = gen_tcp:close(PubSocket),
     ok = gen_tcp:close(PubSocket),
