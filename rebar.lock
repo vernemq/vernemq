@@ -99,7 +99,11 @@
   {git,"git://github.com/Vagabond/erlang-syslog",
        {ref,"e24c9ee8f7bb3f066ec152c210af10c2c712759a"}},
   1},
- {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.2.0">>},2}]}.
+ {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.2.0">>},2},
+ {<<"vernemq_dev">>,
+  {git,"git://github.com/larshesel/vernemq_dev.git",
+       {ref,"63a13a6d99d02351c369f1db7b28cf20964dae7a"}},
+  0}]}.
 [
 {pkg_hash,[
  {<<"bcrypt">>, <<"1C0F76981D8A7B32E4DAA813408BFCA5BA8B1286196EB771F026D02C710F71C5">>},

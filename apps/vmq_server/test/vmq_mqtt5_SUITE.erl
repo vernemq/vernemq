@@ -53,7 +53,7 @@ anon_success(_Config) ->
     {ok, Socket, Connack, <<>>} = packetv5:do_client_connect(Connect, []),
     #mqtt5_connack{session_present = 0,
                    reason_code = ?M5_CONNACK_ACCEPT,
-                   properties = []}
+                   properties = #{}}
         = Connack,
     ok = gen_tcp:close(Socket).
 
@@ -71,7 +71,7 @@ empty_client_id(_Config) ->
     {ok, Socket0, Connack0, <<>>} = packetv5:do_client_connect(CSTrue, []),
     #mqtt5_connack{session_present = 0,
                    reason_code = ?M5_CONNACK_ACCEPT,
-                   properties = [#p_assigned_client_id{value = _}]}
+                   properties = #{p_assigned_client_id := _}}
         = Connack0,
     ok = gen_tcp:close(Socket0),
 
@@ -79,7 +79,7 @@ empty_client_id(_Config) ->
     {ok, Socket1, Connack1, <<>>} = packetv5:do_client_connect(CSFalse, []),
     #mqtt5_connack{session_present = 0,
                    reason_code = ?M5_CONNACK_ACCEPT,
-                   properties = [#p_assigned_client_id{value = _}]}
+                   properties = #{p_assigned_client_id := _}}
         = Connack1,
     ok = gen_tcp:close(Socket1).
 
@@ -108,7 +108,7 @@ session_take_over(_Config) ->
     Connack = packetv5:gen_connack(),
     {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
     {ok, NewSocket} = packetv5:do_client_connect(Connect, Connack, []),
-    Disconnect = packetv5:gen_disconnect(?M5_SESSION_TAKEN_OVER, []),
+    Disconnect = packetv5:gen_disconnect(?M5_SESSION_TAKEN_OVER, #{}),
     ok = packetv5:expect_frame(Socket, Disconnect),
     ok = gen_tcp:close(Socket),
     ok = gen_tcp:close(NewSocket).

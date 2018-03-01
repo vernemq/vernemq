@@ -16,7 +16,7 @@
           persisted=false       :: flag(),
           sg_policy=prefer_local:: sg_policy(),
           %% TODOv5: need to import the mqtt5 property typespec?
-          properties=[]         :: [any()],
+          properties=#{}        :: map(),
           expiry_ts             :: undefined
                                  | {expire_after, non_neg_integer()}
                                  | {non_neg_integer(), non_neg_integer()}

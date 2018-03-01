@@ -104,11 +104,11 @@ variable(<<?PUBLISH:4, Dup:1, QoS:2, Retain:1>>,
 variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big>>) ->
      #mqtt5_puback{message_id=MessageId,
                    reason_code=?M5_SUCCESS,
-                   properties=[]};
+                   properties=#{}};
 variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
      #mqtt5_puback{message_id=MessageId,
                    reason_code=ReasonCode,
-                   properties=[]};
+                   properties=#{}};
 variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
     case parse_properties(Rest) of
         {ok, Properties, <<>>} ->
@@ -121,11 +121,11 @@ variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
 variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big>>) ->
      #mqtt5_pubrec{message_id=MessageId,
                    reason_code=?M5_SUCCESS,
-                   properties=[]};
+                   properties=#{}};
 variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
      #mqtt5_pubrec{message_id=MessageId,
                    reason_code=ReasonCode,
-                   properties=[]};
+                   properties=#{}};
 variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
     case parse_properties(Rest) of
         {ok, Properties, <<>>} ->
@@ -138,11 +138,11 @@ variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
 variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big>>) ->
      #mqtt5_pubrel{message_id=MessageId,
                    reason_code=?M5_SUCCESS,
-                   properties=[]};
+                   properties=#{}};
 variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8>>) ->
      #mqtt5_pubrel{message_id=MessageId,
                    reason_code=ReasonCode,
-                   properties=[]};
+                   properties=#{}};
 variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
     case parse_properties(Rest) of
         {ok, Properties, <<>>} ->
@@ -155,11 +155,11 @@ variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8, Rest/bi
 variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big>>) ->
      #mqtt5_pubcomp{message_id=MessageId,
                     reason_code=?M5_SUCCESS,
-                    properties=[]};
+                    properties=#{}};
 variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
      #mqtt5_pubcomp{message_id=MessageId,
                     reason_code=ReasonCode,
-                    properties=[]};
+                    properties=#{}};
 variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
     case parse_properties(Rest) of
         {ok, Properties, <<>>} ->
@@ -259,9 +259,9 @@ variable(<<?PINGREQ:4, 0:4>>, <<>>) ->
 variable(<<?PINGRESP:4, 0:4>>, <<>>) ->
     #mqtt5_pingresp{};
 variable(<<?DISCONNECT:4, 0:4>>, <<>>) ->
-    #mqtt5_disconnect{reason_code=?M5_NORMAL_DISCONNECT, properties=[]};
+    #mqtt5_disconnect{reason_code=?M5_NORMAL_DISCONNECT, properties=#{}};
 variable(<<?DISCONNECT:4, 0:4>>, <<RC:8>>) ->
-    #mqtt5_disconnect{reason_code=RC, properties=[]};
+    #mqtt5_disconnect{reason_code=RC, properties=#{}};
 variable(<<?DISCONNECT:4, 0:4>>, <<RC:8, Rest/binary>>) ->
     case parse_properties(Rest) of
         {ok, Properties, <<>>} ->
@@ -269,7 +269,7 @@ variable(<<?DISCONNECT:4, 0:4>>, <<RC:8, Rest/binary>>) ->
         E -> E
     end;
 variable(<<?AUTH:4, 0:4>>, <<>>) ->
-    #mqtt5_auth{reason_code=?M5_SUCCESS, properties=[]};
+    #mqtt5_auth{reason_code=?M5_SUCCESS, properties=#{}};
 variable(<<?AUTH:4, 0:4>>, <<RC:8, Rest/binary>>) ->
     case parse_properties(Rest) of
         {ok, Properties, <<>>} ->
@@ -379,25 +379,29 @@ serialise(#mqtt5_publish{message_id=MessageId,
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?PUBLISH:4, (flag(Dup)):1/integer,
        QoS:2/integer, (flag(Retain)):1/integer>>, LenBytes, Var];
-serialise(#mqtt5_puback{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]}) ->
+serialise(#mqtt5_puback{message_id=MessageId, reason_code=?M5_SUCCESS, properties=P})
+  when map_size(P) == 0 ->
     <<?PUBACK:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_puback{message_id=MessageId, reason_code=ReasonCode, properties=Properties}) ->
     Var = [<<MessageId:16/big, ReasonCode:8/integer>>, properties(Properties)],
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?PUBACK:4, 0:4>>, LenBytes, Var];
-serialise(#mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]}) ->
+serialise(#mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=P})
+  when map_size(P) == 0 ->
     <<?PUBREC:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_pubrec{message_id=MessageId, reason_code=ReasonCode, properties=Properties}) ->
     Var = [<<MessageId:16/big, ReasonCode:8/integer>>, properties(Properties)],
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?PUBREC:4, 0:4>>, LenBytes, Var];
-serialise(#mqtt5_pubrel{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]}) ->
+serialise(#mqtt5_pubrel{message_id=MessageId, reason_code=?M5_SUCCESS, properties=P})
+  when map_size(P) == 0 ->
     <<?PUBREL:4, 0:2, 1:1, 0:1, 2, MessageId:16/big>>;
 serialise(#mqtt5_pubrel{message_id=MessageId, reason_code=ReasonCode, properties=Properties}) ->
     Var = [<<MessageId:16/big, ReasonCode:8/integer>>, properties(Properties)],
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?PUBREL:4, 0:2, 1:1, 0:1>>, LenBytes, Var];
-serialise(#mqtt5_pubcomp{message_id=MessageId, reason_code=?M5_SUCCESS, properties=[]}) ->
+serialise(#mqtt5_pubcomp{message_id=MessageId, reason_code=?M5_SUCCESS, properties=P})
+  when map_size(P) == 0 ->
     <<?PUBCOMP:4, 0:4, 2, MessageId:16/big>>;
 serialise(#mqtt5_pubcomp{message_id=MessageId, reason_code=ReasonCode, properties=Properties}) ->
     Var = [<<MessageId:16/big, ReasonCode:8/integer>>, properties(Properties)],
@@ -466,7 +470,7 @@ serialise(#mqtt5_pingreq{}) ->
 serialise(#mqtt5_pingresp{}) ->
     <<?PINGRESP:4, 0:4, 0>>;
 serialise(#mqtt5_disconnect{reason_code=?M5_NORMAL_DISCONNECT, properties=Properties})
-  when Properties =:= [] ->
+  when map_size(Properties) =:= 0 ->
     <<?DISCONNECT:4, 0:4, 0>>;
 serialise(#mqtt5_disconnect{reason_code=RC, properties=Properties}) ->
     Var = [<<RC:8>>,
@@ -474,7 +478,7 @@ serialise(#mqtt5_disconnect{reason_code=RC, properties=Properties}) ->
     LenBytes = serialise_len(iolist_size(Var)),
     [<<?DISCONNECT:4, 0:4>>, LenBytes, Var];
 serialise(#mqtt5_auth{reason_code=?M5_SUCCESS, properties=Properties})
-  when Properties =:= [] ->
+  when map_size(Properties) =:= 0 ->
     <<?AUTH:4, 0:4, 0>>;
 serialise(#mqtt5_auth{reason_code=RC, properties=Properties}) ->
     Var = [<<RC:8>>,
@@ -569,7 +573,10 @@ ensure_binary(empty) -> empty. % for test purposes
 
 properties([]) -> <<0:8>>;
 properties(Properties) ->
-    IoProps = enc_properties(Properties),
+    %% TODOv5: Consider if it would make sense to not convert to a
+    %% list here but work directly on the map - would that be faster?
+    %% easier?
+    IoProps = enc_properties(maps:to_list(Properties)),
     [serialise_len(iolist_size(IoProps)), IoProps].
 
 enc_properties([]) ->
@@ -589,8 +596,10 @@ enc_properties([#p_response_topic{value = Topic}|Rest]) ->
     [<<?M5P_RESPONSE_TOPIC:8>>, utf8(vmq_topic:unword(Topic))|enc_properties(Rest)];
 enc_properties([#p_correlation_data{value = Data}|Rest]) ->
     [<<?M5P_CORRELATION_DATA:8>>, binary(Data)|enc_properties(Rest)];
-enc_properties([#p_subscription_id{value = Id}|Rest]) when 1 =< Id, Id =< 268435455 ->
-    [<<?M5P_SUBSCRIPTION_ID:8>>, serialise_len(Id) |enc_properties(Rest)];
+enc_properties([#p_subscription_id{value = Ids}|Rest]) ->
+    [
+     [ [<<?M5P_SUBSCRIPTION_ID:8>>, serialise_len(Id)] || Id <- Ids ]
+     |enc_properties(Rest)];
 enc_properties([#p_session_expiry_interval{value = Val}|Rest]) ->
     [<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big>>|enc_properties(Rest)];
 enc_properties([#p_assigned_client_id{value = Val}|Rest]) ->
@@ -626,8 +635,10 @@ enc_properties([#p_max_qos{value = Val}|Rest]) ->
 enc_properties([#p_retain_available{value = Bool}|Rest]) ->
     Val = flag(Bool),
     [<<?M5P_RETAIN_AVAILABLE:8, Val:8>>|enc_properties(Rest)];
-enc_properties([#p_user_property{value = {Key,Val}}|Rest]) ->
-    [<<?M5P_USER_PROPERTY:8>>, utf8(Key), utf8(Val)|enc_properties(Rest)];
+enc_properties([#p_user_property{value = [{_,_}|_] = UserProps}|Rest]) ->
+    [
+     [[<<?M5P_USER_PROPERTY:8>>, utf8(Key), utf8(Val)] || {Key, Val} <- UserProps]
+     |enc_properties(Rest)];
 enc_properties([#p_max_packet_size{value = Val}|Rest]) ->
     [<<?M5P_MAX_PACKET_SIZE:8, Val:32/big>>|enc_properties(Rest)];
 enc_properties([#p_wildcard_subs_available{value = Bool}|Rest]) ->
@@ -653,7 +664,7 @@ gen_connect(ClientId, Opts) ->
                password        = ensure_binary(proplists:get_value(password, Opts)),
                proto_ver       = ?PROTOCOL_5,
                lwt             = proplists:get_value(lwt, Opts, undefined),
-               properties      = proplists:get_value(properties, Opts, [])
+               properties      = proplists:get_value(properties, Opts, #{})
               },
     iolist_to_binary(serialise(Frame)).
 
@@ -668,7 +679,7 @@ gen_publish(Topic, Qos, Payload, Opts) ->
                qos               = Qos,
                retain            = proplists:get_value(retain, Opts, false),
                dup               = proplists:get_value(dup, Opts, false),
-               properties        = proplists:get_value(properties, Opts, []),
+               properties        = proplists:get_value(properties, Opts, #{}),
                payload           = ensure_binary(Payload)
               },
     iolist_to_binary(serialise(Frame)).
@@ -743,8 +754,11 @@ parse_properties(Data) ->
         {error, _} ->
             {error, cant_parse_properties};
         {PropertiesData, Rest} ->
-            case parse_properties(PropertiesData, []) of
-                Properties when is_list(Properties) ->
+            case parse_properties(PropertiesData, #{}) of
+                #{p_user_property := UserProps} = Props ->
+                    %% Make sure to preserve order of the user properties
+                    {ok, Props#{p_user_property => lists:reverse(UserProps)}, Rest};
+                Properties when is_map(Properties) ->
                     {ok, Properties, Rest};
                 {error, _} = E ->
                     E
@@ -755,103 +769,160 @@ parse_properties(Data) ->
     -> [mqtt5_property()] |
        {error, any()}.
 parse_properties(<<>>, Acc) ->
-    %% TODO: Is it required to preserve order? Partial answer: No,
-    %% there is no significance in the order of properties with
-    %% *different identifiers*. Odering might be relevant to
-    %% properties which occur multiple times (user properties).
-    lists:reverse(Acc);
+    Acc;
 %% Note, the property ids are specified as a varint, but in MQTT5 all
 %% indicator ids fit within one byte, so we parse it as such to keep
 %% things simple.
+parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, _Rest/binary>>, #{p_payload_format_indicator := _})  ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) when Val == 0 ->
-    P = #p_payload_format_indicator{value = unspecified},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_payload_format_indicator => unspecified});
 parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) when Val == 1 ->
-    P = #p_payload_format_indicator{value = utf8},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_payload_format_indicator => utf8});
+
+parse_properties(<<?M5P_MESSAGE_EXPIRY_INTERVAL:8, _Rest/binary>>, #{p_message_expiry_interval := _})  ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_MESSAGE_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
-    P = #p_message_expiry_interval{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_message_expiry_interval => Val});
+
+parse_properties(<<?M5P_CONTENT_TYPE, _Rest/binary>>, #{p_content_type := _})  ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_CONTENT_TYPE:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    P = #p_content_type{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_content_type => Val});
+
+parse_properties(<<?M5P_RESPONSE_TOPIC:8, _Rest/binary>>, #{p_response_topic := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_RESPONSE_TOPIC:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    P = #p_response_topic{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_response_topic => Val});
+
+parse_properties(<<?M5P_CORRELATION_DATA:8, _Rest/binary>>, #{p_correlation_data := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_CORRELATION_DATA:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    P = #p_correlation_data{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_correlation_data => Val});
+
 parse_properties(<<?M5P_SUBSCRIPTION_ID:8, Data/binary>>, Acc) ->
     case varint(Data) of
         {VarInt, Rest} when 1 =< VarInt, VarInt =< 268435455 ->
-            P = #p_subscription_id{value = VarInt},
-            parse_properties(Rest, [P|Acc]);
+            NewAcc =
+                case maps:find(p_subscription_id, Acc) of
+                    error ->
+                        Acc#{p_subscription_id => [VarInt]};
+                    {ok, Vals} ->
+                        Acc#{p_subscription_id => [VarInt|Vals]}
+                end,
+            parse_properties(Rest, NewAcc);
         error -> {error, cant_parse_properties}
     end;
+
+parse_properties(<<?M5P_SESSION_EXPIRY_INTERVAL:8, _Rest/binary>>, #{p_session_expiry_interval := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
-    P = #p_session_expiry_interval{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_session_expiry_interval => Val});
+
+parse_properties(<<?M5P_ASSIGNED_CLIENT_ID:8, _Rest/binary>>, #{p_assigned_client_id := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_ASSIGNED_CLIENT_ID:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    P = #p_assigned_client_id{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_assigned_client_id => Val});
+
+parse_properties(<<?M5P_SERVER_KEEP_ALIVE:8, _Rest/binary>>, #{p_server_keep_alive := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_SERVER_KEEP_ALIVE:8, Val:16/big, Rest/binary>>, Acc) ->
-    P = #p_server_keep_alive{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_server_keep_alive => Val});
+
+parse_properties(<<?M5P_AUTHENTICATION_METHOD:8, _Rest/binary>>, #{p_authentication_method := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_AUTHENTICATION_METHOD:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    P = #p_authentication_method{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_authentication_method => Val});
+
+parse_properties(<<?M5P_AUTHENTICATION_DATA:8, _Rest/binary>>, #{p_authentication_data := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_AUTHENTICATION_DATA:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    P = #p_authentication_data{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_authentication_data => Val});
+
+parse_properties(<<?M5P_REQUEST_PROBLEM_INFO:8, _Rest/binary>>, #{p_request_problem_info := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_REQUEST_PROBLEM_INFO:8, Val:8/big, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
-    P = #p_request_problem_info{value = Val == 1},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_request_problem_info => Val == 1});
+
+parse_properties(<<?M5P_WILL_DELAY_INTERVAL:8, _Rest/binary>>, #{p_will_delay_interval := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_WILL_DELAY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
-    P = #p_will_delay_interval{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_will_delay_interval => Val});
+
+parse_properties(<<?M5P_REQUEST_RESPONSE_INFO:8, _Rest/binary>>, #{p_request_response_info := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_REQUEST_RESPONSE_INFO:8, Val:8/big, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
-    P = #p_request_response_info{value = Val == 1},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_request_response_info => Val == 1});
+
+parse_properties(<<?M5P_RESPONSE_INFO:8, _Rest/binary>>, #{p_response_info := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_RESPONSE_INFO:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    P = #p_response_info{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_response_info => Val});
+
+parse_properties(<<?M5P_SERVER_REF:8, _Rest/binary>>, #{p_server_ref := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_SERVER_REF:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    P = #p_server_ref{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_server_ref => Val});
+
+parse_properties(<<?M5P_REASON_STRING:8, _Rest/binary>>, #{p_reason_string := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_REASON_STRING:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    P = #p_reason_string{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_reason_string => Val});
+
+parse_properties(<<?M5P_RECEIVE_MAX:8, _Rest/binary>>, #{p_receive_max := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_RECEIVE_MAX:8, Val:16/big, Rest/binary>>, Acc) when Val > 0 ->
-    P = #p_receive_max{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_receive_max => Val});
+
+parse_properties(<<?M5P_TOPIC_ALIAS_MAX:8, _Rest/binary>>, #{p_topic_alias_max := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_TOPIC_ALIAS_MAX:8, Val:16/big, Rest/binary>>, Acc) ->
-    P = #p_topic_alias_max{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_topic_alias_max => Val});
+
+parse_properties(<<?M5P_TOPIC_ALIAS:8, _Rest/binary>>, #{p_topic_alias := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_TOPIC_ALIAS:8, Val:16/big, Rest/binary>>, Acc) ->
-    P = #p_topic_alias{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_topic_alias => Val});
+
+parse_properties(<<?M5P_MAXIMUM_QOS:8, _Rest/binary>>, #{p_max_qos := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_MAXIMUM_QOS:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
-    P = #p_max_qos{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_max_qos => Val});
+
+parse_properties(<<?M5P_RETAIN_AVAILABLE:8, _Rest/binary>>, #{p_retain_available := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_RETAIN_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
-    P = #p_retain_available{value = Val == 1},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_retain_available => Val == 1});
+
 parse_properties(<<?M5P_USER_PROPERTY:8, KLen:16/big, Key:KLen/binary,
                    VLen:16/big, Val:VLen/binary, Rest/binary>>, Acc) ->
-    P = #p_user_property{value = {Key,Val}},
-    parse_properties(Rest, [P|Acc]);
+    NewAcc =
+        case maps:find(p_user_property, Acc) of
+            error ->
+                Acc#{p_user_property => [{Key,Val}]};
+            {ok, Vals} ->
+                Acc#{p_user_property => [{Key,Val}|Vals]}
+        end,
+    parse_properties(Rest, NewAcc);
+parse_properties(<<?M5P_MAX_PACKET_SIZE:8, _Rest/binary>>, #{p_max_packet_size := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_MAX_PACKET_SIZE:8, Val:32/big, Rest/binary>>, Acc) when Val > 0 ->
-    P = #p_max_packet_size{value = Val},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_max_packet_size => Val});
+
+parse_properties(<<?M5P_WILDCARD_SUBS_AVAILABLE:8, _Rest/binary>>, #{p_wildcard_subs_available := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_WILDCARD_SUBS_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
-    P = #p_wildcard_subs_available{value = Val == 1},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_wildcard_subs_available => Val == 1});
+
+parse_properties(<<?M5P_SUB_IDS_AVAILABLE:8, _Rest/binary>>, #{p_sub_ids_available := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_SUB_IDS_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
-    P = #p_sub_ids_available{value = Val == 1},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_sub_ids_available => Val == 1});
+
+parse_properties(<<?M5P_SHARED_SUBS_AVAILABLE:8, _Rest/binary>>, #{p_shared_subs_available := _}) ->
+    {error, property_is_only_allowed_once};
 parse_properties(<<?M5P_SHARED_SUBS_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
-    P = #p_shared_subs_available{value = Val == 1},
-    parse_properties(Rest, [P|Acc]);
+    parse_properties(Rest, Acc#{p_shared_subs_available => Val == 1});
 parse_properties(_, _) ->
     {error, cant_parse_properties}.
 

@@ -52,7 +52,7 @@ gen_connect_(5, ClientId, Opts) ->
                                   WillTopic =/= undefined ->
             WillQoS = proplists:get_value(will_qos, Opts, 0),
             WillRetain = proplists:get_value(will_retain, Opts, false),
-            WillProperties = proplists:get_value(will_properties, Opts, []),
+            WillProperties = proplists:get_value(will_properties, Opts, #{}),
             LWT = #mqtt5_lwt{
                      will_properties = WillProperties,
                      will_retain = WillRetain,
@@ -114,7 +114,7 @@ gen_subscribe_(5, Mid, Topic, QoS) ->
                  rap=false,
                  retain_handling=send_retain
                 }],
-    packetv5:gen_subscribe(Mid, Topics, []).
+    packetv5:gen_subscribe(Mid, Topics, #{}).
 
 gen_suback(Mid, Exp, Config) ->
     gen_suback_(protover(Config), Mid, Exp).
@@ -122,7 +122,7 @@ gen_suback(Mid, Exp, Config) ->
 gen_suback_(4, Mid, RC) ->
     packet:gen_suback(Mid, RC);
 gen_suback_(5, Mid, RC) ->
-    packetv5:gen_suback(Mid, [RC], []).
+    packetv5:gen_suback(Mid, [RC], #{}).
 
 gen_unsubscribe(MId, Topic, Config) ->
     gen_unsubscribe_(protover(Config), MId, Topic).
@@ -130,7 +130,7 @@ gen_unsubscribe(MId, Topic, Config) ->
 gen_unsubscribe_(4, MId, Topic) ->
     packet:gen_unsubscribe(MId, Topic);
 gen_unsubscribe_(5, MId, Topic) ->
-    packetv5:gen_unsubscribe(MId, [Topic], []).
+    packetv5:gen_unsubscribe(MId, [Topic], #{}).
 
 gen_unsuback(Mid, Config) ->
     gen_unsuback_(protover(Config), Mid).
@@ -138,7 +138,7 @@ gen_unsuback(Mid, Config) ->
 gen_unsuback_(4, Mid) ->
     packet:gen_unsuback(Mid);
 gen_unsuback_(5, Mid) ->
-    packetv5:gen_unsuback(Mid, [?M5_SUCCESS], []).
+    packetv5:gen_unsuback(Mid, [?M5_SUCCESS], #{}).
 
 gen_publish(Topic, QoS, Payload, Opts, Config) ->
     gen_publish_(protover(Config), Topic, QoS, Payload, Opts).

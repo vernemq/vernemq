@@ -175,13 +175,13 @@ will_delay_v5_test(_Config) ->
     
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, Connack, []),
     ok = gen_tcp:send(SubSocket, Subscribe),
-    SubAck = packetv5:gen_suback(53, [0], []),
+    SubAck = packetv5:gen_suback(53, [0], #{}),
     {ok, SubAck, <<>>} = packetv5:expect_frame(SubSocket, SubAck),
 
     %% connect client with delayed last will
     WillMsg = <<"delayed_msg">>,
     WillDelay = 1, %% secs
-    WillProperties = [#p_will_delay_interval{value = WillDelay}],
+    WillProperties = #{p_will_delay_interval => WillDelay},
     LastWill = #mqtt5_lwt{
                   will_properties = WillProperties,
                   will_retain = false,
@@ -197,7 +197,7 @@ will_delay_v5_test(_Config) ->
     %% for the message to arrive.
     T1 = ts(),
     ok = gen_tcp:close(Socket),
-    LastWillPub = packetv5:gen_publish(WillTopic, 0, WillMsg, []),
+    LastWillPub = packetv5:gen_publish(WillTopic, 0, WillMsg, #{}),
     {ok, LastWillPub, <<>>} = packetv5:expect_frame(SubSocket, LastWillPub),
     T2 = ts(),
     assert_ge(T2 - T1, WillDelay*1000),

@@ -341,7 +341,8 @@ msg(Topic, Payload, QoS) ->
              mountpoint="",
              routing_key=Topic,
              payload=Payload,
-             qos=QoS}.
+             qos=QoS,
+             properties=#{}}.
 
 receive_msg(QPid, QoS, Msg) ->
     %% if we were able to persist the message
