@@ -57,6 +57,7 @@ groups() ->
          not_allowed_publish_close_qos1_mqtt_3_1_1,
          not_allowed_publish_close_qos2_mqtt_3_1_1,
          message_size_exceeded_close,
+         shared_subscription_offline,
          shared_subscription_online_first
         ],
     [
@@ -425,6 +426,46 @@ message_size_exceeded_close(_) ->
     true = lists:member({counter, mqtt_invalid_msg_size_error, 1}, vmq_metrics:metrics()),
     vmq_config:set_env(max_message_size, OldLimit, false),
     disable_on_publish().
+
+shared_subscription_offline(_) ->
+    enable_on_publish(),
+    enable_on_subscribe(),
+    Connack = packet:gen_connack(0),
+    PubConnect = packet:gen_connect("single-offline-pub", [{keepalive, 60},
+                                                           {proto_ver, 4}]),
+    SubConnectOffline = packet:gen_connect("single-offline-sha-sub", [{keepalive, 60},
+                                                                      {proto_ver, 4},
+                                                                      {clean_session, false}]),
+    Subscription = "$share/singleofflinesub/shared_sub_topic",
+    {ok, PubSocket} = packet:do_client_connect(PubConnect, Connack, []),
+    {ok, SubSocketOffline} = packet:do_client_connect(SubConnectOffline, Connack, []),
+    Subscribe = packet:gen_subscribe(1, Subscription, 1),
+    Suback = packet:gen_suback(1, 1),
+    ok = gen_tcp:send(SubSocketOffline, Subscribe),
+    ok = packet:expect_packet(SubSocketOffline, "suback", Suback),
+    Disconnect = packet:gen_disconnect(),
+    ok = gen_tcp:send(SubSocketOffline, Disconnect),
+
+    PubFun
+        = fun(Socket, Mid) ->
+                  Publish = packet:gen_publish("shared_sub_topic", 1,
+                                               vmq_test_utils:rand_bytes(1024),
+                                               [{mid, Mid}]),
+                  Puback = packet:gen_puback(Mid),
+                  ok = gen_tcp:send(Socket, Publish),
+                  ok = packet:expect_packet(Socket, "puback", Puback),
+                  {Mid, Publish}
+          end,
+    Published = [PubFun(PubSocket, Mid) || Mid <- lists:seq(1,10)],
+    ConnackSP = packet:gen_connack(1, 0),
+    {ok, SubSocketOffline2} = packet:do_client_connect(SubConnectOffline, ConnackSP, []),
+    [begin
+         ok = packet:expect_packet(SubSocketOffline2, "publish", Expect),
+         Puback = packet:gen_puback(Mid),
+         ok = gen_tcp:send(SubSocketOffline2, Puback)
+     end || {Mid, Expect} <- Published ],
+    disable_on_publish(),
+    disable_on_subscribe().
 
 shared_subscription_online_first(_) ->
     enable_on_publish(),
