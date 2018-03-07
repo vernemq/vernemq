@@ -579,7 +579,7 @@ enqueue_many_(Msgs, FsmState, #{states := AllowedStates}, State) ->
             _ = vmq_metrics:incr_queue_in(length(Msgs)),
             {reply, ok, FsmState, insert_many(Msgs, State)};
         false ->
-            {reply, {error, FsmState}, State}
+            {reply, {error, FsmState}, FsmState, State}
     end.
 
 allowed_state(FsmState, AllowedStates) ->

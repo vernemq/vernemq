@@ -2,6 +2,8 @@
 
 ## Not yet released (VerneMQ 1.4.0)
 
+- Bugfix: Handle return values correctly when enqueuing messages to offline
+  shared subscribers (#625).
 - Bugfix: Fix issue preventing messages delivered to a subscriber group from
   being delivered to the online group members first before attempting delivery
   to offline queues (#618).
