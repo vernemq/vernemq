@@ -212,7 +212,24 @@ enhanced_auth_method_not_supported(_Config) ->
     %% Code of 0x8C (Bad authentication method) or 0x87 (Not
     %% Authorized) as described in section 4.13 and MUST close the
     %% Network Connection [MQTT-4.12.0-1].
-    throw(not_implemented).
+
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_register, ?MODULE, auth_on_register_ok_hook, 6),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           on_auth, ?MODULE, on_auth_bad_method_hook, 1),
+
+    ClientId = "client-enh-auth-bad-auth",
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
+                                              {properties, auth_props(?AUTH_METHOD,<<"Client1">>)}]),
+    Disconnect = packetv5:gen_disconnect(?M5_BAD_AUTHENTICATION_METHOD, #{}),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Disconnect, []),
+    {error, closed} = gen_tcp:recv(Socket, 0,100),
+
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           on_auth, ?MODULE, on_auth_bad_method_hook, 1),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_register, ?MODULE, auth_on_register_ok_hook, 6).
+
 
 enhanced_auth_server_rejects(_Config) ->
     %% The Server can reject the authentication at any point in this
@@ -254,6 +271,9 @@ auth_props(Method, Data) ->
 
 auth_on_register_ok_hook(_,_,_,_,_,_) ->
     ok.
+
+on_auth_bad_method_hook(#{p_authentication_method := _, p_authentication_data := _}) ->
+    {error, bad_auth_method}.
 
 on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client1">>}) ->
     {continue_auth, #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server1">>}};

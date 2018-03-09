@@ -29,10 +29,12 @@
 -define(ADMINISTRATIVE_ACTION,    administrative_action).
 -define(DISCONNECT_KEEP_ALIVE,    disconnect_keep_alive).
 -define(DISCONNECT_MIGRATION,     disconnect_migration).
+-define(BAD_AUTH_METHOD,          bad_auth_method).
 
 -type disconnect_reasons() ::
         ?NORMAL_DISCONNECT |
         ?SESSION_TAKEN_OVER |
         ?ADMINISTRATIVE_ACTION |
         ?DISCONNECT_KEEP_ALIVE |
-        ?DISCONNECT_MIGRATION.
+        ?DISCONNECT_MIGRATION |
+        ?BAD_AUTH_METHOD.
