@@ -152,6 +152,8 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive} = ConnectFrame) ->
 
     case check_enhanced_auth(ConnectFrame, State) of
         {stop, _, _} = R -> R;
+        {pre_connect_auth, NewState, Out} ->
+            {{pre_connect_auth, NewState}, Out};
         {NewState, Out} ->
             {{connected, set_last_time_active(true, NewState)}, Out}
     end.
@@ -193,10 +195,18 @@ msg_in(Msg, SessionState) ->
            {ok, NewSessionState, serialise([Out])}
    end.
 
-%%% init --> | connected | --> terminate
+%%% init --> pre_connect_auth | connected | --> terminate
 in(Msg, {connected, State}, IsData) ->
     case connected(Msg, State) of
         {stop, _, _} = R -> R;
+        {NewState, Out} ->
+            {{connected, set_last_time_active(IsData, NewState)}, Out}
+    end;
+in(Msg, {pre_connect_auth, State}, IsData) ->
+    case pre_connect_auth(Msg, State) of
+        {stop, _, _} = R -> R;
+        {pre_connect_auth, NewState, Out} ->
+            {{pre_connect_auth, NewState}, Out};
         {NewState, Out} ->
             {{connected, set_last_time_active(IsData, NewState)}, Out}
     end.
@@ -216,6 +226,36 @@ maybe_initiate_trace(_Frame, undefined) ->
     ok;
 maybe_initiate_trace(Frame, TraceFun) ->
     TraceFun(self(), Frame).
+
+-spec pre_connect_auth(mqtt5_frame(), state()) ->
+    {state(), [mqtt5_frame() | binary()]} |
+    {state(), {throttle, [mqtt5_frame() | binary()]}} |
+    {stop, any(), [mqtt5_frame() | binary()]}.
+pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMethod,
+                                            p_authentication_data := _} = Props},
+                 #state{enhanced_auth = #auth_data{method = AuthMethod,
+                                                   data = ConnectFrame}} = State) ->
+    case vmq_plugin:all_till_ok(on_auth, [Props]) of
+        {ok, OutProps} ->
+            %% we're don with enhanced auth on connect.
+            NewAuthData = #auth_data{method = AuthMethod},
+            check_connect(ConnectFrame, OutProps,
+                          State#state{enhanced_auth = NewAuthData});
+        {continue_auth, NewProperties} ->
+            %% TODOv5: filter / rename properties?
+            Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
+                                properties = NewProperties},
+            {pre_connect_auth, State, [Frame]};
+        {error, Reason} ->
+            %% TODOv5
+            throw({not_implemented, Reason})
+    end;
+pre_connect_auth(#mqtt5_disconnect{}, State) ->
+    %% TODOv5 add metric?
+    terminate(mqtt_client_disconnect, State);
+pre_connect_auth(_, State) ->
+    terminate(?M5_PROTOCOL_ERROR, State).
+
 
 -spec connected(mqtt5_frame(), state()) ->
     {state(), [mqtt5_frame() | binary()]} |
@@ -399,19 +439,11 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties =_P
             _ = vmq_metrics:incr_mqtt_error_unsubscribe(),
             {State, []}
     end;
-connected(#mqtt5_auth{properties=Properties},
-          #state{enhanced_auth = #auth_data{type = AuthType,
-                                            data = AuthData}} = State) ->
-    case vmq_plugin:all_till_ok(on_auth, [Properties]) of
+connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Props},
+          #state{enhanced_auth = #auth_data{method = AuthMethod}} = State) ->
+    case vmq_plugin:all_till_ok(on_auth, [Props]) of
         {ok, OutProps} ->
-            case AuthType of
-                connect ->
-                    ConnectFrame = AuthData,
-                    check_connect(ConnectFrame, OutProps,
-                                  State#state{enhanced_auth = #auth_data{type = AuthType}});
-                re_auth ->
-                    ok
-            end;
+            throw({not_implemented, OutProps});
         {continue_auth, NewProperties} ->
             %% TODOv5: filter / rename properties?
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
@@ -522,7 +554,7 @@ check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthM
                                       data = F},
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
                                 properties = NewProperties},
-            {State#state{enhanced_auth = EnhancedAuth}, [Frame]};
+            {pre_connect_auth, State#state{enhanced_auth = EnhancedAuth}, [Frame]};
         {error, Reason} ->
             %% TODOv5
             throw({not_implemented, Reason})
