@@ -186,8 +186,25 @@ enhanced_auth_no_other_packets(_Config) ->
     %% If a Client sets an Authentication Method in the CONNECT, the
     %% Client MUST NOT send any packets other than AUTH or DISCONNECT
     %% packets until it has received a CONNACK packet [MQTT-3.1.2-30].
-    throw(not_implemented).
 
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_register, ?MODULE, auth_on_register_ok_hook, 6),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           on_auth, ?MODULE, on_auth_hook, 1),
+
+    ClientId = "client-enh-auth-wrong-packet",
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
+                                              {properties, auth_props(?AUTH_METHOD,<<"Client1">>)}]),
+    AuthIn1 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(?AUTH_METHOD,<<"Server1">>)),
+    {ok, Socket} = packetv5:do_client_connect(Connect, AuthIn1, []),
+    Ping = packetv5:gen_pingreq(),
+    ok = gen_tcp:send(Socket, Ping),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000),
+
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           on_auth, ?MODULE, on_auth_hook, 1),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_register, ?MODULE, auth_on_register_ok_hook, 6).
 
 enhanced_auth_method_not_supported(_Config) ->
     %% If the Server does not support the Authentication Method
