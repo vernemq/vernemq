@@ -39,6 +39,14 @@
 
 -type topic_aliases_in() :: map().
 
+-record(auth_data, {
+          method :: binary(),
+          type   :: connect | re_auth,
+          data   :: any()
+         }).
+
+-type auth_data() :: auth_data().
+
 -record(state, {
           %% mqtt layer requirements
           next_msg_id=1                     :: msg_id(),
@@ -59,6 +67,10 @@
 
           last_time_active=os:timestamp()   :: timestamp(),
           last_trigger=os:timestamp()       :: timestamp(),
+
+          %% Data used for enhanced authentication and
+          %% re-authentication. TODOv5: move this to pdict?
+          enhanced_auth                     :: undefined | auth_data(),
 
           %% config
           allow_anonymous=false             :: boolean(),
@@ -138,7 +150,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                    trace_fun=TraceFun,
                    last_time_active=os:timestamp()},
 
-    case check_connect(ConnectFrame, State) of
+    case check_enhanced_auth(ConnectFrame, State) of
         {stop, _, _} = R -> R;
         {NewState, Out} ->
             {{connected, set_last_time_active(true, NewState)}, Out}
@@ -387,9 +399,31 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties =_P
             _ = vmq_metrics:incr_mqtt_error_unsubscribe(),
             {State, []}
     end;
-connected(#mqtt_pingreq{}, State) ->
+connected(#mqtt5_auth{properties=Properties},
+          #state{enhanced_auth = #auth_data{type = AuthType,
+                                            data = AuthData}} = State) ->
+    case vmq_plugin:all_till_ok(on_auth, [Properties]) of
+        {ok, OutProps} ->
+            case AuthType of
+                connect ->
+                    ConnectFrame = AuthData,
+                    check_connect(ConnectFrame, OutProps,
+                                  State#state{enhanced_auth = #auth_data{type = AuthType}});
+                re_auth ->
+                    ok
+            end;
+        {continue_auth, NewProperties} ->
+            %% TODOv5: filter / rename properties?
+            Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
+                                properties = NewProperties},
+            {State, [Frame]};
+        {error, Reason} ->
+            %% TODOv5
+            throw({not_implemented, Reason})
+    end;
+connected(#mqtt5_pingreq{}, State) ->
     _ = vmq_metrics:incr_mqtt_pingreq_received(),
-    Frame = #mqtt_pingresp{},
+    Frame = #mqtt5_pingresp{},
     _ = vmq_metrics:incr_mqtt_pingresp_sent(),
     {State, [Frame]};
 connected(#mqtt5_disconnect{}, State) ->
@@ -475,63 +509,74 @@ terminate(Reason, #state{clean_session=CleanSession} = State) ->
 %%% internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-check_connect(#mqtt5_connect{proto_ver=Ver, clean_start=CleanStart} = F, State) ->
+check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthMethod}=Props} = F, State) ->
+    case vmq_plugin:all_till_ok(on_auth, [Props]) of
+        {ok, OutProps} ->
+            %% TODOv5: what about the properties returned from
+            %% `on_auth`?
+            EnhancedAuth = #auth_data{method = AuthMethod},
+            check_connect(F, OutProps, State#state{enhanced_auth = EnhancedAuth});
+        {continue_auth, NewProperties} ->
+            EnhancedAuth = #auth_data{method = AuthMethod,
+                                      type = connect,
+                                      data = F},
+            Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
+                                properties = NewProperties},
+            {State#state{enhanced_auth = EnhancedAuth}, [Frame]};
+        {error, Reason} ->
+            %% TODOv5
+            throw({not_implemented, Reason})
+    end;
+check_enhanced_auth(F, State) ->
+    %% No enhanced authentication
+    check_connect(F, #{}, State).
+
+check_connect(#mqtt5_connect{proto_ver=Ver, clean_start=CleanStart} = F, OutProps, State) ->
     CCleanStart = unflag(CleanStart),
-    check_client_id(F, #{}, State#state{clean_session=CCleanStart, proto_ver=Ver}).
+    check_client_id(F, OutProps, State#state{clean_session=CCleanStart, proto_ver=Ver}).
 
 check_client_id(#mqtt5_connect{} = Frame,
-                AckProps,
+                OutProps,
                 #state{username={preauth, UserNameFromCert}} = State) ->
     check_client_id(Frame#mqtt5_connect{username=UserNameFromCert},
-                    AckProps,
+                    OutProps,
                     State#state{username=UserNameFromCert});
 
 check_client_id(#mqtt5_connect{client_id= <<>>, proto_ver=5} = F,
-                AckProps,
+                OutProps,
                 State) ->
     RandomClientId = random_client_id(),
     {MountPoint, _} = State#state.subscriber_id,
     SubscriberId = {MountPoint, RandomClientId},
     check_user(F#mqtt5_connect{client_id=RandomClientId},
-               AckProps#{p_assigned_client_id => RandomClientId},
+               OutProps#{p_assigned_client_id => RandomClientId},
                State#state{subscriber_id=SubscriberId});
 check_client_id(#mqtt5_connect{client_id=ClientId, proto_ver=V} = F,
-                AckProps,
+                OutProps,
                 #state{max_client_id_size=S} = State)
   when byte_size(ClientId) =< S ->
     {MountPoint, _} = State#state.subscriber_id,
     SubscriberId = {MountPoint, ClientId},
     case lists:member(V, ?ALLOWED_MQTT_VERSIONS) of
         true ->
-            check_user(F, AckProps, State#state{subscriber_id=SubscriberId});
+            check_user(F, OutProps, State#state{subscriber_id=SubscriberId});
         false ->
             lager:warning("invalid protocol version for ~p ~p",
                           [SubscriberId, V]),
             connack_terminate(?M5_UNSUPPORTED_PROTOCOL_VERSION, State)
     end;
-check_client_id(#mqtt5_connect{client_id=Id}, _AckProps, State) ->
+check_client_id(#mqtt5_connect{client_id=Id}, _OutProps, State) ->
     lager:warning("invalid client id ~p", [Id]),
     connack_terminate(?M5_CLIENT_IDENTIFIER_NOT_VALID, State).
 
-check_user(#mqtt5_connect{username=User, password=Password} = F,
-           AckProps,
+check_user(#mqtt5_connect{username=User, password=Password, properties=Properties} = F,
+           OutProps,
            State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, State) of
-                {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId,
-                                       cap_settings=CAPSettings} = NewState} ->
-                    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, QueueOpts) of
-                        {ok, SessionPresent, QPid} ->
-                            monitor(process, QPid),
-                            _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
-                                                             User]),
-                            check_will(F, SessionPresent, AckProps, NewState#state{username=User, queue_pid=QPid});
-                        {error, Reason} ->
-                            lager:warning("can't register client ~p with username ~p due to ~p",
-                                          [SubscriberId, User, Reason]),
-                            connack_terminate(?M5_SERVER_UNAVAILABLE, State)
-                    end;
+            case auth_on_register(User, Password, Properties, State) of
+                {ok, QueueOpts, NewState} ->
+                    register_subscriber(F, OutProps, QueueOpts, NewState);
                 {error, no_matching_hook_found} ->
                     lager:error("can't authenticate client ~p due to
                                 no_matching_hook_found", [State#state.subscriber_id]),
@@ -549,30 +594,35 @@ check_user(#mqtt5_connect{username=User, password=Password} = F,
                     connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
-            #state{peer=Peer, subscriber_id=SubscriberId,
-                   cap_settings=CAPSettings} = State,
-            case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, queue_opts(State, [])) of
-                {ok, SessionPresent, QPid} ->
-                    monitor(process, QPid),
-                    _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
-                    check_will(F, SessionPresent, AckProps, State#state{queue_pid=QPid, username=User});
-                {error, Reason} ->
-                    lager:warning("can't register client ~p due to reason ~p",
-                                [SubscriberId, Reason]),
-                    connack_terminate(?M5_SERVER_UNAVAILABLE, State)
-            end
+            register_subscriber(F, OutProps, queue_opts(State, []), State)
     end.
 
-check_will(#mqtt5_connect{lwt=undefined}, SessionPresent, AckProps, State) ->
-    AckProps0 = maybe_add_topic_alias_max(AckProps, State),
+register_subscriber(#mqtt5_connect{username=User}=F, OutProps,
+                    QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId,
+                                      cap_settings=CAPSettings} = State) ->
+    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, QueueOpts) of
+        {ok, SessionPresent, QPid} ->
+            monitor(process, QPid),
+            _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
+                                             User]),
+            check_will(F, SessionPresent, OutProps, State#state{queue_pid=QPid,username=User});
+        {error, Reason} ->
+            lager:warning("can't register client ~p with username ~p due to ~p",
+                          [SubscriberId, User, Reason]),
+            connack_terminate(?M5_SERVER_UNAVAILABLE, State)
+    end.
+
+
+check_will(#mqtt5_connect{lwt=undefined}, SessionPresent, OutProps, State) ->
+    OutProps0 = maybe_add_topic_alias_max(OutProps, State),
     {State, [#mqtt5_connack{session_present=SessionPresent,
                             reason_code=?M5_CONNACK_ACCEPT,
-                            properties=AckProps0}]};
+                            properties=OutProps0}]};
 check_will(#mqtt5_connect{
               lwt=#mqtt5_lwt{will_topic=Topic, will_msg=Payload, will_qos=Qos,
                              will_retain=IsRetain,will_properties=_Properties}},
            SessionPresent,
-           AckProps,
+           OutProps,
            State) ->
     #state{username=User, subscriber_id={MountPoint, _}=SubscriberId} = State,
     case maybe_apply_topic_alias(User, SubscriberId,
@@ -586,11 +636,11 @@ check_will(#mqtt5_connect{
                                  fun(Msg, _) -> {ok, Msg} end,
                                  State) of
         {ok, Msg, NewState} ->
-            AckProps0 = maybe_add_topic_alias_max(AckProps, State),
+            OutProps0 = maybe_add_topic_alias_max(OutProps, State),
             {NewState#state{will_msg=Msg},
              [#mqtt5_connack{session_present=SessionPresent,
                              reason_code=?M5_CONNACK_ACCEPT,
-                             properties=AckProps0}]};
+                             properties=OutProps0}]};
         {error, Reason} ->
             lager:warning("can't authenticate last will
                           for client ~p due to ~p", [SubscriberId, Reason]),
@@ -645,10 +695,10 @@ maybe_apply_topic_alias(User, SubscriberId, Msg,
 remove_property(p_topic_alias, #vmq_msg{properties = Properties} = Msg) ->
     Msg#vmq_msg{properties = maps:remove(p_topic_alias, Properties)}.
 
-auth_on_register(User, Password, State) ->
+auth_on_register(User, Password, Properties, State) ->
     #state{clean_session=Clean, peer=Peer, cap_settings=CAPSettings,
            subscriber_id=SubscriberId} = State,
-    HookArgs = [Peer, SubscriberId, User, Password, Clean],
+    HookArgs = [Peer, SubscriberId, User, Password, Clean, Properties],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
             {ok, queue_opts(State, []), State};
@@ -1120,7 +1170,9 @@ prop_val(Key, Args, Default) when is_integer(Default) ->
 prop_val(Key, Args, Default) when is_boolean(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_boolean/1);
 prop_val(Key, Args, Default) when is_atom(Default) ->
-    prop_val(Key, Args, Default, fun erlang:is_atom/1).
+    prop_val(Key, Args, Default, fun erlang:is_atom/1);
+prop_val(Key, Args, Default) when is_map(Default) ->
+    prop_val(Key, Args, Default, fun erlang:is_map/1).
 
 prop_val(Key, Args, Default, Validator) ->
     case proplists:get_value(Key, Args) of

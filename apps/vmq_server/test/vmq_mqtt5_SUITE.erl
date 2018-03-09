@@ -35,15 +35,22 @@ groups() ->
     [anon_success,
      empty_client_id,
      invalid_id,
-     session_take_over
+     session_take_over,
      %% uname_no_password_success,
      %% password_no_uname_success,
      %% uname_password_denied,
      %% uname_password_success,
-     %% change_subscriber_id
+     %% change_subscriber_id,
+     enhanced_authentication,
+     enhanced_auth_no_other_packets,
+     enhanced_auth_method_not_supported,
+     enhanced_auth_server_rejects,
+     enhanced_auth_same_auth_method,
+     reauthenticate,
+     reauthenticate_server_rejects
     ],
     [
-     {mqtt, [shuffle,sequence], ConnectTests}
+     {mqtt, [shuffle], ConnectTests}
     ].
 
 anon_success(_Config) ->
@@ -137,3 +144,105 @@ change_subscriber_id(_Config) ->
     %% TODO: should we be allowed to do this? If we should, should we
     %% then respond with the assigned_client_id property?
     throw(not_implemented).
+
+-define(AUTH_METHOD, <<"AuthMethod">>).
+
+enhanced_authentication(_Config) ->
+    %% If the Server requires additional information to complete the
+    %% authentication, it can send an AUTH packet to the Client. This
+    %% packet MUST contain a Reason Code of 0x18 (Continue
+    %% authentication) [MQTT-4.12.0- 2].
+
+    %% The Client responds to an AUTH packet from the Server by
+    %% sending a further AUTH packet. This packet MUST contain a
+    %% Reason Code of 0x18 (Continue authentication) [MQTT-4.12.0-3].
+
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_register, ?MODULE, auth_on_register_ok_hook, 6),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           on_auth, ?MODULE, on_auth_hook, 1),
+
+    ClientId = "client-enhanced-auth",
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
+                                              {properties, auth_props(?AUTH_METHOD,<<"Client1">>)}]),
+    AuthIn1 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(?AUTH_METHOD,<<"Server1">>)),
+    {ok, Socket} = packetv5:do_client_connect(Connect, AuthIn1, []),
+    AuthOut1 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(?AUTH_METHOD,<<"Client2">>)),
+    ok = gen_tcp:send(Socket, AuthOut1),
+    AuthIn2 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(?AUTH_METHOD,<<"Server2">>)),
+    ok = packetv5:expect_frame(Socket, AuthIn2),
+    AuthOut2 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(?AUTH_METHOD,<<"Client3">>)),
+    ok = gen_tcp:send(Socket, AuthOut2),
+    Connack = packetv5:gen_connack(0, ?M5_SUCCESS, auth_props(?AUTH_METHOD,<<"ServerFinal">>)),
+    ok = packetv5:expect_frame(Socket, Connack),
+    ok = gen_tcp:close(Socket),
+
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           on_auth, ?MODULE, on_auth_hook, 1),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_register, ?MODULE, auth_on_register_ok_hook, 6).
+
+enhanced_auth_no_other_packets(_Config) ->
+    %% If a Client sets an Authentication Method in the CONNECT, the
+    %% Client MUST NOT send any packets other than AUTH or DISCONNECT
+    %% packets until it has received a CONNACK packet [MQTT-3.1.2-30].
+    throw(not_implemented).
+
+
+enhanced_auth_method_not_supported(_Config) ->
+    %% If the Server does not support the Authentication Method
+    %% supplied by the Client, it MAY send a CONNACK with a Reason
+    %% Code of 0x8C (Bad authentication method) or 0x87 (Not
+    %% Authorized) as described in section 4.13 and MUST close the
+    %% Network Connection [MQTT-4.12.0-1].
+    throw(not_implemented).
+
+enhanced_auth_server_rejects(_Config) ->
+    %% The Server can reject the authentication at any point in this
+    %% process. It MAY send a CONNACK with a Reason Code of 0x80 or
+    %% above as described in section 4.13, and MUST close the Network
+    %% Connection [MQTT-4.12.0-4].
+    throw(not_implemented).
+
+enhanced_auth_same_auth_method(_Config) ->
+    %% If the initial CONNECT packet included an Authentication Method
+    %% property then all AUTH packets, and any successful CONNACK
+    %% packet MUST include an Authentication Method Property with the
+    %% same value as in the CONNECT packet [MQTT-4.12.0-5].
+    throw(not_implemented).
+
+reauthenticate(_Config) ->
+    %% If the Client supplied an Authentication Method in the CONNECT
+    %% packet it can initiate a re-authentication at any time after
+    %% receiving a CONNACK. It does this by sending an AUTH packet
+    %% with a Reason Code of 0x19 (Re-authentication). The Client MUST
+    %% set the Authentication Method to the same value as the
+    %% Authentication Method originally used to authenticate the
+    %% Network Connection [MQTT-4.12.1-1]
+    throw(not_implemented).
+
+reauthenticate_server_rejects(_Config) ->
+    %% If the re-authentication fails, the Client or Server SHOULD
+    %% send DISCONNECT with an appropriate Reason Code as described in
+    %% section 4.13, and MUST close the Network Connection
+    %% [MQTT-4.12.1-2].
+    throw(not_implemented).
+
+%%%%% Helpers %%%%%
+auth_props(Method, Data) ->
+    #{p_authentication_method => Method,
+      p_authentication_data => Data}.
+
+%%%%%% Hooks implementations %%%%%
+
+auth_on_register_ok_hook(_,_,_,_,_,_) ->
+    ok.
+
+on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client1">>}) ->
+    {continue_auth, #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server1">>}};
+on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client2">>}) ->
+    {continue_auth, #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server2">>}};
+on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client3">>}) ->
+    %% return ok which will trigger the connack being sent to the
+    %% client *or* an AUTH ok
+    {ok, #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"ServerFinal">>}}.
