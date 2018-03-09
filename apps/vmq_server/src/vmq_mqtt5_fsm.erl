@@ -556,8 +556,7 @@ check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthM
                                 properties = NewProperties},
             {pre_connect_auth, State#state{enhanced_auth = EnhancedAuth}, [Frame]};
         {error, Reason} ->
-            %% TODOv5
-            throw({not_implemented, Reason})
+            terminate(Reason, State)
     end;
 check_enhanced_auth(F, State) ->
     %% No enhanced authentication
@@ -1307,7 +1306,8 @@ get_info_items([], _, Acc) -> Acc.
 gen_disconnect(?NORMAL_DISCONNECT) -> gen_disconnect_(?M5_NORMAL_DISCONNECT);
 gen_disconnect(?SESSION_TAKEN_OVER) -> gen_disconnect_(?M5_SESSION_TAKEN_OVER);
 gen_disconnect(?ADMINISTRATIVE_ACTION) -> gen_disconnect_(?M5_ADMINISTRATIVE_ACTION);
-gen_disconnect(?DISCONNECT_KEEP_ALIVE) -> gen_disconnect_(?M5_KEEP_ALIVE_TIMEOUT).
+gen_disconnect(?DISCONNECT_KEEP_ALIVE) -> gen_disconnect_(?M5_KEEP_ALIVE_TIMEOUT);
+gen_disconnect(?BAD_AUTH_METHOD) -> gen_disconnect_(?M5_BAD_AUTHENTICATION_METHOD).
 
 gen_disconnect_(RC) ->
     #mqtt5_disconnect{reason_code = RC, properties = []}.
