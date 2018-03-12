@@ -275,7 +275,47 @@ reauthenticate(_Config) ->
     %% set the Authentication Method to the same value as the
     %% Authentication Method originally used to authenticate the
     %% Network Connection [MQTT-4.12.1-1]
-    throw(not_implemented).
+
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_register, ?MODULE, auth_on_register_ok_hook, 6),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           on_auth, ?MODULE, on_auth_hook, 1),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_publish, ?MODULE, auth_on_publish_after_reauth, 6),
+
+    ClientId = "client-enhanced-re-auth",
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
+                                              {properties, auth_props(?AUTH_METHOD,<<"Client1">>)}]),
+    AuthIn1 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(?AUTH_METHOD,<<"Server1">>)),
+    {ok, Socket} = packetv5:do_client_connect(Connect, AuthIn1, []),
+    AuthOut1 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(?AUTH_METHOD,<<"Client2">>)),
+    ok = gen_tcp:send(Socket, AuthOut1),
+    AuthIn2 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(?AUTH_METHOD,<<"Server2">>)),
+    ok = packetv5:expect_frame(Socket, AuthIn2),
+    AuthOut2 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(?AUTH_METHOD,<<"Client3">>)),
+    ok = gen_tcp:send(Socket, AuthOut2),
+    Connack = packetv5:gen_connack(0, ?M5_SUCCESS, auth_props(?AUTH_METHOD,<<"ServerFinal">>)),
+    ok = packetv5:expect_frame(Socket, Connack),
+
+    %% Now, let's try to reauthenticate (shorter flow)
+    ReAuthOut1 = packetv5:gen_auth(?M5_REAUTHENTICATE, auth_props(?AUTH_METHOD,<<"Reauth">>)),
+    ok = gen_tcp:send(Socket, ReAuthOut1),
+    ReAuthIn1 = packetv5:gen_auth(?M5_SUCCESS, auth_props(?AUTH_METHOD,<<"ReauthOK">>)),
+    ok = packetv5:expect_frame(Socket, ReAuthIn1),
+
+    %% trigger publish hook to check the new username
+    Publish = packetv5:gen_publish("some/topic", 1, <<"some payload">>, [{mid, 1}]),
+    ok = gen_tcp:send(Socket, Publish),
+    Puback = packetv5:gen_puback(1),
+    ok = packetv5:expect_frame(Socket, Puback),
+    ok = gen_tcp:close(Socket),
+
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_publish, ?MODULE, auth_on_publish_after_reauth, 6),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           on_auth, ?MODULE, on_auth_hook, 1),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_register, ?MODULE, auth_on_register_ok_hook, 6).
 
 reauthenticate_server_rejects(_Config) ->
     %% If the re-authentication fails, the Client or Server SHOULD
@@ -298,10 +338,20 @@ on_auth_bad_method_hook(#{p_authentication_method := _, p_authentication_data :=
     {error, bad_auth_method}.
 
 on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client1">>}) ->
-    {continue_auth, #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server1">>}};
+    {continue_auth, [{properties,
+                      #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server1">>}}]};
 on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client2">>}) ->
-    {continue_auth, #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server2">>}};
+    {continue_auth, [{properties,
+                      #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server2">>}}]};
 on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client3">>}) ->
     %% return ok which will trigger the connack being sent to the
     %% client *or* an AUTH ok
-    {ok, #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"ServerFinal">>}}.
+    {ok, [{properties, #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"ServerFinal">>}}]};
+on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Reauth">>}) ->
+    {ok, [{properties, #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"ReauthOK">>}},
+          {username, <<"newusername">>}]}.
+
+
+auth_on_publish_after_reauth(
+  <<"newusername">>, _, 1, [<<"some">>, <<"topic">>], <<"some payload">>, false) ->
+    ok.
