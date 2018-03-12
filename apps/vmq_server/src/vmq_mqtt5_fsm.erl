@@ -236,15 +236,17 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
                  #state{enhanced_auth = #auth_data{method = AuthMethod,
                                                    data = ConnectFrame}} = State) ->
     case vmq_plugin:all_till_ok(on_auth, [Props]) of
-        {ok, OutProps} ->
+        {ok, Modifiers} ->
             %% we're don with enhanced auth on connect.
             NewAuthData = #auth_data{method = AuthMethod},
+            OutProps = proplists:get_value(properties, Modifiers, #{}),
             check_connect(ConnectFrame, OutProps,
                           State#state{enhanced_auth = NewAuthData});
-        {continue_auth, NewProperties} ->
+        {continue_auth, Modifiers} ->
             %% TODOv5: filter / rename properties?
+            OutProps = proplists:get_value(properties, Modifiers, #{}),
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
-                                properties = NewProperties},
+                                properties = OutProps},
             {pre_connect_auth, State, [Frame]};
         {error, Reason} ->
             %% TODOv5
@@ -442,12 +444,20 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties =_P
 connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Props},
           #state{enhanced_auth = #auth_data{method = AuthMethod}} = State) ->
     case vmq_plugin:all_till_ok(on_auth, [Props]) of
-        {ok, OutProps} ->
-            throw({not_implemented, OutProps});
-        {continue_auth, NewProperties} ->
+        {ok, Modifiers} ->
+            OutProps = proplists:get_value(properties, Modifiers, #{}),
+            Frame = #mqtt5_auth{reason_code = ?M5_SUCCESS,
+                                properties = OutProps},
+            NewState =
+                State#state{
+                  username = proplists:get_value(username, Modifiers, State#state.username)
+                 },
+            {NewState, [Frame]};
+        {continue_auth, Modifiers} ->
+            OutProps = proplists:get_value(properties, Modifiers, #{}),
             %% TODOv5: filter / rename properties?
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
-                                properties = NewProperties},
+                                properties = OutProps},
             {State, [Frame]};
         {error, Reason} ->
             %% TODOv5
@@ -543,17 +553,19 @@ terminate(Reason, #state{clean_session=CleanSession} = State) ->
 
 check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthMethod}=Props} = F, State) ->
     case vmq_plugin:all_till_ok(on_auth, [Props]) of
-        {ok, OutProps} ->
+        {ok, Modifiers} ->
             %% TODOv5: what about the properties returned from
             %% `on_auth`?
+            OutProps = proplists:get_value(properties, Modifiers, #{}),
             EnhancedAuth = #auth_data{method = AuthMethod},
             check_connect(F, OutProps, State#state{enhanced_auth = EnhancedAuth});
-        {continue_auth, NewProperties} ->
+        {continue_auth, Modifiers} ->
             EnhancedAuth = #auth_data{method = AuthMethod,
                                       type = connect,
                                       data = F},
+            OutProps = proplists:get_value(properties, Modifiers, #{}),
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
-                                properties = NewProperties},
+                                properties = OutProps},
             {pre_connect_auth, State#state{enhanced_auth = EnhancedAuth}, [Frame]};
         {error, Reason} ->
             terminate(Reason, State)
