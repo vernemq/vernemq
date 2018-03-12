@@ -254,7 +254,7 @@ pre_connect_auth(#mqtt5_disconnect{}, State) ->
     %% TODOv5 add metric?
     terminate(mqtt_client_disconnect, State);
 pre_connect_auth(_, State) ->
-    terminate(?M5_PROTOCOL_ERROR, State).
+    terminate(?PROTOCOL_ERROR, State).
 
 
 -spec connected(mqtt5_frame(), state()) ->
@@ -1307,7 +1307,8 @@ gen_disconnect(?NORMAL_DISCONNECT) -> gen_disconnect_(?M5_NORMAL_DISCONNECT);
 gen_disconnect(?SESSION_TAKEN_OVER) -> gen_disconnect_(?M5_SESSION_TAKEN_OVER);
 gen_disconnect(?ADMINISTRATIVE_ACTION) -> gen_disconnect_(?M5_ADMINISTRATIVE_ACTION);
 gen_disconnect(?DISCONNECT_KEEP_ALIVE) -> gen_disconnect_(?M5_KEEP_ALIVE_TIMEOUT);
-gen_disconnect(?BAD_AUTH_METHOD) -> gen_disconnect_(?M5_BAD_AUTHENTICATION_METHOD).
+gen_disconnect(?BAD_AUTH_METHOD) -> gen_disconnect_(?M5_BAD_AUTHENTICATION_METHOD);
+gen_disconnect(?PROTOCOL_ERROR) -> gen_disconnect_(?M5_PROTOCOL_ERROR).
 
 gen_disconnect_(RC) ->
     #mqtt5_disconnect{reason_code = RC, properties = []}.

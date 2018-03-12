@@ -30,6 +30,8 @@
 -define(DISCONNECT_KEEP_ALIVE,    disconnect_keep_alive).
 -define(DISCONNECT_MIGRATION,     disconnect_migration).
 -define(BAD_AUTH_METHOD,          bad_auth_method).
+-define(PROTOCOL_ERROR,           protocol_error).
+
 
 -type disconnect_reasons() ::
         ?NORMAL_DISCONNECT |
@@ -37,4 +39,5 @@
         ?ADMINISTRATIVE_ACTION |
         ?DISCONNECT_KEEP_ALIVE |
         ?DISCONNECT_MIGRATION |
-        ?BAD_AUTH_METHOD.
+        ?BAD_AUTH_METHOD |
+        ?PROTOCOL_ERROR.

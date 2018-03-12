@@ -18,7 +18,7 @@ end_per_suite(_Config) ->
 
 init_per_testcase(_TestCase, Config) ->
     vmq_server_cmd:set_config(allow_anonymous, false),
-    vmq_server_cmd:set_config(max_client_id_size, 23),
+    vmq_server_cmd:set_config(max_client_id_size, 50),
     vmq_config:configure_node(),
     Config.
 
@@ -45,7 +45,7 @@ groups() ->
      enhanced_auth_no_other_packets,
      enhanced_auth_method_not_supported,
      enhanced_auth_server_rejects,
-     enhanced_auth_same_auth_method,
+     enhanced_auth_new_auth_method_fails,
      reauthenticate,
      reauthenticate_server_rejects
     ],
@@ -199,6 +199,8 @@ enhanced_auth_no_other_packets(_Config) ->
     {ok, Socket} = packetv5:do_client_connect(Connect, AuthIn1, []),
     Ping = packetv5:gen_pingreq(),
     ok = gen_tcp:send(Socket, Ping),
+    Disconnect = packetv5:gen_disconnect(?M5_PROTOCOL_ERROR, #{}),
+    ok = packetv5:expect_frame(Socket, Disconnect),
     {error, closed} = gen_tcp:recv(Socket, 0, 1000),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
@@ -238,12 +240,32 @@ enhanced_auth_server_rejects(_Config) ->
     %% Connection [MQTT-4.12.0-4].
     throw(not_implemented).
 
-enhanced_auth_same_auth_method(_Config) ->
+enhanced_auth_new_auth_method_fails(_Config) ->
     %% If the initial CONNECT packet included an Authentication Method
     %% property then all AUTH packets, and any successful CONNACK
     %% packet MUST include an Authentication Method Property with the
     %% same value as in the CONNECT packet [MQTT-4.12.0-5].
-    throw(not_implemented).
+
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_register, ?MODULE, auth_on_register_ok_hook, 6),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           on_auth, ?MODULE, on_auth_hook, 1),
+
+    ClientId = "client-enhanced-auth-wrong-method",
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
+                                              {properties, auth_props(?AUTH_METHOD,<<"Client1">>)}]),
+    AuthIn1 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(?AUTH_METHOD,<<"Server1">>)),
+    {ok, Socket} = packetv5:do_client_connect(Connect, AuthIn1, []),
+    AuthOut1 = packetv5:gen_auth(?M5_CONTINUE_AUTHENTICATION, auth_props(<<"WRONG AUTH METHOD">>,<<"Client2">>)),
+    ok = gen_tcp:send(Socket, AuthOut1),
+    Disconnect = packetv5:gen_disconnect(?M5_PROTOCOL_ERROR, #{}),
+    ok = packetv5:expect_frame(Socket, Disconnect),
+    {error, closed} = gen_tcp:recv(Socket, 0, 100),
+
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           on_auth, ?MODULE, on_auth_hook, 1),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_register, ?MODULE, auth_on_register_ok_hook, 6).
 
 reauthenticate(_Config) ->
     %% If the Client supplied an Authentication Method in the CONNECT
