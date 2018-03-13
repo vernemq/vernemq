@@ -58,8 +58,6 @@ groups() ->
          publish_b2c_timeout_qos2_test,
          publish_c2b_disconnect_qos2_test,
          publish_c2b_timeout_qos2_test,
-         shared_subscription_offline,
-         shared_subscription_online_first,
          pattern_matching_test
         ],
     [
@@ -73,7 +71,9 @@ groups() ->
                    not_allowed_publish_close_qos0_mqtt_3_1_1,
                    not_allowed_publish_close_qos1_mqtt_3_1_1,
                    not_allowed_publish_close_qos2_mqtt_3_1_1,
-                   message_size_exceeded_close
+                   message_size_exceeded_close,
+                   shared_subscription_offline,
+                   shared_subscription_online_first
                   ] ++  V4V5Tests },
      {mqttv5, [sequence],
       [message_expiry,
