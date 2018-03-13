@@ -77,7 +77,8 @@ groups() ->
                   ] ++  V4V5Tests },
      {mqttv5, [sequence],
       [message_expiry,
-       publish_c2b_topic_alias|
+       publish_c2b_topic_alias,
+       forward_properties|
        V4V5Tests]}
     ].
 
@@ -652,6 +653,72 @@ publish_c2b_topic_alias(_Config) ->
     disable_on_publish(),
     disable_on_subscribe(),
     ok.
+
+forward_properties(_Config) ->
+
+    enable_on_publish(),
+    enable_on_subscribe(),
+
+    Topic = "property/passthrough/test",
+
+    %% setup subscriber
+    SubConnect = packetv5:gen_connect("property-passthrough-sub-test", [{keepalive, 60}]),
+    SubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, SubSocket} = packetv5:do_client_connect(SubConnect, SubConnack, []),
+    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)], #{}),
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    SubAck = packetv5:gen_suback(77, [0], #{}),
+    ok = packetv5:expect_frame(SubSocket, SubAck),
+
+    %% setup publisher
+    Properties =
+        [
+         %% A Server MUST send the Payload Format Indicator unaltered to
+         %% all subscribers receiving the Application Message
+         %% [MQTT-3.3.2-4]
+         #{p_payload_format_indicator => utf8},
+         #{p_payload_format_indicator => unspecified},
+
+         %% The Server MUST send the Response Topic unaltered to all
+         %% subscribers receiving the Application Message
+         %% [MQTT-3.3.2-15].
+         #{p_response_topic => <<"response topic">>},
+
+         %% The Server MUST send the Correlation Data unaltered to all
+         %% subscribers receiving the Application Message
+         %% [MQTT-3.3.2-16].
+         #{p_correlation_data => <<"correlation data">>},
+
+         %% The Server MUST send all User Properties unaltered in a
+         %% PUBLISH packet when forwarding the Application Message to
+         %% a Client [MQTT-3.3.2-17]. The Server MUST maintain the
+         %% order of User Properties when forwarding the Application
+         %% Message [MQTT-3.3.2-18].
+         #{p_user_property => [{<<"k1">>, <<"v1">>},
+                               {<<"k2">>, <<"v2">>},
+                               {<<"k3">>, <<"v3">>},
+                               {<<"k2">>, <<"v4">>}]},
+
+         %% A Server MUST send the Content Type unaltered to all
+         %% subscribers receiving the Application Message
+         %% [MQTT-3.3.2-20].
+         #{p_content_type => <<"content type">>}],
+
+    PubConnect = packetv5:gen_connect("property-passthrough-pub-test", [{keepalive, 60}]),
+    PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
+
+    lists:foreach(
+      fun(Property) ->
+              ct:pal("Testing property: ~p", [Property]),
+              Pub = packetv5:gen_publish(Topic, 0, <<"message">>,
+                                         [{properties, Property}]),
+              ok = gen_tcp:send(PubSocket, Pub),
+              ok = packetv5:expect_frame(SubSocket, Pub)
+      end, Properties),
+
+    disable_on_publish(),
+    disable_on_subscribe().
 
 %% publish_c2b_invalid_topic_alias(Config) ->
 %%     vmq_server_cmd:set_config(topic_alias_max, 10),
