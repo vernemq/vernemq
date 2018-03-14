@@ -88,9 +88,9 @@ stop() ->
 -spec enable_plugin(atom()) -> ok | {error, _}.
 enable_plugin(Plugin) ->
     enable_plugin(Plugin, []).
--spec enable_plugin(atom(), [string()]) -> ok | {error, _}.
-enable_plugin(Plugin, Paths) when is_atom(Plugin) and is_list(Paths) ->
-    gen_server:call(?MODULE, {enable_plugin, Plugin, [{paths, Paths}]}, infinity).
+-spec enable_plugin(atom(), [any()]) -> ok | {error, _}.
+enable_plugin(Plugin, Opts) when is_atom(Plugin) and is_list(Opts) ->
+    gen_server:call(?MODULE, {enable_plugin, Plugin, Opts}, infinity).
 
 -spec enable_module_plugin(atom(), atom(), non_neg_integer()) ->
     ok | {error, _}.
@@ -188,9 +188,9 @@ handle_call(Call, _From, #state{ready=true} = State) ->
 handle_call(Call, From, #state{deferred_calls=DeferredCalls} = State) ->
     {noreply, State#state{deferred_calls=[{Call, From}|DeferredCalls]}}.
 
-handle_plugin_call({enable_plugin, Plugin, Paths}, State) ->
+handle_plugin_call({enable_plugin, Plugin, Opts}, State) ->
     case enable_plugin_generic(
-           {application, Plugin, Paths}, State) of
+           {application, Plugin, Opts}, State) of
                 {ok, NewState} ->
             {reply, ok, NewState};
         {error, _} = E ->
@@ -539,10 +539,10 @@ disable_app_module_plugins(App, State) ->
                 HookModules).
 
 check_app_plugin(App, Options) ->
-    AppPaths = proplists:get_value(paths, Options, []),
-    case create_paths(App, AppPaths) of
+    Path = proplists:get_value(path, Options, undefined),
+    case create_paths(App, Path) of
         [] ->
-            lager:debug("can't create paths ~p for app ~p", [AppPaths, App]),
+            lager:debug("can't create paths for app ~p (path: ~p)", [App, Path]),
             {error, plugin_not_found};
         Paths ->
             code:add_pathsa(Paths),
@@ -587,17 +587,17 @@ common_elems(L1, L2) ->
     S1=sets:from_list(L1), S2=sets:from_list(L2),
     sets:to_list(sets:intersection(S1,S2)).
 
-create_paths(App, []) ->
+create_paths(App, undefined) ->
     case application:load(App) of
         ok ->
-            create_paths(App, [code:lib_dir(App)]);
+            create_paths(code:lib_dir(App));
         {error, {already_loaded, App}} ->
-            create_paths(App, [code:lib_dir(App)]);
+            create_paths(code:lib_dir(App));
         _ ->
             []
     end;
-create_paths(_, Paths) ->
-    lists:flatmap(fun(Path) -> create_paths(Path) end, Paths).
+create_paths(_, Path) ->
+    create_paths(Path).
 
 create_paths(Path) ->
     case filelib:is_dir(Path) of

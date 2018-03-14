@@ -143,14 +143,14 @@ vmq_plugin_enable_cmd() ->
     FlagSpecs = vmq_plugin_flag_specs(),
     Callback =
     fun(_, [], Flags) ->
-            Path =
+            Opts =
             case lists:keyfind(path, 1, Flags) of
                 false -> [];
-                {_, P} -> [P]
+                {_, P} -> [{path, P}]
             end,
             case lists:keyfind(name, 1, Flags) of
                 {_, Name} ->
-                    case vmq_plugin_mgr:enable_plugin(Name, Path) of
+                    case vmq_plugin_mgr:enable_plugin(Name, Opts) of
                         ok ->
                             [clique_status:text("Done")];
                         {error, Reason} ->
