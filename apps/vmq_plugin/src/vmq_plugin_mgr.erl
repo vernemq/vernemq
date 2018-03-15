@@ -67,6 +67,20 @@
                    atom(),
                    non_neg_integer()}.
 
+-record(hook, {
+          name        :: atom(),
+          module      :: module(),
+          function    :: atom(),
+          arity       :: non_neg_integer(),
+          compatmod   :: module() | undefined,
+          compatfun   :: atom() | undefined,
+          opts        :: [any()]
+         }).
+
+-type raw_hook() :: {atom(), module(), atom(), non_neg_integer()}.
+
+-type hook() :: #hook{}.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -315,10 +329,11 @@ get_new_hooks({application, Name, Opts}, OldPlugins) ->
         false -> {application, Name, Opts}
     end.
 
-plugins_have_hook(Hook, OldPlugins) ->
+plugins_have_hook({Name, Module, Fun, Arity}, OldPlugins) ->
     lists:any(
-      fun({H,M,F,A,_}) ->
-              {H,M,F,A} =:= Hook
+      fun(#hook{name = H, module = M,
+                function = F, arity = A}) ->
+              {H,M,F,A} =:= {Name, Module, Fun, Arity}
       end,
       extract_hooks(OldPlugins)).
 
@@ -658,6 +673,7 @@ check_app_hooks(App, [{_HookName, Module, Fun, Arity, Opts}|Rest])
     end;
 check_app_hooks(_, []) -> hooks_ok.
 
+-spec extract_hooks([any()]) -> [hook()].
 extract_hooks(CheckedPlugins) ->
     extract_hooks(CheckedPlugins, []).
 
@@ -677,25 +693,28 @@ extract_hooks([{application, _Name, Options}|Rest], Acc) ->
 
 extract_app_hooks([], Acc) -> Acc;
 extract_app_hooks([{Mod, Fun, Arity}|Rest], Acc) ->
-    extract_app_hooks(Rest, [{Fun, Mod, Fun, Arity, []}|Acc]);
+    extract_app_hooks(Rest, [#hook{name = Fun, module = Mod, function = Fun, arity = Arity, opts = []}|Acc]);
 extract_app_hooks([{Mod, Fun, Arity, Opts}|Rest], Acc) when is_list(Opts) ->
-    extract_app_hooks(Rest, [{Fun, Mod, Fun, Arity, Opts}|Acc]);
-extract_app_hooks([{H,M,F,A}|Rest], Acc) ->
-    extract_app_hooks([{H,M,F,A,[]}|Rest], Acc);
-extract_app_hooks([{H,M,F,A, Opts}|Rest], Acc) ->
-    extract_app_hooks(Rest, [{H,M,F,A, Opts}|Acc]).
+    extract_app_hooks(Rest, [#hook{name = Fun, module = Mod, function = Fun, arity = Arity, opts = Opts}|Acc]);
+extract_app_hooks([{Name, Mod, Fun, Arity}|Rest], Acc) ->
+    extract_app_hooks(Rest, [#hook{name = Name, module = Mod, function = Fun, arity = Arity, opts = []}|Acc]);
+extract_app_hooks([{Name, Mod, Fun, Arity, Opts}|Rest], Acc) ->
+    extract_app_hooks(Rest, [#hook{name = Name, module = Mod, function = Fun, arity = Arity, opts = Opts}|Acc]).
 
 extract_module_hooks(_, [], Acc) ->
     Acc;
-extract_module_hooks(ModName, [{HookName, Fun, Arity}|Rest], Acc) ->
-    extract_module_hooks(ModName, Rest, [{HookName, ModName, Fun, Arity, []}|Acc]);
+extract_module_hooks(ModName, [{Name, Fun, Arity}|Rest], Acc) ->
+    extract_module_hooks(ModName, Rest,
+                         [#hook{name = Name, module = ModName, function = Fun, arity = Arity, opts = []}|Acc]);
 extract_module_hooks(ModName, [{Fun, Arity}|Rest], Acc) ->
-    extract_module_hooks(ModName, Rest, [{Fun, ModName, Fun, Arity, []}|Acc]).
+    extract_module_hooks(ModName, Rest,
+                         [#hook{name = Fun, module = ModName, function = Fun, arity = Arity, opts = []}|Acc]).
 
 compile_hooks(CheckedPlugins) ->
     RawPlugins = extract_hooks(CheckedPlugins),
-    Hooks = [{H,M,F,A} || {H,M,F,A,_} <-
-                              lists:keysort(1, lists:flatten(RawPlugins))],
+    Hooks = lists:sort(fun(#hook{name = LName}, #hook{name = RName}) ->
+                               LName =< RName
+                       end, lists:flatten(RawPlugins)),
     M1 = smerl:new(vmq_plugin),
     {OnlyClauses, OnlyInfo} = only_clauses(1, Hooks, {nil, nil}, [], []),
     {ok, M2} = smerl:add_func(M1, {function, 1, only, 2, OnlyClauses}),
@@ -719,20 +738,21 @@ info_only_clause(Hooks) ->
     {clause, 1,
      [{atom, 1, only}],
      [],
-     [list_const(true, Hooks)]
+     [list_const(true, embed_hooks(Hooks))]
     }.
 info_all_clause(Hooks) ->
     {clause, 2,
      [{atom, 1, all}],
      [],
-     [list_const(true, Hooks)]
+     [list_const(true, embed_hooks(Hooks))]
     }.
 
-only_clauses(I, [{Name, _, _, Arity} | Rest], {Name, Arity} = Last, Acc, Info) ->
+only_clauses(I, [#hook{name = Name, arity = Arity} | Rest], {Name, Arity} = Last, Acc, Info) ->
     %% we already serve this only-clause
     %% see head of Acc
     only_clauses(I, Rest, Last, Acc, Info);
-only_clauses(I, [{Name, Module, Fun, Arity} = Hook | Rest], _, Acc, Info) ->
+only_clauses(I, [#hook{name = Name, module = Module,
+                       function = Fun, arity = Arity} = Hook | Rest], _, Acc, Info) ->
     Clause =
     clause(I, Name, Arity,
            [{call, 1, {atom, 1, apply},
@@ -751,8 +771,8 @@ not_found_clause(I) ->
      [{tuple, 1, [{atom, 1, error}, {atom, 1, no_matching_hook_found}]}]
     }.
 
-all_clauses(I, [{Name, _, _, Arity} = Hook |Rest], Acc, Info) ->
-    Hooks = [H || {N, _, _, A} = H <- Rest,
+all_clauses(I, [#hook{name = Name, arity = Arity} = Hook |Rest], Acc, Info) ->
+    Hooks = [H || #hook{name = N, arity = A} = H <- Rest,
                   (N == Name) and (A == Arity)],
     Clause =
     clause(I, Name, Arity,
@@ -760,7 +780,7 @@ all_clauses(I, [{Name, _, _, Arity} = Hook |Rest], Acc, Info) ->
              [{atom, 1, vmq_plugin_helper},
               {atom, 1, all},
               {cons, 1,
-               list_const(false, [Hook|Hooks]),
+               list_const(false, embed_hooks([Hook|Hooks])),
                {cons, 1,
                 {var, 1, 'Params'},
                 {nil, 1}}}]
@@ -769,9 +789,8 @@ all_clauses(I, [{Name, _, _, Arity} = Hook |Rest], Acc, Info) ->
 all_clauses(I, [], Acc, Info) ->
     {lists:reverse([not_found_clause(I) | Acc]), Info}.
 
-
-all_till_ok_clauses(I, [{Name, _, _, Arity} = Hook |Rest], Acc) ->
-    Hooks = [H || {N, _, _, A} = H <- Rest,
+all_till_ok_clauses(I, [#hook{name = Name, arity = Arity} = Hook |Rest], Acc) ->
+    Hooks = [H || #hook{name = N, arity = A} = H <- Rest,
                   (N == Name) and (A == Arity)],
     Clause =
     clause(I, Name, Arity,
@@ -779,7 +798,7 @@ all_till_ok_clauses(I, [{Name, _, _, Arity} = Hook |Rest], Acc) ->
              [{atom, 1, vmq_plugin_helper},
               {atom, 1, all_till_ok},
               {cons, 1,
-               list_const(false, [Hook|Hooks]),
+               list_const(false, embed_hooks([Hook|Hooks])),
                {cons, 1,
                 {var, 1, 'Params'},
                 {nil, 1}}}]
@@ -828,6 +847,14 @@ list_const(true, [{Name, Module, Fun, Arity}|Rest]) ->
        {atom, 1, Fun},
        {integer, 1, Arity}]
      }, list_const(true, Rest)}.
+
+-spec embed_hooks([hook()]) -> [raw_hook()].
+embed_hooks(Hooks) ->
+    lists:map(
+      fun(#hook{name = N, module = M,
+                function = F, arity = A}) ->
+              {N, M, F, A}
+      end, Hooks).
 
 -ifdef(TEST).
 %%%===================================================================
