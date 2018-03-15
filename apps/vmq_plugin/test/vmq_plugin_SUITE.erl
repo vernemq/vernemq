@@ -14,7 +14,9 @@ all() ->
      module_plugin_function_does_not_exist,
      app_plugin_mod_does_not_exist,
      app_plugin_function_does_not_exist,
-     cannot_load_plugin_with_existing_mod].
+     cannot_load_plugin_with_existing_mod,
+     plugin_with_compat_hooks
+    ].
 
 init_per_suite(Config) ->
     application:ensure_all_started(lager),
@@ -61,7 +63,7 @@ cannot_enable_duplicate_module_plugin(_Config) ->
     %% Enabling a module twice does not throw an error.
     ok = vmq_plugin_mgr:enable_module_plugin(hookname, ?MODULE, sample_hook_function, 0),
     %% but it does not get written to the config file again.
-    {ok, [{module, ?MODULE, [{hooks, [{hookname, sample_hook_function, 0}]}]}]} =
+    {ok, [{module, ?MODULE, [{hooks, [{hook, hookname, ?MODULE, sample_hook_function, 0, undefined, []}]}]}]} =
         vmq_plugin_mgr:get_plugins().
 
 cannot_enable_duplicate_app_plugin(_Config) ->
@@ -99,6 +101,20 @@ cannot_load_plugin_with_existing_mod(_Config) ->
         = vmq_plugin_mgr:enable_plugin(app_conflicting_mod,
                                        [{path, code:lib_dir(vmq_plugin)
                                          ++ "/test/app_conflicting_mod"}]).
+
+plugin_with_compat_hooks(_Config) ->
+    {ok, _} = application:ensure_all_started(vmq_plugin),
+    Hooks =
+        [{sample_hook_name_v0, test_compat_mod, sample_hook_v0, 2}],
+    application:set_env(vmq_plugin, vmq_plugin_hooks, Hooks),
+    ok = vmq_plugin_mgr:enable_plugin(vmq_plugin, [{path, code:lib_dir(vmq_plugin)},
+                                                   {compat, {sample_hook_name_v1,
+                                                             test_compat_mod,
+                                                             sample_hook_v1_to_v0,
+                                                             3}}]),
+    {ok, {1,2,3}} = vmq_plugin:all_till_ok(sample_hook_name_v1, [1,2,3]),
+    [{ok, {1,2,3}}] = vmq_plugin:all(sample_hook_name_v1, [1,2,3]),
+    {ok, {1,2,3}} = vmq_plugin:only(sample_hook_name_v1, [1,2,3]).
 
 sample_hook_function() ->
     ok.
