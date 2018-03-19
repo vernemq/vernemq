@@ -2,6 +2,12 @@
 
 ## Not yet released (VerneMQ 1.4.0)
 
+- Add a first version of a VerneMQ status page showing node and cluster
+  information. This web-page is by default available on
+  http://localhost:8888/status. The status page is implemented using jQuery,
+  Twitter Bootstrap und mustache.js. As this is the first version the page
+  should be considered experimental and will likely be changed in future
+  releases.
 - Bugfix: Handle return values correctly when enqueuing messages to offline
   shared subscribers (#625).
 - Bugfix: Fix issue preventing messages delivered to a subscriber group from

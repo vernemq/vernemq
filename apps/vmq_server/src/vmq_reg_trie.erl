@@ -86,6 +86,7 @@ fold__(_, Acc, []) -> Acc.
 
 stats() ->
     NrOfSubs = info(vmq_trie_subs, size),
+    NrOfRemoteSubs = info(vmq_trie_remote_subs, size),
     Mem1 = info(vmq_trie_subs, memory),
     Mem2 = info(vmq_trie_topic, memory),
     Mem3 = info(vmq_trie, memory),
@@ -93,7 +94,7 @@ stats() ->
     Mem5 = info(vmq_trie_remote_subs, memory),
     Memory = Mem1 + Mem2 + Mem3 + Mem4 + Mem5,
     WordSize = erlang:system_info(wordsize),
-    {NrOfSubs, Memory*WordSize}.
+    {NrOfSubs + NrOfRemoteSubs, Memory*WordSize}.
 
 info(T, What) ->
     case ets:info(T, What) of
