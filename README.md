@@ -50,6 +50,7 @@ following features are implemented and delivered as part of VerneMQ:
 * Administration HTTP API (BETA)
 * Real-time MQTT session tracing
 * Full multitenancy
+* Cluster status web page
 
 ## Commercial Support. Binary Packages. Documentation
 
@@ -87,6 +88,12 @@ commands:
 $ cd $VERNEMQ/_build/default/rel/vernemq
 $ bin/vernemq start
 ```
+
+If VerneMQ is running it is possible to check the status on
+`http://localhost:8888/status` and it should look something like:
+
+
+<img src="https://i.imgur.com/NAFZml1.png" width="75%">
 
 Note that the `$VERNEMQ/_build/default/rel/vernemq` directory is a complete, 
 self-contained instance of VerneMQ and Erlang. It is strongly suggested that you

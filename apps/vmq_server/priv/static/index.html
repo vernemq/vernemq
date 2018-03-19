@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link rel="icon" href="status/favicon.ico">
+
+    <title>VerneMQ Status</title>
+
+    <!-- Bootstrap core CSS -->
+    <link href="status/css/bootstrap.min.css" rel="stylesheet">
+
+  </head>
+
+  <body>
+
+      <div class="container">
+      <nav class="navbar navbar-expand-lg navbar-light justify-content-between">
+          <a class="navbar-brand" href="#">
+              <img src="status/img/logo.jpg" height="60" alt="">
+          </a>
+          <div>
+          <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
+              <span class="navbar-toggler-icon"></span>
+          </button>
+          <div class="collapse navbar-collapse" id="navbarNavAltMarkup">
+              <div class="navbar-nav">
+              <a class="p-2 text-dark" target="_blank" href="https://vernemq.com/docs">Docs</a>
+              <a class="p-2 text-dark" target="_blank" href="https://vernemq.com/contact.html">Support</a>
+              <a class="p-2 text-dark" target="_blank" href="https://github.com/erlio/vernemq">Github</a>
+              <a class="p-2 text-dark" target="_blank" href="https://twitter.com/vernemq">Twitter</a>
+              <a class="p-2 text-dark" target="_blank" href="https://slack-invite.vernemq.com/">Slack</a>
+              </div>
+          </div>
+          </div>
+      </nav>
+      </div>
+      <!--
+      <div class="d-flex flex-column flex-md-row align-items-center p-3 px-md-4 mb-3 bg-white ">
+          <h5 class="my-0 mr-md-auto font-weight-normal">VerneMQ Status</h5>
+          <nav class="my-2 my-md-0 mr-md-3">
+          </nav>
+      </div>
+      -->
+      <div id="node_list"></div>
+          <script id="node_list_template" type="x-tmpl-mustache">
+<div class="container">
+    <div class="row mt-5">
+        <div class="col-12">
+
+        {{#cluster_issues.length}}
+        <h2>Issues</h2>
+        <table class="table table-striped table-bordered bg-light">
+            <thead>
+                <tr>
+                   <th scope="col">Type</th>
+                   <th scope="col">Node</th>
+                   <th scope="col">Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{#cluster_issues}}
+                <tr>
+                    <td><span class="badge badge-{{type}}">{{type}}</span></td>
+                    <td><strong>{{node}}</strong></td>
+                    <td>{{{message}}}</td>
+                </tr>
+                {{/cluster_issues}}
+            </tbody>
+        </table>
+        {{/cluster_issues.length}}
+        {{^cluster_issues.length}}
+        <div class="alert alert-success" role="alert">
+        <strong>All good! No cluster issues found!</strong>
+        </div>
+        {{/cluster_issues.length}}
+        </div>
+    </div>
+    <div class="row mt-5">
+        <div class="col-12">
+
+        <h2>Cluster Overview</h2>
+        <table class="table table-striped table-bordered bg-light">
+            <thead>
+                <tr>
+                   <th scope="col">Cluster Size</th>
+                   <th scope="col">Clients online</th>
+                   <th scope="col">Clients offline</th>
+                   <th scope="col">Connect / Sec</th>
+                   <th scope="col">Publish In / Sec</th>
+                   <th scope="col">Publish Out / Sec</th>
+                   <th scope="col">Msg Drop / Sec</th>
+                   <th scope="col">Msg Queued</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>{{cluster_size}}</td>
+                    <td>{{total.clients_online}}</td>
+                    <td>{{total.clients_offline}}</td>
+                    <td>{{total.connect_rate}}</td>
+                    <td>{{total.msg_in_rate}}</td>
+                    <td>{{total.msg_out_rate}}</td>
+                    <td>{{total.msg_drop_rate}}</td>
+                    <td>{{total.msg_queued}}</td>
+                </tr>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <div class="row mt-5">
+        <div class="col-12">
+
+        <h2>Node Status</h2>
+        <table class="table table-striped table-bordered bg-white">
+            <thead>
+                <tr>
+                   <th scope="col">Node</th>
+                   <th scope="col">Reachable peers</th>
+                   <th scope="col">Clients online</th>
+                   <th scope="col">Clients offline</th>
+                   <th scope="col">Connect / Sec</th>
+                   <th scope="col">Publish In / Sec</th>
+                   <th scope="col">Publish Out / Sec</th>
+                   <th scope="col">Msg Drop / Sec</th>
+                   <th scope="col">Msg Queued</th>
+                   <th scope="col">Subscriptions</th>
+                   <th scope="col">Retained</th>
+                   <th scope="col">Protocols</th>
+                   <th scope="col">Version</th>
+                </tr>
+            </thead>
+            <tbody>
+            {{#nodes}}
+                <tr>
+                    <th>{{node}}</th>
+                    <td>
+                        {{#cluster_view.not_ready}}
+                        <span class="badge badge-warning">{{cluster_view.ready.length}} of {{cluster_view.num_nodes}}</span>
+                        {{/cluster_view.not_ready}}
+                        {{^cluster_view.not_ready}}
+                        <span class="badge badge-success">{{cluster_view.ready.length}} of {{cluster_view.num_nodes}}</span>
+                        {{/cluster_view.not_ready}}
+
+                    </td>
+                    <td>{{clients_online}}</td>
+                    <td>{{clients_offline}}</td>
+                    <td>{{connect_rate}}</td>
+                    <td>{{msg_in_rate}}</td>
+                    <td>{{msg_out_rate}}</td>
+                    <td>{{msg_drop_rate}}</td>
+                    <td>{{msg_queued}}</td>
+                    <td>{{subscriptions}}</td>
+                    <td>{{retained}}</td>
+                    <td>
+                    {{#listeners}}
+                        <span class="badge badge-primary">{{.}}</span>
+                    {{/listeners}}
+                    {{^listeners}}
+                        <span class="badge badge-warning">No MQTT listener</span>
+                    {{/listeners}}
+                    </td>
+                    <td><span class="badge badge-secondary">{{version}}</span></td>
+                </tr>
+            {{/nodes}}
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+          </script>
+      </div>
+
+
+    <!-- Bootstrap core JavaScript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="status/js/jquery-3.2.1.min.js"></script>
+    <script src="status/js/bootstrap.min.js"></script>
+    <script src="status/js/mustache.min.js"></script>
+    <script src="status/js/status.js"></script>
+  </body>
+</html>
+
