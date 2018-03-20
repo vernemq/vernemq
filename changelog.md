@@ -1,6 +1,6 @@
 # Changelog
 
-## Not yet released (VerneMQ 1.4.0)
+## VerneMQ 1.3.1
 
 - Bugfix: Handle return values correctly when enqueuing messages to offline
   shared subscribers (#625).
