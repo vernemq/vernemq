@@ -331,7 +331,9 @@ on_client_gone(SubscriberId) ->
 %%%===================================================================
 
 maybe_start_pool(Endpoint) ->
-    ok = hackney_pool:start_pool(Endpoint, [{timeout, 60000}, {max_connections, 100}]).
+    {ok, PoolTimeout} = application:get_env(vmq_webhooks, pool_timeout),
+    {ok, PoolMaxConn} = application:get_env(vmq_webhooks, pool_max_connections),
+    ok = hackney_pool:start_pool(Endpoint, [{timeout, PoolTimeout}, {max_connections, PoolMaxConn}]).
 
 maybe_stop_pool(Endpoint) ->
     InUse = lists:filter(fun({_, Endpoints}) ->

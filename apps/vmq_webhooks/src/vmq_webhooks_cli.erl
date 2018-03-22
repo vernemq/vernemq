@@ -17,11 +17,22 @@
 -behaviour(clique_handler).
 
 register_cli() ->
+    register_config(),
     register_cli_usage(),
     status_cmd(),
     register_cmd(),
     cache_stats_cmd(),
     deregister_cmd().
+
+register_config() ->
+    ConfigKeys =
+    ["vmq_webhooks.pool_max_connections", "vmq_webhooks.pool_timeout"],
+    [clique:register_config([Key], fun register_config_callback/3)
+     || Key <- ConfigKeys],
+    ok = clique:register_config_whitelist(ConfigKeys).
+
+register_config_callback(_, _, _) ->
+    ok.
 
 cache_stats_cmd() ->
     Cmd = ["vmq-admin", "webhooks", "cache", "show"],

@@ -83,3 +83,16 @@
  [{datatype, string},
   hidden,
   {default, "    webhooks    Manage webhooks\n"}]}.
+
+%% @doc Configure the maximum number of HTTP connections maintained in the webhooks pool.
+{mapping, "vmq_webhooks.pool_max_connections", "vmq_webhooks.pool_max_connections",
+ [{datatype, integer},
+  hidden,
+  {default, 100}]}.
+
+%% @doc Configure the timeout that we keep the connection alive in the 
+%% webhooks connection pool, expressed in milliseconds. 
+{mapping, "vmq_webhooks.pool_timeout", "vmq_webhooks.pool_timeout",
+ [{datatype, integer},
+  hidden,
+  {default, 60000}]}.
