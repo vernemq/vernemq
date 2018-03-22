@@ -2,6 +2,12 @@
 
 ## Not yet released (VerneMQ 1.4.0)
 
+- Added two new hidden configuration parameters for `vmq_webhooks`. `vmq_webhooks` uses
+  the [hackney HTTP client](https://github.com/benoitc/hackney) for HTTP requests.
+  It starts its own hackney pool with a default connection pool of 100, and a
+  connection timeout of 60000 milliseconds. This connection pool con now be
+  configurable using the settings `vmq_webhooks.pool_max_connections` and
+  `vmq_webhooks.pool_timeout` (#621).
 - Add a first version of a VerneMQ status page showing node and cluster
   information. This web-page is by default available on
   http://localhost:8888/status. The status page is implemented using jQuery,

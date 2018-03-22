@@ -16,7 +16,10 @@
     jsx,
     hackney
    ]},
-  {env,[]},
+  {env,[
+    {pool_max_connections, 100},
+    {pool_timeout, 60000}
+  ]},
   {modules, []},
 
   {maintainers, []},
