@@ -454,7 +454,7 @@ join_usage() ->
 
 leave_usage() ->
     ["vmq-admin cluster leave node=<Node> [-k | --kill_sessions]\n\n",
-     "  Graceful cluster-leave and shudown of a cluster node. \n\n",
+     "  Graceful cluster-leave and shutdown of a cluster node. \n\n",
      "  If <Node> is already offline its cluster membership gets removed,\n",
      "  and the queues of the subscribers that have been connected at shutdown\n",
      "  will be recreated on other cluster nodes. This might involve\n",
@@ -462,7 +462,7 @@ leave_usage() ->
      "  \n",
      "  If <Node> is still online all its MQTT listeners (including websockets)\n",
      "  are stopped and wont therefore accept new connections. Established\n",
-     "  connections aren't canceled at this point. Use --kill_sessions to get\n",
+     "  connections aren't cancelled at this point. Use --kill_sessions to get\n",
      "  into the second phase of the graceful shutdown.\n",
      "  \n",
      "   --kill_sessions, -k,\n",
@@ -472,7 +472,7 @@ leave_usage() ->
      "       logs the status of an ongoing migration every <IntervalInSecs>\n",
      "       seconds, defaults to 5 seconds.\n",
      "   --timeout=<TimeoutInSecs>, -t\n",
-     "       stops the migration process afer <TimeoutInSecs> seconds, defaults\n",
+     "       stops the migration process after <TimeoutInSecs> seconds, defaults\n",
      "       to 60 seconds. The command can be reissued in case of a timeout.",
      "\n\n"
     ].

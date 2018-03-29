@@ -2,6 +2,7 @@
 
 ## Not yet released (VerneMQ 1.4.0)
 
+- Corrected a few spelling errors in the `vmq-admin` help commands.
 - Added two new hidden configuration parameters for `vmq_webhooks`. `vmq_webhooks` uses
   the [hackney HTTP client](https://github.com/benoitc/hackney) for HTTP requests.
   It starts its own hackney pool with a default connection pool of 100, and a
