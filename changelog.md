@@ -2,6 +2,14 @@
 
 ## Not yet released (VerneMQ 1.4.0)
 
+- Small refactoring moving the calling of plugin hooks into the fsm code. This
+  is a preparation for MQTTv5. Note, this change has an impact on the
+  `vmq_reg:direct_plugin_exports/1` function. Even though this function is
+  internal and as such not guaranteed to be stable, we know some plugin
+  developers use it and we therefore wanted to describe the changes. It works as
+  before, **except** that the hooks `auth_on_subscribe`, `on_subscribe` or
+  `on_unsuscribe` hooks will no longer be called when using the exported
+  functions.
 - Corrected a few spelling errors in the `vmq-admin` help commands.
 - Added two new hidden configuration parameters for `vmq_webhooks`. `vmq_webhooks` uses
   the [hackney HTTP client](https://github.com/benoitc/hackney) for HTTP requests.

@@ -70,7 +70,7 @@ queue_crash_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
     {ok, false, QPid1} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
-    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId,
                                   [{[<<"test">>, <<"topic">>], 1}]),
     %% at this point we've a working subscription
     timer:sleep(10),
@@ -108,7 +108,7 @@ queue_fifo_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
     {ok, false, QPid} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
-    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId,
                            [{[<<"test">>, <<"fifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
@@ -129,7 +129,7 @@ queue_lifo_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
     {ok, false, QPid} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
-    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"lifo">>, <<"topic">>], 1}]),
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"lifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
     timer:sleep(10),
@@ -150,7 +150,7 @@ queue_fifo_offline_drop_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
     {ok, false, QPid} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
-    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"fifo">>, <<"topic">>], 1}]),
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"fifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
     timer:sleep(10),
@@ -174,7 +174,7 @@ queue_lifo_offline_drop_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
     {ok, false, QPid} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
-    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId,
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId,
                            [{[<<"test">>, <<"lifo">>, <<"topic">>], 1}]),
     %% teardown session
     SessionPid1 ! go_down,
@@ -198,7 +198,7 @@ queue_offline_transition_test(_) ->
                                                        queue_type => fifo}),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
     {ok, false, QPid} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
-    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
     timer:sleep(10), % give some time to plumtree
 
     %% teardown session
@@ -221,7 +221,7 @@ queue_persistent_client_expiration_test(_) ->
                                                        queue_type => fifo}),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
     {ok, false, QPid} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
-    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
     timer:sleep(50), % give some time to plumtree
 
     %% teardown session
@@ -248,7 +248,7 @@ queue_force_disconnect_test(_) ->
                                                        queue_type => fifo}),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
     {ok, false, QPid0} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, QueueOpts, 10),
-    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"disconnect">>], 1}]),
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"disconnect">>], 1}]),
     timer:sleep(50), % give some time to plumtree
 
     monitor(process, SessionPid1),
@@ -271,7 +271,7 @@ queue_force_disconnect_cleanup_test(_) ->
                                                        queue_type => fifo}),
     SessionPresent = false,
     {ok, SessionPresent, QPid0} = vmq_reg:register_subscriber(NonConsumingSessionPid, SubscriberId, QueueOpts, 10),
-    {ok, [1]} = vmq_reg:subscribe(false, <<"mock-user">>, SubscriberId, [{[<<"test">>, <<"discleanup">>], 1}]),
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"discleanup">>], 1}]),
     timer:sleep(50), % give some time to plumtree
 
     Msgs = publish_multi([<<"test">>, <<"discleanup">>]),

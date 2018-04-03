@@ -18,8 +18,8 @@
 %% API
 -export([
          %% used in mqtt fsm handling
-         subscribe/4,
-         unsubscribe/4,
+         subscribe/3,
+         unsubscribe/3,
          register_subscriber/3,
          register_subscriber/4, %% used during testing
          delete_subscriptions/1,
@@ -55,29 +55,17 @@
 
 -define(NR_OF_REG_RETRIES, 10).
 
--spec subscribe(flag(), username() | plugin_id(), subscriber_id(),
-                [{topic(), qos()}]) -> {ok, [qos() | not_allowed]}
-                                       | {error, not_allowed | not_ready}.
-
-subscribe(false, User, SubscriberId, Topics) ->
+-spec subscribe(flag(), subscriber_id(),
+                [{topic(), qos()}]) -> {ok, [qos() | not_allowed]} |
+                                       {error, not_allowed | not_ready}.
+subscribe(false, SubscriberId, Topics) ->
     %% trade availability for consistency
-    vmq_cluster:if_ready(fun subscribe_/3, [User, SubscriberId, Topics]);
-subscribe(true, User, SubscriberId, Topics) ->
+    vmq_cluster:if_ready(fun subscribe_op/2, [SubscriberId, Topics]);
+subscribe(true, SubscriberId, Topics) ->
     %% trade consistency for availability
-    subscribe_(User, SubscriberId, Topics).
+    subscribe_op(SubscriberId, Topics).
 
-subscribe_(User, SubscriberId, Topics) ->
-    case vmq_plugin:all_till_ok(auth_on_subscribe,
-                                [User, SubscriberId, Topics]) of
-        ok ->
-            subscribe_op(User, SubscriberId, Topics);
-        {ok, NewTopics} when is_list(NewTopics) ->
-            subscribe_op(User, SubscriberId, NewTopics);
-        {error, _} ->
-            {error, not_allowed}
-    end.
-
-subscribe_op(User, SubscriberId, Topics) ->
+subscribe_op(SubscriberId, Topics) ->
     add_subscriber(lists:usort(Topics), SubscriberId),
     QoSTable =
     lists:foldl(fun ({_, not_allowed}, AccQoSTable) ->
@@ -86,29 +74,18 @@ subscribe_op(User, SubscriberId, Topics) ->
                         deliver_retained(SubscriberId, T, QoS),
                         [QoS|AccQoSTable]
                 end, [], Topics),
-    vmq_plugin:all(on_subscribe, [User, SubscriberId, Topics]),
     {ok, lists:reverse(QoSTable)}.
 
--spec unsubscribe(flag(), username() | plugin_id(),
-                  subscriber_id(), [topic()]) -> ok | {error, not_ready}.
-unsubscribe(false, User, SubscriberId, Topics) ->
+-spec unsubscribe(flag(), subscriber_id(), [topic()]) -> ok | {error, not_ready}.
+unsubscribe(false, SubscriberId, Topics) ->
     %% trade availability for consistency
-    vmq_cluster:if_ready(fun unsubscribe_op/3, [User, SubscriberId, Topics]);
-unsubscribe(true, User, SubscriberId, Topics) ->
+    vmq_cluster:if_ready(fun unsubscribe_op/2, [SubscriberId, Topics]);
+unsubscribe(true, SubscriberId, Topics) ->
     %% trade consistency for availability
-    unsubscribe_op(User, SubscriberId, Topics).
+    unsubscribe_op( SubscriberId, Topics).
 
-unsubscribe_op(User, SubscriberId, Topics) ->
-    TTopics =
-    case vmq_plugin:all_till_ok(on_unsubscribe, [User, SubscriberId, Topics]) of
-        ok ->
-            Topics;
-        {ok, [[W|_]|_] = NewTopics} when is_binary(W) ->
-            NewTopics;
-        {error, _} ->
-            Topics
-    end,
-    del_subscriptions(TTopics, SubscriberId).
+unsubscribe_op(SubscriberId, Topics) ->
+    del_subscriptions(Topics, SubscriberId).
 
 delete_subscriptions(SubscriberId) ->
     del_subscriber(SubscriberId).
@@ -536,8 +513,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             wait_til_ready(),
             CallingPid = self(),
             User = {plugin, Mod, CallingPid},
-            subscribe(CAPSubscribe, User,
-                      {MountPoint, ClientId(CallingPid)}, [{Topic, 0}]);
+            subscribe(CAPSubscribe, {MountPoint, ClientId(CallingPid)}, [{Topic, 0}]);
        (_) ->
             {error, invalid_topic}
     end,
@@ -547,8 +523,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             wait_til_ready(),
             CallingPid = self(),
             User = {plugin, Mod, CallingPid},
-            unsubscribe(CAPUnsubscribe, User,
-                        {MountPoint, ClientId(CallingPid)}, [Topic]);
+            unsubscribe(CAPUnsubscribe, {MountPoint, ClientId(CallingPid)}, [Topic]);
        (_) ->
             {error, invalid_topic}
     end,
