@@ -51,11 +51,15 @@ start_link(Mgr, QueryString) ->
     gen_server:start_link(?MODULE, [Mgr, QueryString], []).
 
 fetch(Pid, Ordering, Limit) ->
-    try
-        gen_server:call(Pid, {fetch, Ordering, Limit}, infinity)
-    catch
-        exit:{noproc, _} ->
-            []
+    case catch gen_server:call(Pid, {fetch, Ordering, Limit}, infinity) of
+        {'EXIT', {normal, _}} ->
+            [];
+        {'EXIT', {noproc, _}} ->
+            [];
+        {'EXIT', Reason} ->
+            exit(Reason);
+        Ret ->
+            Ret
     end.
 
 %%%===================================================================

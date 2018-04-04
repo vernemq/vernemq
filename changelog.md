@@ -28,6 +28,7 @@
 - Bugfix: Fix routing table initialization issue after restarting a node
   preventing shared subscriptions on a remote node from being included in the
   routing table (#595).
+- Bugfix: Fix race condition when fetching data from the internal query subsystem.
 
 ## VerneMQ 1.3.0
 
