@@ -8,6 +8,7 @@
 - Bugfix: Fix a bug that prevented user plugins with an explicit path to be
   loaded
 - Fix build issue on Raspberry PI (`make rpi-32`).
+- Bugfix: Fix race condition when fetching data from the internal query subsystem.
 
 ## VerneMQ 1.3.1
 
