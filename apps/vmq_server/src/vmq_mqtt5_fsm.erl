@@ -403,12 +403,20 @@ connected(#mqtt5_pubcomp{message_id=MessageId}, State) ->
             _ = vmq_metrics:incr_mqtt_error_invalid_pubcomp(),
             terminate(normal, State)
     end;
-connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Properties}, State) ->
+connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=_Properties}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
-    case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, User, SubscriberId,
-                           convert_to_v4(Topics), Properties) of
+    OnAuthSuccess =
+        fun(_User, _SubscriberId, MaybeChangedTopics) ->
+                case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, convert_to_v4(MaybeChangedTopics)) of
+                    {ok, _} = Res ->
+                        vmq_plugin:all(on_subscribe, [User, SubscriberId, MaybeChangedTopics]),
+                        Res;
+                    Res -> Res
+                end
+        end,
+    case auth_on_subscribe(User, SubscriberId, Topics, OnAuthSuccess) of
         {ok, QoSs} ->
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
             _ = vmq_metrics:incr_mqtt_suback_sent(),
@@ -429,7 +437,11 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties =_P
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
     _ = vmq_metrics:incr_mqtt_unsubscribe_received(),
-    case vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, User, SubscriberId, Topics) of
+    OnSuccess =
+        fun(_SubscriberId, MaybeChangedTopics) ->
+                vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, SubscriberId, MaybeChangedTopics)
+        end,
+    case unsubscribe(User, SubscriberId, Topics, OnSuccess) of
         ok ->
             ReasonCodes = [?M5_SUCCESS || _ <- Topics],
             Frame = #mqtt5_unsuback{message_id=MessageId, reason_codes=ReasonCodes, properties=#{}},
@@ -778,6 +790,37 @@ auth_on_register(User, Password, Properties, State) ->
 
 set_sock_opts(Opts) ->
     self() ! {set_sock_opts, Opts}.
+
+-spec auth_on_subscribe(username(), subscriber_id(), [{topic(), qos()}],
+                        fun((username(), subscriber_id(), [{topic(), qos()}]) ->
+                                   {ok, [qos() | not_allowed]} | {error, atom()})
+                       ) -> {ok, [qos() | not_allowed]} | {error, atom()}.
+auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess) ->
+    case vmq_plugin:all_till_ok(auth_on_subscribe,
+                                [User, SubscriberId, convert_to_v4(Topics)]) of
+        ok ->
+            AuthSuccess(User, SubscriberId, Topics);
+        {ok, NewTopics} when is_list(NewTopics) ->
+            AuthSuccess(User, SubscriberId, NewTopics);
+        {error, _} ->
+            {error, not_allowed}
+    end.
+
+-spec unsubscribe(username(), subscriber_id(), [{topic(), qos()}],
+                  fun((subscriber_id(), [{topic(), qos()}]) ->
+                             ok | {error, not_ready})
+                 ) -> ok | {error, not_ready}.
+unsubscribe(User, SubscriberId, Topics, UnsubFun) ->
+    TTopics =
+        case vmq_plugin:all_till_ok(on_unsubscribe, [User, SubscriberId, Topics]) of
+            ok ->
+                Topics;
+            {ok, [[W|_]|_] = NewTopics} when is_binary(W) ->
+                NewTopics;
+            {error, _} ->
+                Topics
+        end,
+    UnsubFun(SubscriberId, TTopics).
 
 -spec auth_on_publish(username(), subscriber_id(), msg(),
                       fun((msg(), list()) -> {ok, msg()} | {error, atom()})
