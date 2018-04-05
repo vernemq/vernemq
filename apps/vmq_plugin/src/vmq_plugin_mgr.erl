@@ -22,6 +22,7 @@
          enable_plugin/2,
          enable_module_plugin/3,
          enable_module_plugin/4,
+         enable_module_plugin/5,
          disable_plugin/1,
          disable_module_plugin/3,
          disable_module_plugin/4,
@@ -111,14 +112,25 @@ enable_plugin(Plugin, Opts) when is_atom(Plugin) and is_list(Opts) ->
 -spec enable_module_plugin(atom(), atom(), non_neg_integer()) ->
     ok | {error, _}.
 enable_module_plugin(Module, Fun, Arity) ->
-    enable_module_plugin(Fun, Module, Fun, Arity).
+    enable_module_plugin(Fun, Module, Fun, Arity, []).
 
 -spec enable_module_plugin(atom(), atom(), atom(), non_neg_integer()) ->
     ok | {error, _}.
-enable_module_plugin(HookName, Module, Fun, Arity) when
+enable_module_plugin(HookName, Module, Fun, Arity) ->
+    enable_module_plugin(HookName, Module, Fun, Arity, []).
+
+-spec enable_module_plugin(atom(), atom(), atom(), non_neg_integer(), [any()]) ->
+    ok | {error, _}.
+enable_module_plugin(HookName, Module, Fun, Arity, Opts) when
       is_atom(HookName) and is_atom(Module)
       and is_atom(Fun) and (Arity >= 0) ->
-    Hook = #hook{name = HookName, module = Module, function = Fun, arity = Arity},
+    Hook = case lists:keyfind(compat, 1, Opts) of
+               {compat, {CH, CM, CF, CA}} ->
+                   #hook{name = HookName, module = Module, function = Fun, arity = Arity,
+                        compat = {CH, CM, CF, CA}};
+               false ->
+                   #hook{name = HookName, module = Module, function = Fun, arity = Arity}
+           end,
     gen_server:call(?MODULE, {enable_module_plugin, Hook}, infinity).
 
 -spec disable_module_plugin(atom(), atom(), non_neg_integer()) ->
@@ -312,8 +324,10 @@ enable_plugin_generic(Plugin, #state{plugins=Plugins} = State) ->
 
 get_new_hooks({module, _Module, [{hooks, [Hook]}]} = NewPlugin, OldPlugins) ->
     case plugins_have_hook(Hook, OldPlugins) of
-        false -> NewPlugin;
-        true -> none
+        false ->
+            NewPlugin;
+        true ->
+            none
     end;
 get_new_hooks({application, Name, Opts}, OldPlugins) ->
     HasAppHook = lists:any(fun({application, N, _}) -> Name =:= N;
@@ -328,11 +342,11 @@ get_new_hooks({application, Name, Opts}, OldPlugins) ->
         false -> {application, Name, Opts}
     end.
 
-plugins_have_hook(#hook{name = Name, module = Module, function = Fun, arity = Arity}, OldPlugins) ->
+plugins_have_hook(#hook{name = Name, module = Module, function = Fun, arity = Arity, compat = Compat}, OldPlugins) ->
     lists:any(
       fun(#hook{name = H, module = M,
-                function = F, arity = A}) ->
-              {H,M,F,A} =:= {Name, Module, Fun, Arity}
+                function = F, arity = A, compat = C}) ->
+              {H,M,F,A, C} =:= {Name, Module, Fun, Arity, Compat}
       end,
       extract_hooks(OldPlugins)).
 
@@ -699,6 +713,7 @@ compile_hooks(CheckedPlugins) ->
     Hooks = lists:sort(fun(#hook{name = LName}, #hook{name = RName}) ->
                                LName =< RName
                        end, lists:flatten(RawPlugins)),
+
     M1 = smerl:new(vmq_plugin),
     {OnlyClauses, OnlyInfo} = only_clauses(1, Hooks, {nil, nil}, [], []),
     {ok, M2} = smerl:add_func(M1, {function, 1, only, 2, OnlyClauses}),
@@ -814,7 +829,8 @@ partition_hooks([#hook{compat = {Name, _, _, Arity}}|_] = Hooks) ->
     {Name, Arity, [H || #hook{compat = {N, _, _, A}} = H <- Hooks,
                         (N == Name) and (A == Arity)]};
 partition_hooks([#hook{name = Name, arity = Arity}|_] = Hooks) ->
-    {Name, Arity, [H || #hook{name = N, arity = A} = H <- Hooks,
+    {Name, Arity, [H || #hook{name = N, arity = A,
+                              compat = undefined} = H <- Hooks,
                         (N == Name) and (A == Arity)]}.
 
 clause(I, Name, Arity, Body) ->
@@ -843,15 +859,15 @@ clause(I, Name, Arity, Body) ->
      Body}.
 
 list_const(_, []) -> {nil, 1};
-list_const(false, [{compat, HookName, Module, Fun, _Arity, CompatMod, CompatFun}|Rest]) ->
+list_const(false, [{compat, N, M, F, _A, _CH, CM, CF, _CA}|Rest]) ->
     {cons, 1,
      {tuple, 1,
       [{atom, 1, compat},
-       {atom, 1, HookName},
-       {atom, 1, CompatMod},
-       {atom, 1, CompatFun},
-       {atom, 1, Module},
-       {atom, 1, Fun}]
+       {atom, 1, N},
+       {atom, 1, CM},
+       {atom, 1, CF},
+       {atom, 1, M},
+       {atom, 1, F}]
      }, list_const(false, Rest)};
 list_const(false, [{_, Module, Fun, _}|Rest]) ->
     {cons, 1,
@@ -859,13 +875,13 @@ list_const(false, [{_, Module, Fun, _}|Rest]) ->
       [{atom, 1, Module},
        {atom, 1, Fun}]
      }, list_const(false, Rest)};
-list_const(true, [{compat, Name, Module, Fun, Arity, _CompatMod, _CompatFun}|Rest]) ->
+list_const(true, [{compat, _N, _M, _F, _A, CH, CM, CF, CA}|Rest]) ->
     {cons, 1,
      {tuple, 1,
-      [{atom, 1, Name},
-       {atom, 1, Module},
-       {atom, 1, Fun},
-       {integer, 1, Arity}]
+      [{atom, 1, CH},
+       {atom, 1, CM},
+       {atom, 1, CF},
+       {integer, 1, CA}]
      }, list_const(true, Rest)};
 list_const(true, [{Name, Module, Fun, Arity}|Rest]) ->
     {cons, 1,
@@ -880,10 +896,10 @@ list_const(true, [{Name, Module, Fun, Arity}|Rest]) ->
 embed_hooks(Hooks) ->
     lists:map(
       fun(#hook{name = N, module = M, function = F, arity = A,
-                compat = {_, CM, CF, _}})
+                compat = {CH, CM, CF, CA}})
             when CM =/= undefined,
                  CF =/= undefined ->
-              {compat, N, M, F, A, CM, CF};
+              {compat, N, M, F, A, CH, CM, CF, CA};
          (#hook{name = N, module = M, function = F, arity = A}) ->
               {N, M, F, A}
       end, Hooks).

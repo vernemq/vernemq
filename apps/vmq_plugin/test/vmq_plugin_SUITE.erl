@@ -15,7 +15,8 @@ all() ->
      app_plugin_mod_does_not_exist,
      app_plugin_function_does_not_exist,
      cannot_load_plugin_with_existing_mod,
-     plugin_with_compat_hooks
+     plugin_with_compat_hooks,
+     module_plugin_with_compat_hooks
     ].
 
 init_per_suite(Config) ->
@@ -115,6 +116,39 @@ plugin_with_compat_hooks(_Config) ->
     {ok, {1,2,3}} = vmq_plugin:all_till_ok(sample_hook_name_v1, [1,2,3]),
     [{ok, {1,2,3}}] = vmq_plugin:all(sample_hook_name_v1, [1,2,3]),
     {ok, {1,2,3}} = vmq_plugin:only(sample_hook_name_v1, [1,2,3]).
+
+module_plugin_with_compat_hooks(_Config) ->
+    {ok, _} = application:ensure_all_started(vmq_plugin),
+
+    %% register a normal hook
+    ok = vmq_plugin_mgr:enable_module_plugin(sample_hook_name_v0,
+                                             test_compat_mod,
+                                             sample_hook_v0,
+                                             2,
+                                             []),
+
+    %% then register the same hook with compat code
+    ok = vmq_plugin_mgr:enable_module_plugin(sample_hook_name_v0,
+                                             test_compat_mod,
+                                             sample_hook_v0,
+                                             2,
+                                             [
+                                              {compat, {sample_hook_name_v1,
+                                                        test_compat_mod,
+                                                        sample_hook_v1_to_v0,
+                                                        3}}
+                                             ]),
+
+    %% check the normal hook works
+    {ok, {1,2}} = vmq_plugin:all_till_ok(sample_hook_name_v0, [1,2]),
+    [{ok, {1,2}}] = vmq_plugin:all(sample_hook_name_v0, [1,2]),
+    {ok, {1,2}} = vmq_plugin:only(sample_hook_name_v0, [1,2]),
+
+    %% check that the compat hook works as well.
+    {ok, {1,2,3}} = vmq_plugin:all_till_ok(sample_hook_name_v1, [1,2,3]),
+    [{ok, {1,2,3}}] = vmq_plugin:all(sample_hook_name_v1, [1,2,3]),
+    {ok, {1,2,3}} = vmq_plugin:only(sample_hook_name_v1, [1,2,3]).
+
 
 sample_hook_function() ->
     ok.
