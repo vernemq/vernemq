@@ -526,7 +526,7 @@ connected(Unexpected, State) ->
     terminate({error, unexpected_message, Unexpected}, State).
 
 connack_terminate(RC, State) ->
-    connack_terminate(RC, [], State).
+    connack_terminate(RC, #{}, State).
 
 connack_terminate(RC, Properties, _State) ->
     %% TODO: we need to be able to handle the MQTT 5 reason codes in
@@ -1365,7 +1365,7 @@ gen_disconnect(?BAD_AUTH_METHOD) -> gen_disconnect_(?M5_BAD_AUTHENTICATION_METHO
 gen_disconnect(?PROTOCOL_ERROR) -> gen_disconnect_(?M5_PROTOCOL_ERROR).
 
 gen_disconnect_(RC) ->
-    #mqtt5_disconnect{reason_code = RC, properties = []}.
+    #mqtt5_disconnect{reason_code = RC, properties = #{}}.
 
 convert_to_v4(Topics) ->
     %% TODO: this compatibility function is only here temporarily to
