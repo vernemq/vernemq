@@ -132,8 +132,7 @@ module_plugin_with_compat_hooks(_Config) ->
                                              test_compat_mod,
                                              sample_hook_v0,
                                              2,
-                                             [
-                                              {compat, {sample_hook_name_v1,
+                                             [{compat, {sample_hook_name_v1,
                                                         test_compat_mod,
                                                         sample_hook_v1_to_v0,
                                                         3}}
@@ -147,7 +146,34 @@ module_plugin_with_compat_hooks(_Config) ->
     %% check that the compat hook works as well.
     {ok, {1,2,3}} = vmq_plugin:all_till_ok(sample_hook_name_v1, [1,2,3]),
     [{ok, {1,2,3}}] = vmq_plugin:all(sample_hook_name_v1, [1,2,3]),
-    {ok, {1,2,3}} = vmq_plugin:only(sample_hook_name_v1, [1,2,3]).
+    {ok, {1,2,3}} = vmq_plugin:only(sample_hook_name_v1, [1,2,3]),
+
+    ok = vmq_plugin_mgr:disable_module_plugin(sample_hook_name_v0,
+                                              test_compat_mod,
+                                              sample_hook_v0,
+                                              2,
+                                              [{compat, {sample_hook_name_v1,
+                                                         test_compat_mod,
+                                                         sample_hook_v1_to_v0,
+                                                         3}}
+                                              ]),
+
+    ok = vmq_plugin_mgr:disable_module_plugin(sample_hook_name_v0,
+                                              test_compat_mod,
+                                              sample_hook_v0,
+                                              2,
+                                              []),
+
+    %% check the normal hook is gone
+    {error, no_matching_hook_found} = vmq_plugin:all_till_ok(sample_hook_name_v0, [1,2]),
+    {error, no_matching_hook_found} = vmq_plugin:all(sample_hook_name_v0, [1,2]),
+    {error, no_matching_hook_found} = vmq_plugin:only(sample_hook_name_v0, [1,2]),
+
+    %% check that the compat hook is gone as well.
+    {error, no_matching_hook_found} = vmq_plugin:all_till_ok(sample_hook_name_v1, [1,2,3]),
+    {error, no_matching_hook_found} = vmq_plugin:all(sample_hook_name_v1, [1,2,3]),
+    {error, no_matching_hook_found} = vmq_plugin:only(sample_hook_name_v1, [1,2,3]).
+
 
 
 sample_hook_function() ->
