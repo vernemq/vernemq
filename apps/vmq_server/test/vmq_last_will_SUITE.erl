@@ -169,7 +169,7 @@ will_delay_v5_test(_Config) ->
       },
 
     Connack = packetv5:gen_connack(),
-    Subscribe = packetv5:gen_subscribe(53, [SubTopic], []),
+    Subscribe = packetv5:gen_subscribe(53, [SubTopic], #{}),
     SubConnect = packetv5:gen_connect("will-delay-test-sub",
                                       [{keepalive, 60}]),
     
