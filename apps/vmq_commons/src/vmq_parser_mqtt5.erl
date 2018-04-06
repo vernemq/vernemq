@@ -571,7 +571,7 @@ ensure_binary(B) when is_binary(B) -> B;
 ensure_binary(undefined) -> undefined;
 ensure_binary(empty) -> empty. % for test purposes
 
-properties([]) -> <<0:8>>;
+properties(#{} = M) when map_size(M) =:= 0 -> <<0:8>>;
 properties(Properties) ->
     %% TODOv5: Consider if it would make sense to not convert to a
     %% list here but work directly on the map - would that be faster?
@@ -747,7 +747,7 @@ gen_auth(RC, Properties) ->
         #mqtt5_auth{reason_code=RC,
                     properties=Properties})).
 
--spec parse_properties(binary()) -> {ok, [mqtt5_property()], binary()} |
+-spec parse_properties(binary()) -> {ok, map(), binary()} |
                                     {error, any()}.
 parse_properties(Data) ->
     case varint_data(Data) of
@@ -765,9 +765,7 @@ parse_properties(Data) ->
             end
     end.
 
--spec parse_properties(binary(), [mqtt5_property()])
-    -> [mqtt5_property()] |
-       {error, any()}.
+-spec parse_properties(binary(), map()) -> map() | {error, any()}.
 parse_properties(<<>>, Acc) ->
     Acc;
 %% Note, the property ids are specified as a varint, but in MQTT5 all
