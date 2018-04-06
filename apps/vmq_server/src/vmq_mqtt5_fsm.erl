@@ -41,7 +41,6 @@
 
 -record(auth_data, {
           method :: binary(),
-          type   :: connect | re_auth,
           data   :: any()
          }).
 
@@ -228,6 +227,7 @@ maybe_initiate_trace(Frame, TraceFun) ->
     TraceFun(self(), Frame).
 
 -spec pre_connect_auth(mqtt5_frame(), state()) ->
+    {pre_connect_auth, state(), [mqtt5_frame() | binary()]} |
     {state(), [mqtt5_frame() | binary()]} |
     {state(), {throttle, [mqtt5_frame() | binary()]}} |
     {stop, any(), [mqtt5_frame() | binary()]}.
@@ -573,7 +573,6 @@ check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthM
             check_connect(F, OutProps, State#state{enhanced_auth = EnhancedAuth});
         {continue_auth, Modifiers} ->
             EnhancedAuth = #auth_data{method = AuthMethod,
-                                      type = connect,
                                       data = F},
             OutProps = proplists:get_value(properties, Modifiers, #{}),
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
