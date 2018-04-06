@@ -232,16 +232,32 @@ hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"delay">>,<<"test">>,<<"0">>], 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 enable_on_subscribe() ->
     vmq_plugin_mgr:enable_module_plugin(
-      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
+      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3,
+           [{compat, {auth_on_subscribe_v1, vmq_plugin_compat_v1_v0,
+                      convert, 3}}]).
 enable_on_publish() ->
-    vmq_plugin_mgr:enable_module_plugin(
-      auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_publish, ?MODULE, hook_auth_on_publish, 6),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_publish, ?MODULE, hook_auth_on_publish, 6,
+           [{compat, {auth_on_publish_v1, vmq_plugin_compat_v1_v0,
+                    convert, 6}}]).
 disable_on_subscribe() ->
-    vmq_plugin_mgr:disable_module_plugin(
-      auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3).
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3,
+           [{compat, {auth_on_subscribe_v1, vmq_plugin_compat_v1_v0,
+                      convert, 3}}]).
 disable_on_publish() ->
-    vmq_plugin_mgr:disable_module_plugin(
-      auth_on_publish, ?MODULE, hook_auth_on_publish, 6).
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_publish, ?MODULE, hook_auth_on_publish, 6),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_publish, ?MODULE, hook_auth_on_publish, 6,
+           [{compat, {auth_on_publish_v1, vmq_plugin_compat_v1_v0,
+                      convert, 6}}]).
 
 will_null_helper(Config) ->
     Connect = gen_connect("test-helper", [{keepalive,60}, {will_topic, "will/null/test"}, {will_msg, empty}], Config),
