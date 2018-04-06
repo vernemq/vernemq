@@ -48,7 +48,7 @@ parse_unparse_tests(_Config) ->
     parse_unparse("connack SP=0, RC=0", vmq_parser_mqtt5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{})),
     parse_unparse("connack SP=1, RC=0", vmq_parser_mqtt5:gen_connack(1, ?M5_CONNACK_ACCEPT, #{})),
     parse_unparse("connack SP=0, RC=16#81 (malformed packet)",
-                  vmq_parser_mqtt5:gen_connack(0, ?M5_MALFORMED_PACKET, [])),
+                  vmq_parser_mqtt5:gen_connack(0, ?M5_MALFORMED_PACKET, #{})),
     ConnAckProps =
         #{p_session_expiry_interval => 3600,
           p_receive_max => 10,
@@ -152,7 +152,7 @@ parse_unparse_suback_test(_Config) ->
     parse_unparse("suback with properties",
                   vmq_parser_mqtt5:gen_suback(7, ReasonCodes, Properties)), 
     parse_unparse("suback",
-                  vmq_parser_mqtt5:gen_suback(8, [?M5_GRANTED_QOS0], [])).
+                  vmq_parser_mqtt5:gen_suback(8, [?M5_GRANTED_QOS0], #{})).
 
 parse_unparse_unsubscribe_test(_Config) ->
     Properties = #{p_user_property => [{<<"key">>, <<"val">>}]},
@@ -175,7 +175,7 @@ parse_unparse_unsuback_test(_Config) ->
     parse_unparse("unsuback with properties",
                   vmq_parser_mqtt5:gen_unsuback(7, ReasonCodes, Properties)),
     parse_unparse("unsuback",
-                  vmq_parser_mqtt5:gen_unsuback(8, [?M5_SUCCESS], [])).
+                  vmq_parser_mqtt5:gen_unsuback(8, [?M5_SUCCESS], #{})).
 
 parse_unparse_pingreq_test(_Config) ->
     parse_unparse("pingreq", vmq_parser_mqtt5:gen_pingreq()).

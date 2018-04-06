@@ -85,7 +85,7 @@
 -record(mqtt5_connack, {
           session_present   :: flag(),
           reason_code       :: reason_code(),
-          properties=#{}     :: [mqtt5_property]
+          properties=#{}    :: map()
          }).
 -type mqtt5_connack()       :: #mqtt5_connack{}.
 
@@ -169,7 +169,7 @@
 -record(mqtt5_unsubscribe, {
           message_id        :: msg_id(),
           topics=[]         :: [topic()],
-          properties=#{}     :: [mqtt5_property()]
+          properties=#{}    :: map()
          }).
 -type mqtt5_unsubscribe()   :: #mqtt5_unsubscribe{}.
 
@@ -276,7 +276,10 @@
 -record(p_correlation_data, {value :: binary()}).
 -type p_correlation_data() :: #p_correlation_data{}.
 
--record(p_subscription_id, {value :: 1..268435455}).
+%% as there can be more than one subscription id in a single frame and
+%% we represent the properties as a map we store multiple values in
+%% the record.
+-record(p_subscription_id, {value :: [1..268435455]}).
 -type p_subscription_id() :: #p_subscription_id{}.
 
 -record(p_session_expiry_interval, {value :: seconds()}).
@@ -334,7 +337,10 @@
 -record(p_retain_available, {value :: boolean()}).
 -type p_retain_available() :: #p_retain_available{}.
 
--record(p_user_property, {value :: user_property()}).
+%% as there can be more than one user property id in a single frame
+%% and we represent the properties as a map we store multiple values
+%% in the record.
+-record(p_user_property, {value :: [user_property()]}).
 -type p_user_property() :: #p_user_property{}.
 
 -record(p_max_packet_size, {value :: 1..4294967296}).
