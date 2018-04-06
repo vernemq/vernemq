@@ -24,6 +24,7 @@
 -type msg()             :: #vmq_msg{}.
 
 %% TODO: these definitions should probably be moved somewhere else.
+-define(NOT_AUTHORIZED,           not_authorized).
 -define(SESSION_TAKEN_OVER,       session_taken_over).
 -define(NORMAL_DISCONNECT,        normal_disconnect).
 -define(ADMINISTRATIVE_ACTION,    administrative_action).
@@ -34,6 +35,7 @@
 
 
 -type disconnect_reasons() ::
+        ?NOT_AUTHORIZED |
         ?NORMAL_DISCONNECT |
         ?SESSION_TAKEN_OVER |
         ?ADMINISTRATIVE_ACTION |

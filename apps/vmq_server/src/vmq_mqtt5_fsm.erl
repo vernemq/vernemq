@@ -292,7 +292,11 @@ connected(#mqtt5_publish{message_id=MessageId, topic=Topic,
     end,
     case Ret of
         {error, not_allowed} ->
-            terminate(publish_not_authorized_3_1_1, State);
+            %% TODOv5 this will tell the client that the publish
+            %% wasn't allowed. Is it a good idea to give the client
+            %% this information or is it better to just drop the
+            %% connection?
+            terminate(not_authorized, State);
         Out when is_list(Out) and not DoThrottle ->
             {State, Out};
         Out when is_list(Out) ->
@@ -358,6 +362,8 @@ connected(#mqtt5_pubrec{message_id=MessageId}, State) ->
         not_found ->
             lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
             _ = vmq_metrics:incr_mqtt_error_invalid_pubrec(),
+            %% TODOv5: we should probably not terminate normally here
+            %% but use one of the new reason codes.
             terminate(normal, State)
     end;
 connected(#mqtt5_pubrel{message_id=MessageId}, State) ->
@@ -401,6 +407,8 @@ connected(#mqtt5_pubcomp{message_id=MessageId}, State) ->
         not_found -> % error or wrong waiting_ack, definitely not well behaving client
             lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
             _ = vmq_metrics:incr_mqtt_error_invalid_pubcomp(),
+            %% TODOv5: we should probably not terminate normally here
+            %% but use one of the new reason codes.
             terminate(normal, State)
     end;
 connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=_Properties}, State) ->
@@ -523,13 +531,13 @@ connected({Ref, {error, cant_remote_enqueue}}, State) when is_reference(Ref) ->
     {State, []};
 connected(Unexpected, State) ->
     lager:debug("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
-    terminate({error, unexpected_message, Unexpected}, State).
+    terminate({error, {unexpected_message, Unexpected}}, State).
 
 connack_terminate(RC, State) ->
     connack_terminate(RC, #{}, State).
 
 connack_terminate(RC, Properties, _State) ->
-    %% TODO: we need to be able to handle the MQTT 5 reason codes in
+    %% TODOv5: we need to be able to handle the MQTT 5 reason codes in
     %% the metrics.
     %% _ = vmq_metrics:incr_mqtt_connack_sent(RC),
     {stop, normal, [#mqtt5_connack{session_present=false,
@@ -556,8 +564,16 @@ terminate(Reason, #state{clean_session=CleanSession} = State) ->
         end,
     %% TODO: the counter update is missing the last will message
     maybe_publish_last_will(State),
-    Disconnect = gen_disconnect(Reason),
-    {stop, Reason, [Disconnect]}.
+    Out =
+        case Reason of
+            {error, _} ->
+                %% It is assumed that errors don't generally map to
+                %% MQTT errors and as such we don't tell the client
+                %% about them, we just drop the connection.
+                [];
+            _ -> [gen_disconnect(Reason)]
+        end,
+    {stop, Reason, Out}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal
@@ -701,7 +717,7 @@ check_will(#mqtt5_connect{
             connack_terminate(?M5_NOT_AUTHORIZED, State)
     end.
 
--spec maybe_apply_topic_alias(username(), password(), msg(), fun(), state()) ->
+-spec maybe_apply_topic_alias(username(), subscriber_id(), msg(), fun(), state()) ->
                                      {ok, msg(), state()} |
                                      {error, any()}.
 maybe_apply_topic_alias(User, SubscriberId,
@@ -729,7 +745,7 @@ maybe_apply_topic_alias(User, SubscriberId,
         {ok, #vmq_msg{routing_key=MaybeChangedTopic}=NewMsg} ->
             %% TODOv5: Should we check here that the topic isn't empty?
             {ok, NewMsg, State#state{topic_aliases_in = TA#{AliasId => MaybeChangedTopic}}};
-        {error, E} = E -> E
+        {error, _E} = E -> E
     end;
 maybe_apply_topic_alias(_User, _SubscriberId, #vmq_msg{routing_key = []},
                         _Fun, _State) ->
@@ -929,7 +945,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
             %% we pretend as everything is ok for 3.1 and Bridge
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             _ = vmq_metrics:incr_mqtt_puback_sent(),
-            [#mqtt5_puback{message_id=MessageId}];
+            [#mqtt5_puback{message_id=MessageId, reason_code=?M5_SUCCESS}];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             _ = vmq_metrics:incr_mqtt_error_publish(),
@@ -962,7 +978,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
             %% we pretend as everything is ok for 3.1 and Bridge
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             _ = vmq_metrics:incr_mqtt_pubrec_sent(),
-            Frame = #mqtt5_pubrec{message_id=MessageId},
+            Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS},
             [Frame];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
@@ -1357,6 +1373,13 @@ get_info_items([_|Rest], State, Acc) ->
     get_info_items(Rest, State, Acc);
 get_info_items([], _, Acc) -> Acc.
 
+gen_disconnect(normal) ->
+    %% TODOv5: this case is just here to handle the places where we do
+    %% terminate(normal,...) as dialyzer would otherwise be
+    %% unhappy. We should go through all those cases and see if we can
+    %% map them to a MQTTv5 reason code.
+    gen_disconnect_(?M5_NORMAL_DISCONNECT);
+gen_disconnect(?NOT_AUTHORIZED) -> gen_disconnect_(?M5_NOT_AUTHORIZED);
 gen_disconnect(?NORMAL_DISCONNECT) -> gen_disconnect_(?M5_NORMAL_DISCONNECT);
 gen_disconnect(?SESSION_TAKEN_OVER) -> gen_disconnect_(?M5_SESSION_TAKEN_OVER);
 gen_disconnect(?ADMINISTRATIVE_ACTION) -> gen_disconnect_(?M5_ADMINISTRATIVE_ACTION);
