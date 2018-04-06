@@ -383,7 +383,8 @@
                         | p_sub_ids_available()
                         | p_shared_subs_available().
 
--type reason_code()         :: ?M5_GRANTED_QOS0
+-type reason_code()         :: ?M5_SUCCESS
+                             | ?M5_GRANTED_QOS0
                              | ?M5_GRANTED_QOS1
                              | ?M5_GRANTED_QOS2
                              | ?M5_DISCONNECT_WITH_WILL_MSG
