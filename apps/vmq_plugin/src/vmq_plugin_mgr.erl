@@ -26,6 +26,7 @@
          disable_plugin/1,
          disable_module_plugin/3,
          disable_module_plugin/4,
+         disable_module_plugin/5,
          get_usage_lead_lines/0]).
 
 %% exported for testing purposes.
@@ -140,10 +141,21 @@ disable_module_plugin(Module, Fun, Arity) ->
 
 -spec disable_module_plugin(atom(), atom(), atom(), non_neg_integer()) ->
     ok | {error, _}.
-disable_module_plugin(HookName, Module, Fun, Arity) when
+disable_module_plugin(HookName, Module, Fun, Arity) ->
+    disable_module_plugin(HookName, Module, Fun, Arity, []).
+
+-spec disable_module_plugin(atom(), atom(), atom(), non_neg_integer(), [any()]) ->
+    ok | {error, _}.
+disable_module_plugin(HookName, Module, Fun, Arity, Opts) when
       is_atom(HookName) and is_atom(Module)
       and is_atom(Fun) and (Arity >= 0) ->
-    Hook = #hook{name = HookName, module = Module, function = Fun, arity = Arity},
+    Hook = case lists:keyfind(compat, 1, Opts) of
+               {compat, {CH, CM, CF, CA}} ->
+                   #hook{name = HookName, module = Module, function = Fun, arity = Arity,
+                         compat = {CH, CM, CF, CA}};
+               false ->
+                   #hook{name = HookName, module = Module, function = Fun, arity = Arity}
+           end,
     gen_server:call(?MODULE, {disable_plugin, Hook}, infinity).
 
 -spec disable_plugin(plugin()) -> ok | {error, _}.
@@ -376,9 +388,9 @@ delete_plugin(#hook{}=Hook, Plugins) ->
       end,
       Plugins).
 
-remove_module_hook(#hook{name = Name, module = Module, function = Function, arity = Arity}, Hooks) ->
-    lists:filter(fun(#hook{name = N, module = M, function = F, arity = A}) ->
-                         {Name, Module, Function, Arity} =/= {N,M,F,A};
+remove_module_hook(#hook{name = Name, module = Module, function = Function, arity = Arity, compat = Compat}, Hooks) ->
+    lists:filter(fun(#hook{name = N, module = M, function = F, arity = A, compat = C}) ->
+                         {Name, Module, Function, Arity, Compat} =/= {N,M,F,A,C};
                     (_) -> true
                  end,
                  Hooks).
