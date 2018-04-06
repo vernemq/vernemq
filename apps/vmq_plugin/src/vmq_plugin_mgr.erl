@@ -77,11 +77,21 @@
           compat      :: {Name :: atom(),
                           Mod   :: module(),
                           Fun   :: atom(),
-                          Arity :: arity()},
+                          Arity :: arity()} |
+                         undefined,
           opts=[]     :: [any()]
          }).
 
--type raw_hook() :: {atom(), module(), atom(), non_neg_integer()}.
+-type raw_hook() :: {atom(), module(), atom(), non_neg_integer()} |
+                    {compat,
+                     N :: atom(),
+                     M :: module(),
+                     F :: atom(),
+                     A :: non_neg_integer(),
+                     CH :: atom(),
+                     CM :: module(),
+                     CF :: atom(),
+                     CA :: non_neg_integer()}.
 
 -type hook() :: #hook{}.
 
@@ -133,7 +143,7 @@ enable_module_plugin(HookName, Module, Fun, Arity, Opts) when
     Hook = case lists:keyfind(compat, 1, Opts) of
                {compat, {CH, CM, CF, CA}} ->
                    #hook{name = HookName, module = Module, function = Fun, arity = Arity,
-                        compat = {CH, CM, CF, CA}};
+                         compat = {CH, CM, CF, CA}};
                false ->
                    #hook{name = HookName, module = Module, function = Fun, arity = Arity}
            end,
