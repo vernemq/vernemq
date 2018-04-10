@@ -67,23 +67,44 @@ data_in(Data, #state{peer = Peer,
             end
     end.
 
-serialize([Out]) ->
-    [vmq_parser:serialise(Out)].
-
-serialize_mqtt5([Out]) ->
-    [vmq_parser_mqtt5:serialise(Out)].
-
 parse_connect_frame(Data, MaxMessageSize) ->
-    case vmq_parser:parse(Data, MaxMessageSize) of
-        more ->
-            more;
-        {{error, is_mqtt5}, _} ->
+    case determine_protocol_version(Data) of
+        5 ->
             vmq_parser_mqtt5:parse(Data, MaxMessageSize);
+        4 ->
+            vmq_parser:parse(Data, MaxMessageSize);
+        3 ->
+            vmq_parser:parse(Data, MaxMessageSize);
+        more -> more;
         {error, _} = E ->
-            E;
-        {Frame, Rest} ->
-            {Frame, Rest}
+            E
     end.
+
+determine_protocol_version(<<1:4, 0:4, Rest/binary>>) ->
+    consume_var_header(Rest).
+
+consume_var_header(<<0:1, _:7, Rest/binary>>) ->
+    get_protocol_info(Rest);
+consume_var_header(<<1:1, _:7, 0:1, _7, Rest/binary>>) ->
+    get_protocol_info(Rest);
+consume_var_header(<<1:1, _:7, 1:1, _:7, 0:1, _7, Rest/binary>>) ->
+    get_protocol_info(Rest);
+consume_var_header(<<1:1, _:7, 1:1, _:7, 1:1, _:7, 0:1, _7, Rest/binary>>) ->
+    get_protocol_info(Rest).
+
+get_protocol_info(<<0:8, 4:8, "MQTT", 5:8, _/binary>>) ->
+    5;
+get_protocol_info(<<0:8, 4:8, "MQTT", 4:8, _/binary>>) ->
+    4;
+get_protocol_info(<<0:8, 6:8, "MQIsdp", 3:8, _/binary>>) ->
+    3;
+get_protocol_info(<<0:8, 6:8, "MQIsdp", _:8, _/binary>>) ->
+    %% This case is needed to not break the vmq_connect_SUITE
+    %% invalid_protonum_test test case.
+    3;
+get_protocol_info(_) ->
+    {error, unknown_protocol_version}.
+
 
 msg_in(disconnect, _FsmState0) ->
     ignore;
@@ -91,4 +112,8 @@ msg_in(close_timeout, _FsmState0) ->
     lager:debug("stop due to timeout", []),
     {stop, normal, []}.
 
+serialize([Out]) ->
+    [vmq_parser:serialise(Out)].
 
+serialize_mqtt5([Out]) ->
+    [vmq_parser_mqtt5:serialise(Out)].
