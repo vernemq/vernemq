@@ -15,6 +15,8 @@
 -module(vmq_plugin_mgr).
 -behaviour(gen_server).
 
+-include("vmq_plugin.hrl").
+
 %% API
 -export([start_link/0,
          stop/0,
@@ -67,19 +69,6 @@
                    atom(),
                    atom(),
                    non_neg_integer()}.
-
--record(hook, {
-          name        :: atom(),
-          module      :: module(),
-          function    :: atom(),
-          arity       :: non_neg_integer(),
-          compat      :: {Name :: atom(),
-                          Mod   :: module(),
-                          Fun   :: atom(),
-                          Arity :: arity()} |
-                         undefined,
-          opts=[]     :: [any()]
-         }).
 
 -type raw_hook() :: {atom(), module(), atom(), non_neg_integer()} |
                     {compat,
