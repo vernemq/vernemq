@@ -47,6 +47,14 @@ translate_listeners(Conf) ->
     IntVal = fun(_, I, _) when is_integer(I) -> I;
                 (_, undefined, Def) -> Def end,
 
+    %% A value looking like "[3,4]" or "[3, 4]"
+    StringIntegerListVal =
+        fun(_, undefined, Def) -> Def;
+           (_, Val, _) ->
+                {ok, T, _} = erl_scan:string(Val ++ "."),
+                {ok, Term} = erl_parse:parse_term(T),
+                Term
+        end,
 
     MZip = fun([H|_] = ListOfLists) ->
                    Size = length(H), %% get default size
@@ -84,9 +92,15 @@ translate_listeners(Conf) ->
     {WS_SSLIPs, WS_SSLMountPoint} = lists:unzip(extract("listener.wss", "mountpoint", MPVal, Conf)),
     {VMQIPs, VMQMountPoint} = lists:unzip(extract("listener.vmq", "mountpoint", MPVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLMountPoint} = lists:unzip(extract("listener.vmqs", "mountpoint", MPVal, Conf)),
+
     {TCPIPs, TCPProxyProto} = lists:unzip(extract("listener.tcp", "proxy_protocol", BoolVal, Conf)),
     {WSIPs, WSProxyProto} = lists:unzip(extract("listener.ws", "proxy_protocol", BoolVal, Conf)),
     {HTTPIPs, HTTPProxyProto} = lists:unzip(extract("listener.http", "proxy_protocol", BoolVal, Conf)),
+
+    {TCPIPs, TCPAllowedProto} = lists:unzip(extract("listener.tcp", "allowed_protocol_versions", StringIntegerListVal, Conf)),
+    {SSLIPs, SSLAllowedProto} = lists:unzip(extract("listener.ssl", "allowed_protocol_versions", StringIntegerListVal, Conf)),
+    {WSIPs, WSAllowedProto} = lists:unzip(extract("listener.ws", "allowed_protocol_versions", StringIntegerListVal, Conf)),
+    {WS_SSLIPs, WS_SSLAllowedProto} = lists:unzip(extract("listener.wss", "allowed_protocol_versions", StringIntegerListVal, Conf)),
 
     {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
     {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
@@ -142,11 +156,13 @@ translate_listeners(Conf) ->
     TCP = lists:zip(TCPIPs, MZip([TCPMaxConns,
                                   TCPNrOfAcceptors,
                                   TCPMountPoint,
-                                  TCPProxyProto])),
+                                  TCPProxyProto,
+                                  TCPAllowedProto])),
     WS = lists:zip(WSIPs, MZip([WSMaxConns,
                                 WSNrOfAcceptors,
                                 WSMountPoint,
-                                WSProxyProto])),
+                                WSProxyProto,
+                                WSAllowedProto])),
     VMQ = lists:zip(VMQIPs, MZip([VMQMaxConns,
                                   VMQNrOfAcceptors,
                                   VMQMountPoint])),
@@ -168,7 +184,8 @@ translate_listeners(Conf) ->
                                   SSLKeyFiles,
                                   SSLRequireCerts,
                                   SSLVersions,
-                                  SSLUseIdents])),
+                                  SSLUseIdents,
+                                  SSLAllowedProto])),
     WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns,
                                      WS_SSLNrOfAcceptors,
                                      WS_SSLMountPoint,
@@ -181,7 +198,8 @@ translate_listeners(Conf) ->
                                      WS_SSLKeyFiles,
                                      WS_SSLRequireCerts,
                                      WS_SSLVersions,
-                                     WS_SSLUseIdents])),
+                                     WS_SSLUseIdents,
+                                     WS_SSLAllowedProto])),
     VMQS = lists:zip(VMQ_SSLIPs, MZip([VMQ_SSLMaxConns,
                                        VMQ_SSLNrOfAcceptors,
                                        VMQ_SSLMountPoint,
@@ -230,6 +248,8 @@ extract(Prefix, Suffix, Val, Conf) ->
            "use_identity_as_username",
            %% http listener specific
            "config_mod", "config_fun",
+           %% mqtt listener specific
+           "allowed_protocol_versions",
            %% other
            "proxy_protocol"
           ],

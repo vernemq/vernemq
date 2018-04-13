@@ -38,6 +38,13 @@
   routing table (#595).
 - Bugfix: Fix race condition when fetching data from the internal query subsystem.
 - Fix build issue on Raspberry PI (`make rpi-32`).
+- Make it possible to specify which protocol versions are allowed on an MQTT
+  listener. By default the protocol versions allowed are versions 3 and 4 (MQTT
+  v3.1 and v3.1.1 respectively). To set the allowed protocol versions one can
+  use `listener.tcp.allowed_protocol_versions = [3,4]` on the transport level or
+  for a specific listener using
+  `listener.tcp.specific_listener.allowed_protocol_versions`.
+
 
 ## VerneMQ 1.3.0
 

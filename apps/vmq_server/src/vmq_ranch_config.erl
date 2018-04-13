@@ -257,5 +257,7 @@ default_session_opts(Opts) ->
             false -> MaybeSSLDefaults;
             {_, V1} -> [{proxy_protocol_use_cn_as_username, V1}|MaybeSSLDefaults]
         end,
+    AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions, Opts, [3,4]),
     %% currently only the mountpoint option is supported
-    [{mountpoint, proplists:get_value(mountpoint, Opts, "")}|MaybeProxyDefaults].
+    [{mountpoint, proplists:get_value(mountpoint, Opts, "")},
+     {allowed_protocol_versions, AllowedProtocolVersions}|MaybeProxyDefaults].

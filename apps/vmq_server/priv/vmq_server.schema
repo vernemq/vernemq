@@ -627,6 +627,76 @@
                                                                                   ]}.
 
 
+
+%% @doc 'listener.tcp.allowed_protocol_versions' configures which
+%% protocol versions are allowed for an MQTT listener. The allowed
+%% protocol versions can be specified the tcp, websocket or ssl level:
+%%
+%%     - listener.tcp.allowed_protocol_versions
+%%     - listener.ws.allowed_protocol_versions
+%%     - listener.wss.allowed_protocol_versions
+%%     - listener.ssl.allowed_protocol_versions
+%%
+%% or for a specific listener:
+%%
+%%     - listener.tcp.my_tcp_listener.allowed_protocol_versions
+%%     - listener.ws.my_ws_listener.allowed_protocol_versions
+%%     - listener.wss.my_ws_listener.allowed_protocol_versions
+%%     - listener.ssl.my_ws_listener.allowed_protocol_versions
+%%
+%%
+{mapping, "listener.tcp.allowed_protocol_versions", "vmq_server.listeners",
+ [
+  {default, "[3,4]"},
+  {datatype, string},
+  hidden
+ ]}.
+
+{mapping, "listener.tcp.$name.allowed_protocol_versions", "vmq_server.listeners",
+ [
+  {datatype, string},
+  hidden
+ ]}.
+
+{mapping, "listener.ws.allowed_protocol_versions", "vmq_server.listeners",
+ [
+  {default, "[3,4]"},
+  {datatype, string},
+  hidden
+ ]}.
+
+{mapping, "listener.ws.$name.allowed_protocol_versions", "vmq_server.listeners",
+ [
+  {datatype, string},
+  hidden
+ ]}.
+
+{mapping, "listener.wss.allowed_protocol_versions", "vmq_server.listeners",
+ [
+  {default, "[3,4]"},
+  {datatype, string},
+  hidden
+ ]}.
+
+{mapping, "listener.wss.$name.allowed_protocol_versions", "vmq_server.listeners",
+ [
+  {datatype, string},
+  hidden
+ ]}.
+
+{mapping, "listener.ssl.allowed_protocol_versions", "vmq_server.listeners",
+ [
+  {default, "[3,4]"},
+  {datatype, string},
+  hidden
+ ]}.
+
+{mapping, "listener.ssl.$name.allowed_protocol_versions", "vmq_server.listeners",
+ [
+  {datatype, string},
+  hidden
+ ]}.
+
 %% @doc listener.vmq.clustering is the IP address and TCP port that
 %% the broker will bind to accept connections from other cluster
 %% nodes e.g:

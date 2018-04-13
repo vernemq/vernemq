@@ -20,7 +20,6 @@
          info/2]).
 
 -define(CLOSE_AFTER, 5000).
--define(ALLOWED_MQTT_VERSIONS, [3, 4, 131]).
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 -type msg_id() :: undefined | 1..65535.
@@ -66,6 +65,7 @@
           upgrade_qos=false                 :: boolean(),
           reg_view=vmq_reg_trie             :: atom(),
           cap_settings=#cap_settings{}      :: cap_settings(),
+          allowed_protocol_versions         :: [3|4|131],
 
           trace_fun                        :: undefined | any() %% TODO
          }).
@@ -78,6 +78,9 @@ init(Peer, Opts) ->
     rand:seed(exsplus, os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
+    AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions,
+                                                  Opts),
+
     PreAuthUser =
     case lists:keyfind(preauth, 1, Opts) of
         false -> undefined;
@@ -120,6 +123,7 @@ init(Peer, Opts) ->
                               retry_interval=1000 * RetryInterval,
                               cap_settings=CAPSettings,
                               reg_view=RegView,
+                              allowed_protocol_versions=AllowedProtocolVersions,
                               trace_fun=TraceFun}}.
 
 data_in(Data, SessionState) when is_binary(Data) ->
@@ -514,11 +518,12 @@ check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=3}, State) ->
                 [State#state.subscriber_id]),
     connack_terminate(?CONNACK_INVALID_ID, State);
 check_client_id(#mqtt_connect{client_id=ClientId, proto_ver=V} = F,
-                #state{max_client_id_size=S} = State)
+                #state{max_client_id_size=S,
+                       allowed_protocol_versions=AllowedVersions} = State)
   when byte_size(ClientId) =< S ->
     {MountPoint, _} = State#state.subscriber_id,
     SubscriberId = {MountPoint, ClientId},
-    case lists:member(V, ?ALLOWED_MQTT_VERSIONS) of
+    case lists:member(V, AllowedVersions) of
         true ->
             check_user(F, State#state{subscriber_id=SubscriberId});
         false ->
@@ -631,6 +636,8 @@ auth_on_register(User, Password, State) ->
                              shared_subscription_policy=?state_val(shared_subscription_policy, Args, State),
                              retry_interval=?state_val(retry_interval, Args, State),
                              upgrade_qos=?state_val(upgrade_qos, Args, State),
+                             allowed_protocol_versions=
+                                 ?state_val(allowed_protocol_versions, Args, State),
                              cap_settings=ChangedCAPSettings
                             },
             {ok, queue_opts(ChangedState, Args), ChangedState};
