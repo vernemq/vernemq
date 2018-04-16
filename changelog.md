@@ -44,7 +44,8 @@
   use `listener.tcp.allowed_protocol_versions = [3,4]` on the transport level or
   for a specific listener using
   `listener.tcp.specific_listener.allowed_protocol_versions`.
-
+- Fix bug causing an exception to be thrown when `vmq-admin cluster leave` is
+  used with a timout value less than 5 seconds (#642).
 
 ## VerneMQ 1.3.0
 
