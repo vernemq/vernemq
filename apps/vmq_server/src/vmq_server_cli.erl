@@ -207,7 +207,9 @@ vmq_cluster_leave_cmd() ->
                        IsKill = lists:keymember(kill, 1, Flags),
                        Interval = proplists:get_value(summary_interval, Flags, 5000),
                        Timeout = proplists:get_value(timeout, Flags, 60000),
-                       N = Timeout div Interval,
+                       %% Make sure Iterations > 0 to it will be
+                       %% checked at least once if queue migration is complete.
+                       Iterations = max(Timeout div Interval, 1),
                        {ok, Local} = plumtree_peer_service_manager:get_local_state(),
                        TargetNodes = riak_dt_orswot:value(Local) -- [Node],
                        Text =
@@ -224,6 +226,8 @@ vmq_cluster_leave_cmd() ->
                                        "Can't fix queues because cluster is inconsistent, retry!"
                                end;
                            pong when IsKill ->
+                               Caller = self(),
+                               CRef = make_ref(),
                                LeaveFun =
                                fun() ->
                                        %% stop all MQTT sessions on Node
@@ -233,7 +237,7 @@ vmq_cluster_leave_cmd() ->
                                        %% At this point, client reconnect and will drain
                                        %% their queues located at 'Node' migrating them to
                                        %% their new node.
-                                       case wait_till_all_offline(Interval, N) of
+                                       case wait_till_all_offline(Interval, Iterations) of
                                            ok ->
                                                %% There is no guarantee that all clients will
                                                %% reconnect on time; we've to force migrate all
@@ -243,9 +247,10 @@ vmq_cluster_leave_cmd() ->
                                                %% instead of calling leave_cluster('Node')
                                                %% directly
                                                _ = plumtree_peer_service:leave(unused_arg),
+                                               Caller ! {done, CRef},
                                                init:stop();
                                            error ->
-                                               exit("error, still online queues, check the logs, and retry!")
+                                               Caller ! {msg, CRef, "error, still online queues, check the logs, and retry!"}
                                        end
                                end,
                                ProcName = {?MODULE, vmq_server_migration},
@@ -256,10 +261,12 @@ vmq_cluster_leave_cmd() ->
                                                Pid = spawn(Node, LeaveFun),
                                                MRef = monitor(process, Pid),
                                                receive
-                                                   {'DOWN', MRef, process, Pid, normal} ->
+                                                   {msg, CRef, Msg} ->
+                                                       Msg;
+                                                   {done, CRef} ->
                                                        "Done";
                                                    {'DOWN', MRef, process, Pid, Reason} ->
-                                                       Reason
+                                                       "Unknown error: " ++ atom_to_list(Reason)
                                                end;
                                            false ->
                                                "Can't migrate queues because cluster is inconsistent, retry!"

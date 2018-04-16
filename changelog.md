@@ -1,5 +1,10 @@
 # Changelog
 
+## VerneMQ 1.3.2
+
+- Fix bug causing an exception to be thrown when `vmq-admin cluster leave` is
+  used with a timout value less than 5 seconds (#642).
+
 ## VerneMQ 1.3.1
 
 - Bugfix: Handle return values correctly when enqueuing messages to offline
