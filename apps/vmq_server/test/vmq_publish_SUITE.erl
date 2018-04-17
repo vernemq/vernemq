@@ -12,7 +12,7 @@ init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
     cover:start(),
     vmq_test_utils:setup(),
-    vmq_server_cmd:listener_start(1888, []),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     [S|Config].
 
 end_per_suite(_Config) ->

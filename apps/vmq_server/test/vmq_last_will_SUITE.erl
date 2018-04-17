@@ -23,7 +23,7 @@ init_per_suite(_Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
-    vmq_server_cmd:listener_start(1888, []),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     _Config.
 
 end_per_suite(_Config) ->

@@ -25,7 +25,6 @@
 -export([msg_ref/0]).
 
 -define(CLOSE_AFTER, 5000).
--define(ALLOWED_MQTT_VERSIONS, [5]).
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 
@@ -85,6 +84,7 @@
           cap_settings=#cap_settings{}      :: cap_settings(),
           topic_alias_max                   :: non_neg_integer(), %% 0 means no topic aliases allowed.
           topic_aliases_in=#{}              :: topic_aliases_in(), %% topic aliases used from client to broker.
+          allowed_protocol_versions         :: [3|4|131|5],
 
           trace_fun                        :: undefined | any() %% TODO
          }).
@@ -97,6 +97,8 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive} = ConnectFrame) ->
     rand:seed(exsplus, os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
+    AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions,
+                                                  Opts),
     PreAuthUser =
     case lists:keyfind(preauth, 1, Opts) of
         false -> undefined;
@@ -147,6 +149,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                    topic_alias_max=TopicAliasMax,
                    reg_view=RegView,
                    trace_fun=TraceFun,
+                   allowed_protocol_versions=AllowedProtocolVersions,
                    last_time_active=os:timestamp()},
 
     case check_enhanced_auth(ConnectFrame, State) of
@@ -623,11 +626,12 @@ check_client_id(#mqtt5_connect{client_id= <<>>, proto_ver=5} = F,
                State#state{subscriber_id=SubscriberId});
 check_client_id(#mqtt5_connect{client_id=ClientId, proto_ver=V} = F,
                 OutProps,
-                #state{max_client_id_size=S} = State)
+                #state{max_client_id_size=S,
+                       allowed_protocol_versions=AllowedVersions} = State)
   when byte_size(ClientId) =< S ->
     {MountPoint, _} = State#state.subscriber_id,
     SubscriberId = {MountPoint, ClientId},
-    case lists:member(V, ?ALLOWED_MQTT_VERSIONS) of
+    case lists:member(V, AllowedVersions) of
         true ->
             check_user(F, OutProps, State#state{subscriber_id=SubscriberId});
         false ->
