@@ -38,8 +38,6 @@ init_per_group(mqttv5, Config) ->
 end_per_group(_, _Config) ->
     ok.
 
-init_per_testcase(will_delay_v5_test, _) ->
-    {skip, "will delay feature not yet implemented"};
 init_per_testcase(_Case, Config) ->
     Config.
 
@@ -60,8 +58,8 @@ groups() ->
          will_null_topic_test,
          will_qos0_test],
     [
-     {mqttv4, [shuffle, sequence], Tests},
-     {mqttv5, [shuffle, sequence], Tests
+     {mqttv4, [shuffle], Tests},
+     {mqttv5, [shuffle], Tests
      ++ [
          will_delay_v5_test
         ]}
@@ -176,7 +174,7 @@ will_delay_v5_test(_Config) ->
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, Connack, []),
     ok = gen_tcp:send(SubSocket, Subscribe),
     SubAck = packetv5:gen_suback(53, [0], #{}),
-    {ok, SubAck, <<>>} = packetv5:expect_frame(SubSocket, SubAck),
+    ok = packetv5:expect_frame(SubSocket, SubAck),
 
     %% connect client with delayed last will
     WillMsg = <<"delayed_msg">>,
@@ -197,8 +195,8 @@ will_delay_v5_test(_Config) ->
     %% for the message to arrive.
     T1 = ts(),
     ok = gen_tcp:close(Socket),
-    LastWillPub = packetv5:gen_publish(WillTopic, 0, WillMsg, #{}),
-    {ok, LastWillPub, <<>>} = packetv5:expect_frame(SubSocket, LastWillPub),
+    LastWillPub = packetv5:gen_publish(WillTopic, 0, WillMsg, []),
+    ok = packetv5:expect_frame(SubSocket, LastWillPub),
     T2 = ts(),
     assert_ge(T2 - T1, WillDelay*1000),
     disable_on_publish(),
