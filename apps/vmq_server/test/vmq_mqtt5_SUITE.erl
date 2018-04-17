@@ -8,7 +8,7 @@
 
 init_per_suite(Config) ->
     vmq_test_utils:setup(),
-    vmq_server_cmd:listener_start(1888, []),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     cover:start(),
     Config.
 

@@ -68,7 +68,7 @@
           upgrade_qos=false                 :: boolean(),
           reg_view=vmq_reg_trie             :: atom(),
           cap_settings=#cap_settings{}      :: cap_settings(),
-          allowed_protocol_versions         :: [3|4|131],
+          allowed_protocol_versions         :: [3|4|131|5],
 
           trace_fun                        :: undefined | any() %% TODO
          }).
@@ -133,8 +133,6 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                    reg_view=RegView,
                    allowed_protocol_versions=AllowedProtocolVersions,
                    trace_fun=TraceFun},
-
-
 
     case check_connect(ConnectFrame, State) of
         {stop, _, _} = R -> R;
