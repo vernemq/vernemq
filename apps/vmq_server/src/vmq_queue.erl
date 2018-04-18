@@ -48,7 +48,8 @@
          migrate/2,
          cleanup/2,
          force_disconnect/2,
-         force_disconnect/3]).
+         force_disconnect/3,
+         set_delayed_will/3]).
 
 -export([online/2, online/3,
          offline/2, offline/3,
@@ -90,7 +91,10 @@
           drain_over_timer,
           max_msgs_per_drain_step,
           waiting_call,
-          opts
+          opts,
+          delayed_will :: {Delay :: non_neg_integer(),
+                           Fun :: function()},
+          delayed_will_timer :: reference() | undefined
          }).
 
 %%%===================================================================
@@ -151,6 +155,9 @@ force_disconnect(Queue, Reason) when is_pid(Queue) ->
     force_disconnect(Queue, Reason, false).
 force_disconnect(Queue, Reason, DoCleanup) when is_pid(Queue) and is_boolean(DoCleanup) ->
     gen_fsm:sync_send_all_state_event(Queue, {force_disconnect, Reason, DoCleanup}, infinity).
+
+set_delayed_will(Queue, Fun, Delay) when is_pid(Queue) ->
+    gen_fsm:sync_send_all_state_event(Queue, {set_delayed_will, Fun, Delay}, infinity).
 
 set_last_waiting_acks(Queue, WAcks) ->
     gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
@@ -221,7 +228,7 @@ online({set_opts, SessionPid, Opts}, _From, #state{opts=OldOpts} = State) ->
     {reply, ok, online, NewState2};
 online({add_session, SessionPid, #{allow_multiple_sessions := true} = Opts}, _From, State) ->
     %% allow multiple sessions per queue
-    {reply, ok, online, unset_expiry_timer(add_session_(SessionPid, Opts, State))};
+    {reply, ok, online, unset_timers(add_session_(SessionPid, Opts, State))};
 online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, From, State)
   when State#state.waiting_call == undefined ->
     %% forbid multiple sessions per queue,
@@ -439,14 +446,18 @@ offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     vmq_reg:delete_subscriptions(SId),
     cleanup_queue(SId, Q),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
-    {stop, normal, State};
+    State1 = publish_last_will(State),
+    {stop, normal, State1};
+offline(publish_last_will, State) ->
+    State1 = unset_will_timer(publish_last_will(State)),
+    {next_state, offline, State1};
 offline(Event, State) ->
     lager:error("got unknown event in offline state ~p", [Event]),
     {next_state, offline, State}.
 
 offline({add_session, SessionPid, Opts}, _From, State) ->
     {reply, ok, state_change(add_session, offline, online),
-     unset_expiry_timer(add_session_(SessionPid, Opts, State))};
+     unset_timers(add_session_(SessionPid, Opts, State))};
 offline({migrate, OtherQueue}, From, State) ->
     gen_fsm:send_event(self(), drain_start),
     {next_state, state_change(migrate, offline, drain),
@@ -464,10 +475,10 @@ offline(Event, _From, State) ->
     lager:error("got unknown sync event in offline state ~p", [Event]),
     {reply, {error, offline}, offline, State}.
 
-
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
+
 
 init([SubscriberId, Clean]) ->
     Defaults = default_opts(),
@@ -493,7 +504,8 @@ init([SubscriberId, Clean]) ->
                           drain_time=DrainTime,
                           deliver_mode=DeliverMode,
                           max_msgs_per_drain_step=MaxMsgsPerDrainStep,
-                          opts=Defaults}}.
+                          opts=Defaults
+                         }}.
 
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
@@ -549,6 +561,8 @@ handle_sync_event({force_disconnect, Reason, DoCleanup}, _From, StateName,
             disconnect_sessions(Reason, State),
             {reply, ok, StateName, State}
     end;
+handle_sync_event({set_delayed_will, Fun, Delay}, _From, StateName, State) ->
+    {reply, ok, StateName, State#state{delayed_will = {Delay, Fun}}};
 handle_sync_event(Event, _From, _StateName, State) ->
     {stop, {error, {unknown_sync_event, Event}}, State}.
 
@@ -684,7 +698,7 @@ handle_session_down(SessionPid, StateName,
             %%     inside the offline queue
             _ = vmq_plugin:all(on_client_offline, [SId]),
             {next_state, state_change('DOWN', OldStateName, offline),
-             maybe_set_expiry_timer(NewState#state{offline=compress_queue(SId, NewState#state.offline)})};
+             maybe_set_last_will_timer(maybe_set_expiry_timer(NewState#state{offline=compress_queue(SId, NewState#state.offline)}))};
         _ ->
             %% still one or more sessions online
             {next_state, StateName, NewState}
@@ -905,6 +919,18 @@ maybe_set_expiry_timer(ExpireAfter, State) when ExpireAfter > 0 ->
     Ref = gen_fsm:send_event_after(ExpireAfter * 1000, expire_session),
     State#state{expiry_timer=Ref}.
 
+maybe_set_last_will_timer(#state{delayed_will = undefined} = State) ->
+    State;
+maybe_set_last_will_timer(#state{delayed_will = {Delay, _Fun}} = State) ->
+    Ref = gen_fsm:send_event_after(Delay * 1000, publish_last_will),
+    State#state{delayed_will_timer = Ref}.
+
+publish_last_will(#state{delayed_will = undefined} = State) ->
+    State;
+publish_last_will(#state{delayed_will = {_, Fun}} = State) ->
+    Fun(),
+    unset_will_timer(State#state{delayed_will = undefined}).
+
 maybe_offline_store(Offline, SubscriberId, {deliver, QoS, #vmq_msg{persisted=false} = Msg}) when QoS > 0 ->
     PMsg = Msg#vmq_msg{persisted=true},
     case vmq_plugin:only(msg_store_write, [SubscriberId, PMsg#vmq_msg{qos=QoS}]) of
@@ -937,6 +963,15 @@ maybe_offline_delete(SubscriberId, MsgRef) when is_binary(MsgRef) ->
     _ = vmq_plugin:only(msg_store_delete, [SubscriberId, MsgRef]),
     ok;
 maybe_offline_delete(_, _) -> ok.
+
+unset_timers(State) ->
+    S1 = unset_expiry_timer(State),
+    unset_will_timer(S1).
+
+unset_will_timer(#state{delayed_will_timer=undefined} = State) -> State;
+unset_will_timer(#state{delayed_will_timer=Ref} = State) ->
+    gen_fsm:cancel_timer(Ref),
+    State#state{delayed_will_timer=undefined}.
 
 unset_expiry_timer(#state{expiry_timer=undefined} = State) -> State;
 unset_expiry_timer(#state{expiry_timer=Ref} = State) ->

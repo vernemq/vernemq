@@ -694,7 +694,7 @@ check_will(#mqtt5_connect{lwt=undefined}, SessionPresent, OutProps, State) ->
                             properties=OutProps0}]};
 check_will(#mqtt5_connect{
               lwt=#mqtt5_lwt{will_topic=Topic, will_msg=Payload, will_qos=Qos,
-                             will_retain=IsRetain,will_properties=_Properties}},
+                             will_retain=IsRetain,will_properties=Properties}},
            SessionPresent,
            OutProps,
            State) ->
@@ -705,7 +705,8 @@ check_will(#mqtt5_connect{
                                           msg_ref=msg_ref(),
                                           qos=Qos,
                                           retain=unflag(IsRetain),
-                                          mountpoint=MountPoint
+                                          mountpoint=MountPoint,
+                                          properties=Properties
                                  },
                                  fun(Msg, _) -> {ok, Msg} end,
                                  State) of
@@ -1113,11 +1114,22 @@ prepare_frame(QoS, Msg, State) ->
 -spec maybe_publish_last_will(state()) -> ok.
 maybe_publish_last_will(#state{will_msg=undefined}) -> ok;
 maybe_publish_last_will(#state{subscriber_id=SubscriberId, username=User,
-                               will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings}) ->
-    #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
-    HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
-    _ = on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish,
-                                        RegView, Msg), HookArgs),
+                               will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings,
+                               queue_pid=QueuePid,
+                               clean_session=CS}) ->
+    LastWillFun =
+        fun() ->
+                #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
+                HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
+                _ = on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish,
+                                                    RegView, filter_outgoing_pub_props(Msg)), HookArgs)
+        end,
+    case {Msg, CS} of
+        {#vmq_msg{properties = #{p_will_delay_interval := Delay}}, false} ->
+            vmq_queue:set_delayed_will(QueuePid, LastWillFun, Delay);
+        _ ->
+            LastWillFun()
+    end,
     ok.
 
 -spec check_in_flight(state()) -> boolean().
@@ -1416,3 +1428,17 @@ maybe_add_topic_alias_max(Props, #state{topic_alias_max=0}) ->
     Props;
 maybe_add_topic_alias_max(Props, #state{topic_alias_max=Max}) ->
     Props#{p_topic_alias_max => Max}.
+
+filter_outgoing_pub_props(#vmq_msg{properties=Props} = Msg) when map_size(Props) =:= 0 ->
+    Msg;
+filter_outgoing_pub_props(#vmq_msg{properties=Props} = Msg) ->
+    %% make sure we don't forward any properties which we're not
+    %% allowed to.
+    Msg#vmq_msg{properties=
+                    maps:with([p_payload_format_indicator,
+                               p_response_topic,
+                               p_correlation_data,
+                               p_user_property,
+                               p_content_type,
+                               p_message_expiry_interval
+                              ], Props)}.

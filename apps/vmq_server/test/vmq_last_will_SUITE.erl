@@ -152,6 +152,14 @@ will_qos0_test(Config) ->
     ok = gen_tcp:close(Socket).
 
 will_delay_v5_test(_Config) ->
+    %% [MQTT-3.1.2-8] The Will Message MUST be published after the
+    %% Network Connection is subsequently closed and either the Will
+    %% Delay Interval has elapsed or the Session ends, unless the Will
+    %% Message has been deleted by the Server on receipt of a
+    %% DISCONNECT packet with Reason Code 0x00 (Normal disconnection)
+    %% or a new Network Connection for the ClientID is opened before
+    %% the Will Delay Interval has elapsed.
+
     WillTopic = <<"will/delay/test/0">>,
 
     enable_on_subscribe(),
@@ -188,6 +196,7 @@ will_delay_v5_test(_Config) ->
                   will_msg = WillMsg},
     WillConnect = packetv5:gen_connect("will-delay-test",
                                        [{keepalive, 60},
+                                        {clean_start, false},
                                         {lwt, LastWill}]),
     {ok, Socket} = packetv5:do_client_connect(WillConnect, Connack, []),
 
