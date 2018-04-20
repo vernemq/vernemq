@@ -28,7 +28,8 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [
-     {group, mqtt}
+     {group, mqttv4},
+     {group, mqttv5}
     ].
 
 groups() ->
@@ -46,12 +47,70 @@ groups() ->
          subpub_qos2_test,
          resubscribe_test],
     [
-     {mqtt, [shuffle,sequence], Tests}
+     {mqttv4, [shuffle,sequence], Tests},
+     {mqttv5, [shuffle],
+      [
+       subscribe_no_local_test,
+       subscribe_retain_as_published_test,
+       subscribe_retain_handling_flags_test,
+       subscribe_illegal_opt
+      ]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+subscribe_no_local_test(_) ->
+    %% Bit 2 of the Subscription Options represents the No Local
+    %% option. If the value is 1, Application Messages MUST NOT be
+    %% forwarded to a connection with a ClientID equal to the ClientID
+    %% of the publishing connection [MQTT-3.8.3-3].
+    throw(not_implemented).
+
+subscribe_retain_as_published_test(_) ->
+    %% maybe move to the retain suite?
+
+    %% Bit 3 of the Subscription Options represents the Retain As
+    %% Published option. If 1, Application Messages forwarded using
+    %% this subscription keep the RETAIN flag they were published
+    %% with. If 0, Application Messages forwarded using this
+    %% subscription have the RETAIN flag set to 0. Retained messages
+    %% sent when the subscription is established have the RETAIN flag
+    %% set to 1.
+    throw(not_implemented).
+
+subscribe_retain_handling_flags_test(_) ->
+    %% maybe move to the retain suite?
+
+    %% Bits 4 and 5 of the Subscription Options represent the Retain
+    %% Handling option. This option specifies whether retained
+    %% messages are sent when the subscription is established. This
+    %% does not affect the sending of retained messages at any point
+    %% after the subscribe. If there are no retained messages matching
+    %% the Topic Filter, all of these values act the same. The values
+    %% are:
+    %%
+    %% 0 = Send retained messages at the time of the subscribe
+    %%
+    %% 1 = Send retained messages at subscribe only if the
+    %% subscription does not currently exist
+    %%
+    %% 2 = Do not send retained messages at the time of the subscribe
+    %%
+    %% It is a Protocol Error to send a Retain Handling value of 3.
+    throw(not_implemented).
+
+subscribe_illegal_opt(_) ->
+    %% It is a Protocol Error to set the No Local bit to 1 on a Shared
+    %% Subscription [MQTT-3.8.3-4].
+
+    %% Bits 6 and 7 of the Subscription Options byte are reserved for
+    %% future use. The Server MUST treat a SUBSCRIBE packet as
+    %% malformed if any of Reserved bits in the Payload are non-zero
+    %% [MQTT-3.8.3-5].
+    throw(not_implemented).
 
 subscribe_qos0_test(_) ->
     Connect = packet:gen_connect("subscribe-qos0-test", [{keepalive,10}]),
