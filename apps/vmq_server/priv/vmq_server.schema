@@ -175,6 +175,15 @@
          end
  end}.
 
+%% @doc The maximum delay for a last will message. This setting
+%% applies only to MQTTv5 sessions and overrides the value provided by
+%% the client.
+{mapping, "max_last_will_delay", "vmq_server.max_last_will_delay", [
+                                                                    {default, "0s"},
+                                                                    {commented, "1w"},
+                                                                    {datatype, {duration,s}}
+                                                                   ]}.
+
 %% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being
 %% transmitted simultaneously. This includes messages currently going through handshakes 
 %% and messages that are being retried. Defaults to 20. Set to 0 for no maximum. If set 

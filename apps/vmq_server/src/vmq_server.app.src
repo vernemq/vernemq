@@ -48,6 +48,7 @@
       {queue_deliver_mode, fanout}, % balance vs fanout
       {queue_type, fifo}, % fifo vs lifo
       {persistent_client_expiration, 0}, % never
+      {max_last_will_delay, 0}, % not allowed
       {max_drain_time, 100}, 
       {max_msgs_per_drain_step, 10},
 
