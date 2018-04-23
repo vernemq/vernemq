@@ -167,19 +167,15 @@
          case S of
              "never" -> 0;
              _ ->
-                 [Entity|T] = lists:reverse(S),
-                 case {Entity, list_to_integer(lists:reverse(T))} of
-                     {$h, D} -> D * 60 * 60;
-                     {$d, D} -> D * 24 * 60 * 60;
-                     {$w, D} -> D * 7 * 24 * 60 * 60;
-                     {$m, D} -> D * 4 * 7 * 24 * 60 * 60;
-                     {$y, D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
-                     _ -> cuttlefish:invalid(S ++ " must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year, or the string 'never'")
+                 case vmq_schema:string_to_secs(S) of
+                     error ->
+                         cuttlefish:invalid(S ++ " must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year, or the string 'never'");
+                     Val -> Val
                  end
          end
  end}.
 
-%% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being 
+%% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being
 %% transmitted simultaneously. This includes messages currently going through handshakes 
 %% and messages that are being retried. Defaults to 20. Set to 0 for no maximum. If set 
 %% to 1, this will guarantee in-order delivery of messages.

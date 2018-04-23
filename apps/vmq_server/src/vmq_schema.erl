@@ -13,7 +13,8 @@
 %% limitations under the License.
 -module(vmq_schema).
 
--export([translate_listeners/1]).
+-export([translate_listeners/1,
+         string_to_secs/1]).
 
 translate_listeners(Conf) ->
     %% cuttlefish messes up with the tree-like configuration style if
@@ -279,3 +280,14 @@ extract(Prefix, Suffix, Val, Conf) ->
                                              fun({K, _V}) ->
                                                      cuttlefish_variable:is_fuzzy_match(K, string:tokens(NameSubPrefix, "."))
                                              end, Conf), not lists:member(Name, Mappings ++ ExcludeRootSuffixes)].
+
+string_to_secs(S) ->
+    [Entity|T] = lists:reverse(S),
+    case {Entity, list_to_integer(lists:reverse(T))} of
+        {$h, D} -> D * 60 * 60;
+        {$d, D} -> D * 24 * 60 * 60;
+        {$w, D} -> D * 7 * 24 * 60 * 60;
+        {$m, D} -> D * 4 * 7 * 24 * 60 * 60;
+        {$y, D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
+        _ -> error
+    end.
