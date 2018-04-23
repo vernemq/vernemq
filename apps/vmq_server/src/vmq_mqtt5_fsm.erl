@@ -1124,13 +1124,18 @@ maybe_publish_last_will(#state{subscriber_id=SubscriberId, username=User,
                 _ = on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish,
                                                     RegView, filter_outgoing_pub_props(Msg)), HookArgs)
         end,
-    case {Msg, CS} of
-        {#vmq_msg{properties = #{p_will_delay_interval := Delay}}, false} ->
+    case {get_last_will_delay(Msg), CS} of
+        {Delay, false} when Delay > 0 ->
             vmq_queue:set_delayed_will(QueuePid, LastWillFun, Delay);
         _ ->
             LastWillFun()
     end,
     ok.
+
+get_last_will_delay(#vmq_msg{properties = #{p_will_delay_interval := Delay}}) ->
+    MaxDuration = vmq_config:get_env(max_last_will_delay, 0),
+    min(MaxDuration, Delay);
+get_last_will_delay(_) -> 0.
 
 -spec check_in_flight(state()) -> boolean().
 check_in_flight(#state{waiting_acks=WAcks, max_inflight_messages=Max}) ->
