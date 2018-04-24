@@ -32,16 +32,17 @@ end_per_testcase(_TestCase, _Config) ->
     ok.
 
 groups() ->
-    [].
+    Tests =
+        [proxy_protocol_inheritance_test,
+         proxy_protocol_override_test,
+         ssl_certs_opts_inheritance_test,
+         ssl_certs_opts_override_test,
+         allowed_protocol_versions_inheritance_test,
+         allowed_protocol_versions_override_test],
+    [{schema, [parallel], Tests}].
 
 all() ->
-    [proxy_protocol_inheritance_test,
-     proxy_protocol_override_test,
-     ssl_certs_opts_inheritance_test,
-     ssl_certs_opts_override_test,
-     allowed_protocol_versions_inheritance_test,
-     allowed_protocol_versions_override_test].
-
+    [{group, schema}].
 
 ssl_certs_opts_inheritance_test(_Config) ->
     ConfFun =

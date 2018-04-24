@@ -179,7 +179,7 @@
 %% applies only to MQTTv5 sessions and overrides the value provided by
 %% the client.
 {mapping, "max_last_will_delay", "vmq_server.max_last_will_delay", [
-                                                                    {default, "0s"},
+                                                                    {default, 0},
                                                                     {commented, "1w"},
                                                                     {datatype, {duration,s}}
                                                                    ]}.
