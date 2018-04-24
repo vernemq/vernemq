@@ -1,5 +1,7 @@
 -module(vmq_retain_SUITE).
 
+-include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+
 -compile(export_all).
 -compile(nowarn_export_all).
 
@@ -54,7 +56,11 @@ groups() ->
          publish_empty_retained_msg_test],
     [
      {mqttv4, [shuffle, parallel], Tests},
-     {mqttv5, [shuffle, parallel], Tests}
+     {mqttv5, [shuffle, parallel],
+      [
+       retain_with_properties,
+       retain_with_message_expiry
+       |Tests]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -206,6 +212,39 @@ retain_wildcard_test(Cfg) ->
     ok = mqtt5_v4compat:expect_packet(Socket, "suback", Suback, Cfg),
     ok = mqtt5_v4compat:expect_packet(Socket, "publish", Publish, Cfg),
     ok = gen_tcp:close(Socket).
+
+retain_with_properties(Cfg) ->
+    Topic = vmq_cth:utopic(Cfg),
+
+    %% setup publisher
+    Properties =
+        #{p_payload_format_indicator => utf8,
+          p_response_topic => <<"response topic">>,
+          p_correlation_data => <<"correlation data">>,
+          p_user_property => [{<<"k1">>, <<"v1">>},
+                              {<<"k2">>, <<"v2">>},
+                              {<<"k3">>, <<"v3">>},
+                              {<<"k2">>, <<"v4">>}],
+          p_content_type => <<"content type">>},
+
+    PubConnect = packetv5:gen_connect(vmq_cth:ustr(Cfg) ++ "-pub", [{keepalive, 60}]),
+    PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
+
+    Pub = packetv5:gen_publish(Topic, 0, <<"retained message">>,
+                               [{retain, true},
+                                {properties, Properties}]),
+    ok = gen_tcp:send(PubSocket, Pub),
+
+    %% setup subscriber
+    SubConnect = packetv5:gen_connect(vmq_cth:ustr(Cfg) ++ "-sub", [{keepalive, 60}]),
+    SubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, SubSocket} = packetv5:do_client_connect(SubConnect, SubConnack, []),
+    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)], #{}),
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    SubAck = packetv5:gen_suback(77, [0], #{}),
+    ok = packetv5:expect_frame(SubSocket, SubAck),
+    ok = packetv5:expect_frame(SubSocket, Pub).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks

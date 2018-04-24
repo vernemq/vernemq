@@ -1,7 +1,8 @@
 -module(vmq_cth).
 
 %% util functions
--export([ustr/1]).
+-export([ustr/1,
+         utopic/1]).
 
 %% Callbacks
 -export([init/2]).
@@ -109,7 +110,13 @@ add_update(Key, Val, Config) ->
     [{vmq_md, Md#{ Key  => Val }} | NewConfig].
 
 ustr(Config) ->
-    ustr_(proplists:get_value(vmq_md, Config)).
+    ustr(":", Config).
 
-ustr_(#{group := G, tc := TC}) ->
-    lists:flatten([atom_to_list(G), ":", atom_to_list(TC)]).
+utopic(Config) ->
+    ustr("/", Config).
+
+ustr(JoinElem, Config) ->
+    ustr_(JoinElem, proplists:get_value(vmq_md, Config)).
+
+ustr_(JoinElem, #{group := G, tc := TC}) ->
+    lists:flatten([atom_to_list(G), JoinElem, atom_to_list(TC)]).
