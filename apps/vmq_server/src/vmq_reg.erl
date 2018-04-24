@@ -254,7 +254,8 @@ publish_fold_acc(Msg) -> {Msg, undefined}.
 publish(true, RegView, #vmq_msg{mountpoint=MP,
                                 routing_key=Topic,
                                 payload=Payload,
-                                retain=IsRetain} = Msg) ->
+                                retain=IsRetain,
+                                properties=Properties} = Msg) ->
     %% trade consistency for availability
     %% if the cluster is not consistent at the moment, it is possible
     %% that subscribers connected to other nodes won't get this message
@@ -267,7 +268,7 @@ publish(true, RegView, #vmq_msg{mountpoint=MP,
             ok;
         true ->
             %% retain set action
-            vmq_retain_srv:insert(MP, Topic, Payload),
+            vmq_retain_srv:insert(MP, Topic, {Payload, Properties}),
             publish(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
             ok;
         false ->
@@ -277,6 +278,7 @@ publish(true, RegView, #vmq_msg{mountpoint=MP,
 publish(false, RegView, #vmq_msg{mountpoint=MP,
                                  routing_key=Topic,
                                  payload=Payload,
+                                 properties=Properties,
                                  retain=IsRetain} = Msg) ->
     %% don't trade consistency for availability
     case vmq_cluster:is_ready() of
@@ -287,7 +289,7 @@ publish(false, RegView, #vmq_msg{mountpoint=MP,
             ok;
         true when (IsRetain == true) ->
             %% retain set action
-            vmq_retain_srv:insert(MP, Topic, Payload),
+            vmq_retain_srv:insert(MP, Topic, {Payload, Properties}),
             publish(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
             ok;
         true ->
@@ -331,16 +333,26 @@ deliver_retained(_SubscriberId, [<<"$share">>|_], _QoS) ->
 deliver_retained({MP, _} = SubscriberId, Topic, QoS) ->
     QPid = get_queue_pid(SubscriberId),
     vmq_retain_srv:match_fold(
-      fun ({T, Payload}, _) ->
-              Msg = #vmq_msg{routing_key=T,
-                             payload=Payload,
-                             retain=true,
-                             qos=QoS,
-                             dup=false,
-                             mountpoint=MP,
-                             msg_ref=vmq_mqtt_fsm_util:msg_ref()},
-              vmq_queue:enqueue(QPid, {deliver, QoS, Msg})
-      end, ok, MP, Topic).
+      fun ({T, {Payload, Properties}}, _) ->
+                  Msg = #vmq_msg{routing_key=T,
+                                 payload=Payload,
+                                 retain=true,
+                                 qos=QoS,
+                                 dup=false,
+                                 mountpoint=MP,
+                                 msg_ref=vmq_mqtt_fsm_util:msg_ref(),
+                                 properties=Properties},
+                  vmq_queue:enqueue(QPid, {deliver, QoS, Msg});
+               ({T, Payload}, _) ->
+                  Msg = #vmq_msg{routing_key=T,
+                                 payload=Payload,
+                                 retain=true,
+                                 qos=QoS,
+                                 dup=false,
+                                 mountpoint=MP,
+                                 msg_ref=vmq_mqtt_fsm_util:msg_ref()},
+                  vmq_queue:enqueue(QPid, {deliver, QoS, Msg})
+               end, ok, MP, Topic).
 
 subscriptions_for_subscriber_id(SubscriberId) ->
     Default = [],
