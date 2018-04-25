@@ -52,7 +52,7 @@ post_end_per_suite(_Suite,_Config,Return,State) ->
 
 %% @doc Called before each init_per_group.
 pre_init_per_group(_Suite,Group,Config,State) ->
-    NewConfig = add_group_metadata(Group, Config),
+    NewConfig = add_metadata(group, Group, Config),
     {NewConfig, State}.
 
 %% @doc Called after each init_per_group.
@@ -69,7 +69,7 @@ post_end_per_group(_Suite,_Group,_Config,Return,State) ->
 
 %% @doc Called before each init_per_testcase.
 pre_init_per_testcase(_Suite,TC,Config,State) ->
-    NewConfig = add_tc_metadata(TC, Config),
+    NewConfig = add_metadata(tc, TC, Config),
     {NewConfig, State}.
 
 %% Called after each init_per_testcase (immediately before the test case).
@@ -98,13 +98,7 @@ on_tc_skip(_Suite, _TC, _Reason, State) ->
 terminate(_State) ->
     ok.
 
-add_group_metadata(Group, Config) ->
-    add_update(group, Group, Config).
-
-add_tc_metadata(Case, Config) ->
-    add_update(tc, Case, Config).
-
-add_update(Key, Val, Config) ->
+add_metadata(Key, Val, Config) ->
     Md = proplists:get_value(vmq_md, Config, #{}),
     NewConfig = proplists:delete(vmq_md, Config),
     [{vmq_md, Md#{ Key  => Val }} | NewConfig].
