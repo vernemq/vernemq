@@ -271,7 +271,7 @@ retain_with_message_expiry(Cfg) ->
     ok = gen_tcp:close(PubSocket),
 
     %% Wait a bit to ensure the messages will have been held long
-    %% enough in the queue of the offline session
+    %% enough in the retained table
     timer:sleep(1100),
 
     %% set up subscriber
