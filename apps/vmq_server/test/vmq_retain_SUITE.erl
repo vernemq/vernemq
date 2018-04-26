@@ -246,6 +246,63 @@ retain_with_properties(Cfg) ->
     ok = packetv5:expect_frame(SubSocket, SubAck),
     ok = packetv5:expect_frame(SubSocket, Pub).
 
+retain_with_message_expiry(Cfg) ->
+    %% set up publisher
+    PubConnect = packetv5:gen_connect(vmq_cth:ustr(Cfg) ++ "-pub", [{keepalive, 60}]),
+    Connack = packetv5:gen_connack(?M5_CONNACK_ACCEPT),
+    {ok, PubSocket} = packetv5:do_client_connect(PubConnect, Connack, []),
+
+    %% Publish some messages
+    Expiry60s = #{p_message_expiry_interval => 60},
+    PE60s = packetv5:gen_publish(<<"message/expiry/60s">>, 1, <<"e60s">>,
+                                 [{properties, Expiry60s}, {mid, 0},
+                                  {retain, true}]),
+    ok = gen_tcp:send(PubSocket, PE60s),
+    Puback0 = packetv5:gen_puback(0),
+    ok = packetv5:expect_frame(PubSocket, Puback0),
+
+    Expiry1s = #{p_message_expiry_interval => 1},
+    PE1s = packetv5:gen_publish(<<"message/expiry/1s">>, 1, <<"e1s">>,
+                                [{properties, Expiry1s}, {mid, 1},
+                                 {retain, true}]),
+    ok = gen_tcp:send(PubSocket, PE1s),
+    Puback1 = packetv5:gen_puback(1),
+    ok = packetv5:expect_frame(PubSocket, Puback1),
+    ok = gen_tcp:close(PubSocket),
+
+    %% Wait a bit to ensure the messages will have been held long
+    %% enough in the queue of the offline session
+    timer:sleep(1100),
+
+    %% set up subscriber
+    SubConnect = packetv5:gen_connect(vmq_cth:ustr(Cfg) ++ "-sub",
+                                      [{keepalive, 60},
+                                       {clean_start,true}]),
+    {ok, SubSocket} = packetv5:do_client_connect(SubConnect, Connack, []),
+    SubTopic60s = packetv5:gen_subtopic(<<"message/expiry/60s">>, 0),
+    SubTopic1s = packetv5:gen_subtopic(<<"message/expiry/1s">>, 0),
+    SubscribeAll = packetv5:gen_subscribe(10, [SubTopic60s, SubTopic1s], #{}),
+    ok = gen_tcp:send(SubSocket, SubscribeAll),
+    SubAck = packetv5:gen_suback(10, [0,0], #{}),
+    ok = packetv5:expect_frame(SubSocket, SubAck),
+
+    %% receive the message with a long expiry interval
+    {ok, RPE60s, <<>>} = packetv5:receive_frame(SubSocket),
+    #mqtt5_publish{topic = [<<"message">>, <<"expiry">>, <<"60s">>],
+                   qos = 0,
+                   retain = 1,
+                   properties = #{p_message_expiry_interval := Remaining}} = RPE60s,
+    true = Remaining < 60,
+
+    %% The 1s message shouldn't arrive, but let's just block a bit to
+    %% make sure.
+    {error, timeout} = gen_tcp:recv(SubSocket, 0, 500),
+
+    %% check that a message was really expired:
+    1 = vmq_metrics:counter_val(queue_message_expired),
+
+    ok = gen_tcp:close(SubSocket).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
