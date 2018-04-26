@@ -86,7 +86,7 @@
           offline = #queue{},
           deliver_mode = fanout,
           sessions = maps:new(),
-          expiry_timer,
+          expiry_timer :: undefined | reference(),
           drain_time,
           drain_over_timer,
           max_msgs_per_drain_step,
@@ -223,7 +223,7 @@ online(Event, State) ->
 
 online({set_opts, SessionPid, Opts}, _From, #state{opts=OldOpts} = State) ->
     MergedOpts = maps:merge(OldOpts, Opts),
-    NewState1 = set_general_opts(MergedOpts, #state{opts=MergedOpts} = State),
+    NewState1 = set_general_opts(MergedOpts, State#state{opts=MergedOpts}),
     NewState2 = set_session_opts(SessionPid, MergedOpts, NewState1),
     {reply, ok, online, NewState2};
 online({add_session, SessionPid, #{allow_multiple_sessions := true} = Opts}, _From, State) ->
@@ -907,8 +907,15 @@ session_fold(SId, Fun, Acc, Map, [K|Rest]) ->
 session_fold(_, _, Acc, Map, []) ->
     {Map, Acc}.
 
-maybe_set_expiry_timer(#state{sessions=Sessions} = State) when Sessions == #{} ->
-    Duration = vmq_config:get_env(persistent_client_expiration, 0),
+maybe_set_expiry_timer(#state{sessions=Sessions,
+                              opts=Opts}=State) when Sessions == #{} ->
+    Duration =
+        case Opts of
+            #{session_expiry_interval := ExpiryInterval} ->
+                ExpiryInterval;
+            _ ->
+                vmq_config:get_env(persistent_client_expiration, 0)
+        end,
     maybe_set_expiry_timer(Duration, State);
 maybe_set_expiry_timer(State) -> State.
 

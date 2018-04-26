@@ -1,5 +1,7 @@
 -module(vmq_clean_session_SUITE).
 
+-include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+
 -compile(export_all).
 -compile(nowarn_export_all).
 
@@ -19,7 +21,7 @@ init_per_testcase(_Case, Config) ->
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:set_config(max_client_id_size, 1000),
-    vmq_server_cmd:listener_start(1888, []),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     enable_on_publish(),
     enable_on_subscribe(),
     Config.
@@ -43,7 +45,9 @@ groups() ->
      session_present_test],
     [
      {mqttv4, [], Tests},
-     {mqttv5, [shuffle], [session_expiration_test]}
+     {mqttv5, [shuffle],
+      [session_expiration_connect_test,
+       session_expiration_disconnect_test]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -112,8 +116,48 @@ session_present_test(Cfg) ->
     {ok, Socket2} = packet:do_client_connect(Connect, ConnackSessionPresentTrue, []),
     ok = gen_tcp:close(Socket2).
 
-session_expiration_test(_Cfg) ->
-    throw(not_implemented).
+session_expiration_connect_test(Cfg) ->
+    %% connect with clean_start false 1 sec expiration
+    ClientId = vmq_cth:ustr(Cfg),
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 60},
+                                              {clean_start, false},
+                                              {properties,
+                                               #{p_session_expiry_interval => 1}}]),
+    %% TODOv5: Should the session expiration interval be in here?
+    Connack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:close(Socket),
+
+    ConnackSP = packetv5:gen_connack(1, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, Socket1} = packetv5:do_client_connect(Connect, ConnackSP, []),
+    ok = gen_tcp:close(Socket1),
+
+    %% make sure the client has dissappeared.
+    timer:sleep(1100),
+    {ok, Socket2} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:close(Socket2).
+
+session_expiration_disconnect_test(Cfg) ->
+    %% connect with clean_start false 0 sec expiration
+    ClientId = vmq_cth:ustr(Cfg),
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 60},
+                                              {clean_start, false}]),
+    Connack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    ConnackSP = packetv5:gen_connack(1, ?M5_CONNACK_ACCEPT, #{}),
+    Disconnect1 = packetv5:gen_disconnect(0, #{p_session_expiry_interval => 1}),
+
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Disconnect1),
+    ok = gen_tcp:close(Socket),
+
+    {ok, Socket1} = packetv5:do_client_connect(Connect, ConnackSP, []),
+    ok = gen_tcp:send(Socket1, Disconnect1),
+    ok = gen_tcp:close(Socket1),
+
+    %% make sure the client has dissappeared.
+    timer:sleep(1100),
+    {ok, Socket2} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:close(Socket2).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
