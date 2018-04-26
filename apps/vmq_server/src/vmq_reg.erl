@@ -316,15 +316,9 @@ publish(false, RegView, #vmq_msg{mountpoint=MP,
     end.
 
 maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
-    {timestamp(second) + ExpireAfter, ExpireAfter};
+    {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter};
 maybe_set_expiry_ts(_) ->
     undefined.
-
-timestamp(Unit) ->
-    %% We need to get actual time, not plain monotonic time, as
-    %% monotonic time isn't portable between systems during queue
-    %% migrations.
-    erlang:time_offset(Unit) + erlang:monotonic_time(Unit).
 
 %% publish/2 is used as the fold function in RegView:fold/4
 publish({{_,_} = SubscriberId, QoS}, {Msg, _} = Acc) ->
@@ -362,7 +356,7 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS) ->
     vmq_retain_srv:match_fold(
       fun ({T, #retain_msg{payload = Payload,
                            properties = Properties,
-                           expiry_ts = undefined}}, _) ->
+                           expiry_ts = ExpiryTs}}, _) ->
               Msg = #vmq_msg{routing_key=T,
                              payload=Payload,
                              retain=true,
@@ -370,27 +364,10 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS) ->
                              dup=false,
                              mountpoint=MP,
                              msg_ref=vmq_mqtt_fsm_util:msg_ref(),
+                             expiry_ts = ExpiryTs,
                              properties=Properties},
+              maybe_delete_expired(ExpiryTs, MP, Topic),
               vmq_queue:enqueue(QPid, {deliver, QoS, Msg});
-          ({T, #retain_msg{payload = Payload,
-                           properties = Properties,
-                           expiry_ts = {ExpiryTs, _ExpireAfter}}}, _) ->
-              case is_message_expired(ExpiryTs) of
-                  expired ->
-                      vmq_retain_srv:delete(MP, Topic),
-                      ok;
-                  ExpireAfter ->
-                      Msg = #vmq_msg{routing_key=T,
-                                     payload=Payload,
-                                     retain=true,
-                                     qos=QoS,
-                                     dup=false,
-                                     mountpoint=MP,
-                                     expiry_ts={ExpiryTs, ExpireAfter},
-                                     msg_ref=vmq_mqtt_fsm_util:msg_ref(),
-                                     properties=Properties},
-                      vmq_queue:enqueue(QPid, {deliver, QoS, Msg})
-              end;
           ({T, Payload}, _) when is_binary(Payload) ->
               %% compatibility with old style retained messages.
               Msg = #vmq_msg{routing_key=T,
@@ -404,13 +381,13 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS) ->
               vmq_queue:enqueue(QPid, {deliver, QoS, Msg})
       end, ok, MP, Topic).
 
-is_message_expired(ExpiryTs) ->
-    Now = timestamp(second),
-    case Now > ExpiryTs of
+maybe_delete_expired(undefined, _, _) -> ok;
+maybe_delete_expired({Ts, _}, MP, Topic) ->
+    case vmq_time:is_past(Ts) of
         true ->
-            expired;
-        false ->
-            ExpiryTs - Now
+            vmq_retain_srv:delete(MP, Topic);
+        _ ->
+            ok
     end.
 
 subscriptions_for_subscriber_id(SubscriberId) ->

@@ -1050,12 +1050,11 @@ maybe_expire_msgs(Msgs) ->
       fun({deliver, _, #vmq_msg{expiry_ts=undefined}} = M, {Keep, Expired}) ->
               {[M|Keep], Expired};
          ({deliver, QoS, #vmq_msg{expiry_ts={ExpiryTS, _}} = M}, {Keep, Expired}) ->
-              Now = timestamp(second),
-              case Now >= ExpiryTS of
+              case vmq_time:is_past(ExpiryTS) of
                   true ->
                       {Keep, Expired + 1};
-                  false ->
-                      {[{deliver, QoS, M#vmq_msg{expiry_ts={ExpiryTS, ExpiryTS - Now}}}|Keep], Expired}
+                  Remaining ->
+                      {[{deliver, QoS, M#vmq_msg{expiry_ts={ExpiryTS, Remaining}}}|Keep], Expired}
               end;
          (M, {Keep, Expired}) -> {[M|Keep], Expired}
       end, {[], 0}, Msgs),
