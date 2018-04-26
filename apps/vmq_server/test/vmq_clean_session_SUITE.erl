@@ -1,27 +1,15 @@
 -module(vmq_clean_session_SUITE).
--export([
-         %% suite/0,
-         init_per_suite/1,
-         end_per_suite/1,
-         init_per_testcase/2,
-         end_per_testcase/2,
-         all/0
-        ]).
 
--export([clean_session_qos1_test/1,
-         session_cleanup_test/1,
-         session_present_test/1]).
-
--export([hook_auth_on_subscribe/3,
-         hook_auth_on_publish/6]).
-
+-compile(export_all).
+-compile(nowarn_export_all).
 
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
-init_per_suite(_Config) ->
+init_per_suite(Config) ->
     cover:start(),
-    _Config.
+    [{ct_hooks, vmq_cth} | Config].
+
 
 end_per_suite(_Config) ->
     _Config.
@@ -30,23 +18,39 @@ init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
+    vmq_server_cmd:set_config(max_client_id_size, 1000),
     vmq_server_cmd:listener_start(1888, []),
+    enable_on_publish(),
+    enable_on_subscribe(),
     Config.
 
 end_per_testcase(_, Config) ->
+    disable_on_publish(),
+    disable_on_subscribe(),
     vmq_test_utils:teardown(),
     Config.
 
 all() ->
+    [
+     {group, mqttv4},
+     {group, mqttv5}
+    ].
+
+groups() ->
+    Tests =
     [clean_session_qos1_test,
      session_cleanup_test,
-     session_present_test].
+     session_present_test],
+    [
+     {mqttv4, [], Tests},
+     {mqttv5, [shuffle], [session_expiration_test]}
+    ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-clean_session_qos1_test(_) ->
-    Connect = packet:gen_connect("clean-qos1-test", [{keepalive,60}, {clean_session, false}]),
+clean_session_qos1_test(Cfg) ->
+    Connect = packet:gen_connect(vmq_cth:ustr(Cfg) ++ "clean-qos1-test", [{keepalive,60}, {clean_session, false}]),
     Connack1 = packet:gen_connack(0),
     Connack2 = packet:gen_connack(true, 0),
     Disconnect = packet:gen_disconnect(),
@@ -74,16 +78,15 @@ clean_session_qos1_test(_) ->
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket1).
 
-session_cleanup_test(_) ->
-    Connect1 = packet:gen_connect("clean-qos1-test", [{keepalive,60}, {clean_session, false}]),
-    Connect2 = packet:gen_connect("clean-qos1-test", [{keepalive,60}, {clean_session, true}]),
+session_cleanup_test(Cfg) ->
+    ClientId = vmq_cth:ustr(Cfg) ++ "clean-qos1-test",
+    Connect1 = packet:gen_connect(ClientId, [{keepalive,60}, {clean_session, false}]),
+    Connect2 = packet:gen_connect(ClientId, [{keepalive,60}, {clean_session, true}]),
     Connack = packet:gen_connack(0),
     Disconnect = packet:gen_disconnect(),
     Subscribe = packet:gen_subscribe(109, "qos1/clean_session/test", 1),
     Suback = packet:gen_suback(109, 1),
     {ok, Socket} = packet:do_client_connect(Connect1, Connack, []),
-    enable_on_publish(),
-    enable_on_subscribe(),
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:send(Socket, Disconnect),
@@ -93,15 +96,13 @@ session_cleanup_test(_) ->
     timer:sleep(100),
     {0,0,0,1,1} = vmq_queue_sup_sup:summary(),
     {ok, Socket1} = packet:do_client_connect(Connect2, Connack, []),
-    disable_on_publish(),
-    disable_on_subscribe(),
     ok = gen_tcp:close(Socket1),
     timer:sleep(100),
     %% if queue cleanup woudln't have happen, we'd see a remaining offline message
     {0,0,0,0,0} = vmq_queue_sup_sup:summary().
 
-session_present_test(_) ->
-    Connect = packet:gen_connect("clean-sesspres-test", [{keepalive,10}, {clean_session, false}]),
+session_present_test(Cfg) ->
+    Connect = packet:gen_connect(vmq_cth:ustr(Cfg) ++ "clean-sesspres-test", [{keepalive,10}, {clean_session, false}]),
     ConnackSessionPresentFalse = packet:gen_connack(false, 0),
     ConnackSessionPresentTrue = packet:gen_connack(true, 0),
 
@@ -111,13 +112,15 @@ session_present_test(_) ->
     {ok, Socket2} = packet:do_client_connect(Connect, ConnackSessionPresentTrue, []),
     ok = gen_tcp:close(Socket2).
 
+session_expiration_test(_Cfg) ->
+    throw(not_implemented).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Hooks (as explicit as possible)
+%%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_,{"", <<"clean-qos1-test">>}, [{[<<"qos1">>, <<"clean_session">>, <<"test">>],1}]) -> ok.
+hook_auth_on_subscribe(_,_, _) -> ok.
+hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 
-hook_auth_on_publish(_, _, _MsgId, [<<"qos1">>,<<"clean_session">>,<<"test">>], <<"clean-session-message">>, false) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
