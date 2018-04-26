@@ -255,9 +255,9 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
             %% TODOv5
             throw({not_implemented, Reason})
     end;
-pre_connect_auth(#mqtt5_disconnect{}, State) ->
+pre_connect_auth(#mqtt5_disconnect{properties=Properties}, State) ->
     %% TODOv5 add metric?
-    terminate(mqtt_client_disconnect, State);
+    terminate({mqtt_client_disconnect, Properties}, State);
 pre_connect_auth(_, State) ->
     terminate(?PROTOCOL_ERROR, State).
 
@@ -491,9 +491,9 @@ connected(#mqtt5_pingreq{}, State) ->
     Frame = #mqtt5_pingresp{},
     _ = vmq_metrics:incr_mqtt_pingresp_sent(),
     {State, [Frame]};
-connected(#mqtt5_disconnect{}, State) ->
+connected(#mqtt5_disconnect{properties=Properties}, State) ->
     _ = vmq_metrics:incr_mqtt_disconnect_received(),
-    terminate(mqtt_client_disconnect, State);
+    terminate({mqtt_client_disconnect, Properties}, State);
 connected(retry,
     #state{waiting_acks=WAcks, retry_interval=RetryInterval,
            retry_queue=RetryQueue} = State) ->
@@ -552,10 +552,12 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid=QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-terminate(mqtt_client_disconnect, #state{clean_session=CleanSession} = State) ->
+terminate({mqtt_client_disconnect, Properties}, #state{clean_session=CleanSession,
+                                                       queue_pid=QPid} = State) ->
     _ = case CleanSession of
             true -> ok;
             false ->
+                vmq_queue:set_opts(QPid, queue_opts_from_properties(Properties)),
                 handle_waiting_acks_and_msgs(State)
         end,
     {stop, normal, []};
@@ -668,7 +670,7 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Propertie
                     connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
-            register_subscriber(F, OutProps, queue_opts(State, []), State)
+            register_subscriber(F, OutProps, queue_opts(State, [], Properties), State)
     end.
 
 register_subscriber(#mqtt5_connect{username=User}=F, OutProps,
@@ -776,7 +778,7 @@ auth_on_register(User, Password, Properties, State) ->
     HookArgs = [Peer, SubscriberId, User, Password, Clean, Properties],
     case vmq_plugin:all_till_ok(auth_on_register_v1, HookArgs) of
         ok ->
-            {ok, queue_opts(State, []), State};
+            {ok, queue_opts(State, [], Properties), State};
         {ok, Args} ->
             set_sock_opts(prop_val(tcp_opts, Args, [])),
             ChangedCAPSettings
@@ -803,7 +805,7 @@ auth_on_register(User, Password, Properties, State) ->
                              topic_aliases_in=?state_val(topic_aliases_in, Args, State),
                              cap_settings=ChangedCAPSettings
                             },
-            {ok, queue_opts(ChangedState, Args), ChangedState};
+            {ok, queue_opts(ChangedState, Args, Properties), ChangedState};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -1305,9 +1307,18 @@ prop_val(Key, Args, Default, Validator) ->
                end
     end.
 
-queue_opts(#state{clean_session=CleanSession}, Args) ->
+queue_opts_from_properties(Properties) ->
+    maps:fold(
+      fun(p_session_expiry_interval, Val, Acc) ->
+              Acc#{session_expiry_interval => Val};
+         (_,_,Acc) -> Acc
+      end, #{}, Properties).
+
+queue_opts(#state{clean_session=CleanSession}, Args, Properties) ->
+    PropertiesOpts = queue_opts_from_properties(Properties),
     Opts = maps:from_list([{clean_session, CleanSession} | Args]),
-    maps:merge(vmq_queue:default_opts(), Opts).
+    Opts1 = maps:merge(PropertiesOpts, Opts),
+    maps:merge(vmq_queue:default_opts(), Opts1).
 
 unflag(true) -> true;
 unflag(false) -> false;
