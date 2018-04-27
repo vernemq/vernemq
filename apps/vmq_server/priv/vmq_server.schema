@@ -652,7 +652,7 @@
 %%
 {mapping, "listener.tcp.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4]"},
+  {default, "[3,4,5]"},
   {datatype, string},
   hidden
  ]}.
@@ -665,7 +665,7 @@
 
 {mapping, "listener.ws.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4]"},
+  {default, "[3,4,5]"},
   {datatype, string},
   hidden
  ]}.
@@ -678,7 +678,7 @@
 
 {mapping, "listener.wss.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4]"},
+  {default, "[3,4,5]"},
   {datatype, string},
   hidden
  ]}.
@@ -691,7 +691,7 @@
 
 {mapping, "listener.ssl.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4]"},
+  {default, "[3,4,5]"},
   {datatype, string},
   hidden
  ]}.
@@ -1498,6 +1498,12 @@
                                                          {datatype, flag},
                                                          {default, on}
                                                         ]}.
+
+%% @doc Dummy MQTTv5 plugin allowing everything.
+{mapping, "plugins.vmq_allow_all_v5", "vmq_server.user_plugins", [
+                                                                  {datatype, flag},
+                                                                  {default, on}
+                                                                 ]}.
 
 %% @doc Lua based plugins.
 {mapping, "plugins.vmq_diversity", "vmq_server.user_plugins", [
