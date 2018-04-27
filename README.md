@@ -11,6 +11,61 @@ be marked as in beta until we're sure it's ready for prime time.
 Note: this branch will be rebased occasionally to keep up with the master branch
 and due to refactorings.
 
+## Current status
+
+As this is a work in progress, not everything is implemented and there are a
+number of known issues. If you'd like to contribute we'd love your pull requests
+or feedback!
+
+Currently supported features are:
+
+- All MQTTv5 frames are implemented.
+- MQTTv5 enhanced authentication and reauthentication.
+- Publishes with payload format indicator, response topic, correlation data,
+  user properties and content type.
+- Message expiration.
+- Delayed last will and testament.
+- Retained messages.
+- Shared subscriptions.
+- Session expiration interval.
+- Request/response using 'response topic' and 'correlation data' properties.
+- Client to broker topic aliases.
+- MQTTv5 and older prototocols can be enabled at the same time (set
+  `allowed_protocol_versions=3,4,5` on the listener to enable respectively MQTT
+  v3.1, 3.1.1 and 5.0).
+
+Currently known issues for MQTTv5 are:
+
+- QoS 1/2 retries are only allowed after a network connection reconnect,
+  currently retries are made exactly as in MQTTv4.
+- Tracing (`vmq-admin trace`) doesn't yet support tracing MQTTv5 sessions.
+- New subscription flags (No Local, Retain as Published, Retain Handling) are
+  ignored and subscriptions therefore currently work as in MQTTv4.
+- The plugin hooks for MQTTv5 sessions doesn't yet handle the new MQTTv5
+  features.
+- Broker to client topic aliases are not yet implemented.
+- Subscriber IDs are not yet implemented.
+- Bridge plugin does not yet support MQTTv5.
+- Receive maximum flow control has not yet been implemented.
+- Server and client receive maximum is not yet implemented.
+- Server and client maximum packet size enforcement is not yet implemented.
+
+Current limitations/open questions:
+
+- Currently when using `allow_multiple_sessions=on`:
+  - If using delayed last will and testament it is only sent for the last
+    connected client.
+  - The session expiration used is the one from the last connected client *or*
+    the last client which send a new session expiration value when
+    disconnecting.
+- If using `allow_multiple_sessions=on`, should it be allowed to mix MQTTv5 and
+  MQTTv4 sessions? What are the pros and cons?
+
+Unknown issues:
+
+We are sure there are many. Please play with this and let us know if something
+doesn't look right! We'd love to get your feedback!
+
 ## Trying it out
 
 On this branch MQTTv5 is enabled by default and all MQTTv5 actions are allowed
@@ -30,61 +85,6 @@ report an issue or a question, please open an issue on github and prefix the
 issue title with `MQTTv5:`. You're also more than welcome to reach out to us on
 [slack](https://slack-invite.vernemq.com) or get in touch with us via our
 [contact form](https://vernemq.com/services.html).
-
-## Current status
-
-As this is a work in progress, not everything is implemented and there are a
-number of known issues. If you'd like to contribute we'd love your pull requests
-or feedback!
-
-Currently supported features are:
-
-- All MQTTv5 frames are implemented.
-- MQTTv5 enhanced authentication and reauthentication.
-- Publishes with payload format indicator, response topic, correlation data,
-  user properties and content type.
-- Delayed last will and testament
-- Shared subscriptions
-- Session expiration interval
-- MQTTv5 and older prototocols can be enabled at the same time (set
-  `allowed_protocol_versions=3,4,5` on the listener to enable respectively MQTT
-  v3.1, 3.1.1 and 5.0).
-- Client to broker topic aliases.
-
-Currently known issues for MQTTv5 are:
-
-- QoS 1/2 retries are only allowed after a network connection reconnect,
-  currently retries are made exactly as in MQTTv4.
-- Tracing (`vmq-admin trace`) doesn't yet support tracing MQTTv5 sessions.
-- Retained MQTTv5 messages are currently not working.
-- New subscription flags (No Local, Retain as Published, Retain Handling) are
-  ignored and subscriptions therefore currently work as in MQTTv4.
-- The plugin hooks for MQTTv5 sessions doesn't yet handle the new MQTTv5
-  features.
-- Broker to client topic aliases are not yet implemented.
-- Subscriber IDs are not yet implemented.
-- Bridge plugin does not yet support MQTTv5.
-- Receive maximum flow control has not yet been implemented.
-
-Current limitations/open questions:
-
-- Currently when using `allow_multiple_sessions`:
-  - If using delayed last will and will testament it is only sent for the last
-    connected client.
-  - The session expiration used is the one from the last connected client *or*
-    the last client which send a new session expiration value when
-    disconnecting.
-- If using `multiple_sessions`, should it be allowed to mix MQTTv5 and MQTTv4
-  sessions? What are the pros and cons?
-
-Unknown issues:
-
-We are sure there are many. Please play with this and let us know if something
-doesn't look right! We'd love to get your feedback!
-
-## Last will message delay
-
-If using delayed last will messages, note that
 
 ## MQTTv5 plugins vs MQTTv4 plugins
 
