@@ -54,32 +54,34 @@ groups() ->
          publish_qos2_test,
          publish_b2c_disconnect_qos1_test,
          publish_b2c_disconnect_qos2_test,
-         publish_b2c_timeout_qos1_test,
-         publish_b2c_timeout_qos2_test,
          publish_c2b_disconnect_qos2_test,
-         publish_c2b_timeout_qos2_test,
          pattern_matching_test
         ],
     [
-     {mqttv3, [shuffle,sequence], [
+     {mqttv3, [shuffle], [
                    not_allowed_publish_close_qos0_mqtt_3_1,
                    not_allowed_publish_close_qos1_mqtt_3_1,
                    not_allowed_publish_close_qos2_mqtt_3_1,
-                   message_size_exceeded_close
-                  ]},
-     {mqttv4, [shuffle,sequence], [
+                   message_size_exceeded_close]},
+     {mqttv4, [shuffle], [
                    not_allowed_publish_close_qos0_mqtt_3_1_1,
                    not_allowed_publish_close_qos1_mqtt_3_1_1,
                    not_allowed_publish_close_qos2_mqtt_3_1_1,
                    message_size_exceeded_close,
                    shared_subscription_offline,
-                   shared_subscription_online_first
-                  ] ++  V4V5Tests },
-     {mqttv5, [sequence],
-      [message_expiry,
-       publish_c2b_topic_alias,
-       forward_properties|
-       V4V5Tests]}
+                   shared_subscription_online_first,
+                   publish_c2b_retry_qos2_test,
+                   publish_b2c_retry_qos1_test,
+                   publish_b2c_retry_qos2_test
+                   | V4V5Tests] },
+     {mqttv5, [shuffle], [
+                   not_allowed_publish_qos0_mqtt_5,
+                   not_allowed_publish_qos1_mqtt_5,
+                   not_allowed_publish_qos2_mqtt_5,
+                   message_expiry,
+                   publish_c2b_topic_alias,
+                   forward_properties
+                   | V4V5Tests] }
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -200,61 +202,61 @@ publish_b2c_disconnect_qos2_test(Config) ->
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket2).
 
-publish_b2c_timeout_qos1_test(Config) ->
-    Connect = mqtt5_v4compat:gen_connect("pub-qos1-timeout-test", [{keepalive, 60}], Config),
-    Connack = mqtt5_v4compat:gen_connack(success, Config),
-    Subscribe = mqtt5_v4compat:gen_subscribe(3265, "qos1/timeout/test", 1, Config),
-    Suback = mqtt5_v4compat:gen_suback(3265, 1, Config),
-    Publish = mqtt5_v4compat:gen_publish("qos1/timeout/test", 1,
-                                 <<"timeout-message">>, [{mid, 1}], Config),
-    PublishDup = mqtt5_v4compat:gen_publish("qos1/timeout/test", 1,
+publish_b2c_retry_qos1_test(Config) ->
+    Connect = packet:gen_connect("pub-qos1-timeout-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(3265, "qos1/timeout/test", 1),
+    Suback = packet:gen_suback(3265, 1),
+    Publish = packet:gen_publish("qos1/timeout/test", 1,
+                                 <<"timeout-message">>, [{mid, 1}]),
+    PublishDup = packet:gen_publish("qos1/timeout/test", 1,
                                     <<"timeout-message">>,
-                                    [{mid, 1}, {dup, true}], Config),
-    Puback = mqtt5_v4compat:gen_puback(1, Config),
+                                    [{mid, 1}, {dup, true}]),
+    Puback = packet:gen_puback(1),
     enable_on_publish(),
     enable_on_subscribe(),
-    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Config),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Subscribe),
-    ok = mqtt5_v4compat:expect_packet(Socket, "suback", Suback, Config),
+    ok = packet:expect_packet(Socket, "suback", Suback),
     helper_pub_qos1("test-helper", 1, Publish, Config),
     %% should have now received a publish command
-    ok = mqtt5_v4compat:expect_packet(Socket, "publish", Publish, Config),
+    ok = packet:expect_packet(Socket, "publish", Publish),
     %% expect packet, but we don't ack
     %% The broker should repeat the PUBLISH with dup set
-    ok = mqtt5_v4compat:expect_packet(Socket, "dup publish", PublishDup, Config),
+    ok = packet:expect_packet(Socket, "dup publish", PublishDup),
     ok = gen_tcp:send(Socket, Puback),
     disable_on_publish(),
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket).
 
-publish_b2c_timeout_qos2_test(Config) ->
-    Connect = mqtt5_v4compat:gen_connect("pub-b2c-qos2-timeout-test", [{keepalive, 60}], Config),
-    Connack = mqtt5_v4compat:gen_connack(success, Config),
-    Subscribe = mqtt5_v4compat:gen_subscribe(3265, "qos2/timeout/test", 2, Config),
-    Suback = mqtt5_v4compat:gen_suback(3265, 2, Config),
-    Publish = mqtt5_v4compat:gen_publish("qos2/timeout/test", 2,
-                                 <<"timeout-message">>, [{mid, 1}], Config),
-    PublishDup = mqtt5_v4compat:gen_publish("qos2/timeout/test", 2,
+publish_b2c_retry_qos2_test(Config) ->
+    Connect = packet:gen_connect("pub-b2c-qos2-timeout-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(3265, "qos2/timeout/test", 2),
+    Suback = packet:gen_suback(3265, 2),
+    Publish = packet:gen_publish("qos2/timeout/test", 2,
+                                 <<"timeout-message">>, [{mid, 1}]),
+    PublishDup = packet:gen_publish("qos2/timeout/test", 2,
                                     <<"timeout-message">>,
-                                    [{mid, 1}, {dup, true}], Config),
-    Pubrec = mqtt5_v4compat:gen_pubrec(1, Config),
-    Pubrel = mqtt5_v4compat:gen_pubrel(1, Config),
-    Pubcomp = mqtt5_v4compat:gen_pubcomp(1, Config),
+                                    [{mid, 1}, {dup, true}]),
+    Pubrec = packet:gen_pubrec(1),
+    Pubrel = packet:gen_pubrel(1),
+    Pubcomp = packet:gen_pubcomp(1),
     enable_on_publish(),
     enable_on_subscribe(),
-    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Config),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Subscribe),
-    ok = mqtt5_v4compat:expect_packet(Socket, "suback", Suback, Config),
+    ok = packet:expect_packet(Socket, "suback", Suback),
     helper_pub_qos2("test-helper", 1, Publish, Config),
     %% should have now received a publish command
-    ok = mqtt5_v4compat:expect_packet(Socket, "publish", Publish, Config),
+    ok = packet:expect_packet(Socket, "publish", Publish),
     %% expect packet, but we don't ack
     %% The broker should repeat the PUBLISH with dup set
-    ok = mqtt5_v4compat:expect_packet(Socket, "dup publish", PublishDup, Config),
+    ok = packet:expect_packet(Socket, "dup publish", PublishDup),
     ok = gen_tcp:send(Socket, Pubrec),
-    ok = mqtt5_v4compat:expect_packet(Socket, "pubrel", Pubrel, Config),
+    ok = packet:expect_packet(Socket, "pubrel", Pubrel),
     %% The broker should repeat the PUBREL NO dup set according to MQTT-3.6.1-1
-    ok = mqtt5_v4compat:expect_packet(Socket, "pubrel", Pubrel, Config),
+    ok = packet:expect_packet(Socket, "pubrel", Pubrel),
     ok = gen_tcp:send(Socket, Pubcomp),
     disable_on_publish(),
     disable_on_subscribe(),
@@ -289,26 +291,31 @@ publish_c2b_disconnect_qos2_test(Config) ->
     ok = gen_tcp:close(Socket1),
     {ok, Socket2} = mqtt5_v4compat:do_client_connect(Connect, Connack2, [], Config),
     ok = gen_tcp:send(Socket2, Pubrel),
-    ok = mqtt5_v4compat:expect_packet(Socket2, "pubcomp", Pubcomp, Config),
+    Pubcomp2 =
+    case mqtt5_v4compat:protover(Config) of
+        5 -> packetv5:gen_pubcomp(1, ?M5_PACKET_ID_NOT_FOUND, #{});
+        _ -> Pubcomp
+    end,
+    ok = mqtt5_v4compat:expect_packet(Socket2, "pubcomp", Pubcomp2, Config),
     disable_on_publish(),
     ok = gen_tcp:close(Socket2).
 
-publish_c2b_timeout_qos2_test(Config) ->
-    Connect = mqtt5_v4compat:gen_connect("pub-c2b-qos2-timeout-test", [{keepalive, 60}], Config),
-    Connack = mqtt5_v4compat:gen_connack(success, Config),
-    Publish = mqtt5_v4compat:gen_publish("pub/qos2/test", 2,
-                                 <<"timeout-message">>, [{mid, 1926}], Config),
-    Pubrec = mqtt5_v4compat:gen_pubrec(1926, Config),
-    Pubrel = mqtt5_v4compat:gen_pubrel(1926, Config),
-    Pubcomp = mqtt5_v4compat:gen_pubcomp(1926, Config),
+publish_c2b_retry_qos2_test(_Config) ->
+    Connect = packet:gen_connect("pub-c2b-qos2-timeout-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Publish = packet:gen_publish("pub/qos2/test", 2,
+                                 <<"timeout-message">>, [{mid, 1926}]),
+    Pubrec = packet:gen_pubrec(1926),
+    Pubrel = packet:gen_pubrel(1926),
+    Pubcomp = packet:gen_pubcomp(1926),
     enable_on_publish(),
-    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Config),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Publish),
-    ok = mqtt5_v4compat:expect_packet(Socket, "pubrec", Pubrec, Config),
+    ok = packet:expect_packet(Socket, "pubrec", Pubrec),
     %% The broker should repeat the PUBREC
-    ok = mqtt5_v4compat:expect_packet(Socket, "pubrec", Pubrec, Config),
+    ok = packet:expect_packet(Socket, "pubrec", Pubrec),
     ok = gen_tcp:send(Socket, Pubrel),
-    ok = mqtt5_v4compat:expect_packet(Socket, "pubcomp", Pubcomp, Config),
+    ok = packet:expect_packet(Socket, "pubcomp", Pubcomp),
     disable_on_publish(),
     ok = gen_tcp:close(Socket).
 
@@ -433,6 +440,45 @@ not_allowed_publish_close_qos2_mqtt_3_1_1(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     gen_tcp:send(Socket, Publish),
     {error, closed} = gen_tcp:recv(Socket, 0, 1000).
+
+not_allowed_publish_qos0_mqtt_5(_) ->
+    Connect = packetv5:gen_connect("pattern-sub-test", [{keepalive, 60},
+                                                      {clean_start, true}]),
+    Connack = packetv5:gen_connack(),
+    Topic = "test/topic/not_allowed",
+    Publish = packetv5:gen_publish(Topic, 0, <<"message">>, [{mid, 1}]),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    % check connection isn't closed
+    ok = gen_tcp:send(Socket, <<>>),
+    ok = gen_tcp:close(Socket).
+
+not_allowed_publish_qos1_mqtt_5(_) ->
+    Connect = packetv5:gen_connect("pattern-sub-test", [{keepalive, 60},
+                                                      {clean_start, true}]),
+    Connack = packetv5:gen_connack(),
+    Topic = "test/topic/not_allowed",
+    Publish = packetv5:gen_publish(Topic, 1, <<"message">>, [{mid, 1}]),
+    Puback = packetv5:gen_puback(1, ?M5_NOT_AUTHORIZED, #{}),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    ok = packetv5:expect_frame(Socket, Puback),
+    ok = gen_tcp:close(Socket).
+
+not_allowed_publish_qos2_mqtt_5(_) ->
+    Connect = packetv5:gen_connect("pattern-sub-test", [{keepalive, 60},
+                                                      {clean_start, true}]),
+    Connack = packetv5:gen_connack(),
+    Topic = "test/topic/not_allowed",
+    Publish = packetv5:gen_publish(Topic, 2, <<"message">>, [{mid, 1}]),
+    Pubrec = packetv5:gen_pubrec(1, ?M5_NOT_AUTHORIZED, #{}),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    ok = packetv5:expect_frame(Socket, Pubrec),
+    ok = gen_tcp:close(Socket).
 
 message_size_exceeded_close(_) ->
     OldLimit = vmq_config:get_env(max_message_size),
@@ -627,7 +673,7 @@ publish_c2b_topic_alias(_Config) ->
     ok = gen_tcp:send(SubSocket, Subscribe),
     SubAck = packetv5:gen_suback(77, [0], #{}),
     ok = packetv5:expect_frame(SubSocket, SubAck),
-    
+
     PubConnect = packetv5:gen_connect("publish-c2b-topic-alias", [{keepalive, 60}]),
     PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{p_topic_alias_max => 3}),
     {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
@@ -637,13 +683,13 @@ publish_c2b_topic_alias(_Config) ->
                                    [{properties, TA1}]),
     TAPub = packetv5:gen_publish(<<>>, 0, <<"publish alias pub">>,
                                  [{properties, TA1}]),
-    
+
     ok = gen_tcp:send(PubSocket, TASetup),
     ok = gen_tcp:send(PubSocket, TAPub),
 
     ExpectSetupPub = packetv5:gen_publish(Topic, 0, <<"publish alias setup">>, []),
     ExpectTAPub = packetv5:gen_publish(Topic, 0, <<"publish alias pub">>, []),
-    
+
     ok = packetv5:expect_frame(SubSocket, ExpectSetupPub),
     ok = packetv5:expect_frame(SubSocket, ExpectTAPub),
 
