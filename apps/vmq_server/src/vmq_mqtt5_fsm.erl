@@ -245,7 +245,7 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
             OutProps = proplists:get_value(properties, Modifiers, #{}),
             check_connect(ConnectFrame, OutProps,
                           State#state{enhanced_auth = NewAuthData});
-        {continue_auth, Modifiers} ->
+        {incomplete, Modifiers} ->
             %% TODOv5: filter / rename properties?
             OutProps = proplists:get_value(properties, Modifiers, #{}),
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
@@ -476,7 +476,7 @@ connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Prop
                   username = proplists:get_value(username, Modifiers, State#state.username)
                  },
             {NewState, [Frame]};
-        {continue_auth, Modifiers} ->
+        {incomplete, Modifiers} ->
             OutProps = proplists:get_value(properties, Modifiers, #{}),
             %% TODOv5: filter / rename properties?
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
@@ -592,7 +592,7 @@ check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthM
             OutProps = proplists:get_value(properties, Modifiers, #{}),
             EnhancedAuth = #auth_data{method = AuthMethod},
             check_connect(F, OutProps, State#state{enhanced_auth = EnhancedAuth});
-        {continue_auth, Modifiers} ->
+        {incomplete, Modifiers} ->
             EnhancedAuth = #auth_data{method = AuthMethod,
                                       data = F},
             OutProps = proplists:get_value(properties, Modifiers, #{}),
