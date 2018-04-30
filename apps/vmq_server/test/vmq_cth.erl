@@ -12,11 +12,13 @@
 -export([pre_end_per_suite/3]).
 -export([post_end_per_suite/4]).
 
+-export([pre_init_per_group/3]).
 -export([pre_init_per_group/4]).
 -export([post_init_per_group/5]).
 -export([pre_end_per_group/4]).
 -export([post_end_per_group/5]).
 
+-export([pre_init_per_testcase/3]).
 -export([pre_init_per_testcase/4]).
 -export([post_init_per_testcase/5]).
 -export([pre_end_per_testcase/4]).
@@ -50,6 +52,12 @@ pre_end_per_suite(_Suite,Config,State) ->
 post_end_per_suite(_Suite,_Config,Return,State) ->
     {Return, State}.
 
+%% @doc Called before each init_per_group. Needed to be compatible
+%% with OTP18.
+pre_init_per_group(Group,Config,State) ->
+    NewConfig = add_metadata(group, Group, Config),
+    {NewConfig, State}.
+
 %% @doc Called before each init_per_group.
 pre_init_per_group(_Suite,Group,Config,State) ->
     NewConfig = add_metadata(group, Group, Config),
@@ -66,6 +74,12 @@ pre_end_per_group(_Suite,_Group,Config,State) ->
 %% @doc Called after each end_per_group.
 post_end_per_group(_Suite,_Group,_Config,Return,State) ->
     {Return, State}.
+
+%% @doc Called before each init_per_testcase. Needed to be compatible
+%% with OTP18.
+pre_init_per_testcase(TC,Config,State) ->
+    NewConfig = add_metadata(tc, TC, Config),
+    {NewConfig, State}.
 
 %% @doc Called before each init_per_testcase.
 pre_init_per_testcase(_Suite,TC,Config,State) ->
