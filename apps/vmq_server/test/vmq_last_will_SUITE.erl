@@ -215,10 +215,7 @@ will_delay_v5_test(_Config) ->
 assert_ge(V1, V2) when V1 >= V2 -> true.
 
 ts() ->
-    ts(millisecond).
-
-ts(millisecond) ->
-    erlang:monotonic_time(millisecond).
+    vmq_time:timestamp(millisecond).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
