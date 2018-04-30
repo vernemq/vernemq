@@ -338,11 +338,11 @@ on_auth_bad_method_hook(#{p_authentication_method := _, p_authentication_data :=
     {error, bad_auth_method}.
 
 on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client1">>}) ->
-    {continue_auth, [{properties,
-                      #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server1">>}}]};
+    {incomplete, [{properties,
+                   #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server1">>}}]};
 on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client2">>}) ->
-    {continue_auth, [{properties,
-                      #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server2">>}}]};
+    {incomplete, [{properties,
+                   #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server2">>}}]};
 on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client3">>}) ->
     %% return ok which will trigger the connack being sent to the
     %% client *or* an AUTH ok
