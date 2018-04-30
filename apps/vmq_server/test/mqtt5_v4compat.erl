@@ -17,6 +17,7 @@
          gen_pubcomp/2,
          gen_disconnect/1]).
 
+-export([protover/1]).
 -export([groupify/2]).
 
 -include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
