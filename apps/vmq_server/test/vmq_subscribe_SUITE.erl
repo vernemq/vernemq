@@ -67,7 +67,7 @@ subscribe_no_local_test(_) ->
     %% option. If the value is 1, Application Messages MUST NOT be
     %% forwarded to a connection with a ClientID equal to the ClientID
     %% of the publishing connection [MQTT-3.8.3-3].
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 subscribe_retain_as_published_test(_) ->
     %% maybe move to the retain suite?
@@ -79,7 +79,7 @@ subscribe_retain_as_published_test(_) ->
     %% subscription have the RETAIN flag set to 0. Retained messages
     %% sent when the subscription is established have the RETAIN flag
     %% set to 1.
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 subscribe_retain_handling_flags_test(_) ->
     %% maybe move to the retain suite?
@@ -100,7 +100,7 @@ subscribe_retain_handling_flags_test(_) ->
     %% 2 = Do not send retained messages at the time of the subscribe
     %%
     %% It is a Protocol Error to send a Retain Handling value of 3.
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 subscribe_illegal_opt(_) ->
     %% It is a Protocol Error to set the No Local bit to 1 on a Shared
@@ -110,7 +110,7 @@ subscribe_illegal_opt(_) ->
     %% future use. The Server MUST treat a SUBSCRIBE packet as
     %% malformed if any of Reserved bits in the Payload are non-zero
     %% [MQTT-3.8.3-5].
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 subscribe_qos0_test(_) ->
     Connect = packet:gen_connect("subscribe-qos0-test", [{keepalive,10}]),

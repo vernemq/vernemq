@@ -36,11 +36,11 @@ groups() ->
      empty_client_id,
      invalid_id,
      session_take_over,
-     %% uname_no_password_success,
-     %% password_no_uname_success,
-     %% uname_password_denied,
-     %% uname_password_success,
-     %% change_subscriber_id,
+     uname_no_password_success,
+     password_no_uname_success,
+     uname_password_denied,
+     uname_password_success,
+     change_subscriber_id,
      enhanced_authentication,
      enhanced_auth_no_other_packets,
      enhanced_auth_method_not_supported,
@@ -129,21 +129,21 @@ uname_no_password_success(_Config) ->
     %% ok = vmq_plugin_mgr:disable_module_plugin(
     %%   auth_on_register, ?MODULE, hook_uname_no_password_denied, 5),
     %% ok = gen_tcp:close(Socket).
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 password_no_uname_success(_Config) ->
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 uname_password_denied(_Config) ->
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 uname_password_success(_Config) ->
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 change_subscriber_id(_Config) ->
     %% TODO: should we be allowed to do this? If we should, should we
     %% then respond with the assigned_client_id property?
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 -define(AUTH_METHOD, <<"AuthMethod">>).
 
@@ -238,7 +238,7 @@ enhanced_auth_server_rejects(_Config) ->
     %% process. It MAY send a CONNACK with a Reason Code of 0x80 or
     %% above as described in section 4.13, and MUST close the Network
     %% Connection [MQTT-4.12.0-4].
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 enhanced_auth_new_auth_method_fails(_Config) ->
     %% If the initial CONNECT packet included an Authentication Method
@@ -322,7 +322,7 @@ reauthenticate_server_rejects(_Config) ->
     %% send DISCONNECT with an appropriate Reason Code as described in
     %% section 4.13, and MUST close the Network Connection
     %% [MQTT-4.12.1-2].
-    throw(not_implemented).
+    {skip, not_implemented}.
 
 %%%%% Helpers %%%%%
 auth_props(Method, Data) ->
