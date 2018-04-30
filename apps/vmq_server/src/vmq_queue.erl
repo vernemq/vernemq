@@ -1047,7 +1047,7 @@ queue_split(N, Queue) ->
     queue:split(NN, Queue).
 
 maybe_set_expiry_ts({deliver, QoS, #vmq_msg{expiry_ts={expire_after, ExpireAfter}} = Msg}) ->
-    {deliver, QoS, Msg#vmq_msg{expiry_ts = {timestamp(second) + ExpireAfter, ExpireAfter}}};
+    {deliver, QoS, Msg#vmq_msg{expiry_ts = {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter}}};
 maybe_set_expiry_ts(Msg) ->
     Msg.
 
@@ -1067,10 +1067,4 @@ maybe_expire_msgs(Msgs) ->
       end, {[], 0}, Msgs),
     _ = vmq_metrics:incr_queue_msg_expired(Expired),
     lists:reverse(ToKeep).
-
-timestamp(Unit) ->
-    %% We need to get actual time, not plain monotonic time, as
-    %% monotonic time isn't portable between systems during queue
-    %% migrations.
-    erlang:time_offset(Unit) + erlang:monotonic_time(Unit).
 
