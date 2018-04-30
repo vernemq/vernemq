@@ -31,6 +31,11 @@ is_past(ExpiryTs) ->
     end.
 
 -spec timestamp(erlang:time_unit()) -> timestamp().
+timestamp(millisecond) ->
+    %% needed for OTP 18 compatibility
+    timestamp(milli_seconds);
+timestamp(second) ->
+    timestamp(seconds);
 timestamp(Unit) ->
     %% We need to get actual time, not plain monotonic time, as
     %% monotonic time isn't portable between systems during queue
