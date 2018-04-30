@@ -31,7 +31,7 @@ all_till_ok([{Module, Fun}|Rest], Params) ->
     case apply(Module, Fun, Params) of
         ok -> ok;
         {ok, V} -> {ok, V};
-        {continue_auth, V} -> {continue_auth, V};
+        {incomplete, V} -> {incomplete, V};
         {error, Error} -> {error, Error};
         next -> all_till_ok(Rest, Params);
         E -> {error, E}
