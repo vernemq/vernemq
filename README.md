@@ -36,8 +36,6 @@ Currently supported features are:
 
 Currently known issues for MQTTv5 are:
 
-- QoS 1/2 retries are only allowed after a network connection reconnect,
-  currently retries are made exactly as in MQTTv4.
 - Tracing (`vmq-admin trace`) doesn't yet support tracing MQTTv5 sessions.
 - New subscription flags (No Local, Retain as Published, Retain Handling) are
   ignored and subscriptions therefore currently work as in MQTTv4.
