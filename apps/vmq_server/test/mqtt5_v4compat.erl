@@ -18,7 +18,6 @@
          gen_disconnect/1]).
 
 -export([protover/1]).
--export([groupify/2]).
 
 -include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 
@@ -193,9 +192,3 @@ ensure_binary(empty) -> empty. % for test purposes
 
 protover(Config) ->
     proplists:get_value(protover, Config).
-
-groupify(String, Config) when is_list(String) ->
-    case protover(Config) of
-        4 -> String ++ "-mqttv4";
-        5 -> String ++ "-mqttv5"
-    end.
