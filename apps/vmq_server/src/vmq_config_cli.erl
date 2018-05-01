@@ -51,7 +51,8 @@ register_config_() ->
      "graphite_interval",
      "shared_subscription_policy",
      "remote_enqueue_timeout",
-     "topic_alias_max",
+     "topic_alias_max_client",
+     "topic_alias_max_broker",
      "max_last_will_delay"
     ],
     _ = [clique:register_config([Key], fun register_config_callback/3)

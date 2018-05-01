@@ -37,6 +37,7 @@
 -type cap_settings() :: #cap_settings{}.
 
 -type topic_aliases_in() :: map().
+-type topic_aliases_out() :: map().
 
 -record(auth_data, {
           method :: binary(),
@@ -81,7 +82,9 @@
           reg_view=vmq_reg_trie             :: atom(),
           cap_settings=#cap_settings{}      :: cap_settings(),
           topic_alias_max                   :: non_neg_integer(), %% 0 means no topic aliases allowed.
+          topic_alias_max_out               :: non_neg_integer(), %% 0 means no topic aliases allowed.
           topic_aliases_in=#{}              :: topic_aliases_in(), %% topic aliases used from client to broker.
+          topic_aliases_out=#{}             :: topic_aliases_out(), %% topic aliases used from broker to client.
           allowed_protocol_versions         :: [3|4|131|5],
 
           trace_fun                        :: undefined | any() %% TODO
@@ -91,7 +94,7 @@
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 
-init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive} = ConnectFrame) ->
+init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = ConnectFrame) ->
     rand:seed(exsplus, os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
@@ -121,7 +124,8 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                      allow_subscribe=CAPSubscribe,
                      allow_unsubscribe=CAPUnsubscribe
                     },
-    TopicAliasMax = vmq_config:get_env(topic_alias_max, 0),
+    TopicAliasMax = vmq_config:get_env(topic_alias_max_client, 0),
+    TopicAliasMaxOut = maybe_get_topic_alias_max(Properties, vmq_config:get_env(topic_alias_max_broker, 0)),
     TraceFun = vmq_config:get_env(trace_fun, undefined),
     maybe_initiate_trace(ConnectFrame, TraceFun),
     set_max_msg_size(MaxMessageSize),
@@ -143,6 +147,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                    keep_alive_tref=undefined,
                    cap_settings=CAPSettings,
                    topic_alias_max=TopicAliasMax,
+                   topic_alias_max_out=TopicAliasMaxOut,
                    reg_view=RegView,
                    trace_fun=TraceFun,
                    allowed_protocol_versions=AllowedProtocolVersions,
@@ -676,17 +681,17 @@ check_will(#mqtt5_connect{
            OutProps,
            State) ->
     #state{username=User, subscriber_id={MountPoint, _}=SubscriberId} = State,
-    case maybe_apply_topic_alias(User, SubscriberId,
-                                 #vmq_msg{routing_key=Topic,
-                                          payload=Payload,
-                                          msg_ref=msg_ref(),
-                                          qos=Qos,
-                                          retain=unflag(IsRetain),
-                                          mountpoint=MountPoint,
-                                          properties=Properties
-                                 },
-                                 fun(Msg, _) -> {ok, Msg} end,
-                                 State) of
+    case maybe_apply_topic_alias_in(User, SubscriberId,
+                                    #vmq_msg{routing_key=Topic,
+                                             payload=Payload,
+                                             msg_ref=msg_ref(),
+                                             qos=Qos,
+                                             retain=unflag(IsRetain),
+                                             mountpoint=MountPoint,
+                                             properties=Properties
+                                            },
+                                    fun(Msg, _) -> {ok, Msg} end,
+                                    State) of
         {ok, Msg, NewState} ->
             OutProps0 = maybe_add_topic_alias_max(OutProps, State),
             {NewState#state{will_msg=Msg},
@@ -699,10 +704,10 @@ check_will(#mqtt5_connect{
             connack_terminate(?M5_NOT_AUTHORIZED, State)
     end.
 
--spec maybe_apply_topic_alias(username(), subscriber_id(), msg(), fun(), state()) ->
+-spec maybe_apply_topic_alias_in(username(), subscriber_id(), msg(), fun(), state()) ->
                                      {ok, msg(), state()} |
                                      {error, any()}.
-maybe_apply_topic_alias(User, SubscriberId,
+maybe_apply_topic_alias_in(User, SubscriberId,
                         #vmq_msg{routing_key = [],
                                  properties = #{p_topic_alias := AliasId}} = Msg,
                         Fun, #state{topic_aliases_in = TA} = State) ->
@@ -720,28 +725,48 @@ maybe_apply_topic_alias(User, SubscriberId,
             %% for it
             {error, ?M5_TOPIC_ALIAS_INVALID}
     end;
-maybe_apply_topic_alias(User, SubscriberId,
-                        #vmq_msg{properties = #{p_topic_alias := AliasId}} = Msg,
-                        Fun, #state{topic_aliases_in = TA} = State) ->
+maybe_apply_topic_alias_in(User, SubscriberId,
+                           #vmq_msg{properties = #{p_topic_alias := AliasId}} = Msg,
+                           Fun, #state{topic_aliases_in = TA} = State) ->
     case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun) of
         {ok, #vmq_msg{routing_key=MaybeChangedTopic}=NewMsg} ->
             %% TODOv5: Should we check here that the topic isn't empty?
             {ok, NewMsg, State#state{topic_aliases_in = TA#{AliasId => MaybeChangedTopic}}};
         {error, _E} = E -> E
     end;
-maybe_apply_topic_alias(_User, _SubscriberId, #vmq_msg{routing_key = []},
-                        _Fun, _State) ->
+maybe_apply_topic_alias_in(_User, _SubscriberId, #vmq_msg{routing_key = []},
+                           _Fun, _State) ->
     %% Empty topic but no topic alias property (handled above).
     %% TODOv5 this is an error check it is handled correctly
     %% and add test-case
     {error, ?M5_TOPIC_FILTER_INVALID};
-maybe_apply_topic_alias(User, SubscriberId, Msg,
-                        Fun, State) ->
+maybe_apply_topic_alias_in(User, SubscriberId, Msg,
+                           Fun, State) ->
     %% normal publish
     case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun) of
         {ok, NewMsg} ->
             {ok, NewMsg, State};
         {error, _} = E -> E
+    end.
+
+-spec maybe_apply_topic_alias_out(topic(), map(), state()) -> {topic(), map(), state()}.
+maybe_apply_topic_alias_out(Topic, Properties, #state{topic_alias_max_out = 0} = State) ->
+    {Topic, Properties, State};
+maybe_apply_topic_alias_out(Topic, Properties, #state{topic_aliases_out = TA,
+                                                       topic_alias_max_out = Max} = State) ->
+    case maps:get(Topic, TA, not_found) of
+        not_found ->
+            case maps:size(TA) of
+                S when S < Max ->
+                    Alias = S + 1,
+                    {Topic, Properties#{p_topic_alias => Alias},
+                     State#state{topic_aliases_out = TA#{Topic => Alias}}};
+                _ ->
+                    %% Outgoing Alias Register is full
+                    {Topic, Properties, State}
+            end;
+        Alias ->
+            {<<>>, Properties#{p_topic_alias => Alias}, State}
     end.
 
 remove_property(p_topic_alias, #vmq_msg{properties = Properties} = Msg) ->
@@ -857,15 +882,15 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
 -spec publish(cap_settings(), module(), username(), subscriber_id(), msg(), state()) ->
                      {ok, msg(), state()} | {error, atom()}.
 publish(CAPSettings, RegView, User, SubscriberId, Msg, State) ->
-    maybe_apply_topic_alias(User, SubscriberId, Msg,
-                            fun(MaybeChangedMsg, HookArgs) ->
-                                    case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, MaybeChangedMsg),
-                                                         HookArgs) of
-                                        ok -> {ok, MaybeChangedMsg};
-                                        E -> E
-                                    end
-                            end,
-                            State).
+    maybe_apply_topic_alias_in(User, SubscriberId, Msg,
+                               fun(MaybeChangedMsg, HookArgs) ->
+                                       case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, MaybeChangedMsg),
+                                                            HookArgs) of
+                                           ok -> {ok, MaybeChangedMsg};
+                                           E -> E
+                                       end
+                               end,
+                               State).
 
 -spec on_publish_hook(ok | {error, _}, list()) -> ok | {error, _}.
 on_publish_hook(ok, HookParams) ->
@@ -1025,44 +1050,45 @@ handle_bin_message({MsgId, Bin}, State) ->
     _ = vmq_metrics:incr_mqtt_pubrel_sent(),
     State#state{waiting_acks=maps:put(MsgId, Bin, WAcks)}.
 
-prepare_frame(QoS, Msg, State) ->
-    #state{username=User, subscriber_id=SubscriberId, waiting_acks=WAcks} = State,
-    #vmq_msg{routing_key=Topic,
-             payload=Payload,
+prepare_frame(QoS, Msg, State0) ->
+    #state{username=User, subscriber_id=SubscriberId, waiting_acks=WAcks} = State0,
+    #vmq_msg{routing_key=Topic0,
+             payload=Payload0,
              retain=IsRetained,
              dup=IsDup,
              qos=MsgQoS,
-             properties=Properties,
+             properties=Properties0,
              expiry_ts=ExpiryTS} = Msg,
-    NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
-    HookArgs = [User, SubscriberId, Topic, Payload],
-    {NewTopic, NewPayload} =
+    NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State0),
+    HookArgs = [User, SubscriberId, Topic0, Payload0],
+    {Topic1, Payload1} =
     case vmq_plugin:all_till_ok(on_deliver_v1, HookArgs) of
         {error, _} ->
             %% no on_deliver hook specified... that's ok
-            {Topic, Payload};
+            {Topic0, Payload0};
         ok ->
-            {Topic, Payload};
+            {Topic0, Payload0};
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
-            {Topic, ChangedPayload};
+            {Topic0, ChangedPayload};
         {ok, Args} when is_list(Args) ->
-            ChangedTopic = proplists:get_value(topic, Args, Topic),
-            ChangedPayload = proplists:get_value(payload, Args, Payload),
+            ChangedTopic = proplists:get_value(topic, Args, Topic0),
+            ChangedPayload = proplists:get_value(payload, Args, Payload0),
             {ChangedTopic, ChangedPayload}
     end,
-    {OutgoingMsgId, State1} = get_msg_id(NewQoS, State),
+    {Topic2, Properties1, State1} = maybe_apply_topic_alias_out(Topic1, Properties0, State0),
+    {OutgoingMsgId, State2} = get_msg_id(NewQoS, State1),
     Frame = #mqtt5_publish{message_id=OutgoingMsgId,
-                           topic=NewTopic,
+                           topic=Topic2,
                            qos=NewQoS,
                            retain=IsRetained,
                            dup=IsDup,
-                           payload=NewPayload,
-                           properties=update_expiry_interval(Properties, ExpiryTS)},
+                           payload=Payload1,
+                           properties=update_expiry_interval(Properties1, ExpiryTS)},
     case NewQoS of
         0 ->
-            {Frame, State1};
+            {Frame, State2};
         _ ->
-            {Frame, State1#state{
+            {Frame, State2#state{
                       waiting_acks=maps:put(OutgoingMsgId,
                                             Msg#vmq_msg{qos=NewQoS}, WAcks)}}
     end.
@@ -1308,6 +1334,9 @@ maybe_add_topic_alias_max(Props, #state{topic_alias_max=0}) ->
     Props;
 maybe_add_topic_alias_max(Props, #state{topic_alias_max=Max}) ->
     Props#{p_topic_alias_max => Max}.
+
+maybe_get_topic_alias_max(#{p_topic_alias_max := Max}, ConfigMax) when Max > 0 -> min(Max, ConfigMax);
+maybe_get_topic_alias_max(_, ConfigMax) -> ConfigMax.
 
 filter_outgoing_pub_props(#vmq_msg{properties=Props} = Msg) when map_size(Props) =:= 0 ->
     Msg;
