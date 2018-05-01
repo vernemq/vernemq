@@ -35,7 +35,8 @@ init_per_testcase(_Case, Config) ->
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 2),
     vmq_server_cmd:set_config(max_client_id_size, 100),
-    vmq_server_cmd:set_config(topic_alias_max, 0),
+    vmq_server_cmd:set_config(topic_alias_max_client, 0),
+    vmq_server_cmd:set_config(topic_alias_max_broker, 0),
     Config.
 
 end_per_testcase(_, Config) ->
@@ -80,6 +81,7 @@ groups() ->
                    not_allowed_publish_qos2_mqtt_5,
                    message_expiry,
                    publish_c2b_topic_alias,
+                   publish_b2c_topic_alias,
                    forward_properties
                    | V4V5Tests] }
     ].
@@ -661,7 +663,7 @@ message_expiry(_) ->
 publish_c2b_topic_alias(_Config) ->
     enable_on_publish(),
     enable_on_subscribe(),
-    {ok, _} = vmq_server_cmd:set_config(topic_alias_max, 3),
+    {ok, _} = vmq_server_cmd:set_config(topic_alias_max_client, 3),
 
     Topic = "alias/topic",
 
@@ -694,7 +696,52 @@ publish_c2b_topic_alias(_Config) ->
     ok = packetv5:expect_frame(SubSocket, ExpectTAPub),
 
     ok = gen_tcp:close(PubSocket),
+    ok = gen_tcp:close(SubSocket),
+
+    disable_on_publish(),
+    disable_on_subscribe(),
+    ok.
+
+publish_b2c_topic_alias(Config) ->
+    enable_on_publish(),
+    enable_on_subscribe(),
+    {ok, _} = vmq_server_cmd:set_config(topic_alias_max_broker, 3),
+
+    SubClientId = vmq_cth:ustr(Config) ++ "-sub",
+    PubClientId = vmq_cth:ustr(Config) ++ "-pub",
+    Topic = list_to_binary(vmq_cth:utopic(Config)),
+
+    SubConnect = packetv5:gen_connect(SubClientId,
+                                      [{keepalive, 60}, {properties, #{p_topic_alias_max => 3}}]),
+    SubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, SubSocket} = packetv5:do_client_connect(SubConnect, SubConnack, []),
+    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)], #{}),
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    SubAck = packetv5:gen_suback(77, [0], #{}),
+    ok = packetv5:expect_frame(SubSocket, SubAck),
+
+    PubConnect = packetv5:gen_connect(PubClientId, [{keepalive, 60}]),
+    PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
+
+    PubSetup = packetv5:gen_publish(Topic, 0, <<"publish alias setup">>, []),
+    Pub = packetv5:gen_publish(Topic, 0, <<"publish alias pub">>, []),
+
+    ok = gen_tcp:send(PubSocket, PubSetup),
+    ok = gen_tcp:send(PubSocket, Pub),
+
+    TA1 = #{p_topic_alias => 1},
+
+    ExpectSetupPub = packetv5:gen_publish(Topic, 0, <<"publish alias setup">>,
+                                          [{properties, TA1}]),
+    ExpectTAPub = packetv5:gen_publish(<<>>, 0, <<"publish alias pub">>,
+                                          [{properties, TA1}]),
+
+    ok = packetv5:expect_frame(SubSocket, ExpectSetupPub),
+    ok = packetv5:expect_frame(SubSocket, ExpectTAPub),
+
     ok = gen_tcp:close(PubSocket),
+    ok = gen_tcp:close(SubSocket),
 
     disable_on_publish(),
     disable_on_subscribe(),
@@ -767,11 +814,11 @@ forward_properties(_Config) ->
     disable_on_subscribe().
 
 %% publish_c2b_invalid_topic_alias(Config) ->
-%%     vmq_server_cmd:set_config(topic_alias_max, 10),
+%%     vmq_server_cmd:set_config(topic_alias_max_client, 10),
 %%     %% The Client MUST NOT send a Topic Alias in a PUBLISH packet to
 %%     %% the Server greater than this value [MQTT-3.2.2-17].
 
-%%     vmq_server_cmd:set_config(topic_alias_max, 0),
+%%     vmq_server_cmd:set_config(topic_alias_max_client, 0),
 %%     %% Topic Alias Maximum is absent or 0, the Client MUST NOT send
 %%     %% any Topic Aliases on to the Server [MQTT-3.2.2-18].
 %%     ok.

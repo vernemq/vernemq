@@ -1542,10 +1542,18 @@
          lists:keysort(1, Plugins)
  end}.
 
-%% @doc Specifies the maximum topic alias range on the broker for each
+%% @doc Specifies the maximum incoming topic alias range on the broker for each
 %% client. A value of 0 means topic aliases are not allowed.
-{mapping, "topic_alias_max", "vmq_server.topic_alias_max", [
-                                                            {default, 0},
-                                                            {datatype, integer},
-                                                            hidden
-                                                           ]}.
+{mapping, "topic_alias_max_client", "vmq_server.topic_alias_max_client", [
+                                                                          {default, 0},
+                                                                          {datatype, integer},
+                                                                          hidden
+                                                                         ]}.
+
+%% @doc Specifies the maximum outgoing topic alias range on the broker for each
+%% client. A value of 0 means topic aliases are not allowed.
+{mapping, "topic_alias_max_broker", "vmq_server.topic_alias_max_broker", [
+                                                                          {default, 0},
+                                                                          {datatype, integer},
+                                                                          hidden
+                                                                         ]}.

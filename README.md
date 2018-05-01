@@ -34,6 +34,7 @@ Currently supported features are:
 - Session expiration interval.
 - Request/response using 'response topic' and 'correlation data' properties.
 - Client to broker topic aliases.
+- Broker to client topic aliases.
 - MQTTv5 and older prototocols can be enabled at the same time (set
   `allowed_protocol_versions=3,4,5` on the listener to enable respectively MQTT
   v3.1, 3.1.1 and 5.0).
@@ -45,7 +46,6 @@ Currently known issues for MQTTv5 are:
   ignored and subscriptions therefore currently work as in MQTTv4.
 - The plugin hooks for MQTTv5 sessions doesn't yet handle the new MQTTv5
   features.
-- Broker to client topic aliases are not yet implemented.
 - Subscriber IDs are not yet implemented.
 - Bridge plugin does not yet support MQTTv5.
 - Receive maximum flow control has not yet been implemented.
@@ -79,6 +79,18 @@ So to get started, simply create a clone of this repository and switch to this
 branch and then build VerneMQ using `make rel` as usual. VerneMQ can then be
 started by running `_build/default/rel/vernemq/bin/vernemq console` and you can
 now connect MQTTv5 clients to the listener running on `localhost:1883`.
+
+### Topic Aliases
+
+To try out the topic alias feature you have to enable it either in `vernemq.conf`
+or via `vmq-admin set` command.
+
+`topic_alias_max_client=10` enables that the client can use up to `10` topic aliases
+when publishing messages to the broker.
+`topic_alias_max_broker=10` enables that the broker can use up to `10` topic aliases
+when delivering messages to the client.
+
+Both settings are disabled by default.
 
 ##  Reporting issues
 
