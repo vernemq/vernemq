@@ -13,7 +13,7 @@ init_per_suite(Config) ->
     cover:start(),
     vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    [S|Config].
+    [S, {ct_hooks, vmq_cth} |Config].
 
 end_per_suite(_Config) ->
     vmq_server_cmd:listener_stop(1888, "127.0.0.1", false),
@@ -119,7 +119,7 @@ publish_qos2_test(Config) ->
 
 
 publish_b2c_disconnect_qos1_test(Config) ->
-    ClientId = mqtt5_v4compat:groupify("pub-qos1-disco-test", Config),
+    ClientId = vmq_cth:ustr(Config) ++ "pub-qos1-disco-test",
     Connect = mqtt5_v4compat:gen_connect(ClientId,
                                          [{keepalive, 60}, {clean_session, false}], Config),
     Connack1 = mqtt5_v4compat:gen_connack(success, Config),
@@ -157,7 +157,7 @@ publish_b2c_disconnect_qos1_test(Config) ->
     ok = gen_tcp:close(Socket1).
 
 publish_b2c_disconnect_qos2_test(Config) ->
-    ClientId = mqtt5_v4compat:groupify("pub-b2c-qos2-disco-test", Config),
+    ClientId = vmq_cth:ustr(Config) ++ "pub-b2c-qos2-disco-test",
     Connect = mqtt5_v4compat:gen_connect(ClientId,
                                  [{keepalive, 60}, {clean_session, false}], Config),
     Connack1 = mqtt5_v4compat:gen_connack(success, Config),
@@ -263,7 +263,7 @@ publish_b2c_retry_qos2_test(Config) ->
     ok = gen_tcp:close(Socket).
 
 publish_c2b_disconnect_qos2_test(Config) ->
-    ClientId = mqtt5_v4compat:groupify("pub-c2b-qos2-disco-test", Config),
+    ClientId = vmq_cth:ustr(Config) ++ "pub-c2b-qos2-disco-test",
     Connect = mqtt5_v4compat:gen_connect(ClientId,
                                          [{keepalive, 60}, {clean_session, false}], Config),
     Connack1 = mqtt5_v4compat:gen_connack(success, Config),
