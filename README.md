@@ -1,5 +1,9 @@
 # VerneMQ MQTTv5 preview
 
+[![Build Status](https://travis-ci.org/erlio/vernemq.svg?branch=mqtt5-preview)](https://travis-ci.org/erlio/vernemq)
+[![Slack Invite](https://slack-invite.vernemq.com/badge.svg)](https://slack-invite.vernemq.com)
+
+
 This branch is an early release of VerneMQ with MQTTv5 support and is made
 public to allow the community and industry to start working with MQTTv5 and to
 get as much feedback as possible.
