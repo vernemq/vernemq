@@ -34,6 +34,7 @@
 -define(DISCONNECT_MIGRATION,     disconnect_migration).
 -define(BAD_AUTH_METHOD,          bad_auth_method).
 -define(PROTOCOL_ERROR,           protocol_error).
+-define(RECEIVE_MAX_EXCEEDED,     receive_max_exceeded).
 
 
 -type disconnect_reasons() ::
@@ -44,4 +45,5 @@
         ?DISCONNECT_KEEP_ALIVE |
         ?DISCONNECT_MIGRATION |
         ?BAD_AUTH_METHOD |
-        ?PROTOCOL_ERROR.
+        ?PROTOCOL_ERROR |
+        ?RECEIVE_MAX_EXCEEDED.
