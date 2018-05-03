@@ -440,7 +440,7 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=_Prop
             _ = vmq_metrics:incr_mqtt_suback_sent(),
             {State, [Frame]};
         {error, not_allowed} ->
-            QoSs = [16#87 || _ <- Topics], % not authorized
+            QoSs = [?M5_NOT_AUTHORIZED || _ <- Topics], % not authorized
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
             _ = vmq_metrics:incr_mqtt_error_auth_subscribe(),
             {State, [Frame]};
