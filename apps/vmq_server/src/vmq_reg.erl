@@ -620,7 +620,7 @@ fold_subscribers(FoldFun, Acc) ->
       end, Acc).
 
 -spec add_subscriber([{topic(), qos() | not_allowed} |
-                      {topic(), qos() | not_allowed, map()}], subscriber_id()) -> ok.
+                      {topic(), {qos() | not_allowed, map()}}], subscriber_id()) -> ok.
 add_subscriber(Topics, SubscriberId) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     NewSubs =

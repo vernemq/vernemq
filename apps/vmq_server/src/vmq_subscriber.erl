@@ -174,17 +174,13 @@ get_node_subs(Node, Subs) ->
 fold(Fun, Acc, Subs) ->
     lists:foldl(fun({Node, _, NSubs}, AccAcc) ->
                         lists:foldl(
-                          fun({Topic, QoS}, AccAccAcc) ->
-                                  Fun({Topic, QoS, Node}, AccAccAcc);
-                             ({Topic, QoS, Opts}, AccAccAcc) ->
-                                  Fun({Topic, {QoS, Opts}, Node}, AccAccAcc)
+                          fun({Topic, SubInfo}, AccAccAcc) ->
+                                  Fun({Topic, SubInfo, Node}, AccAccAcc)
                           end, AccAcc, NSubs);
                    ({Node, NChanges}, AccAcc) ->
                         lists:foldl(
-                          fun({Topic, QoS}, AccAccAcc) ->
-                                  Fun({Topic, QoS, Node}, AccAccAcc);
-                             ({Topic, QoS, Opts}, AccAccAcc) ->
-                                  Fun({Topic, {QoS, Opts}, Node}, AccAccAcc)
+                          fun({Topic, SubInfo}, AccAccAcc) ->
+                                  Fun({Topic, SubInfo, Node}, AccAccAcc)
                           end, AccAcc, NChanges)
                 end, Acc, Subs).
 
