@@ -1557,3 +1557,24 @@
                                                                           {datatype, integer},
                                                                           hidden
                                                                          ]}.
+
+%% @doc Specifies the maximum number of unacknowledged MQTTv5 Publish packets
+%% VerneMQ is allowed to send to a client. Each client can set their own
+%% receive maximum (via the `receive_max`property of the CONNECT frame).
+%% VerneMQ ensures that a client provided maximum never exceeds the
+%% `receive_max_client` value.
+{mapping, "receive_max_client", "vmq_server.receive_max_client", [
+                                                                  {default, 65535},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                 ]}.
+
+%% @doc Specifies the maximum number of unacknowledged MQTTv5 Publish packets
+%% VerneMQ is allowed to receive from a client. VerneMQ advertises this value
+%% in the `receive_max` property of the CONNACK frame. A client is disconnected
+%% when exceeding this value.
+{mapping, "receive_max_broker", "vmq_server.receive_max_broker", [
+                                                                  {default, 65535},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                 ]}.
