@@ -25,6 +25,7 @@
 -export([msg_ref/0]).
 
 -define(CLOSE_AFTER, 5000).
+-define(FC_RECEIVE_MAX, 65535).
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 
@@ -45,6 +46,8 @@
          }).
 
 -type auth_data() :: auth_data().
+
+-type receive_max() :: 1..?FC_RECEIVE_MAX.
 
 -record(state, {
           %% mqtt layer requirements
@@ -76,7 +79,6 @@
 
           %% changeable by auth_on_register
           shared_subscription_policy=prefer_local :: sg_policy(),
-          max_inflight_messages=20          :: non_neg_integer(), %% 0 means unlimited
           max_message_rate=0                :: non_neg_integer(), %% 0 means unlimited
           upgrade_qos=false                 :: boolean(),
           reg_view=vmq_reg_trie             :: atom(),
@@ -85,7 +87,13 @@
           topic_alias_max_out               :: non_neg_integer(), %% 0 means no topic aliases allowed.
           topic_aliases_in=#{}              :: topic_aliases_in(), %% topic aliases used from client to broker.
           topic_aliases_out=#{}             :: topic_aliases_out(), %% topic aliases used from broker to client.
-          allowed_protocol_versions         :: [3|4|131|5],
+          allowed_protocol_versions         :: [5],
+
+          %% flow control
+          fc_receive_max_client=?FC_RECEIVE_MAX :: receive_max(),
+          fc_receive_max_broker=?FC_RECEIVE_MAX :: receive_max(),
+          fc_receive_cnt=0                      :: receive_max(),
+          fc_send_cnt=0                         :: receive_max(),
 
           trace_fun                        :: undefined | any() %% TODO
          }).
@@ -109,7 +117,6 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
-    MaxInflightMsgs = vmq_config:get_env(max_inflight_messages, 20),
     MaxMessageSize = vmq_config:get_env(max_message_size, 0),
     MaxMessageRate = vmq_config:get_env(max_message_rate, 0),
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
@@ -134,12 +141,17 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
     %% the client is allowed "grace" of a half a time period
     set_keepalive_check_timer(KeepAlive),
 
+    %% Flow Control
+    FcReceiveMaxClient = maybe_get_receive_maximum(
+                           Properties,
+                           vmq_config:get_env(receive_max_client, ?FC_RECEIVE_MAX)),
+    FcReceiveMaxBroker = vmq_config:get_env(receive_max_broker, ?FC_RECEIVE_MAX),
+
     State = #state{peer=Peer,
                    upgrade_qos=UpgradeQoS,
                    subscriber_id=SubscriberId,
                    allow_anonymous=AllowAnonymous,
                    shared_subscription_policy=SharedSubPolicy,
-                   max_inflight_messages=MaxInflightMsgs,
                    max_message_rate=MaxMessageRate,
                    username=PreAuthUser,
                    max_client_id_size=MaxClientIdSize,
@@ -151,6 +163,8 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
                    reg_view=RegView,
                    trace_fun=TraceFun,
                    allowed_protocol_versions=AllowedProtocolVersions,
+                   fc_receive_max_client=FcReceiveMaxClient,
+                   fc_receive_max_broker=FcReceiveMaxBroker,
                    last_time_active=os:timestamp()},
 
     case check_enhanced_auth(ConnectFrame, State) of
@@ -295,12 +309,8 @@ connected(#mqtt5_publish{message_id=MessageId, topic=Topic,
             dispatch_publish(QoS, MessageId, Msg, State)
     end,
     case Ret of
-        {error, not_allowed} ->
-            %% TODOv5 this will tell the client that the publish
-            %% wasn't allowed. Is it a good idea to give the client
-            %% this information or is it better to just drop the
-            %% connection?
-            terminate(not_authorized, State);
+        {error, recv_max_exceeded} ->
+            terminate(?RECEIVE_MAX_EXCEEDED, State);
         Out when is_list(Out) and not DoThrottle ->
             {State, Out};
         Out when is_list(Out) ->
@@ -345,12 +355,14 @@ connected(#mqtt5_puback{message_id=MessageId}, #state{waiting_acks=WAcks} = Stat
     _ = vmq_metrics:incr_mqtt_puback_received(),
     case maps:get(MessageId, WAcks, not_found) of
         #vmq_msg{} ->
-            handle_waiting_msgs(State#state{waiting_acks=maps:remove(MessageId, WAcks)});
+            Cnt = fc_decr_cnt(State#state.fc_send_cnt, puback),
+            handle_waiting_msgs(State#state{fc_send_cnt=Cnt, waiting_acks=maps:remove(MessageId, WAcks)});
         not_found ->
             _ = vmq_metrics:incr_mqtt_error_invalid_puback(),
             {State, []}
     end;
-connected(#mqtt5_pubrec{message_id=MessageId}, State) ->
+
+connected(#mqtt5_pubrec{message_id=MessageId, reason_code=RC}, State) when RC < 16#80 ->
     #state{waiting_acks=WAcks} = State,
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrec_received(),
@@ -367,15 +379,23 @@ connected(#mqtt5_pubrec{message_id=MessageId}, State) ->
             Frame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_PACKET_ID_NOT_FOUND, properties=#{}},
             {State, [Frame]}
     end;
+connected(#mqtt5_pubrec{message_id=MessageId, reason_code=_ErrorRC}, State) ->
+    %% qos2 flow with an error reason
+    _ = vmq_metrics:incr_mqtt_pubrec_received(),
+    WAcks = maps:remove(MessageId, State#state.waiting_acks),
+    Cnt = fc_decr_cnt(State#state.fc_send_cnt, pubrec),
+    {State#state{waiting_acks=WAcks, fc_send_cnt=Cnt}, []};
 connected(#mqtt5_pubrel{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks} = State,
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrel_received(),
     case maps:get({qos2, MessageId} , WAcks, not_found) of
         {#mqtt5_pubrec{}, _Msg} ->
+            Cnt = fc_decr_cnt(State#state.fc_receive_cnt, pubrel),
             {NewState, Msgs} =
             handle_waiting_msgs(
               State#state{
+                fc_receive_cnt=Cnt,
                 waiting_acks=maps:remove({qos2, MessageId}, WAcks)}),
             _ = vmq_metrics:incr_mqtt_pubcomp_sent(),
             {NewState, [#mqtt5_pubcomp{message_id=MessageId,
@@ -390,7 +410,9 @@ connected(#mqtt5_pubcomp{message_id=MessageId}, State) ->
     _ = vmq_metrics:incr_mqtt_pubcomp_received(),
     case maps:get(MessageId, WAcks, not_found) of
         #mqtt5_pubrel{} ->
+            Cnt = fc_decr_cnt(State#state.fc_send_cnt, pubcomp),
             handle_waiting_msgs(State#state{
+                                  fc_send_cnt=Cnt,
                                   waiting_acks=maps:remove(MessageId, WAcks)});
         not_found -> % error or wrong waiting_ack, definitely not well behaving client
             lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
@@ -418,8 +440,7 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=_Prop
             _ = vmq_metrics:incr_mqtt_suback_sent(),
             {State, [Frame]};
         {error, not_allowed} ->
-            %% allow the parser to add the 0x80 Failure return code
-            QoSs = [not_allowed || _ <- Topics],
+            QoSs = [?M5_NOT_AUTHORIZED || _ <- Topics], % not authorized
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
             _ = vmq_metrics:incr_mqtt_error_auth_subscribe(),
             {State, [Frame]};
@@ -653,15 +674,16 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Propertie
             register_subscriber(F, OutProps, queue_opts(State, [], Properties), State)
     end.
 
-register_subscriber(#mqtt5_connect{username=User}=F, OutProps,
+register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
                     QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId,
-                                      cap_settings=CAPSettings} = State) ->
+                                      cap_settings=CAPSettings, fc_receive_max_broker=ReceiveMax} = State) ->
     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, QueueOpts) of
         {ok, SessionPresent, QPid} ->
             monitor(process, QPid),
             _ = vmq_plugin:all(on_register_v1, [Peer, SubscriberId,
                                              User]),
-            check_will(F, SessionPresent, OutProps, State#state{queue_pid=QPid,username=User});
+            OutProps1 = maybe_set_receive_maximum(OutProps0, ReceiveMax),
+            check_will(F, SessionPresent, OutProps1, State#state{queue_pid=QPid,username=User});
         {error, Reason} ->
             lager:warning("can't register client ~p with username ~p due to ~p",
                           [SubscriberId, User, Reason]),
@@ -797,7 +819,10 @@ auth_on_register(User, Password, Properties, State) ->
                              clean_session=?state_val(clean_session, Args, State),
                              reg_view=?state_val(reg_view, Args, State),
                              max_message_rate=?state_val(max_message_rate, Args, State),
-                             max_inflight_messages=?state_val(max_inflight_messages, Args, State),
+                             fc_receive_max_broker=?state_val(fc_receive_max_broker, Args, State),
+                             % we're not allowed to have a larger receive_max_client than the one
+                             % provided by the client (which is already stored in fc_receive_max_client).
+                             fc_receive_max_client=min(State#state.fc_receive_max_client, ?state_val(fc_receive_max_client, Args, State)),
                              shared_subscription_policy=?state_val(shared_subscription_policy, Args, State),
                              upgrade_qos=?state_val(upgrade_qos, Args, State),
                              topic_alias_max=?state_val(topic_alias_max, Args, State),
@@ -898,18 +923,21 @@ on_publish_hook(ok, HookParams) ->
     ok;
 on_publish_hook(Other, _) -> Other.
 
--spec dispatch_publish(qos(), msg_id(), msg(), state()) -> list() | {state(), list()}.
+-spec dispatch_publish(qos(), msg_id(), msg(), state()) ->
+    list() | {state(), list()} | {error, recv_max_exceeded}.
 dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
 -spec dispatch_publish_(qos(), msg_id(), msg(), state()) ->
-    list() | {error, not_allowed}.
+    list() | {error, recv_max_exceeded}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
 dispatch_publish_(1, MessageId, Msg, State) ->
-    dispatch_publish_qos1(MessageId, Msg, State);
+    CntOrErr = fc_incr_cnt(State#state.fc_receive_cnt, State#state.fc_receive_max_broker, dispatch_1),
+    dispatch_publish_qos1(MessageId, Msg, CntOrErr, State);
 dispatch_publish_(2, MessageId, Msg, State) ->
-    dispatch_publish_qos2(MessageId, Msg, State).
+    CntOrErr = fc_incr_cnt(State#state.fc_receive_cnt, State#state.fc_receive_max_broker, dispatch_2),
+    dispatch_publish_qos2(MessageId, Msg, CntOrErr, State).
 
 -spec dispatch_publish_qos0(msg_id(), msg(), state()) -> list() | {state(), list()}.
 dispatch_publish_qos0(_MessageId, Msg, State) ->
@@ -927,14 +955,18 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
             []
     end.
 
--spec dispatch_publish_qos1(msg_id(), msg(), state()) -> list() | {state(), list()}.
-dispatch_publish_qos1(MessageId, Msg, State) ->
+-spec dispatch_publish_qos1(msg_id(), msg(), error | receive_max(), state()) ->
+    list() | {state(), list()} | {error, recv_max_exceeded}.
+dispatch_publish_qos1(_, _, error, _) ->
+    {error, recv_max_exceeded};
+dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
+    % Ignore the Cnt as we send the Puback right away.
         #state{username=User, subscriber_id=SubscriberId,
                cap_settings=CAPSettings, reg_view=RegView} = State,
     case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
         {ok, _, NewState} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
-                {NewState, [#mqtt5_puback{message_id=MessageId,
+                {NewState   , [#mqtt5_puback{message_id=MessageId,
                                           reason_code=?M5_SUCCESS,
                                           properties=#{}}]};
         {error, not_allowed} ->
@@ -950,8 +982,11 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
             [Frame]
     end.
 
--spec dispatch_publish_qos2(msg_id(), msg(), state()) -> list() | {state(), list()}.
-dispatch_publish_qos2(MessageId, Msg, State) ->
+-spec dispatch_publish_qos2(msg_id(), msg(), error | receive_max(), state()) ->
+    list() | {state(), list()} | {error, recv_max_exceeded}.
+dispatch_publish_qos2(_, _, error, _) ->
+    {error, recv_max_exceeded};
+dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
     #state{username=User, subscriber_id=SubscriberId,
            cap_settings=CAPSettings, reg_view=RegView, waiting_acks=WAcks} = State,
 
@@ -960,6 +995,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
             _ = vmq_metrics:incr_mqtt_pubrec_sent(),
             {NewState#state{
+               fc_receive_cnt=Cnt,
                waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
              [Frame]};
         {error, not_allowed} ->
@@ -1027,13 +1063,13 @@ handle_messages([{deliver, 0, Msg}|Rest], Frames, BinCnt, State, Waiting) ->
     {Frame, NewState} = prepare_frame(0, Msg, State),
     handle_messages(Rest, [Frame|Frames], BinCnt, NewState, Waiting);
 handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, BinCnt, State, Waiting) ->
-    case check_in_flight(State) of
-        true ->
-            {Frame, NewState} = prepare_frame(QoS, Msg, State),
-            handle_messages(Rest, [Frame|Frames], BinCnt, NewState, Waiting);
-        false ->
-            % only qos 1&2 are constrained by max_in_flight
-            handle_messages(Rest, Frames, BinCnt, State, [Obj|Waiting])
+    case fc_incr_cnt(State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages) of
+        error ->
+            % reached outgoing flow control max, queue up rest of messages
+            handle_messages(Rest, Frames, BinCnt, State, [Obj|Waiting]);
+        Cnt ->
+            {Frame, NewState} = prepare_frame(QoS, Msg, State#state{fc_send_cnt=Cnt}),
+            handle_messages(Rest, [Frame|Frames], BinCnt, NewState, Waiting)
     end;
 handle_messages([{deliver_bin, {_, Bin} = Term}|Rest], Frames, BinCnt, State, Waiting) ->
     handle_messages(Rest, [Bin|Frames], BinCnt, handle_bin_message(Term, State), Waiting);
@@ -1118,14 +1154,6 @@ get_last_will_delay(#vmq_msg{properties = #{p_will_delay_interval := Delay}}) ->
     MaxDuration = vmq_config:get_env(max_last_will_delay, 0),
     min(MaxDuration, Delay);
 get_last_will_delay(_) -> 0.
-
--spec check_in_flight(state()) -> boolean().
-check_in_flight(#state{waiting_acks=WAcks, max_inflight_messages=Max}) ->
-    case Max of
-        0 -> true;
-        V ->
-            maps:size(WAcks) < V
-    end.
 
 %% The MQTT specification requires that the QoS of a message delivered to a
 %% subscriber is never upgraded to match the QoS of the subscription. If
@@ -1307,7 +1335,8 @@ gen_disconnect(?SESSION_TAKEN_OVER) -> gen_disconnect_(?M5_SESSION_TAKEN_OVER);
 gen_disconnect(?ADMINISTRATIVE_ACTION) -> gen_disconnect_(?M5_ADMINISTRATIVE_ACTION);
 gen_disconnect(?DISCONNECT_KEEP_ALIVE) -> gen_disconnect_(?M5_KEEP_ALIVE_TIMEOUT);
 gen_disconnect(?BAD_AUTH_METHOD) -> gen_disconnect_(?M5_BAD_AUTHENTICATION_METHOD);
-gen_disconnect(?PROTOCOL_ERROR) -> gen_disconnect_(?M5_PROTOCOL_ERROR).
+gen_disconnect(?PROTOCOL_ERROR) -> gen_disconnect_(?M5_PROTOCOL_ERROR);
+gen_disconnect(?RECEIVE_MAX_EXCEEDED) -> gen_disconnect_(?M5_RECEIVE_MAX_EXCEEDED).
 
 gen_disconnect_(RC) ->
     #mqtt5_disconnect{reason_code = RC, properties = #{}}.
@@ -1337,6 +1366,26 @@ maybe_add_topic_alias_max(Props, #state{topic_alias_max=Max}) ->
 
 maybe_get_topic_alias_max(#{p_topic_alias_max := Max}, ConfigMax) when Max > 0 -> min(Max, ConfigMax);
 maybe_get_topic_alias_max(_, ConfigMax) -> ConfigMax.
+
+maybe_set_receive_maximum(Props, ?FC_RECEIVE_MAX) -> Props;
+maybe_set_receive_maximum(Props, ConfigMax)
+  when (ConfigMax > 0) and (ConfigMax < ?FC_RECEIVE_MAX) ->
+    Props#{p_receive_max => ConfigMax}.
+
+maybe_get_receive_maximum(#{p_receive_max := Max}, ConfigMax)
+  when (ConfigMax > 0) and (ConfigMax =< ?FC_RECEIVE_MAX) -> min(Max, ConfigMax);
+maybe_get_receive_maximum(_, ConfigMax)
+  when (ConfigMax > 0) and (ConfigMax =< ?FC_RECEIVE_MAX) -> ConfigMax.
+
+fc_incr_cnt(ConfigMax, ConfigMax, What) -> fc_log(incr, What, {ConfigMax, ConfigMax}), error;
+fc_incr_cnt(Cnt, ConfigMax, What) when Cnt < ConfigMax -> fc_log(incr, What, {Cnt, ConfigMax}), Cnt + 1.
+
+fc_decr_cnt(0, What) -> fc_log(decr, What, 0), 0;
+fc_decr_cnt(Cnt, What) when Cnt > 0 -> fc_log(decr, What, Cnt - 1), Cnt - 1.
+
+fc_log(_Action, _Location, _Cnt) ->
+    noop.
+    %io:format(user, "fc[~p]: ~p ~p~n", [Location, Action, Cnt]).
 
 filter_outgoing_pub_props(#vmq_msg{properties=Props} = Msg) when map_size(Props) =:= 0 ->
     Msg;
