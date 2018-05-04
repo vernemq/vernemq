@@ -53,7 +53,6 @@ register_config_() ->
      "remote_enqueue_timeout",
      "topic_alias_max_client",
      "topic_alias_max_broker",
-     "max_last_will_delay"
      "max_last_will_delay",
      "receive_max_client",
      "receive_max_broker"
