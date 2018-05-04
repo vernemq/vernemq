@@ -20,5 +20,13 @@
 
 -export([convert/4]).
 
+convert(auth_on_subscribe, Mod, Fun, [Username, SubscriberId, Topics]) ->
+    apply(Mod, Fun, [Username, SubscriberId, topics_v1_v0(Topics)]);
 convert(_, Mod, Fun, Args) ->
     apply(Mod, Fun, Args).
+
+topics_v1_v0(Topics) ->
+    lists:map(
+      fun({T, {QoS, _SubOpts}}) ->
+              {T, QoS}
+      end, Topics).

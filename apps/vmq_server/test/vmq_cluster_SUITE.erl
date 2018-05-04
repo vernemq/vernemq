@@ -867,7 +867,7 @@ publish_random(Nodes, N, Topic, Acc) ->
 receive_publishes(_, _, []) -> ok;
 receive_publishes([{_,Port}=N|Nodes], Topic, Payloads) ->
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
-                                                           {keepalive, 10}]),
+                                                     {keepalive, 10}]),
     Connack = packet:gen_connack(true, 0),
     Opts = [{port, Port}],
     {ok, Socket} = packet:do_client_connect(Connect, Connack, Opts),

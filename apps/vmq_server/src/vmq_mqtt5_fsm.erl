@@ -425,16 +425,17 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=_Prop
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
+    SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
-                case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, convert_to_v4(MaybeChangedTopics)) of
+                case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics) of
                     {ok, _} = Res ->
                         vmq_plugin:all(on_subscribe_v1, [User, SubscriberId, MaybeChangedTopics]),
                         Res;
                     Res -> Res
                 end
         end,
-    case auth_on_subscribe(User, SubscriberId, Topics, OnAuthSuccess) of
+    case auth_on_subscribe(User, SubscriberId, SubTopics, OnAuthSuccess) of
         {ok, QoSs} ->
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
             _ = vmq_metrics:incr_mqtt_suback_sent(),
@@ -843,7 +844,7 @@ set_sock_opts(Opts) ->
                        ) -> {ok, [qos() | not_allowed]} | {error, atom()}.
 auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess) ->
     case vmq_plugin:all_till_ok(auth_on_subscribe_v1,
-                                [User, SubscriberId, convert_to_v4(Topics)]) of
+                                [User, SubscriberId, Topics]) of
         ok ->
             AuthSuccess(User, SubscriberId, Topics);
         {ok, NewTopics} when is_list(NewTopics) ->
@@ -1341,15 +1342,6 @@ gen_disconnect(?RECEIVE_MAX_EXCEEDED) -> gen_disconnect_(?M5_RECEIVE_MAX_EXCEEDE
 gen_disconnect_(RC) ->
     #mqtt5_disconnect{reason_code = RC, properties = #{}}.
 
-convert_to_v4(Topics) ->
-    %% TODO: this compatibility function is only here temporarily to
-    %% not break existing tests during v5 development. Must be removed
-    %% and tests fixed.
-    lists:map(fun(#mqtt5_subscribe_topic{topic = T, qos = QoS}) -> {T, QoS};
-                 (V4) -> V4
-              end,
-              Topics).
-
 msg_expiration(#{p_message_expiry_interval := ExpireAfter}) ->
     {expire_after, ExpireAfter};
 msg_expiration(_) ->
@@ -1400,3 +1392,4 @@ filter_outgoing_pub_props(#vmq_msg{properties=Props} = Msg) ->
                                p_content_type,
                                p_message_expiry_interval
                               ], Props)}.
+

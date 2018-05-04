@@ -66,8 +66,8 @@
 
 
 -spec subscribe(flag(), subscriber_id(),
-                [{topic(), qos()}]) -> {ok, [qos() | not_allowed]} |
-                                       {error, not_allowed | not_ready}.
+                [subscription()]) -> {ok, [qos() | not_allowed]} |
+                                     {error, not_allowed | not_ready}.
 subscribe(false, SubscriberId, Topics) ->
     %% trade availability for consistency
     vmq_cluster:if_ready(fun subscribe_op/2, [SubscriberId, Topics]);
@@ -78,10 +78,18 @@ subscribe(true, SubscriberId, Topics) ->
 subscribe_op(SubscriberId, Topics) ->
     add_subscriber(lists:usort(Topics), SubscriberId),
     QoSTable =
-    lists:foldl(fun ({_, not_allowed}, AccQoSTable) ->
+    lists:foldl(fun
+                    %% MQTTv4 clauses
+                    ({_, not_allowed}, AccQoSTable) ->
                         [not_allowed|AccQoSTable];
                     ({T, QoS}, AccQoSTable) when is_integer(QoS) ->
-                        deliver_retained(SubscriberId, T, QoS),
+                        deliver_retained(SubscriberId, T, QoS, #{}),
+                        [QoS|AccQoSTable];
+                    %% MQTTv5 clauses
+                    ({_, {not_allowed, _}}, AccQoSTable) ->
+                        [not_allowed|AccQoSTable];
+                    ({T, {QoS, SubOpts}}, AccQoSTable) when is_integer(QoS), is_map(SubOpts) ->
+                        deliver_retained(SubscriberId, T, QoS, SubOpts),
                         [QoS|AccQoSTable]
                 end, [], Topics),
     {ok, lists:reverse(QoSTable)}.
@@ -271,8 +279,7 @@ publish(true, RegView, #vmq_msg{mountpoint=MP,
         true when Payload == <<>> ->
             %% retain delete action
             vmq_retain_srv:delete(MP, Topic),
-
-            publish(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            publish(RegView, MP, Topic, fun publish/2, Msg),
             ok;
         true ->
             %% retain set action
@@ -281,7 +288,7 @@ publish(true, RegView, #vmq_msg{mountpoint=MP,
                                                 properties = Properties,
                                                 expiry_ts = maybe_set_expiry_ts(Properties)
                                                }),
-            publish(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            publish(RegView, MP, Topic, fun publish/2, Msg),
             ok;
         false ->
             publish(RegView, MP, Topic, fun publish/2, Msg),
@@ -297,7 +304,7 @@ publish(false, RegView, #vmq_msg{mountpoint=MP,
         true when (IsRetain == true) and (Payload == <<>>) ->
             %% retain delete action
             vmq_retain_srv:delete(MP, Topic),
-            publish(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            publish(RegView, MP, Topic, fun publish/2, Msg),
             ok;
         true when (IsRetain == true) ->
             %% retain set action
@@ -306,7 +313,7 @@ publish(false, RegView, #vmq_msg{mountpoint=MP,
                                                 properties = Properties,
                                                 expiry_ts = maybe_set_expiry_ts(Properties)
                                                }),
-            publish(RegView, MP, Topic, fun publish/2, Msg#vmq_msg{retain=false}),
+            publish(RegView, MP, Topic, fun publish/2, Msg),
             ok;
         true ->
             publish(RegView, MP, Topic, fun publish/2, Msg),
@@ -321,14 +328,16 @@ maybe_set_expiry_ts(_) ->
     undefined.
 
 %% publish/2 is used as the fold function in RegView:fold/4
-publish({{_,_} = SubscriberId, QoS}, {Msg, _} = Acc) ->
+publish({{_,_} = SubscriberId, SubInfo}, {Msg, _} = Acc) ->
     case get_queue_pid(SubscriberId) of
         not_found -> Acc;
         QPid ->
-            ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg}),
+            NewMsg = post_route_filter(SubInfo, Msg),
+            QoS = qos(SubInfo),
+            ok = vmq_queue:enqueue(QPid, {deliver, QoS, NewMsg}),
             Acc
     end;
-publish({_Node, _Group, _SubscriberId, _QoS} = Sub, {Msg, SubscriberGroups}) ->
+publish({_Node, _Group, _SubscriberId, _SubInfo} = Sub, {Msg, SubscriberGroups}) ->
     %% collect subscriber group members for later processing
     {Msg, add_to_subscriber_group(Sub, SubscriberGroups)};
 publish(Node, {Msg, _} = Acc) ->
@@ -340,18 +349,31 @@ publish(Node, {Msg, _} = Acc) ->
             Acc
     end.
 
+-spec post_route_filter(subinfo(), msg()) -> msg().
+post_route_filter({_QoS, #{rap := true}}, Msg) ->
+    Msg;
+post_route_filter(_SubInfo, Msg) ->
+    %% Default is to set the retain flag to false to be compatible with MQTTv3
+    Msg#vmq_msg{retain = false}.
+
+-spec qos(subinfo()) -> qos().
+qos({QoS, _}) when is_integer(QoS) ->
+    QoS;
+qos(QoS) when is_integer(QoS) ->
+    QoS.
+
 add_to_subscriber_group(Sub, undefined) ->
     add_to_subscriber_group(Sub, #{});
-add_to_subscriber_group({Node, Group, SubscriberId, QoS}, SubscriberGroups) ->
+add_to_subscriber_group({Node, Group, SubscriberId, SubInfo}, SubscriberGroups) ->
     SubscriberGroup = maps:get(Group, SubscriberGroups, []),
-    maps:put(Group, [{Node, SubscriberId, QoS}|SubscriberGroup],
+    maps:put(Group, [{Node, SubscriberId, SubInfo}|SubscriberGroup],
              SubscriberGroups).
 
--spec deliver_retained(subscriber_id(), topic(), qos()) -> 'ok'.
-deliver_retained(_SubscriberId, [<<"$share">>|_], _QoS) ->
+-spec deliver_retained(subscriber_id(), topic(), qos(), subopts()) -> 'ok'.
+deliver_retained(_SubscriberId, [<<"$share">>|_], _QoS, _SubOpts) ->
     %% Never deliver retained messages to subscriber groups.
     ok;
-deliver_retained({MP, _} = SubscriberId, Topic, QoS) ->
+deliver_retained({MP, _} = SubscriberId, Topic, QoS, _SubOpts) ->
     QPid = get_queue_pid(SubscriberId),
     vmq_retain_srv:match_fold(
       fun ({T, #retain_msg{payload = Payload,
@@ -597,12 +619,21 @@ fold_subscribers(FoldFun, Acc) ->
               FoldFun(SubscriberId, Subs, AccAcc)
       end, Acc).
 
--spec add_subscriber([{topic(), qos() | not_allowed}], subscriber_id()) -> ok.
+-spec add_subscriber([{topic(), qos() | not_allowed} |
+                      {topic(), qos() | not_allowed, map()}], subscriber_id()) -> ok.
 add_subscriber(Topics, SubscriberId) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
-    case vmq_subscriber:add(OldSubs, [{T, QoS}||{T, QoS} <- Topics, is_integer(QoS)]) of
-        {NewSubs, true} ->
-            vmq_subscriber_db:store(SubscriberId, NewSubs);
+    NewSubs =
+        lists:filter(
+          fun({_T, QoS}) when is_integer(QoS) ->
+                  true;
+             ({_T, {QoS, _Opts}}) when is_integer(QoS) ->
+                  true;
+             (_) -> false
+          end, Topics),
+    case vmq_subscriber:add(OldSubs, NewSubs) of
+        {NewSubs0, true} ->
+            vmq_subscriber_db:store(SubscriberId, NewSubs0);
         _ ->
             ok
     end.

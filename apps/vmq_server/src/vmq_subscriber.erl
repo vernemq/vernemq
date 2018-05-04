@@ -31,9 +31,9 @@
          change_node/4,
          check_format/1]).
 
--type node_subs() :: {node(), boolean(), [{topic(), qos()}]}.
+-type node_subs() :: {node(), boolean(), [subscription()]}.
 -type subs() :: [node_subs()].
--type node_changes() :: {node(), [{topic(), qos()}]}.
+-type node_changes() :: {node(), [subscription()]}.
 -type changes() :: [node_changes()].
 
 -export_type([subs/0, changes/0]).
@@ -58,7 +58,7 @@ get_changes(Old, New) ->
     Added = subtract(NNew, OOld),
     {Removed, Added}.
 
--spec add(subs(), [{topic(), qos()}]) -> {subs(), boolean()}.
+-spec add(subs(), [subscription()]) -> {subs(), boolean()}.
 add(Subs, TopicsWithQoS) ->
     add(Subs, TopicsWithQoS, node()).
 add(Subs, TopicsWithQoS, Node) ->
@@ -173,13 +173,19 @@ get_node_subs(Node, Subs) ->
 -spec fold(function(), any(), subs() | changes()) -> any().
 fold(Fun, Acc, Subs) ->
     lists:foldl(fun({Node, _, NSubs}, AccAcc) ->
-                        lists:foldl(fun({Topic, QoS}, AccAccAcc) ->
-                                            Fun({Topic, QoS, Node}, AccAccAcc)
-                                    end, AccAcc, NSubs);
+                        lists:foldl(
+                          fun({Topic, QoS}, AccAccAcc) ->
+                                  Fun({Topic, QoS, Node}, AccAccAcc);
+                             ({Topic, QoS, Opts}, AccAccAcc) ->
+                                  Fun({Topic, {QoS, Opts}, Node}, AccAccAcc)
+                          end, AccAcc, NSubs);
                    ({Node, NChanges}, AccAcc) ->
-                        lists:foldl(fun({Topic, QoS}, AccAccAcc) ->
-                                            Fun({Topic, QoS, Node}, AccAccAcc)
-                                    end, AccAcc, NChanges)
+                        lists:foldl(
+                          fun({Topic, QoS}, AccAccAcc) ->
+                                  Fun({Topic, QoS, Node}, AccAccAcc);
+                             ({Topic, QoS, Opts}, AccAccAcc) ->
+                                  Fun({Topic, {QoS, Opts}, Node}, AccAccAcc)
+                          end, AccAcc, NChanges)
                 end, Acc, Subs).
 
 -ifdef(TEST).
