@@ -46,6 +46,8 @@
   `listener.tcp.specific_listener.allowed_protocol_versions`.
 - Fix bug causing an exception to be thrown when `vmq-admin cluster leave` is
   used with a timout value less than 5 seconds (#642).
+- Small refactoring enabling to store versioned message store values. This is a
+  preparation for MQTTv5.
 
 ## VerneMQ 1.3.0
 

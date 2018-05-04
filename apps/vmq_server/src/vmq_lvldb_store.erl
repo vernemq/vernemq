@@ -46,6 +46,11 @@
                }).
 -type config() :: [{atom(), term()}].
 
+
+-define(P_MSG_V, 0).
+-record(p_idx_val, {ts, dup, qos}).
+%% Subsequent formats should whenever possible use the same ordering
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -323,7 +328,7 @@ handle_req({write, {MP, _} = SubscriberId,
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     RefKey = sext:encode({msg, MsgRef, SubscriberId}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
-    IdxVal = term_to_binary({os:timestamp(), Dup, QoS}),
+    IdxVal = serialize_p_idx_val(#p_idx_val{ts=os:timestamp(), dup=Dup, qos=QoS}),
     case incr_ref(Refs, MsgRef) of
         1 ->
             %% new message
@@ -345,7 +350,7 @@ handle_req({read, {MP, _} = SubscriberId, MsgRef},
             {RoutingKey, Payload} = binary_to_term(Val),
             case eleveldb:get(Bucket, IdxKey, ReadOpts) of
                 {ok, IdxVal} ->
-                    {_TS, Dup, QoS} = binary_to_term(IdxVal),
+                    #p_idx_val{dup=Dup, qos=QoS} = parse_p_idx_val(binary_to_term(IdxVal)),
                     Msg = #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
                                    routing_key=RoutingKey, payload=Payload, persisted=true},
                     {ok, Msg};
@@ -386,7 +391,7 @@ iterate_index_items({error, _}, _, Acc, _, _) ->
 iterate_index_items({ok, IdxKey, IdxVal}, SubscriberId, Acc, Itr, State) ->
     case sext:decode(IdxKey) of
         {idx, SubscriberId, MsgRef} ->
-            {TS, _Dup, _QoS} = binary_to_term(IdxVal),
+            #p_idx_val{ts=TS} = parse_p_idx_val(binary_to_term(IdxVal)),
             iterate_index_items(eleveldb:iterator_move(Itr, prefetch), SubscriberId,
                                 ordsets:add_element({TS, MsgRef}, Acc), Itr, State);
         _ ->
@@ -394,6 +399,22 @@ iterate_index_items({ok, IdxKey, IdxVal}, SubscriberId, Acc, Itr, State) ->
             eleveldb:iterator_close(Itr),
             Acc
     end.
+
+% current version of the store
+parse_p_idx_val({TS, Dup, QoS}) ->
+    #p_idx_val{ts=TS, dup=Dup, qos=QoS};
+
+% newer versions of the store -> downgrade
+parse_p_idx_val(T) when element(1, T) > ?P_MSG_V ->
+    TS = element(2, T),
+    Dup = element(3, T),
+    QoS = element(4, T),
+    % downgrade from _Version to current version
+    #p_idx_val{ts=TS, dup=Dup, qos=QoS}.
+
+% current version of the store
+serialize_p_idx_val(#p_idx_val{ts=TS, dup=Dup, qos=QoS}) ->
+    term_to_binary({TS, Dup, QoS}).
 
 check_store(#state{ref=Bucket, fold_opts=FoldOpts, write_opts=WriteOpts,
                    refs=Refs}) ->
