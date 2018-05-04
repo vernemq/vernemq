@@ -400,12 +400,19 @@ iterate_index_items({ok, IdxKey, IdxVal}, SubscriberId, Acc, Itr, State) ->
             Acc
     end.
 
+% current version of the store
 parse_p_idx_val({TS, Dup, QoS}) ->
     #p_idx_val{ts=TS, dup=Dup, qos=QoS};
-parse_p_idx_val([_Version, TS, Dup, QoS | _Ignored]) ->
+
+% newer versions of the store -> downgrade
+parse_p_idx_val(T) when element(1, T) > ?P_MSG_V ->
+    TS = element(2, T),
+    Dup = element(3, T),
+    QoS = element(4, T),
     % downgrade from _Version to current version
     #p_idx_val{ts=TS, dup=Dup, qos=QoS}.
 
+% current version of the store
 serialize_p_idx_val(#p_idx_val{ts=TS, dup=Dup, qos=QoS}) ->
     term_to_binary({TS, Dup, QoS}).
 
