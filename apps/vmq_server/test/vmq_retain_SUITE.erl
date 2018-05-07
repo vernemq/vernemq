@@ -59,7 +59,9 @@ groups() ->
      {mqttv5, [shuffle, parallel],
       [
        retain_with_properties,
-       retain_with_message_expiry
+       retain_with_message_expiry,
+       subscribe_retain_as_published_test,
+       subscribe_retain_handling_flags_test
        |Tests]}
     ].
 
@@ -302,6 +304,104 @@ retain_with_message_expiry(Cfg) ->
     1 = vmq_metrics:counter_val(queue_message_expired),
 
     ok = gen_tcp:close(SubSocket).
+
+subscribe_retain_as_published_test(Cfg) ->
+    %% Bit 3 of the Subscription Options represents the Retain As
+    %% Published option. If 1, Application Messages forwarded using
+    %% this subscription keep the RETAIN flag they were published
+    %% with. If 0, Application Messages forwarded using this
+    %% subscription have the RETAIN flag set to 0. Retained messages
+    %% sent when the subscription is established have the RETAIN flag
+    %% set to 1.
+
+    %% [MQTT-3.3.1-12]   If  the   value   of   Retain  As   Published
+    %% subscription option is set to 0, the Server MUST set the RETAIN
+    %% flag to 0 when forwarding  an Application Message regardless of
+    %% how the RETAIN flag was set in the received PUBLISH packet.
+
+
+    %% [MQTT-3.3.1-13] If the value of Retain As Published
+    %% subscription option is set to 1, the Server MUST set the RETAIN
+    %% flag equal to the RETAIN flag in the received PUBLISH packet.
+
+    ClientId = vmq_cth:ustr(Cfg),
+    RH = send_retain, NL = false,
+
+    TopicRapTrue = vmq_cth:utopic(Cfg) ++ "/retaspubtrue",
+    SubTopicRapTrue = packetv5:gen_subtopic(TopicRapTrue, 0,  NL, true, RH),
+    SubscribeRapTrue = packetv5:gen_subscribe(77, [SubTopicRapTrue], #{}),
+    SubAck77 = packetv5:gen_suback(77, [0], #{}),
+
+    TopicRapFalse = vmq_cth:utopic(Cfg) ++ "/retaspubfalse",
+    SubTopicRapFalse = packetv5:gen_subtopic(TopicRapFalse, 0,  NL, false, RH),
+    SubscribeRapFalse = packetv5:gen_subscribe(78, [SubTopicRapFalse], #{}),
+    SubAck78 = packetv5:gen_suback(78, [0], #{}),
+
+    Connect = packetv5:gen_connect(ClientId, [{clean_start, true}]),
+    Connack = packetv5:gen_connack(),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+
+    ok = gen_tcp:send(Socket, SubscribeRapTrue),
+    ok = packetv5:expect_frame(Socket, SubAck77),
+    ok = gen_tcp:send(Socket, SubscribeRapFalse),
+    ok = packetv5:expect_frame(Socket, SubAck78),
+
+    %% Test subscription with RAP true
+    PublishRetainedRapTrue = packetv5:gen_publish(TopicRapTrue, 0, <<"msg1">>, [{retain, true}]),
+    PublishRapTrue = packetv5:gen_publish(TopicRapTrue, 0, <<"msg2">>, []),
+    ok = gen_tcp:send(Socket, PublishRetainedRapTrue),
+    ok = gen_tcp:send(Socket, PublishRapTrue),
+
+    %% Rap True, published messages keep original retain flag
+    {ok, #mqtt5_publish{
+            retain = 1,
+            payload = <<"msg1">>
+           }, <<>>} = packetv5:receive_frame(Socket),
+    {ok, #mqtt5_publish{
+            retain = 0,
+            payload = <<"msg2">>
+           }, <<>>} = packetv5:receive_frame(Socket),
+
+    %% Test subscription with RAP false
+    PublishRetainedRapFalse = packetv5:gen_publish(TopicRapFalse, 0, <<"msg3">>, [{retain, true}]),
+    PublishRapFalse = packetv5:gen_publish(TopicRapFalse, 0, <<"msg4">>, []),
+    ok = gen_tcp:send(Socket, PublishRetainedRapFalse),
+    ok = gen_tcp:send(Socket, PublishRapFalse),
+
+    %% RAP false, published retained messages lose the retain flag
+    {ok, #mqtt5_publish{
+            retain = 0,
+            payload = <<"msg3">>
+           }, <<>>} = packetv5:receive_frame(Socket),
+    {ok, #mqtt5_publish{
+            retain = 0,
+            payload = <<"msg4">>
+           }, <<>>} = packetv5:receive_frame(Socket),
+
+    Disconnect = packetv5:gen_disconnect(),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket).
+
+subscribe_retain_handling_flags_test(_) ->
+    %% maybe move to the retain suite?
+
+    %% Bits 4 and 5 of the Subscription Options represent the Retain
+    %% Handling option. This option specifies whether retained
+    %% messages are sent when the subscription is established. This
+    %% does not affect the sending of retained messages at any point
+    %% after the subscribe. If there are no retained messages matching
+    %% the Topic Filter, all of these values act the same. The values
+    %% are:
+    %%
+    %% 0 = Send retained messages at the time of the subscribe
+    %%
+    %% 1 = Send retained messages at subscribe only if the
+    %% subscription does not currently exist
+    %%
+    %% 2 = Do not send retained messages at the time of the subscribe
+    %%
+    %% It is a Protocol Error to send a Retain Handling value of 3.
+    {skip, not_implemented}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks

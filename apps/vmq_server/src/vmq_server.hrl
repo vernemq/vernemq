@@ -25,6 +25,10 @@
          }).
 -type msg()             :: #vmq_msg{}.
 
+-type subopts() :: map().
+-type subinfo() :: qos() | {qos(), subopts()}.
+-type subscription() :: {topic(), subinfo()}.
+
 %% TODO: these definitions should probably be moved somewhere else.
 -define(NOT_AUTHORIZED,           not_authorized).
 -define(SESSION_TAKEN_OVER,       session_taken_over).

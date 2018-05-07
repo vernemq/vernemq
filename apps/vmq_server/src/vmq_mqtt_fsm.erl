@@ -346,7 +346,8 @@ connected(#mqtt_subscribe{message_id=MessageId, topics=Topics}, State) ->
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
-                case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics) of
+                SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(MaybeChangedTopics),
+                case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, SubTopics) of
                     {ok, _} = Res ->
                         vmq_plugin:all(on_subscribe, [User, SubscriberId, MaybeChangedTopics]),
                         Res;
