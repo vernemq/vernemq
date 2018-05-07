@@ -382,9 +382,7 @@ subscribe_retain_as_published_test(Cfg) ->
     ok = gen_tcp:send(Socket, Disconnect),
     ok = gen_tcp:close(Socket).
 
-subscribe_retain_handling_flags_test(_) ->
-    %% maybe move to the retain suite?
-
+subscribe_retain_handling_flags_test(Cfg) ->
     %% Bits 4 and 5 of the Subscription Options represent the Retain
     %% Handling option. This option specifies whether retained
     %% messages are sent when the subscription is established. This
@@ -401,7 +399,68 @@ subscribe_retain_handling_flags_test(_) ->
     %% 2 = Do not send retained messages at the time of the subscribe
     %%
     %% It is a Protocol Error to send a Retain Handling value of 3.
-    {skip, not_implemented}.
+
+    %% [MQTT-3.3.1-9] If Retain Handling is set to 0 the Server MUST
+    %% send the retained messages matching the Topic Filter of the
+    %% subscription to the Client.
+
+    %% [MQTT-3.3.1-10] If Retain Handling is set to 1 then if the
+    %% subscription did not already exist, the Server MUST send all
+    %% retained message matching the Topic Filter of the subscription
+    %% to the Client, and if the subscription did exist the Server
+    %% MUST NOT send the retained messages.
+
+    %% [MQTT-3.3.1-11] If Retain Handling is set to 2, the Server MUST
+    %% NOT send the retained message.
+
+    Topic = vmq_cth:utopic(Cfg),
+    ClientId = vmq_cth:ustr(Cfg),
+    Connect = packetv5:gen_connect(ClientId, [{clean_start, true}]),
+    Connack = packetv5:gen_connack(),
+    Disconnect = packetv5:gen_disconnect(),
+    PublishRetained = packetv5:gen_publish(Topic, 0, <<"a retained message">>, [{retain, true}]),
+
+    SubFun =
+        fun(Socket, T, Mid, RH) ->
+                NL = false,
+                Rap = false,
+                SubTopic = packetv5:gen_subtopic(T, 0,  NL, Rap, RH),
+                Subscribe = packetv5:gen_subscribe(Mid, [SubTopic], #{}),
+                SubAck = packetv5:gen_suback(Mid, [0], #{}),
+                ok = gen_tcp:send(Socket, Subscribe),
+                ok = packetv5:expect_frame(Socket, SubAck),
+                ok
+        end,
+
+    %% publish a retained msg
+    {ok, Socket0} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket0, PublishRetained),
+
+    %% send_retain
+    %% Subscribe to topic and receive message
+    ok = SubFun(Socket0, Topic, 1, send_retain),
+    ok = packetv5:expect_frame(Socket0, PublishRetained),
+    ok = gen_tcp:send(Socket0, Disconnect),
+    ok = gen_tcp:close(Socket0),
+
+    %% dont_send
+    {ok, Socket3} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = SubFun(Socket3, Topic, 0, dont_send),
+    {error, timeout} = gen_tcp:recv(Socket3, 0, 100),
+
+    %% send_if_new_sub
+    %% subscribe twice and don't get the message the second time
+    {ok, Socket1} = packetv5:do_client_connect(Connect, Connack, []),
+
+    ok = SubFun(Socket1, Topic, 1, send_if_new_sub),
+    ok = packetv5:expect_frame(Socket1, PublishRetained),
+    ok = SubFun(Socket1, Topic, 2, send_if_new_sub),
+    {error, timeout} = gen_tcp:recv(Socket1, 0, 100),
+    ok = SubFun(Socket1, Topic, 3, send_if_new_sub),
+    {error, timeout} = gen_tcp:recv(Socket1, 0, 100),
+    ok = gen_tcp:send(Socket1, Disconnect).
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks

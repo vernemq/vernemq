@@ -76,22 +76,23 @@ subscribe(true, SubscriberId, Topics) ->
     subscribe_op(SubscriberId, Topics).
 
 subscribe_op(SubscriberId, Topics) ->
+    Existing = subscriptions_exist(SubscriberId, Topics),
     add_subscriber(lists:usort(Topics), SubscriberId),
     QoSTable =
     lists:foldl(fun
                     %% MQTTv4 clauses
-                    ({_, not_allowed}, AccQoSTable) ->
+                    ({_, {_, not_allowed}}, AccQoSTable) ->
                         [not_allowed|AccQoSTable];
-                    ({T, QoS}, AccQoSTable) when is_integer(QoS) ->
-                        deliver_retained(SubscriberId, T, QoS, #{}),
+                    ({Exists, {T, QoS}}, AccQoSTable) when is_integer(QoS) ->
+                        deliver_retained(SubscriberId, T, QoS, #{}, Exists),
                         [QoS|AccQoSTable];
                     %% MQTTv5 clauses
-                    ({_, {not_allowed, _}}, AccQoSTable) ->
+                    ({_, {_, {not_allowed, _}}}, AccQoSTable) ->
                         [not_allowed|AccQoSTable];
-                    ({T, {QoS, SubOpts}}, AccQoSTable) when is_integer(QoS), is_map(SubOpts) ->
-                        deliver_retained(SubscriberId, T, QoS, SubOpts),
+                    ({Exists, {T, {QoS, SubOpts}}}, AccQoSTable) when is_integer(QoS), is_map(SubOpts) ->
+                        deliver_retained(SubscriberId, T, QoS, SubOpts, Exists),
                         [QoS|AccQoSTable]
-                end, [], Topics),
+                end, [], lists:zip(Existing,Topics)),
     {ok, lists:reverse(QoSTable)}.
 
 -spec unsubscribe(flag(), subscriber_id(), [topic()]) -> ok | {error, not_ready}.
@@ -369,11 +370,17 @@ add_to_subscriber_group({Node, Group, SubscriberId, SubInfo}, SubscriberGroups) 
     maps:put(Group, [{Node, SubscriberId, SubInfo}|SubscriberGroup],
              SubscriberGroups).
 
--spec deliver_retained(subscriber_id(), topic(), qos(), subopts()) -> 'ok'.
-deliver_retained(_SubscriberId, [<<"$share">>|_], _QoS, _SubOpts) ->
+-spec deliver_retained(subscriber_id(), topic(), qos(), subopts(), boolean()) -> 'ok'.
+deliver_retained(_, _, _, #{retain_handling := dont_send}, _) ->
+    %% don't send, skip
+    ok;
+deliver_retained(_, _, _, #{retain_handling := send_if_new_sub}, true) ->
+    %% subscription already existed, skip.
+    ok;
+deliver_retained(_SubscriberId, [<<"$share">>|_], _QoS, _SubOpts, _) ->
     %% Never deliver retained messages to subscriber groups.
     ok;
-deliver_retained({MP, _} = SubscriberId, Topic, QoS, _SubOpts) ->
+deliver_retained({MP, _} = SubscriberId, Topic, QoS, _SubOpts, _) ->
     QPid = get_queue_pid(SubscriberId),
     vmq_retain_srv:match_fold(
       fun ({T, #retain_msg{payload = Payload,
@@ -637,6 +644,11 @@ add_subscriber(Topics, SubscriberId) ->
         _ ->
             ok
     end.
+
+-spec subscriptions_exist(subscriber_id(), [topic()]) -> [boolean()].
+subscriptions_exist(SubscriberId, Topics) ->
+    Subs = subscriptions_for_subscriber_id(SubscriberId),
+    [vmq_subscriber:exists(Topic, Subs) || {Topic, _} <- Topics].
 
 -spec del_subscriber(subscriber_id()) -> ok.
 del_subscriber(SubscriberId) ->
