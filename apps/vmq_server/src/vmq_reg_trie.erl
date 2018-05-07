@@ -228,26 +228,26 @@ handle_event(Handler, Event) ->
             ok
     end.
 
-handle_add_event({[<<"$share">>, Group|Topic], QoS, Node}, {MP, _} = SubscriberId) ->
+handle_add_event({[<<"$share">>, Group|Topic], SubInfo, Node}, {MP, _} = SubscriberId) ->
     add_complex_topic(MP, Topic, {Node, Group}, true),
-    add_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS),
+    add_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo),
     SubscriberId;
-handle_add_event({Topic, QoS, Node}, {MP, _} = SubscriberId) when Node == node() ->
+handle_add_event({Topic, SubInfo, Node}, {MP, _} = SubscriberId) when Node == node() ->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
-    add_subscriber(MP, Topic, SubscriberId, QoS),
+    add_subscriber(MP, Topic, SubscriberId, SubInfo),
     SubscriberId;
 handle_add_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_remote_subscriber(MP, Topic, Node),
     SubscriberId.
 
-handle_delete_event({[<<"$share">>, Group|Topic], QoS, Node}, {MP, _} = SubscriberId) ->
+handle_delete_event({[<<"$share">>, Group|Topic], SubInfo, Node}, {MP, _} = SubscriberId) ->
     del_complex_topic(MP, Topic, {Node, Group}, true),
-    del_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS),
+    del_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo),
     SubscriberId;
-handle_delete_event({Topic, QoS, Node}, {MP, _} = SubscriberId) when Node == node() ->
+handle_delete_event({Topic, SubInfo, Node}, {MP, _} = SubscriberId) when Node == node() ->
     del_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
-    del_subscriber(MP, Topic, SubscriberId, QoS),
+    del_subscriber(MP, Topic, SubscriberId, SubInfo),
     SubscriberId;
 handle_delete_event({Topic, _, Node}, {MP, _} = SubscriberId) ->
     del_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
@@ -280,15 +280,15 @@ match_(Topic, [{NodeOrGroup,_}|Rest], Acc) ->
     match_(Topic, Rest, [{Topic, NodeOrGroup}|Acc]);
 match_(_, [], Acc) -> Acc.
 
-initialize_trie({MP, [<<"$share">>,Group|Topic], {SubscriberId, QoS, Node}}, Acc) ->
+initialize_trie({MP, [<<"$share">>,Group|Topic], {SubscriberId, SubInfo, Node}}, Acc) ->
     add_complex_topic(MP, Topic, {Node, Group}, true),
-    add_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS),
+    add_subscriber_group(MP, Node, Group, Topic, SubscriberId, SubInfo),
     Acc;
-initialize_trie({MP, Topic, {SubscriberId, QoS, Node}}, Acc) when Node =:= node() ->
+initialize_trie({MP, Topic, {SubscriberId, SubInfo, Node}}, Acc) when Node =:= node() ->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
-    add_subscriber(MP, Topic, SubscriberId, QoS),
+    add_subscriber(MP, Topic, SubscriberId, SubInfo),
     Acc;
-initialize_trie({MP, Topic, {_SubscriberId, _QoS, Node}}, Acc)  ->
+initialize_trie({MP, Topic, {_SubscriberId, _SubInfo, Node}}, Acc)  ->
     add_complex_topic(MP, Topic, Node, vmq_topic:contains_wildcard(Topic)),
     add_remote_subscriber(MP, Topic, Node),
     Acc.

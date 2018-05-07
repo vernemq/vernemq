@@ -192,8 +192,8 @@ process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St) ->
     lager:warning("unknown message: ~p", [Cmd]),
     process(Rest, St).
 
-publish({_, _} = SubscriberIdAndQoS, Msg) ->
-    vmq_reg:publish(SubscriberIdAndQoS, Msg);
+publish({_, _} = SubscriberIdAndSubInfo, Msg) ->
+    vmq_reg:publish(SubscriberIdAndSubInfo, Msg);
 publish(_Node, Msg) ->
     %% we ignore remote subscriptions, they are already covered
     %% by original publisher

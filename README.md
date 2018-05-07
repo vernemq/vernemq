@@ -36,6 +36,7 @@ Currently supported features are:
 - Client to broker topic aliases.
 - Broker to client topic aliases.
 - Receive maximum flow control.
+- Subscription flag Retain as Published is implemented
 - MQTTv5 and older prototocols can be enabled at the same time (set
   `allowed_protocol_versions=3,4,5` on the listener to enable respectively MQTT
   v3.1, 3.1.1 and 5.0).
@@ -43,8 +44,7 @@ Currently supported features are:
 Currently known issues for MQTTv5 are:
 
 - Tracing (`vmq-admin trace`) doesn't yet support tracing MQTTv5 sessions.
-- New subscription flags (No Local, Retain as Published, Retain Handling) are
-  ignored and subscriptions therefore currently work as in MQTTv4.
+- The subscription flags No Local, Retain Handling are currently ignored.
 - The plugin hooks for MQTTv5 sessions doesn't yet handle the new MQTTv5
   features.
 - Subscriber IDs are not yet implemented.
