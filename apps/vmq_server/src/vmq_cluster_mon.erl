@@ -116,7 +116,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(timeout, State) ->
-    vmq_plugin:only(cluster_events_add_handler, [vmq_cluster, []]),
+    vmq_peer_service:add_event_handler(vmq_cluster, []),
     {noreply, State};
 handle_info({nodedown, Node}, State) ->
     lager:warning("cluster node ~p DOWN", [Node]),
@@ -127,7 +127,7 @@ handle_info({nodeup, Node}, State) ->
     vmq_cluster:recheck(),
     {noreply, State};
 handle_info({gen_event_EXIT, vmq_cluster, _}, State) ->
-    vmq_plugin:only(cluster_events_add_handler, [vmq_cluster, []]),
+    vmq_peer_service:add_event_handler(vmq_cluster, []),
     {noreply, State};
 handle_info(recheck, State) ->
     vmq_cluster:recheck(),
@@ -150,7 +150,7 @@ handle_info(recheck, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(Reason, _State) ->
-    vmq_plugin:only(cluster_events_delete_handler, [vmq_cluster, Reason]),
+    vmq_peer_service:delete_event_handler(vmq_cluster, Reason),
     ok.
 
 %%--------------------------------------------------------------------

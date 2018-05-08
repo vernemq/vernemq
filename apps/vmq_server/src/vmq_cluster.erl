@@ -46,7 +46,7 @@
 %%%===================================================================
 
 recheck() ->
-    case vmq_plugin:only(cluster_events_call_handler, [?MODULE, recheck, infinity]) of
+    case vmq_peer_service:call_event_handler(?MODULE, recheck, infinity) of
         ok -> ok;
         E ->
             lager:warning("error during cluster checkup due to ~p", [E]),
@@ -141,7 +141,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 check_ready() ->
-    Nodes = vmq_plugin:only(cluster_members, []),
+    Nodes = vmq_peer_service:members(),
     check_ready(Nodes).
 
 check_ready(Nodes) ->

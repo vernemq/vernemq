@@ -57,10 +57,10 @@ init([]) ->
               ]} }.
 
 maybe_change_nodename() ->
-    case vmq_plugin:only(cluster_members, []) of
+    case vmq_peer_service:members() of
         [Node] when Node =/= node() ->
             lager:info("rename VerneMQ node from ~p to ~p", [Node, node()]),
-            _ = vmq_plugin:only(cluster_rename_member, [Node, node()]),
+            _ = vmq_peer_service:rename_member(Node, node()),
             vmq_reg:fold_subscribers(
               fun(SubscriberId, Subs, _) ->
                       {NewSubs, _} = vmq_subscriber:change_node_all(Subs, node(), false),

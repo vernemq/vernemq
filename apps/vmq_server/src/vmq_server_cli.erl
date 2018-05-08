@@ -210,7 +210,7 @@ vmq_cluster_leave_cmd() ->
                        %% Make sure Iterations > 0 to it will be
                        %% checked at least once if queue migration is complete.
                        Iterations = max(Timeout div Interval, 1),
-                       TargetNodes = vmq_plugin:only(cluster_members, []) -- [Node],
+                       TargetNodes = vmq_peer_service:members() -- [Node],
                        Text =
                        case net_adm:ping(Node) of
                            pang ->
@@ -245,7 +245,7 @@ vmq_cluster_leave_cmd() ->
                                                %% node is online, we'll go the proper route
                                                %% instead of calling leave_cluster('Node')
                                                %% directly
-                                               _ = vmq_plugin:only(cluster_leave, [Node]),
+                                               _ = vmq_peer_service:leave(Node),
                                                Caller ! {done, CRef},
                                                init:stop();
                                            error ->
@@ -285,7 +285,7 @@ vmq_cluster_leave_cmd() ->
 
 
 leave_cluster(Node) ->
-    case vmq_plugin:only(cluster_leave, [Node]) of
+    case vmq_peer_service:leave(Node) of
         ok ->
             "Done";
         {error, not_present} ->
@@ -329,7 +329,7 @@ vmq_cluster_join_cmd() ->
                        Text = clique_status:text("You have to provide a discovery node (example discovery-node=vernemq1@127.0.0.1)"),
                        [clique_status:alert([Text])];
                    (_, [{'discovery-node', Node}], _) ->
-                       case vmq_plugin:only(cluster_join, [Node]) of
+                       case vmq_peer_service:join(Node) of
                            ok ->
                                vmq_cluster:recheck(),
                                [clique_status:text("Done")];
