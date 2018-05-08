@@ -1,6 +1,5 @@
 -module(vmq_test_utils).
 -export([setup/0,
-         setup_use_default_auth/0,
          teardown/0,
          reset_tables/0,
          maybe_start_distribution/1,
@@ -9,11 +8,6 @@
          rand_bytes/1]).
 
 setup() ->
-    start_server(true).
-setup_use_default_auth() ->
-    start_server(false).
-
-start_server(StartNoAuth) ->
     os:cmd(os:find_executable("epmd")++" -daemon"),
     NodeName = list_to_atom("vmq_server-" ++ integer_to_list(erlang:phash2(os:timestamp()))),
     ok = maybe_start_distribution(NodeName),
@@ -47,13 +41,8 @@ start_server(StartNoAuth) ->
                                             {size,10485760},
                                             {date,"$D0"},
                                             {count,5}]}]),
-    start_server_(StartNoAuth),
+    vmq_server:start_no_auth(),
     disable_all_plugins().
-
-start_server_(_StartNoAuth = true) ->
-    vmq_server:start_no_auth();
-start_server_(_StartNoAuth = false) ->
-    vmq_server:start().
 
 random_port() ->
     10000 + (erlang:phash2(node()) rem 10000).
@@ -73,6 +62,17 @@ teardown() ->
     ok.
 
 disable_all_plugins() ->
+    {ok, Plugins} = vmq_plugin_mgr:get_plugins(),
+    %% Disable App Pluginns
+    lists:foreach(fun ({application, vmq_plumtree, _}) ->
+                          % don't disable metadata plugin
+                          ignore;
+                      ({application, App, _Hooks}) ->
+                          vmq_plugin_mgr:disable_plugin(App);
+                      (_ModPlugins) ->
+                          ignore
+                  end, Plugins),
+    %% Disable Mod Plugins
     _ = [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
     ok.
 
@@ -94,15 +94,15 @@ reset_tables() ->
     ok.
 
 reset_tab(Tab) ->
-    plumtree_metadata:fold(
+    vmq_metadata:fold({vmq, Tab},
       fun({Key, V}, _) ->
               case V =/= '$deleted' of
                   true ->
-                      plumtree_metadata:delete({vmq, Tab}, Key);
+                      vmq_metadata:delete({vmq, Tab}, Key);
                   _ ->
                       ok
               end
-      end, ok, {vmq, Tab}).
+      end, ok).
 
 get_suite_rand_seed() ->
     %% To set the seed when running a test from the command line,

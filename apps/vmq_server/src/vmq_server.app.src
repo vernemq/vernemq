@@ -12,7 +12,6 @@
                   os_mon,
                   riak_sysmon,
                   ssl,
-                  plumtree,
                   vmq_commons,
                   vmq_ql,
                   vmq_plugin,

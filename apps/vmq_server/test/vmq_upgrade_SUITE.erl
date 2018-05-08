@@ -35,7 +35,7 @@ v0_to_v1_subscriber_format_test(_) ->
     Topic = [<<"a">>,<<"b">>,<<"c">>],
     SubscriberId = {"", <<"test-client">>},
     V0Subs = [{Topic, 1, node()}],
-    plumtree_metadata:put({vmq, subscriber}, SubscriberId, V0Subs),
+    vmq_metadata:put({vmq, subscriber}, SubscriberId, V0Subs),
     true = wait_until_true(
       fun() ->
               %% this should setup a queue
