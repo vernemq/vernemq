@@ -19,7 +19,57 @@
          metadata_fold/3,
          metadata_subscribe/1]).
 
+-export([cluster_join/1,
+         cluster_leave/1,
+         cluster_members/0,
+         cluster_rename_member/2,
+         cluster_events_add_handler/2,
+         cluster_events_delete_handler/2,
+         cluster_events_call_handler/3]).
+
+
 -define(TOMBSTONE, '$deleted').
+
+cluster_join(DiscoveryNode) ->
+    plumtree_peer_service:join(DiscoveryNode).
+
+cluster_leave(Node) ->
+    {ok, Local} = plumtree_peer_service_manager:get_local_state(),
+    {ok, Actor} = plumtree_peer_service_manager:get_actor(),
+    case riak_dt_orswot:update({remove, Node}, Actor, Local) of
+        {error,{precondition,{not_present, Node}}} ->
+            {error, not_present};
+        {ok, Merged} ->
+            _ = gen_server:cast(plumtree_peer_service_gossip, {receive_state, Merged}),
+            {ok, Local2} = plumtree_peer_service_manager:get_local_state(),
+            Local2List = riak_dt_orswot:value(Local2),
+            case [P || P <- Local2List, P =:= Node] of
+                [] ->
+                    ok;
+                _ ->
+                    cluster_leave(Node)
+            end
+    end.
+
+cluster_members() ->
+    {ok, LocalState} = plumtree_peer_service_manager:get_local_state(),
+    riak_dt_orswot:value(LocalState).
+
+cluster_rename_member(OldName, NewName) ->
+    {ok, LocalState} = plumtree_peer_service_manager:get_local_state(),
+    {ok, Actor} = plumtree_peer_service_manager:get_actor(),
+    {ok, Merged} = riak_dt_orswot:update({update, [{remove, OldName},
+                                                   {add, NewName}]}, Actor, LocalState),
+    _ = gen_server:cast(plumtree_peer_service_gossip, {receive_state, Merged}).
+
+cluster_events_add_handler(Module, Opts) ->
+    plumtree_peer_service_events:add_sup_handler(Module, Opts).
+
+cluster_events_delete_handler(Module, Reason) ->
+    gen_event:delete_handler(plumtree_peer_service_events, Module, [Reason]).
+
+cluster_events_call_handler(Module, Msg, Timeout) ->
+    gen_event:call(plumtree_peer_service_events, Module, Msg, Timeout).
 
 metadata_put(FullPrefix, Key, Value) ->
     plumtree_metadata:put(FullPrefix, Key, Value).

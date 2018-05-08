@@ -34,7 +34,7 @@ start_no_auth(ClusterNode) ->
     _ = application:load(vmq_plugin),
     application:set_env(vmq_plugin, wait_for_proc, vmq_server_sup),
     _ = application:ensure_all_started(vmq_server),
-    plumtree_peer_service:join(ClusterNode).
+    vmq_plugin:only(cluster_join, [ClusterNode]).
 
 
 start() ->
