@@ -48,7 +48,6 @@ Currently known issues for MQTTv5 are:
   features.
 - Subscriber IDs are not yet implemented.
 - Bridge plugin does not yet support MQTTv5.
-- Server and client receive maximum is not yet implemented.
 - Server and client maximum packet size enforcement is not yet implemented.
 
 Current limitations/open questions:
