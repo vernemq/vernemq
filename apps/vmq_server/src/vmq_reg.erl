@@ -33,7 +33,7 @@
          register_subscriber/4, %% used during testing
          delete_subscriptions/1,
          %% used in mqtt fsm handling
-         publish/3,
+         publish/4,
 
          %% used in :get_info/2
          get_session_pids/1,
@@ -50,7 +50,7 @@
         ]).
 
 %% called by vmq_cluster_com
--export([publish/2]).
+-export([publish/3]).
 
 %% used from plugins
 -export([direct_plugin_exports/1]).
@@ -260,19 +260,20 @@ register_session(SubscriberId, QueueOpts) ->
     SessionPresent = QueuePresent,
     {ok, SessionPresent, QPid}.
 
-publish(RegView, MP, Topic, FoldFun, #vmq_msg{sg_policy = SGPolicy} = Msg) ->
+publish(RegView, ClientId, Topic, FoldFun, #vmq_msg{sg_policy = SGPolicy,
+                                                    mountpoint = MP} = Msg) ->
     Acc = publish_fold_acc(Msg),
-    {NewMsg, SubscriberGroups} = vmq_reg_view:fold(RegView, MP, Topic, FoldFun, Acc),
+    {NewMsg, SubscriberGroups} = vmq_reg_view:fold(RegView, {MP, ClientId}, Topic, FoldFun, Acc),
     vmq_shared_subscriptions:publish(NewMsg, SGPolicy, SubscriberGroups).
 
 publish_fold_acc(Msg) -> {Msg, undefined}.
 
--spec publish(flag(), module(), msg()) -> 'ok' | {'error', _}.
-publish(true, RegView, #vmq_msg{mountpoint=MP,
-                                routing_key=Topic,
-                                payload=Payload,
-                                retain=IsRetain,
-                                properties=Properties} = Msg) ->
+-spec publish(flag(), module(), client_id(), msg()) -> 'ok' | {'error', _}.
+publish(true, RegView, ClientId, #vmq_msg{mountpoint=MP,
+                                          routing_key=Topic,
+                                          payload=Payload,
+                                          retain=IsRetain,
+                                          properties=Properties} = Msg) ->
     %% trade consistency for availability
     %% if the cluster is not consistent at the moment, it is possible
     %% that subscribers connected to other nodes won't get this message
@@ -280,7 +281,7 @@ publish(true, RegView, #vmq_msg{mountpoint=MP,
         true when Payload == <<>> ->
             %% retain delete action
             vmq_retain_srv:delete(MP, Topic),
-            publish(RegView, MP, Topic, fun publish/2, Msg),
+            publish(RegView, ClientId, Topic, fun publish/3, Msg),
             ok;
         true ->
             %% retain set action
@@ -289,23 +290,23 @@ publish(true, RegView, #vmq_msg{mountpoint=MP,
                                                 properties = Properties,
                                                 expiry_ts = maybe_set_expiry_ts(Properties)
                                                }),
-            publish(RegView, MP, Topic, fun publish/2, Msg),
+            publish(RegView, ClientId, Topic, fun publish/3, Msg),
             ok;
         false ->
-            publish(RegView, MP, Topic, fun publish/2, Msg),
+            publish(RegView, ClientId, Topic, fun publish/3, Msg),
             ok
     end;
-publish(false, RegView, #vmq_msg{mountpoint=MP,
-                                 routing_key=Topic,
-                                 payload=Payload,
-                                 properties=Properties,
-                                 retain=IsRetain} = Msg) ->
+publish(false, RegView, ClientId, #vmq_msg{mountpoint=MP,
+                                               routing_key=Topic,
+                                               payload=Payload,
+                                               properties=Properties,
+                                               retain=IsRetain} = Msg) ->
     %% don't trade consistency for availability
     case vmq_cluster:is_ready() of
         true when (IsRetain == true) and (Payload == <<>>) ->
             %% retain delete action
             vmq_retain_srv:delete(MP, Topic),
-            publish(RegView, MP, Topic, fun publish/2, Msg),
+            publish(RegView, ClientId, Topic, fun publish/3, Msg),
             ok;
         true when (IsRetain == true) ->
             %% retain set action
@@ -314,10 +315,10 @@ publish(false, RegView, #vmq_msg{mountpoint=MP,
                                                 properties = Properties,
                                                 expiry_ts = maybe_set_expiry_ts(Properties)
                                                }),
-            publish(RegView, MP, Topic, fun publish/2, Msg),
+            publish(RegView, ClientId, Topic, fun publish/3, Msg),
             ok;
         true ->
-            publish(RegView, MP, Topic, fun publish/2, Msg),
+            publish(RegView, ClientId, Topic, fun publish/3, Msg),
             ok;
         false ->
             {error, not_ready}
@@ -328,8 +329,11 @@ maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
 maybe_set_expiry_ts(_) ->
     undefined.
 
-%% publish/2 is used as the fold function in RegView:fold/4
-publish({{_,_} = SubscriberId, SubInfo}, {Msg, _} = Acc) ->
+%% publish/3 is used as the fold function in RegView:fold/4
+publish({SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
+    %% Publisher is the same as subscriber, discard.
+    Acc;
+publish({{_,_} = SubscriberId, SubInfo}, _FromClientId, {Msg, _} = Acc) ->
     case get_queue_pid(SubscriberId) of
         not_found -> Acc;
         QPid ->
@@ -338,10 +342,13 @@ publish({{_,_} = SubscriberId, SubInfo}, {Msg, _} = Acc) ->
             ok = vmq_queue:enqueue(QPid, {deliver, QoS, NewMsg}),
             Acc
     end;
-publish({_Node, _Group, _SubscriberId, _SubInfo} = Sub, {Msg, SubscriberGroups}) ->
+publish({_Node, _Group, SubscriberId, #{no_local := true}}, SubscriberId, Acc) ->
+    %% Publisher is the same as subscriber, discard.
+    Acc;
+publish({_Node, _Group, _SubscriberId, _SubInfo} = Sub, _FromClientId, {Msg, SubscriberGroups}) ->
     %% collect subscriber group members for later processing
     {Msg, add_to_subscriber_group(Sub, SubscriberGroups)};
-publish(Node, {Msg, _} = Acc) ->
+publish(Node, _FromClientId, {Msg, _} = Acc) ->
     case vmq_cluster:publish(Node, Msg) of
         ok ->
             Acc;
@@ -584,7 +591,7 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                      retain=maps:get(retain, Opts, false),
                      sg_policy=maps:get(shared_subscription_policy, Opts, SGPolicyConfig)
                     },
-            publish(CAPPublish, RegView, Msg)
+            publish(CAPPublish, RegView, ClientId(CallingPid), Msg)
     end,
 
     SubscribeFun =
@@ -731,4 +738,3 @@ status(SubscriberId) ->
         QPid ->
             {ok, vmq_queue:status(QPid)}
     end.
-

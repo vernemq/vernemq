@@ -29,6 +29,8 @@
 -type subinfo() :: qos() | {qos(), subopts()}.
 -type subscription() :: {topic(), subinfo()}.
 
+-define(INTERNAL_CLIENT_ID, '$vmq_internal_client_id').
+
 %% TODO: these definitions should probably be moved somewhere else.
 -define(NOT_AUTHORIZED,           not_authorized).
 -define(SESSION_TAKEN_OVER,       session_taken_over).

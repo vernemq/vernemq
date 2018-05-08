@@ -14,6 +14,8 @@
 
 -module(vmq_reg_trie).
 
+-include("vmq_server.hrl").
+
 -behaviour(gen_server2).
 -behaviour(vmq_reg_view).
 
@@ -52,36 +54,37 @@
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-fold(MP, Topic, FoldFun, Acc) when is_list(Topic) ->
-    fold_(MP, FoldFun, Acc,
+-spec fold(subscriber_id(), topic(), fun(), any()) -> any().
+fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
+    fold_(SubscriberId, FoldFun, Acc,
           [{Topic, node()}  %% local subscriptions without wildcard
            |lists:append(
               match(MP, Topic), %% local & remote subscriptions with wildcard
               get_remote_subscribers(MP, Topic)) %% remote subscriptions without wildcards
           ], []).
 
-fold_(MP, FoldFun, Acc, [{Topic, {_Node, Group}}|MatchedTopics], Remotes) ->
-    fold_(MP, FoldFun,
-          fold__(FoldFun, Acc,
+fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, {_Node, Group}}|MatchedTopics], Remotes) ->
+    fold_(SubscriberId, FoldFun,
+          fold__(FoldFun, SubscriberId, Acc,
                  ets:lookup(vmq_trie_subs, {MP, Group, Topic})),
           MatchedTopics, Remotes);
-fold_(MP, FoldFun, Acc, [{Topic, Node}|MatchedTopics], Remotes) when Node == node() ->
-    fold_(MP, FoldFun,
-          fold__(FoldFun, Acc,
+fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, Node}|MatchedTopics], Remotes) when Node == node() ->
+    fold_(SubscriberId, FoldFun,
+          fold__(FoldFun, SubscriberId, Acc,
                  ets:lookup(vmq_trie_subs, {MP, Topic})),
           MatchedTopics, Remotes);
-fold_(MP, FoldFun, Acc, [{_Topic, Node}|MatchedTopics], Remotes) ->
+fold_(SubscriberId, FoldFun, Acc, [{_Topic, Node}|MatchedTopics], Remotes) ->
     case lists:member(Node, Remotes) of
         true ->
-            fold_(MP, FoldFun, Acc, MatchedTopics, Remotes);
+            fold_(SubscriberId, FoldFun, Acc, MatchedTopics, Remotes);
         false ->
-            fold_(MP, FoldFun, FoldFun(Node, Acc), MatchedTopics, [Node|Remotes])
+            fold_(SubscriberId, FoldFun, FoldFun(Node, SubscriberId, Acc), MatchedTopics, [Node|Remotes])
     end;
 fold_(_, _, Acc, [], _) -> Acc.
 
-fold__(FoldFun, Acc, [{_, SubsIdQoS}|Rest]) ->
-    fold__(FoldFun, FoldFun(SubsIdQoS, Acc), Rest);
-fold__(_, Acc, []) -> Acc.
+fold__(FoldFun, SubscriberId, Acc, [{_, SubsIdQoS}|Rest]) ->
+    fold__(FoldFun, SubscriberId, FoldFun(SubsIdQoS, SubscriberId, Acc), Rest);
+fold__(_, _, Acc, []) -> Acc.
 
 
 stats() ->
