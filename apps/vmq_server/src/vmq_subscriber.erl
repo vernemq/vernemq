@@ -20,6 +20,7 @@
          new/3,
          add/2,
          add/3,
+         exists/2,
          remove/2,
          remove/3,
          fold/3,
@@ -71,6 +72,12 @@ add(Subs, TopicsWithQoS, Node) ->
         false ->
             {lists:keysort(1, [{Node, CleanSession, NewNodeSubs}|Subs]), true}
     end.
+
+-spec exists(topic(), subs()) -> boolean().
+exists(Topic, Subs) ->
+    lists:any(fun({_, _, TopicsWithOpts}) ->
+                      lists:keymember(Topic, 1, TopicsWithOpts)
+              end, Subs).
 
 -spec remove(subs(), [topic()]) -> {subs(), boolean()}.
 remove(Subs, Topics) ->
