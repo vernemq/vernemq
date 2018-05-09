@@ -907,10 +907,10 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
 
 -spec publish(cap_settings(), module(), username(), subscriber_id(), msg(), state()) ->
                      {ok, msg(), state()} | {error, atom()}.
-publish(CAPSettings, RegView, User, SubscriberId, Msg, State) ->
+publish(CAPSettings, RegView, User, {_, ClientId} = SubscriberId, Msg, State) ->
     maybe_apply_topic_alias_in(User, SubscriberId, Msg,
                                fun(MaybeChangedMsg, HookArgs) ->
-                                       case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, MaybeChangedMsg),
+                                       case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, ClientId, MaybeChangedMsg),
                                                             HookArgs) of
                                            ok -> {ok, MaybeChangedMsg};
                                            E -> E
@@ -1132,7 +1132,7 @@ prepare_frame(QoS, Msg, State0) ->
 
 -spec maybe_publish_last_will(state()) -> ok.
 maybe_publish_last_will(#state{will_msg=undefined}) -> ok;
-maybe_publish_last_will(#state{subscriber_id=SubscriberId, username=User,
+maybe_publish_last_will(#state{subscriber_id={_, ClientId} = SubscriberId, username=User,
                                will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings,
                                queue_pid=QueuePid,
                                clean_session=CS}) ->
@@ -1141,7 +1141,7 @@ maybe_publish_last_will(#state{subscriber_id=SubscriberId, username=User,
                 #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
                 HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
                 _ = on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish,
-                                                    RegView, filter_outgoing_pub_props(Msg)), HookArgs)
+                                                    RegView, ClientId, filter_outgoing_pub_props(Msg)), HookArgs)
         end,
     case {get_last_will_delay(Msg), CS} of
         {Delay, false} when Delay > 0 ->

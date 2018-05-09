@@ -301,14 +301,14 @@ connected(#mqtt_pubrec{message_id=MessageId}, State) ->
     end;
 connected(#mqtt_pubrel{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks, username=User, reg_view=RegView,
-           subscriber_id=SubscriberId, cap_settings=CAPSettings} = State,
+           subscriber_id={_, ClientId}=SubscriberId, cap_settings=CAPSettings} = State,
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrel_received(),
     case maps:get({qos2, MessageId} , WAcks, not_found) of
         {#mqtt_pubrec{}, #vmq_msg{routing_key=Topic, qos=QoS, payload=Payload,
                                   retain=IsRetain} = Msg} ->
             HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
-            case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, Msg), HookArgs) of
+            case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, ClientId, Msg), HookArgs) of
                 ok ->
                     {NewState, Msgs} =
                     handle_waiting_msgs(
@@ -696,10 +696,10 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
     end.
 
 -spec publish(cap_settings(), module(), username(), subscriber_id(), msg()) ->  {ok, msg()} | {error, atom()}.
-publish(CAPSettings, RegView, User, SubscriberId, Msg) ->
+publish(CAPSettings, RegView, User, {_, ClientId}=SubscriberId, Msg) ->
     auth_on_publish(User, SubscriberId, Msg,
                     fun(MaybeChangedMsg, HookArgs) ->
-                            case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, MaybeChangedMsg),
+                            case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, ClientId, MaybeChangedMsg),
                                             HookArgs) of
                                 ok -> {ok, MaybeChangedMsg};
                                 E -> E
@@ -922,12 +922,12 @@ prepare_frame(QoS, Msg, State) ->
 
 -spec maybe_publish_last_will(state()) -> ok.
 maybe_publish_last_will(#state{will_msg=undefined}) -> ok;
-maybe_publish_last_will(#state{subscriber_id=SubscriberId, username=User,
+maybe_publish_last_will(#state{subscriber_id={_, ClientId}=SubscriberId, username=User,
                                will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings}) ->
     #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
     HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
     _ = on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish,
-                                        RegView, Msg), HookArgs),
+                                        RegView, ClientId, Msg), HookArgs),
     ok.
 
 -spec check_in_flight(state()) -> boolean().

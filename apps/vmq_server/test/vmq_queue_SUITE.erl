@@ -65,7 +65,7 @@ all() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 queue_crash_test(_) ->
     Parent = self(),
-    SubscriberId = {"", <<"mock-client">>},
+    {_, ClientId} = SubscriberId = {"", <<"mock-client">>},
     QueueOpts = maps:merge(#{clean_session => false}, vmq_queue:default_opts()),
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
 
@@ -75,7 +75,7 @@ queue_crash_test(_) ->
     %% at this point we've a working subscription
     timer:sleep(10),
     Msg = msg([<<"test">>, <<"topic">>], <<"test-message">>, 1),
-    ok = vmq_reg:publish(true, vmq_reg_trie, Msg),
+    ok = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
     receive_msg(QPid1, 1, Msg),
 
     %% teardown session
@@ -84,7 +84,7 @@ queue_crash_test(_) ->
     {offline, fanout, 0, 0, false} = vmq_queue:status(QPid1),
 
     %% fill the offline queue
-    ok = vmq_reg:publish(true, vmq_reg_trie, Msg),
+    ok = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
     {offline, fanout, 1, 0, false} = vmq_queue:status(QPid1),
 
     %% crash the queue
@@ -114,7 +114,7 @@ queue_fifo_test(_) ->
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi([<<"test">>, <<"fifo">>, <<"topic">>]),
+    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"fifo">>, <<"topic">>]),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, true, QPid} = vmq_reg:register_subscriber(SessionPid2, SubscriberId, QueueOpts, 10),
@@ -134,7 +134,7 @@ queue_lifo_test(_) ->
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi([<<"test">>, <<"lifo">>, <<"topic">>]),
+    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"lifo">>, <<"topic">>]),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, true, QPid} = vmq_reg:register_subscriber(SessionPid2, SubscriberId, QueueOpts, 10),
@@ -155,7 +155,7 @@ queue_fifo_offline_drop_test(_) ->
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi([<<"test">>, <<"fifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
+    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"fifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
     {offline, fanout, 10, 0, false} = vmq_queue:status(QPid),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -180,7 +180,7 @@ queue_lifo_offline_drop_test(_) ->
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi([<<"test">>, <<"lifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
+    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"lifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
     {offline, fanout, 10, 0, false} = vmq_queue:status(QPid),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -204,7 +204,7 @@ queue_offline_transition_test(_) ->
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
     SessionPid1 ! {go_down_in, 1},
-    Msgs = publish_multi([<<"test">>, <<"transition">>]), % publish 100
+    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, true, QPid} = vmq_reg:register_subscriber(SessionPid2, SubscriberId, QueueOpts, 10),
@@ -227,7 +227,7 @@ queue_persistent_client_expiration_test(_) ->
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
     SessionPid1 ! {go_down_in, 1},
-    Msgs = publish_multi([<<"test">>, <<"transition">>]),
+    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]),
     NumPubbedMsgs = length(Msgs),
 
     timer:sleep(50), % give some time to plumtree
@@ -274,7 +274,7 @@ queue_force_disconnect_cleanup_test(_) ->
     {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"discleanup">>], 1}]),
     timer:sleep(50), % give some time to plumtree
 
-    Msgs = publish_multi([<<"test">>, <<"discleanup">>]),
+    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"discleanup">>]),
     NumPubbedMsgs = length(Msgs),
 
     timer:sleep(50), % give some time to plumtree
@@ -293,14 +293,14 @@ queue_force_disconnect_cleanup_test(_) ->
 
     {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId).
 
-publish_multi(Topic) ->
-    publish_multi(Topic, []).
+publish_multi({_, ClientId}, Topic) ->
+    publish_multi(ClientId, Topic, []).
 
-publish_multi(Topic, Acc) when length(Acc) < 100 ->
+publish_multi(ClientId, Topic, Acc) when length(Acc) < 100 ->
     Msg = msg(Topic, list_to_binary("test-message-"++ integer_to_list(length(Acc))), 1),
-    ok = vmq_reg:publish(true, vmq_reg_trie, Msg),
-    publish_multi(Topic, [Msg|Acc]);
-publish_multi(_, Acc) -> lists:reverse(Acc).
+    ok = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
+    publish_multi(ClientId, Topic, [Msg|Acc]);
+publish_multi(_, _, Acc) -> lists:reverse(Acc).
 
 receive_multi(QPid, QoS, Msgs) ->
     PMsgs = [{deliver, QoS, Msg#vmq_msg{persisted=true, qos=1}} || Msg <- Msgs],
