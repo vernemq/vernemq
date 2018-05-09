@@ -50,7 +50,7 @@ start_user_plugin({_Order, #{path := Path,
               undefined ->
                   vmq_plugin_mgr:enable_plugin(PluginName);
               _ ->
-                  vmq_plugin_mgr:enable_plugin(PluginName, [Path])
+                  vmq_plugin_mgr:enable_plugin(PluginName, [{path, Path}])
           end,
     case Res of
         ok ->
