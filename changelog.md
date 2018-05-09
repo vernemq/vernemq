@@ -49,6 +49,8 @@
   used with a timout value less than 5 seconds (#642).
 - Small refactoring enabling to store versioned message store values. This is a
   preparation for MQTTv5.
+- Bugfix: Fix a bug that prevented user plugins with an explicit path to be
+  loaded
 
 ## VerneMQ 1.3.0
 
