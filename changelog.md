@@ -4,6 +4,7 @@
 
 - Fix bug causing an exception to be thrown when `vmq-admin cluster leave` is
   used with a timout value less than 5 seconds (#642).
+- Fix for OSX compilation issue on `vmq_passwd` due to openssl headers not found.
 
 ## VerneMQ 1.3.1
 
