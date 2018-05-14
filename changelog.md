@@ -3,6 +3,7 @@
 ## Not yet released (VerneMQ 1.4.0)
 
 - Fix for OSX compilation issue on `vmq_passwd` due to openssl headers not found.
+- Refactoring to further abstract and generalize the Plumtree metadata layer.
 - Small refactoring moving the calling of plugin hooks into the fsm code. This
   is a preparation for MQTTv5. Note, this change has an impact on the
   `vmq_reg:direct_plugin_exports/1` function. Even though this function is

@@ -46,7 +46,7 @@
 %%%===================================================================
 
 recheck() ->
-    case gen_event:call(plumtree_peer_service_events, ?MODULE, recheck, infinity) of
+    case vmq_peer_service:call_event_handler(?MODULE, recheck, infinity) of
         ok -> ok;
         E ->
             lager:warning("error during cluster checkup due to ~p", [E]),
@@ -111,7 +111,7 @@ remote_enqueue(Node, Term, BufferIfUnreachable) ->
 -spec init([]) -> {'ok', state()}.
 init([]) ->
     check_ready(),
-    lager:info("plumtree peer service event handler '~p' registered", [?MODULE]),
+    lager:info("cluster event handler '~p' registered", [?MODULE]),
     {ok, #state{}}.
 
 -spec handle_call(_, _) -> {'ok', 'ok', _}.
@@ -121,7 +121,7 @@ handle_call(recheck, State) ->
 
 -spec handle_event(_, _) -> {'ok', _}.
 handle_event({update, _}, State) ->
-    %% Plumtree event
+    %% Cluster event
     _ = check_ready(),
     {ok, State}.
 
@@ -141,8 +141,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 check_ready() ->
-    {ok, LocalState} = plumtree_peer_service_manager:get_local_state(),
-    Nodes = riak_dt_orswot:value(LocalState),
+    Nodes = vmq_peer_service:members(),
     check_ready(Nodes).
 
 check_ready(Nodes) ->

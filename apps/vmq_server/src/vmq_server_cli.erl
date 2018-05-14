@@ -143,7 +143,7 @@ vmq_server_metrics_cmd() ->
                                              float_to_list(V)
                                      end,
                                  Line = [SType, ".", SMetric, " = ", SVal],
-                                 case Describe of 
+                                 case Describe of
                                      true ->
                                          [clique_status:text(lists:flatten(["# ", Description])),
                                           clique_status:text(lists:flatten([Line, "\n"]))|Acc];
@@ -210,8 +210,7 @@ vmq_cluster_leave_cmd() ->
                        %% Make sure Iterations > 0 to it will be
                        %% checked at least once if queue migration is complete.
                        Iterations = max(Timeout div Interval, 1),
-                       {ok, Local} = plumtree_peer_service_manager:get_local_state(),
-                       TargetNodes = riak_dt_orswot:value(Local) -- [Node],
+                       TargetNodes = vmq_peer_service:members() -- [Node],
                        Text =
                        case net_adm:ping(Node) of
                            pang ->
@@ -246,7 +245,7 @@ vmq_cluster_leave_cmd() ->
                                                %% node is online, we'll go the proper route
                                                %% instead of calling leave_cluster('Node')
                                                %% directly
-                                               _ = plumtree_peer_service:leave(unused_arg),
+                                               _ = vmq_peer_service:leave(Node),
                                                Caller ! {done, CRef},
                                                init:stop();
                                            error ->
@@ -286,21 +285,11 @@ vmq_cluster_leave_cmd() ->
 
 
 leave_cluster(Node) ->
-    {ok, Local} = plumtree_peer_service_manager:get_local_state(),
-    {ok, Actor} = plumtree_peer_service_manager:get_actor(),
-    case riak_dt_orswot:update({remove, Node}, Actor, Local) of
-        {error,{precondition,{not_present, Node}}} ->
-            io_lib:format("Node ~p wasn't part of the cluster~n", [Node]);
-        {ok, Merged} ->
-            _ = gen_server:cast(plumtree_peer_service_gossip, {receive_state, Merged}),
-            {ok, Local2} = plumtree_peer_service_manager:get_local_state(),
-            Local2List = riak_dt_orswot:value(Local2),
-            case [P || P <- Local2List, P =:= Node] of
-                [] ->
-                    "Done";
-                _ ->
-                    leave_cluster(Node)
-            end
+    case vmq_peer_service:leave(Node) of
+        ok ->
+            "Done";
+        {error, not_present} ->
+            io_lib:format("Node ~p wasn't part of the cluster~n", [Node])
     end.
 
 check_cluster_consistency([Node|Nodes] = All, NrOfRetries) ->
@@ -340,7 +329,7 @@ vmq_cluster_join_cmd() ->
                        Text = clique_status:text("You have to provide a discovery node (example discovery-node=vernemq1@127.0.0.1)"),
                        [clique_status:alert([Text])];
                    (_, [{'discovery-node', Node}], _) ->
-                       case plumtree_peer_service:join(Node) of
+                       case vmq_peer_service:join(Node) of
                            ok ->
                                vmq_cluster:recheck(),
                                [clique_status:text("Done")];

@@ -22,6 +22,7 @@
          enable_plugin/2,
          enable_module_plugin/3,
          enable_module_plugin/4,
+         enable_system_plugin/2,
          disable_plugin/1,
          disable_module_plugin/3,
          disable_module_plugin/4,
@@ -84,6 +85,10 @@ stop() ->
     %% only call after all application that call INTO a
     %% plugin are stopped...
     gen_server:call(?MODULE, stop, infinity).
+
+-spec enable_system_plugin(atom(), [any()]) -> ok | {error, _}.
+enable_system_plugin(Plugin, Opts) ->
+    gen_server:call(?MODULE, {enable_system_plugin, Plugin, Opts}, infinity).
 
 -spec enable_plugin(atom()) -> ok | {error, _}.
 enable_plugin(Plugin) ->
@@ -183,6 +188,9 @@ handle_call(get_usage_lead_lines, _From, #state{plugins=Plugins} = State) ->
           end,
           Plugins),
     {reply, {ok, LeadLines}, State};
+handle_call({enable_system_plugin, Plugin, Opts}, _From, State) ->
+    % system plugins don't have to be deferred
+    handle_plugin_call({enable_plugin, Plugin, Opts}, State);
 handle_call(Call, _From, #state{ready=true} = State) ->
     handle_plugin_call(Call, State);
 handle_call(Call, From, #state{deferred_calls=DeferredCalls} = State) ->
@@ -390,7 +398,7 @@ check_updated_plugins(Plugins, State) ->
             ok = init_plugins_cli(CheckedPlugins),
             ok = start_plugins(CheckedPlugins),
             ok = compile_hooks(CheckedPlugins),
-            {ok, handle_deferred_calls(State#state{ready=true, plugins=CheckedPlugins})};
+            {ok, State#state{plugins=CheckedPlugins}};
         {error, Reason} ->
             {error, Reason}
     end.
