@@ -26,7 +26,7 @@
 
 -spec store(subscriber_id(), vmq_subscriber:subs()) -> ok.
 store(SubscriberId, Subs) ->
-    plumtree_metadata:put(?SUBSCRIBER_DB, SubscriberId, Subs).
+    vmq_metadata:put(?SUBSCRIBER_DB, SubscriberId, Subs).
 
 -spec read(subscriber_id()) -> undefined |vmq_subscriber:subs().
 read(SubscriberId) ->
@@ -34,7 +34,7 @@ read(SubscriberId) ->
 
 -spec read(subscriber_id(), any()) -> any() |vmq_subscriber:subs().
 read(SubscriberId, Default) ->
-    case plumtree_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
+    case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined -> Default;
         Subs ->
             vmq_subscriber:check_format(Subs)
@@ -42,18 +42,16 @@ read(SubscriberId, Default) ->
 
 -spec delete(subscriber_id()) -> ok.
 delete(SubscriberId) ->
-    plumtree_metadata:delete(?SUBSCRIBER_DB, SubscriberId).
+    vmq_metadata:delete(?SUBSCRIBER_DB, SubscriberId).
 
 fold(FoldFun, Acc) ->
-    plumtree_metadata:fold(
-      fun ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
-          ({SubscriberId, Subs}, AccAcc) ->
+    vmq_metadata:fold(?SUBSCRIBER_DB,
+      fun ({SubscriberId, Subs}, AccAcc) ->
               FoldFun({SubscriberId, vmq_subscriber:check_format(Subs)}, AccAcc)
-      end, Acc, ?SUBSCRIBER_DB,
-      [{resolver, lww}]).
+      end, Acc).
 
 subscribe_db_events() ->
-    plumtree_metadata_manager:subscribe(?SUBSCRIBER_DB),
+    vmq_metadata:subscribe(?SUBSCRIBER_DB),
     fun
         ({deleted, ?SUBSCRIBER_DB, _, Val})
           when (Val == ?TOMBSTONE) or (Val == undefined) ->

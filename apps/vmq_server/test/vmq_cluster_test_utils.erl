@@ -39,8 +39,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 get_cluster_members(Node) ->
-    {Node, {ok, Res}} = {Node, rpc:call(Node, plumtree_peer_service_manager, get_local_state, [])},
-    riak_dt_orswot:value(Res).
+    rpc:call(Node, vmq_plugin, only, [cluster_members, []]).
 
 pmap(F, L) ->
     Parent = self(),
@@ -155,16 +154,17 @@ start_node(Name, Config, Case) ->
             {ok, _} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),
             ok = wait_until(fun() ->
-                            case rpc:call(Node, plumtree_peer_service_manager, get_local_state, []) of
-                                {ok, _Res} ->
+                            case rpc:call(Node, vmq_plugin, only, [cluster_members, []]) of
+                                {error, no_matching_hook} ->
+                                    false;
+                                Members when is_list(Members) ->
                                     case rpc:call(Node, erlang, whereis,
                                                   [vmq_server_sup]) of
                                         undefined ->
                                             false;
                                         P when is_pid(P) ->
                                             true
-                                    end;
-                                _ -> false
+                                    end
                             end
                     end, 60, 500),
             Node;

@@ -57,14 +57,10 @@ init([]) ->
               ]} }.
 
 maybe_change_nodename() ->
-    {ok, LocalState} = plumtree_peer_service_manager:get_local_state(),
-    case riak_dt_orswot:value(LocalState) of
+    case vmq_peer_service:members() of
         [Node] when Node =/= node() ->
             lager:info("rename VerneMQ node from ~p to ~p", [Node, node()]),
-            {ok, Actor} = plumtree_peer_service_manager:get_actor(),
-            {ok, Merged} = riak_dt_orswot:update({update, [{remove, Node},
-                                                           {add, node()}]}, Actor, LocalState),
-            _ = gen_server:cast(plumtree_peer_service_gossip, {receive_state, Merged}),
+            _ = vmq_peer_service:rename_member(Node, node()),
             vmq_reg:fold_subscribers(
               fun(SubscriberId, Subs, _) ->
                       {NewSubs, _} = vmq_subscriber:change_node_all(Subs, node(), false),
