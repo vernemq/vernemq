@@ -51,7 +51,9 @@
 - Small refactoring enabling to store versioned message store values. This is a
   preparation for MQTTv5.
 - Bugfix: Fix a bug that prevented user plugins with an explicit path to be
-  loaded
+  loaded.
+- Fix issue with new rebar3 upstream plugin version (the port-compiler) which
+  made builds fail by pegging it to an older version (1.8.0).
 
 ## VerneMQ 1.3.0
 
