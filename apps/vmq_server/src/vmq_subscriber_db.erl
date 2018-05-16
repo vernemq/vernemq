@@ -46,7 +46,8 @@ delete(SubscriberId) ->
 
 fold(FoldFun, Acc) ->
     vmq_metadata:fold(?SUBSCRIBER_DB,
-      fun ({SubscriberId, Subs}, AccAcc) ->
+      fun ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
+          ({SubscriberId, Subs}, AccAcc) ->
               FoldFun({SubscriberId, vmq_subscriber:check_format(Subs)}, AccAcc)
       end, Acc).
 

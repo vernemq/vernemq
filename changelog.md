@@ -56,6 +56,8 @@
   made builds fail by pegging it to an older version (1.8.0).
 - Add `xmerl` and `inets` from the Erlang standard library to the release in order
   to allow plugin developers to have these libraries available.
+- Fix regression introduced by #688, that forgot to filter out tombstones when 
+  folding a metadata table.
 
 ## VerneMQ 1.3.0
 
