@@ -52,7 +52,7 @@ all() ->
     ].
 
 groups() ->
-    Tests = 
+    Tests =
         [will_denied_test,
          will_ignored_for_normal_disconnect_test,
          will_null_test,
@@ -179,7 +179,7 @@ will_delay_v5_test(_Config) ->
     Subscribe = packetv5:gen_subscribe(53, [SubTopic], #{}),
     SubConnect = packetv5:gen_connect("will-delay-test-sub",
                                       [{keepalive, 60}]),
-    
+
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, Connack, []),
     ok = gen_tcp:send(SubSocket, Subscribe),
     SubAck = packetv5:gen_suback(53, [0], #{}),
@@ -198,7 +198,8 @@ will_delay_v5_test(_Config) ->
     WillConnect = packetv5:gen_connect("will-delay-test",
                                        [{keepalive, 60},
                                         {clean_start, false},
-                                        {lwt, LastWill}]),
+                                        {lwt, LastWill},
+                                        {properties, #{p_session_expiry_interval => 10}}]),
     {ok, Socket} = packetv5:do_client_connect(WillConnect, Connack, []),
 
     %% Disconnect and measure that it takes at least the delay time

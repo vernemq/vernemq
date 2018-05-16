@@ -76,7 +76,7 @@
 
 -record(session, {
           pid,
-          clean,
+          cleanup_on_disconnect,
           status = notify,
           queue = #queue{}
          }).
@@ -524,7 +524,7 @@ handle_sync_event(info, _From, StateName,
                          sessions=Sessions,
                          opts=#{is_plugin := IsPlugin}} = State) ->
     {OnlineMessages, SessionInfo} =
-    maps:fold(fun(_, #session{pid=SessPid, clean=Clean,
+    maps:fold(fun(_, #session{pid=SessPid, cleanup_on_disconnect=Clean,
                               queue=#queue{size=Size}}, {AccN, AccSess}) ->
                       {AccN + Size, [{SessPid, Clean}|AccSess]}
               end, {0, []}, Sessions),
@@ -602,18 +602,19 @@ allowed_state(FsmState, AllowedStates) ->
 
 add_session_(SessionPid, Opts, #state{id=SId, offline=Offline,
                                       sessions=Sessions, opts=OldOpts} = State) ->
-    #{clean_session := Clean,
-      max_online_messages := MaxOnlineMessages,
+    #{max_online_messages := MaxOnlineMessages,
       max_offline_messages := MaxOfflineMsgs,
       queue_deliver_mode := DeliverMode,
-      queue_type := QueueType} = Opts,
+      queue_type := QueueType,
+      cleanup_on_disconnect := Clean
+     } = Opts,
     NewSessions =
     case maps:get(SessionPid, Sessions, not_found) of
         not_found ->
             _ = vmq_plugin:all(on_client_wakeup, [SId]),
             monitor(process, SessionPid),
             maps:put(SessionPid,
-                     #session{pid=SessionPid, clean=Clean,
+                     #session{pid=SessionPid, cleanup_on_disconnect=Clean,
                               queue=#queue{max=MaxOnlineMessages}}, Sessions);
         _ ->
             Sessions
@@ -633,7 +634,7 @@ add_session_(SessionPid, Opts, #state{id=SId, offline=Offline,
 del_session(SessionPid, #state{id=SId, sessions=Sessions} = State) ->
     NewSessions = maps:remove(SessionPid, Sessions),
     case maps:get(SessionPid, Sessions) of
-        #session{clean=true} = Session ->
+        #session{cleanup_on_disconnect=true} = Session ->
             cleanup_session(SId, Session),
             {State#state{sessions=NewSessions}, Session};
         Session ->
@@ -652,7 +653,7 @@ handle_session_down(SessionPid, StateName,
             %% ... but we've a new session waiting
             %%     no need to go into offline state
             gen_fsm:reply(From, ok),
-            case DeletedSession#session.clean of
+            case DeletedSession#session.cleanup_on_disconnect of
                 true ->
                     _ = vmq_plugin:all(on_client_gone, [SId]);
                 false ->
@@ -660,7 +661,7 @@ handle_session_down(SessionPid, StateName,
             end,
             {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
              add_session_(NewSessionPid, Opts, NewState#state{waiting_call=undefined})};
-        {0, wait_for_offline, {migrate, _, From}} when DeletedSession#session.clean ->
+        {0, wait_for_offline, {migrate, _, From}} when DeletedSession#session.cleanup_on_disconnect ->
             %% last session gone
             %% ... we dont need to migrate this one
             vmq_reg:delete_subscriptions(SId),
@@ -683,7 +684,7 @@ handle_session_down(SessionPid, StateName,
             gen_fsm:reply(From, ok),
             _ = vmq_plugin:all(on_client_gone, [SId]),
             {stop, normal, NewState};
-        {0, _, _} when DeletedSession#session.clean ->
+        {0, _, _} when DeletedSession#session.cleanup_on_disconnect ->
             %% last session gone
             %% ... we've to cleanup and go down
             %%
@@ -998,10 +999,12 @@ set_general_opts(#{queue_deliver_mode := DeliverMode,
                 max_msgs_per_drain_step=MaxMsgsPerDrainStep}.
 
 set_session_opts(SessionPid, #{max_online_messages := MaxOnlineMsgs,
-                               queue_type := Type}, #state{sessions=Sessions} = State) ->
+                               queue_type := Type,
+                               cleanup_on_disconnect := Clean}, #state{sessions=Sessions} = State) ->
     #session{queue=Queue} = Session = maps:get(SessionPid, Sessions),
     NewSessions = maps:update(SessionPid,
                               Session#session{
+                                cleanup_on_disconnect=Clean,
                                 queue=Queue#queue{
                                         max=MaxOnlineMsgs,
                                         type=Type

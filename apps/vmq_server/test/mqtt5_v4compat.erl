@@ -63,11 +63,21 @@ gen_connect_(5, ClientId, Opts) ->
     end.
 
 fixup_v4_opts(Opts) ->
-    lists:map(
-      fun({clean_session, Val}) ->
-              {clean_start, Val};
-         (V) -> V
-      end, Opts).
+    Properties = proplists:get_value(properties, Opts, #{}),
+    case lists:keyfind(clean_session, 1, Opts) of
+        {clean_session, false} ->
+            [{clean_start, false},
+             {properties,
+              maps:put(p_session_expiry_interval,
+                       maps:get(p_session_expiry_interval, Properties, 16#FFFFFFFF), Properties)
+             }|lists:keydelete(properties, 1, Opts)];
+        _ ->
+            % assumption clean_session=true
+            [{clean_start, true},
+             {properties,
+              maps:remove(p_session_expiry_interval, Properties)
+             }|lists:keydelete(properties, 1, Opts)]
+    end.
 
 gen_connack(RC, Config) ->
     gen_connack(false, RC, Config).

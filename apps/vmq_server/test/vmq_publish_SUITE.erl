@@ -471,7 +471,7 @@ not_allowed_publish_qos1_mqtt_5(_) ->
 
 not_allowed_publish_qos2_mqtt_5(_) ->
     Connect = packetv5:gen_connect("pattern-sub-test", [{keepalive, 60},
-                                                      {clean_start, true}]),
+                                                        {clean_start, true}]),
     Connack = packetv5:gen_connack(),
     Topic = "test/topic/not_allowed",
     Publish = packetv5:gen_publish(Topic, 2, <<"message">>, [{mid, 1}]),
@@ -599,7 +599,8 @@ message_expiry(_) ->
 
     %% set up subscriber
     SubConnect = packetv5:gen_connect("message-expiry-sub", [{keepalive, 60},
-                                                             {clean_start,false}]),
+                                                             {clean_start, false},
+                                                             {properties, #{p_session_expiry_interval => 16#FFFFFFFF}}]),
     Connack = packetv5:gen_connack(?M5_CONNACK_ACCEPT),
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, Connack, []),
     SubTopic60s = packetv5:gen_subtopic(<<"message/expiry/60s">>, 1),

@@ -29,8 +29,8 @@
          %% used in mqtt fsm handling
          subscribe/3,
          unsubscribe/3,
-         register_subscriber/3,
-         register_subscriber/4, %% used during testing
+         register_subscriber/4,
+         register_subscriber/5, %% used during testing
          delete_subscriptions/1,
          %% used in mqtt fsm handling
          publish/4,
@@ -109,9 +109,9 @@ unsubscribe_op(SubscriberId, Topics) ->
 delete_subscriptions(SubscriberId) ->
     del_subscriber(SubscriberId).
 
--spec register_subscriber(flag(), subscriber_id(), map()) ->
+-spec register_subscriber(flag(), subscriber_id(), boolean(), map()) ->
     {ok, boolean(), pid()} | {error, _}.
-register_subscriber(CAPAllowRegister, SubscriberId, #{allow_multiple_sessions := false} = QueueOpts) ->
+register_subscriber(CAPAllowRegister, SubscriberId, StartClean, #{allow_multiple_sessions := false} = QueueOpts) ->
     %% we don't allow multiple sessions using same subscriber id
     %% allow_multiple_sessions is needed for session balancing
     SessionPid = self(),
@@ -119,20 +119,20 @@ register_subscriber(CAPAllowRegister, SubscriberId, #{allow_multiple_sessions :=
         true ->
             vmq_reg_sync:sync(SubscriberId,
                               fun() ->
-                                      register_subscriber(SessionPid, SubscriberId,
+                                      register_subscriber(SessionPid, SubscriberId, StartClean,
                                                           QueueOpts, ?NR_OF_REG_RETRIES)
                               end, 60000);
         false when CAPAllowRegister ->
             %% synchronize action on this node
             vmq_reg_sync:sync(SubscriberId,
                               fun() ->
-                                      register_subscriber(SessionPid, SubscriberId,
+                                      register_subscriber(SessionPid, SubscriberId, StartClean,
                                                           QueueOpts, ?NR_OF_REG_RETRIES)
                               end, node(), 60000);
         false ->
             {error, not_ready}
     end;
-register_subscriber(CAPAllowRegister, SubscriberId, #{allow_multiple_sessions := true} = QueueOpts) ->
+register_subscriber(CAPAllowRegister, SubscriberId, _StartClean, #{allow_multiple_sessions := true} = QueueOpts) ->
     %% we allow multiple sessions using same subscriber id
     %%
     %% !!! CleanSession is disabled if multiple sessions are in use
@@ -144,16 +144,15 @@ register_subscriber(CAPAllowRegister, SubscriberId, #{allow_multiple_sessions :=
             {error, not_ready}
     end.
 
--spec register_subscriber(pid() | undefined, subscriber_id(), map(), non_neg_integer()) ->
+-spec register_subscriber(pid() | undefined, subscriber_id(), boolean(), map(), non_neg_integer()) ->
     {'ok', boolean(), pid()} | {error, any()}.
-register_subscriber(_, _, _, 0) ->
+register_subscriber(_, _, _, _, 0) ->
     {error, register_subscriber_retry_exhausted};
-register_subscriber(SessionPid, SubscriberId,
-                    #{clean_session := CleanSession} = QueueOpts, N) ->
+register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
     % wont create new queue in case it already exists
     {ok, QueuePresent, QPid} =
     case vmq_queue_sup_sup:start_queue(SubscriberId) of
-        {ok, true, OldQPid} when CleanSession ->
+        {ok, true, OldQPid} when StartClean ->
             %% cleanup queue
             vmq_queue:cleanup(OldQPid, ?SESSION_TAKEN_OVER),
             vmq_queue_sup_sup:start_queue(SubscriberId);
@@ -163,12 +162,12 @@ register_subscriber(SessionPid, SubscriberId,
     % reach the new queue.
     % Remapping triggers remote nodes to initiate queue migration
     {SubscriptionsPresent, UpdatedSubs, ChangedNodes}
-    = maybe_remap_subscriber(SubscriberId, QueueOpts),
+    = maybe_remap_subscriber(SubscriberId, StartClean),
     SessionPresent1 = SubscriptionsPresent or QueuePresent,
     SessionPresent2 =
-    case CleanSession of
+    case StartClean of
         true ->
-            false; %% SessionPresent is always false in case CleanSession=true
+            false; %% SessionPresent is always false in case CleanupSession=true
         false when QueuePresent ->
             %% no migration expected to happen, as queue is already local.
             SessionPresent1;
@@ -192,11 +191,11 @@ register_subscriber(SessionPid, SubscriberId,
     case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
         {'EXIT', {normal, _}} ->
             %% queue went down in the meantime, retry
-            register_subscriber(SessionPid, SubscriberId, QueueOpts, N -1);
+            register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
         {'EXIT', {noproc, _}} ->
             timer:sleep(100),
             %% queue was stopped in the meantime, retry
-            register_subscriber(SessionPid, SubscriberId, QueueOpts, N -1);
+            register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
         {'EXIT', Reason} ->
             {error, Reason};
         {error, draining} ->
@@ -204,11 +203,11 @@ register_subscriber(SessionPid, SubscriberId,
             %% remote queue. This can happen if a client hops around
             %% different nodes very frequently... adjust load balancing!!
             timer:sleep(100),
-            register_subscriber(SessionPid, SubscriberId, QueueOpts, N -1);
+            register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
         {error, cleanup} ->
             %% queue is still cleaning up.
             timer:sleep(100),
-            register_subscriber(SessionPid, SubscriberId, QueueOpts, N -1);
+            register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
         ok ->
             {ok, SessionPresent2, QPid}
     end.
@@ -562,9 +561,9 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                                          vmq_mqtt_fsm_util:plugin_receive_loop(PluginPid, Mod)
                                  end),
             QueueOpts = maps:merge(vmq_queue:default_opts(),
-                                   #{clean_session => true,
+                                   #{cleanup_on_disconnect => true,
                                      is_plugin => true}),
-            {ok, _, _} = register_subscriber(PluginSessionPid, SubscriberId,
+            {ok, _, _} = register_subscriber(PluginSessionPid, SubscriberId, true,
                                              QueueOpts, ?NR_OF_REG_RETRIES),
             ok
     end,
@@ -674,23 +673,23 @@ del_subscriptions(Topics, SubscriberId) ->
 %% the return value is used to inform the caller
 %% if a session was already present for the given
 %% subscriber id.
--spec maybe_remap_subscriber(subscriber_id(), map()) ->
+-spec maybe_remap_subscriber(subscriber_id(), boolean()) ->
     {boolean(), undefined | vmq_subscriber:subs(), [node()]}.
-maybe_remap_subscriber(SubscriberId, #{clean_session := true}) ->
+maybe_remap_subscriber(SubscriberId, _StartClean = true) ->
     %% no need to remap, we can delete this subscriber
     %% we overwrite any other value
     Subs = vmq_subscriber:new(true),
     vmq_subscriber_db:store(SubscriberId, Subs),
     {false, Subs, []};
-maybe_remap_subscriber(SubscriberId, #{clean_session := CleanSession}) ->
+maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
     case vmq_subscriber_db:read(SubscriberId) of
         undefined ->
             %% Store empty Subscriber Data
-            Subs = vmq_subscriber:new(CleanSession),
+            Subs = vmq_subscriber:new(false),
             vmq_subscriber_db:store(SubscriberId, Subs),
             {false, Subs, []};
         Subs ->
-            case vmq_subscriber:change_node_all(Subs, node(), CleanSession) of
+            case vmq_subscriber:change_node_all(Subs, node(), false) of
                 {NewSubs, ChangedNodes} when length(ChangedNodes) > 0 ->
                     vmq_subscriber_db:store(SubscriberId, NewSubs),
                     {true, NewSubs, ChangedNodes};
