@@ -7,6 +7,7 @@
          node_upgrade/0,
          node_upgrade/1,
          set_config/2,
+         set_api_key/1,
          listener_start/2,
          listener_start/3,
          listener_stop/2,
@@ -47,6 +48,9 @@ set_config(Key, Val) when is_integer(Val) ->
     set_config(Key, integer_to_list(Val));
 set_config(Key, Val) when is_list(Val) and is_atom(Key) ->
     vmq_server_cli:command(["vmq-admin", "set", atom_to_list(Key) ++ "=" ++ Val], false).
+
+set_api_key(ApiKey) ->
+    vmq_server_cli:command(["vmq-admin", "api-key", "add"], ApiKey).
 
 listener_start(Port, Opts) ->
     listener_start(Port, "127.0.0.1", Opts).
