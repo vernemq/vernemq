@@ -146,7 +146,7 @@ handle_info(timeout, Socket) ->
             gen_tcp:close(Socket),
             {noreply, undefined, 5000};
          true ->
-             ApiKey = vmq_config:get_env(graphie_api_key, ""),
+             ApiKey = vmq_config:get_env(graphite_api_key, ""),
              Prefix = vmq_config:get_env(graphite_prefix, ""),
              DoReconnect =
              lists:foldl(

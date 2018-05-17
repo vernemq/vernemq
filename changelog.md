@@ -58,6 +58,8 @@
   to allow plugin developers to have these libraries available.
 - Fix regression introduced by #688, that forgot to filter out tombstones when 
   folding a metadata table.
+- Bugfix: Fix typo (`graphie_api_key` -> `graphite_api_key`) preventing the
+  graphite api key from being set in the `vernemq.conf` file.
 
 ## VerneMQ 1.3.0
 
