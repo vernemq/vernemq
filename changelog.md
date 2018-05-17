@@ -2,6 +2,7 @@
 
 ## Not yet released (VerneMQ 1.4.0)
 
+- Added configuration parameter for `api_key`.
 - Fix for OSX compilation issue on `vmq_passwd` due to openssl headers not found.
 - Refactoring to further abstract and generalize the Plumtree metadata layer.
 - Small refactoring moving the calling of plugin hooks into the fsm code. This
