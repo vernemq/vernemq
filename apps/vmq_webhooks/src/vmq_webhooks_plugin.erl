@@ -469,7 +469,8 @@ call_endpoint(Endpoint, EOpts, Hook, Args) ->
                     {error, _} = E ->
                         E
                 end;
-            {ok, Code, _, _} ->
+            {ok, Code, _, CRef} ->
+                hackney:close(CRef),
                 {error, {invalid_response_code, Code}};
             {error, _} = E  ->
                 E
