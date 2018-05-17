@@ -158,4 +158,8 @@ delete_api_key(ApiKey) ->
     ok.
 
 list_api_keys() ->
-    vmq_config:get_env(vmq_server, ?ENV_API_KEYS, []).
+    Keys = vmq_config:get_env(vmq_server, ?ENV_API_KEYS, []),
+    case vmq_config:get_env(api_key, undefined) of
+        undefined ->Keys;
+        ApiKey -> [list_to_binary(ApiKey)|Keys]
+    end.

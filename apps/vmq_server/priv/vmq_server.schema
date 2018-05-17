@@ -31,6 +31,13 @@
                                                                                                 {datatype, flag}
                                                                                                ]}.
 
+%% @doc the vernemq admin api key
+{mapping, "api_key", "vmq_server.api_key", [
+                                                 {commented, "Api-Key"},
+                                                 {default, undefined},
+                                                 {datatype, string}
+                                                ]}.
+
 %% @doc Allows a client to logon multiple times using the same client id
 %% (non-standard behaviour!).
 {mapping, "allow_multiple_sessions", "vmq_server.allow_multiple_sessions", [

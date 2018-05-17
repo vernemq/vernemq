@@ -30,6 +30,7 @@ register_config_() ->
      "allow_subscribe_during_netsplit",
      "allow_unsubscribe_during_netsplit",
      "allow_multiple_sessions",
+     "api_key",
      "queue_deliver_mode",
      "queue_type",
      "retry_interval",
