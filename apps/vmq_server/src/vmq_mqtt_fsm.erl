@@ -135,9 +135,9 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                    trace_fun=TraceFun},
 
     case check_connect(ConnectFrame, State) of
-        {stop, _, _} = R -> R;
+        {stop, Reason, Out} -> {stop, Reason, serialise([Out])};
         {NewState, Out} ->
-            {{connected, set_last_time_active(true, NewState)}, Out}
+            {{connected, set_last_time_active(true, NewState)}, serialise([Out])}
     end.
 
 data_in(Data, SessionState) when is_binary(Data) ->
