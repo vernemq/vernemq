@@ -557,10 +557,10 @@ queue_down_terminate(Reason, #state{queue_pid=QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
 terminate({mqtt_client_disconnect, Properties0}, #state{queue_pid=QPid} = State) ->
-    Properties1 = maps:update_with(session_expiry_interval, fun(V) -> V end,
-                                   State#state.session_expiry_interval, Properties0),
-    #{session_expiry_interval := SInt} = QueueOpts = queue_opts_from_properties(Properties1),
-    _ = case SInt of
+    SInt0 = maps:get(session_expiry_interval, Properties0, State#state.session_expiry_interval),
+    Properties1 = maps:put(session_expiry_interval, SInt0, Properties0),
+    #{session_expiry_interval := SInt1} = QueueOpts = queue_opts_from_properties(Properties1),
+    _ = case SInt1 of
           0 ->
               ok;
           _ ->
