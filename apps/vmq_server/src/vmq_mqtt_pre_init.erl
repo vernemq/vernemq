@@ -53,17 +53,17 @@ data_in(Data, #state{peer = Peer,
             erlang:cancel_timer(TRef),
             case vmq_mqtt5_fsm:init(Peer, Opts, ConnectFrame) of
                 {stop, Reason, Out} ->
-                    {stop, Reason, serialize_mqtt5(Out)};
+                    {stop, Reason, Out};
                 {FsmState1, Out} ->
-                    {switch_fsm, vmq_mqtt5_fsm, FsmState1, Rest, serialize_mqtt5(Out)}
+                    {switch_fsm, vmq_mqtt5_fsm, FsmState1, Rest, Out}
             end;
         {#mqtt_connect{} = ConnectFrame, Rest} ->
             erlang:cancel_timer(TRef),
             case vmq_mqtt_fsm:init(Peer, Opts, ConnectFrame) of
                 {stop, Reason, Out} ->
-                    {stop, Reason, serialize(Out)};
+                    {stop, Reason, Out};
                 {FsmState1, Out} ->
-                    {switch_fsm, vmq_mqtt_fsm, FsmState1, Rest, serialize(Out)}
+                    {switch_fsm, vmq_mqtt_fsm, FsmState1, Rest, Out}
             end
     end.
 
@@ -111,9 +111,3 @@ msg_in(disconnect, _FsmState0) ->
 msg_in(close_timeout, _FsmState0) ->
     lager:debug("stop due to timeout", []),
     {stop, normal, []}.
-
-serialize([Out]) ->
-    [vmq_parser:serialise(Out)].
-
-serialize_mqtt5([Out]) ->
-    [vmq_parser_mqtt5:serialise(Out)].

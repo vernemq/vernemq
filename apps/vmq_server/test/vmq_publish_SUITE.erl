@@ -82,7 +82,8 @@ groups() ->
                    message_expiry,
                    publish_c2b_topic_alias,
                    publish_b2c_topic_alias,
-                   forward_properties
+                   forward_properties,
+                   max_packet_size
                    | V4V5Tests] }
     ].
 
@@ -812,6 +813,41 @@ forward_properties(_Config) ->
 
     disable_on_publish(),
     disable_on_subscribe().
+
+max_packet_size(Config) ->
+    enable_on_publish(),
+    enable_on_subscribe(),
+
+    SubClientId = vmq_cth:ustr(Config) ++ "-sub",
+    PubClientId = vmq_cth:ustr(Config) ++ "-pub",
+    Topic = list_to_binary(vmq_cth:utopic(Config)),
+
+    Pub = packetv5:gen_publish(Topic, 0, <<"publish">>, [{properties,
+                                                          #{p_user_property => [{<<"hello">>, <<"world">>}]}}]),
+    ReducedPub = packetv5:gen_publish(Topic, 0, <<"publish">>, []),
+
+    SubConnect = packetv5:gen_connect(SubClientId,
+                                      [{keepalive, 60}, {properties, #{p_max_packet_size => iolist_size(ReducedPub)}}]),
+    SubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, SubSocket} = packetv5:do_client_connect(SubConnect, SubConnack, []),
+    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)], #{}),
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    SubAck = packetv5:gen_suback(77, [0], #{}),
+    ok = packetv5:expect_frame(SubSocket, SubAck),
+
+    PubConnect = packetv5:gen_connect(PubClientId, [{keepalive, 60}]),
+    PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
+
+    ok = gen_tcp:send(PubSocket, Pub),
+    ok = packetv5:expect_frame(SubSocket, ReducedPub),
+
+    ok = gen_tcp:close(PubSocket),
+    ok = gen_tcp:close(SubSocket),
+
+    disable_on_publish(),
+    disable_on_subscribe(),
+    ok.
 
 %% publish_c2b_invalid_topic_alias(Config) ->
 %%     vmq_server_cmd:set_config(topic_alias_max_client, 10),
