@@ -62,6 +62,8 @@
   graphite api key from being set in the `vernemq.conf` file.
 - Bugfix: WebHooks Plugin. Close the Hackney CRef so that the socket is given
   back to the Hackney pool, for the case of non-200 HTTP OK status codes.
+- Bugfix: Fix `vernemq top` command(like Erlang's etop) for presenting information
+  about node processes (#661).
 
 ## VerneMQ 1.3.0
 
