@@ -25,7 +25,8 @@
 -export([msg_ref/0]).
 
 -define(CLOSE_AFTER, 5000).
--define(FC_RECEIVE_MAX, 65535).
+-define(FC_RECEIVE_MAX, 16#FFFF).
+-define(EXPIRY_INT_MAX, 16#FFFFFFFF).
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 
@@ -62,7 +63,8 @@
                                                {preauth, string() | undefined},
           keep_alive                        :: undefined | non_neg_integer(),
           keep_alive_tref                   :: undefined | reference(),
-          clean_session=false               :: flag(),
+          clean_start=false                 :: flag(),
+          session_expiry_interval=0         :: 0..?EXPIRY_INT_MAX,
           proto_ver                         :: undefined | pos_integer(),
           queue_pid                         :: pid() | undefined,
 
@@ -554,19 +556,22 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid=QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-terminate({mqtt_client_disconnect, Properties}, #state{clean_session=CleanSession,
-                                                       queue_pid=QPid} = State) ->
-    _ = case CleanSession of
-            true -> ok;
-            false ->
-                vmq_queue:set_opts(QPid, queue_opts_from_properties(Properties)),
-                handle_waiting_acks_and_msgs(State)
+terminate({mqtt_client_disconnect, Properties0}, #state{queue_pid=QPid} = State) ->
+    SInt0 = maps:get(session_expiry_interval, Properties0, State#state.session_expiry_interval),
+    Properties1 = maps:put(session_expiry_interval, SInt0, Properties0),
+    #{session_expiry_interval := SInt1} = QueueOpts = queue_opts_from_properties(Properties1),
+    _ = case SInt1 of
+          0 ->
+              ok;
+          _ ->
+              vmq_queue:set_opts(QPid, QueueOpts),
+              handle_waiting_acks_and_msgs(State)
         end,
     {stop, normal, []};
-terminate(Reason, #state{clean_session=CleanSession} = State) ->
-    _ = case CleanSession of
-            true -> ok;
-            false ->
+terminate(Reason, #state{session_expiry_interval=SessionExpiryInterval} = State) ->
+    _ = case SessionExpiryInterval of
+            0 -> ok;
+            _ ->
                 handle_waiting_acks_and_msgs(State)
         end,
     %% TODO: the counter update is missing the last will message
@@ -610,7 +615,7 @@ check_enhanced_auth(F, State) ->
 
 check_connect(#mqtt5_connect{proto_ver=Ver, clean_start=CleanStart} = F, OutProps, State) ->
     CCleanStart = unflag(CleanStart),
-    check_client_id(F, OutProps, State#state{clean_session=CCleanStart, proto_ver=Ver}).
+    check_client_id(F, OutProps, State#state{clean_start=CCleanStart, proto_ver=Ver}).
 
 check_client_id(#mqtt5_connect{} = Frame,
                 OutProps,
@@ -654,7 +659,9 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Propertie
         false ->
             case auth_on_register(User, Password, Properties, State) of
                 {ok, QueueOpts, NewState} ->
-                    register_subscriber(F, OutProps, QueueOpts, NewState);
+                    SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
+                    register_subscriber(F, OutProps, QueueOpts,
+                                        NewState#state{session_expiry_interval=SessionExpiryInterval});
                 {error, no_matching_hook_found} ->
                     lager:error("can't authenticate client ~p due to
                                 no_matching_hook_found", [State#state.subscriber_id]),
@@ -672,13 +679,16 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Propertie
                     connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
-            register_subscriber(F, OutProps, queue_opts(State, [], Properties), State)
+            QueueOpts = queue_opts([], Properties),
+            SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
+            register_subscriber(F, OutProps, QueueOpts,
+                                State#state{session_expiry_interval=SessionExpiryInterval})
     end.
 
 register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
-                    QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId,
+                    QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_start=CleanStart,
                                       cap_settings=CAPSettings, fc_receive_max_broker=ReceiveMax} = State) ->
-    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, QueueOpts) of
+    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanStart, QueueOpts) of
         {ok, SessionPresent, QPid} ->
             monitor(process, QPid),
             _ = vmq_plugin:all(on_register_v1, [Peer, SubscriberId,
@@ -796,12 +806,12 @@ remove_property(p_topic_alias, #vmq_msg{properties = Properties} = Msg) ->
     Msg#vmq_msg{properties = maps:remove(p_topic_alias, Properties)}.
 
 auth_on_register(User, Password, Properties, State) ->
-    #state{clean_session=Clean, peer=Peer, cap_settings=CAPSettings,
+    #state{clean_start=CleanStart, peer=Peer, cap_settings=CAPSettings,
            subscriber_id=SubscriberId} = State,
-    HookArgs = [Peer, SubscriberId, User, Password, Clean, Properties],
+    HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Properties],
     case vmq_plugin:all_till_ok(auth_on_register_v1, HookArgs) of
         ok ->
-            {ok, queue_opts(State, [], Properties), State};
+            {ok, queue_opts([], Properties), State};
         {ok, Args} ->
             set_sock_opts(prop_val(tcp_opts, Args, [])),
             ChangedCAPSettings
@@ -817,7 +827,8 @@ auth_on_register(User, Password, Properties, State) ->
 
             ChangedState = State#state{
                              subscriber_id=?state_val(subscriber_id, Args, State),
-                             clean_session=?state_val(clean_session, Args, State),
+                             clean_start=?state_val(clean_start, Args, State),
+                             session_expiry_interval=?state_val(session_expiry_interval, Args, State),
                              reg_view=?state_val(reg_view, Args, State),
                              max_message_rate=?state_val(max_message_rate, Args, State),
                              fc_receive_max_broker=?state_val(fc_receive_max_broker, Args, State),
@@ -830,7 +841,7 @@ auth_on_register(User, Password, Properties, State) ->
                              topic_aliases_in=?state_val(topic_aliases_in, Args, State),
                              cap_settings=ChangedCAPSettings
                             },
-            {ok, queue_opts(ChangedState, Args, Properties), ChangedState};
+            {ok, queue_opts(Args, Properties), ChangedState};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -1135,7 +1146,7 @@ maybe_publish_last_will(#state{will_msg=undefined}) -> ok;
 maybe_publish_last_will(#state{subscriber_id={_, ClientId} = SubscriberId, username=User,
                                will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings,
                                queue_pid=QueuePid,
-                               clean_session=CS}) ->
+                               session_expiry_interval=SessionExpiryInterval}) ->
     LastWillFun =
         fun() ->
                 #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
@@ -1143,8 +1154,8 @@ maybe_publish_last_will(#state{subscriber_id={_, ClientId} = SubscriberId, usern
                 _ = on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish,
                                                     RegView, ClientId, filter_outgoing_pub_props(Msg)), HookArgs)
         end,
-    case {get_last_will_delay(Msg), CS} of
-        {Delay, false} when Delay > 0 ->
+    case get_last_will_delay(Msg) of
+        Delay when (Delay > 0) and (SessionExpiryInterval > 0) ->
             vmq_queue:set_delayed_will(QueuePid, LastWillFun, Delay);
         _ ->
             LastWillFun()
@@ -1232,13 +1243,14 @@ prop_val(Key, Args, Default, Validator) ->
 queue_opts_from_properties(Properties) ->
     maps:fold(
       fun(p_session_expiry_interval, Val, Acc) ->
-              Acc#{session_expiry_interval => Val};
+              Acc#{session_expiry_interval => Val,
+                   cleanup_on_disconnect => (Val == 0)};
          (_,_,Acc) -> Acc
-      end, #{}, Properties).
+      end, #{cleanup_on_disconnect => true}, Properties).
 
-queue_opts(#state{clean_session=CleanSession}, Args, Properties) ->
+queue_opts(Args, Properties) ->
     PropertiesOpts = queue_opts_from_properties(Properties),
-    Opts = maps:from_list([{clean_session, CleanSession} | Args]),
+    Opts = maps:from_list(Args),
     Opts1 = maps:merge(PropertiesOpts, Opts),
     maps:merge(vmq_queue:default_opts(), Opts1).
 
