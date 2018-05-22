@@ -520,9 +520,9 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
     case State#state.allow_anonymous of
         false ->
             case auth_on_register(User, Password, State) of
-                {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId,
+                {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_session=CleanSession,
                                        cap_settings=CAPSettings} = NewState} ->
-                    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, QueueOpts) of
+                    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanSession, QueueOpts) of
                         {ok, SessionPresent, QPid} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
@@ -551,8 +551,8 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
             end;
         true ->
             #state{peer=Peer, subscriber_id=SubscriberId,
-                   cap_settings=CAPSettings} = State,
-            case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, queue_opts(State, [])) of
+                   cap_settings=CAPSettings, clean_session=CleanSession} = State,
+            case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanSession, queue_opts(State, [])) of
                 {ok, SessionPresent, QPid} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
@@ -1093,7 +1093,7 @@ prop_val(Key, Args, Default, Validator) ->
     end.
 
 queue_opts(#state{clean_session=CleanSession}, Args) ->
-    Opts = maps:from_list([{clean_session, CleanSession} | Args]),
+    Opts = maps:from_list([{cleanup_on_disconnect, CleanSession}| Args]),
     maps:merge(vmq_queue:default_opts(), Opts).
 
 unflag(true) -> true;
