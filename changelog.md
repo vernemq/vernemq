@@ -62,6 +62,10 @@
   graphite api key from being set in the `vernemq.conf` file.
 - Bugfix: WebHooks Plugin. Close the Hackney CRef so that the socket is given
   back to the Hackney pool, for the case of non-200 HTTP OK status codes.
+- Bugfix: fix bug where queries with mountpoint and client-ids would return no
+  entries causing disconnecting a client with a specific mountpoint to
+  fail. Also ensure to use the default mountpoint if no mountpoint was
+  passed. (#714).
 
 ## VerneMQ 1.3.0
 

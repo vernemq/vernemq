@@ -91,20 +91,20 @@ vmq_session_disconnect_cmd() ->
     Callback = fun(_, [{'client-id', ClientId}], Flags) ->
                        DoCleanup = lists:keymember(cleanup, 1, Flags),
                        QueryString0 = "SELECT queue_pid FROM sessions WHERE client_id =\"" ++ ClientId ++ "\"",
-                       QueryString1 =
-                       case proplists:get_value(mountpoint, Flags) of
+                       case proplists:get_value(mountpoint, Flags, "") of
                            undefined ->
-                               QueryString0;
+                               %% Unparseable mountpoint or without value
+                               Text = clique_status:text("Invalid mountpoint value"),
+                               [clique_status:alert([Text])];
                            Mountpoint ->
-                               QueryString0 ++ " AND mountpoint=\"" ++ Mountpoint ++ "\""
-                       end,
-
-                       vmq_ql_query_mgr:fold_query(
-                         fun(Row, _) ->
-                                 QueuePid = maps:get(queue_pid, Row),
-                                 vmq_queue:force_disconnect(QueuePid, DoCleanup)
-                         end, ok, QueryString1),
-                       [clique_status:text("Done")];
+                               QueryString1 = QueryString0 ++ " AND mountpoint=\"" ++ Mountpoint ++ "\"",
+                               vmq_ql_query_mgr:fold_query(
+                                 fun(Row, _) ->
+                                         QueuePid = maps:get(queue_pid, Row),
+                                         vmq_queue:force_disconnect(QueuePid, DoCleanup)
+                                 end, ok, QueryString1),
+                               [clique_status:text("Done")]
+                       end;
                   (_,_,_) ->
                        Text = clique_status:text(vmq_session_disconnect_usage()),
                        [clique_status:alert([Text])]
