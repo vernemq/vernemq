@@ -92,11 +92,11 @@ session_info_items() ->
 %% specific order (MP,ClientID).
 fold_init_rows(_, Fun, Acc, [#{{mountpoint,equals} := MP,
                                {client_id,equals} := ClientId}]) ->
-    case vmq_queue_sup_sup:get_queue_pid({MP, ClientId}) of
+    case vmq_queue_sup_sup:get_queue_pid({binary_to_list(MP), ClientId}) of
         not_found -> [];
         QPid ->
             InitRow = #{node => atom_to_binary(node(),utf8),
-                        mountpoint => list_to_binary(MP),
+                        mountpoint => MP,
                         '__mountpoint' => MP,
                         client_id => ClientId,
                         queue_pid => QPid},
