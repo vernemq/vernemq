@@ -3,6 +3,8 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
+-include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
@@ -54,7 +56,8 @@ groups() ->
      {mqttv5, [shuffle],
       [
        subscribe_no_local_test,
-       subscribe_illegal_opt
+       subscribe_illegal_opt,
+       subscription_ids
       ]}
     ].
 
@@ -114,6 +117,115 @@ subscribe_illegal_opt(_) ->
     %% malformed if any of Reserved bits in the Payload are non-zero
     %% [MQTT-3.8.3-5].
     {skip, not_implemented}.
+
+subscription_ids(Cfg) ->
+
+    %% If the Client specified a Subscription Identifier for any of
+    %% the overlapping subscriptions the Server MUST send those
+    %% Subscription Identifiers in the message which is published as
+    %% the result of the subscriptions [MQTT-3.3.4-3].
+
+    %% If the Server sends a single copy of the message it MUST
+    %% include in the PUBLISH packet the Subscription Identifiers for
+    %% all matching subscriptions which have a Subscription
+    %% Identifiers, their order is not significant [MQTT-3.3.4-4].
+
+    %% If the Server sends multiple PUBLISH packets it MUST send, in
+    %% each of them, the Subscription Identifier of the matching
+    %% subscription if it has a Subscription Identifier
+    %% [MQTT-3.3.4-5].
+
+    %% Note: VerneMQ currently sends multiple publish packets for
+    %% overlapping subscriptions. So we adhere to [MQTT-3.3.4-5].
+
+    ClientId = vmq_cth:ustr(Cfg),
+    BT = vmq_cth:utopic(Cfg),
+    Connect = packetv5:gen_connect(ClientId, []),
+    Connack = packetv5:gen_connack(),
+    Sub1 =
+        packetv5:gen_subscribe(
+          5, [packetv5:gen_subtopic(BT ++ "/l1/#",0)], #{p_subscription_id => [5]}),
+    Sub2 =
+        packetv5:gen_subscribe(
+          6, [packetv5:gen_subtopic(BT ++ "/l1/l2",0)], #{p_subscription_id => [6]}),
+    Sub3 =
+        packetv5:gen_subscribe(
+          7, [packetv5:gen_subtopic(BT ++ "/+/t6",0),
+              packetv5:gen_subtopic(BT ++ "/t5/t6",0)], #{p_subscription_id => [7]}),
+    Sub4 =
+        packetv5:gen_subscribe(
+          8, [packetv5:gen_subtopic(BT ++ "/no-overlap",0)], #{p_subscription_id => [8]}),
+
+    SubAck1 = packetv5:gen_suback(5,[0],#{}),
+    SubAck2 = packetv5:gen_suback(6,[0],#{}),
+    SubAck3 = packetv5:gen_suback(7,[0,0],#{}),
+    SubAck4 = packetv5:gen_suback(8,[0],#{}),
+
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Sub1),
+    ok = packetv5:expect_frame(Socket, SubAck1),
+    ok = gen_tcp:send(Socket, Sub2),
+    ok = packetv5:expect_frame(Socket, SubAck2),
+    ok = gen_tcp:send(Socket, Sub3),
+    ok = packetv5:expect_frame(Socket, SubAck3),
+    ok = gen_tcp:send(Socket, Sub4),
+    ok = packetv5:expect_frame(Socket, SubAck4),
+
+    Pub = fun(T,M) ->
+                  Publish = packetv5:gen_publish(T, 0, M, []),
+                  ok = gen_tcp:send(Socket, Publish)
+          end,
+    FTopic = fun(Topic) ->
+                     %% convert string topic to a frame topic.
+                     binary:split(list_to_binary(Topic), <<"/">>, [global])
+             end,
+    ExpPub =
+        fun(T, M, SubIds) ->
+                 Publish = packetv5:gen_publish(T, 0, M,
+                                                [{properties,
+                                                  #{p_subscription_id => SubIds}}]),
+                 ok = packetv5:expect_frame(Socket, Publish)
+        end,
+
+    %% publish to topic with overlapping subscriptions
+    ok = Pub(BT ++ "/l1/l2", <<"msg1">>),
+    begin
+        Ids = [5,6],
+        Topic = FTopic(BT ++ "/l1/l2"),
+        {ok, #mqtt5_publish{
+                topic = Topic,
+                payload = <<"msg1">>,
+                properties = #{p_subscription_id := [Id1]}}, SecondFrame} =
+            packetv5:receive_frame(Socket),
+        Ids1 = Ids -- [Id1],
+        {#mqtt5_publish{
+            topic = Topic,
+            payload = <<"msg1">>,
+            properties = #{p_subscription_id := [Id2]}}, <<>>} =
+            vmq_parser_mqtt5:parse(SecondFrame),
+            [] = Ids1 -- [Id2]
+    end,
+
+    %% publish to sub only matchin the wildcard sub
+    ok = Pub(BT ++ "/l1/notl2", <<"msg2">>),
+    ok = ExpPub(BT ++ "/l1/notl2", <<"msg2">>, [5]),
+
+    %% publish to the two overlapping subs with same sub-id
+    ok = Pub(BT ++ "/t5/t6", <<"msg3">>),
+    ok = ExpPub(BT ++ "/t5/t6", <<"msg3">>, [7]),
+    ok = ExpPub(BT ++ "/t5/t6", <<"msg3">>, [7]),
+
+    %% publish to sub only matching wildcard sub of subs with same
+    %% sub-id
+    ok = Pub(BT ++ "/nott5/t6", <<"msg4">>),
+    ok = ExpPub(BT ++ "/nott5/t6", <<"msg4">>, [7]),
+
+    %% publish to single non overlapping subscription
+    ok = Pub(BT ++ "/no-overlap", <<"msg5">>),
+    ok = ExpPub(BT ++ "/no-overlap", <<"msg5">>, [8]),
+
+    {error, timeout} = gen_tcp:recv(Socket, 0, 100),
+    ok.
 
 subscribe_qos0_test(_) ->
     Connect = packet:gen_connect("subscribe-qos0-test", [{keepalive,10}]),

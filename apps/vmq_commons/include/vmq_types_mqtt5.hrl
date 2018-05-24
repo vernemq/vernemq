@@ -278,10 +278,11 @@
 -record(p_correlation_data, {value :: binary()}).
 -type p_correlation_data() :: #p_correlation_data{}.
 
-%% as there can be more than one subscription id in a single frame and
-%% we represent the properties as a map we store multiple values in
-%% the record.
--record(p_subscription_id, {value :: [1..268435455]}).
+%% As there can be more than one subscription id in an outgoing
+%% publish frame (only one in a subscribe frame) and we represent the
+%% properties as a map we store multiple values in the record.
+-type subscription_id() :: 1..268435455.
+-record(p_subscription_id, {value :: [subscription_id()]}).
 -type p_subscription_id() :: #p_subscription_id{}.
 
 -record(p_session_expiry_interval, {value :: seconds()}).
