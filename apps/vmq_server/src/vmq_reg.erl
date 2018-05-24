@@ -332,13 +332,14 @@ maybe_set_expiry_ts(_) ->
 publish({SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
     Acc;
-publish({{_,_} = SubscriberId, SubInfo}, _FromClientId, {Msg, _} = Acc) ->
+publish({{_,_} = SubscriberId, SubInfo}, _FromClientId, {Msg0, _} = Acc) ->
     case get_queue_pid(SubscriberId) of
         not_found -> Acc;
         QPid ->
-            NewMsg = post_route_filter(SubInfo, Msg),
+            Msg1 = handle_rap_flag(SubInfo, Msg0),
+            Msg2 = maybe_add_sub_id(SubInfo, Msg1),
             QoS = qos(SubInfo),
-            ok = vmq_queue:enqueue(QPid, {deliver, QoS, NewMsg}),
+            ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg2}),
             Acc
     end;
 publish({_Node, _Group, SubscriberId, #{no_local := true}}, SubscriberId, Acc) ->
@@ -356,12 +357,17 @@ publish(Node, _FromClientId, {Msg, _} = Acc) ->
             Acc
     end.
 
--spec post_route_filter(subinfo(), msg()) -> msg().
-post_route_filter({_QoS, #{rap := true}}, Msg) ->
+-spec handle_rap_flag(subinfo(), msg()) -> msg().
+handle_rap_flag({_QoS, #{rap := true}}, Msg) ->
     Msg;
-post_route_filter(_SubInfo, Msg) ->
+handle_rap_flag(_SubInfo, Msg) ->
     %% Default is to set the retain flag to false to be compatible with MQTTv3
     Msg#vmq_msg{retain = false}.
+
+maybe_add_sub_id({_, #{sub_id := SubId}}, #vmq_msg{properties = Props} = Msg) ->
+    Msg#vmq_msg{properties = Props#{p_subscription_id => [SubId]}};
+maybe_add_sub_id(_, Msg) ->
+    Msg.
 
 -spec qos(subinfo()) -> qos().
 qos({QoS, _}) when is_integer(QoS) ->

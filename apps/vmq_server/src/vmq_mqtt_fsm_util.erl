@@ -21,7 +21,7 @@
          send_after/2,
          msg_ref/0,
          plugin_receive_loop/2,
-         to_vmq_subtopics/1]).
+         to_vmq_subtopics/2]).
 
 -define(TO_SESSION, to_session_fsm).
 
@@ -85,8 +85,8 @@ plugin_receive_loop(PluginPid, PluginMod) ->
             exit({unknown_msg_in_plugin_loop, Other})
     end.
 
--spec to_vmq_subtopics([mqtt5_subscribe_topic() | {topic(),qos()}]) -> [subscription()].
-to_vmq_subtopics(Topics) ->
+-spec to_vmq_subtopics([mqtt5_subscribe_topic() | {topic(),qos()}], subscription_id() | undefined) -> [subscription()].
+to_vmq_subtopics(Topics, SubId) ->
     lists:map(
       fun({T, QoS}) ->
               %% MQTTv4 style topics
@@ -94,5 +94,11 @@ to_vmq_subtopics(Topics) ->
          (#mqtt5_subscribe_topic{
              topic = T, qos = QoS, rap = Rap, retain_handling = RH, no_local = NL
             }) ->
-              {T, {QoS, #{rap => Rap, retain_handling => RH, no_local => NL}}}
+              SubOpts = #{rap => Rap, retain_handling => RH, no_local => NL},
+              case SubId of
+                  undefined ->
+                      {T, {QoS, SubOpts}};
+                  _ ->
+                      {T, {QoS, SubOpts#{sub_id => SubId}}}
+              end
       end, Topics).
