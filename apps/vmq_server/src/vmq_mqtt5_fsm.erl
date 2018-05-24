@@ -423,11 +423,11 @@ connected(#mqtt5_pubcomp{message_id=MessageId}, State) ->
             %% but use one of the new reason codes.
             terminate(normal, State)
     end;
-connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=_Properties}, State) ->
+connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Properties}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
-    SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics),
+    SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, get_sub_id(Properties)),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
                 case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics) of
@@ -1405,3 +1405,6 @@ filter_outgoing_pub_props(#vmq_msg{properties=Props} = Msg) ->
                                p_message_expiry_interval
                               ], Props)}.
 
+get_sub_id(#{p_subscription_id := [SubId]}) ->
+    SubId;
+get_sub_id(_) -> undefined.
