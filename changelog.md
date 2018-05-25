@@ -1,6 +1,6 @@
 # Changelog
 
-## Not yet released (VerneMQ 1.4.0)
+## VerneMQ 1.4.0
 
 - Fix for OSX compilation issue on `vmq_passwd` due to openssl headers not found.
 - Refactoring to further abstract and generalize the Plumtree metadata layer.
@@ -56,8 +56,6 @@
   made builds fail by pegging it to an older version (1.8.0).
 - Add `xmerl` and `inets` from the Erlang standard library to the release in order
   to allow plugin developers to have these libraries available.
-- Fix regression introduced by #688, that forgot to filter out tombstones when 
-  folding a metadata table.
 - Bugfix: Fix typo (`graphie_api_key` -> `graphite_api_key`) preventing the
   graphite api key from being set in the `vernemq.conf` file.
 - Bugfix: WebHooks Plugin. Close the Hackney CRef so that the socket is given
@@ -66,6 +64,7 @@
   entries causing disconnecting a client with a specific mountpoint to
   fail. Also ensure to use the default mountpoint if no mountpoint was
   passed. (#714).
+- Upgraded vernemq_dev to include the `disconnect_by_subscriber_id/2` API.
 
 ## VerneMQ 1.3.0
 
