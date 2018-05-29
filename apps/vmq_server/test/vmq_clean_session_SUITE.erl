@@ -47,7 +47,9 @@ groups() ->
      {mqttv4, [], Tests},
      {mqttv5, [shuffle],
       [session_expiration_connect_test,
-       session_expiration_disconnect_test]}
+       session_expiration_disconnect_test,
+       session_expiration_reset_at_disconnect,
+       session_exp_only_at_disconnect_is_illegal]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -141,7 +143,9 @@ session_expiration_disconnect_test(Cfg) ->
     %% connect with clean_start false 0 sec expiration
     ClientId = vmq_cth:ustr(Cfg),
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 60},
-                                              {clean_start, false}]),
+                                              {clean_start, false},
+                                              {properties,
+                                               #{p_session_expiry_interval => 1}}]),
     Connack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
     ConnackSP = packetv5:gen_connack(1, ?M5_CONNACK_ACCEPT, #{}),
     Disconnect1 = packetv5:gen_disconnect(0, #{p_session_expiry_interval => 1}),
@@ -158,6 +162,42 @@ session_expiration_disconnect_test(Cfg) ->
     timer:sleep(1100),
     {ok, Socket2} = packetv5:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:close(Socket2).
+
+session_expiration_reset_at_disconnect(Cfg) ->
+    ClientId = vmq_cth:ustr(Cfg),
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 60},
+                                              {clean_start, true},
+                                              {properties,
+                                               #{p_session_expiry_interval => 5}}]),
+    Connack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    Disconnect = packetv5:gen_disconnect(0, #{p_session_expiry_interval => 0}),
+
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
+
+    {ok, Socket1} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:close(Socket1).
+
+session_exp_only_at_disconnect_is_illegal(Cfg) ->
+    %% it's a protocol error to set session expiration only at
+    %% disconnect time.
+
+    %% When a Server detects a Malformed Packet or Protocol Error, and
+    %% a Reason Code is given in the specification, it MUST close the
+    %% Network Connection [MQTT-4.13.1-1]
+
+    ClientId = vmq_cth:ustr(Cfg),
+    Connect = packetv5:gen_connect(ClientId, [{keepalive, 60},
+                                              {clean_start, false}]),
+    Connack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
+    Disconnect = packetv5:gen_disconnect(0, #{p_session_expiry_interval => 100}),
+
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Disconnect),
+    DisconnectProtoErr = packetv5:gen_disconnect(?M5_PROTOCOL_ERROR, #{}),
+    ok = packetv5:expect_frame(Socket, DisconnectProtoErr),
+    {error, closed} = gen_tcp:recv(Socket, 0, 100).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks

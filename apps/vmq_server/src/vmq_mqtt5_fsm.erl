@@ -556,18 +556,26 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid=QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-terminate({mqtt_client_disconnect, Properties0}, #state{queue_pid=QPid} = State) ->
-    SInt0 = maps:get(session_expiry_interval, Properties0, State#state.session_expiry_interval),
-    Properties1 = maps:put(session_expiry_interval, SInt0, Properties0),
-    #{session_expiry_interval := SInt1} = QueueOpts = queue_opts_from_properties(Properties1),
-    _ = case SInt1 of
-          0 ->
-              ok;
-          _ ->
-              vmq_queue:set_opts(QPid, QueueOpts),
-              handle_waiting_acks_and_msgs(State)
+terminate({mqtt_client_disconnect, Props0}, #state{queue_pid=QPid} = State) ->
+    OldSInt = State#state.session_expiry_interval,
+    NewSInt = maps:get(p_session_expiry_interval, Props0, 0),
+    Out = case {OldSInt,NewSInt} of
+              {0,NewSInt} when NewSInt > 0 ->
+                  [gen_disconnect(?PROTOCOL_ERROR)];
+              {0,0} ->
+                  [];
+              _ ->
+                  %% the session expiry is legal, use the one we just
+                  %% received or fall back to the one from the connect
+                  %% packet.
+                  SInt = maps:get(p_session_expiry_interval, Props0, OldSInt),
+                  Props1 = maps:put(p_session_expiry_interval, SInt, Props0),
+                  QueueOpts = queue_opts_from_properties(Props1),
+                  vmq_queue:set_opts(QPid, QueueOpts),
+                  handle_waiting_acks_and_msgs(State),
+                  []
         end,
-    {stop, normal, []};
+    {stop, normal, Out};
 terminate(Reason, #state{session_expiry_interval=SessionExpiryInterval} = State) ->
     _ = case SessionExpiryInterval of
             0 -> ok;
