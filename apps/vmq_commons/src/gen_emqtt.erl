@@ -343,9 +343,19 @@ handle_info({ssl_closed, Sock}, _, State=#state{sock=Sock, reconnect_timeout=und
 handle_info({ssl_closed, Sock}, _, State=#state{sock=Sock, reconnect_timeout=Timeout}) ->
     gen_fsm:send_event_after(Timeout, connect),
     wrap_res(connecting, on_disconnect, [], State#state{sock=undefined});
+handle_info({ssl_error, Sock, _}, _, State=#state{sock=Sock, reconnect_timeout=undefined}) ->
+    {stop, normal, State};
+handle_info({ssl_error, Sock, _}, _, State=#state{sock=Sock, reconnect_timeout=Timeout}) ->
+    gen_fsm:send_event_after(Timeout, connect),
+    wrap_res(connecting, on_disconnect, [], State#state{sock=undefined});
 handle_info({tcp_closed, Sock}, _, State=#state{sock=Sock, reconnect_timeout=undefined}) ->
     {stop, normal, State};
 handle_info({tcp_closed, Sock}, _, State=#state{sock=Sock, reconnect_timeout=Timeout}) ->
+    gen_fsm:send_event_after(Timeout, connect),
+    wrap_res(connecting, on_disconnect, [], State#state{sock=undefined});
+handle_info({tcp_error, Sock, Error}, _, State=#state{sock=Sock, reconnect_timeout=undefined}) ->
+    {stop, normal, State};
+handle_info({tcp_error, Sock, _}, _, State=#state{sock=Sock, reconnect_timeout=Timeout}) ->
     gen_fsm:send_event_after(Timeout, connect),
     wrap_res(connecting, on_disconnect, [], State#state{sock=undefined});
 
