@@ -1,5 +1,10 @@
 # Changelog
 
+## VerneMQ 1.5.0 (Not yet released)
+
+- Fix issue in the bridge preventing it from reconnecting after a connection
+  timeout (#726).
+
 ## VerneMQ 1.4.0
 
 - Fix for OSX compilation issue on `vmq_passwd` due to openssl headers not found.
