@@ -1,0 +1,30 @@
+{application, vmq_mqtt5_demo_plugin,
+ [{description, "An OTP application"},
+  {vsn, git},
+  {registered, []},
+  {mod, { vmq_mqtt5_demo_plugin_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    lager
+   ]},
+  {env,[
+       {vmq_plugin_hooks,
+        [
+         {vmq_mqtt5_demo_plugin, auth_on_register_v1, 6, []},
+         {vmq_mqtt5_demo_plugin, on_register_v1, 4, []},
+         {vmq_mqtt5_demo_plugin, auth_on_publish_v1, 7, []},
+         {vmq_mqtt5_demo_plugin, on_publish_v1, 7, []},
+         {vmq_mqtt5_demo_plugin, auth_on_subscribe_v1, 4, []},
+         {vmq_mqtt5_demo_plugin, on_subscribe_v1, 3, []},
+         {vmq_mqtt5_demo_plugin, on_unsubscribe_v1, 4, []},
+         {vmq_mqtt5_demo_plugin, on_auth_v1, 1, []},
+         {vmq_mqtt5_demo_plugin, on_deliver_v1, 5, []}
+        ]
+       }]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

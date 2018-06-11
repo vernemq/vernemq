@@ -25,23 +25,13 @@
          }).
 -type msg()             :: #vmq_msg{}.
 
--type subopts() :: map().
--type subinfo() :: qos() | {qos(), subopts()}.
 -type subscription() :: {topic(), subinfo()}.
-
 -define(INTERNAL_CLIENT_ID, '$vmq_internal_client_id').
 
-%% TODO: these definitions should probably be moved somewhere else.
--define(NOT_AUTHORIZED,           not_authorized).
--define(SESSION_TAKEN_OVER,       session_taken_over).
--define(NORMAL_DISCONNECT,        normal_disconnect).
--define(ADMINISTRATIVE_ACTION,    administrative_action).
+%% These reason codes are used internally within vernemq and are not
+%% *real* MQTT reason codes.
 -define(DISCONNECT_KEEP_ALIVE,    disconnect_keep_alive).
 -define(DISCONNECT_MIGRATION,     disconnect_migration).
--define(BAD_AUTH_METHOD,          bad_auth_method).
--define(PROTOCOL_ERROR,           protocol_error).
--define(RECEIVE_MAX_EXCEEDED,     receive_max_exceeded).
-
 
 -type disconnect_reasons() ::
         ?NOT_AUTHORIZED |
@@ -50,6 +40,6 @@
         ?ADMINISTRATIVE_ACTION |
         ?DISCONNECT_KEEP_ALIVE |
         ?DISCONNECT_MIGRATION |
-        ?BAD_AUTH_METHOD |
+        ?BAD_AUTHENTICATION_METHOD |
         ?PROTOCOL_ERROR |
         ?RECEIVE_MAX_EXCEEDED.

@@ -16,6 +16,7 @@
 -include("vmq_server.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
 -include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 
 -export([init/3,
          data_in/2,
@@ -256,25 +257,34 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
                  #state{enhanced_auth = #auth_data{method = AuthMethod,
                                                    data = ConnectFrame}} = State) ->
     case vmq_plugin:all_till_ok(on_auth_v1, [Props]) of
-        {ok, Modifiers} ->
-            %% we're don with enhanced auth on connect.
+        {ok, #{reason_code := ?SUCCESS,
+               properties :=
+                   #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
+            %% we're done with enhanced auth on connect.
             NewAuthData = #auth_data{method = AuthMethod},
-            OutProps = proplists:get_value(properties, Modifiers, #{}),
             check_connect(ConnectFrame, OutProps,
                           State#state{enhanced_auth = NewAuthData});
-        {incomplete, Modifiers} ->
-            %% TODOv5: filter / rename properties?
-            OutProps = proplists:get_value(properties, Modifiers, #{}),
+        {ok, #{reason_code := ?CONTINUE_AUTHENTICATION,
+               properties :=
+                   #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
                                 properties = OutProps},
             {pre_connect_auth, State, [Frame]};
-        {error, Reason} ->
-            %% TODOv5
-            throw({not_implemented, Reason})
+        {error, #{reason_code := RCN} = ErrVals} ->
+            Props0 = maps:get(properties, ErrVals, #{}),
+            lager:warning(
+              "can't continue enhanced auth with client ~p due to ~p",
+              [State#state.subscriber_id, RCN]),
+            terminate(RCN, Props0, State);
+        {error, Reason} = E ->
+            lager:warning(
+              "can't continue enhanced auth with client ~p due to ~p",
+              [State#state.subscriber_id, Reason]),
+            terminate(E, State)
     end;
 pre_connect_auth(#mqtt5_disconnect{properties=Properties}, State) ->
     %% TODOv5 add metric?
-    terminate({mqtt_client_disconnect, Properties}, State);
+    terminate_by_client(Properties, State);
 pre_connect_auth(_, State) ->
     terminate(?PROTOCOL_ERROR, State).
 
@@ -423,23 +433,24 @@ connected(#mqtt5_pubcomp{message_id=MessageId}, State) ->
             %% but use one of the new reason codes.
             terminate(normal, State)
     end;
-connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Properties}, State) ->
+connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Props0}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
-    SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, get_sub_id(Properties)),
+    SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, get_sub_id(Props0)),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
                 case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics) of
-                    {ok, _} = Res ->
-                        vmq_plugin:all(on_subscribe_v1, [User, SubscriberId, MaybeChangedTopics]),
-                        Res;
+                    {ok, _QoSs} ->
+                        vmq_plugin:all(on_subscribe_v1, [User, SubscriberId, MaybeChangedTopics]);
                     Res -> Res
                 end
         end,
-    case auth_on_subscribe(User, SubscriberId, SubTopics, OnAuthSuccess) of
-        {ok, QoSs} ->
-            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
+    case auth_on_subscribe(User, SubscriberId, SubTopics, Props0, OnAuthSuccess) of
+        {ok, Modifiers} ->
+            QoSs = topic_to_qos(maps:get(topics, Modifiers, [])),
+            Props1 = maps:get(properties, Modifiers, #{}),
+            Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=Props1},
             _ = vmq_metrics:incr_mqtt_suback_sent(),
             {State, [Frame]};
         {error, not_allowed} ->
@@ -453,7 +464,7 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Prope
             _ = vmq_metrics:incr_mqtt_error_subscribe(),
             {State, []}
     end;
-connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties =_Properties}, State) ->
+connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties = Props0}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
     _ = vmq_metrics:incr_mqtt_unsubscribe_received(),
@@ -461,10 +472,10 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties =_P
         fun(_SubscriberId, MaybeChangedTopics) ->
                 vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, SubscriberId, MaybeChangedTopics)
         end,
-    case unsubscribe(User, SubscriberId, Topics, OnSuccess) of
-        ok ->
+    case unsubscribe(User, SubscriberId, Topics, Props0, OnSuccess) of
+        {ok, Props1} ->
             ReasonCodes = [?M5_SUCCESS || _ <- Topics],
-            Frame = #mqtt5_unsuback{message_id=MessageId, reason_codes=ReasonCodes, properties=#{}},
+            Frame = #mqtt5_unsuback{message_id=MessageId, reason_codes=ReasonCodes, properties=Props1},
             _ = vmq_metrics:incr_mqtt_unsuback_sent(),
             {State, [Frame]};
         {error, _Reason} ->
@@ -476,25 +487,33 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties =_P
 connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Props},
           #state{enhanced_auth = #auth_data{method = AuthMethod}} = State) ->
     case vmq_plugin:all_till_ok(on_auth_v1, [Props]) of
-        {ok, Modifiers} ->
-            OutProps = proplists:get_value(properties, Modifiers, #{}),
+        {ok, #{reason_code := ?SUCCESS,
+               properties :=
+                   #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
             Frame = #mqtt5_auth{reason_code = ?M5_SUCCESS,
                                 properties = OutProps},
-            NewState =
-                State#state{
-                  username = proplists:get_value(username, Modifiers, State#state.username)
-                 },
-            {NewState, [Frame]};
-        {incomplete, Modifiers} ->
-            OutProps = proplists:get_value(properties, Modifiers, #{}),
-            %% TODOv5: filter / rename properties?
+            {State, [Frame]};
+        {ok, #{reason_code := ?CONTINUE_AUTHENTICATION,
+               properties :=
+                   #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
                                 properties = OutProps},
             {State, [Frame]};
-        {error, Reason} ->
-            %% TODOv5
-            throw({not_implemented, Reason})
+        {error, #{reason_code := RCN} = ErrVals} ->
+            Props0 = maps:get(properties, ErrVals, #{}),
+            lager:warning(
+              "can't continue enhanced auth with client ~p due to ~p",
+              [State#state.subscriber_id, RCN]),
+            terminate(RCN, Props0, State);
+        {error, Reason} = E ->
+            lager:warning(
+              "can't continue enhanced auth with client ~p due to ~p",
+              [State#state.subscriber_id, Reason]),
+            terminate(E, State)
     end;
+connected(#mqtt5_auth{properties=#{p_authentication_method := GotAuthMethod}},
+          #state{enhanced_auth = #auth_data{method = _WantAuthMethod}} = State) ->
+    terminate({error, {wrong_auth_method, GotAuthMethod}}, State);
 connected(#mqtt5_pingreq{}, State) ->
     _ = vmq_metrics:incr_mqtt_pingreq_received(),
     Frame = #mqtt5_pingresp{},
@@ -502,7 +521,7 @@ connected(#mqtt5_pingreq{}, State) ->
     {State, [Frame]};
 connected(#mqtt5_disconnect{properties=Properties}, State) ->
     _ = vmq_metrics:incr_mqtt_disconnect_received(),
-    terminate({mqtt_client_disconnect, Properties}, State);
+    terminate_by_client(Properties, State);
 connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
     terminate(Reason, State);
@@ -540,6 +559,7 @@ connected(Unexpected, State) ->
     lager:debug("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
     terminate({error, {unexpected_message, Unexpected}}, State).
 
+-spec connack_terminate(reason_code(), state()) -> any().
 connack_terminate(RC, State) ->
     connack_terminate(RC, #{}, State).
 
@@ -556,7 +576,7 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid=QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-terminate({mqtt_client_disconnect, Props0}, #state{queue_pid=QPid} = State) ->
+terminate_by_client(Props0, #state{queue_pid=QPid} = State) ->
     OldSInt = State#state.session_expiry_interval,
     NewSInt = maps:get(p_session_expiry_interval, Props0, 0),
     Out = case {OldSInt,NewSInt} of
@@ -575,8 +595,13 @@ terminate({mqtt_client_disconnect, Props0}, #state{queue_pid=QPid} = State) ->
                   handle_waiting_acks_and_msgs(State),
                   []
         end,
-    {stop, normal, Out};
-terminate(Reason, #state{session_expiry_interval=SessionExpiryInterval} = State) ->
+    {stop, normal, Out}.
+
+-spec terminate(reason_code_name() | {error, any()}, state()) -> any().
+terminate(Reason, State) ->
+    terminate(Reason, #{}, State).
+
+terminate(Reason, Props, #state{session_expiry_interval=SessionExpiryInterval} = State) ->
     _ = case SessionExpiryInterval of
             0 -> ok;
             _ ->
@@ -591,7 +616,8 @@ terminate(Reason, #state{session_expiry_interval=SessionExpiryInterval} = State)
                 %% MQTT errors and as such we don't tell the client
                 %% about them, we just drop the connection.
                 [];
-            _ -> [gen_disconnect(Reason)]
+            _ ->
+                [gen_disconnect(Reason, Props)]
         end,
     {stop, Reason, Out}.
 
@@ -599,23 +625,32 @@ terminate(Reason, #state{session_expiry_interval=SessionExpiryInterval} = State)
 %%% internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthMethod}=Props} = F, State) ->
+check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthMethod}=Props} = Frame0, State) ->
     case vmq_plugin:all_till_ok(on_auth_v1, [Props]) of
-        {ok, Modifiers} ->
-            %% TODOv5: what about the properties returned from
-            %% `on_auth`?
-            OutProps = proplists:get_value(properties, Modifiers, #{}),
+        {ok, #{reason_code := ?SUCCESS,
+               properties :=
+                   #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
             EnhancedAuth = #auth_data{method = AuthMethod},
-            check_connect(F, OutProps, State#state{enhanced_auth = EnhancedAuth});
-        {incomplete, Modifiers} ->
+            check_connect(Frame0, OutProps, State#state{enhanced_auth = EnhancedAuth});
+        {ok, #{reason_code := ?CONTINUE_AUTHENTICATION,
+               properties :=
+                   #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
             EnhancedAuth = #auth_data{method = AuthMethod,
-                                      data = F},
-            OutProps = proplists:get_value(properties, Modifiers, #{}),
-            Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
+                                      data = Frame0},
+            Frame1 = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
                                 properties = OutProps},
-            {pre_connect_auth, State#state{enhanced_auth = EnhancedAuth}, [Frame]};
-        {error, Reason} ->
-            terminate(Reason, State)
+            {pre_connect_auth, State#state{enhanced_auth = EnhancedAuth}, [Frame1]};
+        {error, #{reason_code := RCN} = ErrVals} ->
+            Props0 = maps:get(properties, ErrVals, #{}),
+            lager:warning(
+              "can't continue enhanced auth with client ~p due to ~p",
+              [State#state.subscriber_id, RCN]),
+            terminate(RCN, Props0, State);
+        {error, Reason} = E ->
+            lager:warning(
+              "can't continue enhanced auth with client ~p due to ~p",
+              [State#state.subscriber_id, Reason]),
+            terminate(E, State)
     end;
 check_enhanced_auth(F, State) ->
     %% No enhanced authentication
@@ -660,12 +695,12 @@ check_client_id(#mqtt5_connect{client_id=Id}, _OutProps, State) ->
     lager:warning("invalid client id ~p", [Id]),
     connack_terminate(?M5_CLIENT_IDENTIFIER_NOT_VALID, State).
 
-check_user(#mqtt5_connect{username=User, password=Password, properties=Properties} = F,
+check_user(#mqtt5_connect{username=User, password=Password, properties=PropsIn0} = F,
            OutProps,
            State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, Properties, State) of
+            case auth_on_register(User, Password, PropsIn0, State) of
                 {ok, QueueOpts, NewState} ->
                     SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
                     register_subscriber(F, OutProps, QueueOpts,
@@ -674,11 +709,13 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Propertie
                     lager:error("can't authenticate client ~p due to
                                 no_matching_hook_found", [State#state.subscriber_id]),
                     connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State);
-                {error, invalid_credentials} ->
+                {error, Vals} when is_map(Vals) ->
+                    ReasonCode = maps:get(reason_code, Vals, ?BAD_USERNAME_OR_PASSWORD),
+                    Props0 = maps:get(properties, Vals, #{}),
                     lager:warning(
-                      "can't authenticate client ~p due to
-                              invalid_credentials", [State#state.subscriber_id]),
-                    connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State);
+                      "can't authenticate client ~p due to ~p",
+                      [State#state.subscriber_id, ReasonCode]),
+                    connack_terminate(rcn2rc(ReasonCode), Props0, State);
                 {error, Error} ->
                     %% can't authenticate due to other reason
                     lager:warning(
@@ -687,7 +724,7 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Propertie
                     connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
-            QueueOpts = queue_opts([], Properties),
+            QueueOpts = queue_opts([], PropsIn0),
             SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
             register_subscriber(F, OutProps, QueueOpts,
                                 State#state{session_expiry_interval=SessionExpiryInterval})
@@ -700,7 +737,7 @@ register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
         {ok, SessionPresent, QPid} ->
             monitor(process, QPid),
             _ = vmq_plugin:all(on_register_v1, [Peer, SubscriberId,
-                                             User]),
+                                                User, OutProps0]),
             OutProps1 = maybe_set_receive_maximum(OutProps0, ReceiveMax),
             check_will(F, SessionPresent, OutProps1, State#state{queue_pid=QPid,username=User});
         {error, Reason} ->
@@ -820,7 +857,8 @@ auth_on_register(User, Password, Properties, State) ->
     case vmq_plugin:all_till_ok(auth_on_register_v1, HookArgs) of
         ok ->
             {ok, queue_opts([], Properties), State};
-        {ok, Args} ->
+        {ok, Args0} ->
+            Args = maps:to_list(Args0),
             set_sock_opts(prop_val(tcp_opts, Args, [])),
             ChangedCAPSettings
             = CAPSettings#cap_settings{
@@ -857,36 +895,50 @@ auth_on_register(User, Password, Properties, State) ->
 set_sock_opts(Opts) ->
     self() ! {set_sock_opts, Opts}.
 
--spec auth_on_subscribe(username(), subscriber_id(), [{topic(), qos()}],
+-spec auth_on_subscribe(username(), subscriber_id(),
+                        [{topic(), qos()}], mqtt5_properties(),
                         fun((username(), subscriber_id(), [{topic(), qos()}]) ->
                                    {ok, [qos() | not_allowed]} | {error, atom()})
-                       ) -> {ok, [qos() | not_allowed]} | {error, atom()}.
-auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess) ->
+                       ) -> {ok, auth_on_subscribe_v1_hook:sub_modifiers()} |
+                            {error, atom()}.
+auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess) ->
     case vmq_plugin:all_till_ok(auth_on_subscribe_v1,
-                                [User, SubscriberId, Topics]) of
+                                [User, SubscriberId, Topics, Props0]) of
         ok ->
-            AuthSuccess(User, SubscriberId, Topics);
-        {ok, NewTopics} when is_list(NewTopics) ->
-            AuthSuccess(User, SubscriberId, NewTopics);
+            AuthSuccess(User, SubscriberId, Topics),
+            {ok, #{topics => Topics}};
+        {ok, Modifiers} ->
+            NewTopics = maps:get(topics, Modifiers, []),
+            AuthSuccess(User, SubscriberId, NewTopics),
+            {ok, Modifiers};
         {error, _} ->
             {error, not_allowed}
     end.
 
+-type unsubsuccessfun() ::
+        fun((subscriber_id(), [{topic(), qos()}]) ->
+                   ok | {error, not_ready}).
+
 -spec unsubscribe(username(), subscriber_id(), [{topic(), qos()}],
-                  fun((subscriber_id(), [{topic(), qos()}]) ->
-                             ok | {error, not_ready})
-                 ) -> ok | {error, not_ready}.
-unsubscribe(User, SubscriberId, Topics, UnsubFun) ->
-    TTopics =
-        case vmq_plugin:all_till_ok(on_unsubscribe_v1, [User, SubscriberId, Topics]) of
+                  mqtt5_properties(), unsubsuccessfun())
+                 -> {ok, mqtt5_properties()} | {error, not_ready}.
+unsubscribe(User, SubscriberId, Topics0, Props0, UnsubFun) ->
+    {Topics2, Props2} =
+        case vmq_plugin:all_till_ok(on_unsubscribe_v1, [User, SubscriberId, Topics0, Props0]) of
             ok ->
-                Topics;
-            {ok, [[W|_]|_] = NewTopics} when is_binary(W) ->
-                NewTopics;
+                {Topics0, #{}};
+            {ok, #{topics := [[W|_]|_] = Topics1} = Mods} when is_binary(W) ->
+                Props1 = maps:get(properties, Mods, #{}),
+                {Topics1, Props1};
             {error, _} ->
-                Topics
+                {Topics0, #{}}
         end,
-    UnsubFun(SubscriberId, TTopics).
+    case UnsubFun(SubscriberId, Topics2) of
+        {error, _} = E ->
+            E;
+        ok ->
+            {ok, Props2}
+    end.
 
 -spec auth_on_publish(username(), subscriber_id(), msg(),
                       fun((msg(), list()) -> {ok, msg()} | {error, atom()})
@@ -894,31 +946,36 @@ unsubscribe(User, SubscriberId, Topics, UnsubFun) ->
 auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                              payload=Payload,
                                              qos=QoS,
-                                             retain=IsRetain} = Msg,
+                                             retain=IsRetain,
+                                             properties=Properties} = Msg,
                 AuthSuccess) ->
 
-    HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
+    HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain), Properties],
     case vmq_plugin:all_till_ok(auth_on_publish_v1, HookArgs) of
         ok ->
             AuthSuccess(Msg, HookArgs);
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
             HookArgs1 = [User, SubscriberId, QoS, Topic, ChangedPayload, unflag(IsRetain)],
             AuthSuccess(Msg#vmq_msg{payload=ChangedPayload}, HookArgs1);
-        {ok, Args} when is_list(Args) ->
+        {ok, Args0} when is_map(Args0) ->
             #vmq_msg{mountpoint=MP} = Msg,
-            ChangedTopic = proplists:get_value(topic, Args, Topic),
-            ChangedPayload = proplists:get_value(payload, Args, Payload),
-            ChangedQoS = proplists:get_value(qos, Args, QoS),
-            ChangedIsRetain = proplists:get_value(retain, Args, IsRetain),
-            ChangedMountpoint = proplists:get_value(mountpoint, Args, MP),
+            ChangedTopic = maps:get(topic, Args0, Topic),
+            ChangedPayload = maps:get(payload, Args0, Payload),
+            ChangedQoS = maps:get(qos, Args0, QoS),
+            ChangedIsRetain = maps:get(retain, Args0, IsRetain),
+            ChangedMountpoint = maps:get(mountpoint, Args0, MP),
+            ChangedProperties = maps:get(properties, Args0, Properties),
             HookArgs1 = [User, SubscriberId, ChangedQoS,
-                         ChangedTopic, ChangedPayload, ChangedIsRetain],
+                         ChangedTopic, ChangedPayload,
+                         ChangedIsRetain, ChangedProperties],
             AuthSuccess(Msg#vmq_msg{routing_key=ChangedTopic,
                                     payload=ChangedPayload,
                                     qos=ChangedQoS,
                                     retain=ChangedIsRetain,
                                     mountpoint=ChangedMountpoint},
                         HookArgs1);
+        {error, Vals} when is_map(Vals) ->
+            {error, maps:to_list(Vals)};
         {error, Re} ->
             lager:error("can't auth publish ~p due to ~p", [HookArgs, Re]),
             {error, not_allowed}
@@ -966,7 +1023,8 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
     case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
         {ok, _, NewState} ->
             {NewState, []};
-        {error, not_allowed} ->
+        {error, Vals} when is_list(Vals) ->
+            %% TODOv5: reflect reason code in metrics
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             [];
         {error, _Reason} ->
@@ -986,9 +1044,16 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
     case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
         {ok, _, NewState} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
-                {NewState   , [#mqtt5_puback{message_id=MessageId,
-                                          reason_code=?M5_SUCCESS,
-                                          properties=#{}}]};
+            %% TODOv5: return properties in puback success
+            {NewState, [#mqtt5_puback{message_id=MessageId,
+                                      reason_code=?M5_SUCCESS,
+                                      properties=#{}}]};
+        {error, Vals} when is_list(Vals) ->
+            RCN = ret_val(reason_code, Vals, ?NOT_AUTHORIZED),
+            Props0 = ret_val(properties, Vals, #{}),
+            {State, [#mqtt5_puback{message_id=MessageId,
+                                   reason_code=rcn2rc(RCN),
+                                   properties=Props0}]};
         {error, not_allowed} ->
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             _ = vmq_metrics:incr_mqtt_puback_sent(),
@@ -1018,6 +1083,12 @@ dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
                fc_receive_cnt=Cnt,
                waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
              [Frame]};
+        {error, Vals} when is_list(Vals) ->
+            RCN = ret_val(reason_code, Vals, ?NOT_AUTHORIZED),
+            Props0 = ret_val(properties, Vals, #{}),
+            {State, [#mqtt5_pubrec{message_id=MessageId,
+                                   reason_code=rcn2rc(RCN),
+                                   properties=Props0}]};
         {error, not_allowed} ->
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             _ = vmq_metrics:incr_mqtt_pubrec_sent(),
@@ -1113,10 +1184,10 @@ prepare_frame(QoS, Msg, State0) ->
              retain=IsRetained,
              dup=IsDup,
              qos=MsgQoS,
-             properties=Properties0,
+             properties=Props0,
              expiry_ts=ExpiryTS} = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State0),
-    HookArgs = [User, SubscriberId, Topic0, Payload0],
+    HookArgs = [User, SubscriberId, Topic0, Props0, Payload0],
     {Topic1, Payload1} =
     case vmq_plugin:all_till_ok(on_deliver_v1, HookArgs) of
         {error, _} ->
@@ -1126,12 +1197,12 @@ prepare_frame(QoS, Msg, State0) ->
             {Topic0, Payload0};
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
             {Topic0, ChangedPayload};
-        {ok, Args} when is_list(Args) ->
-            ChangedTopic = proplists:get_value(topic, Args, Topic0),
-            ChangedPayload = proplists:get_value(payload, Args, Payload0),
+        {ok, Args} when is_map(Args) ->
+            ChangedTopic = maps:get(topic, Args, Topic0),
+            ChangedPayload = maps:get(payload, Args, Payload0),
             {ChangedTopic, ChangedPayload}
     end,
-    {Topic2, Properties1, State1} = maybe_apply_topic_alias_out(Topic1, Properties0, State0),
+    {Topic2, Props1, State1} = maybe_apply_topic_alias_out(Topic1, Props0, State0),
     {OutgoingMsgId, State2} = get_msg_id(NewQoS, State1),
     Frame = #mqtt5_publish{message_id=OutgoingMsgId,
                            topic=Topic2,
@@ -1139,7 +1210,7 @@ prepare_frame(QoS, Msg, State0) ->
                            retain=IsRetained,
                            dup=IsDup,
                            payload=Payload1,
-                           properties=update_expiry_interval(Properties1, ExpiryTS)},
+                           properties=update_expiry_interval(Props1, ExpiryTS)},
     case NewQoS of
         0 ->
             {Frame, State2};
@@ -1344,23 +1415,23 @@ get_info_items([_|Rest], State, Acc) ->
     get_info_items(Rest, State, Acc);
 get_info_items([], _, Acc) -> Acc.
 
+
+-spec gen_disconnect(reason_code_name() | normal) -> mqtt5_disconnect().
 gen_disconnect(normal) ->
     %% TODOv5: this case is just here to handle the places where we do
     %% terminate(normal,...) as dialyzer would otherwise be
     %% unhappy. We should go through all those cases and see if we can
     %% map them to a MQTTv5 reason code.
-    gen_disconnect_(?M5_NORMAL_DISCONNECT);
-gen_disconnect(?NOT_AUTHORIZED) -> gen_disconnect_(?M5_NOT_AUTHORIZED);
-gen_disconnect(?NORMAL_DISCONNECT) -> gen_disconnect_(?M5_NORMAL_DISCONNECT);
-gen_disconnect(?SESSION_TAKEN_OVER) -> gen_disconnect_(?M5_SESSION_TAKEN_OVER);
-gen_disconnect(?ADMINISTRATIVE_ACTION) -> gen_disconnect_(?M5_ADMINISTRATIVE_ACTION);
-gen_disconnect(?DISCONNECT_KEEP_ALIVE) -> gen_disconnect_(?M5_KEEP_ALIVE_TIMEOUT);
-gen_disconnect(?BAD_AUTH_METHOD) -> gen_disconnect_(?M5_BAD_AUTHENTICATION_METHOD);
-gen_disconnect(?PROTOCOL_ERROR) -> gen_disconnect_(?M5_PROTOCOL_ERROR);
-gen_disconnect(?RECEIVE_MAX_EXCEEDED) -> gen_disconnect_(?M5_RECEIVE_MAX_EXCEEDED).
+    gen_disconnect_(?NORMAL_DISCONNECT, #{});
+gen_disconnect(RCN) ->
+    gen_disconnect(RCN, #{}).
 
-gen_disconnect_(RC) ->
-    #mqtt5_disconnect{reason_code = RC, properties = #{}}.
+-spec gen_disconnect(reason_code_name(), mqtt5_properties()) -> mqtt5_disconnect().
+gen_disconnect(RCN, Props) ->
+    gen_disconnect_(RCN, Props).
+
+gen_disconnect_(RC, Props) ->
+    #mqtt5_disconnect{reason_code = rcn2rc(RC), properties = Props}.
 
 msg_expiration(#{p_message_expiry_interval := ExpireAfter}) ->
     {expire_after, ExpireAfter};
@@ -1416,3 +1487,19 @@ filter_outgoing_pub_props(#vmq_msg{properties=Props} = Msg) ->
 get_sub_id(#{p_subscription_id := [SubId]}) ->
     SubId;
 get_sub_id(_) -> undefined.
+
+-spec topic_to_qos([subscription()]) -> [qos()].
+topic_to_qos(Topics) ->
+    lists:map(
+      fun({_T, QoS}) when is_integer(QoS) ->
+              QoS;
+         ({_T, {QoS, _}}) ->
+              QoS
+      end, Topics).
+
+ret_val(Item, Vals, Default) ->
+    proplists:get_value(Item, Vals, Default).
+
+-spec rcn2rc(reason_code_name()) -> reason_code().
+rcn2rc(RCN) ->
+    vmq_parser_mqtt5:rcn2rc(RCN).
