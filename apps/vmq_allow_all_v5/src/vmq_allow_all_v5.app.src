@@ -10,8 +10,8 @@
        {vmq_plugin_hooks,
         [
          {vmq_allow_all_v5, auth_on_register_v1, 6, []},
-         {vmq_allow_all_v5, auth_on_publish_v1, 6, []},
-         {vmq_allow_all_v5, auth_on_subscribe_v1, 3, []}
+         {vmq_allow_all_v5, auth_on_publish_v1, 7, []},
+         {vmq_allow_all_v5, auth_on_subscribe_v1, 4, []}
         ]
        }]},
   {modules, []},

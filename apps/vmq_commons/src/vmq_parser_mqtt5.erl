@@ -1,5 +1,8 @@
 -module(vmq_parser_mqtt5).
 
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include("vmq_parser_mqtt5.hrl").
+
 -export([parse/1, parse/2, serialise/1]).
 
 -export([gen_connect/2,
@@ -16,10 +19,11 @@
          gen_pingreq/0,
          gen_pingresp/0,
          gen_disconnect/2,
-         gen_auth/2
+         gen_auth/2,
+
+         rcn2rc/1
         ]).
 
--include("vmq_parser_mqtt5.hrl").
 
 %% exported for testing
 -export([parse_properties/2,
@@ -958,48 +962,48 @@ validate_publish_topic(<<>>) ->
 validate_publish_topic(Topic) ->
     vmq_topic:validate_topic(publish, Topic).
 
-%% -spec reason_code(reason_type()) -> reason_code().
-%% reason_code(granted_qos0)                   -> ?M5_GRANTED_QOS0;
-%% reason_code(granted_qos1)                   -> ?M5_GRANTED_QOS1;
-%% reason_code(granted_qos2)                   -> ?M5_GRANTED_QOS2;
-%% reason_code(disconnect_with_will_msg)       -> ?M5_DISCONNECT_WITH_WILL_MSG;
-%% reason_code(no_matching_subscribers)        -> ?M5_NO_MATCHING_SUBSCRIBERS;
-%% reason_code(no_subscription_existed)        -> ?M5_NO_SUBSCRIPTION_EXISTED;
-%% reason_code(continue_authentication)        -> ?M5_CONTINUE_AUTHENTICATION;
-%% reason_code(reauthenticate)                 -> ?M5_REAUTHENTICATE;
-%% reason_code(unspecified_error)              -> ?M5_UNSPECIFIED_ERROR;
-%% reason_code(malformed_packet)               -> ?M5_MALFORMED_PACKET;
-%% reason_code(protocol_error)                 -> ?M5_PROTOCOL_ERROR;
-%% reason_code(impl_specific_error)            -> ?M5_IMPL_SPECIFIC_ERROR;
-%% reason_code(unsupported_protocol_VERSION)   -> ?M5_UNSUPPORTED_PROTOCOL_VERSION;
-%% reason_code(client_identifier_not_valid)    -> ?M5_CLIENT_IDENTIFIER_NOT_VALID;
-%% reason_code(bad_username_or_password)       -> ?M5_BAD_USERNAME_OR_PASSWORD;
-%% reason_code(not_authorized)                 -> ?M5_NOT_AUTHORIZED;
-%% reason_code(server_unavailable)             -> ?M5_SERVER_UNAVAILABLE;
-%% reason_code(server_busy)                    -> ?M5_SERVER_BUSY;
-%% reason_code(banned)                         -> ?M5_BANNED;
-%% reason_code(server_shutting_down)           -> ?M5_SERVER_SHUTTING_DOWN;
-%% reason_code(bad_authentication_method)      -> ?M5_BAD_AUTHENTICATION_METHOD;
-%% reason_code(keep_alive_timeout)             -> ?M5_KEEP_ALIVE_TIMEOUT;
-%% reason_code(session_taken_over)             -> ?M5_SESSION_TAKEN_OVER;
-%% reason_code(topic_filter_invalid)           -> ?M5_TOPIC_FILTER_INVALID;
-%% reason_code(topic_name_invalid)             -> ?M5_TOPIC_NAME_INVALID;
-%% reason_code(packet_id_in_use)               -> ?M5_PACKET_ID_IN_USE;
-%% reason_code(packet_id_not_found)            -> ?M5_PACKET_ID_NOT_FOUND;
-%% reason_code(receive_max_exceeded)           -> ?M5_RECEIVE_MAX_EXCEEDED;
-%% reason_code(topic_alias_invalid)            -> ?M5_TOPIC_ALIAS_INVALID;
-%% reason_code(packet_too_large)               -> ?M5_PACKET_TOO_LARGE;
-%% reason_code(message_rate_too_high)          -> ?M5_MESSAGE_RATE_TOO_HIGH;
-%% reason_code(quota_exceeded)                 -> ?M5_QUOTA_EXCEEDED;
-%% reason_code(administrative_action)          -> ?M5_ADMINISTRATIVE_ACTION;
-%% reason_code(payload_format_invalid)         -> ?M5_PAYLOAD_FORMAT_INVALID;
-%% reason_code(retain_not_supported)           -> ?M5_RETAIN_NOT_SUPPORTED;
-%% reason_code(qos_not_supported)              -> ?M5_QOS_NOT_SUPPORTED;
-%% reason_code(use_another_server)             -> ?M5_USE_ANOTHER_SERVER;
-%% reason_code(server_moved)                   -> ?M5_SERVER_MOVED;
-%% reason_code(shared_subs_not_supported)      -> ?M5_SHARED_SUBS_NOT_SUPPORTED;
-%% reason_code(connection_rate_exceeded)       -> ?M5_CONNECTION_RATE_EXCEEDED;
-%% reason_code(max_connect_time)               -> ?M5_MAX_CONNECT_TIME;
-%% reason_code(subscription_ids_not_supported) -> ?M5_SUBSCRIPTION_IDS_NOT_SUPPORTED;
-%% reason_code(wildcard_subs_not_supported)    -> ?M5_WILDCARD_SUBS_NOT_SUPPORTED.
-                                                  
+-spec rcn2rc(reason_code_name()) -> reason_code().
+rcn2rc(granted_qos0)                   -> ?M5_GRANTED_QOS0;
+rcn2rc(granted_qos1)                   -> ?M5_GRANTED_QOS1;
+rcn2rc(granted_qos2)                   -> ?M5_GRANTED_QOS2;
+rcn2rc(normal_disconnect)              -> ?M5_NORMAL_DISCONNECT;
+rcn2rc(disconnect_with_will_msg)       -> ?M5_DISCONNECT_WITH_WILL_MSG;
+rcn2rc(no_matching_subscribers)        -> ?M5_NO_MATCHING_SUBSCRIBERS;
+rcn2rc(no_subscription_existed)        -> ?M5_NO_SUBSCRIPTION_EXISTED;
+rcn2rc(continue_authentication)        -> ?M5_CONTINUE_AUTHENTICATION;
+rcn2rc(reauthenticate)                 -> ?M5_REAUTHENTICATE;
+rcn2rc(unspecified_error)              -> ?M5_UNSPECIFIED_ERROR;
+rcn2rc(malformed_packet)               -> ?M5_MALFORMED_PACKET;
+rcn2rc(protocol_error)                 -> ?M5_PROTOCOL_ERROR;
+rcn2rc(impl_specific_error)            -> ?M5_IMPL_SPECIFIC_ERROR;
+rcn2rc(unsupported_protocol_VERSION)   -> ?M5_UNSUPPORTED_PROTOCOL_VERSION;
+rcn2rc(client_identifier_not_valid)    -> ?M5_CLIENT_IDENTIFIER_NOT_VALID;
+rcn2rc(bad_username_or_password)       -> ?M5_BAD_USERNAME_OR_PASSWORD;
+rcn2rc(not_authorized)                 -> ?M5_NOT_AUTHORIZED;
+rcn2rc(server_unavailable)             -> ?M5_SERVER_UNAVAILABLE;
+rcn2rc(server_busy)                    -> ?M5_SERVER_BUSY;
+rcn2rc(banned)                         -> ?M5_BANNED;
+rcn2rc(server_shutting_down)           -> ?M5_SERVER_SHUTTING_DOWN;
+rcn2rc(bad_authentication_method)      -> ?M5_BAD_AUTHENTICATION_METHOD;
+rcn2rc(keep_alive_timeout)             -> ?M5_KEEP_ALIVE_TIMEOUT;
+rcn2rc(session_taken_over)             -> ?M5_SESSION_TAKEN_OVER;
+rcn2rc(topic_filter_invalid)           -> ?M5_TOPIC_FILTER_INVALID;
+rcn2rc(topic_name_invalid)             -> ?M5_TOPIC_NAME_INVALID;
+rcn2rc(packet_id_in_use)               -> ?M5_PACKET_ID_IN_USE;
+rcn2rc(packet_id_not_found)            -> ?M5_PACKET_ID_NOT_FOUND;
+rcn2rc(receive_max_exceeded)           -> ?M5_RECEIVE_MAX_EXCEEDED;
+rcn2rc(topic_alias_invalid)            -> ?M5_TOPIC_ALIAS_INVALID;
+rcn2rc(packet_too_large)               -> ?M5_PACKET_TOO_LARGE;
+rcn2rc(message_rate_too_high)          -> ?M5_MESSAGE_RATE_TOO_HIGH;
+rcn2rc(quota_exceeded)                 -> ?M5_QUOTA_EXCEEDED;
+rcn2rc(administrative_action)          -> ?M5_ADMINISTRATIVE_ACTION;
+rcn2rc(payload_format_invalid)         -> ?M5_PAYLOAD_FORMAT_INVALID;
+rcn2rc(retain_not_supported)           -> ?M5_RETAIN_NOT_SUPPORTED;
+rcn2rc(qos_not_supported)              -> ?M5_QOS_NOT_SUPPORTED;
+rcn2rc(use_another_server)             -> ?M5_USE_ANOTHER_SERVER;
+rcn2rc(server_moved)                   -> ?M5_SERVER_MOVED;
+rcn2rc(shared_subs_not_supported)      -> ?M5_SHARED_SUBS_NOT_SUPPORTED;
+rcn2rc(connection_rate_exceeded)       -> ?M5_CONNECTION_RATE_EXCEEDED;
+rcn2rc(max_connect_time)               -> ?M5_MAX_CONNECT_TIME;
+rcn2rc(subscription_ids_not_supported) -> ?M5_SUBSCRIPTION_IDS_NOT_SUPPORTED;
+rcn2rc(wildcard_subs_not_supported)    -> ?M5_WILDCARD_SUBS_NOT_SUPPORTED.

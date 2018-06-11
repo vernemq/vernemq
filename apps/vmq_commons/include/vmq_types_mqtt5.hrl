@@ -64,6 +64,34 @@
 -type mqtt5_lwt() :: #mqtt5_lwt{}.
 
 
+-define(P_PAYLOAD_FORMAT_INDICATOR_ASSOC, p_payload_format_indicator => unspecified | utf8).
+-define(P_MESSAGE_EXPIRY_INTERVAL_ASSOC, p_message_expiry_interval => seconds()).
+-define(P_CONTENT_TYPE_ASSOC, p_content_type => utf8string()).
+-define(P_RESPONSE_TOPIC_ASSOC, p_response_topic => topic()).
+-define(P_CORRELATION_DATA_ASSOC, p_correlation_data => binary()).
+-define(P_SUBSCRIPTION_ID_ASSOC, p_subscription_id => [subscription_id]).
+-define(P_SESSION_EXPIRY_INTERVAL_ASSOC, p_session_expiry_interval => seconds()).
+-define(P_ASSIGNED_CLIENT_ID_ASSOC, p_assigned_client_id => utf8string()).
+-define(P_SERVER_KEEP_ALIVE_ASSOC, p_server_keep_alive => seconds()).
+-define(P_AUTHENTICATION_METHOD_ASSOC, p_authentication_method => utf8string()).
+-define(P_AUTHENTICATION_DATA_ASSOC, p_authentication_data => binary()).
+-define(P_REQUEST_PROBLEM_INFO_ASSOC, p_request_problem_info => boolean()).
+-define(P_WILL_DELAY_INTERVAL_ASSOC, p_will_delay_interval => seconds()).
+-define(P_REQUEST_RESPONSE_INFO_ASSOC, p_request_response_info => boolean()).
+-define(P_RESPONSE_INFO_ASSOC, p_response_info => utf8string()).
+-define(P_SERVER_REF_ASSOC, p_server_ref => utf8string()).
+-define(P_REASON_STRING_ASSOC, p_reason_string => utf8string()).
+-define(P_RECEIVE_MAX_ASSOC, p_receive_max => 1..65535).
+-define(P_TOPIC_ALIAS_MAX_ASSOC, p_topic_alias_max => 1..65535).
+-define(P_TOPIC_ALIAS_ASSOC, p_topic_alias => 1..65535).
+-define(P_MAX_QOS_ASSOC, p_max_qos => 0|1).
+-define(P_RETAIN_AVAILABLE_ASSOC, p_retain_available => boolean()).
+-define(P_USER_PROPERTY_ASSOC, p_user_property => [user_property()]).
+-define(P_MAX_PACKET_SIZE_ASSOC, p_max_packet_size => 1..4294967296).
+-define(P_WILDCARD_SUBS_AVAILABLE_ASSOC, p_wildcard_subs_available => boolean()).
+-define(P_SUB_IDS_AVAILABLE_ASSOC, p_sub_ids_available => boolean()).
+-define(P_SHARED_SUBS_AVAILABLE_ASSOC, p_shared_subs_available => boolean()).
+
 -record(mqtt5_connect, {
           proto_ver         :: 5,
           username          :: username(),
@@ -75,21 +103,43 @@
           properties=#{}    :: mqtt5_properties()
          }).
 -type mqtt5_connect()        :: #mqtt5_connect{}.
-
--type mqtt5_will_property() :: p_will_delay_interval()
-                             | p_payload_format_indicator()
-                             | p_message_expiry_interval()
-                             | p_content_type()
-                             | p_response_topic()
-                             | p_correlation_data()
-                             | user_property().
+-type mqtt5_connect_props() :: #{?P_SESSION_EXPIRY_INTERVAL_ASSOC,
+                                 ?P_AUTHENTICATION_METHOD_ASSOC,
+                                 ?P_AUTHENTICATION_DATA_ASSOC,
+                                 ?P_REQUEST_PROBLEM_INFO_ASSOC,
+                                 ?P_RECEIVE_MAX_ASSOC,
+                                 ?P_TOPIC_ALIAS_MAX_ASSOC,
+                                 ?P_USER_PROPERTY_ASSOC,
+                                 ?P_MAX_PACKET_SIZE_ASSOC}.
+-type mqtt5_will_property() :: #{?P_WILL_DELAY_INTERVAL_ASSOC,
+                                 ?P_PAYLOAD_FORMAT_INDICATOR_ASSOC,
+                                 ?P_MESSAGE_EXPIRY_INTERVAL_ASSOC,
+                                 ?P_CONTENT_TYPE_ASSOC,
+                                 ?P_RESPONSE_TOPIC_ASSOC,
+                                 ?P_CORRELATION_DATA_ASSOC,
+                                 ?P_USER_PROPERTY_ASSOC}.
 
 -record(mqtt5_connack, {
           session_present   :: flag(),
           reason_code       :: reason_code(),
-          properties=#{}    :: mqtt5_properties()
+          properties=#{}    :: mqtt5_connack_props()
          }).
 -type mqtt5_connack()       :: #mqtt5_connack{}.
+-type mqtt5_connack_props() :: #{?P_SESSION_EXPIRY_INTERVAL_ASSOC,
+                                 ?P_ASSIGNED_CLIENT_ID_ASSOC,
+                                 ?P_SERVER_KEEP_ALIVE_ASSOC,
+                                 ?P_AUTHENTICATION_DATA_ASSOC,
+                                 ?P_AUTHENTICATION_METHOD_ASSOC,
+                                 ?P_RESPONSE_INFO_ASSOC,
+                                 ?P_SERVER_REF_ASSOC,
+                                 ?P_REASON_STRING_ASSOC,
+                                 ?P_RECEIVE_MAX_ASSOC,
+                                 ?P_TOPIC_ALIAS_MAX_ASSOC,
+                                 ?P_MAX_QOS_ASSOC,
+                                 ?P_MAX_PACKET_SIZE_ASSOC,
+                                 ?P_WILDCARD_SUBS_AVAILABLE_ASSOC,
+                                 ?P_SUB_IDS_AVAILABLE_ASSOC,
+                                 ?P_SHARED_SUBS_AVAILABLE_ASSOC}.
 
 -record(mqtt5_publish, {
           message_id        :: msg_id(),
@@ -97,38 +147,53 @@
           qos               :: qos(),
           retain            :: flag(),
           dup               :: flag(),
-          properties=#{}    :: mqtt5_properties(),
+          properties=#{}    :: mqtt5_publish_props(),
           payload           :: payload()
         }).
 -type mqtt5_publish()       :: #mqtt5_publish{}.
+-type mqtt5_publish_props() :: #{?P_PAYLOAD_FORMAT_INDICATOR_ASSOC,
+                                 ?P_MESSAGE_EXPIRY_INTERVAL_ASSOC,
+                                 ?P_CONTENT_TYPE_ASSOC,
+                                 ?P_RESPONSE_TOPIC_ASSOC,
+                                 ?P_CORRELATION_DATA_ASSOC,
+                                 ?P_SUBSCRIPTION_ID_ASSOC,
+                                 ?P_TOPIC_ALIAS_ASSOC,
+                                 ?P_USER_PROPERTY_ASSOC}.
 
 -record(mqtt5_puback, {
           message_id        :: msg_id(),
           reason_code       :: reason_code(),
-          properties=#{}    :: mqtt5_properties()
+          properties=#{}    :: mqtt5_puback_props()
          }).
 -type mqtt5_puback()        :: #mqtt5_puback{}.
+-type mqtt5_puback_props()  :: #{?P_REASON_STRING_ASSOC,
+                                 ?P_USER_PROPERTY_ASSOC}.
 
 -record(mqtt5_pubrec, {
           message_id        :: msg_id(),
           reason_code       :: reason_code(),
-          properties=#{}    :: mqtt5_properties()
+          properties=#{}    :: mqtt5_pubrec_props()
          }).
 -type mqtt5_pubrec()        :: #mqtt5_pubrec{}.
+-type mqtt5_pubrec_props()  :: #{?P_REASON_STRING_ASSOC,
+                                 ?P_USER_PROPERTY_ASSOC}.
 
 -record(mqtt5_pubrel, {
           message_id        :: msg_id(),
           reason_code       :: reason_code(),
-          properties=#{}    :: mqtt5_properties()
+          properties=#{}    :: mqtt5_pubrel_props()
          }).
 -type mqtt5_pubrel()        :: #mqtt5_pubrel{}.
-
+-type mqtt5_pubrel_props()  :: #{?P_REASON_STRING_ASSOC,
+                                 ?P_USER_PROPERTY_ASSOC}.
 -record(mqtt5_pubcomp, {
           message_id        :: msg_id(),
           reason_code       :: reason_code(),
-          properties=#{}    :: mqtt5_properties()
+          properties=#{}    :: mqtt5_pubcomp_props()
          }).
 -type mqtt5_pubcomp()       :: #mqtt5_pubcomp{}.
+-type mqtt5_pubcomp_props() :: #{?P_REASON_STRING_ASSOC,
+                                 ?P_USER_PROPERTY_ASSOC}.
 
 -type no_local() :: flag().
 -type rap() :: flag().
@@ -146,9 +211,11 @@
 -record(mqtt5_subscribe, {
           message_id        :: msg_id(),
           topics=[]         :: [mqtt5_subscribe_topic()],
-          properties=#{}     :: mqtt5_properties()
+          properties=#{}    :: mqtt5_sub_props()
          }).
 -type mqtt5_subscribe()     :: #mqtt5_subscribe{}.
+-type mqtt5_sub_props()     :: #{?P_SUBSCRIPTION_ID_ASSOC,
+                                 ?P_USER_PROPERTY_ASSOC}.
 
 -record(mqtt5_suback, {
           message_id        :: msg_id(),
@@ -164,16 +231,19 @@
                                 ?M5_SHARED_SUBS_NOT_SUPPORTED |
                                 ?M5_SUBSCRIPTION_IDS_NOT_SUPPORTED |
                                 ?M5_WILDCARD_SUBS_NOT_SUPPORTED],
-          properties=#{}     :: mqtt5_properties()
+          properties=#{}     :: mqtt5_suback_props()
          }).
 -type mqtt5_suback()        :: #mqtt5_suback{}.
+-type mqtt5_suback_props( ) :: #{?P_REASON_STRING_ASSOC,
+                                 ?P_USER_PROPERTY_ASSOC}.
 
 -record(mqtt5_unsubscribe, {
           message_id        :: msg_id(),
           topics=[]         :: [topic()],
-          properties=#{}    :: mqtt5_properties()
+          properties=#{}    :: mqtt5_unsub_props()
          }).
 -type mqtt5_unsubscribe()   :: #mqtt5_unsubscribe{}.
+-type mqtt5_unsub_props()   :: #{?P_USER_PROPERTY_ASSOC}.
 
 -record(mqtt5_unsuback, {
           message_id        :: msg_id(),
@@ -185,9 +255,11 @@
                                 ?M5_TOPIC_FILTER_INVALID |
                                 ?M5_PACKET_ID_IN_USE |
                                 ?M5_QUOTA_EXCEEDED],
-          properties=#{}     :: mqtt5_properties()
+          properties=#{}     :: mqtt5_unsuback_props()
          }).
 -type mqtt5_unsuback()      :: #mqtt5_unsuback{}.
+-type mqtt5_unsuback_props( ) :: #{?P_REASON_STRING_ASSOC,
+                                   ?P_USER_PROPERTY_ASSOC}.
 
 -record(mqtt5_pingreq, {}).
 -type mqtt5_pingreq()       :: #mqtt5_pingreq{}.
@@ -226,17 +298,25 @@
                                ?M5_MAX_CONNECT_TIME |
                                ?M5_SUBSCRIPTION_IDS_NOT_SUPPORTED |
                                ?M5_WILDCARD_SUBS_NOT_SUPPORTED,
-          properties=#{}     :: mqtt5_properties()
+          properties=#{}     :: mqtt5_disconnect_props()
          }).
 -type mqtt5_disconnect()    :: #mqtt5_disconnect{}.
+-type mqtt5_disconnect_props() :: #{?P_SESSION_EXPIRY_INTERVAL_ASSOC,
+                                    ?P_SERVER_REF_ASSOC,
+                                    ?P_REASON_STRING_ASSOC,
+                                    ?P_USER_PROPERTY_ASSOC}.
 
 -record(mqtt5_auth, {
          reason_code        :: ?M5_SUCCESS |
                                ?M5_CONTINUE_AUTHENTICATION |
                                ?M5_REAUTHENTICATE,
-         properties=#{}      :: mqtt5_properties()
+         properties=#{}     :: mqtt5_auth_props()
          }).
 -type mqtt5_auth()          :: #mqtt5_auth{}.
+-type mqtt5_auth_props()    :: #{?P_AUTHENTICATION_METHOD_ASSOC,
+                                 ?P_AUTHENTICATION_DATA_ASSOC,
+                                 ?P_REASON_STRING_ASSOC,
+                                 ?P_USER_PROPERTY_ASSOC}.
 
 -type mqtt5_frame()         :: mqtt5_connect()
                              | mqtt5_connack()
@@ -264,69 +344,29 @@
 -record(p_payload_format_indicator, {
           value :: unspecified | utf8
          }).
--type p_payload_format_indicator() :: #p_payload_format_indicator{}.
-
 -record(p_message_expiry_interval, {value :: seconds()}).
--type p_message_expiry_interval() :: #p_message_expiry_interval{}.
-
 -record(p_content_type, {value :: utf8string()}).
--type p_content_type() :: #p_content_type{}.
-
 -record(p_response_topic, {value :: topic()}).
--type p_response_topic() :: #p_content_type{}.
-
 -record(p_correlation_data, {value :: binary()}).
--type p_correlation_data() :: #p_correlation_data{}.
-
 %% As there can be more than one subscription id in an outgoing
 %% publish frame (only one in a subscribe frame) and we represent the
 %% properties as a map we store multiple values in the record.
 -type subscription_id() :: 1..268435455.
 -record(p_subscription_id, {value :: [subscription_id()]}).
--type p_subscription_id() :: #p_subscription_id{}.
-
 -record(p_session_expiry_interval, {value :: seconds()}).
--type p_session_expiry_interval() :: #p_session_expiry_interval{}.
-
 -record(p_assigned_client_id, {value :: utf8string()}).
--type p_assigned_client_id() :: #p_assigned_client_id{}.
-
 -record(p_server_keep_alive, {value :: seconds()}).
--type p_server_keep_alive() :: #p_server_keep_alive{}.
-
 -record(p_authentication_method, {value :: utf8string()}).
--type p_authentication_method() :: #p_authentication_method{}.
-
 -record(p_authentication_data, {value :: binary()}).
--type p_authentication_data() :: #p_authentication_data{}.
-
 -record(p_request_problem_info, {value :: boolean()}).
--type p_request_problem_info() :: #p_request_problem_info{}.
-
 -record(p_will_delay_interval, {value :: seconds()}).
--type p_will_delay_interval() :: #p_will_delay_interval{}.
-
 -record(p_request_response_info, {value :: boolean()}).
--type p_request_response_info() :: #p_request_response_info{}.
-
 -record(p_response_info, {value :: utf8string()}).
--type p_response_info() :: #p_response_info{}.
-
 -record(p_server_ref, {value :: utf8string()}).
--type p_server_ref() :: #p_server_ref{}.
-
 -record(p_reason_string, {value :: utf8string()}).
--type p_reason_string() :: #p_reason_string{}.
-
 -record(p_receive_max, {value :: 1..65535}).
--type p_receive_max() :: #p_receive_max{}.
-
 -record(p_topic_alias_max, {value :: 0..65535}).
--type p_topic_alias_max() :: #p_topic_alias_max{}.
-
 -record(p_topic_alias, {value :: 1..65535}).
--type p_topic_alias() :: #p_topic_alias{}.
-
 %% Spec: It is a Protocol Error to include Maximum QoS more than once,
 %% or to have a value other than 0 or 1. If the Maximum QoS is absent,
 %% the Client uses a Maximum QoS of 2.
@@ -335,56 +375,15 @@
 %% be easier to handle in the code - in that case we should extend
 %% this type to include 2.q
 -record(p_max_qos, {value :: 0 | 1}).
--type p_max_qos() :: #p_max_qos{}.
-
 -record(p_retain_available, {value :: boolean()}).
--type p_retain_available() :: #p_retain_available{}.
-
 %% as there can be more than one user property id in a single frame
 %% and we represent the properties as a map we store multiple values
 %% in the record.
 -record(p_user_property, {value :: [user_property()]}).
--type p_user_property() :: #p_user_property{}.
-
 -record(p_max_packet_size, {value :: 1..4294967296}).
--type p_max_packet_size() :: #p_max_packet_size{}.
-
 -record(p_wildcard_subs_available, {value :: boolean()}).
--type p_wildcard_subs_available() :: #p_wildcard_subs_available{}.
-
 -record(p_sub_ids_available, {value :: boolean()}).
--type p_sub_ids_available() :: #p_sub_ids_available{}.
-
 -record(p_shared_subs_available, {value :: boolean()}).
--type p_shared_subs_available() :: #p_shared_subs_available{}.
-
--type mqtt5_property() :: p_payload_format_indicator()
-                        | p_message_expiry_interval()
-                        | p_content_type()
-                        | p_response_topic()
-                        | p_correlation_data()
-                        | p_subscription_id()
-                        | p_session_expiry_interval()
-                        | p_assigned_client_id()
-                        | p_server_keep_alive()
-                        | p_authentication_method()
-                        | p_authentication_data()
-                        | p_request_problem_info()
-                        | p_will_delay_interval()
-                        | p_request_response_info()
-                        | p_response_info()
-                        | p_server_ref()
-                        | p_reason_string()
-                        | p_receive_max()
-                        | p_topic_alias_max()
-                        | p_topic_alias()
-                        | p_max_qos()
-                        | p_retain_available()
-                        | p_user_property()
-                        | p_max_packet_size()
-                        | p_wildcard_subs_available()
-                        | p_sub_ids_available()
-                        | p_shared_subs_available().
 
 -type reason_code()         :: ?M5_SUCCESS
                              | ?M5_GRANTED_QOS0
