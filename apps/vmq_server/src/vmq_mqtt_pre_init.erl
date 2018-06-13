@@ -112,8 +112,10 @@ msg_in(close_timeout, _FsmState0) ->
     lager:debug("stop due to timeout", []),
     {stop, normal, []}.
 
+serialize([]) -> [];
 serialize([Out]) ->
     [vmq_parser:serialise(Out)].
 
+serialize_mqtt5([]) -> [];
 serialize_mqtt5([Out]) ->
     [vmq_parser_mqtt5:serialise(Out)].
