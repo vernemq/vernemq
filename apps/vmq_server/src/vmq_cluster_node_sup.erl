@@ -21,7 +21,7 @@
          ensure_cluster_node/1,
          get_cluster_node/1,
          del_cluster_node/1,
-         is_reachable/1]).
+         node_status/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -80,14 +80,15 @@ get_cluster_node(Node) ->
             {ok, Pid}
     end.
 
-is_reachable(Node) when Node == node() ->
-    true;
-is_reachable(Node) ->
+-spec node_status(node()) -> init | up | down.
+node_status(Node) when Node == node() ->
+    up;
+node_status(Node) ->
     case get_cluster_node(Node) of
         {ok, Pid} when is_pid(Pid) ->
-            vmq_cluster_node:is_reachable(Pid);
+            vmq_cluster_node:status(Pid);
         _ ->
-            false
+            down
     end.
 
 %%%===================================================================
