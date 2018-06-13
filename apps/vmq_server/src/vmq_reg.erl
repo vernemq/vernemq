@@ -53,6 +53,9 @@
 %% exported because currently used by queue & netsplit tests
 -export([subscriptions_for_subscriber_id/1]).
 
+%% exported for testing purposes
+-export([retain_pre/1]).
+
 -define(NR_OF_REG_RETRIES, 10).
 
 -spec subscribe(flag(), subscriber_id(),
@@ -331,7 +334,7 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS) ->
     vmq_retain_srv:match_fold(
       fun ({T, Payload}, _) ->
               Msg = #vmq_msg{routing_key=T,
-                             payload=Payload,
+                             payload=retain_pre(Payload),
                              retain=true,
                              qos=QoS,
                              dup=false,
@@ -639,3 +642,19 @@ status(SubscriberId) ->
             {ok, vmq_queue:status(QPid)}
     end.
 
+
+%% retain, pre-versioning
+%% {MPTopic, MsgOrDeleted}
+%% future version:
+%% {retain_msg, version, payload, properties, expiry_ts, ...}
+
+-define(RETAIN_PRE_V, 0).
+
+-spec retain_pre(binary() | tuple()) -> binary().
+retain_pre(Msg) when is_binary(Msg) ->
+    Msg;
+retain_pre(FutureRetain) when is_tuple(FutureRetain),
+                              element(1, FutureRetain) =:= retain_msg,
+                              is_integer(element(2, FutureRetain)),
+                              element(2, FutureRetain) > ?RETAIN_PRE_V ->
+    element(3, FutureRetain).

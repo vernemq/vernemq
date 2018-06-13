@@ -22,7 +22,8 @@
          shared_subs_local_only_policy_test/1,
          cross_node_publish_subscribe/1,
          restarted_node_has_no_stale_sessions/1,
-         routing_table_survives_node_restart/1]).
+         routing_table_survives_node_restart/1,
+         convert_new_msgs_to_old_format/1]).
 
 -export([hook_uname_password_success/5,
          hook_auth_on_publish/6,
@@ -31,7 +32,8 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/inet.hrl").
 -include_lib("eunit/include/eunit.hrl").
--include_lib("vmq_commons/include/vmq_types.hrl").
+-include("src/vmq_server.hrl").
+
 
 %% ===================================================================
 %% common_test callbacks
@@ -53,6 +55,9 @@ end_per_suite(_Config) ->
     application:stop(lager),
     _Config.
 
+init_per_testcase(convert_new_msgs_to_old_format, Config) ->
+    %% no setup necessary,
+    Config;
 init_per_testcase(Case, Config) ->
     vmq_test_utils:seed_rand(Config),
     Nodes = vmq_cluster_test_utils:pmap(
@@ -70,6 +75,9 @@ init_per_testcase(Case, Config) ->
     {ok, _} = ct_cover:add_nodes(CoverNodes),
     [{nodes, Nodes},{nodenames, [test1, test2, test3]}|Config].
 
+end_per_testcase(convert_new_msgs_to_old_format, Config) ->
+    %% no teardown necessary,
+    Config;
 end_per_testcase(_, _Config) ->
     vmq_cluster_test_utils:pmap(fun(Node) -> ct_slave:stop(Node) end,
                                 [test1, test2, test3]),
@@ -91,6 +99,7 @@ all() ->
     ,cross_node_publish_subscribe
     ,restarted_node_has_no_stale_sessions
     ,routing_table_survives_node_restart
+    ,convert_new_msgs_to_old_format
     ].
 
 
@@ -739,6 +748,35 @@ cross_node_publish_subscribe(Config) ->
                  ++ Payloads
                  ++ Payloads),
     receive_nothing(200).
+
+convert_new_msgs_to_old_format(_Config) ->
+    %% create a #vmq_msg{} as a raw tuple.
+    Orig = {
+      %% record name,
+      vmq_msg,
+
+      %% field values
+      "msg_ref",
+      "routing_key",
+      "payload",
+      "retain",
+      "dup",
+      "qos",
+      "mountpoint",
+      "persisted",
+      "sg_policy"
+     },
+
+    %% fail if new items were added to the #vmq_msg{} record:
+    #vmq_msg{} = Orig,
+
+    %% test identity
+    Orig = vmq_cluster_com:to_vmq_msg(Orig),
+
+    %% test we can strip away extra tuple elements an the result is
+    %% the original record.
+    Extended = list_to_tuple(tuple_to_list(Orig) ++ [a,b,c]),
+    Orig = vmq_cluster_com:to_vmq_msg(Extended).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal
