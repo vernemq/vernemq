@@ -96,7 +96,11 @@ status(Pid) ->
 init([Parent, RemoteNode]) ->
     MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
     proc_lib:init_ack(Parent, {ok, self()}),
-    erlang:send_after(1000, self(), reconnect), %% initial connect
+    % Delay the initial connect attempt, this is useful when automating
+    % cluster node setup, where multiple nodes are concurrently setup.
+    % Without a delay a node may try to connect to a cluster node that
+    % hasn't finished setting up the vmq cluster listener.
+    erlang:send_after(1000, self(), reconnect),
     loop(#state{parent=Parent, node=RemoteNode, max_queue_size=MaxQueueSize}).
 
 loop(#state{pending=[]} = State) ->
