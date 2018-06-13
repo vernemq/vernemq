@@ -80,6 +80,7 @@ get_cluster_node(Node) ->
             {ok, Pid}
     end.
 
+-spec node_status(node()) -> init | up | down.
 node_status(Node) when Node == node() ->
     up;
 node_status(Node) ->
