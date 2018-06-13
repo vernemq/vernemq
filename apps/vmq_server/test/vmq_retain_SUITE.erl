@@ -41,7 +41,8 @@ groups() ->
          retain_qos0_clear_test,
          retain_qos1_qos0_test,
          retain_wildcard_test,
-         publish_empty_retained_msg_test],
+         publish_empty_retained_msg_test,
+         retain_compat_pre_test],
     [
      {mqtt, [shuffle, parallel], Tests}
     ].
@@ -181,6 +182,13 @@ retain_wildcard_test(_) ->
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = packet:expect_packet(Socket, "publish", Publish),
     ok = gen_tcp:close(Socket).
+
+retain_compat_pre_test(_Cfg) ->
+    Pre = <<"msg">>,
+    Pre = vmq_reg:retain_pre(Pre),
+
+    Future = {retain_msg, 1, <<"future_msg">>, something, else},
+    <<"future_msg">> = vmq_reg:retain_pre(Future).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks

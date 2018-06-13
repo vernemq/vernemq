@@ -6,6 +6,13 @@
   timeout (#726).
 - Fix issue with self referential cluster leaves and cluster readiness probing
   in general (#717).
+- Add preparations for MQTTv5:
+  - Make it possible to extend the cluster internal message format when adding
+    new features while ensuring back- and forwards compatibility.
+  - Refactor the leveldb message store code to support versioned indexes as well
+    as messages.
+  - Refactor the retained message store to support versions.
+  - Add support for subscriber data with subscription options.
 
 ## VerneMQ 1.4.0
 
