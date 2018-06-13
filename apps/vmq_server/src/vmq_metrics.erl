@@ -731,9 +731,9 @@ describe({gauge, vm_memory_code}) ->
 describe({gauge, vm_memory_ets}) ->
     <<"The amount of memory allocated for ETS tables.">>;
 describe({counter, netsplit_detected}) ->
-    <<"The number of detected netsplits">>;
+    <<"The number of detected netsplits.">>;
 describe({counter, netsplit_resolved}) ->
-    <<"The number of resolved netsplits">>;
+    <<"The number of resolved netsplits.">>;
 describe({Type, Metric}) ->
     describe_dynamic({Type, atom_to_binary(Metric, utf8)}).
 
