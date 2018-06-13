@@ -203,5 +203,7 @@ check_ready([], Acc) ->
     ets:insert(?VMQ_CLUSTER_STATUS, [{ready, NewObj}|Acc]).
 
 -spec all_nodes_alive([{NodeName::atom(), IsReady::boolean()}]) -> boolean().
-all_nodes_alive(Nodes) ->
-    not lists:keymember(false, 2, Nodes).
+all_nodes_alive([{_NodeName, _IsReady = false}|_]) -> false;
+all_nodes_alive([{_NodeName, _IsReady = true} |Rest]) ->
+    all_nodes_alive(Rest);
+all_nodes_alive([]) -> true.
