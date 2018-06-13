@@ -20,7 +20,7 @@
          publish/2,
          enqueue/3,
          connect_params/1,
-         is_reachable/1]).
+         status/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -81,10 +81,10 @@ enqueue(Pid, Term, BufferIfUnreachable) ->
         Timeout -> {error, timeout}
     end.
 
-is_reachable(Pid) ->
+status(Pid) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
-    Pid ! {is_reachable, self(), Ref},
+    Pid ! {status, self(), Ref},
     receive
         {Ref, Reply} ->
             demonitor(MRef, [flush]),
@@ -96,7 +96,11 @@ is_reachable(Pid) ->
 init([Parent, RemoteNode]) ->
     MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
     proc_lib:init_ack(Parent, {ok, self()}),
-    self() ! reconnect, %% initial connect
+    % Delay the initial connect attempt, this is useful when automating
+    % cluster node setup, where multiple nodes are concurrently setup.
+    % Without a delay a node may try to connect to a cluster node that
+    % hasn't finished setting up the vmq cluster listener.
+    erlang:send_after(1000, self(), reconnect),
     loop(#state{parent=Parent, node=RemoteNode, max_queue_size=MaxQueueSize}).
 
 loop(#state{pending=[]} = State) ->
@@ -187,8 +191,17 @@ handle_message({NetEv, _}, #state{reconnect_tref=TRef} = State)
     State#state{reachable=false, reconnect_tref=NewTRef};
 handle_message(reconnect, #state{reachable=false} = State) ->
     connect(State#state{reconnect_tref=undefined});
-handle_message({is_reachable, CallerPid, Ref}, #state{reachable=Reachable}=State) ->
-    CallerPid ! {Ref, Reachable},
+handle_message({status, CallerPid, Ref}, #state{socket=Socket, reachable=Reachable}=State) ->
+    Status =
+    case Reachable of
+        true ->
+            up;
+        false when Socket == undefined ->
+            init;
+        false ->
+            down
+    end,
+    CallerPid ! {Ref, Status},
     State;
 handle_message({system, From, Request}, #state{parent=Parent}= State) ->
     sys:handle_system_msg(Request, From, Parent, ?MODULE, [], State);

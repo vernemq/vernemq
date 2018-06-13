@@ -40,7 +40,9 @@ cluster_leave(Node) ->
         {error,{precondition,{not_present, Node}}} ->
             {error, not_present};
         {ok, Merged} ->
-            _ = gen_server:cast(plumtree_peer_service_gossip, {receive_state, Merged}),
+            AllNodes = riak_dt_orswot:value(Local),
+            % multi_cast so we don't need to wait for the next gossip round
+            multi_cast(AllNodes, plumtree_peer_service_gossip, {receive_state, Merged}),
             {ok, Local2} = plumtree_peer_service_manager:get_local_state(),
             Local2List = riak_dt_orswot:value(Local2),
             case [P || P <- Local2List, P =:= Node] of
@@ -50,6 +52,11 @@ cluster_leave(Node) ->
                     cluster_leave(Node)
             end
     end.
+
+multi_cast([Node|Rest], RegName, Msg) ->
+    _ = gen_server:cast({RegName, Node}, Msg),
+    multi_cast(Rest, RegName, Msg);
+multi_cast([], _, _) -> ok.
 
 cluster_members() ->
     {ok, LocalState} = plumtree_peer_service_manager:get_local_state(),

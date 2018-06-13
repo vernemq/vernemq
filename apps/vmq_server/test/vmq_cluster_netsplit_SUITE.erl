@@ -91,8 +91,9 @@ register_consistency_test(Config) ->
 
     ok = wait_until_converged(Nodes,
                          fun(N) ->
-                                 rpc:call(N, vmq_cluster, is_ready, [])
-                         end, false),
+                                 {rpc:call(N, vmq_cluster, netsplit_statistics, []),
+                                  rpc:call(N, vmq_cluster, is_ready, [])}
+                         end, {{1, 0}, false}),
 
     {_, Island1Port} = random_node(Island1),
     {_, Island2Port} = random_node(Island2),
@@ -106,6 +107,12 @@ register_consistency_test(Config) ->
     {ok, _} = packet:do_client_connect(Connect, packet:gen_connack(3),
                                        [{port, Island2Port}]),
     vmq_cluster_test_utils:heal_cluster(Island1Names, Island2Names),
+
+    ok = wait_until_converged(Nodes,
+                         fun(N) ->
+                                 {rpc:call(N, vmq_cluster, netsplit_statistics, []),
+                                  rpc:call(N, vmq_cluster, is_ready, [])}
+                         end, {{1, 1}, true}),
     ok.
 
 register_consistency_multiple_sessions_test(Config) ->

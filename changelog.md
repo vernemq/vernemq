@@ -4,6 +4,8 @@
 
 - Fix issue in the bridge preventing it from reconnecting after a connection
   timeout (#726).
+- Fix issue with self referential cluster leaves and cluster readiness probing
+  in general (#717).
 
 ## VerneMQ 1.4.0
 
