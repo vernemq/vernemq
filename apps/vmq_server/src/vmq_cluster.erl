@@ -176,8 +176,8 @@ check_ready([Node|Rest], Acc) ->
     ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
     %% We should only say we're ready if we've established a
     %% connection to the remote node.
-    S = vmq_cluster_node_sup:node_status(Node),
-    IsReady1 = IsReady andalso lists:member(S, [up, init]),
+    Status = vmq_cluster_node_sup:node_status(Node),
+    IsReady1 = IsReady andalso lists:member(Status, [up, init]),
     check_ready(Rest, [{Node, IsReady1}|Acc]);
 check_ready([], Acc) ->
     OldObj =
