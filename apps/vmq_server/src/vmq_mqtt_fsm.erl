@@ -19,8 +19,6 @@
          msg_in/2,
          info/2]).
 
--define(CLOSE_AFTER, 5000).
-
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 -type msg_id() :: undefined | 1..65535.
 
