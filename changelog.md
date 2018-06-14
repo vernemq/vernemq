@@ -6,6 +6,7 @@
   timeout (#726).
 - Fix issue with self referential cluster leaves and cluster readiness probing
   in general (#717).
+- Make it possible to configure the connect timeout (#735).
 
 ## VerneMQ 1.4.0
 

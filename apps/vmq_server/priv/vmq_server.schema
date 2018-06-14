@@ -277,6 +277,13 @@
                                                                           hidden
                                                                          ]}.
 
+%% @doc specifies the connect timeout.
+{mapping, "connect_timeout", "vmq_server.connect_timeout", [
+                                                            {default, 5000},
+                                                            {datatype, integer},
+                                                            hidden
+                                                           ]}.
+
 %% @doc specifies the modules that should be evaluated when setting up the cowboy routes
 {mapping, "http_modules", "vmq_server.http_modules", [
                                                       {default, "[vmq_metrics_http,vmq_http_mgmt_api, vmq_status_http]"},

@@ -108,7 +108,8 @@ init(Peer, Opts) ->
                     },
     TraceFun = vmq_config:get_env(trace_fun, undefined),
 
-    TRef = vmq_mqtt_fsm_util:send_after(?CLOSE_AFTER, close_timeout),
+    ConnectTimeout = vmq_config:get_env(connect_timeout, 5000),
+    TRef = vmq_mqtt_fsm_util:send_after(ConnectTimeout, close_timeout),
     set_max_msg_size(MaxMessageSize),
     {wait_for_connect, #state{peer=Peer,
                               upgrade_qos=UpgradeQoS,
