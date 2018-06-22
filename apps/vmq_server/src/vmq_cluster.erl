@@ -187,9 +187,9 @@ check_ready([], Acc) ->
     end,
     NewObj =
     case {all_nodes_alive(Acc), OldObj} of
-        {true, {true, 0, 0}} ->
-            % initial case, possibly single-node cluster
-            {true, 0, 0};
+        {true, {true, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
+            % Cluster was consistent, is still consistent
+            {true, NetsplitDetectedCnt, NetsplitResolvedCnt};
         {true, {false, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
             % Cluster was inconsistent, netsplit resolved
             {true, NetsplitDetectedCnt, NetsplitResolvedCnt + 1};
