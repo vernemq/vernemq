@@ -278,7 +278,11 @@ queue_force_disconnect_cleanup_test(_) ->
     NumPubbedMsgs = length(Msgs),
 
     timer:sleep(50), % give some time to the metadata layer
+<<<<<<< HEAD
     {ok, FoundMsgs} = vmq_rocksdb_store:msg_store_find(SubscriberId),
+=======
+    {ok, FoundMsgs} = vmq_lvldb_store:msg_store_find(SubscriberId),
+>>>>>>> Initial vmq_swc
     NumPubbedMsgs = length(FoundMsgs),
 
     vmq_queue:force_disconnect(QPid0, ?ADMINISTRATIVE_ACTION, true),
