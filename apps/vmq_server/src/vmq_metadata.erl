@@ -22,15 +22,15 @@
          subscribe/1]).
 
 start() ->
-    Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
+    Impl = application:get_env(vmq_server, metadata_impl, vmq_swc),
     Ret = vmq_plugin_mgr:enable_system_plugin(Impl, []),
     lager:info("Try to start ~p: ~p", [Impl, Ret]),
     Ret.
 
 stop() ->
-    Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
+    Impl = application:get_env(vmq_server, metadata_impl, vmq_swc),
     Ret = vmq_plugin_mgr:disable_plugin(Impl, []),
-    lager:info("Try to start ~p: ~p", [Impl, Ret]),
+    lager:info("Try to stop ~p: ~p", [Impl, Ret]),
     Ret.
 
 
