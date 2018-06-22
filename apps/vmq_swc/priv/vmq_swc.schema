@@ -1,0 +1,12 @@
+%% @doc Set the path to a password file.
+{mapping, "vmq_swc.listener_address", "vmq_swc.listener_address",
+ [
+  {default, { "{{swc_default_ip}}", {{swc_default_port}} }},
+  {datatype, ip}
+ ]}.
+
+{mapping, "vmq_swc.directory", "vmq_swc.data_dir", [
+                                             {default, "{{platform_data_dir}}/meta"},
+                                             {datatype, directory},
+                                             hidden
+                                            ]}.

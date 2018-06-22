@@ -39,7 +39,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 get_cluster_members(Node) ->
-    rpc:call(Node, vmq_plugin, only, [cluster_members, []]).
+    [N || {N, _} <- rpc:call(Node, vmq_cluster, status, [])].
 
 pmap(F, L) ->
     Parent = self(),
@@ -122,21 +122,18 @@ start_node(Name, Config, Case) ->
             NodeDir = filename:join([PrivDir, Node, Case]),
             ok = rpc:call(Node, application, load, [vmq_server]),
             ok = rpc:call(Node, application, load, [vmq_plugin]),
-            ok = rpc:call(Node, application, load, [plumtree]),
+            ok = rpc:call(Node, application, load, [vmq_swc]),
             ok = rpc:call(Node, application, load, [lager]),
             ok = rpc:call(Node, application, set_env, [lager,
                                                        log_root,
                                                        NodeDir]),
-            ok = rpc:call(Node, application, set_env, [plumtree,
-                                                       plumtree_data_dir,
-                                                       NodeDir]),
-            ok = rpc:call(Node, application, set_env, [plumtree,
-                                                       metadata_root,
-                                                       NodeDir ++ "/meta/"]),
+            ok = rpc:call(Node, application, set_env, [vmq_swc,
+                                                       data_dir,
+                                                       NodeDir++"/data"]),
             ok = rpc:call(Node, application, set_env, [vmq_server,
                                                        listeners,
                                                        [{vmq, [{{{127,0,0,1},
-                                                                 random_port(Node)},
+                                                                 24053 + (erlang:phash2(Node) rem 1000)},
                                                                 []}]}
                                                        ]]),
             ok = rpc:call(Node, application, set_env, [vmq_server,
@@ -150,6 +147,16 @@ start_node(Name, Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_plugin,
                                                        plugin_dir,
                                                        NodeDir]),
+            ok = rpc:call(Node, application, set_env ,[vmq_plugin,
+                                                       default_schema_dir,
+                                                       [code:priv_dir(vmq_server)]]),
+
+            ok = rpc:call(Node, application, set_env, [vmq_swc,
+                                                       transport_mod,
+                                                       vmq_swc_proxy_diameter_transport]),
+            ok = rpc:call(Node, application, set_env, [vmq_swc,
+                                                       listener_address,
+                                                       {{127,0,0,1}, 14053 + (erlang:phash2(Node) rem 1000)}]),
 
             {ok, _} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),
@@ -175,6 +182,7 @@ start_node(Name, Config, Case) ->
     end.
 
 partition_cluster(ANodes, BNodes) ->
+    vmq_swc_proxy_diameter_transport:partition_cluster(ANodes, BNodes),
     pmap(fun({Node1, Node2}) ->
                 true = rpc:call(Node1, erlang, set_cookie, [Node2, canttouchthis]),
                 true = rpc:call(Node1, erlang, disconnect_node, [Node2]),
@@ -184,6 +192,7 @@ partition_cluster(ANodes, BNodes) ->
     ok.
 
 heal_cluster(ANodes, BNodes) ->
+    vmq_swc_proxy_diameter_transport:heal_partitioned_cluster(ANodes, BNodes),
     GoodCookie = erlang:get_cookie(),
     pmap(fun({Node1, Node2}) ->
                 true = rpc:call(Node1, erlang, set_cookie, [Node2, GoodCookie]),
@@ -201,11 +210,7 @@ ensure_cluster(Config) ->
     Expected = lists:sort(NodeNames),
     ok = vmq_cluster_test_utils:wait_until_joined(NodeNames, Expected),
     [?assertEqual({Node, Expected}, {Node,
-                                     lists:sort(vmq_cluster_test_utils:get_cluster_members(Node))})
+                                     lists:sort(get_cluster_members(Node))})
      || Node <- NodeNames],
     vmq_cluster_test_utils:wait_until_ready(NodeNames),
     ok.
-
-
-random_port(Node) ->
-    10000 + (erlang:phash2(Node) rem 10000).

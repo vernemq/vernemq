@@ -1,4 +1,4 @@
-%% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -11,37 +11,28 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+
 %%%-------------------------------------------------------------------
-%% @doc vmq_plumtree top level supervisor.
+%% @doc vmq_swc public API
 %% @end
 %%%-------------------------------------------------------------------
 
--module(vmq_plumtree_sup).
+-module(vmq_swc_app).
 
--behaviour(supervisor).
+-behaviour(application).
 
+%% Application callbacks
+-export([start/2, stop/1]).
+
+%%====================================================================
 %% API
--export([start_link/0]).
-
-%% Supervisor callbacks
--export([init/1]).
-
--define(SERVER, ?MODULE).
-
 %%====================================================================
-%% API functions
-%%====================================================================
+start(_StartType, _StartArgs) ->
+    vmq_swc_sup:start_link().
 
-start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
-
-%%====================================================================
-%% Supervisor callbacks
-%%====================================================================
-
-%% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
-init([]) ->
-    {ok, { {one_for_all, 0, 1}, []} }.
+%%--------------------------------------------------------------------
+stop(_State) ->
+    ok.
 
 %%====================================================================
 %% Internal functions
