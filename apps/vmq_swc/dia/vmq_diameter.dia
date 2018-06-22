@@ -1,0 +1,20 @@
+@id 4053
+@vendor 0 IETF
+
+@inherits diameter_gen_base_rfc3588
+
+@avp_types
+Payload                 610 OctetString MV
+
+@messages
+Request ::= <Diameter Header: 603, REQ>
+          { Origin-Host }
+    	  { Origin-Realm }
+    	  { Payload }
+
+;; User Event Respone (we wont send this)
+Response ::= <Diameter Header: 603>
+           { Result-Code }
+           { Origin-Host }
+           { Origin-Realm }
+	       { Payload }

@@ -1,4 +1,4 @@
-%% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -12,16 +12,15 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_plumtree).
--export([start/0, stop/0]).
+-module(vmq_swc_plugin).
 
 -export([metadata_put/3,
          metadata_get/2,
          metadata_delete/2,
          metadata_fold/3,
-         metadata_subscribe/1]).
+         metadata_subscribe/1,
 
--export([cluster_join/1,
+         cluster_join/1,
          cluster_leave/1,
          cluster_members/0,
          cluster_rename_member/2,
@@ -29,16 +28,7 @@
          cluster_events_delete_handler/2,
          cluster_events_call_handler/3]).
 
-
--define(TOMBSTONE, '$deleted').
-
-start() ->
-    application:ensure_all_started(vmq_plumtree).
-
-stop() ->
-    application:stop(vmq_plumtree),
-    application:stop(plumtree),
-    application:stop(eleveldb).
+-define(SWC_GROUP, metadata).
 
 cluster_join(DiscoveryNode) ->
     plumtree_peer_service:join(DiscoveryNode).
@@ -66,11 +56,13 @@ cluster_leave(Node) ->
 multi_cast([Node|Rest], RegName, Msg) ->
     _ = gen_server:cast({RegName, Node}, Msg),
     multi_cast(Rest, RegName, Msg);
-multi_cast([], _, _) -> ok.
+multi_cast([], _, _) ->
+    timer:sleep(1000),
+    ok.
 
 cluster_members() ->
-    {ok, LocalState} = plumtree_peer_service_manager:get_local_state(),
-    riak_dt_orswot:value(LocalState).
+    Config = vmq_swc:config(metadata),
+    lists:sort([binary_to_atom(M, utf8) || M <- vmq_swc_group_membership:get_members(Config)]).
 
 cluster_rename_member(OldName, NewName) ->
     {ok, LocalState} = plumtree_peer_service_manager:get_local_state(),
@@ -89,17 +81,41 @@ cluster_events_call_handler(Module, Msg, Timeout) ->
     gen_event:call(plumtree_peer_service_events, Module, Msg, Timeout).
 
 metadata_put(FullPrefix, Key, Value) ->
-    plumtree_metadata:put(FullPrefix, Key, Value).
+    TsValue = {os:timestamp(), Value},
+    vmq_swc:put(?SWC_GROUP, FullPrefix, Key, TsValue, []).
 
 metadata_get(FullPrefix, Key) ->
-    plumtree_metadata:get(FullPrefix, Key).
+    case vmq_swc:get(?SWC_GROUP, FullPrefix, Key, [{resolver, fun lww_resolver/1}]) of
+        undefined -> undefined;
+        {_Ts, Value} -> Value
+    end.
 
 metadata_delete(FullPrefix, Key) ->
-    plumtree_metadata:delete(FullPrefix, Key).
+    vmq_swc:delete(?SWC_GROUP, FullPrefix, Key).
 
 metadata_fold(FullPrefix, Fun, Acc) ->
-    plumtree_metadata:fold(Fun, Acc, FullPrefix, [{resolver, lww}]).
+    vmq_swc:fold(?SWC_GROUP,
+      fun(K, {_Ts, V}, AccAcc) ->
+              Fun({K, V}, AccAcc)
+      end,
+      Acc, FullPrefix, [{resolver, fun lww_resolver/1}]).
 
 metadata_subscribe(FullPrefix) ->
-    plumtree_metadata_manager:subscribe(FullPrefix).
+    ConvertFun = fun ({deleted, FP, Key, OldValues}) ->
+                         {deleted, FP, Key, extract_val(lww_resolver(OldValues))};
+                     ({updated, FP, Key, OldValues, Values}) ->
+                         {updated, FP, Key,
+                          extract_val(lww_resolver(OldValues)),
+                          extract_val(lww_resolver(Values))}
+                 end,
+    vmq_swc_store:subscribe(vmq_swc:config(?SWC_GROUP), FullPrefix, ConvertFun).
+
+lww_resolver([]) -> undefined;
+lww_resolver([V]) -> V;
+lww_resolver(TimestampedVals) ->
+    [Newest|_] = lists:reverse(lists:keysort(1, TimestampedVals)),
+    Newest.
+
+extract_val({_Ts, Val}) -> Val;
+extract_val(undefined) -> undefined.
 

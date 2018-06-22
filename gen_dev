@@ -16,11 +16,13 @@ MQTTPORT=$(($BASE + 3))
 MQTTWSPORT=$(($BASE + 4))
 CLUSTERPORT=$(($BASE + 10))
 METRICSPORT=$(($BASE + 20))
+SWCPORT=$(($BASE + 30))
 
 
-echo "Generating $NAME - node='$NODE' mqttport=$MQTTPORT mqttwsport=$MQTTWSPORT"
+echo "Generating $NAME - node='$NODE' mqttport=$MQTTPORT mqttwsport=$MQTTWSPORT swcport=$SWCPORT"
 sed -e "s/@NODE@/$NODE/" \
     -e "s/@MQTTPORT@/$MQTTPORT/" \
     -e "s/@MQTTWSPORT@/$MQTTWSPORT/" \
     -e "s/@CLUSTERPORT@/$CLUSTERPORT/" \
+    -e "s/@SWCPORT@/$SWCPORT/" \
     -e "s/@METRICSPORT@/$METRICSPORT/" < $TEMPLATE > $VARFILE

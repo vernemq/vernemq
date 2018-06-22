@@ -13,9 +13,8 @@ setup() ->
     ok = maybe_start_distribution(NodeName),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
     os:cmd("rm -rf " ++ Datadir),
-    application:load(plumtree),
-    application:set_env(plumtree, plumtree_data_dir, Datadir),
-    application:set_env(plumtree, metadata_root, Datadir ++ "/meta/"),
+    application:load(vmq_swc),
+    application:set_env(vmq_swc, data_dir, Datadir ++ "/data"),
     application:load(vmq_server),
     PrivDir = code:priv_dir(vmq_server),
     application:set_env(vmq_server, schema_dirs, [PrivDir]),
@@ -26,6 +25,9 @@ setup() ->
                                                      {open_retries, 30},
                                                      {open_retry_delay, 2000}
                                                     ]),
+    application:load(vmq_plugin),
+    application:set_env(vmq_plugin, default_schema_dir, [PrivDir]),
+
     LogDir = "log." ++ atom_to_list(node()),
     application:load(lager),
     application:set_env(lager, handlers, [
@@ -51,7 +53,9 @@ teardown() ->
     disable_all_plugins(),
     vmq_metrics:reset_counters(),
     vmq_server:stop(),
+    vmq_swc:stop(),
     application:unload(vmq_server),
+    application:unload(vmq_swc),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
     _ = [eleveldb:destroy(Datadir ++ "/meta/" ++ integer_to_list(I), [])
          || I <- lists:seq(0, 11)],
@@ -63,7 +67,7 @@ teardown() ->
 disable_all_plugins() ->
     {ok, Plugins} = vmq_plugin_mgr:get_plugins(),
     %% Disable App Pluginns
-    lists:foreach(fun ({application, vmq_plumtree, _}) ->
+    lists:foreach(fun ({application, vmq_swc, _}) ->
                           % don't disable metadata plugin
                           ignore;
                       ({application, App, _Hooks}) ->
@@ -88,7 +92,7 @@ maybe_start_distribution(Name) ->
 reset_tables() ->
     _ = [reset_tab(T) || T <- [subscriber, config, retain]],
     %% it might be possible that a cached retained message
-    %% isn't yet persisted in plumtree
+    %% isn't yet persisted in the metadata layer
     ets:delete_all_objects(vmq_retain_srv),
     ok.
 

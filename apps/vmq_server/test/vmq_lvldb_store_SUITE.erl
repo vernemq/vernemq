@@ -21,11 +21,6 @@
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
     %% this might help, might not...
-    os:cmd(os:find_executable("epmd")++" -daemon"),
-    case net_kernel:start([lvldb_test, shortnames]) of
-        {ok, _} -> ok;
-        {error, _} -> ok
-    end,
     cover:start(),
     [S|Config].
 
@@ -46,7 +41,7 @@ end_per_testcase(message_compat_pre_test, Config) ->
 end_per_testcase(idx_compat_pre_test, Config) ->
     Config;
 end_per_testcase(_, Config) ->
-    vmq_server:stop(),
+    vmq_server:teardown(),
     Config.
 
 all() ->

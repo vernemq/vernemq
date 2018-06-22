@@ -200,7 +200,7 @@ queue_offline_transition_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
     {ok, false, QPid} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, false, QueueOpts, 10),
     {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
-    timer:sleep(10), % give some time to plumtree
+    timer:sleep(10), % give some time to the metadata layer
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
@@ -223,7 +223,7 @@ queue_persistent_client_expiration_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
     {ok, false, QPid} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, false, QueueOpts, 10),
     {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
-    timer:sleep(50), % give some time to plumtree
+    timer:sleep(50), % give some time to the metadata layer
 
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
@@ -231,7 +231,7 @@ queue_persistent_client_expiration_test(_) ->
     Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]),
     NumPubbedMsgs = length(Msgs),
 
-    timer:sleep(50), % give some time to plumtree
+    timer:sleep(50), % give some time to the metadata layer
     {ok, FoundMsgs} = vmq_lvldb_store:msg_store_find(SubscriberId),
     NumPubbedMsgs = length(FoundMsgs),
 
@@ -250,7 +250,7 @@ queue_force_disconnect_test(_) ->
     SessionPid1 = spawn(fun() -> mock_session(Parent) end),
     {ok, false, QPid0} = vmq_reg:register_subscriber(SessionPid1, SubscriberId, false, QueueOpts, 10),
     {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"disconnect">>], 1}]),
-    timer:sleep(50), % give some time to plumtree
+    timer:sleep(50), % give some time to the metadata layer
 
     monitor(process, SessionPid1),
     vmq_queue:force_disconnect(QPid0, ?ADMINISTRATIVE_ACTION),
@@ -273,12 +273,12 @@ queue_force_disconnect_cleanup_test(_) ->
     SessionPresent = false,
     {ok, SessionPresent, QPid0} = vmq_reg:register_subscriber(NonConsumingSessionPid, SubscriberId, false, QueueOpts, 10),
     {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"discleanup">>], 1}]),
-    timer:sleep(50), % give some time to plumtree
+    timer:sleep(50), % give some time to the metadata layer
 
     Msgs = publish_multi(SubscriberId, [<<"test">>, <<"discleanup">>]),
     NumPubbedMsgs = length(Msgs),
 
-    timer:sleep(50), % give some time to plumtree
+    timer:sleep(50), % give some time to the metadata layer
     {ok, FoundMsgs} = vmq_lvldb_store:msg_store_find(SubscriberId),
     NumPubbedMsgs = length(FoundMsgs),
 
