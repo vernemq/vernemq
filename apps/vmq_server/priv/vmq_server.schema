@@ -1389,7 +1389,7 @@
                                                                             hidden
                                                                            ]}.
 
-{mapping, "leveldb_message_store.directory", "vmq_server.msg_store_opts.store_dir", [
+{mapping, "rocksdb_message_store.directory", "vmq_server.msg_store_opts.store_dir", [
                                                                             {default, "{{platform_data_dir}}/msgstore"},
                                                                             {datatype, directory},
                                                                             hidden

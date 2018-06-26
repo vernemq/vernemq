@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_lvldb_store).
+-module(vmq_rocksdb_store).
 -include("vmq_server.hrl").
 -behaviour(gen_server).
 
@@ -40,7 +40,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {ref :: eleveldb:db_ref(),
+-record(state, {ref :: rocksdb:db_handle(),
                 data_root :: string(),
                 open_opts = [],
                 config :: config(),
@@ -95,7 +95,7 @@ msg_store_find(SubscriberId) ->
     end.
 
 msg_store_init_queue_collector(ParentPid, SubscriberId, Ref) ->
-    Pids = vmq_lvldb_store_sup:get_bucket_pids(),
+    Pids = vmq_rocksdb_store_sup:get_bucket_pids(),
     Acc = ordsets:new(),
     ResAcc = msg_store_collect(SubscriberId, Pids, Acc),
     ParentPid ! {self(), Ref, ordsets:to_list(ResAcc)}.
@@ -112,7 +112,7 @@ refcount(MsgRef) ->
     call(MsgRef, {refcount, MsgRef}).
 
 call(Key, Req) ->
-    case vmq_lvldb_store_sup:get_bucket_pid(Key) of
+    case vmq_rocksdb_store_sup:get_bucket_pid(Key) of
         {ok, BucketPid} ->
             gen_server:call(BucketPid, Req, infinity);
         {error, Reason} ->
@@ -154,7 +154,7 @@ init([InstanceId]) ->
                                [N, InstanceId])
             end,
             %% Register Bucket Instance with the Bucket Registry
-            vmq_lvldb_store_sup:register_bucket_pid(InstanceId, self()),
+            vmq_rocksdb_store_sup:register_bucket_pid(InstanceId, self()),
             {ok, State};
         {error, Reason} ->
             {stop, Reason}
@@ -224,7 +224,7 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, #state{ref=Ref}) ->
-    eleveldb:close(Ref),
+    rocksdb:close(Ref),
     ok.
 
 %%--------------------------------------------------------------------
@@ -247,64 +247,24 @@ init_state(DataRoot, Config) ->
     %% Get the data root directory
     filelib:ensure_dir(filename:join(DataRoot, "msg_store_dummy")),
 
-    %% Merge the proplist passed in from Config with any values specified by the
-    %% eleveldb app level; precedence is given to the Config.
-    MergedConfig = orddict:merge(fun(_K, VLocal, _VGlobal) -> VLocal end,
-                                 orddict:from_list(Config), % Local
-                                 orddict:from_list(application:get_all_env(eleveldb))), % Global
+    OpenOpts = [{create_if_missing, true},
+                {data_dir, DataRoot}],
 
-    %% Use a variable write buffer size in order to reduce the number
-    %% of vnodes that try to kick off compaction at the same time
-    %% under heavy uniform load...
-    WriteBufferMin = config_value(write_buffer_size_min, MergedConfig, 30 * 1024 * 1024),
-    WriteBufferMax = config_value(write_buffer_size_max, MergedConfig, 60 * 1024 * 1024),
-    WriteBufferSize = WriteBufferMin + rand:uniform(1 + WriteBufferMax - WriteBufferMin),
+    FoldOpts = [{fill_cache, false}],
 
-    %% Update the write buffer size in the merged config and make sure create_if_missing is set
-    %% to true
-    FinalConfig = orddict:store(write_buffer_size, WriteBufferSize,
-                                orddict:store(create_if_missing, true, MergedConfig)),
+    ReadOpts = [{fill_cache, false}],
 
-    %% Parse out the open/read/write options
-    {OpenOpts, _BadOpenOpts} = eleveldb:validate_options(open, FinalConfig),
-    {ReadOpts, _BadReadOpts} = eleveldb:validate_options(read, FinalConfig),
-    {WriteOpts, _BadWriteOpts} = eleveldb:validate_options(write, FinalConfig),
-
-    %% Use read options for folding, but FORCE fill_cache to false
-    FoldOpts = lists:keystore(fill_cache, 1, ReadOpts, {fill_cache, false}),
-
-    %% Warn if block_size is set
-    SSTBS = proplists:get_value(sst_block_size, OpenOpts, false),
-    BS = proplists:get_value(block_size, OpenOpts, false),
-    case BS /= false andalso SSTBS == false of
-        true ->
-            lager:warning("eleveldb block_size has been renamed sst_block_size "
-                          "and the current setting of ~p is being ignored.  "
-                          "Changing sst_block_size is strongly cautioned "
-                          "against unless you know what you are doing.  Remove "
-                          "block_size from app.config to get rid of this "
-                          "message.\n", [BS]);
-        _ ->
-            ok
-    end,
+    WriteOpts = [{sync, false}],
 
     %% Generate a debug message with the options we'll use for each operation
-    lager:debug("datadir ~s options for LevelDB: ~p\n",
+    lager:debug("datadir ~s options for RocksDB: ~p\n",
                 [DataRoot, [{open, OpenOpts}, {read, ReadOpts}, {write, WriteOpts}, {fold, FoldOpts}]]),
     #state { data_root = DataRoot,
              open_opts = OpenOpts,
              read_opts = ReadOpts,
              write_opts = WriteOpts,
              fold_opts = FoldOpts,
-             config = FinalConfig }.
-
-config_value(Key, Config, Default) ->
-    case orddict:find(Key, Config) of
-        error ->
-            Default;
-        {ok, Value} ->
-            Value
-    end.
+             config = Config }.
 
 open_db(Opts, State) ->
     RetriesLeft = proplists:get_value(open_retries, Opts, 30),
@@ -313,18 +273,18 @@ open_db(Opts, State) ->
 open_db(_Opts, _State0, 0, LastError) ->
     {error, LastError};
 open_db(Opts, State0, RetriesLeft, _) ->
-    case eleveldb:open(State0#state.data_root, State0#state.open_opts) of
+    case rocksdb:open(State0#state.data_root, State0#state.open_opts) of
         {ok, Ref} ->
             {ok, State0#state { ref = Ref }};
         %% Check specifically for lock error, this can be caused if
-        %% a crashed instance takes some time to flush leveldb information
+        %% a crashed instance takes some time to flush rocksdb information
         %% out to disk.  The process is gone, but the NIF resource cleanup
         %% may not have completed.
         {error, {db_open, OpenErr}=Reason} ->
-            case lists:prefix("IO error: lock ", OpenErr) of
+            case lists:prefix("IO error: While lock ", OpenErr) of
                 true ->
                     SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
-                    lager:debug("VerneMQ LevelDB backend retrying ~p in ~p ms after error ~s\n",
+                    lager:debug("VerneMQ RocksDB backend retrying ~p in ~p ms after error ~s\n",
                                 [State0#state.data_root, SleepFor, OpenErr]),
                     timer:sleep(SleepFor),
                     open_db(Opts, State0, RetriesLeft - 1, Reason);
@@ -348,22 +308,22 @@ handle_req({write, {MP, _} = SubscriberId,
         1 ->
             %% new message
             Val = serialize_p_msg_val_pre({RoutingKey, Payload}),
-            eleveldb:write(Bucket, [{put, MsgKey, Val},
-                                    {put, RefKey, <<>>},
-                                    {put, IdxKey, IdxVal}], WriteOpts);
+            rocksdb:write(Bucket, [{put, MsgKey, Val},
+                                   {put, RefKey, <<>>},
+                                   {put, IdxKey, IdxVal}], WriteOpts);
         _ ->
             %% only write ref
-            eleveldb:write(Bucket, [{put, RefKey, <<>>},
-                                    {put, IdxKey, IdxVal}], WriteOpts)
+            rocksdb:write(Bucket, [{put, RefKey, <<>>},
+                                   {put, IdxKey, IdxVal}], WriteOpts)
     end;
 handle_req({read, {MP, _} = SubscriberId, MsgRef},
            #state{ref=Bucket, read_opts=ReadOpts}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
-    case eleveldb:get(Bucket, MsgKey, ReadOpts) of
+    case rocksdb:get(Bucket, MsgKey, ReadOpts) of
         {ok, Val} ->
             {RoutingKey, Payload} = parse_p_msg_val_pre(Val),
-            case eleveldb:get(Bucket, IdxKey, ReadOpts) of
+            case rocksdb:get(Bucket, IdxKey, ReadOpts) of
                 {ok, IdxVal} ->
                     #p_idx_val{dup=Dup, qos=QoS} = parse_p_idx_val_pre(IdxVal),
                     Msg = #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
@@ -385,19 +345,19 @@ handle_req({delete, {MP, _} = SubscriberId, MsgRef},
             lager:warning("delete failed ~p due to not found", [MsgRef]);
         0 ->
             %% last one to be deleted
-            eleveldb:write(Bucket, [{delete, RefKey},
-                                    {delete, IdxKey},
-                                    {delete, MsgKey}], WriteOpts);
+            rocksdb:write(Bucket, [{delete, RefKey},
+                                   {delete, IdxKey},
+                                   {delete, MsgKey}], WriteOpts);
         _ ->
             %% we have to keep the message, but can delete the ref and idx
-            eleveldb:write(Bucket, [{delete, RefKey},
-                                    {delete, IdxKey}], WriteOpts)
+            rocksdb:write(Bucket, [{delete, RefKey},
+                                   {delete, IdxKey}], WriteOpts)
     end;
 handle_req({find_for_subscriber_id, SubscriberId},
            #state{ref=Bucket, fold_opts=FoldOpts} = State) ->
-    {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts),
+    {ok, Itr} = rocksdb:iterator(Bucket, FoldOpts),
     FirstIdxKey = sext:encode({idx, SubscriberId, ''}),
-    iterate_index_items(eleveldb:iterator_move(Itr, FirstIdxKey),
+    iterate_index_items(rocksdb:iterator_move(Itr, FirstIdxKey),
                         SubscriberId, ordsets:new(), Itr, State).
 
 iterate_index_items({error, _}, _, Acc, _, _) ->
@@ -407,50 +367,51 @@ iterate_index_items({ok, IdxKey, IdxVal}, SubscriberId, Acc, Itr, State) ->
     case sext:decode(IdxKey) of
         {idx, SubscriberId, MsgRef} ->
             #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
-            iterate_index_items(eleveldb:iterator_move(Itr, prefetch), SubscriberId,
+            iterate_index_items(rocksdb:iterator_move(Itr, next), SubscriberId,
                                 ordsets:add_element({TS, MsgRef}, Acc), Itr, State);
         _ ->
             %% all message refs accumulated for this subscriber
-            eleveldb:iterator_close(Itr),
+            rocksdb:iterator_close(Itr),
             Acc
     end.
 
 check_store(#state{ref=Bucket, fold_opts=FoldOpts, write_opts=WriteOpts,
                    refs=Refs}) ->
-    {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts, keys_only),
-    check_store(Bucket, Refs, eleveldb:iterator_move(Itr, first), Itr, WriteOpts,
-                         {undefined, undefined, true}, 0).
-
-check_store(Bucket, Refs, {ok, Key}, Itr, WriteOpts, {PivotMsgRef, PivotMP, HadRefs} = Pivot, N) ->
-    {NewPivot, NewN} =
-    case sext:decode(Key) of
-        {msg, PivotMsgRef, {PivotMP, ClientId}} when ClientId =/= '' ->
-            %% Inside the 'same' Message Section. This means we have found refs
-            %% for this message -> no delete required.
-            {{PivotMsgRef, PivotMP, true}, N};
-        {msg, NewPivotMsgRef, {NewPivotMP, ''}} when HadRefs ->
-            %% New Message Section started, previous section included refs
-            %% -> no delete required
-            {{NewPivotMsgRef, NewPivotMP, false}, N}; %% challenge the new message
-        {msg, NewPivotMsgRef, {NewPivotMP, ''}} -> % HadRefs == false
-            %% New Message Section started, previous section didn't include refs
-            %% -> delete required
-            eleveldb:write(Bucket, [{delete, Key}], WriteOpts),
-            {{NewPivotMsgRef, NewPivotMP, false}, N + 1}; %% challenge the new message
-        {idx, _, MsgRef} ->
-            incr_ref(Refs, MsgRef),
-            {Pivot, N};
-        Entry ->
-            lager:warning("inconsistent message store entry detected: ~p", [Entry]),
-            {Pivot, N}
-    end,
-    check_store(Bucket, Refs, eleveldb:iterator_move(Itr, next), Itr, WriteOpts, NewPivot, NewN);
-check_store(Bucket, _, {error, invalid_iterator}, _, WriteOpts, {PivotMsgRef, PivotMP, false}, N) ->
-    Key = sext:encode({msg, PivotMsgRef, {PivotMP, ''}}),
-    eleveldb:write(Bucket, [{delete, Key}], WriteOpts),
-    N + 1;
-check_store(_Bucket, _, {error, invalid_iterator}, _, _, {_, _, true}, N) ->
-    N.
+    {{LastPivotMsgRef, LastPivotMP, LastHadRefs}, NewN} =
+    rocksdb:fold_keys(
+      Bucket,
+      fun(Key, {{PivotMsgRef, PivotMP, HadRefs} = Pivot, N}) ->
+              case sext:decode(Key) of
+                  {msg, PivotMsgRef, {PivotMP, ClientId}} when ClientId =/= '' ->
+                      %% Inside the 'same' Message Section. This means we have found refs
+                      %% for this message -> no delete required.
+                      {{PivotMsgRef, PivotMP, true}, N};
+                  {msg, NewPivotMsgRef, {NewPivotMP, ''}} when HadRefs ->
+                      %% New Message Section started, previous section included refs
+                      %% -> no delete required
+                      {{NewPivotMsgRef, NewPivotMP, false}, N}; %% challenge the new message
+                  {msg, NewPivotMsgRef, {NewPivotMP, ''}} -> % HadRefs == false
+                      %% New Message Section started, previous section didn't include refs
+                      %% -> delete required
+                      rocksdb:write(Bucket, [{delete, Key}], WriteOpts),
+                      {{NewPivotMsgRef, NewPivotMP, false}, N + 1}; %% challenge the new message
+                  {idx, _, MsgRef} ->
+                      incr_ref(Refs, MsgRef),
+                      {Pivot, N};
+                  Entry ->
+                      lager:warning("inconsistent message store entry detected: ~p", [Entry]),
+                      {Pivot, N}
+              end
+      end, {{undefined, undefined, true}, 0}, FoldOpts),
+    case LastHadRefs of
+        false ->
+            % delete last message
+            Key = sext:encode({msg, LastPivotMsgRef, {LastPivotMP, ''}}),
+            rocksdb:write(Bucket, [{delete, Key}], WriteOpts),
+            NewN + 1;
+        _ ->
+            NewN
+    end.
 
 incr_ref(Refs, MsgRef) ->
     case ets:insert_new(Refs, {MsgRef, 1}) of
