@@ -32,6 +32,7 @@
          is_ready/0,
          if_ready/2,
          if_ready/3,
+         netsplit_statistics/0,
          publish/2,
          remote_enqueue/3]).
 
@@ -65,7 +66,13 @@ status() ->
 
 -spec is_ready() -> boolean().
 is_ready() ->
-    ets:lookup(?VMQ_CLUSTER_STATUS, ready) == [{ready, true}].
+    [{ready, {Ready, _, _}}] = ets:lookup(?VMQ_CLUSTER_STATUS, ready),
+    Ready.
+
+-spec netsplit_statistics() -> {non_neg_integer(), non_neg_integer()}.
+netsplit_statistics() ->
+    [{ready, {_Ready, NetsplitDetectedCount, NetsplitResolvedCount}}] = ets:lookup(?VMQ_CLUSTER_STATUS, ready),
+    {NetsplitDetectedCount, NetsplitResolvedCount}.
 
 -spec if_ready(_, _) -> any().
 if_ready(Fun, Args) ->
@@ -169,12 +176,34 @@ check_ready([Node|Rest], Acc) ->
     ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
     %% We should only say we're ready if we've established a
     %% connection to the remote node.
-    IsReady1 = IsReady andalso vmq_cluster_node_sup:is_reachable(Node),
+    Status = vmq_cluster_node_sup:node_status(Node),
+    IsReady1 = IsReady andalso lists:member(Status, [up, init]),
     check_ready(Rest, [{Node, IsReady1}|Acc]);
 check_ready([], Acc) ->
-    ClusterReady =
-    case lists:keyfind(false, 2, Acc) of
-        false -> true;
-        _ -> false
+    OldObj =
+    case ets:lookup(?VMQ_CLUSTER_STATUS, ready) of
+        [] -> {true, 0, 0};
+        [{ready, Obj}] -> Obj
     end,
-    ets:insert(?VMQ_CLUSTER_STATUS, [{ready, ClusterReady}|Acc]).
+    NewObj =
+    case {all_nodes_alive(Acc), OldObj} of
+        {true, {true, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
+            % Cluster was consistent, is still consistent
+            {true, NetsplitDetectedCnt, NetsplitResolvedCnt};
+        {true, {false, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
+            % Cluster was inconsistent, netsplit resolved
+            {true, NetsplitDetectedCnt, NetsplitResolvedCnt + 1};
+        {false, {true, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
+            % Cluster was consistent, but isn't anymore
+            {false, NetsplitDetectedCnt + 1, NetsplitResolvedCnt};
+        {false, {false, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
+            % Cluster was inconsistent, is still inconsistent
+            {false, NetsplitDetectedCnt, NetsplitResolvedCnt}
+    end,
+    ets:insert(?VMQ_CLUSTER_STATUS, [{ready, NewObj}|Acc]).
+
+-spec all_nodes_alive([{NodeName::atom(), IsReady::boolean()}]) -> boolean().
+all_nodes_alive([{_NodeName, _IsReady = false}|_]) -> false;
+all_nodes_alive([{_NodeName, _IsReady = true} |Rest]) ->
+    all_nodes_alive(Rest);
+all_nodes_alive([]) -> true.

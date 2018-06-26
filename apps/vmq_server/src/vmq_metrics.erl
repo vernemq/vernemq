@@ -375,7 +375,10 @@ rate_entries() ->
 misc_statistics() ->
     {NrOfSubs, SMemory} = vmq_reg_trie:stats(),
     {NrOfRetain, RMemory} = vmq_retain_srv:stats(),
-    [{gauge, router_subscriptions, NrOfSubs},
+    {NetsplitDetectedCount, NetsplitResolvedCount} = vmq_cluster:netsplit_statistics(),
+    [{counter, netsplit_detected, NetsplitDetectedCount},
+     {counter, netsplit_resolved, NetsplitResolvedCount},
+     {gauge, router_subscriptions, NrOfSubs},
      {gauge, router_memory, SMemory},
      {gauge, retain_messages, NrOfRetain},
      {gauge, retain_memory, RMemory},
@@ -399,7 +402,7 @@ system_statistics() ->
       binary := ErlangMemBinary,
       code := ErlangMemCode,
       ets := ErlangMemEts} = maps:from_list(erlang:memory()),
-    
+
     [{counter, system_context_switches, ContextSwitches},
      {counter, system_exact_reductions, TotalExactReductions},
      {counter, system_gc_count, Number_of_GCs},
@@ -735,6 +738,10 @@ describe({gauge, vm_memory_code}) ->
     <<"The amount of memory allocated for code.">>;
 describe({gauge, vm_memory_ets}) ->
     <<"The amount of memory allocated for ETS tables.">>;
+describe({counter, netsplit_detected}) ->
+    <<"The number of detected netsplits.">>;
+describe({counter, netsplit_resolved}) ->
+    <<"The number of resolved netsplits.">>;
 describe({Type, Metric}) ->
     describe_dynamic({Type, atom_to_binary(Metric, utf8)}).
 

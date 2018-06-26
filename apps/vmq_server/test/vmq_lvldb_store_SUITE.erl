@@ -10,7 +10,9 @@
         ]).
 
 -export([insert_delete_test/1,
-        ref_delete_test/1]).
+         ref_delete_test/1,
+         message_compat_pre_test/1,
+         idx_compat_pre_test/1]).
 
 
 %% ===================================================================
@@ -30,18 +32,28 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     _Config.
 
+init_per_testcase(message_compat_pre_test, Config) ->
+    Config;
+init_per_testcase(idx_compat_pre_test, Config) ->
+    Config;
 init_per_testcase(_Case, Config) ->
     vmq_test_utils:seed_rand(Config),
     vmq_test_utils:setup(),
     Config.
 
+end_per_testcase(message_compat_pre_test, Config) ->
+    Config;
+end_per_testcase(idx_compat_pre_test, Config) ->
+    Config;
 end_per_testcase(_, Config) ->
     vmq_server:stop(),
     Config.
 
 all() ->
     [insert_delete_test,
-     ref_delete_test].
+     ref_delete_test,
+     message_compat_pre_test,
+     idx_compat_pre_test].
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -166,6 +178,46 @@ ref_delete_test(Config) ->
 
     Config.
 
+%% @doc test that the message store functions can parse and serialize
+%% data from the future as well as the pre versioning format.
+message_compat_pre_test(_Cfg) ->
+    %% We can serialize and parse msg vals from before versioning was added
+    PreVersion = {[<<"routing">>, <<"key">>], %% routing_key = [<<"routing">>, <<"key">>]
+                   <<"payload">>},
+    PreVersion = vmq_lvldb_store:parse_p_msg_val_pre(
+                   vmq_lvldb_store:serialize_p_msg_val_pre(PreVersion)),
+
+    %% We can also serialize / parse something from the future:
+    FutureVersion = {1, %% version
+                     [<<"routing">>, <<"key">>], <<"payload">>, <<"something else">>},
+
+    PreVersion = vmq_lvldb_store:parse_p_msg_val_pre(
+                   vmq_lvldb_store:serialize_p_msg_val_pre(FutureVersion)),
+    ok.
+
+idx_compat_pre_test(_Cfg) ->
+    %% We can serialize and parse idx vals from before versioning was added
+    PreVersion = {p_idx_val,
+                  {1529,586954,257209}, %% ts = {1529,586954,257209}
+                  false, %% dup = false
+                  2 %% qos = 2
+                 },
+    PreVersion = vmq_lvldb_store:parse_p_idx_val_pre(
+                   vmq_lvldb_store:serialize_p_idx_val_pre(PreVersion)),
+
+    %% We can also serialize / parse something from the future:
+    FutureVersion = {p_idx_val,
+                     1, %% version = 1
+                     {1529,586954,257209}, %% ts = {1529,586954,257209}
+                     false, %% dup = false
+                     2, %% qos = 2
+                     "something unknown1",
+                     "something unknown2"
+                    },
+
+    PreVersion = vmq_lvldb_store:parse_p_idx_val_pre(
+                   vmq_lvldb_store:serialize_p_idx_val_pre(FutureVersion)),
+    ok.
 
 generate_msgs(0, Acc) -> Acc;
 generate_msgs(N, Acc) ->
