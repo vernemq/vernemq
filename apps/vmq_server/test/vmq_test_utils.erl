@@ -57,11 +57,10 @@ teardown() ->
     application:unload(vmq_server),
     application:unload(vmq_swc),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
-    _ = [eleveldb:destroy(Datadir ++ "/meta/" ++ integer_to_list(I), [])
+    _ = [rocksdb:destroy(Datadir ++ "/meta/" ++ integer_to_list(I), [])
          || I <- lists:seq(0, 11)],
-    _ = [eleveldb:destroy(Datadir ++ "/msgstore/" ++ integer_to_list(I), [])
+    _ = [rocksdb:destroy(Datadir ++ "/msgstore/" ++ integer_to_list(I), [])
          || I <- lists:seq(0, 11)],
-    eleveldb:destroy(Datadir ++ "/trees", []),
     ok.
 
 disable_all_plugins() ->

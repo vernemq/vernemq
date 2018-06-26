@@ -54,7 +54,6 @@ stop() ->
                                           clique,
                                           vmq_swc,
                                           jobs,
-                                          eleveldb,
                                           rocksdb,
                                           asn1,
                                           public_key,
