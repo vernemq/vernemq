@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_lvldb_store_utils).
+-module(vmq_rocksdb_store_utils).
 -include("vmq_server.hrl").
 
 %% API
@@ -53,11 +53,11 @@ file_dump_({idx, MsgRef, MP, ClientId, IdxVal}, Fd) ->
 
 
 full_table_scan(FoldFun, Acc) ->
-    full_table_scan_(vmq_lvldb_store_sup:get_bucket_pids(), {FoldFun, Acc}).
+    full_table_scan_(vmq_rocksdb_store_sup:get_bucket_pids(), {FoldFun, Acc}).
 
 full_table_scan_([Bucket|Rest], Acc) ->
     FoldOpts = [{fill_cache, false}],
-    NewAcc = eleveldb:fold(vmq_lvldb_store:get_ref(Bucket), fun full_table_scan__/2, Acc, FoldOpts),
+    NewAcc = rocksdb:fold(vmq_rocksdb_store:get_ref(Bucket), fun full_table_scan__/2, Acc, FoldOpts),
     full_table_scan_(Rest, NewAcc);
 full_table_scan_([], {_, Acc}) -> Acc.
 
