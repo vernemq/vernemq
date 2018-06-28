@@ -21,6 +21,7 @@
   VerneMQ configuration file. The default is `off`.
 - Fix issue with PUBREL frames retried after client reconnects (#762).
 - Refactor and cleanup retry mechanism.
+- Warn about deprecated setting `message_size_limit` only when it has been defined.
 
 ## VerneMQ 1.4.0
 
