@@ -250,9 +250,14 @@
                                                                  ]}.
 {translation, "vmq_server.message_size_limit",
  fun(Conf) ->
-         S = cuttlefish:conf_get("message_size_limit", Conf),
-         cuttlefish:warn("message_size_limit is deprecated and has no effect, use max_message_size instead"),
-         S
+         Size = cuttlefish:conf_get("message_size_limit", Conf),
+         case Size of
+            0 ->
+                Size;
+            _ ->
+                cuttlefish:warn("message_size_limit is deprecated and has no effect, use max_message_size instead"),
+                Size
+         end
  end}.
 
 %% @doc If a message is published with a QoS lower than the QoS of the subscription it is
