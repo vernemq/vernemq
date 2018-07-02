@@ -27,6 +27,11 @@
 
 -export([msg_store_init_queue_collector/3]).
 
+-export([parse_p_idx_val_pre/1,
+         parse_p_msg_val_pre/1,
+         serialize_p_idx_val_pre/1,
+         serialize_p_msg_val_pre/1]).
+
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -47,9 +52,19 @@
 -type config() :: [{atom(), term()}].
 
 
--define(P_MSG_V, 0).
--record(p_idx_val, {ts, dup, qos}).
-%% Subsequent formats should whenever possible use the same ordering
+-define(P_IDX_PRE, 0).
+-define(P_MSG_PRE, 0).
+
+
+%% Subsequent formats should always extend by adding new elements to
+%% the end of the record or tuple.
+-type p_msg_val_pre() :: {routing_key(), payload()}.
+-record(p_idx_val, {
+          ts  :: erlang:timestamp(),
+          dup :: flag(),
+          qos :: qos()
+         }).
+-type p_idx_val_pre() :: #p_idx_val{}.
 
 %%%===================================================================
 %%% API
@@ -328,11 +343,11 @@ handle_req({write, {MP, _} = SubscriberId,
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     RefKey = sext:encode({msg, MsgRef, SubscriberId}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
-    IdxVal = serialize_p_idx_val(#p_idx_val{ts=os:timestamp(), dup=Dup, qos=QoS}),
+    IdxVal = serialize_p_idx_val_pre(#p_idx_val{ts=os:timestamp(), dup=Dup, qos=QoS}),
     case incr_ref(Refs, MsgRef) of
         1 ->
             %% new message
-            Val = term_to_binary({RoutingKey, Payload}),
+            Val = serialize_p_msg_val_pre({RoutingKey, Payload}),
             eleveldb:write(Bucket, [{put, MsgKey, Val},
                                     {put, RefKey, <<>>},
                                     {put, IdxKey, IdxVal}], WriteOpts);
@@ -347,10 +362,10 @@ handle_req({read, {MP, _} = SubscriberId, MsgRef},
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
     case eleveldb:get(Bucket, MsgKey, ReadOpts) of
         {ok, Val} ->
-            {RoutingKey, Payload} = binary_to_term(Val),
+            {RoutingKey, Payload} = parse_p_msg_val_pre(Val),
             case eleveldb:get(Bucket, IdxKey, ReadOpts) of
                 {ok, IdxVal} ->
-                    #p_idx_val{dup=Dup, qos=QoS} = parse_p_idx_val(binary_to_term(IdxVal)),
+                    #p_idx_val{dup=Dup, qos=QoS} = parse_p_idx_val_pre(IdxVal),
                     Msg = #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
                                    routing_key=RoutingKey, payload=Payload, persisted=true},
                     {ok, Msg};
@@ -391,7 +406,7 @@ iterate_index_items({error, _}, _, Acc, _, _) ->
 iterate_index_items({ok, IdxKey, IdxVal}, SubscriberId, Acc, Itr, State) ->
     case sext:decode(IdxKey) of
         {idx, SubscriberId, MsgRef} ->
-            #p_idx_val{ts=TS} = parse_p_idx_val(binary_to_term(IdxVal)),
+            #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
             iterate_index_items(eleveldb:iterator_move(Itr, prefetch), SubscriberId,
                                 ordsets:add_element({TS, MsgRef}, Acc), Itr, State);
         _ ->
@@ -399,22 +414,6 @@ iterate_index_items({ok, IdxKey, IdxVal}, SubscriberId, Acc, Itr, State) ->
             eleveldb:iterator_close(Itr),
             Acc
     end.
-
-% current version of the store
-parse_p_idx_val({TS, Dup, QoS}) ->
-    #p_idx_val{ts=TS, dup=Dup, qos=QoS};
-
-% newer versions of the store -> downgrade
-parse_p_idx_val(T) when element(1, T) > ?P_MSG_V ->
-    TS = element(2, T),
-    Dup = element(3, T),
-    QoS = element(4, T),
-    % downgrade from _Version to current version
-    #p_idx_val{ts=TS, dup=Dup, qos=QoS}.
-
-% current version of the store
-serialize_p_idx_val(#p_idx_val{ts=TS, dup=Dup, qos=QoS}) ->
-    term_to_binary({TS, Dup, QoS}).
 
 check_store(#state{ref=Bucket, fold_opts=FoldOpts, write_opts=WriteOpts,
                    refs=Refs}) ->
@@ -471,3 +470,64 @@ decr_ref(Refs, MsgRef) ->
         _:_ ->
             not_found
     end.
+
+%% pre version idx:
+%% {p_idx_val, ts, dup, qos}
+%% future version:
+%% {p_idx_val, vesion, ts, dup, qos, ...}
+
+%% current version of the index value
+-spec parse_p_idx_val_pre(binary()) -> p_idx_val_pre().
+parse_p_idx_val_pre(BinTerm) ->
+    parse_p_idx_val_pre_(binary_to_term(BinTerm)).
+
+parse_p_idx_val_pre_({TS, Dup, QoS}) ->
+    #p_idx_val{ts=TS, dup=Dup, qos=QoS};
+%% newer versions of the store -> downgrade
+parse_p_idx_val_pre_(T) when element(1,T) =:= p_idx_val,
+                             is_integer(element(2, T)),
+                             element(2,T) > ?P_IDX_PRE ->
+    TS = element(3, T),
+    Dup = element(4, T),
+    QoS = element(5, T),
+    #p_idx_val{ts=TS, dup=Dup, qos=QoS}.
+
+%% current version of the index value
+-spec serialize_p_idx_val_pre(p_idx_val_pre()) -> binary().
+serialize_p_idx_val_pre(#p_idx_val{ts=TS, dup=Dup, qos=QoS}) ->
+    term_to_binary({TS, Dup, QoS});
+serialize_p_idx_val_pre(T) when element(1,T) =:= p_idx_val,
+                                is_integer(element(2, T)),
+                                element(2,T) > ?P_MSG_PRE ->
+    term_to_binary(
+      {element(3, T),
+       element(4, T),
+       element(5, T)}).
+
+%% pre msg version:
+%% {routing_key, payload}
+%% future version:
+%% {version, routing_key, payload, ...}
+
+%% parse messages to message type from before versioning.
+-spec parse_p_msg_val_pre(binary()) -> p_msg_val_pre().
+parse_p_msg_val_pre(BinTerm) ->
+    parse_p_msg_val_pre_(binary_to_term(BinTerm)).
+
+parse_p_msg_val_pre_({RoutingKey, Payload}) ->
+    {RoutingKey, Payload};
+%% newer version of the msg value
+parse_p_msg_val_pre_(T) when is_integer(element(1, T)),
+                             element(1,T) > ?P_MSG_PRE ->
+    {element(2, T),
+     element(3, T)}.
+
+%% current version of the msg value
+-spec serialize_p_msg_val_pre(p_msg_val_pre()) -> binary().
+serialize_p_msg_val_pre({_RoutingKey, _Payload} = T) ->
+    term_to_binary(T);
+serialize_p_msg_val_pre(T) when is_integer(element(1, T)),
+                                element(1,T) > ?P_MSG_PRE ->
+    term_to_binary(
+      {element(2, T),
+       element(3, T)}).

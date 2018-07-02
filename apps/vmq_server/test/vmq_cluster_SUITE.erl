@@ -15,13 +15,15 @@
          racing_subscriber_test/1,
          aborted_queue_migration_test/1,
          cluster_leave_test/1,
+         cluster_leave_myself_test/1,
          cluster_leave_dead_node_test/1,
          shared_subs_random_policy_test/1,
          shared_subs_prefer_local_policy_test/1,
          shared_subs_local_only_policy_test/1,
          cross_node_publish_subscribe/1,
          restarted_node_has_no_stale_sessions/1,
-         routing_table_survives_node_restart/1]).
+         routing_table_survives_node_restart/1,
+         convert_new_msgs_to_old_format/1]).
 
 -export([hook_uname_password_success/5,
          hook_auth_on_publish/6,
@@ -31,6 +33,8 @@
 -include_lib("kernel/include/inet.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include("src/vmq_server.hrl").
+
 
 %% ===================================================================
 %% common_test callbacks
@@ -52,6 +56,9 @@ end_per_suite(_Config) ->
     application:stop(lager),
     _Config.
 
+init_per_testcase(convert_new_msgs_to_old_format, Config) ->
+    %% no setup necessary,
+    Config;
 init_per_testcase(Case, Config) ->
     vmq_test_utils:seed_rand(Config),
     Nodes = vmq_cluster_test_utils:pmap(
@@ -69,6 +76,9 @@ init_per_testcase(Case, Config) ->
     {ok, _} = ct_cover:add_nodes(CoverNodes),
     [{nodes, Nodes},{nodenames, [test1, test2, test3]}|Config].
 
+end_per_testcase(convert_new_msgs_to_old_format, Config) ->
+    %% no teardown necessary,
+    Config;
 end_per_testcase(_, _Config) ->
     vmq_cluster_test_utils:pmap(fun(Node) -> ct_slave:stop(Node) end,
                                 [test1, test2, test3]),
@@ -82,6 +92,7 @@ all() ->
     ,racing_subscriber_test
     ,aborted_queue_migration_test
     ,cluster_leave_test
+    ,cluster_leave_myself_test
     ,cluster_leave_dead_node_test
     ,shared_subs_random_policy_test
     ,shared_subs_prefer_local_policy_test
@@ -89,6 +100,7 @@ all() ->
     ,cross_node_publish_subscribe
     ,restarted_node_has_no_stale_sessions
     ,routing_table_survives_node_restart
+    ,convert_new_msgs_to_old_format
     ].
 
 
@@ -421,6 +433,20 @@ cluster_leave_test(Config) ->
                                       rpc:call(N, vmq_queue_sup_sup, summary, [])
                               end, {0, 0, 0, 4, 4}).
 
+cluster_leave_myself_test(Config) ->
+    ok = ensure_cluster(Config),
+    {_, [{Node, _Port}|RestNodesWithPorts]} = lists:keyfind(nodes, 1, Config),
+    {RestNodes, _} = lists:unzip(RestNodesWithPorts),
+    {ok, _} = rpc:call(Node, vmq_server_cmd, node_leave, [Node]),
+
+    %% check that the leave was propagated to the rest
+    ok = wait_until_converged(RestNodesWithPorts,
+                              fun(N) ->
+                                      NSStats = rpc:call(N, vmq_cluster, netsplit_statistics, []),
+                                      Nodes = lists:usort(rpc:call(N, vmq_cluster, nodes, [])),
+                                      {NSStats, Nodes}
+                              end, {{0,0}, lists:usort(RestNodes)}).
+
 cluster_leave_dead_node_test(Config) ->
     ok = ensure_cluster(Config),
     {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
@@ -723,6 +749,39 @@ cross_node_publish_subscribe(Config) ->
                  ++ Payloads
                  ++ Payloads),
     receive_nothing(200).
+
+
+
+convert_new_msgs_to_old_format(_Config) ->
+    %% create a #vmq_msg{} as a raw tuple.
+    Orig = {
+      %% record name,
+      vmq_msg,
+
+      %% field values
+      "msg_ref",
+      "routing_key",
+      "payload",
+      "retain",
+      "dup",
+      "qos",
+      "mountpoint",
+      "persisted",
+      "sg_policy",
+      "properties",
+      "expiry_ts"
+     },
+
+    %% fail if new items were added to the #vmq_msg{} record:
+    #vmq_msg{} = Orig,
+
+    %% test identity
+    Orig = vmq_cluster_com:to_vmq_msg(Orig),
+
+    %% test we can strip away extra tuple elements an the result is
+    %% the original record.
+    Extended = list_to_tuple(tuple_to_list(Orig) ++ [a,b,c]),
+    Orig = vmq_cluster_com:to_vmq_msg(Extended).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal

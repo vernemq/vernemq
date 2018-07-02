@@ -53,7 +53,8 @@ groups() ->
          retain_qos0_clear_test,
          retain_qos1_qos0_test,
          retain_wildcard_test,
-         publish_empty_retained_msg_test],
+         publish_empty_retained_msg_test,
+         retain_compat_pre_test],
     [
      {mqttv4, [shuffle, parallel], Tests},
      {mqttv5, [shuffle, parallel],
@@ -460,7 +461,12 @@ subscribe_retain_handling_flags_test(Cfg) ->
     {error, timeout} = gen_tcp:recv(Socket1, 0, 100),
     ok = gen_tcp:send(Socket1, Disconnect).
 
+retain_compat_pre_test(_Cfg) ->
+    Pre = <<"msg">>,
+    Pre = vmq_reg:retain_pre(Pre),
 
+    Future = {retain_msg, 1, <<"future_msg">>, something, else},
+    <<"future_msg">> = vmq_reg:retain_pre(Future).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks

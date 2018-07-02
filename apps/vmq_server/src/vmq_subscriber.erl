@@ -130,17 +130,23 @@ change_node_all([], _, Subs, _, ChNodes) ->
     {Subs, ChNodes}.
 
 -spec check_format(any()) -> subs().
-check_format([{Topic,_,_}|_] = Version0Subs) when is_list(Topic) ->
+check_format(Subs0) ->
+    maybe_convert_v0(Subs0).
+
+%% @doc convert deprecated subscription format to current format (v1). The
+%% new format was introduced in VerneMQ 0.15.1.
+-spec maybe_convert_v0(any()) -> subs().
+maybe_convert_v0([{Topic,_,_}|_] = Version0Subs) when is_list(Topic) ->
     %% Per default converted subscriptions use initially clean session=false,
     %% because we don't know better, and it will be subsequentially adjusted
     %% anyways.
-    check_format(Version0Subs, new(false));
-check_format(Subs) -> Subs.
+    maybe_convert_v0(Version0Subs, new(false));
+maybe_convert_v0(Subs) -> Subs.
 
-check_format([{Topic, QoS, Node}|Version0Subs], NewStyleSubs) ->
+maybe_convert_v0([{Topic, QoS, Node}|Version0Subs], NewStyleSubs) ->
     {NewSubs, _} = add(NewStyleSubs, [{Topic, QoS}], Node),
-    check_format(Version0Subs, NewSubs);
-check_format([], NewStyleSubs) -> NewStyleSubs.
+    maybe_convert_v0(Version0Subs, NewSubs);
+maybe_convert_v0([], NewStyleSubs) -> NewStyleSubs.
 
 %% returns only the Subscriptions of Subs1 that are not also
 %% Subscriptions of Subs2. Assumes the subs are sorted by nodenames.
@@ -298,11 +304,11 @@ remove_subscription_test_() ->
     ?_assertEqual({[{node(), true, [{b,2}]}], true}, remove(new(true, [{a,1},{b,2}]), [a]))
     ].
 
-check_format_test_() ->
+maybe_convert_v0_test_() ->
     Version0Subs = [{?t("a"), 0, node_a}, {?t("b"), 1, node_b}, {?t("c"), 2, node_c}],
     Subs = [{node_a, true, [{?t("a"), 0}]},
             {node_b, true, [{?t("b"), 1}]},
             {node_c, true, [{?t("c"), 2}]},
             {node(), false, []}],
-    ?_assertEqual(Subs, check_format(Version0Subs)).
+    ?_assertEqual(Subs, maybe_convert_v0(Version0Subs)).
 -endif.

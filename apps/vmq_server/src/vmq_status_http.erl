@@ -50,7 +50,6 @@ cluster_status() ->
     {Result2, Nodes1} = lists:unzip(Result1),
     {ok, MyStatus} = node_status(),
     Data = [{atom_to_binary(Node, utf8), NodeResult} || {Node, NodeResult} <- lists:zip([node() | Nodes1], [MyStatus | Result2])],
-    lager:info("cluster status ~p~n", [Data]),
     jsx:encode(Data).
 
 

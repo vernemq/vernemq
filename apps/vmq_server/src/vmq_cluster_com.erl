@@ -22,6 +22,9 @@
 -export([init/4,
          loop/1]).
 
+%% exported for testing
+-export([to_vmq_msg/1]).
+
 -record(st, {socket,
              buffer= <<>>,
              parser_state,
@@ -149,7 +152,7 @@ process_bytes(Bytes, Buffer, St) ->
 
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
     #vmq_msg{mountpoint=MP,
-             routing_key=Topic} = Msg = binary_to_term(Bin),
+             routing_key=Topic} = Msg = to_vmq_msg(binary_to_term(Bin)),
     _ = vmq_reg_view:fold(St#st.reg_view, {MP, ?INTERNAL_CLIENT_ID}, Topic, fun publish/3, {Msg, undefined}),
     process(Rest, St);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
@@ -160,7 +163,7 @@ process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
             %% the cluster communication.
             spawn(fun() ->
                           try
-                              Reply = vmq_queue:enqueue_many(QueuePid, Msgs),
+                              Reply = vmq_queue:enqueue_many(QueuePid, to_vmq_msgs(Msgs)),
                               CallerPid ! {Ref, Reply}
                           catch
                               _:_ ->
@@ -198,3 +201,47 @@ publish(_Node, _, Msg) ->
     %% we ignore remote subscriptions, they are already covered
     %% by original publisher
     Msg.
+
+to_vmq_msgs(Msgs) ->
+    lists:map(
+      fun({deliver, QoS, Msg}) ->
+              {deliver, QoS, to_vmq_msg(Msg)}
+      end, Msgs).
+
+%% @private
+to_vmq_msg(#vmq_msg{} = Msg) ->
+    Msg;
+to_vmq_msg({vmq_msg, MsgRef, RoutingKey, Payload,
+            Retain, Dup, QoS, Mountpoint, Persisted,
+            SGPolicy}) ->
+    %% Pre-MQTT5 msg record. Fill in the missing ones.
+    #vmq_msg{
+       msg_ref = MsgRef,
+       routing_key = RoutingKey,
+       payload = Payload,
+       retain = Retain,
+       dup = Dup,
+       qos = QoS,
+       mountpoint = Mountpoint,
+       persisted = Persisted,
+       sg_policy = SGPolicy,
+       properties = #{},
+       expiry_ts = undefined
+      };
+to_vmq_msg(InMsg) when is_tuple(InMsg),
+                       size(InMsg) > size(#vmq_msg{}) ->
+    %% Msg has more fields than the current vmq_msg record. Strip away
+    %% the ones we don't know.
+    #vmq_msg{
+       msg_ref = element(2, InMsg),
+       routing_key = element(3, InMsg),
+       payload = element(4, InMsg),
+       retain = element(5, InMsg),
+       dup = element(6, InMsg),
+       qos = element(7, InMsg),
+       mountpoint = element(8, InMsg),
+       persisted = element(9, InMsg),
+       sg_policy = element(10, InMsg),
+       properties = element(11, InMsg),
+       expiry_ts = element(12, InMsg)
+      }.
