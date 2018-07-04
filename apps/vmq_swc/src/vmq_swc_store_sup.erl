@@ -35,9 +35,19 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(SwcGroup, Strategy, Transport) ->
+start_link(SwcGroup, Strategy, {TransportMod, _ListenerAddr, _ListenerPort, _Opts} = Transport) ->
     SupName = list_to_atom("vmq_swc_store_sup_" ++ atom_to_list(SwcGroup)),
-    supervisor:start_link({local, SupName}, ?MODULE, [SwcGroup, Strategy, Transport]).
+    PeerName = application:get_env(vmq_swc, peer_name, atom_to_binary(node(), utf8)),
+    Config = config(PeerName, SwcGroup, TransportMod),
+
+    case supervisor:start_link({local, SupName}, ?MODULE, [Config, Strategy, Transport]) of
+        {ok, _Pid} = Ret ->
+            % this table is created by the root supervisor
+            ets:insert(vmq_swc_group_config, {SwcGroup, Config}),
+            Ret;
+        E ->
+            E
+    end.
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -56,16 +66,11 @@ start_link(SwcGroup, Strategy, Transport) ->
 %%                     {error, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([SwcGroup, Strategy, {TransportMod, _ListenerAddr, _ListenerPort, _Opts} = Transport]) ->
-
-    PeerName = application:get_env(vmq_swc, peer_name, atom_to_binary(node(), utf8)),
-
-    Config = config(PeerName, SwcGroup, TransportMod),
-    % this table is created by the root supervisor
-    ets:insert(vmq_swc_group_config, {SwcGroup, Config}),
+init([#swc_config{group=SwcGroup} = Config, Strategy, Transport]) ->
 
     ExchangeSupChildSpec = #{id => {vmq_swc_exchange_sup, SwcGroup},
                              start => {vmq_swc_exchange_sup, start_link, [Config]},
+                             shutdown => infinity,
                              type => supervisor},
 
     DBChildSpecs = vmq_swc_db:childspecs({backend, vmq_swc_db_rocksdb}, Config, []),

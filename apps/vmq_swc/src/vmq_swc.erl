@@ -45,6 +45,7 @@ start(SwcGroup) when is_atom(SwcGroup) ->
                              start => {vmq_swc_store_sup, start_link,
                                        [SwcGroup, MembershipStrategy,
                                         {TransportMod, ListenerAddr, ListenerPort, []}]},
+                             shutdown => infinity,
                              type => supervisor}).
 
 stop() ->

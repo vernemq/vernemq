@@ -50,7 +50,7 @@ init([]) ->
 
     _State = plumtree_peer_service_manager:init(),
 
-    {ok, { {one_for_one, 0, 1}, [GossipWorker, EventsWorker]} }.
+    {ok, { {one_for_one, 10, 10}, [GossipWorker, EventsWorker]} }.
 
 %%====================================================================
 %% Internal functions

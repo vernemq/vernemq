@@ -77,7 +77,11 @@ init([#swc_config{membership=Membership, transport=TMod} = Config,
     end,
     ets:new(Membership, [public, named_table, {read_concurrency, true}]),
     TMod:init(Config),
+
+    process_flag(trap_exit, true),
+
     TMod:start_listener(Config, Port, [{ip, Addr}|Opts]),
+
     {ok, #state{config=Config,
                 members=connect_members(Config, Members, Strategy),
                 strategy=Strategy}}.
@@ -121,7 +125,9 @@ handle_cast({peer_event, Event}, #state{config=Config} = State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, #state{config=Config} =_State) ->
+    #swc_config{transport=TMod} = Config,
+    catch TMod:terminate(Config),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
