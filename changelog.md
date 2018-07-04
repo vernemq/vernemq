@@ -13,6 +13,7 @@
     as messages.
   - Refactor the retained message store to support versions.
   - Add support for subscriber data with subscription options.
+- Fix issue with retried PUBREC frames (#750).
 
 ## VerneMQ 1.4.0
 

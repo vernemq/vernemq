@@ -283,8 +283,6 @@ publish_c2b_timeout_qos2_test(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "pubrec", Pubrec),
-    %% The broker should repeat the PUBREC
-    ok = packet:expect_packet(Socket, "pubrec", Pubrec),
     ok = gen_tcp:send(Socket, Pubrel),
     ok = packet:expect_packet(Socket, "pubcomp", Pubcomp),
     disable_on_publish(),
