@@ -67,7 +67,6 @@ init([]) ->
             %% is writing to it.
             _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
             %% the event handler is added after the timeout
-            process_flag(trap_exit, true), %% we can unregister the event handler
             schedule_add_event_handler(0),
             {ok, #state{}};
         {error, Reason} ->
@@ -144,8 +143,7 @@ handle_info(recheck, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(Reason, _State) ->
-    vmq_peer_service:delete_event_handler(vmq_cluster, Reason),
+terminate(_Reason, _State) ->
     ok.
 
 %%--------------------------------------------------------------------
