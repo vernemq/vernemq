@@ -1,11 +1,13 @@
 # Changelog
 
-## VerneMQ 1.4.1 (Not yet released)
+## VerneMQ 1.4.1
 
 - Fix issue in the bridge preventing it from reconnecting after a connection
   timeout (#726).
 - Fix issue with self referential cluster leaves and cluster readiness probing
   in general (#717).
+- Fix issue when validating a shared subscription topic (#756).
+- Fix issue with retried PUBREC frames (#750).
 
 ## VerneMQ 1.4.0
 
