@@ -1,6 +1,6 @@
 # Changelog
 
-## VerneMQ 1.5.0 (Not yet released)
+## VerneMQ 1.4.1 (Not yet released)
 
 - Fix issue in the bridge preventing it from reconnecting after a connection
   timeout (#726).
