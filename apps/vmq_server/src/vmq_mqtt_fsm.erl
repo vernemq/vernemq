@@ -316,28 +316,17 @@ connected(#mqtt_pubrec{message_id=MessageId}, State) ->
             terminate(normal, State)
     end;
 connected(#mqtt_pubrel{message_id=MessageId}, State) ->
-    #state{waiting_acks=WAcks, username=User, reg_view=RegView,
-           subscriber_id=SubscriberId, cap_settings=CAPSettings} = State,
+    #state{waiting_acks=WAcks} = State,
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrel_received(),
     case maps:get({qos2, MessageId} , WAcks, not_found) of
-        {#mqtt_pubrec{}, #vmq_msg{routing_key=Topic, qos=QoS, payload=Payload,
-                                  retain=IsRetain} = Msg} ->
-            HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
-            case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, Msg), HookArgs) of
-                ok ->
-                    {NewState, Msgs} =
-                    handle_waiting_msgs(
-                      State#state{
-                        waiting_acks=maps:remove({qos2, MessageId}, WAcks)}),
-                    _ = vmq_metrics:incr_mqtt_pubcomp_sent(),
-                    {NewState, [#mqtt_pubcomp{message_id=MessageId}|Msgs]};
-                {error, _Reason} ->
-                    %% cant publish due to overload or netsplit,
-                    %% client will retry
-                    _ = vmq_metrics:incr_mqtt_error_publish(),
-                    {State, []}
-            end;
+        {#mqtt_pubrec{}, _Msg} ->
+            {NewState, Msgs} =
+            handle_waiting_msgs(
+              State#state{
+                waiting_acks=maps:remove({qos2, MessageId}, WAcks)}),
+            _ = vmq_metrics:incr_mqtt_pubcomp_sent(),
+            {NewState, [#mqtt_pubcomp{message_id=MessageId}|Msgs]};
         not_found ->
             %% already delivered OR we pretended that we delivered the message
             %% as required by 3.1 . Client expects a PUBCOMP
@@ -768,9 +757,9 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
 -spec dispatch_publish_qos1(msg_id(), msg(), state()) ->
     list() | {error, not_allowed}.
 dispatch_publish_qos1(MessageId, Msg, State) ->
-        #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto,
-               cap_settings=CAPSettings, reg_view=RegView} = State,
-        case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
+    #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto,
+           cap_settings=CAPSettings, reg_view=RegView} = State,
+    case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
         {ok, _} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
             [#mqtt_puback{message_id=MessageId}];
@@ -794,16 +783,13 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
                                                          {error, not_allowed}.
 dispatch_publish_qos2(MessageId, Msg, State) ->
     #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto,
-           waiting_acks=WAcks, retry_interval=RetryInterval,
-           retry_queue=RetryQueue} = State,
+           cap_settings=CAPSettings, reg_view=RegView, waiting_acks=WAcks} = State,
 
-    case auth_on_publish(User, SubscriberId, Msg,
-                        fun(MaybeChangedMsg, _) -> {ok, MaybeChangedMsg} end) of
+    case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
         {ok, NewMsg} ->
             Frame = #mqtt_pubrec{message_id=MessageId},
             _ = vmq_metrics:incr_mqtt_pubrec_sent(),
             {State#state{
-               retry_queue=set_retry({qos2, MessageId}, RetryInterval, RetryQueue),
                waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
              [Frame]};
         {error, not_allowed} when Proto == 4 ->
