@@ -16,6 +16,7 @@ before_install:
 sudo: required
 dist: trusty
 language: erlang
+cache: ccache
 install: true
 otp_release:
     - 20.3
