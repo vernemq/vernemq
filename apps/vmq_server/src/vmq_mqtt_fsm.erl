@@ -312,7 +312,7 @@ connected(#mqtt_pubrec{message_id=MessageId}, State) ->
             PubRelFrame = #mqtt_pubrel{message_id=MessageId},
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
             {State#state{
-               retry_queue=set_retry(MessageId, RetryInterval, RetryQueue),
+               retry_queue=set_retry(pubrel, MessageId, RetryInterval, RetryQueue),
                waiting_acks=maps:update(MessageId, PubRelFrame, WAcks)},
             [PubRelFrame]};
         not_found ->
@@ -325,7 +325,7 @@ connected(#mqtt_pubrel{message_id=MessageId}, State) ->
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrel_received(),
     case maps:get({qos2, MessageId} , WAcks, not_found) of
-        {#mqtt_pubrec{}, _Msg} ->
+        #mqtt_pubrec{} ->
             {NewState, Msgs} =
             handle_waiting_msgs(
               State#state{
@@ -788,11 +788,11 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
            cap_settings=CAPSettings, reg_view=RegView, waiting_acks=WAcks} = State,
 
     case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
-        {ok, NewMsg} ->
+        {ok, _NewMsg} ->
             Frame = #mqtt_pubrec{message_id=MessageId},
             _ = vmq_metrics:incr_mqtt_pubrec_sent(),
             {State#state{
-               waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
+               waiting_acks=maps:put({qos2, MessageId}, Frame, WAcks)},
              [Frame]};
         {error, not_allowed} when Proto == 4 ->
             %% we have to close connection for 3.1.1
@@ -818,11 +818,8 @@ handle_waiting_acks_and_msgs(State) ->
                       Acc;
                   ({MsgId, #mqtt_pubrel{} = Frame}, Acc) ->
                       %% unacked PUBREL Frame
-                      Bin = vmq_parser:serialise(Frame),
-                      [{deliver_bin, {MsgId, Bin}}|Acc];
-                  ({MsgId, Bin}, Acc) when is_binary(Bin) ->
-                      %% unacked PUBREL Frame
-                      [{deliver_bin, {MsgId, Bin}}|Acc];
+                      PubRelBin = vmq_parser:serialise(Frame),
+                      [{deliver_bin, {MsgId, PubRelBin}}|Acc];
                   ({_MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
                       [{deliver, QoS, Msg#vmq_msg{dup=true}}|Acc]
               end, WMsgs,
@@ -858,33 +855,31 @@ handle_waiting_msgs(#state{waiting_msgs=Msgs, queue_pid=QPid} = State) ->
             {NewState#state{waiting_msgs=Waiting}, HandledMsgs}
     end.
 
-handle_messages([{deliver, 0, Msg}|Rest], Frames, BinCnt, State, Waiting) ->
+handle_messages([{deliver, 0, Msg}|Rest], Frames, PubCnt, State, Waiting) ->
     {Frame, NewState} = prepare_frame(0, Msg, State),
-    handle_messages(Rest, [Frame|Frames], BinCnt, NewState, Waiting);
-handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, BinCnt, State, Waiting) ->
+    handle_messages(Rest, [Frame|Frames], PubCnt + 1, NewState, Waiting);
+handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, PubCnt, State, Waiting) ->
     case check_in_flight(State) of
         true ->
             {Frame, NewState} = prepare_frame(QoS, Msg, State),
-            handle_messages(Rest, [Frame|Frames], BinCnt, NewState, Waiting);
+            handle_messages(Rest, [Frame|Frames], PubCnt + 1,  NewState, Waiting);
         false ->
             % only qos 1&2 are constrained by max_in_flight
-            handle_messages(Rest, Frames, BinCnt, State, [Obj|Waiting])
+            handle_messages(Rest, Frames, PubCnt, State, [Obj|Waiting])
     end;
-handle_messages([{deliver_bin, {_, Bin} = Term}|Rest], Frames, BinCnt, State, Waiting) ->
-    handle_messages(Rest, [Bin|Frames], BinCnt, handle_bin_message(Term, State), Waiting);
+handle_messages([{deliver_bin, {MsgId, PubRelBin}}|Rest], Frames, PubCnt, State0, Waiting) ->
+    %% this is called when a pubrel is retried after a client reconnects
+    #state{waiting_acks=WAcks, retry_interval=RetryInterval, retry_queue=RetryQueue} = State0,
+    {#mqtt_pubrel{} = PubRelFrame, <<>>} = vmq_parser:parse(PubRelBin),
+    _ = vmq_metrics:incr_mqtt_pubrel_sent(),
+    State1 = State0#state{retry_queue=set_retry(pubrel, MsgId, RetryInterval, RetryQueue),
+                         waiting_acks=maps:put(MsgId, PubRelFrame, WAcks)},
+    handle_messages(Rest, [PubRelBin|Frames], PubCnt, State1, Waiting);
 handle_messages([], [], _, State, Waiting) ->
     {State, [], Waiting};
-handle_messages([], Frames, BinCnt, State, Waiting) ->
-    NrOfFrames = length(Frames) - BinCnt, %% subtract pubrel frames
-    _ = vmq_metrics:incr_mqtt_publishes_sent(NrOfFrames),
+handle_messages([], Frames, PubCnt, State, Waiting) ->
+    _ = vmq_metrics:incr_mqtt_publishes_sent(PubCnt),
     {State, Frames, Waiting}.
-
-handle_bin_message({MsgId, Bin}, State) ->
-    %% this is called when a pubrel is retried after a client reconnects
-    #state{waiting_acks=WAcks, retry_interval=RetryInterval, retry_queue=RetryQueue} = State,
-    _ = vmq_metrics:incr_mqtt_pubrel_sent(),
-    State#state{retry_queue=set_retry(MsgId, RetryInterval, RetryQueue),
-                waiting_acks=maps:put(MsgId, Bin, WAcks)}.
 
 prepare_frame(QoS, Msg, State) ->
     #state{username=User, subscriber_id=SubscriberId, waiting_acks=WAcks,
@@ -922,7 +917,7 @@ prepare_frame(QoS, Msg, State) ->
             {Frame, State1};
         _ ->
             {Frame, State1#state{
-                      retry_queue=set_retry(OutgoingMsgId, RetryInterval, RetryQueue),
+                      retry_queue=set_retry(publish, OutgoingMsgId, RetryInterval, RetryQueue),
                       waiting_acks=maps:put(OutgoingMsgId,
                                             Msg#vmq_msg{qos=NewQoS}, WAcks)}}
     end.
@@ -1037,32 +1032,32 @@ set_last_time_active(false, State) ->
 %%  smaller than the retry interval. In this case we set a new retry timer
 %%  wrt. to the time difference.
 %%
-set_retry(MsgId, Interval, {[],[]} = RetryQueue) ->
+set_retry(MsgTag, MsgId, Interval, {[],[]} = RetryQueue) ->
     %% no waiting ack
     vmq_mqtt_fsm_util:send_after(Interval, retry),
     Now = os:timestamp(),
-    queue:in({Now, MsgId}, RetryQueue);
-set_retry(MsgId, _, RetryQueue) ->
+    queue:in({Now, {MsgTag, MsgId}}, RetryQueue);
+set_retry(MsgTag, MsgId, _, RetryQueue) ->
     Now = os:timestamp(),
-    queue:in({Now, MsgId}, RetryQueue).
+    queue:in({Now, {MsgTag, MsgId}}, RetryQueue).
 
 handle_retry(Interval, RetryQueue, WAcks) ->
     %% the fired timer was set for the oldest element in the queue!
     Now = os:timestamp(),
     handle_retry(Now, Interval, queue:out(RetryQueue), WAcks, []).
 
-handle_retry(Now, Interval, {{value, {Ts, MsgId} = Val}, RetryQueue}, WAcks, Acc) ->
+handle_retry(Now, Interval, {{value, {Ts, {MsgTag, MsgId} = RetryId } = Val}, RetryQueue}, WAcks, Acc) ->
     NowDiff = timer:now_diff(Now, Ts) div 1000,
     case NowDiff < Interval of
         true ->
             vmq_mqtt_fsm_util:send_after(Interval - NowDiff, retry),
             {Acc, queue:in_r(Val, RetryQueue)};
         false ->
-            case get_retry_frame(MsgId, maps:get(MsgId, WAcks, not_found), Acc) of
+            case get_retry_frame(MsgTag, MsgId, maps:get(MsgId, WAcks, not_found), Acc) of
                 already_acked ->
                     handle_retry(Now, Interval, queue:out(RetryQueue), WAcks, Acc);
                 NewAcc ->
-                    NewRetryQueue = queue:in({Now, MsgId}, RetryQueue),
+                    NewRetryQueue = queue:in({Now, RetryId}, RetryQueue),
                     handle_retry(Now, Interval, queue:out(NewRetryQueue), WAcks, NewAcc)
             end
     end;
@@ -1072,7 +1067,7 @@ handle_retry(_, Interval, {empty, Queue}, _, Acc) when length(Acc) > 0 ->
 handle_retry(_, _, {empty, Queue}, _, Acc) ->
     {Acc, Queue}.
 
-get_retry_frame(MsgId, #vmq_msg{routing_key=Topic, qos=QoS, retain=Retain,
+get_retry_frame(publish, MsgId, #vmq_msg{routing_key=Topic, qos=QoS, retain=Retain,
                          payload=Payload}, Acc) ->
     _ = vmq_metrics:incr_mqtt_publish_sent(),
     Frame = #mqtt_publish{message_id=MsgId,
@@ -1082,16 +1077,10 @@ get_retry_frame(MsgId, #vmq_msg{routing_key=Topic, qos=QoS, retain=Retain,
                           dup=true,
                           payload=Payload},
     [Frame|Acc];
-get_retry_frame(_, #mqtt_pubrel{} = Frame, Acc) ->
+get_retry_frame(pubrel, _MsgId, #mqtt_pubrel{} = Frame, Acc) ->
     _ = vmq_metrics:incr_mqtt_pubrel_sent(),
     [Frame|Acc];
-get_retry_frame(_, #mqtt_pubrec{} = Frame, Acc) ->
-    _ = vmq_metrics:incr_mqtt_pubrec_sent(),
-    [Frame|Acc];
-get_retry_frame(_, {#mqtt_pubrec{} = Frame, _}, Acc) ->
-    _ = vmq_metrics:incr_mqtt_pubrec_sent(),
-    [Frame|Acc];
-get_retry_frame(_, not_found, _) ->
+get_retry_frame(_, _, _, _) ->
     %% already acked
     already_acked.
 

@@ -19,6 +19,8 @@
   existing session already exists for the connecting client. This is
   configurable via the hidden setting `suppress_lwt_on_session_takeover` in the
   VerneMQ configuration file. The default is `off`.
+- Fix issue with PUBREL frames retried after client reconnects (#762).
+- Refactor and cleanup retry mechanism.
 
 ## VerneMQ 1.4.0
 
