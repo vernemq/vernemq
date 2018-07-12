@@ -366,7 +366,7 @@ handle_call({update_watermark, OriginPeer, Node, NodeClock}, _From, #state{confi
     db_write(Config, [UpdateKVV_DBop]),
     {reply, ok, State0#state{kvv=KVV2, sync_lock=SyncLock1}};
 
-handle_call({update_watermark, _, _}, _From, State) ->
+handle_call({update_watermark, _, _, _}, _From, State) ->
     {reply, {error, not_locked}, State};
 
 handle_call({sync_repair, OriginPeer, AllData, TargetNode, TargetNodeBVV, MissingObjects}, _From, #state{config=Config, idx_name=IdxName, peers=Peers, bvv=BVV0, sync_lock={OriginPeer, _} = SyncLock0} = State0) ->
@@ -410,7 +410,7 @@ handle_call({sync_repair, OriginPeer, AllData, TargetNode, TargetNodeBVV, Missin
             trigger_events(Events),
             {reply, ok, State0#state{sync_lock=SyncLock1}}
     end;
-handle_call({sync_repair, _, _, _, _}, _From, State) ->
+handle_call({sync_repair, _, _, _, _, _}, _From, State) ->
     {reply, {error, not_locked}, State};
 
 handle_call(bvv, _, #state{bvv=Bvv} = State) ->
