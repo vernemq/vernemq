@@ -59,12 +59,12 @@ sync(internal, start, #state{config=Config, peer=Peer, batch_size=BatchSize} = S
             {keep_state_and_data, [{state_timeout, State#state.timeout, sync}]};
         E ->
             lager:error("Could not start remote iterator on ~p due to ~p", [Peer, E]),
-            {stop, normal, State}
+            terminate(normal, State)
 
     end;
 sync(state_timeout, sync, #state{peer=Peer} = State) ->
     lager:error("Sync timeout with ~p", [Peer]),
-    {stop, normal, State};
+    terminate(normal, State);
 
 sync({call, From}, {batch, MissingObjects0, AllData}, #state{config=Config,
                                                              peer=Peer,
@@ -79,10 +79,14 @@ sync({call, From}, {batch, MissingObjects0, AllData}, #state{config=Config,
     gen_statem:reply(From, ok),
     case AllData of
         true ->
-            {stop, normal, State};
+            terminate(normal, State);
         false ->
             keep_state_and_data
     end.
+
+terminate(Reason, #state{config=Config} = State) ->
+    vmq_swc_store:unlock(Config),
+    {stop, Reason, State}.
 
 callback_mode() -> state_functions.
 
