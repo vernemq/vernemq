@@ -21,11 +21,13 @@
 % State Functions
 -export([prepare/3,
          update_local/3,
-         update_remote/3]).
+         update_remote/3,
+         local_sync_repair/3,
+         remote_sync_repair/3]).
 
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
--record(state, {config, peer, timeout, local_clock, remote_clock, batch_size=100}).
+-record(state, {config, peer, timeout, local_clock, remote_clock, batch_size=100, missing_dots}).
 
 start_link(#swc_config{} = Config, Peer, Timeout) ->
     gen_statem:start_link(?MODULE, [Config, Peer, Timeout], []).
@@ -73,36 +75,67 @@ update_local(internal, start, #state{config=Config, peer=RemotePeer, local_clock
     vmq_swc_store:update_watermark(Config, RemotePeer, RemoteClock),
     % calculate the dots missing on this node but exist on remote node
     MissingDots = swc_node:missing_dots(RemoteClock, NodeClock, swc_node:ids(RemoteClock)),
-    sync_repair(local_sync_repair, Config, RemotePeer, MissingDots, State#state.batch_size, RemoteClock),
-    {keep_state_and_data, [{state_timeout, State#state.timeout, sync_repair}]};
-
-update_local(cast, {local_sync_repair, ok}, State) ->
-    {next_state, update_remote, State,
-     [{next_event, internal, start}]};
-
-update_local(cast, {local_sync_repair, E}, State) ->
-    lager:warning("local sync repair error ~p", [E]),
-    terminate(State);
-
-update_local(state_timeout, sync_repair, State) ->
-    lager:warning("local sync repair timeout", []),
-    terminate(State).
+    {next_state, local_sync_repair, State#state{missing_dots=MissingDots},
+     [{next_event, internal, start}]}.
 
 update_remote(internal, start, #state{config=Config, peer=RemotePeer, local_clock=NodeClock, remote_clock=RemoteClock} = State) ->
     vmq_swc_store:remote_update_watermark(Config, RemotePeer, NodeClock),
     MissingDots = swc_node:missing_dots(NodeClock, RemoteClock, swc_node:ids(NodeClock)),
+    {next_state, remote_sync_repair, State#state{missing_dots=MissingDots},
+     [{next_event, internal, start}]}.
 
-    sync_repair(remote_sync_repair, Config, RemotePeer, MissingDots, State#state.batch_size, NodeClock),
-    {keep_state_and_data, [{state_timeout, State#state.timeout, sync_repair}]};
-
-update_remote(cast, {remote_sync_repair, ok}, State) ->
+local_sync_repair(internal, start, #state{config=Config, peer=RemotePeer, remote_clock=RemoteClock, missing_dots=MissingDots, batch_size=BatchSize} = State) ->
+    {Rest, BatchOfDots} = sync_repair_batch(MissingDots, BatchSize),
+    as_event(
+      fun() ->
+              case vmq_swc_store:remote_sync_missing(Config, RemotePeer, BatchOfDots) of
+                  {error, _Reason} = E -> E;
+                  MissingObjects ->
+                      vmq_swc_store:sync_repair(Config, MissingObjects, RemotePeer, swc_node:base(RemoteClock), Rest == [])
+              end
+      end),
+    {next_state, local_sync_repair, State#state{missing_dots=Rest},
+     [{state_timeout, State#state.timeout, sync_repair}]};
+local_sync_repair(cast, ok, State) ->
+    case State#state.missing_dots of
+        [] ->
+            {next_state, update_remote, State,
+             [{next_event, internal, start}]};
+        _ ->
+            {next_state, local_sync_repair, State,
+             [{next_event, internal, start}]}
+    end;
+local_sync_repair(cast, E, State) ->
+    lager:warning("local sync repair error ~p", [E]),
     terminate(State);
+local_sync_repair(state_timeout, sync_repair, State) ->
+    lager:warning("local sync repair timeout", []),
+    terminate(State).
 
-update_remote(cast, {remote_sync_repair, E}, State) ->
+remote_sync_repair(internal, start, #state{config=Config, peer=RemotePeer, local_clock=LocalClock, missing_dots=MissingDots, batch_size=BatchSize} = State) ->
+    {Rest, BatchOfDots} = sync_repair_batch(MissingDots, BatchSize),
+    as_event(
+      fun() ->
+              case vmq_swc_store:sync_missing(Config, BatchOfDots) of
+                  {error, _Reason} = E -> E;
+                  MissingObjects ->
+                      vmq_swc_store:remote_sync_repair(Config, MissingObjects, RemotePeer, swc_node:base(LocalClock), Rest == [])
+              end
+      end),
+    {next_state, remote_sync_repair, State#state{missing_dots=Rest},
+     [{state_timeout, State#state.timeout, sync_repair}]};
+remote_sync_repair(cast, ok, State) ->
+    case State#state.missing_dots of
+        [] ->
+            terminate(State);
+        _ ->
+            {next_state, remote_sync_repair, State,
+             [{next_event, internal, start}]}
+    end;
+remote_sync_repair(cast, E, State) ->
     lager:warning("remote sync repair error ~p", [E]),
     terminate(State);
-
-update_remote(state_timeout, sync_repair, State) ->
+remote_sync_repair(state_timeout, sync_repair, State) ->
     lager:warning("remote sync repair timeout", []),
     terminate(State).
 
@@ -126,57 +159,6 @@ code_change(_Vsn, State, Data, _Extra) ->
     {ok, State, Data}.
 
 %% internal
-sync_repair(Event, Config, RemotePeer, MissingDots, BatchSize, Clock) ->
-    as_event(fun() ->
-                     case Event of
-                         local_sync_repair ->
-                             Res = local_sync_repair(Config, RemotePeer, MissingDots, BatchSize, Clock),
-                             {Event, Res};
-                         remote_sync_repair ->
-                             Res = remote_sync_repair(Config, RemotePeer, MissingDots, BatchSize, Clock),
-                             {Event, Res}
-                     end
-
-             end).
-
-local_sync_repair(Config, RemotePeer, MissingDots, BatchSize, Clock) ->
-    case sync_repair_batch(MissingDots, BatchSize) of
-        {[], BatchOfDots} ->
-            case vmq_swc_store:remote_sync_missing(Config, RemotePeer, BatchOfDots) of
-                {error, Reason} ->
-                    lager:warning("can't fetch missing objects from remote peer due to ~p", [Reason]);
-                MissingObjects ->
-                    vmq_swc_store:sync_repair(Config, MissingObjects, RemotePeer, swc_node:base(Clock), true)
-            end;
-        {Rest, BatchOfDots} ->
-            case vmq_swc_store:remote_sync_missing(Config, RemotePeer, BatchOfDots) of
-                {error, Reason} ->
-                    lager:warning("can't fetch missing objects from local peer due to ~p", [Reason]);
-                MissingObjects ->
-                    vmq_swc_store:sync_repair(Config, MissingObjects, RemotePeer, swc_node:base(Clock), false),
-                    local_sync_repair(Config, RemotePeer, Rest, BatchSize, Clock)
-            end
-    end.
-
-remote_sync_repair(Config, RemotePeer, MissingDots, BatchSize, Clock) ->
-    case sync_repair_batch(MissingDots, BatchSize) of
-        {[], BatchOfDots} ->
-            case vmq_swc_store:sync_missing(Config, BatchOfDots) of
-                {error, Reason} ->
-                    lager:warning("can't fetch missing objects from local peer due to ~p", [Reason]);
-                MissingObjects ->
-                    vmq_swc_store:remote_sync_repair(Config, MissingObjects, RemotePeer, swc_node:base(Clock), true)
-            end;
-        {Rest, BatchOfDots} ->
-            case vmq_swc_store:sync_missing(Config, BatchOfDots) of
-                {error, Reason} ->
-                    lager:warning("can't fetch missing objects from local peer due to ~p", [Reason]);
-                MissingObjects ->
-                    vmq_swc_store:remote_sync_repair(Config, MissingObjects, RemotePeer, swc_node:base(Clock), false),
-                    local_sync_repair(Config, RemotePeer, Rest, BatchSize, Clock)
-            end
-    end.
-
 sync_repair_batch(MissingDots, BatchSize) ->
     sync_repair_batch(MissingDots, [], 0, BatchSize).
 
