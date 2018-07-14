@@ -73,7 +73,8 @@ all() ->
      siblings_test,
      cluster_leave_test,
      cluster_join_test,
-     events_test].
+     events_test,
+     full_sync_test].
 
 read_write_delete_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
@@ -332,9 +333,17 @@ full_sync_test(Config) ->
     io:format(user, "start full sync on node ~p~n", [LastNode]),
     % let's join the LastNode,
     ?assertEqual(ok, rpc:call(Node1, plumtree_peer_service, join, [LastNode])),
+
+    % insert some more entries while joining the cluster
+    lists:foreach(fun(I) ->
+                          RandNode = lists:nth(rand:uniform(length([LastNode|Nodes])), [LastNode|Nodes]),
+                          ok = put_metadata(RandNode, rand, I, I, [])
+                  end, lists:seq(10001, 20000)),
+    ok = wait_until_log_gc([LastNode|Nodes]),
+
     lists:foreach(fun(I) ->
                           wait_until_converged([LastNode|Nodes], rand, I, I)
-                  end, lists:seq(1, 10000)).
+                  end, lists:seq(1, 20000)).
 
 
 disable_broadcast(Nodes) ->
