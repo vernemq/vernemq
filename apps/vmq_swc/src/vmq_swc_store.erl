@@ -450,6 +450,28 @@ handle_cast({set_group_members, NewPeers0},
                     ignore
             end;
         _ ->
+            case NewPeers1 -- OldPeers of
+                [] -> % Node Leave
+                    ignore;
+                [FreshPeer] -> % A new peer joined the cluster
+                    % full exchange uses an remote_iterator, which is backed by a DB snapshot.
+                    % Moreover a full exchange doesn't require a lock on both ends. As a result
+                    % we can savely start a full sync here with the FreshPeer eventhough the
+                    % FreshPeer is performing a full sync at this very moment too (possibly with
+                    % myself).
+                    % Why does it work: When I am performing a full sync, I lock myself, and request
+                    % a remote iterator from FreshPeer. The remote iterator will perform a snapshot,
+                    % as a result I will only receive the data that has been inserted before the
+                    % snapshot. This leads to a small time window where I could sync data from
+                    % FreshPeer that is already known to me.
+                    % In practice this case might be an issue only if the FreshPeer has been loaded
+                    % with data and joins an existing cluster.
+                    % Nevertheless, it may happen, especially during a cluster join while serving
+                    % writes. (the reason for that is that a Single-Node Cluster won't keep a log
+                    % so every write prior to cluster-join has to be synced using the full exchange.)
+                    vmq_swc_exchange_sup:start_full_exchange(Config, FreshPeer, application:get_env(vmq_swc, sync_timeout, 60000))
+            end,
+
             case OldPeers -- (NewPeers1) of
                 [] -> % Node Join
                     ignore;
