@@ -81,7 +81,7 @@ sync({call, From}, {batch, MissingObjects0, AllData}, #state{config=Config,
         true ->
             terminate(normal, State);
         false ->
-            keep_state_and_data
+            {keep_state_and_data, [{state_timeout, State#state.timeout, sync}]}
     end.
 
 terminate(Reason, #state{config=Config} = State) ->
