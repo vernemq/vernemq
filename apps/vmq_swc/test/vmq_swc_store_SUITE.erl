@@ -19,7 +19,8 @@
          siblings_test/1,
          cluster_join_test/1,
          cluster_leave_test/1,
-         events_test/1
+         events_test/1,
+         full_sync_test/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -309,6 +310,32 @@ events_test(Config) ->
     ok = wait_until_log_gc(Nodes),
     ?assertEqual(0, ets:info(T, size)),
     ok.
+
+full_sync_test(Config) ->
+    [LastNode|Nodes] = proplists:get_value(nodes, Config),
+    [Node1|OtherNodes] = Nodes,
+    [?assertEqual(ok, rpc:call(Node, plumtree_peer_service, join, [Node1]))
+     || Node <- OtherNodes],
+
+    Expected = lists:sort(Nodes),
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
+    [?assertEqual({Node, Expected}, {Node,
+                                     lists:sort(vmq_swc_test_utils:get_cluster_members(Node))})
+     || Node <- Nodes],
+    % at this point the cluster is fully clustered with the exception of LastNode
+    lists:foreach(fun(I) ->
+                          RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
+                          ok = put_metadata(RandNode, rand, I, I, [])
+                  end, lists:seq(1, 10000)),
+    ok = wait_until_log_gc(Nodes),
+
+    io:format(user, "start full sync on node ~p~n", [LastNode]),
+    % let's join the LastNode,
+    ?assertEqual(ok, rpc:call(Node1, plumtree_peer_service, join, [LastNode])),
+    lists:foreach(fun(I) ->
+                          wait_until_converged([LastNode|Nodes], rand, I, I)
+                  end, lists:seq(1, 10000)).
+
 
 disable_broadcast(Nodes) ->
     [ok = rpc:call(N, vmq_swc_store, set_broadcast, [config(N), false])
