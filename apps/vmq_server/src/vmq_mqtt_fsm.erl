@@ -67,7 +67,11 @@
           cap_settings=#cap_settings{}      :: cap_settings(),
           allowed_protocol_versions         :: [3|4|131],
 
-          trace_fun                        :: undefined | any() %% TODO
+          %% flags and settings which have a non-default value if
+          %% present and default value if not present.
+          def_opts                          :: map(),
+
+          trace_fun                         :: undefined | any() %% TODO
          }).
 
 -type state() :: #state{}.
@@ -107,7 +111,7 @@ init(Peer, Opts) ->
                      allow_unsubscribe=CAPUnsubscribe
                     },
     TraceFun = vmq_config:get_env(trace_fun, undefined),
-
+    DOpts = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
     TRef = vmq_mqtt_fsm_util:send_after(?CLOSE_AFTER, close_timeout),
     set_max_msg_size(MaxMessageSize),
     {wait_for_connect, #state{peer=Peer,
@@ -124,6 +128,7 @@ init(Peer, Opts) ->
                               cap_settings=CAPSettings,
                               reg_view=RegView,
                               allowed_protocol_versions=AllowedProtocolVersions,
+                              def_opts = DOpts,
                               trace_fun=TraceFun}}.
 
 data_in(Data, SessionState) when is_binary(Data) ->
@@ -407,9 +412,9 @@ connected(retry,
            retry_queue=RetryQueue} = State) ->
     {RetryFrames, NewRetryQueue} = handle_retry(RetryInterval, RetryQueue, WAcks),
     {State#state{retry_queue=NewRetryQueue}, RetryFrames};
-connected({disconnect, _Reason}, State) ->
+connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
-    terminate(normal, State);
+    terminate(Reason, State);
 connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive,
                                   subscriber_id=SubscriberId, username=UserName} = State) ->
     Now = os:timestamp(),
@@ -453,13 +458,6 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid=QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-terminate(mqtt_client_disconnect, #state{clean_session=CleanSession} = State) ->
-    _ = case CleanSession of
-            true -> ok;
-            false ->
-                handle_waiting_acks_and_msgs(State)
-        end,
-    {stop, normal, []};
 terminate(Reason, #state{clean_session=CleanSession} = State) ->
     _ = case CleanSession of
             true -> ok;
@@ -467,12 +465,16 @@ terminate(Reason, #state{clean_session=CleanSession} = State) ->
                 handle_waiting_acks_and_msgs(State)
         end,
     %% TODO: the counter update is missing the last will message
-    maybe_publish_last_will(State),
-    {stop, Reason, []}.
+    maybe_publish_last_will(State, Reason),
+    {stop, terminate_reason(Reason), []}.
 
-
-
-
+terminate_reason(publish_not_authorized_3_1_1) -> normal;
+terminate_reason(?NORMAL_DISCONNECT) -> normal;
+terminate_reason(?SESSION_TAKEN_OVER) -> normal;
+terminate_reason(?ADMINISTRATIVE_ACTION) -> normal;
+terminate_reason(?DISCONNECT_KEEP_ALIVE) -> normal;
+terminate_reason(?CLIENT_DISCONNECT) -> normal;
+terminate_reason(Reason) ->  Reason.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal
@@ -925,15 +927,27 @@ prepare_frame(QoS, Msg, State) ->
                                             Msg#vmq_msg{qos=NewQoS}, WAcks)}}
     end.
 
--spec maybe_publish_last_will(state()) -> ok.
-maybe_publish_last_will(#state{will_msg=undefined}) -> ok;
+-spec maybe_publish_last_will(state(), any()) -> ok.
+maybe_publish_last_will(_, ?CLIENT_DISCONNECT) -> ok;
+maybe_publish_last_will(#state{will_msg=undefined}, _) -> ok;
 maybe_publish_last_will(#state{subscriber_id=SubscriberId, username=User,
-                               will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings}) ->
-    #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
-    HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
-    _ = on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish,
-                                        RegView, Msg), HookArgs),
-    ok.
+                               will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings,
+                               def_opts=DOpts},
+                        Reason) ->
+    case suppress_lwt(Reason, DOpts) of
+        false ->
+            #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
+            HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
+            _ = on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish,
+                                                RegView, Msg), HookArgs),
+            ok;
+        true -> ok
+    end.
+
+suppress_lwt(?SESSION_TAKEN_OVER, #{suppress_lwt_on_session_takeover := true}) ->
+    true;
+suppress_lwt(_Reason, _DOpts) ->
+    false.
 
 -spec check_in_flight(state()) -> boolean().
 check_in_flight(#state{waiting_acks=WAcks, max_inflight_messages=Max}) ->
@@ -1178,3 +1192,11 @@ get_info_items([waiting_acks|Rest], State, Acc) ->
 get_info_items([_|Rest], State, Acc) ->
     get_info_items(Rest, State, Acc);
 get_info_items([], _, Acc) -> Acc.
+
+set_defopt(Key, Default, Map) ->
+    case vmq_config:get_env(Key, Default) of
+        Default ->
+            Map;
+        NonDefault ->
+            maps:put(Key, NonDefault, Map)
+    end.
