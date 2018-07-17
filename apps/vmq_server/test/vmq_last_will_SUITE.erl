@@ -9,8 +9,6 @@
 init_per_suite(_Config) ->
     cover:start(),
     vmq_test_utils:setup(),
-    vmq_server_cmd:set_config(allow_anonymous, true),
-    vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:listener_start(1888, []),
     _Config.
 
@@ -19,6 +17,10 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
+    %% make sure to have sane defaults
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_server_cmd:set_config(retry_interval, 10),
+    vmq_server_cmd:set_config(suppress_lwt_on_session_takeover, false),
     Config.
 
 end_per_testcase(_, Config) ->
@@ -35,9 +37,10 @@ groups() ->
          will_null_test,
          will_null_topic_test,
          will_qos0_test,
-         will_ignored_for_normal_disconnect_test],
+         will_ignored_for_normal_disconnect_test,
+         suppress_lwt_on_session_takeover_test],
     [
-     {mqtt, [shuffle, sequence], Tests}
+     {mqtt, [shuffle], Tests}
     ].
 
 
@@ -118,18 +121,54 @@ will_qos0_test(_) ->
     disable_on_publish(),
     ok = gen_tcp:close(Socket).
 
+suppress_lwt_on_session_takeover_test(_Config) ->
+    enable_on_subscribe(),
+    enable_on_publish(),
+
+    LWTTopic = "suppress/will/test",
+    LWTMsg = <<"suppress-will-test-msg">>,
+
+    %% setup a subscriber to receive LWT messages
+    ConnectSub = packet:gen_connect("suppress-lwt-on-session-takeover-subscriber", [{keepalive,60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(53, LWTTopic, 0),
+    Suback = packet:gen_suback(53, 0),
+    {ok, Socket} = packet:do_client_connect(ConnectSub, Connack, []),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+
+    ExpLWTPublish = packet:gen_publish(LWTTopic, 0, LWTMsg, []),
+    Connect = packet:gen_connect("suppress-lwt-on-session-takeover",
+                                 [{keepalive,60}, {will_topic, LWTTopic}, {will_msg, LWTMsg}]),
+
+    %% connect a client which won't suppress the publication of lwt messages
+    vmq_server_cmd:set_config(suppress_lwt_on_session_takeover, false),
+    {ok, _} = packet:do_client_connect(Connect, Connack, []),
+
+    %% do a session take-over and see the LWT message is published.
+    %% also suppress LWT for the new session in case of a session
+    %% take-over.
+    vmq_server_cmd:set_config(suppress_lwt_on_session_takeover, true),
+    {ok, _} = packet:do_client_connect(Connect, Connack, []),
+    ok = packet:expect_packet(Socket, "publish", ExpLWTPublish),
+
+    %% connecting again will produce no LWT message.
+    {ok, _} = packet:do_client_connect(Connect, Connack, []),
+    {error, timeout} = gen_tcp:recv(Socket, 0, 200),
+
+    disable_on_subscribe(),
+    disable_on_publish().
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_,{"", <<"will-qos0-test">>}, [{[<<"will">>, <<"null">>, <<"test">>],0}]) -> ok;
-hook_auth_on_subscribe(_,{"", <<"will-qos0-test">>}, [{[<<"will">>, <<"qos0">>, <<"test">>],0}]) -> ok;
-hook_auth_on_subscribe(_,{"", <<"will-ign-sub-test">>}, [{[<<"will">>, <<"ignorenormal">>, <<"test">>], 0}]) -> ok.
 
-hook_auth_on_publish(_, _, _MsgId, [<<"ok">>], <<"should be ok">>, false) -> ok;
+hook_auth_on_subscribe(_, _, _) -> ok.
+
 hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"acl">>,<<"test">>], <<"should be denied">>, false) -> {error, not_auth};
-hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"null">>,<<"test">>], <<>>, false) -> ok;
-hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"qos0">>,<<"test">>], <<"will-message">>, false) -> ok;
-hook_auth_on_publish(_, _, _MsgId, [<<"will">>,<<"ignorenormal">>,<<"test">>], <<"should be ignored">>, false) -> ok.
+hook_auth_on_publish(_, _, _, _, _, _) -> ok.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

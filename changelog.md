@@ -15,6 +15,10 @@
   - Add support for subscriber data with subscription options.
 - Fix issue when validating a shared subscription topic (#756).
 - Fix issue with retried PUBREC frames (#750).
+- Make it possible to suppress the Last Will and Testament message if an
+  existing session already exists for the connecting client. This is
+  configurable via the hidden setting `suppress_lwt_on_session_takeover` in the
+  VerneMQ configuration file. The default is `off`.
 
 ## VerneMQ 1.4.0
 
