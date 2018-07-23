@@ -818,8 +818,7 @@ handle_waiting_acks_and_msgs(State) ->
                       Acc;
                   ({MsgId, #mqtt_pubrel{} = Frame}, Acc) ->
                       %% unacked PUBREL Frame
-                      PubRelBin = vmq_parser:serialise(Frame),
-                      [{deliver_bin, {MsgId, PubRelBin}}|Acc];
+                      [{deliver_pubrel, {MsgId, Frame}}|Acc];
                   ({_MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
                       [{deliver, QoS, Msg#vmq_msg{dup=true}}|Acc]
               end, WMsgs,
@@ -832,7 +831,7 @@ handle_waiting_acks_and_msgs(State) ->
                                 %% 1. maps:to_list gives us an
                                 %% arbitrary ordered list, (it looks
                                 %% like it is ordered with the newest
-                                %% item at the to)
+                                %% item at the top)
                                 maps:to_list(WAcks)
                                )
                  )),
@@ -867,14 +866,13 @@ handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, PubCnt, State, Waiting
             % only qos 1&2 are constrained by max_in_flight
             handle_messages(Rest, Frames, PubCnt, State, [Obj|Waiting])
     end;
-handle_messages([{deliver_bin, {MsgId, PubRelBin}}|Rest], Frames, PubCnt, State0, Waiting) ->
+handle_messages([{deliver_pubrel, {MsgId, #mqtt_pubrel{} = Frame}}|Rest], Frames, PubCnt, State0, Waiting) ->
     %% this is called when a pubrel is retried after a client reconnects
     #state{waiting_acks=WAcks, retry_interval=RetryInterval, retry_queue=RetryQueue} = State0,
-    {#mqtt_pubrel{} = PubRelFrame, <<>>} = vmq_parser:parse(PubRelBin),
     _ = vmq_metrics:incr_mqtt_pubrel_sent(),
     State1 = State0#state{retry_queue=set_retry(pubrel, MsgId, RetryInterval, RetryQueue),
-                         waiting_acks=maps:put(MsgId, PubRelFrame, WAcks)},
-    handle_messages(Rest, [PubRelBin|Frames], PubCnt, State1, Waiting);
+                          waiting_acks=maps:put(MsgId, Frame, WAcks)},
+    handle_messages(Rest, [Frame|Frames], PubCnt, State1, Waiting);
 handle_messages([], [], _, State, Waiting) ->
     {State, [], Waiting};
 handle_messages([], Frames, PubCnt, State, Waiting) ->
