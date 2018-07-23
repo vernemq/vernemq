@@ -1,5 +1,10 @@
 # Changelog
 
+## VerneMQ 1.4.2
+
+- Fix issue with PUBREL frames retried after client reconnects (#762).
+- Refactor and cleanup retry mechanism.
+
 ## VerneMQ 1.4.1
 
 - Fix issue in the bridge preventing it from reconnecting after a connection
