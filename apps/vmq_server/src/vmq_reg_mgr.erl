@@ -14,6 +14,8 @@
 
 -module(vmq_reg_mgr).
 
+-include("vmq_server.hrl").
+
 -behaviour(gen_server).
 %% API functions
 -export([start_link/0]).
@@ -209,7 +211,7 @@ handle_new_remote_subscriber(SubscriberId, QPid, [{NewNode, false}]) ->
     migrate_queue(SubscriberId, QPid, NewNode);
 handle_new_remote_subscriber(SubscriberId, QPid, [{_NewNode, true}]) ->
     %% New remote queue uses clean_session=true, we have to wipe this local session
-    cleanup_queue(SubscriberId, QPid);
+    cleanup_queue(SubscriberId, ?SESSION_TAKEN_OVER, QPid);
 handle_new_remote_subscriber(SubscriberId, QPid, Sessions) ->
     % Case Not 3.
     %% Do we have available remote sessions
@@ -235,10 +237,10 @@ migrate_queue(SubscriberId, QPid, Node) ->
                               end
                       end, Node, 60000).
 
-cleanup_queue(SubscriberId, QPid) ->
+cleanup_queue(SubscriberId, Reason, QPid) ->
     vmq_reg_sync:async({cleanup, SubscriberId},
                        fun() ->
-                               vmq_queue:cleanup(QPid)
+                               vmq_queue:cleanup(QPid, Reason)
                        end, node(), 60000).
 
 is_allow_multi(QPid) ->

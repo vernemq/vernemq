@@ -50,7 +50,8 @@ register_config_() ->
      "graphite_port",
      "graphite_interval",
      "shared_subscription_policy",
-     "remote_enqueue_timeout"
+     "remote_enqueue_timeout",
+     "suppress_lwt_on_session_takeover"
     ],
     _ = [clique:register_config([Key], fun register_config_callback/3)
          || Key <- ConfigKeys],

@@ -14,6 +14,8 @@
 
 -module(vmq_info_cli).
 
+-include("vmq_server.hrl").
+
 -export([register_cli/0]).
 
 register_cli() ->
@@ -101,7 +103,7 @@ vmq_session_disconnect_cmd() ->
                                vmq_ql_query_mgr:fold_query(
                                  fun(Row, _) ->
                                          QueuePid = maps:get(queue_pid, Row),
-                                         vmq_queue:force_disconnect(QueuePid, DoCleanup)
+                                         vmq_queue:force_disconnect(QueuePid, ?ADMINISTRATIVE_ACTION, DoCleanup)
                                  end, ok, QueryString1),
                                [clique_status:text("Done")]
                        end;

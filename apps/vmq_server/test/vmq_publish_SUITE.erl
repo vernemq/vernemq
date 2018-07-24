@@ -78,6 +78,7 @@ publish_qos1_test(_) ->
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "puback", Puback),
     disable_on_publish(),
+    ok = expect_alive(Socket),
     ok = gen_tcp:close(Socket).
 
 publish_qos2_test(_) ->
@@ -95,6 +96,7 @@ publish_qos2_test(_) ->
     ok = gen_tcp:send(Socket, Pubrel),
     ok = packet:expect_packet(Socket, "pubcomp", Pubcomp),
     disable_on_publish(),
+    ok = expect_alive(Socket),
     ok = gen_tcp:close(Socket).
 
 publish_b2c_disconnect_qos1_test(_) ->
@@ -112,6 +114,8 @@ publish_b2c_disconnect_qos1_test(_) ->
     Puback = packet:gen_puback(1),
     Publish2 = packet:gen_publish("qos1/outgoing", 1,
                                   <<"outgoing-message">>, [{mid, 3266}]),
+    Puback2 = packet:gen_puback(3266),
+
     enable_on_publish(),
     enable_on_subscribe(),
     {ok, Socket} = packet:do_client_connect(Connect, Connack1, []),
@@ -124,6 +128,8 @@ publish_b2c_disconnect_qos1_test(_) ->
     %% send our outgoing message, when we disconnect the broker
     %% should get rid of it and ssume we're going to retry
     ok = gen_tcp:send(Socket, Publish2),
+    ok = packet:expect_packet(Socket, "puback", Puback2),
+    ok = expect_alive(Socket),
     ok = gen_tcp:close(Socket),
     %% TODO: assert Publish2 deleted on broker
     %% reconnect
@@ -132,6 +138,7 @@ publish_b2c_disconnect_qos1_test(_) ->
     ok = gen_tcp:send(Socket1, Puback),
     disable_on_publish(),
     disable_on_subscribe(),
+    ok = expect_alive(Socket1),
     ok = gen_tcp:close(Socket1).
 
 publish_b2c_disconnect_qos2_test(_) ->
@@ -177,6 +184,7 @@ publish_b2c_disconnect_qos2_test(_) ->
     ok = gen_tcp:send(Socket2, Pubcomp),
     disable_on_publish(),
     disable_on_subscribe(),
+    ok = expect_alive(Socket2),
     ok = gen_tcp:close(Socket2).
 
 publish_b2c_timeout_qos1_test(_) ->
@@ -204,6 +212,7 @@ publish_b2c_timeout_qos1_test(_) ->
     ok = gen_tcp:send(Socket, Puback),
     disable_on_publish(),
     disable_on_subscribe(),
+    ok = expect_alive(Socket),
     ok = gen_tcp:close(Socket).
 
 publish_b2c_timeout_qos2_test(_) ->
@@ -237,6 +246,7 @@ publish_b2c_timeout_qos2_test(_) ->
     ok = gen_tcp:send(Socket, Pubcomp),
     disable_on_publish(),
     disable_on_subscribe(),
+    ok = expect_alive(Socket),
     ok = gen_tcp:close(Socket).
 
 publish_c2b_disconnect_qos2_test(_) ->
@@ -257,6 +267,7 @@ publish_c2b_disconnect_qos2_test(_) ->
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "pubrec", Pubrec),
     %% We're now going to disconnect and pretend we didn't receive the pubrec
+    ok = expect_alive(Socket),
     ok = gen_tcp:close(Socket),
     {ok, Socket1} = packet:do_client_connect(Connect, Connack2, []),
     ok = gen_tcp:send(Socket1, PublishDup),
@@ -264,11 +275,13 @@ publish_c2b_disconnect_qos2_test(_) ->
     ok = gen_tcp:send(Socket1, Pubrel),
     ok = packet:expect_packet(Socket1, "pubcomp", Pubcomp),
     %% Again, pretend we didn't receive this pubcomp
+    ok = expect_alive(Socket1),
     ok = gen_tcp:close(Socket1),
     {ok, Socket2} = packet:do_client_connect(Connect, Connack2, []),
     ok = gen_tcp:send(Socket2, Pubrel),
     ok = packet:expect_packet(Socket2, "pubcomp", Pubcomp),
     disable_on_publish(),
+    ok = expect_alive(Socket2),
     ok = gen_tcp:close(Socket2).
 
 publish_c2b_timeout_qos2_test(_) ->
@@ -283,11 +296,10 @@ publish_c2b_timeout_qos2_test(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "pubrec", Pubrec),
-    %% The broker should repeat the PUBREC
-    ok = packet:expect_packet(Socket, "pubrec", Pubrec),
     ok = gen_tcp:send(Socket, Pubrel),
     ok = packet:expect_packet(Socket, "pubcomp", Pubcomp),
     disable_on_publish(),
+    ok = expect_alive(Socket),
     ok = gen_tcp:close(Socket).
 
 pattern_matching_test(_) ->
@@ -565,3 +577,9 @@ helper_pattern_matching(PubTopic) ->
     ok = gen_tcp:send(Socket, Publish),
     ok = gen_tcp:send(Socket, packet:gen_disconnect()),
     gen_tcp:close(Socket).
+
+expect_alive(Socket) ->
+    Pingreq = packet:gen_pingreq(),
+    Pingresp = packet:gen_pingresp(),
+    ok = gen_tcp:send(Socket, Pingreq),
+    ok = packet:expect_packet(Socket, "pingresp", Pingresp).
