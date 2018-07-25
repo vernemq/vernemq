@@ -230,8 +230,9 @@ to_vmq_msg({vmq_msg, MsgRef, RoutingKey, Payload,
       };
 to_vmq_msg(InMsg) when is_tuple(InMsg),
                        size(InMsg) > size(#vmq_msg{}) ->
-    %% Msg has more fields than the current vmq_msg record. Strip away
-    %% the ones we don't know.
+    %% we have a msg with unknown elements. As we don't know
+    %% how to handle those we strip them away and fill the
+    %% rest into the `vmq_msg` record we know.
     #vmq_msg{
        msg_ref = element(2, InMsg),
        routing_key = element(3, InMsg),

@@ -32,6 +32,7 @@
 %% *real* MQTT reason codes.
 -define(DISCONNECT_KEEP_ALIVE,    disconnect_keep_alive).
 -define(DISCONNECT_MIGRATION,     disconnect_migration).
+-define(CLIENT_DISCONNECT,        mqtt_client_disconnect).
 
 -type disconnect_reasons() ::
         ?NOT_AUTHORIZED |
@@ -42,4 +43,5 @@
         ?DISCONNECT_MIGRATION |
         ?BAD_AUTHENTICATION_METHOD |
         ?PROTOCOL_ERROR |
-        ?RECEIVE_MAX_EXCEEDED.
+        ?RECEIVE_MAX_EXCEEDED |
+        ?CLIENT_DISCONNECT.

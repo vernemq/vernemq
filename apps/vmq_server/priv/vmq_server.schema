@@ -1454,6 +1454,15 @@
                                                    hidden
                                                   ]}.
 
+%% @doc Suppress the Last Will and Testament message if an existing
+%% session already exists for the connecting client.
+{mapping, "suppress_lwt_on_session_takeover",
+ "vmq_server.suppress_lwt_on_session_takeover", [
+                                                 {default, off},
+                                                 {datatype, flag},
+                                                 hidden
+                                                ]}.
+
 %% @doc plugins.<plugin> enables/disables a plugin.
 %%
 %% Plugin specific settings are set via the plugin itself, i.e., to

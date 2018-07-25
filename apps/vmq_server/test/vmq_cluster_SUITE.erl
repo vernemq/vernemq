@@ -750,8 +750,6 @@ cross_node_publish_subscribe(Config) ->
                  ++ Payloads),
     receive_nothing(200).
 
-
-
 convert_new_msgs_to_old_format(_Config) ->
     %% create a #vmq_msg{} as a raw tuple.
     Orig = {

@@ -402,7 +402,7 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS, _SubOpts, _) ->
                            properties = Properties,
                            expiry_ts = ExpiryTs}}, _) ->
               Msg = #vmq_msg{routing_key=T,
-                             payload=Payload,
+                             payload=retain_pre(Payload),
                              retain=true,
                              qos=QoS,
                              dup=false,

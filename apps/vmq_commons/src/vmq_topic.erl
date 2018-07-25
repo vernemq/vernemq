@@ -112,14 +112,14 @@ validate_publish_topic(Topic, L, Acc) ->
     end.
 
 validate_subscribe_topic(<<"+/", Rest/binary>>, _, Acc) -> validate_subscribe_topic(Rest, 0, [<<"+">>|Acc]);
-validate_subscribe_topic(<<"+">>, _, Acc) -> {ok, reverse([<<"+">>|Acc])};
-validate_subscribe_topic(<<"#">>, _, Acc) -> {ok, reverse([<<"#">>|Acc])};
+validate_subscribe_topic(<<"+">>, _, Acc) -> validate_shared_subscription(reverse([<<"+">>|Acc]));
+validate_subscribe_topic(<<"#">>, _, Acc) -> validate_shared_subscription(reverse([<<"#">>|Acc]));
 validate_subscribe_topic(Topic, L, Acc) ->
     case Topic of
         <<Word:L/binary, "/", Rest/binary>> ->
             validate_subscribe_topic(Rest, 0, [Word|Acc]);
         <<Word:L/binary>> ->
-            {ok, lists:reverse([Word|Acc])};
+            validate_shared_subscription(reverse([Word|Acc]));
         <<_:L/binary, "+", _/binary>> ->
             {error, 'no_+_allowed_in_word'};
         <<_:L/binary, "#", _/binary>> ->
@@ -127,6 +127,10 @@ validate_subscribe_topic(Topic, L, Acc) ->
         _ ->
             validate_subscribe_topic(Topic, L + 1, Acc)
     end.
+
+validate_shared_subscription([<<"$share">>, _Group, _FirstWord | _] = Topic) -> {ok, Topic};
+validate_shared_subscription([<<"$share">> | _] = _Topic) -> {error, invalid_shared_subscription};
+validate_shared_subscription(Topic) -> {ok, Topic}.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -195,6 +199,10 @@ validate_wildcard_test() ->
     {error, 'no_#_allowed_in_word'} = validate_topic(subscribe, <<"/test/testtopic#">>),
     {error, 'no_+_allowed_in_word'} = validate_topic(subscribe, <<"/test/+testtopic">>),
     {error, 'no_+_allowed_in_word'} = validate_topic(subscribe, <<"/testtesttopic+">>).
+
+validate_shared_subscription_test() ->
+    {error, invalid_shared_subscription} = validate_topic(subscribe, <<"$share/mygroup">>),
+    {ok, [<<"$share">>, <<"mygroup">>, <<"a">>, <<"b">>]} = validate_topic(subscribe, <<"$share/mygroup/a/b">>).
 
 validate_unword_test() ->
     rand:seed(exsplus, erlang:timestamp()),
