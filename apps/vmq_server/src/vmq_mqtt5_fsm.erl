@@ -1110,11 +1110,7 @@ handle_waiting_acks_and_msgs(State) ->
                       Acc;
                   ({MsgId, #mqtt5_pubrel{} = Frame}, Acc) ->
                       %% unacked PUBREL Frame
-                      Bin = vmq_parser_mqtt5:serialise(Frame),
-                      [{deliver_bin, {MsgId, Bin}}|Acc];
-                  ({MsgId, Bin}, Acc) when is_binary(Bin) ->
-                      %% unacked PUBREL Frame
-                      [{deliver_bin, {MsgId, Bin}}|Acc];
+                      [{deliver_pubrel, {MsgId, Frame}}|Acc];
                   ({_MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
                       [{deliver, QoS, Msg#vmq_msg{dup=true}}|Acc]
               end, WMsgs,
@@ -1162,7 +1158,7 @@ handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, BinCnt, State, Waiting
             {Frame, NewState} = prepare_frame(QoS, Msg, State#state{fc_send_cnt=Cnt}),
             handle_messages(Rest, [Frame|Frames], BinCnt, NewState, Waiting)
     end;
-handle_messages([{deliver_bin, {_, Bin} = Term}|Rest], Frames, BinCnt, State, Waiting) ->
+handle_messages([{deliver_pubrel, {_, Bin} = Term}|Rest], Frames, BinCnt, State, Waiting) ->
     handle_messages(Rest, [Bin|Frames], BinCnt, handle_bin_message(Term, State), Waiting);
 handle_messages([], [], _, State, Waiting) ->
     {State, [], Waiting};
