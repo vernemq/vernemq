@@ -13,10 +13,9 @@
 %% limitations under the License.
 
 %% @doc compatibility layer making it possible to reuse plugin hooks
-%% (v0 hooks) written for MQTTv3/4 in an MQTTv5 context. The
-%% compatibility layer maps MQTTv5 information to the MQTTv4
-%% equivalents and vice versa.
--module(vmq_plugin_compat_v1_v0).
+%% written for MQTTv3/4 in an MQTTv5 context. The compatibility layer
+%% maps MQTTv5 information to the MQTTv4 equivalents and vice versa.
+-module(vmq_plugin_compat_m5).
 
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 
@@ -51,7 +50,7 @@ convert(on_publish, Mod, Fun,
         [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties]) ->
     apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain]);
 convert(auth_on_subscribe, Mod, Fun, [Username, SubscriberId, Topics, _Properties]) ->
-    case apply(Mod, Fun, [Username, SubscriberId, topics_v1_v0(Topics)]) of
+    case apply(Mod, Fun, [Username, SubscriberId, conv_m5_topics(Topics)]) of
         {ok, Topics} when is_list(Topics) ->
             {ok, #{topics => Topics}};
         Other -> Other
@@ -59,7 +58,7 @@ convert(auth_on_subscribe, Mod, Fun, [Username, SubscriberId, Topics, _Propertie
 convert(_, Mod, Fun, Args) ->
     apply(Mod, Fun, Args).
 
-topics_v1_v0(Topics) ->
+conv_m5_topics(Topics) ->
     lists:map(
       fun({T, {QoS, _SubOpts}}) ->
               {T, QoS}

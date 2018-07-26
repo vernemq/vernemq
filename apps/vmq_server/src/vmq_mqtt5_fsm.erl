@@ -262,7 +262,7 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
                                             p_authentication_data := _} = Props},
                  #state{enhanced_auth = #auth_data{method = AuthMethod,
                                                    data = ConnectFrame}} = State) ->
-    case vmq_plugin:all_till_ok(on_auth_v1, [Props]) of
+    case vmq_plugin:all_till_ok(on_auth_m5, [Props]) of
         {ok, #{reason_code := ?SUCCESS,
                properties :=
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
@@ -448,7 +448,7 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Props
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
                 case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics) of
                     {ok, _QoSs} ->
-                        vmq_plugin:all(on_subscribe_v1, [User, SubscriberId, MaybeChangedTopics]);
+                        vmq_plugin:all(on_subscribe_m5, [User, SubscriberId, MaybeChangedTopics]);
                     Res -> Res
                 end
         end,
@@ -492,7 +492,7 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties = P
     end;
 connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Props},
           #state{enhanced_auth = #auth_data{method = AuthMethod}} = State) ->
-    case vmq_plugin:all_till_ok(on_auth_v1, [Props]) of
+    case vmq_plugin:all_till_ok(on_auth_m5, [Props]) of
         {ok, #{reason_code := ?SUCCESS,
                properties :=
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
@@ -640,7 +640,7 @@ terminate_reason(Reason) ->  Reason.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthMethod}=Props} = Frame0, State) ->
-    case vmq_plugin:all_till_ok(on_auth_v1, [Props]) of
+    case vmq_plugin:all_till_ok(on_auth_m5, [Props]) of
         {ok, #{reason_code := ?SUCCESS,
                properties :=
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
@@ -750,7 +750,7 @@ register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanStart, QueueOpts) of
         {ok, SessionPresent, QPid} ->
             monitor(process, QPid),
-            _ = vmq_plugin:all(on_register_v1, [Peer, SubscriberId,
+            _ = vmq_plugin:all(on_register_m5, [Peer, SubscriberId,
                                                 User, OutProps0]),
             OutProps1 = maybe_set_receive_maximum(OutProps0, ReceiveMax),
             check_will(F, SessionPresent, OutProps1, State#state{queue_pid=QPid,username=User});
@@ -868,7 +868,7 @@ auth_on_register(User, Password, Properties, State) ->
     #state{clean_start=CleanStart, peer=Peer, cap_settings=CAPSettings,
            subscriber_id=SubscriberId} = State,
     HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Properties],
-    case vmq_plugin:all_till_ok(auth_on_register_v1, HookArgs) of
+    case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
         ok ->
             {ok, queue_opts([], Properties), State};
         {ok, Args0} ->
@@ -913,10 +913,10 @@ set_sock_opts(Opts) ->
                         [{topic(), qos()}], mqtt5_properties(),
                         fun((username(), subscriber_id(), [{topic(), qos()}]) ->
                                    {ok, [qos() | not_allowed]} | {error, atom()})
-                       ) -> {ok, auth_on_subscribe_v1_hook:sub_modifiers()} |
+                       ) -> {ok, auth_on_subscribe_m5_hook:sub_modifiers()} |
                             {error, atom()}.
 auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess) ->
-    case vmq_plugin:all_till_ok(auth_on_subscribe_v1,
+    case vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                                 [User, SubscriberId, Topics, Props0]) of
         ok ->
             AuthSuccess(User, SubscriberId, Topics),
@@ -938,7 +938,7 @@ auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess) ->
                  -> {ok, mqtt5_properties()} | {error, not_ready}.
 unsubscribe(User, SubscriberId, Topics0, Props0, UnsubFun) ->
     {Topics2, Props2} =
-        case vmq_plugin:all_till_ok(on_unsubscribe_v1, [User, SubscriberId, Topics0, Props0]) of
+        case vmq_plugin:all_till_ok(on_unsubscribe_m5, [User, SubscriberId, Topics0, Props0]) of
             ok ->
                 {Topics0, #{}};
             {ok, #{topics := [[W|_]|_] = Topics1} = Mods} when is_binary(W) ->
@@ -965,7 +965,7 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                 AuthSuccess) ->
 
     HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain), Properties],
-    case vmq_plugin:all_till_ok(auth_on_publish_v1, HookArgs) of
+    case vmq_plugin:all_till_ok(auth_on_publish_m5, HookArgs) of
         ok ->
             AuthSuccess(Msg, HookArgs);
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
@@ -1010,7 +1010,7 @@ publish(CAPSettings, RegView, User, {_, ClientId} = SubscriberId, Msg, State) ->
 
 -spec on_publish_hook(ok | {error, _}, list()) -> ok | {error, _}.
 on_publish_hook(ok, HookParams) ->
-    _ = vmq_plugin:all(on_publish_v1, HookParams),
+    _ = vmq_plugin:all(on_publish_m5, HookParams),
     ok;
 on_publish_hook(Other, _) -> Other.
 
@@ -1199,7 +1199,7 @@ prepare_frame(QoS, Msg, State0) ->
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State0),
     HookArgs = [User, SubscriberId, Topic0, Props0, Payload0],
     {Topic1, Payload1} =
-    case vmq_plugin:all_till_ok(on_deliver_v1, HookArgs) of
+    case vmq_plugin:all_till_ok(on_deliver_m5, HookArgs) of
         {error, _} ->
             %% no on_deliver hook specified... that's ok
             {Topic0, Payload0};

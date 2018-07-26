@@ -11,15 +11,15 @@
   {env,[
        {vmq_plugin_hooks,
         [
-         {vmq_mqtt5_demo_plugin, auth_on_register_v1, 6, []},
-         {vmq_mqtt5_demo_plugin, on_register_v1, 4, []},
-         {vmq_mqtt5_demo_plugin, auth_on_publish_v1, 7, []},
-         {vmq_mqtt5_demo_plugin, on_publish_v1, 7, []},
-         {vmq_mqtt5_demo_plugin, auth_on_subscribe_v1, 4, []},
-         {vmq_mqtt5_demo_plugin, on_subscribe_v1, 3, []},
-         {vmq_mqtt5_demo_plugin, on_unsubscribe_v1, 4, []},
-         {vmq_mqtt5_demo_plugin, on_auth_v1, 1, []},
-         {vmq_mqtt5_demo_plugin, on_deliver_v1, 5, []}
+         {vmq_mqtt5_demo_plugin, auth_on_register_m5, 6, []},
+         {vmq_mqtt5_demo_plugin, on_register_m5, 4, []},
+         {vmq_mqtt5_demo_plugin, auth_on_publish_m5, 7, []},
+         {vmq_mqtt5_demo_plugin, on_publish_m5, 7, []},
+         {vmq_mqtt5_demo_plugin, auth_on_subscribe_m5, 4, []},
+         {vmq_mqtt5_demo_plugin, on_subscribe_m5, 3, []},
+         {vmq_mqtt5_demo_plugin, on_unsubscribe_m5, 4, []},
+         {vmq_mqtt5_demo_plugin, on_auth_m5, 1, []},
+         {vmq_mqtt5_demo_plugin, on_deliver_m5, 5, []}
         ]
        }]},
   {modules, []},

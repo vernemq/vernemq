@@ -70,7 +70,7 @@ doesn't look right! We'd love to get your feedback!
 
 On this branch MQTTv5 is enabled by default and all MQTTv5 actions are allowed
 as a plugin called `vmq_allow_all_v5` is enabled which implements the
-`auth_on_register_v1`, `auth_on_subscribe_v1` and `auth_on_publish_v1`, all of
+`auth_on_register_m5`, `auth_on_subscribe_m5` and `auth_on_publish_m5`, all of
 them simply return `ok` allowing the actions.
 
 So to get started, simply create a clone of this repository and switch to this
@@ -102,6 +102,6 @@ issue title with `MQTTv5:`. You're also more than welcome to reach out to us on
 
 MQTTv5 plugins use a different set of hooks as MQTTv5 has more features than
 MQTTv4. The hooks in MQTTv5 has the same names as in MQTTv4, but are post-fixed
-with `_v1` (hook version 1), so for example in MQTTv5 `auth_on_register_v1`
-corresponds to the MQTTv4 hook `auth_on_register`. MQTTv5 also introduces a new
-`on_auth_v1` hook to support enhanced (re-)authentication.
+with `_m5`, so for example in MQTTv5 `auth_on_register_m5` corresponds to the
+MQTTv4 hook `auth_on_register`. MQTTv5 also introduces a new `on_auth_m5` hook
+to support enhanced (re-)authentication.
