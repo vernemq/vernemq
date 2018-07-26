@@ -98,6 +98,10 @@
           fc_receive_cnt=0                      :: receive_max(),
           fc_send_cnt=0                         :: receive_max(),
 
+          %% flags and settings which have a non-default value if
+          %% present and default value if not present.
+          def_opts                          :: map(),
+
           trace_fun                        :: undefined | any() %% TODO
          }).
 
@@ -137,6 +141,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
     TopicAliasMax = vmq_config:get_env(topic_alias_max_client, 0),
     TopicAliasMaxOut = maybe_get_topic_alias_max(Properties, vmq_config:get_env(topic_alias_max_broker, 0)),
     TraceFun = vmq_config:get_env(trace_fun, undefined),
+    DOpts = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
     maybe_initiate_trace(ConnectFrame, TraceFun),
     set_max_msg_size(MaxMessageSize),
 
@@ -164,6 +169,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
                    topic_alias_max=TopicAliasMax,
                    topic_alias_max_out=TopicAliasMaxOut,
                    reg_view=RegView,
+                   def_opts = DOpts,
                    trace_fun=TraceFun,
                    allowed_protocol_versions=AllowedProtocolVersions,
                    fc_receive_max_client=FcReceiveMaxClient,
@@ -607,8 +613,7 @@ terminate(Reason, Props, #state{session_expiry_interval=SessionExpiryInterval} =
             _ ->
                 handle_waiting_acks_and_msgs(State)
         end,
-    %% TODO: the counter update is missing the last will message
-    maybe_publish_last_will(State),
+    maybe_publish_last_will(State, Reason),
     Out =
         case Reason of
             {error, _} ->
@@ -619,7 +624,16 @@ terminate(Reason, Props, #state{session_expiry_interval=SessionExpiryInterval} =
             _ ->
                 [gen_disconnect(Reason, Props)]
         end,
-    {stop, Reason, Out}.
+    {stop, terminate_reason(Reason), Out}.
+
+%% TODO Unify with terminate_reason in `vmq_mqtt_fsm`?
+terminate_reason(?NORMAL_DISCONNECT) -> normal;
+terminate_reason(?SESSION_TAKEN_OVER) -> normal;
+terminate_reason(?ADMINISTRATIVE_ACTION) -> normal;
+terminate_reason(?DISCONNECT_KEEP_ALIVE) -> normal;
+terminate_reason(?CLIENT_DISCONNECT) -> normal;
+terminate_reason(Reason) ->  Reason.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal
@@ -1216,12 +1230,15 @@ prepare_frame(QoS, Msg, State0) ->
                                             Msg#vmq_msg{qos=NewQoS}, WAcks)}}
     end.
 
--spec maybe_publish_last_will(state()) -> ok.
-maybe_publish_last_will(#state{will_msg=undefined}) -> ok;
+-spec maybe_publish_last_will(state(), reason_code_name()) -> ok.
+maybe_publish_last_will(#state{will_msg=undefined}, _Reason) -> ok;
+maybe_publish_last_will(#state{def_opts=#{suppress_lwt_on_session_takeover := true}},
+                        ?SESSION_TAKEN_OVER) -> ok;
 maybe_publish_last_will(#state{subscriber_id={_, ClientId} = SubscriberId, username=User,
                                will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings,
                                queue_pid=QueuePid,
-                               session_expiry_interval=SessionExpiryInterval}) ->
+                               session_expiry_interval=SessionExpiryInterval},
+                       _Reason) ->
     LastWillFun =
         fun() ->
                 #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
@@ -1499,3 +1516,11 @@ ret_val(Item, Vals, Default) ->
 -spec rcn2rc(reason_code_name()) -> reason_code().
 rcn2rc(RCN) ->
     vmq_parser_mqtt5:rcn2rc(RCN).
+
+set_defopt(Key, Default, Map) ->
+    case vmq_config:get_env(Key, Default) of
+        Default ->
+            Map;
+        NonDefault ->
+            maps:put(Key, NonDefault, Map)
+    end.
