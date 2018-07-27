@@ -1382,6 +1382,12 @@
                                                               {datatype, string}
                                                              ]}.
 
+%% @doc genenerate extra metrics from metrics with labels.
+{mapping, "graphite_include_labels", "vmq_server.graphite_include_labels", [
+                                                                            {default, off},
+                                                                            {datatype, flag},
+                                                                            hidden
+                                                                           ]}.
 
 {mapping, "leveldb_message_store.directory", "vmq_server.msg_store_opts.store_dir", [
                                                                             {default, "{{platform_data_dir}}/msgstore"},

@@ -27,6 +27,13 @@
   hash from which the package was built and `10` is the number of commits since
   the latest tag. This makes it much easier to reason about nightly builds and
   the features they contain.
+- Refactor and generalize the metrics systems to allow labelling metrics coming
+  from different sources in order to differentiate them in the various exporters
+  and the command line. Labels are added to the Prometheus exporter by
+  default. To enable generating additional metrics from the labels in the
+  graphite exporter the hidden setting `graphite_include_labels` has to be set
+  to `on` in the `vernemq.conf` file. Labels are not exposed in the $SYS
+  metrics.
 
 ## VerneMQ 1.4.0
 
