@@ -22,6 +22,11 @@
 - Fix issue with PUBREL frames retried after client reconnects (#762).
 - Refactor and cleanup retry mechanism.
 - Warn about deprecated setting `message_size_limit` only when it has been defined.
+- Change build script so nightly packages will have names on the form
+  `vernemq_1.4.0-10-gde1b1f5-1_amd64.deb`, where `de1b1f5` refers to the commit
+  hash from which the package was built and `10` is the number of commits since
+  the latest tag. This makes it much easier to reason about nightly builds and
+  the features they contain.
 
 ## VerneMQ 1.4.0
 
