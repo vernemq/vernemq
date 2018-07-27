@@ -17,6 +17,8 @@
 
 -behaviour(gen_server).
 
+-include("vmq_metrics.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -123,7 +125,7 @@ handle_info(timeout, true) ->
                          sg_policy=vmq_config:get_env(shared_subscription_policy, prefer_local)
                         },
             lists:foreach(
-              fun({_Type, Metric, Val}) ->
+              fun({#metric_def{name=Metric}, Val}) ->
                       CAPPublish = true,
                       vmq_reg:publish(CAPPublish, RegView, MsgTmpl#vmq_msg{
                                         routing_key=key(Prefix, Metric),

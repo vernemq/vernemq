@@ -17,6 +17,8 @@
 
 -behaviour(gen_server).
 
+-include_lib("vmq_metrics.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -34,6 +36,7 @@
 -define(DEFAULT_CONNECT_TIMEOUT, 5000).
 -define(DEFAULT_RECONNECT_TIMEOUT, 2000).
 -define(DEFAULT_INTERVAL, 20000).
+-define(DEFAULT_INCLUDE_LABELS, false).
 
 %% calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}}).
 -define(UNIX_EPOCH, 62167219200).
@@ -146,34 +149,41 @@ handle_info(timeout, Socket) ->
             gen_tcp:close(Socket),
             {noreply, undefined, 5000};
          true ->
-             ApiKey = vmq_config:get_env(graphite_api_key, ""),
-             Prefix = vmq_config:get_env(graphite_prefix, ""),
-             DoReconnect =
-             lists:foldl(
-               fun (_, true) ->
-                       %% error occured
-                       true;
-                   ({_Type, Metric, Val}, false) ->
-                       Line = [key(ApiKey, Prefix, Metric), " ",
-                               value(Val), " ", timestamp(), $\n],
-                       case gen_tcp:send(Socket, Line) of
-                           ok ->
-                               false;
-                           {error, _} ->
-                               true
-                       end
-               end, false, vmq_metrics:metrics()),
-             case DoReconnect of
-                 true ->
-                     gen_tcp:close(Socket),
-                     ReconnectTimeout =
-                     vmq_config:get_env(graphite_reconnect_timeout, ?DEFAULT_RECONNECT_TIMEOUT),
-                     {noreply, undefined, ReconnectTimeout};
-                 false ->
-                     Interval = vmq_config:get_env(graphite_interval, ?DEFAULT_INTERVAL),
-                     {noreply, Socket, Interval}
-             end
+            ApiKey = vmq_config:get_env(graphite_api_key, ""),
+            Prefix = vmq_config:get_env(graphite_prefix, ""),
+            IncludeLabels = vmq_config:get_env(graphite_include_labels, ?DEFAULT_INCLUDE_LABELS),
+            DoReconnect =
+                lists:foldl(
+                  fun (_, true) ->
+                          %% error occured
+                          true;
+                      ({#metric_def{name = Metric, labels = Labels}, Val}, false) ->
+                          Lines =
+                          case IncludeLabels of
+                              true ->
+                                  lines(ApiKey, Prefix, Metric, Labels, Val);
+                              false ->
+                                  lines(ApiKey, Prefix, Metric, Val)
+                          end,
+                          case gen_tcp:send(Socket, Lines) of
+                              ok ->
+                                  false;
+                              {error, _} ->
+                                  true
+                          end
+                  end, false, vmq_metrics:metrics()),
+            case DoReconnect of
+                true ->
+                    gen_tcp:close(Socket),
+                    ReconnectTimeout =
+                        vmq_config:get_env(graphite_reconnect_timeout, ?DEFAULT_RECONNECT_TIMEOUT),
+                    {noreply, undefined, ReconnectTimeout};
+                false ->
+                    Interval = vmq_config:get_env(graphite_interval, ?DEFAULT_INTERVAL),
+                    {noreply, Socket, Interval}
+            end
      end.
+
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -203,7 +213,23 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-%% Format a graphite key from API key, prefix, prob and datapoint
+%% Format a graphite key from API key, prefix, prob, labels and datapoint
+lines(APIKey, Prefix, Metric, Val) ->
+    line(APIKey, Prefix, Metric, no_label, Val).
+
+lines(APIKey, Prefix, Metric, Labels, Val) ->
+    %% Always generate the metric with no labels
+    [line(APIKey, Prefix, Metric, no_label, Val)
+     |[line(APIKey, Prefix, Metric, Label, Val) || Label <- Labels]].
+
+line(APIKey, Prefix, Metric, Label, Val) ->
+    [key(APIKey, Prefix, Metric, Label), " ", value(Val), " ", timestamp(), $\n].
+
+key(APIKey, Prefix, Metric, no_label) ->
+    key(APIKey, Prefix, Metric);
+key(APIKey, Prefix, Metric, {Key, Val}) ->
+    [key(APIKey, Prefix, Metric), $., atom_to_list(Key), $_, Val].
+
 key([], [], Metric) ->
     name(Metric);
 key([], Prefix, Metric) ->

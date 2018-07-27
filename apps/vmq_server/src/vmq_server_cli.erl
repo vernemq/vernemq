@@ -18,6 +18,8 @@
          command/2,
          register_cli/0]).
 
+-include("vmq_metrics.hrl").
+
 -behaviour(clique_handler).
 
 init_registry() ->
@@ -83,7 +85,7 @@ register_cli_usage() ->
 
 
     clique:register_usage(["vmq-admin", "metrics"], metrics_usage()),
-    clique:register_usage(["vmq-admin", "metrics", "show"], metrics_show_usage()),
+    clique:register_usage(["vmq-admin", "metrics", "show"], fun metrics_show_usage/0),
 
     clique:register_usage(["vmq-admin", "api-key"], api_usage()),
     clique:register_usage(["vmq-admin", "api-key", "delete"], api_delete_key_usage()),
@@ -121,41 +123,54 @@ vmq_server_show_cmd() ->
 
 vmq_server_metrics_cmd() ->
     Cmd = ["vmq-admin", "metrics", "show"],
-    FlagSpecs = [{describe, [{shortname, "d"},
-                             {longname, "with-descriptions"}]}],
-    Callback = fun(_, _, Flags) ->
-                       Normalize = fun({T,M,V}) ->
-                                           {T,M,V,undefined};
-                                      ({T,M,V,D}) ->
-                                           {T,M,V,D}
-                                    end,
-                       Describe = lists:keymember(describe, 1, Flags),
-                       lists:foldl(
-                         fun(M, Acc) ->
-                                 {Type, Metric, Val, Description} = Normalize(M),
-                                 SType = atom_to_list(Type),
-                                 SMetric = atom_to_list(Metric),
-                                 SVal =
-                                     case Val of
-                                         V when is_integer(V) ->
-                                             integer_to_list(V);
-                                         V when is_float(V) ->
-                                             float_to_list(V)
-                                     end,
-                                 Line = [SType, ".", SMetric, " = ", SVal],
-                                 case Describe of
-                                     true ->
-                                         [clique_status:text(lists:flatten(["# ", Description])),
-                                          clique_status:text(lists:flatten([Line, "\n"]))|Acc];
-                                     false ->
-                                         [clique_status:text(lists:flatten(Line))|Acc]
-                                 end
-                         end,
-                         [],
-                         vmq_metrics:metrics(Describe))
-               end,
+    ValidLabels = vmq_metrics:get_label_info(),
+    LabelFlagSpecs =
+        [{I, [{longname, atom_to_list(I)}]} || {I, _} <- ValidLabels],
+    FixedFlagSpecs =
+        [{describe, [{shortname, "d"},
+                     {longname, "with-descriptions"}]},
+         {aggregate, [{shortname, "a"},
+                      {longname, "aggregate"}]}],
+    FlagSpecs = FixedFlagSpecs ++ LabelFlagSpecs,
+    Callback =
+        fun(_, _, Flags) ->
+                Describe = lists:keymember(describe, 1, Flags),
+                Aggregate = lists:keymember(aggregate, 1, Flags),
+                LabelFlags = get_label_flags(Flags, LabelFlagSpecs),
+                lists:foldl(
+                  fun({#metric_def{type = Type,
+                                   labels = _Labels,
+                                   name = Metric,
+                                   description = Description}, Val}, Acc) ->
+                          SType = atom_to_list(Type),
+                          SMetric = atom_to_list(Metric),
+                          SVal =
+                              case Val of
+                                  V when is_integer(V) ->
+                                      integer_to_list(V);
+                                  V when is_float(V) ->
+                                      float_to_list(V)
+                              end,
+                          Line = [SType, ".", SMetric, " = ", SVal],
+                          case Describe of
+                              true ->
+                                  [clique_status:text(lists:flatten(["# ", Description])),
+                                   clique_status:text(lists:flatten([Line, "\n"]))|Acc];
+                              false ->
+                                  [clique_status:text(lists:flatten(Line))|Acc]
+                          end
+                  end,
+                  [],
+                  vmq_metrics:metrics(#{labels => LabelFlags,
+                                        aggregate => Aggregate}))
+        end,
     clique:register_command(Cmd, [], FlagSpecs, Callback).
 
+get_label_flags(Flags, LabelFlagSpecs) ->
+    lists:filter(
+      fun({FlagName, _Val}) ->
+              lists:keymember(FlagName, 1, LabelFlagSpecs)
+      end, Flags).
 
 vmq_server_metrics_reset_cmd() ->
     Cmd = ["vmq-admin", "metrics", "reset"],
@@ -164,8 +179,6 @@ vmq_server_metrics_reset_cmd() ->
                        [clique_status:text("Done")]
                end,
     clique:register_command(Cmd, [], [], Callback).
-
-
 
 vmq_cluster_leave_cmd() ->
     %% is must be ensured that the leaving node has NO online session e.g. by
@@ -282,7 +295,6 @@ vmq_cluster_leave_cmd() ->
                        [clique_status:text(Text)]
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
 
 leave_cluster(Node) ->
     case vmq_peer_service:leave(Node) of
@@ -528,11 +540,22 @@ metrics_usage() ->
     ].
 
 metrics_show_usage() ->
+    Labels =
+        [io_lib:format("      --~p=[~s]\n", [Key,  string:join(Values, "|")])
+         || {Key, Values}  <- vmq_metrics:get_label_info()],
     ["vmq-admin metrics show\n\n",
-     "  Prints all available metrics for this VerneMQ node.\n\n",
+     "  Show and filter metrics for this VerneMQ node.\n\n",
      "Options\n\n",
      "  --with-descriptions, -d,\n"
-     "    Show metrics annotated with descriptions.\n"
+     "    Show metrics annotated with descriptions.\n\n"
+     "Labels\n\n"
+     "    Filter metrics by labels. Accepts multiple comma separated labels.\n"
+     "    If no labels are applied all metrics are shown.\n"
+     "    Metrics are shown if any of the listed labels match,\n\n"
+     "    Available labels and values (--labelname=[val1|val2|...]):\n"
+     | [Labels
+     |
+     "\n    Example: --mqtt_version=4\n\n"]
     ].
 
 api_usage() ->
