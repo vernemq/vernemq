@@ -19,7 +19,8 @@
          siblings_test/1,
          cluster_join_test/1,
          cluster_leave_test/1,
-         events_test/1
+         events_test/1,
+         full_sync_test/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -72,7 +73,8 @@ all() ->
      siblings_test,
      cluster_leave_test,
      cluster_join_test,
-     events_test].
+     events_test,
+     full_sync_test].
 
 read_write_delete_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
@@ -310,6 +312,44 @@ events_test(Config) ->
     ?assertEqual(0, ets:info(T, size)),
     ok.
 
+full_sync_test(Config) ->
+    [LastNode|Nodes] = proplists:get_value(nodes, Config),
+    [Node1|OtherNodes] = Nodes,
+    [?assertEqual(ok, rpc:call(Node, plumtree_peer_service, join, [Node1]))
+     || Node <- OtherNodes],
+
+    Expected = lists:sort(Nodes),
+    ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
+    [?assertEqual({Node, Expected}, {Node,
+                                     lists:sort(vmq_swc_test_utils:get_cluster_members(Node))})
+     || Node <- Nodes],
+    % at this point the cluster is fully clustered with the exception of LastNode
+    Keys0 = [crypto:strong_rand_bytes(100) || _ <- lists:seq(1,1000)], % use something where insertion order doesn't reflect key ordering.
+    lists:foreach(fun(I) ->
+                          RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
+                          ok = put_metadata(RandNode, rand, I, I, [])
+                  end, Keys0),
+    ok = wait_until_log_gc(Nodes),
+
+    % let's join the LastNode,
+    ?assertEqual(ok, rpc:call(LastNode, plumtree_peer_service, join, [Node1])),
+
+    % insert some more entries while joining the cluster
+    Keys1 = [crypto:strong_rand_bytes(100) || _ <- lists:seq(1,100)], % use something where insertion order doesn't reflect key ordering.
+    lists:foreach(fun(I) ->
+                          RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
+                          ok = put_metadata(RandNode, rand, I, I, [])
+                  end, Keys1),
+    ok = wait_until_log_gc([LastNode|Nodes]),
+
+    lists:foreach(fun(I) ->
+                          wait_until_converged([LastNode|Nodes], rand, I, I)
+                  end, Keys0 ++ Keys1),
+
+    ok = wait_until_log_gc([LastNode|Nodes]).
+
+
+
 disable_broadcast(Nodes) ->
     [ok = rpc:call(N, vmq_swc_store, set_broadcast, [config(N), false])
      || N <- Nodes].
@@ -357,10 +397,15 @@ wait_until_converged(Nodes, Prefix, Key, ExpectedValue) ->
                 fun(X) -> X == true end,
                 vmq_swc_test_utils:pmap(
                   fun(Node) ->
-                          ExpectedValue == get_metadata(Node, Prefix,
+                          Tmp = get_metadata(Node, Prefix,
                                                         Key,
                                                         [{allow_put,
-                                                          false}])
+                                                          false}]),
+                          case ExpectedValue == Tmp of
+                              true -> true;
+                              false ->
+                                  false
+                          end
                   end, Nodes))
       end, 60*2, 500).
 

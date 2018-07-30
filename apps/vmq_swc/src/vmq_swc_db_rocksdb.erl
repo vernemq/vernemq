@@ -33,7 +33,7 @@
         terminate/2,
         code_change/3]).
 
--record(state, {handle, db, read_opts, write_opts}).
+-record(state, {name, db, data_root, read_opts, write_opts, open_opts}).
 -record(db, {handle, default, dcc, log}).
 
 % vmq_swc_db impl
@@ -93,27 +93,22 @@ init([#swc_config{peer=Peer, group=SwcGroup, db=DBName} = _Config|Opts]) ->
     DbPath = filename:absname(DataDir),
     filelib:ensure_dir(DbPath),
 
-    ColumnFamilies = [{"default", []}, {"dcc", []}, {"log", []}],
     CreateIfMissing = proplists:get_value(create_if_missing, Opts, true),
     CreateMissingCF = proplists:get_value(create_missing_column_families, Opts, true),
     % TODO Support further Rocksdb opts
 
     ReadOpts = proplists:get_value(read_opts, Opts, []),
     WriteOpts = proplists:get_value(write_opts, Opts, []),
-
-    DbOpts = [{create_if_missing, CreateIfMissing},
-              {create_missing_column_families, CreateMissingCF}],
-    {ok, DB, [Default_CF, DCC_CF, Log_CF]} = rocksdb:open_with_cf(DbPath, DbOpts, ColumnFamilies),
+    OpenOpts = [{create_if_missing, CreateIfMissing},
+                {create_missing_column_families, CreateMissingCF}],
 
     process_flag(trap_exit, true),
 
     ets:new(DBName, [named_table, public, {read_concurrency, true}]),
-    ets:insert(DBName, {refs, #db{handle=DB,
-                                       dcc = DCC_CF,
-                                       log = Log_CF,
-                                       default = Default_CF}}),
 
-    {ok, #state{db=#db{handle=DB, default=Default_CF, dcc=DCC_CF, log=Log_CF}, read_opts=ReadOpts, write_opts=WriteOpts}}.
+    State0 = #state{name=DBName, data_root=DbPath, read_opts=ReadOpts, write_opts=WriteOpts, open_opts=OpenOpts},
+
+    open_db(Opts, State0).
 
 handle_call({write, Objects, Opts}, _From, #state{db=#db{handle=DbHandle} = DB} = State) ->
     DBOps =
@@ -146,4 +141,40 @@ code_change(_OldVsn, _NewVsn, State) ->
 db_cf(default, #db{default=CF}) -> CF;
 db_cf(dcc, #db{dcc=CF}) -> CF;
 db_cf(log, #db{log=CF}) -> CF.
+
+open_db(Opts, State) ->
+    RetriesLeft = proplists:get_value(open_retries, Opts, 30),
+    open_db(Opts, State, max(1, RetriesLeft), undefined).
+
+open_db(_Opts, _State0, 0, LastError) ->
+    {error, LastError};
+open_db(Opts, State0, RetriesLeft, _) ->
+    ColumnFamilies = [{"default", []}, {"dcc", []}, {"log", []}],
+    case rocksdb:open_with_cf(State0#state.data_root, State0#state.open_opts, ColumnFamilies) of
+        {ok, Ref, [Default_CF, DCC_CF, Log_CF]} ->
+            DBHandle = #db{handle=Ref,
+                           dcc = DCC_CF,
+                           log = Log_CF,
+                           default = Default_CF},
+            ets:insert(State0#state.name, {refs, DBHandle}),
+
+            {ok, State0#state { db = DBHandle }};
+        %% Check specifically for lock error, this can be caused if
+        %% a crashed instance takes some time to flush rocksdb information
+        %% out to disk.  The process is gone, but the NIF resource cleanup
+        %% may not have completed.
+        {error, {db_open, OpenErr}=Reason} ->
+            case lists:prefix("IO error: While lock ", OpenErr) of
+                true ->
+                    SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
+                    lager:debug("VerneMQ RocksDB backend retrying ~p in ~p ms after error ~s\n",
+                                [State0#state.data_root, SleepFor, OpenErr]),
+                    timer:sleep(SleepFor),
+                    open_db(Opts, State0, RetriesLeft - 1, Reason);
+                false ->
+                    {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
 

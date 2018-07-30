@@ -18,6 +18,7 @@
 -include("vmq_diameter.hrl").
 
 -export([init/1,
+         terminate/1,
          start_listener/3,
          start_connection/4,
          stop_connection/2,
@@ -42,6 +43,8 @@
 
 
 init(#swc_config{group=SwcGroup, peer=Peer} = Config) ->
+    % ensure it's stopped
+    terminate(Config),
     diameter:start(),
     ApplicationOptions = [{alias, ?DIAMETER_APP},
                           {dictionary, ?DIAMETER_DICT},
@@ -59,6 +62,10 @@ init(#swc_config{group=SwcGroup, peer=Peer} = Config) ->
                {'Vendor-Id', ?DIAMETER_VENDOR_ID},
                {'Product-Name', ?DIAMETER_PRODUCT_NAME}],
     ok = diameter:start_service(SwcGroup, Options).
+
+terminate(#swc_config{group=SwcGroup}) ->
+    _ = diameter:stop_service(SwcGroup),
+    _ = diameter:stop().
 
 start_listener(#swc_config{group=SwcGroup}, Port, TCPConfig) ->
     TransportModule = application:get_env(vmq_swc, transport_module, diameter_tcp),

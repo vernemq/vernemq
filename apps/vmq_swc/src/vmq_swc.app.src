@@ -7,13 +7,13 @@
    [kernel,
     stdlib,
     sasl,
-    diameter,
     lager,
     rocksdb,
     swc,
     riak_dt,
     sext
    ]},
+  {included_applications, [diameter]},
   {env,[
       {vmq_plugin_hooks, [
             {vmq_swc_plugin, metadata_put, 3, [internal]},
