@@ -324,26 +324,30 @@ full_sync_test(Config) ->
                                      lists:sort(vmq_swc_test_utils:get_cluster_members(Node))})
      || Node <- Nodes],
     % at this point the cluster is fully clustered with the exception of LastNode
+    Keys0 = [crypto:strong_rand_bytes(100) || _ <- lists:seq(1,1000)], % use something where insertion order doesn't reflect key ordering.
     lists:foreach(fun(I) ->
                           RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
                           ok = put_metadata(RandNode, rand, I, I, [])
-                  end, lists:seq(1, 10000)),
+                  end, Keys0),
     ok = wait_until_log_gc(Nodes),
 
-    io:format(user, "start full sync on node ~p~n", [LastNode]),
     % let's join the LastNode,
-    ?assertEqual(ok, rpc:call(Node1, plumtree_peer_service, join, [LastNode])),
+    ?assertEqual(ok, rpc:call(LastNode, plumtree_peer_service, join, [Node1])),
 
     % insert some more entries while joining the cluster
+    Keys1 = [crypto:strong_rand_bytes(100) || _ <- lists:seq(1,100)], % use something where insertion order doesn't reflect key ordering.
     lists:foreach(fun(I) ->
-                          RandNode = lists:nth(rand:uniform(length([LastNode|Nodes])), [LastNode|Nodes]),
+                          RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
                           ok = put_metadata(RandNode, rand, I, I, [])
-                  end, lists:seq(10001, 20000)),
+                  end, Keys1),
     ok = wait_until_log_gc([LastNode|Nodes]),
 
     lists:foreach(fun(I) ->
                           wait_until_converged([LastNode|Nodes], rand, I, I)
-                  end, lists:seq(1, 20000)).
+                  end, Keys0 ++ Keys1),
+
+    ok = wait_until_log_gc([LastNode|Nodes]).
+
 
 
 disable_broadcast(Nodes) ->
@@ -393,10 +397,15 @@ wait_until_converged(Nodes, Prefix, Key, ExpectedValue) ->
                 fun(X) -> X == true end,
                 vmq_swc_test_utils:pmap(
                   fun(Node) ->
-                          ExpectedValue == get_metadata(Node, Prefix,
+                          Tmp = get_metadata(Node, Prefix,
                                                         Key,
                                                         [{allow_put,
-                                                          false}])
+                                                          false}]),
+                          case ExpectedValue == Tmp of
+                              true -> true;
+                              false ->
+                                  false
+                          end
                   end, Nodes))
       end, 60*2, 500).
 
