@@ -27,7 +27,7 @@
 
 -export([init/1, terminate/3, code_change/4, callback_mode/0]).
 
--record(state, {config, peer, timeout, local_clock, remote_clock, batch_size=100, missing_dots}).
+-record(state, {config, peer, timeout, local_clock, remote_clock, batch_size=100, missing_dots, missing=[]}).
 
 start_link(#swc_config{} = Config, Peer, Timeout) ->
     gen_statem:start_link(?MODULE, [Config, Peer, Timeout], []).
@@ -84,25 +84,26 @@ update_remote(internal, start, #state{config=Config, peer=RemotePeer, local_cloc
     {next_state, remote_sync_repair, State#state{missing_dots=MissingDots},
      [{next_event, internal, start}]}.
 
-local_sync_repair(internal, start, #state{config=Config, peer=RemotePeer, remote_clock=RemoteClock, missing_dots=MissingDots, batch_size=BatchSize} = State) ->
+local_sync_repair(internal, start, #state{config=Config, peer=RemotePeer, missing_dots=MissingDots, batch_size=BatchSize} = State) ->
     {Rest, BatchOfDots} = sync_repair_batch(MissingDots, BatchSize),
     as_event(
       fun() ->
               case vmq_swc_store:remote_sync_missing(Config, RemotePeer, BatchOfDots) of
                   {error, _Reason} = E -> E;
                   MissingObjects ->
-                      vmq_swc_store:sync_repair(Config, MissingObjects, RemotePeer, swc_node:base(RemoteClock), Rest == [])
+                      {ok, MissingObjects}
               end
       end),
     {next_state, local_sync_repair, State#state{missing_dots=Rest},
      [{state_timeout, State#state.timeout, sync_repair}]};
-local_sync_repair(cast, ok, State) ->
+local_sync_repair(cast, {ok, MissingObjects}, #state{config=Config, peer=RemotePeer, remote_clock=RemoteClock, missing=Missing} = State) ->
     case State#state.missing_dots of
         [] ->
-            {next_state, update_remote, State,
+            vmq_swc_store:sync_repair(Config, lists:flatten([MissingObjects|Missing]), RemotePeer, swc_node:base(RemoteClock)),
+            {next_state, update_remote, State#state{missing=[]},
              [{next_event, internal, start}]};
         _ ->
-            {next_state, local_sync_repair, State,
+            {next_state, local_sync_repair, State#state{missing=[MissingObjects|Missing]},
              [{next_event, internal, start}]}
     end;
 local_sync_repair(cast, E, State) ->
@@ -112,24 +113,25 @@ local_sync_repair(state_timeout, sync_repair, State) ->
     lager:warning("local sync repair timeout", []),
     terminate(State).
 
-remote_sync_repair(internal, start, #state{config=Config, peer=RemotePeer, local_clock=LocalClock, missing_dots=MissingDots, batch_size=BatchSize} = State) ->
+remote_sync_repair(internal, start, #state{config=Config, missing_dots=MissingDots, batch_size=BatchSize} = State) ->
     {Rest, BatchOfDots} = sync_repair_batch(MissingDots, BatchSize),
     as_event(
       fun() ->
               case vmq_swc_store:sync_missing(Config, BatchOfDots) of
                   {error, _Reason} = E -> E;
                   MissingObjects ->
-                      vmq_swc_store:remote_sync_repair(Config, MissingObjects, RemotePeer, swc_node:base(LocalClock), Rest == [])
+                      {ok, MissingObjects}
               end
       end),
     {next_state, remote_sync_repair, State#state{missing_dots=Rest},
      [{state_timeout, State#state.timeout, sync_repair}]};
-remote_sync_repair(cast, ok, State) ->
+remote_sync_repair(cast, {ok, MissingObjects}, #state{config=Config, missing=Missing, peer=RemotePeer, local_clock=LocalClock} = State) ->
     case State#state.missing_dots of
         [] ->
+            vmq_swc_store:remote_sync_repair(Config, lists:flatten([MissingObjects|Missing]), RemotePeer, swc_node:base(LocalClock)),
             terminate(State);
         _ ->
-            {next_state, remote_sync_repair, State,
+            {next_state, remote_sync_repair, State#state{missing=[MissingObjects|Missing]},
              [{next_event, internal, start}]}
     end;
 remote_sync_repair(cast, E, State) ->

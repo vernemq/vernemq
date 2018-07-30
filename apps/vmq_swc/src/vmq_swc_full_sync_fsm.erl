@@ -49,6 +49,13 @@ prepare(state_timeout, acquire_lock, #state{config=Config, peer=Peer} = State0) 
             {keep_state_and_data, [{state_timeout, 1000, acquire_lock}]}
     end;
 
+prepare(cast, {remote_node_clock, {error, Reason}}, #state{config=Config, peer=Peer} = State0) ->
+    lager:error("Could not fetch remote node clock from ~p due to ~p", [Peer, Reason]),
+    % retry
+    remote_clock_request(Config, Peer),
+    {next_state, prepare, State0,
+     [{state_timeout, State0#state.timeout, remote_node_clock}]};
+
 prepare(cast, {remote_node_clock, NodeClock}, State0) ->
     {next_state, sync, State0#state{remote_clock=NodeClock},
      [{next_event, internal, start}]}.
@@ -59,25 +66,21 @@ sync(internal, start, #state{config=Config, peer=Peer, batch_size=BatchSize} = S
             {keep_state_and_data, [{state_timeout, State#state.timeout, sync}]};
         E ->
             lager:error("Could not start remote iterator on ~p due to ~p", [Peer, E]),
-            terminate(normal, State)
+            timer:sleep(1000),
+            {next_state, sync, State,
+             [{next_event, internal, start}]}
 
     end;
 sync(state_timeout, sync, #state{peer=Peer} = State) ->
     lager:error("Sync timeout with ~p", [Peer]),
     terminate(normal, State);
 
-sync({call, From}, {batch, MissingObjects0, AllData}, #state{config=Config,
+sync({call, From}, {batch, MissingObjects0, RemoteWatermark}, #state{config=Config,
                                                              peer=Peer,
                                                              remote_clock=RemoteClock} = State) ->
-    MissingObjects1 =
-    lists:map(fun({SKey, BDCC}) ->
-                      DCC0 = binary_to_term(BDCC),
-                      DCC1 = swc_kv:fill(DCC0, State#state.local_clock),
-                      {SKey, DCC1}
-              end, MissingObjects0),
-    vmq_swc_store:sync_repair(Config, MissingObjects1, Peer, swc_node:base(RemoteClock), AllData),
+    ok = vmq_swc_store:recover_objects(Config, Peer, RemoteClock, lists:reverse(MissingObjects0), RemoteWatermark),
     gen_statem:reply(From, ok),
-    case AllData of
+    case RemoteWatermark =/= undefined of
         true ->
             terminate(normal, State);
         false ->
@@ -91,11 +94,13 @@ terminate(Reason, #state{config=Config} = State) ->
 callback_mode() -> state_functions.
 
 init([Config, Peer, Timeout]) ->
+    lager:info("start full sync with ~p~n", [Peer]),
     {ok, prepare, #state{
                      config=Config,
                      peer=Peer, built=0, timeout=Timeout}, [{state_timeout, 0, acquire_lock}]}.
 
-terminate(_Reason, _State, _Data) ->
+terminate(_Reason, StateName, State) ->
+    lager:info("stop full sync in ~p with ~p~n", [StateName, State#state.peer]),
     ok.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -114,18 +119,19 @@ rpc_start_iterator(RemotePeer, Args, Config) ->
 start_iterator(Config, RemotePeer, [FsmRef, BatchSize]) ->
     proc_lib:start_link(?MODULE, init_iterator, [[self(), Config, RemotePeer, FsmRef, BatchSize]]).
 
-rpc_batch(FsmRef, Batch, AllData, _Config) ->
-    gen_statem:call(FsmRef, {batch, Batch, AllData}, infinity).
+rpc_batch(FsmRef, Batch, Watermark, _Config) ->
+    gen_statem:call(FsmRef, {batch, Batch, Watermark}, infinity).
 
 init_iterator([Parent, #swc_config{transport=TMod} = Config, RemotePeer, FsmRef, BatchSize]) ->
     proc_lib:init_ack(Parent, {ok, self()}),
-    SendFun = fun(Batch, AllData) ->
-                      TMod:rpc(Config, RemotePeer, ?MODULE, rpc_batch, [FsmRef, Batch, AllData])
+    SendFun = fun(Batch, Watermark) ->
+                      TMod:rpc(Config, RemotePeer, ?MODULE, rpc_batch, [FsmRef, Batch, Watermark])
               end,
+    Watermark = vmq_swc_store:watermark(Config),
     Iterator = vmq_swc_db:iterator(Config, dcc),
-    loop_iterator(Parent, vmq_swc_db:iterator_next(Iterator), [], 0, BatchSize, SendFun).
+    loop_iterator(Parent, vmq_swc_db:iterator_next(Iterator), [], 0, BatchSize, SendFun, Watermark).
 
-loop_iterator(Parent, ItrRet, Batch, N, BatchSize, SendFun) ->
+loop_iterator(Parent, ItrRet, Batch, N, BatchSize, SendFun, Watermark) ->
     receive
         {system, From, Request} ->
             sys:handle_system_msg(Request, From, Parent, ?MODULE, [], {Batch, N, BatchSize, SendFun});
@@ -133,16 +139,16 @@ loop_iterator(Parent, ItrRet, Batch, N, BatchSize, SendFun) ->
             lager:error("vmq_swc_full_sync_fsm iterator received unexpected message ~p", [Msg])
     after
         0 ->
-            loop_iterator_(Parent, ItrRet, Batch, N, BatchSize, SendFun)
+            loop_iterator_(Parent, ItrRet, Batch, N, BatchSize, SendFun, Watermark)
     end.
 
-loop_iterator_(_, '$end_of_table', Batch, _, _, SendFun) ->
-    SendFun(Batch, true);
-loop_iterator_(Parent, {_Value, _Iterator} = ItrRet, Batch, BatchSize, BatchSize, SendFun) ->
-    SendFun(Batch, false),
-    loop_iterator(Parent, ItrRet, [], 0, BatchSize, SendFun);
-loop_iterator_(Parent, {{SKey, BDCC}, Iterator}, Batch, N, BatchSize, SendFun) ->
-    loop_iterator(Parent, vmq_swc_db:iterator_next(Iterator), [{SKey, BDCC}|Batch], N + 1, BatchSize, SendFun).
+loop_iterator_(_, '$end_of_table', Batch, _, _, SendFun, Watermark) ->
+    SendFun(Batch, Watermark);
+loop_iterator_(Parent, {_Value, _Iterator} = ItrRet, Batch, BatchSize, BatchSize, SendFun, Watermark) ->
+    SendFun(Batch, undefined),
+    loop_iterator(Parent, ItrRet, [], 0, BatchSize, SendFun, Watermark);
+loop_iterator_(Parent, {{SKey, BDCC}, Iterator}, Batch, N, BatchSize, SendFun, Watermark) ->
+    loop_iterator(Parent, vmq_swc_db:iterator_next(Iterator), [{SKey, binary_to_term(BDCC)}|Batch], N + 1, BatchSize, SendFun, Watermark).
 
 
 remote_clock_request(Config, Peer) ->
