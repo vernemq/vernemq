@@ -24,6 +24,7 @@
          fold_values/4,
          subscribe/3,
          dump/1,
+         watermark/1,
 
          process_batch/2,
 
@@ -39,9 +40,11 @@
          remote_sync_missing/3,
          rpc_sync_missing/3,
 
-         sync_repair/5,
-         remote_sync_repair/5,
-         rpc_sync_repair/5,
+         sync_repair/4,
+         remote_sync_repair/4,
+         rpc_sync_repair/4,
+
+         recover_objects/5,
 
          node_clock/1,
          remote_node_clock/2,
@@ -175,18 +178,20 @@ rpc_sync_missing(OriginPeer, Dots, #swc_config{} = Config) ->
     sync_missing(Config, OriginPeer, Dots).
 
 
-sync_repair(#swc_config{peer=OriginPeer} = Config, MissingObjects, RemotePeer, RemotePeerBVV, Done) ->
-    sync_repair(Config, OriginPeer, MissingObjects, RemotePeer, RemotePeerBVV, Done).
+sync_repair(#swc_config{peer=OriginPeer} = Config, MissingObjects, RemotePeer, RemotePeerBVV) ->
+    sync_repair(Config, OriginPeer, MissingObjects, RemotePeer, RemotePeerBVV).
 
-sync_repair(#swc_config{store=StoreName}, OriginPeer, MissingObjects, RemotePeer, RemotePeerBVV, Done) ->
-    gen_server:call(StoreName, {sync_repair, OriginPeer, Done, RemotePeer, RemotePeerBVV, MissingObjects}, infinity).
+sync_repair(#swc_config{store=StoreName}, OriginPeer, MissingObjects, RemotePeer, RemotePeerBVV) ->
+    gen_server:call(StoreName, {sync_repair, OriginPeer, RemotePeer, RemotePeerBVV, MissingObjects}, infinity).
 
-remote_sync_repair(#swc_config{transport=TMod, peer=Peer} = Config, MissingObjects, RemotePeer, PeerBVV, Done) ->
-   TMod:rpc(Config, RemotePeer, ?MODULE, rpc_sync_repair, [MissingObjects, Peer, PeerBVV, Done]).
+remote_sync_repair(#swc_config{transport=TMod, peer=Peer} = Config, MissingObjects, RemotePeer, PeerBVV) ->
+   TMod:rpc(Config, RemotePeer, ?MODULE, rpc_sync_repair, [MissingObjects, Peer, PeerBVV]).
 
-rpc_sync_repair(MissingObjects, RemotePeer, RemotePeerBVV, Done, Config) ->
-    sync_repair(Config, RemotePeer, MissingObjects, RemotePeer, RemotePeerBVV, Done).
+rpc_sync_repair(MissingObjects, RemotePeer, RemotePeerBVV, Config) ->
+    sync_repair(Config, RemotePeer, MissingObjects, RemotePeer, RemotePeerBVV).
 
+recover_objects(#swc_config{store=StoreName}, RemotePeer, RemoteClock, MissingObjects, RemoteWatermark) ->
+    gen_server:call(StoreName, {recover_objects, RemotePeer, RemoteClock, MissingObjects, RemoteWatermark}, infinity).
 
 node_clock(#swc_config{store=StoreName}) ->
     gen_server:call(StoreName, get_node_clock, infinity).
@@ -218,6 +223,8 @@ rpc_update_watermark(RemotePeer, RemoteNodeClock, #swc_config{} = Config) ->
 rpc_broadcast(Msg, #swc_config{store=StoreName} = _Config) ->
     gen_server:cast(StoreName, {swc_broadcast, Msg}).
 
+watermark(Config) ->
+    get_kvv(Config).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Misc API
@@ -227,6 +234,7 @@ do_gc(StoreName, Node) ->
 
 dump(StoreName) ->
     gen_server:call(StoreName, dump, infinity).
+
 
 process_batch(StoreName, Batch) ->
     gen_server:call(StoreName, {batch, Batch}, infinity).
@@ -248,7 +256,7 @@ init([#swc_config{peer=Peer, store=StoreName} = Config]) ->
 
     KVV0 = get_kvv(Config),
 
-    KVV1 = fix_watermark(Peer, KVV0, Peers),
+    KVV1 = fix_watermark(KVV0, Peers),
 
     IdxName = list_to_atom(atom_to_list(StoreName) ++ "_index"),
     init_log_index(Config, IdxName),
@@ -355,21 +363,17 @@ handle_call({sync_missing, _, _}, _From, State) ->
 handle_call(get_node_clock, _From, #state{bvv=BVV} = State) ->
     {reply, BVV, State};
 
-handle_call({update_watermark, OriginPeer, Node, NodeClock}, _From, #state{config=Config, sync_lock={OriginPeer, _} = SyncLock0, id=Id, bvv=BVV, kvv=KVV0} = State0) ->
+handle_call({update_watermark, OriginPeer, Node, NodeClock}, _From, #state{config=Config, sync_lock={OriginPeer, _} = SyncLock0} = State0) ->
     SyncLock1 = refresh_sync_lock(SyncLock0),
-    % Store the knowledge the other node has about us
-    % update my watermark with what I know, based on my node clock
-    KVV1 = swc_watermark:update_peer(KVV0, Id, BVV),
-    % update my watermark with what my peer knows, based on its node clock
-    KVV2 = swc_watermark:update_peer(KVV1, Node, NodeClock),
-    UpdateKVV_DBop = update_kvv_db_op(KVV2),
+    KVV1 = update_watermark_internal(Node, NodeClock, State0),
+    UpdateKVV_DBop = update_kvv_db_op(KVV1),
     db_write(Config, [UpdateKVV_DBop]),
-    {reply, ok, State0#state{kvv=KVV2, sync_lock=SyncLock1}};
+    {reply, ok, State0#state{kvv=KVV1, sync_lock=SyncLock1}};
 
 handle_call({update_watermark, _, _, _}, _From, State) ->
     {reply, {error, not_locked}, State};
 
-handle_call({sync_repair, OriginPeer, AllData, TargetNode, TargetNodeBVV, MissingObjects}, _From, #state{config=Config, idx_name=IdxName, peers=Peers, bvv=BVV0, sync_lock={OriginPeer, _} = SyncLock0} = State0) ->
+handle_call({sync_repair, OriginPeer, TargetNode, TargetNodeBVV, MissingObjects}, _From, #state{config=Config, idx_name=IdxName, peers=Peers, bvv=BVV0, sync_lock={OriginPeer, _} = SyncLock0} = State0) ->
     % sync repair step! TODO: what happens if exchange_fsm dies before receiving ALL missing objects.
 
     % replace the current entry in the node clock for the responding clock with
@@ -397,21 +401,52 @@ handle_call({sync_repair, OriginPeer, AllData, TargetNode, TargetNodeBVV, Missin
     % save the synced objects and strip their causal history
     {FinalDBOps, Events} = strip_save_batch(RealMissingObjects, AccDBOps1, [], State0#state{bvv=BVV2}, sync_resp),
     SyncLock1 = refresh_sync_lock(SyncLock0),
+    % finishing up
+    State1 = State0#state{bvv=BVV2},
+    UpdateBVV_DBop = update_bvv_db_op(BVV2),
+    db_write(Config, lists:reverse([UpdateBVV_DBop | FinalDBOps])),
+    State1#state.auto_gc andalso incremental_cleanup_db_ops(State1),
+    trigger_events(Events),
+    {reply, ok, State1#state{sync_lock=SyncLock1}};
+
+handle_call({sync_repair, _, _, _, _}, _From, State) ->
+    {reply, {error, not_locked}, State};
+
+
+handle_call({recover_objects, RemotePeer, RemoteClock0, MissingObjects, RemoteWatermark}, _From, #state{id=Id, sync_lock={Id, _} = SyncLock0, config=Config} = State0) ->
+
+    % RemoteWatermark is only sent with last batch
+    AllData = RemoteWatermark =/= undefined,
+    NodeClock0 =
     case AllData of
         true ->
-            State1 = State0#state{bvv=BVV2},
-            UpdateBVV_DBop = update_bvv_db_op(BVV2),
-            db_write(Config, lists:reverse([UpdateBVV_DBop | FinalDBOps])),
-            State1#state.auto_gc andalso incremental_cleanup_db_ops(State1),
-            trigger_events(Events),
-            {reply, ok, State1#state{sync_lock=SyncLock1}};
+            % sync node clocks:
+            % replace the current entry in the node clock for the responding clock with
+            % the current knowledge it's receiving
+            RemoteClock1 = orddict:filter(fun (P,_) -> P == RemotePeer end, RemoteClock0),
+            swc_node:merge(State0#state.bvv, RemoteClock1);
         false ->
-            db_write(Config, FinalDBOps),
-            trigger_events(Events),
-            {reply, ok, State0#state{sync_lock=SyncLock1}}
-    end;
-handle_call({sync_repair, _, _, _, _, _}, _From, State) ->
-    {reply, {error, not_locked}, State};
+            State0#state.bvv
+    end,
+    {DBOps0, Events, #state{bvv=BVV} = State1} = recover_objects(MissingObjects, RemoteClock0, State0#state.bvv, State0#state{bvv=NodeClock0}),
+    {DBOps1, State2} =
+    case AllData of
+        true ->
+            % update my watermark
+            KVV1 = update_watermark_internal(RemotePeer, RemoteClock0, State1),
+            KVV2 = swc_watermark:left_join(KVV1, RemoteWatermark),
+            UpdateKVV_DBop = update_kvv_db_op(KVV2),
+            {[UpdateKVV_DBop | DBOps0], State1#state{kvv=KVV2}};
+        false ->
+            {DBOps0, State1}
+    end,
+
+    SyncLock1 = refresh_sync_lock(SyncLock0),
+
+    DBOps2 = [update_bvv_db_op(BVV)|DBOps1],
+    db_write(Config, DBOps2),
+    trigger_events(Events),
+    {reply, ok, State2#state{sync_lock=SyncLock1}};
 
 handle_call(bvv, _, #state{bvv=Bvv} = State) ->
     {reply, Bvv, State};
@@ -426,14 +461,21 @@ handle_call(dump, _, #state{config=Config} = State) ->
 handle_call({set_broadcast, IsBroadcastEnabled}, _From, State) ->
     {reply, ok, State#state{broadcast_enabled=IsBroadcastEnabled}}.
 
-handle_cast({set_group_members, NewPeers0},
+handle_cast({set_group_members, UpdatedPeerList},
             #state{config=Config,
                    idx_name=IdxName,
-                   sync_lock=undefined, peers=OldPeers, id=Id, kvv=KVV0} = State) ->
+                   peers=OldPeers,
+                   sync_lock=undefined, bvv=BVV0, id=Id, kvv=KVV0} = State) ->
 
-    NewPeers1 = NewPeers0 -- [Id],
-    case OldPeers of
-        [] -> % Case new peer joined
+
+    Peers0 = swc_node:ids(BVV0),
+    %% add the new node(s) to the node clock
+    BVV1 = lists:foldl(fun(Peer, Acc) -> swc_node:add(Acc, {Peer, 0}) end, BVV0, UpdatedPeerList),
+    Peers1 = swc_node:ids(BVV1),
+
+    case lists:member(Id, UpdatedPeerList) and (not lists:member(Id, OldPeers)) of
+        true ->
+            % case new peer joined
             % this node (the cluster this node belongs to) just joined a
             % completely new cluster. In praxis this only happens if you
             % join a new node (single-node-cluster) to an existing cluster.
@@ -443,48 +485,30 @@ handle_cast({set_group_members, NewPeers0},
             % collected some or all of the history at this point.
             %
             % TODO: what if the full_sync_fsm crashes and hasn't synced all data
-            case random_alive_peer(Config) of
+            case random_peer_prefer_alive(Config) of
                 {ok, SyncPeer} ->
                     vmq_swc_exchange_sup:start_full_exchange(Config, SyncPeer, application:get_env(vmq_swc, sync_timeout, 60000));
                 _ ->
                     ignore
             end;
-        _ ->
-            case NewPeers1 -- OldPeers of
-                [] -> % Node Leave
-                    ignore;
-                [FreshPeer] -> % A new peer joined the cluster
-                    % full exchange uses an remote_iterator, which is backed by a DB snapshot.
-                    % Moreover a full exchange doesn't require a lock on both ends. As a result
-                    % we can savely start a full sync here with the FreshPeer eventhough the
-                    % FreshPeer is performing a full sync at this very moment too (possibly with
-                    % myself).
-                    % Why does it work: When I am performing a full sync, I lock myself, and request
-                    % a remote iterator from FreshPeer. The remote iterator will perform a snapshot,
-                    % as a result I will only receive the data that has been inserted before the
-                    % snapshot. This leads to a small time window where I could sync data from
-                    % FreshPeer that is already known to me.
-                    % In practice this case might be an issue only if the FreshPeer has been loaded
-                    % with data and joins an existing cluster.
-                    % Nevertheless, it may happen, especially during a cluster join while serving
-                    % writes. (the reason for that is that a Single-Node Cluster won't keep a log
-                    % so every write prior to cluster-join has to be synced using the full exchange.)
-                    vmq_swc_exchange_sup:start_full_exchange(Config, FreshPeer, application:get_env(vmq_swc, sync_timeout, 60000))
-            end,
-
-            case OldPeers -- (NewPeers1) of
+        false ->
+            case Peers0 -- Peers1 of
                 [] -> % Node Join
                     ignore;
-                [LeavingPeer] -> % Leaving Peer has left the cluster
-                    remove_logs_for_peer(Config, IdxName, LeavingPeer)
-                    % TODO: should we remove the leavingpeer from the NodeClock?
+                LeavingPeers -> % Leaving Peer has left the cluster
+                    lists:foreach(
+                      fun(LP) ->
+                              % TODO: should we remove the leavingpeer from the NodeClock?
+                              remove_logs_for_peer(Config, IdxName, LP)
+                      end, LeavingPeers)
             end
     end,
-    KVV1 = fix_watermark(Id, KVV0, NewPeers1),
+    KVV1 = fix_watermark(KVV0, Peers1),
     UpdateKVV_DBop = update_kvv_db_op(KVV1),
-    db_write(Config, [UpdateKVV_DBop]),
-    lager:info("Peer membership changed ~p~n", [NewPeers1]),
-    {noreply, State#state{kvv=KVV1, peers=NewPeers1}};
+    UpdateBVV_DBop = update_bvv_db_op(BVV1),
+    db_write(Config, [UpdateKVV_DBop, UpdateBVV_DBop]),
+    lager:info("Peer membership changed ~p~n", [Peers1]),
+    {noreply, State#state{bvv=BVV1, kvv=KVV1, peers=Peers1}};
 handle_cast({set_group_members, NewPeers}, #state{config=Config} = State) ->
     lager:warning("Defer peer membership change due to locked store, retry in 1 second", []),
     % currently a sync going on.. wait until sync_lock is free
@@ -589,19 +613,67 @@ random_alive_peer(Config) ->
             {ok, lists:nth(rand:uniform(length(Peers)), Peers)}
     end.
 
-fix_watermark(Id, KVV, Peers) ->
-    Nodes = [Id|Peers],
+random_peer_prefer_alive(Config) ->
+    case random_alive_peer(Config) of
+        {ok, Peer} -> {ok, Peer};
+        {error, no_peer_alive} ->
+            Members = vmq_swc_group_membership:get_members(Config),
+            case Members -- [Config#swc_config.peer] of
+                [] ->
+                    {error, no_peer_available};
+                Candidates ->
+                    {ok, lists:nth(rand:uniform(length(Candidates)), Candidates)}
+            end
+    end.
+
+fix_watermark(KVV, Peers) ->
     lists:foldl(
       fun(Peer, KVVAcc0) ->
               % This will reset all counters to zero
-              KVVAcc1 = swc_watermark:add_peer(KVVAcc0, Peer, Nodes),
+              KVVAcc1 = swc_watermark:add_peer(KVVAcc0, Peer, Peers),
               % set the resetted counters to its old value,
               % new nodes will have a counter of '
               lists:foldl(
                 fun(P, A) ->
                         swc_watermark:update_cell(A, Peer, P, swc_watermark:get(KVV, Peer, P))
-                end, KVVAcc1, Nodes)
-      end, swc_watermark:new(), Nodes).
+                end, KVVAcc1, Peers)
+      end, swc_watermark:new(), Peers).
+
+update_watermark_internal(Node, NodeClock, #state{id=Id, kvv=KVV0, bvv=BVV}) ->
+    % Store the knowledge the other node has about us
+    % update my watermark with what I know, based on my node clock
+    KVV1 = swc_watermark:update_peer(KVV0, Id, BVV),
+    % update my watermark with what my peer knows, based on its node clock
+    swc_watermark:update_peer(KVV1, Node, NodeClock).
+
+recover_objects(Objects, RemoteClock, LocalClock, State) ->
+    recover_objects(Objects, RemoteClock, LocalClock, [], [], State).
+
+recover_objects([], _, _, DBOps, Events, State) ->
+    {DBOps, Events, State};
+recover_objects([{SKey, DCC}|Rest], RemoteClock, LocalClock, AccDBOps0, AccEvents0, #state{idx_name=IdxName, config=Config, peers=Peers} = State0) ->
+    % fill the Object with the sending node clock
+    FilledRemoteObject = swc_kv:fill(DCC, RemoteClock),
+    % get and fill the causal history of the local key
+    DiskObject = swc_kv:fill(get_dcc_for_key(Config, SKey), LocalClock),
+    % synchronize both objects
+    FinalObject = swc_kv:sync(FilledRemoteObject, DiskObject),
+    % test if the FinalObject has newer information
+    FinalValues = swc_kv:values(FinalObject),
+    CurrentValues = swc_kv:values(DiskObject),
+    case (FinalValues /= CurrentValues) orelse (FinalValues == [] andalso CurrentValues == []) of
+        false ->
+            recover_objects(Rest, RemoteClock, LocalClock, AccDBOps0, AccEvents0, State0);
+        true ->
+            % add each new dot to our node clock
+            StateNodeClock = swc_kv:add(LocalClock, FinalObject),
+            % add new keys to the log (Dotkeymap)
+            Object = {SKey, FinalObject, DiskObject},
+            AccDBOps1 = add_objects_to_log(IdxName, Peers == [], [Object], AccDBOps0, recover_objects),
+            % removed unnecessary causality from the object, based on the current node clock
+            {DBOps, Events} = strip_save_batch([Object], AccDBOps1, AccEvents0, State0, recover_objects),
+            recover_objects(Rest, RemoteClock, LocalClock, DBOps, Events, State0#state{bvv=StateNodeClock})
+    end.
 
 
 strip_save_batch([], DBOps, Events, _State, _DbgCategory) ->
