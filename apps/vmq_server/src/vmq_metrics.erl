@@ -608,7 +608,7 @@ counter_entries_def() ->
      m(counter, [{mqtt_version,"4"}], mqtt_subscribe_received, mqtt_subscribe_received, <<"The number of SUBSCRIBE packets received.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_unsubscribe_received, mqtt_unsubscribe_received, <<"The number of UNSUBSCRIBE packets received.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_pingreq_received, mqtt_pingreq_received, <<"The number of PINGREQ packets received.">>),
-     m(counter, [{mqtt_version,"4"}], mqtt_disconnect_received, mqtt_disconnect_received, <<"The number of DISCONNECT packets sent.">>),
+     m(counter, [{mqtt_version,"4"}], mqtt_disconnect_received, mqtt_disconnect_received, <<"The number of DISCONNECT packets received.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_connack_accepted_sent, mqtt_connack_accepted_sent, <<"The number of times a connection has been accepted.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_connack_unacceptable_protocol_sent, mqtt_connack_unacceptable_protocol_sent, <<"The number of times the broker is not able to support the requested protocol.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_connack_identifier_rejected_sent, mqtt_connack_identifier_rejected_sent, <<"The number of times a client was rejected due to a unacceptable identifier.">>),
