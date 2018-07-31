@@ -413,40 +413,33 @@ handle_call({sync_repair, _, _, _, _}, _From, State) ->
     {reply, {error, not_locked}, State};
 
 
-handle_call({recover_objects, RemotePeer, RemoteClock0, MissingObjects, RemoteWatermark}, _From, #state{id=Id, sync_lock={Id, _} = SyncLock0, config=Config} = State0) ->
+handle_call({recover_objects, _RemotePeer, RemoteClock, MissingObjects, _RemoteWatermark = undefined}, _From, #state{id=Id, sync_lock={Id, _} = SyncLock0, config=Config} = State0) ->
+    {DBOps0, Events, #state{bvv=BVV} = State1} = recover_objects(MissingObjects, RemoteClock, State0#state.bvv, State0),
+    SyncLock1 = refresh_sync_lock(SyncLock0),
+    DBOps1 = [update_bvv_db_op(BVV)|DBOps0],
+    db_write(Config, DBOps1),
+    trigger_events(Events),
+    {reply, ok, State1#state{sync_lock=SyncLock1}};
 
-    % RemoteWatermark is only sent with last batch
-    AllData = RemoteWatermark =/= undefined,
-    NodeClock0 =
-    case AllData of
-        true ->
-            % sync node clocks:
-            % replace the current entry in the node clock for the responding clock with
-            % the current knowledge it's receiving
-            RemoteClock1 = orddict:filter(fun (P,_) -> P == RemotePeer end, RemoteClock0),
-            swc_node:merge(State0#state.bvv, RemoteClock1);
-        false ->
-            State0#state.bvv
-    end,
+handle_call({recover_objects, RemotePeer, RemoteClock0, MissingObjects, RemoteWatermark}, _From, #state{id=Id, sync_lock={Id, _} = SyncLock0, config=Config} = State0) ->
+    % LAST batch of recovered objects
+
+    % sync node clocks:
+    % replace the current entry in the node clock for the responding clock with
+    % the current knowledge it's receiving
+    %RemoteClock1 = orddict:filter(fun (P,_) -> P == RemotePeer end, RemoteClock0),
+    NodeClock0 = swc_node:merge(State0#state.bvv, RemoteClock0),
     {DBOps0, Events, #state{bvv=BVV} = State1} = recover_objects(MissingObjects, RemoteClock0, State0#state.bvv, State0#state{bvv=NodeClock0}),
-    {DBOps1, State2} =
-    case AllData of
-        true ->
-            % update my watermark
-            KVV1 = update_watermark_internal(RemotePeer, RemoteClock0, State1),
-            KVV2 = swc_watermark:left_join(KVV1, RemoteWatermark),
-            UpdateKVV_DBop = update_kvv_db_op(KVV2),
-            {[UpdateKVV_DBop | DBOps0], State1#state{kvv=KVV2}};
-        false ->
-            {DBOps0, State1}
-    end,
+
+    % update my watermark
+    KVV1 = update_watermark_internal(RemotePeer, RemoteClock0, State1),
+    KVV2 = swc_watermark:left_join(KVV1, RemoteWatermark),
 
     SyncLock1 = refresh_sync_lock(SyncLock0),
-
-    DBOps2 = [update_bvv_db_op(BVV)|DBOps1],
-    db_write(Config, DBOps2),
+    DBOps1 = [update_bvv_db_op(BVV), update_kvv_db_op(KVV2)|DBOps0],
+    db_write(Config, DBOps1),
     trigger_events(Events),
-    {reply, ok, State2#state{sync_lock=SyncLock1}};
+    {reply, ok, State1#state{kvv=KVV2, sync_lock=SyncLock1}};
 
 handle_call(bvv, _, #state{bvv=Bvv} = State) ->
     {reply, Bvv, State};
@@ -666,7 +659,7 @@ recover_objects([{SKey, DCC}|Rest], RemoteClock, LocalClock, AccDBOps0, AccEvent
             recover_objects(Rest, RemoteClock, LocalClock, AccDBOps0, AccEvents0, State0);
         true ->
             % add each new dot to our node clock
-            StateNodeClock = swc_kv:add(LocalClock, FinalObject),
+            StateNodeClock = swc_kv:add(State0#state.bvv, FinalObject),
             % add new keys to the log (Dotkeymap)
             Object = {SKey, FinalObject, DiskObject},
             AccDBOps1 = add_objects_to_log(IdxName, Peers == [], [Object], AccDBOps0, recover_objects),
@@ -934,7 +927,7 @@ db_foldl(Fun, Acc0, Itr0) ->
     end.
 
 maybe_schedule_sync() ->
-    case application:get_env(vmq_swc, sync_interval, {5000, 2500}) of
+    case application:get_env(vmq_swc, sync_interval, {15000, 2500}) of
         0 -> ok;
         {FixedInt, RandInt} ->
             erlang:send_after(FixedInt + rand:uniform(RandInt), self(), sync)
