@@ -135,7 +135,7 @@ vmq_server_metrics_cmd() ->
     Callback =
         fun(_, _, Flags) ->
                 Describe = lists:keymember(describe, 1, Flags),
-                Aggregate = lists:keymember(aggregate, 1, Flags),
+                Aggregate = proplists:get_value(aggregate, Flags, false),
                 LabelFlags = get_label_flags(Flags, LabelFlagSpecs),
                 lists:foldl(
                   fun({#metric_def{type = Type,
