@@ -13,10 +13,11 @@
 %% limitations under the License.
 
 -module(vmq_mqtt5_fsm).
--include("vmq_server.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
 -include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include("vmq_server.hrl").
+-include("vmq_metrics.hrl").
 
 -export([init/3,
          data_in/2,
@@ -145,7 +146,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
     maybe_initiate_trace(ConnectFrame, TraceFun),
     set_max_msg_size(MaxMessageSize),
 
-    _ = vmq_metrics:incr_mqtt_connect_received(),
+    _ = vmq_metrics:incr(?MQTT5_CONNECT_RECEIVED),
     %% the client is allowed "grace" of a half a time period
     set_keepalive_check_timer(KeepAlive),
 
@@ -192,7 +193,7 @@ data_in(Data, SessionState, OutAcc) ->
         more ->
             {ok, SessionState, Data, serialise(OutAcc)};
         {error, packet_exceeds_max_size} = E ->
-            _ = vmq_metrics:incr_mqtt_error_invalid_msg_size(),
+            _ = vmq_metrics:incr(?MQTT5_INVALID_MSG_SIZE_ERROR),
             E;
         {error, Reason} ->
             {error, Reason, serialise(OutAcc)};
@@ -308,7 +309,7 @@ connected(#mqtt5_publish{message_id=MessageId, topic=Topic,
     DoThrottle = do_throttle(State),
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
-    _ = vmq_metrics:incr_mqtt_publish_received(),
+    _ = vmq_metrics:incr(?MQTT5_PUBLISH_RECEIVED),
     Ret =
     case Topic of
         [<<"$", _binary>> |_] ->
@@ -370,43 +371,43 @@ connected({mail, QPid, Msgs, _, Dropped},
     {NewState2, Out};
 connected(#mqtt5_puback{message_id=MessageId}, #state{waiting_acks=WAcks} = State) ->
     %% qos1 flow
-    _ = vmq_metrics:incr_mqtt_puback_received(),
+    _ = vmq_metrics:incr(?MQTT5_PUBACK_RECEIVED),
     case maps:get(MessageId, WAcks, not_found) of
         #vmq_msg{} ->
             Cnt = fc_decr_cnt(State#state.fc_send_cnt, puback),
             handle_waiting_msgs(State#state{fc_send_cnt=Cnt, waiting_acks=maps:remove(MessageId, WAcks)});
         not_found ->
-            _ = vmq_metrics:incr_mqtt_error_invalid_puback(),
+            _ = vmq_metrics:incr(?MQTT5_PUBACK_INVALID_ERROR),
             {State, []}
     end;
 
 connected(#mqtt5_pubrec{message_id=MessageId, reason_code=RC}, State) when RC < 16#80 ->
     #state{waiting_acks=WAcks} = State,
     %% qos2 flow
-    _ = vmq_metrics:incr_mqtt_pubrec_received(),
+    _ = vmq_metrics:incr(?MQTT5_PUBREC_RECEIVED),
     case maps:get(MessageId, WAcks, not_found) of
         #vmq_msg{} ->
             PubRelFrame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
-            _ = vmq_metrics:incr_mqtt_pubrel_sent(),
+            _ = vmq_metrics:incr(?MQTT5_PUBREL_SENT),
             {State#state{waiting_acks=maps:update(MessageId, PubRelFrame, WAcks)},
              [PubRelFrame]};
         not_found ->
             lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
-            _ = vmq_metrics:incr_mqtt_pubrel_sent(),
-            _ = vmq_metrics:incr_mqtt_error_invalid_pubrec(),
+            _ = vmq_metrics:incr(?MQTT5_PUBREL_SENT),
+            _ = vmq_metrics:incr(?MQTT5_PUBREC_INVALID_ERROR),
             Frame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_PACKET_ID_NOT_FOUND, properties=#{}},
             {State, [Frame]}
     end;
 connected(#mqtt5_pubrec{message_id=MessageId, reason_code=_ErrorRC}, State) ->
     %% qos2 flow with an error reason
-    _ = vmq_metrics:incr_mqtt_pubrec_received(),
+    _ = vmq_metrics:incr(?MQTT5_PUBREC_RECEIVED),
     WAcks = maps:remove(MessageId, State#state.waiting_acks),
     Cnt = fc_decr_cnt(State#state.fc_send_cnt, pubrec),
     {State#state{waiting_acks=WAcks, fc_send_cnt=Cnt}, []};
 connected(#mqtt5_pubrel{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks} = State,
     %% qos2 flow
-    _ = vmq_metrics:incr_mqtt_pubrel_received(),
+    _ = vmq_metrics:incr(?MQTT5_PUBREL_RECEIVED),
     case maps:get({qos2, MessageId} , WAcks, not_found) of
         {#mqtt5_pubrec{}, _Msg} ->
             Cnt = fc_decr_cnt(State#state.fc_receive_cnt, pubrel),
@@ -415,7 +416,7 @@ connected(#mqtt5_pubrel{message_id=MessageId}, State) ->
               State#state{
                 fc_receive_cnt=Cnt,
                 waiting_acks=maps:remove({qos2, MessageId}, WAcks)}),
-            _ = vmq_metrics:incr_mqtt_pubcomp_sent(),
+            _ = vmq_metrics:incr(?MQTT5_PUBCOMP_SENT),
             {NewState, [#mqtt5_pubcomp{message_id=MessageId,
                                                reason_code=?M5_SUCCESS}|Msgs]};
         not_found ->
@@ -425,7 +426,7 @@ connected(#mqtt5_pubrel{message_id=MessageId}, State) ->
 connected(#mqtt5_pubcomp{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks} = State,
     %% qos2 flow
-    _ = vmq_metrics:incr_mqtt_pubcomp_received(),
+    _ = vmq_metrics:incr(?MQTT5_PUBCOMP_RECEIVED),
     case maps:get(MessageId, WAcks, not_found) of
         #mqtt5_pubrel{} ->
             Cnt = fc_decr_cnt(State#state.fc_send_cnt, pubcomp),
@@ -434,7 +435,7 @@ connected(#mqtt5_pubcomp{message_id=MessageId}, State) ->
                                   waiting_acks=maps:remove(MessageId, WAcks)});
         not_found -> % error or wrong waiting_ack, definitely not well behaving client
             lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
-            _ = vmq_metrics:incr_mqtt_error_invalid_pubcomp(),
+            _ = vmq_metrics:incr(?MQTT5_PUBCOMP_INVALID_ERROR),
             %% TODOv5: we should probably not terminate normally here
             %% but use one of the new reason codes.
             terminate(normal, State)
@@ -442,7 +443,7 @@ connected(#mqtt5_pubcomp{message_id=MessageId}, State) ->
 connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Props0}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
-    _ = vmq_metrics:incr_mqtt_subscribe_received(),
+    _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_RECEIVED),
     SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, get_sub_id(Props0)),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
@@ -457,23 +458,23 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Props
             QoSs = topic_to_qos(maps:get(topics, Modifiers, [])),
             Props1 = maps:get(properties, Modifiers, #{}),
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=Props1},
-            _ = vmq_metrics:incr_mqtt_suback_sent(),
+            _ = vmq_metrics:incr(?MQTT5_SUBACK_SENT),
             {State, [Frame]};
         {error, not_allowed} ->
             QoSs = [?M5_NOT_AUTHORIZED || _ <- Topics], % not authorized
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
-            _ = vmq_metrics:incr_mqtt_error_auth_subscribe(),
+            _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_AUTH_ERROR),
             {State, [Frame]};
         {error, _Reason} ->
             %% cant subscribe due to overload or netsplit,
             %% Subscribe uses QoS 1 so the client will retry
-            _ = vmq_metrics:incr_mqtt_error_subscribe(),
+            _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_ERROR),
             {State, []}
     end;
 connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties = Props0}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
-    _ = vmq_metrics:incr_mqtt_unsubscribe_received(),
+    _ = vmq_metrics:incr(?MQTT5_UNSUBSCRIBE_RECEIVED),
     OnSuccess =
         fun(_SubscriberId, MaybeChangedTopics) ->
                 vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, SubscriberId, MaybeChangedTopics)
@@ -482,12 +483,12 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties = P
         {ok, Props1} ->
             ReasonCodes = [?M5_SUCCESS || _ <- Topics],
             Frame = #mqtt5_unsuback{message_id=MessageId, reason_codes=ReasonCodes, properties=Props1},
-            _ = vmq_metrics:incr_mqtt_unsuback_sent(),
+            _ = vmq_metrics:incr(?MQTT5_UNSUBACK_SENT),
             {State, [Frame]};
         {error, _Reason} ->
             %% cant unsubscribe due to overload or netsplit,
             %% Unsubscribe uses QoS 1 so the client will retry
-            _ = vmq_metrics:incr_mqtt_error_unsubscribe(),
+            _ = vmq_metrics:incr(?MQTT5_UNSUBSCRIBE_ERROR),
             {State, []}
     end;
 connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Props},
@@ -521,12 +522,12 @@ connected(#mqtt5_auth{properties=#{p_authentication_method := GotAuthMethod}},
           #state{enhanced_auth = #auth_data{method = _WantAuthMethod}} = State) ->
     terminate({error, {wrong_auth_method, GotAuthMethod}}, State);
 connected(#mqtt5_pingreq{}, State) ->
-    _ = vmq_metrics:incr_mqtt_pingreq_received(),
+    _ = vmq_metrics:incr(?MQTT5_PINGREQ_RECEIVED),
     Frame = #mqtt5_pingresp{},
-    _ = vmq_metrics:incr_mqtt_pingresp_sent(),
+    _ = vmq_metrics:incr(?MQTT5_PINGRESP_SENT),
     {State, [Frame]};
 connected(#mqtt5_disconnect{properties=Properties}, State) ->
-    _ = vmq_metrics:incr_mqtt_disconnect_received(),
+    _ = vmq_metrics:incr(?MQTT5_DISCONNECT_RECEIVED),
     terminate_by_client(Properties, State);
 connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
@@ -1039,11 +1040,11 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
             {NewState, []};
         {error, Vals} when is_list(Vals) ->
             %% TODOv5: reflect reason code in metrics
-            _ = vmq_metrics:incr_mqtt_error_auth_publish(),
+            _ = vmq_metrics:incr(?MQTT5_PUBLISH_AUTH_ERROR),
             [];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
-            _ = vmq_metrics:incr_mqtt_error_publish(),
+            _ = vmq_metrics:incr(?MQTT5_PUBLISH_ERROR),
             []
     end.
 
@@ -1057,7 +1058,7 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
                cap_settings=CAPSettings, reg_view=RegView} = State,
     case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
         {ok, _, NewState} ->
-            _ = vmq_metrics:incr_mqtt_puback_sent(),
+            _ = vmq_metrics:incr(?MQTT5_PUBACK_SENT),
             %% TODOv5: return properties in puback success
             {NewState, [#mqtt5_puback{message_id=MessageId,
                                       reason_code=?M5_SUCCESS,
@@ -1069,14 +1070,14 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
                                    reason_code=rcn2rc(RCN),
                                    properties=Props0}]};
         {error, not_allowed} ->
-            _ = vmq_metrics:incr_mqtt_error_auth_publish(),
-            _ = vmq_metrics:incr_mqtt_puback_sent(),
+            _ = vmq_metrics:incr(?MQTT5_PUBLISH_AUTH_ERROR),
+            _ = vmq_metrics:incr(?MQTT5_PUBACK_SENT),
             Frame = #mqtt5_puback{message_id=MessageId, reason_code=?M5_NOT_AUTHORIZED, properties=#{}},
             [Frame];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
-            _ = vmq_metrics:incr_mqtt_error_publish(),
-            _ = vmq_metrics:incr_mqtt_puback_sent(),
+            _ = vmq_metrics:incr(?MQTT5_PUBLISH_ERROR),
+            _ = vmq_metrics:incr(?MQTT5_PUBACK_SENT),
             Frame = #mqtt5_puback{message_id=MessageId, reason_code=?M5_IMPL_SPECIFIC_ERROR, properties=#{}},
             [Frame]
     end.
@@ -1092,7 +1093,7 @@ dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
     case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
         {ok, NewMsg, NewState} ->
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
-            _ = vmq_metrics:incr_mqtt_pubrec_sent(),
+            _ = vmq_metrics:incr(?MQTT5_PUBREC_SENT),
             {NewState#state{
                fc_receive_cnt=Cnt,
                waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
@@ -1104,14 +1105,14 @@ dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
                                    reason_code=rcn2rc(RCN),
                                    properties=Props0}]};
         {error, not_allowed} ->
-            _ = vmq_metrics:incr_mqtt_error_auth_publish(),
-            _ = vmq_metrics:incr_mqtt_pubrec_sent(),
+            _ = vmq_metrics:incr(?MQTT5_PUBLISH_AUTH_ERROR),
+            _ = vmq_metrics:incr(?MQTT5_PUBREC_SENT),
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_NOT_AUTHORIZED, properties=#{}},
             [Frame];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
-            _ = vmq_metrics:incr_mqtt_error_publish(),
-            _ = vmq_metrics:incr_mqtt_pubrec_sent(),
+            _ = vmq_metrics:incr(?MQTT5_PUBLISH_ERROR),
+            _ = vmq_metrics:incr(?MQTT5_PUBREC_SENT),
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_IMPL_SPECIFIC_ERROR, properties=#{}},
             [Frame]
     end.
@@ -1178,13 +1179,13 @@ handle_messages([], [], _, State, Waiting) ->
     {State, [], Waiting};
 handle_messages([], Frames, BinCnt, State, Waiting) ->
     NrOfFrames = length(Frames) - BinCnt, %% subtract pubrel frames
-    _ = vmq_metrics:incr_mqtt_publishes_sent(NrOfFrames),
+    _ = vmq_metrics:incr(?MQTT5_PUBLISH_SENT, NrOfFrames),
     {State, Frames, Waiting}.
 
 handle_bin_message({MsgId, Bin}, State) ->
     %% this is called when a pubrel is retried after a client reconnects
     #state{waiting_acks=WAcks} = State,
-    _ = vmq_metrics:incr_mqtt_pubrel_sent(),
+    _ = vmq_metrics:incr(?MQTT5_PUBREL_SENT),
     State#state{waiting_acks=maps:put(MsgId, Bin, WAcks)}.
 
 prepare_frame(QoS, Msg, State0) ->
