@@ -49,6 +49,7 @@ register_config_() ->
      "graphite_host",
      "graphite_port",
      "graphite_interval",
+     "graphite_include_labels",
      "shared_subscription_policy",
      "remote_enqueue_timeout",
      "topic_alias_max_client",

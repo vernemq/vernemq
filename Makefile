@@ -173,18 +173,7 @@ get_dist_deps = mkdir distdir && \
                 LC_ALL=POSIX && export LC_ALL && sort $(MANIFEST_FILE) > $(MANIFEST_FILE).tmp && mv $(MANIFEST_FILE).tmp $(MANIFEST_FILE);
 
 
-# Name resulting directory & tar file based on current status of the git tag
-# If it is a tagged release (PKG_VERSION == MAJOR_VERSION), use the toplevel
-#   tag as the package name, otherwise generate a unique hash of all the
-#   dependencies revisions to make the package name unique.
-#   This enables the toplevel repository package to change names
-#   when underlying dependencies change.
-NAME_HASH = $(shell git hash-object distdir/$(CLONEDIR)/$(MANIFEST_FILE) 2>/dev/null | cut -c 1-8)
-ifeq ($(REVISION), $(MAJOR_VERSION))
 PKG_ID := $(REPO_TAG)
-else
-PKG_ID = $(REPO)-$(MAJOR_VERSION)-$(NAME_HASH)
-endif
 
 # To ensure a clean build, copy the CLONEDIR at a specific tag to a new directory
 #  which will be the basis of the src tar file (and packages)

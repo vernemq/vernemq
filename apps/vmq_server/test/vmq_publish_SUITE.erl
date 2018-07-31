@@ -5,6 +5,8 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
+-include("../src/vmq_metrics.hrl").
+
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
@@ -506,7 +508,12 @@ message_size_exceeded_close(_) ->
     enable_on_publish(),
     ok = gen_tcp:send(Socket, Publish),
     {error, closed} = gen_tcp:recv(Socket, 0, 1000),
-    true = lists:member({counter, mqtt_invalid_msg_size_error, 1}, vmq_metrics:metrics()),
+    true = lists:any(
+             fun({#metric_def{
+                     type = counter,
+                     id = mqtt_invalid_msg_size_error}, 1}) -> true;
+                (_) -> false
+             end,vmq_metrics:metrics()),
     vmq_config:set_env(max_message_size, OldLimit, false),
     disable_on_publish().
 

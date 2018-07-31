@@ -15,6 +15,8 @@
 -module(vmq_metrics_http).
 -behaviour(vmq_http_config).
 
+-include("vmq_metrics.hrl").
+
 -export([routes/0]).
 -export([init/3,
          handle/2,
@@ -36,33 +38,52 @@ terminate(_Reason, _Req, _State) ->
 
 reply(Req, <<"text/plain">>) ->
     %% Prometheus output
-    Metrics = vmq_metrics:metrics(true),
+    Metrics = vmq_metrics:metrics(),
     Output = prometheus_output(Metrics, []),
     {ok, Req2} = cowboy_req:reply(200, [{<<"content-type">>, <<"text/plain">>}],
                                   Output, Req),
     Req2.
 
-
-
-prometheus_output([{counter, Metric, Val, Descr}|Metrics], Acc) ->
+prometheus_output([{#metric_def{type=Type, name=Metric, description=Descr, labels=Labels}, Val}|Metrics], Acc) ->
     BinMetric = atom_to_binary(Metric, utf8),
     BinVal = integer_to_binary(Val),
     Node = atom_to_binary(node(), utf8),
     HelpLine = [<<"# HELP ">>, BinMetric, <<" ", Descr/binary, "\n">>],
-    TypeLine = [<<"# TYPE ">>, BinMetric, <<" counter\n">>],
-    CounterLine = [BinMetric, <<"{node=\"", Node/binary, "\"} ", BinVal/binary, "\n">>],
-    prometheus_output(Metrics, [HelpLine, TypeLine, CounterLine|Acc]);
-prometheus_output([{gauge, Metric, Val, Descr}|Metrics], Acc) ->
-    BinMetric = atom_to_binary(Metric, utf8),
-    BinVal = integer_to_binary(Val),
-    Node = atom_to_binary(node(), utf8),
-    HelpLine = [<<"# HELP ">>, BinMetric, <<" ", Descr/binary, "\n">>],
-    TypeLine = [<<"# TYPE ">>, BinMetric, <<" gauge\n">>],
-    CounterLine = [BinMetric, <<"{node=\"", Node/binary, "\"} ", BinVal/binary, "\n">>],
-    prometheus_output(Metrics, [HelpLine, TypeLine, CounterLine|Acc]);
+    TypeLine = [<<"# TYPE ">>, BinMetric, type(Type)],
+    Line = line(BinMetric, Node, Labels, BinVal),
+    prometheus_output(Metrics, [HelpLine, TypeLine, Line|Acc]);
 prometheus_output([], Acc) -> Acc.
 
+line(BinMetric, Node, Labels, BinVal) ->
+    [BinMetric,
+     <<"{">>,
+     labels([{<<"node">>, Node}|Labels]),
+     <<"} ">>, BinVal, <<"\n">>].
+
+labels([]) -> [];
+labels([{Key,Val}|Rest]) ->
+    join($,, [label(Key,Val)|labels(Rest)]).
+
+label(Key, Val) ->
+    [ensure_bin(Key), <<"=\"">>, ensure_bin(Val), <<"\"">>].
+
+ensure_bin(E) when is_atom(E) ->
+    atom_to_binary(E, utf8);
+ensure_bin(E) when is_list(E) ->
+    list_to_binary(E);
+ensure_bin(E) when is_binary(E) ->
+    E.
 
 
+type(gauge) ->
+    <<" gauge\n">>;
+type(counter) ->
+    <<" counter\n">>.
 
+%% backported to support OTP18. TODO: replace with lists:join/2 when
+%% dropping OTP18.
+join(_Sep, []) -> [];
+join(Sep, [H|T]) -> [H|join_prepend(Sep, T)].
 
+join_prepend(_Sep, []) -> [];
+join_prepend(Sep, [H|T]) -> [Sep,H|join_prepend(Sep,T)].
