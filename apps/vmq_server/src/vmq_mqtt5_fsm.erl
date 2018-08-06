@@ -289,8 +289,10 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
               [State#state.subscriber_id, Reason]),
             terminate(E, State)
     end;
-pre_connect_auth(#mqtt5_disconnect{properties=Properties}, State) ->
+pre_connect_auth(#mqtt5_disconnect{properties=Properties,
+                                   reason_code = RC}, State) ->
     %% TODOv5 add metric?
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, RC}),
     terminate_by_client(Properties, State);
 pre_connect_auth(_, State) ->
     terminate(?PROTOCOL_ERROR, State).
@@ -526,8 +528,8 @@ connected(#mqtt5_pingreq{}, State) ->
     Frame = #mqtt5_pingresp{},
     _ = vmq_metrics:incr(?MQTT5_PINGRESP_SENT),
     {State, [Frame]};
-connected(#mqtt5_disconnect{properties=Properties}, State) ->
-    _ = vmq_metrics:incr(?MQTT5_DISCONNECT_RECEIVED),
+connected(#mqtt5_disconnect{properties=Properties, reason_code=RC}, State) ->
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, RC}),
     terminate_by_client(Properties, State);
 connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),

@@ -318,7 +318,7 @@ reset_counter(Entry, InitVal) ->
     reset_counter(Entry),
     incr_item(Entry, InitVal).
 
-counter_entries() ->
+internal_entries(MetricDefs) ->
     lists:map(
       fun(#metric_def{id=Id}) ->
               try counter_val(Id) of
@@ -327,7 +327,7 @@ counter_entries() ->
                   _:_ -> {Id, 0}
               end
       end,
-      counter_entries_def()).
+      MetricDefs).
 
 -spec metrics() -> [{metric_def(), non_neg_integer()}].
 metrics() ->
@@ -335,11 +335,9 @@ metrics() ->
 
 metrics(Opts) ->
     WantLabels = maps:get(labels, Opts, []),
-    CounterMetrics = counter_entries(),
-    SystemStats = system_statistics(),
-    MiscStats = misc_statistics(),
 
     MetricDefs = metric_defs(),
+    MetricValues = metric_values(),
 
     %% Create id->metric def map
     IdDef = lists:foldl(
@@ -366,7 +364,7 @@ metrics(Opts) ->
                       lager:warning("unknown metrics id: ~p", [Id]),
                       false
               end
-      end, CounterMetrics ++ (SystemStats ++ MiscStats)),
+      end, MetricValues),
 
     case Opts of
         #{aggregate := true} ->
@@ -431,9 +429,12 @@ init([]) ->
     {RateEntries, _} = lists:unzip(rate_entries()),
     lists:foreach(
       fun(Entry) ->
-              Ref = mzmetrics:alloc_resource(0, atom_to_list(Entry), 8),
+              Str = lists:flatten(io_lib:format("~p", [Entry])),
+              Ref = mzmetrics:alloc_resource(0, Str, 8),
               ets:insert(?MODULE, {Entry, Ref})
-      end, RateEntries ++ [Id || #metric_def{id = Id} <- counter_entries_def()]),
+      end, RateEntries ++
+          [Id || #metric_def{id = Id} <-
+                     (mqtt5_disconnect_def() ++ counter_entries_def())]),
     MetricsInfo = register_metrics(#{}),
     {ok, #state{info=MetricsInfo}}.
 
@@ -601,9 +602,14 @@ aggregate_by_name(Metrics) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 metric_defs() ->
-    counter_entries_def() ++
-        (system_stats_def() ++
-             misc_stats_def()).
+        flatten([system_stats_def(), misc_stats_def(),
+                 counter_entries_def(), mqtt5_disconnect_def()], []).
+
+metric_values() ->
+    flatten([internal_entries(counter_entries_def()),
+             internal_entries(mqtt5_disconnect_def()),
+             system_statistics(),
+             misc_statistics()], []).
 
 counter_entries_def() ->
     [
@@ -648,7 +654,6 @@ counter_entries_def() ->
      m(counter, [{mqtt_version,"4"}], mqtt_unsubscribe_error, mqtt_unsubscribe_error, <<"The number of times an UNSUBSCRIBE operation failed due to a netsplit.">>),
 
      m(counter, [{mqtt_version,"5"}], ?MQTT5_CONNECT_RECEIVED, mqtt_connect_received, <<"The number of CONNECT packets received.">>),
-     m(counter, [{mqtt_version,"5"}], ?MQTT5_DISCONNECT_RECEIVED, mqtt_disconnect_received, <<"The number of DISCONNECT packets received.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_INVALID_MSG_SIZE_ERROR, mqtt_invalid_msg_size_error, <<"The number of packges exceeding the maximum allowed size.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_PINGREQ_RECEIVED, mqtt_pingreq_received, <<"The number of PINGREQ packets received.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_PINGRESP_SENT, mqtt_pingresp_sent, <<"The number of PINGRESP packets sent.">>),
@@ -687,6 +692,34 @@ counter_entries_def() ->
      m(counter, [], cluster_bytes_sent, cluster_bytes_sent, <<"The number of bytes send to other cluster nodes.">>),
      m(counter, [], cluster_bytes_dropped, cluster_bytes_dropped, <<"The number of bytes dropped while sending data to other cluster nodes.">>)
     ].
+
+
+flatten([], Acc) -> Acc;
+flatten([[H|[]]|T1], Acc) when is_tuple(H) ->
+    flatten(T1, [H|Acc]);
+flatten([[H|T0]|T1], Acc) when is_tuple(H) ->
+    flatten([T0|T1], [H|Acc]);
+flatten([H|T], Acc) ->
+    flatten(T, [H|Acc]).
+
+rcn_to_str(RNC) ->
+    %% TODO: replace this with a real textual representation
+    atom_to_list(RNC).
+
+mqtt5_disconnect_def() ->
+    RCNs =
+        [
+         ?NORMAL_DISCONNECT,
+         ?DISCONNECT_WITH_WILL_MSG,
+         ?UNSPECIFIED_ERROR, ?MALFORMED_PACKET, ?PROTOCOL_ERROR,
+         ?IMPL_SPECIFIC_ERROR, ?TOPIC_FILTER_INVALID,
+         ?TOPIC_NAME_INVALID, ?RECEIVE_MAX_EXCEEDED,
+         ?TOPIC_ALIAS_INVALID, ?PACKET_TOO_LARGE,
+         ?MESSAGE_RATE_TOO_HIGH, ?QUOTA_EXCEEDED,
+         ?ADMINISTRATIVE_ACTION, ?PAYLOAD_FORMAT_INVALID],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_DISCONNECT_RECEIVED, RCN}, mqtt_disconnect_received,
+       <<"The number of DISCONNECT packets received.">>) || RCN <- RCNs].
 
 rate_entries() ->
     [{msg_in_rate, mqtt_publish_received},
