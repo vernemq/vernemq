@@ -36,7 +36,9 @@ start() ->
 start(SwcGroup) when is_atom(SwcGroup) ->
     _ = application:ensure_all_started(vmq_swc),
 
-    {ListenerAddr, ListenerPort} = application:get_env(vmq_swc, listener_address, {{127,0,0,1}, 14053}),
+    {ListenerAddrStr, ListenerPort} = application:get_env(vmq_swc, listener_address, {"127.0.0.1", 14053}),
+    {ok, ListenerAddr} = inet_parse:address(ListenerAddrStr),
+
 
     TransportMod = application:get_env(vmq_swc, transport_mod, vmq_swc_diameter_transport),
     MembershipStrategy = application:get_env(vmq_swc, membership_strategy, plumtree),
