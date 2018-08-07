@@ -17,8 +17,7 @@
 -behaviour(gen_emqtt).
 
 %% API
--export([start_link/3,
-         setopts/3]).
+-export([start_link/5]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -53,11 +52,8 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-start_link(Host, Port, RegistryMFA) ->
-    gen_server:start_link(?MODULE, [Host, Port, RegistryMFA], []).
-
-setopts(BridgePid, Type, Opts) ->
-    gen_server:call(BridgePid, {setopts, Type, Opts}).
+start_link(Type, Host, Port, RegistryMFA, Opts) ->
+    gen_server:start_link(?MODULE, [Type, Host, Port, RegistryMFA, Opts], []).
 
 %%%===================================================================
 %%% gen_emqtt callbacks
@@ -83,7 +79,7 @@ on_publish(Topic, Payload, {coord, CoordinatorPid} = State) ->
     CoordinatorPid ! {deliver_remote, Topic, Payload},
     {ok, State}.
 
-init([Host, Port, RegistryMFA]) ->
+init([Type, Host, Port, RegistryMFA, Opts]) ->
     {M,F,A} = RegistryMFA,
     {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}} = apply(M,F,A),
     true = is_function(RegisterFun, 0),
@@ -91,70 +87,16 @@ init([Host, Port, RegistryMFA]) ->
     true = is_function(SubscribeFun, 1),
     true = is_function(UnsubscribeFun, 1),
     ok = RegisterFun(),
-    {ok, #state{host=Host,
+    self() ! init_client,
+    {ok, #state{type=Type,
+                host=Host,
                 port=Port,
+                opts=Opts,
                 publish_fun=PublishFun,
                 subscribe_fun=SubscribeFun,
                 unsubscribe_fun=UnsubscribeFun}};
 init([{coord, _CoordinatorPid} = State]) ->
     {ok, State}.
-
-handle_call({setopts, Type, Opts}, _From,
-            #state{host=Host, port=Port, client_pid=undefined} = State) ->
-    ClientOpts = client_opts(Type, Host, Port, Opts),
-    {ok, Pid} = gen_emqtt:start_link(?MODULE, [{coord, self()}], ClientOpts),
-    {reply, ok, State#state{client_pid=Pid,
-                            opts=Opts,
-                            type=Type}};
-handle_call({setopts, Type, Opts}, _From, #state{type=Type, opts=Opts} = State) ->
-    {reply, ok, State};
-handle_call({setopts, Type, Opts}, _From, #state{type=Type, opts=OldOpts,
-                                                 host=Host, port=Port,
-                                                 client_pid=ClientPid,
-                                                 subscriptions=Subscriptions,
-                                                 subscribe_fun=SubscribeFun,
-                                                 unsubscribe_fun=UnsubscribeFun
-                                                } = State) ->
-    NewState =
-    case lists:keydelete(topics, 1, Opts)
-         == lists:keydelete(topics, 1, OldOpts) of
-        true ->
-            % Client Options did not change
-            % maybe subscriptions changed
-            Topics = proplists:get_value(topics, Opts),
-            NewSubscriptions =
-            case proplists:get_value(topics, OldOpts) of
-                Topics ->
-                    %% subscriptions did not change
-                    Subscriptions;
-                _ ->
-                    bridge_unsubscribe(ClientPid, Subscriptions, UnsubscribeFun),
-                    bridge_subscribe(ClientPid, Topics, SubscribeFun, [])
-            end,
-            State#state{opts=Opts, subscriptions=NewSubscriptions};
-        false ->
-            % Client Options changed
-            % stop client
-            bridge_unsubscribe(ClientPid, Subscriptions, UnsubscribeFun),
-            ok = gen_emqtt:cast(ClientPid, {coord, self(), stop}),
-            % restart client
-            ClientOpts = client_opts(Type, Host, Port, Opts),
-            {ok, Pid} = gen_emqtt:start_link(?MODULE, [{coord, self()}], ClientOpts),
-            State#state{client_pid=Pid, opts=Opts}
-    end,
-    {reply, ok, NewState};
-handle_call({setopts, Type, Opts}, _From, #state{host=Host, port=Port,
-                                                 client_pid=ClientPid,
-                                                 subscriptions=Subscriptions,
-                                                 unsubscribe_fun=UnsubscribeFun
-                                                } = State) ->
-    %% Other Type (ssl or tcp) -> stop client
-    bridge_unsubscribe(ClientPid, Subscriptions, UnsubscribeFun),
-    ok = gen_emqtt:cast(ClientPid, {coord, self(), stop}),
-    % restart client
-    ClientOpts = client_opts(Type, Host, Port, Opts),
-    {ok, Pid} = gen_emqtt:start_link(?MODULE, [{coord, self()}], ClientOpts),
-    {reply, ok, State#state{client_pid=Pid, opts=Opts, type=Type}};
 
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.
@@ -163,6 +105,11 @@ handle_cast({coord, CoordinatorPid, stop}, {coord, CoordinatorPid} = State) ->
     {stop, normal, State};
 handle_cast(_Req, State) ->
     {noreply, State}.
+
+handle_info(init_client, #state{type=Type, host=Host, port=Port,
+                              opts=Opts, client_pid=undefined} = State) ->
+    {ok, Pid} = start_client(Type, Host, Port, Opts),
+    {noreply, State#state{client_pid = Pid}};
 
 handle_info(connected, #state{client_pid=Pid, opts=Opts,
                               subscribe_fun=SubscribeFun,
@@ -250,15 +197,9 @@ bridge_subscribe(Pid, [{Topic, both, QoS, LocalPrefix, RemotePrefix} = BT|Rest],
     end;
 bridge_subscribe(_, [], _, Acc) -> Acc.
 
-
-bridge_unsubscribe(Pid, [{{in, Topic}, _}|Rest], UnsubscribeFun) ->
-    gen_emqtt:unsubscribe(Pid, Topic),
-    bridge_unsubscribe(Pid, Rest, UnsubscribeFun);
-bridge_unsubscribe(Pid, [{{out, Topic}, _, _}|Rest], UnsubscribeFun) ->
-    UnsubscribeFun(Topic),
-    bridge_unsubscribe(Pid, Rest, UnsubscribeFun);
-bridge_unsubscribe(_, [], _) ->
-    ok.
+start_client(Type, Host, Port, Opts) ->
+    ClientOpts = client_opts(Type, Host, Port, Opts),
+    gen_emqtt:start_link(?MODULE, [{coord, self()}], ClientOpts).
 
 validate_prefix(undefined) -> undefined;
 validate_prefix([W|_] = Prefix) when is_binary(W) -> Prefix;
