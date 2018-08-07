@@ -32,7 +32,7 @@
          rpc_start_iterator/3]).
 
 -record(state, {config,
-                peer, timeout, built, local_clock, remote_clock, batch_size=100}).
+                peer, timeout, built, local_clock, remote_clock, batch_size=1000}).
 
 start_link(Config, Peer, Timeout) ->
     gen_statem:start_link(?MODULE, [Config, Peer, Timeout], []).
