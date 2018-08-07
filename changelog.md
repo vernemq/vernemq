@@ -34,6 +34,7 @@
   graphite exporter the hidden setting `graphite_include_labels` has to be set
   to `on` in the `vernemq.conf` file. Labels are not exposed in the $SYS
   metrics.
+- Ensure the `vmq_bridge` is properly restarted after a crash (#785).
 
 ## VerneMQ 1.4.0
 
