@@ -60,7 +60,9 @@ reconfigure_bridges(Type, Bridges, [{HostString, Opts}|Rest]) ->
         false ->
             start_bridge(Type, Ref, Host, Port, Opts);
         {_, Pid, _, _} when is_pid(Pid) -> % change existing bridge
-            vmq_bridge:setopts(Pid, Type, Opts);
+            %% restart the bridge
+            ok = stop_bridge(Ref),
+            start_bridge(Type, Ref, Host, Port, Opts);
         _ ->
             ok
     end,
@@ -70,16 +72,11 @@ reconfigure_bridges(_, _, []) -> ok.
 start_bridge(Type, Ref, Host, Port, Opts) ->
     {ok, RegistryMFA} = application:get_env(vmq_bridge, registry_mfa),
     ChildSpec = {Ref,
-                 {vmq_bridge, start_link, [Host, Port, RegistryMFA]},
+                 {vmq_bridge, start_link, [Type, Host, Port, RegistryMFA, Opts]},
                  permanent, 5000, worker, [vmq_bridge]},
     case supervisor:start_child(?MODULE, ChildSpec) of
         {ok, Pid} ->
-            case vmq_bridge:setopts(Pid, Type, Opts) of
-                ok ->
-                    {ok, Pid};
-                {error, Reason} ->
-                    {error, Reason}
-            end;
+            {ok, Pid};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -93,9 +90,12 @@ stop_and_delete_unused(Bridges, Config) ->
                         lists:keydelete(Ref, 1, Acc)
                 end, Bridges, Config),
     lists:foreach(fun({Ref, _, _, _}) ->
-                          supervisor:terminate_child(?MODULE, Ref),
-                          supervisor:delete_child(?MODULE, Ref)
+                          stop_bridge(Ref)
                   end, BridgesToDelete).
+
+stop_bridge(Ref) ->
+    supervisor:terminate_child(?MODULE, Ref),
+    supervisor:delete_child(?MODULE, Ref).
 
 ref(Host, Port) ->
     {vmq_bridge, Host, Port}.
