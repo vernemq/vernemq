@@ -107,8 +107,8 @@ write_batch(Config, [{_Key, _Val, _Context}|_] = WriteOps) ->
 read(Config, Key) ->
     SKey = sext:encode(Key),
     case get_dcc_for_key(Config, SKey) of
-        {[],[]} ->
-            {[],[]};
+        {Vs,C} = Empty when (map_size(Vs) == 0) and map_size(C) == 0 ->
+            Empty;
         DCC0 ->
             BVV=get_bvv(Config),
             DCC1 = swc_kv:fill(DCC0, BVV),
@@ -378,7 +378,7 @@ handle_call({sync_repair, OriginPeer, TargetNode, TargetNodeBVV, MissingObjects}
 
     % replace the current entry in the node clock for the responding clock with
     % the current knowledge it's receiving
-    TargetNodeBVV1 = orddict:filter(fun(Id, _) -> Id == TargetNode end, TargetNodeBVV),
+    TargetNodeBVV1 = maps:filter(fun(Id, _) -> Id == TargetNode end, TargetNodeBVV),
     BVV1 = swc_node:merge(BVV0, TargetNodeBVV1),
     % get the local objects corresponding to the received objects and fill the causal history for all of tem
     FilledObjects =
@@ -427,7 +427,6 @@ handle_call({recover_objects, RemotePeer, RemoteClock0, MissingObjects, RemoteWa
     % sync node clocks:
     % replace the current entry in the node clock for the responding clock with
     % the current knowledge it's receiving
-    %RemoteClock1 = orddict:filter(fun (P,_) -> P == RemotePeer end, RemoteClock0),
     NodeClock0 = swc_node:merge(State0#state.bvv, RemoteClock0),
     {DBOps0, Events, #state{bvv=BVV} = State1} = recover_objects(MissingObjects, RemoteClock0, State0#state.bvv, State0#state{bvv=NodeClock0}),
 
@@ -674,7 +673,7 @@ strip_save_batch([], DBOps, Events, _State, _DbgCategory) ->
 strip_save_batch([{SKey, DCC, OldDCC}|Rest], DBOps0, Events0, #state{bvv=BVV0} = State, DbgCategory) ->
     % remove unnecessary causality from the DCC, based on the current node clock
     {Values0, Context} = _StrippedDCC0 = swc_kv:strip(DCC, BVV0),
-    Values1 = [{D, V} || {D, V} <- Values0, V =/= '$deleted'],
+    Values1 = maps:filter(fun(_D, V) -> V =/= '$deleted' end, Values0),
     StrippedDCC1 = {Values1, Context},
     % The resulting DCC is one of the following:
     % 0 - it has no value but has causal history -> it's a delete, but still must be persisted
@@ -683,13 +682,13 @@ strip_save_batch([{SKey, DCC, OldDCC}|Rest], DBOps0, Events0, #state{bvv=BVV0} =
     % 3 - has values, but no causal history -> it's the final form for this write
     {DBOps1, Events1} =
     case StrippedDCC1 of
-        {[], C} when (C == []) or (State#state.peers == []) -> % case 1
+        {Vs, C} when map_size(Vs) == 0 and ((map_size(C)  == 0) or (State#state.peers == [])) -> % case 1
             {[delete_dcc_db_op(SKey, [DbgCategory, strip_save_batch])|DBOps0],
              event(deleted, SKey, undefined, OldDCC, Events0, State)};
-        {_Vs, []} ->  % case 3
+        {_Vs, C} when map_size(C) == 0 ->  % case 3
             {[update_dcc_db_op(SKey, StrippedDCC1, [DbgCategory, strip_save_batch])|DBOps0],
              event(updated, SKey, StrippedDCC1, OldDCC, Events0, State)};
-        {[], _C} -> % case 0
+        {Vs, _C} when map_size(Vs) == 0 -> % case 0
             {[update_dcc_db_op(SKey, StrippedDCC1, [DbgCategory, strip_save_batch])|DBOps0],
              event(deleted, SKey, undefined, OldDCC, Events0, State)};
         {_Vs, _C} -> % case 2
@@ -774,7 +773,7 @@ add_objects_to_log(_, false = _IsEmpty, [], DBOps, _DbgCategory) -> DBOps;
 add_objects_to_log(IdxName, false = _IsEmpty, [{SKey, DCC, _Local}|Rest], DBOps0, DbgCategory) ->
     {Dots, _} = DCC,
     DBOps1 =
-    orddict:fold(
+    maps:fold(
       fun(_Dot={Id, Counter}, _, Acc) ->
               [append_log_db_op(IdxName, SKey, Id, Counter, DbgCategory)|Acc]
       end, DBOps0, Dots),
@@ -802,7 +801,7 @@ get_dcc_for_key(Config, SKey) ->
         not_found -> swc_kv:new()
     end.
 
-incremental_cleanup_db_ops(#state{kvv={[],[]}}) ->
+incremental_cleanup_db_ops(#state{kvv={A, B}}) when (map_size(A) == 0) and map_size(B) == 0 ->
     ok;
 incremental_cleanup_db_ops(#state{config=Config, idx_name=IdxName, bvv=BVV, kvv=KVV}) ->
     % check if watermark is uptodate see dotted_db_vnode:is_watermark_up_to_date/1
@@ -824,7 +823,7 @@ incremental_cleanup_db_ops(#state{config=Config, idx_name=IdxName, bvv=BVV, kvv=
 
                           DCC0 = get_dcc_for_key(Config, SKey),
                           case swc_kv:strip(DCC0, BVV) of
-                              {[], _V} ->
+                              {Vs, _C} when map_size(Vs) == 0 ->
                                   DeleteDCC_DBOp = delete_dcc_db_op(SKey, incremental_gc),
                                   [DeleteDCC_DBOp | DeleteLog_DBOps] ++ DbOpsAccAcc;
                               _ ->
@@ -865,7 +864,7 @@ dump_table(Config, Type, KeyDecoder, ValDecoder) ->
       end, {0, 0, 0, []}, Itr),
     #{n => NumItems, key_memory => KeyBytes, data_memory => DataBytes, data => Data}.
 
-update_dcc_db_op(SKey, {[],[]}, Category) ->
+update_dcc_db_op(SKey, {Vs, C}, Category) when (map_size(Vs) == 0) and map_size(C) == 0 ->
     delete_dcc_db_op(SKey, [Category, through_dcc_update]);
 update_dcc_db_op(SKey, DCC, Category) ->
     ?DBG_OP("PUT DCC DB[~p] ~p~n", [Category, SKey]),
