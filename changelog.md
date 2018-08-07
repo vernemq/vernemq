@@ -4,6 +4,7 @@
 
 - Fix issue with PUBREL frames retried after client reconnects (#762).
 - Refactor and cleanup retry mechanism.
+- Ensure the `vmq_bridge` is properly restarted after a crash (#785).
 
 ## VerneMQ 1.4.1
 
