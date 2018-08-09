@@ -591,7 +591,8 @@ aggregate_by_name(Metrics) ->
                   {ok, {_D2, V2}} ->
                       Acc#{Name => {D1, V1 + V2}};
                   error ->
-                      Acc#{Name => {D1, V1}}
+                      %% Remove labels when aggregating.
+                      Acc#{Name => {D1#metric_def{labels=[]}, V1}}
               end
       end, #{}, Metrics),
     maps:values(AggrMetrics).
