@@ -291,7 +291,6 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
     end;
 pre_connect_auth(#mqtt5_disconnect{properties=Properties,
                                    reason_code = RC}, State) ->
-    %% TODOv5 add metric?
     _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, RC}),
     terminate_by_client(Properties, State);
 pre_connect_auth(_, State) ->

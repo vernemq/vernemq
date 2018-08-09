@@ -39,7 +39,6 @@
          incr_mqtt_pingreq_received/0,
          incr_mqtt_disconnect_received/0,
 
-         incr_mqtt_connack_sent/1,
          incr_mqtt_publish_sent/0,
          incr_mqtt_publishes_sent/1,
          incr_mqtt_puback_sent/0,
@@ -152,19 +151,6 @@ incr_mqtt_pingreq_received() ->
 
 incr_mqtt_disconnect_received() ->
     incr_item(mqtt_disconnect_received, 1).
-
-incr_mqtt_connack_sent(?CONNACK_ACCEPT) ->
-    incr_item(mqtt_connack_accepted_sent, 1);
-incr_mqtt_connack_sent(?CONNACK_PROTO_VER) ->
-    incr_item(mqtt_connack_unacceptable_protocol_sent, 1);
-incr_mqtt_connack_sent(?CONNACK_INVALID_ID) ->
-    incr_item(mqtt_connack_identifier_rejected_sent, 1);
-incr_mqtt_connack_sent(?CONNACK_SERVER) ->
-    incr_item(mqtt_connack_server_unavailable_sent, 1);
-incr_mqtt_connack_sent(?CONNACK_CREDENTIALS) ->
-    incr_item(mqtt_connack_bad_credentials_sent, 1);
-incr_mqtt_connack_sent(?CONNACK_AUTH) ->
-    incr_item(mqtt_connack_not_authorized_sent, 1).
 
 incr_mqtt_publish_sent() ->
     incr_item(mqtt_publish_sent, 1).
@@ -609,7 +595,8 @@ metric_values() ->
              misc_statistics(),internal_values(internal_defs())], []).
 
 internal_defs() ->
-    flatten([counter_entries_def(),mqtt5_disconnect_def(), mqtt5_connack_sent_def()], []).
+    flatten([counter_entries_def(),mqtt5_disconnect_def(), mqtt5_connack_sent_def(),
+             mqtt4_connack_sent_def()], []).
 
 counter_entries_def() ->
     [
@@ -748,6 +735,31 @@ mqtt5_connack_sent_def() ->
     [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
        {?MQTT5_CONNACK_SENT, RCN}, mqtt_connack_sent,
        <<"The number of CONNACK packets sent.">>) || RCN <- RCNs].
+
+m4_connack_labels(?CONNACK_ACCEPT) ->
+    rcn_to_str(?SUCCESS);
+m4_connack_labels(?CONNACK_PROTO_VER) ->
+    rcn_to_str(?UNSUPPORTED_PROTOCOL_VERSION);
+m4_connack_labels(?CONNACK_INVALID_ID) ->
+    rcn_to_str(?CLIENT_IDENTIFIER_NOT_VALID);
+m4_connack_labels(?CONNACK_SERVER) ->
+    rcn_to_str(?SERVER_UNAVAILABLE);
+m4_connack_labels(?CONNACK_CREDENTIALS) ->
+    rcn_to_str(?BAD_USERNAME_OR_PASSWORD);
+m4_connack_labels(?CONNACK_AUTH) ->
+    rcn_to_str(?NOT_AUTHORIZED).
+
+mqtt4_connack_sent_def() ->
+    RCNs = [?CONNACK_ACCEPT,
+            ?CONNACK_PROTO_VER,
+            ?CONNACK_INVALID_ID,
+            ?CONNACK_SERVER,
+            ?CONNACK_CREDENTIALS,
+            ?CONNACK_AUTH],
+    [m(counter, [{mqtt_version,"4"},{return_code, m4_connack_labels(RCN)}],
+       {?MQTT5_CONNACK_SENT, RCN}, mqtt_connack_sent,
+       <<"The number of CONNACK packets sent.">>) || RCN <- RCNs].
+
 
 rate_entries() ->
     [{msg_in_rate, mqtt_publish_received},

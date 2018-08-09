@@ -42,3 +42,5 @@
 -define(MQTT5_SUBSCRIBE_RECEIVED, mqtt5_subscribe_received).
 -define(MQTT5_UNSUBACK_SENT, mqtt5_unsuback_sent).
 -define(MQTT5_UNSUBSCRIBE_RECEIVED, mqtt5_unsubscribe_received).
+
+-define(MQTT4_CONNACK_SENT, mqtt4_connack_sent).
