@@ -15,6 +15,7 @@
 
 %% metrics identifiers
 -define(MQTT5_CONNECT_RECEIVED, mqtt5_connect_received).
+-define(MQTT5_CONNACK_SENT, mqtt5_connack_sent).
 -define(MQTT5_DISCONNECT_RECEIVED, mqtt5_disconnect_received).
 -define(MQTT5_PUBLISH_AUTH_ERROR, mqtt5_error_auth_publish).
 -define(MQTT5_SUBSCRIBE_AUTH_ERROR, mqtt5_error_auth_subscribe).

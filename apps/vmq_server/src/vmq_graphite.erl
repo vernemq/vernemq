@@ -171,7 +171,7 @@ handle_info(timeout, Socket) ->
                               {error, _} ->
                                   true
                           end
-                  end, false, vmq_metrics:metrics()),
+                  end, false, vmq_metrics:metrics(#{aggregate => false})),
             case DoReconnect of
                 true ->
                     gen_tcp:close(Socket),

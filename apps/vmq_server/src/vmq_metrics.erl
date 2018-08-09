@@ -308,7 +308,7 @@ reset_counters() ->
     lists:foreach(
       fun(#metric_def{id = Entry}) ->
               reset_counter(Entry)
-      end, counter_entries_def()).
+      end, internal_defs()).
 
 reset_counter(Entry) ->
     [{_, CntRef}] = ets:lookup(?MODULE, Entry),
@@ -318,7 +318,7 @@ reset_counter(Entry, InitVal) ->
     reset_counter(Entry),
     incr_item(Entry, InitVal).
 
-internal_entries(MetricDefs) ->
+internal_values(MetricDefs) ->
     lists:map(
       fun(#metric_def{id=Id}) ->
               try counter_val(Id) of
@@ -433,8 +433,7 @@ init([]) ->
               Ref = mzmetrics:alloc_resource(0, Str, 8),
               ets:insert(?MODULE, {Entry, Ref})
       end, RateEntries ++
-          [Id || #metric_def{id = Id} <-
-                     (mqtt5_disconnect_def() ++ counter_entries_def())]),
+          [Id || #metric_def{id = Id} <- internal_defs()]),
     MetricsInfo = register_metrics(#{}),
     {ok, #state{info=MetricsInfo}}.
 
@@ -602,14 +601,14 @@ aggregate_by_name(Metrics) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 metric_defs() ->
-        flatten([system_stats_def(), misc_stats_def(),
-                 counter_entries_def(), mqtt5_disconnect_def()], []).
+    flatten([system_stats_def(), misc_stats_def(),internal_defs()], []).
 
 metric_values() ->
-    flatten([internal_entries(counter_entries_def()),
-             internal_entries(mqtt5_disconnect_def()),
-             system_statistics(),
-             misc_statistics()], []).
+    flatten([system_statistics(),
+             misc_statistics(),internal_values(internal_defs())], []).
+
+internal_defs() ->
+    flatten([counter_entries_def(),mqtt5_disconnect_def(), mqtt5_connack_sent_def()], []).
 
 counter_entries_def() ->
     [
@@ -720,6 +719,34 @@ mqtt5_disconnect_def() ->
     [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
        {?MQTT5_DISCONNECT_RECEIVED, RCN}, mqtt_disconnect_received,
        <<"The number of DISCONNECT packets received.">>) || RCN <- RCNs].
+
+mqtt5_connack_sent_def() ->
+    RCNs =
+        [?SUCCESS,
+         ?UNSPECIFIED_ERROR,
+         ?MALFORMED_PACKET,
+         ?PROTOCOL_ERROR,
+         ?IMPL_SPECIFIC_ERROR,
+         ?UNSUPPORTED_PROTOCOL_VERSION,
+         ?CLIENT_IDENTIFIER_NOT_VALID,
+         ?BAD_USERNAME_OR_PASSWORD,
+         ?NOT_AUTHORIZED,
+         ?SERVER_UNAVAILABLE,
+         ?SERVER_BUSY,
+         ?BANNED,
+         ?BAD_AUTHENTICATION_METHOD,
+         ?TOPIC_NAME_INVALID,
+         ?PACKET_TOO_LARGE,
+         ?QUOTA_EXCEEDED,
+         ?PAYLOAD_FORMAT_INVALID,
+         ?RETAIN_NOT_SUPPORTED,
+         ?QOS_NOT_SUPPORTED,
+         ?USE_ANOTHER_SERVER,
+         ?SERVER_MOVED,
+         ?CONNECTION_RATE_EXCEEDED],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_CONNACK_SENT, RCN}, mqtt_connack_sent,
+       <<"The number of CONNACK packets sent.">>) || RCN <- RCNs].
 
 rate_entries() ->
     [{msg_in_rate, mqtt_publish_received},

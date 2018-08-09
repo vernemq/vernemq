@@ -573,9 +573,7 @@ connack_terminate(RC, State) ->
     connack_terminate(RC, #{}, State).
 
 connack_terminate(RC, Properties, _State) ->
-    %% TODOv5: we need to be able to handle the MQTT 5 reason codes in
-    %% the metrics.
-    %% _ = vmq_metrics:incr_mqtt_connack_sent(RC),
+    _ = vmq_metrics:incr({?MQTT5_CONNACK_SENT, RC}),
     {stop, normal, [#mqtt5_connack{session_present=false,
                                    reason_code=RC,
                                    properties=Properties}]}.
