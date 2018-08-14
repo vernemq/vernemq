@@ -511,9 +511,9 @@ message_size_exceeded_close(_) ->
     true = lists:any(
              fun({#metric_def{
                      type = counter,
-                     id = mqtt_invalid_msg_size_error}, 1}) -> true;
+                     name = mqtt_invalid_msg_size_error}, 1}) -> true;
                 (_) -> false
-             end,vmq_metrics:metrics()),
+             end,vmq_metrics:metrics(#{aggregate => true})),
     vmq_config:set_env(max_message_size, OldLimit, false),
     disable_on_publish().
 

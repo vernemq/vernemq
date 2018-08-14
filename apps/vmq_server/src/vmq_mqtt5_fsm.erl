@@ -260,9 +260,11 @@ maybe_initiate_trace(Frame, TraceFun) ->
     {state(), {throttle, [mqtt5_frame() | binary()]}} |
     {stop, any(), [mqtt5_frame() | binary()]}.
 pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMethod,
-                                            p_authentication_data := _} = Props},
+                                            p_authentication_data := _} = Props,
+                             reason_code = RC},
                  #state{enhanced_auth = #auth_data{method = AuthMethod,
                                                    data = ConnectFrame}} = State) ->
+    _ = vmq_metrics:incr({?MQTT5_AUTH_RECEIVED, rc2rcn(RC)}),
     case vmq_plugin:all_till_ok(on_auth_m5, [Props]) of
         {ok, #{reason_code := ?SUCCESS,
                properties :=
@@ -274,6 +276,7 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
         {ok, #{reason_code := ?CONTINUE_AUTHENTICATION,
                properties :=
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
+            _ = vmq_metrics:incr({?MQTT5_AUTH_SENT, ?CONTINUE_AUTHENTICATION}),
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
                                 properties = OutProps},
             {pre_connect_auth, State, [Frame]};
@@ -291,7 +294,7 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
     end;
 pre_connect_auth(#mqtt5_disconnect{properties=Properties,
                                    reason_code = RC}, State) ->
-    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, RC}),
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, rc2rcn(RC)}),
     terminate_by_client(Properties, State);
 pre_connect_auth(_, State) ->
     terminate(?PROTOCOL_ERROR, State).
@@ -370,9 +373,9 @@ connected({mail, QPid, Msgs, _, Dropped},
             {NewState1#state{waiting_msgs=NewWaiting}, HandledMsgs}
     end,
     {NewState2, Out};
-connected(#mqtt5_puback{message_id=MessageId}, #state{waiting_acks=WAcks} = State) ->
+connected(#mqtt5_puback{message_id=MessageId, reason_code=RC}, #state{waiting_acks=WAcks} = State) ->
     %% qos1 flow
-    _ = vmq_metrics:incr(?MQTT5_PUBACK_RECEIVED),
+    _ = vmq_metrics:incr({?MQTT5_PUBACK_RECEIVED, rc2rcn(RC)}),
     case maps:get(MessageId, WAcks, not_found) of
         #vmq_msg{} ->
             Cnt = fc_decr_cnt(State#state.fc_send_cnt, puback),
@@ -385,30 +388,29 @@ connected(#mqtt5_puback{message_id=MessageId}, #state{waiting_acks=WAcks} = Stat
 connected(#mqtt5_pubrec{message_id=MessageId, reason_code=RC}, State) when RC < 16#80 ->
     #state{waiting_acks=WAcks} = State,
     %% qos2 flow
-    _ = vmq_metrics:incr(?MQTT5_PUBREC_RECEIVED),
+    _ = vmq_metrics:incr({?MQTT5_PUBREC_RECEIVED,rc2rcn(RC)}),
     case maps:get(MessageId, WAcks, not_found) of
         #vmq_msg{} ->
             PubRelFrame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
-            _ = vmq_metrics:incr(?MQTT5_PUBREL_SENT),
+            _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?SUCCESS}),
             {State#state{waiting_acks=maps:update(MessageId, PubRelFrame, WAcks)},
              [PubRelFrame]};
         not_found ->
             lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
-            _ = vmq_metrics:incr(?MQTT5_PUBREL_SENT),
-            _ = vmq_metrics:incr(?MQTT5_PUBREC_INVALID_ERROR),
+            _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?PACKET_ID_NOT_FOUND}),
             Frame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_PACKET_ID_NOT_FOUND, properties=#{}},
             {State, [Frame]}
     end;
-connected(#mqtt5_pubrec{message_id=MessageId, reason_code=_ErrorRC}, State) ->
+connected(#mqtt5_pubrec{message_id=MessageId, reason_code=ErrorRC}, State) ->
     %% qos2 flow with an error reason
-    _ = vmq_metrics:incr(?MQTT5_PUBREC_RECEIVED),
+    _ = vmq_metrics:incr({?MQTT5_PUBREC_RECEIVED, rc2rcn(ErrorRC)}),
     WAcks = maps:remove(MessageId, State#state.waiting_acks),
     Cnt = fc_decr_cnt(State#state.fc_send_cnt, pubrec),
     {State#state{waiting_acks=WAcks, fc_send_cnt=Cnt}, []};
-connected(#mqtt5_pubrel{message_id=MessageId}, State) ->
+connected(#mqtt5_pubrel{message_id=MessageId, reason_code=RC}, State) ->
     #state{waiting_acks=WAcks} = State,
     %% qos2 flow
-    _ = vmq_metrics:incr(?MQTT5_PUBREL_RECEIVED),
+    _ = vmq_metrics:incr({?MQTT5_PUBREL_RECEIVED, rc2rcn(RC)}),
     case maps:get({qos2, MessageId} , WAcks, not_found) of
         {#mqtt5_pubrec{}, _Msg} ->
             Cnt = fc_decr_cnt(State#state.fc_receive_cnt, pubrel),
@@ -417,17 +419,18 @@ connected(#mqtt5_pubrel{message_id=MessageId}, State) ->
               State#state{
                 fc_receive_cnt=Cnt,
                 waiting_acks=maps:remove({qos2, MessageId}, WAcks)}),
-            _ = vmq_metrics:incr(?MQTT5_PUBCOMP_SENT),
+            _ = vmq_metrics:incr({?MQTT5_PUBCOMP_SENT, ?SUCCESS}),
             {NewState, [#mqtt5_pubcomp{message_id=MessageId,
                                                reason_code=?M5_SUCCESS}|Msgs]};
         not_found ->
+            _ = vmq_metrics:incr({?MQTT5_PUBCOMP_SENT, ?PACKET_ID_NOT_FOUND}),
             {State, [#mqtt5_pubcomp{message_id=MessageId,
                                     reason_code=?M5_PACKET_ID_NOT_FOUND}]}
     end;
-connected(#mqtt5_pubcomp{message_id=MessageId}, State) ->
+connected(#mqtt5_pubcomp{message_id=MessageId, reason_code=RC}, State) ->
     #state{waiting_acks=WAcks} = State,
     %% qos2 flow
-    _ = vmq_metrics:incr(?MQTT5_PUBCOMP_RECEIVED),
+    _ = vmq_metrics:incr({?MQTT5_PUBCOMP_RECEIVED, rc2rcn(RC)}),
     case maps:get(MessageId, WAcks, not_found) of
         #mqtt5_pubrel{} ->
             Cnt = fc_decr_cnt(State#state.fc_send_cnt, pubcomp),
@@ -492,8 +495,10 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties = P
             _ = vmq_metrics:incr(?MQTT5_UNSUBSCRIBE_ERROR),
             {State, []}
     end;
-connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Props},
+connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Props,
+                      reason_code=RC},
           #state{enhanced_auth = #auth_data{method = AuthMethod}} = State) ->
+    _ = vmq_metrics:incr({?MQTT5_AUTH_RECEIVED, rc2rcn(RC)}),
     case vmq_plugin:all_till_ok(on_auth_m5, [Props]) of
         {ok, #{reason_code := ?SUCCESS,
                properties :=
@@ -504,6 +509,7 @@ connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Prop
         {ok, #{reason_code := ?CONTINUE_AUTHENTICATION,
                properties :=
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
+            _ = vmq_metrics:incr({?MQTT5_AUTH_SENT, ?CONTINUE_AUTHENTICATION}),
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
                                 properties = OutProps},
             {State, [Frame]};
@@ -519,8 +525,10 @@ connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Prop
               [State#state.subscriber_id, Reason]),
             terminate(E, State)
     end;
-connected(#mqtt5_auth{properties=#{p_authentication_method := GotAuthMethod}},
+connected(#mqtt5_auth{properties=#{p_authentication_method := GotAuthMethod},
+                      reason_code=RC},
           #state{enhanced_auth = #auth_data{method = _WantAuthMethod}} = State) ->
+    _ = vmq_metrics:incr({?MQTT5_AUTH_RECEIVED, rc2rcn(RC)}),
     terminate({error, {wrong_auth_method, GotAuthMethod}}, State);
 connected(#mqtt5_pingreq{}, State) ->
     _ = vmq_metrics:incr(?MQTT5_PINGREQ_RECEIVED),
@@ -528,7 +536,7 @@ connected(#mqtt5_pingreq{}, State) ->
     _ = vmq_metrics:incr(?MQTT5_PINGRESP_SENT),
     {State, [Frame]};
 connected(#mqtt5_disconnect{properties=Properties, reason_code=RC}, State) ->
-    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, RC}),
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, rc2rcn(RC)}),
     terminate_by_client(Properties, State);
 connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
@@ -539,7 +547,7 @@ connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive,
     case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
         true ->
             lager:warning("client ~p with username ~p stopped due to keepalive expired", [SubscriberId, UserName]),
-            terminate(?DISCONNECT_KEEP_ALIVE, State);
+            terminate(?KEEP_ALIVE_TIMEOUT, State);
         false ->
             set_keepalive_check_timer(KeepAlive),
             {State, []}
@@ -567,14 +575,14 @@ connected(Unexpected, State) ->
     lager:debug("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
     terminate({error, {unexpected_message, Unexpected}}, State).
 
--spec connack_terminate(reason_code(), state()) -> any().
-connack_terminate(RC, State) ->
-    connack_terminate(RC, #{}, State).
+-spec connack_terminate(reason_code_name(), state()) -> any().
+connack_terminate(RCN, State) ->
+    connack_terminate(RCN, #{}, State).
 
-connack_terminate(RC, Properties, _State) ->
-    _ = vmq_metrics:incr({?MQTT5_CONNACK_SENT, RC}),
+connack_terminate(RCN, Properties, _State) ->
+    _ = vmq_metrics:incr({?MQTT5_CONNACK_SENT, RCN}),
     {stop, normal, [#mqtt5_connack{session_present=false,
-                                   reason_code=RC,
+                                   reason_code=rcn2rc(RCN),
                                    properties=Properties}]}.
 
 queue_down_terminate(shutdown, State) ->
@@ -630,7 +638,6 @@ terminate(Reason, Props, #state{session_expiry_interval=SessionExpiryInterval} =
 terminate_reason(?NORMAL_DISCONNECT) -> normal;
 terminate_reason(?SESSION_TAKEN_OVER) -> normal;
 terminate_reason(?ADMINISTRATIVE_ACTION) -> normal;
-terminate_reason(?DISCONNECT_KEEP_ALIVE) -> normal;
 terminate_reason(?CLIENT_DISCONNECT) -> normal;
 terminate_reason(Reason) ->  Reason.
 
@@ -651,6 +658,7 @@ check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthM
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
             EnhancedAuth = #auth_data{method = AuthMethod,
                                       data = Frame0},
+            _ = vmq_metrics:incr({?MQTT5_AUTH_SENT, ?CONTINUE_AUTHENTICATION}),
             Frame1 = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
                                 properties = OutProps},
             {pre_connect_auth, State#state{enhanced_auth = EnhancedAuth}, [Frame1]};
@@ -703,11 +711,11 @@ check_client_id(#mqtt5_connect{client_id=ClientId, proto_ver=V} = F,
         false ->
             lager:warning("invalid protocol version for ~p ~p",
                           [SubscriberId, V]),
-            connack_terminate(?M5_UNSUPPORTED_PROTOCOL_VERSION, State)
+            connack_terminate(?UNSUPPORTED_PROTOCOL_VERSION, State)
     end;
 check_client_id(#mqtt5_connect{client_id=Id}, _OutProps, State) ->
     lager:warning("invalid client id ~p", [Id]),
-    connack_terminate(?M5_CLIENT_IDENTIFIER_NOT_VALID, State).
+    connack_terminate(?CLIENT_IDENTIFIER_NOT_VALID, State).
 
 check_user(#mqtt5_connect{username=User, password=Password, properties=PropsIn0} = F,
            OutProps,
@@ -722,20 +730,20 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=PropsIn0}
                 {error, no_matching_hook_found} ->
                     lager:error("can't authenticate client ~p due to
                                 no_matching_hook_found", [State#state.subscriber_id]),
-                    connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State);
+                    connack_terminate(?BAD_USERNAME_OR_PASSWORD, State);
                 {error, Vals} when is_map(Vals) ->
-                    ReasonCode = maps:get(reason_code, Vals, ?BAD_USERNAME_OR_PASSWORD),
+                    RCN = maps:get(reason_code, Vals, ?BAD_USERNAME_OR_PASSWORD),
                     Props0 = maps:get(properties, Vals, #{}),
                     lager:warning(
                       "can't authenticate client ~p due to ~p",
-                      [State#state.subscriber_id, ReasonCode]),
-                    connack_terminate(rcn2rc(ReasonCode), Props0, State);
+                      [State#state.subscriber_id, RCN]),
+                    connack_terminate(RCN, Props0, State);
                 {error, Error} ->
                     %% can't authenticate due to other reason
                     lager:warning(
                       "can't authenticate client ~p due to ~p",
                       [State#state.subscriber_id, Error]),
-                    connack_terminate(?M5_BAD_USERNAME_OR_PASSWORD, State)
+                    connack_terminate(?BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
             QueueOpts = queue_opts([], PropsIn0),
@@ -757,14 +765,15 @@ register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
         {error, Reason} ->
             lager:warning("can't register client ~p with username ~p due to ~p",
                           [SubscriberId, User, Reason]),
-            connack_terminate(?M5_SERVER_UNAVAILABLE, State)
+            connack_terminate(?SERVER_UNAVAILABLE, State)
     end.
 
 
 check_will(#mqtt5_connect{lwt=undefined}, SessionPresent, OutProps, State) ->
     OutProps0 = maybe_add_topic_alias_max(OutProps, State),
+    _ = vmq_metrics:incr({?MQTT5_CONNACK_SENT, ?SUCCESS}),
     {State, [#mqtt5_connack{session_present=SessionPresent,
-                            reason_code=?M5_CONNACK_ACCEPT,
+                            reason_code=?M5_SUCCESS,
                             properties=OutProps0}]};
 check_will(#mqtt5_connect{
               lwt=#mqtt5_lwt{will_topic=Topic, will_msg=Payload, will_qos=Qos,
@@ -786,14 +795,15 @@ check_will(#mqtt5_connect{
                                     State) of
         {ok, Msg, NewState} ->
             OutProps0 = maybe_add_topic_alias_max(OutProps, State),
+            _ = vmq_metrics:incr({?MQTT5_CONNACK_SENT, ?SUCCESS}),
             {NewState#state{will_msg=Msg},
              [#mqtt5_connack{session_present=SessionPresent,
-                             reason_code=?M5_CONNACK_ACCEPT,
+                             reason_code=?M5_SUCCESS,
                              properties=OutProps0}]};
         {error, Reason} ->
             lager:warning("can't authenticate last will
                           for client ~p due to ~p", [SubscriberId, Reason]),
-            connack_terminate(?M5_NOT_AUTHORIZED, State)
+            connack_terminate(?NOT_AUTHORIZED, State)
     end.
 
 -spec maybe_apply_topic_alias_in(username(), subscriber_id(), msg(), fun(), state()) ->
@@ -1057,7 +1067,7 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
                cap_settings=CAPSettings, reg_view=RegView} = State,
     case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
         {ok, _, NewState} ->
-            _ = vmq_metrics:incr(?MQTT5_PUBACK_SENT),
+            _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, ?SUCCESS}),
             %% TODOv5: return properties in puback success
             {NewState, [#mqtt5_puback{message_id=MessageId,
                                       reason_code=?M5_SUCCESS,
@@ -1065,18 +1075,17 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
         {error, Vals} when is_list(Vals) ->
             RCN = ret_val(reason_code, Vals, ?NOT_AUTHORIZED),
             Props0 = ret_val(properties, Vals, #{}),
+            _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, RCN}),
             {State, [#mqtt5_puback{message_id=MessageId,
                                    reason_code=rcn2rc(RCN),
                                    properties=Props0}]};
         {error, not_allowed} ->
-            _ = vmq_metrics:incr(?MQTT5_PUBLISH_AUTH_ERROR),
-            _ = vmq_metrics:incr(?MQTT5_PUBACK_SENT),
+            _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, ?NOT_AUTHORIZED}),
             Frame = #mqtt5_puback{message_id=MessageId, reason_code=?M5_NOT_AUTHORIZED, properties=#{}},
             [Frame];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
-            _ = vmq_metrics:incr(?MQTT5_PUBLISH_ERROR),
-            _ = vmq_metrics:incr(?MQTT5_PUBACK_SENT),
+            _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, ?IMPL_SPECIFIC_ERROR}),
             Frame = #mqtt5_puback{message_id=MessageId, reason_code=?M5_IMPL_SPECIFIC_ERROR, properties=#{}},
             [Frame]
     end.
@@ -1092,7 +1101,7 @@ dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
     case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
         {ok, NewMsg, NewState} ->
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
-            _ = vmq_metrics:incr(?MQTT5_PUBREC_SENT),
+            _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?SUCCESS}),
             {NewState#state{
                fc_receive_cnt=Cnt,
                waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
@@ -1100,19 +1109,18 @@ dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
         {error, Vals} when is_list(Vals) ->
             RCN = ret_val(reason_code, Vals, ?NOT_AUTHORIZED),
             Props0 = ret_val(properties, Vals, #{}),
+            _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, RCN}),
             {State, [#mqtt5_pubrec{message_id=MessageId,
                                    reason_code=rcn2rc(RCN),
                                    properties=Props0}]};
         {error, not_allowed} ->
-            _ = vmq_metrics:incr(?MQTT5_PUBLISH_AUTH_ERROR),
-            _ = vmq_metrics:incr(?MQTT5_PUBREC_SENT),
+            _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?NOT_AUTHORIZED}),
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_NOT_AUTHORIZED, properties=#{}},
             [Frame];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
-            _ = vmq_metrics:incr(?MQTT5_PUBLISH_ERROR),
-            _ = vmq_metrics:incr(?MQTT5_PUBREC_SENT),
-            Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_IMPL_SPECIFIC_ERROR, properties=#{}},
+            _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?UNSPECIFIED_ERROR}),
+            Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?UNSPECIFIED_ERROR, properties=#{}},
             [Frame]
     end.
 
@@ -1443,8 +1451,9 @@ gen_disconnect(RCN) ->
 gen_disconnect(RCN, Props) ->
     gen_disconnect_(RCN, Props).
 
-gen_disconnect_(RC, Props) ->
-    #mqtt5_disconnect{reason_code = rcn2rc(RC), properties = Props}.
+gen_disconnect_(RCN, Props) ->
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_SENT, RCN}),
+    #mqtt5_disconnect{reason_code = rcn2rc(RCN), properties = Props}.
 
 msg_expiration(#{p_message_expiry_interval := ExpireAfter}) ->
     {expire_after, ExpireAfter};
@@ -1516,6 +1525,10 @@ ret_val(Item, Vals, Default) ->
 -spec rcn2rc(reason_code_name()) -> reason_code().
 rcn2rc(RCN) ->
     vmq_parser_mqtt5:rcn2rc(RCN).
+
+-spec rc2rcn(reason_code()) -> reason_code_name().
+rc2rcn(RC) ->
+    vmq_parser_mqtt5:rc2rcn(RC).
 
 set_defopt(Key, Default, Map) ->
     case vmq_config:get_env(Key, Default) of
