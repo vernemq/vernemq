@@ -52,7 +52,7 @@ translate_listeners(Conf) ->
     StringIntegerListVal =
         fun(_, undefined, Def) -> Def;
            (_, Val, _) ->
-                {ok, T, _} = erl_scan:string(Val ++ "."),
+                {ok, T, _} = erl_scan:string("[" ++ Val ++ "]."),
                 {ok, Term} = erl_parse:parse_term(T),
                 Term
         end,
