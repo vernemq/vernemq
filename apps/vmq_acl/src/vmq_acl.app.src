@@ -16,7 +16,9 @@
       {vmq_plugin_hooks, [
             {vmq_acl, change_config, 1, [internal]},
             {vmq_acl, auth_on_publish, 6, []},
-            {vmq_acl, auth_on_subscribe, 3, []}
+            {vmq_acl, auth_on_subscribe, 3, []},
+            {vmq_acl, auth_on_publish_m5, 7, []},
+            {vmq_acl, auth_on_subscribe_m5, 4, []}
         ]}
     ]}
  ]}.
