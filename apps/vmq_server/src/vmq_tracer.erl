@@ -19,6 +19,7 @@
 -module(vmq_tracer).
 -include_lib("stdlib/include/ms_transform.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 
 -behaviour(gen_server).
 
@@ -33,6 +34,9 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
+
+%% for adhoc-testing
+-export([sim_client/0]).
 
 -define(SERVER, ?MODULE).
 
@@ -166,7 +170,7 @@ handle_call({start_session_trace, SessionPid, ConnFrame}, _From,
     Opts = #{payload_limit => PayloadLimit},
     SId = {"", ClientId},
     io:format(IoServer, "New session with PID ~p found for client \"~s\"~n", [SessionPid, ClientId]),
-    {F, D} = prepf(format_mqtt(to, SessionPid, SId, ConnFrame, Opts)),
+    {F, D} = prepf(format_frame(to, SessionPid, SId, ConnFrame, Opts)),
     io:format(IoServer, F, D),
     NewState = begin_session_trace([SessionPid], State),
     {reply, ok, NewState};
@@ -305,6 +309,8 @@ get_pid_from_trace({trace,Pid,_,_,_}) ->
 is_trace_active(Pid, Sessions) ->
     lists:keymember(Pid, 1, Sessions).
 
+maybe_init_session_trace(SessionPid, #mqtt5_connect{client_id = ClientId} = ConnFrame, ClientId) ->
+    start_session_trace(SessionPid, ConnFrame);
 maybe_init_session_trace(SessionPid, #mqtt_connect{client_id = ClientId} = ConnFrame, ClientId) ->
     start_session_trace(SessionPid, ConnFrame);
 maybe_init_session_trace(_,_,_) ->
@@ -325,8 +331,10 @@ begin_session_trace(SessionPids,
 
 setup_trace(TracePids, Tracer) ->
     TSpecs =
-        [{vmq_parser, serialise, vmq_parser_serialize_ms()},
+        [{vmq_parser, serialise, vmq_m4_parser_serialize_ms()},
+         {vmq_parser_mqtt5, serialise, vmq_m5_parser_serialize_ms()},
          {vmq_mqtt_fsm, connected, vmq_mqtt_fsm_connected_ms()},
+         {vmq_mqtt5_fsm, connected, vmq_mqtt5_fsm_connected_ms()},
          {vmq_plugin, all_till_ok, vmq_plugin_hooks_ms()}],
 
     MatchOpts = [local],
@@ -381,7 +389,7 @@ rate_tracer(Max, Time, Count, Start) ->
             end
     end.
 
-vmq_parser_serialize_ms() ->
+vmq_m4_parser_serialize_ms() ->
     dbg:fun2ms(
       fun([#mqtt_connect{}]) -> ok;
          ([#mqtt_connack{}]) -> ok;
@@ -397,6 +405,24 @@ vmq_parser_serialize_ms() ->
          ([#mqtt_pingreq{}]) -> ok;
          ([#mqtt_pingresp{}]) -> ok;
          ([#mqtt_disconnect{}]) -> ok end).
+
+vmq_m5_parser_serialize_ms() ->
+    dbg:fun2ms(
+      fun([#mqtt5_connect{}]) -> ok;
+         ([#mqtt5_connack{}]) -> ok;
+         ([#mqtt5_publish{}]) -> ok;
+         ([#mqtt5_puback{}]) -> ok;
+         ([#mqtt5_pubrec{}]) -> ok;
+         ([#mqtt5_pubrel{}]) -> ok;
+         ([#mqtt5_pubcomp{}]) -> ok;
+         ([#mqtt5_subscribe{}]) -> ok;
+         ([#mqtt5_unsubscribe{}]) -> ok;
+         ([#mqtt5_suback{}]) -> ok;
+         ([#mqtt5_unsuback{}]) -> ok;
+         ([#mqtt5_pingreq{}]) -> ok;
+         ([#mqtt5_pingresp{}]) -> ok;
+         ([#mqtt5_disconnect{}]) -> ok;
+         ([#mqtt5_auth{}]) -> ok end).
 
 vmq_mqtt_fsm_connected_ms() ->
     dbg:fun2ms(
@@ -415,10 +441,32 @@ vmq_mqtt_fsm_connected_ms() ->
          ([#mqtt_pingresp{},_]) -> ok;
          ([#mqtt_disconnect{},_]) -> ok end).
 
+vmq_mqtt5_fsm_connected_ms() ->
+    dbg:fun2ms(
+      fun([#mqtt5_connect{},_]) -> ok;
+         ([#mqtt5_connack{},_]) -> ok;
+         ([#mqtt5_publish{},_]) -> ok;
+         ([#mqtt5_puback{},_]) -> ok;
+         ([#mqtt5_pubrec{},_]) -> ok;
+         ([#mqtt5_pubrel{},_]) -> ok;
+         ([#mqtt5_pubcomp{},_]) -> ok;
+         ([#mqtt5_subscribe{},_]) -> ok;
+         ([#mqtt5_unsubscribe{},_]) -> ok;
+         ([#mqtt5_suback{},_]) -> ok;
+         ([#mqtt5_unsuback{},_]) -> ok;
+         ([#mqtt5_pingreq{},_]) -> ok;
+         ([#mqtt5_pingresp{},_]) -> ok;
+         ([#mqtt5_disconnect{},_]) -> ok;
+         ([#mqtt5_auth{},_]) -> ok end).
+
 vmq_plugin_hooks_ms() ->
     [{[auth_on_register,'_'],[],[{return_trace}]},
      {[auth_on_publish,'_'],[],[{return_trace}]},
-     {[auth_on_subscribe,'_'],[],[{return_trace}]}
+     {[auth_on_subscribe,'_'],[],[{return_trace}]},
+     {[auth_on_register_m5,'_'],[],[{return_trace}]},
+     {[auth_on_publish_m5,'_'],[],[{return_trace}]},
+     {[auth_on_subscribe_m5,'_'],[],[{return_trace}]},
+     {[on_auth_m5,'_'],[],[{return_trace}]}
      %%{[on_register,'_'],[],[{return_trace}]},
      %%{[on_publish,'_'],[],[{return_trace}]},
      %%{[on_deliver,'_'],[],[{return_trace}]},
@@ -437,9 +485,13 @@ format_trace(Trace, #state{client_id=ClientId,
     Unprepared =
         case Trace of
             {trace, Pid, call, {vmq_parser, serialise, [Msg]}} ->
-                format_mqtt(from, Pid, SId, Msg, Opts);
+                format_frame(from, Pid, SId, Msg, Opts);
             {trace, Pid, call, {vmq_mqtt_fsm, connected, [Msg, _]}} ->
-                format_mqtt(to, Pid, SId, Msg, Opts);
+                format_frame(to, Pid, SId, Msg, Opts);
+            {trace, Pid, call, {vmq_parser_mqtt5, serialise, [Msg]}} ->
+                format_frame(from, Pid, SId, Msg, Opts);
+            {trace, Pid, call, {vmq_mqtt5_fsm, connected, [Msg, _]}} ->
+                format_frame(to, Pid, SId, Msg, Opts);
             {trace, Pid, call, {vmq_plugin, all_till_ok, [Hook, Args]}} ->
                 format_all_till_ok(Hook, Pid, Args, Opts);
             {trace, Pid, return_from, {vmq_plugin,all_till_ok,2}, Ret} ->
@@ -463,7 +515,24 @@ format_all_till_ok_(auth_on_publish = Hook, [User, SubscriberId, QoS, Topic, Pay
      [Hook, User, SubscriberId, QoS, jtopic(Topic), IsRetain, Payload]};
 format_all_till_ok_(auth_on_subscribe = Hook, [User, SubscriberId, Topics], _Opts) ->
     [{"Calling ~p(~s,~p) with topics:~n",
-     [Hook, User, SubscriberId]}, ftopics(Topics)].
+      [Hook, User, SubscriberId]}, ftopics(Topics)];
+
+format_all_till_ok_(auth_on_register_m5 = Hook,
+                    [Peer, SubscriberId, User, Password, CleanStart, Props], Opts) ->
+    [{"Calling ~p(~p,~p,~s,~s,~p) ~n",
+     [Hook, Peer, SubscriberId, User, Password, CleanStart]},
+     format_props(Props, Opts)];
+format_all_till_ok_(auth_on_publish_m5 = Hook,
+                    [User, SubscriberId, QoS, Topic, Payload, IsRetain, Props],
+                    Opts) ->
+    [{"Calling ~p(~s,~p,~p,~s,~p) with payload:~n"
+      "    ~s~n",
+      [Hook, User, SubscriberId, QoS, jtopic(Topic), IsRetain, Payload]},
+     format_props(Props, Opts)];
+format_all_till_ok_(auth_on_subscribe_m5 = Hook, [User, SubscriberId, Topics, Props], Opts) ->
+    [{"Calling ~p(~s,~p) with topics:~n",
+      [Hook, User, SubscriberId]}, ftopics(Topics), format_props(Props, Opts)].
+
 
 format_all_till_ok_ret(Ret, Pid, Opts) ->
     [fpid(Pid), r(" "), format_all_till_ok_ret_(Ret, Opts)].
@@ -481,53 +550,127 @@ format_all_till_ok_ret_({ok, Modifiers}, _Opts) ->
 format_all_till_ok_ret_(Other,_Opts) ->
     {"Hook returned ~p~n", [Other]}.
 
-format_mqtt(Direction, Pid, SId, M, Opts) ->
+format_frame(Direction, Pid, SId, M, Opts) ->
     [fpid(Pid), r(" "), dir(Direction), r(" "),
-     sid(SId), r(" "), format_mqtt_(M, Opts)].
+     sid(SId), r(" "), format_frame_(M, Opts)].
 
-format_lwt(Present, _QoS, _Topic, _Msg, _Opts)
-  when Present =:= false; Present =:= undefined ->
+format_props(#{}=M, _Opts) when map_size(M) =:= 0 ->
     [];
-format_lwt(Present, QoS, Topic, Msg, #{payload_limit := Limit}) ->
+format_props(undefined, _Opts) ->
+    [];
+format_props(Props, _Opts) ->
+    {"    with properties: ~p~n", [Props]}.
+
+format_lwt(undefined,_Opts) ->
+    [];
+format_lwt(#mqtt5_lwt{
+              will_properties = Props,
+              will_retain = Retain,
+              will_qos = QoS,
+              will_topic = Topic,
+              will_msg = Msg
+             }, Opts) ->
+    format_lwt(Retain, QoS, Topic, Msg, Props, Opts).
+
+format_lwt(Retain, _QoS, _Topic, _Msg, _Props, _Opts)
+  when Retain =:= undefined ->
+    [];
+format_lwt(Retain, QoS, Topic, Msg, Props, #{payload_limit := Limit} = Opts) ->
     {"    with LWT(wr: ~p, wq: ~p, wt: ~s) with payload:~n"
      "    ~s~n",
-     [Present, QoS, jtopic(Topic), trunc_payload(Msg, Limit)]}.
+     [Retain, QoS, jtopic(Topic), trunc_payload(Msg, Limit), format_props(Props, Opts)]}.
 
-format_mqtt_(#mqtt_pingreq{}, _) ->
+format_frame_(#mqtt_pingreq{}, _) ->
     {"PINGREQ()~n", []};
-format_mqtt_(#mqtt_pingresp{}, _) ->
+format_frame_(#mqtt_pingresp{}, _) ->
     {"PINGRESP()~n", []};
-format_mqtt_(#mqtt_connect{proto_ver = Ver, username = Username,
+format_frame_(#mqtt_connect{proto_ver = Ver, username = Username,
                            password = Password, clean_session = CleanSession,
                            keep_alive = KeepAlive, client_id = ClientId, will_retain = WillRetain,
                            will_qos = WillQoS, will_topic = WillTopic, will_msg = WillMsg}, Opts) ->
     [{"CONNECT(c: ~s, v: ~p, u: ~s, p: ~s, cs: ~p, ka: ~p)~n",
       [ClientId, Ver, Username, Password, CleanSession, KeepAlive]},
-     format_lwt(WillRetain, WillQoS, WillTopic, WillMsg, Opts)];
-format_mqtt_(#mqtt_connack{session_present = SP, return_code = RC}, _) ->
+     format_lwt(WillRetain, WillQoS, WillTopic, WillMsg, undefined, Opts)];
+format_frame_(#mqtt_connack{session_present = SP, return_code = RC}, _) ->
     {"CONNACK(sp: ~p, rc: ~p)~n", [fflag(SP), RC]};
-format_mqtt_(#mqtt_publish{message_id = MId, topic = Topic, qos = QoS, retain = Retain,
+format_frame_(#mqtt_publish{message_id = MId, topic = Topic, qos = QoS, retain = Retain,
                             dup = Dup, payload = Payload}, #{payload_limit := Limit}) ->
     {"PUBLISH(d~p, q~p, r~p, m~p, \"~s\") with payload:~n"
      "    ~s~n", [fflag(Dup), QoS, fflag(Retain), fmid(MId), jtopic(Topic), trunc_payload(Payload, Limit)]};
-format_mqtt_(#mqtt_puback{message_id = MId}, _) ->
+format_frame_(#mqtt_puback{message_id = MId}, _) ->
     {"PUBACK(m~p)~n", [fmid(MId)]};
-format_mqtt_(#mqtt_pubrec{message_id = MId}, _) ->
+format_frame_(#mqtt_pubrec{message_id = MId}, _) ->
     {"PUBREC(m~p)~n", [fmid(MId)]};
-format_mqtt_(#mqtt_pubrel{message_id = MId}, _) ->
+format_frame_(#mqtt_pubrel{message_id = MId}, _) ->
     {"PUBREL(m~p)~n", [fmid(MId)]};
-format_mqtt_(#mqtt_pubcomp{message_id = MId}, _) ->
+format_frame_(#mqtt_pubcomp{message_id = MId}, _) ->
     {"PUBCOMP(m~p)~n", [fmid(MId)]};
-format_mqtt_(#mqtt_subscribe{message_id = MId, topics = Topics}, _) ->
+format_frame_(#mqtt_subscribe{message_id = MId, topics = Topics}, _) ->
     [{"SUBSCRIBE(m~p) with topics:~n", [fmid(MId)]}, ftopics(Topics)];
-format_mqtt_(#mqtt_suback{message_id = MId, qos_table = QoSTable}, _) ->
+format_frame_(#mqtt_suback{message_id = MId, qos_table = QoSTable}, _) ->
     {"SUBACK(m~p, qt~p)~n", [fmid(MId), QoSTable]};
-format_mqtt_(#mqtt_unsubscribe{message_id = MId}, _) ->
+format_frame_(#mqtt_unsubscribe{message_id = MId}, _) ->
     {"UNSUBSCRIBE(m~p)~n", [fmid(MId)]};
-format_mqtt_(#mqtt_unsuback{message_id = MId}, _) ->
+format_frame_(#mqtt_unsuback{message_id = MId}, _) ->
     {"UNSUBACK(m~p)~n", [fmid(MId)]};
-format_mqtt_(#mqtt_disconnect{}, _) ->
-    {"DISCONNECT()~n", []}.
+format_frame_(#mqtt_disconnect{}, _) ->
+    {"DISCONNECT()~n", []};
+
+format_frame_(#mqtt5_pingreq{}, _) ->
+    {"PINGREQ()~n", []};
+format_frame_(#mqtt5_pingresp{}, _) ->
+    {"PINGRESP()~n", []};
+format_frame_(#mqtt5_connect{proto_ver = Ver, username = Username,
+                            password = Password, clean_start = CleanStart,
+                            keep_alive = KeepAlive, client_id = ClientId,
+                            lwt = LWT, properties = Props}, Opts) ->
+    [{"CONNECT(c: ~s, v: ~p, u: ~s, p: ~s, cs: ~p, ka: ~p)~n",
+      [ClientId, Ver, Username, Password, CleanStart, KeepAlive]},
+     format_props(Props, Opts),
+     format_lwt(LWT, Opts)];
+format_frame_(#mqtt5_connack{session_present = SP, reason_code = RC,
+                             properties=Props}, Opts) ->
+    [{"CONNACK(sp: ~p, rc: ~p(~p))~n", [fflag(SP), rc2rcn(RC), RC]}, format_props(Props, Opts)];
+format_frame_(#mqtt5_publish{message_id = MId, topic = Topic, qos = QoS, retain = Retain,
+                             dup = Dup, payload = Payload, properties = Props},
+              #{payload_limit := Limit} = Opts) ->
+    [{"PUBLISH(d~p, q~p, r~p, m~p, \"~s\") with payload:~n"
+     "    ~s~n", [fflag(Dup), QoS, fflag(Retain), fmid(MId), jtopic(Topic), trunc_payload(Payload, Limit)]},
+     format_props(Props, Opts)];
+format_frame_(#mqtt5_puback{message_id = MId, reason_code=RC, properties=Props}, Opts) ->
+    [{"PUBACK(m~p, rc: ~p(~p))~n", [fmid(MId), rc2rcn(RC), RC]},
+     format_props(Props, Opts)];
+format_frame_(#mqtt5_pubrec{message_id = MId, reason_code=RC, properties=Props}, Opts) ->
+    [{"PUBREC(m~p), rc: ~p(~p))~n", [fmid(MId), rc2rcn(RC), RC]},
+     format_props(Props, Opts)];
+format_frame_(#mqtt5_pubrel{message_id = MId, reason_code=RC, properties=Props}, Opts) ->
+    [{"PUBREL(m~p), rc: ~p(~p))~n", [fmid(MId), rc2rcn(RC), RC]},
+     format_props(Props, Opts)];
+format_frame_(#mqtt5_pubcomp{message_id = MId, reason_code=RC, properties=Props}, Opts) ->
+    [{"PUBCOMP(m~p), rc: ~p(~p))~n", [fmid(MId), rc2rcn(RC), RC]},
+     format_props(Props, Opts)];
+format_frame_(#mqtt5_subscribe{message_id = MId, topics = Topics, properties=Props}, Opts) ->
+    [{"SUBSCRIBE(m~p) with topics:~n", [fmid(MId)]},
+     ftopics(Topics), format_props(Props, Opts)];
+format_frame_(#mqtt5_suback{message_id = MId, reason_codes = RCs, properties = Props}, Opts) ->
+    [{"SUBACK(m~p, reason_codes:~p)~n", [fmid(MId), RCs]},
+     format_props(Props, Opts)];
+format_frame_(#mqtt5_unsubscribe{message_id = MId, topics=Topics, properties=Props}, Opts) ->
+    [{"UNSUBSCRIBE(m~p) with topics:~n", [fmid(MId)]},
+     ftopics(Topics), format_props(Props, Opts)];
+format_frame_(#mqtt5_unsuback{message_id = MId, reason_codes=RCs, properties=Props}, Opts) ->
+    [{"UNSUBACK(m~p, reason_codes:~p)~n", [fmid(MId), RCs]},
+     format_props(Props, Opts)];
+format_frame_(#mqtt5_disconnect{reason_code=RC, properties=Props}, Opts) ->
+    [{"DISCONNECT(rc:~p(~p))~n", [disconnectrc2rcn(RC), RC]},
+     format_props(Props, Opts)];
+format_frame_(#mqtt5_auth{reason_code=RC, properties=Props}, Opts) ->
+    [{"AUTH(rc:~p(~p))~n", [rc2rcn(RC), RC]},
+     format_props(Props, Opts)];
+
+format_frame_(Unknown,_) ->
+    {io_lib:format("UNKNOWN: ~p~n", [Unknown]), []}.
+
 
 trunc_payload(Payload, Limit) when byte_size(Payload) =< Limit ->
     Payload;
@@ -568,7 +711,22 @@ jtopic(T) when is_list(T) ->
 ftopics(Topics) ->
     lists:foldl(
       fun({Topic, QoS}, Acc) when is_integer(QoS), is_list(Topic) ->
-              [{"    q:~p, t: \"~s\"~n", [QoS, jtopic(Topic)]}|Acc]
+              [{"    q:~p, t: \"~s\"~n", [QoS, jtopic(Topic)]}|Acc];
+         ({Topic, {QoS, SubOpts}}, Acc) ->
+              NL = maps:get(no_local, SubOpts, undefined),
+              RAP = maps:get(rap, SubOpts, undefined),
+              RH = maps:get(retain_handling, SubOpts, undefined),
+              [{"    q:~p, no_local:~p, rap:~p, rh:~p~n"
+                "    t: \"~s\"~n", [QoS, NL, RAP, RH, jtopic(Topic)]}|Acc];
+         (#mqtt5_subscribe_topic{
+             topic = Topic,
+             qos = QoS,
+             no_local = NL,
+             rap = RAP,
+             retain_handling = RH
+            }, Acc) ->
+              [{"    q:~p, no_local:~p, rap:~p, rh:~p~n"
+                "    t: \"~s\"~n", [QoS, NL, RAP, RH, jtopic(Topic)]}|Acc]
       end,
       [],
       Topics).
@@ -606,3 +764,29 @@ dir(to) -> {"MQTT RECV:", []}.
 
 format_unknown_trace(V) ->
     [{"Unknown trace! ~p~n", [V]}].
+
+
+sim_client() ->
+    Connect = packetv5:gen_connect("simclient", [{keepalive, 60}]),
+    Connack = packetv5:gen_connack(0, 0, #{}),
+    {ok, S} = packetv5:do_client_connect(Connect, Connack, [{port, 1883}]),
+    Topic = "sim/topic",
+    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)],
+                                       #{p_user_property => [{<<"key1">>, <<"val1">>},
+                                                             {<<"key2">>, <<"val2">>}]}),
+    ok = gen_tcp:send(S, Subscribe),
+    SubAck = packetv5:gen_suback(77, [0], #{}),
+    ok = packetv5:expect_frame(S, SubAck),
+    Pub = packetv5:gen_publish(Topic, 0, <<"simmsg">>,
+                               [{properties, #{p_user_property =>
+                                                   [{<<"key1">>, <<"val1">>},
+                                                    {<<"key1">>, <<"val2">>},
+                                                    {<<"key2">>, <<"val2">>}]}}]),
+    ok = gen_tcp:send(S, Pub).
+
+rc2rcn(RC) ->
+    vmq_parser_mqtt5:rc2rcn(RC).
+
+disconnectrc2rcn(?M5_NORMAL_DISCONNECT) ->
+    ?NORMAL_DISCONNECT;
+disconnectrc2rcn(RC) -> rc2rcn(RC).
