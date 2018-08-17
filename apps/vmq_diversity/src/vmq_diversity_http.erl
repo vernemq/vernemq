@@ -44,13 +44,18 @@ request(Method, [BPoolId, Url|Rest0] = As, St) when is_binary(Url) ->
     PoolId = pool_id(BPoolId, As, St),
     {Payload, Rest1} = decode_payload(Rest0, St),
     {Headers, _} = decode_headers(Rest1, St),
-    case hackney:request(Method, Url, Headers, Payload, [{pool, PoolId}]) of
-        {ok, StatusCode, RespHeaders, ClientRef} ->
-            BClientRef = term_to_binary(ClientRef),
-            BBClientRef = <<"client-ref-", BClientRef/binary>>,
+    case hackney:request(Method, Url, Headers, Payload, [{pool, PoolId}, with_body]) of
+        {ok, StatusCode, RespHeaders, Body} ->
             Table = [{status, StatusCode},
                      {headers, RespHeaders},
-                     {ref, BBClientRef}],
+                     %% We not longer have a reference, but we store
+                     %% the body in the reference to not break
+                     %% existing scripts. Earlier a reference was
+                     %% returned, but if the user didn't call body on
+                     %% it, the underlying connection would not be
+                     %% returned to the connection pool, drying up the
+                     %% pool.
+                     {ref, Body}],
             {NewTable, NewSt} = luerl:encode(Table, St),
             {[NewTable], NewSt};
         {error, Reason} ->
@@ -58,15 +63,8 @@ request(Method, [BPoolId, Url|Rest0] = As, St) when is_binary(Url) ->
             {[false], St}
     end.
 
-body([<<"client-ref-", BClientRef/binary>> = Ref|_], St) ->
-    ClientRef = binary_to_term(BClientRef),
-    case hackney:body(ClientRef) of
-        {ok, Body} ->
-            {[Body], St};
-        {error, Reason} ->
-            lager:error("cant fetch response body for ~p due to ~p", [Ref, Reason]),
-            {[false], St}
-    end.
+body([Body|_], St) ->
+    {[Body], St}.
 
 decode_payload([Payload|Rest], _) when is_binary(Payload) ->
     {Payload, Rest};
