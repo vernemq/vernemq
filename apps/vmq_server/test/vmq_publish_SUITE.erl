@@ -616,6 +616,7 @@ message_expiry(_) ->
     %% Server [MQTT-3.3.2-6].
     enable_on_publish(),
     enable_on_subscribe(),
+    enable_on_message_drop(),
 
     %% set up subscriber
     SubConnect = packetv5:gen_connect("message-expiry-sub", [{keepalive, 60},
@@ -679,7 +680,8 @@ message_expiry(_) ->
     ok = gen_tcp:close(SubSocket1),
 
     disable_on_publish(),
-    disable_on_subscribe().
+    disable_on_subscribe(),
+    disable_on_message_drop().
 
 publish_c2b_topic_alias(_Config) ->
     enable_on_publish(),
@@ -872,6 +874,7 @@ max_packet_size(Config) ->
     ok = gen_tcp:close(SubSocket),
     disable_on_publish(),
     disable_on_subscribe(),
+    disable_on_message_drop(),
     ok.
 
 %% publish_c2b_invalid_topic_alias(Config) ->
@@ -891,7 +894,8 @@ hook_auth_on_subscribe(_, _, _) -> ok.
 hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 hook_on_message_drop(_, Promise, max_packet_size_exceeded) ->
     {_QoS, _Topic, <<"large enough to be discarded publish">> = _Payload, _Props} = Promise(),
-    ok.
+    ok;
+hook_on_message_drop({"", <<"message-expiry-sub">>}, _, expired) -> ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
