@@ -178,11 +178,24 @@
 %% @doc The maximum delay for a last will message. This setting
 %% applies only to MQTTv5 sessions and overrides the value provided by
 %% the client.
+%% The delay should be an integer followed by one of 's', 'h' 'd',
+%% 'w', 'm', 'y' for day, week, month, and year.
 {mapping, "max_last_will_delay", "vmq_server.max_last_will_delay", [
-                                                                    {default, 0},
-                                                                    {commented, "1w"},
-                                                                    {datatype, {duration,s}}
+                                                                    {default, "0s"},
+                                                                    {commented, "0s"},
+                                                                    {datatype, string}
                                                                    ]}.
+
+{translation, "vmq_server.max_last_will_delay",
+ fun(Conf) ->
+         S = cuttlefish:conf_get("max_last_will_delay", Conf),
+         case vmq_schema:string_to_secs(S) of
+             error ->
+                 cuttlefish:invalid(S ++ " must be an integer followed by one of 's', 'h', 'd', 'w', 'm', 'y' for second, minute, hour, day, week, month, and year");
+             Val -> Val
+         end
+ end}.
+
 
 %% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being
 %% transmitted simultaneously. This includes messages currently going through handshakes 
@@ -657,7 +670,7 @@
 %%
 {mapping, "listener.tcp.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4,5]"},
+  {default, "3,4,5"},
   {datatype, string},
   hidden
  ]}.
@@ -670,7 +683,7 @@
 
 {mapping, "listener.ws.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4,5]"},
+  {default, "3,4,5"},
   {datatype, string},
   hidden
  ]}.
@@ -683,7 +696,7 @@
 
 {mapping, "listener.wss.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4,5]"},
+  {default, "3,4,5"},
   {datatype, string},
   hidden
  ]}.
@@ -696,7 +709,7 @@
 
 {mapping, "listener.ssl.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4,5]"},
+  {default, "3,4,5"},
   {datatype, string},
   hidden
  ]}.

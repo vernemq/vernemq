@@ -52,7 +52,7 @@ translate_listeners(Conf) ->
     StringIntegerListVal =
         fun(_, undefined, Def) -> Def;
            (_, Val, _) ->
-                {ok, T, _} = erl_scan:string(Val ++ "."),
+                {ok, T, _} = erl_scan:string("[" ++ Val ++ "]."),
                 {ok, Term} = erl_parse:parse_term(T),
                 Term
         end,
@@ -284,6 +284,7 @@ extract(Prefix, Suffix, Val, Conf) ->
 string_to_secs(S) ->
     [Entity|T] = lists:reverse(S),
     case {Entity, list_to_integer(lists:reverse(T))} of
+        {$s, D} -> D;
         {$h, D} -> D * 60 * 60;
         {$d, D} -> D * 24 * 60 * 60;
         {$w, D} -> D * 7 * 24 * 60 * 60;
