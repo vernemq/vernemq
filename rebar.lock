@@ -90,7 +90,7 @@
  {<<"ssl_verify_fun">>,{pkg,<<"ssl_verify_fun">>,<<"1.1.1">>},1},
  {<<"swc">>,
   {git,"git://github.com/dergraf/ServerWideClocks.git",
-       {ref,"84642ab0e4db73ceb79240e8abe3bd92058b375a"}},
+       {ref,"17440f509e05b22dff2581a92e6357c2511c50c7"}},
   0},
  {<<"syslog">>,
   {git,"git://github.com/Vagabond/erlang-syslog",
