@@ -38,7 +38,7 @@ terminate(_Reason, _Req, _State) ->
 
 reply(Req, <<"text/plain">>) ->
     %% Prometheus output
-    Metrics = vmq_metrics:metrics(),
+    Metrics = vmq_metrics:metrics(#{aggregate => false}),
     Output = prometheus_output(Metrics, []),
     {ok, Req2} = cowboy_req:reply(200, [{<<"content-type">>, <<"text/plain">>}],
                                   Output, Req),

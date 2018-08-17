@@ -15,6 +15,7 @@
 -module(vmq_mqtt_fsm).
 -include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_server.hrl").
+-include("vmq_metrics.hrl").
 
 
 -export([init/3,
@@ -436,7 +437,7 @@ connected(Unexpected, State) ->
     terminate({error, unexpected_message, Unexpected}, State).
 
 connack_terminate(RC, _State) ->
-    _ = vmq_metrics:incr_mqtt_connack_sent(RC),
+    _ = vmq_metrics:incr({?MQTT4_CONNACK_SENT, RC}),
     {stop, normal, [#mqtt_connack{session_present=false, return_code=RC}]}.
 
 queue_down_terminate(shutdown, State) ->

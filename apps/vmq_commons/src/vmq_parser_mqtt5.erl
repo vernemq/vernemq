@@ -21,7 +21,8 @@
          gen_disconnect/2,
          gen_auth/2,
 
-         rcn2rc/1
+         rcn2rc/1,
+         rc2rcn/1
         ]).
 
 
@@ -963,6 +964,7 @@ validate_publish_topic(Topic) ->
     vmq_topic:validate_topic(publish, Topic).
 
 -spec rcn2rc(reason_code_name()) -> reason_code().
+rcn2rc(success)                        -> ?M5_SUCCESS;
 rcn2rc(granted_qos0)                   -> ?M5_GRANTED_QOS0;
 rcn2rc(granted_qos1)                   -> ?M5_GRANTED_QOS1;
 rcn2rc(granted_qos2)                   -> ?M5_GRANTED_QOS2;
@@ -1007,3 +1009,47 @@ rcn2rc(connection_rate_exceeded)       -> ?M5_CONNECTION_RATE_EXCEEDED;
 rcn2rc(max_connect_time)               -> ?M5_MAX_CONNECT_TIME;
 rcn2rc(subscription_ids_not_supported) -> ?M5_SUBSCRIPTION_IDS_NOT_SUPPORTED;
 rcn2rc(wildcard_subs_not_supported)    -> ?M5_WILDCARD_SUBS_NOT_SUPPORTED.
+
+
+-spec rc2rcn(reason_code()) -> reason_code_name().
+rc2rcn(?M5_SUCCESS)                        -> success;
+rc2rcn(?M5_DISCONNECT_WITH_WILL_MSG)       -> disconnect_with_will_msg;
+rc2rcn(?M5_NO_MATCHING_SUBSCRIBERS)        -> no_matching_subscribers;
+rc2rcn(?M5_NO_SUBSCRIPTION_EXISTED)        -> no_subscription_existed;
+rc2rcn(?M5_CONTINUE_AUTHENTICATION)        -> continue_authentication;
+rc2rcn(?M5_REAUTHENTICATE)                 -> reauthenticate;
+rc2rcn(?M5_UNSPECIFIED_ERROR)              -> unspecified_error;
+rc2rcn(?M5_MALFORMED_PACKET)               -> malformed_packet;
+rc2rcn(?M5_PROTOCOL_ERROR)                 -> protocol_error;
+rc2rcn(?M5_IMPL_SPECIFIC_ERROR)            -> impl_specific_error;
+rc2rcn(?M5_UNSUPPORTED_PROTOCOL_VERSION)   -> unsupported_protocol_VERSION;
+rc2rcn(?M5_CLIENT_IDENTIFIER_NOT_VALID)    -> client_identifier_not_valid;
+rc2rcn(?M5_BAD_USERNAME_OR_PASSWORD)       -> bad_username_or_password;
+rc2rcn(?M5_NOT_AUTHORIZED)                 -> not_authorized;
+rc2rcn(?M5_SERVER_UNAVAILABLE)             -> server_unavailable;
+rc2rcn(?M5_SERVER_BUSY)                    -> server_busy;
+rc2rcn(?M5_BANNED)                         -> banned;
+rc2rcn(?M5_SERVER_SHUTTING_DOWN)           -> server_shutting_down;
+rc2rcn(?M5_BAD_AUTHENTICATION_METHOD)      -> bad_authentication_method;
+rc2rcn(?M5_KEEP_ALIVE_TIMEOUT)             -> keep_alive_timeout;
+rc2rcn(?M5_SESSION_TAKEN_OVER)             -> session_taken_over;
+rc2rcn(?M5_TOPIC_FILTER_INVALID)           -> topic_filter_invalid;
+rc2rcn(?M5_TOPIC_NAME_INVALID)             -> topic_name_invalid;
+rc2rcn(?M5_PACKET_ID_IN_USE)               -> packet_id_in_use;
+rc2rcn(?M5_PACKET_ID_NOT_FOUND)            -> packet_id_not_found;
+rc2rcn(?M5_RECEIVE_MAX_EXCEEDED)           -> receive_max_exceeded;
+rc2rcn(?M5_TOPIC_ALIAS_INVALID)            -> topic_alias_invalid;
+rc2rcn(?M5_PACKET_TOO_LARGE)               -> packet_too_large;
+rc2rcn(?M5_MESSAGE_RATE_TOO_HIGH)          -> message_rate_too_high;
+rc2rcn(?M5_QUOTA_EXCEEDED)                 -> quota_exceeded;
+rc2rcn(?M5_ADMINISTRATIVE_ACTION)          -> administrative_action;
+rc2rcn(?M5_PAYLOAD_FORMAT_INVALID)         -> payload_format_invalid;
+rc2rcn(?M5_RETAIN_NOT_SUPPORTED)           -> retain_not_supported;
+rc2rcn(?M5_QOS_NOT_SUPPORTED)              -> qos_not_supported;
+rc2rcn(?M5_USE_ANOTHER_SERVER)             -> use_another_server;
+rc2rcn(?M5_SERVER_MOVED)                   -> server_moved;
+rc2rcn(?M5_SHARED_SUBS_NOT_SUPPORTED)      -> shared_subs_not_supported;
+rc2rcn(?M5_CONNECTION_RATE_EXCEEDED)       -> connection_rate_exceeded;
+rc2rcn(?M5_MAX_CONNECT_TIME)               -> max_connect_time;
+rc2rcn(?M5_SUBSCRIPTION_IDS_NOT_SUPPORTED) -> subscription_ids_not_supported;
+rc2rcn(?M5_WILDCARD_SUBS_NOT_SUPPORTED)    ->  wildcard_subs_not_supported.

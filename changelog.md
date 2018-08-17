@@ -1,6 +1,6 @@
 # Changelog
 
-## VerneMQ 2.0.0
+## VerneMQ 1.6.0
 
 - Topic aliases
 
@@ -13,6 +13,20 @@ packet (if it has been set to a non-zero value). The topic alias maximum
 property can be configured through the `topic_alias_max` configuration variable
 or overriden in a plugin in the `auth_on_register` hook. The broker will then
 handle topic aliases from the client as per the MQTTv5 spec.
+
+- The metrics:
+
+    mqtt_connack_not_authorized_sent
+    mqtt_connack_bad_credentials_sent
+    mqtt_connack_server_unavailable_sent
+    mqtt_connack_identifier_rejected_sent
+    mqtt_connack_unacceptable_protocol_sent
+    mqtt_connack_accepted_sent
+
+  Have been merged into a single metric `mqtt_connack_sent` and the various MQTT
+  3.1.1 return codes have been mapped into labels. So for example
+  `mqtt_connack_sent` with the label `return_code=success` replaces
+  `mqtt_connack_accepted_sent`.
 
 
 ## VerneMQ 1.5.0 (Not yet released)
