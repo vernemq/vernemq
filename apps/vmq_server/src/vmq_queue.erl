@@ -744,33 +744,33 @@ change_session_state(NewState, SessionPid, #state{id=SId, sessions=Sessions} = S
     #session{queue=#queue{backup=Backup} = Queue} = Session = maps:get(SessionPid, Sessions),
     cleanup_queue(SId, Backup),
     _ = vmq_metrics:incr_queue_out(queue:len(Backup)),
-    UpdatedSession = change_session_state(NewState,
+    UpdatedSession = change_session_state_(NewState, SId,
                                           Session#session{queue=Queue#queue{backup=queue:new()}}),
     NewSessions = maps:update(SessionPid, UpdatedSession, Sessions),
     State#state{sessions=NewSessions}.
 
 %% in active state
-change_session_state(active, #session{status=active} = Session) ->
+change_session_state_(active, _SId, #session{status=active} = Session) ->
     Session;
-change_session_state(notify, #session{status=active} = Session) ->
+change_session_state_(notify, _SId, #session{status=active} = Session) ->
     Session#session{status=notify};
 
 %% in passive state
-change_session_state(notify, #session{status=passive, queue=#queue{size=0}} = Session) ->
+change_session_state_(notify, _SId, #session{status=passive, queue=#queue{size=0}} = Session) ->
     Session#session{status=notify};
-change_session_state(notify, #session{status=passive} = Session) ->
+change_session_state_(notify, _SId, #session{status=passive} = Session) ->
     send_notification(Session);
-change_session_state(active, #session{status=passive, queue=#queue{size=0}} = Session) ->
+change_session_state_(active, _SId, #session{status=passive, queue=#queue{size=0}} = Session) ->
     Session#session{status=active};
-change_session_state(active, #session{status=passive} = Session) ->
-    send(Session);
+change_session_state_(active, SId, #session{status=passive} = Session) ->
+    send(SId, Session);
 
 %% in notify state
-change_session_state(active, #session{status=notify, queue=#queue{size=0}} = Session) ->
+change_session_state_(active, _SId, #session{status=notify, queue=#queue{size=0}} = Session) ->
     Session#session{status=active};
-change_session_state(active, #session{status=notify} = Session) ->
-    send(Session);
-change_session_state(notify, #session{status=notify} = Session) ->
+change_session_state_(active, SId, #session{status=notify} = Session) ->
+    send(SId, Session);
+change_session_state_(notify, _SId, #session{status=notify} = Session) ->
     Session.
 
 insert_from_session(#session{queue=Queue},
@@ -835,7 +835,7 @@ insert(MsgOrRef, #state{id=SId, deliver_mode=balance, sessions=Sessions} = State
     State#state{sessions=maps:update(RandomPid, UpdatedSession, Sessions)}.
 
 session_insert(SId, #session{status=active, queue=Q} = Session, MsgOrRef) ->
-    {send(Session#session{queue=queue_insert(false, MsgOrRef, Q, SId)}), MsgOrRef};
+    {send(SId, Session#session{queue=queue_insert(false, MsgOrRef, Q, SId)}), MsgOrRef};
 session_insert(SId, #session{status=passive, queue=Q} = Session, MsgOrRef) ->
     {Session#session{queue=queue_insert(false, MsgOrRef, Q, SId)}, MsgOrRef};
 session_insert(SId, #session{status=notify, queue=Q} = Session, MsgOrRef) ->
@@ -847,6 +847,7 @@ queue_insert(Offline, MsgOrRef, #queue{max=-1, size=Size, queue=Queue} = Q, SId)
 %% tail drop in case of fifo
 queue_insert(_Offline, MsgOrRef, #queue{type=fifo, max=Max, size=Size, drop=Drop} = Q, SId)
   when Size >= Max ->
+    on_message_drop_hook(SId, MsgOrRef, queue_full),
     vmq_metrics:incr_queue_drop(),
     maybe_offline_delete(SId, MsgOrRef),
     Q#queue{drop=Drop + 1};
@@ -854,6 +855,7 @@ queue_insert(_Offline, MsgOrRef, #queue{type=fifo, max=Max, size=Size, drop=Drop
 queue_insert(Offline, MsgOrRef, #queue{type=lifo, max=Max, size=Size, queue=Queue, drop=Drop} = Q, SId)
   when Size >= Max ->
     {{value, OldMsgOrRef}, NewQueue} = queue:out(Queue),
+    on_message_drop_hook(SId, OldMsgOrRef, queue_full),
     vmq_metrics:incr_queue_drop(),
     maybe_offline_delete(SId, OldMsgOrRef),
     Q#queue{queue=queue:in(maybe_offline_store(Offline, SId, MsgOrRef), NewQueue), drop=Drop + 1};
@@ -862,15 +864,15 @@ queue_insert(Offline, MsgOrRef, #queue{type=lifo, max=Max, size=Size, queue=Queu
 queue_insert(Offline, MsgOrRef, #queue{queue=Queue, size=Size} = Q, SId) ->
     Q#queue{queue=queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size=Size + 1}.
 
-send(#session{pid=Pid, queue=Q} = Session) ->
-    Session#session{status=passive, queue=send(Pid, Q)}.
+send(SId, #session{pid=Pid, queue=Q} = Session) ->
+    Session#session{status=passive, queue=send(SId, Pid, Q)}.
 
-send(Pid, #queue{type=fifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
-    Msgs = maybe_expire_msgs(queue:to_list(Queue)),
+send(SId, Pid, #queue{type=fifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
+    Msgs = maybe_expire_msgs(SId, queue:to_list(Queue)),
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), Msgs, Count, Dropped}),
     Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0};
-send(Pid, #queue{type=lifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
-    Msgs = maybe_expire_msgs(lists:reverse(queue:to_list(Queue))),
+send(SId, Pid, #queue{type=lifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
+    Msgs = maybe_expire_msgs(SId, lists:reverse(queue:to_list(Queue))),
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), Msgs, Count, Dropped}),
     Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0}.
 
@@ -1054,14 +1056,28 @@ maybe_set_expiry_ts({deliver, QoS, #vmq_msg{expiry_ts={expire_after, ExpireAfter
 maybe_set_expiry_ts(Msg) ->
     Msg.
 
-maybe_expire_msgs(Msgs) ->
+on_message_drop_hook(SubscriberId, {deliver, _, #vmq_msg{routing_key=RoutingKey, qos=QoS, payload=Payload, properties=Props}}, Reason) ->
+    vmq_plugin:all(on_message_drop, [SubscriberId, fun() -> {RoutingKey, QoS, Payload, Props} end, Reason]);
+on_message_drop_hook(SubscriberId, MsgRef, Reason) when is_binary(MsgRef) ->
+    Promise = fun() ->
+                      case vmq_plugin:only(msg_store_read, [SubscriberId, MsgRef]) of
+                          {ok, #vmq_msg{routing_key=RoutingKey, qos=QoS, payload=Payload, properties=Props}} ->
+                              {RoutingKey, QoS, Payload, Props};
+                          _ ->
+                              error
+                      end
+              end,
+    vmq_plugin:all(on_message_drop, [SubscriberId, Promise, Reason]).
+
+maybe_expire_msgs(SId, Msgs) ->
     {ToKeep, Expired} =
     lists:foldl(
       fun({deliver, _, #vmq_msg{expiry_ts=undefined}} = M, {Keep, Expired}) ->
               {[M|Keep], Expired};
-         ({deliver, QoS, #vmq_msg{expiry_ts={ExpiryTS, _}} = M}, {Keep, Expired}) ->
+         ({deliver, QoS, #vmq_msg{expiry_ts={ExpiryTS, _}} = M} = T, {Keep, Expired}) ->
               case vmq_time:is_past(ExpiryTS) of
                   true ->
+                      on_message_drop_hook(SId, T, expired),
                       {Keep, Expired + 1};
                   Remaining ->
                       {[{deliver, QoS, M#vmq_msg{expiry_ts={ExpiryTS, Remaining}}}|Keep], Expired}

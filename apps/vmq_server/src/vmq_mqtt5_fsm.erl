@@ -29,6 +29,7 @@
 -define(CLOSE_AFTER, 5000).
 -define(FC_RECEIVE_MAX, 16#FFFF).
 -define(EXPIRY_INT_MAX, 16#FFFFFFFF).
+-define(MAX_PACKET_SIZE, 16#FFFFFFF).
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 
@@ -125,7 +126,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
     AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
     SharedSubPolicy = vmq_config:get_env(shared_subscription_policy, prefer_local),
     MaxClientIdSize = vmq_config:get_env(max_client_id_size, 23),
-    MaxMessageSize = vmq_config:get_env(max_message_size, 0),
+    MaxIncomingMessageSize = vmq_config:get_env(max_message_size, 0),
     MaxMessageRate = vmq_config:get_env(max_message_rate, 0),
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
@@ -144,7 +145,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
     TraceFun = vmq_config:get_env(trace_fun, undefined),
     DOpts = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
     maybe_initiate_trace(ConnectFrame, TraceFun),
-    set_max_msg_size(MaxMessageSize),
+    set_max_incoming_msg_size(MaxIncomingMessageSize),
 
     _ = vmq_metrics:incr(?MQTT5_CONNECT_RECEIVED),
     %% the client is allowed "grace" of a half a time period
@@ -155,6 +156,16 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
                            Properties,
                            vmq_config:get_env(receive_max_client, ?FC_RECEIVE_MAX)),
     FcReceiveMaxBroker = vmq_config:get_env(receive_max_broker, ?FC_RECEIVE_MAX),
+
+    MaxOutgoingMsgSize = maybe_get_maximum_packet_size(
+                           Properties,
+                           vmq_config:get_env(m5_max_packet_size, undefined)),
+    set_max_outgoing_msg_size(MaxOutgoingMsgSize),
+
+    RequestProblemInformation = maybe_get_request_problem_information(
+                                  Properties,
+                                  vmq_config:get_env(m5_request_problem_information, true)),
+    set_request_problem_information(RequestProblemInformation),
 
     State = #state{peer=Peer,
                    upgrade_qos=UpgradeQoS,
@@ -189,23 +200,23 @@ data_in(Data, SessionState) when is_binary(Data) ->
     data_in(Data, SessionState, []).
 
 data_in(Data, SessionState, OutAcc) ->
-    case vmq_parser_mqtt5:parse(Data, max_msg_size()) of
+    case vmq_parser_mqtt5:parse(Data, max_incoming_msg_size()) of
         more ->
-            {ok, SessionState, Data, serialise(OutAcc)};
+            {ok, SessionState, Data, lists:reverse(OutAcc)};
         {error, packet_exceeds_max_size} = E ->
             _ = vmq_metrics:incr(?MQTT5_INVALID_MSG_SIZE_ERROR),
             E;
         {error, Reason} ->
-            {error, Reason, serialise(OutAcc)};
+            {error, Reason, lists:reverse(OutAcc)};
         {Frame, Rest} ->
             case in(Frame, SessionState, true) of
                 {stop, Reason, Out} ->
-                    {stop, Reason, serialise([Out|OutAcc])};
+                    {stop, Reason, lists:reverse([Out|OutAcc])};
                 {NewSessionState, {throttle, Out}} ->
-                    {throttle, NewSessionState, Rest, serialise([Out|OutAcc])};
+                    {throttle, NewSessionState, Rest, lists:reverse([Out|OutAcc])};
                 {NewSessionState, Out} when byte_size(Rest) == 0 ->
                     %% optimization
-                    {ok, NewSessionState, Rest, serialise([Out|OutAcc])};
+                    {ok, NewSessionState, Rest, lists:reverse([Out|OutAcc])};
                 {NewSessionState, Out} ->
                     data_in(Rest, NewSessionState, [Out|OutAcc])
             end
@@ -214,12 +225,12 @@ data_in(Data, SessionState, OutAcc) ->
 msg_in(Msg, SessionState) ->
    case in(Msg, SessionState, false) of
        {stop, Reason, Out} ->
-           {stop, Reason, serialise([Out])};
+           {stop, Reason, lists:reverse(Out)};
        {NewSessionState, {throttle, Out}} ->
            %% we ignore throttling for the internal message flow
-           {ok, NewSessionState, serialise([Out])};
+           {ok, NewSessionState, lists:reverse(Out)};
        {NewSessionState, Out} ->
-           {ok, NewSessionState, serialise([Out])}
+           {ok, NewSessionState, lists:reverse(Out)}
    end.
 
 %%% init --> pre_connect_auth | connected | --> terminate
@@ -238,16 +249,72 @@ in(Msg, {pre_connect_auth, State}, IsData) ->
             {{connected, set_last_time_active(IsData, NewState)}, Out}
     end.
 
-serialise(Frames) ->
-    serialise(Frames, []).
+serialise_frame(#mqtt5_publish{} = F) ->
+    serialise_frame(F, #mqtt5_publish.properties, undefined);
+serialise_frame(#mqtt5_puback{} = F) ->
+    serialise_frame(F, #mqtt5_puback.properties, #mqtt5_puback.reason_code);
+serialise_frame(#mqtt5_pubrec{} = F) ->
+    serialise_frame(F, #mqtt5_pubrec.properties, #mqtt5_pubrec.reason_code);
+serialise_frame(#mqtt5_pubrel{} = F) ->
+    serialise_frame(F, #mqtt5_pubrel.properties, #mqtt5_pubrel.reason_code);
+serialise_frame(#mqtt5_pubcomp{} = F) ->
+    serialise_frame(F, #mqtt5_pubcomp.properties, #mqtt5_pubcomp.reason_code);
+serialise_frame(#mqtt5_suback{} = F) ->
+    serialise_frame(F, #mqtt5_suback.properties, #mqtt5_suback.reason_codes);
+serialise_frame(#mqtt5_unsuback{} = F) ->
+    serialise_frame(F, #mqtt5_unsuback.properties, #mqtt5_unsuback.reason_codes);
+serialise_frame(#mqtt5_connack{} = F) ->
+    serialise_frame(F, #mqtt5_connack.properties, #mqtt5_connack.reason_code);
+serialise_frame(#mqtt5_disconnect{} = F) ->
+    serialise_frame(F, #mqtt5_disconnect.properties, #mqtt5_disconnect.reason_code);
+serialise_frame(#mqtt5_auth{} = F) ->
+    serialise_frame(F, #mqtt5_auth.properties, #mqtt5_auth.reason_code);
+serialise_frame(F) ->
+    serialise_frame(F, undefined, undefined).
 
-serialise([], Acc) -> Acc;
-serialise([[]|Frames], Acc) ->
-    serialise(Frames, Acc);
-serialise([[B|T]|Frames], Acc) when is_binary(B) ->
-    serialise([T|Frames], [B|Acc]);
-serialise([[F|T]|Frames], Acc) ->
-    serialise([T|Frames], [vmq_parser_mqtt5:serialise(F)|Acc]).
+serialise_frame(F0, PropIndex, RCIndex) ->
+    F1 = maybe_strip_problem_information(F0, PropIndex, RCIndex, request_problem_information()),
+    maybe_reduce_packet_size(F1, PropIndex, max_outgoing_msg_size()).
+
+maybe_strip_problem_information(F, _, _, true) -> F;
+maybe_strip_problem_information(F, _, undefined, false) -> F;
+maybe_strip_problem_information(F, PropIndex, RCIndex, false) ->
+    case element(1, F) of
+        mqtt5_publish -> F;
+        mqtt5_connack -> F;
+        mqtt5_disconnect -> F;
+        _ ->
+            case element(RCIndex, F) of
+                ?M5_SUCCESS ->
+                    F;
+                _ ->
+                    Properties0 = element(PropIndex, F),
+                    Properties1 = maps:remove(p_reason_string, Properties0),
+                    Properties2 = maps:remove(p_user_property, Properties1),
+                    setelement(PropIndex, F, Properties2)
+            end
+    end.
+
+maybe_reduce_packet_size(F0, _, undefined) -> vmq_parser_mqtt5:serialise(F0);
+maybe_reduce_packet_size(F0, PropIndex, MaxPacketSize) ->
+    B0 = vmq_parser_mqtt5:serialise(F0),
+    case iolist_size(B0) > MaxPacketSize of
+        true ->
+            Properties0 = element(PropIndex, F0),
+            Properties1 = maps:remove(p_reason_string, Properties0),
+            Properties2 = maps:remove(p_user_property, Properties1),
+            F1 = setelement(PropIndex, F0, Properties2),
+            B1 = vmq_parser_mqtt5:serialise(F1),
+            case iolist_size(B1) > MaxPacketSize of
+                true ->
+                    % still too big
+                    [];
+                false ->
+                    B1
+            end;
+        false ->
+            B0
+    end.
 
 maybe_initiate_trace(_Frame, undefined) ->
     ok;
@@ -255,10 +322,10 @@ maybe_initiate_trace(Frame, TraceFun) ->
     TraceFun(self(), Frame).
 
 -spec pre_connect_auth(mqtt5_frame(), state()) ->
-    {pre_connect_auth, state(), [mqtt5_frame() | binary()]} |
-    {state(), [mqtt5_frame() | binary()]} |
-    {state(), {throttle, [mqtt5_frame() | binary()]}} |
-    {stop, any(), [mqtt5_frame() | binary()]}.
+    {pre_connect_auth, state(), [binary()]} |
+    {state(), [binary()]} |
+    {state(), {throttle, [binary()]}} |
+    {stop, any(), [binary()]}.
 pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMethod,
                                             p_authentication_data := _} = Props,
                              reason_code = RC},
@@ -279,7 +346,7 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
             _ = vmq_metrics:incr({?MQTT5_AUTH_SENT, ?CONTINUE_AUTHENTICATION}),
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
                                 properties = OutProps},
-            {pre_connect_auth, State, [Frame]};
+            {pre_connect_auth, State, [serialise_frame(Frame)]};
         {error, #{reason_code := RCN} = ErrVals} ->
             Props0 = maps:get(properties, ErrVals, #{}),
             lager:warning(
@@ -301,9 +368,9 @@ pre_connect_auth(_, State) ->
 
 
 -spec connected(mqtt5_frame(), state()) ->
-    {state(), [mqtt5_frame() | binary()]} |
-    {state(), {throttle, [mqtt5_frame() | binary()]}} |
-    {stop, any(), [mqtt5_frame() | binary()]}.
+    {state(), [binary()]} |
+    {state(), {throttle, [binary()]}} |
+    {stop, any(), [binary()]}.
 connected(#mqtt5_publish{message_id=MessageId, topic=Topic,
                          qos=QoS, retain=IsRetain,
                          payload=Payload,
@@ -394,12 +461,12 @@ connected(#mqtt5_pubrec{message_id=MessageId, reason_code=RC}, State) when RC < 
             PubRelFrame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
             _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?SUCCESS}),
             {State#state{waiting_acks=maps:update(MessageId, PubRelFrame, WAcks)},
-             [PubRelFrame]};
+             [serialise_frame(PubRelFrame)]};
         not_found ->
             lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
             _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?PACKET_ID_NOT_FOUND}),
             Frame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_PACKET_ID_NOT_FOUND, properties=#{}},
-            {State, [Frame]}
+            {State, [serialise_frame(Frame)]}
     end;
 connected(#mqtt5_pubrec{message_id=MessageId, reason_code=ErrorRC}, State) ->
     %% qos2 flow with an error reason
@@ -420,12 +487,12 @@ connected(#mqtt5_pubrel{message_id=MessageId, reason_code=RC}, State) ->
                 fc_receive_cnt=Cnt,
                 waiting_acks=maps:remove({qos2, MessageId}, WAcks)}),
             _ = vmq_metrics:incr({?MQTT5_PUBCOMP_SENT, ?SUCCESS}),
-            {NewState, [#mqtt5_pubcomp{message_id=MessageId,
-                                               reason_code=?M5_SUCCESS}|Msgs]};
+            {NewState, [serialise_frame(#mqtt5_pubcomp{message_id=MessageId,
+                                                       reason_code=?M5_SUCCESS})|Msgs]};
         not_found ->
             _ = vmq_metrics:incr({?MQTT5_PUBCOMP_SENT, ?PACKET_ID_NOT_FOUND}),
-            {State, [#mqtt5_pubcomp{message_id=MessageId,
-                                    reason_code=?M5_PACKET_ID_NOT_FOUND}]}
+            {State, [serialise_frame(#mqtt5_pubcomp{message_id=MessageId,
+                                                    reason_code=?M5_PACKET_ID_NOT_FOUND})]}
     end;
 connected(#mqtt5_pubcomp{message_id=MessageId, reason_code=RC}, State) ->
     #state{waiting_acks=WAcks} = State,
@@ -463,12 +530,12 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Props
             Props1 = maps:get(properties, Modifiers, #{}),
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=Props1},
             _ = vmq_metrics:incr(?MQTT5_SUBACK_SENT),
-            {State, [Frame]};
+            {State, [serialise_frame(Frame)]};
         {error, not_allowed} ->
             QoSs = [?M5_NOT_AUTHORIZED || _ <- Topics], % not authorized
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
             _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_AUTH_ERROR),
-            {State, [Frame]};
+            {State, [serialise_frame(Frame)]};
         {error, _Reason} ->
             %% cant subscribe due to overload or netsplit,
             %% Subscribe uses QoS 1 so the client will retry
@@ -488,7 +555,7 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties = P
             ReasonCodes = [?M5_SUCCESS || _ <- Topics],
             Frame = #mqtt5_unsuback{message_id=MessageId, reason_codes=ReasonCodes, properties=Props1},
             _ = vmq_metrics:incr(?MQTT5_UNSUBACK_SENT),
-            {State, [Frame]};
+            {State, [serialise_frame(Frame)]};
         {error, _Reason} ->
             %% cant unsubscribe due to overload or netsplit,
             %% Unsubscribe uses QoS 1 so the client will retry
@@ -505,14 +572,14 @@ connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Prop
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
             Frame = #mqtt5_auth{reason_code = ?M5_SUCCESS,
                                 properties = OutProps},
-            {State, [Frame]};
+            {State, [serialise_frame(Frame)]};
         {ok, #{reason_code := ?CONTINUE_AUTHENTICATION,
                properties :=
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
             _ = vmq_metrics:incr({?MQTT5_AUTH_SENT, ?CONTINUE_AUTHENTICATION}),
             Frame = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
                                 properties = OutProps},
-            {State, [Frame]};
+            {State, [serialise_frame(Frame)]};
         {error, #{reason_code := RCN} = ErrVals} ->
             Props0 = maps:get(properties, ErrVals, #{}),
             lager:warning(
@@ -534,7 +601,7 @@ connected(#mqtt5_pingreq{}, State) ->
     _ = vmq_metrics:incr(?MQTT5_PINGREQ_RECEIVED),
     Frame = #mqtt5_pingresp{},
     _ = vmq_metrics:incr(?MQTT5_PINGRESP_SENT),
-    {State, [Frame]};
+    {State, [serialise_frame(Frame)]};
 connected(#mqtt5_disconnect{properties=Properties, reason_code=RC}, State) ->
     _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, rc2rcn(RC)}),
     terminate_by_client(Properties, State);
@@ -581,9 +648,9 @@ connack_terminate(RCN, State) ->
 
 connack_terminate(RCN, Properties, _State) ->
     _ = vmq_metrics:incr({?MQTT5_CONNACK_SENT, RCN}),
-    {stop, normal, [#mqtt5_connack{session_present=false,
-                                   reason_code=rcn2rc(RCN),
-                                   properties=Properties}]}.
+    {stop, normal, [serialise_frame(#mqtt5_connack{session_present=false,
+                                                   reason_code=rcn2rc(RCN),
+                                                   properties=Properties})]}.
 
 queue_down_terminate(shutdown, State) ->
     terminate(normal, State);
@@ -661,7 +728,8 @@ check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthM
             _ = vmq_metrics:incr({?MQTT5_AUTH_SENT, ?CONTINUE_AUTHENTICATION}),
             Frame1 = #mqtt5_auth{reason_code = ?M5_CONTINUE_AUTHENTICATION,
                                 properties = OutProps},
-            {pre_connect_auth, State#state{enhanced_auth = EnhancedAuth}, [Frame1]};
+            {pre_connect_auth, State#state{enhanced_auth = EnhancedAuth},
+             [serialise_frame(Frame1)]};
         {error, #{reason_code := RCN} = ErrVals} ->
             Props0 = maps:get(properties, ErrVals, #{}),
             lager:warning(
@@ -772,9 +840,9 @@ register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
 check_will(#mqtt5_connect{lwt=undefined}, SessionPresent, OutProps, State) ->
     OutProps0 = maybe_add_topic_alias_max(OutProps, State),
     _ = vmq_metrics:incr({?MQTT5_CONNACK_SENT, ?SUCCESS}),
-    {State, [#mqtt5_connack{session_present=SessionPresent,
-                            reason_code=?M5_SUCCESS,
-                            properties=OutProps0}]};
+    {State, [serialise_frame(#mqtt5_connack{session_present=SessionPresent,
+                                            reason_code=?M5_SUCCESS,
+                                            properties=OutProps0})]};
 check_will(#mqtt5_connect{
               lwt=#mqtt5_lwt{will_topic=Topic, will_msg=Payload, will_qos=Qos,
                              will_retain=IsRetain,will_properties=Properties}},
@@ -797,9 +865,9 @@ check_will(#mqtt5_connect{
             OutProps0 = maybe_add_topic_alias_max(OutProps, State),
             _ = vmq_metrics:incr({?MQTT5_CONNACK_SENT, ?SUCCESS}),
             {NewState#state{will_msg=Msg},
-             [#mqtt5_connack{session_present=SessionPresent,
-                             reason_code=?M5_SUCCESS,
-                             properties=OutProps0}]};
+             [serialise_frame(#mqtt5_connack{session_present=SessionPresent,
+                                             reason_code=?M5_SUCCESS,
+                                             properties=OutProps0})]};
         {error, Reason} ->
             lager:warning("can't authenticate last will
                           for client ~p due to ~p", [SubscriberId, Reason]),
@@ -893,7 +961,9 @@ auth_on_register(User, Password, Properties, State) ->
                },
 
             %% for efficiency reason the max_message_size isn't kept in the state
-            set_max_msg_size(prop_val(max_message_size, Args, max_msg_size())),
+            set_max_incoming_msg_size(prop_val(max_message_size, Args, max_incoming_msg_size())),
+            set_max_outgoing_msg_size(prop_val(max_packet_size, Args, max_outgoing_msg_size())),
+            set_request_problem_information(prop_val(request_problem_info, Args, request_problem_information())),
 
             ChangedState = State#state{
                              subscriber_id=?state_val(subscriber_id, Args, State),
@@ -1069,25 +1139,25 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
         {ok, _, NewState} ->
             _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, ?SUCCESS}),
             %% TODOv5: return properties in puback success
-            {NewState, [#mqtt5_puback{message_id=MessageId,
-                                      reason_code=?M5_SUCCESS,
-                                      properties=#{}}]};
+            {NewState, [serialise_frame(#mqtt5_puback{message_id=MessageId,
+                                                      reason_code=?M5_SUCCESS,
+                                                      properties=#{}})]};
         {error, Vals} when is_list(Vals) ->
             RCN = ret_val(reason_code, Vals, ?NOT_AUTHORIZED),
             Props0 = ret_val(properties, Vals, #{}),
             _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, RCN}),
-            {State, [#mqtt5_puback{message_id=MessageId,
-                                   reason_code=rcn2rc(RCN),
-                                   properties=Props0}]};
+            {State, [serialise_frame(#mqtt5_puback{message_id=MessageId,
+                                                   reason_code=rcn2rc(RCN),
+                                                   properties=Props0})]};
         {error, not_allowed} ->
             _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, ?NOT_AUTHORIZED}),
             Frame = #mqtt5_puback{message_id=MessageId, reason_code=?M5_NOT_AUTHORIZED, properties=#{}},
-            [Frame];
+            [serialise_frame(Frame)];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, ?IMPL_SPECIFIC_ERROR}),
             Frame = #mqtt5_puback{message_id=MessageId, reason_code=?M5_IMPL_SPECIFIC_ERROR, properties=#{}},
-            [Frame]
+            [serialise_frame(Frame)]
     end.
 
 -spec dispatch_publish_qos2(msg_id(), msg(), error | receive_max(), state()) ->
@@ -1105,23 +1175,23 @@ dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
             {NewState#state{
                fc_receive_cnt=Cnt,
                waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
-             [Frame]};
+             [serialise_frame(Frame)]};
         {error, Vals} when is_list(Vals) ->
             RCN = ret_val(reason_code, Vals, ?NOT_AUTHORIZED),
             Props0 = ret_val(properties, Vals, #{}),
             _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, RCN}),
-            {State, [#mqtt5_pubrec{message_id=MessageId,
-                                   reason_code=rcn2rc(RCN),
-                                   properties=Props0}]};
+            {State, [serialise_frame(#mqtt5_pubrec{message_id=MessageId,
+                                                   reason_code=rcn2rc(RCN),
+                                                   properties=Props0})]};
         {error, not_allowed} ->
             _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?NOT_AUTHORIZED}),
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_NOT_AUTHORIZED, properties=#{}},
-            [Frame];
+            [serialise_frame(Frame)];
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?UNSPECIFIED_ERROR}),
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?UNSPECIFIED_ERROR, properties=#{}},
-            [Frame]
+            [serialise_frame(Frame)]
     end.
 
 -spec handle_waiting_acks_and_msgs(state()) -> ok.
@@ -1132,7 +1202,7 @@ handle_waiting_acks_and_msgs(State) ->
                       Acc;
                   ({MsgId, #mqtt5_pubrel{} = Frame}, Acc) ->
                       %% unacked PUBREL Frame
-                      [{deliver_pubrel, {MsgId, Frame}}|Acc];
+                      [{deliver_pubrel, {MsgId, Frame}} | Acc];
                   ({_MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
                       [{deliver, QoS, Msg#vmq_msg{dup=true}}|Acc]
               end, WMsgs,
@@ -1168,32 +1238,30 @@ handle_waiting_msgs(#state{waiting_msgs=Msgs, queue_pid=QPid} = State) ->
             {NewState#state{waiting_msgs=Waiting}, HandledMsgs}
     end.
 
-handle_messages([{deliver, 0, Msg}|Rest], Frames, BinCnt, State, Waiting) ->
+handle_messages([{deliver, 0, Msg}|Rest], Frames, PubCnt, State, Waiting) ->
     {Frame, NewState} = prepare_frame(0, Msg, State),
-    handle_messages(Rest, [Frame|Frames], BinCnt, NewState, Waiting);
-handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, BinCnt, State, Waiting) ->
+    handle_messages(Rest, [Frame|Frames], PubCnt, NewState, Waiting);
+handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, PubCnt, State, Waiting) ->
     case fc_incr_cnt(State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages) of
         error ->
             % reached outgoing flow control max, queue up rest of messages
-            handle_messages(Rest, Frames, BinCnt, State, [Obj|Waiting]);
+            handle_messages(Rest, Frames, PubCnt, State, [Obj|Waiting]);
         Cnt ->
             {Frame, NewState} = prepare_frame(QoS, Msg, State#state{fc_send_cnt=Cnt}),
-            handle_messages(Rest, [Frame|Frames], BinCnt, NewState, Waiting)
+            handle_messages(Rest, [Frame|Frames], PubCnt + 1, NewState, Waiting)
     end;
-handle_messages([{deliver_pubrel, {_, Bin} = Term}|Rest], Frames, BinCnt, State, Waiting) ->
-    handle_messages(Rest, [Bin|Frames], BinCnt, handle_bin_message(Term, State), Waiting);
+handle_messages([{deliver_pubrel, {MsgId, #mqtt5_pubrel{} = Frame}}|Rest], Frames, PubCnt, State0, Waiting) ->
+    %% this is called when a pubrel is retried after a client reconnects
+    #state{waiting_acks=WAcks} = State0,
+    _ = vmq_metrics:incr(?MQTT5_PUBREL_SENT),
+    State1 = State0#state{waiting_acks=maps:put(MsgId, Frame, WAcks)},
+    handle_messages(Rest, [serialise_frame(Frame)|Frames],
+                    PubCnt, State1, Waiting);
 handle_messages([], [], _, State, Waiting) ->
     {State, [], Waiting};
-handle_messages([], Frames, BinCnt, State, Waiting) ->
-    NrOfFrames = length(Frames) - BinCnt, %% subtract pubrel frames
-    _ = vmq_metrics:incr(?MQTT5_PUBLISH_SENT, NrOfFrames),
+handle_messages([], Frames, PubCnt, State, Waiting) ->
+    _ = vmq_metrics:incr(?MQTT5_PUBLISH_SENT, PubCnt),
     {State, Frames, Waiting}.
-
-handle_bin_message({MsgId, Bin}, State) ->
-    %% this is called when a pubrel is retried after a client reconnects
-    #state{waiting_acks=WAcks} = State,
-    _ = vmq_metrics:incr(?MQTT5_PUBREL_SENT),
-    State#state{waiting_acks=maps:put(MsgId, Bin, WAcks)}.
 
 prepare_frame(QoS, Msg, State0) ->
     #state{username=User, subscriber_id=SubscriberId, waiting_acks=WAcks} = State0,
@@ -1222,20 +1290,28 @@ prepare_frame(QoS, Msg, State0) ->
     end,
     {Topic2, Props1, State1} = maybe_apply_topic_alias_out(Topic1, Props0, State0),
     {OutgoingMsgId, State2} = get_msg_id(NewQoS, State1),
-    Frame = #mqtt5_publish{message_id=OutgoingMsgId,
-                           topic=Topic2,
-                           qos=NewQoS,
-                           retain=IsRetained,
-                           dup=IsDup,
-                           payload=Payload1,
-                           properties=update_expiry_interval(Props1, ExpiryTS)},
-    case NewQoS of
-        0 ->
+    Frame = serialise_frame(#mqtt5_publish{message_id=OutgoingMsgId,
+                                           topic=Topic2,
+                                           qos=NewQoS,
+                                           retain=IsRetained,
+                                           dup=IsDup,
+                                           payload=Payload1,
+                                           properties=update_expiry_interval(Props1, ExpiryTS)}),
+    case Frame of
+        [] ->
+            % frame discarded due to max packet size limit
+            Reason = max_packet_size_exceeded,
+            vmq_plugin:all(on_message_drop, [SubscriberId,
+                                             fun() -> {Topic1, NewQoS, Payload1, Props0} end,
+                                             Reason]),
+            {[], State2};
+        _ when NewQoS == 0 ->
             {Frame, State2};
         _ ->
-            {Frame, State2#state{
-                      waiting_acks=maps:put(OutgoingMsgId,
-                                            Msg#vmq_msg{qos=NewQoS}, WAcks)}}
+            {Frame,
+             State2#state{
+               waiting_acks=maps:put(OutgoingMsgId,
+                                     Msg#vmq_msg{qos=NewQoS}, WAcks)}}
     end.
 
 -spec maybe_publish_last_will(state(), reason_code_name()) -> ok.
@@ -1370,17 +1446,31 @@ msg_ref() ->
     put(guid, GUID),
     erlang:md5(term_to_binary(GUID)).
 
-max_msg_size() ->
-    case get(max_msg_size) of
+max_incoming_msg_size() ->
+    case get(max_incoming_msg_size) of
         undefined ->
             %% no limit
             0;
         V -> V
     end.
 
-set_max_msg_size(MaxMsgSize) when MaxMsgSize >= 0 ->
-    put(max_msg_size, MaxMsgSize),
+max_outgoing_msg_size() ->
+    get(max_outgoing_msg_size).
+
+request_problem_information() ->
+    get(request_problem_information).
+
+set_max_incoming_msg_size(MaxMsgSize) when MaxMsgSize >= 0 ->
+    put(max_incoming_msg_size, MaxMsgSize),
     MaxMsgSize.
+
+set_max_outgoing_msg_size(Max)
+  when (Max == undefined) or ((Max > 0) and (Max =< ?MAX_PACKET_SIZE)) ->
+    put(max_outgoing_msg_size, Max),
+    Max.
+
+set_request_problem_information(RequestProblemInfo) when is_boolean(RequestProblemInfo) ->
+    put(request_problem_information, RequestProblemInfo).
 
 info(Pid, Items) ->
     Ref = make_ref(),
@@ -1453,7 +1543,7 @@ gen_disconnect(RCN, Props) ->
 
 gen_disconnect_(RCN, Props) ->
     _ = vmq_metrics:incr({?MQTT5_DISCONNECT_SENT, RCN}),
-    #mqtt5_disconnect{reason_code = rcn2rc(RCN), properties = Props}.
+    serialise_frame(#mqtt5_disconnect{reason_code = rcn2rc(RCN), properties = Props}).
 
 msg_expiration(#{p_message_expiry_interval := ExpireAfter}) ->
     {expire_after, ExpireAfter};
@@ -1481,6 +1571,17 @@ maybe_get_receive_maximum(#{p_receive_max := Max}, ConfigMax)
   when (ConfigMax > 0) and (ConfigMax =< ?FC_RECEIVE_MAX) -> min(Max, ConfigMax);
 maybe_get_receive_maximum(_, ConfigMax)
   when (ConfigMax > 0) and (ConfigMax =< ?FC_RECEIVE_MAX) -> ConfigMax.
+
+maybe_get_maximum_packet_size(#{p_max_packet_size := Max}, undefined)
+  when (Max > 0) -> Max;
+maybe_get_maximum_packet_size(#{p_max_packet_size := Max}, ConfigMax)
+  when (Max > 0) and (ConfigMax > 0) and (ConfigMax =< ?MAX_PACKET_SIZE) -> min(Max, ConfigMax);
+maybe_get_maximum_packet_size(_, undefined) -> undefined;
+maybe_get_maximum_packet_size(_, ConfigMax)
+  when (ConfigMax > 0) and (ConfigMax =< ?MAX_PACKET_SIZE) -> ConfigMax.
+
+maybe_get_request_problem_information(#{p_request_problem_info := RequestProblemInfo}, _) -> unflag(RequestProblemInfo);
+maybe_get_request_problem_information(_, RequestProblemInfo) -> RequestProblemInfo.
 
 fc_incr_cnt(ConfigMax, ConfigMax, What) -> fc_log(incr, What, {ConfigMax, ConfigMax}), error;
 fc_incr_cnt(Cnt, ConfigMax, What) when Cnt < ConfigMax -> fc_log(incr, What, {Cnt, ConfigMax}), Cnt + 1.
