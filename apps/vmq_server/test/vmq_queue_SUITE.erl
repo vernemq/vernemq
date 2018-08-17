@@ -26,7 +26,8 @@
          queue_force_disconnect_cleanup_test/1]).
 
 -export([hook_auth_on_publish/6,
-         hook_auth_on_subscribe/3]).
+         hook_auth_on_subscribe/3,
+         hook_on_message_drop/3]).
 
 %% ===================================================================
 %% common_test callbacks
@@ -374,6 +375,7 @@ receive_persisted_msg(QPid, QoS, Msg) ->
 enable_hooks() ->
     vmq_plugin_mgr:enable_module_plugin(auth_on_publish, ?MODULE, hook_auth_on_publish, 6),
     vmq_plugin_mgr:enable_module_plugin(auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3),
+    vmq_plugin_mgr:enable_module_plugin(on_message_drop, ?MODULE, hook_on_message_drop, 3),
     vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_write, 2),
     vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_read, 2),
     vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_delete, 2),
@@ -381,3 +383,4 @@ enable_hooks() ->
 
 hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 hook_auth_on_subscribe(_, _, _) -> ok.
+hook_on_message_drop(_, _, queue_full) -> ok.

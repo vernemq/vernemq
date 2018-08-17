@@ -17,11 +17,13 @@ init_per_suite(Config) ->
     cover:start(),
     enable_on_publish(),
     enable_on_subscribe(),
+    enable_on_message_drop(),
     [{ct_hooks, vmq_cth} | Config].
 
 end_per_suite(_Config) ->
     disable_on_publish(),
     disable_on_subscribe(),
+    disable_on_message_drop(),
     vmq_test_utils:teardown(),
     _Config.
 
@@ -473,6 +475,7 @@ retain_compat_pre_test(_Cfg) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_auth_on_subscribe(_,_,_) -> ok.
 hook_auth_on_publish(_, _, _, _, _, _) -> ok.
+hook_on_message_drop(_, _, expired) -> ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -490,6 +493,10 @@ enable_on_publish() ->
            auth_on_publish, ?MODULE, hook_auth_on_publish, 6,
            [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5,
                     convert, 7}}]).
+enable_on_message_drop() ->
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           on_message_drop, ?MODULE, hook_on_message_drop, 3).
+
 disable_on_subscribe() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3),
@@ -504,3 +511,7 @@ disable_on_publish() ->
            auth_on_publish, ?MODULE, hook_auth_on_publish, 6,
            [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5,
                       convert, 7}}]).
+disable_on_message_drop() ->
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           on_message_drop, ?MODULE, hook_on_message_drop, 3).
+
