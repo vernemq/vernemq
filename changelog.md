@@ -35,6 +35,10 @@
   to `on` in the `vernemq.conf` file. Labels are not exposed in the $SYS
   metrics.
 - Ensure the `vmq_bridge` is properly restarted after a crash (#785).
+- Fix issue where not calling `http.body(ref)` in a Lua script would not return
+  the underlyning HTTP connection to the connection pool. This now happens
+  automatically, irregardless of the user calling `http.body(ref)` or not
+  (#588).
 
 ## VerneMQ 1.4.0
 
