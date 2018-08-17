@@ -28,6 +28,10 @@ handle topic aliases from the client as per the MQTTv5 spec.
   `mqtt_connack_sent` with the label `return_code=success` replaces
   `mqtt_connack_accepted_sent`.
 
+- Added on_message_drop hook that is called for every message dropped due to
+  exceeding the MQTTv5 max_packet_size property, hitting the message expiry,
+  or when load shedding when enqueing messages.
+
 
 ## VerneMQ 1.5.0 (Not yet released)
 
