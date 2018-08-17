@@ -5,6 +5,10 @@
 - Fix issue with PUBREL frames retried after client reconnects (#762).
 - Refactor and cleanup retry mechanism.
 - Ensure the `vmq_bridge` is properly restarted after a crash (#785).
+- Fix issue where not calling `http.body(ref)` in a Lua script would not return
+  the underlyning HTTP connection to the connection pool. This now happens
+  automatically, irregardless of the user calling `http.body(ref)` or not
+  (#588).
 
 ## VerneMQ 1.4.1
 
