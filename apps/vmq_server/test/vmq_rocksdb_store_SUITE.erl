@@ -41,7 +41,7 @@ end_per_testcase(message_compat_pre_test, Config) ->
 end_per_testcase(idx_compat_pre_test, Config) ->
     Config;
 end_per_testcase(_, Config) ->
-    vmq_server:teardown(),
+    vmq_test_utils:teardown(),
     Config.
 
 all() ->
