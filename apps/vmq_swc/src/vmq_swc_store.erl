@@ -669,7 +669,7 @@ recover_objects([{SKey, DCC}|Rest], RemoteClock, LocalClock, AccDBOps0, AccEvent
 
 
 strip_save_batch([], DBOps, Events, _State, _DbgCategory) ->
-    {DBOps, Events};
+    {DBOps, lists:reverse(Events)};
 strip_save_batch([{SKey, DCC, OldDCC}|Rest], DBOps0, Events0, #state{bvv=BVV0} = State, DbgCategory) ->
     % remove unnecessary causality from the DCC, based on the current node clock
     {Values0, Context} = _StrippedDCC0 = swc_kv:strip(DCC, BVV0),
@@ -681,17 +681,14 @@ strip_save_batch([{SKey, DCC, OldDCC}|Rest], DBOps0, Events0, #state{bvv=BVV0} =
     % 2 - has values, with causal history -> it's a normal write and must be persisted
     % 3 - has values, but no causal history -> it's the final form for this write
     {DBOps1, Events1} =
-    case StrippedDCC1 of
-        {Vs, C} when map_size(Vs) == 0 and ((map_size(C)  == 0) or (State#state.peers == [])) -> % case 1
+    case {map_size(Values1), map_size(Context)} of
+        {0, C} when (C == 0) or (State#state.peers == []) -> % case 1
             {[delete_dcc_db_op(SKey, [DbgCategory, strip_save_batch])|DBOps0],
              event(deleted, SKey, undefined, OldDCC, Events0, State)};
-        {_Vs, C} when map_size(C) == 0 ->  % case 3
-            {[update_dcc_db_op(SKey, StrippedDCC1, [DbgCategory, strip_save_batch])|DBOps0],
-             event(updated, SKey, StrippedDCC1, OldDCC, Events0, State)};
-        {Vs, _C} when map_size(Vs) == 0 -> % case 0
+        {0, _} -> % case 0
             {[update_dcc_db_op(SKey, StrippedDCC1, [DbgCategory, strip_save_batch])|DBOps0],
              event(deleted, SKey, undefined, OldDCC, Events0, State)};
-        {_Vs, _C} -> % case 2
+        _ -> % case 2 & 3
             {[update_dcc_db_op(SKey, StrippedDCC1, [DbgCategory, strip_save_batch])|DBOps0],
              event(updated, SKey, StrippedDCC1, OldDCC, Events0, State)}
     end,
