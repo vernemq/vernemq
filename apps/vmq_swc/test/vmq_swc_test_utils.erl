@@ -106,7 +106,7 @@ start_node(Name, Config, Case) ->
             AutoGC = proplists:get_value(auto_gc, Config, true),
             ok = rpc:call(Node, application, set_env, [vmq_swc, auto_gc, AutoGC]),
 
-            ok = rpc:call(Node, application, set_env, [vmq_swc, listener_address, {{127,0,0,1},
+            ok = rpc:call(Node, application, set_env, [vmq_swc, listener_address, {"127.0.0.1",
                                                                                    20000 + (erlang:phash2(Node) rem 1000)}]),
 
             ok = rpc:call(Node, application, set_env, [vmq_swc, transport_mod, vmq_swc_proxy_diameter_transport]),
