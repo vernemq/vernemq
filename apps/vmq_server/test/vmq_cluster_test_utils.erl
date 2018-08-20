@@ -156,7 +156,7 @@ start_node(Name, Config, Case) ->
                                                        vmq_swc_proxy_diameter_transport]),
             ok = rpc:call(Node, application, set_env, [vmq_swc,
                                                        listener_address,
-                                                       {{127,0,0,1}, 14053 + (erlang:phash2(Node) rem 1000)}]),
+                                                       {"127.0.0.1", 14053 + (erlang:phash2(Node) rem 1000)}]),
 
             {ok, _} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),
