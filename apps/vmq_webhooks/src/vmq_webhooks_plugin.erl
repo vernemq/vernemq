@@ -11,8 +11,9 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
-
 -module(vmq_webhooks_plugin).
+
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 
 -behaviour(gen_server).
 -behaviour(auth_on_register_hook).
@@ -28,6 +29,16 @@
 -behaviour(on_client_offline_hook).
 -behaviour(on_client_gone_hook).
 
+-behaviour(auth_on_register_m5_hook).
+-behaviour(auth_on_publish_m5_hook).
+-behaviour(auth_on_subscribe_m5_hook).
+-behaviour(on_register_m5_hook).
+-behaviour(on_publish_m5_hook).
+-behaviour(on_subscribe_m5_hook).
+-behaviour(on_unsubscribe_m5_hook).
+-behaviour(on_deliver_m5_hook).
+-behaviour(on_auth_m5_hook).
+
 -export([auth_on_register/5,
          auth_on_publish/6,
          auth_on_subscribe/3,
@@ -39,7 +50,17 @@
          on_offline_message/5,
          on_client_wakeup/1,
          on_client_offline/1,
-         on_client_gone/1]).
+         on_client_gone/1,
+
+         auth_on_register_m5/6,
+         auth_on_publish_m5/7,
+         auth_on_subscribe_m5/4,
+         on_register_m5/4,
+         on_publish_m5/7,
+         on_subscribe_m5/4,
+         on_unsubscribe_m5/4,
+         on_deliver_m5/5,
+         on_auth_m5/3]).
 
 %% API
 -export([start_link/0
@@ -241,6 +262,18 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
                                    {password, nullify(Password)},
                                    {clean_session, CleanSession}]).
 
+auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all_till_ok(auth_on_register_m5, [{addr, PPeer},
+                                      {port, Port},
+                                      {mountpoint, MP},
+                                      {client_id, ClientId},
+                                      {username, nullify(UserName)},
+                                      {password, nullify(Password)},
+                                      {clean_start, CleanStart},
+                                      {properties, Props}]).
+
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(auth_on_publish, [{username, nullify(UserName)},
@@ -251,6 +284,17 @@ auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
                                   {payload, Payload},
                                   {retain, IsRetain}]).
 
+auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all_till_ok(auth_on_publish_m5, [{username, nullify(UserName)},
+                                     {mountpoint, MP},
+                                     {client_id, ClientId},
+                                     {qos, QoS},
+                                     {topic, unword(Topic)},
+                                     {payload, Payload},
+                                     {retain, IsRetain},
+                                     {properties, Props}]).
+
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(auth_on_subscribe, [{username, nullify(UserName)},
@@ -258,6 +302,15 @@ auth_on_subscribe(UserName, SubscriberId, Topics) ->
                                     {client_id, ClientId},
                                     {topics, [[unword(T), QoS]
                                               || {T, QoS} <- Topics]}]).
+
+auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all_till_ok(auth_on_subscribe_m5, [{username, nullify(UserName)},
+                                       {mountpoint, MP},
+                                       {client_id, ClientId},
+                                       {topics, [[unword(T), QoS]
+                                                 || {T, QoS} <- Topics]},
+                                       {properties, Props}]).
 
 on_register(Peer, SubscriberId, UserName) ->
     {PPeer, Port} = peer(Peer),
@@ -267,6 +320,16 @@ on_register(Peer, SubscriberId, UserName) ->
                            {mountpoint, MP},
                            {client_id, ClientId},
                            {username, nullify(UserName)}]).
+
+on_register_m5(Peer, SubscriberId, UserName, Props) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_register_m5, [{addr, PPeer},
+                         {port, Port},
+                         {mountpoint, MP},
+                         {client_id, ClientId},
+                         {username, nullify(UserName)},
+                         {properties, Props}]).
 
 on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -278,6 +341,17 @@ on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
                      {payload, Payload},
                      {retain, IsRetain}]).
 
+on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_publish_m5, [{username, nullify(UserName)},
+                        {mountpoint, MP},
+                        {client_id, ClientId},
+                        {qos, QoS},
+                        {topic, unword(Topic)},
+                        {payload, Payload},
+                        {retain, IsRetain},
+                        {properties, Props}]).
+
 on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_subscribe, [{username, nullify(UserName)},
@@ -285,6 +359,15 @@ on_subscribe(UserName, SubscriberId, Topics) ->
                        {client_id, ClientId},
                        {topics, [[unword(T), from_internal_qos(QoS)]
                                  || {T, QoS} <- Topics]}]).
+
+on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_subscribe_m5, [{username, nullify(UserName)},
+                          {mountpoint, MP},
+                          {client_id, ClientId},
+                          {topics, [[unword(T), from_internal_qos(QoS)]
+                                    || {T, QoS} <- Topics]},
+                          {properties, Props}]).
 
 on_unsubscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -294,6 +377,15 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
                                  {topics, [unword(T)
                                            || T <- Topics]}]).
 
+on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all_till_ok(on_unsubscribe_m5, [{username, nullify(UserName)},
+                                    {mountpoint, MP},
+                                    {client_id, ClientId},
+                                    {topics, [unword(T)
+                                              || T <- Topics]},
+                                    {properties, Props}]).
+
 on_deliver(UserName, SubscriberId, Topic, Payload) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [{username, nullify(UserName)},
@@ -301,6 +393,22 @@ on_deliver(UserName, SubscriberId, Topic, Payload) ->
                              {client_id, ClientId},
                              {topic, unword(Topic)},
                              {payload, Payload}]).
+
+on_deliver_m5(UserName, SubscriberId, Topic, Payload, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all_till_ok(on_deliver_m5, [{username, nullify(UserName)},
+                                {mountpoint, MP},
+                                {client_id, ClientId},
+                                {topic, unword(Topic)},
+                                {payload, Payload},
+                                {properties, Props}]).
+
+on_auth_m5(UserName, SubscriberId, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all_till_ok(on_auth_m5, [{username, nullify(UserName)},
+                             {mountpoint, MP},
+                             {client_id, ClientId},
+                             {properties, Props}]).
 
 on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -372,6 +480,7 @@ all_till_ok(HookName, Args) ->
 all_till_ok([{Endpoint,EOpts}|Rest], HookName, Args) ->
     case maybe_call_endpoint(Endpoint, EOpts, HookName, Args) of
         [] -> ok;
+        #{} = M when map_size(M) =:= 0 -> ok;
         Modifiers when is_list(Modifiers) ->
             NewModifiers = convert_subscriber_id(Modifiers),
             case vmq_plugin_util:check_modifiers(HookName, NewModifiers) of
@@ -379,6 +488,14 @@ all_till_ok([{Endpoint,EOpts}|Rest], HookName, Args) ->
                     error;
                 ValidatedModifiers ->
                     {ok, ValidatedModifiers}
+            end;
+        Modifiers when is_map(Modifiers) ->
+            NewModifiers = convert_subscriber_id(maps:to_list(Modifiers)),
+            case vmq_plugin_util:check_modifiers(HookName, NewModifiers) of
+                error ->
+                    error;
+                ValidatedModifiers ->
+                    {ok, maps:from_list(ValidatedModifiers)}
             end;
         error ->
             error;
@@ -431,7 +548,10 @@ subscriber_id({MP, ClientId}) -> {list_to_binary(MP), ClientId}.
 maybe_call_endpoint(Endpoint, EOpts, Hook, Args)
   when Hook =:= auth_on_register;
        Hook =:= auth_on_publish;
-       Hook =:= auth_on_subscribe ->
+       Hook =:= auth_on_subscribe;
+       Hook =:= auth_on_register_m5;
+       Hook =:= auth_on_publish_m5;
+       Hook =:= auth_on_subscribe_m5 ->
     case vmq_webhooks_cache:lookup(Endpoint, Hook, Args) of
         not_found ->
             case call_endpoint(Endpoint, EOpts, Hook, Args) of
@@ -461,7 +581,7 @@ call_endpoint(Endpoint, EOpts, Hook, Args) ->
                             true ->
                                 handle_response(Hook,
                                                 parse_headers(RespHeaders),
-                                                jsx:decode(Body, [{labels, atom}]),
+                                                jsx:decode(Body, [{labels, binary}]),
                                                 EOpts);
                             false ->
                                 {error, received_payload_not_json}
@@ -523,53 +643,190 @@ handle_response(Hook, #{max_age := MaxAge}, Decoded, EOpts)
 handle_response(Hook, _, Decoded, EOpts) ->
     handle_response(Hook, Decoded, EOpts).
 
-handle_response(Hook, Decoded, EOpts) 
-  when Hook =:= auth_on_register; Hook =:= auth_on_publish;
+handle_response(Hook, Decoded, EOpts)
+  when Hook =:= auth_on_register_m5;
+       Hook =:= auth_on_publish_m5;
+       Hook =:= auth_on_subscribe_m5;
+       Hook =:= on_unsubscribe_m5;
+       Hook =:= on_deliver_m5;
+       Hook =:= on_auth_m5;
+       Hook =:= auth_on_register;
+       Hook =:= auth_on_publish;
        Hook =:= on_deliver ->
-    case proplists:get_value(result, Decoded) of
+    %% this clause handles all results with modifiers in the return value.
+    case proplists:get_value(<<"result">>, Decoded) of
         <<"ok">> ->
-            normalize_modifiers(Hook, proplists:get_value(modifiers, Decoded, []), EOpts);
+            normalize_modifiers(Hook, proplists:get_value(<<"modifiers">>, Decoded, []), EOpts);
         <<"next">> -> next;
         Result when is_list(Result) ->
-            {decoded_error, proplists:get_value(error, Result, unknown_error)}
+            {decoded_error, proplists:get_value(<<"error">>, Result, unknown_error)}
     end;
 handle_response(Hook, Decoded, EOpts)
   when Hook =:= auth_on_subscribe; Hook =:= on_unsubscribe ->
-    case proplists:get_value(result, Decoded) of
+    %% this clause handles the cases where the results are not
+    %% returned as modifiers.
+    case proplists:get_value(<<"result">>, Decoded) of
         <<"ok">> ->
-            normalize_modifiers(Hook, proplists:get_value(topics, Decoded, []), EOpts);
+            normalize_modifiers(Hook, proplists:get_value(<<"topics">>, Decoded, []), EOpts);
         <<"next">> -> next;
         Result when is_list(Result) ->
-            {decoded_error, proplists:get_value(error, Result, unknown_error)}
+            {decoded_error, proplists:get_value(<<"error">>, Result, unknown_error)}
     end;
 handle_response(_Hook, _Decoded, _) ->
     next.
 
+atomize_keys(Mods) ->
+    lists:map(
+      fun({K,V}) when is_binary(K) ->
+              {binary_to_existing_atom(K,utf8), V};
+         ({K,V}) when is_atom(K) ->
+              {K,V}
+      end, Mods).
+
+normalize_properties(Mods, Opts) ->
+    case lists:keyfind(properties, 1, Mods) of
+        {_, Props} ->
+            NProps = lists:foldl(
+                       fun({K,V}, Acc) ->
+                               [normalize_property(K,V,Opts)|Acc]
+                       end, [], Props),
+            lists:keyreplace(properties, 1, Mods, {properties, maps:from_list(NProps)});
+        false ->
+            Mods
+    end.
+
+normalize_property(<<"payload_format_indicator">>, Val, _Opts) ->
+    NVal = try
+               binary_to_existing_atom(Val, utf8)
+           catch
+               error:badarg ->
+                   Val
+           end,
+    {?P_PAYLOAD_FORMAT_INDICATOR, NVal};
+normalize_property(<<"message_expiry_interval">>, Val, _Opts) ->
+    {?P_MESSAGE_EXPIRY_INTERVAL, Val};
+normalize_property(<<"content_type">>, Val, _Opts) ->
+    {?P_CONTENT_TYPE, Val};
+normalize_property(<<"response_topic">>, Val, _Opts) ->
+    {?P_RESPONSE_TOPIC, Val};
+normalize_property(<<"correlaton_data">>, Val, _Opts) ->
+    {?P_CORRELATION_DATA, base64:decode(Val)};
+normalize_property(<<"subscription_id">>, Vals, _Opts) ->
+    {?P_SUBSCRIPTION_ID, Vals};
+normalize_property(<<"session_expiry_interval">>, Val, _Opts) ->
+    {?P_SESSION_EXPIRY_INTERVAL, Val};
+normalize_property(<<"assigned_client_id">>, Val, _Opts) ->
+    {?P_ASSIGNED_CLIENT_ID, Val};
+normalize_property(<<"server_keep_alive">>, Val, _Opts) ->
+    {?P_SERVER_KEEP_ALIVE, Val};
+normalize_property(<<"authentication_method">>, Val, _Opts) ->
+    {?P_AUTHENTICATION_METHOD, Val};
+normalize_property(<<"authentication_data">>, Val, _Opts) ->
+    {?P_AUTHENTICATION_DATA, base64:decode(Val)};
+normalize_property(<<"request_problem_info">>, Val, _Opts) ->
+    {?P_REQUEST_PROBLEM_INFO, Val};
+normalize_property(<<"will_delay_interval">>, Val, _Opts) ->
+    {?P_WILL_DELAY_INTERVAL, Val};
+normalize_property(<<"request_response_info">>, Val, _Opts) ->
+    {?P_REQUEST_RESPONSE_INFO, Val};
+normalize_property(<<"response_info">>, Val, _Opts) ->
+    {?P_RESPONSE_INFO, Val};
+normalize_property(<<"server_reference">>, Val, _Opts) ->
+    {?P_SERVER_REF, Val};
+normalize_property(<<"reason_string">>, Val, _Opts) ->
+    {?P_REASON_STRING, Val};
+normalize_property(<<"receive_max">>, Val, _Opts) ->
+    {?P_RECEIVE_MAX, Val};
+normalize_property(<<"topic_alias_maximum">>, Val, _Opts) ->
+    {?P_TOPIC_ALIAS_MAX, Val};
+normalize_property(<<"topic_alias">>, Val, _Opts) ->
+    {?P_TOPIC_ALIAS, Val};
+normalize_property(<<"max_qos">>, Val, _Opts) ->
+    {?P_MAX_QOS, Val};
+normalize_property(<<"retain_available">>, Val, _Opts) ->
+    {?P_RETAIN_AVAILABLE, Val};
+normalize_property(<<"user_property">>, Values, _Opts) ->
+    NValues = [{K,V} || [{_,K},{_,V}] <- Values],
+    {?P_USER_PROPERTY, NValues};
+normalize_property(<<"max_packet_size">>, Val, _Opts) ->
+    {?P_MAX_PACKET_SIZE, Val};
+normalize_property(<<"wildcard_subscriptions_available">>, Val, _Opts) ->
+    {?P_WILDCARD_SUBS_AVAILABLE, Val};
+normalize_property(<<"subscription_identifiers_available">>, Val, _Opts) ->
+    {?P_SUB_IDS_AVAILABLE, Val};
+normalize_property(<<"shared_subscriptions_available">>, Val, _Opts) ->
+    {?P_SHARED_SUBS_AVAILABLE, Val}.
+
+
+normalize_modifiers(Hook, Mods, Opts)
+  when Hook =:= auth_on_register_m5;
+       Hook =:= auth_on_unsubscribe_m5;
+       Hook =:= on_unsubscribe_m5;
+       Hook =:= on_auth_m5 ->
+    NMods0 = normalize_properties(atomize_keys(Mods), Opts),
+    maps:from_list(NMods0);
+normalize_modifiers(Hook, Mods, Opts)
+    when Hook =:= auth_on_publish_m5;
+         Hook =:= on_deliver_m5 ->
+    NMods0 = normalize_properties(atomize_keys(Mods), Opts),
+    NMods1 = norm_payload(NMods0, Opts),
+    maps:from_list(NMods1);
+normalize_modifiers(auth_on_subscribe_m5, Mods, Opts) ->
+    NMods0 = normalize_properties(atomize_keys(Mods), Opts),
+    NMods1 = normalize_sub_topics(NMods0, Opts),
+    maps:from_list(NMods1);
 normalize_modifiers(auth_on_register, Mods, _) ->
-    Mods;
+    atomize_keys(Mods);
 normalize_modifiers(auth_on_subscribe, Topics, _) ->
     lists:map(
       fun(PL) ->
-              [proplists:get_value(topic, PL),
-               proplists:get_value(qos, PL)]
+              [proplists:get_value(<<"topic">>, PL),
+               proplists:get_value(<<"qos">>, PL)]
       end,
       Topics);
 normalize_modifiers(auth_on_publish, Mods, EOpts) ->
-    lists:map(
-      fun({payload, Payload}) ->
-              {payload, b64decode(Payload, EOpts)};
-         (E) -> E
-      end, Mods);
+    norm_payload(atomize_keys(Mods), EOpts);
 normalize_modifiers(on_deliver, Mods, EOpts) ->
-    lists:map(
-      fun({payload, Payload}) ->
-              {payload, b64decode(Payload, EOpts)};
-         (E) -> E
-      end, Mods);
+    norm_payload(atomize_keys(Mods), EOpts);
 normalize_modifiers(on_unsubscribe, Mods, _) ->
     Mods.
 
-encode_payload(Hook, Args, _Opts)
+normalize_sub_topics(Mods, _Opts) ->
+    lists:map(
+      fun({topics, Topics}) ->
+              {topics,
+               [{proplists:get_value(<<"topic">>, T),
+                 proplists:get_value(<<"qos">>, T)} || T <- Topics]};
+         (E) -> E
+      end, Mods).
+
+norm_payload(Mods, EOpts) ->
+    lists:map(
+      fun({payload, Payload}) ->
+              {payload, b64decode(Payload, EOpts)};
+         (E) -> E
+      end, Mods).
+
+encode_payload(Hook, Args, Opts)
+  when Hook =:= auth_on_subscribe_m5;
+       Hook =:= on_subscribe_m5 ->
+    RemappedKeys =
+        lists:map(
+          fun({topics, Topics}) ->
+                  {topics,
+                   lists:map(
+                             fun([T,Q]) ->
+                                     [{topic, T},
+                                      {qos, Q}]
+                             end,
+                     Topics)};
+             ({client_id, V}) -> {client_id, V};
+             ({properties, V}) -> {properties, encode_props(V, Opts)};
+             (V) -> V
+          end,
+          Args),
+    jsx:encode(RemappedKeys);
+encode_payload(Hook, Args, Opts)
   when Hook =:= auth_on_subscribe; Hook =:= on_subscribe ->
     RemappedKeys = 
         lists:map(
@@ -582,6 +839,7 @@ encode_payload(Hook, Args, _Opts)
                              end,
                      Topics)};
              ({client_id, V}) -> {client_id, V};
+             ({properties, V}) -> {properties, encode_props(V, Opts)};
              (V) -> V
           end,
           Args),
@@ -592,6 +850,7 @@ encode_payload(_, Args, Opts) ->
           fun({addr, V}) -> {peer_addr, V};
              ({port, V}) -> {peer_port, V};
              ({client_id, V}) -> {client_id, V};
+             ({properties, V}) -> {properties, encode_props(V, Opts)};
              ({payload, V}) ->
                   {payload, b64encode(V, Opts)};
              (V) -> V
@@ -599,15 +858,33 @@ encode_payload(_, Args, Opts) ->
           Args),
     jsx:encode(RemappedKeys).
 
-b64encode(V, #{base64_payload := false}) ->
-    V;
-b64encode(V, _) -> 
-    base64:encode(V).
+encode_props(Props, Opts) when is_map(Props) ->
+    maps:fold(fun(K,V,Acc) ->
+                      {K1, V1} = encode_property(K,V,Opts),
+                      maps:put(K1,V1, Acc)
+              end, #{}, Props).
 
-b64decode(V, #{base64_payload := false}) ->
-    V;
-b64decode(V, _) -> 
-    base64:decode(V).
+encode_property(p_user_property, Values, Opts) ->
+    Values1 = lists:map(
+      fun({K,V}) ->
+              #{<<"key">> => maybe_b64encode(K, Opts),
+                <<"val">> => maybe_b64encode(V, Opts)}
+      end, Values),
+    {user_property, Values1};
+encode_property(?P_AUTHENTICATION_DATA, Val, _Opts) ->
+    {authentication_data, base64:encode(Val)};
+encode_property(?P_AUTHENTICATION_METHOD, Val, _Opts) ->
+    {authentication_method, Val}.
+
+
+maybe_b64encode(V, #{base64 := false}) -> V;
+maybe_b64encode(V, _) -> base64:encode(V).
+
+b64encode(V, #{base64_payload := false}) -> V;
+b64encode(V, _) -> base64:encode(V).
+
+b64decode(V, #{base64_payload := false}) -> V;
+b64decode(V, _) -> base64:decode(V).
 
 from_internal_qos(not_allowed) ->
     128;

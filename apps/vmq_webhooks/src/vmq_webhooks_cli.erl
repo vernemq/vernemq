@@ -149,7 +149,16 @@ hook_keyspec() ->
                                         "on_offline_message",
                                         "on_client_wakeup",
                                         "on_client_offline",
-                                        "on_client_gone"]) of
+                                        "on_client_gone",
+                                        "auth_on_register_m5",
+                                        "auth_on_publish_m5",
+                                        "auth_on_subscribe_m5",
+                                        "on_register_m5",
+                                        "on_publish_m5",
+                                        "on_subscribe_m5",
+                                        "on_unsubscribe_m5",
+                                        "on_deliver_m5",
+                                        "on_auth_m5"]) of
                          true ->
                              binary_to_atom(list_to_binary(Hook), utf8);
                          _ -> {error, {invalid_value, Hook}}

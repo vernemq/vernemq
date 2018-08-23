@@ -121,7 +121,7 @@ auth_with_properties(Cfg) ->
                                 #{?P_AUTHENTICATION_METHOD => <<"method1">>,
                                   ?P_AUTHENTICATION_DATA => <<"client2">>}),
     Connack = packetv5:gen_connack(0, ?M5_SUCCESS, #{?P_AUTHENTICATION_METHOD => <<"method1">>,
-                                                  ?P_AUTHENTICATION_DATA => <<"server2">>}),
+                                                     ?P_AUTHENTICATION_DATA => <<"server2">>}),
     {ok, Socket} = packetv5:do_client_connect(Connect, AuthIn1, []),
     ok = gen_tcp:send(Socket, AuthOut1),
     ok = packetv5:expect_frame(Socket, Connack),

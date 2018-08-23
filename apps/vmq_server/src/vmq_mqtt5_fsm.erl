@@ -330,9 +330,11 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
                                             p_authentication_data := _} = Props,
                              reason_code = RC},
                  #state{enhanced_auth = #auth_data{method = AuthMethod,
-                                                   data = ConnectFrame}} = State) ->
+                                                   data = ConnectFrame},
+                        subscriber_id = SubscriberId,
+                        username = UserName} = State) ->
     _ = vmq_metrics:incr({?MQTT5_AUTH_RECEIVED, rc2rcn(RC)}),
-    case vmq_plugin:all_till_ok(on_auth_m5, [Props]) of
+    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
         {ok, #{reason_code := ?SUCCESS,
                properties :=
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
@@ -517,10 +519,10 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Props
     _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_RECEIVED),
     SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, get_sub_id(Props0)),
     OnAuthSuccess =
-        fun(_User, _SubscriberId, MaybeChangedTopics) ->
+        fun(_User, _SubscriberId, MaybeChangedTopics, Props1) ->
                 case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics) of
                     {ok, _QoSs} ->
-                        vmq_plugin:all(on_subscribe_m5, [User, SubscriberId, MaybeChangedTopics]);
+                        vmq_plugin:all(on_subscribe_m5, [User, SubscriberId, MaybeChangedTopics, Props1]);
                     Res -> Res
                 end
         end,
@@ -532,7 +534,7 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Props
             _ = vmq_metrics:incr(?MQTT5_SUBACK_SENT),
             {State, [serialise_frame(Frame)]};
         {error, not_allowed} ->
-            QoSs = [?M5_NOT_AUTHORIZED || _ <- Topics], % not authorized
+            QoSs = [?M5_NOT_AUTHORIZED || _ <- Topics],
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
             _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_AUTH_ERROR),
             {State, [serialise_frame(Frame)]};
@@ -564,9 +566,11 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties = P
     end;
 connected(#mqtt5_auth{properties=#{p_authentication_method := AuthMethod} = Props,
                       reason_code=RC},
-          #state{enhanced_auth = #auth_data{method = AuthMethod}} = State) ->
+          #state{enhanced_auth = #auth_data{method = AuthMethod},
+                 subscriber_id = SubscriberId,
+                 username = UserName} = State) ->
     _ = vmq_metrics:incr({?MQTT5_AUTH_RECEIVED, rc2rcn(RC)}),
-    case vmq_plugin:all_till_ok(on_auth_m5, [Props]) of
+    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
         {ok, #{reason_code := ?SUCCESS,
                properties :=
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
@@ -713,8 +717,10 @@ terminate_reason(Reason) ->  Reason.
 %%% internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthMethod}=Props} = Frame0, State) ->
-    case vmq_plugin:all_till_ok(on_auth_m5, [Props]) of
+check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthMethod}=Props} = Frame0,
+                    #state{subscriber_id = SubscriberId,
+                           username=UserName} = State) ->
+    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
         {ok, #{reason_code := ?SUCCESS,
                properties :=
                    #{?P_AUTHENTICATION_METHOD := AuthMethod} = OutProps}} ->
@@ -999,11 +1005,12 @@ auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess) ->
     case vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                                 [User, SubscriberId, Topics, Props0]) of
         ok ->
-            AuthSuccess(User, SubscriberId, Topics),
+            AuthSuccess(User, SubscriberId, Topics, Props0),
             {ok, #{topics => Topics}};
         {ok, Modifiers} ->
             NewTopics = maps:get(topics, Modifiers, []),
-            AuthSuccess(User, SubscriberId, NewTopics),
+            NewProps = maps:get(properties, Modifiers, #{}),
+            AuthSuccess(User, SubscriberId, NewTopics, NewProps),
             {ok, Modifiers};
         {error, _} ->
             {error, not_allowed}

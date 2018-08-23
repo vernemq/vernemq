@@ -19,9 +19,9 @@
          auth_on_publish_m5/7,
          on_publish_m5/7,
          auth_on_subscribe_m5/4,
-         on_subscribe_m5/3,
+         on_subscribe_m5/4,
          on_unsubscribe_m5/4,
-         on_auth_m5/1,
+         on_auth_m5/3,
          on_deliver_m5/5]).
 
 %%====================================================================
@@ -85,8 +85,8 @@ auth_on_subscribe_m5_(_Username,_SubscriberId,
 auth_on_subscribe_m5_(_Username,_SubscriberId,_Topics,_Properties) ->
     ok.
 
-on_subscribe_m5(Username,SubscriberId,Topics)->
-    ?LOG([on_subscribe_m5,Username,SubscriberId,Topics]),
+on_subscribe_m5(Username,SubscriberId,Topics,Props)->
+    ?LOG([on_subscribe_m5,Username,SubscriberId,Topics,Props]),
     ok.
 
 on_unsubscribe_m5(Username,SubscriberId,Topics,Properties) ->
@@ -106,26 +106,29 @@ on_unsubscribe_m5_(_Username,_SubscriberId,_Topics,_Properties) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% Enh. Auth hooks %%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
-on_auth_m5(Properties) ->
-    ?LOG([on_auth_m5, Properties]),
-    on_auth_m5_(Properties).
+on_auth_m5(Username, SubscriberId, Properties) ->
+    ?LOG([on_auth_m5, Username, SubscriberId, Properties]),
+    on_auth_m5_(Username, SubscriberId, Properties).
 
-on_auth_m5_(#{?P_AUTHENTICATION_METHOD := <<"method1">>,
+on_auth_m5_(_Username, _SubscriberId,
+            #{?P_AUTHENTICATION_METHOD := <<"method1">>,
               ?P_AUTHENTICATION_DATA := <<"client1">>}) ->
     {ok, #{reason_code => ?CONTINUE_AUTHENTICATION,
            properties => #{?P_AUTHENTICATION_METHOD => <<"method1">>,
                            ?P_AUTHENTICATION_DATA => <<"server1">>}}};
-on_auth_m5_(#{?P_AUTHENTICATION_METHOD := <<"method1">>,
+on_auth_m5_(_Username, _SubscriberId,
+            #{?P_AUTHENTICATION_METHOD := <<"method1">>,
               ?P_AUTHENTICATION_DATA := <<"client2">>}) ->
     {ok, #{reason_code => ?SUCCESS,
            properties => #{?P_AUTHENTICATION_METHOD => <<"method1">>,
                            ?P_AUTHENTICATION_DATA => <<"server2">>}}};
-on_auth_m5_(#{?P_AUTHENTICATION_METHOD := <<"method1">>,
+on_auth_m5_(_Username, _SubscriberId,
+            #{?P_AUTHENTICATION_METHOD := <<"method1">>,
               ?P_AUTHENTICATION_DATA := <<"baddata">>}) ->
     %% any other auth method we just reject.
     {error, #{reason_code => ?NOT_AUTHORIZED,
               properties => #{?P_REASON_STRING => <<"Bad authentication data: baddata">>}}};
-on_auth_m5_(_) ->
+on_auth_m5_(_Username, _SubscriberId, _Props) ->
     {error, unexpected_authentication_attempt}.
 
 

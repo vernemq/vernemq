@@ -161,7 +161,7 @@ enhanced_authentication(_Config) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 1),
+           on_auth_m5, ?MODULE, on_auth_hook, 3),
 
     ClientId = "client-enhanced-auth",
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
@@ -179,7 +179,7 @@ enhanced_authentication(_Config) ->
     ok = gen_tcp:close(Socket),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 1),
+           on_auth_m5, ?MODULE, on_auth_hook, 3),
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6).
 
@@ -191,7 +191,7 @@ enhanced_auth_no_other_packets(_Config) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 1),
+           on_auth_m5, ?MODULE, on_auth_hook, 3),
 
     ClientId = "client-enh-auth-wrong-packet",
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
@@ -205,7 +205,7 @@ enhanced_auth_no_other_packets(_Config) ->
     {error, closed} = gen_tcp:recv(Socket, 0, 1000),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 1),
+           on_auth_m5, ?MODULE, on_auth_hook, 3),
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6).
 
@@ -219,7 +219,7 @@ enhanced_auth_method_not_supported(_Config) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_bad_method_hook, 1),
+           on_auth_m5, ?MODULE, on_auth_bad_method_hook, 3),
 
     ClientId = "client-enh-auth-bad-auth",
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
@@ -229,7 +229,7 @@ enhanced_auth_method_not_supported(_Config) ->
     {error, closed} = gen_tcp:recv(Socket, 0,100),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_bad_method_hook, 1),
+           on_auth_m5, ?MODULE, on_auth_bad_method_hook, 3),
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6).
 
@@ -250,7 +250,7 @@ enhanced_auth_new_auth_method_fails(_Config) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 1),
+           on_auth_m5, ?MODULE, on_auth_hook, 3),
 
     ClientId = "client-enhanced-auth-wrong-method",
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
@@ -264,7 +264,7 @@ enhanced_auth_new_auth_method_fails(_Config) ->
     {error, closed} = gen_tcp:recv(Socket, 0, 100),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 1),
+           on_auth_m5, ?MODULE, on_auth_hook, 3),
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6).
 
@@ -280,7 +280,7 @@ reauthenticate(_Config) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 1),
+           on_auth_m5, ?MODULE, on_auth_hook, 3),
     ok = vmq_plugin_mgr:enable_module_plugin(
            auth_on_publish_m5, ?MODULE, auth_on_publish_after_reauth, 7),
 
@@ -314,7 +314,7 @@ reauthenticate(_Config) ->
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_publish_m5, ?MODULE, auth_on_publish_after_reauth, 7),
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_auth_m5, ?MODULE, on_auth_hook, 1),
+           on_auth_m5, ?MODULE, on_auth_hook, 3),
     ok = vmq_plugin_mgr:disable_module_plugin(
            auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6).
 
@@ -335,23 +335,23 @@ auth_props(Method, Data) ->
 auth_on_register_ok_hook(_,_,_,_,_,_) ->
     ok.
 
-on_auth_bad_method_hook(#{p_authentication_method := _, p_authentication_data := _}) ->
+on_auth_bad_method_hook(_, _, #{p_authentication_method := _, p_authentication_data := _}) ->
     {error, #{reason_code => ?BAD_AUTHENTICATION_METHOD}}.
 
-on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client1">>}) ->
+on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client1">>}) ->
     {ok, #{reason_code => ?CONTINUE_AUTHENTICATION,
            properties =>
                #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server1">>}}};
-on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client2">>}) ->
+on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client2">>}) ->
     {ok, #{reason_code => ?CONTINUE_AUTHENTICATION,
            properties =>
                #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server2">>}}};
-on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client3">>}) ->
+on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client3">>}) ->
     %% return ok which will trigger the connack being sent to the
     %% client *or* an AUTH ok
     {ok, #{reason_code => ?SUCCESS,
            properties => #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"ServerFinal">>}}};
-on_auth_hook(#{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Reauth">>}) ->
+on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Reauth">>}) ->
     {ok, #{reason_code => ?SUCCESS,
            properties => #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"ReauthOK">>}}}.
 

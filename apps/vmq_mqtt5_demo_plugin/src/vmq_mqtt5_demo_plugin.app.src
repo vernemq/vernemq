@@ -16,9 +16,9 @@
          {vmq_mqtt5_demo_plugin, auth_on_publish_m5, 7, []},
          {vmq_mqtt5_demo_plugin, on_publish_m5, 7, []},
          {vmq_mqtt5_demo_plugin, auth_on_subscribe_m5, 4, []},
-         {vmq_mqtt5_demo_plugin, on_subscribe_m5, 3, []},
+         {vmq_mqtt5_demo_plugin, on_subscribe_m5, 4, []},
          {vmq_mqtt5_demo_plugin, on_unsubscribe_m5, 4, []},
-         {vmq_mqtt5_demo_plugin, on_auth_m5, 1, []},
+         {vmq_mqtt5_demo_plugin, on_auth_m5, 3, []},
          {vmq_mqtt5_demo_plugin, on_deliver_m5, 5, []}
         ]
        }]},
