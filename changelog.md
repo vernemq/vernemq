@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix issue when calling a function in a Lua script that requires more time to complete than the default `gen_server` timeout (#589). 
+
 ## VerneMQ 1.5.0
 
 - Fix issue in the bridge preventing it from reconnecting after a connection
