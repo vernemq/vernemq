@@ -59,7 +59,7 @@ call_function(Pid, Function, Args) ->
     %% error in the plugin code can crash session/queue. As the Lua
     %% support should provide a sandboxed environment we saveguard
     %% calls into the Lua environment.
-    case catch gen_server:call(Pid, {call_function, Function, Args}) of
+    case catch gen_server:call(Pid, {call_function, Function, Args}, infinity) of
         {'EXIT', Reason} ->
             lager:error("can't call into Lua sandbox for function ~p due to ~p", [Function, Reason]),
             error;
