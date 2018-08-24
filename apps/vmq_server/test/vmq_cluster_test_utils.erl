@@ -175,7 +175,7 @@ start_node(Name, Config, Case) ->
                             end
                     end, 60, 500),
             Node;
-        {error, already_started, Node} ->
+        {error, _Reason, Node} ->
             ct_slave:stop(Name),
             wait_until_offline(Node),
             start_node(Name, Config, Case)
