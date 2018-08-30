@@ -1,107 +1,122 @@
-# VerneMQ MQTTv5 preview
+# VerneMQ: A Distributed MQTT Broker
 
-[![Build Status](https://travis-ci.org/erlio/vernemq.svg?branch=mqtt5-preview)](https://travis-ci.org/erlio/vernemq)
+[![Build Status](https://travis-ci.org/erlio/vernemq.svg?branch=master)](https://travis-ci.org/erlio/vernemq)
+[![Docker Pulls](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)
 [![Slack Invite](https://slack-invite.vernemq.com/badge.svg)](https://slack-invite.vernemq.com)
 
+[![VerneMQ Logo](https://i.imgur.com/bln3fK3.jpg)](https://vernemq.com)
 
-This branch is an early release of VerneMQ with MQTTv5 support and is made
-public to allow the community and industry to start working with MQTTv5 and to
-get as much feedback as possible.
+VerneMQ is a high-performance, distributed MQTT message broker. It scales
+horizontally and vertically on commodity hardware to support a high number of
+concurrent publishers and consumers while maintaining low latency and fault
+tolerance. VerneMQ is the reliable message hub for your IoT platform or smart
+products.
 
-When more complete and stable this branch will be merged into the VerneMQ master
-branch and be generally available in the VerneMQ releases. MQTTv5 support will
-be marked as in beta until we're sure it's ready for prime time.
+VerneMQ is an Apache2 licensed distributed [MQTT](http://www.mqtt.org) broker,
+developed in [Erlang](http://www.erlang.org).
 
-Note: this branch will be rebased occasionally to keep up with the master branch
-and due to refactorings.
+MQTT used to stand for MQ Telemetry Transport, but it no longer is an
+acronym. It is an extremely simple and lightweight publish/subscribe messaging
+protocol, that was invented at IBM and Arcom (now Eurotech) to connect
+restricted devices in low bandwidth, high-latency or unreliable networks.
 
-## Current status
+VerneMQ implements the MQTT 3.1, 3.1.1 and 5.0 specifications. Currently the
+following features are implemented and delivered as part of VerneMQ:
 
-As this is a work in progress, not everything is implemented and there are a
-number of known issues. If you'd like to contribute we'd love your pull requests
-or feedback!
+* QoS 0, QoS 1, QoS 2
+* Basic Authentication and Authorization
+* Bridge Support
+* $SYS Tree for monitoring and reporting
+* TLS (SSL) Encryption
+* Websockets Support
+* Cluster Support
+* Logging (Console, Files, Syslog)
+* Reporting to Graphite
+* Extensible Plugin architecture
+* Multiple Sessions per ClientId
+* Session Balancing
+* Shared subscriptions
+* Message load regulation
+* Message load shedding (for system protection)
+* Offline Message Storage (based on LevelDB)
+* Queue can handle messages FIFO or LIFO style.
+* MongoDB auth & integration
+* Redis auth & integration
+* MySQL auth & integration
+* PostgreSQL auth & integration
+* Memcached integration
+* HTTP integration
+* HTTP Webhooks
+* PROXY Protocol v2
+* Administration HTTP API (BETA)
+* Real-time MQTT session tracing
+* Full multitenancy
+* Cluster status web page
 
-Currently supported features are:
+The following features are also applies to MQTT 5.0 clients:
 
-- All MQTTv5 frames are implemented.
-- MQTTv5 enhanced authentication and reauthentication.
-- Publishes with payload format indicator, response topic, correlation data,
-  user properties and content type.
-- Message expiration.
-- Delayed last will and testament.
-- Retained messages.
-- Shared subscriptions.
-- Session expiration interval.
-- Request/response using 'response topic' and 'correlation data' properties.
-- Client to broker topic aliases.
-- Broker to client topic aliases.
-- Receive maximum flow control.
-- Subscription flags Retain as Published, No Local, and Retain Handling.
-- Subscriber Ids.
-- MQTTv5 and older prototocols can be enabled at the same time (set
-  `allowed_protocol_versions=3,4,5` on the listener to enable respectively
-  MQTT v3.1, 3.1.1 and 5.0).
+* Enhanced authentication schemes (AUTH)
+* Message expiration
+* Last Will and Testament delay
+* Shared subscriptions
+* Request/response flow
+* Topic aliases
+* Flow control
+* Subscription flags (Retain as Published, No Local, Retain Handling)
+* Subscriber identifiers
+* All property types are supported: user properties, reason strings, content types etc.
 
-Currently known issues for MQTTv5 are:
+## Commercial Support. Binary Packages. Documentation
 
-- Tracing (`vmq-admin trace`) doesn't yet support tracing MQTTv5 sessions.
-- The plugin hooks for MQTTv5 sessions doesn't yet handle the new MQTTv5
-  features.
-- Bridge plugin does not yet support MQTTv5.
-- Server and client maximum packet size enforcement is not yet implemented.
+Below you'll find a basic introduction to building and starting VerneMQ. For
+more information about the binary package installation, configuration, and
+administration of VerneMQ, please visit our documentation at [VerneMQ
+Documentation](https://vernemq.com/docs) or checkout the product page
+[VerneMQ](https://vernemq.com) if you require more information on the available
+commercial [support options](https://vernemq.com/services.html).
 
-Current limitations/open questions:
+## Quick Start
 
-- Currently when using `allow_multiple_sessions=on`:
-  - If using delayed last will and testament it is only sent for the last
-    connected client.
-  - The session expiration used is the one from the last connected client *or*
-    the last client which send a new session expiration value when
-    disconnecting.
-- If using `allow_multiple_sessions=on`, should it be allowed to mix MQTTv5 and
-  MQTTv4 sessions? What are the pros and cons?
+This section assumes that you have a copy of the VerneMQ source tree. To get
+started, you need to first build VerneMQ.
 
-Unknown issues:
+### Building VerneMQ
 
-We are sure there are many. Please play with this and let us know if something
-doesn't look right! We'd love to get your feedback!
+Note: VerneMQ is compatible with Erlang/OTP 18, 19 and 20 and one of
+these versions is requred to be installed on your system.
 
-## Trying it out
+Assuming you have a working Erlang installation, building VerneMQ should be as
+simple as:
 
-On this branch MQTTv5 is enabled by default and all MQTTv5 actions are allowed
-as a plugin called `vmq_allow_all_v5` is enabled which implements the
-`auth_on_register_m5`, `auth_on_subscribe_m5` and `auth_on_publish_m5`, all of
-them simply return `ok` allowing the actions.
+```shell
+$ cd $VERNEMQ
+$ make rel
+```    
 
-So to get started, simply create a clone of this repository and switch to this
-branch and then build VerneMQ using `make rel` as usual. VerneMQ can then be
-started by running `_build/default/rel/vernemq/bin/vernemq console` and you can
-now connect MQTTv5 clients to the listener running on `localhost:1883`.
+### Starting VerneMQ
 
-### Topic Aliases
+Once you've successfully built VerneMQ, you can start the server with the following
+commands:
 
-To try out the topic alias feature you have to enable it either in `vernemq.conf`
-or via `vmq-admin set` command.
+```shell
+$ cd $VERNEMQ/_build/default/rel/vernemq
+$ bin/vernemq start
+```
 
-`topic_alias_max_client=10` enables that the client can use up to `10` topic aliases
-when publishing messages to the broker.
-`topic_alias_max_broker=10` enables that the broker can use up to `10` topic aliases
-when delivering messages to the client.
+If VerneMQ is running it is possible to check the status on
+`http://localhost:8888/status` and it should look something like:
 
-Both settings are disabled by default.
 
-##  Reporting issues
+<img src="https://i.imgur.com/NAFZml1.png" width="75%">
 
-As this is a work in progress we really would appreciate your feedback! To
-report an issue or a question, please open an issue on github and prefix the
-issue title with `MQTTv5:`. You're also more than welcome to reach out to us on
-[slack](https://slack-invite.vernemq.com) or get in touch with us via our
-[contact form](https://vernemq.com/services.html).
+Note that the `$VERNEMQ/_build/default/rel/vernemq` directory is a complete, 
+self-contained instance of VerneMQ and Erlang. It is strongly suggested that you
+move this directory outside the source tree if you plan to run a production 
+instance.
 
-## MQTTv5 plugins vs MQTTv4 plugins
+### Important links
 
-MQTTv5 plugins use a different set of hooks as MQTTv5 has more features than
-MQTTv4. The hooks in MQTTv5 has the same names as in MQTTv4, but are post-fixed
-with `_m5`, so for example in MQTTv5 `auth_on_register_m5` corresponds to the
-MQTTv4 hook `auth_on_register`. MQTTv5 also introduces a new `on_auth_m5` hook
-to support enhanced (re-)authentication.
+* #vernemq on freenode IRC
+* [VerneMQ Documentation](http://vernemq.com/docs) 
+* [Follow us on Twitter (@vernemq)!](https://twitter.com/vernemq)
+
