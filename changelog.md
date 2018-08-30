@@ -2,17 +2,50 @@
 
 ## VerneMQ 1.6.0
 
-- Topic aliases
+- Full MQTTv5 support
 
-VerneMQ supports topic aliases from both the client to the broker and from the
-broker to the client.
+  With this release VerneMQ officially supports MQTT protocol version
+  5.0. The MQTTv5 support is currently marked as in BETA and we may
+  still have to change some things.
 
-When a client connects to the broker, the broker will inform the client of the
-maximum allowed topic alias using the topic alias max property on the CONNACK
-packet (if it has been set to a non-zero value). The topic alias maximum
-property can be configured through the `topic_alias_max` configuration variable
-or overriden in a plugin in the `auth_on_register` hook. The broker will then
-handle topic aliases from the client as per the MQTTv5 spec.
+  VerneMQ has full support for the complete MQTTv5 spec, but to list a
+  few of the new features:
+
+  - Support for enhanced (re)authentication
+  - User properties
+  - Message Expiration
+  - Last Will and Testament delay
+  - Shared subscriptions
+  - Retained messages
+  - Request/Response flows
+  - Topic aliases
+
+    VerneMQ supports topic aliases from both the client to the broker and from
+    the broker to the client.
+
+    When a client connects to the broker, the broker will inform the client of
+    the maximum allowed topic alias using the topic alias max property on the
+    CONNACK packet (if it has been set to a non-zero value). The topic alias
+    maximum property can be configured through the `topic_alias_max`
+    configuration variable or overriden in a plugin in the `auth_on_register`
+    hook. The broker will then handle topic aliases from the client as per the
+    MQTTv5 spec.
+
+  - Flow control
+  - Subscription flags Retain as Published, No Local and Retain Handling.
+  - Subscriber ids
+
+  By default MQTTv5 is disabled, but can be enabled on a listener basis, for
+  example `listener.tcp.allowed_protocol_versions=3,4,5` would enable MQTT
+  version 3.1, 3.1.1 and 5.0 on the TCP listener.
+
+  MQTTv5 support has also been added to the `vmq_passwd`, `vmq_acl`,
+  `vmq_webhooks` plugins.
+
+  The `vmq_bridge` plugin currently has no support for MQTTv5.
+
+  !! Note !! that all MQTTv5 related features and plugins are in BETA and may
+  still change if needed.
 
 - The metrics:
 
