@@ -978,7 +978,7 @@ rcn2rc(unspecified_error)              -> ?M5_UNSPECIFIED_ERROR;
 rcn2rc(malformed_packet)               -> ?M5_MALFORMED_PACKET;
 rcn2rc(protocol_error)                 -> ?M5_PROTOCOL_ERROR;
 rcn2rc(impl_specific_error)            -> ?M5_IMPL_SPECIFIC_ERROR;
-rcn2rc(unsupported_protocol_VERSION)   -> ?M5_UNSUPPORTED_PROTOCOL_VERSION;
+rcn2rc(unsupported_protocol_version)   -> ?M5_UNSUPPORTED_PROTOCOL_VERSION;
 rcn2rc(client_identifier_not_valid)    -> ?M5_CLIENT_IDENTIFIER_NOT_VALID;
 rcn2rc(bad_username_or_password)       -> ?M5_BAD_USERNAME_OR_PASSWORD;
 rcn2rc(not_authorized)                 -> ?M5_NOT_AUTHORIZED;
