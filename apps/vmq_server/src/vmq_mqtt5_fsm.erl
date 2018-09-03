@@ -97,8 +97,8 @@
           %% flow control
           fc_receive_max_client=?FC_RECEIVE_MAX :: receive_max(),
           fc_receive_max_broker=?FC_RECEIVE_MAX :: receive_max(),
-          fc_receive_cnt=0                      :: receive_max(),
-          fc_send_cnt=0                         :: receive_max(),
+          fc_receive_cnt=0                      :: 0 | receive_max(),
+          fc_send_cnt=0                         :: 0 | receive_max(),
 
           %% flags and settings which have a non-default value if
           %% present and default value if not present.
@@ -511,7 +511,7 @@ connected(#mqtt5_pubcomp{message_id=MessageId, reason_code=RC}, State) ->
             _ = vmq_metrics:incr(?MQTT5_PUBCOMP_INVALID_ERROR),
             %% TODOv5: we should probably not terminate normally here
             %% but use one of the new reason codes.
-            terminate(normal, State)
+            terminate(?NORMAL_DISCONNECT, State)
     end;
 connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Props0}, State) ->
     #state{subscriber_id=SubscriberId, username=User,
@@ -533,8 +533,11 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Props
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=Props1},
             _ = vmq_metrics:incr(?MQTT5_SUBACK_SENT),
             {State, [serialise_frame(Frame)]};
-        {error, not_allowed} ->
-            QoSs = [?M5_NOT_AUTHORIZED || _ <- Topics],
+        {error, RCN} when RCN =:= ?NOT_AUTHORIZED;
+                          RCN =:= ?CLIENT_IDENTIFIER_NOT_VALID;
+                          RCN =:= ?UNSPECIFIED_ERROR;
+                          RCN =:= ?QUOTA_EXCEEDED ->
+            QoSs = [rcn2rc(RCN) || _ <- Topics],
             Frame = #mqtt5_suback{message_id=MessageId, reason_codes=QoSs, properties=#{}},
             _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_AUTH_ERROR),
             {State, [serialise_frame(Frame)]};
@@ -657,7 +660,7 @@ connack_terminate(RCN, Properties, _State) ->
                                                    properties=Properties})]}.
 
 queue_down_terminate(shutdown, State) ->
-    terminate(normal, State);
+    terminate(?NORMAL_DISCONNECT, State);
 queue_down_terminate(Reason, #state{queue_pid=QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
@@ -666,7 +669,7 @@ terminate_by_client(Props0, #state{queue_pid=QPid} = State) ->
     NewSInt = maps:get(p_session_expiry_interval, Props0, 0),
     Out = case {OldSInt,NewSInt} of
               {0,NewSInt} when NewSInt > 0 ->
-                  [gen_disconnect(?PROTOCOL_ERROR)];
+                  [gen_disconnect(?PROTOCOL_ERROR, #{})];
               {0,0} ->
                   [];
               _ ->
@@ -997,7 +1000,7 @@ set_sock_opts(Opts) ->
 
 -spec auth_on_subscribe(username(), subscriber_id(),
                         [{topic(), qos()}], mqtt5_properties(),
-                        fun((username(), subscriber_id(), [{topic(), qos()}]) ->
+                        fun((username(), subscriber_id(), [{topic(), qos()}], mqtt5_properties()) ->
                                    {ok, [qos() | not_allowed]} | {error, atom()})
                        ) -> {ok, auth_on_subscribe_m5_hook:sub_modifiers()} |
                             {error, atom()}.
@@ -1012,15 +1015,15 @@ auth_on_subscribe(User, SubscriberId, Topics, Props0, AuthSuccess) ->
             NewProps = maps:get(properties, Modifiers, #{}),
             AuthSuccess(User, SubscriberId, NewTopics, NewProps),
             {ok, Modifiers};
-        {error, _} ->
-            {error, not_allowed}
+        {error, Error} ->
+            {error, Error}
     end.
 
 -type unsubsuccessfun() ::
         fun((subscriber_id(), [{topic(), qos()}]) ->
                    ok | {error, not_ready}).
 
--spec unsubscribe(username(), subscriber_id(), [{topic(), qos()}],
+-spec unsubscribe(username(), subscriber_id(), [topic()],
                   mqtt5_properties(), unsubsuccessfun())
                  -> {ok, mqtt5_properties()} | {error, not_ready}.
 unsubscribe(User, SubscriberId, Topics0, Props0, UnsubFun) ->
@@ -1042,8 +1045,8 @@ unsubscribe(User, SubscriberId, Topics0, Props0, UnsubFun) ->
     end.
 
 -spec auth_on_publish(username(), subscriber_id(), msg(),
-                      fun((msg(), list()) -> {ok, msg()} | {error, atom()})
-                        ) -> {ok, msg()} | {error, atom()}.
+                      fun((msg(), list()) -> {ok, msg()} | {error, any()})
+                        ) -> {ok, msg()} | {error, atom() | list()}.
 auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                              payload=Payload,
                                              qos=QoS,
@@ -1083,7 +1086,7 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
     end.
 
 -spec publish(cap_settings(), module(), username(), subscriber_id(), msg(), state()) ->
-                     {ok, msg(), state()} | {error, atom()}.
+                     {ok, msg(), state()} | {error, atom() | list()}.
 publish(CAPSettings, RegView, User, {_, ClientId} = SubscriberId, Msg, State) ->
     maybe_apply_topic_alias_in(User, SubscriberId, Msg,
                                fun(MaybeChangedMsg, HookArgs) ->
@@ -1107,7 +1110,7 @@ dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
 -spec dispatch_publish_(qos(), msg_id(), msg(), state()) ->
-    list() | {error, recv_max_exceeded}.
+    list() | {state(), list()} | {error, recv_max_exceeded}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
 dispatch_publish_(1, MessageId, Msg, State) ->
@@ -1197,7 +1200,7 @@ dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
         {error, _Reason} ->
             %% can't publish due to overload or netsplit
             _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?UNSPECIFIED_ERROR}),
-            Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?UNSPECIFIED_ERROR, properties=#{}},
+            Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_UNSPECIFIED_ERROR, properties=#{}},
             [serialise_frame(Frame)]
     end.
 
@@ -1321,7 +1324,7 @@ prepare_frame(QoS, Msg, State0) ->
                                      Msg#vmq_msg{qos=NewQoS}, WAcks)}}
     end.
 
--spec maybe_publish_last_will(state(), reason_code_name()) -> ok.
+-spec maybe_publish_last_will(state(), reason_code_name() | {error, any()}) -> ok.
 maybe_publish_last_will(#state{will_msg=undefined}, _Reason) -> ok;
 maybe_publish_last_will(#state{def_opts=#{suppress_lwt_on_session_takeover := true}},
                         ?SESSION_TAKEN_OVER) -> ok;
@@ -1533,18 +1536,7 @@ get_info_items([_|Rest], State, Acc) ->
     get_info_items(Rest, State, Acc);
 get_info_items([], _, Acc) -> Acc.
 
-
--spec gen_disconnect(reason_code_name() | normal) -> mqtt5_disconnect().
-gen_disconnect(normal) ->
-    %% TODOv5: this case is just here to handle the places where we do
-    %% terminate(normal,...) as dialyzer would otherwise be
-    %% unhappy. We should go through all those cases and see if we can
-    %% map them to a MQTTv5 reason code.
-    gen_disconnect_(?NORMAL_DISCONNECT, #{});
-gen_disconnect(RCN) ->
-    gen_disconnect(RCN, #{}).
-
--spec gen_disconnect(reason_code_name(), mqtt5_properties()) -> mqtt5_disconnect().
+-spec gen_disconnect(reason_code_name(), mqtt5_properties()) -> vmq_parser_mqtt5:serialized().
 gen_disconnect(RCN, Props) ->
     gen_disconnect_(RCN, Props).
 

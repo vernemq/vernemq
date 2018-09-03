@@ -25,6 +25,8 @@
          rc2rcn/1
         ]).
 
+-type serialized() :: binary() | iolist().
+-export_type([serialized/0]).
 
 %% exported for testing
 -export([parse_properties/2,
@@ -363,7 +365,7 @@ parse_acks(<<RC:8, Rest/binary>>, Acks, AllowedRCs) ->
     end.
             
 
--spec serialise(mqtt5_frame()) -> binary() | iolist().
+-spec serialise(mqtt5_frame()) -> serialized().
 serialise(#mqtt5_publish{qos=0,
                          topic=Topic,
                          retain=Retain,

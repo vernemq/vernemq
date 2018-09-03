@@ -270,7 +270,7 @@ publish(RegView, ClientId, Topic, FoldFun, #vmq_msg{sg_policy = SGPolicy,
 
 publish_fold_acc(Msg) -> {Msg, undefined}.
 
--spec publish(flag(), module(), client_id(), msg()) -> 'ok' | {'error', _}.
+-spec publish(flag(), module(), client_id() | ?INTERNAL_CLIENT_ID, msg()) -> 'ok' | {'error', _}.
 publish(true, RegView, ClientId, #vmq_msg{mountpoint=MP,
                                           routing_key=Topic,
                                           payload=Payload,

@@ -121,7 +121,7 @@ handle_info(timeout, true) ->
             MP = vmq_config:get_env(systree_mountpoint, ""),
             %% We have to pass in something looking like a
             %% subscriberid to the publish function.
-            SubscriberId = {MP, ?INTERNAL_CLIENT_ID},
+            ClientId = ?INTERNAL_CLIENT_ID,
             MsgTmpl = #vmq_msg{
                          mountpoint=MP,
                          qos=vmq_config:get_env(systree_qos, 0),
@@ -131,7 +131,7 @@ handle_info(timeout, true) ->
             lists:foreach(
               fun({#metric_def{name=Metric}, Val}) ->
                       CAPPublish = true,
-                      vmq_reg:publish(CAPPublish, RegView, SubscriberId, MsgTmpl#vmq_msg{
+                      vmq_reg:publish(CAPPublish, RegView, ClientId, MsgTmpl#vmq_msg{
                                         routing_key=key(Prefix, Metric),
                                         payload=val(Val),
                                         msg_ref=vmq_mqtt_fsm_util:msg_ref()

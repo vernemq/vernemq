@@ -1,7 +1,7 @@
 
 -type metric_label() :: {atom(), string()}.
 
--type metric_id() :: atom().
+-type metric_id() :: atom() | {atom(), non_neg_integer() | atom()}.
 
 -record(metric_def,
         {type        :: atom(),

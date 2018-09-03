@@ -770,7 +770,7 @@ sim_client() ->
     Connect = packetv5:gen_connect("simclient", [{keepalive, 60}]),
     Connack = packetv5:gen_connack(0, 0, #{}),
     {ok, S} = packetv5:do_client_connect(Connect, Connack, [{port, 1883}]),
-    Topic = "sim/topic",
+    Topic = <<"sim/topic">>,
     Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)],
                                        #{p_user_property => [{<<"key1">>, <<"val1">>},
                                                              {<<"key2">>, <<"val2">>}]}),

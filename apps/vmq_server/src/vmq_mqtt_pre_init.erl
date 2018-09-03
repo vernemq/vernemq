@@ -75,7 +75,6 @@ parse_connect_frame(Data, MaxMessageSize) ->
             vmq_parser:parse(Data, MaxMessageSize);
         3 ->
             vmq_parser:parse(Data, MaxMessageSize);
-        more -> more;
         {error, _} = E ->
             E
     end.
@@ -85,11 +84,11 @@ determine_protocol_version(<<1:4, 0:4, Rest/binary>>) ->
 
 consume_var_header(<<0:1, _:7, Rest/binary>>) ->
     get_protocol_info(Rest);
-consume_var_header(<<1:1, _:7, 0:1, _7, Rest/binary>>) ->
+consume_var_header(<<1:1, _:7, 0:1, _:7, Rest/binary>>) ->
     get_protocol_info(Rest);
-consume_var_header(<<1:1, _:7, 1:1, _:7, 0:1, _7, Rest/binary>>) ->
+consume_var_header(<<1:1, _:7, 1:1, _:7, 0:1, _:7, Rest/binary>>) ->
     get_protocol_info(Rest);
-consume_var_header(<<1:1, _:7, 1:1, _:7, 1:1, _:7, 0:1, _7, Rest/binary>>) ->
+consume_var_header(<<1:1, _:7, 1:1, _:7, 1:1, _:7, 0:1, _:7, Rest/binary>>) ->
     get_protocol_info(Rest).
 
 get_protocol_info(<<0:8, 4:8, "MQTT", 5:8, _/binary>>) ->

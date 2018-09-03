@@ -892,7 +892,7 @@ rate_entries() ->
      {msg_out_rate, mqtt_publish_sent},
      {byte_out_rate, bytes_sent}].
 
--spec misc_statistics() -> [metric_val()].
+-spec misc_statistics() -> [{metric_id(), any()}].
 misc_statistics() ->
     {NrOfSubs, SMemory} = vmq_reg_trie:stats(),
     {NrOfRetain, RMemory} = vmq_retain_srv:stats(),
@@ -915,7 +915,7 @@ misc_stats_def() ->
      m(gauge, [], retain_memory, retain_memory, <<"The number of bytes used for storing retained messages.">>),
      m(gauge, [], queue_processes, queue_processes, <<"The number of MQTT queue processes.">>)].
 
--spec system_statistics() -> [metric_val()].
+-spec system_statistics() -> [{metric_id(), any()}].
 system_statistics() ->
     {ContextSwitches, _} = erlang:statistics(context_switches),
     {TotalExactReductions, _} = erlang:statistics(exact_reductions),
@@ -980,7 +980,7 @@ system_stats_def() ->
      m(gauge, [], vm_memory_ets, vm_memory_ets, <<"The amount of memory allocated for ETS tables.">>)|
      scheduler_utilization_def()].
 
--spec scheduler_utilization() -> [metric_val()].
+-spec scheduler_utilization() -> [{metric_id(), any()}].
 scheduler_utilization() ->
     WallTimeTs0 =
     case erlang:get(vmq_metrics_scheduler_wall_time) of

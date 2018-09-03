@@ -93,7 +93,7 @@
           waiting_call,
           opts,
           delayed_will :: {Delay :: non_neg_integer(),
-                           Fun :: function()},
+                           Fun :: function()} | undefined,
           delayed_will_timer :: reference() | undefined
          }).
 

@@ -239,7 +239,7 @@
 
 -record(mqtt5_unsubscribe, {
           message_id        :: msg_id(),
-          topics=[]         :: [topic()],
+          topics=[]         :: nonempty_list(topic()),
           properties=#{}    :: mqtt5_unsub_props()
          }).
 -type mqtt5_unsubscribe()   :: #mqtt5_unsubscribe{}.

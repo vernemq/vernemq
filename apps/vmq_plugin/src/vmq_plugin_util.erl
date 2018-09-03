@@ -17,6 +17,7 @@
 
 -export([check_modifiers/2]).
 
+-spec check_modifiers(atom(), list() | map()) -> list() | map() | error.
 check_modifiers(auth_on_subscribe, Modifiers) ->
     case val_sub_topics(Modifiers) of
         false -> error;
@@ -48,8 +49,8 @@ check_modifiers(Hook, [{_,_}|_] = Modifiers) ->
                 end, [], Modifiers);
 check_modifiers(Hook, Modifiers) when is_map(Modifiers) ->
     case check_modifiers(Hook, maps:to_list(Modifiers)) of
-        {ok, NewModifiers} ->
-            {ok, maps:from_list(NewModifiers)};
+        NewModifiers when is_list(NewModifiers) ->
+            maps:from_list(NewModifiers);
         Other -> Other
     end;
 check_modifiers(Hook, Modifiers) ->
@@ -133,7 +134,7 @@ modifiers(_) -> [].
 -type property_name() :: atom().
 -type validator() :: fun((any()) -> true | false | {ok, any()}).
 
--spec gen_property_validator(property_name()) -> validator().
+-spec gen_property_validator([property_name()]) -> validator().
 gen_property_validator(AllowedProperties) ->
     fun(Properties) ->
             maps:fold(

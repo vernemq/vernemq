@@ -715,7 +715,7 @@ dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
 -spec dispatch_publish_(qos(), msg_id(), msg(), state()) ->
-    list() | {error, not_allowed}.
+    list() | {state(), list()} | {error, not_allowed}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
 dispatch_publish_(1, MessageId, Msg, State) ->
