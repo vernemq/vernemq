@@ -670,9 +670,9 @@
 %%
 {mapping, "listener.tcp.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,5"},
+  {default, "3,4"},
   {datatype, string},
-  hidden
+  {commented, "3,4"}
  ]}.
 
 {mapping, "listener.tcp.$name.allowed_protocol_versions", "vmq_server.listeners",
@@ -683,7 +683,7 @@
 
 {mapping, "listener.ws.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,5"},
+  {default, "3,4"},
   {datatype, string},
   hidden
  ]}.
@@ -696,7 +696,7 @@
 
 {mapping, "listener.wss.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,5"},
+  {default, "3,4"},
   {datatype, string},
   hidden
  ]}.
@@ -709,7 +709,7 @@
 
 {mapping, "listener.ssl.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,5"},
+  {default, "3,4"},
   {datatype, string},
   hidden
  ]}.
