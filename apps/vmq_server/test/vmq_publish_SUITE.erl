@@ -58,6 +58,7 @@ groups() ->
          not_allowed_publish_close_qos0_mqtt_3_1_1,
          not_allowed_publish_close_qos1_mqtt_3_1_1,
          not_allowed_publish_close_qos2_mqtt_3_1_1,
+         drop_dollar_topic_publish,
          message_size_exceeded_close,
          shared_subscription_offline,
          shared_subscription_online_first
@@ -425,6 +426,18 @@ not_allowed_publish_close_qos2_mqtt_3_1_1(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     gen_tcp:send(Socket, Publish),
     {error, closed} = gen_tcp:recv(Socket, 0, 1000).
+
+drop_dollar_topic_publish(_) ->
+    Connect = packet:gen_connect("drop-dollar-test", [{keepalive, 60},
+                                                      {proto_ver, 4}]),
+    Connack = packet:gen_connack(0),
+    Topic = "$test/drop",
+    Publish = packet:gen_publish(Topic, 1, <<"message">>, [{mid, 1}]),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    % receive a timeout instead of a PUBACk
+    {error, timeout} = gen_tcp:recv(Socket, 0, 1000).
 
 message_size_exceeded_close(_) ->
     OldLimit = vmq_config:get_env(max_message_size),
