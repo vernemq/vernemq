@@ -565,7 +565,7 @@ register_metrics(Metrics) ->
 has_label([], _) ->
     true;
 has_label(WantLabels, GotLabels) when is_list(WantLabels), is_list(GotLabels) ->
-    lists:any(
+    lists:all(
       fun(T1) ->
               lists:member(T1, GotLabels)
       end, WantLabels).
