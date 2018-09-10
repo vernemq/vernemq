@@ -265,6 +265,7 @@ val_pub_topic(B) when is_binary(B) ->
 val_pub_topic(_) -> false.
 
 val_unsub_topics(Topics) when is_list(Topics) ->
+    Res =
     lists:foldl(fun (_, false) -> false;
                     (T, {ok, Acc}) when is_binary(T) ->
                         case vmq_topic:validate_topic(subscribe, T) of
@@ -277,9 +278,11 @@ val_unsub_topics(Topics) when is_list(Topics) ->
                    (T, _) ->
                         lager:error("can't rewrite topic due to wrong format ~p", [T]),
                         false
-                end, {ok, []}, Topics).
+                end, {ok, []}, Topics),
+    maybe_reverse(Res).
 
 val_sub_topics(Topics) when is_list(Topics)  ->
+    Res =
     lists:foldl(fun (_, false) -> false;
                     ({T, Q}, {ok, Acc}) when is_binary(T) and is_number(Q) ->
                         %% MQTTv5 subscriptions and error codes
@@ -301,4 +304,10 @@ val_sub_topics(Topics) when is_list(Topics)  ->
                     (T, _) ->
                         lager:error("can't rewrite topic due to wrong format ~p", [T]),
                         false
-                end, {ok, []}, Topics).
+                end, {ok, []}, Topics),
+    maybe_reverse(Res).
+
+maybe_reverse(false) ->
+    false;
+maybe_reverse({ok, L}) when is_list(L) ->
+    {ok, lists:reverse(L)}.

@@ -304,7 +304,8 @@ on_unsubscribe(#{client_id := ?ALLOWED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>}};
 on_unsubscribe(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
-            topics => [<<"rewritten/topic">>]}}.
+            topics => [<<"rewritten/topic">>,
+                       <<"anotherrewrittentopic">>]}}.
 
 on_unsubscribe_m5(#{client_id := ?ALLOWED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>}};

@@ -65,6 +65,8 @@
 - Added on_message_drop hook that is called for every message dropped due to
   exceeding the MQTTv5 max_packet_size property, hitting the message expiry,
   or when load shedding when enqueing messages.
+- Fix ordering bug in webhook subscribe topic authentication and topic rewrites
+  (#823)
 
 ## VerneMQ 1.5.0
 

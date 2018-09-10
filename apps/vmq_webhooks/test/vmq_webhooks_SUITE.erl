@@ -220,8 +220,8 @@ auth_on_subscribe_test(_) ->
                       [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, [{?TOPIC, 1}]]),
     {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [?USERNAME, {?MOUNTPOINT, ?IGNORED_CLIENT_ID}, [{?TOPIC, 1}]]),
-    {ok, [{[<<"forbidden">>, <<"topic">>], not_allowed},
-          {[<<"rewritten">>, <<"topic">>], 2}]} = vmq_plugin:all_till_ok(auth_on_subscribe,
+    {ok, [{[<<"rewritten">>, <<"topic">>], 2},
+          {[<<"forbidden">>, <<"topic">>], not_allowed}]} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [?USERNAME, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, [{?TOPIC, 1}]]),
     deregister_hook(auth_on_subscribe, ?ENDPOINT).
 
@@ -233,8 +233,8 @@ auth_on_subscribe_m5_test(_) ->
                       [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, [{?TOPIC, 1}], #{}]),
     {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [?USERNAME, {?MOUNTPOINT, ?IGNORED_CLIENT_ID}, [{?TOPIC, 1}], #{}]),
-    {ok, #{topics := [{[<<"forbidden">>, <<"topic">>], 135},
-                      {[<<"rewritten">>, <<"topic">>], 2}]}} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
+    {ok, #{topics := [{[<<"rewritten">>, <<"topic">>], 2},
+                      {[<<"forbidden">>, <<"topic">>], 135}]}} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [?USERNAME, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, [{?TOPIC, 1}], #{}]),
     deregister_hook(auth_on_subscribe_m5, ?ENDPOINT).
 
@@ -292,7 +292,8 @@ on_unsubscribe_test(_) ->
     register_hook(on_unsubscribe, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(on_unsubscribe,
                                 [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [?TOPIC]]),
-    {ok, [[<<"rewritten">>, <<"topic">>]]} = vmq_plugin:all_till_ok(on_unsubscribe,
+    {ok, [[<<"rewritten">>, <<"topic">>],
+          [<<"anotherrewrittentopic">>]]} = vmq_plugin:all_till_ok(on_unsubscribe,
                       [?USERNAME, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, [?TOPIC]]),
     deregister_hook(on_unsubscribe, ?ENDPOINT).
 
