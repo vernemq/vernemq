@@ -50,20 +50,18 @@ start() ->
 
 -spec stop() -> 'ok'.
 stop() ->
-    _ = [application:stop(App) || App <- [vmq_server,
+    application:stop(vmq_server),
+    timer:sleep(100), % give some time for the async termination of metadata system plugin
+    _ = [application:stop(App) || App <- [vmq_plugin,
+                                          riak_sysmon,
                                           clique,
-                                          plumtree,
-                                          jobs,
                                           eleveldb,
-                                          vmq_plumtree,
                                           asn1,
                                           public_key,
-                                          vmq_plugin,
                                           cowboy,
                                           ranch,
                                           crypto,
                                           ssl,
-                                          riak_sysmon,
                                           os_mon,
                                           lager]],
     ok.
