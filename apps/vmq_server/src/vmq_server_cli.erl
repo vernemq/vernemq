@@ -130,12 +130,18 @@ vmq_server_metrics_cmd() ->
         [{describe, [{shortname, "d"},
                      {longname, "with-descriptions"}]},
          {aggregate, [{shortname, "a"},
-                      {longname, "aggregate"}]}],
+                      {longname, "aggregate"},
+                      {typecast, fun("true") -> true;
+                                    (_) -> false
+                                 end}]}],
     FlagSpecs = FixedFlagSpecs ++ LabelFlagSpecs,
     Callback =
         fun(_, _, Flags) ->
                 Describe = lists:keymember(describe, 1, Flags),
-                Aggregate = lists:keymember(aggregate, 1, Flags),
+                Aggregate = case proplists:get_value(aggregate, Flags, true) of
+                                undefined -> true;
+                                Val -> Val
+                            end,
                 LabelFlags = get_label_flags(Flags, LabelFlagSpecs),
                 lists:foldl(
                   fun({#metric_def{type = Type,

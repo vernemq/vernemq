@@ -1,9 +1,70 @@
 # Changelog
 
-## Unreleased
-
 - Fix issue when calling a function in a Lua script that requires more time to complete than the default `gen_server` timeout (#589). 
 - Silently drop messages published by the client that use a routing key starting with '$'. 
+- Full MQTTv5 support
+
+  With this release VerneMQ officially supports MQTT protocol version
+  5.0. The MQTTv5 support is currently marked as in BETA and we may
+  still have to change some things.
+
+  VerneMQ has full support for the complete MQTTv5 spec, but to list a
+  few of the new features:
+
+  - Support for enhanced (re)authentication
+  - User properties
+  - Message Expiration
+  - Last Will and Testament delay
+  - Shared subscriptions
+  - Retained messages
+  - Request/Response flows
+  - Topic aliases
+
+    VerneMQ supports topic aliases from both the client to the broker and from
+    the broker to the client.
+
+    When a client connects to the broker, the broker will inform the client of
+    the maximum allowed topic alias using the topic alias max property on the
+    CONNACK packet (if it has been set to a non-zero value). The topic alias
+    maximum property can be configured through the `topic_alias_max`
+    configuration variable or overriden in a plugin in the `auth_on_register`
+    hook. The broker will then handle topic aliases from the client as per the
+    MQTTv5 spec.
+
+  - Flow control
+  - Subscription flags Retain as Published, No Local and Retain Handling.
+  - Subscriber ids
+
+  By default MQTTv5 is disabled, but can be enabled on a listener basis, for
+  example `listener.tcp.allowed_protocol_versions=3,4,5` would enable MQTT
+  version 3.1, 3.1.1 and 5.0 on the TCP listener.
+
+  MQTTv5 support has also been added to the `vmq_passwd`, `vmq_acl`,
+  `vmq_webhooks` plugins.
+
+  The `vmq_bridge` and `vmq_diversity` plugins currently have no support for
+  MQTTv5.
+
+  !! Note !! that all MQTTv5 related features and plugins are in BETA and may
+  still change if needed.
+
+- The metrics:
+
+    mqtt_connack_not_authorized_sent
+    mqtt_connack_bad_credentials_sent
+    mqtt_connack_server_unavailable_sent
+    mqtt_connack_identifier_rejected_sent
+    mqtt_connack_unacceptable_protocol_sent
+    mqtt_connack_accepted_sent
+
+  Have been merged into a single metric `mqtt_connack_sent` and the various MQTT
+  3.1.1 return codes have been mapped into labels. So for example
+  `mqtt_connack_sent` with the label `return_code=success` replaces
+  `mqtt_connack_accepted_sent`.
+
+- Added on_message_drop hook that is called for every message dropped due to
+  exceeding the MQTTv5 max_packet_size property, hitting the message expiry,
+  or when load shedding when enqueing messages.
 
 ## VerneMQ 1.5.0
 

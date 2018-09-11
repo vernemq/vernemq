@@ -46,7 +46,7 @@ init(Ref, Parent, Socket, Transport, Opts) ->
     ok = ranch:accept_ack(Ref),
     case Transport:peername(Socket) of
         {ok, Peer} ->
-            FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
+            FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
             FsmState =
             case Transport of
                 ranch_ssl ->
@@ -172,6 +172,17 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = 
     NrOfBytes = byte_size(Data),
     _ = vmq_metrics:incr_bytes_received(NrOfBytes),
     case FsmMod:data_in(<<Buffer/binary, Data/binary>>, FsmState0) of
+        {switch_fsm, NewFsmMod, FsmState1, Rest, Out} ->
+            case active_once(Socket) of
+                ok ->
+                    maybe_flush(State#st{fsm_mod=NewFsmMod,
+                                         fsm_state=FsmState1,
+                                         pending=[Pending|Out],
+                                         buffer=Rest});
+                {error, Reason} ->
+                    {exit, Reason, State#st{pending=[Pending|Out],
+                                            fsm_state=FsmState1}}
+            end;
         {ok, FsmState1, Rest, Out} ->
             case active_once(Socket) of
                 ok ->

@@ -32,6 +32,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/inet.hrl").
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -include("src/vmq_server.hrl").
 
 
@@ -764,7 +765,9 @@ convert_new_msgs_to_old_format(_Config) ->
       "qos",
       "mountpoint",
       "persisted",
-      "sg_policy"
+      "sg_policy",
+      "properties",
+      "expiry_ts"
      },
 
     %% fail if new items were added to the #vmq_msg{} record:
@@ -921,7 +924,7 @@ publish_random(Nodes, N, Topic, Acc) ->
 receive_publishes(_, _, []) -> ok;
 receive_publishes([{_,Port}=N|Nodes], Topic, Payloads) ->
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
-                                                           {keepalive, 10}]),
+                                                     {keepalive, 10}]),
     Connack = packet:gen_connack(true, 0),
     Opts = [{port, Port}],
     {ok, Socket} = packet:do_client_connect(Connect, Connack, Opts),

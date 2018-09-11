@@ -50,7 +50,7 @@ websocket_init(Type, Req, Opts) ->
 
 init_(Type, Req, Opts) ->
     {Peer, Req1} = cowboy_req:peer(Req),
-    FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
+    FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
     FsmState =
     case Type of
         ssl ->
@@ -116,6 +116,8 @@ websocket_terminate(_Reason, _Req, #st{fsm_mod=FsmMod, fsm_state=FsmState}) ->
 
 handle_fsm_return({ok, FsmState, Rest, Out}, Req, State) ->
     maybe_reply(Out, Req, State#st{fsm_state=FsmState, buffer=Rest});
+handle_fsm_return({switch_fsm, NewFsmMod, FsmState0, Rest, Out}, Req, State) ->
+    maybe_reply(Out, Req, State#st{fsm_mod=NewFsmMod, fsm_state=FsmState0, buffer=Rest});
 handle_fsm_return({throttle, FsmState, Rest, Out}, Req, State) ->
     timer:sleep(1000),
     maybe_reply(Out, Req, State#st{fsm_state=FsmState, buffer=Rest});

@@ -153,7 +153,7 @@ process_bytes(Bytes, Buffer, St) ->
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
     #vmq_msg{mountpoint=MP,
              routing_key=Topic} = Msg = to_vmq_msg(binary_to_term(Bin)),
-    _ = vmq_reg_view:fold(St#st.reg_view, MP, Topic, fun publish/2, {Msg, undefined}),
+    _ = vmq_reg_view:fold(St#st.reg_view, {MP, ?INTERNAL_CLIENT_ID}, Topic, fun publish/3, {Msg, undefined}),
     process(Rest, St);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
     case binary_to_term(Bin) of
@@ -195,9 +195,9 @@ process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St) ->
     lager:warning("unknown message: ~p", [Cmd]),
     process(Rest, St).
 
-publish({_, _} = SubscriberIdAndQoS, Msg) ->
-    vmq_reg:publish(SubscriberIdAndQoS, Msg);
-publish(_Node, Msg) ->
+publish({_, _} = SubscriberIdAndSubInfo, From, Msg) ->
+    vmq_reg:publish(SubscriberIdAndSubInfo, From, Msg);
+publish(_Node, _, Msg) ->
     %% we ignore remote subscriptions, they are already covered
     %% by original publisher
     Msg.
@@ -211,7 +211,25 @@ to_vmq_msgs(Msgs) ->
 %% @private
 to_vmq_msg(#vmq_msg{} = Msg) ->
     Msg;
-to_vmq_msg(InMsg) when is_tuple(InMsg) ->
+to_vmq_msg({vmq_msg, MsgRef, RoutingKey, Payload,
+            Retain, Dup, QoS, Mountpoint, Persisted,
+            SGPolicy}) ->
+    %% Pre-MQTT5 msg record. Fill in the missing ones.
+    #vmq_msg{
+       msg_ref = MsgRef,
+       routing_key = RoutingKey,
+       payload = Payload,
+       retain = Retain,
+       dup = Dup,
+       qos = QoS,
+       mountpoint = Mountpoint,
+       persisted = Persisted,
+       sg_policy = SGPolicy,
+       properties = #{},
+       expiry_ts = undefined
+      };
+to_vmq_msg(InMsg) when is_tuple(InMsg),
+                       size(InMsg) > size(#vmq_msg{}) ->
     %% we have a msg with unknown elements. As we don't know
     %% how to handle those we strip them away and fill the
     %% rest into the `vmq_msg` record we know.
@@ -224,5 +242,7 @@ to_vmq_msg(InMsg) when is_tuple(InMsg) ->
        qos = element(7, InMsg),
        mountpoint = element(8, InMsg),
        persisted = element(9, InMsg),
-       sg_policy = element(10, InMsg)
+       sg_policy = element(10, InMsg),
+       properties = element(11, InMsg),
+       expiry_ts = element(12, InMsg)
       }.

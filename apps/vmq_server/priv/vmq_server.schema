@@ -167,19 +167,37 @@
          case S of
              "never" -> 0;
              _ ->
-                 [Entity|T] = lists:reverse(S),
-                 case {Entity, list_to_integer(lists:reverse(T))} of
-                     {$h, D} -> D * 60 * 60;
-                     {$d, D} -> D * 24 * 60 * 60;
-                     {$w, D} -> D * 7 * 24 * 60 * 60;
-                     {$m, D} -> D * 4 * 7 * 24 * 60 * 60;
-                     {$y, D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
-                     _ -> cuttlefish:invalid(S ++ " must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year, or the string 'never'")
+                 case vmq_schema:string_to_secs(S) of
+                     error ->
+                         cuttlefish:invalid(S ++ " must be an integer followed by one of 'h', 'd', 'w', 'm', 'y' for hour, day, week, month, and year, or the string 'never'");
+                     Val -> Val
                  end
          end
  end}.
 
-%% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being 
+%% @doc The maximum delay for a last will message. This setting
+%% applies only to MQTTv5 sessions and overrides the value provided by
+%% the client.
+%% The delay should be an integer followed by one of 's', 'h' 'd',
+%% 'w', 'm', 'y' for day, week, month, and year.
+{mapping, "max_last_will_delay", "vmq_server.max_last_will_delay", [
+                                                                    {default, "0s"},
+                                                                    {commented, "0s"},
+                                                                    {datatype, string}
+                                                                   ]}.
+
+{translation, "vmq_server.max_last_will_delay",
+ fun(Conf) ->
+         S = cuttlefish:conf_get("max_last_will_delay", Conf),
+         case vmq_schema:string_to_secs(S) of
+             error ->
+                 cuttlefish:invalid(S ++ " must be an integer followed by one of 's', 'h', 'd', 'w', 'm', 'y' for second, minute, hour, day, week, month, and year");
+             Val -> Val
+         end
+ end}.
+
+
+%% @doc The maximum number of QoS 1 or 2 messages that can be in the process of being
 %% transmitted simultaneously. This includes messages currently going through handshakes 
 %% and messages that are being retried. Defaults to 20. Set to 0 for no maximum. If set 
 %% to 1, this will guarantee in-order delivery of messages.
@@ -652,9 +670,9 @@
 %%
 {mapping, "listener.tcp.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4]"},
+  {default, "3,4"},
   {datatype, string},
-  hidden
+  {commented, "3,4"}
  ]}.
 
 {mapping, "listener.tcp.$name.allowed_protocol_versions", "vmq_server.listeners",
@@ -665,7 +683,7 @@
 
 {mapping, "listener.ws.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4]"},
+  {default, "3,4"},
   {datatype, string},
   hidden
  ]}.
@@ -678,7 +696,7 @@
 
 {mapping, "listener.wss.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4]"},
+  {default, "3,4"},
   {datatype, string},
   hidden
  ]}.
@@ -691,7 +709,7 @@
 
 {mapping, "listener.ssl.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "[3,4]"},
+  {default, "3,4"},
   {datatype, string},
   hidden
  ]}.
@@ -1514,6 +1532,12 @@
                                                          {default, on}
                                                         ]}.
 
+%% @doc Dummy MQTTv5 plugin allowing everything.
+{mapping, "plugins.vmq_allow_all_v5", "vmq_server.user_plugins", [
+                                                                  {datatype, flag},
+                                                                  {default, on}
+                                                                 ]}.
+
 %% @doc Lua based plugins.
 {mapping, "plugins.vmq_diversity", "vmq_server.user_plugins", [
                                                                {datatype, flag},
@@ -1550,3 +1574,40 @@
                || Name <- EnabledPlugins ],
          lists:keysort(1, Plugins)
  end}.
+
+%% @doc Specifies the maximum incoming topic alias range on the broker for each
+%% client. A value of 0 means topic aliases are not allowed.
+{mapping, "topic_alias_max_client", "vmq_server.topic_alias_max_client", [
+                                                                          {default, 0},
+                                                                          {datatype, integer},
+                                                                          hidden
+                                                                         ]}.
+
+%% @doc Specifies the maximum outgoing topic alias range on the broker for each
+%% client. A value of 0 means topic aliases are not allowed.
+{mapping, "topic_alias_max_broker", "vmq_server.topic_alias_max_broker", [
+                                                                          {default, 0},
+                                                                          {datatype, integer},
+                                                                          hidden
+                                                                         ]}.
+
+%% @doc Specifies the maximum number of unacknowledged MQTTv5 Publish packets
+%% VerneMQ is allowed to send to a client. Each client can set their own
+%% receive maximum (via the `receive_max`property of the CONNECT frame).
+%% VerneMQ ensures that a client provided maximum never exceeds the
+%% `receive_max_client` value.
+{mapping, "receive_max_client", "vmq_server.receive_max_client", [
+                                                                  {default, 65535},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                 ]}.
+
+%% @doc Specifies the maximum number of unacknowledged MQTTv5 Publish packets
+%% VerneMQ is allowed to receive from a client. VerneMQ advertises this value
+%% in the `receive_max` property of the CONNACK frame. A client is disconnected
+%% when exceeding this value.
+{mapping, "receive_max_broker", "vmq_server.receive_max_broker", [
+                                                                  {default, 65535},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                 ]}.

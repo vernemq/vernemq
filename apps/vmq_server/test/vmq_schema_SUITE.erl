@@ -32,16 +32,17 @@ end_per_testcase(_TestCase, _Config) ->
     ok.
 
 groups() ->
-    [].
+    Tests =
+        [proxy_protocol_inheritance_test,
+         proxy_protocol_override_test,
+         ssl_certs_opts_inheritance_test,
+         ssl_certs_opts_override_test,
+         allowed_protocol_versions_inheritance_test,
+         allowed_protocol_versions_override_test],
+    [{schema, [parallel], Tests}].
 
 all() ->
-    [proxy_protocol_inheritance_test,
-     proxy_protocol_override_test,
-     ssl_certs_opts_inheritance_test,
-     ssl_certs_opts_override_test,
-     allowed_protocol_versions_inheritance_test,
-     allowed_protocol_versions_override_test].
-
+    [{group, schema}].
 
 ssl_certs_opts_inheritance_test(_Config) ->
     ConfFun =
@@ -191,16 +192,16 @@ allowed_protocol_versions_inheritance_test(_Config) ->
             {["listener","max_connections"], "10000"},
             {["listener","nr_of_acceptors"], "100"},
             %% tcp/mqtt
-            {["listener","tcp","allowed_protocol_versions"], "[3,4,5]"},
+            {["listener","tcp","allowed_protocol_versions"], "3,4,5"},
             {["listener","tcp","default"],"127.0.0.1:1884"},
             %% tcp/ssl/mqtt
-            {["listener","ssl","allowed_protocol_versions"], "[3,4,5]"},
+            {["listener","ssl","allowed_protocol_versions"], "3,4,5"},
             {["listener","ssl","default"],"127.0.0.1:8884"},
             %% websocket
-            {["listener","ws","allowed_protocol_versions"], "[3,4,5]"},
+            {["listener","ws","allowed_protocol_versions"], "3,4,5"},
             {["listener","ws","default"],"127.0.0.1:800"},
             %% websocket/ssl
-            {["listener","wss","allowed_protocol_versions"], "[3,4,5]"},
+            {["listener","wss","allowed_protocol_versions"], "3,4,5"},
             {["listener","wss","default"],"127.0.0.1:900"}],
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqtt,  {{127,0,0,1}, 1884},allowed_protocol_versions]),
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqtts,  {{127,0,0,1}, 8884},allowed_protocol_versions]),
@@ -212,21 +213,21 @@ allowed_protocol_versions_override_test(_Config) ->
             {["listener","max_connections"], "10000"},
             {["listener","nr_of_acceptors"], "100"},
             %% tcp/mqtt
-            {["listener","tcp","allowed_protocol_versions"], "[3,4]"},
+            {["listener","tcp","allowed_protocol_versions"], "3,4"},
             {["listener","tcp","default"],"127.0.0.1:1884"},
-            {["listener","tcp","default","allowed_protocol_versions"], "[4]"},
+            {["listener","tcp","default","allowed_protocol_versions"], "4"},
             %% tcp/ssl/mqtt
-            {["listener","ssl","allowed_protocol_versions"], "[3,4]"},
+            {["listener","ssl","allowed_protocol_versions"], "3,4"},
             {["listener","ssl","default"],"127.0.0.1:8884"},
-            {["listener","ssl","default","allowed_protocol_versions"], "[4]"},
+            {["listener","ssl","default","allowed_protocol_versions"], "4"},
             %% websocket
-            {["listener","ws","allowed_protocol_versions"], "[3,4]"},
+            {["listener","ws","allowed_protocol_versions"], "3,4"},
             {["listener","ws","default"],"127.0.0.1:800"},
-            {["listener","ws","default","allowed_protocol_versions"], "[4]"},
+            {["listener","ws","default","allowed_protocol_versions"], "4"},
             %% websocket/ssl
-            {["listener","wss","allowed_protocol_versions"], "[3,4]"},
+            {["listener","wss","allowed_protocol_versions"], "3,4"},
             {["listener","wss","default"],"127.0.0.1:900"},
-            {["listener","wss","default","allowed_protocol_versions"], "[4]"}
+            {["listener","wss","default","allowed_protocol_versions"], "4"}
            ],
     [4] = expect(Conf, [vmq_server, listeners, mqtt, {{127,0,0,1}, 1884}, allowed_protocol_versions]),
     [4] = expect(Conf, [vmq_server, listeners, mqttws, {{127,0,0,1}, 800}, allowed_protocol_versions]),

@@ -1,5 +1,5 @@
 -module(msg_store_plugin).
--include("vmq_types.hrl").
+-include("vmq_server.hrl").
 
 %% all hooks are called as an 'only'-hook, return value is ignored
 -callback msg_store_write_sync(MsgRef :: msg_ref(),

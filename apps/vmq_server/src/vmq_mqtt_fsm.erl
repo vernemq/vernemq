@@ -13,8 +13,12 @@
 %% limitations under the License.
 
 -module(vmq_mqtt_fsm).
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_server.hrl").
--export([init/2,
+-include("vmq_metrics.hrl").
+
+
+-export([init/3,
          data_in/2,
          msg_in/2,
          info/2]).
@@ -65,7 +69,7 @@
           upgrade_qos=false                 :: boolean(),
           reg_view=vmq_reg_trie             :: atom(),
           cap_settings=#cap_settings{}      :: cap_settings(),
-          allowed_protocol_versions         :: [3|4|131],
+          allowed_protocol_versions         :: [3|4|131|5],
 
           %% flags and settings which have a non-default value if
           %% present and default value if not present.
@@ -78,7 +82,7 @@
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 
-init(Peer, Opts) ->
+init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
     rand:seed(exsplus, os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
@@ -112,24 +116,36 @@ init(Peer, Opts) ->
                     },
     TraceFun = vmq_config:get_env(trace_fun, undefined),
     DOpts = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
-    TRef = vmq_mqtt_fsm_util:send_after(?CLOSE_AFTER, close_timeout),
+    maybe_initiate_trace(ConnectFrame, TraceFun),
     set_max_msg_size(MaxMessageSize),
-    {wait_for_connect, #state{peer=Peer,
-                              upgrade_qos=UpgradeQoS,
-                              subscriber_id=SubscriberId,
-                              allow_anonymous=AllowAnonymous,
-                              shared_subscription_policy=SharedSubPolicy,
-                              max_inflight_messages=MaxInflightMsgs,
-                              max_message_rate=MaxMessageRate,
-                              username=PreAuthUser,
-                              max_client_id_size=MaxClientIdSize,
-                              keep_alive_tref=TRef,
-                              retry_interval=1000 * RetryInterval,
-                              cap_settings=CAPSettings,
-                              reg_view=RegView,
-                              allowed_protocol_versions=AllowedProtocolVersions,
-                              def_opts = DOpts,
-                              trace_fun=TraceFun}}.
+
+    _ = vmq_metrics:incr_mqtt_connect_received(),
+    %% the client is allowed "grace" of a half a time period
+    set_keepalive_check_timer(KeepAlive),
+
+    State = #state{peer=Peer,
+                   upgrade_qos=UpgradeQoS,
+                   subscriber_id=SubscriberId,
+                   allow_anonymous=AllowAnonymous,
+                   shared_subscription_policy=SharedSubPolicy,
+                   max_inflight_messages=MaxInflightMsgs,
+                   max_message_rate=MaxMessageRate,
+                   username=PreAuthUser,
+                   max_client_id_size=MaxClientIdSize,
+                   keep_alive=KeepAlive,
+                   keep_alive_tref=undefined,
+                   retry_interval=1000 * RetryInterval,
+                   cap_settings=CAPSettings,
+                   reg_view=RegView,
+                   allowed_protocol_versions=AllowedProtocolVersions,
+                   def_opts = DOpts,
+                   trace_fun=TraceFun},
+
+    case check_connect(ConnectFrame, State) of
+        {stop, Reason, Out} -> {stop, Reason, serialise([Out])};
+        {NewState, Out} ->
+            {{connected, set_last_time_active(true, NewState)}, serialise([Out])}
+    end.
 
 data_in(Data, SessionState) when is_binary(Data) ->
     data_in(Data, SessionState, []).
@@ -168,19 +184,11 @@ msg_in(Msg, SessionState) ->
            {ok, NewSessionState, serialise([Out])}
    end.
 
-%%% init  --> | wait_for_connect | --> | connected | --> terminate
+%%% init --> | connected | --> terminate
 in(Msg, {connected, State}, IsData) ->
     case connected(Msg, State) of
         {stop, _, _} = R -> R;
         {NewState, Out} ->
-            {{connected, set_last_time_active(IsData, NewState)}, Out}
-    end;
-in(Msg, {wait_for_connect, State}, IsData) ->
-    case wait_for_connect(Msg, State) of
-        {stop, _, _} = R -> R;
-        {NewState, Out} ->
-            %% state transition to | connected |
-            _ = vmq_metrics:incr_mqtt_connack_sent(?CONNACK_ACCEPT),
             {{connected, set_last_time_active(IsData, NewState)}, Out}
     end.
 
@@ -194,28 +202,6 @@ serialise([[B|T]|Frames], Acc) when is_binary(B) ->
     serialise([T|Frames], [B|Acc]);
 serialise([[F|T]|Frames], Acc) ->
     serialise([T|Frames], [vmq_parser:serialise(F)|Acc]).
-
--spec wait_for_connect(mqtt_frame(), state()) ->
-    {state(), [mqtt_frame() | binary()]} | {stop, any(), [mqtt_frame() | binary()]}.
-wait_for_connect(#mqtt_connect{keep_alive=KeepAlive} = Frame,
-                 #state{keep_alive_tref=TRef,
-                        trace_fun=TraceFun} = State) ->
-    cancel_timer(TRef),
-    maybe_initiate_trace(Frame, TraceFun),
-    _ = vmq_metrics:incr_mqtt_connect_received(),
-    %% the client is allowed "grace" of a half a time period
-    set_keepalive_check_timer(KeepAlive),
-    check_connect(Frame, State#state{last_time_active=os:timestamp(),
-                                       keep_alive=KeepAlive,
-                                       keep_alive_tref=undefined});
-wait_for_connect(close_timeout, State) ->
-    lager:debug("stop due to timeout", []),
-    terminate(normal, State);
-wait_for_connect({'DOWN', _MRef, process, QPid, Reason}, #state{queue_pid=QPid} = State) ->
-    queue_down_terminate(Reason, State);
-wait_for_connect(_, State) ->
-    %% invalid handshake
-    terminate(normal, State).
 
 maybe_initiate_trace(_Frame, undefined) ->
     ok;
@@ -356,7 +342,8 @@ connected(#mqtt_subscribe{message_id=MessageId, topics=Topics}, State) ->
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
-                case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics) of
+                SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(MaybeChangedTopics, undefined),
+                case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, SubTopics) of
                     {ok, _} = Res ->
                         vmq_plugin:all(on_subscribe, [User, SubscriberId, MaybeChangedTopics]),
                         Res;
@@ -450,7 +437,7 @@ connected(Unexpected, State) ->
     terminate({error, unexpected_message, Unexpected}, State).
 
 connack_terminate(RC, _State) ->
-    _ = vmq_metrics:incr_mqtt_connack_sent(RC),
+    _ = vmq_metrics:incr({?MQTT4_CONNACK_SENT, RC}),
     {stop, normal, [#mqtt_connack{session_present=false, return_code=RC}]}.
 
 queue_down_terminate(shutdown, State) ->
@@ -530,9 +517,9 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
     case State#state.allow_anonymous of
         false ->
             case auth_on_register(User, Password, State) of
-                {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId,
+                {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_session=CleanSession,
                                        cap_settings=CAPSettings} = NewState} ->
-                    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, QueueOpts) of
+                    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanSession, QueueOpts) of
                         {ok, SessionPresent, QPid} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
@@ -561,8 +548,8 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
             end;
         true ->
             #state{peer=Peer, subscriber_id=SubscriberId,
-                   cap_settings=CAPSettings} = State,
-            case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, queue_opts(State, [])) of
+                   cap_settings=CAPSettings, clean_session=CleanSession} = State,
+            case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanSession, queue_opts(State, [])) of
                 {ok, SessionPresent, QPid} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
@@ -706,10 +693,10 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
     end.
 
 -spec publish(cap_settings(), module(), username(), subscriber_id(), msg()) ->  {ok, msg()} | {error, atom()}.
-publish(CAPSettings, RegView, User, SubscriberId, Msg) ->
+publish(CAPSettings, RegView, User, {_, ClientId}=SubscriberId, Msg) ->
     auth_on_publish(User, SubscriberId, Msg,
                     fun(MaybeChangedMsg, HookArgs) ->
-                            case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, MaybeChangedMsg),
+                            case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, ClientId, MaybeChangedMsg),
                                             HookArgs) of
                                 ok -> {ok, MaybeChangedMsg};
                                 E -> E
@@ -728,7 +715,7 @@ dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
 -spec dispatch_publish_(qos(), msg_id(), msg(), state()) ->
-    list() | {error, not_allowed}.
+    list() | {state(), list()} | {error, not_allowed}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
 dispatch_publish_(1, MessageId, Msg, State) ->
@@ -923,7 +910,7 @@ prepare_frame(QoS, Msg, State) ->
 -spec maybe_publish_last_will(state(), any()) -> ok.
 maybe_publish_last_will(_, ?CLIENT_DISCONNECT) -> ok;
 maybe_publish_last_will(#state{will_msg=undefined}, _) -> ok;
-maybe_publish_last_will(#state{subscriber_id=SubscriberId, username=User,
+maybe_publish_last_will(#state{subscriber_id={_, ClientId}=SubscriberId, username=User,
                                will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings,
                                def_opts=DOpts},
                         Reason) ->
@@ -932,7 +919,7 @@ maybe_publish_last_will(#state{subscriber_id=SubscriberId, username=User,
             #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
             HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
             _ = on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish,
-                                                RegView, Msg), HookArgs),
+                                                RegView, ClientId, Msg), HookArgs),
             ok;
         true -> ok
     end.
@@ -986,10 +973,6 @@ set_keepalive_check_timer(KeepAlive) ->
     %% however we're losing precision. But that's ok for the keepalive timer.
     _ = vmq_mqtt_fsm_util:send_after(KeepAlive * 750, check_keepalive),
     ok.
-
--spec cancel_timer('undefined' | reference()) -> 'ok'.
-cancel_timer(undefined) -> ok;
-cancel_timer(TRef) -> _ = erlang:cancel_timer(TRef), ok.
 
 do_throttle(#state{max_message_rate=0}) -> false;
 do_throttle(#state{max_message_rate=Rate}) ->
@@ -1103,7 +1086,7 @@ prop_val(Key, Args, Default, Validator) ->
     end.
 
 queue_opts(#state{clean_session=CleanSession}, Args) ->
-    Opts = maps:from_list([{clean_session, CleanSession} | Args]),
+    Opts = maps:from_list([{cleanup_on_disconnect, CleanSession}| Args]),
     maps:merge(vmq_queue:default_opts(), Opts).
 
 unflag(true) -> true;

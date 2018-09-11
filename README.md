@@ -20,7 +20,7 @@ acronym. It is an extremely simple and lightweight publish/subscribe messaging
 protocol, that was invented at IBM and Arcom (now Eurotech) to connect
 restricted devices in low bandwidth, high-latency or unreliable networks.
 
-VerneMQ implements the MQTT 3.1 and 3.1.1 specifications. Currently the
+VerneMQ implements the MQTT 3.1, 3.1.1 and 5.0 specifications. Currently the
 following features are implemented and delivered as part of VerneMQ:
 
 * QoS 0, QoS 1, QoS 2
@@ -52,6 +52,19 @@ following features are implemented and delivered as part of VerneMQ:
 * Real-time MQTT session tracing
 * Full multitenancy
 * Cluster status web page
+
+The following features are also applies to MQTT 5.0 clients:
+
+* Enhanced authentication schemes (AUTH)
+* Message expiration
+* Last Will and Testament delay
+* Shared subscriptions
+* Request/response flow
+* Topic aliases
+* Flow control
+* Subscription flags (Retain as Published, No Local, Retain Handling)
+* Subscriber identifiers
+* All property types are supported: user properties, reason strings, content types etc.
 
 ## Commercial Support. Binary Packages. Documentation
 

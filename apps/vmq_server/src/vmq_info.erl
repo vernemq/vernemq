@@ -62,7 +62,7 @@ fields_config() ->
     Subscriptions = #vmq_ql_table{
                     name =      subscriptions,
                     depends_on = [QueueBase],
-                    provides = [topic, qos],
+                    provides = [topic, qos, rap, no_local],
                     init_fun = fun subscription_row_init/1,
                     include_if_all = false
                     },
@@ -148,10 +148,19 @@ session_row_init(Row) ->
 subscription_row_init(Row) ->
     SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
     Subs = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
-    vmq_subscriber:fold(fun({Topic, QoS, _Node}, Acc) ->
-                                [maps:merge(Row, #{topic => iolist_to_binary(vmq_topic:unword(Topic)),
-                                                   qos => QoS})|Acc]
-                        end, [], Subs).
+    vmq_subscriber:fold(
+      fun({Topic, SubInfo, _Node}, Acc) ->
+              {QoS, SubOpts} =
+                  case SubInfo of
+                      {_, _} -> SubInfo;
+                      Q when is_integer(Q) ->
+                          {Q, #{}}
+                  end,
+              M1 = maps:merge(Row, #{topic => iolist_to_binary(vmq_topic:unword(Topic)),
+                                     qos => QoS}),
+              M2 = maps:merge(M1, SubOpts),
+              [M2|Acc]
+      end, [], Subs).
 
 message_ref_row_init(Row) ->
     SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},

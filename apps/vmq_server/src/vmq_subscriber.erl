@@ -20,6 +20,7 @@
          new/3,
          add/2,
          add/3,
+         exists/2,
          remove/2,
          remove/3,
          fold/3,
@@ -31,15 +32,10 @@
          change_node/4,
          check_format/1]).
 
-%% v1 format
--type node_subs() :: {node(), boolean(), [{topic(), qos()}]}.
+-type node_subs() :: {node(), boolean(), [subscription()]}.
 -type subs() :: [node_subs()].
--type node_changes() :: {node(), [{topic(), qos()}]}.
+-type node_changes() :: {node(), [subscription()]}.
 -type changes() :: [node_changes()].
-
-%% v2 format (coming with MQTTv5).
--type node_subs_v2() :: {node(), boolean(), [{topic(), {qos(), any()}}]}.
--type subs_v2() :: [node_subs_v2()].
 
 -export_type([subs/0, changes/0]).
 
@@ -63,7 +59,7 @@ get_changes(Old, New) ->
     Added = subtract(NNew, OOld),
     {Removed, Added}.
 
--spec add(subs(), [{topic(), qos()}]) -> {subs(), boolean()}.
+-spec add(subs(), [subscription()]) -> {subs(), boolean()}.
 add(Subs, TopicsWithQoS) ->
     add(Subs, TopicsWithQoS, node()).
 add(Subs, TopicsWithQoS, Node) ->
@@ -76,6 +72,12 @@ add(Subs, TopicsWithQoS, Node) ->
         false ->
             {lists:keysort(1, [{Node, CleanSession, NewNodeSubs}|Subs]), true}
     end.
+
+-spec exists(topic(), subs()) -> boolean().
+exists(Topic, Subs) ->
+    lists:any(fun({_, _, TopicsWithOpts}) ->
+                      lists:keymember(Topic, 1, TopicsWithOpts)
+              end, Subs).
 
 -spec remove(subs(), [topic()]) -> {subs(), boolean()}.
 remove(Subs, Topics) ->
@@ -129,8 +131,7 @@ change_node_all([], _, Subs, _, ChNodes) ->
 
 -spec check_format(any()) -> subs().
 check_format(Subs0) ->
-    Subs1  = maybe_convert_v0(Subs0),
-    maybe_convert_v2(Subs1).
+    maybe_convert_v0(Subs0).
 
 %% @doc convert deprecated subscription format to current format (v1). The
 %% new format was introduced in VerneMQ 0.15.1.
@@ -146,22 +147,6 @@ maybe_convert_v0([{Topic, QoS, Node}|Version0Subs], NewStyleSubs) ->
     {NewSubs, _} = add(NewStyleSubs, [{Topic, QoS}], Node),
     maybe_convert_v0(Version0Subs, NewSubs);
 maybe_convert_v0([], NewStyleSubs) -> NewStyleSubs.
-
-%% @doc convert coming v2 format to current v1 format
--spec maybe_convert_v2(subs()|subs_v2()) -> subs().
-maybe_convert_v2(Subs) ->
-   maybe_convert_v2(Subs, []).
-
-maybe_convert_v2([], Acc) ->
-    lists:reverse(Acc);
-maybe_convert_v2([{Node, CS, Subs}|Rest], Acc) ->
-    SubsV1 = lists:map(
-      fun({T, QoS}) when is_integer(QoS) ->
-              {T, QoS};
-         ({T, {QoS, _SubOpts}}) when is_integer(QoS) ->
-              {T, QoS}
-      end, Subs),
-    maybe_convert_v2(Rest, [{Node, CS, SubsV1}|Acc]).
 
 %% returns only the Subscriptions of Subs1 that are not also
 %% Subscriptions of Subs2. Assumes the subs are sorted by nodenames.
@@ -201,13 +186,15 @@ get_node_subs(Node, Subs) ->
 -spec fold(function(), any(), subs() | changes()) -> any().
 fold(Fun, Acc, Subs) ->
     lists:foldl(fun({Node, _, NSubs}, AccAcc) ->
-                        lists:foldl(fun({Topic, QoS}, AccAccAcc) ->
-                                            Fun({Topic, QoS, Node}, AccAccAcc)
-                                    end, AccAcc, NSubs);
+                        lists:foldl(
+                          fun({Topic, SubInfo}, AccAccAcc) ->
+                                  Fun({Topic, SubInfo, Node}, AccAccAcc)
+                          end, AccAcc, NSubs);
                    ({Node, NChanges}, AccAcc) ->
-                        lists:foldl(fun({Topic, QoS}, AccAccAcc) ->
-                                            Fun({Topic, QoS, Node}, AccAccAcc)
-                                    end, AccAcc, NChanges)
+                        lists:foldl(
+                          fun({Topic, SubInfo}, AccAccAcc) ->
+                                  Fun({Topic, SubInfo, Node}, AccAccAcc)
+                          end, AccAcc, NChanges)
                 end, Acc, Subs).
 
 -ifdef(TEST).
@@ -324,12 +311,4 @@ maybe_convert_v0_test_() ->
             {node_c, true, [{?t("c"), 2}]},
             {node(), false, []}],
     ?_assertEqual(Subs, maybe_convert_v0(Version0Subs)).
-
-check_format_v2_to_v1_test_() ->
-    SubsWithSubOpts = [{node_a, true, [{?t("a"), {1, #{}}}]},
-                       {node_b, true, [{?t("b"), {2, #{k => v}}}]}],
-    PreSubs = [{node_a, true, [{?t("a"), 1}]},
-               {node_b, true, [{?t("b"), 2}]}],
-    ?_assertEqual(PreSubs, maybe_convert_v2(SubsWithSubOpts)).
-
 -endif.

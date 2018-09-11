@@ -51,7 +51,6 @@
          sockname/1,
          shutdown/2,
          close/1,
-         opts_from_socket/1,
          bearer_port/1,
          listen_port/1,
          match_port/1,
@@ -367,17 +366,6 @@ shutdown(#proxy_socket{csocket=Socket}, How) ->
 close(#proxy_socket{csocket=Socket}) ->
     ranch_tcp:close(Socket).
 
--spec opts_from_socket(proxy_socket()) ->
-                              ranch_proxy_protocol:proxy_opts().
-opts_from_socket(Socket) ->
-    case {source_from_socket(Socket),
-          dest_from_socket(Socket)} of
-        {{ok, Src}, {ok, Dst}} ->
-            {ok, Src ++ Dst};
-        {{error, _} = Err, _} -> Err;
-        {_, {error, _} = Err} -> Err
-    end.
-
 -spec bearer_port(proxy_socket()) -> port().
 bearer_port(#proxy_socket{csocket = Port}) ->
     Port.
@@ -568,22 +556,6 @@ get_next_timeout(_, _, infinity) ->
 get_next_timeout(T1, T2, Timeout) ->
     TimeUsed = round(timer:now_diff(T2, T1) / 1000),
     erlang:max(?DEFAULT_PROXY_TIMEOUT, Timeout - TimeUsed).
-
-source_from_socket(Socket) ->
-    case ranch_tcp:peername(Socket) of
-        {ok, {Addr, Port}} ->
-            {ok, [{source_address, Addr},
-                  {source_port, Port}]};
-        Err -> Err
-    end.
-
-dest_from_socket(Socket) ->
-    case ranch_tcp:sockname(Socket) of
-        {ok, {Addr, Port}} ->
-            {ok, [{dest_address, Addr},
-                  {dest_port, Port}]};
-        Err -> Err
-    end.
 
 filter(Opts) ->
     filter(Opts, []).

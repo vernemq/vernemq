@@ -1,8 +1,5 @@
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 
--type routing_key()         :: [binary()].
--type msg_ref()             :: binary().
-
 %% connect return codes
 -define(CONNACK_ACCEPT,      0).
 -define(CONNACK_PROTO_VER,   1). %% unacceptable protocol version

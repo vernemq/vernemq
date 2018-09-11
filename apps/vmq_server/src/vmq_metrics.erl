@@ -13,11 +13,15 @@
 %% limitations under the License.
 
 -module(vmq_metrics).
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_server.hrl").
 -include("vmq_metrics.hrl").
 
 -behaviour(gen_server).
 -export([
+         incr/1,
+         incr/2,
+
          incr_socket_open/0,
          incr_socket_close/0,
          incr_socket_error/0,
@@ -35,7 +39,6 @@
          incr_mqtt_pingreq_received/0,
          incr_mqtt_disconnect_received/0,
 
-         incr_mqtt_connack_sent/1,
          incr_mqtt_publish_sent/0,
          incr_mqtt_publishes_sent/1,
          incr_mqtt_puback_sent/0,
@@ -60,6 +63,7 @@
          incr_queue_setup/0,
          incr_queue_teardown/0,
          incr_queue_drop/0,
+         incr_queue_msg_expired/1,
          incr_queue_unhandled/1,
          incr_queue_in/0,
          incr_queue_in/1,
@@ -148,19 +152,6 @@ incr_mqtt_pingreq_received() ->
 incr_mqtt_disconnect_received() ->
     incr_item(mqtt_disconnect_received, 1).
 
-incr_mqtt_connack_sent(?CONNACK_ACCEPT) ->
-    incr_item(mqtt_connack_accepted_sent, 1);
-incr_mqtt_connack_sent(?CONNACK_PROTO_VER) ->
-    incr_item(mqtt_connack_unacceptable_protocol_sent, 1);
-incr_mqtt_connack_sent(?CONNACK_INVALID_ID) ->
-    incr_item(mqtt_connack_identifier_rejected_sent, 1);
-incr_mqtt_connack_sent(?CONNACK_SERVER) ->
-    incr_item(mqtt_connack_server_unavailable_sent, 1);
-incr_mqtt_connack_sent(?CONNACK_CREDENTIALS) ->
-    incr_item(mqtt_connack_bad_credentials_sent, 1);
-incr_mqtt_connack_sent(?CONNACK_AUTH) ->
-    incr_item(mqtt_connack_not_authorized_sent, 1).
-
 incr_mqtt_publish_sent() ->
     incr_item(mqtt_publish_sent, 1).
 incr_mqtt_publishes_sent(N) ->
@@ -223,6 +214,9 @@ incr_queue_teardown() ->
 incr_queue_drop() ->
     incr_item(queue_message_drop, 1).
 
+incr_queue_msg_expired(N) ->
+    incr_item(queue_message_expired, N).
+
 incr_queue_unhandled(N) ->
     incr_item(queue_message_unhandled, N).
 
@@ -246,6 +240,12 @@ incr_cluster_bytes_sent(V) ->
 
 incr_cluster_bytes_dropped(V) ->
     incr_item('cluster_bytes_dropped', V).
+
+incr(Entry) ->
+    incr_item(Entry, 1).
+
+incr(Entry, N) ->
+    incr_item(Entry, N).
 
 incr_item(_, 0) -> ok; %% don't do the update
 incr_item(Entry, Val) when Val > 0->
@@ -294,7 +294,7 @@ reset_counters() ->
     lists:foreach(
       fun(#metric_def{id = Entry}) ->
               reset_counter(Entry)
-      end, counter_entries_def()).
+      end, internal_defs()).
 
 reset_counter(Entry) ->
     [{_, CntRef}] = ets:lookup(?MODULE, Entry),
@@ -304,7 +304,7 @@ reset_counter(Entry, InitVal) ->
     reset_counter(Entry),
     incr_item(Entry, InitVal).
 
-counter_entries() ->
+internal_values(MetricDefs) ->
     lists:map(
       fun(#metric_def{id=Id}) ->
               try counter_val(Id) of
@@ -313,7 +313,7 @@ counter_entries() ->
                   _:_ -> {Id, 0}
               end
       end,
-      counter_entries_def()).
+      MetricDefs).
 
 -spec metrics() -> [{metric_def(), non_neg_integer()}].
 metrics() ->
@@ -321,11 +321,9 @@ metrics() ->
 
 metrics(Opts) ->
     WantLabels = maps:get(labels, Opts, []),
-    CounterMetrics = counter_entries(),
-    SystemStats = system_statistics(),
-    MiscStats = misc_statistics(),
 
     MetricDefs = metric_defs(),
+    MetricValues = metric_values(),
 
     %% Create id->metric def map
     IdDef = lists:foldl(
@@ -352,7 +350,7 @@ metrics(Opts) ->
                       lager:warning("unknown metrics id: ~p", [Id]),
                       false
               end
-      end, CounterMetrics ++ (SystemStats ++ MiscStats)),
+      end, MetricValues),
 
     case Opts of
         #{aggregate := true} ->
@@ -417,9 +415,11 @@ init([]) ->
     {RateEntries, _} = lists:unzip(rate_entries()),
     lists:foreach(
       fun(Entry) ->
-              Ref = mzmetrics:alloc_resource(0, atom_to_list(Entry), 8),
+              Str = lists:flatten(io_lib:format("~p", [Entry])),
+              Ref = mzmetrics:alloc_resource(0, Str, 8),
               ets:insert(?MODULE, {Entry, Ref})
-      end, RateEntries ++ [Id || #metric_def{id = Id} <- counter_entries_def()]),
+      end, RateEntries ++
+          [Id || #metric_def{id = Id} <- internal_defs()]),
     MetricsInfo = register_metrics(#{}),
     {ok, #state{info=MetricsInfo}}.
 
@@ -565,7 +565,7 @@ register_metrics(Metrics) ->
 has_label([], _) ->
     true;
 has_label(WantLabels, GotLabels) when is_list(WantLabels), is_list(GotLabels) ->
-    lists:any(
+    lists:all(
       fun(T1) ->
               lists:member(T1, GotLabels)
       end, WantLabels).
@@ -575,9 +575,10 @@ aggregate_by_name(Metrics) ->
       fun({#metric_def{name = Name} = D1, V1}, Acc) ->
               case maps:find(Name, Acc) of
                   {ok, {_D2, V2}} ->
-                      Acc#{Name => {D1, V1 + V2}};
+                      Acc#{Name => {D1#metric_def{labels=[]}, V1 + V2}};
                   error ->
-                      Acc#{Name => {D1, V1}}
+                      %% Remove labels when aggregating.
+                      Acc#{Name => {D1#metric_def{labels=[]}, V1}}
               end
       end, #{}, Metrics),
     maps:values(AggrMetrics).
@@ -587,9 +588,21 @@ aggregate_by_name(Metrics) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 metric_defs() ->
-    counter_entries_def() ++
-        (system_stats_def() ++
-             misc_stats_def()).
+    flatten([system_stats_def(), misc_stats_def(),internal_defs()], []).
+
+metric_values() ->
+    flatten([system_statistics(),
+             misc_statistics(),internal_values(internal_defs())], []).
+
+internal_defs() ->
+    flatten([counter_entries_def(), mqtt4_connack_sent_def(),
+             mqtt5_disconnect_def(), mqtt5_connack_sent_def(),
+             mqtt5_puback_sent_def(), mqtt5_puback_received_def(),
+             mqtt5_pubrec_sent_def(), mqtt5_pubrec_received_def(),
+             mqtt5_pubrel_sent_def(), mqtt5_pubrel_received_def(),
+             mqtt5_pubcomp_sent_def(), mqtt5_pubcomp_received_def(),
+             mqtt5_auth_sent_def(), mqtt5_auth_received_def()
+            ], []).
 
 counter_entries_def() ->
     [
@@ -625,7 +638,7 @@ counter_entries_def() ->
      m(counter, [{mqtt_version,"4"}], mqtt_pingresp_sent, mqtt_pingresp_sent, <<"The number of PINGRESP packets sent.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_publish_auth_error, mqtt_publish_auth_error, <<"The number of unauthorized publish attempts.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_subscribe_auth_error, mqtt_subscribe_auth_error, <<"The number of unauthorized subscription attempts.">>),
-     m(counter, [{mqtt_version,"4"}], mqtt_invalid_msg_size_error, mqtt_invalid_msg_size_error, <<"The number of packges exceeding the maximum allowed size.">>),
+     m(counter, [{mqtt_version,"4"}], mqtt_invalid_msg_size_error, mqtt_invalid_msg_size_error, <<"The number of packages exceeding the maximum allowed size.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_puback_invalid_error, mqtt_puback_invalid_error, <<"The number of unexpected PUBACK messages received.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_pubrec_invalid_error, mqtt_pubrec_invalid_error, <<"The number of unexpected PUBREC messages received.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_pubcomp_invalid_error, mqtt_pubcomp_invalid_error, <<"The number of unexpected PUBCOMP messages received.">>),
@@ -633,9 +646,36 @@ counter_entries_def() ->
      m(counter, [{mqtt_version,"4"}], mqtt_subscribe_error, mqtt_subscribe_error, <<"The number of times a SUBSCRIBE operation failed due to a netsplit.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_unsubscribe_error, mqtt_unsubscribe_error, <<"The number of times an UNSUBSCRIBE operation failed due to a netsplit.">>),
 
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_CONNECT_RECEIVED, mqtt_connect_received, <<"The number of CONNECT packets received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_INVALID_MSG_SIZE_ERROR, mqtt_invalid_msg_size_error, <<"The number of packages exceeding the maximum allowed size.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PINGREQ_RECEIVED, mqtt_pingreq_received, <<"The number of PINGREQ packets received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PINGRESP_SENT, mqtt_pingresp_sent, <<"The number of PINGRESP packets sent.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBACK_INVALID_ERROR, mqtt_puback_invalid_error, <<"The number of unexpected PUBACK messages received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBACK_RECEIVED, mqtt_puback_received, <<"The number of PUBACK packets received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBACK_SENT, mqtt_puback_sent, <<"The number of PUBACK packets sent.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBCOMP_INVALID_ERROR, mqtt_pubcomp_invalid_error, <<"The number of unexpected PUBCOMP messages received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBCOMP_RECEIVED, mqtt_pubcomp_received, <<"The number of PUBCOMP packets received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBCOMP_SENT, mqtt_pubcomp_sent, <<"The number of PUBCOMP packets sent.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBLISH_AUTH_ERROR, mqtt_publish_auth_error, <<"The number of unauthorized publish attempts.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBLISH_ERROR, mqtt_publish_error, <<"The number of times a PUBLISH operation failed due to a netsplit.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBLISH_RECEIVED, mqtt_publish_received, <<"The number of PUBLISH packets received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBLISH_SENT, mqtt_publish_sent, <<"The number of PUBLISH packets sent.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBREC_RECEIVED, mqtt_pubrec_received, <<"The number of PUBREC packets received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBREC_SENT, mqtt_pubrec_sent, <<"The number of PUBREC packets sent.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBREL_RECEIVED, mqtt_pubrel_received, <<"The number of PUBREL packets received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBREL_SENT, mqtt_pubrel_sent, <<"The number of PUBREL packets sent.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_SUBACK_SENT, mqtt_suback_sent, <<"The number of SUBACK packets sent.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_SUBSCRIBE_AUTH_ERROR, mqtt_subscribe_auth_error, <<"The number of unauthorized subscription attempts.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_SUBSCRIBE_ERROR, mqtt_subscribe_error, <<"The number of times a SUBSCRIBE operation failed due to a netsplit.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_SUBSCRIBE_RECEIVED, mqtt_subscribe_received, <<"The number of SUBSCRIBE packets received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_UNSUBACK_SENT, mqtt_unsuback_sent, <<"The number of UNSUBACK packets sent.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_UNSUBSCRIBE_ERROR, mqtt_unsubscribe_error, <<"The number of times an UNSUBSCRIBE operation failed due to a netsplit.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_UNSUBSCRIBE_RECEIVED, mqtt_unsubscribe_received, <<"The number of UNSUBSCRIBE packets received.">>),
+
      m(counter, [], queue_setup, queue_setup, <<"The number of times a MQTT queue process has been started.">>),
      m(counter, [], queue_teardown, queue_teardown, <<"The number of times a MQTT queue process has been terminated.">>),
      m(counter, [], queue_message_drop, queue_message_drop, <<"The number of messages dropped due to full queues.">>),
+     m(counter, [], queue_message_expired, queue_message_expired, <<"The number of messages which expired before delivery.">>),
      m(counter, [], queue_message_unhandled, queue_message_unhandled, <<"The number of unhandled messages when connecting with clean session=true.">>),
      m(counter, [], queue_message_in, queue_message_in, <<"The number of PUBLISH packets received by MQTT queue processes.">>),
      m(counter, [], queue_message_out, queue_message_out, <<"The number of PUBLISH packets sent from MQTT queue processes.">>),
@@ -645,13 +685,214 @@ counter_entries_def() ->
      m(counter, [], cluster_bytes_dropped, cluster_bytes_dropped, <<"The number of bytes dropped while sending data to other cluster nodes.">>)
     ].
 
+
+flatten([], Acc) -> Acc;
+flatten([[H|[]]|T1], Acc) when is_tuple(H) ->
+    flatten(T1, [H|Acc]);
+flatten([[H|T0]|T1], Acc) when is_tuple(H) ->
+    flatten([T0|T1], [H|Acc]);
+flatten([H|T], Acc) ->
+    flatten(T, [H|Acc]).
+
+rcn_to_str(RNC) ->
+    %% TODO: replace this with a real textual representation
+    atom_to_list(RNC).
+
+mqtt5_disconnect_def() ->
+    RCNs =
+        [
+         ?NORMAL_DISCONNECT,
+         ?DISCONNECT_WITH_WILL_MSG,
+         ?UNSPECIFIED_ERROR,
+         ?MALFORMED_PACKET,
+         ?PROTOCOL_ERROR,
+         ?IMPL_SPECIFIC_ERROR,
+         ?NOT_AUTHORIZED,
+         ?SERVER_BUSY,
+         ?SERVER_SHUTTING_DOWN,
+         ?KEEP_ALIVE_TIMEOUT,
+         ?SESSION_TAKEN_OVER,
+         ?TOPIC_FILTER_INVALID,
+         ?TOPIC_NAME_INVALID,
+         ?RECEIVE_MAX_EXCEEDED,
+         ?TOPIC_ALIAS_INVALID,
+         ?PACKET_TOO_LARGE,
+         ?MESSAGE_RATE_TOO_HIGH,
+         ?QUOTA_EXCEEDED,
+         ?ADMINISTRATIVE_ACTION,
+         ?PAYLOAD_FORMAT_INVALID,
+         ?RETAIN_NOT_SUPPORTED,
+         ?QOS_NOT_SUPPORTED,
+         ?USE_ANOTHER_SERVER,
+         ?SERVER_MOVED,
+         ?SHARED_SUBS_NOT_SUPPORTED,
+         ?CONNECTION_RATE_EXCEEDED,
+         ?MAX_CONNECT_TIME,
+         ?SUBSCRIPTION_IDS_NOT_SUPPORTED,
+         ?WILDCARD_SUBS_NOT_SUPPORTED],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_DISCONNECT_RECEIVED, RCN}, mqtt_disconnect_received,
+       <<"The number of DISCONNECT packets received.">>) || RCN <- RCNs].
+
+mqtt5_connack_sent_def() ->
+    RCNs =
+        [?SUCCESS,
+         ?UNSPECIFIED_ERROR,
+         ?MALFORMED_PACKET,
+         ?PROTOCOL_ERROR,
+         ?IMPL_SPECIFIC_ERROR,
+         ?UNSUPPORTED_PROTOCOL_VERSION,
+         ?CLIENT_IDENTIFIER_NOT_VALID,
+         ?BAD_USERNAME_OR_PASSWORD,
+         ?NOT_AUTHORIZED,
+         ?SERVER_UNAVAILABLE,
+         ?SERVER_BUSY,
+         ?BANNED,
+         ?BAD_AUTHENTICATION_METHOD,
+         ?TOPIC_NAME_INVALID,
+         ?PACKET_TOO_LARGE,
+         ?QUOTA_EXCEEDED,
+         ?PAYLOAD_FORMAT_INVALID,
+         ?RETAIN_NOT_SUPPORTED,
+         ?QOS_NOT_SUPPORTED,
+         ?USE_ANOTHER_SERVER,
+         ?SERVER_MOVED,
+         ?CONNECTION_RATE_EXCEEDED],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_CONNACK_SENT, RCN}, mqtt_connack_sent,
+       <<"The number of CONNACK packets sent.">>) || RCN <- RCNs].
+
+mqtt5_puback_sent_def() ->
+    RCNs = [?SUCCESS,
+            ?NO_MATCHING_SUBSCRIBERS,
+            ?UNSPECIFIED_ERROR,
+            ?IMPL_SPECIFIC_ERROR,
+            ?NOT_AUTHORIZED,
+            ?TOPIC_NAME_INVALID,
+            ?PACKET_ID_IN_USE,
+            ?QUOTA_EXCEEDED,
+            ?PAYLOAD_FORMAT_INVALID],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_PUBACK_SENT, RCN}, mqtt_puback_sent,
+       <<"The number of PUBACK packets sent.">>) || RCN <- RCNs].
+
+mqtt5_puback_received_def() ->
+    RCNs = [?SUCCESS,
+            ?NO_MATCHING_SUBSCRIBERS,
+            ?UNSPECIFIED_ERROR,
+            ?IMPL_SPECIFIC_ERROR,
+            ?NOT_AUTHORIZED,
+            ?TOPIC_NAME_INVALID,
+            ?PACKET_ID_IN_USE,
+            ?QUOTA_EXCEEDED,
+            ?PAYLOAD_FORMAT_INVALID],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_PUBACK_RECEIVED, RCN}, mqtt_puback_received,
+       <<"The number of PUBACK packets received.">>) || RCN <- RCNs].
+
+mqtt5_pubrec_sent_def() ->
+    RCNs = [?SUCCESS,
+            ?NO_MATCHING_SUBSCRIBERS,
+            ?UNSPECIFIED_ERROR,
+            ?IMPL_SPECIFIC_ERROR,
+            ?NOT_AUTHORIZED,
+            ?TOPIC_NAME_INVALID,
+            ?PACKET_ID_IN_USE,
+            ?QUOTA_EXCEEDED,
+            ?PAYLOAD_FORMAT_INVALID],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_PUBREC_SENT, RCN}, mqtt_pubrec_sent,
+       <<"The number of PUBREC packets sent.">>) || RCN <- RCNs].
+
+mqtt5_pubrec_received_def() ->
+    RCNs = [?SUCCESS,
+            ?NO_MATCHING_SUBSCRIBERS,
+            ?UNSPECIFIED_ERROR,
+            ?IMPL_SPECIFIC_ERROR,
+            ?NOT_AUTHORIZED,
+            ?TOPIC_NAME_INVALID,
+            ?PACKET_ID_IN_USE,
+            ?QUOTA_EXCEEDED,
+            ?PAYLOAD_FORMAT_INVALID],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_PUBREC_RECEIVED, RCN}, mqtt_pubrec_received,
+       <<"The number of PUBREC packets received.">>) || RCN <- RCNs].
+
+mqtt5_pubrel_sent_def() ->
+    RCNs = [?SUCCESS,
+            ?PACKET_ID_NOT_FOUND],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_PUBREL_SENT, RCN}, mqtt_pubrel_sent,
+       <<"The number of PUBREL packets sent.">>) || RCN <- RCNs].
+
+mqtt5_pubrel_received_def() ->
+    RCNs = [?SUCCESS,
+            ?PACKET_ID_NOT_FOUND],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_PUBREL_RECEIVED, RCN}, mqtt_pubrel_received,
+       <<"The number of PUBREL packets received.">>) || RCN <- RCNs].
+
+mqtt5_pubcomp_sent_def() ->
+    RCNs = [?SUCCESS,
+            ?PACKET_ID_NOT_FOUND],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_PUBCOMP_SENT, RCN}, mqtt_pubcomp_sent,
+       <<"The number of PUBCOMP packets sent.">>) || RCN <- RCNs].
+
+mqtt5_pubcomp_received_def() ->
+    RCNs = [?SUCCESS,
+            ?PACKET_ID_NOT_FOUND],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_PUBCOMP_RECEIVED, RCN}, mqtt_pubcomp_received,
+       <<"The number of PUBCOMP packets received.">>) || RCN <- RCNs].
+
+mqtt5_auth_sent_def() ->
+    RCNs = [?SUCCESS,
+            ?CONTINUE_AUTHENTICATION,
+            ?REAUTHENTICATE],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_AUTH_SENT, RCN}, mqtt_auth_sent,
+       <<"The number of AUTH packets sent.">>) || RCN <- RCNs].
+
+mqtt5_auth_received_def() ->
+    RCNs = [?SUCCESS,
+            ?CONTINUE_AUTHENTICATION,
+            ?REAUTHENTICATE],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_AUTH_RECEIVED, RCN}, mqtt_auth_received,
+       <<"The number of AUTH packets received.">>) || RCN <- RCNs].
+
+m4_connack_labels(?CONNACK_ACCEPT) ->
+    rcn_to_str(?SUCCESS);
+m4_connack_labels(?CONNACK_PROTO_VER) ->
+    rcn_to_str(?UNSUPPORTED_PROTOCOL_VERSION);
+m4_connack_labels(?CONNACK_INVALID_ID) ->
+    rcn_to_str(?CLIENT_IDENTIFIER_NOT_VALID);
+m4_connack_labels(?CONNACK_SERVER) ->
+    rcn_to_str(?SERVER_UNAVAILABLE);
+m4_connack_labels(?CONNACK_CREDENTIALS) ->
+    rcn_to_str(?BAD_USERNAME_OR_PASSWORD);
+m4_connack_labels(?CONNACK_AUTH) ->
+    rcn_to_str(?NOT_AUTHORIZED).
+
+mqtt4_connack_sent_def() ->
+    RCNs = [?CONNACK_ACCEPT,
+            ?CONNACK_PROTO_VER,
+            ?CONNACK_INVALID_ID,
+            ?CONNACK_SERVER,
+            ?CONNACK_CREDENTIALS,
+            ?CONNACK_AUTH],
+    [m(counter, [{mqtt_version,"4"},{return_code, m4_connack_labels(RCN)}],
+       {?MQTT4_CONNACK_SENT, RCN}, mqtt_connack_sent,
+       <<"The number of CONNACK packets sent.">>) || RCN <- RCNs].
+
 rate_entries() ->
     [{msg_in_rate, mqtt_publish_received},
      {byte_in_rate, bytes_received},
      {msg_out_rate, mqtt_publish_sent},
      {byte_out_rate, bytes_sent}].
 
--spec misc_statistics() -> [metric_val()].
+-spec misc_statistics() -> [{metric_id(), any()}].
 misc_statistics() ->
     {NrOfSubs, SMemory} = vmq_reg_trie:stats(),
     {NrOfRetain, RMemory} = vmq_retain_srv:stats(),
@@ -674,7 +915,7 @@ misc_stats_def() ->
      m(gauge, [], retain_memory, retain_memory, <<"The number of bytes used for storing retained messages.">>),
      m(gauge, [], queue_processes, queue_processes, <<"The number of MQTT queue processes.">>)].
 
--spec system_statistics() -> [metric_val()].
+-spec system_statistics() -> [{metric_id(), any()}].
 system_statistics() ->
     {ContextSwitches, _} = erlang:statistics(context_switches),
     {TotalExactReductions, _} = erlang:statistics(exact_reductions),
@@ -739,7 +980,7 @@ system_stats_def() ->
      m(gauge, [], vm_memory_ets, vm_memory_ets, <<"The amount of memory allocated for ETS tables.">>)|
      scheduler_utilization_def()].
 
--spec scheduler_utilization() -> [metric_val()].
+-spec scheduler_utilization() -> [{metric_id(), any()}].
 scheduler_utilization() ->
     WallTimeTs0 =
     case erlang:get(vmq_metrics_scheduler_wall_time) of
