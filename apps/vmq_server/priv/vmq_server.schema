@@ -1532,12 +1532,6 @@
                                                          {default, on}
                                                         ]}.
 
-%% @doc Dummy MQTTv5 plugin allowing everything.
-{mapping, "plugins.vmq_allow_all_v5", "vmq_server.user_plugins", [
-                                                                  {datatype, flag},
-                                                                  {default, on}
-                                                                 ]}.
-
 %% @doc Lua based plugins.
 {mapping, "plugins.vmq_diversity", "vmq_server.user_plugins", [
                                                                {datatype, flag},
