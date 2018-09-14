@@ -55,7 +55,6 @@ stop() ->
     _ = [application:stop(App) || App <- [vmq_plugin,
                                           riak_sysmon,
                                           clique,
-                                          eleveldb,
                                           asn1,
                                           public_key,
                                           cowboy,
