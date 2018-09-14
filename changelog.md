@@ -39,11 +39,13 @@
   example `listener.tcp.allowed_protocol_versions=3,4,5` would enable MQTT
   version 3.1, 3.1.1 and 5.0 on the TCP listener.
 
-  MQTTv5 support has also been added to the `vmq_passwd`, `vmq_acl`,
-  `vmq_webhooks` plugins.
+  MQTTv5 support has been added to the `vmq_passwd`, `vmq_acl`, `vmq_webhooks`
+  plugins as well as the parts of the `vmq_diversity` plugin to support the
+  MySQL, PostgreSQL, Redis and MongoDB authentication and authorization
+  mechanisms. The Lua scripting language provided by the `vmq_diversity` plugin
+  does not yet expose all MQTT 5.0 plugin hooks.
 
-  The `vmq_bridge` and `vmq_diversity` plugins currently have no support for
-  MQTTv5.
+  The `vmq_bridge` plugin currently has no support for MQTTv5.
 
   !! Note !! that all MQTTv5 related features and plugins are in BETA and may
   still change if needed.

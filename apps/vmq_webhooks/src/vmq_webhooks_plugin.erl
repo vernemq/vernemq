@@ -780,8 +780,8 @@ normalize_modifiers(auth_on_register, Mods, _) ->
 normalize_modifiers(auth_on_subscribe, Topics, _) ->
     lists:map(
       fun(PL) ->
-              [proplists:get_value(<<"topic">>, PL),
-               proplists:get_value(<<"qos">>, PL)]
+              {proplists:get_value(<<"topic">>, PL),
+               proplists:get_value(<<"qos">>, PL)}
       end,
       Topics);
 normalize_modifiers(auth_on_publish, Mods, EOpts) ->

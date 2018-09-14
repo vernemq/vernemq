@@ -15,6 +15,32 @@
 -module(vmq_diversity_utils).
 -compile([nowarn_export_all, export_all]).
 
+%% @doc change modifiers into a canonical form so it can be run
+%% through the modifier checker.
+normalize_modifiers(auth_on_subscribe_m5, Mods) ->
+    Mods1 =
+    lists:map(
+      fun({topics, Topics}) ->
+              {topics, normalize_subscribe_topics(Topics)}
+      end, Mods),
+    maps:from_list(Mods1);
+normalize_modifiers(auth_on_register_m5, Mods) ->
+    maps:from_list(Mods);
+normalize_modifiers(auth_on_publish_m5, Mods) ->
+    maps:from_list(Mods);
+normalize_modifiers(auth_on_subscribe, Mods) ->
+    normalize_subscribe_topics(Mods);
+normalize_modifiers(_Hook, Mods) ->
+    Mods.
+
+normalize_subscribe_topics(Topics0) ->
+    lists:map(
+      fun([T, [Q, SubOpts]]) ->
+              {T, {convert(Q), maps:from_list(SubOpts)}};
+         ([T, Q]) ->
+              {T, convert(Q)}
+      end, Topics0).
+
 convert(Val) when is_list(Val) ->
     convert_list(Val, []);
 convert(Val) when is_number(Val) ->
