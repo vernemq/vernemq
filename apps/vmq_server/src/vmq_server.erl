@@ -51,7 +51,7 @@ start() ->
 -spec stop() -> 'ok'.
 stop() ->
     application:stop(vmq_server),
-    timer:sleep(100), % give some time for the async termination of metadata system plugin
+    wait_until_metadata_has_stopped(),
     _ = [application:stop(App) || App <- [vmq_plugin,
                                           riak_sysmon,
                                           clique,
@@ -65,6 +65,17 @@ stop() ->
                                           os_mon,
                                           lager]],
     ok.
+
+wait_until_metadata_has_stopped() ->
+    Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
+    case lists:keymember(Impl, 1, application:which_applications()) of
+        true ->
+            timer:sleep(100),
+            wait_until_metadata_has_stopped();
+        false ->
+            ok
+    end.
+
 
 maybe_start_distribution() ->
     case ets:info(sys_dist) of
