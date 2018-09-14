@@ -284,16 +284,21 @@ val_unsub_topics(Topics) when is_list(Topics) ->
 val_sub_topics(Topics) when is_list(Topics)  ->
     Res =
     lists:foldl(fun (_, false) -> false;
-                    ({T, Q}, {ok, Acc}) when is_binary(T) and is_number(Q) ->
-                        %% MQTTv5 subscriptions and error codes
+                    ({T, {Q, SubOpts}}, {ok, Acc})
+                      when is_binary(T),
+                           is_number(Q),
+                           is_map(SubOpts) ->
+                        %% MQTTv5 style subscriptions with
+                        %% subscription options
                         case vmq_topic:validate_topic(subscribe, T) of
                             {ok, Topic} ->
-                                {ok, [{Topic, to_internal_qos_m5(Q)}|Acc]};
+                                {ok, [{Topic, {to_internal_qos_m5(Q), SubOpts}}|Acc]};
                             {error, Reason} ->
                                 lager:error("can't parse topic ~p", [{T, Q}, Reason]),
                                 false
                         end;
-                    ([T, Q], {ok, Acc}) when is_binary(T) and is_number(Q) ->
+                    ({T, Q}, {ok, Acc}) when is_binary(T) and is_number(Q) ->
+                        %% topic format before subopts were introduced with MQTTv5
                         case vmq_topic:validate_topic(subscribe, T) of
                             {ok, Topic} ->
                                 {ok, [{Topic, to_internal_qos(Q)}|Acc]};

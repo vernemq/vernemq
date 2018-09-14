@@ -30,6 +30,30 @@ function auth_on_register(reg)
     end
 end
 
+function auth_on_register_m5(reg)
+    assert(reg.addr == "192.168.123.123")
+    assert(reg.port == 12345)
+    assert(reg.mountpoint == "")
+    if reg.client_id == "undefined_creds" then
+       assert(reg.username == nil)
+       assert(reg.password == nil)
+       return true
+    end
+    assert(reg.username == "test-user")
+    assert(reg.password == "test-password")
+    assert(reg.clean_start == true)
+    if reg.client_id ~= "changed-subscriber-id" then
+        print("auth_on_register_m5 called")
+        return validate_client_id(reg.client_id)
+    else
+        -- we must change subscriberid
+        print("auth_on_register_m5 changed called")
+        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
+    end
+    -- reg.properties are ignored for now.
+end
+
+
 function auth_on_publish(pub)
     assert(pub.username == "test-user")
     assert(pub.mountpoint == "")
@@ -47,6 +71,23 @@ function auth_on_publish(pub)
     end
 end
 
+function auth_on_publish_m5(pub)
+    assert(pub.username == "test-user")
+    assert(pub.mountpoint == "")
+    assert(pub.topic == "test/topic")
+    assert(pub.qos == 1)
+    assert(pub.payload == "hello world")
+    assert(pub.retain == false)
+    if pub.client_id ~= "changed-subscriber-id" then
+        print("auth_on_publish_m5 called")
+        return validate_client_id(pub.client_id)
+    else
+        -- change the publish topic
+        print("auth_on_publish_m5 changed called")
+        return {topic = "hello/world"}
+    end
+end
+
 function auth_on_subscribe(sub)
     assert(sub.username == "test-user")
     assert(sub.mountpoint == "")
@@ -60,6 +101,22 @@ function auth_on_subscribe(sub)
         -- we must change properties
         print("auth_on_subscribe changed called")
         return {{"hello/world", 2}}
+    end
+end
+
+function auth_on_subscribe_m5(sub)
+    assert(sub.username == "test-user")
+    assert(sub.mountpoint == "")
+    assert(#sub.topics == 1)
+    assert(sub.topics[1][1] == "test/topic")
+    assert(sub.topics[1][2][1] == 1)
+    if sub.client_id ~= "changed-subscriber-id" then
+        print("auth_on_subscribe_m5 called")
+        return validate_client_id(sub.client_id)
+    else
+        -- change the subscription
+        print("auth_on_subscribe changed_m5 called")
+        return {topics = {{"hello/world", {2, {rap = true}}}}}
     end
 end
 
@@ -158,5 +215,9 @@ hooks = {
     on_offline_message = on_offline_message,
     on_client_wakeup = on_client_wakeup,
     on_client_offline = on_client_offline,
-    on_client_gone = on_client_gone
+    on_client_gone = on_client_gone,
+
+    auth_on_register_m5 = auth_on_register_m5,
+    auth_on_subscribe_m5 = auth_on_subscribe_m5,
+    auth_on_publish_m5 = auth_on_publish_m5,
 }
