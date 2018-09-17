@@ -70,6 +70,7 @@
 - Fix ordering bug in webhook subscribe topic authentication and topic rewrites
   (#823)
 - Fix issue when terminating the `vmq_server` application (#828).
+- Make VerneMQ build on SmartOS / Illumos / Solaris.
 
 ## VerneMQ 1.5.0
 
