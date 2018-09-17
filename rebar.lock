@@ -1,5 +1,5 @@
 {"1.1.0",
-[{<<"bcrypt">>,{pkg,<<"bcrypt">>,<<"1.0.0">>},0},
+[{<<"bcrypt">>,{pkg,<<"bcrypt">>,<<"1.0.2">>},0},
  {<<"bson">>,
   {git,"git://github.com/comtihon/bson-erlang",
        {ref,"14308ab927cfa69324742c3de720578094e0bb19"}},
@@ -68,7 +68,7 @@
   0},
  {<<"mzmetrics">>,
   {git,"git://github.com/erlio/mzmetrics.git",
-       {ref,"6687da85a8f3847ecf0968596d5d3bd9d8cdd431"}},
+       {ref,"09e42f9bf486c05a05658d94e789f3fff1e58840"}},
   0},
  {<<"node_package">>,
   {git,"git://github.com/erlio/node_package.git",
@@ -106,7 +106,7 @@
   0}]}.
 [
 {pkg_hash,[
- {<<"bcrypt">>, <<"1C0F76981D8A7B32E4DAA813408BFCA5BA8B1286196EB771F026D02C710F71C5">>},
+ {<<"bcrypt">>, <<"6735F66D3A7309AF166CE660161009B7D9B9216508B8B2E6A0A9090AF35CB757">>},
  {<<"certifi">>, <<"C3904F192BD5284E5B13F20DB3CEAC9626E14EEACFBB492E19583CF0E37B22BE">>},
  {<<"cowboy">>, <<"A324A8DF9F2316C833A470D918AAF73AE894278B8AA6226CE7A9BF699388F878">>},
  {<<"cowlib">>, <<"9D769A1D062C9C3AC753096F868CA121E2730B9A377DE23DEC0F7E08B1DF84EE">>},
