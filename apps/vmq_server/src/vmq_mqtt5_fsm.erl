@@ -363,7 +363,7 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
     end;
 pre_connect_auth(#mqtt5_disconnect{properties=Properties,
                                    reason_code = RC}, State) ->
-    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, rc2rcn(RC)}),
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, disconnect_rc2rcn(RC)}),
     terminate_by_client(Properties, State);
 pre_connect_auth(_, State) ->
     terminate(?PROTOCOL_ERROR, State).
@@ -610,7 +610,7 @@ connected(#mqtt5_pingreq{}, State) ->
     _ = vmq_metrics:incr(?MQTT5_PINGRESP_SENT),
     {State, [serialise_frame(Frame)]};
 connected(#mqtt5_disconnect{properties=Properties, reason_code=RC}, State) ->
-    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, rc2rcn(RC)}),
+    _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, disconnect_rc2rcn(RC)}),
     terminate_by_client(Properties, State);
 connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
@@ -1621,6 +1621,11 @@ topic_to_qos(Topics) ->
 
 ret_val(Item, Vals, Default) ->
     proplists:get_value(Item, Vals, Default).
+
+disconnect_rc2rcn(0) ->
+    ?NORMAL_DISCONNECT;
+disconnect_rc2rcn(RC) ->
+    rc2rcn(RC).
 
 -spec rcn2rc(reason_code_name()) -> reason_code().
 rcn2rc(RCN) ->
