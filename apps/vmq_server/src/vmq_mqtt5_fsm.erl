@@ -744,12 +744,15 @@ check_enhanced_auth(#mqtt5_connect{properties=#{p_authentication_method := AuthM
             lager:warning(
               "can't continue enhanced auth with client ~p due to ~p",
               [State#state.subscriber_id, RCN]),
-            terminate(RCN, Props0, State);
-        {error, Reason} = E ->
+            connack_terminate(RCN, Props0, State);
+        {error, Reason} ->
             lager:warning(
               "can't continue enhanced auth with client ~p due to ~p",
               [State#state.subscriber_id, Reason]),
-            terminate(E, State)
+            %% Without a specific reason code we don't send a connack
+            %% message. This leaves this decision if a connack should
+            %% be sent to the plugin developer
+            {stop, normal, []}
     end;
 check_enhanced_auth(F, State) ->
     %% No enhanced authentication
