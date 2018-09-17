@@ -596,7 +596,8 @@ metric_values() ->
 
 internal_defs() ->
     flatten([counter_entries_def(), mqtt4_connack_sent_def(),
-             mqtt5_disconnect_def(), mqtt5_connack_sent_def(),
+             mqtt5_disconnect_recv_def(), mqtt5_disconnect_sent_def(),
+             mqtt5_connack_sent_def(),
              mqtt5_puback_sent_def(), mqtt5_puback_received_def(),
              mqtt5_pubrec_sent_def(), mqtt5_pubrec_received_def(),
              mqtt5_pubrel_sent_def(), mqtt5_pubrel_received_def(),
@@ -698,11 +699,31 @@ rcn_to_str(RNC) ->
     %% TODO: replace this with a real textual representation
     atom_to_list(RNC).
 
-mqtt5_disconnect_def() ->
+mqtt5_disconnect_recv_def() ->
     RCNs =
         [
          ?NORMAL_DISCONNECT,
          ?DISCONNECT_WITH_WILL_MSG,
+         ?UNSPECIFIED_ERROR,
+         ?MALFORMED_PACKET,
+         ?PROTOCOL_ERROR,
+         ?IMPL_SPECIFIC_ERROR,
+         ?TOPIC_NAME_INVALID,
+         ?RECEIVE_MAX_EXCEEDED,
+         ?TOPIC_ALIAS_INVALID,
+         ?PACKET_TOO_LARGE,
+         ?MESSAGE_RATE_TOO_HIGH,
+         ?QUOTA_EXCEEDED,
+         ?ADMINISTRATIVE_ACTION,
+         ?PAYLOAD_FORMAT_INVALID],
+    [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
+       {?MQTT5_DISCONNECT_RECEIVED, RCN}, mqtt_disconnect_received,
+       <<"The number of DISCONNECT packets received.">>) || RCN <- RCNs].
+
+mqtt5_disconnect_sent_def() ->
+    RCNs =
+        [
+         ?NORMAL_DISCONNECT,
          ?UNSPECIFIED_ERROR,
          ?MALFORMED_PACKET,
          ?PROTOCOL_ERROR,
@@ -731,8 +752,8 @@ mqtt5_disconnect_def() ->
          ?SUBSCRIPTION_IDS_NOT_SUPPORTED,
          ?WILDCARD_SUBS_NOT_SUPPORTED],
     [m(counter, [{mqtt_version,"5"},{reason_code, rcn_to_str(RCN)}],
-       {?MQTT5_DISCONNECT_RECEIVED, RCN}, mqtt_disconnect_received,
-       <<"The number of DISCONNECT packets received.">>) || RCN <- RCNs].
+       {?MQTT5_DISCONNECT_SENT, RCN}, mqtt_disconnect_sent,
+       <<"The number of DISCONNECT packets sent.">>) || RCN <- RCNs].
 
 mqtt5_connack_sent_def() ->
     RCNs =
