@@ -224,8 +224,8 @@ enhanced_auth_method_not_supported(_Config) ->
     ClientId = "client-enh-auth-bad-auth",
     Connect = packetv5:gen_connect(ClientId, [{keepalive, 10},
                                               {properties, auth_props(?AUTH_METHOD,<<"Client1">>)}]),
-    Disconnect = packetv5:gen_disconnect(?M5_BAD_AUTHENTICATION_METHOD, #{}),
-    {ok, Socket} = packetv5:do_client_connect(Connect, Disconnect, []),
+    Connack = packetv5:gen_connack(0, ?M5_BAD_AUTHENTICATION_METHOD, #{}),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
     {error, closed} = gen_tcp:recv(Socket, 0,100),
 
     ok = vmq_plugin_mgr:disable_module_plugin(
