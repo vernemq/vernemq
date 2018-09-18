@@ -52,7 +52,6 @@ teardown() ->
     vmq_metrics:reset_counters(),
     vmq_server:stop(),
     application:unload(vmq_server),
-    application:unload(plumtree),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
     _ = [eleveldb:destroy(Datadir ++ "/meta/" ++ integer_to_list(I), [])
          || I <- lists:seq(0, 11)],

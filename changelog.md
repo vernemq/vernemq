@@ -67,6 +67,7 @@
   or when load shedding when enqueing messages.
 - Fix ordering bug in webhook subscribe topic authentication and topic rewrites
   (#823)
+- Fix issue when terminating the `vmq_server` application (#828).
 
 ## VerneMQ 1.5.0
 
