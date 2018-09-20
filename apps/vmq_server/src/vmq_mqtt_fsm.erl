@@ -62,7 +62,7 @@
           max_client_id_size=100            :: non_neg_integer(),
 
           %% changeable by auth_on_register
-          shared_subscription_policy=prefer_local :: sg_policy(),
+          shared_subscription_policy=prefer_local :: shared_sub_policy(),
           max_inflight_messages=20          :: non_neg_integer(), %% 0 means unlimited
           max_message_rate=0                :: non_neg_integer(), %% 0 means unlimited
           retry_interval=20000              :: pos_integer(),

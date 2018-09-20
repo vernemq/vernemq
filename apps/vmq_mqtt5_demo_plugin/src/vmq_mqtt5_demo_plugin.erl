@@ -44,7 +44,7 @@ auth_on_register_m5(Peer,SubscriberId,Username,Password,CleanStart,Properties) -
 
 auth_on_register_m5_(_Peer,_SubscriberId,<<"quota_exceeded">>,_Password,_CleanStart,_Properties) ->
     {error, #{reason_code => ?QUOTA_EXCEEDED,
-              properties => #{?P_REASON_STRING => <<"You have exceeded your quota">>}}};
+              reason_string => <<"You have exceeded your quota">>}};
 auth_on_register_m5_(_Peer,_SubscriberId,_Username,_Password,_CleanStart,_Properties) ->
     ok.
 
@@ -61,7 +61,7 @@ auth_on_publish_m5(Username,SubscriberId,QoS,Topic,Payload,IsRetain,Properties) 
 
 auth_on_publish_m5_(_Username,_SubscriberId,_QoS,[<<"invalid">>, <<"topic">>],_Payload,_IsRetain,_Properties) ->
     {error, #{reason_code => ?TOPIC_NAME_INVALID,
-              properties => #{?P_REASON_STRING => <<"Invalid topic name">>}}};
+              reason_string => <<"Invalid topic name">>}};
 auth_on_publish_m5_(_Username,_SubscriberId,_QoS,_Topic,_Payload,_IsRetain,_Properties) ->
     ok.
 
@@ -80,8 +80,8 @@ auth_on_subscribe_m5_(_Username,_SubscriberId,
                       [{[<<"suback">>,<<"withprops">>], _}] = Topics,
                       _Properties) ->
     {ok, #{topics => Topics,
-           properties => #{?P_USER_PROPERTY => [{<<"key">>, <<"val">>}],
-                           ?P_REASON_STRING => <<"successful subscribe">>}}};
+           user_property => [{<<"key">>, <<"val">>}],
+           reason_string => <<"successful subscribe">>}};
 auth_on_subscribe_m5_(_Username,_SubscriberId,_Topics,_Properties) ->
     ok.
 
@@ -97,8 +97,8 @@ on_unsubscribe_m5_(_Username,_SubscriberId,
                    [[<<"unsuback">>,<<"withprops">>]] = Topics,
                    _Properties) ->
     {ok, #{topics => Topics,
-           properties => #{?P_USER_PROPERTY => [{<<"key">>, <<"val">>}],
-                           ?P_REASON_STRING => <<"Unsubscribe worked">>}}};
+           user_property => [{<<"key">>, <<"val">>}],
+           reason_string => <<"Unsubscribe worked">>}};
 on_unsubscribe_m5_(_Username,_SubscriberId,_Topics,_Properties) ->
     ok.
 
@@ -114,20 +114,20 @@ on_auth_m5_(_Username, _SubscriberId,
             #{?P_AUTHENTICATION_METHOD := <<"method1">>,
               ?P_AUTHENTICATION_DATA := <<"client1">>}) ->
     {ok, #{reason_code => ?CONTINUE_AUTHENTICATION,
-           properties => #{?P_AUTHENTICATION_METHOD => <<"method1">>,
-                           ?P_AUTHENTICATION_DATA => <<"server1">>}}};
+           auth_method => <<"method1">>,
+           auth_data => <<"server1">>}};
 on_auth_m5_(_Username, _SubscriberId,
             #{?P_AUTHENTICATION_METHOD := <<"method1">>,
               ?P_AUTHENTICATION_DATA := <<"client2">>}) ->
     {ok, #{reason_code => ?SUCCESS,
-           properties => #{?P_AUTHENTICATION_METHOD => <<"method1">>,
-                           ?P_AUTHENTICATION_DATA => <<"server2">>}}};
+           auth_method => <<"method1">>,
+           auth_data => <<"server2">>}};
 on_auth_m5_(_Username, _SubscriberId,
             #{?P_AUTHENTICATION_METHOD := <<"method1">>,
               ?P_AUTHENTICATION_DATA := <<"baddata">>}) ->
     %% any other auth method we just reject.
     {error, #{reason_code => ?NOT_AUTHORIZED,
-              properties => #{?P_REASON_STRING => <<"Bad authentication data: baddata">>}}};
+              reason_string => <<"Bad authentication data: baddata">>}};
 on_auth_m5_(_Username, _SubscriberId, _Props) ->
     {error, unexpected_authentication_attempt}.
 

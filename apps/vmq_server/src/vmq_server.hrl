@@ -16,7 +16,7 @@
           qos                   :: qos(),
           mountpoint            :: mountpoint(),
           persisted=false       :: flag(),
-          sg_policy=prefer_local:: sg_policy(),
+          sg_policy=prefer_local:: shared_sub_policy(),
           %% TODOv5: need to import the mqtt5 property typespec?
           properties=#{}        :: map(),
           expiry_ts             :: undefined

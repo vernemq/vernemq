@@ -340,20 +340,22 @@ on_auth_bad_method_hook(_, _, #{p_authentication_method := _, p_authentication_d
 
 on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client1">>}) ->
     {ok, #{reason_code => ?CONTINUE_AUTHENTICATION,
-           properties =>
-               #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server1">>}}};
+           auth_method => ?AUTH_METHOD,
+           auth_data => <<"Server1">>}};
 on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client2">>}) ->
     {ok, #{reason_code => ?CONTINUE_AUTHENTICATION,
-           properties =>
-               #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"Server2">>}}};
+           auth_method => ?AUTH_METHOD,
+           auth_data => <<"Server2">>}};
 on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Client3">>}) ->
     %% return ok which will trigger the connack being sent to the
     %% client *or* an AUTH ok
     {ok, #{reason_code => ?SUCCESS,
-           properties => #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"ServerFinal">>}}};
+           auth_method => ?AUTH_METHOD,
+           auth_data => <<"ServerFinal">>}};
 on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_data := <<"Reauth">>}) ->
     {ok, #{reason_code => ?SUCCESS,
-           properties => #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"ReauthOK">>}}}.
+           auth_method => ?AUTH_METHOD,
+           auth_data => <<"ReauthOK">>}}.
 
 auth_on_publish_after_reauth(undefined, _, 1, [<<"some">>, <<"topic">>], <<"some payload">>, false, _) ->
     ok.

@@ -147,8 +147,7 @@ auth_with_properties(Cfg) ->
                                        ?P_AUTHENTICATION_DATA => <<"baddata">>}),
     DisconnectWrongAuth =
         packetv5:gen_disconnect(?M5_NOT_AUTHORIZED,
-                                #{?P_REASON_STRING =>
-                                      <<"Bad authentication data: baddata">>}),
+                                #{?P_REASON_STRING => <<"Bad authentication data: baddata">>}),
     ok = gen_tcp:send(Socket, AuthOutWrong),
     ok = packetv5:expect_frame(Socket, DisconnectWrongAuth),
     {error, closed} = gen_tcp:recv(Socket, 0, 100).
