@@ -141,10 +141,21 @@ uname_password_denied(_Config) ->
 uname_password_success(_Config) ->
     {skip, not_implemented}.
 
-change_subscriber_id(_Config) ->
-    %% TODO: should we be allowed to do this? If we should, should we
-    %% then respond with the assigned_client_id property?
-    {skip, not_implemented}.
+change_subscriber_id(_Cfg) ->
+    Connect = packetv5:gen_connect("change-sub-id-test", []),
+    Connack = packetv5:gen_connack(0, ?M5_SUCCESS, #{}),
+
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           auth_on_register_m5, ?MODULE, hook_auth_on_reg_change_subscriber_id, 6),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           on_register_m5, ?MODULE, hook_on_register_changed_subscriber_id, 4),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           on_register_m5, ?MODULE, hook_on_register_changed_subscriber_id, 4),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           auth_on_register_m5, ?MODULE, hook_auth_on_reg_change_subscriber_id, 6),
+    ok = gen_tcp:close(Socket).
 
 -define(AUTH_METHOD, <<"AuthMethod">>).
 
@@ -356,4 +367,9 @@ on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_d
            properties => #{p_authentication_method => ?AUTH_METHOD, p_authentication_data => <<"ReauthOK">>}}}.
 
 auth_on_publish_after_reauth(undefined, _, 1, [<<"some">>, <<"topic">>], <<"some payload">>, false, _) ->
+    ok.
+
+hook_auth_on_reg_change_subscriber_id(_, {"", <<"change-sub-id-test">>}, _, _, _, _) ->
+    {ok, #{subscriber_id => {"newmp", <<"changed-client-id">>}}}.
+hook_on_register_changed_subscriber_id(_, {"newmp", <<"changed-client-id">>}, _, _) ->
     ok.
