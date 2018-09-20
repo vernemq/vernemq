@@ -7,7 +7,6 @@
 -type msg_expiry_ts() :: {expire_after, non_neg_integer()}
                        | {non_neg_integer(), non_neg_integer()}.
 
--type sg_policy() :: prefer_local | local_only | random.
 -record(vmq_msg, {
           msg_ref               :: msg_ref() | 'undefined', % OTP-12719
           routing_key           :: routing_key() | 'undefined',
