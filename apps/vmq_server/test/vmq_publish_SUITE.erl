@@ -460,14 +460,14 @@ not_allowed_publish_close_qos2_mqtt_3_1_1(_) ->
     gen_tcp:send(Socket, Publish),
     {error, closed} = gen_tcp:recv(Socket, 0, 1000).
 
-drop_dollar_topic_publish(_) ->
-    Connect = packet:gen_connect("drop-dollar-test", [{keepalive, 60},
-                                                      {proto_ver, 4}]),
-    Connack = packet:gen_connack(0),
+
+drop_dollar_topic_publish(Config) ->
+    Connect = mqtt5_v4compat:gen_connect("drop-dollar-test", [{keepalive, 60}], Config),
+    Connack = mqtt5_v4compat:gen_connack(success, Config),
     Topic = "$test/drop",
-    Publish = packet:gen_publish(Topic, 1, <<"message">>, [{mid, 1}]),
+    Publish = mqtt5_v4compat:gen_publish(Topic, 1, <<"message">>, [{mid, 1}], Config),
     vmq_test_utils:reset_tables(),
-    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Config),
     gen_tcp:send(Socket, Publish),
     % receive a timeout instead of a PUBACk
     {error, timeout} = gen_tcp:recv(Socket, 0, 1000).
