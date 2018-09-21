@@ -1013,14 +1013,17 @@ set_last_time_active(false, State) ->
 %%  smaller than the retry interval. In this case we set a new retry timer
 %%  wrt. to the time difference.
 %%
-set_retry(MsgTag, MsgId, Interval, {[],[]} = RetryQueue) ->
-    %% no waiting ack
-    vmq_mqtt_fsm_util:send_after(Interval, retry),
-    Now = os:timestamp(),
-    queue:in({Now, {MsgTag, MsgId}}, RetryQueue);
-set_retry(MsgTag, MsgId, _, RetryQueue) ->
-    Now = os:timestamp(),
-    queue:in({Now, {MsgTag, MsgId}}, RetryQueue).
+set_retry(MsgTag, MsgId, Interval, RetryQueue) ->
+    case queue:is_empty(RetryQueue) of
+        true ->
+            %% no waiting ack
+            vmq_mqtt_fsm_util:send_after(Interval, retry),
+            Now = os:timestamp(),
+            queue:in({Now, {MsgTag, MsgId}}, RetryQueue);
+        false ->
+            Now = os:timestamp(),
+            queue:in({Now, {MsgTag, MsgId}}, RetryQueue)
+    end.
 
 handle_retry(Interval, RetryQueue, WAcks) ->
     %% the fired timer was set for the oldest element in the queue!

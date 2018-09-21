@@ -29,6 +29,50 @@
            {gen_fsm,cancel_timer,1}]}]).
 -endif.
 
+-callback init(Args :: any()) ->
+    {ok, State :: any()} |
+    {ok, State :: any(), Extra :: any()} |
+    {stop, Reason :: any()}.
+-callback handle_call(Req :: any(), From :: any(), State :: any()) ->
+    {reply, Reply :: any(), State :: any()} |
+    {reply, Reply :: any(), State :: any(), Extra :: any()} |
+    {noreply, State :: any()} |
+    {noreply, State :: any(), Extra :: any()} |
+    {stop, Reason :: any(), State :: any()} |
+    {stop, Reason :: any(), Reply :: any(), State :: any()}.
+-callback handle_info(Req :: any(), State :: any()) ->
+    {noreply, State :: any()} |
+    {noreply, State :: any(), Extra :: any()} |
+    {stop, Reason :: any(), State :: any()} |
+    {stop, Reason :: any(), Reply :: any(), State :: any()}.
+-callback handle_cast(Req :: any(), State :: any()) ->
+    {ok, State :: any()} |
+    {ok, State :: any(), Extra :: any()} |
+    {stop, Reason :: any(), State :: any()}.
+-callback terminate(Reason :: any(), State :: any()) ->
+    ok.
+-callback code_change(_OldVsn :: any(), State :: any(), Extra :: any()) ->
+    {ok, State :: any()}.
+-callback on_connect(State :: any()) ->
+    {ok, State :: any()} |
+    {stop, Reason :: any()}.
+-callback on_connect_error(Reason :: any(), State :: any()) ->
+    {ok, State :: any()} |
+    {stop, Reason :: any()}.
+-callback on_disconnect(State :: any()) ->
+    {ok, State :: any()} |
+    {stop, Reason :: any()}.
+-callback on_subscribe(Topics :: [any()], State :: any()) ->
+    {ok, State :: any()} |
+    {stop, Reason :: any()}.
+-callback on_unsubscribe(Topics :: [any()], State :: any()) ->
+    {ok, State :: any()} |
+    {stop, Reason :: any()}.
+-callback on_publish(Topic :: any(), Payload :: binary(), State :: any()) ->
+    {ok, State :: any()} |
+    {stop, Reason :: any()}.
+
+
 %startup
 -export([start_link/3,
     start_link/4,
@@ -59,7 +103,6 @@
     connecting/2,
     disconnecting/2]).
 
--export([behaviour_info/1]).
 -define(MQTT_PROTO_MAJOR, 3).
 -define(MQTT_PROTO_MINOR, 1).
 
@@ -165,21 +208,6 @@ wrap_res(ok, _StateName, _State) ->
     ok.
 
 
-behaviour_info(callbacks) ->
-    [{init,1},
-        {handle_call, 3},
-        {handle_cast, 2},
-        {handle_info, 2},
-        {terminate, 2},
-        {code_change, 3},
-        {on_connect, 1},
-        {on_connect_error, 2},
-        {on_disconnect, 1},
-        {on_subscribe, 2},
-        {on_unsubscribe, 2},
-        {on_publish, 3}];
-behaviour_info(_Other) ->
-    undefined.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% State Callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
