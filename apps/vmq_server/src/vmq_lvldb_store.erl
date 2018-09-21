@@ -40,7 +40,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {ref :: eleveldb:db_ref(),
+-record(state, {ref :: undefined | eleveldb:db_ref(),
                 data_root :: string(),
                 open_opts = [],
                 config :: config(),

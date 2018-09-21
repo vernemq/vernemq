@@ -91,6 +91,9 @@
   kindly sponsored by Diacare-Soft(http://diacare-soft.ru).
 - Fix multiple message retry issues in the MQTT client used by vmq_bridge. 
 - Fix issue where the message ordering wasn't preserved after a client reconnect.
+- Add experimental `vmq_swc` plugin that provides an alternative to the existing
+  `vmq_plumtree` for metadata storage and replication. One must compile VerneMQ
+  with `make swc` to generate a release containing the `vmq_swc` plugin.
 
 ## VerneMQ 1.5.0
 
