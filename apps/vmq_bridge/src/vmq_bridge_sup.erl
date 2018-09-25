@@ -18,7 +18,8 @@
 -behaviour(on_config_change_hook).
 
 %% API
--export([start_link/0]).
+-export([start_link/0,
+         bridge_info/0]).
 -export([change_config/1]).
 
 %% Supervisor callbacks
@@ -34,6 +35,30 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+
+bridge_info() ->
+    lists:map(
+      fun({{_, Host, Port}, Pid, _, _}) ->
+              case vmq_bridge:info(Pid) of
+                  {error, not_started} ->
+                      #{host => Host,
+                        port => Port,
+                        out_buffer_size => $-,
+                        out_buffer_max_size => $-,
+                        out_buffer_dropped => $-
+                       };
+                  {ok, #{out_queue_size := Size,
+                         out_queue_max_size := Max,
+                         out_queue_dropped := Dropped}} ->
+                      #{host => Host,
+                        port => Port,
+                        out_buffer_size => Size,
+                        out_buffer_max_size => Max,
+                        out_buffer_dropped => Dropped
+                       }
+              end
+      end,
+      supervisor:which_children(vmq_bridge_sup)).
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================

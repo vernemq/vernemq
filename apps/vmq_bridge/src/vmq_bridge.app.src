@@ -5,7 +5,8 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  clique
                  ]},
   {mod, { vmq_bridge_app, []}},
   {env, [
@@ -23,6 +24,7 @@
                 %%                  {username, "my_username"}, 
                 %%                  {password, "my_password"},
                 %%                  {try_private, true|false},      % send 'MQIsdp' instead of 'MQIsdp131'
+                %%                  {max_outgoing_buffered_messages, 0},
                 %%                  {topics, [{Pattern, Direction, QoS, LocalPrefix, RemotePrefix}|...]}
                 %%   ]}
             ],

@@ -155,7 +155,25 @@
                                                                    {default, on},
                                                                    hidden
                                                                   ]}.
-%% @doc The cafile is used to define the path to a file containing 
+
+%% @doc Maximum number of outgoing messages the bridge will buffer
+%% while not connected to the remote broker. Messages published while
+%% the buffer is full are dropped. A value of 0 means buffering is
+%% disabled.
+{mapping, "vmq_bridge.tcp.$name.max_outgoing_buffered_messages", "vmq_bridge.config", [
+                                                                {datatype, integer},
+                                                                {default, 0},
+                                                                {include_default, "br0"},
+                                                                {commented, 0}
+                                                               ]}.
+
+{mapping, "vmq_bridge.ssl.$name.max_outgoing_buffered_messages", "vmq_bridge.config", [
+                                                                   {datatype, integer},
+                                                                   {default, 0},
+                                                                   hidden
+                                                                  ]}.
+
+%% @doc The cafile is used to define the path to a file containing
 %% the PEM encoded CA certificates that are trusted. 
 {mapping, "vmq_bridge.ssl.$name.cafile", "vmq_bridge.config", [
                                                               {default, ""},
@@ -305,7 +323,8 @@
                     end,
 
          Mappings = ["clean_session", "client_id", "keepalive_interval", 
-                    "username", "password", "restart_timeout", "try_private", "topic"],
+                    "username", "password", "restart_timeout", "try_private", "topic",
+                     "max_outgoing_buffered_messages"],
                     %% SSL specific
          SSLMapps = ["cafile", "capath", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk"],
          F = fun(Prefix, Suffix, Validator) ->
@@ -357,6 +376,7 @@
          {TCPIPs, TCPPasswords} = lists:unzip(F("vmq_bridge.tcp", "password", StringVal)),
          {TCPIPs, TCPRestartTimeouts} = lists:unzip(F("vmq_bridge.tcp", "restart_timeout", IntVal)),
          {TCPIPs, TCPTryPrivates} = lists:unzip(F("vmq_bridge.tcp", "try_private", BoolVal)),
+         {TCPIPs, TCPMaxBuffer} = lists:unzip(F("vmq_bridge.tcp", "max_outgoing_buffered_messages", IntVal)),
          {TCPIPs, TCPTopics} = lists:unzip(F("vmq_bridge.tcp", "topic", TopicVal)),
 
          {SSLIPs, SSLCleanSessions} = lists:unzip(F("vmq_bridge.ssl", "cleansession", BoolVal)),
@@ -366,6 +386,7 @@
          {SSLIPs, SSLPasswords} = lists:unzip(F("vmq_bridge.ssl", "password", StringVal)),
          {SSLIPs, SSLRestartTimeouts} = lists:unzip(F("vmq_bridge.ssl", "restart_timeout", IntVal)),
          {SSLIPs, SSLTryPrivates} = lists:unzip(F("vmq_bridge.ssl", "try_private", BoolVal)),
+         {SSLIPs, SSLMaxBuffer} = lists:unzip(F("vmq_bridge.ssl", "max_outgoing_buffered_messages", IntVal)),
          {SSLIPs, SSLTopics} = lists:unzip(F("vmq_bridge.ssl", "topic", TopicVal)),
 
          % SSL
@@ -385,7 +406,8 @@
                                        TCPUserNames, 
                                        TCPPasswords,
                                        TCPTryPrivates,
-                                       TCPTopics])), 
+                                       TCPMaxBuffer,
+                                       TCPTopics])),
 
          SSL = lists:zip(SSLIPs, MZip([SSLCleanSessions, 
                                        SSLClientIds, 
@@ -394,6 +416,7 @@
                                        SSLUserNames, 
                                        SSLPasswords,
                                        SSLTryPrivates,
+                                       SSLMaxBuffer,
                                        SSLTopics,
                                        SSLCAFiles, 
                                        SSLCAPaths, 
@@ -409,3 +432,8 @@
          {DropUndef(TCP), DropUndef(SSL)}
  end
 }.
+
+{mapping, "vmq_bridge.clique_lead_line", "vmq_bridge.clique_lead_line",
+ [{datatype, string},
+  hidden,
+  {default, "    bridges     Manage bridges\n"}]}.

@@ -84,6 +84,11 @@
   version 3.6.0 and `lager` to version 3.6.3. We also removed the `eper`
   dependency and suppressed some new warnings due to `erlang:get_stacktrace/0`
   having been deprecated in Erlang/OTP 21.
+- The bridge plugin (`vmq_bridge`) now has an option to queue outgoing message
+  in case the network connection disappears. This is configurable with the
+  `max_outgoing_buffered_messages` setting on a bridge. In addition the bridge
+  now has a simple cli interface under `vmq-admin bridge show`. This work was
+  kindly sponsored by Diacare-Soft(http://diacare-soft.ru).
 
 ## VerneMQ 1.5.0
 

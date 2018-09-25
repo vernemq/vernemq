@@ -14,10 +14,11 @@
 
 -module(vmq_bridge).
 
--behaviour(gen_emqtt).
+-behaviour(gen_mqtt_client).
 
 %% API
--export([start_link/5]).
+-export([start_link/5,
+         info/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -47,7 +48,10 @@
           bridge_transport,
           topics,
           client_opts,
-          subscriptions=[]}).
+          %% subscriptions on the remote broker
+          subs_remote=[],
+          %% subscriptions on the local broker
+          subs_local=[]}).
 
 %%%===================================================================
 %%% API
@@ -55,8 +59,11 @@
 start_link(Type, Host, Port, RegistryMFA, Opts) ->
     gen_server:start_link(?MODULE, [Type, Host, Port, RegistryMFA, Opts], []).
 
+info(Pid) ->
+    gen_server:call(Pid, info).
+
 %%%===================================================================
-%%% gen_emqtt callbacks
+%%% gen_mqtt_client callbacks
 %%%===================================================================
 on_connect({coord, CoordinatorPid} = State) ->
     CoordinatorPid ! connected,
@@ -98,6 +105,13 @@ init([Type, Host, Port, RegistryMFA, Opts]) ->
 init([{coord, _CoordinatorPid} = State]) ->
     {ok, State}.
 
+handle_call(info, _From, #state{client_pid = Pid} = State) ->
+    {ok, Info} = case Pid of
+                     undefined ->
+                         {error, not_started};
+                     Pid -> gen_mqtt_client:info(Pid)
+                 end,
+    {reply, {ok, Info}, State};
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.
 
@@ -107,19 +121,24 @@ handle_cast(_Req, State) ->
     {noreply, State}.
 
 handle_info(init_client, #state{type=Type, host=Host, port=Port,
-                              opts=Opts, client_pid=undefined} = State) ->
+                                opts=Opts, client_pid=undefined,
+                                subscribe_fun=SubscribeFun} = State) ->
     {ok, Pid} = start_client(Type, Host, Port, Opts),
-    {noreply, State#state{client_pid = Pid}};
-
-handle_info(connected, #state{client_pid=Pid, opts=Opts,
-                              subscribe_fun=SubscribeFun,
-                              host=Host, port=Port} = State) ->
+    Topics = proplists:get_value(topics, Opts),
+    Subscriptions = bridge_subscribe(local, Pid, Topics, SubscribeFun, []),
+    {noreply, State#state{client_pid = Pid,
+                          subs_local=Subscriptions}};
+handle_info(connected, #state{host=Host, port=Port,
+                             client_pid=Pid, opts=Opts,
+                             subscribe_fun=SubscribeFun} = State) ->
     lager:debug("connected to: ~s:~p", [Host,Port]),
     Topics = proplists:get_value(topics, Opts),
-    Subscriptions = bridge_subscribe(Pid, Topics, SubscribeFun, []),
-    {noreply, State#state{subscriptions=Subscriptions}};
+    Subscriptions = bridge_subscribe(remote, Pid, Topics, SubscribeFun, []),
+    {noreply, State#state{subs_remote=Subscriptions}};
 handle_info({deliver_remote, Topic, Payload},
-            #state{publish_fun=PublishFun, subscriptions=Subscriptions} = State) ->
+            #state{publish_fun=PublishFun, subs_remote=Subscriptions} = State) ->
+    %% publish an incoming message from the remote broker locally if
+    %% we have a matching subscription
     lists:foreach(
       fun({{in, T}, LocalPrefix}) ->
               case vmq_topic:match(Topic, T) of
@@ -134,12 +153,13 @@ handle_info({deliver_remote, Topic, Payload},
       end, Subscriptions),
     {noreply, State};
 handle_info({deliver, Topic, Payload, _QoS, _IsRetained, _IsDup},
-            #state{subscriptions=Subscriptions, client_pid=ClientPid} = State) ->
+            #state{subs_local=Subscriptions, client_pid=ClientPid} = State) ->
+    %% forward matching, locally published messages to the remote broker.
     lists:foreach(
       fun({{out, T}, QoS, RemotePrefix}) ->
               case vmq_topic:match(Topic, T) of
                   true ->
-                      ok = gen_emqtt:publish(ClientPid, routing_key(RemotePrefix, Topic) ,
+                      ok = gen_mqtt_client:publish(ClientPid, routing_key(RemotePrefix, Topic) ,
                                              Payload, QoS);
                   false ->
                       ok
@@ -155,51 +175,61 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-bridge_subscribe(Pid, [{Topic, in, QoS, LocalPrefix, _} = BT|Rest],
+bridge_subscribe(remote = Type, Pid, [{Topic, in, QoS, LocalPrefix, _} = BT|Rest],
                  SubscribeFun, Acc) ->
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
-            gen_emqtt:subscribe(Pid, TTopic, QoS),
-            bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, TTopic},
-                                                        validate_prefix(LocalPrefix)}|Acc]);
+            gen_mqtt_client:subscribe(Pid, TTopic, QoS),
+            bridge_subscribe(Type, Pid, Rest, SubscribeFun,
+                             [{{in, TTopic},
+                               validate_prefix(LocalPrefix)}|Acc]);
         {error, Reason} ->
             error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
                                      [BT, Reason]),
-            bridge_subscribe(Pid, Rest, SubscribeFun, Acc)
+            bridge_subscribe(Type, Pid, Rest, SubscribeFun, Acc)
     end;
-bridge_subscribe(Pid, [{Topic, out, QoS, _, RemotePrefix} = BT|Rest],
+bridge_subscribe(local = Type, Pid, [{Topic, out, QoS, _, RemotePrefix} = BT|Rest],
                  SubscribeFun, Acc) ->
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
             {ok, _} = SubscribeFun(TTopic),
-            bridge_subscribe(Pid, Rest, SubscribeFun, [{{out, TTopic}, QoS,
-                                                        validate_prefix(RemotePrefix)}|Acc]);
+            bridge_subscribe(Type, Pid, Rest, SubscribeFun,
+                             [{{out, TTopic}, QoS,
+                               validate_prefix(RemotePrefix)}|Acc]);
         {error, Reason} ->
             error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
                                      [BT, Reason]),
-            bridge_subscribe(Pid, Rest, SubscribeFun, Acc)
+            bridge_subscribe(Type, Pid, Rest, SubscribeFun, Acc)
     end;
 
-bridge_subscribe(Pid, [{Topic, both, QoS, LocalPrefix, RemotePrefix} = BT|Rest],
+bridge_subscribe(Type, Pid, [{Topic, both, QoS, LocalPrefix, RemotePrefix} = BT|Rest],
                  SubscribeFun, Acc) ->
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
-            gen_emqtt:subscribe(Pid, TTopic, QoS),
-            {ok, _} = SubscribeFun(TTopic),
-            bridge_subscribe(Pid, Rest, SubscribeFun, [{{in, TTopic},
-                                                        validate_prefix(LocalPrefix)},
-                                                       {{out, TTopic}, QoS,
-                                                        validate_prefix(RemotePrefix)}|Acc]);
+            case Type of
+                remote ->
+                    gen_mqtt_client:subscribe(Pid, TTopic, QoS),
+                    bridge_subscribe(Type, Pid, Rest, SubscribeFun,
+                                     [{{in, TTopic},
+                                       validate_prefix(LocalPrefix)}|Acc]);
+                local ->
+                    {ok, _} = SubscribeFun(TTopic),
+                    bridge_subscribe(Type, Pid, Rest, SubscribeFun,
+                                     [{{out, TTopic}, QoS,
+                                       validate_prefix(RemotePrefix)}|Acc])
+            end;
         {error, Reason} ->
             error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
                                      [BT, Reason]),
-            bridge_subscribe(Pid, Rest, SubscribeFun, Acc)
+            bridge_subscribe(Type, Pid, Rest, SubscribeFun, Acc)
     end;
-bridge_subscribe(_, [], _, Acc) -> Acc.
+bridge_subscribe(Type, Pid, [_|Rest], SubscribeFun, Acc) ->
+    bridge_subscribe(Type, Pid, Rest, SubscribeFun, Acc);
+bridge_subscribe(_, _, [], _, Acc) -> Acc.
 
 start_client(Type, Host, Port, Opts) ->
     ClientOpts = client_opts(Type, Host, Port, Opts),
-    gen_emqtt:start_link(?MODULE, [{coord, self()}], ClientOpts).
+    gen_mqtt_client:start_link(?MODULE, [{coord, self()}], ClientOpts).
 
 validate_prefix(undefined) -> undefined;
 validate_prefix([W|_] = Prefix) when is_binary(W) -> Prefix;
@@ -226,6 +256,7 @@ client_opts(tcp, Host, Port, Opts) ->
      {clean_session, proplists:get_value(cleansession, Opts, false)},
      {keepalive_interval, proplists:get_value(keepalive_interval, Opts)},
      {reconnect_timeout, proplists:get_value(restart_timeout, Opts)},
+     {max_queue_size, proplists:get_value(max_outgoing_buffered_messages, Opts)},
      {transport, {gen_tcp, []}}
      |case proplists:get_value(try_private, Opts, true) of
           true ->
