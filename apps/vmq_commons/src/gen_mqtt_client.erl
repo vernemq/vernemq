@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(gen_emqtt).
+-module(gen_mqtt_client).
 -behavior(gen_fsm).
 -include("vmq_types.hrl").
 
@@ -78,6 +78,7 @@
     start_link/4,
     start/3,
     start/4,
+    info/1,
     subscribe/2,
     subscribe/3,
     unsubscribe/2,
@@ -100,35 +101,44 @@
 -export([
     waiting_for_connack/2,
     connected/2,
-    connecting/2,
-    disconnecting/2]).
+    connecting/2]).
 
 -define(MQTT_PROTO_MAJOR, 3).
--define(MQTT_PROTO_MINOR, 1).
 
--record(state, {host                    :: inet:ip_address(),
-    port                    :: inet:port_number(),
-    sock                    :: gen_tcp:socket() | ssl:socket(),
-    msgid = 1               :: non_neg_integer(),
-    username                :: binary(),
-    password                :: binary(),
-    client                  :: string() ,
-    clean_session = false   :: boolean(),
-    last_will_topic         :: string() | undefined,
-    last_will_msg           :: string() | undefined,
-    last_will_qos           :: non_neg_integer(),
-    buffer = <<>>           :: binary(),
-    reconnect_timeout,
-    keepalive_interval = 60000,
-    retry_interval = 10000,
-    proto_version = ?MQTT_PROTO_MAJOR,
-    %%
-    mod,
-    mod_state=[],
-    transport,
-    parser = <<>>,
-    waiting_acks = dict:new(),
-    info_fun}).
+-record(queue, {
+          queue = queue:new() :: queue:queue(),
+          %% max queue size. 0 means disabled.
+          max = 0 :: non_neg_integer(),
+          size = 0 :: non_neg_integer(),
+          drop = 0 :: non_neg_integer()
+         }).
+
+-type queue() :: #queue{}.
+
+-record(state, {host                     :: inet:ip_address(),
+                port                     :: inet:port_number(),
+                sock                     :: gen_tcp:socket() | ssl:socket(),
+                msgid = 1                :: non_neg_integer(),
+                username                 :: binary(),
+                password                 :: binary(),
+                client                   :: string() ,
+                clean_session = false    :: boolean(),
+                last_will_topic          :: string() | undefined,
+                last_will_msg            :: string() | undefined,
+                last_will_qos            :: non_neg_integer(),
+                buffer = <<>>            :: binary(),
+                o_queue = #queue{}       :: queue(),
+                reconnect_timeout,
+                keepalive_interval = 60000,
+                retry_interval = 10000,
+                proto_version = ?MQTT_PROTO_MAJOR,
+                %%
+                mod,
+                mod_state=[],
+                transport,
+                parser = <<>>,
+                waiting_acks = dict:new(),
+                info_fun}).
 
 start_link(Module, Args, Opts) ->
     GenFSMOpts = proplists:get_value(gen_fsm, Opts, []),
@@ -145,6 +155,9 @@ start(Module, Args, Opts) ->
 start(Name, Module, Args, Opts) ->
     GenFSMOpts = proplists:get_value(gen_fsm, Opts, []),
     gen_fsm:start(Name, ?MODULE, [Module, Args, Opts], GenFSMOpts).
+
+info(Pid) ->
+    gen_fsm:sync_send_all_state_event(Pid, info).
 
 publish(P, Topic, Payload, Qos) ->
     publish(P, Topic, Payload, Qos, false).
@@ -227,16 +240,17 @@ connecting(connect, State) ->
     end;
 connecting(disconnect, State) ->
     {stop,  normal, State};
+connecting({publish, _Topic, _Payload, _QoS, _Retain, _Dup} = Msg, State) ->
+    NewState = maybe_queue_outgoing(Msg, State),
+    {next_state, connecting, NewState};
 connecting(_Event, State) ->
     {next_state, connecting, State}.
 
+waiting_for_connack({publish, _Topic, _Payload, _QoS, _Retain, _Dup} = Msg, State) ->
+    NewState = maybe_queue_outgoing(Msg, State),
+    {next_state, waiting_for_connack, NewState};
 waiting_for_connack(_Event, State) ->
     {next_state, waiting_for_connack, State}.
-
-disconnecting({error, ConnectError}, #state{sock=Sock, transport={Transport,_}} = State) ->
-    Transport:close(Sock),
-    error_logger:error_msg("bridge disconnected due to connection error ~p", [ConnectError]),
-    {stop, ConnectError, State}.
 
 connected({subscribe, Topics}, State=#state{transport={Transport,_}, msgid=MsgId,
     sock=Sock, waiting_acks=WAcks,
@@ -269,6 +283,7 @@ connected({unsubscribe, Topics}, State=#state{transport={Transport, _}, sock=Soc
         WAcks), info_fun=NewInfoFun}};
 
 connected({publish, Topic, Payload, QoS, Retain, Dup}, #state{msgid=MsgId} = State) ->
+    maybe_publish_offline_msgs(State),
     {next_state, connected, send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, State#state{msgid='++'(MsgId)})};
 
 connected({publish, MsgId, Topic, Payload, QoS, Retain, _}, State) ->
@@ -309,16 +324,12 @@ connected(disconnect, State=#state{transport={Transport, _}, sock=Sock}) ->
     send_disconnect(Transport, Sock),
     {stop, normal, State};
 
-connected(maybe_reconnect, #state{client=ClientId, reconnect_timeout=Timeout, transport={Transport, _}, info_fun=InfoFun} = State) ->
-    case Timeout of
-        undefined ->
-            {stop, normal, State};
-        _ ->
-            Transport:close(State#state.sock),
-            gen_fsm:send_event_after(Timeout, connect),
-            NewInfoFun = call_info_fun({reconnect, ClientId}, InfoFun),
-            wrap_res(connecting, on_disconnect, [], State#state{sock=undefined, info_fun=NewInfoFun})
-    end;
+connected(maybe_reconnect,State) ->
+    maybe_reconnect(on_disconnect, [], State);
+
+connected(drain_o_queue,#state{o_queue=Q} = State) ->
+    NewQ = publish_from_queue(Q),
+    {next_state, connected, State#state{o_queue=NewQ}};
 
 connected(_Event, State) ->
     {stop, unknown_event, State}.
@@ -341,7 +352,7 @@ init([Mod, Args, Opts]) ->
     RetryInterval = proplists:get_value(retry_interval, Opts, 10),
     ProtoVer = proplists:get_value(proto_version, Opts, ?MQTT_PROTO_MAJOR),
     InfoFun = proplists:get_value(info_fun, Opts, {fun(_,_) -> ok end, []}),
-
+    MaxQueueSize = proplists:get_value(max_queue_size, Opts, 0),
     {Transport, TransportOpts} = proplists:get_value(transport, Opts, {gen_tcp, []}),
 
     State = #state{host = Host, port = Port, proto_version=ProtoVer,
@@ -350,11 +361,11 @@ init([Mod, Args, Opts]) ->
         reconnect_timeout=case ReconnectTimeout of undefined -> undefined; _ -> 1000 * ReconnectTimeout end,
         keepalive_interval=1000 * KeepAliveInterval,
         retry_interval=1000* RetryInterval, transport={Transport, TransportOpts},
+        o_queue = #queue{max=MaxQueueSize},
         info_fun=InfoFun},
     Res = wrap_res(connecting, init, [Args], State),
     gen_fsm:send_event_after(0, connect),
     Res.
-
 
 handle_info({ssl, Socket, Bin}, StateName, #state{sock=Socket} = State) ->
     #state{transport={Transport, _}, buffer=Buffer} = State,
@@ -381,7 +392,7 @@ handle_info({tcp_closed, Sock}, _, State=#state{sock=Sock, reconnect_timeout=und
 handle_info({tcp_closed, Sock}, _, State=#state{sock=Sock, reconnect_timeout=Timeout}) ->
     gen_fsm:send_event_after(Timeout, connect),
     wrap_res(connecting, on_disconnect, [], State#state{sock=undefined});
-handle_info({tcp_error, Sock, Error}, _, State=#state{sock=Sock, reconnect_timeout=undefined}) ->
+handle_info({tcp_error, Sock, _Error}, _, State=#state{sock=Sock, reconnect_timeout=undefined}) ->
     {stop, normal, State};
 handle_info({tcp_error, Sock, _}, _, State=#state{sock=Sock, reconnect_timeout=Timeout}) ->
     gen_fsm:send_event_after(Timeout, connect),
@@ -408,26 +419,23 @@ handle_frame(waiting_for_connack, #mqtt_connack{return_code=ReturnCode}, State) 
     case ReturnCode of
         ?CONNACK_ACCEPT when Int == 0 ->
             NewInfoFun = call_info_fun({connack_in, ClientId}, InfoFun),
+            maybe_publish_offline_msgs(State),
             wrap_res(connected, on_connect, [], State#state{info_fun=NewInfoFun});
         ?CONNACK_ACCEPT ->
             NewInfoFun = call_info_fun({connack_in, ClientId}, InfoFun),
             Ref = gen_fsm:send_event_after(Int, ping),
+            maybe_publish_offline_msgs(State),
             wrap_res(connected, on_connect, [], State#state{waiting_acks=store(ping, Ref, WAcks), info_fun=NewInfoFun});
         ?CONNACK_PROTO_VER ->
-            gen_fsm:send_event_after(0, {error, {connect_error, ?CONNACK_PROTO_VER}}),
-            wrap_res(disconnecting, on_connect_error, [wrong_protocol_version], State);
+            maybe_reconnect(on_connect_error, [wrong_protocol_version], State);
         ?CONNACK_INVALID_ID ->
-            gen_fsm:send_event_after(0, {error, {connect_error, ?CONNACK_INVALID_ID}}),
-            wrap_res(disconnecting, on_connect_error, [invalid_id], State);
+            maybe_reconnect(on_connect_error, [invalid_id], State);
         ?CONNACK_SERVER ->
-            gen_fsm:send_event_after(0, {error, {connect_error, ?CONNACK_SERVER}}),
-            wrap_res(disconnecting, on_connect_error, [server_not_available], State);
+            maybe_reconnect(on_connect_error, [server_not_available], State);
         ?CONNACK_CREDENTIALS ->
-            gen_fsm:send_event_after(0, {error, {connect_error, ?CONNACK_CREDENTIALS}}),
-            wrap_res(disconnecting, on_connect_error, [invalid_credentials], State);
+            maybe_reconnect(on_connect_error, [invalid_credentials], State);
         ?CONNACK_AUTH ->
-            gen_fsm:send_event_after(0, {error, {connect_error, ?CONNACK_AUTH}}),
-            wrap_res(disconnecting, on_connect_error, [not_authorized], State)
+            maybe_reconnect(on_connect_error, [not_authorized], State)
     end;
 
 handle_frame(connected, #mqtt_suback{message_id=MsgId, qos_table=QoSTable}, State) ->
@@ -565,6 +573,13 @@ handle_frame(connected, #mqtt_disconnect{}, State) ->
 handle_event(Event, StateName, State) ->
     wrap_res(StateName, handle_cast, [Event], State).
 
+handle_sync_event(info, _From, StateName,
+                  #state{o_queue=#queue{size=Size,drop=Drop,max=Max}}=State) ->
+    Info =
+        #{out_queue_size=>Size,
+          out_queue_dropped=>Drop,
+          out_queue_max_size=>Max},
+    {reply, {ok, Info}, StateName, State};
 handle_sync_event(Req, From, StateName, State) ->
     wrap_res(StateName, handle_call, [Req, From], State).
 
@@ -642,6 +657,41 @@ send_frame(Transport, Sock, Frame) ->
             gen_fsm:send_event(self(), maybe_reconnect)
     end.
 
+maybe_reconnect(Fun, Args, #state{client=ClientId, reconnect_timeout=Timeout, transport={Transport,_}, info_fun=InfoFun} = State) ->
+    case Timeout of
+        undefined ->
+            {stop, normal, State};
+        _ ->
+            Transport:close(State#state.sock),
+            gen_fsm:send_event_after(Timeout, connect),
+            NewInfoFun = call_info_fun({reconnect, ClientId}, InfoFun),
+            wrap_res(connecting, Fun, Args, State#state{sock=undefined, info_fun=NewInfoFun})
+    end.
+
+maybe_queue_outgoing(_Msg, #state{o_queue=#queue{max=0}}=State) ->
+    %% queue is disabled
+    State;
+maybe_queue_outgoing(Msg, #state{o_queue=#queue{size=Size,max=Max}=Q}=State)
+  when Size < Max ->
+    State#state{o_queue=queue_outgoing(Msg, Q)};
+maybe_queue_outgoing(_Msg, #state{o_queue=Q}=State) ->
+    %% drop!
+    State#state{o_queue=drop(Q)}.
+
+queue_outgoing(Msg, #queue{size=Size, queue=QQ} = Q) ->
+    Q#queue{size=Size+1, queue=queue:in(Msg,QQ)}.
+
+maybe_publish_offline_msgs(#state{o_queue=#queue{size=Size}}) when Size > 0 ->
+    gen_fsm:send_event(self(), drain_o_queue);
+maybe_publish_offline_msgs(_) -> ok.
+
+publish_from_queue(#queue{size=Size, queue=QQ} = Q) when Size > 0 ->
+    {{value, Msg}, NewQQ} = queue:out(QQ),
+    gen_fsm:send_event(self(), Msg),
+    Q#queue{size=Size-1, queue=NewQQ}.
+
+drop(#queue{drop=D}=Q) ->
+    Q#queue{drop=D+1}.
 
 store(K,V,D) ->
     dict:store(K,V,D).
