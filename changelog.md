@@ -71,6 +71,7 @@
   (#823)
 - Fix issue when terminating the `vmq_server` application (#828).
 - Make VerneMQ build on SmartOS / Illumos / Solaris.
+- Ensure strings passed from Lua to the logger are escaped (#864).
 
 ## VerneMQ 1.5.0
 
