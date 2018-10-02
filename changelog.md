@@ -75,6 +75,8 @@
 - Handle Mongo Date / ISODate datatype properly in Lua / vmq_diversity
   (#857).
 - Optimize subscribe/unsubscribe operations for large fanout cases.
+- Allow non-standard MQTT version 131 (MQTT 3.1 bridge) by default (this was
+  accidentally changed in VerneMQ 1.4.0).
 
 ## VerneMQ 1.5.0
 
