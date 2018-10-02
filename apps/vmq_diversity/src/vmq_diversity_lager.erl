@@ -29,17 +29,21 @@ table() ->
     ].
 
 info([Bin], St) when is_binary(Bin) ->
-    lager:info(binary_to_list(Bin), []),
+    lager:info(esc(Bin), []),
     {[], St}.
 
 error([Bin], St) when is_binary(Bin) ->
-    lager:error(binary_to_list(Bin), []),
+    lager:error(esc(Bin), []),
     {[], St}.
 
 debug([Bin], St) when is_binary(Bin) ->
-    lager:debug(binary_to_list(Bin), []),
+    lager:debug(esc(Bin), []),
     {[], St}.
 
 warning([Bin], St) when is_binary(Bin) ->
-    lager:warning(binary_to_list(Bin), []),
+    lager:warning(esc(Bin), []),
     {[], St}.
+
+esc(Log) when is_binary(Log) ->
+    %% escape tildes (~)
+    re:replace(Log, <<"~">>, <<"~~">>, [global, {return,binary}]).
