@@ -107,9 +107,15 @@ unmap([{K, Map}|Rest], Acc) when is_map(Map) ->
     unmap(Rest, [{K, unmap(Map)}|Acc]);
 unmap([{K, [Map|_] = Maps}|Rest], Acc) when is_map(Map) ->
     unmap(Rest, [{K, unmap(Maps)}|Acc]);
+unmap([{K, {A,B,C}=TS}|Rest], Acc)
+  when is_integer(A), is_integer(B), is_integer(C) ->
+    unmap(Rest, [{K, to_unixtime_millisecs(TS)}|Acc]);
 unmap([{K, V}|Rest], Acc) ->
     unmap(Rest, [{K, V}|Acc]);
 unmap([], Acc) -> lists:reverse(Acc).
+
+to_unixtime_millisecs({MegaSecs,Secs,MicroSecs}) ->
+    MegaSecs * 1000000000 + Secs * 1000 + MicroSecs div 1000.
 
 int(I) when is_integer(I) -> I;
 int(I) when is_number(I) -> round(I).
