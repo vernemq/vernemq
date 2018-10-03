@@ -66,12 +66,12 @@ fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
 fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, {_Node, Group}}|MatchedTopics], Remotes) ->
     fold_(SubscriberId, FoldFun,
           fold__(FoldFun, SubscriberId, Acc,
-                 ets:lookup(vmq_trie_subs, {MP, Group, Topic})),
+                 lookup_subs({MP, Group, Topic})),
           MatchedTopics, Remotes);
 fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, Node}|MatchedTopics], Remotes) when Node == node() ->
     fold_(SubscriberId, FoldFun,
           fold__(FoldFun, SubscriberId, Acc,
-                 ets:lookup(vmq_trie_subs, {MP, Topic})),
+                 lookup_subs({MP, Topic})),
           MatchedTopics, Remotes);
 fold_(SubscriberId, FoldFun, Acc, [{_Topic, Node}|MatchedTopics], Remotes) ->
     case lists:member(Node, Remotes) of
@@ -81,6 +81,15 @@ fold_(SubscriberId, FoldFun, Acc, [{_Topic, Node}|MatchedTopics], Remotes) ->
             fold_(SubscriberId, FoldFun, FoldFun(Node, SubscriberId, Acc), MatchedTopics, [Node|Remotes])
     end;
 fold_(_, _, Acc, [], _) -> Acc.
+
+lookup_subs(Key) ->
+    case ets:lookup(vmq_trie_subs, Key) of
+        [{_, fanout}] ->
+            MS = [{{{Key,'$1'}},[],[{{{Key},'$1'}}]}],
+            ets:select(vmq_trie_subs_fanout, MS);
+         Res ->
+            Res
+    end.
 
 fold__(FoldFun, SubscriberId, Acc, [{_, SubsIdQoS}|Rest]) ->
     fold__(FoldFun, SubscriberId, FoldFun(SubsIdQoS, SubscriberId, Acc), Rest);
@@ -95,7 +104,8 @@ stats() ->
     Mem3 = info(vmq_trie, memory),
     Mem4 = info(vmq_trie_node, memory),
     Mem5 = info(vmq_trie_remote_subs, memory),
-    Memory = Mem1 + Mem2 + Mem3 + Mem4 + Mem5,
+    Mem6 = info(vmq_trie_subs_fanout, memory),
+    Memory = Mem1 + Mem2 + Mem3 + Mem4 + Mem5 + Mem6,
     WordSize = erlang:system_info(wordsize),
     {NrOfSubs + NrOfRemoteSubs, Memory*WordSize}.
 
@@ -127,6 +137,7 @@ init([]) ->
     _ = ets:new(vmq_trie_node, [{keypos, 2}|DefaultETSOpts]),
     _ = ets:new(vmq_trie_topic, [{keypos, 1}|DefaultETSOpts]),
     _ = ets:new(vmq_trie_subs, [bag|DefaultETSOpts]),
+    _ = ets:new(vmq_trie_subs_fanout, [ordered_set|DefaultETSOpts]),
     _ = ets:new(vmq_trie_remote_subs, [{keypos, 1}|DefaultETSOpts]),
     Self = self(),
     spawn_link(
@@ -151,6 +162,10 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call({event, Event}, _From, #state{event_handler=Handler} = State) ->
+    %% used only for testing/microbenchmarking
+    handle_event(Handler, Event),
+    {reply, ok, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -422,13 +437,64 @@ trie_delete_path(MP, [{Node, Word, _}|RestPath]) ->
     end.
 
 add_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS) ->
-    ets:insert(vmq_trie_subs, {{MP, Group, Topic}, {Node, Group, SubscriberId, QoS}}).
+    Key = {MP, Group, Topic},
+    Val = {Node, Group, SubscriberId, QoS},
+    insert_trie_subs(Key, Val).
+
+insert_trie_subs(Key, Val) ->
+    E = {Key, Val},
+    case ets:lookup(vmq_trie_subs, Key) of
+        [] ->
+            ets:insert(vmq_trie_subs, E);
+        [E] ->
+            %% duplicate - do nothing;
+            true;
+        [{Key, fanout}] ->
+            ets:insert(vmq_trie_subs_fanout, {E});
+        [E1] ->
+            %% fanout - move to fanout table
+            ets:delete(vmq_trie_subs, Key),
+            ets:insert(vmq_trie_subs, {Key, fanout}),
+            ets:insert(vmq_trie_subs_fanout, {E}),
+            ets:insert(vmq_trie_subs_fanout, {E1})
+    end.
+
 
 del_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS) ->
-    ets:delete_object(vmq_trie_subs, {{MP, Group, Topic}, {Node, Group, SubscriberId, QoS}}).
+    Key = {MP, Group, Topic},
+    Val = {Node, Group, SubscriberId, QoS},
+    del_trie_subs(Key, Val).
+
+del_trie_subs(Key, Val) ->
+    case ets:lookup(vmq_trie_subs, Key) of
+        [] ->
+             %% do nothing
+            true;
+        [{Key, fanout}] ->
+            %% we optimistically delete the entry from the fanout table
+            ets:delete(vmq_trie_subs_fanout, {Key,Val}),
+
+            %% select to retrieve max 2 results to determine if we
+            %% need to move back to the normal table.
+            MS = [{{{Key,'$1'}},[],[{{{Key},'$1'}}]}],
+            case ets:select(vmq_trie_subs_fanout, MS, 2) of
+                {[E], _Continuation} ->
+                    %% last element in the fanout, move to normal table
+                    ets:delete(vmq_trie_subs_fanout, E),
+                    ets:delete_object(vmq_trie_subs, {Key,fanout}),
+                    ets:insert(vmq_trie_subs, E);
+                {[_,_], _Continuation} ->
+                    %% not last element, do nothing
+                    true
+            end;
+        [{Key,_}] ->
+            ets:delete(vmq_trie_subs, Key)
+    end.
 
 add_subscriber(MP, Topic, SubscriberId, QoS) ->
-    ets:insert(vmq_trie_subs, {{MP, Topic}, {SubscriberId, QoS}}).
+    Key = {MP, Topic},
+    Val = {SubscriberId, QoS},
+    insert_trie_subs(Key, Val).
 
 add_remote_subscriber(MP, Topic, Node) ->
     Key = {MP, Topic},
@@ -449,9 +515,10 @@ get_remote_subscribers(MP, Topic) ->
             [{Topic, Node} || {Node, _} <- Remotes]
     end.
 
-
 del_subscriber(MP, Topic, SubscriberId, QoS) ->
-    ets:delete_object(vmq_trie_subs, {{MP, Topic}, {SubscriberId, QoS}}).
+    Key = {MP, Topic},
+    Val = {SubscriberId, QoS},
+    del_trie_subs(Key, Val).
 
 del_remote_subscriber(MP, Topic, Node) ->
     Key = {MP, Topic},

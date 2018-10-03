@@ -74,6 +74,7 @@
 - Ensure strings passed from Lua to the logger are escaped (#864).
 - Handle Mongo Date / ISODate datatype properly in Lua / vmq_diversity
   (#857).
+- Optimize subscribe/unsubscribe operations for large fanout cases.
 
 ## VerneMQ 1.5.0
 
