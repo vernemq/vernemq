@@ -15,6 +15,7 @@
 
 -include_lib("vmq_commons/include/vmq_types.hrl").
 -include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 
 -export([init/2,
          data_in/2,
@@ -105,6 +106,8 @@ get_protocol_info(_) ->
     {error, unknown_protocol_version}.
 
 
+msg_in({disconnect, ?NORMAL_DISCONNECT}, _FsmState0) ->
+    {stop, normal, []};
 msg_in(disconnect, _FsmState0) ->
     ignore;
 msg_in(close_timeout, _FsmState0) ->
