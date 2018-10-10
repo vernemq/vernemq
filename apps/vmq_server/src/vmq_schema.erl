@@ -48,11 +48,17 @@ translate_listeners(Conf) ->
     IntVal = fun(_, I, _) when is_integer(I) -> I;
                 (_, undefined, Def) -> Def end,
 
-    %% A value looking like "[3,4]" or "[3, 4]"
+    %% A value looking like "[3,4]" or "[3, 4]" or "3,4"
     StringIntegerListVal =
         fun(_, undefined, Def) -> Def;
            (_, Val, _) ->
-                {ok, T, _} = erl_scan:string("[" ++ Val ++ "]."),
+                {ok, T, _}
+                    = case re:run(Val, "\\[.*\\]", []) of
+                          nomatch ->
+                              erl_scan:string("[" ++ Val ++ "].");
+                          {match, _} ->
+                              erl_scan:string(Val ++ ".")
+                      end,
                 {ok, Term} = erl_parse:parse_term(T),
                 Term
         end,
