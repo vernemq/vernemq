@@ -205,6 +205,45 @@
   {default, 11211},
   {commented, 11211}]}.
 
+{mapping, "vmq_diversity.auth_crdb.enabled", "vmq_diversity.auth_cache.crdb.enabled",
+ [{datatype, flag},
+  {default, off}]}.
+{mapping, "vmq_diversity.auth_crdb.script", "vmq_diversity.auth_cache.crdb.file", 
+ [{datatype, file},
+  {default, "{{platform_share_dir}}/lua/auth/crdb.lua"},
+  hidden
+ ]}.
+
+{mapping, "vmq_diversity.crdb.host", "vmq_diversity.db_config.crdb.host", 
+ [{datatype, string},
+  {default, "localhost"},
+  {commented, "localhost"}]}.
+
+{mapping, "vmq_diversity.crdb.port", "vmq_diversity.db_config.crdb.port", 
+ [{datatype, integer},
+  {default, 26257},
+  {commented, 26257}]}.
+
+{mapping, "vmq_diversity.crdb.user", "vmq_diversity.db_config.crdb.user", 
+ [{datatype, string},
+  {default, "root"},
+  {commented, "root"}]}.
+
+{mapping, "vmq_diversity.crdb.password", "vmq_diversity.db_config.crdb.password", 
+ [{datatype, string},
+  {default, "password"},
+  {commented, "password"}]}.
+
+{mapping, "vmq_diversity.crdb.database", "vmq_diversity.db_config.crdb.database", 
+ [{datatype, string},
+  {default, "vernemq_db"},
+  {commented, "vernemq_db"}]}.
+
+{mapping, "vmq_diversity.crdb.pool_size", "vmq_diversity.db_config.crdb.pool_size", 
+ [{datatype, integer},
+  {default, 5},
+  hidden]}.
+
 %% @doc vmq_diversity.<name>.plugin = <file> loads a specific lua
 %% script when `vmq_diversity` starts. The scripts are loaded in the
 %% order defined by the names given, i.e., the script with <name>
