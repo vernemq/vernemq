@@ -149,7 +149,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 check_ready() ->
     Nodes = vmq_peer_service:members(),
-    check_ready(Nodes).
+    check_ready(Nodes),
+    ok.
 
 check_ready(Nodes) ->
     check_ready(Nodes, []),

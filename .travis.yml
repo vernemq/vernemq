@@ -16,10 +16,9 @@ before_install:
 sudo: required
 dist: trusty
 language: erlang
+cache: ccache
 install: true
 otp_release:
-    - 18.3
-    - 19.3
-    - 20.0
+    - 20.3
 before_script: "epmd -daemon"
 script: "./rebar3 as all_tests do eunit, ct"

@@ -1,4 +1,4 @@
-%% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
+%% Copyright 2018 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -11,12 +11,13 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+
 %%%-------------------------------------------------------------------
-%% @doc vmq_plumtree public API
+%% @doc vmq_swc public API
 %% @end
 %%%-------------------------------------------------------------------
 
--module(vmq_plumtree_app).
+-module(vmq_swc_app).
 
 -behaviour(application).
 
@@ -26,9 +27,8 @@
 %%====================================================================
 %% API
 %%====================================================================
-
 start(_StartType, _StartArgs) ->
-    vmq_plumtree_sup:start_link().
+    vmq_swc_sup:start_link().
 
 %%--------------------------------------------------------------------
 stop(_State) ->

@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_lvldb_store_sup).
+-module(vmq_rocksdb_store_sup).
 
 -behaviour(supervisor).
 
@@ -26,7 +26,7 @@
 -export([init/1]).
 
 -define(NR_OF_BUCKETS, 12).
--define(TABLE, vmq_lvldb_store_buckets).
+-define(TABLE, vmq_rocksdb_store_buckets).
 
 %% ===================================================================
 %% API functions
@@ -37,10 +37,10 @@ start_link() ->
     [begin
          {ok, _} = supervisor:start_child(Pid, child_spec(I))
      end || I <- lists:seq(1, ?NR_OF_BUCKETS)],
-    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_write, 2),
-    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_delete, 2),
-    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 1),
-    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_read, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_rocksdb_store, msg_store_write, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_rocksdb_store, msg_store_delete, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_rocksdb_store, msg_store_find, 1),
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_rocksdb_store, msg_store_read, 2),
 
     {ok, Pid}.
 
@@ -57,7 +57,7 @@ get_bucket_pids() ->
     [Pid || [{_, Pid}] <- ets:match(?TABLE, '$1')].
 
 register_bucket_pid(BucketId, BucketPid) ->
-    %% Called from vmq_lvldb_store:init
+    %% Called from vmq_rocksdb_store:init
     ets:insert(?TABLE, {BucketId, BucketPid}),
     ok.
 
@@ -70,6 +70,6 @@ init([]) ->
     {ok, { {one_for_one, 5, 10}, []} }.
 
 child_spec(I) ->
-    {{vmq_lvldb_store_bucket, I},
-     {vmq_lvldb_store, start_link, [I]},
-     permanent, 5000, worker, [vmq_lvldb_store]}.
+    {{vmq_rocksdb_store_bucket, I},
+     {vmq_rocksdb_store, start_link, [I]},
+     permanent, 5000, worker, [vmq_rocksdb_store]}.

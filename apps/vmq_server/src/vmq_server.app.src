@@ -8,6 +8,7 @@
                   stdlib,
                   lager,
                   cowboy,
+                  rocksdb,
                   ranch,
                   os_mon,
                   riak_sysmon,
@@ -94,9 +95,9 @@
         ]},
 
       % default message store opts
-      {msg_store_childspecs, [{vmq_lvldb_store_sup,
-                               {vmq_lvldb_store_sup, start_link, []},
-                               permanent, 5000, supervisor, [vmq_lvldb_store_sup]}]},
+      {msg_store_childspecs, [{vmq_rocksdb_store_sup,
+                               {vmq_rocksdb_store_sup, start_link, []},
+                               permanent, 5000, supervisor, [vmq_rocksdb_store_sup]}]},
       {msg_store_opts, [
                         {store_dir, "./data/msgstore"},
                         {open_retries, 30},

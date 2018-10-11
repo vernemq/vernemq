@@ -38,9 +38,6 @@ start_no_auth(ClusterNode) ->
 
 
 start() ->
-    _ = application:load(plumtree),
-    application:set_env(plumtree, plumtree_data_dir, "./data/" ++ atom_to_list(node())),
-    application:set_env(plumtree, storage_mod, plumtree_leveldb_metadata_manager),
     _ = application:load(setup),
     application:set_env(setup, log_dir, "./log"),
     application:set_env(setup, data_dir, "./data"),
@@ -55,6 +52,9 @@ stop() ->
     _ = [application:stop(App) || App <- [vmq_plugin,
                                           riak_sysmon,
                                           clique,
+                                          vmq_swc,
+                                          jobs,
+                                          rocksdb,
                                           asn1,
                                           public_key,
                                           cowboy,
