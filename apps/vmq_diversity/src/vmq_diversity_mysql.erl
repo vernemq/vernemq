@@ -53,7 +53,7 @@ execute(As, St) ->
                     {[false], St}
             catch
                 E:R ->
-                    lager:error("can't execute query ~p due to ~p", [BQuery, E, R]),
+                    lager:error("can't execute query ~p due to ~p:~p", [BQuery, E, R]),
                     badarg_error(execute_equery, As, St)
             end;
         _ ->
