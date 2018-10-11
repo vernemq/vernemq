@@ -1,7 +1,10 @@
 %% -*- mode: erlang -*-
 %% ex: ft=erlang
 
-%% @doc Allow anonymous users to connect, default is 'off'
+%% @doc Allow anonymous users to connect, default is 'off'. !!NOTE!!
+%% Enabling this completely disables authentication of the clients and
+%% should only be used for testing/development purposes or in case
+%% clients are authenticated by some other means.
 {mapping, "allow_anonymous", "vmq_server.allow_anonymous", [
                                                                {default, off},
                                                                {datatype, flag}
