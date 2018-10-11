@@ -62,7 +62,7 @@ call_function(Pid, Function, Args) ->
     case catch gen_server:call(Pid, {call_function, Function, Args}, infinity) of
         {'EXIT', Reason} ->
             lager:error("can't call into Lua sandbox for function ~p due to ~p", [Function, Reason]),
-            error;
+            {error, Reason};
         Ret ->
             Ret
     end.
