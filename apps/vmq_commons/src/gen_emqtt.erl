@@ -16,7 +16,7 @@
 -behavior(gen_fsm).
 -include("vmq_types.hrl").
 
--ifdef(otp20).
+-ifdef(nowarn_gen_fsm).
 -compile([{nowarn_deprecated_function,
           [{gen_fsm,start,3},
            {gen_fsm,start,4},

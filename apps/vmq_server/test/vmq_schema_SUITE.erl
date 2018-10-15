@@ -1,6 +1,7 @@
 -module(vmq_schema_SUITE).
 
 -compile([nowarn_export_all,export_all]).
+-compile(nowarn_deprecated_function).
 
 -include_lib("common_test/include/ct.hrl").
 

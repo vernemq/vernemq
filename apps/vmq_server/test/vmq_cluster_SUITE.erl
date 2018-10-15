@@ -29,6 +29,8 @@
          hook_auth_on_publish/6,
          hook_auth_on_subscribe/3]).
 
+-compile(nowarn_deprecated_function).
+
 -include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/inet.hrl").
 -include_lib("eunit/include/eunit.hrl").

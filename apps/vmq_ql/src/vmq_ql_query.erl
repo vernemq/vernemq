@@ -38,6 +38,12 @@
 -record(state, {mgr, query, next, result_table}).
 -define(ROWQUERYTIMEOUT, 100).
 
+-ifdef(fun_stacktrace).
+-define(WITH_STACKTRACE(T, R, S), T:R -> S = erlang:get_stacktrace(),).
+-else.
+-define(WITH_STACKTRACE(T, R, S), T:R:S ->).
+-endif.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%    _   ____  _______    __
@@ -208,9 +214,9 @@ select(Fields, From, Where, OrderBy, Limit, RowQueryTimeout) ->
         exit:enough_data ->
             %% Raising inside an ets:fold allows us to stop the fold
             ok;
-        E1:R1 ->
+        ?WITH_STACKTRACE(E1, R1, Stacktrace)
             ets:delete(Results),
-            lager:error("Select query terminated due to ~p ~p, stacktrace: ~p", [E1, R1, erlang:get_stacktrace()]),
+            lager:error("Select query terminated due to ~p ~p, stacktrace: ~p", [E1, R1, Stacktrace]),
             exit({E1, R1})
     end,
     case is_integer(Limit) of
@@ -306,9 +312,9 @@ spawn_initialize_row(CallerRef, CallerPid, RowInitializer, InitRow) ->
     try
         CallerPid ! {CallerRef, {ok, initialize_row(RowInitializer, InitRow)}}
     catch
-        C:E ->
+        ?WITH_STACKTRACE(C, E, Stacktrace)
             lager:warning("Subquery failed. ~nStacktrace:~s",
-                          [lager:pr_stacktrace(erlang:get_stacktrace(), {C,E})]),
+                          [lager:pr_stacktrace(Stacktrace, {C,E})]),
             CallerPid ! {CallerRef, {error, E}}
     end.
 

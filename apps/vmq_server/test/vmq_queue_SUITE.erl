@@ -1,7 +1,7 @@
 -module(vmq_queue_SUITE).
 -include("src/vmq_server.hrl").
 
--ifdef(otp20).
+-ifdef(nowarn_gen_fsm).
 -compile([{nowarn_deprecated_function,
           [{gen_fsm,sync_send_all_state_event,2}]}]).
 -endif.

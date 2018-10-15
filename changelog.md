@@ -80,6 +80,10 @@
 - Improve error messages returned by the `vmq_diversity` plugin so it's easier
   to understand and debug authentication and authorisation issues.
 - Improve performance for looking up queue processes.
+- Make VerneMQ run on Erlang/OTP 21. To do this we had to upgrade `rebar3` to
+  version 3.6.0 and `lager` to version 3.6.3. We also removed the `eper`
+  dependency and suppressed some new warnings due to `erlang:get_stacktrace/0`
+  having been deprecated in Erlang/OTP 21.
 
 ## VerneMQ 1.5.0
 
