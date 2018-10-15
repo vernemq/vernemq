@@ -79,6 +79,7 @@
   accidentally changed in VerneMQ 1.4.0).
 - Improve error messages returned by the `vmq_diversity` plugin so it's easier
   to understand and debug authentication and authorisation issues.
+- Improve performance for looking up queue processes.
 
 ## VerneMQ 1.5.0
 
