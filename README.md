@@ -71,7 +71,7 @@ The following features are also applies to MQTT 5.0 clients:
 Below you'll find a basic introduction to building and starting VerneMQ. For
 more information about the binary package installation, configuration, and
 administration of VerneMQ, please visit our documentation at [VerneMQ
-Documentation](https://vernemq.com/docs) or checkout the product page
+Documentation](https://docs.vernemq.com) or checkout the product page
 [VerneMQ](https://vernemq.com) if you require more information on the available
 commercial [support options](https://vernemq.com/services.html).
 
@@ -117,6 +117,6 @@ instance.
 ### Important links
 
 * #vernemq on freenode IRC
-* [VerneMQ Documentation](http://vernemq.com/docs) 
+* [VerneMQ Documentation](https://docs.vernemq.com) 
 * [Follow us on Twitter (@vernemq)!](https://twitter.com/vernemq)
 
