@@ -89,6 +89,7 @@
   `max_outgoing_buffered_messages` setting on a bridge. In addition the bridge
   now has a simple cli interface under `vmq-admin bridge show`. This work was
   kindly sponsored by Diacare-Soft(http://diacare-soft.ru).
+- Fix multiple message retry issues in the MQTT client used by vmq_bridge. 
 
 ## VerneMQ 1.5.0
 
