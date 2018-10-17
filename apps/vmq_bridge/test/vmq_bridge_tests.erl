@@ -204,9 +204,9 @@ br2b_disconnect_qos2(_) ->
     {ok, Bridge3} = gen_tcp:accept(SSocket),
     ok = packet:expect_packet(Bridge3, "3rd connect", Connect),
     ok = gen_tcp:send(Bridge3, Connack),
+    ok = packet:expect_packet(Bridge3, "2nd pubrel", Pubrel),
     ok = packet:expect_packet(Bridge3, "3rd subscribe", Subscribe3),
     ok = gen_tcp:send(Bridge3, Suback3),
-    ok = packet:expect_packet(Bridge3, "2nd pubrel", Pubrel),
     ok = gen_tcp:send(Bridge3, Pubcomp),
     ok = gen_tcp:close(Bridge3),
     ?_assertEqual(ok, gen_tcp:close(SSocket)).
