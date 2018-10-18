@@ -436,4 +436,4 @@
 {mapping, "vmq_bridge.clique_lead_line", "vmq_bridge.clique_lead_line",
  [{datatype, string},
   hidden,
-  {default, "    bridges     Manage bridges\n"}]}.
+  {default, "    bridge      Manage MQTT bridges\n"}]}.

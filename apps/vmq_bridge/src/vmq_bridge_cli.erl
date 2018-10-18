@@ -45,7 +45,7 @@ show_cmd() ->
 
 bridge_usage() ->
     ["vmq-admin bridge <sub-command>\n\n",
-     "  Manage VerneMQ bridges.\n\n",
+     "  Manage MQTT bridges.\n\n",
      "  Sub-commands:\n",
      "    show        Show information about bridges\n\n",
      "  Use --help after a sub-command for more details.\n"
