@@ -661,6 +661,7 @@ handle_retry(Key, #state{transport={Transport,_}, sock=Sock, waiting_acks=WAcks}
             gen_fsm:send_event(self(), Msg),
             State#state{waiting_acks=maps:remove(Key, WAcks)}
     end.
+
 retry(Key, Message, #state{retry_interval=RetryInterval, waiting_acks=WAcks} = State) ->
     NewRef = gen_fsm:send_event_after(RetryInterval, {retry, Key}),
     NewWAcks = maps:remove(Key, WAcks),
