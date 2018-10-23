@@ -353,7 +353,7 @@ parse_topics(<<L:16/big, Topic:L/binary, Rest/binary>>, ?UNSUBSCRIBE = Sub, Acc)
     end;
 parse_topics(_, _, _) -> {error, cant_parse_topics}.
 
--spec parse_acks(binary(), [reason_code()], [reason_code()]) -> [reason_code()] | {error, cant_parse_acks}.
+-spec parse_acks(binary(), [reason_code()], [reason_code()]) -> {ok, [reason_code()]} | {error, cant_parse_acks}.
 parse_acks(<<>>, Acks, _) ->
     {ok, Acks};
 parse_acks(<<RC:8, Rest/binary>>, Acks, AllowedRCs) ->
