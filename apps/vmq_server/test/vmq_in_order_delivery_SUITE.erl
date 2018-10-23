@@ -245,23 +245,25 @@ recv_pubrel_send_pubcomp(Socket, _, Id, _, Config) ->
     ok = mqtt5_v4compat:expect_packet(Socket, "pubrel", packet:gen_pubrel(Id), Config),
     ok = gen_tcp:send(Socket, mqtt5_v4compat:gen_pubcomp(Id, Config)).
 
-
 recv(_, _, Id, _, _, _, _) when Id > ?NR_OF_MSGS -> ok;
-recv(Socket, Topic, Id, MaxInflightMsgs, Dup, Config, Funs) ->
-    NextId = recv(Socket, Topic, Id, MaxInflightMsgs, MaxInflightMsgs, Dup, Config, Funs),
-    %% dup<might-be-true> only for the first batch of max-inflights,
-    %% after that the messages haven't been sent.
-    recv(Socket, Topic, NextId, MaxInflightMsgs, false, Config, Funs).
+recv(Socket, Topic, Id, MaxInflightMsgs, Dup, Config, Funs0) ->
+    Funs1 = lists:foldr(fun(F, Acc) ->
+                               [fun(I) -> F(Socket, Topic, I, is_dup(I =< MaxInflightMsgs, Dup), Config) end|Acc]
+                        end, [], Funs0),
+    multi_fold_range(Funs1, Id, Id + MaxInflightMsgs),
+    recv(Socket, Topic, Id + MaxInflightMsgs, MaxInflightMsgs, Dup, Config, Funs0).
 
-recv(Socket, Topic, Id, 0, MaxInflightMsgs, Dup, Config, [_|Funs])
-  when Id =< ?NR_OF_MSGS ->
-    recv(Socket, Topic, Id - MaxInflightMsgs, MaxInflightMsgs, MaxInflightMsgs,
-         Dup, Config, Funs);
-recv(Socket, Topic, Id, T, MaxInflightMsgs, Dup, Config, [Fun|_] = Funs)
-  when Id =< ?NR_OF_MSGS ->
-    ok = Fun(Socket, Topic, Id, Dup, Config),
-    recv(Socket, Topic, Id + 1, T - 1, MaxInflightMsgs, Dup, Config, Funs);
-recv(_, _, Id, _, MaxInflightMsgs, _,_, _) -> Id + MaxInflightMsgs.
+is_dup(true = _IsFirstWindow, Dup) -> Dup; % in first batch, Dup is whatever we have provided
+is_dup(false = _IsFirstWindow, _Dup) -> false.
+
+multi_fold_range(Funs, Start, Stop) ->
+    lists:foreach(fun(F) -> fold_range(F, Start, Stop) end, Funs).
+
+fold_range(Fun, Start, Stop) when (Start < Stop) and (Start =< ?NR_OF_MSGS) ->
+    Fun(Start),
+    fold_range(Fun, Start + 1, Stop);
+fold_range(_Fun, _Start, _Stop) -> ok.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
