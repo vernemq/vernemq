@@ -90,6 +90,7 @@
   now has a simple cli interface under `vmq-admin bridge show`. This work was
   kindly sponsored by Diacare-Soft(http://diacare-soft.ru).
 - Fix multiple message retry issues in the MQTT client used by vmq_bridge. 
+- Fix issue where the message ordering wasn't preserved after a client reconnect.
 
 ## VerneMQ 1.5.0
 
