@@ -808,7 +808,7 @@ handle_waiting_acks_and_msgs(State) ->
                       [{deliver_pubrel, {MsgId, Frame}}|Acc];
                   ({_MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
                       [{deliver, QoS, Msg#vmq_msg{dup=true}}|Acc]
-              end, WMsgs,
+              end, lists:reverse(WMsgs),
                 %% 3. the sorted list has the oldest waiting-ack at the head.
                 %% the way we add it to the accumulator 'WMsgs' we have to
                 %% reverse the list to make sure the oldest stays at the head.
