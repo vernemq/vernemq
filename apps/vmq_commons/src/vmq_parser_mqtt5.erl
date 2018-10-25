@@ -3,6 +3,8 @@
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -include("vmq_parser_mqtt5.hrl").
 
+-dialyzer({no_match, utf8/1}).
+
 -export([parse/1, parse/2, serialise/1]).
 
 -export([gen_connect/2,
@@ -353,7 +355,7 @@ parse_topics(<<L:16/big, Topic:L/binary, Rest/binary>>, ?UNSUBSCRIBE = Sub, Acc)
     end;
 parse_topics(_, _, _) -> {error, cant_parse_topics}.
 
--spec parse_acks(binary(), [reason_code()], [reason_code()]) -> [reason_code()] | {error, cant_parse_acks}.
+-spec parse_acks(binary(), [reason_code()], [reason_code()]) -> {ok, [reason_code()]} | {error, cant_parse_acks}.
 parse_acks(<<>>, Acks, _) ->
     {ok, Acks};
 parse_acks(<<RC:8, Rest/binary>>, Acks, AllowedRCs) ->

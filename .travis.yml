@@ -19,7 +19,11 @@ language: erlang
 install: true
 otp_release:
     - 19.3
-    - 20.0
+    - 20.3
     - 21.1
+cache:
+  directories:
+    - plts
+    - plts_base
 before_script: "epmd -daemon"
-script: "./rebar3 as all_tests do eunit, ct"
+script: "./rebar3 as all_tests do eunit, ct, dialyzer"

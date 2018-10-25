@@ -15,6 +15,7 @@
 
 -module(vmq_diversity_cache).
 
+-dialyzer(no_undefined_callbacks).
 -behaviour(gen_server2).
 
 %% API

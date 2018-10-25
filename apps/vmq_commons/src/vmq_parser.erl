@@ -2,6 +2,8 @@
 -include("vmq_types.hrl").
 -export([parse/1, parse/2, serialise/1]).
 
+-dialyzer({no_match, utf8/1}).
+
 -export([gen_connect/2,
          gen_connack/0,
          gen_connack/1,

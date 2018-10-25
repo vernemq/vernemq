@@ -31,6 +31,13 @@
 -module(vmq_ranch_proxy_protocol).
 -behaviour(ranch_transport).
 
+%% apps/vmq_server/src/vmq_ranch_proxy_protocol.erl
+%%  273: The specified type for the 4th argument of connect/4 ([{'dest_address',{byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()}} | {'dest_port',char()} | {'source_address',{byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()}} | {'source_port',char()}]) is not a supertype of 'infinity' | non_neg_integer(), which is expected type for this argument in the callback of the ranch_transport behaviour
+%%
+%% The warning is correct: this is clearly a violation of the ranch
+%% type spec, but we can't do anything about it:
+-dialyzer(no_behaviours).
+
 -export([name/0,
          secure/0,
          messages/0,
@@ -194,7 +201,7 @@ listen(Opts) ->
 -spec accept(proxy_socket(), timeout())
             -> {ok, proxy_socket()} | {error, closed | timeout |
                                        not_proxy_protocol |
-                                       {timeout, proxy_handshake} | atom()}.
+                                       proxy_handshake_timeout | atom()}.
 accept(#proxy_socket{lsocket = LSocket,
                      opts = Opts}, Timeout) ->
     Started = os:timestamp(),
@@ -254,7 +261,7 @@ accept(#proxy_socket{lsocket = LSocket,
                     {error, Other}
             after NextWait ->
                     close(ProxySocket),
-                    {error, {timeout, proxy_handshake}}
+                    {error, proxy_handshake_timeout}
             end;
         {error, Error} ->
             {error, Error}
