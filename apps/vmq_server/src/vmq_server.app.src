@@ -7,6 +7,7 @@
                   kernel,
                   stdlib,
                   lager,
+                  eleveldb,
                   cowboy,
                   ranch,
                   os_mon,

@@ -2,9 +2,9 @@
 #
 # gen_dev dev4 vars.src vars
 #
-# Generate an overlay config for devNNN from vars.src and write to vars
+# Generate an overlay config for devNNN or dev_swcNNN from vars.src and write to vars
 #
-NAME=$1
+NAME=$(echo $1 | sed -e "s/_swc//")
 TEMPLATE=$2
 VARFILE=$3
 

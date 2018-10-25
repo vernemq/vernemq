@@ -1609,3 +1609,7 @@
                                                                   {datatype, integer},
                                                                   hidden
                                                                  ]}.
+
+{mapping, "metadata_plugin", "vmq_server.metadata_impl", [{default, {{ metadata_plugin }} },
+                                                          {datatype, atom},
+                                                          hidden]}.
