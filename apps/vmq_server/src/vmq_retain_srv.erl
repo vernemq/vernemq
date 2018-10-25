@@ -14,6 +14,7 @@
 
 -module(vmq_retain_srv).
 
+-dialyzer(no_undefined_callbacks).
 -behaviour(gen_server2).
 
 %% API functions
