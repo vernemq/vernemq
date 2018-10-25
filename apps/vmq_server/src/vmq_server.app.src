@@ -49,14 +49,14 @@
       {queue_type, fifo}, % fifo vs lifo
       {persistent_client_expiration, 0}, % never
       {max_last_will_delay, 0}, % not allowed
-      {max_drain_time, 100}, 
+      {max_drain_time, 100},
       {max_msgs_per_drain_step, 10},
 
       % default listener / clustering /system opts
       {max_connections, infinity},
       {nr_of_acceptors, 10},
       {listeners, [{mqtt, [
-                           {{{127,0,0,1}, 1889}, [{max_connections, infinity}, 
+                           {{{127,0,0,1}, 1889}, [{max_connections, infinity},
                                               {mountpoint, ""},
                                                   {proxy_protocol, true}]}
                           ]
@@ -79,7 +79,9 @@
                                                    {nr_of_acceptors, 10}]}
                            ]}
       ]},
-      {http_modules, [vmq_metrics_http, vmq_http_mgmt_api, vmq_status_http]},
+      {http_modules, [
+          vmq_metrics_http, vmq_http_mgmt_api,
+          vmq_status_http, vmq_health_http]},
       {outgoing_clustering_buffer_size, 10000},
       {remote_enqueue_timeout, 5000},
       {outgoing_connect_opts, []},
@@ -88,8 +90,8 @@
 
       {tcp_listen_options, [
             {nodelay, true},
-            {linger, {true, 0}}, 
-            {send_timeout, 30000}, 
+            {linger, {true, 0}},
+            {send_timeout, 30000},
             {send_timeout_close, true}
         ]},
 
