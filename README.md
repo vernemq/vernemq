@@ -82,7 +82,7 @@ started, you need to first build VerneMQ.
 
 ### Building VerneMQ
 
-Note: VerneMQ is compatible with Erlang/OTP 18, 19 and 20 and one of
+Note: VerneMQ is compatible with Erlang/OTP 19, 20 and 21 and one of
 these versions is requred to be installed on your system.
 
 Assuming you have a working Erlang installation, building VerneMQ should be as
@@ -120,3 +120,35 @@ instance.
 * [VerneMQ Documentation](https://docs.vernemq.com) 
 * [Follow us on Twitter (@vernemq)!](https://twitter.com/vernemq)
 
+## Experimental plugin: `vmq_swc` a more powerful metadata replication algorithm
+
+As of VerneMQ 1.6 an alternative metadata replication algorithm is part of the
+VerneMQ master and can be found in `apps_opt/vmq_swc`. The plugin is still in an
+experimental stage, but could be already very useful for larger clusters in
+scenarios with *a lot* of clients. As the plugin has quite an overhead in terms of
+compile-time and package size (due to the internal use of RocksDB) it isn't yet
+included in the standard build and requires a specific build profile. Use `make swc` to
+build a VerneMQ release that uses `vmq_swc` instead of the stable `vmq_plumtree` for
+metadata replication.
+
+### Challenges with Plumtree
+
+VerneMQ uses Plumtree for optimistic replication of the metadata, namely
+subscriber data and retained messages. The Plumtree based metadata storage relies
+on Merkle trees for its anti-entropy mechanism, that is a background process that ensures
+the metadata gets synchronized even in the case a broadcasted update operation was
+missed. The initialization as well as the ongoing maintenance of such Merkle trees
+are expensive, especially if *a lot* of items are managed by the tree. Moreover,
+removing items from the tree isn't currently supported (distributed deletes).
+As a consequence one has to look out to not randomly generate data (e.g. by random MQTT
+client ids or random topics used in retained messages).
+
+While some of those issues could be solved by improving the way VerneMQ uses Plumtree
+it would most probably break backward compatibility and would have to wait until 2.0.
+For this reason we decided to look at better alternatives, one that scales to millions
+of items, where we could get rid of the Merkle trees, and get a better way to deal with
+distributed deletes. One promising alternative is *Server Wide Clocks (SWC)*. SWC is a
+novel distributed algorithm that provides multiple advantages. Namely a new efficient
+and lightweight anti-entropy mechanism, reduced per-key causality information, and
+*real* distributed deletes. More about the research behind SWC can be found in the
+[scientific paper](https://haslab.uminho.pt/tome/files/global_logical_clocks.pdf).
