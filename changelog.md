@@ -1,5 +1,7 @@
 # Changelog
 
+## VerneMQ 1.6.0
+
 - Fix issue when calling a function in a Lua script that requires more time to complete than the default `gen_server` timeout (#589). 
 - Silently drop messages published by the client that use a routing key starting with '$'. 
 - Full MQTTv5 support
