@@ -185,10 +185,12 @@
 %% @doc Define the path to a folder containing 
 %% the PEM encoded CA certificates that are trusted. 
 {mapping, "vmq_bridge.ssl.$name.capath", "vmq_bridge.config", [
-                                                              {default, ""},
-                                                              {datatype, file},
-                                                              {include_default, "sbr0"},
-                                                              {commented, "{{platform_etc_dir}}/cacerts"}
+                                                               %% TODO: this option isn't implemented in the bridge and should be fully removed on VerneMQ 2.0
+                                                               {default, ""},
+                                                               {datatype, file},
+                                                               {include_default, "sbr0"},
+                                                               {commented, "{{platform_etc_dir}}/cacerts"},
+                                                               hidden
                                                              ]}. 
 
 %% @doc Set the path to the PEM encoded server certificate.
@@ -326,7 +328,7 @@
                     "username", "password", "restart_timeout", "try_private", "topic",
                      "max_outgoing_buffered_messages"],
                     %% SSL specific
-         SSLMapps = ["cafile", "capath", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk"],
+         SSLMapps = ["cafile", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk"],
          F = fun(Prefix, Suffix, Validator) ->
                      %% get the name value pairs
                      Prefix3 = lists:flatten([Prefix, ".$name"]),
@@ -391,7 +393,6 @@
 
          % SSL
          {SSLIPs, SSLCAFiles} = lists:unzip(F("vmq_bridge.ssl", "cafile", StringVal)),
-         {SSLIPs, SSLCAPaths} = lists:unzip(F("vmq_bridge.ssl", "capath", StringVal)),
          {SSLIPs, SSLCertFiles} = lists:unzip(F("vmq_bridge.ssl", "certfile", StringVal)),
          {SSLIPs, SSLKeyFiles} = lists:unzip(F("vmq_bridge.ssl", "keyfile", StringVal)),
          {SSLIPs, SSLInsecures} = lists:unzip(F("vmq_bridge.ssl", "insecure", BoolVal)),
@@ -419,8 +420,7 @@
                                        SSLMaxBuffer,
                                        SSLTopics,
                                        SSLCAFiles, 
-                                       SSLCAPaths, 
-                                       SSLCertFiles, 
+                                       SSLCertFiles,
                                        SSLKeyFiles, 
                                        SSLInsecures, 
                                        SSLVersions, 

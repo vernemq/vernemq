@@ -16,6 +16,8 @@
 
 -include("vmq_server.hrl").
 
+-dialyzer(no_undefined_callbacks).
+
 -behaviour(gen_server2).
 -behaviour(vmq_reg_view).
 

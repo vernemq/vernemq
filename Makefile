@@ -30,6 +30,14 @@ distclean: clean relclean ballclean
 rpi32: PROFILE = as rpi32
 rpi32: rel
 
+swc:
+	# this instructs the rebar.config.script to adjust the relx config
+	VMQ_METADATA_IMPL=SWC $(MAKE) swc_rel
+
+swc_rel: PROFILE = as swc
+swc_rel: rel
+
+
 ##
 ## Test targets
 ##
@@ -53,7 +61,7 @@ test: compile testclean
 ##
 rel:
 ifeq ($(OVERLAY_VARS),)
-	$(REBAR) $(PROFILE) release --overlay_vars vars.config
+	$(REBAR) $(PROFILE) release
 else
 	cat vars.config > vars_pkg.config
 	cat $(OVERLAY_VARS) >> vars_pkg.config
@@ -80,6 +88,12 @@ dev% :
 	mkdir -p dev
 	./gen_dev $@ vars/dev_vars.config.src vars/$@_vars.config
 	(./rebar3 as $@ release --overlay_vars vars/$@_vars.config)
+
+dev_swc% :
+	mkdir -p dev
+	./gen_dev $@ vars/dev_swc_vars.config.src vars/$@_vars.config
+	(export VMQ_METADATA_IMPL=SWC && ./rebar3 as swc,$@ release --overlay_vars vars/$@_vars.config)
+
 
 APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \
 	xmerl webtool snmp public_key mnesia eunit syntax_tools compiler

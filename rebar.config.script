@@ -1,0 +1,14 @@
+case os:getenv("VMQ_METADATA_IMPL") of
+    "SWC" -> 
+        {relx, RelxConfig0} = lists:keyfind(relx, 1, CONFIG),
+        {release, Version, Apps0} = lists:keyfind(release, 1, RelxConfig0),
+        Apps1 = lists:keyreplace(vmq_plumtree, 1, Apps0, {vmq_swc, load}),
+        RelxConfig1 = lists:keyreplace(release, 1, RelxConfig0, {release, Version, Apps1}),
+        RelxConfig2 = lists:keystore(overlay_vars, 1, RelxConfig1, {overlay_vars, "vars.swc.config"}),
+        {overlay, OverlayConfig0} = lists:keyfind(overlay, 1, RelxConfig2),
+        OverlayConfig1 = [{template, "apps_opt/vmq_swc/priv/vmq_swc.schema", "share/schema/40-vmq_swc.schema"}|OverlayConfig0],
+        RelxConfig3 = lists:keystore(overlay, 1,  RelxConfig2, {overlay, OverlayConfig1}),
+        lists:keyreplace(relx, 1, CONFIG, {relx, RelxConfig3});
+    _ ->
+        CONFIG
+end.

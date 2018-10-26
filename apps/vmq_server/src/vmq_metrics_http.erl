@@ -82,7 +82,6 @@ type(counter) ->
 
 %% backported to support OTP18. TODO: replace with lists:join/2 when
 %% dropping OTP18.
-join(_Sep, []) -> [];
 join(Sep, [H|T]) -> [H|join_prepend(Sep, T)].
 
 join_prepend(_Sep, []) -> [];

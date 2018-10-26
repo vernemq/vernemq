@@ -91,6 +91,11 @@
   kindly sponsored by Diacare-Soft(http://diacare-soft.ru).
 - Fix multiple message retry issues in the MQTT client used by vmq_bridge.
 - Fix issue where the message ordering wasn't preserved after a client reconnect.
+- Add experimental `vmq_swc` plugin that provides an alternative to the existing
+  `vmq_plumtree` for metadata storage and replication. One must compile VerneMQ
+  with `make swc` to generate a release containing the `vmq_swc` plugin.
+- Remove unused `vmq_bridge` ssl `capath` config option. This was never used
+  internally.
 - Added a new HTTP module `vmq_health_http` exposing a `/health` endpoint that
   returns **200** in case the VerneMQ is accepting connection and joined the cluster
   (for clustered setups) or returns **503** in case these conditions are not met.

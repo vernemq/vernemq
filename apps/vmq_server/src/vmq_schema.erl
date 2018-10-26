@@ -116,7 +116,6 @@ translate_listeners(Conf) ->
 
                                                 % SSL
     {SSLIPs, SSLCAFiles} = lists:unzip(extract("listener.ssl", "cafile", StrVal, Conf)),
-    {SSLIPs, SSLCAPaths} = lists:unzip(extract("listener.ssl", "capath", StrVal, Conf)),
     {SSLIPs, SSLDepths} = lists:unzip(extract("listener.ssl", "depth", IntVal, Conf)),
     {SSLIPs, SSLCertFiles} = lists:unzip(extract("listener.ssl", "certfile", StrVal, Conf)),
     {SSLIPs, SSLCiphers} = lists:unzip(extract("listener.ssl", "ciphers", StrVal, Conf)),
@@ -128,7 +127,6 @@ translate_listeners(Conf) ->
 
                                                 % WSS
     {WS_SSLIPs, WS_SSLCAFiles} = lists:unzip(extract("listener.wss", "cafile", StrVal, Conf)),
-    {WS_SSLIPs, WS_SSLCAPaths} = lists:unzip(extract("listener.wss", "capath", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLDepths} = lists:unzip(extract("listener.wss", "depth", IntVal, Conf)),
     {WS_SSLIPs, WS_SSLCertFiles} = lists:unzip(extract("listener.wss", "certfile", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLCiphers} = lists:unzip(extract("listener.wss", "ciphers", StrVal, Conf)),
@@ -140,7 +138,6 @@ translate_listeners(Conf) ->
 
                                                 % VMQS
     {VMQ_SSLIPs, VMQ_SSLCAFiles} = lists:unzip(extract("listener.vmqs", "cafile", StrVal, Conf)),
-    {VMQ_SSLIPs, VMQ_SSLCAPaths} = lists:unzip(extract("listener.vmqs", "capath", StrVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLDepths} = lists:unzip(extract("listener.vmqs", "depth", IntVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLCertFiles} = lists:unzip(extract("listener.vmqs", "certfile", StrVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLCiphers} = lists:unzip(extract("listener.vmqs", "ciphers", StrVal, Conf)),
@@ -151,7 +148,6 @@ translate_listeners(Conf) ->
 
                                                 % HTTPS
     {HTTP_SSLIPs, HTTP_SSLCAFiles} = lists:unzip(extract("listener.https", "cafile", StrVal, Conf)),
-    {HTTP_SSLIPs, HTTP_SSLCAPaths} = lists:unzip(extract("listener.https", "capath", StrVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLDepths} = lists:unzip(extract("listener.https", "depth", IntVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLCertFiles} = lists:unzip(extract("listener.https", "certfile", StrVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLCiphers} = lists:unzip(extract("listener.https", "ciphers", StrVal, Conf)),
@@ -183,7 +179,6 @@ translate_listeners(Conf) ->
                                   SSLNrOfAcceptors,
                                   SSLMountPoint,
                                   SSLCAFiles,
-                                  SSLCAPaths,
                                   SSLDepths,
                                   SSLCertFiles,
                                   SSLCiphers,
@@ -197,7 +192,6 @@ translate_listeners(Conf) ->
                                      WS_SSLNrOfAcceptors,
                                      WS_SSLMountPoint,
                                      WS_SSLCAFiles,
-                                     WS_SSLCAPaths,
                                      WS_SSLDepths,
                                      WS_SSLCertFiles,
                                      WS_SSLCiphers,
@@ -211,7 +205,6 @@ translate_listeners(Conf) ->
                                        VMQ_SSLNrOfAcceptors,
                                        VMQ_SSLMountPoint,
                                        VMQ_SSLCAFiles,
-                                       VMQ_SSLCAPaths,
                                        VMQ_SSLDepths,
                                        VMQ_SSLCertFiles,
                                        VMQ_SSLCiphers,
@@ -222,7 +215,6 @@ translate_listeners(Conf) ->
     HTTPS = lists:zip(HTTP_SSLIPs, MZip([HTTP_SSLMaxConns,
                                          HTTP_SSLNrOfAcceptors,
                                          HTTP_SSLCAFiles,
-                                         HTTP_SSLCAPaths,
                                          HTTP_SSLDepths,
                                          HTTP_SSLCertFiles,
                                          HTTP_SSLCiphers,
@@ -250,7 +242,7 @@ extract(Prefix, Suffix, Val, Conf) ->
     Mappings = ["max_connections", "nr_of_acceptors", "mountpoint"],
     ExcludeRootSuffixes
         = [%% ssl listener specific
-           "cafile", "capath", "depth", "certfile", "ciphers", "crlfile",
+           "cafile", "depth", "certfile", "ciphers", "crlfile",
            "keyfile", "require_certificate", "tls_version",
            "use_identity_as_username",
            %% http listener specific

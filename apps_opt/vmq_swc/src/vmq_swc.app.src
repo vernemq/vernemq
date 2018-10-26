@@ -1,0 +1,34 @@
+{application, vmq_swc,
+ [{description, "A VerneMQ plugin that sets up Server Wide Clocks as metadata storage"},
+  {vsn, git},
+  {registered, []},
+  {mod, { vmq_swc_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    sasl,
+    lager,
+    rocksdb,
+    swc,
+    riak_dt,
+    sext
+   ]},
+  {env,[
+      {vmq_plugin_hooks, [
+            {vmq_swc_plugin, metadata_put, 3, [internal]},
+            {vmq_swc_plugin, metadata_get, 2, [internal]},
+            {vmq_swc_plugin, metadata_delete, 2, [internal]},
+            {vmq_swc_plugin, metadata_fold, 3, [internal]},
+            {vmq_swc_plugin, metadata_subscribe, 1, [internal]},
+
+            {vmq_swc_plugin, cluster_join, 1, [internal]},
+            {vmq_swc_plugin, cluster_leave, 1, [internal]},
+            {vmq_swc_plugin, cluster_members, 0, [internal]},
+            {vmq_swc_plugin, cluster_rename_member, 2, [internal]},
+            {vmq_swc_plugin, cluster_events_add_handler, 2, [internal]},
+            {vmq_swc_plugin, cluster_events_delete_handler, 2, [internal]},
+            {vmq_swc_plugin, cluster_events_call_handler, 3, [internal]}
+      ]}
+  ]},
+  {modules, []}
+ ]}.

@@ -45,12 +45,16 @@ groups() ->
 all() ->
     [{group, schema}].
 
+global_substitutions() ->
+    [{["metadata_plugin"], "vmq_plumtree"},
+     {["listener", "max_connections"], "10000"},
+     {["listener", "nr_of_acceptors"], "100"}].
+
+
 ssl_certs_opts_inheritance_test(_Config) ->
     ConfFun =
         fun(LType) ->
-                [%% required settings the listener translator.
-                 {["listener", "max_connections"], "10000"},
-                 {["listener", "nr_of_acceptors"], "100"},
+                [
                  {["listener", LType, "certfile"], "certfile"},
                  {["listener", LType, "cafile"], "cafile"},
                  {["listener", LType, "keyfile"], "keyfile"},
@@ -62,6 +66,7 @@ ssl_certs_opts_inheritance_test(_Config) ->
 
                  {["listener", LType, "tls_version"], "tlsv1.1"},
                  {["listener", LType, "default"], "127.0.0.1:1234"}
+                 | global_substitutions()
                 ]
         end,
     TestFun =
@@ -95,10 +100,7 @@ ssl_certs_opts_inheritance_test(_Config) ->
 ssl_certs_opts_override_test(_Config) ->
     ConfFun =
         fun(LType) ->
-                [%% required settings the listener translator.
-                 {["listener", "max_connections"], "10000"},
-                 {["listener", "nr_of_acceptors"], "100"},
-
+                [
                  %% protocol defaults
                  {["listener", LType, "certfile"], "certfile"},
                  {["listener", LType, "cafile"], "cafile"},
@@ -120,6 +122,7 @@ ssl_certs_opts_override_test(_Config) ->
                  {["listener", LType, "mylistener", "tls_version"], "tlsv1.2"},
 
                  {["listener", LType, "mylistener"], "127.0.0.1:1234"}
+                 | global_substitutions()
                 ]
         end,
     TestFun =
@@ -152,9 +155,7 @@ ssl_certs_opts_override_test(_Config) ->
 
 
 proxy_protocol_inheritance_test(_Config) ->
-    Conf = [%% required settings the listener translator.
-            {["listener","max_connections"], "10000"},
-            {["listener","nr_of_acceptors"], "100"},
+    Conf = [
             %% tcp/mqtt
             {["listener","tcp","proxy_protocol"], "on"},
             {["listener","tcp","default"],"127.0.0.1:1884"},
@@ -163,15 +164,15 @@ proxy_protocol_inheritance_test(_Config) ->
             {["listener","http","default"],"127.0.0.1:8888"},
             %% websocket
             {["listener","ws","proxy_protocol"], "on"},
-            {["listener","ws","default"],"127.0.0.1:800"}],
+            {["listener","ws","default"],"127.0.0.1:800"}
+            | global_substitutions()
+           ],
     true = expect(Conf, [vmq_server, listeners, mqtt,  {{127,0,0,1}, 1884},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, http,  {{127,0,0,1}, 8888},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, proxy_protocol]).
 
 proxy_protocol_override_test(_Config) ->
-    Conf = [%% required settings the listener translator.
-            {["listener","max_connections"], "10000"},
-            {["listener","nr_of_acceptors"], "100"},
+    Conf = [
             %% tcp/mqtt
             {["listener","tcp","proxy_protocol"], "off"},
             {["listener","tcp","default"],"127.0.0.1:1884"},
@@ -183,15 +184,15 @@ proxy_protocol_override_test(_Config) ->
             %% websocket
             {["listener","ws","proxy_protocol"], "off"},
             {["listener","ws","default"],"127.0.0.1:800"},
-            {["listener","ws","default","proxy_protocol"], "on"}],
+            {["listener","ws","default","proxy_protocol"], "on"}
+            | global_substitutions()
+           ],
     true = expect(Conf, [vmq_server, listeners, mqtt,  {{127,0,0,1}, 1884},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, http,  {{127,0,0,1}, 8888},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, proxy_protocol]).
 
 allowed_protocol_versions_inheritance_test(_Config) ->
-    Conf = [%% required settings the listener translator.
-            {["listener","max_connections"], "10000"},
-            {["listener","nr_of_acceptors"], "100"},
+    Conf = [
             %% tcp/mqtt
             {["listener","tcp","allowed_protocol_versions"], "3,4,5"},
             {["listener","tcp","default"],"127.0.0.1:1884"},
@@ -203,16 +204,16 @@ allowed_protocol_versions_inheritance_test(_Config) ->
             {["listener","ws","default"],"127.0.0.1:800"},
             %% websocket/ssl
             {["listener","wss","allowed_protocol_versions"], "3,4,5"},
-            {["listener","wss","default"],"127.0.0.1:900"}],
+            {["listener","wss","default"],"127.0.0.1:900"}
+            | global_substitutions()
+           ],
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqtt,  {{127,0,0,1}, 1884},allowed_protocol_versions]),
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqtts,  {{127,0,0,1}, 8884},allowed_protocol_versions]),
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, allowed_protocol_versions]),
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqttwss,{{127,0,0,1}, 900}, allowed_protocol_versions]).
 
 allowed_protocol_versions_override_test(_Config) ->
-    Conf = [%% required settings on listener translator.
-            {["listener","max_connections"], "10000"},
-            {["listener","nr_of_acceptors"], "100"},
+    Conf = [
             %% tcp/mqtt
             {["listener","tcp","allowed_protocol_versions"], "3,4"},
             {["listener","tcp","default"],"127.0.0.1:1884"},
@@ -229,6 +230,7 @@ allowed_protocol_versions_override_test(_Config) ->
             {["listener","wss","allowed_protocol_versions"], "3,4"},
             {["listener","wss","default"],"127.0.0.1:900"},
             {["listener","wss","default","allowed_protocol_versions"], "4"}
+            | global_substitutions()
            ],
     [4] = expect(Conf, [vmq_server, listeners, mqtt, {{127,0,0,1}, 1884}, allowed_protocol_versions]),
     [4] = expect(Conf, [vmq_server, listeners, mqttws, {{127,0,0,1}, 800}, allowed_protocol_versions]),
