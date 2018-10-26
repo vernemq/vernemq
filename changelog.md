@@ -94,6 +94,8 @@
 - Add experimental `vmq_swc` plugin that provides an alternative to the existing
   `vmq_plumtree` for metadata storage and replication. One must compile VerneMQ
   with `make swc` to generate a release containing the `vmq_swc` plugin.
+- Remove unused `vmq_bridge` ssl `capath` config option. This was never used
+  internally.
 
 ## VerneMQ 1.5.0
 
