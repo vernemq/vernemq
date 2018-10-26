@@ -80,7 +80,7 @@
   1},
  {<<"plumtree">>,
   {git,"git://github.com/erlio/plumtree.git",
-       {ref,"5e5324eb27e3d6b2d25eb089acc4ed82be5c5733"}},
+       {ref,"69867b81679aa62237433b41d755c704e7437b02"}},
   0},
  {<<"poolboy">>,{pkg,<<"poolboy">>,<<"1.5.1">>},0},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.2.1">>},0},
