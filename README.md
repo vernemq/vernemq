@@ -134,14 +134,15 @@ metadata replication.
 ### Challenges with Plumtree
 
 VerneMQ uses Plumtree for optimistic replication of the metadata, namely
-subscriber data and retained messages. The Plumtree based metadata storage relies
-on Merkle trees for its anti-entropy mechanism, that is a background process that ensures
-the metadata gets synchronized even in the case a broadcasted update operation was
-missed. The initialization as well as the ongoing maintenance of such Merkle trees
-are expensive, especially if *a lot* of items are managed by the tree. Moreover,
-removing items from the tree isn't currently supported (distributed deletes).
-As a consequence one has to look out to not randomly generate data (e.g. by random MQTT
-client ids or random topics used in retained messages).
+subscriber data and retained messages. The Plumtree based metadata storage
+relies on Merkle trees for its anti-entropy mechanism, that is a background
+process that ensures the metadata gets synchronized even in the case an update
+operation was missed. The initialization as well as the ongoing maintenance of
+such Merkle trees are expensive, especially if *a lot* of items are managed by
+the tree. Moreover, removing items from the tree isn't currently supported
+(distributed deletes).  As a consequence one has to look out to not randomly
+generate data (e.g. by random MQTT client ids or random topics used in retained
+messages).
 
 While some of those issues could be solved by improving the way VerneMQ uses Plumtree
 it would most probably break backward compatibility and would have to wait until 2.0.
