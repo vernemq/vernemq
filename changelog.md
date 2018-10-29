@@ -1,5 +1,8 @@
 # Changelog
 
+- Fix `vmq_webhooks` issue where MQTTv5 hooks where not configurable in the
+  `vernemq.conf` file.
+
 ## VerneMQ 1.6.0
 
 - Fix issue when calling a function in a Lua script that requires more time to complete than the default `gen_server` timeout (#589). 
