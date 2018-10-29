@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## VerneMQ 1.5.1
 
 - Fix issue when calling a function in a Lua script that requires more time to complete than the default `gen_server` timeout (#589). 
 - Silently drop messages published by the client that use a routing key starting with '$'. 
@@ -10,6 +10,7 @@
   (#857).
 - Remove unused `vmq_bridge` ssl `capath` config option. This was never used
   internally.
+- Fix bug in Prometheus output (#923).
 
 ## VerneMQ 1.5.0
 

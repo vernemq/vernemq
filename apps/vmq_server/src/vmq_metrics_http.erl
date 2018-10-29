@@ -38,21 +38,30 @@ terminate(_Reason, _Req, _State) ->
 
 reply(Req, <<"text/plain">>) ->
     %% Prometheus output
-    Metrics = vmq_metrics:metrics(),
-    Output = prometheus_output(Metrics, []),
+    Metrics = vmq_metrics:metrics(#{aggregate => false}),
+    Output = prometheus_output(Metrics, {#{}, []}),
     {ok, Req2} = cowboy_req:reply(200, [{<<"content-type">>, <<"text/plain">>}],
                                   Output, Req),
     Req2.
 
-prometheus_output([{#metric_def{type=Type, name=Metric, description=Descr, labels=Labels}, Val}|Metrics], Acc) ->
+prometheus_output([{#metric_def{type=Type, name=Metric, description=Descr, labels=Labels}, Val}|Metrics],
+                  {EmittedAcc, OutAcc}) ->
     BinMetric = atom_to_binary(Metric, utf8),
     BinVal = integer_to_binary(Val),
     Node = atom_to_binary(node(), utf8),
-    HelpLine = [<<"# HELP ">>, BinMetric, <<" ", Descr/binary, "\n">>],
-    TypeLine = [<<"# TYPE ">>, BinMetric, type(Type)],
     Line = line(BinMetric, Node, Labels, BinVal),
-    prometheus_output(Metrics, [HelpLine, TypeLine, Line|Acc]);
-prometheus_output([], Acc) -> Acc.
+    case EmittedAcc of
+        #{Metric := _ } ->
+            prometheus_output(Metrics, {EmittedAcc, [Line|OutAcc]});
+        _ ->
+            HelpLine = [<<"# HELP ">>, BinMetric, <<" ", Descr/binary, "\n">>],
+            TypeLine = [<<"# TYPE ">>, BinMetric, type(Type)],
+            prometheus_output(Metrics, {EmittedAcc#{Metric => true}, [[HelpLine, TypeLine, Line]|OutAcc]})
+    end;
+prometheus_output([], {_, OutAcc}) ->
+    %% Make sure the metrics with HELP and TYPE annotations are
+    %% emitted first.
+    lists:reverse(OutAcc).
 
 line(BinMetric, Node, Labels, BinVal) ->
     [BinMetric,
@@ -60,9 +69,11 @@ line(BinMetric, Node, Labels, BinVal) ->
      labels([{<<"node">>, Node}|Labels]),
      <<"} ">>, BinVal, <<"\n">>].
 
-labels([]) -> [];
-labels([{Key,Val}|Rest]) ->
-    join($,, [label(Key,Val)|labels(Rest)]).
+labels(Labels) ->
+    join($,,
+         lists:map(fun({Key, Val}) ->
+                           label(Key, Val)
+                   end, Labels)).
 
 label(Key, Val) ->
     [ensure_bin(Key), <<"=\"">>, ensure_bin(Val), <<"\"">>].
