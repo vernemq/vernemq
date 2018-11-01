@@ -481,7 +481,7 @@ handle_info(calc_rates, State) ->
             %% but intermediate counter resets or counter overflows
             %% could occur
             lists:foreach(
-              fun({RateEntry, Entry}) -> calc_rate_per_conn(RateEntry, Entry, V) end,
+              fun({RateEntry, Entries}) -> calc_rate_per_conn(RateEntry, Entries, V) end,
               rate_entries());
         _ ->
             lager:warning("can't calculate message rates", [])
@@ -516,10 +516,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%===================================================================
 %%% Internal functions
 %%%===================================================================
-calc_rate_per_conn(REntry, _Entry, 0) ->
+calc_rate_per_conn(REntry, _Entryies, 0) ->
     reset_counter(REntry);
-calc_rate_per_conn(REntry, Entry, N) ->
-    case counter_val_since_last_call(Entry) of
+calc_rate_per_conn(REntry, Entries, N) ->
+    Val = lists:sum(
+            [counter_val_since_last_call(Entry) || Entry <- Entries]),
+    case Val of
         Val when Val >= 0 ->
             reset_counter(REntry, Val div N);
         _ ->
@@ -908,10 +910,10 @@ mqtt4_connack_sent_def() ->
        <<"The number of CONNACK packets sent.">>) || RCN <- RCNs].
 
 rate_entries() ->
-    [{msg_in_rate, mqtt_publish_received},
-     {byte_in_rate, bytes_received},
-     {msg_out_rate, mqtt_publish_sent},
-     {byte_out_rate, bytes_sent}].
+    [{msg_in_rate, [mqtt_publish_received, ?MQTT5_PUBLISH_RECEIVED]},
+     {byte_in_rate, [bytes_received]},
+     {msg_out_rate, [mqtt_publish_sent, ?MQTT5_PUBLISH_SENT]},
+     {byte_out_rate, [bytes_sent]}].
 
 -spec misc_statistics() -> [{metric_id(), any()}].
 misc_statistics() ->
