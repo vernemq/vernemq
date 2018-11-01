@@ -14,9 +14,11 @@ init_per_suite(Config) ->
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:set_config(max_client_id_size, 100),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    enable_hooks(),
     [S,{ct_hooks, vmq_cth}| Config].
 
 end_per_suite(_Config) ->
+    disable_hooks(),
     vmq_test_utils:teardown(),
     _Config.
 
@@ -40,7 +42,8 @@ all() ->
      {group, mqttv5}].
 
 groups() ->
-    Tests = [publish_rate_limit_test],
+    Tests = [publish_rate_limit_test,
+             publish_throttle_test],
     [
      {mqttv4, [], Tests},
      {mqttv5, [], Tests}
@@ -67,7 +70,6 @@ publish_rate_limit_test(Cfg) ->
                   ok = mqtt5_v4compat:expect_packet(Socket, "puback", Puback, Cfg),
                   timer:sleep(Sleep)
           end,
-    enable_hooks(),
     {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Cfg),
     {T, _} =
     timer:tc(
@@ -84,21 +86,53 @@ publish_rate_limit_test(Cfg) ->
     TimeInMs = round(T / 1000),
     io:format(user, "time passed in ms/ sample ~p", [TimeInMs]),
     true = TimeInMs > 10000,
-    ok = gen_tcp:close(Socket),
-    disable_hooks().
+    ok = gen_tcp:close(Socket).
+
+-define(THROTTLEMS, 100).
+
+publish_throttle_test(Cfg) ->
+    ClientId = vmq_cth:ustr(Cfg),
+    Username = <<"throttle-user">>,
+    Password = <<"secret">>,
+    Topic = vmq_cth:utopic(Cfg),
+    Connect = mqtt5_v4compat:gen_connect(ClientId, [{username, Username},
+                                                    {password, Password}], Cfg),
+    Connack = mqtt5_v4compat:gen_connack(success, Cfg),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Cfg),
+
+    Pub = fun(Payload, Id) ->
+                  Publish = mqtt5_v4compat:gen_publish(Topic, 1, Payload, [{mid, Id}], Cfg),
+                  Puback = mqtt5_v4compat:gen_puback(Id, Cfg),
+                  ok = gen_tcp:send(Socket, Publish),
+                  ok = mqtt5_v4compat:expect_packet(Socket, "puback", Puback, Cfg)
+          end,
+    {T1, _} =
+    timer:tc(fun() -> Pub(<<"don't throttle">>, 1) end),
+    io:format(user, "time passed without trottling ~pms~n", [round(T1/1000)]),
+    {T2, _} = timer:tc(fun() -> Pub(<<"throttlenext">>, 2),
+                                Pub(<<"throttlenext">>, 3),
+                                Pub(<<"whatever">>, 4) end),
+    io:format(user, "time passed with trottling ~pms~n", [round(T2/1000)]),
+    true = T2/1000 > (2*?THROTTLEMS),
+    ok = gen_tcp:close(Socket).
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_register(_Peer, {"", _}, <<"rate-limit-test">>, _Password, _Clean) ->
+hook_auth_on_register(_Peer, _, <<"throttle-user">>, _Password, _Clean) -> ok;
+hook_auth_on_register(_Peer, _, <<"rate-limit-test">>, _Password, _Clean) ->
     %% this will limit the publisher to 1 message/sec
     {ok, [{max_message_rate, 1}]}.
 
-hook_auth_on_register_m5(_Peer, {"", _}, <<"rate-limit-test">>, _Password, _CleanStart, _) ->
+hook_auth_on_register_m5(_Peer, _, <<"throttle-user">>, _Password, _CleanStart, _) -> ok;
+hook_auth_on_register_m5(_Peer, _, <<"rate-limit-test">>, _Password, _CleanStart, _) ->
     %% this will limit the publisher to 1 message/sec
     {ok, #{max_message_rate => 1}}.
 
+hook_auth_on_publish(<<"throttle-user">>, _, _MsgId, _, <<"throttlenext">>, _) ->  {ok, [{throttle, ?THROTTLEMS}]};
 hook_auth_on_publish(_, _, _MsgId, _, _, _) -> ok.
+hook_auth_on_publish_m5(<<"throttle-user">>, _, _MsgId, _, <<"throttlenext">>, _, _) -> {ok, #{throttle => ?THROTTLEMS}};
 hook_auth_on_publish_m5(_, _, _MsgId, _, _, _, _) -> ok.
 
 

@@ -118,8 +118,8 @@ handle_fsm_return({ok, FsmState, Rest, Out}, Req, State) ->
     maybe_reply(Out, Req, State#st{fsm_state=FsmState, buffer=Rest});
 handle_fsm_return({switch_fsm, NewFsmMod, FsmState0, Rest, Out}, Req, State) ->
     maybe_reply(Out, Req, State#st{fsm_mod=NewFsmMod, fsm_state=FsmState0, buffer=Rest});
-handle_fsm_return({throttle, FsmState, Rest, Out}, Req, State) ->
-    timer:sleep(1000),
+handle_fsm_return({throttle, MilliSecs, FsmState, Rest, Out}, Req, State) ->
+    timer:sleep(MilliSecs),
     maybe_reply(Out, Req, State#st{fsm_state=FsmState, buffer=Rest});
 handle_fsm_return({ok, FsmState, Out}, Req, State) ->
     maybe_reply(Out, Req, State#st{fsm_state=FsmState});

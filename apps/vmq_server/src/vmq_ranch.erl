@@ -195,8 +195,8 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = 
             end;
         {stop, Reason, Out} ->
             {exit, Reason, State#st{pending=[Pending|Out]}};
-        {throttle, FsmState1, Rest, Out} ->
-            erlang:send_after(1000, self(), restart_work),
+        {throttle, MilliSecs, FsmState1, Rest, Out} ->
+            erlang:send_after(MilliSecs, self(), restart_work),
             maybe_flush(State#st{fsm_state=FsmState1,
                                  pending=[Pending|Out],
                                  throttled=true,

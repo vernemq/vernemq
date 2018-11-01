@@ -516,7 +516,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%===================================================================
 %%% Internal functions
 %%%===================================================================
-calc_rate_per_conn(REntry, _Entryies, 0) ->
+calc_rate_per_conn(REntry, _Entries, 0) ->
     reset_counter(REntry);
 calc_rate_per_conn(REntry, Entries, N) ->
     Val = lists:sum(

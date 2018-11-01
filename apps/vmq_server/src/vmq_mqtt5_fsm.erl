@@ -212,8 +212,8 @@ data_in(Data, SessionState, OutAcc) ->
             case in(Frame, SessionState, true) of
                 {stop, Reason, Out} ->
                     {stop, Reason, lists:reverse([Out|OutAcc])};
-                {NewSessionState, {throttle, Out}} ->
-                    {throttle, NewSessionState, Rest, lists:reverse([Out|OutAcc])};
+                {NewSessionState, {throttle, MS, Out}} ->
+                    {throttle, MS, NewSessionState, Rest, lists:reverse([Out|OutAcc])};
                 {NewSessionState, Out} when byte_size(Rest) == 0 ->
                     %% optimization
                     {ok, NewSessionState, Rest, lists:reverse([Out|OutAcc])};
@@ -226,7 +226,7 @@ msg_in(Msg, SessionState) ->
    case in(Msg, SessionState, false) of
        {stop, Reason, Out} ->
            {stop, Reason, lists:reverse(Out)};
-       {NewSessionState, {throttle, Out}} ->
+       {NewSessionState, {throttle, _, Out}} ->
            %% we ignore throttling for the internal message flow
            {ok, NewSessionState, lists:reverse(Out)};
        {NewSessionState, Out} ->
@@ -324,7 +324,6 @@ maybe_initiate_trace(Frame, TraceFun) ->
 -spec pre_connect_auth(mqtt5_frame(), state()) ->
     {pre_connect_auth, state(), [binary()]} |
     {state(), [binary()]} |
-    {state(), {throttle, [binary()]}} |
     {stop, any(), [binary()]}.
 pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMethod,
                                             p_authentication_data := _} = Props,
@@ -384,7 +383,7 @@ pre_connect_auth(_, State) ->
 
 -spec connected(mqtt5_frame(), state()) ->
     {state(), [binary()]} |
-    {state(), {throttle, [binary()]}} |
+    {state(), {throttle, duration_ms(), [binary()]}} |
     {stop, any(), [binary()]}.
 connected(#mqtt5_publish{message_id=MessageId, topic=Topic,
                          qos=QoS, retain=IsRetain,
@@ -392,7 +391,6 @@ connected(#mqtt5_publish{message_id=MessageId, topic=Topic,
                          properties=Properties},
           #state{subscriber_id={MountPoint,_},
                  shared_subscription_policy=SGPolicy} = State) ->
-    DoThrottle = do_throttle(State),
     %% we disallow Publishes on Topics prefixed with '$'
     %% this allows us to use such prefixes for e.g. '$SYS' Tree
     _ = vmq_metrics:incr(?MQTT5_PUBLISH_RECEIVED),
@@ -416,14 +414,27 @@ connected(#mqtt5_publish{message_id=MessageId, topic=Topic,
     case Ret of
         {error, recv_max_exceeded} ->
             terminate(?RECEIVE_MAX_EXCEEDED, State);
-        Out when is_list(Out) and not DoThrottle ->
-            {State, Out};
         Out when is_list(Out) ->
-            {State, {throttle, Out}};
-        {NewState, Out} when is_list(Out) and not DoThrottle ->
-            {NewState, Out};
-        {NewState, Out} ->
-            {NewState, {throttle, Out}}
+            case do_throttle(#{}, State) of
+                false ->
+                    {State, Out};
+                ThrottleMs when is_integer(ThrottleMs) ->
+                    {State, {throttle, ThrottleMs, Out}}
+            end;
+        {NewState, Out} when is_list(Out) ->
+            case do_throttle(#{}, State) of
+                false ->
+                    {NewState, Out};
+                ThrottleMs when is_integer(ThrottleMs) ->
+                    {NewState, {throttle, ThrottleMs, Out}}
+            end;
+        {NewState, Out, SessCtrl} when is_list(Out), is_map(SessCtrl) ->
+            case do_throttle(SessCtrl, State) of
+                false ->
+                    {NewState, Out};
+                ThrottleMs when is_integer(ThrottleMs) ->
+                    {NewState, {throttle, ThrottleMs, Out}}
+            end
     end;
 connected({mail, QPid, new_data}, #state{queue_pid=QPid} = State) ->
     vmq_queue:active(QPid),
@@ -915,9 +926,9 @@ check_will(#mqtt5_connect{
                                              mountpoint=MountPoint,
                                              properties=Properties
                                             },
-                                    fun(Msg, _) -> {ok, Msg} end,
+                                    fun(Msg, _, SessCtrl) -> {ok, Msg, SessCtrl} end,
                                     State) of
-        {ok, Msg, NewState} ->
+        {ok, Msg, _, NewState} ->
             OutProps0 = maybe_add_topic_alias_max(OutProps, State),
             _ = vmq_metrics:incr({?MQTT5_CONNACK_SENT, ?SUCCESS}),
             {NewState#state{will_msg=Msg},
@@ -930,9 +941,9 @@ check_will(#mqtt5_connect{
             connack_terminate(?NOT_AUTHORIZED, State)
     end.
 
--spec maybe_apply_topic_alias_in(username(), subscriber_id(), msg(), fun(), state()) ->
-                                     {ok, msg(), state()} |
-                                     {error, any()}.
+-spec maybe_apply_topic_alias_in(username(), subscriber_id(), msg(), aop_success_fun(), state()) ->
+                                        {ok, msg(), session_ctrl(), state()} |
+                                        {error, any()}.
 maybe_apply_topic_alias_in(User, SubscriberId,
                         #vmq_msg{routing_key = [],
                                  properties = #{p_topic_alias := AliasId}} = Msg,
@@ -942,8 +953,8 @@ maybe_apply_topic_alias_in(User, SubscriberId,
             case auth_on_publish(User, SubscriberId,
                                  remove_property(p_topic_alias, Msg#vmq_msg{routing_key = AliasedTopic}), Fun)
             of
-                {ok, NewMsg} ->
-                    {ok, NewMsg, State};
+                {ok, NewMsg, SessCtrl} ->
+                    {ok, NewMsg, SessCtrl, State};
                 {error, _} = E -> E
             end;
         error ->
@@ -955,9 +966,9 @@ maybe_apply_topic_alias_in(User, SubscriberId,
                            #vmq_msg{properties = #{p_topic_alias := AliasId}} = Msg,
                            Fun, #state{topic_aliases_in = TA} = State) ->
     case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun) of
-        {ok, #vmq_msg{routing_key=MaybeChangedTopic}=NewMsg} ->
+        {ok, #vmq_msg{routing_key=MaybeChangedTopic}=NewMsg, SessCtrl} ->
             %% TODOv5: Should we check here that the topic isn't empty?
-            {ok, NewMsg, State#state{topic_aliases_in = TA#{AliasId => MaybeChangedTopic}}};
+            {ok, NewMsg, SessCtrl, State#state{topic_aliases_in = TA#{AliasId => MaybeChangedTopic}}};
         {error, _E} = E -> E
     end;
 maybe_apply_topic_alias_in(_User, _SubscriberId, #vmq_msg{routing_key = []},
@@ -970,8 +981,8 @@ maybe_apply_topic_alias_in(User, SubscriberId, Msg,
                            Fun, State) ->
     %% normal publish
     case auth_on_publish(User, SubscriberId, remove_property(p_topic_alias, Msg), Fun) of
-        {ok, NewMsg} ->
-            {ok, NewMsg, State};
+        {ok, NewMsg, SessCtrl} ->
+            {ok, NewMsg, SessCtrl, State};
         {error, _} = E -> E
     end.
 
@@ -1096,9 +1107,10 @@ unsubscribe(User, SubscriberId, Topics0, Props0, UnsubFun) ->
             {ok, Props2}
     end.
 
--spec auth_on_publish(username(), subscriber_id(), msg(),
-                      fun((msg(), list()) -> {ok, msg()} | {error, any()})
-                        ) -> {ok, msg()} | {error, atom() | {reason_code_name(),properties()}}.
+-spec auth_on_publish(username(), subscriber_id(), msg(), aop_success_fun()) ->
+                             {ok, msg()} |
+                             {ok, msg(), session_ctrl()} |
+                             {error, atom() | {reason_code_name(),properties()}}.
 auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                              payload=Payload,
                                              qos=QoS,
@@ -1109,10 +1121,10 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
     HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain), Properties],
     case vmq_plugin:all_till_ok(auth_on_publish_m5, HookArgs) of
         ok ->
-            AuthSuccess(Msg, HookArgs);
+            AuthSuccess(Msg, HookArgs, #{});
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
             HookArgs1 = [User, SubscriberId, QoS, Topic, ChangedPayload, unflag(IsRetain), Properties],
-            AuthSuccess(Msg#vmq_msg{payload=ChangedPayload}, HookArgs1);
+            AuthSuccess(Msg#vmq_msg{payload=ChangedPayload}, HookArgs1, #{});
         {ok, Args0} when is_map(Args0) ->
             #vmq_msg{mountpoint=MP} = Msg,
             ChangedTopic = maps:get(topic, Args0, Topic),
@@ -1131,12 +1143,14 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
             HookArgs1 = [User, SubscriberId, ChangedQoS,
                          ChangedTopic, ChangedPayload,
                          ChangedIsRetain, ChangedProperties],
+            SessCtrl = session_ctrl(Args0),
             AuthSuccess(Msg#vmq_msg{routing_key=ChangedTopic,
                                     payload=ChangedPayload,
                                     qos=ChangedQoS,
                                     retain=ChangedIsRetain,
                                     mountpoint=ChangedMountpoint},
-                        HookArgs1);
+                        HookArgs1,
+                        SessCtrl);
         {error, Vals} when is_map(Vals) ->
             RCN = maps:get(reason_code,Vals, ?NOT_AUTHORIZED),
             Props = maps:fold(
@@ -1149,14 +1163,19 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
             {error, not_allowed}
     end.
 
+session_ctrl(Args) ->
+    maps:with([throttle], Args).
+
 -spec publish(cap_settings(), module(), username(), subscriber_id(), msg(), state()) ->
-                     {ok, msg(), state()} | {error, atom() | {reason_code_name(),properties()}}.
+    {ok, msg(), session_ctrl(), state()} |
+    {error, atom() |
+    {reason_code_name(),properties()}}.
 publish(CAPSettings, RegView, User, {_, ClientId} = SubscriberId, Msg, State) ->
     maybe_apply_topic_alias_in(User, SubscriberId, Msg,
-                               fun(MaybeChangedMsg, HookArgs) ->
+                               fun(MaybeChangedMsg, HookArgs, SessCtrl) ->
                                        case on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish, RegView, ClientId, MaybeChangedMsg),
                                                             HookArgs) of
-                                           ok -> {ok, MaybeChangedMsg};
+                                           ok -> {ok, MaybeChangedMsg, SessCtrl};
                                            E -> E
                                        end
                                end,
@@ -1169,12 +1188,13 @@ on_publish_hook(ok, HookParams) ->
 on_publish_hook(Other, _) -> Other.
 
 -spec dispatch_publish(qos(), msg_id(), msg(), state()) ->
-    list() | {state(), list()} | {error, recv_max_exceeded}.
+    list() |
+    {state(), list()} |
+    {state(), list(), session_ctrl()} |
+    {error, recv_max_exceeded}.
 dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
--spec dispatch_publish_(qos(), msg_id(), msg(), state()) ->
-    list() | {state(), list()} | {error, recv_max_exceeded}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
 dispatch_publish_(1, MessageId, Msg, State) ->
@@ -1184,13 +1204,15 @@ dispatch_publish_(2, MessageId, Msg, State) ->
     CntOrErr = fc_incr_cnt(State#state.fc_receive_cnt, State#state.fc_receive_max_broker, dispatch_2),
     dispatch_publish_qos2(MessageId, Msg, CntOrErr, State).
 
--spec dispatch_publish_qos0(msg_id(), msg(), state()) -> list() | {state(), list()}.
+-spec dispatch_publish_qos0(msg_id(), msg(), state()) ->
+    list() |
+    {state(), list(), session_ctrl()}.
 dispatch_publish_qos0(_MessageId, Msg, State) ->
     #state{username=User, subscriber_id=SubscriberId,
            cap_settings=CAPSettings, reg_view=RegView} = State,
     case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
-        {ok, _, NewState} ->
-            {NewState, []};
+        {ok, _, SessCtrl, NewState} ->
+            {NewState, [], SessCtrl};
         {error, {_,_}} ->
             %% TODOv5: reflect reason code in metrics
             _ = vmq_metrics:incr(?MQTT5_PUBLISH_AUTH_ERROR),
@@ -1202,7 +1224,10 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
     end.
 
 -spec dispatch_publish_qos1(msg_id(), msg(), error | receive_max(), state()) ->
-    list() | {state(), list()} | {error, recv_max_exceeded}.
+    list() |
+    {state(), list()} |
+    {state(), list(), session_ctrl()} |
+    {error, recv_max_exceeded}.
 dispatch_publish_qos1(_, _, error, _) ->
     {error, recv_max_exceeded};
 dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
@@ -1210,12 +1235,14 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
         #state{username=User, subscriber_id=SubscriberId,
                cap_settings=CAPSettings, reg_view=RegView} = State,
     case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
-        {ok, _, NewState} ->
+        {ok, _, SessCtrl, NewState} ->
             _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, ?SUCCESS}),
             %% TODOv5: return properties in puback success
-            {NewState, [serialise_frame(#mqtt5_puback{message_id=MessageId,
-                                                      reason_code=?M5_SUCCESS,
-                                                      properties=#{}})]};
+            {NewState,
+             [serialise_frame(#mqtt5_puback{message_id=MessageId,
+                                            reason_code=?M5_SUCCESS,
+                                            properties=#{}})],
+             SessCtrl};
         {error, {RCN, Props}} when is_map(Props) ->
             _ = vmq_metrics:incr({?MQTT5_PUBACK_SENT, RCN}),
             {State, [serialise_frame(#mqtt5_puback{message_id=MessageId,
@@ -1233,7 +1260,10 @@ dispatch_publish_qos1(MessageId, Msg, _Cnt, State) ->
     end.
 
 -spec dispatch_publish_qos2(msg_id(), msg(), error | receive_max(), state()) ->
-    list() | {state(), list()} | {error, recv_max_exceeded}.
+    list() |
+    {state(), list()} |
+    {state(), list(), session_ctrl()} |
+    {error, recv_max_exceeded}.
 dispatch_publish_qos2(_, _, error, _) ->
     {error, recv_max_exceeded};
 dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
@@ -1241,13 +1271,14 @@ dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
            cap_settings=CAPSettings, reg_view=RegView, waiting_acks=WAcks} = State,
 
     case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
-        {ok, NewMsg, NewState} ->
+        {ok, NewMsg, SessCtrl, NewState} ->
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
             _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?SUCCESS}),
             {NewState#state{
                fc_receive_cnt=Cnt,
                waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
-             [serialise_frame(Frame)]};
+             [serialise_frame(Frame)],
+             SessCtrl};
         {error, {RCN, Props0}} when is_map(Props0) ->
             _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, RCN}),
             {State, [serialise_frame(#mqtt5_pubrec{message_id=MessageId,
@@ -1454,9 +1485,14 @@ set_keepalive_check_timer(KeepAlive) ->
 send_after(Time, Msg) ->
     vmq_mqtt_fsm_util:send_after(Time, Msg).
 
-do_throttle(#state{max_message_rate=0}) -> false;
-do_throttle(#state{max_message_rate=Rate}) ->
-    not vmq_metrics:check_rate(msg_in_rate, Rate).
+-spec do_throttle(session_ctrl(), state()) -> false | duration_ms().
+do_throttle(#{throttle := ThrottleMs}, _) -> ThrottleMs;
+do_throttle(_, #state{max_message_rate=0}) -> false;
+do_throttle(_, #state{max_message_rate=Rate}) ->
+    case vmq_metrics:check_rate(msg_in_rate, Rate) of
+        true -> false;
+        _ -> 1000
+    end.
 
 set_last_time_active(true, State) ->
     Now = os:timestamp(),

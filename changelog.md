@@ -5,6 +5,12 @@
 - Support shared subscriptions in `vmq_bridge`.
 - Fix bug in Prometheus output (#923).
 - Fix `max_message_rate` to include MQTTv5 sessions.
+- Support new `throttle` modifier for the `auth_on_publish` and
+  `auth_on_publish_m5` hooks which will throttle the publishing client by
+  waiting for a given number of milliseconds before reading new data from the
+  client socket. Note, backpressure is not supported for websocket
+  connections. This feature was kindly sponsored by Arduino SA
+  (https://www.arduino.cc/).
 
 ## VerneMQ 1.6.0
 
