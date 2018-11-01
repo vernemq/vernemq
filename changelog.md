@@ -4,6 +4,7 @@
   `vernemq.conf` file.
 - Support shared subscriptions in `vmq_bridge`.
 - Fix bug in Prometheus output (#923).
+- Fix `max_message_rate` to include MQTTv5 sessions.
 
 ## VerneMQ 1.6.0
 
