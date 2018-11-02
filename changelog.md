@@ -4,6 +4,7 @@
   `vernemq.conf` file.
 - Support shared subscriptions in `vmq_bridge`.
 - Fix bug in Prometheus output (#923).
+- Fix issue with long-running `vmq-admin` commands (#644).
 
 ## VerneMQ 1.6.0
 
