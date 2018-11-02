@@ -6,6 +6,7 @@
   `vernemq.conf` file.
 - Fix bug in Prometheus output (#923).
 - Fix `max_message_rate` to include MQTTv5 sessions.
+- Fix issue with long-running `vmq-admin` commands (#644).
 
 ## VerneMQ 1.6.0
 
