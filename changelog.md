@@ -11,6 +11,7 @@
   client socket. Note, backpressure is not supported for websocket
   connections. This feature was kindly sponsored by Arduino SA
   (https://www.arduino.cc/).
+- Fix issue with long-running `vmq-admin` commands (#644).
 
 ## VerneMQ 1.6.0
 
