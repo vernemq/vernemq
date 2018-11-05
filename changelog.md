@@ -2,6 +2,26 @@
 
 - Fix issue when calling a function in a Lua script that requires more time to complete than the default `gen_server` timeout (#589).
 - Silently drop messages published by the client that use a routing key starting with '$'.
+- Fix `vmq_webhooks` issue where MQTTv5 hooks where not configurable in the
+  `vernemq.conf` file.
+- Support shared subscriptions in `vmq_bridge`.
+- Fix bug in Prometheus output (#923).
+- Fix `max_message_rate` to include MQTTv5 sessions.
+- Support new `throttle` modifier for the `auth_on_publish` and
+  `auth_on_publish_m5` hooks which will throttle the publishing client by
+  waiting for a given number of milliseconds before reading new data from the
+  client socket. Note, backpressure is not supported for websocket
+  connections. This feature was kindly sponsored by Arduino SA
+  (https://www.arduino.cc/).
+- Fix issue with long-running `vmq-admin` commands (#644).
+- Added a new HTTP module `vmq_health_http` exposing a `/health` endpoint that
+  returns **200** in case the VerneMQ is accepting connection and joined the cluster
+  (for clustered setups) or returns **503** in case these conditions are not met.
+
+## VerneMQ 1.6.0
+
+- Fix issue when calling a function in a Lua script that requires more time to complete than the default `gen_server` timeout (#589).
+- Silently drop messages published by the client that use a routing key starting with '$'.
 - Full MQTTv5 support
 
   With this release VerneMQ officially supports MQTT protocol version
@@ -96,9 +116,6 @@
   with `make swc` to generate a release containing the `vmq_swc` plugin.
 - Remove unused `vmq_bridge` ssl `capath` config option. This was never used
   internally.
-- Added a new HTTP module `vmq_health_http` exposing a `/health` endpoint that
-  returns **200** in case the VerneMQ is accepting connection and joined the cluster
-  (for clustered setups) or returns **503** in case these conditions are not met.
 
 ## VerneMQ 1.5.0
 

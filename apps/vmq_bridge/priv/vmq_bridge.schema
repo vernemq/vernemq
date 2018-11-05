@@ -111,6 +111,9 @@
 %%  local prefix and subscribe to the resulting topic on the local
 %%  broker. When an outgoing message is processed, the local prefix
 %%  will be removed from the topic then the remote prefix added.
+%%
+%%  For shared subscriptions topic prefixes are applied only to the
+%%  topic part of the subscription.
 {mapping, "vmq_bridge.tcp.br0.topic.1", "vmq_bridge.config", [
                                                               {datatype, string},
                                                               {commented, "topic"}

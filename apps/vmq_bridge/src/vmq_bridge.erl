@@ -141,7 +141,7 @@ handle_info({deliver_remote, Topic, Payload},
     %% we have a matching subscription
     lists:foreach(
       fun({{in, T}, LocalPrefix}) ->
-              case vmq_topic:match(Topic, T) of
+              case match(Topic, T) of
                   true ->
                       ok = PublishFun(routing_key(LocalPrefix, Topic), Payload,
                                      #{});
@@ -157,7 +157,7 @@ handle_info({deliver, Topic, Payload, _QoS, _IsRetained, _IsDup},
     %% forward matching, locally published messages to the remote broker.
     lists:foreach(
       fun({{out, T}, QoS, RemotePrefix}) ->
-              case vmq_topic:match(Topic, T) of
+              case match(Topic, T) of
                   true ->
                       ok = gen_mqtt_client:publish(ClientPid, routing_key(RemotePrefix, Topic) ,
                                              Payload, QoS);
@@ -313,3 +313,8 @@ to_bin([], Acc) ->
     iolist_to_binary(lists:reverse(Acc));
 to_bin([C1, C2 | Rest], Acc) ->
     to_bin(Rest, [(dehex(C1) bsl 4) bor dehex(C2) | Acc]).
+
+match(T1, [<<"$share">>, _Grp | T2]) ->
+    vmq_topic:match(T1, T2);
+match(T1, T2) ->
+    vmq_topic:match(T1, T2).
