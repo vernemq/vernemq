@@ -65,9 +65,8 @@ cluster_status() ->
       [] ->
         {error, "Unknown cluster status"};
       Status ->
-        [{ThisNode, Running}|_] = Status,
-        case Running of
-          true -> ok;
+        case lists:keyfind(ThisNode, 1, Status) of
+          {ThisNode, true} -> ok;
           false -> {error, "Node has not joined cluster"}
         end
     end
