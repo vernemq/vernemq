@@ -12,6 +12,10 @@
   connections. This feature was kindly sponsored by Arduino SA
   (https://www.arduino.cc/).
 - Fix issue with long-running `vmq-admin` commands (#644).
+- Added a new HTTP module `vmq_health_http` exposing a `/health` endpoint that
+  returns **200** when VerneMQ is accepting connections and joined the cluster
+  (for clustered setups) or returns **503** in case any of the two conditions 
+  are not met (#889).
 
 ## VerneMQ 1.6.0
 

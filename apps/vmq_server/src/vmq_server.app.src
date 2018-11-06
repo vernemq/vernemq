@@ -80,7 +80,9 @@
                                                    {nr_of_acceptors, 10}]}
                            ]}
       ]},
-      {http_modules, [vmq_metrics_http, vmq_http_mgmt_api, vmq_status_http]},
+      {http_modules, [
+          vmq_metrics_http, vmq_http_mgmt_api,
+          vmq_status_http, vmq_health_http]},
       {outgoing_clustering_buffer_size, 10000},
       {remote_enqueue_timeout, 5000},
       {outgoing_connect_opts, []},
