@@ -207,7 +207,7 @@ register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
             %% different nodes very frequently... adjust load balancing!!
             timer:sleep(100),
             register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
-        {error, cleanup} ->
+        {error, {cleanup, _Reason}} ->
             %% queue is still cleaning up.
             timer:sleep(100),
             register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
