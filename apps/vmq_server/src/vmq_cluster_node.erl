@@ -174,21 +174,6 @@ handle_message({msg, CallerPid, Ref, Msg}, State) ->
             CallerPid ! {Ref, ok}
     end,
     NewState;
-handle_message({NetEv, _}, #state{reconnect_tref=TRef} = State)
-  when
-      NetEv == tcp_closed;
-      NetEv == tcp_error;
-      NetEv == ssl_closed;
-      NetEv == ssl_error ->
-    NewTRef =
-    case TRef of
-        undefined ->
-            reconnect_timer();
-        _ ->
-            %% we're already reconnecting
-            TRef
-    end,
-    State#state{reachable=false, reconnect_tref=NewTRef};
 handle_message(reconnect, #state{reachable=false} = State) ->
     connect(State#state{reconnect_tref=undefined});
 handle_message({status, CallerPid, Ref}, #state{socket=Socket, reachable=Reachable}=State) ->
@@ -237,6 +222,7 @@ internal_flush(#state{pending=Pending, node=Node, transport=Transport,
             end,
             State#state{pending=[], bytes_send=NewBytesSend};
         {error, Reason} ->
+            close(Transport, Socket),
             lager:warning("can't send ~p bytes to ~p due to ~p, reconnect!",
                           [iolist_size(Pending), Node, Reason]),
             State#state{reachable=false, reconnect_tref=reconnect_timer()}
@@ -247,7 +233,8 @@ connect(#state{node=RemoteNode} = State) ->
     case rpc:call(RemoteNode, ?MODULE, connect_params, [node()]) of
         {Transport, Host, Port} ->
             case connect(Transport, Host, Port,
-                                   lists:usort([binary, {active, true}|ConnectOpts])) of
+                                   lists:usort([binary, {active, false},
+                                                {send_timeout, 0}|ConnectOpts])) of
                 {ok, Socket} ->
                     NodeName = term_to_binary(node()),
                     L = byte_size(NodeName),
@@ -259,6 +246,7 @@ connect(#state{node=RemoteNode} = State) ->
                                         %% !!! remote node is reachable
                                         reachable=true};
                         {error, Reason} ->
+                            close(Transport, Socket),
                             lager:warning("can't initiate connect to cluster node ~p due to ~p", [RemoteNode, Reason]),
                             State#state{reachable=false, reconnect_tref=reconnect_timer()}
                     end;
