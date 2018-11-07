@@ -55,6 +55,7 @@ groups() ->
     V4V5Tests =
         [publish_qos1_test,
          publish_qos2_test,
+         publish_qos2_duplicate_test,
          publish_b2c_disconnect_qos1_test,
          publish_b2c_disconnect_qos2_test,
          publish_c2b_disconnect_qos2_test,
@@ -126,6 +127,56 @@ publish_qos2_test(Config) ->
     ok = expect_alive(Socket),
     ok = gen_tcp:close(Socket).
 
+publish_qos2_duplicate_test(Cfg) ->
+    %% assure that we don't forward duplicates if the client
+    %% republishes a duplicate during a QoS2 flow.
+    PubId = vmq_cth:ustr(Cfg) ++ "-pub",
+    Topic = vmq_cth:utopic(Cfg),
+    ConnectPub = mqtt5_v4compat:gen_connect(PubId, [], Cfg),
+    Connack = mqtt5_v4compat:gen_connack(success, Cfg),
+    Publish = mqtt5_v4compat:gen_publish(Topic, 2, <<"message">>,
+                                 [{mid, 312}], Cfg),
+    PublishDup = mqtt5_v4compat:gen_publish(Topic, 2, <<"message">>,
+                                 [{mid, 312}], Cfg),
+    Pubrec = mqtt5_v4compat:gen_pubrec(312, Cfg),
+    Pubrel = mqtt5_v4compat:gen_pubrel(312, Cfg),
+    Pubcomp = mqtt5_v4compat:gen_pubcomp(312, Cfg),
+    {ok, PubSocket} = mqtt5_v4compat:do_client_connect(ConnectPub, Connack, [], Cfg),
+
+    SubId = vmq_cth:ustr(Cfg) ++ "-sub",
+    Subscribe = mqtt5_v4compat:gen_subscribe(3265, Topic, 0, Cfg),
+    Suback = mqtt5_v4compat:gen_suback(3265, 0, Cfg),
+    RecvPublish = mqtt5_v4compat:gen_publish(Topic, 0, <<"message">>, [], Cfg),
+    ConnectSub = mqtt5_v4compat:gen_connect(SubId, [], Cfg),
+    {ok, SubSocket} = mqtt5_v4compat:do_client_connect(ConnectSub, Connack, [], Cfg),
+
+
+    enable_on_publish(),
+    enable_on_subscribe(),
+
+    %% subscribe to the topic
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    ok = mqtt5_v4compat:expect_packet(SubSocket, "suback", Suback, Cfg),
+
+    %% start qos2 flow with a duplicate publish
+    ok = gen_tcp:send(PubSocket, Publish),
+    ok = mqtt5_v4compat:expect_packet(PubSocket, "pubrec", Pubrec, Cfg),
+    ok = gen_tcp:send(PubSocket, PublishDup),
+    ok = mqtt5_v4compat:expect_packet(PubSocket, "pubrec", Pubrec, Cfg),
+    ok = gen_tcp:send(PubSocket, Pubrel),
+    ok = mqtt5_v4compat:expect_packet(PubSocket, "pubcomp", Pubcomp, Cfg),
+    disable_on_publish(),
+    disable_on_subscribe(),
+    ok = expect_alive(PubSocket),
+    ok = gen_tcp:close(PubSocket),
+
+    %% verify that we only recieve the first published message and not
+    %% the duplicate.
+    ok = mqtt5_v4compat:expect_packet(SubSocket, "publish", RecvPublish, Cfg),
+    %%ok = mqtt5_v4compat:expect_packet(SubSocket, "publish", RecvPublish, Cfg),
+    {error, timeout} = gen_tcp:recv(SubSocket, 0, 1000),
+    ok = expect_alive(SubSocket),
+    ok = gen_tcp:close(SubSocket).
 
 publish_b2c_disconnect_qos1_test(Config) ->
     ClientId = vmq_cth:ustr(Config) ++ "pub-qos1-disco-test",

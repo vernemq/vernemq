@@ -773,28 +773,33 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
 dispatch_publish_qos2(MessageId, Msg, State) ->
     #state{username=User, subscriber_id=SubscriberId, proto_ver=Proto,
            cap_settings=CAPSettings, reg_view=RegView, waiting_acks=WAcks} = State,
-
-    case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
-        {ok, _NewMsg} ->
+    case maps:get({qos2, MessageId}, WAcks, not_found) of
+        not_found ->
+            case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
+                {ok, _} ->
+                    Frame = #mqtt_pubrec{message_id=MessageId},
+                    _ = vmq_metrics:incr_mqtt_pubrec_sent(),
+                    {State#state{
+                       waiting_acks=maps:put({qos2, MessageId}, Frame, WAcks)},
+                     [Frame]};
+                {error, not_allowed} when Proto == 4 ->
+                    %% we have to close connection for 3.1.1
+                    _ = vmq_metrics:incr_mqtt_error_auth_publish(),
+                    {error, not_allowed};
+                {error, not_allowed} ->
+                    %% we pretend as everything is ok for 3.1 and Bridge
+                    _ = vmq_metrics:incr_mqtt_error_auth_publish(),
+                    _ = vmq_metrics:incr_mqtt_pubrec_sent(),
+                    Frame = #mqtt_pubrec{message_id=MessageId},
+                    [Frame];
+                {error, _Reason} ->
+                    %% can't publish due to overload or netsplit
+                    _ = vmq_metrics:incr_mqtt_error_publish(),
+                    []
+            end;
+        _Frame ->
             Frame = #mqtt_pubrec{message_id=MessageId},
-            _ = vmq_metrics:incr_mqtt_pubrec_sent(),
-            {State#state{
-               waiting_acks=maps:put({qos2, MessageId}, Frame, WAcks)},
-             [Frame]};
-        {error, not_allowed} when Proto == 4 ->
-            %% we have to close connection for 3.1.1
-            _ = vmq_metrics:incr_mqtt_error_auth_publish(),
-            {error, not_allowed};
-        {error, not_allowed} ->
-            %% we pretend as everything is ok for 3.1 and Bridge
-            _ = vmq_metrics:incr_mqtt_error_auth_publish(),
-            _ = vmq_metrics:incr_mqtt_pubrec_sent(),
-            Frame = #mqtt_pubrec{message_id=MessageId},
-            [Frame];
-        {error, _Reason} ->
-            %% can't publish due to overload or netsplit
-            _ = vmq_metrics:incr_mqtt_error_publish(),
-            []
+            [Frame]
     end.
 
 -spec handle_waiting_acks_and_msgs(state()) -> ok.

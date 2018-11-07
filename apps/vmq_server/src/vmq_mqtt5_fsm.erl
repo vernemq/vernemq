@@ -1239,28 +1239,33 @@ dispatch_publish_qos2(_, _, error, _) ->
 dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
     #state{username=User, subscriber_id=SubscriberId,
            cap_settings=CAPSettings, reg_view=RegView, waiting_acks=WAcks} = State,
-
-    case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
-        {ok, NewMsg, NewState} ->
+    case maps:get({qos2, MessageId}, WAcks, not_found) of
+        not_found ->
+            case publish(CAPSettings, RegView, User, SubscriberId, Msg, State) of
+                {ok, NewMsg, NewState} ->
+                    Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
+                    _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?SUCCESS}),
+                    {NewState#state{
+                       fc_receive_cnt=Cnt,
+                       waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
+                     [serialise_frame(Frame)]};
+                {error, {RCN, Props0}} when is_map(Props0) ->
+                    _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, RCN}),
+                    {State, [serialise_frame(#mqtt5_pubrec{message_id=MessageId,
+                                                           reason_code=rcn2rc(RCN),
+                                                           properties=Props0})]};
+                {error, not_allowed} ->
+                    _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?NOT_AUTHORIZED}),
+                    Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_NOT_AUTHORIZED, properties=#{}},
+                    [serialise_frame(Frame)];
+                {error, _Reason} ->
+                    %% can't publish due to overload or netsplit
+                    _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?UNSPECIFIED_ERROR}),
+                    Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_UNSPECIFIED_ERROR, properties=#{}},
+                    [serialise_frame(Frame)]
+            end;
+        _Frame ->
             Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_SUCCESS, properties=#{}},
-            _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?SUCCESS}),
-            {NewState#state{
-               fc_receive_cnt=Cnt,
-               waiting_acks=maps:put({qos2, MessageId}, {Frame, NewMsg}, WAcks)},
-             [serialise_frame(Frame)]};
-        {error, {RCN, Props0}} when is_map(Props0) ->
-            _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, RCN}),
-            {State, [serialise_frame(#mqtt5_pubrec{message_id=MessageId,
-                                                   reason_code=rcn2rc(RCN),
-                                                   properties=Props0})]};
-        {error, not_allowed} ->
-            _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?NOT_AUTHORIZED}),
-            Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_NOT_AUTHORIZED, properties=#{}},
-            [serialise_frame(Frame)];
-        {error, _Reason} ->
-            %% can't publish due to overload or netsplit
-            _ = vmq_metrics:incr({?MQTT5_PUBREC_SENT, ?UNSPECIFIED_ERROR}),
-            Frame = #mqtt5_pubrec{message_id=MessageId, reason_code=?M5_UNSPECIFIED_ERROR, properties=#{}},
             [serialise_frame(Frame)]
     end.
 

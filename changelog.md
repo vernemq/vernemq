@@ -7,6 +7,9 @@
 - Fix bug in Prometheus output (#923).
 - Fix `max_message_rate` to include MQTTv5 sessions.
 - Fix issue with long-running `vmq-admin` commands (#644).
+- Fix issue where a QoS2 message would be republished if a client would resend
+  the PUBLISH packet with the same message id within a non-finished QoS2 flow
+  (#944).
 
 ## VerneMQ 1.6.0
 
