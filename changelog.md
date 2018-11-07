@@ -16,6 +16,9 @@
   returns **200** when VerneMQ is accepting connections and joined the cluster
   (for clustered setups) or returns **503** in case any of the two conditions 
   are not met (#889).
+- Fix issue where a QoS2 message would be republished if a client would resend
+  the PUBLISH packet with the same message id within a non-finished QoS2 flow
+  (#944).
 
 ## VerneMQ 1.6.0
 
