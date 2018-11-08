@@ -123,7 +123,8 @@ modifiers(auth_on_publish) ->
      {payload, fun val_binary/1},
      {qos, fun val_qos/1},
      {retain, fun val_bool/1},
-     {mountpoint, fun val_string/1}];
+     {mountpoint, fun val_string/1},
+     {throttle, fun val_int/1}];
 modifiers(on_deliver) ->
     [{topic, fun val_pub_topic/1},
      {payload, fun val_binary/1}];
