@@ -19,6 +19,7 @@
 - Fix issue where a QoS2 message would be republished if a client would resend
   the PUBLISH packet with the same message id within a non-finished QoS2 flow
   (#944).
+- Make VerneMQ build on FreeBSD (11.2-RELEASE) with `gmake rel`.
 
 ## VerneMQ 1.6.0
 
