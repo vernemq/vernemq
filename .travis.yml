@@ -26,4 +26,4 @@ cache:
     - plts
     - plts_base
 before_script: "epmd -daemon"
-script: "./rebar3 as all_tests do eunit, ct, dialyzer"
+script: "./rebar3 as all_tests do dialyzer, eunit, ct"
