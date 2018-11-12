@@ -684,79 +684,25 @@ atomize_keys(Mods) ->
       end, Mods).
 
 normalize_properties(Mods, Opts) ->
-    case lists:keyfind(properties, 1, Mods) of
-        {_, Props} ->
-            NProps = lists:foldl(
-                       fun({K,V}, Acc) ->
-                               [normalize_property(K,V,Opts)|Acc]
-                       end, [], Props),
-            lists:keyreplace(properties, 1, Mods, {properties, maps:from_list(NProps)});
-        false ->
-            Mods
-    end.
+    lists:map(
+      fun({K,V}) ->
+              normalize_property(K, V, Opts)
+      end, Mods).
 
-normalize_property(<<"payload_format_indicator">>, Val, _Opts) ->
-    NVal = try
-               binary_to_existing_atom(Val, utf8)
-           catch
-               error:badarg ->
-                   Val
-           end,
-    {?P_PAYLOAD_FORMAT_INDICATOR, NVal};
-normalize_property(<<"message_expiry_interval">>, Val, _Opts) ->
-    {?P_MESSAGE_EXPIRY_INTERVAL, Val};
-normalize_property(<<"content_type">>, Val, _Opts) ->
-    {?P_CONTENT_TYPE, Val};
-normalize_property(<<"response_topic">>, Val, _Opts) ->
-    {?P_RESPONSE_TOPIC, Val};
-normalize_property(<<"correlaton_data">>, Val, _Opts) ->
-    {?P_CORRELATION_DATA, base64:decode(Val)};
-normalize_property(<<"subscription_id">>, Vals, _Opts) ->
-    {?P_SUBSCRIPTION_ID, Vals};
-normalize_property(<<"session_expiry_interval">>, Val, _Opts) ->
-    {?P_SESSION_EXPIRY_INTERVAL, Val};
-normalize_property(<<"assigned_client_id">>, Val, _Opts) ->
-    {?P_ASSIGNED_CLIENT_ID, Val};
-normalize_property(<<"server_keep_alive">>, Val, _Opts) ->
-    {?P_SERVER_KEEP_ALIVE, Val};
-normalize_property(<<"authentication_method">>, Val, _Opts) ->
-    {?P_AUTHENTICATION_METHOD, Val};
-normalize_property(<<"authentication_data">>, Val, _Opts) ->
-    {?P_AUTHENTICATION_DATA, base64:decode(Val)};
-normalize_property(<<"request_problem_info">>, Val, _Opts) ->
-    {?P_REQUEST_PROBLEM_INFO, Val};
-normalize_property(<<"will_delay_interval">>, Val, _Opts) ->
-    {?P_WILL_DELAY_INTERVAL, Val};
-normalize_property(<<"request_response_info">>, Val, _Opts) ->
-    {?P_REQUEST_RESPONSE_INFO, Val};
-normalize_property(<<"response_info">>, Val, _Opts) ->
-    {?P_RESPONSE_INFO, Val};
-normalize_property(<<"server_reference">>, Val, _Opts) ->
-    {?P_SERVER_REF, Val};
-normalize_property(<<"reason_string">>, Val, _Opts) ->
-    {?P_REASON_STRING, Val};
-normalize_property(<<"receive_max">>, Val, _Opts) ->
-    {?P_RECEIVE_MAX, Val};
-normalize_property(<<"topic_alias_maximum">>, Val, _Opts) ->
-    {?P_TOPIC_ALIAS_MAX, Val};
-normalize_property(<<"topic_alias">>, Val, _Opts) ->
-    {?P_TOPIC_ALIAS, Val};
-normalize_property(<<"max_qos">>, Val, _Opts) ->
-    {?P_MAX_QOS, Val};
-normalize_property(<<"retain_available">>, Val, _Opts) ->
-    {?P_RETAIN_AVAILABLE, Val};
-normalize_property(<<"user_property">>, Values, _Opts) ->
+normalize_property(user_property, Values, _Opts) ->
     NValues = [{K,V} || [{_,K},{_,V}] <- Values],
-    {?P_USER_PROPERTY, NValues};
-normalize_property(<<"max_packet_size">>, Val, _Opts) ->
-    {?P_MAX_PACKET_SIZE, Val};
-normalize_property(<<"wildcard_subscriptions_available">>, Val, _Opts) ->
-    {?P_WILDCARD_SUBS_AVAILABLE, Val};
-normalize_property(<<"subscription_identifiers_available">>, Val, _Opts) ->
-    {?P_SUB_IDS_AVAILABLE, Val};
-normalize_property(<<"shared_subscriptions_available">>, Val, _Opts) ->
-    {?P_SHARED_SUBS_AVAILABLE, Val}.
-
+    {user_property, NValues};
+normalize_property(message_expiry_interval, Val, _Opts) ->
+    {message_expiry_interval, Val};
+normalize_property(session_expiry_interval, Val, _Opts) ->
+    {session_expiry_interval, Val};
+normalize_property(authentication_method, Val, _Opts) ->
+    {authentication_method, Val};
+normalize_property(authentication_data, Val, _Opts) ->
+    {authentication_data, base64:decode(Val)};
+normalize_property(K,V, _Opts) ->
+    %% let through unmodified.
+    {K,V}.
 
 normalize_modifiers(Hook, Mods, Opts)
   when Hook =:= auth_on_register_m5;

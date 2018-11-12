@@ -1136,10 +1136,9 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                 maps:fold(
                   fun(reason_string,V,A) -> maps:put(?P_REASON_STRING,V,A);
                      (user_property,V,A) -> maps:put(?P_USER_PROPERTY,V,A);
-                     (message_expiry,V,A) -> maps:put(?P_MESSAGE_EXPIRY_INTERVAL,V,A);
+                     (message_expiry_interval,V,A) -> maps:put(?P_MESSAGE_EXPIRY_INTERVAL,V,A);
                      (_,_,A) -> A
                   end,Properties,Args0),
-            ChangedProperties = maps:get(properties, Args0, Properties),
             HookArgs1 = [User, SubscriberId, ChangedQoS,
                          ChangedTopic, ChangedPayload,
                          ChangedIsRetain, ChangedProperties],

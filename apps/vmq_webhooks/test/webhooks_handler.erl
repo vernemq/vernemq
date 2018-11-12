@@ -127,10 +127,9 @@ auth_on_register_m5(#{client_id := ?CHANGED_CLIENT_ID}) ->
 
 auth_on_register_m5(#{client_id := ?WITH_PROPERTIES}) ->
     {200, #{result => <<"ok">>,
-            modifiers => #{properties => #{user_property => [[key(<<"key1">>), val(<<"val1">>)],
-                                                             [key(<<"key1">>), val(<<"val2">>)],
-                                                             [key(<<"key2">>), val(<<"val2">>)]]
-                                          }
+            modifiers => #{user_property => [[key(<<"key1">>), val(<<"val1">>)],
+                                             [key(<<"key1">>), val(<<"val2">>)],
+                                             [key(<<"key2">>), val(<<"val2">>)]]
                           }
            }
     };
@@ -363,9 +362,8 @@ on_auth_m5(#{properties :=
              client_id := ?ALLOWED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
             modifiers =>
-                #{properties =>
-                      #{authentication_method => <<"AUTH_METHOD">>,
-                        authentication_data => base64:encode(<<"AUTH_DATA1">>)},
+                #{authentication_method => <<"AUTH_METHOD">>,
+                  authentication_data => base64:encode(<<"AUTH_DATA1">>),
                   reason_code => 0}}}.
 
 terminate(_Reason, _Req, _State) ->

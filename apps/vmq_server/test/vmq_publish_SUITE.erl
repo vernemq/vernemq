@@ -84,7 +84,7 @@ groups() ->
                    not_allowed_publish_qos0_mqtt_5,
                    not_allowed_publish_qos1_mqtt_5,
                    not_allowed_publish_qos2_mqtt_5,
-                   message_expiry,
+                   message_expiry_interval,
                    publish_c2b_topic_alias,
                    publish_b2c_topic_alias,
                    forward_properties,
@@ -670,7 +670,7 @@ shared_subscription_online_first(Cfg) ->
     disable_on_publish(),
     disable_on_subscribe().
 
-message_expiry(_) ->
+message_expiry_interval(_) ->
     %% If the Message Expiry Interval has passed and the Server has
     %% not managed to start onward delivery to a matching subscriber,
     %% then it MUST delete the copy of the message for that subscriber
