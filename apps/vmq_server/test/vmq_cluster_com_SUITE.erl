@@ -18,21 +18,23 @@ init_per_suite(Config) ->
         {error, {already_started, _}} -> ok
     end,
     lager:info("node name ~p", [node()]),
-    [S|Config].
+    Node = vmq_cluster_test_utils:start_node(test1, Config, default_case),
+    {ok, _} = ct_cover:add_nodes([Node]),
+    vmq_cluster_test_utils:wait_until_ready([Node]),
+    [{node, Node}, S|Config].
 
 end_per_suite(_Config) ->
     application:stop(lager),
+    ct_slave:stop(test1),
     _Config.
 
-init_per_testcase(Case, Config) ->
+init_per_testcase(_Case, Config) ->
     vmq_test_utils:seed_rand(Config),
-    Node = vmq_cluster_test_utils:start_node(test1, Config, Case),
-    {ok, _} = ct_cover:add_nodes([Node]),
-    vmq_cluster_test_utils:wait_until_ready([Node]),
-    [{node, Node}|Config].
+    ClusterNodePid = setup_mock_vmq_cluster_node(Config),
+    [{cluster_node_pid, ClusterNodePid}|Config].
 
-end_per_testcase(_Case, _Config) ->
-    ct_slave:stop(test1),
+end_per_testcase(_Case, Config) ->
+    terminate_mock_vmq_cluster_node(Config),
     ok.
 
 all() ->
@@ -48,7 +50,7 @@ connect_params(_RemoteNode) ->
     {gen_tcp, {127,0,0,1}, 12345}.
 
 connect_success_test(Config) ->
-    ClusterNodePid = setup_mock_vmq_cluster_node(Config),
+    ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
     {ok, Socket} = gen_tcp:accept(ListenSocket, 20000),
     recv_connect(Socket, Config),
@@ -60,12 +62,12 @@ connect_success_test(Config) ->
 
 connect_success_send_error(Config) ->
     % check that message isn't lost
-    ClusterNodePid = setup_mock_vmq_cluster_node(Config),
+    ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
     {ok, Socket1} = gen_tcp:accept(ListenSocket, 20000),
     recv_connect(Socket1, Config),
     % close this socket
-    erlang:port_close(Socket1),
+    gen_tcp:close(Socket1),
     % send test message, will be buffered and delivered on next successful reconnect
     ok = send_message(ClusterNodePid, hello_world),
 
@@ -76,7 +78,7 @@ connect_success_send_error(Config) ->
 
 connect_success_send_error_timeout(Config) ->
     % check that message isn't lost
-    ClusterNodePid = setup_mock_vmq_cluster_node(Config),
+    ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
     {ok, Socket1} = gen_tcp:accept(ListenSocket, 20000),
     recv_connect(Socket1, Config),
@@ -130,6 +132,14 @@ setup_mock_vmq_cluster_node(Config, Opts) ->
     ok = rpc:call(Node, vmq_config, set_env, [outgoing_clustering_buffer_size, 1000, false]),
     {ok, ClusterNodePid} = rpc:call(Node, vmq_cluster_node, start_link, [node()]),
     ClusterNodePid.
+
+terminate_mock_vmq_cluster_node(Config) ->
+    Node = proplists:get_value(node, Config),
+    ClusterNodePid = cluster_node_pid(Config),
+    rpc:call(Node, erlang, exit, [ClusterNodePid, kill]).
+
+cluster_node_pid(Config) ->
+    proplists:get_value(cluster_node_pid, Config).
 
 recv_connect(Socket, Config) ->
     Node = proplists:get_value(node, Config),
