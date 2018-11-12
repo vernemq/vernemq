@@ -178,7 +178,7 @@ handle_message({msg, CallerPid, Ref, Msg}, State) ->
             CallerPid ! {Ref, ok}
     end,
     NewState;
-handle_message({connect_async, AsyncPid, {ok, {Transport, Socket}}},
+handle_message({connect_async_done, AsyncPid, {ok, {Transport, Socket}}},
                #state{async_connect_pid=AsyncPid, node=RemoteNode} = State) ->
     NodeName = term_to_binary(node()),
     L = byte_size(NodeName),
@@ -194,7 +194,7 @@ handle_message({connect_async, AsyncPid, {ok, {Transport, Socket}}},
             lager:warning("can't initiate connect to cluster node ~p due to ~p", [RemoteNode, Reason]),
             close_reconnect(State)
     end;
-handle_message({connect_async, AsyncPid, error}, #state{async_connect_pid=AsyncPid} = State) ->
+handle_message({connect_async_done, AsyncPid, error}, #state{async_connect_pid=AsyncPid} = State) ->
     % connect_async already logged the error details
     close_reconnect(State);
 handle_message(reconnect, #state{reachable=false} = State) ->
@@ -299,7 +299,7 @@ connect_async(ParentPid, RemoteNode) ->
             lager:warning("can't connect to cluster node ~p due to ~p", [RemoteNode, E]),
             error
     end,
-    ParentPid ! {connect_async, self(), Reply}.
+    ParentPid ! {connect_async_done, self(), Reply}.
 
 close_reconnect(#state{transport=Transport, socket=Socket} = State) ->
     close(Transport, Socket),
