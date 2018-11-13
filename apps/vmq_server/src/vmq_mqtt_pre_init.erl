@@ -81,7 +81,9 @@ parse_connect_frame(Data, MaxMessageSize) ->
     end.
 
 determine_protocol_version(<<1:4, 0:4, Rest/binary>>) ->
-    consume_var_header(Rest).
+    consume_var_header(Rest);
+determine_protocol_version(Unknown) ->
+    {error, {cant_parse_connect_fixed_header, Unknown}}.
 
 consume_var_header(<<0:1, _:7, Rest/binary>>) ->
     get_protocol_info(Rest);
@@ -90,7 +92,9 @@ consume_var_header(<<1:1, _:7, 0:1, _:7, Rest/binary>>) ->
 consume_var_header(<<1:1, _:7, 1:1, _:7, 0:1, _:7, Rest/binary>>) ->
     get_protocol_info(Rest);
 consume_var_header(<<1:1, _:7, 1:1, _:7, 1:1, _:7, 0:1, _:7, Rest/binary>>) ->
-    get_protocol_info(Rest).
+    get_protocol_info(Rest);
+consume_var_header(VarHeader) ->
+    {error, {invalid_var_header, VarHeader}}.
 
 get_protocol_info(<<0:8, 4:8, "MQTT", 5:8, _/binary>>) ->
     5;

@@ -21,6 +21,7 @@
   (#944).
 - Make VerneMQ build on FreeBSD (11.2-RELEASE) with `gmake rel`.
 - Fix issue with blocking socket commands in inter-node communication.
+- Improve error messages when parsing invalid CONNECT packets.
 
 ## VerneMQ 1.6.0
 
