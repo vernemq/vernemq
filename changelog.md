@@ -10,6 +10,7 @@
 - Fix issue where a QoS2 message would be republished if a client would resend
   the PUBLISH packet with the same message id within a non-finished QoS2 flow
   (#944).
+- Improve error messages when parsing invalid CONNECT packets.
 
 ## VerneMQ 1.6.0
 
