@@ -1,6 +1,6 @@
 # VerneMQ: A Distributed MQTT Broker
 
-[![Build Status](https://travis-ci.org/erlio/vernemq.svg?branch=master)](https://travis-ci.org/erlio/vernemq)
+[![Build Status](https://travis-ci.org/vernemq/vernemq.svg?branch=master)](https://travis-ci.org/vernemq/vernemq)
 [![Docker Pulls](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)
 [![Slack Invite](https://slack-invite.vernemq.com/badge.svg)](https://slack-invite.vernemq.com)
 
