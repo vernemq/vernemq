@@ -24,6 +24,8 @@
 - Improve error messages when parsing invalid CONNECT packets.
 - Log IP and port information on authentication failures to make it easy to
   block the client with tools like Fail2ban (#931).
+- Fix issue which would crash the session if a client would resend a (valid)
+  pubrec during a Qos2 flow (#926).
 
 ## VerneMQ 1.6.0
 

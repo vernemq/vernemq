@@ -488,6 +488,10 @@ connected(#mqtt5_pubrec{message_id=MessageId, reason_code=RC}, State) when RC < 
             _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?SUCCESS}),
             {State#state{waiting_acks=maps:update(MessageId, PubRelFrame, WAcks)},
              [serialise_frame(PubRelFrame)]};
+        #mqtt5_pubrel{message_id=MessageId} = PubRelFrame ->
+            %% handle PUBREC retries from the client.
+            _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?SUCCESS}),
+            {State, [serialise_frame(PubRelFrame)]};
         not_found ->
             lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
             _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?PACKET_ID_NOT_FOUND}),
