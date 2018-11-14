@@ -316,7 +316,7 @@ connected(#mqtt_pubrec{message_id=MessageId}, State) ->
                waiting_acks=maps:update(MessageId, PubRelFrame, WAcks)},
             [PubRelFrame]};
         #mqtt_pubrel{} ->
-            lager:debug("Duplicate pubrel ~p ,ignore", [MessageId]),
+            lager:debug("Duplicate pubrec ~p ,ignore", [MessageId]),
             {State,[]};
         not_found ->
             lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
