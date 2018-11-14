@@ -55,7 +55,8 @@ groups() ->
     V4V5Tests =
         [publish_qos1_test,
          publish_qos2_test,
-         publish_qos2_duplicate_test,
+         publish_b2c_qos2_duplicate_test,
+         publish_c2b_qos2_duplicate_test,
          publish_b2c_disconnect_qos1_test,
          publish_b2c_disconnect_qos2_test,
          publish_c2b_disconnect_qos2_test,
@@ -127,7 +128,73 @@ publish_qos2_test(Config) ->
     ok = expect_alive(Socket),
     ok = gen_tcp:close(Socket).
 
-publish_qos2_duplicate_test(Cfg) ->
+publish_b2c_qos2_duplicate_test(Cfg) ->
+    %% Ensure retried pubrecs from the client are handled correctly.
+    %%
+    %% MQTT 3.1.1 [MQTT-4.3.3-1]: sender receiver MUST send a PUBREL
+    %% packet when it receives a PUBREC packet from the receiver. This
+    %% PUBREL packet MUST contain the same Packet Identifier as the
+    %% original PUBLISH packet.
+    %%
+    %% MQTT 5.0 [MQTT-4.3.3-4]: sender MUST send a PUBREL packet when
+    %% it receives a PUBREC packet from the receiver with a Reason
+    %% Code value less than 0x80. This PUBREL packet MUST contain the
+    %% same Packet Identifier as the original PUBLISH packet.
+    PubId = vmq_cth:ustr(Cfg) ++ "-pub",
+    Topic = vmq_cth:utopic(Cfg),
+    ConnectPub = mqtt5_v4compat:gen_connect(PubId, [], Cfg),
+    Connack = mqtt5_v4compat:gen_connack(success, Cfg),
+    Publish = mqtt5_v4compat:gen_publish(Topic, 2, <<"message">>,
+                                         [{mid, 312}], Cfg),
+    Pubrec = mqtt5_v4compat:gen_pubrec(312, Cfg),
+    Pubrel = mqtt5_v4compat:gen_pubrel(312, Cfg),
+    Pubcomp = mqtt5_v4compat:gen_pubcomp(312, Cfg),
+    {ok, PubSocket} = mqtt5_v4compat:do_client_connect(ConnectPub, Connack, [], Cfg),
+
+    SubId = vmq_cth:ustr(Cfg) ++ "-sub",
+    Subscribe = mqtt5_v4compat:gen_subscribe(3265, Topic, 2, Cfg),
+    Suback = mqtt5_v4compat:gen_suback(3265, 2, Cfg),
+    ConnectSub = mqtt5_v4compat:gen_connect(SubId, [], Cfg),
+    {ok, SubSocket} = mqtt5_v4compat:do_client_connect(ConnectSub, Connack, [], Cfg),
+
+
+    enable_on_publish(),
+    enable_on_subscribe(),
+
+    %% subscribe to the topic
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    ok = mqtt5_v4compat:expect_packet(SubSocket, "suback", Suback, Cfg),
+
+    %% publish a Qos2 message
+    ok = gen_tcp:send(PubSocket, Publish),
+    ok = mqtt5_v4compat:expect_packet(PubSocket, "pubrec", Pubrec, Cfg),
+    ok = gen_tcp:send(PubSocket, Pubrel),
+    ok = mqtt5_v4compat:expect_packet(PubSocket, "pubcomp", Pubcomp, Cfg),
+    disable_on_publish(),
+    disable_on_subscribe(),
+    ok = expect_alive(PubSocket),
+    ok = gen_tcp:close(PubSocket),
+
+    %% verify that we only recieve the first published message and not
+    %% the duplicate.
+    ExpectF =
+        fun(Name, What) ->
+                mqtt5_v4compat:expect_packet(SubSocket, Name, What, Cfg)
+        end,
+
+    RecvPublish = mqtt5_v4compat:gen_publish(Topic, 2, <<"message">>, [{mid, 1}], Cfg),
+    ok = ExpectF("publish", RecvPublish),
+    ok = gen_tcp:send(SubSocket, mqtt5_v4compat:gen_pubrec(1, Cfg)),
+    ok = ExpectF("pubrel", mqtt5_v4compat:gen_pubrel(1, Cfg)),
+    %% now resend the pubrec - the broker must respond with a pubrel
+    ok = gen_tcp:send(SubSocket, mqtt5_v4compat:gen_pubrec(1, Cfg)),
+    ok = ExpectF("pubrel", mqtt5_v4compat:gen_pubrel(1, Cfg)),
+
+    ok = gen_tcp:send(SubSocket, mqtt5_v4compat:gen_pubcomp(1, Cfg)),
+    ok = expect_alive(SubSocket),
+    ok = gen_tcp:close(SubSocket).
+
+publish_c2b_qos2_duplicate_test(Cfg) ->
     %% assure that we don't forward duplicates if the client
     %% republishes a duplicate during a QoS2 flow.
     PubId = vmq_cth:ustr(Cfg) ++ "-pub",

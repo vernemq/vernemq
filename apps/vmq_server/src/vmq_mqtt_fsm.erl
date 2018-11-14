@@ -301,6 +301,10 @@ connected(#mqtt_pubrec{message_id=MessageId}, State) ->
                retry_queue=set_retry(pubrel, MessageId, RetryInterval, RetryQueue),
                waiting_acks=maps:update(MessageId, PubRelFrame, WAcks)},
             [PubRelFrame]};
+        #mqtt_pubrel{message_id=MessageId} = PubRelFrame ->
+            %% handle PUBREC retries from the client.
+            _ = vmq_metrics:incr_mqtt_pubrel_sent(),
+            {State, [PubRelFrame]};
         not_found ->
             lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
             _ = vmq_metrics:incr_mqtt_error_invalid_pubrec(),

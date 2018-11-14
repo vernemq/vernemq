@@ -1,16 +1,21 @@
 # Changelog
 
-## VerneMQ 1.6.1
+## VerneMQ 1.6.2
 
-- Fix `vmq_webhooks` issue where MQTTv5 hooks where not configurable in the
-  `vernemq.conf` file.
-- Fix bug in Prometheus output (#923).
 - Fix `max_message_rate` to include MQTTv5 sessions.
 - Fix issue with long-running `vmq-admin` commands (#644).
 - Fix issue where a QoS2 message would be republished if a client would resend
   the PUBLISH packet with the same message id within a non-finished QoS2 flow
   (#944).
 - Improve error messages when parsing invalid CONNECT packets.
+- Fix issue which would crash the session if a client would resend a (valid)
+  pubrec during a Qos2 flow (#926).
+
+## VerneMQ 1.6.1
+
+- Fix `vmq_webhooks` issue where MQTTv5 hooks where not configurable in the
+  `vernemq.conf` file.
+- Fix bug in Prometheus output (#923).
 
 ## VerneMQ 1.6.0
 
