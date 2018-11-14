@@ -21,7 +21,8 @@
          send_after/2,
          msg_ref/0,
          plugin_receive_loop/2,
-         to_vmq_subtopics/2]).
+         to_vmq_subtopics/2,
+         peertoa/1]).
 
 -define(TO_SESSION, to_session_fsm).
 
@@ -102,3 +103,12 @@ to_vmq_subtopics(Topics, SubId) ->
                       {T, {QoS, SubOpts#{sub_id => SubId}}}
               end
       end, Topics).
+
+-spec peertoa(peer()) -> string().
+peertoa({IP,Port}) ->
+    case IP of
+        {_,_,_,_} ->
+            io_lib:format("~s:~p", [inet:ntoa(IP),Port]);
+        {_,_,_,_,_,_,_,_} ->
+            io_lib:format("[~s]:~p", [inet:ntoa(IP),Port])
+    end.

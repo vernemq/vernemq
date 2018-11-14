@@ -545,19 +545,19 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                             connack_terminate(?CONNACK_SERVER, State)
                     end;
                 {error, no_matching_hook_found} ->
-                    lager:error("can't authenticate client ~p due to
-                                no_matching_hook_found", [State#state.subscriber_id]),
+                    lager:error("can't authenticate client ~p from ~s due to no_matching_hook_found",
+                                [State#state.subscriber_id, peertoa(State#state.peer)]),
                     connack_terminate(?CONNACK_AUTH, State);
                 {error, invalid_credentials} ->
                     lager:warning(
-                      "can't authenticate client ~p due to
-                              invalid_credentials", [State#state.subscriber_id]),
+                      "can't authenticate client ~p from ~s due to invalid_credentials",
+                      [State#state.subscriber_id, peertoa(State#state.peer)]),
                     connack_terminate(?CONNACK_CREDENTIALS, State);
                 {error, Error} ->
                     %% can't authenticate due to other reason
                     lager:warning(
-                      "can't authenticate client ~p due to ~p",
-                      [State#state.subscriber_id, Error]),
+                      "can't authenticate client ~p from ~s due to ~p",
+                      [State#state.subscriber_id, peertoa(State#state.peer), Error]),
                     connack_terminate(?CONNACK_AUTH, State)
             end;
         true ->
@@ -1216,3 +1216,6 @@ set_defopt(Key, Default, Map) ->
         NonDefault ->
             maps:put(Key, NonDefault, Map)
     end.
+
+peertoa({_IP, _Port} = Peer) ->
+    vmq_mqtt_fsm_util:peertoa(Peer).

@@ -860,8 +860,8 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=PropsIn0}
                     register_subscriber(F, OutProps, QueueOpts,
                                         NewState#state{session_expiry_interval=SessionExpiryInterval});
                 {error, no_matching_hook_found} ->
-                    lager:error("can't authenticate client ~p due to
-                                no_matching_hook_found", [State#state.subscriber_id]),
+                    lager:error("can't authenticate client ~p from ~s due to no_matching_hook_found",
+                                [State#state.subscriber_id, peertoa(State#state.peer)]),
                     connack_terminate(?BAD_USERNAME_OR_PASSWORD, State);
                 {error, Vals} when is_map(Vals) ->
                     RCN = maps:get(reason_code, Vals, ?BAD_USERNAME_OR_PASSWORD),
@@ -870,14 +870,14 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=PropsIn0}
                          (_,_,A) -> A
                       end, #{}, Vals),
                     lager:warning(
-                      "can't authenticate client ~p due to ~p",
-                      [State#state.subscriber_id, RCN]),
+                      "can't authenticate client ~p from ~s due to ~p",
+                      [State#state.subscriber_id, peertoa(State#state.peer), RCN]),
                     connack_terminate(RCN, Props0, State);
                 {error, Error} ->
                     %% can't authenticate due to other reason
                     lager:warning(
-                      "can't authenticate client ~p due to ~p",
-                      [State#state.subscriber_id, Error]),
+                      "can't authenticate client ~p from ~s due to ~p",
+                      [State#state.subscriber_id, peertoa(State#state.peer), Error]),
                     connack_terminate(?BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
@@ -1740,3 +1740,6 @@ set_defopt(Key, Default, Map) ->
         NonDefault ->
             maps:put(Key, NonDefault, Map)
     end.
+
+peertoa({_IP, _Port} = Peer) ->
+    vmq_mqtt_fsm_util:peertoa(Peer).

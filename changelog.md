@@ -22,6 +22,8 @@
 - Make VerneMQ build on FreeBSD (11.2-RELEASE) with `gmake rel`.
 - Fix issue with blocking socket commands in inter-node communication.
 - Improve error messages when parsing invalid CONNECT packets.
+- Log IP and port information on authentication failures to make it easy to
+  block the client with tools like Fail2ban (#931).
 
 ## VerneMQ 1.6.0
 
