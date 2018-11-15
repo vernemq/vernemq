@@ -50,7 +50,9 @@ all() ->
 
      auth_on_register_m5_test,
      auth_on_subscribe_m5_test,
-     auth_on_publish_m5_test
+     auth_on_publish_m5_test,
+
+     invalid_modifiers_test
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -98,6 +100,14 @@ auth_on_publish_m5_test(_) ->
                       [username(), ignored_subscriber_id(), 1, topic(), payload(), false, props()]),
     {ok, #{topic := [<<"hello">>, <<"world">>]}} = vmq_plugin:all_till_ok(auth_on_publish_m5,
                       [username(), changed_subscriber_id(), 1, topic(), payload(), false, props()]).
+
+invalid_modifiers_test(_) ->
+    {error,{invalid_modifiers,#{topic := 5}}} =
+        vmq_plugin:all_till_ok(auth_on_publish_m5,
+                               [username(), {"", <<"invalid_topic_mod">>}, 1, topic(), payload(), false, props()]),
+    {error,{invalid_modifiers,#{unknown := 5}}} =
+        vmq_plugin:all_till_ok(auth_on_publish_m5,
+                               [username(), {"", <<"unknown_mod">>}, 1, topic(), payload(), false, props()]).
 
 auth_on_subscribe_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_subscribe,

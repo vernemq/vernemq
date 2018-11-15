@@ -26,6 +26,8 @@
   block the client with tools like Fail2ban (#931).
 - Fix issue which would crash the session if a client would resend a (valid)
   pubrec during a Qos2 flow (#926).
+- Fix `vmq_diversity` error message if invalid or unknown modifiers are returned
+  from a lua hook implementation.
 
 ## VerneMQ 1.6.0
 

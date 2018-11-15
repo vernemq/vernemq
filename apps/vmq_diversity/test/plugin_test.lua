@@ -78,7 +78,11 @@ function auth_on_publish_m5(pub)
     assert(pub.qos == 1)
     assert(pub.payload == "hello world")
     assert(pub.retain == false)
-    if pub.client_id ~= "changed-subscriber-id" then
+    if pub.client_id == "invalid_topic_mod" then
+       return {topic = 5}
+    elseif pub.client_id == "unknown_mod" then
+       return {unknown = 5}
+    elseif pub.client_id ~= "changed-subscriber-id" then
         print("auth_on_publish_m5 called")
         return validate_client_id(pub.client_id)
     else
