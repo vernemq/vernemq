@@ -476,6 +476,8 @@ all_till_ok([Pid|Rest], HookName, Args) ->
         Mods0 when is_list(Mods0) ->
             Mods1 = normalize_modifiers(HookName, Mods0),
             case vmq_plugin_util:check_modifiers(HookName, Mods1) of
+                error ->
+                    {error, {invalid_modifiers, Mods1}};
                 CheckedModifiers ->
                     {ok, CheckedModifiers}
             end;
