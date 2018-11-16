@@ -58,68 +58,89 @@ filtering_works(_Config) ->
     [#{session_pid := Pid}] =
         execute(["vmq-admin", "session", "show", "--session_pid"]),
     [#{session_pid := Pid}] =
-        execute(["vmq-admin", "session", "show", "--session_pid=" ++ pid_to_list(Pid)]),
+        execute(["vmq-admin", "session", "show",
+                 "--session_pid=" ++ pid_to_list(Pid), "--session_pid"]),
 
     [#{client_id := <<"vmq-info-client">>, is_offline := false}] =
-        execute(["vmq-admin", "session", "show", "--is_offline=false"]),
+        execute(["vmq-admin", "session", "show",
+                 "--is_offline=false", "--client_id", "--is_offline"]),
 
     [#{client_id := <<"vmq-info-client">>, is_online := true}] =
-        execute(["vmq-admin", "session", "show", "--is_online=true"]),
+        execute(["vmq-admin", "session", "show",
+                 "--is_online=true", "--client_id", "--is_online"]),
 
     [#{client_id := <<"vmq-info-client">>, statename := online}] =
-        execute(["vmq-admin", "session", "show", "--statename=online"]),
+        execute(["vmq-admin", "session", "show", "--statename=online",
+                "--statename", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>}] =
-        execute(["vmq-admin", "session", "show", "--deliver_mode=fanout"]),
+        execute(["vmq-admin", "session", "show", "--deliver_mode=fanout",
+                "--deliver_mode", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>, offline_messages := 0}] =
-        execute(["vmq-admin", "session", "show", "--offline_messages=0"]),
+        execute(["vmq-admin", "session", "show", "--offline_messages=0",
+                "--offline_messages", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>, online_messages := 0}] =
-        execute(["vmq-admin", "session", "show", "--online_messages=0"]),
+        execute(["vmq-admin", "session", "show", "--online_messages=0",
+                 "--online_messages", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>, num_sessions := 1}] =
-        execute(["vmq-admin", "session", "show", "--num_sessions=1"]),
+        execute(["vmq-admin", "session", "show", "--num_sessions=1",
+                 "--num_sessions", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>, clean_session := false}] =
-        execute(["vmq-admin", "session", "show", "--clean_session=false"]),
+        execute(["vmq-admin", "session", "show", "--clean_session=false",
+                 "--clean_session", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>, is_plugin := false}] =
-        execute(["vmq-admin", "session", "show", "--is_plugin=false"]),
+        execute(["vmq-admin", "session", "show", "--is_plugin=false",
+                 "--is_plugin", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>, user := undefined}] =
-        execute(["vmq-admin", "session", "show", "--user=undefined"]),
+        execute(["vmq-admin", "session", "show", "--user=undefined",
+                 "--user", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>, peer_host := PeerHost}] =
         execute(["vmq-admin", "session", "show", "--client_id", "--peer_host"]),
     [#{client_id := <<"vmq-info-client">>, peer_host := PeerHost}] =
-        execute(["vmq-admin", "session", "show", "--peer_host=" ++ binary_to_list(PeerHost)]),
+        execute(["vmq-admin", "session", "show", "--peer_host=" ++ binary_to_list(PeerHost),
+                 "--peer_host", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>, peer_port := PeerPort}] =
         execute(["vmq-admin", "session", "show", "--client_id", "--peer_port"]),
     [#{client_id := <<"vmq-info-client">>, peer_port := PeerPort}] =
-        execute(["vmq-admin", "session", "show", "--peer_port=" ++ integer_to_list(PeerPort)]),
+        execute(["vmq-admin", "session", "show", "--peer_port=" ++ integer_to_list(PeerPort),
+                 "--peer_port", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>, protocol := 3}] =
-        execute(["vmq-admin", "session", "show", "--protocol=3"]),
+        execute(["vmq-admin", "session", "show", "--protocol=3",
+                 "--protocol", "--client_id"]),
 
     [#{client_id := <<"vmq-info-client">>, waiting_acks := 0}] =
-        execute(["vmq-admin", "session", "show", "--waiting_acks=0"]),
+        execute(["vmq-admin", "session", "show", "--waiting_acks=0",
+                 "--waiting_acks", "--client_id"]),
 
     [#{topic := <<"some/topic/1">>, qos := 0}] =
-        execute(["vmq-admin", "session", "show", "--topic=some/topic/1"]),
+        execute(["vmq-admin", "session", "show", "--topic=some/topic/1",
+                 "--topic", "--qos"]),
     [#{topic := <<"some/topic/1">>, qos := 0}] =
-        execute(["vmq-admin", "session", "show", "--qos=0"]),
+        execute(["vmq-admin", "session", "show", "--qos=0",
+                 "--topic", "--qos"]),
 
     [#{topic := <<"with/wildcard/#">>, qos := 1}] =
-        execute(["vmq-admin", "session", "show", "--topic=with/wildcard/#"]),
+        execute(["vmq-admin", "session", "show", "--topic=with/wildcard/#",
+                 "--topic", "--qos"]),
     [#{topic := <<"with/wildcard/#">>, qos := 1}] =
-        execute(["vmq-admin", "session", "show", "--qos=1"]),
+        execute(["vmq-admin", "session", "show", "--qos=1",
+                 "--topic", "--qos"]),
 
     [#{topic := <<"with/+/wildcard">>, qos := 2}] =
-        execute(["vmq-admin", "session", "show", "--topic=with/+/wildcard"]),
+        execute(["vmq-admin", "session", "show", "--topic=with/+/wildcard",
+                 "--topic", "--qos"]),
     [#{topic := <<"with/+/wildcard">>, qos := 2}] =
-        execute(["vmq-admin", "session", "show", "--qos=2"]),
+        execute(["vmq-admin", "session", "show", "--qos=2",
+                 "--topic", "--qos"]),
     
     Disconnect = packet:gen_disconnect(),
     ok = gen_tcp:send(SubSocket, Disconnect),
@@ -143,16 +164,20 @@ filtering_works(_Config) ->
     %%     execute(["vmq-admin", "session", "show", "--client_id", "--msg_ref=" ++ binary_to_list(MsgRef)]),
 
     [#{client_id := <<"vmq-info-client">>, msg_qos := 1}] =
-        execute(["vmq-admin", "session", "show", "--msg_qos=1"]),
+        execute(["vmq-admin", "session", "show", "--msg_qos=1",
+                 "--client_id", "--msg_qos"]),
 
     [#{client_id := <<"vmq-info-client">>, routing_key := <<"with/wildcard/qos1">>}] =
-        execute(["vmq-admin", "session", "show", "--routing_key=with/wildcard/qos1"]),
+        execute(["vmq-admin", "session", "show", "--routing_key=with/wildcard/qos1",
+                 "--client_id", "--routing_key"]),
 
     [#{client_id := <<"vmq-info-client">>, dup := false}] =
-        execute(["vmq-admin", "session", "show", "--dup=false"]),
+        execute(["vmq-admin", "session", "show", "--dup=false",
+                 "--client_id", "--dup"]),
 
     [#{client_id := <<"vmq-info-client">>, payload := <<"thepayload">>}] =
-        execute(["vmq-admin", "session", "show", "--payload=thepayload"]),
+        execute(["vmq-admin", "session", "show", "--payload=thepayload",
+                 "--client_id", "--payload"]),
     ok = gen_tcp:send(PubSocket, Disconnect),
     ok = gen_tcp:close(PubSocket).
 

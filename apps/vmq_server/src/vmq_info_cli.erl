@@ -58,7 +58,7 @@ vmq_session_list_cmd() ->
                        FFields =
                        case Fields of
                            [] ->
-                               "*";
+                               string:join(DefaultFields, ",");
                            _ ->
                                string:join(Fields, ",")
                        end,
