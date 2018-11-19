@@ -35,6 +35,7 @@ groups() ->
     ConnectTests =
     [
      connack_error_with_reason_string,
+     publish_modify_props,
      puback_error_with_reason_string,
      pubrec_error_with_reason_string,
      suback_with_properties,
@@ -55,6 +56,40 @@ connack_error_with_reason_string(Cfg) ->
                                       <<"You have exceeded your quota">>}}
         = Connack,
     ok = gen_tcp:close(Socket).
+
+publish_modify_props(Cfg) ->
+    PubClientId = vmq_cth:ustr(Cfg) ++ "-pub",
+    SubClientId = vmq_cth:ustr(Cfg) ++ "-sub",
+    PubConnect = packetv5:gen_connect(PubClientId, [{username, <<"modify_props">>}]),
+    SubConnect = packetv5:gen_connect(SubClientId, []),
+    Connack = packetv5:gen_connack(),
+    Topic = vmq_cth:ustr(Cfg),
+    Publish = packetv5:gen_publish(Topic, 0, <<"message">>, [{properties,
+                                                              #{p_user_property =>
+                                                                    [{<<"k1">>, <<"v1">>},
+                                                                     {<<"k2">>, <<"v2">>}]}}]),
+    Subscribe = packetv5:gen_subscribe(6, [packetv5:gen_subtopic(Topic, 0)], #{}),
+    Suback = packetv5:gen_suback(6, [0], #{}),
+
+    {ok, PubSocket} = packetv5:do_client_connect(PubConnect, Connack, []),
+    {ok, SubSocket} = packetv5:do_client_connect(SubConnect, Connack, []),
+
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    ok = packetv5:expect_frame(SubSocket, Suback),
+
+    ok = gen_tcp:send(PubSocket, Publish),
+    ok = gen_tcp:close(PubSocket),
+
+    {ok, RecvPub, <<>>} = packetv5:receive_frame(SubSocket),
+    #mqtt5_publish{topic = _,
+                   qos = 0,
+                   properties = #{p_user_property := GotUserProps},
+                   payload = <<"message">>} = RecvPub,
+
+    ExpUserProps = #{<<"k1">> => <<"v1">>,
+                     <<"k2">> => <<"v2">>,
+                     <<"added">> => <<"user_property">>},
+    ExpUserProps = maps:from_list(GotUserProps).
 
 puback_error_with_reason_string(Cfg) ->
     ClientId = vmq_cth:ustr(Cfg),

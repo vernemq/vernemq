@@ -45,6 +45,8 @@ auth_on_register_m5(Peer,SubscriberId,Username,Password,CleanStart,Properties) -
 auth_on_register_m5_(_Peer,_SubscriberId,<<"quota_exceeded">>,_Password,_CleanStart,_Properties) ->
     {error, #{reason_code => ?QUOTA_EXCEEDED,
               reason_string => <<"You have exceeded your quota">>}};
+auth_on_register_m5_(_Peer,_SubscriberId,<<"modify_props">>,_Password,_CleanStart, #{p_user_property := UP}) ->
+    {ok, #{user_property => [{<<"key">>, <<"val">>}|UP]}};
 auth_on_register_m5_(_Peer,_SubscriberId,_Username,_Password,_CleanStart,_Properties) ->
     ok.
 
@@ -59,6 +61,9 @@ auth_on_publish_m5(Username,SubscriberId,QoS,Topic,Payload,IsRetain,Properties) 
     ?LOG([auth_on_publish_m5,Username,SubscriberId,QoS,Topic,Payload,IsRetain,Properties]),
     auth_on_publish_m5_(Username,SubscriberId,QoS,Topic,Payload,IsRetain,Properties).
 
+auth_on_publish_m5_(<<"modify_props">>,_SubscriberId,_QoS,_Topic,_Payload,_IsRetain,#{p_user_property := UserProperties}) ->
+    {ok, #{user_property => [{<<"added">>, <<"user_property">>}|
+                             UserProperties]}};
 auth_on_publish_m5_(_Username,_SubscriberId,_QoS,[<<"invalid">>, <<"topic">>],_Payload,_IsRetain,_Properties) ->
     {error, #{reason_code => ?TOPIC_NAME_INVALID,
               reason_string => <<"Invalid topic name">>}};

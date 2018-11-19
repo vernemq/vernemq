@@ -28,6 +28,8 @@
   pubrec during a Qos2 flow (#926).
 - Fix `vmq_diversity` error message if invalid or unknown modifiers are returned
   from a lua hook implementation.
+- Fix issue preventing MQTT 5.0 properties from being modifiable in
+  `auth_on_publish_m5` (#964).
 
 ## VerneMQ 1.6.0
 
