@@ -1139,6 +1139,7 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
                                     payload=ChangedPayload,
                                     qos=ChangedQoS,
                                     retain=ChangedIsRetain,
+                                    properties=ChangedProperties,
                                     mountpoint=ChangedMountpoint},
                         HookArgs1);
         {error, Vals} when is_map(Vals) ->
