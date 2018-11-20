@@ -45,8 +45,30 @@ auth_on_register_m5(Peer,SubscriberId,Username,Password,CleanStart,Properties) -
 auth_on_register_m5_(_Peer,_SubscriberId,<<"quota_exceeded">>,_Password,_CleanStart,_Properties) ->
     {error, #{reason_code => ?QUOTA_EXCEEDED,
               reason_string => <<"You have exceeded your quota">>}};
-auth_on_register_m5_(_Peer,_SubscriberId,<<"modify_props">>,_Password,_CleanStart, #{p_user_property := UP}) ->
-    {ok, #{user_property => [{<<"key">>, <<"val">>}|UP]}};
+auth_on_register_m5_(_Peer,_SubscriberId,<<"use_another_server">>,_Password,_CleanStart,_Properties) ->
+    {error, #{reason_code => ?USE_ANOTHER_SERVER,
+              server_ref => <<"server_ref">>}};
+auth_on_register_m5_(_Peer,_SubscriberId,<<"server_moved">>,_Password,_CleanStart,_Properties) ->
+    {error, #{reason_code => ?SERVER_MOVED,
+              server_ref => <<"server_ref">>}};
+auth_on_register_m5_(_Peer,_SubscriberId,<<"broker_capabilities">>,_Password,_CleanStart,_Properties) ->
+    {ok, #{reason_code => ?SUCCESS,
+           max_qos => 0,
+           retain_available => false,
+           wildcard_subscriptions_available => false,
+           subscription_identifiers_available => false,
+           shared_subscriptions_available => false
+           %% TODO: See vmq_mqtt5_fsm:auth_on_register/4
+           %%max_packet_size => 1024
+
+           %% TODO: verify if the properties below can be
+           %% controlled from plugins.
+           %%
+           %%topic_alias_max => 100,
+           %%receive_max => 100,
+           %%server_keep_alive => 4000,
+           %%session_expiry_interval => 3600
+          }};
 auth_on_register_m5_(_Peer,_SubscriberId,_Username,_Password,_CleanStart,_Properties) ->
     ok.
 

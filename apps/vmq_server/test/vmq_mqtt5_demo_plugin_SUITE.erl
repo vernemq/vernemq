@@ -35,6 +35,9 @@ groups() ->
     ConnectTests =
     [
      connack_error_with_reason_string,
+     connack_error_use_another_server,
+     connack_error_server_moved,
+     connack_broker_capabilities,
      publish_modify_props,
      puback_error_with_reason_string,
      pubrec_error_with_reason_string,
@@ -54,6 +57,41 @@ connack_error_with_reason_string(Cfg) ->
                    reason_code = ?M5_QUOTA_EXCEEDED,
                    properties = #{?P_REASON_STRING :=
                                       <<"You have exceeded your quota">>}}
+        = Connack,
+    ok = gen_tcp:close(Socket).
+
+connack_error_use_another_server(Cfg) ->
+    ClientId = vmq_cth:ustr(Cfg),
+    Connect = packetv5:gen_connect(ClientId, [{username, <<"use_another_server">>}]),
+    {ok, Socket, Connack, <<>>} = packetv5:do_client_connect(Connect, []),
+    #mqtt5_connack{session_present = 0,
+                   reason_code = ?M5_USE_ANOTHER_SERVER,
+                   properties = #{?P_SERVER_REF :=
+                                      <<"server_ref">>}}
+        = Connack,
+    ok = gen_tcp:close(Socket).
+
+connack_error_server_moved(Cfg) ->
+    ClientId = vmq_cth:ustr(Cfg),
+    Connect = packetv5:gen_connect(ClientId, [{username, <<"server_moved">>}]),
+    {ok, Socket, Connack, <<>>} = packetv5:do_client_connect(Connect, []),
+    #mqtt5_connack{session_present = 0,
+                   reason_code = ?M5_SERVER_MOVED,
+                   properties = #{?P_SERVER_REF :=
+                                      <<"server_ref">>}}
+        = Connack,
+    ok = gen_tcp:close(Socket).
+
+connack_broker_capabilities(Cfg) ->
+    ClientId = vmq_cth:ustr(Cfg),
+    Connect = packetv5:gen_connect(ClientId, [{username, <<"broker_capabilities">>}]),
+    {ok, Socket, Connack, <<>>} = packetv5:do_client_connect(Connect, []),
+    #mqtt5_connack{reason_code = ?M5_SUCCESS,
+                   properties = #{?P_MAX_QOS := 0,
+                                  ?P_RETAIN_AVAILABLE := false,
+                                  ?P_WILDCARD_SUBS_AVAILABLE := false,
+                                  ?P_SUB_IDS_AVAILABLE := false,
+                                  ?P_SHARED_SUBS_AVAILABLE := false}}
         = Connack,
     ok = gen_tcp:close(Socket).
 

@@ -853,15 +853,15 @@ check_client_id(#mqtt5_connect{client_id=Id}, _OutProps, State) ->
     lager:warning("invalid client id ~p", [Id]),
     connack_terminate(?CLIENT_IDENTIFIER_NOT_VALID, State).
 
-check_user(#mqtt5_connect{username=User, password=Password, properties=PropsIn0} = F,
+check_user(#mqtt5_connect{username=User, password=Password, properties=Props} = F,
            OutProps,
            State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, PropsIn0, State) of
-                {ok, QueueOpts, NewState} ->
+            case auth_on_register(User, Password, Props, State) of
+                {ok, QueueOpts, OutProps0, NewState} ->
                     SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
-                    register_subscriber(F, OutProps, QueueOpts,
+                    register_subscriber(F, maps:merge(OutProps, OutProps0), QueueOpts,
                                         NewState#state{session_expiry_interval=SessionExpiryInterval});
                 {error, no_matching_hook_found} ->
                     lager:error("can't authenticate client ~p from ~s due to no_matching_hook_found",
@@ -871,6 +871,7 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=PropsIn0}
                     RCN = maps:get(reason_code, Vals, ?BAD_USERNAME_OR_PASSWORD),
                     Props0 = maps:fold(
                       fun(reason_string,V,A) -> maps:put(?P_REASON_STRING,V,A);
+                         (server_ref,V,A) -> maps:put(?P_SERVER_REF,V,A);
                          (_,_,A) -> A
                       end, #{}, Vals),
                     lager:warning(
@@ -885,7 +886,7 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=PropsIn0}
                     connack_terminate(?BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
-            QueueOpts = queue_opts([], PropsIn0),
+            QueueOpts = queue_opts([], Props),
             SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
             register_subscriber(F, OutProps, QueueOpts,
                                 State#state{session_expiry_interval=SessionExpiryInterval})
@@ -1013,13 +1014,13 @@ maybe_apply_topic_alias_out(Topic, Properties, #state{topic_aliases_out = TA,
 remove_property(p_topic_alias, #vmq_msg{properties = Properties} = Msg) ->
     Msg#vmq_msg{properties = maps:remove(p_topic_alias, Properties)}.
 
-auth_on_register(User, Password, Properties, State) ->
+auth_on_register(User, Password, Props, State) ->
     #state{clean_start=CleanStart, peer=Peer, cap_settings=CAPSettings,
            subscriber_id=SubscriberId} = State,
-    HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Properties],
+    HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
     case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
         ok ->
-            {ok, queue_opts([], Properties), State};
+            {ok, queue_opts([], Props), #{}, State};
         {ok, Args0} ->
             Args = maps:to_list(Args0),
             set_sock_opts(prop_val(tcp_opts, Args, [])),
@@ -1030,6 +1031,16 @@ auth_on_register(User, Password, Properties, State) ->
                 allow_subscribe=?cap_val(allow_subscribe, Args, CAPSettings),
                 allow_unsubscribe=?cap_val(allow_unsubscribe, Args, CAPSettings)
                },
+
+            ChangedProps =
+                maps:fold(
+                  fun(max_qos,V,A) -> maps:put(?P_MAX_QOS,V,A);
+                     (retain_available,V,A) -> maps:put(?P_RETAIN_AVAILABLE,V,A);
+                     (wildcard_subscriptions_available,V,A) -> maps:put(?P_WILDCARD_SUBS_AVAILABLE,V,A);
+                     (subscription_identifiers_available,V,A) -> maps:put(?P_SUB_IDS_AVAILABLE,V,A);
+                     (shared_subscriptions_available,V,A) -> maps:put(?P_SHARED_SUBS_AVAILABLE,V,A);
+                     (_,_,A) -> A
+                  end,#{},Args0),
 
             %% for efficiency reason the max_message_size isn't kept in the state
             set_max_incoming_msg_size(prop_val(max_message_size, Args, max_incoming_msg_size())),
@@ -1052,7 +1063,7 @@ auth_on_register(User, Password, Properties, State) ->
                              topic_aliases_in=?state_val(topic_aliases_in, Args, State),
                              cap_settings=ChangedCAPSettings
                             },
-            {ok, queue_opts(Args, Properties), ChangedState};
+            {ok, queue_opts(Args, maps:merge(Props,ChangedProps)), ChangedProps, ChangedState};
         {error, Reason} ->
             {error, Reason}
     end.
