@@ -30,6 +30,8 @@
   from a lua hook implementation.
 - Fix issue preventing MQTT 5.0 properties from being modifiable in
   `auth_on_publish_m5` (#964).
+- Fix issue which causes a crash if not enough data is available while parsing
+  the CONNECT frame in `vmq_mqtt_pre_init` (#950, #962).
 
 ## VerneMQ 1.6.0
 
