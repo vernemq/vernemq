@@ -28,10 +28,9 @@
 -export([raw_get/3,
          raw_put/5]).
 
--define(SWC_GROUP, metadata).
 
 start() ->
-    start(?SWC_GROUP).
+    vmq_swc_plugin:plugin_start().
 
 start(SwcGroup) when is_atom(SwcGroup) ->
     _ = application:ensure_all_started(vmq_swc),
@@ -41,8 +40,7 @@ start(SwcGroup) when is_atom(SwcGroup) ->
                              type => supervisor}).
 
 stop() ->
-    application:stop(vmq_swc),
-    application:stop(rocksdb).
+    application:stop(vmq_swc).
 
 members(SwcGroup) ->
     vmq_swc_group_membership:get_members(config(SwcGroup)).
@@ -77,8 +75,7 @@ raw_put(SwcGroup, Prefix, Key, Value, Context) ->
 put(SwcGroup, Prefix, Key, ValueOrFun, _Opts) when not is_function(ValueOrFun) ->
     PKey = {Prefix, Key},
     Config = config(SwcGroup),
-    CurrentContext = current_context(Config, PKey),
-    vmq_swc_store:write(Config, PKey, ValueOrFun, CurrentContext).
+    vmq_swc_store:write(Config, PKey, ValueOrFun, undefined).
 
 delete_many(SwcGroup, Prefix, [_Key|_] = Keys) ->
     put_many(SwcGroup, Prefix, [{Key, '$deleted'} || Key <- Keys], []).
@@ -88,8 +85,7 @@ put_many(SwcGroup, Prefix, [{_Key, _ValueOrFun}|_] = Ops, _Opts) ->
     WriteBatch =
     lists:foldl(fun({Key, ValueOrFun}, Acc) ->
                         PKey = {Prefix, Key},
-                        CurrentContext = current_context(Config, PKey),
-                        [{PKey, ValueOrFun, CurrentContext}|Acc]
+                        [{PKey, ValueOrFun, undefined}|Acc]
                 end, [], Ops),
     vmq_swc_store:write_batch(Config, WriteBatch).
 
@@ -108,10 +104,6 @@ fold(SwcGroup, Fun, Acc, Prefix, Opts) ->
           ({_Prefix, Key} = PKey, Existing, AccAcc) ->
               Fun(Key, maybe_tombstone(maybe_resolve(Config, PKey, Existing, ResolveMethod, AllowPut), Default), AccAcc)
       end, Acc, Prefix).
-
-current_context(Config, PKey) ->
-    {_, Context} = vmq_swc_store:read(Config, PKey),
-    Context.
 
 maybe_resolve(_Config, _PKey, {[Value], _Context}, _Method, _AllowPut) ->
     Value;
@@ -139,11 +131,5 @@ get_option(Key, Opts, Default) ->
     end.
 
 config(SwcGroup) ->
-    case get({?MODULE, SwcGroup}) of
-        undefined ->
-            [{_, Config}] = ets:lookup(vmq_swc_group_config, SwcGroup),
-            put({?MODULE, SwcGroup}, Config),
-            Config;
-        Config ->
-            Config
-    end.
+    [{_, Config}] = ets:lookup(vmq_swc_group_config, SwcGroup),
+    Config.

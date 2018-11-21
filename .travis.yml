@@ -19,7 +19,7 @@ language: erlang
 install: true
 otp_release:
     - 19.3
-    - 20.3
+    - 20.3.8
     - 21.1
 cache:
   directories:
