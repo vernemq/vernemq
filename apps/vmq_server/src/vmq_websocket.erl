@@ -69,6 +69,9 @@ init_(Type, Req, Opts) ->
     _ = vmq_metrics:incr_socket_open(),
     {ok, Req1, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
 
+websocket_handle(_, Req, #st{fsm_state=terminated}=State) ->
+    %% handle `terminated` state as in `websocket_info/3`.
+    {shutdown, Req, State};
 websocket_handle({binary, Data}, Req, State) ->
     #st{fsm_state=FsmState0,
         fsm_mod=FsmMod,

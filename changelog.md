@@ -34,6 +34,8 @@
   the CONNECT frame in `vmq_mqtt_pre_init` (#950, #962).
 - Fix issue which could cause `vmq-admin session show` to crash when using
   `--limit=X` to limit the number of returned results (#902).
+- Handle edge case in the websocket implementation which could cause warninigs
+  when the session was terminating.
 
 ## VerneMQ 1.6.0
 
