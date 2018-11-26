@@ -36,6 +36,10 @@
   `--limit=X` to limit the number of returned results (#902).
 - Handle edge case in the websocket implementation which could cause warninigs
   when the session was terminating.
+- Expose `vernemq_dev_api:disconnect_by_subscriber_id/2` in lua
+  `vmq_api.disconnect_by_subscriber_id/2`, an example looks like:
+  `vmq_api.disconnect_by_subscriber_id({mountpoint = "", client_id =
+  "client-id"}, {do_cleanup = true})`.
 
 ## VerneMQ 1.6.0
 

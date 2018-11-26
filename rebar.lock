@@ -101,7 +101,7 @@
  {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.2.0">>},2},
  {<<"vernemq_dev">>,
   {git,"git://github.com/erlio/vernemq_dev.git",
-       {ref,"ccc09cb57cbb80f943895c9e40ac112603bc804d"}},
+       {ref,"12e00f7cfc17f067470f3c690e2536b0c68ecf21"}},
   0}]}.
 [
 {pkg_hash,[
