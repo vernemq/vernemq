@@ -13,7 +13,7 @@
          expect_packet/4,
          do_client_connect/4]).
 
--include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 
 %% ===================================================================
 %% common_test callbacks

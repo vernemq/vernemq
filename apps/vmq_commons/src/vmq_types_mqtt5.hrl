@@ -1,4 +1,5 @@
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include("vmq_types_common.hrl").
 
 %% Reason codes
 -define(M5_SUCCESS,                        16#00).
@@ -48,8 +49,6 @@
 -define(M5_SUBSCRIPTION_IDS_NOT_SUPPORTED, 16#A1).
 -define(M5_WILDCARD_SUBS_NOT_SUPPORTED,    16#A2).
 
-
--type msg_id()          :: undefined | 0..65535.
 
 -type mqtt5_properties() :: map().
 

@@ -4,7 +4,6 @@
 -compile(nowarn_export_all).
 
 -include_lib("vmq_commons/include/vmq_types.hrl").
--include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 
 -define(RETRY_INTERVAL, 2).
 -define(NR_OF_MSGS, 400).

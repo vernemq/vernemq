@@ -19,7 +19,6 @@
 -module(vmq_tracer).
 -include_lib("stdlib/include/ms_transform.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
--include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 
 -behaviour(gen_server).
 

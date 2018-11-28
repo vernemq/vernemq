@@ -3,7 +3,7 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
--include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 
 %% ===================================================================
 %% common_test callbacks

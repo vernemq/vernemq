@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_reg).
--include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_server.hrl").
 
 -record(retain_msg,

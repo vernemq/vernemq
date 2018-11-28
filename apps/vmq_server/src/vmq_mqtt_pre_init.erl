@@ -14,7 +14,6 @@
 -module(vmq_mqtt_pre_init).
 
 -include_lib("vmq_commons/include/vmq_types.hrl").
--include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 
 -ifdef(TEST).

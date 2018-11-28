@@ -19,7 +19,7 @@
 
 -export([protover/1]).
 
--include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 
 do_client_connect(Connect, Connack, Opts, Config) ->
     do_client_connect_(protover(Config), Connect, Connack, Opts).

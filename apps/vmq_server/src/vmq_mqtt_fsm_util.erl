@@ -15,7 +15,6 @@
 -module(vmq_mqtt_fsm_util).
 -include("vmq_server.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
--include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
 
 -export([send/2,
          send_after/2,

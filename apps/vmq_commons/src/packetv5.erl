@@ -1,5 +1,5 @@
 -module(packetv5).
--include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -export([do_client_connect/2,
          do_client_connect/3,
          expect_frame/2,

@@ -4,7 +4,7 @@
 -compile(nowarn_export_all).
 
 -include_lib("common_test/include/ct.hrl").
--include_lib("vmq_commons/include/vmq_types_mqtt5.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 
 init_per_suite(Config) ->
     vmq_test_utils:setup(),

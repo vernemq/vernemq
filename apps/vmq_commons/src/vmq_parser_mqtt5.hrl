@@ -1,4 +1,4 @@
--include("vmq_types_mqtt5.hrl").
+-include("vmq_types.hrl").
 
 %% MQTT5 property identifiers.
 -define(M5P_PAYLOAD_FORMAT_INDICATOR, 1).
