@@ -1076,7 +1076,8 @@
                                                                    {datatype, file},
                                                                    hidden
                                                                   ]}. 
-%% @doc Set the list of allowed ciphers (each separated with a colon),
+%% @doc Set the list of allowed ciphers (each separated with a colon,
+%% e.g. "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"),
 %% on the protocol level or on the listener level. Reasonable defaults
 %% are used if nothing is specified:
 %%
