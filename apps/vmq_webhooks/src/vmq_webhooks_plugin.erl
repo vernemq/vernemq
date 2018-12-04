@@ -477,6 +477,8 @@ all_till_ok(HookName, Args) ->
             all_till_ok(Endpoints, HookName, Args)
     end.
 
+-spec all_till_ok(list(any()), atom(), any()) -> ok | {ok, any()} |
+                                                 {error, any()}.
 all_till_ok([{Endpoint,EOpts}|Rest], HookName, Args) ->
     case maybe_call_endpoint(Endpoint, EOpts, HookName, Args) of
         [] -> ok;
@@ -497,8 +499,8 @@ all_till_ok([{Endpoint,EOpts}|Rest], HookName, Args) ->
                 ValidatedModifiers ->
                     {ok, maps:from_list(ValidatedModifiers)}
             end;
-        error ->
-            error;
+        {error, Reason} ->
+            {error, Reason};
         _ ->
             all_till_ok(Rest, HookName, Args)
     end;
@@ -598,10 +600,10 @@ call_endpoint(Endpoint, EOpts, Hook, Args) ->
     case Res of
         {decoded_error, Reason} ->
             lager:debug("calling endpoint received error due to ~p", [Reason]),
-            error;
+            {error, Reason};
         {error, Reason} ->
             lager:error("calling endpoint failed due to ~p", [Reason]),
-            error;
+            {error, Reason};
         Res ->
             Res
     end.

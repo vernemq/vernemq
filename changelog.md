@@ -40,6 +40,8 @@
   `vmq_api.disconnect_by_subscriber_id/2`, an example looks like:
   `vmq_api.disconnect_by_subscriber_id({mountpoint = "", client_id =
   "client-id"}, {do_cleanup = true})`.
+- Improve `vmq_webhooks` errors so the error from the endpoint is shown as the
+  error reason where relevant.
 
 ## VerneMQ 1.6.0
 
