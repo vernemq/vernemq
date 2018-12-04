@@ -49,14 +49,12 @@ new(CleanSession, TopicsWithQoS, Node) ->
 
 -spec get_changes(subs()) -> changes().
 get_changes(New) ->
-    [{N, NSubs} || {N, _, NSubs} <- check_format(New)].
+    [{N, NSubs} || {N, _, NSubs} <- New].
 
 -spec get_changes(subs(), subs()) -> {changes(), changes()}.
 get_changes(Old, New) ->
-    OOld = check_format(Old),
-    NNew = check_format(New),
-    Removed = subtract(OOld, NNew),
-    Added = subtract(NNew, OOld),
+    Removed = subtract(Old, New),
+    Added = subtract(New, Old),
     {Removed, Added}.
 
 -spec add(subs(), [subscription()]) -> {subs(), boolean()}.

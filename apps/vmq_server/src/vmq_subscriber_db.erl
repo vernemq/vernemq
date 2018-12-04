@@ -21,6 +21,8 @@
          delete/1,
          subscribe_db_events/0]).
 
+-import(vmq_subscriber, [check_format/1]).
+
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
 -define(TOMBSTONE, '$deleted').
 
@@ -37,7 +39,7 @@ read(SubscriberId, Default) ->
     case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined -> Default;
         Subs ->
-            vmq_subscriber:check_format(Subs)
+            check_format(Subs)
     end.
 
 -spec delete(subscriber_id()) -> ok.
@@ -48,7 +50,7 @@ fold(FoldFun, Acc) ->
     vmq_metadata:fold(?SUBSCRIBER_DB,
       fun ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
           ({SubscriberId, Subs}, AccAcc) ->
-              FoldFun({SubscriberId, vmq_subscriber:check_format(Subs)}, AccAcc)
+              FoldFun({SubscriberId, check_format(Subs)}, AccAcc)
       end, Acc).
 
 subscribe_db_events() ->
@@ -58,15 +60,12 @@ subscribe_db_events() ->
           when (Val == ?TOMBSTONE) or (Val == undefined) ->
             ignore;
         ({deleted, ?SUBSCRIBER_DB, SubscriberId, Subscriptions}) ->
-            Deleted = vmq_subscriber:get_changes(Subscriptions),
-            {delete, SubscriberId, Deleted};
+            {delete, SubscriberId, check_format(Subscriptions)};
         ({updated, ?SUBSCRIBER_DB, SubscriberId, OldVal, NewSubs})
           when (OldVal == ?TOMBSTONE) or (OldVal == undefined) ->
-            Added = vmq_subscriber:get_changes(NewSubs),
-            {update, SubscriberId, [], Added};
+            {update, SubscriberId, [], check_format(NewSubs)};
         ({updated, ?SUBSCRIBER_DB, SubscriberId, OldSubs, NewSubs}) ->
-            {Removed, Added} = vmq_subscriber:get_changes(OldSubs, NewSubs),
-            {update, SubscriberId, Removed, Added};
+            {update, SubscriberId, check_format(OldSubs), check_format(NewSubs)};
         (_) ->
             ignore
     end.

@@ -162,15 +162,14 @@ setup_queue(SubscriberId, Subs, Acc) ->
 
 handle_event(Handler, Event) ->
     case Handler(Event) of
-        {delete, _, _} ->
+        {delete, _SubscriberId, _} ->
             %% TODO: we might consider a queue cleanup here.
             ignore;
         {update, _SubscriberId, [], []} ->
             %% noop
             ignore;
-        {update, SubscriberId, _, _} ->
-            Subs = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
-            handle_new_sub_event(SubscriberId, Subs);
+        {update, SubscriberId, _OldSubs, NewSubs} ->
+            handle_new_sub_event(SubscriberId, NewSubs);
         ignore ->
             ignore
     end.

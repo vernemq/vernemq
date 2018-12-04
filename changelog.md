@@ -42,6 +42,8 @@
   "client-id"}, {do_cleanup = true})`.
 - Improve `vmq_webhooks` errors so the error from the endpoint is shown as the
   error reason where relevant.
+- Optimization: optimize away read operation during client registration by
+  reusing already available data.
 
 ## VerneMQ 1.6.0
 

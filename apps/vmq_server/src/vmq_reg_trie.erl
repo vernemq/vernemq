@@ -239,9 +239,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 handle_event(Handler, Event) ->
     case Handler(Event) of
-        {delete, SubscriberId, Subs} ->
-            vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, Subs);
-        {update, SubscriberId, ToRemove, ToAdd} ->
+        {delete, SubscriberId, Subscriptions} ->
+            Removed = vmq_subscriber:get_changes(Subscriptions),
+            vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, Removed);
+        {update, SubscriberId, OldValue, NewValue} ->
+            {ToRemove,ToAdd} = vmq_subscriber:get_changes(OldValue, NewValue),
             vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, ToRemove),
             vmq_subscriber:fold(fun handle_add_event/2, SubscriberId, ToAdd);
         ignore ->
