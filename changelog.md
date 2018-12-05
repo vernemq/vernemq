@@ -44,6 +44,7 @@
   error reason where relevant.
 - Optimization: optimize away read operation during client registration by
   reusing already available data.
+- Enable plugins to expose metrics via the available metric providers.
 
 ## VerneMQ 1.6.0
 

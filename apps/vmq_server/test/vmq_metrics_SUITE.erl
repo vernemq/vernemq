@@ -11,9 +11,11 @@
 -export([simple_systree_test/1,
          simple_graphite_test/1,
          simple_prometheus_test/1,
-         simple_cli_test/1]).
+         simple_cli_test/1,
+         pluggable_metrics_test/1]).
 
 -export([hook_auth_on_subscribe/3]).
+-export([plugin_metrics/0]).
 
 init_per_suite(_Config) ->
     cover:start(),
@@ -41,7 +43,8 @@ all() ->
     [simple_systree_test,
      simple_graphite_test,
      simple_prometheus_test,
-     simple_cli_test].
+     simple_cli_test,
+     pluggable_metrics_test].
 
 simple_systree_test(_) ->
     Socket = sample_subscribe(),
@@ -133,6 +136,23 @@ simple_cli_test(_) ->
                    (_, Acc) -> Acc
                 end, false, Ret),
     gen_tcp:close(SubSocket).
+
+pluggable_metrics_test(_) ->
+    application:set_env(vmq_server, vmq_metrics_mfa, {?MODULE, plugin_metrics, []}),
+    {ok, Ret0} = vmq_server_cmd:metrics(),
+    true =
+    lists:foldl(fun({text, "counter.plugin_metrics = 123"}, _) -> true;
+                   (_, Acc) -> Acc
+                end, false, Ret0),
+    application:unset_env(vmq_server, vmq_metrics_mfa),
+    {ok, Ret1} = vmq_server_cmd:metrics(),
+    true =
+    lists:foldl(fun({text, "counter.plugin_metrics = 123"}, _) -> false;
+                   (_, Acc) -> Acc
+                end, true, Ret1).
+
+plugin_metrics() ->
+    [{counter, [], plugin_metrics, plugin_metrics, <<"Simple Plugin Metric">>, 123}].
 
 enable_on_subscribe() ->
     vmq_plugin_mgr:enable_module_plugin(
