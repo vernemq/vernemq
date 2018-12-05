@@ -128,14 +128,37 @@ handle_info(timeout, true) ->
                          retain=vmq_config:get_env(systree_retain, false),
                          sg_policy=vmq_config:get_env(shared_subscription_policy, prefer_local)
                         },
+            CAPPublish = true,
             lists:foreach(
-              fun({#metric_def{name=Metric}, Val}) ->
-                      CAPPublish = true,
+              fun
+                  ({#metric_def{type=histogram, name=Metric}, {Count, Sum, Buckets}}) ->
+                      SMetric = atom_to_list(Metric),
+                      CountTmp = {"_count", Count},
+                      SumTmp = {"_sum", Sum},
+                      Tmp = maps:fold(
+                              fun(Bucket, BucketValue, Acc) ->
+                                      [{case Bucket of
+                                            infinity -> "_bucket_inf";
+                                            _ -> "_bucket_" ++ val(Bucket)
+                                        end,
+                                        BucketValue} | Acc]
+                              end, [CountTmp, SumTmp], Buckets),
+                      lists:foreach(
+                        fun({Suffix, BucketValue}) ->
+                                vmq_reg:publish(CAPPublish, RegView, ClientId,
+                                                MsgTmpl#vmq_msg{
+                                                  routing_key=key(Prefix, SMetric ++ Suffix),
+                                                  payload=val(BucketValue),
+                                                  msg_ref=vmq_mqtt_fsm_util:msg_ref()
+                                                 })
+                        end, Tmp);
+
+                  ({#metric_def{name=Metric}, Val}) ->
                       vmq_reg:publish(CAPPublish, RegView, ClientId, MsgTmpl#vmq_msg{
-                                        routing_key=key(Prefix, Metric),
-                                        payload=val(Val),
-                                        msg_ref=vmq_mqtt_fsm_util:msg_ref()
-                                       })
+                                                                       routing_key=key(Prefix, Metric),
+                                                                       payload=val(Val),
+                                                                       msg_ref=vmq_mqtt_fsm_util:msg_ref()
+                                                                      })
               end, vmq_metrics:metrics()),
             {noreply, true, Interval};
         false ->
@@ -172,8 +195,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+key(Prefix, Metric) when is_atom(Metric) ->
+    key(Prefix, atom_to_list(Metric));
 key(Prefix, Metric) ->
-    Prefix ++ re:split(atom_to_list(Metric), "_").
+    Prefix ++ re:split(Metric, "_").
 
 val(V) when is_integer(V) -> integer_to_binary(V);
 val(V) when is_float(V) -> float_to_binary(V);

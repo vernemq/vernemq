@@ -222,6 +222,21 @@ lines(APIKey, Prefix, Metric, Labels, Val) ->
     [line(APIKey, Prefix, Metric, no_label, Val)
      |[line(APIKey, Prefix, Metric, Label, Val) || Label <- Labels]].
 
+line(APIKey, Prefix, Metric, Label, {Count, Sum, Buckets}) when is_map(Buckets) ->
+    SMetric = atom_to_list(Metric),
+    CountLine = line(APIKey, Prefix, SMetric ++ "_count", Label, Count),
+    SumLine = line(APIKey, Prefix, SMetric ++ "_sum", Label, Sum),
+    Ret =
+    maps:fold(
+      fun(Bucket, BucketValue, Acc) ->
+              [line(APIKey, Prefix, SMetric ++ "_"
+                    ++ case Bucket of
+                           infinity -> "bucket_inf";
+                           _ -> "bucket_" ++ value(Bucket)
+                       end, Label, BucketValue)| Acc]
+      end, [CountLine, SumLine], Buckets),
+    Ret;
+
 line(APIKey, Prefix, Metric, Label, Val) ->
     [key(APIKey, Prefix, Metric, Label), " ", value(Val), " ", timestamp(), $\n].
 
@@ -240,8 +255,10 @@ key(APIKey, Prefix, Metric) ->
     [APIKey, $., Prefix, $., name(Metric)].
 
 %% Add probe and datapoint within probe
+name(Metric) when is_atom(Metric) ->
+    name(atom_to_list(Metric));
 name(Metric) ->
-    [T|F] = lists:reverse(re:split(atom_to_list(Metric), "_", [{return, list}])),
+    [T|F] = lists:reverse(re:split(Metric, "_", [{return, list}])),
     [[I, $.] || I <- lists:reverse(F)] ++ [T].
 
 %% Add value, int or float, converted to list
