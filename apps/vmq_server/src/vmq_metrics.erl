@@ -322,8 +322,10 @@ metrics() ->
 metrics(Opts) ->
     WantLabels = maps:get(labels, Opts, []),
 
-    MetricDefs = metric_defs(),
-    MetricValues = metric_values(),
+    {PluggableMetricDefs, PluggableMetricValues} = pluggable_metrics(),
+
+    MetricDefs = metric_defs() ++ PluggableMetricDefs,
+    MetricValues = metric_values() ++ PluggableMetricValues,
 
     %% Create id->metric def map
     IdDef = lists:foldl(
@@ -359,6 +361,31 @@ metrics(Opts) ->
             Metrics
     end.
 
+pluggable_metric_defs() ->
+    {Defs, _} = pluggable_metrics(),
+    Defs.
+
+pluggable_metrics() ->
+    lists:foldl(
+      fun({App, _Name, _Version}, Acc) ->
+              case application:get_env(App, vmq_metrics_mfa, undefined) of
+                  undefined -> Acc;
+                  {Mod, Fun, Args}
+                    when is_atom(Mod) and is_atom(Fun) and is_list(Args) ->
+                      try
+                          Metrics = apply(Mod, Fun, Args),
+                          lists:foldl(
+                            fun({Type, Labels, UniqueId, Name, Description, Value}, {DefsAcc, ValsAcc}) ->
+                                    {[m(Type, Labels, UniqueId, Name, Description) | DefsAcc],
+                                     [{UniqueId, Value} | ValsAcc]}
+                            end, Acc, Metrics)
+                      catch
+                          _:_ ->
+                              Acc
+                      end
+              end
+      end, {[], []}, application:which_applications()).
+
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -391,7 +418,7 @@ get_label_info() ->
                                 maps:put(LabelName, [Val], AccAcc)
                         end
                 end, Acc0, Labels)
-      end, #{}, metric_defs()),
+      end, #{}, metric_defs() ++ pluggable_metric_defs()),
     maps:to_list(LabelInfo).
 
 %%%===================================================================
@@ -562,7 +589,7 @@ register_metrics(Metrics) ->
               Acc0
       end,
       Metrics,
-      metric_defs()).
+      metric_defs()). % no need to register pluggable_metric_defs
 
 has_label([], _) ->
     true;
