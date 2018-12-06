@@ -154,42 +154,35 @@ vmq_server_metrics_cmd() ->
                           Lines =
                               case Val of
                                   V when is_number(V) ->
-                                      [clique_status:text(
-                                        lists:flatten([SType, ".", SMetric, " = ", number_to_list(V)]))];
+                                      [SType, ".", SMetric, " = ", number_to_list(V)];
                                   {Count, Sum, Buckets} when is_map(Buckets) ->
                                       HistogramLines =
                                       [
-                                       clique_status:text(
-                                         lists:flatten([SType, ".", SMetric, "_count = ", number_to_list(Count)])),
-                                       clique_status:text(
-                                         lists:flatten([SType, ".", SMetric, "_sum = ", number_to_list(Sum)]))
+                                       [SType, ".", SMetric, "_count = ", number_to_list(Count), "\n"],
+                                       [SType, ".", SMetric, "_sum = ", number_to_list(Sum), "\n"]
                                       ],
 
                                       maps:fold(
                                         fun
                                             (Bucket, BucketCnt, HistAcc) ->
-                                                [clique_status:text(
-                                                   lists:flatten([SType, ".", SMetric, "_bucket_",
-                                                                  case Bucket of
-                                                                      infinity -> "infinity";
-                                                                      _ -> number_to_list(Bucket)
-                                                                  end ," = ", number_to_list(BucketCnt)]))
-                                                 | HistAcc]
+                                                [[SType, ".", SMetric, "_bucket_",
+                                                  case Bucket of
+                                                      infinity -> "infinity";
+                                                      _ -> number_to_list(Bucket)
+                                                  end ," = ", number_to_list(BucketCnt), "\n"]  | HistAcc]
                                         end, HistogramLines, Buckets)
-
                               end,
                           case Describe of
                               true ->
-                                  [clique_status:text(lists:flatten(["# ", Description]))
-                                   | [[[Lines | clique_status:text("\n")]] | Acc]];
+                                  ["# ", Description, "\n", Lines,"\n\n"| Acc];
                               false ->
-                                  [Lines|Acc]
+                                  [Lines, "\n" | Acc]
                           end
                   end,
                   [],
                   vmq_metrics:metrics(#{labels => LabelFlags,
                                         aggregate => Aggregate})),
-                lists:flatten(TextLines)
+                [clique_status:text(lists:flatten(TextLines))]
         end,
     clique:register_command(Cmd, [], FlagSpecs, Callback).
 
