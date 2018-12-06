@@ -143,6 +143,7 @@ vmq_server_metrics_cmd() ->
                                 Val -> Val
                             end,
                 LabelFlags = get_label_flags(Flags, LabelFlagSpecs),
+                TextLines =
                 lists:foldl(
                   fun({#metric_def{type = Type,
                                    labels = _Labels,
@@ -150,25 +151,38 @@ vmq_server_metrics_cmd() ->
                                    description = Description}, Val}, Acc) ->
                           SType = atom_to_list(Type),
                           SMetric = atom_to_list(Metric),
-                          SVal =
+                          Lines =
                               case Val of
-                                  V when is_integer(V) ->
-                                      integer_to_list(V);
-                                  V when is_float(V) ->
-                                      float_to_list(V)
+                                  V when is_number(V) ->
+                                      [SType, ".", SMetric, " = ", number_to_list(V)];
+                                  {Count, Sum, Buckets} when is_map(Buckets) ->
+                                      HistogramLines =
+                                      [
+                                       [SType, ".", SMetric, "_count = ", number_to_list(Count), "\n"],
+                                       [SType, ".", SMetric, "_sum = ", number_to_list(Sum), "\n"]
+                                      ],
+
+                                      maps:fold(
+                                        fun
+                                            (Bucket, BucketCnt, HistAcc) ->
+                                                [[SType, ".", SMetric, "_bucket_",
+                                                  case Bucket of
+                                                      infinity -> "infinity";
+                                                      _ -> number_to_list(Bucket)
+                                                  end ," = ", number_to_list(BucketCnt), "\n"]  | HistAcc]
+                                        end, HistogramLines, Buckets)
                               end,
-                          Line = [SType, ".", SMetric, " = ", SVal],
                           case Describe of
                               true ->
-                                  [clique_status:text(lists:flatten(["# ", Description])),
-                                   clique_status:text(lists:flatten([Line, "\n"]))|Acc];
+                                  ["# ", Description, "\n", Lines,"\n\n"| Acc];
                               false ->
-                                  [clique_status:text(lists:flatten(Line))|Acc]
+                                  [Lines, "\n" | Acc]
                           end
                   end,
                   [],
                   vmq_metrics:metrics(#{labels => LabelFlags,
-                                        aggregate => Aggregate}))
+                                        aggregate => Aggregate})),
+                [clique_status:text(lists:flatten(TextLines))]
         end,
     clique:register_command(Cmd, [], FlagSpecs, Callback).
 
@@ -611,3 +625,6 @@ ensure_all_stopped([], Res) -> Res.
 
 remove_ok({ok, Res}) ->
     Res.
+
+number_to_list(N) when is_integer(N) -> integer_to_list(N);
+number_to_list(N) when is_float(N) -> float_to_list(N).

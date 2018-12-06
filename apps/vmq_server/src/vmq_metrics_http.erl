@@ -44,6 +44,31 @@ reply(Req, <<"text/plain">>) ->
                                   Output, Req),
     Req2.
 
+prometheus_output([{#metric_def{type=histogram = Type, name=Metric, description=Descr, labels=Labels}, Val}|Metrics],
+                  {EmittedAcc, OutAcc}) ->
+    BinMetric = atom_to_binary(Metric, utf8),
+    Node = atom_to_binary(node(), utf8),
+    {Count, Sum, Buckets} = Val,
+    CountLine = line(<<BinMetric/binary, "_count">>, Node, Labels, integer_to_binary(Count)),
+    SumLine = line(<<BinMetric/binary, "_sum">>, Node, Labels, integer_to_binary(Sum)),
+    Lines =
+    maps:fold(
+      fun(Bucket, BucketVal, BAcc) ->
+              [line(<<BinMetric/binary, "_bucket">>, Node, [{<<"le">>,
+                                       case Bucket of
+                                           infinity -> <<"+Inf">>;
+                                           _ -> integer_to_binary(Bucket)
+                                       end}|Labels], integer_to_binary(BucketVal))
+               |BAcc]
+      end, [CountLine, SumLine], Buckets),
+    case EmittedAcc of
+        #{Metric := _} ->
+            prometheus_output(Metrics, {EmittedAcc, [Lines|OutAcc]});
+        _ ->
+            HelpLine = [<<"# HELP ">>, BinMetric, <<" ", Descr/binary, "\n">>],
+            TypeLine = [<<"# TYPE ">>, BinMetric, type(Type)],
+            prometheus_output(Metrics, {EmittedAcc#{Metric => true}, [[HelpLine, TypeLine, Lines]|OutAcc]})
+    end;
 prometheus_output([{#metric_def{type=Type, name=Metric, description=Descr, labels=Labels}, Val}|Metrics],
                   {EmittedAcc, OutAcc}) ->
     BinMetric = atom_to_binary(Metric, utf8),
@@ -89,7 +114,9 @@ ensure_bin(E) when is_binary(E) ->
 type(gauge) ->
     <<" gauge\n">>;
 type(counter) ->
-    <<" counter\n">>.
+    <<" counter\n">>;
+type(histogram) ->
+    <<" histogram\n">>.
 
 %% backported to support OTP18. TODO: replace with lists:join/2 when
 %% dropping OTP18.
