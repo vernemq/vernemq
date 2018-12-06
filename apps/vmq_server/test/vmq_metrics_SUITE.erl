@@ -12,8 +12,7 @@
          histogram_systree_test/1,
          simple_graphite_test/1,
          simple_prometheus_test/1,
-         simple_cli_test/1,
-         pluggable_metrics_test/1]).
+         simple_cli_test/1]).
 
 -export([hook_auth_on_subscribe/3]).
 -export([plugin_metrics/0]).
@@ -39,8 +38,9 @@ init_per_testcase(_Case, Config) ->
 
 end_per_testcase(_, Config) ->
     application:unset_env(vmq_server, vmq_metrics_mfa),
-    {ok, Ret1} = vmq_server_cmd:metrics(),
-    false = lists:member({text, "counter.plugin_metrics = 123"}, Ret1),
+    {ok, [{text, Text}]} = vmq_server_cmd:metrics(),
+    Lines = re:split(Text, "\n", [{return, list}]),
+    false = lists:member("counter.plugin_metrics = 123", Lines),
     disable_on_subscribe(),
     vmq_test_utils:teardown(),
     Config.
@@ -50,8 +50,7 @@ all() ->
      histogram_systree_test,
      simple_graphite_test,
      simple_prometheus_test,
-     simple_cli_test,
-     pluggable_metrics_test].
+     simple_cli_test].
 
 simple_systree_test(_) ->
     Socket = sample_subscribe(),
@@ -170,23 +169,17 @@ simple_prometheus_test(_) ->
 
 simple_cli_test(_) ->
     SubSocket = sample_subscribe(),
-    {ok, Ret} = vmq_server_cmd:metrics(),
-    true =
-    lists:foldl(fun({text, "counter.mqtt_subscribe_received = 1"}, _) -> true;
-                   (_, Acc) -> Acc
-                end, false, Ret),
+    {ok, [{text, Text}]} = vmq_server_cmd:metrics(),
+    Lines = re:split(Text, "\n", [{return, list}]),
+    true = lists:member("counter.mqtt_subscribe_received = 1", Lines),
+    true = lists:member("counter.plugin_metrics = 123", Lines),
+    true = lists:member("histogram.plugin_histogram_count = 10", Lines),
+    true = lists:member("histogram.plugin_histogram_sum = 100", Lines),
+    true = lists:member("histogram.plugin_histogram_bucket_10 = 4", Lines),
+    true = lists:member("histogram.plugin_histogram_bucket_100 = 6", Lines),
+    true = lists:member("histogram.plugin_histogram_bucket_1000 = 8", Lines),
+    true = lists:member("histogram.plugin_histogram_bucket_infinity = 10", Lines),
     gen_tcp:close(SubSocket).
-
-pluggable_metrics_test(_) ->
-    {ok, Ret0} = vmq_server_cmd:metrics(),
-
-    true = lists:member({text, "counter.plugin_metrics = 123"}, Ret0),
-    true = lists:member({text, "histogram.plugin_histogram_count = 10"}, Ret0),
-    true = lists:member({text, "histogram.plugin_histogram_sum = 100"}, Ret0),
-    true = lists:member({text, "histogram.plugin_histogram_bucket_10 = 4"}, Ret0),
-    true = lists:member({text, "histogram.plugin_histogram_bucket_100 = 6"}, Ret0),
-    true = lists:member({text, "histogram.plugin_histogram_bucket_1000 = 8"}, Ret0),
-    true = lists:member({text, "histogram.plugin_histogram_bucket_infinity = 10"}, Ret0).
 
 plugin_metrics() ->
     [{counter, [], plugin_metrics, plugin_metrics, <<"Simple Plugin Metric">>, 123},
