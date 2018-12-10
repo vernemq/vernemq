@@ -47,6 +47,7 @@
 - Enable plugins to expose metrics via the available metric providers.
 - Add histogram metric type.
 - Fix incorrect debug log message in QoS 2 flow.
+- Expose bridge metric for messages dropped in case the outgoing queue is full.
 
 ## VerneMQ 1.6.0
 

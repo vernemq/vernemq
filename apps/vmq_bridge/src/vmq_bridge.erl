@@ -229,7 +229,9 @@ bridge_subscribe(_, _, [], _, Acc) -> Acc.
 
 start_client(Type, Host, Port, Opts) ->
     ClientOpts = client_opts(Type, Host, Port, Opts),
-    gen_mqtt_client:start_link(?MODULE, [{coord, self()}], ClientOpts).
+    {ok, Pid} = gen_mqtt_client:start_link(?MODULE, [{coord, self()}], ClientOpts),
+    ets:insert(vmq_bridge_meta, {Pid}),
+    {ok, Pid}.
 
 validate_prefix(undefined) -> undefined;
 validate_prefix([W|_] = Prefix) when is_binary(W) -> Prefix;
