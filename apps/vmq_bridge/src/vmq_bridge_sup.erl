@@ -19,7 +19,8 @@
 
 %% API
 -export([start_link/0,
-         bridge_info/0]).
+         bridge_info/0,
+         metrics/0]).
 -export([change_config/1]).
 
 %% Supervisor callbacks
@@ -119,6 +120,7 @@ stop_and_delete_unused(Bridges, Config) ->
                   end, BridgesToDelete).
 
 stop_bridge(Ref) ->
+    ets:delete(vmq_bridge_meta, Ref),
     supervisor:terminate_child(?MODULE, Ref),
     supervisor:delete_child(?MODULE, Ref).
 
@@ -126,4 +128,17 @@ ref(Host, Port) ->
     {vmq_bridge, Host, Port}.
 
 init([]) ->
+    vmq_bridge_meta = ets:new(vmq_bridge_meta, [named_table,set,public]),
     {ok, { {one_for_one, 5, 10}, []}}.
+
+metrics() ->
+    ets:foldl(
+      fun({ClientPid},Acc) ->
+              case gen_mqtt_client:stats(ClientPid) of
+                  undefined ->
+                      ets:delete(vmq_bridge_meta, ClientPid),
+                      Acc;
+                  #{dropped := Dropped} ->
+                      [{counter, [], {vmq_bridge_queue_drop, ClientPid}, vmq_bridge_dropped_msgs, "The number of dropped messages (queue full)", Dropped}|Acc]
+              end
+      end, [], vmq_bridge_meta).

@@ -29,6 +29,8 @@
            {gen_fsm,cancel_timer,1}]}]).
 -endif.
 
+-define(PD_QDROP, pd_queue_drop).
+
 -callback init(Args :: any()) ->
     {ok, State :: any()} |
     {ok, State :: any(), Extra :: any()} |
@@ -75,18 +77,19 @@
 
 %startup
 -export([start_link/3,
-    start_link/4,
-    start/3,
-    start/4,
-    info/1,
-    subscribe/2,
-    subscribe/3,
-    unsubscribe/2,
-    publish/4,
-    publish/5,
-    disconnect/1,
-    call/2,
-    cast/2]).
+         start_link/4,
+         start/3,
+         start/4,
+         info/1,
+         stats/1,
+         subscribe/2,
+         subscribe/3,
+         unsubscribe/2,
+         publish/4,
+         publish/5,
+         disconnect/1,
+         call/2,
+         cast/2]).
 
 
 %% gen_fsm callbacks
@@ -160,6 +163,14 @@ start(Name, Module, Args, Opts) ->
 
 info(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, info).
+
+stats(Pid) ->
+    case erlang:process_info(Pid, [dictionary]) of
+        undefined ->
+            undefined;
+        [{dictionary, PD}] ->
+            #{dropped => proplists:get_value(?PD_QDROP, PD, 0)}
+    end.
 
 publish(P, Topic, Payload, Qos) ->
     publish(P, Topic, Payload, Qos, false).
@@ -645,6 +656,7 @@ publish_from_queue(#queue{size=Size, queue=QQ} = Q, State0) when Size > 0 ->
     maybe_publish_offline_msgs(State1#state{o_queue=Q#queue{size=Size-1, queue=NewQQ}}).
 
 drop(#queue{drop=D}=Q) ->
+    put(?PD_QDROP, D+1),
     Q#queue{drop=D+1}.
 
 handle_retry(Key, #state{transport={Transport,_}, sock=Sock, waiting_acks=WAcks} = State) ->
