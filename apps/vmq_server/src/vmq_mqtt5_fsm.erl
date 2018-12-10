@@ -493,7 +493,7 @@ connected(#mqtt5_pubrec{message_id=MessageId, reason_code=RC}, State) when RC < 
             _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?SUCCESS}),
             {State, [serialise_frame(PubRelFrame)]};
         not_found ->
-            lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
+            lager:debug("stopped connected session, due to unknown qos2 pubrec ~p", [MessageId]),
             _ = vmq_metrics:incr({?MQTT5_PUBREL_SENT, ?PACKET_ID_NOT_FOUND}),
             Frame = #mqtt5_pubrel{message_id=MessageId, reason_code=?M5_PACKET_ID_NOT_FOUND, properties=#{}},
             {State, [serialise_frame(Frame)]}

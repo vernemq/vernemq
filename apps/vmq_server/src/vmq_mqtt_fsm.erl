@@ -320,7 +320,7 @@ connected(#mqtt_pubrec{message_id=MessageId}, State) ->
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
             {State, [PubRelFrame]};
         not_found ->
-            lager:debug("stopped connected session, due to qos2 puback missing ~p", [MessageId]),
+            lager:debug("stopped connected session, due to unknown qos2 pubrec ~p", [MessageId]),
             _ = vmq_metrics:incr_mqtt_error_invalid_pubrec(),
             terminate(normal, State)
     end;

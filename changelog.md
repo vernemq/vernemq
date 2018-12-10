@@ -46,6 +46,7 @@
   reusing already available data.
 - Enable plugins to expose metrics via the available metric providers.
 - Add histogram metric type.
+- Fix incorrect debug log message in QoS 2 flow.
 
 ## VerneMQ 1.6.0
 
