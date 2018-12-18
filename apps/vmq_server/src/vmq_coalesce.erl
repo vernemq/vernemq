@@ -66,10 +66,12 @@ put(FullPrefix, SId, NewMD) ->
 get(FullPrefix, SId) ->
     case ets:lookup(?DATA_TBL, {FullPrefix, SId}) of
         [] -> undefined;
-        [Val] -> Val
+        [{_Key, Val}] -> Val
     end.
 
 delete(FullPrefix, SId) ->
+    %% TODO: this only works because the tombstone is the same at the
+    %% metadata level...
     put(FullPrefix, SId, ?TOMBSTONE).
 
 -spec take(integer()) -> [{integer(), {{any(), sid()}, md()}}].

@@ -28,7 +28,8 @@
 
 -spec store(subscriber_id(), vmq_subscriber:subs()) -> ok.
 store(SubscriberId, Subs) ->
-    vmq_metadata:put(?SUBSCRIBER_DB, SubscriberId, Subs).
+    vmq_coalesce:put(?SUBSCRIBER_DB, SubscriberId, Subs).
+    %%vmq_metadata:put(?SUBSCRIBER_DB, SubscriberId, Subs).
 
 -spec read(subscriber_id()) -> undefined |vmq_subscriber:subs().
 read(SubscriberId) ->
@@ -36,10 +37,20 @@ read(SubscriberId) ->
 
 -spec read(subscriber_id(), any()) -> any() |vmq_subscriber:subs().
 read(SubscriberId, Default) ->
-    case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
-        undefined -> Default;
+    case vmq_coalesce:get(?SUBSCRIBER_DB, SubscriberId) of
+        undefined ->
+            case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
+                undefined -> Default;
+                Subs ->
+                    check_format(Subs)
+            end;
+        ?TOMBSTONE ->
+            %% TODO: we should not handle tombstones here!
+            [];
         Subs ->
-            check_format(Subs)
+            %% no need to check_format, anything from the writer
+            %% exists only at runtime.
+            Subs
     end.
 
 -spec delete(subscriber_id()) -> ok.
