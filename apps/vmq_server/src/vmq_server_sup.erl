@@ -48,6 +48,7 @@ init([]) ->
     {ok, { {one_for_one, 5, 10},
            [?CHILD(vmq_config, worker, []) | MsgStoreChildSpecs]
            ++ [
+               ?CHILD(vmq_coalesce, worker, []),
                ?CHILD(vmq_crl_srv, worker, []),
                ?CHILD(vmq_queue_sup_sup, supervisor, [infinity, 5, 10]),
                ?CHILD(vmq_reg_sup, supervisor, []),
