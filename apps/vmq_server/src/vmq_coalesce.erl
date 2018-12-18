@@ -52,13 +52,18 @@
 put(FullPrefix, SId, NewMD) ->
     Key = {FullPrefix, SId},
     ets:insert(?DATA_TBL, {Key, NewMD}),
+    %% use {ctr, callerpid} as a logical timestamp. Adding the
+    %% callerpid ensures that any put will get a unique
+    %% timestamp. Concurrent processes may obtain the same ctr value,
+    %% but the callerpid will make sure they cannot overwrite each
+    %% other.
     case ets:last(?IDX_TBL) of
         '$end_of_table' ->
-            ets:insert(?IDX_TBL, {0, Key}),
+            ets:insert(?IDX_TBL, {{0, self()}, Key}),
             %% wake up writer, there's work to do
             ?SERVER ! wakeup;
-        Last ->
-            ets:insert(?IDX_TBL, {Last+1, Key})
+        {Last, _LPid} ->
+            ets:insert(?IDX_TBL, {{Last+1, self()}, Key})
     end,
     ets:update_counter(?STATS_TBL, writes_logical, 1, {writes_logical,0}),
     true.
