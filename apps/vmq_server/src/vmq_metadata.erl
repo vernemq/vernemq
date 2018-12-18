@@ -45,23 +45,15 @@ stop() ->
     ok.
 
 put(FullPrefix, Key, Value) ->
-    vmq_coalesce:put({FullPrefix, Key}, Value).
-%%vmq_plugin:only(metadata_put, [FullPrefix, Key, Value]).
+    vmq_plugin:only(metadata_put, [FullPrefix, Key, Value]).
 
 get(FullPrefix, Key) ->
-    case vmq_coalesce:get({FullPrefix, Key}) of
-        undefined ->
-            vmq_plugin:only(metadata_get, [FullPrefix, Key]);
-        Value -> Value
-    end.
+    vmq_plugin:only(metadata_get, [FullPrefix, Key]).
 
 delete(FullPrefix, Key) ->
-    %% How to handle deletes - we should always execute this!
-    vmq_coalesce:delete({FullPrefix, Key}).
-%%    vmq_plugin:only(metadata_delete, [FullPrefix, Key]).
+    vmq_plugin:only(metadata_delete, [FullPrefix, Key]).
 
 fold(FullPrefix, Fun, Acc) ->
-    %% folds do not look up in the metadata folder
     vmq_plugin:only(metadata_fold, [FullPrefix, Fun, Acc]).
 
 subscribe(FullPrefix) ->
