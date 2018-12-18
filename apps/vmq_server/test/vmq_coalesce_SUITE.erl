@@ -119,14 +119,35 @@ simple() ->
 %% @end
 %%--------------------------------------------------------------------
 simple(_Config) ->
-    {ok, _Pid} = vmq_coalesce:start_link(),
+    WriteFun =
+        fun(FullPrefix, Key, Value) ->
+                io:format(user, "XXX writefun: ~p -> ~p~n", [{FullPrefix,Key}, Value]),
+                timer:sleep(4)
+        end,
+    {ok, _Pid} = vmq_coalesce:start_link([{write_fun, WriteFun}]),
     vmq_coalesce:put(foo, bar, [a,b,c]),
-    [vmq_coalesce:put(foo, bar, X) || X <- lists:seq(1,1000)],
+    [begin vmq_coalesce:put(foo, bar, X),
+           timer:sleep(2)
+     end|| X <- lists:seq(1,1000)],
     vmq_coalesce:put(foo, baz, baz),
-    io:format(user, "XXX data ~p~n", [ets:tab2list(vmq_coalesce_data_table)]),
-    io:format(user, "XXX indx ~p~n", [ets:tab2list(vmq_coalesce_timeindex_table)]),
+    %%io:format(user, "XXX data ~p~n", [ets:tab2list(vmq_coalesce_data_table)]),
+    %%io:format(user, "XXX indx ~p~n", [ets:tab2list(vmq_coalesce_timeindex_table)]),
     io:format(user, "XXX info: ~p~n", [vmq_coalesce:info()]),
-    #{writes := 2} = vmq_coalesce:info(),
+    %%#{writes := 2} = vmq_coalesce:info(),
+    timer:sleep(1000),
      %% {2, [{{foo, bar1}, [d,e,f]},
      %%    {{foo, baz}, baz}]} = vmq_coalesce:take(2),
+    wait_until_written(),
+    #{data_objects := 0,
+      timeindexes := 0} = vmq_coalesce:info(),
+    io:format(user, "XXX data ~p~n", [ets:tab2list(vmq_coalesce_data_table)]),
+    io:format(user, "XXX indx ~p~n", [ets:tab2list(vmq_coalesce_timeindex_table)]),
+    #{writes_logical := 1002, writes_actual := 0} = vmq_coalesce:info(),
     ok.
+
+wait_until_written() ->
+    vmq_cluster_test_utils:wait_until(
+      fun() ->
+              #{data_objects := Unwritten} = vmq_coalesce:info(),
+              0 == Unwritten
+      end, 10, 10).

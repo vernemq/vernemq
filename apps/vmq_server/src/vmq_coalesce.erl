@@ -16,7 +16,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/0,
+         start_link/1]).
 
 -export([put/3,
          get/2,
@@ -31,6 +32,8 @@
 -define(SERVER, ?MODULE).
 
 -record(state, {
+                %% make the write fun overridable for testing.
+                write_fun :: function()
                }).
 -define(TOMBSTONE, '$deleted').
 
@@ -53,12 +56,12 @@ put(FullPrefix, SId, NewMD) ->
         '$end_of_table' ->
             ets:insert(?IDX_TBL, {0, Key}),
             %% wake up writer, there's work to do
-            ?SERVER ! wakeup,
-            true;
+            ?SERVER ! wakeup;
         Last ->
             ets:insert(?IDX_TBL, {Last+1, Key})
     end,
-    ets:update_counter(?STATS_TBL, writes_logical, 1, {writes_logical,0}).
+    ets:update_counter(?STATS_TBL, writes_logical, 1, {writes_logical,0}),
+    true.
 
 get(FullPrefix, SId) ->
     case ets:lookup(?DATA_TBL, {FullPrefix, SId}) of
@@ -80,7 +83,6 @@ take(N) ->
                           [] ->
                               {Ctr, Acc};
                           [E] ->
-                              io:format(user, "XXX removed ~p from ~p~n", [E, ets:tab2list(?DATA_TBL)]),
                               {Ctr+1, [E|Acc]}
                       end;
                  (_, {_, _}=Res) ->
@@ -105,7 +107,10 @@ info() ->
                       {error, Error :: term()} |
                       ignore.
 start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+    start_link([]).
+
+start_link(Args) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -123,12 +128,18 @@ start_link() ->
                               {ok, State :: term(), hibernate} |
                               {stop, Reason :: term()} |
                               ignore.
-init([]) ->
+init(Args) ->
     %% entries are on the form {SId, Metadata}
     ets:new(?DATA_TBL, [named_table,  public]),
     ets:new(?IDX_TBL, [named_table, ordered_set, public]),
     ets:new(?STATS_TBL, [named_table, public]),
-    {ok, #state{}}.
+    DefaultWFun =
+        fun(FullPrefix, SubscriberId, Value) ->
+                vmq_plugin:only(metadata_put, [FullPrefix, SubscriberId, Value])
+        end,
+    {ok, #state{
+            write_fun = proplists:get_value(write_fun, Args, DefaultWFun)
+           }}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -146,7 +157,9 @@ init([]) ->
                          {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
                          {stop, Reason :: term(), NewState :: term()}.
 handle_call(info, _From, State) ->
-    Reply = maps:from_list(ets:tab2list(?STATS_TBL)),
+    M1 = maps:from_list(ets:tab2list(?STATS_TBL)),
+    Reply = maps:merge(M1, #{data_objects => proplists:get_value(size, ets:info(?DATA_TBL)),
+                             time_indexes => proplists:get_value(size, ets:info(?IDX_TBL))}),
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -177,25 +190,21 @@ handle_cast(_Request, State) ->
                          {noreply, NewState :: term(), Timeout :: timeout()} |
                          {noreply, NewState :: term(), hibernate} |
                          {stop, Reason :: normal | term(), NewState :: term()}.
-handle_info(wakeup, State) ->
+handle_info(wakeup, #state{write_fun=WFun}=State) ->
     case take(1000) of
         {0, []} ->
             ok;
         {Count, Values} ->
             lists:map(
               fun({{FullPrefix,SubscriberId}, Value}) ->
-                      %% TODO: factor this out - shouldn't be visible here..
-                       vmq_plugin:only(metadata_put, [FullPrefix, SubscriberId, Value])
+                      WFun(FullPrefix, SubscriberId, Value)
+
               end, Values),
-            case Count of
-                1000 ->
-                    %% TODO: Optimize this to be exact and avoid
-                    %% sending more than the necessary amount of
-                    %% `wakeup` messages.
-                    ?SERVER ! wakeup;
-                _ -> ok
-            end,
-            ets:update_counter(?STATS_TBL, writes_real, Count, {writes_real, 0})
+            %% TODO: Optimize this to be exact and avoid
+            %% sending more than the necessary amount of
+            %% `wakeup` messages.
+            ?SERVER ! wakeup,
+            ets:update_counter(?STATS_TBL, writes_actual, Count, {writes_actual, 0})
     end,
     {noreply, State};
 handle_info(_Info, State) ->
