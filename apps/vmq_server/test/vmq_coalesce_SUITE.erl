@@ -133,10 +133,8 @@ simple(_Config) ->
     vmq_coalesce:put(foo, baz, baz),
 
     wait_until_written(),
-    #{data_objects := 0,
-      time_indexes := 0} = vmq_coalesce:info(),
+    #{data_objects := 0} = vmq_coalesce:info(),
     io:format(user, "XXX data ~p~n", [ets:tab2list(vmq_coalesce_data_table)]),
-    io:format(user, "XXX indx ~p~n", [ets:tab2list(vmq_coalesce_timeindex_table)]),
     io:format(user, "XXX info: ~p~n", [vmq_coalesce:info()]),
     #{writes_logical := 1002, writes_actual := _} = vmq_coalesce:info(),
     ok.

@@ -22,7 +22,6 @@
 -export([put/3,
          get/2,
          delete/2,
-         take/1,
          info/0]).
 
 %% gen_server callbacks
@@ -45,27 +44,22 @@
 -type md() :: any().
 
 -define(DATA_TBL, vmq_coalesce_data_table).
--define(IDX_TBL, vmq_coalesce_timeindex_table).
 -define(STATS_TBL, vmq_coalesce_stats).
 
 -spec put(any(), sid(), md()) -> true.
 put(FullPrefix, SId, NewMD) ->
-    Key = {FullPrefix, SId},
-    ets:insert(?DATA_TBL, {Key, NewMD}),
-    %% use {ctr, callerpid} as a logical timestamp. Adding the
-    %% callerpid ensures that any put will get a unique
-    %% timestamp. Concurrent processes may obtain the same ctr value,
-    %% but the callerpid will make sure they cannot overwrite each
-    %% other.
-    case ets:last(?IDX_TBL) of
-        '$end_of_table' ->
-            ets:insert(?IDX_TBL, {{0, self()}, Key}),
-            %% wake up writer, there's work to do
-            ?SERVER ! wakeup;
-        {Last, _LPid} ->
-            ets:insert(?IDX_TBL, {{Last+1, self()}, Key})
-    end,
+    First = ets:first(?DATA_TBL),
+    ets:insert(?DATA_TBL, {{FullPrefix, SId}, NewMD}),
     ets:update_counter(?STATS_TBL, writes_logical, 1, {writes_logical,0}),
+
+    %% This way we can end up sending more wakeup messages than
+    %% strictly needed if more than one concurrent process read out
+    %% '$end_of_table'.
+    case First of
+        '$end_of_table' ->
+            ?SERVER ! wakeup;
+        _ -> ok
+    end,
     true.
 
 get(FullPrefix, SId) ->
@@ -78,28 +72,6 @@ delete(FullPrefix, SId) ->
     %% TODO: this only works because the tombstone is the same at the
     %% metadata level...
     put(FullPrefix, SId, ?TOMBSTONE).
-
--spec take(integer()) -> [{integer(), {{any(), sid()}, md()}}].
-take(N) ->
-    {Count, MD} =
-        try
-            ets:foldl(
-              fun({LTs, Key}, {Ctr, Acc}) when Ctr < N ->
-                      ets:delete(?IDX_TBL, LTs),
-                      case ets:take(?DATA_TBL, Key) of
-                          [] ->
-                              {Ctr, Acc};
-                          [E] ->
-                              {Ctr+1, [E|Acc]}
-                      end;
-                 (_, {_, _}=Res) ->
-                      throw(Res)
-              end, {0, []}, ?IDX_TBL)
-        catch
-            throw:{_,_}=Res ->
-                Res
-        end,
-    {Count, lists:reverse(MD)}.
 
 info() ->
     gen_server:call(?SERVER, info).
@@ -138,7 +110,6 @@ start_link(Args) ->
 init(Args) ->
     %% entries are on the form {SId, Metadata}
     ets:new(?DATA_TBL, [named_table,  public]),
-    ets:new(?IDX_TBL, [named_table, ordered_set, public]),
     ets:new(?STATS_TBL, [named_table, public]),
     DefaultWFun =
         fun(FullPrefix, SubscriberId, Value) ->
@@ -165,8 +136,7 @@ init(Args) ->
                          {stop, Reason :: term(), NewState :: term()}.
 handle_call(info, _From, State) ->
     M1 = maps:from_list(ets:tab2list(?STATS_TBL)),
-    Reply = maps:merge(M1, #{data_objects => proplists:get_value(size, ets:info(?DATA_TBL)),
-                             time_indexes => proplists:get_value(size, ets:info(?IDX_TBL))}),
+    Reply = maps:merge(M1, #{data_objects => proplists:get_value(size, ets:info(?DATA_TBL))}),
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -198,21 +168,26 @@ handle_cast(_Request, State) ->
                          {noreply, NewState :: term(), hibernate} |
                          {stop, Reason :: normal | term(), NewState :: term()}.
 handle_info(wakeup, #state{write_fun=WFun}=State) ->
-    case take(1000) of
-        {0, []} ->
-            ok;
-        {Count, Values} ->
-            lists:map(
-              fun({{FullPrefix,SubscriberId}, Value}) ->
-                      WFun(FullPrefix, SubscriberId, Value)
-
-              end, Values),
-            %% TODO: Optimize this to be exact and avoid
-            %% sending more than the necessary amount of
-            %% `wakeup` messages.
-            ?SERVER ! wakeup,
-            ets:update_counter(?STATS_TBL, writes_actual, Count, {writes_actual, 0})
-    end,
+    WriteCnt =
+        try
+            ets:foldl(fun({_Key, _Val}, Ctr) when Ctr > 1000 ->
+                              %% yield from time to time.
+                              throw({yield, Ctr});
+                         ({Key, _Val}, Ctr) ->
+                              case ets:take(?DATA_TBL, Key) of
+                                  [{{FullPrefix, SId}, V}] ->
+                                      WFun(FullPrefix, SId, V),
+                                      Ctr+1;
+                                  [] ->
+                                      Ctr
+                              end
+                      end, 0, ?DATA_TBL)
+        catch throw:{yield, Ctr} ->
+                Ctr
+        end,
+    %% since we might not be done, let's go another round.
+    self() ! wakeup,
+    ets:update_counter(?STATS_TBL, writes_actual, WriteCnt, {writes_actual, 0}),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
