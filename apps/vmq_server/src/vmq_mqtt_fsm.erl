@@ -962,7 +962,10 @@ maybe_publish_last_will(#state{subscriber_id={_, ClientId}=SubscriberId, usernam
             _ = on_publish_hook(vmq_reg:publish(CAPSettings#cap_settings.allow_publish,
                                                 RegView, ClientId, Msg), HookArgs),
             ok;
-        true -> ok
+        true ->
+            lager:debug("last will and testament suppressed on session takeover for subscriber ~p",
+                        [SubscriberId]),
+            ok
     end.
 
 suppress_lwt(?SESSION_TAKEN_OVER, #{suppress_lwt_on_session_takeover := true}) ->

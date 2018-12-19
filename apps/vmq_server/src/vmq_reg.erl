@@ -79,8 +79,9 @@ subscribe(true, SubscriberId, Topics) ->
     subscribe_op(SubscriberId, Topics).
 
 subscribe_op(SubscriberId, Topics) ->
-    Existing = subscriptions_exist(SubscriberId, Topics),
-    add_subscriber(lists:usort(Topics), SubscriberId),
+    OldSubs = subscriptions_for_subscriber_id(SubscriberId),
+    Existing = subscriptions_exist(OldSubs, Topics),
+    add_subscriber(lists:usort(Topics), OldSubs, SubscriberId),
     QoSTable =
     lists:foldl(fun
                     %% MQTTv4 clauses
@@ -642,9 +643,9 @@ fold_subscribers(FoldFun, Acc) ->
       end, Acc).
 
 -spec add_subscriber([{topic(), qos() | not_allowed} |
-                      {topic(), {qos() | not_allowed, map()}}], subscriber_id()) -> ok.
-add_subscriber(Topics, SubscriberId) ->
-    OldSubs = subscriptions_for_subscriber_id(SubscriberId),
+                      {topic(), {qos() | not_allowed, map()}}],
+                     vmq_subscriber:subs(), subscriber_id()) -> ok.
+add_subscriber(Topics, OldSubs, SubscriberId) ->
     NewSubs =
         lists:filter(
           fun({_T, QoS}) when is_integer(QoS) ->
@@ -660,10 +661,9 @@ add_subscriber(Topics, SubscriberId) ->
             ok
     end.
 
--spec subscriptions_exist(subscriber_id(), [topic()]) -> [boolean()].
-subscriptions_exist(SubscriberId, Topics) ->
-    Subs = subscriptions_for_subscriber_id(SubscriberId),
-    [vmq_subscriber:exists(Topic, Subs) || {Topic, _} <- Topics].
+-spec subscriptions_exist(vmq_subscriber:subs(), [topic()]) -> [boolean()].
+subscriptions_exist(OldSubs, Topics) ->
+    [vmq_subscriber:exists(Topic, OldSubs) || {Topic, _} <- Topics].
 
 -spec del_subscriber(subscriber_id()) -> ok.
 del_subscriber(SubscriberId) ->

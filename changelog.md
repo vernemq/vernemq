@@ -48,6 +48,9 @@
 - Add histogram metric type.
 - Fix incorrect debug log message in QoS 2 flow.
 - Expose bridge metric for messages dropped in case the outgoing queue is full.
+- Log (debug level) when a LWT is suppressed on session takeover.
+- Optimize subscribe operation by refactoring away one read from the metadata
+  store.
 
 ## VerneMQ 1.6.0
 

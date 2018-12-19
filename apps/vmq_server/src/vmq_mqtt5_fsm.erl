@@ -1438,8 +1438,12 @@ prepare_frame(QoS, Msg, State0) ->
 
 -spec maybe_publish_last_will(state(), reason_code_name() | {error, any()}) -> ok.
 maybe_publish_last_will(#state{will_msg=undefined}, _Reason) -> ok;
-maybe_publish_last_will(#state{def_opts=#{suppress_lwt_on_session_takeover := true}},
-                        ?SESSION_TAKEN_OVER) -> ok;
+maybe_publish_last_will(#state{def_opts=#{suppress_lwt_on_session_takeover := true},
+                               subscriber_id=SubscriberId},
+                        ?SESSION_TAKEN_OVER) ->
+    lager:debug("last will and testament suppressed on session takeover for subscriber ~p",
+                [SubscriberId]),
+    ok;
 maybe_publish_last_will(#state{subscriber_id={_, ClientId} = SubscriberId, username=User,
                                will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings,
                                queue_pid=QueuePid,
