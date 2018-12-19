@@ -51,6 +51,10 @@
 - Log (debug level) when a LWT is suppressed on session takeover.
 - Optimize subscribe operation by refactoring away one read from the metadata
   store.
+- Add protection mechanism for the plumtree metadata store from subscription
+  floods by dropping and not acknowledging `i_have` messages when the mailbox
+  size grows above a certain threshold. This threshold is configurable via the
+  `plumtree.drop_i_have_threshold` hidden option. The default is 1000000.
 
 ## VerneMQ 1.6.0
 
