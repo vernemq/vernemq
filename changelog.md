@@ -54,7 +54,8 @@
 - Add protection mechanism for the plumtree metadata store from subscription
   floods by dropping and not acknowledging `i_have` messages when the mailbox
   size grows above a certain threshold. This threshold is configurable via the
-  `plumtree.drop_i_have_threshold` hidden option. The default is 1000000.
+  `plumtree.drop_i_have_threshold` hidden option. The default is 1000000. This
+  work was kindly contributed by ADB (https://www.adbglobal.com).
 - Add new `vmq-admin retain` commands to inspect the retained message store.
 
 ## VerneMQ 1.6.0
