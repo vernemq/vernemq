@@ -13,6 +13,7 @@ Please do not insert images of text, but insert the text instead.
 - OS:
 - Erlang/OTP version (if building from source):
 - VerneMQ configuration (vernemq.conf) or the changes from the default
+- Cluster size/standalone:
 
 ### Expected behavior
 
