@@ -21,10 +21,22 @@
 register_cli() ->
     vmq_session_list_cmd(),
     vmq_session_disconnect_cmd(),
+    vmq_retain_show_cmd(),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
     clique:register_usage(["vmq-admin", "session", "show"], vmq_session_show_usage()),
-    clique:register_usage(["vmq-admin", "session", "disconnect"], vmq_session_disconnect_usage()).
+    clique:register_usage(["vmq-admin", "session", "disconnect"], vmq_session_disconnect_usage()),
+    clique:register_usage(["vmq-admin", "retain"], retain_usage()),
+    clique:register_usage(["vmq-admin", "retain"], retain_show_usage()).
+
+vmq_retain_show_cmd() ->
+    Cmd = ["vmq-admin", "retain", "show"],
+    KeySpecs = [],
+    FlagSpecs =
+        [{N, [{longname, atom_to_list(N)}]} || N <- [limit,rowtimeout,payload,topic,mountpoint]],
+    DefaultFields = ["topic", "payload"],
+    Callback = vmq_ql_callback("retain_srv", DefaultFields, [{nodes, [node()]}]),
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 vmq_session_list_cmd() ->
     Cmd = ["vmq-admin", "session", "show"],
@@ -34,50 +46,7 @@ vmq_session_list_cmd() ->
     DefaultFields =
         ["peer_port", "peer_host", "user", "mountpoint", "client_id", "is_online"],
     FlagSpecs = [{I, [{longname, atom_to_list(I)}]} || I <- [limit,rowtimeout|ValidInfoItems]],
-    Callback = fun(_, [], Flags) ->
-                       Limit = proplists:get_value(limit, Flags, "100"),
-                       RowTimeout = proplists:get_value(rowtimeout, Flags, "100"),
-                       _ = list_to_integer(Limit),
-                       _ = list_to_integer(RowTimeout),
-                       {Fields, Where} =
-                       case Flags of
-                           [] ->
-                               {DefaultFields, []};
-                           _ ->
-                               lists:foldl(
-                                 fun({limit, _}, Acc) ->
-                                         Acc;
-                                    ({rowtimeout, _}, Acc) ->
-                                         Acc;
-                                    ({Flag, undefined}, {AccFields, AccWhere}) ->
-                                         {[atom_to_list(Flag)|AccFields], AccWhere};
-                                    ({Flag, Val}, {AccFields, AccWhere}) ->
-                                         {AccFields, [{atom_to_list(Flag), v(Val)}|AccWhere]}
-                                 end, {[],[]}, Flags)
-                       end,
-                       FFields =
-                       case Fields of
-                           [] ->
-                               string:join(DefaultFields, ",");
-                           _ ->
-                               string:join(Fields, ",")
-                       end,
-                       WWhere =
-                       case Where of
-                           [] ->
-                               [];
-                           _ ->
-                               "WHERE " ++ lists:flatten(
-                                  string:join([[W, "=", V] || {W,V} <- Where], " AND "))
-                       end,
-                       QueryString = "SELECT " ++ FFields ++ " FROM sessions " ++ WWhere ++ " LIMIT " ++ Limit ++ " ROWTIMEOUT " ++ RowTimeout,
-                       Table =
-                       vmq_ql_query_mgr:fold_query(
-                         fun(Row, Acc) ->
-                                 [maps:to_list(Row)|Acc]
-                         end, [], QueryString),
-                       [clique_status:table(Table)]
-               end,
+    Callback = vmq_ql_callback("sessions", DefaultFields, []),
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 vmq_session_disconnect_cmd() ->
@@ -113,6 +82,51 @@ vmq_session_disconnect_cmd() ->
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+vmq_ql_callback(Table, DefaultFields, Opts) ->
+    fun(_, [], Flags) ->
+            Limit = proplists:get_value(limit, Flags, "100"),
+            RowTimeout = proplists:get_value(rowtimeout, Flags, "100"),
+            _ = list_to_integer(Limit),
+            _ = list_to_integer(RowTimeout),
+            {Fields, Where} =
+                case Flags of
+                    [] ->
+                        {DefaultFields, []};
+                    _ ->
+                        lists:foldl(
+                          fun({limit, _}, Acc) ->
+                                  Acc;
+                             ({rowtimeout, _}, Acc) ->
+                                  Acc;
+                             ({Flag, undefined}, {AccFields, AccWhere}) ->
+                                  {[atom_to_list(Flag)|AccFields], AccWhere};
+                             ({Flag, Val}, {AccFields, AccWhere}) ->
+                                  {AccFields, [{atom_to_list(Flag), v(Val)}|AccWhere]}
+                          end, {[],[]}, Flags)
+                end,
+            FFields =
+                case Fields of
+                    [] ->
+                        string:join(DefaultFields, ",");
+                    _ ->
+                        string:join(Fields, ",")
+                end,
+            WWhere =
+                case Where of
+                    [] ->
+                        [];
+                    _ ->
+                        "WHERE " ++ lists:flatten(
+                                      string:join([[W, "=", V] || {W,V} <- Where], " AND "))
+                end,
+            QueryString = "SELECT " ++ FFields ++ " FROM " ++ Table ++ " " ++ WWhere ++ " LIMIT " ++ Limit ++ " ROWTIMEOUT " ++ RowTimeout,
+            ResultTable =
+                vmq_ql_query_mgr:fold_query(
+                  fun(Row, Acc) ->
+                          [maps:to_list(Row)|Acc]
+                  end, [], QueryString, Opts),
+            [clique_status:table(ResultTable)]
+    end.
 
 v("true" = V) -> V;
 v("false" = V) -> V;
@@ -160,4 +174,25 @@ vmq_session_disconnect_usage() ->
      "      removes the stored cluster state of this client like stored\n",
      "      messages and subscriptions.",
      "\n\n"
+    ].
+
+retain_usage() ->
+    ["vmq-admin retain <sub-command>\n\n",
+     "  Inspect MQTT retained messages.\n\n",
+     "  Sub-commands:\n",
+     "    show        Show and filter running sessions\n",
+     "  Use --help after a sub-command for more details.\n"
+    ].
+
+retain_show_usage() ->
+    Options = [io_lib:format("  --~p\n", [Item])
+               || Item <- [payload, topic, mountpoint]],
+    ["vmq-admin retain show\n\n",
+     "  Show and filter MQTT retained messages.\n\n",
+     "Default options:\n"
+     "  --payload --topic\n\n"
+     "Options\n\n"
+     "  --limit=<NumberOfResults>\n"
+     "      Limit the number of results returned. Defaults is 100.\n"
+     | Options
     ].

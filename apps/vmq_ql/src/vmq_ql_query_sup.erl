@@ -18,7 +18,6 @@
 
 %% API
 -export([start_link/0,
-         start_query/2,
          start_query/3]).
 
 %% Supervisor callbacks
@@ -30,9 +29,10 @@
 %%% API functions
 %%%===================================================================
 
-start_query(MgrPid, QueryString) when is_pid(MgrPid) ->
+start_query(MgrPid, QueryString, Opts) when is_pid(MgrPid) ->
+    Nodes = proplists:get_value(nodes, Opts, vmq_cluster:nodes()),
     lists:foldl(fun(Node, {AccRes,AccBad}) ->
-                        try start_query(Node, MgrPid, QueryString) of
+                        try start_query_(Node, MgrPid, QueryString) of
                             {ok, Pid} -> {[Pid|AccRes], AccBad};
                             {error, _} -> {AccRes, [Node|AccBad]}
                         catch
@@ -40,9 +40,9 @@ start_query(MgrPid, QueryString) when is_pid(MgrPid) ->
                             exit:{noproc, _} ->
                                 {AccRes, [Node|AccBad]}
                         end
-                end, {[],[]}, vmq_cluster:nodes()).
+                end, {[],[]}, Nodes).
 
-start_query(Node, MgrPid, QueryString) ->
+start_query_(Node, MgrPid, QueryString) ->
     supervisor:start_child({?MODULE, Node}, [MgrPid, QueryString]).
 
 start_link() ->

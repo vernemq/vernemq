@@ -13,16 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_reg).
--include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_server.hrl").
-
--record(retain_msg,
-        {
-          payload    :: binary(),
-          properties :: mqtt5_properties(),
-          expiry_ts  :: undefined
-                      | msg_expiry_ts()
-        }).
 
 %% API
 -export([

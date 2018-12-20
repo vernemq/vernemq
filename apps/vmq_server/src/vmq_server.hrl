@@ -1,4 +1,7 @@
+-ifndef(VMQ_SERVER_HRL).
+-define(VMQ_SERVER_HRL, true).
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+
 -type routing_key()         :: [binary()].
 -type msg_ref()             :: binary().
 
@@ -23,6 +26,17 @@
                                  | msg_expiry_ts()
          }).
 -type msg()             :: #vmq_msg{}.
+
+-record(retain_msg,
+        {
+          payload    :: binary(),
+          properties :: any(),
+          expiry_ts  :: undefined
+                      | msg_expiry_ts()
+        }).
+-type retain_msg() :: #retain_msg{}.
+
+
 
 -type subscription() :: {topic(), subinfo()}.
 -define(INTERNAL_CLIENT_ID, '$vmq_internal_client_id').
@@ -51,3 +65,4 @@
                                       {ok, msg()} |
                                       {ok, msg(), session_ctrl()} |
                                       {error, atom()}).
+-endif.
