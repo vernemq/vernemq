@@ -122,7 +122,6 @@ $(function() {
             url: config.cluster_status.url,
             success: function( response) {
                 console.log(response);
-                //var nodes = Object.keys(response);
                 var total = {active: true, clients_online: 0, clients_offline: 0, connect_rate: 0, msg_in_rate: 0,
                     msg_out_rate: 0, msg_drop_rate: 0, msg_queued: 0};
                 var now = Date.now();
@@ -163,8 +162,6 @@ $(function() {
                     total.msg_queued += node.msg_queued;
                     return node;
                 });
-                console.log("The Nodes");
-                console.log(nodes);
                 version_check(nodes, cluster_issues);
                 config.cluster_status.last_calculated = now;
                 var output = Mustache.render(config.template, {nodes: nodes, cluster_size: cluster_size, cluster_issues: cluster_issues, total: total});
