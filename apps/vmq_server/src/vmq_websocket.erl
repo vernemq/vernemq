@@ -15,15 +15,16 @@
 -module(vmq_websocket).
 -include("vmq_server.hrl").
 
--export([init/3]).
+-export([init/2]).
 -export([websocket_init/3]).
 -export([websocket_handle/3]).
 -export([websocket_info/3]).
--export([websocket_terminate/3]).
+-export([terminate/3]).
 
 -record(st, {buffer= <<>>,
              fsm_mod,
              fsm_state,
+             transport,
              bytes_recv={os:timestamp(), 0},
              bytes_sent={os:timestamp(), 0}}).
 
@@ -31,7 +32,7 @@
 -define(SUPPORTED_PROTOCOLS, [<<"mqttv3.1">>, <<"mqtt">>]).
 
 
-init(_Type, Req, Opts) ->
+init(Req, Opts) ->
     {upgrade, protocol, cowboy_websocket, Req, Opts}.
 
 websocket_init(Type, Req, Opts) ->
@@ -58,16 +59,14 @@ init_(Type, Req, Opts) ->
                 false ->
                     FsmMod:init(Peer, Opts);
                 true ->
-                    %% Hacky to use the private set/2 function, but
-                    %% didn't have a better solution to get at the socket.
-                    SSLSocket = cowboy_req:get(socket, Req),
-                    FsmMod:init(Peer, [{preauth, vmq_ssl:socket_to_common_name(SSLSocket)}|Opts])
+                    Cert = cowboy_req:cert(Req),
+                    FsmMod:init(Peer, [{preauth, vmq_ssl:cert_to_common_name(Cert)}|Opts])
             end;
         _ ->
             FsmMod:init(Peer, Opts)
     end,
     _ = vmq_metrics:incr_socket_open(),
-    {ok, Req1, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
+    {ok, Req1, #st{fsm_state=FsmState, fsm_mod=FsmMod, transport=Type}}.
 
 websocket_handle(_, Req, #st{fsm_state=terminated}=State) ->
     %% handle `terminated` state as in `websocket_info/3`.
@@ -86,9 +85,10 @@ websocket_handle(_Data, Req, State) ->
 
 websocket_info({?MODULE, terminate}, Req, State) ->
     {shutdown, Req, State};
-websocket_info({set_sock_opts, Opts}, Req, State) ->
-    [Socket, Transport] = cowboy_req:get([socket, transport], Req),
-    Transport:setopts(Socket, Opts),
+websocket_info({set_sock_opts, _Opts}, Req, #st{transport=_Transport} = State) ->
+    %% TODO @codeadict: Find a way to get the request raw socket.
+    %% Socket = cowboy_req:socket(Req),
+    %% Transport:setopts(Socket, Opts),
     {ok, Req, State};
 websocket_info({?TO_SESSION, _}, Req, #st{fsm_state=terminated} = State) ->
     % We got an intermediate message before retrieving {?MODULE, terminate}.
@@ -109,10 +109,10 @@ websocket_info({?TO_SESSION, Msg}, Req, #st{fsm_mod=FsmMod, fsm_state=FsmState} 
 websocket_info(_Info, Req, State) ->
     {ok, Req, State}.
 
-websocket_terminate(_Reason, _Req, #st{fsm_state=terminated}) ->
+terminate(_Reason, _Req, #st{fsm_state=terminated}) ->
     _ = vmq_metrics:incr_socket_close(),
     ok;
-websocket_terminate(_Reason, _Req, #st{fsm_mod=FsmMod, fsm_state=FsmState}) ->
+terminate(_Reason, _Req, #st{fsm_mod=FsmMod, fsm_state=FsmState}) ->
     _ = FsmMod:msg_in({disconnect, ?NORMAL_DISCONNECT}, FsmState),
     _ = vmq_metrics:incr_socket_close(),
     ok.

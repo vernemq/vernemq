@@ -49,13 +49,12 @@ content_types_provided(Req, State) ->
     {[{<<"application/json">>, to_json}], Req, State}.
 
 options(Req0, State) ->
-    %% CORS Headers
-    Req1 = cowboy_req:set_resp_header(<<"access-control-max-age">>, <<"1728000">>, Req0),
-    Req2 = cowboy_req:set_resp_header(<<"access-control-allow-methods">>, <<"HEAD, GET">>, Req1),
-    Req3 = cowboy_req:set_resp_header(<<"access-control-allow-headers">>, <<"content-type, authorization">>, Req2),
-    Req4 = cowboy_req:set_resp_header(<<"access-control-allow-origin">>, <<$*>>, Req3),
-
-    {ok, Req4, State}.
+    %% Set CORS Headers
+    CorsHeaders = #{<<"access-control-max-age">> => <<"1728000">>,
+                    <<"access-control-allow-methods">> => <<"HEAD, GET">>,
+                    <<"access-control-allow-headers">> => <<"content-type, authorization">>,
+                    <<"access-control-allow-origin">> => <<$*>>},
+    {ok, cowboy_req:set_resp_headers(CorsHeaders, Req0), State}.
 
 is_authorized(Req, State) ->
     {ok, Auth, Req1} = cowboy_req:parse_header(<<"authorization">>, Req),
@@ -91,7 +90,7 @@ to_json(Req, State) ->
         {StdOut, []} ->
             {iolist_to_binary(StdOut), Req, undefined};
         {[], StdErr} ->
-            {ok, Req1} = cowboy_req:reply(400, [], <<"invalid_request_error">>,
+            {ok, Req1} = cowboy_req:reply(400, #{}, <<"invalid_request_error">>,
                                           Req),
             {iolist_to_binary(StdErr), Req1, State}
     end.

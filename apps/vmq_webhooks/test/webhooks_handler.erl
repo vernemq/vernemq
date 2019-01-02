@@ -15,8 +15,8 @@ start_endpoint() ->
                  [{'_', [{"/", ?MODULE, []},
                          {"/cache", ?MODULE, []},
                          {"/cache1s", ?MODULE, []}]}]),
-    {ok, _} = cowboy:start_http(http, 1, [{port, 34567}],
-        [{env, [{dispatch, Dispatch}]}]
+    {ok, _} = cowboy:start_clear(http, [{port, 34567}, {num_acceptors, 1}],
+        #{env => #{dispatch => Dispatch}}
     ).
 
 stop_endpoint() ->
@@ -29,31 +29,30 @@ init(_Type, Req, []) ->
 handle(Req, State) ->
     Path = cowboy_req:path(Req),
     {Hook, Req2} = cowboy_req:header(<<"vernemq-hook">>, Req),
-    {ok, Body, Req3} = cowboy_req:body(Req2),
+    {ok, Body, Req3} = cowboy_req:read_body(Req2),
     ?DEBUG andalso io:format(user, ">>> ~s~n", [jsx:prettify(Body)]),
     case Path of
         {<<"/">>, _} ->
             {Code, Resp} = process_hook(Hook, jsx:decode(Body, [{labels, atom}, return_maps])),
             {ok, Req4} =
                 cowboy_req:reply(Code,
-                                 [
-                                  {<<"content-type">>, <<"text/json">>}
-                                 ], encode(Resp), Req3),
+                                 #{<<"content-type">> => <<"text/json">>},
+                                 encode(Resp), Req3),
             {ok, Req4, State};
         {<<"/cache">>,_} ->
             {Code, Resp} = process_cache_hook(Hook, jsx:decode(Body, [{labels, atom}, return_maps])),
             {ok, Req4} =
                 cowboy_req:reply(Code,
-                                 [{<<"content-type">>, <<"text/json">>},
-                                  {<<"Cache-control">>, <<"max-age=86400">>}],
+                                 #{<<"content-type">> => <<"text/json">>,
+                                   <<"Cache-control">> => <<"max-age=86400">>},
                                  encode(Resp), Req3),
             {ok, Req4, State};
         {<<"/cache1s">>,_} ->
             {Code, Resp} = process_cache_hook(Hook, jsx:decode(Body, [{labels, atom}, return_maps])),
             {ok, Req4} =
                 cowboy_req:reply(Code,
-                                 [{<<"content-type">>, <<"text/json">>},
-                                  {<<"Cache-control">>, <<"max-age=1">>}],
+                                 #{<<"content-type">> => <<"text/json">>,
+                                   <<"Cache-control">> => <<"max-age=1">>},
                                  encode(Resp), Req3),
             {ok, Req4, State}
     end.

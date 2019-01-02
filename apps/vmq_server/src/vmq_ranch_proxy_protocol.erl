@@ -44,6 +44,7 @@
          accept/2,
          listen/1,
          accept_ack/2,
+         handshake/3,
          connect/3,
          connect/4,
          recv/3,
@@ -52,6 +53,9 @@
          sendfile/4,
          sendfile/5,
          setopts/2,
+         getopts/2,
+         getstat/1,
+         getstat/2,
          controlling_process/2,
          peername/1,
          proxyname/1,
@@ -268,8 +272,14 @@ accept(#proxy_socket{lsocket = LSocket,
     end.
 
 -spec accept_ack(proxy_socket(), pos_integer()) -> ok.
-accept_ack(#proxy_socket{csocket=CSocket}, Timeout) ->
-    ranch_tcp:accept_ack(CSocket, Timeout).
+accept_ack(ProxySocket, Timeout) ->
+    {ok, _} = handshake(ProxySocket, [], Timeout),
+    ok.
+
+-spec handshake(proxy_socket(), list(), timeout())
+	-> {ok, proxy_socket()} | {error, any()}.
+handshake(#proxy_socket{csocket=CSocket}, _Opts, Timeout) ->
+    {ok, _Socket} = ranch_tcp:handshake(CSocket, Timeout).
 
 -spec connect(inet:ip_address() | inet:hostname(),
               inet:port_number(), any())
@@ -330,6 +340,18 @@ sendfile(#proxy_socket{csocket=Socket}, Filename, Offset, Bytes, Opts) ->
 -spec setopts(proxy_socket(), list()) -> ok | {error, atom()}.
 setopts(#proxy_socket{csocket=Socket}, Opts) ->
     ranch_tcp:setopts(Socket, Opts).
+
+-spec getopts(proxy_socket(), [atom()]) -> {ok, list()} | {error, atom()}.
+getopts(#proxy_socket{csocket=Socket}, Opts) ->
+    ranch_tcp:getopts(Socket, Opts).
+
+-spec getstat(proxy_socket()) -> {ok, list()} | {error, atom()}.
+getstat(#proxy_socket{csocket=Socket}) ->
+    ranch_tcp:getstat(Socket).
+
+-spec getstat(proxy_socket(), [atom()]) -> {ok, list()} | {error, atom()}.
+getstat(#proxy_socket{csocket=Socket}, OptionNames) ->
+    ranch_tcp:getstat(Socket, OptionNames).
 
 -spec controlling_process(proxy_socket(), pid()) ->
                                  ok | {error, closed | not_owner | atom()}.

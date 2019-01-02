@@ -105,14 +105,15 @@ start_listener(Type, Addr, Port, {TransportOpts, Opts}) ->
         false -> transport_for_type(Type);
         true -> vmq_ranch_proxy_protocol
     end,
-    case ranch:start_listener(Ref, NrOfAcceptors, TransportMod,
-                              [{ip, AAddr}, {port, Port}|TransportOpts],
-                              protocol_for_type(Type),
-                              protocol_opts_for_type(Type, Opts)) of
-        {ok, _} ->
-            ranch:set_max_connections(Ref, MaxConns);
-        E ->
-            E
+    TransportOptions = maps:from_list(
+        [{socket_opts, [{ip, AAddr}, {port, Port}]},
+         {num_acceptors, NrOfAcceptors},
+         {max_connections, MaxConns}|TransportOpts]),
+    case ranch:start_listener(Ref, TransportMod, TransportOptions,
+                        protocol_for_type(Type),
+                        protocol_opts_for_type(Type, Opts)) of
+        {ok, _} -> ok;
+        Error -> Error
     end.
 
 listeners() ->
@@ -205,10 +206,10 @@ transport_for_type(vmqs) -> ranch_ssl.
 
 protocol_for_type(mqtt) -> vmq_ranch;
 protocol_for_type(mqtts) -> vmq_ranch;
-protocol_for_type(mqttws) -> cowboy_protocol;
-protocol_for_type(mqttwss) -> cowboy_protocol;
-protocol_for_type(http) -> cowboy_protocol;
-protocol_for_type(https) -> cowboy_protocol;
+protocol_for_type(mqttws) -> cowboy_clear;
+protocol_for_type(mqttwss) -> cowboy_clear;
+protocol_for_type(http) -> cowboy_clear;
+protocol_for_type(https) -> cowboy_clear;
 protocol_for_type(vmq) -> vmq_cluster_com;
 protocol_for_type(vmqs) -> vmq_cluster_com.
 
@@ -220,13 +221,14 @@ transport_opts(ranch_ssl, Opts) -> vmq_ssl:opts(Opts).
 protocol_opts_for_type(Type, Opts) ->
     protocol_opts(protocol_for_type(Type), Type, Opts).
 protocol_opts(vmq_ranch, _, Opts) -> default_session_opts(Opts);
-protocol_opts(cowboy_protocol, Type, Opts)
+
+protocol_opts(cowboy_clear, Type, Opts)
   when (Type == mqttws) or (Type == mqttwss) ->
     Dispatch = cowboy_router:compile(
                  [{'_', [{"/mqtt", vmq_websocket, default_session_opts(Opts)}]}
                  ]),
-    [{env, [{dispatch, Dispatch}]}];
-protocol_opts(cowboy_protocol, _, Opts) ->
+    #{env => #{dispatch => Dispatch}};
+protocol_opts(cowboy_clear, _, Opts) ->
     Routes =
     case {lists:keyfind(config_mod, 1, Opts),
           lists:keyfind(config_fun, 1, Opts)} of
@@ -243,7 +245,7 @@ protocol_opts(cowboy_protocol, _, Opts) ->
     end,
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
-    [{env, [{dispatch, Dispatch}]}];
+    #{env => #{dispatch => Dispatch}};
 protocol_opts(vmq_cluster_com, _, _) -> [].
 
 default_session_opts(Opts) ->

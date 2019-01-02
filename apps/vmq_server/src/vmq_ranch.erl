@@ -19,7 +19,7 @@
 %% API.
 -export([start_link/4]).
 
--export([init/5,
+-export([init/4,
          loop/1]).
 
 -export([system_continue/3]).
@@ -38,12 +38,12 @@
              parent :: pid()}).
 
 %% API.
-start_link(Ref, Socket, Transport, Opts) ->
-    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Socket, Transport, Opts]),
+start_link(Ref, _Socket, Transport, Opts) ->
+    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Transport, Opts]),
     {ok, Pid}.
 
-init(Ref, Parent, Socket, Transport, Opts) ->
-    ok = ranch:accept_ack(Ref),
+init(Ref, Parent, Transport, Opts) ->
+    {ok, Socket} = ranch:handshake(Ref),
     case Transport:peername(Socket) of
         {ok, Peer} ->
             FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),

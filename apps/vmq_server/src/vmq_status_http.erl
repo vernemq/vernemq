@@ -17,8 +17,10 @@
 
 -export([routes/0]).
 -export([node_status/0]).
--export([init/3,
-         handle/2,
+-export([init/2,
+         allowed_methods/2,
+         content_types_provided/2,
+         reply/2,
          terminate/3]).
 
 routes() ->
@@ -26,22 +28,23 @@ routes() ->
      {"/status", cowboy_static, {priv_file, vmq_server, "static/index.html"}},
      {"/status/[...]", cowboy_static, {priv_dir, vmq_server, "static"}}].
 
-init(_Type, Req, _Opts) ->
-    {ok, Req, undefined}.
+init(Req, Opts) ->
+    {cowboy_rest, Req, Opts}.
 
-handle(Req, State) ->
-    {ContentType, Req2} = cowboy_req:header(<<"content-type">>, Req,
-                                            <<"application/json">>),
-    {ok, reply(Req2, ContentType), State}.
+allowed_methods(Req, State) ->
+    {[<<"GET">>], Req, State}.
+
+content_types_provided(Req, State) ->
+	{[
+		{<<"application/json">>, reply}
+    ], Req, State}.
 
 terminate(_Reason, _Req, _State) ->
     ok.
 
-reply(Req, <<"application/json">>) ->
+reply(Req, State) ->
     Output = cluster_status(),
-    {ok, Req2} = cowboy_req:reply(200, [{<<"content-type">>, <<"application/json">>}],
-                                  Output, Req),
-    Req2.
+    {Output, Req, State}.
 
 cluster_status() ->
     Nodes0 = nodes(),
@@ -51,7 +54,6 @@ cluster_status() ->
     {ok, MyStatus} = node_status(),
     Data = [{atom_to_binary(Node, utf8), NodeResult} || {Node, NodeResult} <- lists:zip([node() | Nodes1], [MyStatus | Result2])],
     jsx:encode(Data).
-
 
 node_status() ->
     % Total Connections

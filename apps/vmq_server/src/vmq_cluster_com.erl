@@ -19,7 +19,7 @@
 %% API.
 -export([start_link/4]).
 
--export([init/4,
+-export([init/3,
          loop/1]).
 
 %% exported for testing
@@ -35,12 +35,12 @@
              bytes_recv={os:timestamp(), 0}}).
 
 %% API.
-start_link(Ref, Socket, Transport, Opts) ->
-    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Socket, Transport, Opts]),
+start_link(Ref, _Socket, Transport, Opts) ->
+    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Transport, Opts]),
     {ok, Pid}.
 
-init(Ref, Socket, Transport, _Opts) ->
-    ok = ranch:accept_ack(Ref),
+init(Ref, Transport, _Opts) ->
+    {ok, Socket} = ranch:handshake(Ref),
 
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
 
