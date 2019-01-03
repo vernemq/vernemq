@@ -57,6 +57,7 @@
   `plumtree.drop_i_have_threshold` hidden option. The default is 1000000. This
   work was kindly contributed by ADB (https://www.adbglobal.com).
 - Add new `vmq-admin retain` commands to inspect the retained message store.
+- Add improvements to VerneMQ status page to have nicer UI and be readable on smaller devices.
 
 ## VerneMQ 1.6.0
 
