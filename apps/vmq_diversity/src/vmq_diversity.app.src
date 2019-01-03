@@ -45,7 +45,8 @@
                           {password, "password"},
                           {database, "vernemq_db"},
                           {pool_size, 5},
-                          {encoding, utf8}
+                          {encoding, utf8},
+                          {password_hash_method, password}
                          ]},
               {mongodb, [
                           {host, "localhost"},
