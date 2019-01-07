@@ -44,16 +44,18 @@ $(function() {
     function calc_cluster_view(myself, cluster_status, cluster_issues) {
         var ready = [myself];
         var not_ready = [];
-        $.each(cluster_status, function(node) {
-            if (cluster_status[node] === true) {
-                if (myself !== node) {
-                    ready.push(node);
+        $.each(cluster_status, function(index, node) {
+            $.each(node, function(name, running){
+                if (running === true) {
+                    if (myself !== name) {
+                        ready.push(name);
+                    }
+                } else {
+                    var msg = "<strong>"+name+"</strong> is not reachable."
+                    cluster_issues.push({type: "danger", node: myself, message: msg});
+                    not_ready.push(name);
                 }
-            } else {
-                var msg = "<strong>"+node+"</strong> is not reachable."
-                cluster_issues.push({type: "danger", node: myself, message: msg});
-                not_ready.push(node);
-            }
+            });
         });
         return {ready: ready, not_ready: not_ready, num_nodes: ready.length + not_ready.length}
     }
@@ -120,14 +122,14 @@ $(function() {
             url: config.cluster_status.url,
             success: function( response) {
                 console.log(response);
-                var nodes = Object.keys(response);
                 var total = {active: true, clients_online: 0, clients_offline: 0, connect_rate: 0, msg_in_rate: 0,
                     msg_out_rate: 0, msg_drop_rate: 0, msg_queued: 0};
                 var now = Date.now();
                 var cluster_size = 0;
                 var cluster_issues = [];
-                nodes = $.map(nodes, function(node_name) {
-                    var this_node = response[node_name];
+                nodes = $.map(response, function(node_data, index) {
+                    node_name = Object.keys(node_data)[0];
+                    var this_node = node_data[node_name];
                     var rate_interval = (now - config.cluster_status.last_calculated) / 1000;
                     var connect_rate = calc_rate(node_name, "connect", rate_interval, this_node.num_online)
                     var msg_in_rate = calc_rate(node_name, "msg_in", rate_interval, this_node.msg_in)
