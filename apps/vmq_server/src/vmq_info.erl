@@ -137,12 +137,16 @@ session_row_init(Row) ->
         error ->
             [Row];
         {ok, SessionPid} ->
-            {ok, InfoItems} = vmq_mqtt_fsm:info(SessionPid, [user,
-                                                             peer_host,
-                                                             peer_port,
-                                                             protocol,
-                                                             waiting_acks]),
-            [maps:merge(Row, maps:from_list(InfoItems))]
+            case vmq_mqtt_fsm:info(SessionPid, [user,
+                                                peer_host,
+                                                peer_port,
+                                                protocol,
+                                                waiting_acks]) of
+                {ok, InfoItems} ->
+                    [maps:merge(Row, maps:from_list(InfoItems))];
+                {error, i_am_a_plugin} ->
+                    [Row]
+            end
     end.
 
 subscription_row_init(Row) ->

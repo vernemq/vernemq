@@ -69,7 +69,7 @@ plugin_receive_loop(PluginPid, PluginMod) ->
                           end, Msgs),
             vmq_queue:notify(QPid),
             plugin_receive_loop(PluginPid, PluginMod);
-        {info_req, {Ref, CallerPid}, _} ->
+        {?TO_SESSION, {info_req, {Ref, CallerPid}, _}} ->
             CallerPid ! {Ref, {error, i_am_a_plugin}},
             plugin_receive_loop(PluginPid, PluginMod);
         disconnect ->
