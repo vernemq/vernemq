@@ -57,6 +57,7 @@
   `plumtree.drop_i_have_threshold` hidden option. The default is 1000000. This
   work was kindly contributed by ADB (https://www.adbglobal.com).
 - Add new `vmq-admin retain` commands to inspect the retained message store.
+- Fix the HTTP `/status.json` endpoint to have a valid JSON output (#786).
 - Fix bug where internal application plugins where shown as normal plugins.
 
 ## VerneMQ 1.6.0
