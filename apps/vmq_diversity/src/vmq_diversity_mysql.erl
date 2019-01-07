@@ -25,7 +25,8 @@ install(St) ->
 table() ->
     [
      {<<"execute">>, {function, fun execute/2}},
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}}
+     {<<"ensure_pool">>, {function, fun ensure_pool/2}},
+     {<<"hash_method">>, {function, fun hash_method/2}}
     ].
 
 execute(As, St) ->
@@ -40,7 +41,6 @@ execute(As, St) ->
                     lager:error("unknown pool ~p", [BPoolId]),
                     badarg_error(unknown_pool, As, St)
             end,
-
             try emysql:execute(PoolId, BQuery, Args) of
                 #result_packet{} = Result ->
                     {Table, NewSt} = luerl:encode(emysql:as_proplist(Result), St),
@@ -116,7 +116,14 @@ ensure_pool(As, St) ->
             badarg_error(execute_parse, As, St)
     end.
 
-
-
-
-
+hash_method(_, St) ->
+    {ok, DBConfigs} = application:get_env(vmq_diversity, db_config),
+    DefaultConf = proplists:get_value(mysql, DBConfigs),
+    HashMethod = proplists:get_value(password_hash_method, DefaultConf),
+    MysqlFunc = case HashMethod of
+        password -> <<"PASSWORD(?)">>;
+        md5 -> <<"MD5(?)">>;
+        sha1 -> <<"SHA1(?)">>;
+        sha256 -> <<"SHA2(?, 256)">>
+    end, 
+    {[MysqlFunc], St}.
