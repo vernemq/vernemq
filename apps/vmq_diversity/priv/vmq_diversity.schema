@@ -94,7 +94,7 @@
   {default, "root"},
   {commented, "root"}]}.
 
-{mapping, "vmq_diversity.mysql.password", "vmq_diversity.db_config.mysql.password", 
+{mapping, "vmq_diversity.mysql.password", "vmq_diversity.db_config.mysql.password",
  [{datatype, string},
   {default, "password"},
   {commented, "password"}]}.
@@ -109,6 +109,21 @@
   {default, 5},
   hidden]}.
 
+%% @doc The password hashing method to use in MySQL:
+%% password: Default for compatibility, deprecated since MySQL 5.7.6 and not
+%%           usable with MySQL 8.0.11+.
+%%           Docs: https://dev.mysql.com/doc/refman/5.7/en/encryption-functions.html#function_password
+%%      md5: Calculates an MD5 128-bit checksum of the password.
+%%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_md5
+%%     sha1: Calculates the SHA-1 160-bit checksum for the password.
+%%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_sha1
+%%   sha256: Calculates the SHA-2 hash of the password, using 256 bits. 
+%%           Works only if MySQL has been configured with SSL support.
+%%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_sha2
+{mapping, "vmq_diversity.mysql.password_hash_method", "vmq_diversity.db_config.mysql.password_hash_method",
+ [{datatype, {enum, [password, md5, sha1, sha256]}},
+  {default, password}
+ ]}.
 
 {mapping, "vmq_diversity.auth_mongodb.enabled", "vmq_diversity.auth_cache.mongodb.enabled",
  [{datatype, flag},

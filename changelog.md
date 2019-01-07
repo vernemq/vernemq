@@ -57,6 +57,10 @@
   `plumtree.drop_i_have_threshold` hidden option. The default is 1000000. This
   work was kindly contributed by ADB (https://www.adbglobal.com).
 - Add new `vmq-admin retain` commands to inspect the retained message store.
+- Support for different MySQL password hashing methods in `vmq_diversity`,
+  ensuring compatibility with MySQL 8.0.11+. The method is configurable via the
+  `vmq_diversity.mysql.password_hash_method` option which allows:
+  `password` (default for compatibility), `md5`, `sha1` or `sha256`.
 - Fix the HTTP `/status.json` endpoint to have a valid JSON output (#786).
 - Fix bug where internal application plugins where shown as normal plugins.
 - Fix crash in bridge when calling `vmq-admin session show` by fixing the
