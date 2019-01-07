@@ -42,10 +42,10 @@ vmq_plugin_show_cmd() ->
                  {internal, [{longname, "internal"}]}],
     Callback =
     fun(_, [], Flags) ->
-            Plugins = extract_table(vmq_plugin:info(raw)),
+            ShowInternal = proplists:get_value(internal, Flags, false),
+            Plugins = extract_table(vmq_plugin:info(raw), ShowInternal),
             PluginName = proplists:get_value(plugin, Flags, []),
             HookName = proplists:get_value(hook, Flags, []),
-            ShowInternal = proplists:get_value(internal, Flags, false),
             FilteredPlugins =
                 lists:filtermap(
                   fun({_, module, _}) when not ShowInternal ->
@@ -95,12 +95,18 @@ fmt_hooks(Hooks) ->
 fmt_mfas(Hooks) ->
     lists:flatten([io_lib:format("~p:~p/~p~n", [M,F,A]) || {_,M,F,A,_,_} <- Hooks]).
 
-extract_table(Plugins) ->
+extract_table(Plugins, ShowInternal) ->
     lists:foldl(
       fun({module, Name, Opts}, Acc) ->
               [{Name, module, get_module_hooks(Name, proplists:get_value(hooks, Opts, []))} | Acc];
          ({application, Name, Opts}, Acc) ->
-              [{Name, application, get_app_hooks(proplists:get_value(hooks, Opts, []))} | Acc]
+              case {proplists:get_value(internal, Opts, false), ShowInternal} of
+                  {true, false} ->
+                      %% skip plugins marked internal
+                      Acc;
+                  _ ->
+                      [{Name, application, get_app_hooks(proplists:get_value(hooks, Opts, []))} | Acc]
+              end
       end, [], Plugins).
 
 get_module_hooks(Mod, Hooks) ->

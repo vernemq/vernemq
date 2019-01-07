@@ -61,6 +61,11 @@
   ensuring compatibility with MySQL 8.0.11+. The method is configurable via the
   `vmq_diversity.mysql.password_hash_method` option which allows:
   `password` (default for compatibility), `md5`, `sha1` or `sha256`.
+- Fix the HTTP `/status.json` endpoint to have a valid JSON output (#786).
+- Fix bug where internal application plugins where shown as normal plugins.
+- Fix crash in bridge when calling `vmq-admin session show` by fixing the
+  `vmq_ql` row initializer to handle plugin sessions (the bridge starts a local
+  plugin session).
 
 ## VerneMQ 1.6.0
 

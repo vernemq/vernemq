@@ -23,7 +23,7 @@
 
 start() ->
     Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
-    Ret = vmq_plugin_mgr:enable_system_plugin(Impl, []),
+    Ret = vmq_plugin_mgr:enable_system_plugin(Impl, [internal]),
     lager:info("Try to start ~p: ~p", [Impl, Ret]),
     Ret.
 
