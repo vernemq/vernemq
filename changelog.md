@@ -66,6 +66,7 @@
 - Fix crash in bridge when calling `vmq-admin session show` by fixing the
   `vmq_ql` row initializer to handle plugin sessions (the bridge starts a local
   plugin session).
+- Add improvements to VerneMQ status page to have nicer UI and be readable on smaller devices.
 
 ## VerneMQ 1.6.0
 
