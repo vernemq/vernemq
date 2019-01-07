@@ -89,10 +89,7 @@
        {ref,"f7981d4ad7407ddc085f133f204dd71bf9d50c56"}},
   1},
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.2">>},0},
- {<<"sext">>,
-  {git,"git://github.com/uwiger/sext.git",
-       {ref,"35520daea8ddc48569249ad19637f4cc75fbd03d"}},
-  0},
+ {<<"sext">>,{pkg,<<"sext">>,<<"1.5.0">>},0},
  {<<"ssl_verify_fun">>,{pkg,<<"ssl_verify_fun">>,<<"1.1.1">>},1},
  {<<"syslog">>,
   {git,"git://github.com/Vagabond/erlang-syslog",
@@ -123,6 +120,7 @@
  {<<"ranch">>, <<"A6FB992C10F2187B46FFD17CE398DDF8A54F691B81768F9EF5F461EA7E28C762">>},
  {<<"recon">>, <<"4444C879BE323B1B133EEC5241CB84BD3821EA194C740D75617E106BE4744318">>},
  {<<"riak_sysmon">>, <<"24F804606D65DE1F020138F5E6E3E17BE4C5A41567D5170306378253E3705BAE">>},
+ {<<"sext">>, <<"07D5D516DAA4C437B2F7DB99F6B2728C8AF939313479B1BEDC1995BB15936236">>},
  {<<"ssl_verify_fun">>, <<"28A4D65B7F59893BC2C7DE786DEC1E1555BD742D336043FE644AE956C3497FBE">>},
  {<<"unicode_util_compat">>, <<"DBBCCF6781821B1C0701845EAF966C9B6D83D7C3BFC65CA2B78B88B8678BFA35">>}]}
 ].

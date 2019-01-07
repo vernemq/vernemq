@@ -67,6 +67,7 @@
   `vmq_ql` row initializer to handle plugin sessions (the bridge starts a local
   plugin session).
 - Add improvements to VerneMQ status page to have nicer UI and be readable on smaller devices.
+- Upgraded dependency `sext` to 1.5.0 (required for better OSX compilation).
 
 ## VerneMQ 1.6.0
 
