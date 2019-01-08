@@ -14,8 +14,13 @@
 
 -module(vmq_ranch_config).
 
+-behaviour(gen_server).
+-behaviour(on_config_change_hook).
+
 %% API
--export([start_listener/4,
+-export([start_link/0,
+         change_config/1,
+         start_listener/4,
          reconfigure_listeners/1,
          stop_listener/2,
          stop_listener/3,
@@ -24,6 +29,44 @@
          restart_listener/2,
          get_listener_config/2,
          listeners/0]).
+
+%% gen_server callbacks
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
+
+%%%===================================================================
+%%% API
+%%%===================================================================
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Starts the server
+%%
+%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
+%% @end
+%%--------------------------------------------------------------------
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+%%% VMQ_SERVER CONFIG HOOK
+change_config(Configs) ->
+    {vmq_server, VmqServerConfig} = lists:keyfind(vmq_server, 1, Configs),
+    Env = filter_out_unchanged(VmqServerConfig, []),
+    _ = configure_listeners(Env, []),
+    ok.
+
+filter_out_unchanged([{Key, Val} = Item|Rest], Acc) ->
+    case gen_server:call(?MODULE, {last_val, Key, Val}) of
+        Val ->
+            filter_out_unchanged(Rest, Acc);
+        _ ->
+            filter_out_unchanged(Rest, [Item|Acc])
+    end;
+filter_out_unchanged([], Acc) -> Acc.
 
 listener_sup_sup(Addr, Port) ->
     AAddr = addr(Addr),
@@ -261,3 +304,121 @@ default_session_opts(Opts) ->
     %% currently only the mountpoint option is supported
     [{mountpoint, proplists:get_value(mountpoint, Opts, "")},
      {allowed_protocol_versions, AllowedProtocolVersions}|MaybeProxyDefaults].
+
+%%%===================================================================
+%%% gen_server callbacks
+%%%===================================================================
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Initializes the server
+%%
+%% @spec init(Args) -> {ok, State} |
+%%                     {ok, State, Timeout} |
+%%                     ignore |
+%%                     {stop, Reason}
+%% @end
+%%--------------------------------------------------------------------
+init([]) ->
+    process_flag(trap_exit, true),
+    case vmq_plugin_mgr:enable_module_plugin(?MODULE, change_config, 1) of
+        ok ->
+            {ok, []};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling call messages
+%%
+%% @spec handle_call(Request, From, State) ->
+%%                                   {reply, Reply, State} |
+%%                                   {reply, Reply, State, Timeout} |
+%%                                   {noreply, State} |
+%%                                   {noreply, State, Timeout} |
+%%                                   {stop, Reason, Reply, State} |
+%%                                   {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_call({last_val, Key, Val}, _From, LastVals) ->
+    case lists:keyfind(Key, 1, LastVals) of
+        false ->
+            {reply, nil, [{Key, Val}|LastVals]};
+        {Key, Val} ->
+            %% unchanged
+            {reply, Val, LastVals};
+        {Key, OldVal} ->
+            {reply, OldVal, [{Key, Val}|lists:keydelete(Key, 1, LastVals)]}
+    end.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling cast messages
+%%
+%% @spec handle_cast(Msg, State) -> {noreply, State} |
+%%                                  {noreply, State, Timeout} |
+%%                                  {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling all non call/cast messages
+%%
+%% @spec handle_info(Info, State) -> {noreply, State} |
+%%                                   {noreply, State, Timeout} |
+%%                                   {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any
+%% necessary cleaning up. When it returns, the gen_server terminates
+%% with Reason. The return value is ignored.
+%%
+%% @spec terminate(Reason, State) -> void()
+%% @end
+%%--------------------------------------------------------------------
+terminate(_Reason, _State) ->
+    %% Stop the mqtt listeners to prevent clients from connecting
+    %% while shutting down.
+    vmq_ranch_config:stop_all_mqtt_listeners(false),
+    ok.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Convert process state when code is changed
+%%
+%% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
+%% @end
+%%--------------------------------------------------------------------
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+configure_listeners([{listeners, _} = Item|Rest], Acc) ->
+    configure_listeners(Rest, [Item|Acc]);
+configure_listeners([{tcp_listen_options, _} = Item|Rest], Acc) ->
+    configure_listeners(Rest, [Item|Acc]);
+configure_listeners([_|Rest], Acc) ->
+    configure_listeners(Rest, Acc);
+configure_listeners([], []) ->
+    %% no need to reconfigure listeners
+    ok;
+configure_listeners([], Acc) ->
+    vmq_ranch_config:reconfigure_listeners(Acc).

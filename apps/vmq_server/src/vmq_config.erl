@@ -240,8 +240,6 @@ change_config(Configs) ->
     Env = filter_out_unchanged(VmqServerConfig, []),
     %% change reg configurations
     _ = validate_reg_config(Env, []),
-    %% change listener config
-    _ = validate_listener_config(Env, []),
     ok.
 
 filter_out_unchanged([{Key, Val} = Item|Rest], Acc) ->
@@ -371,15 +369,3 @@ validate_reg_config([], []) ->
     ok;
 validate_reg_config([], Acc) ->
     vmq_reg_sup:reconfigure_registry(Acc).
-
-validate_listener_config([{listeners, _} = Item|Rest], Acc) ->
-    validate_listener_config(Rest, [Item|Acc]);
-validate_listener_config([{tcp_listen_options, _} = Item|Rest], Acc) ->
-    validate_listener_config(Rest, [Item|Acc]);
-validate_listener_config([_|Rest], Acc) ->
-    validate_listener_config(Rest, Acc);
-validate_listener_config([], []) ->
-    %% no need to reconfigure listeners
-    ok;
-validate_listener_config([], Acc) ->
-    vmq_ranch_config:reconfigure_listeners(Acc).
