@@ -15,11 +15,9 @@
 -module(vmq_ranch_config).
 
 -behaviour(gen_server).
--behaviour(on_config_change_hook).
 
 %% API
 -export([start_link/0,
-         change_config/1,
          start_listener/4,
          reconfigure_listeners/1,
          stop_listener/2,
@@ -38,6 +36,8 @@
          terminate/2,
          code_change/3]).
 
+-record(state, {}).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -51,22 +51,6 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
-%%% VMQ_SERVER CONFIG HOOK
-change_config(Configs) ->
-    {vmq_server, VmqServerConfig} = lists:keyfind(vmq_server, 1, Configs),
-    Env = filter_out_unchanged(VmqServerConfig, []),
-    _ = configure_listeners(Env, []),
-    ok.
-
-filter_out_unchanged([{Key, Val} = Item|Rest], Acc) ->
-    case gen_server:call(?MODULE, {last_val, Key, Val}) of
-        Val ->
-            filter_out_unchanged(Rest, Acc);
-        _ ->
-            filter_out_unchanged(Rest, [Item|Acc])
-    end;
-filter_out_unchanged([], Acc) -> Acc.
 
 listener_sup_sup(Addr, Port) ->
     AAddr = addr(Addr),
@@ -322,12 +306,9 @@ default_session_opts(Opts) ->
 %%--------------------------------------------------------------------
 init([]) ->
     process_flag(trap_exit, true),
-    case vmq_plugin_mgr:enable_module_plugin(?MODULE, change_config, 1) of
-        ok ->
-            {ok, []};
-        {error, Reason} ->
-            {stop, Reason}
-    end.
+    Env = vmq_config:get_all_env(vmq_server),
+    _ = configure_listeners(Env, []),
+    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% @private
