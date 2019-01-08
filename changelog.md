@@ -57,6 +57,17 @@
   `plumtree.drop_i_have_threshold` hidden option. The default is 1000000. This
   work was kindly contributed by ADB (https://www.adbglobal.com).
 - Add new `vmq-admin retain` commands to inspect the retained message store.
+- Support for different MySQL password hashing methods in `vmq_diversity`,
+  ensuring compatibility with MySQL 8.0.11+. The method is configurable via the
+  `vmq_diversity.mysql.password_hash_method` option which allows:
+  `password` (default for compatibility), `md5`, `sha1` or `sha256`.
+- Fix the HTTP `/status.json` endpoint to have a valid JSON output (#786).
+- Fix bug where internal application plugins where shown as normal plugins.
+- Fix crash in bridge when calling `vmq-admin session show` by fixing the
+  `vmq_ql` row initializer to handle plugin sessions (the bridge starts a local
+  plugin session).
+- Add improvements to VerneMQ status page to have nicer UI and be readable on smaller devices.
+- Upgraded dependency `sext` to 1.5.0 (required for better OSX compilation).
 
 ## VerneMQ 1.6.0
 

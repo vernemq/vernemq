@@ -53,7 +53,7 @@ cluster_status() ->
     {Result2, Nodes1} = lists:unzip(Result1),
     {ok, MyStatus} = node_status(),
     Data = [{atom_to_binary(Node, utf8), NodeResult} || {Node, NodeResult} <- lists:zip([node() | Nodes1], [MyStatus | Result2])],
-    jsx:encode(Data).
+    jsx:encode([Data]).
 
 node_status() ->
     % Total Connections
@@ -84,7 +84,7 @@ node_status() ->
      {<<"queue_unhandled">>, TotalQueueUnhandled},
      {<<"num_subscriptions">>, NrOfSubs},
      {<<"num_retained">>, NrOfRetain},
-     {<<"mystatus">>, [{atom_to_binary(Node, utf8), Status} || {Node, Status} <- vmq_cluster:status()]},
+     {<<"mystatus">>, [[{atom_to_binary(Node, utf8), Status} || {Node, Status} <- vmq_cluster:status()]]},
      {<<"listeners">>, listeners()},
      {<<"version">>, version()}]}.
 
