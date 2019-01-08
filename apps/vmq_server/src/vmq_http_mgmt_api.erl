@@ -16,8 +16,7 @@
 -behaviour(vmq_http_config).
 
 %% cowboy rest handler callbacks
--export([init/3,
-         rest_init/2,
+-export([init/2,
          allowed_methods/2,
          content_types_provided/2,
          options/2,
@@ -36,11 +35,8 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Cowboy REST Handler
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-init(_Transport, _Req, _Opts) ->
-    {upgrade, protocol, cowboy_rest}.
-
-rest_init(Req, _Opts) ->
-    {ok, Req, undefined}.
+init(Req, Opts) ->
+    {cowboy_rest, Req, Opts}.
 
 allowed_methods(Req, State) ->
     {[<<"GET">>, <<"OPTIONS">>, <<"HEAD">>], Req, State}.
@@ -57,31 +53,30 @@ options(Req0, State) ->
     {ok, cowboy_req:set_resp_headers(CorsHeaders, Req0), State}.
 
 is_authorized(Req, State) ->
-    {ok, Auth, Req1} = cowboy_req:parse_header(<<"authorization">>, Req),
-    case Auth of
-        {<<"basic">>, {ApiKey, _}} ->
+    case cowboy_req:parse_header(<<"authorization">>, Req) of
+        {basic, ApiKey, _} ->
             case lists:member(ApiKey, list_api_keys()) of
                 true ->
-                    {true, Req1, State};
+                    {true, Req, State};
                 false ->
-                    {{false, <<"Basic realm=\"VerneMQ\"">>}, Req1, State}
+                    {{false, <<"Basic realm=\"VerneMQ\"">>}, Req, State}
             end;
         _ ->
-            {{false, <<"Basic realm=\"VerneMQ\"">>}, Req1, State}
+            {{false, <<"Basic realm=\"VerneMQ\"">>}, Req, State}
     end.
 
 malformed_request(Req, State) ->
-    {PathInfo, Req1} = cowboy_req:path_info(Req),
-    {QsVals, Req2} = cowboy_req:qs_vals(Req1),
+    PathInfo = cowboy_req:path_info(Req),
+    QsVals = cowboy_req:parse_qs(Req),
     try validate_command(PathInfo, QsVals) of
         {error, V} ->
             lager:error("malformed request ~p", [V]),
-            {true, Req2, State};
+            {true, Req, State};
         M3 ->
-            {false, Req2, M3}
+            {false, Req, M3}
     catch
         _:_ ->
-            {true, Req2, State}
+            {true, Req, State}
     end.
 
 to_json(Req, State) ->
