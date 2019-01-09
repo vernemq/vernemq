@@ -144,7 +144,7 @@ ensure_pool(As, St) ->
     end.
 
 build_result(Results, Columns) ->
-    build_result(Results, [Name || {column, Name, _, _, _, _} <- Columns], []).
+    build_result(Results, [Name || {column, Name, _, _, _, _, _} <- Columns], []).
 
 build_result([Result|Results], Names, Acc) ->
     build_result(Results, Names, [lists:zip(Names, tuple_to_list(Result))|Acc]);
