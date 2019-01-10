@@ -278,8 +278,8 @@ accept_ack(ProxySocket, Timeout) ->
 
 -spec handshake(proxy_socket(), list(), timeout())
 	-> {ok, proxy_socket()} | {error, any()}.
-handshake(#proxy_socket{csocket=CSocket}, _Opts, Timeout) ->
-    {ok, _Socket} = ranch_tcp:handshake(CSocket, Timeout).
+handshake(#proxy_socket{csocket=CSocket}, Opts, Timeout) ->
+    {ok, _Socket} = ranch_tcp:handshake(CSocket, Opts, Timeout).
 
 -spec connect(inet:ip_address() | inet:hostname(),
               inet:port_number(), any())
