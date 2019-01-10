@@ -85,9 +85,8 @@ to_json(Req, State) ->
         {StdOut, []} ->
             {iolist_to_binary(StdOut), Req, undefined};
         {[], StdErr} ->
-            {ok, Req1} = cowboy_req:reply(400, #{}, <<"invalid_request_error">>,
-                                          Req),
-            {iolist_to_binary(StdErr), Req1, State}
+            cowboy_req:reply(400, #{}, <<"invalid_request_error">>, Req),
+            {iolist_to_binary(StdErr), Req, State}
     end.
 
 validate_command(Command, QsVals) ->
