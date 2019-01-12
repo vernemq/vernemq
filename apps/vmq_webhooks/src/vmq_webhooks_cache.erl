@@ -42,6 +42,11 @@ purge_all() ->
     ets:delete_all_objects(?CACHE),
     reset_stats().    
 
+lists_keydelete(K, _, L) when K == [] -> L;
+lists_keydelete(K, N, L) ->
+    [H|T] = K,
+    lists_keydelete(T, N, lists:keydelete(H, N, L)).
+
 lookup(Endpoint, Hook, Args) ->
     case lookup_(Endpoint, Hook, Args) of
         not_found ->
@@ -59,7 +64,7 @@ insert(Endpoint, Hook, Args, ExpiryInSecs, Modifiers) ->
     ExpirationTs = ts_from_now(ExpiryInSecs),
     %% Remove the payload from cache, as it doesn't make sense to
     %% cache that.
-    Key = {Endpoint, Hook, lists:keydelete(payload, 1, Args)},
+    Key = {Endpoint, Hook, lists_keydelete([port, payload], 1, Args)},
     %% do not store the payload modifier
     Row = {Key, SubscriberId, ExpirationTs, lists:keydelete(payload, 1, Modifiers)},
     true = ets:insert(?CACHE, Row),
@@ -69,7 +74,7 @@ insert(Endpoint, Hook, Args, ExpiryInSecs, Modifiers) ->
 %% internal functions.
 lookup_(Endpoint, Hook, Args) ->
     %% The payload is not part of the key, so we remove it.
-    Key = {Endpoint, Hook, lists:keydelete(payload, 1, Args)},
+    Key = {Endpoint, Hook, lists_keydelete([port, payload], 1, Args)},
     case ets:lookup(?CACHE, Key) of
         [] ->
             not_found;
