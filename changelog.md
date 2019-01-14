@@ -77,6 +77,7 @@
 - Add the `vmq_swc` metadata plugin (using the already existing LevelDB backend) to
   the default VerneMQ release. To use `vmq_swc` instead of `vmq_plumtree` set
   `metadata_plugin = vmq_swc` in `vernemq.conf`. `vmq_swc` is still in Beta.
+- Make `vmq_diversity` lua states restartable in case of unexpected termination.
 
 ## VerneMQ 1.6.0
 

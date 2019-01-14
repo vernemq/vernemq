@@ -35,7 +35,8 @@
                 luastate,
                 script,
                 keep,
-                owner}).
+                owner,
+                supervisor_pid}).
 
 %%%===================================================================
 %%% API functions
@@ -49,7 +50,11 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link(Id, Script) ->
-    gen_server:start_link(?MODULE, [Id, Script], []).
+    %% assumed this is always called by a supervisor, as we'll call
+    %% `which_children` on it to find the script manager/load
+    %% balancer.
+    SupPid = self(),
+    gen_server:start_link(?MODULE, [Id, Script, SupPid], []).
 
 reload(Pid) ->
     gen_server:call(Pid, reload, infinity).
@@ -80,7 +85,7 @@ call_function(Pid, Function, Args) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Id, Script]) ->
+init([Id, Script, SupPid]) ->
     case load_script(Id, Script) of
         {ok, LuaState} ->
             KeepState =
@@ -91,7 +96,8 @@ init([Id, Script]) ->
                     KS
             end,
             {ok, #state{id=Id, luastate=LuaState,
-                        script=Script, keep=KeepState}};
+                        script=Script, keep=KeepState,
+                        supervisor_pid=SupPid}, 0};
         {error, Reason} ->
             lager:error("can't load script ~p due to ~p", [Script, Reason]),
             %% normal stop as we don't want to exhaust the supervisor strategy
@@ -159,6 +165,14 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info(timeout, #state{script=Script,
+                            supervisor_pid=SupPid} = State) ->
+    %% register with the state manager
+    StateMgrId = {vmq_diversity_script, Script},
+    Children = supervisor:which_children(SupPid),
+    {_, StateMgrPid, _, _} = lists:keyfind(StateMgrId, 1, Children),
+    ok = vmq_diversity_script:register_state(StateMgrPid, self()),
+    {noreply, State};
 handle_info({call_function, Ref, CallerPid, Function, Args}, State) ->
     {Reply, NewState} =
     try luerl:call_function([hooks, Function], [Args], State#state.luastate) of

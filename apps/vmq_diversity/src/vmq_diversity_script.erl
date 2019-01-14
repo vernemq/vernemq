@@ -18,6 +18,7 @@
 
 %% API functions
 -export([start_link/1,
+         register_state/2,
          stats/1,
          call_function/3]).
 
@@ -49,6 +50,9 @@
 %%--------------------------------------------------------------------
 start_link(StatePids) ->
     gen_server:start_link(?MODULE, [StatePids], []).
+
+register_state(Pid, StatePid) ->
+    gen_server:cast(Pid, {register_state, StatePid}).
 
 stats(Pid) ->
     gen_server:call(Pid, stats, infinity).
@@ -115,8 +119,26 @@ handle_call(stats, _From, #state{samples=Samples} = State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({register_state, StatePid}, #state{luastates=StatePids} = State) ->
+    case StatePids of
+        [] ->
+            maybe_register_hooks(StatePid);
+        _ -> ok
+    end,
+    {noreply, State#state{luastates=[StatePid|StatePids]}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
+maybe_register_hooks(LuaStatePid) ->
+    case vmq_diversity_script_state:get_hooks(LuaStatePid) of
+        [] ->
+            ok;
+        Hooks when is_list(Hooks) ->
+            lists:foreach(
+              fun(Hook) ->
+                      vmq_diversity_plugin:register_hook(self(), Hook)
+              end, Hooks)
+    end.
 
 %%--------------------------------------------------------------------
 %% @private

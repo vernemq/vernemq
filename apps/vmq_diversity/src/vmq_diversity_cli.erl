@@ -45,7 +45,7 @@ register_cli_usage() ->
 status_cmd() ->
     Cmd = ["vmq-admin", "script", "show"],
     Callback = fun(_, _, _) ->
-                       AllStats = vmq_diversity_script_sup:stats(),
+                       AllStats = vmq_diversity_scripts_sup:stats(),
                        lists:foldl(fun({Script, Stats}, Acc) ->
                                           [clique_status:table([[{script, Script}|Stats]])
                                            |Acc]

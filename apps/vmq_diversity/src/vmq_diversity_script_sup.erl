@@ -17,11 +17,11 @@
 -behaviour(supervisor).
 
 %% API functions
--export([start_link/0,
-         start_script/1,
+-export([start_link/1,
          reload_script/1,
-         stop_script/1,
-         stats/0]).
+         stats/1,
+         start_state/3,
+         get_state_mgr/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -40,59 +40,69 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+start_link(Script) ->
+    {ok, ScriptSup} = Ret = supervisor:start_link(?MODULE, []),
+    start_state_mgr(ScriptSup, Script, []),
+    setup_lua_states(ScriptSup, Script),
+    Ret.
 
-start_script(Script) ->
-    supervisor:start_child(?MODULE, ?CHILD({vmq_diversity_script_sup_sup, Script},
-                                           vmq_diversity_script_sup_sup, supervisor, [Script])).
+reload_script(SupPid) ->
+    lists:foreach(fun
+                    ({{vmq_diversity_script_state, _}, Child, _, _}) when is_pid(Child) ->
+                          vmq_diversity_script_state:reload(Child);
+                    (_) ->
+                          ignore
+                  end, supervisor:which_children(SupPid)).
 
-reload_script(Script) ->
-    case lists:keyfind({vmq_diversity_script_sup_sup, Script}, 1,
-                       supervisor:which_children(?MODULE)) of
-        {_, Pid, supervisor, _} when is_pid(Pid) ->
-            vmq_diversity_script_sup_sup:reload_script(Pid);
-        _ ->
-            {error, script_not_found}
-    end.
-
-stop_script(Script) ->
-    case supervisor:terminate_child(?MODULE, {vmq_diversity_script_sup_sup, Script}) of
-        ok ->
-            supervisor:delete_child(?MODULE, {vmq_diversity_script_sup_sup, Script});
-        E ->
-            E
-    end.
-
-stats() ->
+stats(SupPid) ->
     lists:foldl(fun
-                    ({{vmq_diversity_script_sup_sup, _}, Child, _, _}, Acc) when is_pid(Child) ->
-                        Acc ++ vmq_diversity_script_sup_sup:stats(Child);
+                    ({{vmq_diversity_script, Script}, Child, _, _}, Acc) when is_pid(Child) ->
+                        [{Script, vmq_diversity_script:stats(Child)}|Acc];
                     (_, Acc) ->
                         Acc
-                end, [], supervisor:which_children(?MODULE)).
+                end, [], supervisor:which_children(SupPid)).
+
+start_state_mgr(SupPid, Script, StatePids) ->
+    supervisor:start_child(SupPid, ?CHILD({vmq_diversity_script, Script},
+                                          vmq_diversity_script, worker, [StatePids])).
+
+start_state(SupPid, Id, Script) ->
+    supervisor:start_child(SupPid, ?CHILD({vmq_diversity_script_state, Id},
+                                          vmq_diversity_script_state, worker,
+                                          [Id, Script])).
+
+get_state_mgr(SupPid) ->
+    lists:foldl(fun
+                    ({{vmq_diversity_script, _}, Child, _, _}, undefined)
+                      when is_pid(Child) ->
+                        Child;
+                    (_, Acc) ->
+                        Acc
+                end, undefined, supervisor:which_children(SupPid)).
+
 
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Whenever a supervisor is started using supervisor:start_link/[2,3],
-%% this function is called by the new process to find out about
-%% restart strategy, maximum restart frequency and child
-%% specifications.
-%%
-%% @spec init(Args) -> {ok, {SupFlags, [ChildSpec]}} |
-%%                     ignore |
-%%                     {error, Reason}
-%% @end
-%%--------------------------------------------------------------------
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, []}}.
+    {ok, {{one_for_all, 5, 10}, []}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+setup_lua_states(ScriptSup, Script) ->
+     {ok, FirstLuaStatePid} = start_state(ScriptSup, 1, Script),
+    case vmq_diversity_script_state:get_num_states(FirstLuaStatePid) of
+        1 ->
+            [FirstLuaStatePid];
+        NumLuaStates when NumLuaStates > 1 ->
+            LuaStatePids =
+            lists:foldl(
+              fun(Id, Acc) ->
+                      {ok, LuaStatePid} = start_state(ScriptSup, Id, Script),
+                      [LuaStatePid|Acc]
+              end, [FirstLuaStatePid], lists:seq(2, NumLuaStates)),
+            lists:reverse(LuaStatePids)
+    end.
