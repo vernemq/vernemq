@@ -73,6 +73,10 @@
 - Fix `vmq_diversity` PostgreSQL reconnect issue (#1008).
 - Fix `vmq_webhooks` so peer port is not considered when caching the
   `auth_on_register` to avoid cache misses.
+- Multiple bug fixes and improvements in `vmq_swc`.
+- Add the `vmq_swc` metadata plugin (using the already existing LevelDB backend) to
+  the default VerneMQ release. To use `vmq_swc` instead of `vmq_plumtree` set
+  `metadata_plugin = vmq_swc` in `vernemq.conf`. `vmq_swc` is still in Beta.
 
 ## VerneMQ 1.6.0
 
