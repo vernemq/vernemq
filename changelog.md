@@ -71,6 +71,8 @@
 - Do not accept new client connections while the broker is shutting down as this
   could cause errors to be reported in the log (#1004).
 - Fix `vmq_diversity` PostgreSQL reconnect issue (#1008).
+- Fix `vmq_webhooks` so peer port is not considered when caching the
+  `auth_on_register` to avoid cache misses.
 
 ## VerneMQ 1.6.0
 
