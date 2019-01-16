@@ -50,7 +50,10 @@
           
           %% Reconnect timeout if the connection is lost (the worker
           %% process dies).
-          reconnect_timeout
+          reconnect_timeout :: non_neg_integer(),
+
+          %% Reconnect timer reference.
+          reconnect_tref :: undefined | reference()
          }).
 
 %%%===================================================================
@@ -68,7 +71,7 @@ start_link(Opts) ->
     gen_server:start_link(?MODULE, Opts, []).
 
 apply(Pid, Mod, Fun, Args) ->
-    gen_server:call(Pid, {apply, Mod, Fun, Args}).
+    gen_server:call(Pid, {apply, Mod, Fun, Args}, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -93,11 +96,11 @@ init(Opts) ->
     true = is_function(StartFun, 0),
     TerminateFun = proplists:get_value(terminate_fun, Opts),
     true = TerminateFun =:= undefined orelse is_function(TerminateFun, 1),
-    ReconnectTimetout = proplists:get_value(reconnect_timeout, Opts, 1000),
+    ReconnectTimeout = proplists:get_value(reconnect_timeout, Opts, 1000),
     {ok, #state{name = Name,
                 start_fun = StartFun,
                 terminate_fun = TerminateFun,
-                reconnect_timeout = ReconnectTimetout,
+                reconnect_timeout = ReconnectTimeout,
                 connected=false,
                 worker=undefined}}.
 
@@ -158,17 +161,16 @@ handle_info(connect, #state{start_fun=StartFun,name=Name,worker=undefined,connec
     case StartFun() of
         {ok, Pid} ->
             MRef = monitor(process, Pid),
-            State#state{worker={MRef, Pid},connected=true};
+            State#state{worker={MRef, Pid},connected=true,reconnect_tref=undefined};
         {error, Reason} ->
             lager:warning("Could not connect to ~p due to ~p",
                           [Name, Reason]),
-            schedule_reconnect(State),
-            State
+            schedule_reconnect(State#state{reconnect_tref=undefined})
     end,
     {noreply, NewState};
 handle_info({'DOWN', MRef, process, WorkerPid, _}, #state{worker={MRef, WorkerPid}}=S) ->
-    schedule_reconnect(S),
-    {noreply, S#state{worker=undefined, connected=false}};
+    NewState = schedule_reconnect(S#state{worker=undefined, connected=false}),
+    {noreply, NewState};
 handle_info({'EXIT',WorkerPid,_}, #state{worker={_MRef, WorkerPid}}=S) ->
     %% We got an exit - let's wait for the monitor signal to arrive
     %% before cleaning up and scheduling a reconnect, but mark the
@@ -177,8 +179,8 @@ handle_info({'EXIT',WorkerPid,_}, #state{worker={_MRef, WorkerPid}}=S) ->
 handle_info({'EXIT',_,_}, #state{worker=undefined,connected=false}=S) ->
     %% Got an exit when starting the client process. schedule a
     %% reconnect.
-    schedule_reconnect(S),
-    {noreply, S};
+    NewState = schedule_reconnect(S),
+    {noreply, NewState};
 handle_info(_, S) ->
     {noreply, S}.
 
@@ -217,5 +219,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-schedule_reconnect(#state{reconnect_timeout=Timeout}) ->
-    erlang:send_after(Timeout, self(), connect).
+schedule_reconnect(#state{reconnect_tref=undefined, reconnect_timeout=Timeout} = S) ->
+    TRef = erlang:send_after(Timeout, self(), connect),
+    S#state{reconnect_tref=TRef};
+schedule_reconnect(S) ->
+    %% reconnect timer already scheduled.
+    S.

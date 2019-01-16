@@ -70,6 +70,7 @@
 - Upgraded dependency `sext` to 1.5.0 (required for better OSX compilation).
 - Do not accept new client connections while the broker is shutting down as this
   could cause errors to be reported in the log (#1004).
+- Fix `vmq_diversity` PostgreSQL reconnect issue (#1008).
 
 ## VerneMQ 1.6.0
 
