@@ -59,8 +59,14 @@ start_link(SwcGroup) ->
 init([SwcGroup]) ->
 
     PeerName = node(),
+    DbBackend =
+    case application:get_env(vmq_swc, db_backend) of
+        {ok, rocksdb} -> vmq_swc_db_rocksdb;
+        {ok, leveled} -> vmq_swc_db_leveled;
+        {ok, leveldb} -> vmq_swc_db_leveldb
+    end,
 
-    Config = config(PeerName, SwcGroup, vmq_swc_edist_srv),
+    Config = config(PeerName, SwcGroup, DbBackend, vmq_swc_edist_srv),
     % this table is created by the root supervisor
     ets:insert(vmq_swc_group_config, {SwcGroup, Config}),
 
@@ -71,13 +77,10 @@ init([SwcGroup]) ->
     TransportChildSpec = #{id => {vmq_swc_edist_srv, SwcGroup},
                            start => {vmq_swc_edist_srv, start_link, [Config]}},
 
-    DBChildSpecs = vmq_swc_db:childspecs({backend, vmq_swc_db_rocksdb}, Config, []),
+    DBChildSpecs = vmq_swc_db:childspecs(DbBackend, Config, []),
 
     BatcherChildSpec = #{id => {vmq_swc_store_batcher, SwcGroup},
                          start => {vmq_swc_store_batcher, start_link, [Config]}},
-
-    IteratorChildSpec = #{id => {vmq_swc_db_iterator, SwcGroup},
-                          start => {vmq_swc_db_iterator, start_link, [Config]}},
 
     StoreChildSpec = #{id => {vmq_swc_store, SwcGroup},
                        start => {vmq_swc_store, start_link, [Config]}},
@@ -93,21 +96,20 @@ init([SwcGroup]) ->
 
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
 
-    {ok, {SupFlags, DBChildSpecs ++ [TransportChildSpec, ExchangeSupChildSpec, MembershipChildSpec, BatcherChildSpec, IteratorChildSpec, StoreChildSpec]}}.
+    {ok, {SupFlags, DBChildSpecs ++ [TransportChildSpec, ExchangeSupChildSpec, MembershipChildSpec, BatcherChildSpec, StoreChildSpec]}}.
 
-config(PeerName, SwcGroup, TransportMod) when is_atom(SwcGroup) and is_atom(TransportMod) ->
+config(PeerName, SwcGroup, DbBackend, TransportMod) when is_atom(SwcGroup) and is_atom(TransportMod) ->
     SwcGroupStr = atom_to_list(SwcGroup),
-    DBName = list_to_atom("vmq_swc_db_rocksdb_" ++ SwcGroupStr),
+    DBName = list_to_atom("vmq_swc_db_" ++ SwcGroupStr),
     StoreName = list_to_atom("vmq_swc_store_" ++ SwcGroupStr),
-    ItrName = list_to_atom("vmq_swc_db_iterator_" ++ SwcGroupStr),
     BatcherName = list_to_atom("vmq_swc_store_batcher_" ++ SwcGroupStr),
     MembershipName = list_to_atom("vmq_swc_group_membership_" ++ SwcGroupStr),
     #swc_config{
        peer=PeerName,
        group=SwcGroup,
        db=DBName,
+       db_backend=DbBackend,
        store=StoreName,
-       itr=ItrName,
        batcher=BatcherName,
        membership=MembershipName,
        transport=TransportMod

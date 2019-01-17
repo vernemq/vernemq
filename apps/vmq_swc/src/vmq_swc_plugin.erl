@@ -16,6 +16,7 @@
 
 -export([metadata_put/3,
          metadata_get/2,
+         metadata_get/3,
          metadata_delete/2,
          metadata_fold/3,
          metadata_subscribe/1,
@@ -26,9 +27,21 @@
          cluster_rename_member/2,
          cluster_events_add_handler/2,
          cluster_events_delete_handler/2,
-         cluster_events_call_handler/3]).
+         cluster_events_call_handler/3,
 
--define(SWC_GROUP, metadata).
+         plugin_start/0]).
+
+-define(METRIC, metadata).
+
+-define(NR_OF_GROUPS, 10).
+-define(SWC_GROUPS, [meta1, meta2, meta3, meta4, meta5, meta6, meta7, meta8, meta9, meta10]).
+
+plugin_start() ->
+    _ = [vmq_swc:start(G) || G <- ?SWC_GROUPS],
+    ok.
+
+group_for_key(PKey) ->
+    lists:nth((erlang:phash2(PKey) rem ?NR_OF_GROUPS) + 1, ?SWC_GROUPS).
 
 cluster_join(DiscoveryNode) ->
     vmq_swc_plumtree_peer_service:join(DiscoveryNode).
@@ -61,7 +74,8 @@ multi_cast([], _, _) ->
     ok.
 
 cluster_members() ->
-    Config = vmq_swc:config(metadata),
+    [FirstGroup|_] = ?SWC_GROUPS,
+    Config = vmq_swc:config(FirstGroup),
     vmq_swc_group_membership:get_members(Config).
 
 cluster_rename_member(OldName, NewName) ->
@@ -82,23 +96,36 @@ cluster_events_call_handler(Module, Msg, Timeout) ->
 
 metadata_put(FullPrefix, Key, Value) ->
     TsValue = {os:timestamp(), Value},
-    vmq_swc:put(?SWC_GROUP, FullPrefix, Key, TsValue, []).
+    vmq_swc_metrics:timed_measurement({?METRIC, put}, vmq_swc, put,
+                                      [group_for_key({FullPrefix, Key}), FullPrefix, Key, TsValue, []]).
 
 metadata_get(FullPrefix, Key) ->
-    case vmq_swc:get(?SWC_GROUP, FullPrefix, Key, [{resolver, fun lww_resolver/1}]) of
-        undefined -> undefined;
-        {_Ts, Value} -> Value
+    metadata_get(FullPrefix, Key, [{resolver, fun lww_resolver/1}]).
+
+metadata_get(FullPrefix, Key, Opts) ->
+    case vmq_swc_metrics:timed_measurement({?METRIC, get}, vmq_swc, get,
+                                           [group_for_key({FullPrefix, Key}), FullPrefix, Key,
+                                            Opts])
+    of
+        {_Ts, Value} -> Value;
+        Default -> Default
     end.
 
 metadata_delete(FullPrefix, Key) ->
-    vmq_swc:delete(?SWC_GROUP, FullPrefix, Key).
+    vmq_swc_metrics:timed_measurement({?METRIC, delete}, vmq_swc, delete,
+                                      [group_for_key({FullPrefix, Key}), FullPrefix, Key]).
 
 metadata_fold(FullPrefix, Fun, Acc) ->
-    vmq_swc:fold(?SWC_GROUP,
-      fun(K, {_Ts, V}, AccAcc) ->
-              Fun({K, V}, AccAcc)
-      end,
-      Acc, FullPrefix, [{resolver, fun lww_resolver/1}]).
+    vmq_swc_metrics:timed_measurement(
+      {?METRIC, fold}, lists, foldl, [
+                                      fun(Group, AccAcc) ->
+                                              vmq_swc:fold(Group, fun(K, {_Ts, V}, AccAccAcc) ->
+                                                                   Fun({K, V}, AccAccAcc)
+                                                                  end,
+                                                           AccAcc, FullPrefix,
+                                                           [{resolver, fun lww_resolver/1}])
+                                      end, Acc, ?SWC_GROUPS
+                                     ]).
 
 metadata_subscribe(FullPrefix) ->
     ConvertFun = fun ({deleted, FP, Key, OldValues}) ->
@@ -108,7 +135,10 @@ metadata_subscribe(FullPrefix) ->
                           extract_val(lww_resolver(OldValues)),
                           extract_val(lww_resolver(Values))}
                  end,
-    vmq_swc_store:subscribe(vmq_swc:config(?SWC_GROUP), FullPrefix, ConvertFun).
+    lists:foreach(
+      fun(Group) ->
+              vmq_swc_store:subscribe(vmq_swc:config(Group), FullPrefix, ConvertFun)
+      end, ?SWC_GROUPS).
 
 lww_resolver([]) -> undefined;
 lww_resolver([V]) -> V;

@@ -3,26 +3,6 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
--export([
-         %% suite/0,
-         init_per_suite/1,
-         end_per_suite/1,
-         init_per_testcase/2,
-         end_per_testcase/2,
-         all/0
-        ]).
-
--export([
-         read_write_delete_test/1,
-         partitioned_cluster_test/1,
-         partitioned_delete_test/1,
-         siblings_test/1,
-         cluster_join_test/1,
-         cluster_leave_test/1,
-         events_test/1,
-         full_sync_test/1
-        ]).
-
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("kernel/include/inet.hrl").
@@ -37,6 +17,7 @@
 init_per_suite(Config) ->
     lager:start(),
     %% this might help, might not...
+    os:cmd("killall epmd"),
     os:cmd(os:find_executable("epmd")++" -daemon"),
     {ok, Hostname} = inet:gethostname(),
     case net_kernel:start([list_to_atom("runner@"++Hostname), shortnames]) of
@@ -50,9 +31,27 @@ end_per_suite(_Config) ->
     application:stop(lager),
     _Config.
 
+init_per_group(rocksdb, Config) ->
+    [{db_backend, rocksdb}|Config];
+init_per_group(leveled, Config) ->
+    [{db_backend, leveled}|Config];
+init_per_group(leveldb, Config) ->
+    [{db_backend, leveldb}|Config].
+
+end_per_group(_Group, _Config) ->
+    ok.
+
+init_per_testcase(basic_store_test, Config) ->
+    application:load(vmq_swc),
+    application:set_env(vmq_swc, db_backend, proplists:get_value(db_backend, Config)),
+    {ok, _} = vmq_swc:start(basic),
+    Config;
 init_per_testcase(partitioned_delete_test = Case, Config0) ->
     Config1 = [{sync_interval, 0},{auto_gc, true}|Config0],
     init_per_testcase_(Case, Config1, [electra, flail]);
+init_per_testcase(full_sync_test = Case, Config0) ->
+    Config1 = [{exchange_batch_size, 1}|Config0],
+    init_per_testcase_(Case, Config1, [electra, katana, flail, gargoyle]);
 init_per_testcase(Case, Config) ->
     init_per_testcase_(Case, Config, [electra, katana, flail, gargoyle]).
 
@@ -63,18 +62,54 @@ init_per_testcase_(Case, Config, Nodenames) ->
     {ok, _} = ct_cover:add_nodes(Nodes),
     [{nodes, Nodes}|Config].
 
+end_per_testcase(basic_store_test, _Config) ->
+    application:stop(vmq_swc);
 end_per_testcase(_, _Config) ->
     vmq_swc_test_utils:pmap(fun(Node) ->ct_slave:stop(Node) end, [electra, katana, flail, gargoyle]),
     ok.
 
 all() ->
-    [read_write_delete_test,
-     partitioned_cluster_test,
-     siblings_test,
-     cluster_leave_test,
-     cluster_join_test,
-     events_test,
-     full_sync_test].
+    [
+     %{group, rocksdb},
+     %{group, leveled},
+     {group, leveldb}
+    ].
+
+groups() ->
+    AllTests = [basic_store_test,
+                read_write_delete_test,
+                partitioned_cluster_test,
+                partitioned_delete_test,
+                siblings_test,
+                cluster_leave_test,
+                cluster_join_test,
+                events_test,
+                full_sync_test],
+    [{rocksdb, [shuffle], AllTests},
+     {leveled, [shuffle], AllTests},
+     {leveldb, [shuffle], AllTests}].
+
+
+
+basic_store_test(_Config) ->
+    Prefixes = [{a,a},{a,b},{a,c},{a,d}],
+    KVPairsByPrefix =
+    lists:foldl(
+      fun(I, Acc) ->
+              lists:foldl(
+                fun(P, AccAcc) ->
+                        undefined = vmq_swc:get(basic, P, I, []),
+                        ok = vmq_swc:put(basic, P, I, I, []),
+                        I = vmq_swc:get(basic, P, I, []),
+                        maps:put(P, [{I, I} | maps:get(P, AccAcc, [])], AccAcc)
+                end, Acc, Prefixes)
+      end, #{}, lists:seq(1, 100)),
+
+    lists:foreach(
+      fun(P) ->
+              KVsForPrefix = vmq_swc:fold(basic, fun(K,V, Acc) -> [{K, V}|Acc] end, [], P, []),
+              ?assertEqual(KVsForPrefix, maps:get(P, KVPairsByPrefix))
+      end, Prefixes).
 
 read_write_delete_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
@@ -139,9 +174,9 @@ partitioned_delete_test(Config) ->
     {_, Context} = read(Node1, {foo, bar}, baz),
     ok = write(Node1, {foo, bar}, baz, '$deleted', Context),
     NoValuePred =
-        fun(_, {[], [_|_]}) -> true;
-           (Node, {_, _} = CC) ->
-                io:format(user, "XXX ~p NoValuePred: ~p~n", [Node, CC]),
+        fun(_, {[], _}) -> true;
+           (_Node, {_, _} = _CC) ->
+                %% io:format(user, "XXX ~p NoValuePred: ~p~n", [Node, CC]),
                 false
         end,
     QuuxValuePred =
@@ -150,7 +185,7 @@ partitioned_delete_test(Config) ->
                 false
         end,
     NoCCPred =
-        fun(_Node, {[], []} = _Val) ->
+        fun(_Node, {[], _} = _Val) ->
                 %% io:format(user, "XXX ~p NoCCPred: ~p~n", [Node, Val]),
                 true;
            (_Node, _Val) ->
@@ -165,6 +200,7 @@ partitioned_delete_test(Config) ->
 
     %% replicate the delete using manual sync.
     rpc:call(Node1, erlang, send, [?STORE_NAME, {sync_with, Node2}]),
+    rpc:call(Node2, erlang, send, [?STORE_NAME, {sync_with, Node1}]),
 
     %% all the nodes should see the delete and no value should be
     %% present.
@@ -238,17 +274,12 @@ cluster_join_test(Config) ->
     ok = wait_until_converged(Nodes0, {foo, bar}, baz, quux),
     ok = wait_until_converged(Nodes0, {foo, bar}, canary, 1),
 
-    % Wait until all the nodes have deleted the log
-    ok = wait_until_log_gc(AllNodes),
-
     % join the two clusters
     ?assertEqual(ok, rpc:call(OtherNode, vmq_swc_plumtree_peer_service, join, [Node1])),
     Expected1 = lists:sort(AllNodes),
     ok = vmq_swc_test_utils:wait_until_joined(AllNodes, Expected1),
     ok = wait_until_converged(AllNodes, {foo, bar}, baz, quux),
-    ok = wait_until_converged(AllNodes, {foo, bar}, canary, 1),
-    % Wait until all nodes have deleted the log
-    ok = wait_until_log_gc(AllNodes).
+    ok = wait_until_converged(AllNodes, {foo, bar}, canary, 1).
 
 cluster_leave_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
@@ -271,10 +302,7 @@ cluster_leave_test(Config) ->
 
     % put some new data
     ok = put_metadata(Node2, {foo, bar}, hello, world, []),
-    ok = wait_until_converged(Nodes1, {foo, bar}, hello, world),
-    % Wait until all nodes have deleted the log, because without a proper
-    % node leave we would keep the log so the Node can catch up later
-    ok = wait_until_log_gc(Nodes1).
+    ok = wait_until_converged(Nodes1, {foo, bar}, hello, world).
 
 events_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
@@ -302,14 +330,14 @@ events_test(Config) ->
                           RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
                           ok = put_metadata(RandNode, rand, I, I, [])
                   end, lists:seq(1, 1000)),
-    ok = wait_until_log_gc(Nodes),
-    ?assertEqual(length(Nodes) * 1000, ets:info(T, size)),
+
+    ok = wait_until(fun() -> ets:info(T, size) == (length(Nodes) * 1000) end),
+
     lists:foreach(fun(I) ->
                           RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
                           ok = delete_metadata(RandNode, rand, I)
                   end, lists:seq(1, 1000)),
-    ok = wait_until_log_gc(Nodes),
-    ?assertEqual(0, ets:info(T, size)),
+    ok = wait_until(fun() -> ets:info(T, size) == 0 end),
     ok.
 
 full_sync_test(Config) ->
@@ -324,31 +352,29 @@ full_sync_test(Config) ->
                                      lists:sort(vmq_swc_test_utils:get_cluster_members(Node))})
      || Node <- Nodes],
     % at this point the cluster is fully clustered with the exception of LastNode
-    Keys0 = [crypto:strong_rand_bytes(100) || _ <- lists:seq(1,1000)], % use something where insertion order doesn't reflect key ordering.
-    lists:foreach(fun(I) ->
+    Objects = [{crypto:strong_rand_bytes(100), I} || I <- lists:seq(1,1000)], % use something where insertion order doesn't reflect key ordering.
+    lists:foreach(fun({Key, Val}) ->
                           RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
-                          ok = put_metadata(RandNode, rand, I, I, [])
-                  end, Keys0),
-    ok = wait_until_log_gc(Nodes),
+                          ok = put_metadata(RandNode, rand, Key, Val, [])
+                  end, Objects),
+
+    lists:foreach(fun({Key, Val}) ->
+                           ok = wait_until_converged(Nodes, rand, Key, Val)
+                   end, Objects),
 
     % let's join the LastNode,
     ?assertEqual(ok, rpc:call(LastNode, vmq_swc_plumtree_peer_service, join, [Node1])),
 
     % insert some more entries while joining the cluster
-    Keys1 = [crypto:strong_rand_bytes(100) || _ <- lists:seq(1,100)], % use something where insertion order doesn't reflect key ordering.
-    lists:foreach(fun(I) ->
+    Objects1 = [{crypto:strong_rand_bytes(100), I + 100} || I <- lists:seq(1,100)], % use something where insertion order doesn't reflect key ordering.
+    lists:foreach(fun({Key, Val}) ->
                           RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
-                          ok = put_metadata(RandNode, rand, I, I, [])
-                  end, Keys1),
-    ok = wait_until_log_gc([LastNode|Nodes]),
+                          ok = put_metadata(RandNode, rand, Key, Val, [])
+                  end, Objects1),
 
-    lists:foreach(fun(I) ->
-                          wait_until_converged([LastNode|Nodes], rand, I, I)
-                  end, Keys0 ++ Keys1),
-
-    ok = wait_until_log_gc([LastNode|Nodes]).
-
-
+    lists:foreach(fun({Key, Val}) ->
+                          ok = wait_until_converged([LastNode|Nodes], rand, Key, Val)
+                  end, Objects ++ Objects1).
 
 disable_broadcast(Nodes) ->
     [ok = rpc:call(N, vmq_swc_store, set_broadcast, [config(N), false])
@@ -408,6 +434,9 @@ wait_until_converged(Nodes, Prefix, Key, ExpectedValue) ->
                           end
                   end, Nodes))
       end, 60*2, 500).
+
+wait_until(Fun) ->
+    vmq_swc_test_utils:wait_until(Fun, 5*10, 100).
 
 wait_until_causal_context(Nodes, Prefix, Key, PredicateFun) ->
     vmq_swc_test_utils:wait_until(

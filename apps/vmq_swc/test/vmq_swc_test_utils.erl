@@ -88,8 +88,9 @@ start_node(Name, Config, Case) ->
     case ct_slave:start(Name, NodeConfig) of
         {ok, Node} ->
 
+            DbBackend = proplists:get_value(db_backend, Config),
             PrivDir = proplists:get_value(priv_dir, Config),
-            NodeDir = filename:join([PrivDir, Node, Case]),
+            NodeDir = filename:join([PrivDir, Node, Case, DbBackend]),
             ok = rpc:call(Node, application, load, [vmq_swc]),
             ok = rpc:call(Node, application, load, [lager]),
             ok = rpc:call(Node, application, set_env, [lager,
@@ -98,11 +99,17 @@ start_node(Name, Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_swc,
                                                        data_dir,
                                                        NodeDir]),
-            SyncInterval = proplists:get_value(sync_interval, Config, {100,50}),
+            ok = rpc:call(Node, application, set_env, [vmq_swc,
+                                                       db_backend,
+                                                       DbBackend]),
+            SyncInterval = proplists:get_value(sync_interval, Config, {1000,500}),
             ok = rpc:call(Node, application, set_env, [vmq_swc, sync_interval,
                                                        SyncInterval]),
             AutoGC = proplists:get_value(auto_gc, Config, true),
             ok = rpc:call(Node, application, set_env, [vmq_swc, auto_gc, AutoGC]),
+
+            BatchSize = proplists:get_value(exchange_batch_size, Config, 100),
+            ok = rpc:call(Node, application, set_env, [vmq_swc, exchange_batch_size, BatchSize]),
 
             SwcGroup = proplists:get_value(swc_group, Config, local),
 

@@ -19,8 +19,6 @@
 
 %% API
 -export([start_link/1,
-         start_full_exchange/3,
-         start_full_exchange_iterator/3,
          start_exchange/3]).
 
 %% Supervisor callbacks
@@ -43,26 +41,11 @@ start_link(#swc_config{group=SwcGroup} = _Config) ->
     SupName = sup_name(SwcGroup),
     supervisor:start_link({local, SupName}, ?MODULE, []).
 
-start_full_exchange(#swc_config{group=SwcGroup} = Config, Peer, Timeout) ->
-    SupName = sup_name(SwcGroup),
-    supervisor:start_child(SupName, #{id => {vmq_swc_full_sync_fsm, Peer},
-                                      start => {vmq_swc_full_sync_fsm, start_link,
-                                                [Config, Peer, Timeout]},
-                                      restart => temporary}).
-
 start_exchange(#swc_config{group=SwcGroup} = Config, Peer, Timeout) ->
     SupName = sup_name(SwcGroup),
     supervisor:start_child(SupName, #{id => {vmq_swc_exchange_fsm, Peer},
                                       start => {vmq_swc_exchange_fsm, start_link,
                                                 [Config, Peer, Timeout]},
-                                      restart => temporary}).
-
-start_full_exchange_iterator(#swc_config{group=SwcGroup} = Config, RemotePeer, Args) ->
-    %% Called remotely
-    SupName = sup_name(SwcGroup),
-    supervisor:start_child(SupName, #{id => {vmq_swc_full_sync_fsm, remote_helper, RemotePeer},
-                                      start => {vmq_swc_full_sync_fsm, start_iterator,
-                                                [Config, RemotePeer, Args]},
                                       restart => temporary}).
 
 sup_name(SwcGroup) ->
@@ -91,6 +74,3 @@ init([]) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-
-

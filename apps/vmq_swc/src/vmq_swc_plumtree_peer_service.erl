@@ -48,7 +48,7 @@ join(_, Node, _Auto) ->
 
 attempt_join(Node) ->
     lager:info("Sent join request to: ~p~n", [Node]),
-    case net_kernel:connect(Node) of
+    case net_kernel:connect_node(Node) of
         false ->
             lager:info("Unable to connect to ~p~n", [Node]),
             {error, not_reachable};

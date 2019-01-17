@@ -1,6 +1,0 @@
-%% @doc Set the path to the metadata directory.
-{mapping, "vmq_swc.directory", "vmq_swc.data_dir", [
-                                             {default, "{{platform_data_dir}}/swc_meta"},
-                                             {datatype, directory},
-                                             hidden
-                                            ]}.

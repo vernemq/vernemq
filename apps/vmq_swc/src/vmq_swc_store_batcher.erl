@@ -47,11 +47,11 @@ loop_accumulating(Parent, #swc_config{store=StoreName} = Config, Size, Queue) wh
             loop_accumulating(Parent, Config, Size + 1, [Msg|Queue])
     after
         0 ->
-            vmq_swc_store:process_batch(StoreName, Queue),
+            vmq_swc_store:process_batch(StoreName, lists:reverse(Queue)),
             loop_blocking(Parent, Config, 0, [])
     end;
 loop_accumulating(Parent, #swc_config{store=StoreName} = Config, Size, Queue0) ->
     {Batch, Queue1} = lists:split(?BATCH_SIZE, Queue0),
-    StoreName ! {batch, Batch},
+    vmq_swc_store:process_batch(StoreName, lists:reverse(Batch)),
     loop_accumulating(Parent, Config, Size - ?BATCH_SIZE, Queue1).
 
