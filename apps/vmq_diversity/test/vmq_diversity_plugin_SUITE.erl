@@ -20,6 +20,8 @@ init_per_suite(_Config) ->
     vmq_plugin_mgr:enable_plugin(vmq_diversity),
     {ok, _} = vmq_diversity:load_script(code:lib_dir(vmq_diversity) ++ "/test/plugin_test.lua"),
     cover:start(),
+    %% wait a tiny bit for the script/state manager to have registered with `vmq_diversity_plugin`.
+    timer:sleep(100),
     _Config.
 
 end_per_suite(_Config) ->
