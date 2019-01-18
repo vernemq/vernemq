@@ -77,6 +77,8 @@
 - Add the `vmq_swc` metadata plugin (using the already existing LevelDB backend) to
   the default VerneMQ release. To use `vmq_swc` instead of `vmq_plumtree` set
   `metadata_plugin = vmq_swc` in `vernemq.conf`. `vmq_swc` is still in Beta.
+- Add missing increments of the `mqtt_connack_sent` metric for CONNACK
+  success(0) for MQTT 3.1.1.
 
 ## VerneMQ 1.6.0
 
