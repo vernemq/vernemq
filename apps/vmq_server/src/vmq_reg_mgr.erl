@@ -178,8 +178,9 @@ handle_new_sub_event(SubscriberId, Subs) ->
     Sessions = vmq_subscriber:get_sessions(Subs),
     case lists:keymember(node(), 1, Sessions) of
         true ->
-            %% we have to ensure that we have a local queue for this subscriber
-            vmq_queue_sup_sup:start_queue(SubscriberId);
+            %% The local queue will have been started directly via
+            %% `vmq_reg:register_subscriber` in the fsm.
+            ignore;
         false ->
             %% we may migrate an existing queue to a remote queue
             %% Do we have a local queue to migrate?
