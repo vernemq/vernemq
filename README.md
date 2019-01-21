@@ -123,13 +123,10 @@ instance.
 ## Experimental plugin: `vmq_swc` a more powerful metadata replication algorithm
 
 As of VerneMQ 1.6 an alternative metadata replication algorithm is part of the
-VerneMQ master and can be found in `apps_opt/vmq_swc`. The plugin is still in an
-experimental stage, but could be already very useful for larger clusters in
-scenarios with *a lot* of clients. As the plugin has quite an overhead in terms of
-compile-time and package size (due to the internal use of RocksDB) it isn't yet
-included in the standard build and requires a specific build profile. Use `make swc` to
-build a VerneMQ release that uses `vmq_swc` instead of the stable `vmq_plumtree` for
-metadata replication.
+VerneMQ master and can be found in `apps/vmq_swc`. The plugin is in beta stadium
+,but could be already very useful for larger clusters in scenarios with *a lot* 
+of clients. The plugin is part of the official release and could can be enabled
+using `metadata_plugin = vmq_swc` in the `vernemq.conf`. 
 
 ### Challenges with Plumtree
 
