@@ -261,20 +261,17 @@ handle_call({batch, Batch}, _From, #state{config=Config,
                                           peers=Peers,
                                           id=Id,
                                           broadcast_enabled=IsBroadcastEnabled} = State0) ->
-    {{ReplicateObjects, DbOps, Events, #state{nodeclock=NodeClock} = State1}, Replies} =
-    lists:foldl(fun({From, {write, WriteOps}}, {Acc0, RAcc}) ->
+    {ReplicateObjects, DbOps, #state{nodeclock=NodeClock} = State1} =
+    lists:foldl(fun({{CallerPid, CallerRef}, {write, WriteOps}}, Acc0) ->
                         Acc1 =
                         lists:foldl(fun(WriteOp, AccAcc0) ->
                                             process_write_op(WriteOp, AccAcc0)
                                     end, Acc0, WriteOps),
-                        {Acc1, [From|RAcc]}
-                end, {{[], [], [], State0}, []}, Batch),
+                        CallerPid ! {CallerRef, ok},
+                        Acc1
+                end, {[], [], State0}, Batch),
     UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
     db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
-    lists:foreach(
-      fun({CallerPid, CallerRef}) ->
-              CallerPid ! {CallerRef, ok}
-      end, Replies),
     case IsBroadcastEnabled of
         true ->
             #swc_config{transport=TMod} = Config,
@@ -285,7 +282,6 @@ handle_call({batch, Batch}, _From, #state{config=Config,
         _ ->
             ok
     end,
-    trigger_events(lists:reverse(Events)),
     {reply, ok, cache_node_clock(State1)};
 
 handle_call({subscribe, FullPrefix, ConvertFun, Pid}, _From, #state{subscriptions=Subs0} = State0) ->
@@ -344,13 +340,12 @@ handle_call({update_watermark, _OriginPeer, Node, NodeClock}, _From, #state{conf
 
 handle_call({sync_repair, _OriginPeer, RemoteNode, RemoteNodeClock, MissingObjects, LastBatch}, _From,
             #state{config=Config} = State0) ->
-    {DbOps, Events, State1} = fill_strip_save_batch(MissingObjects, State0),
+    {DbOps, State1} = fill_strip_save_batch(MissingObjects, RemoteNodeClock, State0),
     State2 =
     case LastBatch of
         false ->
             UpdateNodeClock_DBop = update_nodeclock_db_op(State1#state.nodeclock),
             db_write(Config, lists:reverse([UpdateNodeClock_DBop | DbOps])),
-            trigger_events(lists:reverse(Events)),
             State1;
         {true, RemoteWatermark} ->
             NodeClock0 = sync_clocks(RemoteNode, RemoteNodeClock, State1#state.nodeclock),
@@ -358,7 +353,6 @@ handle_call({sync_repair, _OriginPeer, RemoteNode, RemoteNodeClock, MissingObjec
             UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock0),
             UpdateWatermark_DBop = update_watermark_db_op(Watermark),
             db_write(Config, lists:reverse([UpdateNodeClock_DBop, UpdateWatermark_DBop | DbOps])),
-            trigger_events(lists:reverse(Events)),
             incremental_gc(State1#state{watermark=Watermark, nodeclock=NodeClock0})
     end,
     {reply, ok, cache_node_clock(State2)};
@@ -390,13 +384,12 @@ handle_cast({set_group_members, UpdatedPeerList}, State) ->
 handle_cast({swc_broadcast, FromPeer, Objects}, #state{peers=Peers, config=Config} = State0) ->
     case lists:member(FromPeer, Peers) of
         true ->
-            {DbOps, Events, #state{nodeclock=NodeClock} = State1} =
+            {DbOps, #state{nodeclock=NodeClock} = State1} =
             lists:foldl(fun(Object, Acc) ->
                                 process_replicate_op(Object, Acc)
-                        end, {[], [], State0}, Objects),
+                        end, {[], State0}, Objects),
             UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
             db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
-            trigger_events(lists:reverse(Events)),
             {noreply, cache_node_clock(State1)};
         false ->
             % drop broadcast
@@ -539,15 +532,16 @@ sync_clocks(RemoteNode, RemoteNodeClock0, NodeClock) ->
     RemoteNodeClock1 = maps:filter(fun(Id, _) -> Id == RemoteNode end, RemoteNodeClock0),
     swc_node:merge(NodeClock, RemoteNodeClock1).
 
-fill_strip_save_batch(MissingObjects, #state{config=Config, nodeclock=NodeClock0} = State0) ->
-
+fill_strip_save_batch(MissingObjects, RemoteNodeClock, #state{config=Config, nodeclock=NodeClock0} = State0) ->
     {NodeClock1, RealMissing} =
     lists:foldl(
       fun({SKey, Obj}, {NodeClockAcc0, AccRealMissing0} = Acc) ->
+              % fill the object with the sending node clock
+              FilledObj = swc_kv:fill(Obj, RemoteNodeClock),
               % get the local object corresponding to the received object and fill the causal history
               {D1, _} = Local = swc_kv:fill(get_obj_for_key(Config, SKey), NodeClock0),
               % synchronize / merge the remote and local object
-              {D2, _} = Synced = swc_kv:sync(Obj, Local),
+              {D2, _} = Synced = swc_kv:sync(FilledObj, Local),
               % filter out the object that is not missing after all
               case (D1 =/= D2) orelse ((map_size(D1) == 0) andalso (map_size(D2) == 0)) of
                   true ->
@@ -561,12 +555,12 @@ fill_strip_save_batch(MissingObjects, #state{config=Config, nodeclock=NodeClock0
       end, {NodeClock0, []}, MissingObjects),
     % save the synced objects and strip their causal history
     State1 = State0#state{nodeclock=NodeClock1},
-    {FinalDBOps, Events} = strip_save_batch(RealMissing, [], [], State1, sync_resp),
-    {FinalDBOps, Events, State1}.
+    FinalDBOps = strip_save_batch(RealMissing, [], State1, sync_resp),
+    {FinalDBOps, State1}.
 
-strip_save_batch([], DBOps, Events, _State, _DbgCategory) ->
-    {DBOps, Events};
-strip_save_batch([{SKey, Obj, OldObj}|Rest], DBOps0, Events0, #state{nodeclock=NodeClock, dotkeymap=DKM} = State, DbgCategory) ->
+strip_save_batch([], DBOps, _State, _DbgCategory) ->
+    DBOps;
+strip_save_batch([{SKey, Obj, OldObj}|Rest], DBOps0, #state{nodeclock=NodeClock, dotkeymap=DKM} = State, DbgCategory) ->
     DBOps1 = add_object_to_log(State#state.dotkeymap, SKey, Obj, DBOps0),
     % remove unnecessary causality from the Obj, based on the current node clock
     {Values0, Context} = _StrippedObj0 = swc_kv:strip(Obj, NodeClock),
@@ -577,40 +571,35 @@ strip_save_batch([{SKey, Obj, OldObj}|Rest], DBOps0, Events0, #state{nodeclock=N
     % 1 - it has no value and no causal history -> can be deleted
     % 2 - has values, with causal history -> it's a normal write and must be persisted
     % 3 - has values, but no causal history -> it's the final form for this write
-    {DBOps2, Events1} =
+    DBOps2  =
     case {map_size(Values1), map_size(Context)} of
         {0, C} when (C == 0) or (State#state.peers == []) -> % case 1
             vmq_swc_dkm:mark_for_gc(DKM, SKey),
-            {[delete_obj_db_op(SKey, [DbgCategory, strip_save_batch])|DBOps1],
-             event(deleted, SKey, undefined, OldObj, Events0, State)};
+            event(deleted, SKey, undefined, OldObj, State),
+            [delete_obj_db_op(SKey, [DbgCategory, strip_save_batch])|DBOps1];
         {0, _} -> % case 0
             vmq_swc_dkm:mark_for_gc(DKM, SKey),
-            {[update_obj_db_op(SKey, StrippedObj1, [DbgCategory, strip_save_batch])|DBOps1],
-             event(deleted, SKey, undefined, OldObj, Events0, State)};
+            event(deleted, SKey, undefined, OldObj, State),
+            [update_obj_db_op(SKey, StrippedObj1, [DbgCategory, strip_save_batch])|DBOps1];
         _ -> % case 2 & 3
-            {[update_obj_db_op(SKey, StrippedObj1, [DbgCategory, strip_save_batch])|DBOps1],
-             event(updated, SKey, StrippedObj1, OldObj, Events0, State)}
+            event(updated, SKey, StrippedObj1, OldObj, State),
+            [update_obj_db_op(SKey, StrippedObj1, [DbgCategory, strip_save_batch])|DBOps1]
     end,
-    strip_save_batch(Rest, DBOps2, Events1, State, DbgCategory).
+    strip_save_batch(Rest, DBOps2, State, DbgCategory).
 
-event(Type, SKey, NewObj, OldObj, EventsAcc, #state{subscriptions=Subscriptions}) ->
+event(Type, SKey, NewObj, OldObj, #state{subscriptions=Subscriptions}) ->
     {FullPrefix, Key} = sext:decode(SKey),
     OldValues = swc_kv:values(OldObj),
     SubsForPrefix = maps:get(FullPrefix, Subscriptions, []),
-    lists:foldl(
+    lists:foreach(
       fun
-          ({Pid, ConvertFun}, Acc) when Type == deleted ->
-              [{Pid, ConvertFun({deleted, FullPrefix, Key, OldValues})}|Acc];
-          ({Pid, ConvertFun}, Acc) when Type == updated ->
-              [{Pid, ConvertFun({updated, FullPrefix, Key, OldValues, swc_kv:values(NewObj)})}|Acc]
-      end, EventsAcc, SubsForPrefix).
+          ({Pid, ConvertFun}) when Type == deleted ->
+              Pid ! ConvertFun({deleted, FullPrefix, Key, OldValues});
+          ({Pid, ConvertFun}) when Type == updated ->
+              Pid ! ConvertFun({updated, FullPrefix, Key, OldValues, swc_kv:values(NewObj)})
+      end, SubsForPrefix).
 
-trigger_events([{Pid, Event}|Rest]) ->
-    Pid ! Event,
-    trigger_events(Rest);
-trigger_events([]) -> ok.
-
-process_write_op({Key, Value, MaybeContext}, {AccReplicate0, AccDBOps0, AccEvents0, #state{config=Config, id=Id, nodeclock=NodeClock0} = State0}) ->
+process_write_op({Key, Value, MaybeContext}, {AccReplicate0, AccDBOps0, #state{config=Config, id=Id, nodeclock=NodeClock0} = State0}) ->
     % sext encode key
     SKey = sext:encode(Key),
     % get and fill the causal history of the local key
@@ -637,15 +626,12 @@ process_write_op({Key, Value, MaybeContext}, {AccReplicate0, AccDBOps0, AccEvent
             swc_kv:add(DiscardObj, {Id, Counter}, Value)
     end,
     % save the new k/v and remove unnecessary causal information
-    {AccDBOps1, AccEvents1} = strip_save_batch([{SKey, NewObj, DiskObj}], AccDBOps0, AccEvents0, State0, write_op),
-
+    AccDBOps1 = strip_save_batch([{SKey, NewObj, DiskObj}], AccDBOps0, State0, write_op),
     AccReplicate1 = [{SKey, NewObj}|AccReplicate0],
-
     State1 = State0#state{nodeclock=NodeClock1},
+    {AccReplicate1, AccDBOps1, State1}.
 
-    {AccReplicate1, AccDBOps1, AccEvents1, State1}.
-
-process_replicate_op({SKey, Obj}, {AccDBOps0, AccEvents0, #state{config=Config, nodeclock=NodeClock0} = State0}) ->
+process_replicate_op({SKey, Obj}, {AccDBOps0, #state{config=Config, nodeclock=NodeClock0} = State0}) ->
     NodeClock1 = swc_kv:add(NodeClock0, Obj),
     State1 = State0#state{nodeclock=NodeClock1},
     % get and fill the causal history of the local key
@@ -653,8 +639,8 @@ process_replicate_op({SKey, Obj}, {AccDBOps0, AccEvents0, #state{config=Config, 
     % synchronize both objects
     FinalObj = swc_kv:sync(Obj, DiskObj),
     % save the new object, while stripping the unnecessary causality
-    {AccDBOps1, AccEvents1} = strip_save_batch([{SKey, FinalObj, DiskObj}], AccDBOps0, AccEvents0, State0, replicate_op),
-    {AccDBOps1, AccEvents1, State1}.
+    AccDBOps1 = strip_save_batch([{SKey, FinalObj, DiskObj}], AccDBOps0, State0, replicate_op),
+    {AccDBOps1, State1}.
 
 add_object_to_log(DKM, SKey, Obj, AccDbOps) ->
     {Dots, _} = Obj,
