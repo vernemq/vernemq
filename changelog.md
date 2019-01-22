@@ -79,6 +79,8 @@
   `metadata_plugin = vmq_swc` in `vernemq.conf`. `vmq_swc` is still in Beta.
 - Add missing increments of the `mqtt_connack_sent` metric for CONNACK
   success(0) for MQTT 3.1.1.
+- Handle edge case with unknown task completion messages in `vmq_reg_sync` after
+  a restart.
 
 ## VerneMQ 1.6.0
 
