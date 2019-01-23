@@ -88,6 +88,7 @@
 - Fix edge case where an extra queue process could be started when metadata
   events arrive late. Now local queue processes are only started when triggered
   via a new local MQTT session.
+- Reimplement dead queue repair mechanism.
 
 ## VerneMQ 1.6.0
 
