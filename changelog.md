@@ -89,10 +89,10 @@
   events arrive late. Now local queue processes are only started when triggered
   via a new local MQTT session.
 - Reimplement dead queue repair mechanism.
-- Upgraded dependency `vernemq_dev`, includes new reauthorize subscriptions API.
-  This work was kindly sponsored by AppModule AG(http://www.appmodule.net).
-- New `vmq-admin` command to reauthorize subscriptions of a existing session.
-- Add new API to `vmq_diversity` to reauthorize subscriptions.
+- Add feature to reauthorize existing client subscriptions by reapplying current `auth_on_subscribe`
+  and `auth_on_subscribe_m5` hooks. This feature is exposed as a developer API in `vernemq_dev`, via
+  the `vmq-admin session reauthorize` CLI command, and as a API for `vmq_diversity` Lua scripts. This
+  work was kindly sponsored by AppModule AG (http://www.appmodule.net).
 
 ## VerneMQ 1.6.0
 
