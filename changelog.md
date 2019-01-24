@@ -89,6 +89,8 @@
   events arrive late. Now local queue processes are only started when triggered
   via a new local MQTT session.
 - Reimplement dead queue repair mechanism.
+- Upgraded dependency `vernemq_dev`, includes new reauthorize subscriptions API.
+- Add new API to `vmq_diversity` to reauthorize subscriptions.
 
 ## VerneMQ 1.6.0
 
