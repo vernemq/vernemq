@@ -91,6 +91,7 @@
 - Reimplement dead queue repair mechanism.
 - Upgraded dependency `vernemq_dev`, includes new reauthorize subscriptions API.
   This work was kindly sponsored by AppModule AG(http://www.appmodule.net).
+- New `vmq-admin` command to reauthorize subscriptions of a existing session.
 - Add new API to `vmq_diversity` to reauthorize subscriptions.
 
 ## VerneMQ 1.6.0
