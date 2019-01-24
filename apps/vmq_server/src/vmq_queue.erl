@@ -255,7 +255,7 @@ online({enqueue_many, Msgs, Opts}, _From, State) ->
 online({cleanup, Reason}, From, State)
   when State#state.waiting_call == undefined ->
     disconnect_sessions(Reason, State),
-    {next_state, state_change(cleanup, online, wait_for_offline),
+    {reply, ok, state_change(cleanup, online, wait_for_offline),
      State#state{waiting_call={{cleanup, Reason}, From}}};
 online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
