@@ -41,7 +41,8 @@ groups() ->
     [].
 
 all() ->
-    [filtering_works].
+    [filtering_works,
+     reauthorize_works].
 
 filtering_works(_Config) ->
     Connect = packet:gen_connect("vmq-info-client", [{keepalive,60},{clean_session, false}]),
@@ -141,7 +142,7 @@ filtering_works(_Config) ->
     [#{topic := <<"with/+/wildcard">>, qos := 2}] =
         execute(["vmq-admin", "session", "show", "--qos=2",
                  "--topic", "--qos"]),
-    
+
     Disconnect = packet:gen_disconnect(),
     ok = gen_tcp:send(SubSocket, Disconnect),
     ok = gen_tcp:close(SubSocket),
@@ -180,6 +181,26 @@ filtering_works(_Config) ->
                  "--client_id", "--payload"]),
     ok = gen_tcp:send(PubSocket, Disconnect),
     ok = gen_tcp:close(PubSocket).
+
+reauthorize_works(_Config) ->
+    Connect = packet:gen_connect("vmq-reauth-client", [{keepalive,60},{clean_session, false}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(1, [{"some/reauth/1", 0}]),
+    Suback = packet:gen_suback(1, [0]),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    Publish = packet:gen_publish("some/reauth/1", 0, <<"thepayload">>, [{mid, 2}]),
+    ok = gen_tcp:send(Socket, Publish),
+    ok = packet:expect_packet(Socket, "publish", Publish),
+    % disabling the subscribe hook, and reauthorizing the client will reject the publish
+    disable_on_subscribe(),
+    Node = node(),
+    Changes0 = vernemq_dev_api:reauthorize_subscriptions(undefined, {"", <<"vmq-reauth-client">>}, []),
+    {[{Node, [{[<<"some">>, <<"reauth">>, <<"1">>], 0}]}], []} = Changes0,
+    ok = gen_tcp:send(Socket, Publish),
+    {error, timeout} = gen_tcp:recv(Socket, 0, 100),
+    gen_tcp:close(Socket).
 
 execute(Cmd) ->
     M0 = clique_command:match(Cmd),
