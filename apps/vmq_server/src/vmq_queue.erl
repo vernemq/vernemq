@@ -255,7 +255,7 @@ online({enqueue_many, Msgs, Opts}, _From, State) ->
 online({cleanup, Reason}, From, State)
   when State#state.waiting_call == undefined ->
     disconnect_sessions(Reason, State),
-    {reply, ok, state_change(cleanup, online, wait_for_offline),
+    {next_state, state_change(cleanup, online, wait_for_offline),
      State#state{waiting_call={{cleanup, Reason}, From}}};
 online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
@@ -675,7 +675,7 @@ handle_session_down(SessionPid, StateName,
             gen_fsm:send_event(self(), drain_start),
             _ = vmq_plugin:all(on_client_offline, [SId]),
             {next_state, state_change({'DOWN', migrate}, wait_for_offline, drain), NewState};
-        {0, wait_for_offline, {cleanup, From}} ->
+        {0, wait_for_offline, {{cleanup, _Reason}, From}} ->
             %% Forcefully cleaned up, we have to cleanup remaining offline messages
             %% we don't cleanup subscriptions!
             #state{offline=#queue{queue=Q}} = NewState,
