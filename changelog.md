@@ -286,6 +286,8 @@
   fail. Also ensure to use the default mountpoint if no mountpoint was
   passed. (#714).
 - Upgraded vernemq_dev to include the `disconnect_by_subscriber_id/2` API.
+- Fix bug which could cause a queue cleanup to block indefinitely and cause the
+  `vmq_in_order_delivery_SUITE` tests to fail.
 
 ## VerneMQ 1.3.0
 
