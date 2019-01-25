@@ -100,7 +100,7 @@ write_batch(Config, [{_Key, _Val, _Context}|_] = WriteOps) ->
 -spec read(config(), key()) -> {[value()], context()}.
 read(Config, Key) ->
     SKey = sext:encode(Key),
-    Obj0 = get_obj_for_key(Config, SKey),
+    Obj0 = maybe_get_cached_object(Config, SKey),
     LocalClock=get_cached_node_clock(Config),
     Obj1 = swc_kv:fill(Obj0, LocalClock),
     Values = swc_kv:values(Obj1),
@@ -272,6 +272,7 @@ handle_call({batch, Batch}, _From, #state{config=Config,
                 end, {[], [], State0}, Batch),
     UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
     db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
+    r_o_w_cache_clear(Config),
     case IsBroadcastEnabled of
         true ->
             #swc_config{transport=TMod} = Config,
@@ -476,6 +477,23 @@ get_cached_node_clock(#swc_config{store=StoreName}) ->
     [{_, NodeClock}] = ets:lookup(StoreName, node_clock),
     NodeClock.
 
+maybe_get_cached_object(#swc_config{store=StoreName} = Config, SKey) ->
+    case ets:lookup(StoreName, SKey) of
+        [] ->
+            get_obj_for_key(Config, SKey);
+        [{_, Obj}] ->
+            Obj
+    end.
+
+r_o_w_cache_insert_object(#swc_config{store=StoreName}, SKey, Obj) ->
+    ets:insert(StoreName, {SKey, Obj}).
+
+r_o_w_cache_clear(#swc_config{store=StoreName}) ->
+    % the table max size is the size of a write batch, a select_delete shouldn't harm
+    % the overall performance
+    ets:select_delete(StoreName, [{{'$1', '_'}, [{'=/=', '$1', node_clock}], [true]}]),
+    ok.
+
 random_peer([], _Filter) -> {error, no_peer_available};
 random_peer(Peers, FilterFun) ->
     FilteredPeers = lists:filter(FilterFun, Peers),
@@ -629,6 +647,7 @@ process_write_op({Key, Value, MaybeContext}, {AccReplicate0, AccDBOps0, #state{c
     AccDBOps1 = strip_save_batch([{SKey, NewObj, DiskObj}], AccDBOps0, State0, write_op),
     AccReplicate1 = [{SKey, NewObj}|AccReplicate0],
     State1 = State0#state{nodeclock=NodeClock1},
+    r_o_w_cache_insert_object(Config, SKey, NewObj),
     {AccReplicate1, AccDBOps1, State1}.
 
 process_replicate_op({SKey, Obj}, {AccDBOps0, #state{config=Config, nodeclock=NodeClock0} = State0}) ->
