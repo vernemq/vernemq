@@ -102,6 +102,7 @@ config(PeerName, SwcGroup, DbBackend, TransportMod) when is_atom(SwcGroup) and i
     SwcGroupStr = atom_to_list(SwcGroup),
     DBName = list_to_atom("vmq_swc_db_" ++ SwcGroupStr),
     StoreName = list_to_atom("vmq_swc_store_" ++ SwcGroupStr),
+    CacheName = list_to_atom("vmq_swc_store_r_o_w_" ++ SwcGroupStr),
     BatcherName = list_to_atom("vmq_swc_store_batcher_" ++ SwcGroupStr),
     MembershipName = list_to_atom("vmq_swc_group_membership_" ++ SwcGroupStr),
     #swc_config{
@@ -110,6 +111,7 @@ config(PeerName, SwcGroup, DbBackend, TransportMod) when is_atom(SwcGroup) and i
        db=DBName,
        db_backend=DbBackend,
        store=StoreName,
+       r_o_w_cache=CacheName,
        batcher=BatcherName,
        membership=MembershipName,
        transport=TransportMod

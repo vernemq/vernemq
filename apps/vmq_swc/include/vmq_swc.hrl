@@ -32,6 +32,7 @@
           db            :: db_name(),
           db_backend    :: atom(),
           store         :: atom(),
+          r_o_w_cache   :: atom(),
           batcher       :: atom(),
           membership    :: atom(),
           transport     :: atom()
