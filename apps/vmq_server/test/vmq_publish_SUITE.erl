@@ -39,9 +39,10 @@ init_per_testcase(_Case, Config) ->
     vmq_server_cmd:set_config(max_client_id_size, 100),
     vmq_server_cmd:set_config(topic_alias_max_client, 0),
     vmq_server_cmd:set_config(topic_alias_max_broker, 0),
-    Config.
+    start_client_offline_events(Config).
 
 end_per_testcase(_, Config) ->
+    stop_client_offline_events(Config),
     Config.
 
 all() ->
@@ -92,6 +93,8 @@ groups() ->
                    max_packet_size
                    | V4V5Tests] }
     ].
+
+-define(CLIENT_OFFLINE_EVENT_SRV, vmq_client_offline_event_server).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -656,7 +659,8 @@ shared_subscription_offline(Cfg) ->
     Connack = mqtt5_v4compat:gen_connack(success, Cfg),
     Prefix = vmq_cth:ustr(Cfg),
     PubConnect = mqtt5_v4compat:gen_connect(Prefix ++ "single-offline-pub", [{keepalive, 60}], Cfg),
-    SubConnectOffline = mqtt5_v4compat:gen_connect(Prefix ++ "single-offline-sha-sub",
+    SubOfflineClientId = Prefix ++ "single-offline-sha-sub",
+    SubConnectOffline = mqtt5_v4compat:gen_connect(SubOfflineClientId,
                                                    [{keepalive, 60},
                                                     {clean_session, false}], Cfg),
     Subscription = "$share/singleofflinesub/shared_sub_topic",
@@ -669,10 +673,13 @@ shared_subscription_offline(Cfg) ->
     Disconnect = mqtt5_v4compat:gen_disconnect(Cfg),
     ok = gen_tcp:send(SubSocketOffline, Disconnect),
 
+    %% wait for the client to be offline before publishing
+    wait_for_offline_event(SubOfflineClientId, 500),
+
     PubFun
         = fun(Socket, Mid) ->
                   Publish = mqtt5_v4compat:gen_publish("shared_sub_topic", 1,
-                                                       vmq_test_utils:rand_bytes(1024),
+                                                       <<Mid:8, (vmq_test_utils:rand_bytes(10))/binary>>,
                                                        [{mid, Mid}], Cfg),
                   Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
                   ok = gen_tcp:send(Socket, Publish),
@@ -699,7 +706,8 @@ shared_subscription_online_first(Cfg) ->
     SubConnectOnline = mqtt5_v4compat:gen_connect(Prefix ++ "shared-sub-sub-online",
                                                   [{keepalive, 60},
                                                    {clean_session, false}], Cfg),
-    SubConnectOffline = mqtt5_v4compat:gen_connect(Prefix ++ "shared-sub-sub-offline",
+    SubOfflineClientId = Prefix ++ "shared-sub-sub-offline",
+    SubConnectOffline = mqtt5_v4compat:gen_connect(SubOfflineClientId,
                                                    [{keepalive, 60},
                                                     {clean_session, false}],
                                                    Cfg),
@@ -713,13 +721,17 @@ shared_subscription_online_first(Cfg) ->
     ok = mqtt5_v4compat:expect_packet(SubSocketOffline, "suback", Suback, Cfg),
     ok = gen_tcp:send(SubSocketOnline, Subscribe),
     ok = mqtt5_v4compat:expect_packet(SubSocketOnline, "suback", Suback, Cfg),
+
     Disconnect = mqtt5_v4compat:gen_disconnect(Cfg),
     ok = gen_tcp:send(SubSocketOffline, Disconnect),
 
+    wait_for_offline_event(SubOfflineClientId, 500),
+
+    %% now let's publish
     PubFun
         = fun(Socket, Mid) ->
                   Publish = mqtt5_v4compat:gen_publish("shared_sub_topic", 1,
-                                               vmq_test_utils:rand_bytes(1024),
+                                                       <<Mid:8, (vmq_test_utils:rand_bytes(10))/binary>>,
                                                [{mid, Mid}], Cfg),
                   Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
                   ok = gen_tcp:send(Socket, Publish),
@@ -1030,6 +1042,9 @@ hook_on_message_drop(_, Promise, max_packet_size_exceeded) ->
     ok;
 hook_on_message_drop({"", <<"message-expiry-sub">>}, _, expired) -> ok.
 
+hook_on_client_offline(SubscriberId) ->
+    ?CLIENT_OFFLINE_EVENT_SRV ! {on_client_offline, SubscriberId}.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1106,3 +1121,49 @@ expect_alive(Socket) ->
     Pingresp = packet:gen_pingresp(),
     ok = gen_tcp:send(Socket, Pingreq),
     ok = packet:expect_packet(Socket, "pingresp", Pingresp).
+
+wait_for_offline_event(ClientId, Timeout) ->
+    ClientIdBin =
+        case is_list(ClientId) of
+            true ->
+                list_to_binary(ClientId);
+            false -> ClientId
+        end,
+    receive
+        {on_client_offline, {"", ClientIdBin}} ->
+            ok
+    after
+        Timeout ->
+            throw(client_not_offline)
+    end.
+
+start_client_offline_events(Cfg) ->
+    ok = vmq_plugin_mgr:enable_module_plugin(
+           on_client_offline, ?MODULE, hook_on_client_offline, 1),
+    TestPid = self(),
+    F = fun(Fun) ->
+                receive
+                    {on_client_offline, _} = E ->
+                        TestPid ! E,
+                        Fun(Fun);
+                    {stop, Ref} ->
+                        TestPid ! {ok, Ref},
+                        ok
+                end
+        end,
+    EventProc = spawn(fun() -> F(F) end),
+    register(?CLIENT_OFFLINE_EVENT_SRV, EventProc),
+    [{?CLIENT_OFFLINE_EVENT_SRV, EventProc}|Cfg].
+
+
+stop_client_offline_events(Cfg) ->
+    Pid = proplists:get_value(?CLIENT_OFFLINE_EVENT_SRV, Cfg),
+    Ref = make_ref(),
+    Pid ! {stop, Ref},
+    receive
+        {ok, Ref} ->
+            ok
+    after
+        1000 ->
+            throw({could_not_stop, ?CLIENT_OFFLINE_EVENT_SRV})
+    end.
