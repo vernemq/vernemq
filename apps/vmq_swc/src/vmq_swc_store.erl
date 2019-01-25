@@ -204,7 +204,7 @@ set_group_members(#swc_config{store=StoreName}, Members) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 %%% GEN_SERVER Callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
-init([#swc_config{group=Group, peer=Peer, store=StoreName} = Config]) ->
+init([#swc_config{group=Group, peer=Peer, store=StoreName, r_o_w_cache=CacheName} = Config]) ->
     process_flag(priority, high),
     StartSync = application:get_env(vmq_swc, sync_interval, {5000, 2500}),
     StartSync =/= 0 andalso erlang:send_after(1000, self(), sync),
@@ -225,6 +225,7 @@ init([#swc_config{group=Group, peer=Peer, store=StoreName} = Config]) ->
     IsPeriodicGc = application:get_env(vmq_swc, periodic_gc, true),
 
     ets:new(StoreName, [public, named_table, {read_concurrency, true}]),
+    ets:new(CacheName, [public, named_table, {read_concurrency, true}]),
 
     Members = vmq_swc_group_membership:get_members(Config),
 
@@ -477,22 +478,19 @@ get_cached_node_clock(#swc_config{store=StoreName}) ->
     [{_, NodeClock}] = ets:lookup(StoreName, node_clock),
     NodeClock.
 
-maybe_get_cached_object(#swc_config{store=StoreName} = Config, SKey) ->
-    case ets:lookup(StoreName, SKey) of
+maybe_get_cached_object(#swc_config{r_o_w_cache=CacheName} = Config, SKey) ->
+    case ets:lookup(CacheName, SKey) of
         [] ->
             get_obj_for_key(Config, SKey);
         [{_, Obj}] ->
             Obj
     end.
 
-r_o_w_cache_insert_object(#swc_config{store=StoreName}, SKey, Obj) ->
-    ets:insert(StoreName, {SKey, Obj}).
+r_o_w_cache_insert_object(#swc_config{r_o_w_cache=CacheName}, SKey, Obj) ->
+    ets:insert(CacheName, {SKey, Obj}).
 
-r_o_w_cache_clear(#swc_config{store=StoreName}) ->
-    % the table max size is the size of a write batch, a select_delete shouldn't harm
-    % the overall performance
-    ets:select_delete(StoreName, [{{'$1', '_'}, [{'=/=', '$1', node_clock}], [true]}]),
-    ok.
+r_o_w_cache_clear(#swc_config{r_o_w_cache=CacheName}) ->
+    ets:delete_all_objects(CacheName).
 
 random_peer([], _Filter) -> {error, no_peer_available};
 random_peer(Peers, FilterFun) ->
