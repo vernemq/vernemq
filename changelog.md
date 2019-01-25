@@ -83,6 +83,8 @@
   a restart.
 - Fix bug which could cause a queue cleanup to block indefinitely and cause the
   `vmq_in_order_delivery_SUITE` tests to fail.
+- Add a new metric (queue_initialized_from_storage) to better monitor queue
+  initialization process after a node restart.
 
 ## VerneMQ 1.6.0
 
