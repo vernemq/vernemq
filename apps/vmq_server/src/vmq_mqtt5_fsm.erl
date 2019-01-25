@@ -1375,7 +1375,8 @@ handle_messages([{deliver_pubrel, {MsgId, #mqtt5_pubrel{} = Frame}}|Rest], Frame
     %% this is called when a pubrel is retried after a client reconnects
     #state{waiting_acks=WAcks} = State0,
     _ = vmq_metrics:incr(?MQTT5_PUBREL_SENT),
-    State1 = State0#state{waiting_acks=maps:put(MsgId, Frame, WAcks)},
+    State1 = State0#state{waiting_acks=maps:put(MsgId, Frame, WAcks),
+                         next_msg_id = MsgId +1 },
     handle_messages(Rest, [serialise_frame(Frame)|Frames],
                     PubCnt, State1, Waiting);
 handle_messages([], [], _, State, Waiting) ->
