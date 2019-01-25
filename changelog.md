@@ -81,7 +81,7 @@
   success(0) for MQTT 3.1.1.
 - Handle edge case with unknown task completion messages in `vmq_reg_sync` after
   a restart.
-- Add a new metric (queue_init_from_storage) to better monitor queue
+- Add a new metric (queue_initialized_from_storage) to better monitor queue
   initialization process after a node restart.
 
 ## VerneMQ 1.6.0
