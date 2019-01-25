@@ -901,7 +901,7 @@ handle_messages([{deliver_pubrel, {MsgId, #mqtt_pubrel{} = Frame}}|Rest], Frames
     _ = vmq_metrics:incr_mqtt_pubrel_sent(),
     State1 = State0#state{retry_queue=set_retry(pubrel, MsgId, RetryInterval, RetryQueue),
                           waiting_acks=maps:put(MsgId, Frame, WAcks),
-                          next_msg_id = MsgId + 1 },
+                          next_msg_id=(MsgId+1)},
     handle_messages(Rest, [Frame|Frames], PubCnt, State1, Waiting);
 handle_messages([], [], _, State, Waiting) ->
     {State, [], Waiting};
