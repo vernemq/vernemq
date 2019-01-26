@@ -81,6 +81,14 @@
   success(0) for MQTT 3.1.1.
 - Handle edge case with unknown task completion messages in `vmq_reg_sync` after
   a restart.
+- Fix bug which could cause a queue cleanup to block indefinitely and cause the
+  `vmq_in_order_delivery_SUITE` tests to fail.
+- Add a new metric (queue_initialized_from_storage) to better monitor queue
+  initialization process after a node restart.
+- Fix edge case where an extra queue process could be started when metadata
+  events arrive late. Now local queue processes are only started when triggered
+  via a new local MQTT session.
+- Reimplement dead queue repair mechanism.
 
 ## VerneMQ 1.6.0
 

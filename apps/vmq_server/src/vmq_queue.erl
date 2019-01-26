@@ -419,10 +419,12 @@ drain(Event, _From, State) ->
 offline(init_offline_queue, #state{id=SId} = State) ->
     case vmq_plugin:only(msg_store_find, [SId]) of
         {ok, MsgRefs} ->
+            _ = vmq_metrics:incr_queue_initialized_from_storage(),
             {next_state, offline,
              insert_many(MsgRefs, State)};
         {error, no_matching_hook_found} ->
             % that's ok
+            _ = vmq_metrics:incr_queue_initialized_from_storage(),
             {next_state, offline, State};
         {error, Reason} ->
             lager:error("can't initialize queue from offline storage due to ~p, retry in 1 sec", [Reason]),
@@ -675,7 +677,7 @@ handle_session_down(SessionPid, StateName,
             gen_fsm:send_event(self(), drain_start),
             _ = vmq_plugin:all(on_client_offline, [SId]),
             {next_state, state_change({'DOWN', migrate}, wait_for_offline, drain), NewState};
-        {0, wait_for_offline, {cleanup, From}} ->
+        {0, wait_for_offline, {{cleanup, _Reason}, From}} ->
             %% Forcefully cleaned up, we have to cleanup remaining offline messages
             %% we don't cleanup subscriptions!
             #state{offline=#queue{queue=Q}} = NewState,

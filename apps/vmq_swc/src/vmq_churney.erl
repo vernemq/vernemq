@@ -129,7 +129,7 @@ client_id(A, B, Suffix) ->
                    ++ "-"
                    ++ atom_to_list(B)
                    ++ "-"
-                   ++ integer_to_list(erlang:phash2({self(), os:timestamp()}))
+                   ++ integer_to_list(erlang:phash2({node(), self(), os:timestamp()}))
                    ++ "-"
                    ++ Suffix
                   ).

@@ -22,6 +22,7 @@
          unsubscribe/3,
          register_subscriber/4,
          register_subscriber/5, %% used during testing
+         replace_dead_queue/3,
          delete_subscriptions/1,
          %% used in mqtt fsm handling
          publish/4,
@@ -478,8 +479,16 @@ migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = A
 
 fix_dead_queues(_, []) -> exit(no_target_available);
 fix_dead_queues(DeadNodes, AccTargets) ->
-    %% DeadNodes must be a list of offline VerneMQ nodes
-    %% Targets must be a list of online VerneMQ nodes
+    %% The goal here is to:
+    %%
+    %% 1. create queues on another node for all clean_start = false
+    %% sessions.
+    %%
+    %% 2. Purge the old nodename from the rest of the metadata to
+    %% ensure publishes are not forwarded to the dead node.
+
+    %% DeadNodes must be a list of offline VerneMQ nodes. Targets must
+    %% be a list of online VerneMQ nodes
     {_, _, N} = fold_subscribers(fun fix_dead_queue/3, {DeadNodes, AccTargets, 0}),
     lager:info("dead queues summary: ~p queues fixed", [N]).
 
@@ -492,7 +501,74 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
     %%%  and ensure that a queue exist for such subscriptions.
     %%%  In case allow_multiple_sessions=false (default) all
     %%%  subscriptions will be remapped
-    NewSubs =
+
+    %% check if there's any work to do:
+    NewSubs = rewrite_dead_nodes(Subs, DeadNodes, '$notanodename', false),
+    case Subs of
+        NewSubs ->
+            %% no subs were changed, nothing to do here.
+            {DeadNodes, [Target|Targets], N};
+        _ ->
+            %% Assume all the subscriptions come with the same clean_session flag.
+            [{_, StartClean, _}|_] = NewSubs,
+            RepairQueueFun =
+                fun() ->
+                        case rpc:call(Target, vmq_reg, replace_dead_queue, [SubscriberId, DeadNodes, StartClean]) of
+                            ok ->
+                                {DeadNodes, Targets ++ [Target], N + 1};
+                            Error ->
+                                lager:info("repairing dead queue for ~p on ~p failed due to ~p~n", [SubscriberId, Target, Error]),
+                                {DeadNodes, Targets ++ [Target], N}
+                        end
+                end,
+            vmq_reg_sync:sync(SubscriberId, RepairQueueFun, 60000)
+    end.
+
+
+replace_dead_queue(SubscriberId, _DeadNodes, _StartClean = true) ->
+    %% At this point we may have a new subscriber on either this or
+    %% other nodes which may have another set of subscriptions than
+    %% what the old node had.
+
+    case get_queue_pid(SubscriberId) of
+        not_found ->
+            %% To ensure we end up with a client which has a consistent state,
+            %% we write an empty subscription to the store which will cause
+            %% clients on other nodes to be disconnected (if
+            %% allow_multiple_sessions=false) (TODO: formalize this behaviour
+            %% in a test-case) and they'll then reconnect.
+            Subs = vmq_subscriber:new(true),
+            vmq_subscriber_db:store(SubscriberId, Subs),
+            %% no local queue, so we delete the client information.
+            del_subscriber(SubscriberId),
+            ok;
+        QPid ->
+            %% we force a disconnect to ensure the client reconnects
+            %% and reestablishes consistent metadata.
+            vmq_queue:force_disconnect(QPid, ?ADMINISTRATIVE_ACTION, true),
+            ok
+    end;
+replace_dead_queue(SubscriberId, DeadNodes, _StartClean = false) ->
+    %% At this point we may have a new subscriber on either this or
+    %% other nodes and their subscribtions may differ from the ones we
+    %% saw on the caller node.
+
+    %% here the goal is that there is a (new) queue to receive any
+    %% offline messages until the client reconnects.
+    {ok, _, _QPid} = vmq_queue_sup_sup:start_queue(SubscriberId),
+    case vmq_subscriber_db:read(SubscriberId) of
+        undefined ->
+            %% not clear why we ended up here - better return
+            %% an error and let the caller retry.
+            error;
+        LocalSubs ->
+            NewSubs = rewrite_dead_nodes(LocalSubs, DeadNodes, node(), false),
+            %% store the updated subs, also to make sure to
+            %% propagate the new values to all other nodes.
+            vmq_subscriber_db:store(SubscriberId, NewSubs)
+    end.
+
+rewrite_dead_nodes(Subs, DeadNodes, TargetNode, CleanSession) ->
     lists:foldl(
       fun(DeadNode, AccSubs) ->
               %% Remapping the supbscriptions from DeadNode to
@@ -500,24 +576,8 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
               %% present at TargetNode, we're merging the subscriptions
               %% IF it is using clean_session=false. IF it is using
               %% clean_session=true, the subscriptions are replaced.
-              vmq_subscriber:change_node(AccSubs, DeadNode, Target, false)
-      end, Subs, DeadNodes),
-    case Subs of
-        NewSubs ->
-            %% no change
-            {DeadNodes, [Target|Targets], N};
-        _ ->
-            Fun = fun(Sid, Tgt) ->
-                          case rpc:call(Tgt, ?MODULE, get_queue_pid, [Sid]) of
-                              not_found ->
-                                  block;
-                              Pid when is_pid(Pid) ->
-                                  done
-                          end
-                  end,
-            block_until_migrated(SubscriberId, NewSubs, [Target], Fun),
-            {DeadNodes, Targets ++ [Target], N + 1}
-    end.
+              vmq_subscriber:change_node(AccSubs, DeadNode, TargetNode, CleanSession)
+      end, Subs, DeadNodes).
 
 -spec wait_til_ready() -> 'ok'.
 wait_til_ready() ->
