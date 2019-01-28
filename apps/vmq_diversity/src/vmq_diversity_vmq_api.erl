@@ -22,7 +22,8 @@ install(St) ->
 
 table() ->
     [
-     {<<"disconnect_by_subscriber_id">>, {function, fun disconnect/2}}
+     {<<"disconnect_by_subscriber_id">>, {function, fun disconnect/2}},
+     {<<"reauthorize_subscriptions">>, {function, fun reauthorize_subscriptions/2}}
     ].
 
 disconnect([LuaSubId, LuaOpts], St) ->
@@ -36,17 +37,34 @@ disconnect([LuaSubId, LuaOpts], St) ->
     end,
 
     Opts = conv_opts(luerl:decode(LuaOpts, St)),
-    Res =
-        %% wrap it in a try-catch to make it possible to verify in
-        %% tests, syntactically, that we can call the function. To
-        %% test this for real, we'd need a running `vmq_server`.
-        try
-            vernemq_dev_api:disconnect_by_subscriber_id({MP, ClientId}, Opts)
-        catch
-            _:_ ->
-                not_found
-        end,
+    Res = try_fun(fun() -> vernemq_dev_api:disconnect_by_subscriber_id({MP, ClientId}, Opts) end, not_found),
     {[atom_to_binary(Res, utf8)], St}.
+
+reauthorize_subscriptions([LuaUser, LuaSubId, LuaOpts], St) ->
+    User = luerl:decode(LuaUser, St),
+    SubId = luerl:decode(LuaSubId, St),
+    %% mountpoints from lua are restricted to the list/string type.
+    MP = to_list(mp, proplists:get_value(<<"mountpoint">>, SubId)),
+    ClientId = proplists:get_value(<<"client_id">>, SubId),
+    case ClientId of
+        undefined -> throw({missing_parameter, client_id});
+        _ -> ok
+    end,
+
+    Opts = conv_opts(luerl:decode(LuaOpts, St)),
+    _ = try_fun(fun() -> vernemq_dev_api:reauthorize_subscriptions(User, {MP, ClientId}, Opts) end, ignored),
+    {[atom_to_binary(ok, utf8)], St}.
+
+try_fun(Fun, CatchVal) ->
+    %% wrap it in a try-catch to make it possible to verify in
+    %% tests, syntactically, that we can call the function. To
+    %% test this for real, we'd need a running `vmq_server`.
+    try
+        Fun()
+    catch
+        _:_ ->
+            CatchVal
+    end.
 
 conv_opts(Opts) ->
     lists:map(

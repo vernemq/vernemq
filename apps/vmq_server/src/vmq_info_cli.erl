@@ -21,11 +21,13 @@
 register_cli() ->
     vmq_session_list_cmd(),
     vmq_session_disconnect_cmd(),
+    vmq_session_reauthorize_cmd(),
     vmq_retain_show_cmd(),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
     clique:register_usage(["vmq-admin", "session", "show"], vmq_session_show_usage()),
     clique:register_usage(["vmq-admin", "session", "disconnect"], vmq_session_disconnect_usage()),
+    clique:register_usage(["vmq-admin", "session", "reauthorize"], vmq_session_reauthorize_usage()),
     clique:register_usage(["vmq-admin", "retain"], retain_usage()),
     clique:register_usage(["vmq-admin", "retain"], retain_show_usage()).
 
@@ -79,6 +81,42 @@ vmq_session_disconnect_cmd() ->
                   (_,_,_) ->
                        Text = clique_status:text(vmq_session_disconnect_usage()),
                        [clique_status:alert([Text])]
+               end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+vmq_session_reauthorize_cmd() ->
+    Cmd = ["vmq-admin", "session", "reauthorize"],
+    KeySpecs = [{'username', [{typecast, fun(UserName) -> UserName end}]},
+                {'client-id', [{typecast, fun(ClientId) -> ClientId end}]}],
+    FlagSpecs = [{mountpoint, [{shortname, "m"},
+                               {longname, "mountpoint"},
+                               {typecast,
+                                fun(Mountpoint) -> Mountpoint end}]}],
+
+    Callback = fun(_, Args, Flags) ->
+                       case lists:keysort(1, Args) of
+                           [{'client-id', ClientId}, {username, Username}] ->
+                               case proplists:get_value(mountpoint, Flags, "") of
+                                   undefined ->
+                                       %% Unparseable mountpoint or without value
+                                       Text = clique_status:text("Invalid mountpoint value"),
+                                       [clique_status:alert([Text])];
+                                   Mountpoint ->
+                                       Ret = vernemq_dev_api:reauthorize_subscriptions(
+                                             list_to_binary(Username),
+                                             {Mountpoint, list_to_binary(ClientId)},
+                                             []),
+                                       case Ret of
+                                           {[], []} ->
+                                               [clique_status:text("Unchanged")];
+                                           _ ->
+                                               [clique_status:text("Done")]
+                                       end
+                               end;
+                           _ ->
+                               Text = clique_status:text(vmq_session_reauthorize_usage()),
+                               [clique_status:alert([Text])]
+                       end
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
@@ -145,6 +183,7 @@ session_usage() ->
      "  Sub-commands:\n",
      "    show        Show and filter running sessions\n",
      "    disconnect  Forcefully disconnect a session\n",
+     "    reauthorize Reauthorize subscriptions of a session\n",
      "  Use --help after a sub-command for more details.\n"
     ].
 
@@ -173,6 +212,14 @@ vmq_session_disconnect_usage() ->
      "  --cleanup, -c\n",
      "      removes the stored cluster state of this client like stored\n",
      "      messages and subscriptions.",
+     "\n\n"
+    ].
+
+vmq_session_reauthorize_usage() ->
+    ["vmq-admin session reauthorize username=<Username> client-id=<ClientId>\n\n",
+     "  Reauthorizes all current subscriptions of an existing client session. \n\n",
+     "  --mountpoint=<Mountpoint>, -m\n",
+     "      specifies the mountpoint, defaults to the default mountpoint",
      "\n\n"
     ].
 

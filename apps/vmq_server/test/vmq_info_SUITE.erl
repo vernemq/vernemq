@@ -141,7 +141,7 @@ filtering_works(_Config) ->
     [#{topic := <<"with/+/wildcard">>, qos := 2}] =
         execute(["vmq-admin", "session", "show", "--qos=2",
                  "--topic", "--qos"]),
-    
+
     Disconnect = packet:gen_disconnect(),
     ok = gen_tcp:send(SubSocket, Disconnect),
     ok = gen_tcp:close(SubSocket),
