@@ -37,7 +37,7 @@
          stored/1,
          status/1,
 
-         migrate_offline_queues/1,
+         migrate_offline_queues/2,
          fix_dead_queues/2
         ]).
 
@@ -431,44 +431,42 @@ subscriptions_for_subscriber_id(SubscriberId) ->
     Default = [],
     vmq_subscriber_db:read(SubscriberId, Default).
 
-migrate_offline_queues([]) -> exit(no_target_available);
-migrate_offline_queues(Targets) ->
-    {_, NrOfQueues, TotalMsgs} = vmq_queue_sup_sup:fold_queues(fun migrate_offline_queue/3, {Targets, 0, 0}),
-    lager:info("migration summary: ~p queues migrated, ~p messages", [NrOfQueues, TotalMsgs]),
+migrate_offline_queues([], _) -> exit(no_target_available);
+migrate_offline_queues(Targets, MaxConcurrency) ->
+    Acc = #{offline_cnt => 0,
+            offline_queues => [],
+            draining_cnt => 0,
+            draining_queues => [],
+            targets => Targets},
+    MigrateState = vmq_queue_sup_sup:fold_queues(fun migration_candidate_filter/3,  Acc),
+    migrate(MigrateState,MaxConcurrency),
     ok.
 
-migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = Acc) ->
+migrate(#{offline_queues := [], draining_queues := []}, _) ->
+    ok;
+migrate(S0, MaxConcurrency) ->
+    S1 = update_state(S0),
+    S2 = trigger_migration(S1, MaxConcurrency),
+    timer:sleep(100), %% TODO: is this optimal?
+    migrate(S2, MaxConcurrency).
+
+
+migration_candidate_filter(SubscriberId, QPid, #{offline_cnt := OCnt,
+                                                 offline_queues := OQueues,
+                                                 draining_cnt := DCnt,
+                                                 draining_queues := DQueues,
+                                                 targets := Targets} = Acc) ->
+    Target = lists:nth(rand:uniform(length(Targets)), Targets),
     try vmq_queue:status(QPid) of
         {_, _, _, _, true} ->
             %% this is a queue belonging to a plugin.. ignore it.
             Acc;
-        {offline, _, TotalStoredMsgs, _, _} ->
-            OldNode = node(),
-            %% Remap Subscriptions, taking into account subscriptions
-            %% on other nodes by only remapping subscriptions on 'OldNode'
-            Subs = subscriptions_for_subscriber_id(SubscriberId),
-            NewSubs = vmq_subscriber:change_node(Subs, OldNode, Target, false),
-
-            %% writing the changed subscriptions will trigger
-            %% vmq_reg_mgr to initiate queue migration
-            Fun =
-                fun(Sid, TargetNode) ->
-                        case get_queue_pid(Sid) of
-                            not_found ->
-                                case rpc:call(TargetNode, ?MODULE, get_queue_pid, [Sid]) of
-                                    not_found ->
-                                        lager:error("couldn't migrate queue for ~p to target node ~p",
-                                                    [Sid, TargetNode]),
-                                        done;
-                                    LocalPid when is_pid(LocalPid) ->
-                                        done
-                                end;
-                            Pid when is_pid(Pid) ->
-                                block
-                        end
-                end,
-            block_until_migrated(SubscriberId, NewSubs, [Target], Fun),
-            {Targets ++ [Target], AccQs + 1, AccMsgs + TotalStoredMsgs};
+        {offline, _, Msgs, _, _} ->
+            Acc#{offline_cnt => OCnt + 1,
+                 offline_queues => [{SubscriberId,QPid,Msgs,Target}|OQueues]};
+        {drain, _, Msgs, _, _} ->
+            Acc#{draining_cnt => DCnt + 1,
+                 draining_queues => [{SubscriberId,QPid,Msgs,Target}|DQueues]};
         _ ->
             Acc
     catch
@@ -476,6 +474,56 @@ migrate_offline_queue(SubscriberId, QPid, {[Target|Targets], AccQs, AccMsgs} = A
             %% queue stopped in the meantime, that's ok.
             Acc
     end.
+
+update_state(#{draining_queues := DrainingQueues,
+               migrated_queue_cnt := MigratedQueueCnt,
+               migrated_message_cnt := MigratedMsgCnt} = S0) ->
+    lists:foldl(
+      fun({_, QPid, Msgs, _} = Q, #{offline_cnt := OCnt,
+                              offline_queues := OQueues,
+                              draining_cnt := DCnt,
+                              draining_queues := DQueues} = Acc) ->
+              try vmq_queue:status(QPid) of
+                  {offline, _, _, _, _} ->
+                      %% queue returned to offline state!
+                      Acc#{offline_cnt => OCnt + 1,
+                           offline_queues => [Q|OQueues]};
+                  {drain, _, _, _, _} ->
+                      %% still draining
+                      Acc#{draining_cnt => DCnt + 1,
+                                draining_queues => [Q|DQueues]}
+              catch
+                  _:_ ->
+                      %% queue stopped in the meantime, so draining
+                      %% finished.
+                      Acc#{migrated_queue_cnt := MigratedQueueCnt + 1,
+                           migrated_message_cnt := MigratedMsgCnt + Msgs}
+              end
+      end, S0#{draining_queues => [],
+               draining_cnt => 0}, DrainingQueues).
+
+trigger_migration(#{draining_cnt := DCnt} = S, MaxConcurrency) when DCnt >= MaxConcurrency->
+    %% all are still draining and we may even more than max
+    %% concurrency draining queues due to natural migration. Do
+    %% nothing.
+    S;
+trigger_migration(#{offline_queues := []} = S, _) ->
+    %% done for now
+    S;
+trigger_migration(#{draining_cnt := DCnt,
+                    draining_queues := DQueues,
+                    offline_cnt := OCnt,
+                    offline_queues := [{SubscriberId, _QPid, _Msgs, Target}=Q|OQueues]} = S,
+                  MaxConcurrency) ->
+    %% Remap Subscriptions, taking into account subscriptions
+    %% on other nodes by only remapping subscriptions on 'OldNode'
+    OldNode = node(),
+    Subs = subscriptions_for_subscriber_id(SubscriberId),
+    UpdatedSubs = vmq_subscriber:change_node(Subs, OldNode, Target, false),
+    vmq_subscriber_db:store(SubscriberId, UpdatedSubs),
+    S1 = S#{draining_queues => [Q|DQueues], draining_cnt => DCnt + 1,
+            offline_queues => OQueues, offline_cnt => OCnt - 1},
+    trigger_migration(S1, MaxConcurrency).
 
 fix_dead_queues(_, []) -> exit(no_target_available);
 fix_dead_queues(DeadNodes, AccTargets) ->

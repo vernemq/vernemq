@@ -274,7 +274,7 @@ vmq_cluster_leave_cmd() ->
                                                %% There is no guarantee that all clients will
                                                %% reconnect on time; we've to force migrate all
                                                %% offline queues.
-                                               vmq_reg:migrate_offline_queues(TargetNodes),
+                                               migrate_offline_queues(TargetNodes, 1000),
                                                %% node is online, we'll go the proper route
                                                %% instead of calling leave_cluster('Node')
                                                %% directly
@@ -315,6 +315,9 @@ vmq_cluster_leave_cmd() ->
                        [clique_status:text(Text)]
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+migrate_offline_queues(TargetNodes, MaxConcurrency) ->
+    vmq_reg:migrate_offline_queues(TargetNodes, MaxConcurrency).
 
 leave_cluster(Node) ->
     case vmq_peer_service:leave(Node) of
