@@ -94,6 +94,8 @@
   the `vmq-admin session reauthorize` CLI command, and as a API for `vmq_diversity` Lua scripts. This
   work was kindly sponsored by AppModule AG (http://www.appmodule.net).
 - Improve planned cluster leave queue migration speed significantly (#766).
+- Start metrics server before setting up queues to ensure queue metric counts
+  are correct when restarting VerneMQ.
 
 ## VerneMQ 1.6.0
 
