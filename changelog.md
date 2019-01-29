@@ -93,6 +93,7 @@
   and `auth_on_subscribe_m5` hooks. This feature is exposed as a developer API in `vernemq_dev`, via
   the `vmq-admin session reauthorize` CLI command, and as a API for `vmq_diversity` Lua scripts. This
   work was kindly sponsored by AppModule AG (http://www.appmodule.net).
+- Improve planned cluster leave queue migration speed significantly (#766).
 
 ## VerneMQ 1.6.0
 

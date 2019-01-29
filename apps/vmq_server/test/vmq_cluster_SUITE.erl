@@ -120,6 +120,13 @@ multiple_connect_test(Config) ->
     true = check_unique_client("connect-multiple", Nodes),
     Config.
 
+wait_until_converged_fold(Fun, Init, ExpectedResult, Nodes) ->
+    {NodeNames, _} = lists:unzip(Nodes),
+    vmq_cluster_test_utils:wait_until(
+      fun() ->
+              ExpectedResult =:= lists:foldl(Fun, Init, NodeNames)
+      end, 60*2, 500).
+
 wait_until_converged(Nodes, Fun, ExpectedReturn) ->
     {NodeNames, _} = lists:unzip(Nodes),
     vmq_cluster_test_utils:wait_until(
@@ -397,7 +404,8 @@ cluster_leave_test(Config) ->
     ok = ensure_cluster(Config),
     {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "cluster/leave/topic",
-    %% create 8 sessions
+    ToMigrate = 8,
+    %% create ToMigrate sessions
     [PubSocket|_] = Sockets =
     [begin
          Connect = packet:gen_connect("connect-" ++ integer_to_list(I),
@@ -410,7 +418,7 @@ cluster_leave_test(Config) ->
          ok = gen_tcp:send(Socket, Subscribe),
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
-     end || I <- lists:seq(1,8)],
+     end || I <- lists:seq(1,ToMigrate)],
     ok = wait_until_converged(Nodes,
                          fun(N) ->
                                  rpc:call(N, vmq_reg, total_subscriptions, [])
@@ -422,7 +430,7 @@ cluster_leave_test(Config) ->
     ok = packet:expect_packet(PubSocket, "puback", Puback),
     ok = vmq_cluster_test_utils:wait_until(
            fun() ->
-                   {8, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup_sup, summary, [])
+                   {ToMigrate, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup_sup, summary, [])
            end, 60, 500),
     %% Pick a control node for initiating the cluster leave
     [{CtrlNode, _}|_] = RestNodes,
@@ -430,10 +438,14 @@ cluster_leave_test(Config) ->
     %% Leaving Node will disconnect all sessions and give away all messages
     %% The disconnected sessions are equally migrated to the rest of the nodes
     %% As the clients don't reconnect (in this test), their sessions are offline
-    ok = wait_until_converged(RestNodes,
-                              fun(N) ->
-                                      rpc:call(N, vmq_queue_sup_sup, summary, [])
-                              end, {0, 0, 0, 4, 4}).
+    ok = wait_until_converged_fold(
+           fun(N, {AccQ, AccM}) ->
+                   {_,_,_,Queues,Messages} = rpc:call(N, vmq_queue_sup_sup, summary, []),
+                   {AccQ + Queues, AccM + Messages}
+           end,
+           {0, 0},
+           {ToMigrate, ToMigrate},
+           RestNodes).
 
 cluster_leave_myself_test(Config) ->
     ok = ensure_cluster(Config),
