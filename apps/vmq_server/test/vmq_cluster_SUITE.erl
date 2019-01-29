@@ -397,7 +397,7 @@ cluster_leave_test(Config) ->
     ok = ensure_cluster(Config),
     {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "cluster/leave/topic",
-    ToMigrate = 700,
+    ToMigrate = 8,
     %% create ToMigrate sessions
     [PubSocket|_] = Sockets =
     [begin
@@ -428,10 +428,7 @@ cluster_leave_test(Config) ->
     %% Pick a control node for initiating the cluster leave
     [{CtrlNode, _}|_] = RestNodes,
     io:format(user, "XXX: cluster leave, start migrations of ~p queues~n", [ToMigrate]),
-    TS1 = erlang:monotonic_time(millisecond),
     {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Node]),
-    TS2 = erlang:monotonic_time(millisecond),
-    io:format(user, "XXX: cluster leave migrated ~p queues in ~p seconds~n", [ToMigrate, (TS2 - TS1)/1000]),
     %% Leaving Node will disconnect all sessions and give away all messages
     %% The disconnected sessions are equally migrated to the rest of the nodes
     %% As the clients don't reconnect (in this test), their sessions are offline
