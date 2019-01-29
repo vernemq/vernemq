@@ -1,4 +1,5 @@
 services:
+    - docker
     - mysql
     - postgresql
     - mongodb
@@ -27,3 +28,21 @@ cache:
     - plts_base
 before_script: "epmd -daemon"
 script: "./rebar3 as all_tests do dialyzer, eunit, ct"
+
+before_deploy:
+  - mkdir packages
+  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:stretch /tmp/package.sh 20.3.8.9 $TRAVIS_TAG deb stretch
+  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:jessie /tmp/package.sh 20.3.8.9 $TRAVIS_TAG deb jessie
+  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:bionic /tmp/package.sh 20.3.8.9 $TRAVIS_TAG deb bionic
+  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:trusty /tmp/package.sh 20.3.8.9 $TRAVIS_TAG deb trusty
+  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:xenial /tmp/package.sh 20.3.8.9 $TRAVIS_TAG deb xenial
+  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:centos7 /tmp/package.sh 20.3.8.9 $TRAVIS_TAG rpm centos7
+
+deploy:
+  provider: releases
+  api_key: "$GITHUB_OAUTH_TOKEN"
+  file_glob: true
+  file: packages/*
+  skip_cleanup: true
+  on:
+    tags: true
