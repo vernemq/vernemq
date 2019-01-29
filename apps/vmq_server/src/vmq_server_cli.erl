@@ -274,7 +274,7 @@ vmq_cluster_leave_cmd() ->
                                                %% There is no guarantee that all clients will
                                                %% reconnect on time; we've to force migrate all
                                                %% offline queues.
-                                               migrate_offline_queues(TargetNodes, 1000),
+                                               migrate_offline_queues(Caller, CRef, TargetNodes, 1000),
                                                %% node is online, we'll go the proper route
                                                %% instead of calling leave_cluster('Node')
                                                %% directly
@@ -282,7 +282,7 @@ vmq_cluster_leave_cmd() ->
                                                Caller ! {done, CRef},
                                                init:stop();
                                            error ->
-                                               Caller ! {msg, CRef, "error, still online queues, check the logs, and retry!"}
+                                               Caller ! {stop, CRef, "error, still online queues, check the logs, and retry!"}
                                        end
                                end,
                                ProcName = {?MODULE, vmq_server_migration},
@@ -292,14 +292,7 @@ vmq_cluster_leave_cmd() ->
                                            true ->
                                                Pid = spawn(Node, LeaveFun),
                                                MRef = monitor(process, Pid),
-                                               receive
-                                                   {msg, CRef, Msg} ->
-                                                       Msg;
-                                                   {done, CRef} ->
-                                                       "Done";
-                                                   {'DOWN', MRef, process, Pid, Reason} ->
-                                                       "Unknown error: " ++ atom_to_list(Reason)
-                                               end;
+                                               receive_loop(CRef, MRef, Pid);
                                            false ->
                                                "Can't migrate queues because cluster is inconsistent, retry!"
                                        end;
@@ -316,8 +309,38 @@ vmq_cluster_leave_cmd() ->
                end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
-migrate_offline_queues(TargetNodes, MaxConcurrency) ->
-    vmq_reg:migrate_offline_queues(TargetNodes, MaxConcurrency).
+receive_loop(CRef, MRef, Pid) ->
+    receive
+        {msg, CRef, Msg} ->
+            io:format("~s~n", [lists:flatten(Msg)]),
+            receive_loop(CRef, MRef, Pid);
+        {stop, CRef, Msg} ->
+            Msg;
+        {done, CRef} ->
+            "Done";
+        {'DOWN', MRef, process, Pid, Reason} ->
+            "Unknown error: " ++ atom_to_list(Reason)
+    end.
+
+migrate_offline_queues(Caller, CRef, TargetNodes, MaxConcurrency) ->
+    S = vmq_reg:prepare_offline_queue_migration(TargetNodes),
+    migrate(Caller, CRef, S, MaxConcurrency).
+
+migrate(Caller, CRef, S, MaxConcurrency) ->
+    {Progress, #{migrated_queue_cnt := MQCnt,
+                 migrated_msg_cnt := MMCnt,
+                 total_queue_count := TQCnt,
+                 total_msg_count := TMCnt} = S1} =
+        vmq_reg:migrate_offline_queues(S, MaxConcurrency),
+    Msg = io_lib:format("Migrated ~p/~p queues and ~p/~p messages", [MQCnt, TQCnt, MMCnt, TMCnt]),
+    Caller ! {msg, CRef, Msg},
+    case Progress of
+        cont ->
+            timer:sleep(100),
+            migrate(Caller, CRef, S1, MaxConcurrency);
+        done ->
+            ok
+    end.
 
 leave_cluster(Node) ->
     case vmq_peer_service:leave(Node) of

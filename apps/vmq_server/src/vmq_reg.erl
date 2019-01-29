@@ -37,6 +37,7 @@
          stored/1,
          status/1,
 
+         prepare_offline_queue_migration/1,
          migrate_offline_queues/2,
          fix_dead_queues/2
         ]).
@@ -431,31 +432,33 @@ subscriptions_for_subscriber_id(SubscriberId) ->
     Default = [],
     vmq_subscriber_db:read(SubscriberId, Default).
 
-migrate_offline_queues([], _) -> exit(no_target_available);
-migrate_offline_queues(Targets, MaxConcurrency) ->
+prepare_offline_queue_migration([]) -> exit(no_target_available);
+prepare_offline_queue_migration(Targets) ->
     Acc = #{offline_cnt => 0,
             offline_queues => [],
             draining_cnt => 0,
             draining_queues => [],
+            total_queue_count => 0,
+            total_msg_count => 0,
+            migrated_queue_cnt => 0,
+            migrated_msg_cnt => 0,
             targets => Targets},
-    MigrateState = vmq_queue_sup_sup:fold_queues(fun migration_candidate_filter/3,  Acc),
-    migrate(MigrateState,MaxConcurrency),
-    ok.
+    vmq_queue_sup_sup:fold_queues(fun migration_candidate_filter/3,  Acc).
 
-migrate(#{offline_queues := [], draining_queues := []}, _) ->
-    ok;
-migrate(S0, MaxConcurrency) ->
+migrate_offline_queues(#{offline_queues := [], draining_queues := []} = State, _) ->
+    {done, State};
+migrate_offline_queues(S0, MaxConcurrency) ->
     S1 = update_state(S0),
     S2 = trigger_migration(S1, MaxConcurrency),
-    timer:sleep(100), %% TODO: is this optimal?
-    migrate(S2, MaxConcurrency).
-
+    {cont, S2}.
 
 migration_candidate_filter(SubscriberId, QPid, #{offline_cnt := OCnt,
                                                  offline_queues := OQueues,
                                                  draining_cnt := DCnt,
                                                  draining_queues := DQueues,
-                                                 targets := Targets} = Acc) ->
+                                                 targets := Targets,
+                                                 total_queue_count := TQCnt,
+                                                 total_msg_count := TMCnt} = Acc) ->
     Target = lists:nth(rand:uniform(length(Targets)), Targets),
     try vmq_queue:status(QPid) of
         {_, _, _, _, true} ->
@@ -463,10 +466,14 @@ migration_candidate_filter(SubscriberId, QPid, #{offline_cnt := OCnt,
             Acc;
         {offline, _, Msgs, _, _} ->
             Acc#{offline_cnt => OCnt + 1,
-                 offline_queues => [{SubscriberId,QPid,Msgs,Target}|OQueues]};
+                 offline_queues => [{SubscriberId,QPid,Msgs,Target}|OQueues],
+                 total_queue_count := TQCnt + 1,
+                 total_msg_count := TMCnt + Msgs};
         {drain, _, Msgs, _, _} ->
             Acc#{draining_cnt => DCnt + 1,
-                 draining_queues => [{SubscriberId,QPid,Msgs,Target}|DQueues]};
+                 draining_queues => [{SubscriberId,QPid,Msgs,Target}|DQueues],
+                 total_queue_count => TQCnt + 1,
+                 total_msg_count => TMCnt + Msgs};
         _ ->
             Acc
     catch
@@ -475,14 +482,14 @@ migration_candidate_filter(SubscriberId, QPid, #{offline_cnt := OCnt,
             Acc
     end.
 
-update_state(#{draining_queues := DrainingQueues,
-               migrated_queue_cnt := MigratedQueueCnt,
-               migrated_message_cnt := MigratedMsgCnt} = S0) ->
+update_state(#{draining_queues := DrainingQueues} = S0) ->
     lists:foldl(
       fun({_, QPid, Msgs, _} = Q, #{offline_cnt := OCnt,
-                              offline_queues := OQueues,
-                              draining_cnt := DCnt,
-                              draining_queues := DQueues} = Acc) ->
+                                    offline_queues := OQueues,
+                                    draining_cnt := DCnt,
+                                    draining_queues := DQueues,
+                                    migrated_queue_cnt := MigratedQueueCnt,
+                                    migrated_msg_cnt := MigratedMsgCnt} = Acc) ->
               try vmq_queue:status(QPid) of
                   {offline, _, _, _, _} ->
                       %% queue returned to offline state!
@@ -491,13 +498,13 @@ update_state(#{draining_queues := DrainingQueues,
                   {drain, _, _, _, _} ->
                       %% still draining
                       Acc#{draining_cnt => DCnt + 1,
-                                draining_queues => [Q|DQueues]}
+                           draining_queues => [Q|DQueues]}
               catch
                   _:_ ->
                       %% queue stopped in the meantime, so draining
                       %% finished.
                       Acc#{migrated_queue_cnt := MigratedQueueCnt + 1,
-                           migrated_message_cnt := MigratedMsgCnt + Msgs}
+                           migrated_msg_cnt := MigratedMsgCnt + Msgs}
               end
       end, S0#{draining_queues => [],
                draining_cnt => 0}, DrainingQueues).
