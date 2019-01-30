@@ -96,6 +96,7 @@
 - Improve planned cluster leave queue migration speed significantly (#766).
 - Start metrics server before setting up queues to ensure queue metric counts
   are correct when restarting VerneMQ.
+- Let Travis CI build the VerneMQ release packages.
 
 ## VerneMQ 1.6.0
 
