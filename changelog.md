@@ -97,6 +97,8 @@
 - Start metrics server before setting up queues to ensure queue metric counts
   are correct when restarting VerneMQ.
 - Let Travis CI build the VerneMQ release packages.
+- Add new metric `system_process_count` which is a gauge representing the
+  current number of Erlang processes.
 
 ## VerneMQ 1.6.0
 

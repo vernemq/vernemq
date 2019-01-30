@@ -980,6 +980,7 @@ system_statistics() ->
     RunQueueLen = erlang:statistics(run_queue),
     {Total_Run_Time, _} = erlang:statistics(runtime),
     {Total_Wallclock_Time, _} = erlang:statistics(wall_clock),
+    ProcessCount = erlang:system_info(process_count),
     #{total := ErlangMemTotal,
       processes := ErlangMemProcesses,
       processes_used := ErlangMemProcessesUsed,
@@ -999,6 +1000,7 @@ system_statistics() ->
      {system_run_queue, RunQueueLen},
      {system_runtime, Total_Run_Time},
      {system_wallclock, Total_Wallclock_Time},
+     {system_process_count, ProcessCount},
 
      {vm_memory_total, ErlangMemTotal},
      {vm_memory_processes, ErlangMemProcesses},
@@ -1023,6 +1025,7 @@ system_stats_def() ->
      m(gauge, [], system_run_queue, system_run_queue, <<"The total number of processes and ports ready to run on all run-queues.">>),
      m(counter, [], system_runtime, system_runtime, <<"The sum of the runtime for all threads in the Erlang runtime system.">>),
      m(counter, [], system_wallclock, system_wallclock, <<"The number of milli-seconds passed since the node was started.">>),
+     m(gauge, [], system_process_count, system_process_count, <<"The number of Erlang processes.">>),
 
      m(gauge, [], vm_memory_total, vm_memory_total, <<"The total amount of memory allocated.">>),
      m(gauge, [], vm_memory_processes, vm_memory_processes, <<"The amount of memory allocated for processes.">>),
