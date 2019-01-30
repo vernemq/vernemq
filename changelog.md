@@ -1,5 +1,7 @@
 # Changelog
 
+## VerneMQ 1.7.0
+
 - Fix `vmq_webhooks` issue where MQTTv5 hooks where not configurable in the
   `vernemq.conf` file.
 - Support shared subscriptions in `vmq_bridge`.
