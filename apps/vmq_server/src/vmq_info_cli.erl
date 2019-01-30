@@ -165,7 +165,6 @@ vmq_ql_callback(Table, DefaultFields, Opts) ->
                   end, [], QueryString, Opts),
             [clique_status:table(ResultTable)]
     end.
-
 v("true" = V) -> V;
 v("false" = V) -> V;
 v(V) ->

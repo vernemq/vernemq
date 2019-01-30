@@ -99,6 +99,9 @@
 - Let Travis CI build the VerneMQ release packages.
 - Add new metric `system_process_count` which is a gauge representing the
   current number of Erlang processes.
+- Add `queue_started_at` and `session_started_at` information to the `vmq-admin
+  session show` command. Times are POSIX time in milliseconds and local to the
+  node where the session or queue was started.
 
 ## VerneMQ 1.6.0
 

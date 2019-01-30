@@ -44,7 +44,8 @@ fields_config() ->
                                online_messages,
                                num_sessions,
                                clean_session,
-                               is_plugin],
+                               is_plugin,
+                               queue_started_at],
                    init_fun = fun queue_row_init/1,
                    include_if_all = true
                },
@@ -55,7 +56,8 @@ fields_config() ->
                                 peer_host,
                                 peer_port,
                                 protocol,
-                                waiting_acks],
+                                waiting_acks,
+                                session_started_at],
                     init_fun = fun session_row_init/1,
                     include_if_all = false
                  },
@@ -117,20 +119,24 @@ row_init(Row) ->
     [Row].
 
 queue_row_init(Row) ->
-   QPid = maps:get(queue_pid, Row),
-   QueueData = vmq_queue:info(QPid),
-   case maps:get('sessions', QueueData) of
-       [] ->
-           % offline queue
-           [maps:merge(Row, maps:remove('sessions', QueueData#{clean_session => false}))];
-       Sessions ->
-           QueueDataWithoutSessions = maps:remove('sessions', QueueData),
-           Row1 = maps:merge(Row, QueueDataWithoutSessions),
-           lists:foldl(fun({SessionPid, CleanSession}, Acc) ->
-                               [maps:merge(Row1, #{session_pid => SessionPid,
-                                                   clean_session => CleanSession}) | Acc]
-                       end, [], Sessions)
-   end.
+    QPid = maps:get(queue_pid, Row),
+    QueueData = vmq_queue:info(QPid),
+    StartedAt = maps:get(started_at, QueueData, undefined),
+    case maps:get('sessions', QueueData) of
+        [] ->
+            %% offline queue
+            QueueData1 = maps:without([started_at, sessions], QueueData),
+            [maps:merge(Row, maps:remove('sessions', QueueData1#{clean_session => false,
+                                                                 queue_started_at => StartedAt}))];
+        Sessions ->
+            QueueDataWithoutSessions = maps:without([started_at, sessions], QueueData),
+            Row1 = maps:merge(Row, QueueDataWithoutSessions#{queue_started_at => StartedAt}),
+            lists:foldl(fun({SessionPid, CleanSession,SessionStartedAt}, Acc) ->
+                                [maps:merge(Row1, #{session_pid => SessionPid,
+                                                    clean_session => CleanSession,
+                                                    session_started_at => SessionStartedAt}) | Acc]
+                        end, [], Sessions)
+    end.
 
 session_row_init(Row) ->
     case maps:find(session_pid, Row) of

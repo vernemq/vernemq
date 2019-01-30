@@ -78,7 +78,8 @@
           pid,
           cleanup_on_disconnect,
           status = notify,
-          queue = #queue{}
+          queue = #queue{},
+          started_at :: vmq_time:timestamp()
          }).
 
 -record(state, {
@@ -94,7 +95,8 @@
           opts,
           delayed_will :: {Delay :: non_neg_integer(),
                            Fun :: function()} | undefined,
-          delayed_will_timer :: reference() | undefined
+          delayed_will_timer :: reference() | undefined,
+          started_at :: vmq_time:timestamp()
          }).
 
 %%%===================================================================
@@ -506,7 +508,8 @@ init([SubscriberId, Clean]) ->
                           drain_time=DrainTime,
                           deliver_mode=DeliverMode,
                           max_msgs_per_drain_step=MaxMsgsPerDrainStep,
-                          opts=Defaults
+                          opts=Defaults,
+                          started_at=vmq_time:timestamp(millisecond)
                          }}.
 
 handle_event(_Event, StateName, State) ->
@@ -524,11 +527,13 @@ handle_sync_event(info, _From, StateName,
                   #state{deliver_mode=Mode,
                          offline=#queue{size=OfflineSize},
                          sessions=Sessions,
-                         opts=#{is_plugin := IsPlugin}} = State) ->
+                         opts=#{is_plugin := IsPlugin},
+                         started_at=StartedAt} = State) ->
     {OnlineMessages, SessionInfo} =
     maps:fold(fun(_, #session{pid=SessPid, cleanup_on_disconnect=Clean,
-                              queue=#queue{size=Size}}, {AccN, AccSess}) ->
-                      {AccN + Size, [{SessPid, Clean}|AccSess]}
+                              queue=#queue{size=Size},
+                              started_at=SessionStartedAt}, {AccN, AccSess}) ->
+                      {AccN + Size, [{SessPid, Clean,SessionStartedAt}|AccSess]}
               end, {0, []}, Sessions),
     Info = #{is_offline => (StateName == offline),
              is_online => (StateName /= offline),
@@ -538,7 +543,8 @@ handle_sync_event(info, _From, StateName,
              online_messages => OnlineMessages,
              num_sessions => length(SessionInfo),
              is_plugin => IsPlugin,
-             sessions => SessionInfo},
+             sessions => SessionInfo,
+             started_at => StartedAt},
     {reply, Info, StateName, State};
 
 handle_sync_event(get_sessions, _From, StateName, #state{sessions=Sessions} = State) ->
@@ -617,7 +623,8 @@ add_session_(SessionPid, Opts, #state{id=SId, offline=Offline,
             monitor(process, SessionPid),
             maps:put(SessionPid,
                      #session{pid=SessionPid, cleanup_on_disconnect=Clean,
-                              queue=#queue{max=MaxOnlineMessages}}, Sessions);
+                              queue=#queue{max=MaxOnlineMessages},
+                              started_at=vmq_time:timestamp(millisecond)}, Sessions);
         _ ->
             Sessions
     end,
