@@ -60,6 +60,7 @@ cluster_leave(Node) ->
             Local2List = riak_dt_orswot:value(Local2),
             case [P || P <- Local2List, P =:= Node] of
                 [] ->
+                    vmq_swc_plumtree_peer_service_manager:delete_state(),
                     ok;
                 _ ->
                     cluster_leave(Node)
