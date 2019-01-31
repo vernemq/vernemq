@@ -1,5 +1,9 @@
 # Changelog
 
+- Cleanup cluster state information on a node which is being gracefully removed
+  from the cluster so if it is restarted it comes back up as a stand-alone node
+  and won't try to reconnect to the remaining nodes.
+
 ## VerneMQ 1.7.0
 
 - Fix `vmq_webhooks` issue where MQTTv5 hooks where not configurable in the
