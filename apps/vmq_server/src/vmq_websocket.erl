@@ -1,3 +1,5 @@
+
+
 %% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +15,17 @@
 %% limitations under the License.
 
 -module(vmq_websocket).
+
 -behaviour(cowboy_websocket).
+
 -include("vmq_server.hrl").
 
 -export([init/2]).
--export([websocket_init/1]).
--export([websocket_handle/2]).
--export([websocket_info/2]).
--export([terminate/3]).
+
+-export([websocket_init/1,
+         websocket_handle/2,
+         websocket_info/2, 
+         terminate/3]).
 
 -record(state, {
                 buffer= <<>>,
@@ -38,17 +43,8 @@
 
 
 init(Req, Opts) ->
-    Req0 = 
-        case cowboy_req:header(<<"sec-websocket-protocol">>, Req) of
-            undefined -> Req;
-            SubProtocol ->
-                case lists:member(SubProtocol, ?SUPPORTED_PROTOCOLS) of
-                    true ->
-                        cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, SubProtocol, Req);
-                    false ->
-                        {stop, Req}
-                end
-        end,
+    {_, Socket} = lists:keyfind(socket, 1, Opts),
+    Req0 = add_websocker_sec_header(Req),
     {Peer, Req1} = cowboy_req:peer(Req0),
     FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
     FsmState = 
@@ -64,9 +60,11 @@ init(Req, Opts) ->
             _ ->
                 FsmMod:init(Peer, Opts)
         end,
+    WsOpts0 = proplists:get_value(ws_opts, Opts, #{}),
+    WsOpts  = maps:merge(#{compress => true}, WsOpts0),
     {cowboy_websocket, Req1, #state{socket=Socket, peer=Peer,
                                     fsm_state=FsmState, fsm_mod=FsmMod,
-                                    transport=Type}, Opts}.
+                                    transport=Type}, WsOpts}.
 
 websocket_init(State) ->
     %% Todo: Handle _init here.
@@ -157,4 +155,16 @@ maybe_reply(Out, State) ->
         NrOfBytes ->
             _ = vmq_metrics:incr_bytes_sent(NrOfBytes),
             {reply, {binary, Out}, State, hibernate}
+    end.
+
+add_websocker_sec_header(Req) ->
+    case cowboy_req:header(<<"sec-websocket-protocol">>, Req) of
+        undefined -> Req;
+        SubProtocol ->
+            case lists:member(SubProtocol, ?SUPPORTED_PROTOCOLS) of
+                true ->
+                    cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, SubProtocol, Req);
+                false ->
+                    Req
+            end
     end.
