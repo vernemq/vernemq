@@ -32,6 +32,7 @@ script: "./rebar3 as all_tests do dialyzer, eunit, ct"
 jobs:
   include:
     - stage: GitHub Release
+      script: echo "Nothing to test here"
       before_deploy:
         - mkdir packages
         - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:stretch /tmp/package.sh 21.2.4 $TRAVIS_TAG deb stretch
