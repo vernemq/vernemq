@@ -34,12 +34,30 @@
                                                                                                 {datatype, flag}
                                                                                                ]}.
 
-%% @doc Allows a client to logon multiple times using the same client id
-%% (non-standard behaviour!).
+%% @doc Allows a client to logon multiple times using the same client
+%% id (non-standard behaviour!). This feature is DEPRECATED and will
+%% be removed in VerneMQ 2.0.
 {mapping, "allow_multiple_sessions", "vmq_server.allow_multiple_sessions", [
                                                                {default, off},
                                                                {datatype, flag}
                                                               ]}.
+
+{translation, "vmq_server.allow_multiple_sessions",
+ fun(Conf) ->
+         case cuttlefish:conf_get("allow_multiple_sessions", Conf) of
+             true ->
+                 cuttlefish:warn("allow_multiple_sessions is deprecated and will be removed in VerneMQ 2.0"),
+                 true;
+             false -> false
+         end
+ end}.
+
+
+{mapping, "coordinated_registration", "vmq_server.coordinated_registration",
+ [{default, on},
+  {datatype, flag}]}.
+
+
 
 %% @doc If allow_multiple_sessions is enabled 'queue_deliver_mode' will specify
 %% how the messages are delivered to multiple sessions. Default is 'fanout' which

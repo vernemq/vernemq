@@ -3,6 +3,8 @@
 - Cleanup cluster state information on a node which is being gracefully removed
   from the cluster so if it is restarted it comes back up as a stand-alone node
   and won't try to reconnect to the remaining nodes.
+- The `allow_multiple_sessions` option is deprecated and will be removed in
+  VerneMQ 2.0.
 
 ## VerneMQ 1.7.0
 
