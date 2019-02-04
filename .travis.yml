@@ -1,27 +1,27 @@
 services:
-    - docker
-    - mysql
-    - postgresql
-    - mongodb
-    - redis
-    - memcached
+  - docker
+  - mysql
+  - postgresql
+  - mongodb
+  - redis
+  - memcached
 
 before_install:
-    - mysql -e "CREATE DATABASE vmq_test_database;" -uroot
-    - mysql -e "CREATE USER 'vmq_test_user' IDENTIFIED BY 'vmq_test_password';" -uroot
-    - mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'vmq_test_user';" -uroot
-    - psql -c "CREATE DATABASE vmq_test_database;" -U postgres
-    - psql -c "CREATE USER vmq_test_user WITH PASSWORD 'vmq_test_password';" -U postgres
-    - psql -c "GRANT ALL PRIVILEGES ON DATABASE vmq_test_database to vmq_test_user;" -U postgres
+  - mysql -e "CREATE DATABASE vmq_test_database;" -uroot
+  - mysql -e "CREATE USER 'vmq_test_user' IDENTIFIED BY 'vmq_test_password';" -uroot
+  - mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'vmq_test_user';" -uroot
+  - psql -c "CREATE DATABASE vmq_test_database;" -U postgres
+  - psql -c "CREATE USER vmq_test_user WITH PASSWORD 'vmq_test_password';" -U postgres
+  - psql -c "GRANT ALL PRIVILEGES ON DATABASE vmq_test_database to vmq_test_user;" -U postgres
 
 sudo: required
 dist: trusty
 language: erlang
 install: true
 otp_release:
-    - 19.3
-    - 20.3.8
-    - 21.2
+  - 19.3
+  - 20.3.8
+  - 21.2
 cache:
   directories:
     - plts
@@ -29,21 +29,24 @@ cache:
 before_script: "epmd -daemon"
 script: "./rebar3 as all_tests do dialyzer, eunit, ct"
 
-before_deploy:
-  - mkdir packages
-  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:stretch /tmp/package.sh 21.2.4 $TRAVIS_TAG deb stretch
-  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:jessie /tmp/package.sh 21.2.4 $TRAVIS_TAG deb jessie
-  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:bionic /tmp/package.sh 21.2.4 $TRAVIS_TAG deb bionic
-  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:trusty /tmp/package.sh 21.2.4 $TRAVIS_TAG deb trusty
-  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:xenial /tmp/package.sh 21.2.4 $TRAVIS_TAG deb xenial
-  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:centos7 /tmp/package.sh 21.2.4 $TRAVIS_TAG rpm centos7
-  - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:suse /tmp/package.sh 21.2.4 $TRAVIS_TAG rpm suse
-
-deploy:
-  provider: releases
-  api_key: "$GITHUB_OAUTH_TOKEN"
-  file_glob: true
-  file: packages/*
-  skip_cleanup: true
-  on:
-    tags: true
+jobs:
+  include:
+    - stage: GitHub Release
+      script: echo "Nothing to test here"
+      before_deploy:
+        - mkdir packages
+        - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:stretch /tmp/package.sh 21.2.4 $TRAVIS_TAG deb stretch
+        - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:jessie /tmp/package.sh 21.2.4 $TRAVIS_TAG deb jessie
+        - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:bionic /tmp/package.sh 21.2.4 $TRAVIS_TAG deb bionic
+        - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:trusty /tmp/package.sh 21.2.4 $TRAVIS_TAG deb trusty
+        - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:xenial /tmp/package.sh 21.2.4 $TRAVIS_TAG deb xenial
+        - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:centos7 /tmp/package.sh 21.2.4 $TRAVIS_TAG rpm centos7
+        - docker run --rm -it -v ${PWD}/packages:/packages -v ${PWD}/.travis-helpers/package.sh:/tmp/package.sh erlio/erlang:suse /tmp/package.sh 21.2.4 $TRAVIS_TAG rpm suse
+      deploy:
+        provider: releases
+        api_key: "$GITHUB_OAUTH_TOKEN"
+        file_glob: true
+        file: packages/*
+        skip_cleanup: true
+        on:
+          tags: true
