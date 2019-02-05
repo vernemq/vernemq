@@ -120,12 +120,8 @@ register_subscriber(CAPAllowRegister, SubscriberId, StartClean, #{allow_multiple
                                                           QueueOpts, ?NR_OF_REG_RETRIES)
                               end, 60000);
         false when CAPAllowRegister ->
-            %% synchronize action on this node
-            vmq_reg_sync:sync(SubscriberId,
-                              fun() ->
-                                      register_subscriber(SessionPid, SubscriberId, StartClean,
-                                                          QueueOpts, ?NR_OF_REG_RETRIES)
-                              end, node(), 60000);
+            register_subscriber(SessionPid, SubscriberId, StartClean,
+                                QueueOpts, ?NR_OF_REG_RETRIES);
         false ->
             {error, not_ready}
     end;
