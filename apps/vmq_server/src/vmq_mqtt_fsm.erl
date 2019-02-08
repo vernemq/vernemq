@@ -77,6 +77,8 @@
           trace_fun                         :: undefined | any() %% TODO
          }).
 
+-define(COORDINATE_REGISTRATIONS, true).
+
 -type state() :: #state{}.
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
@@ -114,7 +116,9 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                      allow_unsubscribe=CAPUnsubscribe
                     },
     TraceFun = vmq_config:get_env(trace_fun, undefined),
-    DOpts = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
+    DOpts0 = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
+    DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
+
     maybe_initiate_trace(ConnectFrame, TraceFun),
     set_max_msg_size(MaxMessageSize),
 
@@ -137,7 +141,7 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                    cap_settings=CAPSettings,
                    reg_view=RegView,
                    allowed_protocol_versions=AllowedProtocolVersions,
-                   def_opts = DOpts,
+                   def_opts = DOpts1,
                    trace_fun=TraceFun},
 
     case check_connect(ConnectFrame, State) of
@@ -535,8 +539,9 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
         false ->
             case auth_on_register(User, Password, State) of
                 {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_session=CleanSession,
-                                       cap_settings=CAPSettings} = NewState} ->
-                    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanSession, QueueOpts) of
+                                       cap_settings=CAPSettings, def_opts=DOpts} = NewState} ->
+                    CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
+                    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanSession, QueueOpts) of
                         {ok, SessionPresent, QPid} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
@@ -565,8 +570,10 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
             end;
         true ->
             #state{peer=Peer, subscriber_id=SubscriberId,
-                   cap_settings=CAPSettings, clean_session=CleanSession} = State,
-            case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanSession, queue_opts(State, [])) of
+                   cap_settings=CAPSettings, clean_session=CleanSession,
+                   def_opts=DOpts} = State,
+            CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
+            case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanSession, queue_opts(State, [])) of
                 {ok, SessionPresent, QPid} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),

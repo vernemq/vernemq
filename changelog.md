@@ -5,6 +5,9 @@
   and won't try to reconnect to the remaining nodes.
 - The `allow_multiple_sessions` option is deprecated and will be removed in
   VerneMQ 2.0.
+- Add new `coordinated_registrations` config option which allows for faster
+  uncoordinated registrations (replaces side-effect of
+  `allow_multiple_sessions`).
 
 ## VerneMQ 1.7.0
 
