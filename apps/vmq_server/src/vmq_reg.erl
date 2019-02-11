@@ -20,8 +20,8 @@
          %% used in mqtt fsm handling
          subscribe/3,
          unsubscribe/3,
-         register_subscriber/4,
-         register_subscriber/5, %% used during testing
+         register_subscriber/5,
+         register_subscriber_/5, %% used during testing
          replace_dead_queue/3,
          delete_subscriptions/1,
          %% used in mqtt fsm handling
@@ -106,30 +106,30 @@ unsubscribe_op(SubscriberId, Topics) ->
 delete_subscriptions(SubscriberId) ->
     del_subscriber(SubscriberId).
 
--spec register_subscriber(flag(), subscriber_id(), boolean(), map()) ->
+-spec register_subscriber(flag(), flag(), subscriber_id(), boolean(), map()) ->
     {ok, boolean(), pid()} | {error, _}.
-register_subscriber(CAPAllowRegister, SubscriberId, StartClean, #{allow_multiple_sessions := false} = QueueOpts) ->
+register_subscriber(AllowRegister, CoordinateRegs, SubscriberId, StartClean, #{allow_multiple_sessions := false} = QueueOpts) ->
+    Netsplit = not vmq_cluster:is_ready(),
     %% we don't allow multiple sessions using same subscriber id
     %% allow_multiple_sessions is needed for session balancing
     SessionPid = self(),
-    case vmq_cluster:is_ready() of
-        true ->
+    case {Netsplit, AllowRegister, CoordinateRegs} of
+        {false, _, true} ->
+            %% no netsplit, but coordinated registrations required.
             vmq_reg_sync:sync(SubscriberId,
                               fun() ->
-                                      register_subscriber(SessionPid, SubscriberId, StartClean,
+                                      register_subscriber_(SessionPid, SubscriberId, StartClean,
                                                           QueueOpts, ?NR_OF_REG_RETRIES)
                               end, 60000);
-        false when CAPAllowRegister ->
-            %% synchronize action on this node
-            vmq_reg_sync:sync(SubscriberId,
-                              fun() ->
-                                      register_subscriber(SessionPid, SubscriberId, StartClean,
-                                                          QueueOpts, ?NR_OF_REG_RETRIES)
-                              end, node(), 60000);
-        false ->
-            {error, not_ready}
+        {true, false, _} ->
+            %% netsplit, registrations during netsplits not allowed.
+            {error, not_ready};
+        _ ->
+            %% all other cases we allow registrations but unsynced.
+            register_subscriber_(SessionPid, SubscriberId, StartClean,
+                                 QueueOpts, ?NR_OF_REG_RETRIES)
     end;
-register_subscriber(CAPAllowRegister, SubscriberId, _StartClean, #{allow_multiple_sessions := true} = QueueOpts) ->
+register_subscriber(CAPAllowRegister, _, SubscriberId, _StartClean, #{allow_multiple_sessions := true} = QueueOpts) ->
     %% we allow multiple sessions using same subscriber id
     %%
     %% !!! CleanSession is disabled if multiple sessions are in use
@@ -141,11 +141,11 @@ register_subscriber(CAPAllowRegister, SubscriberId, _StartClean, #{allow_multipl
             {error, not_ready}
     end.
 
--spec register_subscriber(pid() | undefined, subscriber_id(), boolean(), map(), non_neg_integer()) ->
+-spec register_subscriber_(pid() | undefined, subscriber_id(), boolean(), map(), non_neg_integer()) ->
     {'ok', boolean(), pid()} | {error, any()}.
-register_subscriber(_, _, _, _, 0) ->
+register_subscriber_(_, _, _, _, 0) ->
     {error, register_subscriber_retry_exhausted};
-register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
+register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
     % wont create new queue in case it already exists
     {ok, QueuePresent, QPid} =
     case vmq_queue_sup_sup:start_queue(SubscriberId) of
@@ -188,11 +188,11 @@ register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
     case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
         {'EXIT', {normal, _}} ->
             %% queue went down in the meantime, retry
-            register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
+            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
         {'EXIT', {noproc, _}} ->
             timer:sleep(100),
             %% queue was stopped in the meantime, retry
-            register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
+            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
         {'EXIT', Reason} ->
             {error, Reason};
         {error, draining} ->
@@ -200,11 +200,11 @@ register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
             %% remote queue. This can happen if a client hops around
             %% different nodes very frequently... adjust load balancing!!
             timer:sleep(100),
-            register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
+            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
         {error, {cleanup, _Reason}} ->
             %% queue is still cleaning up.
             timer:sleep(100),
-            register_subscriber(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
+            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
         ok ->
             {ok, SessionPresent2, QPid}
     end.
@@ -679,8 +679,8 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             QueueOpts = maps:merge(vmq_queue:default_opts(),
                                    #{cleanup_on_disconnect => true,
                                      is_plugin => true}),
-            {ok, _, _} = register_subscriber(PluginSessionPid, SubscriberId, true,
-                                             QueueOpts, ?NR_OF_REG_RETRIES),
+            {ok, _, _} = register_subscriber_(PluginSessionPid, SubscriberId, true,
+                                              QueueOpts, ?NR_OF_REG_RETRIES),
             ok
     end,
 

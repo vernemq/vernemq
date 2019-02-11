@@ -106,6 +106,8 @@
           trace_fun                        :: undefined | any() %% TODO
          }).
 
+-define(COORDINATE_REGISTRATIONS, true).
+
 -type state() :: #state{}.
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
@@ -142,7 +144,8 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
     TopicAliasMax = vmq_config:get_env(topic_alias_max_client, 0),
     TopicAliasMaxOut = maybe_get_topic_alias_max(Properties, vmq_config:get_env(topic_alias_max_broker, 0)),
     TraceFun = vmq_config:get_env(trace_fun, undefined),
-    DOpts = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
+    DOpts0 = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
+    DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
     maybe_initiate_trace(ConnectFrame, TraceFun),
     set_max_incoming_msg_size(MaxIncomingMessageSize),
 
@@ -180,7 +183,7 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
                    topic_alias_max=TopicAliasMax,
                    topic_alias_max_out=TopicAliasMaxOut,
                    reg_view=RegView,
-                   def_opts = DOpts,
+                   def_opts = DOpts1,
                    trace_fun=TraceFun,
                    allowed_protocol_versions=AllowedProtocolVersions,
                    fc_receive_max_client=FcReceiveMaxClient,
@@ -893,8 +896,10 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Props} = 
 
 register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
                     QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_start=CleanStart,
-                                      cap_settings=CAPSettings, fc_receive_max_broker=ReceiveMax} = State) ->
-    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanStart, QueueOpts) of
+                                      cap_settings=CAPSettings, fc_receive_max_broker=ReceiveMax,
+                                      def_opts=DOpts} = State) ->
+    CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
+    case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanStart, QueueOpts) of
         {ok, SessionPresent, QPid} ->
             monitor(process, QPid),
             _ = vmq_plugin:all(on_register_m5, [Peer, SubscriberId,
