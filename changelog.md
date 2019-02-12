@@ -8,6 +8,7 @@
 - Add new `coordinated_registrations` config option which allows for faster
   uncoordinated registrations (replaces side-effect of
   `allow_multiple_sessions`).
+- Upgraded dependency `swc`.
 
 ## VerneMQ 1.7.0
 
