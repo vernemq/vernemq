@@ -3,6 +3,8 @@
 - Cleanup cluster state information on a node which is being gracefully removed
   from the cluster so if it is restarted it comes back up as a stand-alone node
   and won't try to reconnect to the remaining nodes.
+- Upgraded dependency `swc`. Improves memory and cpu usage by fixing node clock
+  update bug.
 
 ## VerneMQ 1.7.0
 
