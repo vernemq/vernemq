@@ -57,7 +57,8 @@ register_config_() ->
      "max_last_will_delay",
      "receive_max_client",
      "receive_max_broker",
-     "suppress_lwt_on_session_takeover"
+     "suppress_lwt_on_session_takeover",
+     "coordinate_registrations"
     ],
     _ = [clique:register_config([Key], fun register_config_callback/3)
          || Key <- ConfigKeys],
