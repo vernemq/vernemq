@@ -16,7 +16,6 @@
   {default, "vmq"}
 ]}.
 
-
 %% @doc Where to emit the default log messages (typically at 'info'
 %% severity):
 %%      off: disabled
@@ -27,6 +26,12 @@
                                             {default, {{console_log_default}} },
                                             {datatype, {enum, [off, file, console, both]}}
                                            ]}.
+%% @doc To use colored output if 'log.console' is set to 'console'.
+{mapping, "log.console.colored", "lager.colored", [
+    {default, on},
+        {datatype, flag},
+        hidden
+]}.
 %% @doc The severity level of the console log, default is 'info'.
 {mapping, "log.console.level", "lager.handlers", [
                                                   {default, info},

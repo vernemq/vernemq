@@ -10,6 +10,7 @@
   `allow_multiple_sessions`).
 - Upgraded dependency `swc`. Improves memory and cpu usage by fixing node clock
   update bug.
+- Use colored log output when logging to console.
 
 ## VerneMQ 1.7.0
 
