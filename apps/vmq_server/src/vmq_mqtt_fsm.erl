@@ -902,12 +902,20 @@ handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, PubCnt, State, Waiting
             % only qos 1&2 are constrained by max_in_flight
             handle_messages(Rest, Frames, PubCnt, State, [Obj|Waiting])
     end;
-handle_messages([{deliver_pubrel, {MsgId, #mqtt_pubrel{} = Frame}}|Rest], Frames, PubCnt, State0, Waiting) ->
+handle_messages([{deliver_pubrel, {MsgId, #mqtt_pubrel{} = Frame}}|Rest], Frames, PubCnt,
+                #state{next_msg_id = CurrNextMsgId} = State0, Waiting) ->
     %% this is called when a pubrel is retried after a client reconnects
     #state{waiting_acks=WAcks, retry_interval=RetryInterval, retry_queue=RetryQueue} = State0,
     _ = vmq_metrics:incr_mqtt_pubrel_sent(),
+    %% Assumption: all `deliver_pubrel` messages are delivered from
+    %% the queue when a session is added *before* any other messages.
+    %% The pubrel messages has fixed message-ids and we therefore need
+    %% ensure the first message id assigned to a publish message is
+    %% larger than any of the pubrel messages to avoid conflicts.
+    NextMsgId = lists:max([MsgId + 1, CurrNextMsgId]),
     State1 = State0#state{retry_queue=set_retry(pubrel, MsgId, RetryInterval, RetryQueue),
-                          waiting_acks=maps:put(MsgId, Frame, WAcks)},
+                          waiting_acks=maps:put(MsgId, Frame, WAcks),
+                          next_msg_id = NextMsgId},
     handle_messages(Rest, [Frame|Frames], PubCnt, State1, Waiting);
 handle_messages([], [], _, State, Waiting) ->
     {State, [], Waiting};
