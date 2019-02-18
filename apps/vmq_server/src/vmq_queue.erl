@@ -423,11 +423,11 @@ offline(init_offline_queue, #state{id=SId} = State) ->
         {ok, MsgRefs} ->
             _ = vmq_metrics:incr_queue_initialized_from_storage(),
             {next_state, offline,
-             insert_many(MsgRefs, State)};
+             insert_many(MsgRefs, maybe_set_expiry_timer(State))};
         {error, no_matching_hook_found} ->
             % that's ok
             _ = vmq_metrics:incr_queue_initialized_from_storage(),
-            {next_state, offline, State};
+            {next_state, offline, maybe_set_expiry_timer(State)};
         {error, Reason} ->
             lager:error("can't initialize queue from offline storage due to ~p, retry in 1 sec", [Reason]),
             gen_fsm:send_event_after(1000, init_offline_queue),

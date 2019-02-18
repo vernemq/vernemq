@@ -10,6 +10,8 @@
   `allow_multiple_sessions`).
 - Upgraded dependency `swc`. Improves memory and cpu usage by fixing node clock
   update bug.
+- Set queue expiration (`persistent_client_expiration`) timer on queues after a
+  broker restart (#1071).
 
 ## VerneMQ 1.7.0
 
