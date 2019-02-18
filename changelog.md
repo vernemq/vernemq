@@ -5,6 +5,8 @@
   and won't try to reconnect to the remaining nodes.
 - Upgraded dependency `swc`. Improves memory and cpu usage by fixing node clock
   update bug.
+- Set queue expiration (`persistent_client_expiration`) timer on queues after a
+  broker restart (#1071).
 
 ## VerneMQ 1.7.0
 
