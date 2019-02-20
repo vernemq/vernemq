@@ -18,8 +18,6 @@
 -dialyzer(no_undefined_callbacks).
 -behaviour(gen_server2).
 
--include_lib("stdlib/include/ms_transform.hrl").
-
 %% API
 -export([start_link/0,
          install/1,
@@ -364,22 +362,14 @@ key(MP, ClientId) when is_binary(MP)
 
 match(Key, Input) ->
     Type = type(Input),
-    case ets:select(table(cache), ?ms(Key)) of
-        [] -> no_cache;
-        [{_, PubAclHashes, _}] when Type == publish ->
+    %% in rare cases we may have more elements, then always use the
+    %% most recently added acl rules (the last).
+    case ets:select_reverse(table(cache), ?ms(Key),1) of
+        '$end_of_table' -> no_cache;
+        {[{_, PubAclHashes, _}],_} when Type == publish ->
             match_(table(Type), Input, PubAclHashes);
-        [{_, _, SubAclHashes}] when Type == subscribe ->
-            match_(table(Type), Input, SubAclHashes);
-        Elems ->
-            %% in rare cases we may have more elements, then always
-            %% use the most recently added acl rules it must be the
-            %% most relevant.
-            case lists:reverse(Elems) of
-                [{_, PubAclHashes, _}|_] when Type == publish ->
-                    match_(table(Type), Input, PubAclHashes);
-                [{_, _, SubAclHashes}|_] when Type == subscribe ->
-                    match_(table(Type), Input, SubAclHashes)
-            end
+        {[{_, _, SubAclHashes}],_} when Type == subscribe ->
+            match_(table(Type), Input, SubAclHashes)
     end.
 
 match_(Table, Input, [AclHash|Rest]) ->
