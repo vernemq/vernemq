@@ -12,6 +12,7 @@
   update bug.
 - Set queue expiration (`persistent_client_expiration`) timer on queues after a
   broker restart (#1071).
+- Fix status page to show all cluster nodes (#1066).
 
 ## VerneMQ 1.7.0
 
