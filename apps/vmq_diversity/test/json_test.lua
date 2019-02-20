@@ -37,3 +37,12 @@ c2 = "{\"a\":{\"b\":{\"c\":\"hello\",\"d\":[1.0,2.0,3.0,4.0,5.0]}}}"
 assert(equals(c1, json.decode(c2)))
 assert(equals(json.encode(c1), c2))
 
+d1 = {}
+d2 = "{}"
+assert(equals(d1, json.decode(d2)))
+assert(equals(json.encode(d1), d2))
+
+e1 = {a = {{b = {}}}}
+e2 = "{\"a\":[{\"b\":{}}]}"
+assert(equals(e1, json.decode(e2)))
+assert(equals(json.encode(e1), e2))
