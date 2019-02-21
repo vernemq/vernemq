@@ -37,7 +37,7 @@
 
 -record(state, {
           %% mqtt layer requirements
-          next_msg_id=1                     :: msg_id(),
+          next_msg_id=undefined             :: undefined | msg_id(),
           subscriber_id                     :: undefined | subscriber_id() | {mountpoint(), undefined},
           will_msg                          :: undefined | msg(),
           waiting_acks=maps:new()           :: map(),
@@ -539,18 +539,20 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
         false ->
             case auth_on_register(User, Password, State) of
                 {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_session=CleanSession,
-                                       cap_settings=CAPSettings, def_opts=DOpts} = NewState} ->
+                                       cap_settings=CAPSettings, def_opts=DOpts} = State1} ->
                     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
                     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanSession, QueueOpts) of
-                        {ok, SessionPresent, QPid} ->
+                        {ok, #{session_present := SessionPresent,
+                               initial_msg_id := MsgId}, QPid} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
                                                              User]),
-                            check_will(F, SessionPresent, NewState#state{username=User, queue_pid=QPid});
+                            State2 = State1#state{username=User, queue_pid=QPid, next_msg_id=MsgId},
+                            check_will(F, SessionPresent, State2);
                         {error, Reason} ->
                             lager:warning("can't register client ~p with username ~p due to ~p",
                                           [SubscriberId, User, Reason]),
-                            connack_terminate(?CONNACK_SERVER, State)
+                            connack_terminate(?CONNACK_SERVER, State1)
                     end;
                 {error, no_matching_hook_found} ->
                     lager:error("can't authenticate client ~p from ~s due to no_matching_hook_found",
@@ -574,10 +576,11 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                    def_opts=DOpts} = State,
             CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
             case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanSession, queue_opts(State, [])) of
-                {ok, SessionPresent, QPid} ->
+                {ok, #{session_present := SessionPresent,
+                       initial_msg_id := MsgId}, QPid} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
-                    check_will(F, SessionPresent, State#state{queue_pid=QPid, username=User});
+                    check_will(F, SessionPresent, State#state{queue_pid=QPid, username=User, next_msg_id=MsgId});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
                                 [SubscriberId, Reason]),
@@ -848,7 +851,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
 
 -spec handle_waiting_acks_and_msgs(state()) -> ok.
 handle_waiting_acks_and_msgs(State) ->
-    #state{waiting_acks=WAcks, waiting_msgs=WMsgs, queue_pid=QPid} = State,
+    #state{waiting_acks=WAcks, waiting_msgs=WMsgs, queue_pid=QPid, next_msg_id=NextMsgId} = State,
     MsgsToBeDeliveredNextTime =
     lists:foldl(fun ({{qos2, _}, _}, Acc) ->
                       Acc;
@@ -871,7 +874,7 @@ handle_waiting_acks_and_msgs(State) ->
                                 maps:to_list(WAcks)
                                )
                  )),
-    catch vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime).
+    catch vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime, NextMsgId).
 
 handle_waiting_msgs(#state{waiting_msgs=[]} = State) ->
     {State, []};

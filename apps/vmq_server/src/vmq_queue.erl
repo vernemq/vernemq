@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_queue).
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_server.hrl").
 
 -behaviour(gen_fsm).
@@ -42,7 +43,7 @@
          set_opts/2,
          get_opts/1,
          default_opts/0,
-         set_last_waiting_acks/2,
+         set_last_waiting_acks/3,
          enqueue_many/2,
          enqueue_many/3,
          migrate/2,
@@ -96,7 +97,8 @@
           delayed_will :: {Delay :: non_neg_integer(),
                            Fun :: function()} | undefined,
           delayed_will_timer :: reference() | undefined,
-          started_at :: vmq_time:timestamp()
+          started_at :: vmq_time:timestamp(),
+          initial_msg_id = 1 :: msg_id()
          }).
 
 %%%===================================================================
@@ -132,6 +134,9 @@ enqueue_many(Queue, Msgs) when is_pid(Queue) and is_list(Msgs) ->
 enqueue_many(Queue, Msgs, Opts) when is_pid(Queue), is_list(Msgs), is_map(Opts) ->
     gen_fsm:sync_send_event(Queue, {enqueue_many, Msgs, Opts}, infinity).
 
+-spec add_session(pid(), pid(), map()) -> {ok, #{session_present := flag(),
+                                                 initial_msg_id := msg_id()}} |
+                                          {error, any()}.
 add_session(Queue, SessionPid, Opts) when is_pid(Queue) ->
     gen_fsm:sync_send_event(Queue, {add_session, SessionPid, Opts}, infinity).
 
@@ -161,8 +166,8 @@ force_disconnect(Queue, Reason, DoCleanup) when is_pid(Queue) and is_boolean(DoC
 set_delayed_will(Queue, Fun, Delay) when is_pid(Queue) ->
     gen_fsm:sync_send_all_state_event(Queue, {set_delayed_will, Fun, Delay}, infinity).
 
-set_last_waiting_acks(Queue, WAcks) ->
-    gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks}, infinity).
+set_last_waiting_acks(Queue, WAcks, NextMsgId) ->
+    gen_fsm:sync_send_event(Queue, {set_last_waiting_acks, WAcks, NextMsgId}, infinity).
 
 migrate(Queue, Queue) ->
     %% this scenario can happen, due to the eventual migration kickoff
@@ -228,9 +233,11 @@ online({set_opts, SessionPid, Opts}, _From, #state{opts=OldOpts} = State) ->
     NewState1 = set_general_opts(MergedOpts, State#state{opts=MergedOpts}),
     NewState2 = set_session_opts(SessionPid, MergedOpts, NewState1),
     {reply, ok, online, NewState2};
-online({add_session, SessionPid, #{allow_multiple_sessions := true} = Opts}, _From, State) ->
+online({add_session, SessionPid, #{allow_multiple_sessions := true} = Opts}, _From, State0) ->
     %% allow multiple sessions per queue
-    {reply, ok, online, unset_timers(add_session_(SessionPid, Opts, State))};
+    Opts = #{initial_msg_id => State0#state.initial_msg_id},
+    State1 = unset_timers(add_session_(SessionPid, Opts, State0)),
+    {reply, {ok, Opts}, online, State1};
 online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, From, State)
   when State#state.waiting_call == undefined ->
     %% forbid multiple sessions per queue,
@@ -247,8 +254,8 @@ online({migrate, OtherQueue}, From, State)
     disconnect_sessions(?DISCONNECT_MIGRATION, State),
     {next_state, state_change(migrate, online, wait_for_offline),
      State#state{waiting_call={migrate, OtherQueue, From}}};
-online({set_last_waiting_acks, WAcks}, _From, State) ->
-    {reply, ok, online, handle_waiting_acks_and_msgs(WAcks, State)};
+online({set_last_waiting_acks, WAcks, NextMsgId}, _From, State) ->
+    {reply, ok, online, handle_waiting_acks_and_msgs(WAcks, NextMsgId, State)};
 online({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, online, insert_many(Msgs, State)};
@@ -271,8 +278,8 @@ wait_for_offline(Event, State) ->
     {next_state, wait_for_offline, State}.
 
 
-wait_for_offline({set_last_waiting_acks, WAcks}, _From, State) ->
-    {reply, ok, wait_for_offline, handle_waiting_acks_and_msgs(WAcks, State)};
+wait_for_offline({set_last_waiting_acks, WAcks, NextMsgId}, _From, State) ->
+    {reply, ok, wait_for_offline, handle_waiting_acks_and_msgs(WAcks, NextMsgId, State)};
 wait_for_offline({add_session, SessionPid, Opts}, From,
                  #state{waiting_call={migrate, _OtherQueue, MigrationFrom}} = State) ->
     %% Reason for this case:
@@ -317,7 +324,8 @@ wait_for_offline({add_session, NewSessionPid, NewOpts}, From,
     %% The waiting add_session call isn't required anymore as we have a new session
     %% that we should attach to this queue. We can terminate the waiting add_session
     %% and replace the waiting_call
-    gen_fsm:reply(AddFrom, ok),
+    Opts = #{initial_msg_id => State#state.initial_msg_id},
+    gen_fsm:reply(AddFrom, {ok, Opts}),
     exit(SessionPid, normal),
     {next_state, wait_for_offline,
      State#state{waiting_call={add_session, NewSessionPid, NewOpts, From}}};
@@ -460,7 +468,8 @@ offline(Event, State) ->
     {next_state, offline, State}.
 
 offline({add_session, SessionPid, Opts}, _From, State) ->
-    {reply, ok, state_change(add_session, offline, online),
+    ReturnOpts = #{initial_msg_id => State#state.initial_msg_id},
+    {reply, {ok, ReturnOpts}, state_change(add_session, offline, online),
      unset_timers(add_session_(SessionPid, Opts, State))};
 offline({migrate, OtherQueue}, From, State) ->
     gen_fsm:send_event(self(), drain_start),
@@ -661,7 +670,8 @@ handle_session_down(SessionPid, StateName,
             %% last session gone
             %% ... but we've a new session waiting
             %%     no need to go into offline state
-            gen_fsm:reply(From, ok),
+            RetOpts = #{initial_msg_id => State#state.initial_msg_id},
+            gen_fsm:reply(From, {ok, RetOpts}),
             case DeletedSession#session.cleanup_on_disconnect of
                 true ->
                     _ = vmq_plugin:all(on_client_gone, [SId]);
@@ -714,7 +724,7 @@ handle_session_down(SessionPid, StateName,
             {next_state, StateName, NewState}
     end.
 
-handle_waiting_acks_and_msgs(WAcks, #state{id=SId, sessions=Sessions, offline=Offline} = State) ->
+handle_waiting_acks_and_msgs(WAcks, NextMsgId, #state{id=SId, sessions=Sessions, offline=Offline} = State) ->
     %% we can only handle the last waiting acks and msgs if this is
     %% the last session active for this queue.
     case maps:size(Sessions) of
@@ -727,7 +737,7 @@ handle_waiting_acks_and_msgs(WAcks, #state{id=SId, sessions=Sessions, offline=Of
                  (Msg, AccOffline) ->
                       queue_insert(true, Msg, AccOffline, SId)
               end, Offline, WAcks),
-            State#state{offline=NewOfflineQueue};
+            State#state{offline=NewOfflineQueue, initial_msg_id=NextMsgId};
         N ->
             lager:debug("handle waiting acks for multiple sessions (~p) not possible", [N]),
             %% it doesn't make sense to keep the waiting acks around

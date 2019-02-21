@@ -205,8 +205,8 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
             %% queue is still cleaning up.
             timer:sleep(100),
             register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
-        ok ->
-            {ok, SessionPresent2, QPid}
+        {ok, Opts} ->
+            {ok, Opts#{session_present => SessionPresent2}, QPid}
     end.
 
 
