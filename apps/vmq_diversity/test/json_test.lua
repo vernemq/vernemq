@@ -37,3 +37,23 @@ c2 = "{\"a\":{\"b\":{\"c\":\"hello\",\"d\":[1.0,2.0,3.0,4.0,5.0]}}}"
 assert(equals(c1, json.decode(c2)))
 assert(equals(json.encode(c1), c2))
 
+d1 = {}
+d2 = "{}"
+assert(equals(d1, json.decode(d2)))
+assert(equals(json.encode(d1), d2))
+
+e1 = {a = {{b = {}}}}
+e2 = "{\"a\":[{\"b\":{}}]}"
+assert(equals(e1, json.decode(e2)))
+assert(equals(json.encode(e1), e2))
+
+-- A empty Lua table is encoded as an empty JSON object and not as an empty JSON array
+-- Given that the type of a Lua array is actually a Lua table this makes sense. Also
+-- most community Lua libraries accept this as the correct way to deal with empty tables.
+f1 = {a = {}}
+f2 = "{\"a\":[]}"
+f3 = "{\"a\":{}}"
+assert(equals(f1, json.decode(f2)))
+assert(equals(f1, json.decode(f3)))
+assert(false == equals(json.encode(f1), f2))
+assert(equals(json.encode(f1), f3))

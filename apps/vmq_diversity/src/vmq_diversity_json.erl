@@ -16,6 +16,8 @@
 
 -export([install/1]).
 
+-define(JSX_EMPTY_OBJECT, [{}]).
+-define(LUA_EMPTY_TABLE, []).
 
 install(St) ->
     luerl_emul:alloc_table(table(), St).
@@ -29,7 +31,7 @@ table() ->
 decode([Bin|_], St) when is_binary(Bin) ->
     try jsx:decode(Bin) of
         Result0 ->
-            {Result1, NewSt} = luerl:encode(Result0, St),
+            {Result1, NewSt} = luerl:encode(jsx_to_lua(Result0), St),
             {[Result1], NewSt}
     catch
         _:_ ->
@@ -37,7 +39,7 @@ decode([Bin|_], St) when is_binary(Bin) ->
     end.
 
 encode([T|_], St) when is_tuple(T) ->
-    try jsx:encode(encode_value(luerl:decode(T, St))) of
+    try jsx:encode(lua_to_jsx(luerl:decode(T, St))) of
         Result0 ->
             {[Result0], St}
     catch
@@ -45,13 +47,26 @@ encode([T|_], St) when is_tuple(T) ->
             {[nil], St}
     end.
 
-encode_value(V) when is_list(V) ->
-    encode_list(V, []);
-encode_value(V) ->
+lua_to_jsx(?LUA_EMPTY_TABLE) ->
+    ?JSX_EMPTY_OBJECT;
+lua_to_jsx(V) when is_list(V) ->
+    lua_to_jsx_list(V, []);
+lua_to_jsx(V) ->
     V.
 
-encode_list([{K, V}|Rest], Acc) when is_integer(K) ->
-    encode_list(Rest, [encode_value(V)|Acc]);
-encode_list([{K, V}|Rest], Acc) when is_binary(K) ->
-    encode_list(Rest, [{K, encode_value(V)}|Acc]);
-encode_list([], Acc) -> lists:reverse(Acc).
+lua_to_jsx_list([{K, V}|Rest], Acc) when is_integer(K) ->
+    lua_to_jsx_list(Rest, [lua_to_jsx(V)|Acc]);
+lua_to_jsx_list([{K, V}|Rest], Acc) when is_binary(K) ->
+    lua_to_jsx_list(Rest, [{K, lua_to_jsx(V)}|Acc]);
+lua_to_jsx_list([], Acc) -> lists:reverse(Acc).
+
+
+jsx_to_lua(?JSX_EMPTY_OBJECT) -> ?LUA_EMPTY_TABLE;
+jsx_to_lua(Result) when is_list(Result) ->
+    lists:map(
+      fun({K, V}) ->
+              {K, jsx_to_lua(V)};
+         (V) ->
+              jsx_to_lua(V)
+      end, Result);
+jsx_to_lua(Result) -> Result.
