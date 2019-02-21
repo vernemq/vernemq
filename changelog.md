@@ -12,6 +12,7 @@
   update bug.
 - Set queue expiration (`persistent_client_expiration`) timer on queues after a
   broker restart (#1071).
+- Fix Lua `json.decode()` when decoding empty Json objects (#1080).
 - Fix `vmq_diversity` cache invalidation timing issue when a client reconnects
   right after a disconnect (#996).
 
