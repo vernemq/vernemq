@@ -120,16 +120,16 @@ $(function() {
     function cluster_status() {
         $.ajax({
             url: config.cluster_status.url,
-            success: function( response) {
-                console.log(response);
+            success: function(response) {
+                var response_obj = response[0];
+                var nodes = Object.keys(response_obj)
                 var total = {active: true, clients_online: 0, clients_offline: 0, connect_rate: 0, msg_in_rate: 0,
                     msg_out_rate: 0, msg_drop_rate: 0, msg_queued: 0};
                 var now = Date.now();
                 var cluster_size = 0;
                 var cluster_issues = [];
-                nodes = $.map(response, function(node_data, index) {
-                    node_name = Object.keys(node_data)[0];
-                    var this_node = node_data[node_name];
+                nodes = $.map(nodes, function(node_name) {
+                    var this_node = response_obj[node_name];
                     var rate_interval = (now - config.cluster_status.last_calculated) / 1000;
                     var connect_rate = calc_rate(node_name, "connect", rate_interval, this_node.num_online)
                     var msg_in_rate = calc_rate(node_name, "msg_in", rate_interval, this_node.msg_in)
