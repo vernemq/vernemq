@@ -12,6 +12,8 @@
   update bug.
 - Set queue expiration (`persistent_client_expiration`) timer on queues after a
   broker restart (#1071).
+- Fix `vmq_diversity` cache invalidation timing issue when a client reconnects
+  right after a disconnect (#996).
 
 ## VerneMQ 1.7.0
 
