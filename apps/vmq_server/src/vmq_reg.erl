@@ -686,8 +686,8 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             QueueOpts = maps:merge(vmq_queue:default_opts(),
                                    #{cleanup_on_disconnect => true,
                                      is_plugin => true}),
-            {ok, _, _} = register_subscriber_(PluginSessionPid, SubscriberId, true,
-                                              QueueOpts, ?NR_OF_REG_RETRIES),
+            {ok, _} = register_subscriber_(PluginSessionPid, SubscriberId, true,
+                                           QueueOpts, ?NR_OF_REG_RETRIES),
             ok
     end,
 
