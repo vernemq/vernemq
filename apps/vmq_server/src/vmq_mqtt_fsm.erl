@@ -543,7 +543,8 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
                     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanSession, QueueOpts) of
                         {ok, #{session_present := SessionPresent,
-                               initial_msg_id := MsgId}, QPid} ->
+                               initial_msg_id := MsgId,
+                               queue_pid := QPid}} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
                                                              User]),
@@ -577,7 +578,8 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
             CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
             case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanSession, queue_opts(State, [])) of
                 {ok, #{session_present := SessionPresent,
-                       initial_msg_id := MsgId}, QPid} ->
+                       initial_msg_id := MsgId,
+                       queue_pid := QPid}} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
                     check_will(F, SessionPresent, State#state{queue_pid=QPid, username=User, next_msg_id=MsgId});

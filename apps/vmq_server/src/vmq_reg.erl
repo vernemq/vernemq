@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_reg).
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_server.hrl").
 
 %% API
@@ -107,7 +108,9 @@ delete_subscriptions(SubscriberId) ->
     del_subscriber(SubscriberId).
 
 -spec register_subscriber(flag(), flag(), subscriber_id(), boolean(), map()) ->
-    {ok, boolean(), pid()} | {error, _}.
+    {ok, #{initial_msg_id := msg_id(),
+           session_present := flag(),
+           queue_pid := pid()}} | {error, _}.
 register_subscriber(AllowRegister, CoordinateRegs, SubscriberId, StartClean, #{allow_multiple_sessions := false} = QueueOpts) ->
     Netsplit = not vmq_cluster:is_ready(),
     %% we don't allow multiple sessions using same subscriber id
@@ -142,7 +145,7 @@ register_subscriber(CAPAllowRegister, _, SubscriberId, _StartClean, #{allow_mult
     end.
 
 -spec register_subscriber_(pid() | undefined, subscriber_id(), boolean(), map(), non_neg_integer()) ->
-    {'ok', boolean(), pid()} | {error, any()}.
+    {'ok', map()} | {error, any()}.
 register_subscriber_(_, _, _, _, 0) ->
     {error, register_subscriber_retry_exhausted};
 register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
@@ -206,7 +209,8 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
             timer:sleep(100),
             register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
         {ok, Opts} ->
-            {ok, Opts#{session_present => SessionPresent2}, QPid}
+            {ok, Opts#{session_present => SessionPresent2,
+                       queue_pid => QPid}}
     end.
 
 
@@ -245,16 +249,18 @@ block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, Bloc
             block_until_migrated(SubscriberId, UpdatedSubs, Rest, BlockCond)
     end.
 
--spec register_session(subscriber_id(), map()) -> {ok, boolean(), pid()}.
+-spec register_session(subscriber_id(), map()) -> {ok, #{initial_msg_id := msg_id(),
+                                                        session_present := flag()}, pid()}.
 register_session(SubscriberId, QueueOpts) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
     SessionPid = self(),
     {ok, QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId), % wont create new queue in case it already exists
-    ok = vmq_queue:add_session(QPid, SessionPid, QueueOpts),
+    {ok, SessionOpts} = vmq_queue:add_session(QPid, SessionPid, QueueOpts),
     %% TODO: How to handle SessionPresent flag for allow_multiple_sessions=true
     SessionPresent = QueuePresent,
-    {ok, SessionPresent, QPid}.
+    {ok, SessionOpts#{session_present => SessionPresent,
+                      queue_pid => QPid}}.
 
 publish(RegView, ClientId, Topic, FoldFun, #vmq_msg{sg_policy = SGPolicy,
                                                     mountpoint = MP} = Msg) ->

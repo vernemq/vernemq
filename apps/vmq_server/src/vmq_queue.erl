@@ -138,8 +138,7 @@ enqueue_many(Queue, Msgs, Opts) when is_pid(Queue), is_list(Msgs), is_map(Opts) 
     NMsgs = lists:map(fun to_internal/1, Msgs),
     gen_fsm:sync_send_event(Queue, {enqueue_many, NMsgs, Opts}, infinity).
 
--spec add_session(pid(), pid(), map()) -> {ok, #{session_present := flag(),
-                                                 initial_msg_id := msg_id()}} |
+-spec add_session(pid(), pid(), map()) -> {ok, #{initial_msg_id := msg_id()}} |
                                           {error, any()}.
 add_session(Queue, SessionPid, Opts) when is_pid(Queue) ->
     gen_fsm:sync_send_event(Queue, {add_session, SessionPid, Opts}, infinity).
@@ -239,9 +238,9 @@ online({set_opts, SessionPid, Opts}, _From, #state{opts=OldOpts} = State) ->
     {reply, ok, online, NewState2};
 online({add_session, SessionPid, #{allow_multiple_sessions := true} = Opts}, _From, State0) ->
     %% allow multiple sessions per queue
-    Opts = #{initial_msg_id => State0#state.initial_msg_id},
+    RetOpts = #{initial_msg_id => State0#state.initial_msg_id},
     State1 = unset_timers(add_session_(SessionPid, Opts, State0)),
-    {reply, {ok, Opts}, online, State1};
+    {reply, {ok, RetOpts}, online, State1};
 online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, From, State)
   when State#state.waiting_call == undefined ->
     %% forbid multiple sessions per queue,

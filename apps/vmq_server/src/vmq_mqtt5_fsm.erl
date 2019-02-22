@@ -901,7 +901,8 @@ register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanStart, QueueOpts) of
         {ok, #{session_present := SessionPresent,
-               initial_msg_id := MsgId}, QPid} ->
+               initial_msg_id := MsgId,
+               queue_pid := QPid}} ->
             monitor(process, QPid),
             _ = vmq_plugin:all(on_register_m5, [Peer, SubscriberId,
                                                 User, OutProps0]),
