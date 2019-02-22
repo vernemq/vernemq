@@ -258,6 +258,7 @@ client_opts(tcp, Host, Port, Opts) ->
      {clean_session, proplists:get_value(cleansession, Opts, false)},
      {keepalive_interval, proplists:get_value(keepalive_interval, Opts)},
      {reconnect_timeout, proplists:get_value(restart_timeout, Opts)},
+     {retry_interval, proplists:get_value(retry_interval, Opts)},
      {max_queue_size, proplists:get_value(max_outgoing_buffered_messages, Opts)},
      {transport, {gen_tcp, []}}
      |case proplists:get_value(try_private, Opts, true) of
