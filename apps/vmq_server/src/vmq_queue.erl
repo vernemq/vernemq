@@ -445,18 +445,17 @@ offline(init_offline_queue, #state{id=SId} = State) ->
             {next_state, offline, State}
     end;
 offline({enqueue, Enq}, #state{id=SId} = State) ->
-    NMsg = case Enq of
-        {deliver, QoS, #vmq_msg{routing_key=Topic,
-                                payload=Payload,
-                                retain=Retain}=Msg} ->
-            _ = vmq_plugin:all(on_offline_message, [SId, QoS, Topic, Payload, Retain]),
-            #deliver{qos=QoS, msg=Msg};
+    case Enq of
+        #deliver{qos=QoS, msg=#vmq_msg{routing_key=Topic,
+                                       payload=Payload,
+                                       retain=Retain}} ->
+            _ = vmq_plugin:all(on_offline_message, [SId, QoS, Topic, Payload, Retain]);
         _ ->
-            Enq
+            ignore
     end,
     %% storing the message in the offline queue
     _ = vmq_metrics:incr_queue_in(),
-    {next_state, offline, insert(NMsg, State)};
+    {next_state, offline, insert(Enq, State)};
 offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     %% session has expired cleanup and go down
     vmq_reg:delete_subscriptions(SId),
@@ -1112,6 +1111,9 @@ maybe_expire_msgs(SId, Msgs) ->
     lists:reverse(ToKeep).
 
 to_internal({deliver, QoS, Msg}) ->
-    #deliver{qos=QoS, msg=Msg}.
+    #deliver{qos=QoS, msg=Msg};
+to_internal(Msg) ->
+    Msg.
+
 to_external(#deliver{qos=QoS, msg=Msg}) ->
     {deliver, QoS, Msg}.
