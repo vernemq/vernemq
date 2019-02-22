@@ -602,9 +602,8 @@ send_publish(MsgId, Topic, Payload, QoS, Retain, Dup, State) ->
         0 ->
             State#state{info_fun=NewInfoFun};
         _ ->
-            Msg = {publish, {MsgId, Topic, Payload, QoS, Retain, true}},
             Key = {publish, MsgId},
-            retry(Key, Msg, State#state{info_fun=NewInfoFun})
+            retry(Key, Frame#mqtt_publish{dup=true}, State#state{info_fun=NewInfoFun})
     end.
 
 send_disconnect(Transport, Sock) ->
