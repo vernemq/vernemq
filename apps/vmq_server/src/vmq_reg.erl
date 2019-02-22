@@ -250,7 +250,8 @@ block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, Bloc
     end.
 
 -spec register_session(subscriber_id(), map()) -> {ok, #{initial_msg_id := msg_id(),
-                                                        session_present := flag()}, pid()}.
+                                                         session_present := flag(),
+                                                         queue_pid := pid()}}.
 register_session(SubscriberId, QueueOpts) ->
     %% register_session allows to have multiple subscribers connected
     %% with the same session_id (as oposed to register_subscriber)
