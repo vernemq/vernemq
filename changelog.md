@@ -16,6 +16,7 @@
 - Fix Lua `json.decode()` when decoding empty Json objects (#1080).
 - Fix `vmq_diversity` cache invalidation timing issue when a client reconnects
   right after a disconnect (#996).
+- Fix retry of MQTT publish frame in `vmq_bridge` (#1084).
 
 ## VerneMQ 1.7.0
 
