@@ -61,6 +61,7 @@ groups() ->
          publish_b2c_disconnect_qos1_test,
          publish_b2c_disconnect_qos2_test,
          publish_c2b_disconnect_qos2_test,
+         publish_b2c_ensure_valid_msg_ids_test,
          pattern_matching_test,
          drop_dollar_topic_publish,
          message_size_exceeded_close,
@@ -458,6 +459,87 @@ publish_c2b_retry_qos2_test(_Config) ->
     disable_on_publish(),
     ok = expect_alive(Socket),
     ok = gen_tcp:close(Socket).
+
+publish_b2c_ensure_valid_msg_ids_test(Config) ->
+    %% ensure that a stored pub_rel with msg id X (here 1) isn't
+    %% overwritten by a new published message.
+    enable_on_publish(),
+    enable_on_subscribe(),
+    ClientId = vmq_cth:ustr(Config) ++ "-persisted",
+    Topic = vmq_cth:utopic(Config) ++ "/client",
+    Connect = mqtt5_v4compat:gen_connect(ClientId,
+                                         [{keepalive, 60},
+                                          {clean_session, false}],
+                                         Config),
+    Connack = mqtt5_v4compat:gen_connack(success, Config),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Config),
+    %% subscribe to the offline topic
+    Subscribe = mqtt5_v4compat:gen_subscribe(1, Topic, 2, Config),
+    Suback = mqtt5_v4compat:gen_suback(1, 2, Config),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = mqtt5_v4compat:expect_packet(Socket, "suback", Suback, Config),
+
+    %% connect publisher
+    PubClientId = vmq_cth:ustr(Config) ++ "-publisher",
+    PubConnect = mqtt5_v4compat:gen_connect(PubClientId,
+                                            [{keepalive, 60},
+                                             {clean_session, true}],
+                                            Config),
+    {ok, PubSocket} = mqtt5_v4compat:do_client_connect(PubConnect, Connack, [], Config),
+    Publish1 = mqtt5_v4compat:gen_publish(Topic, 2, <<"msg1">>, [{mid, 1}], Config),
+    Pubrec1 = mqtt5_v4compat:gen_pubrec(1, Config),
+    Pubrel1 = mqtt5_v4compat:gen_pubrel(1, Config),
+    Pubcomp1 = mqtt5_v4compat:gen_pubcomp(1, Config),
+
+    %% publish qos2 message
+    ok = gen_tcp:send(PubSocket, Publish1),
+    ok = mqtt5_v4compat:expect_packet(PubSocket, "pubrec", Pubrec1, Config),
+    ok = gen_tcp:send(PubSocket, Pubrel1),
+    ok = mqtt5_v4compat:expect_packet(PubSocket, "pubcomp", Pubcomp1, Config),
+
+    %% receive message, but disconnect after sending pubrec
+    ok = mqtt5_v4compat:expect_packet(Socket, "publish", Publish1, Config),
+    ok = gen_tcp:send(Socket, Pubrec1),
+    Disconnect = mqtt5_v4compat:gen_disconnect(Config),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
+
+    %% Now reconnect
+    ConnackSP = mqtt5_v4compat:gen_connack(true, success, Config),
+    {ok, Socket1} = mqtt5_v4compat:do_client_connect(Connect, ConnackSP, [], Config),
+
+    %% Now we should receive the retried pubrel from the broker:
+    ok = mqtt5_v4compat:expect_packet(Socket1, "pubrel", Pubrel1, Config),
+
+    %% Then publish another message which *should* not collide with the pubrel from before.
+    Publish2 = mqtt5_v4compat:gen_publish(Topic, 2, <<"msg2">>, [{mid, 2}], Config),
+    Pubrec2 = mqtt5_v4compat:gen_pubrec(2, Config),
+    Pubrel2 = mqtt5_v4compat:gen_pubrel(2, Config),
+    Pubcomp2 = mqtt5_v4compat:gen_pubcomp(2, Config),
+
+    ok = gen_tcp:send(PubSocket, Publish2),
+    ok = mqtt5_v4compat:expect_packet(PubSocket, "pubrec", Pubrec2, Config),
+    ok = gen_tcp:send(PubSocket, Pubrel2),
+    ok = mqtt5_v4compat:expect_packet(PubSocket, "pubcomp", Pubcomp2, Config),
+
+    %% and we should now be able to send the pubcomp for the pubrel from before.
+    ok = gen_tcp:send(Socket1, Pubcomp1),
+
+    %% and we can now receive the second message
+    ok = mqtt5_v4compat:expect_packet(Socket1, "publish", Publish2, Config),
+    ok = gen_tcp:send(Socket1, Pubrec2),
+    ok = mqtt5_v4compat:expect_packet(Socket1, "pubrel", Pubrel2, Config),
+    ok = gen_tcp:send(Socket1, Pubcomp2),
+    Disconnect = mqtt5_v4compat:gen_disconnect(Config),
+
+    %% connect subscriber,
+    disable_on_subscribe(),
+    disable_on_publish(),
+
+    ok = expect_alive(Socket1),
+    ok = gen_tcp:send(Socket1, Disconnect),
+    ok = gen_tcp:close(Socket1).
+
 
 pattern_matching_test(Config) ->
     ok = pattern_test("#", "test/topic", Config),

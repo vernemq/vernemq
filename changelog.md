@@ -12,6 +12,7 @@
 - Fix `vmq_diversity` cache invalidation timing issue when a client reconnects
   right after a disconnect (#996).
 - Fix retry of MQTT publish frame in `vmq_bridge` (#1084).
+- Fix outgoing qos2 message id bug (#1045).
 
 ## VerneMQ 1.7.0
 

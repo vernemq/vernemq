@@ -37,7 +37,7 @@
 
 -record(state, {
           %% mqtt layer requirements
-          next_msg_id=1                     :: msg_id(),
+          next_msg_id=undefined             :: undefined | msg_id(),
           subscriber_id                     :: undefined | subscriber_id() | {mountpoint(), undefined},
           will_msg                          :: undefined | msg(),
           waiting_acks=maps:new()           :: map(),
@@ -535,17 +535,20 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
         false ->
             case auth_on_register(User, Password, State) of
                 {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_session=CleanSession,
-                                       cap_settings=CAPSettings} = NewState} ->
+                                       cap_settings=CAPSettings} = State1} ->
                     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanSession, QueueOpts) of
-                        {ok, SessionPresent, QPid} ->
+                        {ok, #{session_present := SessionPresent,
+                               initial_msg_id := MsgId,
+                               queue_pid := QPid}} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
                                                              User]),
-                            check_will(F, SessionPresent, NewState#state{username=User, queue_pid=QPid});
+                            State2 = State1#state{username=User, queue_pid=QPid, next_msg_id=MsgId},
+                            check_will(F, SessionPresent, State2);
                         {error, Reason} ->
                             lager:warning("can't register client ~p with username ~p due to ~p",
                                           [SubscriberId, User, Reason]),
-                            connack_terminate(?CONNACK_SERVER, State)
+                            connack_terminate(?CONNACK_SERVER, State1)
                     end;
                 {error, no_matching_hook_found} ->
                     lager:error("can't authenticate client ~p from ~s due to no_matching_hook_found",
@@ -567,10 +570,12 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
             #state{peer=Peer, subscriber_id=SubscriberId,
                    cap_settings=CAPSettings, clean_session=CleanSession} = State,
             case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, SubscriberId, CleanSession, queue_opts(State, [])) of
-                {ok, SessionPresent, QPid} ->
+                {ok, #{session_present := SessionPresent,
+                       initial_msg_id := MsgId,
+                       queue_pid := QPid}} ->
                     monitor(process, QPid),
                     _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
-                    check_will(F, SessionPresent, State#state{queue_pid=QPid, username=User});
+                    check_will(F, SessionPresent, State#state{queue_pid=QPid, username=User, next_msg_id=MsgId});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",
                                 [SubscriberId, Reason]),
@@ -841,15 +846,15 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
 
 -spec handle_waiting_acks_and_msgs(state()) -> ok.
 handle_waiting_acks_and_msgs(State) ->
-    #state{waiting_acks=WAcks, waiting_msgs=WMsgs, queue_pid=QPid} = State,
+    #state{waiting_acks=WAcks, waiting_msgs=WMsgs, queue_pid=QPid, next_msg_id=NextMsgId} = State,
     MsgsToBeDeliveredNextTime =
     lists:foldl(fun ({{qos2, _}, _}, Acc) ->
                       Acc;
                   ({MsgId, #mqtt_pubrel{} = Frame}, Acc) ->
                       %% unacked PUBREL Frame
                       [{deliver_pubrel, {MsgId, Frame}}|Acc];
-                  ({_MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
-                      [{deliver, QoS, Msg#vmq_msg{dup=true}}|Acc]
+                  ({MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
+                      [#deliver{qos=QoS, msg_id=MsgId, msg=Msg#vmq_msg{dup=true}}|Acc]
               end, lists:reverse(WMsgs),
                 %% 3. the sorted list has the oldest waiting-ack at the head.
                 %% the way we add it to the accumulator 'WMsgs' we have to
@@ -864,7 +869,7 @@ handle_waiting_acks_and_msgs(State) ->
                                 maps:to_list(WAcks)
                                )
                  )),
-    catch vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime).
+    catch vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime, NextMsgId).
 
 handle_waiting_msgs(#state{waiting_msgs=[]} = State) ->
     {State, []};
@@ -883,13 +888,13 @@ handle_waiting_msgs(#state{waiting_msgs=Msgs, queue_pid=QPid} = State) ->
             {NewState#state{waiting_msgs=Waiting}, HandledMsgs}
     end.
 
-handle_messages([{deliver, 0, Msg}|Rest], Frames, PubCnt, State, Waiting) ->
-    {Frame, NewState} = prepare_frame(0, Msg, State),
+handle_messages([#deliver{qos=0}=D|Rest], Frames, PubCnt, State, Waiting) ->
+    {Frame, NewState} = prepare_frame(D, State),
     handle_messages(Rest, [Frame|Frames], PubCnt + 1, NewState, Waiting);
-handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, PubCnt, State, Waiting) ->
+handle_messages([#deliver{} = Obj|Rest], Frames, PubCnt, State, Waiting) ->
     case check_in_flight(State) of
         true ->
-            {Frame, NewState} = prepare_frame(QoS, Msg, State),
+            {Frame, NewState} = prepare_frame(Obj, State),
             handle_messages(Rest, [Frame|Frames], PubCnt + 1,  NewState, Waiting);
         false ->
             % only qos 1&2 are constrained by max_in_flight
@@ -908,7 +913,7 @@ handle_messages([], Frames, PubCnt, State, Waiting) ->
     _ = vmq_metrics:incr_mqtt_publishes_sent(PubCnt),
     {State, Frames, Waiting}.
 
-prepare_frame(QoS, Msg, State) ->
+prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State) ->
     #state{username=User, subscriber_id=SubscriberId, waiting_acks=WAcks,
            retry_queue=RetryQueue, retry_interval=RetryInterval} = State,
     #vmq_msg{routing_key=Topic,
@@ -932,7 +937,7 @@ prepare_frame(QoS, Msg, State) ->
             ChangedPayload = proplists:get_value(payload, Args, Payload),
             {ChangedTopic, ChangedPayload}
     end,
-    {OutgoingMsgId, State1} = get_msg_id(NewQoS, State),
+    {OutgoingMsgId, State1} = get_msg_id(NewQoS, MsgId, State),
     Frame = #mqtt_publish{message_id=OutgoingMsgId,
                           topic=NewTopic,
                           qos=NewQoS,
@@ -999,12 +1004,14 @@ maybe_upgrade_qos(_, PubQoS, _) ->
     %% SubQoS = 1|2, PubQoS = 0 ---> this case
     PubQoS.
 
--spec get_msg_id(qos(), state()) -> {msg_id(), state()}.
-get_msg_id(0, State) ->
+-spec get_msg_id(qos(), undefined | msg_id(), state()) -> {msg_id(), state()}.
+get_msg_id(0, _, State) ->
     {undefined, State};
-get_msg_id(_, #state{next_msg_id=65535} = State) ->
+get_msg_id(_, MsgId, State) when is_integer(MsgId) ->
+    {MsgId, State};
+get_msg_id(_, undefined, #state{next_msg_id=65535} = State) ->
     {1, State#state{next_msg_id=2}};
-get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
+get_msg_id(_, undefined, #state{next_msg_id=MsgId} = State) ->
     {MsgId, State#state{next_msg_id=MsgId + 1}}.
 
 -spec random_client_id() -> binary().
