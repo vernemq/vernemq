@@ -54,7 +54,7 @@
 
 -record(state, {
           %% mqtt layer requirements
-          next_msg_id=1                     :: msg_id(),
+          next_msg_id=undefined             :: undefined | msg_id(),
           subscriber_id                     :: undefined | subscriber_id() | {mountpoint(), undefined},
           will_msg                          :: undefined | msg(),
           waiting_acks=maps:new()           :: map(),
@@ -900,12 +900,15 @@ register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
                                       def_opts=DOpts} = State) ->
     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanStart, QueueOpts) of
-        {ok, SessionPresent, QPid} ->
+        {ok, #{session_present := SessionPresent,
+               initial_msg_id := MsgId,
+               queue_pid := QPid}} ->
             monitor(process, QPid),
             _ = vmq_plugin:all(on_register_m5, [Peer, SubscriberId,
                                                 User, OutProps0]),
             OutProps1 = maybe_set_receive_maximum(OutProps0, ReceiveMax),
-            check_will(F, SessionPresent, OutProps1, State#state{queue_pid=QPid,username=User});
+            check_will(F, SessionPresent, OutProps1,
+                       State#state{queue_pid=QPid,username=User, next_msg_id=MsgId});
         {error, Reason} ->
             lager:warning("can't register client ~p with username ~p due to ~p",
                           [SubscriberId, User, Reason]),
@@ -1322,15 +1325,15 @@ dispatch_publish_qos2(MessageId, Msg, Cnt, State) ->
 
 -spec handle_waiting_acks_and_msgs(state()) -> ok.
 handle_waiting_acks_and_msgs(State) ->
-    #state{waiting_acks=WAcks, waiting_msgs=WMsgs, queue_pid=QPid} = State,
+    #state{waiting_acks=WAcks, waiting_msgs=WMsgs, queue_pid=QPid, next_msg_id=NextMsgId} = State,
     MsgsToBeDeliveredNextTime =
     lists:foldl(fun ({{qos2, _}, _}, Acc) ->
                       Acc;
                   ({MsgId, #mqtt5_pubrel{} = Frame}, Acc) ->
                       %% unacked PUBREL Frame
                       [{deliver_pubrel, {MsgId, Frame}} | Acc];
-                  ({_MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
-                      [{deliver, QoS, Msg#vmq_msg{dup=true}}|Acc]
+                  ({MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
+                      [#deliver{qos=QoS, msg_id=MsgId, msg=Msg#vmq_msg{dup=true}}|Acc]
               end, lists:reverse(WMsgs),
                 %% 3. the sorted list has the oldest waiting-ack at the head.
                 %% the way we add it to the accumulator 'WMsgs' we have to
@@ -1345,7 +1348,7 @@ handle_waiting_acks_and_msgs(State) ->
                                 maps:to_list(WAcks)
                                )
                  )),
-    catch vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime).
+    catch vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime, NextMsgId).
 
 handle_waiting_msgs(#state{waiting_msgs=[]} = State) ->
     {State, []};
@@ -1364,16 +1367,16 @@ handle_waiting_msgs(#state{waiting_msgs=Msgs, queue_pid=QPid} = State) ->
             {NewState#state{waiting_msgs=Waiting}, HandledMsgs}
     end.
 
-handle_messages([{deliver, 0, Msg}|Rest], Frames, PubCnt, State, Waiting) ->
-    {Frame, NewState} = prepare_frame(0, Msg, State),
+handle_messages([#deliver{qos=0}=D|Rest], Frames, PubCnt, State, Waiting) ->
+    {Frame, NewState} = prepare_frame(D, State),
     handle_messages(Rest, [Frame|Frames], PubCnt, NewState, Waiting);
-handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, PubCnt, State, Waiting) ->
+handle_messages([#deliver{} = Obj|Rest], Frames, PubCnt, State, Waiting) ->
     case fc_incr_cnt(State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages) of
         error ->
             % reached outgoing flow control max, queue up rest of messages
             handle_messages(Rest, Frames, PubCnt, State, [Obj|Waiting]);
         Cnt ->
-            {Frame, NewState} = prepare_frame(QoS, Msg, State#state{fc_send_cnt=Cnt}),
+            {Frame, NewState} = prepare_frame(Obj, State#state{fc_send_cnt=Cnt}),
             handle_messages(Rest, [Frame|Frames], PubCnt + 1, NewState, Waiting)
     end;
 handle_messages([{deliver_pubrel, {MsgId, #mqtt5_pubrel{} = Frame}}|Rest], Frames, PubCnt, State0, Waiting) ->
@@ -1389,7 +1392,7 @@ handle_messages([], Frames, PubCnt, State, Waiting) ->
     _ = vmq_metrics:incr(?MQTT5_PUBLISH_SENT, PubCnt),
     {State, Frames, Waiting}.
 
-prepare_frame(QoS, Msg, State0) ->
+prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State0) ->
     #state{username=User, subscriber_id=SubscriberId, waiting_acks=WAcks} = State0,
     #vmq_msg{routing_key=Topic0,
              payload=Payload0,
@@ -1415,7 +1418,7 @@ prepare_frame(QoS, Msg, State0) ->
             {ChangedTopic, ChangedPayload}
     end,
     {Topic2, Props1, State1} = maybe_apply_topic_alias_out(Topic1, Props0, State0),
-    {OutgoingMsgId, State2} = get_msg_id(NewQoS, State1),
+    {OutgoingMsgId, State2} = get_msg_id(NewQoS, MsgId, State1),
     Frame = serialise_frame(#mqtt5_publish{message_id=OutgoingMsgId,
                                            topic=Topic2,
                                            qos=NewQoS,
@@ -1490,12 +1493,14 @@ maybe_upgrade_qos(_, PubQoS, _) ->
     %% SubQoS = 1|2, PubQoS = 0 ---> this case
     PubQoS.
 
--spec get_msg_id(qos(), state()) -> {msg_id(), state()}.
-get_msg_id(0, State) ->
+-spec get_msg_id(qos(), undefined | msg_id(), state()) -> {msg_id(), state()}.
+get_msg_id(0, _, State) ->
     {undefined, State};
-get_msg_id(_, #state{next_msg_id=65535} = State) ->
+get_msg_id(_, MsgId, State) when is_integer(MsgId) ->
+    {MsgId, State};
+get_msg_id(_, undefined, #state{next_msg_id=65535} = State) ->
     {1, State#state{next_msg_id=2}};
-get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
+get_msg_id(_, undefined, #state{next_msg_id=MsgId} = State) ->
     {MsgId, State#state{next_msg_id=MsgId + 1}}.
 
 -spec random_client_id() -> binary().
