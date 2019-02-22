@@ -321,7 +321,7 @@ publish_multi(ClientId, Topic, Acc) when length(Acc) < 100 ->
 publish_multi(_, _, Acc) -> lists:reverse(Acc).
 
 receive_multi(QPid, QoS, Msgs) ->
-    PMsgs = [{deliver, QoS, Msg#vmq_msg{persisted=true, qos=1}} || Msg <- Msgs],
+    PMsgs = [#deliver{qos=QoS, msg=Msg#vmq_msg{persisted=true, qos=1}} || Msg <- Msgs],
     receive_multi(QPid, PMsgs).
 
 receive_multi(_, []) -> ok;
@@ -367,7 +367,7 @@ receive_msg(QPid, QoS, Msg) ->
     %% we'll set the persist flag
     PMsg = Msg#vmq_msg{persisted=true},
     receive
-        {received, QPid, [{deliver, QoS, PMsg}]} ->
+        {received, QPid, [#deliver{qos=QoS, msg=PMsg}]} ->
             ok;
         M ->
             exit({wrong_message, M})
@@ -380,7 +380,7 @@ receive_persisted_msg(QPid, QoS, Msg) ->
     %% to the one of the subscription
     PMsg = Msg#vmq_msg{persisted=true, qos=QoS},
     receive
-        {received, QPid, [{deliver, QoS, PMsg}]} ->
+        {received, QPid, [#deliver{qos=QoS, msg=PMsg}]} ->
             ok;
         M ->
             exit({wrong_message, M})
