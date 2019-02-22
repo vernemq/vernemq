@@ -444,15 +444,15 @@ offline(init_offline_queue, #state{id=SId} = State) ->
             gen_fsm:send_event_after(1000, init_offline_queue),
             {next_state, offline, State}
     end;
-offline({enqueue, Msg}, #state{id=SId} = State) ->
-    NMsg = case Msg of
+offline({enqueue, Enq}, #state{id=SId} = State) ->
+    NMsg = case Enq of
         {deliver, QoS, #vmq_msg{routing_key=Topic,
                                 payload=Payload,
-                                retain=Retain}} ->
+                                retain=Retain}=Msg} ->
             _ = vmq_plugin:all(on_offline_message, [SId, QoS, Topic, Payload, Retain]),
             #deliver{qos=QoS, msg=Msg};
         _ ->
-            Msg
+            Enq
     end,
     %% storing the message in the offline queue
     _ = vmq_metrics:incr_queue_in(),
