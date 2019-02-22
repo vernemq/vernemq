@@ -1331,8 +1331,8 @@ handle_waiting_acks_and_msgs(State) ->
                   ({MsgId, #mqtt5_pubrel{} = Frame}, Acc) ->
                       %% unacked PUBREL Frame
                       [{deliver_pubrel, {MsgId, Frame}} | Acc];
-                  ({_MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
-                      [{deliver, QoS, Msg#vmq_msg{dup=true}}|Acc]
+                  ({MsgId, #vmq_msg{qos=QoS} = Msg}, Acc) ->
+                      [#deliver{qos=QoS, msg_id=MsgId, msg=Msg#vmq_msg{dup=true}}|Acc]
               end, lists:reverse(WMsgs),
                 %% 3. the sorted list has the oldest waiting-ack at the head.
                 %% the way we add it to the accumulator 'WMsgs' we have to
@@ -1366,16 +1366,16 @@ handle_waiting_msgs(#state{waiting_msgs=Msgs, queue_pid=QPid} = State) ->
             {NewState#state{waiting_msgs=Waiting}, HandledMsgs}
     end.
 
-handle_messages([{deliver, 0, Msg}|Rest], Frames, PubCnt, State, Waiting) ->
-    {Frame, NewState} = prepare_frame(0, Msg, State),
+handle_messages([#deliver{qos=0}=D|Rest], Frames, PubCnt, State, Waiting) ->
+    {Frame, NewState} = prepare_frame(D, State),
     handle_messages(Rest, [Frame|Frames], PubCnt, NewState, Waiting);
-handle_messages([{deliver, QoS, Msg} = Obj|Rest], Frames, PubCnt, State, Waiting) ->
+handle_messages([#deliver{} = Obj|Rest], Frames, PubCnt, State, Waiting) ->
     case fc_incr_cnt(State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages) of
         error ->
             % reached outgoing flow control max, queue up rest of messages
             handle_messages(Rest, Frames, PubCnt, State, [Obj|Waiting]);
         Cnt ->
-            {Frame, NewState} = prepare_frame(QoS, Msg, State#state{fc_send_cnt=Cnt}),
+            {Frame, NewState} = prepare_frame(Obj, State#state{fc_send_cnt=Cnt}),
             handle_messages(Rest, [Frame|Frames], PubCnt + 1, NewState, Waiting)
     end;
 handle_messages([{deliver_pubrel, {MsgId, #mqtt5_pubrel{} = Frame}}|Rest], Frames, PubCnt, State0, Waiting) ->
@@ -1391,7 +1391,7 @@ handle_messages([], Frames, PubCnt, State, Waiting) ->
     _ = vmq_metrics:incr(?MQTT5_PUBLISH_SENT, PubCnt),
     {State, Frames, Waiting}.
 
-prepare_frame(QoS, Msg, State0) ->
+prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State0) ->
     #state{username=User, subscriber_id=SubscriberId, waiting_acks=WAcks} = State0,
     #vmq_msg{routing_key=Topic0,
              payload=Payload0,
@@ -1417,7 +1417,7 @@ prepare_frame(QoS, Msg, State0) ->
             {ChangedTopic, ChangedPayload}
     end,
     {Topic2, Props1, State1} = maybe_apply_topic_alias_out(Topic1, Props0, State0),
-    {OutgoingMsgId, State2} = get_msg_id(NewQoS, State1),
+    {OutgoingMsgId, State2} = get_msg_id(NewQoS, MsgId, State1),
     Frame = serialise_frame(#mqtt5_publish{message_id=OutgoingMsgId,
                                            topic=Topic2,
                                            qos=NewQoS,
@@ -1492,12 +1492,14 @@ maybe_upgrade_qos(_, PubQoS, _) ->
     %% SubQoS = 1|2, PubQoS = 0 ---> this case
     PubQoS.
 
--spec get_msg_id(qos(), state()) -> {msg_id(), state()}.
-get_msg_id(0, State) ->
+-spec get_msg_id(qos(), undefined | msg_id(), state()) -> {msg_id(), state()}.
+get_msg_id(0, _, State) ->
     {undefined, State};
-get_msg_id(_, #state{next_msg_id=65535} = State) ->
+get_msg_id(_, MsgId, State) when is_integer(MsgId) ->
+    {MsgId, State};
+get_msg_id(_, undefined, #state{next_msg_id=65535} = State) ->
     {1, State#state{next_msg_id=2}};
-get_msg_id(_, #state{next_msg_id=MsgId} = State) ->
+get_msg_id(_, undefined, #state{next_msg_id=MsgId} = State) ->
     {MsgId, State#state{next_msg_id=MsgId + 1}}.
 
 -spec random_client_id() -> binary().
