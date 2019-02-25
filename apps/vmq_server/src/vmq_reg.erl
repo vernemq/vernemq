@@ -672,7 +672,6 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
                end,
     CallingPid = self(),
     SubscriberId = {MountPoint, ClientId(CallingPid)},
-    User = {plugin, Mod, CallingPid},
 
     RegisterFun =
     fun() ->
@@ -720,7 +719,6 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
     fun([W|_] = Topic) when is_binary(W) ->
             wait_til_ready(),
             CallingPid = self(),
-            User = {plugin, Mod, CallingPid},
             subscribe(CAPSubscribe, {MountPoint, ClientId(CallingPid)}, [{Topic, 0}]);
        (_) ->
             {error, invalid_topic}
@@ -730,7 +728,6 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
     fun([W|_] = Topic) when is_binary(W) ->
             wait_til_ready(),
             CallingPid = self(),
-            User = {plugin, Mod, CallingPid},
             unsubscribe(CAPUnsubscribe, {MountPoint, ClientId(CallingPid)}, [Topic]);
        (_) ->
             {error, invalid_topic}
