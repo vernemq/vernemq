@@ -53,11 +53,11 @@ plugin_receive_loop(PluginPid, PluginMod) ->
             vmq_queue:active(QPid),
             plugin_receive_loop(PluginPid, PluginMod);
         {?TO_SESSION, {mail, QPid, Msgs, _, _}} ->
-            lists:foreach(fun({deliver, QoS, #vmq_msg{
-                                                routing_key=RoutingKey,
-                                                payload=Payload,
-                                                retain=IsRetain,
-                                                dup=IsDup}}) ->
+            lists:foreach(fun(#deliver{qos=QoS, msg=#vmq_msg{
+                                                       routing_key=RoutingKey,
+                                                       payload=Payload,
+                                                       retain=IsRetain,
+                                                       dup=IsDup}}) ->
                                   PluginPid ! {deliver, RoutingKey,
                                                Payload,
                                                QoS,
