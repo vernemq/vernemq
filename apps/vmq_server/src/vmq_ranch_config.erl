@@ -373,9 +373,15 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    %% Stop the mqtt listeners to prevent clients from connecting
+    %% Stop the all listeners to prevent clients from connecting
     %% while shutting down.
-    vmq_ranch_config:stop_all_mqtt_listeners(false),
+    KillSessions = false,
+    lists:foreach(
+      fun ({ranch_server, _, _, _}) ->
+              ok;
+          ({{ranch_listener_sup, {Ip, Port}}, _Status, supervisor, _}) ->
+              stop_listener(Ip, Port, KillSessions)
+      end, supervisor:which_children(ranch_sup)),
     ok.
 
 %%--------------------------------------------------------------------
