@@ -32,18 +32,29 @@ init_per_group(mqttv5, Config) ->
 end_per_group(_Group, _Config) ->
     ok.
 
-init_per_testcase(_Case, Config) ->
+init_per_testcase(Case, Config) ->
     vmq_test_utils:seed_rand(Config),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 2),
     vmq_server_cmd:set_config(max_client_id_size, 100),
     vmq_server_cmd:set_config(topic_alias_max_client, 0),
     vmq_server_cmd:set_config(topic_alias_max_broker, 0),
-    start_client_offline_events(Config).
+    case lists:member(Case, [shared_subscription_offline,
+                             shared_subscription_online_first]) of
+        true ->
+            start_client_offline_events(Config);
+        _ ->
+            Config
+    end.
 
-end_per_testcase(_, Config) ->
-    stop_client_offline_events(Config),
-    Config.
+end_per_testcase(Case, Config) ->
+    case lists:member(Case, [shared_subscription_offline,
+                             shared_subscription_online_first]) of
+        true ->
+            stop_client_offline_events(Config);
+        _ ->
+            Config
+    end.
 
 all() ->
     [
@@ -1277,12 +1288,14 @@ start_client_offline_events(Cfg) ->
                         ok
                 end
         end,
-    EventProc = spawn(fun() -> F(F) end),
-    register(?CLIENT_OFFLINE_EVENT_SRV, EventProc),
+    EventProc = spawn_link(fun() -> F(F) end),
+    true = register(?CLIENT_OFFLINE_EVENT_SRV, EventProc),
     [{?CLIENT_OFFLINE_EVENT_SRV, EventProc}|Cfg].
 
 
 stop_client_offline_events(Cfg) ->
+    ok = vmq_plugin_mgr:disable_module_plugin(
+           on_client_offline, ?MODULE, hook_on_client_offline, 1),
     Pid = proplists:get_value(?CLIENT_OFFLINE_EVENT_SRV, Cfg),
     Ref = make_ref(),
     Pid ! {stop, Ref},
