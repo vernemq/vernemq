@@ -267,10 +267,8 @@ incr_item(Entry, Val) when Val > 0->
                     %% due to an unavailable counter
                     ok
             end;
-        CntRef when Val == 1 ->
-            mzmetrics:incr_resource_counter(CntRef, 0);
-        CntRef ->
-            mzmetrics:update_resource_counter(CntRef, 0, Val)
+        {ARef, Idx} ->
+            atomics:add(ARef, Idx, Val)
     end.
 
 %% true means current rate is ok.
@@ -286,13 +284,13 @@ check_rate(RateEntry, MaxRate) ->
                 _:_ ->
                     true
             end;
-        CntRef ->
-            mzmetrics:get_resource_counter(CntRef, 0) < MaxRate
+        {ARef, Idx} ->
+            atomics:get(ARef, Idx) < MaxRate
     end.
 
 counter_val(Entry) ->
-    [{_, CntRef}] = ets:lookup(?MODULE, Entry),
-    mzmetrics:get_resource_counter(CntRef, 0).
+    [{_, {ARef, Idx}}] = ets:lookup(?MODULE, Entry),
+    atomics:get(ARef, Idx).
 
 reset_counters() ->
     lists:foreach(
@@ -301,8 +299,8 @@ reset_counters() ->
       end, internal_defs()).
 
 reset_counter(Entry) ->
-    [{_, CntRef}] = ets:lookup(?MODULE, Entry),
-    mzmetrics:reset_resource_counter(CntRef, 0).
+    [{_, {ARef, Idx}}] = ets:lookup(?MODULE, Entry),
+    atomics:put(ARef, Idx, 0).
 
 reset_counter(Entry, InitVal) ->
     reset_counter(Entry),
@@ -444,13 +442,15 @@ init([]) ->
     timer:send_interval(1000, calc_rates),
     ets:new(?MODULE, [public, named_table, {read_concurrency, true}]),
     {RateEntries, _} = lists:unzip(rate_entries()),
-    lists:foreach(
-      fun(Entry) ->
-              Str = lists:flatten(io_lib:format("~p", [Entry])),
-              Ref = mzmetrics:alloc_resource(0, Str, 8),
-              ets:insert(?MODULE, {Entry, Ref})
-      end, RateEntries ++
-          [Id || #metric_def{id = Id} <- internal_defs()]),
+    AllEntries = RateEntries ++
+          [Id || #metric_def{id = Id} <- internal_defs()],
+    NumEntries = length(AllEntries),
+    ARef = atomics:new(NumEntries, [{signed, false}]),
+    lists:foldl(
+      fun(Entry, AccIdx) ->
+              ets:insert(?MODULE, {Entry, {ARef, AccIdx}}),
+              AccIdx + 1
+      end, 1, AllEntries),
     MetricsInfo = register_metrics(#{}),
     {ok, #state{info=MetricsInfo}}.
 
