@@ -18,6 +18,7 @@
   right after a disconnect (#996).
 - Fix retry of MQTT publish frame in `vmq_bridge` (#1084).
 - Fix outgoing qos2 message id bug (#1045).
+- VerneMQ now requires Erlang/OTP 21.2 or newer to build.
 
 ## VerneMQ 1.7.0
 
