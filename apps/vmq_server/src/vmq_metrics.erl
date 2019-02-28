@@ -108,142 +108,141 @@
 
 %%% Socket Totals
 incr_socket_open() ->
-    incr_item('socket_open', 1).
+    incr_item(?METRIC_SOCKET_OPEN, 1).
 
 incr_socket_close() ->
-    incr_item('socket_close', 1).
+    incr_item(?METRIC_SOCKET_CLOSE, 1).
 
 incr_socket_error() ->
-    incr_item('socket_error', 1).
+    incr_item(?METRIC_SOCKET_ERROR, 1).
 
 incr_bytes_received(V) ->
-    incr_item('bytes_received', V).
+    incr_item(?METRIC_BYTES_RECEIVED, V).
 
 incr_bytes_sent(V) ->
-    incr_item('bytes_sent', V).
-
+    incr_item(?METRIC_BYTES_SENT, V).
 
 incr_mqtt_connect_received() ->
-    incr_item(mqtt_connect_received, 1).
+    incr_item(?MQTT4_CONNECT_RECEIVED, 1).
 
 incr_mqtt_publish_received() ->
-    incr_item(mqtt_publish_received, 1).
+    incr_item(?MQTT4_PUBLISH_RECEIVED, 1).
 
 incr_mqtt_puback_received() ->
-    incr_item(mqtt_puback_received, 1).
+    incr_item(?MQTT4_PUBACK_RECEIVED, 1).
 
 incr_mqtt_pubrec_received() ->
-    incr_item(mqtt_pubrec_received, 1).
+    incr_item(?MQTT4_PUBREC_RECEIVED, 1).
 
 incr_mqtt_pubrel_received() ->
-    incr_item(mqtt_pubrel_received, 1).
+    incr_item(?MQTT4_PUBREL_RECEIVED, 1).
 
 incr_mqtt_pubcomp_received() ->
-    incr_item(mqtt_pubcomp_received, 1).
+    incr_item(?MQTT4_PUBCOMP_RECEIVED, 1).
 
 incr_mqtt_subscribe_received() ->
-    incr_item(mqtt_subscribe_received, 1).
+    incr_item(?MQTT4_SUBSCRIBE_RECEIVED, 1).
 
 incr_mqtt_unsubscribe_received() ->
-    incr_item(mqtt_unsubscribe_received, 1).
+    incr_item(?MQTT4_UNSUBSCRIBE_RECEIVED, 1).
 
 incr_mqtt_pingreq_received() ->
-    incr_item(mqtt_pingreq_received, 1).
+    incr_item(?MQTT4_PINGREQ_RECEIVED, 1).
 
 incr_mqtt_disconnect_received() ->
-    incr_item(mqtt_disconnect_received, 1).
+    incr_item(?MQTT4_DISCONNECT_RECEIVED, 1).
 
 incr_mqtt_publish_sent() ->
-    incr_item(mqtt_publish_sent, 1).
+    incr_item(?MQTT4_PUBLISH_SENT, 1).
 incr_mqtt_publishes_sent(N) ->
-    incr_item(mqtt_publish_sent, N).
+    incr_item(?MQTT4_PUBLISH_SENT, N).
 
 incr_mqtt_puback_sent() ->
-    incr_item(mqtt_puback_sent, 1).
+    incr_item(?MQTT4_PUBACK_SENT, 1).
 
 incr_mqtt_pubrec_sent() ->
-    incr_item(mqtt_pubrec_sent, 1).
+    incr_item(?MQTT4_PUBREC_SENT, 1).
 
 incr_mqtt_pubrel_sent() ->
-    incr_item(mqtt_pubrel_sent, 1).
+    incr_item(?MQTT4_PUBREL_SENT, 1).
 
 incr_mqtt_pubcomp_sent() ->
-    incr_item(mqtt_pubcomp_sent, 1).
+    incr_item(?MQTT4_PUBCOMP_SENT, 1).
 
 incr_mqtt_suback_sent() ->
-    incr_item(mqtt_suback_sent, 1).
+    incr_item(?MQTT4_SUBACK_SENT, 1).
 
 incr_mqtt_unsuback_sent() ->
-    incr_item(mqtt_unsuback_sent, 1).
+    incr_item(?MQTT4_UNSUBACK_SENT, 1).
 
 incr_mqtt_pingresp_sent() ->
-    incr_item(mqtt_pingresp_sent, 1).
+    incr_item(?MQTT4_PINGRESP_SENT, 1).
 
 incr_mqtt_error_auth_publish() ->
-    incr_item(mqtt_publish_auth_error, 1).
+    incr_item(?MQTT4_PUBLISH_AUTH_ERROR, 1).
 
 incr_mqtt_error_auth_subscribe() ->
-    incr_item(mqtt_subscribe_auth_error, 1).
+    incr_item(?MQTT4_SUBSCRIBE_AUTH_ERROR, 1).
 
 incr_mqtt_error_invalid_msg_size() ->
-    incr_item(mqtt_invalid_msg_size_error, 1).
+    incr_item(?MQTT4_INVALID_MSG_SIZE_ERROR, 1).
 
 incr_mqtt_error_invalid_puback() ->
-    incr_item(mqtt_puback_invalid_error, 1).
+    incr_item(?MQTT4_PUBACK_INVALID_ERROR, 1).
 
 incr_mqtt_error_invalid_pubrec() ->
-    incr_item(mqtt_pubrec_invalid_error, 1).
+    incr_item(?MQTT4_PUBREC_INVALID_ERROR, 1).
 
 incr_mqtt_error_invalid_pubcomp() ->
-    incr_item(mqtt_pubcomp_invalid_error, 1).
+    incr_item(?MQTT4_PUBCOMP_INVALID_ERROR, 1).
 
 incr_mqtt_error_publish() ->
-    incr_item(mqtt_publish_error, 1).
+    incr_item(?MQTT4_PUBLISH_ERROR, 1).
 
 incr_mqtt_error_subscribe() ->
-    incr_item(mqtt_subscribe_error, 1).
+    incr_item(?MQTT4_SUBSCRIBE_ERROR, 1).
 
 incr_mqtt_error_unsubscribe() ->
-    incr_item(mqtt_unsubscribe_error, 1).
+    incr_item(?MQTT4_UNSUBSCRIBE_ERROR, 1).
 
 incr_queue_setup() ->
-    incr_item(queue_setup, 1).
+    incr_item(?METRIC_QUEUE_SETUP, 1).
 
 incr_queue_initialized_from_storage() ->
-    incr_item(queue_initialized_from_storage, 1).
+    incr_item(?METRIC_QUEUE_INITIALIZED_FROM_STORAGE, 1).
 
 incr_queue_teardown() ->
-    incr_item(queue_teardown, 1).
+    incr_item(?METRIC_QUEUE_TEARDOWN, 1).
 
 incr_queue_drop() ->
-    incr_item(queue_message_drop, 1).
+    incr_item(?METRIC_QUEUE_MESSAGE_DROP, 1).
 
 incr_queue_msg_expired(N) ->
-    incr_item(queue_message_expired, N).
+    incr_item(?METRIC_QUEUE_MESSAGE_EXPIRED, N).
 
 incr_queue_unhandled(N) ->
-    incr_item(queue_message_unhandled, N).
+    incr_item(?METRIC_QUEUE_MESSAGE_UNHANDLED, N).
 
 incr_queue_in() ->
-    incr_item(queue_message_in, 1).
+    incr_item(?METRIC_QUEUE_MESSAGE_IN, 1).
 incr_queue_in(N) ->
-    incr_item(queue_message_in, N).
+    incr_item(?METRIC_QUEUE_MESSAGE_IN, N).
 
 incr_queue_out(N) ->
-    incr_item(queue_message_out, N).
+    incr_item(?METRIC_QUEUE_MESSAGE_OUT, N).
 
 incr_client_expired() ->
-    incr_item(client_expired, 1).
+    incr_item(?METRIC_CLIENT_EXPIRED, 1).
 
 
 incr_cluster_bytes_received(V) ->
-    incr_item('cluster_bytes_received', V).
+    incr_item(?METRIC_CLUSTER_BYTES_RECEIVED, V).
 
 incr_cluster_bytes_sent(V) ->
-    incr_item('cluster_bytes_sent', V).
+    incr_item(?METRIC_CLUSTER_BYTES_SENT, V).
 
 incr_cluster_bytes_dropped(V) ->
-    incr_item('cluster_bytes_dropped', V).
+    incr_item(?METRIC_CLUSTER_BYTES_DROPPED, V).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -253,43 +252,17 @@ incr(Entry, N) ->
 
 incr_item(_, 0) -> ok; %% don't do the update
 incr_item(Entry, Val) when Val > 0->
-    case get(Entry) of
-        undefined ->
-            try ets:lookup(?MODULE, Entry) of
-               [{_, CntRef}] ->
-                    put(Entry, CntRef),
-                    incr_item(Entry, Val);
-                [] ->
-                    lager:error("invalid counter ~p", [Entry])
-            catch
-               _:_ ->
-                    %% we don't want to crash a session/queue
-                    %% due to an unavailable counter
-                    ok
-            end;
-        {ARef, Idx} ->
-            atomics:add(ARef, Idx, Val)
-    end.
+    {ARef, Idx} = persistent_term:get({?MODULE, Entry}),
+    atomics:add(ARef, Idx, Val).
 
 %% true means current rate is ok.
 check_rate(_, 0) -> true; % 0 means unlimited
 check_rate(RateEntry, MaxRate) ->
-    case get(RateEntry) of
-        undefined ->
-            try ets:lookup(?MODULE, RateEntry) of
-                [{_, CntRef}] ->
-                    put(RateEntry, CntRef),
-                    check_rate(RateEntry, MaxRate)
-            catch
-                _:_ ->
-                    true
-            end;
-        {ARef, Idx} ->
-            atomics:get(ARef, Idx) < MaxRate
-    end.
+    {ARef, Idx} = persistent_term:get({?MODULE, RateEntry}),
+    atomics:get(ARef, Idx) < MaxRate.
 
 counter_val(Entry) ->
-    [{_, {ARef, Idx}}] = ets:lookup(?MODULE, Entry),
+    {ARef, Idx} = persistent_term:get({?MODULE, Entry}),
     atomics:get(ARef, Idx).
 
 reset_counters() ->
@@ -299,7 +272,7 @@ reset_counters() ->
       end, internal_defs()).
 
 reset_counter(Entry) ->
-    [{_, {ARef, Idx}}] = ets:lookup(?MODULE, Entry),
+    {ARef, Idx} = persistent_term:get({?MODULE, Entry}),
     atomics:put(ARef, Idx, 0).
 
 reset_counter(Entry, InitVal) ->
@@ -440,16 +413,15 @@ get_label_info() ->
 %%--------------------------------------------------------------------
 init([]) ->
     timer:send_interval(1000, calc_rates),
-    ets:new(?MODULE, [public, named_table, {read_concurrency, true}]),
     {RateEntries, _} = lists:unzip(rate_entries()),
     AllEntries = RateEntries ++
           [Id || #metric_def{id = Id} <- internal_defs()],
     NumEntries = length(AllEntries),
     ARef = atomics:new(NumEntries, [{signed, false}]),
     lists:foldl(
-      fun(Entry, AccIdx) ->
-              ets:insert(?MODULE, {Entry, {ARef, AccIdx}}),
-              AccIdx + 1
+      fun(Entry, Idx) ->
+              persistent_term:put({?MODULE, Entry}, {ARef, Idx}),
+              Idx + 1
       end, 1, AllEntries),
     MetricsInfo = register_metrics(#{}),
     {ok, #state{info=MetricsInfo}}.
@@ -942,10 +914,10 @@ mqtt4_connack_sent_def() ->
        <<"The number of CONNACK packets sent.">>) || RCN <- RCNs].
 
 rate_entries() ->
-    [{msg_in_rate, [mqtt_publish_received, ?MQTT5_PUBLISH_RECEIVED]},
-     {byte_in_rate, [bytes_received]},
-     {msg_out_rate, [mqtt_publish_sent, ?MQTT5_PUBLISH_SENT]},
-     {byte_out_rate, [bytes_sent]}].
+    [{?METRIC_MSG_IN_RATE, [?MQTT4_PUBLISH_RECEIVED, ?MQTT5_PUBLISH_RECEIVED]},
+     {?METRIC_BYTE_IN_RATE, [?METRIC_BYTES_RECEIVED]},
+     {?METRIC_MSG_OUT_RATE, [?MQTT4_PUBLISH_SENT, ?MQTT5_PUBLISH_SENT]},
+     {?METRIC_BYTE_OUT_RATE, [?METRIC_BYTES_SENT]}].
 
 -spec misc_statistics() -> [{metric_id(), any()}].
 misc_statistics() ->
