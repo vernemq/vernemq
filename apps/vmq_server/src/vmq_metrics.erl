@@ -252,18 +252,25 @@ incr(Entry, N) ->
 
 incr_item(_, 0) -> ok; %% don't do the update
 incr_item(Entry, Val) when Val > 0->
-    {ARef, Idx} = persistent_term:get({?MODULE, Entry}),
-    atomics:add(ARef, Idx, Val).
+    ARef = case get(atomics_ref) of
+               undefined ->
+                   Ref = persistent_term:get(?MODULE),
+                   put(atomics_ref, Ref),
+                   Ref;
+               Ref ->
+                   Ref
+           end,
+    atomics:add(ARef, met2idx(Entry), Val).
 
 %% true means current rate is ok.
 check_rate(_, 0) -> true; % 0 means unlimited
 check_rate(RateEntry, MaxRate) ->
-    {ARef, Idx} = persistent_term:get({?MODULE, RateEntry}),
-    atomics:get(ARef, Idx) < MaxRate.
+    ARef = persistent_term:get(?MODULE),
+    atomics:get(ARef, met2idx(RateEntry)) < MaxRate.
 
 counter_val(Entry) ->
-    {ARef, Idx} = persistent_term:get({?MODULE, Entry}),
-    atomics:get(ARef, Idx).
+    ARef = persistent_term:get(?MODULE),
+    atomics:get(ARef, met2idx(Entry)).
 
 reset_counters() ->
     lists:foreach(
@@ -272,8 +279,8 @@ reset_counters() ->
       end, internal_defs()).
 
 reset_counter(Entry) ->
-    {ARef, Idx} = persistent_term:get({?MODULE, Entry}),
-    atomics:put(ARef, Idx, 0).
+    ARef = persistent_term:get(?MODULE),
+    atomics:put(ARef, met2idx(Entry), 0).
 
 reset_counter(Entry, InitVal) ->
     reset_counter(Entry),
@@ -417,12 +424,18 @@ init([]) ->
     AllEntries = RateEntries ++
           [Id || #metric_def{id = Id} <- internal_defs()],
     NumEntries = length(AllEntries),
+
+    %% Sanity check where it is checked that there is a one-to-one
+    %% mapping between atomics indexes and metrics identifiers by 1)
+    %% checking that all metric identifiers have an atomics index and
+    %% 2) that there are as many indexes as there are metrics and 3)
+    %% that there are no index duplicates.
+    Idxs = lists:map(fun(Id) -> met2idx(Id) end, AllEntries),
+    NumEntries = length(lists:sort(Idxs)),
+    NumEntries = length(lists:usort(Idxs)),
+
     ARef = atomics:new(NumEntries, [{signed, false}]),
-    lists:foldl(
-      fun(Entry, Idx) ->
-              persistent_term:put({?MODULE, Entry}, {ARef, Idx}),
-              Idx + 1
-      end, 1, AllEntries),
+    persistent_term:put(?MODULE, ARef),
     MetricsInfo = register_metrics(#{}),
     {ok, #state{info=MetricsInfo}}.
 
@@ -657,19 +670,11 @@ counter_entries_def() ->
      m(counter, [{mqtt_version,"5"}], ?MQTT5_PINGREQ_RECEIVED, mqtt_pingreq_received, <<"The number of PINGREQ packets received.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_PINGRESP_SENT, mqtt_pingresp_sent, <<"The number of PINGRESP packets sent.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBACK_INVALID_ERROR, mqtt_puback_invalid_error, <<"The number of unexpected PUBACK messages received.">>),
-     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBACK_RECEIVED, mqtt_puback_received, <<"The number of PUBACK packets received.">>),
-     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBACK_SENT, mqtt_puback_sent, <<"The number of PUBACK packets sent.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBCOMP_INVALID_ERROR, mqtt_pubcomp_invalid_error, <<"The number of unexpected PUBCOMP messages received.">>),
-     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBCOMP_RECEIVED, mqtt_pubcomp_received, <<"The number of PUBCOMP packets received.">>),
-     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBCOMP_SENT, mqtt_pubcomp_sent, <<"The number of PUBCOMP packets sent.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBLISH_AUTH_ERROR, mqtt_publish_auth_error, <<"The number of unauthorized publish attempts.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBLISH_ERROR, mqtt_publish_error, <<"The number of times a PUBLISH operation failed due to a netsplit.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBLISH_RECEIVED, mqtt_publish_received, <<"The number of PUBLISH packets received.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBLISH_SENT, mqtt_publish_sent, <<"The number of PUBLISH packets sent.">>),
-     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBREC_RECEIVED, mqtt_pubrec_received, <<"The number of PUBREC packets received.">>),
-     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBREC_SENT, mqtt_pubrec_sent, <<"The number of PUBREC packets sent.">>),
-     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBREL_RECEIVED, mqtt_pubrel_received, <<"The number of PUBREL packets received.">>),
-     m(counter, [{mqtt_version,"5"}], ?MQTT5_PUBREL_SENT, mqtt_pubrel_sent, <<"The number of PUBREL packets sent.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_SUBACK_SENT, mqtt_suback_sent, <<"The number of SUBACK packets sent.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_SUBSCRIBE_AUTH_ERROR, mqtt_subscribe_auth_error, <<"The number of unauthorized subscription attempts.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_SUBSCRIBE_ERROR, mqtt_subscribe_error, <<"The number of times a SUBSCRIBE operation failed due to a netsplit.">>),
@@ -1134,114 +1139,119 @@ met2idx(?MQTT5_SUBSCRIBE_ERROR)                                   -> 72;
 met2idx(?MQTT5_UNSUBSCRIBE_ERROR)                                 -> 73;
 met2idx(?MQTT5_PINGREQ_RECEIVED)                                  -> 74;
 met2idx(?MQTT5_PINGRESP_SENT)                                     -> 75;
-met2idx(?MQTT5_PUBACK_RECEIVED)                                   -> 76;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?SUCCESS})                       -> 77;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?NO_MATCHING_SUBSCRIBERS})       -> 78;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?UNSPECIFIED_ERROR})             -> 79;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?IMPL_SPECIFIC_ERROR})           -> 80;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?NOT_AUTHORIZED})                -> 81;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?TOPIC_NAME_INVALID})            -> 82;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?PACKET_ID_IN_USE})              -> 83;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?QUOTA_EXCEEDED})                -> 84;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?PAYLOAD_FORMAT_INVALID})        -> 85;
-met2idx({?MQTT5_PUBACK_SENT, ?SUCCESS})                           -> 86;
-met2idx({?MQTT5_PUBACK_SENT, ?NO_MATCHING_SUBSCRIBERS})           -> 87;
-met2idx({?MQTT5_PUBACK_SENT, ?UNSPECIFIED_ERROR})                 -> 88;
-met2idx({?MQTT5_PUBACK_SENT, ?IMPL_SPECIFIC_ERROR})               -> 89;
-met2idx({?MQTT5_PUBACK_SENT, ?NOT_AUTHORIZED})                    -> 90;
-met2idx({?MQTT5_PUBACK_SENT, ?TOPIC_NAME_INVALID})                -> 91;
-met2idx({?MQTT5_PUBACK_SENT, ?PACKET_ID_IN_USE})                  -> 92;
-met2idx({?MQTT5_PUBACK_SENT, ?QUOTA_EXCEEDED})                    -> 93;
-met2idx({?MQTT5_PUBACK_SENT, ?PAYLOAD_FORMAT_INVALID})            -> 94;
-met2idx({?MQTT5_PUBCOMP_RECEIVED,?SUCCESS})                       -> 95;
-met2idx({?MQTT5_PUBCOMP_RECEIVED,?PACKET_ID_NOT_FOUND})           -> 96;
-met2idx({?MQTT5_PUBCOMP_SENT, ?SUCCESS})                          -> 97;
-met2idx({?MQTT5_PUBCOMP_SENT, ?PACKET_ID_NOT_FOUND})              -> 98;
-met2idx(?MQTT5_PUBLISH_RECEIVED)                                  -> 99;
-met2idx(?MQTT5_PUBLISH_SENT)                                      -> 100;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?SUCCESS})                       -> 101;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?NO_MATCHING_SUBSCRIBERS})       -> 102;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?UNSPECIFIED_ERROR})             -> 103;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?IMPL_SPECIFIC_ERROR})           -> 104;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?NOT_AUTHORIZED})                -> 105;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?TOPIC_NAME_INVALID})            -> 106;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?PACKET_ID_IN_USE})              -> 107;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?QUOTA_EXCEEDED})                -> 108;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?PAYLOAD_FORMAT_INVALID})        -> 109;
-met2idx({?MQTT5_PUBREC_SENT, ?SUCCESS})                           -> 110;
-met2idx({?MQTT5_PUBREC_SENT, ?NO_MATCHING_SUBSCRIBERS})           -> 111;
-met2idx({?MQTT5_PUBREC_SENT, ?UNSPECIFIED_ERROR})                 -> 112;
-met2idx({?MQTT5_PUBREC_SENT, ?IMPL_SPECIFIC_ERROR})               -> 113;
-met2idx({?MQTT5_PUBREC_SENT, ?NOT_AUTHORIZED})                    -> 114;
-met2idx({?MQTT5_PUBREC_SENT, ?TOPIC_NAME_INVALID})                -> 115;
-met2idx({?MQTT5_PUBREC_SENT, ?PACKET_ID_IN_USE})                  -> 116;
-met2idx({?MQTT5_PUBREC_SENT, ?QUOTA_EXCEEDED})                    -> 117;
-met2idx({?MQTT5_PUBREC_SENT, ?PAYLOAD_FORMAT_INVALID})            -> 118;
-met2idx({?MQTT5_PUBREL_RECEIVED, ?SUCCESS})                       -> 119;
-met2idx({?MQTT5_PUBREL_RECEIVED, ?PACKET_ID_NOT_FOUND})           -> 120;
-met2idx({?MQTT5_PUBREL_SENT, ?SUCCESS})                           -> 121;
-met2idx({?MQTT5_PUBREL_SENT, ?PACKET_ID_NOT_FOUND})               -> 122;
-met2idx(?MQTT5_SUBACK_SENT)                                       -> 123;
-met2idx(?MQTT5_SUBSCRIBE_RECEIVED)                                -> 124;
-met2idx(?MQTT5_UNSUBACK_SENT)                                     -> 125;
-met2idx(?MQTT5_UNSUBSCRIBE_RECEIVED)                              -> 126;
-met2idx({?MQTT5_AUTH_SENT,?SUCCESS})                              -> 127;
-met2idx({?MQTT5_AUTH_SENT,?CONTINUE_AUTHENTICATION})              -> 128;
-met2idx({?MQTT5_AUTH_SENT,?REAUTHENTICATE})                       -> 129;
-met2idx({?MQTT5_AUTH_RECEIVED, ?SUCCESS})                         -> 130;
-met2idx({?MQTT5_AUTH_RECEIVED, ?CONTINUE_AUTHENTICATION})         -> 131;
-met2idx({?MQTT5_AUTH_RECEIVED, ?REAUTHENTICATE})                  -> 132;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_ACCEPT})                   -> 133;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_PROTO_VER})                -> 134;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_INVALID_ID})               -> 135;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_SERVER})                   -> 136;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_CREDENTIALS})              -> 137;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_AUTH})                     -> 138;
-met2idx(?MQTT4_CONNECT_RECEIVED)                                  -> 139;
-met2idx(?MQTT4_PUBLISH_RECEIVED)                                  -> 140;
-met2idx(?MQTT4_PUBACK_RECEIVED)                                   -> 141;
-met2idx(?MQTT4_PUBREC_RECEIVED)                                   -> 142;
-met2idx(?MQTT4_PUBREL_RECEIVED)                                   -> 143;
-met2idx(?MQTT4_PUBCOMP_RECEIVED)                                  -> 144;
-met2idx(?MQTT4_SUBSCRIBE_RECEIVED)                                -> 145;
-met2idx(?MQTT4_UNSUBSCRIBE_RECEIVED)                              -> 146;
-met2idx(?MQTT4_PINGREQ_RECEIVED)                                  -> 147;
-met2idx(?MQTT4_DISCONNECT_RECEIVED)                               -> 148;
-met2idx(?MQTT4_PUBLISH_SENT)                                      -> 149;
-met2idx(?MQTT4_PUBACK_SENT)                                       -> 150;
-met2idx(?MQTT4_PUBREC_SENT)                                       -> 151;
-met2idx(?MQTT4_PUBREL_SENT)                                       -> 152;
-met2idx(?MQTT4_PUBCOMP_SENT)                                      -> 153;
-met2idx(?MQTT4_SUBACK_SENT)                                       -> 154;
-met2idx(?MQTT4_UNSUBACK_SENT)                                     -> 155;
-met2idx(?MQTT4_PINGRESP_SENT)                                     -> 156;
-met2idx(?MQTT4_PUBLISH_AUTH_ERROR)                                -> 157;
-met2idx(?MQTT4_SUBSCRIBE_AUTH_ERROR)                              -> 158;
-met2idx(?MQTT4_INVALID_MSG_SIZE_ERROR)                            -> 159;
-met2idx(?MQTT4_PUBACK_INVALID_ERROR)                              -> 160;
-met2idx(?MQTT4_PUBREC_INVALID_ERROR)                              -> 161;
-met2idx(?MQTT4_PUBCOMP_INVALID_ERROR)                             -> 162;
-met2idx(?MQTT4_PUBLISH_ERROR)                                     -> 163;
-met2idx(?MQTT4_SUBSCRIBE_ERROR)                                   -> 164;
-met2idx(?MQTT4_UNSUBSCRIBE_ERROR)                                 -> 165;
-met2idx(?METRIC_QUEUE_SETUP)                                      -> 166;
-met2idx(?METRIC_QUEUE_INITIALIZED_FROM_STORAGE)                   -> 167;
-met2idx(?METRIC_QUEUE_TEARDOWN)                                   -> 168;
-met2idx(?METRIC_QUEUE_MESSAGE_DROP)                               -> 169;
-met2idx(?METRIC_QUEUE_MESSAGE_EXPIRED)                            -> 170;
-met2idx(?METRIC_QUEUE_MESSAGE_UNHANDLED)                          -> 171;
-met2idx(?METRIC_QUEUE_MESSAGE_IN)                                 -> 172;
-met2idx(?METRIC_QUEUE_MESSAGE_OUT)                                -> 173;
-met2idx(?METRIC_CLIENT_EXPIRED)                                   -> 174;
-met2idx(?METRIC_CLUSTER_BYTES_RECEIVED)                           -> 175;
-met2idx(?METRIC_CLUSTER_BYTES_SENT)                               -> 176;
-met2idx(?METRIC_CLUSTER_BYTES_DROPPED)                            -> 177;
-met2idx(?METRIC_SOCKET_OPEN)                                      -> 178;
-met2idx(?METRIC_SOCKET_CLOSE)                                     -> 179;
-met2idx(?METRIC_SOCKET_ERROR)                                     -> 180;
-met2idx(?METRIC_BYTES_RECEIVED)                                   -> 181;
-met2idx(?METRIC_BYTES_SENT)                                       -> 182;
-met2idx(?METRIC_MSG_IN_RATE)                                      -> 183;
-met2idx(?METRIC_MSG_OUT_RATE)                                     -> 184;
-met2idx(?METRIC_BYTE_IN_RATE)                                     -> 185;
-met2idx(?METRIC_BYTE_OUT_RATE)                                    -> 186.
+met2idx({?MQTT5_PUBACK_RECEIVED, ?SUCCESS})                       -> 76;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?NO_MATCHING_SUBSCRIBERS})       -> 77;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?UNSPECIFIED_ERROR})             -> 78;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?IMPL_SPECIFIC_ERROR})           -> 79;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?NOT_AUTHORIZED})                -> 80;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?TOPIC_NAME_INVALID})            -> 81;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?PACKET_ID_IN_USE})              -> 82;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?QUOTA_EXCEEDED})                -> 83;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?PAYLOAD_FORMAT_INVALID})        -> 84;
+met2idx({?MQTT5_PUBACK_SENT, ?SUCCESS})                           -> 85;
+met2idx({?MQTT5_PUBACK_SENT, ?NO_MATCHING_SUBSCRIBERS})           -> 86;
+met2idx({?MQTT5_PUBACK_SENT, ?UNSPECIFIED_ERROR})                 -> 87;
+met2idx({?MQTT5_PUBACK_SENT, ?IMPL_SPECIFIC_ERROR})               -> 88;
+met2idx({?MQTT5_PUBACK_SENT, ?NOT_AUTHORIZED})                    -> 89;
+met2idx({?MQTT5_PUBACK_SENT, ?TOPIC_NAME_INVALID})                -> 90;
+met2idx({?MQTT5_PUBACK_SENT, ?PACKET_ID_IN_USE})                  -> 91;
+met2idx({?MQTT5_PUBACK_SENT, ?QUOTA_EXCEEDED})                    -> 92;
+met2idx({?MQTT5_PUBACK_SENT, ?PAYLOAD_FORMAT_INVALID})            -> 93;
+met2idx({?MQTT5_PUBCOMP_RECEIVED,?SUCCESS})                       -> 94;
+met2idx({?MQTT5_PUBCOMP_RECEIVED,?PACKET_ID_NOT_FOUND})           -> 95;
+met2idx({?MQTT5_PUBCOMP_SENT, ?SUCCESS})                          -> 96;
+met2idx({?MQTT5_PUBCOMP_SENT, ?PACKET_ID_NOT_FOUND})              -> 97;
+met2idx(?MQTT5_PUBLISH_RECEIVED)                                  -> 98;
+met2idx(?MQTT5_PUBLISH_SENT)                                      -> 99;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?SUCCESS})                       -> 100;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?NO_MATCHING_SUBSCRIBERS})       -> 101;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?UNSPECIFIED_ERROR})             -> 102;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?IMPL_SPECIFIC_ERROR})           -> 103;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?NOT_AUTHORIZED})                -> 104;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?TOPIC_NAME_INVALID})            -> 105;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?PACKET_ID_IN_USE})              -> 106;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?QUOTA_EXCEEDED})                -> 107;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?PAYLOAD_FORMAT_INVALID})        -> 108;
+met2idx({?MQTT5_PUBREC_SENT, ?SUCCESS})                           -> 109;
+met2idx({?MQTT5_PUBREC_SENT, ?NO_MATCHING_SUBSCRIBERS})           -> 110;
+met2idx({?MQTT5_PUBREC_SENT, ?UNSPECIFIED_ERROR})                 -> 111;
+met2idx({?MQTT5_PUBREC_SENT, ?IMPL_SPECIFIC_ERROR})               -> 112;
+met2idx({?MQTT5_PUBREC_SENT, ?NOT_AUTHORIZED})                    -> 113;
+met2idx({?MQTT5_PUBREC_SENT, ?TOPIC_NAME_INVALID})                -> 114;
+met2idx({?MQTT5_PUBREC_SENT, ?PACKET_ID_IN_USE})                  -> 115;
+met2idx({?MQTT5_PUBREC_SENT, ?QUOTA_EXCEEDED})                    -> 116;
+met2idx({?MQTT5_PUBREC_SENT, ?PAYLOAD_FORMAT_INVALID})            -> 117;
+met2idx({?MQTT5_PUBREL_RECEIVED, ?SUCCESS})                       -> 118;
+met2idx({?MQTT5_PUBREL_RECEIVED, ?PACKET_ID_NOT_FOUND})           -> 119;
+met2idx({?MQTT5_PUBREL_SENT, ?SUCCESS})                           -> 120;
+met2idx({?MQTT5_PUBREL_SENT, ?PACKET_ID_NOT_FOUND})               -> 121;
+met2idx(?MQTT5_SUBACK_SENT)                                       -> 122;
+met2idx(?MQTT5_SUBSCRIBE_RECEIVED)                                -> 123;
+met2idx(?MQTT5_UNSUBACK_SENT)                                     -> 124;
+met2idx(?MQTT5_UNSUBSCRIBE_RECEIVED)                              -> 125;
+met2idx({?MQTT5_AUTH_SENT,?SUCCESS})                              -> 126;
+met2idx({?MQTT5_AUTH_SENT,?CONTINUE_AUTHENTICATION})              -> 127;
+met2idx({?MQTT5_AUTH_SENT,?REAUTHENTICATE})                       -> 128;
+met2idx({?MQTT5_AUTH_RECEIVED, ?SUCCESS})                         -> 129;
+met2idx({?MQTT5_AUTH_RECEIVED, ?CONTINUE_AUTHENTICATION})         -> 130;
+met2idx({?MQTT5_AUTH_RECEIVED, ?REAUTHENTICATE})                  -> 131;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_ACCEPT})                   -> 132;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_PROTO_VER})                -> 133;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_INVALID_ID})               -> 134;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_SERVER})                   -> 135;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_CREDENTIALS})              -> 136;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_AUTH})                     -> 137;
+met2idx(?MQTT4_CONNECT_RECEIVED)                                  -> 138;
+met2idx(?MQTT4_PUBLISH_RECEIVED)                                  -> 139;
+met2idx(?MQTT4_PUBACK_RECEIVED)                                   -> 140;
+met2idx(?MQTT4_PUBREC_RECEIVED)                                   -> 141;
+met2idx(?MQTT4_PUBREL_RECEIVED)                                   -> 142;
+met2idx(?MQTT4_PUBCOMP_RECEIVED)                                  -> 143;
+met2idx(?MQTT4_SUBSCRIBE_RECEIVED)                                -> 144;
+met2idx(?MQTT4_UNSUBSCRIBE_RECEIVED)                              -> 145;
+met2idx(?MQTT4_PINGREQ_RECEIVED)                                  -> 146;
+met2idx(?MQTT4_DISCONNECT_RECEIVED)                               -> 147;
+met2idx(?MQTT4_PUBLISH_SENT)                                      -> 148;
+met2idx(?MQTT4_PUBACK_SENT)                                       -> 149;
+met2idx(?MQTT4_PUBREC_SENT)                                       -> 150;
+met2idx(?MQTT4_PUBREL_SENT)                                       -> 151;
+met2idx(?MQTT4_PUBCOMP_SENT)                                      -> 152;
+met2idx(?MQTT4_SUBACK_SENT)                                       -> 153;
+met2idx(?MQTT4_UNSUBACK_SENT)                                     -> 154;
+met2idx(?MQTT4_PINGRESP_SENT)                                     -> 155;
+met2idx(?MQTT4_PUBLISH_AUTH_ERROR)                                -> 156;
+met2idx(?MQTT4_SUBSCRIBE_AUTH_ERROR)                              -> 157;
+met2idx(?MQTT4_INVALID_MSG_SIZE_ERROR)                            -> 158;
+met2idx(?MQTT4_PUBACK_INVALID_ERROR)                              -> 159;
+met2idx(?MQTT4_PUBREC_INVALID_ERROR)                              -> 160;
+met2idx(?MQTT4_PUBCOMP_INVALID_ERROR)                             -> 161;
+met2idx(?MQTT4_PUBLISH_ERROR)                                     -> 162;
+met2idx(?MQTT4_SUBSCRIBE_ERROR)                                   -> 163;
+met2idx(?MQTT4_UNSUBSCRIBE_ERROR)                                 -> 164;
+met2idx(?METRIC_QUEUE_SETUP)                                      -> 165;
+met2idx(?METRIC_QUEUE_INITIALIZED_FROM_STORAGE)                   -> 166;
+met2idx(?METRIC_QUEUE_TEARDOWN)                                   -> 167;
+met2idx(?METRIC_QUEUE_MESSAGE_DROP)                               -> 168;
+met2idx(?METRIC_QUEUE_MESSAGE_EXPIRED)                            -> 169;
+met2idx(?METRIC_QUEUE_MESSAGE_UNHANDLED)                          -> 170;
+met2idx(?METRIC_QUEUE_MESSAGE_IN)                                 -> 171;
+met2idx(?METRIC_QUEUE_MESSAGE_OUT)                                -> 172;
+met2idx(?METRIC_CLIENT_EXPIRED)                                   -> 173;
+met2idx(?METRIC_CLUSTER_BYTES_RECEIVED)                           -> 174;
+met2idx(?METRIC_CLUSTER_BYTES_SENT)                               -> 175;
+met2idx(?METRIC_CLUSTER_BYTES_DROPPED)                            -> 176;
+met2idx(?METRIC_SOCKET_OPEN)                                      -> 177;
+met2idx(?METRIC_SOCKET_CLOSE)                                     -> 178;
+met2idx(?METRIC_SOCKET_ERROR)                                     -> 179;
+met2idx(?METRIC_BYTES_RECEIVED)                                   -> 180;
+met2idx(?METRIC_BYTES_SENT)                                       -> 181;
+met2idx(?METRIC_MSG_IN_RATE)                                      -> 182;
+met2idx(?METRIC_MSG_OUT_RATE)                                     -> 183;
+met2idx(?METRIC_BYTE_IN_RATE)                                     -> 184;
+met2idx(?METRIC_BYTE_OUT_RATE)                                    -> 185;
+met2idx(mqtt_connack_not_authorized_sent)                         -> 186;
+met2idx(mqtt_connack_bad_credentials_sent)                        -> 187;
+met2idx(mqtt_connack_server_unavailable_sent)                     -> 188;
+met2idx(mqtt_connack_identifier_rejected_sent)                    -> 189;
+met2idx(mqtt_connack_unacceptable_protocol_sent)                  -> 190;
+met2idx(mqtt_connack_accepted_sent)                               -> 191.
