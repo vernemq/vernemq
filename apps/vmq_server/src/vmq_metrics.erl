@@ -434,8 +434,16 @@ init([]) ->
     NumEntries = length(lists:sort(Idxs)),
     NumEntries = length(lists:usort(Idxs)),
 
-    ARef = atomics:new(NumEntries, [{signed, false}]),
-    persistent_term:put(?MODULE, ARef),
+    %% only alloc a new atomics array if one doesn't already exist!
+    case catch persistent_term:get(?MODULE) of
+        {'EXIT', {badarg,_}} ->
+            %% allocate twice the number of entries to make it possible to add
+            %% new metrics during a hot code upgrade.
+            ARef = atomics:new(2*NumEntries, [{signed, false}]),
+            persistent_term:put(?MODULE, ARef);
+        _ExistingRef ->
+            ok
+    end,
     MetricsInfo = register_metrics(#{}),
     {ok, #state{info=MetricsInfo}}.
 
