@@ -143,8 +143,8 @@ handle_info({deliver_remote, Topic, Payload},
       fun({{in, T}, LocalPrefix}) ->
               case match(Topic, T) of
                   true ->
-                      ok = PublishFun(routing_key(LocalPrefix, Topic), Payload,
-                                     #{});
+                      % ignore if we're ready or not.
+                      PublishFun(routing_key(LocalPrefix, Topic), Payload, #{});
                   false ->
                       ok
               end;

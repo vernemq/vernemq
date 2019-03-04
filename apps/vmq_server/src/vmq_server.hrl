@@ -76,4 +76,6 @@
                                       {ok, msg()} |
                                       {ok, msg(), session_ctrl()} |
                                       {error, atom()}).
+
+-type reg_view_fold_fun() :: fun((node() | {subscriber_id(), qos(), client_id() | any()}, any()) -> any()).
 -endif.

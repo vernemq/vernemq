@@ -196,7 +196,7 @@ process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St) ->
     process(Rest, St).
 
 publish({_, _} = SubscriberIdAndSubInfo, From, Msg) ->
-    vmq_reg:publish(SubscriberIdAndSubInfo, From, Msg);
+    vmq_reg:remote_publish(SubscriberIdAndSubInfo, From, Msg);
 publish(_Node, _, Msg) ->
     %% we ignore remote subscriptions, they are already covered
     %% by original publisher

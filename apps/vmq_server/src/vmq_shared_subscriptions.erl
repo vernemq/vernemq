@@ -13,79 +13,92 @@
 %% limitations under the License.
 -module(vmq_shared_subscriptions).
 
--export([publish/3]).
+-export([publish/5]).
 
-publish(_,_, undefined) -> ok;
-publish(Msg, Policy, SubscriberGroups) when is_map(SubscriberGroups) ->
-    publish(Msg, Policy, maps:to_list(SubscriberGroups));
-publish(_,_, []) -> ok;
-publish(Msg, Policy, [{Group, []}|Rest]) ->
+publish(Msg, Policy, SubscriberGroups, LocalMatches, RemoteMatches) ->
+    publish(Msg, Policy, SubscriberGroups, {LocalMatches, RemoteMatches}).
+
+publish(_,_, undefined, Acc) -> Acc;
+publish(Msg, Policy, SubscriberGroups, Acc) when is_map(SubscriberGroups) ->
+    publish(Msg, Policy, maps:to_list(SubscriberGroups), Acc);
+publish(_,_, [], Acc) -> Acc;
+publish(Msg, Policy, [{Group, []}|Rest], Acc) ->
     lager:debug("can't publish to shared subscription ~p due to no subscribers, msg: ~p", [Group, Msg]),
-    publish(Msg, Policy, Rest);
-publish(Msg, Policy, [{Group, SubscriberGroup}|Rest]) ->
+    publish(Msg, Policy, Rest, Acc);
+publish(Msg, Policy, [{Group, SubscriberGroup}|Rest], Acc0) ->
     Subscribers = filter_subscribers(SubscriberGroup, Policy),
     %% Randomize subscribers once.
     RandSubscribers = [S||{_,S} <- lists:sort([{rand:uniform(), N} || N <- Subscribers])],
-    case publish_to_group(Msg, RandSubscribers) of
-        ok ->
-            publish(Msg, Policy, Rest);
+    case publish_to_group(Msg, RandSubscribers, Acc0) of
+        {ok, Acc1} ->
+            publish(Msg, Policy, Rest, Acc1);
         {error, Reason} ->
             lager:debug("can't publish to shared subscription ~p due to '~p', msg: Msg",
                         [Group, Reason, Msg]),
-            publish(Msg, Policy, Rest)
+            publish(Msg, Policy, Rest, Acc0)
     end.
 
-publish_to_group(Msg, Subscribers) ->
-    case publish_online(Msg, Subscribers) of
-        ok ->
-            ok;
+publish_to_group(Msg, Subscribers, Acc0) ->
+    case publish_online(Msg, Subscribers, Acc0) of
+        {ok, Acc1} ->
+            {ok, Acc1};
         NotOnlineSubscribers ->
-            publish_any(Msg, NotOnlineSubscribers)
+            publish_any(Msg, NotOnlineSubscribers, Acc0)
     end.
 
-publish_online(Msg, Subscribers) ->
+publish_online(Msg, Subscribers, Acc0) ->
     try
         lists:foldl(
-          fun(Subscriber, Acc) ->
-                  case publish_(Msg, Subscriber, online) of
-                      ok ->
-                          throw(done);
+          fun(Subscriber, SubAcc) ->
+                  case publish_(Msg, Subscriber, online, Acc0) of
+                      {ok, Acc1} ->
+                          throw({done, Acc1});
                       {error, offline} ->
-                          [Subscriber|Acc];
+                          [Subscriber|SubAcc];
                       {error, draining} ->
-                          [Subscriber|Acc];
+                          [Subscriber|SubAcc];
                       _ ->
-                          Acc
+                          SubAcc
                   end
           end, [], Subscribers)
     catch
-        done -> ok
+        {done, Acc2} -> {ok, Acc2}
     end.
 
-publish_any(_Msg, []) -> {error, no_subscribers};
-publish_any(Msg, [Subscriber|Subscribers]) ->
-    case publish_(Msg, Subscriber, any) of
-        ok ->
-            ok;
+publish_any(_Msg, [], _Acc) -> {error, no_subscribers};
+publish_any(Msg, [Subscriber|Subscribers], Acc0) ->
+    case publish_(Msg, Subscriber, any, Acc0) of
+        {ok, Acc1} ->
+            {ok, Acc1};
         {error, _} ->
-            publish_any(Msg, Subscribers)
+            publish_any(Msg, Subscribers, Acc0)
     end.
 
-publish_(Msg, {Node, SubscriberId, QoS}, QState) when Node == node() ->
+publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) when Node == node() ->
     case vmq_reg:get_queue_pid(SubscriberId) of
         not_found ->
             {error, not_found};
         QPid ->
             try
-                vmq_queue:enqueue_many(QPid, [{deliver, QoS, Msg}], #{states => [QState]})
+                case vmq_queue:enqueue_many(QPid, [{deliver, QoS, Msg}], #{states => [QState]}) of
+                    ok ->
+                        {ok, {Local + 1, Remote}};
+                    E ->
+                        E
+                end
             catch
                 _:_ ->
                     {error, cant_enqueue}
             end
     end;
-publish_(Msg, {Node, SubscriberId, QoS}, QState) ->
+publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) ->
     Term = {enqueue_many, SubscriberId, [{deliver, QoS, Msg}], #{states => [QState]}},
-    vmq_cluster:remote_enqueue(Node, Term, true).
+    case vmq_cluster:remote_enqueue(Node, Term, true) of
+        ok ->
+            {ok, {Local, Remote + 1}};
+        E ->
+            E
+    end.
 
 filter_subscribers(Subscribers, random) ->
     Subscribers;

@@ -1142,7 +1142,7 @@ direct_plugin_exports_test(Cfg) ->
                 MustBePresent =:= IsPresent
         end,
     vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, true) end, 100, 10),
-    ok = PubFun3(WTopic, <<"msg1">>, #{}),
+    {ok, {1, 0}} = PubFun3(WTopic, <<"msg1">>, #{}),
     receive
         {deliver, WTopic, <<"msg1">>, 0, false, false} -> ok;
         Other -> throw({received_unexpected_msg, Other})
@@ -1152,7 +1152,7 @@ direct_plugin_exports_test(Cfg) ->
     end,
     ok = UnsubFun1(WTopic),
     vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, false) end, 100, 10),
-    ok = PubFun3(WTopic, <<"msg2">>, #{}),
+    {ok, {0, 0}} = PubFun3(WTopic, <<"msg2">>, #{}),
     receive
         M -> throw({received_unexpected_msg_from_direct_plugin_exports, M})
     after

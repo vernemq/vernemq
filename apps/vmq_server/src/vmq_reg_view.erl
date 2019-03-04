@@ -19,7 +19,7 @@
 
 -callback fold(SubscriberId :: subscriber_id(),
                Topic :: topic(),
-               FoldFun :: fun((node() | {subscriber_id(), qos(), client_id() | any()} , any()) -> any()),
+               FoldFun :: reg_view_fold_fun(),
                Accumulator :: any()
 
 ) -> any().
