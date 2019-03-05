@@ -22,10 +22,15 @@
 - Use `atomics` and `persistent_term` to handle metrics instead of using the
   `mzmetrics` library which has been removed.
 - Change `vmq_reg:publish/4` to return `{ok, {NumLocalMatches, NumRemoteMatchs}}`
-  instead of `ok`. This introduces a breaking change to the *inofficial* publish
+  instead of `ok`. This introduces a breaking change to the *unofficial* publish
   API provided by the `vmq_reg:direct_publish_exports/1`.
 - Add the `router_matches_local` and `router_matches_remote` counter metrics,
   counting the total number of matched local and remote subscriptions.
+- Add a *routing score* to every cluster node listed on the VerneMQ status page. 
+  The routing score consists of two percentages similar to `75 / 25` indicating
+  that 75% of the received MQTT publish frames were routed to local subscribers
+  and 25% were forwarded to subscribers on different cluster nodes. The routing
+  score can be used to detect imbalances in a VerneMQ cluster.
 
 ## VerneMQ 1.7.0
 
