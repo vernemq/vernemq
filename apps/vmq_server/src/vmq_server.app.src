@@ -17,7 +17,6 @@
                   vmq_ql,
                   vmq_plugin,
                   clique,
-                  mzmetrics,
                   jsx,
                   gen_server2
                  ]},

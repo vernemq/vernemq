@@ -19,6 +19,8 @@
 - Fix retry of MQTT publish frame in `vmq_bridge` (#1084).
 - Fix outgoing qos2 message id bug (#1045).
 - VerneMQ now requires Erlang/OTP 21.2 or newer to build.
+- Use `atomics` and `persistent_term` to handle metrics instead of using the
+  `mzmetrics` library which has been removed.
 
 ## VerneMQ 1.7.0
 
