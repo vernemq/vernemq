@@ -21,6 +21,11 @@
 - VerneMQ now requires Erlang/OTP 21.2 or newer to build.
 - Use `atomics` and `persistent_term` to handle metrics instead of using the
   `mzmetrics` library which has been removed.
+- Change `vmq_reg:publish/4` to return `{ok, {NumLocalMatches, NumRemoteMatchs}}`
+  instead of `ok`. This introduces a breaking change to the *inofficial* publish
+  API provided by the `vmq_reg:direct_publish_exports/1`.
+- Add the `router_matches_local` and `router_matches_remote` counter metrics,
+  counting the total number of matched local and remote subscriptions.
 
 ## VerneMQ 1.7.0
 
