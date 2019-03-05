@@ -95,3 +95,5 @@
 -define(METRIC_MSG_OUT_RATE, msg_out_rate).
 -define(METRIC_BYTE_IN_RATE, byte_in_rate).
 -define(METRIC_BYTE_OUT_RATE, byte_out_rate).
+-define(METRIC_ROUTER_MATCHES_LOCAL, router_matches_local).
+-define(METRIC_ROUTER_MATCHES_REMOTE, router_matches_remote).

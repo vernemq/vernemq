@@ -248,10 +248,10 @@ incr_cluster_bytes_dropped(V) ->
     incr_item(?METRIC_CLUSTER_BYTES_DROPPED, V).
 
 incr_router_matches_local(V) ->
-    incr_item('router_matches_local', V).
+    incr_item(?METRIC_ROUTER_MATCHES_LOCAL, V).
 
 incr_router_matches_remote(V) ->
-    incr_item('router_matches_remote', V).
+    incr_item(?METRIC_ROUTER_MATCHES_REMOTE, V).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -1268,9 +1268,11 @@ met2idx(?METRIC_MSG_IN_RATE)                                      -> 182;
 met2idx(?METRIC_MSG_OUT_RATE)                                     -> 183;
 met2idx(?METRIC_BYTE_IN_RATE)                                     -> 184;
 met2idx(?METRIC_BYTE_OUT_RATE)                                    -> 185;
-met2idx(mqtt_connack_not_authorized_sent)                         -> 186;
-met2idx(mqtt_connack_bad_credentials_sent)                        -> 187;
-met2idx(mqtt_connack_server_unavailable_sent)                     -> 188;
-met2idx(mqtt_connack_identifier_rejected_sent)                    -> 189;
-met2idx(mqtt_connack_unacceptable_protocol_sent)                  -> 190;
-met2idx(mqtt_connack_accepted_sent)                               -> 191.
+met2idx(?METRIC_ROUTER_MATCHES_LOCAL)                             -> 186;
+met2idx(?METRIC_ROUTER_MATCHES_REMOTE)                            -> 187;
+met2idx(mqtt_connack_not_authorized_sent)                         -> 188;
+met2idx(mqtt_connack_bad_credentials_sent)                        -> 189;
+met2idx(mqtt_connack_server_unavailable_sent)                     -> 190;
+met2idx(mqtt_connack_identifier_rejected_sent)                    -> 191;
+met2idx(mqtt_connack_unacceptable_protocol_sent)                  -> 192;
+met2idx(mqtt_connack_accepted_sent)                               -> 193.
