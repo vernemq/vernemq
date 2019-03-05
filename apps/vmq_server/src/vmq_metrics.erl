@@ -74,7 +74,10 @@
 
          incr_cluster_bytes_sent/1,
          incr_cluster_bytes_received/1,
-         incr_cluster_bytes_dropped/1
+         incr_cluster_bytes_dropped/1,
+
+         incr_router_matches_local/1,
+         incr_router_matches_remote/1
         ]).
 
 -export([metrics/0,
@@ -243,6 +246,12 @@ incr_cluster_bytes_sent(V) ->
 
 incr_cluster_bytes_dropped(V) ->
     incr_item(?METRIC_CLUSTER_BYTES_DROPPED, V).
+
+incr_router_matches_local(V) ->
+    incr_item('router_matches_local', V).
+
+incr_router_matches_remote(V) ->
+    incr_item('router_matches_remote', V).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -702,7 +711,9 @@ counter_entries_def() ->
      m(counter, [], client_expired, client_expired, <<"Not in use (deprecated)">>),
      m(counter, [], cluster_bytes_received, cluster_bytes_received, <<"The number of bytes received from other cluster nodes.">>),
      m(counter, [], cluster_bytes_sent, cluster_bytes_sent, <<"The number of bytes send to other cluster nodes.">>),
-     m(counter, [], cluster_bytes_dropped, cluster_bytes_dropped, <<"The number of bytes dropped while sending data to other cluster nodes.">>)
+     m(counter, [], cluster_bytes_dropped, cluster_bytes_dropped, <<"The number of bytes dropped while sending data to other cluster nodes.">>),
+     m(counter, [], router_matches_local, router_matches_local, <<"The number of matched local subscriptions.">>),
+     m(counter, [], router_matches_remote, router_matches_remote, <<"The number of matched remote subscriptions.">>)
     ].
 
 

@@ -323,7 +323,10 @@ publish(false, RegView, ClientId, #vmq_msg{mountpoint=MP,
 % remote_publish/3 is called by the vmq_cluster_com as the fold fun inside a `vmq_reg_view:fold`
 remote_publish(SubscriberIdAndSubInfo, FromClientId, Msg) ->
     case publish_fold_fun(SubscriberIdAndSubInfo, FromClientId, #publish_fold_acc{msg=Msg}) of
-        {ok, _} -> ok;
+        {ok, {LocalMatches, RemoteMatches}} ->
+            vmq_metrics:incr_router_matches_local(LocalMatches),
+            vmq_metrics:incr_router_matches_remote(RemoteMatches),
+            ok;
         E -> E
     end.
 
@@ -336,6 +339,8 @@ publish_fold_wrapper(RegView, ClientId, Topic, #vmq_msg{sg_policy = SGPolicy,
                       local_matches=LocalMatches0,
                       remote_matches=RemoteMatches0} = vmq_reg_view:fold(RegView, {MP, ClientId}, Topic, fun publish_fold_fun/3, Acc),
     {LocalMatches1, RemoteMatches1} = vmq_shared_subscriptions:publish(NewMsg, SGPolicy, SubscriberGroups, LocalMatches0, RemoteMatches0),
+    vmq_metrics:incr_router_matches_local(LocalMatches1),
+    vmq_metrics:incr_router_matches_remote(RemoteMatches1),
     {ok, {LocalMatches1, RemoteMatches1}}.
 
 %% publish_fold_fun/3 is used as the fold function in RegView:fold/4
