@@ -1,4 +1,5 @@
 -module(webhooks_handler).
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -include("vmq_webhooks_test.hrl").
 
 -export([init/3]).
@@ -126,12 +127,12 @@ auth_on_register_m5(#{client_id := ?CHANGED_CLIENT_ID}) ->
                            client_id => <<"changed_client_id">>}}};
 
 auth_on_register_m5(#{client_id := ?WITH_PROPERTIES}) ->
+    Properties = #{?P_USER_PROPERTY => [[key(<<"key1">>), val(<<"val1">>)],
+                                        [key(<<"key1">>), val(<<"val2">>)],
+                                        [key(<<"key2">>), val(<<"val2">>)]]
+                  },
     {200, #{result => <<"ok">>,
-            modifiers => #{user_property => [[key(<<"key1">>), val(<<"val1">>)],
-                                             [key(<<"key1">>), val(<<"val2">>)],
-                                             [key(<<"key2">>), val(<<"val2">>)]]
-                          }
-           }
+            modifiers => #{properties => Properties}}
     };
 
 auth_on_register_m5(#{subscriberid := <<"internal_server_error">>}) ->
@@ -355,15 +356,16 @@ on_client_gone(#{mountpoint := ?MOUNTPOINT_BIN,
     {200, #{}}.
 
 on_auth_m5(#{properties :=
-                 #{authentication_method := <<"AUTH_METHOD">>,
-                   authentication_data := <<"QVVUSF9EQVRBMA==">>}, %% b64(<<"AUTH_DATA0">>)
-           username := ?USERNAME,
-           mountpoint := ?MOUNTPOINT_BIN,
+                 #{?P_AUTHENTICATION_METHOD := <<"AUTH_METHOD">>,
+                   ?P_AUTHENTICATION_DATA := <<"QVVUSF9EQVRBMA==">>}, %% b64(<<"AUTH_DATA0">>)
+             username := ?USERNAME,
+             mountpoint := ?MOUNTPOINT_BIN,
              client_id := ?ALLOWED_CLIENT_ID}) ->
+    Props = #{?P_AUTHENTICATION_METHOD => <<"AUTH_METHOD">>,
+              ?P_AUTHENTICATION_DATA => base64:encode(<<"AUTH_DATA1">>)},
     {200, #{result => <<"ok">>,
             modifiers =>
-                #{authentication_method => <<"AUTH_METHOD">>,
-                  authentication_data => base64:encode(<<"AUTH_DATA1">>),
+                #{properties => Props,
                   reason_code => 0}}}.
 
 terminate(_Reason, _Req, _State) ->

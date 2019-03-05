@@ -181,9 +181,10 @@ auth_on_register_m5_test(_) ->
     WantUserProps = [{<<"key1">>, <<"val1">>},
                      {<<"key1">>, <<"val2">>},
                      {<<"key2">>, <<"val2">>}],
-    {ok, #{user_property := GotUserProps}}
+    {ok, #{properties := #{?P_USER_PROPERTY := GotUserProps}}}
         = vmq_plugin:all_till_ok(auth_on_register_m5,
-                      [?PEER, {?MOUNTPOINT, ?WITH_PROPERTIES}, ?USERNAME, ?PASSWORD, true, #{p_user_property => WantUserProps}]),
+                      [?PEER, {?MOUNTPOINT, ?WITH_PROPERTIES}, ?USERNAME, ?PASSWORD, true,
+                       #{?P_USER_PROPERTY => WantUserProps}]),
     [] = WantUserProps -- GotUserProps,
     deregister_hook(auth_on_register_m5, ?ENDPOINT).
 
@@ -324,8 +325,8 @@ on_deliver_m5_test(_) ->
 on_auth_m5_test(_) ->
     register_hook(on_auth_m5, ?ENDPOINT),
     {ok,
-     #{authentication_method := <<"AUTH_METHOD">>,
-       authentication_data := <<"AUTH_DATA1">>}}
+     #{properties := #{?P_AUTHENTICATION_METHOD := <<"AUTH_METHOD">>,
+                       ?P_AUTHENTICATION_DATA := <<"AUTH_DATA1">>}}}
         = vmq_plugin:all_till_ok(on_auth_m5,
                                  [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID},
                                   #{?P_AUTHENTICATION_METHOD => <<"AUTH_METHOD">>,

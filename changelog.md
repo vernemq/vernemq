@@ -31,6 +31,24 @@
   that 75% of the received MQTT publish frames were routed to local subscribers
   and 25% were forwarded to subscribers on different cluster nodes. The routing
   score can be used to detect imbalances in a VerneMQ cluster.
+- The MQTT 5.0 plugin hook definitions have been updated as follows:
+  - The `Payload` and `Properties` arguments to the `on_deliver_m5` hook have
+    been swapped to be consistent with all the other `_m5` hooks.
+  - property modifiers are now using the same names as the properties in the
+    incoming properties, for example the `user_property` is now
+    `p_user_property`.
+  - Property modifiers have been moved into a `properties` modifier map. So for
+    example instead of returning `{ok, #{p_user_property => ...}}` one now
+    returns `{ok, #{property => #{p_user_property => ...}}}`. This change makes
+    it possible to drop properties from a plugin hook.
+  - In the `vmq_webhooks` plugin property modifiers have been moved into a
+    separate JSON object with the key `properties` inside the modifiers JSON
+    object. The `vmq_webhooks`.
+  - The `{ok, binary()}` return clause has been removed from the `on_deliver_m5`
+    hook, use the modifier map (`{ok, Modifiers}`) instead.
+  - The `{ok, binary()}` return clause has been removed from the
+    `auth_on_publish_m5` hook, use the modifier map (`{ok, Modifiers}`) instead.
+  - Note, MQTT 5.0 support in VerneMQ is still in Beta.
 
 ## VerneMQ 1.7.0
 

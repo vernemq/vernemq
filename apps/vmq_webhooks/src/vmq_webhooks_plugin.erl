@@ -685,23 +685,24 @@ atomize_keys(Mods) ->
               {K,V}
       end, Mods).
 
-normalize_properties(Mods, Opts) ->
-    lists:map(
-      fun({K,V}) ->
-              normalize_property(K, V, Opts)
-      end, Mods).
+normalize_properties(Modifiers, Opts) ->
+    case lists:keyfind(properties, 1, Modifiers) of
+        false ->
+            Modifiers;
+        {_, Props} ->
+            NewProps =
+                maps:from_list(lists:map(
+                                 fun({K,V}) ->
+                                         normalize_property(binary_to_existing_atom(K,utf8), V, Opts)
+                                 end, Props)),
+            lists:keyreplace(properties, 1, Modifiers, {properties, NewProps})
+    end.
 
-normalize_property(user_property, Values, _Opts) ->
+normalize_property(?P_USER_PROPERTY, Values, _Opts) ->
     NValues = [{K,V} || [{_,K},{_,V}] <- Values],
-    {user_property, NValues};
-normalize_property(message_expiry_interval, Val, _Opts) ->
-    {message_expiry_interval, Val};
-normalize_property(session_expiry_interval, Val, _Opts) ->
-    {session_expiry_interval, Val};
-normalize_property(authentication_method, Val, _Opts) ->
-    {authentication_method, Val};
-normalize_property(authentication_data, Val, _Opts) ->
-    {authentication_data, base64:decode(Val)};
+    {?P_USER_PROPERTY, NValues};
+normalize_property(?P_AUTHENTICATION_DATA, Val, _Opts) ->
+    {?P_AUTHENTICATION_DATA, base64:decode(Val)};
 normalize_property(K,V, _Opts) ->
     %% let through unmodified.
     {K,V}.
@@ -820,9 +821,9 @@ encode_property(p_user_property, Values, Opts) ->
       end, Values),
     {user_property, Values1};
 encode_property(?P_AUTHENTICATION_DATA, Val, _Opts) ->
-    {authentication_data, base64:encode(Val)};
+    {?P_AUTHENTICATION_DATA, base64:encode(Val)};
 encode_property(?P_AUTHENTICATION_METHOD, Val, _Opts) ->
-    {authentication_method, Val}.
+    {?P_AUTHENTICATION_METHOD, Val}.
 
 
 maybe_b64encode(V, #{base64 := false}) -> V;

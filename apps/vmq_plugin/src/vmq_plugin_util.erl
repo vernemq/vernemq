@@ -66,20 +66,31 @@ to_internal_qos(V) when is_integer(V) ->
     V.
 
 modifiers(auth_on_register_m5) ->
-    [{user_property, fun user_property/1},
-     {session_expiry_interval, fun val_int/1}|
+    [{properties,
+      val_properties_fun([{?P_USER_PROPERTY, fun user_property/1},
+                          {?P_SESSION_EXPIRY_INTERVAL, fun val_int/1},
+                          {?P_RESPONSE_TOPIC, fun val_binary/1},
+                          {?P_CORRELATION_DATA, fun val_pub_topic/1}])}|
      modifiers(auth_on_register)];
 modifiers(auth_on_publish_m5) ->
-    [{user_property, fun user_property/1},
-     {message_expiry_interval, fun val_int/1}|
+    [{properties,
+      val_properties_fun([{?P_USER_PROPERTY, fun user_property/1},
+                          {?P_MESSAGE_EXPIRY_INTERVAL, fun val_int/1}])}|
      modifiers(auth_on_publish)];
 modifiers(auth_on_subscribe_m5) ->
     [{topics, fun val_sub_topics/1}];
 modifiers(on_unsubscribe_m5) ->
     [{topics, fun val_unsub_topics/1}];
+modifiers(on_deliver_m5) ->
+    [{properties,
+      val_properties_fun([{?P_USER_PROPERTY, fun user_property/1},
+                          {?P_RESPONSE_TOPIC, fun val_binary/1},
+                          {?P_CORRELATION_DATA, fun val_pub_topic/1}])}|
+    modifiers(on_deliver)];
 modifiers(on_auth_m5) ->
-    [{authentication_method, fun val_binary/1},
-     {authentication_data, fun val_binary/1},
+    [{properties,
+      val_properties_fun([{?P_AUTHENTICATION_METHOD, fun val_binary/1},
+                          {?P_AUTHENTICATION_DATA, fun val_binary/1}])},
      {reason_code, fun val_int/1}];
 modifiers(auth_on_register) ->
     [{allow_register, fun val_bool/1},
@@ -141,6 +152,30 @@ val_subscriber_id([{_, _}|_] = SubscriberIdModifier) ->
             false
     end;
 val_subscriber_id(_) -> false.
+
+
+-spec val_properties_fun([{atom(), fun()}]) -> fun().
+val_properties_fun(AllowedProperties) ->
+    fun(Properties) when is_map(Properties) ->
+            val_properties(maps:to_list(Properties), AllowedProperties)
+    end.
+
+val_properties([], _AllowedProperties) ->
+    true;
+val_properties([{PropKey, PropVal}|Rest], AllowedProperties) ->
+    case lists:keyfind(PropKey, 1, AllowedProperties) of
+        false ->
+            lager:error("property not allowed ~p ~p", [PropKey, PropVal]),
+            false;
+        {_, ValidatorFun} ->
+            case ValidatorFun(PropVal) of
+                true ->
+                    val_properties(Rest, AllowedProperties);
+                false ->
+                    lager:error("invalid property ~p ~p", [PropKey, PropVal]),
+                    false
+            end
+    end.
 
 user_property(Vals) ->
     %% check that val is a list of {binary(), binary()}.
