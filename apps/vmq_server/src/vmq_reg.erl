@@ -321,8 +321,9 @@ publish(false, RegView, ClientId, #vmq_msg{mountpoint=MP,
     end.
 
 % remote_publish/4 is called by the vmq_cluster_com
--spec remote_publish(module(), subscriber_id(), topic(), msg()) -> ok.
-remote_publish(RegView, SubscriberId, Topic, Msg) ->
+-spec remote_publish(module(), mountpoint(), topic(), msg()) -> ok.
+remote_publish(RegView, MP, Topic, Msg) ->
+    SubscriberId = {MP, ?INTERNAL_CLIENT_ID},
     Acc = #publish_fold_acc{msg=Msg},
     _ = vmq_reg_view:fold(RegView, SubscriberId, Topic, fun remote_publish_fold_fun/3, Acc),
     % don't increment the router_matches_[local|remote] here, as they're already counted
