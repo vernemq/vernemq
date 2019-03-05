@@ -59,10 +59,11 @@
 -export([retain_pre/1]).
 
 -record(publish_fold_acc, {
-          msg,
+          msg                               :: msg(),
           subscriber_groups=undefined,
-          local_matches=0,
-          remote_matches=0}).
+          local_matches=0                   :: non_neg_integer(),
+          remote_matches=0                  :: non_neg_integer()
+         }).
 
 -define(NR_OF_REG_RETRIES, 10).
 
@@ -319,6 +320,13 @@ publish(false, RegView, ClientId, #vmq_msg{mountpoint=MP,
             {error, not_ready}
     end.
 
+% remote_publish/3 is called by the vmq_cluster_com as the fold fun inside a `vmq_reg_view:fold`
+remote_publish(SubscriberIdAndSubInfo, FromClientId, Msg) ->
+    case publish_fold_fun(SubscriberIdAndSubInfo, FromClientId, #publish_fold_acc{msg=Msg}) of
+        {ok, _} -> ok;
+        E -> E
+    end.
+
 -spec publish_fold_wrapper(module(), client_id(), topic(), msg()) -> {ok, {integer(), integer()}}.
 publish_fold_wrapper(RegView, ClientId, Topic, #vmq_msg{sg_policy = SGPolicy,
                                                         mountpoint = MP} = Msg) ->
@@ -326,22 +334,16 @@ publish_fold_wrapper(RegView, ClientId, Topic, #vmq_msg{sg_policy = SGPolicy,
     #publish_fold_acc{msg=NewMsg,
                       subscriber_groups=SubscriberGroups,
                       local_matches=LocalMatches0,
-                      remote_matches=RemoteMatches0} = vmq_reg_view:fold(RegView, {MP, ClientId}, Topic, fun publish/3, Acc),
+                      remote_matches=RemoteMatches0} = vmq_reg_view:fold(RegView, {MP, ClientId}, Topic, fun publish_fold_fun/3, Acc),
     {LocalMatches1, RemoteMatches1} = vmq_shared_subscriptions:publish(NewMsg, SGPolicy, SubscriberGroups, LocalMatches0, RemoteMatches0),
     {ok, {LocalMatches1, RemoteMatches1}}.
 
-
-maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
-    {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter};
-maybe_set_expiry_ts(_) ->
-    undefined.
-
-%% publish/3 is used as the fold function in RegView:fold/4
-publish({SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
+%% publish_fold_fun/3 is used as the fold function in RegView:fold/4
+publish_fold_fun({SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
     Acc;
-publish({{_,_} = SubscriberId, SubInfo}, _FromClientId, #publish_fold_acc{msg=Msg0,
-                                                                          local_matches=N} = Acc) ->
+publish_fold_fun({{_,_} = SubscriberId, SubInfo}, _FromClientId, #publish_fold_acc{msg=Msg0,
+                                                                                   local_matches=N} = Acc) ->
     case get_queue_pid(SubscriberId) of
         not_found -> Acc;
         QPid ->
@@ -351,13 +353,13 @@ publish({{_,_} = SubscriberId, SubInfo}, _FromClientId, #publish_fold_acc{msg=Ms
             ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg2}),
             Acc#publish_fold_acc{local_matches= N + 1}
     end;
-publish({_Node, _Group, SubscriberId, #{no_local := true}}, SubscriberId, Acc) ->
+publish_fold_fun({_Node, _Group, SubscriberId, #{no_local := true}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
     Acc;
-publish({_Node, _Group, _SubscriberId, _SubInfo} = Sub, _FromClientId, #publish_fold_acc{subscriber_groups=SubscriberGroups} = Acc) ->
+publish_fold_fun({_Node, _Group, _SubscriberId, _SubInfo} = Sub, _FromClientId, #publish_fold_acc{subscriber_groups=SubscriberGroups} = Acc) ->
     %% collect subscriber group members for later processing
     Acc#publish_fold_acc{subscriber_groups=add_to_subscriber_group(Sub, SubscriberGroups)};
-publish(Node, _FromClientId, #publish_fold_acc{msg=Msg, remote_matches=N} = Acc) ->
+publish_fold_fun(Node, _FromClientId, #publish_fold_acc{msg=Msg, remote_matches=N} = Acc) ->
     case vmq_cluster:publish(Node, Msg) of
         ok ->
             Acc#publish_fold_acc{remote_matches= N + 1};
@@ -366,11 +368,10 @@ publish(Node, _FromClientId, #publish_fold_acc{msg=Msg, remote_matches=N} = Acc)
             Acc
     end.
 
-remote_publish(SubscriberIdAndSubInfo, FromClientId, Msg) ->
-    case publish(SubscriberIdAndSubInfo, FromClientId, #publish_fold_acc{msg=Msg}) of
-        {ok, _} -> ok;
-        E -> E
-    end.
+maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
+    {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter};
+maybe_set_expiry_ts(_) ->
+    undefined.
 
 -spec handle_rap_flag(subinfo(), msg()) -> msg().
 handle_rap_flag({_QoS, #{rap := true}}, Msg) ->
