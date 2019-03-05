@@ -323,9 +323,9 @@ publish(false, RegView, ClientId, #vmq_msg{mountpoint=MP,
 % remote_publish/3 is called by the vmq_cluster_com as the fold fun inside a `vmq_reg_view:fold`
 remote_publish(SubscriberIdAndSubInfo, FromClientId, Msg) ->
     case publish_fold_fun(SubscriberIdAndSubInfo, FromClientId, #publish_fold_acc{msg=Msg}) of
-        {ok, {LocalMatches, RemoteMatches}} ->
-            vmq_metrics:incr_router_matches_local(LocalMatches),
-            vmq_metrics:incr_router_matches_remote(RemoteMatches),
+        {ok, _} ->
+            % don't increment the router_matches_[local|remote] here, as they're already counted
+            % at the origin node.
             ok;
         E -> E
     end.
