@@ -90,8 +90,8 @@
                         <th scope="col" class="text-center">Clients online</th>
                         <th scope="col" class="text-center">Clients offline</th>
                         <th scope="col" class="text-center">Connect Rate</th>
-                        <th scope="col" class="text-center">Publish Rate</th>
-                        <th scope="col" class="text-center">Publish Rate</th>
+                        <th scope="col" class="text-center">Publish In Rate</th>
+                        <th scope="col" class="text-center">Publish Out Rate</th>
                         <th scope="col" class="text-center">Msg Drop Rate</th>
                         <th scope="col" class="text-center">Msg Queued</th>
                         </tr>
@@ -166,6 +166,12 @@
                                 <span class="badge badge-success">{{cluster_view.ready.length}} of {{cluster_view.num_nodes}}</span>
                                 {{/cluster_view.not_ready}}
                             </small>
+                            <br/>
+                            <small class="text-tiny">
+                                Routing score:
+                                <span class="badge badge-secondary">{{routing_score}}</span>
+                            </small>
+
                         </td>
                         <td class="text-center">
                             {{clients_online}} <small class="text-tiny">online</small>
