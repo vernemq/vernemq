@@ -44,7 +44,7 @@
         ]).
 
 %% called by vmq_cluster_com
--export([remote_publish/4]).
+-export([route_remote_msg/4]).
 %% used from plugins
 -export([direct_plugin_exports/1]).
 %% used by reg views
@@ -60,7 +60,7 @@
 
 -record(publish_fold_acc, {
           msg                               :: msg(),
-          subscriber_groups=undefined,
+          subscriber_groups=undefined       :: undefined | map(),
           local_matches=0                   :: non_neg_integer(),
           remote_matches=0                  :: non_neg_integer()
          }).
@@ -320,18 +320,18 @@ publish(false, RegView, ClientId, #vmq_msg{mountpoint=MP,
             {error, not_ready}
     end.
 
-% remote_publish/4 is called by the vmq_cluster_com
--spec remote_publish(module(), mountpoint(), topic(), msg()) -> ok.
-remote_publish(RegView, MP, Topic, Msg) ->
+% route_remote_msg/4 is called by the vmq_cluster_com
+-spec route_remote_msg(module(), mountpoint(), topic(), msg()) -> ok.
+route_remote_msg(RegView, MP, Topic, Msg) ->
     SubscriberId = {MP, ?INTERNAL_CLIENT_ID},
     Acc = #publish_fold_acc{msg=Msg},
-    _ = vmq_reg_view:fold(RegView, SubscriberId, Topic, fun remote_publish_fold_fun/3, Acc),
+    _ = vmq_reg_view:fold(RegView, SubscriberId, Topic, fun route_remote_msg_fold_fun/3, Acc),
     % don't increment the router_matches_[local|remote] here, as they're already counted
     % at the origin node.
     ok.
-remote_publish_fold_fun({_, _} = SubscriberIdAndSubInfo, From, Acc) ->
+route_remote_msg_fold_fun({_, _} = SubscriberIdAndSubInfo, From, Acc) ->
     publish_fold_fun(SubscriberIdAndSubInfo, From, Acc);
-remote_publish_fold_fun(_Node, _, Acc) ->
+route_remote_msg_fold_fun(_Node, _, Acc) ->
     %% we ignore remote subscriptions, they are already covered
     %% by original publisher
     Acc.
