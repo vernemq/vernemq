@@ -77,7 +77,7 @@ queue_crash_test(_) ->
     %% at this point we've a working subscription
     timer:sleep(10),
     Msg = msg([<<"test">>, <<"topic">>], <<"test-message">>, 1),
-    ok = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
+    {ok, {1, 0}} = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
     receive_msg(QPid1, 1, Msg),
 
     %% teardown session
@@ -86,7 +86,7 @@ queue_crash_test(_) ->
     {offline, fanout, 0, 0, false} = vmq_queue:status(QPid1),
 
     %% fill the offline queue
-    ok = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
+    {ok, {1, 0}} = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
     {offline, fanout, 1, 0, false} = vmq_queue:status(QPid1),
 
     %% crash the queue
@@ -316,7 +316,7 @@ publish_multi({_, ClientId}, Topic) ->
 
 publish_multi(ClientId, Topic, Acc) when length(Acc) < 100 ->
     Msg = msg(Topic, list_to_binary("test-message-"++ integer_to_list(length(Acc))), 1),
-    ok = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
+    {ok, {1, 0}} = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
     publish_multi(ClientId, Topic, [Msg|Acc]);
 publish_multi(_, _, Acc) -> lists:reverse(Acc).
 

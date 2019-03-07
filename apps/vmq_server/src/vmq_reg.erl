@@ -44,8 +44,7 @@
         ]).
 
 %% called by vmq_cluster_com
--export([publish/3]).
-
+-export([route_remote_msg/4]).
 %% used from plugins
 -export([direct_plugin_exports/1]).
 %% used by reg views
@@ -58,6 +57,13 @@
 
 %% exported for testing purposes
 -export([retain_pre/1]).
+
+-record(publish_fold_acc, {
+          msg                               :: msg(),
+          subscriber_groups=undefined       :: undefined | map(),
+          local_matches=0                   :: non_neg_integer(),
+          remote_matches=0                  :: non_neg_integer()
+         }).
 
 -define(NR_OF_REG_RETRIES, 10).
 
@@ -263,15 +269,8 @@ register_session(SubscriberId, QueueOpts) ->
     {ok, SessionOpts#{session_present => SessionPresent,
                       queue_pid => QPid}}.
 
-publish(RegView, ClientId, Topic, FoldFun, #vmq_msg{sg_policy = SGPolicy,
-                                                    mountpoint = MP} = Msg) ->
-    Acc = publish_fold_acc(Msg),
-    {NewMsg, SubscriberGroups} = vmq_reg_view:fold(RegView, {MP, ClientId}, Topic, FoldFun, Acc),
-    vmq_shared_subscriptions:publish(NewMsg, SGPolicy, SubscriberGroups).
-
-publish_fold_acc(Msg) -> {Msg, undefined}.
-
--spec publish(flag(), module(), client_id() | ?INTERNAL_CLIENT_ID, msg()) -> 'ok' | {'error', _}.
+%% publish/4
+-spec publish(flag(), module(), client_id() | ?INTERNAL_CLIENT_ID, msg()) -> {ok, {integer(), integer()}} | {'error', _}.
 publish(true, RegView, ClientId, #vmq_msg{mountpoint=MP,
                                           routing_key=Topic,
                                           payload=Payload,
@@ -284,8 +283,7 @@ publish(true, RegView, ClientId, #vmq_msg{mountpoint=MP,
         true when Payload == <<>> ->
             %% retain delete action
             vmq_retain_srv:delete(MP, Topic),
-            publish(RegView, ClientId, Topic, fun publish/3, Msg),
-            ok;
+            publish_fold_wrapper(RegView, ClientId, Topic, Msg);
         true ->
             %% retain set action
             vmq_retain_srv:insert(MP, Topic, #retain_msg{
@@ -293,11 +291,9 @@ publish(true, RegView, ClientId, #vmq_msg{mountpoint=MP,
                                                 properties = Properties,
                                                 expiry_ts = maybe_set_expiry_ts(Properties)
                                                }),
-            publish(RegView, ClientId, Topic, fun publish/3, Msg),
-            ok;
+            publish_fold_wrapper(RegView, ClientId, Topic, Msg);
         false ->
-            publish(RegView, ClientId, Topic, fun publish/3, Msg),
-            ok
+            publish_fold_wrapper(RegView, ClientId, Topic, Msg)
     end;
 publish(false, RegView, ClientId, #vmq_msg{mountpoint=MP,
                                                routing_key=Topic,
@@ -309,8 +305,7 @@ publish(false, RegView, ClientId, #vmq_msg{mountpoint=MP,
         true when (IsRetain == true) and (Payload == <<>>) ->
             %% retain delete action
             vmq_retain_srv:delete(MP, Topic),
-            publish(RegView, ClientId, Topic, fun publish/3, Msg),
-            ok;
+            publish_fold_wrapper(RegView, ClientId, Topic, Msg);
         true when (IsRetain == true) ->
             %% retain set action
             vmq_retain_srv:insert(MP, Topic, #retain_msg{
@@ -318,25 +313,48 @@ publish(false, RegView, ClientId, #vmq_msg{mountpoint=MP,
                                                 properties = Properties,
                                                 expiry_ts = maybe_set_expiry_ts(Properties)
                                                }),
-            publish(RegView, ClientId, Topic, fun publish/3, Msg),
-            ok;
+            publish_fold_wrapper(RegView, ClientId, Topic, Msg);
         true ->
-            publish(RegView, ClientId, Topic, fun publish/3, Msg),
-            ok;
+            publish_fold_wrapper(RegView, ClientId, Topic, Msg);
         false ->
             {error, not_ready}
     end.
 
-maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
-    {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter};
-maybe_set_expiry_ts(_) ->
-    undefined.
+% route_remote_msg/4 is called by the vmq_cluster_com
+-spec route_remote_msg(module(), mountpoint(), topic(), msg()) -> ok.
+route_remote_msg(RegView, MP, Topic, Msg) ->
+    SubscriberId = {MP, ?INTERNAL_CLIENT_ID},
+    Acc = #publish_fold_acc{msg=Msg},
+    _ = vmq_reg_view:fold(RegView, SubscriberId, Topic, fun route_remote_msg_fold_fun/3, Acc),
+    % don't increment the router_matches_[local|remote] here, as they're already counted
+    % at the origin node.
+    ok.
+route_remote_msg_fold_fun({_, _} = SubscriberIdAndSubInfo, From, Acc) ->
+    publish_fold_fun(SubscriberIdAndSubInfo, From, Acc);
+route_remote_msg_fold_fun(_Node, _, Acc) ->
+    %% we ignore remote subscriptions, they are already covered
+    %% by original publisher
+    Acc.
 
-%% publish/3 is used as the fold function in RegView:fold/4
-publish({SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
+-spec publish_fold_wrapper(module(), client_id(), topic(), msg()) -> {ok, {integer(), integer()}}.
+publish_fold_wrapper(RegView, ClientId, Topic, #vmq_msg{sg_policy = SGPolicy,
+                                                        mountpoint = MP} = Msg) ->
+    Acc = #publish_fold_acc{msg=Msg},
+    #publish_fold_acc{msg=NewMsg,
+                      subscriber_groups=SubscriberGroups,
+                      local_matches=LocalMatches0,
+                      remote_matches=RemoteMatches0} = vmq_reg_view:fold(RegView, {MP, ClientId}, Topic, fun publish_fold_fun/3, Acc),
+    {LocalMatches1, RemoteMatches1} = vmq_shared_subscriptions:publish(NewMsg, SGPolicy, SubscriberGroups, LocalMatches0, RemoteMatches0),
+    vmq_metrics:incr_router_matches_local(LocalMatches1),
+    vmq_metrics:incr_router_matches_remote(RemoteMatches1),
+    {ok, {LocalMatches1, RemoteMatches1}}.
+
+%% publish_fold_fun/3 is used as the fold function in RegView:fold/4
+publish_fold_fun({SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
     Acc;
-publish({{_,_} = SubscriberId, SubInfo}, _FromClientId, {Msg0, _} = Acc) ->
+publish_fold_fun({{_,_} = SubscriberId, SubInfo}, _FromClientId, #publish_fold_acc{msg=Msg0,
+                                                                                   local_matches=N} = Acc) ->
     case get_queue_pid(SubscriberId) of
         not_found -> Acc;
         QPid ->
@@ -344,22 +362,27 @@ publish({{_,_} = SubscriberId, SubInfo}, _FromClientId, {Msg0, _} = Acc) ->
             Msg2 = maybe_add_sub_id(SubInfo, Msg1),
             QoS = qos(SubInfo),
             ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg2}),
-            Acc
+            Acc#publish_fold_acc{local_matches= N + 1}
     end;
-publish({_Node, _Group, SubscriberId, #{no_local := true}}, SubscriberId, Acc) ->
+publish_fold_fun({_Node, _Group, SubscriberId, #{no_local := true}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
     Acc;
-publish({_Node, _Group, _SubscriberId, _SubInfo} = Sub, _FromClientId, {Msg, SubscriberGroups}) ->
+publish_fold_fun({_Node, _Group, _SubscriberId, _SubInfo} = Sub, _FromClientId, #publish_fold_acc{subscriber_groups=SubscriberGroups} = Acc) ->
     %% collect subscriber group members for later processing
-    {Msg, add_to_subscriber_group(Sub, SubscriberGroups)};
-publish(Node, _FromClientId, {Msg, _} = Acc) ->
+    Acc#publish_fold_acc{subscriber_groups=add_to_subscriber_group(Sub, SubscriberGroups)};
+publish_fold_fun(Node, _FromClientId, #publish_fold_acc{msg=Msg, remote_matches=N} = Acc) ->
     case vmq_cluster:publish(Node, Msg) of
         ok ->
-            Acc;
+            Acc#publish_fold_acc{remote_matches= N + 1};
         {error, Reason} ->
             lager:warning("can't publish to remote node ~p due to '~p'", [Node, Reason]),
             Acc
     end.
+
+maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
+    {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter};
+maybe_set_expiry_ts(_) ->
+    undefined.
 
 -spec handle_rap_flag(subinfo(), msg()) -> msg().
 handle_rap_flag({_QoS, #{rap := true}}, Msg) ->

@@ -69,6 +69,8 @@ node_status() ->
     TotalQueueOut = counter_val('queue_out'),
     TotalQueueDrop = counter_val('queue_drop'),
     TotalQueueUnhandled = counter_val('queue_unhandled'),
+    TotalMatchesLocal = counter_val('router_matches_local'),
+    TotalMatchesRemote = counter_val('router_matches_remote'),
     {NrOfSubs, _SMemory} = vmq_reg_trie:stats(),
     {NrOfRetain, _RMemory} = vmq_retain_srv:stats(),
     {ok, [
@@ -82,6 +84,8 @@ node_status() ->
      {<<"queue_unhandled">>, TotalQueueUnhandled},
      {<<"num_subscriptions">>, NrOfSubs},
      {<<"num_retained">>, NrOfRetain},
+     {<<"matches_local">>, TotalMatchesLocal},
+     {<<"matches_remote">>, TotalMatchesRemote},
      {<<"mystatus">>, [[{atom_to_binary(Node, utf8), Status} || {Node, Status} <- vmq_cluster:status()]]},
      {<<"listeners">>, listeners()},
      {<<"version">>, version()}]}.

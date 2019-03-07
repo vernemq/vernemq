@@ -748,8 +748,8 @@ publish(CAPSettings, RegView, User, {_, ClientId}=SubscriberId, Msg) ->
                             end
                     end).
 
--spec on_publish_hook(ok | {error, _}, list()) -> ok | {error, _}.
-on_publish_hook(ok, HookParams) ->
+-spec on_publish_hook({ok, {integer(), integer()}} | {error, _}, list()) -> ok | {error, _}.
+on_publish_hook({ok, _NumMatched}, HookParams) ->
     _ = vmq_plugin:all(on_publish, HookParams),
     ok;
 on_publish_hook(Other, _) -> Other.

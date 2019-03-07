@@ -117,6 +117,16 @@ $(function() {
         }
     }
 
+    function calc_routing_score(node_name, rate_interval, local_matched, remote_matched) {
+        var local_matched_rate = calc_rate(node_name, "local_matched", rate_interval, local_matched);
+        var remote_matched_rate = calc_rate(node_name, "remote_matched", rate_interval, remote_matched);
+        var all = local_matched_rate + remote_matched_rate;
+        if (all > 0) {
+            return "" + Math.floor(local_matched_rate * 100 / all) + " / " + Math.floor(remote_matched_rate * 100 / all);
+        }
+        return "0 / 0";
+    }
+
     function cluster_status() {
         $.ajax({
             url: config.cluster_status.url,
@@ -136,6 +146,8 @@ $(function() {
                     var msg_out_rate = calc_rate(node_name, "msg_out", rate_interval, this_node.msg_out)
                     var msg_drop_rate = calc_rate(node_name, "queue_drop", rate_interval, this_node.msg_drop)
                     var cluster_view = calc_cluster_view(node_name, this_node.mystatus, cluster_issues);
+                    var routing_score = calc_routing_score(node_name, rate_interval,
+                                                           this_node.matches_local, this_node.matches_remote);
                     var node = {
                         node: node_name,
                         clients_online: this_node.num_online,
@@ -149,7 +161,8 @@ $(function() {
                         retained: this_node.num_retained,
                         cluster_view: cluster_view,
                         listeners: listener_types(this_node.listeners),
-                        version: this_node.version
+                        version: this_node.version,
+                        routing_score: routing_score
                     };
                     listener_check(node_name, this_node.listeners, cluster_view, cluster_issues);
                     cluster_size = Math.max(cluster_size, cluster_view.num_nodes);

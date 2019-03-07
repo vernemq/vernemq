@@ -153,7 +153,7 @@ process_bytes(Bytes, Buffer, St) ->
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
     #vmq_msg{mountpoint=MP,
              routing_key=Topic} = Msg = to_vmq_msg(binary_to_term(Bin)),
-    _ = vmq_reg_view:fold(St#st.reg_view, {MP, ?INTERNAL_CLIENT_ID}, Topic, fun publish/3, {Msg, undefined}),
+    _ = vmq_reg:route_remote_msg(St#st.reg_view, MP, Topic, Msg),
     process(Rest, St);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
     case binary_to_term(Bin) of
@@ -194,13 +194,6 @@ process(<<>>, _) -> ok;
 process(<<Cmd:3/binary, L:32, _:L/binary, Rest/binary>>, St) ->
     lager:warning("unknown message: ~p", [Cmd]),
     process(Rest, St).
-
-publish({_, _} = SubscriberIdAndSubInfo, From, Msg) ->
-    vmq_reg:publish(SubscriberIdAndSubInfo, From, Msg);
-publish(_Node, _, Msg) ->
-    %% we ignore remote subscriptions, they are already covered
-    %% by original publisher
-    Msg.
 
 to_vmq_msgs(Msgs) ->
     lists:map(
