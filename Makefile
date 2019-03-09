@@ -52,7 +52,7 @@ test: compile testclean
 ##
 ## Release targets
 ##
-rel:
+rel: compile
 ifeq ($(OVERLAY_VARS),)
 	$(REBAR) $(PROFILE) release
 else
