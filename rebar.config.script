@@ -1,0 +1,28 @@
+{relx, RelxConfig0} = lists:keyfind(relx, 1, CONFIG),
+{release, Version, Apps0} = lists:keyfind(release, 1, RelxConfig0),
+{ok, [{application, vmq_server, VmqServerTerms}]} 
+= file:consult(filename:join(["apps", "vmq_server", "src", "vmq_server.app.src"])),
+DefaultApps = [A ||A <- Apps0, is_atom(A)] ++ proplists:get_value(applications, VmqServerTerms, []),
+
+LoadedAppsFun = fun(F, Type, [App|Rest], Acc, Excl) ->
+                        case lists:keymember(App, 1, Excl) of
+                            false ->
+                                AppSrcFile = filename:join(["_build", "default", "lib", App, src, atom_to_list(App) ++ ".app.src"]),
+                                case file:consult(AppSrcFile) of
+                                    {ok, [{application, App, Terms}]} ->
+                                        AccN = F(F, Type, proplists:get_value(applications, Terms, []), Acc, Excl),
+                                        F(F, Type, Rest, [{App, Type}|AccN], Excl);
+                                    {error, enoent} ->
+                                        % default app shiped with Erlang
+                                        F(F, Type, Rest, [{App, Type}|Acc], Excl)
+                                end;
+                            true ->
+                                F(F, Type, Rest, Acc, Excl)
+                        end;
+                   (F, _Type, [], Acc, _Excl) ->
+                        Acc
+                end,
+DefaultApps1 = lists:usort(LoadedAppsFun(LoadedAppsFun, permanent, DefaultApps, [], [])),
+Apps1 = lists:usort(LoadedAppsFun(LoadedAppsFun, load, [A || {A, load} <- Apps0], DefaultApps1, DefaultApps1)),
+RelxConfig1 = lists:keyreplace(release, 1, RelxConfig0, {release, Version, Apps1}),
+lists:keyreplace(relx, 1, CONFIG, {relx, RelxConfig1}).

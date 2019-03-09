@@ -31,6 +31,7 @@
   that 75% of the received MQTT publish frames were routed to local subscribers
   and 25% were forwarded to subscribers on different cluster nodes. The routing
   score can be used to detect imbalances in a VerneMQ cluster.
+- Fix that unnecessary apps are started by default.
 
 ## VerneMQ 1.7.0
 
