@@ -49,6 +49,7 @@
   - The `{ok, binary()}` return clause has been removed from the
     `auth_on_publish_m5` hook, use the modifier map (`{ok, Modifiers}`) instead.
   - Note, MQTT 5.0 support in VerneMQ is still in Beta.
+- Fix error when tracing clients connecting with a LWT.
 
 ## VerneMQ 1.7.0
 
