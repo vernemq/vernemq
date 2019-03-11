@@ -50,6 +50,8 @@
     `auth_on_publish_m5` hook, use the modifier map (`{ok, Modifiers}`) instead.
   - Note, MQTT 5.0 support in VerneMQ is still in Beta.
 - Fix error when tracing clients connecting with a LWT.
+- Add file validation to check if files in the `vernemq.conf` exist and are
+  readable.
 
 ## VerneMQ 1.7.0
 

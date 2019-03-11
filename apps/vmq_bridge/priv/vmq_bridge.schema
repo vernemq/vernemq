@@ -179,10 +179,12 @@
 %% @doc The cafile is used to define the path to a file containing
 %% the PEM encoded CA certificates that are trusted. 
 {mapping, "vmq_bridge.ssl.$name.cafile", "vmq_bridge.config", [
-                                                              {default, ""},
-                                                              {datatype, file},
-                                                              {include_default, "sbr0"},
-                                                              {commented, "{{platform_etc_dir}}/cacerts.pem"}
+                                                               {default, ""},
+                                                               {datatype, file},
+                                                               {include_default, "sbr0"},
+                                                               {commented, "{{platform_etc_dir}}/cacerts.pem"},
+                                                               {validators, ["file-exists", "file-is-readable"]}
+
                                                              ]}. 
 
 %% @doc Define the path to a folder containing 
@@ -194,22 +196,24 @@
                                                                {include_default, "sbr0"},
                                                                {commented, "{{platform_etc_dir}}/cacerts"},
                                                                hidden
-                                                             ]}. 
+                                                              ]}.
 
 %% @doc Set the path to the PEM encoded server certificate.
 {mapping, "vmq_bridge.ssl.$name.certfile", "vmq_bridge.config", [
+                                                                 {default, ""},
+                                                                 {datatype, file},
+                                                                 {include_default, "sbr0"},
+                                                                 {commented, "{{platform_etc_dir}}/cert.pem"},
+                                                                 {validators, ["file-exists", "file-is-readable"]}
+                                                                ]}.
+%% @doc Set the path to the PEM encoded key file.
+{mapping, "vmq_bridge.ssl.$name.keyfile", "vmq_bridge.config", [
                                                                 {default, ""},
                                                                 {datatype, file},
                                                                 {include_default, "sbr0"},
-                                                                {commented, "{{platform_etc_dir}}/cert.pem"}
-                                                               ]}. 
-%% @doc Set the path to the PEM encoded key file. 
-{mapping, "vmq_bridge.ssl.$name.keyfile", "vmq_bridge.config", [
-                                                               {default, ""},
-                                                               {datatype, file},
-                                                               {include_default, "sbr0"},
-                                                               {commented, "{{platform_etc_dir}}/key.pem"}
-                                                              ]}. 
+                                                                {commented, "{{platform_etc_dir}}/key.pem"},
+                                                                {validators, ["file-exists", "file-is-readable"]}
+                                                               ]}.
 %% @doc When using certificate based TLS, the bridge will attempt to verify the 
 %% hostname provided in the remote certificate matches the host/address being 
 %% connected to. This may cause problems in testing scenarios, so this option 
@@ -435,6 +439,21 @@
          {DropUndef(TCP), DropUndef(SSL)}
  end
 }.
+
+{validator, "file-exists", "file does not exist",
+ fun("") ->
+         %% "" is used as the default value in most places, we should
+         %% not error out because of that.
+         true;
+    (Name) -> vmq_schema_util:file_exists(Name)
+ end}.
+{validator, "file-is-readable", "file is not readable, check permissions",
+ fun("") ->
+         %% "" is used as the default value in most places, we should
+         %% not error out because of that.
+         true;
+    (Name) -> vmq_schema_util:file_is_readable(Name)
+ end}.
 
 {mapping, "vmq_bridge.clique_lead_line", "vmq_bridge.clique_lead_line",
  [{datatype, string},
