@@ -685,28 +685,6 @@ atomize_keys(Mods) ->
               {K,V}
       end, Mods).
 
-normalize_properties(Modifiers, Opts) ->
-    case lists:keyfind(properties, 1, Modifiers) of
-        false ->
-            Modifiers;
-        {_, Props} ->
-            NewProps =
-                maps:from_list(lists:map(
-                                 fun({K,V}) ->
-                                         normalize_property(binary_to_existing_atom(K,utf8), V, Opts)
-                                 end, Props)),
-            lists:keyreplace(properties, 1, Modifiers, {properties, NewProps})
-    end.
-
-normalize_property(?P_USER_PROPERTY, Values, _Opts) ->
-    NValues = [{K,V} || [{_,K},{_,V}] <- Values],
-    {?P_USER_PROPERTY, NValues};
-normalize_property(?P_AUTHENTICATION_DATA, Val, _Opts) ->
-    {?P_AUTHENTICATION_DATA, base64:decode(Val)};
-normalize_property(K,V, _Opts) ->
-    %% let through unmodified.
-    {K,V}.
-
 normalize_modifiers(Hook, Mods, Opts)
   when Hook =:= auth_on_register_m5;
        Hook =:= auth_on_unsubscribe_m5;
@@ -739,6 +717,33 @@ normalize_modifiers(on_deliver, Mods, EOpts) ->
     norm_payload(atomize_keys(Mods), EOpts);
 normalize_modifiers(on_unsubscribe, Mods, _) ->
     Mods.
+
+normalize_properties(Modifiers, Opts) ->
+    case lists:keyfind(properties, 1, Modifiers) of
+        false ->
+            Modifiers;
+        {_, Props} ->
+            NewProps =
+                maps:from_list(lists:map(
+                                 fun({K,V}) ->
+                                         normalize_property(binary_to_existing_atom(K,utf8), V, Opts)
+                                 end, Props)),
+            lists:keyreplace(properties, 1, Modifiers, {properties, NewProps})
+    end.
+
+normalize_property(?P_PAYLOAD_FORMAT_INDICATOR, Val, _Opts) ->
+    {?P_PAYLOAD_FORMAT_INDICATOR, binary_to_existing_atom(Val,utf8)};
+normalize_property(?P_RESPONSE_TOPIC, Val, _Opts) ->
+    {?P_RESPONSE_TOPIC, Val};
+normalize_property(?P_USER_PROPERTY, Values, Opts) ->
+    NValues = [{maybe_b64decode(K, Opts),
+                maybe_b64decode(V, Opts)} || [{_,K},{_,V}] <- Values],
+    {?P_USER_PROPERTY, NValues};
+normalize_property(?P_AUTHENTICATION_DATA, Val, _Opts) ->
+    {?P_AUTHENTICATION_DATA, base64:decode(Val)};
+normalize_property(K,V, _Opts) ->
+    %% let through unmodified.
+    {K,V}.
 
 normalize_sub_topics(Mods, _Opts) ->
     lists:map(
@@ -813,21 +818,29 @@ encode_props(Props, Opts) when is_map(Props) ->
                       maps:put(K1,V1, Acc)
               end, #{}, Props).
 
-encode_property(p_user_property, Values, Opts) ->
+encode_property(?P_PAYLOAD_FORMAT_INDICATOR, Val, _Opts) ->
+    {?P_PAYLOAD_FORMAT_INDICATOR, erlang:atom_to_binary(Val, utf8)};
+encode_property(?P_RESPONSE_TOPIC, Val, _Opts) ->
+    {?P_RESPONSE_TOPIC, enc_topic(Val)};
+encode_property(?P_USER_PROPERTY, Values, Opts) ->
     Values1 = lists:map(
       fun({K,V}) ->
               #{<<"key">> => maybe_b64encode(K, Opts),
                 <<"val">> => maybe_b64encode(V, Opts)}
       end, Values),
-    {user_property, Values1};
+    {?P_USER_PROPERTY, Values1};
 encode_property(?P_AUTHENTICATION_DATA, Val, _Opts) ->
     {?P_AUTHENTICATION_DATA, base64:encode(Val)};
-encode_property(?P_AUTHENTICATION_METHOD, Val, _Opts) ->
-    {?P_AUTHENTICATION_METHOD, Val}.
+encode_property(Prop, Val, _) ->
+    %% fall-through for properties that need no special handling.
+    {Prop, Val}.
 
 
 maybe_b64encode(V, #{base64 := false}) -> V;
 maybe_b64encode(V, _) -> base64:encode(V).
+
+maybe_b64decode(V, #{base64 := false}) -> V;
+maybe_b64decode(V, _) -> base64:decode(V).
 
 b64encode(V, #{base64_payload := false}) -> V;
 b64encode(V, _) -> base64:encode(V).
@@ -839,6 +852,9 @@ from_internal_qos(not_allowed) ->
     128;
 from_internal_qos(V) when is_integer(V) ->
     V.
+
+enc_topic(Topic) when is_list(Topic) ->
+    iolist_to_binary(Topic).
 
 -ifdef(TEST).
 parse_max_age_test() ->

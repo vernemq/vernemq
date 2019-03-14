@@ -125,19 +125,21 @@ auth_on_register_m5(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
             modifiers => #{mountpoint => <<"mynewmount">>,
                            client_id => <<"changed_client_id">>}}};
-
-auth_on_register_m5(#{client_id := ?WITH_PROPERTIES}) ->
-    Properties = #{?P_USER_PROPERTY => [[key(<<"key1">>), val(<<"val1">>)],
-                                        [key(<<"key1">>), val(<<"val2">>)],
-                                        [key(<<"key2">>), val(<<"val2">>)]]
-                  },
+auth_on_register_m5(#{client_id := ?WITH_PROPERTIES,
+                      properties :=
+                          #{?P_SESSION_EXPIRY_INTERVAL := 5,
+                            ?P_RECEIVE_MAX := 10,
+                            ?P_TOPIC_ALIAS_MAX := 15,
+                            ?P_REQUEST_RESPONSE_INFO := true,
+                            ?P_REQUEST_PROBLEM_INFO := true,
+                            ?P_USER_PROPERTY :=
+                                [#{key := <<"azE=">>,val := <<"djE=">>},
+                                 #{key := <<"azE=">>,val := <<"djI=">>},
+                                 #{key := <<"azI=">>,val := <<"djI=">>}] = UPS}}) ->
     {200, #{result => <<"ok">>,
-            modifiers => #{properties => Properties}}
-    };
-
+            modifiers => #{properties => #{?P_USER_PROPERTY => UPS}}}};
 auth_on_register_m5(#{subscriberid := <<"internal_server_error">>}) ->
     throw(internal_server_error).
-
 
 auth_on_publish(#{username := ?USERNAME,
                   client_id := ?ALLOWED_CLIENT_ID,
@@ -196,6 +198,26 @@ auth_on_publish_m5(#{client_id := ?IGNORED_CLIENT_ID}) ->
 auth_on_publish_m5(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
             modifiers => #{topic => <<"rewritten/topic">>}}};
+auth_on_publish_m5(#{client_id := <<"modify_props">>,
+                properties := #{?P_USER_PROPERTY := [#{key := <<"azE=">>,
+                                                       val := <<"djE=">>},
+                                                     #{key := <<"azI=">>,
+                                                       val := <<"djI=">>}],
+                                ?P_CORRELATION_DATA := <<"correlation_data">>,
+                                ?P_RESPONSE_TOPIC := <<"responsetopic">>,
+                                ?P_PAYLOAD_FORMAT_INDICATOR := <<"utf8">>,
+                                ?P_CONTENT_TYPE := <<"content_type">>}}) ->
+    ModifiedProps =
+        #{?P_USER_PROPERTY => [#{key => <<"azE=">>, val => <<"djE=">>},
+                               #{key => <<"azI=">>, val => <<"djI=">>},
+                               #{key => <<"azM=">>, val => <<"djM=">>}],
+          ?P_CORRELATION_DATA => <<"modified_correlation_data">>,
+          ?P_RESPONSE_TOPIC => <<"modified_responsetopic">>,
+          ?P_PAYLOAD_FORMAT_INDICATOR => <<"undefined">>,
+          ?P_CONTENT_TYPE => <<"modified_content_type">>},
+    {200, #{result => <<"ok">>,
+            modifiers =>
+                #{properties => ModifiedProps}}};
 auth_on_publish_m5(#{subscriberid := <<"internal_server_error">>}) ->
     throw(internal_server_error).
 
@@ -222,8 +244,11 @@ auth_on_subscribe(#{subscriberid := <<"internal_server_error">>}) ->
 auth_on_subscribe_m5(#{username := ?USERNAME,
                        client_id := ?ALLOWED_CLIENT_ID,
                        mountpoint := ?MOUNTPOINT_BIN,
-                       topics := [#{topic := ?TOPIC, qos := 1}]
-                 }) ->
+                       topics := [#{topic := ?TOPIC, qos := 1}],
+                       properties :=
+                           #{?P_USER_PROPERTY :=
+                                 [#{key := <<"azE=">>,val := <<"djE=">>}],
+                             ?P_SUBSCRIPTION_ID := [1,2,3]}}) ->
     {200, #{result => <<"ok">>}};
 auth_on_subscribe_m5(#{client_id := ?NOT_ALLOWED_CLIENT_ID}) ->
     {200, #{result => #{error => <<"not_allowed">>}}};
@@ -253,7 +278,15 @@ on_register_m5(#{peer_addr := ?PEER_BIN,
                  peer_port := ?PEERPORT,
                  mountpoint := ?MOUNTPOINT_BIN,
                  client_id := ?ALLOWED_CLIENT_ID,
-                 username := BinPid}) ->
+                 username := BinPid,
+                 properties :=
+                     #{?P_SESSION_EXPIRY_INTERVAL := 5,
+                       ?P_RECEIVE_MAX := 10,
+                       ?P_TOPIC_ALIAS_MAX := 15,
+                       ?P_REQUEST_RESPONSE_INFO := true,
+                       ?P_REQUEST_PROBLEM_INFO := true,
+                       ?P_USER_PROPERTY :=
+                           [#{key := <<"azE=">>,val := <<"djE=">>}]}}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_register_m5_ok,
     {200, #{}}.
@@ -275,7 +308,15 @@ on_publish_m5(#{username := BinPid,
                 topic := ?TOPIC,
                 qos := 1,
                 payload := ?PAYLOAD,
-                retain := false}) ->
+                retain := false,
+                properties := #{?P_USER_PROPERTY := [#{key := <<"azE=">>,
+                                                       val := <<"djE=">>},
+                                                     #{key := <<"azI=">>,
+                                                       val := <<"djI=">>}],
+                                ?P_CORRELATION_DATA := <<"correlation_data">>,
+                                ?P_RESPONSE_TOPIC := <<"responsetopic">>,
+                                ?P_PAYLOAD_FORMAT_INDICATOR := <<"utf8">>,
+                                ?P_CONTENT_TYPE := <<"content_type">>}}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_publish_m5_ok,
     {200, #{}}.
@@ -294,7 +335,11 @@ on_subscribe_m5(#{username := BinPid,
                   mountpoint := ?MOUNTPOINT_BIN,
                   client_id := ?ALLOWED_CLIENT_ID,
                   topics := [#{topic := ?TOPIC, qos := 1},
-                             #{topic := ?TOPIC, qos := 128}]
+                             #{topic := ?TOPIC, qos := 128}],
+                  properties :=
+                      #{?P_USER_PROPERTY := [#{key := <<"azE=">>,
+                                               val := <<"djE=">>}],
+                        ?P_SUBSCRIPTION_ID := [1,2,3]}
                  }) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_subscribe_m5_ok,
@@ -307,7 +352,10 @@ on_unsubscribe(#{client_id := ?CHANGED_CLIENT_ID}) ->
             topics => [<<"rewritten/topic">>,
                        <<"anotherrewrittentopic">>]}}.
 
-on_unsubscribe_m5(#{client_id := ?ALLOWED_CLIENT_ID}) ->
+on_unsubscribe_m5(#{client_id := ?ALLOWED_CLIENT_ID,
+                    properties := #{?P_USER_PROPERTY :=
+                                        [#{key := <<"azE=">>,
+                                           val := <<"djE=">>}]}}) ->
     {200, #{result => <<"ok">>}};
 on_unsubscribe_m5(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
@@ -329,7 +377,30 @@ on_deliver_m5(#{username := BinPid,
                 payload := ?PAYLOAD}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_deliver_m5_ok,
-    {200, #{result => <<"ok">>}}.
+    {200, #{result => <<"ok">>}};
+on_deliver_m5(#{client_id := <<"modify_props">>,
+                username := BinPid,
+                properties := #{?P_USER_PROPERTY := [#{key := <<"azE=">>,
+                                                       val := <<"djE=">>},
+                                                     #{key := <<"azI=">>,
+                                                       val := <<"djI=">>}],
+                                ?P_CORRELATION_DATA := <<"correlation_data">>,
+                                ?P_RESPONSE_TOPIC := <<"responsetopic">>,
+                                ?P_PAYLOAD_FORMAT_INDICATOR := <<"utf8">>,
+                                ?P_CONTENT_TYPE := <<"content_type">>}}) ->
+    ModifiedProps =
+        #{?P_USER_PROPERTY => [#{key => <<"azE=">>, val => <<"djE=">>},
+                               #{key => <<"azI=">>, val => <<"djI=">>},
+                               #{key => <<"azM=">>, val => <<"djM=">>}],
+          ?P_CORRELATION_DATA => <<"modified_correlation_data">>,
+          ?P_RESPONSE_TOPIC => <<"modified_responsetopic">>,
+          ?P_PAYLOAD_FORMAT_INDICATOR => <<"undefined">>,
+          ?P_CONTENT_TYPE => <<"modified_content_type">>},
+    Pid = list_to_pid(binary_to_list(BinPid)),
+    Pid ! on_deliver_m5_ok,
+    {200, #{result => <<"ok">>,
+            modifiers =>
+                #{properties => ModifiedProps}}}.
 
 on_offline_message(#{mountpoint := ?MOUNTPOINT_BIN,
                      client_id := BinPid}) ->
@@ -414,9 +485,3 @@ process_hook(<<"on_deliver_m5">>, Body) ->
     on_deliver_m5(Body);
 process_hook(<<"on_auth_m5">>, Body) ->
     on_auth_m5(Body).
-
-
-key(Key) ->
-    {<<"key">>, Key}.
-val(Val) ->
-    {<<"val">>, Val}.

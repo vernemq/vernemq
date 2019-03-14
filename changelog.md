@@ -54,6 +54,8 @@
   readable.
 - Fix that disconnects due to client migrations were logged as warnings. They
   are now treated as the normal termination case.
+- Improve MQTT 5.0 support in the `vmq_webhooks` plugin: support more properties
+  and improve the tests.
 
 ## VerneMQ 1.7.0
 
