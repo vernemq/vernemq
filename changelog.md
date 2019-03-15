@@ -256,6 +256,7 @@
   with `make swc` to generate a release containing the `vmq_swc` plugin.
 - Remove unused `vmq_bridge` ssl `capath` config option. This was never used
   internally.
+- Upgrade `lager` to version 3.6.8 to fix build issue on Mac OS X Mojave.
 
 ## VerneMQ 1.5.0
 
