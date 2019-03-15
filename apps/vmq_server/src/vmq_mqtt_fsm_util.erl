@@ -21,7 +21,8 @@
          msg_ref/0,
          plugin_receive_loop/2,
          to_vmq_subtopics/2,
-         peertoa/1]).
+         peertoa/1,
+         terminate_reason/1]).
 
 -define(TO_SESSION, to_session_fsm).
 
@@ -111,3 +112,12 @@ peertoa({IP,Port}) ->
         {_,_,_,_,_,_,_,_} ->
             io_lib:format("[~s]:~p", [inet:ntoa(IP),Port])
     end.
+
+-spec terminate_reason(any()) -> any().
+terminate_reason(?ADMINISTRATIVE_ACTION) -> normal;
+terminate_reason(?CLIENT_DISCONNECT) -> normal;
+terminate_reason(?DISCONNECT_KEEP_ALIVE) -> normal;
+terminate_reason(?DISCONNECT_MIGRATION) -> normal;
+terminate_reason(?NORMAL_DISCONNECT) -> normal;
+terminate_reason(?SESSION_TAKEN_OVER) -> normal;
+terminate_reason(Reason) ->  Reason.
