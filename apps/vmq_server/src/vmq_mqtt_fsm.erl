@@ -477,12 +477,7 @@ terminate(Reason, #state{clean_session=CleanSession} = State) ->
     {stop, terminate_reason(Reason), []}.
 
 terminate_reason(publish_not_authorized_3_1_1) -> normal;
-terminate_reason(?NORMAL_DISCONNECT) -> normal;
-terminate_reason(?SESSION_TAKEN_OVER) -> normal;
-terminate_reason(?ADMINISTRATIVE_ACTION) -> normal;
-terminate_reason(?DISCONNECT_KEEP_ALIVE) -> normal;
-terminate_reason(?CLIENT_DISCONNECT) -> normal;
-terminate_reason(Reason) ->  Reason.
+terminate_reason(Reason) ->  vmq_mqtt_fsm_util:terminate_reason(Reason).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal

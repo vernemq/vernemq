@@ -736,13 +736,8 @@ terminate(Reason, Props, #state{session_expiry_interval=SessionExpiryInterval} =
         end,
     {stop, terminate_reason(Reason), Out}.
 
-%% TODO Unify with terminate_reason in `vmq_mqtt_fsm`?
-terminate_reason(?NORMAL_DISCONNECT) -> normal;
-terminate_reason(?SESSION_TAKEN_OVER) -> normal;
-terminate_reason(?ADMINISTRATIVE_ACTION) -> normal;
-terminate_reason(?CLIENT_DISCONNECT) -> normal;
-terminate_reason(Reason) ->  Reason.
-
+terminate_reason(Reason) ->
+    vmq_mqtt_fsm_util:terminate_reason(Reason).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal

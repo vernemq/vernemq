@@ -52,6 +52,8 @@
 - Fix error when tracing clients connecting with a LWT.
 - Add file validation to check if files in the `vernemq.conf` exist and are
   readable.
+- Fix that disconnects due to client migrations were logged as warnings. They
+  are now treated as the normal termination case.
 
 ## VerneMQ 1.7.0
 
