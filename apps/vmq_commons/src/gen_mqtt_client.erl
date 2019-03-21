@@ -120,7 +120,7 @@
 
 -record(state, {host                      :: inet:ip_address(),
                 port                      :: inet:port_number(),
-                sock                      :: gen_tcp:socket() | ssl:socket(),
+                sock                      :: undefined | gen_tcp:socket() | ssl:sslsocket(),
                 msgid = 1                 :: non_neg_integer(),
                 username                  :: binary(),
                 password                  :: binary(),
