@@ -165,7 +165,7 @@ handle_info({call_function, Ref, CallerPid, Function, Args}, State) ->
         {[], NewLuaState} ->
             {undefined, ch_state(NewLuaState, State)};
         {[Val], NewLuaState} ->
-            {vmq_diversity_utils:convert(Val), ch_state(NewLuaState, State)}
+            {Val, ch_state(NewLuaState, State)}
     catch
         error:{lua_error, Reason, _} ->
             lager:error("can't call function ~p with args ~p in ~p due to ~p",
