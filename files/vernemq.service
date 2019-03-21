@@ -1,0 +1,19 @@
+# systemd unit file
+[Unit]
+Description=VerneMQ Server
+After=network.target epmd@0.0.0.0.socket
+Wants=network.target epmd@0.0.0.0.socket
+
+[Service]
+Type=forking
+User=vernemq
+Group=vernemq
+NotifyAccess=all
+TimeoutStartSec=3600
+WorkingDirectory=/usr/lib/vernemq
+ExecStart=/usr/lib/vernemq/bin/vernemq start
+ExecStop=/usr/lib/vernemq/bin/vernemq stop
+ExecStop=/bin/sh -c "while ps -p $MAINPID >/dev/null 2>&1; do sleep 1; done"
+
+[Install]
+WantedBy=multi-user.target

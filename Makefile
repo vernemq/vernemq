@@ -59,9 +59,44 @@ else
 	cat vars.config > vars_pkg.config
 	cat $(OVERLAY_VARS) >> vars_pkg.config
 	$(REBAR) $(PROFILE) release --overlay_vars vars_pkg.config
-	cp _build/default/rel/vernemq/bin/start_clean.boot _build/default/rel/vernemq/releases/$(MAJOR_VERSION)/start_clean.boot
 endif
 
+deb: OVERLAY_VARS=vars/deb_vars.config
+deb: relclean rel
+	# required for running dpkg-shlibdeps
+	mkdir -p debian
+	touch debian/control
+
+	$(eval DEPENDS := $(shell find _build/default/rel/vernemq -type f -name "*.so" | xargs dpkg-shlibdeps -O | cut -c16- | sed "s/,/\" --depends \"/g"))
+	fpm -s dir -t deb \
+		--force \
+		--name vernemq \
+		--license "Apache 2.0" \
+		--url "https://vernemq.com" \
+		--vendor "Octavo Labs AG" \
+		--maintainer "<info@vernemq.com>" \
+		--description "VerneMQ is a MQTT message broker" \
+		--depends logrotate \
+		--depends sudo \
+		--depends adduser \
+		--depends "$(DEPENDS)" \
+		--deb-user vernemq \
+		--deb-group vernemq \
+		--deb-changelog ./changelog.md \
+		--deb-no-default-config-files \
+		--deb-systemd files/vernemq.service \
+		--after-install files/deb-vernemq.postinst \
+		--config-files /etc/vernemq/vernemq.conf -v 1.7.1 \
+		_build/default/rel/vernemq/bin/vernemq=/usr/bin/vernemq \
+		_build/default/rel/vernemq/bin/vmq-admin=/usr/bin/vmq-admin \
+		_build/default/rel/vernemq/data=/var/lib/vernemq/ \
+		_build/default/rel/vernemq/etc/=/etc/vernemq/ \
+		_build/default/rel/vernemq/bin/=/usr/lib/vernemq/bin/ \
+		_build/default/rel/vernemq/lib=/usr/lib/vernemq/ \
+		_build/default/rel/vernemq/releases=/usr/lib/vernemq/ \
+		_build/default/rel/vernemq/erts-10.2.3=/usr/lib/vernemq/ \
+		_build/default/rel/vernemq/share/=/usr/share/vernemq/ \
+		_build/default/rel/vernemq/log/=/var/log/vernemq/
 
 
 relclean:
