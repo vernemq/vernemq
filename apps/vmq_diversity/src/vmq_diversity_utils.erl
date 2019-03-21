@@ -13,7 +13,15 @@
 %% limitations under the License.
 
 -module(vmq_diversity_utils).
--compile([nowarn_export_all, export_all]).
+-export([normalize_modifiers/2,
+         normalize_subscribe_topics/1,
+         convert/1,
+         map/1,
+         unmap/1,
+         int/1,
+         str/1,
+         ustr/1,
+         atom/1]).
 
 %% @doc change modifiers into a canonical form so it can be run
 %% through the modifier checker.
@@ -41,6 +49,8 @@ normalize_subscribe_topics(Topics0) ->
               {T, convert(Q)}
       end, Topics0).
 
+%% @doc recursively converts a value returned from lua to an erlang
+%% data structure.
 convert(Val) when is_list(Val) ->
     convert_list(Val, []);
 convert(Val) when is_number(Val) ->
@@ -67,7 +77,13 @@ convert_list_item({BinKey, Val}) when is_binary(BinKey) ->
             {BinKey, convert(Val)}
     end.
 
-%% map / unmap is currently only used by the mongodb
+%% @doc used to convert the config map value (table) from the lua
+%% scripts to an erlang map.
+%%
+%% Also used to convert mongodb return values (selectors etc) to an
+%% erlang map. The mongodb specific code should be moved to the
+%% mongodb adapter.
+-spec map(any()) -> map().
 map(TableOrTables) ->
     case map(TableOrTables, []) of
         [Map] -> Map;
@@ -93,6 +109,11 @@ map_(Proplist) ->
                         maps:put(K, V, AccIn)
                 end, #{}, Proplist).
 
+%% @doc convert an erlang map into a an erlang representation of a lua
+%% table. Contains mongo-specific code to convert an erlang timstamp
+%% to unix millisecs which is currently mongodb specific. TODO: Move
+%% the mongodb specific stuff should to the mongodb adapter.
+-spec unmap(map()|[map()]) -> [any()].
 unmap(Map) when is_map(Map) ->
     unmap(maps:to_list(Map), []);
 unmap([Map|_] = Maps) when is_map(Map) ->
