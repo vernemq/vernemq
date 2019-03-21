@@ -1,0 +1,11 @@
+#! /bin/sh
+# postinst script for vernemq
+
+if ! getent passwd vernemq >/dev/null; then
+  adduser --user-group --system \
+    --home /var/run/vernemq --no-create-home\
+    --group vernemq
+fi
+
+# The RPM support in FPM won't enable the service like it does for Debians
+systemctl enable vernemq.service

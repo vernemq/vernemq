@@ -98,6 +98,35 @@ deb: relclean rel
 		_build/default/rel/vernemq/share/=/usr/share/vernemq/ \
 		_build/default/rel/vernemq/log/=/var/log/vernemq/
 
+rpm: OVERLAY_VARS=vars/rpm_vars.config
+rpm: relclean rel
+
+	fpm -s dir -t rpm \
+		--force \
+		--name vernemq \
+		--license "Apache 2.0" \
+		--url "https://vernemq.com" \
+		--vendor "Octavo Labs AG" \
+		--maintainer "<info@vernemq.com>" \
+		--description "VerneMQ is a MQTT message broker" \
+		--depends logrotate \
+		--depends sudo \
+		--rpm-user vernemq \
+		--rpm-group vernemq \
+		--rpm-autoreqprov \
+		--after-install files/rpm-vernemq.postinst \
+		--config-files /etc/vernemq/vernemq.conf -v 1.7.1 \
+		files/vernemq.service=/etc/systemd/system/vernemq.service \
+		_build/default/rel/vernemq/bin/vernemq=/usr/sbin/vernemq \
+		_build/default/rel/vernemq/bin/vmq-admin=/usr/sbin/vmq-admin \
+		_build/default/rel/vernemq/data=/var/lib/vernemq/ \
+		_build/default/rel/vernemq/etc/=/etc/vernemq/ \
+		_build/default/rel/vernemq/bin/=/usr/lib64/vernemq/bin/ \
+		_build/default/rel/vernemq/lib=/usr/lib64/vernemq/ \
+		_build/default/rel/vernemq/releases=/usr/lib64/vernemq/ \
+		_build/default/rel/vernemq/erts-10.2.3=/usr/lib64/vernemq/ \
+		_build/default/rel/vernemq/share/=/usr/share/vernemq/ \
+		_build/default/rel/vernemq/log/=/var/log/vernemq/
 
 relclean:
 	rm -rf _build/default/rel
