@@ -54,7 +54,8 @@ all() ->
      auth_on_register_m5_modify_props_test,
      auth_on_subscribe_m5_test,
      auth_on_publish_m5_test,
-     auth_on_publish_m5_modify_props_test
+     auth_on_publish_m5_modify_props_test,
+     on_auth_m5_test
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -207,6 +208,15 @@ auth_on_subscribe_m5_test(_) ->
     {ok, #{topics := [{[<<"hello">>, <<"world">>], {2, #{rap := true}}}]}} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [username(), changed_subscriber_id(), [{topic(), {1, subopts()}}], props()]).
 
+on_auth_m5_test(_) ->
+    {ok, #{properties := #{?P_AUTHENTICATION_METHOD := <<"AUTH_METHOD">>,
+                           ?P_AUTHENTICATION_DATA := <<"AUTH_DATA1">>}}}
+        = vmq_plugin:all_till_ok(on_auth_m5,
+                                 [username(), allowed_subscriber_id(),
+                                  #{?P_AUTHENTICATION_METHOD => <<"AUTH_METHOD">>,
+                                    ?P_AUTHENTICATION_DATA => <<"AUTH_DATA0">>}]).
+
+%%%%%%%%%%%%%%%%%%%%%%%%% helpers %%%%%%%%%%%%%%%%%%%%%%%%%
 peer() -> {{192, 168, 123, 123}, 12345}.
 
 ignored_subscriber_id() ->

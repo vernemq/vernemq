@@ -255,6 +255,18 @@ function on_client_gone(ev)
     print("on_client_gone called")
 end
 
+function on_auth_m5(auth)
+   assert(auth.client_id == "allowed-subscriber-id")
+   assert(auth.mountpoint == "")
+   assert(auth.properties)
+   properties = auth.properties
+   assert(properties.p_authentication_method == "AUTH_METHOD")
+   assert(properties.p_authentication_data == "AUTH_DATA0")
+   return {properties =
+              {p_authentication_method = "AUTH_METHOD",
+               p_authentication_data = "AUTH_DATA1"}}
+end
+
 hooks = {
     auth_on_register = auth_on_register,
     auth_on_publish = auth_on_publish,
@@ -272,4 +284,5 @@ hooks = {
     auth_on_register_m5 = auth_on_register_m5,
     auth_on_subscribe_m5 = auth_on_subscribe_m5,
     auth_on_publish_m5 = auth_on_publish_m5,
+    on_auth_m5 = on_auth_m5,
 }

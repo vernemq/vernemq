@@ -48,7 +48,8 @@
          on_client_gone/1,
          auth_on_register_m5/6,
          auth_on_publish_m5/7,
-         auth_on_subscribe_m5/4]).
+         auth_on_subscribe_m5/4,
+         on_auth_m5/3]).
 
 
 %% API functions
@@ -347,6 +348,14 @@ auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
                                                      {properties, conv_args_props(Props)}]),
             conv_res(auth_on_sub, Res)
     end.
+
+on_auth_m5(Username, SubscriberId, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all_till_ok(on_auth_m5, [{username, nilify(Username)},
+                             {mountpoint, MP},
+                             {client_id, ClientId},
+                             {properties, conv_args_props(Props)}]).
+
 
 on_register(Peer, SubscriberId, UserName) ->
     {PPeer, Port} = peer(Peer),
