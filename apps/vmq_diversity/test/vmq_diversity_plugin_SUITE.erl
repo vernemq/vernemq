@@ -160,8 +160,11 @@ auth_on_subscribe_test(_) ->
                       [username(), changed_subscriber_id(), [{topic(), 1}]]).
 
 auth_on_subscribe_m5_test(_) ->
+    Props = #{?P_USER_PROPERTY =>
+                  [{<<"k1">>, <<"v1">>}],
+              ?P_SUBSCRIPTION_ID => [1,2,3]},
     ok = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
-                      [username(), allowed_subscriber_id(), [{topic(), {1, subopts()}}], props()]),
+                      [username(), allowed_subscriber_id(), [{topic(), {1, subopts()}}], Props]),
     {error, not_authorized} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [username(), not_allowed_subscriber_id(), [{topic(), {1, subopts()}}], props()]),
     {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,

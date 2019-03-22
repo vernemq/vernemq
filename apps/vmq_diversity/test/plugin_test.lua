@@ -8,6 +8,14 @@ local function validate_client_id(client_id)
     end
 end
 
+function comparetables(t1, t2)
+  if #t1 ~= #t2 then return false end
+  for i=1,#t1 do
+    if t1[i] ~= t2[i] then return false end
+  end
+  return true
+end
+
 function auth_on_register(reg)
     assert(reg.addr == "192.168.123.123")
     assert(reg.port == 12345)
@@ -143,19 +151,25 @@ function auth_on_subscribe(sub)
 end
 
 function auth_on_subscribe_m5(sub)
-    assert(sub.username == "test-user")
-    assert(sub.mountpoint == "")
-    assert(#sub.topics == 1)
-    assert(sub.topics[1][1] == "test/topic")
-    assert(sub.topics[1][2][1] == 1)
-    if sub.client_id ~= "changed-subscriber-id" then
-        print("auth_on_subscribe_m5 called")
-        return validate_client_id(sub.client_id)
-    else
-        -- change the subscription
-        print("auth_on_subscribe changed_m5 called")
-        return {topics = {{"hello/world", {2, {rap = true}}}}}
-    end
+   assert(sub.username == "test-user")
+   assert(sub.mountpoint == "")
+   assert(#sub.topics == 1)
+   assert(sub.topics[1][1] == "test/topic")
+   assert(sub.topics[1][2][1] == 1)
+   if sub.client_id ~= "changed-subscriber-id" then
+      if sub.client_id == "allowed-subscriber-id" then
+         assert(sub.properties)
+         properties = sub.properties
+         assert(properties.p_user_property[1].k1 == "v1")
+         assert(comparetables(properties.p_subscription_id,{1, 2, 3}))
+      end
+      print("auth_on_subscribe_m5 called")
+      return validate_client_id(sub.client_id)
+   else
+      -- change the subscription
+      print("auth_on_subscribe changed_m5 called")
+      return {topics = {{"hello/world", {2, {rap = true}}}}}
+   end
 end
 
 function on_register(reg)
