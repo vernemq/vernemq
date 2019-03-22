@@ -1,4 +1,5 @@
 -module(vmq_diversity_plugin_SUITE).
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -49,6 +50,7 @@ all() ->
      auth_on_register_undefined_creds_test,
 
      auth_on_register_m5_test,
+     auth_on_register_m5_modify_props_test,
      auth_on_subscribe_m5_test,
      auth_on_publish_m5_test,
 
@@ -80,6 +82,23 @@ auth_on_register_m5_test(_) ->
                       [peer(), ignored_subscriber_id(), username(), password(), true, #{}]),
     {ok, #{subscriber_id := {"override-mountpoint", <<"override-client-id">>}}} = vmq_plugin:all_till_ok(auth_on_register_m5,
                       [peer(), changed_subscriber_id(), username(), password(), true, #{}]).
+
+auth_on_register_m5_modify_props_test(_) ->
+    WantUserProps = [{<<"k1">>, <<"v1">>},
+                     {<<"k1">>, <<"v2">>},
+                     {<<"k2">>, <<"v2">>}],
+    Args = [peer(), {"", <<"modify_props">>}, username(), password(), true,
+            #{?P_SESSION_EXPIRY_INTERVAL => 5,
+              ?P_RECEIVE_MAX => 10,
+              ?P_TOPIC_ALIAS_MAX => 15,
+              ?P_REQUEST_RESPONSE_INFO => true,
+              ?P_REQUEST_PROBLEM_INFO => true,
+              ?P_USER_PROPERTY => WantUserProps}],
+    {ok, #{properties :=
+               #{?P_USER_PROPERTY :=
+                     [{<<"k3">>, <<"v3">>}],
+                 ?P_SESSION_EXPIRY_INTERVAL := 10}}}
+        = vmq_plugin:all_till_ok(auth_on_register_m5, Args).
 
 auth_on_publish_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_publish,

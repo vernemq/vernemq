@@ -38,6 +38,22 @@ function auth_on_register_m5(reg)
        assert(reg.username == nil)
        assert(reg.password == nil)
        return true
+    elseif reg.client_id == "modify_props" then
+       assert(reg.properties)
+       properties = reg.properties
+       assert(properties.p_session_expiry_interval == 5)
+       assert(properties.p_receive_max == 10)
+       assert(properties.p_topic_alias_max == 15)
+       assert(properties.p_request_response_info == true)
+       assert(properties.p_request_problem_info == true)
+
+       assert(properties.p_user_property[1].k1 == "v1")
+       assert(properties.p_user_property[2].k1 == "v2")
+       assert(properties.p_user_property[3].k2 == "v2")
+       print("auth_on_register_m5 modify props called")
+       return {properties =
+                  {p_user_property = {{k3 = "v3"}},
+                   p_session_expiry_interval = 10}}
     end
     assert(reg.username == "test-user")
     assert(reg.password == "test-password")

@@ -14,6 +14,8 @@
 
 -module(vmq_diversity_plugin).
 
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
+
 -behaviour(gen_server).
 -behaviour(auth_on_register_hook).
 -behaviour(auth_on_publish_hook).
@@ -221,7 +223,7 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) -
                                             {username, nilify(UserName)},
                                             {password, nilify(Password)},
                                             {clean_start, CleanStart},
-                                            {properties, maps:to_list(Props)}]),
+                                            {properties, conv_args_props(Props)}]),
     conv_res(auth_on_reg, Res).
 
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
@@ -267,7 +269,7 @@ auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props)
                                                    {topic, unword(Topic)},
                                                    {payload, Payload},
                                                    {retain, IsRetain},
-                                                   {properties, maps:to_list(Props)}]),
+                                                   {properties, conv_args_props(Props)}]),
             conv_res(auth_on_pub, Res)
     end.
 
@@ -342,7 +344,7 @@ auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
                                                      {client_id, ClientId},
                                                      {topics, [[unword(T), [QoS, Unmap(SubOpts)]]
                                                                || {T, {QoS, SubOpts}} <- Topics]},
-                                                     {properties, maps:to_list(Props)}]),
+                                                     {properties, conv_args_props(Props)}]),
             conv_res(auth_on_sub, Res)
     end.
 
@@ -530,10 +532,24 @@ extract_qos(QoS) when is_integer(QoS) -> QoS.
 convert_modifiers(Hook, Mods0) ->
     vmq_diversity_utils:convert_modifiers(Hook, Mods0).
 
+conv_args_props(Props) when is_map(Props) ->
+    conv_args_props(maps:to_list(Props));
+conv_args_props(Props) when is_list(Props) ->
+    lists:map(fun conv_args_prop/1, Props).
+
+conv_args_prop({?P_USER_PROPERTY, UserProps}) ->
+    {UPS, _} = lists:foldl(
+                 fun(P, {Res, Ctr}) ->
+                         {[{Ctr, [P]}|Res], Ctr+1}
+                 end, {[], 1}, UserProps),
+    {?P_USER_PROPERTY, lists:reverse(UPS)};
+conv_args_prop(P) -> P.
+
 conv_res(auth_on_reg, {error, lua_script_returned_false}) ->
     {error, invalid_credentials};
 conv_res(auth_on_pub, {error, lua_script_returned_false}) ->
     {error, not_authorized};
 conv_res(auth_on_sub, {error, lua_script_returned_false}) ->
     {error, not_authorized};
-conv_res(_, Other) -> Other.
+conv_res(_, Other) ->
+    Other.

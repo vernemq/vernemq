@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_utils).
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -export([convert_modifiers/2,
          normalize_subscribe_topics/1,
          convert/1,
@@ -54,6 +55,8 @@ atomize_keys(Mods) ->
               {K,V}
       end, Mods).
 
+convert_modifier(_, {properties, Props}) ->
+    {properties, convert_properties(Props)};
 convert_modifier(Hook, {subscriber_id, SID})
   when Hook =:= auth_on_register_m5;
        Hook =:= auth_on_register ->
@@ -63,6 +66,19 @@ convert_modifier(auth_on_subscribe_m5, {topics, Topics}) ->
 convert_modifier(_, {Key, Val}) ->
     %% fall back to automatic conversion,
     {Key, convert(Val)}.
+
+convert_properties(Props) ->
+    NewProps = lists:map(
+                 fun convert_property/1, atomize_keys(Props)),
+    maps:from_list(NewProps).
+
+convert_property({?P_USER_PROPERTY, Val}) ->
+    {?P_USER_PROPERTY,
+     lists:map(fun({_,[T]}) -> T;
+                  (V) -> V
+               end, Val)};
+convert_property({K, V}) ->
+    {K, convert(V)}.
 
 normalize_subscribe_topics(Topics0) ->
     lists:map(
