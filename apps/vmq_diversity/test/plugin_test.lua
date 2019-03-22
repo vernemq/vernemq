@@ -98,13 +98,31 @@ function auth_on_publish_m5(pub)
        return {topic = 5}
     elseif pub.client_id == "unknown_mod" then
        return {unknown = 5}
+    elseif pub.client_id == "modify_props" then
+       properties = pub.properties
+       assert(properties)
+       assert(properties.p_correlation_data == "correlation_data")
+       assert(properties.p_response_topic == "response/topic")
+       assert(properties.p_payload_format_indicator == "utf8")
+       assert(properties.p_content_type == "content_type")
+       assert(properties.p_user_property[1].k1 == "v1")
+       assert(properties.p_user_property[2].k2 == "v2")
+
+       print("auth_on_publish_m5 changed called")
+       return {properties =
+                  {p_correlation_data = "modified_correlation_data",
+                   p_response_topic = "modified/response/topic",
+                   p_payload_format_indicator = "undefined",
+                   p_content_type = "modified_content_type",
+                   p_user_property =
+                      {{k1 = "v1"}, {k2 = "v2"}, {k3 = "v3"}}}}
     elseif pub.client_id ~= "changed-subscriber-id" then
-        print("auth_on_publish_m5 called")
-        return validate_client_id(pub.client_id)
+       print("auth_on_publish_m5 called")
+       return validate_client_id(pub.client_id)
     else
-        -- change the publish topic
-        print("auth_on_publish_m5 changed called")
-        return {topic = "hello/world"}
+       -- change the publish topic
+       print("auth_on_publish_m5 changed called")
+       return {topic = "hello/world"}
     end
 end
 

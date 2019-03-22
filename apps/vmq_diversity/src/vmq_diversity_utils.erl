@@ -77,6 +77,13 @@ convert_property({?P_USER_PROPERTY, Val}) ->
      lists:map(fun({_,[T]}) -> T;
                   (V) -> V
                end, Val)};
+%% TODO: currently vmq_plugin_utils:check_modifiers splits the topic.
+%% convert_property({?P_RESPONSE_TOPIC, Topic}) ->
+%%     {?P_RESPONSE_TOPIC, vmq_topic:word(Topic)};
+convert_property({?P_PAYLOAD_FORMAT_INDICATOR, <<"undefined">>}) ->
+    {?P_PAYLOAD_FORMAT_INDICATOR, undefined};
+convert_property({?P_PAYLOAD_FORMAT_INDICATOR, <<"utf8">>}) ->
+    {?P_PAYLOAD_FORMAT_INDICATOR, utf8};
 convert_property({K, V}) ->
     {K, convert(V)}.
 

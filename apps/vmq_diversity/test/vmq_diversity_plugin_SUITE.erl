@@ -53,6 +53,7 @@ all() ->
      auth_on_register_m5_modify_props_test,
      auth_on_subscribe_m5_test,
      auth_on_publish_m5_test,
+     auth_on_publish_m5_modify_props_test,
 
      invalid_modifiers_test
     ].
@@ -119,6 +120,26 @@ auth_on_publish_m5_test(_) ->
                       [username(), ignored_subscriber_id(), 1, topic(), payload(), false, props()]),
     {ok, #{topic := [<<"hello">>, <<"world">>]}} = vmq_plugin:all_till_ok(auth_on_publish_m5,
                       [username(), changed_subscriber_id(), 1, topic(), payload(), false, props()]).
+
+auth_on_publish_m5_modify_props_test(_) ->
+    Args = [username(), {"", <<"modify_props">>}, 1, topic(), payload(), false,
+            #{?P_USER_PROPERTY =>
+                  [{<<"k1">>, <<"v1">>},
+                   {<<"k2">>, <<"v2">>}],
+              ?P_CORRELATION_DATA => <<"correlation_data">>,
+              ?P_RESPONSE_TOPIC => [<<"response">>,<<"topic">>],
+              ?P_PAYLOAD_FORMAT_INDICATOR => utf8,
+              ?P_CONTENT_TYPE => <<"content_type">>}],
+    ExpProps =
+        #{?P_USER_PROPERTY =>
+              [{<<"k1">>, <<"v1">>},
+               {<<"k2">>, <<"v2">>},
+               {<<"k3">>, <<"v3">>}],
+          ?P_CORRELATION_DATA => <<"modified_correlation_data">>,
+          ?P_RESPONSE_TOPIC => [<<"modified">>, <<"response">>, <<"topic">>],
+          ?P_PAYLOAD_FORMAT_INDICATOR => undefined,
+          ?P_CONTENT_TYPE => <<"modified_content_type">>},
+    {ok, #{properties := ExpProps}} = vmq_plugin:all_till_ok(auth_on_publish_m5, Args).
 
 invalid_modifiers_test(_) ->
     {error,{invalid_modifiers,#{topic := 5}}} =

@@ -543,6 +543,8 @@ conv_args_prop({?P_USER_PROPERTY, UserProps}) ->
                          {[{Ctr, [P]}|Res], Ctr+1}
                  end, {[], 1}, UserProps),
     {?P_USER_PROPERTY, lists:reverse(UPS)};
+conv_args_prop({?P_RESPONSE_TOPIC, Topic}) ->
+    {?P_RESPONSE_TOPIC, unword(Topic)};
 conv_args_prop(P) -> P.
 
 conv_res(auth_on_reg, {error, lua_script_returned_false}) ->
