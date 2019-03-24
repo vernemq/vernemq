@@ -38,45 +38,6 @@ function auth_on_register(reg)
     end
 end
 
-function auth_on_register_m5(reg)
-    assert(reg.addr == "192.168.123.123")
-    assert(reg.port == 12345)
-    assert(reg.mountpoint == "")
-    if reg.client_id == "undefined_creds" then
-       assert(reg.username == nil)
-       assert(reg.password == nil)
-       return true
-    elseif reg.client_id == "modify_props" then
-       assert(reg.properties)
-       properties = reg.properties
-       assert(properties.p_session_expiry_interval == 5)
-       assert(properties.p_receive_max == 10)
-       assert(properties.p_topic_alias_max == 15)
-       assert(properties.p_request_response_info == true)
-       assert(properties.p_request_problem_info == true)
-
-       assert(properties.p_user_property[1].k1 == "v1")
-       assert(properties.p_user_property[2].k1 == "v2")
-       assert(properties.p_user_property[3].k2 == "v2")
-       print("auth_on_register_m5 modify props called")
-       return {properties =
-                  {p_user_property = {{k3 = "v3"}},
-                   p_session_expiry_interval = 10}}
-    end
-    assert(reg.username == "test-user")
-    assert(reg.password == "test-password")
-    assert(reg.clean_start == true)
-    if reg.client_id ~= "changed-subscriber-id" then
-        print("auth_on_register_m5 called")
-        return validate_client_id(reg.client_id)
-    else
-        -- we must change subscriberid
-        print("auth_on_register_m5 changed called")
-        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
-    end
-    -- reg.properties are ignored for now.
-end
-
 
 function auth_on_publish(pub)
     assert(pub.username == "test-user")
@@ -95,45 +56,6 @@ function auth_on_publish(pub)
     end
 end
 
-function auth_on_publish_m5(pub)
-    assert(pub.username == "test-user")
-    assert(pub.mountpoint == "")
-    assert(pub.topic == "test/topic")
-    assert(pub.qos == 1)
-    assert(pub.payload == "hello world")
-    assert(pub.retain == false)
-    if pub.client_id == "invalid_topic_mod" then
-       return {topic = 5}
-    elseif pub.client_id == "unknown_mod" then
-       return {unknown = 5}
-    elseif pub.client_id == "modify_props" then
-       properties = pub.properties
-       assert(properties)
-       assert(properties.p_correlation_data == "correlation_data")
-       assert(properties.p_response_topic == "response/topic")
-       assert(properties.p_payload_format_indicator == "utf8")
-       assert(properties.p_content_type == "content_type")
-       assert(properties.p_user_property[1].k1 == "v1")
-       assert(properties.p_user_property[2].k2 == "v2")
-
-       print("auth_on_publish_m5 changed called")
-       return {properties =
-                  {p_correlation_data = "modified_correlation_data",
-                   p_response_topic = "modified/response/topic",
-                   p_payload_format_indicator = "undefined",
-                   p_content_type = "modified_content_type",
-                   p_user_property =
-                      {{k1 = "v1"}, {k2 = "v2"}, {k3 = "v3"}}}}
-    elseif pub.client_id ~= "changed-subscriber-id" then
-       print("auth_on_publish_m5 called")
-       return validate_client_id(pub.client_id)
-    else
-       -- change the publish topic
-       print("auth_on_publish_m5 changed called")
-       return {topic = "hello/world"}
-    end
-end
-
 function auth_on_subscribe(sub)
     assert(sub.username == "test-user")
     assert(sub.mountpoint == "")
@@ -148,28 +70,6 @@ function auth_on_subscribe(sub)
         print("auth_on_subscribe changed called")
         return {{"hello/world", 2}}
     end
-end
-
-function auth_on_subscribe_m5(sub)
-   assert(sub.username == "test-user")
-   assert(sub.mountpoint == "")
-   assert(#sub.topics == 1)
-   assert(sub.topics[1][1] == "test/topic")
-   assert(sub.topics[1][2][1] == 1)
-   if sub.client_id ~= "changed-subscriber-id" then
-      if sub.client_id == "allowed-subscriber-id" then
-         assert(sub.properties)
-         properties = sub.properties
-         assert(properties.p_user_property[1].k1 == "v1")
-         assert(comparetables(properties.p_subscription_id,{1, 2, 3}))
-      end
-      print("auth_on_subscribe_m5 called")
-      return validate_client_id(sub.client_id)
-   else
-      -- change the subscription
-      print("auth_on_subscribe changed_m5 called")
-      return {topics = {{"hello/world", {2, {rap = true}}}}}
-   end
 end
 
 function on_register(reg)
@@ -253,6 +153,106 @@ function on_client_gone(ev)
     assert(ev.client_id == "allowed-subscriber-id")
     assert(ev.mountpoint == "")
     print("on_client_gone called")
+end
+
+function auth_on_register_m5(reg)
+    assert(reg.addr == "192.168.123.123")
+    assert(reg.port == 12345)
+    assert(reg.mountpoint == "")
+    if reg.client_id == "undefined_creds" then
+       assert(reg.username == nil)
+       assert(reg.password == nil)
+       return true
+    elseif reg.client_id == "modify_props" then
+       assert(reg.properties)
+       properties = reg.properties
+       assert(properties.p_session_expiry_interval == 5)
+       assert(properties.p_receive_max == 10)
+       assert(properties.p_topic_alias_max == 15)
+       assert(properties.p_request_response_info == true)
+       assert(properties.p_request_problem_info == true)
+
+       assert(properties.p_user_property[1].k1 == "v1")
+       assert(properties.p_user_property[2].k1 == "v2")
+       assert(properties.p_user_property[3].k2 == "v2")
+       print("auth_on_register_m5 modify props called")
+       return {properties =
+                  {p_user_property = {{k3 = "v3"}},
+                   p_session_expiry_interval = 10}}
+    end
+    assert(reg.username == "test-user")
+    assert(reg.password == "test-password")
+    assert(reg.clean_start == true)
+    if reg.client_id ~= "changed-subscriber-id" then
+        print("auth_on_register_m5 called")
+        return validate_client_id(reg.client_id)
+    else
+        -- we must change subscriberid
+        print("auth_on_register_m5 changed called")
+        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
+    end
+    -- reg.properties are ignored for now.
+end
+
+function auth_on_publish_m5(pub)
+    assert(pub.username == "test-user")
+    assert(pub.mountpoint == "")
+    assert(pub.topic == "test/topic")
+    assert(pub.qos == 1)
+    assert(pub.payload == "hello world")
+    assert(pub.retain == false)
+    if pub.client_id == "invalid_topic_mod" then
+       return {topic = 5}
+    elseif pub.client_id == "unknown_mod" then
+       return {unknown = 5}
+    elseif pub.client_id == "modify_props" then
+       properties = pub.properties
+       assert(properties)
+       assert(properties.p_correlation_data == "correlation_data")
+       assert(properties.p_response_topic == "response/topic")
+       assert(properties.p_payload_format_indicator == "utf8")
+       assert(properties.p_content_type == "content_type")
+       assert(properties.p_user_property[1].k1 == "v1")
+       assert(properties.p_user_property[2].k2 == "v2")
+
+       print("auth_on_publish_m5 changed called")
+       return {properties =
+                  {p_correlation_data = "modified_correlation_data",
+                   p_response_topic = "modified/response/topic",
+                   p_payload_format_indicator = "undefined",
+                   p_content_type = "modified_content_type",
+                   p_user_property =
+                      {{k1 = "v1"}, {k2 = "v2"}, {k3 = "v3"}}}}
+    elseif pub.client_id ~= "changed-subscriber-id" then
+       print("auth_on_publish_m5 called")
+       return validate_client_id(pub.client_id)
+    else
+       -- change the publish topic
+       print("auth_on_publish_m5 changed called")
+       return {topic = "hello/world"}
+    end
+end
+
+function auth_on_subscribe_m5(sub)
+   assert(sub.username == "test-user")
+   assert(sub.mountpoint == "")
+   assert(#sub.topics == 1)
+   assert(sub.topics[1][1] == "test/topic")
+   assert(sub.topics[1][2][1] == 1)
+   if sub.client_id ~= "changed-subscriber-id" then
+      if sub.client_id == "allowed-subscriber-id" then
+         assert(sub.properties)
+         properties = sub.properties
+         assert(properties.p_user_property[1].k1 == "v1")
+         assert(comparetables(properties.p_subscription_id,{1, 2, 3}))
+      end
+      print("auth_on_subscribe_m5 called")
+      return validate_client_id(sub.client_id)
+   else
+      -- change the subscription
+      print("auth_on_subscribe changed_m5 called")
+      return {topics = {{"hello/world", {2, {rap = true}}}}}
+   end
 end
 
 function on_auth_m5(auth)
