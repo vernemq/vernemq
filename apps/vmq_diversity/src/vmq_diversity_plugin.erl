@@ -33,6 +33,7 @@
 -behaviour(auth_on_register_m5_hook).
 -behaviour(auth_on_publish_m5_hook).
 -behaviour(auth_on_subscribe_m5_hook).
+-behaviour(on_publish_m5_hook).
 
 -export([auth_on_register/5,
          auth_on_publish/6,
@@ -49,6 +50,7 @@
          auth_on_register_m5/6,
          auth_on_publish_m5/7,
          auth_on_subscribe_m5/4,
+         on_publish_m5/7,
          on_auth_m5/3]).
 
 
@@ -273,6 +275,17 @@ auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props)
                                                    {properties, conv_args_props(Props)}]),
             conv_res(auth_on_pub, Res)
     end.
+
+on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_publish_m5, [{username, nilify(UserName)},
+                        {mountpoint, MP},
+                        {client_id, ClientId},
+                        {qos, QoS},
+                        {topic, unword(Topic)},
+                        {payload, Payload},
+                        {retain, IsRetain},
+                        {properties, conv_args_props(Props)}]).
 
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),

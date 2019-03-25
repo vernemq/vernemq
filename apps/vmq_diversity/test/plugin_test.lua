@@ -233,6 +233,24 @@ function auth_on_publish_m5(pub)
     end
 end
 
+function on_publish_m5(pub)
+   assert(pub.username == "test-user")
+   assert(pub.mountpoint == "")
+   assert(pub.topic == "test/topic")
+   assert(pub.qos == 1)
+   assert(pub.payload == "hello world")
+   assert(pub.retain == false)
+   properties = pub.properties
+   assert(properties)
+   assert(properties.p_correlation_data == "correlation_data")
+   assert(properties.p_response_topic == "response/topic")
+   assert(properties.p_payload_format_indicator == "utf8")
+   assert(properties.p_content_type == "content_type")
+   assert(properties.p_user_property[1].k1 == "v1")
+   assert(properties.p_user_property[2].k2 == "v2")
+   print("on_publish_m5 called")
+end
+
 function auth_on_subscribe_m5(sub)
    assert(sub.username == "test-user")
    assert(sub.mountpoint == "")
@@ -284,5 +302,6 @@ hooks = {
     auth_on_register_m5 = auth_on_register_m5,
     auth_on_subscribe_m5 = auth_on_subscribe_m5,
     auth_on_publish_m5 = auth_on_publish_m5,
+    on_publish_m5 = on_publish_m5,
     on_auth_m5 = on_auth_m5,
 }
