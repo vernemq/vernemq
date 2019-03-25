@@ -33,8 +33,9 @@
 -behaviour(auth_on_register_m5_hook).
 -behaviour(on_register_m5_hook).
 -behaviour(auth_on_publish_m5_hook).
--behaviour(auth_on_subscribe_m5_hook).
 -behaviour(on_publish_m5_hook).
+-behaviour(auth_on_subscribe_m5_hook).
+-behaviour(on_subscribe_m5_hook).
 -behaviour(on_auth_m5_hook).
 
 -export([auth_on_register/5,
@@ -52,8 +53,9 @@
          auth_on_register_m5/6,
          on_register_m5/4,
          auth_on_publish_m5/7,
-         auth_on_subscribe_m5/4,
          on_publish_m5/7,
+         auth_on_subscribe_m5/4,
+         on_subscribe_m5/4,
          on_auth_m5/3]).
 
 
@@ -374,6 +376,18 @@ auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
                                                      {properties, conv_args_props(Props)}]),
             conv_res(auth_on_sub, Res)
     end.
+
+on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    Unmap = fun(SubOpts) ->
+                    vmq_diversity_utils:unmap(SubOpts)
+            end,
+    all(auth_on_subscribe_m5, [{username, nilify(UserName)},
+                               {mountpoint, MP},
+                               {client_id, ClientId},
+                               {topics, [[unword(T), [QoS, Unmap(SubOpts)]]
+                                         || {T, {QoS, SubOpts}} <- Topics]},
+                               {properties, conv_args_props(Props)}]).
 
 on_auth_m5(Username, SubscriberId, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),

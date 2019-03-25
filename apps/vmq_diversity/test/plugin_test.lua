@@ -293,6 +293,21 @@ function auth_on_subscribe_m5(sub)
    end
 end
 
+function on_subscribe_m5(sub)
+   assert(sub.username == "test-user")
+   assert(sub.mountpoint == "")
+   assert(#sub.topics == 1)
+   assert(sub.topics[1][1] == "test/topic")
+   assert(sub.topics[1][2][1] == 1)
+   assert(sub.client_id, "allowed-subscriber-id")
+   assert(sub.properties)
+   properties = sub.properties
+   assert(properties.p_user_property[1].k1 == "v1")
+   assert(comparetables(properties.p_subscription_id,{1, 2, 3}))
+   print("on_subscribe_m5 called")
+   return validate_client_id(sub.client_id)
+end
+
 function on_auth_m5(auth)
    assert(auth.client_id == "allowed-subscriber-id")
    assert(auth.mountpoint == "")

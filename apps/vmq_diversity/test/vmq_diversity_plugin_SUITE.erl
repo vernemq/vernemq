@@ -55,6 +55,7 @@ all() ->
      on_register_m5_test,
      on_publish_m5_test,
      auth_on_subscribe_m5_test,
+     on_subscribe_m5_test,
      auth_on_publish_m5_test,
      auth_on_publish_m5_modify_props_test,
      on_auth_m5_test
@@ -233,6 +234,13 @@ auth_on_subscribe_m5_test(_) ->
                       [username(), ignored_subscriber_id(), [{topic(), {1, subopts()}}], props()]),
     {ok, #{topics := [{[<<"hello">>, <<"world">>], {2, #{rap := true}}}]}} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [username(), changed_subscriber_id(), [{topic(), {1, subopts()}}], props()]).
+
+on_subscribe_m5_test(_) ->
+    Props = #{?P_USER_PROPERTY =>
+                  [{<<"k1">>, <<"v1">>}],
+              ?P_SUBSCRIPTION_ID => [1,2,3]},
+    [ok] = vmq_plugin:all(auth_on_subscribe_m5,
+                          [username(), allowed_subscriber_id(), [{topic(), {1, subopts()}}], Props]).
 
 on_auth_m5_test(_) ->
     {ok, #{properties := #{?P_AUTHENTICATION_METHOD := <<"AUTH_METHOD">>,
