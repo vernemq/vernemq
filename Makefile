@@ -6,6 +6,7 @@ REBAR ?= $(BASE_DIR)/rebar3
 
 $(if $(ERLANG_BIN),,$(warning "Warning: No Erlang found in your path, this will probably not work"))
 
+
 all: compile
 
 compile:
@@ -21,14 +22,15 @@ rpi32: rel
 ##
 rel:
 ifeq ($(OVERLAY_VARS),)
+	cat vars.config > vars.generated
 	$(REBAR) $(PROFILE) release
 else
-	cat vars.config > vars_pkg.config
-	cat $(OVERLAY_VARS) >> vars_pkg.config
-	$(REBAR) $(PROFILE) release --overlay_vars vars_pkg.config
+	cat vars.config > vars.generated
+	cat $(OVERLAY_VARS) >> vars.generated
+	$(REBAR) $(PROFILE) release
 endif
 
-pkg_rel: relclean
+pkg_rel: pkg_clean
 	$(MAKE) rel
 
 
@@ -100,7 +102,7 @@ rpm: pkg_rel
 		_build/default/rel/vernemq/share/=/usr/share/vernemq/ \
 		_build/default/rel/vernemq/log/=/var/log/vernemq/
 
-relclean:
+pkg_clean:
 	rm -rf _build/default/rel
 
 ##
@@ -108,6 +110,9 @@ relclean:
 ##
 ##  devN - Make a dev build for node N
 dev% :
-	mkdir -p dev
 	./gen_dev $@ vars/dev_vars.config.src vars/$@_vars.config
-	(./rebar3 as $@ release --overlay_vars vars/$@_vars.config)
+	cat vars/$@_vars.config > vars.generated
+	(./rebar3 as $@ release)
+
+.PHONY: all compile rpi32 pkg_rel pkg_clean deb rpm rel
+export OVERLAY_VARS

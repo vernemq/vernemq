@@ -56,6 +56,9 @@
   are now treated as the normal termination case.
 - Improve MQTT 5.0 support in the `vmq_webhooks` plugin: support more properties
   and improve the tests.
+- Instead of using the `node_package` dependency to build binary packages, the
+  external Ruby command line tool `fpm` is used. This enables cleaning up the
+  Makefile as well as the upgrade of the `rebar3` build tool.
 
 ## VerneMQ 1.7.0
 
