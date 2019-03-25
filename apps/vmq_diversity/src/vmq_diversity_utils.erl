@@ -41,6 +41,7 @@ convert_modifiers(Hook, Mods0) ->
     case lists:member(Hook, [auth_on_register_m5,
                              auth_on_subscribe_m5,
                              auth_on_unsubscribe_m5,
+                             on_unsubscribe_m5,
                              auth_on_publish_m5,
                              on_deliver_m5,
                              on_auth_m5]) of

@@ -56,6 +56,7 @@
          on_publish_m5/7,
          auth_on_subscribe_m5/4,
          on_subscribe_m5/4,
+         on_unsubscribe_m5/4,
          on_auth_m5/3]).
 
 
@@ -388,6 +389,41 @@ on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
                                {topics, [[unword(T), [QoS, Unmap(SubOpts)]]
                                          || {T, {QoS, SubOpts}} <- Topics]},
                                {properties, conv_args_props(Props)}]).
+
+on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    CacheRet =
+    lists:foldl(
+      fun
+          (_, false) -> false;
+          (_, no_cache) -> no_cache;
+          (Topic, Acc) ->
+              %% We have to rewrite topics
+              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, 0) of
+                  Mods when is_list(Mods) ->
+                      Acc ++ [T || {T, _QoS} <- Mods];
+                  Ret ->
+                      Ret
+              end
+      end, [], Topics),
+    case CacheRet of
+        true ->
+            ok;
+        Modifiers when is_list(Modifiers) ->
+            %% Found a valid cache entry containing modifiers
+            {ok, Modifiers};
+        false ->
+            %% one of the provided topics doesn't match a cache entry which
+            %% rejects this subscribe
+            error;
+        no_cache ->
+            all_till_ok(on_unsubscribe_m5, [{username, nilify(UserName)},
+                                            {mountpoint, MP},
+                                            {client_id, ClientId},
+                                            {topics, [unword(T)
+                                                      || T <- Topics]},
+                                            {properties, conv_args_props(Props)}])
+    end.
 
 on_auth_m5(Username, SubscriberId, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),

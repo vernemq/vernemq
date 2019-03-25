@@ -308,6 +308,19 @@ function on_subscribe_m5(sub)
    return validate_client_id(sub.client_id)
 end
 
+function on_unsubscribe_m5(usub)
+   assert(usub.username == "test-user")
+   assert(usub.mountpoint == "")
+   assert(#usub.topics == 1)
+   assert(usub.topics[1] == "test/topic")
+   assert(usub.properties)
+   properties = usub.properties
+   assert(properties.p_user_property[1].k1 == "v1")
+   -- we must change properties
+   print("on_unsubscribe_m5 changed called")
+   return {topics = {"hello/world"}}
+end
+
 function on_auth_m5(auth)
    assert(auth.client_id == "allowed-subscriber-id")
    assert(auth.mountpoint == "")
@@ -337,6 +350,7 @@ hooks = {
     auth_on_register_m5 = auth_on_register_m5,
     on_register_m5 = on_register_m5,
     auth_on_subscribe_m5 = auth_on_subscribe_m5,
+    on_unsubscribe_m5 = on_unsubscribe_m5,
     auth_on_publish_m5 = auth_on_publish_m5,
     on_publish_m5 = on_publish_m5,
     on_auth_m5 = on_auth_m5,
