@@ -34,6 +34,7 @@
 -behaviour(auth_on_publish_m5_hook).
 -behaviour(auth_on_subscribe_m5_hook).
 -behaviour(on_publish_m5_hook).
+-behaviour(on_auth_m5_hook).
 
 -export([auth_on_register/5,
          auth_on_publish/6,
