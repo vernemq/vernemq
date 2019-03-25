@@ -194,6 +194,26 @@ function auth_on_register_m5(reg)
     -- reg.properties are ignored for now.
 end
 
+function on_register_m5(reg)
+   assert(reg.addr == "192.168.123.123")
+   assert(reg.port == 12345)
+   assert(reg.mountpoint == "")
+   assert(reg.username == "test-user")
+   assert(reg.client_id == "allowed-subscriber-id")
+   assert(reg.properties)
+   properties = reg.properties
+   assert(properties.p_session_expiry_interval == 5)
+   assert(properties.p_receive_max == 10)
+   assert(properties.p_topic_alias_max == 15)
+   assert(properties.p_request_response_info == true)
+   assert(properties.p_request_problem_info == true)
+
+   assert(properties.p_user_property[1].k1 == "v1")
+   assert(properties.p_user_property[2].k1 == "v2")
+   assert(properties.p_user_property[3].k2 == "v2")
+   print("on_register_m5 props called")
+end
+
 function auth_on_publish_m5(pub)
     assert(pub.username == "test-user")
     assert(pub.mountpoint == "")
@@ -300,6 +320,7 @@ hooks = {
     on_client_gone = on_client_gone,
 
     auth_on_register_m5 = auth_on_register_m5,
+    on_register_m5 = on_register_m5,
     auth_on_subscribe_m5 = auth_on_subscribe_m5,
     auth_on_publish_m5 = auth_on_publish_m5,
     on_publish_m5 = on_publish_m5,

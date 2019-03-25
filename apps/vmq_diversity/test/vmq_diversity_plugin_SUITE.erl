@@ -52,6 +52,7 @@ all() ->
 
      auth_on_register_m5_test,
      auth_on_register_m5_modify_props_test,
+     on_register_m5_test,
      on_publish_m5_test,
      auth_on_subscribe_m5_test,
      auth_on_publish_m5_test,
@@ -175,6 +176,19 @@ auth_on_register_m5_modify_props_test(_) ->
                      [{<<"k3">>, <<"v3">>}],
                  ?P_SESSION_EXPIRY_INTERVAL := 10}}}
         = vmq_plugin:all_till_ok(auth_on_register_m5, Args).
+
+on_register_m5_test(_) ->
+    UserProps = [{<<"k1">>, <<"v1">>},
+                 {<<"k1">>, <<"v2">>},
+                 {<<"k2">>, <<"v2">>}],
+    Args = [peer(), allowed_subscriber_id(), username(),
+            #{?P_SESSION_EXPIRY_INTERVAL => 5,
+              ?P_RECEIVE_MAX => 10,
+              ?P_TOPIC_ALIAS_MAX => 15,
+              ?P_REQUEST_RESPONSE_INFO => true,
+              ?P_REQUEST_PROBLEM_INFO => true,
+              ?P_USER_PROPERTY => UserProps}],
+    [next] = vmq_plugin:all(on_register_m5, Args).
 
 auth_on_publish_m5_modify_props_test(_) ->
     Args = [username(), {"", <<"modify_props">>}, 1, topic(), payload(), false,

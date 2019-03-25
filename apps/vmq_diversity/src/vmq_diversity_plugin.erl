@@ -31,6 +31,7 @@
 -behaviour(on_client_gone_hook).
 
 -behaviour(auth_on_register_m5_hook).
+-behaviour(on_register_m5_hook).
 -behaviour(auth_on_publish_m5_hook).
 -behaviour(auth_on_subscribe_m5_hook).
 -behaviour(on_publish_m5_hook).
@@ -49,6 +50,7 @@
          on_client_offline/1,
          on_client_gone/1,
          auth_on_register_m5/6,
+         on_register_m5/4,
          auth_on_publish_m5/7,
          auth_on_subscribe_m5/4,
          on_publish_m5/7,
@@ -229,6 +231,16 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) -
                                             {clean_start, CleanStart},
                                             {properties, conv_args_props(Props)}]),
     conv_res(auth_on_reg, Res).
+
+on_register_m5(Peer, SubscriberId, Username, Props) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_register_m5, [{addr, PPeer},
+                         {port, Port},
+                         {mountpoint, MP},
+                         {client_id, ClientId},
+                         {username, nilify(Username)},
+                         {properties, conv_args_props(Props)}]).
 
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
