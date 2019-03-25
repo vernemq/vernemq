@@ -176,17 +176,6 @@ auth_on_register_m5_modify_props_test(_) ->
                  ?P_SESSION_EXPIRY_INTERVAL := 10}}}
         = vmq_plugin:all_till_ok(auth_on_register_m5, Args).
 
-on_publish_m5_test(_) ->
-    Args = [username(), {"", <<"modify_props">>}, 1, topic(), payload(), false,
-            #{?P_USER_PROPERTY =>
-                  [{<<"k1">>, <<"v1">>},
-                   {<<"k2">>, <<"v2">>}],
-              ?P_CORRELATION_DATA => <<"correlation_data">>,
-              ?P_RESPONSE_TOPIC => [<<"response">>,<<"topic">>],
-              ?P_PAYLOAD_FORMAT_INDICATOR => utf8,
-              ?P_CONTENT_TYPE => <<"content_type">>}],
-    [next] = vmq_plugin:all(on_publish_m5, Args).
-
 auth_on_publish_m5_modify_props_test(_) ->
     Args = [username(), {"", <<"modify_props">>}, 1, topic(), payload(), false,
             #{?P_USER_PROPERTY =>
