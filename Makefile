@@ -1,6 +1,7 @@
 BASE_DIR         = $(shell pwd)
 ERLANG_BIN       = $(shell dirname $(shell which erl))
 GIT_VERSION      = $(shell git describe --tags)
+NOW              = $(shell date +%s)
 OVERLAY_VARS    ?=
 REBAR ?= $(BASE_DIR)/rebar3
 
@@ -33,9 +34,11 @@ endif
 pkg_rel: pkg_clean
 	$(MAKE) rel
 
+pkg_strip:
+	$(shell find _build/default/rel/vernemq -type f -executable | xargs strip --remove-section=.comment --remove-section=.note --strip-unneeded)
 
 deb: OVERLAY_VARS=vars/deb_vars.config
-deb: pkg_rel
+deb: pkg_rel pkg_strip
 	# required for running dpkg-shlibdeps
 	mkdir -p debian
 	touch debian/control
@@ -44,6 +47,7 @@ deb: pkg_rel
 	fpm -s dir -t deb -v "$(GIT_VERSION)" \
 		--force \
 		--name vernemq \
+		--epoch $(NOW) \
 		--license "Apache 2.0" \
 		--url "https://vernemq.com" \
 		--vendor "Octavo Labs AG" \
@@ -72,11 +76,12 @@ deb: pkg_rel
 		_build/default/rel/vernemq/log/=/var/log/vernemq/
 
 rpm: OVERLAY_VARS=vars/rpm_vars.config
-rpm: pkg_rel
+rpm: pkg_rel pkg_strip
 
 	fpm -s dir -t rpm -v "$(GIT_VERSION)" \
 		--force \
 		--name vernemq \
+		--epoch $(NOW) \
 		--license "Apache 2.0" \
 		--url "https://vernemq.com" \
 		--vendor "Octavo Labs AG" \
@@ -87,6 +92,7 @@ rpm: pkg_rel
 		--rpm-user vernemq \
 		--rpm-group vernemq \
 		--rpm-autoreqprov \
+		--rpm-compression xz \
 		--before-install files/rpm-vernemq.preinst \
 		--after-install files/rpm-vernemq.postinst \
 		--config-files /etc/vernemq/vernemq.conf 
