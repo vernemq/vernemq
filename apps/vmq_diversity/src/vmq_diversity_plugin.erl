@@ -54,6 +54,7 @@
          on_register_m5/4,
          auth_on_publish_m5/7,
          on_publish_m5/7,
+         on_deliver_m5/5,
          auth_on_subscribe_m5/4,
          on_subscribe_m5/4,
          on_unsubscribe_m5/4,
@@ -302,6 +303,15 @@ on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
                         {payload, Payload},
                         {retain, IsRetain},
                         {properties, conv_args_props(Props)}]).
+
+on_deliver_m5(UserName, SubscriberId, Topic, Payload, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all_till_ok(on_deliver_m5, [{username, nilify(UserName)},
+                                {mountpoint, MP},
+                                {client_id, ClientId},
+                                {topic, unword(Topic)},
+                                {payload, Payload},
+                                {properties, conv_args_props(Props)}]).
 
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),

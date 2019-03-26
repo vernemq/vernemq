@@ -271,6 +271,31 @@ function on_publish_m5(pub)
    print("on_publish_m5 called")
 end
 
+function on_deliver_m5(pub)
+   assert(pub.username == "test-user")
+   assert(pub.client_id == "allowed-subscriber-id")
+   assert(pub.mountpoint == "")
+   assert(pub.topic == "test/topic")
+   assert(pub.payload == "hello world")
+   assert(pub.properties)
+   properties = pub.properties
+   assert(properties.p_correlation_data == "correlation_data")
+   assert(properties.p_response_topic == "response/topic")
+   assert(properties.p_payload_format_indicator == "utf8")
+   assert(properties.p_content_type == "content_type")
+   assert(properties.p_user_property[1].k1 == "v1")
+   assert(properties.p_user_property[2].k2 == "v2")
+
+   print("on_deliver_m5 called")
+   return {properties =
+              {p_correlation_data = "modified_correlation_data",
+               p_response_topic = "modified/response/topic",
+               p_payload_format_indicator = "undefined",
+               p_content_type = "modified_content_type",
+               p_user_property =
+                  {{k1 = "v1"}, {k2 = "v2"}, {k3 = "v3"}}}}
+end
+
 function auth_on_subscribe_m5(sub)
    assert(sub.username == "test-user")
    assert(sub.mountpoint == "")
@@ -353,5 +378,6 @@ hooks = {
     on_unsubscribe_m5 = on_unsubscribe_m5,
     auth_on_publish_m5 = auth_on_publish_m5,
     on_publish_m5 = on_publish_m5,
+    on_deliver_m5 = on_deliver_m5,
     on_auth_m5 = on_auth_m5,
 }

@@ -223,6 +223,26 @@ on_publish_m5_test(_) ->
               ?P_CONTENT_TYPE => <<"content_type">>}],
     [next] = vmq_plugin:all(on_publish_m5, Args).
 
+on_deliver_m5_test(_) ->
+    Args = [username(), allowed_subscriber_id(), topic(), payload(),
+            #{?P_USER_PROPERTY =>
+                  [{<<"k1">>, <<"v1">>},
+                   {<<"k2">>, <<"v2">>}],
+              ?P_CORRELATION_DATA => <<"correlation_data">>,
+              ?P_RESPONSE_TOPIC => [<<"response">>,<<"topic">>],
+              ?P_PAYLOAD_FORMAT_INDICATOR => utf8,
+              ?P_CONTENT_TYPE => <<"content_type">>}],
+    {ok, #{properties :=
+          #{?P_USER_PROPERTY :=
+                [{<<"k1">>, <<"v1">>},
+                 {<<"k2">>, <<"v2">>},
+                 {<<"k3">>, <<"v3">>}],
+            ?P_CORRELATION_DATA := <<"modified_correlation_data">>,
+            ?P_RESPONSE_TOPIC := [<<"modified">>, <<"response">>,<<"topic">>],
+            ?P_PAYLOAD_FORMAT_INDICATOR := undefined,
+            ?P_CONTENT_TYPE := <<"modified_content_type">>}}}
+        = vmq_plugin:all_till_ok(on_deliver_m5, Args).
+
 auth_on_subscribe_m5_test(_) ->
     Props = #{?P_USER_PROPERTY =>
                   [{<<"k1">>, <<"v1">>}],
