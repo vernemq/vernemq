@@ -2,6 +2,7 @@ BASE_DIR         = $(shell pwd)
 ERLANG_BIN       = $(shell dirname $(shell which erl))
 GIT_VERSION      = $(shell git describe --tags)
 NOW              = $(shell date +%s)
+OS               = $(shell uname -s)
 OVERLAY_VARS    ?=
 REBAR ?= $(BASE_DIR)/rebar3
 
@@ -30,6 +31,29 @@ else
 	cat $(OVERLAY_VARS) >> vars.generated
 	$(REBAR) $(PROFILE) release
 endif
+
+##
+## Support RPM and Debian based linux systems
+##
+ifeq ($(OS),Linux)
+ARCH          = $(shell uname -m)
+ISRPM         = $(shell cat /etc/redhat-release 2> /dev/null)
+ISDEB         = $(shell cat /etc/debian_version 2> /dev/null)
+ISSLES        = $(shell cat /etc/SuSE-release 2> /dev/null)
+ifneq ($(ISRPM),)
+PKGTARGET      = rpm
+else
+ifneq ($(ISDEB),)
+PKGTARGET      = deb
+else
+ifneq ($(ISSLES),)
+PKGTARGET      = rpm
+endif  # SLES
+endif  # deb
+endif  # rpm
+endif # linux
+
+package: $(PKGTARGET)
 
 pkg_rel: pkg_clean
 	$(MAKE) rel
