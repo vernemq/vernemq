@@ -76,7 +76,7 @@ deb: pkg_rel pkg_strip
 		--url "https://vernemq.com" \
 		--vendor "Octavo Labs AG" \
 		--maintainer "<info@vernemq.com>" \
-		--description "VerneMQ is a MQTT message broker" \
+		--description "A distributed MQTT message broker based on Erlang/OTP" \
 		--depends logrotate \
 		--depends sudo \
 		--depends adduser \
@@ -110,7 +110,7 @@ rpm: pkg_rel pkg_strip
 		--url "https://vernemq.com" \
 		--vendor "Octavo Labs AG" \
 		--maintainer "<info@vernemq.com>" \
-		--description "VerneMQ is a MQTT message broker" \
+		--description "A distributed MQTT message broker based on Erlang/OTP" \
 		--depends logrotate \
 		--depends sudo \
 		--rpm-user vernemq \
