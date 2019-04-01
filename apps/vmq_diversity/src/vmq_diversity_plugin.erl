@@ -474,7 +474,7 @@ all_till_ok([Pid|Rest], HookName, Args) ->
         true ->
             ok;
         Mods0 when is_list(Mods0) ->
-            Mods1 = normalize_modifiers(HookName, Mods0),
+            Mods1 = convert_modifiers(HookName, Mods0),
             case vmq_plugin_util:check_modifiers(HookName, Mods1) of
                 error ->
                     {error, {invalid_modifiers, Mods1}};
@@ -527,8 +527,8 @@ nilify(Val) ->
 extract_qos({QoS, _SubInfo}) -> QoS;
 extract_qos(QoS) when is_integer(QoS) -> QoS.
 
-normalize_modifiers(Hook, Mods) ->
-    vmq_diversity_utils:normalize_modifiers(Hook, Mods).
+convert_modifiers(Hook, Mods0) ->
+    vmq_diversity_utils:convert_modifiers(Hook, Mods0).
 
 conv_res(auth_on_reg, {error, lua_script_returned_false}) ->
     {error, invalid_credentials};
