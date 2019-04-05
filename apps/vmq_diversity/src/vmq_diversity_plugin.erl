@@ -370,7 +370,7 @@ auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
             ok;
         Modifiers when is_list(Modifiers) ->
             %% Found a valid cache entry containing modifiers
-            {ok, #{topics => Modifiers}};
+            {ok, modifier_compat(auth_on_subscribe_m5, Modifiers)};
         false ->
             %% one of the provided topics doesn't match a cache entry which
             %% rejects this subscribe
@@ -656,6 +656,4 @@ conv_res(_, Other) ->
 modifier_compat(auth_on_subscribe_m5, Mods) ->
     #{topics => Mods};
 modifier_compat(auth_on_publish_m5, Mods) ->
-    maps:from_list(Mods);
-modifier_compat(_H, Mods) ->
-    Mods.
+    maps:from_list(Mods).
