@@ -78,6 +78,14 @@ auth_cache_test(_) ->
                                [username(), allowed_subscriber_id(),
                                 [{[<<"modifiers">>], 0}]]),
 
+    {ok, #{topic := [<<"hello">>,<<"world">>],
+           retain := true,
+           qos := 1,
+           payload := <<"hello world">>,
+           mountpoint := "override-mountpoint2"}} =
+        vmq_plugin:all_till_ok(auth_on_publish_m5,
+                               [username(), allowed_subscriber_id(), 0,
+                                [<<"modifiers">>], payload(), false, #{}]),
     ok.
 
 auth_cache_reject_test(_) ->

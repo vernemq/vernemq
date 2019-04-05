@@ -138,10 +138,27 @@ function on_offline(c)
     print("clear cache, client is offline")
 end
 
+function auth_on_register_m5(reg)
+   return auth_on_register(reg)
+end
+
+function auth_on_publish_m5(pub)
+   return false
+end
+
+function auth_on_subscribe_m5(sub)
+   return false
+end
+
 hooks = {
     auth_on_register = auth_on_register,
     auth_on_publish = auth_on_publish,
     auth_on_subscribe = auth_on_subscribe,
     on_client_gone = on_offline,
-    on_client_offline = on_offline
+    on_client_offline = on_offline,
+
+    auth_on_publish_m5 = auth_on_publish_m5,
+    auth_on_publish_m5 = auth_on_publish_m5,
+    auth_on_subscribe_m5 = auth_on_subscribe_m5,
+
 }

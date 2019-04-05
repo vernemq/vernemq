@@ -277,7 +277,7 @@ auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props)
             ok;
         Modifiers when is_list(Modifiers) ->
             %% Found a valid cache entry containing modifiers
-            {ok, Modifiers};
+            {ok, modifier_compat(auth_on_publish_m5, Modifiers)};
         false ->
             %% Found a valid cache entry which rejects this publish
             {error, not_authorized};
@@ -650,3 +650,12 @@ conv_res(auth_on_sub, {error, lua_script_returned_false}) ->
     {error, not_authorized};
 conv_res(_, Other) ->
     Other.
+
+%% @doc convert from the acl format to a form the MQTT 3/4/5 can
+%% understand
+modifier_compat(auth_on_subscribe_m5, Mods) ->
+    #{topics => Mods};
+modifier_compat(auth_on_publish_m5, Mods) ->
+    maps:from_list(Mods);
+modifier_compat(_H, Mods) ->
+    Mods.
