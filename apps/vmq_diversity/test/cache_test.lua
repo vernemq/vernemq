@@ -74,25 +74,51 @@ assert(ret.mountpoint == "override-mountpoint2")
 
 function auth_on_register(reg)
     if reg.client_id == "allowed-subscriber-id" then
-        acls = {
-            {
-                pattern = "a/%m/%u/%c/+/#"
-            },
-            {
-                pattern = "a/b/c"
-            }
-        }
-        -- the acls above would allow to publish and subscribe to
-        -- "a//test-user/allowed-subscriber-id/+/#"
-        -- "a/b/c"
-        assert(auth_cache.insert(
-                reg.mountpoint, 
-                reg.client_id, 
-                reg.username, 
-                acls, 
-                acls) == true)
-        print("cache auth_on_register")
-        return true
+       publish_acls = {
+          {
+             pattern = "a/b/c"
+          },
+          {
+             pattern = "a/%m/%u/%c/+/#",
+          },
+          {
+             pattern = "modifiers",
+             modifiers = {
+                topic = "hello/world",
+                payload = "hello world",
+                qos = 1,
+                retain = true,
+                mountpoint = "override-mountpoint2"
+             }
+
+          }
+       }
+       subscribe_acls = {
+          {
+             pattern = "a/b/c",
+          },
+          {
+             pattern = "a/%m/%u/%c/+/#",
+          },
+          {
+             pattern = "modifiers",
+             modifiers =
+                {
+                   {"hello/world", 2}
+                },
+          }
+       }
+       -- the acls above would allow to publish and subscribe to
+       -- "a//test-user/allowed-subscriber-id/+/#"
+       -- "a/b/c"
+       assert(auth_cache.insert(
+                 reg.mountpoint,
+                 reg.client_id,
+                 reg.username,
+                 publish_acls,
+                 subscribe_acls) == true)
+       print("cache auth_on_register")
+       return true
     end
     print("uncached auth_on_register")
     return true
@@ -112,10 +138,27 @@ function on_offline(c)
     print("clear cache, client is offline")
 end
 
+function auth_on_register_m5(reg)
+   return auth_on_register(reg)
+end
+
+function auth_on_publish_m5(pub)
+   return false
+end
+
+function auth_on_subscribe_m5(sub)
+   return false
+end
+
 hooks = {
     auth_on_register = auth_on_register,
     auth_on_publish = auth_on_publish,
     auth_on_subscribe = auth_on_subscribe,
     on_client_gone = on_offline,
-    on_client_offline = on_offline
+    on_client_offline = on_offline,
+
+    auth_on_publish_m5 = auth_on_publish_m5,
+    auth_on_publish_m5 = auth_on_publish_m5,
+    auth_on_subscribe_m5 = auth_on_subscribe_m5,
+
 }

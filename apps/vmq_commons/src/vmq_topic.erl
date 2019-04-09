@@ -40,6 +40,7 @@
          validate_topic/2,
          contains_wildcard/1,
          unword/1,
+         word/1,
          triples/1]).
 
 -define(MAX_LEN, 65536).
@@ -78,6 +79,9 @@ triples([Word|Rest] = Topic, Acc) ->
 
 unword(Topic) ->
     vernemq_dev_api:unword_topic(Topic).
+
+word(Topic) ->
+    re:split(Topic, <<"/">>).
 
 validate_topic(_Type, <<>>) ->
     {error, no_empty_topic_allowed};

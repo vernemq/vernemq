@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_utils).
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -export([convert_modifiers/2,
          normalize_subscribe_topics/1,
          convert/1,
@@ -39,7 +40,11 @@ convert_modifiers(Hook, Mods0) ->
                   Mods1),
     case lists:member(Hook, [auth_on_register_m5,
                              auth_on_subscribe_m5,
-                             auth_on_publish_m5]) of
+                             auth_on_unsubscribe_m5,
+                             on_unsubscribe_m5,
+                             auth_on_publish_m5,
+                             on_deliver_m5,
+                             on_auth_m5]) of
         true ->
             maps:from_list(Converted);
         _ ->
@@ -54,6 +59,8 @@ atomize_keys(Mods) ->
               {K,V}
       end, Mods).
 
+convert_modifier(_, {properties, Props}) ->
+    {properties, convert_properties(Props)};
 convert_modifier(Hook, {subscriber_id, SID})
   when Hook =:= auth_on_register_m5;
        Hook =:= auth_on_register ->
@@ -63,6 +70,26 @@ convert_modifier(auth_on_subscribe_m5, {topics, Topics}) ->
 convert_modifier(_, {Key, Val}) ->
     %% fall back to automatic conversion,
     {Key, convert(Val)}.
+
+convert_properties(Props) ->
+    NewProps = lists:map(
+                 fun convert_property/1, atomize_keys(Props)),
+    maps:from_list(NewProps).
+
+convert_property({?P_USER_PROPERTY, Val}) ->
+    {?P_USER_PROPERTY,
+     lists:map(fun({_,[T]}) -> T;
+                  (V) -> V
+               end, Val)};
+%% TODO: currently vmq_plugin_utils:check_modifiers splits the topic.
+%% convert_property({?P_RESPONSE_TOPIC, Topic}) ->
+%%     {?P_RESPONSE_TOPIC, vmq_topic:word(Topic)};
+convert_property({?P_PAYLOAD_FORMAT_INDICATOR, <<"undefined">>}) ->
+    {?P_PAYLOAD_FORMAT_INDICATOR, undefined};
+convert_property({?P_PAYLOAD_FORMAT_INDICATOR, <<"utf8">>}) ->
+    {?P_PAYLOAD_FORMAT_INDICATOR, utf8};
+convert_property({K, V}) ->
+    {K, convert(V)}.
 
 normalize_subscribe_topics(Topics0) ->
     lists:map(

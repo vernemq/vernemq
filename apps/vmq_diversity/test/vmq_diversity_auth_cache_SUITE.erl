@@ -49,20 +49,49 @@ auth_cache_test(_) ->
     %% This test verifies that an action is granted if a cached ACL is found
     %% for this MP/ClientId
     ok = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), allowed_subscriber_id(), username(), password(), true]),
+                                [peer(), allowed_subscriber_id(), username(), password(), true]),
     ok = vmq_plugin:all_till_ok(auth_on_publish,
-                      [username(), allowed_subscriber_id(), 0,
-                       [<<"a">>, <<"b">>, <<"c">>], payload(), false]),
+                                [username(), allowed_subscriber_id(), 0,
+                                 [<<"a">>,<<"b">>, <<"c">>], payload(), false]),
     ok = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), allowed_subscriber_id(), 0,
                        [<<"a">>, <<>>, <<"test-user">>,
                         <<"allowed-subscriber-id">>, <<"hello">>, <<"world">>],
                        payload(), false]),
     ok = vmq_plugin:all_till_ok(auth_on_subscribe,
-                      [username(), allowed_subscriber_id(),
-                       [{[<<"a">>, <<"b">>, <<"c">>], 0},
-                        {[<<"a">>, <<>>, <<"test-user">>,
-                          <<"allowed-subscriber-id">>, <<"+">>, <<"world">>], 0}]]).
+                                [username(), allowed_subscriber_id(),
+                                 [{[<<"a">>, <<"b">>, <<"c">>], 0},
+                                  {[<<"a">>, <<>>, <<"test-user">>,
+                                    <<"allowed-subscriber-id">>, <<"+">>, <<"world">>], 0}]]),
+    {ok, PubMods1} =
+        vmq_plugin:all_till_ok(auth_on_publish,
+                               [username(), allowed_subscriber_id(), 0,
+                                [<<"modifiers">>], payload(), false]),
+    [] = PubMods1 -- [{topic,[<<"hello">>,<<"world">>]},
+                      {retain,true},
+                      {qos,1},
+                      {payload,<<"hello world">>},
+                      {mountpoint,"override-mountpoint2"}],
+
+    {ok, [{[<<"hello">>,<<"world">>],2}]} =
+        vmq_plugin:all_till_ok(auth_on_subscribe,
+                               [username(), allowed_subscriber_id(),
+                                [{[<<"modifiers">>], 0}]]),
+
+    {ok, #{topic := [<<"hello">>,<<"world">>],
+           retain := true,
+           qos := 1,
+           payload := <<"hello world">>,
+           mountpoint := "override-mountpoint2"}} =
+        vmq_plugin:all_till_ok(auth_on_publish_m5,
+                               [username(), allowed_subscriber_id(), 0,
+                                [<<"modifiers">>], payload(), false, #{}]),
+
+    {ok, #{topics := [{[<<"hello">>,<<"world">>],2}]}} =
+        vmq_plugin:all_till_ok(auth_on_subscribe_m5,
+                               [username(), allowed_subscriber_id(),
+                                [{[<<"modifiers">>], 0}], #{}]),
+    ok.
 
 auth_cache_reject_test(_) ->
     %% This test verifies that an action is rejected if a cached ACL is found
@@ -110,8 +139,8 @@ auth_cache_cleanup_test(_) ->
                       [peer(), allowed_subscriber_id(), username(), password(), true]),
     [{publish, PublishAcls},
      {subscribe, SubscribeAcls}] = vmq_diversity_cache:entries(<<"">>, <<"allowed-subscriber-id">>),
-    2 = length(PublishAcls),
-    2 = length(SubscribeAcls),
+    3 = length(PublishAcls),
+    3 = length(SubscribeAcls),
     vmq_plugin:all(on_client_offline, [allowed_subscriber_id()]),
     [] = vmq_diversity_cache:entries(<<"">>, <<"allowed-subscriber-id">>).
 
