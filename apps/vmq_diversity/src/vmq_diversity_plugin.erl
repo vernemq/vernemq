@@ -393,12 +393,12 @@ on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
     Unmap = fun(SubOpts) ->
                     vmq_diversity_utils:unmap(SubOpts)
             end,
-    all(auth_on_subscribe_m5, [{username, nilify(UserName)},
-                               {mountpoint, MP},
-                               {client_id, ClientId},
-                               {topics, [[unword(T), [QoS, Unmap(SubOpts)]]
-                                         || {T, {QoS, SubOpts}} <- Topics]},
-                               {properties, conv_args_props(Props)}]).
+    all(on_subscribe_m5, [{username, nilify(UserName)},
+                          {mountpoint, MP},
+                          {client_id, ClientId},
+                          {topics, [[unword(T), [QoS, Unmap(SubOpts)]]
+                                    || {T, {QoS, SubOpts}} <- Topics]},
+                          {properties, conv_args_props(Props)}]).
 
 on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),

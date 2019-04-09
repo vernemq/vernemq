@@ -330,7 +330,6 @@ function on_subscribe_m5(sub)
    assert(properties.p_user_property[1].k1 == "v1")
    assert(comparetables(properties.p_subscription_id,{1, 2, 3}))
    print("on_subscribe_m5 called")
-   return validate_client_id(sub.client_id)
 end
 
 function on_unsubscribe_m5(usub)
@@ -375,6 +374,7 @@ hooks = {
     auth_on_register_m5 = auth_on_register_m5,
     on_register_m5 = on_register_m5,
     auth_on_subscribe_m5 = auth_on_subscribe_m5,
+    on_subscribe_m5 = on_subscribe_m5,
     on_unsubscribe_m5 = on_unsubscribe_m5,
     auth_on_publish_m5 = auth_on_publish_m5,
     on_publish_m5 = on_publish_m5,
