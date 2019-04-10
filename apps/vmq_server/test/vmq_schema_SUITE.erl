@@ -61,12 +61,12 @@ ssl_certs_opts_inheritance_test(_Config) ->
     DummyFile = dummy_file("vmq_schema_suite_dummy_file"),
     ConfFun =
         fun(LType) ->
+                Base =
                 [
                  {["listener", LType, "certfile"], DummyFile},
                  {["listener", LType, "cafile"], DummyFile},
                  {["listener", LType, "keyfile"], DummyFile},
                  {["listener", LType, "depth"], 10},
-
                  {["listener", LType, "ciphers"], "ciphers"},
                  {["listener", LType, "crlfile"], DummyFile},
                  {["listener", LType, "require_certificate"], "on"},
@@ -74,7 +74,13 @@ ssl_certs_opts_inheritance_test(_Config) ->
                  {["listener", LType, "tls_version"], "tlsv1.1"},
                  {["listener", LType, "default"], "127.0.0.1:1234"}
                  | global_substitutions()
-                ]
+                ],
+                case LType of
+                    "https" ->
+                        Base;
+                    _ ->
+                        [{["listener", LType, "mountpoint"], "mpval"} | Base]
+                end
         end,
     TestFun =
         fun(Conf, IntName) ->
@@ -82,6 +88,11 @@ ssl_certs_opts_inheritance_test(_Config) ->
                 DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
                 DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
                 10        = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, depth]),
+                case IntName of
+                    https -> skip;
+                    _ ->
+                        "mpval"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
+                end,
                 "ciphers" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
                 DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
                 true      = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
@@ -92,8 +103,8 @@ ssl_certs_opts_inheritance_test(_Config) ->
       fun({ConfName, IntName} = L) ->
               try
                   TestFun(ConfFun(ConfName), IntName)
-              catch C:E ->
-                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, erlang:get_stacktrace()}]),
+              catch C:E:ST ->
+                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, ST}]),
                       throw(E)
               end
       end,
@@ -109,7 +120,7 @@ ssl_certs_opts_override_test(_Config) ->
     DummyFileOverride = dummy_file("vmq_schema_suite_dummy_file_override"),
     ConfFun =
         fun(LType) ->
-                [
+                Base = [
                  %% protocol defaults
                  {["listener", LType, "certfile"], DummyFile},
                  {["listener", LType, "cafile"], DummyFile},
@@ -132,7 +143,16 @@ ssl_certs_opts_override_test(_Config) ->
 
                  {["listener", LType, "mylistener"], "127.0.0.1:1234"}
                  | global_substitutions()
-                ]
+                ],
+                case LType of
+                    "https" ->
+                        Base;
+                    _ ->
+                        [{["listener", LType, "mountpoint"], "mpval"},
+                         {["listener", LType, "mylistener", "mountpoint"], "overriden"}
+                         | Base]
+                end
+
         end,
     TestFun =
         fun(Conf, IntName) ->
@@ -143,7 +163,12 @@ ssl_certs_opts_override_test(_Config) ->
                 "overridden"      = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
                 DummyFileOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
                 false             = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
-                'tlsv1.2'         = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version])
+                'tlsv1.2'         = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version]),
+                case IntName of
+                    https -> skip;
+                    _ ->
+                        "overriden"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
+                end
         end,
 
     lists:foreach(
