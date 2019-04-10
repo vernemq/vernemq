@@ -59,6 +59,8 @@
 - Instead of using the `node_package` dependency to build binary packages, the
   external Ruby command line tool `fpm` is used. This enables cleaning up the
   Makefile as well as the upgrade of the `rebar3` build tool.
+- Improve MQTT 5.0 support in the `vmq_diversity` plugin: support all MQTT 5.0
+  hooks in Lua and more properties.
 
 ## VerneMQ 1.7.0
 
