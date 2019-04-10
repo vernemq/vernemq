@@ -17,7 +17,11 @@
 %% API functions
 -export([install/1,
          squery/2,
-         equery/3]).
+         equery/3,
+
+         %% exported for `vmq_diversity_cockroachdb`
+         execute/2,
+         ensure_pool/4]).
 
 -import(luerl_lib, [badarg_error/3]).
 
@@ -46,7 +50,8 @@ equery(PoolName, Stmt, Params) ->
 table() ->
     [
      {<<"execute">>, {function, fun execute/2}},
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}}
+     {<<"ensure_pool">>, {function, fun ensure_pool/2}},
+     {<<"hash_method">>, {function, fun hash_method/2}}
     ].
 
 execute(As, St) ->
@@ -93,17 +98,20 @@ execute(As, St) ->
     end.
 
 ensure_pool(As, St) ->
+    ensure_pool(As, St, postgres, pool_postgres).
+
+ensure_pool(As, St, DB, DefaultPoolId) ->
     case As of
         [Config0|_] ->
             case luerl:decode(Config0, St) of
                 Config when is_list(Config) ->
                     {ok, AuthConfigs} = application:get_env(vmq_diversity, db_config),
-                    DefaultConf = proplists:get_value(postgres, AuthConfigs),
+                    DefaultConf = proplists:get_value(DB, AuthConfigs),
                     Options = vmq_diversity_utils:map(Config),
                     PoolId = vmq_diversity_utils:atom(
                                maps:get(<<"pool_id">>,
                                         Options,
-                                        pool_postgres)),
+                                        DefaultPoolId)),
 
                     Size = vmq_diversity_utils:int(
                              maps:get(<<"size">>,
@@ -172,3 +180,9 @@ build_result(Results, Columns) ->
 build_result([Result|Results], Names, Acc) ->
     build_result(Results, Names, [lists:zip(Names, tuple_to_list(Result))|Acc]);
 build_result([], _, Acc) -> lists:reverse(Acc).
+
+hash_method(_, St) ->
+    {ok, DBConfigs} = application:get_env(vmq_diversity, db_config),
+    DefaultConf = proplists:get_value(postgres, DBConfigs),
+    HashMethod = proplists:get_value(password_hash_method, DefaultConf),
+    {[atom_to_binary(HashMethod,utf8)], St}.
