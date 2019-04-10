@@ -218,6 +218,7 @@ load_script(Id, Script) ->
     Libs = [
             {vmq_diversity_mysql,       <<"mysql">>},
             {vmq_diversity_postgres,    <<"postgres">>},
+            {vmq_diversity_cockroachdb, <<"cockroachdb">>},
             {vmq_diversity_mongo,       <<"mongodb">>},
             {vmq_diversity_redis,       <<"redis">>},
             {vmq_diversity_http,        <<"http">>},

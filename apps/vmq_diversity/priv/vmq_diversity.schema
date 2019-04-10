@@ -104,6 +104,92 @@
   {commented, "{{platform_etc_dir}}/keyfile.pem"}
  ]}.
 
+%% @doc The password hashing method to use in PostgreSQL:
+{mapping, "vmq_diversity.postgres.password_hash_method", "vmq_diversity.db_config.postgres.password_hash_method",
+ [{datatype, {enum, [crypt, bcrypt]}},
+  {default, crypt}
+ ]}.
+
+{mapping, "vmq_diversity.auth_cockroachdb.enabled", "vmq_diversity.auth_cache.cockroachdb.enabled",
+ [{datatype, flag},
+  {default, off}]}.
+
+{mapping, "vmq_diversity.auth_cockroachdb.script", "vmq_diversity.auth_cache.cockroachdb.file",
+ [{datatype, file},
+  {default, "{{platform_share_dir}}/lua/auth/cockroachdb.lua"},
+  hidden
+ ]}.
+
+{mapping, "vmq_diversity.cockroachdb.host", "vmq_diversity.db_config.cockroachdb.host",
+ [{datatype, string},
+  {default, "localhost"},
+  {commented, "localhost"}]}.
+
+{mapping, "vmq_diversity.cockroachdb.port", "vmq_diversity.db_config.cockroachdb.port",
+ [{datatype, integer},
+  {default, 5432},
+  {commented, 5432}]}.
+
+{mapping, "vmq_diversity.cockroachdb.user", "vmq_diversity.db_config.cockroachdb.user",
+ [{datatype, string},
+  {default, "root"},
+  {commented, "root"}]}.
+
+{mapping, "vmq_diversity.cockroachdb.password", "vmq_diversity.db_config.cockroachdb.password",
+ [{datatype, string},
+  {default, "password"},
+  {commented, "password"}]}.
+
+{mapping, "vmq_diversity.cockroachdb.database", "vmq_diversity.db_config.cockroachdb.database",
+ [{datatype, string},
+  {default, "vernemq_db"},
+  {commented, "vernemq_db"}]}.
+
+{mapping, "vmq_diversity.cockroachdb.pool_size", "vmq_diversity.db_config.cockroachdb.pool_size",
+ [{datatype, integer},
+  {default, 5},
+  hidden]}.
+
+%% @doc Specify if the cockroachdb driver should use TLS or not.
+{mapping, "vmq_diversity.cockroachdb.ssl", "vmq_diversity.db_config.cockroachdb.ssl",
+ [{datatype, flag},
+  {default, on}
+ ]}.
+
+%% @doc The cafile is used to define the path to a file containing
+%% the PEM encoded CA certificates that are trusted.
+{mapping, "vmq_diversity.cockroachdb.cafile", "vmq_diversity.db_config.cockroachdb.cacertfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {commented, "{{platform_etc_dir}}/cafile.pem"},
+  {validators, ["file-exists", "file-is-readable"]}
+ ]}.
+
+%% @doc Set the path to the PEM encoded server certificate.
+{mapping, "vmq_diversity.cockroachdb.certfile", "vmq_diversity.db_config.cockroachdb.certfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable"]},
+  {commented, "{{platform_etc_dir}}/cert.pem"}
+ ]}.
+
+%% @doc Set the path to the PEM encoded key file.
+{mapping, "vmq_diversity.cockroachdb.keyfile", "vmq_diversity.db_config.cockroachdb.keyfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable"]},
+  {commented, "{{platform_etc_dir}}/keyfile.pem"}
+ ]}.
+
+%% @doc The password hashing method to use in CockroachDB:
+{mapping, "vmq_diversity.cockroachdb.password_hash_method", "vmq_diversity.db_config.cockroachdb.password_hash_method",
+ [{datatype, {enum, [sha256, bcrypt]}},
+  {default, bcrypt}
+ ]}.
+
 {mapping, "vmq_diversity.auth_mysql.enabled", "vmq_diversity.auth_cache.mysql.enabled",
  [{datatype, flag},
   {default, off}]}.

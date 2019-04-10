@@ -1,4 +1,4 @@
--- Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
+-- Copyright 2019 Octavo Labs AG Zurich Switzerland (https://octavolabs.com)
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -21,15 +21,15 @@ require "auth/auth_commons"
 require "auth/postgres_cockroach_commons"
 
 function auth_on_register(reg)
-   return auth_on_register_common(postgres, reg)
+   return auth_on_register_common(cockroachdb, reg)
 end
 
-pool = "auth_postgres"
+pool = "auth_cockroachdb"
 config = {
     pool_id = pool,
 }
 
-postgres.ensure_pool(config)
+cockroachdb.ensure_pool(config)
 hooks = {
     auth_on_register = auth_on_register,
     auth_on_publish = auth_on_publish,
