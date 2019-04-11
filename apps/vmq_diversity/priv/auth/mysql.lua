@@ -35,6 +35,7 @@ require "auth/auth_commons"
 -- NOTE THAT `PASSWORD()` NEEDS TO BE SUBSTITUTED ACCORDING TO THE HASHING METHOD
 -- CONFIGURED IN `vmq_diversity.mysql.password_hash_method`. CHECK THE MYSQL DOCS TO 
 -- FIND THE MATCHING ONE AT https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html.
+-- SALTED VERSIONS LOOK LIKE THIS: `PASSWORD(CONCAT('pass123', 'salt123'))`
 --
 -- 
 --[[
@@ -43,7 +44,7 @@ require "auth/auth_commons"
    (mountpoint, client_id, username, password, salt,
     publish_acl, subscribe_acl)
  VALUES 
-   ('', 'test-client', 'test-user', PASSWORD(CONCAT('pass123', 'salt123')), 'salt123',
+   ('', 'test-client', 'test-user', PASSWORD('pass123'), 'salt123',
     '[{"pattern":"a/b/c"},{"pattern":"c/b/#"}]',
     '[{"pattern":"a/b/c"},{"pattern":"c/b/#"}]');
 

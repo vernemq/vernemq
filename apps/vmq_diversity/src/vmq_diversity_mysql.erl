@@ -121,9 +121,11 @@ hash_method(_, St) ->
     DefaultConf = proplists:get_value(mysql, DBConfigs),
     HashMethod = proplists:get_value(password_hash_method, DefaultConf),
     MysqlFunc = case HashMethod of
-        password -> <<"PASSWORD(CONCAT(?, salt))">>;
-        md5 -> <<"MD5(CONCAT(?, salt))">>;
-        sha1 -> <<"SHA1(CONCAT(?, salt))">>;
-        sha256 -> <<"SHA2(CONCAT(?, salt), 256)">>
+        password -> <<"PASSWORD(?)">>;
+        md5 -> <<"MD5(?)">>;
+        sha1 -> <<"SHA1(?)">>;
+        sha256 -> <<"SHA2(?, 256)">>;
+        sha1_salt -> <<"SHA1(CONCAT(?, salt))">>;
+        sha256_salt -> <<"SHA2(CONCAT(?, salt), 256)">>
     end, 
     {[MysqlFunc], St}.
