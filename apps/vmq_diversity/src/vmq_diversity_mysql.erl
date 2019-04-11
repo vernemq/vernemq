@@ -120,10 +120,4 @@ hash_method(_, St) ->
     {ok, DBConfigs} = application:get_env(vmq_diversity, db_config),
     DefaultConf = proplists:get_value(mysql, DBConfigs),
     HashMethod = proplists:get_value(password_hash_method, DefaultConf),
-    MysqlFunc = case HashMethod of
-        password -> <<"PASSWORD(?)">>;
-        md5 -> <<"MD5(?)">>;
-        sha1 -> <<"SHA1(?)">>;
-        sha256 -> <<"SHA2(?, 256)">>
-    end, 
-    {[MysqlFunc], St}.
+    {[HashMethod], St}.
