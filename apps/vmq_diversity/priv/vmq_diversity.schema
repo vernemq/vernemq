@@ -110,23 +110,26 @@
   hidden]}.
 
 %% @doc The password hashing method to use in MySQL:
-%%  PASSWORD(?): Default for compatibility, deprecated since MySQL 5.7.6 and not
-%%               usable with MySQL 8.0.11+.
-%%               Docs: https://dev.mysql.com/doc/refman/5.7/en/encryption-functions.html#function_password
-%%       MD5(?): Calculates an MD5 128-bit checksum of the password.
-%%               Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_md5
-%%      SHA1(?): Calculates the SHA-1 160-bit checksum for the password.
-%%               Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_sha1
-%% SHA2(?, 256): Calculates the SHA-2 hash of the password, using 256 bits.
-%%               Works only if MySQL has been configured with SSL support.
-%%               Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_sha2
+%% password: Default for compatibility, deprecated since MySQL 5.7.6 and not
+%%           usable with MySQL 8.0.11+.
+%%           Alias for PASSWORD(?)
+%%           Docs: https://dev.mysql.com/doc/refman/5.7/en/encryption-functions.html#function_password
+%%      md5: Calculates an MD5 128-bit checksum of the password.
+%%           Alias for MD5(?)
+%%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_md5
+%%     sha1: Calculates the SHA-1 160-bit checksum for the password.
+%%           Alias for SHA1(?)
+%%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_sha1
+%%   sha256: Calculates the SHA-2 hash of the password, using 256 bits.
+%%           Works only if MySQL has been configured with SSL support.
+%%           Alias for SHA2(?, 256)
+%%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_sha2
 %%
 %% The password hash can also be salted for enhanced security:
-%% - SHA1(CONCAT(?, salt))
-%% - SHA2(CONCAT(?, salt), 256)
+%% - vmq_diversity.mysql.password_hash_method = SHA2(CONCAT(?, salt), 256)
 {mapping, "vmq_diversity.mysql.password_hash_method", "vmq_diversity.db_config.mysql.password_hash_method",
  [{datatype, string},
-  {default, "PASSWORD(?)"}
+  {default, "password"}
  ]}.
 
 {mapping, "vmq_diversity.auth_mongodb.enabled", "vmq_diversity.auth_cache.mongodb.enabled",
