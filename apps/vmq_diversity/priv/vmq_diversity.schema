@@ -70,6 +70,40 @@
   {default, 5},
   hidden]}.
 
+%% @doc Specify if the postgresql driver should use TLS or not.
+{mapping, "vmq_diversity.postgres.ssl", "vmq_diversity.db_config.postgres.ssl",
+ [{datatype, flag},
+  {default, off}
+ ]}.
+
+%% @doc The cafile is used to define the path to a file containing
+%% the PEM encoded CA certificates that are trusted.
+{mapping, "vmq_diversity.postgres.cafile", "vmq_diversity.db_config.postgres.cacertfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {commented, "{{platform_etc_dir}}/cafile.pem"},
+  {validators, ["file-exists", "file-is-readable"]}
+ ]}.
+
+%% @doc Set the path to the PEM encoded server certificate.
+{mapping, "vmq_diversity.postgres.certfile", "vmq_diversity.db_config.postgres.certfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable"]},
+  {commented, "{{platform_etc_dir}}/cert.pem"}
+ ]}.
+
+%% @doc Set the path to the PEM encoded key file.
+{mapping, "vmq_diversity.postgres.keyfile", "vmq_diversity.db_config.postgres.keyfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable"]},
+  {commented, "{{platform_etc_dir}}/keyfile.pem"}
+ ]}.
+
 {mapping, "vmq_diversity.auth_mysql.enabled", "vmq_diversity.auth_cache.mysql.enabled",
  [{datatype, flag},
   {default, off}]}.
@@ -256,3 +290,18 @@
  [{datatype, string},
   hidden,
   {default, "    script      Manage lua scripts\n"}]}.
+
+{validator, "file-exists", "file does not exist",
+ fun("") ->
+         %% "" is used as the default value in most places, we should
+         %% not error out because of that.
+         true;
+    (Name) -> vmq_schema_util:file_exists(Name)
+ end}.
+{validator, "file-is-readable", "file is not readable, check permissions",
+ fun("") ->
+         %% "" is used as the default value in most places, we should
+         %% not error out because of that.
+         true;
+    (Name) -> vmq_schema_util:file_is_readable(Name)
+ end}.

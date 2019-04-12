@@ -84,10 +84,13 @@ start_all_pools([{pgsql, ProviderConfig}|Rest], Acc) ->
                        Database = proplists:get_value(database, WorkerArgs),
                        Username = proplists:get_value(user, WorkerArgs),
                        Password = proplists:get_value(password, WorkerArgs),
-                       epgsql:connect(Hostname, Username, Password, [
-                           {database, Database},
-                           {port, Port}
-                       ])
+                       Ssl = proplists:get_value(ssl, WorkerArgs),
+                       SslOpts = proplists:get_value(ssl_opts, WorkerArgs),
+                       Opts = #{database => Database,
+                                port => Port,
+                                ssl => Ssl,
+                                ssl_opts => SslOpts},
+                       epgsql:connect(Hostname, Username, Password, Opts)
                end,
     TerminateFun = fun(Pid) -> ok = epgsql:close(Pid) end,
     WrapperArgs = [{reconnect_timeout, 1000},

@@ -128,9 +128,32 @@ ensure_pool(As, St) ->
                                  maps:get(<<"database">>,
                                           Options,
                                           proplists:get_value(database, DefaultConf))),
+                    Ssl = vmq_diversity_utils:atom(
+                            maps:get(<<"ssl">>, Options,
+                                     proplists:get_value(ssl, DefaultConf, false))),
+                    SslOpts =
+                        case Ssl of
+                            true ->
+                                CertFile = vmq_diversity_utils:str(
+                                             maps:get(<<"certfile">>, Options,
+                                                      proplists:get_value(certfile, DefaultConf))),
+                                CaCertFile = vmq_diversity_utils:str(
+                                             maps:get(<<"cacertfile">>, Options,
+                                                      proplists:get_value(cacertfile, DefaultConf))),
+                                KeyFile = vmq_diversity_utils:str(
+                                             maps:get(<<"keyfile">>, Options,
+                                                      proplists:get_value(keyfile, DefaultConf))),
+                                L = [{certfile, CertFile},
+                                     {cacertfile, CaCertFile},
+                                     {keyfile, KeyFile}],
+                                [P||{_,V}=P <- L, V /= ""];
+                           false ->
+                                []
+                        end,
                     NewOptions =
                     [{size, Size}, {user, User}, {password, Password},
-                     {host, Host}, {port, Port}, {database, Database}],
+                     {host, Host}, {port, Port}, {database, Database},
+                     {ssl, Ssl}, {ssl_opts, SslOpts}],
                     vmq_diversity_sup:start_all_pools(
                       [{pgsql, [{id, PoolId}, {opts, NewOptions}]}], []),
 
