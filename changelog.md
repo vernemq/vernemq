@@ -61,6 +61,8 @@
   Makefile as well as the upgrade of the `rebar3` build tool.
 - Improve MQTT 5.0 support in the `vmq_diversity` plugin: support all MQTT 5.0
   hooks in Lua and more properties.
+- Support TLS encrypted connections to PostgreSQL when using
+  `vmq_diversity`. Fixes #811.
 
 ## VerneMQ 1.7.0
 
