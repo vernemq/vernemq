@@ -208,6 +208,40 @@
   {default, safe},
   hidden]}.
 
+%% @doc Specify if the mongodb driver should use TLS or not.
+{mapping, "vmq_diversity.mongodb.ssl", "vmq_diversity.db_config.mongodb.ssl",
+ [{datatype, flag},
+  {default, off}
+ ]}.
+
+%% @doc The cafile is used to define the path to a file containing
+%% the PEM encoded CA certificates that are trusted.
+{mapping, "vmq_diversity.mongodb.cafile", "vmq_diversity.db_config.mongodb.cacertfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {commented, "{{platform_etc_dir}}/cafile.pem"},
+  {validators, ["file-exists", "file-is-readable"]}
+ ]}.
+
+%% @doc Set the path to the PEM encoded server certificate.
+{mapping, "vmq_diversity.mongodb.certfile", "vmq_diversity.db_config.mongodb.certfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable"]},
+  {commented, "{{platform_etc_dir}}/cert.pem"}
+ ]}.
+
+%% @doc Set the path to the PEM encoded key file.
+{mapping, "vmq_diversity.mongodb.keyfile", "vmq_diversity.db_config.mongodb.keyfile",
+ [
+  {default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable"]},
+  {commented, "{{platform_etc_dir}}/keyfile.pem"}
+ ]}.
+
 
 {mapping, "vmq_diversity.auth_redis.enabled", "vmq_diversity.auth_cache.redis.enabled",
  [{datatype, flag},
