@@ -63,6 +63,7 @@
   hooks in Lua and more properties.
 - Support TLS encrypted connections to PostgreSQL when using
   `vmq_diversity`. Fixes #811.
+- Support TLS encrypted connections to MongoDB when using `vmq_diversity`.
 
 ## VerneMQ 1.7.0
 

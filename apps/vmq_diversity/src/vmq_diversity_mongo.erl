@@ -109,10 +109,33 @@ ensure_pool(As, St) ->
                               maps:get(<<"r_mode">>,
                                        Options,
                                        proplists:get_value(r_mode, DefaultConf))),
+                    Ssl = vmq_diversity_utils:atom(
+                            maps:get(<<"ssl">>, Options,
+                                     proplists:get_value(ssl, DefaultConf, false))),
+                    SslOpts =
+                        case Ssl of
+                            true ->
+                                CertFile = vmq_diversity_utils:str(
+                                             maps:get(<<"certfile">>, Options,
+                                                      proplists:get_value(certfile, DefaultConf))),
+                                CaCertFile = vmq_diversity_utils:str(
+                                             maps:get(<<"cacertfile">>, Options,
+                                                      proplists:get_value(cacertfile, DefaultConf))),
+                                KeyFile = vmq_diversity_utils:str(
+                                             maps:get(<<"keyfile">>, Options,
+                                                      proplists:get_value(keyfile, DefaultConf))),
+                                L = [{certfile, CertFile},
+                                     {cacertfile, CaCertFile},
+                                     {keyfile, KeyFile}],
+                                [P||{_,V}=P <- L, V /= ""];
+                           false ->
+                                []
+                        end,
                     NewOptions =
                     [{login, mbin(Login)}, {password, mbin(Password)},
                      {host, Host}, {port, Port}, {database, mbin(Database)},
-                     {w_mode, WMode}, {r_mode, RMode}],
+                     {w_mode, WMode}, {r_mode, RMode},
+                     {ssl, Ssl}, {ssl_opts, SslOpts}],
                     vmq_diversity_sup:start_pool(mongodb,
                                                  [{id, PoolId},
                                                   {size, Size},
