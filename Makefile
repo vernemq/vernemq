@@ -53,6 +53,12 @@ endif  # deb
 endif  # rpm
 endif # linux
 
+
+GET_ERLVSN = $(shell erl -eval 'erlang:display(erlang:system_info(version)), halt().' -noshell)
+SET_ERLVSN = $(eval ERLVSN=$(GET_ERLVSN))
+GET_DEPENDS = $(shell find _build/default/rel/vernemq -type f -name "*.so" | xargs dpkg-shlibdeps -O | cut -c16- | sed "s/,/\" --depends \"/g")
+SET_DEPENDS = $(eval DEPENDS=$(GET_DEPENDS))
+
 package: $(PKGTARGET)
 
 pkg_rel: pkg_clean
@@ -61,13 +67,15 @@ pkg_rel: pkg_clean
 pkg_strip:
 	$(shell find _build/default/rel/vernemq -type f -executable | xargs strip --remove-section=.comment --remove-section=.note --strip-unneeded)
 
-deb: OVERLAY_VARS=vars/deb_vars.config
-deb: pkg_rel pkg_strip
+deb_prep:
 	# required for running dpkg-shlibdeps
 	mkdir -p debian
 	touch debian/control
 
-	$(eval DEPENDS := $(shell find _build/default/rel/vernemq -type f -name "*.so" | xargs dpkg-shlibdeps -O | cut -c16- | sed "s/,/\" --depends \"/g"))
+deb: OVERLAY_VARS=vars/deb_vars.config
+deb: deb_prep pkg_rel pkg_strip
+	$(SET_ERLVSN)
+	$(SET_DEPENDS)
 	fpm -s dir -t deb -v "$(GIT_VERSION)" \
 		--force \
 		--name vernemq \
@@ -95,13 +103,13 @@ deb: pkg_rel pkg_strip
 		_build/default/rel/vernemq/bin/=/usr/lib/vernemq/bin/ \
 		_build/default/rel/vernemq/lib=/usr/lib/vernemq/ \
 		_build/default/rel/vernemq/releases=/usr/lib/vernemq/ \
-		_build/default/rel/vernemq/erts-$(shell erl -eval 'erlang:display(erlang:system_info(version)), halt().'  -noshell)=/usr/lib/vernemq/ \
+		_build/default/rel/vernemq/erts-$(ERLVSN)=/usr/lib/vernemq/ \
 		_build/default/rel/vernemq/share/=/usr/share/vernemq/ \
 		_build/default/rel/vernemq/log/=/var/log/vernemq/
 
 rpm: OVERLAY_VARS=vars/rpm_vars.config
 rpm: pkg_rel pkg_strip
-
+	$(SET_ERLVSN)
 	fpm -s dir -t rpm -v "$(GIT_VERSION)" \
 		--force \
 		--name vernemq \
@@ -128,7 +136,7 @@ rpm: pkg_rel pkg_strip
 		_build/default/rel/vernemq/bin/=/usr/lib64/vernemq/bin/ \
 		_build/default/rel/vernemq/lib=/usr/lib64/vernemq/ \
 		_build/default/rel/vernemq/releases=/usr/lib64/vernemq/ \
-		_build/default/rel/vernemq/erts-$(shell erl -eval 'erlang:display(erlang:system_info(version)), halt().'  -noshell)=/usr/lib64/vernemq/ \
+		_build/default/rel/vernemq/erts-$(ERLVSN)=/usr/lib64/vernemq/ \
 		_build/default/rel/vernemq/share/=/usr/share/vernemq/ \
 		_build/default/rel/vernemq/log/=/var/log/vernemq/
 
