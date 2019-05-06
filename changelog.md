@@ -65,6 +65,8 @@
   `vmq_diversity`. Fixes #811.
 - Support TLS encrypted connections to MongoDB when using `vmq_diversity`.
 - Add CockroachDB support to the `vmq_diversity` plugin.
+- Make it possible to configure how many concurrent bcrypt operations are
+  possible via the `vmq_bcrypt.pool_size` config.
 
 ## VerneMQ 1.7.0
 
