@@ -98,6 +98,7 @@ deb: deb_prep pkg_rel pkg_strip
 		--config-files /etc/vernemq/vernemq.conf \
 		_build/default/rel/vernemq/bin/vernemq=/usr/bin/vernemq \
 		_build/default/rel/vernemq/bin/vmq-admin=/usr/bin/vmq-admin \
+		_build/default/rel/vernemq/bin/vmq-passwd=/usr/bin/vmq-passwd \
 		_build/default/rel/vernemq/data=/var/lib/vernemq/ \
 		_build/default/rel/vernemq/etc/=/etc/vernemq/ \
 		_build/default/rel/vernemq/bin/=/usr/lib/vernemq/bin/ \
@@ -131,6 +132,7 @@ rpm: pkg_rel pkg_strip
 		files/vernemq.service=/etc/systemd/system/vernemq.service \
 		_build/default/rel/vernemq/bin/vernemq=/usr/sbin/vernemq \
 		_build/default/rel/vernemq/bin/vmq-admin=/usr/sbin/vmq-admin \
+		_build/default/rel/vernemq/bin/vmq-passwd=/usr/bin/vmq-passwd \
 		_build/default/rel/vernemq/data=/var/lib/vernemq/ \
 		_build/default/rel/vernemq/etc/=/etc/vernemq/ \
 		_build/default/rel/vernemq/bin/=/usr/lib64/vernemq/bin/ \
