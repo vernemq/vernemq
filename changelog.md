@@ -68,6 +68,8 @@
 - Make it possible to configure how many concurrent bcrypt operations are
   possible via the `vmq_bcrypt.pool_size` config.
 - Fix incorrect format string in shared subscription debug log.
+- Upgrade `hackney` to version 1.15.1 (dependencies of `hackney` were updated as
+  well).
 
 ## VerneMQ 1.7.0
 
