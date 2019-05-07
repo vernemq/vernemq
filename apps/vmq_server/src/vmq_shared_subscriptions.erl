@@ -33,7 +33,7 @@ publish(Msg, Policy, [{Group, SubscriberGroup}|Rest], Acc0) ->
         {ok, Acc1} ->
             publish(Msg, Policy, Rest, Acc1);
         {error, Reason} ->
-            lager:debug("can't publish to shared subscription ~p due to '~p', msg: Msg",
+            lager:debug("can't publish to shared subscription ~p due to '~p', msg: ~p",
                         [Group, Reason, Msg]),
             publish(Msg, Policy, Rest, Acc0)
     end.
