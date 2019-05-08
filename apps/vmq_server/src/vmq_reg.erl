@@ -606,7 +606,12 @@ fix_dead_queue(SubscriberId, Subs, {DeadNodes, [Target|Targets], N}) ->
                                 {DeadNodes, Targets ++ [Target], N}
                         end
                 end,
-            vmq_reg_sync:sync(SubscriberId, RepairQueueFun, 60000)
+            case vmq_reg_sync:sync(SubscriberId, RepairQueueFun, 60000) of
+                {error, Error} ->
+                    lager:info("repairing dead queue for ~p on ~p failed due to ~p~n", [SubscriberId, Target, Error]),
+                    {DeadNodes, Targets ++ [Target], N};
+                {_,_,_} = Acc -> Acc
+            end
     end.
 
 
