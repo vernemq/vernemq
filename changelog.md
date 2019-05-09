@@ -70,6 +70,8 @@
 - Fix incorrect format string in shared subscription debug log.
 - Upgrade `hackney` to version 1.15.1 (dependencies of `hackney` were updated as
   well).
+- Fix bug which could happen while repairing dead queues in case the sync
+  request fails.
 
 ## VerneMQ 1.7.0
 
