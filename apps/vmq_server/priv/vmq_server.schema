@@ -337,6 +337,63 @@
          Term
  end}.
 
+%% @doc listener.tcp.buffer_sizes is an list of three integers
+%% (sndbuf,recbuf,buffer) specifying respectively the kernel TCP send
+%% buffer, the kernel TCP receive buffer and the user-level buffer
+%% size in the erlang driver.
+%%
+%% It is recommended to have val(user-level buffer) >= val(receive
+%% buffer) to avoid performance issues because of unnecessary copying.
+%%
+%% If not set, the operating system defaults are used.
+%%
+%% This option can be set on the protocol level by:
+%%
+%%     - listener.tcp.buffer_sizes
+%%     - listener.ssl.buffer_sizes
+%%
+%% or on the listener level by:
+%%
+%%     - listener.tcp.my_tcp_listener.buffer_sizes
+%%     - listener.ssl.my_ssl_listener.buffer_sizes
+{mapping, "listener.tcp.buffer_sizes", "vmq_server.listeners",
+ [{commented, "4096,16384,32768"},
+  {datatype, string},
+  {validators, ["buffer_size_validator"]}
+ ]}.
+
+{mapping, "listener.tcp.$name.buffer_sizes", "vmq_server.listeners",
+ [{datatype, string},
+  hidden,
+  {validators, ["buffer_size_validator"]}
+ ]}.
+
+{mapping, "listener.ssl.buffer_sizes", "vmq_server.listeners",
+ [{datatype, string},
+  hidden,
+  {validators, ["buffer_size_validator"]}
+ ]}.
+
+{mapping, "listener.ssl.$name.buffer_sizes", "vmq_server.listeners",
+ [{datatype, string},
+  hidden,
+  {validators, ["buffer_size_validator"]}
+ ]}.
+
+
+{validator, "buffer_size_validator", "value must be three comma-separated, positive integers",
+ fun(Val) when is_list(Val) ->
+         case vmq_schema:parse_list_to_term(Val) of
+             {ok, [A,B,C]} when is_integer(A), is_integer(B), is_integer(C),
+                                A >= 0, B >= 0, C >= 0 ->
+                 true;
+             _ ->
+                 false
+         end;
+    (Val) ->
+         false
+ end}.
+
 %% @doc listener.max_connections is an integer or 'infinity' defining 
 %% the maximum number of concurrent connections. This option can be overridden
 %% on the protocol level by:

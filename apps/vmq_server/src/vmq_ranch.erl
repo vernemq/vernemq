@@ -76,10 +76,15 @@ init(Ref, Parent, Socket, Transport, Opts) ->
 
             MaskedSocket = mask_socket(Transport, Socket),
             %% tune buffer sizes
-            {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
-            BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-            setopts(MaskedSocket, [{buffer, BufSize}]),
-
+            CfgBufSizes = proplists:get_value(buffer_sizes, Opts, undefined),
+            case CfgBufSizes of
+                undefined ->
+                    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+                    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+                    setopts(MaskedSocket, [{buffer, BufSize}]);
+                [SndBuf,RecBuf,Buffer] ->
+                    setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}])
+            end,
             %% start accepting messages
             active_once(MaskedSocket),
             process_flag(trap_exit, true),

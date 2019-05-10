@@ -72,6 +72,9 @@
   well).
 - Fix bug which could happen while repairing dead queues in case the sync
   request fails.
+- It is now possible to configure TCP send and receive buffer and user-level
+  buffer sizes directly on the MQTT listeners or protocol levels (currently only
+  TCP and TLS listeners).
 
 ## VerneMQ 1.7.0
 

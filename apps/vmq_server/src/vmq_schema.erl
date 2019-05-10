@@ -14,7 +14,8 @@
 -module(vmq_schema).
 
 -export([translate_listeners/1,
-         string_to_secs/1]).
+         string_to_secs/1,
+         parse_list_to_term/1]).
 
 translate_listeners(Conf) ->
     %% cuttlefish messes up with the tree-like configuration style if
@@ -52,14 +53,8 @@ translate_listeners(Conf) ->
     StringIntegerListVal =
         fun(_, undefined, Def) -> Def;
            (_, Val, _) ->
-                {ok, T, _}
-                    = case re:run(Val, "\\[.*\\]", []) of
-                          nomatch ->
-                              erl_scan:string("[" ++ Val ++ "].");
-                          {match, _} ->
-                              erl_scan:string(Val ++ ".")
-                      end,
-                {ok, Term} = erl_parse:parse_term(T),
+                %% TODO: improve error handling here
+                {ok, Term} = parse_list_to_term(Val),
                 Term
         end,
 
@@ -108,6 +103,9 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLAllowedProto} = lists:unzip(extract("listener.ssl", "allowed_protocol_versions", StringIntegerListVal, Conf)),
     {WSIPs, WSAllowedProto} = lists:unzip(extract("listener.ws", "allowed_protocol_versions", StringIntegerListVal, Conf)),
     {WS_SSLIPs, WS_SSLAllowedProto} = lists:unzip(extract("listener.wss", "allowed_protocol_versions", StringIntegerListVal, Conf)),
+
+    {TCPIPs, TCPBufferSizes} = lists:unzip(extract("listener.tcp", "buffer_sizes", StringIntegerListVal, Conf)),
+    {SSLIPs, SSLBufferSizes} = lists:unzip(extract("listener.ssl", "buffer_sizes", StringIntegerListVal, Conf)),
 
     {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
     {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
@@ -160,7 +158,8 @@ translate_listeners(Conf) ->
                                   TCPNrOfAcceptors,
                                   TCPMountPoint,
                                   TCPProxyProto,
-                                  TCPAllowedProto])),
+                                  TCPAllowedProto,
+                                  TCPBufferSizes])),
     WS = lists:zip(WSIPs, MZip([WSMaxConns,
                                 WSNrOfAcceptors,
                                 WSMountPoint,
@@ -187,7 +186,8 @@ translate_listeners(Conf) ->
                                   SSLRequireCerts,
                                   SSLVersions,
                                   SSLUseIdents,
-                                  SSLAllowedProto])),
+                                  SSLAllowedProto,
+                                  SSLBufferSizes])),
     WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns,
                                      WS_SSLNrOfAcceptors,
                                      WS_SSLMountPoint,
@@ -244,7 +244,7 @@ extract(Prefix, Suffix, Val, Conf) ->
         = [%% ssl listener specific
            "cafile", "depth", "certfile", "ciphers", "crlfile",
            "keyfile", "require_certificate", "tls_version",
-           "use_identity_as_username",
+           "use_identity_as_username", "buffer_sizes",
            %% http listener specific
            "config_mod", "config_fun",
            %% mqtt listener specific
@@ -290,3 +290,13 @@ string_to_secs(S) ->
         {$y, D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
         _ -> error
     end.
+
+parse_list_to_term(Val) ->
+    {ok, T, _}
+        = case re:run(Val, "\\[.*\\]", []) of
+              nomatch ->
+                  erl_scan:string("[" ++ Val ++ "].");
+              {match, _} ->
+                  erl_scan:string(Val ++ ".")
+          end,
+    erl_parse:parse_term(T).
