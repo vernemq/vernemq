@@ -367,9 +367,11 @@ publish_fold_fun({{_,_} = SubscriberId, SubInfo}, _FromClientId, #publish_fold_a
 publish_fold_fun({_Node, _Group, SubscriberId, #{no_local := true}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
     Acc;
-publish_fold_fun({_Node, _Group, _SubscriberId, _SubInfo} = Sub, _FromClientId, #publish_fold_acc{subscriber_groups=SubscriberGroups} = Acc) ->
+publish_fold_fun({_Node, _Group, _SubscriberId, _SubInfo} = Sub, _FromClientId, #publish_fold_acc{
+                                                                                   msg=#vmq_msg{sg_policy=SGPolicy},
+                                                                                   subscriber_groups=SubscriberGroups} = Acc) ->
     %% collect subscriber group members for later processing
-    Acc#publish_fold_acc{subscriber_groups=add_to_subscriber_group(Sub, SubscriberGroups)};
+    Acc#publish_fold_acc{subscriber_groups=add_to_subscriber_group(Sub, SubscriberGroups, SGPolicy)};
 publish_fold_fun(Node, _FromClientId, #publish_fold_acc{msg=Msg, remote_matches=N} = Acc) ->
     case vmq_cluster:publish(Node, Msg) of
         ok ->
@@ -402,12 +404,15 @@ qos({QoS, _}) when is_integer(QoS) ->
 qos(QoS) when is_integer(QoS) ->
     QoS.
 
-add_to_subscriber_group(Sub, undefined) ->
-    add_to_subscriber_group(Sub, #{});
-add_to_subscriber_group({Node, Group, SubscriberId, SubInfo}, SubscriberGroups) ->
+add_to_subscriber_group(Sub, undefined, SGPolicy) ->
+    add_to_subscriber_group(Sub, #{}, SGPolicy);
+add_to_subscriber_group({Node, _Group, _SubscriberId, _SubInfo}, SubscriberGroups, local_only) when Node =/= node()->
+    SubscriberGroups;
+add_to_subscriber_group({Node, Group, SubscriberId, SubInfo}, SubscriberGroups, _SGPolicy) ->
     SubscriberGroup = maps:get(Group, SubscriberGroups, []),
     maps:put(Group, [{Node, SubscriberId, SubInfo}|SubscriberGroup],
              SubscriberGroups).
+
 
 -spec deliver_retained(subscriber_id(), topic(), qos(), subopts(), boolean()) -> 'ok'.
 deliver_retained(_, _, _, #{retain_handling := dont_send}, _) ->

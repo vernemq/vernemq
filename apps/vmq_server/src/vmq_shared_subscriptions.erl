@@ -113,8 +113,5 @@ filter_subscribers(Subscribers, prefer_local) ->
         _ -> LocalSubscribers
     end;
 filter_subscribers(Subscribers, local_only) ->
-    Node = node(),
-    lists:filter(fun({N, _, _}) when N == Node -> true;
-                    (_) -> false
-                 end, Subscribers).
-
+    %% filtered in `vmq_reg`.
+    Subscribers.
