@@ -409,10 +409,13 @@ add_to_subscriber_group(Sub, undefined, SGPolicy) ->
 add_to_subscriber_group({Node, _Group, _SubscriberId, _SubInfo}, SubscriberGroups, local_only) when Node =/= node()->
     SubscriberGroups;
 add_to_subscriber_group({Node, Group, SubscriberId, SubInfo}, SubscriberGroups, _SGPolicy) ->
-    SubscriberGroup = maps:get(Group, SubscriberGroups, []),
-    maps:put(Group, [{Node, SubscriberId, SubInfo}|SubscriberGroup],
-             SubscriberGroups).
-
+    {LocalSubs, RemoteSubs} = maps:get(Group, SubscriberGroups, {[], []}),
+    case Node == node() of
+        true ->
+            maps:put(Group, {[{Node, rand:uniform(), SubscriberId, SubInfo}|LocalSubs], RemoteSubs}, SubscriberGroups);
+        false ->
+            maps:put(Group, {LocalSubs, [{Node, rand:uniform(), SubscriberId, SubInfo}|RemoteSubs]}, SubscriberGroups)
+    end.
 
 -spec deliver_retained(subscriber_id(), topic(), qos(), subopts(), boolean()) -> 'ok'.
 deliver_retained(_, _, _, #{retain_handling := dont_send}, _) ->

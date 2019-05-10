@@ -20,22 +20,35 @@ publish(Msg, Policy, SubscriberGroups, LocalMatches, RemoteMatches) ->
 
 publish(_,_, undefined, Acc) -> Acc;
 publish(Msg, Policy, SubscriberGroups, Acc) when is_map(SubscriberGroups) ->
-    publish(Msg, Policy, maps:to_list(SubscriberGroups), Acc);
-publish(_,_, [], Acc) -> Acc;
-publish(Msg, Policy, [{Group, []}|Rest], Acc) ->
-    lager:debug("can't publish to shared subscription ~p due to no subscribers, msg: ~p", [Group, Msg]),
-    publish(Msg, Policy, Rest, Acc);
-publish(Msg, Policy, [{Group, SubscriberGroup}|Rest], Acc0) ->
-    Subscribers = filter_subscribers(SubscriberGroup, Policy),
-    %% Randomize subscribers once.
-    RandSubscribers = [S||{_,S} <- lists:sort([{rand:uniform(), N} || N <- Subscribers])],
-    case publish_to_group(Msg, RandSubscribers, Acc0) of
+    maps:fold(fun(Group, Subscribers, MAcc) ->
+                      publish_(Msg, Policy, Group, Subscribers, MAcc)
+              end, Acc, SubscriberGroups).
+
+publish_(Msg, prefer_local, Group, {LocalSubs0, RemoteSubs0}, Acc0) ->
+    LocalSubs1 = lists:keysort(2, LocalSubs0),
+    case publish_to_group(Msg, LocalSubs1, Acc0) of
         {ok, Acc1} ->
-            publish(Msg, Policy, Rest, Acc1);
+            Acc1;
+        {error, no_subscribers} ->
+            RemoteSubs1 = lists:keysort(2, RemoteSubs0),
+            publish(Msg, Group, RemoteSubs1, Acc0)
+    end;
+publish_(Msg, local_only, Group, {LocalSubs0, _}, Acc0) ->
+    LocalSubs1 = lists:keysort(2, LocalSubs0),
+    publish_(Msg, Group, LocalSubs1, Acc0);
+publish_(Msg, random, Group, {LocalSubs0, RemoteSubs0}, Acc0) ->
+    Subs = lists:keysort(2, LocalSubs0 ++ RemoteSubs0),
+    publish_(Msg, Group, Subs, Acc0).
+
+
+publish_(Msg, Group, Subs, Acc0) ->
+    case publish_to_group(Msg, Subs, Acc0) of
+        {ok, Acc1} ->
+            Acc1;
         {error, Reason} ->
             lager:debug("can't publish to shared subscription ~p due to '~p', msg: ~p",
                         [Group, Reason, Msg]),
-            publish(Msg, Policy, Rest, Acc0)
+            Acc0
     end.
 
 publish_to_group(Msg, Subscribers, Acc0) ->
@@ -50,7 +63,7 @@ publish_online(Msg, Subscribers, Acc0) ->
     try
         lists:foldl(
           fun(Subscriber, SubAcc) ->
-                  case publish_(Msg, Subscriber, online, Acc0) of
+                  case publish__(Msg, Subscriber, online, Acc0) of
                       {ok, Acc1} ->
                           throw({done, Acc1});
                       {error, offline} ->
@@ -67,14 +80,14 @@ publish_online(Msg, Subscribers, Acc0) ->
 
 publish_any(_Msg, [], _Acc) -> {error, no_subscribers};
 publish_any(Msg, [Subscriber|Subscribers], Acc0) ->
-    case publish_(Msg, Subscriber, any, Acc0) of
+    case publish__(Msg, Subscriber, any, Acc0) of
         {ok, Acc1} ->
             {ok, Acc1};
         {error, _} ->
             publish_any(Msg, Subscribers, Acc0)
     end.
 
-publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) when Node == node() ->
+publish__(Msg, {Node, _Rand, SubscriberId, QoS}, QState, {Local, Remote}) when Node == node() ->
     case vmq_reg:get_queue_pid(SubscriberId) of
         not_found ->
             {error, not_found};
@@ -91,7 +104,7 @@ publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) when Node == n
                     {error, cant_enqueue}
             end
     end;
-publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) ->
+publish__(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) ->
     Term = {enqueue_many, SubscriberId, [{deliver, QoS, Msg}], #{states => [QState]}},
     case vmq_cluster:remote_enqueue(Node, Term, true) of
         ok ->
@@ -99,19 +112,3 @@ publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) ->
         E ->
             E
     end.
-
-filter_subscribers(Subscribers, random) ->
-    Subscribers;
-filter_subscribers(Subscribers, prefer_local) ->
-    Node = node(),
-    LocalSubscribers =
-        lists:filter(fun({N, _, _}) when N == Node -> true;
-                        (_) -> false
-                     end, Subscribers),
-    case LocalSubscribers of
-        [] -> Subscribers;
-        _ -> LocalSubscribers
-    end;
-filter_subscribers(Subscribers, local_only) ->
-    %% filtered in `vmq_reg`.
-    Subscribers.
