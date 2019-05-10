@@ -65,10 +65,10 @@ fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
               get_remote_subscribers(MP, Topic)) %% remote subscriptions without wildcards
           ], []).
 
-fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, {_Node, Group}}|MatchedTopics], Remotes) ->
+fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, {Node, Group}}|MatchedTopics], Remotes) ->
     fold_(SubscriberId, FoldFun,
           fold__(FoldFun, SubscriberId, Acc,
-                 lookup_subs({MP, Group, Topic})),
+                 lookup_subs({MP, Group, Node, Topic})),
           MatchedTopics, Remotes);
 fold_({MP, _} = SubscriberId, FoldFun, Acc, [{Topic, Node}|MatchedTopics], Remotes) when Node == node() ->
     fold_(SubscriberId, FoldFun,
@@ -441,7 +441,7 @@ trie_delete_path(MP, [{Node, Word, _}|RestPath]) ->
     end.
 
 add_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS) ->
-    Key = {MP, Group, Topic},
+    Key = {MP, Group, Node, Topic},
     Val = {Node, Group, SubscriberId, QoS},
     insert_trie_subs(Key, Val).
 
@@ -465,7 +465,7 @@ insert_trie_subs(Key, Val) ->
 
 
 del_subscriber_group(MP, Node, Group, Topic, SubscriberId, QoS) ->
-    Key = {MP, Group, Topic},
+    Key = {MP, Group, Node, Topic},
     Val = {Node, Group, SubscriberId, QoS},
     del_trie_subs(Key, Val).
 
