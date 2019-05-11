@@ -29,7 +29,7 @@
 
 -define(SERVER, ?MODULE).
 -define(PULSE_VERSION, 1).
--define(PULSE_USER, <<"vmq-pulse-1">>).
+-define(PULSE_USER, "vmq-pulse-1").
 
 -record(state, {}).
 
@@ -109,20 +109,20 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info(push, State) ->
     ClusterId = vmq_pulse:get_cluster_id(),
-    {ok, AssistUrl} = application:get_env(vmq_pulse, url),
+    {ok, PulseUrl} = application:get_env(vmq_pulse, url),
     {ok, Interval} = application:get_env(vmq_pulse, push_interval),
     ApiKey = application:get_env(vmq_pulse, api_key, undefined),
     NodeId = atom_to_binary(node(), utf8),
     case (ClusterId =/= undefined) of
         true ->
             Body = create_body(ClusterId, NodeId),
-            try push_body(AssistUrl, ApiKey, Body) of
-                {ok, _} -> ok;
+            try push_body(PulseUrl, ApiKey, Body) of
+                ok -> ok;
                 {error, Reason} ->
-                    io:format("can't push pulse due to error ~p~n", [Reason])
+                    error_logger:warning_msg("can't push pulse due to error ~p", [Reason])
             catch
                 E:R ->
-                    io:format("can't push pulse due to unknown error ~p ~p", [E, R])
+                    error_logger:warning_msg("can't push pulse due to unknown error ~p ~p", [E, R])
             end;
         false ->
             ignore
@@ -182,35 +182,24 @@ create_body(ClusterId, Node) ->
     ],
     zlib:compress(term_to_binary(Body)).
 
-push_body(AssistUrl, ApiKey, Body) ->
+push_body(PulseUrl, ApiKey, Body) ->
+    ContentType = "application/x-vmq-pulse-1",
+    Headers = case ApiKey of
+                  undefined -> [];
+                  _ ->
+                      AuthStr = base64:encode_to_string(?PULSE_USER ++ ":" ++ ApiKey),
+                      [{"Authorization", "Basic " ++ AuthStr}]
+              end,
     {ok, ConnectTimeout} = application:get_env(vmq_pulse, connect_timeout),
-    ReqHeaders = [{<<"Content-Type">>, <<"application/x-vmq-pulse-1">>}],
-    ReqOptions = [{follow_redirect, true},
-                  {force_redirect, true},
-                  {connect_timeout, ConnectTimeout * 1000}
-                  | case ApiKey of
-                        undefined ->
-                            [];
-                        _ ->
-                            [{basic_auth, {?PULSE_USER, list_to_binary(ApiKey)}}]
-                    end
-                 ],
+    HTTPOpts =  [{timeout, 60000},
+                 {connect_timeout, ConnectTimeout * 1000},
+                 {autoredirect, true}],
 
-    case hackney:request(post, list_to_binary(AssistUrl), ReqHeaders, stream, ReqOptions) of
-        {ok, ClientRef} ->
-            case hackney:send_body(ClientRef, Body) of
-                ok ->
-                    case hackney:start_response(ClientRef) of
-                        {ok, _Status, _Headers, ClientRef} ->
-                            hackney:body(ClientRef);
-                        {error, _} = Error ->
-                            Error
-                    end;
-                {error, _} = Error ->
-                    Error
-            end;
-        {error, _} = Error ->
-            Error
+    case httpc:request(post, {PulseUrl, Headers, ContentType, Body}, HTTPOpts, []) of
+        {ok, _} ->
+            ok;
+        {error, _Reason} = E ->
+            E
     end.
 
 interval(Int) when Int < 10 -> 10 * 1000;

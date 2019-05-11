@@ -9,7 +9,7 @@
     crypto,
     public_key,
     ssl,
-    hackney
+    inets
    ]},
   {env,[]},
   {modules, []}
