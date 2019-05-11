@@ -28,9 +28,6 @@
          code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(PULSE_URL, <<"https://pulse.vernemq.com">>).
--define(PULSE_PUSH_INTERVAL, 30000).
--define(PULSE_CONNECT_TIMEOUT, 10000).
 -define(PULSE_VERSION, 1).
 -define(PULSE_USER, <<"vmq-pulse-1">>).
 
@@ -111,12 +108,12 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(push, State) ->
-    AssistUrl = application:get_env(vmq_pulse, url, ?PULSE_URL),
-    Interval = application:get_env(vmq_pulse, push_interval, ?PULSE_PUSH_INTERVAL),
+    ClusterId = vmq_pulse:get_cluster_id(),
+    {ok, AssistUrl} = application:get_env(vmq_pulse, url),
+    {ok, Interval} = application:get_env(vmq_pulse, push_interval),
     ApiKey = application:get_env(vmq_pulse, api_key, undefined),
-    ClusterId = application:get_env(vmq_pulse, cluster_id, undefined),
     NodeId = atom_to_binary(node(), utf8),
-    case (ApiKey =/= undefined) and (ClusterId =/= undefined) of
+    case (ClusterId =/= undefined) of
         true ->
             Body = create_body(ClusterId, NodeId),
             try push_body(AssistUrl, ApiKey, Body) of
@@ -130,7 +127,7 @@ handle_info(push, State) ->
         false ->
             ignore
     end,
-    erlang:send_after(Interval, self(), push),
+    erlang:send_after(interval(Interval), self(), push),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -186,14 +183,20 @@ create_body(ClusterId, Node) ->
     zlib:compress(term_to_binary(Body)).
 
 push_body(AssistUrl, ApiKey, Body) ->
+    {ok, ConnectTimeout} = application:get_env(vmq_pulse, connect_timeout),
     ReqHeaders = [{<<"Content-Type">>, <<"application/x-vmq-pulse-1">>}],
     ReqOptions = [{follow_redirect, true},
                   {force_redirect, true},
-                  {connect_timeout, application:get_env(vmq_pulse, connect_timeout, ?PULSE_CONNECT_TIMEOUT)},
-                  {basic_auth, {?PULSE_USER, ApiKey}}
+                  {connect_timeout, ConnectTimeout * 1000}
+                  | case ApiKey of
+                        undefined ->
+                            [];
+                        _ ->
+                            [{basic_auth, {?PULSE_USER, list_to_binary(ApiKey)}}]
+                    end
                  ],
 
-    case hackney:request(post, AssistUrl, ReqHeaders, stream, ReqOptions) of
+    case hackney:request(post, list_to_binary(AssistUrl), ReqHeaders, stream, ReqOptions) of
         {ok, ClientRef} ->
             case hackney:send_body(ClientRef, Body) of
                 ok ->
@@ -209,3 +212,6 @@ push_body(AssistUrl, ApiKey, Body) ->
         {error, _} = Error ->
             Error
     end.
+
+interval(Int) when Int < 10 -> 10 * 1000;
+interval(Int) -> Int * 1000.
