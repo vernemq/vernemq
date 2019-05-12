@@ -23,6 +23,7 @@ register_cli() ->
     ok = clique:register_config_whitelist(ConfigKeys),
     vmq_pulse_setup_cluster_cmd(),
     vmq_pulse_reset_cluster_cmd(),
+    vmq_pulse_info_cluster_cmd(),
     vmq_pulse_cli_usage(),
     ok.
 
@@ -41,9 +42,28 @@ vmq_pulse_cli_usage() ->
      "    - Pulse Version\n\n"
      "  Sub-commands:\n",
      "    setup         Enable Pulse for this cluster\n",
-     "    reset         Disable Pulse for this cluster\n"
+     "    reset         Disable Pulse for this cluster\n",
+     "    info          Show Pulse info for this cluster\n"
     ],
     clique:register_usage(["vmq-admin", "pulse"], Usage).
+
+vmq_pulse_info_cluster_cmd() ->
+    Cmd = ["vmq-admin", "pulse", "info"],
+    KeySpecs = [],
+    FlagSpecs = [],
+    Callback =
+    fun(_, _, _) ->
+            case vmq_pulse:get_cluster_id() of
+                undefined ->
+                    Text = io_lib:format("Pulse isn't setup, run 'vmq-admin pulse setup'", []),
+                    [clique_status:alert([clique_status:text(Text)])];
+                ClusterId ->
+
+                    Text = io_lib:format("cluster-id: ~s", [ClusterId]),
+                    [clique_status:text(Text)]
+            end
+    end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 vmq_pulse_setup_cluster_cmd() ->
     Cmd = ["vmq-admin", "pulse", "setup"],
@@ -52,12 +72,19 @@ vmq_pulse_setup_cluster_cmd() ->
                        {typecast, fun(Id) -> list_to_binary(Id) end}]}],
     Callback =
     fun(_, [], Flags) ->
-            ClusterId = proplists:get_value(id, Flags, vmq_pulse:generate_cluster_id()),
-            case vmq_pulse:set_cluster_id(ClusterId) of
-                ok ->
-                    [clique_status:text("Done")];
-                {error, Reason} ->
-                    Text = io_lib:format("Can't setup Pulse due to ~p", [Reason]),
+            case vmq_pulse:get_cluster_id() of
+                undefined ->
+                    ClusterId = proplists:get_value(id, Flags, vmq_pulse:generate_cluster_id()),
+                    case vmq_pulse:set_cluster_id(ClusterId) of
+                        ok ->
+                            Text = io_lib:format("Done, cluster-id: ~s", [ClusterId]),
+                            [clique_status:text(Text)];
+                        {error, Reason} ->
+                            Text = io_lib:format("Can't setup Pulse due to ~p", [Reason]),
+                            [clique_status:alert([clique_status:text(Text)])]
+                    end;
+                ClusterId ->
+                    Text = io_lib:format("Pulse already setup, cluster-id: ~s", [ClusterId]),
                     [clique_status:alert([clique_status:text(Text)])]
             end
     end,
