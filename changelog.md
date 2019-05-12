@@ -75,6 +75,9 @@
 - It is now possible to configure TCP send and receive buffer and user-level
   buffer sizes directly on the MQTT listeners or protocol levels (currently only
   TCP and TLS listeners).
+- Add the `socket_close_timeout` metric. The metric counts the number of times
+  VerneMQ hasn't received the MQTT CONNECT frame on time and therefore forcefully
+  closed the socket.
 
 ## VerneMQ 1.7.0
 
