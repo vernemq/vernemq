@@ -678,7 +678,7 @@ connected(close_timeout, State) ->
     %% As we're in the connected state, it's ok to ignore this timeout
     {State, []};
 connected(Unexpected, State) ->
-    lager:debug("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
+    lager:warning("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
     terminate({error, {unexpected_message, Unexpected}}, State).
 
 -spec connack_terminate(reason_code_name(), state()) -> any().

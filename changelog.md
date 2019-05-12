@@ -80,6 +80,8 @@
   closed the socket.
 - Fix the potential case of late arriving `close_timeout` messages triggered
   by the `vmq_mqtt_pre_init`.
+- Change log level from `debug` to `warning` when VerneMQ forcefully terminates a
+  MQTT session FSM because of an unexpected message.
 
 ## VerneMQ 1.7.0
 
