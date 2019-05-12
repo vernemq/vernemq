@@ -78,6 +78,8 @@
 - Add the `socket_close_timeout` metric. The metric counts the number of times
   VerneMQ hasn't received the MQTT CONNECT frame on time and therefore forcefully
   closed the socket.
+- Fix the potential case of late arriving `close_timeout` messages triggered
+  by the `vmq_mqtt_pre_init`.
 
 ## VerneMQ 1.7.0
 
