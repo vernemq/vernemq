@@ -24,6 +24,7 @@
 
          incr_socket_open/0,
          incr_socket_close/0,
+         incr_socket_close_timeout/0,
          incr_socket_error/0,
          incr_bytes_received/1,
          incr_bytes_sent/1,
@@ -115,6 +116,9 @@ incr_socket_open() ->
 
 incr_socket_close() ->
     incr_item(?METRIC_SOCKET_CLOSE, 1).
+
+incr_socket_close_timeout() ->
+    incr_item(?METRIC_SOCKET_CLOSE_TIMEOUT, 1).
 
 incr_socket_error() ->
     incr_item(?METRIC_SOCKET_ERROR, 1).
@@ -644,6 +648,7 @@ counter_entries_def() ->
     [
      m(counter, [], socket_open, socket_open, <<"The number of times an MQTT socket has been opened.">>),
      m(counter, [], socket_close, socket_close, <<"The number of times an MQTT socket has been closed.">>),
+     m(counter, [], socket_close_timeout, socket_close_timeout, <<"The number of times VerneMQ closed an MQTT socket due to no CONNECT frame has been received on time.">>),
      m(counter, [], socket_error, socket_error, <<"The total number of socket errors that have occurred.">>),
      m(counter, [], bytes_received, bytes_received, <<"The total number of bytes received.">>),
      m(counter, [], bytes_sent, bytes_sent, <<"The total number of bytes sent.">>),
@@ -1275,4 +1280,5 @@ met2idx(mqtt_connack_bad_credentials_sent)                        -> 189;
 met2idx(mqtt_connack_server_unavailable_sent)                     -> 190;
 met2idx(mqtt_connack_identifier_rejected_sent)                    -> 191;
 met2idx(mqtt_connack_unacceptable_protocol_sent)                  -> 192;
-met2idx(mqtt_connack_accepted_sent)                               -> 193.
+met2idx(mqtt_connack_accepted_sent)                               -> 193;
+met2idx(?METRIC_SOCKET_CLOSE_TIMEOUT)                             -> 194.

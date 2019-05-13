@@ -123,6 +123,7 @@ msg_in({disconnect, ?NORMAL_DISCONNECT}, _FsmState0) ->
 msg_in(disconnect, _FsmState0) ->
     ignore;
 msg_in(close_timeout, _FsmState0) ->
+    vmq_metrics:incr_socket_close_timeout(),
     lager:debug("stop due to timeout", []),
     {stop, normal, []}.
 

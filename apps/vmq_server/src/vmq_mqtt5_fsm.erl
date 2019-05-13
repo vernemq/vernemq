@@ -673,8 +673,12 @@ connected({Ref, {error, cant_remote_enqueue}}, State) when is_reference(Ref) ->
     %% TODO: this should be cleaned up for 2.0 as changing this is
     %% likely backwards incompatible.
     {State, []};
+connected(close_timeout, State) ->
+    %% Late arrival of the close_timeout that has been fired by vmq_mqtt_pre_init
+    %% As we're in the connected state, it's ok to ignore this timeout
+    {State, []};
 connected(Unexpected, State) ->
-    lager:debug("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
+    lager:warning("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
     terminate({error, {unexpected_message, Unexpected}}, State).
 
 -spec connack_terminate(reason_code_name(), state()) -> any().
