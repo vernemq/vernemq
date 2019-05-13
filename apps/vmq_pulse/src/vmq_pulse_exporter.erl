@@ -64,6 +64,7 @@ start_link() ->
 %%--------------------------------------------------------------------
 init([]) ->
     self() ! push,
+    _ = cpu_sup:util(), % first value is garbage
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -175,6 +176,8 @@ create_body(ClusterId, Node) ->
                        (_UnsupportedMetricDef) ->
                             false
                     end, vmq_metrics:metrics(#{aggregate => false}))},
+        {cpu_util, cpu_sup:util()},
+        {mem_util, memsup:get_system_memory_data()},
         {applications, [{App, Vsn} || {App, _, Vsn} <- application:which_applications()]},
         {system_version, erlang:system_info(system_version)},
         {cluster_status, vmq_cluster:status()},

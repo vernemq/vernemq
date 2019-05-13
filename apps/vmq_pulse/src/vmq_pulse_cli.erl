@@ -40,6 +40,7 @@ vmq_pulse_cli_usage() ->
      "    - Names and versions of loaded OTP applications\n",
      "    - Erlang System Version\n",
      "    - OS Kernel information, output of 'uname -a'\n",
+     "    - CPU and RAM usage\n",
      "    - Pulse Version\n\n"
      "  Sub-commands:\n",
      "    start         Start Pulse for this cluster\n",
