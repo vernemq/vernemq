@@ -83,6 +83,7 @@
 - Change log level from `debug` to `warning` when VerneMQ forcefully terminates a
   MQTT session FSM because of an unexpected message.
 - Fix `vmq_diversity` ACL rule hash collision issue (#1164).
+- Improve performance of shared subscriptions when using many subscribers.
 
 ## VerneMQ 1.7.0
 
