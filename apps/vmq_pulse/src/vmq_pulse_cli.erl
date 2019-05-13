@@ -21,8 +21,8 @@ register_cli() ->
                   "vmq_pulse.push_interval",
                   "vmq_pulse.connect_timeout"],
     ok = clique:register_config_whitelist(ConfigKeys),
-    vmq_pulse_setup_cluster_cmd(),
-    vmq_pulse_reset_cluster_cmd(),
+    vmq_pulse_start_cluster_cmd(),
+    vmq_pulse_stop_cluster_cmd(),
     vmq_pulse_info_cluster_cmd(),
     vmq_pulse_cli_usage(),
     ok.
@@ -30,8 +30,9 @@ register_cli() ->
 vmq_pulse_cli_usage() ->
     Usage =
     ["vmq-admin pulse setup | reset\n\n",
-     "  Mangage Pulse. The VerneMQ support team can ask you to setup a pulse\n",
-     "  to gather information and metrics about the VerneMQ cluster.\n",
+     "  Mangage Pulse. The VerneMQ support team can ask you to start a pulse\n",
+     "  to gather information and metrics about the VerneMQ cluster. A started\n",
+     "  pulse survives the restart of the node.\n",
      "  The following data is periodically sent over HTTP(S) to the Pulse server:\n",
      "    - Cluster status, similar to 'vmq-admin cluster show'\n",
      "    - Plugins, similar to 'vmq-admin plugin show --internal'\n",
@@ -41,8 +42,8 @@ vmq_pulse_cli_usage() ->
      "    - OS Kernel information, output of 'uname -a'\n",
      "    - Pulse Version\n\n"
      "  Sub-commands:\n",
-     "    setup         Enable Pulse for this cluster\n",
-     "    reset         Disable Pulse for this cluster\n",
+     "    start         Start Pulse for this cluster\n",
+     "    stop          Stop Pulse for this cluster\n",
      "    info          Show Pulse info for this cluster\n"
     ],
     clique:register_usage(["vmq-admin", "pulse"], Usage).
@@ -55,7 +56,7 @@ vmq_pulse_info_cluster_cmd() ->
     fun(_, _, _) ->
             case vmq_pulse:get_cluster_id() of
                 undefined ->
-                    Text = io_lib:format("Pulse isn't setup, run 'vmq-admin pulse setup'", []),
+                    Text = io_lib:format("Pulse isn't started, run 'vmq-admin pulse start'", []),
                     [clique_status:alert([clique_status:text(Text)])];
                 ClusterId ->
 
@@ -65,8 +66,8 @@ vmq_pulse_info_cluster_cmd() ->
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
-vmq_pulse_setup_cluster_cmd() ->
-    Cmd = ["vmq-admin", "pulse", "setup"],
+vmq_pulse_start_cluster_cmd() ->
+    Cmd = ["vmq-admin", "pulse", "start"],
     KeySpecs = [],
     FlagSpecs = [{id, [{longname, "id"},
                        {typecast, fun(Id) -> list_to_binary(Id) end}]}],
@@ -80,18 +81,18 @@ vmq_pulse_setup_cluster_cmd() ->
                             Text = io_lib:format("Done, cluster-id: ~s", [ClusterId]),
                             [clique_status:text(Text)];
                         {error, Reason} ->
-                            Text = io_lib:format("Can't setup Pulse due to ~p", [Reason]),
+                            Text = io_lib:format("Can't start Pulse due to ~p", [Reason]),
                             [clique_status:alert([clique_status:text(Text)])]
                     end;
                 ClusterId ->
-                    Text = io_lib:format("Pulse already setup, cluster-id: ~s", [ClusterId]),
+                    Text = io_lib:format("Pulse already started, cluster-id: ~s", [ClusterId]),
                     [clique_status:alert([clique_status:text(Text)])]
             end
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
-vmq_pulse_reset_cluster_cmd() ->
-    Cmd = ["vmq-admin", "pulse", "reset"],
+vmq_pulse_stop_cluster_cmd() ->
+    Cmd = ["vmq-admin", "pulse", "stop"],
     KeySpecs = [],
     FlagSpecs = [],
     Callback =
