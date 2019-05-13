@@ -24,21 +24,17 @@ publish(Msg, Policy, SubscriberGroups, Acc) when is_map(SubscriberGroups) ->
                       publish_(Msg, Policy, Group, Subscribers, MAcc)
               end, Acc, SubscriberGroups).
 
-publish_(Msg, prefer_local, Group, {LocalSubs0, RemoteSubs0}, Acc0) ->
-    LocalSubs1 = lists:keysort(2, LocalSubs0),
-    case publish_to_group(Msg, LocalSubs1, Acc0) of
+publish_(Msg, prefer_local, Group, {LocalSubs, RemoteSubs}, Acc0) ->
+    case publish_to_group(Msg, LocalSubs, Acc0) of
         {ok, Acc1} ->
             Acc1;
         {error, no_subscribers} ->
-            RemoteSubs1 = lists:keysort(2, RemoteSubs0),
-            publish(Msg, Group, RemoteSubs1, Acc0)
+            publish(Msg, Group, RemoteSubs, Acc0)
     end;
-publish_(Msg, local_only, Group, {LocalSubs0, _}, Acc0) ->
-    LocalSubs1 = lists:keysort(2, LocalSubs0),
-    publish_(Msg, Group, LocalSubs1, Acc0);
-publish_(Msg, random, Group, {LocalSubs0, RemoteSubs0}, Acc0) ->
-    Subs = lists:keysort(2, LocalSubs0 ++ RemoteSubs0),
-    publish_(Msg, Group, Subs, Acc0).
+publish_(Msg, local_only, Group, {LocalSubs, _}, Acc0) ->
+    publish_(Msg, Group, LocalSubs, Acc0);
+publish_(Msg, random, Group, {LocalSubs, RemoteSubs}, Acc0) ->
+    publish_(Msg, Group, LocalSubs ++ RemoteSubs, Acc0).
 
 
 publish_(Msg, Group, Subs, Acc0) ->
@@ -60,34 +56,42 @@ publish_to_group(Msg, Subscribers, Acc0) ->
     end.
 
 publish_online(Msg, Subscribers, Acc0) ->
-    try
-        lists:foldl(
-          fun(Subscriber, SubAcc) ->
-                  case publish__(Msg, Subscriber, online, Acc0) of
-                      {ok, Acc1} ->
-                          throw({done, Acc1});
-                      {error, offline} ->
-                          [Subscriber|SubAcc];
-                      {error, draining} ->
-                          [Subscriber|SubAcc];
-                      _ ->
-                          SubAcc
-                  end
-          end, [], Subscribers)
-    catch
-        {done, Acc2} -> {ok, Acc2}
+    Ret =
+    pick_random:pick_random(
+      fun(Subscriber, SubAcc) ->
+              case publish__(Msg, Subscriber, online, Acc0) of
+                  {ok, Acc1} ->
+                      {ok, {has_result, Acc1}};
+                  {error, offline} ->
+                      [Subscriber|SubAcc];
+                  {error, draining} ->
+                      [Subscriber|SubAcc];
+                  _ ->
+                      SubAcc
+              end
+      end, [], Subscribers),
+    case Ret of
+        {has_result, Result} -> {ok, Result};
+        Ret -> Ret
     end.
 
-publish_any(_Msg, [], _Acc) -> {error, no_subscribers};
-publish_any(Msg, [Subscriber|Subscribers], Acc0) ->
-    case publish__(Msg, Subscriber, any, Acc0) of
-        {ok, Acc1} ->
-            {ok, Acc1};
-        {error, _} ->
-            publish_any(Msg, Subscribers, Acc0)
+publish_any(Msg, Subscribers, Acc0) ->
+    Ret =
+    pick_random:pick_random(
+      fun(Subscriber, SubAcc0) ->
+              case publish__(Msg, Subscriber, any, SubAcc0) of
+                  {ok, SubAcc1} ->
+                      {ok, {has_result, SubAcc1}};
+                  {error, _} ->
+                      SubAcc0
+              end
+      end, Acc0, Subscribers),
+    case Ret of
+        {has_result, Acc1} -> {ok, Acc1};
+        _ -> {error, no_subscribers}
     end.
 
-publish__(Msg, {Node, _Rand, SubscriberId, QoS}, QState, {Local, Remote}) when Node == node() ->
+publish__(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) when Node == node() ->
     case vmq_reg:get_queue_pid(SubscriberId) of
         not_found ->
             {error, not_found};

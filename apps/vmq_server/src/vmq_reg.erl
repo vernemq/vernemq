@@ -412,9 +412,9 @@ add_to_subscriber_group({Node, Group, SubscriberId, SubInfo}, SubscriberGroups, 
     {LocalSubs, RemoteSubs} = maps:get(Group, SubscriberGroups, {[], []}),
     case Node == node() of
         true ->
-            maps:put(Group, {[{Node, rand:uniform(), SubscriberId, SubInfo}|LocalSubs], RemoteSubs}, SubscriberGroups);
+            maps:put(Group, {[{Node, SubscriberId, SubInfo}|LocalSubs], RemoteSubs}, SubscriberGroups);
         false ->
-            maps:put(Group, {LocalSubs, [{Node, rand:uniform(), SubscriberId, SubInfo}|RemoteSubs]}, SubscriberGroups)
+            maps:put(Group, {LocalSubs, [{Node, SubscriberId, SubInfo}|RemoteSubs]}, SubscriberGroups)
     end.
 
 -spec deliver_retained(subscriber_id(), topic(), qos(), subopts(), boolean()) -> 'ok'.
