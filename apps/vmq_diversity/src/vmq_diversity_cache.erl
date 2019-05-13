@@ -426,7 +426,7 @@ insert_cache(Key, Lts, PubAcls, SubAcls) ->
     ets:insert(table(cache), {{Key, Lts}, PubAclHashes, SubAclHashes}).
 
 insert_cache_(Table, [Rec|Rest], Acc) ->
-    AclHash = erlang:phash2(Rec),
+    AclHash = crypto:hash(sha, term_to_binary(Rec)),
     ets:update_counter(Table, AclHash,
                        {3, 1}, % Update Op
                        {AclHash, Rec, 0}),
