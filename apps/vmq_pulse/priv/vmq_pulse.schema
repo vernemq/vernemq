@@ -1,0 +1,27 @@
+%% @doc Set Pulse API Key.
+{mapping, "vmq_pulse.api_key", "vmq_pulse.api_key",
+ [
+  {datatype, string},
+  hidden
+ ]}.
+
+{mapping, "vmq_pulse.url", "vmq_pulse.url",
+ [
+  {datatype, string},
+  {default, "https://pulse.vernemq.com"},
+  hidden
+ ]}.
+
+{mapping, "vmq_pulse.push_interval", "vmq_pulse.push_interval",
+ [
+  {default, 60},
+  {datatype, integer},
+  hidden
+ ]}.
+
+{mapping, "vmq_pulse.connect_timeout", "vmq_pulse.connect_timeout",
+ [
+  {default, 10},
+  {datatype, integer},
+  hidden
+ ]}.
