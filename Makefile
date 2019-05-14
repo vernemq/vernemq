@@ -123,7 +123,7 @@ rpm: pkg_rel pkg_strip
 		--before-install files/rpm-vernemq.preinst \
 		--after-install files/rpm-vernemq.postinst \
 		--config-files /etc/vernemq/vernemq.conf \
-		files/vernemq.service=/etc/systemd/system/vernemq.service \
+		files/vernemq-centos.service=/etc/systemd/system/vernemq.service \
 		_build/default/rel/vernemq/bin/vernemq=/usr/sbin/vernemq \
 		_build/default/rel/vernemq/bin/vmq-admin=/usr/sbin/vmq-admin \
 		_build/default/rel/vernemq/bin/vmq-passwd=/usr/sbin/vmq-passwd \
