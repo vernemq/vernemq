@@ -6,11 +6,13 @@ Wants=network.target epmd@0.0.0.0.socket
 
 [Service]
 Type=forking
+PIDFile=/run/vernemq/vernemq.pid
 User=vernemq
 Group=vernemq
 NotifyAccess=all
 LimitNOFILE=infinity
 TimeoutStartSec=3600
+RuntimeDirectory=vernemq
 WorkingDirectory=/usr/lib64/vernemq
 ExecStartPre=/usr/lib64/vernemq/bin/vernemq chkconfig
 ExecStart=/usr/lib64/vernemq/bin/vernemq start
