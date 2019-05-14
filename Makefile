@@ -61,13 +61,15 @@ pkg_rel: pkg_clean
 pkg_strip:
 	$(shell find _build/default/rel/vernemq -type f -executable | xargs strip --remove-section=.comment --remove-section=.note --strip-unneeded)
 
-deb: OVERLAY_VARS=vars/deb_vars.config
-deb: pkg_rel pkg_strip
+deb_prep:
 	# required for running dpkg-shlibdeps
 	mkdir -p debian
 	touch debian/control
 
-	$(eval DEPENDS := $(shell find _build/default/rel/vernemq -type f -name "*.so" | xargs dpkg-shlibdeps -O | cut -c16- | sed "s/,/\" --depends \"/g"))
+deb: OVERLAY_VARS=vars/deb_vars.config
+deb: ERLVSN=$(shell erl -eval 'erlang:display(erlang:system_info(version)), halt().' -noshell)
+deb: DEPENDS=$(shell find _build/default/rel/vernemq -type f -name "*.so" | xargs dpkg-shlibdeps -O | cut -c16- | sed "s/,/\" --depends \"/g")
+deb: deb_prep pkg_rel pkg_strip
 	fpm -s dir -t deb -v "$(GIT_VERSION)" \
 		--force \
 		--name vernemq \
@@ -90,18 +92,19 @@ deb: pkg_rel pkg_strip
 		--config-files /etc/vernemq/vernemq.conf \
 		_build/default/rel/vernemq/bin/vernemq=/usr/bin/vernemq \
 		_build/default/rel/vernemq/bin/vmq-admin=/usr/bin/vmq-admin \
+		_build/default/rel/vernemq/bin/vmq-passwd=/usr/bin/vmq-passwd \
 		_build/default/rel/vernemq/data=/var/lib/vernemq/ \
 		_build/default/rel/vernemq/etc/=/etc/vernemq/ \
 		_build/default/rel/vernemq/bin/=/usr/lib/vernemq/bin/ \
 		_build/default/rel/vernemq/lib=/usr/lib/vernemq/ \
 		_build/default/rel/vernemq/releases=/usr/lib/vernemq/ \
-		_build/default/rel/vernemq/erts-$(shell erl -eval 'erlang:display(erlang:system_info(version)), halt().'  -noshell)=/usr/lib/vernemq/ \
+		_build/default/rel/vernemq/erts-$(ERLVSN)=/usr/lib/vernemq/ \
 		_build/default/rel/vernemq/share/=/usr/share/vernemq/ \
 		_build/default/rel/vernemq/log/=/var/log/vernemq/
 
 rpm: OVERLAY_VARS=vars/rpm_vars.config
+rpm: ERLVSN=$(shell erl -eval 'erlang:display(erlang:system_info(version)), halt().' -noshell)
 rpm: pkg_rel pkg_strip
-
 	fpm -s dir -t rpm -v "$(GIT_VERSION)" \
 		--force \
 		--name vernemq \
@@ -123,12 +126,13 @@ rpm: pkg_rel pkg_strip
 		files/vernemq.service=/etc/systemd/system/vernemq.service \
 		_build/default/rel/vernemq/bin/vernemq=/usr/sbin/vernemq \
 		_build/default/rel/vernemq/bin/vmq-admin=/usr/sbin/vmq-admin \
+		_build/default/rel/vernemq/bin/vmq-passwd=/usr/sbin/vmq-passwd \
 		_build/default/rel/vernemq/data=/var/lib/vernemq/ \
 		_build/default/rel/vernemq/etc/=/etc/vernemq/ \
 		_build/default/rel/vernemq/bin/=/usr/lib64/vernemq/bin/ \
 		_build/default/rel/vernemq/lib=/usr/lib64/vernemq/ \
 		_build/default/rel/vernemq/releases=/usr/lib64/vernemq/ \
-		_build/default/rel/vernemq/erts-$(shell erl -eval 'erlang:display(erlang:system_info(version)), halt().'  -noshell)=/usr/lib64/vernemq/ \
+		_build/default/rel/vernemq/erts-$(ERLVSN)=/usr/lib64/vernemq/ \
 		_build/default/rel/vernemq/share/=/usr/share/vernemq/ \
 		_build/default/rel/vernemq/log/=/var/log/vernemq/
 
