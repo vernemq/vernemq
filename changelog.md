@@ -1,5 +1,7 @@
 # Changelog
 
+## VerneMQ 1.8.0
+
 - Cleanup cluster state information on a node which is being gracefully removed
   from the cluster so if it is restarted it comes back up as a stand-alone node
   and won't try to reconnect to the remaining nodes.
