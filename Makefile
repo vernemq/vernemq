@@ -53,12 +53,6 @@ endif  # deb
 endif  # rpm
 endif # linux
 
-
-GET_ERLVSN = $(shell erl -eval 'erlang:display(erlang:system_info(version)), halt().' -noshell)
-SET_ERLVSN = $(eval ERLVSN=$(GET_ERLVSN))
-GET_DEPENDS = $(shell find _build/default/rel/vernemq -type f -name "*.so" | xargs dpkg-shlibdeps -O | cut -c16- | sed "s/,/\" --depends \"/g")
-SET_DEPENDS = $(eval DEPENDS=$(GET_DEPENDS))
-
 package: $(PKGTARGET)
 
 pkg_rel: pkg_clean
@@ -73,9 +67,9 @@ deb_prep:
 	touch debian/control
 
 deb: OVERLAY_VARS=vars/deb_vars.config
+deb: ERLVSN=$(shell erl -eval 'erlang:display(erlang:system_info(version)), halt().' -noshell)
+deb: DEPENDS=$(shell find _build/default/rel/vernemq -type f -name "*.so" | xargs dpkg-shlibdeps -O | cut -c16- | sed "s/,/\" --depends \"/g")
 deb: deb_prep pkg_rel pkg_strip
-	$(SET_ERLVSN)
-	$(SET_DEPENDS)
 	fpm -s dir -t deb -v "$(GIT_VERSION)" \
 		--force \
 		--name vernemq \
@@ -109,8 +103,8 @@ deb: deb_prep pkg_rel pkg_strip
 		_build/default/rel/vernemq/log/=/var/log/vernemq/
 
 rpm: OVERLAY_VARS=vars/rpm_vars.config
+rpm: ERLVSN=$(shell erl -eval 'erlang:display(erlang:system_info(version)), halt().' -noshell)
 rpm: pkg_rel pkg_strip
-	$(SET_ERLVSN)
 	fpm -s dir -t rpm -v "$(GIT_VERSION)" \
 		--force \
 		--name vernemq \
@@ -132,7 +126,7 @@ rpm: pkg_rel pkg_strip
 		files/vernemq.service=/etc/systemd/system/vernemq.service \
 		_build/default/rel/vernemq/bin/vernemq=/usr/sbin/vernemq \
 		_build/default/rel/vernemq/bin/vmq-admin=/usr/sbin/vmq-admin \
-		_build/default/rel/vernemq/bin/vmq-passwd=/usr/bin/vmq-passwd \
+		_build/default/rel/vernemq/bin/vmq-passwd=/usr/sbin/vmq-passwd \
 		_build/default/rel/vernemq/data=/var/lib/vernemq/ \
 		_build/default/rel/vernemq/etc/=/etc/vernemq/ \
 		_build/default/rel/vernemq/bin/=/usr/lib64/vernemq/bin/ \
