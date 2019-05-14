@@ -98,6 +98,8 @@
   - CPU, RAM, and disk usage
   - Pulse Version
   Note: The `vmq_pulse` plugin is in Beta.
+- Fix the systemd service unit file to set `LimitNOFILE=infinity`. This enables VerneMQ
+  to request as many file descriptors as configured for the `vernemq` user.
 
 ## VerneMQ 1.7.0
 

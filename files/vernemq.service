@@ -10,6 +10,7 @@ PIDFile=/run/vernemq/vernemq.pid
 User=vernemq
 Group=vernemq
 NotifyAccess=all
+LimitNOFILE=infinity
 TimeoutStartSec=3600
 WorkingDirectory=/usr/lib/vernemq
 ExecStartPre=rm -f /run/vernemq/vernemq.pid
