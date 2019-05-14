@@ -255,8 +255,7 @@ find_disk_for_directory(Directory) when is_binary(Directory) ->
          (_, Acc) ->
               Acc
       end, {0, no_disk}, lists:keysort(1, disksup:get_disk_data())),
-    Disk;
-find_disk_for_directory(_) -> no_disk.
+    Disk.
 
 metadata_backend() ->
     {ok, MetadataBackend} = application:get_env(vmq_server, metadata_impl),
