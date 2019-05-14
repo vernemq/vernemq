@@ -84,6 +84,20 @@
   MQTT session FSM because of an unexpected message.
 - Fix `vmq_diversity` ACL rule hash collision issue (#1164).
 - Improve performance of shared subscriptions when using many subscribers.
+- Add the `vmq_pulse` plugin. This plugin periodically sends cluster information to
+  a pulse backend via HTTP(S). The plugin is NOT enabled by default, and once
+  enabled it has to be setup with `vmq-admin pulse setup`. This enables a support
+  crew to analyze the cluster performance without having direct access to the VerneMQ
+  nodes. Such a 'Pulse' contains the following information:
+  - Cluster status, similar to `vmq-admin cluster show`
+  - Plugins, similar to `vmq-admin plugin show --internal`
+  - Metrics, similar to `vmq-admin metrics show`
+  - Names and versions of loaded OTP applications
+  - Erlang System Version
+  - OS Kernel information, output of `uname -a`
+  - CPU, RAM, and disk usage
+  - Pulse Version
+  Note: The `vmq_pulse` plugin is in Beta.
 
 ## VerneMQ 1.7.0
 
