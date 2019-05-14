@@ -95,7 +95,7 @@
   - Names and versions of loaded OTP applications
   - Erlang System Version
   - OS Kernel information, output of `uname -a`
-  - CPU and RAM usage
+  - CPU, RAM, and disk usage
   - Pulse Version
   Note: The `vmq_pulse` plugin is in Beta.
 

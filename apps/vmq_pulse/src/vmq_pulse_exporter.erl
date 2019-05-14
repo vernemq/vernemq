@@ -178,6 +178,7 @@ create_body(ClusterId, Node) ->
                     end, vmq_metrics:metrics(#{aggregate => false}))},
         {cpu_util, cpu_sup:util()},
         {mem_util, memsup:get_system_memory_data()},
+        {disk_util, disk_util()},
         {applications, [{App, Vsn} || {App, _, Vsn} <- application:which_applications()]},
         {system_version, erlang:system_info(system_version)},
         {cluster_status, vmq_cluster:status()},
@@ -207,3 +208,39 @@ push_body(PulseUrl, ApiKey, Body) ->
 
 interval(Int) when Int < 10 -> 10 * 1000;
 interval(Int) -> Int * 1000.
+
+disk_util() ->
+    {ok, MsgStoreOpts} = application:get_env(vmq_server, msg_store_opts),
+    MsgStoreDisk = find_disk_for_directory(proplists:get_value(store_dir, MsgStoreOpts)),
+    MetadataDisk =
+    case metadata_backend() of
+        vmq_swc ->
+            {ok, SWCDataDir} = application:get_env(vmq_swc, data_dir),
+            find_disk_for_directory(SWCDataDir);
+        vmq_plumtree ->
+            {ok, PlumtreeDataDir} = application:get_env(plumtree, plumtree_data_dir),
+            find_disk_for_directory(PlumtreeDataDir)
+    end,
+    [{msg_store, MsgStoreDisk}, {meta, MetadataDisk}].
+
+find_disk_for_directory(Directory) when is_list(Directory) ->
+    find_disk_for_directory(list_to_binary(Directory));
+find_disk_for_directory(Directory) when is_binary(Directory) ->
+    {_, Disk} =
+    lists:foldl(
+      fun({Mount, _, _} = Disk, {PrefixSize, _} = Acc) ->
+              case binary:longest_common_prefix([list_to_binary(Mount), Directory]) of
+                  NewPrefixSize when NewPrefixSize > PrefixSize ->
+                      {NewPrefixSize, Disk};
+                  _ ->
+                      Acc
+              end;
+         (_, Acc) ->
+              Acc
+      end, {0, no_disk}, lists:keysort(1, disksup:get_disk_data())),
+    Disk;
+find_disk_for_directory(_) -> no_disk.
+
+metadata_backend() ->
+    {ok, MetadataBackend} = application:get_env(vmq_server, metadata_impl),
+    MetadataBackend.
