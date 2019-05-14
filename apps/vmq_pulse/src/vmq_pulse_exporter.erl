@@ -116,7 +116,8 @@ handle_info(push, State) ->
     NodeId = atom_to_binary(node(), utf8),
     case (ClusterId =/= undefined) of
         true ->
-            Body = create_body(ClusterId, NodeId),
+            PulseData = create_pulse_data(ClusterId, NodeId),
+            Body = zlib:compress(term_to_binary(PulseData)),
             try push_body(PulseUrl, ApiKey, Body) of
                 ok -> ok;
                 {error, Reason} ->
@@ -159,32 +160,48 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-create_body(ClusterId, Node) ->
-    Body =
+metrics() ->
+    lists:filtermap(
+      fun({{metric_def, Type, Labels, _Id, Name, Desc}, Val}) ->
+              {true, #{type => Type,
+                       labels => Labels,
+                       name => Name,
+                       desc => Desc,
+                       value => Val}};
+         (_UnsupportedMetricDef) ->
+              false
+      end, vmq_metrics:metrics(#{aggregate => false})).
+
+create_pulse_data(ClusterId, Node) ->
+    PulseData0 =
     [
-        {node, Node},
-        {cluster_id, ClusterId},
-        {pulse_version, ?PULSE_VERSION},
-        {plugins, vmq_plugin:info(all)},
-        {metrics, lists:filtermap(
-                    fun({{metric_def, Type, Labels, _Id, Name, Desc}, Val}) ->
-                            {true, #{type => Type,
-                                     labels => Labels,
-                                     name => Name,
-                                     desc => Desc,
-                                     value => Val}};
-                       (_UnsupportedMetricDef) ->
-                            false
-                    end, vmq_metrics:metrics(#{aggregate => false}))},
-        {cpu_util, cpu_sup:util()},
-        {mem_util, memsup:get_system_memory_data()},
-        {disk_util, disk_util()},
-        {applications, [{App, Vsn} || {App, _, Vsn} <- application:which_applications()]},
-        {system_version, erlang:system_info(system_version)},
-        {cluster_status, vmq_cluster:status()},
-        {uname, os:cmd("uname -a")}
+     {node, Node},
+     {cluster_id, ClusterId},
+     {pulse_version, ?PULSE_VERSION},
+     {plugins, fun() -> vmq_plugin:info(all) end},
+     {metrics, fun metrics/0},
+     {cpu_util, fun cpu_sup:util/0},
+     {mem_util, fun memsup:get_system_memory_data/0},
+     {disk_util, fun disk_util/0},
+     {applications, fun() ->
+                            [{App, Vsn} || {App, _, Vsn} <- application:which_applications()]
+                    end},
+     {system_version, fun() -> erlang:system_info(system_version) end},
+     {cluster_status, fun vmq_cluster:status/0},
+     {uname, fun() -> os:cmd("uname -a") end}
     ],
-    zlib:compress(term_to_binary(Body)).
+    lists:map(fun({K, V}) -> {K, maybe_rescue(V)} end, PulseData0).
+
+maybe_rescue(Fun) when is_function(Fun) ->
+    try
+        Fun()
+    catch
+        Class:Exception:Stacktrace ->
+            {error, [{class, Class},
+                     {exception, Exception},
+                     {stacktrace, Stacktrace}]}
+    end;
+maybe_rescue(Val) -> Val.
 
 push_body(PulseUrl, ApiKey, Body) ->
     ContentType = "application/x-vmq-pulse-1",
@@ -211,15 +228,15 @@ interval(Int) -> Int * 1000.
 
 disk_util() ->
     {ok, MsgStoreOpts} = application:get_env(vmq_server, msg_store_opts),
-    MsgStoreDisk = find_disk_for_directory(proplists:get_value(store_dir, MsgStoreOpts)),
+    MsgStoreDisk = find_disk_for_directory(filename:absname(proplists:get_value(store_dir, MsgStoreOpts))),
     MetadataDisk =
     case metadata_backend() of
         vmq_swc ->
             {ok, SWCDataDir} = application:get_env(vmq_swc, data_dir),
-            find_disk_for_directory(SWCDataDir);
+            find_disk_for_directory(filename:absname(SWCDataDir));
         vmq_plumtree ->
             {ok, PlumtreeDataDir} = application:get_env(plumtree, plumtree_data_dir),
-            find_disk_for_directory(PlumtreeDataDir)
+            find_disk_for_directory(filename:absname(PlumtreeDataDir))
     end,
     [{msg_store, MsgStoreDisk}, {meta, MetadataDisk}].
 
