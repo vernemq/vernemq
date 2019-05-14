@@ -121,7 +121,10 @@ connect_no_auth_test(_) ->
     ok, ssl:close(SSock).
 
 connect_no_auth_wrong_ca_test(_) ->
-    assert_error_or_closed({error,{tls_alert,"unknown ca"}},
+    assert_error_or_closed([{error,{tls_alert,"unknown ca"}},
+                            {error, %% OTP 21.3+
+                             {tls_alert,
+                              {unknown_ca,"received CLIENT ALERT: Fatal - Unknown CA"}}}],
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
@@ -141,14 +144,22 @@ connect_cert_auth_test(_) ->
     ok = ssl:close(SSock).
 
 connect_cert_auth_without_test(_) ->
-    assert_error_or_closed({error,{tls_alert,"handshake failure"}},
+    assert_error_or_closed([{error,{tls_alert,"handshake failure"}},
+                            {error, %% OTP 21.3+
+                             {tls_alert,
+                              {handshake_failure,
+                               "received CLIENT ALERT: Fatal - Handshake Failure"}}}],
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
                                {cacerts, load_cacerts()}])).
 
 connect_cert_auth_expired_test(_) ->
-    assert_error_or_closed({error,{tls_alert,"certificate expired"}},
+    assert_error_or_closed([{error,{tls_alert,"certificate expired"}},
+                            {error, %% OTP 21.3+
+                             {tls_alert,
+                              {certificate_expired,
+                               "received CLIENT ALERT: Fatal - Certificate Expired"}}}],
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
@@ -158,7 +169,11 @@ connect_cert_auth_expired_test(_) ->
 
 connect_cert_auth_revoked_test(_) ->
     assert_error_or_closed([{error,{tls_alert,"certificate revoked"}}, % pre OTP 18
-                            {error,{tls_alert,"handshake failure"}}], % Erlang 18
+                            {error,{tls_alert,"handshake failure"}}, % Erlang 18
+                            {error, %% OTP 21.3+
+                             {tls_alert,
+                              {handshake_failure,
+                               "received CLIENT ALERT: Fatal - Handshake Failure"}}}],
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
@@ -193,7 +208,11 @@ connect_identity_test(_) ->
     ok = ssl:close(SSock).
 
 connect_no_identity_test(_) ->
-    assert_error_or_closed({error,{tls_alert,"handshake failure"}},
+    assert_error_or_closed([{error,{tls_alert,"handshake failure"}},
+                            {error,
+                             {tls_alert,
+                              {handshake_failure,
+                               "received CLIENT ALERT: Fatal - Handshake Failure"}}}],
                   ssl:connect("localhost", 1888,
                               [binary, {active, false}, {packet, raw},
                                {verify, verify_peer},
