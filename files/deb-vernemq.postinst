@@ -14,3 +14,7 @@ if ! getent passwd vernemq >/dev/null; then
           --system --shell /bin/bash --no-create-home \
           --gecos "VerneMQ broker" vernemq
 fi
+
+for i in lib log; do
+    chown -R vernemq:vernemq /var/$i/vernemq
+done
