@@ -45,7 +45,7 @@ make package
 
 cd /packages
 
-for FILE in `find /opt/vernemq/package/packages -name "*.${PLATFORM}"` ; do
+for FILE in `find /opt/vernemq -name "*.${PLATFORM}"` ; do
     file=$(basename $FILE)
     if [[ $file == *"src.rpm"* ]]; then
         continue
