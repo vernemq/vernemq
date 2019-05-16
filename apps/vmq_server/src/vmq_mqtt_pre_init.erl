@@ -68,7 +68,9 @@ data_in(Data, #state{peer = Peer,
                     {stop, Reason, Out};
                 {FsmState1, Out} ->
                     {switch_fsm, vmq_mqtt_fsm, FsmState1, Rest, Out}
-            end
+            end;
+        {{error, Reason}, _} ->
+            {error, Reason, []}
     end.
 
 parse_connect_frame(Data, MaxMessageSize) ->

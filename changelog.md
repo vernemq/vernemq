@@ -3,6 +3,8 @@
 - Ensure mountpoints specified at the protocol level are inherited on the
   specific listeners.
 - Fix missing output from `vernemq version` (#1190).
+- Ensure errors from the parser variable decode are handled correctly and logged
+  at the debug level instead of causing a crash in the socket process.
 
 ## VerneMQ 1.8.0
 

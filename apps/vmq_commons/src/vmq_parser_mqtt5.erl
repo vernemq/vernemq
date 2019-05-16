@@ -40,7 +40,7 @@
 parse(Data) ->
     parse(Data, ?MAX_PACKET_SIZE).
 
--spec parse(binary(), non_neg_integer()) ->  {mqtt5_frame(), binary()} | {error, atom()} | more.
+-spec parse(binary(), non_neg_integer()) ->  {mqtt5_frame(), binary()} | {error, atom()} | {{error, atom()}, any()} | more.
 parse(<<Fixed:1/binary, 0:1, DataSize:7, Data/binary>>, MaxSize)->
     parse(DataSize, MaxSize, Fixed, Data);
 parse(<<Fixed:1/binary, 1:1, L1:7, 0:1, L2:7, Data/binary>>, MaxSize) ->

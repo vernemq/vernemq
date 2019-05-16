@@ -47,7 +47,7 @@
 
 -define(MAX_PACKET_SIZE, 268435455).
 
--spec parse(binary()) -> {mqtt_frame(), binary()} | {error, atom()} | more.
+-spec parse(binary()) -> {mqtt_frame(), binary()} | {error, atom()} | {{error, atom()}, any()} |more.
 parse(Data) ->
     parse(Data, ?MAX_PACKET_SIZE).
 
