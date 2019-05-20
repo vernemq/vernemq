@@ -2,6 +2,7 @@
 
 - Ensure mountpoints specified at the protocol level are inherited on the
   specific listeners.
+- Fix missing output from `vernemq version` (#1190).
 
 ## VerneMQ 1.8.0
 

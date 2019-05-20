@@ -23,14 +23,13 @@ rpi32: rel
 ## Release targets
 ##
 rel:
+	cat vars.config > vars.generated
+	echo "{app_version, \"${GIT_VERSION}\"}." >> vars.generated
 ifeq ($(OVERLAY_VARS),)
-	cat vars.config > vars.generated
-	$(REBAR) $(PROFILE) release
 else
-	cat vars.config > vars.generated
 	cat $(OVERLAY_VARS) >> vars.generated
-	$(REBAR) $(PROFILE) release
 endif
+	$(REBAR) $(PROFILE) release
 
 ##
 ## Support RPM and Debian based linux systems
