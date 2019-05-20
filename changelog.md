@@ -5,6 +5,8 @@
 - Fix missing output from `vernemq version` (#1190).
 - Ensure errors from the parser variable decode are handled correctly and logged
   at the debug level instead of causing a crash in the socket process.
+- Handle list of `sec-websocket-protocol` correctly (#1149) in the websocket
+  implementation.
 
 ## VerneMQ 1.8.0
 

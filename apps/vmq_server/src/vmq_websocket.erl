@@ -38,14 +38,24 @@ websocket_init(Type, Req, Opts) ->
     case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req) of
         {undefined, _, Req2} ->
             init_(Type, Req2, Opts);
-        {ok, [SubProtocol], Req2} ->
-            case lists:member(SubProtocol, ?SUPPORTED_PROTOCOLS) of
-                true ->
+        {ok, SubProtocols, Req2} ->
+            case select_protocol(SubProtocols, ?SUPPORTED_PROTOCOLS) of
+                {error, unsupported_protocol} ->
+                    {shutdown, Req2};
+                {ok, SubProtocol} ->
                     Req3 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, SubProtocol, Req2),
-                    init_(Type, Req3, Opts);
-                false ->
-                    {shutdown, Req2}
+                    init_(Type, Req3, Opts)
             end
+    end.
+
+select_protocol([], _) ->
+    {error, unsupported_protocol};
+select_protocol([Want|Rest], Have) ->
+    case lists:member(Want, ?SUPPORTED_PROTOCOLS) of
+        true ->
+            {ok, Want};
+        _ ->
+            select_protocol(Rest, Have)
     end.
 
 init_(Type, Req, Opts) ->
