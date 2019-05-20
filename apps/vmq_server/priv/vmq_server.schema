@@ -874,89 +874,66 @@
 %%     - listener.ws.my_ws_listener.mountpoint
 %%     - listener.wss.my_wss_listener.mountpoint
 {mapping, "listener.mountpoint", "vmq_server.listeners", [{default, "off"},
-                                                             {datatype, string}
-                                                            ]}. 
+                                                          {datatype, string},
+                                                          hidden
+                                                         ]}.
 {mapping, "listener.tcp.mountpoint", "vmq_server.listeners", [
-                                                                 {default, ""},
-                                                                 {datatype, string},
-                                                                 hidden
-                                                                ]}. 
+                                                              {datatype, string},
+                                                              hidden
+                                                             ]}.
 
 {mapping, "listener.tcp.$name.mountpoint", "vmq_server.listeners", [
-                                                                       {default, ""},
-                                                                       {datatype, string},
-                                                                       hidden
-                                                                      ]}. 
+                                                                    {datatype, string},
+                                                                    hidden
+                                                                   ]}.
 
 {mapping, "listener.ws.mountpoint", "vmq_server.listeners", [
-                                                                       {default, ""},
-                                                                       {datatype, string},
-                                                                       hidden
-                                                                      ]}. 
+                                                             {datatype, string},
+                                                             hidden
+                                                            ]}.
 
 {mapping, "listener.ws.$name.mountpoint", "vmq_server.listeners", [
-                                                                             {default, ""},
-                                                                             {datatype, string},
-                                                                             hidden
-                                                                            ]}. 
-{mapping, "listener.wss.mountpoint", "vmq_server.listeners", [
-                                                                       {default, ""},
-                                                                       {datatype, string},
-                                                                       hidden
-                                                                      ]}. 
-
-{mapping, "listener.wss.$name.mountpoint", "vmq_server.listeners", [
-                                                                             {default, ""},
-                                                                             {datatype, string},
-                                                                             hidden
-                                                                            ]}. 
+                                                                   {datatype, string},
+                                                                   hidden
+                                                                  ]}.
 
 {mapping, "listener.wss.mountpoint", "vmq_server.listeners", [
-                                                                 {default, ""},
-                                                                 {datatype, string},
-                                                                 hidden
-                                                                ]}. 
+                                                              {datatype, string},
+                                                              hidden
+                                                             ]}.
 
 {mapping, "listener.wss.$name.mountpoint", "vmq_server.listeners", [
-                                                                       {default, ""},
-                                                                       {datatype, string},
-                                                                       hidden
-                                                                      ]}. 
-
+                                                                    {datatype, string},
+                                                                    hidden
+                                                                   ]}.
 
 {mapping, "listener.ssl.mountpoint", "vmq_server.listeners", [
-                                                                 {default, ""},
-                                                                 {datatype, string},
-                                                                 hidden
-                                                                ]}. 
+                                                              {datatype, string},
+                                                              hidden
+                                                             ]}.
 
 {mapping, "listener.ssl.$name.mountpoint", "vmq_server.listeners", [
-                                                                       {default, ""},
-                                                                       {datatype, string},
-                                                                       hidden
+                                                                    {datatype, string},
+                                                                    hidden
                                                                 ]}. 
 {mapping, "listener.vmq.mountpoint", "vmq_server.listeners", [
-                                                                 {default, ""},
-                                                                 {datatype, string},
-                                                                 hidden
-                                                                ]}. 
+                                                              {datatype, string},
+                                                              hidden
+                                                             ]}.
 
 {mapping, "listener.vmq.$name.mountpoint", "vmq_server.listeners", [
-                                                                       {default, ""},
-                                                                       {datatype, string},
-                                                                       hidden
-                                                                      ]}. 
+                                                                    {datatype, string},
+                                                                    hidden
+                                                                   ]}.
 {mapping, "listener.vmqs.mountpoint", "vmq_server.listeners", [
-                                                                 {default, ""},
-                                                                 {datatype, string},
-                                                                 hidden
-                                                                ]}. 
+                                                               {datatype, string},
+                                                               hidden
+                                                              ]}.
 
 {mapping, "listener.vmqs.$name.mountpoint", "vmq_server.listeners", [
-                                                                       {default, ""},
-                                                                       {datatype, string},
-                                                                       hidden
-                                                                      ]}. 
+                                                                     {datatype, string},
+                                                                     hidden
+                                                                    ]}.
 
 %% @doc The cafile is used to define the path to a file containing 
 %% the PEM encoded CA certificates that are trusted. Set the cafile 

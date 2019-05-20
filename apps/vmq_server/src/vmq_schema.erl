@@ -33,9 +33,9 @@ translate_listeners(Conf) ->
                 end,
     MPVal = fun(Name, Val2, Def) -> case Val2 of
                                         "off" -> "";
-                                        "" -> Def;
+                                        undefined -> Def;
                                         S when is_list(S) -> S;
-                                        _ -> cuttlefish:invalid(Name ++ "should be a string")
+                                        _ -> cuttlefish:invalid(Name ++ " should be a string, is: " ++ Val2)
                                     end
             end,
 
