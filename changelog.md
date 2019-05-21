@@ -7,6 +7,7 @@
   at the debug level instead of causing a crash in the socket process.
 - Handle list of `sec-websocket-protocol` correctly (#1149) in the websocket
   implementation.
+- Ensure that plumtree application isn't started when metadata plugin SWC is used.
 
 ## VerneMQ 1.8.0
 
