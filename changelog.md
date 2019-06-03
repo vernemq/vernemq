@@ -8,6 +8,7 @@
 - Handle list of `sec-websocket-protocol` correctly (#1149) in the websocket
   implementation.
 - Ensure that plumtree application isn't started when metadata plugin SWC is used.
+- Fix bug preventing restarting Lua states properly in case of a crashing script.
 
 ## VerneMQ 1.8.0
 

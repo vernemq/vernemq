@@ -19,7 +19,7 @@
 register_cli() ->
     register_config(),
     register_cli_usage(),
-    status_cmd(),
+    show_cmd(),
     load_cmd(),
     reload_cmd(),
     unload_cmd().
@@ -42,7 +42,7 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "script", "unload"], unload_usage()),
     clique:register_usage(["vmq-admin", "script", "show"], show_usage()).
 
-status_cmd() ->
+show_cmd() ->
     Cmd = ["vmq-admin", "script", "show"],
     Callback = fun(_, _, _) ->
                        AllStats = vmq_diversity_script_sup:stats(),

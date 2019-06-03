@@ -17,7 +17,7 @@
 -behaviour(gen_server).
 
 %% API functions
--export([start_link/2,
+-export([start_link/3,
          reload/1,
          get_hooks/1,
          get_num_states/1,
@@ -48,8 +48,8 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Id, Script) ->
-    gen_server:start_link(?MODULE, [Id, Script], []).
+start_link(Id, Script, ScriptMgrPid) ->
+    gen_server:start_link(?MODULE, [Id, Script, ScriptMgrPid], []).
 
 reload(Pid) ->
     gen_server:call(Pid, reload, infinity).
@@ -80,7 +80,7 @@ call_function(Pid, Function, Args) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Id, Script]) ->
+init([Id, Script, ScriptMgrPid]) ->
     case load_script(Id, Script) of
         {ok, LuaState} ->
             KeepState =
@@ -90,6 +90,7 @@ init([Id, Script]) ->
                 KS ->
                     KS
             end,
+            ScriptMgrPid ! {state_ready, self()},
             {ok, #state{id=Id, luastate=LuaState,
                         script=Script, keep=KeepState}};
         {error, Reason} ->

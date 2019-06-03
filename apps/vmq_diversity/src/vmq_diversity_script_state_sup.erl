@@ -18,8 +18,8 @@
 
 %% API functions
 -export([start_link/0,
-         start_script_state/1,
-         stop_script_state/1]).
+         start_state/4
+        ]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -39,26 +39,19 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link(?MODULE, []).
 
-start_script_state(Script) ->
-    supervisor:start_child(?MODULE, [Script]).
-
-stop_script_state(Pid) ->
-    supervisor:terminate_child(?MODULE, Pid).
+start_state(StateSup, Id, Script, ScriptMgrPid) ->
+    supervisor:start_child(StateSup, ?CHILD({vmq_diversity_script_state, Id},
+                                            vmq_diversity_script_state, worker,
+                                            [Id, Script, ScriptMgrPid])).
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
 init([]) ->
-    SupFlags = #{strategy => simple_one_for_one,
-                 intensity => 0,
-                 period => 1},
-    ChildSpecs = [#{id => call,
-                    start => {vmq_diversity_script_state, start_link, []},
-                    shutdown => brutal_kill}],
-    {ok, {SupFlags, ChildSpecs}}.
+    {ok, {{one_for_one, 5, 10}, []}}.
 
 %%%===================================================================
 %%% Internal functions
