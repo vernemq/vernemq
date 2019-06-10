@@ -24,7 +24,7 @@ init_per_testcase(_TestCase, Config) ->
     Config.
 
 end_per_testcase(_TestCase, _Config) ->
-    application:stop(vmq_bridge),
+    stop_bridge_plugin(),
     ok.
 
 groups() ->
@@ -38,10 +38,60 @@ groups() ->
 all() ->
     [{group, mqttv4}].
 
+test_prefixes(_Cfg) ->
+    %% topic in local-prefix remote-prefix:
+    %% local-subs: none
+    %% remote-subs: remote-prefix/topic
+    %% rem-pub remote-prefix/topic -> local-pub local-prefix/topic
+    start_bridge_plugin(#{qos => 0,
+                          topics => [{"bridge-in", in, 0, "local-in-prefix", "remote-in-prefix"},
+                                     {"bridge-out", out, 0, "local-out-prefix", "remote-out-prefix"}]}),
+    BridgePid = get_bridge_pid(),
+
+    %% Start the 'broker' and let the bridge connect
+    {ok, SSocket} = gen_tcp:listen(1890, [binary, {packet, raw}, {active, false}, {reuseaddr, true}]),
+    {ok, BrokerSocket} = gen_tcp:accept(SSocket, 5000),
+    Connect = packet:gen_connect("bridge-test", [{keepalive,60}, {clean_session, false},
+                                                 {proto_ver, 128+3}]),
+    Connack = packet:gen_connack(0),
+    ok = gen_tcp:send(BrokerSocket, Connack),
+    ok = packet:expect_packet(BrokerSocket, "connect", Connect),
+
+    Subscribe = packet:gen_subscribe(1, "remote-in-prefix/bridge-in", 0),
+    ok = packet:expect_packet(BrokerSocket, "subscribe", Subscribe),
+    ok = bridge_rec({subscribe, BridgePid}, 100),
+
+    %% out: publish to bridge and check it arrives at the broker
+    ExpectPub0 = fun(Socket, Topic, Payload) ->
+                         Pub = packet:gen_publish(Topic, 0, Payload, []),
+                         ok = packet:expect_packet(Socket, "publish", Pub)
+                 end,
+
+    ok = pub_to_bridge(BridgePid, [<<"local-out-prefix">>, <<"bridge-out">>], "bridge-out-msg", 0),
+    ok = ExpectPub0(BrokerSocket, "remote-out-prefix/bridge-out", "bridge-out-msg"),
+
+    %% in: publish to broker and check it arrives at the bridge
+    PublishBroker = packet:gen_publish("remote-in-prefix/bridge-in", 0, <<"bridge-in">>, []),
+    ok = gen_tcp:send(BrokerSocket, PublishBroker),
+    ok = bridge_rec({publish,[<<"local-in-prefix">>,<<"bridge-in">>],<<"bridge-in">>}, 100).
+
+bridge_rec(Msg, Timeout) ->
+    receive
+        Msg ->
+            ok
+    after
+        Timeout ->
+            throw({error, {message_not_received, Msg}})
+    end.
+
 get_bridge_pid() ->
     [{{vmq_bridge,"localhost",1890},Pid,worker,[vmq_bridge]}] =
         supervisor:which_children(vmq_bridge_sup),
     Pid.
+
+pub_to_bridge(BridgePid, Topic, Payload, QoS) ->
+    BridgePid ! {deliver, Topic, Payload, QoS, false, false},
+    ok.
 
 pub_to_bridge(BridgePid, Payload, QoS) ->
     BridgePid ! {deliver, [<<"bridge">>, <<"topic">>], Payload, QoS, false, false}.
@@ -124,14 +174,15 @@ buffer_outgoing(_Cfg) ->
 
 start_bridge_plugin(Opts) ->
     QoS = maps:get(qos, Opts),
-    Max = maps:get(max_outgoing_buffered_messages, Opts),
+    Max = maps:get(max_outgoing_buffered_messages, Opts, 100),
+    Topics = maps:get(topics, Opts, [{"bridge/#", both, QoS, "", ""}]),
     application:load(vmq_bridge),
     application:set_env(vmq_bridge, registry_mfa,
                         {?MODULE, bridge_reg, [self()]}),
     application:set_env(vmq_bridge, config,
                         {[
                           %% TCP Bridges
-                          {"localhost:1890", [{topics, [{"bridge/#", both, QoS, "", ""}]},
+                          {"localhost:1890", [{topics, Topics},
                                               {restart_timeout, 5},
                                               {client_id, "bridge-test"},
                                               {max_outgoing_buffered_messages, Max}]}
@@ -143,6 +194,10 @@ start_bridge_plugin(Opts) ->
     application:ensure_all_started(vmq_bridge),
     Config = [{vmq_bridge, application:get_all_env(vmq_bridge)}],
     vmq_bridge_sup:change_config(Config).
+
+stop_bridge_plugin() ->
+    application:stop(vmq_bridge),
+    application:unload(vmq_bridge).
 
 bridge_reg(ReportProc) ->
     RegisterFun = fun() ->
