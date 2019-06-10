@@ -140,11 +140,11 @@ handle_info({deliver_remote, Topic, Payload},
     %% publish an incoming message from the remote broker locally if
     %% we have a matching subscription
     lists:foreach(
-      fun({{in, T}, LocalPrefix}) ->
+      fun({{in, T}, {LocalPrefix, RemotePrefix}}) ->
               case match(Topic, T) of
                   true ->
                       % ignore if we're ready or not.
-                      PublishFun(routing_key(LocalPrefix, Topic), Payload, #{});
+                      PublishFun(swap_prefix(RemotePrefix, LocalPrefix, Topic), Payload, #{});
                   false ->
                       ok
               end;
@@ -156,10 +156,10 @@ handle_info({deliver, Topic, Payload, _QoS, _IsRetained, _IsDup},
             #state{subs_local=Subscriptions, client_pid=ClientPid} = State) ->
     %% forward matching, locally published messages to the remote broker.
     lists:foreach(
-      fun({{out, T}, QoS, RemotePrefix}) ->
+      fun({{out, T}, QoS, {LocalPrefix, RemotePrefix}}) ->
               case match(Topic, T) of
                   true ->
-                      ok = gen_mqtt_client:publish(ClientPid, routing_key(RemotePrefix, Topic) ,
+                      ok = gen_mqtt_client:publish(ClientPid, swap_prefix(LocalPrefix, RemotePrefix, Topic) ,
                                              Payload, QoS);
                   false ->
                       ok
@@ -175,27 +175,31 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-bridge_subscribe(remote = Type, Pid, [{Topic, in, QoS, LocalPrefix, _} = BT|Rest],
+bridge_subscribe(remote = Type, Pid, [{Topic, in, QoS, LocalPrefix, RemotePrefix} = BT|Rest],
                  SubscribeFun, Acc) ->
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
-            gen_mqtt_client:subscribe(Pid, TTopic, QoS),
+            RemoteTopic = add_prefix(validate_prefix(RemotePrefix), TTopic),
+            gen_mqtt_client:subscribe(Pid, RemoteTopic, QoS),
             bridge_subscribe(Type, Pid, Rest, SubscribeFun,
-                             [{{in, TTopic},
-                               validate_prefix(LocalPrefix)}|Acc]);
+                             [{{in, RemoteTopic},
+                               {validate_prefix(LocalPrefix),
+                                validate_prefix(RemotePrefix)}}|Acc]);
         {error, Reason} ->
             error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
                                      [BT, Reason]),
             bridge_subscribe(Type, Pid, Rest, SubscribeFun, Acc)
     end;
-bridge_subscribe(local = Type, Pid, [{Topic, out, QoS, _, RemotePrefix} = BT|Rest],
+bridge_subscribe(local = Type, Pid, [{Topic, out, QoS, LocalPrefix, RemotePrefix} = BT|Rest],
                  SubscribeFun, Acc) ->
     case vmq_topic:validate_topic(subscribe, list_to_binary(Topic)) of
         {ok, TTopic} ->
-            {ok, _} = SubscribeFun(TTopic),
+            LocalTopic = add_prefix(validate_prefix(LocalPrefix), TTopic),
+            {ok, _} = SubscribeFun(LocalTopic),
             bridge_subscribe(Type, Pid, Rest, SubscribeFun,
-                             [{{out, TTopic}, QoS,
-                               validate_prefix(RemotePrefix)}|Acc]);
+                             [{{out, LocalTopic}, QoS,
+                               {validate_prefix(LocalPrefix),
+                                validate_prefix(RemotePrefix)}}|Acc]);
         {error, Reason} ->
             error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
                                      [BT, Reason]),
@@ -208,15 +212,19 @@ bridge_subscribe(Type, Pid, [{Topic, both, QoS, LocalPrefix, RemotePrefix} = BT|
         {ok, TTopic} ->
             case Type of
                 remote ->
-                    gen_mqtt_client:subscribe(Pid, TTopic, QoS),
+                    RemoteTopic = add_prefix(validate_prefix(RemotePrefix), TTopic),
+                    gen_mqtt_client:subscribe(Pid, RemoteTopic, QoS),
                     bridge_subscribe(Type, Pid, Rest, SubscribeFun,
-                                     [{{in, TTopic},
-                                       validate_prefix(LocalPrefix)}|Acc]);
+                                     [{{in, RemoteTopic},
+                                       {validate_prefix(LocalPrefix),
+                                        validate_prefix(RemotePrefix)}}|Acc]);
                 local ->
-                    {ok, _} = SubscribeFun(TTopic),
+                    LocalTopic = add_prefix(validate_prefix(LocalPrefix), TTopic),
+                    {ok, _} = SubscribeFun(LocalTopic),
                     bridge_subscribe(Type, Pid, Rest, SubscribeFun,
-                                     [{{out, TTopic}, QoS,
-                                       validate_prefix(RemotePrefix)}|Acc])
+                                     [{{out, LocalTopic}, QoS,
+                                       {validate_prefix(LocalPrefix),
+                                        validate_prefix(RemotePrefix)}}|Acc])
             end;
         {error, Reason} ->
             error_logger:warning_msg("can't validate bridge topic conf ~p due to ~p",
@@ -245,8 +253,16 @@ validate_prefix(Prefix) ->
             ParsedPrefix
     end.
 
-routing_key(undefined, Topic) -> Topic;
-routing_key(Prefix, Topic) -> lists:flatten([Prefix, Topic]).
+add_prefix(undefined, Topic) -> Topic;
+add_prefix(Prefix, Topic) -> lists:flatten([Prefix, Topic]).
+
+remove_prefix(undefined, Topic) -> Topic;
+remove_prefix([Prefix], Topic) ->
+    remove_prefix(Prefix, Topic);
+remove_prefix(Prefix, [Prefix|Rest]) ->  Rest.
+
+swap_prefix(OldPrefix, NewPrefix, Topic) ->
+    add_prefix(NewPrefix, remove_prefix(OldPrefix, Topic)).
 
 client_opts(tcp, Host, Port, Opts) ->
     OOpts =
