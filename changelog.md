@@ -11,6 +11,7 @@
 - Fix bug preventing restarting Lua states properly in case of a crashing script.
 - Fix warnings due to deprecated lager configuration (#1209).
 - Upgrade `lager` to version *3.7.0* (In preparation for OTP 22 support).
+- Make VerneMQ run on Erlang/OTP 22.
 
 ## VerneMQ 1.8.0
 
