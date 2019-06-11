@@ -9,6 +9,8 @@
   implementation.
 - Ensure that plumtree application isn't started when metadata plugin SWC is used.
 - Fix bug preventing restarting Lua states properly in case of a crashing script.
+- Fix warnings due to deprecated lager configuration (#1209).
+- Upgrade `lager` to version *3.7.0* (In preparation for OTP 22 support).
 
 ## VerneMQ 1.8.0
 
