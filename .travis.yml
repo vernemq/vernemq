@@ -30,7 +30,8 @@ jobs:
   include:
     - stage: Test
       before_script: "epmd -daemon"
-      script: "./rebar3 as all_tests do dialyzer, eunit && ./rebar3 ct"
+      script:
+        - ./rebar3 as all_tests do dialyzer, eunit, ct
     - stage: GitHub Release
       script: echo "Nothing to test here"
       before_deploy:
