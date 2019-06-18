@@ -161,6 +161,15 @@ auth_on_publish(#{username := ?USERNAME,
     ?PAYLOAD = base64:decode(Base64Payload),
     {200, #{result => <<"ok">>,
             modifiers => #{payload => base64:encode(?PAYLOAD)}}};
+auth_on_publish(#{username := ?USERNAME,
+                  client_id := ?NO_PAYLOAD_CLIENT_ID,
+                  mountpoint := ?MOUNTPOINT_BIN,
+                  qos := 1,
+                  topic := ?TOPIC,
+                  retain := false
+                 }=Args) ->
+    false = maps:is_key(payload, Args),
+    {200, #{result => <<"ok">>}};
 auth_on_publish(#{client_id := ?NOT_ALLOWED_CLIENT_ID}) ->
     {200, #{result => #{error => <<"not_allowed">>}}};
 auth_on_publish(#{client_id := ?IGNORED_CLIENT_ID}) ->
@@ -191,6 +200,15 @@ auth_on_publish_m5(#{username := ?USERNAME,
     ?PAYLOAD = base64:decode(Base64Payload),
     {200, #{result => <<"ok">>,
             modifiers => #{payload => base64:encode(?PAYLOAD)}}};
+auth_on_publish_m5(#{username := ?USERNAME,
+                     client_id := ?NO_PAYLOAD_CLIENT_ID,
+                     mountpoint := ?MOUNTPOINT_BIN,
+                     qos := 1,
+                     topic := ?TOPIC,
+                     retain := false
+                    }=Args) ->
+    false = maps:is_key(payload, Args),
+    {200, #{result => <<"ok">>}};
 auth_on_publish_m5(#{client_id := ?NOT_ALLOWED_CLIENT_ID}) ->
     {200, #{result => #{error => <<"not_allowed">>}}};
 auth_on_publish_m5(#{client_id := ?IGNORED_CLIENT_ID}) ->
