@@ -7,53 +7,68 @@
 %% <hook> with the name <name>. Webhooks are registered in the order
 %% of the name given to it. Therefore a webhook with name 'webhook1'
 %% is regisered before a webhook with the name 'webhook2'.
-{mapping, "vmq_webhooks.$name.hook", "vmq_webhooks.user_webhooks", [
-                                                                    {datatype, {enum,
-                                                                                [auth_on_register,
-                                                                                 auth_on_publish,
-                                                                                 auth_on_subscribe,
-                                                                                 on_register,
-                                                                                 on_publish,
-                                                                                 on_subscribe,
-                                                                                 on_unsubscribe,
-                                                                                 on_deliver,
-                                                                                 on_offline_message,
-                                                                                 on_client_wakeup,
-                                                                                 on_client_offline,
-                                                                                 on_client_gone,
-                                                                                 auth_on_register_m5,
-                                                                                 auth_on_publish_m5,
-                                                                                 auth_on_subscribe_m5,
-                                                                                 on_register_m5,
-                                                                                 on_publish_m5,
-                                                                                 on_subscribe_m5,
-                                                                                 on_unsubscribe_m5,
-                                                                                 on_deliver_m5,
-                                                                                 on_auth_m5]}},
-                                                                    {commented, "auth_on_register"},
-                                                                    {include_default, "webhook1"}
-                                                                   ]}.
+{mapping, "vmq_webhooks.$name.hook", "vmq_webhooks.user_webhooks",
+ [
+  {datatype, {enum,
+              [auth_on_register,
+               auth_on_publish,
+               auth_on_subscribe,
+               on_register,
+               on_publish,
+               on_subscribe,
+               on_unsubscribe,
+               on_deliver,
+               on_offline_message,
+               on_client_wakeup,
+               on_client_offline,
+               on_client_gone,
+               auth_on_register_m5,
+               auth_on_publish_m5,
+               auth_on_subscribe_m5,
+               on_register_m5,
+               on_publish_m5,
+               on_subscribe_m5,
+               on_unsubscribe_m5,
+               on_deliver_m5,
+               on_auth_m5]}},
+  {commented, "auth_on_register"},
+  {include_default, "webhook1"}
+ ]}.
 
 %% @doc Associate an endpoint with a name.
-{mapping, "vmq_webhooks.$name.endpoint", "vmq_webhooks.user_webhooks", [
-                                                                        {datatype, string},
-                                                                        {commented, "http://localhost/myendpoints"},
-                                                                        {include_default, "webhook1"}
-                                                                       ]}.
+{mapping, "vmq_webhooks.$name.endpoint", "vmq_webhooks.user_webhooks",
+ [
+  {datatype, string},
+  {commented, "http://localhost/myendpoints"},
+  {include_default, "webhook1"}
+ ]}.
 
 %% @doc Control if the payload should be base64 encoded.
-{mapping, "vmq_webhooks.$name.base64encode", "vmq_webhooks.user_webhooks", [
-                                                                            {datatype, flag},
-                                                                            {default, on},
-                                                                            {commented, "false"},
-                                                                            {include_default, "webhook1"},
-                                                                            hidden
-                                                                           ]}.
+{mapping, "vmq_webhooks.$name.base64encode", "vmq_webhooks.user_webhooks",
+ [
+  {datatype, flag},
+  {default, on},
+  {commented, "false"},
+  {include_default, "webhook1"},
+  hidden
+ ]}.
+
+%% @doc Applies only to the auth_on_publish and auth_on_publish_m5
+%% webhooks. If true the MQTT payload is ommitted from the JSON
+%% object. Defaults to false.
+{mapping, "vmq_webhooks.$name.no_payload", "vmq_webhooks.user_webhooks",
+ [
+  {datatype, flag},
+  {default, off},
+  {commented, "false"},
+  {include_default, "webhook1"},
+  hidden
+ ]}.
 
 {translation,
  "vmq_webhooks.user_webhooks",
  fun(Conf) ->
-         Suffixes = ["hook", "endpoint", "base64encode"],
+         Suffixes = ["hook", "endpoint", "base64encode", "no_payload"],
          UNames =
              [
               proplists:get_all_values(
@@ -68,7 +83,11 @@
                   endpoint => cuttlefish:conf_get("vmq_webhooks." ++ SortName ++ ".endpoint", Conf, undefined),
                   options => 
                       #{ base64_payload =>
-                             cuttlefish:conf_get("vmq_webhooks." ++ SortName ++ ".base64encode", Conf, true)
+                             cuttlefish:conf_get("vmq_webhooks." ++ SortName ++
+                                                     ".base64encode", Conf, true),
+                         no_payload =>
+                             cuttlefish:conf_get("vmq_webhooks." ++ SortName ++
+                                                     ".no_payload", Conf, false)
                        }
                  }}
                || SortName <- HookNames ],

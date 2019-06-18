@@ -87,7 +87,13 @@ register_cmd() ->
                                     fun("true") -> true;
                                        ("false") -> false;
                                        (Val) -> {{error, {invalid_flag_value, {base64payload, Val}}}}
-                                    end}]}],
+                                    end}]},
+                {no_payload, [{longname, "no_payload"},
+                              {typecast,
+                              fun("true") -> true;
+                                 ("false") -> false;
+                                 (Val) -> {{error, {invalid_flag_value, {no_payload, Val}}}}
+                              end}]}],
     Callback =
         fun(_, [{hook, Hook}, {endpoint, Endpoint}], Flags) ->
                 Opts = get_opts(Flags),
@@ -108,9 +114,10 @@ register_cmd() ->
 
 get_opts(Flags) ->
     Defaults = #{
-      base64_payload => true
-     },
-    Keys = [base64_payload],
+                 base64_payload => true,
+                 no_payload => false
+                },
+    Keys = [base64_payload, no_payload],
     maps:merge(Defaults, maps:with(Keys, maps:from_list(Flags))).
 
 deregister_cmd() -> 
@@ -202,7 +209,11 @@ register_usage() ->
      "  Registers a webhook endpoint with a hook.",
      "\n\n"
      "  --base64payload=<true|false>\n",
-     "     base64 encode the MQTT payload. Defaults to true.",
+     "     base64 encode the MQTT payload. Defaults to true.\n",
+     "  --no_payload=<true|false>\n",
+     "     Applies only to the auth_on_publish and auth_on_publish_m5\n",
+     "     webhooks. If true the MQTT payload is ommitted from the JSON"
+     "     object. Defaults to false.",
      "\n\n"
     ].
 

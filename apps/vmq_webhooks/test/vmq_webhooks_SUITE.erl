@@ -40,6 +40,7 @@ all() ->
     [
      auth_on_register_m5_test,
      auth_on_publish_m5_test,
+     auth_on_publish_m5_no_payload_test,
      auth_on_publish_m5_modify_props_test,
      auth_on_subscribe_m5_test,
      on_register_m5_test,
@@ -52,6 +53,7 @@ all() ->
 
      auth_on_register_test,
      auth_on_publish_test,
+     auth_on_publish_no_payload_test,
      auth_on_subscribe_test,
      on_register_test,
      on_publish_test,
@@ -447,6 +449,23 @@ base64payload_test(_) ->
           auth_on_publish,
           [?USERNAME, {?MOUNTPOINT, ?BASE64_PAYLOAD_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     deregister_hook(auth_on_publish, ?ENDPOINT).
+
+
+auth_on_publish_no_payload_test(_) ->
+    ok = clique:run(["vmq-admin", "webhooks", "register",
+                     "hook=auth_on_publish", "endpoint=" ++ ?ENDPOINT, "--no_payload=true", "--base64payload=true"]),
+    ok = vmq_plugin:all_till_ok(
+          auth_on_publish,
+          [?USERNAME, {?MOUNTPOINT, ?NO_PAYLOAD_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+    deregister_hook(auth_on_publish, ?ENDPOINT).
+
+auth_on_publish_m5_no_payload_test(_) ->
+    ok = clique:run(["vmq-admin", "webhooks", "register",
+                     "hook=auth_on_publish_m5", "endpoint=" ++ ?ENDPOINT, "--no_payload=true"]),
+    ok = vmq_plugin:all_till_ok(
+          auth_on_publish_m5,
+          [?USERNAME, {?MOUNTPOINT, ?NO_PAYLOAD_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #{}]),
+    deregister_hook(auth_on_publish_m5, ?ENDPOINT).
 
 auth_on_register_undefined_creds_test(_) ->
     register_hook(auth_on_register, ?ENDPOINT),

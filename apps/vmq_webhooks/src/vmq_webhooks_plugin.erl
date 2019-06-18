@@ -569,13 +569,15 @@ maybe_call_endpoint(Endpoint, EOpts, Hook, Args)
 maybe_call_endpoint(Endpoint, EOpts, Hook, Args) ->
     call_endpoint(Endpoint, EOpts, Hook, Args).
 
-call_endpoint(Endpoint, EOpts, Hook, Args) ->
+call_endpoint(Endpoint, EOpts, Hook, Args0) ->
     Method = post,
     Headers = [{<<"Content-Type">>, <<"application/json">>},
                {<<"vernemq-hook">>, atom_to_binary(Hook, utf8)}],
     Opts = [{pool, Endpoint}],
+    Args1 = filter_args(Args0, Hook, EOpts),
+    Payload = encode_payload(Hook, Args1, EOpts),
     Res =
-        case hackney:request(Method, Endpoint, Headers, encode_payload(Hook, Args, EOpts), Opts) of
+        case hackney:request(Method, Endpoint, Headers, Payload, Opts) of
             {ok, 200, RespHeaders, CRef} ->
                 case hackney:body(CRef) of
                     {ok, Body} ->
@@ -760,6 +762,13 @@ norm_payload(Mods, EOpts) ->
               {payload, b64decode(Payload, EOpts)};
          (E) -> E
       end, Mods).
+
+filter_args(Args, Hook, #{no_payload := true})
+            when Hook =:= auth_on_publish;
+                 Hook =:= auth_on_publish_m5 ->
+    lists:keydelete(payload, 1, Args);
+filter_args(Args, _, _) ->
+    Args.
 
 encode_payload(Hook, Args, Opts)
   when Hook =:= auth_on_subscribe_m5;

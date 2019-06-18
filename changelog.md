@@ -12,6 +12,10 @@
 - Fix warnings due to deprecated lager configuration (#1209).
 - Upgrade `lager` to version *3.7.0* (In preparation for OTP 22 support).
 - Make VerneMQ run on Erlang/OTP 22.
+- Add new webhooks CLI register flag `--no_payload=true` which, if enabled, will
+  remove the MQTT payload from the JSON object send via the `auth_on_publish`
+  and `auth_on_publish_m5` payloads. The flag can also be set in the config file
+  using `vmq_webhooks.hookname.no_payload=on`.
 
 ## VerneMQ 1.8.0
 
