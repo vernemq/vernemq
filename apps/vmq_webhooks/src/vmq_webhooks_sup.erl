@@ -24,7 +24,7 @@ start_link() ->
         {ok, _} = Ret ->
             spawn(fun() ->
                           Webhooks = application:get_env(vmq_webhooks, user_webhooks, []),
-                          register_webhooks(Webhooks)
+                          ok = vmq_webhooks_app:register_webhooks(Webhooks)
                   end),
             Ret;
         E -> E
@@ -49,14 +49,3 @@ init([]) ->
 %% Internal functions
 %%====================================================================
 
-register_webhooks(Webhooks) ->
-    [ register_webhook(Webhook) || Webhook <- Webhooks ].
-
-register_webhook({Name, #{hook := HookName, endpoint := Endpoint, options := Opts}}) ->
-    case vmq_webhooks_plugin:register_endpoint(Endpoint, HookName, Opts) of
-        ok ->
-            ok;
-        {error, Reason} ->
-            lager:error("failed to register the ~p webhook ~p ~p ~p due to ~p",
-                        [Name, Endpoint, HookName, Opts, Reason])
-    end.

@@ -12,6 +12,9 @@
 - Fix warnings due to deprecated lager configuration (#1209).
 - Upgrade `lager` to version *3.7.0* (In preparation for OTP 22 support).
 - Make VerneMQ run on Erlang/OTP 22.
+- Make it possible to reconfigure the `vmq_webhooks` plugin using the schema
+  format. This makes it possible to dynamically change the configuration from
+  the VerneMQ Kubernetes operator.
 
 ## VerneMQ 1.8.0
 

@@ -34,6 +34,8 @@ init_per_testcase(_Case, Config) ->
     Config.
 
 end_per_testcase(_, Config) ->
+    %% ensure all hooks are deregistered
+    vmq_webhooks_app:apply_config(""),
     Config.
 
 all() ->
@@ -67,7 +69,9 @@ all() ->
      cache_auth_on_register,
      cache_auth_on_publish,
      cache_auth_on_subscribe,
-     cache_expired_entry
+     cache_expired_entry,
+
+     apply_config
     ].
 
 
@@ -455,6 +459,21 @@ auth_on_register_undefined_creds_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, <<"undefined_creds">>}, Username, Password, true]),
     deregister_hook(auth_on_register, ?ENDPOINT).
+
+apply_config(_) ->
+    ok = vmq_webhooks_app:apply_config(
+           "vmq_webhooks.hook1.endpoint=someurl\n"
+           "vmq_webhooks.hook1.hook=auth_on_register\n"
+           "vmq_webhooks.hook1.base64encode=on\n"
+          ),
+    [{auth_on_register,
+      [{<<"someurl">>,
+        #{base64_payload := true}}]}] = vmq_webhooks_plugin:all_hooks(),
+    ok = vmq_webhooks_app:apply_config(""),
+    [] = vmq_webhooks_plugin:all_hooks(),
+    ok.
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions

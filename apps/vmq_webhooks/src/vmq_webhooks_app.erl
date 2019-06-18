@@ -23,6 +23,8 @@
 
 %% Application callbacks
 -export([start/2, stop/1]).
+-export([register_webhooks/1]).
+-export([apply_config/1]).
 
 %%====================================================================
 %% API
@@ -36,6 +38,45 @@ start(_StartType, _StartArgs) ->
 stop(_State) ->
     ok.
 
+apply_config(Config) ->
+    SchemaFile = [code:priv_dir(vmq_webhooks), "/vmq_webhooks.schema"],
+    NewConfig = cuttlefish_unit:generate_config(SchemaFile, conf_parse:parse(Config)),
+    OldConfig = application:get_all_env(vmq_webhooks),
+    ok = application:set_env(NewConfig),
+    OldHooks = proplists:get_value(user_webhooks, OldConfig, []),
+    NewHooks = proplists:get_value(user_webhooks,
+                                   proplists:get_value(vmq_webhooks, NewConfig, [])),
+    ok = deregister_webhooks(OldHooks),
+    ok = register_webhooks(NewHooks),
+    ok.
+
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+deregister_webhooks(Webhooks) ->
+    [ deregister_webhook(Webhook) || Webhook <- Webhooks ],
+    ok.
+
+deregister_webhook({Name, #{hook := HookName, endpoint := Endpoint, options := Opts}}) ->
+    case vmq_webhooks_plugin:deregister_endpoint(Endpoint, HookName) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            lager:error("failed to deregister the ~p webhook ~p ~p ~p due to ~p",
+                        [Name, Endpoint, HookName, Opts, Reason])
+    end.
+
+
+register_webhooks(Webhooks) ->
+    [ register_webhook(Webhook) || Webhook <- Webhooks ],
+    ok.
+
+register_webhook({Name, #{hook := HookName, endpoint := Endpoint, options := Opts}}) ->
+    case vmq_webhooks_plugin:register_endpoint(Endpoint, HookName, Opts) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            lager:error("failed to register the ~p webhook ~p ~p ~p due to ~p",
+                        [Name, Endpoint, HookName, Opts, Reason])
+    end.
