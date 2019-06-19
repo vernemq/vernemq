@@ -649,6 +649,7 @@ connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive,
     case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
         true ->
             lager:warning("client ~p with username ~p stopped due to keepalive expired", [SubscriberId, UserName]),
+            _ = vmq_metrics:incr(?MQTT5_CLIENT_KEEPALIVE_EXPIRED),
             terminate(?KEEP_ALIVE_TIMEOUT, State);
         false ->
             set_keepalive_check_timer(KeepAlive),

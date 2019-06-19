@@ -16,6 +16,8 @@
   remove the MQTT payload from the JSON object send via the `auth_on_publish`
   and `auth_on_publish_m5` payloads. The flag can also be set in the config file
   using `vmq_webhooks.hookname.no_payload=on`.
+- Add metric `client_keepalive_expired` which tracks clients that failed to
+  communicate within the keepalive time.
 
 ## VerneMQ 1.8.0
 

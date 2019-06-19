@@ -71,8 +71,6 @@
          incr_queue_in/1,
          incr_queue_out/1,
 
-         incr_client_expired/0,
-
          incr_cluster_bytes_sent/1,
          incr_cluster_bytes_received/1,
          incr_cluster_bytes_dropped/1,
@@ -237,10 +235,6 @@ incr_queue_in(N) ->
 
 incr_queue_out(N) ->
     incr_item(?METRIC_QUEUE_MESSAGE_OUT, N).
-
-incr_client_expired() ->
-    incr_item(?METRIC_CLIENT_EXPIRED, 1).
-
 
 incr_cluster_bytes_received(V) ->
     incr_item(?METRIC_CLUSTER_BYTES_RECEIVED, V).
@@ -686,6 +680,7 @@ counter_entries_def() ->
      m(counter, [{mqtt_version,"4"}], mqtt_publish_error, mqtt_publish_error, <<"The number of times a PUBLISH operation failed due to a netsplit.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_subscribe_error, mqtt_subscribe_error, <<"The number of times a SUBSCRIBE operation failed due to a netsplit.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_unsubscribe_error, mqtt_unsubscribe_error, <<"The number of times an UNSUBSCRIBE operation failed due to a netsplit.">>),
+     m(counter, [{mqtt_version,"4"}], ?MQTT4_CLIENT_KEEPALIVE_EXPIRED, client_keepalive_expired, <<"The number of clients which failed to communicate within the keepalive time period.">>),
 
      m(counter, [{mqtt_version,"5"}], ?MQTT5_CONNECT_RECEIVED, mqtt_connect_received, <<"The number of CONNECT packets received.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_INVALID_MSG_SIZE_ERROR, mqtt_invalid_msg_size_error, <<"The number of packages exceeding the maximum allowed size.">>),
@@ -704,6 +699,7 @@ counter_entries_def() ->
      m(counter, [{mqtt_version,"5"}], ?MQTT5_UNSUBACK_SENT, mqtt_unsuback_sent, <<"The number of UNSUBACK packets sent.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_UNSUBSCRIBE_ERROR, mqtt_unsubscribe_error, <<"The number of times an UNSUBSCRIBE operation failed due to a netsplit.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_UNSUBSCRIBE_RECEIVED, mqtt_unsubscribe_received, <<"The number of UNSUBSCRIBE packets received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_CLIENT_KEEPALIVE_EXPIRED, client_keepalive_expired, <<"The number of clients which failed to communicate within the keepalive time period.">>),
 
      m(counter, [], queue_setup, queue_setup, <<"The number of times a MQTT queue process has been started.">>),
      m(counter, [], queue_initialized_from_storage, queue_initialized_from_storage, <<"The number of times a MQTT queue process has been initialized from offline storage.">>),
@@ -1281,4 +1277,6 @@ met2idx(mqtt_connack_server_unavailable_sent)                     -> 190;
 met2idx(mqtt_connack_identifier_rejected_sent)                    -> 191;
 met2idx(mqtt_connack_unacceptable_protocol_sent)                  -> 192;
 met2idx(mqtt_connack_accepted_sent)                               -> 193;
-met2idx(?METRIC_SOCKET_CLOSE_TIMEOUT)                             -> 194.
+met2idx(?METRIC_SOCKET_CLOSE_TIMEOUT)                             -> 194;
+met2idx(?MQTT5_CLIENT_KEEPALIVE_EXPIRED)                          -> 195;
+met2idx(?MQTT4_CLIENT_KEEPALIVE_EXPIRED)                          -> 196.
