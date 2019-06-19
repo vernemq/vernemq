@@ -229,7 +229,8 @@ load_script(Id, Script) ->
             {vmq_diversity_lager,       <<"log">>},
             {vmq_diversity_memcached,   <<"memcached">>},
             {vmq_diversity_cache,       <<"auth_cache">>},
-            {vmq_diversity_vmq_api,     <<"vmq_api">>}
+            {vmq_diversity_vmq_api,     <<"vmq_api">>},
+            {vmq_diversity_crypto,      <<"crypto">>}
            ],
 
     {ok, ScriptsDir} = application:get_env(vmq_diversity, script_dir),

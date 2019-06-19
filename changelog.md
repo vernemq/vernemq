@@ -18,6 +18,13 @@
   using `vmq_webhooks.hookname.no_payload=on`.
 - Add metric `client_keepalive_expired` which tracks clients that failed to
   communicate within the keepalive time.
+- Expose the `crypto:hash/1` function in LUA, for example to do a 256bit sha3
+  hash one can call `crypto.hash("sha3_256", data)`. The hashing algorithms
+  supported are exactly the ones supported by the `crypto:hash/1` function and
+  may change depending on the Erlang/OTP version used to build Erlang. See the
+  complete list of supported hashes here:
+  http://erlang.org/doc/man/crypto.html#Digests%20and%20hash. If passed an
+  unknown hashing algorithm an error is raised.
 
 ## VerneMQ 1.8.0
 
