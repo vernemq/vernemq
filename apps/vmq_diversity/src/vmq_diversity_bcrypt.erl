@@ -30,6 +30,6 @@ gen_salt(_, St) ->
     {ok, Salt} = bcrypt:gen_salt(),
     {[list_to_binary(Salt)], St}.
 
-hashpw([Pass, Salt], St) when is_binary(Pass) and is_binary(Pass) ->
+hashpw([Pass, Salt], St) when is_binary(Pass) and is_binary(Salt) ->
     {ok, Hash} = bcrypt:hashpw(Pass, Salt),
     {[list_to_binary(Hash)], St}.

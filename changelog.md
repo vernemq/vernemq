@@ -26,6 +26,8 @@
   http://erlang.org/doc/man/crypto.html#Digests%20and%20hash. If passed an
   unknown hashing algorithm an error is raised.
 - Fix prefix handling in the bridge plugin (vmq_bridge).
+- Strengthen parameter validation in the `bcrypt.hashpw/2` LUA function in
+  `vmq_diversity`.
 
 ## VerneMQ 1.8.0
 
