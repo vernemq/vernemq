@@ -28,6 +28,7 @@
 - Fix prefix handling in the bridge plugin (vmq_bridge).
 - Strengthen parameter validation in the `bcrypt.hashpw/2` LUA function in
   `vmq_diversity`.
+- Pass arguments correctly to `vmq-admin` when called via `sudo`.
 
 ## VerneMQ 1.8.0
 
