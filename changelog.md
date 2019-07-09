@@ -29,6 +29,7 @@
 - Strengthen parameter validation in the `bcrypt.hashpw/2` LUA function in
   `vmq_diversity`.
 - Pass arguments correctly to `vmq-admin` when called via `sudo`.
+- Handle rate metric labels correctly in the example grafana dashboard.
 
 ## VerneMQ 1.8.0
 
