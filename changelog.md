@@ -35,6 +35,10 @@
   removed and the PROXY support from cowboy is used instead.
 - Handle retained flag in the bridge plugin (vmq_bridge).
 - Ensure systemd doesn't terminate VerneMQ if it is slow to start.
+- Implement bridge protocol handling (protocol version 131) for bridges
+  connecting to VerneMQ such that the retained bit is kept on messages routed to
+  the bridge (Retained as Publish) and messages coming from the bridge are not
+  forwarded to the bridge if it has a matching description (No Local).
 
 ## VerneMQ 1.8.0
 
