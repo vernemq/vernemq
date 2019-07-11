@@ -11,6 +11,7 @@ User=vernemq
 Group=vernemq
 NotifyAccess=all
 LimitNOFILE=infinity
+Environment="WAIT_FOR_ERLANG=3600"
 TimeoutStartSec=3600
 RuntimeDirectory=vernemq
 WorkingDirectory=/usr/lib64/vernemq

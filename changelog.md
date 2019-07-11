@@ -34,6 +34,7 @@
   and 1.7.1 respectively. This update also means the PROXY protocol code was
   removed and the PROXY support from cowboy is used instead.
 - Handle retained flag in the bridge plugin (vmq_bridge).
+- Ensure systemd doesn't terminate VerneMQ if it is slow to start.
 
 ## VerneMQ 1.8.0
 
