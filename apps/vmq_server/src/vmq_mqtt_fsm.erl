@@ -357,13 +357,14 @@ connected(#mqtt_pubcomp{message_id=MessageId}, State) ->
             _ = vmq_metrics:incr_mqtt_error_invalid_pubcomp(),
             terminate(normal, State)
     end;
-connected(#mqtt_subscribe{message_id=MessageId, topics=Topics}, State) ->
+connected(#mqtt_subscribe{message_id=MessageId, topics=Topics},
+          #state{proto_ver = ProtoVer} = State) ->
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
-                SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(MaybeChangedTopics, undefined),
+                SubTopics = subtopics(MaybeChangedTopics, ProtoVer),
                 case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, SubTopics) of
                     {ok, _} = Res ->
                         vmq_plugin:all(on_subscribe, [User, SubscriberId, MaybeChangedTopics]),
@@ -1241,3 +1242,11 @@ set_defopt(Key, Default, Map) ->
 
 peertoa({_IP, _Port} = Peer) ->
     vmq_mqtt_fsm_util:peertoa(Peer).
+
+subtopics(Topics, 131 = _Proto) ->
+    %% bridge connection
+    SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, undefined),
+    lists:map(fun({T, QoS}) -> {T, {QoS, #{rap => true,
+                                           no_local => true}}} end, SubTopics);
+subtopics(Topics, _Proto) ->
+    vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, undefined).
