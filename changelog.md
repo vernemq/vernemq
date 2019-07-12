@@ -33,6 +33,7 @@
 - Upgrade cowboy to version 2.6.3 as well as cowlib and ranch to versions 2.7.3
   and 1.7.1 respectively. This update also means the PROXY protocol code was
   removed and the PROXY support from cowboy is used instead.
+- Handle retained flag in the bridge plugin (vmq_bridge).
 
 ## VerneMQ 1.8.0
 
