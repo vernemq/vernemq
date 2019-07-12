@@ -33,7 +33,7 @@
          on_disconnect/1,
          on_subscribe/2,
          on_unsubscribe/2,
-         on_publish/3]).
+         on_publish/4]).
 
 
 -record(state, {
@@ -82,8 +82,8 @@ on_subscribe(_Topics, State) ->
 on_unsubscribe(_Topics, State) ->
     {ok, State}.
 
-on_publish(Topic, Payload, {coord, CoordinatorPid} = State) ->
-    CoordinatorPid ! {deliver_remote, Topic, Payload},
+on_publish(Topic, Payload, Opts, {coord, CoordinatorPid} = State) ->
+    CoordinatorPid ! {deliver_remote, Topic, Payload, Opts},
     {ok, State}.
 
 init([Type, Host, Port, RegistryMFA, Opts]) ->
@@ -135,7 +135,7 @@ handle_info(connected, #state{host=Host, port=Port,
     Topics = proplists:get_value(topics, Opts),
     Subscriptions = bridge_subscribe(remote, Pid, Topics, SubscribeFun, []),
     {noreply, State#state{subs_remote=Subscriptions}};
-handle_info({deliver_remote, Topic, Payload},
+handle_info({deliver_remote, Topic, Payload, #{retain := Retain}},
             #state{publish_fun=PublishFun, subs_remote=Subscriptions} = State) ->
     %% publish an incoming message from the remote broker locally if
     %% we have a matching subscription
@@ -144,7 +144,7 @@ handle_info({deliver_remote, Topic, Payload},
               case match(Topic, T) of
                   true ->
                       % ignore if we're ready or not.
-                      PublishFun(swap_prefix(RemotePrefix, LocalPrefix, Topic), Payload, #{});
+                      PublishFun(swap_prefix(RemotePrefix, LocalPrefix, Topic), Payload, #{retain => Retain});
                   false ->
                       ok
               end;
@@ -152,7 +152,7 @@ handle_info({deliver_remote, Topic, Payload},
               ok
       end, Subscriptions),
     {noreply, State};
-handle_info({deliver, Topic, Payload, _QoS, _IsRetained, _IsDup},
+handle_info({deliver, Topic, Payload, _QoS, IsRetained, _IsDup},
             #state{subs_local=Subscriptions, client_pid=ClientPid} = State) ->
     %% forward matching, locally published messages to the remote broker.
     lists:foreach(
@@ -160,7 +160,7 @@ handle_info({deliver, Topic, Payload, _QoS, _IsRetained, _IsDup},
               case match(Topic, T) of
                   true ->
                       ok = gen_mqtt_client:publish(ClientPid, swap_prefix(LocalPrefix, RemotePrefix, Topic) ,
-                                             Payload, QoS);
+                                                   Payload, QoS, IsRetained);
                   false ->
                       ok
               end;

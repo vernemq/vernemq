@@ -70,7 +70,7 @@
 -callback on_unsubscribe(Topics :: [any()], State :: any()) ->
     {ok, State :: any()} |
     {stop, Reason :: any()}.
--callback on_publish(Topic :: any(), Payload :: binary(), State :: any()) ->
+-callback on_publish(Topic :: any(), Payload :: binary(), Opts :: map(), State :: any()) ->
     {ok, State :: any()} |
     {stop, Reason :: any()}.
 
@@ -479,9 +479,9 @@ handle_frame(connected, #mqtt_pubrel{message_id=MessageId}, State0) ->
     #state{transport={Transport,_}, sock=Socket, info_fun=InfoFun} = State0,
     %% qos2 flow
     case get_remove_unacked_msg(MessageId, State0) of
-        {ok, {{Topic, Payload}, State1}} ->
+        {ok, {{Topic, Payload, Opts}, State1}} ->
             NewInfoFun0 = call_info_fun({pubrel_in, MessageId}, InfoFun),
-            {next_state, connected, State2} = wrap_res(connected, on_publish, [Topic, Payload], State1),
+            {next_state, connected, State2} = wrap_res(connected, on_publish, [Topic, Payload, Opts], State1),
             NewInfoFun1 = call_info_fun({pubcomp_out, MessageId}, NewInfoFun0),
             PubCompFrame = #mqtt_pubcomp{message_id=MessageId},
             send_frame(Transport, Socket, PubCompFrame),
@@ -503,23 +503,26 @@ handle_frame(connected, #mqtt_pubcomp{message_id=MessageId}, State0) ->
     end;
 
 handle_frame(connected, #mqtt_publish{message_id=MessageId, topic=Topic,
-    qos=QoS, payload=Payload}, State) ->
+    qos=QoS, payload=Payload, retain=Retain, dup=Dup}, State) ->
     #state{transport={Transport, _}, sock=Socket, info_fun=InfoFun} = State,
     NewInfoFun = call_info_fun({publish_in, MessageId, Payload, QoS}, InfoFun),
+    Opts = #{qos => QoS,
+             retain => Retain,
+             dup => Dup},
     case QoS of
         0 ->
-            wrap_res(connected, on_publish, [Topic, Payload], State#state{info_fun=NewInfoFun});
+            wrap_res(connected, on_publish, [Topic, Payload, Opts], State#state{info_fun=NewInfoFun});
         1 ->
             PubAckFrame = #mqtt_puback{message_id=MessageId},
             NewInfoFun1 = call_info_fun({puback_out, MessageId}, NewInfoFun),
-            Res = wrap_res(connected, on_publish, [Topic, Payload], State#state{info_fun=NewInfoFun1}),
+            Res = wrap_res(connected, on_publish, [Topic, Payload, Opts], State#state{info_fun=NewInfoFun1}),
             send_frame(Transport, Socket, PubAckFrame),
             Res;
         2 ->
             PubRecFrame = #mqtt_pubrec{message_id=MessageId},
             NewInfoFun1 = call_info_fun({pubrec_out, MessageId}, NewInfoFun),
             send_frame(Transport, Socket, PubRecFrame),
-            {next_state, connected, store_unacked_msg(MessageId, {Topic, Payload},
+            {next_state, connected, store_unacked_msg(MessageId, {Topic, Payload, Opts},
                                                           State#state{info_fun=NewInfoFun1})}
     end;
 
@@ -722,12 +725,12 @@ cleanup_unacked_msgs(#state{clean_session=true} = State) ->
     State#state{unacked_msgs=maps:new()};
 cleanup_unacked_msgs(State) -> State.
 
-store_unacked_msg(MessageId, {_Topic, _Payload} = Msg, #state{unacked_msgs=UnackedMsgs} = State) ->
+store_unacked_msg(MessageId, {_Topic, _Payload, _Opts} = Msg, #state{unacked_msgs=UnackedMsgs} = State) ->
     State#state{unacked_msgs=maps:put(MessageId, Msg, UnackedMsgs)}.
 
 get_remove_unacked_msg(MessageId, #state{unacked_msgs=UnackedMsgs} = State) ->
     case maps:find(MessageId, UnackedMsgs) of
-        {ok, {_Topic, _Payload} = Msg} ->
+        {ok, {_Topic, _Payload, _Opts} = Msg} ->
             {ok, {Msg, State#state{unacked_msgs=maps:remove(MessageId, UnackedMsgs)}}};
         _ ->
             error
