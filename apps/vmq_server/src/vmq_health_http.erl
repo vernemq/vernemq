@@ -17,23 +17,26 @@
 -behaviour(vmq_http_config).
 
 -export([routes/0]).
-
--export([handle/2, init/3, terminate/3]).
+-export([init/2,
+         allowed_methods/2,
+         content_types_provided/2,
+         reply/2]).
 
 routes() ->
   [{"/health", ?MODULE, []}].
 
-init(_Type, Req, _Opts) ->
-  {ok, Req, undefined}.
+init(Req, Opts) ->
+    {cowboy_rest, Req, Opts}.
 
-handle(Req, State) ->
-    {ContentType, Req2} = cowboy_req:header(<<"content-type">>, Req,
-                                            <<"application/json">>),
-    {ok, reply(Req2, ContentType), State}.
+allowed_methods(Req, State) ->
+    {[<<"GET">>], Req, State}.
 
-terminate(_Reason, _Req, _State) -> ok.
+content_types_provided(Req, State) ->
+	{[
+		{<<"application/json">>, reply}
+    ], Req, State}.
 
-reply(Req, <<"application/json">>) ->
+reply(Req, _State) ->
     {Code, Payload} = case check_health_concerns() of
       [] ->
         {200, [{<<"status">>, <<"OK">>}]};
@@ -41,9 +44,8 @@ reply(Req, <<"application/json">>) ->
         {503, [{<<"status">>, <<"DOWN">>},
                {<<"reasons">>, Concerns}]}
     end,
-    {ok, Req2} = cowboy_req:reply(Code, [{<<"content-type">>, <<"application/json">>}],
-                                  jsx:encode(Payload), Req),
-    Req2.
+    Headers = #{<<"content-type">> => <<"application/json">>},
+    cowboy_req:reply(Code, Headers, jsx:encode(Payload), Req).
 
 
 -spec check_health_concerns() -> [] | [Concern :: string()].

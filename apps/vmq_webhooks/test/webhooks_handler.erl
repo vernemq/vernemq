@@ -2,8 +2,7 @@
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -include("vmq_webhooks_test.hrl").
 
--export([init/3]).
--export([handle/2]).
+-export([init/2]).
 -export([terminate/3]).
 
 -export([start_endpoint/0,
@@ -16,47 +15,41 @@ start_endpoint() ->
                  [{'_', [{"/", ?MODULE, []},
                          {"/cache", ?MODULE, []},
                          {"/cache1s", ?MODULE, []}]}]),
-    {ok, _} = cowboy:start_http(http, 1, [{port, 34567}],
-        [{env, [{dispatch, Dispatch}]}]
-    ).
+    {ok, _} = cowboy:start_clear(http, [{port, 34567}, {num_acceptors, 1}],
+                                 #{env => #{dispatch => Dispatch}}).
 
 stop_endpoint() ->
     cowboy:stop_listener(http).
 
 %% Cowboy callbacks
-init(_Type, Req, []) ->
-	{ok, Req, undefined}.
-
-handle(Req, State) ->
-    Path = cowboy_req:path(Req),
-    {Hook, Req2} = cowboy_req:header(<<"vernemq-hook">>, Req),
-    {ok, Body, Req3} = cowboy_req:body(Req2),
+init(Req, State) ->
+    Hook = cowboy_req:header(<<"vernemq-hook">>, Req),
+    {ok, Body, Req1} = cowboy_req:read_body(Req),
     ?DEBUG andalso io:format(user, ">>> ~s~n", [jsx:prettify(Body)]),
-    case Path of
-        {<<"/">>, _} ->
+    case cowboy_req:path(Req) of
+        <<"/">> ->
             {Code, Resp} = process_hook(Hook, jsx:decode(Body, [{labels, atom}, return_maps])),
-            {ok, Req4} =
+            Req2 =
                 cowboy_req:reply(Code,
-                                 [
-                                  {<<"content-type">>, <<"text/json">>}
-                                 ], encode(Resp), Req3),
-            {ok, Req4, State};
-        {<<"/cache">>,_} ->
+                                 #{<<"content-type">> => <<"text/json">>},
+                                 encode(Resp), Req1),
+            {ok, Req2, State};
+        <<"/cache">> ->
             {Code, Resp} = process_cache_hook(Hook, jsx:decode(Body, [{labels, atom}, return_maps])),
-            {ok, Req4} =
+            Req2 =
                 cowboy_req:reply(Code,
-                                 [{<<"content-type">>, <<"text/json">>},
-                                  {<<"Cache-control">>, <<"max-age=86400">>}],
-                                 encode(Resp), Req3),
-            {ok, Req4, State};
-        {<<"/cache1s">>,_} ->
+                                 #{<<"content-type">> => <<"text/json">>,
+                                   <<"Cache-control">> => <<"max-age=86400">>},
+                                 encode(Resp), Req1),
+            {ok, Req2, State};
+        <<"/cache1s">> ->
             {Code, Resp} = process_cache_hook(Hook, jsx:decode(Body, [{labels, atom}, return_maps])),
-            {ok, Req4} =
+            Req2 =
                 cowboy_req:reply(Code,
-                                 [{<<"content-type">>, <<"text/json">>},
-                                  {<<"Cache-control">>, <<"max-age=1">>}],
-                                 encode(Resp), Req3),
-            {ok, Req4, State}
+                                 #{<<"content-type">> => <<"text/json">>,
+                                   <<"Cache-control">> => <<"max-age=1">>},
+                                 encode(Resp), Req1),
+            {ok, Req2, State}
     end.
 
 encode(Term) ->
