@@ -39,6 +39,12 @@
   connecting to VerneMQ such that the retained bit is kept on messages routed to
   the bridge (Retained as Publish) and messages coming from the bridge are not
   forwarded to the bridge if it has a matching description (No Local).
+- Fix message store startup consistency checking routine which resulted in
+  potentially deleting wrong messages in cases where an inconsistency was detected.
+  This fix also increases message storage performance during startup as well as
+  during normal operation. However, the nature of the bug and the provided solution
+  don't enable a simple downgrade path and introduces a backward incompatibility if
+  a VerneMQ message store containing offline messages has to be downgraded to 1.8.0.
 
 ## VerneMQ 1.8.0
 

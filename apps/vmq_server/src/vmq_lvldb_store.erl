@@ -150,7 +150,7 @@ init([InstanceId]) ->
             case setup_index(State) of
                 0 -> ok;
                 N ->
-                    lager:info("indexed ~n offline messages in msg store instance ~p",
+                    lager:info("indexed ~p offline messages in msg store instance ~p",
                                [N, InstanceId])
             end,
             %% Register Bucket Instance with the Bucket Registry
