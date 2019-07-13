@@ -350,7 +350,7 @@ handle_req({write, {MP, _} = SubscriberId,
             eleveldb:write(Bucket, [{put, MsgKey, Val},
                                     {put, IdxKey, IdxVal}], WriteOpts);
         _ ->
-            %% only write ref
+            %% only write the idx
             eleveldb:write(Bucket, [{put, IdxKey, IdxVal}], WriteOpts)
     end;
 handle_req({read, {MP, _} = SubscriberId, MsgRef},
@@ -384,7 +384,7 @@ handle_req({delete, {MP, _} = SubscriberId, MsgRef},
             eleveldb:write(Bucket, [{delete, IdxKey},
                                     {delete, MsgKey}], WriteOpts);
         _ ->
-            %% we have to keep the message, but can delete the ref and idx
+            %% we have to keep the message, but can delete the idx
             eleveldb:write(Bucket, [{delete, IdxKey}], WriteOpts)
     end;
 handle_req({find_for_subscriber_id, SubscriberId},
