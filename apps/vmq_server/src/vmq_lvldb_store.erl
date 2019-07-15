@@ -23,7 +23,8 @@
          msg_store_delete/2,
          msg_store_find/1,
          get_ref/1,
-         refcount/1]).
+         refcount/1,
+         get_state/1]).
 
 -export([msg_store_init_queue_collector/3]).
 
@@ -111,6 +112,9 @@ get_ref(BucketPid) ->
 refcount(MsgRef) ->
     call(MsgRef, {refcount, MsgRef}).
 
+get_state(Pid) ->
+    gen_server:call(Pid, get_state, infinity).
+
 call(Key, Req) ->
     case vmq_lvldb_store_sup:get_bucket_pid(Key) of
         {ok, BucketPid} ->
@@ -147,14 +151,7 @@ init([InstanceId]) ->
     process_flag(trap_exit, true),
     case open_db(Opts, S0) of
         {ok, State} ->
-            case setup_index(State) of
-                0 -> ok;
-                N ->
-                    lager:info("indexed ~p offline messages in msg store instance ~p",
-                               [N, InstanceId])
-            end,
-            %% Register Bucket Instance with the Bucket Registry
-            vmq_lvldb_store_sup:register_bucket_pid(InstanceId, self()),
+            self() ! {initialize_from_storage, InstanceId},
             {ok, State};
         {error, Reason} ->
             {stop, Reason}
@@ -183,6 +180,10 @@ handle_call({refcount, MsgRef}, _From, State) ->
         [{_, Cnt}] -> Cnt
     end,
     {reply, RefCount, State};
+handle_call(get_state, _From, State) ->
+    %% when called externally, the store is always initialized, so
+    %% just return that here.
+    {reply, initialized, State};
 handle_call(Request, _From, State) ->
     {reply, handle_req(Request, State), State}.
 
@@ -209,6 +210,16 @@ handle_cast(_Request, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_info({initialize_from_storage, InstanceId}, State) ->
+    case setup_index(State) of
+        0 -> ok;
+        N ->
+            lager:info("indexed ~p offline messages in msg store instance ~p",
+                       [N, InstanceId])
+    end,
+    %% Register Bucket Instance with the Bucket Registry
+    vmq_lvldb_store_sup:register_bucket_pid(InstanceId, self()),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
