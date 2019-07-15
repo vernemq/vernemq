@@ -34,15 +34,24 @@
 
 start_link() ->
     {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
-    [begin
-         {ok, _} = supervisor:start_child(Pid, child_spec(I))
-     end || I <- lists:seq(1, ?NR_OF_BUCKETS)],
+    Pids =
+        [begin
+             {ok, ChildPid} = supervisor:start_child(Pid, child_spec(I)),
+             ChildPid
+         end || I <- lists:seq(1, ?NR_OF_BUCKETS)],
+
+    ok = wait_until_initialized(Pids),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_write, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_delete, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 1),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_read, 2),
-
     {ok, Pid}.
+
+wait_until_initialized(Pids) ->
+    lists:foreach(
+      fun(Pid) ->
+              initialized = vmq_lvldb_store:get_state(Pid)
+      end, Pids).
 
 get_bucket_pid(Key) when is_binary(Key) ->
     Id = (erlang:phash2(Key) rem ?NR_OF_BUCKETS) + 1,

@@ -60,12 +60,12 @@ all() ->
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 insert_delete_test(Config) ->
-    {0,0,0} = store_summary(),
+    {0,0} = store_summary(),
     Msgs = generate_msgs(1000, []),
     Refs = [Ref || #vmq_msg{msg_ref=Ref} <- Msgs],
     ok = store_msgs({"", "foo"}, Msgs),
 
-    {1000,1000,1000} = store_summary(),
+    {1000,1000} = store_summary(),
 
     1000 = refcount(Refs, 0),
     %% we should get back the exact same list
@@ -75,11 +75,11 @@ insert_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo"}),
 
     0 = refcount(Refs, 0),
-    {0,0,0} = store_summary(),
+    {0,0} = store_summary(),
     Config.
 
 ref_delete_test(Config) ->
-    {0,0,0} = store_summary(),
+    {0,0} = store_summary(),
     Msgs = generate_msgs(1000, []),
     Refs = [Ref || #vmq_msg{msg_ref=Ref} <- Msgs],
     ok = store_msgs({"", "foo0"}, Msgs),
@@ -94,7 +94,7 @@ ref_delete_test(Config) ->
     ok = store_msgs({"", "foo9"}, Msgs),
 
     10000 = refcount(Refs, 0),
-    {1000,10000,10000} = store_summary(),
+    {1000,10000} = store_summary(),
 
     {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo0"}),
     {ok, Msgs} = read_msgs({"", "foo0"}, Refs),
@@ -102,7 +102,7 @@ ref_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo0"}),
 
     9000 = refcount(Refs, 0),
-    {1000,9000,9000} = store_summary(),
+    {1000,9000} = store_summary(),
 
     {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo1"}),
     {ok, Msgs} = read_msgs({"", "foo1"}, Refs),
@@ -110,7 +110,7 @@ ref_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo1"}),
 
     8000 = refcount(Refs, 0),
-    {1000,8000,8000} = store_summary(),
+    {1000,8000} = store_summary(),
 
     {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo2"}),
     {ok, Msgs} = read_msgs({"", "foo2"}, Refs),
@@ -118,7 +118,7 @@ ref_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo2"}),
 
     7000 = refcount(Refs, 0),
-    {1000,7000,7000} = store_summary(),
+    {1000,7000} = store_summary(),
 
     {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo3"}),
     {ok, Msgs} = read_msgs({"", "foo3"}, Refs),
@@ -126,7 +126,7 @@ ref_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo3"}),
 
     6000 = refcount(Refs, 0),
-    {1000,6000,6000} = store_summary(),
+    {1000,6000} = store_summary(),
 
     {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo4"}),
     {ok, Msgs} = read_msgs({"", "foo4"}, Refs),
@@ -134,7 +134,7 @@ ref_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo4"}),
 
     5000 = refcount(Refs, 0),
-    {1000,5000,5000} = store_summary(),
+    {1000,5000} = store_summary(),
 
     {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo5"}),
     {ok, Msgs} = read_msgs({"", "foo5"}, Refs),
@@ -142,7 +142,7 @@ ref_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo5"}),
 
     4000 = refcount(Refs, 0),
-    {1000,4000,4000} = store_summary(),
+    {1000,4000} = store_summary(),
 
     {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo6"}),
     {ok, Msgs} = read_msgs({"", "foo6"}, Refs),
@@ -150,7 +150,7 @@ ref_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo6"}),
 
     3000 = refcount(Refs, 0),
-    {1000,3000,3000} = store_summary(),
+    {1000,3000} = store_summary(),
 
     {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo7"}),
     {ok, Msgs} = read_msgs({"", "foo7"}, Refs),
@@ -158,7 +158,7 @@ ref_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo7"}),
 
     2000 = refcount(Refs, 0),
-    {1000,2000,2000} = store_summary(),
+    {1000,2000} = store_summary(),
 
     {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo8"}),
     {ok, Msgs} = read_msgs({"", "foo8"}, Refs),
@@ -166,7 +166,7 @@ ref_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo8"}),
 
     1000 = refcount(Refs, 0),
-    {1000,1000,1000} = store_summary(),
+    {1000,1000} = store_summary(),
 
     {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo9"}),
     {ok, Msgs} = read_msgs({"", "foo9"}, Refs),
@@ -174,7 +174,7 @@ ref_delete_test(Config) ->
     {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo9"}),
 
     0 = refcount(Refs, 0),
-    {0,0,0} = store_summary(),
+    {0,0} = store_summary(),
 
     Config.
 
@@ -262,11 +262,9 @@ random_qos() ->
 store_summary() ->
     vmq_lvldb_store_utils:full_table_scan(
       fun
-          ({msg, _, _, _, _}, {NumMsgs, NumRefs, NumIdxs}) ->
-              {NumMsgs + 1, NumRefs, NumIdxs};
-          ({ref, _, _, _}, {NumMsgs, NumRefs, NumIdxs}) ->
-              {NumMsgs, NumRefs + 1, NumIdxs};
-          ({idx, _, _, _, _}, {NumMsgs, NumRefs, NumIdxs}) ->
-              {NumMsgs, NumRefs, NumIdxs + 1}
-      end, {0,0,0}).
+          ({msg, _, _, _, _}, {NumMsgs, NumIdxs}) ->
+              {NumMsgs + 1, NumIdxs};
+          ({idx, _, _, _, _}, {NumMsgs, NumIdxs}) ->
+              {NumMsgs, NumIdxs + 1}
+      end, {0,0}).
 
