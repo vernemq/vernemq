@@ -4,7 +4,8 @@
          do_client_connect/3,
          expect_frame/2,
          receive_frame/1,
-         receive_frame/3]).
+         receive_frame/3,
+         receive_frame/4]).
 
 -export([gen_connect/2,
          gen_connack/0,
@@ -175,15 +176,15 @@ receive_frame(Socket) ->
 receive_frame(Transport, Socket) ->
     receive_frame(Transport, Socket, 5000).
 receive_frame(Transport, Socket, Timeout) ->
-    receive_frame_(Transport, Socket, Timeout, <<>>).
+    receive_frame(Transport, Socket, Timeout, <<>>).
 
-receive_frame_(Transport, Socket, Timeout, Incomplete) ->
+receive_frame(Transport, Socket, Timeout, Incomplete) ->
     case Transport:recv(Socket, 0, Timeout) of
         {ok, Data} ->
             NewData = <<Incomplete/binary, Data/binary>>,
             case vmq_parser_mqtt5:parse(NewData) of
                 more ->
-                    receive_frame_(Transport, Socket, Timeout, NewData);
+                    receive_frame(Transport, Socket, Timeout, NewData);
                 {error, R} ->
                     {error, R};
                 {Frame, Rest} ->
