@@ -53,7 +53,7 @@ install(St) ->
 
 query(PoolName, Command) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          gen_server:call(Worker, {q, Command})
+                                          gen_server:call(Worker, {q, Command}, infinity)
                                   end).
 %query_pipeline(PoolName, Pipeline) ->
 %    poolboy:transaction(PoolName, fun(Worker) ->
