@@ -84,7 +84,7 @@ Minor releases: At the end of March, July and November (every 4th month).
 Bugfix releases: Usually a bugfix release is released between minor releases or
 if there's an urgent bugfix pending.
 
-Custom release cycles and releases are avaible for commercial users.
+Custom release cycles and releases are available for commercial users.
 
 ## Quick Start
 
