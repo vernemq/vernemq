@@ -46,6 +46,7 @@
   don't enable a simple downgrade path and introduces a backward incompatibility if
   a VerneMQ message store containing offline messages has to be downgraded to 1.8.0
   or earlier versions.
+- Upgrade dependency `cuttlefish` to version *2.2.0*.
 
 ## VerneMQ 1.8.0
 
