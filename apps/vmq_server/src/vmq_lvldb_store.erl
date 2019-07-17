@@ -24,12 +24,12 @@
          msg_store_write/2,
          msg_store_read/2,
          msg_store_delete/2,
-         msg_store_find/1,
+         msg_store_find/2,
          get_ref/1,
          refcount/1,
          get_state/1]).
 
--export([msg_store_init_queue_collector/3]).
+-export([msg_store_init_queue_collector/4]).
 
 -export([parse_p_idx_val_pre/1,
          parse_p_msg_val_pre/1,
@@ -85,10 +85,14 @@ msg_store_delete(SubscriberId, MsgRef) ->
 msg_store_read(SubscriberId, MsgRef) ->
     call(MsgRef, {read, SubscriberId, MsgRef}).
 
-msg_store_find(SubscriberId) ->
+
+%% We differentiate between queue_init and other as queue_init must
+%% not be called concurrently for the same subscriber.
+msg_store_find(SubscriberId, Type) when Type =:= queue_init;
+                                        Type =:= other ->
     Ref = make_ref(),
     {Pid, MRef} = spawn_monitor(?MODULE, msg_store_init_queue_collector,
-                                [self(), SubscriberId, Ref]),
+                                [self(), SubscriberId, Ref, Type]),
     receive
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason};
@@ -97,18 +101,24 @@ msg_store_find(SubscriberId) ->
             {ok, MsgRefs}
     end.
 
-msg_store_init_queue_collector(ParentPid, SubscriberId, Ref) ->
+msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, queue_init) ->
     MsgRefs =
         case msg_store_init_from_tbl(init, SubscriberId) of
             [] ->
-                TblIdxRef = make_ref(),
-                Pids = vmq_lvldb_store_sup:get_bucket_pids(),
-                ok = msg_store_collect(TblIdxRef, SubscriberId, Pids),
-                msg_store_init_from_tbl(TblIdxRef, SubscriberId);
+                init_from_disk(SubscriberId);
             Res ->
                 Res
         end,
+    ParentPid ! {self(), Ref, MsgRefs};
+msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, other) ->
+    MsgRefs = init_from_disk(SubscriberId),
     ParentPid ! {self(), Ref, MsgRefs}.
+
+init_from_disk(SubscriberId) ->
+    TblIdxRef = make_ref(),
+    Pids = vmq_lvldb_store_sup:get_bucket_pids(),
+    ok = msg_store_collect(TblIdxRef, SubscriberId, Pids),
+    msg_store_init_from_tbl(TblIdxRef, SubscriberId).
 
 msg_store_init_from_tbl(Prefix, SubscriberId) ->
     MS = ets:fun2ms(
