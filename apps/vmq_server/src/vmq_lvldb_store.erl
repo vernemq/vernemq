@@ -14,7 +14,10 @@
 
 -module(vmq_lvldb_store).
 -include("vmq_server.hrl").
+-include_lib("stdlib/include/ms_transform.hrl").
 -behaviour(gen_server).
+
+-define(TBL_MSG_INIT, vmq_lvldb_init_msg_idx).
 
 %% API
 -export([start_link/1,
@@ -89,22 +92,46 @@ msg_store_find(SubscriberId) ->
     receive
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason};
-        {Pid, Ref, Result} ->
+        {Pid, Ref, MsgRefs} ->
             demonitor(MRef, [flush]),
-            {_, MsgRefs} = lists:unzip(Result),
             {ok, MsgRefs}
     end.
 
 msg_store_init_queue_collector(ParentPid, SubscriberId, Ref) ->
-    Pids = vmq_lvldb_store_sup:get_bucket_pids(),
-    Acc = ordsets:new(),
-    ResAcc = msg_store_collect(SubscriberId, Pids, Acc),
-    ParentPid ! {self(), Ref, ordsets:to_list(ResAcc)}.
+    MsgRefs =
+        case msg_store_init_from_tbl(init, SubscriberId) of
+            [] ->
+                TblIdxRef = make_ref(),
+                Pids = vmq_lvldb_store_sup:get_bucket_pids(),
+                ok = msg_store_collect(TblIdxRef, SubscriberId, Pids),
+                msg_store_init_from_tbl(TblIdxRef, SubscriberId);
+            Res ->
+                Res
+        end,
+    ParentPid ! {self(), Ref, MsgRefs}.
 
-msg_store_collect(_, [], Acc) -> Acc;
-msg_store_collect(SubscriberId, [Pid|Rest], Acc) ->
-    Res = gen_server:call(Pid, {find_for_subscriber_id, SubscriberId}, infinity),
-    msg_store_collect(SubscriberId, Rest, ordsets:union(Res, Acc)).
+msg_store_init_from_tbl(Prefix, SubscriberId) ->
+    MS = ets:fun2ms(
+           fun({{P, S, _TS, MsgRef}}) when P =:= Prefix, S =:= SubscriberId ->
+                   MsgRef
+           end),
+    MSDel = ets:fun2ms(
+           fun({{P, S, _TS, _MsgRef}}) when P =:= Prefix, S =:= SubscriberId ->
+                   true
+           end),
+    MsgRefs = ets:select(?TBL_MSG_INIT, MS),
+    _Deleted = ets:select_delete(?TBL_MSG_INIT, MSDel),
+    MsgRefs.
+
+msg_store_collect(_Ref, _, []) -> ok;
+msg_store_collect(Ref, SubscriberId, [Pid|Rest]) ->
+    ok = try
+             gen_server:call(Pid, {find_for_subscriber_id, Ref, SubscriberId}, infinity)
+         catch
+             {'EXIT', {noproc, _}} ->
+                 ok
+         end,
+    msg_store_collect(Ref, SubscriberId, Rest).
 
 get_ref(BucketPid) ->
     gen_server:call(BucketPid, get_ref).
@@ -398,36 +425,38 @@ handle_req({delete, {MP, _} = SubscriberId, MsgRef},
             %% we have to keep the message, but can delete the idx
             eleveldb:write(Bucket, [{delete, IdxKey}], WriteOpts)
     end;
-handle_req({find_for_subscriber_id, SubscriberId},
+handle_req({find_for_subscriber_id, TblIdxRef, SubscriberId},
            #state{ref=Bucket, fold_opts=FoldOpts} = State) ->
     {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts),
     FirstIdxKey = sext:encode({idx, SubscriberId, ''}),
     iterate_index_items(eleveldb:iterator_move(Itr, FirstIdxKey),
-                        SubscriberId, ordsets:new(), Itr, State).
+                        TblIdxRef, SubscriberId, Itr, State).
 
-iterate_index_items({error, _}, _, Acc, _, _) ->
+iterate_index_items({error, _}, _,_, _, _) ->
     %% no need to close the iterator
-    Acc;
-iterate_index_items({ok, IdxKey, IdxVal}, SubscriberId, Acc, Itr, State) ->
+    ok;
+iterate_index_items({ok, IdxKey, IdxVal}, TblIdxRef, SubscriberId, Itr, State) ->
     case sext:decode(IdxKey) of
         {idx, SubscriberId, MsgRef} ->
             #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
-            iterate_index_items(eleveldb:iterator_move(Itr, prefetch), SubscriberId,
-                                ordsets:add_element({TS, MsgRef}, Acc), Itr, State);
+            true = ets:insert(?TBL_MSG_INIT, {{TblIdxRef, SubscriberId, TS, MsgRef}}),
+            iterate_index_items(eleveldb:iterator_move(Itr, prefetch), TblIdxRef, SubscriberId, Itr, State);
         _ ->
             %% all message refs accumulated for this subscriber
             eleveldb:iterator_close(Itr),
-            Acc
+            ok
     end.
 
 setup_index(#state{ref=Bucket, fold_opts=FoldOpts, refs=Refs}) ->
-    {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts, keys_only),
+    {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts),
     FirstIdxKey = sext:encode({idx, '', ''}),
     setup_index(Refs, eleveldb:iterator_move(Itr, FirstIdxKey), Itr, 0).
 
-setup_index(Refs, {ok, Key}, Itr, N) ->
+setup_index(Refs, {ok, Key, IdxVal}, Itr, N) ->
     case sext:decode(Key) of
-        {idx, _, MsgRef} ->
+        {idx, SubscriberId, MsgRef} ->
+            #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
+            true = ets:insert(?TBL_MSG_INIT, {{init, SubscriberId, TS, MsgRef}}),
             incr_ref(Refs, MsgRef),
             setup_index(Refs, eleveldb:iterator_move(Itr, next), Itr, N + 1);
         _ ->
