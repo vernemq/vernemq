@@ -47,6 +47,8 @@
   a VerneMQ message store containing offline messages has to be downgraded to 1.8.0
   or earlier versions.
 - Upgrade dependency `cuttlefish` to version *2.2.0*.
+- Improve large queue initialization performance by reducing algorithmic
+  complexity from O(n^2) to O(nlogn) where n is the number of offline messages.
 
 ## VerneMQ 1.8.0
 

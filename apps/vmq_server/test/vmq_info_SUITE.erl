@@ -29,7 +29,7 @@ init_per_testcase(_TestCase, Config) ->
     vmq_server_cmd:listener_start(1888, []),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_write, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_delete, 2),
-    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 1),
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_read, 2),
     Config.
 

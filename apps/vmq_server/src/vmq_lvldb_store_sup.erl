@@ -27,6 +27,7 @@
 
 -define(NR_OF_BUCKETS, 12).
 -define(TABLE, vmq_lvldb_store_buckets).
+-define(TBL_MSG_INIT, vmq_lvldb_init_msg_idx).
 
 %% ===================================================================
 %% API functions
@@ -34,6 +35,8 @@
 
 start_link() ->
     {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
+    _ = ets:new(?TBL_MSG_INIT, [public, named_table, ordered_set,
+                                {read_concurrency, true}]),
     Pids =
         [begin
              {ok, ChildPid} = supervisor:start_child(Pid, child_spec(I)),
@@ -43,7 +46,7 @@ start_link() ->
     ok = wait_until_initialized(Pids),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_write, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_delete, 2),
-    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 1),
+    ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_read, 2),
     {ok, Pid}.
 

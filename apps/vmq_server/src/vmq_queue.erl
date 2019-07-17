@@ -430,7 +430,7 @@ drain(Event, _From, State) ->
 
 
 offline(init_offline_queue, #state{id=SId} = State) ->
-    case vmq_plugin:only(msg_store_find, [SId]) of
+    case vmq_plugin:only(msg_store_find, [SId, queue_init]) of
         {ok, MsgRefs} ->
             _ = vmq_metrics:incr_queue_initialized_from_storage(),
             {next_state, offline,
