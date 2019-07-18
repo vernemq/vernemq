@@ -25,9 +25,8 @@
 %% Supervisor callbacks
 -export([init/1]).
 
--define(NR_OF_BUCKETS, 12).
+-include("vmq_lvldb_store.hrl").
 -define(TABLE, vmq_lvldb_store_buckets).
--define(TBL_MSG_INIT, vmq_lvldb_init_msg_idx).
 
 %% ===================================================================
 %% API functions
@@ -35,8 +34,7 @@
 
 start_link() ->
     {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
-    _ = ets:new(?TBL_MSG_INIT, [public, named_table, ordered_set,
-                                {read_concurrency, true}]),
+    ok = init_msg_init_tables(),
     Pids =
         [begin
              {ok, ChildPid} = supervisor:start_child(Pid, child_spec(I)),
@@ -49,6 +47,24 @@ start_link() ->
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 2),
     ok = vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_read, 2),
     {ok, Pid}.
+
+init_msg_init_tables() ->
+    lists:foreach(
+      fun(I) ->
+              %% register them by name to make it easier to inspect
+              %% them.
+              Name =
+                  list_to_atom("vmq_lvldb_init_msg_idx_" ++ integer_to_list(I)),
+              Ref = ets:new(Name, [public, named_table, ordered_set,
+                                   {read_concurrency, true}]),
+              %% use persistent terms to fetch the references when
+              %% mapping from the subscriberid.
+              persistent_term:put({?TBL_MSG_INIT, I}, Ref)
+      end,
+      lists:seq(1, ?NR_OF_BUCKETS)),
+    ok.
+
+
 
 wait_until_initialized(Pids) ->
     lists:foreach(
