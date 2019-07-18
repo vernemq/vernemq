@@ -13,11 +13,10 @@
 %% limitations under the License.
 
 -module(vmq_lvldb_store).
--include("vmq_server.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
+-include("vmq_server.hrl").
+-include("vmq_lvldb_store.hrl").
 -behaviour(gen_server).
-
--define(TBL_MSG_INIT, vmq_lvldb_init_msg_idx).
 
 %% API
 -export([start_link/1,
@@ -129,8 +128,9 @@ msg_store_init_from_tbl(Prefix, SubscriberId) ->
            fun({{P, S, _TS, _MsgRef}}) when P =:= Prefix, S =:= SubscriberId ->
                    true
            end),
-    MsgRefs = ets:select(?TBL_MSG_INIT, MS),
-    _Deleted = ets:select_delete(?TBL_MSG_INIT, MSDel),
+    Table = select_table(SubscriberId),
+    MsgRefs = ets:select(Table, MS),
+    _Deleted = ets:select_delete(Table, MSDel),
     MsgRefs.
 
 msg_store_collect(_Ref, _, []) -> ok;
@@ -449,7 +449,8 @@ iterate_index_items({ok, IdxKey, IdxVal}, TblIdxRef, SubscriberId, Itr, State) -
     case sext:decode(IdxKey) of
         {idx, SubscriberId, MsgRef} ->
             #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
-            true = ets:insert(?TBL_MSG_INIT, {{TblIdxRef, SubscriberId, TS, MsgRef}}),
+            Table = select_table(SubscriberId),
+            true = ets:insert(Table, {{TblIdxRef, SubscriberId, TS, MsgRef}}),
             iterate_index_items(eleveldb:iterator_move(Itr, prefetch), TblIdxRef, SubscriberId, Itr, State);
         _ ->
             %% all message refs accumulated for this subscriber
@@ -466,7 +467,8 @@ setup_index(Refs, {ok, Key, IdxVal}, Itr, N) ->
     case sext:decode(Key) of
         {idx, SubscriberId, MsgRef} ->
             #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
-            true = ets:insert(?TBL_MSG_INIT, {{init, SubscriberId, TS, MsgRef}}),
+            Table = select_table(SubscriberId),
+            true = ets:insert(Table, {{init, SubscriberId, TS, MsgRef}}),
             incr_ref(Refs, MsgRef),
             setup_index(Refs, eleveldb:iterator_move(Itr, next), Itr, N + 1);
         _ ->
@@ -494,6 +496,9 @@ decr_ref(Refs, MsgRef) ->
         _:_ ->
             not_found
     end.
+
+select_table(SubscriberId) ->
+    persistent_term:get({?TBL_MSG_INIT, erlang:phash2(SubscriberId, ?NR_OF_BUCKETS) + 1}).
 
 %% pre version idx:
 %% {p_idx_val, ts, dup, qos}
