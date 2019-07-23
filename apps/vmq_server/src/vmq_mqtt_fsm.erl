@@ -640,6 +640,7 @@ auth_on_register(User, Password, State) ->
 
             ChangedState = State#state{
                              subscriber_id=?state_val(subscriber_id, Args, State),
+                             username=?state_val(username, Args, State),
                              clean_session=?state_val(clean_session, Args, State),
                              reg_view=?state_val(reg_view, Args, State),
                              max_message_rate=?state_val(max_message_rate, Args, State),

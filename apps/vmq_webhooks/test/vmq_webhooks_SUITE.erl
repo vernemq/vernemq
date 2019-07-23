@@ -169,6 +169,8 @@ auth_on_register_test(_) ->
     {ok, [{subscriber_id,
            {"mynewmount", <<"changed_client_id">>}}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
+    {ok, [{username, <<"changed_username">>}]} = vmq_plugin:all_till_ok(auth_on_register,
+                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?CHANGED_USERNAME, ?PASSWORD, true]),
     deregister_hook(auth_on_register, ?ENDPOINT).
 
 auth_on_publish_test(_) ->
@@ -250,6 +252,8 @@ auth_on_register_m5_test(_) ->
     {ok, #{subscriber_id :=
            {"mynewmount", <<"changed_client_id">>}}} = vmq_plugin:all_till_ok(auth_on_register_m5,
                       [?PEER, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true, #{}]),
+    {ok, [{username, <<"changed_username">>}]} = vmq_plugin:all_till_ok(auth_on_register_m5,
+                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?CHANGED_USERNAME, ?PASSWORD, true, #{}]),
     WantUserProps = [{<<"k1">>, <<"v1">>},
                      {<<"k1">>, <<"v2">>},
                      {<<"k2">>, <<"v2">>}],
