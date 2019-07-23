@@ -167,6 +167,23 @@ change_subscriber_id_test(Config) ->
       auth_on_register, ?MODULE, hook_change_subscriber_id, 5),
     ok = close(Socket, Config).
 
+auth_on_register_change_username_test(Config) ->
+    Connect = packet:gen_connect("change-username-test",
+                                 [{keepalive,10}, {username, "old_username"},
+                                  {password, "whatever"}]),
+    Connack = packet:gen_connack(0),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_change_username, 5),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      on_register, ?MODULE, hook_on_register_changed_username, 3),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      on_register, ?MODULE, hook_on_register_changed_username, 3),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_change_username, 5),
+    ok = close(Socket, Config).
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -177,6 +194,10 @@ hook_uname_password_success(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <
 hook_change_subscriber_id(_, {"", <<"change-sub-id-test">>}, _, _, _) ->
     {ok, [{subscriber_id, {"newmp", <<"changed-client-id">>}}]}.
 hook_on_register_changed_subscriber_id(_, {"newmp", <<"changed-client-id">>}, _) ->
+    ok.
+hook_change_username(_, _, <<"old_username">>, _, _) ->
+    {ok, [{username, <<"new_username">>}]}.
+hook_on_register_changed_username(_, _, <<"new_username">>) ->
     ok.
 
 %% Helpers
