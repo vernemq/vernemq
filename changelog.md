@@ -49,8 +49,8 @@
 - Upgrade dependency `cuttlefish` to version *2.2.0*.
 - Improve large queue initialization performance by reducing algorithmic
   complexity from O(n^2) to O(nlogn) where n is the number of offline messages.
-- Add the ability to modify the `username` on `auth_on_register` hooks. Supports both
-  `vmq_diversity` and `vmq_webhooks`.
+- Add the ability to modify the `username` on `auth_on_register` and `auth_on_register_m5`
+  hooks. Supports both `vmq_diversity` and `vmq_webhooks`.
 
 ## VerneMQ 1.8.0
 
