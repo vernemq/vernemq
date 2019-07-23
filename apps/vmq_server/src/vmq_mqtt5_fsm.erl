@@ -1024,6 +1024,7 @@ auth_on_register(User, Password, Props, State) ->
 
             ChangedState = State#state{
                              subscriber_id=?state_val(subscriber_id, Args, State),
+                             username=?state_val(username, Args, State),
                              clean_start=?state_val(clean_start, Args, State),
                              session_expiry_interval=?state_val(session_expiry_interval, Args, State),
                              reg_view=?state_val(reg_view, Args, State),

@@ -14,6 +14,7 @@
 -define(MOUNTPOINT_BIN, <<"mountpoint">>).
 -define(CHANGED_CLIENT_ID, <<"changed-subscriber-id">>).
 -define(USERNAME, <<"test-user">>).
+-define(CHANGED_USERNAME, <<"changed-user">>).
 -define(PASSWORD, <<"test-password">>).
 -define(TOPIC, <<"test/topic">>).
 -define(PAYLOAD, <<"hello world">>).
