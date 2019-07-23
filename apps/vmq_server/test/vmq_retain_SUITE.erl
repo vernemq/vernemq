@@ -359,11 +359,11 @@ subscribe_retain_as_published_test(Cfg) ->
     {ok, #mqtt5_publish{
             retain = 1,
             payload = <<"msg1">>
-           }, <<>>} = packetv5:receive_frame(Socket),
+           }, Rest0} = packetv5:receive_frame(Socket),
     {ok, #mqtt5_publish{
             retain = 0,
             payload = <<"msg2">>
-           }, <<>>} = packetv5:receive_frame(Socket),
+           }, <<>>} = packetv5:receive_frame(gen_tcp, Socket, 5000, Rest0),
 
     %% Test subscription with RAP false
     PublishRetainedRapFalse = packetv5:gen_publish(TopicRapFalse, 0, <<"msg3">>, [{retain, true}]),
@@ -375,11 +375,11 @@ subscribe_retain_as_published_test(Cfg) ->
     {ok, #mqtt5_publish{
             retain = 0,
             payload = <<"msg3">>
-           }, <<>>} = packetv5:receive_frame(Socket),
+           }, Rest1} = packetv5:receive_frame(Socket),
     {ok, #mqtt5_publish{
             retain = 0,
             payload = <<"msg4">>
-           }, <<>>} = packetv5:receive_frame(Socket),
+           }, <<>>} = packetv5:receive_frame(gen_tcp, Socket, 5000, Rest1),
 
     Disconnect = packetv5:gen_disconnect(),
     ok = gen_tcp:send(Socket, Disconnect),
