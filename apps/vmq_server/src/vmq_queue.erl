@@ -80,7 +80,8 @@
           cleanup_on_disconnect,
           status = notify,
           queue = #queue{},
-          started_at :: vmq_time:timestamp()
+          started_at :: vmq_time:timestamp(),
+          queue_to_session_batch_size :: non_neg_integer()
          }).
 
 -record(state, {
@@ -631,6 +632,7 @@ add_session_(SessionPid, Opts, #state{id=SId, offline=Offline,
       queue_type := QueueType,
       cleanup_on_disconnect := Clean
      } = Opts,
+    BatchSize=maps:get(queue_to_session_batch_size, Opts, 100),
     NewSessions =
     case maps:get(SessionPid, Sessions, not_found) of
         not_found ->
@@ -639,7 +641,8 @@ add_session_(SessionPid, Opts, #state{id=SId, offline=Offline,
             maps:put(SessionPid,
                      #session{pid=SessionPid, cleanup_on_disconnect=Clean,
                               queue=#queue{max=MaxOnlineMessages},
-                              started_at=vmq_time:timestamp(millisecond)}, Sessions);
+                              started_at=vmq_time:timestamp(millisecond),
+                              queue_to_session_batch_size=BatchSize}, Sessions);
         _ ->
             Sessions
     end,
@@ -770,7 +773,7 @@ change_session_state(NewState, SessionPid, #state{id=SId, sessions=Sessions} = S
     cleanup_queue(SId, Backup),
     _ = vmq_metrics:incr_queue_out(queue:len(Backup)),
     UpdatedSession = change_session_state_(NewState, SId,
-                                          Session#session{queue=Queue#queue{backup=queue:new()}}),
+                                           Session#session{queue=Queue#queue{backup=queue:new()}}),
     NewSessions = maps:update(SessionPid, UpdatedSession, Sessions),
     State#state{sessions=NewSessions}.
 
@@ -818,13 +821,8 @@ insert_from_queue(#queue{type=lifo, queue=Q, backup=BQ}, State) ->
 
 insert_from_queue(F, {{value, Msg}, Q}, State) when is_tuple(Msg) ->
     insert_from_queue(F, F(Q), insert(Msg, State));
-insert_from_queue(F, {{value, MsgRef}, Q}, #state{id=SId} = State) when is_binary(MsgRef) ->
-    case vmq_plugin:only(msg_store_read, [SId, MsgRef]) of
-        {ok, #vmq_msg{qos=QoS} = Msg} ->
-            insert_from_queue(F, F(Q), insert(#deliver{qos=QoS, msg=Msg}, State));
-        {error, _} ->
-            insert_from_queue(F, F(Q), State)
-    end;
+insert_from_queue(F, {{value, MsgRef}, Q}, State) when is_binary(MsgRef) ->
+    insert_from_queue(F, F(Q), insert(MsgRef, State));
 insert_from_queue(_F, {empty, _}, State) ->
     State.
 
@@ -890,17 +888,51 @@ queue_insert(Offline, MsgOrRef, #queue{type=lifo, max=Max, size=Size, queue=Queu
 queue_insert(Offline, MsgOrRef, #queue{queue=Queue, size=Size} = Q, SId) ->
     Q#queue{queue=queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size=Size + 1}.
 
-send(SId, #session{pid=Pid, queue=Q} = Session) ->
-    Session#session{status=passive, queue=send(SId, Pid, Q)}.
+send(SId, #session{pid=Pid, queue=Q,
+                  queue_to_session_batch_size = BatchSize} = Session) ->
+    Session#session{status=passive, queue=send(SId, Pid, BatchSize, Q)}.
 
-send(SId, Pid, #queue{type=fifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
-    Msgs = maybe_expire_msgs(SId, queue:to_list(Queue)),
+send(SId, Pid, BatchSize, #queue{type=fifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
+    {Batch, NewQueue, NewCount} = prepare_msgs(SId, queue:new(), Queue, Count, BatchSize),
+    Msgs = queue:to_list(Batch),
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), Msgs, Count, Dropped}),
-    Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0};
-send(SId, Pid, #queue{type=lifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
+    Q#queue{queue=NewQueue, backup=Batch, size=NewCount, drop=0};
+send(SId, Pid, _BatchSize, #queue{type=lifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
     Msgs = maybe_expire_msgs(SId, lists:reverse(queue:to_list(Queue))),
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), Msgs, Count, Dropped}),
     Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0}.
+
+prepare_msgs(_SId, OQ, Q, QC, 0) ->
+    {OQ, Q, QC};
+prepare_msgs(SId, OQ, Q, QC, N) ->
+    case queue:out(Q) of
+        {{value, Msg}, NQ} ->
+            case maybe_deref(SId, Msg) of
+                {ok, NewMsg} ->
+                    case maybe_expire_msg(SId, NewMsg) of
+                        expired ->
+                            prepare_msgs(SId, OQ, NQ, QC - 1, N);
+                        NewMsg1 ->
+                            NOQ = queue:in(NewMsg1, OQ),
+                            prepare_msgs(SId, NOQ, NQ, QC - 1, N-1)
+                    end;
+                {error, _} ->
+                    prepare_msgs(SId, OQ, NQ, QC - 1, N)
+            end;
+        {empty, _} ->
+            {OQ, Q, QC}
+    end.
+
+maybe_deref(SId, MsgRef) when is_binary(MsgRef) ->
+    case vmq_plugin:only(msg_store_read, [SId, MsgRef]) of
+        {ok, #vmq_msg{qos=QoS}=Msg} ->
+            {ok, #deliver{qos=QoS, msg=Msg}};
+        {error, _} = E ->
+            E
+    end;
+maybe_deref(_, Msg) ->
+    {ok, Msg}.
+
 
 send_notification(#session{pid=Pid} = Session) ->
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), new_data}),
@@ -1096,22 +1128,29 @@ on_message_drop_hook(SubscriberId, MsgRef, Reason) when is_binary(MsgRef) ->
     vmq_plugin:all(on_message_drop, [SubscriberId, Promise, Reason]).
 
 maybe_expire_msgs(SId, Msgs) ->
-    {ToKeep, Expired} =
-    lists:foldl(
-      fun(#deliver{msg=#vmq_msg{expiry_ts=undefined}} = M, {Keep, Expired}) ->
-              {[M|Keep], Expired};
-         (#deliver{msg=#vmq_msg{expiry_ts={ExpiryTS, _}} = M} = D, {Keep, Expired}) ->
-              case vmq_time:is_past(ExpiryTS) of
-                  true ->
-                      on_message_drop_hook(SId, D, expired),
-                      {Keep, Expired + 1};
-                  Remaining ->
-                      {[D#deliver{msg=M#vmq_msg{expiry_ts={ExpiryTS, Remaining}}}|Keep], Expired}
-              end;
-         (M, {Keep, Expired}) -> {[M|Keep], Expired}
-      end, {[], 0}, Msgs),
-    _ = vmq_metrics:incr_queue_msg_expired(Expired),
-    lists:reverse(ToKeep).
+    lists:filtermap(
+      fun(Msg) ->
+              case maybe_expire_msg(SId, Msg) of
+                  expired -> false;
+                  NewMsg -> {true, NewMsg}
+              end
+      end, Msgs).
+
+maybe_expire_msg(_SId, #deliver{msg=#vmq_msg{expiry_ts=undefined}} = M) ->
+    M;
+maybe_expire_msg(SId,
+                 #deliver{msg=#vmq_msg{expiry_ts={ExpiryTS, _}} = M} = D) ->
+    case vmq_time:is_past(ExpiryTS) of
+        true ->
+            on_message_drop_hook(SId, D, expired),
+            vmq_metrics:incr_queue_msg_expired(1),
+            expired;
+        Remaining ->
+            D#deliver{msg=M#vmq_msg{expiry_ts={ExpiryTS, Remaining}}}
+    end;
+maybe_expire_msg(_SId, M) ->
+    %%pubrels
+    M.
 
 to_internal({deliver, QoS, Msg}) ->
     #deliver{qos=QoS, msg=Msg};
