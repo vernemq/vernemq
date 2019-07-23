@@ -188,10 +188,20 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
                                           done
                                   end;
                               OldPid when is_pid(OldPid) ->
-                                  block
+                                  case vmq_queue:info(OldPid) of
+                                      #{statename := drain} ->
+                                          % Queue is in draining state, we're done here and
+                                          % can return to the caller.
+                                          % TODO: We can improve this by only having a single
+                                          % rpc call. But this would break backward upgrade
+                                          % compatibility.
+                                          done;
+                                      _ ->
+                                          block
+                                  end
                           end
                   end,
-            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes, Fun),
+            block_until(SubscriberId, UpdatedSubs, ChangedNodes, Fun),
             SessionPresent1
     end,
     case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
@@ -220,12 +230,13 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
     end.
 
 
-%% block_until_migrated/4 has three cases to consider, the logic for
+%% block_until/4 has three cases to consider, the logic for
 %% these cases are handled by the BlockCond function
 %%
 %% migrate queue to local node (register_subscriber):
 %%
-%%    we wait until there is no queue on the original node and until we have one locally
+%%    we wait until there is
+%%      "the original queue has been terminated" OR "the original queue is indraining state"
 %%
 %% migrate local queue to remote node (cluster leave):
 %%
@@ -234,8 +245,8 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
 %% migrate dead queue (node down) to another node in cluster (including this one):
 %%
 %%    we have no local queue, but wait until the (offline) queue exists on target node.
-block_until_migrated(_, _, [], _) -> ok;
-block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, BlockCond) ->
+block_until(_, _, [], _) -> ok;
+block_until(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, BlockCond) ->
     %% the call to subscriptions_for_subscriber_id will resolve any remaining
     %% conflicts to this entry by broadcasting the resolved value to the
     %% other nodes
@@ -250,9 +261,9 @@ block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, Bloc
     case BlockCond(SubscriberId, Node) of
         block ->
             timer:sleep(100),
-            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes, BlockCond);
+            block_until(SubscriberId, UpdatedSubs, ChangedNodes, BlockCond);
         done ->
-            block_until_migrated(SubscriberId, UpdatedSubs, Rest, BlockCond)
+            block_until(SubscriberId, UpdatedSubs, Rest, BlockCond)
     end.
 
 -spec register_session(subscriber_id(), map()) -> {ok, #{initial_msg_id := msg_id(),

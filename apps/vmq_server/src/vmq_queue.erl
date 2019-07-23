@@ -150,16 +150,7 @@ set_opts(Queue, Opts) when is_pid(Queue) ->
     gen_fsm:sync_send_event(Queue, {set_opts, self(), Opts}, infinity).
 
 get_opts(Queue) when is_pid(Queue) ->
-    case catch gen_fsm:sync_send_all_state_event(Queue, get_opts, infinity) of
-        {'EXIT', {normal, _}} ->
-            {error, noproc};
-        {'EXIT', {noproc, _}} ->
-            {error, noproc};
-        {'EXIT', Reason} ->
-            exit(Reason);
-        Ret ->
-            Ret
-    end.
+    save_sync_send_all_state_event(Queue, get_opts).
 
 force_disconnect(Queue, Reason) when is_pid(Queue) ->
     force_disconnect(Queue, Reason, false).
@@ -183,6 +174,12 @@ migrate(Queue, OtherQueue) ->
 cleanup(Queue, Reason) ->
     save_sync_send_event(Queue, {cleanup, Reason}).
 
+status(Queue) ->
+    gen_fsm:sync_send_all_state_event(Queue, status, infinity).
+
+info(Queue) ->
+    save_sync_send_all_state_event(Queue, info).
+
 save_sync_send_event(Queue, Event) ->
     case catch gen_fsm:sync_send_event(Queue, Event, infinity) of
         {'EXIT', {normal, _}} ->
@@ -195,11 +192,17 @@ save_sync_send_event(Queue, Event) ->
             Ret
     end.
 
-status(Queue) ->
-    gen_fsm:sync_send_all_state_event(Queue, status, infinity).
-
-info(Queue) ->
-    gen_fsm:sync_send_all_state_event(Queue, info, infinity).
+save_sync_send_all_state_event(Queue, Event) ->
+    case catch gen_fsm:sync_send_all_state_event(Queue, Event, infinity) of
+        {'EXIT', {normal, _}} ->
+            {error, noproc};
+        {'EXIT', {noproc, _}} ->
+            {error, noproc};
+        {'EXIT', Reason} ->
+            exit(Reason);
+        Ret ->
+            Ret
+    end.
 
 default_opts() ->
     #{allow_multiple_sessions => vmq_config:get_env(allow_multiple_sessions),
