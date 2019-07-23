@@ -34,8 +34,7 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, mqttv4},
-     {group, mqttv5},
-     {group, try_private}
+     {group, mqttv5}
     ].
 
 groups() ->

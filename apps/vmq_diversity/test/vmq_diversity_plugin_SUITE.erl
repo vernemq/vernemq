@@ -73,7 +73,9 @@ auth_on_register_test(_) ->
     {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), ignored_subscriber_id(), username(), password(), true]),
     {ok, [{subscriber_id, {"override-mountpoint", <<"override-client-id">>}}]} = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), changed_subscriber_id(), username(), password(), true]).
+                      [peer(), changed_subscriber_id(), username(), password(), true]),
+    {ok, [{username, <<"override-username">>}]} = vmq_plugin:all_till_ok(auth_on_register,
+                      [peer(), changed_username(), username(), password(), true]).
 
 props() ->
     #{p_user_property => [{<<"key1">>, <<"val1">>}]}.
@@ -160,7 +162,9 @@ auth_on_register_m5_test(_) ->
     {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_register_m5,
                       [peer(), ignored_subscriber_id(), username(), password(), true, #{}]),
     {ok, #{subscriber_id := {"override-mountpoint", <<"override-client-id">>}}} = vmq_plugin:all_till_ok(auth_on_register_m5,
-                      [peer(), changed_subscriber_id(), username(), password(), true, #{}]).
+                      [peer(), changed_subscriber_id(), username(), password(), true, #{}]),
+    {ok, #{username := <<"override-username">>}} = vmq_plugin:all_till_ok(auth_on_register_m5,
+                      [peer(), changed_username(), username(), password(), true, #{}]).
 
 auth_on_register_m5_modify_props_test(_) ->
     WantUserProps = [{<<"k1">>, <<"v1">>},
@@ -294,6 +298,8 @@ not_allowed_subscriber_id() ->
 changed_subscriber_id() ->
     {"", <<"changed-subscriber-id">>}.
 
+changed_username() ->
+    {"", <<"changed-username">>}.
 
 username() -> <<"test-user">>.
 password() -> <<"test-password">>.
