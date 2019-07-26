@@ -19,6 +19,7 @@
 -export([start_link/1,
          publish/2,
          enqueue/4,
+         enqueue_async/3,
          connect_params/1,
          status/1]).
 
@@ -90,6 +91,12 @@ enqueue(Pid, Term, BufferIfUnreachable, Timeout) ->
                     {error, timeout}
             end
     end.
+
+enqueue_async(Pid, Term, BufferIfUnreachable) ->
+    Ref = make_ref(),
+    MRef = monitor(process, Pid),
+    Pid ! {enq, self(), Ref, Term, BufferIfUnreachable},
+    {MRef, Ref}.
 
 status(Pid) ->
     Ref = make_ref(),

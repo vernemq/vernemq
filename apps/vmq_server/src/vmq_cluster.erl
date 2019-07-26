@@ -34,7 +34,8 @@
          if_ready/3,
          netsplit_statistics/0,
          publish/2,
-         remote_enqueue/4]).
+         remote_enqueue/4,
+         remote_enqueue_async/3]).
 
 -define(SERVER, ?MODULE).
 -define(VMQ_CLUSTER_STATUS, vmq_status). %% table is owned by vmq_cluster_mon
@@ -111,6 +112,14 @@ remote_enqueue(Node, Term, BufferIfUnreachable, Timeout) ->
             {error, not_found};
         {ok, Pid} ->
             vmq_cluster_node:enqueue(Pid, Term, BufferIfUnreachable, Timeout)
+    end.
+
+remote_enqueue_async(Node, Term, BufferIfUnreachable) ->
+    case vmq_cluster_node_sup:get_cluster_node(Node) of
+        {error, not_found} ->
+            {error, not_found};
+        {ok, Pid} ->
+            vmq_cluster_node:enqueue_async(Pid, Term, BufferIfUnreachable)
     end.
 
 %%%===================================================================
