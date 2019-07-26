@@ -610,12 +610,13 @@ handle_info({Ref, {error, Reason}}, drain,
      State#state{waiting_call=undefined,
                  drain_pending_batch=undefined,
                  offline=#queue{queue=queue:join(Batch, Q)}}};
-handle_info({'DOWN', MRef, process, _, _Reason}, drain,
-            #state{drain_pending_batch={MRef, _Ref, Batch},
+handle_info({'DOWN', MRef, process, _, Reason}, drain,
+            #state{id=SId, drain_pending_batch={MRef, _Ref, Batch},
                    drain_time=DrainTimeout,
-                   offline=#queue{queue=Q}} = State) ->
-    %% TODO-LHC: should we log something in this case? Or record some metric?
-    %% the vmq_cluster_node process is down, let's retry.
+                   offline=#queue{queue=Q},
+                   waiting_call={migrate, RemoteQueue, _From}} = State) ->
+    lager:warning("drain queue '~p' for [~p][~p] remote_enqueue failed due to ~p",
+                  [SId, self(), RemoteQueue, Reason]),
     gen_fsm:send_event_after(DrainTimeout, drain_start),
     {next_state, drain,
      State#state{drain_pending_batch=undefined,
