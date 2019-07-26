@@ -34,6 +34,7 @@
          if_ready/3,
          netsplit_statistics/0,
          publish/2,
+         remote_enqueue/3,
          remote_enqueue/4,
          remote_enqueue_async/3]).
 
@@ -99,6 +100,15 @@ publish(Node, Msg) ->
         {ok, Pid} ->
             vmq_cluster_node:publish(Pid, Msg)
     end.
+
+-spec remote_enqueue(node(), Term, BufferIfUnreachable)
+        -> ok | {error, term()}
+        when Term :: {enqueue_many, subscriber_id(), Msgs::term(), Opts::map()}
+                   | {enqueue, Queue::term(), Msgs::term()},
+             BufferIfUnreachable :: boolean().
+remote_enqueue(Node, Term, BufferIfUnreachable) ->
+    Timeout = vmq_config:get_env(remote_enqueue_timeout),
+    remote_enqueue(Node, Term, BufferIfUnreachable, Timeout).
 
 -spec remote_enqueue(node(), Term, BufferIfUnreachable, Timeout)
         -> ok | {error, term()}

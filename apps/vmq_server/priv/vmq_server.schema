@@ -317,12 +317,9 @@
                                                                                            ]}.
 
 %% @doc specifies the timeout for enqueing something in a queue on a remote node.
-%%
-%% Note, this setting is has no effect and is deprecated and will be
-%% removed in VerneMQ 2.0.
 {mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [
                                                                           {default, 5000},
-                                                                          {datatype, integer},
+                                                                          {datatype, [integer, {atom, infinity}]},
                                                                           hidden
                                                                          ]}.
 

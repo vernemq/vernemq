@@ -93,7 +93,7 @@ publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) when Node == n
     end;
 publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) ->
     Term = {enqueue_many, SubscriberId, [{deliver, QoS, Msg}], #{states => [QState]}},
-    case vmq_cluster:remote_enqueue(Node, Term, true, infinity) of
+    case vmq_cluster:remote_enqueue(Node, Term, true) of
         ok ->
             {ok, {Local, Remote + 1}};
         E ->
