@@ -373,7 +373,7 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
             %% but forces the traffic to go over the distinct communication link
             %% instead of the erlang distribution link.
             ExtMsgs = lists:map(fun to_external/1, Msgs),
-            case vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, ExtMsgs}, false) of
+            case vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, ExtMsgs}, false, infinity) of
                 ok ->
                     cleanup_queue(SId, DrainQ),
                     _ = vmq_metrics:incr_queue_out(queue:len(DrainQ)),

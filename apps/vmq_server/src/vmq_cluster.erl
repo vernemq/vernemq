@@ -34,7 +34,7 @@
          if_ready/3,
          netsplit_statistics/0,
          publish/2,
-         remote_enqueue/3]).
+         remote_enqueue/4]).
 
 -define(SERVER, ?MODULE).
 -define(VMQ_CLUSTER_STATUS, vmq_status). %% table is owned by vmq_cluster_mon
@@ -99,17 +99,18 @@ publish(Node, Msg) ->
             vmq_cluster_node:publish(Pid, Msg)
     end.
 
--spec remote_enqueue(node(), Term, BufferIfUnreachable)
+-spec remote_enqueue(node(), Term, BufferIfUnreachable, Timeout)
         -> ok | {error, term()}
         when Term :: {enqueue_many, subscriber_id(), Msgs::term(), Opts::map()}
                    | {enqueue, Queue::term(), Msgs::term()},
-             BufferIfUnreachable :: boolean().
-remote_enqueue(Node, Term, BufferIfUnreachable) ->
+             BufferIfUnreachable :: boolean(),
+             Timeout :: non_neg_integer() | infinity.
+remote_enqueue(Node, Term, BufferIfUnreachable, Timeout) ->
     case vmq_cluster_node_sup:get_cluster_node(Node) of
         {error, not_found} ->
             {error, not_found};
         {ok, Pid} ->
-            vmq_cluster_node:enqueue(Pid, Term, BufferIfUnreachable)
+            vmq_cluster_node:enqueue(Pid, Term, BufferIfUnreachable, Timeout)
     end.
 
 %%%===================================================================
