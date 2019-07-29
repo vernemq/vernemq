@@ -92,6 +92,7 @@
           expiry_timer :: undefined | reference(),
           drain_time,
           drain_over_timer,
+          drain_pending_batch :: undefined | {reference(), reference(), queue:new()},
           max_msgs_per_drain_step,
           waiting_call,
           opts,
@@ -355,7 +356,7 @@ wait_for_offline(Event, _From, State) ->
 drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
                           drain_time=DrainTimeout,
                           max_msgs_per_drain_step=DrainStepSize,
-                          waiting_call={migrate, RemoteQueue, From}} = State) ->
+                          waiting_call={migrate, RemoteQueue, _From}} = State) ->
     {DrainQ, NewQ} = queue_split(DrainStepSize, Q),
     #queue{queue=DecompressedDrainQ} = decompress_queue(SId, #queue{queue=DrainQ}),
     case queue:to_list(DecompressedDrainQ) of
@@ -373,29 +374,10 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
             %% but forces the traffic to go over the distinct communication link
             %% instead of the erlang distribution link.
             ExtMsgs = lists:map(fun to_external/1, Msgs),
-            case vmq_cluster:remote_enqueue(node(RemoteQueue), {enqueue, RemoteQueue, ExtMsgs}, false) of
-                ok ->
-                    cleanup_queue(SId, DrainQ),
-                    _ = vmq_metrics:incr_queue_out(queue:len(DrainQ)),
-                    gen_fsm:send_event(self(), drain_start),
-                    {next_state, drain,
-                     State#state{offline=Queue#queue{size=queue:len(NewQ), drop=0, queue=NewQ}}};
-                {error, Reason} when Reason =:= timeout;
-                                     Reason =:= not_reachable ->
-                    gen_fsm:send_event_after(DrainTimeout, drain_start),
-                    {next_state, drain, State};
-                {error, Reason} ->
-                    %% this shouldn't happen, as the register_subscriber is synchronized
-                    %% using the vmq_reg_leader process. However this could theoretically
-                    %% happen in case of an inconsistent (but un-detected) cluster state.
-                    %% we don't drain in this case.
-                    lager:error("can't drain queue '~p' for [~p][~p] due to ~p",
-                                [SId, self(), RemoteQueue, Reason]),
-                    gen_fsm:reply(From, ok),
-                    %% transition to offline, and let a future session drain this queue
-                    {next_state, state_change(drain_error, drain, offline),
-                     State#state{waiting_call=undefined}}
-            end
+            {MRef, Ref} = vmq_cluster:remote_enqueue_async(node(RemoteQueue), {enqueue, RemoteQueue, ExtMsgs}, false),
+            {next_state, drain,
+             State#state{offline=Queue#queue{size=queue:len(NewQ), drop=0, queue=NewQ},
+                         drain_pending_batch={MRef, Ref, DrainQ}}}
     end;
 drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
     %% even in drain state it is possible that an enqueue message
@@ -590,15 +572,59 @@ handle_sync_event({set_delayed_will, Fun, Delay}, _From, StateName, State) ->
 handle_sync_event(Event, _From, _StateName, State) ->
     {stop, {error, {unknown_sync_event, Event}}, State}.
 
+handle_info({Ref, ok}, drain,
+            #state{id=SId,
+                   drain_pending_batch = {MRef, Ref, Batch}} = State) ->
+    %% remote async enqueue completed successfully.
+    demonitor(MRef, [flush]),
+    cleanup_queue(SId, Batch),
+    _ = vmq_metrics:incr_queue_out(queue:len(Batch)),
+    gen_fsm:send_event(self(), drain_start),
+    {next_state, drain,
+     State#state{drain_pending_batch=undefined}};
+handle_info({Ref, {error, not_reachable}}, drain,
+            #state{drain_pending_batch={MRef, Ref, Batch},
+                   drain_time=DrainTimeout,
+                   offline=#queue{queue=Q}} = State) ->
+    %% remote async enqueue failed, let's retry
+    demonitor(MRef, [flush]),
+    gen_fsm:send_event_after(DrainTimeout, drain_start),
+    {next_state, drain,
+     State#state{drain_pending_batch=undefined,
+                 offline=#queue{queue=queue:join(Batch, Q)}}};
+handle_info({Ref, {error, Reason}}, drain,
+            #state{id=SId, drain_pending_batch={MRef, Ref, Batch},
+                   offline=#queue{queue=Q},
+                   waiting_call={migrate, RemoteQueue, From}} = State) ->
+    demonitor(MRef, [flush]),
+    %% remote async enqueue failed, for another reason.  this
+    %% shouldn't happen, as the register_subscriber is synchronized
+    %% using the vmq_reg_leader process. However this could
+    %% theoretically happen in case of an inconsistent (but
+    %% un-detected) cluster state.  we don't drain in this case.
+    lager:error("can't drain queue '~p' for [~p][~p] due to ~p",
+                [SId, self(), RemoteQueue, Reason]),
+    gen_fsm:reply(From, ok),
+    %% transition to offline, and let a future session drain this queue
+    {next_state, state_change(drain_error, drain, offline),
+     State#state{waiting_call=undefined,
+                 drain_pending_batch=undefined,
+                 offline=#queue{queue=queue:join(Batch, Q)}}};
+handle_info({'DOWN', MRef, process, _, Reason}, drain,
+            #state{id=SId, drain_pending_batch={MRef, _Ref, Batch},
+                   drain_time=DrainTimeout,
+                   offline=#queue{queue=Q},
+                   waiting_call={migrate, RemoteQueue, _From}} = State) ->
+    lager:warning("drain queue '~p' for [~p][~p] remote_enqueue failed due to ~p",
+                  [SId, self(), RemoteQueue, Reason]),
+    gen_fsm:send_event_after(DrainTimeout, drain_start),
+    {next_state, drain,
+     State#state{drain_pending_batch=undefined,
+                 offline=#queue{queue=queue:join(Batch, Q)}}};
 handle_info({'DOWN', _MRef, process, Pid, _}, StateName, State) ->
     handle_session_down(Pid, StateName, State);
-handle_info(_Info, StateName, State) ->
-    %% Here we handle late arrival of the ack after enqueuing to a
-    %% remote queue. The acks are on the form `{reference(), ok}` or
-    %% `{reference(), {error, cant_remote_enqueue}}`.
-    %%
-    %% TODO: this should be cleaned up for 2.0 as changing this is
-    %% likely backwards incompatible.
+handle_info(Info, StateName, State) ->
+    lager:error("got unknown handle_info in ~p state ~p", [StateName, Info]),
     {next_state, StateName, State}.
 
 terminate(_Reason, _StateName, _State) ->
