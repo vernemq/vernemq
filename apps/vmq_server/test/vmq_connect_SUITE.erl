@@ -58,7 +58,8 @@ groups() ->
          uname_no_password_denied_test,
          uname_password_denied_test,
          uname_password_success_test,
-         change_subscriber_id_test
+         change_subscriber_id_test,
+         auth_on_register_change_username_test
         ],
     [
      {mqtt, [shuffle,sequence], Tests},
