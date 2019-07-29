@@ -538,7 +538,7 @@ check_client_id(#mqtt_connect{client_id=Id}, State) ->
 check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, State#state{username=User}) of
+            case auth_on_register(Password, State#state{username=User}) of
                 {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_session=CleanSession,
                                        cap_settings=CAPSettings, def_opts=DOpts} = State1} ->
                     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
@@ -618,9 +618,9 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
             connack_terminate(?CONNACK_AUTH, State)
     end.
 
-auth_on_register(User, Password, State) ->
+auth_on_register(Password, State) ->
     #state{clean_session=Clean, peer=Peer, cap_settings=CAPSettings,
-           subscriber_id=SubscriberId} = State,
+           subscriber_id=SubscriberId, username=User} = State,
     HookArgs = [Peer, SubscriberId, User, Password, Clean],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->

@@ -835,7 +835,7 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Props} = 
            State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, Props, State#state{username=User}) of
+            case auth_on_register(Password, Props, State#state{username=User}) of
                 {ok, QueueOpts, OutProps0, NewState} ->
                     SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
                     register_subscriber(F, maps:merge(OutProps, OutProps0), QueueOpts,
@@ -993,9 +993,9 @@ maybe_apply_topic_alias_out(Topic, Properties, #state{topic_aliases_out = TA,
 remove_property(p_topic_alias, #vmq_msg{properties = Properties} = Msg) ->
     Msg#vmq_msg{properties = maps:remove(p_topic_alias, Properties)}.
 
-auth_on_register(User, Password, Props, State) ->
+auth_on_register(Password, Props, State) ->
     #state{clean_start=CleanStart, peer=Peer, cap_settings=CAPSettings,
-           subscriber_id=SubscriberId} = State,
+           subscriber_id=SubscriberId, username=User} = State,
     HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
     case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
         ok ->
