@@ -179,18 +179,25 @@ receive_frame(Transport, Socket, Timeout) ->
     receive_frame(Transport, Socket, Timeout, <<>>).
 
 receive_frame(Transport, Socket, Timeout, Incomplete) ->
-    case Transport:recv(Socket, 0, Timeout) of
-        {ok, Data} ->
-            NewData = <<Incomplete/binary, Data/binary>>,
-            case vmq_parser_mqtt5:parse(NewData) of
-                more ->
-                    receive_frame(Transport, Socket, Timeout, NewData);
-                {error, R} ->
-                    {error, R};
-                {Frame, Rest} ->
-                    {ok, Frame, Rest}
+    case vmq_parser_mqtt5:parse(Incomplete) of
+        more ->
+            case Transport:recv(Socket, 0, Timeout) of
+                {ok, Data} ->
+                    NewData = <<Incomplete/binary, Data/binary>>,
+                    case vmq_parser_mqtt5:parse(NewData) of
+                        more ->
+                            receive_frame(Transport, Socket, Timeout, NewData);
+                        {error, R} ->
+                            {error, R};
+                        {Frame, Rest} ->
+                            {ok, Frame, Rest}
+                    end;
+                E -> E
             end;
-        E -> E
+        {error, R} ->
+            {error, R};
+        {Frame, Rest} ->
+            {ok, Frame, Rest}
     end.
 
 compare_packets(Same, Same) -> ok;
