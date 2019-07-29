@@ -150,11 +150,14 @@ register_subscriber(CAPAllowRegister, _, SubscriberId, _StartClean, #{allow_mult
             {error, not_ready}
     end.
 
--spec register_subscriber_(pid() | undefined, subscriber_id(), boolean(), map(), non_neg_integer()) ->
-    {'ok', map()} | {error, any()}.
-register_subscriber_(_, _, _, _, 0) ->
-    {error, register_subscriber_retry_exhausted};
 register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
+    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, register_subscriber_retry_exhausted).
+
+-spec register_subscriber_(pid() | undefined, subscriber_id(), boolean(), map(), non_neg_integer(), any()) ->
+    {'ok', map()} | {error, any()}.
+register_subscriber_(_, _, _, _, 0, Reason) ->
+    {error, Reason};
+register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason) ->
     % wont create new queue in case it already exists
     {ok, QueuePresent, QPid} =
     case vmq_queue_sup_sup:start_queue(SubscriberId) of
@@ -164,70 +167,82 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
             vmq_queue_sup_sup:start_queue(SubscriberId);
         Ret -> Ret
     end,
-    % remap subscriber... enabling that new messages will eventually
-    % reach the new queue.
-    % Remapping triggers remote nodes to initiate queue migration
-    {SubscriptionsPresent, UpdatedSubs, ChangedNodes}
-    = maybe_remap_subscriber(SubscriberId, StartClean),
-    SessionPresent1 = SubscriptionsPresent or QueuePresent,
-    SessionPresent2 =
-    case StartClean of
-        true ->
-            false; %% SessionPresent is always false in case CleanupSession=true
-        false when QueuePresent ->
-            %% no migration expected to happen, as queue is already local.
-            SessionPresent1;
-        false ->
-            Fun = fun(Sid, OldNode) ->
-                          case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
-                              not_found ->
-                                  case get_queue_pid(Sid) of
-                                      not_found ->
-                                          block;
-                                      LocalPid when is_pid(LocalPid) ->
-                                          done
-                                  end;
-                              OldPid when is_pid(OldPid) ->
-                                  case vmq_queue:info(OldPid) of
-                                      #{statename := drain} ->
-                                          % Queue is in draining state, we're done here and
-                                          % can return to the caller.
-                                          % TODO: We can improve this by only having a single
-                                          % rpc call. But this would break backward upgrade
-                                          % compatibility.
-                                          done;
-                                      _ ->
-                                          block
-                                  end
-                          end
-                  end,
-            block_until(SubscriberId, UpdatedSubs, ChangedNodes, Fun),
-            SessionPresent1
-    end,
-    case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
-        {'EXIT', {normal, _}} ->
-            %% queue went down in the meantime, retry
-            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
-        {'EXIT', {noproc, _}} ->
-            timer:sleep(100),
-            %% queue was stopped in the meantime, retry
-            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
-        {'EXIT', Reason} ->
-            {error, Reason};
-        {error, draining} ->
-            %% queue is still draining it's offline queue to a different
+    case vmq_queue:info(QPid) of
+        #{statename := drain} ->
+            %% queue is draining it's offline queue to a different
             %% remote queue. This can happen if a client hops around
             %% different nodes very frequently... adjust load balancing!!
             timer:sleep(100),
-            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
-        {error, {cleanup, _Reason}} ->
-            %% queue is still cleaning up.
-            timer:sleep(100),
-            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
-        {ok, Opts} ->
-            {ok, Opts#{session_present => SessionPresent2,
-                       queue_pid => QPid}}
+            %% retry and see if it is finished soon before trying to
+            %% remap the subscriber.
+            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, {register_subscriber_retry_exhausted, draining});
+        _ ->
+            %% remap subscriber... enabling that new messages will
+            %% eventually reach the new queue.  Remapping triggers
+            %% remote nodes to initiate queue migration
+            {SubscriptionsPresent, UpdatedSubs, ChangedNodes}
+                = maybe_remap_subscriber(SubscriberId, StartClean),
+            SessionPresent1 = SubscriptionsPresent or QueuePresent,
+            SessionPresent2 =
+                case StartClean of
+                    true ->
+                        false; %% SessionPresent is always false in case CleanupSession=true
+                    false when QueuePresent ->
+                        %% no migration expected to happen, as queue is already local.
+                        SessionPresent1;
+                    false ->
+                        Fun = fun(Sid, OldNode) ->
+                                      case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
+                                          not_found ->
+                                              case get_queue_pid(Sid) of
+                                                  not_found ->
+                                                      block;
+                                                  LocalPid when is_pid(LocalPid) ->
+                                                      done
+                                              end;
+                                          OldPid when is_pid(OldPid) ->
+                                              case vmq_queue:info(OldPid) of
+                                                  #{statename := drain} ->
+                                                      %% Queue is in draining state, we're done here and
+                                                      %% can return to the caller.
+                                                      %% TODO: We can improve this by only having a single
+                                                      %% rpc call. But this would break backward upgrade
+                                                      %% compatibility.
+                                                      done;
+                                                  _ ->
+                                                      block
+                                              end
+                                      end
+                              end,
+                        block_until(SubscriberId, UpdatedSubs, ChangedNodes, Fun),
+                        SessionPresent1
+                end,
+            case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
+                {'EXIT', {normal, _}} ->
+                    %% queue went down in the meantime, retry
+                    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, register_subscriber_retry_exhausted);
+                {'EXIT', {noproc, _}} ->
+                    timer:sleep(100),
+                    %% queue was stopped in the meantime, retry
+                    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, register_subscriber_retry_exhausted);
+                {'EXIT', Reason} ->
+                    {error, Reason};
+                {error, draining} ->
+                    %% queue is still draining it's offline queue to a different
+                    %% remote queue. This can happen if a client hops around
+                    %% different nodes very frequently... adjust load balancing!!
+                    timer:sleep(100),
+                    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, {register_subscriber_retry_exhausted, draining});
+                {error, {cleanup, _Reason}} ->
+                    %% queue is still cleaning up.
+                    timer:sleep(100),
+                    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, register_subscriber_retry_exhausted);
+                {ok, Opts} ->
+                    {ok, Opts#{session_present => SessionPresent2,
+                               queue_pid => QPid}}
+            end
     end.
+
 
 
 %% block_until/4 has three cases to consider, the logic for
