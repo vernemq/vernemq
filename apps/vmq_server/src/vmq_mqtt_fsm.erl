@@ -1144,7 +1144,9 @@ prop_val(Key, Args, Default) when is_integer(Default) ->
 prop_val(Key, Args, Default) when is_boolean(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_boolean/1);
 prop_val(Key, Args, Default) when is_atom(Default) ->
-    prop_val(Key, Args, Default, fun erlang:is_atom/1).
+    prop_val(Key, Args, Default, fun erlang:is_atom/1);
+prop_val(Key, Args, Default) when is_binary(Default) ->
+    prop_val(Key, Args, Default, fun erlang:is_binary/1).
 
 prop_val(Key, Args, Default, Validator) ->
     case proplists:get_value(Key, Args) of
