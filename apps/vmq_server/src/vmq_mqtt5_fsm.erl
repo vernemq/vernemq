@@ -835,7 +835,7 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Props} = 
            State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, Props, State) of
+            case auth_on_register(Password, Props, State#state{username=User}) of
                 {ok, QueueOpts, OutProps0, NewState} ->
                     SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
                     register_subscriber(F, maps:merge(OutProps, OutProps0), QueueOpts,
@@ -866,10 +866,10 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Props} = 
                                 State#state{session_expiry_interval=SessionExpiryInterval})
     end.
 
-register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
+register_subscriber(#mqtt5_connect{}=F, OutProps0,
                     QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_start=CleanStart,
                                       cap_settings=CAPSettings, fc_receive_max_broker=ReceiveMax,
-                                      def_opts=DOpts} = State) ->
+                                      username=User, def_opts=DOpts} = State) ->
     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanStart, QueueOpts) of
         {ok, #{session_present := SessionPresent,
@@ -993,9 +993,9 @@ maybe_apply_topic_alias_out(Topic, Properties, #state{topic_aliases_out = TA,
 remove_property(p_topic_alias, #vmq_msg{properties = Properties} = Msg) ->
     Msg#vmq_msg{properties = maps:remove(p_topic_alias, Properties)}.
 
-auth_on_register(User, Password, Props, State) ->
+auth_on_register(Password, Props, State) ->
     #state{clean_start=CleanStart, peer=Peer, cap_settings=CAPSettings,
-           subscriber_id=SubscriberId} = State,
+           subscriber_id=SubscriberId, username=User} = State,
     HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
     case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
         ok ->
@@ -1501,7 +1501,9 @@ prop_val(Key, Args, Default) when is_boolean(Default) ->
 prop_val(Key, Args, Default) when is_atom(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_atom/1);
 prop_val(Key, Args, Default) when is_map(Default) ->
-    prop_val(Key, Args, Default, fun erlang:is_map/1).
+    prop_val(Key, Args, Default, fun erlang:is_map/1);
+prop_val(Key, Args, Default) when is_binary(Default) ->
+    prop_val(Key, Args, Default, fun erlang:is_binary/1).
 
 prop_val(Key, Args, Default, Validator) ->
     case proplists:get_value(Key, Args) of

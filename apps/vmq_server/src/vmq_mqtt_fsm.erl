@@ -538,7 +538,7 @@ check_client_id(#mqtt_connect{client_id=Id}, State) ->
 check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, State) of
+            case auth_on_register(Password, State#state{username=User}) of
                 {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_session=CleanSession,
                                        cap_settings=CAPSettings, def_opts=DOpts} = State1} ->
                     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
@@ -548,8 +548,8 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                                queue_pid := QPid}} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
-                                                             User]),
-                            State2 = State1#state{username=User, queue_pid=QPid, next_msg_id=MsgId},
+                                                             State1#state.username]),
+                            State2 = State1#state{queue_pid=QPid, next_msg_id=MsgId},
                             check_will(F, SessionPresent, State2);
                         {error, Reason} ->
                             lager:warning("can't register client ~p with username ~p due to ~p",
@@ -618,9 +618,9 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
             connack_terminate(?CONNACK_AUTH, State)
     end.
 
-auth_on_register(User, Password, State) ->
+auth_on_register(Password, State) ->
     #state{clean_session=Clean, peer=Peer, cap_settings=CAPSettings,
-           subscriber_id=SubscriberId} = State,
+           subscriber_id=SubscriberId, username=User} = State,
     HookArgs = [Peer, SubscriberId, User, Password, Clean],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
