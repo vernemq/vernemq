@@ -1,5 +1,7 @@
 # Changelog
 
+## VerneMQ 1.9.0
+
 - Ensure mountpoints specified at the protocol level are inherited on the
   specific listeners.
 - Fix missing output from `vernemq version` (#1190).
