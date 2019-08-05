@@ -1,5 +1,8 @@
 # Changelog
 
+- Update `cuttlefish` to fix parse issue with lines in the `vernemq.conf` file
+  consisting solely of white-space (#1208).
+
 ## VerneMQ 1.9.0
 
 - Ensure mountpoints specified at the protocol level are inherited on the
