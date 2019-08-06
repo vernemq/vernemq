@@ -751,10 +751,33 @@ normalize_sub_topics(Mods, _Opts) ->
     lists:map(
       fun({topics, Topics}) ->
               {topics,
-               [{proplists:get_value(<<"topic">>, T),
-                 proplists:get_value(<<"qos">>, T)} || T <- Topics]};
+               lists:map(
+                 fun(T) ->
+                         Topic = proplists:get_value(<<"topic">>, T),
+                         QoS = proplists:get_value(<<"qos">>, T),
+                         case lists:member(QoS, [0,1,2]) of
+                             true ->
+                                 NL = proplists:get_value(<<"no_local">>, T, false),
+                                 RAP = proplists:get_value(<<"rap">>, T, false),
+                                 RH = retain_handling(
+                                        proplists:get_value(<<"retain_handling">>, T, send_retain)),
+                                 {Topic, {QoS, #{no_local => NL,
+                                                 rap => RAP,
+                                                 retain_handling => RH}}};
+                             _ ->
+                                 {Topic, QoS}
+                         end
+                 end, Topics)};
          (E) -> E
       end, Mods).
+
+retain_handling(<<"send_retain">>) -> send_retain;
+retain_handling(<<"send_if_new_sub">>) -> send_if_new_sub;
+retain_handling(<<"dont_send">>) -> dont_send;
+retain_handling(Val) when is_atom(Val) ->
+    Val;
+retain_handling(Val) ->
+    throw({invalid_retain_handling, Val}).
 
 norm_payload(Mods, EOpts) ->
     lists:map(
@@ -778,7 +801,15 @@ encode_payload(Hook, Args, Opts)
           fun({topics, Topics}) ->
                   {topics,
                    lists:map(
-                             fun([T,Q]) ->
+                             fun([T,{Q, #{no_local := NL,
+                                          rap := Rap,
+                                          retain_handling := RH}}]) ->
+                                     [{topic, T},
+                                      {qos, Q},
+                                      {no_local, NL},
+                                      {rap, Rap},
+                                      {retain_handling, RH}];
+                                ([T, Q]) ->
                                      [{topic, T},
                                       {qos, Q}]
                              end,
@@ -860,7 +891,11 @@ b64decode(V, _) -> base64:decode(V).
 from_internal_qos(not_allowed) ->
     128;
 from_internal_qos(V) when is_integer(V) ->
-    V.
+    V;
+from_internal_qos({QoS, Opts}) when is_integer(QoS),
+                                    is_map(Opts) ->
+    {QoS, Opts}.
+
 
 enc_topic(Topic) when is_list(Topic) ->
     iolist_to_binary(Topic).
