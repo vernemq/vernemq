@@ -1049,7 +1049,7 @@ set_sock_opts(Opts) ->
 
 -spec auth_on_subscribe(username(), subscriber_id(),
                         [{topic(), qos()}], mqtt5_properties(),
-                        fun((username(), subscriber_id(), [{topic(), qos()}], mqtt5_properties()) ->
+                        fun((username(), subscriber_id(), [{topic(), subinfo()}], mqtt5_properties()) ->
                                    {ok, [qos() | not_allowed]} | {error, atom()})
                        ) -> {ok, auth_on_subscribe_m5_hook:sub_modifiers()} |
                             {error, atom()}.

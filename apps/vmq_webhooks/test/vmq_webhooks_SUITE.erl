@@ -307,7 +307,9 @@ auth_on_publish_m5_modify_props_test(_) ->
 auth_on_subscribe_m5_test(_) ->
     register_hook(auth_on_subscribe_m5, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
-                      [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1}],
+                      [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID},
+                       [{?TOPIC, {1,#{no_local => false,rap => false,
+                                      retain_handling => send_retain}}}],
                        #{?P_USER_PROPERTY =>
                              [{<<"k1">>, <<"v1">>}],
                          ?P_SUBSCRIPTION_ID => [1,2,3]}]),
@@ -315,7 +317,9 @@ auth_on_subscribe_m5_test(_) ->
                       [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, [{?TOPIC, 1}], #{}]),
     {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [?USERNAME, {?MOUNTPOINT, ?IGNORED_CLIENT_ID}, [{?TOPIC, 1}], #{}]),
-    {ok, #{topics := [{[<<"rewritten">>, <<"topic">>], 2},
+    {ok, #{topics := [{[<<"rewritten">>, <<"topic">>], {2, #{no_local := false,
+                                                             rap := false,
+                                                             retain_handling := send_retain}}},
                       {[<<"forbidden">>, <<"topic">>], 135}]}} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [?USERNAME, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, [{?TOPIC, 1}], #{}]),
     deregister_hook(auth_on_subscribe_m5, ?ENDPOINT).
@@ -354,7 +358,9 @@ on_subscribe_m5_test(_) ->
     register_hook(on_subscribe_m5, ?ENDPOINT),
     Self = pid_to_bin(self()),
     Args =
-        [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1},
+        [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, {1, #{no_local => false,
+                                                                  rap => false,
+                                                                  retain_handling => send_retain}}},
                                                    {?TOPIC, not_allowed}],
          #{?P_USER_PROPERTY =>
                [{<<"k1">>, <<"v1">>}],

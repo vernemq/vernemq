@@ -2,6 +2,8 @@
 
 - Update `cuttlefish` to fix parse issue with lines in the `vernemq.conf` file
   consisting solely of white-space (#1208).
+- Fix bug in the `vmq_webhooks` `auth_on_subscribe_m5` and `on_subscribe_m5`
+  hooks (#1280).
 
 ## VerneMQ 1.9.0
 
