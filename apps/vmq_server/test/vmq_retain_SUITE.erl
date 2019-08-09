@@ -64,7 +64,8 @@ groups() ->
        retain_with_properties,
        retain_with_message_expiry,
        subscribe_retain_as_published_test,
-       subscribe_retain_handling_flags_test
+       subscribe_retain_handling_flags_test,
+       subscribe_retain_subid_test
        |Tests]}
     ].
 
@@ -462,6 +463,39 @@ subscribe_retain_handling_flags_test(Cfg) ->
     ok = SubFun(Socket1, Topic, 3, send_if_new_sub),
     {error, timeout} = gen_tcp:recv(Socket1, 0, 100),
     ok = gen_tcp:send(Socket1, Disconnect).
+
+subscribe_retain_subid_test(Cfg) ->
+    %% test that retained messages delivered on subscription contain
+    %% the correct subscription identifiers.
+    Topic = vmq_cth:utopic(Cfg),
+    ClientId = vmq_cth:ustr(Cfg),
+
+    %% publish a retained msgs
+    Connect = packetv5:gen_connect(ClientId, [{clean_start, true}]),
+    Connack = packetv5:gen_connack(),
+    Disconnect = packetv5:gen_disconnect(),
+    PublishRetained = packetv5:gen_publish(Topic, 1, <<"a retained message">>, [{retain, true},
+                                                                                {mid, 7}]),
+    Puback = packetv5:gen_puback(7),
+    {ok, Socket0} = packetv5:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket0, PublishRetained),
+    ok = packetv5:expect_frame(Socket0, Puback),
+
+    %% subscribe to retained msg topic
+    SubTopic = packetv5:gen_subtopic(Topic, 0,  false, false, send_retain),
+    Subscribe = packetv5:gen_subscribe(8, [SubTopic], #{p_subscription_id => [5]}),
+    SubAck = packetv5:gen_suback(8, [0], #{}),
+    ok = gen_tcp:send(Socket0, Subscribe),
+    ok = packetv5:expect_frame(Socket0, SubAck),
+
+    %% see that we get the retained messages with the correct subid.
+    PubRet = packetv5:gen_publish(Topic, 0, <<"a retained message">>, [{retain, true},
+                                                                       {properties,
+                                                                        #{p_subscription_id => [5]}}]),
+    ok = packetv5:expect_frame(Socket0, PubRet),
+
+    ok = gen_tcp:send(Socket0, Disconnect),
+    ok = gen_tcp:close(Socket0).
 
 retain_compat_pre_test(_Cfg) ->
     Pre = <<"msg">>,
