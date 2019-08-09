@@ -4,6 +4,8 @@
   consisting solely of white-space (#1208).
 - Fix bug in the `vmq_webhooks` `auth_on_subscribe_m5` and `on_subscribe_m5`
   hooks (#1280).
+- Fix issue where errors would be logged when the /health endpoint was called
+  (#1281).
 
 ## VerneMQ 1.9.0
 

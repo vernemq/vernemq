@@ -17,26 +17,12 @@
 -behaviour(vmq_http_config).
 
 -export([routes/0]).
--export([init/2,
-         allowed_methods/2,
-         content_types_provided/2,
-         reply/2]).
+-export([init/2]).
 
 routes() ->
   [{"/health", ?MODULE, []}].
 
 init(Req, Opts) ->
-    {cowboy_rest, Req, Opts}.
-
-allowed_methods(Req, State) ->
-    {[<<"GET">>], Req, State}.
-
-content_types_provided(Req, State) ->
-	{[
-		{<<"application/json">>, reply}
-    ], Req, State}.
-
-reply(Req, _State) ->
     {Code, Payload} = case check_health_concerns() of
       [] ->
         {200, [{<<"status">>, <<"OK">>}]};
@@ -45,8 +31,8 @@ reply(Req, _State) ->
                {<<"reasons">>, Concerns}]}
     end,
     Headers = #{<<"content-type">> => <<"application/json">>},
-    cowboy_req:reply(Code, Headers, jsx:encode(Payload), Req).
-
+    cowboy_req:reply(Code, Headers, jsx:encode(Payload), Req),
+    {ok, Req, Opts}.
 
 -spec check_health_concerns() -> [] | [Concern :: string()].
 check_health_concerns() ->
