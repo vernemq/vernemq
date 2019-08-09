@@ -450,7 +450,7 @@ deliver_retained(_, _, _, #{retain_handling := send_if_new_sub}, true) ->
 deliver_retained(_SubscriberId, [<<"$share">>|_], _QoS, _SubOpts, _) ->
     %% Never deliver retained messages to subscriber groups.
     ok;
-deliver_retained({MP, _} = SubscriberId, Topic, QoS, _SubOpts, _) ->
+deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, _) ->
     QPid = get_queue_pid(SubscriberId),
     vmq_retain_srv:match_fold(
       fun ({T, #retain_msg{payload = Payload,
@@ -465,8 +465,9 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS, _SubOpts, _) ->
                              msg_ref=vmq_mqtt_fsm_util:msg_ref(),
                              expiry_ts = ExpiryTs,
                              properties=Properties},
+              Msg1 = maybe_add_sub_id({QoS,SubOpts}, Msg),
               maybe_delete_expired(ExpiryTs, MP, Topic),
-              vmq_queue:enqueue(QPid, {deliver, QoS, Msg});
+              vmq_queue:enqueue(QPid, {deliver, QoS, Msg1});
           ({T, Payload}, _) when is_binary(Payload) ->
               %% compatibility with old style retained messages.
               Msg = #vmq_msg{routing_key=T,

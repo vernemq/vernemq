@@ -6,6 +6,8 @@
   hooks (#1280).
 - Fix issue where errors would be logged when the /health endpoint was called
   (#1281).
+- Ensure MQTT 5.0 subscription identifiers are added to retained messages
+  delivered to the client when the subscription is made (#1287).
 
 ## VerneMQ 1.9.0
 
