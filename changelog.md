@@ -8,6 +8,7 @@
   (#1281).
 - Ensure MQTT 5.0 subscription identifiers are added to retained messages
   delivered to the client when the subscription is made (#1287).
+- Fix bug in `vmq_swc` which could prevent VerneMQ from starting up.
 
 ## VerneMQ 1.9.0
 
