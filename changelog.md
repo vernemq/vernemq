@@ -1,5 +1,8 @@
 # Changelog
 
+- Fix bug causing idle websocket connections to be closed after 60 seconds
+  (#1292).
+
 ## VerneMQ 1.9.1
 
 - Update `cuttlefish` to fix parse issue with lines in the `vernemq.conf` file
