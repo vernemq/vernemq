@@ -1376,9 +1376,8 @@ prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State0) ->
              properties=Props0,
              expiry_ts=ExpiryTS} = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State0),
-    HookArgs = [User, SubscriberId, Topic0, Payload0, Props0],
     {Topic1, Payload1, Props2} =
-    case vmq_plugin:all_till_ok(on_deliver_m5, HookArgs) of
+    case on_deliver_hook(User, SubscriberId, QoS, Topic0, Payload0, IsRetained, Props0) of
         {error, _} ->
             %% no on_deliver hook specified... that's ok
             {Topic0, Payload0, Props0};
@@ -1414,6 +1413,15 @@ prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State0) ->
              State2#state{
                waiting_acks=maps:put(OutgoingMsgId,
                                      Msg#vmq_msg{qos=NewQoS}, WAcks)}}
+    end.
+
+on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+    HookArgs0 = [User, SubscriberId, Topic, Payload, Props],
+    case vmq_plugin:all_till_ok(on_deliver_m5, HookArgs0) of
+        {error, _} ->
+            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain, Props],
+            vmq_plugin:all_till_ok(on_deliver_m5, HookArgs1);
+        Other -> Other
     end.
 
 suppress_lwt(?SESSION_TAKEN_OVER,

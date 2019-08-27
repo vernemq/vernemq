@@ -932,9 +932,8 @@ prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State) ->
              dup=IsDup,
              qos=MsgQoS} = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
-    HookArgs = [User, SubscriberId, Topic, Payload],
     {NewTopic, NewPayload} =
-    case vmq_plugin:all_till_ok(on_deliver, HookArgs) of
+    case on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetained) of
         {error, _} ->
             %% no on_deliver hook specified... that's ok
             {Topic, Payload};
@@ -962,6 +961,15 @@ prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State) ->
                       retry_queue=set_retry(publish, OutgoingMsgId, RetryInterval, RetryQueue),
                       waiting_acks=maps:put(OutgoingMsgId,
                                             Msg#vmq_msg{qos=NewQoS}, WAcks)}}
+    end.
+
+on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+    HookArgs0 = [User, SubscriberId, Topic, Payload],
+    case vmq_plugin:all_till_ok(on_deliver, HookArgs0) of
+        {error, _} ->
+            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
+            vmq_plugin:all_till_ok(on_deliver, HookArgs1);
+        Other -> Other
     end.
 
 -spec maybe_publish_last_will(state(), any()) -> ok.

@@ -15,6 +15,9 @@
 - Add hidden option `response_timeout` to `vmq_webhooks` endpoints. With this
   the time `vmq_webhooks` waits for a response from the remote endpoint can be
   configured. Default is 5000 milliseconds.
+- Add new `on_deliver/6` and `on_deliver_m5/7` hooks which adds QoS and retained
+  information to the parameters. The old variants are deprecated and will be
+  removed in the next major version.
 
 ## VerneMQ 1.9.2
 
