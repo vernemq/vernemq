@@ -1,5 +1,24 @@
 # Changelog
 
+- Fix bug causing idle websocket connections to be closed after 60 seconds
+  (#1292).
+- Fix MQTT 5.0 bug causing LWT not being sent when client disconnected with
+  Disconnect with Will Message (0x04) (#1291).
+
+## VerneMQ 1.9.1
+
+- Update `cuttlefish` to fix parse issue with lines in the `vernemq.conf` file
+  consisting solely of white-space (#1208).
+- Fix bug in the `vmq_webhooks` `auth_on_subscribe_m5` and `on_subscribe_m5`
+  hooks (#1280).
+- Fix issue where errors would be logged when the /health endpoint was called
+  (#1281).
+- Ensure MQTT 5.0 subscription identifiers are added to retained messages
+  delivered to the client when the subscription is made (#1287).
+- Fix bug in `vmq_swc` which could prevent VerneMQ from starting up.
+
+## VerneMQ 1.9.0
+
 - Ensure mountpoints specified at the protocol level are inherited on the
   specific listeners.
 - Fix missing output from `vernemq version` (#1190).
@@ -49,6 +68,10 @@
 - Upgrade dependency `cuttlefish` to version *2.2.0*.
 - Improve large queue initialization performance by reducing algorithmic
   complexity from O(n^2) to O(nlogn) where n is the number of offline messages.
+- Add the ability to modify the `username` on `auth_on_register` and `auth_on_register_m5`
+  hooks. Supports both `vmq_diversity` and `vmq_webhooks`.
+- Upgrade the `vmq_diversity` redis driver `eredis` to version 1.2.0.
+- Fix `vmq_diversity` supervisor restart shutdown issue (#1241).
 
 ## VerneMQ 1.8.0
 

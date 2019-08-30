@@ -169,6 +169,8 @@ auth_on_register_test(_) ->
     {ok, [{subscriber_id,
            {"mynewmount", <<"changed_client_id">>}}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true]),
+    {ok, [{username, <<"changed_username">>}]} = vmq_plugin:all_till_ok(auth_on_register,
+                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?CHANGED_USERNAME, ?PASSWORD, true]),
     deregister_hook(auth_on_register, ?ENDPOINT).
 
 auth_on_publish_test(_) ->
@@ -250,6 +252,8 @@ auth_on_register_m5_test(_) ->
     {ok, #{subscriber_id :=
            {"mynewmount", <<"changed_client_id">>}}} = vmq_plugin:all_till_ok(auth_on_register_m5,
                       [?PEER, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, ?USERNAME, ?PASSWORD, true, #{}]),
+    {ok, #{username := <<"changed_username">>}} = vmq_plugin:all_till_ok(auth_on_register_m5,
+                      [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?CHANGED_USERNAME, ?PASSWORD, true, #{}]),
     WantUserProps = [{<<"k1">>, <<"v1">>},
                      {<<"k1">>, <<"v2">>},
                      {<<"k2">>, <<"v2">>}],
@@ -303,7 +307,9 @@ auth_on_publish_m5_modify_props_test(_) ->
 auth_on_subscribe_m5_test(_) ->
     register_hook(auth_on_subscribe_m5, ?ENDPOINT),
     ok = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
-                      [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1}],
+                      [?USERNAME, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID},
+                       [{?TOPIC, {1,#{no_local => false,rap => false,
+                                      retain_handling => send_retain}}}],
                        #{?P_USER_PROPERTY =>
                              [{<<"k1">>, <<"v1">>}],
                          ?P_SUBSCRIPTION_ID => [1,2,3]}]),
@@ -311,7 +317,9 @@ auth_on_subscribe_m5_test(_) ->
                       [?USERNAME, {?MOUNTPOINT, ?NOT_ALLOWED_CLIENT_ID}, [{?TOPIC, 1}], #{}]),
     {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [?USERNAME, {?MOUNTPOINT, ?IGNORED_CLIENT_ID}, [{?TOPIC, 1}], #{}]),
-    {ok, #{topics := [{[<<"rewritten">>, <<"topic">>], 2},
+    {ok, #{topics := [{[<<"rewritten">>, <<"topic">>], {2, #{no_local := false,
+                                                             rap := false,
+                                                             retain_handling := send_retain}}},
                       {[<<"forbidden">>, <<"topic">>], 135}]}} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [?USERNAME, {?MOUNTPOINT, ?CHANGED_CLIENT_ID}, [{?TOPIC, 1}], #{}]),
     deregister_hook(auth_on_subscribe_m5, ?ENDPOINT).
@@ -350,7 +358,9 @@ on_subscribe_m5_test(_) ->
     register_hook(on_subscribe_m5, ?ENDPOINT),
     Self = pid_to_bin(self()),
     Args =
-        [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1},
+        [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, {1, #{no_local => false,
+                                                                  rap => false,
+                                                                  retain_handling => send_retain}}},
                                                    {?TOPIC, not_allowed}],
          #{?P_USER_PROPERTY =>
                [{<<"k1">>, <<"v1">>}],

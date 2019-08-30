@@ -369,7 +369,7 @@ pre_connect_auth(#mqtt5_auth{properties = #{p_authentication_method := AuthMetho
 pre_connect_auth(#mqtt5_disconnect{properties=Properties,
                                    reason_code = RC}, State) ->
     _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, disconnect_rc2rcn(RC)}),
-    terminate_by_client(Properties, State);
+    terminate_by_client(RC, Properties, State);
 pre_connect_auth(_, State) ->
     terminate(?PROTOCOL_ERROR, State).
 
@@ -639,7 +639,7 @@ connected(#mqtt5_pingreq{}, State) ->
     {State, [serialise_frame(Frame)]};
 connected(#mqtt5_disconnect{properties=Properties, reason_code=RC}, State) ->
     _ = vmq_metrics:incr({?MQTT5_DISCONNECT_RECEIVED, disconnect_rc2rcn(RC)}),
-    terminate_by_client(Properties, State);
+    terminate_by_client(RC, Properties, State);
 connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
     terminate(Reason, State);
@@ -697,38 +697,57 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid=QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-terminate_by_client(Props0, #state{queue_pid=QPid} = State) ->
+-spec terminate_by_client(reason_code(), properties(), state()) -> any().
+terminate_by_client(RC, Props0, #state{queue_pid=QPid} = State) ->
     OldSInt = State#state.session_expiry_interval,
     NewSInt = maps:get(p_session_expiry_interval, Props0, 0),
-    Out = case {OldSInt,NewSInt} of
-              {0,NewSInt} when NewSInt > 0 ->
-                  [gen_disconnect(?PROTOCOL_ERROR, #{})];
-              {0,0} ->
-                  [];
-              _ ->
-                  %% the session expiry is legal, use the one we just
-                  %% received or fall back to the one from the connect
-                  %% packet.
-                  SInt = maps:get(p_session_expiry_interval, Props0, OldSInt),
-                  Props1 = maps:put(p_session_expiry_interval, SInt, Props0),
-                  QueueOpts = queue_opts_from_properties(Props1),
-                  vmq_queue:set_opts(QPid, QueueOpts),
-                  handle_waiting_acks_and_msgs(State),
-                  []
+    {Out, NewState} =
+        case {OldSInt,NewSInt} of
+            {0,NewSInt} when NewSInt > 0 ->
+                {[gen_disconnect(?PROTOCOL_ERROR, #{})], State};
+            {0,0} ->
+                {[], State};
+            _ ->
+                %% the session expiry is legal, use the one we just
+                %% received or fall back to the one from the connect
+                %% packet.
+                SInt = maps:get(p_session_expiry_interval, Props0, OldSInt),
+                Props1 = maps:put(p_session_expiry_interval, SInt, Props0),
+                QueueOpts = queue_opts_from_properties(Props1),
+                vmq_queue:set_opts(QPid, QueueOpts),
+                handle_waiting_acks_and_msgs(State),
+                {[], State#state{session_expiry_interval = SInt}}
         end,
+    case RC of
+        ?M5_NORMAL_DISCONNECT ->
+            do_nothing;
+        ?M5_DISCONNECT_WITH_WILL_MSG ->
+            schedule_last_will_msg(NewState);
+        _ ->
+            %% not really clear in the spec if we should send here,
+            %% but we do for now.
+            schedule_last_will_msg(NewState)
+    end,
     {stop, normal, Out}.
 
 -spec terminate(reason_code_name() | {error, any()}, state()) -> any().
 terminate(Reason, State) ->
     terminate(Reason, #{}, State).
 
-terminate(Reason, Props, #state{session_expiry_interval=SessionExpiryInterval} = State) ->
+terminate(Reason, Props, #state{session_expiry_interval=SessionExpiryInterval,
+                                subscriber_id=SubscriberId} = State) ->
     _ = case SessionExpiryInterval of
             0 -> ok;
             _ ->
                 handle_waiting_acks_and_msgs(State)
         end,
-    maybe_publish_last_will(State, Reason),
+    case suppress_lwt(Reason, State) of
+        true ->
+            lager:debug("last will and testament suppressed on session takeover for subscriber ~p",
+                        [SubscriberId]);
+        _ ->
+            schedule_last_will_msg(State)
+    end,
     Out =
         case Reason of
             {error, _} ->
@@ -835,7 +854,7 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Props} = 
            State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, Props, State) of
+            case auth_on_register(Password, Props, State#state{username=User}) of
                 {ok, QueueOpts, OutProps0, NewState} ->
                     SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
                     register_subscriber(F, maps:merge(OutProps, OutProps0), QueueOpts,
@@ -866,10 +885,10 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Props} = 
                                 State#state{session_expiry_interval=SessionExpiryInterval})
     end.
 
-register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
+register_subscriber(#mqtt5_connect{}=F, OutProps0,
                     QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_start=CleanStart,
                                       cap_settings=CAPSettings, fc_receive_max_broker=ReceiveMax,
-                                      def_opts=DOpts} = State) ->
+                                      username=User, def_opts=DOpts} = State) ->
     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanStart, QueueOpts) of
         {ok, #{session_present := SessionPresent,
@@ -993,9 +1012,9 @@ maybe_apply_topic_alias_out(Topic, Properties, #state{topic_aliases_out = TA,
 remove_property(p_topic_alias, #vmq_msg{properties = Properties} = Msg) ->
     Msg#vmq_msg{properties = maps:remove(p_topic_alias, Properties)}.
 
-auth_on_register(User, Password, Props, State) ->
+auth_on_register(Password, Props, State) ->
     #state{clean_start=CleanStart, peer=Peer, cap_settings=CAPSettings,
-           subscriber_id=SubscriberId} = State,
+           subscriber_id=SubscriberId, username=User} = State,
     HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
     case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
         ok ->
@@ -1024,6 +1043,7 @@ auth_on_register(User, Password, Props, State) ->
 
             ChangedState = State#state{
                              subscriber_id=?state_val(subscriber_id, Args, State),
+                             username=?state_val(username, Args, State),
                              clean_start=?state_val(clean_start, Args, State),
                              session_expiry_interval=?state_val(session_expiry_interval, Args, State),
                              reg_view=?state_val(reg_view, Args, State),
@@ -1048,7 +1068,7 @@ set_sock_opts(Opts) ->
 
 -spec auth_on_subscribe(username(), subscriber_id(),
                         [{topic(), qos()}], mqtt5_properties(),
-                        fun((username(), subscriber_id(), [{topic(), qos()}], mqtt5_properties()) ->
+                        fun((username(), subscriber_id(), [{topic(), subinfo()}], mqtt5_properties()) ->
                                    {ok, [qos() | not_allowed]} | {error, atom()})
                        ) -> {ok, auth_on_subscribe_m5_hook:sub_modifiers()} |
                             {error, atom()}.
@@ -1398,19 +1418,20 @@ prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State0) ->
                                      Msg#vmq_msg{qos=NewQoS}, WAcks)}}
     end.
 
--spec maybe_publish_last_will(state(), reason_code_name() | {error, any()}) -> ok.
-maybe_publish_last_will(#state{will_msg=undefined}, _Reason) -> ok;
-maybe_publish_last_will(#state{def_opts=#{suppress_lwt_on_session_takeover := true},
-                               subscriber_id=SubscriberId},
-                        ?SESSION_TAKEN_OVER) ->
-    lager:debug("last will and testament suppressed on session takeover for subscriber ~p",
-                [SubscriberId]),
-    ok;
-maybe_publish_last_will(#state{subscriber_id={_, ClientId} = SubscriberId, username=User,
+suppress_lwt(?SESSION_TAKEN_OVER,
+             #state{will_msg=WillMsg,
+                    def_opts=#{suppress_lwt_on_session_takeover := true}})
+  when WillMsg =/= undefined->
+    true;
+suppress_lwt(_,_) ->
+    false.
+
+-spec schedule_last_will_msg(state()) -> ok.
+schedule_last_will_msg(#state{will_msg=undefined}) -> ok;
+schedule_last_will_msg(#state{subscriber_id={_, ClientId} = SubscriberId, username=User,
                                will_msg=Msg, reg_view=RegView, cap_settings=CAPSettings,
                                queue_pid=QueuePid,
-                               session_expiry_interval=SessionExpiryInterval},
-                       _Reason) ->
+                               session_expiry_interval=SessionExpiryInterval}) ->
     LastWillFun =
         fun() ->
                 #vmq_msg{qos=QoS, routing_key=Topic, payload=Payload, retain=IsRetain} = Msg,
@@ -1423,8 +1444,7 @@ maybe_publish_last_will(#state{subscriber_id={_, ClientId} = SubscriberId, usern
             vmq_queue:set_delayed_will(QueuePid, LastWillFun, Delay);
         _ ->
             LastWillFun()
-    end,
-    ok.
+    end.
 
 get_last_will_delay(#vmq_msg{properties = #{p_will_delay_interval := Delay}}) ->
     MaxDuration = vmq_config:get_env(max_last_will_delay, 0),
@@ -1500,7 +1520,9 @@ prop_val(Key, Args, Default) when is_boolean(Default) ->
 prop_val(Key, Args, Default) when is_atom(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_atom/1);
 prop_val(Key, Args, Default) when is_map(Default) ->
-    prop_val(Key, Args, Default, fun erlang:is_map/1).
+    prop_val(Key, Args, Default, fun erlang:is_map/1);
+prop_val(Key, Args, Default) when is_binary(Default) ->
+    prop_val(Key, Args, Default, fun erlang:is_binary/1).
 
 prop_val(Key, Args, Default, Validator) ->
     case proplists:get_value(Key, Args) of

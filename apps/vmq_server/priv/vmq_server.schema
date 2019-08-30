@@ -319,7 +319,7 @@
 %% @doc specifies the timeout for enqueing something in a queue on a remote node.
 {mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [
                                                                           {default, 5000},
-                                                                          {datatype, integer},
+                                                                          {datatype, [integer, {atom, infinity}]},
                                                                           hidden
                                                                          ]}.
 

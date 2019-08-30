@@ -28,13 +28,17 @@ function auth_on_register(reg)
     assert(reg.username == "test-user")
     assert(reg.password == "test-password")
     assert(reg.clean_session == true)
-    if reg.client_id ~= "changed-subscriber-id" then
+    if reg.client_id == "changed-subscriber-id" then
+         -- we must change subscriber_id
+        print("auth_on_register changed subscriber_id called")
+        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
+    elseif reg.client_id == "changed-username" then
+        -- we must change username
+        print("auth_on_register changed username called")
+        return {username = "override-username"}
+    else
         print("auth_on_register called")
         return validate_client_id(reg.client_id)
-    else
-        -- we must change properties
-        print("auth_on_register changed called")
-        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
     end
 end
 
@@ -183,13 +187,17 @@ function auth_on_register_m5(reg)
     assert(reg.username == "test-user")
     assert(reg.password == "test-password")
     assert(reg.clean_start == true)
-    if reg.client_id ~= "changed-subscriber-id" then
+    if reg.client_id == "changed-subscriber-id" then
+        -- we must change subscriber_id
+        print("auth_on_register_m5 changed subscriber_id called")
+        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
+    elseif reg.client_id == "changed-username" then
+       -- we must change username
+       print("auth_on_register_m5 changed username called")
+       return {username = "override-username"} 
+    else
         print("auth_on_register_m5 called")
         return validate_client_id(reg.client_id)
-    else
-        -- we must change subscriberid
-        print("auth_on_register_m5 changed called")
-        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
     end
     -- reg.properties are ignored for now.
 end

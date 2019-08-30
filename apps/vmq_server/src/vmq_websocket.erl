@@ -59,7 +59,7 @@ init(Req, Opts) ->
                     _ ->
                         FsmMod:init(Peer, Opts)
                 end,
-            WsOpts0 = proplists:get_value(ws_opts, Opts, #{}),
+            WsOpts0 = proplists:get_value(ws_opts, Opts, #{idle_timeout => infinity}),
             WsOpts  = maps:merge(#{compress => true}, WsOpts0),
             {vmq_cowboy_websocket, Req0, #state{peer=Peer,
                                                 fsm_state=FsmState, fsm_mod=FsmMod,

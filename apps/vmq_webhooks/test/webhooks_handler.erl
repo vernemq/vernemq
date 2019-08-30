@@ -98,6 +98,9 @@ auth_on_register(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
             modifiers => #{mountpoint => <<"mynewmount">>,
                            client_id => <<"changed_client_id">>}}};
+auth_on_register(#{username := ?CHANGED_USERNAME}) ->
+    {200, #{result => <<"ok">>,
+            modifiers => #{username => <<"changed_username">>}}};
 auth_on_register(#{subscriberid := <<"internal_server_error">>}) ->
     throw(internal_server_error).
 
@@ -118,6 +121,9 @@ auth_on_register_m5(#{client_id := ?CHANGED_CLIENT_ID}) ->
     {200, #{result => <<"ok">>,
             modifiers => #{mountpoint => <<"mynewmount">>,
                            client_id => <<"changed_client_id">>}}};
+auth_on_register_m5(#{username := ?CHANGED_USERNAME}) ->
+    {200, #{result => <<"ok">>,
+            modifiers => #{username => <<"changed_username">>}}};
 auth_on_register_m5(#{client_id := ?WITH_PROPERTIES,
                       properties :=
                           #{?P_SESSION_EXPIRY_INTERVAL := 5,
@@ -255,7 +261,12 @@ auth_on_subscribe(#{subscriberid := <<"internal_server_error">>}) ->
 auth_on_subscribe_m5(#{username := ?USERNAME,
                        client_id := ?ALLOWED_CLIENT_ID,
                        mountpoint := ?MOUNTPOINT_BIN,
-                       topics := [#{topic := ?TOPIC, qos := 1}],
+                       topics := [#{topic := ?TOPIC,
+                                    qos:= 1,
+                                    no_local := false,
+                                    rap := false,
+                                    retain_handling := <<"send_retain">>
+                                   }],
                        properties :=
                            #{?P_USER_PROPERTY :=
                                  [#{key := <<"azE=">>,val := <<"djE=">>}],
@@ -270,7 +281,10 @@ auth_on_subscribe_m5(#{client_id := ?CHANGED_CLIENT_ID}) ->
             modifiers =>
                 #{topics =>
                       [#{topic => <<"rewritten/topic">>,
-                         qos => 2},
+                         qos => 2,
+                         no_local => false,
+                         rap => false,
+                         retain_handling => <<"send_retain">>},
                        #{topic => <<"forbidden/topic">>,
                          qos => 135}]}}};
 auth_on_subscribe_m5(#{subscriberid := <<"internal_server_error">>}) ->
@@ -345,7 +359,10 @@ on_subscribe(#{username := BinPid,
 on_subscribe_m5(#{username := BinPid,
                   mountpoint := ?MOUNTPOINT_BIN,
                   client_id := ?ALLOWED_CLIENT_ID,
-                  topics := [#{topic := ?TOPIC, qos := 1},
+                  topics := [#{topic := ?TOPIC, qos := 1,
+                               no_local := false,
+                               rap := false,
+                               retain_handling := <<"send_retain">>},
                              #{topic := ?TOPIC, qos := 128}],
                   properties :=
                       #{?P_USER_PROPERTY := [#{key := <<"azE=">>,

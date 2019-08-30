@@ -18,7 +18,8 @@
 %% API
 -export([start_link/1,
          publish/2,
-         enqueue/3,
+         enqueue/4,
+         enqueue_async/3,
          connect_params/1,
          status/1]).
 
@@ -64,23 +65,38 @@ publish(Pid, Msg) ->
             {error, Reason}
     end.
 
-enqueue(Pid, Term, BufferIfUnreachable) ->
+enqueue(Pid, Term, BufferIfUnreachable, Timeout) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
     Pid ! {enq, self(), Ref, Term, BufferIfUnreachable},
-    %% TODO: This should likely be moved out as retrieving configs
-    %% from the app_env can be a bottleneck. We should look at this
-    %% for 2.0 as this might be a backwards incompatible change.
-    Timeout = vmq_config:get_env(remote_enqueue_timeout),
-    receive
-        {Ref, Reply} ->
-            demonitor(MRef, [flush]),
-            Reply;
-        {'DOWN', MRef, process, Pid, Reason} ->
-            {error, Reason}
-    after
-        Timeout -> {error, timeout}
+    case Timeout of
+        infinity ->
+            receive
+                {Ref, Reply} ->
+                    demonitor(MRef, [flush]),
+                    Reply;
+                {'DOWN', MRef, process, Pid, Reason} ->
+                    {error, Reason}
+            end;
+        _ ->
+            receive
+                {Ref, Reply} ->
+                    demonitor(MRef, [flush]),
+                    Reply;
+                {'DOWN', MRef, process, Pid, Reason} ->
+                    {error, Reason}
+            after
+                Timeout ->
+                    demonitor(MRef, [flush]),
+                    {error, timeout}
+            end
     end.
+
+enqueue_async(Pid, Term, BufferIfUnreachable) ->
+    Ref = make_ref(),
+    MRef = monitor(process, Pid),
+    Pid ! {enq, self(), Ref, Term, BufferIfUnreachable},
+    {MRef, Ref}.
 
 status(Pid) ->
     Ref = make_ref(),

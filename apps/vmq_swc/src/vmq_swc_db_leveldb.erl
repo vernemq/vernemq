@@ -93,19 +93,23 @@ handle_call({write, Objects}, _From, State) ->
 handle_call({read, Type, Key}, _From, State) ->
     {reply, eleveldb:get(State#state.ref, key(Type, Key), State#state.read_opts), State};
 
-handle_call({fold, Type, FoldFun, Acc, FirstKey0}, _From, State) ->
-    {ok, Itr} = eleveldb:iterator(State#state.ref, State#state.fold_opts),
-    FirstKey1 =
-    case FirstKey0 of
-        first ->
-            key(Type, <<>>);
-        _ ->
-            key(Type, FirstKey0)
-    end,
-    KeyPrefix = key_prefix(Type),
-    KeyPrefixSize = byte_size(KeyPrefix),
-    Result = iterate(FoldFun, Acc, Itr, key_prefix(Type), KeyPrefixSize, eleveldb:iterator_move(Itr, FirstKey1)),
-    {reply, Result, State}.
+handle_call({fold, Type, FoldFun, Acc, FirstKey0}, From, State) ->
+    spawn_link(
+      fun() ->
+              {ok, Itr} = eleveldb:iterator(State#state.ref, State#state.fold_opts),
+              FirstKey1 =
+                  case FirstKey0 of
+                      first ->
+                          key(Type, <<>>);
+                      _ ->
+                          key(Type, FirstKey0)
+                  end,
+              KeyPrefix = key_prefix(Type),
+              KeyPrefixSize = byte_size(KeyPrefix),
+              Result = iterate(FoldFun, Acc, Itr, key_prefix(Type), KeyPrefixSize, eleveldb:iterator_move(Itr, FirstKey1)),
+              gen_server:reply(From, Result)
+      end),
+    {noreply, State}.
 
 handle_cast(_Req, State) ->
     {noreply, State}.
