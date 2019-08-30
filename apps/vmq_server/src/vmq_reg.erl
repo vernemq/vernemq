@@ -46,7 +46,8 @@
 %% called by vmq_cluster_com
 -export([route_remote_msg/4]).
 %% used from plugins
--export([direct_plugin_exports/1]).
+-export([direct_plugin_exports/1,
+         direct_plugin_exports/2]).
 %% used by reg views
 -export([subscribe_subscriber_changes/0,
          fold_subscriptions/2,
@@ -721,26 +722,57 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
     CAPUnsubscribe = vmq_config:get_env(allow_unsubscribe_during_netsplit, false),
     SGPolicyConfig = vmq_config:get_env(shared_subscription_policy, prefer_local),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
-    MountPoint = "",
-    ClientId = fun(T) ->
-                       list_to_binary(
-                         base64:encode_to_string(
-                           integer_to_binary(
-                             erlang:phash2(T)
-                            )
-                          ))
-               end,
-    CallingPid = self(),
-    SubscriberId = {MountPoint, ClientId(CallingPid)},
+    case direct_plugin_exports(Mod, #{mountpoint => "",
+                                      cap_publish => CAPPublish,
+                                      cap_subscribe => CAPSubscribe,
+                                      cap_unsubscribe => CAPUnsubscribe,
+                                      sg_policy => SGPolicyConfig,
+                                      reg_view => RegView}) of
+        {error, _} = E ->
+            E;
+        {ok, #{register_fun := RegFun,
+               publish_fun := PubFun,
+               subscribe_fun := SubFun,
+               unsubscribe_fun := UnsubFun}} ->
+            {RegFun, PubFun, {SubFun, UnsubFun}}
+    end.
 
+-spec direct_plugin_exports(module(), #{}) ->
+   {ok, #{client_id := client_id(),
+          register_fun := function(),
+          publish_fun := function(),
+          subscribe_fun := function(),
+          unsubscribe_fun := function()}} |
+   {error, invalid_config}.
+direct_plugin_exports(LogName, Opts) ->
+    CAPPublish = maps:get(cap_publish, Opts, false),
+    CAPSubscribe = maps:get(cap_subscribe, Opts, false),
+    CAPUnsubscribe = maps:get(cap_unsubscribe, Opts, false),
+    SGPolicy = maps:get(sg_policy, Opts, prefer_local),
+    Mountpoint = maps:get(mountpoint, Opts, ""),
+    RegView = maps:get(reg_view, Opts, vmq_reg_trie),
+
+    CallingPid = self(),
+    ClientIdDef = list_to_binary(
+                    base64:encode_to_string(
+                      integer_to_binary(
+                        erlang:phash2(CallingPid)))),
+    ClientId = maps:get(client_id, Opts, ClientIdDef),
+    SubscriberId = {Mountpoint, ClientId},
+    MaybeWaitTillReady =
+        case maps:get(wait_till_ready, Opts, undefined) of
+            undefined -> fun wait_til_ready/0;
+            true -> fun wait_til_ready/0;
+            false -> fun() -> ok end
+        end,
     RegisterFun =
     fun() ->
             PluginPid = self(),
-            wait_til_ready(),
+            MaybeWaitTillReady(),
             PluginSessionPid = spawn_link(
                                  fun() ->
                                          monitor(process, PluginPid),
-                                         vmq_mqtt_fsm_util:plugin_receive_loop(PluginPid, Mod)
+                                         vmq_mqtt_fsm_util:plugin_receive_loop(PluginPid, LogName)
                                  end),
             QueueOpts = maps:merge(vmq_queue:default_opts(),
                                    #{cleanup_on_disconnect => true,
@@ -751,10 +783,10 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
     end,
 
     PublishFun =
-    fun([W|_] = Topic, Payload, Opts) when is_binary(W)
+    fun([W|_] = Topic, Payload, Opts_) when is_binary(W)
                                             and is_binary(Payload)
                                             and is_map(Opts) ->
-            wait_til_ready(),
+            MaybeWaitTillReady(),
             %% allow a plugin developer to override
             %% - mountpoint
             %% - dup flag
@@ -764,35 +796,40 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             %% - shared subscription policy
             Msg = #vmq_msg{
                      routing_key=Topic,
-                     mountpoint=maps:get(mountpoint, Opts, MountPoint),
+                     mountpoint=maps:get(mountpoint, Opts_, Mountpoint),
                      payload=Payload,
                      msg_ref=vmq_mqtt_fsm_util:msg_ref(),
                      qos = maps:get(qos, Opts, 0),
                      dup=maps:get(dup, Opts, false),
                      retain=maps:get(retain, Opts, false),
-                     sg_policy=maps:get(shared_subscription_policy, Opts, SGPolicyConfig)
+                     sg_policy=maps:get(shared_subscription_policy, Opts, SGPolicy)
                     },
-            publish(CAPPublish, RegView, ClientId(CallingPid), Msg)
+            publish(CAPPublish, RegView, ClientId, Msg)
     end,
 
     SubscribeFun =
     fun([W|_] = Topic) when is_binary(W) ->
-            wait_til_ready(),
+            MaybeWaitTillReady(),
             CallingPid = self(),
-            subscribe(CAPSubscribe, {MountPoint, ClientId(CallingPid)}, [{Topic, 0}]);
+            subscribe(CAPSubscribe, {Mountpoint, ClientId}, [{Topic, 0}]);
        (_) ->
             {error, invalid_topic}
     end,
 
     UnsubscribeFun =
     fun([W|_] = Topic) when is_binary(W) ->
-            wait_til_ready(),
+            MaybeWaitTillReady(),
             CallingPid = self(),
-            unsubscribe(CAPUnsubscribe, {MountPoint, ClientId(CallingPid)}, [Topic]);
+            unsubscribe(CAPUnsubscribe, {Mountpoint, ClientId}, [Topic]);
        (_) ->
             {error, invalid_topic}
     end,
-    {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}}.
+    {ok, #{register_fun => RegisterFun,
+           publish_fun => PublishFun,
+           subscribe_fun => SubscribeFun,
+           unsubscribe_fun => UnsubscribeFun,
+           client_id => ClientId}}.
+
 
 subscribe_subscriber_changes() ->
     vmq_subscriber_db:subscribe_db_events().
