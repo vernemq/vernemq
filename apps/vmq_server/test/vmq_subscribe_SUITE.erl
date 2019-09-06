@@ -196,11 +196,15 @@ subscription_ids(Cfg) ->
     Sub4 =
         packetv5:gen_subscribe(
           8, [packetv5:gen_subtopic(BT ++ "/no-overlap",0)], #{p_subscription_id => [8]}),
+    Sub5 =
+        packetv5:gen_subscribe(
+          9, [packetv5:gen_subtopic("$share/group/" ++ BT ++ "/no-overlap-ss", 0)], #{p_subscription_id => [9]}),
 
     SubAck1 = packetv5:gen_suback(5,[0],#{}),
     SubAck2 = packetv5:gen_suback(6,[0],#{}),
     SubAck3 = packetv5:gen_suback(7,[0,0],#{}),
     SubAck4 = packetv5:gen_suback(8,[0],#{}),
+    SubAck5 = packetv5:gen_suback(9,[0],#{}),
 
     {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Sub1),
@@ -211,6 +215,8 @@ subscription_ids(Cfg) ->
     ok = packetv5:expect_frame(Socket, SubAck3),
     ok = gen_tcp:send(Socket, Sub4),
     ok = packetv5:expect_frame(Socket, SubAck4),
+    ok = gen_tcp:send(Socket, Sub5),
+    ok = packetv5:expect_frame(Socket, SubAck5),
 
     Pub = fun(T,M) ->
                   Publish = packetv5:gen_publish(T, 0, M, []),
@@ -265,8 +271,11 @@ subscription_ids(Cfg) ->
     ok = Pub(BT ++ "/no-overlap", <<"msg5">>),
     ok = ExpPub(BT ++ "/no-overlap", <<"msg5">>, [8]),
 
-    {error, timeout} = gen_tcp:recv(Socket, 0, 100),
-    ok.
+    %% publish to shared subscription with subscription id
+    ok = Pub(BT ++ "/no-overlap-ss", <<"msg6">>),
+    ok = ExpPub(BT ++ "/no-overlap-ss", <<"msg6">>, [9]),
+
+    {error, timeout} = gen_tcp:recv(Socket, 0, 100).
 
 subscribe_qos0_test(_) ->
     Connect = packet:gen_connect("subscribe-qos0-test", [{keepalive,10}]),
