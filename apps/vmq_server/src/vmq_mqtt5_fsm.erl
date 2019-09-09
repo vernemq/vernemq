@@ -91,7 +91,6 @@
           topic_alias_max_out               :: non_neg_integer(), %% 0 means no topic aliases allowed.
           topic_aliases_in=#{}              :: topic_aliases_in(), %% topic aliases used from client to broker.
           topic_aliases_out=#{}             :: topic_aliases_out(), %% topic aliases used from broker to client.
-          allowed_protocol_versions         :: [5],
 
           %% flow control
           fc_receive_max_client=?FC_RECEIVE_MAX :: receive_max(),
@@ -112,7 +111,8 @@
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 
-init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = ConnectFrame) ->
+init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties,
+                                proto_ver = ProtoVer} = ConnectFrame) ->
     rand:seed(exsplus, os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
@@ -185,17 +185,23 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties} = C
                    reg_view=RegView,
                    def_opts = DOpts1,
                    trace_fun=TraceFun,
-                   allowed_protocol_versions=AllowedProtocolVersions,
                    fc_receive_max_client=FcReceiveMaxClient,
                    fc_receive_max_broker=FcReceiveMaxBroker,
                    last_time_active=os:timestamp()},
 
-    case check_enhanced_auth(ConnectFrame, State) of
-        {stop, _, _} = R -> R;
-        {pre_connect_auth, NewState, Out} ->
-            {{pre_connect_auth, NewState}, Out};
-        {NewState, Out} ->
-            {{connected, set_last_time_active(true, NewState)}, Out}
+    case lists:member(ProtoVer, AllowedProtocolVersions) of
+        true ->
+            case check_enhanced_auth(ConnectFrame, State) of
+                {stop, _, _} = R -> R;
+                {pre_connect_auth, NewState, Out} ->
+                    {{pre_connect_auth, NewState}, Out};
+                {NewState, Out} ->
+                    {{connected, set_last_time_active(true, NewState)}, Out}
+            end;
+        false ->
+            lager:warning("invalid protocol version for ~p ~p",
+                          [SubscriberId, ProtoVer]),
+            connack_terminate(?UNSUPPORTED_PROTOCOL_VERSION, State)
     end.
 
 data_in(Data, SessionState) when is_binary(Data) ->
@@ -830,21 +836,13 @@ check_client_id(#mqtt5_connect{client_id= <<>>, proto_ver=5} = F,
     check_user(F#mqtt5_connect{client_id=RandomClientId},
                OutProps#{p_assigned_client_id => RandomClientId},
                State#state{subscriber_id=SubscriberId});
-check_client_id(#mqtt5_connect{client_id=ClientId, proto_ver=V} = F,
+check_client_id(#mqtt5_connect{client_id=ClientId} = F,
                 OutProps,
-                #state{max_client_id_size=S,
-                       allowed_protocol_versions=AllowedVersions} = State)
+                #state{max_client_id_size=S} = State)
   when byte_size(ClientId) =< S ->
     {MountPoint, _} = State#state.subscriber_id,
     SubscriberId = {MountPoint, ClientId},
-    case lists:member(V, AllowedVersions) of
-        true ->
-            check_user(F, OutProps, State#state{subscriber_id=SubscriberId});
-        false ->
-            lager:warning("invalid protocol version for ~p ~p",
-                          [SubscriberId, V]),
-            connack_terminate(?UNSUPPORTED_PROTOCOL_VERSION, State)
-    end;
+    check_user(F, OutProps, State#state{subscriber_id=SubscriberId});
 check_client_id(#mqtt5_connect{client_id=Id}, _OutProps, State) ->
     lager:warning("invalid client id ~p", [Id]),
     connack_terminate(?CLIENT_IDENTIFIER_NOT_VALID, State).

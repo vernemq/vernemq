@@ -6,6 +6,9 @@
   Disconnect with Will Message (0x04) (#1291).
 - Ensure MQTT 5.0 subscription identifers are added to messages delivered via
   shared subscriptions (#1294).
+- Fix protocol version check bug which would allow MQTT 5.0 clients to connect
+  even if the MTT 5.0 protocol was not specified for the listener. This happened
+  for clients which connected with an empty client-id.
 
 ## VerneMQ 1.9.1
 

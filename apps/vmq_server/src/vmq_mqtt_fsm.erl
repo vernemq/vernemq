@@ -68,7 +68,6 @@
           upgrade_qos=false                 :: boolean(),
           reg_view=vmq_reg_trie             :: atom(),
           cap_settings=#cap_settings{}      :: cap_settings(),
-          allowed_protocol_versions         :: [3|4|131|5],
 
           %% flags and settings which have a non-default value if
           %% present and default value if not present.
@@ -83,7 +82,8 @@
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 
-init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
+init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive,
+                               proto_ver=ProtoVer} = ConnectFrame) ->
     rand:seed(exsplus, os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
@@ -140,16 +140,23 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                    retry_interval=1000 * RetryInterval,
                    cap_settings=CAPSettings,
                    reg_view=RegView,
-                   allowed_protocol_versions=AllowedProtocolVersions,
                    def_opts = DOpts1,
                    trace_fun=TraceFun},
 
-    case check_connect(ConnectFrame, State) of
-        {stop, Reason, Out} -> {stop, Reason, serialise([Out])};
-        {NewState, Out} ->
-            {{connected, set_last_time_active(true, NewState)}, serialise([Out])};
-        {NewState, Out, _SessCtrl} ->
-            {{connected, set_last_time_active(true, NewState)}, serialise([Out])}
+    case lists:member(ProtoVer, AllowedProtocolVersions) of
+        true ->
+            case check_connect(ConnectFrame, State) of
+                {stop, Reason, Out} -> {stop, Reason, serialise([Out])};
+                {NewState, Out} ->
+                    {{connected, set_last_time_active(true, NewState)}, serialise([Out])};
+                {NewState, Out, _SessCtrl} ->
+                    {{connected, set_last_time_active(true, NewState)}, serialise([Out])}
+            end;
+        false ->
+            lager:warning("invalid protocol version for ~p ~p",
+                          [SubscriberId, ProtoVer]),
+            {stop, normal, Data} = connack_terminate(?CONNACK_PROTO_VER, State),
+            {stop, normal, serialise([Data])}
     end.
 
 data_in(Data, SessionState) when is_binary(Data) ->
@@ -517,20 +524,12 @@ check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=3}, State) ->
     lager:warning("empty client id not allowed in mqttv3 ~p",
                 [State#state.subscriber_id]),
     connack_terminate(?CONNACK_INVALID_ID, State);
-check_client_id(#mqtt_connect{client_id=ClientId, proto_ver=V} = F,
-                #state{max_client_id_size=S,
-                       allowed_protocol_versions=AllowedVersions} = State)
+check_client_id(#mqtt_connect{client_id=ClientId} = F,
+                #state{max_client_id_size=S} = State)
   when byte_size(ClientId) =< S ->
     {MountPoint, _} = State#state.subscriber_id,
     SubscriberId = {MountPoint, ClientId},
-    case lists:member(V, AllowedVersions) of
-        true ->
-            check_user(F, State#state{subscriber_id=SubscriberId});
-        false ->
-            lager:warning("invalid protocol version for ~p ~p",
-                          [SubscriberId, V]),
-            connack_terminate(?CONNACK_PROTO_VER, State)
-    end;
+    check_user(F, State#state{subscriber_id=SubscriberId});
 check_client_id(#mqtt_connect{client_id=Id}, State) ->
     lager:warning("invalid client id ~p", [Id]),
     connack_terminate(?CONNACK_INVALID_ID, State).
@@ -648,8 +647,6 @@ auth_on_register(Password, State) ->
                              shared_subscription_policy=?state_val(shared_subscription_policy, Args, State),
                              retry_interval=?state_val(retry_interval, Args, State),
                              upgrade_qos=?state_val(upgrade_qos, Args, State),
-                             allowed_protocol_versions=
-                                 ?state_val(allowed_protocol_versions, Args, State),
                              cap_settings=ChangedCAPSettings
                             },
             {ok, queue_opts(ChangedState, Args), ChangedState};
