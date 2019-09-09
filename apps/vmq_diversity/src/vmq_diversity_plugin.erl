@@ -547,14 +547,14 @@ enable_hook(HookName) ->
 disable_hook(HookName) ->
     uncheck_exported_callback(HookName, ?MODULE:module_info(exports)).
 
-check_exported_callback(HookName, [{HookName, Arity}|_]) ->
-    vmq_plugin_mgr:enable_module_plugin(?MODULE, HookName, Arity);
+check_exported_callback(HookName, [{HookName, _Arity}|_]) ->
+    ok;
 check_exported_callback(HookName, [_|Exports]) ->
     check_exported_callback(HookName, Exports);
 check_exported_callback(_, []) -> {error, no_matching_callback_found}.
 
-uncheck_exported_callback(HookName, [{HookName, Arity}|_]) ->
-    vmq_plugin_mgr:disable_module_plugin(?MODULE, HookName, Arity);
+uncheck_exported_callback(HookName, [{HookName, _Arity}|_]) ->
+    ok;
 uncheck_exported_callback(HookName, [_|Exports]) ->
     uncheck_exported_callback(HookName, Exports);
 uncheck_exported_callback(_, []) -> {error, no_matching_callback_found}.
