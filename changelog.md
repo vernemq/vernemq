@@ -1,5 +1,7 @@
 # Changelog
 
+## VerneMQ 1.9.2
+
 - Fix bug causing idle websocket connections to be closed after 60 seconds
   (#1292).
 - Fix MQTT 5.0 bug causing LWT not being sent when client disconnected with
