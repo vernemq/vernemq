@@ -1,5 +1,9 @@
 # Changelog
 
+- Fix bug where websocket MQTT clients that didn't provide a
+  `sec-websocket-protocol` header to cause a crash to be logged. This case is
+  now handled and the connection is terminated gracefully (#1317).
+
 ## VerneMQ 1.9.2
 
 - Fix bug causing idle websocket connections to be closed after 60 seconds
