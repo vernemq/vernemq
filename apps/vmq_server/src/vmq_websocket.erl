@@ -167,7 +167,7 @@ maybe_reply(Out, State) ->
 
 add_websocket_sec_header(Req) ->
     case cowboy_req:header(<<"sec-websocket-protocol">>, Req) of
-        undefined -> Req;
+        undefined -> {error, unsupported_protocol};
         SubProtocols when is_list(SubProtocols);
                           is_binary(SubProtocols) ->
             case select_protocol(SubProtocols, ?SUPPORTED_PROTOCOLS) of
