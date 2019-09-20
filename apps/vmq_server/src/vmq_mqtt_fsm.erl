@@ -25,6 +25,10 @@
 
 -define(CLOSE_AFTER, 5000).
 
+-define(IS_PROTO_4(X), X =:= 4; X =:= 132).
+-define(IS_PROTO_3(X), X =:= 3; X =:= 131).
+-define(IS_BRIDGE(X), X =:= 131; X =:= 132).
+
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 
 -record(cap_settings, {
@@ -505,7 +509,7 @@ check_client_id(#mqtt_connect{} = Frame,
     check_client_id(Frame#mqtt_connect{username=UserNameFromCert},
                     State#state{username=UserNameFromCert});
 
-check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=4} = F, State) ->
+check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=Ver} = F, State) when ?IS_PROTO_4(Ver) ->
     %% [MQTT-3.1.3-8]
     %% If the Client supplies a zero-byte ClientId with CleanSession set to 0,
     %% the Server MUST respond to the >CONNECT Packet with a CONNACK return
@@ -520,7 +524,7 @@ check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=4} = F, State) ->
             check_user(F#mqtt_connect{client_id=RandomClientId},
                        State#state{subscriber_id=SubscriberId})
     end;
-check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=3}, State) ->
+check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=Ver}, State) when ?IS_PROTO_3(Ver) ->
     lager:warning("empty client id not allowed in mqttv3 ~p",
                 [State#state.subscriber_id]),
     connack_terminate(?CONNACK_INVALID_ID, State);
@@ -778,7 +782,7 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
     case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
             {[], SessCtrl};
-        {error, not_allowed} when Proto == 4 ->
+        {error, not_allowed} when ?IS_PROTO_4(Proto) ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
@@ -799,7 +803,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         {ok, _, SessCtrl} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
             {[#mqtt_puback{message_id=MessageId}], SessCtrl};
-        {error, not_allowed} when Proto == 4 ->
+        {error, not_allowed} when ?IS_PROTO_4(Proto) ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
@@ -830,7 +834,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
                     {State#state{
                        waiting_acks=maps:put({qos2, MessageId}, Frame, WAcks)},
                      [Frame], SessCtrl};
-                {error, not_allowed} when Proto == 4 ->
+                {error, not_allowed} when ?IS_PROTO_4(Proto) ->
                     %% we have to close connection for 3.1.1
                     _ = vmq_metrics:incr_mqtt_error_auth_publish(),
                     {error, not_allowed};
@@ -1243,7 +1247,7 @@ set_defopt(Key, Default, Map) ->
 peertoa({_IP, _Port} = Peer) ->
     vmq_mqtt_fsm_util:peertoa(Peer).
 
-subtopics(Topics, 131 = _Proto) ->
+subtopics(Topics, ProtoVer) when ?IS_BRIDGE(ProtoVer) ->
     %% bridge connection
     SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, undefined),
     lists:map(fun({T, QoS}) -> {T, {QoS, #{rap => true,

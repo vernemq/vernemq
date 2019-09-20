@@ -3,6 +3,8 @@
 - Fix bug where websocket MQTT clients that didn't provide a
   `sec-websocket-protocol` header to cause a crash to be logged. This case is
   now handled and the connection is terminated gracefully (#1317).
+- Fix bug which caused clients MQTT bridges using protocol versions (131 and
+  132) to be unable to connect (#1306).
 
 ## VerneMQ 1.9.2
 

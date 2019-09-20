@@ -748,7 +748,7 @@
 %%     - listener.ssl.my_ws_listener.allowed_protocol_versions
 %%
 %% Allowed values are 3 (MQTT 3.1), 4 (MQTT 3.1.1), 5 (MQTT 5.0), 131
-%% (MQTT 3.1 bridge).
+%% (MQTT 3.1 bridge), 132 (MQTT 3.1.1 bridge).
 {mapping, "listener.tcp.allowed_protocol_versions", "vmq_server.listeners",
  [
   {default, "3,4,131"},
