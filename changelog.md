@@ -5,6 +5,8 @@
   now handled and the connection is terminated gracefully (#1317).
 - Fix bug which caused clients MQTT bridges using protocol versions (131 and
   132) to be unable to connect (#1306).
+- Upgrade the `hackney` so VerneMQ is compatible with a TLS change in Erlang/OTP
+  22.1.
 
 ## VerneMQ 1.9.2
 
