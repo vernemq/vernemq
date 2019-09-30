@@ -7,6 +7,8 @@
   132) to be unable to connect (#1306).
 - Upgrade the `hackney` so VerneMQ is compatible with a TLS change in Erlang/OTP
   22.1.
+- Fix bug preventing MQTT 5 publish in/out counts from being shown on the HTTP
+  status page.
 
 ## VerneMQ 1.9.2
 

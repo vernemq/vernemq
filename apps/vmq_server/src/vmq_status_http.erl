@@ -14,6 +14,7 @@
 
 -module(vmq_status_http).
 -behaviour(vmq_http_config).
+-include("vmq_metrics.hrl").
 
 -export([routes/0]).
 -export([node_status/0]).
@@ -57,22 +58,22 @@ cluster_status() ->
 
 node_status() ->
     % Total Connections
-    counter_val('socket_open'),
-    SocketOpen = counter_val('socket_open'),
-    SocketClose = counter_val('socket_close'),
+    SocketOpen = counter_val(?METRIC_SOCKET_OPEN),
+    SocketClose = counter_val(?METRIC_SOCKET_CLOSE),
     TotalConnections = SocketOpen - SocketClose,
     % Total Online Queues
     TotalQueues = vmq_queue_sup_sup:nr_of_queues(),
     TotalOfflineQueues = TotalQueues - TotalConnections,
-    % Total Publishes In
-    TotalPublishIn = counter_val('mqtt_publish_received'),
-    TotalPublishOut = counter_val('mqtt_publish_sent'),
-    TotalQueueIn = counter_val('queue_in'),
-    TotalQueueOut = counter_val('queue_out'),
-    TotalQueueDrop = counter_val('queue_drop'),
-    TotalQueueUnhandled = counter_val('queue_unhandled'),
-    TotalMatchesLocal = counter_val('router_matches_local'),
-    TotalMatchesRemote = counter_val('router_matches_remote'),
+    TotalPublishIn = counter_val(?MQTT4_PUBLISH_RECEIVED)
+        + counter_val(?MQTT5_PUBLISH_RECEIVED),
+    TotalPublishOut = counter_val(?MQTT4_PUBLISH_SENT)
+        + counter_val(?MQTT5_PUBLISH_SENT),
+    TotalQueueIn = counter_val(?METRIC_QUEUE_MESSAGE_IN),
+    TotalQueueOut = counter_val(?METRIC_QUEUE_MESSAGE_OUT),
+    TotalQueueDrop = counter_val(?METRIC_QUEUE_MESSAGE_DROP),
+    TotalQueueUnhandled = counter_val(?METRIC_QUEUE_MESSAGE_UNHANDLED),
+    TotalMatchesLocal = counter_val(?METRIC_ROUTER_MATCHES_LOCAL),
+    TotalMatchesRemote = counter_val(?METRIC_ROUTER_MATCHES_REMOTE),
     {NrOfSubs, _SMemory} = vmq_reg_trie:stats(),
     {NrOfRetain, _RMemory} = vmq_retain_srv:stats(),
     {ok, [
