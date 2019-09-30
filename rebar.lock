@@ -17,7 +17,7 @@
  {<<"cowlib">>,{pkg,<<"cowlib">>,<<"2.7.3">>},1},
  {<<"cuttlefish">>,
   {git,"git://github.com/Kyorai/cuttlefish.git",
-       {ref,"fff866a3a22dc2a8f3d23aa13933b90542485728"}},
+       {ref,"27fc2d2f525e8e27dbe34b257ce3eb8beaff86c6"}},
   0},
  {<<"dht_ring">>,
   {git,"git://github.com/EchoTeam/dht_ring.git",
