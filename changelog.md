@@ -10,6 +10,8 @@
 - Fix bug preventing MQTT 5 publish in/out counts from being shown on the HTTP
   status page.
 - Fix lager issue on Raspberry Pi preventing VerneMQ from starting (#1305).
+- Upgrade `epgsql` dependency to version 4.3.0 to get better error messages
+  (#1336).
 
 ## VerneMQ 1.9.2
 
