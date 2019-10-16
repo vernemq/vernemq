@@ -12,6 +12,9 @@
 - Fix lager issue on Raspberry Pi preventing VerneMQ from starting (#1305).
 - Upgrade `epgsql` dependency to version 4.3.0 to get better error messages
   (#1336).
+- Add hidden option `response_timeout` to `vmq_webhooks` endpoints. With this
+  the time `vmq_webhooks` waits for a response from the remote endpoint can be
+  configured. Default is 5000 milliseconds.
 
 ## VerneMQ 1.9.2
 

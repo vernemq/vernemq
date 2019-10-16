@@ -573,7 +573,8 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
     Method = post,
     Headers = [{<<"Content-Type">>, <<"application/json">>},
                {<<"vernemq-hook">>, atom_to_binary(Hook, utf8)}],
-    Opts = [{pool, Endpoint}],
+    Opts = [{pool, Endpoint},
+            {recv_timeout, maps:get(response_timeout, EOpts)}],
     Args1 = filter_args(Args0, Hook, EOpts),
     Payload = encode_payload(Hook, Args1, EOpts),
     Res =

@@ -65,10 +65,17 @@
   hidden
  ]}.
 
+%% @doc Configure the timeout the HTTP client will wait for a response
+%% from the remote endpoint. Default to 5000 milliseconds.
+{mapping, "vmq_webhooks.$name.response_timeout", "vmq_webhooks.user_webhooks",
+ [{datatype, integer},
+  hidden,
+  {default, 5000}]}.
+
 {translation,
  "vmq_webhooks.user_webhooks",
  fun(Conf) ->
-         Suffixes = ["hook", "endpoint", "base64encode", "no_payload"],
+         Suffixes = ["hook", "endpoint", "base64encode", "no_payload", "response_timeout"],
          UNames =
              [
               proplists:get_all_values(
@@ -87,14 +94,12 @@
                                                      ".base64encode", Conf, true),
                          no_payload =>
                              cuttlefish:conf_get("vmq_webhooks." ++ SortName ++
-                                                     ".no_payload", Conf, false)
+                                                     ".no_payload", Conf, false),
+                         response_timeout => cuttlefish:conf_get("vmq_webhooks." ++ SortName ++
+                                                                     ".response_timeout", Conf, 8000)
                        }
                  }}
                || SortName <- HookNames ],
-         %% I know of no other way to abort the translation phase and
-         %% report an error back to the user than using throw. Though
-         %% it's not too pretty I think it's nicer than just warning
-         %% that something is configured incorrectly.
          lists:map(
            fun({SortName, #{endpoint := undefined}}) ->
                    cuttlefish:invalid("vmq_webhooks."
