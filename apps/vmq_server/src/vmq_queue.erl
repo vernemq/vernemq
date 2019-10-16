@@ -446,6 +446,7 @@ offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     %% session has expired cleanup and go down
     vmq_reg:delete_subscriptions(SId),
     cleanup_queue(SId, Q),
+    _ = vmq_plugin:all(on_session_expired, [SId]),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
     State1 = publish_last_will(State),
     {stop, normal, State1};
@@ -455,7 +456,6 @@ offline(publish_last_will, State) ->
 offline(Event, State) ->
     lager:error("got unknown event in offline state ~p", [Event]),
     {next_state, offline, State}.
-
 offline({add_session, SessionPid, Opts}, _From, State) ->
     ReturnOpts = #{initial_msg_id => State#state.initial_msg_id},
     {reply, {ok, ReturnOpts}, state_change(add_session, offline, online),

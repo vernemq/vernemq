@@ -10,14 +10,21 @@
 
 -export([queue_hooks_lifecycle_test1/1,
          queue_hooks_lifecycle_test2/1,
-         queue_hooks_lifecycle_test3/1]).
+         queue_hooks_lifecycle_test3/1,
+         queue_hooks_lifecycle_test4/1]).
 
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6,
          hook_on_client_gone/1,
          hook_on_client_offline/1,
          hook_on_client_wakeup/1,
+         hook_on_session_expired/1,
          hook_on_offline_message/5]).
+
+-ifdef(nowarn_gen_fsm).
+-compile([{nowarn_deprecated_function,
+           [{gen_fsm,send_event,2}]}]).
+-endif.
 
 %% ===================================================================
 %% common_test callbacks
@@ -33,7 +40,7 @@ init_per_testcase(_Case, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
-    vmq_server_cmd:listener_start(1888, []),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     ets:new(?MODULE, [public, named_table]),
     enable_on_publish(),
     enable_on_subscribe(),
@@ -51,7 +58,8 @@ end_per_testcase(_, Config) ->
 all() ->
     [queue_hooks_lifecycle_test1,
      queue_hooks_lifecycle_test2,
-     queue_hooks_lifecycle_test3].
+     queue_hooks_lifecycle_test3,
+     queue_hooks_lifecycle_test4].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -104,6 +112,17 @@ queue_hooks_lifecycle_test3(_) ->
     gen_tcp:close(Socket1),
     ok = hook_called(on_offline_message).
 
+queue_hooks_lifecycle_test4(_) ->
+    Connect = packet:gen_connect("queue-client",
+                                 [{keepalive, 60}, {clean_session, false}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = hook_called(on_client_wakeup),
+    gen_tcp:close(Socket),
+    ok = hook_called(on_client_offline),
+    QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
+    ok = gen_fsm:send_event(QPid, expire_session),
+    ok = hook_called(on_session_expired).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
@@ -133,6 +152,11 @@ hook_on_client_gone(_) ->
 hook_on_client_offline({"", <<"queue-client">>}) ->
     ets:insert(?MODULE, {on_client_offline, true});
 hook_on_client_offline(_) ->
+    ok.
+
+hook_on_session_expired({"", <<"queue-client">>}) ->
+    ets:insert(?MODULE, {on_session_expired, true});
+hook_on_session_expired(_) ->
     ok.
 
 hook_on_offline_message({"", <<"queue-client">>}, 1,
@@ -165,7 +189,9 @@ enable_queue_hooks() ->
     vmq_plugin_mgr:enable_module_plugin(
       on_client_wakeup, ?MODULE, hook_on_client_wakeup, 1),
     vmq_plugin_mgr:enable_module_plugin(
-      on_offline_message, ?MODULE, hook_on_offline_message, 5).
+      on_offline_message, ?MODULE, hook_on_offline_message, 5),
+    vmq_plugin_mgr:enable_module_plugin(
+      on_session_expired, ?MODULE, hook_on_session_expired, 1).
 
 disable_queue_hooks() ->
     vmq_plugin_mgr:disable_module_plugin(
@@ -175,5 +201,6 @@ disable_queue_hooks() ->
     vmq_plugin_mgr:disable_module_plugin(
       on_client_wakeup, ?MODULE, hook_on_client_wakeup, 1),
     vmq_plugin_mgr:disable_module_plugin(
-      on_offline_message, ?MODULE, hook_on_offline_message, 5).
-
+      on_offline_message, ?MODULE, hook_on_offline_message, 5),
+    vmq_plugin_mgr:disable_module_plugin(
+      on_session_expired, ?MODULE, hook_on_session_expired, 1).
