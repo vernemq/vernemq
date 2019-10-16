@@ -199,23 +199,32 @@
  end}.
 
 %% @doc The maximum delay for a last will message. This setting
-%% applies only to MQTTv5 sessions and overrides the value provided by
-%% the client.
-%% The delay should be an integer followed by one of 's', 'h' 'd',
-%% 'w', 'm', 'y' for day, week, month, and year.
+%% applies only to MQTTv5 sessions and can be used to override the
+%% value provided by the client.
+
+%% The delay can be either 'client' which means the value specified by
+%% the client is used, or an integer followed by one of 's', 'h' 'd',
+%% 'w', 'm', 'y' for day, week, month, and year used to cap the value
+%% provided by the client..
 {mapping, "max_last_will_delay", "vmq_server.max_last_will_delay", [
-                                                                    {default, "0s"},
-                                                                    {commented, "0s"},
+                                                                    {default, "client"},
+                                                                    {commented, "client"},
                                                                     {datatype, string}
                                                                    ]}.
 
 {translation, "vmq_server.max_last_will_delay",
  fun(Conf) ->
          S = cuttlefish:conf_get("max_last_will_delay", Conf),
-         case vmq_schema:string_to_secs(S) of
-             error ->
-                 cuttlefish:invalid(S ++ " must be an integer followed by one of 's', 'h', 'd', 'w', 'm', 'y' for second, minute, hour, day, week, month, and year");
-             Val -> Val
+         case S of
+             "client" ->
+                 %% 2^32 max seconds in a Four Byte Integer
+                 4294967296;
+             _ ->
+                 case vmq_schema:string_to_secs(S) of
+                     error ->
+                         cuttlefish:invalid(S ++ " must be an integer followed by one of 's', 'h', 'd', 'w', 'm', 'y' for second, minute, hour, day, week, month, and year");
+                     Val -> Val
+                 end
          end
  end}.
 

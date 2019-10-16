@@ -27,6 +27,9 @@
 - Fix bug in `vmq_diversity` and `vmq_webhooks` where the plugin hooks would be
   registered out of order, even though the plugins themselves would be started
   in the correct order (#1295).
+- Add new `max_last_will_delay` value `client` which means the value from the
+  client is used instead of being overriden by the broker. This `client` value
+  is now the default. This setting only applies to MQTT 5.0 clients.
 
 ## VerneMQ 1.9.1
 
