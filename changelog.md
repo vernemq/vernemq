@@ -12,6 +12,9 @@
 - Fix lager issue on Raspberry Pi preventing VerneMQ from starting (#1305).
 - Upgrade `epgsql` dependency to version 4.3.0 to get better error messages
   (#1336).
+- Add new `max_last_will_delay` value `client` which means the value from the
+  client is used instead of being overriden by the broker. This `client` value
+  is now the default. This setting only applies to MQTT 5.0 clients.
 - Add hidden option `response_timeout` to `vmq_webhooks` endpoints. With this
   the time `vmq_webhooks` waits for a response from the remote endpoint can be
   configured. Default is 5000 milliseconds.
@@ -35,9 +38,6 @@
 - Fix bug in `vmq_diversity` and `vmq_webhooks` where the plugin hooks would be
   registered out of order, even though the plugins themselves would be started
   in the correct order (#1295).
-- Add new `max_last_will_delay` value `client` which means the value from the
-  client is used instead of being overriden by the broker. This `client` value
-  is now the default. This setting only applies to MQTT 5.0 clients.
 
 ## VerneMQ 1.9.1
 
