@@ -23,6 +23,8 @@
   removed in the next major version.
 - Add new `on_session_expired/1` hook which is called when an offline session
   expires and the state is deleted.
+- Handle CRL PEM entries with certificates containing empty revocation lists
+  (#1337).
 
 ## VerneMQ 1.9.2
 
