@@ -26,6 +26,8 @@
 - Handle CRL PEM entries with certificates containing empty revocation lists
   (#1337).
 - Fix typo in `vmq-admin listener start` command (#1348).
+- Optimize subscription performance when many retained messages are stored on
+  the broker and the subscription contains wildcards.
 
 ## VerneMQ 1.9.2
 
