@@ -25,6 +25,7 @@
   expires and the state is deleted.
 - Handle CRL PEM entries with certificates containing empty revocation lists
   (#1337).
+- Fix typo in `vmq-admin listener start` command (#1348).
 
 ## VerneMQ 1.9.2
 
