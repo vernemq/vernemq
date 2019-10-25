@@ -102,7 +102,7 @@ queue_crash_test(_) ->
            queue_pid := NewQPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
     receive_persisted_msg(NewQPid, 1, Msg),
     {online, fanout, 0, 1, false} = vmq_queue:status(NewQPid),
-    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 queue_fifo_test(_) ->
     Parent = self(),
@@ -125,7 +125,7 @@ queue_fifo_test(_) ->
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
 
     ok = receive_multi(QPid, 1, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 queue_lifo_test(_) ->
     Parent = self(),
@@ -147,7 +147,7 @@ queue_lifo_test(_) ->
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
 
     ok = receive_multi(QPid, 1, lists:reverse(Msgs)), %% reverse list to get lifo
-    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 queue_fifo_offline_drop_test(_) ->
     Parent = self(),
@@ -171,7 +171,7 @@ queue_fifo_offline_drop_test(_) ->
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
     {KeptMsgs, _} = lists:split(10, Msgs),
     ok = receive_multi(QPid, 1, KeptMsgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 
 queue_lifo_offline_drop_test(_) ->
@@ -198,7 +198,7 @@ queue_lifo_offline_drop_test(_) ->
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
     {KeptMsgs, _} = lists:split(10, lists:reverse(Msgs)),
     ok = receive_multi(QPid, 1, KeptMsgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 
 queue_offline_transition_test(_) ->
@@ -222,7 +222,7 @@ queue_offline_transition_test(_) ->
     {ok, #{session_present := true,
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
     ok = receive_multi(QPid, 1, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 queue_persistent_client_expiration_test(_) ->
     Parent = self(),
@@ -245,14 +245,14 @@ queue_persistent_client_expiration_test(_) ->
     NumPubbedMsgs = length(Msgs),
 
     timer:sleep(50), % give some time to plumtree
-    {ok, FoundMsgs} = vmq_lvldb_store:msg_store_find(SubscriberId, other),
+    {ok, FoundMsgs} = vmq_message_store:find(SubscriberId, other),
     NumPubbedMsgs = length(FoundMsgs),
 
     %% let's wait for the persistent-client-expiration to kick in
     timer:sleep(3000),
 
     not_found = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
-    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 queue_force_disconnect_test(_) ->
     Parent = self(),
@@ -295,7 +295,7 @@ queue_force_disconnect_cleanup_test(_) ->
     NumPubbedMsgs = length(Msgs),
 
     timer:sleep(50), % give some time to plumtree
-    {ok, FoundMsgs} = vmq_lvldb_store:msg_store_find(SubscriberId, other),
+    {ok, FoundMsgs} = vmq_message_store:find(SubscriberId, other),
     NumPubbedMsgs = length(FoundMsgs),
 
     vmq_queue:force_disconnect(QPid0, ?ADMINISTRATIVE_ACTION, true),
@@ -309,7 +309,7 @@ queue_force_disconnect_cleanup_test(_) ->
     true = (QPid0 =/= QPid1),
     false = is_process_alive(QPid0),
 
-    {ok, []} = vmq_lvldb_store:msg_store_find(SubscriberId, other).
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 publish_multi({_, ClientId}, Topic) ->
     publish_multi(ClientId, Topic, []).
@@ -392,11 +392,7 @@ receive_persisted_msg(QPid, QoS, Msg) ->
 enable_hooks() ->
     vmq_plugin_mgr:enable_module_plugin(auth_on_publish, ?MODULE, hook_auth_on_publish, 6),
     vmq_plugin_mgr:enable_module_plugin(auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3),
-    vmq_plugin_mgr:enable_module_plugin(on_message_drop, ?MODULE, hook_on_message_drop, 3),
-    vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_write, 2),
-    vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_read, 2),
-    vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_delete, 2),
-    vmq_plugin_mgr:enable_module_plugin(vmq_lvldb_store, msg_store_find, 2).
+    vmq_plugin_mgr:enable_module_plugin(on_message_drop, ?MODULE, hook_on_message_drop, 3).
 
 hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 hook_auth_on_subscribe(_, _, _) -> ok.

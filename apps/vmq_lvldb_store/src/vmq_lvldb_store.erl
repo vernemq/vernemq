@@ -13,14 +13,12 @@
 %% limitations under the License.
 
 -module(vmq_lvldb_store).
--include_lib("stdlib/include/ms_transform.hrl").
--include("vmq_server.hrl").
 -include("vmq_lvldb_store.hrl").
 -behaviour(gen_server).
 
 %% API
 -export([start_link/1,
-         msg_store_write/2,
+         msg_store_write/3,
          msg_store_read/2,
          msg_store_delete/2,
          msg_store_find/2,
@@ -61,7 +59,7 @@
 
 %% Subsequent formats should always extend by adding new elements to
 %% the end of the record or tuple.
--type p_msg_val_pre() :: {routing_key(), payload()}.
+-type p_msg_val_pre() :: {topic(), payload()}.
 -record(p_idx_val, {
           ts  :: erlang:timestamp(),
           dup :: flag(),
@@ -75,8 +73,8 @@
 start_link(Id) ->
     gen_server:start_link(?MODULE, [Id], []).
 
-msg_store_write(SubscriberId, #vmq_msg{msg_ref=MsgRef} = Msg) ->
-    call(MsgRef, {write, SubscriberId, Msg}).
+msg_store_write(SubscriberId, MsgRef, Msg) ->
+    call(MsgRef, {write, SubscriberId, MsgRef, Msg}).
 
 msg_store_delete(SubscriberId, MsgRef) ->
     call(MsgRef, {delete, SubscriberId, MsgRef}).
@@ -179,7 +177,7 @@ init([InstanceId]) ->
     %% Initialize random seed
     rand:seed(exsplus, os:timestamp()),
 
-    Opts = vmq_config:get_env(msg_store_opts, []),
+    Opts = application:get_env(vmq_lvldb_store, msg_store_opts, []),
     DataDir1 = proplists:get_value(store_dir, Opts, "data/msgstore"),
     DataDir2 = filename:join(DataDir1, integer_to_list(InstanceId)),
 
@@ -383,10 +381,9 @@ open_db(Opts, State0, RetriesLeft, _) ->
             {error, Reason}
     end.
 
-
-handle_req({write, {MP, _} = SubscriberId,
-            #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
-                     routing_key=RoutingKey, payload=Payload}},
+-define(MSG_ATTRS, [mountpoint, dup, qos, routing_key, payload]).
+handle_req({write, {MP, _} = SubscriberId, MsgRef, 
+           #vmq_msg{routing_key=RoutingKey, payload=Payload, dup=Dup, qos=QoS, mountpoint=MP}},
            #state{ref=Bucket, refs=Refs, write_opts=WriteOpts}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
@@ -411,8 +408,12 @@ handle_req({read, {MP, _} = SubscriberId, MsgRef},
             case eleveldb:get(Bucket, IdxKey, ReadOpts) of
                 {ok, IdxVal} ->
                     #p_idx_val{dup=Dup, qos=QoS} = parse_p_idx_val_pre(IdxVal),
-                    Msg = #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
-                                   routing_key=RoutingKey, payload=Payload, persisted=true},
+                    Msg = #vmq_msg{msg_ref=MsgRef, 
+                                   mountpoint=MP, 
+                                   dup=Dup, qos=QoS,
+                                   routing_key=RoutingKey, 
+                                   payload=Payload, 
+                                   persisted=true},
                     {ok, Msg};
                 not_found ->
                     {error, idx_val_not_found}

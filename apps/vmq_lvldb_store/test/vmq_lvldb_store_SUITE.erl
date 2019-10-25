@@ -1,5 +1,5 @@
 -module(vmq_lvldb_store_SUITE).
--include("src/vmq_server.hrl").
+-include("src/vmq_lvldb_store.hrl").
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -254,7 +254,7 @@ generate_msgs(N, Acc) ->
     generate_msgs(N - 1, [Msg|Acc]).
 
 store_msgs(SId, [Msg|Rest]) ->
-    ok = vmq_lvldb_store:msg_store_write(SId, Msg),
+    ok = vmq_lvldb_store:msg_store_write(SId, Msg#vmq_msg.msg_ref, Msg),
     store_msgs(SId, Rest);
 store_msgs(_, []) -> ok.
 

@@ -13,7 +13,6 @@
 %% limitations under the License.
 
 -module(vmq_lvldb_store_utils).
--include("vmq_server.hrl").
 
 %% API
 -export([dump/1,
