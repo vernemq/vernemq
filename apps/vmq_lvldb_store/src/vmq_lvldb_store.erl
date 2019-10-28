@@ -22,7 +22,7 @@
          msg_store_read/2,
          msg_store_delete/2,
          msg_store_find/2,
-         get_ref/1,
+         get_engine/1,
          refcount/1,
          get_state/1]).
 
@@ -41,16 +41,11 @@
          terminate/2,
          code_change/3]).
 
--record(state, {ref :: undefined | eleveldb:db_ref(),
-                data_root :: string(),
-                open_opts = [],
-                config :: config(),
-                read_opts = [],
-                write_opts = [],
-                fold_opts = [{fill_cache, false}],
-                refs = ets:new(?MODULE, [])
-               }).
--type config() :: [{atom(), term()}].
+-record(state, {
+          engine,
+          engine_module,
+          refs = ets:new(?MODULE, [])
+         }).
 
 
 -define(P_IDX_PRE, 0).
@@ -100,12 +95,12 @@ msg_store_find(SubscriberId, Type) when Type =:= queue_init;
 
 msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, queue_init) ->
     MsgRefs =
-        case msg_store_init_from_tbl(init, SubscriberId) of
-            [] ->
-                init_from_disk(SubscriberId);
-            Res ->
-                Res
-        end,
+    case msg_store_init_from_tbl(init, SubscriberId) of
+        [] ->
+            init_from_disk(SubscriberId);
+        Res ->
+            Res
+    end,
     ParentPid ! {self(), Ref, MsgRefs};
 msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, other) ->
     MsgRefs = init_from_disk(SubscriberId),
@@ -123,9 +118,9 @@ msg_store_init_from_tbl(Prefix, SubscriberId) ->
                    MsgRef
            end),
     MSDel = ets:fun2ms(
-           fun({{P, S, _TS, _MsgRef}}) when P =:= Prefix, S =:= SubscriberId ->
-                   true
-           end),
+              fun({{P, S, _TS, _MsgRef}}) when P =:= Prefix, S =:= SubscriberId ->
+                      true
+              end),
     Table = select_table(SubscriberId),
     MsgRefs = ets:select(Table, MS),
     _Deleted = ets:select_delete(Table, MSDel),
@@ -141,8 +136,8 @@ msg_store_collect(Ref, SubscriberId, [Pid|Rest]) ->
          end,
     msg_store_collect(Ref, SubscriberId, Rest).
 
-get_ref(BucketPid) ->
-    gen_server:call(BucketPid, get_ref).
+get_engine(BucketPid) ->
+    gen_server:call(BucketPid, get_engine).
 
 refcount(MsgRef) ->
     call(MsgRef, {refcount, MsgRef}).
@@ -177,17 +172,15 @@ init([InstanceId]) ->
     %% Initialize random seed
     rand:seed(exsplus, os:timestamp()),
 
+    EngineModule = application:get_env(vmq_lvldb_store, msg_store_engine, vmq_storage_engine_leveldb),
     Opts = application:get_env(vmq_lvldb_store, msg_store_opts, []),
     DataDir1 = proplists:get_value(store_dir, Opts, "data/msgstore"),
     DataDir2 = filename:join(DataDir1, integer_to_list(InstanceId)),
 
-    %% Initialize state
-    S0 = init_state(DataDir2, Opts),
-    process_flag(trap_exit, true),
-    case open_db(Opts, S0) of
-        {ok, State} ->
+    case apply(EngineModule, open, [DataDir2, Opts]) of
+        {ok, EngineState} ->
             self() ! {initialize_from_storage, InstanceId},
-            {ok, State};
+            {ok, #state{engine=EngineState, engine_module=EngineModule}};
         {error, Reason} ->
             {stop, Reason}
     end.
@@ -206,8 +199,8 @@ init([InstanceId]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call(get_ref, _From, #state{ref=Ref} = State) ->
-    {reply, Ref, State};
+handle_call(get_engine, _From, #state{engine=EngineState, engine_module=EngineModule} = State) ->
+    {reply, {EngineModule, EngineState}, State};
 handle_call({refcount, MsgRef}, _From, State) ->
     RefCount =
     case ets:lookup(State#state.refs, MsgRef) of
@@ -269,8 +262,8 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, #state{ref=Ref}) ->
-    eleveldb:close(Ref),
+terminate(_Reason, #state{engine=EngineState, engine_module=EngineModule}) ->
+    apply(EngineModule, close, [EngineState]),
     ok.
 
 %%--------------------------------------------------------------------
@@ -287,104 +280,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-%% @private
-init_state(DataRoot, Config) ->
-    %% Get the data root directory
-    filelib:ensure_dir(filename:join(DataRoot, "msg_store_dummy")),
-
-    %% Merge the proplist passed in from Config with any values specified by the
-    %% eleveldb app level; precedence is given to the Config.
-    MergedConfig = orddict:merge(fun(_K, VLocal, _VGlobal) -> VLocal end,
-                                 orddict:from_list(Config), % Local
-                                 orddict:from_list(application:get_all_env(eleveldb))), % Global
-
-    %% Use a variable write buffer size in order to reduce the number
-    %% of vnodes that try to kick off compaction at the same time
-    %% under heavy uniform load...
-    WriteBufferMin = config_value(write_buffer_size_min, MergedConfig, 30 * 1024 * 1024),
-    WriteBufferMax = config_value(write_buffer_size_max, MergedConfig, 60 * 1024 * 1024),
-    WriteBufferSize = WriteBufferMin + rand:uniform(1 + WriteBufferMax - WriteBufferMin),
-
-    %% Update the write buffer size in the merged config and make sure create_if_missing is set
-    %% to true
-    FinalConfig = orddict:store(write_buffer_size, WriteBufferSize,
-                                orddict:store(create_if_missing, true, MergedConfig)),
-
-    %% Parse out the open/read/write options
-    {OpenOpts, _BadOpenOpts} = eleveldb:validate_options(open, FinalConfig),
-    {ReadOpts, _BadReadOpts} = eleveldb:validate_options(read, FinalConfig),
-    {WriteOpts, _BadWriteOpts} = eleveldb:validate_options(write, FinalConfig),
-
-    %% Use read options for folding, but FORCE fill_cache to false
-    FoldOpts = lists:keystore(fill_cache, 1, ReadOpts, {fill_cache, false}),
-
-    %% Warn if block_size is set
-    SSTBS = proplists:get_value(sst_block_size, OpenOpts, false),
-    BS = proplists:get_value(block_size, OpenOpts, false),
-    case BS /= false andalso SSTBS == false of
-        true ->
-            lager:warning("eleveldb block_size has been renamed sst_block_size "
-                          "and the current setting of ~p is being ignored.  "
-                          "Changing sst_block_size is strongly cautioned "
-                          "against unless you know what you are doing.  Remove "
-                          "block_size from app.config to get rid of this "
-                          "message.\n", [BS]);
-        _ ->
-            ok
-    end,
-
-    %% Generate a debug message with the options we'll use for each operation
-    lager:debug("datadir ~s options for LevelDB: ~p\n",
-                [DataRoot, [{open, OpenOpts}, {read, ReadOpts}, {write, WriteOpts}, {fold, FoldOpts}]]),
-    #state { data_root = DataRoot,
-             open_opts = OpenOpts,
-             read_opts = ReadOpts,
-             write_opts = WriteOpts,
-             fold_opts = FoldOpts,
-             config = FinalConfig }.
-
-config_value(Key, Config, Default) ->
-    case orddict:find(Key, Config) of
-        error ->
-            Default;
-        {ok, Value} ->
-            Value
-    end.
-
-open_db(Opts, State) ->
-    RetriesLeft = proplists:get_value(open_retries, Opts, 30),
-    open_db(Opts, State, max(1, RetriesLeft), undefined).
-
-open_db(_Opts, _State0, 0, LastError) ->
-    {error, LastError};
-open_db(Opts, State0, RetriesLeft, _) ->
-    case eleveldb:open(State0#state.data_root, State0#state.open_opts) of
-        {ok, Ref} ->
-            {ok, State0#state { ref = Ref }};
-        %% Check specifically for lock error, this can be caused if
-        %% a crashed instance takes some time to flush leveldb information
-        %% out to disk.  The process is gone, but the NIF resource cleanup
-        %% may not have completed.
-        {error, {db_open, OpenErr}=Reason} ->
-            case lists:prefix("IO error: lock ", OpenErr) of
-                true ->
-                    SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
-                    lager:debug("VerneMQ LevelDB backend retrying ~p in ~p ms after error ~s\n",
-                                [State0#state.data_root, SleepFor, OpenErr]),
-                    timer:sleep(SleepFor),
-                    open_db(Opts, State0, RetriesLeft - 1, Reason);
-                false ->
-                    {error, Reason}
-            end;
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
--define(MSG_ATTRS, [mountpoint, dup, qos, routing_key, payload]).
-handle_req({write, {MP, _} = SubscriberId, MsgRef, 
-           #vmq_msg{routing_key=RoutingKey, payload=Payload, dup=Dup, qos=QoS, mountpoint=MP}},
-           #state{ref=Bucket, refs=Refs, write_opts=WriteOpts}) ->
+handle_req({write, {MP, _} = SubscriberId, MsgRef,
+            #vmq_msg{routing_key=RoutingKey, payload=Payload, dup=Dup, qos=QoS, mountpoint=MP}},
+           #state{engine=EngineState, engine_module=EngineModule, refs=Refs}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
     IdxVal = serialize_p_idx_val_pre(#p_idx_val{ts=os:timestamp(), dup=Dup, qos=QoS}),
@@ -392,27 +290,26 @@ handle_req({write, {MP, _} = SubscriberId, MsgRef,
         1 ->
             %% new message
             Val = serialize_p_msg_val_pre({RoutingKey, Payload}),
-            eleveldb:write(Bucket, [{put, MsgKey, Val},
-                                    {put, IdxKey, IdxVal}], WriteOpts);
+            apply(EngineModule, write, [EngineState, [{put, MsgKey, Val},
+                                                      {put, IdxKey, IdxVal}]]);
         _ ->
             %% only write the idx
-            eleveldb:write(Bucket, [{put, IdxKey, IdxVal}], WriteOpts)
+            apply(EngineModule, write, [EngineState, [{put, IdxKey, IdxVal}]])
     end;
-handle_req({read, {MP, _} = SubscriberId, MsgRef},
-           #state{ref=Bucket, read_opts=ReadOpts}) ->
+handle_req({read, {MP, _} = SubscriberId, MsgRef}, #state{engine=EngineState, engine_module=EngineModule}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
-    case eleveldb:get(Bucket, MsgKey, ReadOpts) of
+    case apply(EngineModule, read, [EngineState, MsgKey]) of
         {ok, Val} ->
             {RoutingKey, Payload} = parse_p_msg_val_pre(Val),
-            case eleveldb:get(Bucket, IdxKey, ReadOpts) of
+            case apply(EngineModule, read, [EngineState, IdxKey]) of
                 {ok, IdxVal} ->
                     #p_idx_val{dup=Dup, qos=QoS} = parse_p_idx_val_pre(IdxVal),
-                    Msg = #vmq_msg{msg_ref=MsgRef, 
-                                   mountpoint=MP, 
+                    Msg = #vmq_msg{msg_ref=MsgRef,
+                                   mountpoint=MP,
                                    dup=Dup, qos=QoS,
-                                   routing_key=RoutingKey, 
-                                   payload=Payload, 
+                                   routing_key=RoutingKey,
+                                   payload=Payload,
                                    persisted=true},
                     {ok, Msg};
                 not_found ->
@@ -422,7 +319,7 @@ handle_req({read, {MP, _} = SubscriberId, MsgRef},
             {error, not_found}
     end;
 handle_req({delete, {MP, _} = SubscriberId, MsgRef},
-           #state{ref=Bucket, refs=Refs, write_opts=WriteOpts}) ->
+           #state{refs=Refs, engine=EngineState, engine_module=EngineModule}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
     case decr_ref(Refs, MsgRef) of
@@ -430,54 +327,46 @@ handle_req({delete, {MP, _} = SubscriberId, MsgRef},
             lager:warning("delete failed ~p due to not found", [MsgRef]);
         0 ->
             %% last one to be deleted
-            eleveldb:write(Bucket, [{delete, IdxKey},
-                                    {delete, MsgKey}], WriteOpts);
+            apply(EngineModule, write, [EngineState, [{delete, IdxKey},
+                                                      {delete, MsgKey}]]);
         _ ->
             %% we have to keep the message, but can delete the idx
-            eleveldb:write(Bucket, [{delete, IdxKey}], WriteOpts)
+            apply(EngineModule, write, [EngineState, [{delete, IdxKey}]])
     end;
 handle_req({find_for_subscriber_id, TblIdxRef, SubscriberId},
-           #state{ref=Bucket, fold_opts=FoldOpts} = State) ->
-    {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts),
+           #state{engine=EngineState, engine_module=EngineModule}) ->
     FirstIdxKey = sext:encode({idx, SubscriberId, ''}),
-    iterate_index_items(eleveldb:iterator_move(Itr, FirstIdxKey),
-                        TblIdxRef, SubscriberId, Itr, State).
+    apply(EngineModule, fold,
+          [EngineState,
+           fun(IdxKey, IdxVal, _Acc) ->
+                   case sext:decode(IdxKey) of
+                       {idx, SubscriberId, MsgRef} ->
+                           #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
+                           Table = select_table(SubscriberId),
+                           true = ets:insert(Table, {{TblIdxRef, SubscriberId, TS, MsgRef}});
+                       _ ->
+                           %% all message refs accumulated for this subscriber
+                           throw(finished)
+                   end
+           end, ignore, FirstIdxKey]),
+    ok.
 
-iterate_index_items({error, _}, _,_, _, _) ->
-    %% no need to close the iterator
-    ok;
-iterate_index_items({ok, IdxKey, IdxVal}, TblIdxRef, SubscriberId, Itr, State) ->
-    case sext:decode(IdxKey) of
-        {idx, SubscriberId, MsgRef} ->
-            #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
-            Table = select_table(SubscriberId),
-            true = ets:insert(Table, {{TblIdxRef, SubscriberId, TS, MsgRef}}),
-            iterate_index_items(eleveldb:iterator_move(Itr, prefetch), TblIdxRef, SubscriberId, Itr, State);
-        _ ->
-            %% all message refs accumulated for this subscriber
-            eleveldb:iterator_close(Itr),
-            ok
-    end.
-
-setup_index(#state{ref=Bucket, fold_opts=FoldOpts, refs=Refs}) ->
-    {ok, Itr} = eleveldb:iterator(Bucket, FoldOpts),
+setup_index(#state{engine=EngineState, engine_module=EngineModule, refs=Refs}) ->
     FirstIdxKey = sext:encode({idx, '', ''}),
-    setup_index(Refs, eleveldb:iterator_move(Itr, FirstIdxKey), Itr, 0).
-
-setup_index(Refs, {ok, Key, IdxVal}, Itr, N) ->
-    case sext:decode(Key) of
-        {idx, SubscriberId, MsgRef} ->
-            #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
-            Table = select_table(SubscriberId),
-            true = ets:insert(Table, {{init, SubscriberId, TS, MsgRef}}),
-            incr_ref(Refs, MsgRef),
-            setup_index(Refs, eleveldb:iterator_move(Itr, next), Itr, N + 1);
-        _ ->
-            eleveldb:iterator_close(Itr),
-            N
-    end;
-setup_index(_Refs, {error, invalid_iterator}, _Itr, N) ->
-    N.
+    apply(EngineModule, fold,
+          [EngineState,
+           fun(Key, IdxVal, N) ->
+                   case sext:decode(Key) of
+                       {idx, SubscriberId, MsgRef} ->
+                           #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
+                           Table = select_table(SubscriberId),
+                           true = ets:insert(Table, {{init, SubscriberId, TS, MsgRef}}),
+                           incr_ref(Refs, MsgRef),
+                           N + 1;
+                       _ ->
+                           throw(finished)
+                   end
+           end, 0, FirstIdxKey]).
 
 incr_ref(Refs, MsgRef) ->
     case ets:insert_new(Refs, {MsgRef, 1}) of
