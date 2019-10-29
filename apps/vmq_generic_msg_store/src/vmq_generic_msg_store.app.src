@@ -1,8 +1,8 @@
-{application, vmq_lvldb_store,
+{application, vmq_generic_msg_store,
  [{description, "A VerneMQ plugin that sets up LevelDB as message storage"},
   {vsn, git},
   {registered, []},
-  {mod, { vmq_lvldb_store_app, []}},
+  {mod, { vmq_generic_msg_store_app, []}},
   {applications,
    [kernel,
     stdlib,
@@ -12,10 +12,10 @@
    ]},
   {env,[
       {vmq_plugin_hooks, [
-            {vmq_lvldb_store, msg_store_write, 3, [internal]},
-            {vmq_lvldb_store, msg_store_delete, 2, [internal]},
-            {vmq_lvldb_store, msg_store_find, 2, [internal]},
-            {vmq_lvldb_store, msg_store_read, 2, [internal]}
+            {vmq_generic_msg_store, msg_store_write, 3, [internal]},
+            {vmq_generic_msg_store, msg_store_delete, 2, [internal]},
+            {vmq_generic_msg_store, msg_store_find, 2, [internal]},
+            {vmq_generic_msg_store, msg_store_read, 2, [internal]}
       ]},
       {msg_store_opts, [
                         {store_dir, "./data/msgstore"},

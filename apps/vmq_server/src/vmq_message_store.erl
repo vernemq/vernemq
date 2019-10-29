@@ -23,7 +23,7 @@
          msg_attrs/2]).
 
 start() ->
-    Impl = application:get_env(vmq_server, message_store_impl, vmq_lvldb_store),
+    Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_msg_store),
     Ret = vmq_plugin_mgr:enable_system_plugin(Impl, [internal]),
     lager:info("Try to start ~p: ~p", [Impl, Ret]),
     Ret.
@@ -38,7 +38,7 @@ stop() ->
     % controller the order of application termination is still provided.
     % Nevertheless, this is of course only a workaround and the problem
     % needs to be addressed when reworking the plugin system.
-    Impl = application:get_env(vmq_server, message_store_impl, vmq_lvldb_store),
+    Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_msg_store),
     _ = spawn(fun() ->
                       Ret = vmq_plugin_mgr:disable_plugin(Impl),
                       lager:info("Try to stop ~p: ~p", [Impl, Ret])

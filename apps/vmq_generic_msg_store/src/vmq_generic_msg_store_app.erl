@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_lvldb_store_app).
+-module(vmq_generic_msg_store_app).
 
 -behaviour(application).
 
@@ -23,7 +23,7 @@
 %% API
 %%====================================================================
 start(_StartType, _StartArgs) ->
-    vmq_lvldb_store_sup:start_link().
+    vmq_generic_msg_store_sup:start_link().
 
 %%--------------------------------------------------------------------
 stop(_State) ->

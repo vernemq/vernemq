@@ -12,8 +12,8 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_lvldb_store).
--include("vmq_lvldb_store.hrl").
+-module(vmq_generic_msg_store).
+-include("vmq_generic_msg_store.hrl").
 -behaviour(gen_server).
 
 %% API
@@ -108,7 +108,7 @@ msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, other) ->
 
 init_from_disk(SubscriberId) ->
     TblIdxRef = make_ref(),
-    Pids = vmq_lvldb_store_sup:get_bucket_pids(),
+    Pids = vmq_generic_msg_store_sup:get_bucket_pids(),
     ok = msg_store_collect(TblIdxRef, SubscriberId, Pids),
     msg_store_init_from_tbl(TblIdxRef, SubscriberId).
 
@@ -146,7 +146,7 @@ get_state(Pid) ->
     gen_server:call(Pid, get_state, infinity).
 
 call(Key, Req) ->
-    case vmq_lvldb_store_sup:get_bucket_pid(Key) of
+    case vmq_generic_msg_store_sup:get_bucket_pid(Key) of
         {ok, BucketPid} ->
             gen_server:call(BucketPid, Req, infinity);
         {error, Reason} ->
@@ -172,8 +172,8 @@ init([InstanceId]) ->
     %% Initialize random seed
     rand:seed(exsplus, os:timestamp()),
 
-    EngineModule = application:get_env(vmq_lvldb_store, msg_store_engine, vmq_storage_engine_leveldb),
-    Opts = application:get_env(vmq_lvldb_store, msg_store_opts, []),
+    EngineModule = application:get_env(vmq_generic_msg_store, msg_store_engine, vmq_storage_engine_leveldb),
+    Opts = application:get_env(vmq_generic_msg_store, msg_store_opts, []),
     DataDir1 = proplists:get_value(store_dir, Opts, "data/msgstore"),
     DataDir2 = filename:join(DataDir1, integer_to_list(InstanceId)),
 
@@ -246,7 +246,7 @@ handle_info({initialize_from_storage, InstanceId}, State) ->
                        [N, InstanceId])
     end,
     %% Register Bucket Instance with the Bucket Registry
-    vmq_lvldb_store_sup:register_bucket_pid(InstanceId, self()),
+    vmq_generic_msg_store_sup:register_bucket_pid(InstanceId, self()),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.

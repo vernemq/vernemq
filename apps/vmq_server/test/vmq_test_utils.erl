@@ -21,8 +21,8 @@ setup() ->
     application:set_env(vmq_server, schema_dirs, [PrivDir]),
     application:set_env(vmq_server, listeners, [{vmq, [{{{0,0,0,0}, random_port()}, []}]}]),
     application:set_env(vmq_server, ignore_db_config, true),
-    application:load(vmq_lvldb_store),
-    application:set_env(vmq_lvldb_store, msg_store_opts, [
+    application:load(vmq_generic_msg_store),
+    application:set_env(vmq_generic_msg_store, msg_store_opts, [
                                                      {store_dir, Datadir ++ "/msgstore"},
                                                      {open_retries, 30},
                                                      {open_retry_delay, 2000}
@@ -67,7 +67,7 @@ disable_all_plugins() ->
     lists:foreach(fun ({application, vmq_plumtree, _}) ->
                           % don't disable metadata plugin
                           ignore;
-                      ({application, vmq_lvldb_store, _}) ->
+                      ({application, vmq_generic_msg_store, _}) ->
                           % don't disable message store plugin
                           ignore;
                       ({application, App, _Hooks}) ->

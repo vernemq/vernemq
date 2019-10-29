@@ -1,5 +1,5 @@
--module(vmq_lvldb_store_SUITE).
--include("src/vmq_lvldb_store.hrl").
+-module(vmq_generic_msg_store_SUITE).
+-include("src/vmq_generic_msg_store.hrl").
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -69,12 +69,12 @@ insert_delete_test(Config) ->
 
     1000 = refcount(Refs, 0),
     %% we should get back the exact same list
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo"}, queue_init),
     %% delete all
     ok = delete_msgs({"", "foo"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo"}, queue_init),
 
     0 = refcount(Refs, 0),
     {0,0} = store_summary(),
@@ -98,102 +98,102 @@ ref_delete_test(Config) ->
     10000 = refcount(Refs, 0),
     {1000,10000} = store_summary(),
 
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo0"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo0"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo0"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo0"}, queue_init),
     {ok, Msgs} = read_msgs({"", "foo0"}, Refs),
     ok = delete_msgs({"", "foo0"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo0"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo0"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo0"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo0"}, queue_init),
 
     9000 = refcount(Refs, 0),
     {1000,9000} = store_summary(),
 
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo1"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo1"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo1"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo1"}, queue_init),
     {ok, Msgs} = read_msgs({"", "foo1"}, Refs),
     ok = delete_msgs({"", "foo1"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo1"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo1"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo1"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo1"}, queue_init),
 
     8000 = refcount(Refs, 0),
     {1000,8000} = store_summary(),
 
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo2"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo2"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo2"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo2"}, queue_init),
     {ok, Msgs} = read_msgs({"", "foo2"}, Refs),
     ok = delete_msgs({"", "foo2"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo2"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo2"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo2"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo2"}, queue_init),
 
     7000 = refcount(Refs, 0),
     {1000,7000} = store_summary(),
 
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo3"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo3"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo3"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo3"}, queue_init),
     {ok, Msgs} = read_msgs({"", "foo3"}, Refs),
     ok = delete_msgs({"", "foo3"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo3"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo3"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo3"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo3"}, queue_init),
 
     6000 = refcount(Refs, 0),
     {1000,6000} = store_summary(),
 
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo4"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo4"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo4"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo4"}, queue_init),
     {ok, Msgs} = read_msgs({"", "foo4"}, Refs),
     ok = delete_msgs({"", "foo4"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo4"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo4"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo4"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo4"}, queue_init),
 
     5000 = refcount(Refs, 0),
     {1000,5000} = store_summary(),
 
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo5"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo5"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo5"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo5"}, queue_init),
     {ok, Msgs} = read_msgs({"", "foo5"}, Refs),
     ok = delete_msgs({"", "foo5"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo5"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo5"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo5"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo5"}, queue_init),
 
     4000 = refcount(Refs, 0),
     {1000,4000} = store_summary(),
 
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo6"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo6"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo6"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo6"}, queue_init),
     {ok, Msgs} = read_msgs({"", "foo6"}, Refs),
     ok = delete_msgs({"", "foo6"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo6"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo6"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo6"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo6"}, queue_init),
 
     3000 = refcount(Refs, 0),
     {1000,3000} = store_summary(),
 
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo7"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo7"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo7"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo7"}, queue_init),
     {ok, Msgs} = read_msgs({"", "foo7"}, Refs),
     ok = delete_msgs({"", "foo7"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo7"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo7"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo7"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo7"}, queue_init),
 
     2000 = refcount(Refs, 0),
     {1000,2000} = store_summary(),
 
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo8"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo8"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo8"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo8"}, queue_init),
     {ok, Msgs} = read_msgs({"", "foo8"}, Refs),
     ok = delete_msgs({"", "foo8"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo8"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo8"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo8"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo8"}, queue_init),
 
     1000 = refcount(Refs, 0),
     {1000,1000} = store_summary(),
 
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo9"}, other),
-    {ok, Refs} = vmq_lvldb_store:msg_store_find({"", "foo9"}, queue_init),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo9"}, other),
+    {ok, Refs} = vmq_generic_msg_store:msg_store_find({"", "foo9"}, queue_init),
     {ok, Msgs} = read_msgs({"", "foo9"}, Refs),
     ok = delete_msgs({"", "foo9"}, Msgs),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo9"}, other),
-    {ok, []} = vmq_lvldb_store:msg_store_find({"", "foo9"}, queue_init),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo9"}, other),
+    {ok, []} = vmq_generic_msg_store:msg_store_find({"", "foo9"}, queue_init),
 
     0 = refcount(Refs, 0),
     {0,0} = store_summary(),
@@ -206,15 +206,15 @@ message_compat_pre_test(_Cfg) ->
     %% We can serialize and parse msg vals from before versioning was added
     PreVersion = {[<<"routing">>, <<"key">>], %% routing_key = [<<"routing">>, <<"key">>]
                    <<"payload">>},
-    PreVersion = vmq_lvldb_store:parse_p_msg_val_pre(
-                   vmq_lvldb_store:serialize_p_msg_val_pre(PreVersion)),
+    PreVersion = vmq_generic_msg_store:parse_p_msg_val_pre(
+                   vmq_generic_msg_store:serialize_p_msg_val_pre(PreVersion)),
 
     %% We can also serialize / parse something from the future:
     FutureVersion = {1, %% version
                      [<<"routing">>, <<"key">>], <<"payload">>, <<"something else">>},
 
-    PreVersion = vmq_lvldb_store:parse_p_msg_val_pre(
-                   vmq_lvldb_store:serialize_p_msg_val_pre(FutureVersion)),
+    PreVersion = vmq_generic_msg_store:parse_p_msg_val_pre(
+                   vmq_generic_msg_store:serialize_p_msg_val_pre(FutureVersion)),
     ok.
 
 idx_compat_pre_test(_Cfg) ->
@@ -224,8 +224,8 @@ idx_compat_pre_test(_Cfg) ->
                   false, %% dup = false
                   2 %% qos = 2
                  },
-    PreVersion = vmq_lvldb_store:parse_p_idx_val_pre(
-                   vmq_lvldb_store:serialize_p_idx_val_pre(PreVersion)),
+    PreVersion = vmq_generic_msg_store:parse_p_idx_val_pre(
+                   vmq_generic_msg_store:serialize_p_idx_val_pre(PreVersion)),
 
     %% We can also serialize / parse something from the future:
     FutureVersion = {p_idx_val,
@@ -237,8 +237,8 @@ idx_compat_pre_test(_Cfg) ->
                      "something unknown2"
                     },
 
-    PreVersion = vmq_lvldb_store:parse_p_idx_val_pre(
-                   vmq_lvldb_store:serialize_p_idx_val_pre(FutureVersion)),
+    PreVersion = vmq_generic_msg_store:parse_p_idx_val_pre(
+                   vmq_generic_msg_store:serialize_p_idx_val_pre(FutureVersion)),
     ok.
 
 generate_msgs(0, Acc) -> Acc;
@@ -254,24 +254,24 @@ generate_msgs(N, Acc) ->
     generate_msgs(N - 1, [Msg|Acc]).
 
 store_msgs(SId, [Msg|Rest]) ->
-    ok = vmq_lvldb_store:msg_store_write(SId, Msg#vmq_msg.msg_ref, Msg),
+    ok = vmq_generic_msg_store:msg_store_write(SId, Msg#vmq_msg.msg_ref, Msg),
     store_msgs(SId, Rest);
 store_msgs(_, []) -> ok.
 
 delete_msgs(_, []) -> ok;
 delete_msgs(SId, [#vmq_msg{msg_ref=Ref}|Rest]) ->
-    ok = vmq_lvldb_store:msg_store_delete(SId, Ref),
+    ok = vmq_generic_msg_store:msg_store_delete(SId, Ref),
     delete_msgs(SId, Rest).
 
 read_msgs(SId, Refs) ->
     read_msgs(SId, Refs, []).
 read_msgs(_, [], Acc) -> {ok, lists:reverse(Acc)};
 read_msgs(SId, [Ref|Refs], Acc) ->
-    {ok, Msg} = vmq_lvldb_store:msg_store_read(SId, Ref),
+    {ok, Msg} = vmq_generic_msg_store:msg_store_read(SId, Ref),
     read_msgs(SId, Refs, [Msg|Acc]).
 
 refcount([Ref|Refs], Cnt) ->
-    refcount(Refs, Cnt + vmq_lvldb_store:refcount(Ref));
+    refcount(Refs, Cnt + vmq_generic_msg_store:refcount(Ref));
 refcount([], Cnt) -> Cnt.
 
 
@@ -282,7 +282,7 @@ random_qos() ->
     rand:uniform(3) - 1.
 
 store_summary() ->
-    vmq_lvldb_store_utils:full_table_scan(
+    vmq_generic_msg_store_utils:full_table_scan(
       fun
           ({msg, _, _, _, _}, {NumMsgs, NumIdxs}) ->
               {NumMsgs + 1, NumIdxs};

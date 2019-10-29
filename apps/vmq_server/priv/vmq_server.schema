@@ -1725,8 +1725,8 @@
                                                           {datatype, {enum, [vmq_plumtree, vmq_swc]}}
                                                          ]}.
 
-{mapping, "message_store_plugin", "vmq_server.message_store_impl", [{default, vmq_lvldb_store},
-                                                                    {datatype, {enum, [vmq_lvldb_store]}},
+{mapping, "message_store_plugin", "vmq_server.message_store_impl", [{default, vmq_generic_msg_store},
+                                                                    {datatype, {enum, [vmq_generic_msg_store]}},
                                                                     hidden
                                                                    ]}.
 
