@@ -4,9 +4,12 @@
          %% suite/0,
          init_per_suite/1,
          end_per_suite/1,
+         init_per_group/2,
+         end_per_group/2,
          init_per_testcase/2,
          end_per_testcase/2,
-         all/0
+         all/0,
+         groups/0
         ]).
 
 -export([insert_delete_test/1,
@@ -19,26 +22,26 @@
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(Config) ->
-    S = vmq_test_utils:get_suite_rand_seed(),
-    %% this might help, might not...
-    os:cmd(os:find_executable("epmd")++" -daemon"),
-    case net_kernel:start([lvldb_test, shortnames]) of
-        {ok, _} -> ok;
-        {error, _} -> ok
-    end,
-    cover:start(),
-    [S|Config].
+    Config.
 
-end_per_suite(_Config) ->
-    _Config.
+end_per_suite(Config) ->
+    Config.
+
+init_per_group(StorageEngine, Config) ->
+    [{engine, StorageEngine}|Config].
+
+end_per_group(_Group, _Config) ->
+    ok.
 
 init_per_testcase(message_compat_pre_test, Config) ->
     Config;
 init_per_testcase(idx_compat_pre_test, Config) ->
     Config;
 init_per_testcase(_Case, Config) ->
-    vmq_test_utils:seed_rand(Config),
-    vmq_test_utils:setup(),
+    StorageEngine = proplists:get_value(engine, Config),
+    application:load(vmq_generic_msg_store),
+    application:set_env(vmq_generic_msg_store, msg_store_engine, StorageEngine),
+    application:ensure_all_started(vmq_generic_msg_store),
     Config.
 
 end_per_testcase(message_compat_pre_test, Config) ->
@@ -46,14 +49,33 @@ end_per_testcase(message_compat_pre_test, Config) ->
 end_per_testcase(idx_compat_pre_test, Config) ->
     Config;
 end_per_testcase(_, Config) ->
-    vmq_server:stop(),
+    application:stop(vmq_generic_msg_store),
     Config.
 
 all() ->
-    [insert_delete_test,
-     ref_delete_test,
-     message_compat_pre_test,
-     idx_compat_pre_test].
+    [
+     {group, vmq_storage_engine_leveldb},
+     {group, vmq_storage_engine_dets},
+     {group, vmq_storage_engine_ets},
+     {group, basic}
+    ].
+
+groups() ->
+    StorageTests = [
+                    insert_delete_test,
+                    ref_delete_test,
+                    message_compat_pre_test,
+                    idx_compat_pre_test],
+    BasicTests = [
+                  message_compat_pre_test,
+                  idx_compat_pre_test
+                 ],
+    [
+     {vmq_storage_engine_leveldb, [shuffle], StorageTests},
+     {vmq_storage_engine_dets, [shuffle], StorageTests},
+     {vmq_storage_engine_ets, [shuffle], StorageTests},
+     {basic, [shuffle], BasicTests}
+    ].
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -243,9 +265,9 @@ idx_compat_pre_test(_Cfg) ->
 
 generate_msgs(0, Acc) -> Acc;
 generate_msgs(N, Acc) ->
-    Msg = #vmq_msg{msg_ref=vmq_mqtt_fsm_util:msg_ref(),
-                   routing_key=vmq_test_utils:rand_bytes(10),
-                   payload = vmq_test_utils:rand_bytes(100),
+    Msg = #vmq_msg{msg_ref= msg_ref(),
+                   routing_key= rand_bytes(10),
+                   payload = rand_bytes(100),
                    mountpoint = "",
                    dup = random_flag(),
                    qos = random_qos(),
@@ -289,4 +311,11 @@ store_summary() ->
           ({idx, _, _, _, _}, {NumMsgs, NumIdxs}) ->
               {NumMsgs, NumIdxs + 1}
       end, {0,0}).
+
+rand_bytes(N) ->
+    crypto:strong_rand_bytes(N).
+
+msg_ref() ->
+    erlang:md5(term_to_binary({node(), self(), erlang:timestamp(), rand_bytes(10)})).
+
 

@@ -122,6 +122,7 @@ start_node(Name, Config, Case) ->
             NodeDir = filename:join([PrivDir, Node, Case]),
             ok = rpc:call(Node, application, load, [vmq_server]),
             ok = rpc:call(Node, application, load, [vmq_plugin]),
+            ok = rpc:call(Node, application, load, [vmq_generic_msg_store]),
             ok = rpc:call(Node, application, load, [plumtree]),
             ok = rpc:call(Node, application, load, [lager]),
             ok = rpc:call(Node, application, set_env, [lager,
@@ -139,7 +140,7 @@ start_node(Name, Config, Case) ->
                                                                  random_port(Node)},
                                                                 []}]}
                                                        ]]),
-            ok = rpc:call(Node, application, set_env, [vmq_server,
+            ok = rpc:call(Node, application, set_env, [vmq_generic_msg_store,
                                                        msg_store_opts,
                                                        [{store_dir,
                                                          NodeDir++"/msgstore"}]

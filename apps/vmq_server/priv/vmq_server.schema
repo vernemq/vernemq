@@ -1507,12 +1507,6 @@
                                                                             hidden
                                                                            ]}.
 
-{mapping, "leveldb_message_store.directory", "vmq_server.msg_store_opts.store_dir", [
-                                                                            {default, "{{platform_data_dir}}/msgstore"},
-                                                                            {datatype, directory},
-                                                                            hidden
-                                                                           ]}.
-
 {mapping, "plumtree.directory", "plumtree.plumtree_data_dir", [
                                              {default, "{{platform_data_dir}}/meta"},
                                              {datatype, directory},
@@ -1726,7 +1720,7 @@
                                                          ]}.
 
 {mapping, "message_store_plugin", "vmq_server.message_store_impl", [{default, vmq_generic_msg_store},
-                                                                    {datatype, {enum, [vmq_generic_msg_store]}},
+                                                                    {datatype, atom},
                                                                     hidden
                                                                    ]}.
 

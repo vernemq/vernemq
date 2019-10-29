@@ -172,7 +172,7 @@ init([InstanceId]) ->
     %% Initialize random seed
     rand:seed(exsplus, os:timestamp()),
 
-    EngineModule = application:get_env(vmq_generic_msg_store, msg_store_engine, vmq_storage_engine_leveldb),
+    {ok, EngineModule} = application:get_env(vmq_generic_msg_store, msg_store_engine),
     Opts = application:get_env(vmq_generic_msg_store, msg_store_opts, []),
     DataDir1 = proplists:get_value(store_dir, Opts, "data/msgstore"),
     DataDir2 = filename:join(DataDir1, integer_to_list(InstanceId)),
