@@ -18,7 +18,7 @@
 
 %% API
 -export([start_link/1,
-         msg_store_write/3,
+         msg_store_write/2,
          msg_store_read/2,
          msg_store_delete/2,
          msg_store_find/2,
@@ -68,8 +68,8 @@
 start_link(Id) ->
     gen_server:start_link(?MODULE, [Id], []).
 
-msg_store_write(SubscriberId, MsgRef, Msg) ->
-    call(MsgRef, {write, SubscriberId, MsgRef, Msg}).
+msg_store_write(SubscriberId, #vmq_msg{msg_ref=MsgRef} = Msg) ->
+    call(MsgRef, {write, SubscriberId, Msg}).
 
 msg_store_delete(SubscriberId, MsgRef) ->
     call(MsgRef, {delete, SubscriberId, MsgRef}).
@@ -177,6 +177,7 @@ init([InstanceId]) ->
     DataDir1 = proplists:get_value(store_dir, Opts, "data/msgstore"),
     DataDir2 = filename:join(DataDir1, integer_to_list(InstanceId)),
 
+    process_flag(trap_exit, true),
     case apply(EngineModule, open, [DataDir2, Opts]) of
         {ok, EngineState} ->
             self() ! {initialize_from_storage, InstanceId},
@@ -280,8 +281,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-handle_req({write, {MP, _} = SubscriberId, MsgRef,
-            #vmq_msg{routing_key=RoutingKey, payload=Payload, dup=Dup, qos=QoS, mountpoint=MP}},
+handle_req({write, {MP, _} = SubscriberId,
+            #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
+                     routing_key=RoutingKey, payload=Payload}},
            #state{engine=EngineState, engine_module=EngineModule, refs=Refs}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
@@ -296,7 +298,8 @@ handle_req({write, {MP, _} = SubscriberId, MsgRef,
             %% only write the idx
             apply(EngineModule, write, [EngineState, [{put, IdxKey, IdxVal}]])
     end;
-handle_req({read, {MP, _} = SubscriberId, MsgRef}, #state{engine=EngineState, engine_module=EngineModule}) ->
+handle_req({read, {MP, _} = SubscriberId, MsgRef},
+           #state{engine=EngineState, engine_module=EngineModule}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
     case apply(EngineModule, read, [EngineState, MsgKey]) of
@@ -305,12 +308,8 @@ handle_req({read, {MP, _} = SubscriberId, MsgRef}, #state{engine=EngineState, en
             case apply(EngineModule, read, [EngineState, IdxKey]) of
                 {ok, IdxVal} ->
                     #p_idx_val{dup=Dup, qos=QoS} = parse_p_idx_val_pre(IdxVal),
-                    Msg = #vmq_msg{msg_ref=MsgRef,
-                                   mountpoint=MP,
-                                   dup=Dup, qos=QoS,
-                                   routing_key=RoutingKey,
-                                   payload=Payload,
-                                   persisted=true},
+                    Msg = #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
+                                   routing_key=RoutingKey, payload=Payload, persisted=true},
                     {ok, Msg};
                 not_found ->
                     {error, idx_val_not_found}

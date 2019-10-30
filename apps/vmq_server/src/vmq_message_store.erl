@@ -19,8 +19,7 @@
          write/2,
          read/2,
          delete/2,
-         find/2,
-         msg_attrs/2]).
+         find/2]).
 
 start() ->
     Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_msg_store),
@@ -45,8 +44,8 @@ stop() ->
               end),
     ok.
 
-write(SubscriberId, #vmq_msg{msg_ref=MsgRef} = Msg) ->
-    vmq_plugin:only(msg_store_write, [SubscriberId, MsgRef, Msg]).
+write(SubscriberId, Msg) ->
+    vmq_plugin:only(msg_store_write, [SubscriberId, Msg]).
 
 read(SubscriberId, MsgRef) ->
     vmq_plugin:only(msg_store_read, [SubscriberId, MsgRef]).
@@ -57,20 +56,3 @@ delete(SubscriberId, MsgRef) ->
 find(SubscriberId, Type) when Type =:= queue_init;
                               Type =:= other ->
     vmq_plugin:only(msg_store_find, [SubscriberId, Type]).
-
-msg_attrs(Attrs, Msg) ->
-    msg_attrs(Attrs, Msg, 1, list_to_tuple(Attrs)).
-
-msg_attrs([msg_ref|Rest], #vmq_msg{msg_ref=A} = Msg, Idx, Acc) ->
-    msg_attrs(Rest, Msg, Idx + 1, erlang:setelement(Idx, Acc, A));
-msg_attrs([mountpoint|Rest], #vmq_msg{mountpoint=A} = Msg, Idx, Acc) ->
-    msg_attrs(Rest, Msg, Idx + 1, erlang:setelement(Idx, Acc, A));
-msg_attrs([dup|Rest], #vmq_msg{dup=A} = Msg, Idx, Acc) ->
-    msg_attrs(Rest, Msg, Idx + 1, erlang:setelement(Idx, Acc, A));
-msg_attrs([qos|Rest], #vmq_msg{qos=A} = Msg, Idx, Acc) ->
-    msg_attrs(Rest, Msg, Idx + 1, erlang:setelement(Idx, Acc, A));
-msg_attrs([routing_key|Rest], #vmq_msg{routing_key=A} = Msg, Idx, Acc) ->
-    msg_attrs(Rest, Msg, Idx + 1, erlang:setelement(Idx, Acc, A));
-msg_attrs([payload|Rest], #vmq_msg{payload=A} = Msg, Idx, Acc) ->
-    msg_attrs(Rest, Msg, Idx + 1, erlang:setelement(Idx, Acc, A));
-msg_attrs([], _, _, Acc) -> Acc.
