@@ -50,7 +50,7 @@ init_msg_init_tables() ->
               %% register them by name to make it easier to inspect
               %% them.
               Name =
-                  list_to_atom("vmq_lvldb_init_msg_idx_" ++ integer_to_list(I)),
+                  list_to_atom("vmq_generic_msg_store_init_msg_idx_" ++ integer_to_list(I)),
               Ref = ets:new(Name, [public, named_table, ordered_set,
                                    {read_concurrency, true}]),
               %% use persistent terms to fetch the references when
