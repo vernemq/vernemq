@@ -81,8 +81,8 @@ publish_(Msg0, {Node, SubscriberId, SubInfo}, QState, {Local, Remote}) when Node
             {error, not_found};
         QPid ->
             try
-                Msg1 = maybe_add_sub_id(SubInfo, Msg0),
-                case vmq_queue:enqueue_many(QPid, [{deliver, SubInfo, Msg1}], #{states => [QState]}) of
+                {QoS, Msg1} = maybe_add_sub_id(SubInfo, Msg0),
+                case vmq_queue:enqueue_many(QPid, [{deliver, QoS, Msg1}], #{states => [QState]}) of
                     ok ->
                         {ok, {Local + 1, Remote}};
                     E ->
@@ -94,8 +94,8 @@ publish_(Msg0, {Node, SubscriberId, SubInfo}, QState, {Local, Remote}) when Node
             end
     end;
 publish_(Msg0, {Node, SubscriberId, SubInfo}, QState, {Local, Remote}) ->
-    Msg1 = maybe_add_sub_id(SubInfo, Msg0),
-    Term = {enqueue_many, SubscriberId, [{deliver, SubInfo, Msg1}], #{states => [QState]}},
+    {QoS, Msg1} = maybe_add_sub_id(SubInfo, Msg0),
+    Term = {enqueue_many, SubscriberId, [{deliver, QoS, Msg1}], #{states => [QState]}},
     case vmq_cluster:remote_enqueue(Node, Term, true) of
         ok ->
             {ok, {Local, Remote + 1}};
@@ -119,7 +119,9 @@ filter_subscribers(Subscribers, local_only) ->
     %% filtered in `vmq_reg`.
     Subscribers.
 
-maybe_add_sub_id({_, #{sub_id := SubId}}, #vmq_msg{properties = Props} = Msg) ->
-    Msg#vmq_msg{properties = Props#{p_subscription_id => [SubId]}};
-maybe_add_sub_id(_, Msg) ->
-    Msg.
+maybe_add_sub_id({QoS, #{sub_id := SubId}}, #vmq_msg{properties = Props} = Msg) ->
+    {QoS, Msg#vmq_msg{properties = Props#{p_subscription_id => [SubId]}}};
+maybe_add_sub_id({QoS, _UnusedSubInfo}, Msg) ->
+    {QoS, Msg};
+maybe_add_sub_id(QoS, Msg) ->
+    {QoS, Msg}.
