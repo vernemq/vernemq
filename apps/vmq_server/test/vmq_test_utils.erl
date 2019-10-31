@@ -72,8 +72,11 @@ disable_all_plugins() ->
                           ignore
                   end, Plugins),
     %% Disable Mod Plugins
-    _ = [vmq_plugin_mgr:disable_plugin(P) || P <- vmq_plugin:info(all)],
-    ok.
+    lists:foreach(fun ({_, vmq_lvldb_store, _, _}) ->
+                          ignore;
+                      (P) ->
+                          vmq_plugin_mgr:disable_plugin(P)
+                  end, vmq_plugin:info(all)).
 
 maybe_start_distribution(Name) ->
     case ets:info(sys_dist) of
