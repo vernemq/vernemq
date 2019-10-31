@@ -1025,27 +1025,32 @@ publish_last_will(#state{delayed_will = {_, Fun}} = State) ->
     Fun(),
     unset_will_timer(State#state{delayed_will = undefined}).
 
-maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persisted=false} = Msg}=D) when QoS > 0 ->
-    PMsg = Msg#vmq_msg{persisted=true},
-    case vmq_plugin:only(msg_store_write, [SubscriberId, PMsg#vmq_msg{qos=QoS}]) of
+maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persisted=false, dup=IsDup} = Msg}=D) when QoS > 0 ->
+    PMsg = Msg#vmq_msg{persisted=true, qos=QoS},
+    case vmq_plugin:only(msg_store_write, [SubscriberId, PMsg]) of
+        %% Although we have no online/serving session attached
+        %% to this queue we can't compress this message, as it is
+        %% a publish with the DUP flag set, and we must keep the
+        %% message id around (which isn't stored in the message store yet)
+        ok when Offline and IsDup ->
+            D#deliver{msg=PMsg};
         %% in case we have no online/serving session attached
         %% to this queue anymore we can save memory by only
         %% keeping the message ref in the queue
         ok when Offline ->
             PMsg#vmq_msg.msg_ref;
-        {ok, NewMsgRef} when Offline ->
-            NewMsgRef;
         %% in case we still have online sessions attached
         %% to this queue, we keep the full message structure around
         ok ->
             D#deliver{msg=PMsg};
-        {ok, NewMsgRef} ->
-            D#deliver{msg=PMsg#vmq_msg{msg_ref=NewMsgRef}};
         %% in case we cannot store the message we keep the
         %% full message structure around
         {error, _} ->
             D
     end;
+maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true, dup=true}} = D) ->
+    % we can't compress a DUP message as we'd lose the message id when compressing
+    D;
 maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true} = Msg}) ->
     Msg#vmq_msg.msg_ref;
 maybe_offline_store(_, _, MsgOrRef) -> MsgOrRef.
