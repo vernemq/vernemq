@@ -28,6 +28,12 @@
 - Fix typo in `vmq-admin listener start` command (#1348).
 - Optimize subscription performance when many retained messages are stored on
   the broker and the subscription contains wildcards.
+- Fix bug where MQTT 5 publish expiry interval was lost when writing the message
+  to the message store.
+- Fix bug where a retried MQTT publish after resuming an offline session used
+  the wrong message id.
+- Fix MQTT 5 shared subscription bug where writing the message to the message
+  store resulted in a corrupt message record once a offline session was resumed.
 
 ## VerneMQ 1.9.2
 

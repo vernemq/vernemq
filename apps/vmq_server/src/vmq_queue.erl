@@ -1025,28 +1025,44 @@ publish_last_will(#state{delayed_will = {_, Fun}} = State) ->
     Fun(),
     unset_will_timer(State#state{delayed_will = undefined}).
 
-maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persisted=false} = Msg}=D) when QoS > 0 ->
-    PMsg = Msg#vmq_msg{persisted=true},
-    case vmq_plugin:only(msg_store_write, [SubscriberId, PMsg#vmq_msg{qos=QoS}]) of
-        %% in case we have no online/serving session attached
-        %% to this queue anymore we can save memory by only
-        %% keeping the message ref in the queue
-        ok when Offline ->
-            PMsg#vmq_msg.msg_ref;
-        {ok, NewMsgRef} when Offline ->
-            NewMsgRef;
-        %% in case we still have online sessions attached
-        %% to this queue, we keep the full message structure around
-        ok ->
+maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persisted=false, dup=IsDup, expiry_ts=ExpiryTs} = Msg}=D) when QoS > 0 ->
+    %% this function writes the message to the message store, in case the queue
+    %% has no online session attached anymore (Offline = true) the queue can
+    %% 'compress' the messages. Compressing is done by only keeping the message
+    %% reference in the queue (the rest of the message is fetched from the
+    %% message store during 'decompress'). However, the message store doesn't
+    %% store all message properties, therefore the queue can't just 'compress'
+    %% every message. The following properties aren't stored by the currently
+    %% provided message store:
+    %% - Message ID (required when storing a message with the DUP flag)
+    %% - Expiry Timestamp (required when storing a message that should expire)
+    PMsg = Msg#vmq_msg{persisted=true, qos=QoS},
+    case vmq_plugin:only(msg_store_write, [SubscriberId, PMsg]) of
+        ok when Offline and IsDup ->
+            % No compress
             D#deliver{msg=PMsg};
-        {ok, NewMsgRef} ->
-            D#deliver{msg=PMsg#vmq_msg{msg_ref=NewMsgRef}};
-        %% in case we cannot store the message we keep the
-        %% full message structure around
+        ok when Offline and (ExpiryTs =/= undefined) ->
+            % No compress
+            D#deliver{msg=PMsg};
+        ok when Offline ->
+            % Compress
+            PMsg#vmq_msg.msg_ref;
+        ok ->
+            % No compress, we're still online
+            D#deliver{msg=PMsg};
         {error, _} ->
+            %% in case we cannot store the message we keep the
+            %% full message structure around
             D
     end;
+maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true, dup=true}} = D) ->
+    % we can't compress a DUP message as we'd lose the message id when compressing
+    D;
+maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true, expiry_ts=ExpiryTs}} = D) when ExpiryTs =/= undefined ->
+    % we can't compress a message that has the expiry_ts set as we'd lose the expiry ts when compressing
+    D;
 maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true} = Msg}) ->
+    % Compress
     Msg#vmq_msg.msg_ref;
 maybe_offline_store(_, _, MsgOrRef) -> MsgOrRef.
 
