@@ -115,9 +115,9 @@ start_node(Name, Config, Case) ->
             {startup_functions, [
                     {code, set_path, [CodePath]}
                     ]}],
+    VmqServerPrivDir = code:priv_dir(vmq_server),
     case ct_slave:start(Name, NodeConfig) of
         {ok, Node} ->
-
             PrivDir = proplists:get_value(priv_dir, Config),
             NodeDir = filename:join([PrivDir, Node, Case]),
             ok = rpc:call(Node, application, load, [vmq_server]),
@@ -151,6 +151,9 @@ start_node(Name, Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_plugin,
                                                        plugin_dir,
                                                        NodeDir]),
+            ok = rpc:call(Node, application, set_env, [vmq_plugin,
+                                                       default_schema_dir,
+                                                       [VmqServerPrivDir]]),
 
             {ok, _} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),

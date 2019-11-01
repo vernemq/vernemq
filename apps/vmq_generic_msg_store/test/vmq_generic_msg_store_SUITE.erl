@@ -276,7 +276,7 @@ generate_msgs(N, Acc) ->
     generate_msgs(N - 1, [Msg|Acc]).
 
 store_msgs(SId, [Msg|Rest]) ->
-    ok = vmq_generic_msg_store:msg_store_write(SId, Msg#vmq_msg.msg_ref, Msg),
+    ok = vmq_generic_msg_store:msg_store_write(SId, Msg),
     store_msgs(SId, Rest);
 store_msgs(_, []) -> ok.
 
