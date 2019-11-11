@@ -34,6 +34,8 @@
   the wrong message id.
 - Fix MQTT 5 shared subscription bug where writing the message to the message
   store resulted in a corrupt message record once a offline session was resumed.
+- Refactor built-in message storage to enable multiple storage engines as well as
+  to streamline the implementation of alternative message storage plugins. 
 
 ## VerneMQ 1.9.2
 
