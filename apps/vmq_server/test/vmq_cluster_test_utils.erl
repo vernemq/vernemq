@@ -115,13 +115,14 @@ start_node(Name, Config, Case) ->
             {startup_functions, [
                     {code, set_path, [CodePath]}
                     ]}],
+    VmqServerPrivDir = code:priv_dir(vmq_server),
     case ct_slave:start(Name, NodeConfig) of
         {ok, Node} ->
-
             PrivDir = proplists:get_value(priv_dir, Config),
             NodeDir = filename:join([PrivDir, Node, Case]),
             ok = rpc:call(Node, application, load, [vmq_server]),
             ok = rpc:call(Node, application, load, [vmq_plugin]),
+            ok = rpc:call(Node, application, load, [vmq_generic_msg_store]),
             ok = rpc:call(Node, application, load, [plumtree]),
             ok = rpc:call(Node, application, load, [lager]),
             ok = rpc:call(Node, application, set_env, [lager,
@@ -139,7 +140,7 @@ start_node(Name, Config, Case) ->
                                                                  random_port(Node)},
                                                                 []}]}
                                                        ]]),
-            ok = rpc:call(Node, application, set_env, [vmq_server,
+            ok = rpc:call(Node, application, set_env, [vmq_generic_msg_store,
                                                        msg_store_opts,
                                                        [{store_dir,
                                                          NodeDir++"/msgstore"}]
@@ -150,6 +151,9 @@ start_node(Name, Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_plugin,
                                                        plugin_dir,
                                                        NodeDir]),
+            ok = rpc:call(Node, application, set_env, [vmq_plugin,
+                                                       default_schema_dir,
+                                                       [VmqServerPrivDir]]),
 
             {ok, _} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),

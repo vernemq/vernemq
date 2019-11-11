@@ -416,7 +416,7 @@ drain(Event, _From, State) ->
 
 
 offline(init_offline_queue, #state{id=SId} = State) ->
-    case vmq_plugin:only(msg_store_find, [SId, queue_init]) of
+    case vmq_message_store:find(SId, queue_init) of
         {ok, MsgRefs} ->
             _ = vmq_metrics:incr_queue_initialized_from_storage(),
             {next_state, offline,
@@ -950,7 +950,7 @@ prepare_msgs(SId, OQ, Q, QC, N) ->
     end.
 
 maybe_deref(SId, MsgRef) when is_binary(MsgRef) ->
-    case vmq_plugin:only(msg_store_read, [SId, MsgRef]) of
+    case vmq_message_store:read(SId, MsgRef) of
         {ok, #vmq_msg{qos=QoS}=Msg} ->
             {ok, #deliver{qos=QoS, msg=Msg}};
         {error, _} = E ->
@@ -1037,7 +1037,7 @@ maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persis
     %% - Message ID (required when storing a message with the DUP flag)
     %% - Expiry Timestamp (required when storing a message that should expire)
     PMsg = Msg#vmq_msg{persisted=true, qos=QoS},
-    case vmq_plugin:only(msg_store_write, [SubscriberId, PMsg]) of
+    case vmq_message_store:write(SubscriberId, PMsg) of
         ok when Offline and IsDup ->
             % No compress
             D#deliver{msg=PMsg};
@@ -1067,10 +1067,10 @@ maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true} = Msg}) ->
 maybe_offline_store(_, _, MsgOrRef) -> MsgOrRef.
 
 maybe_offline_delete(SubscriberId, #deliver{msg=#vmq_msg{persisted=true, msg_ref=MsgRef}}) ->
-    _ = vmq_plugin:only(msg_store_delete, [SubscriberId, MsgRef]),
+    _ = vmq_message_store:delete(SubscriberId, MsgRef),
     ok;
 maybe_offline_delete(SubscriberId, MsgRef) when is_binary(MsgRef) ->
-    _ = vmq_plugin:only(msg_store_delete, [SubscriberId, MsgRef]),
+    _ = vmq_message_store:delete(SubscriberId, MsgRef),
     ok;
 maybe_offline_delete(_, _) -> ok.
 
@@ -1130,7 +1130,7 @@ decompress_queue(SId, #queue{queue=Q} = Queue) ->
 decompress_queue(_, [], Acc) ->
     queue:from_list(lists:reverse(Acc));
 decompress_queue(SId, [MsgRef|Rest], Acc) when is_binary(MsgRef) ->
-    case vmq_plugin:only(msg_store_read, [SId, MsgRef]) of
+    case vmq_message_store:read(SId, MsgRef) of
         {ok, #vmq_msg{qos=QoS} = Msg} ->
             decompress_queue(SId, Rest,
                              [#deliver{qos=QoS, msg=Msg#vmq_msg{persisted=false}}|Acc]);
@@ -1160,7 +1160,7 @@ on_message_drop_hook(SubscriberId, #deliver{msg=#vmq_msg{routing_key=RoutingKey,
     vmq_plugin:all(on_message_drop, [SubscriberId, fun() -> {RoutingKey, QoS, Payload, Props} end, Reason]);
 on_message_drop_hook(SubscriberId, MsgRef, Reason) when is_binary(MsgRef) ->
     Promise = fun() ->
-                      case vmq_plugin:only(msg_store_read, [SubscriberId, MsgRef]) of
+                      case vmq_message_store:read(SubscriberId, MsgRef) of
                           {ok, #vmq_msg{routing_key=RoutingKey, qos=QoS, payload=Payload, properties=Props}} ->
                               {RoutingKey, QoS, Payload, Props};
                           _ ->

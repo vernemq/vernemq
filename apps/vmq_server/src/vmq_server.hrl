@@ -1,31 +1,8 @@
 -ifndef(VMQ_SERVER_HRL).
 -define(VMQ_SERVER_HRL, true).
--include_lib("vernemq_dev/include/vernemq_dev.hrl").
-
--type routing_key()         :: [binary()].
--type msg_ref()             :: binary().
+-include_lib("vmq_commons/include/vmq_types.hrl").
 
 -type plugin_id()       :: {plugin, atom(), pid()}.
-
--type msg_expiry_ts() :: {expire_after, non_neg_integer()}
-                       | {non_neg_integer(), non_neg_integer()}.
-
--record(vmq_msg, {
-          msg_ref               :: msg_ref() | 'undefined', % OTP-12719
-          routing_key           :: routing_key() | 'undefined',
-          payload               :: payload() | 'undefined',
-          retain=false          :: flag(),
-          dup=false             :: flag(),
-          qos                   :: qos(),
-          mountpoint            :: mountpoint(),
-          persisted=false       :: flag(),
-          sg_policy=prefer_local:: shared_sub_policy(),
-          %% TODOv5: need to import the mqtt5 property typespec?
-          properties=#{}        :: map(),
-          expiry_ts             :: undefined
-                                 | msg_expiry_ts()
-         }).
--type msg()             :: #vmq_msg{}.
 
 -record(retain_msg,
         {

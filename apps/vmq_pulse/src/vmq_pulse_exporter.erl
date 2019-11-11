@@ -227,8 +227,15 @@ interval(Int) when Int < 10 -> 10 * 1000;
 interval(Int) -> Int * 1000.
 
 disk_util() ->
-    {ok, MsgStoreOpts} = application:get_env(vmq_server, msg_store_opts),
-    MsgStoreDisk = find_disk_for_directory(filename:absname(proplists:get_value(store_dir, MsgStoreOpts))),
+    MsgStoreDisk =
+    case application:get_env(vmq_server, message_store_impl) of
+        {ok, vmq_generic_msg_store} ->
+            {ok, MsgStoreOpts} = application:get_env(vmq_generic_msg_store, msg_store_opts),
+            find_disk_for_directory(filename:absname(proplists:get_value(store_dir, MsgStoreOpts)));
+        _ ->
+            unknown_message_store
+    end,
+
     MetadataDisk =
     case metadata_backend() of
         vmq_swc ->
