@@ -63,7 +63,7 @@ init([#swc_config{transport=TMod} = Config,
     end,
     schedule_register_peer_events(0),
     TMod:transport_init(Config, Opts),
-    ok = connect_members(Config, Members, Strategy),
+    ok = connect_members(Config, Members),
     {ok, #state{config=Config,
                 members=Members,
                 strategy=Strategy}}.
@@ -74,8 +74,8 @@ handle_call(get_members, _From, #state{members=Members} = State) ->
 handle_cast({set_members, NewMembers},  #state{config=Config, members=OldMembers, strategy=Strategy} = State) ->
     MembersToAdd = NewMembers -- OldMembers,
     MembersToDel = OldMembers -- NewMembers,
-    ok = connect_members(Config, MembersToAdd, Strategy),
-    ok = disconnect_members(Config, MembersToDel, Strategy),
+    ok = connect_members(Config, MembersToAdd),
+    ok = disconnect_members(Config, MembersToDel),
     vmq_swc_store:set_group_members(Config, NewMembers),
     {noreply, State#state{members=NewMembers}}.
 
@@ -97,17 +97,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-connect_members(_Config, [], _) -> ok;
-connect_members(#swc_config{peer=Member} = Config, [Member|Rest], plumtree) ->
-    connect_members(Config, Rest, plumtree);
-connect_members(#swc_config{transport=TMod} = Config, [Member|Rest], plumtree) ->
+connect_members(_Config, []) -> ok;
+connect_members(#swc_config{peer=Member} = Config, [Member|Rest]) ->
+    connect_members(Config, Rest);
+connect_members(#swc_config{transport=TMod} = Config, [Member|Rest]) ->
     TMod:start_connection(Config, Member),
-    connect_members(Config, Rest, plumtree).
+    connect_members(Config, Rest).
 
-disconnect_members(_Config, [], _) -> ok;
-disconnect_members(#swc_config{transport=TMod} = Config, [Member|Rest], Strategy) ->
+disconnect_members(_Config, []) -> ok;
+disconnect_members(#swc_config{transport=TMod} = Config, [Member|Rest]) ->
     TMod:stop_connection(Config, Member),
-    disconnect_members(Config, Rest, Strategy).
+    disconnect_members(Config, Rest).
 
 schedule_register_peer_events(T) ->
     erlang:send_after(T, self(), register_peer_events).

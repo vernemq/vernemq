@@ -17,7 +17,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/1]).
+-export([start_link/1, start_link/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -36,8 +36,11 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link(SwcGroup) ->
+    start_link(SwcGroup, [{membership_strategy, plumtree}]).
+
+start_link(SwcGroup, Opts) ->
     SupName = list_to_atom("vmq_swc_store_sup_" ++ atom_to_list(SwcGroup)),
-    supervisor:start_link({local, SupName}, ?MODULE, [SwcGroup]).
+    supervisor:start_link({local, SupName}, ?MODULE, [SwcGroup, Opts]).
 
 %%%===================================================================
 %%% Supervisor callbacks
@@ -56,15 +59,20 @@ start_link(SwcGroup) ->
 %%                     {error, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([SwcGroup]) ->
+init([SwcGroup, Opts]) ->
+
+    MembershipStrategy = proplists:get_value(membership_strategy, Opts, plumtree),
 
     PeerName = node(),
+
     DbBackend =
-    case application:get_env(vmq_swc, db_backend) of
-        {ok, rocksdb} -> vmq_swc_db_rocksdb;
-        {ok, leveled} -> vmq_swc_db_leveled;
-        {ok, leveldb} -> vmq_swc_db_leveldb
+    case proplists:get_value(db_backend, Opts, application:get_env(vmq_swc, db_backend, leveldb)) of
+        rocksdb -> vmq_swc_db_rocksdb;
+        leveled -> vmq_swc_db_leveled;
+        leveldb -> vmq_swc_db_leveldb
     end,
+
+    DbOpts = proplists:get_value(db_opts, Opts, []),
 
     Config = config(PeerName, SwcGroup, DbBackend, vmq_swc_edist_srv),
     % this table is created by the root supervisor
@@ -77,7 +85,7 @@ init([SwcGroup]) ->
     TransportChildSpec = #{id => {vmq_swc_edist_srv, SwcGroup},
                            start => {vmq_swc_edist_srv, start_link, [Config]}},
 
-    DBChildSpecs = vmq_swc_db:childspecs(DbBackend, Config, []),
+    DBChildSpecs = vmq_swc_db:childspecs(DbBackend, Config, DbOpts),
 
     BatcherChildSpec = #{id => {vmq_swc_store_batcher, SwcGroup},
                          start => {vmq_swc_store_batcher, start_link, [Config]}},
@@ -87,7 +95,7 @@ init([SwcGroup]) ->
 
     MembershipChildSpec = #{id => {vmq_swc_group_membership, SwcGroup},
                             start => {vmq_swc_group_membership, start_link,
-                                      [Config, plumtree, {vmq_swc_edist_srv, []}]}},
+                                      [Config, MembershipStrategy, {vmq_swc_edist_srv, []}]}},
 
 
     RestartStrategy = one_for_one,

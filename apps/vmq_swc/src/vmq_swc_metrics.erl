@@ -42,7 +42,7 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 register_gauge(MetricName, Fun) ->
-    gen_server:call(?SERVER, {register_gauge, MetricName, Fun}, infinity).
+    gen_server:call(?SERVER, {register_gauge, self(), MetricName, Fun}, infinity).
 
 metric_name({Metric, SubMetric}) ->
     LMetric = atom_to_list(Metric),
@@ -69,7 +69,7 @@ metrics() ->
       end, [], ?TIMER_TABLE),
 
     Gauges = gen_server:call(?SERVER, get_gauges, infinity),
-    maps:fold(fun({MetricName, Group}, GaugeFun, Acc) ->
+    maps:fold(fun({MetricName, Group}, {GaugeFun, _OwnerRef}, Acc) ->
                       try
                           UniqueId = list_to_atom(atom_to_list(MetricName) ++ "_" ++ atom_to_list(Group)),
                           {Labels, Description, Value} = GaugeFun(),
@@ -136,17 +136,22 @@ init([]) ->
     ets:new(?TIMER_TABLE, [named_table, public, {write_concurrency, true}]),
     {ok, #state{}}.
 
-handle_call({register_gauge, MetricName, Fun}, _From, #state{gauges=Gauges} = State) ->
+handle_call({register_gauge, OwnerPid, MetricName, Fun}, _From, #state{gauges=Gauges} = State) ->
+    MRef = monitor(process, OwnerPid),
     Reply = ok,
-    {reply, Reply, State#state{gauges=maps:put(MetricName, Fun, Gauges)}};
+    {reply, Reply, State#state{gauges=maps:put(MetricName, {Fun, {OwnerPid, MRef}}, Gauges)}};
 handle_call(get_gauges, _From, #state{gauges=Gauges} = State) ->
     {reply, Gauges, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(_Info, State) ->
-    {noreply, State}.
+handle_info({'DOWN', MRef, process, OwnerPid, _Info}, #state{gauges=Gauges0} = State) ->
+    Gauges1 =
+    maps:filter(fun(_MetricName, {_, {OwnerPid, MRef}}) -> false;
+                   (_, _) -> true
+                end, Gauges0),
+    {noreply, State#state{gauges=Gauges1}}.
 
 terminate(_Reason, _State) ->
     ok.
