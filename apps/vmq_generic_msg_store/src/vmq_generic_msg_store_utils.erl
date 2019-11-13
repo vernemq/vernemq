@@ -12,8 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_lvldb_store_utils).
--include("vmq_server.hrl").
+-module(vmq_generic_msg_store_utils).
 
 %% API
 -export([dump/1,
@@ -53,15 +52,15 @@ file_dump_({idx, MsgRef, MP, ClientId, IdxVal}, Fd) ->
 
 
 full_table_scan(FoldFun, Acc) ->
-    full_table_scan_(vmq_lvldb_store_sup:get_bucket_pids(), {FoldFun, Acc}).
+    full_table_scan_(vmq_generic_msg_store_sup:get_bucket_pids(), {FoldFun, Acc}).
 
 full_table_scan_([Bucket|Rest], Acc) ->
-    FoldOpts = [{fill_cache, false}],
-    NewAcc = eleveldb:fold(vmq_lvldb_store:get_ref(Bucket), fun full_table_scan__/2, Acc, FoldOpts),
+    {Engine, EngineState} = vmq_generic_msg_store:get_engine(Bucket),
+    NewAcc = Engine:fold(EngineState, fun full_table_scan__/3, Acc),
     full_table_scan_(Rest, NewAcc);
 full_table_scan_([], {_, Acc}) -> Acc.
 
-full_table_scan__({Key, Value}, {FoldFun, FoldAcc} = Acc) ->
+full_table_scan__(Key, Value, {FoldFun, FoldAcc} = Acc) ->
     NewFoldAcc =
     case sext:decode(Key) of
         {msg, MsgRef, {MP, ''}} ->
@@ -78,5 +77,3 @@ full_table_scan__({Key, Value}, {FoldFun, FoldAcc} = Acc) ->
             Acc
     end,
     {FoldFun, NewFoldAcc}.
-
-

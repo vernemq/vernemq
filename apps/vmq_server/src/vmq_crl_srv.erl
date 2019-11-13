@@ -79,9 +79,16 @@ handle_call({add_crl, File}, _From, State) ->
                        CRL = public_key:pem_entry_decode(E) ,
                        #'TBSCertList'{revokedCertificates=Revoked} =
                            CRL#'CertificateList'.tbsCertList,
-                       [SerialNr ||
-                           #'TBSCertList_revokedCertificates_SEQOF'{
-                              userCertificate=SerialNr} <- Revoked]
+                       case Revoked of
+                           _ when is_list(Revoked) ->
+                               [SerialNr ||
+                                   #'TBSCertList_revokedCertificates_SEQOF'{
+                                      userCertificate=SerialNr} <- Revoked];
+                           asn1_NOVALUE ->
+                               %% case if the pem entry doesn't revoke
+                               %% any certificates.
+                               []
+                       end
                    end || E <- public_key:pem_decode(Bin)]),
     ets:insert(?TAB, {File, Serials}),
     Reply = ok,

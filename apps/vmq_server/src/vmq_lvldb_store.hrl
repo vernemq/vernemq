@@ -1,2 +1,0 @@
--define(TBL_MSG_INIT, vmq_lvldb_init_msg_idx).
--define(NR_OF_BUCKETS, 12).

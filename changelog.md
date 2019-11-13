@@ -23,6 +23,19 @@
   removed in the next major version.
 - Add new `on_session_expired/1` hook which is called when an offline session
   expires and the state is deleted.
+- Handle CRL PEM entries with certificates containing empty revocation lists
+  (#1337).
+- Fix typo in `vmq-admin listener start` command (#1348).
+- Optimize subscription performance when many retained messages are stored on
+  the broker and the subscription contains wildcards.
+- Fix bug where MQTT 5 publish expiry interval was lost when writing the message
+  to the message store.
+- Fix bug where a retried MQTT publish after resuming an offline session used
+  the wrong message id.
+- Fix MQTT 5 shared subscription bug where writing the message to the message
+  store resulted in a corrupt message record once a offline session was resumed.
+- Refactor built-in message storage to enable multiple storage engines as well as
+  to streamline the implementation of alternative message storage plugins. 
 
 ## VerneMQ 1.9.2
 

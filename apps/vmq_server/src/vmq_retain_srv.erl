@@ -54,7 +54,7 @@ start_link() ->
         true ->
             ignore;
         false ->
-            ets:new(?RETAIN_CACHE, [public, named_table,
+            ets:new(?RETAIN_CACHE, [public, ordered_set, named_table,
                                     {read_concurrency, true},
                                     {write_concurrency, true}]),
             ets:new(?RETAIN_UPDATE, [public, named_table,
@@ -75,19 +75,22 @@ insert(MP, RoutingKey, Message) ->
 match_fold(FoldFun, Acc, MP, Topic) ->
     case has_wildcard(Topic) of
         true ->
-            FFoldFun = fun({{M, T}, Payload}, AccAcc) when M == MP ->
-                               case vmq_topic:match(T, Topic) of
-                                   true ->
-                                       FoldFun({T, Payload}, AccAcc);
-                                   false ->
-                                       AccAcc
-                               end;
-                          (_, AccAcc) ->
-                               AccAcc
-                       end,
-            %% full table scan.
-            %% TODO: optimize
-            ets:foldl(FFoldFun, Acc, ?RETAIN_CACHE);
+            %% the performance is worse the earlier a wildcard occurs
+            %% in the subscription topic. Worst case is a # pr + as
+            %% the first topic element which will cause the entire
+            %% table to be scanned.
+            MatchTopic = topic2ms(Topic),
+            MS = [{{{MP, MatchTopic}, '_'}, [], ['$_']}],
+            lists:foldl(
+              fun({{_M,T}, Payload}, AccAcc) ->
+                      case vmq_topic:match(T, Topic) of
+                          true ->
+                              FoldFun({T, Payload}, AccAcc);
+                          false ->
+                              AccAcc
+                      end;
+                 (_, AccAcc) -> AccAcc
+              end, Acc, ets:select(?RETAIN_CACHE, MS));
         false ->
             case ets:lookup(?RETAIN_CACHE, {MP, Topic}) of
                  [] -> Acc;
@@ -95,6 +98,18 @@ match_fold(FoldFun, Acc, MP, Topic) ->
                     FoldFun({Topic, Payload}, Acc)
             end
     end.
+
+-dialyzer({no_improper_lists, topic2ms/1}).
+topic2ms([]) -> [];
+topic2ms([<<"#">>]) ->
+    '_';
+topic2ms([E, <<"#">>]) ->
+    [e2ms(E) | '_'];
+topic2ms([E|Rest]) ->
+    [e2ms(E)|topic2ms(Rest)].
+
+e2ms(<<"+">>) -> '_';
+e2ms(E) -> E.
 
 stats() ->
     case ets:info(?RETAIN_CACHE, size) of
