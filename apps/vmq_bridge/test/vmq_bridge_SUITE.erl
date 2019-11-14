@@ -133,7 +133,7 @@ buffer_outgoing(_Cfg) ->
            out_queue_size := 10}} = vmq_bridge:info(BridgePid),
 
     [{counter, [], {vmq_bridge_queue_drop, _}, vmq_bridge_dropped_msgs,
-      "The number of dropped messages (queue full)", 2}] = vmq_bridge_sup:metrics(),
+      <<"The number of dropped messages (queue full)">>, 2}] = vmq_bridge_sup:metrics(),
 
     %% Reply with the connack
     Connack = packet:gen_connack(0),

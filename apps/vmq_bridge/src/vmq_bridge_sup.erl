@@ -139,6 +139,6 @@ metrics() ->
                       ets:delete(vmq_bridge_meta, ClientPid),
                       Acc;
                   #{dropped := Dropped} ->
-                      [{counter, [], {vmq_bridge_queue_drop, ClientPid}, vmq_bridge_dropped_msgs, "The number of dropped messages (queue full)", Dropped}|Acc]
+                      [{counter, [], {vmq_bridge_queue_drop, ClientPid}, vmq_bridge_dropped_msgs, <<"The number of dropped messages (queue full)">>, Dropped}|Acc]
               end
       end, [], vmq_bridge_meta).
