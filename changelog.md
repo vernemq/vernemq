@@ -36,6 +36,7 @@
   store resulted in a corrupt message record once a offline session was resumed.
 - Refactor built-in message storage to enable multiple storage engines as well as
   to streamline the implementation of alternative message storage plugins. 
+- Fix metric description string in vmq_bridge.
 
 ## VerneMQ 1.9.2
 
