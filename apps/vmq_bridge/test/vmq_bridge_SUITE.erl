@@ -203,7 +203,7 @@ bridge_reg(ReportProc) ->
     RegisterFun = fun() ->
                           ok
                   end,
-    PublishFun = fun(Topic, Payload, _Opts) ->
+    PublishFun = fun(Topic, Payload, _Opts = #{retain=IsRetain}) when is_boolean(IsRetain) ->
                          ReportProc ! {publish, Topic, Payload},
                          ok
                  end,
