@@ -335,7 +335,7 @@ serialise_acks([], Acks) ->
 
 proto(4) -> {4, ?PROTOCOL_MAGIC_311};
 proto(3) -> {6, ?PROTOCOL_MAGIC_31};
-proto(131) -> {131, ?PROTOCOL_MAGIC_31}.
+proto(131) -> {6, ?PROTOCOL_MAGIC_31}.
 
 flag(<<>>) -> 0;
 flag(undefined) -> 0;
