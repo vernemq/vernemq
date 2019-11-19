@@ -39,6 +39,7 @@
 - Fix metric description string in vmq_bridge.
 - Fix regression in vmq_bridge where the retain bit wasn't handled properly for
   incoming publishes.
+- Enable to define the MQTT protocol version to be used by vmq_bridge (4 or 3).
 
 ## VerneMQ 1.9.2
 

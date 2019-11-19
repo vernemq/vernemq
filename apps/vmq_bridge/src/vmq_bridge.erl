@@ -281,7 +281,7 @@ client_opts(tcp, Host, Port, Opts) ->
           true ->
               [{proto_version, 131}]; %% non-spec
           false ->
-              []
+              [{proto_version, proplists:get_value(mqtt_version, Opts, 3)}]
       end],
     [P || {_, V}=P <- OOpts, V /= undefined];
 client_opts(ssl, Host, Port, Opts) ->
