@@ -18,7 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(vmq_swc_plumtree_peer_service).
+-module(vmq_swc_peer_service).
 
 -export([join/1,
          join/2,
@@ -53,35 +53,35 @@ attempt_join(Node) ->
             lager:info("Unable to connect to ~p~n", [Node]),
             {error, not_reachable};
         true ->
-            {ok, Local} = vmq_swc_plumtree_peer_service_manager:get_local_state(),
+            {ok, Local} = vmq_swc_peer_service_manager:get_local_state(),
             attempt_join(Node, Local)
     end.
 
 attempt_join(Node, Local) ->
-    {ok, Remote} = gen_server:call({vmq_swc_plumtree_peer_service_gossip, Node}, send_state),
+    {ok, Remote} = gen_server:call({vmq_swc_peer_service_gossip, Node}, send_state),
     Merged = riak_dt_orswot:merge(Remote, Local),
-    %_ = vmq_swc_plumtree_peer_service_manager:update_state(Merged),
+    %_ = vmq_swc_peer_service_manager:update_state(Merged),
     %% broadcast to all nodes
     %% get peer list
     Members = riak_dt_orswot:value(Merged),
-    _ = [gen_server:cast({vmq_swc_plumtree_peer_service_gossip, P}, {receive_state, Merged}) || P <- Members],
+    _ = [gen_server:cast({vmq_swc_peer_service_gossip, P}, {receive_state, Merged}) || P <- Members],
     ok.
 
 leave(_Args) when is_list(_Args) ->
-    {ok, Local} = vmq_swc_plumtree_peer_service_manager:get_local_state(),
-    {ok, Actor} = vmq_swc_plumtree_peer_service_manager:get_actor(),
+    {ok, Local} = vmq_swc_peer_service_manager:get_local_state(),
+    {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
     {ok, Leave} = riak_dt_orswot:update({remove, node()}, Actor, Local),
     case random_peer(Leave) of
         {ok, Peer} ->
-            {ok, Remote} = gen_server:call({vmq_swc_plumtree_peer_service_gossip, Peer}, send_state),
+            {ok, Remote} = gen_server:call({vmq_swc_peer_service_gossip, Peer}, send_state),
             Merged = riak_dt_orswot:merge(Leave, Remote),
-            _ = gen_server:cast({vmq_swc_plumtree_peer_service_gossip, Peer}, {receive_state, Merged}),
-            {ok, Remote2} = gen_server:call({vmq_swc_plumtree_peer_service_gossip, Peer}, send_state),
+            _ = gen_server:cast({vmq_swc_peer_service_gossip, Peer}, {receive_state, Merged}),
+            {ok, Remote2} = gen_server:call({vmq_swc_peer_service_gossip, Peer}, send_state),
             Remote2List = riak_dt_orswot:value(Remote2),
             case [P || P <- Remote2List, P =:= node()] of
                 [] ->
                     %% leaving the cluster shuts down the node
-                    vmq_swc_plumtree_peer_service_manager:delete_state(),
+                    vmq_swc_peer_service_manager:delete_state(),
                     stop("Leaving cluster");
                 _ ->
                     leave([])

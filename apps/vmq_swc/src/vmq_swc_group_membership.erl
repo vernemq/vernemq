@@ -55,15 +55,15 @@ init([#swc_config{transport=TMod} = Config,
       Strategy, {TMod, Opts} = _T]) ->
     Members =
     case Strategy of
-        plumtree ->
-            {ok, LocalState} = vmq_swc_plumtree_peer_service_manager:get_local_state(),
+        auto ->
+            {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
             riak_dt_orswot:value(LocalState);
         manual ->
             []
     end,
     schedule_register_peer_events(0),
     TMod:transport_init(Config, Opts),
-    ok = connect_members(Config, Members, Strategy),
+    ok = connect_members(Config, Members),
     {ok, #state{config=Config,
                 members=Members,
                 strategy=Strategy}}.
@@ -71,11 +71,11 @@ init([#swc_config{transport=TMod} = Config,
 handle_call(get_members, _From, #state{members=Members} = State) ->
     {reply, Members, State}.
 
-handle_cast({set_members, NewMembers},  #state{config=Config, members=OldMembers, strategy=Strategy} = State) ->
+handle_cast({set_members, NewMembers},  #state{config=Config, members=OldMembers} = State) ->
     MembersToAdd = NewMembers -- OldMembers,
     MembersToDel = OldMembers -- NewMembers,
-    ok = connect_members(Config, MembersToAdd, Strategy),
-    ok = disconnect_members(Config, MembersToDel, Strategy),
+    ok = connect_members(Config, MembersToAdd),
+    ok = disconnect_members(Config, MembersToDel),
     vmq_swc_store:set_group_members(Config, NewMembers),
     {noreply, State#state{members=NewMembers}}.
 
@@ -97,29 +97,29 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-connect_members(_Config, [], _) -> ok;
-connect_members(#swc_config{peer=Member} = Config, [Member|Rest], plumtree) ->
-    connect_members(Config, Rest, plumtree);
-connect_members(#swc_config{transport=TMod} = Config, [Member|Rest], plumtree) ->
+connect_members(_Config, []) -> ok;
+connect_members(#swc_config{peer=Member} = Config, [Member|Rest]) ->
+    connect_members(Config, Rest);
+connect_members(#swc_config{transport=TMod} = Config, [Member|Rest]) ->
     TMod:start_connection(Config, Member),
-    connect_members(Config, Rest, plumtree).
+    connect_members(Config, Rest).
 
-disconnect_members(_Config, [], _) -> ok;
-disconnect_members(#swc_config{transport=TMod} = Config, [Member|Rest], Strategy) ->
+disconnect_members(_Config, []) -> ok;
+disconnect_members(#swc_config{transport=TMod} = Config, [Member|Rest]) ->
     TMod:stop_connection(Config, Member),
-    disconnect_members(Config, Rest, Strategy).
+    disconnect_members(Config, Rest).
 
 schedule_register_peer_events(T) ->
     erlang:send_after(T, self(), register_peer_events).
 
-register_peer_events(plumtree, Config) ->
-    vmq_swc_plumtree_peer_service_events:add_sup_callback(
+register_peer_events(auto, Config) ->
+    vmq_swc_peer_service_events:add_sup_callback(
       fun(Update) ->
               set_members(Config, riak_dt_orswot:value(Update))
       end);
 register_peer_events(_UnknownStrategy, _Config) -> ignore.
 
-event_mgr_pid(plumtree) ->
-    whereis(vmq_swc_plumtree_peer_service_events);
+event_mgr_pid(auto) ->
+    whereis(vmq_swc_peer_service_events);
 event_mgr_pid(_UnknownStrategy) ->
     unknown_strategy.

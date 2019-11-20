@@ -113,7 +113,7 @@ basic_store_test(_Config) ->
 
 read_write_delete_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
-    [?assertEqual(ok, rpc:call(Node, vmq_swc_plumtree_peer_service, join, [Node1]))
+    [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
      || Node <- OtherNodes],
     Expected = lists:sort(Nodes),
     ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
@@ -132,7 +132,7 @@ read_write_delete_test(Config) ->
 
 partitioned_cluster_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
-    [?assertEqual(ok, rpc:call(Node, vmq_swc_plumtree_peer_service, join, [Node1]))
+    [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
      || Node <- OtherNodes],
     Expected = lists:sort(Nodes),
     ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
@@ -157,7 +157,7 @@ partitioned_cluster_test(Config) ->
 
 partitioned_delete_test(Config) ->
     [Node1, Node2] = Nodes = proplists:get_value(nodes, Config),
-    ?assertEqual(ok, rpc:call(Node1, vmq_swc_plumtree_peer_service, join, [Node2])),
+    ?assertEqual(ok, rpc:call(Node1, vmq_swc_peer_service, join, [Node2])),
     Expected = lists:sort(Nodes),
     ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
     [?assertEqual({Node, Expected}, {Node,
@@ -211,7 +211,7 @@ partitioned_delete_test(Config) ->
 
 siblings_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
-    [?assertEqual(ok, rpc:call(Node, vmq_swc_plumtree_peer_service, join, [Node1]))
+    [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
      || Node <- OtherNodes],
     Expected = lists:sort(Nodes),
     ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
@@ -259,7 +259,7 @@ cluster_join_test(Config) ->
     % we form two clusters, fill them with data, let the log GC cleanup
     % all history and let them join, as a result all nodes should have all the data.
     [OtherNode, Node1 | OtherNodes] = AllNodes = proplists:get_value(nodes, Config),
-    [?assertEqual(ok, rpc:call(Node, vmq_swc_plumtree_peer_service, join, [Node1]))
+    [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
      || Node <- OtherNodes],
     Nodes0 = [Node1 | OtherNodes],
     Expected0 = lists:sort(Nodes0),
@@ -275,7 +275,7 @@ cluster_join_test(Config) ->
     ok = wait_until_converged(Nodes0, {foo, bar}, canary, 1),
 
     % join the two clusters
-    ?assertEqual(ok, rpc:call(OtherNode, vmq_swc_plumtree_peer_service, join, [Node1])),
+    ?assertEqual(ok, rpc:call(OtherNode, vmq_swc_peer_service, join, [Node1])),
     Expected1 = lists:sort(AllNodes),
     ok = vmq_swc_test_utils:wait_until_joined(AllNodes, Expected1),
     ok = wait_until_converged(AllNodes, {foo, bar}, baz, quux),
@@ -283,7 +283,7 @@ cluster_join_test(Config) ->
 
 cluster_leave_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
-    [?assertEqual(ok, rpc:call(Node, vmq_swc_plumtree_peer_service, join, [Node1]))
+    [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
      || Node <- OtherNodes],
     Expected = lists:sort(Nodes),
     ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
@@ -297,7 +297,7 @@ cluster_leave_test(Config) ->
     ok = wait_until_converged(Nodes, {foo, bar}, canary, 1),
 
     % remove Node1
-    ok = rpc:call(Node1, vmq_swc_plumtree_peer_service, leave, [[]]),
+    ok = rpc:call(Node1, vmq_swc_peer_service, leave, [[]]),
     [Node2|_] = Nodes1 = Nodes -- [Node1],
 
     % put some new data
@@ -306,7 +306,7 @@ cluster_leave_test(Config) ->
 
 events_test(Config) ->
     [Node1|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
-    [?assertEqual(ok, rpc:call(Node, vmq_swc_plumtree_peer_service, join, [Node1]))
+    [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
      || Node <- OtherNodes],
     Expected = lists:sort(Nodes),
     ok = vmq_swc_test_utils:wait_until_joined(Nodes, Expected),
@@ -343,7 +343,7 @@ events_test(Config) ->
 full_sync_test(Config) ->
     [LastNode|Nodes] = proplists:get_value(nodes, Config),
     [Node1|OtherNodes] = Nodes,
-    [?assertEqual(ok, rpc:call(Node, vmq_swc_plumtree_peer_service, join, [Node1]))
+    [?assertEqual(ok, rpc:call(Node, vmq_swc_peer_service, join, [Node1]))
      || Node <- OtherNodes],
 
     Expected = lists:sort(Nodes),
@@ -363,7 +363,7 @@ full_sync_test(Config) ->
                    end, Objects),
 
     % let's join the LastNode,
-    ?assertEqual(ok, rpc:call(LastNode, vmq_swc_plumtree_peer_service, join, [Node1])),
+    ?assertEqual(ok, rpc:call(LastNode, vmq_swc_peer_service, join, [Node1])),
 
     % insert some more entries while joining the cluster
     Objects1 = [{crypto:strong_rand_bytes(100), I + 100} || I <- lists:seq(1,100)], % use something where insertion order doesn't reflect key ordering.

@@ -140,8 +140,8 @@ lock(#swc_config{store=StoreName}) ->
     gen_server:call(StoreName, {lock, self()}, infinity).
 
 -spec remote_sync_missing(config(), peer(), [dot()]) -> [{db_key(), object()}].
-remote_sync_missing(#swc_config{transport=TMod, peer=OriginPeer} = Config, RemotePeer, Dots) ->
-    TMod:rpc(Config, RemotePeer, ?MODULE, rpc_sync_missing, [OriginPeer, Dots]).
+remote_sync_missing(#swc_config{group=SwcGroup, transport=TMod, peer=OriginPeer}, RemotePeer, Dots) ->
+    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_sync_missing, [OriginPeer, Dots]).
 
 -spec rpc_sync_missing(peer(), [dot()], config()) -> [{db_key(), object()}].
 rpc_sync_missing(OriginPeer, Dots, #swc_config{store=StoreName}) ->
@@ -156,8 +156,8 @@ node_clock(#swc_config{store=StoreName}) ->
     gen_server:call(StoreName, get_node_clock, infinity).
 
 -spec remote_node_clock(config(), peer()) -> nodeclock().
-remote_node_clock(#swc_config{transport=TMod} = Config, RemotePeer) ->
-    TMod:rpc(Config, RemotePeer, ?MODULE, rpc_node_clock, []).
+remote_node_clock(#swc_config{group=SwcGroup, transport=TMod}, RemotePeer) ->
+    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_node_clock, []).
 
 -spec rpc_node_clock(config()) -> nodeclock().
 rpc_node_clock(#swc_config{} = Config) ->
@@ -168,8 +168,8 @@ watermark(Config) ->
     get_watermark(Config).
 
 -spec remote_watermark(config(), peer()) -> watermark().
-remote_watermark(#swc_config{transport=TMod} = Config, RemotePeer) ->
-    TMod:rpc(Config, RemotePeer, ?MODULE, rpc_watermark, []).
+remote_watermark(#swc_config{group=SwcGroup, transport=TMod}, RemotePeer) ->
+    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_watermark, []).
 
 -spec rpc_watermark(config()) -> watermark().
 rpc_watermark(#swc_config{} = Config) ->
@@ -276,10 +276,10 @@ handle_call({batch, Batch}, _From, #state{config=Config,
     r_o_w_cache_clear(Config),
     case IsBroadcastEnabled of
         true ->
-            #swc_config{transport=TMod} = Config,
+            #swc_config{group=SwcGroup, transport=TMod} = Config,
             lists:foreach(
               fun(Peer) ->
-                      TMod:rpc_cast(Config, Peer, ?MODULE, rpc_broadcast, [Id, lists:reverse(ReplicateObjects)])
+                      TMod:rpc_cast(SwcGroup, Peer, ?MODULE, rpc_broadcast, [Id, lists:reverse(ReplicateObjects)])
               end, Peers);
         _ ->
             ok

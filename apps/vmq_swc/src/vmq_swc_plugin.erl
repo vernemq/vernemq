@@ -44,23 +44,23 @@ group_for_key(PKey) ->
     lists:nth((erlang:phash2(PKey) rem ?NR_OF_GROUPS) + 1, ?SWC_GROUPS).
 
 cluster_join(DiscoveryNode) ->
-    vmq_swc_plumtree_peer_service:join(DiscoveryNode).
+    vmq_swc_peer_service:join(DiscoveryNode).
 
 cluster_leave(Node) ->
-    {ok, Local} = vmq_swc_plumtree_peer_service_manager:get_local_state(),
-    {ok, Actor} = vmq_swc_plumtree_peer_service_manager:get_actor(),
+    {ok, Local} = vmq_swc_peer_service_manager:get_local_state(),
+    {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
     case riak_dt_orswot:update({remove, Node}, Actor, Local) of
         {error,{precondition,{not_present, Node}}} ->
             {error, not_present};
         {ok, Merged} ->
             AllNodes = riak_dt_orswot:value(Local),
             % multi_cast so we don't need to wait for the next gossip round
-            multi_cast(AllNodes, vmq_swc_plumtree_peer_service_gossip, {receive_state, Merged}),
-            {ok, Local2} = vmq_swc_plumtree_peer_service_manager:get_local_state(),
+            multi_cast(AllNodes, vmq_swc_peer_service_gossip, {receive_state, Merged}),
+            {ok, Local2} = vmq_swc_peer_service_manager:get_local_state(),
             Local2List = riak_dt_orswot:value(Local2),
             case [P || P <- Local2List, P =:= Node] of
                 [] ->
-                    vmq_swc_plumtree_peer_service_manager:delete_state(),
+                    vmq_swc_peer_service_manager:delete_state(),
                     ok;
                 _ ->
                     cluster_leave(Node)
@@ -80,20 +80,20 @@ cluster_members() ->
     vmq_swc_group_membership:get_members(Config).
 
 cluster_rename_member(OldName, NewName) ->
-    {ok, LocalState} = vmq_swc_plumtree_peer_service_manager:get_local_state(),
-    {ok, Actor} = vmq_swc_plumtree_peer_service_manager:get_actor(),
+    {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
+    {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
     {ok, Merged} = riak_dt_orswot:update({update, [{remove, OldName},
                                                    {add, NewName}]}, Actor, LocalState),
-    _ = gen_server:cast(vmq_swc_plumtree_peer_service_gossip, {receive_state, Merged}).
+    _ = gen_server:cast(vmq_swc_peer_service_gossip, {receive_state, Merged}).
 
 cluster_events_add_handler(Module, Opts) ->
-    vmq_swc_plumtree_peer_service_events:add_sup_handler(Module, Opts).
+    vmq_swc_peer_service_events:add_sup_handler(Module, Opts).
 
 cluster_events_delete_handler(Module, Reason) ->
-    gen_event:delete_handler(vmq_swc_plumtree_peer_service_events, Module, [Reason]).
+    gen_event:delete_handler(vmq_swc_peer_service_events, Module, [Reason]).
 
 cluster_events_call_handler(Module, Msg, Timeout) ->
-    gen_event:call(vmq_swc_plumtree_peer_service_events, Module, Msg, Timeout).
+    gen_event:call(vmq_swc_peer_service_events, Module, Msg, Timeout).
 
 metadata_put(FullPrefix, Key, Value) ->
     TsValue = {os:timestamp(), Value},

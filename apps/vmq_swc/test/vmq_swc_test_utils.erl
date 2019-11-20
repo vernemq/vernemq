@@ -115,7 +115,7 @@ start_node(Name, Config, Case) ->
 
             {ok, _} = rpc:call(Node, vmq_swc, start, [SwcGroup]),
             ok = wait_until(fun() ->
-                            case rpc:call(Node, vmq_swc_plumtree_peer_service_manager, get_local_state, []) of
+                            case rpc:call(Node, vmq_swc_peer_service_manager, get_local_state, []) of
                                 {ok, _Res} -> true;
                                 _ -> false
                             end
