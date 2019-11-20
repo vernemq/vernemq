@@ -277,11 +277,14 @@ client_opts(tcp, Host, Port, Opts) ->
      {retry_interval, proplists:get_value(retry_interval, Opts)},
      {max_queue_size, proplists:get_value(max_outgoing_buffered_messages, Opts)},
      {transport, {gen_tcp, []}}
-     |case proplists:get_value(try_private, Opts, true) of
-          true ->
+     |case {proplists:get_value(try_private, Opts, true),
+            proplists:get_value(mqtt_version, Opts, 3)} of
+          {true, 3} ->
               [{proto_version, 131}]; %% non-spec
-          false ->
-              []
+          {true, 4} ->
+              [{proto_version, 132}]; %% non-spec
+          {false, MqttVersion} ->
+              [{proto_version, MqttVersion}]
       end],
     [P || {_, V}=P <- OOpts, V /= undefined];
 client_opts(ssl, Host, Port, Opts) ->

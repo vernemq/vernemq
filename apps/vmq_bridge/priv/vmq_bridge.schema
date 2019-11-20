@@ -159,6 +159,19 @@
                                                                    hidden
                                                                   ]}.
 
+%% @doc Set the MQTT protocol version to be used by the bridge.
+{mapping, "vmq_bridge.tcp.$name.mqtt_version", "vmq_bridge.config", [
+                                                                     {datatype, {enum, ['3', '4']}},
+                                                                     {default, '3'},
+                                                                     {include_default, "br0"},
+                                                                     {commented, on}
+                                                                    ]}.
+{mapping, "vmq_bridge.ssl.$name.mqtt_version", "vmq_bridge.config", [
+                                                                     {datatype, {enum, ['3', '4']}},
+                                                                     {default, '3'},
+                                                                     hidden
+                                                                    ]}.
+
 %% @doc Maximum number of outgoing messages the bridge will buffer
 %% while not connected to the remote broker. Messages published while
 %% the buffer is full are dropped. A value of 0 means buffering is
@@ -277,6 +290,10 @@
                         (_, undefined) -> undefined end,
          IntVal = fun(_, I) when is_integer(I) -> I;
                      (_, undefined) -> undefined end,
+         IntAtomVal = fun(_, IAtom) when is_atom(IAtom) ->
+                              list_to_integer(atom_to_list(IAtom));
+                         (_, undefined) -> undefined
+                        end,
          AtomVal = fun(_, A) when is_atom(A) -> A end,
          ClientIdVal = fun(Name, "auto") -> 
                                {ok, HostName} = inet:gethostname(),
@@ -333,7 +350,7 @@
 
          Mappings = ["clean_session", "client_id", "keepalive_interval", 
                     "username", "password", "restart_timeout", "try_private", "topic",
-                     "max_outgoing_buffered_messages"],
+                     "max_outgoing_buffered_messages", "mqtt_version"],
                     %% SSL specific
          SSLMapps = ["cafile", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk"],
          F = fun(Prefix, Suffix, Validator) ->
@@ -385,6 +402,7 @@
          {TCPIPs, TCPPasswords} = lists:unzip(F("vmq_bridge.tcp", "password", StringVal)),
          {TCPIPs, TCPRestartTimeouts} = lists:unzip(F("vmq_bridge.tcp", "restart_timeout", IntVal)),
          {TCPIPs, TCPTryPrivates} = lists:unzip(F("vmq_bridge.tcp", "try_private", BoolVal)),
+         {TCPIPs, TCPMQTTProtos} = lists:unzip(F("vmq_bridge.tcp", "mqtt_version", IntAtomVal)),
          {TCPIPs, TCPMaxBuffer} = lists:unzip(F("vmq_bridge.tcp", "max_outgoing_buffered_messages", IntVal)),
          {TCPIPs, TCPTopics} = lists:unzip(F("vmq_bridge.tcp", "topic", TopicVal)),
 
@@ -395,6 +413,7 @@
          {SSLIPs, SSLPasswords} = lists:unzip(F("vmq_bridge.ssl", "password", StringVal)),
          {SSLIPs, SSLRestartTimeouts} = lists:unzip(F("vmq_bridge.ssl", "restart_timeout", IntVal)),
          {SSLIPs, SSLTryPrivates} = lists:unzip(F("vmq_bridge.ssl", "try_private", BoolVal)),
+         {SSLIPs, SSLMQTTProtos} = lists:unzip(F("vmq_bridge.ssl", "mqtt_version", IntAtomVal)),
          {SSLIPs, SSLMaxBuffer} = lists:unzip(F("vmq_bridge.ssl", "max_outgoing_buffered_messages", IntVal)),
          {SSLIPs, SSLTopics} = lists:unzip(F("vmq_bridge.ssl", "topic", TopicVal)),
 
@@ -414,6 +433,7 @@
                                        TCPUserNames, 
                                        TCPPasswords,
                                        TCPTryPrivates,
+                                       TCPMQTTProtos,
                                        TCPMaxBuffer,
                                        TCPTopics])),
 
@@ -424,6 +444,7 @@
                                        SSLUserNames, 
                                        SSLPasswords,
                                        SSLTryPrivates,
+                                       SSLMQTTProtos,
                                        SSLMaxBuffer,
                                        SSLTopics,
                                        SSLCAFiles, 
