@@ -18,7 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(vmq_swc_plumtree_peer_service_events).
+-module(vmq_swc_peer_service_events).
 
 -behaviour(gen_event).
 
@@ -64,7 +64,7 @@ update(LocalState) ->
 %% ===================================================================
 
 init([Fn]) ->
-    {ok, LocalState} = vmq_swc_plumtree_peer_service_manager:get_local_state(),
+    {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
     Fn(LocalState),
     {ok, #state { callback = Fn }}.
 

@@ -18,7 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(vmq_swc_plumtree_peer_service_gossip).
+-module(vmq_swc_peer_service_gossip).
 
 -behavior(gen_server).
 
@@ -54,19 +54,19 @@ init([]) ->
 handle_call(stop, _From, State) ->
     {stop, normal, State};
 handle_call(send_state, _From, State) ->
-    {ok, LocalState} = vmq_swc_plumtree_peer_service_manager:get_local_state(),
+    {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
     {reply, {ok, LocalState}, State}.
 
 handle_cast({receive_state, PeerState}, State) ->
-    {ok, LocalState} = vmq_swc_plumtree_peer_service_manager:get_local_state(),
+    {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
     case riak_dt_orswot:equal(PeerState, LocalState) of
         true ->
             %% do nothing
             {noreply, State};
         false ->
             Merged = riak_dt_orswot:merge(PeerState, LocalState),
-            vmq_swc_plumtree_peer_service_manager:update_state(Merged),
-            vmq_swc_plumtree_peer_service_events:update(Merged),
+            vmq_swc_peer_service_manager:update_state(Merged),
+            vmq_swc_peer_service_events:update(Merged),
             {noreply, State}
     end.
 
@@ -92,7 +92,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% @doc initiate gossip on local node
 do_gossip() ->
-    {ok, Local} = vmq_swc_plumtree_peer_service_manager:get_local_state(),
+    {ok, Local} = vmq_swc_peer_service_manager:get_local_state(),
     case get_peers(Local) of
         [] ->
             {error, singleton};

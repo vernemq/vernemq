@@ -18,7 +18,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(vmq_swc_plumtree_peer_service_manager).
+-module(vmq_swc_peer_service_manager).
 
 -define(TBL, swc_cluster_state).
 

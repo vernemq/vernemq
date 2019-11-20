@@ -60,10 +60,10 @@ start_connection(_Config, _Member) ->
 stop_connection(_Config, _Member) ->
     ok.
 
-rpc(#swc_config{group=SwcGroup} = _Config, RemotePeer, Module, Function, Args) ->
+rpc(SwcGroup, RemotePeer, Module, Function, Args) ->
     gen_server:call({name(SwcGroup), RemotePeer}, {apply, Module, Function, Args}, infinity).
 
-rpc_cast(#swc_config{group=SwcGroup} = _Config, RemotePeer, Module, Function, Args) ->
+rpc_cast(SwcGroup, RemotePeer, Module, Function, Args) ->
     gen_server:cast({name(SwcGroup), RemotePeer}, {apply, Module, Function, Args}).
 
 name(SwcGroup) ->
