@@ -18,8 +18,10 @@ init_per_group(mqttv4, Config) ->
     [{mqtt_version, 4} | Config];
 init_per_group(mqttv3, Config) ->
     [{mqtt_version, 3} | Config];
-init_per_group(try_private, Config) ->
-    [{mqtt_version, 128+3} | Config].
+init_per_group(try_private_3, Config) ->
+    [{mqtt_version, 128+3} | Config];
+init_per_group(try_private_4, Config) ->
+    [{mqtt_version, 128+4} | Config].
 
 end_per_group(_GroupName, _Config) ->
     ok.
@@ -46,14 +48,16 @@ groups() ->
      % we only run the ReconnectTests for mqttv4 as they consume quite some time
      {mqttv4, [shuffle], Tests ++ ReconnectTests},
      {mqttv3, [shuffle], Tests},
-     {try_private, [shuffle], Tests}
+     {try_private_3, [shuffle], Tests},
+     {try_private_4, [shuffle], Tests}
     ].
 
 all() ->
     [
      {group, mqttv4},
      {group, mqttv3},
-     {group, try_private}
+     {group, try_private_3},
+     {group, try_private_4}
     ].
 
 prefixes_test(Cfg) ->
