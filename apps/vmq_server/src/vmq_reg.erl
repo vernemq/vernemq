@@ -722,28 +722,24 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
     CAPUnsubscribe = vmq_config:get_env(allow_unsubscribe_during_netsplit, false),
     SGPolicyConfig = vmq_config:get_env(shared_subscription_policy, prefer_local),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
-    case direct_plugin_exports(Mod, #{mountpoint => "",
-                                      cap_publish => CAPPublish,
-                                      cap_subscribe => CAPSubscribe,
-                                      cap_unsubscribe => CAPUnsubscribe,
-                                      sg_policy => SGPolicyConfig,
-                                      reg_view => RegView}) of
-        {error, _} = E ->
-            E;
-        {ok, #{register_fun := RegFun,
-               publish_fun := PubFun,
-               subscribe_fun := SubFun,
-               unsubscribe_fun := UnsubFun}} ->
-            {RegFun, PubFun, {SubFun, UnsubFun}}
-    end.
+    {ok, #{register_fun := RegFun,
+           publish_fun := PubFun,
+           subscribe_fun := SubFun,
+           unsubscribe_fun := UnsubFun}} =
+        direct_plugin_exports(Mod, #{mountpoint => "",
+                                     cap_publish => CAPPublish,
+                                     cap_subscribe => CAPSubscribe,
+                                     cap_unsubscribe => CAPUnsubscribe,
+                                     sg_policy => SGPolicyConfig,
+                                     reg_view => RegView}),
+    {RegFun, PubFun, {SubFun, UnsubFun}}.
 
--spec direct_plugin_exports(module(), #{}) ->
+-spec direct_plugin_exports(module(), map()) ->
    {ok, #{client_id := client_id(),
           register_fun := function(),
           publish_fun := function(),
           subscribe_fun := function(),
-          unsubscribe_fun := function()}} |
-   {error, invalid_config}.
+          unsubscribe_fun := function()}}.
 direct_plugin_exports(LogName, Opts) ->
     CAPPublish = maps:get(cap_publish, Opts, false),
     CAPSubscribe = maps:get(cap_subscribe, Opts, false),
