@@ -36,7 +36,7 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link(SwcGroup) ->
-    start_link(SwcGroup, [{membership_strategy, plumtree}]).
+    start_link(SwcGroup, [{membership_strategy, auto}]).
 
 start_link(SwcGroup, Opts) ->
     SupName = list_to_atom("vmq_swc_store_sup_" ++ atom_to_list(SwcGroup)),
@@ -61,7 +61,7 @@ start_link(SwcGroup, Opts) ->
 %%--------------------------------------------------------------------
 init([SwcGroup, Opts]) ->
 
-    MembershipStrategy = proplists:get_value(membership_strategy, Opts, plumtree),
+    MembershipStrategy = proplists:get_value(membership_strategy, Opts, auto),
 
     PeerName = node(),
 

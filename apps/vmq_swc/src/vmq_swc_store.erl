@@ -140,7 +140,7 @@ lock(#swc_config{store=StoreName}) ->
     gen_server:call(StoreName, {lock, self()}, infinity).
 
 -spec remote_sync_missing(config(), peer(), [dot()]) -> [{db_key(), object()}].
-remote_sync_missing(#swc_config{group=SwcGroup, transport=TMod, peer=OriginPeer} = Config, RemotePeer, Dots) ->
+remote_sync_missing(#swc_config{group=SwcGroup, transport=TMod, peer=OriginPeer}, RemotePeer, Dots) ->
     TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_sync_missing, [OriginPeer, Dots]).
 
 -spec rpc_sync_missing(peer(), [dot()], config()) -> [{db_key(), object()}].
@@ -156,7 +156,7 @@ node_clock(#swc_config{store=StoreName}) ->
     gen_server:call(StoreName, get_node_clock, infinity).
 
 -spec remote_node_clock(config(), peer()) -> nodeclock().
-remote_node_clock(#swc_config{group=SwcGroup, transport=TMod} = Config, RemotePeer) ->
+remote_node_clock(#swc_config{group=SwcGroup, transport=TMod}, RemotePeer) ->
     TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_node_clock, []).
 
 -spec rpc_node_clock(config()) -> nodeclock().
@@ -168,7 +168,7 @@ watermark(Config) ->
     get_watermark(Config).
 
 -spec remote_watermark(config(), peer()) -> watermark().
-remote_watermark(#swc_config{group=SwcGroup, transport=TMod} = Config, RemotePeer) ->
+remote_watermark(#swc_config{group=SwcGroup, transport=TMod}, RemotePeer) ->
     TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_watermark, []).
 
 -spec rpc_watermark(config()) -> watermark().
