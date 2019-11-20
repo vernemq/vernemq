@@ -36,6 +36,12 @@
   store resulted in a corrupt message record once a offline session was resumed.
 - Refactor built-in message storage to enable multiple storage engines as well as
   to streamline the implementation of alternative message storage plugins. 
+- Fix metric description string in vmq_bridge.
+- Fix regression in vmq_bridge where the retain bit wasn't handled properly for
+  incoming publishes.
+- Enable to define the MQTT protocol version to be used by vmq_bridge (4 or 3).
+- Fix vmq_bridge dynamic configuration handling.
+- Fix multiple minor issues in vmq_swc.
 
 ## VerneMQ 1.9.2
 

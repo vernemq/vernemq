@@ -85,10 +85,16 @@ reconfigure_bridges(Type, Bridges, [{HostString, Opts}|Rest]) ->
     case lists:keyfind(Ref, 1, Bridges) of
         false ->
             start_bridge(Type, Ref, Host, Port, Opts);
-        {_, Pid, _, _} when is_pid(Pid) -> % change existing bridge
-            %% restart the bridge
-            ok = stop_bridge(Ref),
-            start_bridge(Type, Ref, Host, Port, Opts);
+        {_, Pid, _, _} when is_pid(Pid) -> % maybe change existing bridge
+            case supervisor:get_childspec(?MODULE, Ref) of
+                {ok, #{start := {vmq_bridge, start_link, [Type, Host, Port, _RegistryMFA, Opts]}}} ->
+                    % bridge is unchanged
+                    ignore;
+                _ ->
+                    %% restart the bridge
+                    ok = stop_bridge(Ref),
+                    start_bridge(Type, Ref, Host, Port, Opts)
+            end;
         _ ->
             ok
     end,
@@ -139,6 +145,6 @@ metrics() ->
                       ets:delete(vmq_bridge_meta, ClientPid),
                       Acc;
                   #{dropped := Dropped} ->
-                      [{counter, [], {vmq_bridge_queue_drop, ClientPid}, vmq_bridge_dropped_msgs, "The number of dropped messages (queue full)", Dropped}|Acc]
+                      [{counter, [], {vmq_bridge_queue_drop, ClientPid}, vmq_bridge_dropped_msgs, <<"The number of dropped messages (queue full)">>, Dropped}|Acc]
               end
       end, [], vmq_bridge_meta).

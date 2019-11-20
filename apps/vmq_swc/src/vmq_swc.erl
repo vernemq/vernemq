@@ -75,7 +75,8 @@ raw_put(SwcGroup, Prefix, Key, Value, Context) ->
 put(SwcGroup, Prefix, Key, ValueOrFun, _Opts) when not is_function(ValueOrFun) ->
     PKey = {Prefix, Key},
     Config = config(SwcGroup),
-    vmq_swc_store:write(Config, PKey, ValueOrFun, undefined).
+    Context = current_context(Config, PKey),
+    vmq_swc_store:write(Config, PKey, ValueOrFun, Context).
 
 delete_many(SwcGroup, Prefix, [_Key|_] = Keys) ->
     put_many(SwcGroup, Prefix, [{Key, '$deleted'} || Key <- Keys], []).
@@ -85,7 +86,8 @@ put_many(SwcGroup, Prefix, [{_Key, _ValueOrFun}|_] = Ops, _Opts) ->
     WriteBatch =
     lists:foldl(fun({Key, ValueOrFun}, Acc) ->
                         PKey = {Prefix, Key},
-                        [{PKey, ValueOrFun, undefined}|Acc]
+                        Context = current_context(Config, PKey),
+                        [{PKey, ValueOrFun, Context}|Acc]
                 end, [], Ops),
     vmq_swc_store:write_batch(Config, WriteBatch).
 
@@ -116,6 +118,10 @@ maybe_resolve(Config, PKey, {Values, Context}, ResolverFun, AllowPut) ->
             ok
     end,
     ResolvedValue.
+
+current_context(Config, PKey) ->
+    {_Values, Context} = vmq_swc_store:read(Config, PKey),
+    Context.
 
 max_resolver(Values) -> lists:max(Values).
 

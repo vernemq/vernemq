@@ -9,7 +9,7 @@
 -define(CONNACK_CREDENTIALS, 4). %% bad user name or password
 -define(CONNACK_AUTH,        5). %% not authorized
 
--type proto_version()       :: 3 | 4 | 131.
+-type proto_version()       :: 3 | 4 | 131 | 132.
 -type return_code()         :: ?CONNACK_ACCEPT
                             | ?CONNACK_PROTO_VER
                             | ?CONNACK_INVALID_ID
