@@ -154,7 +154,7 @@ handle_cast(_Msg, State) ->
 
 handle_info({'DOWN', MRef, process, OwnerPid, _Info}, #state{gauges=Gauges0} = State) ->
     Gauges1 =
-    maps:filter(fun(_MetricName, {_, {OwnerPid, MRef}}) -> false;
+    maps:filter(fun(_MetricName, {_, MetricRef}) when MetricRef == {OwnerPid, MRef} -> false;
                    (_, _) -> true
                 end, Gauges0),
     {noreply, State#state{gauges=Gauges1}}.
