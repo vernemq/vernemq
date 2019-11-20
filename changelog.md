@@ -37,6 +37,8 @@
 - Refactor built-in message storage to enable multiple storage engines as well as
   to streamline the implementation of alternative message storage plugins. 
 - Fix metric description string in vmq_bridge.
+- Fix regression in vmq_bridge where the retain bit wasn't handled properly for
+  incoming publishes.
 
 ## VerneMQ 1.9.2
 

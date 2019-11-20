@@ -507,8 +507,8 @@ handle_frame(connected, #mqtt_publish{message_id=MessageId, topic=Topic,
     #state{transport={Transport, _}, sock=Socket, info_fun=InfoFun} = State,
     NewInfoFun = call_info_fun({publish_in, MessageId, Payload, QoS}, InfoFun),
     Opts = #{qos => QoS,
-             retain => Retain,
-             dup => Dup},
+             retain => unflag(Retain),
+             dup => unflag(Dup)},
     case QoS of
         0 ->
             wrap_res(connected, on_publish, [Topic, Payload, Opts], State#state{info_fun=NewInfoFun});
@@ -746,3 +746,6 @@ active_once(ssl, Sock) ->
 
 call_info_fun(Info, {Fun, FunState}) ->
     {Fun, Fun(Info, FunState)}.
+
+unflag(0) -> false;
+unflag(1) -> true.
