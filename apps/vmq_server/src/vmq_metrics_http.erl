@@ -30,7 +30,7 @@ init(Req, Opts) ->
 
 content_types_provided(Req, State) ->
 	{[
-		{<<"text/plain">>, reply_to_text}
+		{{<<"text">>, <<"plain">>, '*'}, reply_to_text}
     ], Req, State}.
 
 reply_to_text(Req, State) ->

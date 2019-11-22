@@ -42,7 +42,7 @@ allowed_methods(Req, State) ->
     {[<<"GET">>, <<"OPTIONS">>, <<"HEAD">>], Req, State}.
 
 content_types_provided(Req, State) ->
-    {[{<<"application/json">>, to_json}], Req, State}.
+    {[{{<<"application">>, <<"json">>, '*'}, to_json}], Req, State}.
 
 options(Req0, State) ->
     %% Set CORS Headers

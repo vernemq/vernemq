@@ -37,7 +37,7 @@ allowed_methods(Req, State) ->
 
 content_types_provided(Req, State) ->
 	{[
-		{<<"application/json">>, reply}
+		{{<<"application">>, <<"json">>, '*'}, reply}
     ], Req, State}.
 
 terminate(_Reason, _Req, _State) ->
