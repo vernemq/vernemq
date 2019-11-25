@@ -24,8 +24,8 @@ install(St) ->
 
 table() ->
     [
-     {<<"decode">>, {function, fun decode/2}},
-     {<<"encode">>, {function, fun encode/2}}
+     {<<"decode">>, #erl_func{code=fun decode/2}},
+     {<<"encode">>, #erl_func{code=fun encode/2}}
     ].
 
 decode([Bin|_], St) when is_binary(Bin) ->

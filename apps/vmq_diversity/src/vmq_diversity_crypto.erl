@@ -12,6 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 -module(vmq_diversity_crypto).
+-include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
 
@@ -21,7 +22,7 @@ install(St) ->
 
 table() ->
     [
-     {<<"hash">>, {function, fun hash/2}}
+     {<<"hash">>, #erl_func{code=fun hash/2}}
     ].
 
 hash([Alg, Data]=Args, St)
