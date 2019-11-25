@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_json).
+-include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
 
