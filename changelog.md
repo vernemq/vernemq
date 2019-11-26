@@ -42,6 +42,7 @@
 - Enable to define the MQTT protocol version to be used by vmq_bridge (4 or 3).
 - Fix vmq_bridge dynamic configuration handling.
 - Fix multiple minor issues in vmq_swc.
+- Fix HTTP handlers to support parameterized media types.
 - Upgrade lager, poolboy, jsx, luerl dependency.
 
 ## VerneMQ 1.9.2
