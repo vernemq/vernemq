@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_script_state).
+-include_lib("luerl/include/luerl.hrl").
 
 -behaviour(gen_server).
 
@@ -259,7 +260,8 @@ load_script(Id, Script) ->
 lua_hooks(LuaState) ->
     case luerl:eval("return hooks", LuaState) of
         {ok, [nil]} -> [];
-        {ok, [Hooks]} -> [Hook || {Hook, {function, _}} <- Hooks]
+        {ok, [Hooks]} ->
+            [Hook || {Hook, Fun} <- Hooks, is_function(Fun)]
     end.
 
 lua_num_states(LuaState) ->

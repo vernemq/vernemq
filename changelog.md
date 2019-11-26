@@ -43,6 +43,7 @@
 - Fix vmq_bridge dynamic configuration handling.
 - Fix multiple minor issues in vmq_swc.
 - Fix HTTP handlers to support parameterized media types.
+- Upgrade lager, poolboy, jsx, luerl dependency.
 
 ## VerneMQ 1.9.2
 

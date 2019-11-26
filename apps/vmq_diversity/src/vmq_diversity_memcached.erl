@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_memcached).
+-include_lib("luerl/include/luerl.hrl").
 
 -behaviour(gen_server).
 -behaviour(poolboy_worker).
@@ -145,13 +146,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 table() ->
     [
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}}
-    ,{<<"flush_all">>, {function, fun flush_all/2}}
-    ,{<<"get">>, {function, fun get/2}}
-    ,{<<"set">>, {function, fun set/2}}
-    ,{<<"delete">>, {function, fun delete/2}}
-    ,{<<"add">>, {function, fun add/2}}
-    ,{<<"replace">>, {function, fun replace/2}}
+     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}}
+    ,{<<"flush_all">>, #erl_func{code=fun flush_all/2}}
+    ,{<<"get">>, #erl_func{code=fun get/2}}
+    ,{<<"set">>, #erl_func{code=fun set/2}}
+    ,{<<"delete">>, #erl_func{code=fun delete/2}}
+    ,{<<"add">>, #erl_func{code=fun add/2}}
+    ,{<<"replace">>, #erl_func{code=fun replace/2}}
     ].
 
 flush_all([_] = As, St) ->
@@ -235,7 +236,7 @@ ensure_pool(As, St) ->
                     %% mcd doesn't connect immediately, so we have to
                     %% wait for it to do so.
                     case wait_for_connection(PoolId, 1000) of
-                        ok -> 
+                        ok ->
                             %% return to lua
                             {[true], St};
                         _ ->
@@ -256,7 +257,7 @@ wait_for_connection(PoolId, Timeout) when Timeout > 0 ->
         _ ->
             ok
     end;
-wait_for_connection(_,_) -> 
+wait_for_connection(_,_) ->
     error.
 
 pool_id(BPoolId, As, St) ->
