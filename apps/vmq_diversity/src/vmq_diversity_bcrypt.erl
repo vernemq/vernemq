@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_bcrypt).
+-include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
 
@@ -22,8 +23,8 @@ install(St) ->
 
 table() ->
     [
-     {<<"gen_salt">>, {function, fun gen_salt/2}},
-     {<<"hashpw">>, {function, fun hashpw/2}}
+     {<<"gen_salt">>, #erl_func{code=fun gen_salt/2}},
+     {<<"hashpw">>, #erl_func{code=fun hashpw/2}}
     ].
 
 gen_salt(_, St) ->

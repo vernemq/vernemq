@@ -13,13 +13,12 @@
 %% limitations under the License.
 
 -module(vmq_diversity_cockroachdb).
+-include_lib("luerl/include/luerl.hrl").
 
 %% API functions
 -export([install/1,
          squery/2,
          equery/3]).
-
--import(luerl_lib, [badarg_error/3]).
 
 %%%===================================================================
 %%% API functions
@@ -39,9 +38,9 @@ equery(PoolName, Stmt, Params) ->
 %%%===================================================================
 table() ->
     [
-     {<<"execute">>, {function, fun execute/2}},
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}},
-     {<<"hash_method">>, {function, fun hash_method/2}}
+     {<<"execute">>, #erl_func{code=fun execute/2}},
+     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}},
+     {<<"hash_method">>, #erl_func{code=fun hash_method/2}}
     ].
 
 execute(As, St) ->

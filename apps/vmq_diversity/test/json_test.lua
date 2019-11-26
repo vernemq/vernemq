@@ -33,7 +33,7 @@ assert(equals(b1, json.decode(b2)))
 assert(equals(json.encode(b1), b2))
 
 c1 = {a = {b = {c = "hello", d = {1, 2, 3, 4, 5}}}}
-c2 = "{\"a\":{\"b\":{\"c\":\"hello\",\"d\":[1.0,2.0,3.0,4.0,5.0]}}}"
+c2 = "{\"a\":{\"b\":{\"c\":\"hello\",\"d\":[1,2,3,4,5]}}}"
 assert(equals(c1, json.decode(c2)))
 assert(equals(json.encode(c1), c2))
 

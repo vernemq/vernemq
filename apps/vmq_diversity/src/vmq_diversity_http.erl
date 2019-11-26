@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_http).
+-include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
 
@@ -23,12 +24,12 @@ install(St) ->
 
 table() ->
     [
-     {<<"get">>, {function, fun get/2}},
-     {<<"put">>, {function, fun put/2}},
-     {<<"post">>, {function, fun post/2}},
-     {<<"delete">>, {function, fun delete/2}},
-     {<<"body">>, {function, fun body/2}},
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}}
+     {<<"get">>, #erl_func{code=fun get/2}},
+     {<<"put">>, #erl_func{code=fun put/2}},
+     {<<"post">>, #erl_func{code=fun post/2}},
+     {<<"delete">>, #erl_func{code=fun delete/2}},
+     {<<"body">>, #erl_func{code=fun body/2}},
+     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}}
     ].
 
 get(As, St) ->

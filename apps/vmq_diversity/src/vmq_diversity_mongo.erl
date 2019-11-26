@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_mongo).
+-include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
 
@@ -49,15 +50,15 @@ install(St) ->
 
 table() ->
     [
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}},
-     {<<"insert">>, {function, fun insert/2}},
-     {<<"update">>, {function, fun update/2}},
-     {<<"delete">>, {function, fun delete/2}},
-     {<<"find">>, {function, fun find/2}},
-     {<<"find_one">>, {function, fun find_one/2}},
-     {<<"next">>, {function, fun cursor_next/2}},
-     {<<"take">>, {function, fun cursor_take/2}},
-     {<<"close">>, {function, fun cursor_close/2}}
+     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}},
+     {<<"insert">>, #erl_func{code=fun insert/2}},
+     {<<"update">>, #erl_func{code=fun update/2}},
+     {<<"delete">>, #erl_func{code=fun delete/2}},
+     {<<"find">>, #erl_func{code=fun find/2}},
+     {<<"find_one">>, #erl_func{code=fun find_one/2}},
+     {<<"next">>, #erl_func{code=fun cursor_next/2}},
+     {<<"take">>, #erl_func{code=fun cursor_take/2}},
+     {<<"close">>, #erl_func{code=fun cursor_close/2}}
     ].
 
 ensure_pool(As, St) ->

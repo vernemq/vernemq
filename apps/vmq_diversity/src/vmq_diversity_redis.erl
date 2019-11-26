@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_redis).
+-include_lib("luerl/include/luerl.hrl").
 
 -behaviour(gen_server).
 -behaviour(poolboy_worker).
@@ -164,8 +165,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 table() ->
     [
-     {<<"cmd">>, {function, fun cmd/2}},
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}}
+     {<<"cmd">>, #erl_func{code=fun cmd/2}},
+     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}}
     ].
 
 cmd(As, St) ->
