@@ -1,5 +1,9 @@
 # Changelog
 
+- Upgrade the Plumtree metadata backend to include a fix for a crash which could
+  occur during metadata exchange with a remote node if the remote node becomes
+  unavailable.
+
 ## VerneMQ 1.10.0
 
 - Fix bug where websocket MQTT clients that didn't provide a
