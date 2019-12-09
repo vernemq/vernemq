@@ -944,18 +944,32 @@ rate_entries() ->
      {?METRIC_MSG_OUT_RATE, [?MQTT4_PUBLISH_SENT, ?MQTT5_PUBLISH_SENT]},
      {?METRIC_BYTE_OUT_RATE, [?METRIC_BYTES_SENT]}].
 
+fetch_external_metric(Mod, Fun, Default) ->
+    % safe-guard call to external metric provider
+    % as it it possible that the metric provider
+    % isn't ready yet.
+    try
+        apply(Mod, Fun, [])
+    catch
+        ErrorClass:Reason ->
+            lager:warning("can't fetch metrics from ~p", [Mod]),
+            lager:debug("fetching metrics from ~p resulted in ~p with reason ~p", [Mod, ErrorClass, Reason]),
+            Default
+    end.
+
 -spec misc_statistics() -> [{metric_id(), any()}].
 misc_statistics() ->
-    {NrOfSubs, SMemory} = vmq_reg_trie:stats(),
-    {NrOfRetain, RMemory} = vmq_retain_srv:stats(),
-    {NetsplitDetectedCount, NetsplitResolvedCount} = vmq_cluster:netsplit_statistics(),
+    {NrOfSubs, SMemory} = fetch_external_metric(vmq_reg_trie, stats, {0, 0}),
+    {NrOfRetain, RMemory} = fetch_external_metric(vmq_retain_srv, stats, {0, 0}),
+    {NetsplitDetectedCount, NetsplitResolvedCount}
+        = fetch_external_metric(vmq_cluster, netsplit_statistics, {0, 0}),
     [{netsplit_detected, NetsplitDetectedCount},
      {netsplit_resolved, NetsplitResolvedCount},
      {router_subscriptions, NrOfSubs},
      {router_memory, SMemory},
      {retain_messages, NrOfRetain},
      {retain_memory, RMemory},
-     {queue_processes, vmq_queue_sup_sup:nr_of_queues()}].
+     {queue_processes, fetch_external_metric(vmq_queue_sup_sup, nr_of_queues, 0)}].
 
 -spec misc_stats_def() -> [metric_def()].
 misc_stats_def() ->

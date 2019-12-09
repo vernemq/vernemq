@@ -1,5 +1,8 @@
 # Changelog
 
+- Fix bug where vmq_metrics crashes because external metric providers haven't
+  started yet.
+
 ## VerneMQ 1.10.0
 
 - Fix bug where websocket MQTT clients that didn't provide a
