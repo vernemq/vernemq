@@ -3,6 +3,8 @@
 - Upgrade the Plumtree metadata backend to include a fix for a crash which could
   occur during metadata exchange with a remote node if the remote node becomes
   unavailable.
+- Fix bug where vmq_metrics crashes because external metric providers haven't
+  started yet.
 
 ## VerneMQ 1.10.0
 
