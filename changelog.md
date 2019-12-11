@@ -1,5 +1,7 @@
 # Changelog
 
+## VerneMQ 1.10.1
+
 - Upgrade the Plumtree metadata backend to include a fix for a crash which could
   occur during metadata exchange with a remote node if the remote node becomes
   unavailable.
