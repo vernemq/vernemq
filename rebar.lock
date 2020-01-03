@@ -29,7 +29,7 @@
   1},
  {<<"eleveldb">>,
   {git,"git://github.com/vernemq/eleveldb.git",
-       {ref,"751961c905764ef947330773d6678cac5991d98f"}},
+       {ref,"06fefb8102b7fd344c3c56810dee8a2f2c9691d7"}},
   0},
  {<<"emysql">>,
   {git,"git://github.com/djustinek/Emysql.git",

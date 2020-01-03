@@ -3,7 +3,7 @@ CFLAGS_EXTRA =
 
 ifeq ($(shell uname -s), Darwin)
 	# OSX with homebrew
-	OPENSSL_DIR ?= /usr/local/opt/openssl
+	OPENSSL_DIR ?= $(shell brew --prefix openssl)
 	CFLAGS_EXTRA += -L${OPENSSL_DIR}/lib -I${OPENSSL_DIR}/include
 endif
 
