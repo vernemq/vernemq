@@ -1,5 +1,7 @@
 # Changelog
 
+- Support multilevel bridge prefixes.
+
 ## VerneMQ 1.10.1
 
 - Upgrade the Plumtree metadata backend to include a fix for a crash which could

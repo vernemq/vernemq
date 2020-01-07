@@ -257,6 +257,9 @@ add_prefix(undefined, Topic) -> Topic;
 add_prefix(Prefix, Topic) -> lists:flatten([Prefix, Topic]).
 
 remove_prefix(undefined, Topic) -> Topic;
+remove_prefix([], Topic) -> Topic;
+remove_prefix([H|Prefix], [H|Topic]) ->
+    remove_prefix(Prefix, Topic);
 remove_prefix([Prefix], Topic) ->
     remove_prefix(Prefix, Topic);
 remove_prefix(Prefix, [Prefix|Rest]) ->  Rest.
