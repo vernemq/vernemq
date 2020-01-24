@@ -5,6 +5,7 @@
   unavailable.
 - Fix bug where vmq_metrics crashes because external metric providers haven't
   started yet.
+- Fix bug in vmq_swc where a cluster leave didn't properly cleanup the node clock.
 
 ## VerneMQ 1.10.0
 

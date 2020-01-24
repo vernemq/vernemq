@@ -454,15 +454,18 @@ set_peers(NewPeers, #state{id=Id, config=Config, dotkeymap=DKM, nodeclock=LocalC
         _ ->
             %% Ensure the node clock contains all required peers
             %% Adding {Peer, 0} won't override an existing entry
-            TmpClock = lists:foldl(fun(Peer, AccClock) -> swc_node:add(AccClock, {Peer, 0}) end, LocalClock0, NewPeers),
+            TmpClock0 = lists:foldl(fun(Peer, AccClock) -> swc_node:add(AccClock, {Peer, 0}) end, LocalClock0, NewPeers),
             % maybe remove left nodes
-            lists:foreach(
-              fun(LP) ->
-                      % TODO: should we remove the leavingpeer from the NodeClock?
-                      remove_logs_for_peer(Config, DKM, LP)
-              end, LeftPeers),
+            TmpClock1 =
+            lists:foldl(
+              fun(LP, AccClock) ->
+                      % prune the logs for the leaving peer
+                      remove_logs_for_peer(Config, DKM, LP),
+                      % Remove entry in node clock for leaving peer
+                      maps:remove(LP, AccClock)
+              end, TmpClock0, LeftPeers),
 
-            {TmpClock, fix_watermark(WM0, NewPeers)}
+            {TmpClock1, fix_watermark(WM0, NewPeers)}
     end,
     UpdateWatermark_DBop = update_watermark_db_op(Watermark),
     UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock),
