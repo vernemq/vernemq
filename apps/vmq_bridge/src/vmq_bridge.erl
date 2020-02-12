@@ -295,6 +295,7 @@ client_opts(ssl, Host, Port, Opts) ->
     SSLOpts = [{certfile, proplists:get_value(certfile, Opts)},
                {cacertfile, proplists:get_value(cafile, Opts)},
                {keyfile, proplists:get_value(keyfile, Opts)},
+               {depth, proplists:get_value(depth, Opts)},
                {verify, case proplists:get_value(insecure, Opts) of
                             true -> verify_none;
                             _ -> verify_peer
