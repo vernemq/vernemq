@@ -127,11 +127,7 @@ start_listener(Type, Addr, Port, {TransportOpts, Opts}) ->
                                    vmq_config:get_env(max_connections)),
     NrOfAcceptors = proplists:get_value(nr_of_acceptors, Opts,
                                         vmq_config:get_env(nr_of_acceptors)),
-    ProtocolOpts =
-    case proplists:get_value(proxy_protocol, Opts, false) of
-        false -> protocol_opts_for_type(Type, Opts);
-        true -> [{proxy_header, true}|protocol_opts_for_type(Type,Opts)]
-    end,
+    ProtocolOpts = protocol_opts_for_type(Type, Opts),
     TransportMod = transport_for_type(Type),
     TransportOptions = maps:from_list(
         [{socket_opts, [{ip, AAddr}, {port, Port}|TransportOpts]},
@@ -253,11 +249,8 @@ protocol_opts(vmq_ranch, _, Opts) -> default_session_opts(Opts);
 
 protocol_opts(cowboy_clear, Type, Opts)
   when (Type == mqttws) or (Type == mqttwss) ->
-    Dispatch = cowboy_router:compile(
-                 [{'_', [{"/mqtt", vmq_websocket, [{type, Type}|default_session_opts(Opts)]}]}
-                 ]),
-    #{env => #{ dispatch => Dispatch },
-      stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]};
+    #{env => #{ dispatch => dispatch(Type, Opts) },
+      stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]};    
 protocol_opts(cowboy_clear, _, Opts) ->
     Routes =
     case {lists:keyfind(config_mod, 1, Opts),
@@ -416,3 +409,14 @@ configure_listeners([], []) ->
     ok;
 configure_listeners([], Acc) ->
     vmq_ranch_config:reconfigure_listeners(Acc).
+
+dispatch(Type, Opts) ->    
+    maybe_proxy(proplists:get_value(proxy_protocol, Opts, false), Type, Opts).
+maybe_proxy(false, Type, Opts) ->
+    cowboy_router:compile(
+        [{'_', [{"/mqtt", vmq_websocket, [{type, Type}|default_session_opts(Opts)]}]}
+        ]);
+maybe_proxy(true, Type, Opts) ->
+    cowboy_router:compile(
+        [{'_', [{"/mqtt", vmq_websocket, [{proxy_header, true}|[{type, Type}|default_session_opts(Opts)]]}]}
+        ]).
