@@ -245,7 +245,11 @@ transport_opts(ranch_ssl, Opts) -> vmq_ssl:opts(Opts).
 
 protocol_opts_for_type(Type, Opts) ->
     protocol_opts(protocol_for_type(Type), Type, Opts).
-protocol_opts(vmq_ranch, _, Opts) -> default_session_opts(Opts);
+protocol_opts(vmq_ranch, _, Opts) -> 
+    case proplists:get_value(proxy_protocol, Opts, false) of
+        false -> default_session_opts(Opts);
+        true -> [{proxy_header, true}|default_session_opts(Opts)]
+    end;
 
 protocol_opts(cowboy_clear, Type, Opts)
   when (Type == mqttws) or (Type == mqttwss) ->
