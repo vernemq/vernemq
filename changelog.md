@@ -1,6 +1,7 @@
 # Changelog
 
 - Support multilevel bridge prefixes.
+- Make SSL cert depth configurable for bridges.
 
 ## VerneMQ 1.10.1
 
