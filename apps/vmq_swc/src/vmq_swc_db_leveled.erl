@@ -100,7 +100,8 @@ init([#swc_config{peer=Peer, group=SwcGroup, db=DBName} = _Config|Opts]) ->
 
     DataDir = proplists:get_value(data_dir, Opts,
                                   application:get_env(vmq_swc, data_dir, binary_to_list(DefaultDataDir))),
-    DbPath = filename:absname(DataDir),
+    DataDir2 = filename:join(DataDir, SwcGroup),                      
+    DbPath = filename:absname(DataDir2),
     filelib:ensure_dir(DbPath),
 
     Options =  [{root_path, DbPath},

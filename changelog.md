@@ -2,6 +2,7 @@
 
 - Support multilevel bridge prefixes.
 - Make SSL cert depth configurable for bridges.
+- Fix directory paths for metadata backend for RocksDB and Leveled
 - Fix number only client IDs in vmq-admin session CLI.
 
 ## VerneMQ 1.10.1
