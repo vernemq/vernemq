@@ -44,6 +44,7 @@ following features are implemented and delivered as part of VerneMQ:
 * Redis auth & integration
 * MySQL auth & integration
 * PostgreSQL auth & integration
+* CockroachDB auth & integration
 * Memcached integration
 * HTTP integration
 * HTTP Webhooks
