@@ -1,9 +1,14 @@
 # Changelog
 
+## VerneMQ 1.10.2
+
 - Support multilevel bridge prefixes.
 - Make SSL cert depth configurable for bridges.
-- Fix directory paths for metadata backend for RocksDB and Leveled
-- Fix number only client IDs in vmq-admin session CLI.
+- Fix directory paths for metadata backend for RocksDB and Leveled.
+- Fix number only client IDs in vmq-admin session CLI (#1436).
+- Fix proxy protocol handling bug for WebSockets listeners (#1429).
+- Fix compilation for OS X.
+- Fix bug in vmq_swc where a cluster leave didn't properly cleanup the node clock.
 
 ## VerneMQ 1.10.1
 
@@ -12,7 +17,6 @@
   unavailable.
 - Fix bug where vmq_metrics crashes because external metric providers haven't
   started yet.
-- Fix bug in vmq_swc where a cluster leave didn't properly cleanup the node clock.
 - Fix compilation on OSX Mojave and Catalina. Requires running `brew install openssl snappy`.
 
 ## VerneMQ 1.10.0
