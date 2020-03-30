@@ -29,6 +29,7 @@
 -behaviour(on_client_wakeup_hook).
 -behaviour(on_client_offline_hook).
 -behaviour(on_client_gone_hook).
+-behaviour(on_session_expired_hook).
 
 -behaviour(auth_on_register_m5_hook).
 -behaviour(on_register_m5_hook).
@@ -50,6 +51,7 @@
          on_client_wakeup/1,
          on_client_offline/1,
          on_client_gone/1,
+         on_session_expired/1,
          auth_on_register_m5/6,
          on_register_m5/4,
          auth_on_publish_m5/7,
@@ -541,6 +543,12 @@ on_client_gone(SubscriberId) ->
     vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_client_gone, [{mountpoint, MP},
                          {client_id, ClientId}]).
+
+on_session_expired(SubscriberId) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    vmq_diversity_cache:clear_cache(MP, ClientId),
+    all(on_session_expired, [{mountpoint, MP},
+                             {client_id, ClientId}]).
 
 %%%===================================================================
 %%% Internal functions

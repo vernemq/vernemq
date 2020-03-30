@@ -47,6 +47,7 @@ all() ->
      on_client_wakeup_test,
      on_client_offline_test,
      on_client_gone_test,
+     on_session_expired_test,
      auth_on_register_undefined_creds_test,
      invalid_modifiers_test,
 
@@ -137,6 +138,8 @@ on_client_offline_test(_) ->
     [next] = vmq_plugin:all(on_client_offline, [allowed_subscriber_id()]).
 on_client_gone_test(_) ->
     [next] = vmq_plugin:all(on_client_gone, [allowed_subscriber_id()]).
+on_session_expired_test(_) ->
+    [next] = vmq_plugin:all(on_session_expired, [allowed_subscriber_id()]).
 
 auth_on_register_undefined_creds_test(_) ->
     Username = undefined,
