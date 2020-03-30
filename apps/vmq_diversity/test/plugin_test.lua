@@ -161,6 +161,12 @@ function on_client_gone(ev)
     print("on_client_gone called")
 end
 
+function on_session_expired(ev)
+    assert(ev.client_id == "allowed-subscriber-id")
+    assert(ev.mountpoint == "")
+    print("on_session_expired called")
+end
+
 function auth_on_register_m5(reg)
     assert(reg.addr == "192.168.123.123")
     assert(reg.port == 12345)
@@ -382,6 +388,7 @@ hooks = {
     on_client_wakeup = on_client_wakeup,
     on_client_offline = on_client_offline,
     on_client_gone = on_client_gone,
+    on_session_expired = on_session_expired,
 
     auth_on_register_m5 = auth_on_register_m5,
     on_register_m5 = on_register_m5,
