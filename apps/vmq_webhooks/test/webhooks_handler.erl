@@ -504,6 +504,8 @@ process_hook(<<"on_client_offline">>, Body) ->
     on_client_offline(Body);
 process_hook(<<"on_client_gone">>, Body) ->
     on_client_gone(Body);
+process_hook(<<"on_session_expired">>, Body) ->
+    on_session_expired(Body);
 
 process_hook(<<"auth_on_register_m5">>, Body) ->
     auth_on_register_m5(Body);
