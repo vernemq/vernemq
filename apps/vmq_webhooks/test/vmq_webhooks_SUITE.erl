@@ -64,6 +64,7 @@ all() ->
      on_client_wakeup_test,
      on_client_offline_test,
      on_client_gone_test,
+     on_session_expired_test,
      base64payload_test,
      auth_on_register_undefined_creds_test,
      cache_auth_on_register,
@@ -236,7 +237,7 @@ on_deliver_test(_) ->
     register_hook(on_deliver, ?ENDPOINT),
     Self = pid_to_bin(self()),
     ok = vmq_plugin:all_till_ok(on_deliver,
-                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?TOPIC, ?PAYLOAD]),
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     ok = exp_response(on_deliver_ok),
     deregister_hook(on_deliver, ?ENDPOINT).
 
@@ -383,14 +384,14 @@ on_deliver_m5_test(_) ->
     register_hook(on_deliver_m5, ?ENDPOINT),
     Self = pid_to_bin(self()),
     ok = vmq_plugin:all_till_ok(on_deliver_m5,
-                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?TOPIC, ?PAYLOAD, #{}]),
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #{}]),
     ok = exp_response(on_deliver_m5_ok),
     deregister_hook(on_deliver_m5, ?ENDPOINT).
 
 on_deliver_m5_modify_props_test(_) ->
     register_hook(on_deliver_m5, ?ENDPOINT),
     Self = pid_to_bin(self()),
-    Args = [Self, {?MOUNTPOINT, <<"modify_props">>}, ?TOPIC, ?PAYLOAD,
+    Args = [Self, {?MOUNTPOINT, <<"modify_props">>}, 1,  ?TOPIC, ?PAYLOAD, false,
             #{?P_USER_PROPERTY =>
                   [{<<"k1">>, <<"v1">>},
                    {<<"k2">>, <<"v2">>}],
@@ -450,6 +451,13 @@ on_client_gone_test(_) ->
     [next] = vmq_plugin:all(on_client_gone, [{?MOUNTPOINT, Self}]),
     ok = exp_response(on_client_gone_ok),
     deregister_hook(on_client_gone, ?ENDPOINT).
+
+on_session_expired_test(_) ->
+    register_hook(on_session_expired, ?ENDPOINT),
+    Self = pid_to_bin(self()),
+    [next] = vmq_plugin:all(on_session_expired, [{?MOUNTPOINT, Self}]),
+    ok = exp_response(on_session_expired_ok),
+    deregister_hook(on_session_expired, ?ENDPOINT).
 
 base64payload_test(_) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
