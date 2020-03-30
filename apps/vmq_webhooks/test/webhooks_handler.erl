@@ -458,6 +458,12 @@ on_client_gone(#{mountpoint := ?MOUNTPOINT_BIN,
     Pid ! on_client_gone_ok,
     {200, #{}}.
 
+on_session_expired(#{mountpoint := ?MOUNTPOINT_BIN,
+                     client_id := BinPid}) ->
+    Pid = list_to_pid(binary_to_list(BinPid)),
+    Pid ! on_session_expired_ok,
+    {200, #{}}.
+
 on_auth_m5(#{properties :=
                  #{?P_AUTHENTICATION_METHOD := <<"AUTH_METHOD">>,
                    ?P_AUTHENTICATION_DATA := <<"QVVUSF9EQVRBMA==">>}, %% b64(<<"AUTH_DATA0">>)

@@ -52,7 +52,7 @@
          on_client_wakeup/1,
          on_client_offline/1,
          on_client_gone/1,
-	 on_session_expired/1,
+         on_session_expired/1,
 
          auth_on_register_m5/6,
          auth_on_publish_m5/7,
