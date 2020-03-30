@@ -16,6 +16,8 @@ compile:
 rpi32: PROFILE = as rpi32
 rpi32: rel
 
+with_rocksdb: PROFILE = as rocksdb
+with_rocksdb: rel
 
 ##
 ## Release targets

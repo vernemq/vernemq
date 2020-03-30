@@ -39,6 +39,10 @@ init_per_testcase(idx_compat_pre_test, Config) ->
     Config;
 init_per_testcase(_Case, Config) ->
     StorageEngine = proplists:get_value(engine, Config),
+    case StorageEngine of
+        vmq_storage_engine_rocksdb -> application:set_env(rocksdb_env());
+    _ -> ok
+    end,    
     application:load(vmq_generic_msg_store),
     application:set_env(vmq_generic_msg_store, msg_store_engine, StorageEngine),
     application:ensure_all_started(vmq_generic_msg_store),
@@ -74,6 +78,7 @@ groups() ->
      {vmq_storage_engine_leveldb, [shuffle], StorageTests},
      {vmq_storage_engine_dets, [shuffle], StorageTests},
      {vmq_storage_engine_ets, [shuffle], StorageTests},
+     {vmq_storage_engine_rocksdb, [shuffle], lists:flatten([BasicTests|StorageTests])},
      {basic, [shuffle], BasicTests}
     ].
 
@@ -318,4 +323,77 @@ rand_bytes(N) ->
 msg_ref() ->
     erlang:md5(term_to_binary({node(), self(), erlang:timestamp(), rand_bytes(10)})).
 
-
+rocksdb_env() ->
+        [{rocksdb, [
+            {db_options,   % https://github.com/facebook/rocksdb/blob/master/examples/rocksdb_option_file_example.ini
+               [{env, default}, % oneof: default | memenv
+                {total_threads, 4},
+                {create_if_missing, true}, % RB default: false
+                {create_missing_column_families, true}, % RB default: false
+                {error_if_exists, false}, % RB default: false
+                {paranoid_checks, true}, % RB default: true
+                {max_open_files, -1}, % set to -1 to always keep all files open. RB default: -1
+                {max_total_wal_size, 0}, % RB default: 0
+                {use_fsync, false}, % RB default: false
+                {db_paths, []},
+                {db_log_dir, ""},
+                {wal_dir, ""},
+                {delete_obsolete_files_period_micros, 21600000000}, %micros RB default: 6 hours
+                {max_background_jobs, 4}, % RB default: 2. (background jobs = compactions + flushes)
+                {max_background_compactions, 4}, % set to number of available CPUs. RB default: -1
+                {max_background_flushes, 1}, % max_background_jobs = max_background_compactions + max_background_flushes. Not supported anymore?
+                {max_log_file_size, 0}, % RB default: 0
+                {log_file_time_to_roll, 0}, %RB default: 0
+                {keep_log_file_num, 1000}, %RB default: 1000
+                {max_manifest_file_size, 1073741824}, % RB default: 1GB
+                {table_cache_numshardbits, 4}, % table cache sharding. RB default: 6
+                {wal_ttl_seconds, 0}, % RB default: 0
+                {manual_wal_flush, false}, % RB default:
+                {wal_size_limit_mb, 0}, % RB default: 0
+                {manifest_preallocation_size, 4194304}, % % RB default: 4MB
+                {allow_mmap_reads, false}, % RB default: false
+                {allow_mmap_writes, false}, % RB default: false
+                {is_fd_close_on_exec, true}, % RB default: true
+                {skip_log_error_on_recovery, false}, % RB comment: this option is no longer used!
+                {stats_dump_period_sec, 600}, % seconds. RB default: 600
+                {advise_random_on_open, true}, % RB default: true
+                {access_hint, normal}, % one of: normal | sequential | willneed | none. RB default: normal
+                {compaction_readahead_size, 0}, % RB default: 0
+                {new_table_reader_for_compaction_inputs, true}, % RB default: false. Plan to delete option
+                {use_adaptive_mutex, false}, % RB default: false
+                {bytes_per_sync, 8388608}, % taken from examlpe.ini. RB default: 0 (turned off)
+                {skip_stats_update_on_db_open, true}, % faster DB open, on spinning disks. RB default: false
+                {wal_recovery_mode, point_in_time_recovery}, %oneof: tolerate_corrupted_tail_records | absolute_consistency
+                                                             % | point_in_time_recovery | skip_any_corrupted_records
+                {allow_concurrent_memtable_write, true}, % RB default: true
+                {enable_write_thread_adaptive_yield, true}, % RB default: true
+                {db_write_buffer_size, 0}, % RB default: 0 (disabled). this is the max that a databases CF write buffers are allowed to total.
+                % note that the CF write buffer is set via cf_options
+                % For message store, Verne has 12 Databases per Node, each using the default Column Family
+                % For meta data, Verne has 1 Database with 10 column families per Node.
+                {in_memory, false}, % RB default: false
+             %   {rate_limiter, rate_limiter_handle()}, %?
+             %   {sst_file_manager, sst_file_manager()},
+             %   {write_buffer_manager, write_buffer_manager()},
+                {max_subcompactions, 4}, % RB default: 1
+                {atomic_flush, false}
+               ]},
+              {read,
+                     [{verify_checksums, true}, %RB default: true
+                      {fill_cache, true}, % RB default: true
+                     % {iterate_upper_bound, any}, % RB default: nullptr
+                     % {iterate_lower_bound, any}, % RB default: nullptr
+                      {tailing, false}, % RB default: false
+                      {total_order_seek, false}, %RB default: ?
+                      {prefix_same_as_start, false}, % RB default: false
+                     % {snapshot, any},
+                      {iterator_refresh, false}]}, % non RB config?
+  
+               {write,
+                     [{sync, false}, % RB default: false (?)
+                      {disable_wal, false}, % RB default:
+                      {ignore_missing_column_families, false}, % RB default: ?
+                      {no_slowdown, false}, % https://github.com/facebook/rocksdb/wiki/Write-Stalls
+                      {low_pri, false}]} % https://github.com/facebook/rocksdb/wiki/Low-Priority-Write
+             ]
+   }].
