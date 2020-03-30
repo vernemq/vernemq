@@ -392,8 +392,10 @@ on_unsubscribe_m5(#{client_id := ?CHANGED_CLIENT_ID}) ->
 on_deliver(#{username := BinPid,
              mountpoint := ?MOUNTPOINT_BIN,
              client_id := ?ALLOWED_CLIENT_ID,
+             qos := 1,
              topic := ?TOPIC,
-             payload := ?PAYLOAD}) ->
+             payload := ?PAYLOAD,
+             retain : false}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_deliver_ok,
     {200, #{result => <<"ok">>}}.
@@ -401,8 +403,10 @@ on_deliver(#{username := BinPid,
 on_deliver_m5(#{username := BinPid,
                 mountpoint := ?MOUNTPOINT_BIN,
                 client_id := ?ALLOWED_CLIENT_ID,
+                qos := 1,
                 topic := ?TOPIC,
-                payload := ?PAYLOAD}) ->
+                payload := ?PAYLOAD,
+                retain := false}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_deliver_m5_ok,
     {200, #{result => <<"ok">>}};
