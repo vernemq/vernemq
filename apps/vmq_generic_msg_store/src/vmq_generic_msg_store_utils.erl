@@ -52,7 +52,9 @@ file_dump_({idx, MsgRef, MP, ClientId, IdxVal}, Fd) ->
 full_table_scan(FoldFun, ok) ->
     full_table_scan_(vmq_generic_msg_store_sup:get_bucket_pids(), {FoldFun, []}); % hack for RocksDB tests. Review
 full_table_scan(FoldFun, Acc) ->
-    full_table_scan_(vmq_generic_msg_store_sup:get_bucket_pids(), {FoldFun, Acc}).
+    full_table_scan_(vmq_generic_msg_store_sup:get_bucket_pids(), {FoldFun, Acc});
+full_table_scan(FoldFun, ok) ->
+    full_table_scan_(vmq_generic_msg_store_sup:get_bucket_pids(), {FoldFun, []}). % hack for RocksDB tests. Review
 
 
 full_table_scan_([Bucket|Rest], Acc) ->

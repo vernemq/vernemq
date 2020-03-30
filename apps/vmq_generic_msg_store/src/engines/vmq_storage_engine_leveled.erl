@@ -22,7 +22,7 @@
           open_opts = [],
           config :: config(),
           read_opts = [],
-          write_opts = [],  
+          write_opts = [],
           fold_opts = [{fill_cache, false}]
          }).
 
@@ -50,10 +50,10 @@ open(DataRoot, Opts) ->
 -spec write(state(), [write_op()]) -> ok.
     write(#state{ref=EngineRef}, WriteOps) ->
             ops_to_bookie(EngineRef, WriteOps).
-    
+
 ops_to_bookie(Bookie, [H|T] = _WriteOps) ->
     % Bookie is the same as EngineRef, it's a pid
-        case H of 
+        case H of
             {put, Key, Value} -> leveled_bookie:book_put(Bookie, ?BUCKET, Key, Value, []),
                                 ops_to_bookie(Bookie, T);
             {delete, Key} -> leveled_bookie:book_delete(Bookie, ?BUCKET, Key, []), ops_to_bookie(Bookie, T)
@@ -83,7 +83,7 @@ init_state(DataRoot, Config) ->
     WriteOpts = [],
     FoldOpts = [],
 
-    StartOptions =  
+    StartOptions =
     [{root_path, DataRoot},
     {cache_size, 2500},
     {max_journalsize, 100000000},
@@ -159,18 +159,18 @@ fold(#state{ref=EngineRef}, FoldFun, Acc, FirstKey) ->
 
 foldfun_wrapper(FoldFun) ->
             fun(_Bucket, Key, Value, AccAcc) ->
-                try FoldFun(Key, Value, AccAcc) 
-                catch   
+                try FoldFun(Key, Value, AccAcc)
+                catch
                         throw:finished ->
                             throw({return, AccAcc});
                         AccAccAcc ->
                             AccAccAcc
                     end
                 end.
-        
+
 % Options, copied from Leveled
 
-%-type open_options() :: 
+%-type open_options() ::
 % for an explanation of the options, cf Leveled
 %    [{root_path, string()|undefined} |
 %     {snapshot_bookie, undefined|pid()} |

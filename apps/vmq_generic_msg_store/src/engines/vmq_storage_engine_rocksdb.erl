@@ -22,7 +22,7 @@
           open_opts = [],
           config :: config(),
           read_opts = [],
-          write_opts = [],  
+          write_opts = [],
           fold_opts = [{fill_cache, false}]
          }).
 
@@ -230,16 +230,16 @@ write(#state{ref=EngineRef, write_opts=WriteOpts}, WriteOps) ->
     {ok, Batch} = rocksdb:batch(),
     ops_to_batch(Batch, WriteOps),
     case rocksdb:write_batch(EngineRef, Batch, WriteOpts) of
-        ok -> 
+        ok ->
                 rocksdb:release_batch(Batch);
-        {error, Reason} ->  
+        {error, Reason} ->
                 lager:error("Error in RocksDB Message Store Write for Batch: ~p\n", [Batch]),
                 rocksdb:release_batch(Batch),
                 {error, Reason}
     end.
 
 ops_to_batch(Batch, [H|T] = WriteOps) ->
-    case H of 
+    case H of
         {put, Key, Value} -> rocksdb:batch_put(Batch, Key, Value),
                             ops_to_batch(Batch, T);
         {delete, Key} -> rocksdb:batch_delete(Batch, Key), ops_to_batch(Batch, T)
@@ -292,7 +292,7 @@ init_state(DataRoot, Config) ->
     FinalConfig = orddict:merge(fun(_K, VLocal, _VGlobal) -> VLocal end,
                                  orddict:from_list(Config), % Local
                                  orddict:from_list(application:get_all_env(rocksdb))), % Global
-    
+
     %% Parse out the open/read/write options
     {OpenOpts, _BadOpenOpts} = validate_options(db_options, FinalConfig),
     {ReadOpts, _BadReadOpts} = validate_options(read, FinalConfig),
@@ -300,7 +300,7 @@ init_state(DataRoot, Config) ->
 
     %% Use read options for folding, but FORCE fill_cache to false
     FoldOpts = lists:keystore(fill_cache, 1, ReadOpts, {fill_cache, false}),
-    
+
     %% Generate a debug message with the options we'll use for each operation
     lager:debug("Datadir ~s options for RocksDB Message Store: ~p\n",
                 [DataRoot, [{db_options, OpenOpts}, {read, ReadOpts}, {write, WriteOpts}, {fold, FoldOpts}]]),
@@ -382,7 +382,7 @@ option_types(db_options) ->
      {write_buffer_manager, any},
      {max_subcompactions, any},
      {atomic_flush, bool}].
-  
+
 -spec validate_options(db_options | read | write, [{atom(), any()}]) ->
                               {[{atom(), any()}], [{atom(), any()}]}.
 
