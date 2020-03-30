@@ -37,7 +37,7 @@
         {vmq_diversity_plugin, on_publish, 6, []},
         {vmq_diversity_plugin, on_subscribe, 3, []},
         {vmq_diversity_plugin, on_unsubscribe, 3, []},
-        {vmq_diversity_plugin, on_deliver, 4, []},
+        {vmq_diversity_plugin, on_deliver, 6, []},
 
         {vmq_diversity_plugin, auth_on_register_m5, 6, []},
         {vmq_diversity_plugin, auth_on_publish_m5, 7, []},
@@ -46,7 +46,7 @@
         {vmq_diversity_plugin, on_publish_m5, 7, []},
         {vmq_diversity_plugin, on_subscribe_m5, 4, []},
         {vmq_diversity_plugin, on_unsubscribe_m5, 4, []},
-        {vmq_diversity_plugin, on_deliver_m5, 5, []},
+        {vmq_diversity_plugin, on_deliver_m5, 7, []},
         {vmq_diversity_plugin, on_auth_m5, 3, []},
 
         {vmq_diversity_plugin, on_offline_message, 5, []},
