@@ -19,6 +19,9 @@ rpi32: rel
 with_rocksdb: PROFILE = as rocksdb
 with_rocksdb: rel
 
+with_leveled: PROFILE = as leveled
+with_leveled: rel
+
 ##
 ## Release targets
 ##
