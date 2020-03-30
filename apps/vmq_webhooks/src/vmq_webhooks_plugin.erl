@@ -388,7 +388,7 @@ on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
                                               || T <- Topics]},
                                     {properties, Props}]).
 
-on_deliver(UserName, SubscriberId, Qos, Topic, Payload, IsRetain) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [{username, nullify(UserName)},
                              {mountpoint, MP},
@@ -398,7 +398,7 @@ on_deliver(UserName, SubscriberId, Qos, Topic, Payload, IsRetain) ->
                              {payload, Payload},
                              {retain, IsRetain}]).
 
-on_deliver_m5(UserName, SubscriberId, Qos, Topic, Payload, IsRetain, Props) ->
+on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver_m5, [{username, nullify(UserName)},
                                 {mountpoint, MP},
