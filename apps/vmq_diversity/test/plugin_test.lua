@@ -124,9 +124,11 @@ end
 function on_deliver(pub)
     assert(pub.username == "test-user")
     assert(pub.client_id == "allowed-subscriber-id")
+    assert(pub.qos == 1)
     assert(pub.mountpoint == "")
     assert(pub.topic == "test/topic")
     assert(pub.payload == "hello world")
+    assert(pub.retain == false)
     print("on_deliver called")
     return true
 end
@@ -282,9 +284,11 @@ end
 function on_deliver_m5(pub)
    assert(pub.username == "test-user")
    assert(pub.client_id == "allowed-subscriber-id")
+   assert(pub.qos == 1)
    assert(pub.mountpoint == "")
    assert(pub.topic == "test/topic")
    assert(pub.payload == "hello world")
+   assert(pub.retain == false)
    assert(pub.properties)
    properties = pub.properties
    assert(properties.p_correlation_data == "correlation_data")

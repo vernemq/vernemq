@@ -126,7 +126,7 @@ on_unsubscribe_test(_) ->
 
 on_deliver_test(_) ->
     ok = vmq_plugin:all_till_ok(on_deliver,
-                                [username(), allowed_subscriber_id(), topic(), payload()]).
+                                [username(), allowed_subscriber_id(), 1, topic(), payload(), false]).
 
 on_offline_message_test(_) ->
     [next] = vmq_plugin:all(on_offline_message, [allowed_subscriber_id(), 2,
@@ -228,7 +228,7 @@ on_publish_m5_test(_) ->
     [next] = vmq_plugin:all(on_publish_m5, Args).
 
 on_deliver_m5_test(_) ->
-    Args = [username(), allowed_subscriber_id(), topic(), payload(),
+    Args = [username(), allowed_subscriber_id(), 1, topic(), payload(), false,
             #{?P_USER_PROPERTY =>
                   [{<<"k1">>, <<"v1">>},
                    {<<"k2">>, <<"v2">>}],
