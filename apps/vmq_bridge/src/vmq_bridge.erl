@@ -257,6 +257,9 @@ add_prefix(undefined, Topic) -> Topic;
 add_prefix(Prefix, Topic) -> lists:flatten([Prefix, Topic]).
 
 remove_prefix(undefined, Topic) -> Topic;
+remove_prefix([], Topic) -> Topic;
+remove_prefix([H|Prefix], [H|Topic]) ->
+    remove_prefix(Prefix, Topic);
 remove_prefix([Prefix], Topic) ->
     remove_prefix(Prefix, Topic);
 remove_prefix(Prefix, [Prefix|Rest]) ->  Rest.
@@ -292,6 +295,7 @@ client_opts(ssl, Host, Port, Opts) ->
     SSLOpts = [{certfile, proplists:get_value(certfile, Opts)},
                {cacertfile, proplists:get_value(cafile, Opts)},
                {keyfile, proplists:get_value(keyfile, Opts)},
+               {depth, proplists:get_value(depth, Opts)},
                {verify, case proplists:get_value(insecure, Opts) of
                             true -> verify_none;
                             _ -> verify_peer

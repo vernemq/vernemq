@@ -139,7 +139,7 @@ vmq_ql_callback(Table, DefaultFields, Opts) ->
                              ({Flag, undefined}, {AccFields, AccWhere}) ->
                                   {[atom_to_list(Flag)|AccFields], AccWhere};
                              ({Flag, Val}, {AccFields, AccWhere}) ->
-                                  {AccFields, [{atom_to_list(Flag), v(Val)}|AccWhere]}
+                                  {AccFields, [{atom_to_list(Flag), v(Flag, Val)}|AccWhere]}
                           end, {[],[]}, Flags)
                 end,
             FFields =
@@ -165,9 +165,11 @@ vmq_ql_callback(Table, DefaultFields, Opts) ->
                   end, [], QueryString, Opts),
             [clique_status:table(ResultTable)]
     end.
-v("true" = V) -> V;
-v("false" = V) -> V;
-v(V) ->
+v(_, "true" = V) -> V;
+v(_, "false" = V) -> V;
+v(client_id, V) -> "\"" ++ V ++ "\"";
+v(user, V) -> "\"" ++ V ++ "\"";
+v(_, V) ->
     try
         _ = list_to_integer(V),
         V

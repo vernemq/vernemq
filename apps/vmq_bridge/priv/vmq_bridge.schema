@@ -266,6 +266,12 @@
                                                            {include_default, "sbr0"},
                                                            {commented, ""}
                                                           ]}. 
+%% @doc Setting the depth for intermediate chains
+{mapping, "vmq_bridge.ssl.$name.depth", "vmq_bridge.config", [
+                                                           {default, 1},
+                                                           {datatype, integer},
+                                                           hidden
+                                                          ]}.                   
 
 {mapping, "vmq_bridge.registry_mfa", "vmq_bridge.registry_mfa", 
  [
@@ -352,7 +358,7 @@
                     "username", "password", "restart_timeout", "try_private", "topic",
                      "max_outgoing_buffered_messages", "mqtt_version"],
                     %% SSL specific
-         SSLMapps = ["cafile", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk"],
+         SSLMapps = ["cafile", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk", "depth"],
          F = fun(Prefix, Suffix, Validator) ->
                      %% get the name value pairs
                      Prefix3 = lists:flatten([Prefix, ".$name"]),
@@ -425,6 +431,7 @@
          {SSLIPs, SSLVersions} = lists:unzip(F("vmq_bridge.ssl", "tls_version", AtomVal)),
          {SSLIPs, SSLIdentities} = lists:unzip(F("vmq_bridge.ssl", "identity", StringVal)),
          {SSLIPs, SSLPSKs} = lists:unzip(F("vmq_bridge.ssl", "psk", StringVal)),
+         {SSLIPS, SSLDepths} = lists:unzip(F("vmq_bridge.ssl", "depth", IntVal)),
 
          TCP = lists:zip(TCPIPs, MZip([TCPCleanSessions, 
                                        TCPClientIds, 
@@ -453,7 +460,8 @@
                                        SSLInsecures, 
                                        SSLVersions, 
                                        SSLIdentities, 
-                                       SSLPSKs])),
+                                       SSLPSKs,
+                                       SSLDepths])),
          DropUndef = fun(L) ->
                              [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
                      end,
