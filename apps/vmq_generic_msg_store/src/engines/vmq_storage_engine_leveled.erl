@@ -42,7 +42,6 @@
 % API
 
 open(DataRoot, Opts) ->
-    code:add_path("/home/afa/Erlang/ioolkos/wip/vernemq/_build/leveled/lib/leveled/ebin"),
     {module, leveled_bookie} = code:ensure_loaded('leveled_bookie'),
     RetriesLeft = proplists:get_value(open_retries, Opts, 30),
     State = init_state(DataRoot, Opts),
