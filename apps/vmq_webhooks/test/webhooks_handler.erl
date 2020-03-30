@@ -395,7 +395,7 @@ on_deliver(#{username := BinPid,
              qos := 1,
              topic := ?TOPIC,
              payload := ?PAYLOAD,
-             retain : false}) ->
+             retain := false}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_deliver_ok,
     {200, #{result => <<"ok">>}}.
