@@ -64,6 +64,7 @@ all() ->
      on_client_wakeup_test,
      on_client_offline_test,
      on_client_gone_test,
+     on_session_expired_test,
      base64payload_test,
      auth_on_register_undefined_creds_test,
      cache_auth_on_register,
@@ -450,6 +451,13 @@ on_client_gone_test(_) ->
     [next] = vmq_plugin:all(on_client_gone, [{?MOUNTPOINT, Self}]),
     ok = exp_response(on_client_gone_ok),
     deregister_hook(on_client_gone, ?ENDPOINT).
+
+on_session_expired_test(_) ->
+    register_hook(on_session_expired, ?ENDPOINT),
+    Self = pid_to_bin(self()),
+    [next] = vmq_plugin:all(on_session_expired, [{?MOUNTPOINT, Self}]),
+    ok = exp_response(on_session_expired_ok),
+    deregister_hook(on_session_expired, ?ENDPOINT).
 
 base64payload_test(_) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
