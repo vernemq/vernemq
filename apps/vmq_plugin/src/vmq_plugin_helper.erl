@@ -44,4 +44,4 @@ all_till_ok([{compat, Hook, CompatMod, CompatFun, Module, Fun}|Rest], Params) ->
         E -> {error, E}
     end;
 all_till_ok([], _) ->
-    {error, chain_exhausted}.
+    {error, plugin_chain_exhausted}.
