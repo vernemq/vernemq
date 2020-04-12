@@ -1709,12 +1709,11 @@
 %% @doc Specifies the metadata plugin that is used for storing and replicating
 %% VerneMQ metadata objects such as MQTT subscriptions and retained messages.
 %%
-%% The default is `vmq_plumtree` which is stable and shows good performance
-%% results for most use cases.
+%% The default is kept at `vmq_plumtree` for compatibility with existing deployments.
 %%
-%% `vmq_swc` is still in Beta, but will likely deprecate `vmq_plumtree` in the
-%% next major version (2.0). `vmq_swc` aims to overcome multiple scalability
-%% limitations that can be observed with `vmq_plumtree`.
+%% For new cluster deployments, the recommendation is to use 'vmq_swc' from the
+%% beginning. Note that the 2 protocols are not compatible, so clusters can't be
+%% mixed. 
 {mapping, "metadata_plugin", "vmq_server.metadata_impl", [{default, {{ metadata_plugin }} },
                                                           {datatype, {enum, [vmq_plumtree, vmq_swc]}}
                                                          ]}.
