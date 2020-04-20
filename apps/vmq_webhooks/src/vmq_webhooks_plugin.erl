@@ -445,7 +445,6 @@ on_session_expired(SubscriberId) ->
     all(on_session_expired, [{mountpoint, MP},
 			     {client_id, ClientId}]).
 
-
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
