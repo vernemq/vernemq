@@ -28,6 +28,7 @@
 -behaviour(on_client_wakeup_hook).
 -behaviour(on_client_offline_hook).
 -behaviour(on_client_gone_hook).
+-behaviour(on_session_expired_hook).
 
 -behaviour(auth_on_register_m5_hook).
 -behaviour(auth_on_publish_m5_hook).
@@ -46,11 +47,12 @@
          on_publish/6,
          on_subscribe/3,
          on_unsubscribe/3,
-         on_deliver/4,
+         on_deliver/6,
          on_offline_message/5,
          on_client_wakeup/1,
          on_client_offline/1,
          on_client_gone/1,
+         on_session_expired/1,
 
          auth_on_register_m5/6,
          auth_on_publish_m5/7,
@@ -59,7 +61,7 @@
          on_publish_m5/7,
          on_subscribe_m5/4,
          on_unsubscribe_m5/4,
-         on_deliver_m5/5,
+         on_deliver_m5/7,
          on_auth_m5/3]).
 
 %% API
@@ -386,21 +388,25 @@ on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
                                               || T <- Topics]},
                                     {properties, Props}]).
 
-on_deliver(UserName, SubscriberId, Topic, Payload) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [{username, nullify(UserName)},
                              {mountpoint, MP},
                              {client_id, ClientId},
+                             {qos, QoS},
                              {topic, unword(Topic)},
-                             {payload, Payload}]).
+                             {payload, Payload},
+                             {retain, IsRetain}]).
 
-on_deliver_m5(UserName, SubscriberId, Topic, Payload, Props) ->
+on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver_m5, [{username, nullify(UserName)},
                                 {mountpoint, MP},
                                 {client_id, ClientId},
+                                {qos, QoS},
                                 {topic, unword(Topic)},
                                 {payload, Payload},
+                                {retain, IsRetain},
                                 {properties, Props}]).
 
 on_auth_m5(UserName, SubscriberId, Props) ->
@@ -433,6 +439,12 @@ on_client_gone(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_client_gone, [{mountpoint, MP},
                          {client_id, ClientId}]).
+
+on_session_expired(SubscriberId) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_session_expired, [{mountpoint, MP},
+			     {client_id, ClientId}]).
+    
 
 %%%===================================================================
 %%% Internal functions

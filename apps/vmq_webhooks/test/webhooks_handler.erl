@@ -392,8 +392,10 @@ on_unsubscribe_m5(#{client_id := ?CHANGED_CLIENT_ID}) ->
 on_deliver(#{username := BinPid,
              mountpoint := ?MOUNTPOINT_BIN,
              client_id := ?ALLOWED_CLIENT_ID,
+             qos := 1,
              topic := ?TOPIC,
-             payload := ?PAYLOAD}) ->
+             payload := ?PAYLOAD,
+             retain := false}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_deliver_ok,
     {200, #{result => <<"ok">>}}.
@@ -401,8 +403,10 @@ on_deliver(#{username := BinPid,
 on_deliver_m5(#{username := BinPid,
                 mountpoint := ?MOUNTPOINT_BIN,
                 client_id := ?ALLOWED_CLIENT_ID,
+                qos := 1,
                 topic := ?TOPIC,
-                payload := ?PAYLOAD}) ->
+                payload := ?PAYLOAD,
+                retain := false}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_deliver_m5_ok,
     {200, #{result => <<"ok">>}};
@@ -454,6 +458,12 @@ on_client_gone(#{mountpoint := ?MOUNTPOINT_BIN,
     Pid ! on_client_gone_ok,
     {200, #{}}.
 
+on_session_expired(#{mountpoint := ?MOUNTPOINT_BIN,
+                     client_id := BinPid}) ->
+    Pid = list_to_pid(binary_to_list(BinPid)),
+    Pid ! on_session_expired_ok,
+    {200, #{}}.
+
 on_auth_m5(#{properties :=
                  #{?P_AUTHENTICATION_METHOD := <<"AUTH_METHOD">>,
                    ?P_AUTHENTICATION_DATA := <<"QVVUSF9EQVRBMA==">>}, %% b64(<<"AUTH_DATA0">>)
@@ -494,6 +504,8 @@ process_hook(<<"on_client_offline">>, Body) ->
     on_client_offline(Body);
 process_hook(<<"on_client_gone">>, Body) ->
     on_client_gone(Body);
+process_hook(<<"on_session_expired">>, Body) ->
+    on_session_expired(Body);
 
 process_hook(<<"auth_on_register_m5">>, Body) ->
     auth_on_register_m5(Body);

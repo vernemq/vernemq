@@ -1,5 +1,7 @@
 # Changelog
 
+- Add new `on_session_expired/1` hook to `vmq_diversity` and `vmq_webhooks`.
+
 ## VerneMQ 1.10.2
 
 - Support multilevel bridge prefixes.
