@@ -1,7 +1,7 @@
 %% -*- mode: erlang -*-
 %% ex: ft=erlang
 
-{mapping, "leveldb_message_store.directory", "vmq_generic_msg_store.msg_store_opts.store_dir", [
+{mapping, "generic_message_store.directory", "vmq_generic_msg_store.msg_store_opts.store_dir", [
                                                                             {default, "{{platform_data_dir}}/msgstore"},
                                                                             {datatype, directory},
                                                                             hidden
