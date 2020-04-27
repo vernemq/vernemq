@@ -754,6 +754,10 @@ fmodifiers(Modifiers) ->
 fpid(Pid) ->
     {"~p", [Pid]}.
 
+ftimestamp(Timestamp) ->
+    TimestampMs = lager_util:localtime_ms(Timestamp),
+    lager_util:format_time(maybe_utc(TimestampMs)).
+
 sid({"", CId}) ->
     {"CID: \"~s\"", [CId]};
 sid({MP, CId}) ->
