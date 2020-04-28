@@ -12,25 +12,25 @@
 
 %% @doc Allow new client connections even when a VerneMQ cluster is inconsistent.
 {mapping, "allow_register_during_netsplit", "vmq_server.allow_register_during_netsplit", [
-                                                                                          {default, off},
+                                                                                          {default, on},
                                                                                           {datatype, flag}
                                                                                          ]}.
 
 %% @doc Allow message publishs even when a VerneMQ cluster is inconsistent.
 {mapping, "allow_publish_during_netsplit", "vmq_server.allow_publish_during_netsplit", [
-                                                                                        {default, off},
+                                                                                        {default, on},
                                                                                         {datatype, flag}
                                                                                        ]}.
 
 %% @doc Allow new subscriptions even when a VerneMQ cluster is inconsistent.
 {mapping, "allow_subscribe_during_netsplit", "vmq_server.allow_subscribe_during_netsplit", [
-                                                                                            {default, off},
+                                                                                            {default, on},
                                                                                             {datatype, flag}
                                                                                            ]}.
 
 %% @doc Allow clients to unsubscribe when a VerneMQ cluster is inconsistent.
 {mapping, "allow_unsubscribe_during_netsplit", "vmq_server.allow_unsubscribe_during_netsplit", [
-                                                                                                {default, off},
+                                                                                                {default, on},
                                                                                                 {datatype, flag}
                                                                                                ]}.
 
