@@ -497,7 +497,7 @@ format_trace(Trace, #state{client_id=ClientId,
             {call, Pid, Timestamp, [{vmq_parser_mqtt5, serialise, [Msg]}]} ->
                 format_frame(from, Pid, Timestamp, SId, Msg, Opts);
             {call, Pid, Timestamp, [{vmq_mqtt5_fsm, connected, [Msg, _]}]} ->
-                format_frame(to, Pid, SId, Timestamp, Msg, Opts);
+                format_frame(to, Pid, Timestamp, SId, Msg, Opts);
             {call, Pid, Timestamp, [{vmq_plugin, all_till_ok, [Hook, Args]}]} ->
                 format_all_till_ok(Hook, Pid, Timestamp, Args, Opts);
             {return_from, Pid, Timestamp, [{vmq_plugin,all_till_ok,2}, Ret]} ->
