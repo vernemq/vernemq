@@ -318,9 +318,13 @@ client_opts(ssl, Host, Port, Opts) ->
                                      _ -> undefined
                                  end}
                 ],
+    SSLOpts1 =  case proplists:get_value(customize_hostname_check, Opts) of
+                  'https' -> [{customize_hostname_check, [{match_fun, public_key:pkix_verify_hostname_match_fun(https)}]}|SSLOpts];
+                  _ -> SSLOpts
+                end,
 
     lists:keyreplace(transport, 1, TCPOpts,
-                     {transport, {ssl, [P||{_,V}=P <- SSLOpts, V /= undefined]}}).
+                     {transport, {ssl, [P||{_,V}=P <- SSLOpts1, V /= undefined]}}).
 
 %% @spec to_bin(string()) -> binary()
 %% @doc Convert a hexadecimal string to a binary.

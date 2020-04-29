@@ -271,7 +271,14 @@
                                                            {default, 1},
                                                            {datatype, integer},
                                                            hidden
-                                                          ]}.                   
+                                                          ]}.
+
+%% @doc Allow the bridge to open SSL connections to remote broker with wildcard certs
+{mapping, "vmq_bridge.ssl.$name.customize_hostname_check", "vmq_bridge.config", [
+                                                         {datatype, {enum, ['https']}},
+                                                            {default, 'https'},
+                                                            {commented, on}
+                                                        ]}.                                          
 
 {mapping, "vmq_bridge.registry_mfa", "vmq_bridge.registry_mfa", 
  [
@@ -358,7 +365,8 @@
                     "username", "password", "restart_timeout", "try_private", "topic",
                      "max_outgoing_buffered_messages", "mqtt_version"],
                     %% SSL specific
-         SSLMapps = ["cafile", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk", "depth"],
+         SSLMapps = ["cafile", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk", "depth", 
+         "customize_hostname_check"],
          F = fun(Prefix, Suffix, Validator) ->
                      %% get the name value pairs
                      Prefix3 = lists:flatten([Prefix, ".$name"]),
@@ -432,6 +440,7 @@
          {SSLIPs, SSLIdentities} = lists:unzip(F("vmq_bridge.ssl", "identity", StringVal)),
          {SSLIPs, SSLPSKs} = lists:unzip(F("vmq_bridge.ssl", "psk", StringVal)),
          {SSLIPS, SSLDepths} = lists:unzip(F("vmq_bridge.ssl", "depth", IntVal)),
+         {SSLIPS, SSLALLOWWCards} = lists:unzip(F("vmq_bridge.ssl", "customize_hostname_check", AtomVal)),
 
          TCP = lists:zip(TCPIPs, MZip([TCPCleanSessions, 
                                        TCPClientIds, 
@@ -461,7 +470,8 @@
                                        SSLVersions, 
                                        SSLIdentities, 
                                        SSLPSKs,
-                                       SSLDepths])),
+                                       SSLDepths,
+                                       SSLALLOWWCards])),
          DropUndef = fun(L) ->
                              [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
                      end,
