@@ -3,7 +3,8 @@
 - Add new `on_session_expired/1` hook to `vmq_diversity` and `vmq_webhooks`.
 - Add datetime prefix to the tracer output. The datetimes are expressed in UTC with
  [iso-8601](https://www.w3.org/TR/NOTE-datetime) format (eg '2020-04-29T21:19:39Z'). (#782)
-- Add Observer CLI tool for realtime info
+- Add Observer CLI tool for realtime info.
+- Add start command to Bridge CLI.
 
 ## VerneMQ 1.10.2
 

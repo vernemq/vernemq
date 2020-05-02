@@ -19,7 +19,8 @@
 
 register_cli() ->
     clique:register_usage(["vmq-admin", "bridge"], bridge_usage()),
-    show_cmd().
+    show_cmd(),
+    start_cmd().
 
 show_cmd() ->
     Cmd = ["vmq-admin", "bridge", "show"],
@@ -43,11 +44,26 @@ show_cmd() ->
         end,
     clique:register_command(Cmd, [], [], Callback).
 
+start_cmd() ->
+    Cmd = ["vmq-admin", "bridge", "start"],
+    Callback =
+        fun(_, [], []) ->
+            Config = application:get_all_env(vmq_bridge),
+            vmq_bridge_sup:change_config([{vmq_bridge, Config}]),
+            Text = clique_status:text("VerneMQ Bridges restarted."),
+            [clique_status:alert([Text])];
+        (_, _, _) ->
+            Text = clique_status:text(bridge_usage()),
+            [clique_status:alert([Text])]
+        end,
+    clique:register_command(Cmd, [], [], Callback).
+
 bridge_usage() ->
     ["vmq-admin bridge <sub-command>\n\n",
      "  Manage MQTT bridges.\n\n",
      "  Sub-commands:\n",
      "    show        Show information about bridges\n\n",
+     "    start       Start the VerneMQ bridges. Useful after enabling the bridge plugin dynamically. \n\n"
      "  Use --help after a sub-command for more details.\n"
     ].
 
