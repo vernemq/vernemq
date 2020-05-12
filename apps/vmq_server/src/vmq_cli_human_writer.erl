@@ -46,8 +46,8 @@ write_table([]) ->
 write_table(Rows0) ->
     Header = [Name || {Name, _Val} <- hd(Rows0)],
     Rows = [[Val || {_Name, Val} <- Row] || Row <- Rows0],
-    Data = [#row{cells=Header, props=#{title=>true}}|Rows],
-    Table = stdout_formatter:to_string(#table{rows=Data, 
+    Table = stdout_formatter:to_string(
+        #table{rows=[#row{cells = Header, props=#{title => true}} | Rows], 
         props=#{cell_padding => {0,1}, border_drawing => ascii}}),
     io_lib:format("~ts~n", [Table]).
 
