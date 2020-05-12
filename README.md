@@ -94,7 +94,7 @@ started, you need to first build VerneMQ.
 
 ### Building VerneMQ
 
-Note: VerneMQ requires Erlang/OTP 21.2 or newer.
+Note: VerneMQ requires Erlang/OTP 21.2 or newer and `libsnappy-dev` installed in your system.
 
 Assuming you have a working Erlang installation, building VerneMQ should be as
 simple as:
