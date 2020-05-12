@@ -85,6 +85,7 @@
  {<<"riak_sysmon">>,{pkg,<<"riak_sysmon">>,<<"2.1.2">>},0},
  {<<"sext">>,{pkg,<<"sext">>,<<"1.5.0">>},0},
  {<<"ssl_verify_fun">>,{pkg,<<"ssl_verify_fun">>,<<"1.1.5">>},1},
+ {<<"stdout_formatter">>,{pkg,<<"stdout_formatter">>,<<"0.2.3">>},0},
  {<<"swc">>,
   {git,"git://github.com/vernemq/ServerWideClocks.git",
        {ref,"4835239dca5a5f4ac7202dd94d7effcaa617d575"}},
@@ -122,5 +123,6 @@
  {<<"riak_sysmon">>, <<"24F804606D65DE1F020138F5E6E3E17BE4C5A41567D5170306378253E3705BAE">>},
  {<<"sext">>, <<"07D5D516DAA4C437B2F7DB99F6B2728C8AF939313479B1BEDC1995BB15936236">>},
  {<<"ssl_verify_fun">>, <<"6EAF7AD16CB568BB01753DBBD7A95FF8B91C7979482B95F38443FE2C8852A79B">>},
+ {<<"stdout_formatter">>, <<"EC24868D8619757A68F0798357C7190807A1CFC42CE90C18C23760E59249A21A">>},
  {<<"unicode_util_compat">>, <<"D869E4C68901DD9531385BB0C8C40444EBF624E60B6962D95952775CAC5E90CD">>}]}
 ].
