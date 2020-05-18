@@ -49,7 +49,7 @@
  {<<"lager">>,{pkg,<<"lager">>,<<"3.8.0">>},0},
  {<<"lager_syslog">>,
   {git,"git://github.com/basho/lager_syslog.git",
-       {ref,"126dd0284fcac9b01613189a82facf8d803411a2"}},
+       {ref,"152bb8eb254c225ebd8c579f9603f44b50df44ec"}},
   0},
  {<<"luerl">>,
   {git,"git://github.com/rvirding/luerl.git",
@@ -89,10 +89,7 @@
   {git,"git://github.com/vernemq/ServerWideClocks.git",
        {ref,"4835239dca5a5f4ac7202dd94d7effcaa617d575"}},
   0},
- {<<"syslog">>,
-  {git,"git://github.com/Vagabond/erlang-syslog",
-       {ref,"e24c9ee8f7bb3f066ec152c210af10c2c712759a"}},
-  1},
+ {<<"syslog">>,{pkg,<<"syslog">>,<<"1.1.0">>},0},
  {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.4.1">>},2},
  {<<"vernemq_dev">>,
   {git,"git://github.com/vernemq/vernemq_dev.git",
@@ -122,5 +119,6 @@
  {<<"riak_sysmon">>, <<"24F804606D65DE1F020138F5E6E3E17BE4C5A41567D5170306378253E3705BAE">>},
  {<<"sext">>, <<"07D5D516DAA4C437B2F7DB99F6B2728C8AF939313479B1BEDC1995BB15936236">>},
  {<<"ssl_verify_fun">>, <<"6EAF7AD16CB568BB01753DBBD7A95FF8B91C7979482B95F38443FE2C8852A79B">>},
+ {<<"syslog">>, <<"6419A232BEA84F07B56DC575225007FFE34D9FDC91ABE6F1B2F254FD71D8EFC2">>},
  {<<"unicode_util_compat">>, <<"D869E4C68901DD9531385BB0C8C40444EBF624E60B6962D95952775CAC5E90CD">>}]}
 ].
