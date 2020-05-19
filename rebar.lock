@@ -1,7 +1,7 @@
 {"1.1.0",
 [{<<"bcrypt">>,
   {git,"git://github.com/erlangpack/bcrypt.git",
-       {ref,"fe65061af78de8af4b78bb7a76a0b7bd04a6ee1f"}},
+       {ref,"f9dd619df86b8d91127239b7468887d6df7b9992"}},
   0},
  {<<"bson">>,
   {git,"git://github.com/comtihon/bson-erlang",
