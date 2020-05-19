@@ -73,7 +73,7 @@
   1},
  {<<"plumtree">>,
   {git,"git://github.com/vernemq/plumtree.git",
-       {ref,"f8e1af40ed474222a0b64af66b7ca0cadb020bf8"}},
+       {ref,"3f88c1c038cb997d650c93febbbd3a4f3d9bd387"}},
   0},
  {<<"poolboy">>,{pkg,<<"poolboy">>,<<"1.5.2">>},0},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.7.1">>},0},
