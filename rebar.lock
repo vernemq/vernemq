@@ -1,5 +1,8 @@
 {"1.1.0",
-[{<<"bcrypt">>,{pkg,<<"bcrypt">>,<<"1.0.2">>},0},
+[{<<"bcrypt">>,
+  {git,"git://github.com/erlangpack/bcrypt.git",
+       {ref,"fe65061af78de8af4b78bb7a76a0b7bd04a6ee1f"}},
+  0},
  {<<"bson">>,
   {git,"git://github.com/comtihon/bson-erlang",
        {ref,"14308ab927cfa69324742c3de720578094e0bb19"}},
@@ -100,7 +103,6 @@
   0}]}.
 [
 {pkg_hash,[
- {<<"bcrypt">>, <<"6735F66D3A7309AF166CE660161009B7D9B9216508B8B2E6A0A9090AF35CB757">>},
  {<<"certifi">>, <<"867CE347F7C7D78563450A18A6A28A8090331E77FA02380B4A21962A65D36EE5">>},
  {<<"cowboy">>, <<"99AA50E94E685557CAD82E704457336A453D4ABCB77839AD22DBE71F311FCC06">>},
  {<<"cowlib">>, <<"A7FFCD0917E6D50B4D5FB28E9E2085A0CEB3C97DEA310505F7460FF5ED764CE9">>},
