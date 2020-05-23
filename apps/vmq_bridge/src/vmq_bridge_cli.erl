@@ -68,4 +68,7 @@ bridge_usage() ->
     ].
 
 bridge_info() ->
-    vmq_bridge_sup:bridge_info().
+    case vmq_bridge_sup:bridge_info() of
+        {timeout, _} -> [];
+        Info -> Info
+    end.
