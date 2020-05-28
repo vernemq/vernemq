@@ -266,7 +266,7 @@ handle_trace({trace, Pid, return_from, {vmq_plugin,all_till_ok,2}, Ret},
                     tracer = Tracer} = State) ->
     case Ret of
         ok -> State;
-        {ok, Payload} when is_binary(Payload)-> State;
+        {ok, Payload} when is_binary(Payload) -> State;
         {ok, Modifiers} ->
             %% The only hook returning a subscriber_id as a modifier
             %% is the `auth_on_register` hook, so it should be fine to
