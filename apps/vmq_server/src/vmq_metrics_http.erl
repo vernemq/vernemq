@@ -90,7 +90,7 @@ line(BinMetric, Node, Labels, BinVal) ->
      <<"} ">>, BinVal, <<"\n">>].
 
 labels(Labels) ->
-    join($,,
+    lists:join($,,
          lists:map(fun({Key, Val}) ->
                            label(Key, Val)
                    end, Labels)).
@@ -112,10 +112,3 @@ type(counter) ->
     <<" counter\n">>;
 type(histogram) ->
     <<" histogram\n">>.
-
-%% backported to support OTP18. TODO: replace with lists:join/2 when
-%% dropping OTP18.
-join(Sep, [H|T]) -> [H|join_prepend(Sep, T)].
-
-join_prepend(_Sep, []) -> [];
-join_prepend(Sep, [H|T]) -> [Sep,H|join_prepend(Sep,T)].
