@@ -101,8 +101,7 @@ vmq_listener_start_cmd() ->
                                        end}]},
                  {require_certificate, [{longname, "require_certificate"}]},
                  {tls_version, [{longname, "tls_version"},
-                                {typecast, fun("sslv3") -> sslv3;
-                                              ("tlsv1") -> tlsv1;
+                                {typecast, fun("tlsv1") -> tlsv1;
                                               ("tlsv1.1") -> 'tlsv1.1';
                                               ("tlsv1.2") -> 'tlsv1.2';
                                               (V) ->
