@@ -333,7 +333,7 @@
                                                                          ]}.
 
 %% @doc specifies the connect timeout.
-{mapping, "connect_timeout", "vmq_server.connect_timeout", [
+{mapping, "mqtt_connect_timeout", "vmq_server.mqtt_connect_timeout", [
                                                             {default, 5000},
                                                             {datatype, integer},
                                                             hidden

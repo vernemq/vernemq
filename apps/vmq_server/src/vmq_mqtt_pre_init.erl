@@ -32,7 +32,7 @@
          }).
 
 init(Peer, Opts) ->
-    ConnectTimeout = vmq_config:get_env(connect_timeout, 5000),
+    ConnectTimeout = vmq_config:get_env(mqtt_connect_timeout, 5000),
     TRef = erlang:send_after(ConnectTimeout, self(), close_timeout),
     State = #state{peer=Peer,
                    opts=Opts,
