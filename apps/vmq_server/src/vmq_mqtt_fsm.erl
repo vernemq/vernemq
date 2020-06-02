@@ -121,9 +121,6 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive,
     DOpts0 = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
     DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
 
-    ConnectTimeout = vmq_config:get_env(connect_timeout, 5000),
-    TRef = vmq_mqtt_fsm_util:send_after(ConnectTimeout, close_timeout),
-
     maybe_initiate_trace(ConnectFrame, TraceFun),
 
     set_max_msg_size(MaxMessageSize),
