@@ -25,7 +25,6 @@
 
 -export([msg_ref/0]).
 
--define(CLOSE_AFTER, 5000).
 -define(FC_RECEIVE_MAX, 16#FFFF).
 -define(EXPIRY_INT_MAX, 16#FFFFFFFF).
 -define(MAX_PACKET_SIZE, 16#FFFFFFF).
