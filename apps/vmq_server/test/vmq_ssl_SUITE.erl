@@ -252,14 +252,30 @@ assert_error_or_closed([Error|Rest], Val) ->
             assert_error_or_closed(Rest, Val)
     end;
 assert_error_or_closed(Error, Val) ->
+    {ExpectedAlert, ExpectedTxt} = case Error of
+         {error, {tls_alert, Alert}} -> Alert;
+         {ssl_error, _, {tls_alert, Alert}} -> Alert
+         end,
     true = case Val of
                {error, closed} -> true;
-               Error -> true;
+               {error, {tls_alert, {ExpectedAlert, ReceivedTxt}}} ->
+                   check_alert_txt(ReceivedTxt, ExpectedTxt);
                {ok, SSLSocket} = E ->
                    ssl:close(SSLSocket),
                    E;
                Other -> Other
            end, true.
+
+-compile({inline, [check_alert_txt/2]}).
+check_alert_txt(ReceivedTxt, ExpectedTxt) when is_list(ReceivedTxt) ->
+    case lists:last(ReceivedTxt) of
+        ExpectedTxt ->
+            true;
+        _ ->
+            lists:suffix(ExpectedTxt, ReceivedTxt)
+    end;
+check_alert_txt(_, _) ->
+    false.
 
 load_cacerts() ->
     IntermediateCA = ssl_path("test-signing-ca.crt"),
