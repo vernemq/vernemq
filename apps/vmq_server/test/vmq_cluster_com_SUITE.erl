@@ -52,7 +52,7 @@ connect_params(_RemoteNode) ->
 connect_success_test(Config) ->
     ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
-    {ok, Socket} = gen_tcp:accept(ListenSocket, 20000),
+    {ok, Socket} = gen_tcp:accept(ListenSocket, 30000),
     recv_connect(Socket, Config),
 
     % send test message
@@ -64,14 +64,14 @@ connect_success_send_error(Config) ->
     % check that message isn't lost
     ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
-    {ok, Socket1} = gen_tcp:accept(ListenSocket, 20000),
+    {ok, Socket1} = gen_tcp:accept(ListenSocket, 30000),
     recv_connect(Socket1, Config),
     % close this socket
     gen_tcp:close(Socket1),
     % send test message, will be buffered and delivered on next successful reconnect
     ok = send_message(ClusterNodePid, hello_world),
 
-    {ok, Socket2} = gen_tcp:accept(ListenSocket, 20000),
+    {ok, Socket2} = gen_tcp:accept(ListenSocket, 30000),
     recv_connect(Socket2, Config),
     % recv this message
     recv_message(Socket2, hello_world).
@@ -80,7 +80,7 @@ connect_success_send_error_timeout(Config) ->
     % check that message isn't lost
     ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
-    {ok, Socket1} = gen_tcp:accept(ListenSocket, 20000),
+    {ok, Socket1} = gen_tcp:accept(ListenSocket, 30000),
     recv_connect(Socket1, Config),
 
     N = send_until_tcp_buffer_full(ClusterNodePid),
@@ -90,7 +90,7 @@ connect_success_send_error_timeout(Config) ->
     {error, closed} = gen_tcp:recv(Socket1, 0),
 
     % the cluster node should do the reconnect
-    {ok, Socket2} = gen_tcp:accept(ListenSocket, 20000),
+    {ok, Socket2} = gen_tcp:accept(ListenSocket, 30000),
     recv_connect(Socket2, Config),
 
     % the last buffered message is repeated as the cluster node doesn't
