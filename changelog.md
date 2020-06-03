@@ -7,6 +7,8 @@
 - Add start command to Bridge CLI.
 - Fix options passed to PublishFun for plugins (#1516)
 - Add configurable connect time (mqtt_connect_timeout) between establishing the connection and sending CONNECT (#735, #824).
+- Fix tracing error when using payload modifiers (#1517).
+- Make `vmq-admin bridge show` command more robust against bridge client state machine timeouts (#1515).
 
 ## VerneMQ 1.10.2
 
