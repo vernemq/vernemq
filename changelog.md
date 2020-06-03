@@ -6,6 +6,7 @@
 - Add Observer CLI tool for realtime info.
 - Add start command to Bridge CLI.
 - Fix options passed to PublishFun for plugins (#1516)
+- Add configurable connect time (mqtt_connect_timeout) between establishing the connection and sending CONNECT (#735, #824).
 
 ## VerneMQ 1.10.2
 

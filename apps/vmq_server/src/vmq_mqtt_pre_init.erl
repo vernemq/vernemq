@@ -24,8 +24,6 @@
          data_in/2,
          msg_in/2]).
 
--define(CLOSE_AFTER, 5000).
-
 -record(state, {
           peer         :: peer(),
           opts         :: list(),
@@ -34,7 +32,8 @@
          }).
 
 init(Peer, Opts) ->
-    TRef = erlang:send_after(?CLOSE_AFTER, self(), close_timeout),
+    ConnectTimeout = vmq_config:get_env(mqtt_connect_timeout, 5000),
+    TRef = erlang:send_after(ConnectTimeout, self(), close_timeout),
     State = #state{peer=Peer,
                    opts=Opts,
                    max_message_size=vmq_config:get_env(max_message_size, 0),
