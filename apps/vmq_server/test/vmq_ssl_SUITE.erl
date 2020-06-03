@@ -272,7 +272,7 @@ check_alert_txt(ReceivedTxt, ExpectedTxt) when is_list(ReceivedTxt) ->
         ExpectedTxt ->
             true;
         _ ->
-            lists:suffix(ExpectedTxt, ReceivedTxt)
+            lists:suffix(ExpectedTxt, ReceivedTxt ++ "\n")
     end;
 check_alert_txt(_, _) ->
     false.
