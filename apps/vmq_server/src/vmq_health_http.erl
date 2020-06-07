@@ -79,6 +79,6 @@ listeners_status() ->
     [] ->
       ok;
     Listeners ->
-      {error, io_lib:format("Listeners are not ready: ~p", Listeners)}
+      {error, io_lib:format("Listeners are not ready: ~p", [Listeners])}
   end.
 
