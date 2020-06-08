@@ -10,6 +10,7 @@
 - Fix tracing error when using payload modifiers (#1517).
 - Make `vmq-admin bridge show` command more robust against bridge client state machine timeouts (#1515).
 - Fix vmq health http format error (#1529).
+- Add new CLI output formatter (#1502).
 
 ## VerneMQ 1.10.2
 
