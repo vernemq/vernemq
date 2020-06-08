@@ -5,6 +5,11 @@
  [iso-8601](https://www.w3.org/TR/NOTE-datetime) format (eg '2020-04-29T21:19:39Z'). (#782)
 - Add Observer CLI tool for realtime info.
 - Add start command to Bridge CLI.
+- Fix options passed to PublishFun for plugins (#1516)
+- Add configurable connect time (mqtt_connect_timeout) between establishing the connection and sending CONNECT (#735, #824).
+- Fix tracing error when using payload modifiers (#1517).
+- Make `vmq-admin bridge show` command more robust against bridge client state machine timeouts (#1515).
+- Fix vmq health http format error (#1529).
 
 ## VerneMQ 1.10.2
 

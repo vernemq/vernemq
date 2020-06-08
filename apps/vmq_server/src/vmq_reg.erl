@@ -781,7 +781,7 @@ direct_plugin_exports(LogName, Opts) ->
     PublishFun =
     fun([W|_] = Topic, Payload, Opts_) when is_binary(W)
                                             and is_binary(Payload)
-                                            and is_map(Opts) ->
+                                            and is_map(Opts_) ->
             MaybeWaitTillReady(),
             %% allow a plugin developer to override
             %% - mountpoint
@@ -795,10 +795,10 @@ direct_plugin_exports(LogName, Opts) ->
                      mountpoint=maps:get(mountpoint, Opts_, Mountpoint),
                      payload=Payload,
                      msg_ref=vmq_mqtt_fsm_util:msg_ref(),
-                     qos = maps:get(qos, Opts, 0),
-                     dup=maps:get(dup, Opts, false),
-                     retain=maps:get(retain, Opts, false),
-                     sg_policy=maps:get(shared_subscription_policy, Opts, SGPolicy)
+                     qos = maps:get(qos, Opts_, 0),
+                     dup=maps:get(dup, Opts_, false),
+                     retain=maps:get(retain, Opts_, false),
+                     sg_policy=maps:get(shared_subscription_policy, Opts_, SGPolicy)
                     },
             publish(CAPPublish, RegView, ClientId, Msg)
     end,

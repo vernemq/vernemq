@@ -60,7 +60,7 @@ start_link(Type, Host, Port, RegistryMFA, Opts) ->
     gen_server:start_link(?MODULE, [Type, Host, Port, RegistryMFA, Opts], []).
 
 info(Pid) ->
-    gen_server:call(Pid, info).
+    gen_server:call(Pid, info, infinity).
 
 %%%===================================================================
 %%% gen_mqtt_client callbacks
@@ -106,12 +106,12 @@ init([{coord, _CoordinatorPid} = State]) ->
     {ok, State}.
 
 handle_call(info, _From, #state{client_pid = Pid} = State) ->
-    {ok, Info} = case Pid of
+    {ResponseType, Info} = case Pid of
                      undefined ->
                          {error, not_started};
                      Pid -> gen_mqtt_client:info(Pid)
                  end,
-    {reply, {ok, Info}, State};
+    {reply, {ResponseType, Info}, State};
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.
 
