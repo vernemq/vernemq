@@ -5,6 +5,7 @@
  [iso-8601](https://www.w3.org/TR/NOTE-datetime) format (eg '2020-04-29T21:19:39Z'). (#782)
 - Add Observer CLI tool for realtime info.
 - Add start command to Bridge CLI.
+- Fix options passed to PublishFun for plugins (#1516)
 
 ## VerneMQ 1.10.2
 
