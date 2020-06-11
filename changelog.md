@@ -10,6 +10,11 @@
 - Make `vmq-admin bridge show` command more robust against bridge client state machine timeouts (#1515).
 - Fix vmq health http format error (#1529).
 - Add new CLI output formatter (#1502).
+- Remove minor functions for OTP 18. OTP 18 is not supported anymore (#1523).
+- Update VerneMQ Schema info on SWC.
+- Add Inet6 support to the vmq_diversity MySQL plugin (#1461).
+- Improve error message when plugin chains have exhausted (#1465).
+- Upgrade clique dependency to fix bug with empty KV params.
 
 ## VerneMQ 1.10.2
 
