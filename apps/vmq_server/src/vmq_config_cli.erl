@@ -58,7 +58,8 @@ register_config_() ->
      "receive_max_client",
      "receive_max_broker",
      "suppress_lwt_on_session_takeover",
-     "coordinate_registrations"
+     "coordinate_registrations",
+     "mqtt_connect_timeout"
     ],
     _ = [clique:register_config([Key], fun register_config_callback/3)
          || Key <- ConfigKeys],

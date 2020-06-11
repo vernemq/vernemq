@@ -23,8 +23,6 @@
          msg_in/2,
          info/2]).
 
--define(CLOSE_AFTER, 5000).
-
 -define(IS_PROTO_4(X), X =:= 4; X =:= 132).
 -define(IS_PROTO_3(X), X =:= 3; X =:= 131).
 -define(IS_BRIDGE(X), X =:= 131; X =:= 132).
@@ -124,6 +122,7 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive,
     DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
 
     maybe_initiate_trace(ConnectFrame, TraceFun),
+
     set_max_msg_size(MaxMessageSize),
 
     _ = vmq_metrics:incr_mqtt_connect_received(),

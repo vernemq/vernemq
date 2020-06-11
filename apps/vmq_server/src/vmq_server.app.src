@@ -17,7 +17,8 @@
                   vmq_plugin,
                   clique,
                   jsx,
-                  gen_server2
+                  gen_server2,
+                  stdout_formatter
                  ]},
   {mod, { vmq_server_app, []}},
   {env, [
