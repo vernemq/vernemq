@@ -73,8 +73,11 @@ is_ready() ->
 
 -spec netsplit_statistics() -> {non_neg_integer(), non_neg_integer()}.
 netsplit_statistics() ->
-    [{ready, {_Ready, NetsplitDetectedCount, NetsplitResolvedCount}}] = ets:lookup(?VMQ_CLUSTER_STATUS, ready),
-    {NetsplitDetectedCount, NetsplitResolvedCount}.
+    case catch ets:lookup(?VMQ_CLUSTER_STATUS, ready) of
+    [{ready, {_Ready, NetsplitDetectedCount, NetsplitResolvedCount}}] ->
+    {NetsplitDetectedCount, NetsplitResolvedCount};
+    _ -> undefined
+    end.    
 
 -spec if_ready(_, _) -> any().
 if_ready(Fun, Args) ->
