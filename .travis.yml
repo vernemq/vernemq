@@ -22,6 +22,8 @@ install: true
 otp_release:
   - 21.2
   - 22.0
+  - 22.2
+  - 22.3
 cache:
   directories:
     - plts
