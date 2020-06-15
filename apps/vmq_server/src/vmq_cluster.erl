@@ -76,7 +76,7 @@ netsplit_statistics() ->
     case catch ets:lookup(?VMQ_CLUSTER_STATUS, ready) of
     [{ready, {_Ready, NetsplitDetectedCount, NetsplitResolvedCount}}] ->
     {NetsplitDetectedCount, NetsplitResolvedCount};
-    _ -> undefined
+    {'EXIT', {badarg, _}} -> {error, vmq_status_table_down} % we don't have a vmq_status ETS table
     end.    
 
 -spec if_ready(_, _) -> any().
