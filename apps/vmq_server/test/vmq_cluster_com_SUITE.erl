@@ -50,7 +50,7 @@ connect_params(_RemoteNode) ->
 
 connect_success_test(Config) ->
     ClusterNodePid = cluster_node_pid(Config),
-    {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
+    {ok, ListenSocket} = gen_tcp:listen(0, [binary, {reuseaddr, true}, {active, false}, {keepalive, true}]),
     {ok, Socket} = gen_tcp:accept(ListenSocket, 30000),
     recv_connect(Socket, Config),
 
@@ -62,7 +62,7 @@ connect_success_test(Config) ->
 connect_success_send_error(Config) ->
     % check that message isn't lost
     ClusterNodePid = cluster_node_pid(Config),
-    {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
+    {ok, ListenSocket} = gen_tcp:listen(0, [binary, {reuseaddr, true}, {active, false}]),
     {ok, Socket1} = gen_tcp:accept(ListenSocket, 30000),
     recv_connect(Socket1, Config),
     % close this socket
@@ -78,7 +78,7 @@ connect_success_send_error(Config) ->
 connect_success_send_error_timeout(Config) ->
     % check that message isn't lost
     ClusterNodePid = cluster_node_pid(Config),
-    {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
+    {ok, ListenSocket} = gen_tcp:listen(0, [binary, {reuseaddr, true}, {active, false}]),
     {ok, Socket1} = gen_tcp:accept(ListenSocket, 30000),
     recv_connect(Socket1, Config),
 
