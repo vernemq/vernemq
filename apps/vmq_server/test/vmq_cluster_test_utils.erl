@@ -112,6 +112,7 @@ start_node(Name, Config, Case) ->
     NodeConfig = [
             {monitor_master, true},
             {erl_flags, "-smp"}, %% smp for the eleveldb god
+            {boot_timeout, 5},
             {startup_functions, [
                     {code, set_path, [CodePath]}
                     ]}],
