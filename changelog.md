@@ -3,9 +3,18 @@
 - Add new `on_session_expired/1` hook to `vmq_diversity` and `vmq_webhooks`.
 - Add datetime prefix to the tracer output. The datetimes are expressed in UTC with
  [iso-8601](https://www.w3.org/TR/NOTE-datetime) format (eg '2020-04-29T21:19:39Z'). (#782)
-- Add Observer CLI tool for realtime info.
 - Add start command to Bridge CLI.
 - Fix options passed to PublishFun for plugins (#1516)
+- Add configurable connect time (mqtt_connect_timeout) between establishing the connection and sending CONNECT (#735, #824).
+- Fix tracing error when using payload modifiers (#1517).
+- Make `vmq-admin bridge show` command more robust against bridge client state machine timeouts (#1515).
+- Fix vmq health http format error (#1529).
+- Add new CLI output formatter (#1502).
+- Remove minor functions for OTP 18. OTP 18 is not supported anymore (#1523).
+- Update VerneMQ Schema info on SWC.
+- Add Inet6 support to the vmq_diversity MySQL plugin (#1461).
+- Improve error message when plugin chains have exhausted (#1465).
+- Upgrade clique dependency to fix bug with empty KV params.
 
 ## VerneMQ 1.10.2
 
