@@ -20,9 +20,8 @@ init_per_suite(Config) ->
     Node = vmq_cluster_test_utils:start_node(test_com1, Config, default_case),
     ok = rpc:call(Node, vmq_auth, register_hooks, []),
     {ok, _} = ct_cover:add_nodes([Node]),
-    Config0 = [{node, Node}, S|Config],
-    vmq_cluster_test_utils:ensure_cluster(Config),
-    Config0.
+    vmq_cluster_test_utils:wait_until_ready([Node]),
+    [{node, Node}, S|Config].
 
 end_per_suite(_Config) ->
     ct_slave:stop(test_com1),
