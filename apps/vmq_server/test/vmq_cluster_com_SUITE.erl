@@ -9,7 +9,6 @@
 %% ===================================================================
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
-    %lager:start(),
     %% this might help, might not...
     os:cmd(os:find_executable("epmd")++" -daemon"),
     {ok, Hostname} = inet:gethostname(),
@@ -17,14 +16,13 @@ init_per_suite(Config) ->
         {ok, _} -> ok;
         {error, {already_started, _}} -> ok
     end,
-    lager:info("node name ~p", [node()]),
+    ct:log("node name ~p", [node()]),
     Node = vmq_cluster_test_utils:start_node(test1, Config, default_case),
     {ok, _} = ct_cover:add_nodes([Node]),
     vmq_cluster_test_utils:wait_until_ready([Node]),
-    [{node, Node}, S|Config].
+    [{node, node1}, S|Config].
 
 end_per_suite(_Config) ->
-    application:stop(lager),
     ct_slave:stop(test1),
     _Config.
 

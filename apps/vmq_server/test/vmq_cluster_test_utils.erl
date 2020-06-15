@@ -111,7 +111,6 @@ start_node(Name, Config, Case) ->
     %% have the slave nodes monitor the runner node, so they can't outlive it
     NodeConfig = [
         {monitor_master, true},
-        {kill_if_fail, true},
         {erl_flags, "-smp"} %% smp for the eleveldb god
     ],
     VmqServerPrivDir = code:priv_dir(vmq_server),
