@@ -17,13 +17,15 @@ init_per_suite(Config) ->
         {error, {already_started, _}} -> ok
     end,
     ct:log("node name ~p", [node()]),
-    Node = vmq_cluster_test_utils:start_node(test1, Config, default_case),
+    Node = vmq_cluster_test_utils:start_node(test_com1, Config, default_case),
+    ok = rpc:call(Node, vmq_auth, register_hooks, []),
     {ok, _} = ct_cover:add_nodes([Node]),
-    vmq_cluster_test_utils:wait_until_ready([Node]),
-    [{node, node1}, S|Config].
+    Config0 = [{node, Node}, S|Config],
+    vmq_cluster_test_utils:ensure_cluster(Config),
+    Config0.
 
 end_per_suite(_Config) ->
-    ct_slave:stop(test1),
+    ct_slave:stop(test_com1),
     _Config.
 
 init_per_testcase(_Case, Config) ->
