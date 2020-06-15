@@ -37,6 +37,7 @@ riak_dt:  Apache-2.0
 riak_sysmon:  Apache-2.0
 sext:  Apache-2.0
 ssl_verify_fun:  MIT
+stdout_formatter: Apache-2.0
 swc:  BSD-3-Clause (others see below)
 syslog:  BSD-2-Clause
 unicode_util_compat:  Apache-2.0 (others see below)
@@ -3445,7 +3446,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+stdout_formatter:
+---------------------------------------
+This package, stdout_formatter, is dual-licensed under
+the Apache License v2 and the Mozilla Public License v1.1.
 
+For the Apache License, please see the file LICENSE-APACHE2.
+
+For the Mozilla Public License, please see the file LICENSE-MPL.
+
+For attribution of copyright and other details of provenance, please
+refer to the source code.
+
+If you have any questions regarding licensing, please contact us at 
+info@rabbitmq.com.
 
 swc:
 ---------------------------------------

@@ -252,9 +252,14 @@ assert_error_or_closed([Error|Rest], Val) ->
             assert_error_or_closed(Rest, Val)
     end;
 assert_error_or_closed(Error, Val) ->
+    {ExpectedAlert, _ExpectedTxt} = case Error of
+         {error, {tls_alert, Alert}} -> Alert;
+         {ssl_error, _, {tls_alert, Alert}} -> Alert
+         end,
     true = case Val of
                {error, closed} -> true;
-               Error -> true;
+               {error, {tls_alert, {ExpectedAlert, _}}} ->
+                  true;
                {ok, SSLSocket} = E ->
                    ssl:close(SSLSocket),
                    E;

@@ -26,6 +26,7 @@ init_registry() ->
     F = fun() -> vmq_cluster:nodes() end,
     clique:register_node_finder(F),
     clique:register([?MODULE, vmq_plugin_cli]),
+    clique_writer:register("human", vmq_cli_human_writer),
     clique_writer:register("json", vmq_cli_json_writer).
 
 command(Cmd) ->
