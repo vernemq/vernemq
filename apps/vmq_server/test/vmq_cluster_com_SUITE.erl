@@ -129,7 +129,7 @@ setup_mock_vmq_cluster_node(Config, Opts) ->
     ok = rpc:call(Node, vmq_config, set_env, [outgoing_connect_params_module, ?MODULE, false]),
     ok = rpc:call(Node, vmq_config, set_env, [outgoing_connect_timeout, 1000, false]),
     ok = rpc:call(Node, vmq_config, set_env, [outgoing_clustering_buffer_size, 1000, false]),
-    {ok, ClusterNodePid} = rpc:call(Node, vmq_cluster_node, start_link, [node()]),
+    {ok, ClusterNodePid} = rpc:block_call(Node, vmq_cluster_node, start_link, [node()]),
     ClusterNodePid.
 
 terminate_mock_vmq_cluster_node(Config) ->
