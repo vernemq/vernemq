@@ -9,7 +9,6 @@
 %% ===================================================================
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
-    %lager:start(),
     %% this might help, might not...
     os:cmd(os:find_executable("epmd")++" -daemon"),
     {ok, Hostname} = inet:gethostname(),
@@ -17,15 +16,14 @@ init_per_suite(Config) ->
         {ok, _} -> ok;
         {error, {already_started, _}} -> ok
     end,
-    lager:info("node name ~p", [node()]),
-    Node = vmq_cluster_test_utils:start_node(test1, Config, default_case),
+    ct:log("node name ~p", [node()]),
+    Node = vmq_cluster_test_utils:start_node(test_com1, Config, default_case),
     {ok, _} = ct_cover:add_nodes([Node]),
     vmq_cluster_test_utils:wait_until_ready([Node]),
     [{node, Node}, S|Config].
 
 end_per_suite(_Config) ->
-    application:stop(lager),
-    ct_slave:stop(test1),
+    ct_slave:stop(test_com1),
     _Config.
 
 init_per_testcase(_Case, Config) ->
@@ -125,18 +123,18 @@ setup_mock_vmq_cluster_node(Config) ->
 
 setup_mock_vmq_cluster_node(Config, Opts) ->
     Node = proplists:get_value(node, Config),
-    % make the test1 node connect to myself
-    ok = rpc:call(Node, vmq_config, set_env, [outgoing_connect_opts, Opts, false]),
-    ok = rpc:call(Node, vmq_config, set_env, [outgoing_connect_params_module, ?MODULE, false]),
-    ok = rpc:call(Node, vmq_config, set_env, [outgoing_connect_timeout, 1000, false]),
-    ok = rpc:call(Node, vmq_config, set_env, [outgoing_clustering_buffer_size, 1000, false]),
-    {ok, ClusterNodePid} = rpc:call(Node, vmq_cluster_node, start_link, [node()]),
+    % make the test_com1 node connect to myself
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_opts, Opts, false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_params_module, ?MODULE, false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_connect_timeout, 1000, false]),
+    ok = rpc:block_call(Node, vmq_config, set_env, [outgoing_clustering_buffer_size, 1000, false]),
+    {ok, ClusterNodePid} = rpc:block_call(Node, vmq_cluster_node, start_link, [node()]),
     ClusterNodePid.
 
 terminate_mock_vmq_cluster_node(Config) ->
     Node = proplists:get_value(node, Config),
     ClusterNodePid = cluster_node_pid(Config),
-    rpc:call(Node, erlang, exit, [ClusterNodePid, kill]).
+    rpc:block_call(Node, erlang, exit, [ClusterNodePid, kill]).
 
 cluster_node_pid(Config) ->
     proplists:get_value(cluster_node_pid, Config).
