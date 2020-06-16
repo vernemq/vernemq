@@ -1,5 +1,11 @@
 # Changelog
 
+- Add compatibility with [Erlang/OTP 23](http://blog.erlang.org/OTP-23-Highlights/). This release requires Erlang/OTP 21.3 or later.
+- Upgrade package `bcrypt` to version 1.1.0.
+- Upgrade package `hackney` to version 1.16.0 (dependencies of `hackney` were updated as well).
+
+## VerneMQ 1.10.3
+
 - Add new `on_session_expired/1` hook to `vmq_diversity` and `vmq_webhooks`.
 - Add datetime prefix to the tracer output. The datetimes are expressed in UTC with
  [iso-8601](https://www.w3.org/TR/NOTE-datetime) format (eg '2020-04-29T21:19:39Z'). (#782)
