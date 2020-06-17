@@ -11,7 +11,9 @@
 -export([queue_hooks_lifecycle_test1/1,
          queue_hooks_lifecycle_test2/1,
          queue_hooks_lifecycle_test3/1,
-         queue_hooks_lifecycle_test4/1]).
+         queue_hooks_lifecycle_test4/1,
+         queue_hooks_lifecycle_test5/1,
+         queue_hooks_lifecycle_test6/1]).
 
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6,
@@ -19,11 +21,15 @@
          hook_on_client_offline/1,
          hook_on_client_wakeup/1,
          hook_on_session_expired/1,
-         hook_on_offline_message/5]).
+         hook_on_offline_message/5,
+         hook_on_topic_unsubscribed/2]).
 
 -ifdef(nowarn_gen_fsm).
 -compile([{nowarn_deprecated_function,
-           [{gen_fsm,send_event,2}]}]).
+           [
+                {gen_fsm,send_event,2},
+                {gen_fsm,sync_send_all_state_event,2}
+            ]}]).
 -endif.
 
 %% ===================================================================
@@ -59,7 +65,9 @@ all() ->
     [queue_hooks_lifecycle_test1,
      queue_hooks_lifecycle_test2,
      queue_hooks_lifecycle_test3,
-     queue_hooks_lifecycle_test4].
+     queue_hooks_lifecycle_test4,
+     queue_hooks_lifecycle_test5,
+     queue_hooks_lifecycle_test6].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
@@ -73,6 +81,7 @@ queue_hooks_lifecycle_test1(_) ->
     ok = hook_called(on_client_wakeup),
 
     gen_tcp:close(Socket),
+    ok = hook_called(on_topic_unsubscribed),
     ok = hook_called(on_client_gone).
 
 queue_hooks_lifecycle_test2(_) ->
@@ -122,7 +131,32 @@ queue_hooks_lifecycle_test4(_) ->
     ok = hook_called(on_client_offline),
     QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
     ok = gen_fsm:send_event(QPid, expire_session),
+    ok = hook_called(on_topic_unsubscribed),
     ok = hook_called(on_session_expired).
+
+queue_hooks_lifecycle_test5(_) ->
+    Connect = packet:gen_connect("queue-client",
+                                 [{keepalive, 60}, {clean_session, false}]),
+    Connack = packet:gen_connack(0),
+    {ok, _Socket} = packet:do_client_connect(Connect, Connack, []),
+    QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
+    ok = gen_fsm:sync_send_all_state_event(QPid, {force_disconnect, test, true}),
+    ok = hook_called(on_topic_unsubscribed).
+
+queue_hooks_lifecycle_test6(_) ->
+    Connect = packet:gen_connect("queue-client",
+                                 [{keepalive, 60}, {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    Connect1 = packet:gen_connect("queue-client-2",
+                                 [{keepalive, 60}, {clean_session, false}]),
+    Connack1 = packet:gen_connack(0),
+    {ok, _} = packet:do_client_connect(Connect1, Connack1, []),
+    QPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client">>}),
+    OtherQPid = vmq_queue_sup_sup:get_queue_pid({"", <<"queue-client-2">>}),
+    ok = vmq_queue:migrate(QPid, OtherQPid),
+    gen_tcp:close(Socket),
+    ok = hook_called(on_topic_unsubscribed).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
@@ -165,6 +199,11 @@ hook_on_offline_message({"", <<"queue-client">>}, 1,
 hook_on_offline_message(_, _, _, _, _) ->
     ok.
 
+hook_on_topic_unsubscribed({"", <<"queue-client">>}, _) ->
+    ets:insert(?MODULE, {on_topic_unsubscribed, true});
+hook_on_topic_unsubscribed(_, _) ->
+    ok.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helper
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -191,7 +230,9 @@ enable_queue_hooks() ->
     vmq_plugin_mgr:enable_module_plugin(
       on_offline_message, ?MODULE, hook_on_offline_message, 5),
     vmq_plugin_mgr:enable_module_plugin(
-      on_session_expired, ?MODULE, hook_on_session_expired, 1).
+      on_session_expired, ?MODULE, hook_on_session_expired, 1),
+    vmq_plugin_mgr:enable_module_plugin(
+        on_topic_unsubscribed, ?MODULE, hook_on_topic_unsubscribed, 2).
 
 disable_queue_hooks() ->
     vmq_plugin_mgr:disable_module_plugin(
@@ -203,4 +244,6 @@ disable_queue_hooks() ->
     vmq_plugin_mgr:disable_module_plugin(
       on_offline_message, ?MODULE, hook_on_offline_message, 5),
     vmq_plugin_mgr:disable_module_plugin(
-      on_session_expired, ?MODULE, hook_on_session_expired, 1).
+      on_session_expired, ?MODULE, hook_on_session_expired, 1),
+    vmq_plugin_mgr:disable_module_plugin(
+      on_topic_unsubscribed, ?MODULE, hook_on_topic_unsubscribed, 2).
