@@ -70,7 +70,8 @@ all() ->
      cache_auth_on_register,
      cache_auth_on_publish,
      cache_auth_on_subscribe,
-     cache_expired_entry
+     cache_expired_entry,
+     cli_allow_query_parameters_test
     ].
 
 
@@ -492,6 +493,12 @@ auth_on_register_undefined_creds_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, <<"undefined_creds">>}, Username, Password, true]),
     deregister_hook(auth_on_register, ?ENDPOINT).
+
+%% Test for https://github.com/vernemq/vernemq/issues/740
+cli_allow_query_parameters_test(_) ->
+    EndpointWithParams = ?ENDPOINT ++ "/hook?key=value",
+    ok = register_hook(auth_on_register, EndpointWithParams),
+    [] = deregister_hook(auth_on_register, EndpointWithParams).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions
