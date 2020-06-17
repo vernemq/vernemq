@@ -3,6 +3,9 @@
 - Add compatibility with [Erlang/OTP 23](http://blog.erlang.org/OTP-23-Highlights/). This release requires Erlang/OTP 21.3 or later.
 - Upgrade package `bcrypt` to version 1.1.0.
 - Upgrade package `hackney` to version 1.16.0 (dependencies of `hackney` were updated as well).
+- Fix to allow equal signs on parameter values on `vmq-admin` commands (#740).
+
+ URL parameters on webhooks
 
 ## VerneMQ 1.10.3
 
