@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 -module(gen_mqtt_client).
--behavior(gen_fsm).
+-behaviour(gen_fsm).
 -include("vmq_types.hrl").
 
 -ifdef(nowarn_gen_fsm).
@@ -291,8 +291,16 @@ connected({unsubscribe, Topics} = Msg, State=#state{transport={Transport, _}, so
                                   State#state{msgid='++'(MsgId),
                                               info_fun=NewInfoFun})};
 
+connected({publish, PubReq}, #state{o_queue=#queue{size=Size} = _Q} = State) when Size > 0 ->
+    NewState = maybe_queue_outgoing(PubReq, State),
+    {next_state, connected, NewState};
+                                            
 connected({publish, PubReq}, State) ->
     {next_state, connected, send_publish(PubReq, State)};
+                                            
+connected({publish_from_queue, PubReq}, State) ->
+    State1 = send_publish(PubReq, State),
+    {next_state, connected, maybe_publish_offline_msgs(State1)};
 
 connected({retry, Key}, State) ->
     {next_state, connected, handle_retry(Key, State)};
@@ -654,8 +662,8 @@ maybe_publish_offline_msgs(State) -> State.
 
 publish_from_queue(#queue{size=Size, queue=QQ} = Q, State0) when Size > 0 ->
     {{value, PubReq}, NewQQ} = queue:out(QQ),
-    State1 = send_publish(PubReq, State0),
-    maybe_publish_offline_msgs(State1#state{o_queue=Q#queue{size=Size-1, queue=NewQQ}}).
+    gen_fsm:send_event(self(), {publish_from_queue, PubReq}),
+    State0#state{o_queue=Q#queue{size=Size-1, queue=NewQQ}}.
 
 drop(#queue{drop=D}=Q) ->
     put(?PD_QDROP, D+1),
