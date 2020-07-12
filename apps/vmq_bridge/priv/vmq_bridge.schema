@@ -368,7 +368,7 @@
                             cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
                     end,
 
-         Mappings = ["clean_session", "client_id", "keepalive_interval", 
+         Mappings = ["cleansession", "client_id", "keepalive_interval", 
                     "username", "password", "restart_timeout", "try_private", "topic",
                      "max_outgoing_buffered_messages", "mqtt_version"],
                     %% SSL specific
