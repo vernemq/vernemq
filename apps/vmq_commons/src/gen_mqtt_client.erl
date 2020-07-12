@@ -547,10 +547,12 @@ handle_event(Event, StateName, State) ->
 
 handle_sync_event(info, _From, StateName,
                   #state{o_queue=#queue{size=Size,drop=Drop,max=Max}}=State) ->
+    {message_queue_len, Len} = erlang:process_info(self(), message_queue_len),
     Info =
         #{out_queue_size=>Size,
           out_queue_dropped=>Drop,
-          out_queue_max_size=>Max},
+          out_queue_max_size=>Max,
+          process_mailbox_size => Len},
     {reply, {ok, Info}, StateName, State};
 handle_sync_event(Req, From, StateName, State) ->
     wrap_res(StateName, handle_call, [Req, From], State).

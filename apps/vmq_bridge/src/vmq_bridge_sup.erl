@@ -46,16 +46,19 @@ bridge_info() ->
                         port => Port,
                         out_buffer_size => $-,
                         out_buffer_max_size => $-,
-                        out_buffer_dropped => $-
+                        out_buffer_dropped => $-,
+                        process_mailbox_size => $-
                        };
                   {ok, #{out_queue_size := Size,
                          out_queue_max_size := Max,
-                         out_queue_dropped := Dropped}} ->
+                         out_queue_dropped := Dropped,
+                         process_mailbox_size := MailboxSize}} ->
                       #{host => Host,
                         port => Port,
                         out_buffer_size => Size,
                         out_buffer_max_size => Max,
-                        out_buffer_dropped => Dropped
+                        out_buffer_dropped => Dropped,
+                        process_mailbox_size => MailboxSize
                        }
               end
       end,
