@@ -324,9 +324,9 @@ buffer_outgoing_test(Cfg) ->
     {ok, #{out_queue_dropped := 2,
            out_queue_max_size := 10,
            out_queue_size := 10}} = vmq_bridge:info(BridgePid),
-
-    [{counter, [], {vmq_bridge_queue_drop, _}, vmq_bridge_dropped_msgs,
-      <<"The number of dropped messages (queue full)">>, 2}] = vmq_bridge_sup:metrics(),
+      
+  [{counter, [], {vmq_bridge_queue_drop, _}, vmq_bridge_dropped_msgs,
+      <<"The number of dropped messages (queue full)">>, 2}] = vmq_bridge_sup:metrics_for_tests(),
 
     %% Reply with the connack
     Connack = packet:gen_connack(0),
@@ -386,7 +386,7 @@ start_bridge_plugin(Opts) ->
     application:set_env(vmq_bridge, config,
                         {[
                           %% TCP Bridges
-                          {"localhost:1890", [{topics, Topics},
+                          {"br0:localhost:1890", [{topics, Topics},
                                               {restart_timeout, 5},
                                               {retry_interval, 1},
                                               {client_id, "bridge-test"},
@@ -416,7 +416,7 @@ bridge_rec(Msg, Timeout) ->
     end.
 
 get_bridge_pid() ->
-    [{{vmq_bridge,"localhost",1890},Pid,worker,[vmq_bridge]}] =
+    [{{vmq_bridge, _Name, "localhost",1890},Pid,worker,[vmq_bridge]}] =
         supervisor:which_children(vmq_bridge_sup),
     Pid.
 
