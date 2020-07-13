@@ -189,11 +189,12 @@ nodename(Name) ->
     end.
 
 append_node_suffix(Name, Suffix) ->
+    Rnd = erlang:phash2({os:timestamp(),os:getpid()}, 1000),
     case string:tokens(Name, "@") of
         [Node, Host] ->
-            list_to_atom(lists:concat([Node, Suffix, os:getpid(), "@", Host]));
+            list_to_atom(lists:concat([Node, Suffix, Rnd, "@", Host]));
         [Node] ->
-            list_to_atom(lists:concat([Node, Suffix, os:getpid()]))
+            list_to_atom(lists:concat([Node, Suffix, Rnd]))
     end.
 
 chkconfig(File) ->
