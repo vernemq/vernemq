@@ -27,13 +27,14 @@ show_cmd() ->
     Callback =
         fun(_, [], []) ->
                 Table =
-                    [[
+                    [[{'name', Name},
                       {endpoint, iolist_to_binary([Host, $:, integer_to_binary(Port)])},
                       {'buffer size', Size},
                       {'buffer max', Max},
                       {'buffer dropped msgs', Dropped},
                       {'MQTT process mailbox len', MailboxSize}] ||
-                        #{host := Host,
+                        #{name := Name,
+                          host := Host,
                           port := Port,
                           out_buffer_size := Size,
                           out_buffer_max_size := Max,
