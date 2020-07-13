@@ -89,7 +89,8 @@
          publish/5,
          disconnect/1,
          call/2,
-         cast/2]).
+         cast/2,
+         metrics/2]).
 
 
 %% gen_fsm callbacks
@@ -163,6 +164,8 @@ start(Name, Module, Args, Opts) ->
 
 info(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, info, infinity).
+
+metrics(Pid, CR) -> gen_fsm:sync_send_all_state_event(Pid, {get_metrics, CR}, infinity).
 
 stats(Pid) ->
     case erlang:process_info(Pid, [dictionary]) of
@@ -344,7 +347,6 @@ init([Mod, Args, Opts]) ->
     InfoFun = proplists:get_value(info_fun, Opts, {fun(_,_) -> ok end, []}),
     MaxQueueSize = proplists:get_value(max_queue_size, Opts, 0),
     {Transport, TransportOpts} = proplists:get_value(transport, Opts, {gen_tcp, []}),
-
     State = #state{host = Host, port = Port, proto_version=ProtoVer,
         username = Username, password = Password, client=ClientId, mod=Mod,
         clean_session=CleanSession, last_will_topic=LWTopic, last_will_msg=LWMsg, last_will_qos=LWQos,
@@ -554,6 +556,17 @@ handle_sync_event(info, _From, StateName,
           out_queue_max_size=>Max,
           process_mailbox_size => Len},
     {reply, {ok, Info}, StateName, State};
+
+handle_sync_event({get_metrics, CR}, _From, StateName, State) ->
+    Metrics = #{
+    vmq_bridge_publish_out_0 => counters:get(CR, 1),
+    vmq_bridge_publish_out_1 => counters:get(CR, 2),
+    vmq_bridge_publish_out_2 => counters:get(CR, 3),
+    vmq_bridge_publish_in_0 => counters:get(CR, 4),
+    vmq_bridge_publish_in_1 => counters:get(CR, 5),
+    vmq_bridge_publish_in_2 => counters:get(CR, 6)},
+{reply, {ok, Metrics}, StateName, State};
+
 handle_sync_event(Req, From, StateName, State) ->
     wrap_res(StateName, handle_call, [Req, From], State).
 

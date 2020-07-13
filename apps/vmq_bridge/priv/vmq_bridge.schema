@@ -377,7 +377,6 @@
          F = fun(Prefix, Suffix, Validator) ->
                      %% get the name value pairs
                      Prefix3 = lists:flatten([Prefix, ".$name"]),
-                 %   io:format("Prefix3 ~p~n", [Prefix3]),
                      Res =
                          [begin
                               case lists:prefix("topic", Suffix) of
@@ -393,7 +392,6 @@
                                       {AddrPortName, {topics, [Validator(Name, C) || C <- BrConfigs, C /= undefined]}};
                                   false ->
                                       Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
-                        %            io:format("Prefix4 ~p~n", [Prefix4]),
                                       Val = Validator(Name, cuttlefish:conf_get(Prefix4, Conf, undefined)),
                                      AddrPortName = lists:flatten([Name, ":", AddrPort]),
                                     {AddrPortName, {list_to_atom(Suffix), Val}}
@@ -405,7 +403,6 @@
                                                            end, Conf), not lists:member(Name, Mappings ++ SSLMapps)],
                      %% Remove duplicates as a value is generated for
                      %% each setting on a bridge definition.
-                 %    io:format("Res ~p~n", [lists:usort(Res)]),
                      lists:usort(Res)
              end,
 
@@ -465,8 +462,6 @@
                                        TCPMQTTProtos,
                                        TCPMaxBuffer,
                                        TCPTopics])),
-     %   io:format("TCP ~p~n", [TCP]),
-
 
          SSL = lists:zip(SSLIPs, MZip([SSLCleanSessions, 
                                        SSLClientIds, 
