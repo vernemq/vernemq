@@ -22,7 +22,7 @@
          on_subscribe_m5/4,
          on_unsubscribe_m5/4,
          on_auth_m5/3,
-         on_deliver_m5/5]).
+         on_deliver_m5/7]).
 
 %%====================================================================
 %% API functions
@@ -181,11 +181,11 @@ on_auth_m5_(_Username, _SubscriberId, _Props) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%% Delivery hooks %%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%
-on_deliver_m5(Username,SubscriberId,Topic,Payload,Properties) ->
-    ?LOG([on_deliver_m5,Username,SubscriberId,Topic,Payload,Properties]),
-    on_deliver_m5_(Username,SubscriberId,Topic,Payload,Properties).
+on_deliver_m5(Username,SubscriberId,QoS,Topic,Payload,IsRetain,Properties) ->
+    ?LOG([on_deliver_m5,Username,SubscriberId,QoS,Topic,Payload,IsRetain,Properties]),
+    on_deliver_m5_(Username,SubscriberId,QoS,Topic,Payload,IsRetain,Properties).
 
-on_deliver_m5_(<<"remove_props_on_deliver_m5">>,_SubscriberId,_Topic,_Payload,
+on_deliver_m5_(<<"remove_props_on_deliver_m5">>,_SubscriberId,_QoS,_Topic,_Payload,_IsRetain,
                #{?P_PAYLOAD_FORMAT_INDICATOR := _,
                  ?P_CONTENT_TYPE := _,
                  ?P_USER_PROPERTY := _,
@@ -193,7 +193,7 @@ on_deliver_m5_(<<"remove_props_on_deliver_m5">>,_SubscriberId,_Topic,_Payload,
                  ?P_RESPONSE_TOPIC := _}) ->
     NewProps = #{},
     {ok, #{properties => NewProps}};
-on_deliver_m5_(<<"modify_props_on_deliver_m5">>,_SubscriberId,_Topic,_Payload,
+on_deliver_m5_(<<"modify_props_on_deliver_m5">>,_SubscriberId,_QoS,_Topic,_Payload,_IsRetain,
                #{?P_PAYLOAD_FORMAT_INDICATOR := unspecified,
                  ?P_CONTENT_TYPE := <<"type1">>,
                  ?P_USER_PROPERTY := UserProperties,
@@ -207,5 +207,5 @@ on_deliver_m5_(<<"modify_props_on_deliver_m5">>,_SubscriberId,_Topic,_Payload,
                  ?P_RESPONSE_TOPIC => <<"modified_",  RT/binary>>},
     {ok, #{properties => NewProps}};
 
-on_deliver_m5_(_Username,_SubscriberId,_Topic,_Payload,_Properties) ->
+on_deliver_m5_(_Username,_SubscriberId,_QoS,_Topic,_Payload,_IsRetain,_Properties) ->
     ok.

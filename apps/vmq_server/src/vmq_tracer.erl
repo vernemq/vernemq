@@ -148,16 +148,16 @@ handle_call(trace_existing_session, _From, #state{client_id = ClientId,
     NewState =
         case vmq_queue_sup_sup:get_queue_pid(SId) of
             not_found ->
-                io:format(IoServer, "No sessions found for client \"~s\"~n", [ClientId]),
+                io:format(IoServer, "~s No sessions found for client \"~s\"~n", [iso8601() ,ClientId]),
                 State;
             QPid when is_pid(QPid) ->
                 case vmq_queue:get_sessions(QPid) of
                     [] ->
-                        io:format(IoServer, "No sessions found for client \"~s\"~n", [ClientId]),
+                        io:format(IoServer, "~s No sessions found for client \"~s\"~n", [iso8601(), ClientId]),
                         State;
                     SPids ->
-                        io:format(IoServer, "Starting trace for ~p existing sessions for client \"~s\" with PIDs~n"
-                                 "    ~p~n", [length(SPids), ClientId, SPids]),
+                        io:format(IoServer, "~s Starting trace for ~p existing sessions for client \"~s\" with PIDs~n"
+                                 "    ~p~n", [iso8601(), length(SPids), ClientId, SPids]),
                         begin_session_trace(SPids, State)
                 end
     end,
@@ -168,8 +168,8 @@ handle_call({start_session_trace, SessionPid, ConnFrame}, _From,
                    io_server = IoServer} = State) ->
     Opts = #{payload_limit => PayloadLimit},
     SId = {"", ClientId},
-    io:format(IoServer, "New session with PID ~p found for client \"~s\"~n", [SessionPid, ClientId]),
-    {F, D} = prepf(format_frame(to, SessionPid, SId, ConnFrame, Opts)),
+    io:format(IoServer, "~s New session with PID ~p found for client \"~s\"~n", [iso8601(), SessionPid, ClientId]),
+    {F, D} = prepf(format_frame(to, SessionPid, os:timestamp(), SId, ConnFrame, Opts)),
     io:format(IoServer, F, D),
     NewState = begin_session_trace([SessionPid], State),
     {reply, ok, NewState};
@@ -207,13 +207,13 @@ handle_cast(_Msg, State) ->
 handle_info({'DOWN', _MRef, process, Pid, _},
             #state{io_server = IoServer,
                    client_id = ClientId} = State) ->
-    io:format(IoServer, "~p Trace session for ~s stopped~n", [Pid, ClientId]),
+    io:format(IoServer, "~s ~p Trace session for ~s stopped~n", [iso8601(), Pid, ClientId]),
     State1 = remove_session_pid(Pid, State),
     {noreply, State1};
 handle_info(Trace, #state{io_server = IoServer,
                           sessions=Sessions} = State) when is_tuple(Trace),
-                                                           element(1,Trace) =:= trace ->
-    TracePid = get_pid_from_trace(Trace),
+                                                           element(1,Trace) =:= trace_ts ->
+    TracePid = get_pid_from_trace(extract_info(Trace)),
     case is_trace_active(TracePid, Sessions) of
         true ->
             {Format, Data} = format_trace(Trace, State),
@@ -225,7 +225,7 @@ handle_info(Trace, #state{io_server = IoServer,
     end;
 handle_info({'EXIT',Tracer,normal}, #state{tracer = Tracer,
                                            io_server = IoServer} = State) ->
-    io:format(IoServer, "Trace rate limit trigged.~n", []),
+    io:format(IoServer, "~s Trace rate limit trigged.~n", [iso8601()]),
     {stop, normal, State}.
 
 %%--------------------------------------------------------------------
@@ -266,6 +266,7 @@ handle_trace({trace, Pid, return_from, {vmq_plugin,all_till_ok,2}, Ret},
                     tracer = Tracer} = State) ->
     case Ret of
         ok -> State;
+        {ok, Payload} when is_binary(Payload) -> State;
         {ok, Modifiers} ->
             %% The only hook returning a subscriber_id as a modifier
             %% is the `auth_on_register` hook, so it should be fine to
@@ -300,9 +301,16 @@ handle_trace({trace, Pid, return_from, {vmq_plugin,all_till_ok,2}, Ret},
 handle_trace(_, State) ->
     State.
 
-get_pid_from_trace({trace, Pid,_,_}) ->
-    Pid;
-get_pid_from_trace({trace,Pid,_,_,_}) ->
+extract_info(TraceMsg) ->
+    case tuple_to_list(TraceMsg) of
+        [trace_ts, Pid, Type | Info] ->
+            {TraceInfo, [Timestamp]} = lists:split(length(Info)-1, Info),
+            {Type, Pid, Timestamp, TraceInfo};
+        [trace, Pid, Type | TraceInfo] ->
+            {Type, Pid, os:timestamp(), TraceInfo}
+    end.
+
+get_pid_from_trace({_, Pid,_,_}) ->
     Pid.
 
 is_trace_active(Pid, Sessions) ->
@@ -347,7 +355,7 @@ setup_trace(TracePids, Tracer) ->
          %% ignore if the process has died and erlang:trace
          %% throws a badarg.
          try
-             erlang:trace(PSpec, true, [call, {tracer, Tracer}])
+             erlang:trace(PSpec, true, [call, timestamp, {tracer, Tracer}])
          catch
              error:badarg -> ok
          end
@@ -482,26 +490,26 @@ format_trace(Trace, #state{client_id=ClientId,
     Opts = #{payload_limit => PayloadLimit,
              sid => SId},
     Unprepared =
-        case Trace of
-            {trace, Pid, call, {vmq_parser, serialise, [Msg]}} ->
-                format_frame(from, Pid, SId, Msg, Opts);
-            {trace, Pid, call, {vmq_mqtt_fsm, connected, [Msg, _]}} ->
-                format_frame(to, Pid, SId, Msg, Opts);
-            {trace, Pid, call, {vmq_parser_mqtt5, serialise, [Msg]}} ->
-                format_frame(from, Pid, SId, Msg, Opts);
-            {trace, Pid, call, {vmq_mqtt5_fsm, connected, [Msg, _]}} ->
-                format_frame(to, Pid, SId, Msg, Opts);
-            {trace, Pid, call, {vmq_plugin, all_till_ok, [Hook, Args]}} ->
-                format_all_till_ok(Hook, Pid, Args, Opts);
-            {trace, Pid, return_from, {vmq_plugin,all_till_ok,2}, Ret} ->
-                format_all_till_ok_ret(Ret, Pid, Opts);
+        case extract_info(Trace) of
+            {call, Pid, Timestamp, [{vmq_parser, serialise, [Msg]}]} ->
+                format_frame(from, Pid, Timestamp, SId, Msg, Opts);
+            {call, Pid, Timestamp, [{vmq_mqtt_fsm, connected, [Msg, _]}]} ->
+                format_frame(to, Pid, Timestamp, SId, Msg, Opts);
+            {call, Pid, Timestamp, [{vmq_parser_mqtt5, serialise, [Msg]}]} ->
+                format_frame(from, Pid, Timestamp, SId, Msg, Opts);
+            {call, Pid, Timestamp, [{vmq_mqtt5_fsm, connected, [Msg, _]}]} ->
+                format_frame(to, Pid, Timestamp, SId, Msg, Opts);
+            {call, Pid, Timestamp, [{vmq_plugin, all_till_ok, [Hook, Args]}]} ->
+                format_all_till_ok(Hook, Pid, Timestamp, Args, Opts);
+            {return_from, Pid, Timestamp, [{vmq_plugin,all_till_ok,2}, Ret]} ->
+                format_all_till_ok_ret(Ret, Pid, Timestamp, Opts);
             _ ->
                 format_unknown_trace(Trace)
         end,
     prepf(lists:flatten(Unprepared)).
 
-format_all_till_ok(Hook, Pid, Args, Opts) ->
-    [fpid(Pid), r(" "), format_all_till_ok_(Hook, Args, Opts)].
+format_all_till_ok(Hook, Pid, Timestamp, Args, Opts) ->
+    [ftimestamp(Timestamp), r(" "), fpid(Pid), r(" "), format_all_till_ok_(Hook, Args, Opts)].
 
 format_all_till_ok_(auth_on_register = Hook,
                     [Peer, SubscriberId, User, Password, CleanSession], _Opts) ->
@@ -533,8 +541,8 @@ format_all_till_ok_(auth_on_subscribe_m5 = Hook, [User, SubscriberId, Topics, Pr
       [Hook, User, SubscriberId]}, ftopics(Topics), format_props(Props, Opts)].
 
 
-format_all_till_ok_ret(Ret, Pid, Opts) ->
-    [fpid(Pid), r(" "), format_all_till_ok_ret_(Ret, Opts)].
+format_all_till_ok_ret(Ret, Pid, Timestamp, Opts) ->
+    [ftimestamp(Timestamp), r(" "), fpid(Pid), r(" "), format_all_till_ok_ret_(Ret, Opts)].
 
 format_all_till_ok_ret_(ok, _Opts) ->
     {"Hook returned \"ok\"~n", []};
@@ -549,8 +557,8 @@ format_all_till_ok_ret_({ok, Modifiers}, _Opts) ->
 format_all_till_ok_ret_(Other,_Opts) ->
     {"Hook returned ~p~n", [Other]}.
 
-format_frame(Direction, Pid, SId, M, Opts) ->
-    [fpid(Pid), r(" "), dir(Direction), r(" "),
+format_frame(Direction, Pid, Timestamp, SId, M, Opts) ->
+    [ftimestamp(Timestamp), r(" "), fpid(Pid), r(" "), dir(Direction), r(" "),
      sid(SId), r(" "), format_frame_(M, Opts)].
 
 format_props(#{}=M, _Opts) when map_size(M) =:= 0 ->
@@ -754,6 +762,28 @@ fmodifiers(Modifiers) ->
 fpid(Pid) ->
     {"~p", [Pid]}.
 
+ftimestamp(Timestamp) ->
+    Iso8601Formatted = iso8601(Timestamp),
+    {"~s", [Iso8601Formatted]}.
+
+%% @doc Convert a `os:timestamp()' or a calendar-style `{date(), time()}'
+%% tuple to an ISO 8601 formatted binary. Note that this function always
+%% returns a binary with no offset (i.e., ending in "Z").
+iso8601() ->
+    Timestamp = os:timestamp(),
+    iso8601(Timestamp).
+
+iso8601({_, _, _}=Timestamp) ->
+    iso8601(calendar:now_to_datetime(Timestamp));
+iso8601({{Y, Mo, D}, {H, Mn, S}}) when is_float(S) ->
+    FmtStr = "~4.10.0B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~9.6.0fZ",
+    IsoStr = io_lib:format(FmtStr, [Y, Mo, D, H, Mn, S]),
+    list_to_binary(IsoStr);
+iso8601({{Y, Mo, D}, {H, Mn, S}}) ->
+    FmtStr = "~4.10.0B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~2.10.0BZ",
+    IsoStr = io_lib:format(FmtStr, [Y, Mo, D, H, Mn, S]),
+    list_to_binary(IsoStr).
+
 sid({"", CId}) ->
     {"CID: \"~s\"", [CId]};
 sid({MP, CId}) ->
@@ -763,8 +793,7 @@ dir(from) -> {"MQTT SEND:", []};
 dir(to) -> {"MQTT RECV:", []}.
 
 format_unknown_trace(V) ->
-    [{"Unknown trace! ~p~n", [V]}].
-
+    [{"~s Unknown trace! ~p~n", [iso8601(), V]}].
 
 sim_client() ->
     Connect = packetv5:gen_connect("simclient", [{keepalive, 60}]),

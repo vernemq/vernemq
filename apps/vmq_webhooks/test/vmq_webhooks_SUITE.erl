@@ -64,12 +64,14 @@ all() ->
      on_client_wakeup_test,
      on_client_offline_test,
      on_client_gone_test,
+     on_session_expired_test,
      base64payload_test,
      auth_on_register_undefined_creds_test,
      cache_auth_on_register,
      cache_auth_on_publish,
      cache_auth_on_subscribe,
-     cache_expired_entry
+     cache_expired_entry,
+     cli_allow_query_parameters_test
     ].
 
 
@@ -236,7 +238,7 @@ on_deliver_test(_) ->
     register_hook(on_deliver, ?ENDPOINT),
     Self = pid_to_bin(self()),
     ok = vmq_plugin:all_till_ok(on_deliver,
-                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?TOPIC, ?PAYLOAD]),
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     ok = exp_response(on_deliver_ok),
     deregister_hook(on_deliver, ?ENDPOINT).
 
@@ -383,14 +385,14 @@ on_deliver_m5_test(_) ->
     register_hook(on_deliver_m5, ?ENDPOINT),
     Self = pid_to_bin(self()),
     ok = vmq_plugin:all_till_ok(on_deliver_m5,
-                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?TOPIC, ?PAYLOAD, #{}]),
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #{}]),
     ok = exp_response(on_deliver_m5_ok),
     deregister_hook(on_deliver_m5, ?ENDPOINT).
 
 on_deliver_m5_modify_props_test(_) ->
     register_hook(on_deliver_m5, ?ENDPOINT),
     Self = pid_to_bin(self()),
-    Args = [Self, {?MOUNTPOINT, <<"modify_props">>}, ?TOPIC, ?PAYLOAD,
+    Args = [Self, {?MOUNTPOINT, <<"modify_props">>}, 1,  ?TOPIC, ?PAYLOAD, false,
             #{?P_USER_PROPERTY =>
                   [{<<"k1">>, <<"v1">>},
                    {<<"k2">>, <<"v2">>}],
@@ -451,6 +453,13 @@ on_client_gone_test(_) ->
     ok = exp_response(on_client_gone_ok),
     deregister_hook(on_client_gone, ?ENDPOINT).
 
+on_session_expired_test(_) ->
+    register_hook(on_session_expired, ?ENDPOINT),
+    Self = pid_to_bin(self()),
+    [next] = vmq_plugin:all(on_session_expired, [{?MOUNTPOINT, Self}]),
+    ok = exp_response(on_session_expired_ok),
+    deregister_hook(on_session_expired, ?ENDPOINT).
+
 base64payload_test(_) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
                      "hook=auth_on_publish", "endpoint=" ++ ?ENDPOINT, "--base64payload=true"]),
@@ -484,6 +493,12 @@ auth_on_register_undefined_creds_test(_) ->
     ok = vmq_plugin:all_till_ok(auth_on_register,
                       [?PEER, {?MOUNTPOINT, <<"undefined_creds">>}, Username, Password, true]),
     deregister_hook(auth_on_register, ?ENDPOINT).
+
+%% Test for https://github.com/vernemq/vernemq/issues/740
+cli_allow_query_parameters_test(_) ->
+    EndpointWithParams = ?ENDPOINT ++ "/hook?key=value",
+    ok = register_hook(auth_on_register, EndpointWithParams),
+    [] = deregister_hook(auth_on_register, EndpointWithParams).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions

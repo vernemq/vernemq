@@ -162,7 +162,7 @@ start(Name, Module, Args, Opts) ->
     gen_fsm:start(Name, ?MODULE, [Module, Args, Opts], GenFSMOpts).
 
 info(Pid) ->
-    gen_fsm:sync_send_all_state_event(Pid, info).
+    gen_fsm:sync_send_all_state_event(Pid, info, infinity).
 
 stats(Pid) ->
     case erlang:process_info(Pid, [dictionary]) of

@@ -60,7 +60,7 @@ start_link(Type, Host, Port, RegistryMFA, Opts) ->
     gen_server:start_link(?MODULE, [Type, Host, Port, RegistryMFA, Opts], []).
 
 info(Pid) ->
-    gen_server:call(Pid, info).
+    gen_server:call(Pid, info, infinity).
 
 %%%===================================================================
 %%% gen_mqtt_client callbacks
@@ -106,12 +106,12 @@ init([{coord, _CoordinatorPid} = State]) ->
     {ok, State}.
 
 handle_call(info, _From, #state{client_pid = Pid} = State) ->
-    {ok, Info} = case Pid of
+    {ResponseType, Info} = case Pid of
                      undefined ->
                          {error, not_started};
                      Pid -> gen_mqtt_client:info(Pid)
                  end,
-    {reply, {ok, Info}, State};
+    {reply, {ResponseType, Info}, State};
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.
 
@@ -318,9 +318,17 @@ client_opts(ssl, Host, Port, Opts) ->
                                      _ -> undefined
                                  end}
                 ],
+    SSLOpts1 = case proplists:get_value(customize_hostname_check, Opts) of
+                  'https' -> [{customize_hostname_check, [{match_fun, public_key:pkix_verify_hostname_match_fun(https)}]}|SSLOpts];
+                  _ -> SSLOpts
+                end,
+    SSLOpts2 = case proplists:get_value(sni, Opts) of
+                  undefined -> SSLOpts1;
+                  SNI -> [{server_name_indication, SNI}|SSLOpts1]
+                end,
 
     lists:keyreplace(transport, 1, TCPOpts,
-                     {transport, {ssl, [P||{_,V}=P <- SSLOpts, V /= undefined]}}).
+                     {transport, {ssl, [P||{_,V}=P <- SSLOpts2, V /= undefined]}}).
 
 %% @spec to_bin(string()) -> binary()
 %% @doc Convert a hexadecimal string to a binary.
