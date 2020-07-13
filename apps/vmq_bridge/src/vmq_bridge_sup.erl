@@ -169,7 +169,7 @@ metrics() ->
         end, [], vmq_bridge_meta),
 
         lists:foldl(
-            fun({{_, _Name, _Host, _Port}, BridgePid, _, _}, Acc2) ->
+            fun({{_, Name, _Host, _Port}, BridgePid, _, _}, Acc2) ->
                 case vmq_bridge:get_metrics(BridgePid) of
                     undefined -> Acc2;
                     {ok, #{vmq_bridge_publish_out_0 := PO0,
@@ -180,12 +180,15 @@ metrics() ->
                     vmq_bridge_publish_in_2 := PI2}} -> 
 
                     lists:flatten([[[
-                    {counter, [], {vmq_bridge_publish_out_0, BridgePid}, vmq_bridge_publish_out_0, <<"The number of QoS 0 messages the bridge has (re)-published (TCP)">>, PO0},
-                    {counter, [], {vmq_bridge_publish_out_1, BridgePid}, vmq_bridge_publish_out_1, <<"The number of QoS 1 messages the bridge has (re)-published (TCP)">>, PO1},
-                    {counter, [], {vmq_bridge_publish_out_2, BridgePid}, vmq_bridge_publish_out_2, <<"The number of QoS 2 messages the bridge has (re)-published (TCP)">>, PO2},
-                    {counter, [], {vmq_bridge_publish_in_0, BridgePid}, vmq_bridge_publish_in_0, <<"The number of QoS 0 messages the bridge has consumed (TCP)">>, PI0},
-                    {counter, [], {vmq_bridge_publish_in_1, BridgePid}, vmq_bridge_publish_in_1, <<"The number of QoS 1 messages the bridge has consumed (TCP)">>, PI1},
-                    {counter, [], {vmq_bridge_publish_in_2, BridgePid}, vmq_bridge_publish_in_2, <<"The number of QoS 2 messages the bridge has consumed (TCP)">>, PI2}]
+                    {counter, [], {vmq_bridge_publish_out_0, BridgePid}, label(Name, vmq_bridge_publish_out_0), <<"The number of QoS 0 messages the bridge has (re)-published (TCP)">>, PO0},
+                    {counter, [], {vmq_bridge_publish_out_1, BridgePid}, label(Name, vmq_bridge_publish_out_1), <<"The number of QoS 1 messages the bridge has (re)-published (TCP)">>, PO1},
+                    {counter, [], {vmq_bridge_publish_out_2, BridgePid}, label(Name, vmq_bridge_publish_out_2), <<"The number of QoS 2 messages the bridge has (re)-published (TCP)">>, PO2},
+                    {counter, [], {vmq_bridge_publish_in_0, BridgePid}, label(Name, vmq_bridge_publish_in_0), <<"The number of QoS 0 messages the bridge has consumed (TCP)">>, PI0},
+                    {counter, [], {vmq_bridge_publish_in_1, BridgePid}, label(Name, vmq_bridge_publish_in_1), <<"The number of QoS 1 messages the bridge has consumed (TCP)">>, PI1},
+                    {counter, [], {vmq_bridge_publish_in_2, BridgePid}, label(Name, vmq_bridge_publish_in_2), <<"The number of QoS 2 messages the bridge has consumed (TCP)">>, PI2}]
                     |Acc2]|Drops])             
                 end
       end, [], supervisor:which_children(vmq_bridge_sup)).
+
+    label(Name, Metric) ->
+            list_to_atom(lists:concat([Name, ".", Metric])). % this will create 6 labels (atoms) per bridge for the metrics above. atoms will be the same in every call after that. 
