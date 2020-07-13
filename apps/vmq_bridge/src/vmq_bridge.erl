@@ -26,7 +26,8 @@
          handle_cast/2,
          handle_info/2,
          terminate/2,
-         code_change/3]).
+         code_change/3,
+         get_metrics/1]).
 
 -export([on_connect/1,
          on_connect_error/2,
@@ -35,6 +36,8 @@
          on_unsubscribe/2,
          on_publish/4]).
 
+% gen_mqtt stats callback
+-export([stats/2]).
 
 -record(state, {
           host,
@@ -48,6 +51,7 @@
           bridge_transport,
           topics,
           client_opts,
+          counters_ref,
           %% subscriptions on the remote broker
           subs_remote=[],
           %% subscriptions on the local broker
@@ -61,6 +65,9 @@ start_link(Type, Host, Port, RegistryMFA, Opts) ->
 
 info(Pid) ->
     gen_server:call(Pid, info, infinity).
+
+get_metrics(Pid) ->
+    gen_server:call(Pid, get_metrics, infinity).
 
 %%%===================================================================
 %%% gen_mqtt_client callbacks
@@ -112,6 +119,15 @@ handle_call(info, _From, #state{client_pid = Pid} = State) ->
                      Pid -> gen_mqtt_client:info(Pid)
                  end,
     {reply, {ResponseType, Info}, State};
+                 
+handle_call(get_metrics, _From, #state{counters_ref=CR, client_pid = Pid} = State) ->
+   {ResponseType, Info} = case Pid of
+                 undefined ->
+                     {error, not_started};
+                Pid -> gen_mqtt_client:metrics(Pid, CR)
+                end,
+    {reply, {ResponseType, Info}, State};
+
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.
 
@@ -123,11 +139,12 @@ handle_cast(_Req, State) ->
 handle_info(init_client, #state{type=Type, host=Host, port=Port,
                                 opts=Opts, client_pid=undefined,
                                 subscribe_fun=SubscribeFun} = State) ->
-    {ok, Pid} = start_client(Type, Host, Port, Opts),
+    CountersRef = counters:new(6, [atomics]),
+    {ok, Pid} = start_client(Type, Host, Port, [{counters_ref, CountersRef}|Opts]),
     Topics = proplists:get_value(topics, Opts),
     Subscriptions = bridge_subscribe(local, Pid, Topics, SubscribeFun, []),
     {noreply, State#state{client_pid = Pid,
-                          subs_local=Subscriptions}};
+                          subs_local=Subscriptions, counters_ref=CountersRef}};
 handle_info(connected, #state{host=Host, port=Port,
                              client_pid=Pid, opts=Opts,
                              subscribe_fun=SubscribeFun} = State) ->
@@ -236,8 +253,9 @@ bridge_subscribe(Type, Pid, [_|Rest], SubscribeFun, Acc) ->
 bridge_subscribe(_, _, [], _, Acc) -> Acc.
 
 start_client(Type, Host, Port, Opts) ->
-    ClientOpts = client_opts(Type, Host, Port, Opts),
-    {ok, Pid} = gen_mqtt_client:start_link(?MODULE, [{coord, self()}], ClientOpts),
+    CR = proplists:get_value(counters_ref, Opts),
+    ClientOpts = client_opts(Type, Host, Port, Opts),    
+    {ok, Pid} = gen_mqtt_client:start_link(?MODULE, [{coord, self()}], [{info_fun, {fun stats/2, CR}}|ClientOpts]),
     ets:insert(vmq_bridge_meta, {Pid}),
     {ok, Pid}.
 
@@ -352,3 +370,54 @@ match(T1, [<<"$share">>, _Grp | T2]) ->
     vmq_topic:match(T1, T2);
 match(T1, T2) ->
     vmq_topic:match(T1, T2).
+
+%% ------------------------------------------------
+%% Gen_MQTT Info Callbacks
+%% ------------------------------------------------
+
+stats({publish_out, _MsgId, QoS}, CR)  ->
+    case QoS of
+        0 -> counters:add(CR, 1, 1); % vmq_bridge_publish_out_0)
+        1 -> counters:add(CR, 2, 1); % vmq_bridge_publish_out_1);
+        2 -> counters:add(CR, 3, 1) %vmq_bridge_publish_out_2)
+    end,
+    CR;
+stats({publish_in, _MsgId, _Payload, QoS}, CR) ->
+    case QoS of
+        0 -> counters:add(CR, 4, 1); % vmq_bridge_publish_in_0);
+        1 -> counters:add(CR, 5, 1); % vmq_bridge_publish_in_1);
+        2 -> counters:add(CR, 6, 1)  % vmq_bridge_publish__in_2)
+    end,
+    CR;
+
+% Stubs for more info functions
+stats({connect_out, _ClientId}, State) -> % log connection attempt
+    State;
+stats({connack_in, _ClientId}, State) ->
+    State;
+stats({reconnect, _ClientId}, State) ->
+    State;
+stats({puback_in, _MsgId}, State) ->
+    State;
+stats({puback_out, _MsgId}, State) ->
+    State;
+stats({suback, _MsgId}, State) ->
+    State;
+stats({subscribe_out, _MsgId}, State) ->
+    State;
+stats({unsubscribe_out, _MsgId}, State) ->
+    State;
+stats({unsuback, _MsgId}, State) ->
+    State;
+stats({pubrec_in, _MsgId}, State) ->
+    State;
+stats({pubrec_out, _MsgId}, State) ->
+    State;
+stats({pubrel_out, _MsgId}, State) ->
+    State;
+stats({pubrel_in, _MsgId}, State) ->
+    State;
+stats({pubcomp_in, _MsgId}, State) ->
+    State;
+stats({pubcomp_out, _MsgId}, State) ->
+    State.
