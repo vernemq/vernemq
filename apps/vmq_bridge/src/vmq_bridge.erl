@@ -40,6 +40,7 @@
 -export([stats/2]).
 
 -record(state, {
+          name,
           host,
           port,
           publish_fun,
@@ -74,7 +75,7 @@ get_metrics(Pid) ->
                                              % (like 'vmq-admin metrics show' etc.)
 
 %%%===================================================================
-%%% gen_mqtt_client callbacks
+%%% gen_mqtt_client callbacks. State = {coord, CoordPid}. CoordPid = self()
 %%%===================================================================
 on_connect({coord, CoordinatorPid} = State) ->
     CoordinatorPid ! connected,
@@ -87,7 +88,12 @@ on_connect_error(Reason, State) ->
 on_disconnect(State) ->
     {ok, State}.
 
-on_subscribe(_Topics, State) ->
+on_subscribe(Topics, {coord, CoordPid} = State) -> 
+    FailedTopics = [{Topic, ResponseQoS} || {Topic, ResponseQoS} <- Topics, ResponseQoS == not_allowed],
+    case FailedTopics of
+        [] -> lager:info("Bridge Pid ~p is subscribing to Topics: ~p~n", [CoordPid, Topics]);
+        _  -> lager:warning("Bridge Pid ~p had subscription failure codes in SUBACK for topics ~p~n", [CoordPid, FailedTopics])
+    end,
     {ok, State}.
 
 on_unsubscribe(_Topics, State) ->
@@ -104,9 +110,11 @@ init([Type, Host, Port, RegistryMFA, Opts]) ->
     true = is_function(PublishFun, 3),
     true = is_function(SubscribeFun, 1),
     true = is_function(UnsubscribeFun, 1),
+    Name = proplists:get_value(name, Opts),
     ok = RegisterFun(),
     self() ! init_client,
-    {ok, #state{type=Type,
+    {ok, #state{name=Name,
+                type=Type,
                 host=Host,
                 port=Port,
                 opts=Opts,
@@ -149,10 +157,10 @@ handle_info(init_client, #state{type=Type, host=Host, port=Port,
     Subscriptions = bridge_subscribe(local, Pid, Topics, SubscribeFun, []),
     {noreply, State#state{client_pid = Pid,
                           subs_local=Subscriptions, counters_ref=CountersRef}};
-handle_info(connected, #state{host=Host, port=Port,
+handle_info(connected, #state{name = Name, host=Host, port=Port,
                              client_pid=Pid, opts=Opts,
                              subscribe_fun=SubscribeFun} = State) ->
-    lager:debug("connected to: ~s:~p", [Host,Port]),
+    lager:info("Bridge ~s connected to ~s:~p.~n", [Name, Host, Port]),
     Topics = proplists:get_value(topics, Opts),
     Subscriptions = bridge_subscribe(remote, Pid, Topics, SubscribeFun, []),
     {noreply, State#state{subs_remote=Subscriptions}};
