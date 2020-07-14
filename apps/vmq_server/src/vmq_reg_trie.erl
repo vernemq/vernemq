@@ -201,6 +201,7 @@ handle_info(subscribers_loaded, #state{event_handler=Handler,
                           handle_event(Handler, Event)
                   end, queue:to_list(Q)),
     NrOfSubscribers = ets:info(vmq_trie_subs, size),
+    persistent_term:put(subscribe_trie_ready, 1),
     lager:info("loaded ~p subscriptions into ~p", [NrOfSubscribers, ?MODULE]),
     {noreply, State#state{status=ready, event_queue=undefined}};
 handle_info(Event, #state{status=init, event_queue=Q} = State) ->
