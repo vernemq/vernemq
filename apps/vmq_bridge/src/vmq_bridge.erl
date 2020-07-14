@@ -67,7 +67,11 @@ info(Pid) ->
     gen_server:call(Pid, info, infinity).
 
 get_metrics(Pid) ->
-    gen_server:call(Pid, get_metrics, infinity).
+    gen_server:call(Pid, get_metrics, 1000). % With the Bridge plugin running, the metrics system will call in here.
+                                             % We'll wait for a maximum of 1 second for the Bridge metrics to not
+                                             % delay other metrics. If the Bridge is not able to deliver
+                                             % the metrics in 1 second,  Bridge metrics will not be included in the metrics call.
+                                             % (like 'vmq-admin metrics show' etc.)
 
 %%%===================================================================
 %%% gen_mqtt_client callbacks
