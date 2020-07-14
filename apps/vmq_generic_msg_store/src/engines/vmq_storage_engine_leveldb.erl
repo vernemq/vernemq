@@ -151,7 +151,7 @@ open_db(Opts, State0, RetriesLeft, _) ->
         {error, {db_open, OpenErr}=Reason} ->
             case lists:prefix("Corruption: truncated record ", OpenErr) of
                 true ->
-                    lager:info("VerneMQ LevelDB backend repair attempt for store ~p, after error ~s\n",
+                    lager:info("VerneMQ LevelDB Message Store backend repair attempt for store ~p, after error ~s. LevelDB will put unusable .log and MANIFEST filest in 'lost' folder.\n",
                             [DataRoot, OpenErr]),
                     case eleveldb:repair(DataRoot, []) of
                         ok -> % LevelDB will put unusable .log and MANIFEST files in 'lost' folder.
@@ -163,36 +163,14 @@ open_db(Opts, State0, RetriesLeft, _) ->
                     case lists:prefix("IO error: lock ", OpenErr) of
                         true ->
                             SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
-                            lager:info("VerneMQ LevelDB backend retrying ~p in ~p ms after error ~s\n",
+                            lager:info("VerneMQ LevelDB Message Store backend retrying ~p in ~p ms after error ~s\n",
                                         [DataRoot, SleepFor, OpenErr]),
                             timer:sleep(SleepFor),
                             open_db(Opts, State0, RetriesLeft - 1, Reason);
-                    false ->
-                        case lists:prefix("Corruption: bad record length", OpenErr) of
-                            true ->
-                                lager:info("VerneMQ LevelDB backend repair attempt for store ~p, after error ~s\n",
-                                        [DataRoot, OpenErr]),
-                                case eleveldb:repair(DataRoot, []) of
-                                    ok -> % LevelDB will put unusable .log and MANIFEST files in 'lost' folder.
-                                        open_db(Opts, State0, RetriesLeft - 1, Reason);
-                                    {error, Reason} -> {error, Reason} 
-                                end;
-                            false ->  
-                            case lists:prefix("Corruption: checksum mismatch", OpenErr) of
-                            true ->
-                                lager:info("VerneMQ LevelDB backend repair attempt for store ~p, after error ~s\n",
-                                        [DataRoot, OpenErr]),
-                                case eleveldb:repair(DataRoot, []) of
-                                    ok -> % LevelDB will put unusable .log and MANIFEST files in 'lost' folder.
-                                        open_db(Opts, State0, RetriesLeft - 1, Reason);
-                                    {error, Reason} -> {error, Reason} 
-                                end;
-                            false -> {error, Reason}
-                        end
+                        false ->
+                        {error, Reason}
                     end
-                end
             end;
         {error, Reason} ->
             {error, Reason}
     end.
-
