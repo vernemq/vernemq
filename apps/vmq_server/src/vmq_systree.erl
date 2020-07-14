@@ -163,7 +163,10 @@ handle_info(timeout, true) ->
             {noreply, true, Interval};
         false ->
             {noreply, false, 30000}
-    end.
+    end;
+handle_info(Info, State) ->
+    lager:warning("vmq_systree received unexpected message ~p~n", [Info]),
+    {noreply, State}.
 
 
 %%--------------------------------------------------------------------
