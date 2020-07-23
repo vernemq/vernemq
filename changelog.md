@@ -1,7 +1,11 @@
 # Changelog
 
 - Add `on_session_expired/1` hook to `vmq_webhooks` schema.
+- Add Subscriber trie/event handler readiness check to handle fast subscribers after a reboot (race condition, #1557).
+- Update nodetool escript with latest version.
+- Fix internal Watermark update in SWC (#1556).
 - Handle LevelDB truncated record corruption more automatically in LevelDB SWC and Messagestore backends.
+- Catch ETS table call in `vmq_cluster:netsplit_statistics/0` (#1537).
 - Add compatibility with [Erlang/OTP 23](http://blog.erlang.org/OTP-23-Highlights/). This release requires Erlang/OTP 21.3 or later.
 - Upgrade package `bcrypt` to version 1.1.0.
 - Upgrade package `hackney` to version 1.16.0 (dependencies of `hackney` were updated as well).
