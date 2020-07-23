@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 -module(gen_mqtt_client).
--behavior(gen_fsm).
+-behaviour(gen_fsm).
 -include("vmq_types.hrl").
 
 -ifdef(nowarn_gen_fsm).
@@ -89,7 +89,8 @@
          publish/5,
          disconnect/1,
          call/2,
-         cast/2]).
+         cast/2,
+         metrics/2]).
 
 
 %% gen_fsm callbacks
@@ -163,6 +164,8 @@ start(Name, Module, Args, Opts) ->
 
 info(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, info, infinity).
+
+metrics(Pid, CR) -> gen_fsm:sync_send_all_state_event(Pid, {get_metrics, CR}, infinity).
 
 stats(Pid) ->
     case erlang:process_info(Pid, [dictionary]) of
@@ -291,8 +294,16 @@ connected({unsubscribe, Topics} = Msg, State=#state{transport={Transport, _}, so
                                   State#state{msgid='++'(MsgId),
                                               info_fun=NewInfoFun})};
 
+connected({publish, PubReq}, #state{o_queue=#queue{size=Size} = _Q} = State) when Size > 0 ->
+    NewState = maybe_queue_outgoing(PubReq, State),
+    {next_state, connected, NewState};
+                                            
 connected({publish, PubReq}, State) ->
     {next_state, connected, send_publish(PubReq, State)};
+                                            
+connected({publish_from_queue, PubReq}, State) ->
+    State1 = send_publish(PubReq, State),
+    {next_state, connected, maybe_publish_offline_msgs(State1)};
 
 connected({retry, Key}, State) ->
     {next_state, connected, handle_retry(Key, State)};
@@ -336,7 +347,6 @@ init([Mod, Args, Opts]) ->
     InfoFun = proplists:get_value(info_fun, Opts, {fun(_,_) -> ok end, []}),
     MaxQueueSize = proplists:get_value(max_queue_size, Opts, 0),
     {Transport, TransportOpts} = proplists:get_value(transport, Opts, {gen_tcp, []}),
-
     State = #state{host = Host, port = Port, proto_version=ProtoVer,
         username = Username, password = Password, client=ClientId, mod=Mod,
         clean_session=CleanSession, last_will_topic=LWTopic, last_will_msg=LWMsg, last_will_qos=LWQos,
@@ -539,11 +549,24 @@ handle_event(Event, StateName, State) ->
 
 handle_sync_event(info, _From, StateName,
                   #state{o_queue=#queue{size=Size,drop=Drop,max=Max}}=State) ->
+    {message_queue_len, Len} = erlang:process_info(self(), message_queue_len),
     Info =
         #{out_queue_size=>Size,
           out_queue_dropped=>Drop,
-          out_queue_max_size=>Max},
+          out_queue_max_size=>Max,
+          process_mailbox_size => Len},
     {reply, {ok, Info}, StateName, State};
+
+handle_sync_event({get_metrics, CR}, _From, StateName, State) ->
+    Metrics = #{
+    vmq_bridge_publish_out_0 => counters:get(CR, 1),
+    vmq_bridge_publish_out_1 => counters:get(CR, 2),
+    vmq_bridge_publish_out_2 => counters:get(CR, 3),
+    vmq_bridge_publish_in_0 => counters:get(CR, 4),
+    vmq_bridge_publish_in_1 => counters:get(CR, 5),
+    vmq_bridge_publish_in_2 => counters:get(CR, 6)},
+{reply, {ok, Metrics}, StateName, State};
+
 handle_sync_event(Req, From, StateName, State) ->
     wrap_res(StateName, handle_call, [Req, From], State).
 
@@ -654,8 +677,8 @@ maybe_publish_offline_msgs(State) -> State.
 
 publish_from_queue(#queue{size=Size, queue=QQ} = Q, State0) when Size > 0 ->
     {{value, PubReq}, NewQQ} = queue:out(QQ),
-    State1 = send_publish(PubReq, State0),
-    maybe_publish_offline_msgs(State1#state{o_queue=Q#queue{size=Size-1, queue=NewQQ}}).
+    gen_fsm:send_event(self(), {publish_from_queue, PubReq}),
+    State0#state{o_queue=Q#queue{size=Size-1, queue=NewQQ}}.
 
 drop(#queue{drop=D}=Q) ->
     put(?PD_QDROP, D+1),

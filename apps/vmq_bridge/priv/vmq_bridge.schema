@@ -368,7 +368,7 @@
                             cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
                     end,
 
-         Mappings = ["clean_session", "client_id", "keepalive_interval", 
+         Mappings = ["cleansession", "client_id", "keepalive_interval", 
                     "username", "password", "restart_timeout", "try_private", "topic",
                      "max_outgoing_buffered_messages", "mqtt_version"],
                     %% SSL specific
@@ -387,12 +387,14 @@
                                                      [Prefix, ".", Name, ".topic.", integer_to_list(I)]
                                                     ),
                                                cuttlefish:conf_get(P, Conf, undefined)
-                                           end || I <- lists:seq(1,100)],
-                                      {AddrPort, {topics, [Validator(Name, C) || C <- BrConfigs, C /= undefined]}};
+                                           end || I <- lists:seq(1,100)],                                     
+                                           AddrPortName = lists:flatten([Name, ":", AddrPort]),
+                                      {AddrPortName, {topics, [Validator(Name, C) || C <- BrConfigs, C /= undefined]}};
                                   false ->
                                       Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
                                       Val = Validator(Name, cuttlefish:conf_get(Prefix4, Conf, undefined)),
-                                      {AddrPort, {list_to_atom(Suffix), Val}}
+                                     AddrPortName = lists:flatten([Name, ":", AddrPort]),
+                                    {AddrPortName, {list_to_atom(Suffix), Val}}
                               end
                           end
                           || {[_, _, Name], AddrPort} <- lists:filter(
