@@ -1,5 +1,6 @@
 # Changelog
 
+- Support Power Linux LE (ppc64le) platform.
 - Add `on_session_expired/1` hook to `vmq_webhooks` schema.
 - Add Subscriber trie/event handler readiness check to handle fast subscribers after a reboot (race condition, #1557).
 - Update nodetool escript with latest version.
