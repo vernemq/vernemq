@@ -1,5 +1,12 @@
 # Changelog
 
+## VerneMQ 1.10.4
+
+- Improve buffering in in-memory queue of outgoing bridges.
+- Add a Name to bridges, so that a bridge can be identified by {Name, Host, Port}, instead of {Host, Port} only. This allows multiple bridges to the same remote endpoint.
+- Add bridge Name and MQTT client mailbox size to `vmq-admin bridge show` command.
+- Add per QoS/per bridge in and out counters to pull resp. push bridges.
+- Log bridge connection setups and subscribes (info level).
 - Support Power Linux LE (ppc64le) platform.
 - Add `on_session_expired/1` hook to `vmq_webhooks` schema.
 - Add Subscriber trie/event handler readiness check to handle fast subscribers after a reboot (race condition, #1557).
