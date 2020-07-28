@@ -969,7 +969,7 @@ retain_pre(FutureRetain) when is_tuple(FutureRetain),
 
 -spec if_ready(_, _) -> any().
 if_ready(Fun, Args) ->
-    case persistent_term:get(subscriber_trie_ready, 0) of
+    case persistent_term:get(subscribe_trie_ready, 0) of
         1 ->
             apply(Fun, Args);
         0 ->
