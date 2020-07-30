@@ -1,5 +1,9 @@
 # Changelog
 
+## VerneMQ 1.10.4.1
+Patch Release to:
+- Fix the new bridge metrics labels that prevented the Prometheus metrics to be exported correctly (blocking Prometheus export entirely).
+
 ## VerneMQ 1.10.4
 
 - Improve buffering in in-memory queue of outgoing bridges.
