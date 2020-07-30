@@ -405,7 +405,12 @@ connected(#mqtt_unsubscribe{message_id=MessageId, topics=Topics}, State) ->
     _ = vmq_metrics:incr_mqtt_unsubscribe_received(),
     OnSuccess =
         fun(_SubscriberId, MaybeChangedTopics) ->
-                vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, SubscriberId, MaybeChangedTopics)
+                case vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, SubscriberId, MaybeChangedTopics) of
+                    ok ->
+                        vmq_plugin:all(on_topic_unsubscribed, [SubscriberId, MaybeChangedTopics]),
+                        ok;
+                    V -> V
+                end
         end,
     case unsubscribe(User, SubscriberId, Topics, OnSuccess) of
         ok ->
