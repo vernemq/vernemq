@@ -192,4 +192,4 @@ metrics() ->
       end, [], supervisor:which_children(vmq_bridge_sup)).
 
     label(Name, Metric) ->
-            list_to_atom(lists:concat([Name, ".", Metric])). % this will create 6 labels (atoms) per bridge for the metrics above. atoms will be the same in every call after that. 
+            list_to_atom(lists:concat([Name, "_", Metric])). % this will create 6 labels (atoms) per bridge for the metrics above. atoms will be the same in every call after that. 
