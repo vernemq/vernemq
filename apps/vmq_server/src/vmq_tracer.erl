@@ -68,7 +68,7 @@
 %%% API
 %%%===================================================================
 
--spec start_link(list()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
+-spec start_link(map()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
 start_link(Opts) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, Opts, []).
 
