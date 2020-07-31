@@ -1,8 +1,8 @@
 # VerneMQ: A Distributed MQTT Broker
 
 [![Build Status](https://travis-ci.org/vernemq/vernemq.svg?branch=master)](https://travis-ci.org/vernemq/vernemq)
-[![Docker Pulls](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)
-[![Slack Invite](https://slack-invite.vernemq.com/badge.svg)](https://slack-invite.vernemq.com)
+[![Docker Pulls from Old Repo](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)(old repo)
+[![Docker Pulls from New Repo](https://img.shields.io/docker/pulls/vernemq/vernemq.svg)](https://hub.docker.com/r/vernemq/vernemq/)(new repo)
 
 [![VerneMQ Logo](https://i.imgur.com/bln3fK3.jpg)](https://vernemq.com)
 
@@ -127,6 +127,5 @@ instance.
 
 ### Important links
 
-* #vernemq on freenode IRC
 * [VerneMQ Documentation](https://docs.vernemq.com) 
 * [Follow us on Twitter (@vernemq)!](https://twitter.com/vernemq)
