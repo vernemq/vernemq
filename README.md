@@ -1,11 +1,14 @@
 # VerneMQ: A Distributed MQTT Broker
 
 [![Build Status](https://travis-ci.org/vernemq/vernemq.svg?branch=master)](https://travis-ci.org/vernemq/vernemq)
-[![Docker Pulls from Old Repo](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)(old repo)
-[![Docker Pulls from New Repo](https://img.shields.io/docker/pulls/vernemq/vernemq.svg)](https://hub.docker.com/r/vernemq/vernemq/)(new repo)
+Old Docker Repo | New Docker Repo
+------------ | -------------
+[![Docker Pulls from Old Repo](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)|[![Docker Pulls from New Repo](https://img.shields.io/docker/pulls/vernemq/vernemq.svg)](https://hub.docker.com/r/vernemq/vernemq/)
+- - - 
 
-VerneMQ is known to be deployed and used in: :us: :canada: :brazil: :mexico: :de: :fr: :switzerland: :denmark: :netherlands: :belgium: :it: :es: :romania: :portugal: :ru: :lithuania: :cz: :slovakia: :austria: :poland: :norway: :sweden: :india: :jp: :indonesia: :vietnam: :kr: :za: :kenya: :serbia: :croatia: :greece: :uk: :ukraine: :australia: :nz: :cn: :egypt: :finland: :hungary: :israel: :singapore: :lebanon: :philippines: :pakistan: :malaysia: :tr: :taiwan:
+VerneMQ is known to be deployed and used in: :us: :canada: :brazil: :mexico: :de: :fr: :switzerland: :denmark: :netherlands: :belgium: :it: :es: :romania: :portugal: :ru: :lithuania: :czech_republic: :slovakia: :austria: :poland: :norway: :sweden: :india: :jp: :indonesia: :vietnam: :kr: :south_africa: :kenya: :serbia: :croatia: :greece: :uk: :ukraine: :australia: :new_zealand: :cn: :egypt: :finland: :hungary: :israel: :singapore: :lebanon: :philippines: :pakistan: :malaysia: :tr: :taiwan:
 
+---
 [![VerneMQ Logo](https://i.imgur.com/bln3fK3.jpg)](https://vernemq.com)
 
 VerneMQ is a high-performance, distributed MQTT message broker. It scales
