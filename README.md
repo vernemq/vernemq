@@ -1,6 +1,19 @@
 # VerneMQ: A Distributed MQTT Broker
 
 [![Build Status](https://travis-ci.org/vernemq/vernemq.svg?branch=master)](https://travis-ci.org/vernemq/vernemq)
+<a href="https://docs.vernemq.com">
+		<img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" target="_blank" />
+	</a>
+	<a href="https://github.com/vernemq/vernemq/graphs/commit-activity">
+		<img alt="Maintenance" src="https://img.shields.io/badge/Maintained%3F-yes-green.svg" target="_blank" />
+	</a>
+<a href="https://twitter.com/vernemq">
+		<img
+			alt="Twitter: VerneMQ"
+			src="https://img.shields.io/twitter/follow/vernemq.svg?style=social"
+			target="_blank"
+		/>
+	</a>
 Old Docker Repo | New Docker Repo
 ------------ | -------------
 [![Docker Pulls from Old Repo](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)|[![Docker Pulls from New Repo](https://img.shields.io/docker/pulls/vernemq/vernemq.svg)](https://hub.docker.com/r/vernemq/vernemq/)
@@ -133,4 +146,10 @@ instance.
 ### Important links
 
 * [VerneMQ Documentation](https://docs.vernemq.com) 
-* [Follow us on Twitter (@vernemq)!](https://twitter.com/vernemq)
+* <a href="https://twitter.com/vernemq">
+		<img
+			alt="Twitter: VerneMQ"
+			src="https://img.shields.io/twitter/follow/vernemq.svg?style=social"
+			target="_blank"
+		/>
+	</a>
