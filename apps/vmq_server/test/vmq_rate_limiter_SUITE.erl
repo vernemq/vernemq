@@ -53,6 +53,8 @@ groups() ->
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 publish_rate_limit_test(Cfg) ->
+    vmq_metrics:reset_counters(),
+    vmq_metrics:clear_stored_rates(),
     %% Rate Limit is enfored in auth_on_register hook
     ClientId = vmq_cth:ustr(Cfg),
     Username = <<"rate-limit-test">>,
@@ -74,18 +76,25 @@ publish_rate_limit_test(Cfg) ->
     {T, _} =
     timer:tc(
       fun() ->
-              %% throttling appears at the second message, that's
-              %% why we have to send 11 messages to reach a window
-              %% of 10 seconds
+              %% first we need to cancel calc_rates interval
+              %% so it wont trigger while we send first 5 pubs
+              %% or somehow overlap with sending next 10 pubs
+              vmq_metrics:cancel_calc_rates_interval(),
               _ = [Pub(10, Socket, I) || I <- lists:seq(1, 5)],
-              %% sleep 1 sec to ensure that the calc_rate_per_conn was triggered
-              timer:sleep(1000),
+              %% restart calc_rates interval and wait for 1500ms
+              %% so one calc_rates will be proccessed (it takes 1000+ms)
+              %% and we would have 500ms left
+              %% to start sending 10 pubs before second calc_rates
+              vmq_metrics:start_calc_rates_interval(),
+              timer:sleep(1500),
               _ = [Pub(10, Socket, I) || I <- lists:seq(1, 10)]
       end),
-    %% this should take us at least 10 seconds
+    %% this should take us at least 10.5 seconds
     TimeInMs = round(T / 1000),
-    io:format(user, "time passed in ms/ sample ~p", [TimeInMs]),
-    true = TimeInMs > 10000,
+    io:format(user, "time passed in ms / sample: ~p~n", [TimeInMs]),
+    true = TimeInMs > 10500,
+    QPid = vmq_queue_sup_sup:get_queue_pid({"", list_to_binary(ClientId)}),
+    ok = vmq_queue:force_disconnect(QPid, normal),
     ok = gen_tcp:close(Socket).
 
 -define(THROTTLEMS, 100).
