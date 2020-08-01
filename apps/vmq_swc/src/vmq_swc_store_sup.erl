@@ -32,9 +32,9 @@
 %% @doc
 %% Starts the supervisor
 %%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link(SwcGroup::atom()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
 start_link(SwcGroup) ->
     start_link(SwcGroup, [{membership_strategy, auto}]).
 
@@ -54,9 +54,6 @@ start_link(SwcGroup, Opts) ->
 %% restart strategy, maximum restart frequency and child
 %% specifications.
 %%
-%% @spec init(Args) -> {ok, {SupFlags, [ChildSpec]}} |
-%%                     ignore |
-%%                     {error, Reason}
 %% @end
 %%--------------------------------------------------------------------
 init([SwcGroup, Opts]) ->

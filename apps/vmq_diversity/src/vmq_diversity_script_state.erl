@@ -46,9 +46,9 @@
 %% @doc
 %% Starts the server
 %%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link(Id::list(), Script::list(), ScriptMgrPid::pid()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
 start_link(Id, Script, ScriptMgrPid) ->
     gen_server:start_link(?MODULE, [Id, Script, ScriptMgrPid], []).
 

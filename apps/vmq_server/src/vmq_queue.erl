@@ -109,13 +109,7 @@
 %%% API functions
 %%%===================================================================
 
-%%--------------------------------------------------------------------
-%% @doc
-%% Starts the server
-%%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
-%% @end
-%%--------------------------------------------------------------------
+-spec start_link(SubscriberId :: subscriber_id(), Clean :: boolean()) -> {ok, Pid :: pid()} | ignore | {error, Error :: term()}.
 start_link(SubscriberId, Clean) ->
     gen_fsm:start_link(?MODULE, [SubscriberId, Clean], []).
 
