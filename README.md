@@ -16,6 +16,7 @@
 			target="_blank"
 		/>
 	</a>
+[![Google group : VerneMQ Users](https://img.shields.io/badge/Google%20Group-VerneMQ%20Users-blue.svg)](https://groups.google.com/forum/#!forum/vernemq-users)
 Old Docker Repo | New Docker Repo
 ------------ | -------------
 [![Docker Pulls from Old Repo](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)|[![Docker Pulls from New Repo](https://img.shields.io/docker/pulls/vernemq/vernemq.svg)](https://hub.docker.com/r/vernemq/vernemq/)
@@ -146,7 +147,8 @@ instance.
 
 ### Important links
 
-* [VerneMQ Documentation](https://docs.vernemq.com) 
+* [VerneMQ Documentation](https://docs.vernemq.com)
+* [![Google group : VerneMQ Users](https://img.shields.io/badge/Google%20Group-VerneMQ%20Users-blue.svg)](https://groups.google.com/forum/#!forum/vernemq-users)
 * <a href="https://twitter.com/vernemq">
 		<img
 			alt="Twitter: VerneMQ"
