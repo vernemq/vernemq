@@ -438,6 +438,7 @@ offline({enqueue, Enq}, #state{id=SId} = State) ->
     {next_state, offline, insert(Enq, State)};
 offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     %% session has expired cleanup and go down
+    vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
     vmq_reg:delete_subscriptions(SId),
     cleanup_queue(SId, Q),
     _ = vmq_plugin:all(on_session_expired, [SId]),
@@ -548,6 +549,7 @@ handle_sync_event({force_disconnect, Reason, DoCleanup}, _From, StateName,
     %% Forcefully disconnect all sessions and cleanup all state
     case DoCleanup of
         true ->
+            vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
             vmq_reg:delete_subscriptions(SId),
             %% Collect all queues, make sure to include the backups
             SessionQueues = [queue:join(BQ, Q) || #session{queue=#queue{queue=Q, backup=BQ}} <- maps:values(Sessions)],
@@ -712,6 +714,7 @@ handle_session_down(SessionPid, StateName,
         {0, wait_for_offline, {migrate, _, From}} when DeletedSession#session.cleanup_on_disconnect ->
             %% last session gone
             %% ... we dont need to migrate this one
+            vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
             vmq_reg:delete_subscriptions(SId),
             _ = vmq_plugin:all(on_client_gone, [SId]),
             gen_fsm:reply(From, ok),
@@ -738,6 +741,7 @@ handle_session_down(SessionPid, StateName,
             %%
             %% it is assumed that all attached sessions use the same
             %% clean session flag
+            vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
             vmq_reg:delete_subscriptions(SId),
             _ = vmq_plugin:all(on_client_gone, [SId]),
             {stop, normal, NewState};
