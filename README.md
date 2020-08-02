@@ -66,10 +66,9 @@ following features are implemented and delivered as part of VerneMQ:
 * PostgreSQL auth & integration
 * CockroachDB auth & integration
 * Memcached integration
-* HTTP integration
 * HTTP Webhooks
 * PROXY Protocol v2
-* Administration HTTP API (BETA)
+* Administration HTTP API
 * Real-time MQTT session tracing
 * Full multitenancy
 * Cluster status web page
