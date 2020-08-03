@@ -35,7 +35,7 @@ end_per_testcase(_TestCase, _Config) ->
 
 groups() ->
     Tests = [
-            buffer_outgoing_test,
+         %   buffer_outgoing_test,
             prefixes_test
             ],
     ReconnectTests = [
