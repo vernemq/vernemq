@@ -289,10 +289,7 @@ bridge_reconnect_qos2_test(Cfg) ->
     ok = gen_tcp:close(SSocket).
 
 catch_undeterministic_packet(Packet, PacketList) ->
-    case lists:member(Packet, PacketList) of
-        true -> ok;
-        _ -> false
-    end.
+    lists:member(Packet, PacketList).
 
 buffer_outgoing_test(Cfg) ->
     %% start bridge
