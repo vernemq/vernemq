@@ -45,9 +45,9 @@
 %% @doc
 %% Starts the server
 %%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link(SwcConfig::config()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
 start_link(#swc_config{group=SwcGroup} = Config) ->
     gen_server:start_link({local, name(SwcGroup)}, ?MODULE, [Config], []).
 

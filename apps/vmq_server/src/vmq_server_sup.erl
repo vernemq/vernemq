@@ -42,7 +42,7 @@ start_link() ->
                            permanent, pos_integer(), worker, [atom()]}]}}.
 init([]) ->
     maybe_change_nodename(),
-
+    persistent_term:put(subscribe_trie_ready, 0),
     {ok, { {one_for_one, 5, 10},
            [
                ?CHILD(vmq_config, worker, []),

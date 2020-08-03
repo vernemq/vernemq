@@ -27,16 +27,19 @@ show_cmd() ->
     Callback =
         fun(_, [], []) ->
                 Table =
-                    [[
+                    [[{'name', Name},
                       {endpoint, iolist_to_binary([Host, $:, integer_to_binary(Port)])},
                       {'buffer size', Size},
                       {'buffer max', Max},
-                      {'buffer dropped msgs', Dropped}] ||
-                        #{host := Host,
+                      {'buffer dropped msgs', Dropped},
+                      {'MQTT process mailbox len', MailboxSize}] ||
+                        #{name := Name,
+                          host := Host,
                           port := Port,
                           out_buffer_size := Size,
                           out_buffer_max_size := Max,
-                          out_buffer_dropped := Dropped} <- bridge_info()],
+                          out_buffer_dropped := Dropped,
+                          process_mailbox_size := MailboxSize} <- bridge_info()],
                 [clique_status:table(Table)];
            (_, _, _) ->
                 Text = clique_status:text(bridge_usage()),

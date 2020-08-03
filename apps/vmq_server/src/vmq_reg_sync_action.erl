@@ -32,13 +32,8 @@
 %%% API
 %%%===================================================================
 
-%%--------------------------------------------------------------------
-%% @doc
-%% Starts the server
-%%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
-%% @end
-%%--------------------------------------------------------------------
+
+-spec start_link(SyncPid::pid(), Owner::pid(), Fun::function(), Timeout::timeout()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
 start_link(SyncPid, Owner, Fun, Timeout) ->
     gen_server:start_link(?MODULE, [SyncPid, Owner, Fun, Timeout], []).
 

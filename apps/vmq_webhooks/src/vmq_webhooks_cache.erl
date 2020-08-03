@@ -12,9 +12,10 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
-%% @doc A cache for `vmq_webhooks` used to cache the hooks
-%% `auth_on_register`, `auth_on_publish` and `auth_on_subscribe` as
+%% @doc A cache for `vmq_webhooks' used to cache the hooks
+%% `auth_on_register', `auth_on_publish' and `auth_on_subscribe' as
 %% authentication data is often static.
+%% @end
 -module(vmq_webhooks_cache).
 
 -export([
