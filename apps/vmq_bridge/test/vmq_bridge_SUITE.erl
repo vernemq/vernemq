@@ -26,8 +26,11 @@ init_per_group(try_private_4, Config) ->
 end_per_group(_GroupName, _Config) ->
     ok.
 
-init_per_testcase(_TestCase, Config) ->
-    Config.
+init_per_testcase(TestCase, Config) ->
+    case TestCase of
+     buffer_outgoing_test -> {skip, travis};
+    _ -> Config
+    end.
 
 end_per_testcase(_TestCase, _Config) ->
     stop_bridge_plugin(),
@@ -35,7 +38,7 @@ end_per_testcase(_TestCase, _Config) ->
 
 groups() ->
     Tests = [
-         %   buffer_outgoing_test,
+            buffer_outgoing_test,
             prefixes_test
             ],
     ReconnectTests = [
