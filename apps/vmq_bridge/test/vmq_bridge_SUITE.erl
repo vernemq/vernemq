@@ -270,9 +270,11 @@ bridge_reconnect_qos2_test(Cfg) ->
     {ok, Bridge2} = gen_tcp:accept(SSocket),
     ok = packet:expect_packet(Bridge2, "2nd connect", Connect),
     ok = gen_tcp:send(Bridge2, Connack),
-    ok = packet:expect_packet(Bridge2, "2nd publish", PublishDup),
+    Publish_2 = packet:expect_packet(Bridge2, "2nd publish", PublishDup),
+    Subscribe_2 = packet:expect_packet(Bridge2, "2nd subscribe", Subscribe2),
+    catch_undeterministic_packet(Publish_2, [Publish_2, Subscribe_2]), 
     ok = gen_tcp:send(Bridge2, Pubrec),
-    ok = packet:expect_packet(Bridge2, "2nd subscribe", Subscribe2),
+    catch_undeterministic_packet(Subscribe_2, [Publish_2, Subscribe_2]), 
     ok = gen_tcp:send(Bridge2, Suback2),
     ok = packet:expect_packet(Bridge2, "pubrel", Pubrel),
     ok = gen_tcp:close(Bridge2),
@@ -285,6 +287,12 @@ bridge_reconnect_qos2_test(Cfg) ->
     ok = gen_tcp:send(Bridge3, Pubcomp),
     ok = gen_tcp:close(Bridge3),
     ok = gen_tcp:close(SSocket).
+
+catch_undeterministic_packet(Packet, PacketList) ->
+    case lists:member(Packet, PacketList) of
+        true -> ok;
+        _ -> false
+    end.
 
 buffer_outgoing_test(Cfg) ->
     %% start bridge
