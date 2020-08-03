@@ -55,7 +55,7 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, vmq_storage_engine_leveldb},
-     {group, vmq_storage_engine_dets},
+     %{group, vmq_storage_engine_dets},
      {group, vmq_storage_engine_ets},
      {group, basic}
     ].
