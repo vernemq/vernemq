@@ -1,6 +1,22 @@
 # VerneMQ: A Distributed MQTT Broker
 
 [![Build Status](https://travis-ci.org/vernemq/vernemq.svg?branch=master)](https://travis-ci.org/vernemq/vernemq)
+<a href="https://docs.vernemq.com">
+		<img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" target="_blank" />
+	</a>
+	<a href="https://github.com/vernemq/vernemq/graphs/commit-activity">
+		<img alt="Maintenance" src="https://img.shields.io/badge/Maintained%3F-yes-green.svg" target="_blank" />
+	</a>
+<img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/vernemq/vernemq">
+<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/vernemq/vernemq">
+<a href="https://twitter.com/vernemq">
+		<img
+			alt="Twitter: VerneMQ"
+			src="https://img.shields.io/twitter/follow/vernemq.svg?style=social"
+			target="_blank"
+		/>
+	</a>
+[![Google group : VerneMQ Users](https://img.shields.io/badge/Google%20Group-VerneMQ%20Users-blue.svg)](https://groups.google.com/forum/#!forum/vernemq-users)
 Old Docker Repo | New Docker Repo
 ------------ | -------------
 [![Docker Pulls from Old Repo](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)|[![Docker Pulls from New Repo](https://img.shields.io/docker/pulls/vernemq/vernemq.svg)](https://hub.docker.com/r/vernemq/vernemq/)
@@ -51,10 +67,9 @@ following features are implemented and delivered as part of VerneMQ:
 * PostgreSQL auth & integration
 * CockroachDB auth & integration
 * Memcached integration
-* HTTP integration
 * HTTP Webhooks
 * PROXY Protocol v2
-* Administration HTTP API (BETA)
+* Administration HTTP API
 * Real-time MQTT session tracing
 * Full multitenancy
 * Cluster status web page
@@ -132,5 +147,12 @@ instance.
 
 ### Important links
 
-* [VerneMQ Documentation](https://docs.vernemq.com) 
-* [Follow us on Twitter (@vernemq)!](https://twitter.com/vernemq)
+* [VerneMQ Documentation](https://docs.vernemq.com)
+* [![Google group : VerneMQ Users](https://img.shields.io/badge/Google%20Group-VerneMQ%20Users-blue.svg)](https://groups.google.com/forum/#!forum/vernemq-users)
+* <a href="https://twitter.com/vernemq">
+		<img
+			alt="Twitter: VerneMQ"
+			src="https://img.shields.io/twitter/follow/vernemq.svg?style=social"
+			target="_blank"
+		/>
+	</a>
