@@ -93,7 +93,7 @@
  {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.5.0">>},2},
  {<<"vernemq_dev">>,
   {git,"git://github.com/vernemq/vernemq_dev.git",
-       {ref,"1ed313023999c35439613ebe2506f6ec29a541a2"}},
+       {ref,"6d622aa8c901ae7777433aef2bd049e380c474a6"}},
   0}]}.
 [
 {pkg_hash,[
