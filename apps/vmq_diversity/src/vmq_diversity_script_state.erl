@@ -13,11 +13,12 @@
 %% limitations under the License.
 
 -module(vmq_diversity_script_state).
+-include_lib("luerl/include/luerl.hrl").
 
 -behaviour(gen_server).
 
 %% API functions
--export([start_link/2,
+-export([start_link/3,
          reload/1,
          get_hooks/1,
          get_num_states/1,
@@ -45,11 +46,11 @@
 %% @doc
 %% Starts the server
 %%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link(Id, Script) ->
-    gen_server:start_link(?MODULE, [Id, Script], []).
+-spec start_link(Id::list(), Script::list(), ScriptMgrPid::pid()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
+start_link(Id, Script, ScriptMgrPid) ->
+    gen_server:start_link(?MODULE, [Id, Script, ScriptMgrPid], []).
 
 reload(Pid) ->
     gen_server:call(Pid, reload, infinity).
@@ -80,7 +81,7 @@ call_function(Pid, Function, Args) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Id, Script]) ->
+init([Id, Script, ScriptMgrPid]) ->
     case load_script(Id, Script) of
         {ok, LuaState} ->
             KeepState =
@@ -90,6 +91,7 @@ init([Id, Script]) ->
                 KS ->
                     KS
             end,
+            ScriptMgrPid ! {state_ready, self()},
             {ok, #state{id=Id, luastate=LuaState,
                         script=Script, keep=KeepState}};
         {error, Reason} ->
@@ -228,7 +230,8 @@ load_script(Id, Script) ->
             {vmq_diversity_lager,       <<"log">>},
             {vmq_diversity_memcached,   <<"memcached">>},
             {vmq_diversity_cache,       <<"auth_cache">>},
-            {vmq_diversity_vmq_api,     <<"vmq_api">>}
+            {vmq_diversity_vmq_api,     <<"vmq_api">>},
+            {vmq_diversity_crypto,      <<"crypto">>}
            ],
 
     {ok, ScriptsDir} = application:get_env(vmq_diversity, script_dir),
@@ -257,7 +260,8 @@ load_script(Id, Script) ->
 lua_hooks(LuaState) ->
     case luerl:eval("return hooks", LuaState) of
         {ok, [nil]} -> [];
-        {ok, [Hooks]} -> [Hook || {Hook, {function, _}} <- Hooks]
+        {ok, [Hooks]} ->
+            [Hook || {Hook, Fun} <- Hooks, is_function(Fun)]
     end.
 
 lua_num_states(LuaState) ->

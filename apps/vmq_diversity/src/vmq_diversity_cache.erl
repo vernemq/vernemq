@@ -14,6 +14,7 @@
 %%%-------------------------------------------------------------------
 
 -module(vmq_diversity_cache).
+-include_lib("luerl/include/luerl.hrl").
 
 -dialyzer(no_undefined_callbacks).
 -behaviour(gen_server2).
@@ -128,10 +129,10 @@ entries_(Type, Hashes) ->
 %%%===================================================================
 table() ->
     [
-     {<<"insert">>, {function, fun insert/2}},
+     {<<"insert">>, #erl_func{code=fun insert/2}},
      %% only for testing purposes
-     {<<"match_subscribe">>, {function, fun match_subscribe/2}},
-     {<<"match_publish">>, {function, fun match_publish/2}}
+     {<<"match_subscribe">>, #erl_func{code=fun match_subscribe/2}},
+     {<<"match_publish">>, #erl_func{code=fun match_publish/2}}
     ].
 
 decode_acl(Acl, St) when is_tuple(Acl) ->

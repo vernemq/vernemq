@@ -14,6 +14,7 @@
 
 -module(vmq_diversity_mysql).
 -include_lib("emysql/include/emysql.hrl").
+-include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
 
@@ -24,9 +25,9 @@ install(St) ->
 
 table() ->
     [
-     {<<"execute">>, {function, fun execute/2}},
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}},
-     {<<"hash_method">>, {function, fun hash_method/2}}
+     {<<"execute">>, #erl_func{code=fun execute/2}},
+     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}},
+     {<<"hash_method">>, #erl_func{code=fun hash_method/2}}
     ].
 
 execute(As, St) ->

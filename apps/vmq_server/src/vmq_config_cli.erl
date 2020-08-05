@@ -15,6 +15,9 @@
 -module(vmq_config_cli).
 -export([register_config/0]).
 
+-type config_error() :: 'bad_wildcard_placement'.
+
+-spec register_config() -> ok | {error, config_error()}.
 register_config() ->
     ok = clique_config:load_schema([code:priv_dir(vmq_server)]),
     register_config_(),
@@ -22,6 +25,7 @@ register_config() ->
     vmq_config_show_cmd(),
     vmq_config_reset_cmd().
 
+-spec register_config_() -> ok.
 register_config_() ->
     ConfigKeys =
     ["allow_anonymous",
@@ -58,19 +62,20 @@ register_config_() ->
      "receive_max_client",
      "receive_max_broker",
      "suppress_lwt_on_session_takeover",
-     "coordinate_registrations"
+     "coordinate_registrations",
+     "mqtt_connect_timeout"
     ],
     _ = [clique:register_config([Key], fun register_config_callback/3)
          || Key <- ConfigKeys],
     ok = clique:register_config_whitelist(ConfigKeys).
 
-
+-spec register_cli_usage() -> true.
 register_cli_usage() ->
     clique:register_usage(["vmq-admin", "config"], config_usage()),
     clique:register_usage(["vmq-admin", "config", "show"], show_usage()),
     clique:register_usage(["vmq-admin", "config", "reset"], reset_usage()).
 
-
+-spec register_config_callback([string(), ...], _, [{all, _} | {node, atom()}]) -> any().
 register_config_callback([StrKey], _, [{all, _}]) ->
     %% the callback is called, after the application environment is set
     Key = list_to_existing_atom(StrKey),
@@ -90,6 +95,7 @@ register_config_callback([StrKey], _, []) ->
     vmq_config:set_env(vmq_server, Key, Val, false),
     vmq_config:configure_node().
 
+-spec vmq_config_show_cmd() -> ok | {error, config_error()}.
 vmq_config_show_cmd() ->
     Cmd = ["vmq-admin", "config", "show"],
     KeySpecs = [{app, [{typecast, fun(A) -> list_to_existing_atom(A) end}]}],
@@ -153,7 +159,7 @@ vmq_config_show_cmd() ->
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 
-
+-spec complex_type(_) -> atom() | [integer()] | number().
 complex_type(Val) when is_boolean(Val) -> Val;
 complex_type(Val) when is_number(Val) -> Val;
 complex_type(Val) when is_atom(Val) -> Val;
@@ -161,11 +167,13 @@ complex_type(Val) when is_list(Val) ->
     is_string(Val, []);
 complex_type(_) -> too_complex.
 
+-spec is_string(maybe_improper_list(), [integer()]) -> too_complex | [integer()].
 is_string([I|Rest], Acc) when is_integer(I) ->
-    is_string(Rest, [I|Acc]);
+    is_string(Rest, [I|Acc]);   
 is_string([_|_], _) -> too_complex;
 is_string([], Acc) -> lists:reverse(Acc).
 
+-spec vmq_config_reset_cmd() -> ok | {error, config_error()}.
 vmq_config_reset_cmd() ->
     Cmd = ["vmq-admin", "config", "reset"],
     KeySpecs = [{app, [{typecast, fun(A) -> list_to_existing_atom(A) end}]}],
@@ -243,6 +251,7 @@ vmq_config_reset_cmd() ->
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
+-spec config_reset(App :: atom(), Key :: any(), boolean(), boolean()) -> ok.
 config_reset(App, Key, true, true) ->
     vmq_config:unset_local_env(App, Key),
     vmq_config:unset_global_env(App, Key);
@@ -251,11 +260,27 @@ config_reset(App, Key, true, false) ->
 config_reset(App, Key, _, _) ->
     vmq_config:unset_local_env(App, Key).
 
+-spec set_new_config_val(App :: atom(), Key :: atom(), _) ->
+    [{text,
+        maybe_improper_list(binary() |
+                            maybe_improper_list(any(), binary() | []) |
+                            byte(),
+                            binary() | [])}, ...].
 set_new_config_val(App, Key, Val) ->
     application:set_env(App, Key, Val),
     vmq_config:configure_node(),
     [clique_status:text("Done")].
 
+-spec set_new_config_val_from_file(App :: atom(),
+                                   _,
+                                   atom() | binary() | [atom() | [any()] | char()]) ->
+                                      [{alert, [{_, _} | {_, _, _}]} |
+                                       {text,
+                                        maybe_improper_list(binary() |
+                                                            maybe_improper_list(any(),
+                                                                                binary() | []) |
+                                                            byte(),
+                                                            binary() | [])}, ...].
 set_new_config_val_from_file(App, Key, ConfigFile) ->
     case get_app_config(App, ConfigFile) of
         {ok, Config} ->
@@ -287,6 +312,10 @@ set_new_config_from_file(App, ConfigFile) ->
             [clique_status:alert([clique_status:text(Text)])]
     end.
 
+
+-spec get_app_config(App::atom(),
+    Key::atom() | binary() | [atom() | [any()] | char()]) ->
+       {error, atom() | {non_neg_integer(), atom(), _}} | {ok, _}.
 get_app_config(App, ConfigFile) ->
     case file:consult(ConfigFile) of
         {ok, [{application, App, AppConf}]} ->

@@ -11,7 +11,7 @@
 init_per_suite(_Config) ->
     cover:start(),
     vmq_test_utils:setup(),
-    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5,131"}]),
     enable_on_subscribe(),
     enable_on_publish(),
     [{ct_hooks, vmq_cth} |_Config].
@@ -50,7 +50,9 @@ groups() ->
          subpub_qos0_test,
          subpub_qos1_test,
          subpub_qos2_test,
-         resubscribe_test],
+         resubscribe_test,
+         bridge_protocol_retain_as_publish_test,
+         bridge_protocol_no_local_test],
     [
      {mqttv4, [shuffle,sequence], Tests},
      {mqttv5, [shuffle],
@@ -64,6 +66,45 @@ groups() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+bridge_protocol_retain_as_publish_test(Cfg) ->
+    SubClientId = vmq_cth:ustr(Cfg) ++ "-subscriber",
+    Topic = vmq_cth:utopic(Cfg) ++ "/retain_as_pub",
+    SubConnect = packet:gen_connect(SubClientId, [{proto_ver, 131}]),
+    SubConnack = packet:gen_connack(),
+    Subscribe = packet:gen_subscribe(1, Topic, 0),
+    SubAck = packet:gen_suback(1, [0]),
+    {ok, SubSocket} = packet:do_client_connect(SubConnect, SubConnack, []),
+    ok = gen_tcp:send(SubSocket, Subscribe),
+    ok = packet:expect_packet(SubSocket, "suback", SubAck),
+
+    PubClientId = vmq_cth:ustr(Cfg) ++ "-publisher",
+    PubConnect = packet:gen_connect(PubClientId, [{proto_ver, 4}]),
+    PubConnack = packet:gen_connack(),
+    {ok, PubSocket} = packet:do_client_connect(PubConnect, PubConnack, []),
+
+    PublishRetain = packet:gen_publish(Topic, 0, <<"msg">>, [{mid, 1},
+                                                             {retain, true}]),
+
+    ok = gen_tcp:send(PubSocket, PublishRetain),
+    ok = packet:expect_packet(SubSocket, "publish", PublishRetain).
+
+bridge_protocol_no_local_test(Cfg) ->
+    ClientId = vmq_cth:ustr(Cfg),
+    Topic = vmq_cth:utopic(Cfg),
+    Connect = packet:gen_connect(ClientId, [{proto_ver, 131}]),
+    Connack = packet:gen_connack(),
+    Subscribe = packet:gen_subscribe(1, Topic, 0),
+    SubAck = packet:gen_suback(1, [0]),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", SubAck),
+
+    Publish = packet:gen_publish(Topic, 0, <<"msg">>, [{mid, 1}]),
+
+    ok = gen_tcp:send(Socket, Publish),
+    %% We shouldn't receive anything.
+    {error, timeout} = gen_tcp:recv(Socket, 0, 100).
 
 subscribe_no_local_test(Cfg) ->
     %% Bit 2 of the Subscription Options represents the No Local
@@ -155,11 +196,15 @@ subscription_ids(Cfg) ->
     Sub4 =
         packetv5:gen_subscribe(
           8, [packetv5:gen_subtopic(BT ++ "/no-overlap",0)], #{p_subscription_id => [8]}),
+    Sub5 =
+        packetv5:gen_subscribe(
+          9, [packetv5:gen_subtopic("$share/group/" ++ BT ++ "/no-overlap-ss", 0)], #{p_subscription_id => [9]}),
 
     SubAck1 = packetv5:gen_suback(5,[0],#{}),
     SubAck2 = packetv5:gen_suback(6,[0],#{}),
     SubAck3 = packetv5:gen_suback(7,[0,0],#{}),
     SubAck4 = packetv5:gen_suback(8,[0],#{}),
+    SubAck5 = packetv5:gen_suback(9,[0],#{}),
 
     {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Sub1),
@@ -170,6 +215,8 @@ subscription_ids(Cfg) ->
     ok = packetv5:expect_frame(Socket, SubAck3),
     ok = gen_tcp:send(Socket, Sub4),
     ok = packetv5:expect_frame(Socket, SubAck4),
+    ok = gen_tcp:send(Socket, Sub5),
+    ok = packetv5:expect_frame(Socket, SubAck5),
 
     Pub = fun(T,M) ->
                   Publish = packetv5:gen_publish(T, 0, M, []),
@@ -224,8 +271,11 @@ subscription_ids(Cfg) ->
     ok = Pub(BT ++ "/no-overlap", <<"msg5">>),
     ok = ExpPub(BT ++ "/no-overlap", <<"msg5">>, [8]),
 
-    {error, timeout} = gen_tcp:recv(Socket, 0, 100),
-    ok.
+    %% publish to shared subscription with subscription id
+    ok = Pub(BT ++ "/no-overlap-ss", <<"msg6">>),
+    ok = ExpPub(BT ++ "/no-overlap-ss", <<"msg6">>, [9]),
+
+    {error, timeout} = gen_tcp:recv(Socket, 0, 100).
 
 subscribe_qos0_test(_) ->
     Connect = packet:gen_connect("subscribe-qos0-test", [{keepalive,10}]),

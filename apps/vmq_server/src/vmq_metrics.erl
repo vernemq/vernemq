@@ -71,8 +71,6 @@
          incr_queue_in/1,
          incr_queue_out/1,
 
-         incr_client_expired/0,
-
          incr_cluster_bytes_sent/1,
          incr_cluster_bytes_received/1,
          incr_cluster_bytes_dropped/1,
@@ -105,6 +103,12 @@
 -record(state, {
           info = #{}
          }).
+
+-ifdef(TEST).
+-export([clear_stored_rates/0,
+         start_calc_rates_interval/0,
+         cancel_calc_rates_interval/0]).
+-endif.
 
 %%%===================================================================
 %%% API functions
@@ -237,10 +241,6 @@ incr_queue_in(N) ->
 
 incr_queue_out(N) ->
     incr_item(?METRIC_QUEUE_MESSAGE_OUT, N).
-
-incr_client_expired() ->
-    incr_item(?METRIC_CLIENT_EXPIRED, 1).
-
 
 incr_cluster_bytes_received(V) ->
     incr_item(?METRIC_CLUSTER_BYTES_RECEIVED, V).
@@ -432,7 +432,8 @@ get_label_info() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    timer:send_interval(1000, calc_rates),
+    {ok, TRef} = timer:send_interval(1000, calc_rates),
+    put(calc_rates_interval, TRef),
     {RateEntries, _} = lists:unzip(rate_entries()),
     AllEntries = RateEntries ++
           [Id || #metric_def{id = Id} <- internal_defs()],
@@ -474,6 +475,39 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+-ifdef(TEST).
+handle_call({register, Metric}, _From, #state{info=Metrics0} = State) ->
+    case register_metric(Metric, Metrics0) of
+        {ok, Metrics1} ->
+            {reply, ok, State#state{info=Metrics1}};
+        {error, _} = Err ->
+            {reply, Err, State}
+    end;
+handle_call(clear_rates, _From, #state{} = State) ->
+    %% clear stored rates in process dictionary
+    lists:foreach(fun({Key, _}) ->
+        case Key of
+            {rate, _} = V -> erase(V);
+            _ -> ok
+        end
+    end, get()),
+    %% clear rate entries in atomics
+    lists:foreach(
+        fun({RateEntry, _Entries}) -> reset_counter(RateEntry) end,
+        rate_entries()),
+    {reply, ok, State};
+handle_call(start_calc_rates, _From, #state{} = State) ->
+    {ok, TRef} = timer:send_interval(1000, calc_rates),
+    put(calc_rates_interval, TRef),
+    {reply, ok, State};
+handle_call(cancel_calc_rates, _From, #state{} = State) ->
+    Interval = erase(calc_rates_interval),
+    timer:cancel(Interval),
+    {reply, ok, State};
+handle_call(_Req, _From, #state{} = State) ->
+    Reply = ok,
+    {reply, Reply, State}.
+-else.
 handle_call({register, Metric}, _From, #state{info=Metrics0} = State) ->
     case register_metric(Metric, Metrics0) of
         {ok, Metrics1} ->
@@ -484,7 +518,7 @@ handle_call({register, Metric}, _From, #state{info=Metrics0} = State) ->
 handle_call(_Req, _From, #state{} = State) ->
     Reply = ok,
     {reply, Reply, State}.
-
+-endif.
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -686,6 +720,7 @@ counter_entries_def() ->
      m(counter, [{mqtt_version,"4"}], mqtt_publish_error, mqtt_publish_error, <<"The number of times a PUBLISH operation failed due to a netsplit.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_subscribe_error, mqtt_subscribe_error, <<"The number of times a SUBSCRIBE operation failed due to a netsplit.">>),
      m(counter, [{mqtt_version,"4"}], mqtt_unsubscribe_error, mqtt_unsubscribe_error, <<"The number of times an UNSUBSCRIBE operation failed due to a netsplit.">>),
+     m(counter, [{mqtt_version,"4"}], ?MQTT4_CLIENT_KEEPALIVE_EXPIRED, client_keepalive_expired, <<"The number of clients which failed to communicate within the keepalive time period.">>),
 
      m(counter, [{mqtt_version,"5"}], ?MQTT5_CONNECT_RECEIVED, mqtt_connect_received, <<"The number of CONNECT packets received.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_INVALID_MSG_SIZE_ERROR, mqtt_invalid_msg_size_error, <<"The number of packages exceeding the maximum allowed size.">>),
@@ -704,6 +739,7 @@ counter_entries_def() ->
      m(counter, [{mqtt_version,"5"}], ?MQTT5_UNSUBACK_SENT, mqtt_unsuback_sent, <<"The number of UNSUBACK packets sent.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_UNSUBSCRIBE_ERROR, mqtt_unsubscribe_error, <<"The number of times an UNSUBSCRIBE operation failed due to a netsplit.">>),
      m(counter, [{mqtt_version,"5"}], ?MQTT5_UNSUBSCRIBE_RECEIVED, mqtt_unsubscribe_received, <<"The number of UNSUBSCRIBE packets received.">>),
+     m(counter, [{mqtt_version,"5"}], ?MQTT5_CLIENT_KEEPALIVE_EXPIRED, client_keepalive_expired, <<"The number of clients which failed to communicate within the keepalive time period.">>),
 
      m(counter, [], queue_setup, queue_setup, <<"The number of times a MQTT queue process has been started.">>),
      m(counter, [], queue_initialized_from_storage, queue_initialized_from_storage, <<"The number of times a MQTT queue process has been initialized from offline storage.">>),
@@ -948,18 +984,32 @@ rate_entries() ->
      {?METRIC_MSG_OUT_RATE, [?MQTT4_PUBLISH_SENT, ?MQTT5_PUBLISH_SENT]},
      {?METRIC_BYTE_OUT_RATE, [?METRIC_BYTES_SENT]}].
 
+fetch_external_metric(Mod, Fun, Default) ->
+    % safe-guard call to external metric provider
+    % as it it possible that the metric provider
+    % isn't ready yet.
+    try
+        apply(Mod, Fun, [])
+    catch
+        ErrorClass:Reason ->
+            lager:warning("can't fetch metrics from ~p", [Mod]),
+            lager:debug("fetching metrics from ~p resulted in ~p with reason ~p", [Mod, ErrorClass, Reason]),
+            Default
+    end.
+
 -spec misc_statistics() -> [{metric_id(), any()}].
 misc_statistics() ->
-    {NrOfSubs, SMemory} = vmq_reg_trie:stats(),
-    {NrOfRetain, RMemory} = vmq_retain_srv:stats(),
-    {NetsplitDetectedCount, NetsplitResolvedCount} = vmq_cluster:netsplit_statistics(),
+    {NrOfSubs, SMemory} = fetch_external_metric(vmq_reg_trie, stats, {0, 0}),
+    {NrOfRetain, RMemory} = fetch_external_metric(vmq_retain_srv, stats, {0, 0}),
+    {NetsplitDetectedCount, NetsplitResolvedCount}
+        = fetch_external_metric(vmq_cluster, netsplit_statistics, {0, 0}),
     [{netsplit_detected, NetsplitDetectedCount},
      {netsplit_resolved, NetsplitResolvedCount},
      {router_subscriptions, NrOfSubs},
      {router_memory, SMemory},
      {retain_messages, NrOfRetain},
      {retain_memory, RMemory},
-     {queue_processes, vmq_queue_sup_sup:nr_of_queues()}].
+     {queue_processes, fetch_external_metric(vmq_queue_sup_sup, nr_of_queues, 0)}].
 
 -spec misc_stats_def() -> [metric_def()].
 misc_stats_def() ->
@@ -1281,4 +1331,17 @@ met2idx(mqtt_connack_server_unavailable_sent)                     -> 190;
 met2idx(mqtt_connack_identifier_rejected_sent)                    -> 191;
 met2idx(mqtt_connack_unacceptable_protocol_sent)                  -> 192;
 met2idx(mqtt_connack_accepted_sent)                               -> 193;
-met2idx(?METRIC_SOCKET_CLOSE_TIMEOUT)                             -> 194.
+met2idx(?METRIC_SOCKET_CLOSE_TIMEOUT)                             -> 194;
+met2idx(?MQTT5_CLIENT_KEEPALIVE_EXPIRED)                          -> 195;
+met2idx(?MQTT4_CLIENT_KEEPALIVE_EXPIRED)                          -> 196.
+
+-ifdef(TEST).
+clear_stored_rates() ->
+    gen_server:call(?MODULE, clear_rates).
+
+start_calc_rates_interval() ->
+    gen_server:call(?MODULE, start_calc_rates).
+
+cancel_calc_rates_interval() ->
+    gen_server:call(?MODULE, cancel_calc_rates).
+-endif.

@@ -17,23 +17,12 @@
 -behaviour(vmq_http_config).
 
 -export([routes/0]).
-
--export([handle/2, init/3, terminate/3]).
+-export([init/2]).
 
 routes() ->
   [{"/health", ?MODULE, []}].
 
-init(_Type, Req, _Opts) ->
-  {ok, Req, undefined}.
-
-handle(Req, State) ->
-    {ContentType, Req2} = cowboy_req:header(<<"content-type">>, Req,
-                                            <<"application/json">>),
-    {ok, reply(Req2, ContentType), State}.
-
-terminate(_Reason, _Req, _State) -> ok.
-
-reply(Req, <<"application/json">>) ->
+init(Req, Opts) ->
     {Code, Payload} = case check_health_concerns() of
       [] ->
         {200, [{<<"status">>, <<"OK">>}]};
@@ -41,10 +30,9 @@ reply(Req, <<"application/json">>) ->
         {503, [{<<"status">>, <<"DOWN">>},
                {<<"reasons">>, Concerns}]}
     end,
-    {ok, Req2} = cowboy_req:reply(Code, [{<<"content-type">>, <<"application/json">>}],
-                                  jsx:encode(Payload), Req),
-    Req2.
-
+    Headers = #{<<"content-type">> => <<"application/json">>},
+    cowboy_req:reply(Code, Headers, jsx:encode(Payload), Req),
+    {ok, Req, Opts}.
 
 -spec check_health_concerns() -> [] | [Concern :: string()].
 check_health_concerns() ->
@@ -91,6 +79,6 @@ listeners_status() ->
     [] ->
       ok;
     Listeners ->
-      {error, io_lib:format("Listeners are not ready: ~p", Listeners)}
+      {error, io_lib:format("Listeners are not ready: ~p", [Listeners])}
   end.
 

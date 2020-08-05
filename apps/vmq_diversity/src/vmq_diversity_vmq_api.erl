@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_vmq_api).
+-include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
 
@@ -22,8 +23,8 @@ install(St) ->
 
 table() ->
     [
-     {<<"disconnect_by_subscriber_id">>, {function, fun disconnect/2}},
-     {<<"reauthorize_subscriptions">>, {function, fun reauthorize_subscriptions/2}}
+     {<<"disconnect_by_subscriber_id">>, #erl_func{code=fun disconnect/2}},
+     {<<"reauthorize_subscriptions">>, #erl_func{code=fun reauthorize_subscriptions/2}}
     ].
 
 disconnect([LuaSubId, LuaOpts], St) ->

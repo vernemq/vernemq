@@ -19,7 +19,7 @@
 %% API.
 -export([start_link/4]).
 
--export([init/5,
+-export([init/4,
          loop/1]).
 
 -export([system_continue/3]).
@@ -38,42 +38,18 @@
              parent :: pid()}).
 
 %% API.
-start_link(Ref, Socket, Transport, Opts) ->
-    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Socket, Transport, Opts]),
+start_link(Ref, _Socket, Transport, Opts) ->
+    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Transport, Opts]),
     {ok, Pid}.
 
-init(Ref, Parent, Socket, Transport, Opts) ->
-    ok = ranch:accept_ack(Ref),
-    case Transport:peername(Socket) of
-        {ok, Peer} ->
-            FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
-            FsmState =
-            case Transport of
-                ranch_ssl ->
-                    case proplists:get_value(use_identity_as_username, Opts, false) of
-                        false ->
-                            FsmMod:init(Peer, Opts);
-                        true ->
-                            FsmMod:init(Peer, [{preauth, vmq_ssl:socket_to_common_name(Socket)}|Opts])
-                    end;
-                vmq_ranch_proxy_protocol ->
-                    {ok, {NewPeer, _}} = vmq_ranch_proxy_protocol:proxyname(Socket),
-                    {ok, ProxyConnInfo} = vmq_ranch_proxy_protocol:connection_info(Socket),
-                    case proplists:get_value(sni_hostname, ProxyConnInfo) of
-                        undefined ->
-                            FsmMod:init(NewPeer, Opts);
-                        CN ->
-                            case proplists:get_value(proxy_protocol_use_cn_as_username, Opts, true) of
-                                false ->
-                                    FsmMod:init(NewPeer, Opts);
-                                true ->
-                                    FsmMod:init(NewPeer, [{preauth, CN}|Opts])
-                            end
-                    end;
-                _ ->
-                    FsmMod:init(Peer, Opts)
-            end,
 
+init(Ref, Parent, Transport, Opts) ->
+    {ok, Socket} = ranch:handshake(Ref),
+
+    case peer_info(Socket, Transport, Opts) of
+        {ok, {Peer, NewOpts}} ->
+            FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
+            FsmState = FsmMod:init(Peer, NewOpts),
             MaskedSocket = mask_socket(Transport, Socket),
             %% tune buffer sizes
             CfgBufSizes = proplists:get_value(buffer_sizes, Opts, undefined),
@@ -107,6 +83,48 @@ init(Ref, Parent, Socket, Transport, Opts) ->
             %% not going through teardown, because no session was initialized
             ok
     end.
+
+-spec peer_info(any(), any(), list(any())) -> {ok, {peer(), list(any())}} | {error, any()}.
+peer_info(Socket, Transport, Opts) ->
+    case lists:keyfind(proxy_header, 1, Opts) of
+        {proxy_header, true} ->
+            case Transport:recv_proxy_header(Socket, 10000) of
+                {ok, #{src_address := SrcAddr,
+                       src_port := SrcPort} = ProxyInfo} ->
+                    Peer = {SrcAddr, SrcPort},
+                    UseCN = proplists:get_value(proxy_protocol_use_cn_as_username, Opts, true),
+                    case {maps:get(ssl, ProxyInfo, #{}), UseCN} of
+                        {#{cn := CN}, true} ->
+                            {ok, {Peer, [{preauth, CN}|Opts]}};
+                        _ ->
+                            peer_info_no_proxy(Peer, Socket, Transport, Opts)
+                    end;
+                {ok, #{command := local,version := _}} -> % request is not proxied, but direct. (like from a loadbalancer healthcheck)
+                    peer_info_no_proxy(undefined, Socket, Transport, Opts);
+                {error, Error} ->
+                    {error, Error}
+            end;
+        _ ->
+            peer_info_no_proxy(undefined, Socket, Transport, Opts)
+    end.
+
+peer_info_no_proxy(undefined, Socket, Transport, Opts) ->
+    case Transport:peername(Socket) of
+        {ok, Peer} ->
+            peer_info_no_proxy(Peer, Socket, Transport, Opts);
+        {error, Error} ->
+            {error, Error}
+    end;
+peer_info_no_proxy(Peer, Socket, Transport, Opts) ->
+    UseCN = proplists:get_value(use_identity_as_username, Opts, false),
+    case {Transport, UseCN} of
+        {ranch_ssl, true} ->
+            CN = vmq_ssl:socket_to_common_name(Socket),
+            {ok, {Peer, [{preauth, CN}|Opts]}};
+        _ ->
+            {ok, {Peer, Opts}}
+    end.
+
 
 mask_socket(ranch_tcp, Socket) -> Socket;
 mask_socket(vmq_ranch_proxy_protocol, Socket) ->

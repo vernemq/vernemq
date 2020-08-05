@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_postgres).
+-include_lib("luerl/include/luerl.hrl").
 
 %% API functions
 -export([install/1,
@@ -49,9 +50,9 @@ equery(PoolName, Stmt, Params) ->
 %%%===================================================================
 table() ->
     [
-     {<<"execute">>, {function, fun execute/2}},
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}},
-     {<<"hash_method">>, {function, fun hash_method/2}}
+     {<<"execute">>, #erl_func{code=fun execute/2}},
+     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}},
+     {<<"hash_method">>, #erl_func{code=fun hash_method/2}}
     ].
 
 execute(As, St) ->

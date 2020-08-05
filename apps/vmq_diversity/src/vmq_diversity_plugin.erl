@@ -29,6 +29,7 @@
 -behaviour(on_client_wakeup_hook).
 -behaviour(on_client_offline_hook).
 -behaviour(on_client_gone_hook).
+-behaviour(on_session_expired_hook).
 
 -behaviour(auth_on_register_m5_hook).
 -behaviour(on_register_m5_hook).
@@ -45,16 +46,17 @@
          on_publish/6,
          on_subscribe/3,
          on_unsubscribe/3,
-         on_deliver/4,
+         on_deliver/6,
          on_offline_message/5,
          on_client_wakeup/1,
          on_client_offline/1,
          on_client_gone/1,
+         on_session_expired/1,
          auth_on_register_m5/6,
          on_register_m5/4,
          auth_on_publish_m5/7,
          on_publish_m5/7,
-         on_deliver_m5/5,
+         on_deliver_m5/7,
          auth_on_subscribe_m5/4,
          on_subscribe_m5/4,
          on_unsubscribe_m5/4,
@@ -304,13 +306,15 @@ on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
                         {retain, IsRetain},
                         {properties, conv_args_props(Props)}]).
 
-on_deliver_m5(UserName, SubscriberId, Topic, Payload, Props) ->
+on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver_m5, [{username, nilify(UserName)},
                                 {mountpoint, MP},
                                 {client_id, ClientId},
+                                {qos, QoS},
                                 {topic, unword(Topic)},
                                 {payload, Payload},
+                                {retain, IsRetain},
                                 {properties, conv_args_props(Props)}]).
 
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
@@ -504,13 +508,15 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
                                                    || T <- Topics]}])
     end.
 
-on_deliver(UserName, SubscriberId, Topic, Payload) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [{username, nilify(UserName)},
                              {mountpoint, MP},
                              {client_id, ClientId},
+                             {qos, QoS},
                              {topic, unword(Topic)},
-                             {payload, Payload}]).
+                             {payload, Payload},
+                             {retain, IsRetain}]).
 
 on_offline_message(SubscriberId, QoS, Topic, Payload, Retain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -538,6 +544,12 @@ on_client_gone(SubscriberId) ->
     all(on_client_gone, [{mountpoint, MP},
                          {client_id, ClientId}]).
 
+on_session_expired(SubscriberId) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    vmq_diversity_cache:clear_cache(MP, ClientId),
+    all(on_session_expired, [{mountpoint, MP},
+                             {client_id, ClientId}]).
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -547,14 +559,14 @@ enable_hook(HookName) ->
 disable_hook(HookName) ->
     uncheck_exported_callback(HookName, ?MODULE:module_info(exports)).
 
-check_exported_callback(HookName, [{HookName, Arity}|_]) ->
-    vmq_plugin_mgr:enable_module_plugin(?MODULE, HookName, Arity);
+check_exported_callback(HookName, [{HookName, _Arity}|_]) ->
+    ok;
 check_exported_callback(HookName, [_|Exports]) ->
     check_exported_callback(HookName, Exports);
 check_exported_callback(_, []) -> {error, no_matching_callback_found}.
 
-uncheck_exported_callback(HookName, [{HookName, Arity}|_]) ->
-    vmq_plugin_mgr:disable_module_plugin(?MODULE, HookName, Arity);
+uncheck_exported_callback(HookName, [{HookName, _Arity}|_]) ->
+    ok;
 uncheck_exported_callback(HookName, [_|Exports]) ->
     uncheck_exported_callback(HookName, Exports);
 uncheck_exported_callback(_, []) -> {error, no_matching_callback_found}.

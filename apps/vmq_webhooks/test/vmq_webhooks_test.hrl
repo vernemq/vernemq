@@ -6,6 +6,7 @@
 -define(IGNORED_CLIENT_ID, <<"ignored-subscriber-id">>).
 -define(ALLOWED_CLIENT_ID, <<"allowed-subscriber-id">>).
 -define(BASE64_PAYLOAD_CLIENT_ID, <<"payload-is-base64-encoded">>).
+-define(NO_PAYLOAD_CLIENT_ID, <<"no-payload">>).
 -define(WITH_PROPERTIES, <<"with_properties">>).
 -define(NOT_ALLOWED_CLIENT_ID, <<"not-allowed-subscriber-id">>).
 -define(SERVER_ERR_SUBSCIBER_ID, <<"internal-server-error">>).
@@ -13,6 +14,7 @@
 -define(MOUNTPOINT_BIN, <<"mountpoint">>).
 -define(CHANGED_CLIENT_ID, <<"changed-subscriber-id">>).
 -define(USERNAME, <<"test-user">>).
+-define(CHANGED_USERNAME, <<"changed-user">>).
 -define(PASSWORD, <<"test-password">>).
 -define(TOPIC, <<"test/topic">>).
 -define(PAYLOAD, <<"hello world">>).

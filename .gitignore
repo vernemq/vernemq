@@ -5,6 +5,8 @@ vars.generated
 vars/dev*_vars.config
 *.deb
 *.rpm
+*.crashdump
 
 .ropeproject
 *~
+TAGS

@@ -101,8 +101,7 @@ vmq_listener_start_cmd() ->
                                        end}]},
                  {require_certificate, [{longname, "require_certificate"}]},
                  {tls_version, [{longname, "tls_version"},
-                                {typecast, fun("sslv3") -> sslv3;
-                                              ("tlsv1") -> tlsv1;
+                                {typecast, fun("tlsv1") -> tlsv1;
                                               ("tlsv1.1") -> 'tlsv1.1';
                                               ("tlsv1.2") -> 'tlsv1.2';
                                               (V) ->
@@ -302,7 +301,7 @@ vmq_listener_start_usage() ->
      "  -m, --mountpoint=Mountpoint\n",
      "  --nr_of_acceptors=NrOfAcceptors\n",
      "  --max_connections=[infinity | MaxConnections]\n",
-     "  --protocol_versions=[3|4|5]\n",
+     "  --allowed_protocol_versions=[3|4|5]\n",
      "      Defaults to 3,4\n\n",
      "WebSocket Options\n\n",
      "  --websocket\n",

@@ -6,24 +6,28 @@
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
-init_per_suite(_Config) ->
+init_per_suite(Config) ->
     cover:start(),
     vmq_test_utils:setup(),
-    _Config.
+    [{ct_hooks, vmq_cth}|Config].
 
 end_per_suite(_Config) ->
     vmq_test_utils:teardown(),
     _Config.
 
-init_per_group(mqtt, Config) ->
-    Config1 = [{type, tcp},{port, 1888}, {address, "127.0.0.1"}|Config],
-    start_listener(Config1);
 init_per_group(mqtts, Config) ->
     Config1 = [{type, tcp},{port, 1889}, {address, "127.0.0.1"}|Config],
     start_listener(Config1);
 init_per_group(mqttws, Config) ->
     Config1 = [{type, ws},{port, 1890}, {address, "127.0.0.1"}|Config],
-    start_listener(Config1).
+    start_listener(Config1);
+init_per_group(mqttv4, Config) ->
+    Config1 = [{type, tcp},{port, 1888}, {address, "127.0.0.1"}|Config],
+    [{protover, 4}|start_listener(Config1)];
+init_per_group(mqttv5, Config) ->
+    Config1 = [{type, tcp},{port, 1887}, {address, "127.0.0.1"}|Config],
+    [{protover, 5}|start_listener(Config1)].
+
 
 end_per_group(_Group, Config) ->
     stop_listener(Config),
@@ -41,9 +45,10 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [
-     {group, mqtt},
      {group, mqtts},
-     {group, mqttws}
+     {group, mqttws},
+     {group, mqttv4},
+     {group, mqttv5}
     ].
 
 groups() ->
@@ -61,9 +66,11 @@ groups() ->
          change_subscriber_id_test
         ],
     [
-     {mqtt, [shuffle,sequence], Tests},
+     {mqttv4, [shuffle,sequence],
+      [auth_on_register_change_username_test|Tests]},
      {mqtts, [], Tests},
-     {mqttws, [], Tests}
+     {mqttws, [], Tests},
+     {mqttv5, [auth_on_register_change_username_test]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -167,6 +174,35 @@ change_subscriber_id_test(Config) ->
       auth_on_register, ?MODULE, hook_change_subscriber_id, 5),
     ok = close(Socket, Config).
 
+auth_on_register_change_username_test(Config) ->
+    Connect = mqtt5_v4compat:gen_connect("change-username-test",
+                                         [{keepalive,10}, {username, "old_username"},
+                                          {password, "whatever"}], Config),
+    Connack = mqtt5_v4compat:gen_connack(success, Config),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_change_username, 5),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      on_register, ?MODULE, hook_on_register_changed_username, 3),
+
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register_m5, ?MODULE, hook_change_username_m5, 6),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+      on_register_m5, ?MODULE, hook_on_register_changed_username_m5, 4),
+
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, conn_opts(Config), Config),
+
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register_m5, ?MODULE, hook_change_username_m5, 6),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      on_register_m5, ?MODULE, hook_on_register_changed_username_m5, 4),
+
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      on_register, ?MODULE, hook_on_register_changed_username, 3),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_change_username, 5),
+    ok = close(Socket, Config).
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -177,6 +213,17 @@ hook_uname_password_success(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <
 hook_change_subscriber_id(_, {"", <<"change-sub-id-test">>}, _, _, _) ->
     {ok, [{subscriber_id, {"newmp", <<"changed-client-id">>}}]}.
 hook_on_register_changed_subscriber_id(_, {"newmp", <<"changed-client-id">>}, _) ->
+    ok.
+
+hook_change_username(_, _, <<"old_username">>, _, _) ->
+    {ok, [{username, <<"new_username">>}]}.
+hook_on_register_changed_username(_, _, <<"new_username">>) ->
+    ok.
+
+hook_change_username_m5(_, _, <<"old_username">>, _, _, _) ->
+    {ok, #{username => <<"new_username">>}}.
+
+hook_on_register_changed_username_m5(_,_, <<"new_username">>, _) ->
     ok.
 
 %% Helpers
@@ -216,7 +263,8 @@ conn_opts(Config) ->
             ws ->
                 [{transport, vmq_ws_transport}, {conn_opts, []}]
         end,
-    [{port, Port},{hostname, Address}|TransportOpts].
+    [{port, Port},{hostname, Address},
+     lists:keyfind(propver, 1, Config)|TransportOpts].
 
 load_cacerts() ->
     IntermediateCA = ssl_path("test-signing-ca.crt"),
@@ -241,6 +289,7 @@ start_listener(Config) ->
     {port, Port} = lists:keyfind(port, 1, Config),
     {address, Address} = lists:keyfind(address, 1, Config),
     {type, Type} = lists:keyfind(type, 1, Config),
+    ProtVers = {allowed_protocol_versions, "3,4,5"},
  
     Opts1 =
         case Type of
@@ -256,12 +305,10 @@ start_listener(Config) ->
             ws ->
                 [{websocket,true}]
         end,
-    {ok, _} = vmq_server_cmd:listener_start(Port, Address, Opts1),
+    {ok, _} = vmq_server_cmd:listener_start(Port, Address, [ProtVers | Opts1]),
     [{address, Address},{port, Port},{opts, Opts1}|Config].
 
 ssl_path(File) ->
     Path = filename:dirname(
              proplists:get_value(source, ?MODULE:module_info(compile))),
     filename:join([Path, "ssl", File]).
-
-

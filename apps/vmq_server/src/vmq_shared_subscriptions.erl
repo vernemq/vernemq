@@ -12,6 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 -module(vmq_shared_subscriptions).
+-include("vmq_server.hrl").
 
 -export([publish/5]).
 
@@ -74,13 +75,14 @@ publish_any(Msg, [Subscriber|Subscribers], Acc0) ->
             publish_any(Msg, Subscribers, Acc0)
     end.
 
-publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) when Node == node() ->
+publish_(Msg0, {Node, SubscriberId, SubInfo}, QState, {Local, Remote}) when Node == node() ->
     case vmq_reg:get_queue_pid(SubscriberId) of
         not_found ->
             {error, not_found};
         QPid ->
             try
-                case vmq_queue:enqueue_many(QPid, [{deliver, QoS, Msg}], #{states => [QState]}) of
+                {QoS, Msg1} = maybe_add_sub_id(SubInfo, Msg0),
+                case vmq_queue:enqueue_many(QPid, [{deliver, QoS, Msg1}], #{states => [QState]}) of
                     ok ->
                         {ok, {Local + 1, Remote}};
                     E ->
@@ -91,8 +93,9 @@ publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) when Node == n
                     {error, cant_enqueue}
             end
     end;
-publish_(Msg, {Node, SubscriberId, QoS}, QState, {Local, Remote}) ->
-    Term = {enqueue_many, SubscriberId, [{deliver, QoS, Msg}], #{states => [QState]}},
+publish_(Msg0, {Node, SubscriberId, SubInfo}, QState, {Local, Remote}) ->
+    {QoS, Msg1} = maybe_add_sub_id(SubInfo, Msg0),
+    Term = {enqueue_many, SubscriberId, [{deliver, QoS, Msg1}], #{states => [QState]}},
     case vmq_cluster:remote_enqueue(Node, Term, true) of
         ok ->
             {ok, {Local, Remote + 1}};
@@ -115,3 +118,10 @@ filter_subscribers(Subscribers, prefer_local) ->
 filter_subscribers(Subscribers, local_only) ->
     %% filtered in `vmq_reg`.
     Subscribers.
+
+maybe_add_sub_id({QoS, #{sub_id := SubId}}, #vmq_msg{properties = Props} = Msg) ->
+    {QoS, Msg#vmq_msg{properties = Props#{p_subscription_id => [SubId]}}};
+maybe_add_sub_id({QoS, _UnusedSubInfo}, Msg) ->
+    {QoS, Msg};
+maybe_add_sub_id(QoS, Msg) ->
+    {QoS, Msg}.

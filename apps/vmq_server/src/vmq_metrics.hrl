@@ -44,6 +44,7 @@
 -define(MQTT5_UNSUBSCRIBE_RECEIVED, mqtt5_unsubscribe_received).
 -define(MQTT5_AUTH_SENT, mqtt5_auth_sent).
 -define(MQTT5_AUTH_RECEIVED, mqtt5_auth_received).
+-define(MQTT5_CLIENT_KEEPALIVE_EXPIRED, mqtt5_client_keepalive_expired).
 
 
 -define(MQTT4_CONNACK_SENT, mqtt_connack_sent).
@@ -74,6 +75,7 @@
 -define(MQTT4_PUBLISH_ERROR, mqtt_publish_error).
 -define(MQTT4_SUBSCRIBE_ERROR, mqtt_subscribe_error).
 -define(MQTT4_UNSUBSCRIBE_ERROR, mqtt_unsubscribe_error).
+-define(MQTT4_CLIENT_KEEPALIVE_EXPIRED, mqtt4_client_keepalive_expired).
 -define(METRIC_QUEUE_SETUP, queue_setup).
 -define(METRIC_QUEUE_INITIALIZED_FROM_STORAGE, queue_initialized_from_storage).
 -define(METRIC_QUEUE_TEARDOWN, queue_teardown).
@@ -82,7 +84,7 @@
 -define(METRIC_QUEUE_MESSAGE_UNHANDLED, queue_message_unhandled).
 -define(METRIC_QUEUE_MESSAGE_IN, queue_message_in).
 -define(METRIC_QUEUE_MESSAGE_OUT, queue_message_out).
--define(METRIC_CLIENT_EXPIRED, client_expired).
+-define(METRIC_CLIENT_EXPIRED, client_expired). %% unused/deprecated
 -define(METRIC_CLUSTER_BYTES_RECEIVED, cluster_bytes_received).
 -define(METRIC_CLUSTER_BYTES_SENT, cluster_bytes_sent).
 -define(METRIC_CLUSTER_BYTES_DROPPED, cluster_bytes_dropped).

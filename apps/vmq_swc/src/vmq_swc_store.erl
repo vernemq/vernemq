@@ -140,8 +140,8 @@ lock(#swc_config{store=StoreName}) ->
     gen_server:call(StoreName, {lock, self()}, infinity).
 
 -spec remote_sync_missing(config(), peer(), [dot()]) -> [{db_key(), object()}].
-remote_sync_missing(#swc_config{transport=TMod, peer=OriginPeer} = Config, RemotePeer, Dots) ->
-    TMod:rpc(Config, RemotePeer, ?MODULE, rpc_sync_missing, [OriginPeer, Dots]).
+remote_sync_missing(#swc_config{group=SwcGroup, transport=TMod, peer=OriginPeer}, RemotePeer, Dots) ->
+    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_sync_missing, [OriginPeer, Dots]).
 
 -spec rpc_sync_missing(peer(), [dot()], config()) -> [{db_key(), object()}].
 rpc_sync_missing(OriginPeer, Dots, #swc_config{store=StoreName}) ->
@@ -156,8 +156,8 @@ node_clock(#swc_config{store=StoreName}) ->
     gen_server:call(StoreName, get_node_clock, infinity).
 
 -spec remote_node_clock(config(), peer()) -> nodeclock().
-remote_node_clock(#swc_config{transport=TMod} = Config, RemotePeer) ->
-    TMod:rpc(Config, RemotePeer, ?MODULE, rpc_node_clock, []).
+remote_node_clock(#swc_config{group=SwcGroup, transport=TMod}, RemotePeer) ->
+    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_node_clock, []).
 
 -spec rpc_node_clock(config()) -> nodeclock().
 rpc_node_clock(#swc_config{} = Config) ->
@@ -168,8 +168,8 @@ watermark(Config) ->
     get_watermark(Config).
 
 -spec remote_watermark(config(), peer()) -> watermark().
-remote_watermark(#swc_config{transport=TMod} = Config, RemotePeer) ->
-    TMod:rpc(Config, RemotePeer, ?MODULE, rpc_watermark, []).
+remote_watermark(#swc_config{group=SwcGroup, transport=TMod}, RemotePeer) ->
+    TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_watermark, []).
 
 -spec rpc_watermark(config()) -> watermark().
 rpc_watermark(#swc_config{} = Config) ->
@@ -276,10 +276,10 @@ handle_call({batch, Batch}, _From, #state{config=Config,
     r_o_w_cache_clear(Config),
     case IsBroadcastEnabled of
         true ->
-            #swc_config{transport=TMod} = Config,
+            #swc_config{group=SwcGroup, transport=TMod} = Config,
             lists:foreach(
               fun(Peer) ->
-                      TMod:rpc_cast(Config, Peer, ?MODULE, rpc_broadcast, [Id, lists:reverse(ReplicateObjects)])
+                      TMod:rpc_cast(SwcGroup, Peer, ?MODULE, rpc_broadcast, [Id, lists:reverse(ReplicateObjects)])
               end, Peers);
         _ ->
             ok
@@ -454,15 +454,18 @@ set_peers(NewPeers, #state{id=Id, config=Config, dotkeymap=DKM, nodeclock=LocalC
         _ ->
             %% Ensure the node clock contains all required peers
             %% Adding {Peer, 0} won't override an existing entry
-            TmpClock = lists:foldl(fun(Peer, AccClock) -> swc_node:add(AccClock, {Peer, 0}) end, LocalClock0, NewPeers),
+            TmpClock0 = lists:foldl(fun(Peer, AccClock) -> swc_node:add(AccClock, {Peer, 0}) end, LocalClock0, NewPeers),
             % maybe remove left nodes
-            lists:foreach(
-              fun(LP) ->
-                      % TODO: should we remove the leavingpeer from the NodeClock?
-                      remove_logs_for_peer(Config, DKM, LP)
-              end, LeftPeers),
+            TmpClock1 =
+            lists:foldl(
+              fun(LP, AccClock) ->
+                      % prune the logs for the leaving peer
+                      remove_logs_for_peer(Config, DKM, LP),
+                      % Remove entry in node clock for leaving peer
+                      maps:remove(LP, AccClock)
+              end, TmpClock0, LeftPeers),
 
-            {TmpClock, fix_watermark(WM0, NewPeers)}
+            {TmpClock1, fix_watermark(WM0, NewPeers)}
     end,
     UpdateWatermark_DBop = update_watermark_db_op(Watermark),
     UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock),
@@ -515,12 +518,12 @@ fix_watermark(Watermark, Peers) ->
                 end, WMAcc1, Peers)
       end, swc_watermark:new(), Peers).
 
-update_watermark_internal(Node, NodeClock, #state{id=Id, watermark=Watermark0, nodeclock=NodeClock}) ->
+update_watermark_internal(RemoteNode, RemoteClock, #state{id=Id, watermark=Watermark0, nodeclock=NodeClock}) ->
     % Store the knowledge the other node has about us
     % update my watermark with what I know, based on my node clock
     Watermark1 = swc_watermark:update_peer(Watermark0, Id, NodeClock),
     % update my watermark with what my peer knows, based on its node clock
-    swc_watermark:update_peer(Watermark1, Node, NodeClock).
+    swc_watermark:update_peer(Watermark1, RemoteNode, RemoteClock).
 
 update_watermark_after_sync(Watermark0, RemoteWatermark, Id, RemoteId, NodeClock, RemoteClock) ->
     % update my watermark with what I know, based on my node clock

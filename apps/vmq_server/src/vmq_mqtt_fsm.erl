@@ -23,7 +23,9 @@
          msg_in/2,
          info/2]).
 
--define(CLOSE_AFTER, 5000).
+-define(IS_PROTO_4(X), X =:= 4; X =:= 132).
+-define(IS_PROTO_3(X), X =:= 3; X =:= 131).
+-define(IS_BRIDGE(X), X =:= 131; X =:= 132).
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
 
@@ -68,7 +70,6 @@
           upgrade_qos=false                 :: boolean(),
           reg_view=vmq_reg_trie             :: atom(),
           cap_settings=#cap_settings{}      :: cap_settings(),
-          allowed_protocol_versions         :: [3|4|131|5],
 
           %% flags and settings which have a non-default value if
           %% present and default value if not present.
@@ -83,7 +84,8 @@
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 
-init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
+init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive,
+                               proto_ver=ProtoVer} = ConnectFrame) ->
     rand:seed(exsplus, os:timestamp()),
     MountPoint = proplists:get_value(mountpoint, Opts, ""),
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
@@ -120,6 +122,7 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
     DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
 
     maybe_initiate_trace(ConnectFrame, TraceFun),
+
     set_max_msg_size(MaxMessageSize),
 
     _ = vmq_metrics:incr_mqtt_connect_received(),
@@ -140,16 +143,23 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive} = ConnectFrame) ->
                    retry_interval=1000 * RetryInterval,
                    cap_settings=CAPSettings,
                    reg_view=RegView,
-                   allowed_protocol_versions=AllowedProtocolVersions,
                    def_opts = DOpts1,
                    trace_fun=TraceFun},
 
-    case check_connect(ConnectFrame, State) of
-        {stop, Reason, Out} -> {stop, Reason, serialise([Out])};
-        {NewState, Out} ->
-            {{connected, set_last_time_active(true, NewState)}, serialise([Out])};
-        {NewState, Out, _SessCtrl} ->
-            {{connected, set_last_time_active(true, NewState)}, serialise([Out])}
+    case lists:member(ProtoVer, AllowedProtocolVersions) of
+        true ->
+            case check_connect(ConnectFrame, State) of
+                {stop, Reason, Out} -> {stop, Reason, serialise([Out])};
+                {NewState, Out} ->
+                    {{connected, set_last_time_active(true, NewState)}, serialise([Out])};
+                {NewState, Out, _SessCtrl} ->
+                    {{connected, set_last_time_active(true, NewState)}, serialise([Out])}
+            end;
+        false ->
+            lager:warning("invalid protocol version for ~p ~p",
+                          [SubscriberId, ProtoVer]),
+            {stop, normal, Data} = connack_terminate(?CONNACK_PROTO_VER, State),
+            {stop, normal, serialise([Data])}
     end.
 
 data_in(Data, SessionState) when is_binary(Data) ->
@@ -357,13 +367,14 @@ connected(#mqtt_pubcomp{message_id=MessageId}, State) ->
             _ = vmq_metrics:incr_mqtt_error_invalid_pubcomp(),
             terminate(normal, State)
     end;
-connected(#mqtt_subscribe{message_id=MessageId, topics=Topics}, State) ->
+connected(#mqtt_subscribe{message_id=MessageId, topics=Topics},
+          #state{proto_ver = ProtoVer} = State) ->
     #state{subscriber_id=SubscriberId, username=User,
            cap_settings=CAPSettings} = State,
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
-                SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(MaybeChangedTopics, undefined),
+                SubTopics = subtopics(MaybeChangedTopics, ProtoVer),
                 case vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, SubTopics) of
                     {ok, _} = Res ->
                         vmq_plugin:all(on_subscribe, [User, SubscriberId, MaybeChangedTopics]),
@@ -394,7 +405,12 @@ connected(#mqtt_unsubscribe{message_id=MessageId, topics=Topics}, State) ->
     _ = vmq_metrics:incr_mqtt_unsubscribe_received(),
     OnSuccess =
         fun(_SubscriberId, MaybeChangedTopics) ->
-                vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, SubscriberId, MaybeChangedTopics)
+                case vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, SubscriberId, MaybeChangedTopics) of
+                    ok ->
+                        vmq_plugin:all(on_topic_unsubscribed, [SubscriberId, MaybeChangedTopics]),
+                        ok;
+                    V -> V
+                end
         end,
     case unsubscribe(User, SubscriberId, Topics, OnSuccess) of
         ok ->
@@ -429,6 +445,7 @@ connected(check_keepalive, #state{last_time_active=Last, keep_alive=KeepAlive,
     case timer:now_diff(Now, Last) > (1500000 * KeepAlive) of
         true ->
             lager:warning("client ~p with username ~p stopped due to keepalive expired", [SubscriberId, UserName]),
+            _ = vmq_metrics:incr(?MQTT4_CLIENT_KEEPALIVE_EXPIRED),
             terminate(normal, State);
         false ->
             set_keepalive_check_timer(KeepAlive),
@@ -496,7 +513,7 @@ check_client_id(#mqtt_connect{} = Frame,
     check_client_id(Frame#mqtt_connect{username=UserNameFromCert},
                     State#state{username=UserNameFromCert});
 
-check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=4} = F, State) ->
+check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=Ver} = F, State) when ?IS_PROTO_4(Ver) ->
     %% [MQTT-3.1.3-8]
     %% If the Client supplies a zero-byte ClientId with CleanSession set to 0,
     %% the Server MUST respond to the >CONNECT Packet with a CONNACK return
@@ -511,24 +528,16 @@ check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=4} = F, State) ->
             check_user(F#mqtt_connect{client_id=RandomClientId},
                        State#state{subscriber_id=SubscriberId})
     end;
-check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=3}, State) ->
+check_client_id(#mqtt_connect{client_id= <<>>, proto_ver=Ver}, State) when ?IS_PROTO_3(Ver) ->
     lager:warning("empty client id not allowed in mqttv3 ~p",
                 [State#state.subscriber_id]),
     connack_terminate(?CONNACK_INVALID_ID, State);
-check_client_id(#mqtt_connect{client_id=ClientId, proto_ver=V} = F,
-                #state{max_client_id_size=S,
-                       allowed_protocol_versions=AllowedVersions} = State)
+check_client_id(#mqtt_connect{client_id=ClientId} = F,
+                #state{max_client_id_size=S} = State)
   when byte_size(ClientId) =< S ->
     {MountPoint, _} = State#state.subscriber_id,
     SubscriberId = {MountPoint, ClientId},
-    case lists:member(V, AllowedVersions) of
-        true ->
-            check_user(F, State#state{subscriber_id=SubscriberId});
-        false ->
-            lager:warning("invalid protocol version for ~p ~p",
-                          [SubscriberId, V]),
-            connack_terminate(?CONNACK_PROTO_VER, State)
-    end;
+    check_user(F, State#state{subscriber_id=SubscriberId});
 check_client_id(#mqtt_connect{client_id=Id}, State) ->
     lager:warning("invalid client id ~p", [Id]),
     connack_terminate(?CONNACK_INVALID_ID, State).
@@ -536,7 +545,7 @@ check_client_id(#mqtt_connect{client_id=Id}, State) ->
 check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
     case State#state.allow_anonymous of
         false ->
-            case auth_on_register(User, Password, State) of
+            case auth_on_register(Password, State#state{username=User}) of
                 {ok, QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_session=CleanSession,
                                        cap_settings=CAPSettings, def_opts=DOpts} = State1} ->
                     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
@@ -546,8 +555,8 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                                queue_pid := QPid}} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
-                                                             User]),
-                            State2 = State1#state{username=User, queue_pid=QPid, next_msg_id=MsgId},
+                                                             State1#state.username]),
+                            State2 = State1#state{queue_pid=QPid, next_msg_id=MsgId},
                             check_will(F, SessionPresent, State2);
                         {error, Reason} ->
                             lager:warning("can't register client ~p with username ~p due to ~p",
@@ -616,9 +625,9 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
             connack_terminate(?CONNACK_AUTH, State)
     end.
 
-auth_on_register(User, Password, State) ->
+auth_on_register(Password, State) ->
     #state{clean_session=Clean, peer=Peer, cap_settings=CAPSettings,
-           subscriber_id=SubscriberId} = State,
+           subscriber_id=SubscriberId, username=User} = State,
     HookArgs = [Peer, SubscriberId, User, Password, Clean],
     case vmq_plugin:all_till_ok(auth_on_register, HookArgs) of
         ok ->
@@ -638,6 +647,7 @@ auth_on_register(User, Password, State) ->
 
             ChangedState = State#state{
                              subscriber_id=?state_val(subscriber_id, Args, State),
+                             username=?state_val(username, Args, State),
                              clean_session=?state_val(clean_session, Args, State),
                              reg_view=?state_val(reg_view, Args, State),
                              max_message_rate=?state_val(max_message_rate, Args, State),
@@ -645,8 +655,6 @@ auth_on_register(User, Password, State) ->
                              shared_subscription_policy=?state_val(shared_subscription_policy, Args, State),
                              retry_interval=?state_val(retry_interval, Args, State),
                              upgrade_qos=?state_val(upgrade_qos, Args, State),
-                             allowed_protocol_versions=
-                                 ?state_val(allowed_protocol_versions, Args, State),
                              cap_settings=ChangedCAPSettings
                             },
             {ok, queue_opts(ChangedState, Args), ChangedState};
@@ -778,7 +786,7 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
     case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
             {[], SessCtrl};
-        {error, not_allowed} when Proto == 4 ->
+        {error, not_allowed} when ?IS_PROTO_4(Proto) ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
@@ -799,7 +807,7 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         {ok, _, SessCtrl} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
             {[#mqtt_puback{message_id=MessageId}], SessCtrl};
-        {error, not_allowed} when Proto == 4 ->
+        {error, not_allowed} when ?IS_PROTO_4(Proto) ->
             %% we have to close connection for 3.1.1
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
@@ -830,7 +838,7 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
                     {State#state{
                        waiting_acks=maps:put({qos2, MessageId}, Frame, WAcks)},
                      [Frame], SessCtrl};
-                {error, not_allowed} when Proto == 4 ->
+                {error, not_allowed} when ?IS_PROTO_4(Proto) ->
                     %% we have to close connection for 3.1.1
                     _ = vmq_metrics:incr_mqtt_error_auth_publish(),
                     {error, not_allowed};
@@ -928,9 +936,8 @@ prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State) ->
              dup=IsDup,
              qos=MsgQoS} = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
-    HookArgs = [User, SubscriberId, Topic, Payload],
     {NewTopic, NewPayload} =
-    case vmq_plugin:all_till_ok(on_deliver, HookArgs) of
+    case on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetained) of
         {error, _} ->
             %% no on_deliver hook specified... that's ok
             {Topic, Payload};
@@ -958,6 +965,15 @@ prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State) ->
                       retry_queue=set_retry(publish, OutgoingMsgId, RetryInterval, RetryQueue),
                       waiting_acks=maps:put(OutgoingMsgId,
                                             Msg#vmq_msg{qos=NewQoS}, WAcks)}}
+    end.
+
+on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+    HookArgs0 = [User, SubscriberId, Topic, Payload],
+    case vmq_plugin:all_till_ok(on_deliver, HookArgs0) of
+        {error, _} ->
+            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
+            vmq_plugin:all_till_ok(on_deliver, HookArgs1);
+        Other -> Other
     end.
 
 -spec maybe_publish_last_will(state(), any()) -> ok.
@@ -1141,7 +1157,9 @@ prop_val(Key, Args, Default) when is_integer(Default) ->
 prop_val(Key, Args, Default) when is_boolean(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_boolean/1);
 prop_val(Key, Args, Default) when is_atom(Default) ->
-    prop_val(Key, Args, Default, fun erlang:is_atom/1).
+    prop_val(Key, Args, Default, fun erlang:is_atom/1);
+prop_val(Key, Args, Default) when is_binary(Default) ->
+    prop_val(Key, Args, Default, fun erlang:is_binary/1).
 
 prop_val(Key, Args, Default, Validator) ->
     case proplists:get_value(Key, Args) of
@@ -1240,3 +1258,11 @@ set_defopt(Key, Default, Map) ->
 
 peertoa({_IP, _Port} = Peer) ->
     vmq_mqtt_fsm_util:peertoa(Peer).
+
+subtopics(Topics, ProtoVer) when ?IS_BRIDGE(ProtoVer) ->
+    %% bridge connection
+    SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, undefined),
+    lists:map(fun({T, QoS}) -> {T, {QoS, #{rap => true,
+                                           no_local => true}}} end, SubTopics);
+subtopics(Topics, _Proto) ->
+    vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, undefined).

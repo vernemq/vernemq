@@ -48,7 +48,8 @@ groups() ->
      enhanced_auth_server_rejects,
      enhanced_auth_new_auth_method_fails,
      reauthenticate,
-     reauthenticate_server_rejects
+     reauthenticate_server_rejects,
+     unsubscribe_hook
     ],
     [
      {mqtt, [shuffle], ConnectTests}
@@ -325,6 +326,40 @@ reauthenticate_server_rejects(_Config) ->
     %% [MQTT-4.12.1-2].
     {skip, not_implemented}.
 
+unsubscribe_hook(_Config) ->
+    ets:new(?MODULE, [public, named_table]),
+
+    ok = vmq_plugin_mgr:enable_module_plugin(
+        on_topic_unsubscribed, ?MODULE, hook_on_topic_unsubscribed, 2),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+        auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
+    ok = vmq_plugin_mgr:enable_module_plugin(
+        auth_on_subscribe_m5, ?MODULE, auth_on_subscribe_ok_hook, 4),
+
+    Connect = packetv5:gen_connect("unsubscribe-hook-test", []),
+    Connack = packetv5:gen_connack(),
+    {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
+
+    Topic = packetv5:gen_subtopic("some/topic", 1),
+    Sub = packetv5:gen_subscribe(7, [Topic], #{}),
+    ok = gen_tcp:send(Socket, Sub),
+    {ok, _, _} = packetv5:receive_frame(Socket),
+
+    Unsub = packetv5:gen_unsubscribe(10, ["some/topic"], #{}),
+    ok = gen_tcp:send(Socket, Unsub),
+    {ok, _, _} = packetv5:receive_frame(Socket),
+
+    [{_, true}] = ets:lookup(?MODULE, on_topic_unsubscribed),
+    ok = gen_tcp:close(Socket),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+        on_topic_unsubscribed, ?MODULE, hook_on_topic_unsubscribed, 2),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+        auth_on_subscribe_m5, ?MODULE, auth_on_subscribe_ok_hook, 4),
+    ok = vmq_plugin_mgr:disable_module_plugin(
+        auth_on_register_m5, ?MODULE, auth_on_register_ok_hook, 6),
+
+    ets:delete(?MODULE).
+
 %%%%% Helpers %%%%%
 auth_props(Method, Data) ->
     #{p_authentication_method => Method,
@@ -358,4 +393,12 @@ on_auth_hook(_, _, #{p_authentication_method := ?AUTH_METHOD, p_authentication_d
                            ?P_AUTHENTICATION_DATA =><<"ReauthOK">>}}}.
 
 auth_on_publish_after_reauth(undefined, _, 1, [<<"some">>, <<"topic">>], <<"some payload">>, false, _) ->
+    ok.
+
+hook_on_topic_unsubscribed({"", <<"unsubscribe-hook-test">>}, [[<<"some">>,<<"topic">>]]) ->
+    ets:insert(?MODULE, {on_topic_unsubscribed, true});
+hook_on_topic_unsubscribed(_, _) ->
+    ok.
+
+auth_on_subscribe_ok_hook(_, _, _, _) ->
     ok.

@@ -1,0 +1,44 @@
+fallbacks:
+  erlang:
+    - name: https://github.com/erlangpack/bcrypt
+      license_id: MIT, BSD-4-Clause, BSD-3-Clause
+      license_content: https://raw.githubusercontent.com/erlangpack/bcrypt/master/LICENSE
+    - name: https://github.com/certifi/erlang-certifi
+      license_id: BSD-3-Clause
+      license_content: https://raw.githubusercontent.com/certifi/erlang-certifi/master/LICENSE
+    - name: https://github.com/Kyorai/cuttlefish
+      license_id: Apache-2.0
+      license_content: http://www.apache.org/licenses/LICENSE-2.0.txt
+    - name: https://github.com/uwiger/edown
+      license_id: Apache-2.0
+      license_content: http://www.apache.org/licenses/LICENSE-2.0.txt
+    - name: https://github.com/vernemq/eleveldb
+      license_id: Apache-2.0, BSD-3-Clause
+      license_content: http://www.apache.org/licenses/LICENSE-2.0.txt
+    - name: https://github.com/benoitc/hackney
+      license_id: Apache-2.0
+      license_content: https://raw.githubusercontent.com/benoitc/hackney/master/LICENSE
+    - name: https://github.com/benoitc/unicode_util_compat
+      license_id: Apache-2.0
+      license_content: https://raw.githubusercontent.com/benoitc/unicode_util_compat/master/LICENSE
+    - name: emysql
+      license_id: MIT
+      license_content: https://raw.githubusercontent.com/djustinek/Emysql/master/LICENSE
+    - name: gen_server2
+      license_id: ErlPL-1.1
+      license_content: https://www.erlang.org/EPLICENSE
+    - name: metrics
+      license_id: BSD-3-Clause
+      license_content: https://raw.githubusercontent.com/benoitc/erlang-metrics/master/LICENSE
+    - name: mimerl
+      license_id: MIT
+      license_content: https://raw.githubusercontent.com/benoitc/mimerl/master/LICENSE
+    - name: recon
+      license_id: BSD-3-Clause
+      license_content: https://raw.githubusercontent.com/ferd/recon/master/LICENSE
+    - name: swc
+      license_id: BSD-3-Clause
+      license_content: https://raw.githubusercontent.com/vernemq/ServerWideClocks/master/LICENSE
+    - name: https://github.com/Vagabond/erlang-syslog
+      license_id: BSD-2-Clause
+      license_content: https://raw.githubusercontent.com/Vagabond/erlang-syslog/master/LICENSE

@@ -28,13 +28,17 @@ function auth_on_register(reg)
     assert(reg.username == "test-user")
     assert(reg.password == "test-password")
     assert(reg.clean_session == true)
-    if reg.client_id ~= "changed-subscriber-id" then
+    if reg.client_id == "changed-subscriber-id" then
+         -- we must change subscriber_id
+        print("auth_on_register changed subscriber_id called")
+        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
+    elseif reg.client_id == "changed-username" then
+        -- we must change username
+        print("auth_on_register changed username called")
+        return {username = "override-username"}
+    else
         print("auth_on_register called")
         return validate_client_id(reg.client_id)
-    else
-        -- we must change properties
-        print("auth_on_register changed called")
-        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
     end
 end
 
@@ -120,9 +124,11 @@ end
 function on_deliver(pub)
     assert(pub.username == "test-user")
     assert(pub.client_id == "allowed-subscriber-id")
+    assert(pub.qos == 1)
     assert(pub.mountpoint == "")
     assert(pub.topic == "test/topic")
     assert(pub.payload == "hello world")
+    assert(pub.retain == false)
     print("on_deliver called")
     return true
 end
@@ -155,6 +161,12 @@ function on_client_gone(ev)
     print("on_client_gone called")
 end
 
+function on_session_expired(ev)
+    assert(ev.client_id == "allowed-subscriber-id")
+    assert(ev.mountpoint == "")
+    print("on_session_expired called")
+end
+
 function auth_on_register_m5(reg)
     assert(reg.addr == "192.168.123.123")
     assert(reg.port == 12345)
@@ -183,13 +195,17 @@ function auth_on_register_m5(reg)
     assert(reg.username == "test-user")
     assert(reg.password == "test-password")
     assert(reg.clean_start == true)
-    if reg.client_id ~= "changed-subscriber-id" then
+    if reg.client_id == "changed-subscriber-id" then
+        -- we must change subscriber_id
+        print("auth_on_register_m5 changed subscriber_id called")
+        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
+    elseif reg.client_id == "changed-username" then
+       -- we must change username
+       print("auth_on_register_m5 changed username called")
+       return {username = "override-username"} 
+    else
         print("auth_on_register_m5 called")
         return validate_client_id(reg.client_id)
-    else
-        -- we must change subscriberid
-        print("auth_on_register_m5 changed called")
-        return {subscriber_id = {mountpoint = "override-mountpoint", client_id = "override-client-id"}}
     end
     -- reg.properties are ignored for now.
 end
@@ -274,9 +290,11 @@ end
 function on_deliver_m5(pub)
    assert(pub.username == "test-user")
    assert(pub.client_id == "allowed-subscriber-id")
+   assert(pub.qos == 1)
    assert(pub.mountpoint == "")
    assert(pub.topic == "test/topic")
    assert(pub.payload == "hello world")
+   assert(pub.retain == false)
    assert(pub.properties)
    properties = pub.properties
    assert(properties.p_correlation_data == "correlation_data")
@@ -370,6 +388,7 @@ hooks = {
     on_client_wakeup = on_client_wakeup,
     on_client_offline = on_client_offline,
     on_client_gone = on_client_gone,
+    on_session_expired = on_session_expired,
 
     auth_on_register_m5 = auth_on_register_m5,
     on_register_m5 = on_register_m5,

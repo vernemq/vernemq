@@ -174,7 +174,7 @@ subscription_row_init(Row) ->
 
 message_ref_row_init(Row) ->
     SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
-    case vmq_plugin:only(msg_store_find, [SubscriberId]) of
+    case vmq_message_store:find(SubscriberId, other) of
         {ok, MsgRefs} ->
             lists:foldl(fun(MsgRef, Acc) ->
                                 [maps:merge(Row, #{'__msg_ref' => MsgRef,
@@ -187,7 +187,7 @@ message_ref_row_init(Row) ->
 message_row_init(Row) ->
     SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
     MsgRef = maps:get('__msg_ref', Row),
-    case vmq_plugin:only(msg_store_read, [SubscriberId, MsgRef]) of
+    case vmq_message_store:read(SubscriberId, MsgRef) of
         {ok, #vmq_msg{msg_ref=MsgRef, qos=QoS,
                       dup=Dup, routing_key=RoutingKey,
                       payload=Payload}} ->

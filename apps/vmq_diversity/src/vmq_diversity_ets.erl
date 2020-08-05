@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_ets).
+-include_lib("luerl/include/luerl.hrl").
 
 -export([install/1]).
 
@@ -24,12 +25,12 @@ install(St) ->
 
 table() ->
     [
-     {<<"insert">>, {function, fun insert/2}},
-     {<<"insert_new">>, {function, fun insert_new/2}},
-     {<<"lookup">>, {function, fun lookup/2}},
-     {<<"delete">>, {function, fun delete/2}},
-     {<<"delete_all">>, {function, fun delete_all/2}},
-     {<<"ensure_table">>, {function, fun ensure_table/2}}
+     {<<"insert">>, #erl_func{code=fun insert/2}},
+     {<<"insert_new">>, #erl_func{code=fun insert_new/2}},
+     {<<"lookup">>, #erl_func{code=fun lookup/2}},
+     {<<"delete">>, #erl_func{code=fun delete/2}},
+     {<<"delete_all">>, #erl_func{code=fun delete_all/2}},
+     {<<"ensure_table">>, #erl_func{code=fun ensure_table/2}}
     ].
 
 insert([BTableId, ObjectOrObjects] = As, St) when is_binary(BTableId) ->

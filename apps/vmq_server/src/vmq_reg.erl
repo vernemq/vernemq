@@ -46,7 +46,8 @@
 %% called by vmq_cluster_com
 -export([route_remote_msg/4]).
 %% used from plugins
--export([direct_plugin_exports/1]).
+-export([direct_plugin_exports/1,
+         direct_plugin_exports/2]).
 %% used by reg views
 -export([subscribe_subscriber_changes/0,
          fold_subscriptions/2,
@@ -76,7 +77,7 @@ subscribe(false, SubscriberId, Topics) ->
     vmq_cluster:if_ready(fun subscribe_op/2, [SubscriberId, Topics]);
 subscribe(true, SubscriberId, Topics) ->
     %% trade consistency for availability
-    subscribe_op(SubscriberId, Topics).
+    if_ready(fun subscribe_op/2, [SubscriberId, Topics]).
 
 subscribe_op(SubscriberId, Topics) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
@@ -150,11 +151,14 @@ register_subscriber(CAPAllowRegister, _, SubscriberId, _StartClean, #{allow_mult
             {error, not_ready}
     end.
 
--spec register_subscriber_(pid() | undefined, subscriber_id(), boolean(), map(), non_neg_integer()) ->
-    {'ok', map()} | {error, any()}.
-register_subscriber_(_, _, _, _, 0) ->
-    {error, register_subscriber_retry_exhausted};
 register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
+    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, register_subscriber_retry_exhausted).
+
+-spec register_subscriber_(pid() | undefined, subscriber_id(), boolean(), map(), non_neg_integer(), any()) ->
+    {'ok', map()} | {error, any()}.
+register_subscriber_(_, _, _, _, 0, Reason) ->
+    {error, Reason};
+register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason) ->
     % wont create new queue in case it already exists
     {ok, QueuePresent, QPid} =
     case vmq_queue_sup_sup:start_queue(SubscriberId) of
@@ -164,68 +168,91 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
             vmq_queue_sup_sup:start_queue(SubscriberId);
         Ret -> Ret
     end,
-    % remap subscriber... enabling that new messages will eventually
-    % reach the new queue.
-    % Remapping triggers remote nodes to initiate queue migration
-    {SubscriptionsPresent, UpdatedSubs, ChangedNodes}
-    = maybe_remap_subscriber(SubscriberId, StartClean),
-    SessionPresent1 = SubscriptionsPresent or QueuePresent,
-    SessionPresent2 =
-    case StartClean of
-        true ->
-            false; %% SessionPresent is always false in case CleanupSession=true
-        false when QueuePresent ->
-            %% no migration expected to happen, as queue is already local.
-            SessionPresent1;
-        false ->
-            Fun = fun(Sid, OldNode) ->
-                          case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
-                              not_found ->
-                                  case get_queue_pid(Sid) of
-                                      not_found ->
-                                          block;
-                                      LocalPid when is_pid(LocalPid) ->
-                                          done
-                                  end;
-                              OldPid when is_pid(OldPid) ->
-                                  block
-                          end
-                  end,
-            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes, Fun),
-            SessionPresent1
-    end,
-    case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
-        {'EXIT', {normal, _}} ->
-            %% queue went down in the meantime, retry
-            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
-        {'EXIT', {noproc, _}} ->
-            timer:sleep(100),
-            %% queue was stopped in the meantime, retry
-            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
-        {'EXIT', Reason} ->
-            {error, Reason};
-        {error, draining} ->
-            %% queue is still draining it's offline queue to a different
+    case vmq_queue:info(QPid) of
+        #{statename := drain} ->
+            %% queue is draining it's offline queue to a different
             %% remote queue. This can happen if a client hops around
             %% different nodes very frequently... adjust load balancing!!
             timer:sleep(100),
-            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
-        {error, {cleanup, _Reason}} ->
-            %% queue is still cleaning up.
-            timer:sleep(100),
-            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1);
-        {ok, Opts} ->
-            {ok, Opts#{session_present => SessionPresent2,
-                       queue_pid => QPid}}
+            %% retry and see if it is finished soon before trying to
+            %% remap the subscriber.
+            register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, {register_subscriber_retry_exhausted, draining});
+        _ ->
+            %% remap subscriber... enabling that new messages will
+            %% eventually reach the new queue.  Remapping triggers
+            %% remote nodes to initiate queue migration
+            {SubscriptionsPresent, UpdatedSubs, ChangedNodes}
+                = maybe_remap_subscriber(SubscriberId, StartClean),
+            SessionPresent1 = SubscriptionsPresent or QueuePresent,
+            SessionPresent2 =
+                case StartClean of
+                    true ->
+                        false; %% SessionPresent is always false in case CleanupSession=true
+                    false when QueuePresent ->
+                        %% no migration expected to happen, as queue is already local.
+                        SessionPresent1;
+                    false ->
+                        Fun = fun(Sid, OldNode) ->
+                                      case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
+                                          not_found ->
+                                              case get_queue_pid(Sid) of
+                                                  not_found ->
+                                                      block;
+                                                  LocalPid when is_pid(LocalPid) ->
+                                                      done
+                                              end;
+                                          OldPid when is_pid(OldPid) ->
+                                              case vmq_queue:info(OldPid) of
+                                                  #{statename := drain} ->
+                                                      %% Queue is in draining state, we're done here and
+                                                      %% can return to the caller.
+                                                      %% TODO: We can improve this by only having a single
+                                                      %% rpc call. But this would break backward upgrade
+                                                      %% compatibility.
+                                                      done;
+                                                  _ ->
+                                                      block
+                                              end
+                                      end
+                              end,
+                        block_until(SubscriberId, UpdatedSubs, ChangedNodes, Fun),
+                        SessionPresent1
+                end,
+            case catch vmq_queue:add_session(QPid, SessionPid, QueueOpts) of
+                {'EXIT', {normal, _}} ->
+                    %% queue went down in the meantime, retry
+                    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, register_subscriber_retry_exhausted);
+                {'EXIT', {noproc, _}} ->
+                    timer:sleep(100),
+                    %% queue was stopped in the meantime, retry
+                    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, register_subscriber_retry_exhausted);
+                {'EXIT', Reason} ->
+                    {error, Reason};
+                {error, draining} ->
+                    %% queue is still draining it's offline queue to a different
+                    %% remote queue. This can happen if a client hops around
+                    %% different nodes very frequently... adjust load balancing!!
+                    timer:sleep(100),
+                    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, {register_subscriber_retry_exhausted, draining});
+                {error, {cleanup, _Reason}} ->
+                    %% queue is still cleaning up.
+                    timer:sleep(100),
+                    register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N -1, register_subscriber_retry_exhausted);
+                {ok, Opts} ->
+                    {ok, Opts#{session_present => SessionPresent2,
+                               queue_pid => QPid}}
+            end
     end.
 
 
-%% block_until_migrated/4 has three cases to consider, the logic for
+
+%% block_until/4 has three cases to consider, the logic for
 %% these cases are handled by the BlockCond function
 %%
 %% migrate queue to local node (register_subscriber):
 %%
-%%    we wait until there is no queue on the original node and until we have one locally
+%%    we wait until there is
+%%      "the original queue has been terminated" OR "the original queue is indraining state"
 %%
 %% migrate local queue to remote node (cluster leave):
 %%
@@ -234,8 +261,8 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
 %% migrate dead queue (node down) to another node in cluster (including this one):
 %%
 %%    we have no local queue, but wait until the (offline) queue exists on target node.
-block_until_migrated(_, _, [], _) -> ok;
-block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, BlockCond) ->
+block_until(_, _, [], _) -> ok;
+block_until(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, BlockCond) ->
     %% the call to subscriptions_for_subscriber_id will resolve any remaining
     %% conflicts to this entry by broadcasting the resolved value to the
     %% other nodes
@@ -250,9 +277,9 @@ block_until_migrated(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, Bloc
     case BlockCond(SubscriberId, Node) of
         block ->
             timer:sleep(100),
-            block_until_migrated(SubscriberId, UpdatedSubs, ChangedNodes, BlockCond);
+            block_until(SubscriberId, UpdatedSubs, ChangedNodes, BlockCond);
         done ->
-            block_until_migrated(SubscriberId, UpdatedSubs, Rest, BlockCond)
+            block_until(SubscriberId, UpdatedSubs, Rest, BlockCond)
     end.
 
 -spec register_session(subscriber_id(), map()) -> {ok, #{initial_msg_id := msg_id(),
@@ -424,7 +451,7 @@ deliver_retained(_, _, _, #{retain_handling := send_if_new_sub}, true) ->
 deliver_retained(_SubscriberId, [<<"$share">>|_], _QoS, _SubOpts, _) ->
     %% Never deliver retained messages to subscriber groups.
     ok;
-deliver_retained({MP, _} = SubscriberId, Topic, QoS, _SubOpts, _) ->
+deliver_retained({MP, _} = SubscriberId, Topic, QoS, SubOpts, _) ->
     QPid = get_queue_pid(SubscriberId),
     vmq_retain_srv:match_fold(
       fun ({T, #retain_msg{payload = Payload,
@@ -439,8 +466,9 @@ deliver_retained({MP, _} = SubscriberId, Topic, QoS, _SubOpts, _) ->
                              msg_ref=vmq_mqtt_fsm_util:msg_ref(),
                              expiry_ts = ExpiryTs,
                              properties=Properties},
+              Msg1 = maybe_add_sub_id({QoS,SubOpts}, Msg),
               maybe_delete_expired(ExpiryTs, MP, Topic),
-              vmq_queue:enqueue(QPid, {deliver, QoS, Msg});
+              vmq_queue:enqueue(QPid, {deliver, QoS, Msg1});
           ({T, Payload}, _) when is_binary(Payload) ->
               %% compatibility with old style retained messages.
               Msg = #vmq_msg{routing_key=T,
@@ -694,26 +722,53 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
     CAPUnsubscribe = vmq_config:get_env(allow_unsubscribe_during_netsplit, false),
     SGPolicyConfig = vmq_config:get_env(shared_subscription_policy, prefer_local),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
-    MountPoint = "",
-    ClientId = fun(T) ->
-                       list_to_binary(
-                         base64:encode_to_string(
-                           integer_to_binary(
-                             erlang:phash2(T)
-                            )
-                          ))
-               end,
-    CallingPid = self(),
-    SubscriberId = {MountPoint, ClientId(CallingPid)},
+    {ok, #{register_fun := RegFun,
+           publish_fun := PubFun,
+           subscribe_fun := SubFun,
+           unsubscribe_fun := UnsubFun}} =
+        direct_plugin_exports(Mod, #{mountpoint => "",
+                                     cap_publish => CAPPublish,
+                                     cap_subscribe => CAPSubscribe,
+                                     cap_unsubscribe => CAPUnsubscribe,
+                                     sg_policy => SGPolicyConfig,
+                                     reg_view => RegView}),
+    {RegFun, PubFun, {SubFun, UnsubFun}}.
 
+-spec direct_plugin_exports(module(), map()) ->
+   {ok, #{client_id := client_id(),
+          register_fun := function(),
+          publish_fun := function(),
+          subscribe_fun := function(),
+          unsubscribe_fun := function()}}.
+direct_plugin_exports(LogName, Opts) ->
+    CAPPublish = maps:get(cap_publish, Opts, false),
+    CAPSubscribe = maps:get(cap_subscribe, Opts, false),
+    CAPUnsubscribe = maps:get(cap_unsubscribe, Opts, false),
+    SGPolicy = maps:get(sg_policy, Opts, prefer_local),
+    Mountpoint = maps:get(mountpoint, Opts, ""),
+    RegView = maps:get(reg_view, Opts, vmq_reg_trie),
+
+    CallingPid = self(),
+    ClientIdDef = list_to_binary(
+                    base64:encode_to_string(
+                      integer_to_binary(
+                        erlang:phash2(CallingPid)))),
+    ClientId = maps:get(client_id, Opts, ClientIdDef),
+    SubscriberId = {Mountpoint, ClientId},
+    MaybeWaitTillReady =
+        case maps:get(wait_till_ready, Opts, undefined) of
+            undefined -> fun wait_til_ready/0;
+            true -> fun wait_til_ready/0;
+            false -> fun() -> ok end
+        end,
     RegisterFun =
     fun() ->
             PluginPid = self(),
-            wait_til_ready(),
+            MaybeWaitTillReady(),
             PluginSessionPid = spawn_link(
                                  fun() ->
                                          monitor(process, PluginPid),
-                                         vmq_mqtt_fsm_util:plugin_receive_loop(PluginPid, Mod)
+                                         vmq_mqtt_fsm_util:plugin_receive_loop(PluginPid, LogName)
                                  end),
             QueueOpts = maps:merge(vmq_queue:default_opts(),
                                    #{cleanup_on_disconnect => true,
@@ -724,10 +779,10 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
     end,
 
     PublishFun =
-    fun([W|_] = Topic, Payload, Opts) when is_binary(W)
+    fun([W|_] = Topic, Payload, Opts_) when is_binary(W)
                                             and is_binary(Payload)
-                                            and is_map(Opts) ->
-            wait_til_ready(),
+                                            and is_map(Opts_) ->
+            MaybeWaitTillReady(),
             %% allow a plugin developer to override
             %% - mountpoint
             %% - dup flag
@@ -737,35 +792,40 @@ direct_plugin_exports(Mod) when is_atom(Mod) ->
             %% - shared subscription policy
             Msg = #vmq_msg{
                      routing_key=Topic,
-                     mountpoint=maps:get(mountpoint, Opts, MountPoint),
+                     mountpoint=maps:get(mountpoint, Opts_, Mountpoint),
                      payload=Payload,
                      msg_ref=vmq_mqtt_fsm_util:msg_ref(),
-                     qos = maps:get(qos, Opts, 0),
-                     dup=maps:get(dup, Opts, false),
-                     retain=maps:get(retain, Opts, false),
-                     sg_policy=maps:get(shared_subscription_policy, Opts, SGPolicyConfig)
+                     qos = maps:get(qos, Opts_, 0),
+                     dup=maps:get(dup, Opts_, false),
+                     retain=maps:get(retain, Opts_, false),
+                     sg_policy=maps:get(shared_subscription_policy, Opts_, SGPolicy)
                     },
-            publish(CAPPublish, RegView, ClientId(CallingPid), Msg)
+            publish(CAPPublish, RegView, ClientId, Msg)
     end,
 
     SubscribeFun =
     fun([W|_] = Topic) when is_binary(W) ->
-            wait_til_ready(),
+            MaybeWaitTillReady(),
             CallingPid = self(),
-            subscribe(CAPSubscribe, {MountPoint, ClientId(CallingPid)}, [{Topic, 0}]);
+            subscribe(CAPSubscribe, {Mountpoint, ClientId}, [{Topic, 0}]);
        (_) ->
             {error, invalid_topic}
     end,
 
     UnsubscribeFun =
     fun([W|_] = Topic) when is_binary(W) ->
-            wait_til_ready(),
+            MaybeWaitTillReady(),
             CallingPid = self(),
-            unsubscribe(CAPUnsubscribe, {MountPoint, ClientId(CallingPid)}, [Topic]);
+            unsubscribe(CAPUnsubscribe, {Mountpoint, ClientId}, [Topic]);
        (_) ->
             {error, invalid_topic}
     end,
-    {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}}.
+    {ok, #{register_fun => RegisterFun,
+           publish_fun => PublishFun,
+           subscribe_fun => SubscribeFun,
+           unsubscribe_fun => UnsubscribeFun,
+           client_id => ClientId}}.
+
 
 subscribe_subscriber_changes() ->
     vmq_subscriber_db:subscribe_db_events().
@@ -905,3 +965,13 @@ retain_pre(FutureRetain) when is_tuple(FutureRetain),
                               is_integer(element(2, FutureRetain)),
                               element(2, FutureRetain) > ?RETAIN_PRE_V ->
     element(3, FutureRetain).
+
+
+-spec if_ready(_, _) -> any().
+if_ready(Fun, Args) ->
+    case persistent_term:get(subscribe_trie_ready, 0) of
+        1 ->
+            apply(Fun, Args);
+        0 ->
+            {error, not_ready}
+    end.

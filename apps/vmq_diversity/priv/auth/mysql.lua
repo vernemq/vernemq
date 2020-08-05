@@ -102,6 +102,7 @@ hooks = {
     on_unsubscribe = on_unsubscribe,
     on_client_gone = on_client_gone,
     on_client_offline = on_client_offline,
+    on_session_expired = on_session_expired,
 
     auth_on_register_m5 = auth_on_register_m5,
     auth_on_publish_m5 = auth_on_publish_m5,

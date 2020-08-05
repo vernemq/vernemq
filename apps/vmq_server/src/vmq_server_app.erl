@@ -26,6 +26,7 @@
 -spec start(_, _) -> {'error', _} | {'ok', pid()} | {'ok', pid(), _}.
 start(_StartType, _StartArgs) ->
     ok = vmq_metadata:start(),
+    ok = vmq_message_store:start(),
 
     case vmq_server_sup:start_link() of
         {error, _} = E ->
@@ -63,5 +64,6 @@ start_user_plugin({_Order, #{path := Path,
 
 -spec stop(_) -> 'ok'.
 stop(_State) ->
+    _ = vmq_message_store:stop(),
     _ = vmq_metadata:stop(),
     ok.

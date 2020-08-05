@@ -18,31 +18,26 @@
 -include("vmq_metrics.hrl").
 
 -export([routes/0]).
--export([init/3,
-         handle/2,
-         terminate/3]).
+-export([init/2,
+         content_types_provided/2,
+         reply_to_text/2]).
 
 routes() ->
     [{"/metrics", ?MODULE, []}].
 
-init(_Type, Req, _Opts) ->
-    {ok, Req, undefined}.
+init(Req, Opts) ->
+    {cowboy_rest, Req, Opts}.
 
-handle(Req, State) ->
-    {ContentType, Req2} = cowboy_req:header(<<"content-type">>, Req,
-                                            <<"text/plain">>),
-    {ok, reply(Req2, ContentType), State}.
+content_types_provided(Req, State) ->
+	{[
+		{{<<"text">>, <<"plain">>, '*'}, reply_to_text}
+    ], Req, State}.
 
-terminate(_Reason, _Req, _State) ->
-    ok.
-
-reply(Req, <<"text/plain">>) ->
+reply_to_text(Req, State) ->
     %% Prometheus output
     Metrics = vmq_metrics:metrics(#{aggregate => false}),
     Output = prometheus_output(Metrics, {#{}, []}),
-    {ok, Req2} = cowboy_req:reply(200, [{<<"content-type">>, <<"text/plain">>}],
-                                  Output, Req),
-    Req2.
+    {Output, Req, State}.
 
 prometheus_output([{#metric_def{type=histogram = Type, name=Metric, description=Descr, labels=Labels}, Val}|Metrics],
                   {EmittedAcc, OutAcc}) ->
@@ -95,7 +90,7 @@ line(BinMetric, Node, Labels, BinVal) ->
      <<"} ">>, BinVal, <<"\n">>].
 
 labels(Labels) ->
-    join($,,
+    lists:join($,,
          lists:map(fun({Key, Val}) ->
                            label(Key, Val)
                    end, Labels)).
@@ -117,10 +112,3 @@ type(counter) ->
     <<" counter\n">>;
 type(histogram) ->
     <<" histogram\n">>.
-
-%% backported to support OTP18. TODO: replace with lists:join/2 when
-%% dropping OTP18.
-join(Sep, [H|T]) -> [H|join_prepend(Sep, T)].
-
-join_prepend(_Sep, []) -> [];
-join_prepend(Sep, [H|T]) -> [Sep,H|join_prepend(Sep,T)].

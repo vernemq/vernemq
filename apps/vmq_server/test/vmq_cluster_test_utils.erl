@@ -110,18 +110,19 @@ start_node(Name, Config, Case) ->
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
     %% have the slave nodes monitor the runner node, so they can't outlive it
     NodeConfig = [
-            {monitor_master, true},
-            {erl_flags, "-smp"}, %% smp for the eleveldb god
-            {startup_functions, [
-                    {code, set_path, [CodePath]}
-                    ]}],
+        {monitor_master, true},
+        {erl_flags, "-smp"} %% smp for the eleveldb god
+    ],
+    VmqServerPrivDir = code:priv_dir(vmq_server),
+    ct:log("Starting node ~p with Opts = ~p", [Name, NodeConfig]),
     case ct_slave:start(Name, NodeConfig) of
         {ok, Node} ->
-
+            true = rpc:block_call(Node, code, set_path, [CodePath]),
             PrivDir = proplists:get_value(priv_dir, Config),
             NodeDir = filename:join([PrivDir, Node, Case]),
             ok = rpc:call(Node, application, load, [vmq_server]),
             ok = rpc:call(Node, application, load, [vmq_plugin]),
+            ok = rpc:call(Node, application, load, [vmq_generic_msg_store]),
             ok = rpc:call(Node, application, load, [plumtree]),
             ok = rpc:call(Node, application, load, [lager]),
             ok = rpc:call(Node, application, set_env, [lager,
@@ -139,7 +140,7 @@ start_node(Name, Config, Case) ->
                                                                  random_port(Node)},
                                                                 []}]}
                                                        ]]),
-            ok = rpc:call(Node, application, set_env, [vmq_server,
+            ok = rpc:call(Node, application, set_env, [vmq_generic_msg_store,
                                                        msg_store_opts,
                                                        [{store_dir,
                                                          NodeDir++"/msgstore"}]
@@ -150,6 +151,9 @@ start_node(Name, Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_plugin,
                                                        plugin_dir,
                                                        NodeDir]),
+            ok = rpc:call(Node, application, set_env, [vmq_plugin,
+                                                       default_schema_dir,
+                                                       [VmqServerPrivDir]]),
 
             {ok, _} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),

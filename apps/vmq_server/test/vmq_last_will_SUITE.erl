@@ -65,7 +65,8 @@ groups() ->
          suppress_lwt_on_session_takeover_test],
     [
      {mqttv4, [shuffle], Tests ++ []},
-     {mqttv5, [shuffle], Tests ++ [will_delay_v5_test]}
+     {mqttv5, [shuffle], Tests ++ [will_delay_v5_test,
+                                   disconnect_with_will_msg_test]}
     ].
 
 
@@ -258,6 +259,41 @@ suppress_lwt_on_session_takeover_test(Config) ->
     %% connecting again will produce no LWT message.
     {ok, _} = do_client_connect(Connect, Connack, [], Config),
     {error, timeout} = gen_tcp:recv(Socket, 0, 200),
+
+    disable_on_subscribe(),
+    disable_on_publish().
+
+disconnect_with_will_msg_test(Config) ->
+    enable_on_subscribe(),
+    enable_on_publish(),
+
+    Topic = "disconnect/with/will/msg",
+    Msg = <<"disconnect-with-will-msg">>,
+    ClientIdLWTSub = vmq_cth:ustr(Config) ++ "subscriber",
+
+    %% setup a subscriber to receive LWT messages
+    ConnectSub = gen_connect(ClientIdLWTSub, [{keepalive,60}], Config),
+    Connack = gen_connack(success, Config),
+    Subscribe = gen_subscribe(53, Topic, 0, Config),
+    Suback = gen_suback(53, 0, Config),
+    {ok, Socket} = do_client_connect(ConnectSub, Connack, [], Config),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = expect_packet(Socket, "suback", Suback, Config),
+
+    ExpLWTPublish = gen_publish(Topic, 0, Msg, [], Config),
+    ClientId = vmq_cth:ustr(Config),
+    Connect = gen_connect(ClientId,
+                          [{keepalive,60}, {will_topic, Topic}, {will_msg, Msg}],
+                          Config),
+
+    %% connect and disconnec with lwt msg
+    {ok, LWTSocket} = do_client_connect(Connect, Connack, [], Config),
+    Disconnect = packetv5:gen_disconnect(?M5_DISCONNECT_WITH_WILL_MSG, #{}),
+    ok = gen_tcp:send(LWTSocket, Disconnect),
+    ok = gen_tcp:close(LWTSocket),
+
+    ok = expect_packet(Socket, "publish", ExpLWTPublish, Config),
+    ok = gen_tcp:close(Socket),
 
     disable_on_subscribe(),
     disable_on_publish().

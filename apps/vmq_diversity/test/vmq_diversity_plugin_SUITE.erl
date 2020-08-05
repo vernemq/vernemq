@@ -47,6 +47,7 @@ all() ->
      on_client_wakeup_test,
      on_client_offline_test,
      on_client_gone_test,
+     on_session_expired_test,
      auth_on_register_undefined_creds_test,
      invalid_modifiers_test,
 
@@ -70,10 +71,12 @@ auth_on_register_test(_) ->
                       [peer(), allowed_subscriber_id(), username(), password(), true]),
     {error,invalid_credentials} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), not_allowed_subscriber_id(), username(), password(), true]),
-    {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_register,
+    {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), ignored_subscriber_id(), username(), password(), true]),
     {ok, [{subscriber_id, {"override-mountpoint", <<"override-client-id">>}}]} = vmq_plugin:all_till_ok(auth_on_register,
-                      [peer(), changed_subscriber_id(), username(), password(), true]).
+                      [peer(), changed_subscriber_id(), username(), password(), true]),
+    {ok, [{username, <<"override-username">>}]} = vmq_plugin:all_till_ok(auth_on_register,
+                      [peer(), changed_username(), username(), password(), true]).
 
 props() ->
     #{p_user_property => [{<<"key1">>, <<"val1">>}]}.
@@ -83,7 +86,7 @@ auth_on_publish_test(_) ->
                       [username(), allowed_subscriber_id(), 1, topic(), payload(), false]),
     {error, not_authorized} = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), not_allowed_subscriber_id(), 1, topic(), payload(), false]),
-    {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_publish,
+    {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), ignored_subscriber_id(), 1, topic(), payload(), false]),
     {ok, [{topic, [<<"hello">>, <<"world">>]}]} = vmq_plugin:all_till_ok(auth_on_publish,
                       [username(), changed_subscriber_id(), 1, topic(), payload(), false]).
@@ -101,7 +104,7 @@ auth_on_subscribe_test(_) ->
                       [username(), allowed_subscriber_id(), [{topic(), 1}]]),
     {error, not_authorized} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [username(), not_allowed_subscriber_id(), [{topic(), 1}]]),
-    {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe,
+    {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [username(), ignored_subscriber_id(), [{topic(), 1}]]),
     {ok, [{[<<"hello">>, <<"world">>], 2}]} = vmq_plugin:all_till_ok(auth_on_subscribe,
                       [username(), changed_subscriber_id(), [{topic(), 1}]]).
@@ -117,14 +120,14 @@ on_subscribe_test(_) ->
                             [username(), allowed_subscriber_id(), [{topic(), 1}]]).
 
 on_unsubscribe_test(_) ->
-    {error, chain_exhausted} = vmq_plugin:all_till_ok(on_unsubscribe,
+    {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(on_unsubscribe,
                                              [username(), allowed_subscriber_id(), [topic()]]),
     {ok, [[<<"hello">>, <<"world">>]]} = vmq_plugin:all_till_ok(on_unsubscribe,
                       [username(), changed_subscriber_id(), [topic()]]).
 
 on_deliver_test(_) ->
     ok = vmq_plugin:all_till_ok(on_deliver,
-                                [username(), allowed_subscriber_id(), topic(), payload()]).
+                                [username(), allowed_subscriber_id(), 1, topic(), payload(), false]).
 
 on_offline_message_test(_) ->
     [next] = vmq_plugin:all(on_offline_message, [allowed_subscriber_id(), 2,
@@ -135,6 +138,8 @@ on_client_offline_test(_) ->
     [next] = vmq_plugin:all(on_client_offline, [allowed_subscriber_id()]).
 on_client_gone_test(_) ->
     [next] = vmq_plugin:all(on_client_gone, [allowed_subscriber_id()]).
+on_session_expired_test(_) ->
+    [next] = vmq_plugin:all(on_session_expired, [allowed_subscriber_id()]).
 
 auth_on_register_undefined_creds_test(_) ->
     Username = undefined,
@@ -147,7 +152,7 @@ auth_on_publish_m5_test(_) ->
                       [username(), allowed_subscriber_id(), 1, topic(), payload(), false, props()]),
     {error, not_authorized} = vmq_plugin:all_till_ok(auth_on_publish_m5,
                       [username(), not_allowed_subscriber_id(), 1, topic(), payload(), false, props()]),
-    {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_publish_m5,
+    {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_publish_m5,
                       [username(), ignored_subscriber_id(), 1, topic(), payload(), false, props()]),
     {ok, #{topic := [<<"hello">>, <<"world">>]}} = vmq_plugin:all_till_ok(auth_on_publish_m5,
                       [username(), changed_subscriber_id(), 1, topic(), payload(), false, props()]).
@@ -157,10 +162,12 @@ auth_on_register_m5_test(_) ->
                       [peer(), allowed_subscriber_id(), username(), password(), true, props()]),
     {error,invalid_credentials} = vmq_plugin:all_till_ok(auth_on_register_m5,
                       [peer(), not_allowed_subscriber_id(), username(), password(), true, #{}]),
-    {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_register_m5,
+    {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_register_m5,
                       [peer(), ignored_subscriber_id(), username(), password(), true, #{}]),
     {ok, #{subscriber_id := {"override-mountpoint", <<"override-client-id">>}}} = vmq_plugin:all_till_ok(auth_on_register_m5,
-                      [peer(), changed_subscriber_id(), username(), password(), true, #{}]).
+                      [peer(), changed_subscriber_id(), username(), password(), true, #{}]),
+    {ok, #{username := <<"override-username">>}} = vmq_plugin:all_till_ok(auth_on_register_m5,
+                      [peer(), changed_username(), username(), password(), true, #{}]).
 
 auth_on_register_m5_modify_props_test(_) ->
     WantUserProps = [{<<"k1">>, <<"v1">>},
@@ -224,7 +231,7 @@ on_publish_m5_test(_) ->
     [next] = vmq_plugin:all(on_publish_m5, Args).
 
 on_deliver_m5_test(_) ->
-    Args = [username(), allowed_subscriber_id(), topic(), payload(),
+    Args = [username(), allowed_subscriber_id(), 1, topic(), payload(), false,
             #{?P_USER_PROPERTY =>
                   [{<<"k1">>, <<"v1">>},
                    {<<"k2">>, <<"v2">>}],
@@ -251,7 +258,7 @@ auth_on_subscribe_m5_test(_) ->
                       [username(), allowed_subscriber_id(), [{topic(), {1, subopts()}}], Props]),
     {error, not_authorized} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [username(), not_allowed_subscriber_id(), [{topic(), {1, subopts()}}], props()]),
-    {error, chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
+    {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [username(), ignored_subscriber_id(), [{topic(), {1, subopts()}}], props()]),
     {ok, #{topics := [{[<<"hello">>, <<"world">>], {2, #{rap := true}}}]}} = vmq_plugin:all_till_ok(auth_on_subscribe_m5,
                       [username(), changed_subscriber_id(), [{topic(), {1, subopts()}}], props()]).
@@ -294,6 +301,8 @@ not_allowed_subscriber_id() ->
 changed_subscriber_id() ->
     {"", <<"changed-subscriber-id">>}.
 
+changed_username() ->
+    {"", <<"changed-username">>}.
 
 username() -> <<"test-user">>.
 password() -> <<"test-password">>.

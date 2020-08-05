@@ -24,8 +24,6 @@
          data_in/2,
          msg_in/2]).
 
--define(CLOSE_AFTER, 5000).
-
 -record(state, {
           peer         :: peer(),
           opts         :: list(),
@@ -34,7 +32,8 @@
          }).
 
 init(Peer, Opts) ->
-    TRef = erlang:send_after(?CLOSE_AFTER, self(), close_timeout),
+    ConnectTimeout = vmq_config:get_env(mqtt_connect_timeout, 5000),
+    TRef = erlang:send_after(ConnectTimeout, self(), close_timeout),
     State = #state{peer=Peer,
                    opts=Opts,
                    max_message_size=vmq_config:get_env(max_message_size, 0),
@@ -77,6 +76,10 @@ parse_connect_frame(Data, MaxMessageSize) ->
     case determine_protocol_version(Data) of
         5 ->
             vmq_parser_mqtt5:parse(Data, MaxMessageSize);
+        131 ->
+            vmq_parser:parse(Data, MaxMessageSize);
+        132 ->
+            vmq_parser:parse(Data, MaxMessageSize);
         4 ->
             vmq_parser:parse(Data, MaxMessageSize);
         3 ->
@@ -109,6 +112,10 @@ get_protocol_info(<<0:8, 4:8, "MQTT", 5:8, _/binary>>) ->
     5;
 get_protocol_info(<<0:8, 4:8, "MQTT", 4:8, _/binary>>) ->
     4;
+get_protocol_info(<<0:8, 4:8, "MQTT", 131:8, _/binary>>) ->
+    131;
+get_protocol_info(<<0:8, 4:8, "MQTT", 132:8, _/binary>>) ->
+    132;
 get_protocol_info(<<0:8, 4:8, "MQTT", _:8, _/binary>>) ->
     {error, unknown_protocol_version};
 get_protocol_info(<<0:8, 6:8, "MQIsdp", 3:8, _/binary>>) ->

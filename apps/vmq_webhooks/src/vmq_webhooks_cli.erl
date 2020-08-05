@@ -65,7 +65,8 @@ status_cmd() ->
         fun(_, [], []) ->
                 Table = 
                     [[{hook, Hook}, {endpoint, binary_to_list(Endpoint)},
-                      {base64payload, b64opt(Opts)}] ||
+                      {base64payload, b64opt(Opts)},
+                      {response_timeout, maps:get(response_timeout, Opts)}] ||
                         {Hook, Endpoints} <- vmq_webhooks_plugin:all_hooks(),
                         {Endpoint, Opts} <- Endpoints],
                 [clique_status:table(Table)];
@@ -87,7 +88,23 @@ register_cmd() ->
                                     fun("true") -> true;
                                        ("false") -> false;
                                        (Val) -> {{error, {invalid_flag_value, {base64payload, Val}}}}
-                                    end}]}],
+                                    end}]},
+                 {no_payload, [{longname, "no_payload"},
+                               {typecast,
+                                fun("true") -> true;
+                                   ("false") -> false;
+                                   (Val) -> {{error, {invalid_flag_value, {no_payload, Val}}}}
+                              end}]},
+                 {response_timeout, [{longname, "response_timeout"},
+                                     {typecast,
+                                      fun(Val) ->
+                                              try
+                                                  list_to_integer(Val)
+                                              catch
+                                                  error:badarg ->
+                                                      {{error, {invalid_flag_value, {respose_timeout, Val}}}}
+                                              end
+                                      end}]}],
     Callback =
         fun(_, [{hook, Hook}, {endpoint, Endpoint}], Flags) ->
                 Opts = get_opts(Flags),
@@ -108,9 +125,11 @@ register_cmd() ->
 
 get_opts(Flags) ->
     Defaults = #{
-      base64_payload => true
-     },
-    Keys = [base64_payload],
+                 base64_payload => true,
+                 no_payload => false,
+                 response_timeout => 5000
+                },
+    Keys = [base64_payload, no_payload, response_timeout],
     maps:merge(Defaults, maps:with(Keys, maps:from_list(Flags))).
 
 deregister_cmd() -> 
@@ -150,6 +169,7 @@ hook_keyspec() ->
                                         "on_client_wakeup",
                                         "on_client_offline",
                                         "on_client_gone",
+					"on_session_expired",
                                         "auth_on_register_m5",
                                         "auth_on_publish_m5",
                                         "auth_on_subscribe_m5",
@@ -202,7 +222,14 @@ register_usage() ->
      "  Registers a webhook endpoint with a hook.",
      "\n\n"
      "  --base64payload=<true|false>\n",
-     "     base64 encode the MQTT payload. Defaults to true.",
+     "     base64 encode the MQTT payload. Defaults to true.\n",
+     "  --no_payload=<true|false>\n",
+     "     Applies only to the auth_on_publish and auth_on_publish_m5\n",
+     "     webhooks. If true the MQTT payload is ommitted from the JSON"
+     "     object. Defaults to false.\n",
+     "  --response_timeout=TimeoutInMilliseconds\n",
+     "     Set the timeout for the endpoint to respond.\n",
+     "     Defaults to 5000 milliseconds.",
      "\n\n"
     ].
 

@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 -module(gen_mqtt_client).
--behavior(gen_fsm).
+-behaviour(gen_fsm).
 -include("vmq_types.hrl").
 
 -ifdef(nowarn_gen_fsm).
@@ -70,7 +70,7 @@
 -callback on_unsubscribe(Topics :: [any()], State :: any()) ->
     {ok, State :: any()} |
     {stop, Reason :: any()}.
--callback on_publish(Topic :: any(), Payload :: binary(), State :: any()) ->
+-callback on_publish(Topic :: any(), Payload :: binary(), Opts :: map(), State :: any()) ->
     {ok, State :: any()} |
     {stop, Reason :: any()}.
 
@@ -89,7 +89,8 @@
          publish/5,
          disconnect/1,
          call/2,
-         cast/2]).
+         cast/2,
+         metrics/2]).
 
 
 %% gen_fsm callbacks
@@ -120,7 +121,7 @@
 
 -record(state, {host                      :: inet:ip_address(),
                 port                      :: inet:port_number(),
-                sock                      :: gen_tcp:socket() | ssl:socket(),
+                sock                      :: undefined | gen_tcp:socket() | ssl:sslsocket(),
                 msgid = 1                 :: non_neg_integer(),
                 username                  :: binary(),
                 password                  :: binary(),
@@ -162,7 +163,9 @@ start(Name, Module, Args, Opts) ->
     gen_fsm:start(Name, ?MODULE, [Module, Args, Opts], GenFSMOpts).
 
 info(Pid) ->
-    gen_fsm:sync_send_all_state_event(Pid, info).
+    gen_fsm:sync_send_all_state_event(Pid, info, infinity).
+
+metrics(Pid, CR) -> gen_fsm:sync_send_all_state_event(Pid, {get_metrics, CR}, infinity).
 
 stats(Pid) ->
     case erlang:process_info(Pid, [dictionary]) of
@@ -291,8 +294,16 @@ connected({unsubscribe, Topics} = Msg, State=#state{transport={Transport, _}, so
                                   State#state{msgid='++'(MsgId),
                                               info_fun=NewInfoFun})};
 
+connected({publish, PubReq}, #state{o_queue=#queue{size=Size} = _Q} = State) when Size > 0 ->
+    NewState = maybe_queue_outgoing(PubReq, State),
+    {next_state, connected, NewState};
+                                            
 connected({publish, PubReq}, State) ->
     {next_state, connected, send_publish(PubReq, State)};
+                                            
+connected({publish_from_queue, PubReq}, State) ->
+    State1 = send_publish(PubReq, State),
+    {next_state, connected, maybe_publish_offline_msgs(State1)};
 
 connected({retry, Key}, State) ->
     {next_state, connected, handle_retry(Key, State)};
@@ -336,7 +347,6 @@ init([Mod, Args, Opts]) ->
     InfoFun = proplists:get_value(info_fun, Opts, {fun(_,_) -> ok end, []}),
     MaxQueueSize = proplists:get_value(max_queue_size, Opts, 0),
     {Transport, TransportOpts} = proplists:get_value(transport, Opts, {gen_tcp, []}),
-
     State = #state{host = Host, port = Port, proto_version=ProtoVer,
         username = Username, password = Password, client=ClientId, mod=Mod,
         clean_session=CleanSession, last_will_topic=LWTopic, last_will_msg=LWMsg, last_will_qos=LWQos,
@@ -479,9 +489,9 @@ handle_frame(connected, #mqtt_pubrel{message_id=MessageId}, State0) ->
     #state{transport={Transport,_}, sock=Socket, info_fun=InfoFun} = State0,
     %% qos2 flow
     case get_remove_unacked_msg(MessageId, State0) of
-        {ok, {{Topic, Payload}, State1}} ->
+        {ok, {{Topic, Payload, Opts}, State1}} ->
             NewInfoFun0 = call_info_fun({pubrel_in, MessageId}, InfoFun),
-            {next_state, connected, State2} = wrap_res(connected, on_publish, [Topic, Payload], State1),
+            {next_state, connected, State2} = wrap_res(connected, on_publish, [Topic, Payload, Opts], State1),
             NewInfoFun1 = call_info_fun({pubcomp_out, MessageId}, NewInfoFun0),
             PubCompFrame = #mqtt_pubcomp{message_id=MessageId},
             send_frame(Transport, Socket, PubCompFrame),
@@ -503,23 +513,26 @@ handle_frame(connected, #mqtt_pubcomp{message_id=MessageId}, State0) ->
     end;
 
 handle_frame(connected, #mqtt_publish{message_id=MessageId, topic=Topic,
-    qos=QoS, payload=Payload}, State) ->
+    qos=QoS, payload=Payload, retain=Retain, dup=Dup}, State) ->
     #state{transport={Transport, _}, sock=Socket, info_fun=InfoFun} = State,
     NewInfoFun = call_info_fun({publish_in, MessageId, Payload, QoS}, InfoFun),
+    Opts = #{qos => QoS,
+             retain => unflag(Retain),
+             dup => unflag(Dup)},
     case QoS of
         0 ->
-            wrap_res(connected, on_publish, [Topic, Payload], State#state{info_fun=NewInfoFun});
+            wrap_res(connected, on_publish, [Topic, Payload, Opts], State#state{info_fun=NewInfoFun});
         1 ->
             PubAckFrame = #mqtt_puback{message_id=MessageId},
             NewInfoFun1 = call_info_fun({puback_out, MessageId}, NewInfoFun),
-            Res = wrap_res(connected, on_publish, [Topic, Payload], State#state{info_fun=NewInfoFun1}),
+            Res = wrap_res(connected, on_publish, [Topic, Payload, Opts], State#state{info_fun=NewInfoFun1}),
             send_frame(Transport, Socket, PubAckFrame),
             Res;
         2 ->
             PubRecFrame = #mqtt_pubrec{message_id=MessageId},
             NewInfoFun1 = call_info_fun({pubrec_out, MessageId}, NewInfoFun),
             send_frame(Transport, Socket, PubRecFrame),
-            {next_state, connected, store_unacked_msg(MessageId, {Topic, Payload},
+            {next_state, connected, store_unacked_msg(MessageId, {Topic, Payload, Opts},
                                                           State#state{info_fun=NewInfoFun1})}
     end;
 
@@ -536,11 +549,24 @@ handle_event(Event, StateName, State) ->
 
 handle_sync_event(info, _From, StateName,
                   #state{o_queue=#queue{size=Size,drop=Drop,max=Max}}=State) ->
+    {message_queue_len, Len} = erlang:process_info(self(), message_queue_len),
     Info =
         #{out_queue_size=>Size,
           out_queue_dropped=>Drop,
-          out_queue_max_size=>Max},
+          out_queue_max_size=>Max,
+          process_mailbox_size => Len},
     {reply, {ok, Info}, StateName, State};
+
+handle_sync_event({get_metrics, CR}, _From, StateName, State) ->
+    Metrics = #{
+    vmq_bridge_publish_out_0 => counters:get(CR, 1),
+    vmq_bridge_publish_out_1 => counters:get(CR, 2),
+    vmq_bridge_publish_out_2 => counters:get(CR, 3),
+    vmq_bridge_publish_in_0 => counters:get(CR, 4),
+    vmq_bridge_publish_in_1 => counters:get(CR, 5),
+    vmq_bridge_publish_in_2 => counters:get(CR, 6)},
+{reply, {ok, Metrics}, StateName, State};
+
 handle_sync_event(Req, From, StateName, State) ->
     wrap_res(StateName, handle_call, [Req, From], State).
 
@@ -651,8 +677,8 @@ maybe_publish_offline_msgs(State) -> State.
 
 publish_from_queue(#queue{size=Size, queue=QQ} = Q, State0) when Size > 0 ->
     {{value, PubReq}, NewQQ} = queue:out(QQ),
-    State1 = send_publish(PubReq, State0),
-    maybe_publish_offline_msgs(State1#state{o_queue=Q#queue{size=Size-1, queue=NewQQ}}).
+    gen_fsm:send_event(self(), {publish_from_queue, PubReq}),
+    State0#state{o_queue=Q#queue{size=Size-1, queue=NewQQ}}.
 
 drop(#queue{drop=D}=Q) ->
     put(?PD_QDROP, D+1),
@@ -722,12 +748,12 @@ cleanup_unacked_msgs(#state{clean_session=true} = State) ->
     State#state{unacked_msgs=maps:new()};
 cleanup_unacked_msgs(State) -> State.
 
-store_unacked_msg(MessageId, {_Topic, _Payload} = Msg, #state{unacked_msgs=UnackedMsgs} = State) ->
+store_unacked_msg(MessageId, {_Topic, _Payload, _Opts} = Msg, #state{unacked_msgs=UnackedMsgs} = State) ->
     State#state{unacked_msgs=maps:put(MessageId, Msg, UnackedMsgs)}.
 
 get_remove_unacked_msg(MessageId, #state{unacked_msgs=UnackedMsgs} = State) ->
     case maps:find(MessageId, UnackedMsgs) of
-        {ok, {_Topic, _Payload} = Msg} ->
+        {ok, {_Topic, _Payload, _Opts} = Msg} ->
             {ok, {Msg, State#state{unacked_msgs=maps:remove(MessageId, UnackedMsgs)}}};
         _ ->
             error
@@ -743,3 +769,6 @@ active_once(ssl, Sock) ->
 
 call_info_fun(Info, {Fun, FunState}) ->
     {Fun, Fun(Info, FunState)}.
+
+unflag(0) -> false;
+unflag(1) -> true.

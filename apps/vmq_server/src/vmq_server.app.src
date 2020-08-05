@@ -7,7 +7,6 @@
                   kernel,
                   stdlib,
                   lager,
-                  eleveldb,
                   cowboy,
                   ranch,
                   os_mon,
@@ -18,7 +17,8 @@
                   vmq_plugin,
                   clique,
                   jsx,
-                  gen_server2
+                  gen_server2,
+                  stdout_formatter
                  ]},
   {mod, { vmq_server_app, []}},
   {env, [
@@ -96,17 +96,6 @@
             {send_timeout, 30000}, 
             {send_timeout_close, true}
         ]},
-
-      % default message store opts
-      {msg_store_childspecs, [{vmq_lvldb_store_sup,
-                               {vmq_lvldb_store_sup, start_link, []},
-                               permanent, 5000, supervisor, [vmq_lvldb_store_sup]}]},
-      {msg_store_opts, [
-                        {store_dir, "./data/msgstore"},
-                        {open_retries, 30},
-                        {open_retry_delay, 2000}
-                       ]},
-
 
       % Graphite
       {graphite_enabled, false},

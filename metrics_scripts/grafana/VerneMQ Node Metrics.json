@@ -259,7 +259,7 @@
           },
           "targets": [
             {
-              "expr": "rate(mqtt_publish_received[30s])",
+              "expr": "sum(rate(mqtt_publish_received[30s]))",
               "hide": false,
               "intervalFactor": 2,
               "metric": "mqtt_publish_sent",
@@ -336,7 +336,7 @@
           },
           "targets": [
             {
-              "expr": "rate(mqtt_publish_sent[30s])",
+              "expr": "sum(rate(mqtt_publish_sent[30s]))",
               "intervalFactor": 2,
               "metric": "mqtt_publish_sent",
               "refId": "A",
