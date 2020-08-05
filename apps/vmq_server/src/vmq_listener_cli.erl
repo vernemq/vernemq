@@ -52,6 +52,12 @@ vmq_listener_start_cmd() ->
                                                       {typecast, fun("true") -> true;
                                                                     (_) -> false
                                                                  end}]},
+                 {allowed_protocol_versions, [{longname, "allowed_protocol_versions"},
+                                              {typecast, fun(ProtoVers) ->
+                                                                 {ok, T, _} = erl_scan:string("[" ++ ProtoVers ++ "]."),
+                                                                 {ok, Term} = erl_parse:parse_term(T),
+                                                                 Term
+                                                         end}]},
                  {http, [{shortname, "http"},
                          {longname, "http"}]},
                  {ssl, [{longname, "ssl"}]},
@@ -95,8 +101,7 @@ vmq_listener_start_cmd() ->
                                        end}]},
                  {require_certificate, [{longname, "require_certificate"}]},
                  {tls_version, [{longname, "tls_version"},
-                                {typecast, fun("sslv3") -> sslv3;
-                                              ("tlsv1") -> tlsv1;
+                                {typecast, fun("tlsv1") -> tlsv1;
                                               ("tlsv1.1") -> 'tlsv1.1';
                                               ("tlsv1.2") -> 'tlsv1.2';
                                               (V) ->
@@ -295,7 +300,9 @@ vmq_listener_start_usage() ->
      "General Options\n\n",
      "  -m, --mountpoint=Mountpoint\n",
      "  --nr_of_acceptors=NrOfAcceptors\n",
-     "  --max_connections=[infinity | MaxConnections]\n\n",
+     "  --max_connections=[infinity | MaxConnections]\n",
+     "  --allowed_protocol_versions=[3|4|5]\n",
+     "      Defaults to 3,4\n\n",
      "WebSocket Options\n\n",
      "  --websocket\n",
      "      use the Websocket protocol as the underlying transport\n\n",

@@ -13,7 +13,9 @@
 %% limitations under the License.
 -module(vmq_schema).
 
--export([translate_listeners/1]).
+-export([translate_listeners/1,
+         string_to_secs/1,
+         parse_list_to_term/1]).
 
 translate_listeners(Conf) ->
     %% cuttlefish messes up with the tree-like configuration style if
@@ -31,9 +33,9 @@ translate_listeners(Conf) ->
                 end,
     MPVal = fun(Name, Val2, Def) -> case Val2 of
                                         "off" -> "";
-                                        "" -> Def;
+                                        undefined -> Def;
                                         S when is_list(S) -> S;
-                                        _ -> cuttlefish:invalid(Name ++ "should be a string")
+                                        _ -> cuttlefish:invalid(Name ++ " should be a string, is: " ++ Val2)
                                     end
             end,
 
@@ -47,12 +49,12 @@ translate_listeners(Conf) ->
     IntVal = fun(_, I, _) when is_integer(I) -> I;
                 (_, undefined, Def) -> Def end,
 
-    %% A value looking like "[3,4]" or "[3, 4]"
+    %% A value looking like "[3,4]" or "[3, 4]" or "3,4"
     StringIntegerListVal =
         fun(_, undefined, Def) -> Def;
            (_, Val, _) ->
-                {ok, T, _} = erl_scan:string(Val ++ "."),
-                {ok, Term} = erl_parse:parse_term(T),
+                %% TODO: improve error handling here
+                {ok, Term} = parse_list_to_term(Val),
                 Term
         end,
 
@@ -102,6 +104,9 @@ translate_listeners(Conf) ->
     {WSIPs, WSAllowedProto} = lists:unzip(extract("listener.ws", "allowed_protocol_versions", StringIntegerListVal, Conf)),
     {WS_SSLIPs, WS_SSLAllowedProto} = lists:unzip(extract("listener.wss", "allowed_protocol_versions", StringIntegerListVal, Conf)),
 
+    {TCPIPs, TCPBufferSizes} = lists:unzip(extract("listener.tcp", "buffer_sizes", StringIntegerListVal, Conf)),
+    {SSLIPs, SSLBufferSizes} = lists:unzip(extract("listener.ssl", "buffer_sizes", StringIntegerListVal, Conf)),
+
     {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
     {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLConfigMod} = lists:unzip(extract("listener.https", "config_mod", AtomVal, Conf)),
@@ -109,7 +114,6 @@ translate_listeners(Conf) ->
 
                                                 % SSL
     {SSLIPs, SSLCAFiles} = lists:unzip(extract("listener.ssl", "cafile", StrVal, Conf)),
-    {SSLIPs, SSLCAPaths} = lists:unzip(extract("listener.ssl", "capath", StrVal, Conf)),
     {SSLIPs, SSLDepths} = lists:unzip(extract("listener.ssl", "depth", IntVal, Conf)),
     {SSLIPs, SSLCertFiles} = lists:unzip(extract("listener.ssl", "certfile", StrVal, Conf)),
     {SSLIPs, SSLCiphers} = lists:unzip(extract("listener.ssl", "ciphers", StrVal, Conf)),
@@ -121,7 +125,6 @@ translate_listeners(Conf) ->
 
                                                 % WSS
     {WS_SSLIPs, WS_SSLCAFiles} = lists:unzip(extract("listener.wss", "cafile", StrVal, Conf)),
-    {WS_SSLIPs, WS_SSLCAPaths} = lists:unzip(extract("listener.wss", "capath", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLDepths} = lists:unzip(extract("listener.wss", "depth", IntVal, Conf)),
     {WS_SSLIPs, WS_SSLCertFiles} = lists:unzip(extract("listener.wss", "certfile", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLCiphers} = lists:unzip(extract("listener.wss", "ciphers", StrVal, Conf)),
@@ -133,7 +136,6 @@ translate_listeners(Conf) ->
 
                                                 % VMQS
     {VMQ_SSLIPs, VMQ_SSLCAFiles} = lists:unzip(extract("listener.vmqs", "cafile", StrVal, Conf)),
-    {VMQ_SSLIPs, VMQ_SSLCAPaths} = lists:unzip(extract("listener.vmqs", "capath", StrVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLDepths} = lists:unzip(extract("listener.vmqs", "depth", IntVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLCertFiles} = lists:unzip(extract("listener.vmqs", "certfile", StrVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLCiphers} = lists:unzip(extract("listener.vmqs", "ciphers", StrVal, Conf)),
@@ -144,7 +146,6 @@ translate_listeners(Conf) ->
 
                                                 % HTTPS
     {HTTP_SSLIPs, HTTP_SSLCAFiles} = lists:unzip(extract("listener.https", "cafile", StrVal, Conf)),
-    {HTTP_SSLIPs, HTTP_SSLCAPaths} = lists:unzip(extract("listener.https", "capath", StrVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLDepths} = lists:unzip(extract("listener.https", "depth", IntVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLCertFiles} = lists:unzip(extract("listener.https", "certfile", StrVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLCiphers} = lists:unzip(extract("listener.https", "ciphers", StrVal, Conf)),
@@ -157,7 +158,8 @@ translate_listeners(Conf) ->
                                   TCPNrOfAcceptors,
                                   TCPMountPoint,
                                   TCPProxyProto,
-                                  TCPAllowedProto])),
+                                  TCPAllowedProto,
+                                  TCPBufferSizes])),
     WS = lists:zip(WSIPs, MZip([WSMaxConns,
                                 WSNrOfAcceptors,
                                 WSMountPoint,
@@ -176,7 +178,6 @@ translate_listeners(Conf) ->
                                   SSLNrOfAcceptors,
                                   SSLMountPoint,
                                   SSLCAFiles,
-                                  SSLCAPaths,
                                   SSLDepths,
                                   SSLCertFiles,
                                   SSLCiphers,
@@ -185,12 +186,12 @@ translate_listeners(Conf) ->
                                   SSLRequireCerts,
                                   SSLVersions,
                                   SSLUseIdents,
-                                  SSLAllowedProto])),
+                                  SSLAllowedProto,
+                                  SSLBufferSizes])),
     WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns,
                                      WS_SSLNrOfAcceptors,
                                      WS_SSLMountPoint,
                                      WS_SSLCAFiles,
-                                     WS_SSLCAPaths,
                                      WS_SSLDepths,
                                      WS_SSLCertFiles,
                                      WS_SSLCiphers,
@@ -204,7 +205,6 @@ translate_listeners(Conf) ->
                                        VMQ_SSLNrOfAcceptors,
                                        VMQ_SSLMountPoint,
                                        VMQ_SSLCAFiles,
-                                       VMQ_SSLCAPaths,
                                        VMQ_SSLDepths,
                                        VMQ_SSLCertFiles,
                                        VMQ_SSLCiphers,
@@ -215,7 +215,6 @@ translate_listeners(Conf) ->
     HTTPS = lists:zip(HTTP_SSLIPs, MZip([HTTP_SSLMaxConns,
                                          HTTP_SSLNrOfAcceptors,
                                          HTTP_SSLCAFiles,
-                                         HTTP_SSLCAPaths,
                                          HTTP_SSLDepths,
                                          HTTP_SSLCertFiles,
                                          HTTP_SSLCiphers,
@@ -243,9 +242,9 @@ extract(Prefix, Suffix, Val, Conf) ->
     Mappings = ["max_connections", "nr_of_acceptors", "mountpoint"],
     ExcludeRootSuffixes
         = [%% ssl listener specific
-           "cafile", "capath", "depth", "certfile", "ciphers", "crlfile",
+           "cafile", "depth", "certfile", "ciphers", "crlfile",
            "keyfile", "require_certificate", "tls_version",
-           "use_identity_as_username",
+           "use_identity_as_username", "buffer_sizes",
            %% http listener specific
            "config_mod", "config_fun",
            %% mqtt listener specific
@@ -279,3 +278,25 @@ extract(Prefix, Suffix, Val, Conf) ->
                                              fun({K, _V}) ->
                                                      cuttlefish_variable:is_fuzzy_match(K, string:tokens(NameSubPrefix, "."))
                                              end, Conf), not lists:member(Name, Mappings ++ ExcludeRootSuffixes)].
+
+string_to_secs(S) ->
+    [Entity|T] = lists:reverse(S),
+    case {Entity, list_to_integer(lists:reverse(T))} of
+        {$s, D} -> D;
+        {$h, D} -> D * 60 * 60;
+        {$d, D} -> D * 24 * 60 * 60;
+        {$w, D} -> D * 7 * 24 * 60 * 60;
+        {$m, D} -> D * 4 * 7 * 24 * 60 * 60;
+        {$y, D} -> D * 12 * 4 * 7 * 24 * 60 * 60;
+        _ -> error
+    end.
+
+parse_list_to_term(Val) ->
+    {ok, T, _}
+        = case re:run(Val, "\\[.*\\]", []) of
+              nomatch ->
+                  erl_scan:string("[" ++ Val ++ "].");
+              {match, _} ->
+                  erl_scan:string(Val ++ ".")
+          end,
+    erl_parse:parse_term(T).

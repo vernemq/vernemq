@@ -15,6 +15,8 @@
 -module(vmq_acl).
 -behaviour(auth_on_subscribe_hook).
 -behaviour(auth_on_publish_hook).
+-behaviour(auth_on_subscribe_m5_hook).
+-behaviour(auth_on_publish_m5_hook).
 -behaviour(on_config_change_hook).
 
 -export([start/0,
@@ -26,6 +28,8 @@
 
 -export([auth_on_subscribe/3,
          auth_on_publish/6,
+         auth_on_subscribe_m5/4,
+         auth_on_publish_m5/7,
          change_config/1]).
 
 -import(vmq_topic, [words/1, match/2]).
@@ -72,21 +76,28 @@ change_config(Configs) ->
     end.
 
 auth_on_subscribe(_, _, []) -> ok;
-auth_on_subscribe(User, ClientId, [{Topic, _Qos}|Rest]) ->
-    case check(read, Topic, User, ClientId) of
+auth_on_subscribe(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
+    case check(read, Topic, User, SubscriberId) of
         true ->
-            auth_on_subscribe(User, ClientId, Rest);
+            auth_on_subscribe(User, SubscriberId, Rest);
         false ->
             next
     end.
 
-auth_on_publish(User, ClientId, _, Topic, _, _) ->
-    case check(write, Topic, User, ClientId) of
+auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
+    case check(write, Topic, User, SubscriberId) of
         true ->
             ok;
         false ->
             next
     end.
+
+auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
+    auth_on_subscribe(User, SubscriberId, Topics).
+
+auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
+    auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain).
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal
@@ -165,14 +176,14 @@ parse_acl_line({F, eof}, _User) ->
     F(F,close),
     ok.
 
-check(Type, [Word|_] = Topic, User, ClientId) when is_binary(Word) ->
+check(Type, [Word|_] = Topic, User, SubscriberId) when is_binary(Word) ->
     case check_all_acl(Type, Topic) of
         true -> true;
         false when User == all -> false;
         false ->
             case check_user_acl(Type, User, Topic) of
                 true -> true;
-                false -> check_pattern_acl(Type, Topic, User, ClientId)
+                false -> check_pattern_acl(Type, Topic, User, SubscriberId)
             end
     end.
 
@@ -185,10 +196,10 @@ check_user_acl(Type, User, TIn) ->
     iterate_until_true(ets:match(Tbl, {{User, '$1'}, '_'}),
                       fun([T]) -> match(TIn, T) end).
 
-check_pattern_acl(Type, TIn, User, ClientId) ->
+check_pattern_acl(Type, TIn, User, SubscriberId) ->
     {Tbl, _} = t(Type, pattern, TIn),
     iterate_until_true(Tbl, fun(P) ->
-                                    T = topic(User, ClientId, P),
+                                    T = topic(User, SubscriberId, P),
                                     match(TIn, T)
                             end).
 

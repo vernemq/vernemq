@@ -30,8 +30,13 @@
          code_change/3]).
 
 -record(state, {timer_ref :: reference() | 'undefined'}).
-
 -define(INACTIVITY_TIMEOUT, 5000).
+
+-ifdef(fun_stacktrace).
+-define(WITH_STACKTRACE(T, R, S), T:R -> S = erlang:get_stacktrace(),).
+-else.
+-define(WITH_STACKTRACE(T, R, S), T:R:S ->).
+-endif.
 
 %%%===================================================================
 %%% gen_event callbacks
@@ -177,9 +182,10 @@ format_pretty_proc_info(Pid, Acf) ->
             Res ->
                 {"~w", [Res]}
         end
-    catch X:Y ->
+    catch
+        ?WITH_STACKTRACE(X, Y, Stacktrace)
         {"Pid ~w, ~W ~W at ~w\n",
-            [Pid, X, 20, Y, 20, erlang:get_stacktrace()]}
+            [Pid, X, 20, Y, 20, Stacktrace]}
     end.
 
 %% Enabling warnings_as_errors prevents a build since this function is

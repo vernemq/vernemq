@@ -1,9 +1,30 @@
 # VerneMQ: A Distributed MQTT Broker
 
-[![Build Status](https://travis-ci.org/erlio/vernemq.svg?branch=master)](https://travis-ci.org/erlio/vernemq)
-[![Docker Pulls](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)
-[![Slack Invite](https://slack-invite.vernemq.com/badge.svg)](https://slack-invite.vernemq.com)
+[![Build Status](https://travis-ci.org/vernemq/vernemq.svg?branch=master)](https://travis-ci.org/vernemq/vernemq)
+<a href="https://docs.vernemq.com">
+		<img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" target="_blank" />
+	</a>
+	<a href="https://github.com/vernemq/vernemq/graphs/commit-activity">
+		<img alt="Maintenance" src="https://img.shields.io/badge/Maintained%3F-yes-green.svg" target="_blank" />
+	</a>
+<img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/vernemq/vernemq">
+<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/vernemq/vernemq">
+<a href="https://twitter.com/vernemq">
+		<img
+			alt="Twitter: VerneMQ"
+			src="https://img.shields.io/twitter/follow/vernemq.svg?style=social"
+			target="_blank"
+		/>
+	</a>
+[![Google group : VerneMQ Users](https://img.shields.io/badge/Google%20Group-VerneMQ%20Users-blue.svg)](https://groups.google.com/forum/#!forum/vernemq-users)
+Old Docker Repo | New Docker Repo
+------------ | -------------
+[![Docker Pulls from Old Repo](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)|[![Docker Pulls from New Repo](https://img.shields.io/docker/pulls/vernemq/vernemq.svg)](https://hub.docker.com/r/vernemq/vernemq/)
+- - - 
 
+VerneMQ is known to be deployed and used in: :us: :canada: :brazil: :mexico: :de: :fr: :switzerland: :denmark: :netherlands: :belgium: :it: :es: :romania: :portugal: :ru: :lithuania: :czech_republic: :slovakia: :austria: :poland: :norway: :sweden: :india: :jp: :indonesia: :vietnam: :kr: :south_africa: :kenya: :serbia: :croatia: :greece: :uk: :ukraine: :australia: :new_zealand: :cn: :egypt: :finland: :hungary: :israel: :singapore: :lebanon: :philippines: :pakistan: :malaysia: :tr: :taiwan: :iran: :cloud:
+
+---
 [![VerneMQ Logo](https://i.imgur.com/bln3fK3.jpg)](https://vernemq.com)
 
 VerneMQ is a high-performance, distributed MQTT message broker. It scales
@@ -20,7 +41,7 @@ acronym. It is an extremely simple and lightweight publish/subscribe messaging
 protocol, that was invented at IBM and Arcom (now Eurotech) to connect
 restricted devices in low bandwidth, high-latency or unreliable networks.
 
-VerneMQ implements the MQTT 3.1 and 3.1.1 specifications. Currently the
+VerneMQ implements the MQTT 3.1, 3.1.1 and 5.0 specifications. Currently the
 following features are implemented and delivered as part of VerneMQ:
 
 * QoS 0, QoS 1, QoS 2
@@ -44,23 +65,47 @@ following features are implemented and delivered as part of VerneMQ:
 * Redis auth & integration
 * MySQL auth & integration
 * PostgreSQL auth & integration
+* CockroachDB auth & integration
 * Memcached integration
-* HTTP integration
 * HTTP Webhooks
 * PROXY Protocol v2
-* Administration HTTP API (BETA)
+* Administration HTTP API
 * Real-time MQTT session tracing
 * Full multitenancy
 * Cluster status web page
+
+The following features are also applies to MQTT 5.0 clients:
+
+* Enhanced authentication schemes (AUTH)
+* Message expiration
+* Last Will and Testament delay
+* Shared subscriptions
+* Request/response flow
+* Topic aliases
+* Flow control
+* Subscription flags (Retain as Published, No Local, Retain Handling)
+* Subscriber identifiers
+* All property types are supported: user properties, reason strings, content types etc.
 
 ## Commercial Support. Binary Packages. Documentation
 
 Below you'll find a basic introduction to building and starting VerneMQ. For
 more information about the binary package installation, configuration, and
 administration of VerneMQ, please visit our documentation at [VerneMQ
-Documentation](https://vernemq.com/docs) or checkout the product page
+Documentation](https://docs.vernemq.com) or checkout the product page
 [VerneMQ](https://vernemq.com) if you require more information on the available
 commercial [support options](https://vernemq.com/services.html).
+
+## Community Release Schedule
+
+Next major release: not yet scheduled.
+
+Minor releases: At the end of March, July and November (every 4th month).
+
+Bugfix releases: Usually a bugfix release is released between minor releases or
+if there's an urgent bugfix pending.
+
+Custom release cycles and releases are available for commercial users.
 
 ## Quick Start
 
@@ -69,8 +114,7 @@ started, you need to first build VerneMQ.
 
 ### Building VerneMQ
 
-Note: VerneMQ is compatible with Erlang/OTP 18, 19 and 20 and one of
-these versions is requred to be installed on your system.
+Note: VerneMQ requires Erlang/OTP 21.2 or newer and `libsnappy-dev` installed in your system.
 
 Assuming you have a working Erlang installation, building VerneMQ should be as
 simple as:
@@ -94,7 +138,7 @@ If VerneMQ is running it is possible to check the status on
 `http://localhost:8888/status` and it should look something like:
 
 
-<img src="https://i.imgur.com/NAFZml1.png" width="75%">
+<img src="https://i.imgur.com/XajYjtb.png" width="75%">
 
 Note that the `$VERNEMQ/_build/default/rel/vernemq` directory is a complete, 
 self-contained instance of VerneMQ and Erlang. It is strongly suggested that you
@@ -103,7 +147,12 @@ instance.
 
 ### Important links
 
-* #vernemq on freenode IRC
-* [VerneMQ Documentation](http://vernemq.com/docs) 
-* [Follow us on Twitter (@vernemq)!](https://twitter.com/vernemq)
-
+* [VerneMQ Documentation](https://docs.vernemq.com)
+* [![Google group : VerneMQ Users](https://img.shields.io/badge/Google%20Group-VerneMQ%20Users-blue.svg)](https://groups.google.com/forum/#!forum/vernemq-users)
+* <a href="https://twitter.com/vernemq">
+		<img
+			alt="Twitter: VerneMQ"
+			src="https://img.shields.io/twitter/follow/vernemq.svg?style=social"
+			target="_blank"
+		/>
+	</a>

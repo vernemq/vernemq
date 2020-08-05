@@ -14,6 +14,8 @@
 
 -module(vmq_reg_mgr).
 
+-include("vmq_server.hrl").
+
 -behaviour(gen_server).
 %% API functions
 -export([start_link/0]).
@@ -160,15 +162,14 @@ setup_queue(SubscriberId, Subs, Acc) ->
 
 handle_event(Handler, Event) ->
     case Handler(Event) of
-        {delete, _, _} ->
+        {delete, _SubscriberId, _} ->
             %% TODO: we might consider a queue cleanup here.
             ignore;
         {update, _SubscriberId, [], []} ->
             %% noop
             ignore;
-        {update, SubscriberId, _, _} ->
-            Subs = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
-            handle_new_sub_event(SubscriberId, Subs);
+        {update, SubscriberId, _OldSubs, NewSubs} ->
+            handle_new_sub_event(SubscriberId, NewSubs);
         ignore ->
             ignore
     end.
@@ -177,8 +178,9 @@ handle_new_sub_event(SubscriberId, Subs) ->
     Sessions = vmq_subscriber:get_sessions(Subs),
     case lists:keymember(node(), 1, Sessions) of
         true ->
-            %% we have to ensure that we have a local queue for this subscriber
-            vmq_queue_sup_sup:start_queue(SubscriberId);
+            %% The local queue will have been started directly via
+            %% `vmq_reg:register_subscriber` in the fsm.
+            ignore;
         false ->
             %% we may migrate an existing queue to a remote queue
             %% Do we have a local queue to migrate?
@@ -209,7 +211,7 @@ handle_new_remote_subscriber(SubscriberId, QPid, [{NewNode, false}]) ->
     migrate_queue(SubscriberId, QPid, NewNode);
 handle_new_remote_subscriber(SubscriberId, QPid, [{_NewNode, true}]) ->
     %% New remote queue uses clean_session=true, we have to wipe this local session
-    cleanup_queue(SubscriberId, QPid);
+    cleanup_queue(SubscriberId, ?SESSION_TAKEN_OVER, QPid);
 handle_new_remote_subscriber(SubscriberId, QPid, Sessions) ->
     % Case Not 3.
     %% Do we have available remote sessions
@@ -235,10 +237,10 @@ migrate_queue(SubscriberId, QPid, Node) ->
                               end
                       end, Node, 60000).
 
-cleanup_queue(SubscriberId, QPid) ->
+cleanup_queue(SubscriberId, Reason, QPid) ->
     vmq_reg_sync:async({cleanup, SubscriberId},
                        fun() ->
-                               vmq_queue:cleanup(QPid)
+                               vmq_queue:cleanup(QPid, Reason)
                        end, node(), 60000).
 
 is_allow_multi(QPid) ->

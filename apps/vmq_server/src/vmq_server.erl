@@ -18,6 +18,7 @@
          start_no_auth/1,
          stop/0]).
 
+-spec start_no_auth() -> 'ok'.
 start_no_auth() ->
     maybe_start_distribution(),
 
@@ -28,6 +29,7 @@ start_no_auth() ->
     _ = application:ensure_all_started(vmq_server),
     ok.
 
+-spec start_no_auth(node()) -> any().
 start_no_auth(ClusterNode) ->
     maybe_start_distribution(),
 
@@ -36,38 +38,44 @@ start_no_auth(ClusterNode) ->
     _ = application:ensure_all_started(vmq_server),
     vmq_peer_service:join(ClusterNode).
 
-
+-spec start() -> 'ok'.
 start() ->
     _ = application:load(plumtree),
     application:set_env(plumtree, plumtree_data_dir, "./data/" ++ atom_to_list(node())),
     application:set_env(plumtree, storage_mod, plumtree_leveldb_metadata_manager),
-    _ = application:load(setup),
-    application:set_env(setup, log_dir, "./log"),
-    application:set_env(setup, data_dir, "./data"),
     start_no_auth(),
     vmq_auth:register_hooks().
 
 
 -spec stop() -> 'ok'.
 stop() ->
-    _ = [application:stop(App) || App <- [vmq_server,
+    application:stop(vmq_server),
+    wait_until_metadata_has_stopped(),
+    _ = [application:stop(App) || App <- [vmq_plugin,
+                                          riak_sysmon,
                                           clique,
-                                          plumtree,
-                                          jobs,
-                                          eleveldb,
-                                          vmq_plumtree,
                                           asn1,
                                           public_key,
-                                          vmq_plugin,
                                           cowboy,
                                           ranch,
                                           crypto,
                                           ssl,
-                                          riak_sysmon,
                                           os_mon,
                                           lager]],
     ok.
 
+-spec wait_until_metadata_has_stopped() -> 'ok'.
+wait_until_metadata_has_stopped() ->
+    Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
+    case lists:keymember(Impl, 1, application:which_applications()) of
+        true ->
+            timer:sleep(100),
+            wait_until_metadata_has_stopped();
+        false ->
+            ok
+    end.
+
+-spec maybe_start_distribution() -> 'ok'.
 maybe_start_distribution() ->
     case ets:info(sys_dist) of
         undefined ->

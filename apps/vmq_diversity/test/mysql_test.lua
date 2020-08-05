@@ -70,3 +70,6 @@ results = mysql.execute("mysql_test",
         user_name=?]], 'my_mp', 'client_c', 'user_c')
 
 assert(#results == 1, "error in select")
+
+-- Test the default hashing method
+assert(mysql.hash_method() == "PASSWORD(?)")

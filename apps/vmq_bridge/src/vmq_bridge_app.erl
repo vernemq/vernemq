@@ -24,6 +24,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+    vmq_bridge_cli:register_cli(),
     vmq_bridge_sup:start_link().
 
 stop(_State) ->

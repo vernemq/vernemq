@@ -14,88 +14,14 @@
 
 -- PostgreSQL Configuration, read the documentation below to properly
 -- provision your database.
-require "auth/auth_commons"
 
--- In order to use this Lua plugin you must deploy the following database
--- schema and grant the user configured above with the required privileges:
---[[ 
-  CREATE EXTENSION pgcrypto;
-  CREATE TABLE vmq_auth_acl
-  (
-    mountpoint character varying(10) NOT NULL,
-    client_id character varying(128) NOT NULL,
-    username character varying(128) NOT NULL,
-    password character varying(128),
-    publish_acl json,
-    subscribe_acl json,
-    CONSTRAINT vmq_auth_acl_primary_key PRIMARY KEY (mountpoint, client_id, username)
-  );
-]]--
--- This plugin relies on a PostgreSQL version that supports the `gen_salt('bf')
--- built-in function, as the passwords are stored as blowfish hashes.
--- Moreover the json datatype is used for storing the publish/subscribe ACLs.
---
--- To insert a client ACL use a similar SQL statement:
---[[
-  WITH x AS (
-      SELECT
-          ''::text AS mountpoint,
-  	       'test-client'::text AS client_id,
-  	       'test-user'::text AS username,
-  	       '123'::text AS password,
-  	       gen_salt('bf')::text AS salt,
-  	       '[{"pattern": "a/b/c"}, {"pattern": "c/b/#"}]'::json AS publish_acl,
-  	       '[{"pattern": "a/b/c"}, {"pattern": "c/b/#"}]'::json AS subscribe_acl
-  	) 
-  INSERT INTO vmq_auth_acl (mountpoint, client_id, username, password, publish_acl, subscribe_acl)
-  	SELECT 
-  		x.mountpoint,
-  		x.client_id,
-  		x.username,
-  		crypt(x.password, x.salt),
-  		publish_acl,
-  		subscribe_acl
-  	FROM x;
-]]--
--- 	The JSON array passed as publish/subscribe ACL contains the ACL objects
--- 	this particular user. MQTT wildcards as well as the variable 
--- 	substitution for %m (mountpoint), %c (client_id), %u (username) are allowed
--- 	inside a pattern. 
---
--- 
--- IF YOU USE THE SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED IN THE
--- FOLLOWING SCRIPT.
+-- import default hooks and cache logic
+require "auth/auth_commons"
+-- import shared database query logic
+require "auth/postgres_cockroach_commons"
+
 function auth_on_register(reg)
-    if reg.username ~= nil and reg.password ~= nil then
-        results = postgres.execute(pool, 
-            [[SELECT publish_acl::TEXT, subscribe_acl::TEXT 
-              FROM vmq_auth_acl
-              WHERE 
-                mountpoint=$1 AND
-                client_id=$2 AND
-                username=$3 AND
-                password=crypt($4, password)
-            ]], 
-            reg.mountpoint, 
-            reg.client_id,
-            reg.username,
-            reg.password)
-        if #results == 1 then
-            row = results[1]
-            publish_acl = json.decode(row.publish_acl)
-            subscribe_acl = json.decode(row.subscribe_acl)
-            cache_insert(
-                reg.mountpoint, 
-                reg.client_id, 
-                reg.username,
-                publish_acl,
-                subscribe_acl
-                )
-            return true
-        else
-            return false
-        end
-    end
+   return auth_on_register_common(postgres, reg)
 end
 
 pool = "auth_postgres"
@@ -110,5 +36,10 @@ hooks = {
     auth_on_subscribe = auth_on_subscribe,
     on_unsubscribe = on_unsubscribe,
     on_client_gone = on_client_gone,
-    on_client_offline = on_client_offline
+    on_client_offline = on_client_offline,
+    on_session_expired = on_session_expired,
+
+    auth_on_register_m5 = auth_on_register_m5,
+    auth_on_publish_m5 = auth_on_publish_m5,
+    auth_on_subscribe_m5 = auth_on_subscribe_m5,
 }

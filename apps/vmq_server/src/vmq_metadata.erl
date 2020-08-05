@@ -23,16 +23,26 @@
 
 start() ->
     Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
-    Ret = vmq_plugin_mgr:enable_system_plugin(Impl, []),
+    Ret = vmq_plugin_mgr:enable_system_plugin(Impl, [internal]),
     lager:info("Try to start ~p: ~p", [Impl, Ret]),
     Ret.
 
 stop() ->
+    % vmq_metadata:stop is typically called when stopping the vmq_server
+    % OTP application. As vmq_plugin_mgr:disable_plugin is likely stopping
+    % another OTP application too we might block the OTP application
+    % controller. Wrapping the disable_plugin in its own process would
+    % enable to stop the involved applications. Moreover, because an
+    % application:stop is actually a gen_server:call to the application
+    % controller the order of application termination is still provided.
+    % Nevertheless, this is of course only a workaround and the problem
+    % needs to be addressed when reworking the plugin system.
     Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
-    Ret = vmq_plugin_mgr:disable_plugin(Impl, []),
-    lager:info("Try to start ~p: ~p", [Impl, Ret]),
-    Ret.
-
+    _ = spawn(fun() ->
+                      Ret = vmq_plugin_mgr:disable_plugin(Impl),
+                      lager:info("Try to stop ~p: ~p", [Impl, Ret])
+              end),
+    ok.
 
 put(FullPrefix, Key, Value) ->
     vmq_plugin:only(metadata_put, [FullPrefix, Key, Value]).

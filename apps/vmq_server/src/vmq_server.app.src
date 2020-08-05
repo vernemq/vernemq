@@ -16,9 +16,9 @@
                   vmq_ql,
                   vmq_plugin,
                   clique,
-                  mzmetrics,
                   jsx,
-                  gen_server2
+                  gen_server2,
+                  stdout_formatter
                  ]},
   {mod, { vmq_server_app, []}},
   {env, [
@@ -48,6 +48,7 @@
       {queue_deliver_mode, fanout}, % balance vs fanout
       {queue_type, fifo}, % fifo vs lifo
       {persistent_client_expiration, 0}, % never
+      {max_last_will_delay, 0}, % not allowed
       {max_drain_time, 100}, 
       {max_msgs_per_drain_step, 10},
 
@@ -78,10 +79,14 @@
                                                    {nr_of_acceptors, 10}]}
                            ]}
       ]},
-      {http_modules, [vmq_metrics_http, vmq_http_mgmt_api, vmq_status_http]},
+      {http_modules, [
+          vmq_metrics_http, vmq_http_mgmt_api,
+          vmq_status_http, vmq_health_http]},
       {outgoing_clustering_buffer_size, 10000},
       {remote_enqueue_timeout, 5000},
       {outgoing_connect_opts, []},
+      {outgoing_connect_params_module, vmq_cluster_node},
+      {outgoing_connect_timeout, 10000},
       {shared_subscription_policy, prefer_local},
       {shared_subscription_timeout_action, ignore},
 
@@ -91,17 +96,6 @@
             {send_timeout, 30000}, 
             {send_timeout_close, true}
         ]},
-
-      % default message store opts
-      {msg_store_childspecs, [{vmq_lvldb_store_sup,
-                               {vmq_lvldb_store_sup, start_link, []},
-                               permanent, 5000, supervisor, [vmq_lvldb_store_sup]}]},
-      {msg_store_opts, [
-                        {store_dir, "./data/msgstore"},
-                        {open_retries, 30},
-                        {open_retry_delay, 2000}
-                       ]},
-
 
       % Graphite
       {graphite_enabled, false},

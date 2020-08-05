@@ -10,6 +10,7 @@
                  ]},
   {env, [{table_map, [
                       {sessions, vmq_info},  % defined in vmq_server
+                      {retain_srv, vmq_retain_info}, % defined in vmq_server
                       {proc, vmq_ql_sys_info}
                      ]}]}
  ]}.

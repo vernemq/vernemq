@@ -44,7 +44,8 @@ fields_config() ->
                                online_messages,
                                num_sessions,
                                clean_session,
-                               is_plugin],
+                               is_plugin,
+                               queue_started_at],
                    init_fun = fun queue_row_init/1,
                    include_if_all = true
                },
@@ -55,14 +56,15 @@ fields_config() ->
                                 peer_host,
                                 peer_port,
                                 protocol,
-                                waiting_acks],
+                                waiting_acks,
+                                session_started_at],
                     init_fun = fun session_row_init/1,
                     include_if_all = false
                  },
     Subscriptions = #vmq_ql_table{
                     name =      subscriptions,
                     depends_on = [QueueBase],
-                    provides = [topic, qos],
+                    provides = [topic, qos, rap, no_local],
                     init_fun = fun subscription_row_init/1,
                     include_if_all = false
                     },
@@ -92,11 +94,11 @@ session_info_items() ->
 %% specific order (MP,ClientID).
 fold_init_rows(_, Fun, Acc, [#{{mountpoint,equals} := MP,
                                {client_id,equals} := ClientId}]) ->
-    case vmq_queue_sup_sup:get_queue_pid({MP, ClientId}) of
+    case vmq_queue_sup_sup:get_queue_pid({binary_to_list(MP), ClientId}) of
         not_found -> [];
         QPid ->
             InitRow = #{node => atom_to_binary(node(),utf8),
-                        mountpoint => list_to_binary(MP),
+                        mountpoint => MP,
                         '__mountpoint' => MP,
                         client_id => ClientId,
                         queue_pid => QPid},
@@ -117,45 +119,62 @@ row_init(Row) ->
     [Row].
 
 queue_row_init(Row) ->
-   QPid = maps:get(queue_pid, Row),
-   QueueData = vmq_queue:info(QPid),
-   case maps:get('sessions', QueueData) of
-       [] ->
-           % offline queue
-           [maps:merge(Row, maps:remove('sessions', QueueData#{clean_session => false}))];
-       Sessions ->
-           QueueDataWithoutSessions = maps:remove('sessions', QueueData),
-           Row1 = maps:merge(Row, QueueDataWithoutSessions),
-           lists:foldl(fun({SessionPid, CleanSession}, Acc) ->
-                               [maps:merge(Row1, #{session_pid => SessionPid,
-                                                   clean_session => CleanSession}) | Acc]
-                       end, [], Sessions)
-   end.
+    QPid = maps:get(queue_pid, Row),
+    QueueData = vmq_queue:info(QPid),
+    StartedAt = maps:get(started_at, QueueData, undefined),
+    case maps:get('sessions', QueueData) of
+        [] ->
+            %% offline queue
+            QueueData1 = maps:without([started_at, sessions], QueueData),
+            [maps:merge(Row, maps:remove('sessions', QueueData1#{clean_session => false,
+                                                                 queue_started_at => StartedAt}))];
+        Sessions ->
+            QueueDataWithoutSessions = maps:without([started_at, sessions], QueueData),
+            Row1 = maps:merge(Row, QueueDataWithoutSessions#{queue_started_at => StartedAt}),
+            lists:foldl(fun({SessionPid, CleanSession,SessionStartedAt}, Acc) ->
+                                [maps:merge(Row1, #{session_pid => SessionPid,
+                                                    clean_session => CleanSession,
+                                                    session_started_at => SessionStartedAt}) | Acc]
+                        end, [], Sessions)
+    end.
 
 session_row_init(Row) ->
     case maps:find(session_pid, Row) of
         error ->
             [Row];
         {ok, SessionPid} ->
-            {ok, InfoItems} = vmq_mqtt_fsm:info(SessionPid, [user,
-                                                             peer_host,
-                                                             peer_port,
-                                                             protocol,
-                                                             waiting_acks]),
-            [maps:merge(Row, maps:from_list(InfoItems))]
+            case vmq_mqtt_fsm:info(SessionPid, [user,
+                                                peer_host,
+                                                peer_port,
+                                                protocol,
+                                                waiting_acks]) of
+                {ok, InfoItems} ->
+                    [maps:merge(Row, maps:from_list(InfoItems))];
+                {error, i_am_a_plugin} ->
+                    [Row]
+            end
     end.
 
 subscription_row_init(Row) ->
     SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
     Subs = vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
-    vmq_subscriber:fold(fun({Topic, QoS, _Node}, Acc) ->
-                                [maps:merge(Row, #{topic => iolist_to_binary(vmq_topic:unword(Topic)),
-                                                   qos => QoS})|Acc]
-                        end, [], Subs).
+    vmq_subscriber:fold(
+      fun({Topic, SubInfo, _Node}, Acc) ->
+              {QoS, SubOpts} =
+                  case SubInfo of
+                      {_, _} -> SubInfo;
+                      Q when is_integer(Q) ->
+                          {Q, #{}}
+                  end,
+              M1 = maps:merge(Row, #{topic => iolist_to_binary(vmq_topic:unword(Topic)),
+                                     qos => QoS}),
+              M2 = maps:merge(M1, SubOpts),
+              [M2|Acc]
+      end, [], Subs).
 
 message_ref_row_init(Row) ->
     SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
-    case vmq_plugin:only(msg_store_find, [SubscriberId]) of
+    case vmq_message_store:find(SubscriberId, other) of
         {ok, MsgRefs} ->
             lists:foldl(fun(MsgRef, Acc) ->
                                 [maps:merge(Row, #{'__msg_ref' => MsgRef,
@@ -168,7 +187,7 @@ message_ref_row_init(Row) ->
 message_row_init(Row) ->
     SubscriberId = {maps:get('__mountpoint', Row), maps:get(client_id, Row)},
     MsgRef = maps:get('__msg_ref', Row),
-    case vmq_plugin:only(msg_store_read, [SubscriberId, MsgRef]) of
+    case vmq_message_store:read(SubscriberId, MsgRef) of
         {ok, #vmq_msg{msg_ref=MsgRef, qos=QoS,
                       dup=Dup, routing_key=RoutingKey,
                       payload=Payload}} ->

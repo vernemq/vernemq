@@ -1,0 +1,39 @@
+%% @doc The pool_size specifies how many bcrypt operations that are
+%% allowed concurrently. The value `auto` will try to detect all
+%% logical cpus and set the pool size to that number. If the number of
+%% logical cpus cannot be detected, a value of 1 is used.
+{mapping, "vmq_bcrypt.pool_size", "bcrypt.pool_size", [
+                                                       {datatype, [integer, {enum, [auto]}]},
+                                                       {default, 1},
+                                                       {include_default, 1},
+                                                       {validators, ["non-zero-positive-int"]}
+                                                      ]}.
+
+{translation,
+ "bcrypt.pool_size",
+ fun(Conf) ->
+         case cuttlefish:conf_get("vmq_bcrypt.pool_size", Conf) of
+             auto ->
+                 case erlang:system_info(logical_processors_online) of
+                     unknown ->
+                         1;
+                     N when is_integer(N) ->
+                         N
+                 end;
+             Size when is_integer(Size) ->
+                 Size
+         end
+ end}.
+
+{mapping, "vmq_bcrypt.mechanism", "bcrypt.mechanism", [
+                                                       {datatype, {enum, [nif, port]}},
+                                                       {default, port},
+                                                       hidden,
+                                                       {include_default, port}
+                                                      ]}.
+
+{validator, "non-zero-positive-int", "0 or negative values not allowed",
+ fun(Int) when is_integer(Int), Int < 1 ->
+         false;
+    (_) -> true
+ end}.

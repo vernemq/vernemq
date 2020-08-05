@@ -18,9 +18,10 @@
 %% API
 -export([start_link/1,
          publish/2,
-         enqueue/3,
+         enqueue/4,
+         enqueue_async/3,
          connect_params/1,
-         is_reachable/1]).
+         status/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -39,6 +40,7 @@
           pending = [],
           max_queue_size,
           reconnect_tref,
+          async_connect_pid,
           bytes_dropped={os:timestamp(), 0},
           bytes_send={os:timestamp(), 0}}).
 
@@ -63,28 +65,43 @@ publish(Pid, Msg) ->
             {error, Reason}
     end.
 
-enqueue(Pid, Term, BufferIfUnreachable) ->
+enqueue(Pid, Term, BufferIfUnreachable, Timeout) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
     Pid ! {enq, self(), Ref, Term, BufferIfUnreachable},
-    %% TODO: This should likely be moved out as retrieving configs
-    %% from the app_env can be a bottleneck. We should look at this
-    %% for 2.0 as this might be a backwards incompatible change.
-    Timeout = vmq_config:get_env(remote_enqueue_timeout),
-    receive
-        {Ref, Reply} ->
-            demonitor(MRef, [flush]),
-            Reply;
-        {'DOWN', MRef, process, Pid, Reason} ->
-            {error, Reason}
-    after
-        Timeout -> {error, timeout}
+    case Timeout of
+        infinity ->
+            receive
+                {Ref, Reply} ->
+                    demonitor(MRef, [flush]),
+                    Reply;
+                {'DOWN', MRef, process, Pid, Reason} ->
+                    {error, Reason}
+            end;
+        _ ->
+            receive
+                {Ref, Reply} ->
+                    demonitor(MRef, [flush]),
+                    Reply;
+                {'DOWN', MRef, process, Pid, Reason} ->
+                    {error, Reason}
+            after
+                Timeout ->
+                    demonitor(MRef, [flush]),
+                    {error, timeout}
+            end
     end.
 
-is_reachable(Pid) ->
+enqueue_async(Pid, Term, BufferIfUnreachable) ->
     Ref = make_ref(),
     MRef = monitor(process, Pid),
-    Pid ! {is_reachable, self(), Ref},
+    Pid ! {enq, self(), Ref, Term, BufferIfUnreachable},
+    {MRef, Ref}.
+
+status(Pid) ->
+    Ref = make_ref(),
+    MRef = monitor(process, Pid),
+    Pid ! {status, self(), Ref},
     receive
         {Ref, Reply} ->
             demonitor(MRef, [flush]),
@@ -96,10 +113,17 @@ is_reachable(Pid) ->
 init([Parent, RemoteNode]) ->
     MaxQueueSize = vmq_config:get_env(outgoing_clustering_buffer_size),
     proc_lib:init_ack(Parent, {ok, self()}),
-    self() ! reconnect, %% initial connect
+    % Delay the initial connect attempt, this is useful when automating
+    % cluster node setup, where multiple nodes are concurrently setup.
+    % Without a delay a node may try to connect to a cluster node that
+    % hasn't finished setting up the vmq cluster listener.
+    erlang:send_after(1000, self(), reconnect),
     loop(#state{parent=Parent, node=RemoteNode, max_queue_size=MaxQueueSize}).
 
-loop(#state{pending=[]} = State) ->
+loop(#state{pending=Pending, reachable=Reachable} = State)
+  when
+      Pending == [];
+      Reachable == false ->
     receive
         M ->
             loop(handle_message(M, State))
@@ -170,28 +194,54 @@ handle_message({msg, CallerPid, Ref, Msg}, State) ->
             CallerPid ! {Ref, ok}
     end,
     NewState;
-handle_message({NetEv, _}, #state{reconnect_tref=TRef} = State)
-  when
-      NetEv == tcp_closed;
-      NetEv == tcp_error;
-      NetEv == ssl_closed;
-      NetEv == ssl_error ->
-    NewTRef =
-    case TRef of
-        undefined ->
-            reconnect_timer();
-        _ ->
-            %% we're already reconnecting
-            TRef
-    end,
-    State#state{reachable=false, reconnect_tref=NewTRef};
+handle_message({connect_async_done, AsyncPid, {ok, {Transport, Socket}}},
+               #state{async_connect_pid=AsyncPid, node=RemoteNode} = State) ->
+    NodeName = term_to_binary(node()),
+    L = byte_size(NodeName),
+    Msg = [<<"vmq-connect">>, <<L:32, NodeName/binary>>],
+    case send(Transport, Socket, Msg) of
+        ok ->
+            lager:info("successfully connected to cluster node ~p", [RemoteNode]),
+            State#state{socket=Socket, transport=Transport,
+                        %% !!! remote node is reachable
+                        async_connect_pid=undefined,
+                        reachable=true};
+        {error, Reason} ->
+            lager:warning("can't initiate connect to cluster node ~p due to ~p", [RemoteNode, Reason]),
+            close_reconnect(State)
+    end;
+handle_message({connect_async_done, AsyncPid, error}, #state{async_connect_pid=AsyncPid} = State) ->
+    % connect_async already logged the error details
+    close_reconnect(State);
 handle_message(reconnect, #state{reachable=false} = State) ->
     connect(State#state{reconnect_tref=undefined});
-handle_message({is_reachable, CallerPid, Ref}, #state{reachable=Reachable}=State) ->
-    CallerPid ! {Ref, Reachable},
+handle_message({status, CallerPid, Ref}, #state{socket=Socket, reachable=Reachable}=State) ->
+    Status =
+    case Reachable of
+        true ->
+            up;
+        false when Socket == undefined ->
+            init;
+        false ->
+            down
+    end,
+    CallerPid ! {Ref, Status},
     State;
 handle_message({system, From, Request}, #state{parent=Parent}= State) ->
     sys:handle_system_msg(Request, From, Parent, ?MODULE, [], State);
+handle_message({NetEvClosed, Socket}, #state{node=RemoteNode, socket=Socket} = State)
+  when NetEvClosed == tcp_closed;
+       NetEvClosed == ssl_closed ->
+    lager:warning("connection to node ~p has been closed, reconnect in ~pms",
+                  [RemoteNode, ?RECONNECT]),
+    close_reconnect(State);
+handle_message({NetEvError, Socket, Reason}, #state{node=RemoteNode, socket=Socket} = State)
+  when NetEvError == tcp_error;
+       NetEvError == ssl_error ->
+    lager:warning("connection to node ~p has been closed due to error ~p, reconnect in ~pms",
+                  [RemoteNode, Reason, ?RECONNECT]),
+    close_reconnect(State);
+
 handle_message(Msg, #state{node=Node, reachable=Reachable} = State) ->
     lager:warning("got unknown message ~p for node ~p (reachable ~p)",
                   [Msg, Node, Reachable]),
@@ -226,40 +276,53 @@ internal_flush(#state{pending=Pending, node=Node, transport=Transport,
         {error, Reason} ->
             lager:warning("can't send ~p bytes to ~p due to ~p, reconnect!",
                           [iolist_size(Pending), Node, Reason]),
-            State#state{reachable=false, reconnect_tref=reconnect_timer()}
+            close_reconnect(State)
     end.
 
-connect(#state{node=RemoteNode} = State) ->
+connect(#state{node=RemoteNode, reachable=false} = State) ->
+    Self = self(),
+    ConnectAsyncPid = spawn_link(fun() -> connect_async(Self, RemoteNode) end),
+    State#state{async_connect_pid= ConnectAsyncPid}.
+
+connect_async(ParentPid, RemoteNode) ->
     ConnectOpts = vmq_config:get_env(outgoing_connect_opts),
-    case rpc:call(RemoteNode, ?MODULE, connect_params, [node()]) of
+    % the outgoing_connect_params_module must implement the connect_params/1 function
+    ConnectParamsMod = vmq_config:get_env(outgoing_connect_params_module),
+    ConnectTimeout = vmq_config:get_env(outgoing_connect_timeout),
+    Reply =
+    case rpc:call(RemoteNode, ConnectParamsMod, connect_params, [node()]) of
         {Transport, Host, Port} ->
             case connect(Transport, Host, Port,
-                                   lists:usort([binary, {active, true}|ConnectOpts])) of
+                         lists:usort([binary, {active, true},
+                                      {keepalive, true},
+                                      {send_timeout, 0}|ConnectOpts]), ConnectTimeout) of
                 {ok, Socket} ->
-                    NodeName = term_to_binary(node()),
-                    L = byte_size(NodeName),
-                    Msg = [<<"vmq-connect">>, <<L:32, NodeName/binary>>],
-                    case send(Transport, Socket, Msg) of
+                    case controlling_process(Transport, Socket, ParentPid) of
                         ok ->
-                            lager:info("successfully connected to cluster node ~p", [RemoteNode]),
-                            State#state{socket=Socket, transport=Transport,
-                                        %% !!! remote node is reachable
-                                        reachable=true};
+                            {ok, {Transport, Socket}};
                         {error, Reason} ->
-                            lager:warning("can't initiate connect to cluster node ~p due to ~p", [RemoteNode, Reason]),
-                            State#state{reachable=false, reconnect_tref=reconnect_timer()}
+                            lager:debug("can't assign socket ownership to ~p due to ~p", [ParentPid, Reason]),
+                            error
                     end;
                 {error, Reason} ->
                     lager:warning("can't connect to cluster node ~p due to ~p", [RemoteNode, Reason]),
-                    State#state{reachable=false, reconnect_tref=reconnect_timer()}
+                    error
             end;
         {badrpc, nodedown} ->
             %% we don't scream.. vmq_cluster_mon screams
-            State#state{reachable=false, reconnect_tref=reconnect_timer()};
+            error;
         E ->
             lager:warning("can't connect to cluster node ~p due to ~p", [RemoteNode, E]),
-            State#state{reachable=false, reconnect_tref=reconnect_timer()}
-    end.
+            error
+    end,
+    ParentPid ! {connect_async_done, self(), Reply}.
+
+close_reconnect(#state{transport=Transport, socket=Socket} = State) ->
+    close(Transport, Socket),
+    State#state{async_connect_pid=undefined,
+                reachable=false,
+                socket=undefined,
+                reconnect_tref=reconnect_timer()}.
 
 reconnect_timer() ->
     erlang:send_after(?RECONNECT, self(), reconnect).
@@ -298,17 +361,27 @@ send(gen_tcp, Socket, Msg) ->
 send(ssl, Socket, Msg) ->
     ssl:send(Socket, Msg).
 
+close(_, undefined) -> ok;
 close(gen_tcp, Socket) ->
     gen_tcp:close(Socket);
 close(ssl, Socket) ->
     ssl:close(Socket).
 
-connect(gen_tcp, Host, Port, Opts) ->
-    gen_tcp:connect(Host, Port, Opts);
-connect(ssl, Host, Port, Opts) ->
-    ssl:connect(Host, Port, Opts).
+connect(gen_tcp, Host, Port, Opts, Timeout) ->
+    gen_tcp:connect(Host, Port, Opts, Timeout);
+connect(ssl, Host, Port, Opts, Timeout) ->
+    ssl:connect(Host, Port, Opts, Timeout).
 
-teardown(#state{socket = Socket, transport = Transport}, Reason) ->
+controlling_process(gen_tcp, Socket, Pid) ->
+    gen_tcp:controlling_process(Socket, Pid);
+controlling_process(ssl, Socket, Pid) ->
+    ssl:controlling_process(Socket, Pid).
+
+teardown(#state{socket = Socket, transport = Transport, async_connect_pid = AsyncPid}, Reason) ->
+    case AsyncPid of
+        undefined -> ignore;
+        Pid -> exit(Pid, normal)
+    end,
     case Reason of
         normal ->
             lager:debug("normally stopped", []);

@@ -41,19 +41,18 @@ start_link() ->
                          [{atom(), {atom(), atom(), list()},
                            permanent, pos_integer(), worker, [atom()]}]}}.
 init([]) ->
-    {ok, MsgStoreChildSpecs} = application:get_env(vmq_server, msg_store_childspecs),
-
     maybe_change_nodename(),
-
+    persistent_term:put(subscribe_trie_ready, 0),
     {ok, { {one_for_one, 5, 10},
-           [?CHILD(vmq_config, worker, []) | MsgStoreChildSpecs]
-           ++ [
+           [
+               ?CHILD(vmq_config, worker, []),
                ?CHILD(vmq_crl_srv, worker, []),
+               ?CHILD(vmq_metrics_sup, supervisor, []),
                ?CHILD(vmq_queue_sup_sup, supervisor, [infinity, 5, 10]),
                ?CHILD(vmq_reg_sup, supervisor, []),
                ?CHILD(vmq_cluster_node_sup, supervisor, []),
                ?CHILD(vmq_sysmon, worker, []),
-               ?CHILD(vmq_metrics_sup, supervisor, [])
+               ?CHILD(vmq_ranch_sup, supervisor, [])
               ]} }.
 
 maybe_change_nodename() ->

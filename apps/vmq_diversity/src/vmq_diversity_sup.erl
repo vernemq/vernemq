@@ -84,10 +84,13 @@ start_all_pools([{pgsql, ProviderConfig}|Rest], Acc) ->
                        Database = proplists:get_value(database, WorkerArgs),
                        Username = proplists:get_value(user, WorkerArgs),
                        Password = proplists:get_value(password, WorkerArgs),
-                       epgsql:connect(Hostname, Username, Password, [
-                           {database, Database},
-                           {port, Port}
-                       ])
+                       Ssl = proplists:get_value(ssl, WorkerArgs),
+                       SslOpts = proplists:get_value(ssl_opts, WorkerArgs),
+                       Opts = #{database => Database,
+                                port => Port,
+                                ssl => Ssl,
+                                ssl_opts => SslOpts},
+                       epgsql:connect(Hostname, Username, Password, Opts)
                end,
     TerminateFun = fun(Pid) -> ok = epgsql:close(Pid) end,
     WrapperArgs = [{reconnect_timeout, 1000},
@@ -107,7 +110,11 @@ start_all_pools([{mongodb, ProviderConfig}|Rest], Acc) ->
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = lists:keydelete(size, 1,
                                  lists:keydelete(max_overflow, 1, PoolOpts)),
-    StartFun = fun() -> mc_worker:start_link(WorkerArgs) end,
+    StartFun = fun() ->
+                       Ssl = proplists:get_value(ssl, WorkerArgs, false),
+                       SslOpts = proplists:get_value(ssl_opts, WorkerArgs),
+                       mc_worker:start_link([{ssl,Ssl}, {ssl_opts, SslOpts}|WorkerArgs])
+               end,
     TerminateFun = fun(Pid) -> mc_worker:disconnect(Pid) end,
     WrapperArgs = [{reconnect_timeout, 1000},
                    {name, mongodb},
@@ -126,6 +133,7 @@ start_all_pools([{redis, ProviderConfig}|Rest], Acc) ->
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = lists:keydelete(size, 1,
                                  lists:keydelete(max_overflow, 1, PoolOpts)),
+
     PoolArgs = [{name, {local, PoolId}},
                 {worker_module, vmq_diversity_redis},
                 {size, Size},

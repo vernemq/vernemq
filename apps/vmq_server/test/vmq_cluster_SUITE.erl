@@ -15,22 +15,28 @@
          racing_subscriber_test/1,
          aborted_queue_migration_test/1,
          cluster_leave_test/1,
+         cluster_leave_myself_test/1,
          cluster_leave_dead_node_test/1,
          shared_subs_random_policy_test/1,
          shared_subs_prefer_local_policy_test/1,
          shared_subs_local_only_policy_test/1,
          cross_node_publish_subscribe/1,
          restarted_node_has_no_stale_sessions/1,
-         routing_table_survives_node_restart/1]).
+         routing_table_survives_node_restart/1,
+         convert_new_msgs_to_old_format/1]).
 
 -export([hook_uname_password_success/5,
          hook_auth_on_publish/6,
          hook_auth_on_subscribe/3]).
 
+-compile(nowarn_deprecated_function).
+
 -include_lib("common_test/include/ct.hrl").
 -include_lib("kernel/include/inet.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include("src/vmq_server.hrl").
+
 
 %% ===================================================================
 %% common_test callbacks
@@ -52,6 +58,9 @@ end_per_suite(_Config) ->
     application:stop(lager),
     _Config.
 
+init_per_testcase(convert_new_msgs_to_old_format, Config) ->
+    %% no setup necessary,
+    Config;
 init_per_testcase(Case, Config) ->
     vmq_test_utils:seed_rand(Config),
     Nodes = vmq_cluster_test_utils:pmap(
@@ -69,6 +78,9 @@ init_per_testcase(Case, Config) ->
     {ok, _} = ct_cover:add_nodes(CoverNodes),
     [{nodes, Nodes},{nodenames, [test1, test2, test3]}|Config].
 
+end_per_testcase(convert_new_msgs_to_old_format, Config) ->
+    %% no teardown necessary,
+    Config;
 end_per_testcase(_, _Config) ->
     vmq_cluster_test_utils:pmap(fun(Node) -> ct_slave:stop(Node) end,
                                 [test1, test2, test3]),
@@ -82,6 +94,7 @@ all() ->
     ,racing_subscriber_test
     ,aborted_queue_migration_test
     ,cluster_leave_test
+    ,cluster_leave_myself_test
     ,cluster_leave_dead_node_test
     ,shared_subs_random_policy_test
     ,shared_subs_prefer_local_policy_test
@@ -89,6 +102,7 @@ all() ->
     ,cross_node_publish_subscribe
     ,restarted_node_has_no_stale_sessions
     ,routing_table_survives_node_restart
+    ,convert_new_msgs_to_old_format
     ].
 
 
@@ -105,6 +119,13 @@ multiple_connect_test(Config) ->
     done = receive_times(done, NrOfProcesses),
     true = check_unique_client("connect-multiple", Nodes),
     Config.
+
+wait_until_converged_fold(Fun, Init, ExpectedResult, Nodes) ->
+    {NodeNames, _} = lists:unzip(Nodes),
+    vmq_cluster_test_utils:wait_until(
+      fun() ->
+              ExpectedResult =:= lists:foldl(Fun, Init, NodeNames)
+      end, 60*2, 500).
 
 wait_until_converged(Nodes, Fun, ExpectedReturn) ->
     {NodeNames, _} = lists:unzip(Nodes),
@@ -383,7 +404,8 @@ cluster_leave_test(Config) ->
     ok = ensure_cluster(Config),
     {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "cluster/leave/topic",
-    %% create 8 sessions
+    ToMigrate = 8,
+    %% create ToMigrate sessions
     [PubSocket|_] = Sockets =
     [begin
          Connect = packet:gen_connect("connect-" ++ integer_to_list(I),
@@ -396,7 +418,7 @@ cluster_leave_test(Config) ->
          ok = gen_tcp:send(Socket, Subscribe),
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
-     end || I <- lists:seq(1,8)],
+     end || I <- lists:seq(1,ToMigrate)],
     ok = wait_until_converged(Nodes,
                          fun(N) ->
                                  rpc:call(N, vmq_reg, total_subscriptions, [])
@@ -408,7 +430,7 @@ cluster_leave_test(Config) ->
     ok = packet:expect_packet(PubSocket, "puback", Puback),
     ok = vmq_cluster_test_utils:wait_until(
            fun() ->
-                   {8, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup_sup, summary, [])
+                   {ToMigrate, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup_sup, summary, [])
            end, 60, 500),
     %% Pick a control node for initiating the cluster leave
     [{CtrlNode, _}|_] = RestNodes,
@@ -416,10 +438,28 @@ cluster_leave_test(Config) ->
     %% Leaving Node will disconnect all sessions and give away all messages
     %% The disconnected sessions are equally migrated to the rest of the nodes
     %% As the clients don't reconnect (in this test), their sessions are offline
-    ok = wait_until_converged(RestNodes,
+    ok = wait_until_converged_fold(
+           fun(N, {AccQ, AccM}) ->
+                   {_,_,_,Queues,Messages} = rpc:call(N, vmq_queue_sup_sup, summary, []),
+                   {AccQ + Queues, AccM + Messages}
+           end,
+           {0, 0},
+           {ToMigrate, ToMigrate},
+           RestNodes).
+
+cluster_leave_myself_test(Config) ->
+    ok = ensure_cluster(Config),
+    {_, [{Node, _Port}|RestNodesWithPorts]} = lists:keyfind(nodes, 1, Config),
+    {RestNodes, _} = lists:unzip(RestNodesWithPorts),
+    {ok, _} = rpc:call(Node, vmq_server_cmd, node_leave, [Node]),
+
+    %% check that the leave was propagated to the rest
+    ok = wait_until_converged(RestNodesWithPorts,
                               fun(N) ->
-                                      rpc:call(N, vmq_queue_sup_sup, summary, [])
-                              end, {0, 0, 0, 4, 4}).
+                                      NSStats = rpc:call(N, vmq_cluster, netsplit_statistics, []),
+                                      Nodes = lists:usort(rpc:call(N, vmq_cluster, nodes, [])),
+                                      {NSStats, Nodes}
+                              end, {{0,0}, lists:usort(RestNodes)}).
 
 cluster_leave_dead_node_test(Config) ->
     ok = ensure_cluster(Config),
@@ -724,6 +764,37 @@ cross_node_publish_subscribe(Config) ->
                  ++ Payloads),
     receive_nothing(200).
 
+convert_new_msgs_to_old_format(_Config) ->
+    %% create a #vmq_msg{} as a raw tuple.
+    Orig = {
+      %% record name,
+      vmq_msg,
+
+      %% field values
+      "msg_ref",
+      "routing_key",
+      "payload",
+      "retain",
+      "dup",
+      "qos",
+      "mountpoint",
+      "persisted",
+      "sg_policy",
+      "properties",
+      "expiry_ts"
+     },
+
+    %% fail if new items were added to the #vmq_msg{} record:
+    #vmq_msg{} = Orig,
+
+    %% test identity
+    Orig = vmq_cluster_com:to_vmq_msg(Orig),
+
+    %% test we can strip away extra tuple elements an the result is
+    %% the original record.
+    Extended = list_to_tuple(tuple_to_list(Orig) ++ [a,b,c]),
+    Orig = vmq_cluster_com:to_vmq_msg(Extended).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -867,7 +938,7 @@ publish_random(Nodes, N, Topic, Acc) ->
 receive_publishes(_, _, []) -> ok;
 receive_publishes([{_,Port}=N|Nodes], Topic, Payloads) ->
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
-                                                           {keepalive, 10}]),
+                                                     {keepalive, 10}]),
     Connack = packet:gen_connack(true, 0),
     Opts = [{port, Port}],
     {ok, Socket} = packet:do_client_connect(Connect, Connack, Opts),

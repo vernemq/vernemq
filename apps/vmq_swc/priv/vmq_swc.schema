@@ -1,0 +1,13 @@
+%% @doc Set the path to the metadata directory.
+{mapping, "vmq_swc.directory", "vmq_swc.data_dir", [
+                                             {default, "{{platform_data_dir}}/swc_meta"},
+                                             {datatype, directory},
+                                             hidden
+                                            ]}.
+
+%% @doc Set the storage backend either leveldb, rocksdb or leveled (Erlang based LevelDB variant)
+{mapping, "vmq_swc.db_backend", "vmq_swc.db_backend", [
+                                             {default, leveldb},
+                                             {datatype, atom},
+                                             hidden
+                                            ]}.

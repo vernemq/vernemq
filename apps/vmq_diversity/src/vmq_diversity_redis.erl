@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_redis).
+-include_lib("luerl/include/luerl.hrl").
 
 -behaviour(gen_server).
 -behaviour(poolboy_worker).
@@ -41,9 +42,9 @@
 %% @doc
 %% Starts the server
 %%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link(Args::list()) -> {ok, Pid::pid()} | {error, Error::term()}.
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
@@ -53,7 +54,7 @@ install(St) ->
 
 query(PoolName, Command) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          gen_server:call(Worker, {q, Command})
+                                          gen_server:call(Worker, {q, Command}, infinity)
                                   end).
 %query_pipeline(PoolName, Pipeline) ->
 %    poolboy:transaction(PoolName, fun(Worker) ->
@@ -164,8 +165,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 table() ->
     [
-     {<<"cmd">>, {function, fun cmd/2}},
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}}
+     {<<"cmd">>, #erl_func{code=fun cmd/2}},
+     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}}
     ].
 
 cmd(As, St) ->

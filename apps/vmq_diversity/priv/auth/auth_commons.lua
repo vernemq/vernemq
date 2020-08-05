@@ -46,6 +46,18 @@ end
 
 -- included in every DB auth handler
 
+function auth_on_register_m5(reg)
+   return auth_on_register(reg)
+end
+
+function auth_on_publish_m5(pub)
+   return false
+end
+
+function auth_on_subscribe_m5(sub)
+   return false
+end
+
 function auth_on_publish(pub)
     return false
 end
@@ -61,6 +73,9 @@ function on_client_gone(c)
 end
 
 function on_client_offline(c)
+end
+
+function on_session_expired(c)
 end
 
 -- set for every DB auth handler

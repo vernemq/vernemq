@@ -14,8 +14,11 @@
 
 -module(vmq_ranch_config).
 
+-behaviour(gen_server).
+
 %% API
--export([start_listener/4,
+-export([start_link/0,
+         start_listener/4,
          reconfigure_listeners/1,
          stop_listener/2,
          stop_listener/3,
@@ -24,6 +27,30 @@
          restart_listener/2,
          get_listener_config/2,
          listeners/0]).
+
+%% gen_server callbacks
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
+
+-record(state, {}).
+
+%%%===================================================================
+%%% API
+%%%===================================================================
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Starts the server
+%%
+%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
+%% @end
+%%--------------------------------------------------------------------
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 listener_sup_sup(Addr, Port) ->
     AAddr = addr(Addr),
@@ -100,20 +127,19 @@ start_listener(Type, Addr, Port, {TransportOpts, Opts}) ->
                                    vmq_config:get_env(max_connections)),
     NrOfAcceptors = proplists:get_value(nr_of_acceptors, Opts,
                                         vmq_config:get_env(nr_of_acceptors)),
-    TransportMod =
-    case proplists:get_value(proxy_protocol, Opts, false) of
-        false -> transport_for_type(Type);
-        true -> vmq_ranch_proxy_protocol
-    end,
-    case ranch:start_listener(Ref, NrOfAcceptors, TransportMod,
-                              [{ip, AAddr}, {port, Port}|TransportOpts],
+    ProtocolOpts = protocol_opts_for_type(Type, Opts),
+    TransportMod = transport_for_type(Type),
+    TransportOptions = maps:from_list(
+        [{socket_opts, [{ip, AAddr}, {port, Port}|TransportOpts]},
+         {num_acceptors, NrOfAcceptors},
+         {max_connections, MaxConns}]),
+    case ranch:start_listener(Ref, TransportMod, TransportOptions,
                               protocol_for_type(Type),
-                              protocol_opts_for_type(Type, Opts)) of
-        {ok, _} ->
-            ranch:set_max_connections(Ref, MaxConns);
-        E ->
-            E
+                              ProtocolOpts) of
+        {ok, _} -> ok;
+        Error -> Error
     end.
+
 
 listeners() ->
     lists:foldl(
@@ -205,10 +231,10 @@ transport_for_type(vmqs) -> ranch_ssl.
 
 protocol_for_type(mqtt) -> vmq_ranch;
 protocol_for_type(mqtts) -> vmq_ranch;
-protocol_for_type(mqttws) -> cowboy_protocol;
-protocol_for_type(mqttwss) -> cowboy_protocol;
-protocol_for_type(http) -> cowboy_protocol;
-protocol_for_type(https) -> cowboy_protocol;
+protocol_for_type(mqttws) -> cowboy_clear;
+protocol_for_type(mqttwss) -> cowboy_clear;
+protocol_for_type(http) -> cowboy_clear;
+protocol_for_type(https) -> cowboy_clear;
 protocol_for_type(vmq) -> vmq_cluster_com;
 protocol_for_type(vmqs) -> vmq_cluster_com.
 
@@ -219,14 +245,17 @@ transport_opts(ranch_ssl, Opts) -> vmq_ssl:opts(Opts).
 
 protocol_opts_for_type(Type, Opts) ->
     protocol_opts(protocol_for_type(Type), Type, Opts).
-protocol_opts(vmq_ranch, _, Opts) -> default_session_opts(Opts);
-protocol_opts(cowboy_protocol, Type, Opts)
+protocol_opts(vmq_ranch, _, Opts) -> 
+    case proplists:get_value(proxy_protocol, Opts, false) of
+        false -> default_session_opts(Opts);
+        true -> [{proxy_header, true}|default_session_opts(Opts)]
+    end;
+
+protocol_opts(cowboy_clear, Type, Opts)
   when (Type == mqttws) or (Type == mqttwss) ->
-    Dispatch = cowboy_router:compile(
-                 [{'_', [{"/mqtt", vmq_websocket, default_session_opts(Opts)}]}
-                 ]),
-    [{env, [{dispatch, Dispatch}]}];
-protocol_opts(cowboy_protocol, _, Opts) ->
+    #{env => #{ dispatch => dispatch(Type, Opts) },
+      stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]};    
+protocol_opts(cowboy_clear, _, Opts) ->
     Routes =
     case {lists:keyfind(config_mod, 1, Opts),
           lists:keyfind(config_fun, 1, Opts)} of
@@ -243,7 +272,7 @@ protocol_opts(cowboy_protocol, _, Opts) ->
     end,
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
-    [{env, [{dispatch, Dispatch}]}];
+    #{env => #{dispatch => Dispatch}};
 protocol_opts(vmq_cluster_com, _, _) -> [].
 
 default_session_opts(Opts) ->
@@ -258,6 +287,140 @@ default_session_opts(Opts) ->
             {_, V1} -> [{proxy_protocol_use_cn_as_username, V1}|MaybeSSLDefaults]
         end,
     AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions, Opts, [3,4]),
+    BufferSizes = proplists:get_value(buffer_sizes, Opts, undefined),
     %% currently only the mountpoint option is supported
     [{mountpoint, proplists:get_value(mountpoint, Opts, "")},
-     {allowed_protocol_versions, AllowedProtocolVersions}|MaybeProxyDefaults].
+     {allowed_protocol_versions, AllowedProtocolVersions},
+     {buffer_sizes, BufferSizes}|MaybeProxyDefaults].
+
+%%%===================================================================
+%%% gen_server callbacks
+%%%===================================================================
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Initializes the server
+%%
+%% @spec init(Args) -> {ok, State} |
+%%                     {ok, State, Timeout} |
+%%                     ignore |
+%%                     {stop, Reason}
+%% @end
+%%--------------------------------------------------------------------
+init([]) ->
+    process_flag(trap_exit, true),
+    Env = vmq_config:get_all_env(vmq_server),
+    _ = configure_listeners(Env, []),
+    {ok, #state{}}.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling call messages
+%%
+%% @spec handle_call(Request, From, State) ->
+%%                                   {reply, Reply, State} |
+%%                                   {reply, Reply, State, Timeout} |
+%%                                   {noreply, State} |
+%%                                   {noreply, State, Timeout} |
+%%                                   {stop, Reason, Reply, State} |
+%%                                   {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_call({last_val, Key, Val}, _From, LastVals) ->
+    case lists:keyfind(Key, 1, LastVals) of
+        false ->
+            {reply, nil, [{Key, Val}|LastVals]};
+        {Key, Val} ->
+            %% unchanged
+            {reply, Val, LastVals};
+        {Key, OldVal} ->
+            {reply, OldVal, [{Key, Val}|lists:keydelete(Key, 1, LastVals)]}
+    end.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling cast messages
+%%
+%% @spec handle_cast(Msg, State) -> {noreply, State} |
+%%                                  {noreply, State, Timeout} |
+%%                                  {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling all non call/cast messages
+%%
+%% @spec handle_info(Info, State) -> {noreply, State} |
+%%                                   {noreply, State, Timeout} |
+%%                                   {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any
+%% necessary cleaning up. When it returns, the gen_server terminates
+%% with Reason. The return value is ignored.
+%%
+%% @spec terminate(Reason, State) -> void()
+%% @end
+%%--------------------------------------------------------------------
+terminate(_Reason, _State) ->
+    %% Stop the all listeners to prevent clients from connecting
+    %% while shutting down.
+    KillSessions = false,
+    lists:foreach(
+      fun ({ranch_server, _, _, _}) ->
+              ok;
+          ({{ranch_listener_sup, {Ip, Port}}, _Status, supervisor, _}) ->
+              stop_listener(Ip, Port, KillSessions)
+      end, supervisor:which_children(ranch_sup)),
+    ok.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Convert process state when code is changed
+%%
+%% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
+%% @end
+%%--------------------------------------------------------------------
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+configure_listeners([{listeners, _} = Item|Rest], Acc) ->
+    configure_listeners(Rest, [Item|Acc]);
+configure_listeners([{tcp_listen_options, _} = Item|Rest], Acc) ->
+    configure_listeners(Rest, [Item|Acc]);
+configure_listeners([_|Rest], Acc) ->
+    configure_listeners(Rest, Acc);
+configure_listeners([], []) ->
+    %% no need to reconfigure listeners
+    ok;
+configure_listeners([], Acc) ->
+    vmq_ranch_config:reconfigure_listeners(Acc).
+
+dispatch(Type, Opts) ->    
+    maybe_proxy(proplists:get_value(proxy_protocol, Opts, false), Type, Opts).
+maybe_proxy(false, Type, Opts) ->
+    cowboy_router:compile(
+        [{'_', [{"/mqtt", vmq_websocket, [{type, Type}|default_session_opts(Opts)]}]}
+        ]);
+maybe_proxy(true, Type, Opts) ->
+    cowboy_router:compile(
+        [{'_', [{"/mqtt", vmq_websocket, [{proxy_header, true}|[{type, Type}|default_session_opts(Opts)]]}]}
+        ]).

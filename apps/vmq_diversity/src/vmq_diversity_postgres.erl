@@ -13,11 +13,16 @@
 %% limitations under the License.
 
 -module(vmq_diversity_postgres).
+-include_lib("luerl/include/luerl.hrl").
 
 %% API functions
 -export([install/1,
          squery/2,
-         equery/3]).
+         equery/3,
+
+         %% exported for `vmq_diversity_cockroachdb`
+         execute/2,
+         ensure_pool/4]).
 
 -import(luerl_lib, [badarg_error/3]).
 
@@ -45,8 +50,9 @@ equery(PoolName, Stmt, Params) ->
 %%%===================================================================
 table() ->
     [
-     {<<"execute">>, {function, fun execute/2}},
-     {<<"ensure_pool">>, {function, fun ensure_pool/2}}
+     {<<"execute">>, #erl_func{code=fun execute/2}},
+     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}},
+     {<<"hash_method">>, #erl_func{code=fun hash_method/2}}
     ].
 
 execute(As, St) ->
@@ -93,17 +99,20 @@ execute(As, St) ->
     end.
 
 ensure_pool(As, St) ->
+    ensure_pool(As, St, postgres, pool_postgres).
+
+ensure_pool(As, St, DB, DefaultPoolId) ->
     case As of
         [Config0|_] ->
             case luerl:decode(Config0, St) of
                 Config when is_list(Config) ->
                     {ok, AuthConfigs} = application:get_env(vmq_diversity, db_config),
-                    DefaultConf = proplists:get_value(postgres, AuthConfigs),
+                    DefaultConf = proplists:get_value(DB, AuthConfigs),
                     Options = vmq_diversity_utils:map(Config),
                     PoolId = vmq_diversity_utils:atom(
                                maps:get(<<"pool_id">>,
                                         Options,
-                                        pool_postgres)),
+                                        DefaultPoolId)),
 
                     Size = vmq_diversity_utils:int(
                              maps:get(<<"size">>,
@@ -128,9 +137,32 @@ ensure_pool(As, St) ->
                                  maps:get(<<"database">>,
                                           Options,
                                           proplists:get_value(database, DefaultConf))),
+                    Ssl = vmq_diversity_utils:atom(
+                            maps:get(<<"ssl">>, Options,
+                                     proplists:get_value(ssl, DefaultConf, false))),
+                    SslOpts =
+                        case Ssl of
+                            true ->
+                                CertFile = vmq_diversity_utils:str(
+                                             maps:get(<<"certfile">>, Options,
+                                                      proplists:get_value(certfile, DefaultConf))),
+                                CaCertFile = vmq_diversity_utils:str(
+                                             maps:get(<<"cacertfile">>, Options,
+                                                      proplists:get_value(cacertfile, DefaultConf))),
+                                KeyFile = vmq_diversity_utils:str(
+                                             maps:get(<<"keyfile">>, Options,
+                                                      proplists:get_value(keyfile, DefaultConf))),
+                                L = [{certfile, CertFile},
+                                     {cacertfile, CaCertFile},
+                                     {keyfile, KeyFile}],
+                                [P||{_,V}=P <- L, V /= ""];
+                           false ->
+                                []
+                        end,
                     NewOptions =
                     [{size, Size}, {user, User}, {password, Password},
-                     {host, Host}, {port, Port}, {database, Database}],
+                     {host, Host}, {port, Port}, {database, Database},
+                     {ssl, Ssl}, {ssl_opts, SslOpts}],
                     vmq_diversity_sup:start_all_pools(
                       [{pgsql, [{id, PoolId}, {opts, NewOptions}]}], []),
 
@@ -144,8 +176,14 @@ ensure_pool(As, St) ->
     end.
 
 build_result(Results, Columns) ->
-    build_result(Results, [Name || {column, Name, _, _, _, _} <- Columns], []).
+    build_result(Results, [Name || {column, Name, _, _, _, _, _} <- Columns], []).
 
 build_result([Result|Results], Names, Acc) ->
     build_result(Results, Names, [lists:zip(Names, tuple_to_list(Result))|Acc]);
 build_result([], _, Acc) -> lists:reverse(Acc).
+
+hash_method(_, St) ->
+    {ok, DBConfigs} = application:get_env(vmq_diversity, db_config),
+    DefaultConf = proplists:get_value(postgres, DBConfigs),
+    HashMethod = proplists:get_value(password_hash_method, DefaultConf),
+    {[atom_to_binary(HashMethod,utf8)], St}.

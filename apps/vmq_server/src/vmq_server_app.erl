@@ -26,8 +26,8 @@
 -spec start(_, _) -> {'error', _} | {'ok', pid()} | {'ok', pid(), _}.
 start(_StartType, _StartArgs) ->
     ok = vmq_metadata:start(),
+    ok = vmq_message_store:start(),
 
-    vmq_server_cli:init_registry(),
     case vmq_server_sup:start_link() of
         {error, _} = E ->
             E;
@@ -37,6 +37,7 @@ start(_StartType, _StartArgs) ->
             %% vmq_plugin_mgr waits for the 'vmq_server_sup' process
             %% to be registered.
             timer:sleep(500),
+            vmq_server_cli:init_registry(),
             start_user_plugins(),
             vmq_config:configure_node(),
             R
@@ -63,5 +64,6 @@ start_user_plugin({_Order, #{path := Path,
 
 -spec stop(_) -> 'ok'.
 stop(_State) ->
+    _ = vmq_message_store:stop(),
     _ = vmq_metadata:stop(),
     ok.

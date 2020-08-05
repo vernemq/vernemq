@@ -1,0 +1,420 @@
+#!/bin/sh
+# -*- tab-width:4;indent-tabs-mode:nil -*-
+# ex: ts=4 sw=4 et
+
+# installed by node_package (github.com/basho/node_package)
+
+# Pull environment for this install
+. "{{runner_base_dir}}/lib/env.sh"
+
+
+# Keep track of where script was invoked
+ORIGINAL_DIR=$(pwd)
+
+# Make sure CWD is set to runner run dir
+cd $RUNNER_BASE_DIR
+
+# Identify the script name
+SCRIPT=`basename $0`
+
+usage() {
+cat <<EOF
+Usage: $SCRIPT «command»
+where «command» is one of the following:
+    { help | start | stop | restart | ping | console | attach
+      attach-direct | ertspath | chkconfig | escript | version | getpid
+      config { generate | effective | describe VARIABLE } [-l debug]
+
+Run \`$SCRIPT help\` for more detailed information.
+
+EOF
+}
+
+help() {
+
+NAME_HOST=${NAME_ARG#* }
+NAME_HOST=${NAME_HOST:-\«nodename\»}
+
+cat <<EOF
+Usage: $SCRIPT «command»
+This is the primary script for controlling the $SCRIPT node.
+
+ INFORMATIONAL COMMANDS
+    help
+        You are here.
+
+ SERVICE CONTROL COMMANDS
+    start
+        Starts the $SCRIPT node in the background. If the node is already
+        started, you will get the message "Node is already running!" If the
+        node is not already running, no output will be given.
+
+    stop
+        Stops the running $SCRIPT node. Prints "ok" when successful.  When
+        the node is already stopped or not responding, prints:
+        "Node '$NAME_HOST' not responding to pings."
+
+    restart
+        Stops and then starts the running $SCRIPT node. Prints "ok"
+        when successful.  When the node is already stopped or not
+        responding, prints: "Node '$NAME_HOST' not responding to
+        pings."
+
+    console
+        Starts the $SCRIPT node in the foreground, giving access to the Erlang
+        shell and runtime messages. Prints "Node is already running - use
+        '$SCRIPT attach' instead" when the node is running in the background.
+
+ DIAGNOSTIC COMMANDS
+    ping
+        Checks that the $SCRIPT node is running. Prints "pong" when
+        successful.  When the node is stopped or not responding, prints:
+        "Node '$NAME_HOST' not responding to pings."
+
+    attach
+        Attaches to the console of a $SCRIPT node running in the background
+        using an Erlang remote shell, giving access to the Erlang shell and
+        runtime messages. Prints "Node did not respond to ping!" when the
+        node cannot be reached.
+        Exit \`$SCRIPT attach\` by pressing \"Ctrl-G q\".
+
+    attach-direct
+        Attaches to the console of a $SCRIPT node running in the background
+        using a directly connected FIFO, giving access to the Erlang shell
+        and runtime messages. Prints "Node did not respond to ping!" when the
+        node cannot be reached.
+        Exit \`$SCRIPT attach-direct\` by pressing \"Ctrl-D\".
+
+    chkconfig
+        Confirms whether the $SCRIPT.conf and advanced.config is
+        valid.
+
+        For applications configured with cuttlefish, this includes a call
+        to \`config generate\` also.
+
+    config { generate | effective | describe VARIABLE } [-l debug]
+        prints configuration information for applications configured with
+        cuttlefish enabled. \`-l debug\` outputs more information for
+        troubleshooting.
+
+        generate
+            generates the app.config and vm.args files from the .conf file.
+            This is effectively what happens before start, but you'll need
+            to use \`config generate -l debug\` to see the cuttlefish debug
+            output.
+
+        effective
+            prints out the effective configuration in cuttlefish syntax
+            including defaults not specified in the .conf file. This is
+            for 'start-time' configuration only.
+
+        describe VARIABLE
+            for a given setting, prints any documentation and other useful
+            information, such as affected location in app.config, datatype
+            of the value, default value, and effective value.
+
+
+SCRIPTING COMMANDS
+    ertspath
+        Outputs the path to the $SCRIPT Erlang runtime environment
+
+    escript
+        Provides a means to call the \`escript\` application within the $SCRIPT
+        Erlang runtime environment
+
+    version
+        Outputs the $SCRIPT version identifier
+
+    getpid
+        Outputs the process identifier for a currently running instance of
+        $SCRIPT.
+
+EOF
+
+}
+
+
+# Call bootstrapd for daemon commands like start/stop/console
+bootstrapd() {
+    # Fail fast if they have no rights to mess around with pids
+    check_user_internal
+
+    # Create PID directory if it does not exist before dropping permissiongs
+    # to the runner user
+    create_pid_dir
+    ES=$?
+    if [ "$ES" -ne 0 ]; then
+        echoerr "Unable to access $PID_DIR, permission denied, run script as root"
+        exit 1
+    fi
+
+    # Make sure the user running this script is the owner and/or su to that user
+    check_user $@
+    ES=$?
+    if [ "$ES" -ne 0 ]; then
+        exit $ES
+    fi
+}
+
+do_start() {
+    # Make sure there is not already a node running
+    node_down_check
+
+    # Warn the user if ulimit is too low
+    check_ulimit
+
+    # Make sure log directory exists
+    mkdir -p $RUNNER_LOG_DIR
+
+    HEART_COMMAND="$RUNNER_SCRIPT_DIR/$RUNNER_SCRIPT start"
+    export HEART_COMMAND
+    mkdir -p $PIPE_DIR
+    $ERTS_PATH/run_erl -daemon $PIPE_DIR/ $RUNNER_LOG_DIR \
+        "exec $RUNNER_SCRIPT_DIR/$RUNNER_SCRIPT console" 2>&1
+
+    if [ ! -z "$WAIT_FOR_PROCESS" ]; then
+        # Wait for the node to come up. We can't just ping it because
+        # distributed erlang comes up for a second before the node crashes
+        # (eg. in the case of an unwriteable disk). Once the node comes
+        # up we check for the $WAIT_FOR_PROCESS} process. If that's running
+        # then we assume things are good enough. This will at least let
+        # the user know when the node is crashing right after startup.
+        echo $WAIT_FOR_PROCESS
+        WAIT=${WAIT_FOR_ERLANG:-15}
+        while [ $WAIT -gt 0 ]; do
+            WAIT=`expr $WAIT - 1`
+            sleep 1
+
+            # squash stderr output to not frighten users if the node does not
+            # come up right away
+            MUTE=`ping_node 2> /dev/null`
+            if [ "$?" -ne 0 ]; then
+                continue
+            fi
+            PROCESS=`$NODETOOL rpcterms erlang whereis "'${WAIT_FOR_PROCESS}'."`
+            if [ "$PROCESS" != "undefined" ]; then
+                # Attempt to create a .pid file for the process
+                create_pid_file
+                exit 0
+            fi
+        done
+        echo "${SCRIPT} failed to start within ${WAIT_FOR_ERLANG:-15} seconds,"
+        echo "see the output of '${SCRIPT} console' for more information."
+        echo "If you want to wait longer, set the environment variable"
+        echo "WAIT_FOR_ERLANG to the number of seconds to wait."
+        exit 1
+    fi
+
+    # Attempt to create .pid file
+    create_pid_file
+}
+
+do_stop() {
+    get_pid
+    ES=$?
+    if [ "$ES" -ne 0 ] || [ -z $PID ]; then
+        exit $ES
+    fi
+
+    # Tell nodetool to stop
+    $NODETOOL stop
+    ES=$?
+    if [ "$ES" -ne 0 ]; then
+        exit $ES
+    fi
+
+    # Now wait for the app to *really* stop
+    while `kill -s 0 $PID 2>/dev/null`;
+    do
+        sleep 1
+    done
+
+    # remove pid file
+    rm -f $PID_FILE
+}
+
+# Check the first argument for instructions
+case "$1" in
+    start)
+        # Bootstrap daemon command (check perms & drop to $RUNNER_USER)
+        bootstrapd $@
+        do_start
+        ;;
+
+    stop)
+        # Bootstrap daemon command (check perms & drop to $RUNNER_USER)
+        bootstrapd $@
+        do_stop
+        ;;
+
+    restart)
+        # Bootstrap daemon command (check perms & drop to $RUNNER_USER)
+        bootstrapd $@
+        do_stop
+        do_start
+        ;;
+
+    ping)
+        # Bootstrap daemon command (check perms & drop to $RUNNER_USER)
+        bootstrapd $@
+        ## See if the VM is alive
+        ping_node
+        ES=$?
+        if [ "$ES" -ne 0 ]; then
+            exit $ES
+        fi
+        ;;
+
+    attach-direct)
+        # Bootstrap daemon command (check perms & drop to $RUNNER_USER)
+        bootstrapd $@
+
+        # Allow attaching to a node without pinging it
+        if [ "$2" = "-f" ]; then
+          echo "Forcing connection..."
+        else
+          # Make sure a node is running
+          node_up_check
+        fi
+
+        echo "Direct Shell: Use \"Ctrl-D\" to quit. \"Ctrl-C\" will terminate the $SCRIPT node."
+        shift
+        exec $ERTS_PATH/to_erl $PIPE_DIR
+        ;;
+
+    attach)
+        # Bootstrap daemon command (check perms & drop to $RUNNER_USER)
+        bootstrapd $@
+
+        # Make sure a node is running
+        node_up_check
+
+        echo "Remote Shell: Use \"Ctrl-G q\" to quit."
+        echo "q() or init:stop() will terminate the $SCRIPT node."
+        shift
+        NODE_NAME=${NAME_ARG#* }
+        exec $ERTS_PATH/erl -name c_$$_$NODE_NAME -hidden -remsh $NODE_NAME -boot start_clean $COOKIE_ARG $NET_TICKTIME_ARG
+        ;;
+
+    console)
+        # Bootstrap daemon command (check perms & drop to $RUNNER_USER)
+        bootstrapd $@
+
+        RES=`ping_node 2> /dev/null`
+        if [ "$?" -eq 0 ]; then
+            echo "Node is already running - use '$SCRIPT attach' instead"
+            exit 1
+        fi
+
+        # Sanity check the app.config file
+        check_config
+        ES=$?
+        if [ "$ES" -ne 0 ]; then
+            exit $ES
+        fi
+
+        # Warn the user if ulimit -n is less than the defined threshold
+        check_ulimit
+
+        # Make sure log directory exists
+        mkdir -p $RUNNER_LOG_DIR
+
+        # Setup beam-required vars
+        ROOTDIR=$RUNNER_BASE_DIR
+        BINDIR=$RUNNER_BASE_DIR/erts-$ERTS_VSN/bin
+        EMU=beam
+        PROGNAME=`echo $0 | sed 's/.*\///'`
+        CMD="$NUMACTL $BINDIR/erlexec -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$RUNNER_SCRIPT \
+             $CONFIG_ARGS \
+            -pa $RUNNER_PATCH_DIR -- ${1+"$@"}"
+        export EMU
+        export ROOTDIR
+        export BINDIR
+        export PROGNAME
+
+        # Dump environment info for logging purposes
+        echo "Exec: $CMD"
+        echo "Root: $ROOTDIR"
+
+        # Log the startup
+        logger -t "$SCRIPT[$$]" "Starting up"
+
+        # Start the VM
+        exec $CMD
+        ;;
+
+    ertspath)
+        echo $ERTS_PATH
+        ;;
+
+    chkconfig)
+        bootstrapd $@
+
+        check_config
+        ;;
+
+    config)
+        shift
+        if [ -z "$CUTTLEFISH" ]; then
+            echo "This application is not configured to use cuttlefish."
+            echo "$RUNNER_SCRIPT config is not available."
+            exit 1
+        else
+            # Let's validate the output
+
+            case "$1" in
+                effective) ## Great, pass through!
+                    ;;
+                describe)
+                    if [ $# -lt 2 ] || [ "$2" = "-l" ]; then
+                        echo "$RUNNER_SCRIPT config describe requires a variable name to query"
+                        echo "  Try \`$RUNNER_SCRIPT config describe setting.name\`"
+                        exit 1
+                    fi
+                    ;;
+                generate) ## Great, pass through!
+                    ;;
+                *)
+                    echo "Valid commands for $RUNNER_SCRIPT config are:"
+                    echo "  $RUNNER_SCRIPT config effective"
+                    echo "  $RUNNER_SCRIPT config describe VARIABLE"
+                    exit 1
+                    ;;
+            esac
+
+            printf '%s \n' "`$CUTTLEFISH_COMMAND_PREFIX $@`"
+        fi
+        ;;
+
+    escript)
+        shift
+        $ERTS_PATH/escript "$@"
+        ES=$?
+        if [ "$ES" -ne 0 ]; then
+            exit $ES
+        fi
+        ;;
+
+    version)
+        echo $APP_VERSION
+        ;;
+
+    getpid)
+        # Get the PID from nodetool
+        get_pid
+        ES=$?
+        if [ "$ES" -ne 0 ] || [ -z $PID ]; then
+            exit $ES
+        fi
+        echo $PID
+        ;;
+
+    help)
+        help
+        ;;
+    *)
+        usage
+        ;;
+esac
+
+exit 0

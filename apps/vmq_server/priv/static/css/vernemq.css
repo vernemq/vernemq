@@ -1,0 +1,112 @@
+*,
+*::before,
+*::after {
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+html {
+  font-family: sans-serif;
+  line-height: 1.15;
+  height: 100%;
+  font-size: 14px;
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+  -ms-overflow-style: scrollbar;
+  -webkit-tap-highlight-color: rgba(0,0,0,0);
+}
+
+body {
+  min-height: 100%;
+}
+
+body {
+  font-family: Open Sans,Helvetica,Arial,sans-serif;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+}
+
+a {
+  color: #1E356A;
+  text-decoration: none;
+  background-color: transparent;
+  -webkit-text-decoration-skip: objects;
+}
+
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+  margin-bottom: 0.715rem;
+  font-family: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  color: inherit;
+}
+
+h1, .h1 {
+  font-size: 2.5rem;
+}
+
+h2, .h2 {
+  font-size: 2rem;
+}
+
+h3, .h3 {
+  font-size: 1.75rem;
+}
+
+h4, .h4 {
+  font-size: 1.5rem;
+}
+
+h5, .h5 {
+  font-size: 1.2rem;
+}
+
+h6, .h6 {
+  font-size: 1rem;
+}
+
+.small, small {
+  font-size: 80%;
+  font-weight: 400;
+}
+
+.text-tiny {
+  color: #868e96 !important;
+}
+
+.table-responsive {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  -ms-overflow-style: -ms-autohiding-scrollbar;
+}
+
+table {
+  border-collapse: collapse;
+}
+
+table.table tfoot td, table.table tfoot th, table.table thead td, table.table thead th {
+  white-space: nowrap;
+}
+
+.table-bordered thead td, .table-bordered thead th {
+  border-bottom-width: 1px;
+}
+
+table.table td.max-width, table.table th.max-width {
+  width: 100%;
+}
+
+.table td, .table th {
+  padding: .5rem .85rem;
+  vertical-align: middle;
+  border-top: 1px solid #e9ecef;
+}
+
+.text-nowrap {
+  white-space: nowrap !important;
+}

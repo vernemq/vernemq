@@ -14,7 +14,9 @@
 %%%-------------------------------------------------------------------
 
 -module(vmq_diversity_cache).
+-include_lib("luerl/include/luerl.hrl").
 
+-dialyzer(no_undefined_callbacks).
 -behaviour(gen_server2).
 
 %% API
@@ -39,7 +41,11 @@
 
 -import(luerl_lib, [badarg_error/3]).
 
--record(state, {}).
+-record(state,
+        {
+         %% logical timestamp
+         lts = 0 :: non_neg_integer()
+        }).
 
 
 -record(publish_acl, {
@@ -54,6 +60,13 @@
           max_qos = 2,
           modifiers
          }).
+
+-define(ms(Key),
+        %% Key = {<<>>, <<"clientid">>},
+        %% ets:fun2ms(fun({{AKey, '_'}, '_', '_'}=A) when AKey =:= Key -> A end).
+        [{{{'$1','_'},'_','_'},
+          [{'=:=','$1',{const,Key}}],
+          ['$_']}]).
 
 %%%===================================================================
 %%% API
@@ -88,15 +101,17 @@ clear_cache() ->
 
 clear_cache(MP, ClientId) ->
     Key = key(MP, ClientId),
-    case ets:lookup(table(cache), Key) of
-        [] -> ok;
-        [{_, PubAclHashes, SubAclHashes}] ->
-            gen_server2:call(?MODULE, {delete_cache, Key, PubAclHashes, SubAclHashes})
+    case ets:select(table(cache), ?ms(Key), 1) of
+        '$end_of_table' ->
+            ok;
+        {[{{Key,Lts}, PubAclHashes, SubAclHashes}|_],_} ->
+            %% first entry is the oldest which we'll delete
+            gen_server2:call(?MODULE, {delete_cache, {Key,Lts}, PubAclHashes, SubAclHashes})
     end.
 
 entries(MP, ClientId) when is_binary(MP) ->
     Key = key(MP, ClientId),
-    case ets:lookup(table(cache), Key) of
+    case ets:select(table(cache), ?ms(Key)) of
         [] -> [];
         [{_, PubAclHashes, SubAclHashes}] ->
             [{publish, entries_(publish, PubAclHashes)},
@@ -114,10 +129,10 @@ entries_(Type, Hashes) ->
 %%%===================================================================
 table() ->
     [
-     {<<"insert">>, {function, fun insert/2}},
+     {<<"insert">>, #erl_func{code=fun insert/2}},
      %% only for testing purposes
-     {<<"match_subscribe">>, {function, fun match_subscribe/2}},
-     {<<"match_publish">>, {function, fun match_publish/2}}
+     {<<"match_subscribe">>, #erl_func{code=fun match_subscribe/2}},
+     {<<"match_publish">>, #erl_func{code=fun match_publish/2}}
     ].
 
 decode_acl(Acl, St) when is_tuple(Acl) ->
@@ -219,18 +234,21 @@ match_publish(As, St) ->
 %%%===================================================================
 init([]) ->
     _ = [ets:new(table(T), [public, named_table,
-                        {read_concurrency, true},
-                        {write_concurrency, true}])
-         || T <- [cache, publish, subscribe]],
+                            {read_concurrency, true},
+                            {write_concurrency, true}])
+         || T <- [publish, subscribe]],
+    _ = ets:new(table(cache), [public, named_table,
+                               {read_concurrency, true},
+                               {write_concurrency, true}, ordered_set]),
     {ok, #state{}}.
 
-handle_call({insert_cache, Key, PubAcls, SubAcls}, _From, State) ->
-    insert_cache(Key, PubAcls, SubAcls),
-    {reply, ok, State};
-handle_call({delete_cache, Key, PubAclHashes, SubAclHashes}, _From, State) ->
+handle_call({insert_cache, Key, PubAcls, SubAcls}, _From, #state{lts=Lts} = State) ->
+    insert_cache(Key, Lts+1, PubAcls, SubAcls),
+    {reply, ok, State#state{lts=Lts+1}};
+handle_call({delete_cache, {Key,Lts}, PubAclHashes, SubAclHashes}, _From, State) ->
     delete_cache_(table(publish), PubAclHashes),
     delete_cache_(table(subscribe), SubAclHashes),
-    ets:delete(table(cache), Key),
+    ets:delete(table(cache), {Key,Lts}),
     {reply, ok, State}.
 
 handle_cast(_Msg, State) ->
@@ -308,21 +326,22 @@ validate_acl(MP, User, ClientId, Rec, [UnknownProp|Rest]) ->
     validate_acl(MP, User, ClientId, Rec, Rest);
 validate_acl(_, _, _, Rec, []) -> Rec.
 
-validate_modifiers(Type, Modifiers) ->
-    NewModifiers = vmq_diversity_utils:convert(Modifiers),
+validate_modifiers(Type, Mods0) ->
+    Mods1 = vmq_diversity_utils:convert(Mods0),
     Ret =
     case Type of
         publish ->
-            vmq_plugin_util:check_modifiers(auth_on_publish, NewModifiers);
+            vmq_plugin_util:check_modifiers(auth_on_publish, Mods1);
         subscribe ->
             %% massage the modifiers to take the same form as it were returned by
             %% the callback directly
             %% in Lua: { {topic, qos}, ... }
-            vmq_plugin_util:check_modifiers(auth_on_subscribe, NewModifiers)
+            Mods2 = vmq_diversity_utils:normalize_subscribe_topics(Mods1),
+            vmq_plugin_util:check_modifiers(auth_on_subscribe, Mods2)
     end,
     case Ret of
         error ->
-            lager:error("can't validate modifiers ~p for ~p ACL", [Type, Modifiers]),
+            lager:error("can't validate modifiers ~p for ~p ACL", [Type, Mods0]),
             undefined;
         _ ->
             Ret
@@ -344,11 +363,13 @@ key(MP, ClientId) when is_binary(MP)
 
 match(Key, Input) ->
     Type = type(Input),
-    case ets:lookup(table(cache), Key) of
-        [] -> no_cache;
-        [{_, PubAclHashes, _}] when Type == publish ->
+    %% in rare cases we may have more elements, then always use the
+    %% most recently added acl rules (the last).
+    case ets:select_reverse(table(cache), ?ms(Key),1) of
+        '$end_of_table' -> no_cache;
+        {[{_, PubAclHashes, _}],_} when Type == publish ->
             match_(table(Type), Input, PubAclHashes);
-        [{_, _, SubAclHashes}] when Type == subscribe ->
+        {[{_, _, SubAclHashes}],_} when Type == subscribe ->
             match_(table(Type), Input, SubAclHashes)
     end.
 
@@ -400,13 +421,13 @@ match_input_with_acl(#subscribe_acl{pattern=InputTopic, max_qos=InputQoS},
     end;
 match_input_with_acl(_, _) -> false.
 
-insert_cache(Key, PubAcls, SubAcls) ->
+insert_cache(Key, Lts, PubAcls, SubAcls) ->
     PubAclHashes = insert_cache_(table(publish), PubAcls, []),
     SubAclHashes = insert_cache_(table(subscribe), SubAcls, []),
-    ets:insert(table(cache), {Key, PubAclHashes, SubAclHashes}).
+    ets:insert(table(cache), {{Key, Lts}, PubAclHashes, SubAclHashes}).
 
 insert_cache_(Table, [Rec|Rest], Acc) ->
-    AclHash = erlang:phash2(Rec),
+    AclHash = crypto:hash(sha, term_to_binary(Rec)),
     ets:update_counter(Table, AclHash,
                        {3, 1}, % Update Op
                        {AclHash, Rec, 0}),

@@ -27,4 +27,3 @@ case $1 in
     *)
         $NODETOOL rpc vmq_server_cli command $SCRIPT $@;;
 esac
-

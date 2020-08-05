@@ -20,6 +20,7 @@
          new/3,
          add/2,
          add/3,
+         exists/2,
          remove/2,
          remove/3,
          fold/3,
@@ -31,9 +32,9 @@
          change_node/4,
          check_format/1]).
 
--type node_subs() :: {node(), boolean(), [{topic(), qos()}]}.
+-type node_subs() :: {node(), boolean(), [subscription()]}.
 -type subs() :: [node_subs()].
--type node_changes() :: {node(), [{topic(), qos()}]}.
+-type node_changes() :: {node(), [subscription()]}.
 -type changes() :: [node_changes()].
 
 -export_type([subs/0, changes/0]).
@@ -48,17 +49,15 @@ new(CleanSession, TopicsWithQoS, Node) ->
 
 -spec get_changes(subs()) -> changes().
 get_changes(New) ->
-    [{N, NSubs} || {N, _, NSubs} <- check_format(New)].
+    [{N, NSubs} || {N, _, NSubs} <- New].
 
 -spec get_changes(subs(), subs()) -> {changes(), changes()}.
 get_changes(Old, New) ->
-    OOld = check_format(Old),
-    NNew = check_format(New),
-    Removed = subtract(OOld, NNew),
-    Added = subtract(NNew, OOld),
+    Removed = subtract(Old, New),
+    Added = subtract(New, Old),
     {Removed, Added}.
 
--spec add(subs(), [{topic(), qos()}]) -> {subs(), boolean()}.
+-spec add(subs(), [subscription()]) -> {subs(), boolean()}.
 add(Subs, TopicsWithQoS) ->
     add(Subs, TopicsWithQoS, node()).
 add(Subs, TopicsWithQoS, Node) ->
@@ -71,6 +70,12 @@ add(Subs, TopicsWithQoS, Node) ->
         false ->
             {lists:keysort(1, [{Node, CleanSession, NewNodeSubs}|Subs]), true}
     end.
+
+-spec exists(topic(), subs()) -> boolean().
+exists(Topic, Subs) ->
+    lists:any(fun({_, _, TopicsWithOpts}) ->
+                      lists:keymember(Topic, 1, TopicsWithOpts)
+              end, Subs).
 
 -spec remove(subs(), [topic()]) -> {subs(), boolean()}.
 remove(Subs, Topics) ->
@@ -123,17 +128,23 @@ change_node_all([], _, Subs, _, ChNodes) ->
     {Subs, ChNodes}.
 
 -spec check_format(any()) -> subs().
-check_format([{Topic,_,_}|_] = Version0Subs) when is_list(Topic) ->
+check_format(Subs0) ->
+    maybe_convert_v0(Subs0).
+
+%% @doc convert deprecated subscription format to current format (v1). The
+%% new format was introduced in VerneMQ 0.15.1.
+-spec maybe_convert_v0(any()) -> subs().
+maybe_convert_v0([{Topic,_,_}|_] = Version0Subs) when is_list(Topic) ->
     %% Per default converted subscriptions use initially clean session=false,
     %% because we don't know better, and it will be subsequentially adjusted
     %% anyways.
-    check_format(Version0Subs, new(false));
-check_format(Subs) -> Subs.
+    maybe_convert_v0(Version0Subs, new(false));
+maybe_convert_v0(Subs) -> Subs.
 
-check_format([{Topic, QoS, Node}|Version0Subs], NewStyleSubs) ->
+maybe_convert_v0([{Topic, QoS, Node}|Version0Subs], NewStyleSubs) ->
     {NewSubs, _} = add(NewStyleSubs, [{Topic, QoS}], Node),
-    check_format(Version0Subs, NewSubs);
-check_format([], NewStyleSubs) -> NewStyleSubs.
+    maybe_convert_v0(Version0Subs, NewSubs);
+maybe_convert_v0([], NewStyleSubs) -> NewStyleSubs.
 
 %% returns only the Subscriptions of Subs1 that are not also
 %% Subscriptions of Subs2. Assumes the subs are sorted by nodenames.
@@ -173,13 +184,15 @@ get_node_subs(Node, Subs) ->
 -spec fold(function(), any(), subs() | changes()) -> any().
 fold(Fun, Acc, Subs) ->
     lists:foldl(fun({Node, _, NSubs}, AccAcc) ->
-                        lists:foldl(fun({Topic, QoS}, AccAccAcc) ->
-                                            Fun({Topic, QoS, Node}, AccAccAcc)
-                                    end, AccAcc, NSubs);
+                        lists:foldl(
+                          fun({Topic, SubInfo}, AccAccAcc) ->
+                                  Fun({Topic, SubInfo, Node}, AccAccAcc)
+                          end, AccAcc, NSubs);
                    ({Node, NChanges}, AccAcc) ->
-                        lists:foldl(fun({Topic, QoS}, AccAccAcc) ->
-                                            Fun({Topic, QoS, Node}, AccAccAcc)
-                                    end, AccAcc, NChanges)
+                        lists:foldl(
+                          fun({Topic, SubInfo}, AccAccAcc) ->
+                                  Fun({Topic, SubInfo, Node}, AccAccAcc)
+                          end, AccAcc, NChanges)
                 end, Acc, Subs).
 
 -ifdef(TEST).
@@ -289,11 +302,11 @@ remove_subscription_test_() ->
     ?_assertEqual({[{node(), true, [{b,2}]}], true}, remove(new(true, [{a,1},{b,2}]), [a]))
     ].
 
-check_format_test_() ->
+maybe_convert_v0_test_() ->
     Version0Subs = [{?t("a"), 0, node_a}, {?t("b"), 1, node_b}, {?t("c"), 2, node_c}],
     Subs = [{node_a, true, [{?t("a"), 0}]},
             {node_b, true, [{?t("b"), 1}]},
             {node_c, true, [{?t("c"), 2}]},
             {node(), false, []}],
-    ?_assertEqual(Subs, check_format(Version0Subs)).
+    ?_assertEqual(Subs, maybe_convert_v0(Version0Subs)).
 -endif.

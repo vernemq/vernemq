@@ -1,6 +1,7 @@
 -module(vmq_schema_SUITE).
 
 -compile([nowarn_export_all,export_all]).
+-compile(nowarn_deprecated_function).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -32,54 +33,78 @@ end_per_testcase(_TestCase, _Config) ->
     ok.
 
 groups() ->
-    [].
+    Tests =
+        [proxy_protocol_inheritance_test,
+         proxy_protocol_override_test,
+         ssl_certs_opts_inheritance_test,
+         ssl_certs_opts_override_test,
+         allowed_protocol_versions_inheritance_test,
+         allowed_protocol_versions_override_test],
+    [{schema, [parallel], Tests}].
 
 all() ->
-    [proxy_protocol_inheritance_test,
-     proxy_protocol_override_test,
-     ssl_certs_opts_inheritance_test,
-     ssl_certs_opts_override_test,
-     allowed_protocol_versions_inheritance_test,
-     allowed_protocol_versions_override_test].
+    [{group, schema}].
+
+global_substitutions() ->
+    [{["metadata_plugin"], "vmq_plumtree"},
+     {["listener", "max_connections"], "10000"},
+     {["listener", "nr_of_acceptors"], "100"}].
+
+
+dummy_file(Name) ->
+    Path = filename:dirname(
+             proplists:get_value(source, ?MODULE:module_info(compile))),
+    filename:join([Path, Name]).
 
 
 ssl_certs_opts_inheritance_test(_Config) ->
+    DummyFile = dummy_file("vmq_schema_suite_dummy_file"),
     ConfFun =
         fun(LType) ->
-                [%% required settings the listener translator.
-                 {["listener", "max_connections"], "10000"},
-                 {["listener", "nr_of_acceptors"], "100"},
-                 {["listener", LType, "certfile"], "certfile"},
-                 {["listener", LType, "cafile"], "cafile"},
-                 {["listener", LType, "keyfile"], "keyfile"},
+                Base =
+                [
+                 {["listener", LType, "certfile"], DummyFile},
+                 {["listener", LType, "cafile"], DummyFile},
+                 {["listener", LType, "keyfile"], DummyFile},
                  {["listener", LType, "depth"], 10},
-
                  {["listener", LType, "ciphers"], "ciphers"},
-                 {["listener", LType, "crlfile"], "crlfile"},
+                 {["listener", LType, "crlfile"], DummyFile},
                  {["listener", LType, "require_certificate"], "on"},
 
                  {["listener", LType, "tls_version"], "tlsv1.1"},
                  {["listener", LType, "default"], "127.0.0.1:1234"}
-                ]
+                 | global_substitutions()
+                ],
+                case LType of
+                    "https" ->
+                        Base;
+                    _ ->
+                        [{["listener", LType, "mountpoint"], "mpval"} | Base]
+                end
         end,
     TestFun =
         fun(Conf, IntName) ->
-                "certfile" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, certfile]),
-                "cafile"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
-                "keyfile"  = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
-                10         = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, depth]),
-                "ciphers"  = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
-                "crlfile"  = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
-                true       = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
-                'tlsv1.1'  = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version])
+                DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, certfile]),
+                DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
+                DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
+                10        = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, depth]),
+                case IntName of
+                    https -> skip;
+                    _ ->
+                        "mpval"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
+                end,
+                "ciphers" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
+                DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
+                true      = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
+                'tlsv1.1' = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version])
         end,
 
     lists:foreach(
       fun({ConfName, IntName} = L) ->
               try
                   TestFun(ConfFun(ConfName), IntName)
-              catch C:E ->
-                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, erlang:get_stacktrace()}]),
+              catch C:E:ST ->
+                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, ST}]),
                       throw(E)
               end
       end,
@@ -91,45 +116,59 @@ ssl_certs_opts_inheritance_test(_Config) ->
       ]).
 
 ssl_certs_opts_override_test(_Config) ->
+    DummyFile = dummy_file("vmq_schema_suite_dummy_file"),
+    DummyFileOverride = dummy_file("vmq_schema_suite_dummy_file_override"),
     ConfFun =
         fun(LType) ->
-                [%% required settings the listener translator.
-                 {["listener", "max_connections"], "10000"},
-                 {["listener", "nr_of_acceptors"], "100"},
-
+                Base = [
                  %% protocol defaults
-                 {["listener", LType, "certfile"], "certfile"},
-                 {["listener", LType, "cafile"], "cafile"},
-                 {["listener", LType, "keyfile"], "keyfile"},
+                 {["listener", LType, "certfile"], DummyFile},
+                 {["listener", LType, "cafile"], DummyFile},
+                 {["listener", LType, "keyfile"], DummyFile},
                  {["listener", LType, "depth"], 10},
                  {["listener", LType, "ciphers"], "ciphers"},
-                 {["listener", LType, "crlfile"], "crlfile"},
+                 {["listener", LType, "crlfile"], DummyFile},
                  {["listener", LType, "require_certificate"], "on"},
                  {["listener", LType, "tls_version"], "tlsv1.1"},
 
                  %% listener overrides
-                 {["listener", LType, "mylistener", "certfile"], "overridden"},
-                 {["listener", LType, "mylistener", "cafile"], "overridden"},
-                 {["listener", LType, "mylistener", "keyfile"], "overridden"},
+                 {["listener", LType, "mylistener", "certfile"], DummyFileOverride},
+                 {["listener", LType, "mylistener", "cafile"], DummyFileOverride},
+                 {["listener", LType, "mylistener", "keyfile"], DummyFileOverride},
                  {["listener", LType, "mylistener", "depth"], 20},
                  {["listener", LType, "mylistener", "ciphers"], "overridden"},
-                 {["listener", LType, "mylistener", "crlfile"], "overridden"},
+                 {["listener", LType, "mylistener", "crlfile"], DummyFileOverride},
                  {["listener", LType, "mylistener", "require_certificate"], "off"},
                  {["listener", LType, "mylistener", "tls_version"], "tlsv1.2"},
 
                  {["listener", LType, "mylistener"], "127.0.0.1:1234"}
-                ]
+                 | global_substitutions()
+                ],
+                case LType of
+                    "https" ->
+                        Base;
+                    _ ->
+                        [{["listener", LType, "mountpoint"], "mpval"},
+                         {["listener", LType, "mylistener", "mountpoint"], "overriden"}
+                         | Base]
+                end
+
         end,
     TestFun =
         fun(Conf, IntName) ->
-                "overridden" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, certfile]),
-                "overridden" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
-                "overridden" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
-                20           = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, depth]),
-                "overridden" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
-                "overridden" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
-                false        = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
-                'tlsv1.2'    = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version])
+                DummyFileOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, certfile]),
+                DummyFileOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
+                DummyFileOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
+                20                = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, depth]),
+                "overridden"      = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
+                DummyFileOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
+                false             = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
+                'tlsv1.2'         = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version]),
+                case IntName of
+                    https -> skip;
+                    _ ->
+                        "overriden"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
+                end
         end,
 
     lists:foreach(
@@ -150,9 +189,7 @@ ssl_certs_opts_override_test(_Config) ->
 
 
 proxy_protocol_inheritance_test(_Config) ->
-    Conf = [%% required settings the listener translator.
-            {["listener","max_connections"], "10000"},
-            {["listener","nr_of_acceptors"], "100"},
+    Conf = [
             %% tcp/mqtt
             {["listener","tcp","proxy_protocol"], "on"},
             {["listener","tcp","default"],"127.0.0.1:1884"},
@@ -161,15 +198,15 @@ proxy_protocol_inheritance_test(_Config) ->
             {["listener","http","default"],"127.0.0.1:8888"},
             %% websocket
             {["listener","ws","proxy_protocol"], "on"},
-            {["listener","ws","default"],"127.0.0.1:800"}],
+            {["listener","ws","default"],"127.0.0.1:800"}
+            | global_substitutions()
+           ],
     true = expect(Conf, [vmq_server, listeners, mqtt,  {{127,0,0,1}, 1884},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, http,  {{127,0,0,1}, 8888},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, proxy_protocol]).
 
 proxy_protocol_override_test(_Config) ->
-    Conf = [%% required settings the listener translator.
-            {["listener","max_connections"], "10000"},
-            {["listener","nr_of_acceptors"], "100"},
+    Conf = [
             %% tcp/mqtt
             {["listener","tcp","proxy_protocol"], "off"},
             {["listener","tcp","default"],"127.0.0.1:1884"},
@@ -181,52 +218,53 @@ proxy_protocol_override_test(_Config) ->
             %% websocket
             {["listener","ws","proxy_protocol"], "off"},
             {["listener","ws","default"],"127.0.0.1:800"},
-            {["listener","ws","default","proxy_protocol"], "on"}],
+            {["listener","ws","default","proxy_protocol"], "on"}
+            | global_substitutions()
+           ],
     true = expect(Conf, [vmq_server, listeners, mqtt,  {{127,0,0,1}, 1884},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, http,  {{127,0,0,1}, 8888},proxy_protocol]),
     true = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, proxy_protocol]).
 
 allowed_protocol_versions_inheritance_test(_Config) ->
-    Conf = [%% required settings the listener translator.
-            {["listener","max_connections"], "10000"},
-            {["listener","nr_of_acceptors"], "100"},
+    Conf = [
             %% tcp/mqtt
-            {["listener","tcp","allowed_protocol_versions"], "[3,4,5]"},
+            {["listener","tcp","allowed_protocol_versions"], "3,4,5"},
             {["listener","tcp","default"],"127.0.0.1:1884"},
             %% tcp/ssl/mqtt
-            {["listener","ssl","allowed_protocol_versions"], "[3,4,5]"},
+            {["listener","ssl","allowed_protocol_versions"], "3,4,5"},
             {["listener","ssl","default"],"127.0.0.1:8884"},
             %% websocket
-            {["listener","ws","allowed_protocol_versions"], "[3,4,5]"},
+            {["listener","ws","allowed_protocol_versions"], "3,4,5"},
             {["listener","ws","default"],"127.0.0.1:800"},
             %% websocket/ssl
-            {["listener","wss","allowed_protocol_versions"], "[3,4,5]"},
-            {["listener","wss","default"],"127.0.0.1:900"}],
+            {["listener","wss","allowed_protocol_versions"], "3,4,5"},
+            {["listener","wss","default"],"127.0.0.1:900"}
+            | global_substitutions()
+           ],
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqtt,  {{127,0,0,1}, 1884},allowed_protocol_versions]),
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqtts,  {{127,0,0,1}, 8884},allowed_protocol_versions]),
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, allowed_protocol_versions]),
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqttwss,{{127,0,0,1}, 900}, allowed_protocol_versions]).
 
 allowed_protocol_versions_override_test(_Config) ->
-    Conf = [%% required settings on listener translator.
-            {["listener","max_connections"], "10000"},
-            {["listener","nr_of_acceptors"], "100"},
+    Conf = [
             %% tcp/mqtt
-            {["listener","tcp","allowed_protocol_versions"], "[3,4]"},
+            {["listener","tcp","allowed_protocol_versions"], "3,4"},
             {["listener","tcp","default"],"127.0.0.1:1884"},
-            {["listener","tcp","default","allowed_protocol_versions"], "[4]"},
+            {["listener","tcp","default","allowed_protocol_versions"], "4"},
             %% tcp/ssl/mqtt
-            {["listener","ssl","allowed_protocol_versions"], "[3,4]"},
+            {["listener","ssl","allowed_protocol_versions"], "3,4"},
             {["listener","ssl","default"],"127.0.0.1:8884"},
-            {["listener","ssl","default","allowed_protocol_versions"], "[4]"},
+            {["listener","ssl","default","allowed_protocol_versions"], "4"},
             %% websocket
-            {["listener","ws","allowed_protocol_versions"], "[3,4]"},
+            {["listener","ws","allowed_protocol_versions"], "3,4"},
             {["listener","ws","default"],"127.0.0.1:800"},
-            {["listener","ws","default","allowed_protocol_versions"], "[4]"},
+            {["listener","ws","default","allowed_protocol_versions"], "4"},
             %% websocket/ssl
-            {["listener","wss","allowed_protocol_versions"], "[3,4]"},
+            {["listener","wss","allowed_protocol_versions"], "3,4"},
             {["listener","wss","default"],"127.0.0.1:900"},
-            {["listener","wss","default","allowed_protocol_versions"], "[4]"}
+            {["listener","wss","default","allowed_protocol_versions"], "4"}
+            | global_substitutions()
            ],
     [4] = expect(Conf, [vmq_server, listeners, mqtt, {{127,0,0,1}, 1884}, allowed_protocol_versions]),
     [4] = expect(Conf, [vmq_server, listeners, mqttws, {{127,0,0,1}, 800}, allowed_protocol_versions]),

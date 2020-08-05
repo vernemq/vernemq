@@ -31,6 +31,11 @@ require "auth/auth_commons"
    )
   ]] --
 -- To insert a client ACL use a similar SQL statement:
+-- NOTE THAT `PASSWORD()` NEEDS TO BE SUBSTITUTED ACCORDING TO THE HASHING METHOD
+-- CONFIGURED IN `vmq_diversity.mysql.password_hash_method`. CHECK THE MYSQL DOCS TO 
+-- FIND THE MATCHING ONE AT https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html.
+--
+-- 
 --[[
 --
    INSERT INTO vmq_auth_acl 
@@ -52,16 +57,15 @@ require "auth/auth_commons"
 -- FOLLOWING SCRIPT.
 function auth_on_register(reg)
     if reg.username ~= nil and reg.password ~= nil then
-        results = mysql.execute(pool, 
+        results = mysql.execute(pool,
             [[SELECT publish_acl, subscribe_acl
               FROM vmq_auth_acl
-              WHERE 
+              WHERE
                 mountpoint=? AND
                 client_id=? AND
                 username=? AND
-                password=PASSWORD(?)
-            ]], 
-            reg.mountpoint, 
+                password=]]..mysql.hash_method(),
+            reg.mountpoint,
             reg.client_id,
             reg.username,
             reg.password)
@@ -95,5 +99,10 @@ hooks = {
     auth_on_subscribe = auth_on_subscribe,
     on_unsubscribe = on_unsubscribe,
     on_client_gone = on_client_gone,
-    on_client_offline = on_client_offline
+    on_client_offline = on_client_offline,
+    on_session_expired = on_session_expired,
+
+    auth_on_register_m5 = auth_on_register_m5,
+    auth_on_publish_m5 = auth_on_publish_m5,
+    auth_on_subscribe_m5 = auth_on_subscribe_m5,
 }

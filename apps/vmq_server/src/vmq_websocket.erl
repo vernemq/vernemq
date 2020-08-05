@@ -13,79 +13,95 @@
 %% limitations under the License.
 
 -module(vmq_websocket).
--export([init/3]).
--export([websocket_init/3]).
--export([websocket_handle/3]).
--export([websocket_info/3]).
--export([websocket_terminate/3]).
+-behaviour(cowboy_websocket).
 
--record(st, {buffer= <<>>,
-             fsm_mod,
-             fsm_state,
-             bytes_recv={os:timestamp(), 0},
-             bytes_sent={os:timestamp(), 0}}).
+-include("vmq_server.hrl").
+
+-export([init/2]).
+
+-export([websocket_init/1,
+         websocket_handle/2,
+         websocket_info/2, 
+         terminate/3]).
+
+-export([add_socket/2]).
+
+-record(state, {
+                buffer= <<>>,
+                fsm_mod,
+                fsm_state,
+                type,
+                socket,
+                peer,
+                bytes_recv={os:timestamp(), 0},
+                bytes_sent={os:timestamp(), 0}
+               }).
 
 -define(TO_SESSION, to_session_fsm).
 -define(SUPPORTED_PROTOCOLS, [<<"mqttv3.1">>, <<"mqtt">>]).
 
-
-init(_Type, Req, Opts) ->
-    {upgrade, protocol, cowboy_websocket, Req, Opts}.
-
-websocket_init(Type, Req, Opts) ->
-    case cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req) of
-        {undefined, _, Req2} ->
-            init_(Type, Req2, Opts);
-        {ok, [SubProtocol], Req2} ->
-            case lists:member(SubProtocol, ?SUPPORTED_PROTOCOLS) of
-                true ->
-                    Req3 = cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, SubProtocol, Req2),
-                    init_(Type, Req3, Opts);
-                false ->
-                    {shutdown, Req2}
-            end
+init(Req, Opts) ->
+    Type = proplists:get_value(type, Opts),
+    case add_websocket_sec_header(Req) of
+        {ok, Req0} ->
+            Peer = {_, _} = cowboy_req:peer(Req0),
+            FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
+            FsmState =
+                case Type of
+                    mqttwss ->
+                        case proplists:get_value(use_identity_as_username, Opts, false) of
+                            false ->
+                                FsmMod:init(Peer, Opts);
+                            true ->
+                                Cert = cowboy_req:cert(Req),
+                                FsmMod:init(Peer, [{preauth, vmq_ssl:cert_to_common_name(Cert)}|Opts])
+                        end;
+                    _ ->
+                        FsmMod:init(Peer, Opts)
+                end,
+            WsOpts0 = proplists:get_value(ws_opts, Opts, #{idle_timeout => infinity}),
+            WsOpts  = maps:merge(#{compress => true}, WsOpts0),
+            {vmq_cowboy_websocket, Req0, #state{peer=Peer,
+                                                fsm_state=FsmState, fsm_mod=FsmMod,
+                                                type=Type}, WsOpts};
+        {error, unsupported_protocol} ->
+            {vmq_cowboy_websocket, Req, {error, unsupported_protocol}}
     end.
 
-init_(Type, Req, Opts) ->
-    {Peer, Req1} = cowboy_req:peer(Req),
-    FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_fsm),
-    FsmState =
-    case Type of
-        ssl ->
-            case proplists:get_value(use_identity_as_username, Opts, false) of
-                false ->
-                    FsmMod:init(Peer, Opts);
-                true ->
-                    %% Hacky to use the private set/2 function, but
-                    %% didn't have a better solution to get at the socket.
-                    SSLSocket = cowboy_req:get(socket, Req),
-                    FsmMod:init(Peer, [{preauth, vmq_ssl:socket_to_common_name(SSLSocket)}|Opts])
-            end;
-        _ ->
-            FsmMod:init(Peer, Opts)
-    end,
+websocket_init({error, unsupported_protocol}) ->
     _ = vmq_metrics:incr_socket_open(),
-    {ok, Req1, #st{fsm_state=FsmState, fsm_mod=FsmMod}}.
+    {stop, #state{fsm_state=terminated}};
+websocket_init(State) ->
+    _ = vmq_metrics:incr_socket_open(),
+    {ok, State, hibernate}.
 
-websocket_handle({binary, Data}, Req, State) ->
-    #st{fsm_state=FsmState0,
+websocket_handle(_, #state{fsm_state=terminated}=State) ->
+    %% handle `terminated` state as in `websocket_info/3`.
+     {stop, State};
+websocket_handle({binary, Data}, State) ->
+    #state{fsm_state=FsmState0,
         fsm_mod=FsmMod,
         buffer=Buffer} = State,
     NrOfBytes = byte_size(Data),
     _ = vmq_metrics:incr_bytes_received(NrOfBytes),
     handle_fsm_return(
       FsmMod:data_in(<<Buffer/binary, Data/binary>>, FsmState0),
-      Req, State);
-websocket_handle(_Data, Req, State) ->
-    {ok, Req, State}.
+      State);
+websocket_handle(_Data, State) ->
+    {ok, State, hibernate}.
 
-websocket_info({?MODULE, terminate}, Req, State) ->
-    {shutdown, Req, State};
-websocket_info({set_sock_opts, Opts}, Req, State) ->
-    [Socket, Transport] = cowboy_req:get([socket, transport], Req),
-    Transport:setopts(Socket, Opts),
-    {ok, Req, State};
-websocket_info({?TO_SESSION, _}, Req, #st{fsm_state=terminated} = State) ->
+websocket_info({?MODULE, terminate}, State) ->
+    {stop, State};
+websocket_info({set_sock_opts, Opts}, #state{type=Type,
+                                             socket=Socket} = State) ->
+    case Type of
+        mqttws ->
+            inet:setopts(Socket, Opts);
+        mqttwss ->
+            ssl:setopts(Socket, Opts)
+    end,
+    {ok, State, hibernate};
+websocket_info({?TO_SESSION, _}, #state{fsm_state=terminated} = State) ->
     % We got an intermediate message before retrieving {?MODULE, terminate}.
     %
     % The reason for this is that cowboy doesn't provide an equivalent to
@@ -98,49 +114,81 @@ websocket_info({?TO_SESSION, _}, Req, #st{fsm_state=terminated} = State) ->
     % but send the date out and transition into `fsm_state=terminated`. To
     % finally shutdown the session we send a {?MODULE, terminate} message
     % to ourself that is handled here.
-    {shutdown, Req, State};
-websocket_info({?TO_SESSION, Msg}, Req, #st{fsm_mod=FsmMod, fsm_state=FsmState} = State) ->
-    handle_fsm_return(FsmMod:msg_in(Msg, FsmState), Req, State);
-websocket_info(_Info, Req, State) ->
-    {ok, Req, State}.
+    {shutdown, State};
+websocket_info({?TO_SESSION, Msg}, #state{fsm_mod=FsmMod, fsm_state=FsmState} = State) ->
+    handle_fsm_return(FsmMod:msg_in(Msg, FsmState), State);
+websocket_info(_Info, State) ->
+    {ok, State, hibernate}.
 
-websocket_terminate(_Reason, _Req, #st{fsm_state=terminated}) ->
+terminate(_Reason, _Req, #state{fsm_state=terminated}) ->
     _ = vmq_metrics:incr_socket_close(),
     ok;
-websocket_terminate(_Reason, _Req, #st{fsm_mod=FsmMod, fsm_state=FsmState}) ->
-    _ = FsmMod:msg_in(disconnect, FsmState),
+terminate(_Reason, _Req, #state{fsm_mod=FsmMod, fsm_state=FsmState}) ->
+    _ = FsmMod:msg_in({disconnect, ?NORMAL_DISCONNECT}, FsmState),
     _ = vmq_metrics:incr_socket_close(),
     ok.
 
-handle_fsm_return({ok, FsmState, Rest, Out}, Req, State) ->
-    maybe_reply(Out, Req, State#st{fsm_state=FsmState, buffer=Rest});
-handle_fsm_return({throttle, FsmState, Rest, Out}, Req, State) ->
-    timer:sleep(1000),
-    maybe_reply(Out, Req, State#st{fsm_state=FsmState, buffer=Rest});
-handle_fsm_return({ok, FsmState, Out}, Req, State) ->
-    maybe_reply(Out, Req, State#st{fsm_state=FsmState});
-handle_fsm_return({stop, normal, Out}, Req, State) ->
+%% Internal
+
+handle_fsm_return({ok, FsmState, Rest, Out}, State) ->
+    maybe_reply(Out, State#state{fsm_state=FsmState, buffer=Rest});
+handle_fsm_return({switch_fsm, NewFsmMod, FsmState0, Rest, Out}, State) ->
+    maybe_reply(Out, State#state{fsm_mod=NewFsmMod, fsm_state=FsmState0, buffer=Rest});
+handle_fsm_return({throttle, MilliSecs, FsmState, Rest, Out}, State) ->
+    timer:sleep(MilliSecs),
+    maybe_reply(Out, State#state{fsm_state=FsmState, buffer=Rest});
+handle_fsm_return({ok, FsmState, Out}, State) ->
+    maybe_reply(Out, State#state{fsm_state=FsmState});
+handle_fsm_return({stop, normal, Out}, State) ->
     lager:debug("ws session normally stopped", []),
     self() ! {?MODULE, terminate},
-    maybe_reply(Out, Req, State#st{fsm_state=terminated});
-handle_fsm_return({stop, shutdown, Out}, Req, State) ->
+    maybe_reply(Out, State#state{fsm_state=terminated});
+handle_fsm_return({stop, shutdown, Out}, State) ->
     lager:debug("ws session stopped due to shutdown", []),
     self() ! {?MODULE, terminate},
-    maybe_reply(Out, Req, State#st{fsm_state=terminated});
-handle_fsm_return({stop, Reason, Out}, Req, State) ->
+    maybe_reply(Out, State#state{fsm_state=terminated});
+handle_fsm_return({stop, Reason, Out}, State) ->
     lager:warning("ws session stopped abnormally due to '~p'", [Reason]),
     self() ! {?MODULE, terminate},
-    maybe_reply(Out, Req, State#st{fsm_state=terminated});
-handle_fsm_return({error, Reason, Out}, Req, State) ->
+    maybe_reply(Out, State#state{fsm_state=terminated});
+handle_fsm_return({error, Reason, Out}, State) ->
     lager:warning("ws session error, force terminate due to '~p'", [Reason]),
     self() ! {?MODULE, terminate},
-    maybe_reply(Out, Req, State#st{fsm_state=terminated}).
+    maybe_reply(Out, State#state{fsm_state=terminated}).
 
-maybe_reply(Out, Req, State) ->
+maybe_reply(Out, State) ->
     case iolist_size(Out) of
         0 ->
-            {ok, Req, State};
+            {ok, State, hibernate};
         NrOfBytes ->
             _ = vmq_metrics:incr_bytes_sent(NrOfBytes),
-            {reply, {binary, Out}, Req, State}
+            {reply, {binary, Out}, State, hibernate}
     end.
+
+add_websocket_sec_header(Req) ->
+    case cowboy_req:header(<<"sec-websocket-protocol">>, Req) of
+        undefined -> {error, unsupported_protocol};
+        SubProtocols when is_list(SubProtocols);
+                          is_binary(SubProtocols) ->
+            case select_protocol(SubProtocols, ?SUPPORTED_PROTOCOLS) of
+                {ok, SubProtocol} ->
+                    {ok, cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, SubProtocol, Req)};
+                {error, _} = E ->
+                    E
+            end
+    end.
+
+select_protocol([], _) ->
+    {error, unsupported_protocol};
+select_protocol(Want, Have) when is_binary(Want) ->
+    select_protocol([Want], Have);
+select_protocol([Want|Rest], Have) ->
+    case lists:member(Want, ?SUPPORTED_PROTOCOLS) of
+        true ->
+            {ok, Want};
+        _ ->
+            select_protocol(Rest, Have)
+    end.
+
+add_socket(Socket, State) ->
+    State#state{socket = Socket}.

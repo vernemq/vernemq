@@ -200,15 +200,22 @@ sync_action(SyncKey, #state{running=Running} = State) ->
     end.
 
 sync_action_cleanup(Pid, Reply, #state{running=Running} = State) ->
-    {ok, {SyncKey, From}} = maps:find(Pid, Running),
-    case Reply of
-        {error, owner_terminated} ->
-            ignore;
-        _ ->
-            reply(From, Reply)
-    end,
-    NewRunning = maps:remove(Pid, maps:remove(SyncKey, Running)),
-    sync_action(SyncKey, State#state{running=NewRunning}).
+    case maps:find(Pid, Running) of
+        error ->
+            %% Unknown task completion message - perhaps this node was
+            %% restarted or the supervision tree was restarted due to
+            %% some bug.
+            State;
+        {ok, {SyncKey, From}} ->
+            case Reply of
+                {error, owner_terminated} ->
+                    ignore;
+                _ ->
+                    reply(From, Reply)
+            end,
+            NewRunning = maps:remove(Pid, maps:remove(SyncKey, Running)),
+            sync_action(SyncKey, State#state{running=NewRunning})
+    end.
 
 alive(Pid) ->
     Node = node(),

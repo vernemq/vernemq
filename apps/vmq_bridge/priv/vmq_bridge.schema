@@ -86,7 +86,14 @@
                                                        {datatype, string},
                                                        {include_default, "sbr0"},
                                                        hidden
-                                                      ]}. 
+                                                      ]}.
+
+%% @doc Provide a Server Name Indication for an SSL endpoint
+{mapping, "vmq_bridge.ssl.$name.sni", "vmq_bridge.config", [
+                                                       {datatype, string},
+                                                       {include_default, "sbr0"},
+                                                       hidden
+                                                      ]}.                                             
 
 %% @doc Define one or more topic pattern to be shared between the two brokers. 
 %% Any topics matching the pattern (including wildcards) are shared. 
@@ -111,6 +118,9 @@
 %%  local prefix and subscribe to the resulting topic on the local
 %%  broker. When an outgoing message is processed, the local prefix
 %%  will be removed from the topic then the remote prefix added.
+%%
+%%  For shared subscriptions topic prefixes are applied only to the
+%%  topic part of the subscription.
 {mapping, "vmq_bridge.tcp.br0.topic.1", "vmq_bridge.config", [
                                                               {datatype, string},
                                                               {commented, "topic"}
@@ -155,38 +165,75 @@
                                                                    {default, on},
                                                                    hidden
                                                                   ]}.
-%% @doc The cafile is used to define the path to a file containing 
+
+%% @doc Set the MQTT protocol version to be used by the bridge.
+{mapping, "vmq_bridge.tcp.$name.mqtt_version", "vmq_bridge.config", [
+                                                                     {datatype, {enum, ['3', '4']}},
+                                                                     {default, '3'},
+                                                                     {include_default, "br0"},
+                                                                     {commented, on}
+                                                                    ]}.
+{mapping, "vmq_bridge.ssl.$name.mqtt_version", "vmq_bridge.config", [
+                                                                     {datatype, {enum, ['3', '4']}},
+                                                                     {default, '3'},
+                                                                     hidden
+                                                                    ]}.
+
+%% @doc Maximum number of outgoing messages the bridge will buffer
+%% while not connected to the remote broker. Messages published while
+%% the buffer is full are dropped. A value of 0 means buffering is
+%% disabled.
+{mapping, "vmq_bridge.tcp.$name.max_outgoing_buffered_messages", "vmq_bridge.config", [
+                                                                {datatype, integer},
+                                                                {default, 0},
+                                                                {include_default, "br0"},
+                                                                {commented, 0}
+                                                               ]}.
+
+{mapping, "vmq_bridge.ssl.$name.max_outgoing_buffered_messages", "vmq_bridge.config", [
+                                                                   {datatype, integer},
+                                                                   {default, 0},
+                                                                   hidden
+                                                                  ]}.
+
+%% @doc The cafile is used to define the path to a file containing
 %% the PEM encoded CA certificates that are trusted. 
 {mapping, "vmq_bridge.ssl.$name.cafile", "vmq_bridge.config", [
-                                                              {default, ""},
-                                                              {datatype, file},
-                                                              {include_default, "sbr0"},
-                                                              {commented, "{{platform_etc_dir}}/cacerts.pem"}
+                                                               {default, ""},
+                                                               {datatype, file},
+                                                               {include_default, "sbr0"},
+                                                               {commented, "{{platform_etc_dir}}/cacerts.pem"},
+                                                               {validators, ["file-exists", "file-is-readable"]}
+
                                                              ]}. 
 
 %% @doc Define the path to a folder containing 
 %% the PEM encoded CA certificates that are trusted. 
 {mapping, "vmq_bridge.ssl.$name.capath", "vmq_bridge.config", [
-                                                              {default, ""},
-                                                              {datatype, file},
-                                                              {include_default, "sbr0"},
-                                                              {commented, "{{platform_etc_dir}}/cacerts"}
-                                                             ]}. 
-
-%% @doc Set the path to the PEM encoded server certificate.
-{mapping, "vmq_bridge.ssl.$name.certfile", "vmq_bridge.config", [
-                                                                {default, ""},
-                                                                {datatype, file},
-                                                                {include_default, "sbr0"},
-                                                                {commented, "{{platform_etc_dir}}/cert.pem"}
-                                                               ]}. 
-%% @doc Set the path to the PEM encoded key file. 
-{mapping, "vmq_bridge.ssl.$name.keyfile", "vmq_bridge.config", [
+                                                               %% TODO: this option isn't implemented in the bridge and should be fully removed on VerneMQ 2.0
                                                                {default, ""},
                                                                {datatype, file},
                                                                {include_default, "sbr0"},
-                                                               {commented, "{{platform_etc_dir}}/key.pem"}
-                                                              ]}. 
+                                                               {commented, "{{platform_etc_dir}}/cacerts"},
+                                                               hidden
+                                                              ]}.
+
+%% @doc Set the path to the PEM encoded server certificate.
+{mapping, "vmq_bridge.ssl.$name.certfile", "vmq_bridge.config", [
+                                                                 {default, ""},
+                                                                 {datatype, file},
+                                                                 {include_default, "sbr0"},
+                                                                 {commented, "{{platform_etc_dir}}/cert.pem"},
+                                                                 {validators, ["file-exists", "file-is-readable"]}
+                                                                ]}.
+%% @doc Set the path to the PEM encoded key file.
+{mapping, "vmq_bridge.ssl.$name.keyfile", "vmq_bridge.config", [
+                                                                {default, ""},
+                                                                {datatype, file},
+                                                                {include_default, "sbr0"},
+                                                                {commented, "{{platform_etc_dir}}/key.pem"},
+                                                                {validators, ["file-exists", "file-is-readable"]}
+                                                               ]}.
 %% @doc When using certificate based TLS, the bridge will attempt to verify the 
 %% hostname provided in the remote certificate matches the host/address being 
 %% connected to. This may cause problems in testing scenarios, so this option 
@@ -226,6 +273,19 @@
                                                            {include_default, "sbr0"},
                                                            {commented, ""}
                                                           ]}. 
+%% @doc Setting the depth for intermediate chains
+{mapping, "vmq_bridge.ssl.$name.depth", "vmq_bridge.config", [
+                                                           {default, 1},
+                                                           {datatype, integer},
+                                                           hidden
+                                                          ]}.
+
+%% @doc Allow the bridge to open SSL connections to remote broker with wildcard certs
+{mapping, "vmq_bridge.ssl.$name.customize_hostname_check", "vmq_bridge.config", [
+                                                         {datatype, {enum, ['https']}},
+                                                            {default, 'https'},
+                                                            {commented, on}
+                                                        ]}.                                          
 
 {mapping, "vmq_bridge.registry_mfa", "vmq_bridge.registry_mfa", 
  [
@@ -250,6 +310,10 @@
                         (_, undefined) -> undefined end,
          IntVal = fun(_, I) when is_integer(I) -> I;
                      (_, undefined) -> undefined end,
+         IntAtomVal = fun(_, IAtom) when is_atom(IAtom) ->
+                              list_to_integer(atom_to_list(IAtom));
+                         (_, undefined) -> undefined
+                        end,
          AtomVal = fun(_, A) when is_atom(A) -> A end,
          ClientIdVal = fun(Name, "auto") -> 
                                {ok, HostName} = inet:gethostname(),
@@ -304,10 +368,12 @@
                             cuttlefish:invalid("should be a string of the form 'pattern [[[ out | in | both ] qos-level] local-prefix remote-prefix]'")
                     end,
 
-         Mappings = ["clean_session", "client_id", "keepalive_interval", 
-                    "username", "password", "restart_timeout", "try_private", "topic"],
+         Mappings = ["cleansession", "client_id", "keepalive_interval", 
+                    "username", "password", "restart_timeout", "try_private", "topic",
+                     "max_outgoing_buffered_messages", "mqtt_version"],
                     %% SSL specific
-         SSLMapps = ["cafile", "capath", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk"],
+         SSLMapps = ["cafile", "certfile", "keyfile", "insecure", "tls_version", "identity", "psk", "depth", 
+         "customize_hostname_check", "sni"],
          F = fun(Prefix, Suffix, Validator) ->
                      %% get the name value pairs
                      Prefix3 = lists:flatten([Prefix, ".$name"]),
@@ -321,12 +387,14 @@
                                                      [Prefix, ".", Name, ".topic.", integer_to_list(I)]
                                                     ),
                                                cuttlefish:conf_get(P, Conf, undefined)
-                                           end || I <- lists:seq(1,100)],
-                                      {AddrPort, {topics, [Validator(Name, C) || C <- BrConfigs, C /= undefined]}};
+                                           end || I <- lists:seq(1,100)],                                     
+                                           AddrPortName = lists:flatten([Name, ":", AddrPort]),
+                                      {AddrPortName, {topics, [Validator(Name, C) || C <- BrConfigs, C /= undefined]}};
                                   false ->
                                       Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
                                       Val = Validator(Name, cuttlefish:conf_get(Prefix4, Conf, undefined)),
-                                      {AddrPort, {list_to_atom(Suffix), Val}}
+                                     AddrPortName = lists:flatten([Name, ":", AddrPort]),
+                                    {AddrPortName, {list_to_atom(Suffix), Val}}
                               end
                           end
                           || {[_, _, Name], AddrPort} <- lists:filter(
@@ -357,6 +425,8 @@
          {TCPIPs, TCPPasswords} = lists:unzip(F("vmq_bridge.tcp", "password", StringVal)),
          {TCPIPs, TCPRestartTimeouts} = lists:unzip(F("vmq_bridge.tcp", "restart_timeout", IntVal)),
          {TCPIPs, TCPTryPrivates} = lists:unzip(F("vmq_bridge.tcp", "try_private", BoolVal)),
+         {TCPIPs, TCPMQTTProtos} = lists:unzip(F("vmq_bridge.tcp", "mqtt_version", IntAtomVal)),
+         {TCPIPs, TCPMaxBuffer} = lists:unzip(F("vmq_bridge.tcp", "max_outgoing_buffered_messages", IntVal)),
          {TCPIPs, TCPTopics} = lists:unzip(F("vmq_bridge.tcp", "topic", TopicVal)),
 
          {SSLIPs, SSLCleanSessions} = lists:unzip(F("vmq_bridge.ssl", "cleansession", BoolVal)),
@@ -366,17 +436,21 @@
          {SSLIPs, SSLPasswords} = lists:unzip(F("vmq_bridge.ssl", "password", StringVal)),
          {SSLIPs, SSLRestartTimeouts} = lists:unzip(F("vmq_bridge.ssl", "restart_timeout", IntVal)),
          {SSLIPs, SSLTryPrivates} = lists:unzip(F("vmq_bridge.ssl", "try_private", BoolVal)),
+         {SSLIPs, SSLMQTTProtos} = lists:unzip(F("vmq_bridge.ssl", "mqtt_version", IntAtomVal)),
+         {SSLIPs, SSLMaxBuffer} = lists:unzip(F("vmq_bridge.ssl", "max_outgoing_buffered_messages", IntVal)),
          {SSLIPs, SSLTopics} = lists:unzip(F("vmq_bridge.ssl", "topic", TopicVal)),
 
          % SSL
          {SSLIPs, SSLCAFiles} = lists:unzip(F("vmq_bridge.ssl", "cafile", StringVal)),
-         {SSLIPs, SSLCAPaths} = lists:unzip(F("vmq_bridge.ssl", "capath", StringVal)),
          {SSLIPs, SSLCertFiles} = lists:unzip(F("vmq_bridge.ssl", "certfile", StringVal)),
          {SSLIPs, SSLKeyFiles} = lists:unzip(F("vmq_bridge.ssl", "keyfile", StringVal)),
          {SSLIPs, SSLInsecures} = lists:unzip(F("vmq_bridge.ssl", "insecure", BoolVal)),
          {SSLIPs, SSLVersions} = lists:unzip(F("vmq_bridge.ssl", "tls_version", AtomVal)),
          {SSLIPs, SSLIdentities} = lists:unzip(F("vmq_bridge.ssl", "identity", StringVal)),
          {SSLIPs, SSLPSKs} = lists:unzip(F("vmq_bridge.ssl", "psk", StringVal)),
+         {SSLIPS, SSLDepths} = lists:unzip(F("vmq_bridge.ssl", "depth", IntVal)),
+         {SSLIPS, SSLALLOWWCards} = lists:unzip(F("vmq_bridge.ssl", "customize_hostname_check", AtomVal)),
+         {SSLIPS, SSLSNIs} = lists:unzip(F("vmq_bridge.ssl", "sni", StringVal)),
 
          TCP = lists:zip(TCPIPs, MZip([TCPCleanSessions, 
                                        TCPClientIds, 
@@ -385,7 +459,9 @@
                                        TCPUserNames, 
                                        TCPPasswords,
                                        TCPTryPrivates,
-                                       TCPTopics])), 
+                                       TCPMQTTProtos,
+                                       TCPMaxBuffer,
+                                       TCPTopics])),
 
          SSL = lists:zip(SSLIPs, MZip([SSLCleanSessions, 
                                        SSLClientIds, 
@@ -394,18 +470,42 @@
                                        SSLUserNames, 
                                        SSLPasswords,
                                        SSLTryPrivates,
+                                       SSLMQTTProtos,
+                                       SSLMaxBuffer,
                                        SSLTopics,
                                        SSLCAFiles, 
-                                       SSLCAPaths, 
-                                       SSLCertFiles, 
+                                       SSLCertFiles,
                                        SSLKeyFiles, 
                                        SSLInsecures, 
                                        SSLVersions, 
                                        SSLIdentities, 
-                                       SSLPSKs])),
+                                       SSLPSKs,
+                                       SSLDepths,
+                                       SSLALLOWWCards,
+                                       SSLSNIs])),
          DropUndef = fun(L) ->
                              [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
                      end,
          {DropUndef(TCP), DropUndef(SSL)}
  end
 }.
+
+{validator, "file-exists", "file does not exist",
+ fun("") ->
+         %% "" is used as the default value in most places, we should
+         %% not error out because of that.
+         true;
+    (Name) -> vmq_schema_util:file_exists(Name)
+ end}.
+{validator, "file-is-readable", "file is not readable, check permissions",
+ fun("") ->
+         %% "" is used as the default value in most places, we should
+         %% not error out because of that.
+         true;
+    (Name) -> vmq_schema_util:file_is_readable(Name)
+ end}.
+
+{mapping, "vmq_bridge.clique_lead_line", "vmq_bridge.clique_lead_line",
+ [{datatype, string},
+  hidden,
+  {default, "    bridge      Manage MQTT bridges\n"}]}.

@@ -14,6 +14,8 @@
 
 -module(vmq_diversity_plugin).
 
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
+
 -behaviour(gen_server).
 -behaviour(auth_on_register_hook).
 -behaviour(auth_on_publish_hook).
@@ -27,6 +29,15 @@
 -behaviour(on_client_wakeup_hook).
 -behaviour(on_client_offline_hook).
 -behaviour(on_client_gone_hook).
+-behaviour(on_session_expired_hook).
+
+-behaviour(auth_on_register_m5_hook).
+-behaviour(on_register_m5_hook).
+-behaviour(auth_on_publish_m5_hook).
+-behaviour(on_publish_m5_hook).
+-behaviour(auth_on_subscribe_m5_hook).
+-behaviour(on_subscribe_m5_hook).
+-behaviour(on_auth_m5_hook).
 
 -export([auth_on_register/5,
          auth_on_publish/6,
@@ -35,11 +46,21 @@
          on_publish/6,
          on_subscribe/3,
          on_unsubscribe/3,
-         on_deliver/4,
+         on_deliver/6,
          on_offline_message/5,
          on_client_wakeup/1,
          on_client_offline/1,
-         on_client_gone/1]).
+         on_client_gone/1,
+         on_session_expired/1,
+         auth_on_register_m5/6,
+         on_register_m5/4,
+         auth_on_publish_m5/7,
+         on_publish_m5/7,
+         on_deliver_m5/7,
+         auth_on_subscribe_m5/4,
+         on_subscribe_m5/4,
+         on_unsubscribe_m5/4,
+         on_auth_m5/3]).
 
 
 %% API functions
@@ -195,13 +216,37 @@ code_change(_OldVsn, State, _Extra) ->
 auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(auth_on_register, [{addr, PPeer},
-                                   {port, Port},
-                                   {mountpoint, MP},
-                                   {client_id, ClientId},
-                                   {username, nilify(UserName)},
-                                   {password, nilify(Password)},
-                                   {clean_session, CleanSession}]).
+    Res = all_till_ok(auth_on_register, [{addr, PPeer},
+                                         {port, Port},
+                                         {mountpoint, MP},
+                                         {client_id, ClientId},
+                                         {username, nilify(UserName)},
+                                         {password, nilify(Password)},
+                                         {clean_session, CleanSession}]),
+    conv_res(auth_on_reg, Res).
+
+auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    Res = all_till_ok(auth_on_register_m5, [{addr, PPeer},
+                                            {port, Port},
+                                            {mountpoint, MP},
+                                            {client_id, ClientId},
+                                            {username, nilify(UserName)},
+                                            {password, nilify(Password)},
+                                            {clean_start, CleanStart},
+                                            {properties, conv_args_props(Props)}]),
+    conv_res(auth_on_reg, Res).
+
+on_register_m5(Peer, SubscriberId, Username, Props) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_register_m5, [{addr, PPeer},
+                         {port, Port},
+                         {mountpoint, MP},
+                         {client_id, ClientId},
+                         {username, nilify(Username)},
+                         {properties, conv_args_props(Props)}]).
 
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -214,16 +259,63 @@ auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
             {ok, Modifiers};
         false ->
             %% Found a valid cache entry which rejects this publish
-            error;
+            {error, not_authorized};
         no_cache ->
-            all_till_ok(auth_on_publish, [{username, nilify(UserName)},
-                                          {mountpoint, MP},
-                                          {client_id, ClientId},
-                                          {qos, QoS},
-                                          {topic, unword(Topic)},
-                                          {payload, Payload},
-                                          {retain, IsRetain}])
+            Res = all_till_ok(auth_on_publish, [{username, nilify(UserName)},
+                                                {mountpoint, MP},
+                                                {client_id, ClientId},
+                                                {qos, QoS},
+                                                {topic, unword(Topic)},
+                                                {payload, Payload},
+                                                {retain, IsRetain}]),
+            conv_res(auth_on_pub, Res)
     end.
+
+auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    case vmq_diversity_cache:match_publish_acl(MP, ClientId, QoS, Topic, Payload, IsRetain) of
+        true ->
+            %% Found a valid cache entry which grants this publish
+            ok;
+        Modifiers when is_list(Modifiers) ->
+            %% Found a valid cache entry containing modifiers
+            {ok, modifier_compat(auth_on_publish_m5, Modifiers)};
+        false ->
+            %% Found a valid cache entry which rejects this publish
+            {error, not_authorized};
+        no_cache ->
+            Res = all_till_ok(auth_on_publish_m5, [{username, nilify(UserName)},
+                                                   {mountpoint, MP},
+                                                   {client_id, ClientId},
+                                                   {qos, QoS},
+                                                   {topic, unword(Topic)},
+                                                   {payload, Payload},
+                                                   {retain, IsRetain},
+                                                   {properties, conv_args_props(Props)}]),
+            conv_res(auth_on_pub, Res)
+    end.
+
+on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_publish_m5, [{username, nilify(UserName)},
+                        {mountpoint, MP},
+                        {client_id, ClientId},
+                        {qos, QoS},
+                        {topic, unword(Topic)},
+                        {payload, Payload},
+                        {retain, IsRetain},
+                        {properties, conv_args_props(Props)}]).
+
+on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all_till_ok(on_deliver_m5, [{username, nilify(UserName)},
+                                {mountpoint, MP},
+                                {client_id, ClientId},
+                                {qos, QoS},
+                                {topic, unword(Topic)},
+                                {payload, Payload},
+                                {retain, IsRetain},
+                                {properties, conv_args_props(Props)}]).
 
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -250,14 +342,110 @@ auth_on_subscribe(UserName, SubscriberId, Topics) ->
         false ->
             %% one of the provided topics doesn't match a cache entry which
             %% rejects this subscribe
+            {error, not_authorized};
+        no_cache ->
+            Res = all_till_ok(auth_on_subscribe, [{username, nilify(UserName)},
+                                                  {mountpoint, MP},
+                                                  {client_id, ClientId},
+                                                  {topics, [[unword(T), QoS]
+                                                            || {T, QoS} <- Topics]}]),
+            conv_res(auth_on_sub, Res)
+    end.
+
+auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    CacheRet =
+    lists:foldl(
+      fun
+          (_, false) -> false;
+          (_, no_cache) -> no_cache;
+          ({Topic, SubInfo}, Acc) ->
+              QoS = extract_qos(SubInfo),
+              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, QoS) of
+                  Mods when is_list(Mods) ->
+                      Acc ++ Mods;
+                  Ret ->
+                      Ret
+              end
+      end, [], Topics),
+    case CacheRet of
+        true ->
+            %% all provided topics match a cache entry which grants this subscribe
+            ok;
+        Modifiers when is_list(Modifiers) ->
+            %% Found a valid cache entry containing modifiers
+            {ok, modifier_compat(auth_on_subscribe_m5, Modifiers)};
+        false ->
+            %% one of the provided topics doesn't match a cache entry which
+            %% rejects this subscribe
+            {error, not_authorized};
+        no_cache ->
+            Unmap = fun(SubOpts) ->
+                            vmq_diversity_utils:unmap(SubOpts)
+                    end,
+            Res = all_till_ok(auth_on_subscribe_m5, [{username, nilify(UserName)},
+                                                     {mountpoint, MP},
+                                                     {client_id, ClientId},
+                                                     {topics, [[unword(T), [QoS, Unmap(SubOpts)]]
+                                                               || {T, {QoS, SubOpts}} <- Topics]},
+                                                     {properties, conv_args_props(Props)}]),
+            conv_res(auth_on_sub, Res)
+    end.
+
+on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    Unmap = fun(SubOpts) ->
+                    vmq_diversity_utils:unmap(SubOpts)
+            end,
+    all(on_subscribe_m5, [{username, nilify(UserName)},
+                          {mountpoint, MP},
+                          {client_id, ClientId},
+                          {topics, [[unword(T), [QoS, Unmap(SubOpts)]]
+                                    || {T, {QoS, SubOpts}} <- Topics]},
+                          {properties, conv_args_props(Props)}]).
+
+on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    CacheRet =
+    lists:foldl(
+      fun
+          (_, false) -> false;
+          (_, no_cache) -> no_cache;
+          (Topic, Acc) ->
+              %% We have to rewrite topics
+              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, 0) of
+                  Mods when is_list(Mods) ->
+                      Acc ++ [T || {T, _QoS} <- Mods];
+                  Ret ->
+                      Ret
+              end
+      end, [], Topics),
+    case CacheRet of
+        true ->
+            ok;
+        Modifiers when is_list(Modifiers) ->
+            %% Found a valid cache entry containing modifiers
+            {ok, Modifiers};
+        false ->
+            %% one of the provided topics doesn't match a cache entry which
+            %% rejects this subscribe
             error;
         no_cache ->
-            all_till_ok(auth_on_subscribe, [{username, nilify(UserName)},
+            all_till_ok(on_unsubscribe_m5, [{username, nilify(UserName)},
                                             {mountpoint, MP},
                                             {client_id, ClientId},
-                                            {topics, [[unword(T), QoS]
-                                                      || {T, QoS} <- Topics]}])
+                                            {topics, [unword(T)
+                                                      || T <- Topics]},
+                                            {properties, conv_args_props(Props)}])
     end.
+
+on_auth_m5(Username, SubscriberId, Props) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all_till_ok(on_auth_m5, [{username, nilify(Username)},
+                             {mountpoint, MP},
+                             {client_id, ClientId},
+                             {properties, conv_args_props(Props)}]).
+
 
 on_register(Peer, SubscriberId, UserName) ->
     {PPeer, Port} = peer(Peer),
@@ -320,13 +508,15 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
                                                    || T <- Topics]}])
     end.
 
-on_deliver(UserName, SubscriberId, Topic, Payload) ->
+on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [{username, nilify(UserName)},
                              {mountpoint, MP},
                              {client_id, ClientId},
+                             {qos, QoS},
                              {topic, unword(Topic)},
-                             {payload, Payload}]).
+                             {payload, Payload},
+                             {retain, IsRetain}]).
 
 on_offline_message(SubscriberId, QoS, Topic, Payload, Retain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -354,6 +544,12 @@ on_client_gone(SubscriberId) ->
     all(on_client_gone, [{mountpoint, MP},
                          {client_id, ClientId}]).
 
+on_session_expired(SubscriberId) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    vmq_diversity_cache:clear_cache(MP, ClientId),
+    all(on_session_expired, [{mountpoint, MP},
+                             {client_id, ClientId}]).
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -363,14 +559,14 @@ enable_hook(HookName) ->
 disable_hook(HookName) ->
     uncheck_exported_callback(HookName, ?MODULE:module_info(exports)).
 
-check_exported_callback(HookName, [{HookName, Arity}|_]) ->
-    vmq_plugin_mgr:enable_module_plugin(?MODULE, HookName, Arity);
+check_exported_callback(HookName, [{HookName, _Arity}|_]) ->
+    ok;
 check_exported_callback(HookName, [_|Exports]) ->
     check_exported_callback(HookName, Exports);
 check_exported_callback(_, []) -> {error, no_matching_callback_found}.
 
-uncheck_exported_callback(HookName, [{HookName, Arity}|_]) ->
-    vmq_plugin_mgr:disable_module_plugin(?MODULE, HookName, Arity);
+uncheck_exported_callback(HookName, [{HookName, _Arity}|_]) ->
+    ok;
 uncheck_exported_callback(HookName, [_|Exports]) ->
     uncheck_exported_callback(HookName, Exports);
 uncheck_exported_callback(_, []) -> {error, no_matching_callback_found}.
@@ -386,16 +582,20 @@ all_till_ok([Pid|Rest], HookName, Args) ->
     case vmq_diversity_script:call_function(Pid, HookName, Args) of
         true ->
             ok;
-        Modifiers when is_list(Modifiers) ->
-            case vmq_plugin_util:check_modifiers(HookName, Modifiers) of
-                error -> error;
+        Mods0 when is_list(Mods0) ->
+            Mods1 = convert_modifiers(HookName, Mods0),
+            case vmq_plugin_util:check_modifiers(HookName, Mods1) of
+                error ->
+                    {error, {invalid_modifiers, Mods1}};
                 CheckedModifiers ->
                     {ok, CheckedModifiers}
             end;
         false ->
-            error;
+            {error, lua_script_returned_false};
         error ->
-            error;
+            {error, lua_script_error};
+        {error, Reason} ->
+            {error, Reason};
         _ ->
             all_till_ok(Rest, HookName, Args)
     end;
@@ -433,3 +633,39 @@ nilify(undefined) ->
 nilify(Val) ->
     Val.
 
+extract_qos({QoS, _SubInfo}) -> QoS;
+extract_qos(QoS) when is_integer(QoS) -> QoS.
+
+convert_modifiers(Hook, Mods0) ->
+    vmq_diversity_utils:convert_modifiers(Hook, Mods0).
+
+conv_args_props(Props) when is_map(Props) ->
+    conv_args_props(maps:to_list(Props));
+conv_args_props(Props) when is_list(Props) ->
+    lists:map(fun conv_args_prop/1, Props).
+
+conv_args_prop({?P_USER_PROPERTY, UserProps}) ->
+    {UPS, _} = lists:foldl(
+                 fun(P, {Res, Ctr}) ->
+                         {[{Ctr, [P]}|Res], Ctr+1}
+                 end, {[], 1}, UserProps),
+    {?P_USER_PROPERTY, lists:reverse(UPS)};
+conv_args_prop({?P_RESPONSE_TOPIC, Topic}) ->
+    {?P_RESPONSE_TOPIC, unword(Topic)};
+conv_args_prop(P) -> P.
+
+conv_res(auth_on_reg, {error, lua_script_returned_false}) ->
+    {error, invalid_credentials};
+conv_res(auth_on_pub, {error, lua_script_returned_false}) ->
+    {error, not_authorized};
+conv_res(auth_on_sub, {error, lua_script_returned_false}) ->
+    {error, not_authorized};
+conv_res(_, Other) ->
+    Other.
+
+%% @doc convert from the acl format to a form the MQTT 3/4/5 can
+%% understand
+modifier_compat(auth_on_subscribe_m5, Mods) ->
+    #{topics => Mods};
+modifier_compat(auth_on_publish_m5, Mods) ->
+    maps:from_list(Mods).

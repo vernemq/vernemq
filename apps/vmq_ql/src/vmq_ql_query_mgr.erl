@@ -22,6 +22,7 @@
          fold/3,
          fold/4,
          fold_query/3,
+         fold_query/4,
          cancel/1]).
 
 -export([rpc_query/2]).
@@ -48,13 +49,19 @@
 %%%===================================================================
 %%--------------------------------------------------------------------
 start_link(Str) ->
-    start_link(self(), Str).
+    start_link(Str, []).
 
-start_link(Owner, Str) ->
-    gen_server:start_link(?MODULE, [Owner, Str], []).
+start_link(Str, Opts) ->
+    start_link(self(), Str, Opts).
+
+start_link(Owner, Str, Opts) ->
+    gen_server:start_link(?MODULE, [Owner, Str, Opts], []).
 
 fold_query(Fun, Acc, Query) ->
-    {ok, MgrPid} = start_link(Query),
+    fold_query(Fun, Acc, Query, []).
+
+fold_query(Fun, Acc, Query, Opts) ->
+    {ok, MgrPid} = start_link(Query, Opts),
     fold(Fun, Acc, MgrPid).
 
 fold(Fun, Acc, MgrPid) ->
@@ -132,9 +139,9 @@ rpc_query_loop(Owner, MgrPid) ->
 %%% gen_server callbacks
 %%%===================================================================
 
-init([Owner, Str]) ->
+init([Owner, Str, Opts]) ->
     monitor(process, Owner),
-    {QueryPids, BadNodes} = vmq_ql_query_sup:start_query(self(), Str),
+    {QueryPids, BadNodes} = vmq_ql_query_sup:start_query(self(), Str, Opts),
     case BadNodes of
         [] ->
             Jobs =

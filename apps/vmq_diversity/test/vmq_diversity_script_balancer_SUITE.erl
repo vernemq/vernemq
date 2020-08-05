@@ -46,10 +46,9 @@ load_balancing_test_simple(_) ->
     %% To test that this is the case we sum up the returned
     %% __SCRIPT_INSTANCE_ID__ which should be equivalent to
     %% `lists:sum(lists:seq(1, 100))
-    {ok, ScriptSupPid} = vmq_diversity_script_sup:start_script(code:lib_dir(vmq_diversity) ++ "/test/balance.lua"),
+    {ok, ScriptMgrPid} = vmq_diversity_script:start_link(code:lib_dir(vmq_diversity) ++ "/test/balance.lua"),
     %% Script has `keep_state=false & num_states=100`
-    101 = length(supervisor:which_children(ScriptSupPid)),
-    StateMgrPid = vmq_diversity_script_sup_sup:get_state_mgr(ScriptSupPid),
+    %%101 = length(supervisor:which_children(ScriptSupPid)),
     NumCalls = 10000,
     Self = self(),
     lists:foreach(
@@ -57,7 +56,7 @@ load_balancing_test_simple(_) ->
               spawn(
                 fun() ->
                         I = vmq_diversity_script:call_function(
-                              StateMgrPid, balanced_function, []),
+                              ScriptMgrPid, balanced_function, []),
                         Self ! {id, I}
                 end)
       end, lists:seq(1, NumCalls)),

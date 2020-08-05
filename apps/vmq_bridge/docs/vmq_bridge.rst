@@ -75,8 +75,6 @@ SSL bridges support the same configuration parameters as TCP bridges, but need f
     # define the CA certificate file or the path to the
     # installed CA certificates
     bridge.ssl.br0.cafile = cafile.crt
-    #or
-    bridge.ssl.br0.capath = /path/to/cacerts
 
     # if the remote broker requires client certificate authentication
     bridge.ssl.br0.certfile = /path/to/certfile.pem

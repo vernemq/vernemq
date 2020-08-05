@@ -36,6 +36,7 @@ v0_to_v1_subscriber_format_test(_) ->
     SubscriberId = {"", <<"test-client">>},
     V0Subs = [{Topic, 1, node()}],
     vmq_metadata:put({vmq, subscriber}, SubscriberId, V0Subs),
+    {ok, _, _} = vmq_queue_sup_sup:start_queue(SubscriberId, false),
     true = wait_until_true(
       fun() ->
               %% this should setup a queue
@@ -44,8 +45,8 @@ v0_to_v1_subscriber_format_test(_) ->
               V1Subs = [{node(), false, [{Topic, 1}]}],
               C2 = V1Subs == vmq_reg:subscriptions_for_subscriber_id(SubscriberId),
               %% routing index must be updated
-              C3 = [{SubscriberId, 1}] == vmq_reg_view:fold(vmq_reg_trie, "", Topic,
-                                                            fun(V, Acc) -> [V|Acc] end, []),
+              C3 = [{SubscriberId, 1}] == vmq_reg_view:fold(vmq_reg_trie, SubscriberId, Topic,
+                                                            fun(V, _, Acc) -> [V|Acc] end, []),
               C1 and C2 and C3
       end,
       10).
