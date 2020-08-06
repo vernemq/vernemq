@@ -5,10 +5,12 @@
 		<img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" target="_blank" />
 	</a>
 	<a href="https://github.com/vernemq/vernemq/graphs/commit-activity">
-		<img alt="Maintenance" src="https://img.shields.io/badge/Maintained%3F-yes-green.svg" target="_blank" />
+		<img alt="Maintenance" src="https://img.shields.io/badge/maintained-yes-green.svg" target="_blank" />
 	</a>
-<img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/vernemq/vernemq">
-<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/vernemq/vernemq">
+<a href="https://github.com/vernemq/vernemq/releases/latest">
+<img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/vernemq/vernemq"></a>
+<a href="https://github.com/vernemq/vernemq/commits/master">
+<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/vernemq/vernemq"></a>
 <a href="https://twitter.com/vernemq">
 		<img
 			alt="Twitter: VerneMQ"
