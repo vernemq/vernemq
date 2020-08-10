@@ -1,5 +1,11 @@
 # How to contribute to the VerneMQ Project and the VerneMQ Mission
 
+## What is VerneMQ?
+VerneMQ is a fully open-source, clusterable MQTT message broker, written in Erlang/OTP.
+
+## What is the VerneMQ Mission?
+The VerneMQ Mission is to give the IoT (and IIoT) the open, industrial-strength messaging solution that the IoT needs in almost all of its use cases. Open, simple and effective.
+
 We welcome any kind of contribution: documentation, fixing bugs, adding features, writing tests, opening issues, having discussions and fun.
 
 
