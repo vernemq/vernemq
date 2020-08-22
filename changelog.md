@@ -2,7 +2,12 @@
 
 - Add `on_topic_unsubscribe` hook (PR #1539, Issue #1326).
 
+## VerneMQ 1.10.5
+
+- Allow configuration of allowed ECC named curves in configuration file.
+
 ## VerneMQ 1.10.4.1
+
 Patch Release to:
 - Fix the new bridge metrics labels that prevented the Prometheus metrics to be exported correctly (blocking Prometheus export entirely).
 
