@@ -48,7 +48,10 @@ translate_listeners(Conf) ->
                  (_, undefined, Def) -> Def end,
     IntVal = fun(_, I, _) when is_integer(I) -> I;
                 (_, undefined, Def) -> Def end,
-
+    %% Either "", meaning all known named curves are allowed]
+    %% or a list like "[secp256r1,sect239k1,sect233k1]"
+    ECCListVal = fun (_, ECCs, _) when is_list(ECCs) -> validate_eccs(ECCs);
+                     (_, undefined, Def) -> validate_eccs(Def) end,
     %% A value looking like "[3,4]" or "[3, 4]" or "3,4"
     StringIntegerListVal =
         fun(_, undefined, Def) -> Def;
@@ -117,6 +120,7 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLDepths} = lists:unzip(extract("listener.ssl", "depth", IntVal, Conf)),
     {SSLIPs, SSLCertFiles} = lists:unzip(extract("listener.ssl", "certfile", StrVal, Conf)),
     {SSLIPs, SSLCiphers} = lists:unzip(extract("listener.ssl", "ciphers", StrVal, Conf)),
+    {SSLIPs, SSLECCs} = lists:unzip(extract("listener.ssl", "eccs", ECCListVal, Conf)),
     {SSLIPs, SSLCrlFiles} = lists:unzip(extract("listener.ssl", "crlfile", StrVal, Conf)),
     {SSLIPs, SSLKeyFiles} = lists:unzip(extract("listener.ssl", "keyfile", StrVal, Conf)),
     {SSLIPs, SSLRequireCerts} = lists:unzip(extract("listener.ssl", "require_certificate", BoolVal, Conf)),
@@ -128,6 +132,7 @@ translate_listeners(Conf) ->
     {WS_SSLIPs, WS_SSLDepths} = lists:unzip(extract("listener.wss", "depth", IntVal, Conf)),
     {WS_SSLIPs, WS_SSLCertFiles} = lists:unzip(extract("listener.wss", "certfile", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLCiphers} = lists:unzip(extract("listener.wss", "ciphers", StrVal, Conf)),
+    {WS_SSLIPs, WS_SSLECCs} = lists:unzip(extract("listener.wss", "eccs", ECCListVal, Conf)),
     {WS_SSLIPs, WS_SSLCrlFiles} = lists:unzip(extract("listener.wss", "crlfile", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLKeyFiles} = lists:unzip(extract("listener.wss", "keyfile", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLRequireCerts} = lists:unzip(extract("listener.wss", "require_certificate", BoolVal, Conf)),
@@ -139,6 +144,7 @@ translate_listeners(Conf) ->
     {VMQ_SSLIPs, VMQ_SSLDepths} = lists:unzip(extract("listener.vmqs", "depth", IntVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLCertFiles} = lists:unzip(extract("listener.vmqs", "certfile", StrVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLCiphers} = lists:unzip(extract("listener.vmqs", "ciphers", StrVal, Conf)),
+    {VMQ_SSLIPs, VMQ_SSLECCs} = lists:unzip(extract("listener.vmqs", "eccs", ECCListVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLCrlFiles} = lists:unzip(extract("listener.vmqs", "crlfile", StrVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLKeyFiles} = lists:unzip(extract("listener.vmqs", "keyfile", StrVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLRequireCerts} = lists:unzip(extract("listener.vmqs", "require_certificate", BoolVal, Conf)),
@@ -149,6 +155,7 @@ translate_listeners(Conf) ->
     {HTTP_SSLIPs, HTTP_SSLDepths} = lists:unzip(extract("listener.https", "depth", IntVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLCertFiles} = lists:unzip(extract("listener.https", "certfile", StrVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLCiphers} = lists:unzip(extract("listener.https", "ciphers", StrVal, Conf)),
+    {HTTP_SSLIPs, HTTP_SSLECCs} = lists:unzip(extract("listener.https", "eccs", ECCListVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLCrlFiles} = lists:unzip(extract("listener.https", "crlfile", StrVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLKeyFiles} = lists:unzip(extract("listener.https", "keyfile", StrVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLRequireCerts} = lists:unzip(extract("listener.https", "require_certificate", BoolVal, Conf)),
@@ -181,6 +188,7 @@ translate_listeners(Conf) ->
                                   SSLDepths,
                                   SSLCertFiles,
                                   SSLCiphers,
+                                  SSLECCs,
                                   SSLCrlFiles,
                                   SSLKeyFiles,
                                   SSLRequireCerts,
@@ -195,6 +203,7 @@ translate_listeners(Conf) ->
                                      WS_SSLDepths,
                                      WS_SSLCertFiles,
                                      WS_SSLCiphers,
+                                     WS_SSLECCs,
                                      WS_SSLCrlFiles,
                                      WS_SSLKeyFiles,
                                      WS_SSLRequireCerts,
@@ -208,6 +217,7 @@ translate_listeners(Conf) ->
                                        VMQ_SSLDepths,
                                        VMQ_SSLCertFiles,
                                        VMQ_SSLCiphers,
+                                       VMQ_SSLECCs,
                                        VMQ_SSLCrlFiles,
                                        VMQ_SSLKeyFiles,
                                        VMQ_SSLRequireCerts,
@@ -218,6 +228,7 @@ translate_listeners(Conf) ->
                                          HTTP_SSLDepths,
                                          HTTP_SSLCertFiles,
                                          HTTP_SSLCiphers,
+                                         HTTP_SSLECCs,
                                          HTTP_SSLCrlFiles,
                                          HTTP_SSLKeyFiles,
                                          HTTP_SSLRequireCerts,
@@ -242,7 +253,7 @@ extract(Prefix, Suffix, Val, Conf) ->
     Mappings = ["max_connections", "nr_of_acceptors", "mountpoint"],
     ExcludeRootSuffixes
         = [%% ssl listener specific
-           "cafile", "depth", "certfile", "ciphers", "crlfile",
+           "cafile", "depth", "certfile", "ciphers", "eccs", "crlfile",
            "keyfile", "require_certificate", "tls_version",
            "use_identity_as_username", "buffer_sizes",
            %% http listener specific
@@ -278,6 +289,28 @@ extract(Prefix, Suffix, Val, Conf) ->
                                              fun({K, _V}) ->
                                                      cuttlefish_variable:is_fuzzy_match(K, string:tokens(NameSubPrefix, "."))
                                              end, Conf), not lists:member(Name, Mappings ++ ExcludeRootSuffixes)].
+
+validate_eccs("") ->
+    ssl:eccs();
+validate_eccs(undefined) ->
+    ssl:eccs();
+validate_eccs(ECCs) ->
+    KnownECCs = lists:usort(ssl:eccs()),
+    SpecifiedECCs = case ECCs of
+        [Head | _] when is_atom(Head) ->
+            lists:usort(ECCs);
+        [_|_] ->
+            {ok, Parsed} = parse_list_to_term(ECCs),
+            lists:usort(Parsed)
+    end,
+    UnknownECCs = lists:subtract(SpecifiedECCs, KnownECCs),
+    case UnknownECCs of
+        [] ->
+            SpecifiedECCs;
+        [_|_] ->
+            UnknownECCsStrings = string:join([atom_to_list(U) || U <- UnknownECCs], ","),
+            cuttlefish:invalid("Unknown ECC named curves: " ++ UnknownECCsStrings)
+    end.
 
 string_to_secs(S) ->
     [Entity|T] = lists:reverse(S),
