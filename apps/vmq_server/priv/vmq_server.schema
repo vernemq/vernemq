@@ -1678,8 +1678,8 @@
 
 
 
-%% @doc File based authentication plugin.
-{mapping, "plugins.vmq_passwd", "vmq_server.user_plugins", [
+%% @doc JWT based authentication plugin.
+{mapping, "plugins.vmq_jwt_auth", "vmq_server.user_plugins", [
                                                             {datatype, flag},
                                                             {default, on}
                                                            ]}.

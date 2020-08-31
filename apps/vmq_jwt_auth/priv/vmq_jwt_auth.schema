@@ -1,0 +1,6 @@
+%% @doc Set JWT Secret Key.
+{mapping, "vmq_jwt_auth.secret_key", "vmq_jwt_auth.secret_key",
+ [
+  {datatype, string},
+  {default, "secret_key"}
+ ]}.

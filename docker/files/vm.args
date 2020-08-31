@@ -1,0 +1,12 @@
++P 256000
+-env ERL_MAX_ETS_TABLES 256000
+-env ERL_CRASH_DUMP /erl_crash.dump
+-env ERL_FULLSWEEP_AFTER 0
+-env ERL_MAX_PORTS 256000
++A 64
+-setcookie vmq
+-name VerneMQ@127.0.0.1
++K true
++W w
+-smp enable
++zdbbl 32768

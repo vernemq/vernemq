@@ -1,0 +1,21 @@
+{application, vmq_jwt_auth,
+ [
+  {description, "A JWT Plugin for VerneMQ"},
+  {vsn, git},
+  {registered, []},
+  {mod, { vmq_jwt_auth_app, []}},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  jwerl
+                 ]},
+  {env, [
+         %% this tells VerneMQ to look in the file 'vmq_jwt_auth'
+         %% for the plugin hook functions. The format is:
+         %%  {ModuleName, HookName, Arity, Opts}
+         {vmq_plugin_hooks, 
+          [
+           {vmq_jwt_auth, auth_on_register, 5, []}
+          ]}
+        ]}
+ ]}.
