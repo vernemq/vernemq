@@ -1,10 +1,12 @@
 # Changelog
 
-- Add `on_topic_unsubscribe` hook (PR #1539, Issue #1326).
 
 ## VerneMQ 1.10.5
 
-- Allow configuration of allowed ECC named curves in configuration file.
+- New feature: Allow configuration of allowed ECC named curves in configuration file. (thanks to @varnerac)
+- New feature: Add `on_topic_unsubscribe` hook (PR #1539, Issue #1326). (thanks to @khodzha)
+- Update to jquery 3.5.1 and bootstrap 4.1.2 in status page.
+- Add case clause for proxy protocol 'local command', causing unnecessary error logging in loadbalancer health checks.
 
 ## VerneMQ 1.10.4.1
 
