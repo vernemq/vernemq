@@ -1,5 +1,6 @@
 # Changelog
 
+- Upgrade package `bcrypt` to fix compilation in OSX (#1500).
 
 ## VerneMQ 1.10.5
 
