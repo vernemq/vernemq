@@ -87,6 +87,7 @@ before_script:
   - mysql -e "CREATE DATABASE vmq_test_database;" -uroot
   - mysql -e "CREATE USER 'vmq_test_user' IDENTIFIED BY 'vmq_test_password';" -uroot
   - mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'vmq_test_user';" -uroot
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then mysql -u root -e "use mysql; update user set plugin='mysql_native_password' where user='vmq_test_user'; flush privileges"; fi
   - psql -c "CREATE DATABASE vmq_test_database;" -U postgres
   - psql -c "CREATE USER vmq_test_user WITH PASSWORD 'vmq_test_password';" -U postgres
   - psql -c "GRANT ALL PRIVILEGES ON DATABASE vmq_test_database to vmq_test_user;" -U postgres
