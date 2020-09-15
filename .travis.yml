@@ -21,7 +21,7 @@ addons:
       - kerl
       - snappy
       - openssl@1.1
-      - mariadb
+      - mysql
       - postgresql
       - redis
       - memcached
@@ -36,9 +36,13 @@ install:
   - |
     if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
       ulimit -n 2048 # by default travis osx has "ulimit -n 256"
+      echo "[mysqld]" > $HOME/.my.cnf
+      echo "secure_file_priv = \"\" ">> $HOME/.my.cnf
+      echo "default_authentication_plugin = mysql_native_password" >> $HOME/.my.cnf
+      echo "local_infile = 1" >> $HOME/.my.cnf
       brew services start redis
       brew services start memcached
-      brew services start mariadb
+      brew services start mysql
       brew services start mongodb-community
       export PG_DATA=$(brew --prefix)/var/postgres
       rm -rf $PG_DATA
