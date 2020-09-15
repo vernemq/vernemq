@@ -15,7 +15,7 @@ addons:
     packages:
       - libsnappy-dev
   homebrew:
-    update: true
+    update: false
     packages:
       - kerl
       - snappy
@@ -35,6 +35,7 @@ install:
     if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
       ulimit -n 2048 # by default travis osx has "ulimit -n 256"
       brew services start redis
+      brew services start memcached
       brew services start mysql
       export PG_DATA=$(brew --prefix)/var/postgres
       rm -rf $PG_DATA
@@ -64,13 +65,17 @@ jobs:
       language: generic
       osx_image: xcode11.3
       env: OTP_VERSION=22.3
+
+before_cache:
+  - if [ "${TRAVIS_OS_NAME}" = "osx" ]; then brew cleanup; fi
+
 cache:
-  brew: true
   directories:
+    - $HOME/Library/Caches/Homebrew
+    - /var/cache/apt
     - plts
     - plts_base
     - $HOME/.cache/rebar3
-    - /var/cache/apt
     - $HOME/.kerl
     - $HOME/.kerlrc
 
