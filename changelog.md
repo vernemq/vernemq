@@ -1,6 +1,7 @@
 # Changelog
 
 - Upgrade package `bcrypt` to fix compilation in OSX (#1500).
+- Fix issue with loading status dashboard from behind a proxy with a basepath set
 
 ## VerneMQ 1.10.5
 
