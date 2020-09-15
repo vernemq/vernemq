@@ -25,28 +25,21 @@ addons:
       - redis
       - memcached
 
-before_install:
-  # MySQL
-  - if [ "$TRAVIS_OS_NAME" == osx ] ; then brew services start mysql && sleep 3 || true ; fi
-  - mysql -e "CREATE DATABASE vmq_test_database;" -uroot
-  - mysql -e "CREATE USER 'vmq_test_user' IDENTIFIED BY 'vmq_test_password';" -uroot
-  - mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'vmq_test_user';" -uroot
-  # PostgreSQL
-  - if [ $TRAVIS_OS_NAME == osx ] ; then rm -rf /usr/local/var/postgres ; fi
-  - if [ $TRAVIS_OS_NAME == osx ] ; then initdb /usr/local/var/postgres ; fi
-  - if [ $TRAVIS_OS_NAME == osx ] ; then pg_ctl -D /usr/local/var/postgres start && sleep 3 || true ; fi
-  - psql -c "CREATE DATABASE vmq_test_database;" -U postgres
-  - psql -c "CREATE USER vmq_test_user WITH PASSWORD 'vmq_test_password';" -U postgres
-  - psql -c "GRANT ALL PRIVILEGES ON DATABASE vmq_test_database to vmq_test_user;" -U postgres
-  # Redis
-  - if [ "$TRAVIS_OS_NAME" == osx ] ; then brew services start redis; fi
-  # Memcached
-  - if [ "$TRAVIS_OS_NAME" == osx ] ; then brew services start memcached; fi
-
 install:
-  - if [ $TRAVIS_OS_NAME == osx ] ; then kerl update releases ; fi
-  - if [ $TRAVIS_OS_NAME == osx ] ; then kerl list builds | grep ${OTP_VERSION} || travis_wait 45 kerl build ${OTP_VERSION} ${OTP_VERSION} ; fi
-  - if [ $TRAVIS_OS_NAME == osx ] ; then kerl list installations | grep ${OTP_VERSION} || kerl install ${OTP_VERSION} ; fi
+  - |
+    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      ulimit -n 2048 # by default travis osx has "ulimit -n 256"
+      brew services start redis
+      brew services start mysql
+      export PG_DATA=$(brew --prefix)/var/postgres
+      rm -rf $PG_DATA
+      initdb $PG_DATA -E utf8
+      pg_ctl -w start -l postgres.log --pgdata ${PG_DATA}
+      createuser -s postgres
+      kerl update releases
+      kerl list builds | grep ${OTP_VERSION} || travis_wait 45 kerl build ${OTP_VERSION} ${OTP_VERSION}
+      kerl list installations | grep ${OTP_VERSION} || kerl install ${OTP_VERSION}
+    fi
 
 sudo: required
 dist: trusty
@@ -80,7 +73,16 @@ cache:
     - $HOME/.kerlrc
 
 before_script:
-  - if [ $TRAVIS_OS_NAME == osx ] ; then  . ${KERL_DEFAULT_INSTALL_DIR}/${OTP_VERSION}/activate ; fi
+  - |
+    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      . ${KERL_DEFAULT_INSTALL_DIR}/${OTP_VERSION}/activate
+    fi
+  - mysql -e "CREATE DATABASE vmq_test_database;" -uroot
+  - mysql -e "CREATE USER 'vmq_test_user' IDENTIFIED BY 'vmq_test_password';" -uroot
+  - mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'vmq_test_user';" -uroot
+  - psql -c "CREATE DATABASE vmq_test_database;" -U postgres
+  - psql -c "CREATE USER vmq_test_user WITH PASSWORD 'vmq_test_password';" -U postgres
+  - psql -c "GRANT ALL PRIVILEGES ON DATABASE vmq_test_database to vmq_test_user;" -U postgres
   - epmd -daemon
 
 script:
