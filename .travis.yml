@@ -25,10 +25,9 @@ addons:
       - redis
       - memcached
 
-
 before_install:
   # MySQL
-  - if [ "$TRAVIS_OS_NAME" == osx ] ; then brew services start mysql; fi
+  - if [ "$TRAVIS_OS_NAME" == osx ] ; then brew services start mysql && sleep 3 || true ; fi
   - mysql -e "CREATE DATABASE vmq_test_database;" -uroot
   - mysql -e "CREATE USER 'vmq_test_user' IDENTIFIED BY 'vmq_test_password';" -uroot
   - mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'vmq_test_user';" -uroot
