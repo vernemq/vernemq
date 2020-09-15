@@ -16,6 +16,7 @@ addons:
       - libsnappy-dev
   homebrew:
     update: false
+    taps: mongodb/brew
     packages:
       - kerl
       - snappy
@@ -24,6 +25,7 @@ addons:
       - postgresql
       - redis
       - memcached
+      - mongodb-community
 
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl update releases ; fi
@@ -37,6 +39,7 @@ install:
       brew services start redis
       brew services start memcached
       brew services start mysql
+      brew services start mongodb-community
       export PG_DATA=$(brew --prefix)/var/postgres
       rm -rf $PG_DATA
       initdb $PG_DATA -E utf8
