@@ -19,14 +19,30 @@ addons:
     packages:
       - kerl
       - snappy
+      - openssl@1.1
+      - mysql
+      - postgres
+      - redis
+      - memcached
+
 
 before_install:
+  # MySQL
+  - if [ "$TRAVIS_OS_NAME" == osx ] ; then brew services start mysql; fi
   - mysql -e "CREATE DATABASE vmq_test_database;" -uroot
   - mysql -e "CREATE USER 'vmq_test_user' IDENTIFIED BY 'vmq_test_password';" -uroot
   - mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'vmq_test_user';" -uroot
+  # PostgreSQL
+  - if [ $TRAVIS_OS_NAME == osx ] ; then rm -rf /usr/local/var/postgres ; fi
+  - if [ $TRAVIS_OS_NAME == osx ] ; then initdb /usr/local/var/postgres ; fi
+  - if [ $TRAVIS_OS_NAME == osx ] ; then pg_ctl -D /usr/local/var/postgres start && sleep 3 || true ; fi
   - psql -c "CREATE DATABASE vmq_test_database;" -U postgres
   - psql -c "CREATE USER vmq_test_user WITH PASSWORD 'vmq_test_password';" -U postgres
   - psql -c "GRANT ALL PRIVILEGES ON DATABASE vmq_test_database to vmq_test_user;" -U postgres
+  # Redis
+  - if [ "$TRAVIS_OS_NAME" == osx ] ; then brew services start redis; fi
+  # Memcached
+  - if [ "$TRAVIS_OS_NAME" == osx ] ; then brew services start memcached; fi
 
 install:
   - if [ $TRAVIS_OS_NAME == osx ] ; then kerl update releases ; fi
@@ -60,6 +76,7 @@ cache:
     - plts
     - plts_base
     - $HOME/.cache/rebar3
+    - /var/cache/apt
     - $HOME/.kerl
     - $HOME/.kerlrc
 
