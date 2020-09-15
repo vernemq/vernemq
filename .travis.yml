@@ -21,9 +21,14 @@ addons:
       - snappy
       - openssl@1.1
       - mysql
-      - postgres
+      - postgresql
       - redis
       - memcached
+
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl update releases ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list builds | grep ${OTP_VERSION} || travis_wait 45 kerl build ${OTP_VERSION} ${OTP_VERSION} ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list installations | grep ${OTP_VERSION} || kerl install ${OTP_VERSION} ; fi
 
 install:
   - |
@@ -36,9 +41,6 @@ install:
       initdb $PG_DATA -E utf8
       pg_ctl -w start -l postgres.log --pgdata ${PG_DATA}
       createuser -s postgres
-      kerl update releases
-      kerl list builds | grep ${OTP_VERSION} || travis_wait 45 kerl build ${OTP_VERSION} ${OTP_VERSION}
-      kerl list installations | grep ${OTP_VERSION} || kerl install ${OTP_VERSION}
     fi
 
 sudo: required
@@ -73,10 +75,7 @@ cache:
     - $HOME/.kerlrc
 
 before_script:
-  - |
-    if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-      . ${KERL_DEFAULT_INSTALL_DIR}/${OTP_VERSION}/activate
-    fi
+  - if [ $TRAVIS_OS_NAME == osx ] ; then  . ${KERL_DEFAULT_INSTALL_DIR}/${OTP_VERSION}/activate ; fi
   - mysql -e "CREATE DATABASE vmq_test_database;" -uroot
   - mysql -e "CREATE USER 'vmq_test_user' IDENTIFIED BY 'vmq_test_password';" -uroot
   - mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'vmq_test_user';" -uroot
