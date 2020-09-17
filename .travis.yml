@@ -30,6 +30,7 @@ addons:
       - mongodb-community
 
 before_install:
+  - export CFLAGS="-O2 -g -fno-stack-check"
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl update releases ; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list builds | grep ${OTP_VERSION} || travis_wait 45 kerl build ${OTP_VERSION} ${OTP_VERSION} ; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list installations | grep ${OTP_VERSION} || kerl install ${OTP_VERSION} ; fi
@@ -74,19 +75,19 @@ jobs:
     - os: osx
       language: generic
       osx_image: xcode12
-      env: OTP_VERSION=22.0 CFLAGS="-O2 -g -fno-stack-check"
+      env: OTP_VERSION=22.0
     - os: osx
       language: generic
       osx_image: xcode12
-      env: OTP_VERSION=22.2 CFLAGS="-O2 -g -fno-stack-check"
+      env: OTP_VERSION=22.2
     - os: osx
       language: generic
       osx_image: xcode12
-      env: OTP_VERSION=22.3 CFLAGS="-O2 -g -fno-stack-check"
+      env: OTP_VERSION=22.3
     - os: osx
       language: generic
       osx_image: xcode12
-      env: OTP_VERSION=23.0 CFLAGS="-O2 -g -fno-stack-check"
+      env: OTP_VERSION=23.0
 
 before_cache:
   - if [ "${TRAVIS_OS_NAME}" = "osx" ]; then brew cleanup; fi
