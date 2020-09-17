@@ -6,11 +6,12 @@ services:
   - memcached
 
 env:
-  global:
-    - KERL_DEFAULT_INSTALL_DIR="$HOME/.kerl"
-    # In macOS Catalina Apple enabled "stack checking" in its clang toolchain
-    # which makes erlc segfault. See: https://github.com/kerl/kerl/issues/320
-    - KERL_CONFIGURE_OPTIONS="--disable-hipe --enable-darwin-64bit --with-ssl=/usr/local/opt/openssl@1.1 --without-javac"
+  - KERL_DEFAULT_INSTALL_DIR="$HOME/.kerl"
+  # In macOS Catalina Apple enabled "stack checking" in its clang toolchain
+  # which makes erlc segfault. See: https://github.com/kerl/kerl/issues/320
+  - CFLAGS="-O2 -g -fno-stack-check"
+  - ERLANG_OPENSSL_PATH="/usr/local/opt/openssl@1.1"
+  - KERL_CONFIGURE_OPTIONS="--disable-hipe --enable-darwin-64bit --with-ssl=/usr/local/opt/openssl@1.1 --without-javac"
 
 addons:
   apt:
@@ -29,18 +30,20 @@ addons:
       - memcached
       - mongodb-community
 
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then CFLAGS="-O2 -g -fno-stack-check" ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl update releases ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list builds | grep ${OTP_VERSION} || travis_wait 45 kerl build ${OTP_VERSION} ${OTP_VERSION} ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list installations | grep ${OTP_VERSION} || kerl install ${OTP_VERSION} ; fi
+
 install:
   - |
     if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-      export CFLAGS="-O2 -g -fno-stack-check"
       ulimit -n 2048 # by default travis osx has "ulimit -n 256"
       echo "[mysqld]" > $HOME/.my.cnf
       echo "secure_file_priv = \"\" ">> $HOME/.my.cnf
       echo "default_authentication_plugin = mysql_native_password" >> $HOME/.my.cnf
       echo "local_infile = 1" >> $HOME/.my.cnf
-      kerl update releases
-      kerl list builds | grep ${OTP_VERSION} || travis_wait 45 kerl build ${OTP_VERSION} ${OTP_VERSION}
-      kerl list installations | grep ${OTP_VERSION} || kerl install ${OTP_VERSION}
       brew services start redis
       brew services start memcached
       brew services start mysql
