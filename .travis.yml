@@ -9,9 +9,9 @@ env:
   - KERL_DEFAULT_INSTALL_DIR="$HOME/.kerl"
   # In macOS Catalina Apple enabled "stack checking" in its clang toolchain
   # which makes erlc segfault. See: https://github.com/kerl/kerl/issues/320
-  - CFLAGS="-O2 -g -fno-stack-check"
-  - ERLANG_OPENSSL_PATH="/usr/local/opt/openssl@1.1"
-  - KERL_CONFIGURE_OPTIONS="--disable-hipe --enable-darwin-64bit --with-ssl=/usr/local/opt/openssl@1.1 --without-javac"
+  - KERL_BUILD_BACKEND=git
+  - KERL_CONFIGURE_DISABLE_APPLICATIONS='odbc'
+  - KERL_CONFIGURE_OPTIONS="--disable-hipe --with-ssl=/usr/local/opt/openssl@1.1 --without-javac"
 
 addons:
   apt:
@@ -31,7 +31,7 @@ addons:
       - mongodb-community
 
 before_install:
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then CFLAGS="-O2 -g -fno-stack-check" ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export CFLAGS="-O2 -g -fno-stack-check" ; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl update releases ; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list builds | grep ${OTP_VERSION} || travis_wait 45 kerl build ${OTP_VERSION} ${OTP_VERSION} ; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list installations | grep ${OTP_VERSION} || kerl install ${OTP_VERSION} ; fi
