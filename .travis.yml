@@ -1,5 +1,8 @@
+os:
+  - linux
+  - osx
+
 services:
-  - docker
   - mysql
   - postgresql
   - mongodb
@@ -52,26 +55,45 @@ install:
     fi
 
 sudo: required
-dist: trusty
-language: erlang
 jobs:
   include:
     - os: linux
+      dist: trusty
+      language: erlang
       otp_release: 22.0
       env: OTP_VERSION=22.0
     - os: linux
+      dist: trusty
+      language: erlang
       otp_release: 22.2
       env: OTP_VERSION=22.2
     - os: linux
+      dist: trusty
+      language: erlang
       otp_release: 22.3
       env: OTP_VERSION=22.3
     - os: linux
+      dist: trusty
+      language: erlang
       otp_release: 23.0
       env: OTP_VERSION=23.0
+    # macOS Catalina
     - os: osx
       language: generic
-      osx_image: xcode11.3
+      osx_image: xcode12
+      env: OTP_VERSION=22.0
+    - os: osx
+      language: generic
+      osx_image: xcode12
+      env: OTP_VERSION=22.2
+    - os: osx
+      language: generic
+      osx_image: xcode12
       env: OTP_VERSION=22.3
+    - os: osx
+      language: generic
+      osx_image: xcode12
+      env: OTP_VERSION=23.0
 
 before_cache:
   - if [ "${TRAVIS_OS_NAME}" = "osx" ]; then brew cleanup; fi
