@@ -1,7 +1,3 @@
-os:
-  - linux
-  - osx
-
 services:
   - mysql
   - postgresql
@@ -12,6 +8,10 @@ services:
 env:
   global:
     - KERL_DEFAULT_INSTALL_DIR="$HOME/.kerl"
+    # In macOS Catalina Apple enabled "stack checking" in its clang toolchain
+    # which makes erlc segfault. See: https://github.com/kerl/kerl/issues/320
+    - CFLAGS="-O2 -g -fno-stack-check"
+    - KERL_CONFIGURE_OPTIONS="--disable-hipe --with-ssl=$(brew --prefix openssl) --without-javac"
 
 addons:
   apt:
@@ -55,26 +55,20 @@ install:
     fi
 
 sudo: required
+dist: trusty
+language: erlang
 jobs:
   include:
     - os: linux
-      dist: trusty
-      language: erlang
       otp_release: 22.0
       env: OTP_VERSION=22.0
     - os: linux
-      dist: trusty
-      language: erlang
       otp_release: 22.2
       env: OTP_VERSION=22.2
     - os: linux
-      dist: trusty
-      language: erlang
       otp_release: 22.3
       env: OTP_VERSION=22.3
     - os: linux
-      dist: trusty
-      language: erlang
       otp_release: 23.0
       env: OTP_VERSION=23.0
     # macOS Catalina
