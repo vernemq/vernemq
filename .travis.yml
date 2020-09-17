@@ -31,7 +31,7 @@ addons:
 
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl update releases ; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list builds | grep ${OTP_VERSION} || travis_wait 45 CFLAGS="-O2 -g -fno-stack-check" kerl build ${OTP_VERSION} ${OTP_VERSION} ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list builds | grep ${OTP_VERSION} || travis_wait 45 kerl build ${OTP_VERSION} ${OTP_VERSION} ; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list installations | grep ${OTP_VERSION} || kerl install ${OTP_VERSION} ; fi
 
 install:
@@ -74,19 +74,19 @@ jobs:
     - os: osx
       language: generic
       osx_image: xcode12
-      env: OTP_VERSION=22.0
+      env: OTP_VERSION=22.0 CFLAGS="-O2 -g -fno-stack-check"
     - os: osx
       language: generic
       osx_image: xcode12
-      env: OTP_VERSION=22.2
+      env: OTP_VERSION=22.2 CFLAGS="-O2 -g -fno-stack-check"
     - os: osx
       language: generic
       osx_image: xcode12
-      env: OTP_VERSION=22.3
+      env: OTP_VERSION=22.3 CFLAGS="-O2 -g -fno-stack-check"
     - os: osx
       language: generic
       osx_image: xcode12
-      env: OTP_VERSION=23.0
+      env: OTP_VERSION=23.0 CFLAGS="-O2 -g -fno-stack-check"
 
 before_cache:
   - if [ "${TRAVIS_OS_NAME}" = "osx" ]; then brew cleanup; fi
