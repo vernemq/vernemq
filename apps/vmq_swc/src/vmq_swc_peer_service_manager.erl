@@ -22,7 +22,8 @@
 
 -define(TBL, swc_cluster_state).
 
--export([init/0, get_local_state/0, get_actor/0, update_state/1, delete_state/0]).
+-export([init/0, get_local_state/0, get_actor/0, get_old_actor/0, get_actors/0, get_peers/0, 
+        get_actors_and_peers/0, get_actor_for_peer/1, get_peers_for_actors/1, update_state/1, delete_state/0]).
 
 init() ->
     %% setup ETS table for cluster_state
@@ -36,6 +37,14 @@ init() ->
                 lager:warning("Table ~p already exists", [?TBL])
                 %%TODO rejoin logic
         end,
+    _ = try ets:new(old_actor_tab, [named_table, public, set, {keypos, 1}]) of
+            _Res1 ->
+                ok
+        catch
+            error:badarg ->
+                lager:warning("Table ~p already exists", [old_actor])
+                %%TODO rejoin logic
+    end,
     ok.
 
 %% @doc return local node's view of cluster membership
@@ -55,6 +64,49 @@ get_actor() ->
         _Else ->
             {error, _Else}
     end.
+
+get_old_actor() ->
+    case hd(ets:lookup(old_actor_tab, old_actor)) of
+        {old_actor, Actor} ->
+            {ok, Actor};
+        _Else ->
+            {error, _Else}
+    end.
+
+get_actors() ->
+    {ok, LocalState} = get_local_state(),
+    actors(LocalState).
+
+get_actors_and_peers() ->
+    {ok, LocalState} = get_local_state(),
+    actors_and_vals(LocalState).
+
+actors_and_vals({_Clock, Entries, _Deferred}) when is_list(Entries) ->
+    [{K, Dots} || {K, Dots} <- Entries];
+actors_and_vals({_Clock, Entries, _Deferred}) ->
+    lists:sort([{K, Actor} || {K, [{[{actor, Actor}],_}]} <- dict:to_list(Entries)]).
+
+get_peers() ->
+    {ok, LocalState} = get_local_state(),
+    {_Clock, Entries, _Deferred} = LocalState,
+    lists:sort([K || {K, [{[{actor, _}], _}]} <- dict:to_list(Entries)]).
+
+get_peers_for_actors(Actors) ->
+    {ok, LocalState} = get_local_state(),
+    {_, Entries, _} = LocalState,
+    lists:sort([K || {K, [{[{actor, Actor}],_}]} <- dict:to_list(Entries), lists:member(Actor, Actors)]).
+
+get_actor_for_peer(Peer) ->
+    {ok, LocalState} = get_local_state(),
+    proplists:get_value(Peer, actors_and_vals(LocalState)).
+
+get_old_actor_from_state(Peer, State) ->
+    proplists:get_value(Peer, actors_and_vals(State)).
+
+actors({_Clock, Entries, _Deferred}) when is_list(Entries) ->
+        [{K, Dots} || {K, Dots} <- Entries];
+actors({_Clock, Entries, _Deferred}) ->
+        lists:sort([Actor || {K, [{[{actor, Actor}],_}]} <- dict:to_list(Entries)]).
 
 %% @doc update cluster_state
 update_state(State) ->
@@ -126,6 +178,11 @@ maybe_load_state_from_disk() ->
                     {ok, Bin} = file:read_file(filename:join(Dir,
                                                              "cluster_state")),
                     {ok, State} = riak_dt_orswot:from_binary(Bin),
+                %  OldActor = get_old_actor_from_state(node(), State),
+                %  ets:insert(old_actor_tab, {old_actor, OldActor}),
+                %  Actor = ets:lookup(?TBL, actor),
+                %  {ok, State1} = riak_dt_orswot:update({add, node()}, Actor, State), % we always want to save the Actor for SWC
+                %  _ = gen_server:cast(vmq_swc_peer_service_gossip, {receive_state, Merged}),
                     lager:info("read state from file ~p~n", [State]),
                     update_state(State);
                 false ->
