@@ -2,6 +2,10 @@
 
 - Add `on_topic_unsubscribe` hook (PR #1539, Issue #1326).
 
+## VerneMQ XXXX
+
+- Fix bug where the server would not parse multiple WebSocket protocols correctly.
+
 ## VerneMQ 1.10.4.1
 Patch Release to:
 - Fix the new bridge metrics labels that prevented the Prometheus metrics to be exported correctly (blocking Prometheus export entirely).
