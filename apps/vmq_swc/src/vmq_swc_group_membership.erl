@@ -80,13 +80,13 @@ handle_call(get_actors, _From, #state{members=_Members} = State) ->
     {reply, Actors, State}.
 
 handle_cast({set_members, NewMembers},  #state{config=Config, members=OldMembers} = State) ->
-   % NewActors = get_actors(Config),
+    % NewActors = get_actors(Config),
     MembersToAdd = NewMembers -- OldMembers,
-    %MembersToAdd = NewActors -- OldMembers,
+    % MembersToAdd = NewActors -- OldMembers,
     MembersToDel = OldMembers -- NewMembers,
     ok = connect_members(Config, MembersToAdd), % need the nodenames here
     ok = disconnect_members(Config, MembersToDel),
-    vmq_swc_store:set_group_members(Config, swc_ids(NewMembers)), % need the swc_id here {peer(), actor()}
+    vmq_swc_store:set_group_members(Config, swc_ids(NewMembers)), % need the swc_id here: {peer(), actor()}
     {noreply, State#state{members=NewMembers}}.
 
 swc_ids(Peers) ->

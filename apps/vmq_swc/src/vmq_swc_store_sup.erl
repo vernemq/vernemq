@@ -62,13 +62,13 @@ start_link(SwcGroup, Opts) ->
 init([SwcGroup, Opts]) ->
 
     MembershipStrategy = proplists:get_value(membership_strategy, Opts, auto),
- %   {A,B,C} = erlang:timestamp(),
- %   TS = integer_to_list(A) ++ integer_to_list(B) ++ integer_to_list(C),
+%   {A,B,C} = erlang:timestamp(),
+%   TS = integer_to_list(A) ++ integer_to_list(B) ++ integer_to_list(C),
    
-   % PeerName = node(),
+%   PeerName = node(),
    {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
    SWC_ID = {node(), Actor},
-% list_to_atom(TS ++ atom_to_list(node())),
+%   list_to_atom(TS ++ atom_to_list(node())),
 
     DbBackend =
     case proplists:get_value(db_backend, Opts, application:get_env(vmq_swc, db_backend, leveldb)) of
