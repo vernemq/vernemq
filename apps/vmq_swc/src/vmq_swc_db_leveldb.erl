@@ -63,8 +63,9 @@ fold(#swc_config{db=DBName}, Type, FoldFun, Acc, FirstKey) ->
 start_link(#swc_config{db=DBName} = Config, Opts) ->
     gen_server:start_link({local, DBName}, ?MODULE, [Config | Opts], []).
 
-init([#swc_config{peer=Peer, group=SwcGroup} = _Config|Opts]) ->
+init([#swc_config{peer=SWC_ID, group=SwcGroup} = _Config|Opts]) ->
     %% Initialize random seed
+    {Peer, _Actor} = SWC_ID,
     rand:seed(exsplus, os:timestamp()),
     DefaultDataDir = filename:join(<<".">>, Peer),
 
