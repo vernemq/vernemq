@@ -18,6 +18,7 @@
          start_no_auth/1,
          stop/0]).
 
+-spec start_no_auth() -> 'ok'.
 start_no_auth() ->
     maybe_start_distribution(),
 
@@ -28,6 +29,7 @@ start_no_auth() ->
     _ = application:ensure_all_started(vmq_server),
     ok.
 
+-spec start_no_auth(node()) -> any().
 start_no_auth(ClusterNode) ->
     maybe_start_distribution(),
 
@@ -36,7 +38,7 @@ start_no_auth(ClusterNode) ->
     _ = application:ensure_all_started(vmq_server),
     vmq_peer_service:join(ClusterNode).
 
-
+-spec start() -> 'ok'.
 start() ->
     _ = application:load(plumtree),
     application:set_env(plumtree, plumtree_data_dir, "./data/" ++ atom_to_list(node())),
@@ -62,6 +64,7 @@ stop() ->
                                           lager]],
     ok.
 
+-spec wait_until_metadata_has_stopped() -> 'ok'.
 wait_until_metadata_has_stopped() ->
     Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
     case lists:keymember(Impl, 1, application:which_applications()) of
@@ -72,7 +75,7 @@ wait_until_metadata_has_stopped() ->
             ok
     end.
 
-
+-spec maybe_start_distribution() -> 'ok'.
 maybe_start_distribution() ->
     case ets:info(sys_dist) of
         undefined ->

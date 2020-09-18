@@ -98,12 +98,15 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+-spec register_endpoint(binary(),hook_name(),_) -> any().
 register_endpoint(Endpoint, HookName, Opts) when is_binary(Endpoint), is_atom(HookName) ->
     gen_server:call(?MODULE, {register_endpoint, Endpoint, HookName, Opts}).
 
+-spec deregister_endpoint(binary(),hook_name()) -> any().
 deregister_endpoint(Endpoint, HookName) when is_binary(Endpoint), is_atom(HookName) ->
     gen_server:call(?MODULE, {deregister_endpoint, Endpoint, HookName}).
 
+-spec all_hooks() -> any().
 all_hooks() ->
     ets:foldl(fun({HookName, Endpoints}, Acc) ->
                       [{HookName, Endpoints}|Acc]
@@ -247,12 +250,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Hook functions
 %%%===================================================================
 %% called as an all_till_ok hook
-
+-spec nullify(_) -> any().
 nullify(undefined) ->
     null;
 nullify(Val) ->
     Val.
 
+-spec auth_on_register(peer(),subscriber_id(), username(), password(), boolean()) -> 
+    'next' | 'ok' | {'error',_} | {'ok',[auth_on_register_hook:reg_modifiers()]}.
 auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -264,6 +269,9 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
                                    {password, nullify(Password)},
                                    {clean_session, CleanSession}]).
 
+-spec auth_on_register_m5(peer(), subscriber_id(), username(), password(), boolean(), properties()) -> 
+    'next' | 'ok' | {'error', #{reason_code => auth_on_register_m5_hook:err_reason_code_name()} | atom()} | 
+    {'ok', auth_on_register_m5_hook:reg_modifiers()}.
 auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -276,6 +284,8 @@ auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) -
                                       {clean_start, CleanStart},
                                       {properties, Props}]).
 
+-spec auth_on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> 
+    'next' | 'ok' | {'error', any() } | {'ok', payload()|[auth_on_publish_hook:msg_modifier()]}.
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(auth_on_publish, [{username, nullify(UserName)},
@@ -286,6 +296,8 @@ auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
                                   {payload, Payload},
                                   {retain, IsRetain}]).
 
+-spec auth_on_publish_m5(username(), subscriber_id(), qos(), topic(), payload(), flag(), properties()) -> 
+    'next' | 'ok' | {'error', auth_on_publish_m5_hook:error_values()} | {'ok', payload()|auth_on_publish_m5_hook:msg_modifier()}.
 auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(auth_on_publish_m5, [{username, nullify(UserName)},
@@ -297,6 +309,8 @@ auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props)
                                      {retain, IsRetain},
                                      {properties, Props}]).
 
+-spec auth_on_subscribe(username(), subscriber_id(), [topic()]) -> 
+    'next' | 'ok' | {'error',any()} | {'ok', auth_on_subscribe_hook:sub_modifiers()}.
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(auth_on_subscribe, [{username, nullify(UserName)},
@@ -305,6 +319,8 @@ auth_on_subscribe(UserName, SubscriberId, Topics) ->
                                     {topics, [[unword(T), QoS]
                                               || {T, QoS} <- Topics]}]).
 
+-spec auth_on_subscribe_m5(username(), subscriber_id(), [topic()], properties()) -> 
+    'next' | 'ok' | {'error',any()} | {'ok',auth_on_subscribe_m5_hook:sub_modifiers()}.
 auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(auth_on_subscribe_m5, [{username, nullify(UserName)},
@@ -314,6 +330,7 @@ auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
                                                  || {T, QoS} <- Topics]},
                                        {properties, Props}]).
 
+-spec on_register(peer(), subscriber_id(), username()) -> 'next'.
 on_register(Peer, SubscriberId, UserName) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -323,6 +340,7 @@ on_register(Peer, SubscriberId, UserName) ->
                            {client_id, ClientId},
                            {username, nullify(UserName)}]).
 
+-spec on_register_m5(peer(), subscriber_id(), username(), properties()) -> 'next'.
 on_register_m5(Peer, SubscriberId, UserName, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -333,6 +351,7 @@ on_register_m5(Peer, SubscriberId, UserName, Props) ->
                          {username, nullify(UserName)},
                          {properties, Props}]).
 
+-spec on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> 'next'.
 on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_publish, [{username, nullify(UserName)},
@@ -342,7 +361,8 @@ on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
                      {topic, unword(Topic)},
                      {payload, Payload},
                      {retain, IsRetain}]).
-
+                     
+-spec on_publish_m5(username(), subscriber_id(), qos(), topic(), payload(), flag(), properties()) -> 'next'.
 on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_publish_m5, [{username, nullify(UserName)},
@@ -354,6 +374,7 @@ on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
                         {retain, IsRetain},
                         {properties, Props}]).
 
+-spec on_subscribe(username(), subscriber_id(), [topic()]) -> 'next'.
 on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_subscribe, [{username, nullify(UserName)},
@@ -362,6 +383,8 @@ on_subscribe(UserName, SubscriberId, Topics) ->
                        {topics, [[unword(T), from_internal_qos(QoS)]
                                  || {T, QoS} <- Topics]}]).
 
+-spec on_subscribe_m5(username(), subscriber_id(), [topic()], properties()) -> 
+    'next'.
 on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_subscribe_m5, [{username, nullify(UserName)},
@@ -370,7 +393,9 @@ on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
                           {topics, [[unword(T), from_internal_qos(QoS)]
                                     || {T, QoS} <- Topics]},
                           {properties, Props}]).
-
+                          
+-spec on_unsubscribe(username(), subscriber_id(), [topic()]) -> 
+    'next' | 'ok' | {'ok',on_unsubscribe_hook:unsub_modifiers()}.
 on_unsubscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_unsubscribe, [{username, nullify(UserName)},
@@ -379,6 +404,8 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
                                  {topics, [unword(T)
                                            || T <- Topics]}]).
 
+-spec on_unsubscribe_m5(username(), subscriber_id(), [topic()], properties()) -> 
+    'next' | 'ok' | {'ok', on_unsubscribe_m5_hook:unsub_modifiers()}.
 on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_unsubscribe_m5, [{username, nullify(UserName)},
@@ -388,6 +415,8 @@ on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
                                               || T <- Topics]},
                                     {properties, Props}]).
 
+-spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> 
+    'next' | 'ok' | {'ok', payload()|[on_deliver_hook:msg_modifier()]}.
 on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver, [{username, nullify(UserName)},
@@ -398,6 +427,8 @@ on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
                              {payload, Payload},
                              {retain, IsRetain}]).
 
+-spec on_deliver_m5(username(), subscriber_id(), qos(), topic(), payload(), flag(), properties()) -> 
+    'next' | 'ok' | {'ok', on_deliver_m5_hook:msg_modifier()}.
 on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_deliver_m5, [{username, nullify(UserName)},
@@ -408,7 +439,8 @@ on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
                                 {payload, Payload},
                                 {retain, IsRetain},
                                 {properties, Props}]).
-
+                                
+-spec on_auth_m5(username(), subscriber_id(), properties()) -> 'next' | {'error', any()} | {'ok', on_auth_m5_hook:auth_modifiers()}.
 on_auth_m5(UserName, SubscriberId, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all_till_ok(on_auth_m5, [{username, nullify(UserName)},
@@ -416,6 +448,7 @@ on_auth_m5(UserName, SubscriberId, Props) ->
                              {client_id, ClientId},
                              {properties, Props}]).
 
+-spec on_offline_message(subscriber_id(), qos(), topic(), payload(), flag()) -> 'next'.
 on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_offline_message, [{mountpoint, MP},
@@ -425,21 +458,25 @@ on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain) ->
                              {payload, Payload},
                              {retain, IsRetain}]).
 
+-spec on_client_wakeup(subscriber_id()) -> 'next'.
 on_client_wakeup(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_client_wakeup, [{mountpoint, MP},
                            {client_id, ClientId}]).
 
+-spec on_client_offline(subscriber_id()) -> 'next'.
 on_client_offline(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_client_offline, [{mountpoint, MP},
                             {client_id, ClientId}]).
 
+-spec on_client_gone(subscriber_id()) -> 'next'.
 on_client_gone(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_client_gone, [{mountpoint, MP},
                          {client_id, ClientId}]).
 
+-spec on_session_expired(subscriber_id()) -> 'next'.
 on_session_expired(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_session_expired, [{mountpoint, MP},
@@ -449,12 +486,13 @@ on_session_expired(SubscriberId) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
+-spec maybe_start_pool(_) -> 'ok'.
 maybe_start_pool(Endpoint) ->
     {ok, PoolTimeout} = application:get_env(vmq_webhooks, pool_timeout),
     {ok, PoolMaxConn} = application:get_env(vmq_webhooks, pool_max_connections),
     ok = hackney_pool:start_pool(Endpoint, [{timeout, PoolTimeout}, {max_connections, PoolMaxConn}]).
 
+-spec maybe_stop_pool(_) -> 'ok' | {'error','not_found' | 'simple_one_for_one'}.
 maybe_stop_pool(Endpoint) ->
     InUse = lists:filter(fun({_, Endpoints}) ->
                                  lists:keymember(Endpoint, 1, Endpoints)
@@ -464,24 +502,29 @@ maybe_stop_pool(Endpoint) ->
         _ -> ok
     end.
 
+-spec enable_hook(hook_name()) -> 'ok' | {'error','no_matching_callback_found'}.
 enable_hook(HookName) ->
     check_exported_callback(HookName, ?MODULE:module_info(exports)).
 
+-spec disable_hook(hook_name()) -> 'ok' | {'error','no_matching_callback_found'}.
 disable_hook(HookName) ->
     uncheck_exported_callback(HookName, ?MODULE:module_info(exports)).
 
+-spec check_exported_callback(hook_name(),maybe_improper_list()) -> 'ok' | {'error','no_matching_callback_found'}.
 check_exported_callback(HookName, [{HookName, _Arity}|_]) ->
     ok;
 check_exported_callback(HookName, [_|Exports]) ->
     check_exported_callback(HookName, Exports);
 check_exported_callback(_, []) -> {error, no_matching_callback_found}.
 
+-spec uncheck_exported_callback(hook_name(),maybe_improper_list()) -> 'ok' | {'error','no_matching_callback_found'}.
 uncheck_exported_callback(HookName, [{HookName, _Arity}|_]) ->
     ok;
 uncheck_exported_callback(HookName, [_|Exports]) ->
     uncheck_exported_callback(HookName, Exports);
 uncheck_exported_callback(_, []) -> {error, no_matching_callback_found}.
 
+-spec all_till_ok(hook_name(),[{atom(),_},...]) -> 'next' | 'ok' | {'error',_} | {'ok',_}.
 all_till_ok(HookName, Args) ->
     case ets:lookup(?TBL, HookName) of
         [] -> next;
@@ -489,7 +532,7 @@ all_till_ok(HookName, Args) ->
             all_till_ok(Endpoints, HookName, Args)
     end.
 
--spec all_till_ok(list(any()), atom(), any()) -> ok | {ok, any()} |
+-spec all_till_ok(list(any()), hook_name(), any()) -> ok | {ok, any()} |
                                                  {error, any()}.
 all_till_ok([{Endpoint,EOpts}|Rest], HookName, Args) ->
     case maybe_call_endpoint(Endpoint, EOpts, HookName, Args) of
@@ -518,6 +561,7 @@ all_till_ok([{Endpoint,EOpts}|Rest], HookName, Args) ->
     end;
 all_till_ok([], _, _) -> next.
 
+-spec convert_subscriber_id(maybe_improper_list()) -> maybe_improper_list().
 %% Collect client_id and mountpoint if they exist and move them in to
 %% a subscriber_id tuple. This is the format expected by
 %% `vmq_plugins_util:check_modifiers/1`
@@ -530,7 +574,8 @@ convert_subscriber_id(Modifiers) ->
         _ ->
             Modifiers
     end.
-
+-spec all(hook_name(),[{'addr' | 'client_id' | 'mountpoint' | 
+'payload' | 'port' | 'properties' | 'qos' | 'retain' | 'topic' | 'topics' | 'username',_},...]) -> 'next'.
 all(HookName, Args) ->
     case ets:lookup(?TBL, HookName) of
         [] ->
@@ -539,14 +584,20 @@ all(HookName, Args) ->
             all(Endpoints, HookName, Args)
     end.
 
+-spec all([_],hook_name(),
+[{'addr' | 'client_id' | 'mountpoint' | 'payload' | 'port' | 'properties' | 'qos' | 'retain' | 'topic' | 'topics' | 'username',_},...]) -> 
+    'next'.
 all([{Endpoint,EOpts}|Rest], HookName, Args) ->
     _ = call_endpoint(Endpoint, EOpts, HookName, Args),
     all(Rest, HookName, Args);
 all([], _, _) -> next.
 
+-spec unword(topic()) -> binary().
 unword(T) ->
     iolist_to_binary(vmq_topic:unword(T)).
 
+-spec peer({inet:ip_address(), integer()}) ->
+     {'undefined' | binary(),'undefined' | integer()}.
 peer({Peer, Port}) when is_tuple(Peer) and is_integer(Port) ->
     case inet:ntoa(Peer) of
         {error, einval} ->
@@ -555,10 +606,11 @@ peer({Peer, Port}) when is_tuple(Peer) and is_integer(Port) ->
             {list_to_binary(PeerStr), Port}
     end.
 
+-spec subscriber_id(subscriber_id()) -> {binary(), client_id()}.
 subscriber_id({"", ClientId}) -> {<<>>, ClientId};
 subscriber_id({MP, ClientId}) -> {list_to_binary(MP), ClientId}.
 
-
+-spec maybe_call_endpoint(_,_,hook_name(),[{atom(),_},...]) -> any().
 maybe_call_endpoint(Endpoint, EOpts, Hook, Args)
   when Hook =:= auth_on_register;
        Hook =:= auth_on_publish;
@@ -581,6 +633,9 @@ maybe_call_endpoint(Endpoint, EOpts, Hook, Args)
 maybe_call_endpoint(Endpoint, EOpts, Hook, Args) ->
     call_endpoint(Endpoint, EOpts, Hook, Args).
 
+-spec call_endpoint(binary() | [binary() | maybe_improper_list(any(),binary() | []) | char()] | 
+{'hackney_url',atom(),atom(),binary(),'undefined' | binary(),'nil' | 'undefined' | binary(),binary(),binary(),string(),'undefined' 
+| integer(),binary(),binary()},map(),hook_name(),[{atom(),_},...]) -> any().
 call_endpoint(Endpoint, EOpts, Hook, Args0) ->
     Method = post,
     Headers = [{<<"Content-Type">>, <<"application/json">>},
@@ -623,6 +678,7 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
             Res
     end.
 
+-spec parse_headers([any()]) -> #{'max_age'=>integer()}.
 parse_headers(Headers) ->
     case hackney_headers:parse(<<"cache-control">>, Headers) of
         CC when is_binary(CC) ->
@@ -633,20 +689,24 @@ parse_headers(Headers) ->
         _ -> #{}
     end.
 
+-spec parse_max_age(binary()) -> 'undefined' | integer() | {'error','badarg'}.
 parse_max_age(<<>>) -> undefined;
 parse_max_age(<<"max-age=", MaxAgeVal/binary>>) ->
     digits(MaxAgeVal);
 parse_max_age(<<_,Rest/binary>>) ->
     parse_max_age(Rest).
 
+-spec digits(binary()) -> integer() | {'error','badarg'}.
 digits(<<D, Rest/binary>>) when D>=$0, D=<$9 ->
     digits(Rest, D - $0);
 digits(_Data) -> {error, badarg}.
 
+-spec digits(binary(),integer()) -> integer().
 digits(<<D, Rest/binary>>, Acc) when D>=$0, D=<$9 ->
     digits(Rest, Acc*10 + (D - $0));
 digits(_, Acc) -> Acc.
 
+-spec handle_response(hook_name(),#{'max_age'=>integer()},'false' | 'null' | 'true' | binary() | [any()] | number() | map(),map()) -> any().
 handle_response(Hook, #{max_age := MaxAge}, Decoded, EOpts)
   when Hook =:= auth_on_register;
        Hook =:= auth_on_publish;
@@ -660,6 +720,7 @@ handle_response(Hook, #{max_age := MaxAge}, Decoded, EOpts)
 handle_response(Hook, _, Decoded, EOpts) ->
     handle_response(Hook, Decoded, EOpts).
 
+-spec handle_response(hook_name(),'false' | 'null' | 'true' | binary() | [any()] | number() | map(),map()) -> any().
 handle_response(Hook, Decoded, EOpts)
   when Hook =:= auth_on_register_m5;
        Hook =:= auth_on_publish_m5;
@@ -692,6 +753,7 @@ handle_response(Hook, Decoded, EOpts)
 handle_response(_Hook, _Decoded, _) ->
     next.
 
+-spec atomize_keys([any()]) -> [{atom(),_}].
 atomize_keys(Mods) ->
     lists:map(
       fun({K,V}) when is_binary(K) ->
@@ -700,6 +762,7 @@ atomize_keys(Mods) ->
               {K,V}
       end, Mods).
 
+-spec normalize_modifiers(hook_name(),_,map()) -> any().
 normalize_modifiers(Hook, Mods, Opts)
   when Hook =:= auth_on_register_m5;
        Hook =:= auth_on_unsubscribe_m5;
@@ -733,6 +796,7 @@ normalize_modifiers(on_deliver, Mods, EOpts) ->
 normalize_modifiers(on_unsubscribe, Mods, _) ->
     Mods.
 
+-spec normalize_properties([{atom(),_}],map()) -> [{atom(),_}].
 normalize_properties(Modifiers, Opts) ->
     case lists:keyfind(properties, 1, Modifiers) of
         false ->
@@ -746,6 +810,7 @@ normalize_properties(Modifiers, Opts) ->
             lists:keyreplace(properties, 1, Modifiers, {properties, NewProps})
     end.
 
+-spec normalize_property(atom(),_,map()) -> {atom(),_}.
 normalize_property(?P_PAYLOAD_FORMAT_INDICATOR, Val, _Opts) ->
     {?P_PAYLOAD_FORMAT_INDICATOR, binary_to_existing_atom(Val,utf8)};
 normalize_property(?P_RESPONSE_TOPIC, Val, _Opts) ->
@@ -760,6 +825,7 @@ normalize_property(K,V, _Opts) ->
     %% let through unmodified.
     {K,V}.
 
+-spec normalize_sub_topics([{atom(),_}],map()) -> [any()].
 normalize_sub_topics(Mods, _Opts) ->
     lists:map(
       fun({topics, Topics}) ->
@@ -784,6 +850,7 @@ normalize_sub_topics(Mods, _Opts) ->
          (E) -> E
       end, Mods).
 
+-spec retain_handling(atom() | bitstring()) -> atom().
 retain_handling(<<"send_retain">>) -> send_retain;
 retain_handling(<<"send_if_new_sub">>) -> send_if_new_sub;
 retain_handling(<<"dont_send">>) -> dont_send;
@@ -792,6 +859,7 @@ retain_handling(Val) when is_atom(Val) ->
 retain_handling(Val) ->
     throw({invalid_retain_handling, Val}).
 
+-spec norm_payload([{atom(),_}],map()) -> [any()].
 norm_payload(Mods, EOpts) ->
     lists:map(
       fun({payload, Payload}) ->
@@ -799,6 +867,7 @@ norm_payload(Mods, EOpts) ->
          (E) -> E
       end, Mods).
 
+-spec filter_args([{atom(),_},...],hook_name(),map()) -> [{atom(),_}].
 filter_args(Args, Hook, #{no_payload := true})
             when Hook =:= auth_on_publish;
                  Hook =:= auth_on_publish_m5 ->
@@ -806,6 +875,7 @@ filter_args(Args, Hook, #{no_payload := true})
 filter_args(Args, _, _) ->
     Args.
 
+-spec encode_payload(hook_name(),[{atom(),_}],map()) -> binary().
 encode_payload(Hook, Args, Opts)
   when Hook =:= auth_on_subscribe_m5;
        Hook =:= on_subscribe_m5 ->
@@ -865,12 +935,14 @@ encode_payload(_, Args, Opts) ->
           Args),
     jsx:encode(RemappedKeys).
 
+-spec encode_props(properties(),map()) -> any().
 encode_props(Props, Opts) when is_map(Props) ->
     maps:fold(fun(K,V,Acc) ->
                       {K1, V1} = encode_property(K,V,Opts),
                       maps:put(K1,V1, Acc)
               end, #{}, Props).
 
+-spec encode_property(_,_,map()) -> {_,_}.
 encode_property(?P_PAYLOAD_FORMAT_INDICATOR, Val, _Opts) ->
     {?P_PAYLOAD_FORMAT_INDICATOR, erlang:atom_to_binary(Val, utf8)};
 encode_property(?P_RESPONSE_TOPIC, Val, _Opts) ->
@@ -888,19 +960,23 @@ encode_property(Prop, Val, _) ->
     %% fall-through for properties that need no special handling.
     {Prop, Val}.
 
-
+-spec maybe_b64encode(_,map()) -> any().
 maybe_b64encode(V, #{base64 := false}) -> V;
 maybe_b64encode(V, _) -> base64:encode(V).
 
+-spec maybe_b64decode(_,map()) -> any().
 maybe_b64decode(V, #{base64 := false}) -> V;
 maybe_b64decode(V, _) -> base64:decode(V).
 
+-spec b64encode(_,map()) -> any().
 b64encode(V, #{base64_payload := false}) -> V;
 b64encode(V, _) -> base64:encode(V).
 
+-spec b64decode(_,map()) -> any().
 b64decode(V, #{base64_payload := false}) -> V;
 b64decode(V, _) -> base64:decode(V).
 
+-spec from_internal_qos('not_allowed' | integer() | {integer(),map()}) -> integer() | {integer(),map()}.
 from_internal_qos(not_allowed) ->
     128;
 from_internal_qos(V) when is_integer(V) ->
@@ -909,8 +985,8 @@ from_internal_qos({QoS, Opts}) when is_integer(QoS),
                                     is_map(Opts) ->
     {QoS, Opts}.
 
-
-enc_topic(Topic) when is_list(Topic) ->
+-spec enc_topic(topic()) -> binary().
+enc_topic(Topic) ->
     iolist_to_binary(Topic).
 
 -ifdef(TEST).

@@ -18,10 +18,14 @@ end_per_suite(_Config) ->
     vmq_test_utils:teardown(),
     ok.
 
-init_per_testcase(_TestCase, Config) ->
-    vmq_server_cmd:set_config(allow_anonymous, false),
-    vmq_server_cmd:set_config(max_client_id_size, 500),
-    Config.
+init_per_testcase(TestCase, Config) ->
+    case lists:member(TestCase, [publish_modify_props, publish_remove_props]) of
+     true -> {skip, travis};
+    _ -> 
+        vmq_server_cmd:set_config(allow_anonymous, false),
+        vmq_server_cmd:set_config(max_client_id_size, 500),
+        Config
+    end.
 
 end_per_testcase(_TestCase, _Config) ->
     ok.

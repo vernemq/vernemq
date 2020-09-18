@@ -107,6 +107,7 @@
 -define(COORDINATE_REGISTRATIONS, true).
 
 -type state() :: #state{}.
+-export_type([state/0]).
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 

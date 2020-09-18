@@ -10,3 +10,7 @@ vars/dev*_vars.config
 .ropeproject
 *~
 TAGS
+
+plts/
+plts_base/
+

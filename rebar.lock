@@ -1,7 +1,7 @@
 {"1.1.0",
 [{<<"bcrypt">>,
-  {git, "git://github.com/erlangpack/bcrypt",
-    {ref, "09ef470dbb11a3252517b2095cb4ddceec83479e"}},
+  {git,"git://github.com/erlangpack/bcrypt.git",
+       {ref,"550281173c2f4e414b6da6711e4eb23e4e7884d1"}},
   0},
  {<<"bson">>,
   {git,"git://github.com/comtihon/bson-erlang",
@@ -93,7 +93,7 @@
  {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.5.0">>},2},
  {<<"vernemq_dev">>,
   {git,"git://github.com/vernemq/vernemq_dev.git",
-       {ref,"9afa661feaf15f73e2a64cd81166cf335329882e"}},
+       {ref,"6d622aa8c901ae7777433aef2bd049e380c474a6"}},
   0}]}.
 [
 {pkg_hash,[

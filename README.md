@@ -5,10 +5,12 @@
 		<img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" target="_blank" />
 	</a>
 	<a href="https://github.com/vernemq/vernemq/graphs/commit-activity">
-		<img alt="Maintenance" src="https://img.shields.io/badge/Maintained%3F-yes-green.svg" target="_blank" />
+		<img alt="Maintenance" src="https://img.shields.io/badge/maintained-yes-green.svg" target="_blank" />
 	</a>
-<img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/vernemq/vernemq">
-<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/vernemq/vernemq">
+<a href="https://github.com/vernemq/vernemq/releases/latest">
+<img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/vernemq/vernemq"></a>
+<a href="https://github.com/vernemq/vernemq/commits/master">
+<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/vernemq/vernemq"></a>
 <a href="https://twitter.com/vernemq">
 		<img
 			alt="Twitter: VerneMQ"
@@ -20,9 +22,11 @@
 Old Docker Repo | New Docker Repo
 ------------ | -------------
 [![Docker Pulls from Old Repo](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)|[![Docker Pulls from New Repo](https://img.shields.io/docker/pulls/vernemq/vernemq.svg)](https://hub.docker.com/r/vernemq/vernemq/)
+
+New: VerneMQ can now use Github Discussions! To join the discussion on features and roadmap, and be part of the <strong>VerneMQ Community Team</strong> on Github, send us your Github username for an invite! (on Twitter, Slack etc.)
 - - - 
 
-VerneMQ is known to be deployed and used in: :us: :canada: :brazil: :mexico: :de: :fr: :switzerland: :denmark: :netherlands: :belgium: :it: :es: :romania: :portugal: :ru: :lithuania: :czech_republic: :slovakia: :austria: :poland: :norway: :sweden: :india: :jp: :indonesia: :vietnam: :kr: :south_africa: :kenya: :serbia: :croatia: :greece: :uk: :ukraine: :australia: :new_zealand: :cn: :egypt: :finland: :hungary: :israel: :singapore: :lebanon: :philippines: :pakistan: :malaysia: :tr: :taiwan: :iran:
+VerneMQ is known to be deployed and used in: :us: :canada: :brazil: :mexico: :de: :fr: :switzerland: :denmark: :netherlands: :belgium: :it: :es: :romania: :portugal: :ru: :lithuania: :czech_republic: :slovakia: :austria: :poland: :norway: :sweden: :india: :jp: :indonesia: :vietnam: :kr: :south_africa: :kenya: :serbia: :croatia: :greece: :uk: :ukraine: :australia: :new_zealand: :cn: :egypt: :finland: :hungary: :israel: :singapore: :lebanon: :philippines: :pakistan: :malaysia: :tr: :taiwan: :iran: :cloud:
 
 ---
 [![VerneMQ Logo](https://i.imgur.com/bln3fK3.jpg)](https://vernemq.com)
