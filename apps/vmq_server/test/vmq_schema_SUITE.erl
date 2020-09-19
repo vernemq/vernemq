@@ -46,7 +46,7 @@ all() ->
     [{group, schema}].
 
 global_substitutions() ->
-    [{["metadata_plugin"], "vmq_plumtree"},
+    [{["metadata_plugin"], "vmq_swc"},
      {["listener", "max_connections"], "10000"},
      {["listener", "nr_of_acceptors"], "100"}].
 
