@@ -29,7 +29,7 @@
 -define(DELETED, '$deleted').
 
 -record(swc_config, {
-          peer          :: atom() | binary(),
+          peer          :: swc_id(),
           group         :: atom(),
           db            :: db_name(),
           db_backend    :: atom(),
