@@ -1,5 +1,7 @@
 # Changelog
 
+- Bridge Plugin: Continue to publish during netsplit (cluster not_ready)
+- Bridge Plugin: Make internal publish use the configured per-topic QoS
 
 ## VerneMQ 1.10.5
 
