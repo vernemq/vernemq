@@ -33,13 +33,6 @@
 %%% API functions
 %%%===================================================================
 
-%%--------------------------------------------------------------------
-%% @doc
-%% Starts the supervisor
-%%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
-%% @end
-%%--------------------------------------------------------------------
 start_link(Shutdown, RegName, QueueTabId, MaxR, MaxT) ->
     case proc_lib:start_link(?MODULE, init, [self(), Shutdown, QueueTabId, MaxR, MaxT * 1000]) of
         {ok, Pid} = Ret ->

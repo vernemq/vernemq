@@ -1,5 +1,32 @@
 # Changelog
 
+
+## VerneMQ 1.10.5
+
+- New feature: Allow configuration of allowed ECC named curves in configuration file. (thanks to @varnerac)
+- New feature: Add `on_topic_unsubscribe` hook (PR #1539, Issue #1326). (thanks to @khodzha)
+- Update to jquery 3.5.1 and bootstrap 4.1.2 in status page.
+- Add case clause for proxy protocol 'local command', causing unnecessary error logging in loadbalancer health checks.
+
+## VerneMQ 1.10.4.1
+
+Patch Release to:
+- Fix the new bridge metrics labels that prevented the Prometheus metrics to be exported correctly (blocking Prometheus export entirely).
+
+## VerneMQ 1.10.4
+
+- Improve buffering in in-memory queue of outgoing bridges.
+- Add a Name to bridges, so that a bridge can be identified by {Name, Host, Port}, instead of {Host, Port} only. This allows multiple bridges to the same remote endpoint.
+- Add bridge Name and MQTT client mailbox size to `vmq-admin bridge show` command.
+- Add per QoS/per bridge in and out counters to pull resp. push bridges.
+- Log bridge connection setups and subscribes (info level).
+- Support Power Linux LE (ppc64le) platform.
+- Add `on_session_expired/1` hook to `vmq_webhooks` schema.
+- Add Subscriber trie/event handler readiness check to handle fast subscribers after a reboot (race condition, #1557).
+- Update nodetool escript with latest version.
+- Fix internal Watermark update in SWC (#1556).
+- Handle LevelDB truncated record corruption more automatically in LevelDB SWC and Messagestore backends.
+- Catch ETS table call in `vmq_cluster:netsplit_statistics/0` (#1537).
 - Add compatibility with [Erlang/OTP 23](http://blog.erlang.org/OTP-23-Highlights/). This release requires Erlang/OTP 21.3 or later.
 - Upgrade package `bcrypt` to version 1.1.0.
 - Upgrade package `hackney` to version 1.16.0 (dependencies of `hackney` were updated as well).

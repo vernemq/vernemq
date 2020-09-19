@@ -39,7 +39,11 @@ groups() ->
          ssl_certs_opts_inheritance_test,
          ssl_certs_opts_override_test,
          allowed_protocol_versions_inheritance_test,
-         allowed_protocol_versions_override_test],
+         allowed_protocol_versions_override_test,
+         allowed_eccs_test,
+         default_eccs_test,
+         invalid_eccs_test
+        ],
     [{schema, [parallel], Tests}].
 
 all() ->
@@ -245,6 +249,36 @@ allowed_protocol_versions_inheritance_test(_Config) ->
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqtts,  {{127,0,0,1}, 8884},allowed_protocol_versions]),
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, allowed_protocol_versions]),
     [3,4,5] = expect(Conf, [vmq_server, listeners, mqttwss,{{127,0,0,1}, 900}, allowed_protocol_versions]).
+
+allowed_eccs_test(_Config) ->
+    Conf = [
+            {["listener","ssl","default", "eccs"], "sect163r1,sect163r2,secp160k1,secp160r1"},
+            {["listener","ssl","default"],"127.0.0.1:8884"}
+            | global_substitutions()
+           ],
+    ExpectedECCs = lists:usort([sect163r1,sect163r2,secp160k1,secp160r1]),
+    ExpectedECCs = expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884}, eccs]).
+
+default_eccs_test(_Config) ->
+    Conf = [
+            %% tcp/ssl/mqtt
+            {["listener","ssl","default"],"127.0.0.1:8884"}
+            | global_substitutions()
+           ],
+    KnownECCs = ssl:eccs(),
+    KnownECCs = expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884}, eccs]).
+
+invalid_eccs_test(_Config) ->
+    Conf = [
+            %% tcp/ssl/mqtt
+            {["listener","ssl","default","eccs"], "[sect163r1,sect163r2,wrong,secp160r1]"},
+            {["listener","ssl","default"],"127.0.0.1:8884"}
+            | global_substitutions()
+           ],
+    case catch expect(Conf, [vmq_server, listeners, mqtts, {{127,0,0,1}, 8884}, eccs]) of
+        {{error,apply_translations,{errorlist,[{error,{translation_invalid_configuration,{"vmq_server.listeners","Unknown ECC named curves: wrong"}}}]}},_} -> ok;
+        _ -> ct:fail("Did not receive exception for invalid named curve")
+    end.
 
 allowed_protocol_versions_override_test(_Config) ->
     Conf = [

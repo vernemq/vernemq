@@ -79,8 +79,10 @@
          }).
 
 -define(COORDINATE_REGISTRATIONS, true).
+-type msg_tag() :: 'publish' | 'pubrel'.
 
 -type state() :: #state{}.
+-export_type([state/0]).
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 
@@ -405,7 +407,12 @@ connected(#mqtt_unsubscribe{message_id=MessageId, topics=Topics}, State) ->
     _ = vmq_metrics:incr_mqtt_unsubscribe_received(),
     OnSuccess =
         fun(_SubscriberId, MaybeChangedTopics) ->
-                vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, SubscriberId, MaybeChangedTopics)
+                case vmq_reg:unsubscribe(CAPSettings#cap_settings.allow_unsubscribe, SubscriberId, MaybeChangedTopics) of
+                    ok ->
+                        vmq_plugin:all(on_topic_unsubscribed, [SubscriberId, MaybeChangedTopics]),
+                        ok;
+                    V -> V
+                end
         end,
     case unsubscribe(User, SubscriberId, Topics, OnSuccess) of
         ok ->
@@ -498,11 +505,12 @@ terminate_reason(Reason) ->  vmq_mqtt_fsm_util:terminate_reason(Reason).
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+-spec check_connect(mqtt_connect(), state()) ->  {state(), [mqtt_connack()], session_ctrl()} | {state(), [mqtt_connack()]} | {stop, normal, [mqtt_connack()]}.
 check_connect(#mqtt_connect{proto_ver=Ver, clean_session=CleanSession} = F, State) ->
     CCleanSession = unflag(CleanSession),
     check_client_id(F, State#state{clean_session=CCleanSession, proto_ver=Ver}).
 
+-spec check_client_id(mqtt_connect(), state()) ->  {state(), [mqtt_connack()], session_ctrl()} | {state(), [mqtt_connack()]} | {stop, normal, [mqtt_connack()]}.
 check_client_id(#mqtt_connect{} = Frame,
                 #state{username={preauth, UserNameFromCert}} = State) ->
     check_client_id(Frame#mqtt_connect{username=UserNameFromCert},
@@ -537,6 +545,7 @@ check_client_id(#mqtt_connect{client_id=Id}, State) ->
     lager:warning("invalid client id ~p", [Id]),
     connack_terminate(?CONNACK_INVALID_ID, State).
 
+-spec check_user(mqtt_connect(), state()) ->  {state(), [mqtt_connack()], session_ctrl()} | {state(), [mqtt_connack()]} | {stop, normal, [mqtt_connack()]}.
 check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
     case State#state.allow_anonymous of
         false ->
@@ -593,6 +602,7 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
             end
     end.
 
+-spec check_will(mqtt_connect(), flag(), state()) ->  {state(), [mqtt_connack()], session_ctrl()} | {state(), [mqtt_connack()]} | {stop, normal, [mqtt_connack()]}.
 check_will(#mqtt_connect{will_topic=undefined, will_msg=undefined}, SessionPresent, State) ->
     _ = vmq_metrics:incr({?MQTT4_CONNACK_SENT, ?CONNACK_ACCEPT}),
     {State, [#mqtt_connack{session_present=SessionPresent, return_code=?CONNACK_ACCEPT}]};
@@ -620,6 +630,7 @@ check_will(#mqtt_connect{will_topic=Topic, will_msg=Payload, will_qos=Qos, will_
             connack_terminate(?CONNACK_AUTH, State)
     end.
 
+-spec auth_on_register(password(), state()) -> {error, atom()} | {ok, map(), state()}.
 auth_on_register(Password, State) ->
     #state{clean_session=Clean, peer=Peer, cap_settings=CAPSettings,
            subscriber_id=SubscriberId, username=User} = State,
@@ -657,6 +668,7 @@ auth_on_register(Password, State) ->
             {error, Reason}
     end.
 
+-spec set_sock_opts([any()]) -> {'set_sock_opts',_}.
 set_sock_opts(Opts) ->
     self() ! {set_sock_opts, Opts}.
 
@@ -728,6 +740,7 @@ auth_on_publish(User, SubscriberId, #vmq_msg{routing_key=Topic,
             {error, not_allowed}
     end.
 
+-spec session_ctrl([any()]) -> #{'throttle'=>pos_integer()}.
 session_ctrl(Args) ->
     case lists:keyfind(throttle, 1, Args) of
         false -> #{};
@@ -764,6 +777,11 @@ on_publish_hook(Other, _) -> Other.
 dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
+-spec dispatch_publish_(qos(), msg_id(), msg(), state()) -> 
+    list()
+    | {list(), session_ctrl()}
+    | {state(), list(), session_ctrl()} 
+    | {error, not_allowed}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
 dispatch_publish_(1, MessageId, Msg, State) ->
@@ -880,6 +898,7 @@ handle_waiting_acks_and_msgs(State) ->
                  )),
     catch vmq_queue:set_last_waiting_acks(QPid, MsgsToBeDeliveredNextTime, NextMsgId).
 
+-spec handle_waiting_msgs(state()) -> {state(), [msg_id()]}.
 handle_waiting_msgs(#state{waiting_msgs=[]} = State) ->
     {State, []};
 handle_waiting_msgs(#state{waiting_msgs=Msgs, queue_pid=QPid} = State) ->
@@ -962,6 +981,7 @@ prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State) ->
                                             Msg#vmq_msg{qos=NewQoS}, WAcks)}}
     end.
 
+-spec on_deliver_hook(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> any().
 on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     HookArgs0 = [User, SubscriberId, Topic, Payload],
     case vmq_plugin:all_till_ok(on_deliver, HookArgs0) of
@@ -991,6 +1011,7 @@ maybe_publish_last_will(#state{subscriber_id={_, ClientId}=SubscriberId, usernam
             ok
     end.
 
+-spec suppress_lwt(_,map()) -> boolean().
 suppress_lwt(?SESSION_TAKEN_OVER, #{suppress_lwt_on_session_takeover := true}) ->
     true;
 suppress_lwt(_Reason, _DOpts) ->
@@ -1009,6 +1030,7 @@ check_in_flight(#state{waiting_acks=WAcks, max_inflight_messages=Max}) ->
 %% upgrade_outgoing_qos is set true, messages sent to a subscriber will always
 %% match the QoS of its subscription. This is a non-standard option not provided
 %% for by the spec.
+-spec maybe_upgrade_qos(qos(), qos(),state()) -> qos().
 maybe_upgrade_qos(SubQoS, PubQoS, _) when SubQoS =< PubQoS ->
     %% already ref counted in vmq_reg
     SubQoS;
@@ -1035,7 +1057,7 @@ get_msg_id(_, undefined, #state{next_msg_id=MsgId} = State) ->
 random_client_id() ->
     list_to_binary(["anon-", base64:encode_to_string(crypto:strong_rand_bytes(20))]).
 
-
+-spec set_keepalive_check_timer(non_neg_integer()) -> 'ok'.
 set_keepalive_check_timer(0) -> ok;
 set_keepalive_check_timer(KeepAlive) ->
     %% This allows us to heavily reduce start and cancel timers,
@@ -1053,6 +1075,7 @@ do_throttle(_, #state{max_message_rate=Rate}) ->
         _ -> false
     end.
 
+-spec set_last_time_active(boolean(), state()) -> state().
 set_last_time_active(true, State) ->
     Now = os:timestamp(),
     State#state{last_time_active=Now};
@@ -1088,6 +1111,7 @@ set_last_time_active(false, State) ->
 %%  smaller than the retry interval. In this case we set a new retry timer
 %%  wrt. to the time difference.
 %%
+-spec set_retry(msg_tag(),pos_integer(),pos_integer(),queue:queue(_)) -> queue:queue(_).
 set_retry(MsgTag, MsgId, Interval, RetryQueue) ->
     case queue:is_empty(RetryQueue) of
         true ->
@@ -1126,6 +1150,7 @@ handle_retry(_, Interval, {empty, Queue}, _, Acc) when length(Acc) > 0 ->
 handle_retry(_, _, {empty, Queue}, _, Acc) ->
     {Acc, Queue}.
 
+-spec get_retry_frame(_,msg_id(),msg(), list()) -> 'already_acked' | [any()].
 get_retry_frame(publish, MsgId, #vmq_msg{routing_key=Topic, qos=QoS, retain=Retain,
                          payload=Payload}, Acc) ->
     _ = vmq_metrics:incr_mqtt_publish_sent(),
@@ -1143,6 +1168,7 @@ get_retry_frame(_, _, _, _) ->
     %% already acked
     already_acked.
 
+-spec prop_val(atom(),[any()],atom() | binary() | maybe_improper_list() | integer() | tuple()) -> any().
 prop_val(Key, Args, Default) when is_tuple(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_tuple/1);
 prop_val(Key, Args, Default) when is_list(Default) ->
@@ -1156,6 +1182,7 @@ prop_val(Key, Args, Default) when is_atom(Default) ->
 prop_val(Key, Args, Default) when is_binary(Default) ->
     prop_val(Key, Args, Default, fun erlang:is_binary/1).
 
+-spec prop_val(atom(),[any()],atom() | binary() | maybe_improper_list() | integer() | tuple(),fun((_) -> any())) -> any().
 prop_val(Key, Args, Default, Validator) ->
     case proplists:get_value(Key, Args) of
         undefined -> Default;
@@ -1164,16 +1191,19 @@ prop_val(Key, Args, Default, Validator) ->
                    false -> Default
                end
     end.
-
+    
+-spec queue_opts(state(), [any()]) -> map().
 queue_opts(#state{clean_session=CleanSession}, Args) ->
     Opts = maps:from_list([{cleanup_on_disconnect, CleanSession}| Args]),
     maps:merge(vmq_queue:default_opts(), Opts).
 
+-spec unflag(boolean() | 0 | 1) -> boolean().
 unflag(true) -> true;
 unflag(false) -> false;
 unflag(?true) -> true;
 unflag(?false) -> false.
 
+-spec max_msg_size() -> non_neg_integer().
 max_msg_size() ->
     case get(max_msg_size) of
         undefined ->
@@ -1182,10 +1212,12 @@ max_msg_size() ->
         V -> V
     end.
 
+-spec set_max_msg_size(non_neg_integer()) -> non_neg_integer().
 set_max_msg_size(MaxMsgSize) when MaxMsgSize >= 0 ->
     put(max_msg_size, MaxMsgSize),
     MaxMsgSize.
 
+-spec info(pid(),_) -> any(). % what are Items here? related to info items?
 info(Pid, Items) ->
     Ref = make_ref(),
     CallerRef = {Ref, self()},
@@ -1203,6 +1235,10 @@ get_info_items([], State) ->
 get_info_items(Items, State) ->
     get_info_items(Items, State, []).
 
+-spec get_info_items([any()],state(),[{'client_id' | 'mountpoint' | 'node' | 'peer_host' | 'peer_port' | 'pid' | 'protocol' | 'timeout' | 'user' | 'waiting_acks',atom() | 
+    binary() | pid() | [any()] | non_neg_integer()}]) -> 
+            [{'client_id' | 'mountpoint' | 'node' | 'peer_host' | 'peer_port' | 'pid' | 'protocol' | 'timeout' | 'user' | 'waiting_acks',
+            atom() | binary() | pid() | [any()] | non_neg_integer()}].
 get_info_items([pid|Rest], State, Acc) ->
     get_info_items(Rest, State, [{pid, self()}|Acc]);
 get_info_items([client_id|Rest], State, Acc) ->
@@ -1243,6 +1279,7 @@ get_info_items([_|Rest], State, Acc) ->
     get_info_items(Rest, State, Acc);
 get_info_items([], _, Acc) -> Acc.
 
+-spec set_defopt('coordinate_registrations' | 'suppress_lwt_on_session_takeover', boolean(), map()) -> map().
 set_defopt(Key, Default, Map) ->
     case vmq_config:get_env(Key, Default) of
         Default ->
@@ -1251,9 +1288,15 @@ set_defopt(Key, Default, Map) ->
             maps:put(Key, NonDefault, Map)
     end.
 
+-spec peertoa(peer()) -> string().
 peertoa({_IP, _Port} = Peer) ->
     vmq_mqtt_fsm_util:peertoa(Peer).
 
+-spec subtopics([{topic(),0 | 1 | 2} | 
+#mqtt5_subscribe_topic{topic::topic(),
+qos::0 | 1 | 2,no_local::'empty' | 'false' | 'true' | 0 | 1,
+rap::'empty' | 'false' | 'true' | 0 | 1,
+retain_handling::'dont_send' | 'send_if_new_sub' | 'send_retain'}],'undefined' | pos_integer()) -> [{_,0 | 1 | 2 | {_,_}}].
 subtopics(Topics, ProtoVer) when ?IS_BRIDGE(ProtoVer) ->
     %% bridge connection
     SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, undefined),

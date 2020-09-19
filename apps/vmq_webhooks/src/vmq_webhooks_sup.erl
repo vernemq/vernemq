@@ -18,7 +18,7 @@
 %%====================================================================
 %% API functions
 %%====================================================================
-
+-spec start_link() -> 'ignore' | {'error',any()} | {'ok',pid()}.
 start_link() ->
     case supervisor:start_link({local, ?SERVER}, ?MODULE, []) of
         {ok, _} = Ret ->
@@ -48,10 +48,11 @@ init([]) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
+-spec register_webhooks([{_,map()}]) -> [any()].
 register_webhooks(Webhooks) ->
     [ register_webhook(Webhook) || Webhook <- Webhooks ].
 
+-spec register_webhook({_,#{'endpoint':=binary(), 'hook':=atom(), 'options':=_, _=>_}}) -> any().
 register_webhook({Name, #{hook := HookName, endpoint := Endpoint, options := Opts}}) ->
     case vmq_webhooks_plugin:register_endpoint(Endpoint, HookName, Opts) of
         ok ->

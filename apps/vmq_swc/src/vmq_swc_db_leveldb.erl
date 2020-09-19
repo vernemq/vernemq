@@ -220,23 +220,36 @@ open_db(Opts, State) ->
 open_db(_Opts, _State0, 0, LastError) ->
     {error, LastError};
 open_db(Opts, State0, RetriesLeft, _) ->
-    case eleveldb:open(State0#state.data_root, State0#state.open_opts) of
+    DataRoot = State0#state.data_root,
+    case eleveldb:open(DataRoot, State0#state.open_opts) of
         {ok, Ref} ->
+            lager:info("Opening LevelDB SWC database at ~p~n", [DataRoot]),
             {ok, State0#state { ref = Ref }};
         %% Check specifically for lock error, this can be caused if
         %% a crashed instance takes some time to flush leveldb information
         %% out to disk.  The process is gone, but the NIF resource cleanup
         %% may not have completed.
         {error, {db_open, OpenErr}=Reason} ->
-            case lists:prefix("IO error: lock ", OpenErr) of
+            case lists:prefix("Corruption: truncated record ", OpenErr) of
                 true ->
-                    SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
-                    lager:debug("VerneMQ SWC LevelDB backend retrying ~p in ~p ms after error ~s\n",
-                                [State0#state.data_root, SleepFor, OpenErr]),
-                    timer:sleep(SleepFor),
-                    open_db(Opts, State0, RetriesLeft - 1, Reason);
+                    lager:info("VerneMQ LevelDB SWC Store backend repair attempt for store ~p, after error ~s. LevelDB will put unusable .log and MANIFEST filest in 'lost' folder.\n",
+                            [DataRoot, OpenErr]),
+                    case eleveldb:repair(DataRoot, []) of
+                        ok -> % LevelDB will put unusable .log and MANIFEST files in 'lost' folder.
+                            open_db(Opts, State0, RetriesLeft - 1, Reason);
+                        {error, Reason} -> {error, Reason}
+                    end;
                 false ->
-                    {error, Reason}
+                    case lists:prefix("IO error: lock ", OpenErr) of
+                        true ->
+                            SleepFor = proplists:get_value(open_retry_delay, Opts, 2000),
+                            lager:info("VerneMQ LevelDB SWC Store backend retrying ~p in ~p ms after error ~s\n",
+                                        [DataRoot, SleepFor, OpenErr]),
+                            timer:sleep(SleepFor),
+                            open_db(Opts, State0, RetriesLeft - 1, Reason);
+                        false ->
+                            {error, Reason}
+                    end
             end;
         {error, Reason} ->
             {error, Reason}

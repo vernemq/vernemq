@@ -77,7 +77,7 @@ subscribe(false, SubscriberId, Topics) ->
     vmq_cluster:if_ready(fun subscribe_op/2, [SubscriberId, Topics]);
 subscribe(true, SubscriberId, Topics) ->
     %% trade consistency for availability
-    subscribe_op(SubscriberId, Topics).
+    if_ready(fun subscribe_op/2, [SubscriberId, Topics]).
 
 subscribe_op(SubscriberId, Topics) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
@@ -965,3 +965,13 @@ retain_pre(FutureRetain) when is_tuple(FutureRetain),
                               is_integer(element(2, FutureRetain)),
                               element(2, FutureRetain) > ?RETAIN_PRE_V ->
     element(3, FutureRetain).
+
+
+-spec if_ready(_, _) -> any().
+if_ready(Fun, Args) ->
+    case persistent_term:get(subscribe_trie_ready, 0) of
+        1 ->
+            apply(Fun, Args);
+        0 ->
+            {error, not_ready}
+    end.

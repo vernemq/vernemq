@@ -99,6 +99,8 @@ peer_info(Socket, Transport, Opts) ->
                         _ ->
                             peer_info_no_proxy(Peer, Socket, Transport, Opts)
                     end;
+                {ok, #{command := local,version := _}} -> % request is not proxied, but direct. (like from a loadbalancer healthcheck)
+                    peer_info_no_proxy(undefined, Socket, Transport, Opts);
                 {error, Error} ->
                     {error, Error}
             end;
