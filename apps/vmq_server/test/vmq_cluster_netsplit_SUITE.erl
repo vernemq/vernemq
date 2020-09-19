@@ -41,6 +41,7 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(Case, Config) ->
+    set_config(metadata_plugin, vmq_swc),
     vmq_test_utils:seed_rand(Config),
     Nodes = vmq_cluster_test_utils:pmap(
               fun({N, P}) ->
