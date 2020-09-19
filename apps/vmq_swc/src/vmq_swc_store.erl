@@ -552,20 +552,12 @@ fix_watermark(Watermark, Peers) ->
                 end, WMAcc1, Peers)
       end, swc_watermark:new(), Peers).
 
-<<<<<<< HEAD
-update_watermark_internal(RemotePeer, RemoteClock, #state{id=Id, watermark=Watermark0, nodeclock=NodeClock}) ->
-=======
 update_watermark_internal(RemoteNode, RemoteClock, #state{id=Id, watermark=Watermark0, nodeclock=NodeClock}) ->
->>>>>>> origin/master
     % Store the knowledge the other node has about us
     % update my watermark with what I know, based on my node clock
     Watermark1 = swc_watermark:update_peer(Watermark0, Id, NodeClock),
     % update my watermark with what my peer knows, based on its node clock
-<<<<<<< HEAD
-    swc_watermark:update_peer(Watermark1, RemotePeer, RemoteClock).
-=======
     swc_watermark:update_peer(Watermark1, RemoteNode, RemoteClock).
->>>>>>> origin/master
 
 update_watermark_after_sync(Watermark0, RemoteWatermark, Id, RemoteId, NodeClock, RemoteClock) ->
     % update my watermark with what I know, based on my node clock
