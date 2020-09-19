@@ -1,12 +1,21 @@
 # Changelog
 
-- Add `on_topic_unsubscribe` hook (PR #1539, Issue #1326).
+- Upgrade package `bcrypt` to fix compilation in OSX (#1500).
+- Fix issue with loading status dashboard from behind a proxy with a basepath set
+
+## VerneMQ 1.10.5
+
+- New feature: Allow configuration of allowed ECC named curves in configuration file. (thanks to @varnerac)
+- New feature: Add `on_topic_unsubscribe` hook (PR #1539, Issue #1326). (thanks to @khodzha)
+- Update to jquery 3.5.1 and bootstrap 4.1.2 in status page.
+- Add case clause for proxy protocol 'local command', causing unnecessary error logging in loadbalancer health checks.
 
 ## VerneMQ XXXX
 
 - Fix bug where the server would not parse multiple WebSocket protocols correctly.
 
 ## VerneMQ 1.10.4.1
+
 Patch Release to:
 - Fix the new bridge metrics labels that prevented the Prometheus metrics to be exported correctly (blocking Prometheus export entirely).
 
