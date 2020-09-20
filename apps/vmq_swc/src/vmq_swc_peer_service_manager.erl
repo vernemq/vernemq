@@ -100,8 +100,8 @@ get_actor_for_peer(Peer) ->
     {ok, LocalState} = get_local_state(),
     proplists:get_value(Peer, actors_and_vals(LocalState)).
 
-get_old_actor_from_state(Peer, State) ->
-    proplists:get_value(Peer, actors_and_vals(State)).
+% get_old_actor_from_state(Peer, State) ->
+%     proplists:get_value(Peer, actors_and_vals(State)).
 
 actors({_Clock, Entries, _Deferred}) when is_list(Entries) ->
         [{K, Dots} || {K, Dots} <- Entries];

@@ -534,11 +534,6 @@ random_peer(Peers, FilterFun) ->
             {ok, lists:nth(rand:uniform(length(FilteredPeers)), FilteredPeers)}
     end.
 
-fix_watermark2(Watermark, [P|Peers]) ->
-         WMAcc = swc_watermark:add_peer(Watermark, P, Peers),
-         fix_watermark2(WMAcc, Peers);
-fix_watermark2(Watermark, []) -> Watermark.
-
 fix_watermark(Watermark, Peers) ->
     lists:foldl(
       fun(Peer, WMAcc0) ->
@@ -735,10 +730,10 @@ incremental_gc(#state{config=Config, watermark=Watermark, dotkeymap=DKM} = State
     db_write(Config, DBOps),
     State.
 
--spec remove_logs_for_peer(config(), dotkeymap(), peer()) -> ok.
-remove_logs_for_peer(Config, DKM, Peer) ->
-    DBOps = vmq_swc_dkm:prune_for_peer(DKM, Peer),
-    db_write(Config, DBOps).
+% -spec remove_logs_for_peer(config(), dotkeymap(), peer()) -> ok.
+% remove_logs_for_peer(Config, DKM, Peer) ->
+%     DBOps = vmq_swc_dkm:prune_for_peer(DKM, Peer),
+%     db_write(Config, DBOps).
 
 -spec init_dotkeymap(config()) -> dotkeymap().
 init_dotkeymap(Config) ->

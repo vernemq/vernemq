@@ -76,7 +76,7 @@ handle_call(get_members, _From, #state{members=Members} = State) ->
     {reply, Members, State};
 
 handle_call(get_actors, _From, #state{members=_Members} = State) ->
-    {ok, Actors} = vmq_swc_peer_service_manager:get_actors(),
+    Actors = vmq_swc_peer_service_manager:get_actors(),
     {reply, Actors, State}.
 
 handle_cast({set_members, NewMembers},  #state{config=Config, members=OldMembers} = State) ->

@@ -95,7 +95,7 @@ foldfun_wrapper(FoldFun) ->
 start_link(#swc_config{db=DBName} = Config, Opts) ->
     gen_server:start_link({local, DBName}, ?MODULE, [Config | Opts], []).
 
-init([#swc_config{peer=Peer, group=SwcGroup, db=DBName} = _Config|Opts]) ->
+init([#swc_config{peer={Peer, _Actor}, group=SwcGroup, db=DBName} = _Config|Opts]) ->
     DefaultDataDir = filename:join(filename:join(<<".">>, Peer), SwcGroup),
 
     DataDir = proplists:get_value(data_dir, Opts,
