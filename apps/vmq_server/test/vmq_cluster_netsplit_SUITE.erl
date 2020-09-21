@@ -246,7 +246,7 @@ remote_enqueue_cant_block_the_publisher(Config) ->
     %% (publishes to a shared subscriber are delivered using
     %% the enqueue_remote function in the vmq_cluster mod).
     ConnectSub = packet:gen_connect("netsplit-shared-sub", [{clean_session, true},
-                                                            {keepalive, 10}]),
+                                                            {keepalive, 120}]),
     Connack = packet:gen_connack(0),
     {_, PortSub} = random_node(Island1),
     {ok, SubSocket} = packet:do_client_connect(ConnectSub, Connack,
@@ -258,11 +258,10 @@ remote_enqueue_cant_block_the_publisher(Config) ->
 
     %% Connect publisher to one side of the cluster
     ConnectPub = packet:gen_connect("netsplit-publisher", [{clean_session, true},
-                                                           {keepalive, 10}]),
+                                                           {keepalive, 120}]),
     {_, PortPub} = random_node(Island2),
     {ok, PubSocket} = packet:do_client_connect(ConnectPub, Connack,
                                                [{port, PortPub}]),
-
     %% Let the cluster metadata converge.
     ok = wait_until_converged(Nodes,
                               fun(N) ->
