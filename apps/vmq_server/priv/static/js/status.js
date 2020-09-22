@@ -18,7 +18,7 @@ $(function() {
         template: $("#node_list_template").html(),
         target: $("#node_list"),
         cluster_status: {
-            url: "/status.json",
+            url: "status.json",
             last_calculated: Date.now(),
             rates: {}
         }
