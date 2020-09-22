@@ -6,10 +6,8 @@ services:
   - memcached
 
 env:
-  - KERL_DEFAULT_INSTALL_DIR="$HOME/.kerl"
-  # In macOS Catalina Apple enabled "stack checking" in its clang toolchain
-  # which makes erlc segfault. See: https://github.com/kerl/kerl/issues/320
-  - KERL_CONFIGURE_OPTIONS="--disable-hipe --enable-darwin-64bit --with-ssl=/usr/local/opt/openssl@1.1 --without-javac"
+  global:
+    - KERL_DEFAULT_INSTALL_DIR="$HOME/.kerl"
 
 addons:
   apt:
@@ -29,6 +27,9 @@ addons:
       - mongodb-community
 
 before_install:
+  # In macOS Catalina Apple enabled "stack checking" in its clang toolchain
+  # which makes erlc segfault. See: https://github.com/kerl/kerl/issues/320
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export KERL_CONFIGURE_OPTIONS="--disable-hipe --enable-darwin-64bit --with-ssl=/usr/local/opt/openssl@1.1 --without-javac" ; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export CFLAGS="-O2 -g -fno-stack-check -Wno-error=implicit-function-declaration" ; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl update releases ; fi
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then kerl list builds | grep ${OTP_VERSION} || travis_wait 45 kerl build ${OTP_VERSION} ${OTP_VERSION} ; fi
