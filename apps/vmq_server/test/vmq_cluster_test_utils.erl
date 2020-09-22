@@ -107,6 +107,7 @@ wait_until_connected(Node1, Node2) ->
         end, 60*2, 500).
 
 start_node(Name, Config, Case) ->
+    ct:pal("Start Node ~p for Case ~p~n", [Name, Case]),
     CodePath = lists:filter(fun filelib:is_dir/1, code:get_path()),
     %% have the slave nodes monitor the runner node, so they can't outlive it
     NodeConfig = [
@@ -123,15 +124,21 @@ start_node(Name, Config, Case) ->
             ok = rpc:call(Node, application, load, [vmq_server]),
             ok = rpc:call(Node, application, load, [vmq_plugin]),
             ok = rpc:call(Node, application, load, [vmq_generic_msg_store]),
-            ok = rpc:call(Node, application, load, [plumtree]),
+           % ok = rpc:call(Node, application, load, [plumtree]),
+            ok = rpc:call(Node, application, load, [vmq_swc]),
             ok = rpc:call(Node, application, load, [lager]),
+            ok = rpc:call(Node, application, set_env, [vmq_server, metadata_impl, vmq_swc]),
+            ok = rpc:call(Node, application, set_env, [vmq_server, max_drain_time, 5000]),
+            ok = rpc:call(Node, application, set_env, [vmq_server, max_msgs_per_drain_step, 40]),
+            ok = rpc:call(Node, application, set_env, [vmq_server, mqtt_connect_timeout, 12000]),
+            ok = rpc:call(Node, application, set_env, [vmq_server, coordinate_registrations, true]),
             ok = rpc:call(Node, application, set_env, [lager,
                                                        log_root,
                                                        NodeDir]),
-            ok = rpc:call(Node, application, set_env, [plumtree,
-                                                       plumtree_data_dir,
+            ok = rpc:call(Node, application, set_env, [vmq_swc,
+                                                       data_dir,
                                                        NodeDir]),
-            ok = rpc:call(Node, application, set_env, [plumtree,
+            ok = rpc:call(Node, application, set_env, [vmq_swc,
                                                        metadata_root,
                                                        NodeDir ++ "/meta/"]),
             ok = rpc:call(Node, application, set_env, [vmq_server,
@@ -154,14 +161,15 @@ start_node(Name, Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_plugin,
                                                        default_schema_dir,
                                                        [VmqServerPrivDir]]),
-
             {ok, _} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),
+            {ok, _} = rpc:call(Node, application, ensure_all_started, [vmq_swc]),
             ok = wait_until(fun() ->
                             case rpc:call(Node, vmq_plugin, only, [cluster_members, []]) of
                                 {error, no_matching_hook} ->
                                     false;
                                 Members when is_list(Members) ->
+                                ct:pal("CLUSTER MEMBERS: ~p~n", [Members]),
                                     case rpc:call(Node, erlang, whereis,
                                                   [vmq_server_sup]) of
                                         undefined ->
@@ -173,7 +181,7 @@ start_node(Name, Config, Case) ->
                     end, 60, 500),
             Node;
         {error, already_started, Node} ->
-            ct_slave:stop(Name),
+            {ok, _NodeName} = ct_slave:stop(Name),
             wait_until_offline(Node),
             start_node(Name, Config, Case)
     end.
