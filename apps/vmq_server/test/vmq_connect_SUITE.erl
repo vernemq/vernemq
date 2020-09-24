@@ -52,7 +52,7 @@ all() ->
     ].
 
 groups() ->
-    Tests = 
+    Tests =
         [anon_denied_test,
          anon_success_test,
          invalid_id_0_test,
@@ -69,7 +69,7 @@ groups() ->
      {mqttv4, [shuffle,sequence],
       [auth_on_register_change_username_test|Tests]},
      {mqtts, [], Tests},
-     {mqttws, [], Tests},
+     {mqttws, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
      {mqttv5, [auth_on_register_change_username_test]}
     ].
 
@@ -202,6 +202,21 @@ auth_on_register_change_username_test(Config) ->
       auth_on_register, ?MODULE, hook_change_username, 5),
     ok = close(Socket, Config).
 
+ws_protocols_list_test(Config) ->
+    Connect = packet:gen_connect("ws_protocols_list_test", [{keepalive,10}]),
+    Connack = packet:gen_connack(5),
+    WSOpt  = {conn_opts, [{ws_protocols, ["foo", "mqtt", "bar"]}]},
+    ConnOpts = [WSOpt | conn_opts(Config)],
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, ConnOpts),
+    ok = close(Socket, Config).
+
+ws_no_known_protocols_test(Config) ->
+    Connect = packet:gen_connect("ws_no_known_protocols_test", [{keepalive,10}]),
+    Connack = packet:gen_connack(5),
+    WSOpt  = {conn_opts, [{ws_protocols, ["foo", "bar", "baz"]}]},
+    ConnOpts = [WSOpt | conn_opts(Config)],
+    {error, unknown_websocket_protocol} = packet:do_client_connect(Connect, Connack, ConnOpts),
+    ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
@@ -256,7 +271,7 @@ conn_opts(Config) ->
                 [{transport, gen_tcp}, {conn_opts, []}];
             ssl ->
                 [{transport, ssl},
-                 {conn_opts, 
+                 {conn_opts,
                   [
                    {cacerts, load_cacerts()}
                   ]}];
@@ -290,7 +305,7 @@ start_listener(Config) ->
     {address, Address} = lists:keyfind(address, 1, Config),
     {type, Type} = lists:keyfind(type, 1, Config),
     ProtVers = {allowed_protocol_versions, "3,4,5"},
- 
+
     Opts1 =
         case Type of
             ssl ->

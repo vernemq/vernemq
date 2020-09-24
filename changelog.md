@@ -12,6 +12,10 @@
 - Update to jquery 3.5.1 and bootstrap 4.1.2 in status page.
 - Add case clause for proxy protocol 'local command', causing unnecessary error logging in loadbalancer health checks.
 
+## VerneMQ XXXX
+
+- Fix bug where the server would not parse multiple WebSocket protocols correctly.
+
 ## VerneMQ 1.10.4.1
 
 Patch Release to:
