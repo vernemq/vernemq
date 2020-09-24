@@ -9,6 +9,7 @@
         ]).
 
 -export([proxy_test/1,
+         proxy_local_command_test/1,
          proxy_use_cn_as_username_on/1,
          proxy_use_cn_as_username_off/1]).
 
@@ -48,6 +49,7 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [proxy_test,
+     proxy_local_command_test,
      proxy_use_cn_as_username_on,
      proxy_use_cn_as_username_off].
 
@@ -79,6 +81,29 @@ proxy_test(_) ->
       auth_on_register, ?MODULE, hook_proxy_register, 5),
     ok = gen_tcp:close(Socket).
 
+proxy_local_command_test(_) ->
+    Connect = packet:gen_connect("connect-proxy-local-test", [{keepalive,10}]),
+    Host = {127,0,0,1},
+    Port = 1888,
+    vmq_plugin_mgr:enable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register, 5),
+    ProxyInfo =
+        #{version => 2,
+          src_address => {1,1,1,1},
+          src_port => 1234,
+          dest_address => {2,2,2,2},
+          dest_port => 4321,
+          command => local,
+          transport_family => ipv4,
+          transport_protocol => stream},
+    {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {reuseaddr, true},
+                                                {active, false}, {packet, raw}]),
+    ok = gen_tcp:send(Socket, ranch_proxy_header:header(ProxyInfo)),
+    ok = gen_tcp:send(Socket, Connect),
+    % don't wait for a Connack here, as this doesn't go up to MQTT level
+    vmq_plugin_mgr:disable_module_plugin(
+      auth_on_register, ?MODULE, hook_proxy_register, 5),
+    ok = gen_tcp:close(Socket).
 
 proxy_use_cn_as_username_on(_) ->
     Connect = packet:gen_connect("connect-proxy-test", [{keepalive,10},
