@@ -23,5 +23,21 @@ auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberI
     {Result, Claims} = if
         Password =/= undefined -> jwerl:verify(Password, hs256, ?SecretKey);
         Password =:= undefined -> {error, invalid_signature}
+    end,   
+
+    Auth = if
+        Result =:= ok -> verify(Claims, UserName);
+        true -> {error, invalid_signature}
     end,
-    Result.
+
+    Auth.
+
+
+verify(Claims, UserName) ->
+    RIDMatch = (maps:get(rid, Claims)) =:= UserName,
+    Verified = if
+        RIDMatch -> ok;
+        true->error
+    end,
+    Verified.
+    
