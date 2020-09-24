@@ -87,7 +87,9 @@ do_client_connect(ConnectPacket, ConnackPacket, Opts) ->
                 E ->
                     Transport:close(Socket),
                     E
-            end
+            end;
+        ConnectError ->
+            ConnectError
     end.
 
 gen_connect(ClientId, Opts) ->

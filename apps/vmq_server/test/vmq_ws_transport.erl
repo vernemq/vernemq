@@ -20,19 +20,22 @@
         ]).
 
 connect(Host, Port, Opts, Timeout) ->
-    case gen_tcp:connect(Host, Port, Opts, Timeout) of
+    WSProtocols = proplists:get_value(ws_protocols, Opts, ["mqtt"]),
+    Opts1 = proplists:delete(ws_protocols, Opts),
+    case gen_tcp:connect(Host, Port, Opts1, Timeout) of
         {ok, Socket} ->
+            WSProtocolsStr = string:join(WSProtocols, ","),
             Hello = [
                      "GET /mqtt HTTP/1.1\r\n"
                      "Host: localhost\r\n"
                      "Connection: Upgrade\r\n"
                      "Origin: http://localhost\r\n"
                      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
-                     "Sec-WebSocket-Protocol: mqtt\r\n"
+                     "Sec-WebSocket-Protocol: "++ WSProtocolsStr++"\r\n"
                      "Sec-WebSocket-Version: 13\r\n"
                      "Upgrade: websocket\r\n"
                      "\r\n"],
-            gen_tcp:send(Socket, Hello),
+            ok = gen_tcp:send(Socket, Hello),
             {ok, Handshake} = gen_tcp:recv(Socket, 0, 6000),
             {ok, {http_response, {1, 1}, 101, "Switching Protocols"}, Rest}
 		= erlang:decode_packet(http, Handshake, []),
@@ -42,9 +45,11 @@ connect(Host, Port, Opts, Timeout) ->
             {'Upgrade', "websocket"} = lists:keyfind('Upgrade', 1, Headers),
             {"sec-websocket-accept", "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="}
 		= lists:keyfind("sec-websocket-accept", 1, Headers),
-            {"sec-websocket-protocol", "mqtt"}
-                = lists:keyfind("sec-websocket-protocol", 1, Headers),
-            {ok, Socket};
+            case lists:keyfind("sec-websocket-protocol", 1, Headers) of
+                {"sec-websocket-protocol", "mqtt"} -> {ok, Socket};
+                {"sec-websocket-protocol", "mqttv3.1"} -> {ok, Socket};
+                false -> {error, unknown_websocket_protocol}
+            end;
         E ->
             E
     end.
