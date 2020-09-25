@@ -20,24 +20,29 @@ auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberI
     %% 5. return {error, whatever} -> CONNACK_AUTH is sent
 
     %% we return 'ok'
-    {Result, Claims} = if
-        Password =/= undefined -> jwerl:verify(Password, hs256, ?SecretKey);
-        Password =:= undefined -> {error, invalid_signature}
-    end,   
+    {Result, Claims} = verify(Password, ?SecretKey),
+         
 
     Auth = if
-        Result =:= ok -> verify(Claims, UserName);
+        Result =:= ok -> checkRID(Claims, UserName);
         true -> {error, invalid_signature}
     end,
 
     Auth.
 
 
-verify(Claims, UserName) ->
-    RIDMatch = (maps:get(rid, Claims)) =:= UserName,
-    Verified = if
-        RIDMatch -> ok;
-        true->error
-    end,
-    Verified.
+verify(Password, SecretKey) ->
+    try jwerl:verify(Password, hs256, SecretKey) of
+    _ -> jwerl:verify(Password, hs256, SecretKey)
+    catch
+    error:Error -> {error, invalid_signature}
+    end.
+
+checkRID(Claims, UserName) ->
+    Check = (maps:get(rid, Claims) =:= UserName),
+    if 
+        Check -> ok;
+        true -> error
+    end.
+
     
