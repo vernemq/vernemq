@@ -21,15 +21,10 @@ auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberI
 
     %% we return 'ok'
     {Result, Claims} = verify(Password, ?SecretKey),
-         
-
-    Auth = if
+    if
         Result =:= ok -> checkRID(Claims, UserName);
         true -> {error, invalid_signature}
-    end,
-
-    Auth.
-
+    end.
 
 verify(Password, SecretKey) ->
     try jwerl:verify(Password, hs256, SecretKey) of
@@ -39,10 +34,17 @@ verify(Password, SecretKey) ->
     end.
 
 checkRID(Claims, UserName) ->
-    Check = (maps:get(rid, Claims) =:= UserName),
-    if 
-        Check -> ok;
-        true -> error
+    case maps:find(rid, Claims) of
+        {ok, Value} ->
+            if Value =:= UserName -> ok;
+            true -> error
+            end;
+        error ->
+            ok
     end.
+
+
+
+
 
     
