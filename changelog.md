@@ -1,5 +1,6 @@
 # Changelog
 
+- Add retain command to vmq-admin usage output
 - Bridge Plugin: Continue to publish during netsplit (cluster not_ready)
 - Bridge Plugin: Make internal publish use the configured per-topic QoS
 - Upgrade package `bcrypt` to fix compilation in OSX (#1500).
