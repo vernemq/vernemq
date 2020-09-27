@@ -164,7 +164,7 @@ handle_info(connected, #state{name = Name, host=Host, port=Port,
     Topics = proplists:get_value(topics, Opts),
     Subscriptions = bridge_subscribe(remote, Pid, Topics, SubscribeFun, []),
     {noreply, State#state{subs_remote=Subscriptions}};
-handle_info({deliver_remote, Topic, Payload, #{retain := Retain}},
+handle_info({deliver_remote, Topic, Payload, #{qos := QoS, retain := Retain}},
             #state{publish_fun=PublishFun, subs_remote=Subscriptions} = State) ->
     %% publish an incoming message from the remote broker locally if
     %% we have a matching subscription
@@ -173,7 +173,7 @@ handle_info({deliver_remote, Topic, Payload, #{retain := Retain}},
               case match(Topic, T) of
                   true ->
                       % ignore if we're ready or not.
-                      PublishFun(swap_prefix(RemotePrefix, LocalPrefix, Topic), Payload, #{retain => Retain});
+                      PublishFun(swap_prefix(RemotePrefix, LocalPrefix, Topic), Payload, #{qos => QoS, retain => Retain});
                   false ->
                       ok
               end;
