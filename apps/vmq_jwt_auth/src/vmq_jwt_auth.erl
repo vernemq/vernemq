@@ -39,8 +39,7 @@ checkRID(Claims, UserName) ->
             if Value =:= UserName -> ok;
             true -> error
             end;
-        error ->
-            ok
+        error -> error
     end.
 
 
