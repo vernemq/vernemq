@@ -2,8 +2,9 @@
 
 ## VerneMQ 1.11.0
 
+- Improve Proxy protocol error logging (warn instead of crash process).
 - Add retain command to vmq-admin usage output
-- Bridge Plugin: Continue to publish during netsplit (cluster not_ready)
+- Bridge Plugin: Continue to publish during netsplit (that is, during cluster not_ready)
 - Bridge Plugin: Make internal publish use the configured per-topic QoS
 - Upgrade package `bcrypt` to fix compilation in OSX (#1500).
 - Fix issue with loading status dashboard from behind a proxy with a basepath set
