@@ -1,15 +1,13 @@
 # Changelog
 
+## VerneMQ 1.11.0
+
 - Add retain command to vmq-admin usage output
 - Bridge Plugin: Continue to publish during netsplit (cluster not_ready)
 - Bridge Plugin: Make internal publish use the configured per-topic QoS
 - Upgrade package `bcrypt` to fix compilation in OSX (#1500).
 - Fix issue with loading status dashboard from behind a proxy with a basepath set
 - Fix bug where the server would not parse multiple WebSocket protocols correctly.
-
-
-## VerneMQ 1.10.5
-
 - New feature: Allow configuration of allowed ECC named curves in configuration file. (thanks to @varnerac)
 - New feature: Add `on_topic_unsubscribe` hook (PR #1539, Issue #1326). (thanks to @khodzha)
 - Update to jquery 3.5.1 and bootstrap 4.1.2 in status page.
