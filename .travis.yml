@@ -75,14 +75,6 @@ jobs:
     - os: osx
       language: generic
       osx_image: xcode12
-      env: OTP_VERSION=22.0
-    - os: osx
-      language: generic
-      osx_image: xcode12
-      env: OTP_VERSION=22.2
-    - os: osx
-      language: generic
-      osx_image: xcode12
       env: OTP_VERSION=22.3
     - os: osx
       language: generic
