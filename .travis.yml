@@ -17,6 +17,7 @@ addons:
     update: false
     taps: mongodb/brew
     packages:
+      - ccache
       - kerl
       - snappy
       - openssl@1.1
