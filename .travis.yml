@@ -104,6 +104,7 @@ before_script:
   - psql -c "CREATE USER vmq_test_user WITH PASSWORD 'vmq_test_password';" -U postgres
   - psql -c "GRANT ALL PRIVILEGES ON DATABASE vmq_test_database to vmq_test_user;" -U postgres
   - epmd -daemon
+  - ./rebar3 dialyzer
 
 script:
   - ./rebar3 as all_tests do dialyzer, eunit, ct
