@@ -374,11 +374,7 @@
   {default, 11211},
   {commented, 11211}]}.
 
-%% @doc vmq_diversity.<name>.plugin = <file> loads a specific lua
-%% script when `vmq_diversity` starts. The scripts are loaded in the
-%% order defined by the names given, i.e., the script with <name>
-%% 'script1' is started before the plugin with <name> 'script2'.
-%% @doc vmq_diversity.<name>.plugin = <file> loads a specific lua
+%% @doc vmq_diversity.<name>.file = <file> loads a specific lua
 %% script when `vmq_diversity` starts. The scripts are loaded in the
 %% order defined by the names given, i.e., the script with <name>
 %% 'script1' is started before the plugin with <name> 'script2'.
