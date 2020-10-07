@@ -258,7 +258,7 @@ init([#swc_config{group=Group, peer=SWC_ID, store=StoreName, r_o_w_cache=CacheNa
     % {ok, OldActor} = vmq_swc_peer_service_manager:get_old_actor(),
     {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
 
-    OLD_SWC_ID = {node(), vmq_swc_peer_service_manager:get_actor_for_peer(LocalState)},
+    OLD_SWC_ID = ets:lookup(swc_cluster_state, old_actor),
     lager:info("OLD SWC ID ~p~n", [OLD_SWC_ID]), % shouldn't be {node(), undefined}
     NewWatermark0 = case OLD_SWC_ID =/= SWC_ID of 
        % true -> swc_watermark:replace_peer(Watermark, OLD_SWC_ID, SWC_ID);

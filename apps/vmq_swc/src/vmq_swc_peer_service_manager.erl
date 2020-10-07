@@ -22,7 +22,7 @@
 
 -define(TBL, swc_cluster_state).
 
--export([init/0, get_local_state/0, get_actor/0, get_old_actor/0, get_actors/0, get_peers/0, 
+-export([init/0, get_local_state/0, get_actor/0, get_old_actor/0, get_old_actor_from_state/2, get_actors/0, get_peers/0, 
         get_actors_and_peers/0, get_actor_for_peer/1, get_peers_for_actors/1, update_state/1, delete_state/0]).
 
 init() ->
@@ -100,8 +100,8 @@ get_actor_for_peer(Peer) ->
     {ok, LocalState} = get_local_state(),
     proplists:get_value(Peer, actors_and_vals(LocalState)).
 
-% get_old_actor_from_state(Peer, State) ->
-%     proplists:get_value(Peer, actors_and_vals(State)).
+get_old_actor_from_state(Peer, State) ->
+     proplists:get_value(Peer, actors_and_vals(State)).
 
 actors({_Clock, Entries, _Deferred}) when is_list(Entries) ->
         [{K, Dots} || {K, Dots} <- Entries];
@@ -178,13 +178,15 @@ maybe_load_state_from_disk() ->
                     {ok, Bin} = file:read_file(filename:join(Dir,
                                                              "cluster_state")),
                     {ok, State} = riak_dt_orswot:from_binary(Bin),
+                    OldActor = get_old_actor_from_state(node(), State),
+                    ets:insert(?TBL, {old_actor, OldActor}),
                 %  OldActor = get_old_actor_from_state(node(), State),
                 %  ets:insert(old_actor_tab, {old_actor, OldActor}),
-                %  Actor = ets:lookup(?TBL, actor),
-                %  {ok, State1} = riak_dt_orswot:update({add, node()}, Actor, State), % we always want to save the Actor for SWC
+                    Actor = ets:lookup(?TBL, actor),
+                    {ok, State1} = riak_dt_orswot:update({add, node()}, Actor, State), % we always want to save the Actor for SWC
                 %  _ = gen_server:cast(vmq_swc_peer_service_gossip, {receive_state, Merged}),
-                    lager:info("read state from file ~p~n", [State]),
-                    update_state(State);
+                    lager:info("read state from file ~p~n", [State1]),
+                    update_state(State1);
                 false ->
                     add_self()
             end
