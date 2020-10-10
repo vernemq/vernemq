@@ -22,6 +22,9 @@ with_rocksdb: rel
 with_leveled: PROFILE = as leveled
 with_leveled: rel
 
+with_lmdb: PROFILE = as lmdb
+with_lmdb: rel
+
 ##
 ## Release targets
 ##
