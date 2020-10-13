@@ -54,7 +54,7 @@
 
 %% Subsequent formats should always extend by adding new elements to
 %% the end of the record or tuple.
--type p_msg_val_pre() :: {routing_key(), payload()}.
+-type p_msg_val_pre() :: {routing_key(), payload() | tuple()}.
 -record(p_idx_val, {
           ts  :: erlang:timestamp(),
           dup :: flag(),
