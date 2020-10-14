@@ -74,7 +74,7 @@ start_all_pools([{mysql, ProviderConfig}|Rest], Acc) ->
 start_all_pools([{pgsql, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
     PoolOpts = proplists:get_value(opts, ProviderConfig, []),
-    Size = proplists:get_value(size, ProviderConfig, 10),
+    Size = proplists:get_value(size, PoolOpts, 5),
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = lists:keydelete(size, 1,
                                  lists:keydelete(max_overflow, 1, PoolOpts)),
@@ -106,7 +106,7 @@ start_all_pools([{pgsql, ProviderConfig}|Rest], Acc) ->
 start_all_pools([{mongodb, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
     PoolOpts = proplists:get_value(opts, ProviderConfig, []),
-    Size = proplists:get_value(size, ProviderConfig, 10),
+    Size = proplists:get_value(size, PoolOpts, 5),
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = lists:keydelete(size, 1,
                                  lists:keydelete(max_overflow, 1, PoolOpts)),
@@ -129,7 +129,7 @@ start_all_pools([{mongodb, ProviderConfig}|Rest], Acc) ->
 start_all_pools([{redis, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
     PoolOpts = proplists:get_value(opts, ProviderConfig, []),
-    Size = proplists:get_value(size, ProviderConfig, 10),
+    Size = proplists:get_value(size, PoolOpts, 5),
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = lists:keydelete(size, 1,
                                  lists:keydelete(max_overflow, 1, PoolOpts)),
@@ -143,7 +143,7 @@ start_all_pools([{redis, ProviderConfig}|Rest], Acc) ->
 start_all_pools([{memcached, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
     PoolOpts = proplists:get_value(opts, ProviderConfig, []),
-    Size = proplists:get_value(size, ProviderConfig, 10),
+    Size = proplists:get_value(size, PoolOpts, 5),
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = [proplists:get_value(host, PoolOpts),
                   proplists:get_value(port, PoolOpts)],
