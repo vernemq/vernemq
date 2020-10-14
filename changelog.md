@@ -1,5 +1,7 @@
 # Changelog
 
+- Fix bug causing the `pool_size` option for databases to not be respected.
+
 ## VerneMQ 1.11.0
 
 - Improve Proxy protocol error logging (warn instead of crash process).
