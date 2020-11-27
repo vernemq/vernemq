@@ -23,7 +23,7 @@
 -define(TBL, swc_cluster_state).
 
 -export([init/0, get_local_state/0, get_actor/0, get_old_actor/0, get_old_actor_from_state/2, get_actors/0, get_peers/0, 
-        get_actors_and_peers/0, get_actor_for_peer/1, get_peers_for_actors/1, update_state/1, delete_state/0]).
+        get_actors_and_peers/0, get_actor_for_peer/1, get_peers_for_actors/1, update_state/1, delete_state/0, write_old_actor_to_disk/1]).
 
 init() ->
     %% setup ETS table for cluster_state
@@ -31,26 +31,19 @@ init() ->
             _Res ->
                 gen_actor(),
                 maybe_load_state_from_disk(),
+                maybe_load_old_actor_from_disk(),
                 ok
         catch
             error:badarg ->
                 lager:warning("Table ~p already exists", [?TBL])
                 %%TODO rejoin logic
         end,
-    _ = try ets:new(old_actor_tab, [named_table, public, set, {keypos, 1}]) of
-            _Res1 ->
-                ok
-        catch
-            error:badarg ->
-                lager:warning("Table ~p already exists", [old_actor])
-                %%TODO rejoin logic
-    end,
     ok.
 
 %% @doc return local node's view of cluster membership
 get_local_state() ->
    case hd(ets:lookup(?TBL, cluster_state)) of
-       {cluster_state, State} ->
+       {cluster_state, State} ->    
            {ok, State};
        _Else ->
            {error, _Else}
@@ -66,7 +59,7 @@ get_actor() ->
     end.
 
 get_old_actor() ->
-    case hd(ets:lookup(old_actor_tab, old_actor)) of
+    case hd(ets:lookup(?TBL, old_actor)) of
         {old_actor, Actor} ->
             {ok, Actor};
         _Else ->
@@ -153,6 +146,39 @@ write_state_to_disk(State) ->
                                  riak_dt_orswot:to_binary(State))
     end.
 
+write_old_actor_to_disk(Actor) ->
+    case data_root() of
+        undefined ->
+            ok;
+        Dir ->
+            File = filename:join(Dir, "old_node_actor"),
+            ok = filelib:ensure_dir(File),
+            lager:info("writing (updated) old actor ~p to disk~n",
+                       [Actor]),
+            ok = file:write_file(File,
+                                 term_to_binary(Actor))
+    end.
+
+maybe_load_old_actor_from_disk() ->
+    case data_root() of
+        undefined ->
+            ok;
+        Dir ->
+            case filelib:is_regular(filename:join(Dir, "old_node_actor")) of
+                true ->
+                    {ok, Bin} = file:read_file(filename:join(Dir,
+                                                             "old_node_actor")),
+                    OldActor = binary_to_term(Bin),
+                    ets:insert(?TBL, {old_actor, OldActor}),
+                    NewActor = ets:lookup(?TBL, actor),
+                    lager:info("read old actor from file ~p~n", [OldActor]),
+                    write_old_actor_to_disk(NewActor);
+                false -> % for first boot case
+                    NewActor = ets:lookup(?TBL, actor),
+                    write_old_actor_to_disk(NewActor)
+            end
+    end.
+
 delete_state_from_disk() ->
     case data_root() of
         undefined ->
@@ -178,14 +204,8 @@ maybe_load_state_from_disk() ->
                     {ok, Bin} = file:read_file(filename:join(Dir,
                                                              "cluster_state")),
                     {ok, State} = riak_dt_orswot:from_binary(Bin),
-                    OldActor = get_old_actor_from_state(node(), State),
-                    ets:insert(?TBL, {old_actor, OldActor}),
-                %  OldActor = get_old_actor_from_state(node(), State),
-                %  ets:insert(old_actor_tab, {old_actor, OldActor}),
                     Actor = ets:lookup(?TBL, actor),
                     {ok, State1} = riak_dt_orswot:update({add, node()}, Actor, State), % we always want to save the Actor for SWC
-                %  _ = gen_server:cast(vmq_swc_peer_service_gossip, {receive_state, Merged}),
-                    lager:info("read state from file ~p~n", [State1]),
                     update_state(State1);
                 false ->
                     add_self()
