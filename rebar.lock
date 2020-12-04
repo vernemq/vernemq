@@ -7,7 +7,7 @@
   {git,"git://github.com/comtihon/bson-erlang",
        {ref,"14308ab927cfa69324742c3de720578094e0bb19"}},
   1},
- {<<"certifi">>,{pkg,<<"certifi">>,<<"2.5.2">>},1},
+ {<<"certifi">>,{pkg,<<"certifi">>,<<"2.5.3">>},1},
  {<<"clique">>,
   {git,"git://github.com/vernemq/clique.git",
        {ref,"88b2784f32d2f6e1d738ad9b330875e51a9c1888"}},
@@ -97,7 +97,7 @@
   0}]}.
 [
 {pkg_hash,[
- {<<"certifi">>, <<"B7CFEAE9D2ED395695DD8201C57A2D019C0C43ECAF8B8BCB9320B40D6662F340">>},
+ {<<"certifi">>, <<"70BDD7E7188C804F3A30EE0E7C99655BC35D8AC41C23E12325F36AB449B70651">>},
  {<<"cowboy">>, <<"99AA50E94E685557CAD82E704457336A453D4ABCB77839AD22DBE71F311FCC06">>},
  {<<"cowlib">>, <<"A7FFCD0917E6D50B4D5FB28E9E2085A0CEB3C97DEA310505F7460FF5ED764CE9">>},
  {<<"epgsql">>, <<"26D9CF04D74773D1DC4DA24AD39E926B34E107232591FE1866EFDFBC0A098396">>},
