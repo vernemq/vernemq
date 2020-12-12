@@ -298,13 +298,12 @@ connect_async(ParentPid, RemoteNode) ->
                                       {send_timeout, 0}|ConnectOpts]), ConnectTimeout) of
                 {ok, Socket} ->
                     % at least tune 'buffer'
-                    MaskedSocket = mask_socket(Transport, Socket),
-                    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+                    {ok, BufSizes} = getopts(Socket, [sndbuf, recbuf, buffer]),
                     BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-                    setopts(MaskedSocket, [{buffer, BufSize}]),
-                    case controlling_process(Transport, MaskedSocket, ParentPid) of
+                    setopts(Socket, [{buffer, BufSize}]),
+                    case controlling_process(Transport, Socket, ParentPid) of
                         ok ->
-                            {ok, {Transport, MaskedSocket}};
+                            {ok, {Transport, Socket}};
                         {error, Reason} ->
                             lager:debug("can't assign socket ownership to ~p due to ~p", [ParentPid, Reason]),
                             error
@@ -355,9 +354,6 @@ connect_params(_Node) ->
             end
     end.
 
-mask_socket(gen_tcp, Socket) -> Socket;
-mask_socket(ssl, Socket) -> {ssl, Socket}.
-
 getopts({ssl, Socket}, Opts) ->
     ssl:getopts(Socket, Opts);
 getopts(Socket, Opts) ->
@@ -392,7 +388,7 @@ connect(ssl, Host, Port, Opts, Timeout) ->
 
 controlling_process(gen_tcp, Socket, Pid) ->
     gen_tcp:controlling_process(Socket, Pid);
-controlling_process(ssl, Socket, Pid) ->
+controlling_process(ssl, {'ssl',Socket}, Pid) ->
     ssl:controlling_process(Socket, Pid).
 
 teardown(#state{socket = Socket, transport = Transport, async_connect_pid = AsyncPid}, Reason) ->
