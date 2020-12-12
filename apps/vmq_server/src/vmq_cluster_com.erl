@@ -48,6 +48,10 @@ init(Ref, Transport, Opts) ->
     MaskedSocket = mask_socket(Transport, Socket),
     %% tune buffer sizes
     CfgBufSizes = proplists:get_value(buffer_sizes, Opts, undefined),
+    HighWatermark = proplists:get_value(high_watermark, Opts, 8192),
+    LowWatermark = proplists:get_value(low_watermark, Opts, 4096),
+    HighMsgQWatermark = proplists:get_value(high_msgq_watermark, Opts, 8192),
+    LowMsgQWatermark = proplists:get_value(low_msgq_watermark, Opts, 4096),
     case CfgBufSizes of
         undefined ->
             {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
@@ -56,6 +60,10 @@ init(Ref, Transport, Opts) ->
         [SndBuf,RecBuf,Buffer] ->
             setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}])
     end,
+    setopts(MaskedSocket, [{high_watermark, HighWatermark},
+                        {low_watermark, LowWatermark}, 
+                        {high_msgq_watermark, HighMsgQWatermark},
+                        {low_msgq_watermark, LowMsgQWatermark}]),
     case active_once(MaskedSocket) of
         ok ->
             loop(#st{socket=MaskedSocket, reg_view=RegView,

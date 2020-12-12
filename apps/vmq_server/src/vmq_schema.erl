@@ -110,6 +110,11 @@ translate_listeners(Conf) ->
     {TCPIPs, TCPBufferSizes} = lists:unzip(extract("listener.tcp", "buffer_sizes", StringIntegerListVal, Conf)),
     {SSLIPs, SSLBufferSizes} = lists:unzip(extract("listener.ssl", "buffer_sizes", StringIntegerListVal, Conf)),
     {VMQIPs, VMQBufferSizes} = lists:unzip(extract("listener.vmq", "buffer_sizes", StringIntegerListVal, Conf)),
+    {VMQIPs, VMQHighWatermarks} = lists:unzip(extract("listener.vmq", "high_watermark", IntVal, Conf)),
+    {VMQIPs, VMQHighMsgQWatermarks} = lists:unzip(extract("listener.vmq", "high_msgq_watermark", IntVal, Conf)),
+    {VMQIPs, VMQLowWatermarks} = lists:unzip(extract("listener.vmq", "low_watermark", IntVal, Conf)),
+    {VMQIPs, VMQLowMsgQWatermarks} = lists:unzip(extract("listener.vmq", "low_msgq_watermark", IntVal, Conf)),
+
 
     {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
     {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
@@ -177,7 +182,11 @@ translate_listeners(Conf) ->
     VMQ = lists:zip(VMQIPs, MZip([VMQMaxConns,
                                   VMQNrOfAcceptors,
                                   VMQMountPoint,
-                                  VMQBufferSizes])),
+                                  VMQBufferSizes,
+                                  VMQHighWatermarks,
+                                  VMQLowWatermarks,
+                                  VMQHighMsgQWatermarks,
+                                  VMQLowMsgQWatermarks])),
     HTTP = lists:zip(HTTPIPs, MZip([HTTPMaxConns,
                                     HTTPNrOfAcceptors,
                                     HTTPConfigMod,
@@ -259,7 +268,8 @@ extract(Prefix, Suffix, Val, Conf) ->
         = [%% ssl listener specific
            "cafile", "depth", "certfile", "ciphers", "eccs", "crlfile",
            "keyfile", "require_certificate", "tls_version",
-           "use_identity_as_username", "buffer_sizes",
+           "use_identity_as_username", "buffer_sizes", "high_watermark",
+           "low_watermark", "high_msgq_watermark", "low_msgq_watermark",
            %% http listener specific
            "config_mod", "config_fun",
            %% mqtt listener specific
