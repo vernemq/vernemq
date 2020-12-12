@@ -109,6 +109,7 @@ translate_listeners(Conf) ->
 
     {TCPIPs, TCPBufferSizes} = lists:unzip(extract("listener.tcp", "buffer_sizes", StringIntegerListVal, Conf)),
     {SSLIPs, SSLBufferSizes} = lists:unzip(extract("listener.ssl", "buffer_sizes", StringIntegerListVal, Conf)),
+    {VMQIPs, VMQBufferSizes} = lists:unzip(extract("listener.vmq", "buffer_sizes", StringIntegerListVal, Conf)),
 
     {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
     {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
@@ -149,6 +150,7 @@ translate_listeners(Conf) ->
     {VMQ_SSLIPs, VMQ_SSLKeyFiles} = lists:unzip(extract("listener.vmqs", "keyfile", StrVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLRequireCerts} = lists:unzip(extract("listener.vmqs", "require_certificate", BoolVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLVersions} = lists:unzip(extract("listener.vmqs", "tls_version", AtomVal, Conf)),
+    {VMQ_SSLIPs, VMQ_SSLBufferSizes} = lists:unzip(extract("listener.vmqs", "buffer_sizes", StringIntegerListVal, Conf)),
 
                                                 % HTTPS
     {HTTP_SSLIPs, HTTP_SSLCAFiles} = lists:unzip(extract("listener.https", "cafile", StrVal, Conf)),
@@ -174,7 +176,8 @@ translate_listeners(Conf) ->
                                 WSAllowedProto])),
     VMQ = lists:zip(VMQIPs, MZip([VMQMaxConns,
                                   VMQNrOfAcceptors,
-                                  VMQMountPoint])),
+                                  VMQMountPoint,
+                                  VMQBufferSizes])),
     HTTP = lists:zip(HTTPIPs, MZip([HTTPMaxConns,
                                     HTTPNrOfAcceptors,
                                     HTTPConfigMod,
@@ -221,7 +224,8 @@ translate_listeners(Conf) ->
                                        VMQ_SSLCrlFiles,
                                        VMQ_SSLKeyFiles,
                                        VMQ_SSLRequireCerts,
-                                       VMQ_SSLVersions])),
+                                       VMQ_SSLVersions,
+                                       VMQ_SSLBufferSizes])),
     HTTPS = lists:zip(HTTP_SSLIPs, MZip([HTTP_SSLMaxConns,
                                          HTTP_SSLNrOfAcceptors,
                                          HTTP_SSLCAFiles,

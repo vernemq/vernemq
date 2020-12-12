@@ -297,9 +297,14 @@ connect_async(ParentPid, RemoteNode) ->
                                       {keepalive, true},
                                       {send_timeout, 0}|ConnectOpts]), ConnectTimeout) of
                 {ok, Socket} ->
-                    case controlling_process(Transport, Socket, ParentPid) of
+                    % at least tune 'buffer'
+                    MaskedSocket = mask_socket(Transport, Socket),
+                    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+                    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+                    setopts(MaskedSocket, [{buffer, BufSize}]),
+                    case controlling_process(Transport, MaskedSocket, ParentPid) of
                         ok ->
-                            {ok, {Transport, Socket}};
+                            {ok, {Transport, MaskedSocket}};
                         {error, Reason} ->
                             lager:debug("can't assign socket ownership to ~p due to ~p", [ParentPid, Reason]),
                             error
@@ -349,6 +354,19 @@ connect_params(_Node) ->
                     Config
             end
     end.
+
+mask_socket(gen_tcp, Socket) -> Socket;
+mask_socket(ssl, Socket) -> {ssl, Socket}.
+
+getopts({ssl, Socket}, Opts) ->
+    ssl:getopts(Socket, Opts);
+getopts(Socket, Opts) ->
+    inet:getopts(Socket, Opts).
+
+setopts({ssl, Socket}, Opts) ->
+    ssl:setopts(Socket, Opts);
+setopts(Socket, Opts) ->
+    inet:setopts(Socket, Opts).
 
 connect_params(tcp, [{{Addr, Port}, _}|_]) ->
     {gen_tcp, Addr, Port};

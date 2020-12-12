@@ -273,7 +273,7 @@ protocol_opts(cowboy_clear, _, Opts) ->
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
     #{env => #{dispatch => Dispatch}};
-protocol_opts(vmq_cluster_com, _, _) -> [].
+protocol_opts(vmq_cluster_com, _, Opts) -> Opts.
 
 default_session_opts(Opts) ->
     MaybeSSLDefaults =

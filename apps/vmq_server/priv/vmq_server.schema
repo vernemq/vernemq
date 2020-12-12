@@ -396,6 +396,11 @@
   {validators, ["buffer_size_validator"]}
  ]}.
 
+{mapping, "listener.vmq.$name.buffer_sizes", "vmq_server.listeners",
+ [{datatype, string},
+  hidden,
+  {validators, ["buffer_size_validator"]}
+ ]}.
 
 {validator, "buffer_size_validator", "value must be three comma-separated, positive integers",
  fun(Val) when is_list(Val) ->

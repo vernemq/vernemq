@@ -39,7 +39,7 @@ start_link(Ref, _Socket, Transport, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Transport, Opts]),
     {ok, Pid}.
 
-init(Ref, Transport, _Opts) ->
+init(Ref, Transport, Opts) ->
     {ok, Socket} = ranch:handshake(Ref),
 
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
@@ -47,9 +47,15 @@ init(Ref, Transport, _Opts) ->
     process_flag(trap_exit, true),
     MaskedSocket = mask_socket(Transport, Socket),
     %% tune buffer sizes
-    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
-    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-    setopts(MaskedSocket, [{buffer, BufSize}]),
+    CfgBufSizes = proplists:get_value(buffer_sizes, Opts, undefined),
+    case CfgBufSizes of
+        undefined ->
+            {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+            BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+            setopts(MaskedSocket, [{buffer, BufSize}]);
+        [SndBuf,RecBuf,Buffer] ->
+            setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}])
+    end,
     case active_once(MaskedSocket) of
         ok ->
             loop(#st{socket=MaskedSocket, reg_view=RegView,
