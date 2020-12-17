@@ -78,6 +78,15 @@ if env | grep "DOCKER_VERNEMQ_DISCOVERY_KUBERNETES" -q; then
     done
 fi
 
+if env | grep "DOCKER_VERNEMQ_ERLANG__PROCESS_LIMIT" -q; then
+    sed -i.bak -r "s/\+P .+/+P ${DOCKER_VERNEMQ_ERLANG__PROCESS_LIMIT}/" /vernemq/etc/vm.args
+    sed -i.bak -r "s/-env ERL_MAX_ETS_TABLES .+/-env ERL_MAX_ETS_TABLES ${DOCKER_VERNEMQ_ERLANG__PROCESS_LIMIT}/" /vernemq/etc/vm.args
+fi
+
+if env | grep "DOCKER_VERNEMQ_ERLANG__MAX_PORTS" -q; then
+    sed -i.bak -r "s/-env ERL_MAX_PORTS .+/-env ERL_MAX_PORTS ${DOCKER_VERNEMQ_ERLANG__MAX_PORTS}/" /vernemq/etc/vm.args
+fi
+
 if [ -f /vernemq/etc/vernemq.conf.local ]; then
     cp /vernemq/etc/vernemq.conf.local /vernemq/etc/vernemq.conf
     sed -i -r "s/###IPADDRESS###/${IP_ADDRESS}/" /vernemq/etc/vernemq.conf
