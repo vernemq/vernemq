@@ -46,7 +46,7 @@
   0},
  {<<"getopt">>,{pkg,<<"getopt">>,<<"1.0.1">>},1},
  {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
- {<<"hackney">>,{pkg,<<"hackney">>,<<"1.16.0">>},0},
+ {<<"hackney">>,{pkg,<<"hackney">>,<<"1.17.0">>},0},
  {<<"idna">>,{pkg,<<"idna">>,<<"6.0.1">>},1},
  {<<"jsx">>,{pkg,<<"jsx">>,<<"2.10.0">>},0},
  {<<"lager">>,{pkg,<<"lager">>,<<"3.8.0">>},0},
@@ -90,7 +90,7 @@
        {ref,"4835239dca5a5f4ac7202dd94d7effcaa617d575"}},
   0},
  {<<"syslog">>,{pkg,<<"syslog">>,<<"1.1.0">>},0},
- {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.5.0">>},2},
+ {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.7.0">>},1},
  {<<"vernemq_dev">>,
   {git,"git://github.com/vernemq/vernemq_dev.git",
        {ref,"6d622aa8c901ae7777433aef2bd049e380c474a6"}},
@@ -104,7 +104,7 @@
  {<<"eredis">>, <<"0B8E9CFC2C00FA1374CD107EA63B49BE08D933DF2CF175E6A89B73DD9C380DE4">>},
  {<<"getopt">>, <<"C73A9FA687B217F2FF79F68A3B637711BB1936E712B521D8CE466B29CBF7808A">>},
  {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
- {<<"hackney">>, <<"5096AC8E823E3A441477B2D187E30DD3FFF1A82991A806B2003845CE72CE2D84">>},
+ {<<"hackney">>, <<"717EA195FD2F898D9FE9F1CE0AFCC2621A41ECFE137FAE57E7FE6E9484B9AA99">>},
  {<<"idna">>, <<"1D038FB2E7668CE41FBF681D2C45902E52B3CB9E9C77B55334353B222C2EE50C">>},
  {<<"jsx">>, <<"77760560D6AC2B8C51FD4C980E9E19B784016AA70BE354CE746472C33BEB0B1C">>},
  {<<"lager">>, <<"3402B9A7E473680CA179FC2F1D827CAB88DD37DD1E6113090C6F45EF05228A1C">>},
@@ -120,5 +120,5 @@
  {<<"ssl_verify_fun">>, <<"CF344F5692C82D2CD7554F5EC8FD961548D4FD09E7D22F5B62482E5AEAEBD4B0">>},
  {<<"stdout_formatter">>, <<"EC24868D8619757A68F0798357C7190807A1CFC42CE90C18C23760E59249A21A">>},
  {<<"syslog">>, <<"6419A232BEA84F07B56DC575225007FFE34D9FDC91ABE6F1B2F254FD71D8EFC2">>},
- {<<"unicode_util_compat">>, <<"8516502659002CEC19E244EBD90D312183064BE95025A319A6C7E89F4BCCD65B">>}]}
+ {<<"unicode_util_compat">>, <<"BC84380C9AB48177092F43AC89E4DFA2C6D62B40B8BD132B1059ECC7232F9A78">>}]}
 ].
