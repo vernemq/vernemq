@@ -2,6 +2,9 @@
 
 - Fix bug causing the `pool_size` option for databases to not be respected.
 - Update Hackney HTTP client to version 1.17.0
+- Allow configuration for TCP listener buffer sizes in vmq_cluster_com module
+- Autotune TCP 'buffer' for outgoing TCP connections in vmq_cluster_node module
+
 
 ## VerneMQ 1.11.0
 
