@@ -26,7 +26,9 @@ register_cli() ->
 
 register_config() ->
     ConfigKeys =
-    ["vmq_webhooks.pool_max_connections", "vmq_webhooks.pool_timeout"],
+    ["vmq_webhooks.pool_max_connections", "vmq_webhooks.pool_timeout",
+     "vmq_webhooks.cafile", "vmq_webhooks.certfile", "vmq_webhooks.keyfile",
+     "vmq_webhooks.depth", "vmq_webhooks.verify_peer", "vmq_webhooks.tls_version"],
     [clique:register_config([Key], fun register_config_callback/3)
      || Key <- ConfigKeys],
     ok = clique:register_config_whitelist(ConfigKeys).
@@ -63,7 +65,7 @@ status_cmd() ->
     Cmd = ["vmq-admin", "webhooks", "show"],
     Callback =
         fun(_, [], []) ->
-                Table = 
+                Table =
                     [[{hook, Hook}, {endpoint, binary_to_list(Endpoint)},
                       {base64payload, b64opt(Opts)},
                       {response_timeout, maps:get(response_timeout, Opts)}] ||
@@ -132,7 +134,7 @@ get_opts(Flags) ->
     Keys = [base64_payload, no_payload, response_timeout],
     maps:merge(Defaults, maps:with(Keys, maps:from_list(Flags))).
 
-deregister_cmd() -> 
+deregister_cmd() ->
     Cmd = ["vmq-admin", "webhooks", "deregister"],
     KeySpecs = [hook_keyspec(), endpoint_keyspec()],
     FlagSpecs = [],
@@ -169,7 +171,7 @@ hook_keyspec() ->
                                         "on_client_wakeup",
                                         "on_client_offline",
                                         "on_client_gone",
-					"on_session_expired",
+                                        "on_session_expired",
                                         "auth_on_register_m5",
                                         "auth_on_publish_m5",
                                         "auth_on_subscribe_m5",
