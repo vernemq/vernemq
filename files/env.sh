@@ -102,6 +102,17 @@ if [ -z "$NET_TICKTIME_ARG" ]; then
     fi
 fi
 
+# Extract the target proto_dist
+PROTO_DIST_ARG=`grep '^\-proto_dist' $RUNNER_ETC_DIR/vm.args 2> /dev/null`
+if [ -z "$PROTO_DIST_ARG" ]; then
+    PROTO_DIST=`egrep '^[ \t]*erlang.distribution.proto_dist[ \t]*=[ \t]*' $RUNNER_ETC_DIR/vernemq.conf 2> /dev/null | tail -1 | cut -d = -f 2`
+    if [ -z "$PROTO_DIST" ]; then
+        PROTO_DIST_ARG=""
+    else
+        PROTO_DIST_ARG="-proto_dist $PROTO_DIST"
+    fi
+fi
+
 # Optionally specify a NUMA policy
 NUMACTL_ARG="{{numactl_arg}}"
 if [ -z "$NUMACTL_ARG" ]
@@ -125,7 +136,7 @@ APP_VSN=${START_ERL#* }
 ERTS_PATH=$RUNNER_BASE_DIR/erts-$ERTS_VSN/bin
 
 # Setup command to control the node
-NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NET_TICKTIME_ARG $NAME_ARG $COOKIE_ARG"
+NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NET_TICKTIME_ARG $NAME_ARG $COOKIE_ARG $PROTO_DIST_ARG"
 NODETOOL_LITE="$ERTS_PATH/escript $ERTS_PATH/nodetool"
 
 
