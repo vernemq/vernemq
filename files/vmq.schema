@@ -17,6 +17,13 @@
 ]}.
 
 
+%% @doc Configuration of the Erlang distribution protocol.
+%% Set to inet6_tcp to communicate over IPv6
+{mapping, "erlang.distribution.proto_dist", "vm_args.-proto_dist", [
+  {default, "inet_tcp"}
+]}.
+
+
 %% @doc Where to emit the default log messages (typically at 'info'
 %% severity):
 %%      off: disabled
