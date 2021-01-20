@@ -14,6 +14,7 @@
 -module(vmq_webhooks_plugin).
 
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include_lib("hackney/include/hackney_lib.hrl").
 
 -behaviour(gen_server).
 -behaviour(auth_on_register_hook).
@@ -612,12 +613,18 @@ peer({Peer, Port}) when is_tuple(Peer) and is_integer(Port) ->
 subscriber_id({"", ClientId}) -> {<<>>, ClientId};
 subscriber_id({MP, ClientId}) -> {list_to_binary(MP), ClientId}.
 
-ssl_options() ->
+ssl_options(Endpoint) ->
     VerifyOpts = case application:get_env(vmq_webhooks, verify_peer) of
         {ok, false} ->
             [];
         _ ->
+            VerifyFun = {
+                fun ssl_verify_hostname:verify_fun/3,
+                [{check_hostname, Endpoint}]
+            },
             [{verify, verify_peer},
+             {reuse_sessions, false},
+             {verify_fun, VerifyFun},
              {customize_hostname_check, [{match_fun, public_key:pkix_verify_hostname_match_fun(https)}]}]
     end,
     {ok, TlsVersion} =  application:get_env(vmq_webhooks, tls_version),
@@ -649,7 +656,9 @@ ssl_options() ->
 -spec maybe_ssl_opts(binary()) -> proplists:proplist().
 maybe_ssl_opts(Endpoint) ->
     case Endpoint of
-        <<"https://", _Rest/binary>> -> [{ssl_options, ssl_options()}];
+        <<"https://", _Rest/binary>> ->
+            URL = hackney_url:parse_url(Endpoint),
+            [{ssl_options, ssl_options(URL#hackney_url.host)}];
          _ -> []
     end.
 -spec maybe_call_endpoint(_,_,hook_name(),[{atom(),_},...]) -> any().
@@ -686,7 +695,6 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
             {recv_timeout, maps:get(response_timeout, EOpts)}] ++ maybe_ssl_opts(Endpoint),
     Args1 = filter_args(Args0, Hook, EOpts),
     Payload = encode_payload(Hook, Args1, EOpts),
-    io:format("Method ~p, Endpoint ~p, Headers ~p, Payload ~p, Opts ~p~n", [Method, Endpoint, Headers, Payload, Opts]),
     Res =
         case hackney:request(Method, Endpoint, Headers, Payload, Opts) of
             {ok, 200, RespHeaders, CRef} ->

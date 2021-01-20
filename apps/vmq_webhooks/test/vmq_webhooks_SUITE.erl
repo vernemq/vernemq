@@ -110,7 +110,6 @@ http() ->
 https() ->
     [
      https_ca_test,
-     https_missing_ca_test,
      https_wrong_ca_test,
      https_client_cert_test,
      https_missing_client_cert_fail_test
@@ -547,10 +546,6 @@ https_ca_test(Config) ->
 %% Given a CA that dit not sign the endpoint's server certificate, the webhook fails
 https_wrong_ca_test(Config) ->
     {didnt_receive_response, on_deliver_ok} = base_https_test(Config, #{}, #{cafile => cert_path(Config, "test-fake-root-ca.crt")}).
-
-%% Without a valid CA, the webhook fails
-https_missing_ca_test(Config) ->
-    {didnt_receive_response, on_deliver_ok} = base_https_test(Config, #{}, #{}).
 
 %% Authenticating to an endpoint with a client TLS certificate and the webhook works
 https_client_cert_test(Config) ->
