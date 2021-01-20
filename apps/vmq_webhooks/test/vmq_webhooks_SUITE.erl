@@ -112,7 +112,10 @@ https() ->
      https_ca_test,
      https_wrong_ca_test,
      https_client_cert_test,
-     https_missing_client_cert_fail_test
+     https_missing_client_cert_fail_test,
+     https_expired_server_cert_test,
+     https_fails_with_no_crl_test,
+     https_bad_server_cn_test
     ].
 
 start_endpoint_clear() ->
@@ -541,11 +544,24 @@ cli_allow_query_parameters_test(_) ->
 
 %% Given a CA that signed the endpoint's server certificate, the webhook works
 https_ca_test(Config) ->
-    ok = base_https_test(Config, #{}, #{cafile => cert_path(Config, "all-ca.crt")}).
+    should_succeed(Config, #{}, #{cafile => cert_path(Config, "all-ca.crt")}).
 
 %% Given a CA that dit not sign the endpoint's server certificate, the webhook fails
 https_wrong_ca_test(Config) ->
-    {didnt_receive_response, on_deliver_ok} = base_https_test(Config, #{}, #{cafile => cert_path(Config, "test-fake-root-ca.crt")}).
+    should_fail(Config, #{}, #{cafile => cert_path(Config, "test-fake-root-ca.crt")}).
+
+%% Given a server (endpoint) certificate that has expired, the webhook fails
+https_expired_server_cert_test(Config) ->
+    should_fail(Config,
+                #{certfile => cert_path(Config, "server-expired.crt")},
+                #{cafile => cert_path(Config, "all-ca.crt")}).
+
+%% Given a valid server (endpoint) certificate with a CN that does not match its hostname, the webhook fails
+https_bad_server_cn_test(Config) ->
+    should_fail(Config,
+                #{certfile => cert_path(Config, "bad-cn-server.crt"),
+                  keyfile => cert_path(Config, "bad-cn-server.key")},
+                #{cafile => cert_path(Config, "all-ca.crt")}).
 
 %% Authenticating to an endpoint with a client TLS certificate and the webhook works
 https_client_cert_test(Config) ->
@@ -553,12 +569,21 @@ https_client_cert_test(Config) ->
     ClientOpts = #{cafile => cert_path(Config, "all-ca.crt"),
                    keyfile => cert_path(Config, "client.key"),
                    certfile => cert_path(Config, "client.crt")},
-    ok = base_https_test(Config, ServerOpts, ClientOpts).
+    should_succeed(Config, ServerOpts, ClientOpts).
 
 %% Failing to provide a client certificate when required by the endpoint makes the webhook fail
 https_missing_client_cert_fail_test(Config) ->
-    ServerOpts = #{verify => verify_peer, fail_if_no_peer_cert => true},
-    {didnt_receive_response, on_deliver_ok} = base_https_test(Config, ServerOpts, #{}).
+    should_fail(Config, #{verify => verify_peer, fail_if_no_peer_cert => true}, #{}).
+
+%% An endpoint without a CRL available fails when requiring CRL checks
+https_fails_with_no_crl_test(Config) ->
+    should_fail(Config, #{}, #{use_crls => true}).
+
+should_fail(Config, ServerOpts, ClientOpts) ->
+    {didnt_receive_response, on_deliver_ok} = base_https_test(Config, ServerOpts, ClientOpts).
+
+should_succeed(Config, ServerOpts, ClientOpts) ->
+    ok = base_https_test(Config, ServerOpts, ClientOpts).
 
 base_https_test(Config, ServerOpts, ClientSSLEnv) ->
     Opts = maps:merge(default_https_server_opts(Config), ServerOpts),
@@ -598,7 +623,8 @@ default_https_server_opts(Config, Opts) ->
     maps:merge(Defaults, Opts).
 
 set_ssl_app_env(Opts) ->
-    Defaults = #{tls_version => 'tlsv1.2',
+    Defaults = #{use_crls => false,
+                 tls_version => 'tlsv1.2',
                  depth => 100},
     SSLEnv = maps:merge(Defaults, Opts),
     maps:map(fun (K,V) -> application:set_env(vmq_webhooks, K, V) end, SSLEnv).

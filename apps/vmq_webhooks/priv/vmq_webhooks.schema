@@ -137,7 +137,7 @@
  [{default, ""},
   {datatype, file},
   {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
-  {commented, "{{platform_etc_dir}}/ca.pem"}]}.
+  hidden]}.
 
 %% @doc Configure TLS version for HTTPS webhook calls
 %% HTTPS webhooks.
@@ -168,6 +168,13 @@
   {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
   hidden]}.
 
+%% @doc Configure Certificate Revocation List (CRL) use in webhook HTTPS
+%% requests.
+{mapping, "vmq_webhooks.use_crls", "vmq_webhooks.use_crls",
+ [{default, true},
+  {datatype, flag},
+  hidden]}.
+
 %% @doc Configure a PEM-encoded client keyfile to include in webhook
 %% HTTPS requests.
 {mapping, "vmq_webhooks.keyfile", "vmq_webhooks.keyfile",
@@ -181,7 +188,6 @@
 {mapping, "vmq_webhooks.keyfile_password", "vmq_webhooks.keyfile_password",
  [{default, ""},
   {datatype, string},
-  {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
   hidden]}.
 
 {validator, "file-exists", "file does not exist",
