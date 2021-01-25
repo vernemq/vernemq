@@ -1,0 +1,107 @@
+name: Checks for a PR
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  dialyzer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2.0.0
+      - name: Cache PLTs
+        id: cache-plts
+        uses: actions/cache@v2
+        with:
+          path: |
+            plts
+            plts_base
+          key: ${{ runner.os }}-erlang-${{ hashFiles(format('{0}{1}', github.workspace, '/rebar.lock')) }}
+      - run: sudo apt-get -y install libsnappy-dev
+      - uses: gleam-lang/setup-erlang@v1.1.0
+        with:
+          otp-version: 23.2.1
+      - run: ./rebar3 dialyzer
+  coverage:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: vmq_test_user
+          POSTGRES_PASSWORD: vmq_test_password
+          POSTGRES_DB: vmq_test_database
+      mysql:
+        image: mysql
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_USER: vmq_test_user
+          MYSQL_PASSWORD: vmq_test_password
+          MYSQL_DATABASE: vmq_test_database
+      mongodb:
+        image: mongo
+        ports:
+          - 27017:27017
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: example
+      redis:
+        image: redis
+    steps:
+      - uses: actions/checkout@v2.0.0
+      - run: sudo apt-get -y install libsnappy-dev
+      - uses: gleam-lang/setup-erlang@v1.1.0
+        with:
+          otp-version: 23.2.1
+      - run: ./rebar3 as test do eunit --cover, ct --cover
+      - run: ./rebar3 cover --verbose
+      - name: Archive coverage report
+        uses: actions/upload-artifact@v2
+        with:
+          name: coverage-report
+          path: _build/test/cover/
+          retention-days: 5
+      - name: CT test report
+        uses: actions/upload-artifact@v2
+        with:
+          name: ct-test-report
+          path: _build/test/logs/
+          retention-days: 5
+  matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        erlang: ["22.0", "22.3.4.9", "23.0.1"]
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: vmq_test_user
+          POSTGRES_PASSWORD: vmq_test_password
+          POSTGRES_DB: vmq_test_database
+      mysql:
+        image: mysql
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_USER: vmq_test_user
+          MYSQL_PASSWORD: vmq_test_password
+          MYSQL_DATABASE: vmq_test_database
+      mongodb:
+        image: mongo
+        ports:
+          - 27017:27017
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: example
+      redis:
+        image: redis
+    steps:
+      - uses: actions/checkout@v2.0.0
+      - uses: gleam-lang/setup-erlang@v1.1.0
+        with:
+          otp-version: ${{ matrix.erlang }}
+      - run: sudo apt-get -y install libsnappy-dev
+      - run: ./rebar3 as test do eunit, ct
