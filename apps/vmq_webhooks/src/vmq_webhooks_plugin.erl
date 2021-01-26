@@ -634,6 +634,13 @@ ssl_options(Endpoint) ->
         {ok, CACF} -> [{cacertfile, CACF}];
         undefined -> []
     end,
+    CRLOpts = case application:get_env(vmq_webhooks, use_crls) of
+        {ok, false} ->
+            [];
+        _ ->
+            [{crl_check, peer},
+             {crl_cache, {ssl_crl_cache, {internal, [{http, 5000}]}}}]
+    end,
     {ok, Depth} = application:get_env(vmq_webhooks, depth),
     DepthOpts = [{depth, Depth}],
     CertFileOpts = case application:get_env(vmq_webhooks, certfile) of
@@ -651,8 +658,14 @@ ssl_options(Endpoint) ->
         {ok, KFP} -> [{password, KFP}];
         undefined -> []
     end,
-    lists:append([VerifyOpts, TlsVersionOpts, CACertFileOpts, DepthOpts, CertFileOpts, KeyFileOpts, KeyfilePasswordOpts]).
-
+    lists:append([VerifyOpts,
+                  TlsVersionOpts,
+                  CACertFileOpts,
+                  CRLOpts,
+                  DepthOpts,
+                  CertFileOpts,
+                  KeyFileOpts,
+                  KeyfilePasswordOpts]).
 -spec maybe_ssl_opts(binary()) -> proplists:proplist().
 maybe_ssl_opts(Endpoint) ->
     case Endpoint of

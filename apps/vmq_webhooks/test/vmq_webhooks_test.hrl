@@ -19,4 +19,3 @@
 -define(PASSWORD, <<"test-password">>).
 -define(TOPIC, <<"test/topic">>).
 -define(PAYLOAD, <<"hello world">>).
-
