@@ -105,3 +105,9 @@ jobs:
           otp-version: ${{ matrix.erlang }}
       - run: sudo apt-get -y install libsnappy-dev
       - run: ./rebar3 as test do eunit, ct
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2.0.0
+      - run: brew install erlang snappy
+      - run: ./rebar3 do eunit, ct
