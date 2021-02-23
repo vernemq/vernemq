@@ -49,28 +49,33 @@ end_per_testcase(_, Config) ->
 -define(run_all_tests, false).
 -endif.
 
+-ifndef(run_ci_tests).
+-define(run_ci_tests, false).
+-endif.
+
+integration_tests() ->
+    [postgres_test,
+     mongodb_test,
+     mysql_test,
+     redis_test,
+     memcached_test].
+
+integration_tests_that_pass_ci() ->
+    [postgres_test,
+     mongodb_test].
+
+other_tests() -> [http_test,
+                  kv_test,
+                  json_test,
+                  bcrypt_test,
+                  logger_test,
+                  auth_cache_test,
+                  vmq_api_test].
 all() ->
-    case ?run_all_tests of
-        true ->
-            [mysql_test,
-             postgres_test,
-             mongodb_test,
-             redis_test,
-             http_test,
-             kv_test,
-             json_test,
-             bcrypt_test,
-             logger_test,
-             memcached_test,
-             auth_cache_test];
-        _ ->
-            [http_test,
-             kv_test,
-             json_test,
-             bcrypt_test,
-             logger_test,
-             auth_cache_test,
-             vmq_api_test]
+    case {?run_all_tests, ?run_ci_tests} of
+        {true, _} -> integration_tests() ++ other_tests();
+        {_, true} -> integration_tests_that_pass_ci() ++ other_tests();
+        _ -> other_tests()
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
