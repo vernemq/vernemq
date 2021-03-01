@@ -21,7 +21,7 @@ end_per_suite(_Config) ->
 init_per_testcase(TestCase, Config) ->
     case lists:member(TestCase, [publish_modify_props, publish_remove_props]) of
      true -> {skip, travis};
-    _ -> 
+    _ ->
         vmq_server_cmd:set_config(allow_anonymous, false),
         vmq_server_cmd:set_config(max_client_id_size, 500),
         Config
@@ -346,7 +346,7 @@ remove_props_on_deliver_m5(Cfg) ->
     ok = gen_tcp:send(PubSocket, Publish),
     ok = gen_tcp:close(PubSocket),
 
-    {ok, RecvPub, <<>>} = packetv5:receive_frame(SubSocket),
+    {ok, RecvPub, <<>>} = packetv5:receive_frame(gen_tcp, SubSocket, 15000),
     #mqtt5_publish{topic = _,
                    qos = 0,
                    properties = Props,

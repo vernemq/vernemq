@@ -7,6 +7,13 @@
 - Fix command line tool to allow managing anonymous client sessions (Issue #1673)
 - Allow custom option for HTTPS endpoints
 - Adds PEM validation of certificate files in server and webhooks schemas
+- Adds a new CI profile to the rebar3
+- Bumps MongoDB driver to latest
+- Adds support for MongoDB DNS SRV lookup in `vmq_diversity`
+- Adds authentication to MongoDB Lua test script in `vmq_diversity`
+- Adds Docker Compose file for local testing
+- Update `vmq_diversity` to newest Luerl version
+- Bumps `rebar3` executable
 
 ## VerneMQ 1.11.0
 
