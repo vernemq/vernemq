@@ -237,7 +237,7 @@ load_script(Id, Script) ->
     {ok, ScriptsDir} = application:get_env(vmq_diversity, script_dir),
     AbsScriptDir = filename:absname(ScriptsDir),
     Do1 = "package.path = package.path .. \";" ++ AbsScriptDir ++ "/?.lua\"",
-    {_, InitState1} = luerl:do(Do1),
+    {_, InitState1} = luerl:do(Do1, luerl:init()),
     Do2 = "__SCRIPT_INSTANCE_ID__ = " ++ integer_to_list(Id),
     {_, InitState2} = luerl:do(Do2, InitState1),
 
