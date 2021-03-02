@@ -13,6 +13,7 @@
 - Adds authentication to MongoDB Lua test script in `vmq_diversity`
 - Adds Docker Compose file for local testing
 - Bumps `rebar3` executable
+- Upgrade Cowboy dependency to 2.8.0
 
 ## VerneMQ 1.11.0
 
