@@ -56,7 +56,7 @@
   0},
  {<<"luerl">>,
   {git,"git://github.com/rvirding/luerl.git",
-       {ref,"8654ba0d8f519352ec4611dfe9f19f54f74ba253"}},
+       {ref,"fc668ef337b04ca2aee83c648cf6853dab8babe6"}},
   0},
  {<<"mcd">>,
   {git,"git://github.com/EchoTeam/mcd.git",
