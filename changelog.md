@@ -14,6 +14,7 @@
 - Adds Docker Compose file for local testing
 - Update `vmq_diversity` to newest Luerl version
 - Bumps `rebar3` executable
+- Upgrade Cowboy dependency to 2.8.0
 
 ## VerneMQ 1.11.0
 
