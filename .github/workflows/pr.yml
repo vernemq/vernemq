@@ -7,7 +7,7 @@ on:
 
 jobs:
   dialyzer:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2.0.0
       - name: Cache PLTs
@@ -24,7 +24,7 @@ jobs:
           otp-version: 23.2.1
       - run: ./rebar3 dialyzer
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     services:
       postgres:
         image: postgres
@@ -66,7 +66,7 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5    
+          --health-retries 5
     steps:
       - uses: actions/checkout@v2.0.0
       - run: sudo apt-get -y install libsnappy-dev
@@ -92,7 +92,7 @@ jobs:
     container:
       image: erlang:23-slim
     steps:
-      - run: apt-get update && apt-get -y install make libsnappy-dev git netcat gcc g++ curl libssl-dev 
+      - run: apt-get update && apt-get -y install make libsnappy-dev git netcat gcc g++ curl libssl-dev
       - uses: actions/checkout@v2.0.0
         with:
           fetch-depth: 0
@@ -109,7 +109,7 @@ jobs:
       - name: Stop the server
         run: ./_build/default/rel/vernemq/bin/vernemq stop
   matrix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     strategy:
       matrix:
         erlang: ["22.0", "22.3.4.9", "23.0.1"]
