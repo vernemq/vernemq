@@ -85,6 +85,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: ct-test-report
+          if: always()
           path: _build/ci_tests+test/logs/
           retention-days: 5
   release-smoke-test:
