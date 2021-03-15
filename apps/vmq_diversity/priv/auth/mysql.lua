@@ -1,14 +1,16 @@
-function cache_insert(mountpoint, username, publish_acl, subscribe_acl)
+require "auth/auth_commons"
+
+function cache_insert_loc(mountpoint, username, publish_acl, subscribe_acl)
     type_assert(mountpoint, "string", "mountpoint")
     type_assert(username, "string", "username")
     type_assert(publish_acl, {"table", "nil"}, "publish_acl")
     type_assert(subscribe_acl, {"table", "nil"}, "subscribe_acl")
-    validate_acls(publish_acl)
-    validate_acls(subscribe_acl)
+    validate_acls_loc(publish_acl)
+    validate_acls_loc(subscribe_acl)
     auth_cache.insert(mountpoint, username, username, publish_acl, subscribe_acl)
 end
 
-function validate_acls(acls) 
+function validate_acls_loc(acls) 
     if acls ~= nil then
         for i, acl in ipairs(acls) do
             for k, v in pairs(acl) do
@@ -40,7 +42,7 @@ function auth_on_register(reg)
             row = results[1]
             publish_acl = json.decode(row.publish_acl)
             subscribe_acl = json.decode(row.subscribe_acl)
-            cache_insert(
+            cache_insert_loc(
                 reg.mountpoint,
                 reg.username,
                 publish_acl,
