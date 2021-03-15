@@ -122,7 +122,6 @@ acc_word([]) ->
 acc_word(CodePointList) ->
     unicode:characters_to_binary(lists:reverse(CodePointList), utf8).
 
-% <<"testtopic#"/utf8>>
 validate_subscribe_topic(<<>>, WordAcc, TopicAcc) ->
     validate_shared_subscription(lists:reverse([acc_word(WordAcc) | TopicAcc]));
 validate_subscribe_topic(<<"+"/utf8>>, [], TopicAcc) ->

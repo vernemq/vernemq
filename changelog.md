@@ -16,6 +16,8 @@
 - Bumps `rebar3` executable
 - Upgrade Cowboy dependency to 2.8.0
 - Adds support for `auth_source` in MongoDB connections in `vmq_diversity`
+- Enforce UTF8 strings in topics
+- Use safe mode for binary_to_term in SWC
 
 ## VerneMQ 1.11.0
 
