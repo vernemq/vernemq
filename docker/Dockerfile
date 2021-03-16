@@ -29,7 +29,17 @@ RUN apk --no-cache --update --available upgrade && \
 # Defaults
 ENV DOCKER_VERNEMQ_KUBERNETES_LABEL_SELECTOR="app=vernemq" \
     DOCKER_VERNEMQ_LOG__CONSOLE=console \
-    PATH="/vernemq/bin:$PATH"
+    PATH="/vernemq/bin:$PATH" \
+    DOCKER_VERNEMQ_ALLOW_ANONYMOUS=off \
+    DOCKER_VERNEMQ_plugins.vmq_acl=off \
+    DOCKER_VERNEMQ_plugins.vmq_diversity=on \
+    DOCKER_VERNEMQ_vmq_diversity.auth_mysql.enabled=on \
+    DOCKER_VERNEMQ_vmq_diversity.mysql.host=vernemq-mysql \
+    DOCKER_VERNEMQ_vmq_diversity.mysql.port=3306 \
+    DOCKER_VERNEMQ_vmq_diversity.mysql.user=vmq_mysql \
+    DOCKER_VERNEMQ_vmq_diversity.mysql.password=vmq_mysql \
+    DOCKER_VERNEMQ_vmq_diversity.mysql.database=vmq_mysql \
+    DOCKER_VERNEMQ_vmq_diversity.mysql.password_hash_method=sha256
 
 WORKDIR /vernemq
 
