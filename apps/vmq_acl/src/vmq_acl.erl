@@ -204,7 +204,7 @@ check_pattern_acl(Type, TIn, User, SubscriberId) ->
                             end).
 
 topic(User, {MP, ClientId}, Topic) ->
-    subst(list_to_binary(MP), User, User, Topic, []).
+    subst(list_to_binary(MP), User, ClientId, Topic, []).
 
 subst(MP, User, ClientId, [U|Rest], Acc) when U == ?USER_SUP ->
     subst(MP, User, ClientId, Rest, [User|Acc]);

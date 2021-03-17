@@ -250,7 +250,7 @@ on_register_m5(Peer, SubscriberId, Username, Props) ->
 
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    case vmq_diversity_cache:match_publish_acl(MP, ClientId, QoS, Topic, Payload, IsRetain) of
+    case vmq_diversity_cache:match_publish_acl(MP, UserName, QoS, Topic, Payload, IsRetain) of
         true ->
             %% Found a valid cache entry which grants this publish
             ok;
@@ -273,7 +273,7 @@ auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
 
 auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    case vmq_diversity_cache:match_publish_acl(MP, ClientId, QoS, Topic, Payload, IsRetain) of
+    case vmq_diversity_cache:match_publish_acl(MP, UserName, QoS, Topic, Payload, IsRetain) of
         true ->
             %% Found a valid cache entry which grants this publish
             ok;
@@ -325,7 +325,7 @@ auth_on_subscribe(UserName, SubscriberId, Topics) ->
           (_, false) -> false;
           (_, no_cache) -> no_cache;
           ({Topic, QoS}, Acc) ->
-              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, QoS) of
+              case vmq_diversity_cache:match_subscribe_acl(MP, UserName, Topic, QoS) of
                   Mods when is_list(Mods) ->
                       Acc ++ Mods;
                   Ret ->
@@ -361,7 +361,7 @@ auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
           (_, no_cache) -> no_cache;
           ({Topic, SubInfo}, Acc) ->
               QoS = extract_qos(SubInfo),
-              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, QoS) of
+              case vmq_diversity_cache:match_subscribe_acl(MP, UserName, Topic, QoS) of
                   Mods when is_list(Mods) ->
                       Acc ++ Mods;
                   Ret ->
@@ -413,7 +413,7 @@ on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
           (_, no_cache) -> no_cache;
           (Topic, Acc) ->
               %% We have to rewrite topics
-              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, 0) of
+              case vmq_diversity_cache:match_subscribe_acl(MP, UserName, Topic, 0) of
                   Mods when is_list(Mods) ->
                       Acc ++ [T || {T, _QoS} <- Mods];
                   Ret ->
@@ -483,7 +483,7 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
           (_, no_cache) -> no_cache;
           (Topic, Acc) ->
               %% We have to rewrite topics
-              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, 0) of
+              case vmq_diversity_cache:match_subscribe_acl(MP, UserName, Topic, 0) of
                   Mods when is_list(Mods) ->
                       Acc ++ [T || {T, _QoS} <- Mods];
                   Ret ->

@@ -157,14 +157,15 @@ insert(As, St) ->
 
 match_subscribe(As, St) ->
     case As of
-        [MP, ClientId, Topic, QoS]
+        [MP, ClientId, User, Topic, QoS]
           when is_binary(MP)
                and is_binary(ClientId)
+               and is_binary(User)
                and is_binary(Topic)
                and is_number(QoS) ->
             case vmq_topic:validate_topic(subscribe, Topic) of
                 {ok, Words} ->
-                    case match_subscribe_acl(MP, ClientId, Words, trunc(QoS)) of
+                    case match_subscribe_acl(MP, User, Words, trunc(QoS)) of
                         true ->
                             {[true], St};
                         Modifiers0 when is_list(Modifiers0) ->
@@ -190,16 +191,17 @@ match_subscribe(As, St) ->
 
 match_publish(As, St) ->
     case As of
-        [MP, ClientId, Topic, QoS, Payload, IsRetain]
+        [MP, ClientId, User, Topic, QoS, Payload, IsRetain]
           when is_binary(MP)
                and is_binary(ClientId)
+               and is_binary(User)
                and is_number(QoS)
                and is_binary(Topic)
                and is_binary(Payload)
                and is_boolean(IsRetain) ->
             case vmq_topic:validate_topic(publish, Topic) of
                 {ok, Words} ->
-                    case match_publish_acl(MP, ClientId, trunc(QoS), Words, Payload, IsRetain) of
+                    case match_publish_acl(MP, User, trunc(QoS), Words, Payload, IsRetain) of
                         true ->
                             {[true], St};
                         Modifiers0 when is_list(Modifiers0) ->
