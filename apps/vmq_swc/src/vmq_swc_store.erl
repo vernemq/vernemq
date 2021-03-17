@@ -323,7 +323,7 @@ handle_call({sync_missing, _OriginPeer, Dots}, From, #state{config=Config} = Sta
                                         %% the other node.
                                         {true, {SKey, swc_kv:add(swc_kv:new(), Dot, '$deleted')}};
                                     {ok, BObj} ->
-                                        {true, {SKey, binary_to_term(BObj)}}
+                                        {true, {SKey, binary_to_term(BObj, [safe])}}
                                 end
                         end
                 end, Dots),
@@ -687,7 +687,7 @@ enqueue_op_sync(Config, Op) ->
 -spec get_obj_for_key(config(), db_key()) -> object().
 get_obj_for_key(Config, SKey) ->
     case vmq_swc_db:get(Config, ?DB_OBJ, SKey) of
-        {ok, BObj} -> binary_to_term(BObj);
+        {ok, BObj} -> binary_to_term(BObj, [safe]);
         not_found -> swc_kv:new()
     end.
 
@@ -711,7 +711,7 @@ init_dotkeymap(Config) ->
                     end, ok),
     vmq_swc_db:fold(Config, ?DB_OBJ,
                     fun(SKey, BVal, _Acc) ->
-                            {Values, _} = binary_to_term(BVal),
+                            {Values, _} = binary_to_term(BVal, [safe]),
                             case map_size(Values) of
                                 0 -> % deleted
                                     vmq_swc_dkm:mark_for_gc(DKM, SKey);
@@ -722,9 +722,9 @@ init_dotkeymap(Config) ->
     DKM.
 
 dump_tables(Config) ->
-    #{obj => dump_table(Config, ?DB_OBJ, fun(K) -> sext:decode(K) end, fun(V) -> binary_to_term(V) end),
+    #{obj => dump_table(Config, ?DB_OBJ, fun(K) -> sext:decode(K) end, fun(V) -> binary_to_term(V, [safe]) end),
       dkm => dump_table(Config, ?DB_DKM, fun(K) -> sext:decode(K) end, fun(V) -> sext:decode(V) end),
-      default => dump_table(Config, ?DB_DEFAULT, fun(K) -> K end, fun(V) -> binary_to_term(V) end)}.
+      default => dump_table(Config, ?DB_DEFAULT, fun(K) -> K end, fun(V) -> (V) end)}.
 
 dump_table(Config, Type, KeyDecoder, ValDecoder) ->
     {NumItems, KeyBytes, DataBytes, Data} =
@@ -755,14 +755,14 @@ update_watermark_db_op(Watermark) ->
 -spec get_nodeclock(config()) -> nodeclock().
 get_nodeclock(Config) ->
     case vmq_swc_db:get(Config, ?DB_DEFAULT, <<"BVV">>) of
-        {ok, BNodeClock} -> binary_to_term(BNodeClock);
+        {ok, BNodeClock} -> binary_to_term(BNodeClock, [safe]);
         not_found -> swc_node:new()
     end.
 
 -spec get_watermark(config()) -> watermark().
 get_watermark(Config) ->
     case vmq_swc_db:get(Config, ?DB_DEFAULT, <<"KVV">>) of
-        {ok, BWatermark} -> binary_to_term(BWatermark);
+        {ok, BWatermark} -> binary_to_term(BWatermark, [safe]);
         not_found -> swc_watermark:new()
     end.
 
