@@ -5,7 +5,7 @@
 - Allow configuration for TCP listener buffer sizes in vmq_cluster_com module
 - Autotune TCP 'buffer' for outgoing TCP connections in vmq_cluster_node module
 - Fix command line tool to allow managing anonymous client sessions (Issue #1673)
-- Allow custom option for HTTPS endpoints
+- Allow custom option for HTTPS endpoints (WebHooks)
 - Adds PEM validation of certificate files in server and webhooks schemas
 - Adds a new CI profile to the rebar3
 - Bumps MongoDB driver to latest
@@ -13,6 +13,7 @@
 - Adds authentication to MongoDB Lua test script in `vmq_diversity`
 - Adds Docker Compose file for local testing
 - Bumps `rebar3` executable
+- Update Hackney HTTP client to version 1.17.4
 
 ## VerneMQ 1.11.0
 
