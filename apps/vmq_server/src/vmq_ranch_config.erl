@@ -112,8 +112,11 @@ delete_listener(ListenerRef) ->
         {error, _} ->
             ok;
         ok ->
+            TransportOpts = ranch:get_transport_options(ListenerRef),
+            [_, Transport, _, _, _] = ranch_server:get_listener_start_args(ListenerRef),
             _ = supervisor:delete_child(ranch_sup, {ranch_listener_sup, ListenerRef}),
-            ranch_server:cleanup_listener_opts(ListenerRef)
+            ranch_server:cleanup_listener_opts(ListenerRef),
+            Transport:cleanup(TransportOpts) % this will delete the SocketFile for Unix sockets
     end.
 
 start_listener(Type, Addr, Port, Opts) when is_list(Opts) ->
