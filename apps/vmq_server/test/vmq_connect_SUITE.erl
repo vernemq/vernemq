@@ -21,6 +21,9 @@ init_per_group(mqtts, Config) ->
 init_per_group(mqttws, Config) ->
     Config1 = [{type, ws},{port, 1890}, {address, "127.0.0.1"}|Config],
     start_listener(Config1);
+init_per_group(mqttwsp, Config) ->
+    Config1 = [{type, ws},{port, 1891}, {address, "127.0.0.1"}, {proxy_protocol, true}|Config],
+    start_listener(Config1);
 init_per_group(mqttv4, Config) ->
     Config1 = [{type, tcp},{port, 1888}, {address, "127.0.0.1"}|Config],
     [{protover, 4}|start_listener(Config1)];
@@ -47,6 +50,7 @@ all() ->
     [
      {group, mqtts},
      {group, mqttws},
+     {group, mqttwsp}, % ws with proxy protocol
      {group, mqttv4},
      {group, mqttv5}
     ].
@@ -70,6 +74,8 @@ groups() ->
       [auth_on_register_change_username_test|Tests]},
      {mqtts, [], Tests},
      {mqttws, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
+     {mqttwsp, [], [ws_proxy_protocol_v1_test, ws_proxy_protocol_v2_test,
+                    ws_proxy_protocol_localcommand_v1_test, ws_proxy_protocol_localcommand_v2_test]},
      {mqttv5, [auth_on_register_change_username_test]}
     ].
 
@@ -218,6 +224,62 @@ ws_no_known_protocols_test(Config) ->
     {error, unknown_websocket_protocol} = packet:do_client_connect(Connect, Connack, ConnOpts),
     ok.
 
+ws_proxy_protocol_v1_test(Config) ->
+    ProxyInfo = 
+        #{version => 1, command => proxy,
+		transport_family => ipv4,
+		transport_protocol => stream,
+		src_address => {127, 0, 0, 1}, src_port => 80,
+		dest_address => {127, 0, 0, 1}, dest_port => 81},
+    Connect = packet:gen_connect("ws_proxy_protocol_test", [{keepalive,10}]),
+    Connack = packet:gen_connack(5),
+    WSOpt  = {conn_opts, [{ws_protocols, ["mqtt"]}]},
+    ConnOpts = [WSOpt | conn_opts(Config)],
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{proxy_info, ProxyInfo}|ConnOpts]),
+    ok = close(Socket, Config).
+
+ws_proxy_protocol_v2_test(Config) ->
+    ProxyInfo = 
+        #{version => 2, command => proxy,
+		transport_family => ipv4,
+		transport_protocol => stream,
+		src_address => {127, 0, 0, 1}, src_port => 80,
+		dest_address => {127, 0, 0, 1}, dest_port => 81},
+    Connect = packet:gen_connect("ws_proxy_protocol_test", [{keepalive,10}]),
+    Connack = packet:gen_connack(5),
+    WSOpt  = {conn_opts, [{ws_protocols, ["mqtt"]}]},
+    ConnOpts = [WSOpt | conn_opts(Config)],
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{proxy_info, ProxyInfo}|ConnOpts]),
+    ok = close(Socket, Config).
+
+ws_proxy_protocol_localcommand_v1_test(Config) ->
+    ProxyInfo = 
+        #{version => 1, command => local,
+		transport_family => ipv4,
+		transport_protocol => stream,
+		src_address => {127, 0, 0, 1}, src_port => 80,
+		dest_address => {127, 0, 0, 1}, dest_port => 81},
+    Connect = packet:gen_connect("ws_proxy_protocol_test", [{keepalive,10}]),
+    Connack = packet:gen_connack(5),
+    WSOpt  = {conn_opts, [{ws_protocols, ["mqtt"]}]},
+    ConnOpts = [WSOpt | conn_opts(Config)],
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{proxy_info, ProxyInfo}|ConnOpts]),
+    ok = close(Socket, Config).
+
+ws_proxy_protocol_localcommand_v2_test(Config) ->
+    ProxyInfo = 
+        #{version => 2, command => local,
+		transport_family => ipv4,
+		transport_protocol => stream,
+		src_address => {127, 0, 0, 1}, src_port => 80,
+		dest_address => {127, 0, 0, 1}, dest_port => 81},
+    Connect = packet:gen_connect("ws_proxy_protocol_test", [{keepalive,10}]),
+    Connack = packet:gen_connack(5),
+    WSOpt  = {conn_opts, [{ws_protocols, ["mqtt"]}]},
+    ConnOpts = [WSOpt | conn_opts(Config)],
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{proxy_info, ProxyInfo}|ConnOpts]),
+    ok = close(Socket, Config).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -258,7 +320,9 @@ transport(Config) ->
         {type, ssl} ->
             ssl;
         {type, ws} ->
-            gen_tcp
+            gen_tcp;
+        {type, wss} ->
+            ssl
     end.
 
 conn_opts(Config) ->
@@ -318,7 +382,14 @@ start_listener(Config) ->
             tcp ->
                 [];
             ws ->
-                [{websocket,true}]
+                [{websocket,true}];
+            wss -> [{ssl, true},
+                 {nr_of_acceptors, 5},
+                 {cafile, ssl_path("all-ca.crt")},
+                 {certfile, ssl_path("server.crt")},
+                 {keyfile, ssl_path("server.key")},
+                 {tls_version, "tlsv1.2"},
+                 {websocket, true}]
         end,
     {ok, _} = vmq_server_cmd:listener_start(Port, Address, [ProtVers | Opts1]),
     [{address, Address},{port, Port},{opts, Opts1}|Config].
