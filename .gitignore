@@ -14,3 +14,8 @@ TAGS
 plts/
 plts_base/
 
+**/.DS_Store
+.tool-versions
+
+data/
+

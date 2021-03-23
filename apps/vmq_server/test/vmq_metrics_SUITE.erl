@@ -56,7 +56,7 @@ simple_systree_test(_) ->
     Socket = sample_subscribe(),
     SysTopic = "$SYS/"++ atom_to_list(node()) ++ "/mqtt/subscribe/received",
     Publish = packet:gen_publish(SysTopic, 0, <<"1">>, []),
-    ok = packet:expect_packet(Socket, "publish", Publish),
+    ok = packet:expect_packet(gen_tcp, Socket, "publish", Publish, 15000),
     gen_tcp:close(Socket).
 
 histogram_systree_test(_) ->
