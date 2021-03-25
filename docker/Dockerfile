@@ -31,6 +31,7 @@ ENV DOCKER_VERNEMQ_KUBERNETES_LABEL_SELECTOR="app=vernemq" \
     DOCKER_VERNEMQ_LOG__CONSOLE=console \
     PATH="/vernemq/bin:$PATH" \
     DOCKER_VERNEMQ_ALLOW_ANONYMOUS=off \
+    DOCKER_VERNEMQ_plugins.vmq_passwd=off \
     DOCKER_VERNEMQ_plugins.vmq_acl=off \
     DOCKER_VERNEMQ_plugins.vmq_diversity=on \
     DOCKER_VERNEMQ_vmq_diversity.auth_mysql.enabled=on \
