@@ -37,6 +37,7 @@
 -include_lib("vmq_commons/include/vmq_types.hrl").
 -include("src/vmq_server.hrl").
 
+-define(stacktrace, try throw(foo) catch _:foo:Stacktrace -> Stacktrace end).
 
 %% ===================================================================
 %% common_test callbacks
@@ -864,16 +865,15 @@ receive_msgs(Payloads, Wait) ->
             true = lists:member(Payload, Payloads),
             receive_msgs(Payloads -- [Payload])
     after
-        Wait -> throw({wait_for_messages_timeout, Payloads, erlang:get_stacktrace()})
+        Wait -> ST = ?stacktrace, throw({wait_for_messages_timeout, Payloads, ST})
     end.
 
 receive_nothing(Wait) ->
-    receive
-        X -> throw({received_unexpected_msgs, X, erlang:get_stacktrace()})
-    after
-        Wait -> ok
-    end.
-
+        receive
+            X -> ST = ?stacktrace, throw({received_unexpected_msgs, X, ST})
+        after
+            Wait -> ok
+        end.
 recv_and_forward_msg(Socket, Dest, Rest) ->
     case recv_all(Socket, Rest) of
         {ok, Frames, Rest} ->
