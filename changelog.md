@@ -19,6 +19,7 @@
 - Adds support for `auth_source` in MongoDB connections in `vmq_diversity`
 - Enforce UTF8 strings in topics
 - Use safe mode for binary_to_term in SWC
+- Fix Proxy protocol handling for WebSocket listener.
 
 ## VerneMQ 1.11.0
 
