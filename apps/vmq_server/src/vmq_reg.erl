@@ -194,6 +194,9 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
                     false ->
                         Fun = fun(Sid, OldNode) ->
                                       case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
+                                          {badrpc, nodedown} ->
+                                              lager:warning("get_queue_pid on old node ~p failed : intercepted {badrpc, nodedown}", [OldNode]),
+                                              done;
                                           not_found ->
                                               case get_queue_pid(Sid) of
                                                   not_found ->
