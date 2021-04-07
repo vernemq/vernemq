@@ -124,7 +124,7 @@ notify_recv(Queue) when is_pid(Queue) ->
     gen_fsm:send_event(Queue, {notify_recv, self()}).
 
 enqueue(Queue, Msg) when is_pid(Queue) ->
-    gen_fsm:send_event(Queue, {enqueue, to_internal(Msg)}).
+    gen_fsm:sync_send_event(Queue, {enqueue, to_internal(Msg)}, infinity).
 
 enqueue_many(Queue, Msgs) when is_pid(Queue) and is_list(Msgs) ->
     NMsgs = lists:map(fun to_internal/1, Msgs),
@@ -223,13 +223,13 @@ online({notify_recv, SessionPid}, #state{id=SId, sessions=Sessions} = State) ->
                               Sessions),
     _ = vmq_metrics:incr_queue_out(queue:len(Backup)),
     {next_state, online, State#state{sessions=NewSessions}};
-online({enqueue, Msg}, State) ->
-    _ = vmq_metrics:incr_queue_in(),
-    {next_state, online, insert(Msg, State)};
 online(Event, State) ->
     lager:error("got unknown event in online state ~p", [Event]),
     {next_state, online, State}.
 
+online({enqueue, Msg}, _From, State) ->
+    _ = vmq_metrics:incr_queue_in(),
+    {reply, ok, online, insert(Msg, State)};
 online({set_opts, SessionPid, Opts}, _From, #state{opts=OldOpts} = State) ->
     MergedOpts = maps:merge(OldOpts, Opts),
     NewState1 = set_general_opts(MergedOpts, State#state{opts=MergedOpts}),
@@ -272,14 +272,13 @@ online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
 
-wait_for_offline({enqueue, Msg}, State) ->
-    _ = vmq_metrics:incr_queue_in(),
-    {next_state, wait_for_offline, insert(Msg, State)};
 wait_for_offline(Event, State) ->
     lager:error("got unknown event in wait_for_offline state ~p", [Event]),
     {next_state, wait_for_offline, State}.
 
-
+wait_for_offline({enqueue, Msg}, _From, State) ->
+    _ = vmq_metrics:incr_queue_in(),
+    {reply, ok, wait_for_offline, insert(Msg, State)};
 wait_for_offline({set_last_waiting_acks, WAcks, NextMsgId}, _From, State) ->
     {reply, ok, wait_for_offline, handle_waiting_acks_and_msgs(WAcks, NextMsgId, State)};
 wait_for_offline({add_session, SessionPid, Opts}, From,
@@ -373,15 +372,6 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
              State#state{offline=Queue#queue{size=queue:len(NewQ), drop=0, queue=NewQ},
                          drain_pending_batch={MRef, Ref, DrainQ}}}
     end;
-drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
-    %% even in drain state it is possible that an enqueue message
-    %% reaches this process, so we've to queue this message otherwise
-    %% it would be lost.
-    gen_fsm:cancel_timer(TRef),
-    gen_fsm:send_event(self(), drain_start),
-    _ = vmq_metrics:incr_queue_in(),
-    {next_state, drain, insert(Msg, State)};
-
 drain(drain_over, #state{waiting_call={migrate, _, From}} =
       #state{offline=#queue{size=0}} = State) ->
     %% we're done with the migrate, offline queue is empty
@@ -395,6 +385,14 @@ drain(Event, State) ->
     lager:error("got unknown event in drain state ~p", [Event]),
     {next_state, drain, State}.
 
+drain({enqueue, Msg}, _From, #state{drain_over_timer=TRef} =  State) ->
+    %% even in drain state it is possible that an enqueue message
+    %% reaches this process, so we've to queue this message otherwise
+    %% it would be lost.
+    gen_fsm:cancel_timer(TRef),
+    gen_fsm:send_event(self(), drain_start),
+    _ = vmq_metrics:incr_queue_in(),
+    {reply, ok, drain, insert(Msg, State)};
 drain({enqueue_many, Msgs}, _From, #state{drain_over_timer=TRef} =  State) ->
     gen_fsm:cancel_timer(TRef),
     gen_fsm:send_event(self(), drain_start),
@@ -424,18 +422,6 @@ offline(init_offline_queue, #state{id=SId} = State) ->
             gen_fsm:send_event_after(1000, init_offline_queue),
             {next_state, offline, State}
     end;
-offline({enqueue, Enq}, #state{id=SId} = State) ->
-    case Enq of
-        #deliver{qos=QoS, msg=#vmq_msg{routing_key=Topic,
-                                       payload=Payload,
-                                       retain=Retain}} ->
-            _ = vmq_plugin:all(on_offline_message, [SId, QoS, Topic, Payload, Retain]);
-        _ ->
-            ignore
-    end,
-    %% storing the message in the offline queue
-    _ = vmq_metrics:incr_queue_in(),
-    {next_state, offline, insert(Enq, State)};
 offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     %% session has expired cleanup and go down
     vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
@@ -451,6 +437,19 @@ offline(publish_last_will, State) ->
 offline(Event, State) ->
     lager:error("got unknown event in offline state ~p", [Event]),
     {next_state, offline, State}.
+
+offline({enqueue, Enq}, _From, #state{id=SId} = State) ->
+    case Enq of
+        #deliver{qos=QoS, msg=#vmq_msg{routing_key=Topic,
+                                       payload=Payload,
+                                       retain=Retain}} ->
+            _ = vmq_plugin:all(on_offline_message, [SId, QoS, Topic, Payload, Retain]);
+        _ ->
+            ignore
+    end,
+    %% storing the message in the offline queue
+    _ = vmq_metrics:incr_queue_in(),
+    {reply, ok, offline, insert(Enq, State)};
 offline({add_session, SessionPid, Opts}, _From, State) ->
     ReturnOpts = #{initial_msg_id => State#state.initial_msg_id},
     {reply, {ok, ReturnOpts}, state_change(add_session, offline, online),
