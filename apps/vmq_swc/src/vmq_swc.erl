@@ -45,15 +45,7 @@ start(SwcGroup) when is_atom(SwcGroup) ->
                              type => supervisor}).
 
 stop() ->
-   % save_actor(),
     application:stop(vmq_swc).
-
-save_actor() ->
-    Actor = ets:lookup(swc_cluster_state, actor),
-    {ok, State} = vmq_swc_peer_service_manager:get_local_state(),
-    {ok, State1} = riak_dt_orswot:update({add, node()}, Actor, State), % we always want to save the Actor for SWC
-    lager:info("Saving Peer State to disk: ~p~n", [State1]),
-    ok = vmq_peer_service_manager:write_state_to_disk(State1).
 
 members(SwcGroup) ->
     vmq_swc_group_membership:get_members(config(SwcGroup)).
