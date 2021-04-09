@@ -33,7 +33,7 @@ expect_packet(Transport, Socket, _Name, Expected, Timeout) ->
         _ -> 1
     end,
     case Transport:recv(Socket, RLen, Timeout) of
-        {ok, ExpectedNew} when ExpectedNew == Expected ->
+        {ok, Expected} ->
             ok;
         {ok, Different} ->
             io:format(user, "exp ~p: diff ~p~n", [Expected, Different]),
