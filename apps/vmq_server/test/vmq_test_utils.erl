@@ -17,6 +17,7 @@ setup() ->
    % application:set_env(plumtree, plumtree_data_dir, Datadir),
    % application:set_env(plumtree, metadata_root, Datadir ++ "/meta/"),
     application:load(vmq_swc),
+    application:set_env(vmq_swc, db_backend, leveldb),
     application:set_env(vmq_swc, data_dir, Datadir),
     application:set_env(vmq_swc, metadata_root, Datadir ++ "/meta/"),
     application:load(vmq_server),
@@ -58,6 +59,9 @@ teardown() ->
     disable_all_plugins(),
     vmq_metrics:reset_counters(),
     vmq_server:stop(),
+    vmq_swc_plugin:plugin_stop(),
+    vmq_swc:stop(),
+    application:unload(vmq_swc),
     application:unload(vmq_server),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
     _ = [eleveldb:destroy(Datadir ++ "/meta/" ++ integer_to_list(I), [])
@@ -73,7 +77,7 @@ disable_all_plugins() ->
     lists:foreach(fun %({application, vmq_plumtree, _}) ->
                           % don't disable metadata plugin
                        %   ignore;
-                        ({application, vmq_swc, _}) ->
+                       ({application, vmq_swc, _}) ->
                                 ignore;
                         ({application, vmq_generic_msg_store, _}) ->
                           % don't disable message store plugin

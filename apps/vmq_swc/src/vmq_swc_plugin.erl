@@ -29,7 +29,8 @@
          cluster_events_delete_handler/2,
          cluster_events_call_handler/3,
 
-         plugin_start/0]).
+         plugin_start/0,
+         plugin_stop/0]).
 
 -define(METRIC, metadata).
 
@@ -38,6 +39,10 @@
 
 plugin_start() ->
     _ = [vmq_swc:start(G) || G <- ?SWC_GROUPS],
+    ok.
+
+plugin_stop() ->
+    _ = [vmq_swc:stop(G) || G <- ?SWC_GROUPS],
     ok.
 
 group_for_key(PKey) ->
