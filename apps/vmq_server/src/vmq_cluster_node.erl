@@ -205,7 +205,7 @@ handle_message({connect_async_done, AsyncPid, {ok, {Transport, Socket}}},
     Msg = [<<"vmq-connect">>, <<L:32, NodeName/binary>>],
     case send(Transport, Socket, Msg) of
         ok ->
-            lager:info("cluster_node ~p : successfully connected to cluster node ~p", [self(), RemoteNode]),
+            lager:info("cluster_node ~p : successfully connected to cluster node ~p", [node(), RemoteNode]),
             NewState = State#state{socket=Socket, transport=Transport,
                         %% !!! remote node is reachable
                         async_connect_pid=undefined,
@@ -213,7 +213,7 @@ handle_message({connect_async_done, AsyncPid, {ok, {Transport, Socket}}},
                         waiting_for_ack=false},
             internal_flush(NewState);
         {error, Reason} ->
-            lager:warning("cluster_node ~p : can't initiate connect to cluster node ~p due to ~p", [self(), RemoteNode, Reason]),
+            lager:warning("cluster_node ~p : can't initiate connect to cluster node ~p due to ~p", [node(), RemoteNode, Reason]),
             close_reconnect(State)
     end;
 handle_message({connect_async_done, AsyncPid, error}, #state{async_connect_pid=AsyncPid} = State) ->
