@@ -360,7 +360,6 @@ release_msgs(QPid, [Msg | Rest]) ->
     vmq_queue:release_message(QPid, Msg),
     release_msgs(QPid, Rest).
 
-
 msg(Topic, Payload, QoS) ->
     #vmq_msg{msg_ref=vmq_mqtt_fsm_util:msg_ref(),
              mountpoint="",

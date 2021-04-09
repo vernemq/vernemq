@@ -1421,7 +1421,6 @@ prepare_frame(#deliver{qos=QoS, msg_id=MsgId, msg=Msg}, State0) ->
                                      Msg#vmq_msg{qos=NewQoS}, WAcks)}}
     end.
 
-
 %% non-upgraded qos0 message is released immediately
 -spec maybe_release_message(qos(), msg(), state()) -> state().
 maybe_release_message(0, Msg, State) -> 
@@ -1432,10 +1431,6 @@ maybe_release_message(_,_,State) -> State.
 release_message(Msg, #state{queue_pid=QPid} = State) -> 
      vmq_queue:release_message(QPid, Msg),
      State.
-
-
-
-
 
 on_deliver_hook(User, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     HookArgs0 = [User, SubscriberId, Topic, Payload, Props],

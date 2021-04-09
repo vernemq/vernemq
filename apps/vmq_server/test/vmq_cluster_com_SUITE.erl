@@ -50,9 +50,6 @@ all() ->
 connect_params(_RemoteNode) ->
     {gen_tcp, {127,0,0,1}, 12345}.
 
-
-
-
 connect_success_and_send_message(Config) ->
     ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
@@ -268,7 +265,6 @@ recv_message_block(Socket, ClusterNodePid, Msg) ->
 ack_message_block(ClusterNodePid) ->
     ClusterNodePid ! block_ack,
     ok.
-
 
 wrap_msgs(Msgs) ->
     wrap_msgs_(Msgs, []).
