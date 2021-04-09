@@ -82,6 +82,7 @@ set_config(Key, Val) ->
 
 register_consistency_test(Config) ->
     ok = ensure_cluster(Config),
+    set_config(allow_register_during_netsplit, false),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
     {Island1, Island2} = lists:split(length(Nodes) div 2, Nodes),
 
@@ -98,7 +99,7 @@ register_consistency_test(Config) ->
 
     {_, Island1Port} = random_node(Island1),
     {_, Island2Port} = random_node(Island2),
-
+    ct:sleep(10000),
     Connect = packet:gen_connect("test-client", [{clean_session, true},
                                                  {keepalive, 10}]),
     %% Island 1 should return us the proper CONNACK(3)
@@ -147,6 +148,7 @@ register_consistency_multiple_sessions_test(Config) ->
 
 register_not_ready_test(Config) ->
     ok = ensure_cluster(Config),
+    set_config(allow_register_during_netsplit, false),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
     {Island1, Island2} = lists:split(length(Nodes) div 2, Nodes),
 
@@ -308,7 +310,7 @@ wait_until_converged(Nodes, Fun, ExpectedReturn) ->
                           fun(Node) ->
                                   ExpectedReturn == Fun(Node)
                           end, NodeNames))
-      end, 60*2, 500).
+      end, 100*2, 500).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal

@@ -266,8 +266,11 @@ init([#swc_config{group=Group, peer=SWC_ID, store=StoreName, r_o_w_cache=CacheNa
 
     %OLD_SWC_ID = ets:lookup(swc_cluster_state, old_actor),
     % example [{old_actor,[{actor,<<16,174,183,91,141,126,57,253,248,113,90,177,0,157,104,244,24,108,197,225>>}]}]
-    [{old_actor, [{actor, OLD_SWC_Actor}]}] = ets:lookup(swc_cluster_state, old_actor),
-    OLD_SWC_ID = {node(), OLD_SWC_Actor},
+    OLD_SWC_ID =
+    case ets:lookup(swc_cluster_state, old_actor) of
+        [] -> {node(), <<"initial">>};
+        [{old_actor, [{actor, OLD_SWC_Actor}]}] -> {node(), OLD_SWC_Actor}
+    end,
     lager:info("init: OLD SWC ID ~p~n", [OLD_SWC_ID]), % shouldn't be {node(), undefined}
     lager:info("init: NEW SWC ID ~p~n", [SWC_ID]),
     NewWatermark0 = swc_watermark:retire_peer(Watermark, OLD_SWC_ID, SWC_ID),

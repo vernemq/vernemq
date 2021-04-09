@@ -33,7 +33,7 @@ expect_packet(Transport, Socket, _Name, Expected, Timeout) ->
         _ -> 1
     end,
     case Transport:recv(Socket, RLen, Timeout) of
-        {ok, Expected} ->
+        {ok, ExpectedNew} when ExpectedNew == Expected ->
             ok;
         {ok, Different} ->
             io:format(user, "exp ~p: diff ~p~n", [Expected, Different]),
@@ -78,6 +78,7 @@ do_client_connect(ConnectPacket, ConnackPacket, Opts) ->
     ConnackError = proplists:get_value(connack_error, Opts, "connack"),
     ConnOpts = [binary, {reuseaddr, true},{active, false}, {packet, raw}|
                 proplists:get_value(conn_opts, Opts, [])],
+    io:format("Host: ~p Port ~p ConnOpts ~p Timeout ~p", [Host, Port, ConnOpts, Timeout]),
     case Transport:connect(Host, Port, ConnOpts, Timeout) of
         {ok, Socket} ->
             Transport:send(Socket, ConnectPacket),

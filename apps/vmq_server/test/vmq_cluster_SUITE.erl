@@ -63,9 +63,13 @@ init_per_testcase(convert_new_msgs_to_old_format, Config) ->
     Config;
 init_per_testcase(Case, Config) ->
     vmq_test_utils:seed_rand(Config),
+    Config1 = case Case of
+        multiple_connect_unclean_test -> [{max_inflight_messages, 1}|Config];
+        _ -> Config
+    end,
     Nodes = vmq_cluster_test_utils:pmap(
               fun({N, P}) ->
-                      Node = vmq_cluster_test_utils:start_node(N, Config, Case),
+                      Node = vmq_cluster_test_utils:start_node(N, Config1, Case),
                       {ok, _} = rpc:call(Node, vmq_server_cmd, listener_start,
                                          [P, []]),
                       %% allow all
@@ -76,7 +80,7 @@ init_per_testcase(Case, Config) ->
                     {test3, 18885}]),
     {CoverNodes, _} = lists:unzip(Nodes),
     {ok, _} = ct_cover:add_nodes(CoverNodes),
-    [{nodes, Nodes},{nodenames, [test1, test2, test3]}|Config].
+    [{nodes, Nodes},{nodenames, [test1, test2, test3]}|Config1].
 
 end_per_testcase(convert_new_msgs_to_old_format, Config) ->
     %% no teardown necessary,
@@ -140,18 +144,19 @@ wait_until_converged(Nodes, Fun, ExpectedReturn) ->
                           fun(Node) ->
                                   ExpectedReturn == Fun(Node)
                           end, NodeNames))
-      end, 60*5, 1000).
+      end, 100*2, 500).
 
 multiple_connect_unclean_test(Config) ->
     %% This test makes sure that a cs false subscriber can receive QoS
     %% 1 messages, one message at a time only acknowleding one message
     %% per connection. 
-  
+   % ok = vmq_plugin_mgr:enable_module_plugin(
+   %     auth_on_register, ?MODULE, hook_uname_password_success, 5), % to set max_inflight_window to 1
     ok = ensure_cluster(Config),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "qos1/multiple/test",
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
-                                                      {keepalive, 60}]),
+                                                      {keepalive, 60}, {proto_ver, 4}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(123, Topic, 1),
     Suback = packet:gen_suback(123, 1),
@@ -164,7 +169,6 @@ multiple_connect_unclean_test(Config) ->
     []),
 
     ct:pal("subs in beginning ~p~n", [Sum1]),
-
     {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port,
                                                                 RandomPort}]),
     ok = gen_tcp:send(Socket, Subscribe),
@@ -175,7 +179,7 @@ multiple_connect_unclean_test(Config) ->
                          fun(N) ->
 %ct:pal("N logged ~p~n", [N]),
                                  S = rpc:call(N, vmq_reg, total_subscriptions, []),
-                            %     ct:pal("Subscription Total ~p at Node ~p~n", [S, N]),
+                                 ct:pal("Subscription Total ~p at Node ~p~n", [S, N]),
                                  S
                          end, [{total, 1}]),
     [PublishNode|_] = Nodes,
@@ -189,8 +193,9 @@ multiple_connect_unclean_test(Config) ->
                    20 == rpc:call(RandomNode, vmq_reg, stored,
                                    [{"", <<"connect-unclean">>}])
            end, 120, 500),
-
-    ok = receive_publishes(Nodes, Topic, Payloads).
+    ct:pal("Number of stored messages ~p~n", [rpc:call(RandomNode, vmq_reg, stored, [{"", <<"connect-unclean">>}])]),
+    ConsumerNode = random_node(Nodes),
+    ok = receive_publishes(ConsumerNode, Topic, Payloads).
 
 distributed_subscribe_test(Config) ->
     ok = ensure_cluster(Config),
@@ -257,7 +262,7 @@ racing_connect_test(Config) ->
          spawn_link(
            fun() ->
                    {_RandomNode, RandomPort} = random_node(Nodes),
-                   {ok, Socket} = packet:do_client_connect(Connect, Connack, [{mqtt_connect_timeout, 7000}, {port,
+                   {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port,
                                                                                RandomPort}]),
                    inet:setopts(Socket, [{active, true}]),
                    receive
@@ -270,7 +275,7 @@ racing_connect_test(Config) ->
                            exit({unknown_message, M})
                    end
            end)
-     end || I <- lists:seq(1, 25)],
+     end || I <- lists:seq(1, 9)],
 
     LastManStanding = fun(F) ->
                               case [Pid || Pid <- Pids, is_process_alive(Pid)] of
@@ -395,7 +400,7 @@ racing_subscriber_test(Config) ->
                            ok
                    end
            end)
-     end || I <- lists:seq(1, 25)],
+     end || I <- lists:seq(1, 9)],
 
     LastManStanding = fun(F) ->
                               case [Pid || Pid <- Pids, is_process_alive(Pid)] of
@@ -683,11 +688,6 @@ restarted_node_has_no_stale_sessions(Config) ->
     %% Restart the node.
     {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_stop, []),
     {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_start, []),
-    timer:sleep(60000),
-  %  {ok, OldNode} = rpc:call(RestartNodeName, vmq_swc_peer_service_manager, get_old_actor,[]),
-  %  ct:pal("OldNode ~p ~p~n", [OldNode, RestartNodeName]),
-   % {ok, NewNode} = rpc:call(RestartNodeName, vmq_swc_peer_service_manager, get_actor, []),
-   % ct:pal("NewNode ~p ~p~n", [NewNode, RestartNodeName]),
     Sessions = rpc:call(RestartNodeName, vmq_ql_query_mgr, fold_query,
                         [fun(V, Acc) -> [V|Acc] end, [], "SELECT client_id, topic FROM sessions"]),
 
@@ -965,17 +965,19 @@ publish_random(Nodes, N, Topic, Acc) ->
     publish_random(Nodes, N - 1, Topic, [Payload|Acc]).
 
 receive_publishes(_, _, []) -> ok;
-receive_publishes([{_Node,Port}=N|Nodes], Topic, Payloads) ->
+receive_publishes({Node,Port}, Topic, Payloads) ->
+    {ok, []} = rpc:call(Node, vmq_server_cmd, set_config, [max_inflight_messages, 1]),
+
   %  Connect0 = packet:gen_connect("connect-unclean1", [{clean_session, false},
      %                                                   {keepalive, 60}]),
    % Connack0 = packet:gen_connack(0),
    % {ok, Socket0} = packet:do_client_connect(Connect0, Connack0, [{port, Port}]),
     %ct:pal("Socket0 ~p~n", [Socket0]),
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
-                                                     {keepalive, 180}]),
+                                                     {keepalive, 1000}, {proto_ver, 4}]),
     Connack = packet:gen_connack(true, 0),
     
-    Opts = [{port, Port}, {max_drain_time,1000}, {mqtt_connect_timeout, 7000}],
+    Opts = [{port, Port}], %, {max_drain_time,10000}, {mqtt_connect_timeout, 27000}],
     %ct:sleep(10000),
 
    % ct:pal("Port ~p~n", [Port]), 
@@ -984,17 +986,17 @@ receive_publishes([{_Node,Port}=N|Nodes], Topic, Payloads) ->
 
   %ct:pal("summary before second connect ~p~n", [Sum1]),
     ct:pal("Receive Publish Connect: ~p, Connack ~p, Opts: ~p~n", [Connect, Connack, Opts]),
-    {ok, Sock} = gen_tcp:connect(localhost, 18883, 
-                                 [binary, {packet, 0}]),
-                                 ct:pal("SOCK ~p~n", [Sock]),
+    %{ok, Sock} = gen_tcp:connect(localhost, 18883, 
+     %                            [binary, {packet, 0}]),
+     %                            ct:pal("SOCK ~p~n", [Sock]),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, Opts),
-
+    ct:sleep(5000),
     case recv(Socket, <<>>) of
         {ok, #mqtt_publish{message_id=MsgId, payload=Payload}} ->
             ok = gen_tcp:send(Socket, packet:gen_puback(MsgId)),
-            receive_publishes(Nodes ++ [N], Topic, Payloads -- [Payload]);
+            receive_publishes({Node, Port}, Topic, Payloads -- [Payload]);
         {error, _} ->
-            receive_publishes(Nodes ++ [N], Topic, Payloads)
+            receive_publishes({Node, Port}, Topic, Payloads)
     end.
 
 recv(Socket, Buf) ->

@@ -34,7 +34,7 @@ start() ->
 
 stop(SwcGroup) when is_atom(SwcGroup) ->
     SwcGroupStr = atom_to_list(SwcGroup),
-    StoreSup = list_to_atom("vmq_swc_store_sup" ++ SwcGroupStr),
+    StoreSup = list_to_atom("vmq_swc_store_sup_" ++ SwcGroupStr),
     supervisor:terminate_child(vmq_swc_sup, StoreSup).
 
 start(SwcGroup) when is_atom(SwcGroup) ->
