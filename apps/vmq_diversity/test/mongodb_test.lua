@@ -1,6 +1,9 @@
 config = {
-    pool_id = "mongodb_test", 
-    size = 1, 
+    pool_id = "mongodb_test",
+    size = 1,
+    database="admin",
+    login="vmq_test_user",
+    password="vmq_test_password",
     w_mode = "safe"
 }
 

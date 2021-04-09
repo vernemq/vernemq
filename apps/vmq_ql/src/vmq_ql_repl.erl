@@ -96,10 +96,10 @@ eval_loop(Shell, #state{remote_node=Remote} = State) ->
             eval_loop(Shell, State)
     end.
 
-shell_eval("more\n", Eval, #state{query_pid=QueryPid} = State) when is_pid(QueryPid) ->
+shell_eval("m\n", Eval, #state{query_pid=QueryPid} = State) when is_pid(QueryPid) -> % "m" for "more"
     QueryPid ! {fetch, 1},
     query_result_loop(Eval, State);
-shell_eval("more\n", Eval, State) ->
+shell_eval("m\n", Eval, State) ->
     io:format("Outch, no runninq query!~n", []),
     {Eval, State};
 shell_eval("\n", Eval, State) ->

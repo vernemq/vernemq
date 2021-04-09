@@ -17,11 +17,13 @@
 
 -include("vmq_server.hrl").
 
+-define(SEC_WEBSOCKET_PROTOCOL, <<"sec-websocket-protocol">>).
+
 -export([init/2]).
 
 -export([websocket_init/1,
          websocket_handle/2,
-         websocket_info/2, 
+         websocket_info/2,
          terminate/3]).
 
 -export([add_socket/2]).
@@ -44,7 +46,14 @@ init(Req, Opts) ->
     Type = proplists:get_value(type, Opts),
     case add_websocket_sec_header(Req) of
         {ok, Req0} ->
-            Peer = {_, _} = cowboy_req:peer(Req0),
+            ProxyInfo = maps:find(proxy_header, Req0),
+            Peer = case ProxyInfo of
+                {ok, #{command := local,version := _}} -> % with proxy protocol, but 'local'
+                                                          cowboy_req:peer(Req0);
+                {ok, #{src_address := SrcAddr,
+                       src_port := SrcPort}} -> {SrcAddr, SrcPort};
+                error -> cowboy_req:peer(Req0)  % WS request without proxy_protocol
+            end,
             FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
             FsmState =
                 case Type of
@@ -166,13 +175,12 @@ maybe_reply(Out, State) ->
     end.
 
 add_websocket_sec_header(Req) ->
-    case cowboy_req:header(<<"sec-websocket-protocol">>, Req) of
-        undefined -> {error, unsupported_protocol};
-        SubProtocols when is_list(SubProtocols);
-                          is_binary(SubProtocols) ->
+    case cowboy_req:parse_header(?SEC_WEBSOCKET_PROTOCOL, Req) of
+        [] -> {error, unsupported_protocol};
+        SubProtocols ->
             case select_protocol(SubProtocols, ?SUPPORTED_PROTOCOLS) of
                 {ok, SubProtocol} ->
-                    {ok, cowboy_req:set_resp_header(<<"sec-websocket-protocol">>, SubProtocol, Req)};
+                    {ok, cowboy_req:set_resp_header(?SEC_WEBSOCKET_PROTOCOL, SubProtocol, Req)};
                 {error, _} = E ->
                     E
             end
@@ -180,8 +188,6 @@ add_websocket_sec_header(Req) ->
 
 select_protocol([], _) ->
     {error, unsupported_protocol};
-select_protocol(Want, Have) when is_binary(Want) ->
-    select_protocol([Want], Have);
 select_protocol([Want|Rest], Have) ->
     case lists:member(Want, ?SUPPORTED_PROTOCOLS) of
         true ->

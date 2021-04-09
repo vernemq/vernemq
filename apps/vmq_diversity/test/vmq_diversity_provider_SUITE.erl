@@ -12,6 +12,7 @@
          postgres_test/1,
          postgres_error_test/1,
          mongodb_test/1,
+         mongodb_auth_source_test/1,
          mongodb_error_test/1,
          redis_test/1,
          http_test/1,
@@ -39,38 +40,55 @@ end_per_suite(_Config) ->
     application:stop(vmq_plugin),
     _Config.
 
-init_per_testcase(_Case, Config) ->
-    Config.
+init_per_testcase(mongodb_auth_source_test, Config) ->
+    case os:find_executable("mongo") of
+       false ->
+        {skipped, "no mongo client to setup auth source in MongoDB"};
+       _ ->
+        DataDir = proplists:get_value(data_dir, Config),
+        JSPath = filename:join(DataDir, "create_auth_source_user.js"),
+        os:cmd("mongo -u vmq_test_user -p vmq_test_password < script.js < " ++ JSPath),
+        Config
+    end;
+init_per_testcase(_TestCase, Config) ->
+   Config.
 
-end_per_testcase(_, Config) ->
-    Config.
+end_per_testcase(_TestCase, Config) ->
+   Config.
 
 -ifndef(run_all_tests).
 -define(run_all_tests, false).
 -endif.
 
+-ifndef(run_ci_tests).
+-define(run_ci_tests, false).
+-endif.
+
+integration_tests() ->
+    [postgres_test,
+     mongodb_test,
+     mongodb_auth_source_test,
+     mysql_test,
+     redis_test,
+     memcached_test].
+
+integration_tests_that_pass_ci() ->
+    [postgres_test,
+     mongodb_test,
+     mongodb_auth_source_test].
+
+other_tests() -> [http_test,
+                  kv_test,
+                  json_test,
+                  bcrypt_test,
+                  logger_test,
+                  auth_cache_test,
+                  vmq_api_test].
 all() ->
-    case ?run_all_tests of
-        true ->
-            [mysql_test,
-             postgres_test,
-             mongodb_test,
-             redis_test,
-             http_test,
-             kv_test,
-             json_test,
-             bcrypt_test,
-             logger_test,
-             memcached_test,
-             auth_cache_test];
-        _ ->
-            [http_test,
-             kv_test,
-             json_test,
-             bcrypt_test,
-             logger_test,
-             auth_cache_test,
-             vmq_api_test]
+    case {?run_all_tests, ?run_ci_tests} of
+        {true, _} -> integration_tests() ++ other_tests();
+        {_, true} -> integration_tests_that_pass_ci() ++ other_tests();
+        _ -> other_tests()
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -92,6 +110,9 @@ postgres_error_test(_) ->
 
 mongodb_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("mongodb_test.lua")).
+
+mongodb_auth_source_test(_) ->
+    {ok, _} = vmq_diversity:load_script(test_script("mongodb_auth_source_test.lua")).
 
 mongodb_error_test(_) ->
     {ok, _} = vmq_diversity:load_script(test_script("mongodb_error_test.lua")),

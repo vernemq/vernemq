@@ -89,7 +89,7 @@
                 #{
                   hook => cuttlefish:conf_get("vmq_webhooks." ++ SortName ++ ".hook", Conf, undefined),
                   endpoint => cuttlefish:conf_get("vmq_webhooks." ++ SortName ++ ".endpoint", Conf, undefined),
-                  options => 
+                  options =>
                       #{ base64_payload =>
                              cuttlefish:conf_get("vmq_webhooks." ++ SortName ++
                                                      ".base64encode", Conf, true),
@@ -124,9 +124,90 @@
   hidden,
   {default, 100}]}.
 
-%% @doc Configure the timeout that we keep the connection alive in the 
-%% webhooks connection pool, expressed in milliseconds. 
+%% @doc Configure the timeout that we keep the connection alive in the
+%% webhooks connection pool, expressed in milliseconds.
 {mapping, "vmq_webhooks.pool_timeout", "vmq_webhooks.pool_timeout",
  [{datatype, integer},
   hidden,
   {default, 60000}]}.
+
+%% @doc Configure a Certificate Authority file to verify when calling
+%% HTTPS webhooks.
+{mapping, "vmq_webhooks.cafile", "vmq_webhooks.cafile",
+ [{default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
+  hidden]}.
+
+%% @doc Configure TLS version for HTTPS webhook calls
+%% HTTPS webhooks.
+{mapping, "vmq_webhooks.tls_version", "vmq_webhooks.tls_version",
+[{default, 'tlsv1.2'},
+ {datatype, atom},
+ {commented, 'tlsv1.2'}]}.
+
+%% @doc Should we verify the peer (web server) certificate for HTTPS calls?
+{mapping, "vmq_webhooks.verify_peer", "vmq_webhooks.verify_peer",
+[{default, on},
+ {datatype, flag},
+ hidden]}.
+
+%% @doc When dealing with an intermediate CA, it might be required to
+%% increase the peer verification depth to have a server certificate
+%% correctly validated. This matches the default in the Hackney web client
+{mapping, "vmq_webhooks.depth", "vmq_webhooks.depth",
+[{default, 100},
+ {datatype, integer},
+ hidden]}.
+
+%% @doc Configure a client certificate file to include in webhook HTTPS
+%% requests.
+{mapping, "vmq_webhooks.certfile", "vmq_webhooks.certfile",
+ [{default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
+  hidden]}.
+
+%% @doc Configure Certificate Revocation List (CRL) use in webhook HTTPS
+%% requests.
+{mapping, "vmq_webhooks.use_crls", "vmq_webhooks.use_crls",
+ [{default, true},
+  {datatype, flag},
+  hidden]}.
+
+%% @doc Configure a PEM-encoded client keyfile to include in webhook
+%% HTTPS requests.
+{mapping, "vmq_webhooks.keyfile", "vmq_webhooks.keyfile",
+ [{default, ""},
+  {datatype, file},
+  {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
+  hidden]}.
+
+%% @doc Configure a password to client keyfile used in webhook HTTPS
+%% requests.
+{mapping, "vmq_webhooks.keyfile_password", "vmq_webhooks.keyfile_password",
+ [{default, ""},
+  {datatype, string},
+  hidden]}.
+
+{validator, "file-exists", "file does not exist",
+ fun("") ->
+         %% "" is used as the default value in most places, we should
+         %% not error out because of that.
+         true;
+    (Name) -> vmq_schema_util:file_exists(Name)
+ end}.
+{validator, "file-is-readable", "file is not readable, check permissions",
+ fun("") ->
+         %% "" is used as the default value in most places, we should
+         %% not error out because of that.
+         true;
+    (Name) -> vmq_schema_util:file_is_readable(Name)
+ end}.
+{validator, "file-is-pem", "file is not PEM-encoded with one or more entries",
+ fun("") ->
+         %% "" is used as the default value in most places, we should
+         %% not error out because of that.
+         true;
+    (Name) -> vmq_schema_util:file_is_pem_content(Name)
+ end}.

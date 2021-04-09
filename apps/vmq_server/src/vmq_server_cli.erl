@@ -551,6 +551,7 @@ usage() ->
      "    node        Manage this node\n",
      "    cluster     Manage this node's cluster membership\n",
      "    session     Retrieve session information\n",
+     "    retain      Show and filter MQTT retained messages\n",
      "    plugin      Manage plugin system\n",
      "    listener    Manage listener interfaces\n",
      "    metrics     Retrieve System Metrics\n",

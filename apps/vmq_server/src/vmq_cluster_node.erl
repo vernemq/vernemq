@@ -297,6 +297,10 @@ connect_async(ParentPid, RemoteNode) ->
                                       {keepalive, true},
                                       {send_timeout, 0}|ConnectOpts]), ConnectTimeout) of
                 {ok, Socket} ->
+                    % at least tune 'buffer'
+                    {ok, BufSizes} = getopts(Socket, [sndbuf, recbuf, buffer]),
+                    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+                    setopts(Socket, [{buffer, BufSize}]),
                     case controlling_process(Transport, Socket, ParentPid) of
                         ok ->
                             {ok, {Transport, Socket}};
@@ -350,6 +354,16 @@ connect_params(_Node) ->
             end
     end.
 
+getopts({ssl, Socket}, Opts) ->
+    ssl:getopts(Socket, Opts);
+getopts(Socket, Opts) ->
+    inet:getopts(Socket, Opts).
+
+setopts({ssl, Socket}, Opts) ->
+    ssl:setopts(Socket, Opts);
+setopts(Socket, Opts) ->
+    inet:setopts(Socket, Opts).
+
 connect_params(tcp, [{{Addr, Port}, _}|_]) ->
     {gen_tcp, Addr, Port};
 connect_params(ssl, [{{Addr, Port}, _}|_]) ->
@@ -374,7 +388,7 @@ connect(ssl, Host, Port, Opts, Timeout) ->
 
 controlling_process(gen_tcp, Socket, Pid) ->
     gen_tcp:controlling_process(Socket, Pid);
-controlling_process(ssl, Socket, Pid) ->
+controlling_process(ssl, {'ssl',Socket}, Pid) ->
     ssl:controlling_process(Socket, Pid).
 
 teardown(#state{socket = Socket, transport = Transport, async_connect_pid = AsyncPid}, Reason) ->

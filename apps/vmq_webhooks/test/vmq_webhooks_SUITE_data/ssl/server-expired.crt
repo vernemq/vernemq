@@ -1,0 +1,80 @@
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 6 (0x6)
+    Signature Algorithm: sha1WithRSAEncryption
+        Issuer: C=CH, ST=Basel-Town, O=Erlio MQTT Project, OU=Testing, CN=Signing CA
+        Validity
+            Not Before: Aug 20 00:00:00 2012 GMT
+            Not After : Aug 21 00:00:00 2012 GMT
+        Subject: CN=localhost
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+                    00:e9:24:e0:b2:b4:6a:ce:f0:e4:a3:89:1d:a0:55:
+                    71:d4:24:42:5b:0d:8e:30:92:37:30:40:ff:96:b7:
+                    62:8a:6e:18:95:c7:39:cb:f7:21:8a:03:2d:b7:3f:
+                    37:fc:e0:3a:1b:6b:10:13:93:20:6f:2c:38:00:c0:
+                    08:53:f3:6e:7f:d6:62:b3:9f:be:34:68:64:35:1b:
+                    a1:ce:4f:b4:50:3d:df:2f:4a:1f:17:48:02:1a:26:
+                    80:06:6c:aa:cc:a2:0b:79:7d:d1:b4:32:f4:41:20:
+                    e1:3c:97:d3:0a:dc:94:46:86:42:28:f8:ab:2e:fe:
+                    a9:88:74:11:09:e6:b8:3f:82:5c:05:e2:77:c0:a3:
+                    50:be:e5:a1:fe:e9:32:fe:17:f3:a6:93:c1:b7:ad:
+                    80:d9:9b:b3:0f:c1:26:92:57:db:d7:62:3f:e2:6c:
+                    73:fc:b1:7e:63:29:37:6f:9c:68:04:bb:6e:37:e0:
+                    54:36:a7:cc:5a:ab:34:c2:94:6a:3d:48:22:3d:66:
+                    ce:99:41:18:4f:2c:38:d8:df:35:41:f0:68:10:52:
+                    25:d3:e7:80:41:d5:ef:ac:70:4d:be:12:6f:da:51:
+                    e1:3a:f5:15:c9:92:6f:db:d7:66:19:2b:20:6b:30:
+                    03:df:48:61:cf:9b:ef:55:e3:a0:27:4e:3b:3c:b9:
+                    e9:65
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            Netscape Comment: 
+                OpenSSL Generated Certificate
+            X509v3 Subject Key Identifier: 
+                32:01:5D:F6:C9:35:AA:43:41:E0:CE:47:42:7E:AA:70:51:E4:5E:A7
+            X509v3 Authority Key Identifier: 
+                keyid:EE:81:7D:EE:1A:CA:77:7E:B9:D9:B8:50:6F:85:C0:88:33:DE:1F:B4
+
+    Signature Algorithm: sha1WithRSAEncryption
+         26:ce:ae:00:38:4a:ff:35:b2:85:fe:e9:0b:ad:4c:94:1a:6f:
+         41:df:2d:42:72:40:03:41:48:28:43:53:44:5d:12:27:7a:71:
+         ba:48:7d:9c:88:84:1f:bc:d6:85:51:b9:a4:68:f2:cf:02:c1:
+         08:94:02:d2:74:dc:ac:74:f8:8e:cb:fb:c2:a8:92:39:3e:7b:
+         4b:93:43:d4:89:99:72:bf:03:24:3d:0b:77:85:da:2a:69:91:
+         18:a9:5c:f1:40:e0:fc:57:cd:74:5e:fd:72:9a:8f:ef:4b:c3:
+         7d:06:67:26:b3:dd:b9:ce:d6:02:a2:4c:d1:17:88:93:20:6e:
+         48:a1:48:66:7d:10:81:30:4a:74:e0:67:58:66:5c:47:b1:8b:
+         89:ba:57:f8:f3:20:8b:71:d3:e3:32:b8:31:d6:65:97:77:8d:
+         d4:29:c6:9a:2f:08:d7:94:2d:18:4a:8e:06:bc:27:63:a3:1a:
+         3c:cd:82:77:8d:f0:49:fb:ae:f3:c0:8f:38:b9:77:0f:0c:1f:
+         73:9e:8b:f3:bd:cb:79:de:92:8e:e0:1a:e5:12:83:7b:33:64:
+         08:bc:47:81:1e:90:8d:b2:6c:57:d7:87:1a:f9:b2:20:99:f5:
+         7f:37:57:2e:9a:55:d1:9b:06:13:eb:f1:f7:0f:0a:26:49:ef:
+         40:65:48:4f
+-----BEGIN CERTIFICATE-----
+MIIDcDCCAligAwIBAgIBBjANBgkqhkiG9w0BAQUFADBmMQswCQYDVQQGEwJDSDET
+MBEGA1UECAwKQmFzZWwtVG93bjEbMBkGA1UECgwSRXJsaW8gTVFUVCBQcm9qZWN0
+MRAwDgYDVQQLDAdUZXN0aW5nMRMwEQYDVQQDDApTaWduaW5nIENBMB4XDTEyMDgy
+MDAwMDAwMFoXDTEyMDgyMTAwMDAwMFowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIB
+IjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6STgsrRqzvDko4kdoFVx1CRC
+Ww2OMJI3MED/lrdiim4Ylcc5y/chigMttz83/OA6G2sQE5Mgbyw4AMAIU/Nuf9Zi
+s5++NGhkNRuhzk+0UD3fL0ofF0gCGiaABmyqzKILeX3RtDL0QSDhPJfTCtyURoZC
+KPirLv6piHQRCea4P4JcBeJ3wKNQvuWh/uky/hfzppPBt62A2ZuzD8Emklfb12I/
+4mxz/LF+Yyk3b5xoBLtuN+BUNqfMWqs0wpRqPUgiPWbOmUEYTyw42N81QfBoEFIl
+0+eAQdXvrHBNvhJv2lHhOvUVyZJv29dmGSsgazAD30hhz5vvVeOgJ047PLnpZQID
+AQABo3sweTAJBgNVHRMEAjAAMCwGCWCGSAGG+EIBDQQfFh1PcGVuU1NMIEdlbmVy
+YXRlZCBDZXJ0aWZpY2F0ZTAdBgNVHQ4EFgQUMgFd9sk1qkNB4M5HQn6qcFHkXqcw
+HwYDVR0jBBgwFoAU7oF97hrKd3652bhQb4XAiDPeH7QwDQYJKoZIhvcNAQEFBQAD
+ggEBACbOrgA4Sv81soX+6QutTJQab0HfLUJyQANBSChDU0RdEid6cbpIfZyIhB+8
+1oVRuaRo8s8CwQiUAtJ03Kx0+I7L+8Kokjk+e0uTQ9SJmXK/AyQ9C3eF2ippkRip
+XPFA4PxXzXRe/XKaj+9Lw30GZyaz3bnO1gKiTNEXiJMgbkihSGZ9EIEwSnTgZ1hm
+XEexi4m6V/jzIItx0+MyuDHWZZd3jdQpxpovCNeULRhKjga8J2OjGjzNgneN8En7
+rvPAjzi5dw8MH3Oei/O9y3neko7gGuUSg3szZAi8R4EekI2ybFfXhxr5siCZ9X83
+Vy6aVdGbBhPr8fcPCiZJ70BlSE8=
+-----END CERTIFICATE-----

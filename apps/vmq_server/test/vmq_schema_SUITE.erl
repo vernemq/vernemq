@@ -55,24 +55,22 @@ global_substitutions() ->
      {["listener", "nr_of_acceptors"], "100"}].
 
 
-dummy_file(Name) ->
-    Path = filename:dirname(
-             proplists:get_value(source, ?MODULE:module_info(compile))),
-    filename:join([Path, Name]).
+dummy_file(Config, Name) ->
+    DataFolder = ?config(data_dir, Config),
+    filename:join([DataFolder, Name]).
 
-
-ssl_certs_opts_inheritance_test(_Config) ->
-    DummyFile = dummy_file("vmq_schema_suite_dummy_file"),
+ssl_certs_opts_inheritance_test(Config) ->
+    DummyCert = dummy_file(Config, "dummy.crt"),
     ConfFun =
         fun(LType) ->
                 Base =
                 [
-                 {["listener", LType, "certfile"], DummyFile},
-                 {["listener", LType, "cafile"], DummyFile},
-                 {["listener", LType, "keyfile"], DummyFile},
+                 {["listener", LType, "certfile"], DummyCert},
+                 {["listener", LType, "cafile"], DummyCert},
+                 {["listener", LType, "keyfile"], DummyCert},
                  {["listener", LType, "depth"], 10},
                  {["listener", LType, "ciphers"], "ciphers"},
-                 {["listener", LType, "crlfile"], DummyFile},
+                 {["listener", LType, "crlfile"], DummyCert},
                  {["listener", LType, "require_certificate"], "on"},
 
                  {["listener", LType, "tls_version"], "tlsv1.1"},
@@ -88,9 +86,9 @@ ssl_certs_opts_inheritance_test(_Config) ->
         end,
     TestFun =
         fun(Conf, IntName) ->
-                DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, certfile]),
-                DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
-                DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
+                DummyCert = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, certfile]),
+                DummyCert = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
+                DummyCert = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
                 10        = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, depth]),
                 case IntName of
                     https -> skip;
@@ -98,7 +96,7 @@ ssl_certs_opts_inheritance_test(_Config) ->
                         "mpval"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
                 end,
                 "ciphers" = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
-                DummyFile = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
+                DummyCert = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
                 true      = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
                 'tlsv1.1' = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version])
         end,
@@ -119,29 +117,29 @@ ssl_certs_opts_inheritance_test(_Config) ->
        {"https", https}
       ]).
 
-ssl_certs_opts_override_test(_Config) ->
-    DummyFile = dummy_file("vmq_schema_suite_dummy_file"),
-    DummyFileOverride = dummy_file("vmq_schema_suite_dummy_file_override"),
+ssl_certs_opts_override_test(Config) ->
+    DummyCert = dummy_file(Config, "dummy.crt"),
+    DummyCertOverride = dummy_file(Config, "dummy_override.crt"),
     ConfFun =
         fun(LType) ->
                 Base = [
                  %% protocol defaults
-                 {["listener", LType, "certfile"], DummyFile},
-                 {["listener", LType, "cafile"], DummyFile},
-                 {["listener", LType, "keyfile"], DummyFile},
+                 {["listener", LType, "certfile"], DummyCert},
+                 {["listener", LType, "cafile"], DummyCert},
+                 {["listener", LType, "keyfile"], DummyCert},
                  {["listener", LType, "depth"], 10},
                  {["listener", LType, "ciphers"], "ciphers"},
-                 {["listener", LType, "crlfile"], DummyFile},
+                 {["listener", LType, "crlfile"], DummyCert},
                  {["listener", LType, "require_certificate"], "on"},
                  {["listener", LType, "tls_version"], "tlsv1.1"},
 
                  %% listener overrides
-                 {["listener", LType, "mylistener", "certfile"], DummyFileOverride},
-                 {["listener", LType, "mylistener", "cafile"], DummyFileOverride},
-                 {["listener", LType, "mylistener", "keyfile"], DummyFileOverride},
+                 {["listener", LType, "mylistener", "certfile"], DummyCertOverride},
+                 {["listener", LType, "mylistener", "cafile"], DummyCertOverride},
+                 {["listener", LType, "mylistener", "keyfile"], DummyCertOverride},
                  {["listener", LType, "mylistener", "depth"], 20},
                  {["listener", LType, "mylistener", "ciphers"], "overridden"},
-                 {["listener", LType, "mylistener", "crlfile"], DummyFileOverride},
+                 {["listener", LType, "mylistener", "crlfile"], DummyCertOverride},
                  {["listener", LType, "mylistener", "require_certificate"], "off"},
                  {["listener", LType, "mylistener", "tls_version"], "tlsv1.2"},
 
@@ -160,12 +158,12 @@ ssl_certs_opts_override_test(_Config) ->
         end,
     TestFun =
         fun(Conf, IntName) ->
-                DummyFileOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, certfile]),
-                DummyFileOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
-                DummyFileOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
+                DummyCertOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, certfile]),
+                DummyCertOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, cafile]),
+                DummyCertOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, keyfile]),
                 20                = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, depth]),
                 "overridden"      = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, ciphers]),
-                DummyFileOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
+                DummyCertOverride = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, crlfile]),
                 false             = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, require_certificate]),
                 'tlsv1.2'         = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, tls_version]),
                 case IntName of

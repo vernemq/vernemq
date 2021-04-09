@@ -76,6 +76,7 @@ connect_success_send_error(Config) ->
     recv_message(Socket2, hello_world).
 
 connect_success_send_error_timeout(Config) ->
+    ct:timetrap({minutes, 10}),
     % check that message isn't lost
     ClusterNodePid = cluster_node_pid(Config),
     {ok, ListenSocket} = gen_tcp:listen(12345, [binary, {reuseaddr, true}, {active, false}]),
