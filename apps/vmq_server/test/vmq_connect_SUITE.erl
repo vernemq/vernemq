@@ -105,7 +105,7 @@ uname_anon_username_test_m5(Config) ->
     [{keepalive,10}, {username, "user"},
      {password, "whatever"}], Config),
     Connack = mqtt5_v4compat:gen_connack(success, Config),
-    ok = vmq_plugin_mgr:enable_module_plugin(on_register_m5, ?MODULE, 
+    ok = vmq_plugin_mgr:enable_module_plugin(on_register_m5, ?MODULE,
                 hook_on_register_uname_anon_username_m5, 4),
     {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, conn_opts(Config), Config),
     ok = vmq_plugin_mgr:disable_module_plugin(on_register_m5, ?MODULE, hook_on_register_uname_anon_username_m5, 4),
@@ -239,7 +239,7 @@ ws_no_known_protocols_test(Config) ->
     ok.
 
 ws_proxy_protocol_v1_test(Config) ->
-    ProxyInfo = 
+    ProxyInfo =
         #{version => 1, command => proxy,
 		transport_family => ipv4,
 		transport_protocol => stream,
@@ -253,7 +253,7 @@ ws_proxy_protocol_v1_test(Config) ->
     ok = close(Socket, Config).
 
 ws_proxy_protocol_v2_test(Config) ->
-    ProxyInfo = 
+    ProxyInfo =
         #{version => 2, command => proxy,
 		transport_family => ipv4,
 		transport_protocol => stream,
@@ -267,7 +267,7 @@ ws_proxy_protocol_v2_test(Config) ->
     ok = close(Socket, Config).
 
 ws_proxy_protocol_localcommand_v1_test(Config) ->
-    ProxyInfo = 
+    ProxyInfo =
         #{version => 1, command => local,
 		transport_family => ipv4,
 		transport_protocol => stream,
@@ -281,7 +281,7 @@ ws_proxy_protocol_localcommand_v1_test(Config) ->
     ok = close(Socket, Config).
 
 ws_proxy_protocol_localcommand_v2_test(Config) ->
-    ProxyInfo = 
+    ProxyInfo =
         #{version => 2, command => local,
 		transport_family => ipv4,
 		transport_protocol => stream,

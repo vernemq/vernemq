@@ -271,7 +271,7 @@ init([#swc_config{group=Group, peer=SWC_ID, store=StoreName, r_o_w_cache=CacheNa
         [] -> {node(), <<"initial">>};
         [{old_actor, OLD_SWC_Actor}] -> {node(), OLD_SWC_Actor}
     end,
-    State = set_peers(Members2, #state{id=SWC_ID, 
+    State = set_peers(Members2, #state{id=SWC_ID,
                                       old_id = OLD_SWC_ID,
                                       peers=[],
                                       group=Group,
@@ -357,7 +357,7 @@ handle_call({sync_missing, _OriginPeer, Dots}, From, #state{config=Config} = Sta
                                         %% the other node.
                                         {true, {SKey, swc_kv:add(swc_kv:new(), Dot, '$deleted')}};
                                     {ok, BObj} ->
-                                        {true, {SKey, binary_to_term(BObj)}}
+                                        {true, {SKey, binary_to_term(BObj, [safe])}}
                                 end
                         end
                 end, Dots),
@@ -548,7 +548,7 @@ random_peer(Peers, FilterFun) ->
     end.
 
 fix_watermark({W, R} = Watermark, Peers) ->
-    Watermark0 = 
+    Watermark0 =
     lists:foldl(
       fun(Peer, WMAcc0) ->
               % This will reset all counters to zero
@@ -663,9 +663,9 @@ event(Type, SKey, NewObj, OldObj, #state{subscriptions=Subscriptions}, OriginPid
     lists:foreach(
       fun
           ({Pid, _}) when (FullPrefix == ?RETAIN_DB) andalso (Pid == OriginPid) ->
-               % When originator is vmq_retain_srv of this node, then the 
+               % When originator is vmq_retain_srv of this node, then the
                % RETAIN_DB is already uptodate. In this case we must skip the feedback notification event
-               % to prevent corrupting the RETAIN_DB. (= avoid overwriting possible newer updates) 
+               % to prevent corrupting the RETAIN_DB. (= avoid overwriting possible newer updates)
                skip;
           ({Pid, ConvertFun}) when Type == deleted ->
               Pid ! ConvertFun({deleted, FullPrefix, Key, OldValues});
@@ -743,7 +743,7 @@ enqueue_op_sync(Config, Op) ->
 -spec get_obj_for_key(config(), db_key()) -> object().
 get_obj_for_key(Config, SKey) ->
     case vmq_swc_db:get(Config, ?DB_OBJ, SKey) of
-        {ok, BObj} -> binary_to_term(BObj);
+        {ok, BObj} -> binary_to_term(BObj, [safe]);
         not_found -> swc_kv:new()
     end.
 
@@ -767,7 +767,7 @@ init_dotkeymap(Config) ->
                     end, ok),
     vmq_swc_db:fold(Config, ?DB_OBJ,
                     fun(SKey, BVal, _Acc) ->
-                            {Values, _} = binary_to_term(BVal),
+                            {Values, _} = binary_to_term(BVal, [safe]),
                             case map_size(Values) of
                                 0 -> % deleted
                                     vmq_swc_dkm:mark_for_gc(DKM, SKey);
@@ -778,7 +778,7 @@ init_dotkeymap(Config) ->
     DKM.
 
 dump_tables(Config) ->
-    #{obj => dump_table(Config, ?DB_OBJ, fun(K) -> sext:decode(K) end, fun(V) -> binary_to_term(V) end),
+    #{obj => dump_table(Config, ?DB_OBJ, fun(K) -> sext:decode(K) end, fun(V) -> binary_to_term(V, [safe]) end),
       dkm => dump_table(Config, ?DB_DKM, fun(K) -> sext:decode(K) end, fun(V) -> sext:decode(V) end),
       default => dump_table(Config, ?DB_DEFAULT, fun(K) -> K end, fun(V) -> (V) end)}.
 
@@ -809,9 +809,9 @@ update_watermark_db_op(Watermark) ->
     {?DB_DEFAULT, <<"KVV">>, term_to_binary(Watermark)}.
 
 -spec get_nodeclock(config()) -> nodeclock().
-get_nodeclock(Config) -> 
+get_nodeclock(Config) ->
   case vmq_swc_db:get(Config, ?DB_DEFAULT, <<"BVV">>) of
-        {ok, BNodeClock} -> 
+        {ok, BNodeClock} ->
         % if we find a nodeclock on disk, we trying to ensure unique swc_id
         % {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
         % {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
@@ -828,7 +828,7 @@ get_nodeclock(Config) ->
 -spec get_watermark(config()) -> watermark().
 get_watermark(Config) ->
     case vmq_swc_db:get(Config, ?DB_DEFAULT, <<"KVV">>) of
-        {ok, BWatermark} -> binary_to_term(BWatermark);
+        {ok, BWatermark} -> binary_to_term(BWatermark, [safe]);
         not_found -> swc_watermark:new()
     end.
 
