@@ -5,20 +5,33 @@
 -export([init/2]).
 -export([terminate/3]).
 
--export([start_endpoint/0,
-         stop_endpoint/0]).
+-export([start_endpoint_clear/1,
+         start_endpoint_tls/1,
+         stop_endpoint_clear/0,
+         stop_endpoint_tls/0]).
 
 -define(DEBUG, false).
 
-start_endpoint() ->
-    Dispatch = cowboy_router:compile(
+start_endpoint_tls(#{port:= _HTTPSPort,
+                     keyfile:= _KeyFile,
+                     certfile:= _CertFile,
+                     cacertfile:= _CACertFile} = SocketOpts) ->
+    RanchOpts = #{num_acceptors => 1, socket_opts=> maps:to_list(SocketOpts)},
+    {ok, _} = cowboy:start_tls(https, RanchOpts, #{env => #{dispatch => route()}}),
+    ok.
+
+start_endpoint_clear(HTTPPort) ->
+    {ok, _} = cowboy:start_clear(http, [{port, HTTPPort}, {num_acceptors, 1}],
+                                 #{env => #{dispatch => route()}}).
+
+route() -> cowboy_router:compile(
                  [{'_', [{"/", ?MODULE, []},
                          {"/cache", ?MODULE, []},
-                         {"/cache1s", ?MODULE, []}]}]),
-    {ok, _} = cowboy:start_clear(http, [{port, 34567}, {num_acceptors, 1}],
-                                 #{env => #{dispatch => Dispatch}}).
+                         {"/cache1s", ?MODULE, []}]}]).
 
-stop_endpoint() ->
+stop_endpoint_tls() ->
+    cowboy:stop_listener(https).
+stop_endpoint_clear() ->
     cowboy:stop_listener(http).
 
 %% Cowboy callbacks
@@ -294,7 +307,7 @@ on_register(#{peer_addr := ?PEER_BIN,
               peer_port := ?PEERPORT,
               mountpoint := ?MOUNTPOINT_BIN,
               client_id := ?ALLOWED_CLIENT_ID,
-              username := BinPid}) -> 
+              username := BinPid}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_register_ok,
     {200, #{}}.
@@ -525,3 +538,4 @@ process_hook(<<"on_deliver_m5">>, Body) ->
     on_deliver_m5(Body);
 process_hook(<<"on_auth_m5">>, Body) ->
     on_auth_m5(Body).
+

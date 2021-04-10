@@ -39,7 +39,7 @@ start_link(Ref, _Socket, Transport, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Transport, Opts]),
     {ok, Pid}.
 
-init(Ref, Transport, _Opts) ->
+init(Ref, Transport, Opts) ->
     {ok, Socket} = ranch:handshake(Ref),
 
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
@@ -47,9 +47,23 @@ init(Ref, Transport, _Opts) ->
     process_flag(trap_exit, true),
     MaskedSocket = mask_socket(Transport, Socket),
     %% tune buffer sizes
-    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
-    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-    setopts(MaskedSocket, [{buffer, BufSize}]),
+    CfgBufSizes = proplists:get_value(buffer_sizes, Opts, undefined),
+    HighWatermark = proplists:get_value(high_watermark, Opts, 8192),
+    LowWatermark = proplists:get_value(low_watermark, Opts, 4096),
+    HighMsgQWatermark = proplists:get_value(high_msgq_watermark, Opts, 8192),
+    LowMsgQWatermark = proplists:get_value(low_msgq_watermark, Opts, 4096),
+    case CfgBufSizes of
+        undefined ->
+            {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
+            BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+            setopts(MaskedSocket, [{buffer, BufSize}]);
+        [SndBuf,RecBuf,Buffer] ->
+            setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}])
+    end,
+    setopts(MaskedSocket, [{high_watermark, HighWatermark},
+                        {low_watermark, LowWatermark},
+                        {high_msgq_watermark, HighMsgQWatermark},
+                        {low_msgq_watermark, LowMsgQWatermark}]),
     case active_once(MaskedSocket) of
         ok ->
             loop(#st{socket=MaskedSocket, reg_view=RegView,
@@ -129,7 +143,7 @@ handle_message({'DOWN', _, process, _ClusterNodePid, Reason}, State) ->
     {exit, Reason, State}.
 
 process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefined, St) ->
-    NodeName = binary_to_term(BNodeName),
+    NodeName = binary_to_term(BNodeName, [safe]),
     case vmq_cluster_node_sup:get_cluster_node(NodeName) of
         {ok, ClusterNodePid} ->
             monitor(process, ClusterNodePid),
@@ -152,11 +166,11 @@ process_bytes(Bytes, Buffer, St) ->
 
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
     #vmq_msg{mountpoint=MP,
-             routing_key=Topic} = Msg = to_vmq_msg(binary_to_term(Bin)),
+             routing_key=Topic} = Msg = to_vmq_msg(binary_to_term(Bin, [safe])),
     _ = vmq_reg:route_remote_msg(St#st.reg_view, MP, Topic, Msg),
     process(Rest, St);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
-    case binary_to_term(Bin) of
+    case binary_to_term(Bin, [safe]) of
         {CallerPid, Ref, {enqueue, QueuePid, Msgs}} ->
             %% enqueue in own process context
             %% to ensure that this won't block

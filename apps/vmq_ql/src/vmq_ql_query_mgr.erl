@@ -108,7 +108,7 @@ rpc_query(Owner, QueryString) ->
                   rpc_query_(Owner, QueryString)
           end).
 rpc_query_(Owner, QueryString) ->
-    {ok, MgrPid} = start_link(self(), QueryString),
+    {ok, MgrPid} = start_link(QueryString),
     rpc_query_loop(Owner, MgrPid).
 rpc_query_loop(Owner, MgrPid) ->
     {RestRows, _} =

@@ -253,8 +253,12 @@ protocol_opts(vmq_ranch, _, Opts) ->
 
 protocol_opts(cowboy_clear, Type, Opts)
   when (Type == mqttws) or (Type == mqttwss) ->
-    #{env => #{ dispatch => dispatch(Type, Opts) },
-      stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]};    
+    MOpts = case proplists:get_value(proxy_protocol, Opts, false) of
+        false -> default_session_opts(Opts);
+        true -> [{proxy_header, true}|default_session_opts(Opts)]
+    end,
+  maps:merge(maps:from_list(MOpts), #{env => #{ dispatch => dispatch(Type, Opts)},
+      stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]});
 protocol_opts(cowboy_clear, _, Opts) ->
     Routes =
     case {lists:keyfind(config_mod, 1, Opts),
@@ -273,7 +277,7 @@ protocol_opts(cowboy_clear, _, Opts) ->
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
     #{env => #{dispatch => Dispatch}};
-protocol_opts(vmq_cluster_com, _, _) -> [].
+protocol_opts(vmq_cluster_com, _, Opts) -> Opts.
 
 default_session_opts(Opts) ->
     MaybeSSLDefaults =

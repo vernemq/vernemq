@@ -74,7 +74,7 @@ start_all_pools([{mysql, ProviderConfig}|Rest], Acc) ->
 start_all_pools([{pgsql, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
     PoolOpts = proplists:get_value(opts, ProviderConfig, []),
-    Size = proplists:get_value(size, ProviderConfig, 10),
+    Size = proplists:get_value(size, PoolOpts, 5),
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = lists:keydelete(size, 1,
                                  lists:keydelete(max_overflow, 1, PoolOpts)),
@@ -106,14 +106,16 @@ start_all_pools([{pgsql, ProviderConfig}|Rest], Acc) ->
 start_all_pools([{mongodb, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
     PoolOpts = proplists:get_value(opts, ProviderConfig, []),
-    Size = proplists:get_value(size, ProviderConfig, 10),
+    Size = proplists:get_value(size, PoolOpts, 5),
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
-    WorkerArgs = lists:keydelete(size, 1,
-                                 lists:keydelete(max_overflow, 1, PoolOpts)),
+    WorkerArgs0 = lists:keydelete(size, 1,
+                                  lists:keydelete(max_overflow, 1, PoolOpts)),
     StartFun = fun() ->
-                       Ssl = proplists:get_value(ssl, WorkerArgs, false),
-                       SslOpts = proplists:get_value(ssl_opts, WorkerArgs),
-                       mc_worker:start_link([{ssl,Ssl}, {ssl_opts, SslOpts}|WorkerArgs])
+                       Ssl = proplists:get_value(ssl, WorkerArgs0, false),
+                       SslOpts = proplists:get_value(ssl_opts, WorkerArgs0),
+                       WorkerArgs1 = proplists:delete(ssl, WorkerArgs0),
+                       WorkerArgs2 = proplists:delete(ssl_opts, WorkerArgs1),
+                       mc_worker_api:connect([{ssl,Ssl}, {ssl_opts, SslOpts}|WorkerArgs2])
                end,
     TerminateFun = fun(Pid) -> mc_worker:disconnect(Pid) end,
     WrapperArgs = [{reconnect_timeout, 1000},
@@ -129,7 +131,7 @@ start_all_pools([{mongodb, ProviderConfig}|Rest], Acc) ->
 start_all_pools([{redis, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
     PoolOpts = proplists:get_value(opts, ProviderConfig, []),
-    Size = proplists:get_value(size, ProviderConfig, 10),
+    Size = proplists:get_value(size, PoolOpts, 5),
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = lists:keydelete(size, 1,
                                  lists:keydelete(max_overflow, 1, PoolOpts)),
@@ -143,7 +145,7 @@ start_all_pools([{redis, ProviderConfig}|Rest], Acc) ->
 start_all_pools([{memcached, ProviderConfig}|Rest], Acc) ->
     PoolId = proplists:get_value(id, ProviderConfig),
     PoolOpts = proplists:get_value(opts, ProviderConfig, []),
-    Size = proplists:get_value(size, ProviderConfig, 10),
+    Size = proplists:get_value(size, PoolOpts, 5),
     MaxOverflow = proplists:get_value(max_overflow, ProviderConfig, 20),
     WorkerArgs = [proplists:get_value(host, PoolOpts),
                   proplists:get_value(port, PoolOpts)],

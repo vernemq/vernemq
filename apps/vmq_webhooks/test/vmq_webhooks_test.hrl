@@ -1,4 +1,5 @@
 %% Test helpers
+-define(HTTPS_ENDPOINT, "https://localhost:45678").
 -define(ENDPOINT, "http://localhost:34567").
 -define(PEER_BIN, <<"127.0.0.1">>).
 -define(PEERPORT, 12345).
@@ -18,4 +19,3 @@
 -define(PASSWORD, <<"test-password">>).
 -define(TOPIC, <<"test/topic">>).
 -define(PAYLOAD, <<"hello world">>).
-

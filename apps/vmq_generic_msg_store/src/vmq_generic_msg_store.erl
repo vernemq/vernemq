@@ -54,7 +54,7 @@
 
 %% Subsequent formats should always extend by adding new elements to
 %% the end of the record or tuple.
--type p_msg_val_pre() :: {routing_key(), payload()}.
+-type p_msg_val_pre() :: {routing_key(), payload() | tuple()}.
 -record(p_idx_val, {
           ts  :: erlang:timestamp(),
           dup :: flag(),
@@ -284,7 +284,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 handle_req({write, {MP, _} = SubscriberId,
             #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
-                     routing_key=RoutingKey, payload=Payload}},
+                     routing_key=RoutingKey, properties=Properties, payload=Payload}},
            #state{engine=EngineState, engine_module=EngineModule, refs=Refs}) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
@@ -292,7 +292,8 @@ handle_req({write, {MP, _} = SubscriberId,
     case incr_ref(Refs, MsgRef) of
         1 ->
             %% new message
-            Val = serialize_p_msg_val_pre({RoutingKey, Payload}),
+	    %% serialize payload and properties as a tuple
+            Val = serialize_p_msg_val_pre({RoutingKey, {Payload, Properties}}),
             apply(EngineModule, write, [EngineState, [{put, MsgKey, Val},
                                                       {put, IdxKey, IdxVal}]]);
         _ ->
@@ -305,12 +306,18 @@ handle_req({read, {MP, _} = SubscriberId, MsgRef},
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
     case apply(EngineModule, read, [EngineState, MsgKey]) of
         {ok, Val} ->
-            {RoutingKey, Payload} = parse_p_msg_val_pre(Val),
+            {RoutingKey, Persisted} = parse_p_msg_val_pre(Val),
+	    if is_binary(Persisted) -> %% legacy behaviour was to just persist the payload
+		       {Payload, Properties} = {Persisted, {}};
+		true ->
+		       {Payload, Properties} = Persisted
+	    end,
+
             case apply(EngineModule, read, [EngineState, IdxKey]) of
                 {ok, IdxVal} ->
                     #p_idx_val{dup=Dup, qos=QoS} = parse_p_idx_val_pre(IdxVal),
                     Msg = #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
-                                   routing_key=RoutingKey, payload=Payload, persisted=true},
+                                   routing_key=RoutingKey, properties=Properties, payload=Payload, persisted=true},
                     {ok, Msg};
                 not_found ->
                     {error, idx_val_not_found}
@@ -398,7 +405,7 @@ select_table(SubscriberId) ->
 %% current version of the index value
 -spec parse_p_idx_val_pre(binary()) -> p_idx_val_pre().
 parse_p_idx_val_pre(BinTerm) ->
-    parse_p_idx_val_pre_(binary_to_term(BinTerm)).
+    parse_p_idx_val_pre_(binary_to_term(BinTerm, [safe])).
 
 parse_p_idx_val_pre_({TS, Dup, QoS}) ->
     #p_idx_val{ts=TS, dup=Dup, qos=QoS};
@@ -431,10 +438,10 @@ serialize_p_idx_val_pre(T) when element(1,T) =:= p_idx_val,
 %% parse messages to message type from before versioning.
 -spec parse_p_msg_val_pre(binary()) -> p_msg_val_pre().
 parse_p_msg_val_pre(BinTerm) ->
-    parse_p_msg_val_pre_(binary_to_term(BinTerm)).
+    parse_p_msg_val_pre_(binary_to_term(BinTerm, [safe])).
 
-parse_p_msg_val_pre_({RoutingKey, Payload}) ->
-    {RoutingKey, Payload};
+parse_p_msg_val_pre_({RoutingKey, Persisted}) ->
+    {RoutingKey, Persisted};
 %% newer version of the msg value
 parse_p_msg_val_pre_(T) when is_integer(element(1, T)),
                              element(1,T) > ?P_MSG_PRE ->
@@ -443,7 +450,7 @@ parse_p_msg_val_pre_(T) when is_integer(element(1, T)),
 
 %% current version of the msg value
 -spec serialize_p_msg_val_pre(p_msg_val_pre()) -> binary().
-serialize_p_msg_val_pre({_RoutingKey, _Payload} = T) ->
+serialize_p_msg_val_pre({_RoutingKey, _Persisted} = T) ->
     term_to_binary(T);
 serialize_p_msg_val_pre(T) when is_integer(element(1, T)),
                                 element(1,T) > ?P_MSG_PRE ->

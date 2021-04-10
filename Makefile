@@ -1,6 +1,6 @@
 BASE_DIR         = $(shell pwd)
 ERLANG_BIN       = $(shell dirname $(shell which erl))
-GIT_VERSION      = $(shell git describe --tags)
+GIT_VERSION      = $(shell git describe --tags --always)
 OVERLAY_VARS    ?=
 REBAR ?= $(BASE_DIR)/rebar3
 

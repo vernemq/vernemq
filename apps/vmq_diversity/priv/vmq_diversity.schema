@@ -2,9 +2,9 @@
 %% ex: ft=erlang
 
 %% @doc Enable to keep the Lua state between calls. This would allow to
-%% to set global variables and reuse them in a later callback call or 
+%% to set global variables and reuse them in a later callback call or
 %% even in a different callback. Default is 'off' enabling that no Lua
-%% garbage collection is triggered. 
+%% garbage collection is triggered.
 %% Scripts can override this configuration by setting `keep_state = true`
 %% global variable in Lua script
 {mapping, "vmq_diversity.keep_state", "vmq_diversity.keep_state", [
@@ -34,38 +34,38 @@
 {mapping, "vmq_diversity.auth_postgres.enabled", "vmq_diversity.auth_cache.postgres.enabled",
  [{datatype, flag},
   {default, off}]}.
-{mapping, "vmq_diversity.auth_postgres.script", "vmq_diversity.auth_cache.postgres.file", 
+{mapping, "vmq_diversity.auth_postgres.script", "vmq_diversity.auth_cache.postgres.file",
  [{datatype, file},
   {default, "{{platform_share_dir}}/lua/auth/postgres.lua"},
   hidden
  ]}.
 
-{mapping, "vmq_diversity.postgres.host", "vmq_diversity.db_config.postgres.host", 
+{mapping, "vmq_diversity.postgres.host", "vmq_diversity.db_config.postgres.host",
  [{datatype, string},
   {default, "localhost"},
   {commented, "localhost"}]}.
 
-{mapping, "vmq_diversity.postgres.port", "vmq_diversity.db_config.postgres.port", 
+{mapping, "vmq_diversity.postgres.port", "vmq_diversity.db_config.postgres.port",
  [{datatype, integer},
   {default, 5432},
   {commented, 5432}]}.
 
-{mapping, "vmq_diversity.postgres.user", "vmq_diversity.db_config.postgres.user", 
+{mapping, "vmq_diversity.postgres.user", "vmq_diversity.db_config.postgres.user",
  [{datatype, string},
   {default, "root"},
   {commented, "root"}]}.
 
-{mapping, "vmq_diversity.postgres.password", "vmq_diversity.db_config.postgres.password", 
+{mapping, "vmq_diversity.postgres.password", "vmq_diversity.db_config.postgres.password",
  [{datatype, string},
   {default, "password"},
   {commented, "password"}]}.
 
-{mapping, "vmq_diversity.postgres.database", "vmq_diversity.db_config.postgres.database", 
+{mapping, "vmq_diversity.postgres.database", "vmq_diversity.db_config.postgres.database",
  [{datatype, string},
   {default, "vernemq_db"},
   {commented, "vernemq_db"}]}.
 
-{mapping, "vmq_diversity.postgres.pool_size", "vmq_diversity.db_config.postgres.pool_size", 
+{mapping, "vmq_diversity.postgres.pool_size", "vmq_diversity.db_config.postgres.pool_size",
  [{datatype, integer},
   {default, 5},
   hidden]}.
@@ -193,23 +193,23 @@
 {mapping, "vmq_diversity.auth_mysql.enabled", "vmq_diversity.auth_cache.mysql.enabled",
  [{datatype, flag},
   {default, off}]}.
-{mapping, "vmq_diversity.auth_mysql.script", "vmq_diversity.auth_cache.mysql.file", 
+{mapping, "vmq_diversity.auth_mysql.script", "vmq_diversity.auth_cache.mysql.file",
  [{datatype, file},
   {default, "{{platform_share_dir}}/lua/auth/mysql.lua"},
   hidden
  ]}.
 
-{mapping, "vmq_diversity.mysql.host", "vmq_diversity.db_config.mysql.host", 
+{mapping, "vmq_diversity.mysql.host", "vmq_diversity.db_config.mysql.host",
  [{datatype, string},
   {default, "localhost"},
   {commented, "localhost"}]}.
 
-{mapping, "vmq_diversity.mysql.port", "vmq_diversity.db_config.mysql.port", 
+{mapping, "vmq_diversity.mysql.port", "vmq_diversity.db_config.mysql.port",
  [{datatype, integer},
   {default, 3306},
   {commented, 3306}]}.
 
-{mapping, "vmq_diversity.mysql.user", "vmq_diversity.db_config.mysql.user", 
+{mapping, "vmq_diversity.mysql.user", "vmq_diversity.db_config.mysql.user",
  [{datatype, string},
   {default, "root"},
   {commented, "root"}]}.
@@ -219,12 +219,12 @@
   {default, "password"},
   {commented, "password"}]}.
 
-{mapping, "vmq_diversity.mysql.database", "vmq_diversity.db_config.mysql.database", 
+{mapping, "vmq_diversity.mysql.database", "vmq_diversity.db_config.mysql.database",
  [{datatype, string},
   {default, "vernemq_db"},
   {commented, "vernemq_db"}]}.
 
-{mapping, "vmq_diversity.mysql.pool_size", "vmq_diversity.db_config.mysql.pool_size", 
+{mapping, "vmq_diversity.mysql.pool_size", "vmq_diversity.db_config.mysql.pool_size",
  [{datatype, integer},
   {default, 5},
   hidden]}.
@@ -237,7 +237,7 @@
 %%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_md5
 %%     sha1: Calculates the SHA-1 160-bit checksum for the password.
 %%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_sha1
-%%   sha256: Calculates the SHA-2 hash of the password, using 256 bits. 
+%%   sha256: Calculates the SHA-2 hash of the password, using 256 bits.
 %%           Works only if MySQL has been configured with SSL support.
 %%           Docs: https://dev.mysql.com/doc/refman/8.0/en/encryption-functions.html#function_sha2
 {mapping, "vmq_diversity.mysql.password_hash_method", "vmq_diversity.db_config.mysql.password_hash_method",
@@ -248,48 +248,53 @@
 {mapping, "vmq_diversity.auth_mongodb.enabled", "vmq_diversity.auth_cache.mongodb.enabled",
  [{datatype, flag},
   {default, off}]}.
-{mapping, "vmq_diversity.auth_mongodb.script", "vmq_diversity.auth_cache.mongodb.file", 
+{mapping, "vmq_diversity.auth_mongodb.script", "vmq_diversity.auth_cache.mongodb.file",
  [{datatype, file},
   {default, "{{platform_share_dir}}/lua/auth/mongodb.lua"},
   hidden
  ]}.
 
-{mapping, "vmq_diversity.mongodb.host", "vmq_diversity.db_config.mongodb.host", 
+{mapping, "vmq_diversity.mongodb.host", "vmq_diversity.db_config.mongodb.host",
  [{datatype, string},
   {default, "localhost"},
   {commented, "localhost"}]}.
 
-{mapping, "vmq_diversity.mongodb.port", "vmq_diversity.db_config.mongodb.port", 
+{mapping, "vmq_diversity.mongodb.port", "vmq_diversity.db_config.mongodb.port",
  [{datatype, integer},
   {default, 27017},
   {commented, 27017}]}.
 
-{mapping, "vmq_diversity.mongodb.login", "vmq_diversity.db_config.mongodb.login", 
+{mapping, "vmq_diversity.mongodb.login", "vmq_diversity.db_config.mongodb.login",
  [{datatype, string},
   {default, undefined},
   {commented, ""}]}.
 
-{mapping, "vmq_diversity.mongodb.password", "vmq_diversity.db_config.mongodb.password", 
+{mapping, "vmq_diversity.mongodb.password", "vmq_diversity.db_config.mongodb.password",
  [{datatype, string},
   {default, undefined},
   {commented, ""}]}.
 
-{mapping, "vmq_diversity.mongodb.database", "vmq_diversity.db_config.mongodb.database", 
+{mapping, "vmq_diversity.mongodb.auth_source", "vmq_diversity.db_config.mongodb.auth_source",
+[{datatype, string},
+ {default, "admin"},
+ {commented, ""}]}.
+
+{mapping, "vmq_diversity.mongodb.database", "vmq_diversity.db_config.mongodb.database",
  [{datatype, string},
   {default, undefined},
   {commented, ""}]}.
 
-{mapping, "vmq_diversity.mongodb.pool_size", "vmq_diversity.db_config.mongodb.pool_size", 
+{mapping, "vmq_diversity.mongodb.pool_size", "vmq_diversity.db_config.mongodb.pool_size",
  [{datatype, integer},
   {default, 5},
   hidden]}.
 
-{mapping, "vmq_diversity.mongodb.r_mode", "vmq_diversity.db_config.mongodb.r_mode", 
+{mapping, "vmq_diversity.mongodb.r_mode", "vmq_diversity.db_config.mongodb.r_mode",
  [{datatype, atom},
   {default, master},
   hidden]}.
 
-{mapping, "vmq_diversity.mongodb.w_mode", "vmq_diversity.db_config.mongodb.w_mode", 
+{mapping, "vmq_diversity.mongodb.w_mode", "vmq_diversity.db_config.mongodb.w_mode",
  [{datatype, atom},
   {default, safe},
   hidden]}.
@@ -332,44 +337,44 @@
 {mapping, "vmq_diversity.auth_redis.enabled", "vmq_diversity.auth_cache.redis.enabled",
  [{datatype, flag},
   {default, off}]}.
-{mapping, "vmq_diversity.auth_redis.script", "vmq_diversity.auth_cache.redis.file", 
+{mapping, "vmq_diversity.auth_redis.script", "vmq_diversity.auth_cache.redis.file",
  [{datatype, file},
   {default, "{{platform_share_dir}}/lua/auth/redis.lua"},
   hidden
  ]}.
 
-{mapping, "vmq_diversity.redis.host", "vmq_diversity.db_config.redis.host", 
+{mapping, "vmq_diversity.redis.host", "vmq_diversity.db_config.redis.host",
  [{datatype, string},
   {default, "localhost"},
   {commented, "localhost"}]}.
 
-{mapping, "vmq_diversity.redis.port", "vmq_diversity.db_config.redis.port", 
+{mapping, "vmq_diversity.redis.port", "vmq_diversity.db_config.redis.port",
  [{datatype, integer},
   {default, 6379},
   {commented, 6379}]}.
 
-{mapping, "vmq_diversity.redis.password", "vmq_diversity.db_config.redis.password", 
+{mapping, "vmq_diversity.redis.password", "vmq_diversity.db_config.redis.password",
  [{datatype, string},
   {default, ""},
   {commented, ""}]}.
 
-{mapping, "vmq_diversity.redis.database", "vmq_diversity.db_config.redis.database", 
+{mapping, "vmq_diversity.redis.database", "vmq_diversity.db_config.redis.database",
  [{datatype, integer},
   {default, 0},
   {commented, 0}]}.
 
-{mapping, "vmq_diversity.redis.pool_size", "vmq_diversity.db_config.redis.pool_size", 
+{mapping, "vmq_diversity.redis.pool_size", "vmq_diversity.db_config.redis.pool_size",
  [{datatype, integer},
   {default, 5},
   hidden]}.
 
 
-{mapping, "vmq_diversity.memcache.host", "vmq_diversity.db_config.memcache.host", 
+{mapping, "vmq_diversity.memcache.host", "vmq_diversity.db_config.memcache.host",
  [{datatype, string},
   {default, "localhost"},
   {commented, "localhost"}]}.
 
-{mapping, "vmq_diversity.memcache.port", "vmq_diversity.db_config.memcache.port", 
+{mapping, "vmq_diversity.memcache.port", "vmq_diversity.db_config.memcache.port",
  [{datatype, integer},
   {default, 11211},
   {commented, 11211}]}.
@@ -382,7 +387,7 @@
 %%
 %% Scripts loaded like this are loaded after the scripts in the
 %% default script dir.
-%% 
+%%
 {mapping, "vmq_diversity.$script.file", "vmq_diversity.user_scripts", [
                                                                        {datatype, file},
                                                                        {commented, "path/to/my/script.lua"},

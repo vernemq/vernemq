@@ -1,10 +1,14 @@
 -module(vmq_webhooks_SUITE).
+-include_lib("common_test/include/ct.hrl").
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -include("vmq_webhooks_test.hrl").
+
 
 -export([
          init_per_suite/1,
          end_per_suite/1,
+         init_per_group/2,
+         end_per_group/2,
          init_per_testcase/2,
          end_per_testcase/2,
          all/0
@@ -13,21 +17,37 @@
 -compile([export_all]).
 -compile([nowarn_export_all]).
 
-init_per_suite(_Config) ->
+-define(HTTP_PORT, 34567).
+-define(HTTPS_PORT, 45678).
+
+init_per_suite(Config) ->
     {ok, StartedApps} = application:ensure_all_started(vmq_server),
     ok = vmq_plugin_mgr:enable_plugin(vmq_webhooks),
     {ok, _} = application:ensure_all_started(cowboy),
-    start_endpoint(),
     cover:start(),
-    [{started_apps, StartedApps} |_Config].
+    CertsDir = filename:join([?config(data_dir, Config)]),
+    [{started_apps, StartedApps},
+     {certs_dir, CertsDir}] ++ Config.
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
     vmq_plugin_mgr:disable_plugin(vmq_webhooks),
-    stop_endpoint(),
     application:stop(cowboy),
     application:stop(vmq_server),
-    [ application:stop(App) || App <- proplists:get_value(started_apps, _Config, []) ],
-   _Config.
+    [ application:stop(App) || App <- proplists:get_value(started_apps, Config, []) ],
+    Config.
+
+init_per_group(http, Config) ->
+    webhooks_handler:start_endpoint_clear(?HTTP_PORT),
+    Config;
+init_per_group(https, Config) ->
+    %% each HTTPS test starts its own webhook handler because they need different options
+    Config.
+
+end_per_group(http, Config) ->
+    webhooks_handler:stop_endpoint_clear(),
+    Config;
+end_per_group(https, Config) ->
+    Config.
 
 init_per_testcase(_Case, Config) ->
     vmq_webhooks_cache:purge_all(),
@@ -37,6 +57,18 @@ end_per_testcase(_, Config) ->
     Config.
 
 all() ->
+    [
+     {group, http},
+     {group, https}
+    ].
+
+groups() ->
+    [
+     {http, http()},
+     {https, https()}
+    ].
+
+http() ->
     [
      auth_on_register_m5_test,
      auth_on_publish_m5_test,
@@ -50,6 +82,7 @@ all() ->
      on_deliver_m5_test,
      on_deliver_m5_modify_props_test,
      on_auth_m5_test,
+
 
      auth_on_register_test,
      auth_on_publish_test,
@@ -74,12 +107,19 @@ all() ->
      cli_allow_query_parameters_test
     ].
 
+https() ->
+    [
+     https_ca_test,
+     https_wrong_ca_test,
+     https_client_cert_test,
+     https_missing_client_cert_fail_test,
+     https_expired_server_cert_test,
+     https_fails_with_no_crl_test,
+     https_bad_server_cn_test
+    ].
 
-start_endpoint() ->
-    webhooks_handler:start_endpoint().
-
-stop_endpoint() ->
-    webhooks_handler:stop_endpoint().
+start_endpoint_clear() ->
+    webhooks_handler:start_endpoint_clear(?HTTP_PORT).
 
 %% Test cases
 cache_expired_entry(_) ->
@@ -500,9 +540,105 @@ cli_allow_query_parameters_test(_) ->
     ok = register_hook(auth_on_register, EndpointWithParams),
     [] = deregister_hook(auth_on_register, EndpointWithParams).
 
+%% HTTPS Tests
+
+%% Given a CA that signed the endpoint's server certificate, the webhook works
+https_ca_test(Config) ->
+    should_succeed(Config, #{}, #{cafile => cert_path(Config, "all-ca.crt")}).
+
+%% Given a CA that dit not sign the endpoint's server certificate, the webhook fails
+https_wrong_ca_test(Config) ->
+    should_fail(Config, #{}, #{cafile => cert_path(Config, "test-fake-root-ca.crt")}).
+
+%% Given a server (endpoint) certificate that has expired, the webhook fails
+https_expired_server_cert_test(Config) ->
+    should_fail(Config,
+                #{certfile => cert_path(Config, "server-expired.crt")},
+                #{cafile => cert_path(Config, "all-ca.crt")}).
+
+%% Given a valid server (endpoint) certificate with a CN that does not match its hostname, the webhook fails
+https_bad_server_cn_test(Config) ->
+    should_fail(Config,
+                #{certfile => cert_path(Config, "bad-cn-server.crt"),
+                  keyfile => cert_path(Config, "bad-cn-server.key")},
+                #{cafile => cert_path(Config, "all-ca.crt")}).
+
+%% Authenticating to an endpoint with a client TLS certificate and the webhook works
+https_client_cert_test(Config) ->
+    ServerOpts = #{verify => verify_peer, fail_if_no_peer_cert => true},
+    ClientOpts = #{cafile => cert_path(Config, "all-ca.crt"),
+                   keyfile => cert_path(Config, "client.key"),
+                   certfile => cert_path(Config, "client.crt")},
+    should_succeed(Config, ServerOpts, ClientOpts).
+
+%% Failing to provide a client certificate when required by the endpoint makes the webhook fail
+https_missing_client_cert_fail_test(Config) ->
+    should_fail(Config, #{verify => verify_peer, fail_if_no_peer_cert => true}, #{}).
+
+%% An endpoint without a CRL available fails when requiring CRL checks
+https_fails_with_no_crl_test(Config) ->
+    should_fail(Config, #{}, #{use_crls => true}).
+
+should_fail(Config, ServerOpts, ClientOpts) ->
+    {didnt_receive_response, on_deliver_ok} = base_https_test(Config, ServerOpts, ClientOpts).
+
+should_succeed(Config, ServerOpts, ClientOpts) ->
+    ok = base_https_test(Config, ServerOpts, ClientOpts).
+
+base_https_test(Config, ServerOpts, ClientSSLEnv) ->
+    Opts = maps:merge(default_https_server_opts(Config), ServerOpts),
+    ok = start_endpoint_tls(Opts),
+    set_ssl_app_env(ClientSSLEnv),
+    register_hook(on_deliver, ?HTTPS_ENDPOINT),
+    Self = pid_to_bin(self()),
+    _ = vmq_plugin:all_till_ok(on_deliver,
+                                [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+    ExpResponse = exp_response(on_deliver_ok),
+    clear_ssl_app_env(),
+    deregister_hook(on_deliver, ?HTTPS_ENDPOINT),
+    webhooks_handler:stop_endpoint_tls(),
+    ExpResponse.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% helper functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% If a test fails, we don't want subsequent tests
+%% failing because the handler is already started.
+start_endpoint_tls(Opts) ->
+    webhooks_handler:stop_endpoint_tls(),
+    webhooks_handler:start_endpoint_tls(Opts).
+
+https_port(Config) -> ?config(https_port, Config).
+
+%% takes a default options map and adds those not set
+default_https_server_opts(Config) ->
+    default_https_server_opts(Config, #{}).
+
+default_https_server_opts(Config, Opts) ->
+    Defaults = #{port => ?HTTPS_PORT,
+                 keyfile => cert_path(Config, "server.key"),
+                 certfile => cert_path(Config, "server.crt"),
+                 cacertfile => cert_path(Config, "all-ca.crt")},
+    maps:merge(Defaults, Opts).
+
+set_ssl_app_env(Opts) ->
+    Defaults = #{use_crls => false,
+                 tls_version => 'tlsv1.2',
+                 depth => 100},
+    SSLEnv = maps:merge(Defaults, Opts),
+    maps:map(fun (K,V) -> application:set_env(vmq_webhooks, K, V) end, SSLEnv).
+
+clear_ssl_app_env() ->
+    Keys = [cafile, certfile, keyfile, password, depth, tls_version],
+    [application:unset_env(vmq_webhooks, Key)|| Key <- Keys].
+
+cert_path(Config, Filename) ->
+    CertsDir = ?config(certs_dir, Config),
+    FullCertPath = filename:join([CertsDir, "ssl", Filename]),
+    true = vmq_schema_util:file_is_pem_content(FullCertPath),
+    FullCertPath.
+
 register_hook(Hook, Endpoint) ->
     ok = clique:run(["vmq-admin", "webhooks", "register",
                      "hook=" ++ atom_to_list(Hook), "endpoint=" ++ Endpoint, "--base64payload=false"]).
@@ -524,7 +660,7 @@ exp_response(Exp) ->
             {didnt_receive_response, Exp}
     end.
 
-exp_nothing(Timeout) ->    
+exp_nothing(Timeout) ->
     receive
         Got ->
             {received, Got, expected, nothing}
@@ -532,5 +668,3 @@ exp_nothing(Timeout) ->
         Timeout ->
             ok
     end.
-                              
-                             

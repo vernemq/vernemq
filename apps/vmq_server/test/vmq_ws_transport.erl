@@ -21,9 +21,16 @@
 
 connect(Host, Port, Opts, Timeout) ->
     WSProtocols = proplists:get_value(ws_protocols, Opts, ["mqtt"]),
+    ProxyInfo = proplists:get_value(proxy_info, Opts),
     Opts1 = proplists:delete(ws_protocols, Opts),
-    case gen_tcp:connect(Host, Port, Opts1, Timeout) of
+    Opts2 = proplists:delete(proxy_info, Opts1),
+    case gen_tcp:connect(Host, Port, Opts2, Timeout) of
         {ok, Socket} ->
+            case ProxyInfo of
+                undefined -> ignore;
+                ProxyInfo -> Header = ranch_proxy_header:header(ProxyInfo),
+                             gen_tcp:send(Socket, Header)
+            end,
             WSProtocolsStr = string:join(WSProtocols, ","),
             Hello = [
                      "GET /mqtt HTTP/1.1\r\n"

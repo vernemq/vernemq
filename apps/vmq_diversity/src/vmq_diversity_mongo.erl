@@ -90,6 +90,10 @@ ensure_pool(As, St) ->
                                  maps:get(<<"password">>,
                                           Options,
                                           proplists:get_value(password, DefaultConf))),
+                    AuthSource = vmq_diversity_utils:ustr(
+                                   maps:get(<<"auth_source">>,
+                                            Options,
+                                            proplists:get_value(auth_source, DefaultConf))),
                     Host = vmq_diversity_utils:str(
                              maps:get(<<"host">>,
                                       Options,
@@ -98,6 +102,12 @@ ensure_pool(As, St) ->
                              maps:get(<<"port">>,
                                       Options,
                                       proplists:get_value(port, DefaultConf))),
+                    Srv = case maps:get(<<"srv">>,
+                                        Options,
+                                        proplists:get_value(srv, DefaultConf)) of
+                            undefined -> undefined;
+                            SrvVal -> vmq_diversity_utils:str(SrvVal)
+                          end,
                     Database = vmq_diversity_utils:ustr(
                                  maps:get(<<"database">>,
                                           Options,
@@ -132,11 +142,14 @@ ensure_pool(As, St) ->
                            false ->
                                 []
                         end,
-                    NewOptions =
-                    [{login, mbin(Login)}, {password, mbin(Password)},
-                     {host, Host}, {port, Port}, {database, mbin(Database)},
-                     {w_mode, WMode}, {r_mode, RMode},
-                     {ssl, Ssl}, {ssl_opts, SslOpts}],
+                    HostPortOrSrv = case Srv of
+                        undefined -> [{host, Host}, {port, Port}];
+                        _ -> [{srv, Srv}]
+                    end,
+                    NewOptions = HostPortOrSrv ++
+                    [{login, mbin(Login)}, {password, mbin(Password)}, {database, mbin(Database)},
+                     {auth_source, mbin(AuthSource)}, {w_mode, WMode}, {r_mode, RMode}, {ssl, Ssl},
+                     {ssl_opts, SslOpts}],
                     vmq_diversity_sup:start_pool(mongodb,
                                                  [{id, PoolId},
                                                   {size, Size},
