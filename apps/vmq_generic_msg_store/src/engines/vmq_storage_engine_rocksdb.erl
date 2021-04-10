@@ -1,4 +1,4 @@
-%% Copyright 2020 Octavo Labs AG Zurich Switzerland (http://octavolabs.com)
+%% Copyright 2020-21 Octavo Labs AG Zurich Switzerland (http://octavolabs.com)
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -289,9 +289,6 @@ close(#state{ref=EngineRef}) ->
 init_state(DataRoot, Config) ->
     %% Get the data root directory
     filelib:ensure_dir(filename:join(DataRoot, "msg_store_dummy")),
-
-    %% Merge the proplist passed in from Config with any values specified by the
-    %% eleveldb app level; precedence is given to the Config.
     FinalConfig = orddict:merge(fun(_K, VLocal, _VGlobal) -> VLocal end,
                                  orddict:from_list(Config), % Local
                                  orddict:from_list(application:get_all_env(rocksdb))), % Global
@@ -400,8 +397,6 @@ validate_options(Type, Opts) ->
 validate_type({_Key, bool}, true)                                  -> true;
 validate_type({_Key, bool}, false)                                 -> true;
 validate_type({_Key, integer}, Value) when is_integer(Value)       -> true;
-validate_type({_Key, non_neg_integer}, Value) when is_integer(Value), Value >= 0 -> true;
-validate_type({_Key, pos_integer}, Value) when is_integer(Value), Value > 0 -> true;
 validate_type({_Key, any}, _Value)                                 -> true;
 validate_type(_, _)                                                -> false.
 

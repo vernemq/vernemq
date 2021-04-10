@@ -1,10 +1,35 @@
 # Changelog
 
+- Fix bug causing the `pool_size` option for databases to not be respected.
+- Update Hackney HTTP client to version 1.17.0
+- Allow configuration for TCP listener buffer sizes in vmq_cluster_com module
+- Autotune TCP 'buffer' for outgoing TCP connections in vmq_cluster_node module
+- Fix command line tool to allow managing anonymous client sessions (Issue #1673)
+- Allow custom option for HTTPS endpoints (WebHooks)
+- Adds PEM validation of certificate files in server and webhooks schemas
+- Adds a new CI profile to the rebar3
+- Bumps MongoDB driver to latest
+- Adds support for MongoDB DNS SRV lookup in `vmq_diversity`
+- Adds authentication to MongoDB Lua test script in `vmq_diversity`
+- Adds Docker Compose file for local testing
+- Update `vmq_diversity` to newest Luerl version
+- Bumps `rebar3` executable
+- Update Hackney HTTP client to version 1.17.4
+- Upgrade Cowboy dependency to 2.8.0
+- Adds support for `auth_source` in MongoDB connections in `vmq_diversity`
+- Enforce UTF8 strings in topics
+- Use safe mode for binary_to_term in SWC
+- Fix Proxy protocol handling for WebSocket listener.
+
+## VerneMQ 1.11.0
+
+- Improve Proxy protocol error logging (warn instead of crash process).
+- Add retain command to vmq-admin usage output
+- Bridge Plugin: Continue to publish during netsplit (that is, during cluster not_ready)
+- Bridge Plugin: Make internal publish use the configured per-topic QoS
 - Upgrade package `bcrypt` to fix compilation in OSX (#1500).
 - Fix issue with loading status dashboard from behind a proxy with a basepath set
-
-## VerneMQ 1.10.5
-
+- Fix bug where the server would not parse multiple WebSocket protocols correctly.
 - New feature: Allow configuration of allowed ECC named curves in configuration file. (thanks to @varnerac)
 - New feature: Add `on_topic_unsubscribe` hook (PR #1539, Issue #1326). (thanks to @khodzha)
 - Update to jquery 3.5.1 and bootstrap 4.1.2 in status page.

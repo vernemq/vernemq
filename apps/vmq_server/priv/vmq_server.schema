@@ -396,6 +396,34 @@
   {validators, ["buffer_size_validator"]}
  ]}.
 
+{mapping, "listener.vmq.$name.buffer_sizes", "vmq_server.listeners",
+ [{datatype, string},
+  hidden,
+  {validators, ["buffer_size_validator"]}
+ ]}.
+
+ %% @doc Set the watermark levels for the `vmq_cluster_mon` listener
+ %% That is, the listener receiving the MQTT messages from other nodes.
+{mapping, "listener.vmq.$name.high_watermark", "vmq_server.listeners", [
+                                                                  {default, 8192},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
+{mapping, "listener.vmq.$name.low_watermark", "vmq_server.listeners", [
+                                                                  {default, 4096},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
+{mapping, "listener.vmq.$name.high_msgq_watermark", "vmq_server.listeners", [
+                                                                  {default, 8192},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
+{mapping, "listener.vmq.$name.low_msgq_watermark", "vmq_server.listeners", [
+                                                                  {default, 4096},
+                                                                  {datatype, integer},
+                                                                  hidden
+                                                                ]}.
 
 {validator, "buffer_size_validator", "value must be three comma-separated, positive integers",
  fun(Val) when is_list(Val) ->
@@ -1075,45 +1103,45 @@
 {mapping, "listener.ssl.certfile", "vmq_server.listeners", [
                                                             {default, ""},
                                                             {datatype, file},
-                                                            {validators, ["file-exists", "file-is-readable"]},
+                                                            {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                             {commented, "{{platform_etc_dir}}/cert.pem"}
                                                            ]}.
 {mapping, "listener.ssl.$name.certfile", "vmq_server.listeners", [
                                                                   {datatype, file},
-                                                                  {validators, ["file-exists", "file-is-readable"]},
+                                                                  {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                                   hidden
                                                                  ]}.
 {mapping, "listener.wss.certfile", "vmq_server.listeners", [
                                                             {default, ""},
                                                             {datatype, file},
-                                                            {validators, ["file-exists", "file-is-readable"]},
+                                                            {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                             hidden
                                                            ]}.
 {mapping, "listener.wss.$name.certfile", "vmq_server.listeners", [
                                                                   {datatype, file},
-                                                                  {validators, ["file-exists", "file-is-readable"]},
+                                                                  {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                                   hidden
                                                                  ]}.
 {mapping, "listener.vmqs.certfile", "vmq_server.listeners", [
                                                              {default, ""},
                                                              {datatype, file},
-                                                             {validators, ["file-exists", "file-is-readable"]},
+                                                             {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                              hidden
                                                             ]}.
 {mapping, "listener.vmqs.$name.certfile", "vmq_server.listeners", [
                                                                    {datatype, file},
-                                                                   {validators, ["file-exists", "file-is-readable"]},
+                                                                   {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                                    hidden
                                                                   ]}.
 {mapping, "listener.https.certfile", "vmq_server.listeners", [
                                                               {default, ""},
                                                               {datatype, file},
-                                                              {validators, ["file-exists", "file-is-readable"]},
+                                                              {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                               {commented, "{{platform_etc_dir}}/cert.pem"}
                                                              ]}.
 {mapping, "listener.https.$name.certfile", "vmq_server.listeners", [
                                                                     {datatype, file},
-                                                                    {validators, ["file-exists", "file-is-readable"]},
+                                                                    {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                                     hidden
                                                                  ]}.
 %% @doc Set the path to the PEM encoded key file on the protocol
@@ -1129,45 +1157,45 @@
 {mapping, "listener.ssl.keyfile", "vmq_server.listeners", [
                                                            {default, ""},
                                                            {datatype, file},
-                                                           {validators, ["file-exists", "file-is-readable"]},
+                                                           {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                            {commented, "{{platform_etc_dir}}/key.pem"}
                                                           ]}.
 {mapping, "listener.ssl.$name.keyfile", "vmq_server.listeners", [
                                                                  {datatype, file},
-                                                                 {validators, ["file-exists", "file-is-readable"]},
+                                                                 {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                                  hidden
                                                                 ]}.
 {mapping, "listener.wss.keyfile", "vmq_server.listeners", [
                                                            {default, ""},
                                                            {datatype, file},
-                                                           {validators, ["file-exists", "file-is-readable"]},
+                                                           {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                            hidden
                                                           ]}.
 {mapping, "listener.wss.$name.keyfile", "vmq_server.listeners", [
                                                                  {datatype, file},
-                                                                 {validators, ["file-exists", "file-is-readable"]},
+                                                                 {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                                  hidden
                                                                 ]}.
 {mapping, "listener.vmqs.keyfile", "vmq_server.listeners", [
                                                             {default, ""},
                                                             {datatype, file},
-                                                            {validators, ["file-exists", "file-is-readable"]},
+                                                            {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                             {commented, "{{platform_etc_dir}}/key.pem"}
                                                            ]}.
 {mapping, "listener.vmqs.$name.keyfile", "vmq_server.listeners", [
                                                                   {datatype, file},
-                                                                  {validators, ["file-exists", "file-is-readable"]},
+                                                                  {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                                   hidden
                                                                 ]}.
 {mapping, "listener.https.keyfile", "vmq_server.listeners", [
                                                              {default, ""},
                                                              {datatype, file},
-                                                             {validators, ["file-exists", "file-is-readable"]},
+                                                             {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                              {commented, "{{platform_etc_dir}}/key.pem"}
                                                             ]}.
 {mapping, "listener.https.$name.keyfile", "vmq_server.listeners", [
                                                                    {datatype, file},
-                                                                   {validators, ["file-exists", "file-is-readable"]},
+                                                                   {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                                    hidden
                                                                   ]}.
 %% @doc Set the list of allowed ciphers (each separated with a colon,
@@ -1794,4 +1822,11 @@
          %% not error out because of that.
          true;
     (Name) -> vmq_schema_util:file_is_readable(Name)
+ end}.
+{validator, "file-is-pem", "file is not PEM-encoded with one or more entries",
+ fun("") ->
+         %% "" is used as the default value in most places, we should
+         %% not error out because of that.
+         true;
+    (Name) -> vmq_schema_util:file_is_pem_content(Name)
  end}.

@@ -74,6 +74,9 @@ init(Ref, Parent, Transport, Opts) ->
             %% If the client already disconnected we don't want to
             %% know about it - it's not an error.
             ok;
+        {error, {proxy_protocol_error, Error}} ->
+            lager:warning("Proxy Protocol Error: ~p~n", [Error]),
+            ok;
         {error, Reason} ->
             lager:debug("could not get socket peername: ~p", [Reason]),
             %% It's not really "ok", but there's no reason for the
@@ -89,6 +92,8 @@ peer_info(Socket, Transport, Opts) ->
     case lists:keyfind(proxy_header, 1, Opts) of
         {proxy_header, true} ->
             case Transport:recv_proxy_header(Socket, 10000) of
+                {ok, #{command := local,version := _}} -> % request is not proxied, but direct. (like from a loadbalancer healthcheck)
+                    peer_info_no_proxy(undefined, Socket, Transport, Opts);
                 {ok, #{src_address := SrcAddr,
                        src_port := SrcPort} = ProxyInfo} ->
                     Peer = {SrcAddr, SrcPort},
@@ -99,8 +104,7 @@ peer_info(Socket, Transport, Opts) ->
                         _ ->
                             peer_info_no_proxy(Peer, Socket, Transport, Opts)
                     end;
-                {ok, #{command := local,version := _}} -> % request is not proxied, but direct. (like from a loadbalancer healthcheck)
-                    peer_info_no_proxy(undefined, Socket, Transport, Opts);
+                {error, 'protocol_error', Error} -> {error, {proxy_protocol_error, Error}};
                 {error, Error} ->
                     {error, Error}
             end;

@@ -49,11 +49,11 @@ file_dump_({idx, MsgRef, MP, ClientId, IdxVal}, Fd) ->
                                  [MP, erlang:phash2(MsgRef), ClientId, MegaS,
                                   Sec, MicroS, Dup, QoS])),
     Fd.
-
-full_table_scan(FoldFun, Acc) ->
-    full_table_scan_(vmq_generic_msg_store_sup:get_bucket_pids(), {FoldFun, Acc});
 full_table_scan(FoldFun, ok) ->
-    full_table_scan_(vmq_generic_msg_store_sup:get_bucket_pids(), {FoldFun, []}). % hack for RocksDB tests. Review
+    full_table_scan_(vmq_generic_msg_store_sup:get_bucket_pids(), {FoldFun, []}); % hack for RocksDB tests. Review
+full_table_scan(FoldFun, Acc) ->
+    full_table_scan_(vmq_generic_msg_store_sup:get_bucket_pids(), {FoldFun, Acc}).
+
 
 full_table_scan_([Bucket|Rest], Acc) ->
     {Engine, EngineState} = vmq_generic_msg_store:get_engine(Bucket),
@@ -66,13 +66,13 @@ full_table_scan__(Key, Value, {FoldFun, FoldAcc} = Acc) ->
     NewFoldAcc =
     case sext:decode(Key) of
         {msg, MsgRef, {MP, ''}} ->
-            {RoutingKey, Payload} = binary_to_term(Value),
+            {RoutingKey, Payload} = binary_to_term(Value, [safe]),
             FoldFun({msg, MsgRef, MP, RoutingKey, Payload}, FoldAcc);
         {msg, MsgRef, {MP, ClientId}} ->
             <<>> = Value,
             FoldFun({ref, MsgRef, MP, ClientId}, FoldAcc);
         {idx, {MP, ClientId}, MsgRef} ->
-            IdxVal = binary_to_term(Value),
+            IdxVal = binary_to_term(Value, [safe]),
             FoldFun({idx, MsgRef, MP, ClientId, IdxVal}, FoldAcc);
         E ->
             io:format("unknown sext encoded key ~p~n", [E]),

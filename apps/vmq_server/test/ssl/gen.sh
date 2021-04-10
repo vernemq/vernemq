@@ -41,25 +41,30 @@ openssl ca -config openssl.cnf -name CA_root -extensions v3_ca -out test-alt-ca.
 # Valid server key and certificate.
 openssl genrsa -out server.key 2048
 openssl req -new -key server.key -out server.csr -config openssl.cnf -subj "${SBASESUBJ}/CN=localhost/"
-openssl ca -config openssl.cnf -name CA_signing -out server.crt -infiles server.csr 
+openssl ca -config openssl.cnf -name CA_signing -out server.crt -infiles server.csr
+
+# Valid server key and certificate with wrong CN.
+openssl genrsa -out bad-cn-server.key 2048
+openssl req -new -key bad-cn-server.key -out bad-cn-server.csr -config openssl.cnf -subj "${SBASESUBJ}/CN=notlocalhost/"
+openssl ca -config openssl.cnf -name CA_signing -out bad-cn-server.crt -infiles bad-cn-server.csr
 
 # Expired server certificate, based on the above server key.
 openssl req -new -days 1 -key server.key -out server-expired.csr -config openssl.cnf -subj "${SBASESUBJ}/CN=localhost/"
-openssl ca -config openssl.cnf -name CA_signing -days 1 -startdate 120820000000Z -enddate 120821000000Z -out server-expired.crt -infiles server-expired.csr 
+openssl ca -config openssl.cnf -name CA_signing -days 1 -startdate 120820000000Z -enddate 120821000000Z -out server-expired.crt -infiles server-expired.csr
 
 # Valid client key and certificate.
 openssl genrsa -out client.key 2048
 openssl req -new -key client.key -out client.csr -config openssl.cnf -subj "${SBASESUBJ}/CN=test client/"
-openssl ca -config openssl.cnf -name CA_signing -out client.crt -infiles client.csr 
+openssl ca -config openssl.cnf -name CA_signing -out client.crt -infiles client.csr
 
 # Expired client certificate, based on the above client key.
 openssl req -new -days 1 -key client.key -out client-expired.csr -config openssl.cnf -subj "${SBASESUBJ}/CN=test client expired/"
-openssl ca -config openssl.cnf -name CA_signing -days 1 -startdate 120820000000Z -enddate 120821000000Z -out client-expired.crt -infiles client-expired.csr 
+openssl ca -config openssl.cnf -name CA_signing -days 1 -startdate 120820000000Z -enddate 120821000000Z -out client-expired.crt -infiles client-expired.csr
 
 # Revoked client certificate, based on a new client key.
 openssl genrsa -out client-revoked.key 2048
 openssl req -new -days 1 -key client-revoked.key -out client-revoked.csr -config openssl.cnf -subj "${SBASESUBJ}/CN=test client revoked/"
-openssl ca -config openssl.cnf -name CA_signing -out client-revoked.crt -infiles client-revoked.csr 
+openssl ca -config openssl.cnf -name CA_signing -out client-revoked.crt -infiles client-revoked.csr
 openssl ca -config openssl.cnf -name CA_signing -revoke client-revoked.crt
 openssl ca -config openssl.cnf -name CA_signing -gencrl -out crl.pem
 
