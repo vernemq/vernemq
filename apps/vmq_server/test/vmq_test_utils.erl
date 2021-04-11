@@ -19,7 +19,7 @@ setup() ->
     application:load(vmq_swc),
     application:set_env(vmq_swc, db_backend, leveldb),
     application:set_env(vmq_swc, data_dir, Datadir),
-    application:set_env(vmq_swc, metadata_root, Datadir ++ "/meta/"),
+    application:set_env(vmq_swc, metadata_root, Datadir),
     application:load(vmq_server),
     PrivDir = code:priv_dir(vmq_server),
     application:set_env(vmq_server, listeners, [{vmq, [{{{0,0,0,0}, random_port()}, []}]}]),
@@ -28,11 +28,11 @@ setup() ->
     application:set_env(vmq_plugin, default_schema_dir, [PrivDir]),
     application:set_env(vmq_server, metadata_impl, vmq_swc),
     application:load(vmq_generic_msg_store),
-    application:set_env(vmq_generic_msg_store, msg_store_opts, [
-                                                     {store_dir, Datadir ++ "/msgstore"},
-                                                     {open_retries, 30},
-                                                     {open_retry_delay, 2000}
-                                                    ]),
+    % application:set_env(vmq_generic_msg_store, msg_store_opts, [
+    %                                                  {store_dir, Datadir ++ "/msgstore"},
+    %                                                  {open_retries, 30},
+    %                                                  {open_retry_delay, 2000}
+    %                                                 ]),
     application:set_env(vmq_generic_msg_store, msg_store_engine, vmq_storage_engine_leveldb),
     LogDir = "log." ++ atom_to_list(node()),
     application:load(lager),

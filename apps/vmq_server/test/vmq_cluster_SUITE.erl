@@ -165,9 +165,7 @@ multiple_connect_unclean_test(Config) ->
     ct:pal("RandomNode : ~p Random Port: ~p ", [RandomNode, RandomPort]),
     Cookie = erlang:get_cookie(),
     ct:pal("Cookie: ~p~n", [Cookie]),
-    Sum1 = rpc:call(RandomNode, vmq_queue_sup_sup, summary,
-    []),
-
+    Sum1 = rpc:call(RandomNode, vmq_queue_sup_sup, summary, []),
     ct:pal("subs in beginning ~p~n", [Sum1]),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port,
                                                                 RandomPort}]),
@@ -177,13 +175,12 @@ multiple_connect_unclean_test(Config) ->
     gen_tcp:close(Socket),
     ok = wait_until_converged(Nodes,
                          fun(N) ->
-%ct:pal("N logged ~p~n", [N]),
                                  S = rpc:call(N, vmq_reg, total_subscriptions, []),
-                                 ct:pal("Subscription Total ~p at Node ~p~n", [S, N]),
+                                 % ct:pal("Subscription Total ~p at Node ~p~n", [S, N]),
                                  S
                          end, [{total, 1}]),
     [PublishNode|_] = Nodes,
-    ct:pal("Publish Node ~p Nodes: ~p~n", [PublishNode, Nodes]),
+   % ct:pal("Publish Node ~p Nodes: ~p~n", [PublishNode, Nodes]),
     Payloads = publish_random([PublishNode], 20, Topic),    
    % ct:pal("subs after first disconnect ~p~n", [vmq_queue_sup_sup:summary()]),
 
@@ -262,6 +259,7 @@ racing_connect_test(Config) ->
          spawn_link(
            fun() ->
                    {_RandomNode, RandomPort} = random_node(Nodes),
+                   timer:sleep(100),
                    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port,
                                                                                RandomPort}]),
                    inet:setopts(Socket, [{active, true}]),
@@ -275,7 +273,7 @@ racing_connect_test(Config) ->
                            exit({unknown_message, M})
                    end
            end)
-     end || I <- lists:seq(1, 9)],
+     end || I <- lists:seq(1, 15)],
 
     LastManStanding = fun(F) ->
                               case [Pid || Pid <- Pids, is_process_alive(Pid)] of
@@ -297,7 +295,7 @@ racing_connect_test(Config) ->
         {'DOWN', LastManRef, process, _, normal} ->
             ok
     after
-        3000 ->
+        5000 ->
             throw("no DOWN msg received from LastMan")
     end,
     Config.
@@ -682,12 +680,25 @@ restarted_node_has_no_stale_sessions(Config) ->
     %% Make sure subscriptions have propagated to all nodes
     ok = wait_until_converged(Nodes,
                               fun(N) ->
-                                      rpc:call(N, vmq_reg, total_subscriptions, [])
+                                rpc:call(N, vmq_reg, total_subscriptions, [])
                               end, [{total, 3}]),
 
-    %% Restart the node.
-    {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_stop, []),
-    {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_start, []),
+  %% Restart the node.
+  _ = ct_slave:stop(RestartNodeName),
+  RestartNodeName = vmq_cluster_test_utils:start_node(nodename(RestartNodeName), Config,
+                                                      restarted_node_has_no_stale_sessions),
+  {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, listener_start, [RestartNodePort, []]),
+
+    % ok = wait_until_converged(Nodes,
+    %     fun(N) ->
+    %       S = rpc:call(N, vmq_reg, total_subscriptions, []),
+    %       ct:pal("Subscription Total ~p at Node ~p~n", [S, N]),
+    %       S
+
+    %         %    rpc:call(N, vmq_reg, total_subscriptions, [])
+    %     end, [{total, 3}]),
+    ct:sleep(6000),
+
     Sessions = rpc:call(RestartNodeName, vmq_ql_query_mgr, fold_query,
                         [fun(V, Acc) -> [V|Acc] end, [], "SELECT client_id, topic FROM sessions"]),
 
