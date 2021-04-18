@@ -992,7 +992,6 @@ cleanup_queue_(_, {empty, _}) -> ok.
 
 %%-spec release_backup_message(subscriber_id(), msg(), queue()) -> queue().
 release_backup_message(SId, Msg, Backup) ->
-    lager:debug("MVO:queue:release_backup_message ..."),
     release_backup_message_(SId, Msg, queue:out(Backup)).
 
 %% When the vmq_mqtt_fsm process has actually delivered the message to the subscriber
