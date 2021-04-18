@@ -124,8 +124,9 @@ init([Parent, RemoteNode]) ->
     erlang:send_after(1000, self(), reconnect),
     loop(#state{parent=Parent, node=RemoteNode, max_queue_size=MaxQueueSize}).
 
-loop(#state{waiting_for_ack=Waiting, reachable=Reachable} = State)
+loop(#state{pending=Pending, waiting_for_ack=Waiting, reachable=Reachable} = State)
   when
+      Pending == [];
       Waiting == true;
       Reachable == false ->
     receive
