@@ -259,6 +259,11 @@
   {default, "localhost"},
   {commented, "localhost"}]}.
 
+{mapping, "vmq_diversity.mongodb.srv", "vmq_diversity.db_config.mongodb.srv",
+ [{datatype, string},
+  {default, ""},
+  hidden]}.
+
 {mapping, "vmq_diversity.mongodb.port", "vmq_diversity.db_config.mongodb.port",
  [{datatype, integer},
   {default, 27017},
