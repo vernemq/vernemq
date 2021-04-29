@@ -106,6 +106,7 @@ ensure_pool(As, St) ->
                                         Options,
                                         proplists:get_value(srv, DefaultConf)) of
                             undefined -> undefined;
+                            <<"">> -> undefined;
                             SrvVal -> vmq_diversity_utils:str(SrvVal)
                           end,
                     Database = vmq_diversity_utils:ustr(
