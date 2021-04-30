@@ -89,7 +89,7 @@ wait_until_ready(Nodes) ->
     wait_until(fun() ->
                        NodeStates = [rpc:call(N, vmq_cluster, is_ready, []) || N <- Nodes],
                        lists:all(fun(Bool) -> Bool end, NodeStates)
-               end, 60*10, 100).
+               end, 60*100, 100).
 
 wait_until_offline(Node) ->
     wait_until(fun() ->
@@ -131,7 +131,7 @@ start_node(Name, Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_server, max_drain_time, 5000]),
             ok = rpc:call(Node, application, set_env, [vmq_server, max_msgs_per_drain_step, 40]),
             ok = rpc:call(Node, application, set_env, [vmq_server, mqtt_connect_timeout, 12000]),
-            ok = rpc:call(Node, application, set_env, [vmq_server, coordinate_registrations, false]),
+            ok = rpc:call(Node, application, set_env, [vmq_server, coordinate_registrations, true]),
             ok = rpc:call(Node, application, set_env, [vmq_server, allow_register_during_netsplit, true]),
             ok = rpc:call(Node, application, set_env, [lager,
                                                        log_root,
@@ -164,7 +164,7 @@ start_node(Name, Config, Case) ->
                                                        [VmqServerPrivDir]]),
             {ok, _} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),
-            {ok, _} = rpc:call(Node, application, ensure_all_started, [vmq_swc]),
+            %{ok, _} = rpc:call(Node, application, ensure_all_started, [vmq_swc]),
             ok = wait_until(fun() ->
                             case rpc:call(Node, vmq_plugin, only, [cluster_members, []]) of
                                 {error, no_matching_hook} ->
