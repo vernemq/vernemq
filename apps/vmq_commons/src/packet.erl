@@ -25,7 +25,7 @@
 expect_packet(Socket, Name, Expected) ->
     expect_packet(gen_tcp, Socket, Name, Expected).
 expect_packet(Transport, Socket, Name, Expected) ->
-    expect_packet(Transport, Socket, Name, Expected, 8000).
+    expect_packet(Transport, Socket, Name, Expected, 15000).
 expect_packet(Transport, Socket, _Name, Expected, Timeout) ->
     RLen =
     case byte_size(Expected) of
@@ -78,7 +78,6 @@ do_client_connect(ConnectPacket, ConnackPacket, Opts) ->
     ConnackError = proplists:get_value(connack_error, Opts, "connack"),
     ConnOpts = [binary, {reuseaddr, true},{active, false}, {packet, raw}|
                 proplists:get_value(conn_opts, Opts, [])],
-    io:format("Host: ~p Port ~p ConnOpts ~p Timeout ~p", [Host, Port, ConnOpts, Timeout]),
     case Transport:connect(Host, Port, ConnOpts, Timeout) of
         {ok, Socket} ->
             Transport:send(Socket, ConnectPacket),
