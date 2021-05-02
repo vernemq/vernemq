@@ -21,7 +21,8 @@
 -export([start_link/3,
          set_members/2,
          get_members/1,
-         get_actors/1]).
+         get_actors/1,
+         swc_ids/1]).
 
 %% gen_server callbacks
 -export([init/1,

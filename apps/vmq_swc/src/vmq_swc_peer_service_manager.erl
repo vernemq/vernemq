@@ -30,8 +30,8 @@ init() ->
     _ = try ets:new(?TBL, [named_table, public, set, {keypos, 1}]) of
             _Res ->
                 gen_actor(),
-                maybe_load_state_from_disk(),
                 maybe_load_old_actor_from_disk(),
+                maybe_load_state_from_disk(),
                 ok
         catch
             error:badarg ->
@@ -169,12 +169,13 @@ maybe_load_old_actor_from_disk() ->
                     {ok, Bin} = file:read_file(filename:join(Dir,
                                                              "old_node_actor")),
                     OldActor = binary_to_term(Bin),
+                    lager:debug("read old actor binary from disk: ~p ~n", [OldActor]),
                     ets:insert(?TBL, {old_actor, OldActor}),
-                    NewActor = ets:lookup(?TBL, actor),
-                    lager:info("read old actor from file ~p~n", [OldActor]),
-                    write_old_actor_to_disk(NewActor);
+                    ets:insert(?TBL, {actor, OldActor}),
+                    write_old_actor_to_disk(OldActor);
                 false -> % for first boot case
-                    NewActor = ets:lookup(?TBL, actor),
+                    [{actor, NewActor}] = ets:lookup(?TBL, actor),
+                    ets:insert(?TBL, {old_actor, NewActor}),
                     write_old_actor_to_disk(NewActor)
             end
     end.
@@ -204,9 +205,7 @@ maybe_load_state_from_disk() ->
                     {ok, Bin} = file:read_file(filename:join(Dir,
                                                              "cluster_state")),
                     {ok, State} = riak_dt_orswot:from_binary(Bin),
-                    Actor = ets:lookup(?TBL, actor),
-                    {ok, State1} = riak_dt_orswot:update({add, node()}, Actor, State), % we always want to save the Actor for SWC
-                    update_state(State1);
+                    update_state(State);
                 false ->
                     add_self()
             end

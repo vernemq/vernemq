@@ -273,7 +273,6 @@ racing_connect_test(Config) ->
          spawn_link(
            fun() ->
                    {_RandomNode, RandomPort} = random_node(Nodes),
-                   ct:sleep(random:uniform(15000)),
                    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port,
                                                                                RandomPort},  {mqtt_connect_timeout, 15000},
                                                                                             {reconnect_timeout, 15}]),
@@ -288,7 +287,7 @@ racing_connect_test(Config) ->
                            exit({unknown_message, M})
                    end
            end)
-     end || I <- lists:seq(1, 15)],
+     end || I <- lists:seq(1, 5)],
 
     LastManStanding = fun(F) ->
                               case [Pid || Pid <- Pids, is_process_alive(Pid)] of
