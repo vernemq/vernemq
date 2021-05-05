@@ -14,7 +14,7 @@
 
 -module(vmq_swc).
 
--export([start/0, start/1, stop/0]).
+-export([start/0, start/1, stop/0, stop/1]).
 -export([config/1,
          members/1,
 
@@ -31,6 +31,11 @@
 
 start() ->
     vmq_swc_plugin:plugin_start().
+
+stop(SwcGroup) when is_atom(SwcGroup) ->
+    SwcGroupStr = atom_to_list(SwcGroup),
+    StoreSup = list_to_atom("vmq_swc_store_sup_" ++ SwcGroupStr),
+    supervisor:terminate_child(vmq_swc_sup, StoreSup).
 
 start(SwcGroup) when is_atom(SwcGroup) ->
     _ = application:ensure_all_started(vmq_swc),

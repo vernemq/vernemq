@@ -20,7 +20,9 @@
 %% API
 -export([start_link/3,
          set_members/2,
-         get_members/1]).
+         get_members/1,
+         get_actors/1,
+         swc_ids/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -47,6 +49,9 @@ set_members(#swc_config{membership=Name}, GroupMembers) ->
 get_members(#swc_config{membership=Name}) ->
     gen_server:call(Name, get_members, infinity).
 
+get_actors(#swc_config{membership=Name}) ->
+    gen_server:call(Name, get_actors, infinity).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -69,15 +74,24 @@ init([#swc_config{transport=TMod} = Config,
                 strategy=Strategy}}.
 
 handle_call(get_members, _From, #state{members=Members} = State) ->
-    {reply, Members, State}.
+    {reply, Members, State};
+
+handle_call(get_actors, _From, #state{members=_Members} = State) ->
+    Actors = vmq_swc_peer_service_manager:get_actors(),
+    {reply, Actors, State}.
 
 handle_cast({set_members, NewMembers},  #state{config=Config, members=OldMembers} = State) ->
+    % NewActors = get_actors(Config),
     MembersToAdd = NewMembers -- OldMembers,
+    % MembersToAdd = NewActors -- OldMembers,
     MembersToDel = OldMembers -- NewMembers,
-    ok = connect_members(Config, MembersToAdd),
+    ok = connect_members(Config, MembersToAdd), % need the nodenames here
     ok = disconnect_members(Config, MembersToDel),
-    vmq_swc_store:set_group_members(Config, NewMembers),
+    vmq_swc_store:set_group_members(Config, swc_ids(NewMembers)), % need the swc_id here: {peer(), actor()}
     {noreply, State#state{members=NewMembers}}.
+
+swc_ids(Peers) ->
+    [{Peer, vmq_swc_peer_service_manager:get_actor_for_peer(Peer)} || Peer <- Peers].
 
 handle_info(register_peer_events, #state{config=Config, strategy=Strategy} = State) ->
     register_peer_events(Strategy, Config),
