@@ -20,6 +20,8 @@
 - Enforce UTF8 strings in topics
 - Use safe mode for binary_to_term in SWC
 - Fix Proxy protocol handling for WebSocket listener.
+- Updates in `vmq_swc` plugin to allow for unique SWC node ids, leading to fixes in synchronisation after
+  a node leaves and re-joins a cluster.
 
 ## VerneMQ 1.11.0
 
