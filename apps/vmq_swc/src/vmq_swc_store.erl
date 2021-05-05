@@ -46,8 +46,11 @@
 
          do_gc/2,
          set_group_members/2,
-
-         rpc_broadcast/3
+         node_clock_by_storename/1, % testing
+         watermark_by_storename/1,   % testing
+         rpc_broadcast/3,
+         fix_watermark/2, % testing
+         set_nodeclock/2 % testing
         ]).
 
 -export([init/1,
@@ -61,14 +64,18 @@
 -export([set_broadcast/2]).
 
 -record(state,
-        {id                :: peer(),
+        {
+         %id                :: peer(),
+         id                :: swc_id(),
+         old_id            :: swc_id(),
          mode,
          group,
          config            :: config(),
          dotkeymap         :: dotkeymap(),
-         nodeclock         :: nodeclock(), %% node clock
-         watermark         :: watermark(), %% watermark
-         peers             :: list(peer()),
+         nodeclock         :: nodeclock(),
+         watermark         :: watermark(),
+         %peers             :: list(peer()),
+         peers             :: list(swc_id()),
          sync_lock,
          auto_gc           :: boolean(),
          periodic_gc       :: boolean(),
@@ -140,7 +147,7 @@ lock(#swc_config{store=StoreName}) ->
     gen_server:call(StoreName, {lock, self()}, infinity).
 
 -spec remote_sync_missing(config(), peer(), [dot()]) -> [{db_key(), object()}].
-remote_sync_missing(#swc_config{group=SwcGroup, transport=TMod, peer=OriginPeer}, RemotePeer, Dots) ->
+remote_sync_missing(#swc_config{group=SwcGroup, transport=TMod, peer={OriginPeer, _Actor}}, RemotePeer, Dots) ->
     TMod:rpc(SwcGroup, RemotePeer, ?MODULE, rpc_sync_missing, [OriginPeer, Dots]).
 
 -spec rpc_sync_missing(peer(), [dot()], config()) -> [{db_key(), object()}].
@@ -148,12 +155,18 @@ rpc_sync_missing(OriginPeer, Dots, #swc_config{store=StoreName}) ->
     gen_server:call(StoreName, {sync_missing, OriginPeer, Dots}, infinity).
 
 -spec sync_repair(config(), [{db_key(), object()}], peer(), nodeclock(), false | {true, watermark()}) -> ok.
-sync_repair(#swc_config{store=StoreName, peer=Peer}, MissingObjects, RemotePeer, RemoteClock, LastBatch) ->
-    gen_server:call(StoreName, {sync_repair, Peer, RemotePeer, RemoteClock, MissingObjects, LastBatch}, infinity).
+sync_repair(#swc_config{store=StoreName, peer=LocalNodeId}, MissingObjects, RemotePeer, RemoteClock, LastBatch) ->
+    gen_server:call(StoreName, {sync_repair, LocalNodeId, RemotePeer, RemoteClock, MissingObjects, LastBatch}, infinity).
 
 -spec node_clock(config()) -> nodeclock().
 node_clock(#swc_config{store=StoreName}) ->
     gen_server:call(StoreName, get_node_clock, infinity).
+node_clock_by_storename(StoreName) ->
+    gen_server:call(StoreName, get_node_clock, infinity).
+watermark_by_storename(StoreName) ->
+    gen_server:call(StoreName, get_watermark, infinity).
+set_nodeclock(StoreName, NodeClock) ->
+    gen_server:call(StoreName, {set_node_clock, NodeClock}, infinity).
 
 -spec remote_node_clock(config(), peer()) -> nodeclock().
 remote_node_clock(#swc_config{group=SwcGroup, transport=TMod}, RemotePeer) ->
@@ -165,7 +178,8 @@ rpc_node_clock(#swc_config{} = Config) ->
 
 -spec watermark(config()) -> watermark().
 watermark(Config) ->
-    get_watermark(Config).
+   Watermark = get_watermark(Config),
+   Watermark.
 
 -spec remote_watermark(config(), peer()) -> watermark().
 remote_watermark(#swc_config{group=SwcGroup, transport=TMod}, RemotePeer) ->
@@ -204,7 +218,7 @@ set_group_members(#swc_config{store=StoreName}, Members) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 %%% GEN_SERVER Callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
-init([#swc_config{group=Group, peer=Peer, store=StoreName, r_o_w_cache=CacheName} = Config]) ->
+init([#swc_config{group=Group, peer=SWC_ID, store=StoreName, r_o_w_cache=CacheName} = Config]) ->
     process_flag(priority, high),
     StartSync = application:get_env(vmq_swc, sync_interval, {5000, 2500}),
     StartSync =/= 0 andalso erlang:send_after(1000, self(), sync),
@@ -226,8 +240,12 @@ init([#swc_config{group=Group, peer=Peer, store=StoreName, r_o_w_cache=CacheName
 
     ets:new(StoreName, [public, named_table, {read_concurrency, true}]),
     ets:new(CacheName, [public, named_table, {read_concurrency, true}]),
+   % Members = vmq_swc_peer_service_manager:get_actors(),
+   % {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
 
-    Members = vmq_swc_group_membership:get_members(Config),
+   % reset the entire watermark
+   % NewWatermark = swc_watermark:reset_counters(NewWatermark0),
+   % Members = vmq_swc_peer_service_manager:get_actors_and_peers(),
 
     vmq_swc_metrics:register_gauge({swc_object_count, Group},
                                    fun() -> {[{group, atom_to_list(Group)}],
@@ -244,8 +262,16 @@ init([#swc_config{group=Group, peer=Peer, store=StoreName, r_o_w_cache=CacheName
                                              <<"The number of words allocated to the SWC group dotkeymap.">>,
                                             vmq_swc_dkm:info(DKM, memory)}
                                    end),
-
-    State = set_peers(Members, #state{id=Peer,
+    % {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
+    Members = vmq_swc_group_membership:get_members(Config),
+    Members2 = vmq_swc_group_membership:swc_ids(Members),
+    OLD_SWC_ID =
+    case ets:lookup(swc_cluster_state, old_actor) of
+        [] -> {node(), <<"initial">>};
+        [{old_actor, OLD_SWC_Actor}] -> {node(), OLD_SWC_Actor}
+    end,
+    State = set_peers(Members2, #state{id=SWC_ID, 
+                                      old_id = OLD_SWC_ID,
                                       peers=[],
                                       group=Group,
                                       config=Config,
@@ -262,6 +288,8 @@ handle_call({batch, Batch}, _From, #state{config=Config,
                                           peers=Peers,
                                           id=Id,
                                           broadcast_enabled=IsBroadcastEnabled} = State0) ->
+    {Local, _} = Id,
+    Peers1 = proplists:get_keys(Peers),
     {ReplicateObjects, DbOps, #state{nodeclock=NodeClock} = State1} =
     lists:foldl(fun({{CallerPid, CallerRef}, {write, WriteOps}}, Acc0) ->
                         Acc1 =
@@ -274,13 +302,17 @@ handle_call({batch, Batch}, _From, #state{config=Config,
     UpdateNodeClock_DBOp = update_nodeclock_db_op(NodeClock),
     db_write(Config, [UpdateNodeClock_DBOp | lists:reverse(DbOps)]),
     r_o_w_cache_clear(Config),
+ %   io:format("Batch, Replicate Objects ~p~n", [ReplicateObjects]),
+ %   io:format("Batch, DBOpts ~p~n", [DbOps]),
+ %   io:format("Batch, NodeClock ~p~n", [NodeClock]),
+
     case IsBroadcastEnabled of
         true ->
             #swc_config{group=SwcGroup, transport=TMod} = Config,
             lists:foreach(
               fun(Peer) ->
-                      TMod:rpc_cast(SwcGroup, Peer, ?MODULE, rpc_broadcast, [Id, lists:reverse(ReplicateObjects)])
-              end, Peers);
+                      TMod:rpc_cast(SwcGroup, Peer, ?MODULE, rpc_broadcast, [Local, lists:reverse(ReplicateObjects)])
+              end, Peers1);
         _ ->
             ok
     end,
@@ -292,7 +324,9 @@ handle_call({subscribe, FullPrefix, ConvertFun, Pid}, _From, #state{subscription
     {reply, ok, State0#state{subscriptions=Subs1}};
 
 handle_call({lock, OwnerPid}, _From, #state{id=Id, sync_lock=SyncLock} = State0) ->
-    case node(OwnerPid) == Id of
+    {Peer, _Actor} = Id,
+ %   lager:info("Local ID in lock request: ~p~n", [Id]),
+    case node(OwnerPid) == Peer of
         true when SyncLock == undefined ->
             MRef = monitor(process, OwnerPid),
             Lock = {OwnerPid, MRef},
@@ -334,14 +368,21 @@ handle_call({sync_missing, _OriginPeer, Dots}, From, #state{config=Config} = Sta
 handle_call(get_node_clock, _From, #state{nodeclock=NodeClock} = State) ->
     {reply, NodeClock, State};
 
-handle_call({update_watermark, _OriginPeer, Node, NodeClock}, _From, #state{config=Config} = State0) ->
-    Watermark = update_watermark_internal(Node, NodeClock, State0),
+handle_call({set_node_clock, NodeClock}, _From, State) ->
+    {reply, ok, State#state{nodeclock=NodeClock}};
+
+handle_call(get_watermark, _From, #state{watermark=Watermark} = State) ->
+    {reply, Watermark, State};
+
+handle_call({update_watermark, _OriginPeer, RemotePeer, RemoteNodeClock}, _From, #state{config=Config} = State0) ->
+    Watermark = update_watermark_internal(RemotePeer, RemoteNodeClock, State0),    %{Node, Actor}, NodeClock, State0),
     UpdateWatermark_DBop = update_watermark_db_op(Watermark),
     db_write(Config, [UpdateWatermark_DBop]),
     {reply, ok, State0#state{watermark=Watermark}};
 
-handle_call({sync_repair, _OriginPeer, RemoteNode, RemoteNodeClock, MissingObjects, LastBatch}, _From,
+handle_call({sync_repair, _OriginPeer, RemotePeer, RemoteNodeClock, MissingObjects, LastBatch}, _From,
             #state{config=Config} = State0) ->
+    RemoteActor = vmq_swc_peer_service_manager:get_actor_for_peer(RemotePeer),
     {DbOps, State1} = fill_strip_save_batch(MissingObjects, RemoteNodeClock, State0),
     State2 =
     case LastBatch of
@@ -350,8 +391,8 @@ handle_call({sync_repair, _OriginPeer, RemoteNode, RemoteNodeClock, MissingObjec
             db_write(Config, lists:reverse([UpdateNodeClock_DBop | DbOps])),
             State1;
         {true, RemoteWatermark} ->
-            NodeClock0 = sync_clocks(RemoteNode, RemoteNodeClock, State1#state.nodeclock),
-            Watermark = update_watermark_after_sync(State1#state.watermark, RemoteWatermark, State1#state.id, RemoteNode, NodeClock0, RemoteNodeClock),
+            NodeClock0 = sync_clocks({RemotePeer, RemoteActor}, RemoteNodeClock, State1#state.nodeclock),
+            Watermark = update_watermark_after_sync(State1#state.watermark, RemoteWatermark, State1#state.id, {RemotePeer, RemoteActor}, NodeClock0, RemoteNodeClock),
             UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock0),
             UpdateWatermark_DBop = update_watermark_db_op(Watermark),
             db_write(Config, lists:reverse([UpdateNodeClock_DBop, UpdateWatermark_DBop | DbOps])),
@@ -415,7 +456,7 @@ handle_info({sync_with, Peer}, #state{config=Config} = State) ->
     {noreply, State};
 
 handle_info(sync, #state{config=Config, sync_lock=undefined, peers=Peers} = State) ->
-    case random_peer(Peers, fun(N) -> lists:member(N, nodes()) end) of
+    case random_peer(proplists:get_keys(Peers), fun(N) -> lists:member(N, nodes()) end) of
         {ok, SyncNode} ->
             vmq_swc_exchange_sup:start_exchange(Config, SyncNode, application:get_env(vmq_swc, sync_timeout, 60000));
         {error, no_peer_available} ->
@@ -447,6 +488,9 @@ set_peers(NewPeers, #state{id=Id, config=Config, dotkeymap=DKM, nodeclock=LocalC
     OldPeers = swc_node:ids(LocalClock0),
     AddedPeers = NewPeers -- OldPeers,
     LeftPeers = OldPeers -- NewPeers,
+    lager:debug("vmq_swc_store:set_peers/2: AddedPeers ~p~n", [AddedPeers]),
+    lager:debug("vmq_swc_store:set_peers/2: LeftPeers ~p~n", [LeftPeers]),
+
     {NodeClock, Watermark} =
     case {AddedPeers, LeftPeers} of
         {[], []} ->
@@ -455,24 +499,21 @@ set_peers(NewPeers, #state{id=Id, config=Config, dotkeymap=DKM, nodeclock=LocalC
             %% Ensure the node clock contains all required peers
             %% Adding {Peer, 0} won't override an existing entry
             TmpClock0 = lists:foldl(fun(Peer, AccClock) -> swc_node:add(AccClock, {Peer, 0}) end, LocalClock0, NewPeers),
-            % maybe remove left nodes
-            TmpClock1 =
-            lists:foldl(
-              fun(LP, AccClock) ->
-                      % prune the logs for the leaving peer
-                      remove_logs_for_peer(Config, DKM, LP),
-                      % Remove entry in node clock for leaving peer
-                      maps:remove(LP, AccClock)
-              end, TmpClock0, LeftPeers),
 
-            {TmpClock1, fix_watermark(WM0, NewPeers)}
+            {TmpClock0, fix_watermark(WM0, NewPeers)}
     end,
+
     UpdateWatermark_DBop = update_watermark_db_op(Watermark),
     UpdateNodeClock_DBop = update_nodeclock_db_op(NodeClock),
+
+
     db_write(Config, [UpdateWatermark_DBop, UpdateNodeClock_DBop]),
-    lager:info("Replica ~p: Peers updated ~p~n", [State#state.group, NewPeers]),
     cache_node_clock(State#state{nodeclock=NodeClock, watermark=Watermark, peers=NewPeers -- [Id]}).
 
+% maybe_retire_peer(WM, OldID, NewID) ->
+%     NewWatermark0 = swc_watermark:retire_peer(WM, OldID, NewID),
+%     % reset the entire watermark
+%     swc_watermark:reset_counters(NewWatermark0).
 cache_node_clock(#state{config=#swc_config{store=StoreName}, nodeclock=NodeClock} = State) ->
     ets:insert(StoreName, {node_clock, NodeClock}),
     State.
@@ -505,7 +546,8 @@ random_peer(Peers, FilterFun) ->
             {ok, lists:nth(rand:uniform(length(FilteredPeers)), FilteredPeers)}
     end.
 
-fix_watermark(Watermark, Peers) ->
+fix_watermark({W, R} = Watermark, Peers) ->
+    Watermark0 = 
     lists:foldl(
       fun(Peer, WMAcc0) ->
               % This will reset all counters to zero
@@ -516,7 +558,9 @@ fix_watermark(Watermark, Peers) ->
                 fun(P, A) ->
                         swc_watermark:update_cell(A, Peer, P, swc_watermark:get(Watermark, Peer, P))
                 end, WMAcc1, Peers)
-      end, swc_watermark:new(), Peers).
+      end, swc_watermark:new(), Peers),
+      {W1, _} = Watermark0,
+      {W1, R}.
 
 update_watermark_internal(RemoteNode, RemoteClock, #state{id=Id, watermark=Watermark0, nodeclock=NodeClock}) ->
     % Store the knowledge the other node has about us
@@ -545,11 +589,16 @@ update_watermark_after_sync(Watermark0, RemoteWatermark, Id, RemoteId, NodeClock
     % update the watermark to reflect what the asking peer has about its peers
     swc_watermark:left_join(Watermark2, RemoteWatermark).
 
-sync_clocks(RemoteNode, RemoteNodeClock0, NodeClock) ->
+sync_clocks(RemoteID, RemoteNodeClock0, NodeClock) ->
     % replace the current entry in the node clock for the responding clock with
     % the current knowledge it's receiving
-    RemoteNodeClock1 = maps:filter(fun(Id, _) -> Id == RemoteNode end, RemoteNodeClock0),
+    %{RemoteNode, _Actor} = RemoteID,
+    RemoteNodeClock1 = maps:filter(fun(Id, _) -> Id == RemoteID end, RemoteNodeClock0),
+    %RemoteNodeClock1 = maps:filter(fun({RemoteNode, _Actor}, _) -> RemoteNode == node() end, RemoteNodeClock0),
+    % the merge will delete all entries, where the latest dot is {0,0}!
+    % check if this is what we want.
     swc_node:merge(NodeClock, RemoteNodeClock1).
+   % swc_node:merge(NodeClock, RemoteNodeClock0).
 
 fill_strip_save_batch(MissingObjects, RemoteNodeClock, #state{config=Config, nodeclock=NodeClock0} = State0) ->
     {NodeClock1, RealMissing} =
@@ -696,10 +745,10 @@ incremental_gc(#state{config=Config, watermark=Watermark, dotkeymap=DKM} = State
     db_write(Config, DBOps),
     State.
 
--spec remove_logs_for_peer(config(), dotkeymap(), peer()) -> ok.
-remove_logs_for_peer(Config, DKM, Peer) ->
-    DBOps = vmq_swc_dkm:prune_for_peer(DKM, Peer),
-    db_write(Config, DBOps).
+% -spec remove_logs_for_peer(config(), dotkeymap(), peer()) -> ok.
+% remove_logs_for_peer(Config, DKM, Peer) ->
+%     DBOps = vmq_swc_dkm:prune_for_peer(DKM, Peer),
+%     db_write(Config, DBOps).
 
 -spec init_dotkeymap(config()) -> dotkeymap().
 init_dotkeymap(Config) ->
@@ -753,10 +802,20 @@ update_watermark_db_op(Watermark) ->
     {?DB_DEFAULT, <<"KVV">>, term_to_binary(Watermark)}.
 
 -spec get_nodeclock(config()) -> nodeclock().
-get_nodeclock(Config) ->
-    case vmq_swc_db:get(Config, ?DB_DEFAULT, <<"BVV">>) of
-        {ok, BNodeClock} -> binary_to_term(BNodeClock, [safe]);
-        not_found -> swc_node:new()
+get_nodeclock(Config) -> 
+  case vmq_swc_db:get(Config, ?DB_DEFAULT, <<"BVV">>) of
+        {ok, BNodeClock} -> 
+        % if we find a nodeclock on disk, we trying to ensure unique swc_id
+        % {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
+        % {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
+        % {ok, Merged} = riak_dt_orswot:update({update, [
+        %                                                {add, node()}]}, Actor, LocalState),
+        % _ = gen_server:cast(vmq_swc_peer_service_gossip, {receive_state, Merged}),
+            NodeClock = binary_to_term(BNodeClock),
+            io:format("Loaded NodeClock fromDisk ~p~n", [NodeClock]),
+            NodeClock;
+        not_found -> NodeClock0 = swc_node:new(),
+                     NodeClock0
     end.
 
 -spec get_watermark(config()) -> watermark().

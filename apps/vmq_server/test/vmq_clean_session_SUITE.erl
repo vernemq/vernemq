@@ -17,10 +17,12 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
+    ct:pal("Clean sessions tests. Config: ~p~n", [Config]),
     vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:set_config(max_client_id_size, 1000),
+    vmq_server_cmd:set_config(metadata_plugin, vmq_swc), %doesn't work?
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     enable_on_publish(),
     enable_on_subscribe(),
@@ -56,7 +58,9 @@ groups() ->
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clean_session_qos1_test(Cfg) ->
-    Connect = packet:gen_connect(vmq_cth:ustr(Cfg) ++ "clean-qos1-test", [{keepalive,60}, {clean_session, false}]),
+    ct:pal("Starting Summary in 'clean_session_qos1_test1' ~p~n", [vmq_queue_sup_sup:summary()]),
+
+    Connect = packet:gen_connect(vmq_cth:ustr(Cfg) ++ "clean-qos1-test", [{keepalive,180}, {clean_session, false}]),
     Connack1 = packet:gen_connack(0),
     Connack2 = packet:gen_connack(true, 0),
     Disconnect = packet:gen_disconnect(),
@@ -73,7 +77,7 @@ clean_session_qos1_test(Cfg) ->
     ok = gen_tcp:close(Socket),
     %% we should be sure that this session is down,
     %% otherwise we'll get a dup=1 badmatch error
-    timer:sleep(100),
+    timer:sleep(5000),
 
     clean_session_qos1_helper(),
     %% Now reconnect and expect a publish message.
@@ -85,6 +89,7 @@ clean_session_qos1_test(Cfg) ->
     ok = gen_tcp:close(Socket1).
 
 session_cleanup_test(Cfg) ->
+    ct:pal("Starting Summary ~p~n", [vmq_queue_sup_sup:summary()]),
     ClientId = vmq_cth:ustr(Cfg) ++ "clean-qos1-test",
     Connect1 = packet:gen_connect(ClientId, [{keepalive,60}, {clean_session, false}]),
     Connect2 = packet:gen_connect(ClientId, [{keepalive,60}, {clean_session, true}]),
@@ -93,15 +98,18 @@ session_cleanup_test(Cfg) ->
     Subscribe = packet:gen_subscribe(109, "qos1/clean_session/test", 1),
     Suback = packet:gen_suback(109, 1),
     {ok, Socket} = packet:do_client_connect(Connect1, Connack, []),
+    ct:pal("Opening Socket ~p~n, We have Summary : ~p ~n", [Socket, vmq_queue_sup_sup:summary()]),
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:send(Socket, Disconnect),
+    ct:pal("Closing Socket ~p~n with Summary ~p~n", [Socket, vmq_queue_sup_sup:summary()]),
     ok = gen_tcp:close(Socket),
 
     clean_session_qos1_helper(),
     timer:sleep(100),
-    {0,0,0,1,1} = vmq_queue_sup_sup:summary(),
+    {0,0,0,1,1} = vmq_queue_sup_sup:summary(), % there should be 1 offline queue, and 1 stored message
     {ok, Socket1} = packet:do_client_connect(Connect2, Connack, []),
+    ct:pal("Opening Socket1 ~p~n", [Socket1]),
     ok = gen_tcp:close(Socket1),
     timer:sleep(100),
     %% if queue cleanup woudln't have happen, we'd see a remaining offline message
@@ -227,6 +235,7 @@ clean_session_qos1_helper() ->
     Publish = packet:gen_publish("qos1/clean_session/test", 1, <<"clean-session-message">>, [{mid, 128}]),
     Puback = packet:gen_puback(128),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ct:pal("Socket in the Publisher Helper: ~p~n with Summary ~p~n", [Socket, vmq_queue_sup_sup:summary()]),
     ok = gen_tcp:send(Socket, Publish),
     ok = packet:expect_packet(Socket, "puback", Puback),
     gen_tcp:close(Socket).

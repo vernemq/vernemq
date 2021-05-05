@@ -47,7 +47,7 @@ init_per_testcase(basic_store_test, Config) ->
     {ok, _} = vmq_swc:start(basic),
     Config;
 init_per_testcase(partitioned_delete_test = Case, Config0) ->
-    Config1 = [{sync_interval, 0},{auto_gc, true}|Config0],
+    Config1 = [{sync_interval, {1000, 500}},{auto_gc, true}|Config0], % afa: why did we set sync_interval to 0 before?
     init_per_testcase_(Case, Config1, [electra, flail]);
 init_per_testcase(full_sync_test = Case, Config0) ->
     Config1 = [{exchange_batch_size, 1}|Config0],
@@ -332,12 +332,14 @@ events_test(Config) ->
                   end, lists:seq(1, 1000)),
 
     ok = wait_until(fun() -> ets:info(T, size) == (length(Nodes) * 1000) end),
+    ct:pal("ETS table size after Put: ~p~n", [ets:info(T, size)]),
 
     lists:foreach(fun(I) ->
                           RandNode = lists:nth(rand:uniform(length(Nodes)), Nodes),
                           ok = delete_metadata(RandNode, rand, I)
                   end, lists:seq(1, 1000)),
     ok = wait_until(fun() -> ets:info(T, size) == 0 end),
+    ct:pal("ETS table size after Delete 2: ~p~n", [ets:info(T, size)]),
     ok.
 
 full_sync_test(Config) ->
@@ -433,10 +435,10 @@ wait_until_converged(Nodes, Prefix, Key, ExpectedValue) ->
                                   false
                           end
                   end, Nodes))
-      end, 60*2, 500).
+      end, 60*3, 500).
 
 wait_until(Fun) ->
-    vmq_swc_test_utils:wait_until(Fun, 5*10, 100).
+    vmq_swc_test_utils:wait_until(Fun, 5*100, 100).
 
 wait_until_causal_context(Nodes, Prefix, Key, PredicateFun) ->
     vmq_swc_test_utils:wait_until(
