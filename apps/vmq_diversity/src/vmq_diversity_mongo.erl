@@ -41,6 +41,7 @@ find(PoolName, Collection, Selector, Args) ->
                                   end).
 
 find_one(PoolName, Collection, Selector, Args) ->
+    lager:error("PoolName, Collection, Selector, Args ~p", [[PoolName, Collection, Selector, Args]]),
     poolboy:transaction(PoolName, fun(Worker) ->
                                           vmq_diversity_worker_wrapper:apply(Worker, mc_worker_api, find_one, [Collection, Selector, Args])
                                   end).
@@ -105,9 +106,8 @@ ensure_pool(As, St) ->
                     Srv = case maps:get(<<"srv">>,
                                         Options,
                                         proplists:get_value(srv, DefaultConf)) of
-                            undefined -> undefined;
-                            <<"">> -> undefined;
-                            SrvVal -> vmq_diversity_utils:str(SrvVal)
+                            "" -> undefined;
+                            SrvVal -> vmq_diversity_utils:ustr(SrvVal)
                           end,
                     Database = vmq_diversity_utils:ustr(
                                  maps:get(<<"database">>,
