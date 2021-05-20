@@ -1771,6 +1771,12 @@
                                                                           hidden
                                                                          ]}.
 
+%% @doc Limits the maximum topic depth
+{mapping, "topic_max_depth", "vmq_server.topic_max_depth", [
+                                                            {default, 10},
+                                                            {datatype, integer}
+                                                           ]}.
+
 %% @doc Specifies the maximum number of unacknowledged MQTTv5 Publish packets
 %% VerneMQ is allowed to send to a client. Each client can set their own
 %% receive maximum (via the `receive_max`property of the CONNECT frame).
