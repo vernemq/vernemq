@@ -1,5 +1,7 @@
 # Changelog
 
+## VerneMQ 1.12.0
+
 - Fix bug causing the `pool_size` option for databases to not be respected.
 - Update Hackney HTTP client to version 1.17.0
 - Allow configuration for TCP listener buffer sizes in vmq_cluster_com module
@@ -22,6 +24,8 @@
 - Fix Proxy protocol handling for WebSocket listener.
 - Updates in `vmq_swc` plugin to allow for unique SWC node ids, leading to fixes in synchronisation after
   a node leaves and re-joins a cluster.
+- Adds `topic_max_depth` config value to enforce configurable global maximum number of allowed topic levels
+- Ensures that MQTT_v5_user_properties are stored to disk
 
 ## VerneMQ 1.11.0
 
