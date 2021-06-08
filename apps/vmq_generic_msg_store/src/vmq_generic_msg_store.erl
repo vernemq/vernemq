@@ -404,7 +404,7 @@ select_table(SubscriberId) ->
 %% current version of the index value
 -spec parse_p_idx_val_pre(binary()) -> p_idx_val_pre().
 parse_p_idx_val_pre(BinTerm) ->
-    parse_p_idx_val_pre_(binary_to_term(BinTerm, [safe])).
+    parse_p_idx_val_pre_(binary_to_term(BinTerm)).
 
 parse_p_idx_val_pre_({TS, Dup, QoS}) ->
     #p_idx_val{ts=TS, dup=Dup, qos=QoS};
@@ -437,7 +437,7 @@ serialize_p_idx_val_pre(T) when element(1,T) =:= p_idx_val,
 %% parse messages to message type from before versioning.
 -spec parse_p_msg_val_pre(binary()) -> p_msg_val_pre().
 parse_p_msg_val_pre(BinTerm) ->
-    parse_p_msg_val_pre_(binary_to_term(BinTerm, [safe])).
+    parse_p_msg_val_pre_(binary_to_term(BinTerm)).
 
 parse_p_msg_val_pre_({RoutingKey, Persisted}) ->
     {RoutingKey, Persisted};

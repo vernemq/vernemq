@@ -357,7 +357,7 @@ handle_call({sync_missing, _OriginPeer, Dots}, From, #state{config=Config} = Sta
                                         %% the other node.
                                         {true, {SKey, swc_kv:add(swc_kv:new(), Dot, '$deleted')}};
                                     {ok, BObj} ->
-                                        {true, {SKey, binary_to_term(BObj, [safe])}}
+                                        {true, {SKey, binary_to_term(BObj)}}
                                 end
                         end
                 end, Dots),
@@ -736,7 +736,7 @@ enqueue_op_sync(Config, Op) ->
 -spec get_obj_for_key(config(), db_key()) -> object().
 get_obj_for_key(Config, SKey) ->
     case vmq_swc_db:get(Config, ?DB_OBJ, SKey) of
-        {ok, BObj} -> binary_to_term(BObj, [safe]);
+        {ok, BObj} -> binary_to_term(BObj);
         not_found -> swc_kv:new()
     end.
 
@@ -760,7 +760,7 @@ init_dotkeymap(Config) ->
                     end, ok),
     vmq_swc_db:fold(Config, ?DB_OBJ,
                     fun(SKey, BVal, _Acc) ->
-                            {Values, _} = binary_to_term(BVal, [safe]),
+                            {Values, _} = binary_to_term(BVal),
                             case map_size(Values) of
                                 0 -> % deleted
                                     vmq_swc_dkm:mark_for_gc(DKM, SKey);
@@ -771,7 +771,7 @@ init_dotkeymap(Config) ->
     DKM.
 
 dump_tables(Config) ->
-    #{obj => dump_table(Config, ?DB_OBJ, fun(K) -> sext:decode(K) end, fun(V) -> binary_to_term(V, [safe]) end),
+    #{obj => dump_table(Config, ?DB_OBJ, fun(K) -> sext:decode(K) end, fun(V) -> binary_to_term(V) end),
       dkm => dump_table(Config, ?DB_DKM, fun(K) -> sext:decode(K) end, fun(V) -> sext:decode(V) end),
       default => dump_table(Config, ?DB_DEFAULT, fun(K) -> K end, fun(V) -> (V) end)}.
 
@@ -821,7 +821,7 @@ get_nodeclock(Config) ->
 -spec get_watermark(config()) -> watermark().
 get_watermark(Config) ->
     case vmq_swc_db:get(Config, ?DB_DEFAULT, <<"KVV">>) of
-        {ok, BWatermark} -> binary_to_term(BWatermark, [safe]);
+        {ok, BWatermark} -> binary_to_term(BWatermark);
         not_found -> swc_watermark:new()
     end.
 
