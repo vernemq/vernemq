@@ -66,13 +66,13 @@ full_table_scan__(Key, Value, {FoldFun, FoldAcc} = Acc) ->
     NewFoldAcc =
     case sext:decode(Key) of
         {msg, MsgRef, {MP, ''}} ->
-            {RoutingKey, Payload} = binary_to_term(Value, [safe]),
+            {RoutingKey, Payload} = binary_to_term(Value),
             FoldFun({msg, MsgRef, MP, RoutingKey, Payload}, FoldAcc);
         {msg, MsgRef, {MP, ClientId}} ->
             <<>> = Value,
             FoldFun({ref, MsgRef, MP, ClientId}, FoldAcc);
         {idx, {MP, ClientId}, MsgRef} ->
-            IdxVal = binary_to_term(Value, [safe]),
+            IdxVal = binary_to_term(Value),
             FoldFun({idx, MsgRef, MP, ClientId, IdxVal}, FoldAcc);
         E ->
             io:format("unknown sext encoded key ~p~n", [E]),

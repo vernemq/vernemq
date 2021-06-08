@@ -1,5 +1,7 @@
 # Changelog
 
+- Revert binary_to_term safe calls to bare version
+
 ## VerneMQ 1.12.0
 
 - Fix bug causing the `pool_size` option for databases to not be respected.
