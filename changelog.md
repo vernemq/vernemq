@@ -26,7 +26,7 @@
 - Fix Proxy protocol handling for WebSocket listener.
 - Updates in `vmq_swc` plugin to allow for unique SWC node ids, leading to fixes in synchronisation after
   a node leaves and re-joins a cluster.
-- Adds `topic_max_depth` config value to enforce configurable global maximum number of allowed topic levels
+- Adds `topic_max_depth` config value to enforce configurable global maximum number of allowed topic levels (`CVE-2021-33176`)
 - Ensures that MQTT_v5_user_properties are stored to disk
 
 ## VerneMQ 1.11.0
