@@ -294,7 +294,7 @@ on_register(#{peer_addr := ?PEER_BIN,
               peer_port := ?PEERPORT,
               mountpoint := ?MOUNTPOINT_BIN,
               client_id := ?ALLOWED_CLIENT_ID,
-              username := BinPid}) -> 
+              username := BinPid}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_register_ok,
     {200, #{}}.
@@ -464,6 +464,15 @@ on_session_expired(#{mountpoint := ?MOUNTPOINT_BIN,
     Pid ! on_session_expired_ok,
     {200, #{}}.
 
+on_delivery_complete(#{client_id := BinPid,
+  mountpoint := ?MOUNTPOINT_BIN,
+  username := ?USERNAME,
+  topic := ?TOPIC,
+  payload := ?PAYLOAD}) ->
+  Pid = list_to_pid(binary_to_list(BinPid)),
+  Pid ! on_delivery_complete_ok,
+  {200, #{}}.
+
 on_auth_m5(#{properties :=
                  #{?P_AUTHENTICATION_METHOD := <<"AUTH_METHOD">>,
                    ?P_AUTHENTICATION_DATA := <<"QVVUSF9EQVRBMA==">>}, %% b64(<<"AUTH_DATA0">>)
@@ -506,6 +515,8 @@ process_hook(<<"on_client_gone">>, Body) ->
     on_client_gone(Body);
 process_hook(<<"on_session_expired">>, Body) ->
     on_session_expired(Body);
+process_hook(<<"on_delivery_complete">>, Body) ->
+  on_delivery_complete(Body);
 
 process_hook(<<"auth_on_register_m5">>, Body) ->
     auth_on_register_m5(Body);

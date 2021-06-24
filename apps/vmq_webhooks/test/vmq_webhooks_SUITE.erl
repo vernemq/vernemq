@@ -66,6 +66,7 @@ all() ->
      on_client_gone_test,
      on_session_expired_test,
      base64payload_test,
+     on_delivery_complete_test,
      auth_on_register_undefined_creds_test,
      cache_auth_on_register,
      cache_auth_on_publish,
@@ -241,6 +242,13 @@ on_deliver_test(_) ->
                                 [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
     ok = exp_response(on_deliver_ok),
     deregister_hook(on_deliver, ?ENDPOINT).
+
+on_delivery_complete_test(_) ->
+  register_hook(on_delivery_complete, ?ENDPOINT),
+  Self = pid_to_bin(self()),
+  [next] = vmq_plugin:all(on_delivery_complete,[Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?TOPIC, ?PAYLOAD]),
+  _ = exp_response(on_delivery_complete_ok),
+  deregister_hook(on_delivery_complete, ?ENDPOINT).
 
 %%%%%%%%%%%%%%%%%%%%%%%%% MQTT 5.0 tests %%%%%%%%%%%%%%%%%%%%%%%%%
 auth_on_register_m5_test(_) ->
@@ -524,7 +532,7 @@ exp_response(Exp) ->
             {didnt_receive_response, Exp}
     end.
 
-exp_nothing(Timeout) ->    
+exp_nothing(Timeout) ->
     receive
         Got ->
             {received, Got, expected, nothing}

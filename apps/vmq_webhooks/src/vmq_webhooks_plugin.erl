@@ -29,6 +29,7 @@
 -behaviour(on_client_offline_hook).
 -behaviour(on_client_gone_hook).
 -behaviour(on_session_expired_hook).
+-behaviour(on_delivery_complete_hook).
 
 -behaviour(auth_on_register_m5_hook).
 -behaviour(auth_on_publish_m5_hook).
@@ -53,6 +54,7 @@
          on_client_offline/1,
          on_client_gone/1,
          on_session_expired/1,
+         on_delivery_complete/4,
 
          auth_on_register_m5/6,
          auth_on_publish_m5/7,
@@ -426,6 +428,15 @@ on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
                              {topic, unword(Topic)},
                              {payload, Payload},
                              {retain, IsRetain}]).
+
+-spec on_delivery_complete(username(), subscriber_id(), topic(), payload()) -> 'next'.
+on_delivery_complete(UserName, SubscriberId, Topic, Payload) ->
+  {MP, ClientId} = subscriber_id(SubscriberId),
+  all(on_delivery_complete, [{username, UserName},
+    {mountpoint, MP},
+    {client_id, ClientId},
+    {topic, Topic},
+    {payload, Payload}]).
 
 -spec on_deliver_m5(username(), subscriber_id(), qos(), topic(), payload(), flag(), properties()) -> 
     'next' | 'ok' | {'ok', on_deliver_m5_hook:msg_modifier()}.

@@ -307,11 +307,12 @@ connected({mail, QPid, Msgs, _, Dropped},
             {NewState1#state{waiting_msgs=NewWaiting}, HandledMsgs}
     end,
     {NewState2, Out};
-connected(#mqtt_puback{message_id=MessageId}, #state{waiting_acks=WAcks} = State) ->
+connected(#mqtt_puback{message_id=MessageId}, #state{waiting_acks=WAcks, subscriber_id = SubscriberId, username = Username} = State) ->
     %% qos1 flow
     _ = vmq_metrics:incr_mqtt_puback_received(),
     case maps:get(MessageId, WAcks, not_found) of
-        #vmq_msg{} ->
+        #vmq_msg{routing_key = Topic, payload = Payload} ->
+            _ = vmq_plugin:all(on_delivery_complete, [Username, SubscriberId, Topic, Payload]),
             handle_waiting_msgs(State#state{waiting_acks=maps:remove(MessageId, WAcks)});
         not_found ->
             _ = vmq_metrics:incr_mqtt_error_invalid_puback(),
@@ -319,11 +320,12 @@ connected(#mqtt_puback{message_id=MessageId}, #state{waiting_acks=WAcks} = State
     end;
 connected(#mqtt_pubrec{message_id=MessageId}, State) ->
     #state{waiting_acks=WAcks, retry_interval=RetryInterval,
-           retry_queue=RetryQueue} = State,
+           retry_queue=RetryQueue, subscriber_id = SubscriberId, username = Username} = State,
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrec_received(),
     case maps:get(MessageId, WAcks, not_found) of
-        #vmq_msg{} ->
+        #vmq_msg{routing_key = Topic, payload = Payload} ->
+            _ = vmq_plugin:all(on_delivery_complete, [Username, SubscriberId, Topic, Payload]),
             PubRelFrame = #mqtt_pubrel{message_id=MessageId},
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
             {State#state{

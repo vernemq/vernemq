@@ -1,0 +1,71 @@
+version: '3'
+services:
+  postgres:
+    image: postgres:9.2-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: vmq_test_database
+      POSTGRES_USER: vmq_test_user
+      POSTGRES_PASSWORD: "vmq_test_password"
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: none
+  mysql:
+    image: mysql:5.6
+    container_name: mysql
+    environment:
+      MYSQL_DATABASE: "vmq_test_database"
+      MYSQL_USER: "vmq_test_user"
+      MYSQL_PASSWORD: "vmq_test_password"
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: none
+  redis:
+    image: redis
+    container_name: redis
+    logging:
+      driver: none
+  memcached:
+    image: memcached
+    container_name: memcached
+    logging:
+      driver: none
+  mongo:
+    image: mongo
+    container_name: mongo
+    logging:
+      driver: none
+  vernemq:
+    container_name: vmq-test
+    build:
+      context: .
+      dockerfile: docker/test.Dockerfile
+    depends_on:
+      - postgres
+      - mysql
+      - redis
+      - memcached
+      - mongo
+    command: ./docker/run-tests.sh
+    volumes:
+      - ${PWD}:/vernemq
+      - build-data:/vernemq/_build
+      - log-data:/vernemq/log
+      - plts-data:/vernemq/plts
+      - plts_base-data:/vernemq/plts_base
+
+volumes:
+  build-data:
+  log-data:
+  plts-data:
+  plts_base-data:
