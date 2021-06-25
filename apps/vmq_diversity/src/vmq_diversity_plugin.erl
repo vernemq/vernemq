@@ -53,7 +53,7 @@
          on_client_offline/1,
          on_client_gone/1,
          on_session_expired/1,
-         on_delivery_complete/4,
+         on_delivery_complete/6,
          auth_on_register_m5/6,
          on_register_m5/4,
          auth_on_publish_m5/7,
@@ -520,6 +520,16 @@ on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
                              {payload, Payload},
                              {retain, IsRetain}]).
 
+on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_delivery_complete, [{username, nilify(UserName)},
+                               {mountpoint, MP},
+                               {client_id, ClientId},
+                               {qos, QoS},
+                               {topic, unword(Topic)},
+                               {payload, Payload},
+                               {retain, IsRetain}]).
+
 on_offline_message(SubscriberId, QoS, Topic, Payload, Retain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_offline_message, [{mountpoint, MP},
@@ -551,14 +561,6 @@ on_session_expired(SubscriberId) ->
     vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_session_expired, [{mountpoint, MP},
                              {client_id, ClientId}]).
-
-on_delivery_complete(UserName, SubscriberId, Topic, Payload) ->
-  {MP, ClientId} = subscriber_id(SubscriberId),
-  all(on_delivery_complete, [{username, UserName},
-    {mountpoint, MP},
-    {client_id, ClientId},
-    {topic, Topic},
-    {payload, Payload}]).
 
 %%%===================================================================
 %%% Internal functions

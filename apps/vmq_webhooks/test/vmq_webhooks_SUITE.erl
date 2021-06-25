@@ -246,8 +246,8 @@ on_deliver_test(_) ->
 on_delivery_complete_test(_) ->
   register_hook(on_delivery_complete, ?ENDPOINT),
   Self = pid_to_bin(self()),
-  [next] = vmq_plugin:all(on_delivery_complete,[Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, ?TOPIC, ?PAYLOAD]),
-  _ = exp_response(on_delivery_complete_ok),
+  [next] = vmq_plugin:all(on_delivery_complete,[Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+  ok = exp_response(on_delivery_complete_ok),
   deregister_hook(on_delivery_complete, ?ENDPOINT).
 
 %%%%%%%%%%%%%%%%%%%%%%%%% MQTT 5.0 tests %%%%%%%%%%%%%%%%%%%%%%%%%

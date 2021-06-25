@@ -311,8 +311,8 @@ connected(#mqtt_puback{message_id=MessageId}, #state{waiting_acks=WAcks, subscri
     %% qos1 flow
     _ = vmq_metrics:incr_mqtt_puback_received(),
     case maps:get(MessageId, WAcks, not_found) of
-        #vmq_msg{routing_key = Topic, payload = Payload} ->
-            _ = vmq_plugin:all(on_delivery_complete, [Username, SubscriberId, Topic, Payload]),
+        #vmq_msg{routing_key = Topic, payload = Payload, retain=IsRetain, qos=QoS} ->
+            _ = vmq_plugin:all(on_delivery_complete, [Username, SubscriberId, QoS, Topic, Payload, IsRetain]),
             handle_waiting_msgs(State#state{waiting_acks=maps:remove(MessageId, WAcks)});
         not_found ->
             _ = vmq_metrics:incr_mqtt_error_invalid_puback(),
@@ -324,8 +324,8 @@ connected(#mqtt_pubrec{message_id=MessageId}, State) ->
     %% qos2 flow
     _ = vmq_metrics:incr_mqtt_pubrec_received(),
     case maps:get(MessageId, WAcks, not_found) of
-        #vmq_msg{routing_key = Topic, payload = Payload} ->
-            _ = vmq_plugin:all(on_delivery_complete, [Username, SubscriberId, Topic, Payload]),
+        #vmq_msg{routing_key = Topic, payload = Payload, retain=IsRetain, qos=QoS} ->
+            _ = vmq_plugin:all(on_delivery_complete, [Username, SubscriberId, QoS, Topic, Payload, IsRetain]),
             PubRelFrame = #mqtt_pubrel{message_id=MessageId},
             _ = vmq_metrics:incr_mqtt_pubrel_sent(),
             {State#state{
@@ -779,10 +779,10 @@ on_publish_hook(Other, _) -> Other.
 dispatch_publish(Qos, MessageId, Msg, State) ->
     dispatch_publish_(Qos, MessageId, Msg, State).
 
--spec dispatch_publish_(qos(), msg_id(), msg(), state()) -> 
+-spec dispatch_publish_(qos(), msg_id(), msg(), state()) ->
     list()
     | {list(), session_ctrl()}
-    | {state(), list(), session_ctrl()} 
+    | {state(), list(), session_ctrl()}
     | {error, not_allowed}.
 dispatch_publish_(0, MessageId, Msg, State) ->
     dispatch_publish_qos0(MessageId, Msg, State);
@@ -1193,7 +1193,7 @@ prop_val(Key, Args, Default, Validator) ->
                    false -> Default
                end
     end.
-    
+
 -spec queue_opts(state(), [any()]) -> map().
 queue_opts(#state{clean_session=CleanSession}, Args) ->
     Opts = maps:from_list([{cleanup_on_disconnect, CleanSession}| Args]),
@@ -1237,8 +1237,8 @@ get_info_items([], State) ->
 get_info_items(Items, State) ->
     get_info_items(Items, State, []).
 
--spec get_info_items([any()],state(),[{'client_id' | 'mountpoint' | 'node' | 'peer_host' | 'peer_port' | 'pid' | 'protocol' | 'timeout' | 'user' | 'waiting_acks',atom() | 
-    binary() | pid() | [any()] | non_neg_integer()}]) -> 
+-spec get_info_items([any()],state(),[{'client_id' | 'mountpoint' | 'node' | 'peer_host' | 'peer_port' | 'pid' | 'protocol' | 'timeout' | 'user' | 'waiting_acks',atom() |
+    binary() | pid() | [any()] | non_neg_integer()}]) ->
             [{'client_id' | 'mountpoint' | 'node' | 'peer_host' | 'peer_port' | 'pid' | 'protocol' | 'timeout' | 'user' | 'waiting_acks',
             atom() | binary() | pid() | [any()] | non_neg_integer()}].
 get_info_items([pid|Rest], State, Acc) ->
@@ -1294,7 +1294,7 @@ set_defopt(Key, Default, Map) ->
 peertoa({_IP, _Port} = Peer) ->
     vmq_mqtt_fsm_util:peertoa(Peer).
 
--spec subtopics([{topic(),0 | 1 | 2} | 
+-spec subtopics([{topic(),0 | 1 | 2} |
 #mqtt5_subscribe_topic{topic::topic(),
 qos::0 | 1 | 2,no_local::'empty' | 'false' | 'true' | 0 | 1,
 rap::'empty' | 'false' | 'true' | 0 | 1,

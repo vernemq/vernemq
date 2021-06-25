@@ -43,7 +43,7 @@
       {vmq_webhooks_plugin, on_client_wakeup, 1, []},
       {vmq_webhooks_plugin, on_client_offline, 1, []},
       {vmq_webhooks_plugin, on_session_expired, 1, []},
-      {vmq_webhooks_plugin, on_delivery_complete, 4, []},
+      {vmq_webhooks_plugin, on_delivery_complete, 6, []},
       {vmq_webhooks_plugin, on_client_gone, 1, []}]}
   ]},
   {modules, []},

@@ -464,11 +464,13 @@ on_session_expired(#{mountpoint := ?MOUNTPOINT_BIN,
     Pid ! on_session_expired_ok,
     {200, #{}}.
 
-on_delivery_complete(#{client_id := BinPid,
+on_delivery_complete(#{username := BinPid,
   mountpoint := ?MOUNTPOINT_BIN,
-  username := ?USERNAME,
+  client_id := ?ALLOWED_CLIENT_ID,
+  qos := 1,
   topic := ?TOPIC,
-  payload := ?PAYLOAD}) ->
+  payload := ?PAYLOAD,
+  retain := false}) ->
   Pid = list_to_pid(binary_to_list(BinPid)),
   Pid ! on_delivery_complete_ok,
   {200, #{}}.
