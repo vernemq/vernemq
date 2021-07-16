@@ -22,7 +22,8 @@ auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberI
     %% we return 'ok'
     {Result, Claims} = verify(Password, ?SecretKey),
     if
-        Result =:= ok -> checkRID(Claims, UserName);
+        Result =:= ok -> checkRID(Claims, getUsername(UserName));
+        %else block
         true -> {error, invalid_signature}
     end.
 
@@ -37,13 +38,11 @@ checkRID(Claims, UserName) ->
     case maps:find(rid, Claims) of
         {ok, Value} ->
             if Value =:= UserName -> ok;
+            %else block
             true -> error
             end;
         error -> error
     end.
 
-
-
-
-
-    
+getUsername(Username) ->
+    string:nth_lexeme(Username, 1, ":").
