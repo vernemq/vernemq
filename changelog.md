@@ -1,5 +1,7 @@
 # Changelog
 
+## VerneMQ 1.12.1
+
 - Revert binary_to_term safe calls to bare version
 
 ## VerneMQ 1.12.0
