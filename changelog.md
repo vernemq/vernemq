@@ -1,5 +1,7 @@
 # Changelog
 
+## VerneMQ 1.12.1
+
 - Revert binary_to_term safe calls to bare version
 - Revert mc_worker_api:connect/1 to mc_worker:start_link/1 for MongoDB pool
 
