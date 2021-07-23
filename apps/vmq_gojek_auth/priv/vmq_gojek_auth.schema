@@ -11,13 +11,6 @@
                                                               {datatype, integer}
                                                              ]}.
 
-%% @doc set the acl reload interval in seconds, the value 0 disables
-%% the automatic reloading of the acl file.
-{mapping, "vmq_gojek_auth.username_regex", "vmq_gojek_auth.username_regex", [
-                                                                            {default, "(.*)"},
-                                                                            {datatype, string}
-                                                                            ]}.
-
 %% @doc Set JWT Secret Key.
 {mapping, "vmq_gojek_auth.secret_key", "vmq_gojek_auth.secret_key", [
                                                                     {datatype, string},

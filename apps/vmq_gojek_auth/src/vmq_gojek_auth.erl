@@ -56,8 +56,8 @@
 -endif.
 
 -define(SecretKey, application:get_env(vmq_gojek_auth, secret_key, undefined)).
--define(EnableAuthOnRegister, application:get_env(vmq_gojek_auth, enable_auth_on_register, undefined)).
--define(EnableAclHooks, application:get_env(vmq_gojek_auth, enable_acl_hooks, undefined)).
+-define(EnableAuthOnRegister, application:get_env(vmq_gojek_auth, enable_auth_on_register, false)).
+-define(EnableAclHooks, application:get_env(vmq_gojek_auth, enable_acl_hooks, false)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Plugin Callbacks
@@ -81,28 +81,36 @@ change_config(Configs) ->
             vmq_gojek_auth_reloader:change_config_now()
     end.
 
-auth_on_subscribe(_, _, []) when ?EnableAclHooks =:= false ->
-  next;
 auth_on_subscribe(_, _, []) -> ok;
 auth_on_subscribe(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
-  error_logger:error_msg("auth_on_subscribe called"),
-    case check(read, Topic, User, SubscriberId) of
-        true ->
-            auth_on_subscribe(User, SubscriberId, Rest);
-        false ->
-            next
-    end.
+  error_logger:error_msg("Auth Acl: ~p", [?EnableAclHooks]),
+  D = is_acl_auth_disabled(),
+  if D ->
+        next;
+     true ->
+        error_logger:error_msg("auth_on_subscribe called"),
+        case check(read, Topic, getUsername(User), SubscriberId) of
+            true ->
+                auth_on_subscribe(User, SubscriberId, Rest);
+            false ->
+                next
+        end
+  end.
 
-auth_on_publish(_, _, _, _, _, _) when ?EnableAclHooks =:= false ->
-  next;
 auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
-  error_logger:error_msg("auth_on_publish called"),
-    case check(write, Topic, User, SubscriberId) of
-        true ->
-            ok;
-        false ->
-            next
-    end.
+  error_logger:error_msg("Auth Acl: ~p", [?EnableAclHooks]),
+  D = is_acl_auth_disabled(),
+  if D ->
+        next;
+     true ->
+        error_logger:error_msg("auth_on_publish called"),
+          case check(write, Topic, getUsername(User), SubscriberId) of
+              true ->
+                  ok;
+              false ->
+                  next
+          end
+  end.
 
 auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
     auth_on_subscribe(User, SubscriberId, Topics).
@@ -110,8 +118,6 @@ auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
 auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
     auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain).
 
-auth_on_register(_, _, _, _, _) when ?EnableAuthOnRegister =:= false ->
-  next;
 auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberId, UserName, Password, CleanSession) ->
   %% do whatever you like with the params, all that matters
   %% is the return value of this function
@@ -125,11 +131,17 @@ auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberI
   %% 5. return {error, whatever} -> CONNACK_AUTH is sent
 
   %% we return 'ok'
-  {Result, Claims} = verify(Password, ?SecretKey),
-  if
-    Result =:= ok -> checkRID(Claims, getUsername(UserName));
-  %else block
-    true -> {error, invalid_signature}
+  error_logger:error_msg("Reg Acl: ~p", [?EnableAuthOnRegister]),
+  D = is_auth_on_register_disabled(),
+  if D ->
+        next;
+    true ->
+        {Result, Claims} = verify(Password, ?SecretKey),
+        if
+          Result =:= ok -> checkRID(Claims, getUsername(UserName));
+        %else block
+          true -> {error, invalid_signature}
+        end
   end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -316,6 +328,21 @@ iterate(T, Fun, K) ->
     Fun(K),
     iterate(T, Fun, ets:next(T, K)).
 
+is_auth_on_register_disabled() ->
+  E = ?EnableAuthOnRegister,
+  io:format("E: ~p", [E]),
+  if
+    E == true -> false;
+    true -> true
+  end.
+
+is_acl_auth_disabled() ->
+  E = ?EnableAclHooks,
+  if
+    E == true -> false;
+    true -> true
+  end.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helpers for jwt authentication
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -351,12 +378,13 @@ acl_test_() ->
       ?setup(fun simple_acl/1)}
     ].
 
-setup() -> init().
+setup() -> ok = application:set_env(vmq_gojek_auth, enable_acl_hooks, true), init().
 teardown(_) ->
     ets:delete(vmq_gojek_auth_acl_read_all),
     ets:delete(vmq_gojek_auth_acl_write_all),
     ets:delete(vmq_gojek_auth_acl_read_user),
-    ets:delete(vmq_gojek_auth_acl_write_user).
+    ets:delete(vmq_gojek_auth_acl_write_user),
+    application:unset_env(vmq_gojek_auth, enable_acl_hooks).
 
 simple_acl(_) ->
     ACL = [<<"# simple comment\n">>,
@@ -383,6 +411,12 @@ simple_acl(_) ->
                                           [{[<<"a">>, <<"b">>, <<"c">>], 0}
                                            ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
                                            ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
+      ,
+      %% colon separated username
+      ?_assertEqual(ok, auth_on_subscribe(<<"test:123:123:345">>, {"", <<"my-client-id">>},
+      [{[<<"a">>, <<"b">>, <<"c">>], 0}
+        ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
+        ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
     , ?_assertEqual(next, auth_on_subscribe(<<"invalid-user">>, {"", <<"my-client-id">>},
                                           [{[<<"a">>, <<"b">>, <<"c">>], 0}
                                            ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
