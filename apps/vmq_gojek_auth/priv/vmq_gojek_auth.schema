@@ -1,0 +1,25 @@
+%% @doc Set the path to an access control list file.
+{mapping, "vmq_gojek_auth.acl_file", "vmq_gojek_auth.file", [
+                                               {default, "{{platform_etc_dir}}/vmq_gojek_auth.acl"},
+                                               {datatype, file}
+                                              ]}.
+
+%% @doc set the acl reload interval in seconds, the value 0 disables
+%% the automatic reloading of the acl file.
+{mapping, "vmq_gojek_auth.acl_reload_interval", "vmq_gojek_auth.interval", [
+                                                              {default, 10},
+                                                              {datatype, integer}
+                                                             ]}.
+
+%% @doc set the acl reload interval in seconds, the value 0 disables
+%% the automatic reloading of the acl file.
+{mapping, "vmq_gojek_auth.username_regex", "vmq_gojek_auth.username_regex", [
+                                                                            {default, "(.*)"},
+                                                                            {datatype, string}
+                                                                            ]}.
+
+%% @doc Set JWT Secret Key.
+{mapping, "vmq_gojek_auth.secret_key", "vmq_gojek_auth.secret_key", [
+                                                                    {datatype, string},
+                                                                    {default, "secret_key"}
+                                                                    ]}.

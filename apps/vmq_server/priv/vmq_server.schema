@@ -1690,6 +1690,12 @@
                                                          {default, on}
                                                         ]}.
 
+%% @doc File based authorization plugin.
+{mapping, "plugins.vmq_gojek_auth", "vmq_server.user_plugins", [
+                                                         {datatype, flag},
+                                                         {default, on}
+                                                         ]}.
+
 %% @doc Lua based plugins.
 {mapping, "plugins.vmq_diversity", "vmq_server.user_plugins", [
                                                                {datatype, flag},

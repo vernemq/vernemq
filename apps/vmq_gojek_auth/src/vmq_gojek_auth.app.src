@@ -1,0 +1,26 @@
+{application, vmq_gojek_auth,
+ [
+  {description, "Gojek specific auth plugin for VerneMQ"},
+  {vsn, git},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  clique,
+                  jwerl
+                 ]},
+  {mod, { vmq_gojek_auth_app, []}},
+  {env, [
+      {file, "priv/test.acl"},
+      {interval, 10},
+      {vmq_config_enabled, true},
+      {vmq_plugin_hooks, [
+            {vmq_gojek_auth, change_config, 1, [internal]},
+            {vmq_gojek_auth, auth_on_publish, 6, []},
+            {vmq_gojek_auth, auth_on_subscribe, 3, []},
+            {vmq_gojek_auth, auth_on_register, 5, []},
+            {vmq_gojek_auth, auth_on_publish_m5, 7, []},
+            {vmq_gojek_auth, auth_on_subscribe_m5, 4, []}
+        ]}
+    ]}
+ ]}.
