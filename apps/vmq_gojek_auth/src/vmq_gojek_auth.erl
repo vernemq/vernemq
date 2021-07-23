@@ -40,8 +40,6 @@
 -define(TABLES, [
                  vmq_gojek_auth_acl_read_pattern,
                  vmq_gojek_auth_acl_write_pattern,
-                 vmq_gojek_auth_acl_read_regex,
-                 vmq_gojek_auth_acl_write_regex,
                  vmq_gojek_auth_acl_read_all,
                  vmq_gojek_auth_acl_write_all,
                  vmq_gojek_auth_acl_read_user,
@@ -58,6 +56,8 @@
 -endif.
 
 -define(SecretKey, application:get_env(vmq_gojek_auth, secret_key, undefined)).
+-define(EnableAuthOnRegister, application:get_env(vmq_gojek_auth, enable_auth_on_register, undefined)).
+-define(EnableAclHooks, application:get_env(vmq_gojek_auth, enable_acl_hooks, undefined)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Plugin Callbacks
@@ -81,6 +81,8 @@ change_config(Configs) ->
             vmq_gojek_auth_reloader:change_config_now()
     end.
 
+auth_on_subscribe(_, _, []) when ?EnableAclHooks =:= false ->
+  next;
 auth_on_subscribe(_, _, []) -> ok;
 auth_on_subscribe(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
   error_logger:error_msg("auth_on_subscribe called"),
@@ -91,7 +93,10 @@ auth_on_subscribe(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
             next
     end.
 
+auth_on_publish(_, _, _, _, _, _) when ?EnableAclHooks =:= false ->
+  next;
 auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
+  error_logger:error_msg("auth_on_publish called"),
     case check(write, Topic, User, SubscriberId) of
         true ->
             ok;
@@ -105,6 +110,8 @@ auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
 auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
     auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain).
 
+auth_on_register(_, _, _, _, _) when ?EnableAuthOnRegister =:= false ->
+  next;
 auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberId, UserName, Password, CleanSession) ->
   %% do whatever you like with the params, all that matters
   %% is the return value of this function
@@ -197,16 +204,6 @@ parse_acl_line({F, <<"pattern ", Topic/binary>>}, User) ->
     in(read, pattern, Topic),
     in(write, pattern, Topic),
     parse_acl_line(F(F,read), User);
-parse_acl_line({F, <<"regex read ", Topic/binary>>}, User) ->
-  insert_regex(read, regex, string:trim(Topic)),
-  parse_acl_line(F(F,read), User);
-parse_acl_line({F, <<"regex write ", Topic/binary>>}, User) ->
-  insert_regex(write, regex, string:trim(Topic)),
-  parse_acl_line(F(F,read), User);
-parse_acl_line({F, <<"regex ", Topic/binary>>}, User) ->
-  insert_regex(read, regex, string:trim(Topic)),
-  insert_regex(write, regex, string:trim(Topic)),
-  parse_acl_line(F(F,read), User);
 parse_acl_line({F, <<"\n">>}, User) ->
     parse_acl_line(F(F,read), User);
 parse_acl_line({F, eof}, _User) ->
@@ -220,7 +217,7 @@ check(Type, [Word|_] = Topic, User, SubscriberId) when is_binary(Word) ->
         false ->
             case check_user_acl(Type, User, Topic) of
                 true -> true;
-                false -> check_pattern_acl(Type, Topic, User, SubscriberId) or check_regex_acl(Type, Topic, User, SubscriberId)
+                false -> check_pattern_acl(Type, Topic, User, SubscriberId)
             end
     end.
 
@@ -239,31 +236,6 @@ check_pattern_acl(Type, TIn, User, SubscriberId) ->
                                     T = topic(User, SubscriberId, P),
                                     match(TIn, T)
                             end).
-
-check_regex_acl(Type, TIn, User, SubscriberId) ->
-  {Tbl, _} = t(Type, regex, TIn),
-  Val = iterate_until_true(Tbl, fun(P) ->
-    T = replace_pattern(User, SubscriberId, P),
-    match_regex(vmq_topic:unword(TIn), T)
-                          end),
-  error_logger:warning_msg("check_regex_acl returned: ~p", [Val]),
-  Val.
-
-replace_pattern(User, {MP, ClientId}, Topic) ->
-  Ur = re:replace(Topic, "%u", User, [global, {return, list}]),
-  Cr = re:replace(Ur, "%c", ClientId, [global, {return, list}]),
-  Mr = re:replace(Cr, "%m", MP, [global, {return, list}]),
-  error_logger:warning_msg("replace_pattern returned: ~p", [Mr]),
-  Mr.
-
-match_regex(TIn, T) ->
-  Result = re:run(TIn, T),
-  case re:run(TIn, T) of
-    {match, _} ->
-      error_logger:warning_msg("match_regex returned: ~p for TIn: ~p , T: ~p", [Result, TIn, T]),
-      true;
-    nomatch -> false
-end.
 
 topic(User, {MP, ClientId}, Topic) ->
     subst(list_to_binary(MP), User, ClientId, Topic, []).
@@ -289,11 +261,6 @@ in(Type, User, Topic) when is_binary(Topic) ->
             error_logger:warning_msg("can't validate ~p acl topic ~p for user ~p due to ~p", [Type, STopic, User, Reason])
     end.
 
-insert_regex(Type, User, Topic) when is_binary(Topic) ->
-    {Tbl, Obj} = t(Type, User, Topic),
-    ets:insert(Tbl, Obj),
-    error_logger:warning_msg("Inserting topic: ~p user: ~p Type: ~p Table ~p", [Topic, User, Type, Tbl]).
-
 validate(Topic) ->
     vmq_topic:validate_topic(subscribe, Topic).
 
@@ -301,8 +268,6 @@ t(read, all, Topic) -> {vmq_gojek_auth_acl_read_all, {Topic, 1}};
 t(write, all, Topic) ->  {vmq_gojek_auth_acl_write_all, {Topic, 1}};
 t(read, pattern, Topic) ->  {vmq_gojek_auth_acl_read_pattern, {Topic, 1}};
 t(write, pattern, Topic) -> {vmq_gojek_auth_acl_write_pattern, {Topic, 1}};
-t(read, regex, Topic) -> {vmq_gojek_auth_acl_read_regex, {Topic, 1}};
-t(write, regex, Topic) -> {vmq_gojek_auth_acl_write_regex, {Topic, 1}};
 t(read, User, Topic) -> {vmq_gojek_auth_acl_read_user, {{User, Topic}, 1}};
 t(write, User, Topic) -> {vmq_gojek_auth_acl_write_user, {{User, Topic}, 1}}.
 

@@ -19,7 +19,9 @@ register() ->
     ConfigKeys =
     ["vmq_gojek_auth.acl_file",
      "vmq_gojek_auth.acl_reload_interval",
-      "vmq_gojek_auth.username_regex"],
+      "vmq_gojek_auth.username_regex",
+      "vmq_gojek_auth.enable_auth_on_register",
+      "vmq_gojek_auth.enable_acl_hooks"],
     [clique:register_config([Key], fun register_config_callback/3)
      || Key <- ConfigKeys],
     ok = clique:register_config_whitelist(ConfigKeys).

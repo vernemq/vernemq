@@ -23,3 +23,15 @@
                                                                     {datatype, string},
                                                                     {default, "secret_key"}
                                                                     ]}.
+
+%% @doc Enable auth_on_register.
+{mapping, "vmq_gojek_auth.enable_auth_on_register", "vmq_gojek_auth.enable_auth_on_register", [
+                                                                    {datatype, atom},
+                                                                    {default, false}
+                                                                    ]}.
+
+%% @doc Enable auth_on_register.
+{mapping, "vmq_gojek_auth.enable_acl_hooks", "vmq_gojek_auth.enable_acl_hooks", [
+                                                                    {datatype, atom},
+                                                                    {default, false}
+                                                                    ]}.
