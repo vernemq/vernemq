@@ -56,8 +56,8 @@
 -endif.
 
 -define(SecretKey, application:get_env(vmq_gojek_auth, secret_key, undefined)).
--define(EnableAuthOnRegister, application:get_env(vmq_gojek_auth, enable_auth_on_register, false)).
--define(EnableAclHooks, application:get_env(vmq_gojek_auth, enable_acl_hooks, false)).
+-define(EnableAuthOnRegister, application:get_env(vmq_gojek_auth, enable_jwt_auth, false)).
+-define(EnableAclHooks, application:get_env(vmq_gojek_auth, enable_jwt_auth, false)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Plugin Callbacks
@@ -83,12 +83,10 @@ change_config(Configs) ->
 
 auth_on_subscribe(_, _, []) -> ok;
 auth_on_subscribe(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
-  error_logger:error_msg("Auth Acl: ~p", [?EnableAclHooks]),
   D = is_acl_auth_disabled(),
   if D ->
         next;
      true ->
-        error_logger:error_msg("auth_on_subscribe called"),
         case check(read, Topic, getUsername(User), SubscriberId) of
             true ->
                 auth_on_subscribe(User, SubscriberId, Rest);
@@ -98,12 +96,10 @@ auth_on_subscribe(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
   end.
 
 auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
-  error_logger:error_msg("Auth Acl: ~p", [?EnableAclHooks]),
   D = is_acl_auth_disabled(),
   if D ->
         next;
      true ->
-        error_logger:error_msg("auth_on_publish called"),
           case check(write, Topic, getUsername(User), SubscriberId) of
               true ->
                   ok;
@@ -131,7 +127,6 @@ auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberI
   %% 5. return {error, whatever} -> CONNACK_AUTH is sent
 
   %% we return 'ok'
-  error_logger:error_msg("Reg Acl: ~p", [?EnableAuthOnRegister]),
   D = is_auth_on_register_disabled(),
   if D ->
         next;
@@ -157,7 +152,6 @@ init() ->
                   end, ?TABLES).
 
 load_from_file(File) ->
-  error_logger:warning_msg("ACL File: ~p", [File]),
     case file:open(File, [read, binary]) of
         {ok, Fd} ->
             F = fun(FF, read) -> {FF, rl(Fd)};
@@ -347,7 +341,6 @@ is_acl_auth_disabled() ->
 %%% Helpers for jwt authentication
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 verify(Password, SecretKey) ->
-  error_logger:warning_msg("SECRET KEY IS d: ~p", [SecretKey]),
   try jwerl:verify(Password, hs256, SecretKey) of
     _ -> jwerl:verify(Password, hs256, SecretKey)
   catch

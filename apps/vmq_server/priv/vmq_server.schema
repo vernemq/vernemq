@@ -1676,14 +1676,6 @@
                                                                 {include_default, "mypluginname"}
                                                                ]}.
 
-
-
-%% @doc JWT based authentication plugin.
-{mapping, "plugins.vmq_jwt_auth", "vmq_server.user_plugins", [
-                                                            {datatype, flag},
-                                                            {default, on}
-                                                           ]}.
-
 %% @doc File based authorization plugin.
 {mapping, "plugins.vmq_acl", "vmq_server.user_plugins", [
                                                          {datatype, flag},

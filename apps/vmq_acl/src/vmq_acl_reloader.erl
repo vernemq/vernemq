@@ -144,6 +144,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 init_state(State) ->
+    error_logger:warning_msg("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Init of vmq_acl_reloader called"),
     case State#state.timer of
         undefined -> undefined;
         TRef -> erlang:cancel_timer(TRef)
