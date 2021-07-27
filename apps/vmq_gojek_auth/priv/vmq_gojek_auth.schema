@@ -20,7 +20,7 @@
 %% @doc Enable auth_on_register.
 {mapping, "vmq_gojek_auth.enable_jwt_auth", "vmq_gojek_auth.enable_jwt_auth", [
                                                                     {datatype, atom},
-                                                                    {default, false}
+                                                                    {default, true}
                                                                     ]}.
 
 %% @doc Enable auth_on_register.

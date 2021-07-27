@@ -57,7 +57,7 @@
 
 -define(SecretKey, application:get_env(vmq_gojek_auth, secret_key, undefined)).
 -define(EnableAuthOnRegister, application:get_env(vmq_gojek_auth, enable_jwt_auth, false)).
--define(EnableAclHooks, application:get_env(vmq_gojek_auth, enable_jwt_auth, false)).
+-define(EnableAclHooks, application:get_env(vmq_gojek_auth, enable_acl_hooks, false)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Plugin Callbacks
