@@ -324,7 +324,6 @@ iterate(T, Fun, K) ->
 
 is_auth_on_register_disabled() ->
   E = ?EnableAuthOnRegister,
-  io:format("E: ~p", [E]),
   if
     E == true -> false;
     true -> true
