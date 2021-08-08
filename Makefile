@@ -25,7 +25,8 @@ rel:
 	echo "{app_version, \"${GIT_VERSION}\"}." >> vars.generated
 ifeq ($(OVERLAY_VARS),)
 else
-	cat $(OVERLAY_VARS) >> vars.generated
+	echo "%% including OVERLAY_VARS from an additional file." >> vars.generated
+	echo \"./${OVERLAY_VARS}\". >> vars.generated
 endif
 	$(REBAR) $(PROFILE) release
 
