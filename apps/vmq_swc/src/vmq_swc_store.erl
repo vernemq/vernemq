@@ -85,6 +85,7 @@
 
 %-define(DBG_OP(Str, Format), io:format(Str, Format)).
 -define(DBG_OP(_Str, _Format), ok).
+-define(RETAIN_DB, {vmq, retain}).
 
 start_link(#swc_config{store=StoreName} = Config) ->
     gen_server:start_link({local, StoreName}, ?MODULE, [Config], []).
@@ -294,7 +295,7 @@ handle_call({batch, Batch}, _From, #state{config=Config,
     lists:foldl(fun({{CallerPid, CallerRef}, {write, WriteOps}}, Acc0) ->
                         Acc1 =
                         lists:foldl(fun(WriteOp, AccAcc0) ->
-                                            process_write_op(WriteOp, AccAcc0)
+                                            process_write_op(CallerPid, WriteOp, AccAcc0)
                                     end, Acc0, WriteOps),
                         CallerPid ! {CallerRef, ok},
                         Acc1
@@ -623,12 +624,12 @@ fill_strip_save_batch(MissingObjects, RemoteNodeClock, #state{config=Config, nod
       end, {NodeClock0, []}, MissingObjects),
     % save the synced objects and strip their causal history
     State1 = State0#state{nodeclock=NodeClock1},
-    FinalDBOps = strip_save_batch(RealMissing, [], State1, sync_resp),
+    FinalDBOps = strip_save_batch(RealMissing, [], State1, sync_resp, nil),
     {FinalDBOps, State1}.
 
-strip_save_batch([], DBOps, _State, _DbgCategory) ->
+strip_save_batch([], DBOps, _State, _DbgCategory, _OriginPid) ->
     DBOps;
-strip_save_batch([{SKey, Obj, OldObj}|Rest], DBOps0, #state{nodeclock=NodeClock, dotkeymap=DKM} = State, DbgCategory) ->
+strip_save_batch([{SKey, Obj, OldObj}|Rest], DBOps0, #state{nodeclock=NodeClock, dotkeymap=DKM} = State, DbgCategory, OriginPid) ->
     DBOps1 = add_object_to_log(State#state.dotkeymap, SKey, Obj, DBOps0),
     % remove unnecessary causality from the Obj, based on the current node clock
     {Values0, Context} = _StrippedObj0 = swc_kv:strip(Obj, NodeClock),
@@ -643,31 +644,37 @@ strip_save_batch([{SKey, Obj, OldObj}|Rest], DBOps0, #state{nodeclock=NodeClock,
     case {map_size(Values1), map_size(Context)} of
         {0, C} when (C == 0) or (State#state.peers == []) -> % case 1
             vmq_swc_dkm:mark_for_gc(DKM, SKey),
-            event(deleted, SKey, undefined, OldObj, State),
+            event(deleted, SKey, undefined, OldObj, State, OriginPid),
             [delete_obj_db_op(SKey, [DbgCategory, strip_save_batch])|DBOps1];
         {0, _} -> % case 0
             vmq_swc_dkm:mark_for_gc(DKM, SKey),
-            event(deleted, SKey, undefined, OldObj, State),
+            event(deleted, SKey, undefined, OldObj, State, OriginPid),
             [update_obj_db_op(SKey, StrippedObj1, [DbgCategory, strip_save_batch])|DBOps1];
         _ -> % case 2 & 3
-            event(updated, SKey, StrippedObj1, OldObj, State),
+            event(updated, SKey, StrippedObj1, OldObj, State, OriginPid),
             [update_obj_db_op(SKey, StrippedObj1, [DbgCategory, strip_save_batch])|DBOps1]
     end,
-    strip_save_batch(Rest, DBOps2, State, DbgCategory).
+    strip_save_batch(Rest, DBOps2, State, DbgCategory, OriginPid).
 
-event(Type, SKey, NewObj, OldObj, #state{subscriptions=Subscriptions}) ->
+event(Type, SKey, NewObj, OldObj, #state{subscriptions=Subscriptions}, OriginPid) ->
     {FullPrefix, Key} = sext:decode(SKey),
     OldValues = swc_kv:values(OldObj),
     SubsForPrefix = maps:get(FullPrefix, Subscriptions, []),
     lists:foreach(
       fun
+          ({Pid, _}) when (FullPrefix == ?RETAIN_DB) andalso (Pid == OriginPid) ->
+               % When originator is vmq_retain_srv of this node, then the 
+               % RETAIN_DB is already uptodate. In this case we must skip the feedback notification event
+               % to prevent corrupting the RETAIN_DB. (= avoid overwriting possible newer updates) 
+               skip;
           ({Pid, ConvertFun}) when Type == deleted ->
               Pid ! ConvertFun({deleted, FullPrefix, Key, OldValues});
           ({Pid, ConvertFun}) when Type == updated ->
               Pid ! ConvertFun({updated, FullPrefix, Key, OldValues, swc_kv:values(NewObj)})
       end, SubsForPrefix).
 
-process_write_op({Key, Value, MaybeContext}, {AccReplicate0, AccDBOps0, #state{config=Config, id=Id, nodeclock=NodeClock0} = State0}) ->
+
+process_write_op(OriginPid, {Key, Value, MaybeContext}, {AccReplicate0, AccDBOps0, #state{config=Config, id=Id, nodeclock=NodeClock0} = State0}) ->
     % sext encode key
     SKey = sext:encode(Key),
     % get and fill the causal history of the local key
@@ -694,7 +701,7 @@ process_write_op({Key, Value, MaybeContext}, {AccReplicate0, AccDBOps0, #state{c
             swc_kv:add(DiscardObj, {Id, Counter}, Value)
     end,
     % save the new k/v and remove unnecessary causal information
-    AccDBOps1 = strip_save_batch([{SKey, NewObj, DiskObj}], AccDBOps0, State0, write_op),
+    AccDBOps1 = strip_save_batch([{SKey, NewObj, DiskObj}], AccDBOps0, State0, write_op, OriginPid),
     AccReplicate1 = [{SKey, NewObj}|AccReplicate0],
     State1 = State0#state{nodeclock=NodeClock1},
     r_o_w_cache_insert_object(Config, SKey, NewObj),
@@ -708,7 +715,7 @@ process_replicate_op({SKey, Obj}, {AccDBOps0, #state{config=Config, nodeclock=No
     % synchronize both objects
     FinalObj = swc_kv:sync(Obj, DiskObj),
     % save the new object, while stripping the unnecessary causality
-    AccDBOps1 = strip_save_batch([{SKey, FinalObj, DiskObj}], AccDBOps0, State0, replicate_op),
+    AccDBOps1 = strip_save_batch([{SKey, FinalObj, DiskObj}], AccDBOps0, State0, replicate_op, nil),
     {AccDBOps1, State1}.
 
 add_object_to_log(DKM, SKey, Obj, AccDbOps) ->
