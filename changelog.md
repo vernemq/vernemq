@@ -1,5 +1,7 @@
 # Changelog
 
+- Fix Retain Server cache race condition for messages originating from local node.
+
 ## VerneMQ 1.12.1
 
 - Revert binary_to_term safe calls to bare version
