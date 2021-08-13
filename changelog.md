@@ -1,6 +1,7 @@
 # Changelog
 
 - Fix Retain Server cache race condition for messages originating from local node.
+- Remove debug logging statement for MongoDB in vmq_diversity
 
 ## VerneMQ 1.12.1
 

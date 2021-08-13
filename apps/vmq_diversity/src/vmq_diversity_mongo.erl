@@ -41,7 +41,6 @@ find(PoolName, Collection, Selector, Args) ->
                                   end).
 
 find_one(PoolName, Collection, Selector, Args) ->
-    lager:error("PoolName, Collection, Selector, Args ~p", [[PoolName, Collection, Selector, Args]]),
     poolboy:transaction(PoolName, fun(Worker) ->
                                           vmq_diversity_worker_wrapper:apply(Worker, mc_worker_api, find_one, [Collection, Selector, Args])
                                   end).
