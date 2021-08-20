@@ -1,5 +1,6 @@
 # Changelog
 
+- Fix username for allow_anonymous case in MQTT v5 
 - Fix Retain Server cache race condition for messages originating from local node.
 - Remove debug logging statement for MongoDB in vmq_diversity
 
