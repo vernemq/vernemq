@@ -1,8 +1,12 @@
 # Changelog
 
-- Fix username for allow_anonymous case in MQTT v5 
-- Fix Retain Server cache race condition for messages originating from local node.
-- Remove debug logging statement for MongoDB in vmq_diversity
+## VerneMQ 1.12.2
+
+  -  Fix username for allow_anonymous case in MQTT v5 (keep the given username in session)
+  -  Fix Retain Server cache race condition for messages originating from local node.
+  -  Remove debug logging statement for MongoDB in vmq_diversity
+  -  Allow Overlay_vars from include files in `vars.generated`
+  -  Switch to `no_dot_erlang` instead of `start_clean` in Runner script.
 
 ## VerneMQ 1.12.1
 
