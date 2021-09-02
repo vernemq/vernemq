@@ -293,7 +293,7 @@ case "$1" in
         echo "q() or init:stop() will terminate the $SCRIPT node."
         shift
         NODE_NAME=${NAME_ARG#* }
-        exec $ERTS_PATH/erl -name c_$$_$NODE_NAME -hidden -remsh $NODE_NAME -boot start_clean $COOKIE_ARG $NET_TICKTIME_ARG
+        exec $ERTS_PATH/erl -name c_$$_$NODE_NAME -hidden -remsh $NODE_NAME -boot no_dot_erlang $COOKIE_ARG $NET_TICKTIME_ARG
         ;;
 
     console)
