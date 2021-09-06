@@ -1,5 +1,7 @@
 # Changelog
 
+  -  Move from `r_mode` to read preference in VMQ Diversity MongoDB
+
 ## VerneMQ 1.12.2
 
   -  Fix username for allow_anonymous case in MQTT v5 (keep the given username in session)

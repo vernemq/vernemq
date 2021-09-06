@@ -66,8 +66,7 @@ ensure_pool(As, St) ->
         [Config0|_] ->
             case luerl:decode(Config0, St) of
                 Config when is_list(Config) ->
-                    {ok, AuthConfigs} = application:get_env(vmq_diversity, db_config),
-                    DefaultConf = proplists:get_value(mongodb, AuthConfigs),
+                    DefaultConf = default_conf(),
                     Options = vmq_diversity_utils:map(Config),
                     PoolId = vmq_diversity_utils:atom(
                                maps:get(<<"pool_id">>,
@@ -116,10 +115,6 @@ ensure_pool(As, St) ->
                               maps:get(<<"w_mode">>,
                                        Options,
                                        proplists:get_value(w_mode, DefaultConf))),
-                    RMode = vmq_diversity_utils:atom(
-                              maps:get(<<"r_mode">>,
-                                       Options,
-                                       proplists:get_value(r_mode, DefaultConf))),
                     Ssl = vmq_diversity_utils:atom(
                             maps:get(<<"ssl">>, Options,
                                      proplists:get_value(ssl, DefaultConf, false))),
@@ -148,7 +143,7 @@ ensure_pool(As, St) ->
                     end,
                     NewOptions = HostPortOrSrv ++
                     [{login, mbin(Login)}, {password, mbin(Password)}, {database, mbin(Database)},
-                     {auth_source, mbin(AuthSource)}, {w_mode, WMode}, {r_mode, RMode}, {ssl, Ssl},
+                     {auth_source, mbin(AuthSource)}, {w_mode, WMode}, {ssl, Ssl},
                      {ssl_opts, SslOpts}],
                     vmq_diversity_sup:start_pool(mongodb,
                                                  [{id, PoolId},
@@ -267,7 +262,9 @@ find_one(As, St) ->
             case luerl:decode(Selector0, St) of
                 Selector when is_list(Selector) ->
                     PoolId = pool_id(BPoolId, As, St),
-                    try find_one(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector)), maps:from_list(parse_args(Args, St))) of
+                    LuaArgs = maps:from_list(parse_args(Args, St)),
+                    FindOneArgs = maps:merge(default_readopts(), LuaArgs),
+                    try find_one(PoolId, Collection, check_ids(vmq_diversity_utils:map(Selector)), FindOneArgs) of
                         Result1 when map_size(Result1) > 0 ->
                             {Result2, NewSt} = luerl:encode(
                                                  vmq_diversity_utils:unmap(check_ids(Result1)), St),
@@ -387,3 +384,12 @@ check_id(#{<<"_id">> := {ObjectId}} = Doc) ->
 check_id(#{<<"_id">> := <<"vmq-objid", ObjectId/binary>>} = Doc) ->
     Doc#{<<"_id">> => {ObjectId}};
 check_id(Doc) -> Doc. %% empty doc
+
+default_conf() ->
+    {ok, AuthConfigs} = application:get_env(vmq_diversity, db_config),
+    proplists:get_value(mongodb, AuthConfigs).
+
+%% readopts as as defined in the mongoc portion of the MongoDB driver
+default_readopts() ->
+    ReadPreference = proplists:get_value(read_preference, default_conf(), primary),
+    #{readopts => #{<<"mode">> => atom_to_binary(ReadPreference, utf8)}}.
