@@ -306,7 +306,6 @@ handle_call({batch, Batch}, _From, #state{config=Config,
  %   io:format("Batch, Replicate Objects ~p~n", [ReplicateObjects]),
  %   io:format("Batch, DBOpts ~p~n", [DbOps]),
  %   io:format("Batch, NodeClock ~p~n", [NodeClock]),
-
     case IsBroadcastEnabled of
         true ->
             #swc_config{group=SwcGroup, transport=TMod} = Config,
@@ -426,7 +425,8 @@ handle_cast({set_group_members, UpdatedPeerList}, State) ->
     {noreply, set_peers(UpdatedPeerList, State)};
 
 handle_cast({swc_broadcast, FromPeer, Objects}, #state{peers=Peers, config=Config} = State0) ->
-    case lists:member(FromPeer, Peers) of
+    Peers1 = proplists:get_keys(Peers),
+    case lists:member(FromPeer, Peers1) of
         true ->
             {DbOps, #state{nodeclock=NodeClock} = State1} =
             lists:foldl(fun(Object, Acc) ->
