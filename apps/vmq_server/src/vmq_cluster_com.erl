@@ -143,7 +143,7 @@ handle_message({'DOWN', _, process, _ClusterNodePid, Reason}, State) ->
     {exit, Reason, State}.
 
 process_bytes(<<"vmq-connect", L:32, BNodeName:L/binary, Rest/binary>>, undefined, St) ->
-    NodeName = binary_to_term(BNodeName, [safe]),
+    NodeName = binary_to_term(BNodeName),
     case vmq_cluster_node_sup:get_cluster_node(NodeName) of
         {ok, ClusterNodePid} ->
             monitor(process, ClusterNodePid),
@@ -166,11 +166,11 @@ process_bytes(Bytes, Buffer, St) ->
 
 process(<<"msg", L:32, Bin:L/binary, Rest/binary>>, St) ->
     #vmq_msg{mountpoint=MP,
-             routing_key=Topic} = Msg = to_vmq_msg(binary_to_term(Bin, [safe])),
+             routing_key=Topic} = Msg = to_vmq_msg(binary_to_term(Bin)),
     _ = vmq_reg:route_remote_msg(St#st.reg_view, MP, Topic, Msg),
     process(Rest, St);
 process(<<"enq", L:32, Bin:L/binary, Rest/binary>>, St) ->
-    case binary_to_term(Bin, [safe]) of
+    case binary_to_term(Bin) of
         {CallerPid, Ref, {enqueue, QueuePid, Msgs}} ->
             %% enqueue in own process context
             %% to ensure that this won't block

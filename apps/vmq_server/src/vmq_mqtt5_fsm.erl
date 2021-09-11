@@ -888,10 +888,9 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Props} = 
                                 State#state{session_expiry_interval=SessionExpiryInterval})
     end.
 
-register_subscriber(#mqtt5_connect{}=F, OutProps0,
+register_subscriber(#mqtt5_connect{username=User}=F, OutProps0,
                     QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_start=CleanStart,
-                                      cap_settings=CAPSettings, fc_receive_max_broker=ReceiveMax,
-                                      username=User, def_opts=DOpts} = State) ->
+                                      cap_settings=CAPSettings, fc_receive_max_broker=ReceiveMax, def_opts=DOpts} = State) ->
     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanStart, QueueOpts) of
         {ok, #{session_present := SessionPresent,

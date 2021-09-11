@@ -45,6 +45,7 @@
          triples/1]).
 
 -define(MAX_LEN, 65536).
+-define(DEFAULT_MAX_TOPIC_DEPTH, 10).
 
 new(Name) when is_list(Name) ->
     {topic, Name}.
@@ -99,8 +100,16 @@ contains_wildcard([_|Rest]) ->
     contains_wildcard(Rest);
 contains_wildcard([]) -> false.
 
+validate_topic_depth(Topic) ->
+    MaxTopicLength = application:get_env(vmq_server, topic_max_depth, ?DEFAULT_MAX_TOPIC_DEPTH),
+    case length(Topic) > MaxTopicLength of
+        true -> {error, topic_max_depth_exceeded};
+        false -> {ok, Topic}
+    end.
+
 validate_publish_topic(<<>>, WordAcc, TopicAcc) ->
-    {ok, reverse([acc_word(WordAcc) | TopicAcc])};
+    Topic = reverse([acc_word(WordAcc) | TopicAcc]),
+    validate_topic_depth(Topic);
 %% Topic Names and Topic Filters MUST NOT include the null character (Unicode U+0000) [MQTT-4.7.3-2]
 validate_publish_topic(<<0/utf8, _Rest/binary>>, _WordAcc, _TopicAcc) ->
     {error, no_null_allowed_in_topic};
@@ -145,9 +154,9 @@ validate_subscribe_topic(<<Codepoint/utf8, Rest/binary>>, WordAcc, TopicAcc) ->
 validate_subscribe_topic(<<_/binary>>, _WordAcc, _TopicAcc) ->
     {error, non_utf8_character}.
 
-validate_shared_subscription([<<"$share">>, _Group, _FirstWord | _] = Topic) -> {ok, Topic};
+validate_shared_subscription([<<"$share">>, _Group, _FirstWord | _] = Topic) -> validate_topic_depth(Topic);
 validate_shared_subscription([<<"$share">> | _] = _Topic) -> {error, invalid_shared_subscription};
-validate_shared_subscription(Topic) -> {ok, Topic}.
+validate_shared_subscription(Topic) -> validate_topic_depth(Topic).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -222,9 +231,8 @@ validate_wildcard_test() ->
     {ok, [<<"foo">>, <<"+">>]} = validate_topic(subscribe, <<"foo/+"/utf8>>),
     {ok, [<<"Юникод"/utf8>>, <<"+">>, <<>>]} = validate_topic(subscribe, <<"Юникод/+/"/utf8>>),
 
-    {ok, [<<"+">>, <<"+">>, <<"+">>, <<"+">>, <<"+">>,
-          <<"+">>, <<"+">>, <<"+">>, <<"+">>, <<"+">>, <<"test">>]}
-    = validate_topic(subscribe, <<"+/+/+/+/+/+/+/+/+/+/test"/utf8>>),
+    {ok,[<<"+">>, <<"+">>, <<"+">>, <<"+">>, <<"+">>, <<"+">>, <<"+">>, <<"test">>]}
+    = validate_topic(subscribe, <<"+/+/+/+/+/+/+/test"/utf8>>),
     %% From MQTT 5 spec
     {ok, [<<"+">>, <<"tennis">>, <<"#">>]}
     = validate_topic(subscribe, <<"+/tennis/#"/utf8>>),
@@ -264,6 +272,15 @@ contains_wildcard_test() ->
     true = contains_wildcard([<<"#">>]),
     false = contains_wildcard([<<"a">>, <<"b">>, <<"c">>]).
 
+validate_topic_depth_test() ->
+    LongTopic = <<"+////////////////////////////////////////">>,
+    application:set_env(vmq_server, topic_max_depth, ?DEFAULT_MAX_TOPIC_DEPTH),
+    {error, topic_max_depth_exceeded} = validate_topic(subscribe, LongTopic),
+    application:set_env(vmq_server, topic_max_depth, 20),
+    {ok, _} = validate_topic(subscribe, <<"+////////////////">>),
+    application:set_env(vmq_server, topic_max_depth, ?DEFAULT_MAX_TOPIC_DEPTH),
+    ok.
+
 random_topics(0) -> ok;
 random_topics(N) when N > 0 ->
     NWords = rand:uniform(100),
@@ -277,6 +294,7 @@ random_topics(N) when N > 0 ->
                     end
                 end, [], lists:seq(1, NWords)),
     Topic = iolist_to_binary(Words),
+    application:set_env(vmq_server, topic_max_depth, 105),
     {ok, T} = validate_topic(subscribe, Topic),
     Topic = iolist_to_binary(unword(T)),
     random_topics(N - 1).
