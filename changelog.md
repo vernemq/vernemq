@@ -1,5 +1,8 @@
 # Changelog
 
+
+## VerneMQ 1.12.3
+
   -  Move from `r_mode` to read preference in VMQ Diversity MongoDB
   -  Fix SWC event broadcast regression, which led to higher SWC sync times.
 
