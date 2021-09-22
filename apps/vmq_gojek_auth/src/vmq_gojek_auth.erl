@@ -134,14 +134,14 @@ auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberI
     true ->
         {Result, Claims} = verify(Password, ?SecretKey),
         if
-          Result =:= ok -> checkRID(Claims, get_username(UserName));
+          Result =:= ok -> check_rid(Claims, get_username(UserName));
         %else block
           true -> {error, invalid_signature}
         end
   end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Internal
+%%% Internal+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init() ->
     lists:foreach(fun(T) ->
@@ -349,7 +349,7 @@ verify(Password, SecretKey) ->
     error:Error -> {error, invalid_signature}
   end.
 
-checkRID(Claims, UserName) ->
+check_rid(Claims, UserName) ->
   case maps:find(rid, Claims) of
     {ok, Value} ->
       if Value =:= UserName -> ok;
