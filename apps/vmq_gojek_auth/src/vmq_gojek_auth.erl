@@ -88,7 +88,7 @@ auth_on_subscribe(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
   if D ->
         next;
      true ->
-        case check(read, Topic, getUsername(User), SubscriberId) of
+        case check(read, Topic, get_username(User), SubscriberId) of
             true ->
                 auth_on_subscribe(User, SubscriberId, Rest);
             false ->
@@ -101,7 +101,7 @@ auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
   if D ->
         next;
      true ->
-          case check(write, Topic, getUsername(User), SubscriberId) of
+          case check(write, Topic, get_username(User), SubscriberId) of
               true ->
                   ok;
               false ->
@@ -134,7 +134,7 @@ auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberI
     true ->
         {Result, Claims} = verify(Password, ?SecretKey),
         if
-          Result =:= ok -> checkRID(Claims, getUsername(UserName));
+          Result =:= ok -> checkRID(Claims, get_username(UserName));
         %else block
           true -> {error, invalid_signature}
         end
@@ -253,8 +253,8 @@ subst(MP, User, ClientId, [C|Rest], Acc) when C == ?CLIENT_SUP ->
     subst(MP, User, ClientId, Rest, [ClientId|Acc]);
 subst(MP, User, ClientId, [M|Rest], Acc) when M == ?MOUNTPOINT_SUP ->
     subst(MP, User, ClientId, Rest, [MP|Acc]);
-subst(MP, User, ClientID, [P|Rest], Acc) when P == ?PROFILE_ID_SUP->
-  subst(MP, User, ClientID, Rest, [get_profile_id(ClientID)|Acc]);
+subst(MP, User, ClientID, [P|Rest], Acc) when P == ?PROFILE_ID_SUP ->
+    subst(MP, User, ClientID, Rest, [get_profile_id(ClientID)|Acc]);
 subst(MP, User, ClientId, [W|Rest], Acc) ->
     subst(MP, User, ClientId, Rest, [W|Acc]);
 subst(_, _, _, [], Acc) -> lists:reverse(Acc).
@@ -359,7 +359,7 @@ checkRID(Claims, UserName) ->
     error -> error
   end.
 
-getUsername(Username) ->
+get_username(Username) ->
   string:nth_lexeme(Username, 1, ":").
 
 get_profile_id(ClientID) ->
