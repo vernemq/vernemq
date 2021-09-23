@@ -364,7 +364,7 @@ get_username(Username) ->
 
 get_profile_id(ClientID) ->
   io:format(string:nth_lexeme(ClientID, 2, ":")),
-  string:nth_lexeme(ClientID, 2, ":").
+  string:nth_lexeme(ClientID, 3, ":").
 
 -ifdef(TEST).
 %%%%%%%%%%%%%
@@ -411,7 +411,7 @@ simple_acl(_) ->
                                           [{[<<"a">>, <<"b">>, <<"c">>], 0}
                                            ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
                                            ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
-      , ?_assertEqual(ok, auth_on_subscribe(<<"test">>, {"", <<"my-client-id:profile-id">>},
+      , ?_assertEqual(ok, auth_on_subscribe(<<"test">>, {"", <<"device-id:owner-id:profile-id">>},
         [{[<<"a">>, <<"b">>, <<"c">>], 0}
           ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
           ,{[<<"example">>, <<"profile-id">>], 0}]))
