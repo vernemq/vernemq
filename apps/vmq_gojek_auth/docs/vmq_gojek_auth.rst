@@ -51,6 +51,8 @@ The patterns available for substitution are:
 
     *   ``%c`` to match the client id of the client
     *   ``%u`` to match the username of the client
+    *   ``%p`` to match the chat profile id of the client. For a client id of the format: <Device-ID>:<Owner-ID>:<ChatProfileID>:..., the third token (delimited by ':' ) is considered as the chat profile id.
+
 
 The substitution pattern must be the only text for that level of hierarchy. Pattern ACLs apply to all users even if the **user** keyword has previously been given.
 
