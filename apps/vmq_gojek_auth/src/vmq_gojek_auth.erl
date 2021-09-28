@@ -88,7 +88,7 @@ auth_on_subscribe(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
   if D ->
         next;
      true ->
-        case check(read, Topic, get_username(User), SubscriberId) of
+        case check(read, Topic, User, SubscriberId) of
             true ->
                 auth_on_subscribe(User, SubscriberId, Rest);
             false ->
@@ -101,7 +101,7 @@ auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
   if D ->
         next;
      true ->
-          case check(write, Topic, get_username(User), SubscriberId) of
+          case check(write, Topic, User, SubscriberId) of
               true ->
                   ok;
               false ->
@@ -134,7 +134,7 @@ auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberI
     true ->
         {Result, Claims} = verify(Password, ?SecretKey),
         if
-          Result =:= ok -> check_rid(Claims, get_username(UserName));
+          Result =:= ok -> check_rid(Claims, UserName);
         %else block
           true -> {error, invalid_signature}
         end
@@ -359,9 +359,6 @@ check_rid(Claims, UserName) ->
     error -> error
   end.
 
-get_username(Username) ->
-  string:nth_lexeme(Username, 1, ":").
-
 get_profile_id(ClientID) ->
   io:format(string:nth_lexeme(ClientID, 2, ":")),
   string:nth_lexeme(ClientID, 3, ":").
@@ -417,7 +414,7 @@ simple_acl(_) ->
           ,{[<<"example">>, <<"profile-id">>], 0}]))
       ,
       %% colon separated username
-      ?_assertEqual(ok, auth_on_subscribe(<<"test:123:123:345">>, {"", <<"my-client-id">>},
+      ?_assertEqual(ok, auth_on_subscribe(<<"test">>, {"", <<"my-client-id">>},
       [{[<<"a">>, <<"b">>, <<"c">>], 0}
         ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
         ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))

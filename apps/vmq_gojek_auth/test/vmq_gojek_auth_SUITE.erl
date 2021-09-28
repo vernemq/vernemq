@@ -11,7 +11,6 @@
 
 -export([
   auth_on_register_test/1,
-  auth_on_register_username_contains_colon_test/1,
   auth_on_register_rid_absent_test/1,
   auth_on_register_rid_different_test/1,
   auth_on_register_unparsable_token_test/1,
@@ -21,7 +20,6 @@
 all() ->
   [
     auth_on_register_test,
-    auth_on_register_username_contains_colon_test,
     auth_on_register_rid_absent_test,
     auth_on_register_rid_different_test,
     auth_on_register_unparsable_token_test,
@@ -77,16 +75,6 @@ auth_on_register_unparsable_token_test(_) ->
 
   %When password is not jwt from username
   {error, invalid_signature} = vmq_gojek_auth:auth_on_register({"",""}, {"",""}, <<"username">>, <<"Password">>, false),
-  application:unset_env(vmq_gojek_auth, secret_key),
-  application:unset_env(vmq_gojek_auth, enable_jwt_auth).
-
-auth_on_register_username_contains_colon_test(_) ->
-  ok = application:set_env(vmq_gojek_auth, secret_key, "test-key"),
-  ok = application:set_env(vmq_gojek_auth, enable_jwt_auth, true),
-
-  %When username contains colons
-  Password = jwerl:sign([{rid, <<"username">>}], hs256, <<"test-key">>),
-  ok = vmq_gojek_auth:auth_on_register({"",""}, {"",""}, <<"username:123:456:789">>, Password, false),
   application:unset_env(vmq_gojek_auth, secret_key),
   application:unset_env(vmq_gojek_auth, enable_jwt_auth).
 
