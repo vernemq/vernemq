@@ -1,6 +1,6 @@
 # VerneMQ: A Distributed MQTT Broker
 
-[![Build Status](https://travis-ci.org/vernemq/vernemq.svg?branch=master)](https://travis-ci.org/vernemq/vernemq)
+![Build and Smoketest Status](https://github.com/vernemq/vernemq/actions/workflows/pr.yml/badge.svg)
 <a href="https://docs.vernemq.com">
 		<img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" target="_blank" />
 	</a>
