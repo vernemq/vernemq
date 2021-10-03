@@ -16,6 +16,13 @@
   {default, "vmq"}
 ]}.
 
+%% @doc Name of the Erlang node
+%% Default: VerneMQ@127.0.0.1 
+%% Acceptable values:
+%%   - text
+{mapping, "nodename" , "vm_args.-name", [
+                {default, "VerneMQ@127.0.0.1"}
+                ]}.
 
 %% @doc Where to emit the default log messages (typically at 'info'
 %% severity):
