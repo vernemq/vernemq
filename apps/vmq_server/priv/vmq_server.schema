@@ -795,9 +795,9 @@
 %% (MQTT 3.1 bridge), 132 (MQTT 3.1.1 bridge).
 {mapping, "listener.tcp.allowed_protocol_versions", "vmq_server.listeners",
  [
-  {default, "3,4,131"},
+  {default, "3,4,5,131"},
   {datatype, string},
-  {commented, "3,4"}
+  {commented, "3,4,5"}
  ]}.
 
 {mapping, "listener.tcp.$name.allowed_protocol_versions", "vmq_server.listeners",
