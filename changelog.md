@@ -1,6 +1,7 @@
 # Changelog
 
-
+  - Switch on V5 in MQTT listeners as a default
+  - Fix v5 username regression, interfering with auth_on_register modifiers.
 ## VerneMQ 1.12.3
 
   -  Move from `r_mode` to read preference in VMQ Diversity MongoDB
