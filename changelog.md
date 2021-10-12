@@ -1,5 +1,7 @@
 # Changelog
 
+  - Add additional bcrypt configuration options
+  - Bump bcrypt version
   - Switch on V5 in MQTT listeners as a default
   - Fix v5 username regression, interfering with auth_on_register modifiers.
 ## VerneMQ 1.12.3
