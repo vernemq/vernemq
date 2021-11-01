@@ -1,13 +1,36 @@
-%% @doc The pool_size specifies how many bcrypt operations that are
+%% @doc The pool_size specifies how many bcrypt port operations are
 %% allowed concurrently. The value `auto` will try to detect all
-%% logical cpus and set the pool size to that number. If the number of
-%% logical cpus cannot be detected, a value of 1 is used.
+%% logical cpus and set the pool size to that number minus 1.
+%% If the number of logical cpus cannot be detected, a value of 1 is used.
 {mapping, "vmq_bcrypt.pool_size", "bcrypt.pool_size", [
-                                                       {datatype, [integer, {enum, [auto]}]},
-                                                       {default, 1},
-                                                       {include_default, 1},
-                                                       {validators, ["non-zero-positive-int"]}
-                                                      ]}.
+ {datatype, [integer, {enum, [auto]}]},
+ {default, 1},
+ {validators, ["non-zero-positive-int"]}
+]}.
+
+%% @doc The pool_size specifies how many bcrypt NIF operations are
+%% allowed concurrently. The value `auto` will try to detect all
+%% logical cpus and set the pool size to that number minus 1.
+%% If the number of logical cpus cannot be detected, a value of 1 is used.
+{mapping, "vmq_bcrypt.nif_pool_size", "bcrypt.nif_pool_size", [
+ {datatype, [integer, {enum, [auto]}]},
+ {default, 4},
+ {validators, ["non-zero-positive-int"]}
+]}.
+
+%% @doc Specifies the max workers to overflow of the bcrypt NIF program pool.
+{mapping, "vmq_bcrypt.nif_pool_max_overflow", "bcrypt.nif_pool_max_overflow", [
+ {datatype, [integer]},
+ {default, 10},
+ {validators, ["non-zero-positive-int"]}
+]}.
+
+%% @doc Specifies the number of bcrypt log rounds, defining the hashing complexity.
+{mapping, "vmq_bcrypt.default_log_rounds", "bcrypt.default_log_rounds", [
+ {datatype, [integer]},
+ {default, 12},
+ {validators, ["bcrypt-log-rounds"]}
+]}.
 
 {translation,
  "bcrypt.pool_size",
@@ -18,22 +41,41 @@
                      unknown ->
                          1;
                      N when is_integer(N) ->
-                         N
+                         max(N - 1, 1)
                  end;
              Size when is_integer(Size) ->
                  Size
          end
  end}.
 
+{translation,
+"bcrypt.nif_pool_size",
+fun(Conf) ->
+        case cuttlefish:conf_get("vmq_bcrypt.nif_pool_size", Conf) of
+            auto ->
+                case erlang:system_info(logical_processors_online) of
+                    unknown ->
+                        1;
+                    N when is_integer(N) ->
+                        max(N - 1, 1)
+                end;
+            Size when is_integer(Size) ->
+                Size
+        end
+end}.
+
+%% @doc Specify where bcrypt is called as an Erlang port or NIF
 {mapping, "vmq_bcrypt.mechanism", "bcrypt.mechanism", [
-                                                       {datatype, {enum, [nif, port]}},
-                                                       {default, port},
-                                                       hidden,
-                                                       {include_default, port}
-                                                      ]}.
+ {datatype, {enum, [nif, port]}},
+ {default, port}
+]}.
 
 {validator, "non-zero-positive-int", "0 or negative values not allowed",
- fun(Int) when is_integer(Int), Int < 1 ->
-         false;
+ fun(Int) when is_integer(Int), Int < 1 -> false;
     (_) -> true
+ end}.
+
+{validator, "bcrypt-log-rounds", "must be between 4 and 31",
+ fun(Int) when Int >= 4, Int =< 31 -> true;
+    (_) -> false
  end}.
