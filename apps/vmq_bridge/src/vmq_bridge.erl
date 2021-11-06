@@ -53,6 +53,7 @@
           topics,
           client_opts,
           counters_ref,
+          internal_subscriber,
           %% subscriptions on the remote broker
           subs_remote=[],
           %% subscriptions on the local broker
@@ -104,8 +105,10 @@ on_publish(Topic, Payload, Opts, {coord, CoordinatorPid} = State) ->
     {ok, State}.
 
 init([Type, Host, Port, RegistryMFA, Opts]) ->
-    {M,F,A} = RegistryMFA,
-    {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}} = apply(M,F,A),
+    {M,F,[A, OptMap]} = RegistryMFA,
+    {ok, #{client_id := InternalClient, publish_fun := PublishFun, register_fun := RegisterFun, 
+        subscribe_fun := SubscribeFun, unsubscribe_fun := UnsubscribeFun}} 
+        = apply(M,F,[A, OptMap]),
     true = is_function(RegisterFun, 0),
     true = is_function(PublishFun, 3),
     true = is_function(SubscribeFun, 1),
@@ -118,6 +121,7 @@ init([Type, Host, Port, RegistryMFA, Opts]) ->
                 host=Host,
                 port=Port,
                 opts=Opts,
+                internal_subscriber=InternalClient,
                 publish_fun=PublishFun,
                 subscribe_fun=SubscribeFun,
                 unsubscribe_fun=UnsubscribeFun}};

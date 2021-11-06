@@ -10,7 +10,11 @@
                  ]},
   {mod, { vmq_bridge_app, []}},
   {env, [
-         {registry_mfa, {vmq_reg, direct_plugin_exports, [vmq_bridge, #{wait_till_ok => false}]}},
+         {registry_mfa, {vmq_reg, direct_plugin_exports, [vmq_bridge, #{wait_till_ready => false, 
+                                                                        sg_policy => prefer_online_before_local,
+                                                                        cap_publish => true,
+                                                                        cap_subscribe => true,
+                                                                        cap_unsubscribe => true}]}},
          {vmq_config_enabled, true},
          {vmq_plugin_hooks, [{vmq_bridge_sup, change_config, 1, [internal]}]},
          {vmq_metrics_mfa, {vmq_bridge_sup, metrics, []}},
