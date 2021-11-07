@@ -106,7 +106,7 @@ on_publish(Topic, Payload, Opts, {coord, CoordinatorPid} = State) ->
 
 init([Type, Host, Port, RegistryMFA, Opts]) ->
     {M,F,[A, OptMap]} = RegistryMFA,
-    {ok, #{client_id := InternalClient, publish_fun := PublishFun, register_fun := RegisterFun, 
+    {ok, #{publish_fun := PublishFun, register_fun := RegisterFun, 
         subscribe_fun := SubscribeFun, unsubscribe_fun := UnsubscribeFun}} 
         = apply(M,F,[A, OptMap]),
     true = is_function(RegisterFun, 0),
@@ -121,7 +121,6 @@ init([Type, Host, Port, RegistryMFA, Opts]) ->
                 host=Host,
                 port=Port,
                 opts=Opts,
-                internal_subscriber=InternalClient,
                 publish_fun=PublishFun,
                 subscribe_fun=SubscribeFun,
                 unsubscribe_fun=UnsubscribeFun}};

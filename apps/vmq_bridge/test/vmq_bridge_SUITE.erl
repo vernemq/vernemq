@@ -26,11 +26,11 @@ init_per_group(try_private_4, Config) ->
 end_per_group(_GroupName, _Config) ->
     ok.
 
-init_per_testcase(TestCase, Config) ->
-    case TestCase of
-     buffer_outgoing_test -> {skip, travis};
-    _ -> Config
-    end.
+% init_per_testcase(TestCase, Config) ->
+%     case TestCase of
+%      buffer_outgoing_test -> {skip, travis};
+%     _ -> Config
+%     end.
 
 end_per_testcase(_TestCase, _Config) ->
     stop_bridge_plugin(),
@@ -390,7 +390,7 @@ start_bridge_plugin(Opts) ->
     Topics = maps:get(topics, Opts, [{"bridge/#", both, QoS, "", ""}]),
     application:load(vmq_bridge),
     application:set_env(vmq_bridge, registry_mfa,
-                        {?MODULE, bridge_reg, [self()]}),
+                        {?MODULE, bridge_reg, [self(), []]}),
     application:set_env(vmq_bridge, config,
                         {[
                           %% TCP Bridges
@@ -435,11 +435,14 @@ pub_to_bridge(BridgePid, Topic, Payload, QoS) ->
 pub_to_bridge(BridgePid, Payload, QoS) ->
     BridgePid ! {deliver, [<<"bridge">>, <<"topic">>], Payload, QoS, false, false}.
 
-bridge_reg(ReportProc) ->
+brigdge_reg(ReportProc) ->
+    bridge_reg(ReportProc, []).
+bridge_reg(ReportProc, _Opts) ->
+
     RegisterFun = fun() ->
                           ok
                   end,
-    PublishFun = fun(Topic, Payload, _Opts = #{retain := IsRetain}) when is_boolean(IsRetain) ->
+    PublishFun = fun(Topic, Payload, _Opts2 = #{retain := IsRetain}) when is_boolean(IsRetain) ->
                          ReportProc ! {publish, Topic, Payload},
                          ok
                  end,
@@ -451,4 +454,5 @@ bridge_reg(ReportProc) ->
                              ReportProc ! {unsubscribe, self()},
                              ok
                      end,
-    {RegisterFun, PublishFun, {SubscribeFun, UnsubscribeFun}}.
+{ok, #{publish_fun => PublishFun, register_fun => RegisterFun, 
+                     subscribe_fun => SubscribeFun, unsubscribe_fun => UnsubscribeFun}}.
