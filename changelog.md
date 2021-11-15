@@ -5,7 +5,9 @@
   - Switch on V5 in MQTT listeners as a default
   - Fix v5 username regression, interfering with auth_on_register modifiers.
   - Move the `add_session` on queue draining from error to info logging.
-
+  - Add `vmq-admin trace stop_all` command to stop unreachable traces.
+  - Fix bridge configuration regarding CAP settings.
+  - Add `prefer_online_before_local` shared subscription policy.
 ## VerneMQ 1.12.3
 
   -  Move from `r_mode` to read preference in VMQ Diversity MongoDB
