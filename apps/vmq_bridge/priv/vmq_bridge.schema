@@ -287,20 +287,20 @@
                                                             {commented, on}
                                                         ]}.                                          
 
-{mapping, "vmq_bridge.registry_mfa", "vmq_bridge.registry_mfa", 
- [
-  {default, "{vmq_reg,direct_plugin_exports,[vmq_bridge]}"},
-  {datatype, string},
-  hidden
- ]}. 
+%{mapping, "vmq_bridge.registry_mfa", "vmq_bridge.registry_mfa", 
+% [
+%  {default, "{vmq_reg,direct_plugin_exports,[vmq_bridge]}"},
+%  {datatype, string},
+%  hidden
+% ]}. 
 
-{translation, "vmq_bridge.registry_mfa", 
- fun(Conf) ->
-         S = cuttlefish:conf_get("vmq_bridge.registry_mfa", Conf),
-         {ok, T, _} = erl_scan:string(S ++ "."),
-         {ok, Term} = erl_parse:parse_term(T),
-         Term
- end}.
+%{translation, "vmq_bridge.registry_mfa", 
+% fun(Conf) ->
+%         S = cuttlefish:conf_get("vmq_bridge.registry_mfa", Conf),
+%         {ok, T, _} = erl_scan:string(S ++ "."),
+%         {ok, Term} = erl_parse:parse_term(T),
+%         Term
+% end}.
 
 {translation, "vmq_bridge.config", 
  fun(Conf) ->
