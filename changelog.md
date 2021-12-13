@@ -1,4 +1,4 @@
-# Changelog
+# VerneMQ 1.12.4
 
   - Add additional bcrypt configuration options
   - Bump bcrypt version
