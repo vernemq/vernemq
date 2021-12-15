@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
+
+package eventssidecar.v1;
+
+message OnUnsubscribe {
+    string username = 1;
+    string client_id = 2;
+    string mountpoint = 3;
+    repeated string topics = 4;
+}

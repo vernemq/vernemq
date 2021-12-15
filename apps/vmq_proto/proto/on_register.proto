@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
+
+package eventssidecar.v1;
+
+message OnRegister {
+    string peer_addr = 1;
+    int32 peer_port = 2;
+    string username = 3;
+    string mountpoint = 4;
+    string client_id = 5;
+}

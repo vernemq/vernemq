@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
+
+package eventssidecar.v1;
+
+message OnSessionExpired {
+    string client_id = 1;
+    string mountpoint = 2;
+}

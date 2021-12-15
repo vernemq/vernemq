@@ -1,6 +1,6 @@
 # Build container
 FROM erlang:23.0.3-alpine as builder
-RUN apk add --no-cache snappy-dev openssl-dev alpine-sdk bsd-compat-headers
+RUN apk add --no-cache snappy-dev openssl-dev alpine-sdk bsd-compat-headers bash
 WORKDIR /builder
 COPY . /builder
 RUN make rel

@@ -1,0 +1,54 @@
+%% -*- mode: erlang -*-
+%% ex: ft=erlang
+
+%% @doc To register events sidecar webhooks, a list of hook names needs to be configured.
+%% Valid hook names: [on_register, on_publish, on_subscribe, on_unsubscribe, on_deliver, on_offline_message, on_client_wakeup, on_client_offline, on_client_gone, on_delivery_complete, on_session_expired]
+{mapping, "vmq_events_sidecar.hooks", "vmq_events_sidecar.hooks",
+ [
+  {validators, ["hook_names"]},
+  {commented, "[on_register, on_publish]"}
+ ]}.
+
+{validator, "hook_names", "hook names must be valid",
+ fun(Hooks) ->
+    ValidHooks = [on_register,
+                  on_publish,
+                  on_subscribe,
+                  on_unsubscribe,
+                  on_deliver,
+                  on_offline_message,
+                  on_client_wakeup,
+                  on_client_offline,
+                  on_client_gone,
+                  on_delivery_complete,
+                  on_session_expired],
+    HooksList = vmq_events_sidecar_sup:parse_event_hooks(Hooks),
+    lists:all(fun(Hook) -> lists:member(Hook, ValidHooks) end, HooksList)
+ end}.
+
+{mapping, "vmq_events_sidecar.clique_lead_line", "vmq_events_sidecar.clique_lead_line",
+ [{datatype, string},
+  hidden,
+  {default, "    events sidecar    Manage events sidecar\n"}]}.
+
+%% @doc Configure the maximum number of TCP connections in the sidecar pool.
+{mapping, "vmq_events_sidecar.pool_size", "vmq_events_sidecar.pool_size",
+ [{datatype, integer},
+  hidden,
+  {default, 100}]}.
+
+%% @doc Configure the sidecar hostname to be used to connect to.
+{mapping, "vmq_events_sidecar.hostname", "vmq_events_sidecar.hostname",
+ [{datatype, string},
+  {default, "127.0.0.1"}]}.
+
+%% @doc Configure the sidecar port to be used to connect to.
+{mapping, "vmq_events_sidecar.port", "vmq_events_sidecar.port",
+ [{datatype, integer},
+  {default, 8890}]}.
+
+%% @doc Configure the sidecar backlog size to handle backpressure.
+{mapping, "vmq_events_sidecar.backlog_size", "vmq_events_sidecar.backlog_size",
+ [{datatype, integer},
+  hidden,
+  {default, 4096}]}.

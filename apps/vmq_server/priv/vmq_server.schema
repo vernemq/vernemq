@@ -1699,6 +1699,13 @@
                                                                {datatype, flag},
                                                                {default, off}
                                                              ]}.
+
+%% @doc Webhook based plugins.
+{mapping, "plugins.vmq_events_sidecar", "vmq_server.user_plugins", [
+                                                               {datatype, flag},
+                                                               {default, off}
+                                                             ]}.
+
 %% @doc The VerneMQ bridge plugin.
 {mapping, "plugins.vmq_bridge", "vmq_server.user_plugins", [
                                                             {datatype, flag},

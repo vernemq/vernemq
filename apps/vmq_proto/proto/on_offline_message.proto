@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
+
+package eventssidecar.v1;
+
+message OnOfflineMessage {
+    string client_id = 1;
+    string mountpoint = 2;
+    int32 qos = 3;
+    string topic = 4;
+    bytes payload = 5;
+    bool retain = 6;
+}

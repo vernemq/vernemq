@@ -76,6 +76,22 @@
 -define(MQTT4_SUBSCRIBE_ERROR, mqtt_subscribe_error).
 -define(MQTT4_UNSUBSCRIBE_ERROR, mqtt_unsubscribe_error).
 -define(MQTT4_CLIENT_KEEPALIVE_EXPIRED, mqtt4_client_keepalive_expired).
+
+-define(SIDECAR_EVENTS, sidecar_events).
+-define(SIDECAR_EVENTS_ERROR, sidecar_events_error).
+-define(SIDECAR_EVENTS_DURATION, sidecar_events_duration).
+-define(ON_REGISTER, on_register).
+-define(ON_PUBLISH, on_publish).
+-define(ON_SUBSCRIBE, on_subscribe).
+-define(ON_UNSUBSCRIBE, on_unsubscribe).
+-define(ON_DELIVER, on_deliver).
+-define(ON_DELIVERY_COMPLETE, on_delivery_complete).
+-define(ON_OFFLINE_MESSAGE, on_offline_message).
+-define(ON_CLIENT_OFFLINE, on_client_offline).
+-define(ON_CLIENT_WAKEUP, on_client_wakeup).
+-define(ON_CLIENT_GONE, on_client_gone).
+-define(ON_SESSION_EXPIRED, on_session_expired).
+
 -define(METRIC_QUEUE_SETUP, queue_setup).
 -define(METRIC_QUEUE_INITIALIZED_FROM_STORAGE, queue_initialized_from_storage).
 -define(METRIC_QUEUE_TEARDOWN, queue_teardown).

@@ -61,6 +61,9 @@
          incr_mqtt_error_subscribe/0,
          incr_mqtt_error_unsubscribe/0,
 
+         incr_sidecar_events/1,
+         incr_sidecar_events_error/1,
+
          incr_queue_setup/0,
          incr_queue_initialized_from_storage/0,
          incr_queue_teardown/0,
@@ -215,6 +218,12 @@ incr_mqtt_error_subscribe() ->
 
 incr_mqtt_error_unsubscribe() ->
     incr_item(?MQTT4_UNSUBSCRIBE_ERROR, 1).
+
+incr_sidecar_events(HookName) ->
+    incr_item({?SIDECAR_EVENTS, HookName}, 1).
+
+incr_sidecar_events_error(HookName) ->
+    incr_item({?SIDECAR_EVENTS_ERROR, HookName}, 1).
 
 incr_queue_setup() ->
     incr_item(?METRIC_QUEUE_SETUP, 1).
@@ -675,8 +684,29 @@ internal_defs() ->
              mqtt5_pubrec_sent_def(), mqtt5_pubrec_received_def(),
              mqtt5_pubrel_sent_def(), mqtt5_pubrel_received_def(),
              mqtt5_pubcomp_sent_def(), mqtt5_pubcomp_received_def(),
-             mqtt5_auth_sent_def(), mqtt5_auth_received_def()
+             mqtt5_auth_sent_def(), mqtt5_auth_received_def(),
+             sidecar_events_def()
             ], []).
+
+sidecar_events_def() ->
+  HOOKs =
+    [
+      ?ON_REGISTER,
+      ?ON_PUBLISH,
+      ?ON_SUBSCRIBE,
+      ?ON_UNSUBSCRIBE,
+      ?ON_DELIVER,
+      ?ON_DELIVERY_COMPLETE,
+      ?ON_OFFLINE_MESSAGE,
+      ?ON_CLIENT_WAKEUP,
+      ?ON_CLIENT_OFFLINE,
+      ?ON_CLIENT_GONE,
+      ?ON_SESSION_EXPIRED],
+    [
+      m(counter, [{mqtt_version,"4"}, {hook, rcn_to_str(HOOK)}], {?SIDECAR_EVENTS, HOOK} , sidecar_events, <<"The number of events sidecar hook attempts.">>) || HOOK <- HOOKs
+    ] ++ [
+      m(counter, [{mqtt_version,"4"}, {hook, rcn_to_str(HOOK)}], {?SIDECAR_EVENTS_ERROR, HOOK}, sidecar_events_error, <<"The number of times events sidecar hook call failed.">>) || HOOK <- HOOKs
+    ].
 
 counter_entries_def() ->
     [
@@ -1333,7 +1363,29 @@ met2idx(mqtt_connack_unacceptable_protocol_sent)                  -> 192;
 met2idx(mqtt_connack_accepted_sent)                               -> 193;
 met2idx(?METRIC_SOCKET_CLOSE_TIMEOUT)                             -> 194;
 met2idx(?MQTT5_CLIENT_KEEPALIVE_EXPIRED)                          -> 195;
-met2idx(?MQTT4_CLIENT_KEEPALIVE_EXPIRED)                          -> 196.
+met2idx(?MQTT4_CLIENT_KEEPALIVE_EXPIRED)                          -> 196;
+met2idx({?SIDECAR_EVENTS, ?ON_REGISTER})                          -> 197;
+met2idx({?SIDECAR_EVENTS, ?ON_PUBLISH})                           -> 198;
+met2idx({?SIDECAR_EVENTS, ?ON_SUBSCRIBE})                         -> 199;
+met2idx({?SIDECAR_EVENTS, ?ON_UNSUBSCRIBE})                       -> 200;
+met2idx({?SIDECAR_EVENTS, ?ON_DELIVER})                           -> 201;
+met2idx({?SIDECAR_EVENTS, ?ON_DELIVERY_COMPLETE})                 -> 202;
+met2idx({?SIDECAR_EVENTS, ?ON_OFFLINE_MESSAGE})                   -> 203;
+met2idx({?SIDECAR_EVENTS, ?ON_CLIENT_GONE})                       -> 204;
+met2idx({?SIDECAR_EVENTS, ?ON_CLIENT_WAKEUP})                     -> 205;
+met2idx({?SIDECAR_EVENTS, ?ON_CLIENT_OFFLINE})                    -> 206;
+met2idx({?SIDECAR_EVENTS, ?ON_SESSION_EXPIRED})                   -> 207;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER})                    -> 208;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_PUBLISH})                     -> 209;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SUBSCRIBE})                   -> 210;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_UNSUBSCRIBE})                 -> 211;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_DELIVER})                     -> 212;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_DELIVERY_COMPLETE})           -> 213;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_OFFLINE_MESSAGE})             -> 214;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_GONE})                 -> 215;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_WAKEUP})               -> 216;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_OFFLINE})              -> 217;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SESSION_EXPIRED})             -> 218.
 
 -ifdef(TEST).
 clear_stored_rates() ->

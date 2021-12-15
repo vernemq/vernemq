@@ -1,3 +1,4 @@
+.idea/
 _build
 log
 debian/*
@@ -17,8 +18,4 @@ plts_base/
 
 docker/vernemq.tar.gz
 
-.idea/misc.xml
-.idea/modules.xml
-.idea/runConfigurations.xml
-.idea/vcs.xml
 vernemq.iml

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
+
+package eventssidecar.v1;
+
+message OnDeliveryComplete {
+  string username = 1;
+  string client_id = 2;
+  string mountpoint = 3;
+  string topic = 4;
+  int32 qos = 5;
+  bool is_retain = 6;
+  bytes payload = 7;
+}
