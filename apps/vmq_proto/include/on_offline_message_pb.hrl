@@ -7,15 +7,24 @@
 
 -define(on_offline_message_pb_gpb_version, "4.19.1").
 
--ifndef('ONOFFLINEMESSAGE_PB_H').
--define('ONOFFLINEMESSAGE_PB_H', true).
--record('OnOfflineMessage',
-        {client_id = <<>>       :: unicode:chardata() | undefined, % = 1, optional
-         mountpoint = <<>>      :: unicode:chardata() | undefined, % = 2, optional
-         qos = 0                :: integer() | undefined, % = 3, optional, 32 bits
-         topic = <<>>           :: unicode:chardata() | undefined, % = 4, optional
-         payload = <<>>         :: iodata() | undefined, % = 5, optional
-         retain = false         :: boolean() | 0 | 1 | undefined % = 6, optional
+-ifndef('EVENTSSIDECAR.V1.ONOFFLINEMESSAGE_PB_H').
+-define('EVENTSSIDECAR.V1.ONOFFLINEMESSAGE_PB_H', true).
+-record('eventssidecar.v1.OnOfflineMessage',
+        {timestamp = undefined  :: on_offline_message_pb:'google.protobuf.Timestamp'() | undefined, % = 1, optional
+         client_id = <<>>       :: unicode:chardata() | undefined, % = 2, optional
+         mountpoint = <<>>      :: unicode:chardata() | undefined, % = 3, optional
+         qos = 0                :: integer() | undefined, % = 4, optional, 32 bits
+         topic = <<>>           :: unicode:chardata() | undefined, % = 5, optional
+         payload = <<>>         :: iodata() | undefined, % = 6, optional
+         retain = false         :: boolean() | 0 | 1 | undefined % = 7, optional
+        }).
+-endif.
+
+-ifndef('GOOGLE.PROTOBUF.TIMESTAMP_PB_H').
+-define('GOOGLE.PROTOBUF.TIMESTAMP_PB_H', true).
+-record('google.protobuf.Timestamp',
+        {seconds = 0            :: integer() | undefined, % = 1, optional, 64 bits
+         nanos = 0              :: integer() | undefined % = 2, optional, 32 bits
         }).
 -endif.
 

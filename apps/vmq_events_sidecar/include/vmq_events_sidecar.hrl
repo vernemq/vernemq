@@ -4,6 +4,6 @@
 -define(CLIENT, vmq_events_sidecar_client).
 
 %% types
--type event() :: {atom(), tuple()}.
+-type event() :: {atom(), integer(), tuple()}.
 -type pool_size() :: pos_integer().
 -endif.

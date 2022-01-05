@@ -7,21 +7,30 @@
 
 -define(on_subscribe_pb_gpb_version, "4.19.1").
 
--ifndef('ONSUBSCRIBE_PB_H').
--define('ONSUBSCRIBE_PB_H', true).
--record('OnSubscribe',
-        {client_id = <<>>       :: unicode:chardata() | undefined, % = 1, optional
-         mountpoint = <<>>      :: unicode:chardata() | undefined, % = 2, optional
-         username = <<>>        :: unicode:chardata() | undefined, % = 3, optional
-         topics = []            :: [on_subscribe_pb:'TopicInfo'()] | undefined % = 4, repeated
+-ifndef('EVENTSSIDECAR.V1.ONSUBSCRIBE_PB_H').
+-define('EVENTSSIDECAR.V1.ONSUBSCRIBE_PB_H', true).
+-record('eventssidecar.v1.OnSubscribe',
+        {timestamp = undefined  :: on_subscribe_pb:'google.protobuf.Timestamp'() | undefined, % = 1, optional
+         client_id = <<>>       :: unicode:chardata() | undefined, % = 2, optional
+         mountpoint = <<>>      :: unicode:chardata() | undefined, % = 3, optional
+         username = <<>>        :: unicode:chardata() | undefined, % = 4, optional
+         topics = []            :: [on_subscribe_pb:'eventssidecar.v1.TopicInfo'()] | undefined % = 5, repeated
         }).
 -endif.
 
--ifndef('TOPICINFO_PB_H').
--define('TOPICINFO_PB_H', true).
--record('TopicInfo',
+-ifndef('EVENTSSIDECAR.V1.TOPICINFO_PB_H').
+-define('EVENTSSIDECAR.V1.TOPICINFO_PB_H', true).
+-record('eventssidecar.v1.TopicInfo',
         {topic = <<>>           :: unicode:chardata() | undefined, % = 1, optional
          qos = 0                :: integer() | undefined % = 2, optional, 32 bits
+        }).
+-endif.
+
+-ifndef('GOOGLE.PROTOBUF.TIMESTAMP_PB_H').
+-define('GOOGLE.PROTOBUF.TIMESTAMP_PB_H', true).
+-record('google.protobuf.Timestamp',
+        {seconds = 0            :: integer() | undefined, % = 1, optional, 64 bits
+         nanos = 0              :: integer() | undefined % = 2, optional, 32 bits
         }).
 -endif.
 

@@ -7,11 +7,20 @@
 
 -define(on_client_offline_pb_gpb_version, "4.19.1").
 
--ifndef('ONCLIENTOFFLINE_PB_H').
--define('ONCLIENTOFFLINE_PB_H', true).
--record('OnClientOffline',
-        {client_id = <<>>       :: unicode:chardata() | undefined, % = 1, optional
-         mountpoint = <<>>      :: unicode:chardata() | undefined % = 2, optional
+-ifndef('EVENTSSIDECAR.V1.ONCLIENTOFFLINE_PB_H').
+-define('EVENTSSIDECAR.V1.ONCLIENTOFFLINE_PB_H', true).
+-record('eventssidecar.v1.OnClientOffline',
+        {timestamp = undefined  :: on_client_offline_pb:'google.protobuf.Timestamp'() | undefined, % = 1, optional
+         client_id = <<>>       :: unicode:chardata() | undefined, % = 2, optional
+         mountpoint = <<>>      :: unicode:chardata() | undefined % = 3, optional
+        }).
+-endif.
+
+-ifndef('GOOGLE.PROTOBUF.TIMESTAMP_PB_H').
+-define('GOOGLE.PROTOBUF.TIMESTAMP_PB_H', true).
+-record('google.protobuf.Timestamp',
+        {seconds = 0            :: integer() | undefined, % = 1, optional, 64 bits
+         nanos = 0              :: integer() | undefined % = 2, optional, 32 bits
         }).
 -endif.
 

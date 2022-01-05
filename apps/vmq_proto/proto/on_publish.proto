@@ -1,15 +1,18 @@
 syntax = "proto3";
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
 
 package eventssidecar.v1;
 
 message OnPublish {
-    string username = 1;
-    string client_id = 2;
-    string mountpoint = 3;
-    int32 qos = 4;
-    string topic = 5;
-    bytes payload = 6;
-    bool retain = 7;
+    google.protobuf.Timestamp timestamp = 1;
+    string username = 2;
+    string client_id = 3;
+    string mountpoint = 4;
+    int32 qos = 5;
+    string topic = 6;
+    bytes payload = 7;
+    bool retain = 8;
 }

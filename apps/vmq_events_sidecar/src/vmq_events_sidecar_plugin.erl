@@ -342,7 +342,7 @@ uncheck_exported_callback(HookName, [_|Exports]) ->
 uncheck_exported_callback(_, []) -> {error, no_matching_callback_found}.
 
 -spec send_event(tuple()) -> 'next' | 'ok'.
-send_event({HookName, EventPayload} = Event) ->
+send_event({HookName, EventPayload}) ->
     case use_events_sidecar(EventPayload) andalso ets:lookup(?TBL, HookName) of
         false ->
             next;
@@ -350,7 +350,7 @@ send_event({HookName, EventPayload} = Event) ->
             next;
         [{_}] ->
           vmq_metrics:incr_sidecar_events(HookName),
-          case shackle:cast(?APP, Event, undefined) of
+          case shackle:cast(?APP, {HookName, os:system_time(), EventPayload}, undefined) of
             {ok, _} -> ok;
             {error, Reason} ->
               lager:error("Error sending event(shackle:cast): ~p", [Reason]),

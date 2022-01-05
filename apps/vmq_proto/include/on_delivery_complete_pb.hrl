@@ -7,16 +7,25 @@
 
 -define(on_delivery_complete_pb_gpb_version, "4.19.1").
 
--ifndef('ONDELIVERYCOMPLETE_PB_H').
--define('ONDELIVERYCOMPLETE_PB_H', true).
--record('OnDeliveryComplete',
-        {username = <<>>        :: unicode:chardata() | undefined, % = 1, optional
-         client_id = <<>>       :: unicode:chardata() | undefined, % = 2, optional
-         mountpoint = <<>>      :: unicode:chardata() | undefined, % = 3, optional
-         topic = <<>>           :: unicode:chardata() | undefined, % = 4, optional
-         qos = 0                :: integer() | undefined, % = 5, optional, 32 bits
-         is_retain = false      :: boolean() | 0 | 1 | undefined, % = 6, optional
-         payload = <<>>         :: iodata() | undefined % = 7, optional
+-ifndef('EVENTSSIDECAR.V1.ONDELIVERYCOMPLETE_PB_H').
+-define('EVENTSSIDECAR.V1.ONDELIVERYCOMPLETE_PB_H', true).
+-record('eventssidecar.v1.OnDeliveryComplete',
+        {timestamp = undefined  :: on_delivery_complete_pb:'google.protobuf.Timestamp'() | undefined, % = 1, optional
+         username = <<>>        :: unicode:chardata() | undefined, % = 2, optional
+         client_id = <<>>       :: unicode:chardata() | undefined, % = 3, optional
+         mountpoint = <<>>      :: unicode:chardata() | undefined, % = 4, optional
+         topic = <<>>           :: unicode:chardata() | undefined, % = 5, optional
+         qos = 0                :: integer() | undefined, % = 6, optional, 32 bits
+         is_retain = false      :: boolean() | 0 | 1 | undefined, % = 7, optional
+         payload = <<>>         :: iodata() | undefined % = 8, optional
+        }).
+-endif.
+
+-ifndef('GOOGLE.PROTOBUF.TIMESTAMP_PB_H').
+-define('GOOGLE.PROTOBUF.TIMESTAMP_PB_H', true).
+-record('google.protobuf.Timestamp',
+        {seconds = 0            :: integer() | undefined, % = 1, optional, 64 bits
+         nanos = 0              :: integer() | undefined % = 2, optional, 32 bits
         }).
 -endif.
 

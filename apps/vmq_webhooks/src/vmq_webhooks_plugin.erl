@@ -666,7 +666,8 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
     Opts = [{pool, Endpoint},
             {recv_timeout, maps:get(response_timeout, EOpts)}],
     Args1 = filter_args(Args0, Hook, EOpts),
-    Payload = encode_payload(Hook, Args1, EOpts),
+    Args2 = [{timestamp, os:system_time()}|Args1],
+    Payload = encode_payload(Hook, Args2, EOpts),
     Res =
         case hackney:request(Method, Endpoint, Headers, Payload, Opts) of
             {ok, 200, RespHeaders, CRef} ->

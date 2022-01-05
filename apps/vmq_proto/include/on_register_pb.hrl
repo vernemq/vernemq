@@ -7,14 +7,23 @@
 
 -define(on_register_pb_gpb_version, "4.19.1").
 
--ifndef('ONREGISTER_PB_H').
--define('ONREGISTER_PB_H', true).
--record('OnRegister',
-        {peer_addr = <<>>       :: unicode:chardata() | undefined, % = 1, optional
-         peer_port = 0          :: integer() | undefined, % = 2, optional, 32 bits
-         username = <<>>        :: unicode:chardata() | undefined, % = 3, optional
-         mountpoint = <<>>      :: unicode:chardata() | undefined, % = 4, optional
-         client_id = <<>>       :: unicode:chardata() | undefined % = 5, optional
+-ifndef('EVENTSSIDECAR.V1.ONREGISTER_PB_H').
+-define('EVENTSSIDECAR.V1.ONREGISTER_PB_H', true).
+-record('eventssidecar.v1.OnRegister',
+        {timestamp = undefined  :: on_register_pb:'google.protobuf.Timestamp'() | undefined, % = 1, optional
+         peer_addr = <<>>       :: unicode:chardata() | undefined, % = 2, optional
+         peer_port = 0          :: integer() | undefined, % = 3, optional, 32 bits
+         username = <<>>        :: unicode:chardata() | undefined, % = 4, optional
+         mountpoint = <<>>      :: unicode:chardata() | undefined, % = 5, optional
+         client_id = <<>>       :: unicode:chardata() | undefined % = 6, optional
+        }).
+-endif.
+
+-ifndef('GOOGLE.PROTOBUF.TIMESTAMP_PB_H').
+-define('GOOGLE.PROTOBUF.TIMESTAMP_PB_H', true).
+-record('google.protobuf.Timestamp',
+        {seconds = 0            :: integer() | undefined, % = 1, optional, 64 bits
+         nanos = 0              :: integer() | undefined % = 2, optional, 32 bits
         }).
 -endif.
 
