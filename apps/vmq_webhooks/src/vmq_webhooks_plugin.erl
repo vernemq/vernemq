@@ -666,7 +666,7 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
     Opts = [{pool, Endpoint},
             {recv_timeout, maps:get(response_timeout, EOpts)}],
     Args1 = filter_args(Args0, Hook, EOpts),
-    Args2 = [{timestamp, os:system_time()}|Args1],
+    Args2 = [{timestamp, list_to_binary(calendar:system_time_to_rfc3339(erlang:system_time(nanosecond), [{unit, nanosecond}, {time_designator, $T}, {offset, "Z"}]))}|Args1],
     Payload = encode_payload(Hook, Args2, EOpts),
     Res =
         case hackney:request(Method, Endpoint, Headers, Payload, Opts) of
