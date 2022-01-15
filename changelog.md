@@ -1,3 +1,5 @@
+- Update erlang-pbkdf2 and mongodb-erlang, fixes Issue #1928
+
 # VerneMQ 1.12.4
 
   - Add additional bcrypt configuration options
