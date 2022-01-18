@@ -1035,6 +1035,7 @@ auth_on_register(Password, Props, State) ->
             ChangedProps = maps:with(
                              [?P_MAX_QOS,
                               ?P_RETAIN_AVAILABLE,
+                              ?P_RESPONSE_INFO,
                               ?P_WILDCARD_SUBS_AVAILABLE,
                               ?P_SUB_IDS_AVAILABLE,
                               ?P_SHARED_SUBS_AVAILABLE], maps:get(properties, Args0,#{})),
