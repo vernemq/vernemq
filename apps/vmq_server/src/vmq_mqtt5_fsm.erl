@@ -1035,10 +1035,10 @@ auth_on_register(Password, Props, State) ->
             ChangedProps = maps:with(
                              [?P_MAX_QOS,
                               ?P_RETAIN_AVAILABLE,
-                              ?P_RESPONSE_INFO,
                               ?P_WILDCARD_SUBS_AVAILABLE,
                               ?P_SUB_IDS_AVAILABLE,
-                              ?P_SHARED_SUBS_AVAILABLE], maps:get(properties, Args0,#{})),
+                              ?P_SHARED_SUBS_AVAILABLE,
+                               p_response_info], maps:get(properties, Args0,#{})),
             %% for efficiency reason the max_message_size isn't kept in the state
             set_max_incoming_msg_size(prop_val(max_message_size, Args, max_incoming_msg_size())),
             set_max_outgoing_msg_size(prop_val(max_packet_size, Args, max_outgoing_msg_size())),
