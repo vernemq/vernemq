@@ -35,9 +35,6 @@
         ,enable_event/1
         ,disable_event/1
         ,all_hooks/0
-        ,set_rollout/1
-        ,get_rollout/0
-        ,get_plugin/1
         ]).
 
 %% gen_server callbacks
@@ -48,7 +45,6 @@
 
 -record(state, {}).
 -define(TBL, vmq_events_sidecar_table).
--define(ROLLOUT, vmq_events_sidecar_rollout_table).
 
 %%%===================================================================
 %%% API
@@ -71,18 +67,6 @@ enable_event(HookName) when is_atom(HookName) ->
 -spec disable_event(hook_name()) -> any().
 disable_event(HookName) when is_atom(HookName) ->
     gen_server:call(?MODULE, {disable_event, HookName}).
-
--spec set_rollout(integer()) -> any().
-set_rollout(RolloutPercentage) when is_integer(RolloutPercentage) ->
-  gen_server:call(?MODULE, {set_rollout, RolloutPercentage}).
-
--spec get_rollout() -> any().
-get_rollout() ->
-  ets:lookup_element(?ROLLOUT, percentage, 2).
-
--spec get_plugin(binary()) -> any().
-get_plugin(ClientId) when is_binary(ClientId) ->
-  gen_server:call(?MODULE, {get_plugin, ClientId}).
 
 -spec all_hooks() -> any().
 all_hooks() ->
@@ -110,8 +94,6 @@ all_hooks() ->
 init([]) ->
     process_flag(trap_exit, true),
     ets:new(?TBL, [public, ordered_set, named_table, {read_concurrency, true}]),
-    ets:new(?ROLLOUT, [public, set, named_table, {read_concurrency, true}]),
-    ets:insert(?ROLLOUT, {percentage, 0}),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -150,20 +132,8 @@ handle_call({disable_event, Hook}, _From, State) ->
                 ets:delete(?TBL, Hook),
                 ok
         end,
-    {reply, Reply, State};
-handle_call({set_rollout, Rollout}, _From, State) ->
-  ets:insert(?ROLLOUT, {percentage, Rollout}),
-  Reply = ok,
-  {reply, Reply, State};
-handle_call({get_plugin, ClientID}, _From, State) ->
-  Reply =
-    case use_events_sidecar(ClientID) of
-      true ->
-        events_sidecar;
-      _ ->
-        webhook
-    end,
-  {reply, Reply, State}.
+    {reply, Reply, State}.
+
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -343,20 +313,18 @@ uncheck_exported_callback(_, []) -> {error, no_matching_callback_found}.
 
 -spec send_event(tuple()) -> 'next' | 'ok'.
 send_event({HookName, EventPayload}) ->
-    case use_events_sidecar(EventPayload) andalso ets:lookup(?TBL, HookName) of
-        false ->
-            next;
+    case ets:lookup(?TBL, HookName) of
         [] ->
             next;
         [{_}] ->
-          vmq_metrics:incr_sidecar_events(HookName),
-          case shackle:cast(?APP, {HookName, os:system_time(), EventPayload}, undefined) of
-            {ok, _} -> ok;
-            {error, Reason} ->
-              lager:error("Error sending event(shackle:cast): ~p", [Reason]),
-              vmq_metrics:incr_sidecar_events_error(HookName),
-              next
-          end
+            vmq_metrics:incr_sidecar_events(HookName),
+            case shackle:cast(?APP, {HookName, os:system_time(), EventPayload}, undefined) of
+                {ok, _} -> ok;
+                {error, Reason} ->
+                    lager:error("Error sending event(shackle:cast): ~p", [Reason]),
+                    vmq_metrics:incr_sidecar_events_error(HookName),
+                    next
+            end
     end.
 
 -spec normalise(_) -> any().
@@ -391,18 +359,3 @@ from_internal_qos(V) when is_integer(V) ->
 from_internal_qos({QoS, Opts}) when is_integer(QoS),
                                     is_map(Opts) ->
     {QoS, Opts}.
-
--spec use_events_sidecar(tuple() | binary()) -> boolean().
-use_events_sidecar(EventPayload) when is_tuple(EventPayload)->
-  Rollout = ets:lookup_element(?ROLLOUT, percentage, 2),
-  case tuple_size(EventPayload) >= 2 of
-    true ->
-      ClientId = element(2, EventPayload),
-      Hash = lists:sum(binary:bin_to_list(ClientId)) rem 100,
-      Hash < Rollout;
-    _ -> false
-  end;
-use_events_sidecar(ClientID) when is_binary(ClientID) ->
-  Rollout = ets:lookup_element(?ROLLOUT, percentage, 2),
-  Hash = lists:sum(binary:bin_to_list(ClientID)) rem 100,
-  Hash < Rollout.

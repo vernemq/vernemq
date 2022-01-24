@@ -539,16 +539,11 @@ uncheck_exported_callback(_, []) -> {error, no_matching_callback_found}.
 
 -spec all_till_ok(hook_name(),[{atom(),_},...]) -> 'next' | 'ok' | {'error',_} | {'ok',_}.
 all_till_ok(HookName, Args) ->
-    ClientId = maps:get(client_id, maps:from_list(Args), <<"">>),
-    case get_plugin(ClientId) of
-      events_sidecar -> next;
-      _ ->
-        case ets:lookup(?TBL, HookName) of
-          [] -> next;
-          [{_, Endpoints}] ->
-            all_till_ok(Endpoints, HookName, Args)
-        end
-    end.
+  case ets:lookup(?TBL, HookName) of
+    [] -> next;
+    [{_, Endpoints}] ->
+      all_till_ok(Endpoints, HookName, Args)
+  end.
 
 -spec all_till_ok(list(any()), hook_name(), any()) -> ok | {ok, any()} |
                                                  {error, any()}.
@@ -595,16 +590,11 @@ convert_subscriber_id(Modifiers) ->
 -spec all(hook_name(),[{'addr' | 'client_id' | 'mountpoint' |
 'payload' | 'port' | 'properties' | 'qos' | 'retain' | 'topic' | 'topics' | 'username',_},...]) -> 'next'.
 all(HookName, Args) ->
-  ClientId = maps:get(client_id, maps:from_list(Args), <<"">>),
-  case get_plugin(ClientId) of
-    events_sidecar -> next;
-    _ ->
-      case ets:lookup(?TBL, HookName) of
-        [] ->
-          next;
-        [{_, Endpoints}] ->
-          all(Endpoints, HookName, Args)
-      end
+  case ets:lookup(?TBL, HookName) of
+    [] ->
+      next;
+    [{_, Endpoints}] ->
+      all(Endpoints, HookName, Args)
   end.
 
 -spec all([_],hook_name(),
@@ -1012,16 +1002,6 @@ from_internal_qos({QoS, Opts}) when is_integer(QoS),
 -spec enc_topic(topic()) -> binary().
 enc_topic(Topic) ->
     iolist_to_binary(Topic).
-
--spec get_plugin(client_id()) -> atom().
-get_plugin(ClientId) ->
-  try
-    vmq_events_sidecar_plugin:get_plugin(ClientId)
-  catch
-    Type:Error ->
-      lager:info("Error calling vmq_events_sidecar_plugin:get_plugin ~s ~s", [Type, Error]),
-      webhooks
-  end.
 
 -ifdef(TEST).
 parse_max_age_test() ->

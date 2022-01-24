@@ -22,13 +22,10 @@ init_per_suite(Config) ->
     {ok, _} = vmq_metrics:start_link(),
 
     {ok, _} = application:ensure_all_started(shackle),
-    ok = clique:run(["vmq-admin", "events", "rollout", "set", "percentage=100"]),
     cover:start(),
     [{socket, ListenSock} |Config].
 
 end_per_suite(Config) ->
-    ok = clique:run(["vmq-admin", "events", "rollout", "set", "percentage=0"]),
-
     stop_tcp_server(proplists:get_value(socket, Config, [])),
 
     ok = vmq_plugin_mgr:disable_plugin(vmq_events_sidecar),
