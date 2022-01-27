@@ -773,7 +773,28 @@
                                                                                    hidden
                                                                                   ]}.
 
+%% @doc 'listener.tcp.my_listener.allow_anonymous_override' configures whether
+%% this listener is allowed to override the global allow_anonymous setting. 
+%% The setting has one single purpose: to give a listener the capability to switch off
+%% all authentication plugins. (that is override allow_anonymous=off with allow_anonymous=on).
+%% Specifically, it can allow TLS listeners to disable internal authentication (using only client certificates as
+%% authentication) while keeping all the other MQTT listeners safe.
+%% 
+%%     - listener.tcp.my_listener.allow_anonymous_override
+%%     - listener.ssl.my_listener.allow_anonymous_override
+%%
+%% Allowed values are on or off.
+{mapping, "listener.tcp.$name.allow_anonymous_override", "vmq_server.listeners",
+ [
+  {default, off},
+  {datatype, flag}
+ ]}.
 
+ {mapping, "listener.ssl.$name.allow_anonymous_override", "vmq_server.listeners",
+ [
+  {default, off},
+  {datatype, flag}
+ ]}.
 
 %% @doc 'listener.tcp.allowed_protocol_versions' configures which
 %% protocol versions are allowed for an MQTT listener. The allowed

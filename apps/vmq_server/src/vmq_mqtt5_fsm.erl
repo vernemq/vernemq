@@ -118,6 +118,8 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties,
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
     AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions,
                                                   Opts),
+    AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
+
     PreAuthUser =
     case lists:keyfind(preauth, 1, Opts) of
         false -> undefined;
@@ -168,11 +170,11 @@ init(Peer, Opts, #mqtt5_connect{keep_alive=KeepAlive, properties=Properties,
                                   Properties,
                                   vmq_config:get_env(m5_request_problem_information, true)),
     set_request_problem_information(RequestProblemInformation),
-
+    AllowAnonymousFinal = AllowAnonymous or AllowAnonymousOverride,
     State = #state{peer=Peer,
                    upgrade_qos=UpgradeQoS,
                    subscriber_id=SubscriberId,
-                   allow_anonymous=AllowAnonymous,
+                   allow_anonymous=AllowAnonymousFinal,
                    shared_subscription_policy=SharedSubPolicy,
                    max_message_rate=MaxMessageRate,
                    username=PreAuthUser,
