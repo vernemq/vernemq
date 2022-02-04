@@ -1,4 +1,5 @@
 - Update erlang-pbkdf2 and mongodb-erlang, fixes Issue #1928
+- Add per-listener `allow_anonymous_override` config (to open a single listener while allow_anonymous=off)
 
 # VerneMQ 1.12.4
 
