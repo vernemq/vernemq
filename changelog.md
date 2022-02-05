@@ -1,4 +1,6 @@
-- Update erlang-pbkdf2 and mongodb-erlang, fixes Issue #1928
+- Update erlang-pbkdf2 and mongodb-erlang, fixes Issue #1928.
+- Fix 'proxy_protocol_use_cn_as_username' config for WS listeners: the
+  CN now overrides the MQTT username correctly.
 
 # VerneMQ 1.12.4
 
