@@ -93,7 +93,7 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive,
     SubscriberId = {string:strip(MountPoint, right, $/), undefined},
     AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions,
                                                   Opts),
-
+    AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts),
     PreAuthUser =
     case lists:keyfind(preauth, 1, Opts) of
         false -> undefined;
@@ -130,11 +130,11 @@ init(Peer, Opts, #mqtt_connect{keep_alive=KeepAlive,
     _ = vmq_metrics:incr_mqtt_connect_received(),
     %% the client is allowed "grace" of a half a time period
     set_keepalive_check_timer(KeepAlive),
-
+    AllowAnonymousFinal = AllowAnonymous or AllowAnonymousOverride,
     State = #state{peer=Peer,
                    upgrade_qos=UpgradeQoS,
                    subscriber_id=SubscriberId,
-                   allow_anonymous=AllowAnonymous,
+                   allow_anonymous=AllowAnonymousFinal,
                    shared_subscription_policy=SharedSubPolicy,
                    max_inflight_messages=MaxInflightMsgs,
                    max_message_rate=MaxMessageRate,

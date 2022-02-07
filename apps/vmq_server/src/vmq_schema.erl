@@ -107,6 +107,9 @@ translate_listeners(Conf) ->
     {WSIPs, WSAllowedProto} = lists:unzip(extract("listener.ws", "allowed_protocol_versions", StringIntegerListVal, Conf)),
     {WS_SSLIPs, WS_SSLAllowedProto} = lists:unzip(extract("listener.wss", "allowed_protocol_versions", StringIntegerListVal, Conf)),
 
+    {TCPIPs, TCPAllowAnonymousOverride} = lists:unzip(extract("listener.tcp", "allow_anonymous_override", BoolVal, Conf)),
+    {SSLIPs, SSLAllowAnonymousOverride} = lists:unzip(extract("listener.ssl", "allow_anonymous_override", BoolVal, Conf)),
+
     {TCPIPs, TCPBufferSizes} = lists:unzip(extract("listener.tcp", "buffer_sizes", StringIntegerListVal, Conf)),
     {SSLIPs, SSLBufferSizes} = lists:unzip(extract("listener.ssl", "buffer_sizes", StringIntegerListVal, Conf)),
     {VMQIPs, VMQBufferSizes} = lists:unzip(extract("listener.vmq", "buffer_sizes", StringIntegerListVal, Conf)),
@@ -173,7 +176,8 @@ translate_listeners(Conf) ->
                                   TCPMountPoint,
                                   TCPProxyProto,
                                   TCPAllowedProto,
-                                  TCPBufferSizes])),
+                                  TCPBufferSizes,
+                                  TCPAllowAnonymousOverride])),
     WS = lists:zip(WSIPs, MZip([WSMaxConns,
                                 WSNrOfAcceptors,
                                 WSMountPoint,
@@ -207,7 +211,8 @@ translate_listeners(Conf) ->
                                   SSLVersions,
                                   SSLUseIdents,
                                   SSLAllowedProto,
-                                  SSLBufferSizes])),
+                                  SSLBufferSizes,
+                                  SSLAllowAnonymousOverride])),
     WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns,
                                      WS_SSLNrOfAcceptors,
                                      WS_SSLMountPoint,
@@ -275,7 +280,8 @@ extract(Prefix, Suffix, Val, Conf) ->
            %% mqtt listener specific
            "allowed_protocol_versions",
            %% other
-           "proxy_protocol"
+           "proxy_protocol",
+           "allow_anonymous_override"
           ],
 
     %% get default from root of the tree for listeners

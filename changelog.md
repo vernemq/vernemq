@@ -1,7 +1,8 @@
-- Update erlang-pbkdf2 and mongodb-erlang, fixes Issue #1928.
+- Update erlang-pbkdf2 and mongodb-erlang, fixes Issue #1928
 - Fix `proxy_protocol_use_cn_as_username` config for WS listeners: the
   CN now overrides the MQTT username correctly.
 - Add `?P_RESPONSE_INFO` property in `CONNACK` when `auth_on_register_m5_hook` sets the property.
+- Add per-listener `allow_anonymous_override` config (to open a single listener while allow_anonymous=off)
 
 # VerneMQ 1.12.4
 
