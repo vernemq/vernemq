@@ -717,7 +717,7 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
                             true ->
                                 handle_response(Hook,
                                                 parse_headers(RespHeaders),
-                                                jsx:decode(Body, [{labels, binary}]),
+                                                jsx:decode(Body, [{labels, binary},{return_maps, false}]),
                                                 EOpts);
                             false ->
                                 {error, received_payload_not_json}
