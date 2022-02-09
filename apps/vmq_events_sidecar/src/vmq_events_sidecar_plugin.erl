@@ -318,13 +318,16 @@ send_event({HookName, EventPayload}) ->
             next;
         [{_}] ->
             vmq_metrics:incr_sidecar_events(HookName),
+            V1 = ts(),
             case shackle:cast(?APP, {HookName, os:system_time(), EventPayload}, undefined) of
                 {ok, _} -> ok;
                 {error, Reason} ->
                     lager:error("Error sending event(shackle:cast): ~p", [Reason]),
                     vmq_metrics:incr_sidecar_events_error(HookName),
                     next
-            end
+            end,
+            V2 = ts(),
+            vmq_metrics:pretimed_measurement({vmq_events_sidecar, call_latency}, V2-V1)
     end.
 
 -spec normalise(_) -> any().
@@ -359,3 +362,11 @@ from_internal_qos(V) when is_integer(V) ->
 from_internal_qos({QoS, Opts}) when is_integer(QoS),
                                     is_map(Opts) ->
     {QoS, Opts}.
+
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+ts() ->
+  {Mega, Sec, Micro} = os:timestamp(),
+  (Mega * 1000000 + Sec) * 1000000 + Micro.

@@ -79,7 +79,8 @@
          incr_cluster_bytes_dropped/1,
 
          incr_router_matches_local/1,
-         incr_router_matches_remote/1
+         incr_router_matches_remote/1,
+         pretimed_measurement/2
         ]).
 
 -export([metrics/0,
@@ -102,6 +103,8 @@
          handle_info/2,
          terminate/2,
          code_change/3]).
+
+-define(TIMER_TABLE, vmq_metrics_timers).
 
 -record(state, {
           info = #{}
@@ -327,9 +330,10 @@ metrics(Opts) ->
     WantLabels = maps:get(labels, Opts, []),
 
     {PluggableMetricDefs, PluggableMetricValues} = pluggable_metrics(),
+    {HistogramMetricDefs, HistogramMetricValues} = histogram_metrics(),
 
-    MetricDefs = metric_defs() ++ PluggableMetricDefs,
-    MetricValues = metric_values() ++ PluggableMetricValues,
+    MetricDefs = metric_defs() ++ PluggableMetricDefs ++ HistogramMetricDefs,
+    MetricValues = metric_values() ++ PluggableMetricValues ++ HistogramMetricValues,
 
     %% Create id->metric def map
     IdDef = lists:foldl(
@@ -390,6 +394,64 @@ pluggable_metrics() ->
               end
       end, {[], []}, application:which_applications()).
 
+histogram_metric_defs() ->
+  {Defs, _} = histogram_metrics(),
+  Defs.
+
+histogram_metrics() ->
+    Histogram = ets:foldl(
+      fun
+        ({Metric, TotalCount, LE10, LE100, LE1K, LE10K, LE100K, LE1M, INF, TotalSum}, Acc) ->
+          {MetricName, Description} = metric_name(Metric),
+          Buckets =
+            #{10 => LE10,
+              100 => LE100,
+              1000 => LE1K,
+              10000 => LE10K,
+              100000 => LE100K,
+              1000000 => LE1M,
+              infinity => INF},
+          [{histogram, [], MetricName, MetricName, Description, {TotalCount, TotalSum, Buckets}} | Acc]
+      end, [], ?TIMER_TABLE),
+  lists:foldl(
+    fun({Type, Labels, UniqueId, Name, Description, Value}, {DefsAcc, ValsAcc}) ->
+      {[m(Type, Labels, UniqueId, Name, Description) | DefsAcc],
+        [{UniqueId, Value} | ValsAcc]}
+    end, {[], []}, Histogram).
+
+incr_bucket_ops(V) when V =< 10 ->
+  [{2, 1}, {3, 1}, {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, V}];
+incr_bucket_ops(V) when V =< 100 ->
+  [{2, 1}, {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, V}];
+incr_bucket_ops(V) when V =< 1000 ->
+  [{2, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, V}];
+incr_bucket_ops(V) when V =< 10000 ->
+  [{2, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, V}];
+incr_bucket_ops(V) when V =< 100000 ->
+  [{2, 1}, {7, 1}, {8, 1}, {9, 1}, {10, V}];
+incr_bucket_ops(V) when V =< 1000000 ->
+  [{2, 1}, {8, 1}, {9, 1}, {10, V}];
+incr_bucket_ops(V) ->
+  [{2, 1}, {9, 1}, {10, V}].
+
+pretimed_measurement({_,_} = Metric, Val) ->
+  BucketOps = incr_bucket_ops(Val),
+  incr_histogram_buckets(Metric, BucketOps).
+
+incr_histogram_buckets(Metric, BucketOps) ->
+  try
+    ets:update_counter(?TIMER_TABLE, Metric, BucketOps)
+  catch
+    _:_ ->
+      try
+        ets:insert_new(?TIMER_TABLE, {Metric, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
+        incr_histogram_buckets(Metric, BucketOps)
+      catch
+        _:_ ->
+          lager:warning("couldn't initialize tables", [])
+      end
+  end.
+
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
@@ -422,7 +484,7 @@ get_label_info() ->
                                 maps:put(LabelName, [Val], AccAcc)
                         end
                 end, Acc0, Labels)
-      end, #{}, metric_defs() ++ pluggable_metric_defs()),
+      end, #{}, metric_defs() ++ pluggable_metric_defs() ++ histogram_metric_defs()),
     maps:to_list(LabelInfo).
 
 %%%===================================================================
@@ -456,6 +518,8 @@ init([]) ->
     Idxs = lists:map(fun(Id) -> met2idx(Id) end, AllEntries),
     NumEntries = length(lists:sort(Idxs)),
     NumEntries = length(lists:usort(Idxs)),
+
+    ets:new(?TIMER_TABLE, [named_table, public, {write_concurrency, true}]),
 
     %% only alloc a new atomics array if one doesn't already exist!
     case catch persistent_term:get(?MODULE) of
@@ -1397,3 +1461,10 @@ start_calc_rates_interval() ->
 cancel_calc_rates_interval() ->
     gen_server:call(?MODULE, cancel_calc_rates).
 -endif.
+
+metric_name({Metric, SubMetric}) ->
+  LMetric = atom_to_list(Metric),
+  LSubMetric = atom_to_list(SubMetric),
+  Name = list_to_atom(LMetric ++ "_" ++ LSubMetric ++ "_microseconds"),
+  Description = list_to_binary("A histogram of the " ++ LMetric ++ " " ++ LSubMetric ++ " latency."),
+  {Name, Description}.
