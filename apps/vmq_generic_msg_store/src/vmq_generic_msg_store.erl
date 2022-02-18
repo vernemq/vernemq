@@ -399,7 +399,7 @@ select_table(SubscriberId) ->
 %% pre version idx:
 %% {p_idx_val, ts, dup, qos}
 %% future version:
-%% {p_idx_val, vesion, ts, dup, qos, ...}
+%% {p_idx_val, version, ts, dup, qos, ...}
 
 %% current version of the index value
 -spec parse_p_idx_val_pre(binary()) -> p_idx_val_pre().

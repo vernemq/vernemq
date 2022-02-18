@@ -38,7 +38,7 @@
 %%                               [{op,1,'+',{integer,1,1},{integer,1,1}}]}]).
 %%   '''
 %%
-%%   <p>The abstact format may look more verbose in this example, but
+%%   <p>The abstract format may look more verbose in this example, but
 %%   it's also easier to manipulate in code.</p>
 %%
 
@@ -373,7 +373,7 @@ replace_func(MetaMod, {function, _Line, FuncName, Arity, _Clauses} = Form) ->
 replace_func(_MetaMod, _) ->
     {error, parse_error}.
 
-%% %% @doc Simliar to replace_func/2, but accepts a function
+%% %% @doc Similar to replace_func/2, but accepts a function
 %% %%   name + fun expression.
 %% %%
 %% %% @spec replace_func(MetaMod::meta_mod(), Name::atom(), Fun::function()) ->

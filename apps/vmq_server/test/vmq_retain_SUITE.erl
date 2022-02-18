@@ -146,7 +146,7 @@ retain_qos0_clear_test(Cfg) ->
     ok = gen_tcp:send(Socket, Subscribe),
     ok = mqtt5_v4compat:expect_packet(Socket, "suback", Suback, Cfg),
     ok = mqtt5_v4compat:expect_packet(Socket, "publish", Publish, Cfg),
-    %% Now unsubscribe from the topic before we clear the retained mesage
+    %% Now unsubscribe from the topic before we clear the retained message
     ok = gen_tcp:send(Socket, Unsubscribe),
     ok = mqtt5_v4compat:expect_packet(Socket, "unsuback", Unsuback, Cfg),
     %% Now clear the retained message

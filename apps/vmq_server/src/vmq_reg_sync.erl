@@ -51,7 +51,7 @@ start_link() ->
 %% following properties:
 %%   1. For a specific task-type only one task runs at a time
 %%   2. If a task owner dies it's running task is killed
-%%   3. If a task owner dies it's queued tasks are removed and wont be exectuted
+%%   3. If a task owner dies it's queued tasks are removed and won't be exectuted
 %%
 %% How does it work:
 %% ~~~~~~~~~~~~~~~~~

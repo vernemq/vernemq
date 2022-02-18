@@ -151,7 +151,7 @@ ssl_certs_opts_override_test(Config) ->
                         Base;
                     _ ->
                         [{["listener", LType, "mountpoint"], "mpval"},
-                         {["listener", LType, "mylistener", "mountpoint"], "overriden"}
+                         {["listener", LType, "mylistener", "mountpoint"], "overridden"}
                          | Base]
                 end
 
@@ -169,7 +169,7 @@ ssl_certs_opts_override_test(Config) ->
                 case IntName of
                     https -> skip;
                     _ ->
-                        "overriden"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
+                        "overridden"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
                 end
         end,
 

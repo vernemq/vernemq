@@ -155,7 +155,7 @@ handle_info(timeout, Socket) ->
             DoReconnect =
                 lists:foldl(
                   fun (_, true) ->
-                          %% error occured
+                          %% error occurred
                           true;
                       ({#metric_def{name = Metric, labels = Labels}, Val}, false) ->
                           Lines =

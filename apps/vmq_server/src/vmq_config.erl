@@ -17,7 +17,7 @@
 %%% @doc Implements a server interface for the Config table and implements the
 %%% `on_config_change_hook' behaviour.
 %%%
-%%% @TODO: Write more detailled documentation on the VerneMQ Config system.
+%%% @TODO: Write more detailed documentation on the VerneMQ Config system.
 %%% @end
 %%%-----------------------------------------------------------------------------
 

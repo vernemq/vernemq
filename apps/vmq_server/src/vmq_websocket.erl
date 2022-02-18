@@ -134,7 +134,7 @@ websocket_info({?TO_SESSION, _}, #state{fsm_state=terminated} = State) ->
     % terminate the websocket session but previously send out some final
     % bytes over the socket.
     %
-    % In order to overcome this limitation, we don't immediatly return a
+    % In order to overcome this limitation, we don't immediately return a
     % {shutdown, Req, State} when we handle a {stop, Reason, Reply} message
     % but send the date out and transition into `fsm_state=terminated`. To
     % finally shutdown the session we send a {?MODULE, terminate} message
