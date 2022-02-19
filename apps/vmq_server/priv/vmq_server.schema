@@ -100,7 +100,7 @@
  end}.
 
 %% @doc Due to the eventual consistent nature of the subscriber store it is
-%% possible that during queue migration messages still arive on the old cluster
+%% possible that during queue migration messages still arrive on the old cluster
 %% node. This parameter allows to compensate this by keeping the queue around
 %% for some time after it was migrated to the other cluster node.
 {mapping, "max_drain_time", "vmq_server.max_drain_time", [
@@ -262,7 +262,7 @@
 %% @doc specify in case multiple sessions are allowed how the queue should
 %% deliver the messages. In case of 'fanout' all the attached sessions
 %% will receive the message, in case of 'balance' an attached session is
-%% choosen randomly.
+%% chosen randomly.
 {mapping, "queue_deliver_mode", "vmq_server.queue_deliver_mode", [{default, fanout},
                                                                   {datatype, atom},
                                                                   hidden]}.
@@ -325,7 +325,7 @@
                                                                                             hidden
                                                                                            ]}.
 
-%% @doc specifies the timeout for enqueing something in a queue on a remote node.
+%% @doc specifies the timeout for enqueuing something in a queue on a remote node.
 {mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [
                                                                           {default, 5000},
                                                                           {datatype, [integer, {atom, infinity}]},
@@ -1677,7 +1677,7 @@
                                                                                   {datatype, atom}
                                                                                  ]}.
 
-%% @doc What action should be taken if enqueing a shared subscriber
+%% @doc What action should be taken if enqueuing a shared subscriber
 %% message to a subscriber on a remote node fails due to a timeout. If
 %% this happens it is not certain if the remote subscriber has
 %% received the message or not. If the remote subscriber has not

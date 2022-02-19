@@ -396,7 +396,7 @@ connected(#mqtt_subscribe{message_id=MessageId, topics=Topics},
             _ = vmq_metrics:incr_mqtt_error_auth_subscribe(),
             {State, [Frame]};
         {error, _Reason} ->
-            %% cant subscribe due to overload or netsplit,
+            %% can't subscribe due to overload or netsplit,
             %% Subscribe uses QoS 1 so the client will retry
             _ = vmq_metrics:incr_mqtt_error_subscribe(),
             {State, []}
@@ -420,7 +420,7 @@ connected(#mqtt_unsubscribe{message_id=MessageId, topics=Topics}, State) ->
             _ = vmq_metrics:incr_mqtt_unsuback_sent(),
             {State, [Frame]};
         {error, _Reason} ->
-            %% cant unsubscribe due to overload or netsplit,
+            %% can't unsubscribe due to overload or netsplit,
             %% Unsubscribe uses QoS 1 so the client will retry
             _ = vmq_metrics:incr_mqtt_error_unsubscribe(),
             {State, []}

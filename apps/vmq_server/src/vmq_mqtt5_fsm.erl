@@ -573,7 +573,7 @@ connected(#mqtt5_subscribe{message_id=MessageId, topics=Topics, properties=Props
             _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_AUTH_ERROR),
             {State, [serialise_frame(Frame)]};
         {error, _Reason} ->
-            %% cant subscribe due to overload or netsplit,
+            %% can't subscribe due to overload or netsplit,
             %% Subscribe uses QoS 1 so the client will retry
             _ = vmq_metrics:incr(?MQTT5_SUBSCRIBE_ERROR),
             {State, []}
@@ -598,7 +598,7 @@ connected(#mqtt5_unsubscribe{message_id=MessageId, topics=Topics, properties = P
             _ = vmq_metrics:incr(?MQTT5_UNSUBACK_SENT),
             {State, [serialise_frame(Frame)]};
         {error, _Reason} ->
-            %% cant unsubscribe due to overload or netsplit,
+            %% can't unsubscribe due to overload or netsplit,
             %% Unsubscribe uses QoS 1 so the client will retry
             _ = vmq_metrics:incr(?MQTT5_UNSUBSCRIBE_ERROR),
             {State, []}

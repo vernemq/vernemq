@@ -66,7 +66,7 @@ vmq_session_disconnect_cmd() ->
                        QueryString0 = "SELECT queue_pid FROM sessions WHERE client_id =\"" ++ ClientId ++ "\"",
                        case proplists:get_value(mountpoint, Flags, "") of
                            undefined ->
-                               %% Unparseable mountpoint or without value
+                               %% Unparsable mountpoint or without value
                                Text = clique_status:text("Invalid mountpoint value"),
                                [clique_status:alert([Text])];
                            Mountpoint ->
@@ -98,7 +98,7 @@ vmq_session_reauthorize_cmd() ->
                            [{'client-id', ClientId}, {username, Username}] ->
                                case proplists:get_value(mountpoint, Flags, "") of
                                    undefined ->
-                                       %% Unparseable mountpoint or without value
+                                       %% Unparsable mountpoint or without value
                                        Text = clique_status:text("Invalid mountpoint value"),
                                        [clique_status:alert([Text])];
                                    Mountpoint ->

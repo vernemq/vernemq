@@ -59,7 +59,7 @@ cmd("type mykey", "none")
 cmd("set key some-value", true)
 cmd("expire key 5", "1")
 cmd("get key", "some-value")
--- we cant sleep here.. but the key will be expired in 5 seconds
+-- we can't sleep here.. but the key will be expired in 5 seconds
 
 cmd("ttl key", "5")
 cmd("set key 100 ex 10", true)

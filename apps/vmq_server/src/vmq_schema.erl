@@ -21,7 +21,7 @@ translate_listeners(Conf) ->
     %% cuttlefish messes up with the tree-like configuration style if
     %% it cannot find either configured values or defaults in the
     %% more specific leafs of the tree. That's why we always provide
-    %% a default value and take care of them by ourselfs.
+    %% a default value and take care of them by ourselves.
     InfIntVal = fun(Name, Val1, Def) ->
                         case Val1 of
                             infinity -> infinity;

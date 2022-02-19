@@ -336,7 +336,7 @@ wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
     %% Reason for this case:
     %% ---------------------
     %% a synchronized registration that had triggered a cleanup got
-    %% superseeded by a non-synchronized registration (e.g. allow_multiple_sessions=true)
+    %% superseded by a non-synchronized registration (e.g. allow_multiple_sessions=true)
     %%
     %% Solution:
     %% ---------
@@ -789,7 +789,7 @@ disconnect_sessions(Reason, #state{sessions=Sessions}) ->
                       %% will send out LWT messages and will give
                       %% us back the waiting acks and messages
                       %% calling set_last_waiting_acks/2
-                      %% then the 'DOWN' message gets triggerd
+                      %% then the 'DOWN' message gets triggered
                       %% finally deleting the session
                       vmq_mqtt_fsm_util:send(SessionPid, {disconnect, Reason}),
                       ok

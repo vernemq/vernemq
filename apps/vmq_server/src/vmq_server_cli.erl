@@ -516,7 +516,7 @@ leave_usage() ->
      "  the disconnecting of clients that have already reconnected.\n",
      "  \n",
      "  If <Node> is still online all its MQTT listeners (including websockets)\n",
-     "  are stopped and wont therefore accept new connections. Established\n",
+     "  are stopped and won't therefore accept new connections. Established\n",
      "  connections aren't cancelled at this point. Use --kill_sessions to get\n",
      "  into the second phase of the graceful shutdown.\n",
      "  \n",

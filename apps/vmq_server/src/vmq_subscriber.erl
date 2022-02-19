@@ -105,7 +105,7 @@ change_node(Subs, Node, NewNode, CleanSession) ->
         true ->
             %% Remove duplicate subscriptions, ensure the subscription present
             %% on the target node remains untouched in case of duplicate subs.
-            %% TargetSubs and OldSubs are implicitely keysorted
+            %% TargetSubs and OldSubs are implicitly keysorted
             %% force clean_session=false if required
             NewNodeSubs = lists:ukeymerge(1, ExistingNewNodeSubs, OldNodeSubs),
             lists:keyreplace(NewNode, 1, lists:keydelete(Node, 1, Subs),

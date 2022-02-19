@@ -149,7 +149,7 @@ wait_until_converged(Nodes, Fun, ExpectedReturn) ->
 
 multiple_connect_unclean_test(Config) ->
     %% This test makes sure that a cs false subscriber can receive QoS
-    %% 1 messages, one message at a time only acknowleding one message
+    %% 1 messages, one message at a time only acknowledging one message
     %% per connection. 
    % ok = vmq_plugin_mgr:enable_module_plugin(
    %     auth_on_register, ?MODULE, hook_uname_password_success, 5), % to set max_inflight_window to 1
