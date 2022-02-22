@@ -4,6 +4,7 @@
 - Add `?P_RESPONSE_INFO` property in `CONNACK` when `auth_on_register_m5_hook` sets the property.
 - Add per-listener `allow_anonymous_override` config (to open a single listener while allow_anonymous=off)
 - Update `certifi` to 2.9.0
+- Update `epgsql` to 4.6.0
 
 # VerneMQ 1.12.4
 
