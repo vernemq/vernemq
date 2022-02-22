@@ -1,12 +1,17 @@
-- Update erlang-pbkdf2 and mongodb-erlang, fixes Issue #1928
+
+## VerneMQ 1.12.4.1-RC
+
+- Update `erlang-pbkdf2` and `mongodb-erlang`, fixes Issue #1928
 - Fix `proxy_protocol_use_cn_as_username` config for WS listeners: the
   CN now overrides the MQTT username correctly.
 - Add `?P_RESPONSE_INFO` property in `CONNACK` when `auth_on_register_m5_hook` sets the property.
 - Add per-listener `allow_anonymous_override` config (to open a single listener while allow_anonymous=off)
 - Update `certifi` to 2.9.0
 - Update `epgsql` to 4.6.0
+- Update `jsx` to 3.1.0 (vmq_diversity, vmq_webhooks)
+- Update `eredis` to 1.4.1 (vmq_diversity)
 
-# VerneMQ 1.12.4
+## VerneMQ 1.12.4
 
   - Add additional bcrypt configuration options
   - Bump bcrypt version
@@ -16,6 +21,7 @@
   - Add `vmq-admin trace stop_all` command to stop unreachable traces.
   - Fix bridge configuration regarding CAP settings.
   - Add `prefer_online_before_local` shared subscription policy.
+  
 ## VerneMQ 1.12.3
 
   -  Move from `r_mode` to read preference in VMQ Diversity MongoDB
