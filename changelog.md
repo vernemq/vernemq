@@ -1,6 +1,7 @@
 
-## VerneMQ 1.12.4.1-RC
+## VerneMQ 1.12.5
 
+- Update `git` clone protocol to `https`.
 - Update `erlang-pbkdf2` and `mongodb-erlang`, fixes Issue #1928
 - Fix `proxy_protocol_use_cn_as_username` config for WS listeners: the
   CN now overrides the MQTT username correctly.
