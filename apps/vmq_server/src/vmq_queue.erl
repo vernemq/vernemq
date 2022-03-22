@@ -404,6 +404,9 @@ drain({enqueue_many, Msgs, Opts}, _From, #state{drain_over_timer=TRef} =  State)
     gen_fsm:cancel_timer(TRef),
     gen_fsm:send_event(self(), drain_start),
     enqueue_many_(Msgs, drain, Opts, State);
+drain({add_session, NewSessionPid, NewOpts}, From, State) ->
+    lager:info("got add_session event from ~p for PID ~p with options ~p in drain state", [From, NewSessionPid, NewOpts]),
+    {reply, {error, draining}, drain, State};
 drain(Event, _From, State) ->
     lager:error("got unknown sync event in drain state ~p", [Event]),
     {reply, {error, draining}, drain, State}.

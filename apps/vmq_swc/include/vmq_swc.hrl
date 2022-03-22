@@ -18,6 +18,8 @@
 -type db_name() :: atom().
 
 -type peer() :: atom().
+-type actor() :: binary().
+-type swc_id() :: {peer(), actor()}.
 -type watermark() :: vv_matrix().
 -type nodeclock() :: bvv().
 -type object() :: dcc().
@@ -27,7 +29,7 @@
 -define(DELETED, '$deleted').
 
 -record(swc_config, {
-          peer          :: atom() | binary(),
+          peer          :: swc_id(),
           group         :: atom(),
           db            :: db_name(),
           db_backend    :: atom(),

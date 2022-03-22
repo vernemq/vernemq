@@ -307,9 +307,9 @@ handle_req({read, {MP, _} = SubscriberId, MsgRef},
         {ok, Val} ->
             {RoutingKey, Persisted} = parse_p_msg_val_pre(Val),
 	    if is_binary(Persisted) -> %% legacy behaviour was to just persist the payload
-		       {Payload, Properties} = {Persisted, {}}; 
+		       {Payload, Properties} = {Persisted, {}};
 		true ->
-		       {Payload, Properties} = Persisted 
+		       {Payload, Properties} = Persisted
 	    end,
 
             case apply(EngineModule, read, [EngineState, IdxKey]) of

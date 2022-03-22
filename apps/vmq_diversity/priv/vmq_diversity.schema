@@ -259,6 +259,11 @@
   {default, "localhost"},
   {commented, "localhost"}]}.
 
+{mapping, "vmq_diversity.mongodb.srv", "vmq_diversity.db_config.mongodb.srv",
+ [{datatype, string},
+  {default, ""},
+  hidden]}.
+
 {mapping, "vmq_diversity.mongodb.port", "vmq_diversity.db_config.mongodb.port",
  [{datatype, integer},
   {default, 27017},
@@ -289,15 +294,16 @@
   {default, 5},
   hidden]}.
 
-{mapping, "vmq_diversity.mongodb.r_mode", "vmq_diversity.db_config.mongodb.r_mode",
- [{datatype, atom},
-  {default, master},
-  hidden]}.
-
 {mapping, "vmq_diversity.mongodb.w_mode", "vmq_diversity.db_config.mongodb.w_mode",
  [{datatype, atom},
   {default, safe},
   hidden]}.
+
+{mapping, "vmq_diversity.mongodb.read_preference", "vmq_diversity.db_config.mongodb.read_preference",
+ [{datatype, {enum, [primary, primaryPreferred, secondary, secondaryPreferred, nearest]}},
+  {default, primaryPreferred},
+  hidden
+ ]}.
 
 %% @doc Specify if the mongodb driver should use TLS or not.
 {mapping, "vmq_diversity.mongodb.ssl", "vmq_diversity.db_config.mongodb.ssl",

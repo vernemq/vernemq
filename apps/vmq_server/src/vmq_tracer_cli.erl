@@ -18,9 +18,15 @@
 register_cli() ->
     clique:register_usage(["vmq-admin", "trace"], trace_usage()),
     clique:register_usage(["vmq-admin", "trace", "client"], trace_client_usage()),
-    
+    terminate_trace_cmd(),
     trace_client_cmd().
 
+terminate_trace_cmd() ->
+    Cmd = ["vmq-admin", "trace", "stop_all"],
+    Callback =
+        fun(_, [], []) ->
+                        vmq_tracer:terminate_tracer() end,
+    clique:register_command(Cmd, [], [], Callback).
 trace_client_cmd() ->
     Cmd = ["vmq-admin", "trace", "client"],
     KeySpecs = [{'client-id',

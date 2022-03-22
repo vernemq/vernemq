@@ -885,13 +885,12 @@ check_user(#mqtt5_connect{username=User, password=Password, properties=Props} = 
             QueueOpts = queue_opts([], Props),
             SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
             register_subscriber(F, OutProps, QueueOpts,
-                                State#state{session_expiry_interval=SessionExpiryInterval})
+                                State#state{session_expiry_interval=SessionExpiryInterval, username=User})
     end.
 
 register_subscriber(#mqtt5_connect{}=F, OutProps0,
                     QueueOpts, #state{peer=Peer, subscriber_id=SubscriberId, clean_start=CleanStart,
-                                      cap_settings=CAPSettings, fc_receive_max_broker=ReceiveMax,
-                                      username=User, def_opts=DOpts} = State) ->
+                    username=User, cap_settings=CAPSettings, fc_receive_max_broker=ReceiveMax, def_opts=DOpts} = State) ->
     CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
     case vmq_reg:register_subscriber(CAPSettings#cap_settings.allow_register, CoordinateRegs, SubscriberId, CleanStart, QueueOpts) of
         {ok, #{session_present := SessionPresent,
@@ -902,7 +901,7 @@ register_subscriber(#mqtt5_connect{}=F, OutProps0,
                                                 User, OutProps0]),
             OutProps1 = maybe_set_receive_maximum(OutProps0, ReceiveMax),
             check_will(F, SessionPresent, OutProps1,
-                       State#state{queue_pid=QPid,username=User, next_msg_id=MsgId});
+                       State#state{queue_pid=QPid, next_msg_id=MsgId});
         {error, Reason} ->
             lager:warning("can't register client ~p with username ~p due to ~p",
                           [SubscriberId, User, Reason]),

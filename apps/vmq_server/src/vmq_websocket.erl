@@ -46,7 +46,14 @@ init(Req, Opts) ->
     Type = proplists:get_value(type, Opts),
     case add_websocket_sec_header(Req) of
         {ok, Req0} ->
-            Peer = {_, _} = cowboy_req:peer(Req0),
+            ProxyInfo = maps:find(proxy_header, Req0),
+            Peer = case ProxyInfo of
+                {ok, #{command := local,version := _}} -> % with proxy protocol, but 'local'
+                                                          cowboy_req:peer(Req0);
+                {ok, #{src_address := SrcAddr,
+                       src_port := SrcPort}} -> {SrcAddr, SrcPort};
+                error -> cowboy_req:peer(Req0)  % WS request without proxy_protocol
+            end,
             FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
             FsmState =
                 case Type of

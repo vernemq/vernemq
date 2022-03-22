@@ -61,7 +61,7 @@ init(Ref, Transport, Opts) ->
             setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}])
     end,
     setopts(MaskedSocket, [{high_watermark, HighWatermark},
-                        {low_watermark, LowWatermark}, 
+                        {low_watermark, LowWatermark},
                         {high_msgq_watermark, HighMsgQWatermark},
                         {low_msgq_watermark, LowMsgQWatermark}]),
     case active_once(MaskedSocket) of

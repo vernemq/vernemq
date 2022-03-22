@@ -1,11 +1,38 @@
-# Changelog
+# VerneMQ 1.12.4
+
+  - Add additional bcrypt configuration options
+  - Bump bcrypt version
+  - Switch on V5 in MQTT listeners as a default
+  - Fix v5 username regression, interfering with auth_on_register modifiers.
+  - Move the `add_session` on queue draining from error to info logging.
+  - Add `vmq-admin trace stop_all` command to stop unreachable traces.
+  - Fix bridge configuration regarding CAP settings.
+  - Add `prefer_online_before_local` shared subscription policy.
+## VerneMQ 1.12.3
+
+  -  Move from `r_mode` to read preference in VMQ Diversity MongoDB
+  -  Fix SWC event broadcast regression, which led to higher SWC sync times.
+
+## VerneMQ 1.12.2
+
+  -  Fix username for allow_anonymous case in MQTT v5 (keep the given username in session)
+  -  Fix Retain Server cache race condition for messages originating from local node.
+  -  Remove debug logging statement for MongoDB in vmq_diversity
+  -  Allow Overlay_vars from include files in `vars.generated`
+  -  Switch to `no_dot_erlang` instead of `start_clean` in Runner script.
+
+## VerneMQ 1.12.1
+
+- Revert binary_to_term safe calls to bare version
+
+## VerneMQ 1.12.0
 
 - Fix bug causing the `pool_size` option for databases to not be respected.
 - Update Hackney HTTP client to version 1.17.0
 - Allow configuration for TCP listener buffer sizes in vmq_cluster_com module
 - Autotune TCP 'buffer' for outgoing TCP connections in vmq_cluster_node module
 - Fix command line tool to allow managing anonymous client sessions (Issue #1673)
-- Allow custom option for HTTPS endpoints
+- Allow custom option for HTTPS endpoints (WebHooks)
 - Adds PEM validation of certificate files in server and webhooks schemas
 - Adds a new CI profile to the rebar3
 - Bumps MongoDB driver to latest
@@ -14,8 +41,16 @@
 - Adds Docker Compose file for local testing
 - Update `vmq_diversity` to newest Luerl version
 - Bumps `rebar3` executable
+- Update Hackney HTTP client to version 1.17.4
 - Upgrade Cowboy dependency to 2.8.0
 - Adds support for `auth_source` in MongoDB connections in `vmq_diversity`
+- Enforce UTF8 strings in topics
+- Use safe mode for binary_to_term in SWC
+- Fix Proxy protocol handling for WebSocket listener.
+- Updates in `vmq_swc` plugin to allow for unique SWC node ids, leading to fixes in synchronisation after
+  a node leaves and re-joins a cluster.
+- Adds `topic_max_depth` config value to enforce configurable global maximum number of allowed topic levels (`CVE-2021-33176`)
+- Ensures that MQTT_v5_user_properties are stored to disk
 
 ## VerneMQ 1.11.0
 

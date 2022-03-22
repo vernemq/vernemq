@@ -22,13 +22,15 @@
 
 -define(TBL, swc_cluster_state).
 
--export([init/0, get_local_state/0, get_actor/0, update_state/1, delete_state/0]).
+-export([init/0, get_local_state/0, get_actor/0, get_old_actor/0, get_old_actor_from_state/2, get_actors/0, get_peers/0, 
+        get_actors_and_peers/0, get_actor_for_peer/1, get_peers_for_actors/1, update_state/1, delete_state/0, write_old_actor_to_disk/1]).
 
 init() ->
     %% setup ETS table for cluster_state
     _ = try ets:new(?TBL, [named_table, public, set, {keypos, 1}]) of
             _Res ->
                 gen_actor(),
+                maybe_load_old_actor_from_disk(),
                 maybe_load_state_from_disk(),
                 ok
         catch
@@ -41,7 +43,7 @@ init() ->
 %% @doc return local node's view of cluster membership
 get_local_state() ->
    case hd(ets:lookup(?TBL, cluster_state)) of
-       {cluster_state, State} ->
+       {cluster_state, State} ->    
            {ok, State};
        _Else ->
            {error, _Else}
@@ -55,6 +57,49 @@ get_actor() ->
         _Else ->
             {error, _Else}
     end.
+
+get_old_actor() ->
+    case hd(ets:lookup(?TBL, old_actor)) of
+        {old_actor, Actor} ->
+            {ok, Actor};
+        _Else ->
+            {error, _Else}
+    end.
+
+get_actors() ->
+    {ok, LocalState} = get_local_state(),
+    actors(LocalState).
+
+get_actors_and_peers() ->
+    {ok, LocalState} = get_local_state(),
+    actors_and_vals(LocalState).
+
+actors_and_vals({_Clock, Entries, _Deferred}) when is_list(Entries) ->
+    [{K, Dots} || {K, Dots} <- Entries];
+actors_and_vals({_Clock, Entries, _Deferred}) ->
+    lists:sort([{K, Actor} || {K, [{[{actor, Actor}],_}]} <- dict:to_list(Entries)]).
+
+get_peers() ->
+    {ok, LocalState} = get_local_state(),
+    {_Clock, Entries, _Deferred} = LocalState,
+    lists:sort([K || {K, [{[{actor, _}], _}]} <- dict:to_list(Entries)]).
+
+get_peers_for_actors(Actors) ->
+    {ok, LocalState} = get_local_state(),
+    {_, Entries, _} = LocalState,
+    lists:sort([K || {K, [{[{actor, Actor}],_}]} <- dict:to_list(Entries), lists:member(Actor, Actors)]).
+
+get_actor_for_peer(Peer) ->
+    {ok, LocalState} = get_local_state(),
+    proplists:get_value(Peer, actors_and_vals(LocalState)).
+
+get_old_actor_from_state(Peer, State) ->
+     proplists:get_value(Peer, actors_and_vals(State)).
+
+actors({_Clock, Entries, _Deferred}) when is_list(Entries) ->
+        [{K, Dots} || {K, Dots} <- Entries];
+actors({_Clock, Entries, _Deferred}) ->
+        lists:sort([Actor || {K, [{[{actor, Actor}],_}]} <- dict:to_list(Entries)]).
 
 %% @doc update cluster_state
 update_state(State) ->
@@ -101,6 +146,40 @@ write_state_to_disk(State) ->
                                  riak_dt_orswot:to_binary(State))
     end.
 
+write_old_actor_to_disk(Actor) ->
+    case data_root() of
+        undefined ->
+            ok;
+        Dir ->
+            File = filename:join(Dir, "old_node_actor"),
+            ok = filelib:ensure_dir(File),
+            lager:info("writing (updated) old actor ~p to disk~n",
+                       [Actor]),
+            ok = file:write_file(File,
+                                 term_to_binary(Actor))
+    end.
+
+maybe_load_old_actor_from_disk() ->
+    case data_root() of
+        undefined ->
+            ok;
+        Dir ->
+            case filelib:is_regular(filename:join(Dir, "old_node_actor")) of
+                true ->
+                    {ok, Bin} = file:read_file(filename:join(Dir,
+                                                             "old_node_actor")),
+                    OldActor = binary_to_term(Bin),
+                    lager:debug("read old actor binary from disk: ~p ~n", [OldActor]),
+                    ets:insert(?TBL, {old_actor, OldActor}),
+                    ets:insert(?TBL, {actor, OldActor}),
+                    write_old_actor_to_disk(OldActor);
+                false -> % for first boot case
+                    [{actor, NewActor}] = ets:lookup(?TBL, actor),
+                    ets:insert(?TBL, {old_actor, NewActor}),
+                    write_old_actor_to_disk(NewActor)
+            end
+    end.
+
 delete_state_from_disk() ->
     case data_root() of
         undefined ->
@@ -126,7 +205,6 @@ maybe_load_state_from_disk() ->
                     {ok, Bin} = file:read_file(filename:join(Dir,
                                                              "cluster_state")),
                     {ok, State} = riak_dt_orswot:from_binary(Bin),
-                    lager:info("read state from file ~p~n", [State]),
                     update_state(State);
                 false ->
                     add_self()
