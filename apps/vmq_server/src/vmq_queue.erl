@@ -1035,6 +1035,7 @@ maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persis
     %% - Message ID (required when storing a message with the DUP flag)
     %% - Expiry Timestamp (required when storing a message that should expire)
     PMsg = Msg#vmq_msg{persisted=true, qos=QoS},
+    _ = vmq_metrics:incr_stored_offline_messages(),
     case vmq_message_store:write(SubscriberId, PMsg) of
         ok when Offline and IsDup ->
             % No compress
@@ -1047,6 +1048,10 @@ maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persis
             PMsg#vmq_msg.msg_ref;
         ok ->
             % No compress, we're still online
+            D#deliver{msg=PMsg};
+        {error, no_op} ->
+            %% in case we cannot store the message we keep the
+            %% full message structure around
             D#deliver{msg=PMsg};
         {error, _} ->
             %% in case we cannot store the message we keep the
@@ -1066,6 +1071,7 @@ maybe_offline_store(_, _, MsgOrRef) -> MsgOrRef.
 
 maybe_offline_delete(SubscriberId, #deliver{msg=#vmq_msg{persisted=true, msg_ref=MsgRef}}) ->
     _ = vmq_message_store:delete(SubscriberId, MsgRef),
+    _ = vmq_metrics:incr_removed_offline_messages(),
     ok;
 maybe_offline_delete(SubscriberId, MsgRef) when is_binary(MsgRef) ->
     _ = vmq_message_store:delete(SubscriberId, MsgRef),

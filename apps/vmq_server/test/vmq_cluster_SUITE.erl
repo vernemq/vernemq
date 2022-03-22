@@ -661,6 +661,8 @@ restarted_node_has_no_stale_sessions(Config) ->
     %% Restart the node.
     {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_stop, []),
     {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_start, []),
+    %% Make sure cluster is ready
+    ok = vmq_cluster_test_utils:wait_until_ready([N || {N, _} <- Nodes]),
 
     Sessions = rpc:call(RestartNodeName, vmq_ql_query_mgr, fold_query,
                         [fun(V, Acc) -> [V|Acc] end, [], "SELECT client_id, topic FROM sessions"]),
@@ -698,6 +700,8 @@ routing_table_survives_node_restart(Config) ->
     _ = ct_slave:stop(RestartNodeName),
     RestartNodeName = vmq_cluster_test_utils:start_node(nodename(RestartNodeName), Config,
                                                         routing_table_survives_node_restart),
+    %% Make sure cluster is ready
+    ok = vmq_cluster_test_utils:wait_until_ready([N || {N, _} <- Nodes]),
     {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, listener_start, [RestartNodePort, []]),
     ok = rpc:call(RestartNodeName, vmq_auth, register_hooks, []),
 

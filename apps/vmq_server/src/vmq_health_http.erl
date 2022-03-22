@@ -42,7 +42,7 @@ check_health_concerns() ->
         ok -> false;
         {error, Reason} -> {true, list_to_binary(Reason)}
       end
-    end, [cluster_status(), listeners_status()]).
+    end, [cluster_status(), listeners_status(), cluster_traffic_ready_status()]).
 
 
 -spec cluster_status() -> ok | {error, Reason :: string()}.
@@ -82,3 +82,10 @@ listeners_status() ->
       {error, io_lib:format("Listeners are not ready: ~p", [Listeners])}
   end.
 
+-spec cluster_traffic_ready_status() -> ok | {error, Reason :: string()}.
+cluster_traffic_ready_status() ->
+  case vmq_cluster:is_ready() of
+    true -> ok;
+    _ ->
+      {error, "Cluster is not ready to receive traffic"}
+  end.

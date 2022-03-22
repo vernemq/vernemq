@@ -80,7 +80,10 @@
 
          incr_router_matches_local/1,
          incr_router_matches_remote/1,
-         pretimed_measurement/2
+         pretimed_measurement/2,
+
+         incr_stored_offline_messages/0,
+         incr_removed_offline_messages/0
         ]).
 
 -export([metrics/0,
@@ -268,6 +271,12 @@ incr_router_matches_local(V) ->
 
 incr_router_matches_remote(V) ->
     incr_item(?METRIC_ROUTER_MATCHES_REMOTE, V).
+
+incr_stored_offline_messages() ->
+  incr_item(?METRIC_STORED_OFFLINE_MESSAGES, 1).
+
+incr_removed_offline_messages() ->
+  incr_item(?METRIC_REMOVED_OFFLINE_MESSAGES, 1).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -848,7 +857,9 @@ counter_entries_def() ->
      m(counter, [], cluster_bytes_sent, cluster_bytes_sent, <<"The number of bytes send to other cluster nodes.">>),
      m(counter, [], cluster_bytes_dropped, cluster_bytes_dropped, <<"The number of bytes dropped while sending data to other cluster nodes.">>),
      m(counter, [], router_matches_local, router_matches_local, <<"The number of matched local subscriptions.">>),
-     m(counter, [], router_matches_remote, router_matches_remote, <<"The number of matched remote subscriptions.">>)
+     m(counter, [], router_matches_remote, router_matches_remote, <<"The number of matched remote subscriptions.">>),
+     m(counter, [], stored_offline_messages, stored_offline_messages, <<"The number of stored offline messages.">>),
+     m(counter, [], removed_offline_messages, removed_offline_messages, <<"The number of removed offline messages.">>)
     ].
 
 
@@ -1449,7 +1460,9 @@ met2idx({?SIDECAR_EVENTS_ERROR, ?ON_OFFLINE_MESSAGE})             -> 214;
 met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_GONE})                 -> 215;
 met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_WAKEUP})               -> 216;
 met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_OFFLINE})              -> 217;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SESSION_EXPIRED})             -> 218.
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SESSION_EXPIRED})             -> 218;
+met2idx(?METRIC_STORED_OFFLINE_MESSAGES)                          -> 219;
+met2idx(?METRIC_REMOVED_OFFLINE_MESSAGES)                         -> 220.
 
 -ifdef(TEST).
 clear_stored_rates() ->

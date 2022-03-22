@@ -201,7 +201,12 @@ check_ready([Node|Rest], Acc) ->
     %% connection to the remote node.
     Status = vmq_cluster_node_sup:node_status(Node),
     IsReady1 = IsReady andalso lists:member(Status, [up, init]),
-    check_ready(Rest, [{Node, IsReady1}|Acc]);
+    IsReady2 = case rpc:call(Node, vmq_reg_mgr, all_queues_setup_status, []) of
+                 ready -> true;
+                 _ -> false
+               end,
+    IsReady3 = IsReady2 andalso IsReady1,
+    check_ready(Rest, [{Node, IsReady3}|Acc]);
 check_ready([], Acc) ->
     OldObj =
     case ets:lookup(?VMQ_CLUSTER_STATUS, ready) of

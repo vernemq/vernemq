@@ -55,4 +55,15 @@ delete(SubscriberId, MsgRef) ->
 
 find(SubscriberId, Type) when Type =:= queue_init;
                               Type =:= other ->
-    vmq_plugin:only(msg_store_find, [SubscriberId, Type]).
+    V1 = ts(),
+    MsgRefs = vmq_plugin:only(msg_store_find, [SubscriberId, Type]),
+    V2 = ts(),
+    vmq_metrics:pretimed_measurement({vmq_message_store, find}, V2 - V1),
+    MsgRefs.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+ts() ->
+  {Mega, Sec, Micro} = os:timestamp(),
+  (Mega * 1000000 + Sec) * 1000000 + Micro.

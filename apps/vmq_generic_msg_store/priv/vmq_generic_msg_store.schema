@@ -9,6 +9,5 @@
 
 {mapping, "generic_message_store_engine", "vmq_generic_msg_store.msg_store_engine", 
  [{default, vmq_storage_engine_leveldb},
-  {datatype, atom},
-  hidden
+  {datatype, atom}
  ]}.

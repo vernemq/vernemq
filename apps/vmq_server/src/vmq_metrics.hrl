@@ -116,3 +116,5 @@
 -define(METRIC_BYTE_OUT_RATE, byte_out_rate).
 -define(METRIC_ROUTER_MATCHES_LOCAL, router_matches_local).
 -define(METRIC_ROUTER_MATCHES_REMOTE, router_matches_remote).
+-define(METRIC_STORED_OFFLINE_MESSAGES, stored_offline_messages).
+-define(METRIC_REMOVED_OFFLINE_MESSAGES, removed_offline_messages).

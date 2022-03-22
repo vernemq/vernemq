@@ -18,7 +18,8 @@
 
 -behaviour(gen_server).
 %% API functions
--export([start_link/0]).
+-export([start_link/0,
+         all_queues_setup_status/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -45,6 +46,10 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+-spec all_queues_setup_status() -> term().
+all_queues_setup_status() ->
+    gen_server:call(?MODULE, status).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -85,6 +90,9 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(status, _From, #state{status=Status} = State) ->
+  Reply = Status,
+  {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.

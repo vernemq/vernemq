@@ -95,22 +95,34 @@ msg_store_find(SubscriberId, Type) when Type =:= queue_init;
 
 msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, queue_init) ->
     MsgRefs =
-    case msg_store_init_from_tbl(init, SubscriberId) of
+    case msg_store_init_from_tbl_with_instrumentation(init, SubscriberId) of
         [] ->
-            init_from_disk(SubscriberId);
+            init_from_disk_with_instrumentation(SubscriberId);
         Res ->
             Res
     end,
     ParentPid ! {self(), Ref, MsgRefs};
 msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, other) ->
-    MsgRefs = init_from_disk(SubscriberId),
+    MsgRefs = init_from_disk_with_instrumentation(SubscriberId),
     ParentPid ! {self(), Ref, MsgRefs}.
+
+init_from_disk_with_instrumentation(SubscriberId) ->
+    V1 = ts(),
+    MsgRefs = init_from_disk(SubscriberId),
+    vmq_metrics:pretimed_measurement({vmq_generic_message_store, init_from_disk}, ts() - V1),
+    MsgRefs.
 
 init_from_disk(SubscriberId) ->
     TblIdxRef = make_ref(),
     Pids = vmq_generic_msg_store_sup:get_bucket_pids(),
     ok = msg_store_collect(TblIdxRef, SubscriberId, Pids),
-    msg_store_init_from_tbl(TblIdxRef, SubscriberId).
+    msg_store_init_from_tbl_with_instrumentation(TblIdxRef, SubscriberId).
+
+msg_store_init_from_tbl_with_instrumentation(Prefix, SubscriberId) ->
+    V1 = ts(),
+    MsgRefs = msg_store_init_from_tbl(Prefix, SubscriberId),
+    vmq_metrics:pretimed_measurement({vmq_generic_message_store, msg_store_init_from_tbl}, ts() - V1),
+    MsgRefs.
 
 msg_store_init_from_tbl(Prefix, SubscriberId) ->
     MS = ets:fun2ms(
@@ -449,3 +461,7 @@ serialize_p_msg_val_pre(T) when is_integer(element(1, T)),
     term_to_binary(
       {element(2, T),
        element(3, T)}).
+
+ts() ->
+  {Mega, Sec, Micro} = os:timestamp(),
+  (Mega * 1000000 + Sec) * 1000000 + Micro.
