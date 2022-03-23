@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 
+# Check istio readiness
+istio_health() {
+  cmd=$(curl -s http://localhost:15021/healthz/ready > /dev/null)
+  status=$?
+  return $status
+}
+
 NET_INTERFACE=$(route | grep '^default' | grep -o '[^ ]*$')
 NET_INTERFACE=${DOCKER_NET_INTERFACE:-${NET_INTERFACE}}
 IP_ADDRESS=$(ip -4 addr show ${NET_INTERFACE} | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | sed -e "s/^[[:space:]]*//" | head -n 1)
@@ -36,8 +43,8 @@ if env | grep "DOCKER_VERNEMQ_DISCOVERY_NODE" -q; then
         discovery_node=$tmp
     fi
 
-    sed -i.bak -r "/-eval.+/d" /vernemq/etc/vm.args 
-    echo "-eval \"vmq_server_cmd:node_join('VerneMQ@$discovery_node')\"" >> /vernemq/etc/vm.args
+    sed -i.bak -r "/-eval.+/d" /vernemq/etc/vm.args
+    echo "-eval \"vmq_server_cmd:node_join('VerneMQ@$discovery_node')\"" >>/vernemq/etc/vm.args
 fi
 
 # If you encounter "SSL certification error (subject name does not match the host name)", you may try to set DOCKER_VERNEMQ_KUBERNETES_INSECURE to "1".
@@ -46,10 +53,19 @@ if env | grep "DOCKER_VERNEMQ_KUBERNETES_INSECURE" -q; then
     insecure="--insecure"
 fi
 
+if env | grep "DOCKER_VERNEMQ_KUBERNETES_ISTIO_ENABLED" -q; then
+    istio_health
+    while [ $status != 0 ]; do
+        istio_health
+        sleep 1
+    done
+    echo "Istio ready"
+fi
+
 if env | grep "DOCKER_VERNEMQ_DISCOVERY_KUBERNETES" -q; then
     DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME=${DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME:-cluster.local}
     # Let's get the namespace if it isn't set
-    DOCKER_VERNEMQ_KUBERNETES_NAMESPACE=${DOCKER_VERNEMQ_KUBERNETES_NAMESPACE:-`cat /var/run/secrets/kubernetes.io/serviceaccount/namespace`}
+    DOCKER_VERNEMQ_KUBERNETES_NAMESPACE=${DOCKER_VERNEMQ_KUBERNETES_NAMESPACE:-$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)}
     # Let's set our nodename correctly
     VERNEMQ_KUBERNETES_SUBDOMAIN=${DOCKER_VERNEMQ_KUBERNETES_SUBDOMAIN:-$(curl -X GET $insecure --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt https://kubernetes.default.svc.$DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME/api/v1/namespaces/$DOCKER_VERNEMQ_KUBERNETES_NAMESPACE/pods?labelSelector=$DOCKER_VERNEMQ_KUBERNETES_LABEL_SELECTOR -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" | jq '.items[0].spec.subdomain' | sed 's/"//g' | tr '\n' '\0')}
     if [ $VERNEMQ_KUBERNETES_SUBDOMAIN == "null" ]; then
@@ -61,19 +77,21 @@ if env | grep "DOCKER_VERNEMQ_DISCOVERY_KUBERNETES" -q; then
     sed -i.bak -r "s/VerneMQ@.+/VerneMQ@${VERNEMQ_KUBERNETES_HOSTNAME}/" /vernemq/etc/vm.args
     # Hack into K8S DNS resolution (temporarily)
     kube_pod_names=$(curl -X GET $insecure --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt https://kubernetes.default.svc.$DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME/api/v1/namespaces/$DOCKER_VERNEMQ_KUBERNETES_NAMESPACE/pods?labelSelector=$DOCKER_VERNEMQ_KUBERNETES_LABEL_SELECTOR -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" | jq '.items[].spec.hostname' | sed 's/"//g' | tr '\n' ' ')
-    for kube_pod_name in $kube_pod_names;
-    do
-        if [ $kube_pod_name == "null" ]
-            then
-                echo "Kubernetes discovery selected, but no pods found. Maybe we're the first?"
-                echo "Anyway, we won't attempt to join any cluster."
-                break
+    for kube_pod_name in $kube_pod_names; do
+        if [ $kube_pod_name == "null" ]; then
+            echo "Kubernetes discovery selected, but no pods found. Maybe we're the first?"
+            echo "Anyway, we won't attempt to join any cluster."
+            break
         fi
-        if [ $kube_pod_name != $MY_POD_NAME ]
-            then
-                echo "Will join an existing Kubernetes cluster with discovery node at ${kube_pod_name}.${VERNEMQ_KUBERNETES_SUBDOMAIN}.${DOCKER_VERNEMQ_KUBERNETES_NAMESPACE}.svc.${DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME}"
-                echo "-eval \"vmq_server_cmd:node_join('VerneMQ@${kube_pod_name}.${VERNEMQ_KUBERNETES_SUBDOMAIN}.${DOCKER_VERNEMQ_KUBERNETES_NAMESPACE}.svc.${DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME}')\"" >> /vernemq/etc/vm.args
-                break
+        if [ $kube_pod_name != $MY_POD_NAME ]; then
+            echo "Will join an existing Kubernetes cluster with discovery node at ${kube_pod_name}.${VERNEMQ_KUBERNETES_SUBDOMAIN}.${DOCKER_VERNEMQ_KUBERNETES_NAMESPACE}.svc.${DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME}"
+            echo "-eval \"vmq_server_cmd:node_join('VerneMQ@${kube_pod_name}.${VERNEMQ_KUBERNETES_SUBDOMAIN}.${DOCKER_VERNEMQ_KUBERNETES_NAMESPACE}.svc.${DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME}')\"" >>/vernemq/etc/vm.args
+            echo "Did I previously leave the cluster? If so, purging old state."
+            curl -fsSL http://${kube_pod_name}.${VERNEMQ_KUBERNETES_SUBDOMAIN}.${DOCKER_VERNEMQ_KUBERNETES_NAMESPACE}.svc.${DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME}:8888/status.json >/dev/null 2>&1 ||
+                (echo "Can't download status.json, better to exit now" && exit 1)
+            curl -fsSL http://${kube_pod_name}.${VERNEMQ_KUBERNETES_SUBDOMAIN}.${DOCKER_VERNEMQ_KUBERNETES_NAMESPACE}.svc.${DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME}:8888/status.json | grep -q ${VERNEMQ_KUBERNETES_HOSTNAME} ||
+                (echo "Cluster doesn't know about me, this means I've left previously. Purging old state..." && rm -rf /vernemq/data/*)
+            break
         fi
     done
 fi
@@ -84,13 +102,13 @@ if [ -f /vernemq/etc/vernemq.conf.local ]; then
 else
     sed -i '/########## Start ##########/,/########## End ##########/d' /vernemq/etc/vernemq.conf
 
-    echo "########## Start ##########" >> /vernemq/etc/vernemq.conf
+    echo "########## Start ##########" >>/vernemq/etc/vernemq.conf
 
-    env | grep DOCKER_VERNEMQ | grep -v 'DISCOVERY_NODE\|KUBERNETES\|SWARM\|COMPOSE\|DOCKER_VERNEMQ_USER' | cut -c 16- | awk '{match($0,/^[A-Z0-9_]*/)}{print tolower(substr($0,RSTART,RLENGTH)) substr($0,RLENGTH+1)}' | sed 's/__/./g' >> /vernemq/etc/vernemq.conf
+    env | grep DOCKER_VERNEMQ | grep -v 'DISCOVERY_NODE\|KUBERNETES\|SWARM\|COMPOSE\|DOCKER_VERNEMQ_USER' | cut -c 16- | awk '{match($0,/^[A-Z0-9_]*/)}{print tolower(substr($0,RSTART,RLENGTH)) substr($0,RLENGTH+1)}' | sed 's/__/./g' >>/vernemq/etc/vernemq.conf
 
     users_are_set=$(env | grep DOCKER_VERNEMQ_USER)
     if [ ! -z "$users_are_set" ]; then
-        echo "vmq_passwd.password_file = /vernemq/etc/vmq.passwd" >> /vernemq/etc/vernemq.conf
+        echo "vmq_passwd.password_file = /vernemq/etc/vmq.passwd" >>/vernemq/etc/vernemq.conf
         touch /vernemq/etc/vmq.passwd
     fi
 
@@ -104,34 +122,34 @@ EOF
     done
 
     if [ -z "$DOCKER_VERNEMQ_ERLANG__DISTRIBUTION__PORT_RANGE__MINIMUM" ]; then
-        echo "erlang.distribution.port_range.minimum = 9100" >> /vernemq/etc/vernemq.conf
+        echo "erlang.distribution.port_range.minimum = 9100" >>/vernemq/etc/vernemq.conf
     fi
 
     if [ -z "$DOCKER_VERNEMQ_ERLANG__DISTRIBUTION__PORT_RANGE__MAXIMUM" ]; then
-        echo "erlang.distribution.port_range.maximum = 9109" >> /vernemq/etc/vernemq.conf
+        echo "erlang.distribution.port_range.maximum = 9109" >>/vernemq/etc/vernemq.conf
     fi
 
     if [ -z "$DOCKER_VERNEMQ_LISTENER__TCP__DEFAULT" ]; then
-        echo "listener.tcp.default = ${IP_ADDRESS}:1883" >> /vernemq/etc/vernemq.conf
+        echo "listener.tcp.default = ${IP_ADDRESS}:1883" >>/vernemq/etc/vernemq.conf
     fi
 
     if [ -z "$DOCKER_VERNEMQ_LISTENER__WS__DEFAULT" ]; then
-        echo "listener.ws.default = ${IP_ADDRESS}:8080" >> /vernemq/etc/vernemq.conf
+        echo "listener.ws.default = ${IP_ADDRESS}:8080" >>/vernemq/etc/vernemq.conf
     fi
 
     if [ -z "$DOCKER_VERNEMQ_LISTENER__VMQ__CLUSTERING" ]; then
-        echo "listener.vmq.clustering = ${IP_ADDRESS}:44053" >> /vernemq/etc/vernemq.conf
+        echo "listener.vmq.clustering = ${IP_ADDRESS}:44053" >>/vernemq/etc/vernemq.conf
     fi
 
     if [ -z "$DOCKER_VERNEMQ_LISTENER__HTTP__METRICS" ]; then
-        echo "listener.http.metrics = ${IP_ADDRESS}:8888" >> /vernemq/etc/vernemq.conf
+        echo "listener.http.metrics = ${IP_ADDRESS}:8888" >>/vernemq/etc/vernemq.conf
     fi
 
-    echo "########## End ##########" >> /vernemq/etc/vernemq.conf
+    echo "########## End ##########" >>/vernemq/etc/vernemq.conf
 fi
 
 # Check configuration file
-/vernemq/bin/vernemq config generate 2>&1 > /dev/null | tee /tmp/config.out | grep error
+/vernemq/bin/vernemq config generate 2>&1 >/dev/null | tee /tmp/config.out | grep error
 
 if [ $? -ne 1 ]; then
     echo "configuration error, exit"
@@ -157,8 +175,26 @@ sigterm_handler() {
         else
             terminating_node_name=VerneMQ@$IP_ADDRESS
         fi
-        /vernemq/bin/vmq-admin cluster leave node=$terminating_node_name -k > /dev/null
-        /vernemq/bin/vmq-admin node stop > /dev/null
+        kube_pod_names=$(curl -X GET $insecure --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt https://kubernetes.default.svc.$DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME/api/v1/namespaces/$DOCKER_VERNEMQ_KUBERNETES_NAMESPACE/pods?labelSelector=$DOCKER_VERNEMQ_KUBERNETES_LABEL_SELECTOR -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" | jq '.items[].spec.hostname' | sed 's/"//g' | tr '\n' ' ')
+        if [ $kube_pod_names == $MY_POD_NAME ]; then
+            echo "I'm the only pod remaining, not performing leave and state purge."
+            /vernemq/bin/vmq-admin node stop >/dev/null
+        else
+
+            statefulset=$(curl -X GET --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+                https://kubernetes.default.svc.$DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME/api/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/pods/$(hostname) | jq -r '.metadata.ownerReferences[0].name')
+
+            reschedule=$(curl -X GET --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+                https://kubernetes.default.svc.$DOCKER_VERNEMQ_KUBERNETES_CLUSTER_NAME/apis/apps/v1/namespaces/$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)/statefulsets/${statefulset} | jq '.status.replicas == .status.currentReplicas')
+
+            if [[ $reschedule == "true" ]]; then
+                echo "Reschedule is true, not leaving the cluster"
+                /vernemq/bin/vmq-admin node stop >/dev/null
+            else
+                echo "Reschedule is false, leaving the cluster"
+                /vernemq/bin/vmq-admin cluster leave node=$terminating_node_name -k && rm -rf /vernemq/data/*
+            fi
+        fi
         kill -s TERM ${pid}
         exit 0
     fi
