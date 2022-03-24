@@ -875,7 +875,9 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
 handle_waiting_acks_and_msgs(State) ->
     #state{waiting_acks=WAcks, waiting_msgs=WMsgs, queue_pid=QPid, next_msg_id=NextMsgId} = State,
     MsgsToBeDeliveredNextTime =
-    lists:foldl(fun ({{qos2, _}, _}, Acc) ->
+    lists:foldl(fun ({{qos2, MsgId}, #mqtt_pubrec{} = Frame}, Acc) ->
+                      [{{qos2, MsgId}, Frame}|Acc];
+                  ({{qos2, _}, _}, Acc) ->
                       Acc;
                   ({MsgId, #mqtt_pubrel{} = Frame}, Acc) ->
                       %% unacked PUBREL Frame
@@ -935,6 +937,10 @@ handle_messages([{deliver_pubrel, {MsgId, #mqtt_pubrel{} = Frame}}|Rest], Frames
     State1 = State0#state{retry_queue=set_retry(pubrel, MsgId, RetryInterval, RetryQueue),
                           waiting_acks=maps:put(MsgId, Frame, WAcks)},
     handle_messages(Rest, [Frame|Frames], PubCnt, State1, Waiting);
+handle_messages([{{qos2, MsgId}, Frame}|Rest], Frames, PubCnt, State0, Waiting) ->
+    #state{waiting_acks=WAcks} = State0,
+    State1 = State0#state{waiting_acks=maps:put({qos2, MsgId}, Frame, WAcks)},
+    handle_messages(Rest, Frames, PubCnt, State1, Waiting);
 handle_messages([], [], _, State, Waiting) ->
     {State, [], Waiting};
 handle_messages([], Frames, PubCnt, State, Waiting) ->
