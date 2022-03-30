@@ -1,6 +1,12 @@
 %% -*- mode: erlang -*-
 %% ex: ft=erlang
 
+%% @doc Rolls out all_queues_setup_check.
+{mapping, "all_queues_setup_check_rollout", "vmq_server.all_queues_setup_check_rollout", [
+                                                                                          {default, on},
+                                                                                          {datatype, flag}
+                                                                                         ]}.
+
 %% @doc Allow anonymous users to connect, default is 'off'. !!NOTE!!
 %% Enabling this completely disables authentication of the clients and
 %% should only be used for testing/development purposes or in case

@@ -58,6 +58,8 @@ register_cli() ->
     vmq_server_show_cmd(),
     vmq_server_metrics_cmd(),
     vmq_server_metrics_reset_cmd(),
+    vmq_all_queues_setup_check_rollout_cmd(),
+    vmq_all_queues_setup_check_rollout_status_cmd(),
     vmq_cluster_join_cmd(),
     vmq_cluster_leave_cmd(),
     vmq_cluster_upgrade_cmd(),
@@ -91,6 +93,10 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "api-key"], api_usage()),
     clique:register_usage(["vmq-admin", "api-key", "delete"], api_delete_key_usage()),
     clique:register_usage(["vmq-admin", "api-key", "add"], api_add_key_usage()),
+
+    clique:register_usage(["vmq-admin", "all_queues_setup_check"], rollout_usage()),
+    clique:register_usage(["vmq-admin", "all_queues_setup_check", "set"], set_rollout_usage()),
+    clique:register_usage(["vmq-admin", "all_queues_setup_check", "show"], show_rollout_usage()),
     ok.
 
 vmq_server_stop_cmd() ->
@@ -378,6 +384,52 @@ wait_till_all_offline(Sleep, N) ->
             wait_till_all_offline(Sleep, N - 1)
     end.
 
+vmq_all_queues_setup_check_rollout_cmd() ->
+    Cmd = ["vmq-admin", "all_queues_setup_check", "set"],
+    KeySpecs = [rollout_keyspec()],
+    FlagSpecs = [],
+    Callback =
+        fun(_, [{rollout, Value}], []) ->
+            case vmq_cluster:set_rollout(Value) of
+                ok ->
+                    [clique_status:text("Done")];
+                {error, Reason} ->
+                    lager:warning("can't set all_queues_setup_check rollout as ~p due to ~p",
+                    [Value, Reason]),
+                    Text = io_lib:format("can't set set all_queues_setup_check rollout due to '~p'", [Reason]),
+                    [clique_status:alert([clique_status:text(Text)])]
+            end;
+           (_, _, _) ->
+            Text = clique_status:text(set_rollout_usage()),
+            [clique_status:alert([Text])]
+        end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+vmq_all_queues_setup_check_rollout_status_cmd() ->
+    Cmd = ["vmq-admin", "all_queues_setup_check", "show", "rollout"],
+    KeySpecs = [],
+    FlagSpecs = [],
+    Callback =
+        fun(_, [], []) ->
+            Table = [[{value, vmq_cluster:get_rollout()}]],
+            [clique_status:table(Table)];
+           (_, _, _) ->
+            Text = clique_status:text(show_rollout_usage()),
+            [clique_status:alert([Text])]
+        end,
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+rollout_keyspec() ->
+    {rollout, [{typecast,
+        fun(Value) when is_list(Value) ->
+            BooleanValue = list_to_atom(Value),
+            case is_boolean(BooleanValue) of
+                true -> BooleanValue;
+                _ -> {error, {invalid_value, Value}}
+            end;
+           (Value) -> {error, {invalid_value, Value}}
+        end}]}.
+
 vmq_cluster_join_cmd() ->
     Cmd = ["vmq-admin", "cluster", "join"],
     KeySpecs = [{'discovery-node', [{typecast, fun(Node) ->
@@ -548,15 +600,16 @@ usage() ->
     ["vmq-admin <sub-command>\n\n",
      "  Administrate the cluster.\n\n",
      "  Sub-commands:\n",
-     "    node        Manage this node\n",
-     "    cluster     Manage this node's cluster membership\n",
-     "    session     Retrieve session information\n",
-     "    retain      Show and filter MQTT retained messages\n",
-     "    plugin      Manage plugin system\n",
-     "    listener    Manage listener interfaces\n",
-     "    metrics     Retrieve System Metrics\n",
-     "    api-key     Manage API keys for the HTTP management interface\n",
-     "    trace       Trace various aspects of VerneMQ\n",
+     "    node                    Manage this node\n",
+     "    cluster                 Manage this node's cluster membership\n",
+     "    session                 Retrieve session information\n",
+     "    retain                  Show and filter MQTT retained messages\n",
+     "    plugin                  Manage plugin system\n",
+     "    listener                Manage listener interfaces\n",
+     "    metrics                 Retrieve System Metrics\n",
+     "    api-key                 Manage API keys for the HTTP management interface\n",
+     "    trace                   Trace various aspects of VerneMQ\n",
+     "    all_queues_setup_check  Manage all_queues_setup_check rollout as part of health check\n",
      remove_ok(vmq_plugin_mgr:get_usage_lead_lines()),
      "  Use --help after a sub-command for more details.\n"
     ].
@@ -624,6 +677,27 @@ api_delete_key_usage() ->
 api_add_key_usage() ->
     ["vmq-admin api-key add key=<API Key>\n\n",
      "  Adds an API Key.\n\n"
+    ].
+
+rollout_usage() ->
+    ["vmq-admin all_queues_setup_check <sub-command>\n\n",
+     "  Manage all_queues_setup_check rollout as part of health check.\n\n",
+     "  Sub-commands:\n",
+     "    show        Shows the rollout value\n",
+     "    set         Sets the rollout value\n\n",
+     "  Use --help after a sub-command for more details.\n"
+    ].
+
+show_rollout_usage() ->
+    ["vmq-admin all_queues_setup_check show rollout\n\n",
+     "  Shows the rollout value of all_queues_setup_check.",
+     "\n\n"
+    ].
+
+set_rollout_usage() ->
+    ["vmq-admin all_queues_setup_check set rollout=<true/false>\n\n",
+     "  Sets the rollout value of all_queues_setup_check.",
+     "\n\n"
     ].
 
 ensure_all_stopped(App)  ->

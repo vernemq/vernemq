@@ -36,10 +36,13 @@
          publish/2,
          remote_enqueue/3,
          remote_enqueue/4,
-         remote_enqueue_async/3]).
+         remote_enqueue_async/3,
+         set_rollout/1,
+         get_rollout/0]).
 
 -define(SERVER, ?MODULE).
 -define(VMQ_CLUSTER_STATUS, vmq_status). %% table is owned by vmq_cluster_mon
+-define(ROLLOUT, vmq_cluster_all_queues_setup_check_rollout).
 
 -record(state, {}).
 -type state() :: #state{}.
@@ -135,16 +138,43 @@ remote_enqueue_async(Node, Term, BufferIfUnreachable) ->
             vmq_cluster_node:enqueue_async(Pid, Term, BufferIfUnreachable)
     end.
 
+-spec set_rollout(boolean()) -> any().
+set_rollout(RolloutValue) ->
+    case vmq_peer_service:call_event_handler(?MODULE, {rollout, RolloutValue}, infinity) of
+      ok -> ok;
+      E ->
+        lager:warning("error setting all_queues_setup_check rollout value ~p", [E]),
+        E
+    end.
+
+-spec get_rollout() -> boolean().
+get_rollout() ->
+    case catch ets:lookup_element(?ROLLOUT, value, 2) of
+        Value when is_boolean(Value) -> Value;
+        E ->
+            lager:warning("error fetching all_queues_setup_check rollout value ~p", [E]),
+            E
+    end.
+
 %%%===================================================================
 %%% gen_event callbacks
 %%%===================================================================
 -spec init([]) -> {'ok', state()}.
 init([]) ->
+    case catch ets:lookup_element(?ROLLOUT, value, 2) of
+        Value when is_boolean(Value) -> ok;
+        _ ->
+            RolloutValue = application:get_env(vmq_server, all_queues_setup_check_rollout, true),
+            ets:insert(?ROLLOUT, {value, RolloutValue})
+    end,
     check_ready(),
     lager:info("cluster event handler '~p' registered", [?MODULE]),
     {ok, #state{}}.
 
 -spec handle_call(_, _) -> {'ok', 'ok', _}.
+handle_call({rollout, RolloutValue}, State) ->
+    ets:insert(?ROLLOUT, {value, RolloutValue}),
+    {ok, ok, State};
 handle_call(recheck, State) ->
     _ = check_ready(),
     {ok, ok, State}.
@@ -201,8 +231,9 @@ check_ready([Node|Rest], Acc) ->
     %% connection to the remote node.
     Status = vmq_cluster_node_sup:node_status(Node),
     IsReady1 = IsReady andalso lists:member(Status, [up, init]),
-    IsReady2 = case rpc:call(Node, vmq_reg_mgr, all_queues_setup_status, []) of
+    IsReady2 = case get_rollout() andalso rpc:call(Node, vmq_reg_mgr, all_queues_setup_status, []) of
                  ready -> true;
+                 false -> true;
                  _ -> false
                end,
     IsReady3 = IsReady2 andalso IsReady1,

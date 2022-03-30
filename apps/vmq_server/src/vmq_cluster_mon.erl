@@ -30,6 +30,7 @@
 -record(state, {}).
 -define(RECHECK_INTERVAL, 10000).
 -define(RECHECK_INTERVAL_NOT_READY, 2000).
+-define(ROLLOUT, vmq_cluster_all_queues_setup_check_rollout).
 
 %%%===================================================================
 %%% API functions
@@ -66,6 +67,7 @@ init([]) ->
             %% we are the owner of this table, although the event handler
             %% is writing to it.
             _ = ets:new(vmq_status, [{read_concurrency, true}, public, named_table]),
+            ets:new(?ROLLOUT, [public, set, named_table, {read_concurrency, true}]),
             %% the event handler is added after the timeout
             erlang:send_after(?RECHECK_INTERVAL, self(), recheck),
             process_flag(trap_exit, true), %% we can unregister the event handler
