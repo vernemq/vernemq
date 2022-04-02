@@ -980,6 +980,8 @@ cleanup_queue_(SId, {{value, {deliver_pubrel, _}}, NewQueue}) ->
 cleanup_queue_(SId, {{value, MsgRef}, NewQueue}) when is_binary(MsgRef) ->
     maybe_offline_delete(SId, MsgRef),
     cleanup_queue_(SId, queue:out(NewQueue));
+cleanup_queue_(SId, {{value, {{qos2,_},_}}, NewQueue}) ->
+    cleanup_queue_(SId, queue:out(NewQueue));
 cleanup_queue_(_, {empty, _}) -> ok.
 
 
