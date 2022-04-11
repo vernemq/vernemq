@@ -92,9 +92,18 @@ on_register(#'eventssidecar.v1.OnRegister'{peer_addr = ?PEER_BIN,
               peer_port = ?PEERPORT,
               username = BinPid,
               mountpoint = ?MOUNTPOINT_BIN,
-              client_id = ?ALLOWED_CLIENT_ID}) ->
+              client_id = ?ALLOWED_CLIENT_ID,
+              user_properties =  [{<<"k3">>,<<"v3">>},{<<"k2">>,<<"v2">>},{<<"k1">>,<<"v1">>}]}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
-    Pid ! on_register_ok.
+    Pid ! on_register_ok;
+
+on_register(#'eventssidecar.v1.OnRegister'{peer_addr = ?PEER_BIN,
+  peer_port = ?PEERPORT,
+  username = BinPid,
+  mountpoint = ?MOUNTPOINT_BIN,
+  client_id = ?ALLOWED_CLIENT_ID}) ->
+  Pid = list_to_pid(binary_to_list(BinPid)),
+  Pid ! on_register_ok.
     
 
 on_publish(#'eventssidecar.v1.OnPublish'{username = BinPid,

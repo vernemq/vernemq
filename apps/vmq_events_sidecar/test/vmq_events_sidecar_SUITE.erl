@@ -44,6 +44,7 @@ all() ->
     [on_session_expired_test,
      on_delivery_complete_test,
      on_register_test,
+     on_register_empty_properties_test,
      on_publish_test,
      on_subscribe_test,
      on_unsubscribe_test,
@@ -64,10 +65,19 @@ stop_tcp_server(S) ->
 on_register_test(_) ->
     enable_hook(on_register),
     Self = pid_to_bin(self()),
+    UserProps = [{"k1", "v1"}, {"k2","v2"}, {"k3","v3"}],
     [ok] = vmq_plugin:all(on_register,
-                            [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self]),
+                            [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, #{?P_USER_PROPERTY => UserProps}]),
     ok = exp_response(on_register_ok),
     disable_hook(on_register).
+
+on_register_empty_properties_test(_) ->
+  enable_hook(on_register),
+  Self = pid_to_bin(self()),
+  [ok] = vmq_plugin:all(on_register,
+    [?PEER, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, Self, #{}]),
+  ok = exp_response(on_register_ok),
+  disable_hook(on_register).
 
 on_publish_test(_) ->
     enable_hook(on_publish),

@@ -15,7 +15,8 @@
          peer_port = 0          :: integer() | undefined, % = 3, optional, 32 bits
          username = <<>>        :: unicode:chardata() | undefined, % = 4, optional
          mountpoint = <<>>      :: unicode:chardata() | undefined, % = 5, optional
-         client_id = <<>>       :: unicode:chardata() | undefined % = 6, optional
+         client_id = <<>>       :: unicode:chardata() | undefined, % = 6, optional
+         user_properties = []   :: [{unicode:chardata(), unicode:chardata()}] | undefined % = 7
         }).
 -endif.
 

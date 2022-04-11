@@ -110,8 +110,9 @@ auth_on_subscribe_test(_) ->
                       [username(), changed_subscriber_id(), [{topic(), 1}]]).
 
 on_register_test(_) ->
+    UserProps = [{<<"k1">>, <<"v1">>}, {<<"k2">>, <<"v2">>}, {<<"k3">>, <<"v3">>}],
     [next] = vmq_plugin:all(on_register,
-                            [peer(), allowed_subscriber_id(), username()]).
+                            [peer(), allowed_subscriber_id(), username(), #{?P_USER_PROPERTY => UserProps}]).
 on_publish_test(_) ->
     [next] = vmq_plugin:all(on_publish,
                             [username(), allowed_subscriber_id(), 1, topic(), payload(), false]).

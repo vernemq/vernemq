@@ -18,7 +18,7 @@
 -behaviour(on_session_expired_hook).
 -behaviour(on_delivery_complete_hook).
 
--export([on_register/3,
+-export([on_register/4,
          on_publish/6,
          on_subscribe/3,
          on_unsubscribe/3,
@@ -189,15 +189,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Hook functions
 %%%===================================================================
 %% called as an all_till_ok hook
--spec on_register(peer(), subscriber_id(), username()) -> 'next'.
-on_register(Peer, SubscriberId, UserName) ->
+-spec on_register(peer(), subscriber_id(), username(), properties()) -> 'next'.
+on_register(Peer, SubscriberId, UserName, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
     send_event({on_register, {MP,
                               ClientId,
                               PPeer,
                               Port,
-                              normalise(UserName)}}).
+                              normalise(UserName),
+                              Props}}).
 
 -spec on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> 'next'.
 on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->

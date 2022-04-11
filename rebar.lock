@@ -101,7 +101,7 @@
  {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.5.0">>},2},
  {<<"vernemq_dev">>,
   {git,"https://github.com/gojekfarm/vernemq_dev.git",
-       {ref,"ff4704eae5de1b78ea7e404abe4ba72d78b99178"}},
+       {ref,"e3b332f6d9183503900c59544d2af140400ffefe"}},
   0}]}.
 [
 {pkg_hash,[

@@ -44,7 +44,7 @@
 -export([auth_on_register/5,
          auth_on_publish/6,
          auth_on_subscribe/3,
-         on_register/3,
+         on_register/4,
          on_publish/6,
          on_subscribe/3,
          on_unsubscribe/3,
@@ -332,15 +332,25 @@ auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
                                                  || {T, QoS} <- Topics]},
                                        {properties, Props}]).
 
--spec on_register(peer(), subscriber_id(), username()) -> 'next'.
-on_register(Peer, SubscriberId, UserName) ->
+-spec on_register(peer(), subscriber_id(), username(), properties()) -> 'next'.
+on_register(Peer, SubscriberId, UserName, #{?P_USER_PROPERTY := UserProps}) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_register, [{addr, PPeer},
-                           {port, Port},
-                           {mountpoint, MP},
-                           {client_id, ClientId},
-                           {username, nullify(UserName)}]).
+                     {port, Port},
+                     {mountpoint, MP},
+                     {client_id, ClientId},
+                     {username, nullify(UserName)},
+                     {user_properties, maps:from_list(UserProps)}]);
+
+on_register(Peer, SubscriberId, UserName, _) ->
+    {PPeer, Port} = peer(Peer),
+    {MP, ClientId} = subscriber_id(SubscriberId),
+    all(on_register, [{addr, PPeer},
+                      {port, Port},
+                      {mountpoint, MP},
+                      {client_id, ClientId},
+                      {username, nullify(UserName)}]).
 
 -spec on_register_m5(peer(), subscriber_id(), username(), properties()) -> 'next'.
 on_register_m5(Peer, SubscriberId, UserName, Props) ->

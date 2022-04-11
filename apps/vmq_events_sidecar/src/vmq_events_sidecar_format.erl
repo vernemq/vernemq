@@ -1,5 +1,6 @@
 -module(vmq_events_sidecar_format).
 -include("../include/vmq_events_sidecar.hrl").
+-include_lib("vernemq_dev/include/vernemq_dev.hrl").
 -include_lib("vmq_proto/include/on_register_pb.hrl").
 -include_lib("vmq_proto/include/on_publish_pb.hrl").
 -include_lib("vmq_proto/include/on_subscribe_pb.hrl").
@@ -17,13 +18,21 @@
 -export([encode/1]).
 
 -spec encode(event()) -> iodata().
-encode({on_register, Timestamp, {MP, ClientId, PPeer, Port, UserName}}) ->
+encode({on_register, Timestamp, {MP, ClientId, PPeer, Port, UserName, #{?P_USER_PROPERTY := Properties}}}) ->
   encode_envelope("OnRegister", on_register_pb:encode_msg(#'eventssidecar.v1.OnRegister'{peer_addr = PPeer,
-                                                                         peer_port = Port,
-                                                                         username = UserName,
-                                                                         mountpoint = MP,
-                                                                         client_id = ClientId,
-                                                                         timestamp = convert_timestamp(Timestamp)}));
+                                                                          peer_port = Port,
+                                                                          username = UserName,
+                                                                          mountpoint = MP,
+                                                                          client_id = ClientId,
+                                                                          timestamp = convert_timestamp(Timestamp),
+                                                                          user_properties = Properties}));
+encode({on_register, Timestamp, {MP, ClientId, PPeer, Port, UserName, #{}}}) ->
+  encode_envelope("OnRegister", on_register_pb:encode_msg(#'eventssidecar.v1.OnRegister'{peer_addr = PPeer,
+                                                                          peer_port = Port,
+                                                                          username = UserName,
+                                                                          mountpoint = MP,
+                                                                          client_id = ClientId,
+                                                                          timestamp = convert_timestamp(Timestamp)}));
 encode({on_publish, Timestamp, {MP, ClientId, UserName, QoS, Topic, Payload, IsRetain}}) ->
   encode_envelope("OnPublish", on_publish_pb:encode_msg(#'eventssidecar.v1.OnPublish'{username = UserName,
                                                                       client_id = ClientId,

@@ -159,8 +159,16 @@ variable(<<?CONNECT:4, 0:4>>,
                     case parse_password(Rest2, UserNameFlag, PasswordFlag, Conn2) of
                         {ok, <<>>, Conn3} ->
                             Conn3;
-                        {ok, _, _} ->
-                            {error, invalid_rest_of_binary};
+                        {ok, Rest3, Conn3} ->
+                            case vmq_parser_mqtt5:parse_properties(Rest3, #{}) of
+                              #{p_user_property := UserProps} = Props ->
+                                %% Make sure to preserve order of the user properties
+                                  Conn3#mqtt_connect{properties=Props#{p_user_property => lists:reverse(UserProps)}};
+                              Properties when is_map(Properties) ->
+                                  Conn3#mqtt_connect{properties=Properties};
+                              {error, _} = E ->
+                                  E
+                            end;
                         E -> E
                     end;
                 E -> E
@@ -206,7 +214,6 @@ parse_password(_, 0, 1, _) ->
     {error, username_flag_not_set};
 parse_password(_, _, 1, _) ->
     {error, cant_parse_password}.
-
 
 parse_topics(<<>>, _, []) -> {error, no_topic_provided};
 parse_topics(<<>>, _, Topics) -> {ok, Topics};

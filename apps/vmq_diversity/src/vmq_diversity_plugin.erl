@@ -43,7 +43,7 @@
 -export([auth_on_register/5,
          auth_on_publish/6,
          auth_on_subscribe/3,
-         on_register/3,
+         on_register/4,
          on_publish/6,
          on_subscribe/3,
          on_unsubscribe/3,
@@ -449,14 +449,15 @@ on_auth_m5(Username, SubscriberId, Props) ->
                              {properties, conv_args_props(Props)}]).
 
 
-on_register(Peer, SubscriberId, UserName) ->
+on_register(Peer, SubscriberId, UserName, UserProperties) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_register, [{addr, PPeer},
                            {port, Port},
                            {mountpoint, MP},
                            {client_id, ClientId},
-                           {username, nilify(UserName)}]).
+                           {username, nilify(UserName)},
+                           {properties, conv_args_props(UserProperties)}]).
 
 on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),

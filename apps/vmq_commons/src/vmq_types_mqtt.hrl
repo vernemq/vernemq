@@ -16,6 +16,9 @@
                             | ?CONNACK_SERVER
                             | ?CONNACK_CREDENTIALS
                             | ?CONNACK_AUTH.
+
+-type mqtt_properties() :: map().
+
 -record(mqtt_connect, {
           proto_ver         :: proto_version(),
           username          :: username(),
@@ -26,7 +29,8 @@
           will_retain       :: flag() | undefined,
           will_qos          :: qos() | undefined,
           will_topic        :: topic() | undefined,
-          will_msg          :: payload() | undefined
+          will_msg          :: payload() | undefined,
+          properties=#{}    :: mqtt_properties()
          }).
 -type mqtt_connect()        :: #mqtt_connect{}.
 

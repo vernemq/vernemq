@@ -294,7 +294,11 @@ on_register(#{peer_addr := ?PEER_BIN,
               peer_port := ?PEERPORT,
               mountpoint := ?MOUNTPOINT_BIN,
               client_id := ?ALLOWED_CLIENT_ID,
-              username := BinPid}) ->
+              username := BinPid,
+              user_properties :=
+              #{ k1 := <<"v1">>,
+                 k2 := <<"v2">>,
+                 k3 := <<"v3">>}}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_register_ok,
     {200, #{}}.
@@ -311,7 +315,9 @@ on_register_m5(#{peer_addr := ?PEER_BIN,
                        ?P_REQUEST_RESPONSE_INFO := true,
                        ?P_REQUEST_PROBLEM_INFO := true,
                        ?P_USER_PROPERTY :=
-                           [#{key := <<"azE=">>,val := <<"djE=">>}]}}) ->
+                       [#{key := <<"azE=">>, val := <<"djE=">>},
+                         #{key := <<"azI=">>, val := <<"djI=">>},
+                         #{key := <<"azM=">>, val := <<"djM=">>}]}}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_register_m5_ok,
     {200, #{}}.

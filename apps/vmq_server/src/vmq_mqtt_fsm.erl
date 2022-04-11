@@ -548,7 +548,7 @@ check_client_id(#mqtt_connect{client_id=Id}, State) ->
     connack_terminate(?CONNACK_INVALID_ID, State).
 
 -spec check_user(mqtt_connect(), state()) ->  {state(), [mqtt_connack()], session_ctrl()} | {state(), [mqtt_connack()]} | {stop, normal, [mqtt_connack()]}.
-check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
+check_user(#mqtt_connect{username=User, password=Password, properties=Properties} = F, State) ->
     case State#state.allow_anonymous of
         false ->
             case auth_on_register(Password, State#state{username=User}) of
@@ -561,7 +561,7 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                                queue_pid := QPid}} ->
                             monitor(process, QPid),
                             _ = vmq_plugin:all(on_register, [Peer, SubscriberId,
-                                                             State1#state.username]),
+                                                             State1#state.username, Properties]),
                             State2 = State1#state{queue_pid=QPid, next_msg_id=MsgId},
                             check_will(F, SessionPresent, State2);
                         {error, Reason} ->
@@ -595,7 +595,7 @@ check_user(#mqtt_connect{username=User, password=Password} = F, State) ->
                        initial_msg_id := MsgId,
                        queue_pid := QPid}} ->
                     monitor(process, QPid),
-                    _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User]),
+                    _ = vmq_plugin:all(on_register, [Peer, SubscriberId, User, Properties]),
                     check_will(F, SessionPresent, State#state{queue_pid=QPid, username=User, next_msg_id=MsgId});
                 {error, Reason} ->
                     lager:warning("can't register client ~p due to reason ~p",

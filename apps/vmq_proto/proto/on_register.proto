@@ -13,4 +13,5 @@ message OnRegister {
     string username = 4;
     string mountpoint = 5;
     string client_id = 6;
+    map<string, string> user_properties = 7;
 }
