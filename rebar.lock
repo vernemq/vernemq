@@ -1,26 +1,14 @@
-<<<<<<< HEAD
-{"1.1.0",
-[{<<"bcrypt">>,
-  {git,"git://github.com/erlangpack/bcrypt.git",
-       {ref,"550281173c2f4e414b6da6711e4eb23e4e7884d1"}},
-  0},
-=======
 {"1.2.0",
 [{<<"bcrypt">>,{pkg,<<"bcrypt">>,<<"1.1.5">>},0},
->>>>>>> upstream/master
  {<<"bson">>,
   {git,"https://github.com/comtihon/bson-erlang",
        {ref,"14308ab927cfa69324742c3de720578094e0bb19"}},
   1},
-<<<<<<< HEAD
- {<<"certifi">>,{pkg,<<"certifi">>,<<"2.5.3">>},1},
-=======
  {<<"certifi">>,{pkg,<<"certifi">>,<<"2.9.0">>},1},
  {<<"clique">>,
   {git,"https://github.com/vernemq/clique.git",
        {ref,"8dda8f0224084f49ed3528d1d549c6343e53e249"}},
   0},
->>>>>>> upstream/master
  {<<"corman">>,
   {git,"https://github.com/EchoTeam/corman.git",
        {ref,"1c1ae1c0aa97ed1976d9042ac9fb805b51214661"}},
@@ -28,13 +16,8 @@
  {<<"cowboy">>,{pkg,<<"cowboy">>,<<"2.8.0">>},0},
  {<<"cowlib">>,{pkg,<<"cowlib">>,<<"2.9.1">>},1},
  {<<"cuttlefish">>,
-<<<<<<< HEAD
   {git,"git://github.com/ioolkos/cuttlefish.git",
        {ref,"4bd40e51d4b6a40e72e8454b8a7cd0b44a2bdda5"}},
-=======
-  {git,"https://github.com/Kyorai/cuttlefish.git",
-       {ref,"7afaad94e372da0252b0e0c066e8b585272968e4"}},
->>>>>>> upstream/master
   0},
  {<<"dht_ring">>,
   {git,"https://github.com/EchoTeam/dht_ring.git",
@@ -129,20 +112,13 @@
  {<<"mimerl">>, <<"67E2D3F571088D5CFD3E550C383094B47159F3EEE8FFA08E64106CDF5E981BE3">>},
  {<<"parse_trans">>, <<"16328AB840CC09919BD10DAB29E431DA3AF9E9E7E7E6F0089DD5A2D2820011D8">>},
  {<<"poolboy">>, <<"392B007A1693A64540CEAD79830443ABF5762F5D30CF50BC95CB2C1AAAFA006B">>},
-<<<<<<< HEAD
  {<<"ranch">>, <<"FBF3D79661C071543256F9051CAF19D65DAA6DF1CF6824D8F37A49B19A66F703">>},
-=======
- {<<"ranch">>, <<"8C7A100A139FD57F17327B6413E4167AC559FBC04CA7448E9BE9057311597A1D">>},
->>>>>>> upstream/master
  {<<"recon">>, <<"430FFA60685AC1EFDFB1FE4C97B8767C92D0D92E6E7C3E8621559BA77598678A">>},
  {<<"riak_dt">>, <<"56B1898A543C561994F5D052FDEA972525CA98F46FDB3DCDB7366E4F92EE8F54">>},
  {<<"sext">>, <<"07D5D516DAA4C437B2F7DB99F6B2728C8AF939313479B1BEDC1995BB15936236">>},
  {<<"ssl_verify_fun">>, <<"CF344F5692C82D2CD7554F5EC8FD961548D4FD09E7D22F5B62482E5AEAEBD4B0">>},
  {<<"stdout_formatter">>, <<"EC24868D8619757A68F0798357C7190807A1CFC42CE90C18C23760E59249A21A">>},
  {<<"syslog">>, <<"6419A232BEA84F07B56DC575225007FFE34D9FDC91ABE6F1B2F254FD71D8EFC2">>},
-<<<<<<< HEAD
- {<<"unicode_util_compat">>, <<"BC84380C9AB48177092F43AC89E4DFA2C6D62B40B8BD132B1059ECC7232F9A78">>}]}
-=======
  {<<"unicode_util_compat">>, <<"BC84380C9AB48177092F43AC89E4DFA2C6D62B40B8BD132B1059ECC7232F9A78">>}]},
 {pkg_hash_ext,[
  {<<"bcrypt">>, <<"3418821BC17CE6E96A4A77D1A88D7485BF783E212069FACFC79510AFBFF95352">>},
@@ -169,5 +145,4 @@
  {<<"stdout_formatter">>, <<"6B9CAAD8930006F9BB35680C5D3311917AC67690C3AF1BA018623324C015ABE5">>},
  {<<"syslog">>, <<"4C6A41373C7E20587BE33EF841D3DE6F3BEBA08519809329ECC4D27B15B659E1">>},
  {<<"unicode_util_compat">>, <<"25EEE6D67DF61960CF6A794239566599B09E17E668D3700247BC498638152521">>}]}
->>>>>>> upstream/master
 ].
