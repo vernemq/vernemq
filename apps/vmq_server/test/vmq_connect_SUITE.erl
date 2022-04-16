@@ -76,7 +76,7 @@ groups() ->
      {mqttws, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
      {mqttwsp, [], [ws_proxy_protocol_v1_test, ws_proxy_protocol_v2_test,
                     ws_proxy_protocol_localcommand_v1_test, ws_proxy_protocol_localcommand_v2_test]},
-     {mqttv5, [auth_on_register_change_username_test]}
+     {mqttv5, [auth_on_register_change_username_test, uname_anon_username_test_m5]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -95,6 +95,20 @@ anon_success_test(Config) ->
     Connect = packet:gen_connect("connect-success-test", [{keepalive,10}]),
     Connack = packet:gen_connack(0),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, conn_opts(Config)),
+    ok = close(Socket, Config).
+
+uname_anon_username_test_m5(Config) ->
+    %% we test that the given v5 username is taken, even for anonymous access
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_config:configure_node(),
+    Connect = mqtt5_v4compat:gen_connect("set-username-test",
+    [{keepalive,10}, {username, "user"},
+     {password, "whatever"}], Config),
+    Connack = mqtt5_v4compat:gen_connack(success, Config),
+    ok = vmq_plugin_mgr:enable_module_plugin(on_register_m5, ?MODULE, 
+                hook_on_register_uname_anon_username_m5, 4),
+    {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, conn_opts(Config), Config),
+    ok = vmq_plugin_mgr:disable_module_plugin(on_register_m5, ?MODULE, hook_on_register_uname_anon_username_m5, 4),
     ok = close(Socket, Config).
 
 invalid_id_0_test(Config) ->
@@ -301,6 +315,9 @@ hook_change_username_m5(_, _, <<"old_username">>, _, _, _) ->
     {ok, #{username => <<"new_username">>}}.
 
 hook_on_register_changed_username_m5(_,_, <<"new_username">>, _) ->
+    ok.
+
+hook_on_register_uname_anon_username_m5(_,_,<<"user">>, _) ->
     ok.
 
 %% Helpers

@@ -3,7 +3,7 @@
 vmq_passwd
 ==========
 
-Simple Password based Client Authentification
+Simple Password based Client Authentication
 
 VerneMQ periodically checks the specified password file.
 

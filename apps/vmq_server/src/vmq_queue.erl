@@ -336,7 +336,7 @@ wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
     %% Reason for this case:
     %% ---------------------
     %% a synchronized registration that had triggered a cleanup got
-    %% superseeded by a non-synchronized registration (e.g. allow_multiple_sessions=true)
+    %% superseded by a non-synchronized registration (e.g. allow_multiple_sessions=true)
     %%
     %% Solution:
     %% ---------
@@ -404,6 +404,9 @@ drain({enqueue_many, Msgs, Opts}, _From, #state{drain_over_timer=TRef} =  State)
     gen_fsm:cancel_timer(TRef),
     gen_fsm:send_event(self(), drain_start),
     enqueue_many_(Msgs, drain, Opts, State);
+drain({add_session, NewSessionPid, NewOpts}, From, State) ->
+    lager:info("got add_session event from ~p for PID ~p with options ~p in drain state", [From, NewSessionPid, NewOpts]),
+    {reply, {error, draining}, drain, State};
 drain(Event, _From, State) ->
     lager:error("got unknown sync event in drain state ~p", [Event]),
     {reply, {error, draining}, drain, State}.
@@ -786,7 +789,7 @@ disconnect_sessions(Reason, #state{sessions=Sessions}) ->
                       %% will send out LWT messages and will give
                       %% us back the waiting acks and messages
                       %% calling set_last_waiting_acks/2
-                      %% then the 'DOWN' message gets triggerd
+                      %% then the 'DOWN' message gets triggered
                       %% finally deleting the session
                       vmq_mqtt_fsm_util:send(SessionPid, {disconnect, Reason}),
                       ok
@@ -979,6 +982,8 @@ cleanup_queue_(SId, {{value, {deliver_pubrel, _}}, NewQueue}) ->
     cleanup_queue_(SId, queue:out(NewQueue));
 cleanup_queue_(SId, {{value, MsgRef}, NewQueue}) when is_binary(MsgRef) ->
     maybe_offline_delete(SId, MsgRef),
+    cleanup_queue_(SId, queue:out(NewQueue));
+cleanup_queue_(SId, {{value, {{qos2,_},_}}, NewQueue}) ->
     cleanup_queue_(SId, queue:out(NewQueue));
 cleanup_queue_(_, {empty, _}) -> ok.
 

@@ -59,8 +59,13 @@ start_link(SwcGroup, Opts) ->
 init([SwcGroup, Opts]) ->
 
     MembershipStrategy = proplists:get_value(membership_strategy, Opts, auto),
-
-    PeerName = node(),
+%   {A,B,C} = erlang:timestamp(),
+%   TS = integer_to_list(A) ++ integer_to_list(B) ++ integer_to_list(C),
+   
+%   PeerName = node(),
+   {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
+   SWC_ID = {node(), Actor},
+%   list_to_atom(TS ++ atom_to_list(node())),
 
     DbBackend =
     case proplists:get_value(db_backend, Opts, application:get_env(vmq_swc, db_backend, leveldb)) of
@@ -71,7 +76,7 @@ init([SwcGroup, Opts]) ->
 
     DbOpts = proplists:get_value(db_opts, Opts, []),
 
-    Config = config(PeerName, SwcGroup, DbBackend, vmq_swc_edist_srv),
+    Config = config(SWC_ID, SwcGroup, DbBackend, vmq_swc_edist_srv),
     % this table is created by the root supervisor
     ets:insert(vmq_swc_group_config, {SwcGroup, Config}),
 
@@ -103,7 +108,7 @@ init([SwcGroup, Opts]) ->
 
     {ok, {SupFlags, DBChildSpecs ++ [TransportChildSpec, ExchangeSupChildSpec, MembershipChildSpec, BatcherChildSpec, StoreChildSpec]}}.
 
-config(PeerName, SwcGroup, DbBackend, TransportMod) when is_atom(SwcGroup) and is_atom(TransportMod) ->
+config(SWC_ID, SwcGroup, DbBackend, TransportMod) when is_atom(SwcGroup) and is_atom(TransportMod) ->
     SwcGroupStr = atom_to_list(SwcGroup),
     DBName = list_to_atom("vmq_swc_db_" ++ SwcGroupStr),
     StoreName = list_to_atom("vmq_swc_store_" ++ SwcGroupStr),
@@ -111,7 +116,7 @@ config(PeerName, SwcGroup, DbBackend, TransportMod) when is_atom(SwcGroup) and i
     BatcherName = list_to_atom("vmq_swc_store_batcher_" ++ SwcGroupStr),
     MembershipName = list_to_atom("vmq_swc_group_membership_" ++ SwcGroupStr),
     #swc_config{
-       peer=PeerName,
+       peer=SWC_ID,
        group=SwcGroup,
        db=DBName,
        db_backend=DbBackend,

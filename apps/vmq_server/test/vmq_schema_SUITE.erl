@@ -50,7 +50,7 @@ all() ->
     [{group, schema}].
 
 global_substitutions() ->
-    [{["metadata_plugin"], "vmq_plumtree"},
+    [{["metadata_plugin"], "vmq_swc"},
      {["listener", "max_connections"], "10000"},
      {["listener", "nr_of_acceptors"], "100"}].
 
@@ -151,7 +151,7 @@ ssl_certs_opts_override_test(Config) ->
                         Base;
                     _ ->
                         [{["listener", LType, "mountpoint"], "mpval"},
-                         {["listener", LType, "mylistener", "mountpoint"], "overriden"}
+                         {["listener", LType, "mylistener", "mountpoint"], "overridden"}
                          | Base]
                 end
 
@@ -169,7 +169,7 @@ ssl_certs_opts_override_test(Config) ->
                 case IntName of
                     https -> skip;
                     _ ->
-                        "overriden"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
+                        "overridden"   = expect(Conf, [vmq_server, listeners, IntName,  {{127,0,0,1}, 1234}, mountpoint])
                 end
         end,
 
@@ -177,8 +177,8 @@ ssl_certs_opts_override_test(Config) ->
       fun({ConfName, IntName} = L) ->
               try
                   TestFun(ConfFun(ConfName), IntName)
-              catch C:E ->
-                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, erlang:get_stacktrace()}]),
+              catch C:E:Stack ->
+                      ct:pal("Exception while running: ~p~n~p", [L, {C,E, Stack}]),
                       throw(E)
               end
       end,
@@ -304,7 +304,7 @@ allowed_protocol_versions_override_test(_Config) ->
     [4] = expect(Conf, [vmq_server, listeners, mqttwss,{{127,0,0,1}, 900}, allowed_protocol_versions]).
 
 
--define(stacktrace, try throw(foo) catch foo -> erlang:get_stacktrace() end).
+-define(stacktrace, try throw(foo) catch _:foo:Stacktrace -> Stacktrace end).
 
 expect(Conf, Setting) ->
     Schema = cuttlefish_schema:files([code:priv_dir(vmq_server) ++ "/vmq_server.schema"]),

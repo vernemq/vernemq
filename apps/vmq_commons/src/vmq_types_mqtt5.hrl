@@ -370,7 +370,7 @@
 %% or to have a value other than 0 or 1. If the Maximum QoS is absent,
 %% the Client uses a Maximum QoS of 2.
 %%
-%% TODO: Maybe we want to explicity model qos2 as well as that might
+%% TODO: Maybe we want to explicitly model qos2 as well as that might
 %% be easier to handle in the code - in that case we should extend
 %% this type to include 2.q
 -record(p_max_qos, {value :: 0 | 1}).

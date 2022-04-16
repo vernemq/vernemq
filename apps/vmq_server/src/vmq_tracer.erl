@@ -28,7 +28,8 @@
          stop_tracing/0,
          start_session_trace/2,
          trace_existing_session/0,
-         rate_tracer/4
+         rate_tracer/4,
+         terminate_tracer/0
         ]).
 
 %% gen_server callbacks
@@ -80,6 +81,9 @@ start_session_trace(SessionPid, ConnFrame) ->
 
 stop_tracing() ->
     gen_server:call(?SERVER, stop_tracing).
+
+terminate_tracer() ->
+    gen_server:cast(?SERVER, terminate_tracer).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -185,6 +189,10 @@ handle_call(stop_tracing, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+%% 
+handle_cast(terminate_tracer, #state{io_server=IoServer}=State) ->
+    io:format(IoServer, "~s Trace terminated by external action.~n", [iso8601()]),
+    {stop, normal, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -219,7 +227,7 @@ handle_info(Trace, #state{io_server = IoServer,
     end;
 handle_info({'EXIT',Tracer,normal}, #state{tracer = Tracer,
                                            io_server = IoServer} = State) ->
-    io:format(IoServer, "~s Trace rate limit trigged.~n", [iso8601()]),
+    io:format(IoServer, "~s Trace rate limit triggered.~n", [iso8601()]),
     {stop, normal, State}.
 
 %%--------------------------------------------------------------------

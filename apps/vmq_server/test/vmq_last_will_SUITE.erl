@@ -286,7 +286,7 @@ disconnect_with_will_msg_test(Config) ->
                           [{keepalive,60}, {will_topic, Topic}, {will_msg, Msg}],
                           Config),
 
-    %% connect and disconnec with lwt msg
+    %% connect and disconnect with lwt msg
     {ok, LWTSocket} = do_client_connect(Connect, Connack, [], Config),
     Disconnect = packetv5:gen_disconnect(?M5_DISCONNECT_WITH_WILL_MSG, #{}),
     ok = gen_tcp:send(LWTSocket, Disconnect),

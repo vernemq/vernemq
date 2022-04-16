@@ -191,7 +191,7 @@ publish_b2c_qos2_duplicate_test(Cfg) ->
     ok = expect_alive(PubSocket),
     ok = gen_tcp:close(PubSocket),
 
-    %% verify that we only recieve the first published message and not
+    %% verify that we only receive the first published message and not
     %% the duplicate.
     ExpectF =
         fun(Name, What) ->
@@ -253,7 +253,7 @@ publish_c2b_qos2_duplicate_test(Cfg) ->
     ok = expect_alive(PubSocket),
     ok = gen_tcp:close(PubSocket),
 
-    %% verify that we only recieve the first published message and not
+    %% verify that we only receive the first published message and not
     %% the duplicate.
     ok = mqtt5_v4compat:expect_packet(SubSocket, "publish", RecvPublish, Cfg),
     %%ok = mqtt5_v4compat:expect_packet(SubSocket, "publish", RecvPublish, Cfg),
@@ -565,8 +565,8 @@ pattern_matching_test(Config) ->
     ok = pattern_test("/#", "/foo", Config),
     ok = pattern_test("test/topic/", "test/topic/", Config),
     ok = pattern_test("test/topic/+", "test/topic/", Config),
-    ok = pattern_test("+/+/+/+/+/+/+/+/+/+/test",
-                      "one/two/three/four/five/six/seven/eight/nine/ten/test", Config),
+    ok = pattern_test("+/+/+/+/+/+/+/+/+/test",
+                      "one/two/three/four/five/six/seven/eight/nine/test", Config),
     ok = pattern_test("#", "test////a//topic", Config),
     ok = pattern_test("#", "/test////a//topic", Config),
     ok = pattern_test("foo/#", "foo//bar///baz", Config),
