@@ -16,12 +16,12 @@ start_endpoint_tls(#{port:= _HTTPSPort,
                      keyfile:= _KeyFile,
                      certfile:= _CertFile,
                      cacertfile:= _CACertFile} = SocketOpts) ->
-    RanchOpts = #{num_acceptors => 1, socket_opts=> maps:to_list(SocketOpts)},
+    RanchOpts = maps:to_list(SocketOpts),
     {ok, _} = cowboy:start_tls(https, RanchOpts, #{env => #{dispatch => route()}}),
     ok.
 
 start_endpoint_clear(HTTPPort) ->
-    {ok, _} = cowboy:start_clear(http, [{port, HTTPPort}, {num_acceptors, 1}],
+    {ok, _} = cowboy:start_clear(http, [{port, HTTPPort}],
                                  #{env => #{dispatch => route()}}).
 
 route() -> cowboy_router:compile(

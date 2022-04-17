@@ -606,7 +606,7 @@ base_https_test(Config, ServerOpts, ClientSSLEnv) ->
 %% If a test fails, we don't want subsequent tests
 %% failing because the handler is already started.
 start_endpoint_tls(Opts) ->
-    webhooks_handler:stop_endpoint_tls(),
+   % webhooks_handler:stop_endpoint_tls(),
     webhooks_handler:start_endpoint_tls(Opts).
 
 https_port(Config) -> ?config(https_port, Config).
