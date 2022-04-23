@@ -41,16 +41,34 @@ init_per_testcase(_Case, Config) ->
     StorageEngine = proplists:get_value(engine, Config),
     application:stop(vmq_generic_msg_store),
     application:unload(vmq_generic_msg_store),
-     case StorageEngine of
-         vmq_storage_engine_rocksdb -> 
-         application:load(rocksdb),
-         application:set_env(rocksdb_env()),
-         application:ensure_all_started(rocksdb);
-     _ -> ok
-     end,    
-     application:load(vmq_generic_msg_store),
-     application:set_env(vmq_generic_msg_store, msg_store_engine, StorageEngine),
-     application:ensure_all_started(vmq_generic_msg_store),
+    case StorageEngine of
+        vmq_storage_engine_rocksdb -> 
+            application:load(rocksdb),
+            application:set_env(rocksdb_env()),
+            application:ensure_all_started(rocksdb);
+        vmq_storage_engine_leveled ->
+            application:load(leveled),
+            application:ensure_all_started(leveled);
+        _ -> ok
+    end,    
+    application:load(vmq_generic_msg_store),
+    application:set_env(vmq_generic_msg_store, msg_store_engine, StorageEngine),
+    case StorageEngine of
+        vmq_storage_engine_rocksdb ->
+            application:set_env(vmq_generic_msg_store, msg_store_opts, [
+                {store_dir, "./data/msgstore/rocksdb"},
+                {open_retries, 30},
+                {open_retry_delay, 2000}
+               ]);
+        vmq_storage_engine_leveled ->
+            application:set_env(vmq_generic_msg_store, msg_store_opts, [
+                {store_dir, "./data/msgstore/leveled"},
+                {open_retries, 30},
+                {open_retry_delay, 2000}
+               ]);
+        _ -> ok
+    end,
+    application:ensure_all_started(vmq_generic_msg_store),
     Config.
 
 end_per_testcase(message_compat_pre_test, Config) ->
@@ -63,12 +81,12 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [
-    % {group, vmq_storage_engine_leveldb},
+    {group, vmq_storage_engine_leveldb},
      %{group, vmq_storage_engine_dets},
-    % {group, vmq_storage_engine_ets},
-     {group, vmq_storage_engine_rocksdb},
-     %{group, vmq_storage_engine_leveled},
-     {group, basic}
+    {group, vmq_storage_engine_ets},
+    {group, vmq_storage_engine_rocksdb},
+    {group, vmq_storage_engine_leveled},
+    {group, basic}
     ].
 
 groups() ->
@@ -84,9 +102,9 @@ groups() ->
     [
      {vmq_storage_engine_leveldb, [shuffle], StorageTests},
     % {vmq_storage_engine_dets, [shuffle], StorageTests},
-    % {vmq_storage_engine_ets, [shuffle], StorageTests},
+     {vmq_storage_engine_ets, [shuffle], StorageTests},
      {vmq_storage_engine_rocksdb, [shuffle], StorageTests},
-    % {vmq_storage_engine_leveled, [shuffle], lists:flatten([BasicTests|StorageTests])},
+     {vmq_storage_engine_leveled, [shuffle], StorageTests},
      {basic, [shuffle], BasicTests}
     ].
 

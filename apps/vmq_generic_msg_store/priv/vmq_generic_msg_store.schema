@@ -20,8 +20,7 @@
     case Setting of
       rocksdb -> vmq_storage_engine_rocksdb;
       leveldb -> vmq_storage_engine_leveldb;
-      leveled -> vmq_storage_engine_leveled;
-      _Default -> vmq_storage_engine_leveldb
+      leveled -> vmq_storage_engine_leveled
     end
   end
 }.
