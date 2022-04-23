@@ -1,4 +1,4 @@
--- every Lua script in this folder get's automatically 
+-- every Lua script in this folder gets automatically 
 -- initialized when the vmq_diversity plugin is started.
 
 num_states = 1

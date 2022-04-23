@@ -373,7 +373,7 @@ config_usage() ->
      "  ADVANCED! Manages internal configuration values. Only use if you know\n",
      "  what you are doing! If you don't please use 'vmq-admin set' command.\n\n",
      "  Sub-commands:\n",
-     "    show        shows interal configuration\n",
+     "    show        shows internal configuration\n",
      "    reset       resets internal configuration\n",
      "  Use --help after a sub-command for more details.\n"
     ].

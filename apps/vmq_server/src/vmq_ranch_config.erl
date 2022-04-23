@@ -291,10 +291,11 @@ default_session_opts(Opts) ->
             {_, V1} -> [{proxy_protocol_use_cn_as_username, V1}|MaybeSSLDefaults]
         end,
     AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions, Opts, [3,4]),
+    AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     BufferSizes = proplists:get_value(buffer_sizes, Opts, undefined),
-    %% currently only the mountpoint option is supported
     [{mountpoint, proplists:get_value(mountpoint, Opts, "")},
      {allowed_protocol_versions, AllowedProtocolVersions},
+     {allow_anonymous_override, AllowAnonymousOverride},
      {buffer_sizes, BufferSizes}|MaybeProxyDefaults].
 
 %%%===================================================================

@@ -105,7 +105,7 @@ uname_anon_username_test_m5(Config) ->
     [{keepalive,10}, {username, "user"},
      {password, "whatever"}], Config),
     Connack = mqtt5_v4compat:gen_connack(success, Config),
-    ok = vmq_plugin_mgr:enable_module_plugin(on_register_m5, ?MODULE,
+    ok = vmq_plugin_mgr:enable_module_plugin(on_register_m5, ?MODULE, 
                 hook_on_register_uname_anon_username_m5, 4),
     {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, conn_opts(Config), Config),
     ok = vmq_plugin_mgr:disable_module_plugin(on_register_m5, ?MODULE, hook_on_register_uname_anon_username_m5, 4),

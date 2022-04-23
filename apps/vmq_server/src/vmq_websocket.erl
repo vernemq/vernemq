@@ -47,11 +47,15 @@ init(Req, Opts) ->
     case add_websocket_sec_header(Req) of
         {ok, Req0} ->
             ProxyInfo = maps:find(proxy_header, Req0),
-            Peer = case ProxyInfo of
-                {ok, #{command := local,version := _}} -> % with proxy protocol, but 'local'
+            ProxyInfo0 = case ProxyInfo of
+                            error -> error;
+                            {ok, PI} -> PI
+                        end,
+            Peer = case ProxyInfo0 of
+                #{command := local,version := _} -> % with proxy protocol, but 'local'
                                                           cowboy_req:peer(Req0);
-                {ok, #{src_address := SrcAddr,
-                       src_port := SrcPort}} -> {SrcAddr, SrcPort};
+                #{src_address := SrcAddr,
+                       src_port := SrcPort} -> {SrcAddr, SrcPort};
                 error -> cowboy_req:peer(Req0)  % WS request without proxy_protocol
             end,
             FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
@@ -65,8 +69,20 @@ init(Req, Opts) ->
                                 Cert = cowboy_req:cert(Req),
                                 FsmMod:init(Peer, [{preauth, vmq_ssl:cert_to_common_name(Cert)}|Opts])
                         end;
-                    _ ->
-                        FsmMod:init(Peer, Opts)
+                    _ -> %mqttws
+                        case proplists:get_value(proxy_protocol_use_cn_as_username, Opts, true) of
+                            false -> FsmMod:init(Peer, Opts);
+                            true    -> case ProxyInfo0 of
+                                            error -> FsmMod:init(Peer, Opts);
+                                                    % Note: as 'proxy_protocol_use_cn_as_username' historically
+                                                    % defaults to 'true', we do not return an error here but fall 
+                                                    % back to the provided MQTT username.
+                                                    % We expected SSL information from the Proxy protocol but did not get
+                                                    % any.
+                                            #{command := _} -> #{ssl := #{cn := CN}} = ProxyInfo0,
+                                                                FsmMod:init(Peer, [{preauth, CN}|Opts])
+                                        end
+                        end
                 end,
             WsOpts0 = proplists:get_value(ws_opts, Opts, #{idle_timeout => infinity}),
             WsOpts  = maps:merge(#{compress => true}, WsOpts0),
@@ -118,7 +134,7 @@ websocket_info({?TO_SESSION, _}, #state{fsm_state=terminated} = State) ->
     % terminate the websocket session but previously send out some final
     % bytes over the socket.
     %
-    % In order to overcome this limitation, we don't immediatly return a
+    % In order to overcome this limitation, we don't immediately return a
     % {shutdown, Req, State} when we handle a {stop, Reason, Reply} message
     % but send the date out and transition into `fsm_state=terminated`. To
     % finally shutdown the session we send a {?MODULE, terminate} message

@@ -55,7 +55,7 @@
  ]}.
 
 %% @doc Applies only to the auth_on_publish and auth_on_publish_m5
-%% webhooks. If true the MQTT payload is ommitted from the JSON
+%% webhooks. If true the MQTT payload is omitted from the JSON
 %% object. Defaults to false.
 {mapping, "vmq_webhooks.$name.no_payload", "vmq_webhooks.user_webhooks",
  [

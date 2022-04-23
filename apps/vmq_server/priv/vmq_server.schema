@@ -100,7 +100,7 @@
  end}.
 
 %% @doc Due to the eventual consistent nature of the subscriber store it is
-%% possible that during queue migration messages still arive on the old cluster
+%% possible that during queue migration messages still arrive on the old cluster
 %% node. This parameter allows to compensate this by keeping the queue around
 %% for some time after it was migrated to the other cluster node.
 {mapping, "max_drain_time", "vmq_server.max_drain_time", [
@@ -262,7 +262,7 @@
 %% @doc specify in case multiple sessions are allowed how the queue should
 %% deliver the messages. In case of 'fanout' all the attached sessions
 %% will receive the message, in case of 'balance' an attached session is
-%% choosen randomly.
+%% chosen randomly.
 {mapping, "queue_deliver_mode", "vmq_server.queue_deliver_mode", [{default, fanout},
                                                                   {datatype, atom},
                                                                   hidden]}.
@@ -325,7 +325,7 @@
                                                                                             hidden
                                                                                            ]}.
 
-%% @doc specifies the timeout for enqueing something in a queue on a remote node.
+%% @doc specifies the timeout for enqueuing something in a queue on a remote node.
 {mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [
                                                                           {default, 5000},
                                                                           {datatype, [integer, {atom, infinity}]},
@@ -773,7 +773,35 @@
                                                                                    hidden
                                                                                   ]}.
 
+%% @doc 'listener.tcp.my_listener.allow_anonymous_override' configures whether
+%% this listener is allowed to override the global allow_anonymous setting. 
+%% The setting has one single purpose: to give a listener the capability to switch off
+%% all authentication plugins. (that is override a global allow_anonymous=off with a per-listener allow_anonymous=on).
+%% Specifically, it can allow TLS listeners to disable internal authentication (using only client certificates as
+%% authentication) while keeping all the other MQTT listeners safe.
+%% global | listener | Result for listener:  (on = anonymous access allowed)
+%% on	  | on	     | on
+%% off    | on	     | on
+%% off    | off      | off
+%% on     | off      | on
+%% Both values are simply OR'ed together. Please note that this does not allow you to globally allow anonymous access, and
+%% then selectively switch off single listeners!
+%% 
+%%     - listener.tcp.my_listener.allow_anonymous_override
+%%     - listener.ssl.my_listener.allow_anonymous_override
+%%
+%% Allowed values are 'on' or 'off'. The default value for an unconfigured listener will be 'off'.
+{mapping, "listener.tcp.$name.allow_anonymous_override", "vmq_server.listeners",
+ [
+  {default, off},
+  {datatype, flag}
+ ]}.
 
+ {mapping, "listener.ssl.$name.allow_anonymous_override", "vmq_server.listeners",
+ [
+  {default, off},
+  {datatype, flag}
+ ]}.
 
 %% @doc 'listener.tcp.allowed_protocol_versions' configures which
 %% protocol versions are allowed for an MQTT listener. The allowed
@@ -1649,7 +1677,7 @@
                                                                                   {datatype, atom}
                                                                                  ]}.
 
-%% @doc What action should be taken if enqueing a shared subscriber
+%% @doc What action should be taken if enqueuing a shared subscriber
 %% message to a subscriber on a remote node fails due to a timeout. If
 %% this happens it is not certain if the remote subscriber has
 %% received the message or not. If the remote subscriber has not

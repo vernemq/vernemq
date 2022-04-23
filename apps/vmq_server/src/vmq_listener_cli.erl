@@ -111,6 +111,7 @@ vmq_listener_start_cmd() ->
                                                             {'tls-version', V}}}
                                            end}]},
                  {use_identity_as_username, [{longname, "use_identity_as_username"}]},
+                 {allow_anonymous_override, [{longname, "allow_anonymous_override"}]},
                  {config_mod, [{longname, "config_mod"},
                                {typecast, fun(M) -> list_to_existing_atom(M) end}]},
                  {config_fun, [{longname, "config_fun"},

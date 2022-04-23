@@ -253,7 +253,7 @@ subscription_ids(Cfg) ->
             [] = Ids1 -- [Id2]
     end,
 
-    %% publish to sub only matchin the wildcard sub
+    %% publish to sub only matching the wildcard sub
     ok = Pub(BT ++ "/l1/notl2", <<"msg2">>),
     ok = ExpPub(BT ++ "/l1/notl2", <<"msg2">>, [5]),
 

@@ -227,7 +227,7 @@ handle_info(Trace, #state{io_server = IoServer,
     end;
 handle_info({'EXIT',Tracer,normal}, #state{tracer = Tracer,
                                            io_server = IoServer} = State) ->
-    io:format(IoServer, "~s Trace rate limit trigged.~n", [iso8601()]),
+    io:format(IoServer, "~s Trace rate limit triggered.~n", [iso8601()]),
     {stop, normal, State}.
 
 %%--------------------------------------------------------------------
