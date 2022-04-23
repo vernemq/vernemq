@@ -39,13 +39,18 @@ init_per_testcase(idx_compat_pre_test, Config) ->
     Config;
 init_per_testcase(_Case, Config) ->
     StorageEngine = proplists:get_value(engine, Config),
-    case StorageEngine of
-        vmq_storage_engine_rocksdb -> application:set_env(rocksdb_env());
-    _ -> ok
-    end,    
-    application:load(vmq_generic_msg_store),
-    application:set_env(vmq_generic_msg_store, msg_store_engine, StorageEngine),
-    application:ensure_all_started(vmq_generic_msg_store),
+    application:stop(vmq_generic_msg_store),
+    application:unload(vmq_generic_msg_store),
+     case StorageEngine of
+         vmq_storage_engine_rocksdb -> 
+         application:load(rocksdb),
+         application:set_env(rocksdb_env()),
+         application:ensure_all_started(rocksdb);
+     _ -> ok
+     end,    
+     application:load(vmq_generic_msg_store),
+     application:set_env(vmq_generic_msg_store, msg_store_engine, StorageEngine),
+     application:ensure_all_started(vmq_generic_msg_store),
     Config.
 
 end_per_testcase(message_compat_pre_test, Config) ->
@@ -58,9 +63,11 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [
-     {group, vmq_storage_engine_leveldb},
+    % {group, vmq_storage_engine_leveldb},
      %{group, vmq_storage_engine_dets},
-     {group, vmq_storage_engine_ets},
+    % {group, vmq_storage_engine_ets},
+     {group, vmq_storage_engine_rocksdb},
+     %{group, vmq_storage_engine_leveled},
      {group, basic}
     ].
 
@@ -76,9 +83,10 @@ groups() ->
                  ],
     [
      {vmq_storage_engine_leveldb, [shuffle], StorageTests},
-     {vmq_storage_engine_dets, [shuffle], StorageTests},
-     {vmq_storage_engine_ets, [shuffle], StorageTests},
-     {vmq_storage_engine_rocksdb, [shuffle], lists:flatten([BasicTests|StorageTests])},
+    % {vmq_storage_engine_dets, [shuffle], StorageTests},
+    % {vmq_storage_engine_ets, [shuffle], StorageTests},
+     {vmq_storage_engine_rocksdb, [shuffle], StorageTests},
+    % {vmq_storage_engine_leveled, [shuffle], lists:flatten([BasicTests|StorageTests])},
      {basic, [shuffle], BasicTests}
     ].
 
@@ -324,7 +332,8 @@ msg_ref() ->
     erlang:md5(term_to_binary({node(), self(), erlang:timestamp(), rand_bytes(10)})).
 
 rocksdb_env() ->
-        [{rocksdb, [
+        [
+            {rocksdb, [
             {db_options,   % https://github.com/facebook/rocksdb/blob/master/examples/rocksdb_option_file_example.ini
                [{env, default}, % oneof: default | memenv
                 {total_threads, 4},

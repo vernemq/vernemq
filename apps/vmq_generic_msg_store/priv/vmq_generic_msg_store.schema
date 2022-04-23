@@ -1,14 +1,27 @@
 %% -*- mode: erlang -*-
 %% ex: ft=erlang
 
-{mapping, "generic_message_store.directory", "vmq_generic_msg_store.msg_store_opts.store_dir", [
+{mapping, "vmq_generic_msg_store.directory", "vmq_generic_msg_store.msg_store_opts.store_dir", [
                                                                             {default, "{{platform_data_dir}}/msgstore"},
                                                                             {datatype, directory},
                                                                             hidden
                                                                            ]}.
 
-{mapping, "generic_message_store_engine", "vmq_generic_msg_store.msg_store_engine", 
- [{default, vmq_storage_engine_leveldb},
+{mapping, "vmq_generic_msg_store.db_backend", "vmq_generic_msg_store.msg_store_engine", 
+ [{default, leveldb},
   {datatype, atom},
   hidden
  ]}.
+
+{translation,
+ "vmq_generic_msg_store.msg_store_engine",
+ fun(Conf) ->
+    Setting = cuttlefish:conf_get("vmq_generic_msg_store.db_backend", Conf),
+    case Setting of
+      rocksdb -> vmq_storage_engine_rocksdb;
+      leveldb -> vmq_storage_engine_leveldb;
+      leveled -> vmq_storage_engine_leveled;
+      _Default -> vmq_storage_engine_leveldb
+    end
+  end
+}.
