@@ -22,6 +22,9 @@ with_rocksdb: rel
 with_leveled: PROFILE = as leveled
 with_leveled: rel
 
+with_leveldb: PROFILE = as leveldb
+with_leveldb: rel
+
 with_all_backends: PROFILE = as with_all
 with_all_backends: rel
 
