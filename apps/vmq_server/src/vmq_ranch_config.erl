@@ -132,9 +132,8 @@ start_listener(Type, Addr, Port, {TransportOpts, Opts}) ->
                                         vmq_config:get_env(nr_of_acceptors)),
     ProtocolOpts = protocol_opts_for_type(Type, Opts),
     TransportMod = transport_for_type(Type),
-    SockType = sock_type(AAddr),      
     TransportOptions = maps:from_list(
-        [{socket_opts, [{ip, SockType}, {port, Port}|TransportOpts]},
+        [{socket_opts, [{ip, AAddr}, {port, Port}|TransportOpts]},
          {num_acceptors, NrOfAcceptors},
          {max_connections, MaxConns}]),
     case ranch:start_listener(Ref, TransportMod, TransportOptions,
@@ -210,9 +209,6 @@ addr(Addr) when is_list(Addr) ->
     {ok, Ip} = inet:parse_address(Addr),
     Ip;
 addr(Addr) -> Addr.
-
-sock_type({local, SocketFile}) -> {local, SocketFile};
-sock_type(Addr) -> Addr.
 
 reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts}|Rest], TCPOpts, Listeners) ->
     TransportOpts = TCPOpts ++ transport_opts_for_type(Type, Opts),
