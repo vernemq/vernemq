@@ -112,8 +112,11 @@ delete_listener(ListenerRef) ->
         {error, _} ->
             ok;
         ok ->
+            TransportOpts = ranch:get_transport_options(ListenerRef),
+            [_, Transport, _, _, _] = ranch_server:get_listener_start_args(ListenerRef),
             _ = supervisor:delete_child(ranch_sup, {ranch_listener_sup, ListenerRef}),
-            ranch_server:cleanup_listener_opts(ListenerRef)
+            ranch_server:cleanup_listener_opts(ListenerRef),
+            Transport:cleanup(TransportOpts) % this will delete the SocketFile for Unix sockets
     end.
 
 start_listener(Type, Addr, Port, Opts) when is_list(Opts) ->
@@ -166,7 +169,11 @@ listeners() ->
                               running
                       end
               end,
-              StrIp = inet:ntoa(Ip),
+              StrIp =
+              case Ip of
+                {local, FS} -> FS;
+                _ -> inet:ntoa(Ip)
+              end,
               StrPort = integer_to_list(Port),
               [{Type, StrIp, StrPort, Status1, MountPoint, MaxConnections}|Acc]
       end, [], supervisor:which_children(ranch_sup)).
@@ -202,7 +209,6 @@ addr(Addr) when is_list(Addr) ->
     {ok, Ip} = inet:parse_address(Addr),
     Ip;
 addr(Addr) -> Addr.
-
 
 reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts}|Rest], TCPOpts, Listeners) ->
     TransportOpts = TCPOpts ++ transport_opts_for_type(Type, Opts),
