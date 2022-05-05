@@ -112,8 +112,11 @@ delete_listener(ListenerRef) ->
         {error, _} ->
             ok;
         ok ->
+            TransportOpts = ranch:get_transport_options(ListenerRef),
+            [_, Transport, _, _, _] = ranch_server:get_listener_start_args(ListenerRef),
             _ = supervisor:delete_child(ranch_sup, {ranch_listener_sup, ListenerRef}),
-            ranch_server:cleanup_listener_opts(ListenerRef)
+            ranch_server:cleanup_listener_opts(ListenerRef),
+            Transport:cleanup(TransportOpts) % this will delete the SocketFile for Unix sockets
     end.
 
 start_listener(Type, Addr, Port, Opts) when is_list(Opts) ->
@@ -166,7 +169,11 @@ listeners() ->
                               running
                       end
               end,
-              StrIp = inet:ntoa(Ip),
+              StrIp =
+              case Ip of
+                {local, FS} -> FS;
+                _ -> inet:ntoa(Ip)
+              end,
               StrPort = integer_to_list(Port),
               [{Type, StrIp, StrPort, Status1, MountPoint, MaxConnections}|Acc]
       end, [], supervisor:which_children(ranch_sup)).
@@ -202,7 +209,6 @@ addr(Addr) when is_list(Addr) ->
     {ok, Ip} = inet:parse_address(Addr),
     Ip;
 addr(Addr) -> Addr.
-
 
 reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts}|Rest], TCPOpts, Listeners) ->
     TransportOpts = TCPOpts ++ transport_opts_for_type(Type, Opts),
@@ -291,10 +297,11 @@ default_session_opts(Opts) ->
             {_, V1} -> [{proxy_protocol_use_cn_as_username, V1}|MaybeSSLDefaults]
         end,
     AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions, Opts, [3,4]),
+    AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     BufferSizes = proplists:get_value(buffer_sizes, Opts, undefined),
-    %% currently only the mountpoint option is supported
     [{mountpoint, proplists:get_value(mountpoint, Opts, "")},
      {allowed_protocol_versions, AllowedProtocolVersions},
+     {allow_anonymous_override, AllowAnonymousOverride},
      {buffer_sizes, BufferSizes}|MaybeProxyDefaults].
 
 %%%===================================================================

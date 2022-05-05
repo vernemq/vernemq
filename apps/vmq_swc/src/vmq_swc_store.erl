@@ -553,7 +553,7 @@ fix_watermark({W, R} = Watermark, Peers) ->
       fun(Peer, WMAcc0) ->
               % This will reset all counters to zero
               WMAcc1 = swc_watermark:add_peer(WMAcc0, Peer, Peers),
-              % set the resetted counters to its old value,
+              % set the reset counters to its old value,
               % new nodes will have a counter of '
               lists:foldl(
                 fun(P, A) ->
@@ -664,7 +664,7 @@ event(Type, SKey, NewObj, OldObj, #state{subscriptions=Subscriptions}, OriginPid
       fun
           ({Pid, _}) when (FullPrefix == ?RETAIN_DB) andalso (Pid == OriginPid) ->
                % When originator is vmq_retain_srv of this node, then the 
-               % RETAIN_DB is already uptodate. In this case we must skip the feedback notification event
+               % RETAIN_DB is already up-to-date. In this case we must skip the feedback notification event
                % to prevent corrupting the RETAIN_DB. (= avoid overwriting possible newer updates) 
                skip;
           ({Pid, ConvertFun}) when Type == deleted ->

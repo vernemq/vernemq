@@ -309,7 +309,7 @@ validate_acl(MP, User, ClientId, #publish_acl{} = Rec0, [{<<"allowed_retain">>, 
     validate_acl(MP, User, ClientId, Rec1, Rest);
 validate_acl(MP, User, ClientId, Rec0, [{<<"pattern">>, Pattern}|Rest]) when is_binary(Pattern) ->
     Type = type(Rec0),
-    %% we use validate_topic(subscibe... because this would allow that
+    %% we use validate_topic(subscribe... because this would allow that
     %% an ACL contains wildcards
     Rec1 =
     case vmq_topic:validate_topic(subscribe, Pattern) of

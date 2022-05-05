@@ -21,7 +21,7 @@ translate_listeners(Conf) ->
     %% cuttlefish messes up with the tree-like configuration style if
     %% it cannot find either configured values or defaults in the
     %% more specific leafs of the tree. That's why we always provide
-    %% a default value and take care of them by ourselfs.
+    %% a default value and take care of them by ourselves.
     InfIntVal = fun(Name, Val1, Def) ->
                         case Val1 of
                             infinity -> infinity;
@@ -107,6 +107,9 @@ translate_listeners(Conf) ->
     {WSIPs, WSAllowedProto} = lists:unzip(extract("listener.ws", "allowed_protocol_versions", StringIntegerListVal, Conf)),
     {WS_SSLIPs, WS_SSLAllowedProto} = lists:unzip(extract("listener.wss", "allowed_protocol_versions", StringIntegerListVal, Conf)),
 
+    {TCPIPs, TCPAllowAnonymousOverride} = lists:unzip(extract("listener.tcp", "allow_anonymous_override", BoolVal, Conf)),
+    {SSLIPs, SSLAllowAnonymousOverride} = lists:unzip(extract("listener.ssl", "allow_anonymous_override", BoolVal, Conf)),
+
     {TCPIPs, TCPBufferSizes} = lists:unzip(extract("listener.tcp", "buffer_sizes", StringIntegerListVal, Conf)),
     {SSLIPs, SSLBufferSizes} = lists:unzip(extract("listener.ssl", "buffer_sizes", StringIntegerListVal, Conf)),
     {VMQIPs, VMQBufferSizes} = lists:unzip(extract("listener.vmq", "buffer_sizes", StringIntegerListVal, Conf)),
@@ -173,7 +176,8 @@ translate_listeners(Conf) ->
                                   TCPMountPoint,
                                   TCPProxyProto,
                                   TCPAllowedProto,
-                                  TCPBufferSizes])),
+                                  TCPBufferSizes,
+                                  TCPAllowAnonymousOverride])),
     WS = lists:zip(WSIPs, MZip([WSMaxConns,
                                 WSNrOfAcceptors,
                                 WSMountPoint,
@@ -207,7 +211,8 @@ translate_listeners(Conf) ->
                                   SSLVersions,
                                   SSLUseIdents,
                                   SSLAllowedProto,
-                                  SSLBufferSizes])),
+                                  SSLBufferSizes,
+                                  SSLAllowAnonymousOverride])),
     WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns,
                                      WS_SSLNrOfAcceptors,
                                      WS_SSLMountPoint,
@@ -248,7 +253,6 @@ translate_listeners(Conf) ->
                                          HTTP_SSLVersions,
                                          HTTP_SSLConfigMod,
                                          HTTP_SSLConfigFun])),
-
     DropUndef = fun(L) ->
                         [{K, [I || {_, V} = I  <- SubL, V /= undefined]} || {K, SubL} <- L]
                 end,
@@ -275,7 +279,8 @@ extract(Prefix, Suffix, Val, Conf) ->
            %% mqtt listener specific
            "allowed_protocol_versions",
            %% other
-           "proxy_protocol"
+           "proxy_protocol",
+           "allow_anonymous_override"
           ],
 
     %% get default from root of the tree for listeners
@@ -290,7 +295,7 @@ extract(Prefix, Suffix, Val, Conf) ->
     %% get the name value pairs
     NameSubPrefix = lists:flatten([Prefix, ".$name"]),
     [begin
-         {ok, Addr} = inet:parse_address(StrAddr),
+         Addr = parse_addr(StrAddr),
          Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
          V1 = Val(Name, RootDefault, undefined),
          V2 = Val(Name, RootDefault,V1),
@@ -303,6 +308,17 @@ extract(Prefix, Suffix, Val, Conf) ->
                                              fun({K, _V}) ->
                                                      cuttlefish_variable:is_fuzzy_match(K, string:tokens(NameSubPrefix, "."))
                                              end, Conf), not lists:member(Name, Mappings ++ ExcludeRootSuffixes)].
+
+parse_addr(StrA) ->
+     case StrA of
+         {local, SocketFile} -> 
+             {local, SocketFile};
+        _ -> case inet:parse_address(StrA) of
+            {ok, Ip} -> Ip;
+            {error, einval} ->
+                {error, {invalid_args,[{address, StrA}]}}
+        end
+    end.
 
 validate_eccs("") ->
     ssl:eccs();

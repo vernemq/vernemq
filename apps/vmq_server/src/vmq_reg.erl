@@ -159,7 +159,7 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N) ->
 register_subscriber_(_, _, _, _, 0, Reason) ->
     {error, Reason};
 register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason) ->
-    % wont create new queue in case it already exists
+    % won't create new queue in case it already exists
     {ok, QueuePresent, QPid} =
     case vmq_queue_sup_sup:start_queue(SubscriberId) of
         {ok, true, OldQPid} when StartClean ->
@@ -287,9 +287,9 @@ block_until(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, BlockCond) ->
                                                          queue_pid := pid()}}.
 register_session(SubscriberId, QueueOpts) ->
     %% register_session allows to have multiple subscribers connected
-    %% with the same session_id (as oposed to register_subscriber)
+    %% with the same session_id (as opposed to register_subscriber)
     SessionPid = self(),
-    {ok, QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId), % wont create new queue in case it already exists
+    {ok, QueuePresent, QPid} = vmq_queue_sup_sup:start_queue(SubscriberId), % won't create new queue in case it already exists
     {ok, SessionOpts} = vmq_queue:add_session(QPid, SessionPid, QueueOpts),
     %% TODO: How to handle SessionPresent flag for allow_multiple_sessions=true
     SessionPresent = QueuePresent,

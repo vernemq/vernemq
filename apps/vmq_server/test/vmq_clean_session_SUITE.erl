@@ -142,7 +142,7 @@ session_expiration_connect_test(Cfg) ->
     {ok, Socket1} = packetv5:do_client_connect(Connect, ConnackSP, []),
     ok = gen_tcp:close(Socket1),
 
-    %% make sure the client has dissappeared.
+    %% make sure the client has disappeared.
     timer:sleep(1100),
     {ok, Socket2} = packetv5:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:close(Socket2).
@@ -166,7 +166,7 @@ session_expiration_disconnect_test(Cfg) ->
     ok = gen_tcp:send(Socket1, Disconnect1),
     ok = gen_tcp:close(Socket1),
 
-    %% make sure the client has dissappeared.
+    %% make sure the client has disappeared.
     timer:sleep(1100),
     {ok, Socket2} = packetv5:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:close(Socket2).

@@ -111,6 +111,7 @@ vmq_listener_start_cmd() ->
                                                             {'tls-version', V}}}
                                            end}]},
                  {use_identity_as_username, [{longname, "use_identity_as_username"}]},
+                 {allow_anonymous_override, [{longname, "allow_anonymous_override"}]},
                  {config_mod, [{longname, "config_mod"},
                                {typecast, fun(M) -> list_to_existing_atom(M) end}]},
                  {config_fun, [{longname, "config_fun"},
@@ -278,10 +279,13 @@ parse_port(StrP) ->
     end.
 
 parse_addr(StrA) ->
-    case inet:parse_address(StrA) of
-        {ok, Ip} -> Ip;
-        {error, einval} ->
-            {error, {invalid_args,[{address, StrA}]}}
+    case string:split(StrA, ":") of
+        ["local", FS] -> {local, FS};
+        _ -> case inet:parse_address(StrA) of
+            {ok, Ip} -> Ip;
+            {error, einval} ->
+                {error, {invalid_args,[{address, StrA}]}}
+        end
     end.
 
 vmq_listener_usage() ->

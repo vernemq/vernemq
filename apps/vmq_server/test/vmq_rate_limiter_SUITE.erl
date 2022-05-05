@@ -77,12 +77,12 @@ publish_rate_limit_test(Cfg) ->
     timer:tc(
       fun() ->
               %% first we need to cancel calc_rates interval
-              %% so it wont trigger while we send first 5 pubs
+              %% so it won't trigger while we send first 5 pubs
               %% or somehow overlap with sending next 10 pubs
               vmq_metrics:cancel_calc_rates_interval(),
               _ = [Pub(10, Socket, I) || I <- lists:seq(1, 5)],
               %% restart calc_rates interval and wait for 1500ms
-              %% so one calc_rates will be proccessed (it takes 1000+ms)
+              %% so one calc_rates will be processed (it takes 1000+ms)
               %% and we would have 500ms left
               %% to start sending 10 pubs before second calc_rates
               vmq_metrics:start_calc_rates_interval(),

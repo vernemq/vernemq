@@ -227,7 +227,7 @@ register_usage() ->
      "     base64 encode the MQTT payload. Defaults to true.\n",
      "  --no_payload=<true|false>\n",
      "     Applies only to the auth_on_publish and auth_on_publish_m5\n",
-     "     webhooks. If true the MQTT payload is ommitted from the JSON"
+     "     webhooks. If true the MQTT payload is omitted from the JSON"
      "     object. Defaults to false.\n",
      "  --response_timeout=TimeoutInMilliseconds\n",
      "     Set the timeout for the endpoint to respond.\n",
