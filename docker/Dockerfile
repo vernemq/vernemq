@@ -2,7 +2,7 @@ FROM erlang:22.3.4.16-alpine AS build-env
 
 WORKDIR /vernemq-build
 
-ARG VERNEMQ_GIT_REF=master
+ARG VERNEMQ_GIT_REF=Branch_1.12.4
 ARG TARGET=rel
 ARG VERNEMQ_REPO=https://github.com/widhaprasa/vernemq.git
 
