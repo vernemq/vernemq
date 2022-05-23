@@ -134,6 +134,7 @@ init([]) ->
     process_flag(trap_exit, true),
     ets:new(?TBL, [public, ordered_set, named_table, {read_concurrency, true}]),
     ok = vmq_webhooks_cache:new(),
+    vmq_webhooks_metrics:init(),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -731,11 +732,15 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
             {error, _} = E  ->
                 E
         end,
+    vmq_webhooks_metrics:incr(Hook, requests),
+    vmq_webhooks_metrics:incr(Hook, bytes_sent, size(Payload)),
     case Res of
         {decoded_error, Reason} ->
+            vmq_webhooks_metrics:incr(Hook, errors),
             lager:debug("calling endpoint received error due to ~p", [Reason]),
             {error, Reason};
         {error, Reason} ->
+            vmq_webhooks_metrics:incr(Hook, errors),
             lager:error("calling endpoint failed due to ~p", [Reason]),
             {error, Reason};
         Res ->

@@ -1,6 +1,7 @@
 -module(vmq_webhooks_SUITE).
 -include_lib("common_test/include/ct.hrl").
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include_lib("vmq_server/include/vmq_metrics.hrl").
 -include("vmq_webhooks_test.hrl").
 
 
@@ -104,7 +105,8 @@ http() ->
      cache_auth_on_publish,
      cache_auth_on_subscribe,
      cache_expired_entry,
-     cli_allow_query_parameters_test
+     cli_allow_query_parameters_test,
+     metrics_test
     ].
 
 https() ->
@@ -539,6 +541,29 @@ cli_allow_query_parameters_test(_) ->
     EndpointWithParams = ?ENDPOINT ++ "/hook?key=value",
     ok = register_hook(auth_on_register, EndpointWithParams),
     [] = deregister_hook(auth_on_register, EndpointWithParams).
+
+metrics_test(_) ->
+    register_hook(on_session_expired, ?ENDPOINT),
+    StartReqCntr = find_metric_value(webhooks_on_session_expired_requests),
+    StartErrCntr = find_metric_value(webhooks_on_session_expired_errors),
+    StartSentBytesCntr = find_metric_value(webhooks_on_session_expired_bytes_sent),
+    Self = pid_to_bin(self()),
+    [next] = vmq_plugin:all(on_session_expired, [{?MOUNTPOINT, Self}]),
+    ok = exp_response(on_session_expired_ok),
+    EndReqCntr = find_metric_value(webhooks_on_session_expired_requests),
+    EndErrCntr = find_metric_value(webhooks_on_session_expired_errors),
+    EndSentBytesCntr = find_metric_value(webhooks_on_session_expired_bytes_sent),
+    1 = EndReqCntr - StartReqCntr,
+    0 = EndErrCntr - StartErrCntr,
+    true = (EndSentBytesCntr - StartSentBytesCntr) > 0,
+    deregister_hook(on_session_expired, ?ENDPOINT).
+
+find_metric_value(Id) ->
+    Metrics = vmq_metrics:metrics(),
+    {value, {_MetricDef, Value}} = lists:search(fun({Metric, V}) ->
+        Metric#metric_def.id =:= Id
+    end, Metrics),
+    Value.
 
 %% HTTPS Tests
 

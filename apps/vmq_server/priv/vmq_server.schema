@@ -1614,7 +1614,7 @@
                                                               {datatype, string}
                                                              ]}.
 
-%% @doc genenerate extra metrics from metrics with labels.
+%% @doc generate extra metrics from metrics with labels.
 {mapping, "graphite_include_labels", "vmq_server.graphite_include_labels", [
                                                                             {default, off},
                                                                             {datatype, flag},
