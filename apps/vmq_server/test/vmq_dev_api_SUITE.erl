@@ -23,7 +23,7 @@ end_per_group(_GroupName, _Config) ->
 
 init_per_testcase(_TestCase, Config) ->
     ets:new(?MODULE, [named_table, public]),
-    vmq_test_utils:setup(),
+    vmq_test_utils:setup(vmq_reg_trie),
     enable_on_subscribe(),
     enable_on_publish(),
     vmq_server_cmd:set_config(allow_anonymous, true),

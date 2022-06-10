@@ -8,29 +8,52 @@
 %% ===================================================================
 init_per_suite(Config) ->
     cover:start(),
-    vmq_test_utils:setup(),
     [{ct_hooks, vmq_cth}|Config].
 
 end_per_suite(_Config) ->
-    vmq_test_utils:teardown(),
     _Config.
 
 init_per_group(mqtts, Config) ->
+    vmq_test_utils:setup(vmq_reg_trie),
     Config1 = [{type, tcp},{port, 1889}, {address, "127.0.0.1"}|Config],
     start_listener(Config1);
 init_per_group(mqttws, Config) ->
+    vmq_test_utils:setup(vmq_reg_trie),
     Config1 = [{type, ws},{port, 1890}, {address, "127.0.0.1"}|Config],
     start_listener(Config1);
 init_per_group(mqttv4, Config) ->
+    vmq_test_utils:setup(vmq_reg_trie),
     Config1 = [{type, tcp},{port, 1888}, {address, "127.0.0.1"}|Config],
     [{protover, 4}|start_listener(Config1)];
 init_per_group(mqttv5, Config) ->
+    vmq_test_utils:setup(vmq_reg_trie),
+    Config1 = [{type, tcp},{port, 1887}, {address, "127.0.0.1"}|Config],
+    [{protover, 5}|start_listener(Config1)];
+init_per_group(mqtts_reg_redis_trie, Config) ->
+    vmq_test_utils:setup(vmq_reg_redis_trie),
+    eredis_cluster:flushdb(),
+    Config1 = [{type, tcp},{port, 1889}, {address, "127.0.0.1"}|Config],
+    start_listener(Config1);
+init_per_group(mqttws_reg_redis_trie, Config) ->
+    vmq_test_utils:setup(vmq_reg_redis_trie),
+    eredis_cluster:flushdb(),
+    Config1 = [{type, ws},{port, 1890}, {address, "127.0.0.1"}|Config],
+    start_listener(Config1);
+init_per_group(mqttv4_reg_redis_trie, Config) ->
+    vmq_test_utils:setup(vmq_reg_redis_trie),
+    eredis_cluster:flushdb(),
+    Config1 = [{type, tcp},{port, 1888}, {address, "127.0.0.1"}|Config],
+    [{protover, 4}|start_listener(Config1)];
+init_per_group(mqttv5_reg_redis_trie, Config) ->
+    vmq_test_utils:setup(vmq_reg_redis_trie),
+    eredis_cluster:flushdb(),
     Config1 = [{type, tcp},{port, 1887}, {address, "127.0.0.1"}|Config],
     [{protover, 5}|start_listener(Config1)].
 
 
 end_per_group(_Group, Config) ->
     stop_listener(Config),
+    vmq_test_utils:teardown(),
     ok.
 
 init_per_testcase(_Case, Config) ->
@@ -48,7 +71,11 @@ all() ->
      {group, mqtts},
      {group, mqttws},
      {group, mqttv4},
-     {group, mqttv5}
+     {group, mqttv5},
+     {group, mqtts_reg_redis_trie},
+     {group, mqttws_reg_redis_trie},
+     {group, mqttv4_reg_redis_trie},
+     {group, mqttv5_reg_redis_trie}
     ].
 
 groups() ->
@@ -70,7 +97,12 @@ groups() ->
       [auth_on_register_change_username_test|Tests]},
      {mqtts, [], Tests},
      {mqttws, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
-     {mqttv5, [auth_on_register_change_username_test]}
+     {mqttv5, [auth_on_register_change_username_test]},
+     {mqttv4_reg_redis_trie, [shuffle,sequence],
+         [auth_on_register_change_username_test|Tests]},
+     {mqtts_reg_redis_trie, [], Tests},
+     {mqttws_reg_redis_trie, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
+     {mqttv5_reg_redis_trie, [auth_on_register_change_username_test]}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

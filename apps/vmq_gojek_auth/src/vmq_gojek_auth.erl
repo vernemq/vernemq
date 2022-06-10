@@ -59,6 +59,7 @@
 -define(SecretKey, application:get_env(vmq_gojek_auth, secret_key, undefined)).
 -define(EnableAuthOnRegister, application:get_env(vmq_gojek_auth, enable_jwt_auth, false)).
 -define(EnableAclHooks, application:get_env(vmq_gojek_auth, enable_acl_hooks, false)).
+-define(RegView, application:get_env(vmq_server, default_reg_view, vmq_reg_trie)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Plugin Callbacks
@@ -83,7 +84,22 @@ change_config(Configs) ->
     end.
 
 auth_on_subscribe(_, _, []) -> ok;
-auth_on_subscribe(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
+auth_on_subscribe(User, SubscriberId, TopicList) ->
+    auth_on_subscribe(?RegView, User, SubscriberId, TopicList).
+
+auth_on_subscribe(vmq_reg_redis_trie, User, SubscriberId, [{Topic, _Qos}|Rest]) ->
+    D = is_topic_invalid(Topic) orelse is_acl_auth_disabled(),
+    if D ->
+        next;
+        true ->
+            case check(read, Topic, User, SubscriberId) of
+                true ->
+                    auth_on_subscribe(User, SubscriberId, Rest);
+                false ->
+                    next
+            end
+    end;
+auth_on_subscribe(vmq_reg_trie, User, SubscriberId, [{Topic, _Qos}|Rest]) ->
   D = is_acl_auth_disabled(),
   if D ->
         next;
@@ -339,6 +355,24 @@ is_acl_auth_disabled() ->
     true -> true
   end.
 
+is_topic_invalid(Topic) ->
+    case vmq_topic:contains_wildcard(Topic) of
+        true ->
+            not is_complex_topic_whitelisted(Topic);
+        _ -> false
+    end.
+
+is_complex_topic_whitelisted([<<"$share">>, _Group | Topic]) -> is_complex_topic_whitelisted(Topic);
+is_complex_topic_whitelisted([<<"$share">> | _] = _Topic) -> false;
+is_complex_topic_whitelisted(Topic) ->
+    MPTopic = {"", Topic},
+    case ets:lookup(vmq_redis_trie_node, MPTopic) of
+        [_] ->
+            true;
+        _ ->
+            false
+    end.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helpers for jwt authentication
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -370,17 +404,31 @@ get_profile_id(ClientID) ->
 
 acl_test_() ->
     [
-     {"Simple ACL Test",
-      ?setup(fun simple_acl/1)}
+     {"Simple ACL Test - vmq_reg_trie",
+      ?setup(fun simple_acl/1)},
+     {"Simple ACL Test - vmq_reg_redis_trie",
+         {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun simple_acl/1}}
     ].
 
 setup() -> ok = application:set_env(vmq_gojek_auth, enable_acl_hooks, true), init().
-teardown(_) ->
+setup_vmq_reg_redis_trie() ->
+    ok = application:set_env(vmq_gojek_auth, enable_acl_hooks, true),
+    ok = application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
+    init(),
+    ets:new(vmq_redis_trie_node, [{keypos, 2}|?TABLE_OPTS]),
+    ets:insert(vmq_redis_trie_node, {trie_node, {"", [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}),
+    vmq_reg_redis_trie.
+teardown(RegView) ->
+    case RegView of
+        vmq_reg_redis_trie -> ets:delete(vmq_redis_trie_node);
+        _ -> ok
+    end,
     ets:delete(vmq_gojek_auth_acl_read_all),
     ets:delete(vmq_gojek_auth_acl_write_all),
     ets:delete(vmq_gojek_auth_acl_read_user),
     ets:delete(vmq_gojek_auth_acl_write_user),
-    application:unset_env(vmq_gojek_auth, enable_acl_hooks).
+    application:unset_env(vmq_gojek_auth, enable_acl_hooks),
+    application:unset_env(vmq_server, default_reg_view).
 
 simple_acl(_) ->
     ACL = [<<"# simple comment\n">>,

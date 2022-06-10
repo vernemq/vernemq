@@ -7,7 +7,7 @@
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(_Config) ->
-    vmq_test_utils:setup(),
+    vmq_test_utils:setup(vmq_reg_trie),
     cover:start(),
     _Config.
 

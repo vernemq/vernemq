@@ -1,6 +1,9 @@
 %% -*- mode: erlang -*-
 %% ex: ft=erlang
 
+{mapping, "eredis_cluster_init_nodes", "vmq_server.eredis_cluster_init_nodes", [{default, "[{\"127.0.0.1\", 30001}]"}, {datatype, string}]}.
+{mapping, "eredis_cluster_options", "vmq_server.eredis_cluster_options", [{default, "[]"}, {datatype, string}]}.
+
 %% @doc Rolls out all_queues_setup_check.
 {mapping, "all_queues_setup_check_rollout", "vmq_server.all_queues_setup_check_rollout", [
                                                                                           {default, on},

@@ -7,16 +7,27 @@
 -include_lib("vmq_commons/include/vmq_types.hrl").
 
 init_per_suite(Config) ->
-    vmq_test_utils:setup(),
-    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "5"}]),
-    ok = vmq_plugin_mgr:enable_plugin(vmq_mqtt5_demo_plugin),
     cover:start(),
     [{ct_hooks, vmq_cth}|Config].
 
 end_per_suite(_Config) ->
+    ok.
+
+init_per_group(Group, _Config) ->
+    case Group of
+        mqtt_reg_redis_trie ->
+            vmq_test_utils:setup(vmq_reg_redis_trie),
+            eredis_cluster:flushdb();
+        _ -> vmq_test_utils:setup(vmq_reg_trie)
+    end,
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "5"}]),
+    ok = vmq_plugin_mgr:enable_plugin(vmq_mqtt5_demo_plugin),
+    _Config.
+
+end_per_group(_Group, _Config) ->
     ok = vmq_plugin_mgr:disable_plugin(vmq_mqtt5_demo_plugin),
     vmq_test_utils:teardown(),
-    ok.
+    _Config.
 
 init_per_testcase(TestCase, Config) ->
     case lists:member(TestCase, [publish_modify_props, publish_remove_props]) of
@@ -32,6 +43,7 @@ end_per_testcase(_TestCase, _Config) ->
 
 all() ->
     [
+     {group, mqtt_reg_redis_trie},
      {group, mqtt}
     ].
 
@@ -53,7 +65,8 @@ groups() ->
      modify_props_on_deliver_m5
     ],
     [
-     {mqtt, [shuffle, parallel], ConnectTests}
+     {mqtt, [shuffle, parallel], ConnectTests},
+     {mqtt_reg_redis_trie, [shuffle, parallel], ConnectTests}
     ].
 
 connack_error_with_reason_string(Cfg) ->

@@ -1,6 +1,6 @@
 -module(vmq_schema_util).
 
--export([file_exists/1, file_is_readable/1]).
+-export([file_exists/1, file_is_readable/1, parse_list/1]).
 
 -include_lib("kernel/include/file.hrl").
 
@@ -19,3 +19,9 @@ file_is_readable(Filename) ->
         _ ->
             false
     end.
+
+-spec parse_list(string()) -> list().
+parse_list(S) ->
+    {ok, Ts, _} = erl_scan:string(S),
+    {ok, Result} = erl_parse:parse_term(Ts ++ [{dot,1} || element(1, lists:last(Ts)) =/= dot]),
+    Result.

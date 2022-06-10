@@ -13,23 +13,39 @@
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
     cover:start(),
-    vmq_test_utils:setup(),
-    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     [S, {ct_hooks, vmq_cth} |Config].
 
 end_per_suite(_Config) ->
-    vmq_server_cmd:listener_stop(1888, "127.0.0.1", false),
-    vmq_test_utils:teardown(),
     _Config.
 
 init_per_group(mqttv3, Config) ->
+    vmq_test_utils:setup(vmq_reg_trie),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     Config;
 init_per_group(mqttv4, Config) ->
+    vmq_test_utils:setup(vmq_reg_trie),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     [{protover, 4}|Config];
 init_per_group(mqttv5, Config) ->
+    vmq_test_utils:setup(vmq_reg_trie),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    [{protover, 5}|Config];
+init_per_group(mqttv3_reg_redis_trie, Config) ->
+    vmq_test_utils:setup(vmq_reg_redis_trie),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    Config;
+init_per_group(mqttv4_reg_redis_trie, Config) ->
+    vmq_test_utils:setup(vmq_reg_redis_trie),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    [{protover, 4}|Config];
+init_per_group(mqttv5_reg_redis_trie, Config) ->
+    vmq_test_utils:setup(vmq_reg_redis_trie),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    eredis_cluster:flushdb(),
     [{protover, 5}|Config].
-
 end_per_group(_Group, _Config) ->
+    vmq_server_cmd:listener_stop(1888, "127.0.0.1", false),
+    vmq_test_utils:teardown(),
     ok.
 
 init_per_testcase(Case, Config) ->
@@ -60,7 +76,10 @@ all() ->
     [
      {group, mqttv3},
      {group, mqttv4},
-     {group, mqttv5}
+     {group, mqttv5},
+     {group, mqttv3_reg_redis_trie},
+     {group, mqttv4_reg_redis_trie},
+     {group, mqttv5_reg_redis_trie}
     ].
 
 groups() ->
@@ -80,31 +99,38 @@ groups() ->
          shared_subscription_online_first,
          direct_plugin_exports_test
         ],
+    V3Tests =
+        [not_allowed_publish_close_qos0_mqtt_3_1,
+        not_allowed_publish_close_qos1_mqtt_3_1,
+        not_allowed_publish_close_qos2_mqtt_3_1,
+        message_size_exceeded_close
+       ],
+    V4Tests =
+        [not_allowed_publish_close_qos0_mqtt_3_1_1,
+        not_allowed_publish_close_qos1_mqtt_3_1_1,
+        not_allowed_publish_close_qos2_mqtt_3_1_1,
+        message_size_exceeded_close,
+        publish_c2b_retry_qos2_test,
+        publish_b2c_retry_qos1_test,
+        publish_b2c_retry_qos2_test
+        | V4V5Tests],
+    V5Tests =
+        [not_allowed_publish_qos0_mqtt_5,
+        not_allowed_publish_qos1_mqtt_5,
+        not_allowed_publish_qos2_mqtt_5,
+        message_expiry_interval,
+        publish_c2b_topic_alias,
+        publish_b2c_topic_alias,
+        forward_properties,
+        max_packet_size
+        | V4V5Tests],
     [
-     {mqttv3, [shuffle], [
-                   not_allowed_publish_close_qos0_mqtt_3_1,
-                   not_allowed_publish_close_qos1_mqtt_3_1,
-                   not_allowed_publish_close_qos2_mqtt_3_1,
-                   message_size_exceeded_close]},
-     {mqttv4, [shuffle], [
-                   not_allowed_publish_close_qos0_mqtt_3_1_1,
-                   not_allowed_publish_close_qos1_mqtt_3_1_1,
-                   not_allowed_publish_close_qos2_mqtt_3_1_1,
-                   message_size_exceeded_close,
-                   publish_c2b_retry_qos2_test,
-                   publish_b2c_retry_qos1_test,
-                   publish_b2c_retry_qos2_test
-                   | V4V5Tests] },
-     {mqttv5, [shuffle], [
-                   not_allowed_publish_qos0_mqtt_5,
-                   not_allowed_publish_qos1_mqtt_5,
-                   not_allowed_publish_qos2_mqtt_5,
-                   message_expiry_interval,
-                   publish_c2b_topic_alias,
-                   publish_b2c_topic_alias,
-                   forward_properties,
-                   max_packet_size
-                   | V4V5Tests] }
+     {mqttv3, [shuffle], V3Tests},
+     {mqttv4, [shuffle], V4Tests},
+     {mqttv5, [shuffle], V5Tests},
+     {mqttv3_reg_redis_trie, [shuffle], V3Tests},
+     {mqttv4_reg_redis_trie, [shuffle], V4Tests},
+     {mqttv5_reg_redis_trie, [shuffle], V5Tests}
     ].
 
 -define(CLIENT_OFFLINE_EVENT_SRV, vmq_client_offline_event_server).
@@ -579,6 +605,14 @@ pattern_matching_test(Config) ->
     ok = pattern_test("/#", "////foo///bar", Config).
 
 pattern_test(SubTopic, PubTopic, Config) ->
+    {ok, CT} = vmq_topic:validate_topic(subscribe, list_to_binary(SubTopic)),
+    case vmq_topic:contains_wildcard(CT) andalso proplists:get_value(vmq_md, Config) of
+        #{group := mqttv5_reg_redis_trie, tc := _} ->
+            vmq_reg_redis_trie:add_complex_topics([CT]);
+        #{group := mqttv4_reg_redis_trie, tc := _} ->
+            vmq_reg_redis_trie:add_complex_topics([CT]);
+        _ -> ok
+    end,
     Connect = mqtt5_v4compat:gen_connect("pattern-sub-test", [{keepalive, 60}], Config),
     Connack = mqtt5_v4compat:gen_connack(success, Config),
     Publish = mqtt5_v4compat:gen_publish(PubTopic, 0, <<"message">>, [], Config),
@@ -603,7 +637,14 @@ pattern_test(SubTopic, PubTopic, Config) ->
     ok = mqtt5_v4compat:expect_packet(Socket, "publish retained", PublishRetained, Config),
     disable_on_publish(),
     disable_on_subscribe(),
-    ok = gen_tcp:close(Socket).
+    ok = gen_tcp:close(Socket),
+    case proplists:get_value(vmq_md, Config) of
+        #{group := mqttv5_reg_redis_trie, tc := _} ->
+            vmq_reg_redis_trie:delete_complex_topics([CT]);
+        #{group := mqttv4_reg_redis_trie, tc := _} ->
+            vmq_reg_redis_trie:delete_complex_topics([CT]);
+        _ -> ok
+    end.
 
 not_allowed_publish_close_qos0_mqtt_3_1(_) ->
     Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
@@ -743,7 +784,7 @@ message_size_exceeded_close(_) ->
                      type = counter,
                      name = mqtt_invalid_msg_size_error}, 1}) -> true;
                 (_) -> false
-             end,vmq_metrics:metrics(#{aggregate => true})),
+             end,vmq_metrics:metrics(#{aggregate => false})),
     vmq_config:set_env(max_message_size, OldLimit, false),
     disable_on_publish().
 

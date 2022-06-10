@@ -40,7 +40,8 @@
 
          prepare_offline_queue_migration/1,
          migrate_offline_queues/2,
-         fix_dead_queues/2
+         fix_dead_queues/2,
+         enqueue_msg/2
         ]).
 
 %% called by vmq_cluster_com
@@ -194,6 +195,13 @@ register_subscriber_(SessionPid, SubscriberId, StartClean, QueueOpts, N, Reason)
                     false ->
                         Fun = fun(Sid, OldNode) ->
                                       case rpc:call(OldNode, ?MODULE, get_queue_pid, [Sid]) of
+                                          {badrpc,nodedown} ->
+                                              case get_queue_pid(Sid) of
+                                                  not_found ->
+                                                      block;
+                                                  LocalPid when is_pid(LocalPid) ->
+                                                      done
+                                              end;
                                           not_found ->
                                               case get_queue_pid(Sid) of
                                                   not_found ->
@@ -268,10 +276,10 @@ block_until(SubscriberId, UpdatedSubs, [Node|Rest] = ChangedNodes, BlockCond) ->
     %% other nodes
     case subscriptions_for_subscriber_id(SubscriberId) of
         UpdatedSubs -> ok;
-        _ ->
+        OldSubs ->
             %% in case the subscriptions were resolved elsewhere in the meantime
             %% we'll write 'our' version of the remapped subscriptions
-            vmq_subscriber_db:store(SubscriberId, UpdatedSubs)
+            vmq_subscriber_db:store(SubscriberId, OldSubs, UpdatedSubs)
     end,
 
     case BlockCond(SubscriberId, Node) of
@@ -358,6 +366,8 @@ route_remote_msg(RegView, MP, Topic, Msg) ->
     ok.
 route_remote_msg_fold_fun({_, _} = SubscriberIdAndSubInfo, From, Acc) ->
     publish_fold_fun(SubscriberIdAndSubInfo, From, Acc);
+route_remote_msg_fold_fun({_, _, _} = SubscriberIdAndSubInfo, From, Acc) ->
+    publish_fold_fun(SubscriberIdAndSubInfo, From, Acc);
 route_remote_msg_fold_fun(_Node, _, Acc) ->
     %% we ignore remote subscriptions, they are already covered
     %% by original publisher
@@ -380,6 +390,9 @@ publish_fold_wrapper(RegView, ClientId, Topic, #vmq_msg{sg_policy = SGPolicy,
 publish_fold_fun({SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
     Acc;
+publish_fold_fun({_, SubscriberId, {_, #{no_local := true}}}, SubscriberId, Acc) ->
+    %% Publisher is the same as subscriber, discard.
+    Acc;
 publish_fold_fun({{_,_} = SubscriberId, SubInfo}, _FromClientId, #publish_fold_acc{msg=Msg0,
                                                                                    local_matches=N} = Acc) ->
     case get_queue_pid(SubscriberId) of
@@ -390,6 +403,13 @@ publish_fold_fun({{_,_} = SubscriberId, SubInfo}, _FromClientId, #publish_fold_a
             QoS = qos(SubInfo),
             ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg2}),
             Acc#publish_fold_acc{local_matches= N + 1}
+    end;
+publish_fold_fun({Node, SubscriberId, SubInfo}, _FromClientId, #publish_fold_acc{local_matches=LN,
+                                                                                   remote_matches=RN} = Acc) ->
+    vmq_reg_redis_trie:safe_rpc(Node, ?MODULE, enqueue_msg, [{SubscriberId, SubInfo}, Acc]),
+    case node() of
+        Node -> Acc#publish_fold_acc{local_matches= LN + 1};
+        _ -> Acc#publish_fold_acc{local_matches= RN + 1}
     end;
 publish_fold_fun({_Node, _Group, SubscriberId, #{no_local := true}}, SubscriberId, Acc) ->
     %% Publisher is the same as subscriber, discard.
@@ -406,6 +426,17 @@ publish_fold_fun(Node, _FromClientId, #publish_fold_acc{msg=Msg, remote_matches=
         {error, Reason} ->
             lager:warning("can't publish to remote node ~p due to '~p'", [Node, Reason]),
             Acc
+    end.
+
+-spec enqueue_msg({subscriber_id(), subinfo()}, #publish_fold_acc{}) -> ok.
+enqueue_msg({{_,_} = SubscriberId, SubInfo}, #publish_fold_acc{msg=Msg0}) ->
+    case get_queue_pid(SubscriberId) of
+        not_found -> ok;
+        QPid ->
+            Msg1 = handle_rap_flag(SubInfo, Msg0),
+            Msg2 = maybe_add_sub_id(SubInfo, Msg1),
+            QoS = qos(SubInfo),
+            ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg2})
     end.
 
 maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
@@ -590,7 +621,7 @@ trigger_migration(#{draining_cnt := DCnt,
     OldNode = node(),
     Subs = subscriptions_for_subscriber_id(SubscriberId),
     UpdatedSubs = vmq_subscriber:change_node(Subs, OldNode, Target, false),
-    vmq_subscriber_db:store(SubscriberId, UpdatedSubs),
+    vmq_subscriber_db:store(SubscriberId, Subs, UpdatedSubs),
     S1 = S#{draining_queues => [Q|DQueues], draining_cnt => DCnt + 1,
             offline_queues => OQueues, offline_cnt => OCnt - 1},
     trigger_migration(S1, MaxConcurrency).
@@ -661,7 +692,7 @@ replace_dead_queue(SubscriberId, _DeadNodes, _StartClean = true) ->
             %% allow_multiple_sessions=false) (TODO: formalize this behaviour
             %% in a test-case) and they'll then reconnect.
             Subs = vmq_subscriber:new(true),
-            vmq_subscriber_db:store(SubscriberId, Subs),
+            vmq_subscriber_db:store(SubscriberId, [], Subs),
             %% no local queue, so we delete the client information.
             del_subscriber(SubscriberId),
             ok;
@@ -688,7 +719,7 @@ replace_dead_queue(SubscriberId, DeadNodes, _StartClean = false) ->
             NewSubs = rewrite_dead_nodes(LocalSubs, DeadNodes, node(), false),
             %% store the updated subs, also to make sure to
             %% propagate the new values to all other nodes.
-            vmq_subscriber_db:store(SubscriberId, NewSubs)
+            vmq_subscriber_db:store(SubscriberId, LocalSubs, NewSubs)
     end.
 
 rewrite_dead_nodes(Subs, DeadNodes, TargetNode, CleanSession) ->
@@ -859,7 +890,7 @@ add_subscriber(Topics, OldSubs, SubscriberId) ->
           end, Topics),
     case vmq_subscriber:add(OldSubs, NewSubs) of
         {NewSubs0, true} ->
-            vmq_subscriber_db:store(SubscriberId, NewSubs0);
+            vmq_subscriber_db:store(SubscriberId, OldSubs, NewSubs0);
         _ ->
             ok
     end.
@@ -877,7 +908,7 @@ del_subscriptions(Topics, SubscriberId) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     case vmq_subscriber:remove(OldSubs, Topics) of
         {NewSubs, true} ->
-            vmq_subscriber_db:store(SubscriberId, NewSubs);
+            vmq_subscriber_db:store(SubscriberId, OldSubs, NewSubs);
         _ ->
             ok
     end.
@@ -891,19 +922,19 @@ maybe_remap_subscriber(SubscriberId, _StartClean = true) ->
     %% no need to remap, we can delete this subscriber
     %% we overwrite any other value
     Subs = vmq_subscriber:new(true),
-    vmq_subscriber_db:store(SubscriberId, Subs),
+    vmq_subscriber_db:store(SubscriberId, [], Subs),
     {false, Subs, []};
 maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
     case vmq_subscriber_db:read(SubscriberId) of
         undefined ->
             %% Store empty Subscriber Data
             Subs = vmq_subscriber:new(false),
-            vmq_subscriber_db:store(SubscriberId, Subs),
+            vmq_subscriber_db:store(SubscriberId, [], Subs),
             {false, Subs, []};
         Subs ->
             case vmq_subscriber:change_node_all(Subs, node(), false) of
                 {NewSubs, ChangedNodes} when length(ChangedNodes) > 0 ->
-                    vmq_subscriber_db:store(SubscriberId, NewSubs),
+                    vmq_subscriber_db:store(SubscriberId, Subs, NewSubs),
                     {true, NewSubs, ChangedNodes};
                 _ ->
                     {true, Subs, []}

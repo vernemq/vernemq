@@ -159,7 +159,7 @@ handle_info(timeout, true) ->
                                                                        payload=val(Val),
                                                                        msg_ref=vmq_mqtt_fsm_util:msg_ref()
                                                                       })
-              end, vmq_metrics:metrics()),
+              end, vmq_metrics:metrics(#{aggregate => false})),
             {noreply, true, Interval};
         false ->
             {noreply, false, 30000}

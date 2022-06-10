@@ -17,7 +17,15 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    vmq_test_utils:setup(),
+    case proplists:get_value(vmq_md, Config) of
+        #{group := mqttv5_reg_redis_trie, tc := _} ->
+            vmq_test_utils:setup(vmq_reg_redis_trie),
+            eredis_cluster:flushdb();
+        #{group := mqttv4_reg_redis_trie, tc := _} ->
+            vmq_test_utils:setup(vmq_reg_redis_trie),
+            eredis_cluster:flushdb();
+        _ -> vmq_test_utils:setup(vmq_reg_trie)
+    end,
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:set_config(max_client_id_size, 1000),
@@ -35,21 +43,26 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, mqttv4},
-     {group, mqttv5}
+     {group, mqttv5},
+     {group, mqttv4_reg_redis_trie},
+     {group, mqttv5_reg_redis_trie}
     ].
 
 groups() ->
-    Tests =
+    V4Tests =
     [clean_session_qos1_test,
      session_cleanup_test,
      session_present_test],
+    V5Tests =
+    [session_expiration_connect_test,
+     session_expiration_disconnect_test,
+     session_expiration_reset_at_disconnect,
+     session_exp_only_at_disconnect_is_illegal],
     [
-     {mqttv4, [], Tests},
-     {mqttv5, [shuffle],
-      [session_expiration_connect_test,
-       session_expiration_disconnect_test,
-       session_expiration_reset_at_disconnect,
-       session_exp_only_at_disconnect_is_illegal]}
+     {mqttv4, [], V4Tests},
+     {mqttv5, [shuffle], V5Tests},
+     {mqttv4_reg_redis_trie, [], V4Tests},
+     {mqttv5_reg_redis_trie, [shuffle], V5Tests}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

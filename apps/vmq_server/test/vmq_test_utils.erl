@@ -1,5 +1,5 @@
 -module(vmq_test_utils).
--export([setup/0,
+-export([setup/1,
          teardown/0,
          reset_tables/0,
          maybe_start_distribution/1,
@@ -7,7 +7,7 @@
          seed_rand/1,
          rand_bytes/1]).
 
-setup() ->
+setup(RegView) ->
     os:cmd(os:find_executable("epmd")++" -daemon"),
     NodeName = list_to_atom("vmq_server-" ++ integer_to_list(erlang:phash2(os:timestamp()))),
     ok = maybe_start_distribution(NodeName),
@@ -17,6 +17,14 @@ setup() ->
     application:set_env(plumtree, plumtree_data_dir, Datadir),
     application:set_env(plumtree, metadata_root, Datadir ++ "/meta/"),
     application:load(vmq_server),
+    case RegView of
+        vmq_reg_redis_trie ->
+            application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
+            application:set_env(vmq_server, systree_reg_view, vmq_reg_redis_trie),
+            application:set_env(vmq_server, eredis_cluster_init_nodes, "[{\"redis\", 6379}]"),
+            application:set_env(vmq_server, eredis_cluster_options, "[{pool_size, 2},{pool_max_overflow, 3},{password, \"\"}]");
+        _ -> ok
+    end,
     PrivDir = code:priv_dir(vmq_server),
     application:set_env(vmq_server, listeners, [{vmq, [{{{0,0,0,0}, random_port()}, []}]}]),
     application:set_env(vmq_server, ignore_db_config, true),

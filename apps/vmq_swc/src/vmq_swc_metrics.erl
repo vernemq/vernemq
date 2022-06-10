@@ -104,9 +104,9 @@ incr_bucket_ops(V) ->
     [{2, 1}, {9, 1}, {10, V}].
 
 timed_measurement({_,_} = Metric, Module, Function, Args) ->
-    Ts1 = ts(),
+    Ts1 = vmq_util:ts(),
     Ret = apply(Module, Function, Args),
-    Ts2 = ts(),
+    Ts2 = vmq_util:ts(),
     Val = Ts2 - Ts1,
     BucketOps = incr_bucket_ops(Val),
     incr_histogram_buckets(Metric, BucketOps),
@@ -164,10 +164,3 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
         {ok, State}.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-ts() ->
-    {Mega, Sec, Micro} = os:timestamp(),
-    (Mega * 1000000 + Sec) * 1000000 + Micro.

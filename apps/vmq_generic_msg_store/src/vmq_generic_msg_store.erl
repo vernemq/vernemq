@@ -107,9 +107,9 @@ msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, other) ->
     ParentPid ! {self(), Ref, MsgRefs}.
 
 init_from_disk_with_instrumentation(SubscriberId) ->
-    V1 = ts(),
+    V1 = vmq_util:ts(),
     MsgRefs = init_from_disk(SubscriberId),
-    vmq_metrics:pretimed_measurement({vmq_generic_message_store, init_from_disk}, ts() - V1),
+    vmq_metrics:pretimed_measurement({vmq_generic_message_store, init_from_disk}, vmq_util:ts() - V1),
     MsgRefs.
 
 init_from_disk(SubscriberId) ->
@@ -119,9 +119,9 @@ init_from_disk(SubscriberId) ->
     msg_store_init_from_tbl_with_instrumentation(TblIdxRef, SubscriberId).
 
 msg_store_init_from_tbl_with_instrumentation(Prefix, SubscriberId) ->
-    V1 = ts(),
+    V1 = vmq_util:ts(),
     MsgRefs = msg_store_init_from_tbl(Prefix, SubscriberId),
-    vmq_metrics:pretimed_measurement({vmq_generic_message_store, msg_store_init_from_tbl}, ts() - V1),
+    vmq_metrics:pretimed_measurement({vmq_generic_message_store, msg_store_init_from_tbl}, vmq_util:ts() - V1),
     MsgRefs.
 
 msg_store_init_from_tbl(Prefix, SubscriberId) ->
@@ -461,7 +461,3 @@ serialize_p_msg_val_pre(T) when is_integer(element(1, T)),
     term_to_binary(
       {element(2, T),
        element(3, T)}).
-
-ts() ->
-  {Mega, Sec, Micro} = os:timestamp(),
-  (Mega * 1000000 + Sec) * 1000000 + Micro.

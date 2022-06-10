@@ -14,8 +14,6 @@
 %% Supervisor callbacks
 -export([init/1]).
 
--export([parse_event_hooks/1]).
-
 -define(SERVER, ?MODULE).
 
 %%====================================================================
@@ -27,7 +25,7 @@ start_link() ->
         {ok, _} = Ret ->
             spawn(fun() ->
                           Hooks = application:get_env(vmq_events_sidecar, hooks, "[]"),
-                          HooksList = parse_event_hooks(Hooks),
+                          HooksList = vmq_schema_util:parse_list(Hooks),
                           lists:foreach(fun(Hook) -> vmq_events_sidecar_plugin:enable_event(Hook) end, HooksList)
                   end),
             Ret;
@@ -65,9 +63,3 @@ init([]) ->
     ],
     ok = shackle_pool:start(?APP, ?CLIENT, ClientOpts, PoolOtps),
     {ok, {SupFlags, ChildSpecs}}.
-
--spec parse_event_hooks(string()) -> list().
-parse_event_hooks(S) ->
-  {ok, Ts, _} = erl_scan:string(S),
-  {ok, Result} = erl_parse:parse_term(Ts ++ [{dot,1} || element(1, lists:last(Ts)) =/= dot]),
-  Result.

@@ -319,7 +319,7 @@ send_event({HookName, EventPayload}) ->
             next;
         [{_}] ->
             vmq_metrics:incr_sidecar_events(HookName),
-            V1 = ts(),
+            V1 = vmq_util:ts(),
             case shackle:cast(?APP, {HookName, os:system_time(), EventPayload}, undefined) of
                 {ok, _} -> ok;
                 {error, Reason} ->
@@ -327,7 +327,7 @@ send_event({HookName, EventPayload}) ->
                     vmq_metrics:incr_sidecar_events_error(HookName),
                     next
             end,
-            V2 = ts(),
+            V2 = vmq_util:ts(),
             vmq_metrics:pretimed_measurement({vmq_events_sidecar, call_latency}, V2-V1)
     end.
 
@@ -363,11 +363,3 @@ from_internal_qos(V) when is_integer(V) ->
 from_internal_qos({QoS, Opts}) when is_integer(QoS),
                                     is_map(Opts) ->
     {QoS, Opts}.
-
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-ts() ->
-  {Mega, Sec, Micro} = os:timestamp(),
-  (Mega * 1000000 + Sec) * 1000000 + Micro.

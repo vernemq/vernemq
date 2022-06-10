@@ -20,23 +20,44 @@
 %% ===================================================================
 init_per_suite(Config) ->
     cover:start(),
-    vmq_test_utils:setup(),
+    [{ct_hooks, vmq_cth} |Config].
+
+end_per_suite(_Config) ->
+    _Config.
+
+init_per_group(mqttv4, Config) ->
+    vmq_test_utils:setup(vmq_reg_trie),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(max_last_will_delay, "1h"),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    [{ct_hooks, vmq_cth} |Config].
-
-end_per_suite(_Config) ->
-    vmq_test_utils:teardown(),
-    _Config.
-
-init_per_group(mqttv4, Config) ->
     [{protover, 4}|Config];
 init_per_group(mqttv5, Config) ->
+    vmq_test_utils:setup(vmq_reg_trie),
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_server_cmd:set_config(max_last_will_delay, "1h"),
+    vmq_server_cmd:set_config(retry_interval, 10),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    [{protover, 5}|Config];
+init_per_group(mqttv4_reg_redis_trie, Config) ->
+    vmq_test_utils:setup(vmq_reg_redis_trie),
+    eredis_cluster:flushdb(),
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_server_cmd:set_config(max_last_will_delay, "1h"),
+    vmq_server_cmd:set_config(retry_interval, 10),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    [{protover, 4}|Config];
+init_per_group(mqttv5_reg_redis_trie, Config) ->
+    vmq_test_utils:setup(vmq_reg_redis_trie),
+    eredis_cluster:flushdb(),
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_server_cmd:set_config(max_last_will_delay, "1h"),
+    vmq_server_cmd:set_config(retry_interval, 10),
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     [{protover, 5}|Config].
 
 end_per_group(_, _Config) ->
+    vmq_test_utils:teardown(),
     ok.
 
 init_per_testcase(_Case, Config) ->
@@ -52,7 +73,9 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, mqttv4},
-     {group, mqttv5}
+     {group, mqttv5},
+     {group, mqttv4_reg_redis_trie},
+     {group, mqttv5_reg_redis_trie}
     ].
 
 groups() ->
@@ -64,9 +87,12 @@ groups() ->
          will_qos0_test,
          suppress_lwt_on_session_takeover_test],
     [
-     {mqttv4, [shuffle], Tests ++ []},
+     {mqttv4, [shuffle], Tests},
      {mqttv5, [shuffle], Tests ++ [will_delay_v5_test,
-                                   disconnect_with_will_msg_test]}
+                                   disconnect_with_will_msg_test]},
+     {mqttv4_reg_redis_trie, [shuffle], Tests},
+     {mqttv5_reg_redis_trie, [shuffle], Tests ++ [will_delay_v5_test,
+                                                  disconnect_with_will_msg_test]}
     ].
 
 

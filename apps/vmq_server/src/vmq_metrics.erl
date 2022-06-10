@@ -83,7 +83,11 @@
          pretimed_measurement/2,
 
          incr_stored_offline_messages/0,
-         incr_removed_offline_messages/0
+         incr_removed_offline_messages/0,
+
+         incr_redis_cmd/1,
+         incr_redis_cmd_miss/1,
+         incr_redis_cmd_err/1
         ]).
 
 -export([metrics/0,
@@ -278,6 +282,15 @@ incr_stored_offline_messages() ->
 incr_removed_offline_messages() ->
   incr_item(?METRIC_REMOVED_OFFLINE_MESSAGES, 1).
 
+incr_redis_cmd(CMD) ->
+    incr_item({?REDIS_CMD, CMD}, 1).
+
+incr_redis_cmd_miss(CMD) ->
+    incr_item({?REDIS_CMD_MISS, CMD}, 1).
+
+incr_redis_cmd_err(CMD) ->
+    incr_item({?REDIS_CMD_ERROR, CMD}, 1).
+
 incr(Entry) ->
     incr_item(Entry, 1).
 
@@ -411,7 +424,7 @@ histogram_metrics() ->
     Histogram = ets:foldl(
       fun
         ({Metric, TotalCount, LE10, LE100, LE1K, LE10K, LE100K, LE1M, INF, TotalSum}, Acc) ->
-          {MetricName, Description} = metric_name(Metric),
+          {UniqueId, MetricName, Description, Labels} = metric_name(Metric),
           Buckets =
             #{10 => LE10,
               100 => LE100,
@@ -420,7 +433,7 @@ histogram_metrics() ->
               100000 => LE100K,
               1000000 => LE1M,
               infinity => INF},
-          [{histogram, [], MetricName, MetricName, Description, {TotalCount, TotalSum, Buckets}} | Acc]
+          [{histogram, Labels, UniqueId, MetricName, Description, {TotalCount, TotalSum, Buckets}} | Acc]
       end, [], ?TIMER_TABLE),
   lists:foldl(
     fun({Type, Labels, UniqueId, Name, Description, Value}, {DefsAcc, ValsAcc}) ->
@@ -443,7 +456,7 @@ incr_bucket_ops(V) when V =< 1000000 ->
 incr_bucket_ops(V) ->
   [{2, 1}, {9, 1}, {10, V}].
 
-pretimed_measurement({_,_} = Metric, Val) ->
+pretimed_measurement(Metric, Val) ->
   BucketOps = incr_bucket_ops(Val),
   incr_histogram_buckets(Metric, BucketOps).
 
@@ -758,8 +771,26 @@ internal_defs() ->
              mqtt5_pubrel_sent_def(), mqtt5_pubrel_received_def(),
              mqtt5_pubcomp_sent_def(), mqtt5_pubcomp_received_def(),
              mqtt5_auth_sent_def(), mqtt5_auth_received_def(),
-             sidecar_events_def()
+             sidecar_events_def(), redis_def()
             ], []).
+
+redis_def() ->
+    CMDs =
+        [
+            ?SET,
+            ?GET,
+            ?DEL,
+            ?SADD,
+            ?SMEMBERS,
+            ?SREM,
+            ?PIPELINE],
+    [
+        m(counter, [{cmd, rcn_to_str(CMD)}], {?REDIS_CMD, CMD} , redis_cmd_total, <<"The number of redis cmd calls.">>) || CMD <- CMDs
+    ] ++ [
+        m(counter, [{cmd, rcn_to_str(CMD)}], {?REDIS_CMD_ERROR, CMD}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>) || CMD <- CMDs
+    ] ++ [
+        m(counter, [{cmd, rcn_to_str(CMD)}], {?REDIS_CMD_MISS, CMD}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>) || CMD <- CMDs
+    ].
 
 sidecar_events_def() ->
   HOOKs =
@@ -1462,7 +1493,28 @@ met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_WAKEUP})               -> 216;
 met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_OFFLINE})              -> 217;
 met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SESSION_EXPIRED})             -> 218;
 met2idx(?METRIC_STORED_OFFLINE_MESSAGES)                          -> 219;
-met2idx(?METRIC_REMOVED_OFFLINE_MESSAGES)                         -> 220.
+met2idx(?METRIC_REMOVED_OFFLINE_MESSAGES)                         -> 220;
+met2idx({?REDIS_CMD, ?SET})                                       -> 221;
+met2idx({?REDIS_CMD, ?GET})                                       -> 222;
+met2idx({?REDIS_CMD, ?DEL})                                       -> 223;
+met2idx({?REDIS_CMD, ?SADD})                                      -> 224;
+met2idx({?REDIS_CMD, ?SMEMBERS})                                  -> 225;
+met2idx({?REDIS_CMD, ?SREM})                                      -> 226;
+met2idx({?REDIS_CMD, ?PIPELINE})                                  -> 227;
+met2idx({?REDIS_CMD_ERROR, ?SET})                                 -> 228;
+met2idx({?REDIS_CMD_ERROR, ?GET})                                 -> 229;
+met2idx({?REDIS_CMD_ERROR, ?DEL})                                 -> 230;
+met2idx({?REDIS_CMD_ERROR, ?SADD})                                -> 231;
+met2idx({?REDIS_CMD_ERROR, ?SMEMBERS})                            -> 232;
+met2idx({?REDIS_CMD_ERROR, ?SREM})                                -> 233;
+met2idx({?REDIS_CMD_ERROR, ?PIPELINE})                            -> 234;
+met2idx({?REDIS_CMD_MISS, ?GET})                                  -> 235;
+met2idx({?REDIS_CMD_MISS, ?SMEMBERS})                             -> 236;
+met2idx({?REDIS_CMD_MISS, ?SET})                                  -> 238;
+met2idx({?REDIS_CMD_MISS, ?DEL})                                  -> 239;
+met2idx({?REDIS_CMD_MISS, ?SADD})                                 -> 240;
+met2idx({?REDIS_CMD_MISS, ?SREM})                                 -> 241;
+met2idx({?REDIS_CMD_MISS, ?PIPELINE})                             -> 242.
 
 -ifdef(TEST).
 clear_stored_rates() ->
@@ -1475,9 +1527,15 @@ cancel_calc_rates_interval() ->
     gen_server:call(?MODULE, cancel_calc_rates).
 -endif.
 
+metric_name({Metric, SubMetric, Labels}) ->
+    LMetric = atom_to_list(Metric),
+    LSubMetric = atom_to_list(SubMetric),
+    Name = list_to_atom(LMetric ++ "_" ++ LSubMetric ++ "_microseconds"),
+    Description = list_to_binary("A histogram of the " ++ LMetric ++ " " ++ LSubMetric ++ " latency."),
+    {[Name | Labels], Name, Description, Labels};
 metric_name({Metric, SubMetric}) ->
   LMetric = atom_to_list(Metric),
   LSubMetric = atom_to_list(SubMetric),
   Name = list_to_atom(LMetric ++ "_" ++ LSubMetric ++ "_microseconds"),
   Description = list_to_binary("A histogram of the " ++ LMetric ++ " " ++ LSubMetric ++ " latency."),
-  {Name, Description}.
+  {Name, Name, Description, []}.

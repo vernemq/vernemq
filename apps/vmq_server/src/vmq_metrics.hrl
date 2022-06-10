@@ -118,3 +118,13 @@
 -define(METRIC_ROUTER_MATCHES_REMOTE, router_matches_remote).
 -define(METRIC_STORED_OFFLINE_MESSAGES, stored_offline_messages).
 -define(METRIC_REMOVED_OFFLINE_MESSAGES, removed_offline_messages).
+-define(REDIS_CMD, redis_cmd).
+-define(REDIS_CMD_MISS, redis_cmd_miss).
+-define(REDIS_CMD_ERROR, redis_cmd_error).
+-define(SET, set).
+-define(GET, get).
+-define(DEL, del).
+-define(SADD, sadd).
+-define(SREM, srem).
+-define(SMEMBERS, smembers).
+-define(PIPELINE, pipeline).

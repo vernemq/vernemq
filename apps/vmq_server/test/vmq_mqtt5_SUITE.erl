@@ -8,14 +8,25 @@
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
 
 init_per_suite(Config) ->
-    vmq_test_utils:setup(),
-    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     cover:start(),
     Config.
 
 end_per_suite(_Config) ->
-    vmq_test_utils:teardown(),
     ok.
+
+init_per_group(Group, _Config) ->
+    case Group of
+        mqtt_reg_redis_trie ->
+            vmq_test_utils:setup(vmq_reg_redis_trie),
+            eredis_cluster:flushdb();
+        _ -> vmq_test_utils:setup(vmq_reg_trie)
+    end,
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
+    _Config.
+
+end_per_group(_Group, _Config) ->
+    vmq_test_utils:teardown(),
+    _Config.
 
 init_per_testcase(_TestCase, Config) ->
     vmq_server_cmd:set_config(allow_anonymous, false),
@@ -28,7 +39,8 @@ end_per_testcase(_TestCase, _Config) ->
 
 all() ->
     [
-     {group, mqtt}
+     {group, mqtt},
+     {group, mqtt_reg_redis_trie}
     ].
 
 groups() ->
@@ -52,7 +64,8 @@ groups() ->
      unsubscribe_hook
     ],
     [
-     {mqtt, [shuffle], ConnectTests}
+     {mqtt, [shuffle], ConnectTests},
+     {mqtt_reg_redis_trie, [shuffle], ConnectTests}
     ].
 
 anon_success(_Config) ->

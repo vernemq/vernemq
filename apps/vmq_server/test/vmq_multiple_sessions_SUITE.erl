@@ -5,7 +5,8 @@
          end_per_suite/1,
          init_per_testcase/2,
          end_per_testcase/2,
-         all/0
+         all/0,
+         groups/0
         ]).
 
 -export([multiple_sessions_test/1,
@@ -17,15 +18,20 @@
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
-init_per_suite(_Config) ->
+init_per_suite(Config) ->
     cover:start(),
-    _Config.
+    [{ct_hooks, vmq_cth} | Config].
 
 end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    vmq_test_utils:setup(),
+    case proplists:get_value(vmq_md, Config) of
+        #{group := vmq_reg_redis_trie, tc := _} ->
+            vmq_test_utils:setup(vmq_reg_redis_trie),
+            eredis_cluster:flushdb();
+        _ -> vmq_test_utils:setup(vmq_reg_trie)
+    end,
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(allow_multiple_sessions, true),
     vmq_server_cmd:set_config(retry_interval, 10),
@@ -37,8 +43,19 @@ end_per_testcase(_, Config) ->
     Config.
 
 all() ->
-    [multiple_sessions_test,
-     multiple_balanced_sessions_test].
+    [
+        {group, vmq_reg_trie},
+        {group, vmq_reg_redis_trie}
+    ].
+
+groups() ->
+    Tests =
+        [multiple_sessions_test,
+     multiple_balanced_sessions_test],
+    [
+        {vmq_reg_trie, [], Tests},
+        {vmq_reg_redis_trie, [], Tests}
+    ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests

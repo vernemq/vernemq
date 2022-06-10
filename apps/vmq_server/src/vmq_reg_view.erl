@@ -24,4 +24,7 @@
 
 ) -> any().
 fold(RegView, SubscriberId, Topic, FoldFun, Acc) ->
-    RegView:fold(SubscriberId, Topic, FoldFun, Acc).
+    V1 = vmq_util:ts(),
+    Result = RegView:fold(SubscriberId, Topic, FoldFun, Acc),
+    vmq_metrics:pretimed_measurement({?MODULE, publish_fold}, vmq_util:ts() - V1),
+    Result.

@@ -12,7 +12,8 @@
          end_per_suite/1,
          init_per_testcase/2,
          end_per_testcase/2,
-         all/0
+         all/0,
+         groups/0
         ]).
 
 -export([queue_crash_test/1,
@@ -32,15 +33,20 @@
 %% ===================================================================
 %% common_test callbacks
 %% ===================================================================
-init_per_suite(_Config) ->
+init_per_suite(Config) ->
     cover:start(),
-    _Config.
+    [{ct_hooks, vmq_cth} | Config].
 
 end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    vmq_test_utils:setup(),
+    case proplists:get_value(vmq_md, Config) of
+        #{group := vmq_reg_redis_trie, tc := _} ->
+            vmq_test_utils:setup(vmq_reg_redis_trie),
+            eredis_cluster:flushdb();
+        _ -> vmq_test_utils:setup(vmq_reg_trie)
+    end,
     vmq_config:set_env(queue_deliver_mode, fanout, false),
     enable_hooks(),
     Config.
@@ -50,6 +56,13 @@ end_per_testcase(_, Config) ->
     Config.
 
 all() ->
+    [
+        {group, vmq_reg_trie},
+        {group, vmq_reg_redis_trie}
+    ].
+
+groups() ->
+    Tests =
     [queue_crash_test,
      queue_fifo_test,
      queue_lifo_test,
@@ -59,12 +72,17 @@ all() ->
      queue_persistent_client_expiration_test,
      queue_force_disconnect_test,
      queue_force_disconnect_cleanup_test
+    ],
+    [
+        {vmq_reg_trie, [], Tests},
+        {vmq_reg_redis_trie, [], Tests}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Actual Tests
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-queue_crash_test(_) ->
+queue_crash_test(Cfg) ->
+    #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
     Parent = self(),
     {_, ClientId} = SubscriberId = {"", <<"mock-client">>},
     QueueOpts = maps:merge(#{cleanup_on_disconnect => false}, vmq_queue:default_opts()),
@@ -77,7 +95,7 @@ queue_crash_test(_) ->
     %% at this point we've a working subscription
     timer:sleep(10),
     Msg = msg([<<"test">>, <<"topic">>], <<"test-message">>, 1),
-    {ok, {1, 0}} = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
+    {ok, {1, 0}} = vmq_reg:publish(true, RegView, ClientId, Msg),
     receive_msg(QPid1, 1, Msg),
 
     %% teardown session
@@ -86,7 +104,7 @@ queue_crash_test(_) ->
     {offline, fanout, 0, 0, false} = vmq_queue:status(QPid1),
 
     %% fill the offline queue
-    {ok, {1, 0}} = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
+    {ok, {1, 0}} = vmq_reg:publish(true, RegView, ClientId, Msg),
     {offline, fanout, 1, 0, false} = vmq_queue:status(QPid1),
 
     %% crash the queue
@@ -104,7 +122,8 @@ queue_crash_test(_) ->
     {online, fanout, 0, 1, false} = vmq_queue:status(NewQPid),
     {ok, []} = vmq_message_store:find(SubscriberId, other).
 
-queue_fifo_test(_) ->
+queue_fifo_test(Cfg) ->
+    #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
     Parent = self(),
     SubscriberId = {"", <<"mock-fifo-client">>},
     QueueOpts = maps:merge(#{cleanup_on_disconnect => false}, vmq_queue:default_opts()),
@@ -118,7 +137,7 @@ queue_fifo_test(_) ->
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"fifo">>, <<"topic">>]),
+    Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"fifo">>, <<"topic">>]),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, #{session_present := true,
@@ -127,7 +146,8 @@ queue_fifo_test(_) ->
     ok = receive_multi(QPid, 1, Msgs),
     {ok, []} = vmq_message_store:find(SubscriberId, other).
 
-queue_lifo_test(_) ->
+queue_lifo_test(Cfg) ->
+    #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
     Parent = self(),
     SubscriberId = {"", <<"mock-lifo-client">>},
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false, queue_type => lifo}),
@@ -140,7 +160,7 @@ queue_lifo_test(_) ->
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"lifo">>, <<"topic">>]),
+    Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"lifo">>, <<"topic">>]),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, #{session_present := true,
@@ -149,7 +169,8 @@ queue_lifo_test(_) ->
     ok = receive_multi(QPid, 1, lists:reverse(Msgs)), %% reverse list to get lifo
     {ok, []} = vmq_message_store:find(SubscriberId, other).
 
-queue_fifo_offline_drop_test(_) ->
+queue_fifo_offline_drop_test(Cfg) ->
+    #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
     Parent = self(),
     SubscriberId = {"", <<"mock-fifo-client">>},
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false,
@@ -163,7 +184,7 @@ queue_fifo_offline_drop_test(_) ->
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"fifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
+    Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"fifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
     {offline, fanout, 10, 0, false} = vmq_queue:status(QPid),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -174,7 +195,8 @@ queue_fifo_offline_drop_test(_) ->
     {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 
-queue_lifo_offline_drop_test(_) ->
+queue_lifo_offline_drop_test(Cfg) ->
+    #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
     Parent = self(),
     SubscriberId = {"", <<"mock-lifo-client">>},
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false,
@@ -190,7 +212,7 @@ queue_lifo_offline_drop_test(_) ->
     SessionPid1 ! go_down,
     timer:sleep(10),
 
-    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"lifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
+    Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"lifo">>, <<"topic">>]), % publish 100, only the first 10 are kept
     {offline, fanout, 10, 0, false} = vmq_queue:status(QPid),
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
@@ -201,7 +223,8 @@ queue_lifo_offline_drop_test(_) ->
     {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 
-queue_offline_transition_test(_) ->
+queue_offline_transition_test(Cfg) ->
+    #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
     Parent = self(),
     SubscriberId = {"", <<"mock-trans-client">>},
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false,
@@ -216,7 +239,7 @@ queue_offline_transition_test(_) ->
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
     SessionPid1 ! {go_down_in, 1},
-    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
+    Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
 
     SessionPid2 = spawn(fun() -> mock_session(Parent) end),
     {ok, #{session_present := true,
@@ -224,7 +247,8 @@ queue_offline_transition_test(_) ->
     ok = receive_multi(QPid, 1, Msgs),
     {ok, []} = vmq_message_store:find(SubscriberId, other).
 
-queue_persistent_client_expiration_test(_) ->
+queue_persistent_client_expiration_test(Cfg) ->
+    #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
     Parent = self(),
     SubscriberId = {"", <<"persistent-client-expiration">>},
     %% Set the persistent client to expire after 15 seconds
@@ -241,7 +265,7 @@ queue_persistent_client_expiration_test(_) ->
     %% teardown session
     catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
     SessionPid1 ! {go_down_in, 1},
-    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]),
+    Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"transition">>]),
     NumPubbedMsgs = length(Msgs),
 
     timer:sleep(50), % give some time to plumtree
@@ -279,7 +303,8 @@ queue_force_disconnect_test(_) ->
            queue_pid := QPid0}} = vmq_reg:register_subscriber_(Parent, SubscriberId, false, QueueOpts, 10).
 
 
-queue_force_disconnect_cleanup_test(_) ->
+queue_force_disconnect_cleanup_test(Cfg) ->
+    #{group := RegView, tc := _} = proplists:get_value(vmq_md, Cfg),
     NonConsumingSessionPid = self(),
     SubscriberId = {"", <<"force-client-discleanup">>},
     QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false,
@@ -291,7 +316,7 @@ queue_force_disconnect_cleanup_test(_) ->
     {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"discleanup">>], 1}]),
     timer:sleep(50), % give some time to plumtree
 
-    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"discleanup">>]),
+    Msgs = publish_multi(RegView, SubscriberId, [<<"test">>, <<"discleanup">>]),
     NumPubbedMsgs = length(Msgs),
 
     timer:sleep(50), % give some time to plumtree
@@ -311,14 +336,14 @@ queue_force_disconnect_cleanup_test(_) ->
 
     {ok, []} = vmq_message_store:find(SubscriberId, other).
 
-publish_multi({_, ClientId}, Topic) ->
-    publish_multi(ClientId, Topic, []).
+publish_multi(RegView, {_, ClientId}, Topic) ->
+    publish_multi(RegView, ClientId, Topic, []).
 
-publish_multi(ClientId, Topic, Acc) when length(Acc) < 100 ->
+publish_multi(RegView, ClientId, Topic, Acc) when length(Acc) < 100 ->
     Msg = msg(Topic, list_to_binary("test-message-"++ integer_to_list(length(Acc))), 1),
-    {ok, {1, 0}} = vmq_reg:publish(true, vmq_reg_trie, ClientId, Msg),
-    publish_multi(ClientId, Topic, [Msg|Acc]);
-publish_multi(_, _, Acc) -> lists:reverse(Acc).
+    {ok, {1, 0}} = vmq_reg:publish(true, RegView, ClientId, Msg),
+    publish_multi(RegView, ClientId, Topic, [Msg|Acc]);
+publish_multi(_, _, _, Acc) -> lists:reverse(Acc).
 
 receive_multi(QPid, QoS, Msgs) ->
     PMsgs = [#deliver{qos=QoS, msg=Msg#vmq_msg{persisted=true, qos=1}} || Msg <- Msgs],

@@ -112,7 +112,7 @@ bench_vmq_trie_single_lookups_test(_Config) ->
 
 
 bench_single_lookups(Num) ->
-    ok = vmq_test_utils:setup(),
+    ok = vmq_test_utils:setup(vmq_reg_trie),
     %% one subscriber / topic
     InsertTopicsF = fun(I) ->
                            [{[<<"unique">>,<<"topic">>,integer_to_binary(I)], 0}]
@@ -166,7 +166,7 @@ bench_vmq_trie_fanout_subs_test(_Config) ->
     ok.
 
 bench_fanout_subs(Num) ->
-    ok = vmq_test_utils:setup(),
+    ok = vmq_test_utils:setup(vmq_reg_trie),
 
     Topic = [{[<<"some">>,<<"topic">>],0}],
     %% insert fanout subscriptions

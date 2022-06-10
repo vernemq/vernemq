@@ -18,7 +18,8 @@
                   clique,
                   jsx,
                   gen_server2,
-                  stdout_formatter
+                  stdout_formatter,
+                  eredis_cluster
                  ]},
   {mod, { vmq_server_app, []}},
   {env, [

@@ -9,19 +9,13 @@ suite() ->
 
 init_per_suite(Config) ->
     cover:start(),
-    Config.
+    [{ct_hooks, vmq_cth} | Config].
 
 end_per_suite(_Config) ->
-    ok.
+    _Config.
 
-init_per_group(_GroupName, Config) ->
-    Config.
-
-end_per_group(_GroupName, _Config) ->
-    ok.
-
-init_per_testcase(_TestCase, Config) ->
-    vmq_test_utils:setup(),
+init_per_group(GroupName, Config) ->
+    vmq_test_utils:setup(GroupName),
     enable_on_subscribe(),
     enable_on_publish(),
     vmq_server_cmd:set_config(allow_anonymous, true),
@@ -29,17 +23,29 @@ init_per_testcase(_TestCase, Config) ->
     vmq_server_cmd:listener_start(1888, []),
     Config.
 
-end_per_testcase(_TestCase, _Config) ->
+end_per_group(_GroupName, _Config) ->
     vmq_test_utils:teardown(),
-    ok.
+    _Config.
+
+init_per_testcase(_TestCase, Config) ->
+    Config.
+
+end_per_testcase(_TestCase, _Config) ->
+    _Config.
 
 groups() ->
-    [].
+    [
+        {vmq_reg_trie, [shuffle],[filtering_works]},
+        {vmq_reg_redis_trie, [shuffle],[filtering_works]}
+    ].
 
 all() ->
-    [filtering_works].
+    [
+        {group, vmq_reg_redis_trie},
+        {group, vmq_reg_trie}
+    ].
 
-filtering_works(_Config) ->
+filtering_works(Config) ->
     Connect = packet:gen_connect("vmq-info-client", [{keepalive,60},{clean_session, false}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(1, [{"some/topic/1", 0},
@@ -47,6 +53,14 @@ filtering_works(_Config) ->
                                          {"with/+/wildcard",2}]),
     Suback = packet:gen_suback(1, [0,1,2]),
 
+    {ok, CT1} = vmq_topic:validate_topic(subscribe, list_to_binary("with/wildcard/#")),
+    {ok, CT2} = vmq_topic:validate_topic(subscribe, list_to_binary("with/+/wildcard")),
+    case proplists:get_value(vmq_md, Config) of
+        #{group := vmq_reg_redis_trie, tc := _} ->
+            vmq_reg_redis_trie:add_complex_topics([CT1, CT2]),
+            eredis_cluster:flushdb();
+        _ -> ok
+    end,
     {ok, SubSocket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(SubSocket, Subscribe),
     ok = packet:expect_packet(SubSocket, "suback", Suback),

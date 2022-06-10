@@ -9,7 +9,7 @@
 %% common_test callbacks
 %% ===================================================================
 init_per_suite(Config) ->
-    vmq_test_utils:setup(),
+    vmq_test_utils:setup(vmq_reg_trie),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(max_client_id_size, 1000),
     vmq_server_cmd:set_config(retry_interval, 10),

@@ -21,7 +21,7 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    vmq_test_utils:setup(),
+    vmq_test_utils:setup(vmq_reg_trie),
     Config.
 
 end_per_testcase(_, Config) ->

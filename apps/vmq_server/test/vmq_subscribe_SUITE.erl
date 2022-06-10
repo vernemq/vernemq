@@ -10,13 +10,27 @@
 %% ===================================================================
 init_per_suite(_Config) ->
     cover:start(),
-    vmq_test_utils:setup(),
-    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5,131"}]),
-    enable_on_subscribe(),
-    enable_on_publish(),
     [{ct_hooks, vmq_cth} |_Config].
 
 end_per_suite(_Config) ->
+    _Config.
+
+init_per_group(Group, _Config) ->
+    case Group of
+        mqttv4_reg_redis_trie ->
+            vmq_test_utils:setup(vmq_reg_redis_trie),
+            eredis_cluster:flushdb();
+        mqttv5_reg_redis_trie ->
+            vmq_test_utils:setup(vmq_reg_redis_trie),
+            eredis_cluster:flushdb();
+        _ -> vmq_test_utils:setup(vmq_reg_trie)
+    end,
+    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5,131"}]),
+    enable_on_subscribe(),
+    enable_on_publish(),
+    _Config.
+
+end_per_group(_Group, _Config) ->
     disable_on_subscribe(),
     disable_on_publish(),
     vmq_test_utils:teardown(),
@@ -34,11 +48,13 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, mqttv4},
-     {group, mqttv5}
+     {group, mqttv5},
+     {group, mqttv4_reg_redis_trie},
+     {group, mqttv5_reg_redis_trie}
     ].
 
 groups() ->
-    Tests =
+    TestsMqttV4 =
         [subscribe_qos0_test,
          subscribe_qos1_test,
          subscribe_qos2_test,
@@ -53,14 +69,15 @@ groups() ->
          resubscribe_test,
          bridge_protocol_retain_as_publish_test,
          bridge_protocol_no_local_test],
+    TestsMqttV5 =
+        [subscribe_no_local_test,
+        subscribe_illegal_opt,
+        subscription_ids],
     [
-     {mqttv4, [shuffle,sequence], Tests},
-     {mqttv5, [shuffle],
-      [
-       subscribe_no_local_test,
-       subscribe_illegal_opt,
-       subscription_ids
-      ]}
+     {mqttv4_reg_redis_trie, [shuffle,sequence], TestsMqttV4},
+     {mqttv5_reg_redis_trie, [shuffle], TestsMqttV5},
+     {mqttv4, [shuffle,sequence], TestsMqttV4},
+     {mqttv5, [shuffle], TestsMqttV5}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -206,6 +223,16 @@ subscription_ids(Cfg) ->
     SubAck4 = packetv5:gen_suback(8,[0],#{}),
     SubAck5 = packetv5:gen_suback(9,[0],#{}),
 
+    {ok, CT1} = vmq_topic:validate_topic(subscribe, list_to_binary(BT ++ "/l1/#")),
+    {ok, CT2} = vmq_topic:validate_topic(subscribe, list_to_binary(BT ++ "/+/t6")),
+    case proplists:get_value(vmq_md, Cfg) of
+        #{group := mqttv5_reg_redis_trie, tc := _} ->
+            vmq_reg_redis_trie:add_complex_topics([CT1, CT2]);
+        #{group := mqttv4_reg_redis_trie, tc := _} ->
+            vmq_reg_redis_trie:add_complex_topics([CT1, CT2]);
+        _ -> ok
+    end,
+
     {ok, Socket} = packetv5:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(Socket, Sub1),
     ok = packetv5:expect_frame(Socket, SubAck1),
@@ -275,7 +302,14 @@ subscription_ids(Cfg) ->
     ok = Pub(BT ++ "/no-overlap-ss", <<"msg6">>),
     ok = ExpPub(BT ++ "/no-overlap-ss", <<"msg6">>, [9]),
 
-    {error, timeout} = gen_tcp:recv(Socket, 0, 100).
+    {error, timeout} = gen_tcp:recv(Socket, 0, 100),
+    case proplists:get_value(vmq_md, Cfg) of
+        #{group := mqttv5_reg_redis_trie, tc := _} ->
+            vmq_reg_redis_trie:delete_complex_topics([CT1, CT2]);
+        #{group := mqttv4_reg_redis_trie, tc := _} ->
+            vmq_reg_redis_trie:delete_complex_topics([CT1, CT2]);
+        _ -> ok
+    end.
 
 subscribe_qos0_test(_) ->
     Connect = packet:gen_connect("subscribe-qos0-test", [{keepalive,10}]),
