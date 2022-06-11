@@ -35,7 +35,7 @@
 %% API
 -spec new() -> 'ok'.
 new() ->
-    ets:new(?CACHE, [public, bag, named_table, {read_concurrency, true}]),
+    ets:new(?CACHE, [public, set, named_table, {read_concurrency, true}]),
     ets:new(?STATS, [public, ordered_set, named_table, {write_concurrency, true}]),
     ok.
 
