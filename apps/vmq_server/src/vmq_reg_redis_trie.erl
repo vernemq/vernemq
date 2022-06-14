@@ -10,10 +10,10 @@
 
 -include("vmq_server.hrl").
 
-% eredis_cluster spec is different than actual return value
--dialyzer([{nowarn_function, [init/1, initialize_trie/0, handle_add_event/2, handle_delete_event/2]}, no_match, no_undefined_callbacks]).
+-dialyzer([no_undefined_callbacks]).
 
 -behaviour(vmq_reg_view).
+-behaviour(gen_server2).
 
 %% API
 -export([start_link/0,
@@ -53,29 +53,35 @@ start_link() ->
 -spec fold(subscriber_id(), topic(), fun(), any()) -> any().
 fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
     MatchedTopics = [Topic | match(MP, Topic)],
-    SubscribersList = fetchSubscribers(MatchedTopics, MP, []),
+    SubscribersList = fetchSubscribers(MatchedTopics, MP),
     fold_(SubscriberId, SubscribersList, FoldFun, Acc).
 
 put(SubscriberId, fetch_old_subs, Subs) ->
     OldSubs = vmq_reg_redis_trie:get(SubscriberId),
-    {ok, _} = query(["SET", term_to_binary(SubscriberId), term_to_binary(Subs)]),
-    case vmq_subscriber:get_changes(OldSubs, Subs) of
-        {[{OldNode, NSubs}], [{NewNode, NSubs}]} ->
-            update_topics(NSubs, OldNode, NewNode, SubscriberId);
-        {ToRemove,ToAdd} ->
-            vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, ToRemove),
-            vmq_subscriber:fold(fun handle_add_event/2, SubscriberId, ToAdd)
-    end,
+    lists:foreach(fun({OldNode, _, _}) -> rpc:cast(OldNode, vmq_reg_mgr, handle_new_sub_event, [SubscriberId, Subs]) end, OldSubs),
+    SetQuery = [["SET", term_to_binary(SubscriberId), term_to_binary(Subs)], ["EXEC"]],
+    FinalQuery = case vmq_subscriber:get_changes(OldSubs, Subs) of
+                     {[{OldNode, NSubs}], [{NewNode, NSubs}]} ->
+                         update_topics(NSubs, OldNode, NewNode, SubscriberId, SetQuery);
+                     {ToRemove,ToAdd} ->
+                         {_, Query1} = vmq_subscriber:fold(fun handle_delete_event/2, {SubscriberId, SetQuery}, ToRemove),
+                         {_, Query2} = vmq_subscriber:fold(fun handle_add_event/2, {SubscriberId, Query1}, ToAdd),
+                         Query2
+                 end,
+    [{ok, _} | _] = pipelined_query([["MULTI"] | FinalQuery]),
     ok;
 put(SubscriberId, OldSubs, Subs) ->
-    {ok, _} = query(["SET", term_to_binary(SubscriberId), term_to_binary(Subs)]),
-    case vmq_subscriber:get_changes(OldSubs, Subs) of
-        {[{OldNode, NSubs}], [{NewNode, NSubs}]} ->
-            update_topics(NSubs, OldNode, NewNode, SubscriberId);
-        {ToRemove,ToAdd} ->
-            vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, ToRemove),
-            vmq_subscriber:fold(fun handle_add_event/2, SubscriberId, ToAdd)
-    end,
+    lists:foreach(fun({OldNode, _, _}) -> rpc:cast(OldNode, vmq_reg_mgr, handle_new_sub_event, [SubscriberId, Subs]) end, OldSubs),
+    SetQuery = [["SET", term_to_binary(SubscriberId), term_to_binary(Subs)], ["EXEC"]],
+    FinalQuery = case vmq_subscriber:get_changes(OldSubs, Subs) of
+                     {[{OldNode, NSubs}], [{NewNode, NSubs}]} ->
+                         update_topics(NSubs, OldNode, NewNode, SubscriberId, SetQuery);
+                     {ToRemove,ToAdd} ->
+                         {_, Query1} = vmq_subscriber:fold(fun handle_delete_event/2, {SubscriberId, SetQuery}, ToRemove),
+                         {_, Query2} = vmq_subscriber:fold(fun handle_add_event/2, {SubscriberId, Query1}, ToAdd),
+                         Query2
+                 end,
+    [{ok, _} | _] = pipelined_query([["MULTI"] | FinalQuery]),
     ok.
 
 get(SubscriberId) ->
@@ -87,8 +93,9 @@ get(SubscriberId) ->
 delete(SubscriberId) ->
     Subscriptions = vmq_reg_redis_trie:get(SubscriberId),
     Removed = vmq_subscriber:get_changes(Subscriptions),
-    vmq_subscriber:fold(fun handle_delete_event/2, SubscriberId, Removed),
-    {ok, _} = query(["DEL", term_to_binary(SubscriberId)]).
+    {_, Query} = vmq_subscriber:fold(fun handle_delete_event/2, {SubscriberId, [["EXEC"]]}, Removed),
+    FinalQuery = [["DEL", term_to_binary(SubscriberId)] | Query],
+    [{ok, _} | _] = pipelined_query([["MULTI"] | FinalQuery]).
 
 add_complex_topics(Topics) ->
     Nodes = vmq_cluster:nodes(),
@@ -164,10 +171,10 @@ init([]) ->
         {read_concurrency, true}],
     _ = ets:new(vmq_redis_trie, [{keypos, 2}|DefaultETSOpts]),
     _ = ets:new(vmq_redis_trie_node, [{keypos, 2}|DefaultETSOpts]),
-    InitNodes = vmq_schema_util:parse_list(application:get_env(vmq_server, eredis_cluster_init_nodes, "[{\"127.0.0.1\", 30001}]")),
-    Options = vmq_schema_util:parse_list(application:get_env(vmq_server, eredis_cluster_options, "[]")),
-    ok = eredis_cluster:start(),
-    ok = eredis_cluster:connect(InitNodes, Options),
+    RedisHost = application:get_env(vmq_server, redis_host, "127.0.0.1"),
+    RedisPort = application:get_env(vmq_server, redis_port, 6379),
+    RedisDB = application:get_env(vmq_server, redis_database, 0),
+    {ok, _Pid} = eredis:start_link([{host, RedisHost}, {port, RedisPort}, {database, RedisDB}, {name, {local, redis_client}}]),
     initialize_trie(),
     {ok, #state{status=ready}}.
 
@@ -226,10 +233,7 @@ handle_info(_, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    InitNodes = vmq_schema_util:parse_list(application:get_env(vmq_server, eredis_cluster_init_nodes, "[{\"127.0.0.1\", 30001}]")),
-    ok = eredis_cluster:disconnect(InitNodes),
-    ok = eredis_cluster:stop(),
-    ok.
+    ok = eredis:stop(whereis(redis_client)).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -245,16 +249,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-fetchSubscribers([], _MP, Acc) -> Acc;
-fetchSubscribers([Topic | Rest], MP, Acc) ->
-    {ok, MembersList} = query(["SMEMBERS", term_to_binary({vmq_trie_subs, MP, Topic})]),
-    fetchSubscribers(Rest, MP, lists:append(Acc, MembersList)).
+fetchSubscribers(Topics, MP) ->
+    Query = lists:foldl(fun(Topic, Acc) -> [["SMEMBERS", term_to_binary({vmq_trie_subs, MP, Topic})] | Acc] end, [], Topics),
+    lists:foldl(fun ({ok, MembersList}, Acc) -> lists:append(Acc, MembersList);
+                    (_, Acc) -> Acc end,
+        [], pipelined_query(Query)).
 
 fold_(_, [], _, Acc) -> Acc;
 fold_(SubscriberId, [ SubscriberInfoBinary | SubscribersList], FoldFun, Acc) ->
     case binary_to_term(SubscriberInfoBinary) of
-        {_, _, _} = SubscriberInfo -> fold_(SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc));
-        {_, _, _, _} = SubscriberInfo -> fold_(SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc));
+        {_Node, _SId, _QoS} = SubscriberInfo -> fold_(SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc));
+        {_Node, _Group, _SId, _QoS} = SubscriberInfo -> fold_(SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc));
         _ -> fold_(SubscriberId, SubscribersList, FoldFun, Acc)
     end.
 
@@ -265,46 +270,44 @@ initialize_trie() ->
         add_complex_topic("", Topic) end, TopicList),
     ok.
 
-handle_add_event({[<<"$share">>, Group|Topic], QoS, Node}, {MP, _} = SubscriberId) ->
+handle_add_event({[<<"$share">>, Group|Topic], QoS, Node}, {{MP, _} = SubscriberId, Query}) ->
     Key = {vmq_trie_subs, MP, Topic},
     Val = {Node, Group, SubscriberId, QoS},
-    {ok, _} = query(["SADD", term_to_binary(Key), Val]),
-    SubscriberId;
-handle_add_event({Topic, QoS, Node}, {MP, _} = SubscriberId) ->
+    {SubscriberId, [["SADD", term_to_binary(Key), Val] | Query]};
+handle_add_event({Topic, QoS, Node}, {{MP, _} = SubscriberId, Query}) ->
     Key = {vmq_trie_subs, MP, Topic},
     Val = {Node, SubscriberId, QoS},
-    {ok, _} = query(["SADD", term_to_binary(Key), Val]),
-    SubscriberId.
+    {SubscriberId, [["SADD", term_to_binary(Key), Val] | Query]}.
 
-handle_delete_event({[<<"$share">>, Group|Topic], QoS, Node}, {MP, _} = SubscriberId) ->
+handle_delete_event({[<<"$share">>, Group|Topic], QoS, Node}, {{MP, _} = SubscriberId, Query}) ->
     Key = {vmq_trie_subs, MP, Topic},
     Val = {Node, Group, SubscriberId, QoS},
-    {ok, _} = query(["SREM", term_to_binary(Key), Val]),
-    SubscriberId;
-handle_delete_event({Topic, QoS, Node}, {MP, _} = SubscriberId) ->
+    {SubscriberId, [["SREM", term_to_binary(Key), Val] | Query]};
+handle_delete_event({Topic, QoS, Node}, {{MP, _} = SubscriberId, Query}) ->
     Key = {vmq_trie_subs, MP, Topic},
     Val = {Node, SubscriberId, QoS},
-    {ok, _} = query(["SREM", term_to_binary(Key), Val]),
-    SubscriberId.
+    {SubscriberId, [["SREM", term_to_binary(Key), Val] | Query]}.
 
-update_topics([], _, _, _) -> ok;
-update_topics([{[<<"$share">>, Group|Topic], QoS} | Subs], OldNode, NewNode, {MP, _} = SubscriberId) ->
+update_topics([], _, _, _, Query) -> Query;
+update_topics([{[<<"$share">>, Group|Topic], QoS} | Subs], OldNode, NewNode, {MP, _} = SubscriberId, Query) ->
     Key = {vmq_trie_subs, MP, Topic},
     OldVal = {OldNode, Group, SubscriberId, QoS},
     NewVal = {NewNode, Group, SubscriberId, QoS},
-    [{ok, _}, {ok, _}] = pipelined_query([["SREM", term_to_binary(Key), OldVal], ["SADD", term_to_binary(Key), NewVal]]),
-    update_topics(Subs, OldNode, NewNode, SubscriberId);
-update_topics([{Topic, QoS} | Subs], OldNode, NewNode, {MP, _} = SubscriberId) ->
+    NewQuery1 = [["SADD", term_to_binary(Key), NewVal] | Query],
+    NewQuery2 = [["SREM", term_to_binary(Key), OldVal] | NewQuery1],
+    update_topics(Subs, OldNode, NewNode, SubscriberId, NewQuery2);
+update_topics([{Topic, QoS} | Subs], OldNode, NewNode, {MP, _} = SubscriberId, Query) ->
     Key = {vmq_trie_subs, MP, Topic},
     OldVal = {OldNode, SubscriberId, QoS},
     NewVal = {NewNode, SubscriberId, QoS},
-    [{ok, _}, {ok, _}] = pipelined_query([["SREM", term_to_binary(Key), OldVal], ["SADD", term_to_binary(Key), NewVal]]),
-    update_topics(Subs, OldNode, NewNode, SubscriberId).
+    NewQuery1 = [["SADD", term_to_binary(Key), NewVal] | Query],
+    NewQuery2 = [["SREM", term_to_binary(Key), OldVal] | NewQuery1],
+    update_topics(Subs, OldNode, NewNode, SubscriberId, NewQuery2).
 
 query([Cmd | _] = QueryCmd) ->
     vmq_metrics:incr_redis_cmd(list_to_atom(string:lowercase(Cmd))),
     V1 = vmq_util:ts(),
-    Result = case eredis_cluster:q(QueryCmd) of
+    Result = case eredis:q(whereis(redis_client), QueryCmd) of
                  {error, Reason} ->
                      vmq_metrics:incr_redis_cmd_err(list_to_atom(string:lowercase(Cmd))),
                      lager:error("Cannot ~p due to ~p", [Cmd, Reason]),
@@ -324,13 +327,18 @@ pipelined_query(QueryList) ->
     [_ | PipelinedCmd] = lists:foldl(fun([Cmd | _], Acc) -> "|" ++ Cmd ++ Acc end, "", QueryList),
     vmq_metrics:incr_redis_cmd(pipeline),
     V1 = vmq_util:ts(),
-    Result = eredis_cluster:q(QueryList),
+    Result = case eredis:qp(whereis(redis_client), QueryList) of
+                 {error, no_connection} ->
+                     lager:error("No connection with Redis"),
+                     {error, no_connection};
+                 Res -> Res
+             end,
     IsErrPresent = lists:foldl(fun ({ok, _}, Acc) -> Acc;
                     ({error, Reason}, _Acc) ->
                         lager:error("Cannot ~p due to ~p", [PipelinedCmd, Reason]),
                         true
              end, false, Result),
-    if IsErrPresent -> vmq_metrics:incr_redis_cmd_err(list_to_atom(string:lowercase(PipelinedCmd)));
+    if IsErrPresent -> vmq_metrics:incr_redis_cmd_err(pipeline);
         true -> ok
     end,
     vmq_metrics:pretimed_measurement({redis_cmd, run, [{cmd, PipelinedCmd}]}, vmq_util:ts() - V1),

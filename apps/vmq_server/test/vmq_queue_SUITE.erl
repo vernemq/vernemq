@@ -44,7 +44,7 @@ init_per_testcase(_Case, Config) ->
     case proplists:get_value(vmq_md, Config) of
         #{group := vmq_reg_redis_trie, tc := _} ->
             vmq_test_utils:setup(vmq_reg_redis_trie),
-            eredis_cluster:flushdb();
+            eredis:q(whereis(redis_client), ["FLUSHDB"]);
         _ -> vmq_test_utils:setup(vmq_reg_trie)
     end,
     vmq_config:set_env(queue_deliver_mode, fanout, false),

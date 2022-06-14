@@ -19,10 +19,10 @@ init_per_group(Group, _Config) ->
     case Group of
         mqttv4_reg_redis_trie ->
             vmq_test_utils:setup(vmq_reg_redis_trie),
-            eredis_cluster:flushdb();
+            eredis:q(whereis(redis_client), ["FLUSHDB"]);
         mqttv5_reg_redis_trie ->
             vmq_test_utils:setup(vmq_reg_redis_trie),
-            eredis_cluster:flushdb();
+            eredis:q(whereis(redis_client), ["FLUSHDB"]);
         _ -> vmq_test_utils:setup(vmq_reg_trie)
     end,
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5,131"}]),

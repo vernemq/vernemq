@@ -41,7 +41,7 @@ init_per_group(mqttv4_reg_redis_trie, Config) ->
 init_per_group(mqttv5_reg_redis_trie, Config) ->
     vmq_test_utils:setup(vmq_reg_redis_trie),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    eredis_cluster:flushdb(),
+    eredis:q(whereis(redis_client), ["FLUSHDB"]),
     [{protover, 5}|Config].
 end_per_group(_Group, _Config) ->
     vmq_server_cmd:listener_stop(1888, "127.0.0.1", false),

@@ -31,22 +31,22 @@ init_per_group(mqttv5, Config) ->
     [{protover, 5}|start_listener(Config1)];
 init_per_group(mqtts_reg_redis_trie, Config) ->
     vmq_test_utils:setup(vmq_reg_redis_trie),
-    eredis_cluster:flushdb(),
+    eredis:q(whereis(redis_client), ["FLUSHDB"]),
     Config1 = [{type, tcp},{port, 1889}, {address, "127.0.0.1"}|Config],
     start_listener(Config1);
 init_per_group(mqttws_reg_redis_trie, Config) ->
     vmq_test_utils:setup(vmq_reg_redis_trie),
-    eredis_cluster:flushdb(),
+    eredis:q(whereis(redis_client), ["FLUSHDB"]),
     Config1 = [{type, ws},{port, 1890}, {address, "127.0.0.1"}|Config],
     start_listener(Config1);
 init_per_group(mqttv4_reg_redis_trie, Config) ->
     vmq_test_utils:setup(vmq_reg_redis_trie),
-    eredis_cluster:flushdb(),
+    eredis:q(whereis(redis_client), ["FLUSHDB"]),
     Config1 = [{type, tcp},{port, 1888}, {address, "127.0.0.1"}|Config],
     [{protover, 4}|start_listener(Config1)];
 init_per_group(mqttv5_reg_redis_trie, Config) ->
     vmq_test_utils:setup(vmq_reg_redis_trie),
-    eredis_cluster:flushdb(),
+    eredis:q(whereis(redis_client), ["FLUSHDB"]),
     Config1 = [{type, tcp},{port, 1887}, {address, "127.0.0.1"}|Config],
     [{protover, 5}|start_listener(Config1)].
 

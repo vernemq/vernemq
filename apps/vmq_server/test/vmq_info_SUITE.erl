@@ -58,7 +58,7 @@ filtering_works(Config) ->
     case proplists:get_value(vmq_md, Config) of
         #{group := vmq_reg_redis_trie, tc := _} ->
             vmq_reg_redis_trie:add_complex_topics([CT1, CT2]),
-            eredis_cluster:flushdb();
+            eredis:q(whereis(redis_client), ["FLUSHDB"]);
         _ -> ok
     end,
     {ok, SubSocket} = packet:do_client_connect(Connect, Connack, []),

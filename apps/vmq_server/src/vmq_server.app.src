@@ -19,7 +19,7 @@
                   jsx,
                   gen_server2,
                   stdout_formatter,
-                  eredis_cluster
+                  eredis
                  ]},
   {mod, { vmq_server_app, []}},
   {env, [

@@ -21,8 +21,8 @@ setup(RegView) ->
         vmq_reg_redis_trie ->
             application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
             application:set_env(vmq_server, systree_reg_view, vmq_reg_redis_trie),
-            application:set_env(vmq_server, eredis_cluster_init_nodes, "[{\"redis\", 6379}]"),
-            application:set_env(vmq_server, eredis_cluster_options, "[{pool_size, 2},{pool_max_overflow, 3},{password, \"\"}]");
+            application:set_env(vmq_server, redis_host, "redis"),
+            application:set_env(vmq_server, redis_port, 6379);
         _ -> ok
     end,
     PrivDir = code:priv_dir(vmq_server),

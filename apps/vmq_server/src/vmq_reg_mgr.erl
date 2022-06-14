@@ -19,7 +19,8 @@
 -behaviour(gen_server).
 %% API functions
 -export([start_link/0,
-         all_queues_setup_status/0]).
+         all_queues_setup_status/0,
+         handle_new_sub_event/2]).
 
 %% gen_server callbacks
 -export([init/1,
