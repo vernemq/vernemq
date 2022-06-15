@@ -1,3 +1,4 @@
+- Collect per webhook type (e.g. `on_publish_m5_requests`) metrics.
 - Fix vmqs (SSL) inter-node communication.
 - Store waiting pubrec packets in queue and add to waiting acks on reconnect.
 - Fix PostGres (`epgsql` 4.6.0) response format in `vmq_diversity`.
