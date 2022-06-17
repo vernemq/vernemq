@@ -1,11 +1,10 @@
 -module(vmq_publish_SUITE).
 
 -include_lib("vmq_commons/include/vmq_types.hrl").
+-include_lib("vmq_server/include/vmq_metrics.hrl").
 
 -compile(export_all).
 -compile(nowarn_export_all).
-
--include("../src/vmq_metrics.hrl").
 
 %% ===================================================================
 %% common_test callbacks
