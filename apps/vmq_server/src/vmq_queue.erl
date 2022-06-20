@@ -1027,8 +1027,10 @@ publish_last_will(#state{delayed_will = undefined} = State) ->
 publish_last_will(#state{delayed_will = {_, Fun}} = State) ->
     Fun(),
     unset_will_timer(State#state{delayed_will = undefined}).
-
-maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persisted=false, dup=IsDup, expiry_ts=ExpiryTs} = Msg}=D) when QoS > 0 ->
+maybe_offline_store(_, _, #deliver{msg=#vmq_msg{qos=0, persisted=false} = _Msg}=D) ->
+    % Don't store QoS 0 messages in the message store
+    D;
+maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{dup=IsDup, persisted=false, expiry_ts=ExpiryTs} = Msg}=D) when QoS > 0 ->
     %% this function writes the message to the message store, in case the queue
     %% has no online session attached anymore (Offline = true) the queue can
     %% 'compress' the messages. Compressing is done by only keeping the message
@@ -1039,7 +1041,7 @@ maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persis
     %% provided message store:
     %% - Message ID (required when storing a message with the DUP flag)
     %% - Expiry Timestamp (required when storing a message that should expire)
-    PMsg = Msg#vmq_msg{persisted=true, qos=QoS},
+    PMsg = Msg#vmq_msg{persisted=true},
     case vmq_message_store:write(SubscriberId, PMsg) of
         ok when Offline and IsDup ->
             % No compress
