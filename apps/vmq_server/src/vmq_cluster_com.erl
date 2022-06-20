@@ -17,7 +17,7 @@
 -behaviour(ranch_protocol).
 
 %% API.
--export([start_link/4]).
+-export([start_link/4, start_link/3]).
 
 -export([init/3,
          loop/1]).
@@ -38,7 +38,9 @@
 start_link(Ref, _Socket, Transport, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Transport, Opts]),
     {ok, Pid}.
-
+start_link(Ref, Transport, Opts) ->
+    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, Transport, Opts]),
+    {ok, Pid}.
 init(Ref, Transport, Opts) ->
     {ok, Socket} = ranch:handshake(Ref),
 

@@ -19,7 +19,7 @@ jobs:
             plts_base
           key: ${{ runner.os }}-erlang-${{ hashFiles(format('{0}{1}', github.workspace, '/rebar.lock')) }}
       - run: sudo apt-get -y install libsnappy-dev
-      - uses: gleam-lang/setup-erlang@v1.1.0
+      - uses: erlef/setup-beam@v1
         with:
           otp-version: 23.2.1
       - run: ./rebar3 dialyzer
@@ -70,7 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2.0.0
       - run: sudo apt-get -y install libsnappy-dev
-      - uses: gleam-lang/setup-erlang@v1.1.0
+      - uses: erlef/setup-beam@v1
         with:
           otp-version: 23.2.1
       - run: ./rebar3 as ci_tests do eunit --cover, ct --cover
@@ -113,10 +113,10 @@ jobs:
     runs-on: ubuntu-18.04
     strategy:
       matrix:
-        erlang: ["22.0", "22.3.4.9", "23.0.1"]
+        erlang: ["23.0", "24.0", "24.3.3"]
     steps:
       - uses: actions/checkout@v2.0.0
-      - uses: gleam-lang/setup-erlang@v1.1.0
+      - uses: erlef/setup-beam@v1
         with:
           otp-version: ${{ matrix.erlang }}
       - run: sudo apt-get -y install libsnappy-dev

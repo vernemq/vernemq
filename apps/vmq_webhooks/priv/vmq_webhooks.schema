@@ -6,7 +6,7 @@
 %% a name. vmq_webhooks.<name>.hook = <hook> associates the hook
 %% <hook> with the name <name>. Webhooks are registered in the order
 %% of the name given to it. Therefore a webhook with name 'webhook1'
-%% is regisered before a webhook with the name 'webhook2'.
+%% is registered before a webhook with the name 'webhook2'.
 {mapping, "vmq_webhooks.$name.hook", "vmq_webhooks.user_webhooks",
  [
   {datatype, {enum,

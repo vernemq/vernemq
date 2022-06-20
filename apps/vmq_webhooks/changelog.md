@@ -1,5 +1,6 @@
 # Changelog
 
+ - Collect per webhook type (e.g. `on_publish_m5_requests`) metrics.
  - Move persistence of webhooks to the `vernemq.conf` main file. This means
    adding hooks using the `vmq-admin` tool no longer persists the webhooks and
    they have to be manually added to the `vernemq.conf` file.

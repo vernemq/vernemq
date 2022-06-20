@@ -17,7 +17,7 @@
 -behaviour(ranch_protocol).
 
 %% API.
--export([start_link/4]).
+-export([start_link/4, start_link/3]).
 
 -export([init/4,
          loop/1]).
@@ -42,6 +42,9 @@ start_link(Ref, _Socket, Transport, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Transport, Opts]),
     {ok, Pid}.
 
+start_link(Ref, Transport, Opts) ->
+    Pid = proc_lib:spawn_link(?MODULE, init, [Ref, self(), Transport, Opts]),
+    {ok, Pid}.
 
 init(Ref, Parent, Transport, Opts) ->
     {ok, Socket} = ranch:handshake(Ref),
@@ -191,7 +194,7 @@ setopts({ssl, Socket}, Opts) ->
 setopts(Socket, Opts) ->
     inet:setopts(Socket, Opts).
 
-handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = State) ->
+handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _, _}, fsm_mod=FsmMod} = State) ->
     #st{fsm_state=FsmState0,
         socket=Socket,
         pending=Pending,
@@ -237,11 +240,11 @@ handle_message({Proto, _, Data}, #st{proto_tag={Proto, _, _}, fsm_mod=FsmMod} = 
                         [Proto, Reason, Data, Buffer]),
             {exit, Reason, State}
     end;
-handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _}, fsm_mod=FsmMod} = State) ->
+handle_message({ProtoClosed, _}, #st{proto_tag={_, ProtoClosed, _, _}, fsm_mod=FsmMod} = State) ->
     %% we regard a tcp_closed as 'normal'
     _ = FsmMod:msg_in({disconnect, ?NORMAL_DISCONNECT}, State#st.fsm_state),
     {exit, normal, State};
-handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr}} = State) ->
+handle_message({ProtoErr, _, Error}, #st{proto_tag={_, _, ProtoErr, _}} = State) ->
     _ = vmq_metrics:incr_socket_error(),
     {exit, Error, State};
 handle_message({?TO_SESSION, Msg}, #st{pending=Pending, fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
@@ -260,7 +263,7 @@ handle_message({set_sock_opts, Opts}, #st{socket=S} = State) ->
     setopts(S, Opts),
     State;
 handle_message(restart_work, #st{throttled=true} = State) ->
-    #st{proto_tag={Proto, _, _}, socket=Socket} = State,
+    #st{proto_tag={Proto, _, _, _}, socket=Socket} = State,
     handle_message({Proto, Socket, <<>>}, State#st{throttled=false});
 handle_message({'EXIT', _Parent, Reason}, #st{fsm_state=FsmState0, fsm_mod=FsmMod} = State) ->
     %% TODO: this should probably not be a normal disconnect...

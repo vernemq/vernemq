@@ -1,7 +1,10 @@
+- Collect per webhook type (e.g. `on_publish_m5_requests`) metrics.
 - Fix vmqs (SSL) inter-node communication.
 - Store waiting pubrec packets in queue and add to waiting acks on reconnect.
 - Fix PostGres (`epgsql` 4.6.0) response format in `vmq_diversity`.
 - Fix Prometheus exposition format, related to MQTT v4 and v5 labels.
+- Add Unix domain listeners (to be configured as "listener.tcp.unix_socket = local:/tmp/my.sock:0")
+
 
 ## VerneMQ 1.12.5
 

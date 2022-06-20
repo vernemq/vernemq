@@ -671,9 +671,9 @@
 %% - listener.ws.default = 127.0.0.1:800
 %% - listener.wss.default = 127.0.0.1:880
 {mapping, "listener.tcp.$name", "vmq_server.listeners", [
-                                                            {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
-                                                            {datatype, ip},
-                                                            {include_default, "default"}
+                                                          % {default, { "{{mqtt_default_ip}}", {{mqtt_default_port}} }},
+                                                           {datatype, ip_or_domain_socket}
+                                                          % {include_default, "default"}
                                                            ]}.
 
 {mapping, "listener.ws.$name", "vmq_server.listeners", [
@@ -1614,7 +1614,7 @@
                                                               {datatype, string}
                                                              ]}.
 
-%% @doc genenerate extra metrics from metrics with labels.
+%% @doc generate extra metrics from metrics with labels.
 {mapping, "graphite_include_labels", "vmq_server.graphite_include_labels", [
                                                                             {default, off},
                                                                             {datatype, flag},
