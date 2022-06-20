@@ -692,7 +692,7 @@ replace_dead_queue(SubscriberId, _DeadNodes, _StartClean = true) ->
             %% allow_multiple_sessions=false) (TODO: formalize this behaviour
             %% in a test-case) and they'll then reconnect.
             Subs = vmq_subscriber:new(true),
-            vmq_subscriber_db:store(SubscriberId, [], Subs),
+            vmq_subscriber_db:store(SubscriberId, Subs),
             %% no local queue, so we delete the client information.
             del_subscriber(SubscriberId),
             ok;
@@ -922,7 +922,7 @@ maybe_remap_subscriber(SubscriberId, _StartClean = true) ->
     %% no need to remap, we can delete this subscriber
     %% we overwrite any other value
     Subs = vmq_subscriber:new(true),
-    vmq_subscriber_db:store(SubscriberId, [], Subs),
+    vmq_subscriber_db:store(SubscriberId, Subs),
     {false, Subs, []};
 maybe_remap_subscriber(SubscriberId, _StartClean = false) ->
     case vmq_subscriber_db:read(SubscriberId) of

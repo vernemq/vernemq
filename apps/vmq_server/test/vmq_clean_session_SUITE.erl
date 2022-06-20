@@ -105,6 +105,7 @@ session_cleanup_test(Cfg) ->
     Disconnect = packet:gen_disconnect(),
     Subscribe = packet:gen_subscribe(109, "qos1/clean_session/test", 1),
     Suback = packet:gen_suback(109, 1),
+    Publish = packet:gen_publish("qos1/clean_session/test", 1, <<"clean-session-message">>, [{mid, 1}]),
     {ok, Socket} = packet:do_client_connect(Connect1, Connack, []),
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
@@ -115,10 +116,12 @@ session_cleanup_test(Cfg) ->
     timer:sleep(100),
     {0,0,0,1,1} = vmq_queue_sup_sup:summary(),
     {ok, Socket1} = packet:do_client_connect(Connect2, Connack, []),
-    ok = gen_tcp:close(Socket1),
-    timer:sleep(100),
     %% if queue cleanup woudln't have happen, we'd see a remaining offline message
-    {0,0,0,0,0} = vmq_queue_sup_sup:summary().
+    {1,0,0,0,0} = vmq_queue_sup_sup:summary(),
+    clean_session_qos1_helper(),
+    %% if redis topic-sid mapping cleanup woudln't have happen, we'd receive a message
+    {error,timeout} = packet:expect_packet(gen_tcp, Socket1, "publish", Publish, 500),
+    ok = gen_tcp:close(Socket1).
 
 session_present_test(Cfg) ->
     Connect = packet:gen_connect(vmq_cth:ustr(Cfg) ++ "clean-sesspres-test", [{keepalive,10}, {clean_session, false}]),
