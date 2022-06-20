@@ -560,7 +560,7 @@ metrics_test(_) ->
 
 find_metric_value(Id) ->
     Metrics = vmq_metrics:metrics(),
-    {value, {_MetricDef, Value}} = lists:search(fun({Metric, V}) ->
+    {value, {_MetricDef, Value}} = lists:search(fun({Metric, _V}) ->
         Metric#metric_def.id =:= Id
     end, Metrics),
     Value.

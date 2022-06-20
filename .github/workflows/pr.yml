@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-18.04
     strategy:
       matrix:
-        erlang: ["23.0", "24.0", "24.3.3"]
+        erlang: ["22.0", "23.0", "24.0", "24.3.3"]
     steps:
       - uses: actions/checkout@v2.0.0
       - uses: erlef/setup-beam@v1

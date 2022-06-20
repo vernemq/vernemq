@@ -47,10 +47,10 @@ metrics() ->
 
 hook_and_counter_type_to_metric(CounterRef, Hook, CounterType) ->
     Index = met2idx(Hook, CounterType),
-    HookBin = atom_to_binary(Hook),
-    CounterTypeBin = atom_to_binary(CounterType),
+    HookBin = atom_to_binary(Hook, utf8),
+    CounterTypeBin = atom_to_binary(CounterType, utf8),
     Name = <<"webhooks_", HookBin/binary, "_", CounterTypeBin/binary>>,
-    Id = binary_to_atom(Name),
+    Id = binary_to_atom(Name, utf8),
     Description =
         case CounterType of
             requests ->
