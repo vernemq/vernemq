@@ -1,3 +1,4 @@
+- Fix outgoing QoS and outgoing QoS upgrades.
 - Collect per webhook type (e.g. `on_publish_m5_requests`) metrics.
 - Fix vmqs (SSL) inter-node communication.
 - Store waiting pubrec packets in queue and add to waiting acks on reconnect.
