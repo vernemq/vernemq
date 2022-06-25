@@ -42,7 +42,7 @@
 {cluster_default_port, @CLUSTERPORT@}.
 {http_default_ip, "0.0.0.0"}.
 {http_default_port, @METRICSPORT@}.
-{metadata_plugin, vmq_plumtree}.
+{metadata_plugin, vmq_swc}.
 
 %% lager
 {console_log_default, both}.
