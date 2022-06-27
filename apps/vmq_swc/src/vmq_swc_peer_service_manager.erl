@@ -22,12 +22,26 @@
 
 -define(TBL, swc_cluster_state).
 
--export([init/0, get_local_state/0, get_actor/0, get_old_actor/0, get_old_actor_from_state/2, get_actors/0, get_peers/0, 
-        get_actors_and_peers/0, get_actor_for_peer/1, get_peers_for_actors/1, update_state/1, delete_state/0, write_old_actor_to_disk/1]).
+-export([
+    init/0,
+    get_local_state/0,
+    get_actor/0,
+    get_old_actor/0,
+    get_old_actor_from_state/2,
+    get_actors/0,
+    get_peers/0,
+    get_actors_and_peers/0,
+    get_actor_for_peer/1,
+    get_peers_for_actors/1,
+    update_state/1,
+    delete_state/0,
+    write_old_actor_to_disk/1
+]).
 
 init() ->
     %% setup ETS table for cluster_state
-    _ = try ets:new(?TBL, [named_table, public, set, {keypos, 1}]) of
+    _ =
+        try ets:new(?TBL, [named_table, public, set, {keypos, 1}]) of
             _Res ->
                 gen_actor(),
                 maybe_load_old_actor_from_disk(),
@@ -36,18 +50,18 @@ init() ->
         catch
             error:badarg ->
                 lager:warning("Table ~p already exists", [?TBL])
-                %%TODO rejoin logic
+            %%TODO rejoin logic
         end,
     ok.
 
 %% @doc return local node's view of cluster membership
 get_local_state() ->
-   case hd(ets:lookup(?TBL, cluster_state)) of
-       {cluster_state, State} ->    
-           {ok, State};
-       _Else ->
-           {error, _Else}
-   end.
+    case hd(ets:lookup(?TBL, cluster_state)) of
+        {cluster_state, State} ->
+            {ok, State};
+        _Else ->
+            {error, _Else}
+    end.
 
 %% @doc return local node's current actor
 get_actor() ->
@@ -77,7 +91,7 @@ get_actors_and_peers() ->
 actors_and_vals({_Clock, Entries, _Deferred}) when is_list(Entries) ->
     [{K, Dots} || {K, Dots} <- Entries];
 actors_and_vals({_Clock, Entries, _Deferred}) ->
-    lists:sort([{K, Actor} || {K, [{[{actor, Actor}],_}]} <- dict:to_list(Entries)]).
+    lists:sort([{K, Actor} || {K, [{[{actor, Actor}], _}]} <- dict:to_list(Entries)]).
 
 get_peers() ->
     {ok, LocalState} = get_local_state(),
@@ -87,19 +101,22 @@ get_peers() ->
 get_peers_for_actors(Actors) ->
     {ok, LocalState} = get_local_state(),
     {_, Entries, _} = LocalState,
-    lists:sort([K || {K, [{[{actor, Actor}],_}]} <- dict:to_list(Entries), lists:member(Actor, Actors)]).
+    lists:sort([
+        K
+     || {K, [{[{actor, Actor}], _}]} <- dict:to_list(Entries), lists:member(Actor, Actors)
+    ]).
 
 get_actor_for_peer(Peer) ->
     {ok, LocalState} = get_local_state(),
     proplists:get_value(Peer, actors_and_vals(LocalState)).
 
 get_old_actor_from_state(Peer, State) ->
-     proplists:get_value(Peer, actors_and_vals(State)).
+    proplists:get_value(Peer, actors_and_vals(State)).
 
 actors({_Clock, Entries, _Deferred}) when is_list(Entries) ->
-        [{K, Dots} || {K, Dots} <- Entries];
+    [{K, Dots} || {K, Dots} <- Entries];
 actors({_Clock, Entries, _Deferred}) ->
-        lists:sort([Actor || {K, [{[{actor, Actor}],_}]} <- dict:to_list(Entries)]).
+    lists:sort([Actor || {K, [{[{actor, Actor}], _}]} <- dict:to_list(Entries)]).
 
 %% @doc update cluster_state
 update_state(State) ->
@@ -130,8 +147,11 @@ gen_actor() ->
     ets:insert(?TBL, {actor, Actor}).
 
 data_root() ->
-    application:get_env(vmq_swc, data_dir,
-                        "./" ++ atom_to_list(node()) ++ "/peer_service").
+    application:get_env(
+        vmq_swc,
+        data_dir,
+        "./" ++ atom_to_list(node()) ++ "/peer_service"
+    ).
 
 write_state_to_disk(State) ->
     case data_root() of
@@ -140,10 +160,14 @@ write_state_to_disk(State) ->
         Dir ->
             File = filename:join(Dir, "cluster_state"),
             ok = filelib:ensure_dir(File),
-            lager:info("writing state ~p to disk ~p",
-                       [State, riak_dt_orswot:to_binary(State)]),
-            ok = file:write_file(File,
-                                 riak_dt_orswot:to_binary(State))
+            lager:info(
+                "writing state ~p to disk ~p",
+                [State, riak_dt_orswot:to_binary(State)]
+            ),
+            ok = file:write_file(
+                File,
+                riak_dt_orswot:to_binary(State)
+            )
     end.
 
 write_old_actor_to_disk(Actor) ->
@@ -153,10 +177,14 @@ write_old_actor_to_disk(Actor) ->
         Dir ->
             File = filename:join(Dir, "old_node_actor"),
             ok = filelib:ensure_dir(File),
-            lager:info("writing (updated) old actor ~p to disk~n",
-                       [Actor]),
-            ok = file:write_file(File,
-                                 term_to_binary(Actor))
+            lager:info(
+                "writing (updated) old actor ~p to disk~n",
+                [Actor]
+            ),
+            ok = file:write_file(
+                File,
+                term_to_binary(Actor)
+            )
     end.
 
 maybe_load_old_actor_from_disk() ->
@@ -166,14 +194,19 @@ maybe_load_old_actor_from_disk() ->
         Dir ->
             case filelib:is_regular(filename:join(Dir, "old_node_actor")) of
                 true ->
-                    {ok, Bin} = file:read_file(filename:join(Dir,
-                                                             "old_node_actor")),
+                    {ok, Bin} = file:read_file(
+                        filename:join(
+                            Dir,
+                            "old_node_actor"
+                        )
+                    ),
                     OldActor = binary_to_term(Bin),
                     lager:debug("read old actor binary from disk: ~p ~n", [OldActor]),
                     ets:insert(?TBL, {old_actor, OldActor}),
                     ets:insert(?TBL, {actor, OldActor}),
                     write_old_actor_to_disk(OldActor);
-                false -> % for first boot case
+                % for first boot case
+                false ->
                     [{actor, NewActor}] = ets:lookup(?TBL, actor),
                     ets:insert(?TBL, {old_actor, NewActor}),
                     write_old_actor_to_disk(NewActor)
@@ -202,8 +235,12 @@ maybe_load_state_from_disk() ->
         Dir ->
             case filelib:is_regular(filename:join(Dir, "cluster_state")) of
                 true ->
-                    {ok, Bin} = file:read_file(filename:join(Dir,
-                                                             "cluster_state")),
+                    {ok, Bin} = file:read_file(
+                        filename:join(
+                            Dir,
+                            "cluster_state"
+                        )
+                    ),
                     {ok, State} = riak_dt_orswot:from_binary(Bin),
                     update_state(State);
                 false ->

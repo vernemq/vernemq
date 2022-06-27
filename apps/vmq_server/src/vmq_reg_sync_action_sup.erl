@@ -16,8 +16,10 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0,
-         start_action/4]).
+-export([
+    start_link/0,
+    start_action/4
+]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -60,9 +62,12 @@ start_action(SyncPid, Owner, Fun, Timeout) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, {{simple_one_for_one, 0, 1},
-          [{vmq_reg_sync_action, {vmq_reg_sync_action, start_link, []},
-           temporary, 1000, worker, [vmq_reg_sync_action]}]}}.
+    {ok,
+        {{simple_one_for_one, 0, 1}, [
+            {vmq_reg_sync_action, {vmq_reg_sync_action, start_link, []}, temporary, 1000, worker, [
+                vmq_reg_sync_action
+            ]}
+        ]}}.
 
 %%%===================================================================
 %%% Internal functions

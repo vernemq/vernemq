@@ -26,8 +26,14 @@
 
 -export([start_link/0, stop/0]).
 -export([receive_state/1]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-        code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 %%%==================================================================
 %%% gen_server api
@@ -41,7 +47,6 @@ stop() ->
 
 receive_state(PeerState) ->
     gen_server:cast(?MODULE, {process_state, PeerState}).
-
 
 %%%===============================================================
 %%% gen_server callbacks
@@ -74,7 +79,6 @@ handle_info(gossip, State) ->
     _ = do_gossip(),
     erlang:send_after(?GOSSIP_INTERVAL, self(), gossip),
     {noreply, State};
-
 handle_info(_Info, State) ->
     lager:info("Unexpected: ~p,~p.~n", [_Info, State]),
     {noreply, State}.

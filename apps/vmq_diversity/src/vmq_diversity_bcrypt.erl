@@ -17,14 +17,13 @@
 
 -export([install/1]).
 
-
 install(St) ->
     luerl_emul:alloc_table(table(), St).
 
 table() ->
     [
-     {<<"gen_salt">>, #erl_func{code=fun gen_salt/2}},
-     {<<"hashpw">>, #erl_func{code=fun hashpw/2}}
+        {<<"gen_salt">>, #erl_func{code = fun gen_salt/2}},
+        {<<"hashpw">>, #erl_func{code = fun hashpw/2}}
     ].
 
 gen_salt(_, St) ->

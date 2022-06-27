@@ -23,12 +23,14 @@
 -export([start_link/0]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -define(SERVER, ?MODULE).
 
@@ -127,51 +129,61 @@ handle_info(timeout, undefined) ->
                     {noreply, undefined, 5000};
                 Host ->
                     Port = vmq_config:get_env(graphite_port, ?DEFAULT_PORT),
-                    Timeout = vmq_config:get_env(graphite_connect_timeout,
-                                                  ?DEFAULT_CONNECT_TIMEOUT),
+                    Timeout = vmq_config:get_env(
+                        graphite_connect_timeout,
+                        ?DEFAULT_CONNECT_TIMEOUT
+                    ),
                     case gen_tcp:connect(Host, Port, [{mode, list}], Timeout) of
                         {ok, Socket} ->
-                            Interval = vmq_config:get_env(graphite_interval,
-                                                           ?DEFAULT_INTERVAL),
+                            Interval = vmq_config:get_env(
+                                graphite_interval,
+                                ?DEFAULT_INTERVAL
+                            ),
                             {noreply, Socket, Interval};
                         {error, Reason} ->
-                            lager:error("can't connect to Graphite due to ~p.",
-                                        [Reason]),
+                            lager:error(
+                                "can't connect to Graphite due to ~p.",
+                                [Reason]
+                            ),
                             {noreply, undefined, 5000}
                     end
             end
     end;
 handle_info(timeout, Socket) ->
     case vmq_config:get_env(graphite_enabled) of
-         false ->
+        false ->
             %% Nothing configured
             %% Retry in 5 Secs
             gen_tcp:close(Socket),
             {noreply, undefined, 5000};
-         true ->
+        true ->
             ApiKey = vmq_config:get_env(graphite_api_key, ""),
             Prefix = vmq_config:get_env(graphite_prefix, ""),
             IncludeLabels = vmq_config:get_env(graphite_include_labels, ?DEFAULT_INCLUDE_LABELS),
             DoReconnect =
                 lists:foldl(
-                  fun (_, true) ->
-                          %% error occurred
-                          true;
-                      ({#metric_def{name = Metric, labels = Labels}, Val}, false) ->
-                          Lines =
-                          case IncludeLabels of
-                              true ->
-                                  lines(ApiKey, Prefix, Metric, Labels, Val);
-                              false ->
-                                  lines(ApiKey, Prefix, Metric, Val)
-                          end,
-                          case gen_tcp:send(Socket, Lines) of
-                              ok ->
-                                  false;
-                              {error, _} ->
-                                  true
-                          end
-                  end, false, vmq_metrics:metrics(#{aggregate => false})),
+                    fun
+                        (_, true) ->
+                            %% error occurred
+                            true;
+                        ({#metric_def{name = Metric, labels = Labels}, Val}, false) ->
+                            Lines =
+                                case IncludeLabels of
+                                    true ->
+                                        lines(ApiKey, Prefix, Metric, Labels, Val);
+                                    false ->
+                                        lines(ApiKey, Prefix, Metric, Val)
+                                end,
+                            case gen_tcp:send(Socket, Lines) of
+                                ok ->
+                                    false;
+                                {error, _} ->
+                                    true
+                            end
+                    end,
+                    false,
+                    vmq_metrics:metrics(#{aggregate => false})
+                ),
             case DoReconnect of
                 true ->
                     gen_tcp:close(Socket),
@@ -182,7 +194,7 @@ handle_info(timeout, Socket) ->
                     Interval = vmq_config:get_env(graphite_interval, ?DEFAULT_INTERVAL),
                     {noreply, Socket, Interval}
             end
-     end.
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -207,7 +219,7 @@ terminate(_Reason, _State) ->
 %% @end
 %%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
-        {ok, State}.
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
@@ -219,24 +231,37 @@ lines(APIKey, Prefix, Metric, Val) ->
 
 lines(APIKey, Prefix, Metric, Labels, Val) ->
     %% Always generate the metric with no labels
-    [line(APIKey, Prefix, Metric, no_label, Val)
-     |[line(APIKey, Prefix, Metric, Label, Val) || Label <- Labels]].
+    [
+        line(APIKey, Prefix, Metric, no_label, Val)
+        | [line(APIKey, Prefix, Metric, Label, Val) || Label <- Labels]
+    ].
 
 line(APIKey, Prefix, Metric, Label, {Count, Sum, Buckets}) when is_map(Buckets) ->
     SMetric = atom_to_list(Metric),
     CountLine = line(APIKey, Prefix, SMetric ++ "_count", Label, Count),
     SumLine = line(APIKey, Prefix, SMetric ++ "_sum", Label, Sum),
     Ret =
-    maps:fold(
-      fun(Bucket, BucketValue, Acc) ->
-              [line(APIKey, Prefix, SMetric ++ "_"
-                    ++ case Bucket of
-                           infinity -> "bucket_inf";
-                           _ -> "bucket_" ++ value(Bucket)
-                       end, Label, BucketValue)| Acc]
-      end, [CountLine, SumLine], Buckets),
+        maps:fold(
+            fun(Bucket, BucketValue, Acc) ->
+                [
+                    line(
+                        APIKey,
+                        Prefix,
+                        SMetric ++ "_" ++
+                            case Bucket of
+                                infinity -> "bucket_inf";
+                                _ -> "bucket_" ++ value(Bucket)
+                            end,
+                        Label,
+                        BucketValue
+                    )
+                    | Acc
+                ]
+            end,
+            [CountLine, SumLine],
+            Buckets
+        ),
     Ret;
-
 line(APIKey, Prefix, Metric, Label, Val) ->
     [key(APIKey, Prefix, Metric, Label), " ", value(Val), " ", timestamp(), $\n].
 
@@ -258,12 +283,12 @@ key(APIKey, Prefix, Metric) ->
 name(Metric) when is_atom(Metric) ->
     name(atom_to_list(Metric));
 name(Metric) ->
-    [T|F] = lists:reverse(re:split(Metric, "_", [{return, list}])),
+    [T | F] = lists:reverse(re:split(Metric, "_", [{return, list}])),
     [[I, $.] || I <- lists:reverse(F)] ++ [T].
 
 %% Add value, int or float, converted to list
 value(V) when is_integer(V) -> integer_to_list(V);
-value(V) when is_float(V)   -> float_to_list(V);
+value(V) when is_float(V) -> float_to_list(V);
 value(_) -> 0.
 
 timestamp() ->
@@ -272,5 +297,5 @@ timestamp() ->
 unix_time() ->
     datetime_to_unix_time(erlang:universaltime()).
 
-datetime_to_unix_time({{_,_,_},{_,_,_}} = DateTime) ->
+datetime_to_unix_time({{_, _, _}, {_, _, _}} = DateTime) ->
     calendar:datetime_to_gregorian_seconds(DateTime) - ?UNIX_EPOCH.

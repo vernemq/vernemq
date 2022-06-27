@@ -6,44 +6,46 @@
 
 -type counter_type() :: requests | errors | bytes_sent.
 -type hook() ::
-    on_register |
-    on_register_m5 |
-    auth_on_publish |
-    auth_on_publish_m5 |
-    auth_on_register |
-    auth_on_register_m5 |
-    auth_on_subscribe |
-    auth_on_subscribe_m5 |
-    on_auth_m5 |
-    on_deliver |
-    on_deliver_m5 |
-    on_unsubscribe |
-    on_unsubscribe_m5 |
-    on_publish |
-    on_publish_m5 |
-    on_subscribe |
-    on_subscribe_m5 |
-    on_message_drop |
-    on_topic_unsubscribed |
-    on_session_expired |
-    on_offline_message |
-    on_config_change |
-    on_client_wakeup |
-    on_client_offline |
-    on_client_gone.
+    on_register
+    | on_register_m5
+    | auth_on_publish
+    | auth_on_publish_m5
+    | auth_on_register
+    | auth_on_register_m5
+    | auth_on_subscribe
+    | auth_on_subscribe_m5
+    | on_auth_m5
+    | on_deliver
+    | on_deliver_m5
+    | on_unsubscribe
+    | on_unsubscribe_m5
+    | on_publish
+    | on_publish_m5
+    | on_subscribe
+    | on_subscribe_m5
+    | on_message_drop
+    | on_topic_unsubscribed
+    | on_session_expired
+    | on_offline_message
+    | on_config_change
+    | on_client_wakeup
+    | on_client_offline
+    | on_client_gone.
 
--spec metrics() -> [{Type, Labels, Id, Description, Name, Value}]
-    when Type :: atom(),
-         Labels :: [metric_label()],
-         Id :: metric_id(),
-         Description :: undefined | binary(),
-         Name :: binary(),
-         Value :: term().
+-spec metrics() -> [{Type, Labels, Id, Description, Name, Value}] when
+    Type :: atom(),
+    Labels :: [metric_label()],
+    Id :: metric_id(),
+    Description :: undefined | binary(),
+    Name :: binary(),
+    Value :: term().
 metrics() ->
     MetricKeys = [{H, CT} || H <- all_hooks(), CT <- all_counter_types()],
     CounterRef = persistent_term:get(?MODULE),
-    [hook_and_counter_type_to_metric(CounterRef, Hook, CounterType)
-     || {Hook, CounterType} <- MetricKeys].
+    [
+        hook_and_counter_type_to_metric(CounterRef, Hook, CounterType)
+     || {Hook, CounterType} <- MetricKeys
+    ].
 
 hook_and_counter_type_to_metric(CounterRef, Hook, CounterType) ->
     Index = met2idx(Hook, CounterType),
@@ -82,31 +84,33 @@ incr(Hook, CounterType, Value) ->
 
 -spec all_hooks() -> [hook()].
 all_hooks() ->
-    [on_register,
-     on_register_m5,
-     auth_on_publish,
-     auth_on_publish_m5,
-     auth_on_register,
-     auth_on_register_m5,
-     auth_on_subscribe,
-     auth_on_subscribe_m5,
-     on_auth_m5,
-     on_deliver,
-     on_deliver_m5,
-     on_unsubscribe,
-     on_unsubscribe_m5,
-     on_publish,
-     on_publish_m5,
-     on_subscribe,
-     on_subscribe_m5,
-     on_message_drop,
-     on_topic_unsubscribed,
-     on_session_expired,
-     on_offline_message,
-     on_config_change,
-     on_client_wakeup,
-     on_client_offline,
-     on_client_gone].
+    [
+        on_register,
+        on_register_m5,
+        auth_on_publish,
+        auth_on_publish_m5,
+        auth_on_register,
+        auth_on_register_m5,
+        auth_on_subscribe,
+        auth_on_subscribe_m5,
+        on_auth_m5,
+        on_deliver,
+        on_deliver_m5,
+        on_unsubscribe,
+        on_unsubscribe_m5,
+        on_publish,
+        on_publish_m5,
+        on_subscribe,
+        on_subscribe_m5,
+        on_message_drop,
+        on_topic_unsubscribed,
+        on_session_expired,
+        on_offline_message,
+        on_config_change,
+        on_client_wakeup,
+        on_client_offline,
+        on_client_gone
+    ].
 
 -spec all_counter_types() -> [counter_type()].
 all_counter_types() ->

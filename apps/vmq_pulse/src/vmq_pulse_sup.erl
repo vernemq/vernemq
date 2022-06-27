@@ -23,9 +23,7 @@
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
--define(CHILD(Id, Mod, Type, Args), {Id, {Mod, start_link, Args},
-                                     permanent, 5000, Type, [Mod]}).
-
+-define(CHILD(Id, Mod, Type, Args), {Id, {Mod, start_link, Args}, permanent, 5000, Type, [Mod]}).
 
 %%====================================================================
 %% API functions
@@ -40,7 +38,7 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
-    {ok, { {one_for_all, 0, 1}, [?CHILD(vmq_pulse_exporter, vmq_pulse_exporter, worker, [])]} }.
+    {ok, {{one_for_all, 0, 1}, [?CHILD(vmq_pulse_exporter, vmq_pulse_exporter, worker, [])]}}.
 
 %%====================================================================
 %% Internal functions

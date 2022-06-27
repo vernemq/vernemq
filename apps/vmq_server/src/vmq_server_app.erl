@@ -45,16 +45,21 @@ start(_StartType, _StartArgs) ->
 
 start_user_plugins() ->
     Plugins = application:get_env(vmq_server, user_plugins, []),
-    [ start_user_plugin(P) || P <- Plugins ].
+    [start_user_plugin(P) || P <- Plugins].
 
-start_user_plugin({_Order, #{path := Path,
-                             name := PluginName}}) ->
-    Res = case Path of
-              undefined ->
-                  vmq_plugin_mgr:enable_plugin(PluginName);
-              _ ->
-                  vmq_plugin_mgr:enable_plugin(PluginName, [{path, Path}])
-          end,
+start_user_plugin(
+    {_Order, #{
+        path := Path,
+        name := PluginName
+    }}
+) ->
+    Res =
+        case Path of
+            undefined ->
+                vmq_plugin_mgr:enable_plugin(PluginName);
+            _ ->
+                vmq_plugin_mgr:enable_plugin(PluginName, [{path, Path}])
+        end,
     case Res of
         ok ->
             ok;

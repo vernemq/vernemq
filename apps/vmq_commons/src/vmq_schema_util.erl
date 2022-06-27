@@ -8,12 +8,13 @@ file_exists(Filename) ->
     case file:read_file_info(Filename) of
         {error, enonent} ->
             false;
-        _ -> true
+        _ ->
+            true
     end.
 
 file_is_readable(Filename) ->
     case file:read_file_info(Filename) of
-        {ok, #file_info{access=Access}} when Access =:= read; Access =:= read_write ->
+        {ok, #file_info{access = Access}} when Access =:= read; Access =:= read_write ->
             %% we can read the file
             true;
         _ ->
@@ -26,7 +27,7 @@ file_is_pem_content(Filename) ->
         {ok, FileContents} ->
             case catch public_key:pem_decode(FileContents) of
                 [] -> false;
-                [_|_] -> true
+                [_ | _] -> true
             end;
         _ ->
             false

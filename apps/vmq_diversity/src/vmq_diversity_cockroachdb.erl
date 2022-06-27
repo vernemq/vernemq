@@ -16,9 +16,11 @@
 -include_lib("luerl/include/luerl.hrl").
 
 %% API functions
--export([install/1,
-         squery/2,
-         equery/3]).
+-export([
+    install/1,
+    squery/2,
+    equery/3
+]).
 
 %%%===================================================================
 %%% API functions
@@ -38,9 +40,9 @@ equery(PoolName, Stmt, Params) ->
 %%%===================================================================
 table() ->
     [
-     {<<"execute">>, #erl_func{code=fun execute/2}},
-     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}},
-     {<<"hash_method">>, #erl_func{code=fun hash_method/2}}
+        {<<"execute">>, #erl_func{code = fun execute/2}},
+        {<<"ensure_pool">>, #erl_func{code = fun ensure_pool/2}},
+        {<<"hash_method">>, #erl_func{code = fun hash_method/2}}
     ].
 
 execute(As, St) ->
@@ -53,4 +55,4 @@ hash_method(_, St) ->
     {ok, DBConfigs} = application:get_env(vmq_diversity, db_config),
     DefaultConf = proplists:get_value(cockroachdb, DBConfigs),
     HashMethod = proplists:get_value(password_hash_method, DefaultConf),
-    {[atom_to_binary(HashMethod,utf8)], St}.
+    {[atom_to_binary(HashMethod, utf8)], St}.

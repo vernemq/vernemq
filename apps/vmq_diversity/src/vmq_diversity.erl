@@ -14,10 +14,12 @@
 
 -module(vmq_diversity).
 
--export([start/0,
-         load_script/1,
-         reload_script/1,
-         unload_script/1]).
+-export([
+    start/0,
+    load_script/1,
+    reload_script/1,
+    unload_script/1
+]).
 
 start() ->
     {ok, _} = application:ensure_all_started(vmq_diversity),

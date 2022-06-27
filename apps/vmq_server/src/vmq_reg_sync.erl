@@ -16,24 +16,30 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0,
-         sync/3, sync/4,
-         async/3, async/4,
-         done/3,
-         status/1, status/2]).
+-export([
+    start_link/0,
+    sync/3, sync/4,
+    async/3, async/4,
+    done/3,
+    status/1, status/2
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -define(SERVER, ?MODULE).
 
--record(state, {sync_queues=maps:new(),
-                running=maps:new()}).
+-record(state, {
+    sync_queues = maps:new(),
+    running = maps:new()
+}).
 
 %%%===================================================================
 %%% API
@@ -83,7 +89,8 @@ async(SyncKey, Fun, SyncNode, Timeout) ->
     call(SyncNode, {async, Owner, SyncKey, Fun, Timeout}).
 
 call(Node, Req) ->
-    try gen_server:call({?SERVER, Node}, Req, infinity)
+    try
+        gen_server:call({?SERVER, Node}, Req, infinity)
     catch
         _:_ ->
             %% mostly happens in case of a netsplit
@@ -117,7 +124,7 @@ handle_call({sync, Owner, SyncKey, Fun, Timeout}, From, State) ->
 handle_call({async, Owner, SyncKey, Fun, Timeout}, _From, State) ->
     NewState1 = sync_queue_in(SyncKey, {Fun, Owner, undefined, Timeout}, State),
     {reply, ok, sync_action(SyncKey, NewState1)};
-handle_call({status, SyncKey}, _From, #state{running=Running} = State) ->
+handle_call({status, SyncKey}, _From, #state{running = Running} = State) ->
     SyncQ = get_sync_queue(SyncKey, State),
     NumQueued = queue:len(SyncQ),
     Reply = {NumQueued, maps:is_key(SyncKey, Running)},
@@ -135,12 +142,12 @@ terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
-        {ok, State}.
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-get_sync_queue(SyncKey, #state{sync_queues=SyncQs}) ->
+get_sync_queue(SyncKey, #state{sync_queues = SyncQs}) ->
     case maps:find(SyncKey, SyncQs) of
         {ok, Q} ->
             Q;
@@ -148,10 +155,10 @@ get_sync_queue(SyncKey, #state{sync_queues=SyncQs}) ->
             queue:new()
     end.
 
-update_sync_queue(SyncKey, SyncQ, #state{sync_queues=SyncQs} = State) ->
+update_sync_queue(SyncKey, SyncQ, #state{sync_queues = SyncQs} = State) ->
     case queue:is_empty(SyncQ) of
-        true -> State#state{sync_queues=maps:remove(SyncKey, SyncQs)};
-        false -> State#state{sync_queues=maps:put(SyncKey, SyncQ, SyncQs)}
+        true -> State#state{sync_queues = maps:remove(SyncKey, SyncQs)};
+        false -> State#state{sync_queues = maps:put(SyncKey, SyncQ, SyncQs)}
     end.
 
 sync_queue_in(SyncKey, QItem, State) ->
@@ -168,7 +175,7 @@ sync_queue_out(SyncKey, State) ->
             empty
     end.
 
-sync_action(SyncKey, #state{running=Running} = State) ->
+sync_action(SyncKey, #state{running = Running} = State) ->
     case maps:find(SyncKey, Running) of
         {ok, ActionPid} ->
             case alive(ActionPid) of
@@ -184,11 +191,17 @@ sync_action(SyncKey, #state{running=Running} = State) ->
                 {ok, {{Fun, Owner, From, Timeout}, NewState}} ->
                     case alive(Owner) of
                         true ->
-                            {ok, ActionPid} = vmq_reg_sync_action_sup:start_action(self(), Owner, Fun, Timeout),
+                            {ok, ActionPid} = vmq_reg_sync_action_sup:start_action(
+                                self(), Owner, Fun, Timeout
+                            ),
                             NewState#state{
-                              % #{SyncKey => Pid, Pid => {SyncKey, From}}
-                              running=maps:put(SyncKey, ActionPid,
-                                               maps:put(ActionPid, {SyncKey, From}, Running))};
+                                % #{SyncKey => Pid, Pid => {SyncKey, From}}
+                                running = maps:put(
+                                    SyncKey,
+                                    ActionPid,
+                                    maps:put(ActionPid, {SyncKey, From}, Running)
+                                )
+                            };
                         false ->
                             %% cleanup if an owner terminated
                             %% while another SyncAction was running
@@ -199,7 +212,7 @@ sync_action(SyncKey, #state{running=Running} = State) ->
             end
     end.
 
-sync_action_cleanup(Pid, Reply, #state{running=Running} = State) ->
+sync_action_cleanup(Pid, Reply, #state{running = Running} = State) ->
     case maps:find(Pid, Running) of
         error ->
             %% Unknown task completion message - perhaps this node was
@@ -214,13 +227,14 @@ sync_action_cleanup(Pid, Reply, #state{running=Running} = State) ->
                     reply(From, Reply)
             end,
             NewRunning = maps:remove(Pid, maps:remove(SyncKey, Running)),
-            sync_action(SyncKey, State#state{running=NewRunning})
+            sync_action(SyncKey, State#state{running = NewRunning})
     end.
 
 alive(Pid) ->
     Node = node(),
     case node(Pid) of
-        Node -> is_process_alive(Pid);
+        Node ->
+            is_process_alive(Pid);
         _ ->
             case rpc:pinfo(Pid, [status]) of
                 [{status, _}] -> true;

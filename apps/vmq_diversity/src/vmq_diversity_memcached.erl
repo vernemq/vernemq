@@ -19,16 +19,20 @@
 -behaviour(poolboy_worker).
 
 %% API functions
--export([start_link/1,
-         install/1]).
+-export([
+    start_link/1,
+    install/1
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -import(luerl_lib, [badarg_error/3]).
 
@@ -44,10 +48,9 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec start_link(Args::list()) -> {ok, Pid::pid()} | {error, Error::term()}.
+-spec start_link(Args :: list()) -> {ok, Pid :: pid()} | {error, Error :: term()}.
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
-
 
 install(St) ->
     luerl_emul:alloc_table(table(), St).
@@ -69,7 +72,7 @@ install(St) ->
 %%--------------------------------------------------------------------
 init(Args) ->
     {ok, Conn} = mcd:start_link(Args),
-    {ok, #state{conn=Conn}}.
+    {ok, #state{conn = Conn}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -85,7 +88,7 @@ init(Args) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({q, Command}, _From, #state{conn=Conn}=State) ->
+handle_call({q, Command}, _From, #state{conn = Conn} = State) ->
     {reply, handle_command(Conn, Command), State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -146,92 +149,116 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 table() ->
     [
-     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}}
-    ,{<<"flush_all">>, #erl_func{code=fun flush_all/2}}
-    ,{<<"get">>, #erl_func{code=fun get/2}}
-    ,{<<"set">>, #erl_func{code=fun set/2}}
-    ,{<<"delete">>, #erl_func{code=fun delete/2}}
-    ,{<<"add">>, #erl_func{code=fun add/2}}
-    ,{<<"replace">>, #erl_func{code=fun replace/2}}
+        {<<"ensure_pool">>, #erl_func{code = fun ensure_pool/2}},
+        {<<"flush_all">>, #erl_func{code = fun flush_all/2}},
+        {<<"get">>, #erl_func{code = fun get/2}},
+        {<<"set">>, #erl_func{code = fun set/2}},
+        {<<"delete">>, #erl_func{code = fun delete/2}},
+        {<<"add">>, #erl_func{code = fun add/2}},
+        {<<"replace">>, #erl_func{code = fun replace/2}}
     ].
 
 flush_all([_] = As, St) ->
     Cmd = [flush_all],
     do_cmd(Cmd, As, St).
 
-get([_,Key] = As, St) when is_binary(Key) ->
+get([_, Key] = As, St) when is_binary(Key) ->
     Cmd = [get, Key],
     do_cmd(Cmd, As, St).
 
-set([_,Key, Val, Expiration] = As, St)
-  when is_binary(Key), is_binary(Val), is_number(Expiration) ->
+set([_, Key, Val, Expiration] = As, St) when
+    is_binary(Key), is_binary(Val), is_number(Expiration)
+->
     Cmd = [{set, 16#abba, trunc(Expiration)}, Key, Val],
     do_cmd(Cmd, As, St);
-set([_,Key, Val] = As, St) when is_binary(Key), is_binary(Val) ->
+set([_, Key, Val] = As, St) when is_binary(Key), is_binary(Val) ->
     Exp = 0,
     set(As ++ [Exp], St).
 
-delete([_,Key] = As, St) when is_binary(Key) ->
+delete([_, Key] = As, St) when is_binary(Key) ->
     Cmd = [delete, Key],
     do_cmd(Cmd, As, St).
 
-add([_,Key, Val, Expiration] = As, St)
-  when is_binary(Key), is_binary(Val), is_number(Expiration) ->
+add([_, Key, Val, Expiration] = As, St) when
+    is_binary(Key), is_binary(Val), is_number(Expiration)
+->
     Cmd = [{add, 16#abba, trunc(Expiration)}, Key, Val],
     do_cmd(Cmd, As, St);
-add([_,Key, Val] = As, St) when is_binary(Key), is_binary(Val) ->
+add([_, Key, Val] = As, St) when is_binary(Key), is_binary(Val) ->
     Exp = 0,
     add(As ++ [Exp], St).
 
-replace([_,Key, Val, Expiration] = As, St)
-  when is_binary(Key), is_binary(Val), is_number(Expiration) ->
+replace([_, Key, Val, Expiration] = As, St) when
+    is_binary(Key), is_binary(Val), is_number(Expiration)
+->
     Cmd = [{replace, 16#abba, trunc(Expiration)}, Key, Val],
     do_cmd(Cmd, As, St);
-replace([_,Key, Val] = As, St)
-  when is_binary(Key), is_binary(Val) ->
+replace([_, Key, Val] = As, St) when
+    is_binary(Key), is_binary(Val)
+->
     Exp = 0,
     replace(As ++ [Exp], St).
 
-do_cmd(Cmd, [BPoolId|_] = As, St) ->
+do_cmd(Cmd, [BPoolId | _] = As, St) ->
     PoolId = pool_id(BPoolId, As, St),
     Res = pbtrans(PoolId, Cmd),
     case Res of
-        {ok, deleted} -> {[true], St};
-        {ok, flushed} -> {[true], St};
+        {ok, deleted} ->
+            {[true], St};
+        {ok, flushed} ->
+            {[true], St};
         {ok, Ret0} ->
             {Ret1, NewSt} = luerl:encode(Ret0, St),
             {[Ret1], NewSt};
-        {error, _} -> {[false], St};
+        {error, _} ->
+            {[false], St};
         _ ->
             {[false], St}
     end.
 
 pbtrans(PoolName, Command) ->
-    poolboy:transaction(PoolName,
-                        fun(Worker) ->
-                                gen_server:call(Worker, {q, Command})
-                        end).
+    poolboy:transaction(
+        PoolName,
+        fun(Worker) ->
+            gen_server:call(Worker, {q, Command})
+        end
+    ).
 
 handle_command(Conn, Cmd) when is_list(Cmd) ->
     erlang:apply(mcd, do, [Conn | Cmd]).
 
 ensure_pool(As, St) ->
     case As of
-        [Config0|_] ->
+        [Config0 | _] ->
             case luerl:decode(Config0, St) of
                 Config when is_list(Config) ->
                     Options = vmq_diversity_utils:map(Config),
-                    PoolId = vmq_diversity_utils:atom(maps:get(<<"pool_id">>,
-                                                               Options,
-                                                               pool_memcached)),
+                    PoolId = vmq_diversity_utils:atom(
+                        maps:get(
+                            <<"pool_id">>,
+                            Options,
+                            pool_memcached
+                        )
+                    ),
 
-                    Host = vmq_diversity_utils:str(maps:get(<<"host">>,
-                                                            Options, "127.0.0.1")),
-                    Port = vmq_diversity_utils:int(maps:get(<<"port">>, Options,
-                                                            11211)),
+                    Host = vmq_diversity_utils:str(
+                        maps:get(
+                            <<"host">>,
+                            Options,
+                            "127.0.0.1"
+                        )
+                    ),
+                    Port = vmq_diversity_utils:int(
+                        maps:get(
+                            <<"port">>,
+                            Options,
+                            11211
+                        )
+                    ),
                     NewOptions = [{host, Host}, {port, Port}],
                     vmq_diversity_sup:start_all_pools(
-                      [{memcached, [{id, PoolId}, {opts, NewOptions}]}], []),
+                        [{memcached, [{id, PoolId}, {opts, NewOptions}]}], []
+                    ),
 
                     %% mcd doesn't connect immediately, so we have to
                     %% wait for it to do so.
@@ -257,7 +284,7 @@ wait_for_connection(PoolId, Timeout) when Timeout > 0 ->
         _ ->
             ok
     end;
-wait_for_connection(_,_) ->
+wait_for_connection(_, _) ->
     error.
 
 pool_id(BPoolId, As, St) ->

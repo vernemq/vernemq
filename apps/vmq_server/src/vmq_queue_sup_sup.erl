@@ -16,13 +16,15 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/3,
-         start_queue/1,
-         start_queue/2,
-         get_queue_pid/1,
-         fold_queues/2,
-         summary/0,
-         nr_of_queues/0]).
+-export([
+    start_link/3,
+    start_queue/1,
+    start_queue/2,
+    get_queue_pid/1,
+    fold_queues/2,
+    summary/0,
+    nr_of_queues/0
+]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -47,16 +49,24 @@ init([Shutdown, MaxR, MaxT]) ->
         {one_for_one, 1, 5},
     ChildSpec =
         fun(RegName, QueueTabId) ->
-                {{RegName, QueueTabId},
-                 {vmq_queue_sup, start_link, [Shutdown, RegName, QueueTabId, MaxR, MaxT]},
-                 permanent, 5000, supervisor, [vmq_queue_sup]}
+            {
+                {RegName, QueueTabId},
+                {vmq_queue_sup, start_link, [Shutdown, RegName, QueueTabId, MaxR, MaxT]},
+                permanent,
+                5000,
+                supervisor,
+                [vmq_queue_sup]
+            }
         end,
 
     ChildSpecs =
-        [ChildSpec(
-           gen_sup_name(N),
-           gen_queue_tab_id(N))
-         || N <- lists:seq(0, NumSups)],
+        [
+            ChildSpec(
+                gen_sup_name(N),
+                gen_queue_tab_id(N)
+            )
+         || N <- lists:seq(0, NumSups)
+        ],
     {ok, {SupFlags, ChildSpecs}}.
 %%====================================================================
 %% Internal functions
@@ -95,38 +105,41 @@ get_queue_pid(SubscriberId) ->
 
 fold_queues(FoldFun, Acc) ->
     lists:foldl(
-      fun(QueueTabId, AccAcc) ->
-              vmq_queue_sup:fold_queues(QueueTabId, FoldFun, AccAcc)
-      end,
-      Acc,
-      child_tab_ids()).
+        fun(QueueTabId, AccAcc) ->
+            vmq_queue_sup:fold_queues(QueueTabId, FoldFun, AccAcc)
+        end,
+        Acc,
+        child_tab_ids()
+    ).
 
 summary() ->
     fold_queues(
-      fun(_, QPid, {AccOnline, AccWait, AccDrain, AccOffline, AccStoredMsgs} = Acc) ->
-              try vmq_queue:status(QPid) of
-                  {_, _, _, _, true} ->
-                      %% this is a queue belonging to a plugin... ignore it
-                      Acc;
-                  {online, _, TotalStoredMsgs, _, _} ->
-                      {AccOnline + 1, AccWait, AccDrain, AccOffline, AccStoredMsgs + TotalStoredMsgs};
-                  {wait_for_offline, _, TotalStoredMsgs, _, _} ->
-                      {AccOnline, AccWait + 1, AccDrain, AccOffline, AccStoredMsgs + TotalStoredMsgs};
-                  {drain, _, TotalStoredMsgs, _, _} ->
-                      {AccOnline, AccWait, AccDrain + 1, AccOffline, AccStoredMsgs + TotalStoredMsgs};
-                  {offline, _, TotalStoredMsgs, _, _} ->
-                      {AccOnline, AccWait, AccDrain, AccOffline + 1, AccStoredMsgs + TotalStoredMsgs}
-              catch
-                  _:_ ->
-                      %% queue stopped in the meantime, that's ok.
-                      Acc
-              end
-      end, {0, 0, 0, 0, 0}).
+        fun(_, QPid, {AccOnline, AccWait, AccDrain, AccOffline, AccStoredMsgs} = Acc) ->
+            try vmq_queue:status(QPid) of
+                {_, _, _, _, true} ->
+                    %% this is a queue belonging to a plugin... ignore it
+                    Acc;
+                {online, _, TotalStoredMsgs, _, _} ->
+                    {AccOnline + 1, AccWait, AccDrain, AccOffline, AccStoredMsgs + TotalStoredMsgs};
+                {wait_for_offline, _, TotalStoredMsgs, _, _} ->
+                    {AccOnline, AccWait + 1, AccDrain, AccOffline, AccStoredMsgs + TotalStoredMsgs};
+                {drain, _, TotalStoredMsgs, _, _} ->
+                    {AccOnline, AccWait, AccDrain + 1, AccOffline, AccStoredMsgs + TotalStoredMsgs};
+                {offline, _, TotalStoredMsgs, _, _} ->
+                    {AccOnline, AccWait, AccDrain, AccOffline + 1, AccStoredMsgs + TotalStoredMsgs}
+            catch
+                _:_ ->
+                    %% queue stopped in the meantime, that's ok.
+                    Acc
+            end
+        end,
+        {0, 0, 0, 0, 0}
+    ).
 
 child_tab_ids() ->
-    [ gen_queue_tab_id(N) || N <- lists:seq(0, num_child_sups()) ].
+    [gen_queue_tab_id(N) || N <- lists:seq(0, num_child_sups())].
 
 nr_of_queues() ->
     lists:sum(
-      [vmq_queue_sup:nr_of_queues(QueueTabId) || QueueTabId <- child_tab_ids()]
-     ).
+        [vmq_queue_sup:nr_of_queues(QueueTabId) || QueueTabId <- child_tab_ids()]
+    ).

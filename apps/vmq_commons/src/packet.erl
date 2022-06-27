@@ -1,26 +1,28 @@
 -module(packet).
 -include_lib("vmq_commons/include/vmq_types.hrl").
--export([expect_packet/3,
-         expect_packet/4,
-         expect_packet/5,
-         do_client_connect/3,
-         gen_connect/2,
-         gen_connack/0,
-         gen_connack/1,
-         gen_connack/2,
-         gen_publish/4,
-         gen_puback/1,
-         gen_pubrec/1,
-         gen_pubrel/1,
-         gen_pubcomp/1,
-         gen_subscribe/2,
-         gen_subscribe/3,
-         gen_suback/2,
-         gen_unsubscribe/2,
-         gen_unsuback/1,
-         gen_pingreq/0,
-         gen_pingresp/0,
-         gen_disconnect/0]).
+-export([
+    expect_packet/3,
+    expect_packet/4,
+    expect_packet/5,
+    do_client_connect/3,
+    gen_connect/2,
+    gen_connack/0,
+    gen_connack/1,
+    gen_connack/2,
+    gen_publish/4,
+    gen_puback/1,
+    gen_pubrec/1,
+    gen_pubrel/1,
+    gen_pubcomp/1,
+    gen_subscribe/2,
+    gen_subscribe/3,
+    gen_suback/2,
+    gen_unsubscribe/2,
+    gen_unsuback/1,
+    gen_pingreq/0,
+    gen_pingresp/0,
+    gen_disconnect/0
+]).
 
 expect_packet(Socket, Name, Expected) ->
     expect_packet(gen_tcp, Socket, Name, Expected).
@@ -28,10 +30,10 @@ expect_packet(Transport, Socket, Name, Expected) ->
     expect_packet(Transport, Socket, Name, Expected, 15000).
 expect_packet(Transport, Socket, _Name, Expected, Timeout) ->
     RLen =
-    case byte_size(Expected) of
-        L when L > 0 -> L;
-        _ -> 1
-    end,
+        case byte_size(Expected) of
+            L when L > 0 -> L;
+            _ -> 1
+        end,
     case Transport:recv(Socket, RLen, Timeout) of
         {ok, Expected} ->
             ok;
@@ -48,15 +50,18 @@ diff(Rec1, Rec2) ->
     diff_record(Rec1, Rec2).
 
 diff_record(T1, T2) ->
-    [RecordName|L1] = tuple_to_list(T1),
-    [RecordName|L2] = tuple_to_list(T2),
+    [RecordName | L1] = tuple_to_list(T1),
+    [RecordName | L2] = tuple_to_list(T2),
     Fields = fields(RecordName),
     PL1 = lists:zip(Fields, L1),
     PL2 = lists:zip(Fields, L2),
-    [begin
-         {_,VD} = lists:keyfind(K, 1, PL2),
-         {K, V, VD}
-     end || {K,V} = I <- PL1, lists:keyfind(K, 1, PL2) /= I].
+    [
+        begin
+            {_, VD} = lists:keyfind(K, 1, PL2),
+            {K, V, VD}
+        end
+     || {K, V} = I <- PL1, lists:keyfind(K, 1, PL2) /= I
+    ].
 
 fields(mqtt_publish) -> record_info(fields, mqtt_publish);
 fields(mqtt_connect) -> record_info(fields, mqtt_connect);
@@ -76,8 +81,13 @@ do_client_connect(ConnectPacket, ConnackPacket, Opts) ->
     Timeout = proplists:get_value(timeout, Opts, 60000),
     Transport = proplists:get_value(transport, Opts, gen_tcp),
     ConnackError = proplists:get_value(connack_error, Opts, "connack"),
-    ConnOpts = [binary, {reuseaddr, true},{active, false}, {packet, raw}|
-                proplists:get_value(conn_opts, Opts, [])],
+    ConnOpts = [
+        binary,
+        {reuseaddr, true},
+        {active, false},
+        {packet, raw}
+        | proplists:get_value(conn_opts, Opts, [])
+    ],
     case Transport:connect(Host, Port, ConnOpts, Timeout) of
         {ok, Socket} ->
             Transport:send(Socket, ConnectPacket),

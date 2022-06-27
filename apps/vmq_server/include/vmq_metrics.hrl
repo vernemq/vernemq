@@ -1,14 +1,14 @@
-
 -type metric_label() :: {atom(), string()}.
 
 -type metric_id() :: atom() | {atom(), non_neg_integer() | atom()}.
 
--record(metric_def,
-        {type        :: atom(),
-         labels      :: [metric_label()],
-         id          :: metric_id(),
-         name        :: atom(),
-         description :: undefined | binary()}).
+-record(metric_def, {
+    type :: atom(),
+    labels :: [metric_label()],
+    id :: metric_id(),
+    name :: atom(),
+    description :: undefined | binary()
+}).
 -type metric_def() :: #metric_def{}.
 
 -type metric_val() :: {Def :: metric_def(), Val :: any()}.
@@ -45,7 +45,6 @@
 -define(MQTT5_AUTH_SENT, mqtt5_auth_sent).
 -define(MQTT5_AUTH_RECEIVED, mqtt5_auth_received).
 -define(MQTT5_CLIENT_KEEPALIVE_EXPIRED, mqtt5_client_keepalive_expired).
-
 
 -define(MQTT4_CONNACK_SENT, mqtt_connack_sent).
 -define(MQTT4_CONNECT_RECEIVED, mqtt_connect_received).
@@ -84,7 +83,8 @@
 -define(METRIC_QUEUE_MESSAGE_UNHANDLED, queue_message_unhandled).
 -define(METRIC_QUEUE_MESSAGE_IN, queue_message_in).
 -define(METRIC_QUEUE_MESSAGE_OUT, queue_message_out).
--define(METRIC_CLIENT_EXPIRED, client_expired). %% unused/deprecated
+%% unused/deprecated
+-define(METRIC_CLIENT_EXPIRED, client_expired).
 -define(METRIC_CLUSTER_BYTES_RECEIVED, cluster_bytes_received).
 -define(METRIC_CLUSTER_BYTES_SENT, cluster_bytes_sent).
 -define(METRIC_CLUSTER_BYTES_DROPPED, cluster_bytes_dropped).

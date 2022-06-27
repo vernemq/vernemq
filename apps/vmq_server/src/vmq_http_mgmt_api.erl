@@ -16,19 +16,23 @@
 -behaviour(vmq_http_config).
 
 %% cowboy rest handler callbacks
--export([init/2,
-         allowed_methods/2,
-         content_types_provided/2,
-         options/2,
-         is_authorized/2,
-         malformed_request/2,
-         to_json/2]).
+-export([
+    init/2,
+    allowed_methods/2,
+    content_types_provided/2,
+    options/2,
+    is_authorized/2,
+    malformed_request/2,
+    to_json/2
+]).
 
--export([routes/0,
-         create_api_key/0,
-         add_api_key/1,
-         delete_api_key/1,
-         list_api_keys/0]).
+-export([
+    routes/0,
+    create_api_key/0,
+    add_api_key/1,
+    delete_api_key/1,
+    list_api_keys/0
+]).
 
 -define(ENV_API_KEYS, http_mgmt_api_keys).
 
@@ -46,10 +50,12 @@ content_types_provided(Req, State) ->
 
 options(Req0, State) ->
     %% Set CORS Headers
-    CorsHeaders = #{<<"access-control-max-age">> => <<"1728000">>,
-                    <<"access-control-allow-methods">> => <<"HEAD, GET">>,
-                    <<"access-control-allow-headers">> => <<"content-type, authorization">>,
-                    <<"access-control-allow-origin">> => <<$*>>},
+    CorsHeaders = #{
+        <<"access-control-max-age">> => <<"1728000">>,
+        <<"access-control-allow-methods">> => <<"HEAD, GET">>,
+        <<"access-control-allow-headers">> => <<"content-type, authorization">>,
+        <<"access-control-allow-origin">> => <<$*>>
+    },
     {ok, cowboy_req:set_resp_headers(CorsHeaders, Req0), State}.
 
 is_authorized(Req, State) ->
@@ -90,10 +96,12 @@ to_json(Req, State) ->
     end.
 
 validate_command(Command, QsVals) ->
-    ParamsAndFlags= parse_qs(QsVals),
-    M0 = clique_command:match(parse_command(Command)
-                              ++ ParamsAndFlags
-                              ++ ["--format=json"]),
+    ParamsAndFlags = parse_qs(QsVals),
+    M0 = clique_command:match(
+        parse_command(Command) ++
+            ParamsAndFlags ++
+            ["--format=json"]
+    ),
     M1 = clique_parser:parse(M0),
     M2 = clique_parser:extract_global_flags(M1),
     clique_parser:validate(M2).
@@ -101,13 +109,14 @@ validate_command(Command, QsVals) ->
 parse_qs(QsVals) ->
     parse_qs(QsVals, []).
 
-parse_qs([{<<"--", Flag/binary>>, true}|Rest], Acc) ->
-    parse_qs(Rest, ["--" ++ binary_to_list(Flag)|Acc]);
-parse_qs([{<<"--", Opt/binary>>, Val}|Rest], Acc) ->
-    parse_qs(Rest, ["--" ++ binary_to_list(Opt) ++ "=" ++ binary_to_list(Val)|Acc]);
-parse_qs([{Param, Val}|Rest], Acc) ->
-    parse_qs(Rest, [binary_to_list(Param) ++ "=" ++ binary_to_list(Val)|Acc]);
-parse_qs([], Acc) -> lists:reverse(Acc).
+parse_qs([{<<"--", Flag/binary>>, true} | Rest], Acc) ->
+    parse_qs(Rest, ["--" ++ binary_to_list(Flag) | Acc]);
+parse_qs([{<<"--", Opt/binary>>, Val} | Rest], Acc) ->
+    parse_qs(Rest, ["--" ++ binary_to_list(Opt) ++ "=" ++ binary_to_list(Val) | Acc]);
+parse_qs([{Param, Val} | Rest], Acc) ->
+    parse_qs(Rest, [binary_to_list(Param) ++ "=" ++ binary_to_list(Val) | Acc]);
+parse_qs([], Acc) ->
+    lists:reverse(Acc).
 
 run_command(M3) ->
     {Res, _, _} = clique_command:run(M3),
@@ -116,12 +125,12 @@ run_command(M3) ->
 %% Command Aliases
 parse_command([<<"cluster">>]) -> parse_command([<<"cluster">>, <<"status">>]);
 parse_command([<<"sessions">>]) -> parse_command([<<"session">>, <<"show">>]);
-parse_command([<<"sessions">>|Rest]) -> parse_command([<<"session">>|Rest]);
+parse_command([<<"sessions">> | Rest]) -> parse_command([<<"session">> | Rest]);
 parse_command([<<"listeners">>]) -> parse_command([<<"listener">>, <<"show">>]);
-parse_command([<<"listeners">>|Rest]) -> parse_command([<<"listener">>|Rest]);
+parse_command([<<"listeners">> | Rest]) -> parse_command([<<"listener">> | Rest]);
 parse_command([<<"plugins">>]) -> parse_command([<<"plugin">>, <<"show">>]);
-parse_command([<<"plugins">>|Rest]) -> parse_command([<<"plugin">>|Rest]);
-parse_command(Command) -> ["vmq-admin"| [binary_to_list(C) || C <- Command]].
+parse_command([<<"plugins">> | Rest]) -> parse_command([<<"plugin">> | Rest]);
+parse_command(Command) -> ["vmq-admin" | [binary_to_list(C) || C <- Command]].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Cowboy Config
@@ -133,18 +142,19 @@ create_api_key() ->
     Chars = list_to_tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"),
     Size = size(Chars),
     F = fun() -> element(rand:uniform(Size), Chars) end,
-    ApiKey = list_to_binary([ F() || _ <- lists:seq(1,32) ]),
+    ApiKey = list_to_binary([F() || _ <- lists:seq(1, 32)]),
     add_api_key(ApiKey),
     ApiKey.
 
 add_api_key(ApiKey) when is_binary(ApiKey) ->
     Keys = vmq_config:get_env(vmq_server, ?ENV_API_KEYS, []),
     Keys1 = lists:delete(ApiKey, Keys),
-    vmq_config:set_global_env(vmq_server, ?ENV_API_KEYS, [ApiKey|Keys1], true).
+    vmq_config:set_global_env(vmq_server, ?ENV_API_KEYS, [ApiKey | Keys1], true).
 
 delete_api_key(ApiKey) ->
     case vmq_config:get_env(?ENV_API_KEYS, []) of
-        undefined -> ok;
+        undefined ->
+            ok;
         Keys when is_list(Keys) ->
             vmq_config:set_global_env(vmq_server, ?ENV_API_KEYS, Keys -- [ApiKey], true)
     end,

@@ -1,23 +1,22 @@
-{application, vmq_passwd,
- [
-  {description, "Simple User Management Plugin for VerneMQ"},
-  {vsn, git},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  crypto,
-                  clique
-                 ]},
-  {mod, { vmq_passwd_app, []}},
-  {env, [
-      {file, "priv/test.passwd"},
-      {interval, 10},
-      {vmq_config_enabled, true},
-      {vmq_plugin_hooks, [
-          {vmq_passwd, change_config, 1, [internal]},
-          {vmq_passwd, auth_on_register, 5, []},
-          {vmq_passwd, auth_on_register_m5, 6, []}
+{application, vmq_passwd, [
+    {description, "Simple User Management Plugin for VerneMQ"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto,
+        clique
+    ]},
+    {mod, {vmq_passwd_app, []}},
+    {env, [
+        {file, "priv/test.passwd"},
+        {interval, 10},
+        {vmq_config_enabled, true},
+        {vmq_plugin_hooks, [
+            {vmq_passwd, change_config, 1, [internal]},
+            {vmq_passwd, auth_on_register, 5, []},
+            {vmq_passwd, auth_on_register_m5, 6, []}
         ]}
     ]}
- ]}.
+]}.

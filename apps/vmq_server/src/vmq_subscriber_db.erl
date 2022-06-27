@@ -15,11 +15,13 @@
 -module(vmq_subscriber_db).
 -include("vmq_server.hrl").
 
--export([store/2,
-         read/1, read/2,
-         fold/2,
-         delete/1,
-         subscribe_db_events/0]).
+-export([
+    store/2,
+    read/1, read/2,
+    fold/2,
+    delete/1,
+    subscribe_db_events/0
+]).
 
 -import(vmq_subscriber, [check_format/1]).
 
@@ -30,16 +32,15 @@
 store(SubscriberId, Subs) ->
     vmq_metadata:put(?SUBSCRIBER_DB, SubscriberId, Subs).
 
--spec read(subscriber_id()) -> undefined |vmq_subscriber:subs().
+-spec read(subscriber_id()) -> undefined | vmq_subscriber:subs().
 read(SubscriberId) ->
     read(SubscriberId, undefined).
 
--spec read(subscriber_id(), any()) -> any() |vmq_subscriber:subs().
+-spec read(subscriber_id(), any()) -> any() | vmq_subscriber:subs().
 read(SubscriberId, Default) ->
     case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
         undefined -> Default;
-        Subs ->
-            check_format(Subs)
+        Subs -> check_format(Subs)
     end.
 
 -spec delete(subscriber_id()) -> ok.
@@ -47,27 +48,30 @@ delete(SubscriberId) ->
     vmq_metadata:delete(?SUBSCRIBER_DB, SubscriberId).
 
 fold(FoldFun, Acc) ->
-    vmq_metadata:fold(?SUBSCRIBER_DB,
-      fun ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
-          ({SubscriberId, Subs}, AccAcc) ->
-              FoldFun({SubscriberId, check_format(Subs)}, AccAcc)
-      end, Acc).
+    vmq_metadata:fold(
+        ?SUBSCRIBER_DB,
+        fun
+            ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
+            ({SubscriberId, Subs}, AccAcc) -> FoldFun({SubscriberId, check_format(Subs)}, AccAcc)
+        end,
+        Acc
+    ).
 
 subscribe_db_events() ->
     vmq_metadata:subscribe(?SUBSCRIBER_DB),
     fun
-        ({deleted, ?SUBSCRIBER_DB, _, Val})
-          when (Val == ?TOMBSTONE) or (Val == undefined) ->
+        ({deleted, ?SUBSCRIBER_DB, _, Val}) when
+            (Val == ?TOMBSTONE) or (Val == undefined)
+        ->
             ignore;
         ({deleted, ?SUBSCRIBER_DB, SubscriberId, Subscriptions}) ->
             {delete, SubscriberId, check_format(Subscriptions)};
-        ({updated, ?SUBSCRIBER_DB, SubscriberId, OldVal, NewSubs})
-          when (OldVal == ?TOMBSTONE) or (OldVal == undefined) ->
+        ({updated, ?SUBSCRIBER_DB, SubscriberId, OldVal, NewSubs}) when
+            (OldVal == ?TOMBSTONE) or (OldVal == undefined)
+        ->
             {update, SubscriberId, [], check_format(NewSubs)};
         ({updated, ?SUBSCRIBER_DB, SubscriberId, OldSubs, NewSubs}) ->
             {update, SubscriberId, check_format(OldSubs), check_format(NewSubs)};
         (_) ->
             ignore
     end.
-
-

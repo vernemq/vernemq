@@ -1,40 +1,45 @@
-{application, vmq_bridge,
- [
-  {description, "Bridge Plugin for VMQ"},
-  {vsn, git},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  clique
-                 ]},
-  {mod, { vmq_bridge_app, []}},
-  {env, [
-         {registry_mfa, {vmq_reg, direct_plugin_exports, [vmq_bridge, #{wait_till_ready => false, 
-                                                                        sg_policy => prefer_online_before_local,
-                                                                        cap_publish => true,
-                                                                        cap_subscribe => true,
-                                                                        cap_unsubscribe => true}]}},
-         {vmq_config_enabled, true},
-         {vmq_plugin_hooks, [{vmq_bridge_sup, change_config, 1, [internal]}]},
-         {vmq_metrics_mfa, {vmq_bridge_sup, metrics, []}},
-        
-         {config, {
-                    [
-            %% TCP Bridges
+{application, vmq_bridge, [
+    {description, "Bridge Plugin for VMQ"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        clique
+    ]},
+    {mod, {vmq_bridge_app, []}},
+    {env, [
+        {registry_mfa,
+            {vmq_reg, direct_plugin_exports, [
+                vmq_bridge,
+                #{
+                    wait_till_ready => false,
+                    sg_policy => prefer_online_before_local,
+                    cap_publish => true,
+                    cap_subscribe => true,
+                    cap_unsubscribe => true
+                }
+            ]}},
+        {vmq_config_enabled, true},
+        {vmq_plugin_hooks, [{vmq_bridge_sup, change_config, 1, [internal]}]},
+        {vmq_metrics_mfa, {vmq_bridge_sup, metrics, []}},
+
+        {config, {
+            [
+                %% TCP Bridges
                 %% {StrIp, [{clean_session, true|false},
                 %%                  {client_id, "my_client_id"},
                 %%                  {keepalive_interval, 60},       % seconds
                 %%                  {restart_timeout, 10},          % seconds
-                %%                  {username, "my_username"}, 
+                %%                  {username, "my_username"},
                 %%                  {password, "my_password"},
                 %%                  {try_private, true|false},      % send 'MQIsdp' instead of 'MQIsdp131'
                 %%                  {max_outgoing_buffered_messages, 0},
                 %%                  {topics, [{Pattern, Direction, QoS, LocalPrefix, RemotePrefix}|...]}
                 %%   ]}
-                    ],
+            ],
             %% SSL Bridges
-                    []
-                  }}
-        ]}
-  ]}.
+            []
+        }}
+    ]}
+]}.

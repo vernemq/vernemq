@@ -17,16 +17,15 @@
 
 -export([install/1]).
 
-
 install(St) ->
     luerl_emul:alloc_table(table(), St).
 
 table() ->
     [
-     {<<"info">>, #erl_func{code=fun info/2}},
-     {<<"error">>, #erl_func{code=fun error/2}},
-     {<<"debug">>, #erl_func{code=fun debug/2}},
-     {<<"warning">>, #erl_func{code=fun warning/2}}
+        {<<"info">>, #erl_func{code = fun info/2}},
+        {<<"error">>, #erl_func{code = fun error/2}},
+        {<<"debug">>, #erl_func{code = fun debug/2}},
+        {<<"warning">>, #erl_func{code = fun warning/2}}
     ].
 
 info([Bin], St) when is_binary(Bin) ->
@@ -47,4 +46,4 @@ warning([Bin], St) when is_binary(Bin) ->
 
 esc(Log) when is_binary(Log) ->
     %% escape tildes (~)
-    re:replace(Log, <<"~">>, <<"~~">>, [global, {return,binary}]).
+    re:replace(Log, <<"~">>, <<"~~">>, [global, {return, binary}]).

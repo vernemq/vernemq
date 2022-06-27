@@ -47,9 +47,11 @@
 
 -include_lib("clique/include/clique_status_types.hrl").
 
--record(context, {alert_set=false :: boolean(),
-                  alert_list=[] :: [elem()],
-                  output=[] :: iolist()}).
+-record(context, {
+    alert_set = false :: boolean(),
+    alert_list = [] :: [elem()],
+    output = [] :: iolist()
+}).
 
 -spec write(status()) -> {iolist(), iolist()}.
 write(Status) ->
@@ -68,26 +70,26 @@ prepare(Status) ->
 
 %% @doc Write status information in JSON format.
 -spec prepare_status(elem(), #context{}) -> #context{}.
-prepare_status(alert, Ctx=#context{alert_set=true}) ->
+prepare_status(alert, Ctx = #context{alert_set = true}) ->
     %% TODO: Should we just return an error instead?
     throw({error, nested_alert, Ctx});
 prepare_status(alert, Ctx) ->
-    Ctx#context{alert_set=true};
-prepare_status(alert_done, Ctx = #context{alert_list=AList, output=Output}) ->
+    Ctx#context{alert_set = true};
+prepare_status(alert_done, Ctx = #context{alert_list = AList, output = Output}) ->
     %% AList is already reversed, and prepare returns reversed output, so they cancel out
     AlertJsonVal = prepare(AList),
     AlertJson = #{<<"type">> => <<"alert">>, <<"alert">> => AlertJsonVal},
-    Ctx#context{alert_set=false, alert_list=[], output=[AlertJson | Output]};
-prepare_status(Term, Ctx=#context{alert_set=true, alert_list=AList}) ->
-    Ctx#context{alert_list=[Term | AList]};
-prepare_status({list, Data}, Ctx=#context{output=Output}) ->
-    Ctx#context{output=[prepare_list(Data) | Output]};
-prepare_status({list, Title, Data}, Ctx=#context{output=Output}) ->
-    Ctx#context{output=[prepare_list(Title, Data) | Output]};
-prepare_status({text, Text}, Ctx=#context{output=Output}) ->
-    Ctx#context{output=[prepare_text(Text) | Output]};
-prepare_status({table, Rows}, Ctx=#context{output=Output}) ->
-    Ctx#context{output=[prepare_table(Rows) | Output]};
+    Ctx#context{alert_set = false, alert_list = [], output = [AlertJson | Output]};
+prepare_status(Term, Ctx = #context{alert_set = true, alert_list = AList}) ->
+    Ctx#context{alert_list = [Term | AList]};
+prepare_status({list, Data}, Ctx = #context{output = Output}) ->
+    Ctx#context{output = [prepare_list(Data) | Output]};
+prepare_status({list, Title, Data}, Ctx = #context{output = Output}) ->
+    Ctx#context{output = [prepare_list(Title, Data) | Output]};
+prepare_status({text, Text}, Ctx = #context{output = Output}) ->
+    Ctx#context{output = [prepare_text(Text) | Output]};
+prepare_status({table, Rows}, Ctx = #context{output = Output}) ->
+    Ctx#context{output = [prepare_table(Rows) | Output]};
 prepare_status(done, Ctx) ->
     Ctx.
 
@@ -96,12 +98,13 @@ prepare_list(Data) ->
 
 prepare_list(Title, Data) ->
     FlattenedData = [erlang:iolist_to_binary(S) || S <- Data],
-    TitleProp = case Title of
-                    undefined ->
-                        [];
-                    _ ->
-                        [{<<"title">>, erlang:iolist_to_binary(Title)}]
-                end,
+    TitleProp =
+        case Title of
+            undefined ->
+                [];
+            _ ->
+                [{<<"title">>, erlang:iolist_to_binary(Title)}]
+        end,
     Props = lists:flatten([{<<"type">>, <<"list">>}, TitleProp, {<<"list">>, FlattenedData}]),
     maps:from_list(Props).
 
@@ -130,5 +133,3 @@ prepare_table_value(undefined) ->
     null;
 prepare_table_value(Value) ->
     Value.
-
-

@@ -22,21 +22,17 @@
 -export([add_handler/0]).
 
 %% gen_event callbacks
--export([init/1,
-         handle_event/2,
-         handle_call/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_event/2,
+    handle_call/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -record(state, {timer_ref :: reference() | 'undefined'}).
 -define(INACTIVITY_TIMEOUT, 5000).
-
--ifdef(fun_stacktrace).
--define(WITH_STACKTRACE(T, R, S), T:R -> S = erlang:get_stacktrace(),).
--else.
--define(WITH_STACKTRACE(T, R, S), T:R:S ->).
--endif.
 
 %%%===================================================================
 %%% gen_event callbacks
@@ -45,8 +41,12 @@
 add_handler() ->
     %% Vulnerable to race conditions (installing handler multiple
     %% times), but risk is zero in the common OTP app startup case.
-    case lists:member(?MODULE,
-                      gen_event:which_handlers(riak_sysmon_handler)) of
+    case
+        lists:member(
+            ?MODULE,
+            gen_event:which_handlers(riak_sysmon_handler)
+        )
+    of
         true ->
             ok;
         false ->
@@ -82,23 +82,27 @@ init([]) ->
 %%                          remove_handler
 %% @end
 %%--------------------------------------------------------------------
-handle_event({monitor, Pid, Type, _Info},
-             State=#state{timer_ref=TimerRef}) when Pid == self() ->
+handle_event(
+    {monitor, Pid, Type, _Info},
+    State = #state{timer_ref = TimerRef}
+) when Pid == self() ->
     %% Reset the inactivity timeout
     NewTimerRef = reset_timer(TimerRef),
     maybe_collect_garbage(Type),
-    {ok, State#state{timer_ref=NewTimerRef}};
-handle_event({monitor, Pid, Type, Info}, State=#state{timer_ref=TimerRef}) ->
+    {ok, State#state{timer_ref = NewTimerRef}};
+handle_event({monitor, Pid, Type, Info}, State = #state{timer_ref = TimerRef}) ->
     %% Reset the inactivity timeout
     NewTimerRef = reset_timer(TimerRef),
     {Fmt, Args} = format_pretty_proc_info(Pid, almost_current_function),
-    lager:info("monitor ~w ~w "++ Fmt ++ " ~w",
-                          [Type, Pid] ++ Args ++ [Info]),
-    {ok, State#state{timer_ref=NewTimerRef}};
-handle_event(Event, State=#state{timer_ref=TimerRef}) ->
+    lager:info(
+        "monitor ~w ~w " ++ Fmt ++ " ~w",
+        [Type, Pid] ++ Args ++ [Info]
+    ),
+    {ok, State#state{timer_ref = NewTimerRef}};
+handle_event(Event, State = #state{timer_ref = TimerRef}) ->
     NewTimerRef = reset_timer(TimerRef),
     lager:info("monitor got ~p", [Event]),
-    {ok, State#state{timer_ref=NewTimerRef}}.
+    {ok, State#state{timer_ref = NewTimerRef}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -183,9 +187,8 @@ format_pretty_proc_info(Pid, Acf) ->
                 {"~w", [Res]}
         end
     catch
-        ?WITH_STACKTRACE(X, Y, Stacktrace)
-        {"Pid ~w, ~W ~W at ~w\n",
-            [Pid, X, 20, Y, 20, Stacktrace]}
+        Error:Reason:Stacktrace ->
+            {"Pid ~w, ~W ~W at ~w\n", [Pid, Error, 20, Reason, 20, Stacktrace]}
     end.
 
 %% Enabling warnings_as_errors prevents a build since this function is
@@ -194,25 +197,34 @@ format_pretty_proc_info(Pid, Acf) ->
 %%     get_pretty_proc_info(Pid, current_function).
 
 get_pretty_proc_info(Pid, Acf) ->
-    case process_info(Pid, [registered_name, initial_call, current_function,
-                            message_queue_len]) of
+    case
+        process_info(Pid, [
+            registered_name,
+            initial_call,
+            current_function,
+            message_queue_len
+        ])
+    of
         undefined ->
             undefined;
         [] ->
             undefined;
         [{registered_name, RN0}, ICT1, {_, CF}, {_, MQL}] ->
-            ICT = case proc_lib:translate_initial_call(Pid) of
-                     {proc_lib, init_p, 5} ->   % not by proc_lib, see docs
-                         ICT1;
-                     ICT2 ->
-                         {initial_call, ICT2}
-                 end,
-            RNL = if RN0 == [] -> [];
-                     true      -> [{name, RN0}]
-                  end,
+            ICT =
+                case proc_lib:translate_initial_call(Pid) of
+                    % not by proc_lib, see docs
+                    {proc_lib, init_p, 5} ->
+                        ICT1;
+                    ICT2 ->
+                        {initial_call, ICT2}
+                end,
+            RNL =
+                if
+                    RN0 == [] -> [];
+                    true -> [{name, RN0}]
+                end,
             RNL ++ [ICT, {Acf, CF}, {message_queue_len, MQL}]
     end.
-
 
 %% @doc If the message type is due to a large heap warning
 %% and the source is ourself, go ahead and collect garbage

@@ -16,33 +16,55 @@
 -behaviour(vmq_ql_query).
 -include("vmq_ql.hrl").
 
--export([fields_config/0,
-         fold_init_rows/4]).
+-export([
+    fields_config/0,
+    fold_init_rows/4
+]).
 
 fields_config() ->
     ProcessBase = #vmq_ql_table{
-                   name =       process_base,
-                   depends_on = [],
-                   provides =   [pid, status, priority, message_queue_len, total_heap_size,
-                                 heap_size, stack_size, reductions],
-                   init_fun =   fun row_init/1,
-                   include_if_all = true
-                  },
+        name = process_base,
+        depends_on = [],
+        provides = [
+            pid,
+            status,
+            priority,
+            message_queue_len,
+            total_heap_size,
+            heap_size,
+            stack_size,
+            reductions
+        ],
+        init_fun = fun row_init/1,
+        include_if_all = true
+    },
 
     [ProcessBase].
 
 fold_init_rows(_, Fun, Acc, _) ->
     lists:foldl(
-      fun(Pid, AccAcc) ->
-              InitRow = #{node => atom_to_binary(node(), utf8),
-                          pid => Pid},
-              Fun(InitRow, AccAcc)
-      end, Acc, erlang:processes()).
+        fun(Pid, AccAcc) ->
+            InitRow = #{
+                node => atom_to_binary(node(), utf8),
+                pid => Pid
+            },
+            Fun(InitRow, AccAcc)
+        end,
+        Acc,
+        erlang:processes()
+    ).
 
 row_init(Row) ->
     Pid = maps:get(pid, Row),
-    ProcInfo = [status, priority, message_queue_len, total_heap_size,
-                heap_size, stack_size, reductions],
+    ProcInfo = [
+        status,
+        priority,
+        message_queue_len,
+        total_heap_size,
+        heap_size,
+        stack_size,
+        reductions
+    ],
     case erlang:process_info(Pid, ProcInfo) of
         undefined ->
             [];

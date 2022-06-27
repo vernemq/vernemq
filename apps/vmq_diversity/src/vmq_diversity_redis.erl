@@ -19,16 +19,20 @@
 -behaviour(poolboy_worker).
 
 %% API functions
--export([start_link/1,
-         install/1]).
+-export([
+    start_link/1,
+    install/1
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -import(luerl_lib, [badarg_error/3]).
 
@@ -44,18 +48,17 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec start_link(Args::list()) -> {ok, Pid::pid()} | {error, Error::term()}.
+-spec start_link(Args :: list()) -> {ok, Pid :: pid()} | {error, Error :: term()}.
 start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
-
 
 install(St) ->
     luerl_emul:alloc_table(table(), St).
 
 query(PoolName, Command) ->
     poolboy:transaction(PoolName, fun(Worker) ->
-                                          gen_server:call(Worker, {q, Command}, infinity)
-                                  end).
+        gen_server:call(Worker, {q, Command}, infinity)
+    end).
 %query_pipeline(PoolName, Pipeline) ->
 %    poolboy:transaction(PoolName, fun(Worker) ->
 %                                          gen_server:call(Worker, {qp, Pipeline})
@@ -83,7 +86,7 @@ query(PoolName, Command) ->
 %%--------------------------------------------------------------------
 init(Args) ->
     {ok, Conn} = eredis:start_link(Args),
-    {ok, #state{conn=Conn}}.
+    {ok, #state{conn = Conn}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -99,11 +102,11 @@ init(Args) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({q, Command}, _From, #state{conn=Conn}=State) ->
+handle_call({q, Command}, _From, #state{conn = Conn} = State) ->
     {reply, eredis:q(Conn, Command), State};
-handle_call({q_noreply, Command}, _From, #state{conn=Conn}=State) ->
+handle_call({q_noreply, Command}, _From, #state{conn = Conn} = State) ->
     {reply, eredis:q_noreply(Conn, Command), State};
-handle_call({qp, Pipeline}, _From, #state{conn=Conn}=State) ->
+handle_call({qp, Pipeline}, _From, #state{conn = Conn} = State) ->
     {reply, eredis:qp(Conn, Pipeline), State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -165,14 +168,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 table() ->
     [
-     {<<"cmd">>, #erl_func{code=fun cmd/2}},
-     {<<"ensure_pool">>, #erl_func{code=fun ensure_pool/2}}
+        {<<"cmd">>, #erl_func{code = fun cmd/2}},
+        {<<"ensure_pool">>, #erl_func{code = fun ensure_pool/2}}
     ].
 
 cmd(As, St) ->
     case As of
-        [BPoolId, Command|Args] when is_binary(BPoolId)
-                              and is_binary(Command) ->
+        [BPoolId, Command | Args] when
+            is_binary(BPoolId) and
+                is_binary(Command)
+        ->
             PoolId = pool_id(BPoolId, As, St),
             case query(PoolId, re:split(Command, " ") ++ parse_args(Args, [], St)) of
                 {ok, <<"OK">>} ->
@@ -193,40 +198,66 @@ cmd(As, St) ->
 
 ensure_pool(As, St) ->
     case As of
-        [Config0|_] ->
+        [Config0 | _] ->
             case luerl:decode(Config0, St) of
                 Config when is_list(Config) ->
                     {ok, AuthConfigs} = application:get_env(vmq_diversity, db_config),
                     DefaultConf = proplists:get_value(redis, AuthConfigs),
                     Options = vmq_diversity_utils:map(Config),
-                    PoolId = vmq_diversity_utils:atom(maps:get(<<"pool_id">>,
-                                                               Options,
-                                                               pool_redis)),
+                    PoolId = vmq_diversity_utils:atom(
+                        maps:get(
+                            <<"pool_id">>,
+                            Options,
+                            pool_redis
+                        )
+                    ),
 
                     Size = vmq_diversity_utils:int(
-                             maps:get(<<"size">>,
-                                      Options,
-                                      proplists:get_value(pool_size, DefaultConf))),
+                        maps:get(
+                            <<"size">>,
+                            Options,
+                            proplists:get_value(pool_size, DefaultConf)
+                        )
+                    ),
                     Password = vmq_diversity_utils:str(
-                                 maps:get(<<"password">>,
-                                          Options,
-                                         proplists:get_value(password, DefaultConf))),
+                        maps:get(
+                            <<"password">>,
+                            Options,
+                            proplists:get_value(password, DefaultConf)
+                        )
+                    ),
                     Host = vmq_diversity_utils:str(
-                             maps:get(<<"host">>,
-                                      Options,
-                                     proplists:get_value(host, DefaultConf))),
+                        maps:get(
+                            <<"host">>,
+                            Options,
+                            proplists:get_value(host, DefaultConf)
+                        )
+                    ),
                     Port = vmq_diversity_utils:int(
-                             maps:get(<<"port">>, Options,
-                                      proplists:get_value(port, DefaultConf))),
+                        maps:get(
+                            <<"port">>,
+                            Options,
+                            proplists:get_value(port, DefaultConf)
+                        )
+                    ),
                     Database = vmq_diversity_utils:int(
-                                 maps:get(<<"database">>,
-                                          Options,
-                                          proplists:get_value(database, DefaultConf))),
+                        maps:get(
+                            <<"database">>,
+                            Options,
+                            proplists:get_value(database, DefaultConf)
+                        )
+                    ),
                     NewOptions =
-                    [{size, Size}, {password, Password},
-                     {host, Host}, {port, Port}, {database, Database}],
+                        [
+                            {size, Size},
+                            {password, Password},
+                            {host, Host},
+                            {port, Port},
+                            {database, Database}
+                        ],
                     vmq_diversity_sup:start_all_pools(
-                      [{redis, [{id, PoolId}, {opts, NewOptions}]}], []),
+                        [{redis, [{id, PoolId}, {opts, NewOptions}]}], []
+                    ),
 
                     % return to lua
                     {[true], St};
@@ -246,20 +277,23 @@ pool_id(BPoolId, As, St) ->
             badarg_error(unknown_pool, As, St)
     end.
 
-parse_args([], Acc, _) -> lists:reverse(Acc);
-parse_args([B|Rest], Acc, St) when is_binary(B) ->
-    parse_args(Rest, [B|Acc], St);
-parse_args([T|Rest], Acc, St) when is_tuple(T) ->
+parse_args([], Acc, _) ->
+    lists:reverse(Acc);
+parse_args([B | Rest], Acc, St) when is_binary(B) ->
+    parse_args(Rest, [B | Acc], St);
+parse_args([T | Rest], Acc, St) when is_tuple(T) ->
     case luerl:decode(T, St) of
-        [{K, _}|_] = Array when is_integer(K) ->
+        [{K, _} | _] = Array when is_integer(K) ->
             {_, Vals} = lists:unzip(Array),
-            parse_args(Rest, [Vals|Acc], St);
-        [{K, _}|_] = Table0 when is_binary(K) ->
+            parse_args(Rest, [Vals | Acc], St);
+        [{K, _} | _] = Table0 when is_binary(K) ->
             Table1 =
-            lists:foldl(fun({Key, Val}, AccAcc) ->
-                                [Key, Val|AccAcc]
-                        end, [], Table0),
-            parse_args(Rest, [Table1|Acc], St)
+                lists:foldl(
+                    fun({Key, Val}, AccAcc) ->
+                        [Key, Val | AccAcc]
+                    end,
+                    [],
+                    Table0
+                ),
+            parse_args(Rest, [Table1 | Acc], St)
     end.
-
-

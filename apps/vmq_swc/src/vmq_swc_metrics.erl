@@ -17,28 +17,34 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0,
-         register_gauge/2]).
+-export([
+    start_link/0,
+    register_gauge/2
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
--export([metrics/0,
-         timed_measurement/4,
-         incr_counter/1,
-         incr_counter/2]).
+-export([
+    metrics/0,
+    timed_measurement/4,
+    incr_counter/1,
+    incr_counter/2
+]).
 
 -define(SERVER, ?MODULE).
 -define(TIMER_TABLE, vmq_swc_metrics_timers).
 -define(COUNTER_TABLE, vmq_swc_metrics_counters).
 -define(NR_OF_SAMPLES, 1000).
 
--record(state, {gauges=#{}}).
+-record(state, {gauges = #{}}).
 
 %%%===================================================================
 %%% API
@@ -54,39 +60,51 @@ metric_name({Metric, SubMetric}) ->
     LMetric = atom_to_list(Metric),
     LSubMetric = atom_to_list(SubMetric),
     Name = list_to_atom(LMetric ++ "_" ++ LSubMetric ++ "_microseconds"),
-    Description = list_to_binary("A histogram of the " ++ LMetric ++ " " ++ LSubMetric ++ " latency."),
+    Description = list_to_binary(
+        "A histogram of the " ++ LMetric ++ " " ++ LSubMetric ++ " latency."
+    ),
     {Name, Description}.
 
 metrics() ->
     Histograms =
-    ets:foldl(
-      fun
-          ({Metric, TotalCount, LE10, LE100, LE1K, LE10K, LE100K, LE1M, INF, TotalSum}, Acc) ->
-              {MetricName, Description} = metric_name(Metric),
-              Buckets =
-              #{10 => LE10,
-                100 => LE100,
-                1000 => LE1K,
-                10000 => LE10K,
-                100000 => LE100K,
-                1000000 => LE1M,
-                infinity => INF},
-              [{histogram, [], MetricName, MetricName, Description, {TotalCount, TotalSum, Buckets}} | Acc]
-      end, [], ?TIMER_TABLE),
+        ets:foldl(
+            fun({Metric, TotalCount, LE10, LE100, LE1K, LE10K, LE100K, LE1M, INF, TotalSum}, Acc) ->
+                {MetricName, Description} = metric_name(Metric),
+                Buckets =
+                    #{
+                        10 => LE10,
+                        100 => LE100,
+                        1000 => LE1K,
+                        10000 => LE10K,
+                        100000 => LE100K,
+                        1000000 => LE1M,
+                        infinity => INF
+                    },
+                [
+                    {histogram, [], MetricName, MetricName, Description,
+                        {TotalCount, TotalSum, Buckets}}
+                    | Acc
+                ]
+            end,
+            [],
+            ?TIMER_TABLE
+        ),
 
     Gauges = gen_server:call(?SERVER, get_gauges, infinity),
-    maps:fold(fun({MetricName, Group}, {GaugeFun, _OwnerRef}, Acc) ->
-                      try
-                          UniqueId = list_to_atom(atom_to_list(MetricName) ++ "_" ++ atom_to_list(Group)),
-                          {Labels, Description, Value} = GaugeFun(),
-                          [{gauge, Labels, UniqueId, MetricName, Description, Value} | Acc]
-                      catch
-                         _:_ ->
-                             Acc
-                      end
-              end, Histograms, Gauges).
-
-
+    maps:fold(
+        fun({MetricName, Group}, {GaugeFun, _OwnerRef}, Acc) ->
+            try
+                UniqueId = list_to_atom(atom_to_list(MetricName) ++ "_" ++ atom_to_list(Group)),
+                {Labels, Description, Value} = GaugeFun(),
+                [{gauge, Labels, UniqueId, MetricName, Description, Value} | Acc]
+            catch
+                _:_ ->
+                    Acc
+            end
+        end,
+        Histograms,
+        Gauges
+    ).
 
 incr_bucket_ops(V) when V =< 10 ->
     [{2, 1}, {3, 1}, {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, V}];
@@ -103,7 +121,7 @@ incr_bucket_ops(V) when V =< 1000000 ->
 incr_bucket_ops(V) ->
     [{2, 1}, {9, 1}, {10, V}].
 
-timed_measurement({_,_} = Metric, Module, Function, Args) ->
+timed_measurement({_, _} = Metric, Module, Function, Args) ->
     Ts1 = ts(),
     Ret = apply(Module, Function, Args),
     Ts2 = ts(),
@@ -121,10 +139,10 @@ incr_histogram_buckets(Metric, BucketOps) ->
             incr_histogram_buckets(Metric, BucketOps)
     end.
 
-incr_counter({_,_} = Metric) ->
+incr_counter({_, _} = Metric) ->
     incr_counter(Metric, 1).
 
-incr_counter({_,_} = Metric, N) ->
+incr_counter({_, _} = Metric, N) ->
     try
         ets:update_counter(?COUNTER_TABLE, Metric, {2, N})
     catch
@@ -142,28 +160,32 @@ init([]) ->
     ets:new(?TIMER_TABLE, [named_table, public, {write_concurrency, true}]),
     {ok, #state{}}.
 
-handle_call({register_gauge, OwnerPid, MetricName, Fun}, _From, #state{gauges=Gauges} = State) ->
+handle_call({register_gauge, OwnerPid, MetricName, Fun}, _From, #state{gauges = Gauges} = State) ->
     MRef = monitor(process, OwnerPid),
     Reply = ok,
-    {reply, Reply, State#state{gauges=maps:put(MetricName, {Fun, {OwnerPid, MRef}}, Gauges)}};
-handle_call(get_gauges, _From, #state{gauges=Gauges} = State) ->
+    {reply, Reply, State#state{gauges = maps:put(MetricName, {Fun, {OwnerPid, MRef}}, Gauges)}};
+handle_call(get_gauges, _From, #state{gauges = Gauges} = State) ->
     {reply, Gauges, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({'DOWN', MRef, process, OwnerPid, _Info}, #state{gauges=Gauges0} = State) ->
+handle_info({'DOWN', MRef, process, OwnerPid, _Info}, #state{gauges = Gauges0} = State) ->
     Gauges1 =
-    maps:filter(fun(_MetricName, {_, MetricRef}) when MetricRef == {OwnerPid, MRef} -> false;
-                   (_, _) -> true
-                end, Gauges0),
-    {noreply, State#state{gauges=Gauges1}}.
+        maps:filter(
+            fun
+                (_MetricName, {_, MetricRef}) when MetricRef == {OwnerPid, MRef} -> false;
+                (_, _) -> true
+            end,
+            Gauges0
+        ),
+    {noreply, State#state{gauges = Gauges1}}.
 
 terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
-        {ok, State}.
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
