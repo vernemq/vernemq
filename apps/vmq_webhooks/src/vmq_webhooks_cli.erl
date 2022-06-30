@@ -29,11 +29,11 @@ register_config() ->
     ["vmq_webhooks.pool_max_connections", "vmq_webhooks.pool_timeout",
      "vmq_webhooks.cafile", "vmq_webhooks.certfile", "vmq_webhooks.keyfile",
      "vmq_webhooks.depth", "vmq_webhooks.verify_peer", "vmq_webhooks.tls_version"],
-    [clique:register_config([Key], fun register_config_callback/3)
+    [clique:register_config([Key], fun register_config_callback/2)
      || Key <- ConfigKeys],
     ok = clique:register_config_whitelist(ConfigKeys).
 
-register_config_callback(_, _, _) ->
+register_config_callback(_, _) ->
     ok.
 
 cache_stats_cmd() ->
