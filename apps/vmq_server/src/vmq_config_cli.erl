@@ -65,7 +65,7 @@ register_config_() ->
      "coordinate_registrations",
      "mqtt_connect_timeout"
     ],
-    [clique:register_config(Key, fun register_config_callback/2) || Key <- ConfigKeys],
+    [clique:register_config([Key], fun register_config_callback/2) || Key <- ConfigKeys],
     ok = clique:register_config_whitelist(ConfigKeys).
 
 -spec register_cli_usage() -> true.
