@@ -315,7 +315,7 @@ vmq_listener_start_usage() ->
      "PROXYv2 Options\n\n",
      "  --proxy_protocol\n",
      "      Enable PROXY v2 protocol for this listener\n",
-     "  --use_cn_as_username\n",
+     "  --proxy_protocol_use_cn_as_username\n",
      "      If PROXY v2 is enabled for this listener use this flag\n",
      "      to decide if the common name should replace the MQTT username\n",
      "      Enabled by default (use `=false`) to disable\n\n",
