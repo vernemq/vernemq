@@ -87,7 +87,7 @@ end_per_testcase(convert_new_msgs_to_old_format, Config) ->
     %% no teardown necessary,
     Config;
 end_per_testcase(_, _Config) ->
-    vmq_cluster_test_utils:pmap(fun(Node) -> 
+    vmq_cluster_test_utils:pmap(fun(Node) ->
             %{ok, _} = rpc:call(Node, application, stop, [vmq_server]),
             ct_slave:stop(Node) end,
                                 [test1, test2, test3]),
@@ -150,7 +150,7 @@ wait_until_converged(Nodes, Fun, ExpectedReturn) ->
 multiple_connect_unclean_test(Config) ->
     %% This test makes sure that a cs false subscriber can receive QoS
     %% 1 messages, one message at a time only acknowledging one message
-    %% per connection. 
+    %% per connection.
    % ok = vmq_plugin_mgr:enable_module_plugin(
    %     auth_on_register, ?MODULE, hook_uname_password_success, 5), % to set max_inflight_window to 1
     ok = ensure_cluster(Config),
@@ -183,7 +183,7 @@ multiple_connect_unclean_test(Config) ->
                          end, [{total, 1}]),
     [PublishNode|_] = Nodes,
    % ct:pal("Publish Node ~p Nodes: ~p~n", [PublishNode, Nodes]),
-    Payloads = publish_random([PublishNode], 20, Topic),    
+    Payloads = publish_random([PublishNode], 20, Topic),
    % ct:pal("subs after first disconnect ~p~n", [vmq_queue_sup_sup:summary()]),
 
 
@@ -256,7 +256,7 @@ racing_connect_test(Config) ->
                                                        true
                                                    end
                                            end, true),
-              
+
                  packet:gen_connack(true, 0);
              _ ->
                 % ok = wait_until_converged(Nodes,
@@ -345,7 +345,7 @@ aborted_queue_migration_test(Config) ->
            fun() ->
                    {0, 0, 0, 1, 10} == rpc:call(Node, vmq_queue_sup_sup, summary, [])
            end, 60*2, 500),
-    
+
     %% connect and disconnect/exit right away
     {RandomNode, RandomPort} = random_node(RestNodes),
     {ok, Socket2} = gen_tcp:connect("localhost",  RandomPort, [binary, {reuseaddr, true}, {active, false}, {packet, raw}]),
@@ -378,8 +378,8 @@ aborted_queue_migration_test(Config) ->
 %     ct:sleep(random:uniform(10000)),
 %     {ok, Socket} = packet:do_client_connect(Connect, ConnackNoSP, [{port,
 %                                                                 RandomFirstPort}]),
-    
-    
+
+
 %     Pids =
 %     [begin
 %          Connack =
@@ -901,7 +901,7 @@ publish_to_topic(Socket, Topic, Begin, End) when Begin < End ->
 set_shared_subs_policy(Policy, Nodes) ->
     lists:foreach(
       fun(N) ->
-              {ok, []} = rpc:call(N, vmq_server_cmd, set_config, [shared_subscription_policy, Policy])
+              {ok, _} = rpc:call(N, vmq_server_cmd, set_config, [shared_subscription_policy, Policy])
       end,
       Nodes).
 
@@ -1016,11 +1016,11 @@ receive_publishes({Node,Port}, Topic, Payloads) ->
     Connect = packet:gen_connect("connect-unclean", [{clean_session, false},
                                                      {keepalive, 10}]),
     Connack = packet:gen_connack(true, 0),
-    
+
     Opts = [{port, Port}, {mqtt_connect_timeout, 10000}], %, {max_drain_time,10000}, {mqtt_connect_timeout, 27000}],
     %ct:sleep(10000),
 
-   % ct:pal("Port ~p~n", [Port]), 
+   % ct:pal("Port ~p~n", [Port]),
   %Sum1 = rpc:call(Node, vmq_queue_sup_sup, summary,
   %[]),
 
