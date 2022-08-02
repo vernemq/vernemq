@@ -15,7 +15,7 @@
 -module(vmq_subscriber_db).
 -include("vmq_server.hrl").
 
--export([store/2, store/3,
+-export([store/2,
          read/1, read/2,
          fold/2,
          delete/1,
@@ -25,23 +25,13 @@
 
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
 -define(TOMBSTONE, '$deleted').
--define(RegView, application:get_env(vmq_server, default_reg_view, vmq_reg_trie)).
 
 -spec store(subscriber_id(), vmq_subscriber:subs()) -> ok.
 store(SubscriberId, Subs) ->
-    store(?RegView, SubscriberId, fetch_old_subs, Subs).
-
--spec store(subscriber_id(), vmq_subscriber:subs(), vmq_subscriber:subs()) -> ok.
-store(SubscriberId, OldSubs, Subs) ->
     V1 = vmq_util:ts(),
-    store(?RegView, SubscriberId, OldSubs, Subs),
+    vmq_metadata:put(?SUBSCRIBER_DB, SubscriberId, Subs),
     vmq_metrics:pretimed_measurement({?MODULE, store}, vmq_util:ts() - V1),
     ok.
-
-store(vmq_reg_redis_trie, SubscriberId, OldSubs, Subs) ->
-    vmq_reg_redis_trie:put(SubscriberId, OldSubs, Subs);
-store(vmq_reg_trie, SubscriberId, _, Subs) ->
-    vmq_metadata:put(?SUBSCRIBER_DB, SubscriberId, Subs).
 
 -spec read(subscriber_id()) -> undefined |vmq_subscriber:subs().
 read(SubscriberId) ->
@@ -50,34 +40,20 @@ read(SubscriberId) ->
 -spec read(subscriber_id(), any()) -> any() |vmq_subscriber:subs().
 read(SubscriberId, Default) ->
     V1 = vmq_util:ts(),
-    Result = read(?RegView, SubscriberId, Default),
+    Result = case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
+                 undefined -> Default;
+                 Subs ->
+                     check_format(Subs)
+             end,
     vmq_metrics:pretimed_measurement({?MODULE, read}, vmq_util:ts() - V1),
     Result.
-
-read(vmq_reg_redis_trie, SubscriberId, Default) ->
-    case vmq_reg_redis_trie:get(SubscriberId) of
-        [] -> Default;
-        Subs ->
-            check_format(Subs)
-    end;
-read(vmq_reg_trie, SubscriberId, Default) ->
-    case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
-        undefined -> Default;
-        Subs ->
-            check_format(Subs)
-    end.
 
 -spec delete(subscriber_id()) -> ok.
 delete(SubscriberId) ->
     V1 = vmq_util:ts(),
-    delete(?RegView, SubscriberId),
+    vmq_metadata:delete(?SUBSCRIBER_DB, SubscriberId),
     vmq_metrics:pretimed_measurement({?MODULE, delete}, vmq_util:ts() - V1),
     ok.
-
-delete(vmq_reg_redis_trie, SubscriberId) ->
-    vmq_reg_redis_trie:delete(SubscriberId);
-delete(vmq_reg_trie, SubscriberId) ->
-    vmq_metadata:delete(?SUBSCRIBER_DB, SubscriberId).
 
 fold(FoldFun, Acc) ->
     V1 = vmq_util:ts(),

@@ -593,7 +593,7 @@ vmq_reg_redis_trie_show_wildcard_topics_cmd() ->
     FlagSpecs = [],
     Callback =
         fun(_, [], []) ->
-            Table = [[{wildcard_topics, list_to_atom(Topic)}] || Topic <- vmq_reg_redis_trie:get_complex_topics()],
+            Table = [[{wildcard_topics, binary_to_atom(iolist_to_binary((Topic)))}] || Topic <- vmq_reg_redis_trie:get_complex_topics()],
             [clique_status:table(Table)];
             (_, _, _) ->
                 Text = clique_status:text(show_wildcard_topic_usage()),

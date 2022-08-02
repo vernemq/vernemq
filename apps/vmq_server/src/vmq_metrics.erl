@@ -87,7 +87,9 @@
 
          incr_redis_cmd/1,
          incr_redis_cmd_miss/1,
-         incr_redis_cmd_err/1
+         incr_redis_cmd_err/1,
+         incr_redis_stale_cmd/1,
+         incr_unauth_redis_cmd/1
         ]).
 
 -export([metrics/0,
@@ -282,14 +284,20 @@ incr_stored_offline_messages() ->
 incr_removed_offline_messages() ->
   incr_item(?METRIC_REMOVED_OFFLINE_MESSAGES, 1).
 
-incr_redis_cmd(CMD) ->
-    incr_item({?REDIS_CMD, CMD}, 1).
+incr_redis_cmd({CMD, OPERATION}) ->
+    incr_item({?REDIS_CMD, CMD, OPERATION}, 1).
 
-incr_redis_cmd_miss(CMD) ->
-    incr_item({?REDIS_CMD_MISS, CMD}, 1).
+incr_redis_cmd_miss({CMD, OPERATION}) ->
+    incr_item({?REDIS_CMD_MISS, CMD, OPERATION}, 1).
 
-incr_redis_cmd_err(CMD) ->
-    incr_item({?REDIS_CMD_ERROR, CMD}, 1).
+incr_redis_cmd_err({CMD, OPERATION}) ->
+    incr_item({?REDIS_CMD_ERROR, CMD, OPERATION}, 1).
+
+incr_redis_stale_cmd({CMD, OPERATION}) ->
+    incr_item({?REDIS_STALE_CMD, CMD, OPERATION}, 1).
+
+incr_unauth_redis_cmd({CMD, OPERATION}) ->
+    incr_item({?UNAUTH_REDIS_CMD, CMD, OPERATION}, 1).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -775,22 +783,46 @@ internal_defs() ->
             ], []).
 
 redis_def() ->
-    CMDs =
+    OPERATIONs =
         [
-            ?SET,
-            ?GET,
-            ?DEL,
-            ?SADD,
-            ?SMEMBERS,
-            ?SREM,
-            ?PIPELINE],
-    [
-        m(counter, [{cmd, rcn_to_str(CMD)}], {?REDIS_CMD, CMD} , redis_cmd_total, <<"The number of redis cmd calls.">>) || CMD <- CMDs
-    ] ++ [
-        m(counter, [{cmd, rcn_to_str(CMD)}], {?REDIS_CMD_ERROR, CMD}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>) || CMD <- CMDs
-    ] ++ [
-        m(counter, [{cmd, rcn_to_str(CMD)}], {?REDIS_CMD_MISS, CMD}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>) || CMD <- CMDs
-    ].
+            ?REMAP_SUBSCRIBER,
+            ?SUBSCRIBE,
+            ?UNSUBSCRIBE,
+            ?DELETE_SUBSCRIBER,
+            ?FETCH_SUBSCRIBER,
+            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS],
+    REDIS_DEF_1 =
+        [
+            m(counter, [{cmd, rcn_to_str(?FCALL)}, {operation, rcn_to_str(OPERATION)}], {?REDIS_CMD, ?FCALL, OPERATION} , redis_cmd_total, <<"The number of redis cmd calls.">>) || OPERATION <- OPERATIONs
+        ] ++ [
+            m(counter, [{cmd, rcn_to_str(?FCALL)}, {operation, rcn_to_str(OPERATION)}], {?REDIS_CMD_ERROR, ?FCALL, OPERATION}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>) || OPERATION <- OPERATIONs
+        ] ++ [
+            m(counter, [{cmd, rcn_to_str(?FCALL)}, {operation, rcn_to_str(OPERATION)}], {?REDIS_CMD_MISS, ?FCALL, OPERATION}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>) || OPERATION <- OPERATIONs
+        ] ++ [
+            m(counter, [{cmd, rcn_to_str(?FCALL)}, {operation, rcn_to_str(OPERATION)}], {?REDIS_STALE_CMD, ?FCALL, OPERATION}, redis_stale_cmd_total, <<"The number of times redis fcall execution failed due to staleness(redis entry timestamp > redis request timestamp).">>) || OPERATION <- OPERATIONs
+        ] ++ [
+            m(counter, [{cmd, rcn_to_str(?FCALL)}, {operation, rcn_to_str(OPERATION)}], {?UNAUTH_REDIS_CMD, ?FCALL, OPERATION}, unauth_redis_cmd_total, <<"The number of times redis fcall execution failed due to client connection on different node.">>) || OPERATION <- OPERATIONs
+        ],
+    REDIS_DEF_2 =
+        [
+            m(counter, [{cmd, rcn_to_str(?FUNCTION_LOAD)}, {operation, rcn_to_str(OPERATION)}], {?REDIS_CMD, ?FUNCTION_LOAD, OPERATION} , redis_cmd_total, <<"The number of redis cmd calls.">>) || OPERATION <- OPERATIONs
+        ] ++ [
+            m(counter, [{cmd, rcn_to_str(?FUNCTION_LOAD)}, {operation, rcn_to_str(OPERATION)}], {?REDIS_CMD_ERROR, ?FUNCTION_LOAD, OPERATION}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>) || OPERATION <- OPERATIONs
+        ],
+    REDIS_DEF_3 =
+        [
+            m(counter, [{cmd, rcn_to_str(?SMEMBERS)}, {operation, rcn_to_str(?INITIALIZE_TRIE_OPERATION)}], {?REDIS_CMD, ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION}, redis_cmd_total, <<"The number of redis cmd calls.">>),
+            m(counter, [{cmd, rcn_to_str(?SMEMBERS)}, {operation, rcn_to_str(?INITIALIZE_TRIE_OPERATION)}], {?REDIS_CMD_ERROR, ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>),
+            m(counter, [{cmd, rcn_to_str(?SMEMBERS)}, {operation, rcn_to_str(?INITIALIZE_TRIE_OPERATION)}], {?REDIS_CMD_MISS, ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>),
+
+            m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?ADD_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD, ?PIPELINE, ?ADD_COMPLEX_TOPICS_OPERATION}, redis_cmd_total, <<"The number of redis cmd calls.">>),
+            m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?ADD_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD_ERROR, ?PIPELINE, ?ADD_COMPLEX_TOPICS_OPERATION}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>),
+            m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?ADD_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD_MISS, ?PIPELINE, ?ADD_COMPLEX_TOPICS_OPERATION}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>),
+            m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?DELETE_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION}, redis_cmd_total, <<"The number of redis cmd calls.">>),
+            m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?DELETE_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD_ERROR, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>),
+            m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?DELETE_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD_MISS, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>)
+        ],
+    REDIS_DEF_1 ++ REDIS_DEF_2 ++ REDIS_DEF_3.
 
 sidecar_events_def() ->
   HOOKs =
@@ -1274,247 +1306,277 @@ scheduler_utilization_def() ->
        <<"The average system (scheduler) utilization (percentage).">>)
      |SchedUtilDefs].
 
-met2idx(?MQTT5_CONNECT_RECEIVED)                                  -> 1;
-met2idx({?MQTT5_CONNACK_SENT, ?SUCCESS})                          -> 2;
-met2idx({?MQTT5_CONNACK_SENT, ?UNSPECIFIED_ERROR})                -> 3;
-met2idx({?MQTT5_CONNACK_SENT, ?MALFORMED_PACKET})                 -> 4;
-met2idx({?MQTT5_CONNACK_SENT, ?PROTOCOL_ERROR})                   -> 5;
-met2idx({?MQTT5_CONNACK_SENT, ?IMPL_SPECIFIC_ERROR})              -> 6;
-met2idx({?MQTT5_CONNACK_SENT, ?UNSUPPORTED_PROTOCOL_VERSION})     -> 7;
-met2idx({?MQTT5_CONNACK_SENT, ?CLIENT_IDENTIFIER_NOT_VALID})      -> 8;
-met2idx({?MQTT5_CONNACK_SENT, ?BAD_USERNAME_OR_PASSWORD})         -> 9;
-met2idx({?MQTT5_CONNACK_SENT, ?NOT_AUTHORIZED})                   -> 10;
-met2idx({?MQTT5_CONNACK_SENT, ?SERVER_UNAVAILABLE})               -> 11;
-met2idx({?MQTT5_CONNACK_SENT, ?SERVER_BUSY})                      -> 12;
-met2idx({?MQTT5_CONNACK_SENT, ?BANNED})                           -> 13;
-met2idx({?MQTT5_CONNACK_SENT, ?BAD_AUTHENTICATION_METHOD})        -> 14;
-met2idx({?MQTT5_CONNACK_SENT, ?TOPIC_NAME_INVALID})               -> 15;
-met2idx({?MQTT5_CONNACK_SENT, ?PACKET_TOO_LARGE})                 -> 16;
-met2idx({?MQTT5_CONNACK_SENT, ?QUOTA_EXCEEDED})                   -> 17;
-met2idx({?MQTT5_CONNACK_SENT, ?PAYLOAD_FORMAT_INVALID})           -> 18;
-met2idx({?MQTT5_CONNACK_SENT, ?RETAIN_NOT_SUPPORTED})             -> 19;
-met2idx({?MQTT5_CONNACK_SENT, ?QOS_NOT_SUPPORTED})                -> 20;
-met2idx({?MQTT5_CONNACK_SENT, ?USE_ANOTHER_SERVER})               -> 21;
-met2idx({?MQTT5_CONNACK_SENT, ?SERVER_MOVED})                     -> 22;
-met2idx({?MQTT5_CONNACK_SENT, ?CONNECTION_RATE_EXCEEDED})         -> 23;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?NORMAL_DISCONNECT})         -> 24;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?DISCONNECT_WITH_WILL_MSG})  -> 25;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?UNSPECIFIED_ERROR})         -> 26;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?MALFORMED_PACKET})          -> 27;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?PROTOCOL_ERROR})            -> 28;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?IMPL_SPECIFIC_ERROR})       -> 29;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?TOPIC_NAME_INVALID})        -> 30;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?RECEIVE_MAX_EXCEEDED})      -> 31;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?TOPIC_ALIAS_INVALID})       -> 32;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?PACKET_TOO_LARGE})          -> 33;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?MESSAGE_RATE_TOO_HIGH})     -> 34;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?QUOTA_EXCEEDED})            -> 35;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?ADMINISTRATIVE_ACTION})     -> 36;
-met2idx({?MQTT5_DISCONNECT_RECEIVED, ?PAYLOAD_FORMAT_INVALID})    -> 37;
-met2idx({?MQTT5_DISCONNECT_SENT,?NORMAL_DISCONNECT})              -> 38;
-met2idx({?MQTT5_DISCONNECT_SENT,?UNSPECIFIED_ERROR})              -> 39;
-met2idx({?MQTT5_DISCONNECT_SENT,?MALFORMED_PACKET})               -> 40;
-met2idx({?MQTT5_DISCONNECT_SENT,?PROTOCOL_ERROR})                 -> 41;
-met2idx({?MQTT5_DISCONNECT_SENT,?IMPL_SPECIFIC_ERROR})            -> 42;
-met2idx({?MQTT5_DISCONNECT_SENT,?NOT_AUTHORIZED})                 -> 43;
-met2idx({?MQTT5_DISCONNECT_SENT,?SERVER_BUSY})                    -> 44;
-met2idx({?MQTT5_DISCONNECT_SENT,?SERVER_SHUTTING_DOWN})           -> 45;
-met2idx({?MQTT5_DISCONNECT_SENT,?KEEP_ALIVE_TIMEOUT})             -> 46;
-met2idx({?MQTT5_DISCONNECT_SENT,?SESSION_TAKEN_OVER})             -> 47;
-met2idx({?MQTT5_DISCONNECT_SENT,?TOPIC_FILTER_INVALID})           -> 48;
-met2idx({?MQTT5_DISCONNECT_SENT,?TOPIC_NAME_INVALID})             -> 49;
-met2idx({?MQTT5_DISCONNECT_SENT,?RECEIVE_MAX_EXCEEDED})           -> 50;
-met2idx({?MQTT5_DISCONNECT_SENT,?TOPIC_ALIAS_INVALID})            -> 51;
-met2idx({?MQTT5_DISCONNECT_SENT,?PACKET_TOO_LARGE})               -> 52;
-met2idx({?MQTT5_DISCONNECT_SENT,?MESSAGE_RATE_TOO_HIGH})          -> 53;
-met2idx({?MQTT5_DISCONNECT_SENT,?QUOTA_EXCEEDED})                 -> 54;
-met2idx({?MQTT5_DISCONNECT_SENT,?ADMINISTRATIVE_ACTION})          -> 55;
-met2idx({?MQTT5_DISCONNECT_SENT,?PAYLOAD_FORMAT_INVALID})         -> 56;
-met2idx({?MQTT5_DISCONNECT_SENT,?RETAIN_NOT_SUPPORTED})           -> 57;
-met2idx({?MQTT5_DISCONNECT_SENT,?QOS_NOT_SUPPORTED})              -> 58;
-met2idx({?MQTT5_DISCONNECT_SENT,?USE_ANOTHER_SERVER})             -> 59;
-met2idx({?MQTT5_DISCONNECT_SENT,?SERVER_MOVED})                   -> 60;
-met2idx({?MQTT5_DISCONNECT_SENT,?SHARED_SUBS_NOT_SUPPORTED})      -> 61;
-met2idx({?MQTT5_DISCONNECT_SENT,?CONNECTION_RATE_EXCEEDED})       -> 62;
-met2idx({?MQTT5_DISCONNECT_SENT,?MAX_CONNECT_TIME})               -> 63;
-met2idx({?MQTT5_DISCONNECT_SENT,?SUBSCRIPTION_IDS_NOT_SUPPORTED}) -> 64;
-met2idx({?MQTT5_DISCONNECT_SENT,?WILDCARD_SUBS_NOT_SUPPORTED})    -> 65;
-met2idx(?MQTT5_PUBLISH_AUTH_ERROR)                                -> 66;
-met2idx(?MQTT5_SUBSCRIBE_AUTH_ERROR)                              -> 67;
-met2idx(?MQTT5_INVALID_MSG_SIZE_ERROR)                            -> 68;
-met2idx(?MQTT5_PUBACK_INVALID_ERROR)                              -> 69;
-met2idx(?MQTT5_PUBCOMP_INVALID_ERROR)                             -> 70;
-met2idx(?MQTT5_PUBLISH_ERROR)                                     -> 71;
-met2idx(?MQTT5_SUBSCRIBE_ERROR)                                   -> 72;
-met2idx(?MQTT5_UNSUBSCRIBE_ERROR)                                 -> 73;
-met2idx(?MQTT5_PINGREQ_RECEIVED)                                  -> 74;
-met2idx(?MQTT5_PINGRESP_SENT)                                     -> 75;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?SUCCESS})                       -> 76;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?NO_MATCHING_SUBSCRIBERS})       -> 77;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?UNSPECIFIED_ERROR})             -> 78;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?IMPL_SPECIFIC_ERROR})           -> 79;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?NOT_AUTHORIZED})                -> 80;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?TOPIC_NAME_INVALID})            -> 81;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?PACKET_ID_IN_USE})              -> 82;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?QUOTA_EXCEEDED})                -> 83;
-met2idx({?MQTT5_PUBACK_RECEIVED, ?PAYLOAD_FORMAT_INVALID})        -> 84;
-met2idx({?MQTT5_PUBACK_SENT, ?SUCCESS})                           -> 85;
-met2idx({?MQTT5_PUBACK_SENT, ?NO_MATCHING_SUBSCRIBERS})           -> 86;
-met2idx({?MQTT5_PUBACK_SENT, ?UNSPECIFIED_ERROR})                 -> 87;
-met2idx({?MQTT5_PUBACK_SENT, ?IMPL_SPECIFIC_ERROR})               -> 88;
-met2idx({?MQTT5_PUBACK_SENT, ?NOT_AUTHORIZED})                    -> 89;
-met2idx({?MQTT5_PUBACK_SENT, ?TOPIC_NAME_INVALID})                -> 90;
-met2idx({?MQTT5_PUBACK_SENT, ?PACKET_ID_IN_USE})                  -> 91;
-met2idx({?MQTT5_PUBACK_SENT, ?QUOTA_EXCEEDED})                    -> 92;
-met2idx({?MQTT5_PUBACK_SENT, ?PAYLOAD_FORMAT_INVALID})            -> 93;
-met2idx({?MQTT5_PUBCOMP_RECEIVED,?SUCCESS})                       -> 94;
-met2idx({?MQTT5_PUBCOMP_RECEIVED,?PACKET_ID_NOT_FOUND})           -> 95;
-met2idx({?MQTT5_PUBCOMP_SENT, ?SUCCESS})                          -> 96;
-met2idx({?MQTT5_PUBCOMP_SENT, ?PACKET_ID_NOT_FOUND})              -> 97;
-met2idx(?MQTT5_PUBLISH_RECEIVED)                                  -> 98;
-met2idx(?MQTT5_PUBLISH_SENT)                                      -> 99;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?SUCCESS})                       -> 100;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?NO_MATCHING_SUBSCRIBERS})       -> 101;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?UNSPECIFIED_ERROR})             -> 102;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?IMPL_SPECIFIC_ERROR})           -> 103;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?NOT_AUTHORIZED})                -> 104;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?TOPIC_NAME_INVALID})            -> 105;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?PACKET_ID_IN_USE})              -> 106;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?QUOTA_EXCEEDED})                -> 107;
-met2idx({?MQTT5_PUBREC_RECEIVED, ?PAYLOAD_FORMAT_INVALID})        -> 108;
-met2idx({?MQTT5_PUBREC_SENT, ?SUCCESS})                           -> 109;
-met2idx({?MQTT5_PUBREC_SENT, ?NO_MATCHING_SUBSCRIBERS})           -> 110;
-met2idx({?MQTT5_PUBREC_SENT, ?UNSPECIFIED_ERROR})                 -> 111;
-met2idx({?MQTT5_PUBREC_SENT, ?IMPL_SPECIFIC_ERROR})               -> 112;
-met2idx({?MQTT5_PUBREC_SENT, ?NOT_AUTHORIZED})                    -> 113;
-met2idx({?MQTT5_PUBREC_SENT, ?TOPIC_NAME_INVALID})                -> 114;
-met2idx({?MQTT5_PUBREC_SENT, ?PACKET_ID_IN_USE})                  -> 115;
-met2idx({?MQTT5_PUBREC_SENT, ?QUOTA_EXCEEDED})                    -> 116;
-met2idx({?MQTT5_PUBREC_SENT, ?PAYLOAD_FORMAT_INVALID})            -> 117;
-met2idx({?MQTT5_PUBREL_RECEIVED, ?SUCCESS})                       -> 118;
-met2idx({?MQTT5_PUBREL_RECEIVED, ?PACKET_ID_NOT_FOUND})           -> 119;
-met2idx({?MQTT5_PUBREL_SENT, ?SUCCESS})                           -> 120;
-met2idx({?MQTT5_PUBREL_SENT, ?PACKET_ID_NOT_FOUND})               -> 121;
-met2idx(?MQTT5_SUBACK_SENT)                                       -> 122;
-met2idx(?MQTT5_SUBSCRIBE_RECEIVED)                                -> 123;
-met2idx(?MQTT5_UNSUBACK_SENT)                                     -> 124;
-met2idx(?MQTT5_UNSUBSCRIBE_RECEIVED)                              -> 125;
-met2idx({?MQTT5_AUTH_SENT,?SUCCESS})                              -> 126;
-met2idx({?MQTT5_AUTH_SENT,?CONTINUE_AUTHENTICATION})              -> 127;
-met2idx({?MQTT5_AUTH_SENT,?REAUTHENTICATE})                       -> 128;
-met2idx({?MQTT5_AUTH_RECEIVED, ?SUCCESS})                         -> 129;
-met2idx({?MQTT5_AUTH_RECEIVED, ?CONTINUE_AUTHENTICATION})         -> 130;
-met2idx({?MQTT5_AUTH_RECEIVED, ?REAUTHENTICATE})                  -> 131;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_ACCEPT})                   -> 132;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_PROTO_VER})                -> 133;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_INVALID_ID})               -> 134;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_SERVER})                   -> 135;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_CREDENTIALS})              -> 136;
-met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_AUTH})                     -> 137;
-met2idx(?MQTT4_CONNECT_RECEIVED)                                  -> 138;
-met2idx(?MQTT4_PUBLISH_RECEIVED)                                  -> 139;
-met2idx(?MQTT4_PUBACK_RECEIVED)                                   -> 140;
-met2idx(?MQTT4_PUBREC_RECEIVED)                                   -> 141;
-met2idx(?MQTT4_PUBREL_RECEIVED)                                   -> 142;
-met2idx(?MQTT4_PUBCOMP_RECEIVED)                                  -> 143;
-met2idx(?MQTT4_SUBSCRIBE_RECEIVED)                                -> 144;
-met2idx(?MQTT4_UNSUBSCRIBE_RECEIVED)                              -> 145;
-met2idx(?MQTT4_PINGREQ_RECEIVED)                                  -> 146;
-met2idx(?MQTT4_DISCONNECT_RECEIVED)                               -> 147;
-met2idx(?MQTT4_PUBLISH_SENT)                                      -> 148;
-met2idx(?MQTT4_PUBACK_SENT)                                       -> 149;
-met2idx(?MQTT4_PUBREC_SENT)                                       -> 150;
-met2idx(?MQTT4_PUBREL_SENT)                                       -> 151;
-met2idx(?MQTT4_PUBCOMP_SENT)                                      -> 152;
-met2idx(?MQTT4_SUBACK_SENT)                                       -> 153;
-met2idx(?MQTT4_UNSUBACK_SENT)                                     -> 154;
-met2idx(?MQTT4_PINGRESP_SENT)                                     -> 155;
-met2idx(?MQTT4_PUBLISH_AUTH_ERROR)                                -> 156;
-met2idx(?MQTT4_SUBSCRIBE_AUTH_ERROR)                              -> 157;
-met2idx(?MQTT4_INVALID_MSG_SIZE_ERROR)                            -> 158;
-met2idx(?MQTT4_PUBACK_INVALID_ERROR)                              -> 159;
-met2idx(?MQTT4_PUBREC_INVALID_ERROR)                              -> 160;
-met2idx(?MQTT4_PUBCOMP_INVALID_ERROR)                             -> 161;
-met2idx(?MQTT4_PUBLISH_ERROR)                                     -> 162;
-met2idx(?MQTT4_SUBSCRIBE_ERROR)                                   -> 163;
-met2idx(?MQTT4_UNSUBSCRIBE_ERROR)                                 -> 164;
-met2idx(?METRIC_QUEUE_SETUP)                                      -> 165;
-met2idx(?METRIC_QUEUE_INITIALIZED_FROM_STORAGE)                   -> 166;
-met2idx(?METRIC_QUEUE_TEARDOWN)                                   -> 167;
-met2idx(?METRIC_QUEUE_MESSAGE_DROP)                               -> 168;
-met2idx(?METRIC_QUEUE_MESSAGE_EXPIRED)                            -> 169;
-met2idx(?METRIC_QUEUE_MESSAGE_UNHANDLED)                          -> 170;
-met2idx(?METRIC_QUEUE_MESSAGE_IN)                                 -> 171;
-met2idx(?METRIC_QUEUE_MESSAGE_OUT)                                -> 172;
-met2idx(?METRIC_CLIENT_EXPIRED)                                   -> 173;
-met2idx(?METRIC_CLUSTER_BYTES_RECEIVED)                           -> 174;
-met2idx(?METRIC_CLUSTER_BYTES_SENT)                               -> 175;
-met2idx(?METRIC_CLUSTER_BYTES_DROPPED)                            -> 176;
-met2idx(?METRIC_SOCKET_OPEN)                                      -> 177;
-met2idx(?METRIC_SOCKET_CLOSE)                                     -> 178;
-met2idx(?METRIC_SOCKET_ERROR)                                     -> 179;
-met2idx(?METRIC_BYTES_RECEIVED)                                   -> 180;
-met2idx(?METRIC_BYTES_SENT)                                       -> 181;
-met2idx(?METRIC_MSG_IN_RATE)                                      -> 182;
-met2idx(?METRIC_MSG_OUT_RATE)                                     -> 183;
-met2idx(?METRIC_BYTE_IN_RATE)                                     -> 184;
-met2idx(?METRIC_BYTE_OUT_RATE)                                    -> 185;
-met2idx(?METRIC_ROUTER_MATCHES_LOCAL)                             -> 186;
-met2idx(?METRIC_ROUTER_MATCHES_REMOTE)                            -> 187;
-met2idx(mqtt_connack_not_authorized_sent)                         -> 188;
-met2idx(mqtt_connack_bad_credentials_sent)                        -> 189;
-met2idx(mqtt_connack_server_unavailable_sent)                     -> 190;
-met2idx(mqtt_connack_identifier_rejected_sent)                    -> 191;
-met2idx(mqtt_connack_unacceptable_protocol_sent)                  -> 192;
-met2idx(mqtt_connack_accepted_sent)                               -> 193;
-met2idx(?METRIC_SOCKET_CLOSE_TIMEOUT)                             -> 194;
-met2idx(?MQTT5_CLIENT_KEEPALIVE_EXPIRED)                          -> 195;
-met2idx(?MQTT4_CLIENT_KEEPALIVE_EXPIRED)                          -> 196;
-met2idx({?SIDECAR_EVENTS, ?ON_REGISTER})                          -> 197;
-met2idx({?SIDECAR_EVENTS, ?ON_PUBLISH})                           -> 198;
-met2idx({?SIDECAR_EVENTS, ?ON_SUBSCRIBE})                         -> 199;
-met2idx({?SIDECAR_EVENTS, ?ON_UNSUBSCRIBE})                       -> 200;
-met2idx({?SIDECAR_EVENTS, ?ON_DELIVER})                           -> 201;
-met2idx({?SIDECAR_EVENTS, ?ON_DELIVERY_COMPLETE})                 -> 202;
-met2idx({?SIDECAR_EVENTS, ?ON_OFFLINE_MESSAGE})                   -> 203;
-met2idx({?SIDECAR_EVENTS, ?ON_CLIENT_GONE})                       -> 204;
-met2idx({?SIDECAR_EVENTS, ?ON_CLIENT_WAKEUP})                     -> 205;
-met2idx({?SIDECAR_EVENTS, ?ON_CLIENT_OFFLINE})                    -> 206;
-met2idx({?SIDECAR_EVENTS, ?ON_SESSION_EXPIRED})                   -> 207;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER})                    -> 208;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_PUBLISH})                     -> 209;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SUBSCRIBE})                   -> 210;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_UNSUBSCRIBE})                 -> 211;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_DELIVER})                     -> 212;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_DELIVERY_COMPLETE})           -> 213;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_OFFLINE_MESSAGE})             -> 214;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_GONE})                 -> 215;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_WAKEUP})               -> 216;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_OFFLINE})              -> 217;
-met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SESSION_EXPIRED})             -> 218;
-met2idx(?METRIC_STORED_OFFLINE_MESSAGES)                          -> 219;
-met2idx(?METRIC_REMOVED_OFFLINE_MESSAGES)                         -> 220;
-met2idx({?REDIS_CMD, ?SET})                                       -> 221;
-met2idx({?REDIS_CMD, ?GET})                                       -> 222;
-met2idx({?REDIS_CMD, ?DEL})                                       -> 223;
-met2idx({?REDIS_CMD, ?SADD})                                      -> 224;
-met2idx({?REDIS_CMD, ?SMEMBERS})                                  -> 225;
-met2idx({?REDIS_CMD, ?SREM})                                      -> 226;
-met2idx({?REDIS_CMD, ?PIPELINE})                                  -> 227;
-met2idx({?REDIS_CMD_ERROR, ?SET})                                 -> 228;
-met2idx({?REDIS_CMD_ERROR, ?GET})                                 -> 229;
-met2idx({?REDIS_CMD_ERROR, ?DEL})                                 -> 230;
-met2idx({?REDIS_CMD_ERROR, ?SADD})                                -> 231;
-met2idx({?REDIS_CMD_ERROR, ?SMEMBERS})                            -> 232;
-met2idx({?REDIS_CMD_ERROR, ?SREM})                                -> 233;
-met2idx({?REDIS_CMD_ERROR, ?PIPELINE})                            -> 234;
-met2idx({?REDIS_CMD_MISS, ?GET})                                  -> 235;
-met2idx({?REDIS_CMD_MISS, ?SMEMBERS})                             -> 236;
-met2idx({?REDIS_CMD_MISS, ?SET})                                  -> 238;
-met2idx({?REDIS_CMD_MISS, ?DEL})                                  -> 239;
-met2idx({?REDIS_CMD_MISS, ?SADD})                                 -> 240;
-met2idx({?REDIS_CMD_MISS, ?SREM})                                 -> 241;
-met2idx({?REDIS_CMD_MISS, ?PIPELINE})                             -> 242.
+met2idx(?MQTT5_CONNECT_RECEIVED)                                    -> 1;
+met2idx({?MQTT5_CONNACK_SENT, ?SUCCESS})                            -> 2;
+met2idx({?MQTT5_CONNACK_SENT, ?UNSPECIFIED_ERROR})                  -> 3;
+met2idx({?MQTT5_CONNACK_SENT, ?MALFORMED_PACKET})                   -> 4;
+met2idx({?MQTT5_CONNACK_SENT, ?PROTOCOL_ERROR})                     -> 5;
+met2idx({?MQTT5_CONNACK_SENT, ?IMPL_SPECIFIC_ERROR})                -> 6;
+met2idx({?MQTT5_CONNACK_SENT, ?UNSUPPORTED_PROTOCOL_VERSION})       -> 7;
+met2idx({?MQTT5_CONNACK_SENT, ?CLIENT_IDENTIFIER_NOT_VALID})        -> 8;
+met2idx({?MQTT5_CONNACK_SENT, ?BAD_USERNAME_OR_PASSWORD})           -> 9;
+met2idx({?MQTT5_CONNACK_SENT, ?NOT_AUTHORIZED})                     -> 10;
+met2idx({?MQTT5_CONNACK_SENT, ?SERVER_UNAVAILABLE})                 -> 11;
+met2idx({?MQTT5_CONNACK_SENT, ?SERVER_BUSY})                        -> 12;
+met2idx({?MQTT5_CONNACK_SENT, ?BANNED})                             -> 13;
+met2idx({?MQTT5_CONNACK_SENT, ?BAD_AUTHENTICATION_METHOD})          -> 14;
+met2idx({?MQTT5_CONNACK_SENT, ?TOPIC_NAME_INVALID})                 -> 15;
+met2idx({?MQTT5_CONNACK_SENT, ?PACKET_TOO_LARGE})                   -> 16;
+met2idx({?MQTT5_CONNACK_SENT, ?QUOTA_EXCEEDED})                     -> 17;
+met2idx({?MQTT5_CONNACK_SENT, ?PAYLOAD_FORMAT_INVALID})             -> 18;
+met2idx({?MQTT5_CONNACK_SENT, ?RETAIN_NOT_SUPPORTED})               -> 19;
+met2idx({?MQTT5_CONNACK_SENT, ?QOS_NOT_SUPPORTED})                  -> 20;
+met2idx({?MQTT5_CONNACK_SENT, ?USE_ANOTHER_SERVER})                 -> 21;
+met2idx({?MQTT5_CONNACK_SENT, ?SERVER_MOVED})                       -> 22;
+met2idx({?MQTT5_CONNACK_SENT, ?CONNECTION_RATE_EXCEEDED})           -> 23;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?NORMAL_DISCONNECT})           -> 24;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?DISCONNECT_WITH_WILL_MSG})    -> 25;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?UNSPECIFIED_ERROR})           -> 26;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?MALFORMED_PACKET})            -> 27;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?PROTOCOL_ERROR})              -> 28;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?IMPL_SPECIFIC_ERROR})         -> 29;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?TOPIC_NAME_INVALID})          -> 30;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?RECEIVE_MAX_EXCEEDED})        -> 31;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?TOPIC_ALIAS_INVALID})         -> 32;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?PACKET_TOO_LARGE})            -> 33;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?MESSAGE_RATE_TOO_HIGH})       -> 34;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?QUOTA_EXCEEDED})              -> 35;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?ADMINISTRATIVE_ACTION})       -> 36;
+met2idx({?MQTT5_DISCONNECT_RECEIVED, ?PAYLOAD_FORMAT_INVALID})      -> 37;
+met2idx({?MQTT5_DISCONNECT_SENT,?NORMAL_DISCONNECT})                -> 38;
+met2idx({?MQTT5_DISCONNECT_SENT,?UNSPECIFIED_ERROR})                -> 39;
+met2idx({?MQTT5_DISCONNECT_SENT,?MALFORMED_PACKET})                 -> 40;
+met2idx({?MQTT5_DISCONNECT_SENT,?PROTOCOL_ERROR})                   -> 41;
+met2idx({?MQTT5_DISCONNECT_SENT,?IMPL_SPECIFIC_ERROR})              -> 42;
+met2idx({?MQTT5_DISCONNECT_SENT,?NOT_AUTHORIZED})                   -> 43;
+met2idx({?MQTT5_DISCONNECT_SENT,?SERVER_BUSY})                      -> 44;
+met2idx({?MQTT5_DISCONNECT_SENT,?SERVER_SHUTTING_DOWN})             -> 45;
+met2idx({?MQTT5_DISCONNECT_SENT,?KEEP_ALIVE_TIMEOUT})               -> 46;
+met2idx({?MQTT5_DISCONNECT_SENT,?SESSION_TAKEN_OVER})               -> 47;
+met2idx({?MQTT5_DISCONNECT_SENT,?TOPIC_FILTER_INVALID})             -> 48;
+met2idx({?MQTT5_DISCONNECT_SENT,?TOPIC_NAME_INVALID})               -> 49;
+met2idx({?MQTT5_DISCONNECT_SENT,?RECEIVE_MAX_EXCEEDED})             -> 50;
+met2idx({?MQTT5_DISCONNECT_SENT,?TOPIC_ALIAS_INVALID})              -> 51;
+met2idx({?MQTT5_DISCONNECT_SENT,?PACKET_TOO_LARGE})                 -> 52;
+met2idx({?MQTT5_DISCONNECT_SENT,?MESSAGE_RATE_TOO_HIGH})            -> 53;
+met2idx({?MQTT5_DISCONNECT_SENT,?QUOTA_EXCEEDED})                   -> 54;
+met2idx({?MQTT5_DISCONNECT_SENT,?ADMINISTRATIVE_ACTION})            -> 55;
+met2idx({?MQTT5_DISCONNECT_SENT,?PAYLOAD_FORMAT_INVALID})           -> 56;
+met2idx({?MQTT5_DISCONNECT_SENT,?RETAIN_NOT_SUPPORTED})             -> 57;
+met2idx({?MQTT5_DISCONNECT_SENT,?QOS_NOT_SUPPORTED})                -> 58;
+met2idx({?MQTT5_DISCONNECT_SENT,?USE_ANOTHER_SERVER})               -> 59;
+met2idx({?MQTT5_DISCONNECT_SENT,?SERVER_MOVED})                     -> 60;
+met2idx({?MQTT5_DISCONNECT_SENT,?SHARED_SUBS_NOT_SUPPORTED})        -> 61;
+met2idx({?MQTT5_DISCONNECT_SENT,?CONNECTION_RATE_EXCEEDED})         -> 62;
+met2idx({?MQTT5_DISCONNECT_SENT,?MAX_CONNECT_TIME})                 -> 63;
+met2idx({?MQTT5_DISCONNECT_SENT,?SUBSCRIPTION_IDS_NOT_SUPPORTED})   -> 64;
+met2idx({?MQTT5_DISCONNECT_SENT,?WILDCARD_SUBS_NOT_SUPPORTED})      -> 65;
+met2idx(?MQTT5_PUBLISH_AUTH_ERROR)                                  -> 66;
+met2idx(?MQTT5_SUBSCRIBE_AUTH_ERROR)                                -> 67;
+met2idx(?MQTT5_INVALID_MSG_SIZE_ERROR)                              -> 68;
+met2idx(?MQTT5_PUBACK_INVALID_ERROR)                                -> 69;
+met2idx(?MQTT5_PUBCOMP_INVALID_ERROR)                               -> 70;
+met2idx(?MQTT5_PUBLISH_ERROR)                                       -> 71;
+met2idx(?MQTT5_SUBSCRIBE_ERROR)                                     -> 72;
+met2idx(?MQTT5_UNSUBSCRIBE_ERROR)                                   -> 73;
+met2idx(?MQTT5_PINGREQ_RECEIVED)                                    -> 74;
+met2idx(?MQTT5_PINGRESP_SENT)                                       -> 75;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?SUCCESS})                         -> 76;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?NO_MATCHING_SUBSCRIBERS})         -> 77;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?UNSPECIFIED_ERROR})               -> 78;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?IMPL_SPECIFIC_ERROR})             -> 79;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?NOT_AUTHORIZED})                  -> 80;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?TOPIC_NAME_INVALID})              -> 81;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?PACKET_ID_IN_USE})                -> 82;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?QUOTA_EXCEEDED})                  -> 83;
+met2idx({?MQTT5_PUBACK_RECEIVED, ?PAYLOAD_FORMAT_INVALID})          -> 84;
+met2idx({?MQTT5_PUBACK_SENT, ?SUCCESS})                             -> 85;
+met2idx({?MQTT5_PUBACK_SENT, ?NO_MATCHING_SUBSCRIBERS})             -> 86;
+met2idx({?MQTT5_PUBACK_SENT, ?UNSPECIFIED_ERROR})                   -> 87;
+met2idx({?MQTT5_PUBACK_SENT, ?IMPL_SPECIFIC_ERROR})                 -> 88;
+met2idx({?MQTT5_PUBACK_SENT, ?NOT_AUTHORIZED})                      -> 89;
+met2idx({?MQTT5_PUBACK_SENT, ?TOPIC_NAME_INVALID})                  -> 90;
+met2idx({?MQTT5_PUBACK_SENT, ?PACKET_ID_IN_USE})                    -> 91;
+met2idx({?MQTT5_PUBACK_SENT, ?QUOTA_EXCEEDED})                      -> 92;
+met2idx({?MQTT5_PUBACK_SENT, ?PAYLOAD_FORMAT_INVALID})              -> 93;
+met2idx({?MQTT5_PUBCOMP_RECEIVED,?SUCCESS})                         -> 94;
+met2idx({?MQTT5_PUBCOMP_RECEIVED,?PACKET_ID_NOT_FOUND})             -> 95;
+met2idx({?MQTT5_PUBCOMP_SENT, ?SUCCESS})                            -> 96;
+met2idx({?MQTT5_PUBCOMP_SENT, ?PACKET_ID_NOT_FOUND})                -> 97;
+met2idx(?MQTT5_PUBLISH_RECEIVED)                                    -> 98;
+met2idx(?MQTT5_PUBLISH_SENT)                                        -> 99;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?SUCCESS})                         -> 100;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?NO_MATCHING_SUBSCRIBERS})         -> 101;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?UNSPECIFIED_ERROR})               -> 102;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?IMPL_SPECIFIC_ERROR})             -> 103;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?NOT_AUTHORIZED})                  -> 104;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?TOPIC_NAME_INVALID})              -> 105;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?PACKET_ID_IN_USE})                -> 106;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?QUOTA_EXCEEDED})                  -> 107;
+met2idx({?MQTT5_PUBREC_RECEIVED, ?PAYLOAD_FORMAT_INVALID})          -> 108;
+met2idx({?MQTT5_PUBREC_SENT, ?SUCCESS})                             -> 109;
+met2idx({?MQTT5_PUBREC_SENT, ?NO_MATCHING_SUBSCRIBERS})             -> 110;
+met2idx({?MQTT5_PUBREC_SENT, ?UNSPECIFIED_ERROR})                   -> 111;
+met2idx({?MQTT5_PUBREC_SENT, ?IMPL_SPECIFIC_ERROR})                 -> 112;
+met2idx({?MQTT5_PUBREC_SENT, ?NOT_AUTHORIZED})                      -> 113;
+met2idx({?MQTT5_PUBREC_SENT, ?TOPIC_NAME_INVALID})                  -> 114;
+met2idx({?MQTT5_PUBREC_SENT, ?PACKET_ID_IN_USE})                    -> 115;
+met2idx({?MQTT5_PUBREC_SENT, ?QUOTA_EXCEEDED})                      -> 116;
+met2idx({?MQTT5_PUBREC_SENT, ?PAYLOAD_FORMAT_INVALID})              -> 117;
+met2idx({?MQTT5_PUBREL_RECEIVED, ?SUCCESS})                         -> 118;
+met2idx({?MQTT5_PUBREL_RECEIVED, ?PACKET_ID_NOT_FOUND})             -> 119;
+met2idx({?MQTT5_PUBREL_SENT, ?SUCCESS})                             -> 120;
+met2idx({?MQTT5_PUBREL_SENT, ?PACKET_ID_NOT_FOUND})                 -> 121;
+met2idx(?MQTT5_SUBACK_SENT)                                         -> 122;
+met2idx(?MQTT5_SUBSCRIBE_RECEIVED)                                  -> 123;
+met2idx(?MQTT5_UNSUBACK_SENT)                                       -> 124;
+met2idx(?MQTT5_UNSUBSCRIBE_RECEIVED)                                -> 125;
+met2idx({?MQTT5_AUTH_SENT,?SUCCESS})                                -> 126;
+met2idx({?MQTT5_AUTH_SENT,?CONTINUE_AUTHENTICATION})                -> 127;
+met2idx({?MQTT5_AUTH_SENT,?REAUTHENTICATE})                         -> 128;
+met2idx({?MQTT5_AUTH_RECEIVED, ?SUCCESS})                           -> 129;
+met2idx({?MQTT5_AUTH_RECEIVED, ?CONTINUE_AUTHENTICATION})           -> 130;
+met2idx({?MQTT5_AUTH_RECEIVED, ?REAUTHENTICATE})                    -> 131;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_ACCEPT})                     -> 132;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_PROTO_VER})                  -> 133;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_INVALID_ID})                 -> 134;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_SERVER})                     -> 135;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_CREDENTIALS})                -> 136;
+met2idx({?MQTT4_CONNACK_SENT, ?CONNACK_AUTH})                       -> 137;
+met2idx(?MQTT4_CONNECT_RECEIVED)                                    -> 138;
+met2idx(?MQTT4_PUBLISH_RECEIVED)                                    -> 139;
+met2idx(?MQTT4_PUBACK_RECEIVED)                                     -> 140;
+met2idx(?MQTT4_PUBREC_RECEIVED)                                     -> 141;
+met2idx(?MQTT4_PUBREL_RECEIVED)                                     -> 142;
+met2idx(?MQTT4_PUBCOMP_RECEIVED)                                    -> 143;
+met2idx(?MQTT4_SUBSCRIBE_RECEIVED)                                  -> 144;
+met2idx(?MQTT4_UNSUBSCRIBE_RECEIVED)                                -> 145;
+met2idx(?MQTT4_PINGREQ_RECEIVED)                                    -> 146;
+met2idx(?MQTT4_DISCONNECT_RECEIVED)                                 -> 147;
+met2idx(?MQTT4_PUBLISH_SENT)                                        -> 148;
+met2idx(?MQTT4_PUBACK_SENT)                                         -> 149;
+met2idx(?MQTT4_PUBREC_SENT)                                         -> 150;
+met2idx(?MQTT4_PUBREL_SENT)                                         -> 151;
+met2idx(?MQTT4_PUBCOMP_SENT)                                        -> 152;
+met2idx(?MQTT4_SUBACK_SENT)                                         -> 153;
+met2idx(?MQTT4_UNSUBACK_SENT)                                       -> 154;
+met2idx(?MQTT4_PINGRESP_SENT)                                       -> 155;
+met2idx(?MQTT4_PUBLISH_AUTH_ERROR)                                  -> 156;
+met2idx(?MQTT4_SUBSCRIBE_AUTH_ERROR)                                -> 157;
+met2idx(?MQTT4_INVALID_MSG_SIZE_ERROR)                              -> 158;
+met2idx(?MQTT4_PUBACK_INVALID_ERROR)                                -> 159;
+met2idx(?MQTT4_PUBREC_INVALID_ERROR)                                -> 160;
+met2idx(?MQTT4_PUBCOMP_INVALID_ERROR)                               -> 161;
+met2idx(?MQTT4_PUBLISH_ERROR)                                       -> 162;
+met2idx(?MQTT4_SUBSCRIBE_ERROR)                                     -> 163;
+met2idx(?MQTT4_UNSUBSCRIBE_ERROR)                                   -> 164;
+met2idx(?METRIC_QUEUE_SETUP)                                        -> 165;
+met2idx(?METRIC_QUEUE_INITIALIZED_FROM_STORAGE)                     -> 166;
+met2idx(?METRIC_QUEUE_TEARDOWN)                                     -> 167;
+met2idx(?METRIC_QUEUE_MESSAGE_DROP)                                 -> 168;
+met2idx(?METRIC_QUEUE_MESSAGE_EXPIRED)                              -> 169;
+met2idx(?METRIC_QUEUE_MESSAGE_UNHANDLED)                            -> 170;
+met2idx(?METRIC_QUEUE_MESSAGE_IN)                                   -> 171;
+met2idx(?METRIC_QUEUE_MESSAGE_OUT)                                  -> 172;
+met2idx(?METRIC_CLIENT_EXPIRED)                                     -> 173;
+met2idx(?METRIC_CLUSTER_BYTES_RECEIVED)                             -> 174;
+met2idx(?METRIC_CLUSTER_BYTES_SENT)                                 -> 175;
+met2idx(?METRIC_CLUSTER_BYTES_DROPPED)                              -> 176;
+met2idx(?METRIC_SOCKET_OPEN)                                        -> 177;
+met2idx(?METRIC_SOCKET_CLOSE)                                       -> 178;
+met2idx(?METRIC_SOCKET_ERROR)                                       -> 179;
+met2idx(?METRIC_BYTES_RECEIVED)                                     -> 180;
+met2idx(?METRIC_BYTES_SENT)                                         -> 181;
+met2idx(?METRIC_MSG_IN_RATE)                                        -> 182;
+met2idx(?METRIC_MSG_OUT_RATE)                                       -> 183;
+met2idx(?METRIC_BYTE_IN_RATE)                                       -> 184;
+met2idx(?METRIC_BYTE_OUT_RATE)                                      -> 185;
+met2idx(?METRIC_ROUTER_MATCHES_LOCAL)                               -> 186;
+met2idx(?METRIC_ROUTER_MATCHES_REMOTE)                              -> 187;
+met2idx(mqtt_connack_not_authorized_sent)                           -> 188;
+met2idx(mqtt_connack_bad_credentials_sent)                          -> 189;
+met2idx(mqtt_connack_server_unavailable_sent)                       -> 190;
+met2idx(mqtt_connack_identifier_rejected_sent)                      -> 191;
+met2idx(mqtt_connack_unacceptable_protocol_sent)                    -> 192;
+met2idx(mqtt_connack_accepted_sent)                                 -> 193;
+met2idx(?METRIC_SOCKET_CLOSE_TIMEOUT)                               -> 194;
+met2idx(?MQTT5_CLIENT_KEEPALIVE_EXPIRED)                            -> 195;
+met2idx(?MQTT4_CLIENT_KEEPALIVE_EXPIRED)                            -> 196;
+met2idx({?SIDECAR_EVENTS, ?ON_REGISTER})                            -> 197;
+met2idx({?SIDECAR_EVENTS, ?ON_PUBLISH})                             -> 198;
+met2idx({?SIDECAR_EVENTS, ?ON_SUBSCRIBE})                           -> 199;
+met2idx({?SIDECAR_EVENTS, ?ON_UNSUBSCRIBE})                         -> 200;
+met2idx({?SIDECAR_EVENTS, ?ON_DELIVER})                             -> 201;
+met2idx({?SIDECAR_EVENTS, ?ON_DELIVERY_COMPLETE})                   -> 202;
+met2idx({?SIDECAR_EVENTS, ?ON_OFFLINE_MESSAGE})                     -> 203;
+met2idx({?SIDECAR_EVENTS, ?ON_CLIENT_GONE})                         -> 204;
+met2idx({?SIDECAR_EVENTS, ?ON_CLIENT_WAKEUP})                       -> 205;
+met2idx({?SIDECAR_EVENTS, ?ON_CLIENT_OFFLINE})                      -> 206;
+met2idx({?SIDECAR_EVENTS, ?ON_SESSION_EXPIRED})                     -> 207;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_REGISTER})                      -> 208;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_PUBLISH})                       -> 209;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SUBSCRIBE})                     -> 210;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_UNSUBSCRIBE})                   -> 211;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_DELIVER})                       -> 212;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_DELIVERY_COMPLETE})             -> 213;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_OFFLINE_MESSAGE})               -> 214;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_GONE})                   -> 215;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_WAKEUP})                 -> 216;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_OFFLINE})                -> 217;
+met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SESSION_EXPIRED})               -> 218;
+met2idx(?METRIC_STORED_OFFLINE_MESSAGES)                            -> 219;
+met2idx(?METRIC_REMOVED_OFFLINE_MESSAGES)                           -> 220;
+met2idx({?REDIS_CMD, ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION})        -> 221;
+met2idx({?REDIS_CMD, ?PIPELINE, ?ADD_COMPLEX_TOPICS_OPERATION})     -> 222;
+met2idx({?REDIS_CMD_ERROR, ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION})  -> 223;
+met2idx({?REDIS_CMD_ERROR, ?PIPELINE, ?ADD_COMPLEX_TOPICS_OPERATION}) -> 224;
+met2idx({?REDIS_CMD_MISS, ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION})   -> 225;
+met2idx({?REDIS_CMD_MISS, ?PIPELINE, ?ADD_COMPLEX_TOPICS_OPERATION}) -> 226;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?REMAP_SUBSCRIBER})            -> 227;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?SUBSCRIBE})                   -> 228;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?UNSUBSCRIBE})                 -> 229;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?DELETE_SUBSCRIBER})           -> 230;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?FETCH_SUBSCRIBER})            -> 231;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS}) -> 232;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?REMAP_SUBSCRIBER})          -> 233;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?SUBSCRIBE})                 -> 234;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?UNSUBSCRIBE})               -> 235;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?DELETE_SUBSCRIBER})         -> 236;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?FETCH_SUBSCRIBER})          -> 237;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS}) -> 238;
+met2idx({?REDIS_CMD, ?FCALL, ?REMAP_SUBSCRIBER})                    -> 239;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?REMAP_SUBSCRIBER})              -> 240;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?REMAP_SUBSCRIBER})               -> 241;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?REMAP_SUBSCRIBER})              -> 242;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?REMAP_SUBSCRIBER})             -> 243;
+met2idx({?REDIS_CMD, ?FCALL, ?SUBSCRIBE})                           -> 244;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?SUBSCRIBE})                     -> 245;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?SUBSCRIBE})                      -> 246;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?SUBSCRIBE})                     -> 247;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?SUBSCRIBE})                    -> 248;
+met2idx({?REDIS_CMD, ?FCALL, ?UNSUBSCRIBE})                         -> 249;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?UNSUBSCRIBE})                   -> 250;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?UNSUBSCRIBE})                    -> 251;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?UNSUBSCRIBE})                   -> 252;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?UNSUBSCRIBE})                  -> 253;
+met2idx({?REDIS_CMD, ?FCALL, ?DELETE_SUBSCRIBER})                   -> 254;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?DELETE_SUBSCRIBER})             -> 255;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?DELETE_SUBSCRIBER})              -> 256;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?DELETE_SUBSCRIBER})             -> 257;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?DELETE_SUBSCRIBER})            -> 258;
+met2idx({?REDIS_CMD, ?FCALL, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS})     -> 259;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS})  -> 260;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS})   -> 261;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS})  -> 262;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS}) -> 263;
+met2idx({?REDIS_CMD, ?FCALL, ?FETCH_SUBSCRIBER})                       -> 264;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?FETCH_SUBSCRIBER})                 -> 265;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?FETCH_SUBSCRIBER})                  -> 266;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?FETCH_SUBSCRIBER})                 -> 267;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?FETCH_SUBSCRIBER})                -> 268;
+met2idx({?REDIS_CMD, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})     -> 269;
+met2idx({?REDIS_CMD_ERROR, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})  -> 270;
+met2idx({?REDIS_CMD_MISS, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})   -> 271.
 
 -ifdef(TEST).
 clear_stored_rates() ->

@@ -1,7 +1,7 @@
 
 -type metric_label() :: {atom(), string()}.
 
--type metric_id() :: atom() | {atom(), non_neg_integer() | atom()}.
+-type metric_id() :: atom() | {atom(), non_neg_integer() | atom()} | {atom(), atom(), atom()}.
 
 -record(metric_def,
         {type        :: atom(),
@@ -121,10 +121,5 @@
 -define(REDIS_CMD, redis_cmd).
 -define(REDIS_CMD_MISS, redis_cmd_miss).
 -define(REDIS_CMD_ERROR, redis_cmd_error).
--define(SET, set).
--define(GET, get).
--define(DEL, del).
--define(SADD, sadd).
--define(SREM, srem).
--define(SMEMBERS, smembers).
--define(PIPELINE, pipeline).
+-define(REDIS_STALE_CMD, redis_stale_cmd).
+-define(UNAUTH_REDIS_CMD, unauth_redis_cmd).

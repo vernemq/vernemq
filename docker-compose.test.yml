@@ -45,6 +45,13 @@ services:
     container_name: mongo
     logging:
       driver: none
+  redis-sentinel:
+    image: bitnami/redis-sentinel
+    container_name: redis-sentinel
+    depends_on:
+      - redis
+    logging:
+      driver: none
   vernemq:
     container_name: vmq-test
     build:
@@ -56,6 +63,7 @@ services:
       - redis
       - memcached
       - mongo
+      - redis-sentinel
     command: ./docker/run-tests.sh
     volumes:
       - ${PWD}:/vernemq

@@ -55,4 +55,21 @@
                                       {error, atom()}).
 
 -type reg_view_fold_fun() :: fun((node() | {subscriber_id(), qos(), client_id() | any()}, any()) -> any()).
+
+-define(SADD, sadd).
+-define(SREM, srem).
+-define(SMEMBERS, smembers).
+-define(PIPELINE, pipeline).
+-define(FUNCTION, function).
+-define(FUNCTION_LOAD, 'function:load').
+-define(FCALL, fcall).
+-define(REMAP_SUBSCRIBER, remap_subscriber).
+-define(SUBSCRIBE, subscribe).
+-define(UNSUBSCRIBE, unsubscribe).
+-define(DELETE_SUBSCRIBER, delete_subscriber).
+-define(FETCH_SUBSCRIBER, fetch_subscriber).
+-define(FETCH_MATCHED_TOPIC_SUBSCRIBERS, fetch_matched_topic_subscribers).
+-define(INITIALIZE_TRIE_OPERATION, initialize_trie).
+-define(ADD_COMPLEX_TOPICS_OPERATION, add_complex_topics).
+-define(DELETE_COMPLEX_TOPICS_OPERATION, delete_complex_topics).
 -endif.
