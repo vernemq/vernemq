@@ -661,6 +661,69 @@
                                                                                   hidden
                                                                           ]}.
 
+%% @doc Set the TLS handshake timeout. This represents the maximum time that can
+%% be spent completing the TLS handshake for the protocol.
+%%
+%% It can be useful to set this to a higher value when clients are running on
+%% constrained devices (e.g. microcontrollers) which can take more than 5 seconds
+%% (the default value) to complete the TLS handshake.
+%%
+%% This can be specified either on the protocol level:
+%%
+%%     - listener.ssl.tls_handshake_timeout
+%%     - listener.wss.tls_handshake_timeout
+%%     - listener.vmqs.tls_handshake_timeout
+%%     - listener.https.tls_handshake_timeout
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.tls_handshake_timeout
+%%     - listener.wss.my_wss_listener.tls_handshake_timeout
+%%     - listener.vmqs.my_vmqs_listener.tls_handshake_timeout
+%%     - listener.https.my_https_listener.tls_handshake_timeout
+{mapping, "listener.ssl.tls_handshake_timeout", "vmq_server.listeners", [
+                                                                      {default, -1},
+                                                                      {datatype, [integer, {atom, infinity}]},
+                                                                      hidden
+                                                                     ]}.
+
+{mapping, "listener.ssl.$name.tls_handshake_timeout", "vmq_server.listeners", [
+                                                                            {datatype, [integer, {atom, infinity}]},
+                                                                            hidden
+                                                                           ]}.
+
+{mapping, "listener.wss.tls_handshake_timeout", "vmq_server.listeners", [
+                                                                            {default, -1},
+                                                                            {datatype, [integer, {atom, infinity}]},
+                                                                            hidden
+                                                                           ]}.
+
+{mapping, "listener.wss.$name.tls_handshake_timeout", "vmq_server.listeners", [
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                                 ]}.
+
+{mapping, "listener.vmqs.tls_handshake_timeout", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                                 ]}.
+{mapping, "listener.vmqs.$name.tls_handshake_timeout", "vmq_server.listeners", [
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                                 ]}.
+
+{mapping, "listener.https.tls_handshake_timeout", "vmq_server.listeners", [
+                                                                                  {default, -1},
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                                 ]}.
+
+{mapping, "listener.https.$name.tls_handshake_timeout", "vmq_server.listeners", [
+                                                                                  {datatype, [integer, {atom, infinity}]},
+                                                                                  hidden
+                                                                          ]}.
+
 %% @doc listener.tcp.<name> is an IP address and TCP port that
 %% the broker will bind to. You can define multiple listeners e.g:
 %% - listener.tcp.default = 127.0.0.1:1883

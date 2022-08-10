@@ -45,6 +45,12 @@ vmq_listener_start_cmd() ->
                                           end}]},
                  {nr_of_acceptors, [{longname, "nr_of_acceptors"},
                                     {typecast, fun(N) -> list_to_integer(N) end}]},
+                 {tls_handshake_timeout, [{longname, "tls_handshake_timeout"},
+                                    {typecast, fun
+                                                   ("infinity") -> infinity;
+                                         (N) ->
+                                            list_to_integer(N)
+                                    end}]},
                  {websocket, [{shortname, "ws"},
                               {longname, "websocket"}]},
                  {proxy_protocol, [{longname, "proxy_protocol"}]},
@@ -307,6 +313,7 @@ vmq_listener_start_usage() ->
      "  -m, --mountpoint=Mountpoint\n",
      "  --nr_of_acceptors=NrOfAcceptors\n",
      "  --max_connections=[infinity | MaxConnections]\n",
+     "  --tls_handshake_timeout=[infinity | TLSHandshakeTimeout]\n",
      "  --allowed_protocol_versions=[3|4|5]\n",
      "      Defaults to 3,4\n\n",
      "WebSocket Options\n\n",

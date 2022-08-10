@@ -42,7 +42,8 @@ groups() ->
          allowed_protocol_versions_override_test,
          allowed_eccs_test,
          default_eccs_test,
-         invalid_eccs_test
+         invalid_eccs_test,
+         tls_handshake_timeout_test
         ],
     [{schema, [parallel], Tests}].
 
@@ -303,6 +304,26 @@ allowed_protocol_versions_override_test(_Config) ->
     [4] = expect(Conf, [vmq_server, listeners, mqttws,{{127,0,0,1}, 800}, allowed_protocol_versions]),
     [4] = expect(Conf, [vmq_server, listeners, mqttwss,{{127,0,0,1}, 900}, allowed_protocol_versions]).
 
+tls_handshake_timeout_test(_Config) ->
+    Conf = [
+            %% tcp/ssl/mqtt
+            {["listener","ssl","default"],"127.0.0.1:8884"},
+            {["listener","ssl","default","tls_handshake_timeout"],"30000"},
+            %% websocket/ssl
+            {["listener","wss","default"],"127.0.0.1:900"},
+            {["listener","wss","default","tls_handshake_timeout"], "infinity"},
+            %% vmqs, inherited
+            {["listener","vmqs","tls_handshake_timeout"],"2000"},
+            {["listener","vmqs","default"],"127.0.0.1:1234"},
+            %% https, inherited
+            {["listener","https","tls_handshake_timeout"],"infinity"},
+            {["listener","https","default"],"127.0.0.1:443"}
+           | global_substitutions()
+           ],
+    30000 = expect(Conf, [vmq_server, listeners, mqtts,  {{127,0,0,1}, 8884}, tls_handshake_timeout]),
+    infinity = expect(Conf, [vmq_server, listeners, mqttwss,  {{127,0,0,1}, 900}, tls_handshake_timeout]),
+    2000 = expect(Conf, [vmq_server, listeners, vmqs,  {{127,0,0,1}, 1234}, tls_handshake_timeout]),
+    infinity = expect(Conf, [vmq_server, listeners, https,  {{127,0,0,1}, 443}, tls_handshake_timeout]).
 
 -define(stacktrace, try throw(foo) catch _:foo:Stacktrace -> Stacktrace end).
 
