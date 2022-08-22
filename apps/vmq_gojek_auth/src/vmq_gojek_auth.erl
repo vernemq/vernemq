@@ -83,34 +83,26 @@ change_config(Configs) ->
             vmq_gojek_auth_reloader:change_config_now()
     end.
 
-auth_on_subscribe(_, _, []) -> ok;
 auth_on_subscribe(User, SubscriberId, TopicList) ->
-    auth_on_subscribe(?RegView, User, SubscriberId, TopicList).
+    auth_on_subscribe(User, SubscriberId, TopicList, []).
 
-auth_on_subscribe(vmq_reg_redis_trie, User, SubscriberId, [{Topic, _Qos}|Rest]) ->
-    D = is_topic_invalid(Topic) orelse is_acl_auth_disabled(),
+auth_on_subscribe(_, _, [], Modifiers) -> {ok, lists:reverse(Modifiers)};
+auth_on_subscribe(User, SubscriberId, TopicList, Modifiers) ->
+    auth_on_subscribe(?RegView, User, SubscriberId, TopicList, Modifiers).
+
+auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], Modifiers) ->
+    D = is_topic_invalid(RegView, Topic) orelse is_acl_auth_disabled(),
     if D ->
         next;
-        true ->
-            case check(read, Topic, User, SubscriberId) of
-                true ->
-                    auth_on_subscribe(User, SubscriberId, Rest);
-                false ->
-                    next
-            end
-    end;
-auth_on_subscribe(vmq_reg_trie, User, SubscriberId, [{Topic, _Qos}|Rest]) ->
-  D = is_acl_auth_disabled(),
-  if D ->
-        next;
-     true ->
-        case check(read, Topic, User, SubscriberId) of
+      true ->
+          case check(read, Topic, User, SubscriberId) of
             true ->
-                auth_on_subscribe(User, SubscriberId, Rest);
+              auth_on_subscribe(User, SubscriberId, Rest, [{Topic, Qos} | Modifiers]);
             false ->
-                next
-        end
-  end.
+              ModTopic = {Topic, not_allowed},
+              auth_on_subscribe(User, SubscriberId, Rest, [ModTopic | Modifiers])
+          end
+    end.
 
 auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
   D = is_acl_auth_disabled(),
@@ -125,8 +117,16 @@ auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
           end
   end.
 
+auth_on_subscribe_m5(_, _, []) -> ok;
+auth_on_subscribe_m5(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
+    case check(read, Topic, User, SubscriberId) of
+      true ->
+        auth_on_subscribe(User, SubscriberId, Rest);
+      false ->
+        next
+    end.
 auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
-    auth_on_subscribe(User, SubscriberId, Topics).
+    auth_on_subscribe_m5(User, SubscriberId, Topics).
 
 auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
     auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain).
@@ -355,12 +355,13 @@ is_acl_auth_disabled() ->
     true -> true
   end.
 
-is_topic_invalid(Topic) ->
+is_topic_invalid(vmq_reg_redis_trie, Topic) ->
     case vmq_topic:contains_wildcard(Topic) of
         true ->
             not is_complex_topic_whitelisted(Topic);
         _ -> false
-    end.
+    end;
+is_topic_invalid(_, _) -> false.
 
 is_complex_topic_whitelisted([<<"$share">>, _Group | Topic]) -> is_complex_topic_whitelisted(Topic);
 is_complex_topic_whitelisted([<<"$share">> | _] = _Topic) -> false;
@@ -452,21 +453,33 @@ simple_acl(_) ->
     , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}],  [{[<<"example">>,<<"%p">>],1}]], ets:match(vmq_gojek_auth_acl_read_pattern, '$1'))
     , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_gojek_auth_acl_write_pattern, '$1'))
     %% positive auth_on_subscribe
-    , ?_assertEqual(ok, auth_on_subscribe(<<"test">>, {"", <<"my-client-id">>},
+    , ?_assertEqual({ok,[{[<<"a">>,<<"b">>,<<"c">>],0},
+                          {[<<"x">>,<<"y">>,<<"z">>,<<"#">>],0},
+                          {[<<>>,<<"test">>,<<"my-client-id">>],0}]},
+                          auth_on_subscribe(<<"test">>, {"", <<"my-client-id">>},
                                           [{[<<"a">>, <<"b">>, <<"c">>], 0}
                                            ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
                                            ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
-      , ?_assertEqual(ok, auth_on_subscribe(<<"test">>, {"", <<"device-id:owner-id:profile-id">>},
-        [{[<<"a">>, <<"b">>, <<"c">>], 0}
-          ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
-          ,{[<<"example">>, <<"profile-id">>], 0}]))
+      , ?_assertEqual({ok,[{[<<"a">>,<<"b">>,<<"c">>],0},
+                      {[<<"x">>,<<"y">>,<<"z">>,<<"#">>],0},
+                      {[<<"example">>,<<"profile-id">>],0}]}
+                      , auth_on_subscribe(<<"test">>, {"", <<"device-id:owner-id:profile-id">>},
+                        [{[<<"a">>, <<"b">>, <<"c">>], 0}
+                          ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
+                          ,{[<<"example">>, <<"profile-id">>], 0}]))
       ,
       %% colon separated username
-      ?_assertEqual(ok, auth_on_subscribe(<<"test">>, {"", <<"my-client-id">>},
-      [{[<<"a">>, <<"b">>, <<"c">>], 0}
-        ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
-        ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
-    , ?_assertEqual(next, auth_on_subscribe(<<"invalid-user">>, {"", <<"my-client-id">>},
+      ?_assertEqual({ok,[{[<<"a">>,<<"b">>,<<"c">>],0},
+                        {[<<"x">>,<<"y">>,<<"z">>,<<"#">>],0},
+                        {[<<>>,<<"test">>,<<"my-client-id">>],0}]},
+                      auth_on_subscribe(<<"test">>, {"", <<"my-client-id">>},
+                      [{[<<"a">>, <<"b">>, <<"c">>], 0}
+                        ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
+                        ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
+    , ?_assertEqual({ok,[{[<<"a">>,<<"b">>,<<"c">>],0},
+                        {[<<"x">>,<<"y">>,<<"z">>,<<"#">>],not_allowed},
+                        {[<<>>,<<"test">>,<<"my-client-id">>],not_allowed}]},
+                        auth_on_subscribe(<<"invalid-user">>, {"", <<"my-client-id">>},
                                           [{[<<"a">>, <<"b">>, <<"c">>], 0}
                                            ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
                                            ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))

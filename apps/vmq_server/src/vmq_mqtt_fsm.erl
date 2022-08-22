@@ -388,6 +388,7 @@ connected(#mqtt_subscribe{message_id=MessageId, topics=Topics},
         end,
     case auth_on_subscribe(User, SubscriberId, Topics, OnAuthSuccess) of
         {ok, QoSs} ->
+            check_mqtt_auth_errors(QoSs),
             Frame = #mqtt_suback{message_id=MessageId, qos_table=QoSs},
             _ = vmq_metrics:incr_mqtt_suback_sent(),
             {State, [Frame]};
@@ -1312,3 +1313,11 @@ subtopics(Topics, ProtoVer) when ?IS_BRIDGE(ProtoVer) ->
                                            no_local => true}}} end, SubTopics);
 subtopics(Topics, _Proto) ->
     vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, undefined).
+
+check_mqtt_auth_errors(QoSTable) ->
+    case lists:member(not_allowed, QoSTable) of
+        true ->
+            _ = vmq_metrics:incr_mqtt_error_auth_subscribe();
+        _ ->
+            ok
+    end.

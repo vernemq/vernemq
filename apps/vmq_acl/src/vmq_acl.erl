@@ -75,13 +75,17 @@ change_config(Configs) ->
             vmq_acl_reloader:change_config_now()
     end.
 
-auth_on_subscribe(_, _, []) -> ok;
-auth_on_subscribe(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
+auth_on_subscribe(User, SubscriberId, TopicList) ->
+    auth_on_subscribe(User, SubscriberId, TopicList, []).
+
+auth_on_subscribe(_, _, [], Modifiers) -> {ok, lists:reverse(Modifiers)};
+auth_on_subscribe(User, SubscriberId, [{Topic, Qos}|Rest], Modifiers) ->
     case check(read, Topic, User, SubscriberId) of
-        true ->
-            auth_on_subscribe(User, SubscriberId, Rest);
-        false ->
-            next
+      true ->
+        auth_on_subscribe(User, SubscriberId, Rest, [{Topic, Qos} | Modifiers]);
+      false ->
+        ModTopic = {Topic, not_allowed},
+        auth_on_subscribe(User, SubscriberId, Rest, [ModTopic | Modifiers])
     end.
 
 auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
@@ -92,8 +96,17 @@ auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
             next
     end.
 
+auth_on_subscribe_m5(_, _, []) -> ok;
+auth_on_subscribe_m5(User, SubscriberId, [{Topic, _Qos}|Rest]) ->
+    case check(read, Topic, User, SubscriberId) of
+      true ->
+        auth_on_subscribe(User, SubscriberId, Rest);
+      false ->
+        next
+    end.
+
 auth_on_subscribe_m5(User, SubscriberId, Topics, _Props) ->
-    auth_on_subscribe(User, SubscriberId, Topics).
+    auth_on_subscribe_m5(User, SubscriberId, Topics).
 
 auth_on_publish_m5(User, SubscriberId, QoS, Topic, Payload, IsRetain, _Props) ->
     auth_on_publish(User, SubscriberId, QoS, Topic, Payload, IsRetain).
@@ -321,11 +334,24 @@ simple_acl(_) ->
     , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_acl_read_pattern, '$1'))
     , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_acl_write_pattern, '$1'))
     %% positive auth_on_subscribe
-    , ?_assertEqual(ok, auth_on_subscribe(<<"test">>, {"", <<"my-client-id">>},
+    , ?_assertEqual({ok,[{[<<"a">>,<<"b">>,<<"c">>],0},
+                          {[<<"x">>,<<"y">>,<<"z">>,<<"#">>],0},
+                          {[<<>>,<<"test">>,<<"my-client-id">>],0}]}
+                          , auth_on_subscribe(<<"test">>, {"", <<"my-client-id">>},
                                           [{[<<"a">>, <<"b">>, <<"c">>], 0}
                                            ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
                                            ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
-    , ?_assertEqual(next, auth_on_subscribe(<<"invalid-user">>, {"", <<"my-client-id">>},
+    , ?_assertEqual({ok,[{[<<"a">>,<<"b">>,<<"c">>],0},
+                                          {[<<"x">>,<<"y">>,<<"z">>,<<"#">>],0},
+                                          {[<<>>,<<"test">>,<<"my-client-id">>],0}]},
+                                          auth_on_subscribe(<<"test">>, {"", <<"my-client-id">>},
+                                          [{[<<"a">>, <<"b">>, <<"c">>], 0}
+                                            ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
+                                            ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
+    , ?_assertEqual({ok,[{[<<"a">>,<<"b">>,<<"c">>],0},
+                        {[<<"x">>,<<"y">>,<<"z">>,<<"#">>],not_allowed},
+                        {[<<>>,<<"test">>,<<"my-client-id">>],not_allowed}]},
+                        auth_on_subscribe(<<"invalid-user">>, {"", <<"my-client-id">>},
                                           [{[<<"a">>, <<"b">>, <<"c">>], 0}
                                            ,{[<<"x">>, <<"y">>, <<"z">>, <<"#">>], 0}
                                            ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
