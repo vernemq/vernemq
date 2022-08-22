@@ -5,7 +5,7 @@
 - Fix PostGres (`epgsql` 4.6.0) response format in `vmq_diversity`.
 - Fix Prometheus exposition format, related to MQTT v4 and v5 labels.
 - Add Unix domain listeners (to be configured as "listener.tcp.unix_socket = local:/tmp/my.sock:0")
-- Expose `tls_handshake_timeout` option to listeners.
+- Add new setting `tls_handshake_timeout` option to SSL listeners.
 
 
 ## VerneMQ 1.12.5
