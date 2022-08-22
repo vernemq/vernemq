@@ -1796,6 +1796,22 @@
                                                                     hidden
                                                                    ]}.
 
+%% @doc This parameter allows to set the max no. of crashes that will be allowed
+%% in  queue_sup_sup_max_t seconds before restarting the queue_sup processes.
+{mapping, "queue_sup_sup_max_r", "vmq_server.max_r", [
+                                                          {default, 5},
+                                                          {datatype, integer},
+                                                          hidden
+                                                         ]}.
+
+%% @doc This parameter allows to set the max time in seconds before resfreshing
+%% number of crashes on vmq_queue_sup.
+{mapping, "queue_sup_sup_max_t", "vmq_server.max_t", [
+                                                          {default, 10},
+                                                          {datatype, integer},
+                                                          hidden
+                                                         ]}.
+
 {validator, "file-exists", "file does not exist",
  fun("") ->
          %% "" is used as the default value in most places, we should

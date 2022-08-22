@@ -21,6 +21,9 @@
 %% Supervisor callbacks
 -export([init/1]).
 
+-define(MaxR, application:get_env(vmq_server, max_r, 5)).
+-define(MaxT, application:get_env(vmq_server, max_t, 10)).
+
 %% Helper macro for declaring children of supervisor
 -define(CHILD(I, Type, Args), {I, {I, start_link, Args},
                                permanent, 5000, Type, [I]}).
@@ -48,7 +51,7 @@ init([]) ->
                ?CHILD(vmq_config, worker, []),
                ?CHILD(vmq_metrics_sup, supervisor, []),
                ?CHILD(vmq_crl_srv, worker, []),
-               ?CHILD(vmq_queue_sup_sup, supervisor, [infinity, 5, 10]),
+               ?CHILD(vmq_queue_sup_sup, supervisor, [infinity, ?MaxR, ?MaxT]),
                ?CHILD(vmq_reg_sup, supervisor, []),
                ?CHILD(vmq_cluster_node_sup, supervisor, []),
                ?CHILD(vmq_sysmon, worker, []),
