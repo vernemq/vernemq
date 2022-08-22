@@ -121,9 +121,9 @@ delete_listener(ListenerRef) ->
 
 start_listener(Type, Addr, Port, Opts) when is_list(Opts) ->
     TCPOpts = vmq_config:get_env(tcp_listen_options),
-    TransportOpts = TCPOpts ++ transport_opts_for_type(Type, Opts),
-    start_listener(Type, Addr, Port, {TransportOpts, Opts});
-start_listener(Type, Addr, Port, {TransportOpts, Opts}) ->
+    SocketOpts = TCPOpts ++ socket_opts_for_type(Type, Opts),
+    start_listener(Type, Addr, Port, {SocketOpts, Opts});
+start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
     AAddr = addr(Addr),
     Ref = listener_name(AAddr, Port),
     MaxConns = proplists:get_value(max_connections, Opts,
@@ -133,9 +133,9 @@ start_listener(Type, Addr, Port, {TransportOpts, Opts}) ->
     ProtocolOpts = protocol_opts_for_type(Type, Opts),
     TransportMod = transport_for_type(Type),
     TransportOptions = maps:from_list(
-        [{socket_opts, [{ip, AAddr}, {port, Port}|TransportOpts]},
+        [{socket_opts, [{ip, AAddr}, {port, Port}|SocketOpts]},
          {num_acceptors, NrOfAcceptors},
-         {max_connections, MaxConns}]),
+         {max_connections, MaxConns}|transport_opts_for_type(Type, Opts)]),
     case ranch:start_listener(Ref, TransportMod, TransportOptions,
                               protocol_for_type(Type),
                               ProtocolOpts) of
@@ -211,8 +211,8 @@ addr(Addr) when is_list(Addr) ->
 addr(Addr) -> Addr.
 
 reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts}|Rest], TCPOpts, Listeners) ->
-    TransportOpts = TCPOpts ++ transport_opts_for_type(Type, Opts),
-    case start_listener(Type, Addr, Port, {TransportOpts, Opts}) of
+    SocketOpts = TCPOpts ++ socket_opts_for_type(Type, Opts),
+    case start_listener(Type, Addr, Port, {SocketOpts, Opts}) of
         ok ->
             ok;
         {error, Reason} ->
@@ -244,10 +244,18 @@ protocol_for_type(https) -> cowboy_clear;
 protocol_for_type(vmq) -> vmq_cluster_com;
 protocol_for_type(vmqs) -> vmq_cluster_com.
 
+socket_opts_for_type(Type, Opts) ->
+    socket_opts(transport_for_type(Type), Opts).
+socket_opts(ranch_tcp, _) -> [];
+socket_opts(ranch_ssl, Opts) -> vmq_ssl:opts(Opts).
+
 transport_opts_for_type(Type, Opts) ->
     transport_opts(transport_for_type(Type), Opts).
 transport_opts(ranch_tcp, _) -> [];
-transport_opts(ranch_ssl, Opts) -> vmq_ssl:opts(Opts).
+transport_opts(ranch_ssl, Opts) ->
+    HandshakeTimeout = proplists:get_value(tls_handshake_timeout, Opts,
+                                           vmq_config:get_env(tls_handshake_timeout, 5000)),
+    [{handshake_timeout, HandshakeTimeout}].
 
 protocol_opts_for_type(Type, Opts) ->
     protocol_opts(protocol_for_type(Type), Type, Opts).

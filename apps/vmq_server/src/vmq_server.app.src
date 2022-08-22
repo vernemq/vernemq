@@ -55,6 +55,7 @@
       % default listener / clustering /system opts
       {max_connections, infinity},
       {nr_of_acceptors, 10},
+      {tls_handshake_timeout, 5000},
       {listeners, [{mqtt, [
                            {{{127,0,0,1}, 1889}, [{max_connections, infinity}, 
                                               {mountpoint, ""},

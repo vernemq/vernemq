@@ -91,6 +91,11 @@ translate_listeners(Conf) ->
     {HTTPIPs, HTTPNrOfAcceptors} = lists:unzip(extract("listener.http", "nr_of_acceptors", InfIntVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLNrOfAcceptors} = lists:unzip(extract("listener.https", "nr_of_acceptors", InfIntVal, Conf)),
 
+    {SSLIPs, SSLTLSHandshakeTimeout} = lists:unzip(extract("listener.ssl", "tls_handshake_timeout", InfIntVal, Conf)),
+    {WS_SSLIPs, WS_SSLTLSHandshakeTimeout} = lists:unzip(extract("listener.wss", "tls_handshake_timeout", InfIntVal, Conf)),
+    {VMQ_SSLIPs, VMQ_SSLTLSHandshakeTimeout} = lists:unzip(extract("listener.vmqs", "tls_handshake_timeout", InfIntVal, Conf)),
+    {HTTP_SSLIPs, HTTP_SSLTLSHandshakeTimeout} = lists:unzip(extract("listener.https", "tls_handshake_timeout", InfIntVal, Conf)),
+
     {TCPIPs, TCPMountPoint} = lists:unzip(extract("listener.tcp", "mountpoint", MPVal, Conf)),
     {SSLIPs, SSLMountPoint} = lists:unzip(extract("listener.ssl", "mountpoint", MPVal, Conf)),
     {WSIPs, WSMountPoint} = lists:unzip(extract("listener.ws", "mountpoint", MPVal, Conf)),
@@ -199,6 +204,7 @@ translate_listeners(Conf) ->
 
     SSL = lists:zip(SSLIPs, MZip([SSLMaxConns,
                                   SSLNrOfAcceptors,
+                                  SSLTLSHandshakeTimeout,
                                   SSLMountPoint,
                                   SSLCAFiles,
                                   SSLDepths,
@@ -215,6 +221,7 @@ translate_listeners(Conf) ->
                                   SSLAllowAnonymousOverride])),
     WSS = lists:zip(WS_SSLIPs, MZip([WS_SSLMaxConns,
                                      WS_SSLNrOfAcceptors,
+                                     WS_SSLTLSHandshakeTimeout,
                                      WS_SSLMountPoint,
                                      WS_SSLCAFiles,
                                      WS_SSLDepths,
@@ -229,6 +236,7 @@ translate_listeners(Conf) ->
                                      WS_SSLAllowedProto])),
     VMQS = lists:zip(VMQ_SSLIPs, MZip([VMQ_SSLMaxConns,
                                        VMQ_SSLNrOfAcceptors,
+                                       VMQ_SSLTLSHandshakeTimeout,
                                        VMQ_SSLMountPoint,
                                        VMQ_SSLCAFiles,
                                        VMQ_SSLDepths,
@@ -242,6 +250,7 @@ translate_listeners(Conf) ->
                                        VMQ_SSLBufferSizes])),
     HTTPS = lists:zip(HTTP_SSLIPs, MZip([HTTP_SSLMaxConns,
                                          HTTP_SSLNrOfAcceptors,
+                                         HTTP_SSLTLSHandshakeTimeout,
                                          HTTP_SSLCAFiles,
                                          HTTP_SSLDepths,
                                          HTTP_SSLCertFiles,
@@ -274,6 +283,7 @@ extract(Prefix, Suffix, Val, Conf) ->
            "keyfile", "require_certificate", "tls_version",
            "use_identity_as_username", "buffer_sizes", "high_watermark",
            "low_watermark", "high_msgq_watermark", "low_msgq_watermark",
+           "tls_handshake_timeout",
            %% http listener specific
            "config_mod", "config_fun",
            %% mqtt listener specific
