@@ -37,5 +37,4 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok, { {one_for_one, 5, 10}, [?CHILD(vmq_ql_query_sup, supervisor)]} }.
-
+    {ok, {{one_for_one, 5, 10}, [?CHILD(vmq_ql_query_sup, supervisor)]}}.

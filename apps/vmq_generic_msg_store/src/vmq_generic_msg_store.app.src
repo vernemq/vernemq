@@ -1,27 +1,27 @@
-{application, vmq_generic_msg_store,
- [{description, "A VerneMQ plugin that sets up LevelDB as message storage"},
-  {vsn, git},
-  {registered, []},
-  {mod, { vmq_generic_msg_store_app, []}},
-  {applications,
-   [kernel,
-    stdlib,
-    sasl,
-    lager
-   ]},
-  {env,[
-      {vmq_plugin_hooks, [
+{application, vmq_generic_msg_store, [
+    {description, "A VerneMQ plugin that sets up LevelDB as message storage"},
+    {vsn, git},
+    {registered, []},
+    {mod, {vmq_generic_msg_store_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        sasl,
+        lager
+    ]},
+    {env, [
+        {vmq_plugin_hooks, [
             {vmq_generic_msg_store, msg_store_write, 2, [internal]},
             {vmq_generic_msg_store, msg_store_delete, 2, [internal]},
             {vmq_generic_msg_store, msg_store_find, 2, [internal]},
             {vmq_generic_msg_store, msg_store_read, 2, [internal]}
-      ]},
-      {msg_store_engine, vmq_storage_engine_leveldb},
-      {msg_store_opts, [
-                        {store_dir, "./data/msgstore"},
-                        {open_retries, 30},
-                        {open_retry_delay, 2000}
-                       ]}
-  ]},
-  {modules, []}
- ]}.
+        ]},
+        {msg_store_engine, vmq_storage_engine_leveldb},
+        {msg_store_opts, [
+            {store_dir, "./data/msgstore"},
+            {open_retries, 30},
+            {open_retry_delay, 2000}
+        ]}
+    ]},
+    {modules, []}
+]}.

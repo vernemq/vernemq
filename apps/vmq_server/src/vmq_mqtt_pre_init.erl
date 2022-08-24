@@ -20,36 +20,47 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([init/2,
-         data_in/2,
-         msg_in/2]).
+-export([
+    init/2,
+    data_in/2,
+    msg_in/2
+]).
 
 -record(state, {
-          peer         :: peer(),
-          opts         :: list(),
-          max_message_size :: non_neg_integer(),
-          close_after  :: reference()
-         }).
+    peer :: peer(),
+    opts :: list(),
+    max_message_size :: non_neg_integer(),
+    close_after :: reference()
+}).
 -type state() :: #state{}.
 
--spec init(peer(),[any()]) -> state().
+-spec init(peer(), [any()]) -> state().
 init(Peer, Opts) ->
     ConnectTimeout = vmq_config:get_env(mqtt_connect_timeout, 5000),
     TRef = erlang:send_after(ConnectTimeout, self(), close_timeout),
-    State = #state{peer=Peer,
-                   opts=Opts,
-                   max_message_size=vmq_config:get_env(max_message_size, 0),
-                   close_after=TRef},
+    State = #state{
+        peer = Peer,
+        opts = Opts,
+        max_message_size = vmq_config:get_env(max_message_size, 0),
+        close_after = TRef
+    },
     State.
--spec data_in(binary(),state()) -> {'error','packet_exceeds_max_size'} | 
-                                    {'error',_,[]} | 
-                                    {'stop','normal' | [{_,_,_},...],[any()]} |
-                                    {'ok',state(),binary(),[]} | 
-                                    {'switch_fsm','vmq_mqtt5_fsm' | 'vmq_mqtt_fsm', vmq_mqtt5_fsm:state() | vmq_mqtt_fsm:state(), _, _}.
-data_in(Data, #state{peer = Peer,
-                     opts = Opts,
-                     close_after=TRef,
-                     max_message_size=MaxMessageSize} = FsmState0) when is_binary(Data) ->
+-spec data_in(binary(), state()) ->
+    {'error', 'packet_exceeds_max_size'}
+    | {'error', _, []}
+    | {'stop', 'normal' | [{_, _, _}, ...], [any()]}
+    | {'ok', state(), binary(), []}
+    | {'switch_fsm', 'vmq_mqtt5_fsm' | 'vmq_mqtt_fsm', vmq_mqtt5_fsm:state() | vmq_mqtt_fsm:state(),
+        _, _}.
+data_in(
+    Data,
+    #state{
+        peer = Peer,
+        opts = Opts,
+        close_after = TRef,
+        max_message_size = MaxMessageSize
+    } = FsmState0
+) when is_binary(Data) ->
     case parse_connect_frame(Data, MaxMessageSize) of
         more ->
             {ok, FsmState0, Data, []};
@@ -78,7 +89,7 @@ data_in(Data, #state{peer = Peer,
             {error, Reason, []}
     end.
 
--spec parse_connect_frame(binary(),non_neg_integer()) -> any().
+-spec parse_connect_frame(binary(), non_neg_integer()) -> any().
 parse_connect_frame(Data, MaxMessageSize) ->
     case determine_protocol_version(Data) of
         5 ->
@@ -96,15 +107,31 @@ parse_connect_frame(Data, MaxMessageSize) ->
         {error, _} = E ->
             E
     end.
-   
--spec determine_protocol_version(binary()) -> 'more' | 3 | 4 | 5 | 131 | 132 | 
-    {'error','cant_parse_fixed_header' | 'unknown_protocol_version' | {'cant_parse_connect_fixed_header',binary()}}.
+
+-spec determine_protocol_version(binary()) ->
+    'more'
+    | 3
+    | 4
+    | 5
+    | 131
+    | 132
+    | {'error',
+        'cant_parse_fixed_header'
+        | 'unknown_protocol_version'
+        | {'cant_parse_connect_fixed_header', binary()}}.
 determine_protocol_version(<<1:4, 0:4, Rest/binary>>) ->
     consume_var_header(Rest);
 determine_protocol_version(Unknown) ->
     {error, {cant_parse_connect_fixed_header, Unknown}}.
 
--spec consume_var_header(binary()) -> 'more' | 3 | 4 | 5 | 131 | 132 | {'error','cant_parse_fixed_header' | 'unknown_protocol_version'}.
+-spec consume_var_header(binary()) ->
+    'more'
+    | 3
+    | 4
+    | 5
+    | 131
+    | 132
+    | {'error', 'cant_parse_fixed_header' | 'unknown_protocol_version'}.
 consume_var_header(<<0:1, _:7, Rest/binary>>) ->
     get_protocol_info(Rest);
 consume_var_header(<<1:1, _:7, 0:1, _:7, Rest/binary>>) ->
@@ -118,7 +145,8 @@ consume_var_header(<<_:8/binary, _/binary>>) ->
 consume_var_header(_) ->
     more.
 
--spec get_protocol_info(binary()) -> 'more' | 3 | 4 | 5 | 131 | 132 | {'error','unknown_protocol_version'}.
+-spec get_protocol_info(binary()) ->
+    'more' | 3 | 4 | 5 | 131 | 132 | {'error', 'unknown_protocol_version'}.
 get_protocol_info(<<0:8, 4:8, "MQTT", 5:8, _/binary>>) ->
     5;
 get_protocol_info(<<0:8, 4:8, "MQTT", 4:8, _/binary>>) ->
@@ -138,7 +166,8 @@ get_protocol_info(<<0:8, 6:8, "MQIsdp", _:8, _/binary>>) ->
 get_protocol_info(_) ->
     more.
 
--spec msg_in('close_timeout' | 'disconnect' | {'disconnect','normal_disconnect'},_) -> 'ignore' | {'stop','normal',[]}.
+-spec msg_in('close_timeout' | 'disconnect' | {'disconnect', 'normal_disconnect'}, _) ->
+    'ignore' | {'stop', 'normal', []}.
 msg_in({disconnect, ?NORMAL_DISCONNECT}, _FsmState0) ->
     {stop, normal, []};
 msg_in(disconnect, _FsmState0) ->
@@ -151,24 +180,31 @@ msg_in(close_timeout, _FsmState0) ->
 -ifdef(TEST).
 
 parse_connect_frame_test() ->
-    Mv3 = <<16#10,16#11,16#00,16#06,"MQIsdp",16#03,16#00,16#00,16#3c,16#00,16#03,16#78,16#78,16#78>>,
-    ?assertMatch({#mqtt_connect{}, _}, parse_connect_frame(Mv3,0)),
+    Mv3 =
+        <<16#10, 16#11, 16#00, 16#06, "MQIsdp", 16#03, 16#00, 16#00, 16#3c, 16#00, 16#03, 16#78,
+            16#78, 16#78>>,
+    ?assertMatch({#mqtt_connect{}, _}, parse_connect_frame(Mv3, 0)),
     ok = test_prefixes(Mv3),
 
-    Mv4 = <<16#10,16#0f,16#00,16#04,16#4d,16#51,16#54,16#54,16#04,16#00,16#00,16#3c,16#00,16#03,16#73,16#75,16#62>>,
-    ?assertMatch({#mqtt_connect{}, _}, parse_connect_frame(Mv4,0)),
+    Mv4 =
+        <<16#10, 16#0f, 16#00, 16#04, 16#4d, 16#51, 16#54, 16#54, 16#04, 16#00, 16#00, 16#3c, 16#00,
+            16#03, 16#73, 16#75, 16#62>>,
+    ?assertMatch({#mqtt_connect{}, _}, parse_connect_frame(Mv4, 0)),
     ok = test_prefixes(Mv4),
 
-    Mv5 = <<16#10,16#13,16#00,16#04,16#4d,16#51,16#54,16#54,16#05,16#02,16#00,16#0a,16#00,16#00,16#06,16#63,16#6c,16#69,16#65,16#6e,16#74>>,
-    ?assertMatch({#mqtt5_connect{}, _}, parse_connect_frame(Mv5,0)),
+    Mv5 =
+        <<16#10, 16#13, 16#00, 16#04, 16#4d, 16#51, 16#54, 16#54, 16#05, 16#02, 16#00, 16#0a, 16#00,
+            16#00, 16#06, 16#63, 16#6c, 16#69, 16#65, 16#6e, 16#74>>,
+    ?assertMatch({#mqtt5_connect{}, _}, parse_connect_frame(Mv5, 0)),
     ok = test_prefixes(Mv5).
 
 test_prefixes(Binary) ->
     lists:foreach(
-      fun(Len) ->
-              Prefix = binary:part(Binary, {0,Len}),
-              ?assertMatch(more, parse_connect_frame(Prefix, 0))
-      end,
-      lists:seq(1, byte_size(Binary)-1)).
+        fun(Len) ->
+            Prefix = binary:part(Binary, {0, Len}),
+            ?assertMatch(more, parse_connect_frame(Prefix, 0))
+        end,
+        lists:seq(1, byte_size(Binary) - 1)
+    ).
 
 -endif.

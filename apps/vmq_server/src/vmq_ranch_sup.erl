@@ -32,11 +32,12 @@
 %% Starts the supervisor
 %% @end
 %%--------------------------------------------------------------------
--spec start_link() -> {ok, Pid :: pid()} |
-                      {error, {already_started, Pid :: pid()}} |
-                      {error, {shutdown, term()}} |
-                      {error, term()} |
-                      ignore.
+-spec start_link() ->
+    {ok, Pid :: pid()}
+    | {error, {already_started, Pid :: pid()}}
+    | {error, {shutdown, term()}}
+    | {error, term()}
+    | ignore.
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
@@ -54,25 +55,28 @@ start_link() ->
 %% @end
 %%--------------------------------------------------------------------
 -spec init(Args :: term()) ->
-                  {ok, {SupFlags :: supervisor:sup_flags(),
-                        [ChildSpec :: supervisor:child_spec()]}} |
-                  ignore.
+    {ok, {SupFlags :: supervisor:sup_flags(), [ChildSpec :: supervisor:child_spec()]}}
+    | ignore.
 init([]) ->
-
-    SupFlags = #{strategy => one_for_one,
-                 intensity => 1,
-                 period => 5},
+    SupFlags = #{
+        strategy => one_for_one,
+        intensity => 1,
+        period => 5
+    },
 
     ChildSpecs =
-        [#{id => vmq_ranch_config,
-           start => {vmq_ranch_config, start_link, []},
-           restart => permanent,
-           shutdown => 5000,
-           type => worker,
-           modules => [vmq_ranch_config]}
+        [
+            #{
+                id => vmq_ranch_config,
+                start => {vmq_ranch_config, start_link, []},
+                restart => permanent,
+                shutdown => 5000,
+                type => worker,
+                modules => [vmq_ranch_config]
+            }
 
-         %% TODO: Add ranch supervisor here after we've moved to
-         %% Cowboy 2.0 and
+            %% TODO: Add ranch supervisor here after we've moved to
+            %% Cowboy 2.0 and
         ],
 
     {ok, {SupFlags, ChildSpecs}}.

@@ -18,8 +18,10 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/1,
-         start_exchange/3]).
+-export([
+    start_link/1,
+    start_exchange/3
+]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -36,17 +38,18 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec start_link(SwcConfig::config()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
-start_link(#swc_config{group=SwcGroup} = _Config) ->
+-spec start_link(SwcConfig :: config()) -> {ok, Pid :: pid()} | ignore | {error, Error :: term()}.
+start_link(#swc_config{group = SwcGroup} = _Config) ->
     SupName = sup_name(SwcGroup),
     supervisor:start_link({local, SupName}, ?MODULE, []).
 
-start_exchange(#swc_config{group=SwcGroup} = Config, Peer, Timeout) ->
+start_exchange(#swc_config{group = SwcGroup} = Config, Peer, Timeout) ->
     SupName = sup_name(SwcGroup),
-    supervisor:start_child(SupName, #{id => {vmq_swc_exchange_fsm, Peer},
-                                      start => {vmq_swc_exchange_fsm, start_link,
-                                                [Config, Peer, Timeout]},
-                                      restart => temporary}).
+    supervisor:start_child(SupName, #{
+        id => {vmq_swc_exchange_fsm, Peer},
+        start => {vmq_swc_exchange_fsm, start_link, [Config, Peer, Timeout]},
+        restart => temporary
+    }).
 
 sup_name(SwcGroup) ->
     list_to_atom("vmq_swc_exchange_sup_" ++ atom_to_list(SwcGroup)).

@@ -16,19 +16,19 @@
 
 -export([install/1]).
 
-
 install(St) ->
     luerl_emul:alloc_table(table(), St).
 
 table() ->
     [
-     {<<"hash">>, #erl_func{code=fun hash/2}}
+        {<<"hash">>, #erl_func{code = fun hash/2}}
     ].
 
-hash([Alg, Data]=Args, St)
-  when is_binary(Alg), is_binary(Data) ->
+hash([Alg, Data] = Args, St) when
+    is_binary(Alg), is_binary(Data)
+->
     try
-        {[crypto:hash(binary_to_existing_atom(Alg,utf8), Data)], St}
+        {[crypto:hash(binary_to_existing_atom(Alg, utf8), Data)], St}
     catch
         error:badarg ->
             luerl_lib:badarg_error(hash, Args, St)

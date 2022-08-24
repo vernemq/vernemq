@@ -14,12 +14,14 @@
 
 -module(vmq_message_store).
 -include("vmq_server.hrl").
--export([start/0,
-         stop/0,
-         write/2,
-         read/2,
-         delete/2,
-         find/2]).
+-export([
+    start/0,
+    stop/0,
+    write/2,
+    read/2,
+    delete/2,
+    find/2
+]).
 
 start() ->
     Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_msg_store),
@@ -39,9 +41,9 @@ stop() ->
     % needs to be addressed when reworking the plugin system.
     Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_msg_store),
     _ = spawn(fun() ->
-                      Ret = vmq_plugin_mgr:disable_plugin(Impl),
-                      lager:info("Try to stop ~p: ~p", [Impl, Ret])
-              end),
+        Ret = vmq_plugin_mgr:disable_plugin(Impl),
+        lager:info("Try to stop ~p: ~p", [Impl, Ret])
+    end),
     ok.
 
 write(SubscriberId, Msg) ->
@@ -53,6 +55,8 @@ read(SubscriberId, MsgRef) ->
 delete(SubscriberId, MsgRef) ->
     vmq_plugin:only(msg_store_delete, [SubscriberId, MsgRef]).
 
-find(SubscriberId, Type) when Type =:= queue_init;
-                              Type =:= other ->
+find(SubscriberId, Type) when
+    Type =:= queue_init;
+    Type =:= other
+->
     vmq_plugin:only(msg_store_find, [SubscriberId, Type]).

@@ -1,119 +1,120 @@
-{application, 'vmq_diversity',
- [{description, "A VerneMQ Plugin Builder Toolkit"},
-  {vsn, git},
-  {registered, []},
-  {mod, {'vmq_diversity_app', []}},
-  {applications,
-   [kernel,
-    stdlib,
-    crypto,
-    public_key,
-    ssl,
-    eldap,
-    lager,
-    clique,
-    poolboy,
-    luerl,
-    emysql,
-    epgsql,
-    bson,
-    mongodb,
-    pbkdf2, %% needed by mongodb but is not declared as a dep there
-    eredis,
-    hackney,
-    jsx,
-    bcrypt,
-    gen_server2
-   ]},
-  {env,[
-      {keep_state, false},
-      {nr_lua_states, 1},
-      {script_dir, "priv"},
-      {vmq_plugin_hooks,
-       [{vmq_diversity_plugin, auth_on_register, 5, []},
-        {vmq_diversity_plugin, auth_on_publish, 6, []},
-        {vmq_diversity_plugin, auth_on_subscribe, 3, []},
-        {vmq_diversity_plugin, on_register, 3, []},
-        {vmq_diversity_plugin, on_publish, 6, []},
-        {vmq_diversity_plugin, on_subscribe, 3, []},
-        {vmq_diversity_plugin, on_unsubscribe, 3, []},
-        {vmq_diversity_plugin, on_deliver, 6, []},
+{application, 'vmq_diversity', [
+    {description, "A VerneMQ Plugin Builder Toolkit"},
+    {vsn, git},
+    {registered, []},
+    {mod, {'vmq_diversity_app', []}},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto,
+        public_key,
+        ssl,
+        eldap,
+        lager,
+        clique,
+        poolboy,
+        luerl,
+        emysql,
+        epgsql,
+        bson,
+        mongodb,
+        %% needed by mongodb but is not declared as a dep there
+        pbkdf2,
+        eredis,
+        hackney,
+        jsx,
+        bcrypt,
+        gen_server2
+    ]},
+    {env, [
+        {keep_state, false},
+        {nr_lua_states, 1},
+        {script_dir, "priv"},
+        {vmq_plugin_hooks, [
+            {vmq_diversity_plugin, auth_on_register, 5, []},
+            {vmq_diversity_plugin, auth_on_publish, 6, []},
+            {vmq_diversity_plugin, auth_on_subscribe, 3, []},
+            {vmq_diversity_plugin, on_register, 3, []},
+            {vmq_diversity_plugin, on_publish, 6, []},
+            {vmq_diversity_plugin, on_subscribe, 3, []},
+            {vmq_diversity_plugin, on_unsubscribe, 3, []},
+            {vmq_diversity_plugin, on_deliver, 6, []},
 
-        {vmq_diversity_plugin, auth_on_register_m5, 6, []},
-        {vmq_diversity_plugin, auth_on_publish_m5, 7, []},
-        {vmq_diversity_plugin, auth_on_subscribe_m5, 4, []},
-        {vmq_diversity_plugin, on_register_m5, 4, []},
-        {vmq_diversity_plugin, on_publish_m5, 7, []},
-        {vmq_diversity_plugin, on_subscribe_m5, 4, []},
-        {vmq_diversity_plugin, on_unsubscribe_m5, 4, []},
-        {vmq_diversity_plugin, on_deliver_m5, 7, []},
-        {vmq_diversity_plugin, on_auth_m5, 3, []},
+            {vmq_diversity_plugin, auth_on_register_m5, 6, []},
+            {vmq_diversity_plugin, auth_on_publish_m5, 7, []},
+            {vmq_diversity_plugin, auth_on_subscribe_m5, 4, []},
+            {vmq_diversity_plugin, on_register_m5, 4, []},
+            {vmq_diversity_plugin, on_publish_m5, 7, []},
+            {vmq_diversity_plugin, on_subscribe_m5, 4, []},
+            {vmq_diversity_plugin, on_unsubscribe_m5, 4, []},
+            {vmq_diversity_plugin, on_deliver_m5, 7, []},
+            {vmq_diversity_plugin, on_auth_m5, 3, []},
 
-        {vmq_diversity_plugin, on_offline_message, 5, []},
-        {vmq_diversity_plugin, on_client_wakeup, 1, []},
-        {vmq_diversity_plugin, on_client_offline, 1, []},
-        {vmq_diversity_plugin, on_client_gone, 1, []},
-        {vmq_diversity_plugin, on_session_expired, 1, []}]},
-      {db_config, [
-              {postgres, [
-                          {host, "localhost"},
-                          {port, 5432},
-                          {user, "root"},
-                          {password, "password"},
-                          {database, "vernemq_db"},
-                          {pool_size, 5}
-                         ]},
-              {mysql, [
-                          {host, "localhost"},
-                          {port, 3306},
-                          {user, "root"},
-                          {password, "password"},
-                          {database, "vernemq_db"},
-                          {pool_size, 5},
-                          {encoding, utf8},
-                          {password_hash_method, password}
-                         ]},
-              {mongodb, [
-                          {host, "localhost"},
-                          {port, 27017},
-                          {login, undefined},
-                          {password, undefined},
-                          {database, undefined},
-                          {pool_size, 5},
-                          {r_mode, master},
-                          {w_mode, safe}
-                         ]},
-              {memcache, [
-                          {host, "localhost"},
-                          {port, 11211}
-                         ]},
-              {redis, [
-                          {host, "localhost"},
-                          {port, 6379},
-                          {password, ""},
-                          {database, 0},
-                          {pool_size, 5}
-                         ]}
-             ]},
-      {auth_cache, [
-              {postgres, [
-                          {enabled, false},
-                          {file, "priv/auth/postgres.lua"}
-                         ]},
-              {mysql, [
-                          {enabled, false},
-                          {file, "priv/auth/mysql.lua"}
-                         ]},
-              {mongodb, [
-                          {enabled, false},
-                          {file, "priv/auth/mongodb.lua"}
-                         ]},
-              {redis, [
-                          {enabled, false},
-                          {file, "priv/auth/redis.lua"}
-                         ]}
-             ]}
-
-  ]},
-  {modules, []}
- ]}.
+            {vmq_diversity_plugin, on_offline_message, 5, []},
+            {vmq_diversity_plugin, on_client_wakeup, 1, []},
+            {vmq_diversity_plugin, on_client_offline, 1, []},
+            {vmq_diversity_plugin, on_client_gone, 1, []},
+            {vmq_diversity_plugin, on_session_expired, 1, []}
+        ]},
+        {db_config, [
+            {postgres, [
+                {host, "localhost"},
+                {port, 5432},
+                {user, "root"},
+                {password, "password"},
+                {database, "vernemq_db"},
+                {pool_size, 5}
+            ]},
+            {mysql, [
+                {host, "localhost"},
+                {port, 3306},
+                {user, "root"},
+                {password, "password"},
+                {database, "vernemq_db"},
+                {pool_size, 5},
+                {encoding, utf8},
+                {password_hash_method, password}
+            ]},
+            {mongodb, [
+                {host, "localhost"},
+                {port, 27017},
+                {login, undefined},
+                {password, undefined},
+                {database, undefined},
+                {pool_size, 5},
+                {r_mode, master},
+                {w_mode, safe}
+            ]},
+            {memcache, [
+                {host, "localhost"},
+                {port, 11211}
+            ]},
+            {redis, [
+                {host, "localhost"},
+                {port, 6379},
+                {password, ""},
+                {database, 0},
+                {pool_size, 5}
+            ]}
+        ]},
+        {auth_cache, [
+            {postgres, [
+                {enabled, false},
+                {file, "priv/auth/postgres.lua"}
+            ]},
+            {mysql, [
+                {enabled, false},
+                {file, "priv/auth/mysql.lua"}
+            ]},
+            {mongodb, [
+                {enabled, false},
+                {file, "priv/auth/mongodb.lua"}
+            ]},
+            {redis, [
+                {enabled, false},
+                {file, "priv/auth/redis.lua"}
+            ]}
+        ]}
+    ]},
+    {modules, []}
+]}.

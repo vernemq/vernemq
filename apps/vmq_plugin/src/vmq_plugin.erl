@@ -13,11 +13,13 @@
 %% limitations under the License.
 
 -module(vmq_plugin).
--export([only/2,
-         all/2,
-         all_till_ok/2,
-         all_till_ok/3,
-         info/1]).
+-export([
+    only/2,
+    all/2,
+    all_till_ok/2,
+    all_till_ok/3,
+    info/1
+]).
 
 only(_Hook, _Args) ->
     {error, no_matching_hook_found}.

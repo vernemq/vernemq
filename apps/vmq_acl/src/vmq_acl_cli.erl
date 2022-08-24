@@ -17,10 +17,14 @@
 
 register() ->
     ConfigKeys =
-    ["vmq_acl.acl_file",
-     "vmq_acl.acl_reload_interval"],
-    [clique:register_config([Key], fun register_config_callback/2)
-     || Key <- ConfigKeys],
+        [
+            "vmq_acl.acl_file",
+            "vmq_acl.acl_reload_interval"
+        ],
+    [
+        clique:register_config([Key], fun register_config_callback/2)
+     || Key <- ConfigKeys
+    ],
     ok = clique:register_config_whitelist(ConfigKeys).
 
 register_config_callback(_, _) ->

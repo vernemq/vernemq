@@ -16,7 +16,6 @@
 -export([register_cli/0]).
 -behaviour(clique_handler).
 
-
 register_cli() ->
     clique:register_usage(["vmq-admin", "bridge"], bridge_usage()),
     show_cmd(),
@@ -25,23 +24,30 @@ register_cli() ->
 show_cmd() ->
     Cmd = ["vmq-admin", "bridge", "show"],
     Callback =
-        fun(_, [], []) ->
+        fun
+            (_, [], []) ->
                 Table =
-                    [[{'name', Name},
-                      {endpoint, iolist_to_binary([Host, $:, integer_to_binary(Port)])},
-                      {'buffer size', Size},
-                      {'buffer max', Max},
-                      {'buffer dropped msgs', Dropped},
-                      {'MQTT process mailbox len', MailboxSize}] ||
-                        #{name := Name,
-                          host := Host,
-                          port := Port,
-                          out_buffer_size := Size,
-                          out_buffer_max_size := Max,
-                          out_buffer_dropped := Dropped,
-                          process_mailbox_size := MailboxSize} <- bridge_info()],
+                    [
+                        [
+                            {'name', Name},
+                            {endpoint, iolist_to_binary([Host, $:, integer_to_binary(Port)])},
+                            {'buffer size', Size},
+                            {'buffer max', Max},
+                            {'buffer dropped msgs', Dropped},
+                            {'MQTT process mailbox len', MailboxSize}
+                        ]
+                     || #{
+                            name := Name,
+                            host := Host,
+                            port := Port,
+                            out_buffer_size := Size,
+                            out_buffer_max_size := Max,
+                            out_buffer_dropped := Dropped,
+                            process_mailbox_size := MailboxSize
+                        } <- bridge_info()
+                    ],
                 [clique_status:table(Table)];
-           (_, _, _) ->
+            (_, _, _) ->
                 Text = clique_status:text(bridge_usage()),
                 [clique_status:alert([Text])]
         end,
@@ -50,24 +56,26 @@ show_cmd() ->
 start_cmd() ->
     Cmd = ["vmq-admin", "bridge", "start"],
     Callback =
-        fun(_, [], []) ->
-            Config = application:get_all_env(vmq_bridge),
-            vmq_bridge_sup:change_config([{vmq_bridge, Config}]),
-            Text = clique_status:text("VerneMQ Bridges restarted."),
-            [clique_status:alert([Text])];
-        (_, _, _) ->
-            Text = clique_status:text(bridge_usage()),
-            [clique_status:alert([Text])]
+        fun
+            (_, [], []) ->
+                Config = application:get_all_env(vmq_bridge),
+                vmq_bridge_sup:change_config([{vmq_bridge, Config}]),
+                Text = clique_status:text("VerneMQ Bridges restarted."),
+                [clique_status:alert([Text])];
+            (_, _, _) ->
+                Text = clique_status:text(bridge_usage()),
+                [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, [], [], Callback).
 
 bridge_usage() ->
-    ["vmq-admin bridge <sub-command>\n\n",
-     "  Manage MQTT bridges.\n\n",
-     "  Sub-commands:\n",
-     "    show        Show information about bridges\n\n",
-     "    start       Start the VerneMQ bridges. Useful after enabling the bridge plugin dynamically. \n\n"
-     "  Use --help after a sub-command for more details.\n"
+    [
+        "vmq-admin bridge <sub-command>\n\n",
+        "  Manage MQTT bridges.\n\n",
+        "  Sub-commands:\n",
+        "    show        Show information about bridges\n\n",
+        "    start       Start the VerneMQ bridges. Useful after enabling the bridge plugin dynamically. \n\n"
+        "  Use --help after a sub-command for more details.\n"
     ].
 
 bridge_info() ->

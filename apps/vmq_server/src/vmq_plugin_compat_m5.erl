@@ -21,18 +21,29 @@
 
 -export([convert/4]).
 
-convert(auth_on_publish, Mod, Fun,
-        [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties]) ->
+convert(
+    auth_on_publish,
+    Mod,
+    Fun,
+    [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties]
+) ->
     case apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain]) of
         {ok, Vals} when is_list(Vals) ->
             {ok, maps:from_list(Vals)};
         {error, Vals} when is_list(Vals) ->
             {ok, maps:from_list(Vals)};
-        Other -> Other %% for instance {error, any()}
+        %% for instance {error, any()}
+        Other ->
+            Other
     end;
-convert(auth_on_register, Mod, Fun,
-        [Peer, SubscriberId, User, Password, CleanStart, _Properties]) ->
-    CleanSession = CleanStart, %% TODOv5, can we do better than having this caveat?
+convert(
+    auth_on_register,
+    Mod,
+    Fun,
+    [Peer, SubscriberId, User, Password, CleanStart, _Properties]
+) ->
+    %% TODOv5, can we do better than having this caveat?
+    CleanSession = CleanStart,
     case apply(Mod, Fun, [Peer, SubscriberId, User, Password, CleanSession]) of
         {ok, Vals} when is_list(Vals) ->
             M0 = maps:from_list(Vals),
@@ -44,22 +55,31 @@ convert(auth_on_register, Mod, Fun,
             end;
         {error, Vals} when is_list(Vals) ->
             {ok, maps:from_list(Vals)};
-        Other -> Other %% for instance {error, any()}
+        %% for instance {error, any()}
+        Other ->
+            Other
     end;
-convert(on_publish, Mod, Fun,
-        [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties]) ->
+convert(
+    on_publish,
+    Mod,
+    Fun,
+    [User, SubscriberId, QoS, Topic, Payload, IsRetain, _Properties]
+) ->
     apply(Mod, Fun, [User, SubscriberId, QoS, Topic, Payload, IsRetain]);
 convert(auth_on_subscribe, Mod, Fun, [Username, SubscriberId, Topics, _Properties]) ->
     case apply(Mod, Fun, [Username, SubscriberId, conv_m5_topics(Topics)]) of
         {ok, Topics} when is_list(Topics) ->
             {ok, #{topics => Topics}};
-        Other -> Other
+        Other ->
+            Other
     end;
 convert(_, Mod, Fun, Args) ->
     apply(Mod, Fun, Args).
 
 conv_m5_topics(Topics) ->
     lists:map(
-      fun({T, {QoS, _SubOpts}}) ->
-              {T, QoS}
-      end, Topics).
+        fun({T, {QoS, _SubOpts}}) ->
+            {T, QoS}
+        end,
+        Topics
+    ).

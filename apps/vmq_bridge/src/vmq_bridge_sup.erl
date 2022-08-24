@@ -18,10 +18,12 @@
 -behaviour(on_config_change_hook).
 
 %% API
--export([start_link/0,
-         bridge_info/0,
-         metrics/0,
-         metrics_for_tests/0]).
+-export([
+    start_link/0,
+    bridge_info/0,
+    metrics/0,
+    metrics_for_tests/0
+]).
 -export([change_config/1]).
 
 %% Supervisor callbacks
@@ -37,35 +39,39 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-
 bridge_info() ->
     lists:map(
-      fun({{_, Name, Host, Port}, Pid, _, _}) ->
-              case vmq_bridge:info(Pid) of
-                  {error, not_started} ->
-                      #{name => Name,
+        fun({{_, Name, Host, Port}, Pid, _, _}) ->
+            case vmq_bridge:info(Pid) of
+                {error, not_started} ->
+                    #{
+                        name => Name,
                         host => Host,
                         port => Port,
                         out_buffer_size => $-,
                         out_buffer_max_size => $-,
                         out_buffer_dropped => $-,
                         process_mailbox_size => $-
-                       };
-                  {ok, #{out_queue_size := Size,
-                         out_queue_max_size := Max,
-                         out_queue_dropped := Dropped,
-                         process_mailbox_size := MailboxSize}} ->
-                      #{name => Name,
+                    };
+                {ok, #{
+                    out_queue_size := Size,
+                    out_queue_max_size := Max,
+                    out_queue_dropped := Dropped,
+                    process_mailbox_size := MailboxSize
+                }} ->
+                    #{
+                        name => Name,
                         host => Host,
                         port => Port,
                         out_buffer_size => Size,
                         out_buffer_max_size => Max,
                         out_buffer_dropped => Dropped,
                         process_mailbox_size => MailboxSize
-                       }
-              end
-      end,
-      supervisor:which_children(vmq_bridge_sup)).
+                    }
+            end
+        end,
+        supervisor:which_children(vmq_bridge_sup)
+    ).
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
@@ -84,14 +90,15 @@ change_config(Configs) ->
             stop_and_delete_unused(Bridges, lists:flatten([TCP, SSL]))
     end.
 
-reconfigure_bridges(Type, Bridges, [{HostString, Opts}|Rest]) ->
-    {Name, Host,PortString} = list_to_tuple(string:tokens(HostString, ":")),
-    {Port,_}=string:to_integer(PortString),
+reconfigure_bridges(Type, Bridges, [{HostString, Opts} | Rest]) ->
+    {Name, Host, PortString} = list_to_tuple(string:tokens(HostString, ":")),
+    {Port, _} = string:to_integer(PortString),
     Ref = ref(Name, Host, Port),
     case lists:keyfind(Ref, 1, Bridges) of
         false ->
             start_bridge(Type, Ref, Host, Port, Opts);
-        {_, Pid, _, _} when is_pid(Pid) -> % maybe change existing bridge
+        % maybe change existing bridge
+        {_, Pid, _, _} when is_pid(Pid) ->
             case supervisor:get_childspec(?MODULE, Ref) of
                 {ok, #{start := {vmq_bridge, start_link, [Type, Host, Port, _RegistryMFA, Opts]}}} ->
                     % bridge is unchanged
@@ -105,14 +112,15 @@ reconfigure_bridges(Type, Bridges, [{HostString, Opts}|Rest]) ->
             ok
     end,
     reconfigure_bridges(Type, Bridges, Rest);
-reconfigure_bridges(_, _, []) -> ok.
+reconfigure_bridges(_, _, []) ->
+    ok.
 
 start_bridge(Type, Ref, Host, Port, Opts) ->
     {ok, RegistryMFA} = application:get_env(vmq_bridge, registry_mfa),
     {_, Name, _, _} = Ref,
-    ChildSpec = {Ref,
-                 {vmq_bridge, start_link, [Type, Host, Port, RegistryMFA, [{name, Name}|Opts]]},
-                 permanent, 5000, worker, [vmq_bridge]},
+    ChildSpec =
+        {Ref, {vmq_bridge, start_link, [Type, Host, Port, RegistryMFA, [{name, Name} | Opts]]},
+            permanent, 5000, worker, [vmq_bridge]},
     case supervisor:start_child(?MODULE, ChildSpec) of
         {ok, Pid} ->
             {ok, Pid};
@@ -122,15 +130,22 @@ start_bridge(Type, Ref, Host, Port, Opts) ->
 
 stop_and_delete_unused(Bridges, Config) ->
     BridgesToDelete =
-    lists:foldl(fun({HostString, _}, Acc) ->
-                        {Name, Host,PortString} = list_to_tuple(string:tokens(HostString, ":")),
-                        {Port,_}=string:to_integer(PortString),
-                        Ref = ref(Name, Host, Port),
-                        lists:keydelete(Ref, 1, Acc)
-                end, Bridges, Config),
-    lists:foreach(fun({Ref, _, _, _}) ->
-                          stop_bridge(Ref)
-                  end, BridgesToDelete).
+        lists:foldl(
+            fun({HostString, _}, Acc) ->
+                {Name, Host, PortString} = list_to_tuple(string:tokens(HostString, ":")),
+                {Port, _} = string:to_integer(PortString),
+                Ref = ref(Name, Host, Port),
+                lists:keydelete(Ref, 1, Acc)
+            end,
+            Bridges,
+            Config
+        ),
+    lists:foreach(
+        fun({Ref, _, _, _}) ->
+            stop_bridge(Ref)
+        end,
+        BridgesToDelete
+    ).
 
 stop_bridge(Ref) ->
     ets:delete(vmq_bridge_meta, Ref),
@@ -141,55 +156,101 @@ ref(Name, Host, Port) ->
     {vmq_bridge, Name, Host, Port}.
 
 init([]) ->
-    vmq_bridge_meta = ets:new(vmq_bridge_meta, [named_table,set,public]),
-    {ok, { {one_for_one, 5, 10}, []}}.
+    vmq_bridge_meta = ets:new(vmq_bridge_meta, [named_table, set, public]),
+    {ok, {{one_for_one, 5, 10}, []}}.
 
-metrics_for_tests() -> % only for bridge test suite compatibility
-        ets:foldl(
-          fun({ClientPid},Acc) ->
-                  case gen_mqtt_client:stats(ClientPid) of
-                      undefined ->
-                          ets:delete(vmq_bridge_meta, ClientPid),
-                          Acc;
-                      #{dropped := Dropped} ->
-                          [{counter, [], {vmq_bridge_queue_drop, ClientPid}, vmq_bridge_dropped_msgs, <<"The number of dropped messages (queue full)">>, Dropped}|Acc]
-                  end
-          end, [], vmq_bridge_meta).
+% only for bridge test suite compatibility
+metrics_for_tests() ->
+    ets:foldl(
+        fun({ClientPid}, Acc) ->
+            case gen_mqtt_client:stats(ClientPid) of
+                undefined ->
+                    ets:delete(vmq_bridge_meta, ClientPid),
+                    Acc;
+                #{dropped := Dropped} ->
+                    [
+                        {counter, [], {vmq_bridge_queue_drop, ClientPid}, vmq_bridge_dropped_msgs,
+                            <<"The number of dropped messages (queue full)">>, Dropped}
+                        | Acc
+                    ]
+            end
+        end,
+        [],
+        vmq_bridge_meta
+    ).
 
 metrics() ->
-    Drops = 
-    ets:foldl(
-      fun({ClientPid},Acc) ->
-              case gen_mqtt_client:stats(ClientPid) of
-                  undefined ->
-                      ets:delete(vmq_bridge_meta, ClientPid),
-                      Acc;
-                 #{dropped := Dropped} ->
-                    [{counter, [], {vmq_bridge_queue_drop, ClientPid}, vmq_bridge_dropped_msgs, <<"The number of dropped messages (queue full)">>, Dropped}|Acc]
-            end
-        end, [], vmq_bridge_meta),
+    Drops =
+        ets:foldl(
+            fun({ClientPid}, Acc) ->
+                case gen_mqtt_client:stats(ClientPid) of
+                    undefined ->
+                        ets:delete(vmq_bridge_meta, ClientPid),
+                        Acc;
+                    #{dropped := Dropped} ->
+                        [
+                            {counter, [], {vmq_bridge_queue_drop, ClientPid},
+                                vmq_bridge_dropped_msgs,
+                                <<"The number of dropped messages (queue full)">>, Dropped}
+                            | Acc
+                        ]
+                end
+            end,
+            [],
+            vmq_bridge_meta
+        ),
 
-        lists:foldl(
-            fun({{_, Name, _Host, _Port}, BridgePid, _, _}, Acc2) ->
-                case vmq_bridge:get_metrics(BridgePid) of
-                    undefined -> Acc2;
-                    {ok, #{vmq_bridge_publish_out_0 := PO0,
+    lists:foldl(
+        fun({{_, Name, _Host, _Port}, BridgePid, _, _}, Acc2) ->
+            case vmq_bridge:get_metrics(BridgePid) of
+                undefined ->
+                    Acc2;
+                {ok, #{
+                    vmq_bridge_publish_out_0 := PO0,
                     vmq_bridge_publish_out_1 := PO1,
                     vmq_bridge_publish_out_2 := PO2,
                     vmq_bridge_publish_in_0 := PI0,
                     vmq_bridge_publish_in_1 := PI1,
-                    vmq_bridge_publish_in_2 := PI2}} -> 
+                    vmq_bridge_publish_in_2 := PI2
+                }} ->
+                    lists:flatten([
+                        [
+                            [
+                                {counter, [], {vmq_bridge_publish_out_0, BridgePid},
+                                    label(Name, vmq_bridge_publish_out_0),
+                                    <<"The number of QoS 0 messages the bridge has (re)-published (TCP)">>,
+                                    PO0},
+                                {counter, [], {vmq_bridge_publish_out_1, BridgePid},
+                                    label(Name, vmq_bridge_publish_out_1),
+                                    <<"The number of QoS 1 messages the bridge has (re)-published (TCP)">>,
+                                    PO1},
+                                {counter, [], {vmq_bridge_publish_out_2, BridgePid},
+                                    label(Name, vmq_bridge_publish_out_2),
+                                    <<"The number of QoS 2 messages the bridge has (re)-published (TCP)">>,
+                                    PO2},
+                                {counter, [], {vmq_bridge_publish_in_0, BridgePid},
+                                    label(Name, vmq_bridge_publish_in_0),
+                                    <<"The number of QoS 0 messages the bridge has consumed (TCP)">>,
+                                    PI0},
+                                {counter, [], {vmq_bridge_publish_in_1, BridgePid},
+                                    label(Name, vmq_bridge_publish_in_1),
+                                    <<"The number of QoS 1 messages the bridge has consumed (TCP)">>,
+                                    PI1},
+                                {counter, [], {vmq_bridge_publish_in_2, BridgePid},
+                                    label(Name, vmq_bridge_publish_in_2),
+                                    <<"The number of QoS 2 messages the bridge has consumed (TCP)">>,
+                                    PI2}
+                            ]
+                            | Acc2
+                        ]
+                        | Drops
+                    ])
+            end
+        end,
+        [],
+        supervisor:which_children(vmq_bridge_sup)
+    ).
 
-                    lists:flatten([[[
-                    {counter, [], {vmq_bridge_publish_out_0, BridgePid}, label(Name, vmq_bridge_publish_out_0), <<"The number of QoS 0 messages the bridge has (re)-published (TCP)">>, PO0},
-                    {counter, [], {vmq_bridge_publish_out_1, BridgePid}, label(Name, vmq_bridge_publish_out_1), <<"The number of QoS 1 messages the bridge has (re)-published (TCP)">>, PO1},
-                    {counter, [], {vmq_bridge_publish_out_2, BridgePid}, label(Name, vmq_bridge_publish_out_2), <<"The number of QoS 2 messages the bridge has (re)-published (TCP)">>, PO2},
-                    {counter, [], {vmq_bridge_publish_in_0, BridgePid}, label(Name, vmq_bridge_publish_in_0), <<"The number of QoS 0 messages the bridge has consumed (TCP)">>, PI0},
-                    {counter, [], {vmq_bridge_publish_in_1, BridgePid}, label(Name, vmq_bridge_publish_in_1), <<"The number of QoS 1 messages the bridge has consumed (TCP)">>, PI1},
-                    {counter, [], {vmq_bridge_publish_in_2, BridgePid}, label(Name, vmq_bridge_publish_in_2), <<"The number of QoS 2 messages the bridge has consumed (TCP)">>, PI2}]
-                    |Acc2]|Drops])             
-                end
-      end, [], supervisor:which_children(vmq_bridge_sup)).
-
-    label(Name, Metric) ->
-            list_to_atom(lists:concat([Name, "_", Metric])). % this will create 6 labels (atoms) per bridge for the metrics above. atoms will be the same in every call after that. 
+label(Name, Metric) ->
+    % this will create 6 labels (atoms) per bridge for the metrics above. atoms will be the same in every call after that.
+    list_to_atom(lists:concat([Name, "_", Metric])).

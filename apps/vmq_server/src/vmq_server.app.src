@@ -1,123 +1,136 @@
-{application, vmq_server,
- [
-  {description, "VerneMQ MQTT Server"},
-  {vsn, git},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  lager,
-                  cowboy,
-                  ranch,
-                  os_mon,
-                  riak_sysmon,
-                  ssl,
-                  vmq_commons,
-                  vmq_ql,
-                  vmq_plugin,
-                  clique,
-                  jsx,
-                  gen_server2,
-                  stdout_formatter
-                 ]},
-  {mod, { vmq_server_app, []}},
-  {env, [
-      % session opts
-      {allow_anonymous, true},
-      {max_client_id_size, 100},
-      {retry_interval, 20},
-      {max_inflight_messages, 20},
-      {max_message_rate, 0}, % no rate limit
-      {max_message_size, 0}, % no max msg size
-      {upgrade_outgoing_qos, false},
-      {allow_register_during_netsplit, false},
-      {allow_publish_during_netsplit, false},
-      {allow_subscribe_during_netsplit, false},
-      {allow_unsubscribe_during_netsplit, false},
-      {vmq_config_enabled, true},
-      {default_reg_view, vmq_reg_trie},
-      {reg_views, [vmq_reg_trie]},
+{application, vmq_server, [
+    {description, "VerneMQ MQTT Server"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        lager,
+        cowboy,
+        ranch,
+        os_mon,
+        riak_sysmon,
+        ssl,
+        vmq_commons,
+        vmq_ql,
+        vmq_plugin,
+        clique,
+        jsx,
+        gen_server2,
+        stdout_formatter
+    ]},
+    {mod, {vmq_server_app, []}},
+    {env, [
+        % session opts
+        {allow_anonymous, true},
+        {max_client_id_size, 100},
+        {retry_interval, 20},
+        {max_inflight_messages, 20},
+        % no rate limit
+        {max_message_rate, 0},
+        % no max msg size
+        {max_message_size, 0},
+        {upgrade_outgoing_qos, false},
+        {allow_register_during_netsplit, false},
+        {allow_publish_during_netsplit, false},
+        {allow_subscribe_during_netsplit, false},
+        {allow_unsubscribe_during_netsplit, false},
+        {vmq_config_enabled, true},
+        {default_reg_view, vmq_reg_trie},
+        {reg_views, [vmq_reg_trie]},
 
-      % queue supervisor supervisor opts
-      {queue_sup_sup_children, 50},
+        % queue supervisor supervisor opts
+        {queue_sup_sup_children, 50},
 
-      % queue opts
-      {allow_multiple_sessions, false},
-      {max_online_messages, 30000},
-      {max_offline_messages, -1}, % no rate limit
-      {queue_deliver_mode, fanout}, % balance vs fanout
-      {queue_type, fifo}, % fifo vs lifo
-      {persistent_client_expiration, 0}, % never
-      {max_last_will_delay, 0}, % not allowed
-      {max_drain_time, 100}, 
-      {max_msgs_per_drain_step, 10},
+        % queue opts
+        {allow_multiple_sessions, false},
+        {max_online_messages, 30000},
+        % no rate limit
+        {max_offline_messages, -1},
+        % balance vs fanout
+        {queue_deliver_mode, fanout},
+        % fifo vs lifo
+        {queue_type, fifo},
+        % never
+        {persistent_client_expiration, 0},
+        % not allowed
+        {max_last_will_delay, 0},
+        {max_drain_time, 100},
+        {max_msgs_per_drain_step, 10},
 
-      % default listener / clustering /system opts
-      {max_connections, infinity},
-      {nr_of_acceptors, 10},
-      {tls_handshake_timeout, 5000},
-      {listeners, [{mqtt, [
-                           {{{127,0,0,1}, 1889}, [{max_connections, infinity}, 
-                                              {mountpoint, ""},
-                                                  {proxy_protocol, true}]}
-                          ]
-                   },
-                    {mqtts, []},
-                    {mqttws, [
-                              {{{127,0,0,1}, 8080}, [{max_connections, 1000},
-                                                    {mountpoint, ""},
-                                                    {proxy_protocol, true}]}
-                             ]},
-                    {mqttwss, []},
+        % default listener / clustering /system opts
+        {max_connections, infinity},
+        {nr_of_acceptors, 10},
+        {listeners, [
+            {mqtt, [
+                {{{127, 0, 0, 1}, 1889}, [
+                    {max_connections, infinity},
+                    {mountpoint, ""},
+                    {proxy_protocol, true}
+                ]}
+            ]},
+            {mqtts, []},
+            {mqttws, [
+                {{{127, 0, 0, 1}, 8080}, [
+                    {max_connections, 1000},
+                    {mountpoint, ""},
+                    {proxy_protocol, true}
+                ]}
+            ]},
+            {mqttwss, []},
 
-                    %% used for clustering
-                    {vmq, [{{{0,0,0,0}, 18884}, []}]},
-                    {vmqs, []},
+            %% used for clustering
+            {vmq, [{{{0, 0, 0, 0}, 18884}, []}]},
+            {vmqs, []},
 
-                    {http, [
-                            {{{127,0,0,1}, 8888}, [{config_mod, vmq_http_config},
-                                                   {config_fun, config},
-                                                   {nr_of_acceptors, 10}]}
-                           ]}
-      ]},
-      {http_modules, [
-          vmq_metrics_http, vmq_http_mgmt_api,
-          vmq_status_http, vmq_health_http]},
-      {outgoing_clustering_buffer_size, 10000},
-      {remote_enqueue_timeout, 5000},
-      {outgoing_connect_opts, []},
-      {outgoing_connect_params_module, vmq_cluster_node},
-      {outgoing_connect_timeout, 10000},
-      {shared_subscription_policy, prefer_local},
-      {shared_subscription_timeout_action, ignore},
+            {http, [
+                {{{127, 0, 0, 1}, 8888}, [
+                    {config_mod, vmq_http_config},
+                    {config_fun, config},
+                    {nr_of_acceptors, 10}
+                ]}
+            ]}
+        ]},
+        {http_modules, [
+            vmq_metrics_http,
+            vmq_http_mgmt_api,
+            vmq_status_http,
+            vmq_health_http
+        ]},
+        {outgoing_clustering_buffer_size, 10000},
+        {remote_enqueue_timeout, 5000},
+        {outgoing_connect_opts, []},
+        {outgoing_connect_params_module, vmq_cluster_node},
+        {outgoing_connect_timeout, 10000},
+        {shared_subscription_policy, prefer_local},
+        {shared_subscription_timeout_action, ignore},
 
-      {tcp_listen_options, [
+        {tcp_listen_options, [
             {nodelay, true},
-            {linger, {true, 0}}, 
-            {send_timeout, 30000}, 
+            {linger, {true, 0}},
+            {send_timeout, 30000},
             {send_timeout_close, true}
         ]},
 
-      % Graphite
-      {graphite_enabled, false},
-      %{graphite_host, HostName},                   % single mandatory prop
-      %{graphite_port, 2003}
-      %{graphite_connect_timeout, 5000},
-      %{graphite_reconnect_timeout, 10000},
-      %{graphite_interval, 20000},
-      %{graphite_api_key, ""},
-      %{graphite_prefix, ""}
+        % Graphite
+        {graphite_enabled, false},
+        %{graphite_host, HostName},                   % single mandatory prop
+        %{graphite_port, 2003}
+        %{graphite_connect_timeout, 5000},
+        %{graphite_reconnect_timeout, 10000},
+        %{graphite_interval, 20000},
+        %{graphite_api_key, ""},
+        %{graphite_prefix, ""}
 
-      % Systree
-      {systree_enabled, true}
-      %{systree_interval, 20000},
-      %{systree_prefix, [<<"$SYS">>, NodenameBinary]},
-      %{systree_mountpoint, ""},
-      %{systree_qos, 0},
-      %{systree_retain, false},
-      %{systree_reg_view, vmq_reg_trie},
+        % Systree
+        {systree_enabled, true}
+        %{systree_interval, 20000},
+        %{systree_prefix, [<<"$SYS">>, NodenameBinary]},
+        %{systree_mountpoint, ""},
+        %{systree_qos, 0},
+        %{systree_retain, false},
+        %{systree_reg_view, vmq_reg_trie},
 
-      ]} % end env
-
-
- ]}.
+        % end env
+    ]}
+]}.

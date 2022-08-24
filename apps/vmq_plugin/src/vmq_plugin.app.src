@@ -1,17 +1,16 @@
-{application, vmq_plugin,
- [
-  {description, "Generic Plugin System"},
-  {vsn, git},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  lager,
-                  clique
-                 ]},
-  {mod, { vmq_plugin_app, []}},
-  {env, [
+{application, vmq_plugin, [
+    {description, "Generic Plugin System"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        lager,
+        clique
+    ]},
+    {mod, {vmq_plugin_app, []}},
+    {env, [
         {wait_for_proc, init},
         {default_schema_dir, []}
     ]}
- ]}.
+]}.

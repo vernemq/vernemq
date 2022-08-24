@@ -24,8 +24,7 @@
 -export([init/1]).
 
 %% Helper macro for declaring children of supervisor
--define(CHILD(I, Type, Args), {I, {I, start_link, Args},
-                               permanent, 5000, Type, [I]}).
+-define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
 
 %%%===================================================================
 %%% API functions
@@ -39,14 +38,13 @@ start_link() ->
 %%%===================================================================
 
 init([]) ->
-    {ok, { {one_for_one, 5, 10},
-           [?CHILD(vmq_metrics, worker, []),
+    {ok,
+        {{one_for_one, 5, 10}, [
+            ?CHILD(vmq_metrics, worker, []),
             ?CHILD(vmq_graphite, worker, []),
-            ?CHILD(vmq_systree, worker, [])]}}.
+            ?CHILD(vmq_systree, worker, [])
+        ]}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-
-

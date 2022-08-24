@@ -20,15 +20,16 @@
 
 -module(vmq_swc_peer_service).
 
--export([join/1,
-         join/2,
-         join/3,
-         attempt_join/1,
-         attempt_join/2,
-         leave/1,
-         stop/0,
-         stop/1
-        ]).
+-export([
+    join/1,
+    join/2,
+    join/3,
+    attempt_join/1,
+    attempt_join/2,
+    leave/1,
+    stop/0,
+    stop/1
+]).
 
 %% @doc prepare node to join a cluster
 join(Node) ->
@@ -64,7 +65,10 @@ attempt_join(Node, Local) ->
     %% broadcast to all nodes
     %% get peer list
     Members = riak_dt_orswot:value(Merged),
-    _ = [gen_server:cast({vmq_swc_peer_service_gossip, P}, {receive_state, Merged}) || P <- Members],
+    _ = [
+        gen_server:cast({vmq_swc_peer_service_gossip, P}, {receive_state, Merged})
+     || P <- Members
+    ],
     ok.
 
 leave(_Args) when is_list(_Args) ->

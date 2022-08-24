@@ -6,7 +6,8 @@ on:
       - master
 
 jobs:
-  dialyzer:
+  code_checks:
+    name: Check code style and quality
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2.0.0
@@ -22,7 +23,10 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           otp-version: 23.2.1
-      - run: ./rebar3 dialyzer
+      - name: Check code formatting (erlfmt)
+        run: ./rebar3 fmt -c
+      - name: Run dialyzer type checker
+        run: ./rebar3 dialyzer
   coverage:
     runs-on: ubuntu-18.04
     services:

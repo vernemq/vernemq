@@ -43,16 +43,22 @@ start_link() ->
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
     ets:new(vmq_swc_group_config, [named_table, public, {read_concurrency, true}]),
-    MetricsWorker = #{id => vmq_swc_metrics,
-                     start => {vmq_swc_metrics, start_link, []}},
-    GossipWorker = #{id => vmq_swc_peer_service_gossip,
-                     start => {vmq_swc_peer_service_gossip, start_link, []}},
-    EventsWorker = #{id => vmq_swc_peer_service_events,
-                     start => {vmq_swc_peer_service_events, start_link, []}},
+    MetricsWorker = #{
+        id => vmq_swc_metrics,
+        start => {vmq_swc_metrics, start_link, []}
+    },
+    GossipWorker = #{
+        id => vmq_swc_peer_service_gossip,
+        start => {vmq_swc_peer_service_gossip, start_link, []}
+    },
+    EventsWorker = #{
+        id => vmq_swc_peer_service_events,
+        start => {vmq_swc_peer_service_events, start_link, []}
+    },
 
     _State = vmq_swc_peer_service_manager:init(),
 
-    {ok, { {one_for_one, 1000, 3600}, [MetricsWorker, GossipWorker, EventsWorker]} }.
+    {ok, {{one_for_one, 1000, 3600}, [MetricsWorker, GossipWorker, EventsWorker]}}.
 
 %%====================================================================
 %% Internal functions

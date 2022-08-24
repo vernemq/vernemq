@@ -23,12 +23,14 @@
 -export([start_link/0]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -define(SERVER, ?MODULE).
 -define(DEFAULT_INTERVAL, 20000).
@@ -116,50 +118,67 @@ handle_info(timeout, true) ->
         true ->
             Interval = vmq_config:get_env(systree_interval, ?DEFAULT_INTERVAL),
             Prefix = vmq_config:get_env(systree_prefix, ?DEFAULT_PREFIX),
-            RegView =vmq_config:get_env(systree_reg_view,
-                                        vmq_config:get_env(default_reg_view, vmq_reg_trie)),
+            RegView = vmq_config:get_env(
+                systree_reg_view,
+                vmq_config:get_env(default_reg_view, vmq_reg_trie)
+            ),
             MP = vmq_config:get_env(systree_mountpoint, ""),
             %% We have to pass in something looking like a
             %% subscriberid to the publish function.
             ClientId = ?INTERNAL_CLIENT_ID,
             MsgTmpl = #vmq_msg{
-                         mountpoint=MP,
-                         qos=vmq_config:get_env(systree_qos, 0),
-                         retain=vmq_config:get_env(systree_retain, false),
-                         sg_policy=vmq_config:get_env(shared_subscription_policy, prefer_local)
-                        },
+                mountpoint = MP,
+                qos = vmq_config:get_env(systree_qos, 0),
+                retain = vmq_config:get_env(systree_retain, false),
+                sg_policy = vmq_config:get_env(shared_subscription_policy, prefer_local)
+            },
             CAPPublish = true,
             lists:foreach(
-              fun
-                  ({#metric_def{type=histogram, name=Metric}, {Count, Sum, Buckets}}) ->
-                      SMetric = atom_to_list(Metric),
-                      CountTmp = {"_count", Count},
-                      SumTmp = {"_sum", Sum},
-                      Tmp = maps:fold(
-                              fun(Bucket, BucketValue, Acc) ->
-                                      [{case Bucket of
+                fun
+                    ({#metric_def{type = histogram, name = Metric}, {Count, Sum, Buckets}}) ->
+                        SMetric = atom_to_list(Metric),
+                        CountTmp = {"_count", Count},
+                        SumTmp = {"_sum", Sum},
+                        Tmp = maps:fold(
+                            fun(Bucket, BucketValue, Acc) ->
+                                [
+                                    {
+                                        case Bucket of
                                             infinity -> "_bucket_inf";
                                             _ -> "_bucket_" ++ val(Bucket)
                                         end,
-                                        BucketValue} | Acc]
-                              end, [CountTmp, SumTmp], Buckets),
-                      lists:foreach(
-                        fun({Suffix, BucketValue}) ->
-                                vmq_reg:publish(CAPPublish, RegView, ClientId,
-                                                MsgTmpl#vmq_msg{
-                                                  routing_key=key(Prefix, SMetric ++ Suffix),
-                                                  payload=val(BucketValue),
-                                                  msg_ref=vmq_mqtt_fsm_util:msg_ref()
-                                                 })
-                        end, Tmp);
-
-                  ({#metric_def{name=Metric}, Val}) ->
-                      vmq_reg:publish(CAPPublish, RegView, ClientId, MsgTmpl#vmq_msg{
-                                                                       routing_key=key(Prefix, Metric),
-                                                                       payload=val(Val),
-                                                                       msg_ref=vmq_mqtt_fsm_util:msg_ref()
-                                                                      })
-              end, vmq_metrics:metrics()),
+                                        BucketValue
+                                    }
+                                    | Acc
+                                ]
+                            end,
+                            [CountTmp, SumTmp],
+                            Buckets
+                        ),
+                        lists:foreach(
+                            fun({Suffix, BucketValue}) ->
+                                vmq_reg:publish(
+                                    CAPPublish,
+                                    RegView,
+                                    ClientId,
+                                    MsgTmpl#vmq_msg{
+                                        routing_key = key(Prefix, SMetric ++ Suffix),
+                                        payload = val(BucketValue),
+                                        msg_ref = vmq_mqtt_fsm_util:msg_ref()
+                                    }
+                                )
+                            end,
+                            Tmp
+                        );
+                    ({#metric_def{name = Metric}, Val}) ->
+                        vmq_reg:publish(CAPPublish, RegView, ClientId, MsgTmpl#vmq_msg{
+                            routing_key = key(Prefix, Metric),
+                            payload = val(Val),
+                            msg_ref = vmq_mqtt_fsm_util:msg_ref()
+                        })
+                end,
+                vmq_metrics:metrics()
+            ),
             {noreply, true, Interval};
         false ->
             {noreply, false, 30000}
@@ -167,7 +186,6 @@ handle_info(timeout, true) ->
 handle_info(Info, State) ->
     lager:warning("vmq_systree received unexpected message ~p~n", [Info]),
     {noreply, State}.
-
 
 %%--------------------------------------------------------------------
 %% @private
@@ -192,7 +210,7 @@ terminate(_Reason, _State) ->
 %% @end
 %%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
-        {ok, State}.
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions

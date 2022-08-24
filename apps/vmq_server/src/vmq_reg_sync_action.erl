@@ -19,12 +19,14 @@
 -export([start_link/4]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -record(state, {sync, owner, action}).
 
@@ -32,8 +34,8 @@
 %%% API
 %%%===================================================================
 
-
--spec start_link(SyncPid::pid(), Owner::pid(), Fun::function(), Timeout::timeout()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
+-spec start_link(SyncPid :: pid(), Owner :: pid(), Fun :: function(), Timeout :: timeout()) ->
+    {ok, Pid :: pid()} | ignore | {error, Error :: term()}.
 start_link(SyncPid, Owner, Fun, Timeout) ->
     gen_server:start_link(?MODULE, [SyncPid, Owner, Fun, Timeout], []).
 
@@ -44,8 +46,11 @@ start_link(SyncPid, Owner, Fun, Timeout) ->
 init([SyncPid, OwnerPid, Fun, Timeout]) ->
     process_flag(trap_exit, true),
     monitor(process, OwnerPid),
-    ActionPid = spawn_link(fun() -> Ret = Fun(), exit(Ret) end),
-    {ok, #state{sync=SyncPid, owner=OwnerPid, action=ActionPid}, Timeout}.
+    ActionPid = spawn_link(fun() ->
+        Ret = Fun(),
+        exit(Ret)
+    end),
+    {ok, #state{sync = SyncPid, owner = OwnerPid, action = ActionPid}, Timeout}.
 
 handle_call(_Request, _From, State) ->
     Reply = ok,

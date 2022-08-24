@@ -15,11 +15,13 @@
 -module(vmq_queue_sup).
 
 %% API functions
--export([start_link/5,
-         start_queue/3,
-         get_queue_pid/2,
-         fold_queues/3,
-         nr_of_queues/1]).
+-export([
+    start_link/5,
+    start_queue/3,
+    get_queue_pid/2,
+    fold_queues/3,
+    nr_of_queues/1
+]).
 
 %% Supervisor callbacks
 -export([init/5]).
@@ -27,7 +29,7 @@
 -export([system_terminate/4]).
 -export([system_code_change/4]).
 
--record(state, {parent, shutdown, r=0, max_r, max_t, reset_timer, queue_tab}).
+-record(state, {parent, shutdown, r = 0, max_r, max_t, reset_timer, queue_tab}).
 
 %%%===================================================================
 %%% API functions
@@ -41,7 +43,6 @@ start_link(Shutdown, RegName, QueueTabId, MaxR, MaxT) ->
         {error, Error} ->
             {error, Error}
     end.
-
 
 start_queue(SupPid, SubscriberId, Clean) ->
     %% The Clean flag is used to distinguish between Queues created during
@@ -67,9 +68,13 @@ get_queue_pid(QueueTabId, SubscriberId) ->
     end.
 
 fold_queues(QueueTabId, FoldFun, Acc) ->
-    ets:foldl(fun({SubscriberId, QPid}, AccAcc) ->
-                      FoldFun(SubscriberId, QPid, AccAcc)
-              end, Acc, QueueTabId).
+    ets:foldl(
+        fun({SubscriberId, QPid}, AccAcc) ->
+            FoldFun(SubscriberId, QPid, AccAcc)
+        end,
+        Acc,
+        QueueTabId
+    ).
 
 nr_of_queues(QueueTabId) ->
     case ets:info(QueueTabId, size) of
@@ -85,9 +90,14 @@ init(Parent, Shutdown, QueueTabId, MaxR, MaxT) ->
     process_flag(trap_exit, true),
     ok = proc_lib:init_ack(Parent, {ok, self()}),
     ets:new(QueueTabId, [public, {read_concurrency, true}, named_table]),
-    loop(#state{parent=Parent, shutdown=Shutdown, max_r=MaxR, max_t=MaxT, queue_tab = QueueTabId}, 0).
+    loop(
+        #state{
+            parent = Parent, shutdown = Shutdown, max_r = MaxR, max_t = MaxT, queue_tab = QueueTabId
+        },
+        0
+    ).
 
-loop(State = #state{parent=Parent, queue_tab = QueueTab}, NrOfChildren) ->
+loop(State = #state{parent = Parent, queue_tab = QueueTab}, NrOfChildren) ->
     receive
         {?MODULE, Caller, {start_queue, SubscriberId, Clean}} ->
             case ets:lookup(QueueTab, SubscriberId) of
@@ -110,39 +120,59 @@ loop(State = #state{parent=Parent, queue_tab = QueueTab}, NrOfChildren) ->
                     ets:match_delete(QueueTab, {'_', Pid}),
                     loop(State, NrOfChildren - 1);
                 Reason ->
-                    #state{r=R, max_r=MaxR, max_t=MaxT, reset_timer=Reset} = State,
+                    #state{r = R, max_r = MaxR, max_t = MaxT, reset_timer = Reset} = State,
                     case R >= MaxR of
                         true ->
-                            terminate(State#state{shutdown=brutal_kill},
-                                      NrOfChildren, exhausted_restart_strategy);
+                            terminate(
+                                State#state{shutdown = brutal_kill},
+                                NrOfChildren,
+                                exhausted_restart_strategy
+                            );
                         false ->
                             [{SubscriberId, _}] = ets:match_object(QueueTab, {'_', Pid}),
                             report_error(SubscriberId, Pid, Reason),
-                            loop(State#state{r=R + 1,
-                                             reset_timer=maybe_set_reset_timer(MaxT, Reset)},
-                                 start_queue(undefined, SubscriberId, false, NrOfChildren - 1, QueueTab))
+                            loop(
+                                State#state{
+                                    r = R + 1,
+                                    reset_timer = maybe_set_reset_timer(MaxT, Reset)
+                                },
+                                start_queue(
+                                    undefined, SubscriberId, false, NrOfChildren - 1, QueueTab
+                                )
+                            )
                     end
             end;
         {?MODULE, reset_timer} ->
-            loop(State#state{r=0, reset_timer=undefined}, NrOfChildren);
+            loop(State#state{r = 0, reset_timer = undefined}, NrOfChildren);
         {system, From, Request} ->
-			sys:handle_system_msg(Request, From, Parent, ?MODULE, [],
-                                  {State, NrOfChildren});
+            sys:handle_system_msg(
+                Request,
+                From,
+                Parent,
+                ?MODULE,
+                [],
+                {State, NrOfChildren}
+            );
         %% Calls from the supervisor module.
         {'$gen_call', {To, Tag}, which_children} ->
             Children =
                 ets:foldl(
-                  fun({_,Pid}, Acc) ->
-                          [{vmq_queue, Pid, worker, [vmq_queue]} | Acc]
-                  end,
-                  [],
-                  QueueTab),
+                    fun({_, Pid}, Acc) ->
+                        [{vmq_queue, Pid, worker, [vmq_queue]} | Acc]
+                    end,
+                    [],
+                    QueueTab
+                ),
             To ! {Tag, Children},
             loop(State, NrOfChildren);
         {'$gen_call', {To, Tag}, count_children} ->
             Counts =
-                [{specs, 1}, {active, NrOfChildren},
-                 {supervisors, 0}, {workers, NrOfChildren}],
+                [
+                    {specs, 1},
+                    {active, NrOfChildren},
+                    {supervisors, 0},
+                    {workers, NrOfChildren}
+                ],
             To ! {Tag, Counts},
             loop(State, NrOfChildren);
         {'$gen_call', {To, Tag}, _} ->
@@ -158,18 +188,19 @@ loop(State = #state{parent=Parent, queue_tab = QueueTab}, NrOfChildren) ->
 
 %% Kill all children and then exit. We unlink first to avoid
 %% getting a message for each child getting killed.
-terminate(#state{shutdown=brutal_kill, queue_tab = QueueTab}, _, Reason) ->
+terminate(#state{shutdown = brutal_kill, queue_tab = QueueTab}, _, Reason) ->
     ets:foldl(
-      fun({_,Pid}, Acc) ->
-              unlink(Pid),
-              exit(Pid, kill),
-              Acc
-      end,
-      [],
-      QueueTab),
+        fun({_, Pid}, Acc) ->
+            unlink(Pid),
+            exit(Pid, kill),
+            Acc
+        end,
+        [],
+        QueueTab
+    ),
     exit(Reason);
 %% Attemsupervisor.htmlpt to gracefully shutdown all children.
-terminate(#state{shutdown=Shutdown, queue_tab = QueueTab}, NrOfChildren, Reason) ->
+terminate(#state{shutdown = Shutdown, queue_tab = QueueTab}, NrOfChildren, Reason) ->
     shutdown_children(QueueTab),
     case Shutdown of
         infinity ->
@@ -183,17 +214,19 @@ terminate(#state{shutdown=Shutdown, queue_tab = QueueTab}, NrOfChildren, Reason)
 
 shutdown_children(QueueTab) ->
     ets:foldl(
-      fun({_,Pid}, Acc) ->
-              monitor(process, Pid),
-              unlink(Pid),
-              exit(Pid, shutdown),
-              Acc
-      end,
-      [],
-      QueueTab),
+        fun({_, Pid}, Acc) ->
+            monitor(process, Pid),
+            unlink(Pid),
+            exit(Pid, shutdown),
+            Acc
+        end,
+        [],
+        QueueTab
+    ),
     ok.
 
-wait_children(0, _Tab) -> ok;
+wait_children(0, _Tab) ->
+    ok;
 wait_children(NrOfChildren, Tab) ->
     receive
         {'DOWN', _, process, Pid, _} ->
@@ -201,12 +234,13 @@ wait_children(NrOfChildren, Tab) ->
             wait_children(NrOfChildren - 1, Tab);
         kill ->
             ets:foldl(
-              fun({_,Pid}, Acc) ->
-                      exit(Pid, kill),
-                      Acc
-              end,
-              [],
-              Tab),
+                fun({_, Pid}, Acc) ->
+                    exit(Pid, kill),
+                    Acc
+                end,
+                [],
+                Tab
+            ),
             ok
     end.
 
@@ -217,36 +251,44 @@ start_queue(Caller, SubscriberId, Clean, NrOfChildren, QueueTab) ->
             reply(Caller, {ok, false, Pid}),
             NrOfChildren + 1;
         Ret ->
-            lager:error("vmq_queue_sup can't start vmq_queue for ~p due to ~p",
-                        [SubscriberId, Ret]),
+            lager:error(
+                "vmq_queue_sup can't start vmq_queue for ~p due to ~p",
+                [SubscriberId, Ret]
+            ),
             reply(Caller, {error, cant_start_queue}),
             NrOfChildren
     catch
         Class:Reason ->
-            lager:error("vmq_queue_sup can't start vmq_queue for ~p due crash ~p:~p",
-                        [SubscriberId, Class, Reason]),
+            lager:error(
+                "vmq_queue_sup can't start vmq_queue for ~p due crash ~p:~p",
+                [SubscriberId, Class, Reason]
+            ),
             reply(Caller, {error, Reason}),
             NrOfChildren
     end.
 
 maybe_set_reset_timer(MaxT, undefined) ->
     erlang:send_after(MaxT, self(), {?MODULE, reset_timer});
-maybe_set_reset_timer(_, TRef) -> TRef.
+maybe_set_reset_timer(_, TRef) ->
+    TRef.
 
 reply({CallerPid, CallerRef}, Reply) ->
     CallerPid ! {CallerRef, Reply};
-reply(undefined, Reply) -> Reply.
+reply(undefined, Reply) ->
+    Reply.
 
 report_error(SubscriberID, Pid, Reason) ->
-    lager:error("vmq_queue process ~p exit for subscriber ~p due to ~p",
-                [Pid, SubscriberID, Reason]).
+    lager:error(
+        "vmq_queue process ~p exit for subscriber ~p due to ~p",
+        [Pid, SubscriberID, Reason]
+    ).
 
 system_continue(_, _, {State, NrOfChildren}) ->
-	loop(State, NrOfChildren).
+    loop(State, NrOfChildren).
 
 -spec system_terminate(any(), _, _, _) -> no_return().
 system_terminate(Reason, _, _, {State, NrOfChildren}) ->
-	terminate(State, NrOfChildren, Reason).
+    terminate(State, NrOfChildren, Reason).
 
 system_code_change(Misc, _, _, _) ->
-	{ok, Misc}.
+    {ok, Misc}.

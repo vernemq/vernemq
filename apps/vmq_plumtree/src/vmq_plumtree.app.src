@@ -1,15 +1,15 @@
-{application, vmq_plumtree,
- [{description, "A VerneMQ plugin that sets up Plumtree as metadata storage"},
-  {vsn, git},
-  {registered, []},
-  {mod, { vmq_plumtree_app, []}},
-  {applications,
-   [kernel,
-    stdlib,
-    plumtree
-   ]},
-  {env,[
-      {vmq_plugin_hooks, [
+{application, vmq_plumtree, [
+    {description, "A VerneMQ plugin that sets up Plumtree as metadata storage"},
+    {vsn, git},
+    {registered, []},
+    {mod, {vmq_plumtree_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        plumtree
+    ]},
+    {env, [
+        {vmq_plugin_hooks, [
             {vmq_plumtree, metadata_put, 3, [internal]},
             {vmq_plumtree, metadata_get, 2, [internal]},
             {vmq_plumtree, metadata_delete, 2, [internal]},
@@ -23,11 +23,11 @@
             {vmq_plumtree, cluster_events_add_handler, 2, [internal]},
             {vmq_plumtree, cluster_events_delete_handler, 2, [internal]},
             {vmq_plumtree, cluster_events_call_handler, 3, [internal]}
-      ]}
-  ]},
-  {modules, []},
+        ]}
+    ]},
+    {modules, []},
 
-  {maintainers, []},
-  {licenses, []},
-  {links, []}
- ]}.
+    {maintainers, []},
+    {licenses, []},
+    {links, []}
+]}.

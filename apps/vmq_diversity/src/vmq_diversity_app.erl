@@ -22,8 +22,10 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/2
-        ,stop/1]).
+-export([
+    start/2,
+    stop/1
+]).
 
 %%====================================================================
 %% API
@@ -50,32 +52,43 @@ start(_StartType, _StartArgs) ->
             %% hooks which would end in a deadlock situation, because vmq_diversity
             %% is started as a plugin itself.
             spawn(fun() ->
-                          DataDir = application:get_env(vmq_diversity, script_dir,
-                                                        code:priv_dir(vmq_diversity) ++ "/../scripts"),
-                          case filelib:is_dir(DataDir) of
-                              true ->
-                                  lists:foreach(fun(Script) ->
-                                                        load_script(Script)
-                                                end, filelib:wildcard(DataDir ++ "/*.lua"));
-                              false ->
-                                  lager:warning("can't initialize Lua scripts using ~p", [DataDir])
-                          end,
-                          lists:foreach(fun({_Name, Script}) ->
-                                                lager:info("enable script for ~p", [Script]),
-                                                load_script(Script)
-                                        end, application:get_env(vmq_diversity, user_scripts, [])),
-                          lists:foreach(fun({M, AuthScriptConfig}) ->
-                                                case proplists:get_value(enabled, AuthScriptConfig, false) of
-                                                    true ->
-                                                        Script = proplists:get_value(file, AuthScriptConfig),
-                                                        lager:info("enable auth script for ~p ~p", [M, Script]),
-                                                        load_script(Script);
-                                                    false ->
-                                                        ignore
-                                                end
-                                        end, application:get_env(vmq_diversity, auth_cache, []))
-
-                  end),
+                DataDir = application:get_env(
+                    vmq_diversity,
+                    script_dir,
+                    code:priv_dir(vmq_diversity) ++ "/../scripts"
+                ),
+                case filelib:is_dir(DataDir) of
+                    true ->
+                        lists:foreach(
+                            fun(Script) ->
+                                load_script(Script)
+                            end,
+                            filelib:wildcard(DataDir ++ "/*.lua")
+                        );
+                    false ->
+                        lager:warning("can't initialize Lua scripts using ~p", [DataDir])
+                end,
+                lists:foreach(
+                    fun({_Name, Script}) ->
+                        lager:info("enable script for ~p", [Script]),
+                        load_script(Script)
+                    end,
+                    application:get_env(vmq_diversity, user_scripts, [])
+                ),
+                lists:foreach(
+                    fun({M, AuthScriptConfig}) ->
+                        case proplists:get_value(enabled, AuthScriptConfig, false) of
+                            true ->
+                                Script = proplists:get_value(file, AuthScriptConfig),
+                                lager:info("enable auth script for ~p ~p", [M, Script]),
+                                load_script(Script);
+                            false ->
+                                ignore
+                        end
+                    end,
+                    application:get_env(vmq_diversity, auth_cache, [])
+                )
+            end),
             Ret;
         E ->
             E

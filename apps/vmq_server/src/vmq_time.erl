@@ -14,8 +14,10 @@
 
 -module(vmq_time).
 
--export([timestamp/1,
-        is_past/1]).
+-export([
+    timestamp/1,
+    is_past/1
+]).
 
 -type timestamp() :: non_neg_integer().
 -type duration() :: non_neg_integer().

@@ -18,20 +18,24 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1,
-         transport_init/2,
-         start_connection/2,
-         stop_connection/2,
-         rpc/5,
-         rpc_cast/5]).
+-export([
+    start_link/1,
+    transport_init/2,
+    start_connection/2,
+    stop_connection/2,
+    rpc/5,
+    rpc_cast/5
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -define(SERVER, ?MODULE).
 
@@ -47,8 +51,8 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec start_link(SwcConfig::config()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
-start_link(#swc_config{group=SwcGroup} = Config) ->
+-spec start_link(SwcConfig :: config()) -> {ok, Pid :: pid()} | ignore | {error, Error :: term()}.
+start_link(#swc_config{group = SwcGroup} = Config) ->
     gen_server:start_link({local, name(SwcGroup)}, ?MODULE, [Config], []).
 
 transport_init(_Config, _Opts) ->
@@ -69,7 +73,6 @@ rpc_cast(SwcGroup, RemotePeer, Module, Function, Args) ->
 name(SwcGroup) ->
     list_to_atom("vmq_swc_edist_" ++ atom_to_list(SwcGroup)).
 
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -86,7 +89,7 @@ name(SwcGroup) ->
 %% @end
 %%--------------------------------------------------------------------
 init([Config]) ->
-    {ok, #state{config=Config}}.
+    {ok, #state{config = Config}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -105,28 +108,26 @@ init([Config]) ->
 handle_call({apply, Module, Function, Args}, From, State) ->
     _ = rpc_apply(From, Module, Function, Args, State#state.config),
     {noreply, State};
-
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
 rpc_apply(From, Module, Function, Args, Config) ->
     spawn(
-      fun() ->
-              Reply =
-              try
-                  apply(Module, Function, Args ++ [Config])
-              catch
-                  E:R ->
-                      {error, {Module, Function, length(Args) + 1, {E, R}}}
-              end,
-              case From of
-                  undefined -> ok;
-                  _ ->
-                      gen_server:reply(From, Reply)
-              end
-      end).
-
+        fun() ->
+            Reply =
+                try
+                    apply(Module, Function, Args ++ [Config])
+                catch
+                    E:R ->
+                        {error, {Module, Function, length(Args) + 1, {E, R}}}
+                end,
+            case From of
+                undefined -> ok;
+                _ -> gen_server:reply(From, Reply)
+            end
+        end
+    ).
 
 %%--------------------------------------------------------------------
 %% @private
@@ -180,12 +181,8 @@ terminate(_Reason, _State) ->
 %% @end
 %%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
-        {ok, State}.
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-
-
-

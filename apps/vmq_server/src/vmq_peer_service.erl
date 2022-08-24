@@ -14,13 +14,15 @@
 
 -module(vmq_peer_service).
 
--export([join/1,
-         leave/1,
-         members/0,
-         rename_member/2,
-         add_event_handler/2,
-         delete_event_handler/2,
-         call_event_handler/3]).
+-export([
+    join/1,
+    leave/1,
+    members/0,
+    rename_member/2,
+    add_event_handler/2,
+    delete_event_handler/2,
+    call_event_handler/3
+]).
 
 join(DiscoveryNode) ->
     vmq_plugin:only(cluster_join, [DiscoveryNode]).
@@ -42,4 +44,3 @@ delete_event_handler(Module, Reason) ->
 
 call_event_handler(Module, Msg, Timeout) ->
     vmq_plugin:only(cluster_events_call_handler, [Module, Msg, Timeout]).
-

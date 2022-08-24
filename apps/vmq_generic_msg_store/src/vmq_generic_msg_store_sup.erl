@@ -17,10 +17,12 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0,
-         get_bucket_pid/1,
-         get_bucket_pids/0,
-         register_bucket_pid/2]).
+-export([
+    start_link/0,
+    get_bucket_pid/1,
+    get_bucket_pids/0,
+    register_bucket_pid/2
+]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -36,37 +38,45 @@ start_link() ->
     {ok, Pid} = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
     ok = init_msg_init_tables(),
     Pids =
-        [begin
-             {ok, ChildPid} = supervisor:start_child(Pid, child_spec(I)),
-             ChildPid
-         end || I <- lists:seq(1, ?NR_OF_BUCKETS)],
+        [
+            begin
+                {ok, ChildPid} = supervisor:start_child(Pid, child_spec(I)),
+                ChildPid
+            end
+         || I <- lists:seq(1, ?NR_OF_BUCKETS)
+        ],
 
     ok = wait_until_initialized(Pids),
     {ok, Pid}.
 
 init_msg_init_tables() ->
     lists:foreach(
-      fun(I) ->
-              %% register them by name to make it easier to inspect
-              %% them.
-              Name =
-                  list_to_atom("vmq_generic_msg_store_init_msg_idx_" ++ integer_to_list(I)),
-              Ref = ets:new(Name, [public, named_table, ordered_set,
-                                   {read_concurrency, true}]),
-              %% use persistent terms to fetch the references when
-              %% mapping from the subscriberid.
-              persistent_term:put({?TBL_MSG_INIT, I}, Ref)
-      end,
-      lists:seq(1, ?NR_OF_BUCKETS)),
+        fun(I) ->
+            %% register them by name to make it easier to inspect
+            %% them.
+            Name =
+                list_to_atom("vmq_generic_msg_store_init_msg_idx_" ++ integer_to_list(I)),
+            Ref = ets:new(Name, [
+                public,
+                named_table,
+                ordered_set,
+                {read_concurrency, true}
+            ]),
+            %% use persistent terms to fetch the references when
+            %% mapping from the subscriberid.
+            persistent_term:put({?TBL_MSG_INIT, I}, Ref)
+        end,
+        lists:seq(1, ?NR_OF_BUCKETS)
+    ),
     ok.
-
-
 
 wait_until_initialized(Pids) ->
     lists:foreach(
-      fun(Pid) ->
-              initialized = vmq_generic_msg_store:get_state(Pid)
-      end, Pids).
+        fun(Pid) ->
+            initialized = vmq_generic_msg_store:get_state(Pid)
+        end,
+        Pids
+    ).
 
 get_bucket_pid(Key) when is_binary(Key) ->
     Id = (erlang:phash2(Key) rem ?NR_OF_BUCKETS) + 1,
@@ -91,9 +101,14 @@ register_bucket_pid(BucketId, BucketPid) ->
 
 init([]) ->
     _ = ets:new(?TABLE, [public, named_table, {read_concurrency, true}]),
-    {ok, { {one_for_one, 5, 10}, []} }.
+    {ok, {{one_for_one, 5, 10}, []}}.
 
 child_spec(I) ->
-    {{vmq_generic_msg_store_bucket, I},
-     {vmq_generic_msg_store, start_link, [I]},
-     permanent, 5000, worker, [vmq_generic_msg_store]}.
+    {
+        {vmq_generic_msg_store_bucket, I},
+        {vmq_generic_msg_store, start_link, [I]},
+        permanent,
+        5000,
+        worker,
+        [vmq_generic_msg_store]
+    }.
