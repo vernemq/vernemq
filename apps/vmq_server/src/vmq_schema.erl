@@ -142,6 +142,19 @@ translate_listeners(Conf) ->
         extract("listener.https", "nr_of_acceptors", InfIntVal, Conf)
     ),
 
+    {SSLIPs, SSLTLSHandshakeTimeout} = lists:unzip(
+        extract("listener.ssl", "tls_handshake_timeout", InfIntVal, Conf)
+    ),
+    {WS_SSLIPs, WS_SSLTLSHandshakeTimeout} = lists:unzip(
+        extract("listener.wss", "tls_handshake_timeout", InfIntVal, Conf)
+    ),
+    {VMQ_SSLIPs, VMQ_SSLTLSHandshakeTimeout} = lists:unzip(
+        extract("listener.vmqs", "tls_handshake_timeout", InfIntVal, Conf)
+    ),
+    {HTTP_SSLIPs, HTTP_SSLTLSHandshakeTimeout} = lists:unzip(
+        extract("listener.https", "tls_handshake_timeout", InfIntVal, Conf)
+    ),
+
     {TCPIPs, TCPMountPoint} = lists:unzip(extract("listener.tcp", "mountpoint", MPVal, Conf)),
     {SSLIPs, SSLMountPoint} = lists:unzip(extract("listener.ssl", "mountpoint", MPVal, Conf)),
     {WSIPs, WSMountPoint} = lists:unzip(extract("listener.ws", "mountpoint", MPVal, Conf)),
@@ -336,6 +349,7 @@ translate_listeners(Conf) ->
         MZip([
             SSLMaxConns,
             SSLNrOfAcceptors,
+            SSLTLSHandshakeTimeout,
             SSLMountPoint,
             SSLCAFiles,
             SSLDepths,
@@ -357,6 +371,7 @@ translate_listeners(Conf) ->
         MZip([
             WS_SSLMaxConns,
             WS_SSLNrOfAcceptors,
+            WS_SSLTLSHandshakeTimeout,
             WS_SSLMountPoint,
             WS_SSLCAFiles,
             WS_SSLDepths,
@@ -376,6 +391,7 @@ translate_listeners(Conf) ->
         MZip([
             VMQ_SSLMaxConns,
             VMQ_SSLNrOfAcceptors,
+            VMQ_SSLTLSHandshakeTimeout,
             VMQ_SSLMountPoint,
             VMQ_SSLCAFiles,
             VMQ_SSLDepths,
@@ -394,6 +410,7 @@ translate_listeners(Conf) ->
         MZip([
             HTTP_SSLMaxConns,
             HTTP_SSLNrOfAcceptors,
+            HTTP_SSLTLSHandshakeTimeout,
             HTTP_SSLCAFiles,
             HTTP_SSLDepths,
             HTTP_SSLCertFiles,
@@ -441,6 +458,7 @@ extract(Prefix, Suffix, Val, Conf) ->
             "low_watermark",
             "high_msgq_watermark",
             "low_msgq_watermark",
+            "tls_handshake_timeout",
             %% http listener specific
             "config_mod",
             "config_fun",
