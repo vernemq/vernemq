@@ -837,7 +837,7 @@
                                                                                   ]}.
 
 %% @doc 'listener.tcp.my_listener.allow_anonymous_override' configures whether
-%% this listener is allowed to override the global allow_anonymous setting. 
+%% this listener is allowed to override the global allow_anonymous setting.
 %% The setting has one single purpose: to give a listener the capability to switch off
 %% all authentication plugins. (that is override a global allow_anonymous=off with a per-listener allow_anonymous=on).
 %% Specifically, it can allow TLS listeners to disable internal authentication (using only client certificates as
@@ -849,7 +849,7 @@
 %% on     | off      | on
 %% Both values are simply OR'ed together. Please note that this does not allow you to globally allow anonymous access, and
 %% then selectively switch off single listeners!
-%% 
+%%
 %%     - listener.tcp.my_listener.allow_anonymous_override
 %%     - listener.ssl.my_listener.allow_anonymous_override
 %%

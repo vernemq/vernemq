@@ -152,9 +152,10 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
     TransportMod = transport_for_type(Type),
     TransportOptions = maps:from_list(
         [
-            {socket_opts, [{ip, AAddr}, {port, Port} | TransportOpts]},
+            {socket_opts, [{ip, AAddr}, {port, Port} | SocketOpts]},
             {num_acceptors, NrOfAcceptors},
             {max_connections, MaxConns}
+            | transport_opts_for_type(Type, Opts)
         ]
     ),
     case
@@ -260,8 +261,8 @@ addr(Addr) ->
     Addr.
 
 reconfigure_listeners_for_type(Type, [{{Addr, Port}, Opts} | Rest], TCPOpts, Listeners) ->
-    TransportOpts = TCPOpts ++ transport_opts_for_type(Type, Opts),
-    case start_listener(Type, Addr, Port, {TransportOpts, Opts}) of
+    SocketOpts = TCPOpts ++ socket_opts_for_type(Type, Opts),
+    case start_listener(Type, Addr, Port, {SocketOpts, Opts}) of
         ok ->
             ok;
         {error, Reason} ->
