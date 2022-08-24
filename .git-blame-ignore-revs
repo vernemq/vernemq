@@ -11,4 +11,4 @@
 #     git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 # Code formatter applied: `rebar3 fmt`
-ed188c6a232facaa9b7587a8e29eaf94c943125f
+51114111cd70f82731f1b9ed7d4c29358e71e41b
