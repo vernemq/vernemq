@@ -56,7 +56,7 @@ jobs:
         ports:
           - 11211:11211
       mongodb:
-        image: mongo
+        image: mongo:5.0
         ports:
           - 27017:27017
         env:
