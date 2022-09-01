@@ -866,12 +866,12 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
             {ok, 200, RespHeaders, CRef} ->
                 case hackney:body(CRef) of
                     {ok, Body} ->
-                        case jsx:is_json(Body) of
+                        case vmq_json:is_json(Body) of
                             true ->
                                 handle_response(
                                     Hook,
                                     parse_headers(RespHeaders),
-                                    jsx:decode(Body, [{labels, binary}, {return_maps, false}]),
+                                    vmq_json:decode(Body, [{labels, binary}, {return_maps, false}]),
                                     EOpts
                                 );
                             false ->
@@ -1183,7 +1183,7 @@ encode_payload(Hook, Args, Opts) when
             end,
             Args
         ),
-    jsx:encode(RemappedKeys);
+    vmq_json:encode(RemappedKeys);
 encode_payload(Hook, Args, Opts) when
     Hook =:= auth_on_subscribe; Hook =:= on_subscribe
 ->
@@ -1210,7 +1210,7 @@ encode_payload(Hook, Args, Opts) when
             end,
             Args
         ),
-    jsx:encode(RemappedKeys);
+    vmq_json:encode(RemappedKeys);
 encode_payload(_, Args, Opts) ->
     RemappedKeys =
         lists:map(
@@ -1224,7 +1224,7 @@ encode_payload(_, Args, Opts) ->
             end,
             Args
         ),
-    jsx:encode(RemappedKeys).
+    vmq_json:encode(RemappedKeys).
 
 -spec encode_props(properties(), map()) -> any().
 encode_props(Props, Opts) when is_map(Props) ->
