@@ -17,7 +17,7 @@
 
 -export([install/1]).
 
--define(JSX_EMPTY_OBJECT, [{}]).
+-define(JSON_EMPTY_OBJECT, [{}]).
 -define(LUA_EMPTY_TABLE, []).
 
 install(St) ->
@@ -30,9 +30,9 @@ table() ->
     ].
 
 decode([Bin | _], St) when is_binary(Bin) ->
-    try jsx:decode(Bin) of
+    try vmq_json:decode(Bin) of
         Result0 ->
-            {Result1, NewSt} = luerl:encode(jsx_to_lua(Result0), St),
+            {Result1, NewSt} = luerl:encode(json_to_lua(Result0), St),
             {[Result1], NewSt}
     catch
         _:_ ->
@@ -40,7 +40,7 @@ decode([Bin | _], St) when is_binary(Bin) ->
     end.
 
 encode([T | _], St) when is_tuple(T) ->
-    try jsx:encode(lua_to_jsx(luerl:decode(T, St))) of
+    try vmq_json:encode(lua_to_json(luerl:decode(T, St))) of
         Result0 ->
             {[Result0], St}
     catch
@@ -48,31 +48,31 @@ encode([T | _], St) when is_tuple(T) ->
             {[nil], St}
     end.
 
-lua_to_jsx(?LUA_EMPTY_TABLE) ->
-    ?JSX_EMPTY_OBJECT;
-lua_to_jsx(V) when is_list(V) ->
-    lua_to_jsx_list(V, []);
-lua_to_jsx(V) ->
+lua_to_json(?LUA_EMPTY_TABLE) ->
+    ?JSON_EMPTY_OBJECT;
+lua_to_json(V) when is_list(V) ->
+    lua_to_json_list(V, []);
+lua_to_json(V) ->
     V.
 
-lua_to_jsx_list([{K, V} | Rest], Acc) when is_integer(K) ->
-    lua_to_jsx_list(Rest, [lua_to_jsx(V) | Acc]);
-lua_to_jsx_list([{K, V} | Rest], Acc) when is_binary(K) ->
-    lua_to_jsx_list(Rest, [{K, lua_to_jsx(V)} | Acc]);
-lua_to_jsx_list([], Acc) ->
+lua_to_json_list([{K, V} | Rest], Acc) when is_integer(K) ->
+    lua_to_json_list(Rest, [lua_to_json(V) | Acc]);
+lua_to_json_list([{K, V} | Rest], Acc) when is_binary(K) ->
+    lua_to_json_list(Rest, [{K, lua_to_json(V)} | Acc]);
+lua_to_json_list([], Acc) ->
     lists:reverse(Acc).
 
-jsx_to_lua(?JSX_EMPTY_OBJECT) ->
+json_to_lua(?JSON_EMPTY_OBJECT) ->
     ?LUA_EMPTY_TABLE;
-jsx_to_lua(Result) when is_list(Result) ->
+json_to_lua(Result) when is_list(Result) ->
     lists:map(
         fun
             ({K, V}) ->
-                {K, jsx_to_lua(V)};
+                {K, json_to_lua(V)};
             (V) ->
-                jsx_to_lua(V)
+                json_to_lua(V)
         end,
         Result
     );
-jsx_to_lua(Result) ->
+json_to_lua(Result) ->
     Result.

@@ -34,7 +34,7 @@ init(Req, Opts) ->
                 ]}
         end,
     Headers = #{<<"content-type">> => <<"application/json">>},
-    cowboy_req:reply(Code, Headers, jsx:encode(Payload), Req),
+    cowboy_req:reply(Code, Headers, vmq_json:encode(Payload), Req),
     {ok, Req, Opts}.
 
 -spec check_health_concerns() -> [] | [Concern :: string()].

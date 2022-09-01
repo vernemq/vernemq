@@ -21,9 +21,9 @@ function equals(o1, o2)
     return true
 end
 
-a1 = {awesome = true, 
-      library = "jsx"}
-a2 = "{\"awesome\":true,\"library\":\"jsx\"}"
+a1 = {awesome = true,
+      format = "json"}
+a2 = "{\"awesome\":true,\"format\":\"json\"}"
 assert(equals(a1, json.decode(a2)))
 assert(equals(json.encode(a1), a2))
 

@@ -65,7 +65,7 @@ cluster_status() ->
         {atom_to_binary(Node, utf8), NodeResult}
      || {Node, NodeResult} <- lists:zip([node() | Nodes1], [MyStatus | Result2])
     ],
-    jsx:encode([Data]).
+    vmq_json:encode([Data]).
 
 node_status() ->
     % Total Connections
