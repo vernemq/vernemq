@@ -64,16 +64,32 @@ require "auth/auth_commons"
 -- IF YOU USE THE DOCUMENT SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED IN THE
 -- FOLLOWING SCRIPT.
 function auth_on_register(reg)
+    local internalflag
+    string.startswith = function(self, str)
+        return self:find('^' .. str) ~= nil
+    end
+    if reg.username ~= nil and string.startswith(reg.username, '%$intern@l%$') then
+     internalflag = true
+    end
+
     if reg.username ~= nil and reg.password ~= nil then
-        doc = mongodb.find_one(pool, "vmq_acl_auth", 
+        if internalflag == true then
+           doc = mongodb.find_one(pool, "vmq_acl_auth",
+                                {mountpoint = reg.mountpoint,
+                                 username = reg.username})
+           log.info("ignoring internal clients client_ID check  *********")
+        else
+           doc = mongodb.find_one(pool, "vmq_acl_auth",
                                 {mountpoint = reg.mountpoint,
                                  client_id = reg.client_id,
                                  username = reg.username})
+           log.info("normal flow *********")
+        end
         if doc ~= false then
             if doc.passhash == bcrypt.hashpw(reg.password, doc.passhash) then
                 cache_insert(
-                    reg.mountpoint, 
-                    reg.client_id, 
+                    reg.mountpoint,
+                    reg.client_id,
                     reg.username,
                     doc.publish_acl,
                     doc.subscribe_acl
