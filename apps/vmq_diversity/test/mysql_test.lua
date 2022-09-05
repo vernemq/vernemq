@@ -5,7 +5,7 @@ config = {
     user = "vmq_test_user",
     password = "vmq_test_password",
     database = "vmq_test_database",
-    host = "localhost",
+    host = "mysql",
     port = 3306
 }
 assert(mysql.ensure_pool(config))

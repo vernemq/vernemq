@@ -1,5 +1,6 @@
 config = {
-    pool_id = "mongodb_test", 
+    pool_id = "mongodb_test",
+    host = "mongo",
     size = 1, 
     w_mode = "safe"
 }

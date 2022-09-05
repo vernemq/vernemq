@@ -1,4 +1,9 @@
-redis.ensure_pool({pool_id = "redis_test"})
+config = {
+    pool_id = "redis_test",
+    host = "redis"
+}
+
+assert(redis.ensure_pool(config))
 
 function equals(o1, o2)
     if o1 == o2 then return true end

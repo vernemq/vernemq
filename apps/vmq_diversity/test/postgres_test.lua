@@ -1,5 +1,6 @@
 config = {
     pool_id = "postgres_test",
+    host = "postgres",
     user = "vmq_test_user",
     password = "vmq_test_password",
     database = "vmq_test_database"

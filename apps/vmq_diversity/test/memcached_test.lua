@@ -1,4 +1,9 @@
-memcached.ensure_pool({pool_id = "mcd_test"})
+config = {
+    pool_id = "mcd_test",
+    host = "memcached"
+}
+
+assert(memcached.ensure_pool(config))
 
 assert(memcached.flush_all("mcd_test") == true)
 
