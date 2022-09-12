@@ -1,6 +1,6 @@
 config = {
     pool_id = "mcd_test",
-    host = "memcached"
+    host = "127.0.0.1"
 }
 
 assert(memcached.ensure_pool(config))

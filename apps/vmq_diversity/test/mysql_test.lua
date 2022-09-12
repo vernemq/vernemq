@@ -2,10 +2,9 @@
 config = {
     pool_id = "mysql_test",
     size = 5,
-    user = "vmq_test_user",
-    password = "vmq_test_password",
+    user = "root",
+    password = "root",
     database = "vmq_test_database",
-    host = "mysql",
     port = 3306
 }
 assert(mysql.ensure_pool(config))
@@ -14,7 +13,7 @@ assert(mysql.ensure_pool(config))
 assert(mysql.execute("mysql_test", "DROP TABLE IF EXISTS mysql_test_lua_tbl"))
 
 -- Create test table
-assert(mysql.execute("mysql_test", 
+assert(mysql.execute("mysql_test",
     [[CREATE TABLE mysql_test_lua_tbl(
         client_id VARCHAR(128) PRIMARY KEY,
         mountpoint VARCHAR(64),
@@ -24,7 +23,7 @@ assert(mysql.execute("mysql_test",
      ]]))
 
 -- insert some data
-assert(mysql.execute("mysql_test", 
+assert(mysql.execute("mysql_test",
     [[INSERT INTO mysql_test_lua_tbl VALUES
         ('client_a', 'my_mp', 'user_a', 'password_a'),
         ('client_b', 'my_mp', 'user_b', 'password_b'),
@@ -62,9 +61,9 @@ assert_result(results)
 
 
 -- more complex query
-results = mysql.execute("mysql_test", 
-    [[SELECT * FROM mysql_test_lua_tbl 
-      WHERE 
+results = mysql.execute("mysql_test",
+    [[SELECT * FROM mysql_test_lua_tbl
+      WHERE
         mountpoint=? &&
         client_id=? &&
         user_name=?]], 'my_mp', 'client_c', 'user_c')

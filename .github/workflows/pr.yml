@@ -1,0 +1,67 @@
+name: Runs tests
+
+on:
+  push:
+    branches:
+      - 'main'
+  pull_request:
+  release:
+  workflow_dispatch:
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: vmq_test_user
+          POSTGRES_PASSWORD: vmq_test_password
+          POSTGRES_DB: vmq_test_database
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      memcached:
+        image: memcached
+        ports:
+          - 11211:11211
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redissentinel:
+        image: bitnami/redis-sentinel
+        ports:
+          - 26379:26379
+        options: >-
+          --health-cmd "redis-cli -p 26379 ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_DATABASE: vmq_test_database
+      DB_USER: root
+      DB_PASSWORD: root
+    steps:
+      - uses: actions/checkout@v2.0.0
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 23.0
+      - run: sudo apt-get -y install libsnappy-dev
+      - run: sudo apt-get -y install pcregrep
+      - run: pwd
+      - run: |
+          ./rebar3 as all_tests do dialyzer, eunit, ct || \
+              (echo -e "\nContents of retry.spec\n" && cat ./_build/all_tests+test/logs/retry.spec && \
+              echo -e "\nRetry suites:" && \
+              echo $(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" ./_build/all_tests+test/logs/retry.spec | uniq | paste -s -d, -) && \
+              ./rebar3 ct --suite=$(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" ./_build/all_tests+test/logs/retry.spec | uniq | paste -s -d, -))

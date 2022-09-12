@@ -43,13 +43,16 @@
                  vmq_gojek_auth_acl_read_all,
                  vmq_gojek_auth_acl_write_all,
                  vmq_gojek_auth_acl_read_user,
-                 vmq_gojek_auth_acl_write_user
+                 vmq_gojek_auth_acl_write_user,
+                 vmq_gojek_auth_acl_read_token,
+                 vmq_gojek_auth_acl_write_token
                 ]).
+-define(ARGS_EXTRACT_REGEX, "\\(\s*(u|c)\s*,\s*(:|-|\\|)\s*,\s*([0-9]+)\s*\\)").
+-define(REGEX_TABLE, vmq_gojek_auth_regex_table).
 -define(TABLE_OPTS, [public, named_table, {read_concurrency, true}]).
 -define(USER_SUP, <<"%u">>).
 -define(CLIENT_SUP, <<"%c">>).
 -define(MOUNTPOINT_SUP, <<"%m">>).
--define(PROFILE_ID_SUP, <<"%p">>).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -66,7 +69,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 start() ->
     {ok, _} = application:ensure_all_started(vmq_gojek_auth),
-  vmq_gojek_auth_cli:register(),
+    vmq_gojek_auth_cli:register(),
     ok.
 
 stop() ->
@@ -160,6 +163,7 @@ auth_on_register({_IpAddr, _Port} = Peer, {_MountPoint, _ClientId} = SubscriberI
 %%% Internal+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 init() ->
+    insert_regex(),
     lists:foreach(fun(T) ->
                           case lists:member(T, ets:all()) of
                               true -> ok;
@@ -227,6 +231,16 @@ parse_acl_line({F, <<"pattern ", Topic/binary>>}, User) ->
     in(read, pattern, Topic),
     in(write, pattern, Topic),
     parse_acl_line(F(F,read), User);
+parse_acl_line({F, <<"token read ", Topic/binary>>}, User) ->
+  insert_token(read, regex, string:trim(Topic)),
+  parse_acl_line(F(F,read), User);
+parse_acl_line({F, <<"token write ", Topic/binary>>}, User) ->
+  insert_token(write, regex, string:trim(Topic)),
+  parse_acl_line(F(F,read), User);
+parse_acl_line({F, <<"token ", Topic/binary>>}, User) ->
+  insert_token(read, regex, string:trim(Topic)),
+  insert_token(write, regex, string:trim(Topic)),
+  parse_acl_line(F(F,read), User);
 parse_acl_line({F, <<"\n">>}, User) ->
     parse_acl_line(F(F,read), User);
 parse_acl_line({F, eof}, _User) ->
@@ -240,7 +254,7 @@ check(Type, [Word|_] = Topic, User, SubscriberId) when is_binary(Word) ->
         false ->
             case check_user_acl(Type, User, Topic) of
                 true -> true;
-                false -> check_pattern_acl(Type, Topic, User, SubscriberId)
+                false -> check_pattern_acl(Type, Topic, User, SubscriberId) or check_token_acl(Type, Topic, User, SubscriberId)
             end
     end.
 
@@ -260,6 +274,14 @@ check_pattern_acl(Type, TIn, User, SubscriberId) ->
                                     match(TIn, T)
                             end).
 
+check_token_acl(Type, TIn, User, SubscriberId) ->
+    {Tbl, _} = t(Type, token, TIn),
+    iterate_until_true(Tbl, fun(P) ->
+                                    T = topic(User, SubscriberId, P),
+                                    match(TIn, T)
+                            end).
+
+
 topic(User, {MP, ClientId}, Topic) ->
     subst(list_to_binary(MP), User, ClientId, Topic, []).
 
@@ -269,8 +291,12 @@ subst(MP, User, ClientId, [C|Rest], Acc) when C == ?CLIENT_SUP ->
     subst(MP, User, ClientId, Rest, [ClientId|Acc]);
 subst(MP, User, ClientId, [M|Rest], Acc) when M == ?MOUNTPOINT_SUP ->
     subst(MP, User, ClientId, Rest, [MP|Acc]);
-subst(MP, User, ClientID, [P|Rest], Acc) when P == ?PROFILE_ID_SUP ->
-    subst(MP, User, ClientID, Rest, [get_profile_id(ClientID)|Acc]);
+subst(MP, User, ClientId, [W|Rest], Acc) when is_tuple(W) ->
+    {Id, Delim, Idx} = W,
+    case Id of
+        <<"u">> -> subst(MP, User, ClientId, Rest, [string:nth_lexeme(User, Idx, binary_to_list(Delim))|Acc]);
+        <<"c">> -> subst(MP, User, ClientId, Rest, [string:nth_lexeme(ClientId, Idx, binary_to_list(Delim))|Acc])
+    end;
 subst(MP, User, ClientId, [W|Rest], Acc) ->
     subst(MP, User, ClientId, Rest, [W|Acc]);
 subst(_, _, _, [], Acc) -> lists:reverse(Acc).
@@ -286,9 +312,38 @@ in(Type, User, Topic) when is_binary(Topic) ->
             error_logger:warning_msg("can't validate ~p acl topic ~p for user ~p due to ~p", [Type, STopic, User, Reason])
     end.
 
+insert_token(Type, _, Topic) when is_binary(Topic) ->
+  Words = parse_topic(Topic),
+  {Tbl, Obj} = t(Type, token, Words),
+  ets:insert(Tbl, Obj).
+
+parse_topic(Topic) ->
+  case validate(Topic) of
+        {ok, Words} ->
+          lists:reverse(parse_tokens(Words, []));
+        {error, Reason} ->
+          io:format("can't validate acl topic ~p due to ~p", [Topic, Reason])
+      end.
+
+parse_tokens([], Acc) ->
+    Acc;
+parse_tokens([<<"%", A/binary>> |Words], Acc) ->
+    L = ets:lookup(?REGEX_TABLE, re_pattern),
+    case re:run(A, lists:nth(1, L), [{capture,all_but_first,binary}]) of
+      {match, X} ->
+            parse_tokens(Words, [{lists:nth(1, X), lists:nth(2, X), binary_to_integer(lists:nth(3, X))}|Acc]);
+        _ ->
+            error_logger:warning_msg("can't validate ACL topic due to topic not formatted appropriately ~p ~p", [A, Words]),
+            []
+    end;
+parse_tokens([Word|Words], Acc) ->
+    parse_tokens(Words, [Word|Acc]).
+
 validate(Topic) ->
     vmq_topic:validate_topic(subscribe, Topic).
 
+t(read, token, Topic) -> {vmq_gojek_auth_acl_read_token, {Topic, 1}};
+t(write, token, Topic) -> {vmq_gojek_auth_acl_write_token, {Topic, 1}};
 t(read, all, Topic) -> {vmq_gojek_auth_acl_read_all, {Topic, 1}};
 t(write, all, Topic) ->  {vmq_gojek_auth_acl_write_all, {Topic, 1}};
 t(read, pattern, Topic) ->  {vmq_gojek_auth_acl_read_pattern, {Topic, 1}};
@@ -374,6 +429,15 @@ is_complex_topic_whitelisted(Topic) ->
             false
     end.
 
+insert_regex() ->
+  case lists:member(?REGEX_TABLE, ets:all()) of
+    true -> ok;
+    false ->
+      ets:new(?REGEX_TABLE, ?TABLE_OPTS),
+      {ok, MP} = re:compile(?ARGS_EXTRACT_REGEX),
+      ets:insert(?REGEX_TABLE, MP)
+end.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Helpers for jwt authentication
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -394,10 +458,6 @@ check_rid(Claims, UserName) ->
     error -> error
   end.
 
-get_profile_id(ClientID) ->
-  io:format(string:nth_lexeme(ClientID, 2, ":")),
-  string:nth_lexeme(ClientID, 3, ":").
-
 -ifdef(TEST).
 %%%%%%%%%%%%%
 %%% Tests
@@ -411,7 +471,7 @@ acl_test_() ->
          {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun simple_acl/1}}
     ].
 
-setup() -> ok = application:set_env(vmq_gojek_auth, enable_acl_hooks, true), init().
+setup() -> ok = application:set_env(vmq_gojek_auth, enable_acl_hooks, true), insert_regex(), init().
 setup_vmq_reg_redis_trie() ->
     ok = application:set_env(vmq_gojek_auth, enable_acl_hooks, true),
     ok = application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
@@ -442,17 +502,24 @@ simple_acl(_) ->
            <<"topic x/y/z/#\n">>,
            <<"# some patterns\n">>,
            <<"pattern read %m/%u/%c\n">>,
-           <<"pattern read example/%p\n">>,
-           <<"pattern write %m/%u/%c\n">>
+           <<"token read example/%(c, :, 3)\n">>,
+           <<"pattern write %m/%u/%c\n">>,
+          <<"token read a/b/%( u  , :, 2)/c">>,
+          <<"token read a/b/%( c  , :, 3)/+">>
           ],
     load_from_list(ACL),
     [ ?_assertEqual([[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_gojek_auth_acl_read_all, '$1'))
     , ?_assertEqual([[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_gojek_auth_acl_write_all, '$1'))
     , ?_assertEqual([[{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1}]], ets:match(vmq_gojek_auth_acl_read_user, '$1'))
     , ?_assertEqual([[{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1}]], ets:match(vmq_gojek_auth_acl_write_user, '$1'))
-    , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}],  [{[<<"example">>,<<"%p">>],1}]], ets:match(vmq_gojek_auth_acl_read_pattern, '$1'))
+    , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_gojek_auth_acl_read_pattern, '$1'))
     , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_gojek_auth_acl_write_pattern, '$1'))
     %% positive auth_on_subscribe
+    , ?_assertEqual({ok,[{[<<"a">>,<<"b">>,<<"id">>,<<"c">>],0},
+      {[<<"a">>,<<"b">>,<<"1">>,<<"c">>],0}]},
+      auth_on_subscribe(<<"user:1:name">>, {"", <<"my:client:id">>},
+        [{[<<"a">>, <<"b">>, <<"id">>,<<"c">>], 0}
+          ,{[<<"a">>, <<"b">>, <<"1">>,<<"c">>], 0}]))
     , ?_assertEqual({ok,[{[<<"a">>,<<"b">>,<<"c">>],0},
                           {[<<"x">>,<<"y">>,<<"z">>,<<"#">>],0},
                           {[<<>>,<<"test">>,<<"my-client-id">>],0}]},

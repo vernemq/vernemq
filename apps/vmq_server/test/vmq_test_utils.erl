@@ -22,7 +22,7 @@ setup(RegView) ->
         vmq_reg_redis_trie ->
             application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
             application:set_env(vmq_server, systree_reg_view, vmq_reg_redis_trie),
-            application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"redis-sentinel\", 26379}]"),
+            application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"localhost\", 26379}]"),
             application:set_env(vmq_server, redis_lua_dir, PrivDir ++ "/lua_scripts");
         _ -> ok
     end,

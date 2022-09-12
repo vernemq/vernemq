@@ -1,6 +1,6 @@
 config = {
     pool_id = "redis_test",
-    host = "redis"
+    host = "127.0.0.1"
 }
 
 assert(redis.ensure_pool(config))
