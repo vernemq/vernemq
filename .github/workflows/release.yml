@@ -24,6 +24,6 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Build and push
         run: |
-          docker build -t dumbpreacher/vernemq:latest -t dumbpreacher/vernemq:${{ steps.get_version.outputs.version }} -f docker/Dockerfile .
-          docker push dumbpreacher/vernemq:latest
-          docker push dumbpreacher/vernemq:${{ steps.get_version.outputs.version }}
+          docker build -t gojektech/vernemq:latest -t gojektech/vernemq:${{ steps.get_version.outputs.version }} -f docker/Dockerfile .
+          docker push gojektech/vernemq:latest
+          docker push gojektech/vernemq:${{ steps.get_version.outputs.version }}
