@@ -504,8 +504,8 @@ simple_acl(_) ->
            <<"pattern read %m/%u/%c\n">>,
            <<"token read example/%(c, :, 3)\n">>,
            <<"pattern write %m/%u/%c\n">>,
-          <<"token read a/b/%( u  , :, 2)/c">>,
-          <<"token read a/b/%( c  , :, 3)/+">>
+           <<"token read a/b/%( u  , :, 2)/c">>,
+           <<"token read a/b/%( c  , :, 3)/+">>
           ],
     load_from_list(ACL),
     [ ?_assertEqual([[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_gojek_auth_acl_read_all, '$1'))
