@@ -1,3 +1,5 @@
+## VerneMQ 1.12.6
+
 - Fix outgoing QoS and outgoing QoS upgrades.
 - Collect per webhook type (e.g. `on_publish_m5_requests`) metrics.
 - Fix vmqs (SSL) inter-node communication.
@@ -6,7 +8,14 @@
 - Fix Prometheus exposition format, related to MQTT v4 and v5 labels.
 - Add Unix domain listeners (to be configured as "listener.tcp.unix_socket = local:/tmp/my.sock:0")
 - Add new setting `tls_handshake_timeout` option to SSL listeners.
-
+- Fix webhook cache to not allow multiple entries per key
+- Fix recovery of waiting pubrecs in MQTT v5
+- Update `epgsql` to 4.6.1
+- Update `eredis` to 1.7.0 (vmq_diversity)
+- Update `eredis` to 1.7.0 (vmq_diversity)
+- Update `erlang-mongodb` to ref 713e8bd (vmq_diversity)
+- Update `sext` to 1.8.0
+- Update `stdout_formatter` to 0.2.4
 
 ## VerneMQ 1.12.5
 
