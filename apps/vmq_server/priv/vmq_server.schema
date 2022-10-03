@@ -1693,7 +1693,7 @@
                                                         ]}.
 
 %% @doc File based authorization plugin.
-{mapping, "plugins.vmq_gojek_auth", "vmq_server.user_plugins", [
+{mapping, "plugins.vmq_enhanced_auth", "vmq_server.user_plugins", [
                                                          {datatype, flag},
                                                          {default, on}
                                                          ]}.

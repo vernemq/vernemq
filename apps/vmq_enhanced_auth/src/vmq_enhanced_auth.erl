@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_gojek_auth).
+-module(vmq_enhanced_auth).
 -behaviour(auth_on_register_hook).
 -behaviour(auth_on_subscribe_hook).
 -behaviour(auth_on_publish_hook).
@@ -38,17 +38,17 @@
 
 -define(INIT_ACL, {[],[],[],[],[],[]}).
 -define(TABLES, [
-                 vmq_gojek_auth_acl_read_pattern,
-                 vmq_gojek_auth_acl_write_pattern,
-                 vmq_gojek_auth_acl_read_all,
-                 vmq_gojek_auth_acl_write_all,
-                 vmq_gojek_auth_acl_read_user,
-                 vmq_gojek_auth_acl_write_user,
-                 vmq_gojek_auth_acl_read_token,
-                 vmq_gojek_auth_acl_write_token
+                 vmq_enhanced_auth_acl_read_pattern,
+                 vmq_enhanced_auth_acl_write_pattern,
+                 vmq_enhanced_auth_acl_read_all,
+                 vmq_enhanced_auth_acl_write_all,
+                 vmq_enhanced_auth_acl_read_user,
+                 vmq_enhanced_auth_acl_write_user,
+                 vmq_enhanced_auth_acl_read_token,
+                 vmq_enhanced_auth_acl_write_token
                 ]).
 -define(ARGS_EXTRACT_REGEX, "\\(\s*(u|c)\s*,\s*(:|-|\\|)\s*,\s*([0-9]+)\s*\\)").
--define(REGEX_TABLE, vmq_gojek_auth_regex_table).
+-define(REGEX_TABLE, vmq_enhanced_auth_regex_table).
 -define(TABLE_OPTS, [public, named_table, {read_concurrency, true}]).
 -define(USER_SUP, <<"%u">>).
 -define(CLIENT_SUP, <<"%c">>).
@@ -59,31 +59,31 @@
 -define(setup(F), {setup, fun setup/0, fun teardown/1, F}).
 -endif.
 
--define(SecretKey, application:get_env(vmq_gojek_auth, secret_key, undefined)).
--define(EnableAuthOnRegister, application:get_env(vmq_gojek_auth, enable_jwt_auth, false)).
--define(EnableAclHooks, application:get_env(vmq_gojek_auth, enable_acl_hooks, false)).
+-define(SecretKey, application:get_env(vmq_enhanced_auth, secret_key, undefined)).
+-define(EnableAuthOnRegister, application:get_env(vmq_enhanced_auth, enable_jwt_auth, false)).
+-define(EnableAclHooks, application:get_env(vmq_enhanced_auth, enable_acl_hooks, false)).
 -define(RegView, application:get_env(vmq_server, default_reg_view, vmq_reg_trie)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Plugin Callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 start() ->
-    {ok, _} = application:ensure_all_started(vmq_gojek_auth),
-    vmq_gojek_auth_cli:register(),
+    {ok, _} = application:ensure_all_started(vmq_enhanced_auth),
+    vmq_enhanced_auth_cli:register(),
     ok.
 
 stop() ->
-    application:stop(vmq_gojek_auth).
+    application:stop(vmq_enhanced_auth).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 change_config(Configs) ->
-    case lists:keyfind(vmq_gojek_auth, 1, Configs) of
+    case lists:keyfind(vmq_enhanced_auth, 1, Configs) of
         false ->
             ok;
         _ ->
-            vmq_gojek_auth_reloader:change_config_now()
+            vmq_enhanced_auth_reloader:change_config_now()
     end.
 
 auth_on_subscribe(User, SubscriberId, TopicList) ->
@@ -313,16 +313,17 @@ in(Type, User, Topic) when is_binary(Topic) ->
     end.
 
 insert_token(Type, _, Topic) when is_binary(Topic) ->
-  Words = parse_topic(Topic),
-  {Tbl, Obj} = t(Type, token, Words),
-  ets:insert(Tbl, Obj).
+    Words = parse_topic(Topic),
+    {Tbl, Obj} = t(Type, token, Words),
+    ets:insert(Tbl, Obj).
 
 parse_topic(Topic) ->
-  case validate(Topic) of
+    case validate(Topic) of
         {ok, Words} ->
-          lists:reverse(parse_tokens(Words, []));
+            lists:reverse(parse_tokens(Words, []));
         {error, Reason} ->
-          io:format("can't validate acl topic ~p due to ~p", [Topic, Reason])
+            error_logger:error_msg("can't validate acl topic ~p due to ~p", [Topic, Reason]),
+            []
       end.
 
 parse_tokens([], Acc) ->
@@ -342,14 +343,14 @@ parse_tokens([Word|Words], Acc) ->
 validate(Topic) ->
     vmq_topic:validate_topic(subscribe, Topic).
 
-t(read, token, Topic) -> {vmq_gojek_auth_acl_read_token, {Topic, 1}};
-t(write, token, Topic) -> {vmq_gojek_auth_acl_write_token, {Topic, 1}};
-t(read, all, Topic) -> {vmq_gojek_auth_acl_read_all, {Topic, 1}};
-t(write, all, Topic) ->  {vmq_gojek_auth_acl_write_all, {Topic, 1}};
-t(read, pattern, Topic) ->  {vmq_gojek_auth_acl_read_pattern, {Topic, 1}};
-t(write, pattern, Topic) -> {vmq_gojek_auth_acl_write_pattern, {Topic, 1}};
-t(read, User, Topic) -> {vmq_gojek_auth_acl_read_user, {{User, Topic}, 1}};
-t(write, User, Topic) -> {vmq_gojek_auth_acl_write_user, {{User, Topic}, 1}}.
+t(read, token, Topic) -> {vmq_enhanced_auth_acl_read_token, {Topic, 1}};
+t(write, token, Topic) -> {vmq_enhanced_auth_acl_write_token, {Topic, 1}};
+t(read, all, Topic) -> {vmq_enhanced_auth_acl_read_all, {Topic, 1}};
+t(write, all, Topic) ->  {vmq_enhanced_auth_acl_write_all, {Topic, 1}};
+t(read, pattern, Topic) ->  {vmq_enhanced_auth_acl_read_pattern, {Topic, 1}};
+t(write, pattern, Topic) -> {vmq_enhanced_auth_acl_write_pattern, {Topic, 1}};
+t(read, User, Topic) -> {vmq_enhanced_auth_acl_read_user, {{User, Topic}, 1}};
+t(write, User, Topic) -> {vmq_enhanced_auth_acl_write_user, {{User, Topic}, 1}}.
 
 iterate_until_true(T, Fun) when is_atom(T) ->
     iterate_ets_until_true(T, ets:first(T), Fun);
@@ -471,9 +472,9 @@ acl_test_() ->
          {setup, fun setup_vmq_reg_redis_trie/0, fun teardown/1, fun simple_acl/1}}
     ].
 
-setup() -> ok = application:set_env(vmq_gojek_auth, enable_acl_hooks, true), insert_regex(), init().
+setup() -> ok = application:set_env(vmq_enhanced_auth, enable_acl_hooks, true), insert_regex(), init().
 setup_vmq_reg_redis_trie() ->
-    ok = application:set_env(vmq_gojek_auth, enable_acl_hooks, true),
+    ok = application:set_env(vmq_enhanced_auth, enable_acl_hooks, true),
     ok = application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
     init(),
     ets:new(vmq_redis_trie_node, [{keypos, 2}|?TABLE_OPTS]),
@@ -484,11 +485,11 @@ teardown(RegView) ->
         vmq_reg_redis_trie -> ets:delete(vmq_redis_trie_node);
         _ -> ok
     end,
-    ets:delete(vmq_gojek_auth_acl_read_all),
-    ets:delete(vmq_gojek_auth_acl_write_all),
-    ets:delete(vmq_gojek_auth_acl_read_user),
-    ets:delete(vmq_gojek_auth_acl_write_user),
-    application:unset_env(vmq_gojek_auth, enable_acl_hooks),
+    ets:delete(vmq_enhanced_auth_acl_read_all),
+    ets:delete(vmq_enhanced_auth_acl_write_all),
+    ets:delete(vmq_enhanced_auth_acl_read_user),
+    ets:delete(vmq_enhanced_auth_acl_write_user),
+    application:unset_env(vmq_enhanced_auth, enable_acl_hooks),
     application:unset_env(vmq_server, default_reg_view).
 
 simple_acl(_) ->
@@ -505,15 +506,16 @@ simple_acl(_) ->
            <<"token read example/%(c, :, 3)\n">>,
            <<"pattern write %m/%u/%c\n">>,
            <<"token read a/b/%( u  , :, 2)/c">>,
-           <<"token read a/b/%( c  , :, 3)/+">>
+           <<"token read a/b/%( c  , :, 3)/+">>,
+           <<"token write write-topic/a/b/%( c  , :, 3)/+">>
           ],
     load_from_list(ACL),
-    [ ?_assertEqual([[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_gojek_auth_acl_read_all, '$1'))
-    , ?_assertEqual([[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_gojek_auth_acl_write_all, '$1'))
-    , ?_assertEqual([[{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1}]], ets:match(vmq_gojek_auth_acl_read_user, '$1'))
-    , ?_assertEqual([[{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1}]], ets:match(vmq_gojek_auth_acl_write_user, '$1'))
-    , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_gojek_auth_acl_read_pattern, '$1'))
-    , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_gojek_auth_acl_write_pattern, '$1'))
+    [ ?_assertEqual([[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_enhanced_auth_acl_read_all, '$1'))
+    , ?_assertEqual([[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_enhanced_auth_acl_write_all, '$1'))
+    , ?_assertEqual([[{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1}]], ets:match(vmq_enhanced_auth_acl_read_user, '$1'))
+    , ?_assertEqual([[{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1}]], ets:match(vmq_enhanced_auth_acl_write_user, '$1'))
+    , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_enhanced_auth_acl_read_pattern, '$1'))
+    , ?_assertEqual([[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]], ets:match(vmq_enhanced_auth_acl_write_pattern, '$1'))
     %% positive auth_on_subscribe
     , ?_assertEqual({ok,[{[<<"a">>,<<"b">>,<<"id">>,<<"c">>],0},
       {[<<"a">>,<<"b">>,<<"1">>,<<"c">>],0}]},
@@ -552,6 +554,8 @@ simple_acl(_) ->
                                            ,{[<<"">>, <<"test">>, <<"my-client-id">>], 0}]))
     , ?_assertEqual(ok, auth_on_publish(<<"test">>, {"", <<"my-client-id">>}, 1,
                                           [<<"a">>, <<"b">>, <<"c">>], <<"payload">>, false))
+      , ?_assertEqual(ok, auth_on_publish(<<"test">>, {"", <<"my:client:id">>}, 1,
+                                          [<<"write-topic">>, <<"a">>, <<"b">>, <<"id">>, <<"c">>], <<"payload">>, false))
     , ?_assertEqual(ok, auth_on_publish(<<"test">>, {"", <<"my-client-id">>}, 1,
                                           [<<"x">>, <<"y">>, <<"z">>, <<"blabla">>], <<"payload">>, false))
     , ?_assertEqual(ok, auth_on_publish(<<"test">>, {"", <<"my-client-id">>}, 1,

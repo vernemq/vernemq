@@ -1,30 +1,30 @@
 %% @doc Set the path to an access control list file.
-{mapping, "vmq_gojek_auth.acl_file", "vmq_gojek_auth.file", [
+{mapping, "vmq_enhanced_auth.acl_file", "vmq_enhanced_auth.file", [
                                                {default, "{{platform_etc_dir}}/vmq.acl"},
                                                {datatype, file}
                                               ]}.
 
 %% @doc set the acl reload interval in seconds, the value 0 disables
 %% the automatic reloading of the acl file.
-{mapping, "vmq_gojek_auth.acl_reload_interval", "vmq_gojek_auth.interval", [
+{mapping, "vmq_enhanced_auth.acl_reload_interval", "vmq_enhanced_auth.interval", [
                                                               {default, 10},
                                                               {datatype, integer}
                                                              ]}.
 
 %% @doc Set JWT Secret Key.
-{mapping, "vmq_gojek_auth.secret_key", "vmq_gojek_auth.secret_key", [
+{mapping, "vmq_enhanced_auth.secret_key", "vmq_enhanced_auth.secret_key", [
                                                                     {datatype, string},
                                                                     {default, "secret_key"}
                                                                     ]}.
 
 %% @doc Enable auth_on_register.
-{mapping, "vmq_gojek_auth.enable_jwt_auth", "vmq_gojek_auth.enable_jwt_auth", [
+{mapping, "vmq_enhanced_auth.enable_jwt_auth", "vmq_enhanced_auth.enable_jwt_auth", [
                                                                     {datatype, atom},
                                                                     {default, true}
                                                                     ]}.
 
 %% @doc Enable auth_on_register.
-{mapping, "vmq_gojek_auth.enable_acl_hooks", "vmq_gojek_auth.enable_acl_hooks", [
+{mapping, "vmq_enhanced_auth.enable_acl_hooks", "vmq_enhanced_auth.enable_acl_hooks", [
                                                                     {datatype, atom},
                                                                     {default, false}
                                                                     ]}.

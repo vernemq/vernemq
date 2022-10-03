@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_gojek_auth_reloader).
+-module(vmq_enhanced_auth_reloader).
 
 -behaviour(gen_server).
 
@@ -29,7 +29,7 @@
          code_change/3]).
 
 -record(state, {file, interval, timer}).
--define(APP, vmq_gojek_auth).
+-define(APP, vmq_enhanced_auth).
 
 %%%===================================================================
 %%% API
@@ -111,7 +111,7 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info(reload, #state{file=File, interval=Interval} = State) ->
-    ok = vmq_gojek_auth:load_from_file(File),
+    ok = vmq_enhanced_auth:load_from_file(File),
     erlang:send_after(Interval, self(), reload),
     {noreply, State}.
 
@@ -150,8 +150,8 @@ init_state(State) ->
     end,
     {ok, File} = application:get_env(?APP, file),
     {ok, Interval} = application:get_env(?APP, interval),
-    ok = vmq_gojek_auth:init(),
-    ok = vmq_gojek_auth:load_from_file(File),
+    ok = vmq_enhanced_auth:init(),
+    ok = vmq_enhanced_auth:load_from_file(File),
     {NewI, NewTRef} =
     case Interval of
         0 ->

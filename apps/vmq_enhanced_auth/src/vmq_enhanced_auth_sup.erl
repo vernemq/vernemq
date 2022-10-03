@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(vmq_gojek_auth_sup).
+-module(vmq_enhanced_auth_sup).
 
 -behaviour(supervisor).
 
@@ -37,5 +37,5 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok, { {one_for_one, 5, 10}, [?CHILD(vmq_gojek_auth_reloader, worker)]} }.
+    {ok, { {one_for_one, 5, 10}, [?CHILD(vmq_enhanced_auth_reloader, worker)]} }.
 
