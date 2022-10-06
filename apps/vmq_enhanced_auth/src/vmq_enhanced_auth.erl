@@ -313,9 +313,12 @@ in(Type, User, Topic) when is_binary(Topic) ->
     end.
 
 insert_token(Type, _, Topic) when is_binary(Topic) ->
-    Words = parse_topic(Topic),
-    {Tbl, Obj} = t(Type, token, Words),
-    ets:insert(Tbl, Obj).
+    case parse_topic(Topic) of
+        [] -> ok;
+        Words ->
+            {Tbl, Obj} = t(Type, token, Words),
+            ets:insert(Tbl, Obj)
+    end.
 
 parse_topic(Topic) ->
     case validate(Topic) of
