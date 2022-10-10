@@ -556,6 +556,7 @@ metrics_test(_) ->
     1 = EndReqCntr - StartReqCntr,
     0 = EndErrCntr - StartErrCntr,
     true = (EndSentBytesCntr - StartSentBytesCntr) > 0,
+    {ok, [{text, _Text}]} = vmq_server_cmd:metrics(),
     deregister_hook(on_session_expired, ?ENDPOINT).
 
 find_metric_value(Id) ->
