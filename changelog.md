@@ -1,3 +1,5 @@
+- Fix bug in webhooks metrics that crashed Prometheus endpoint
+
 ## VerneMQ 1.12.6
 
 - Fix outgoing QoS and outgoing QoS upgrades.
@@ -40,7 +42,7 @@
   - Add `vmq-admin trace stop_all` command to stop unreachable traces.
   - Fix bridge configuration regarding CAP settings.
   - Add `prefer_online_before_local` shared subscription policy.
-  
+
 ## VerneMQ 1.12.3
 
   -  Move from `r_mode` to read preference in VMQ Diversity MongoDB

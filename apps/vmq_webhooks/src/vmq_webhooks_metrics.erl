@@ -63,7 +63,7 @@ hook_and_counter_type_to_metric(CounterRef, Hook, CounterType) ->
                 <<"Number of bytes sent to ", HookBin/binary, " webhooks">>
         end,
     Value = counters:get(CounterRef, Index),
-    {counter, [], Id, Description, Name, Value}.
+    {counter, [], Id, Id, Description, Value}.
 
 -spec init() -> ok.
 init() ->
