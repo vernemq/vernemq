@@ -6,6 +6,8 @@ on:
       - 'main'
   pull_request:
   release:
+    types:
+      - published
   workflow_dispatch:
 
 jobs:
