@@ -1,35 +1,11 @@
 # VerneMQ: A Distributed MQTT Broker
 
-[![Build Status](https://travis-ci.org/vernemq/vernemq.svg?branch=master)](https://travis-ci.org/vernemq/vernemq)
-<a href="https://docs.vernemq.com">
-		<img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" target="_blank" />
-	</a>
-	<a href="https://github.com/vernemq/vernemq/graphs/commit-activity">
-		<img alt="Maintenance" src="https://img.shields.io/badge/maintained-yes-green.svg" target="_blank" />
-	</a>
-<a href="https://github.com/vernemq/vernemq/releases/latest">
-<img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/vernemq/vernemq"></a>
-<a href="https://github.com/vernemq/vernemq/commits/master">
-<img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/vernemq/vernemq"></a>
-<a href="https://twitter.com/vernemq">
-		<img
-			alt="Twitter: VerneMQ"
-			src="https://img.shields.io/twitter/follow/vernemq.svg?style=social"
-			target="_blank"
-		/>
-	</a>
-[![Google group : VerneMQ Users](https://img.shields.io/badge/Google%20Group-VerneMQ%20Users-blue.svg)](https://groups.google.com/forum/#!forum/vernemq-users)
-Old Docker Repo | New Docker Repo
------------- | -------------
-[![Docker Pulls from Old Repo](https://img.shields.io/docker/pulls/erlio/docker-vernemq.svg)](https://hub.docker.com/r/erlio/docker-vernemq/)|[![Docker Pulls from New Repo](https://img.shields.io/docker/pulls/vernemq/vernemq.svg)](https://hub.docker.com/r/vernemq/vernemq/)
+![docker-push][ci-workflow-badge]
+![tests][test-workflow-badge]
 
-New: VerneMQ can now use Github Discussions! To join the discussion on features and roadmap, and be part of the <strong>VerneMQ Community Team</strong> on Github, send us your Github username for an invite! (on Twitter, Slack etc.)
-- - - 
+![VerneMQ Logo](https://i.imgur.com/bln3fK3.jpg)
 
-VerneMQ is known to be deployed and used in: :us: :canada: :brazil: :mexico: :de: :fr: :switzerland: :denmark: :netherlands: :belgium: :it: :es: :romania: :portugal: :ru: :lithuania: :czech_republic: :slovakia: :austria: :poland: :norway: :sweden: :india: :jp: :indonesia: :vietnam: :kr: :south_africa: :kenya: :serbia: :croatia: :greece: :uk: :ukraine: :australia: :new_zealand: :cn: :egypt: :finland: :hungary: :israel: :singapore: :lebanon: :philippines: :pakistan: :malaysia: :tr: :taiwan: :iran: :cloud:
-
----
-[![VerneMQ Logo](https://i.imgur.com/bln3fK3.jpg)](https://vernemq.com)
+This project is a fork of the awesome ❤️  [MQTT broker](https://github.com/vernemq/vernemq) of the same name. We wanted to add some functionalities that we think can be useful for specific use-cases.
 
 VerneMQ is a high-performance, distributed MQTT message broker. It scales
 horizontally and vertically on commodity hardware to support a high number of
@@ -48,6 +24,13 @@ restricted devices in low bandwidth, high-latency or unreliable networks.
 VerneMQ implements the MQTT 3.1, 3.1.1 and 5.0 specifications. Currently the
 following features are implemented and delivered as part of VerneMQ:
 
+On top of the following core VerneMQ features, this fork provides:
+* Redis based subscription store
+* TCP based events relay hook
+* JWT based authentication
+* Enhanced ACL
+
+Core VerneMQ features:
 * QoS 0, QoS 1, QoS 2
 * Basic Authentication and Authorization
 * Bridge Support
@@ -91,26 +74,6 @@ The following features are also applies to MQTT 5.0 clients:
 * Subscriber identifiers
 * All property types are supported: user properties, reason strings, content types etc.
 
-## Commercial Support. Binary Packages. Documentation
-
-Below you'll find a basic introduction to building and starting VerneMQ. For
-more information about the binary package installation, configuration, and
-administration of VerneMQ, please visit our documentation at [VerneMQ
-Documentation](https://docs.vernemq.com) or checkout the product page
-[VerneMQ](https://vernemq.com) if you require more information on the available
-commercial [support options](https://vernemq.com/services.html).
-
-## Community Release Schedule
-
-Next major release: not yet scheduled.
-
-Minor releases: At the end of March, July and November (every 4th month).
-
-Bugfix releases: Usually a bugfix release is released between minor releases or
-if there's an urgent bugfix pending.
-
-Custom release cycles and releases are available for commercial users.
-
 ## Quick Start
 
 This section assumes that you have a copy of the VerneMQ source tree. To get
@@ -144,19 +107,11 @@ If VerneMQ is running it is possible to check the status on
 
 <img src="https://i.imgur.com/XajYjtb.png" width="75%">
 
-Note that the `$VERNEMQ/_build/default/rel/vernemq` directory is a complete, 
+Note that the `$VERNEMQ/_build/default/rel/vernemq` directory is a complete,
 self-contained instance of VerneMQ and Erlang. It is strongly suggested that you
-move this directory outside the source tree if you plan to run a production 
+move this directory outside the source tree if you plan to run a production
 instance.
 
-### Important links
+[ci-workflow-badge]: https://github.com/gojekfarm/vernemq/workflows/ci/badge.svg
+[test-workflow-badge]: https://github.com/gojekfarm/vernemq/actions/workflows/pr.yml/badge.svg
 
-* [VerneMQ Documentation](https://docs.vernemq.com)
-* [![Google group : VerneMQ Users](https://img.shields.io/badge/Google%20Group-VerneMQ%20Users-blue.svg)](https://groups.google.com/forum/#!forum/vernemq-users)
-* <a href="https://twitter.com/vernemq">
-		<img
-			alt="Twitter: VerneMQ"
-			src="https://img.shields.io/twitter/follow/vernemq.svg?style=social"
-			target="_blank"
-		/>
-	</a>
