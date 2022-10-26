@@ -2,8 +2,10 @@
 
 ![docker-push][ci-workflow-badge]
 ![tests][test-workflow-badge]
+[![docs][gitbook-badge]][gitbook-docs]
 
 ![VerneMQ Logo](https://i.imgur.com/bln3fK3.jpg)
+
 
 This project is a fork of the awesome ❤️  [MQTT broker](https://github.com/vernemq/vernemq) of the same name. We wanted to add some functionalities that we think can be useful for specific use-cases.
 
@@ -25,10 +27,11 @@ VerneMQ implements the MQTT 3.1, 3.1.1 and 5.0 specifications. Currently the
 following features are implemented and delivered as part of VerneMQ:
 
 On top of the following core VerneMQ features, this fork provides:
-* Redis based subscription store
-* TCP based events relay hook
-* JWT based authentication
-* Enhanced ACL
+>* [Redis based subscription store](https://courier-gojek.gitbook.io/vernemq/configuring-vernemq/routing)
+>* [TCP based events relay hook](https://courier-gojek.gitbook.io/vernemq/plugin-development/eventssidecarplugins)
+>* [JWT based authentication](https://courier-gojek.gitbook.io/vernemq/configuring-vernemq/customauth)
+>* [Enhanced ACL](https://courier-gojek.gitbook.io/vernemq/configuring-vernemq/customauth#authorization)
+>* [Disable persistence in messages across restarts](https://courier-gojek.gitbook.io/vernemq/configuring-vernemq/noopengine)
 
 Core VerneMQ features:
 * QoS 0, QoS 1, QoS 2
@@ -114,4 +117,5 @@ instance.
 
 [ci-workflow-badge]: https://github.com/gojekfarm/vernemq/workflows/ci/badge.svg
 [test-workflow-badge]: https://github.com/gojekfarm/vernemq/actions/workflows/pr.yml/badge.svg
-
+[gitbook-badge]: https://img.shields.io/badge/GitBook-7B36ED?style=for-the-badge&logo=gitbook&logoColor=white
+[gitbook-docs]: https://courier-gojek.gitbook.io/vernemq/
