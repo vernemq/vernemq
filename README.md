@@ -2,7 +2,9 @@
 
 ![docker-push][ci-workflow-badge]
 ![tests][test-workflow-badge]
-[![docs][gitbook-badge]][gitbook-docs]
+<a href="https://courier-gojek.gitbook.io/vernemq/">
+<img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" target="_blank" />
+</a>
 
 ![VerneMQ Logo](https://i.imgur.com/bln3fK3.jpg)
 
@@ -117,5 +119,3 @@ instance.
 
 [ci-workflow-badge]: https://github.com/gojekfarm/vernemq/workflows/ci/badge.svg
 [test-workflow-badge]: https://github.com/gojekfarm/vernemq/actions/workflows/pr.yml/badge.svg
-[gitbook-badge]: https://img.shields.io/badge/GitBook-7B36ED?style=for-the-badge&logo=gitbook&logoColor=white
-[gitbook-docs]: https://courier-gojek.gitbook.io/vernemq/
