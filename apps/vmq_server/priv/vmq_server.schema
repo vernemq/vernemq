@@ -661,8 +661,8 @@
                                                                                   hidden
                                                                           ]}.
 
-%% @doc Set the TLS handshake timeout. This represents the maximum time that can
-%% be spent completing the TLS handshake for the protocol.
+%% @doc Set the TLS handshake timeout (in milliseconds). This represents the maximum
+%% time that can be spent completing the TLS handshake for the protocol.
 %%
 %% It can be useful to set this to a higher value when clients are running on
 %% constrained devices (e.g. microcontrollers) which can take more than 5 seconds
