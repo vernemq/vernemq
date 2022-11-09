@@ -102,7 +102,8 @@ init(Req, Opts) ->
                         end
                 end,
             WsOpts0 = proplists:get_value(ws_opts, Opts, #{idle_timeout => infinity}),
-            WsOpts = maps:merge(#{compress => true}, WsOpts0),
+            MaxFrameSize = application:get_env(vmq_server, max_ws_frame_size, 268435456),
+            WsOpts = maps:merge(#{compress => true, max_frame_size => MaxFrameSize}, WsOpts0),
             {vmq_cowboy_websocket, Req0,
                 #state{
                     peer = Peer,
