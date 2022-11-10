@@ -544,8 +544,13 @@
                                                                                   {datatype, [integer, {atom, infinity}]},
                                                                                   hidden
                                                                                  ]}.
+%% @doc Set the maximum frame in bytes that a WebSocket connection is allowed to
+%% send. If the client tries to send more in one frame, the server will disconnect it.
 
-
+{mapping, "max_ws_frame_size", "vmq_server.max_ws_frame_size", [
+                                                                  {default, 256*1024*1024 },
+                                                                  {datatype, [integer, {atom, infinity}]}
+                                                                 ]}.
 
 %% @doc Set the nr of acceptors waiting to concurrently accept new connections.
 %% This can be specified either on the protocol level:

@@ -1,3 +1,8 @@
+
+- Add `max_ws_frame_size` setting to limit incoming WebSocket stream.
+
+## VerneMQ 1.12.6.1
+
 - Fix bug in webhooks metrics that crashed Prometheus endpoint
 
 ## VerneMQ 1.12.6
