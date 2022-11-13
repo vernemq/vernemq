@@ -92,7 +92,7 @@
 
 function validate_result_client_side(results, reg)
    if #results > 0 then
-      targetRow = nil
+      local targetRow
       --   search for a specific rule for the client client_id
       for _, row in ipairs(results) do
          if row.client_id ~= '*' and row.passhash == do_hash(method, reg.password, row.passhash) then
@@ -120,7 +120,7 @@ end
 
 function validate_result_server_side(results, reg)
    if #results > 0 then
-      targetRow = nil
+      local targetRow
       --   search for a specific rule for the client client_id
       for _, row in ipairs(results) do
          if row.client_id ~= '*' then
@@ -141,11 +141,11 @@ function validate_result_server_side(results, reg)
 end
 
 function auth_on_register_common(db_library, reg)
-   method = db_library.hash_method()
+   local method = db_library.hash_method()
    if reg.username ~= nil and reg.password ~= nil then
       if client_side_hashing(method) then
          -- use client side hash functions
-         results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, password AS passhash, client_id
+         local results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, password AS passhash, client_id
               FROM vmq_auth_acl
               WHERE
                 mountpoint=$1 AND
@@ -163,7 +163,7 @@ function auth_on_register_common(db_library, reg)
          else
             return false
          end
-         results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, client_id
+         local results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, client_id
               FROM vmq_auth_acl
               WHERE
                 mountpoint=$1 AND
@@ -190,7 +190,7 @@ function do_hash(method, password, passhash)
 end
 
 function cache_result(reg, row)
-    publish_acl = json.decode(row.publish_acl)
-    subscribe_acl = json.decode(row.subscribe_acl)
+    local publish_acl = json.decode(row.publish_acl)
+    local subscribe_acl = json.decode(row.subscribe_acl)
     cache_insert(reg.mountpoint, reg.client_id, reg.username, publish_acl, subscribe_acl)
 end

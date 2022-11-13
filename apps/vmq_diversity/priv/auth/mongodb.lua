@@ -65,8 +65,9 @@ require "auth/auth_commons"
 -- FOLLOWING SCRIPT.
 function auth_on_register(reg)
     if reg.username ~= nil and reg.password ~= nil then
-        doc = mongodb.find_one(pool, "vmq_acl_auth", { mountpoint = reg.mountpoint, client_id = reg.client_id, username = reg.username })
-                or mongodb.find_one(pool, "vmq_acl_auth", { mountpoint = reg.mountpoint, client_id = '*', username = reg.username })
+        local specific = { mountpoint = reg.mountpoint, client_id = reg.client_id, username = reg.username }
+        local default = { mountpoint = reg.mountpoint, client_id = '*', username = reg.username }
+        local doc = mongodb.find_one(pool, "vmq_acl_auth", specific) or mongodb.find_one(pool, "vmq_acl_auth", default)
 
         if doc ~= false then
             if doc.passhash == bcrypt.hashpw(reg.password, doc.passhash) then

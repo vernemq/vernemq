@@ -57,7 +57,7 @@ require "auth/auth_commons"
 -- FOLLOWING SCRIPT.
 function validate_result_server_side(results, reg)
     if #results > 0 then
-        targetRow = nil
+        local targetRow
         --   search for a specific rule for the client client_id
         for _, row in ipairs(results) do
             if row.client_id ~= '*' then
@@ -71,8 +71,8 @@ function validate_result_server_side(results, reg)
             targetRow = results[1]
         end
 
-        publish_acl = json.decode(targetRow.publish_acl)
-        subscribe_acl = json.decode(targetRow.subscribe_acl)
+        local publish_acl = json.decode(targetRow.publish_acl)
+        local subscribe_acl = json.decode(targetRow.subscribe_acl)
         cache_insert(reg.mountpoint, reg.client_id, reg.username, publish_acl, subscribe_acl)
         return true
     end
@@ -81,7 +81,7 @@ end
 
 function auth_on_register(reg)
     if reg.username ~= nil and reg.password ~= nil then
-        results = mysql.execute(pool, [[SELECT publish_acl, subscribe_acl, client_id
+        local results = mysql.execute(pool, [[SELECT publish_acl, subscribe_acl, client_id
               FROM vmq_auth_acl
               WHERE
                 mountpoint=? AND
