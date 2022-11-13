@@ -55,36 +55,42 @@ require "auth/auth_commons"
 -- 
 -- IF YOU USE THE SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED IN THE
 -- FOLLOWING SCRIPT.
+function validate_result_server_side(results, reg)
+    if #results > 0 then
+        targetRow = nil
+        --   search for a specific rule for the client client_id
+        for _, row in ipairs(results) do
+            if row.client_id ~= '*' then
+                targetRow = row
+                break
+            end
+        end
+
+        -- no specific rule, get default rule for all clients
+        if targetRow == nil then
+            targetRow = results[1]
+        end
+
+        publish_acl = json.decode(targetRow.publish_acl)
+        subscribe_acl = json.decode(targetRow.subscribe_acl)
+        cache_insert(reg.mountpoint, reg.client_id, reg.username, publish_acl, subscribe_acl)
+        return true
+    end
+    return false
+end
+
 function auth_on_register(reg)
     if reg.username ~= nil and reg.password ~= nil then
-        results = mysql.execute(pool,
-            [[SELECT publish_acl, subscribe_acl
+        results = mysql.execute(pool, [[SELECT publish_acl, subscribe_acl
               FROM vmq_auth_acl
               WHERE
                 mountpoint=? AND
-                client_id=? AND
+                (client_id=? OR client_id='*') AND
                 username=? AND
-                password=]]..mysql.hash_method(),
-            reg.mountpoint,
-            reg.client_id,
-            reg.username,
-            reg.password)
-        if #results == 1 then
-            row = results[1]
-            publish_acl = json.decode(row.publish_acl)
-            subscribe_acl = json.decode(row.subscribe_acl)
-            cache_insert(
-                reg.mountpoint, 
-                reg.client_id, 
-                reg.username,
-                publish_acl,
-                subscribe_acl
-                )
-            return true
-        else
-            return false
-        end
+                password=]] .. mysql.hash_method(), reg.mountpoint, reg.client_id, reg.username, reg.password)
+        return validate_result_client_side(results, reg)
     end
+    return false
 end
 
 pool = "auth_mysql"
