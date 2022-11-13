@@ -32,8 +32,9 @@ require "auth/auth_commons"
 -- IN THE FOLLOWING SCRIPT.
 function auth_on_register(reg)
     if reg.username ~= nil and reg.password ~= nil then
-        key = json.encode({reg.mountpoint, reg.client_id, reg.username})
-        res = redis.cmd(pool, "get " .. key)
+        specificKey = json.encode({ reg.mountpoint, reg.client_id, reg.username})
+        defaultKey = json.encode({reg.mountpoint, '*', reg.username})
+        res = redis.cmd(pool, "get " .. specificKey) or redis.cmd(pool, "get " .. defaultKey)
         if res then
             res = json.decode(res)
             if res.passhash == bcrypt.hashpw(reg.password, res.passhash) then
