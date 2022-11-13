@@ -81,7 +81,7 @@ end
 
 function auth_on_register(reg)
     if reg.username ~= nil and reg.password ~= nil then
-        results = mysql.execute(pool, [[SELECT publish_acl, subscribe_acl
+        results = mysql.execute(pool, [[SELECT publish_acl, subscribe_acl, client_id
               FROM vmq_auth_acl
               WHERE
                 mountpoint=? AND

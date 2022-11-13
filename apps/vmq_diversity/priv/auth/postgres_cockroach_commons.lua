@@ -145,7 +145,7 @@ function auth_on_register_common(db_library, reg)
    if reg.username ~= nil and reg.password ~= nil then
       if client_side_hashing(method) then
          -- use client side hash functions
-         results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, password AS passhash
+         results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, password AS passhash, client_id
               FROM vmq_auth_acl
               WHERE
                 mountpoint=$1 AND
@@ -163,7 +163,7 @@ function auth_on_register_common(db_library, reg)
          else
             return false
          end
-         results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT
+         results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, client_id
               FROM vmq_auth_acl
               WHERE
                 mountpoint=$1 AND
