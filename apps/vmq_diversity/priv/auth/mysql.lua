@@ -88,7 +88,7 @@ function auth_on_register(reg)
                 (client_id=? OR client_id='*') AND
                 username=? AND
                 password=]] .. mysql.hash_method(), reg.mountpoint, reg.client_id, reg.username, reg.password)
-        return validate_result_client_side(results, reg)
+        return validate_result_server_side(results, reg)
     end
     return false
 end

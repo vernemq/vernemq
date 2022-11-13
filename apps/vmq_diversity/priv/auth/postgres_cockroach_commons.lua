@@ -170,7 +170,7 @@ function auth_on_register_common(db_library, reg)
                 (client_id=$2 OR client_id='*') AND
                 username=$3 AND
                 password=]] .. server_hash, reg.mountpoint, reg.client_id, reg.username, reg.password)
-         return validate_result_client_side(results, reg)
+         return validate_result_server_side(results, reg)
       end
    else
       return false
