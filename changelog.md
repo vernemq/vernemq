@@ -1,4 +1,6 @@
 
+## VerneMQ 1.12.6.2
+
 - Add `max_ws_frame_size` setting to limit incoming WebSocket stream.
 
 ## VerneMQ 1.12.6.1
