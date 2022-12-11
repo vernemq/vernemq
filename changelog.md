@@ -1,4 +1,6 @@
 
+
+- Fix regression in handling of the Proxy protocol for WebSockets.
 ## VerneMQ 1.12.6.2
 
 - Add `max_ws_frame_size` setting to limit incoming WebSocket stream.
