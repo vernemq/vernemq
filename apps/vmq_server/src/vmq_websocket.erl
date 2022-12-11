@@ -83,7 +83,7 @@ init(Req, Opts) ->
                         end;
                     %mqttws
                     _ ->
-                        case proplists:get_value(proxy_protocol_use_cn_as_username, Opts, true) of
+                        case proplists:get_value(proxy_protocol_use_cn_as_username, Opts, false) of
                             false ->
                                 FsmMod:init(Peer, Opts);
                             true ->
@@ -95,9 +95,10 @@ init(Req, Opts) ->
                                     % back to the provided MQTT username.
                                     % We expected SSL information from the Proxy protocol but did not get
                                     % any.
+                                    #{ssl := #{cn := CN}} ->
+                                        FsmMod:init(Peer, [{preauth, CN} | Opts]);
                                     #{command := _} ->
-                                        #{ssl := #{cn := CN}} = ProxyInfo0,
-                                        FsmMod:init(Peer, [{preauth, CN} | Opts])
+                                        FsmMod:init(Peer, Opts)
                                 end
                         end
                 end,
