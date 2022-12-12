@@ -89,33 +89,69 @@
 --
 -- IF YOU USE THE SCHEMA PROVIDED ABOVE NOTHING HAS TO BE CHANGED IN THE
 -- FOLLOWING SCRIPT.
+
+function validate_result_client_side(results, reg)
+   if #results > 0 then
+      local targetRow
+      --   search for a specific rule for the client client_id
+      for _, row in ipairs(results) do
+         if row.client_id ~= '*' and row.passhash == do_hash(method, reg.password, row.passhash) then
+            targetRow = row
+         end
+      end
+
+      -- no specific rule, get default rule for all clients
+      if targetRow == nil then
+         for _, row in ipairs(results) do
+            if row.passhash == do_hash(method, reg.password, row.passhash) then
+               targetRow = row
+               break
+            end
+         end
+      end
+
+      if targetRow ~= nil then
+         cache_result(reg, targetRow)
+         return true
+      end
+   end
+   return false
+end
+
+function validate_result_server_side(results, reg)
+   if #results > 0 then
+      local targetRow
+      --   search for a specific rule for the client client_id
+      for _, row in ipairs(results) do
+         if row.client_id ~= '*' then
+            targetRow = row
+            break
+         end
+      end
+
+      -- no specific rule, get default rule for all clients
+      if targetRow == nil then
+         targetRow = results[1]
+      end
+
+      cache_result(reg, targetRow)
+      return true
+   end
+   return false
+end
+
 function auth_on_register_common(db_library, reg)
-   method = db_library.hash_method()
+   local method = db_library.hash_method()
    if reg.username ~= nil and reg.password ~= nil then
       if client_side_hashing(method) then
          -- use client side hash functions
-         results = db_library.execute(
-            pool,
-            [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, password AS passhash
+         local results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, password AS passhash, client_id
               FROM vmq_auth_acl
               WHERE
                 mountpoint=$1 AND
-                client_id=$2 AND
-                username=$3]],
-            reg.mountpoint,
-            reg.client_id,
-            reg.username)
-         if #results == 1 then
-            row = results[1]
-            if row.passhash == do_hash(method, reg.password, row.passhash) then
-               cache_result(reg, row)
-               return true
-            else
-              return false
-           end
-        else
-            return false
-         end
+                (client_id=$2 OR client_id='*') AND
+                username=$3]], reg.mountpoint, reg.client_id, reg.username)
+         return validate_result_client_side(results, reg)
       else
          -- use server side hash functions
          if method == "crypt" then
@@ -127,26 +163,14 @@ function auth_on_register_common(db_library, reg)
          else
             return false
          end
-         results = db_library.execute(
-            pool,
-            [[SELECT publish_acl::TEXT, subscribe_acl::TEXT
+         local results = db_library.execute(pool, [[SELECT publish_acl::TEXT, subscribe_acl::TEXT, client_id
               FROM vmq_auth_acl
               WHERE
                 mountpoint=$1 AND
-                client_id=$2 AND
+                (client_id=$2 OR client_id='*') AND
                 username=$3 AND
-                password=]]..server_hash,
-            reg.mountpoint,
-            reg.client_id,
-            reg.username,
-            reg.password)
-         if #results == 1 then
-            row = results[1]
-            cache_result(reg, row)
-            return true
-         else
-            return false
-         end
+                password=]] .. server_hash, reg.mountpoint, reg.client_id, reg.username, reg.password)
+         return validate_result_server_side(results, reg)
       end
    else
       return false
@@ -154,24 +178,19 @@ function auth_on_register_common(db_library, reg)
 end
 
 function client_side_hashing(method)
-   return method == "bcrypt"
+    return method == "bcrypt"
 end
 
 function do_hash(method, password, passhash)
-   if method == "bcrypt" then
-      return bcrypt.hashpw(password, passhash)
-   else
-      return false
-   end
+    if method == "bcrypt" then
+        return bcrypt.hashpw(password, passhash)
+    else
+        return false
+    end
 end
 
 function cache_result(reg, row)
-   publish_acl = json.decode(row.publish_acl)
-   subscribe_acl = json.decode(row.subscribe_acl)
-   cache_insert(
-      reg.mountpoint,
-      reg.client_id,
-      reg.username,
-      publish_acl,
-      subscribe_acl)
+    local publish_acl = json.decode(row.publish_acl)
+    local subscribe_acl = json.decode(row.subscribe_acl)
+    cache_insert(reg.mountpoint, reg.client_id, reg.username, publish_acl, subscribe_acl)
 end
