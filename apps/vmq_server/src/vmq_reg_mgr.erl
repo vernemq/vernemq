@@ -209,48 +209,30 @@ handle_new_sub_event(SubscriberId, Subs) ->
             end
     end.
 
-%% Local queue found, only migrate this queue if
+%% Local queue found, only terminate this queue if
 %% 1. NewQueue.clean_session = false AND
 %% 2. OldQueue.allow_multiple_sessions = false AND
 %% 3. Only one concurrent Session exist
 %% if OldQueue.clean_session = true, queue migration is
 %% aborted by the OldQueue process.
-handle_new_remote_subscriber(SubscriberId, QPid, [{NewNode, false}]) ->
+handle_new_remote_subscriber(SubscriberId, QPid, [{_NewNode, false}] = _Session) ->
     % Case 1. AND 3.
-    migrate_queue(SubscriberId, QPid, NewNode);
-handle_new_remote_subscriber(SubscriberId, QPid, [{_NewNode, true}]) ->
+    terminate_queue(SubscriberId, ?REMOTE_SESSION_TAKEN_OVER, QPid);
+handle_new_remote_subscriber(SubscriberId, QPid, [{_NewNode, true} = _Session]) ->
     %% New remote queue uses clean_session=true, we have to wipe this local session
-    cleanup_queue(SubscriberId, ?SESSION_TAKEN_OVER, QPid);
-handle_new_remote_subscriber(SubscriberId, QPid, Sessions) ->
-    % Case Not 3.
-    %% Do we have available remote sessions
-    case [N || {N, false} <- Sessions] of
-        [NewNode|_] ->
-            %% Best bet to use this session
-            lager:warning("more than one remote nodes found for migrating queue[~p] for subscriber ~p, use ~p", [QPid, SubscriberId, NewNode]),
-            migrate_queue(SubscriberId, QPid, NewNode);
-        [] ->
-            lager:warning("can't migrate the queue[~p] for subscriber ~p due to no responsible remote node found", [QPid, SubscriberId])
-    end.
+    cleanup_queue(SubscriberId, ?REMOTE_SESSION_TAKEN_OVER, QPid).
 
-migrate_queue(SubscriberId, QPid, Node) ->
-    %% we use the Node of the 'new' Queue as SyncNode.
-    vmq_reg_sync:async({migrate, SubscriberId},
-                      fun() ->
-                              case rpc:call(Node, vmq_queue_sup_sup, start_queue,
-                                            [SubscriberId]) of
-                                  {ok, _, RemoteQPid} ->
-                                      vmq_queue:migrate(QPid, RemoteQPid);
-                                  {E, Reason} when (E == error) or (E == badrpc) ->
-                                      exit({cant_start_queue, Node, SubscriberId, Reason})
-                              end
-                      end, Node, 60000).
+terminate_queue(SubscriberId, Reason, QPid) ->
+    vmq_reg_sync:sync({cleanup, SubscriberId},
+                       fun() ->
+                               vmq_queue:terminate(QPid, Reason)
+                       end, node(), 60000).
 
 cleanup_queue(SubscriberId, Reason, QPid) ->
-    vmq_reg_sync:async({cleanup, SubscriberId},
-                       fun() ->
-                               vmq_queue:cleanup(QPid, Reason)
-                       end, node(), 60000).
+    vmq_reg_sync:sync({cleanup, SubscriberId},
+        fun() ->
+            vmq_queue:cleanup(QPid, Reason)
+        end, node(), 60000).
 
 is_allow_multi(QPid) ->
     case vmq_queue:get_opts(QPid) of

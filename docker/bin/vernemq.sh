@@ -5,6 +5,14 @@ NET_INTERFACE=${DOCKER_NET_INTERFACE:-${NET_INTERFACE}}
 IP_ADDRESS=$(ip -4 addr show ${NET_INTERFACE} | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | sed -e "s/^[[:space:]]*//" | head -n 1)
 IP_ADDRESS=${DOCKER_IP_ADDRESS:-${IP_ADDRESS}}
 
+ERTS_PATH=$(find /vernemq -type d -name erts*)
+PATH=$ERTS_PATH/bin:$PATH
+
+# Ensure .env file is created for postgres migrations
+if env | grep "DOCKER_VERNEMQ_OFFLINE_MESSAGE_STORE_OPTS__DATABASE" -q; then
+  echo DATABASE_URL=postgresql://$DOCKER_VERNEMQ_OFFLINE_MESSAGE_STORE_OPTS__USERNAME:$DOCKER_VERNEMQ_OFFLINE_MESSAGE_STORE_OPTS__PASSWORD@$DOCKER_VERNEMQ_OFFLINE_MESSAGE_STORE_OPTS__HOST/$DOCKER_VERNEMQ_OFFLINE_MESSAGE_STORE_OPTS__DATABASE > .env
+fi
+
 # Ensure the Erlang node name is set correctly
 if env | grep "DOCKER_VERNEMQ_NODENAME" -q; then
     sed -i.bak -r "s/-name VerneMQ@.+/-name VerneMQ@${DOCKER_VERNEMQ_NODENAME}/" /vernemq/etc/vm.args

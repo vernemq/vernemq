@@ -26,12 +26,7 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    case proplists:get_value(vmq_md, Config) of
-        #{group := vmq_reg_redis_trie, tc := _} ->
-            vmq_test_utils:setup(vmq_reg_redis_trie),
-            eredis:q(whereis(redis_client), ["FLUSHDB"]);
-        _ -> vmq_test_utils:setup(vmq_reg_trie)
-    end,
+    vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(allow_multiple_sessions, true),
     vmq_server_cmd:set_config(retry_interval, 10),
@@ -44,8 +39,7 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [
-        {group, vmq_reg_trie},
-        {group, vmq_reg_redis_trie}
+        {group, mqtt}
     ].
 
 groups() ->
@@ -53,8 +47,7 @@ groups() ->
         [multiple_sessions_test,
      multiple_balanced_sessions_test],
     [
-        {vmq_reg_trie, [], Tests},
-        {vmq_reg_redis_trie, [], Tests}
+        {mqtt, [], Tests}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -120,4 +120,5 @@ terminate_reason(?DISCONNECT_KEEP_ALIVE) -> normal;
 terminate_reason(?DISCONNECT_MIGRATION) -> normal;
 terminate_reason(?NORMAL_DISCONNECT) -> normal;
 terminate_reason(?SESSION_TAKEN_OVER) -> normal;
+terminate_reason(?REMOTE_SESSION_TAKEN_OVER) -> normal;
 terminate_reason(Reason) ->  Reason.

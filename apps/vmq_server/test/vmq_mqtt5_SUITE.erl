@@ -14,13 +14,8 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_group(Group, _Config) ->
-    case Group of
-        mqtt_reg_redis_trie ->
-            vmq_test_utils:setup(vmq_reg_redis_trie),
-            eredis:q(whereis(redis_client), ["FLUSHDB"]);
-        _ -> vmq_test_utils:setup(vmq_reg_trie)
-    end,
+init_per_group(_Group, _Config) ->
+    vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     _Config.
 
@@ -39,8 +34,7 @@ end_per_testcase(_TestCase, _Config) ->
 
 all() ->
     [
-     {group, mqtt},
-     {group, mqtt_reg_redis_trie}
+     {group, mqtt}
     ].
 
 groups() ->
@@ -64,8 +58,7 @@ groups() ->
      unsubscribe_hook
     ],
     [
-     {mqtt, [shuffle], ConnectTests},
-     {mqtt_reg_redis_trie, [shuffle], ConnectTests}
+     {mqtt, [shuffle], ConnectTests}
     ].
 
 anon_success(_Config) ->

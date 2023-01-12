@@ -1,0 +1,42 @@
+%% -*- mode: erlang -*-
+%% ex: ft=erlang
+
+{mapping, "offline_message_store_engine", "vmq_generic_offline_msg_store.msg_store_engine",
+    [{default, vmq_offline_storage_engine_redis},
+     {datatype, atom}
+    ]}.
+
+{mapping, "offline_message_store_opts.host", "vmq_generic_offline_msg_store.msg_store_opts.host",
+    [{default, "localhost"},
+     {datatype, string}
+    ]}.
+
+{mapping, "offline_message_store_opts.port", "vmq_generic_offline_msg_store.msg_store_opts.port",
+    [{default, 6379},
+     {datatype, integer}
+    ]}.
+
+{mapping, "offline_message_store_opts.username", "vmq_generic_offline_msg_store.msg_store_opts.username",
+    [{default, undefined},
+     {datatype, atom}
+    ]}.
+
+{mapping, "offline_message_store_opts.password", "vmq_generic_offline_msg_store.msg_store_opts.password",
+    [{default, undefined},
+     {datatype, atom}
+    ]}.
+
+{mapping, "offline_message_store_opts.database", "vmq_generic_offline_msg_store.msg_store_opts.database",
+    [{default, "2"},
+     {datatype, string}
+    ]}.
+
+{mapping, "offline_message_store_opts.connect_timeout", "vmq_generic_offline_msg_store.msg_store_opts.connect_timeout",
+    [{default, 4000},
+     {datatype, integer}
+    ]}.
+
+{mapping, "offline_message_store_opts.query_timeout", "vmq_generic_offline_msg_store.msg_store_opts.query_timeout",
+	[{default, 2000},
+	 {datatype, integer}
+	]}.

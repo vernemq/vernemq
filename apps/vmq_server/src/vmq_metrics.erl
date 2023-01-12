@@ -82,8 +82,8 @@
          incr_router_matches_remote/1,
          pretimed_measurement/2,
 
-         incr_stored_offline_messages/0,
-         incr_removed_offline_messages/0,
+         incr_msg_store_ops_error/1,
+         incr_msg_store_retry_exhausted/1,
 
          incr_redis_cmd/1,
          incr_redis_cmd_miss/1,
@@ -278,11 +278,11 @@ incr_router_matches_local(V) ->
 incr_router_matches_remote(V) ->
     incr_item(?METRIC_ROUTER_MATCHES_REMOTE, V).
 
-incr_stored_offline_messages() ->
-  incr_item(?METRIC_STORED_OFFLINE_MESSAGES, 1).
+incr_msg_store_ops_error(Op) ->
+    incr_item({?METRIC_MSG_STORE_OPS_ERRORS, Op}, 1).
 
-incr_removed_offline_messages() ->
-  incr_item(?METRIC_REMOVED_OFFLINE_MESSAGES, 1).
+incr_msg_store_retry_exhausted(Op) ->
+    incr_item({?METRIC_MSG_STORE_RETRY_EXHAUSTED, Op}, 1).
 
 incr_redis_cmd({CMD, OPERATION}) ->
     incr_item({?REDIS_CMD, CMD, OPERATION}, 1).
@@ -785,8 +785,20 @@ internal_defs() ->
              mqtt5_pubrel_sent_def(), mqtt5_pubrel_received_def(),
              mqtt5_pubcomp_sent_def(), mqtt5_pubcomp_received_def(),
              mqtt5_auth_sent_def(), mqtt5_auth_received_def(),
-             sidecar_events_def(), redis_def()
+             sidecar_events_def(), redis_def(), msg_store_ops_def()
             ], []).
+
+msg_store_ops_def() ->
+    Ops = [?WRITE,
+           ?DELETE,
+           ?DELETE_ALL,
+           ?READ,
+           ?FIND],
+    [
+        m(counter, [{operation, rcn_to_str(Op)}], {?METRIC_MSG_STORE_OPS_ERRORS, Op}, ?METRIC_MSG_STORE_OPS_ERRORS, <<"The number of times msg store operation failed.">>) || Op <- Ops
+    ] ++ [
+        m(counter, [{operation, rcn_to_str(Op)}], {?METRIC_MSG_STORE_RETRY_EXHAUSTED, Op}, ?METRIC_MSG_STORE_RETRY_EXHAUSTED, <<"The number of times msg store operation retry exhausted.">>) || Op <- Ops
+    ].
 
 redis_def() ->
     OPERATIONs =
@@ -796,7 +808,9 @@ redis_def() ->
             ?UNSUBSCRIBE,
             ?DELETE_SUBSCRIBER,
             ?FETCH_SUBSCRIBER,
-            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS],
+            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
+            ?ENQUEUE_MSG,
+            ?POLL_MAIN_QUEUE],
     REDIS_DEF_1 =
         [
             m(counter, [{cmd, rcn_to_str(?FCALL)}, {operation, rcn_to_str(OPERATION)}], {?REDIS_CMD, ?FCALL, OPERATION} , redis_cmd_total, <<"The number of redis cmd calls.">>) || OPERATION <- OPERATIONs
@@ -826,8 +840,21 @@ redis_def() ->
             m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?ADD_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD_MISS, ?PIPELINE, ?ADD_COMPLEX_TOPICS_OPERATION}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>),
             m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?DELETE_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION}, redis_cmd_total, <<"The number of redis cmd calls.">>),
             m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?DELETE_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD_ERROR, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>),
-            m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?DELETE_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD_MISS, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>)
-        ],
+            m(counter, [{cmd, rcn_to_str(?PIPELINE)}, {operation, rcn_to_str(?DELETE_COMPLEX_TOPICS_OPERATION)}], {?REDIS_CMD_MISS, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>),
+
+            m(counter, [{cmd, rcn_to_str(?RPUSH)}, {operation, rcn_to_str(?MSG_STORE_WRITE)}], {?REDIS_CMD, ?RPUSH, ?MSG_STORE_WRITE}, redis_cmd_total, <<"The number of redis cmd calls.">>),
+            m(counter, [{cmd, rcn_to_str(?RPUSH)}, {operation, rcn_to_str(?MSG_STORE_WRITE)}], {?REDIS_CMD_ERROR, ?RPUSH, ?MSG_STORE_WRITE}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>),
+            m(counter, [{cmd, rcn_to_str(?RPUSH)}, {operation, rcn_to_str(?MSG_STORE_WRITE)}], {?REDIS_CMD_MISS, ?RPUSH, ?MSG_STORE_WRITE}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>),
+            m(counter, [{cmd, rcn_to_str(?DEL)}, {operation, rcn_to_str(?MSG_STORE_DELETE)}], {?REDIS_CMD, ?DEL, ?MSG_STORE_DELETE}, redis_cmd_total, <<"The number of redis cmd calls.">>),
+            m(counter, [{cmd, rcn_to_str(?DEL)}, {operation, rcn_to_str(?MSG_STORE_DELETE)}], {?REDIS_CMD_ERROR, ?DEL, ?MSG_STORE_DELETE}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>),
+            m(counter, [{cmd, rcn_to_str(?DEL)}, {operation, rcn_to_str(?MSG_STORE_DELETE)}], {?REDIS_CMD_MISS, ?DEL, ?MSG_STORE_DELETE}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>),
+            m(counter, [{cmd, rcn_to_str(?LPOP)}, {operation, rcn_to_str(?MSG_STORE_DELETE)}], {?REDIS_CMD, ?LPOP, ?MSG_STORE_DELETE}, redis_cmd_total, <<"The number of redis cmd calls.">>),
+            m(counter, [{cmd, rcn_to_str(?LPOP)}, {operation, rcn_to_str(?MSG_STORE_DELETE)}], {?REDIS_CMD_ERROR, ?LPOP, ?MSG_STORE_DELETE}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>),
+            m(counter, [{cmd, rcn_to_str(?LPOP)}, {operation, rcn_to_str(?MSG_STORE_DELETE)}], {?REDIS_CMD_MISS, ?LPOP, ?MSG_STORE_DELETE}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>),
+            m(counter, [{cmd, rcn_to_str(?FIND)}, {operation, rcn_to_str(?MSG_STORE_FIND)}], {?REDIS_CMD, ?FIND, ?MSG_STORE_FIND}, redis_cmd_total, <<"The number of redis cmd calls.">>),
+            m(counter, [{cmd, rcn_to_str(?FIND)}, {operation, rcn_to_str(?MSG_STORE_FIND)}], {?REDIS_CMD_ERROR, ?FIND, ?MSG_STORE_FIND}, redis_cmd_errors_total, <<"The number of times redis cmd call failed.">>),
+            m(counter, [{cmd, rcn_to_str(?FIND)}, {operation, rcn_to_str(?MSG_STORE_FIND)}], {?REDIS_CMD_MISS, ?FIND, ?MSG_STORE_FIND}, redis_cmd_miss_total, <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>)
+            ],
     REDIS_DEF_1 ++ REDIS_DEF_2 ++ REDIS_DEF_3.
 
 sidecar_events_def() ->
@@ -926,9 +953,7 @@ counter_entries_def() ->
      m(counter, [], cluster_bytes_sent, cluster_bytes_sent, <<"The number of bytes send to other cluster nodes.">>),
      m(counter, [], cluster_bytes_dropped, cluster_bytes_dropped, <<"The number of bytes dropped while sending data to other cluster nodes.">>),
      m(counter, [], router_matches_local, router_matches_local, <<"The number of matched local subscriptions.">>),
-     m(counter, [], router_matches_remote, router_matches_remote, <<"The number of matched remote subscriptions.">>),
-     m(counter, [], stored_offline_messages, stored_offline_messages, <<"The number of stored offline messages.">>),
-     m(counter, [], removed_offline_messages, removed_offline_messages, <<"The number of removed offline messages.">>)
+     m(counter, [], router_matches_remote, router_matches_remote, <<"The number of matched remote subscriptions.">>)
     ].
 
 
@@ -1530,8 +1555,8 @@ met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_GONE})                   -> 215;
 met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_WAKEUP})                 -> 216;
 met2idx({?SIDECAR_EVENTS_ERROR, ?ON_CLIENT_OFFLINE})                -> 217;
 met2idx({?SIDECAR_EVENTS_ERROR, ?ON_SESSION_EXPIRED})               -> 218;
-met2idx(?METRIC_STORED_OFFLINE_MESSAGES)                            -> 219;
-met2idx(?METRIC_REMOVED_OFFLINE_MESSAGES)                           -> 220;
+
+
 met2idx({?REDIS_CMD, ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION})        -> 221;
 met2idx({?REDIS_CMD, ?PIPELINE, ?ADD_COMPLEX_TOPICS_OPERATION})     -> 222;
 met2idx({?REDIS_CMD_ERROR, ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION})  -> 223;
@@ -1582,7 +1607,43 @@ met2idx({?REDIS_STALE_CMD, ?FCALL, ?FETCH_SUBSCRIBER})                 -> 267;
 met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?FETCH_SUBSCRIBER})                -> 268;
 met2idx({?REDIS_CMD, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})     -> 269;
 met2idx({?REDIS_CMD_ERROR, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})  -> 270;
-met2idx({?REDIS_CMD_MISS, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})   -> 271.
+met2idx({?REDIS_CMD_MISS, ?PIPELINE, ?DELETE_COMPLEX_TOPICS_OPERATION})   -> 271;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?ENQUEUE_MSG})                       -> 272;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?POLL_MAIN_QUEUE})                   -> 273;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?ENQUEUE_MSG})                 -> 274;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?POLL_MAIN_QUEUE})             -> 275;
+met2idx({?REDIS_CMD, ?FCALL, ?ENQUEUE_MSG})                               -> 276;
+met2idx({?REDIS_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                           -> 277;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?ENQUEUE_MSG})                         -> 278;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?POLL_MAIN_QUEUE})                     -> 279;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?ENQUEUE_MSG})                          -> 280;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?POLL_MAIN_QUEUE})                      -> 281;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?ENQUEUE_MSG})                         -> 282;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                     -> 283;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?ENQUEUE_MSG})                        -> 284;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?POLL_MAIN_QUEUE})                    -> 285;
+met2idx({?METRIC_MSG_STORE_OPS_ERRORS, ?WRITE})                           -> 286;
+met2idx({?METRIC_MSG_STORE_OPS_ERRORS, ?DELETE})                          -> 287;
+met2idx({?METRIC_MSG_STORE_OPS_ERRORS, ?DELETE_ALL})                      -> 288;
+met2idx({?METRIC_MSG_STORE_OPS_ERRORS, ?READ})                            -> 289;
+met2idx({?METRIC_MSG_STORE_OPS_ERRORS, ?FIND})                            -> 290;
+met2idx({?METRIC_MSG_STORE_RETRY_EXHAUSTED, ?WRITE})                      -> 291;
+met2idx({?METRIC_MSG_STORE_RETRY_EXHAUSTED, ?DELETE})                     -> 292;
+met2idx({?METRIC_MSG_STORE_RETRY_EXHAUSTED, ?DELETE_ALL})                 -> 293;
+met2idx({?METRIC_MSG_STORE_RETRY_EXHAUSTED, ?READ})                       -> 294;
+met2idx({?METRIC_MSG_STORE_RETRY_EXHAUSTED, ?FIND})                       -> 295;
+met2idx({?REDIS_CMD, ?RPUSH, ?MSG_STORE_WRITE})                           -> 296;
+met2idx({?REDIS_CMD, ?DEL, ?MSG_STORE_DELETE})                            -> 297;
+met2idx({?REDIS_CMD, ?FIND, ?MSG_STORE_FIND})                             -> 298;
+met2idx({?REDIS_CMD_ERROR, ?RPUSH, ?MSG_STORE_WRITE})                     -> 299;
+met2idx({?REDIS_CMD_ERROR, ?DEL, ?MSG_STORE_DELETE})                      -> 300;
+met2idx({?REDIS_CMD_ERROR, ?FIND, ?MSG_STORE_FIND})                       -> 301;
+met2idx({?REDIS_CMD_MISS, ?RPUSH, ?MSG_STORE_WRITE})                      -> 302;
+met2idx({?REDIS_CMD_MISS, ?DEL, ?MSG_STORE_DELETE})                       -> 303;
+met2idx({?REDIS_CMD_MISS, ?FIND, ?MSG_STORE_FIND})                        -> 304;
+met2idx({?REDIS_CMD, ?LPOP, ?MSG_STORE_DELETE})                           -> 305;
+met2idx({?REDIS_CMD_ERROR, ?LPOP, ?MSG_STORE_DELETE})                     -> 306;
+met2idx({?REDIS_CMD_MISS, ?LPOP, ?MSG_STORE_DELETE})                      -> 307.
 
 -ifdef(TEST).
 clear_stored_rates() ->

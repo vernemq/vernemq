@@ -5,6 +5,33 @@
 {mapping, "redis_database", "vmq_server.redis_database", [{default, 0}, {datatype, integer}]}.
 {mapping, "redis_lua_dir", "vmq_server.redis_lua_dir", [{default, "./etc/lua"}, {datatype, string}]}.
 
+%% @doc This option specifies the list of comma separated connect options list
+%% [[{host, "localhost"}, {port, 1234}]] of redis shards used for message passing.
+{mapping,
+    "msg_queue_redis_shards_connect_options",
+    "vmq_server.msg_queue_redis_shards_connect_options", [{default, "[[{host,\"127.0.0.1\"},{port,6379},{database,1}]]"}, {datatype, string}]}.
+
+%% @doc This option specifies the number of worker processes per redis shard
+%% that will poll their main queues in message passing redis shard for new messages.
+{mapping,
+    "main_queue_workers_per_redis_shard",
+    "vmq_server.main_queue_workers_per_redis_shard", [{default, 1}, {datatype, integer}]}.
+
+%% @doc This option specifies the interval (in milliseconds) a worker
+%% process waits before making another poll request.
+{mapping,
+    "redis_queue_sleep_interval",
+    "vmq_server.redis_queue_sleep_interval", [{default, 0}, {datatype, integer}]}.
+
+%% @doc Rolls out all_queues_setup_check.
+{mapping, "message_store_retry_interval", "vmq_server.message_store_retry_interval", [{default, 2000},
+                                                                                      {datatype, integer}
+                                                                                     ]}.
+%% @doc Rolls out all_queues_setup_check.
+{mapping, "message_store_nr_of_retries", "vmq_server.message_store_nr_of_retries", [{default, 2},
+                                                                                    {datatype, integer}
+                                                                                   ]}.
+
 %% @doc Rolls out all_queues_setup_check.
 {mapping, "all_queues_setup_check_rollout", "vmq_server.all_queues_setup_check_rollout", [
                                                                                           {default, on},

@@ -123,3 +123,9 @@
 -define(REDIS_CMD_ERROR, redis_cmd_error).
 -define(REDIS_STALE_CMD, redis_stale_cmd).
 -define(UNAUTH_REDIS_CMD, unauth_redis_cmd).
+-define(METRIC_MSG_STORE_OPS_ERRORS, msg_store_ops_error).
+-define(METRIC_MSG_STORE_RETRY_EXHAUSTED, msg_store_retry_exhausted).
+-define(WRITE, write).
+-define(READ, read).
+-define(DELETE_ALL, delete_all).
+-define(DELETE, delete).

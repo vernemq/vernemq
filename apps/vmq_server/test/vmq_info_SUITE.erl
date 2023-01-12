@@ -14,8 +14,8 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     _Config.
 
-init_per_group(GroupName, Config) ->
-    vmq_test_utils:setup(GroupName),
+init_per_group(_, Config) ->
+    vmq_test_utils:setup(),
     enable_on_subscribe(),
     enable_on_publish(),
     vmq_server_cmd:set_config(allow_anonymous, true),
@@ -35,17 +35,15 @@ end_per_testcase(_TestCase, _Config) ->
 
 groups() ->
     [
-        {vmq_reg_trie, [shuffle],[filtering_works]},
-        {vmq_reg_redis_trie, [shuffle],[filtering_works]}
+        {mqtt, [shuffle],[filtering_works]}
     ].
 
 all() ->
     [
-        {group, vmq_reg_redis_trie},
-        {group, vmq_reg_trie}
+        {group, mqtt}
     ].
 
-filtering_works(Config) ->
+filtering_works(_Config) ->
     Connect = packet:gen_connect("vmq-info-client", [{keepalive,60},{clean_session, false}]),
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(1, [{"some/topic/1", 0},
@@ -55,12 +53,8 @@ filtering_works(Config) ->
 
     {ok, CT1} = vmq_topic:validate_topic(subscribe, list_to_binary("with/wildcard/#")),
     {ok, CT2} = vmq_topic:validate_topic(subscribe, list_to_binary("with/+/wildcard")),
-    case proplists:get_value(vmq_md, Config) of
-        #{group := vmq_reg_redis_trie, tc := _} ->
-            vmq_reg_redis_trie:add_complex_topics([CT1, CT2]),
-            eredis:q(whereis(redis_client), ["FLUSHDB"]);
-        _ -> ok
-    end,
+    vmq_reg_redis_trie:add_complex_topics([CT1, CT2]),
+    eredis:q(whereis(redis_client), ["FLUSHDB"]),
     {ok, SubSocket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(SubSocket, Subscribe),
     ok = packet:expect_packet(SubSocket, "suback", Suback),

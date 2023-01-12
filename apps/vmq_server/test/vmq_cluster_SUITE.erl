@@ -18,10 +18,10 @@
          cluster_leave_myself_test/1,
          cluster_leave_dead_node_test/1,
          shared_subs_random_policy_test/1,
+         shared_subs_random_policy_online_first_test/1,
          shared_subs_prefer_local_policy_test/1,
          shared_subs_local_only_policy_test/1,
          cross_node_publish_subscribe/1,
-         restarted_node_has_no_stale_sessions/1,
          routing_table_survives_node_restart/1,
          convert_new_msgs_to_old_format/1]).
 
@@ -70,6 +70,7 @@ init_per_testcase(Case, Config) ->
                                          [P, []]),
                       %% allow all
                       ok = rpc:call(Node, vmq_auth, register_hooks, []),
+                      rpc:call(Node, vmq_subscriber_db, flushall, []),
                       {Node, P}
               end, [{test1, 18883},
                     {test2, 18884},
@@ -87,7 +88,8 @@ end_per_testcase(_, _Config) ->
     ok.
 
 all() ->
-    [multiple_connect_test
+    [
+     multiple_connect_test
     ,multiple_connect_unclean_test
     ,distributed_subscribe_test
     ,racing_connect_test
@@ -97,10 +99,10 @@ all() ->
     ,cluster_leave_myself_test
     ,cluster_leave_dead_node_test
     ,shared_subs_random_policy_test
+    ,shared_subs_random_policy_online_first_test
     ,shared_subs_prefer_local_policy_test
     ,shared_subs_local_only_policy_test
     ,cross_node_publish_subscribe
-    ,restarted_node_has_no_stale_sessions
     ,routing_table_survives_node_restart
     ,convert_new_msgs_to_old_format
     ].
@@ -119,13 +121,6 @@ multiple_connect_test(Config) ->
     done = receive_times(done, NrOfProcesses),
     true = check_unique_client("connect-multiple", Nodes),
     Config.
-
-wait_until_converged_fold(Fun, Init, ExpectedResult, Nodes) ->
-    {NodeNames, _} = lists:unzip(Nodes),
-    vmq_cluster_test_utils:wait_until(
-      fun() ->
-              ExpectedResult =:= lists:foldl(Fun, Init, NodeNames)
-      end, 60*2, 500).
 
 wait_until_converged(Nodes, Fun, ExpectedReturn) ->
     {NodeNames, _} = lists:unzip(Nodes),
@@ -158,16 +153,14 @@ multiple_connect_unclean_test(Config) ->
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:send(Socket, Disconnect),
     gen_tcp:close(Socket),
-    ok = wait_until_converged(Nodes,
-                         fun(N) ->
-                                 rpc:call(N, vmq_reg, total_subscriptions, [])
-                         end, [{total, 1}]),
     [PublishNode|_] = Nodes,
     Payloads = publish_random([PublishNode], 20, Topic),
     ok = vmq_cluster_test_utils:wait_until(
            fun() ->
-                   20 == rpc:call(RandomNode, vmq_reg, stored,
-                                   [{"", <<"connect-unclean">>}])
+                   StoredMsgs = rpc:call(RandomNode, vmq_reg, stored,
+                       [{"", <<"connect-unclean">>}]),
+                   io:format(user, "~nStored Messages: ~p~n", [StoredMsgs]),
+                   20 == StoredMsgs
            end, 60, 500),
     ok = receive_publishes(Nodes, Topic, Payloads).
 
@@ -188,10 +181,6 @@ distributed_subscribe_test(Config) ->
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
      end || {_, Port} <- Nodes],
-    ok = wait_until_converged(Nodes,
-                         fun(N) ->
-                                 rpc:call(N, vmq_reg, total_subscriptions, [])
-                         end, [{total, length(Sockets)}]),
     [PubSocket|Rest] = Sockets,
     Publish = packet:gen_publish(Topic, 1, <<"test-message">>, [{mid, 1}]),
     Puback = packet:gen_puback(1),
@@ -277,7 +266,7 @@ racing_connect_test(Config) ->
 
 aborted_queue_migration_test(Config) ->
     ok = ensure_cluster(Config),
-    {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
+    {_, [{Node, Port}|RestNodes] = _Nodes} = lists:keyfind(nodes, 1, Config),
     Connect = packet:gen_connect("connect-aborter",
                                  [{clean_session, false},
                                   {keepalive, 60}]),
@@ -290,10 +279,6 @@ aborted_queue_migration_test(Config) ->
     {ok, Socket1} = packet:do_client_connect(Connect, Connack1, [{port, Port}]),
     ok = gen_tcp:send(Socket1, Subscribe),
     ok = packet:expect_packet(Socket1, "suback", Suback),
-    ok = wait_until_converged(Nodes,
-                              fun(N) ->
-                                      rpc:call(N, vmq_reg, total_subscriptions, [])
-                              end, [{total, 1}]),
     gen_tcp:close(Socket1),
     %% publish 10 messages
     [PublishNode|_] = RestNodes,
@@ -339,8 +324,11 @@ racing_subscriber_test(Config) ->
                  %% this is required to create proper connack
                  ok = wait_until_converged(Nodes,
                                            fun(N) ->
-                                                   rpc:call(N, vmq_reg, total_subscriptions, [])
-                                           end, [{total, 1}]),
+                                                   case rpc:call(N, vmq_subscriber_db, read, [{"", "connect-racer"}, []]) of
+                                                       [] -> false;
+                                                       [{_, false, _}] -> true
+                                                   end
+                                           end, true),
                  packet:gen_connack(true, 0);
              _ ->
                  packet:gen_connack(true, 0)
@@ -348,28 +336,31 @@ racing_subscriber_test(Config) ->
          spawn_link(
            fun() ->
                    {_RandomNode, RandomPort} = random_node(Nodes),
-                   {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port,
-                                                                               RandomPort}]),
-                   case gen_tcp:send(Socket, Subscribe) of
-                       ok ->
-                           case packet:expect_packet(Socket, "suback", Suback) of
+                   case packet:do_client_connect(Connect, Connack, [{port, RandomPort}]) of
+                       {ok, Socket} ->
+                           case gen_tcp:send(Socket, Subscribe) of
                                ok ->
-                                   inet:setopts(Socket, [{active, true}]),
-                                   receive
-                                       {tcp_closed, Socket} ->
-                                           %% we should be kicked out by the subsequent client
-                                           ok;
-                                       {lastman, test_over} ->
-                                           ok;
-                                       M ->
-                                           exit({unknown_message, M})
+                                   case packet:expect_packet(Socket, "suback", Suback) of
+                                       ok ->
+                                           inet:setopts(Socket, [{active, true}]),
+                                           receive
+                                               {tcp_closed, Socket} ->
+                                                   %% we should be kicked out by the subsequent client
+                                                   ok;
+                                               {lastman, test_over} ->
+                                                   ok;
+                                               M ->
+                                                   exit({unknown_message, M})
+                                           end;
+                                       {error, closed} ->
+                                           ok
                                    end;
                                {error, closed} ->
+                                   %% it's possible that we can't even subscribe due to
+                                   %% a racing subscriber
                                    ok
                            end;
                        {error, closed} ->
-                           %% it's possible that we can't even subscribe due to
-                           %% a racing subscriber
                            ok
                    end
            end)
@@ -402,11 +393,11 @@ racing_subscriber_test(Config) ->
 
 cluster_leave_test(Config) ->
     ok = ensure_cluster(Config),
-    {_, [{Node, Port}|RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
+    {_, [{Node, Port}|RestNodes] = _Nodes} = lists:keyfind(nodes, 1, Config),
     Topic = "cluster/leave/topic",
     ToMigrate = 8,
     %% create ToMigrate sessions
-    [PubSocket|_] = Sockets =
+    [PubSocket|_] = _Sockets =
     [begin
          Connect = packet:gen_connect("connect-" ++ integer_to_list(I),
                                       [{clean_session, false},
@@ -419,10 +410,6 @@ cluster_leave_test(Config) ->
          ok = packet:expect_packet(Socket, "suback", Suback),
          Socket
      end || I <- lists:seq(1,ToMigrate)],
-    ok = wait_until_converged(Nodes,
-                         fun(N) ->
-                                 rpc:call(N, vmq_reg, total_subscriptions, [])
-                         end, [{total, length(Sockets)}]),
     %% publish a message for every session
     Publish = packet:gen_publish(Topic, 1, <<"test-message">>, [{mid, 1}]),
     Puback = packet:gen_puback(1),
@@ -433,19 +420,28 @@ cluster_leave_test(Config) ->
                    {ToMigrate, 0, 0, 0, 0} == rpc:call(Node, vmq_queue_sup_sup, summary, [])
            end, 60, 500),
     %% Pick a control node for initiating the cluster leave
-    [{CtrlNode, _}|_] = RestNodes,
+    [{CtrlNode, CtrlPort}|_] = RestNodes,
     {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Node]),
-    %% Leaving Node will disconnect all sessions and give away all messages
-    %% The disconnected sessions are equally migrated to the rest of the nodes
-    %% As the clients don't reconnect (in this test), their sessions are offline
-    ok = wait_until_converged_fold(
-           fun(N, {AccQ, AccM}) ->
-                   {_,_,_,Queues,Messages} = rpc:call(N, vmq_queue_sup_sup, summary, []),
-                   {AccQ + Queues, AccM + Messages}
-           end,
-           {0, 0},
-           {ToMigrate, ToMigrate},
-           RestNodes).
+    %% Leaving Node will disconnect all sessions and inflight messages will be stored in offline store
+    %% On reconnect the stored offline messages will be replayed as if session is migrated
+    [begin
+         Connect = packet:gen_connect("connect-" ++ integer_to_list(I),
+             [{clean_session, false},
+                 {keepalive, 60}]),
+         Connack = packet:gen_connack(1, 0),
+         {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, CtrlPort}]),
+         timer:sleep(500),
+         %% The above interval will ensure msg is passed to connection process before closing the socket
+         %% Otherwise, the msg from online queue might get lost
+         gen_tcp:close(Socket),
+         Socket
+     end || I <- lists:seq(1,ToMigrate)],
+    ok = vmq_cluster_test_utils:wait_until(
+        fun() ->
+            Res = rpc:call(CtrlNode, vmq_queue_sup_sup, summary, []),
+            io:format(user, "~nQueueSupSup Summary: ~p~n", [Res]),
+            {0, 0, 0, ToMigrate, ToMigrate} == Res
+        end, 20, 500).
 
 cluster_leave_myself_test(Config) ->
     ok = ensure_cluster(Config),
@@ -484,10 +480,6 @@ cluster_leave_dead_node_test(Config) ->
          gen_tcp:send(Socket, packet:gen_disconnect()),
          gen_tcp:close(Socket)
      end || I <- lists:seq(1,10)],
-    ok = wait_until_converged(Nodes,
-                         fun(N) ->
-                                 rpc:call(N, vmq_reg, total_subscriptions, [])
-                         end, [{total, 10}]),
     %% stop first node
     {ok, Node} = ct_slave:stop(Nodename),
 
@@ -497,25 +489,19 @@ cluster_leave_dead_node_test(Config) ->
     [{CtrlNode, _}|_] = RestNodes,
     %% Node_leave might return before migration has finished
     {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Node]),
-    %% The disconnected sessions are equally migrated to the rest of the nodes
+    %% The disconnected sessions are lazily migrated to the rest of the nodes on reconnection
     ok = wait_until_converged(RestNodes,
                               fun(N) ->
                                       rpc:call(N, vmq_queue_sup_sup, summary, [])
-                              end, {0, 0, 0, 5, 0}).
+                              end, {0, 0, 0, 0, 0}).
 
 shared_subs_prefer_local_policy_test(Config) ->
     ensure_cluster(Config),
-    [LocalNode|OtherNodes] = Nodes = nodes_(Config),
+    [LocalNode|OtherNodes] = _Nodes = nodes_(Config),
     set_shared_subs_policy(prefer_local, nodenames(Config)),
 
     LocalSubscriberSockets = connect_subscribers(<<"$share/share/sharedtopic">>, 5, [LocalNode]),
     RemoteSubscriberSockets = connect_subscribers(<<"$share/share/sharedtopic">>, 5, OtherNodes),
-
-    %% Make sure subscriptions have propagated to all nodes
-    ok = wait_until_converged(Nodes,
-                              fun(N) ->
-                                      rpc:call(N, vmq_reg, total_subscriptions, [])
-                              end, [{total, 10}]),
 
     %% publish to shared topic on local node
     {_, LocalPort} = LocalNode,
@@ -541,17 +527,11 @@ shared_subs_prefer_local_policy_test(Config) ->
 
 shared_subs_local_only_policy_test(Config) ->
     ensure_cluster(Config),
-    [LocalNode|OtherNodes] = Nodes = nodes_(Config),
+    [LocalNode|OtherNodes] = _Nodes = nodes_(Config),
     set_shared_subs_policy(local_only, nodenames(Config)),
 
     LocalSubscriberSockets = connect_subscribers(<<"$share/share/sharedtopic">>, 5, [LocalNode]),
     RemoteSubscriberSockets = connect_subscribers(<<"$share/share/sharedtopic">>, 5, OtherNodes),
-
-    %% Make sure subscriptions have propagated to all nodes
-    ok = wait_until_converged(Nodes,
-                              fun(N) ->
-                                      rpc:call(N, vmq_reg, total_subscriptions, [])
-                              end, [{total, 10}]),
 
     %% publish to shared topic on local node
     {_, LocalPort} = LocalNode,
@@ -593,12 +573,6 @@ shared_subs_random_policy_test(Config) ->
 
     SubscriberSockets = connect_subscribers(<<"$share/share/sharedtopic">>, 10, Nodes),
 
-    %% Make sure subscriptions have propagated to all nodes
-    ok = wait_until_converged(Nodes,
-                              fun(N) ->
-                                      rpc:call(N, vmq_reg, total_subscriptions, [])
-                              end, [{total, 10}]),
-
     %% publish to shared topic on random node
     {_, Port} = random_node(Nodes),
     Connect = packet:gen_connect("ss-publisher",
@@ -619,59 +593,34 @@ shared_subs_random_policy_test(Config) ->
     [ ok = gen_tcp:close(S) || S <- SubscriberSockets ],
     ok.
 
-restarted_node_has_no_stale_sessions(Config) ->
-    ok = ensure_cluster(Config),
-    {_, Nodes} = lists:keyfind(nodes, 1, Config),
-    [{RestartNodeName, RestartNodePort},
-     {_, OtherNodePort}|_] = Nodes,
+shared_subs_random_policy_online_first_test(Config) ->
+    ensure_cluster(Config),
+    Nodes = nodes_(Config),
+    set_shared_subs_policy(random, nodenames(Config)),
 
-    %% Connect and subscribe on a node with cs true
-    Topic = <<"topic/sub">>,
-    ClientId = "cs-true-client-id",
-    ClientConn = connect(RestartNodePort, ClientId, [{keepalive, 60}, {clean_session, true}]),
-    subscribe(ClientConn, Topic, 1),
+    [OnlineSubNode | RestNodes] = Nodes,
+    ok = create_offline_subscribers(<<"$share/share/sharedtopic">>, 10, RestNodes),
+    SubscriberSocketsOnline = connect_subscribers(<<"$share/share/sharedtopic">>, 1, [OnlineSubNode]),
 
-    ClientIds = fun(L) ->
-                        lists:map(
-                          fun(#{client_id := C, topic := Topics}) ->
-                                  {C, Topics}
-                          end,
-                          L)
-                end,
+    %% publish to shared topic on random node
+    {_, Port} = random_node(RestNodes),
+    Connect = packet:gen_connect("ss-publisher",
+        [{keepalive, 60}, {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+    Payloads = publish_to_topic(Socket, <<"sharedtopic">>, 10),
+    Disconnect = packet:gen_disconnect(),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
 
-    ToRemain = [#{client_id => <<"restart-node-cs-false-client-id">>,
-                  port => RestartNodePort,
-                  clean_session => false,
-                  topic => Topic},
-                #{client_id => <<"other-node-cs-false-client-id">>,
-                  port => OtherNodePort,
-                  clean_session => false,
-                  topic => Topic}],
-    [ begin
-          Conn = connect(P, C, [{keepalive, 60}, {clean_session, CS}]),
-          subscribe(Conn, Topic, 1)
-      end || #{client_id := C, port := P, clean_session := CS} <- ToRemain ],
+    %% receive on subscriber sockets.
+    spawn_receivers(SubscriberSocketsOnline),
+    receive_msgs(Payloads),
+    receive_nothing(200),
 
-    %% Make sure subscriptions have propagated to all nodes
-    ok = wait_until_converged(Nodes,
-                              fun(N) ->
-                                      rpc:call(N, vmq_reg, total_subscriptions, [])
-                              end, [{total, 3}]),
-
-    %% Restart the node.
-    {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_stop, []),
-    {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, node_start, []),
-    %% Make sure cluster is ready
-    ok = vmq_cluster_test_utils:wait_until_ready([N || {N, _} <- Nodes]),
-
-    Sessions = rpc:call(RestartNodeName, vmq_ql_query_mgr, fold_query,
-                        [fun(V, Acc) -> [V|Acc] end, [], "SELECT client_id, topic FROM sessions"]),
-
-    %% Make sure only the expected sessions are now present.
-    Want = lists:sort(ClientIds(ToRemain)),
-    Got = lists:sort(ClientIds(Sessions)),
-    Want = Got.
-
+    %% cleanup
+    [ ok = gen_tcp:close(S) || S <- SubscriberSocketsOnline ],
+    ok.
 
 routing_table_survives_node_restart(Config) ->
     %% Ensure that we subscribers can still receive publishes from a
@@ -690,11 +639,6 @@ routing_table_survives_node_restart(Config) ->
     subscribe(SubSocket, Topic, 1),
     subscribe(SubSocket, SharedTopic, 1),
 
-    %% Make sure subscriptions have propagated to all nodes
-    ok = wait_until_converged(Nodes,
-                              fun(N) ->
-                                      rpc:call(N, vmq_reg, total_subscriptions, [])
-                              end, [{total, 2}]),
 
     %% Restart the node.
     _ = ct_slave:stop(RestartNodeName),
@@ -704,11 +648,6 @@ routing_table_survives_node_restart(Config) ->
     ok = vmq_cluster_test_utils:wait_until_ready([N || {N, _} <- Nodes]),
     {ok, _} = rpc:call(RestartNodeName, vmq_server_cmd, listener_start, [RestartNodePort, []]),
     ok = rpc:call(RestartNodeName, vmq_auth, register_hooks, []),
-
-    ok = wait_until_converged(Nodes,
-                              fun(N) ->
-                                      rpc:call(N, vmq_reg, total_subscriptions, [])
-                              end, [{total, 2}]),
 
     %% Publish to the subscribed topics
     Connect = packet:gen_connect("restart-node-test-publisher",
@@ -737,12 +676,6 @@ cross_node_publish_subscribe(Config) ->
     %% 1. Connect two or more subscribers to node1.
     [LocalNode|OtherNodes] = Nodes = nodes_(Config),
     LocalSubscriberSockets = connect_subscribers(Topic, 5, [LocalNode]),
-
-    %% Make sure subscriptions have propagated to all nodes
-    ok = wait_until_converged(Nodes,
-                              fun(N) ->
-                                      rpc:call(N, vmq_reg, total_subscriptions, [])
-                              end, [{total, 5}]),
 
     %% 2. Connect and publish on another node.
     {_, OtherPort} = random_node(OtherNodes),
@@ -802,6 +735,26 @@ convert_new_msgs_to_old_format(_Config) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+create_offline_subscribers(Topic, Number, Nodes) ->
+    lists:foreach(fun(I) ->
+                    {_, Port} = random_node(Nodes),
+                    ClientId = "subscriber-" ++ integer_to_list(I) ++ "-node-" ++
+                        integer_to_list(Port),
+                    Connect = packet:gen_connect(ClientId,
+                        [{keepalive, 60}, {clean_session, false}]),
+                    Connack = packet:gen_connack(0),
+                    Subscribe = packet:gen_subscribe(1, [Topic], 1),
+                    Suback = packet:gen_suback(1, 1),
+                    %% TODO: make it connect to random node instead
+                    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+                    ok = gen_tcp:send(Socket, Subscribe),
+                    ok = packet:expect_packet(Socket, "suback", Suback),
+                    Disconnect = packet:gen_disconnect(),
+                    ok = gen_tcp:send(Socket, Disconnect),
+                    ok = gen_tcp:close(Socket),
+                    %% wait for the client to be offline
+                    timer:sleep(500)
+                  end, lists:seq(1,Number)).
 
 connect_subscribers(Topic, Number, Nodes) ->
     [begin

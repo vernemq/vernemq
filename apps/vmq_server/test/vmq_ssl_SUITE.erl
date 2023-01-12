@@ -31,7 +31,7 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(Case, Config) ->
-    vmq_test_utils:setup(vmq_reg_trie),
+    vmq_test_utils:setup(),
     case {lists:member(Case, all_no_auth()),
           lists:member(Case, all_cert_auth()),
           lists:member(Case, all_cert_auth_revoked()),

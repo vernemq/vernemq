@@ -9,7 +9,7 @@
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
     cover:start(),
-    vmq_test_utils:setup(vmq_reg_trie),
+    vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, false),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:set_config(max_client_id_size, 100),

@@ -19,12 +19,18 @@
          read/1, read/2,
          fold/2,
          delete/1,
-         subscribe_db_events/0]).
+         subscribe_db_events/0,
+         flushall/0]).
 
 -import(vmq_subscriber, [check_format/1]).
 
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
 -define(TOMBSTONE, '$deleted').
+-define(DefaultRegView, application:get_env(vmq_server, default_reg_view, vmq_reg_redis_trie)).
+
+flushall() ->
+    eredis:q(whereis(redis_client), ["FLUSHALL"]),
+    ok.
 
 -spec store(subscriber_id(), vmq_subscriber:subs()) -> ok.
 store(SubscriberId, Subs) ->
@@ -40,13 +46,32 @@ read(SubscriberId) ->
 -spec read(subscriber_id(), any()) -> any() |vmq_subscriber:subs().
 read(SubscriberId, Default) ->
     V1 = vmq_util:ts(),
-    Result = case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
-                 undefined -> Default;
-                 Subs ->
-                     check_format(Subs)
-             end,
+    Result = read(?DefaultRegView, SubscriberId, Default),
     vmq_metrics:pretimed_measurement({?MODULE, read}, vmq_util:ts() - V1),
     Result.
+
+read(vmq_reg_redis_trie, {MP, ClientId}, Default) ->
+    case vmq_redis:query(redis_client, [?FCALL,
+                                        ?FETCH_SUBSCRIBER,
+                                        0,
+                                        MP,
+                                        ClientId], ?FCALL, ?FETCH_SUBSCRIBER) of
+        {ok, []} -> Default;
+        {ok, [NodeBinary, CS, TopicsWithQoSBinary]} ->
+            CleanSession = case CS of
+                               <<"1">> -> true;
+                               _ -> false
+                           end,
+            TopicsWithQoS = [{vmq_topic:word(Topic), binary_to_term(QoS)} || [Topic, QoS] <- TopicsWithQoSBinary],
+            check_format([{binary_to_atom(NodeBinary), CleanSession, TopicsWithQoS}]);
+        _ -> Default
+    end;
+read(_, SubscriberId, Default) ->
+    case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
+         undefined -> Default;
+         Subs ->
+             check_format(Subs)
+    end.
 
 -spec delete(subscriber_id()) -> ok.
 delete(SubscriberId) ->

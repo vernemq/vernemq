@@ -10,6 +10,17 @@
 -type msg_expiry_ts() :: {expire_after, non_neg_integer()}
                        | {non_neg_integer(), non_neg_integer()}.
 
+-record(deliver,
+{
+    qos        :: qos(),
+    %% an undefined msg_id means this message has never been sent
+    %% to the client or that it is a qos0 message.
+
+    %% TODO use `msg_id()` type instead, but currently no in scope.
+    msg_id     :: undefined | non_neg_integer(),
+    msg        :: msg()
+}).
+
 -record(vmq_msg, {
           msg_ref               :: msg_ref() | 'undefined', % OTP-12719
           routing_key           :: routing_key() | 'undefined',

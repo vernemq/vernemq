@@ -48,9 +48,11 @@
          enqueue_many/3,
          migrate/2,
          cleanup/2,
+         terminate/2,
          force_disconnect/2,
          force_disconnect/3,
-         set_delayed_will/3]).
+         set_delayed_will/3,
+         init_offline_queue/1]).
 
 -export([online/2, online/3,
          offline/2, offline/3,
@@ -170,6 +172,9 @@ migrate(Queue, OtherQueue) ->
 cleanup(Queue, Reason) ->
     save_sync_send_event(Queue, {cleanup, Reason}).
 
+terminate(Queue, Reason) ->
+    save_sync_send_event(Queue, {terminate, Reason}).
+
 status(Queue) ->
     gen_fsm:sync_send_all_state_event(Queue, status, infinity).
 
@@ -199,6 +204,9 @@ save_sync_send_all_state_event(Queue, Event) ->
         Ret ->
             Ret
     end.
+
+init_offline_queue(Queue) when is_pid(Queue) ->
+    gen_fsm:send_event(Queue, init_offline_queue).
 
 default_opts() ->
     #{allow_multiple_sessions => vmq_config:get_env(allow_multiple_sessions),
@@ -268,6 +276,11 @@ online({cleanup, Reason}, From, State)
     disconnect_sessions(Reason, State),
     {next_state, state_change(cleanup, online, wait_for_offline),
      State#state{waiting_call={{cleanup, Reason}, From}}};
+online({terminate, Reason}, From, State)
+    when State#state.waiting_call == undefined ->
+    disconnect_sessions(Reason, State),
+    {next_state, state_change(termination, online, wait_for_offline),
+        State#state{waiting_call={{terminate, Reason}, From}}};
 online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
@@ -343,6 +356,18 @@ wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
     %% We forcefully terminate the add_session call, as we have to ensure that
     %% this queue is completely wiped, before we allow new sessions to join.
     {reply, {error, {cleanup, Reason}}, wait_for_offline, State};
+wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
+    #state{waiting_call={{terminate, Reason}, _CleanupFrom}} = State) ->
+    %% Reason for this case:
+    %% ---------------------
+    %% a synchronized registration that had triggered a termination got
+    %% superseeded by a non-synchronized registration (e.g. allow_multiple_sessions=true)
+    %%
+    %% Solution:
+    %% ---------
+    %% We forcefully terminate the add_session call, as we have to ensure that
+    %% this queue is completely wiped, before we allow new sessions to join.
+    {reply, {error, {terminate, Reason}}, wait_for_offline, State};
 wait_for_offline(Event, _From, State) ->
     lager:error("got unknown sync event in wait_for_offline state ~p", [Event]),
     {reply, {error, wait_for_offline}, wait_for_offline, State}.
@@ -410,7 +435,7 @@ drain(Event, _From, State) ->
 
 
 offline(init_offline_queue, #state{id=SId} = State) ->
-    case vmq_message_store:find(SId, queue_init) of
+    case vmq_message_store:find(SId) of
         {ok, MsgRefs} ->
             _ = vmq_metrics:incr_queue_initialized_from_storage(),
             {next_state, offline,
@@ -440,6 +465,7 @@ offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     %% session has expired cleanup and go down
     vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
     vmq_reg:delete_subscriptions(SId),
+    vmq_message_store:delete(SId),
     cleanup_queue(SId, Q),
     _ = vmq_plugin:all(on_session_expired, [SId]),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
@@ -466,7 +492,10 @@ offline({enqueue_many, Msgs, Opts}, _From, State) ->
     enqueue_many_(Msgs, offline, Opts, State);
 offline({cleanup, _Reason}, _From, #state{id=SId, offline=#queue{queue=Q}} = State) ->
     cleanup_queue(SId, Q),
+    vmq_message_store:delete(SId),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
+    {stop, normal, ok, State};
+offline({terminate, _Reason}, _From, State) ->
     {stop, normal, ok, State};
 offline(Event, _From, State) ->
     lager:error("got unknown sync event in offline state ~p", [Event]),
@@ -558,6 +587,7 @@ handle_sync_event({force_disconnect, Reason, DoCleanup}, _From, StateName,
                       cleanup_queue(SId, Q),
                       _ = vmq_metrics:incr_queue_unhandled(queue:len(Q))
               end, [OfflineQ | SessionQueues]),
+            vmq_message_store:delete(SId),
             {stop, normal, ok, State};
         false ->
             disconnect_sessions(Reason, State),
@@ -668,6 +698,7 @@ add_session_(SessionPid, Opts, #state{id=SId, offline=Offline,
         _ ->
             Sessions
     end,
+    vmq_message_store:delete(SId),
     insert_from_queue(Offline#queue{type=QueueType},
                       State#state{
                         deliver_mode=DeliverMode,
@@ -716,6 +747,7 @@ handle_session_down(SessionPid, StateName,
             %% ... we dont need to migrate this one
             vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
             vmq_reg:delete_subscriptions(SId),
+            vmq_message_store:delete(SId),
             _ = vmq_plugin:all(on_client_gone, [SId]),
             gen_fsm:reply(From, ok),
             {stop, normal, NewState};
@@ -731,9 +763,14 @@ handle_session_down(SessionPid, StateName,
             %% we don't cleanup subscriptions!
             #state{offline=#queue{queue=Q}} = NewState,
             cleanup_queue(SId, Q),
+            vmq_message_store:delete(SId),
             _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
             gen_fsm:reply(From, ok),
             _ = vmq_plugin:all(on_client_gone, [SId]),
+            {stop, normal, NewState};
+        {0, wait_for_offline, {{terminate, _Reason}, From}} ->
+            %% Terminate queue process due to remote sub
+            gen_fsm:reply(From, ok),
             {stop, normal, NewState};
         {0, _, _} when DeletedSession#session.cleanup_on_disconnect ->
             %% last session gone
@@ -743,6 +780,7 @@ handle_session_down(SessionPid, StateName,
             %% clean session flag
             vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
             vmq_reg:delete_subscriptions(SId),
+            vmq_message_store:delete(SId),
             _ = vmq_plugin:all(on_client_gone, [SId]),
             {stop, normal, NewState};
         {0, OldStateName, _} ->
@@ -971,14 +1009,12 @@ cleanup_queue(_, {[],[]}) -> ok; %% optimization
 cleanup_queue(SId, Queue) ->
     cleanup_queue_(SId, queue:out(Queue)).
 
-cleanup_queue_(SId, {{value, #deliver{} = Msg}, NewQueue}) ->
-    maybe_offline_delete(SId, Msg),
+cleanup_queue_(SId, {{value, #deliver{}}, NewQueue}) ->
     cleanup_queue_(SId, queue:out(NewQueue));
 cleanup_queue_(SId, {{value, {deliver_pubrel, _}}, NewQueue}) ->
     % no need to deref
     cleanup_queue_(SId, queue:out(NewQueue));
 cleanup_queue_(SId, {{value, MsgRef}, NewQueue}) when is_binary(MsgRef) ->
-    maybe_offline_delete(SId, MsgRef),
     cleanup_queue_(SId, queue:out(NewQueue));
 cleanup_queue_(SId, {{value, {{qos2,_},_}}, NewQueue}) ->
     cleanup_queue_(SId, queue:out(NewQueue));
@@ -1025,55 +1061,22 @@ publish_last_will(#state{delayed_will = {_, Fun}} = State) ->
     Fun(),
     unset_will_timer(State#state{delayed_will = undefined}).
 
-maybe_offline_store(Offline, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persisted=false, dup=IsDup, expiry_ts=ExpiryTs} = Msg}=D) when QoS > 0 ->
+maybe_offline_store(true, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persisted=false} = Msg}=D) when QoS > 0 ->
     %% this function writes the message to the message store, in case the queue
-    %% has no online session attached anymore (Offline = true) the queue can
-    %% 'compress' the messages. Compressing is done by only keeping the message
-    %% reference in the queue (the rest of the message is fetched from the
-    %% message store during 'decompress'). However, the message store doesn't
-    %% store all message properties, therefore the queue can't just 'compress'
-    %% every message. The following properties aren't stored by the currently
-    %% provided message store:
-    %% - Message ID (required when storing a message with the DUP flag)
-    %% - Expiry Timestamp (required when storing a message that should expire)
+    %% has no online session attached anymore (Offline = true)
     PMsg = Msg#vmq_msg{persisted=true, qos=QoS},
-    _ = vmq_metrics:incr_stored_offline_messages(),
-    case vmq_message_store:write(SubscriberId, PMsg) of
-        ok when Offline and IsDup ->
-            % No compress
-            D#deliver{msg=PMsg};
-        ok when Offline and (ExpiryTs =/= undefined) ->
-            % No compress
-            D#deliver{msg=PMsg};
-        ok when Offline ->
-            % Compress
-            PMsg#vmq_msg.msg_ref;
-        ok ->
-            % No compress, we're still online
-            D#deliver{msg=PMsg};
-        {error, no_op} ->
-            %% in case we cannot store the message we keep the
-            %% full message structure around
-            D#deliver{msg=PMsg};
-        {error, _} ->
-            %% in case we cannot store the message we keep the
-            %% full message structure around
-            D
-    end;
+    vmq_message_store:write(SubscriberId, PMsg),
+    D#deliver{msg=PMsg};
 maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true, dup=true}} = D) ->
     % we can't compress a DUP message as we'd lose the message id when compressing
     D;
 maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true, expiry_ts=ExpiryTs}} = D) when ExpiryTs =/= undefined ->
     % we can't compress a message that has the expiry_ts set as we'd lose the expiry ts when compressing
     D;
-maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true} = Msg}) ->
-    % Compress
-    Msg#vmq_msg.msg_ref;
 maybe_offline_store(_, _, MsgOrRef) -> MsgOrRef.
 
 maybe_offline_delete(SubscriberId, #deliver{msg=#vmq_msg{persisted=true, msg_ref=MsgRef}}) ->
     _ = vmq_message_store:delete(SubscriberId, MsgRef),
-    _ = vmq_metrics:incr_removed_offline_messages(),
     ok;
 maybe_offline_delete(SubscriberId, MsgRef) when is_binary(MsgRef) ->
     _ = vmq_message_store:delete(SubscriberId, MsgRef),

@@ -14,6 +14,8 @@
 -compile([nowarn_export_all]).
 
 init_per_suite(_Config) ->
+    PrivDir = code:priv_dir(vmq_server),
+    application:set_env(vmq_server, redis_lua_dir, PrivDir ++ "/lua_scripts"),
     {ok, StartedApps} = application:ensure_all_started(vmq_server),
     ok = vmq_plugin_mgr:enable_plugin(vmq_webhooks),
     {ok, _} = application:ensure_all_started(cowboy),

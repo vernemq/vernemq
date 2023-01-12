@@ -23,8 +23,7 @@
          delete_complex_topics/1,
          delete_complex_topic/2,
          get_complex_topics/0,
-         safe_rpc/4,
-         query/3]).
+         safe_rpc/4]).
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -60,7 +59,7 @@ add_complex_topics(Topics) ->
                                 lists:foreach(fun(Node) -> safe_rpc(Node, ?MODULE, add_complex_topic, ["", T]) end, Nodes),
                                 [[?SADD, "wildcard_topics", term_to_binary(T)] | Acc]
                         end, [], Topics),
-    pipelined_query(Query, ?ADD_COMPLEX_TOPICS_OPERATION),
+    vmq_redis:pipelined_query(redis_client, Query, ?ADD_COMPLEX_TOPICS_OPERATION),
     ok.
 
 add_complex_topic(MP, Topic) ->
@@ -81,7 +80,7 @@ delete_complex_topics(Topics) ->
                                 lists:foreach(fun(Node) -> safe_rpc(Node, ?MODULE, delete_complex_topic, ["", T]) end, Nodes),
                                 Acc ++ [[?SREM, "wildcard_topics", term_to_binary(T)]]
                         end, [], Topics),
-    pipelined_query(Query, ?DELETE_COMPLEX_TOPICS_OPERATION),
+    vmq_redis:pipelined_query(redis_client, Query, ?DELETE_COMPLEX_TOPICS_OPERATION),
     ok.
 
 delete_complex_topic(MP, Topic) ->
@@ -107,37 +106,6 @@ safe_rpc(Node, Module, Fun, Args) ->
             {badrpc, rpc_process_down};
         Type:Reason -> {Type, Reason}
     end.
-
-query(QueryCmd, Cmd, Operation) ->
-    vmq_metrics:incr_redis_cmd({Cmd, Operation}),
-    V1 = vmq_util:ts(),
-    Result = case eredis:q(whereis(redis_client), QueryCmd) of
-                 {error, <<"ERR stale_request">>} = Res when Cmd == ?FCALL ->
-                     vmq_metrics:incr_redis_stale_cmd({Cmd, Operation}),
-                     lager:error("Cannot ~p due to staleness", [Cmd]),
-                     Res;
-                 {error, <<"ERR unauthorized">>} = Res when Cmd == ?FCALL ->
-                     vmq_metrics:incr_unauth_redis_cmd({Cmd, Operation}),
-                     lager:error("Cannot ~p as client is connected on different node", [Cmd]),
-                     Res;
-                 {error, Reason} ->
-                     vmq_metrics:incr_redis_cmd_err({Cmd, Operation}),
-                     lager:error("Cannot ~p due to ~p", [Cmd, Reason]),
-                     {error, Reason};
-                 {ok, undefined} ->
-                     vmq_metrics:incr_redis_cmd_miss({Cmd, Operation}),
-                     {ok, undefined};
-                 {ok, []} ->
-                     vmq_metrics:incr_redis_cmd_miss({Cmd, Operation}),
-                     {ok, []};
-                 Res -> Res
-             end,
-    vmq_metrics:pretimed_measurement({redis_cmd,
-                                      run,
-                                      [{cmd, Cmd},
-                                       {operation, Operation}
-                                      ]}, vmq_util:ts() - V1),
-    Result.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -240,7 +208,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 fetchSubscribers(Topics, MP) ->
     UnwordedTopics = [vmq_topic:unword(T) || T <- Topics],
-    {ok, SubscribersList} = query([?FCALL,
+    {ok, SubscribersList} = vmq_redis:query(redis_client, [?FCALL,
                                    ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
                                    0,
                                    MP,
@@ -268,40 +236,19 @@ load_redis_functions() ->
     {ok, FetchMatchedTopicSubscribersScript} = file:read_file(LuaDir ++ "/fetch_matched_topic_subscribers.lua"),
     {ok, FetchSubscriberScript} = file:read_file(LuaDir ++ "/fetch_subscriber.lua"),
 
-    {ok, <<"remap_subscriber">>} = query([?FUNCTION, "LOAD", "REPLACE", RemapSubscriberScript], ?FUNCTION_LOAD, ?REMAP_SUBSCRIBER),
-    {ok, <<"subscribe">>} = query([?FUNCTION, "LOAD", "REPLACE", SubscribeScript], ?FUNCTION_LOAD, ?SUBSCRIBE),
-    {ok, <<"unsubscribe">>} = query([?FUNCTION, "LOAD", "REPLACE", UnsubscribeScript], ?FUNCTION_LOAD, ?UNSUBSCRIBE),
-    {ok, <<"delete_subscriber">>} = query([?FUNCTION, "LOAD", "REPLACE", DeleteSubscriberScript], ?FUNCTION_LOAD, ?DELETE_SUBSCRIBER),
-    {ok, <<"fetch_matched_topic_subscribers">>} = query([?FUNCTION, "LOAD", "REPLACE", FetchMatchedTopicSubscribersScript], ?FUNCTION_LOAD, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS),
-    {ok, <<"fetch_subscriber">>} = query([?FUNCTION, "LOAD", "REPLACE", FetchSubscriberScript], ?FUNCTION_LOAD, ?FETCH_SUBSCRIBER).
+    {ok, <<"remap_subscriber">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", RemapSubscriberScript], ?FUNCTION_LOAD, ?REMAP_SUBSCRIBER),
+    {ok, <<"subscribe">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", SubscribeScript], ?FUNCTION_LOAD, ?SUBSCRIBE),
+    {ok, <<"unsubscribe">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", UnsubscribeScript], ?FUNCTION_LOAD, ?UNSUBSCRIBE),
+    {ok, <<"delete_subscriber">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", DeleteSubscriberScript], ?FUNCTION_LOAD, ?DELETE_SUBSCRIBER),
+    {ok, <<"fetch_matched_topic_subscribers">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", FetchMatchedTopicSubscribersScript], ?FUNCTION_LOAD, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS),
+    {ok, <<"fetch_subscriber">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", FetchSubscriberScript], ?FUNCTION_LOAD, ?FETCH_SUBSCRIBER).
 
 initialize_trie() ->
-    {ok, TopicList} = query([?SMEMBERS, "wildcard_topics"], ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION),
+    {ok, TopicList} = vmq_redis:query(redis_client, [?SMEMBERS, "wildcard_topics"], ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION),
     lists:foreach(fun(T) ->
                           Topic = binary_to_term(T),
                           add_complex_topic("", Topic) end, TopicList),
     ok.
-
-pipelined_query(QueryList, Operation) ->
-    [_ | PipelinedCmd] = lists:foldl(fun([Cmd | _], Acc) -> "|" ++ atom_to_list(Cmd) ++ Acc end, "", QueryList),
-    vmq_metrics:incr_redis_cmd({?PIPELINE, Operation}),
-    V1 = vmq_util:ts(),
-    Result = case eredis:qp(whereis(redis_client), QueryList) of
-                 {error, no_connection} ->
-                     lager:error("No connection with Redis"),
-                     {error, no_connection};
-                 Res -> Res
-             end,
-    IsErrPresent = lists:foldl(fun ({ok, _}, Acc) -> Acc;
-                                   ({error, Reason}, _Acc) ->
-                                       lager:error("Cannot ~p due to ~p", [PipelinedCmd, Reason]),
-                                       true
-                               end, false, Result),
-    if IsErrPresent -> vmq_metrics:incr_redis_cmd_err({?PIPELINE, Operation});
-       true -> ok
-    end,
-    vmq_metrics:pretimed_measurement({redis_cmd, run, [{cmd, PipelinedCmd}, {operation, Operation}]}, vmq_util:ts() - V1),
-    Result.
 
 match(MP, Topic) when is_list(MP) and is_list(Topic) ->
     TrieNodes = trie_match(MP, Topic),

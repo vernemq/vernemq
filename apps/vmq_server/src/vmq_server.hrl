@@ -13,17 +13,6 @@
         }).
 -type retain_msg() :: #retain_msg{}.
 
--record(deliver,
-        {
-         qos        :: qos(),
-         %% an undefined msg_id means this message has never been sent
-         %% to the client or that it is a qos0 message.
-
-         %% TODO use `msg_id()` type instead, but currently no in scope.
-         msg_id     :: undefined | non_neg_integer(),
-         msg        :: msg()
-        }).
-
 -type deliver() :: #deliver{}.
 
 -type subscription() :: {topic(), subinfo()}.
@@ -72,4 +61,18 @@
 -define(INITIALIZE_TRIE_OPERATION, initialize_trie).
 -define(ADD_COMPLEX_TOPICS_OPERATION, add_complex_topics).
 -define(DELETE_COMPLEX_TOPICS_OPERATION, delete_complex_topics).
+-define(ENQUEUE_MSG, enqueue_msg).
+-define(POLL_MAIN_QUEUE, poll_main_queue).
+-define(RPUSH, rpush).
+-define(DEL, del).
+-define(FIND, find).
+-define(LPOP, lpop).
+-define(MSG_STORE_WRITE, msg_store_write).
+-define(MSG_STORE_DELETE, msg_store_delete).
+-define(MSG_STORE_FIND, msg_store_find).
+
+-define(PRODUCER, "producer").
+-define(CONSUMER, "consumer").
+
+-define(REMOTE_SESSION_TAKEN_OVER, remote_session_taken_over).
 -endif.

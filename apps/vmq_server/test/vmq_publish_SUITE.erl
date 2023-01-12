@@ -19,29 +19,16 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_group(mqttv3, Config) ->
-    vmq_test_utils:setup(vmq_reg_trie),
+    vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     Config;
 init_per_group(mqttv4, Config) ->
-    vmq_test_utils:setup(vmq_reg_trie),
+    vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
     [{protover, 4}|Config];
 init_per_group(mqttv5, Config) ->
-    vmq_test_utils:setup(vmq_reg_trie),
+    vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    [{protover, 5}|Config];
-init_per_group(mqttv3_reg_redis_trie, Config) ->
-    vmq_test_utils:setup(vmq_reg_redis_trie),
-    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    Config;
-init_per_group(mqttv4_reg_redis_trie, Config) ->
-    vmq_test_utils:setup(vmq_reg_redis_trie),
-    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    [{protover, 4}|Config];
-init_per_group(mqttv5_reg_redis_trie, Config) ->
-    vmq_test_utils:setup(vmq_reg_redis_trie),
-    vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    eredis:q(whereis(redis_client), ["FLUSHDB"]),
     [{protover, 5}|Config].
 end_per_group(_Group, _Config) ->
     vmq_server_cmd:listener_stop(1888, "127.0.0.1", false),
@@ -76,10 +63,7 @@ all() ->
     [
      {group, mqttv3},
      {group, mqttv4},
-     {group, mqttv5},
-     {group, mqttv3_reg_redis_trie},
-     {group, mqttv4_reg_redis_trie},
-     {group, mqttv5_reg_redis_trie}
+     {group, mqttv5}
     ].
 
 groups() ->
@@ -127,10 +111,7 @@ groups() ->
     [
      {mqttv3, [shuffle], V3Tests},
      {mqttv4, [shuffle], V4Tests},
-     {mqttv5, [shuffle], V5Tests},
-     {mqttv3_reg_redis_trie, [shuffle], V3Tests},
-     {mqttv4_reg_redis_trie, [shuffle], V4Tests},
-     {mqttv5_reg_redis_trie, [shuffle], V5Tests}
+     {mqttv5, [shuffle], V5Tests}
     ].
 
 -define(CLIENT_OFFLINE_EVENT_SRV, vmq_client_offline_event_server).
@@ -606,10 +587,8 @@ pattern_matching_test(Config) ->
 
 pattern_test(SubTopic, PubTopic, Config) ->
     {ok, CT} = vmq_topic:validate_topic(subscribe, list_to_binary(SubTopic)),
-    case vmq_topic:contains_wildcard(CT) andalso proplists:get_value(vmq_md, Config) of
-        #{group := mqttv5_reg_redis_trie, tc := _} ->
-            vmq_reg_redis_trie:add_complex_topics([CT]);
-        #{group := mqttv4_reg_redis_trie, tc := _} ->
+    case vmq_topic:contains_wildcard(CT) of
+        true ->
             vmq_reg_redis_trie:add_complex_topics([CT]);
         _ -> ok
     end,
@@ -638,13 +617,8 @@ pattern_test(SubTopic, PubTopic, Config) ->
     disable_on_publish(),
     disable_on_subscribe(),
     ok = gen_tcp:close(Socket),
-    case proplists:get_value(vmq_md, Config) of
-        #{group := mqttv5_reg_redis_trie, tc := _} ->
-            vmq_reg_redis_trie:delete_complex_topics([CT]);
-        #{group := mqttv4_reg_redis_trie, tc := _} ->
-            vmq_reg_redis_trie:delete_complex_topics([CT]);
-        _ -> ok
-    end.
+    vmq_reg_redis_trie:delete_complex_topics([CT]),
+    ok.
 
 not_allowed_publish_close_qos0_mqtt_3_1(_) ->
     Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),

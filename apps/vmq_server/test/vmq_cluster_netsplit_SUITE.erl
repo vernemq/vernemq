@@ -49,6 +49,7 @@ init_per_testcase(Case, Config) ->
                                          [P, []]),
                       %% allow all
                       ok = rpc:call(Node, vmq_auth, register_hooks, []),
+                      rpc:call(Node, vmq_subscriber_db, flushall, []),
                       {Node, P}
               end, [{test1, 18883},
                     {test2, 18884},
@@ -204,9 +205,12 @@ publish_qos0_test(Config) ->
     ok = gen_tcp:send(Socket, Subscribe),
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = wait_until_converged(Nodes,
-                         fun(N) ->
-                                 rpc:call(N, vmq_reg, total_subscriptions, [])
-                         end, [{total, 1}]),
+                              fun(N) ->
+                                  case rpc:call(N, vmq_subscriber_db, read, [{"", "test-netsplit-client"}]) of
+                                      [] -> false;
+                                      [{_, false, _}] -> true
+                                  end
+                              end, true),
 
     %% Create Partitions
     {Island1Names, _} = lists:unzip(Island1),
@@ -261,12 +265,20 @@ remote_enqueue_cant_block_the_publisher(Config) ->
     {_, PortPub} = random_node(Island2),
     {ok, PubSocket} = packet:do_client_connect(ConnectPub, Connack,
                                                [{port, PortPub}]),
-
-    %% Let the cluster metadata converge.
     ok = wait_until_converged(Nodes,
                               fun(N) ->
-                                      rpc:call(N, vmq_reg, total_subscriptions, [])
-                              end, [{total, 1}]),
+                                  case rpc:call(N, vmq_subscriber_db, read, [{"", "netsplit-shared-sub"}]) of
+                                      [] -> false;
+                                      [{_, true, _}] -> true
+                                  end
+                              end, true),
+    ok = wait_until_converged(Nodes,
+                              fun(N) ->
+                                  case rpc:call(N, vmq_subscriber_db, read, [{"", "netsplit-publisher"}]) of
+                                      [] -> false;
+                                      [{_, true, _}] -> true
+                                  end
+                              end, true),
 
     %% Start the actual partition of the nodes.
     {Island1Names, _} = lists:unzip(Island1),

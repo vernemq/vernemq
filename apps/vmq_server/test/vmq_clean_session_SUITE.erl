@@ -17,15 +17,7 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_testcase(_Case, Config) ->
-    case proplists:get_value(vmq_md, Config) of
-        #{group := mqttv5_reg_redis_trie, tc := _} ->
-            vmq_test_utils:setup(vmq_reg_redis_trie),
-            eredis:q(whereis(redis_client), ["FLUSHDB"]);
-        #{group := mqttv4_reg_redis_trie, tc := _} ->
-            vmq_test_utils:setup(vmq_reg_redis_trie),
-            eredis:q(whereis(redis_client), ["FLUSHDB"]);
-        _ -> vmq_test_utils:setup(vmq_reg_trie)
-    end,
+    vmq_test_utils:setup(),
     vmq_server_cmd:set_config(allow_anonymous, true),
     vmq_server_cmd:set_config(retry_interval, 10),
     vmq_server_cmd:set_config(max_client_id_size, 1000),
@@ -43,9 +35,7 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, mqttv4},
-     {group, mqttv5},
-     {group, mqttv4_reg_redis_trie},
-     {group, mqttv5_reg_redis_trie}
+     {group, mqttv5}
     ].
 
 groups() ->
@@ -60,9 +50,7 @@ groups() ->
      session_exp_only_at_disconnect_is_illegal],
     [
      {mqttv4, [], V4Tests},
-     {mqttv5, [shuffle], V5Tests},
-     {mqttv4_reg_redis_trie, [], V4Tests},
-     {mqttv5_reg_redis_trie, [shuffle], V5Tests}
+     {mqttv5, [shuffle], V5Tests}
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -119,7 +107,7 @@ session_cleanup_test(Cfg) ->
     %% if queue cleanup woudln't have happen, we'd see a remaining offline message
     {1,0,0,0,0} = vmq_queue_sup_sup:summary(),
     clean_session_qos1_helper(),
-    %% if redis topic-sid mapping cleanup woudln't have happen, we'd receive a message
+    %% if redis topic-sid mapping cleanup will not happen, then we will receive a message
     {error,timeout} = packet:expect_packet(gen_tcp, Socket1, "publish", Publish, 500),
     ok = gen_tcp:close(Socket1).
 
