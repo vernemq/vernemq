@@ -69,12 +69,10 @@ cluster_status() ->
 
 node_status() ->
     % Total Connections
-    SocketOpen = counter_val(?METRIC_SOCKET_OPEN),
-    SocketClose = counter_val(?METRIC_SOCKET_CLOSE),
-    TotalConnections = SocketOpen - SocketClose,
+    TotalActiveMqttConnections = lists:sum(tuple_to_list(vmq_ranch_sup:nr_of_active_mqtt_connections())), 
     % Total Online Queues
     TotalQueues = vmq_queue_sup_sup:nr_of_queues(),
-    TotalOfflineQueues = TotalQueues - TotalConnections,
+    TotalOfflineQueues = TotalQueues - TotalActiveMqttConnections,
     TotalPublishIn =
         counter_val(?MQTT4_PUBLISH_RECEIVED) +
             counter_val(?MQTT5_PUBLISH_RECEIVED),
@@ -90,7 +88,7 @@ node_status() ->
     {NrOfSubs, _SMemory} = vmq_reg_trie:stats(),
     {NrOfRetain, _RMemory} = vmq_retain_srv:stats(),
     {ok, [
-        {<<"num_online">>, TotalConnections},
+        {<<"num_online">>, TotalActiveMqttConnections},
         {<<"num_offline">>, TotalOfflineQueues},
         {<<"msg_in">>, TotalPublishIn},
         {<<"msg_out">>, TotalPublishOut},
