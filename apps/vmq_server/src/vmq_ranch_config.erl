@@ -143,6 +143,7 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
         Opts,
         vmq_config:get_env(max_connections)
     ),
+    vmq_ssl_psk:init(Opts),
     NrOfAcceptors = proplists:get_value(
         nr_of_acceptors,
         Opts,

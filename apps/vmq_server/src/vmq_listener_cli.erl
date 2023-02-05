@@ -120,6 +120,18 @@ vmq_listener_start_cmd() ->
                 end
             end}
         ]},
+        {pskfile, [
+            {longname, "pskfile"},
+            {typecast, fun(FileName) ->
+                case filelib:is_file(FileName) of
+                    true -> FileName;
+                    false -> {error, {invalid_flag_value, {pskfile, FileName}}}
+                end
+            end}
+        ]},
+        {psk_support, [
+            {longname, "psk_support"}
+        ]},
         {ciphers, [
             {longname, "ciphers"},
             {typecast, fun(C) -> C end}
