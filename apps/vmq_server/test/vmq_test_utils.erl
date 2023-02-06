@@ -2,15 +2,13 @@
 -export([setup/0,
          teardown/0,
          reset_tables/0,
-         maybe_start_distribution/1,
          get_suite_rand_seed/0,
          seed_rand/1,
-         rand_bytes/1]).
+         rand_bytes/1,
+         get_free_port/0]).
 
 setup() ->
-    os:cmd(os:find_executable("epmd")++" -daemon"),
-    NodeName = list_to_atom("vmq_server-" ++ integer_to_list(erlang:phash2(os:timestamp()))),
-    ok = maybe_start_distribution(NodeName),
+    vmq_cluster_test_utils:init_distribution([]),
     Datadir = "/tmp/vernemq-test/data/" ++ atom_to_list(node()),
     os:cmd("rm -rf " ++ Datadir),
    % application:load(plumtree),
@@ -93,16 +91,6 @@ disable_all_plugins() ->
                           vmq_plugin_mgr:disable_plugin(P)
                   end, vmq_plugin:info(all)).
 
-maybe_start_distribution(Name) ->
-    case ets:info(sys_dist) of
-        undefined ->
-            %% started without -sname or -name arg
-            {ok, _} = net_kernel:start([Name, shortnames]),
-            ok;
-        _ ->
-            ok
-    end.
-
 reset_tables() ->
     _ = [reset_tab(T) || T <- [subscriber, config, retain]],
     %% it might be possible that a cached retained message
@@ -149,3 +137,9 @@ seed_rand(Config) ->
 rand_bytes(N) ->
     L = [ rand:uniform(256)-1 || _ <- lists:seq(1,N)],
     list_to_binary(L).
+
+get_free_port() ->
+    {ok, Socket} = gen_tcp:listen(0, [binary, {active, once}]),
+    {ok, Port} = inet:port(Socket),
+    ok = gen_tcp:close(Socket),
+    Port.

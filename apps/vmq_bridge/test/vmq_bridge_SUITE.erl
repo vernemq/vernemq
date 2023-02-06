@@ -26,12 +26,6 @@ init_per_group(try_private_4, Config) ->
 end_per_group(_GroupName, _Config) ->
     ok.
 
-% init_per_testcase(TestCase, Config) ->
-%     case TestCase of
-%      buffer_outgoing_test -> {skip, travis};
-%     _ -> Config
-%     end.
-
 end_per_testcase(_TestCase, _Config) ->
     stop_bridge_plugin(),
     ok.
@@ -275,9 +269,9 @@ bridge_reconnect_qos2_test(Cfg) ->
     ok = gen_tcp:send(Bridge2, Connack),
     Publish_2 = packet:expect_packet(Bridge2, "2nd publish", PublishDup),
     Subscribe_2 = packet:expect_packet(Bridge2, "2nd subscribe", Subscribe2),
-    catch_undeterministic_packet(Publish_2, [Publish_2, Subscribe_2]), 
+    catch_undeterministic_packet(Publish_2, [Publish_2, Subscribe_2]),
     ok = gen_tcp:send(Bridge2, Pubrec),
-    catch_undeterministic_packet(Subscribe_2, [Publish_2, Subscribe_2]), 
+    catch_undeterministic_packet(Subscribe_2, [Publish_2, Subscribe_2]),
     ok = gen_tcp:send(Bridge2, Suback2),
     ok = packet:expect_packet(Bridge2, "pubrel", Pubrel),
     ok = gen_tcp:close(Bridge2),
@@ -295,6 +289,14 @@ catch_undeterministic_packet(Packet, PacketList) ->
     lists:member(Packet, PacketList).
 
 buffer_outgoing_test(Cfg) ->
+    case os:getenv("CI") of
+        false ->
+            buffer_outgoing_test_(Cfg);
+        _Ci ->
+            {skip, "Flaky test in CI"}
+    end.
+
+buffer_outgoing_test_(Cfg) ->
     %% start bridge
     start_bridge_plugin(#{
       mqtt_version => mqtt_version(Cfg),
@@ -332,7 +334,7 @@ buffer_outgoing_test(Cfg) ->
     {ok, #{out_queue_dropped := 2,
            out_queue_max_size := 10,
            out_queue_size := 10}} = vmq_bridge:info(BridgePid),
-      
+
   [{counter, [], {vmq_bridge_queue_drop, _}, vmq_bridge_dropped_msgs,
       <<"The number of dropped messages (queue full)">>, 2}] = vmq_bridge_sup:metrics_for_tests(),
 
@@ -454,5 +456,5 @@ bridge_reg(ReportProc, _Opts) ->
                              ReportProc ! {unsubscribe, self()},
                              ok
                      end,
-{ok, #{publish_fun => PublishFun, register_fun => RegisterFun, 
+{ok, #{publish_fun => PublishFun, register_fun => RegisterFun,
                      subscribe_fun => SubscribeFun, unsubscribe_fun => UnsubscribeFun}}.

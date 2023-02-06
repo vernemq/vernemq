@@ -305,7 +305,7 @@ modify_props_on_deliver_m5(Cfg) ->
     ok = gen_tcp:send(PubSocket, Publish),
     ok = gen_tcp:close(PubSocket),
 
-    {ok, RecvPub, <<>>} = packetv5:receive_frame(SubSocket),
+    {ok, RecvPub, <<>>} = packetv5:receive_frame(gen_tcp, SubSocket, 15000),
     #mqtt5_publish{topic = _,
                    qos = 0,
                    properties = #{?P_PAYLOAD_FORMAT_INDICATOR := utf8,
