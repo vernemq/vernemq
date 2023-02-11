@@ -69,7 +69,9 @@ cluster_status() ->
 
 node_status() ->
     % Total Connections
-    TotalActiveMqttConnections = lists:sum(tuple_to_list(vmq_ranch_sup:nr_of_active_mqtt_connections())), 
+    TotalActiveMqttConnections = lists:sum(
+        tuple_to_list(vmq_ranch_sup:active_mqtt_connections())
+    ),
     % Total Online Queues
     TotalQueues = vmq_queue_sup_sup:nr_of_queues(),
     TotalOfflineQueues = TotalQueues - TotalActiveMqttConnections,
@@ -116,12 +118,17 @@ counter_val(C) ->
 
 listeners() ->
     lists:foldl(
-        fun({Type, Ip, Port, Status, MP, MaxConns}, Acc) ->
+        fun({Type, Ip, Port, Status, MP, MaxConns, _, _}, Acc) ->
+            Ip1 =
+                case Ip of
+                    {local, FS} -> list_to_binary(FS);
+                    Any -> list_to_binary(Any)
+                end,
             [
                 [
                     {type, Type},
                     {status, Status},
-                    {ip, list_to_binary(Ip)},
+                    {ip, Ip1},
                     {port, list_to_integer(Port)},
                     {mountpoint, MP},
                     {max_conns, MaxConns}

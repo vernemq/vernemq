@@ -16,7 +16,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, nr_of_active_mqtt_connections/0]).
+-export([start_link/0, active_mqtt_connections/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -27,19 +27,20 @@
 %%% API functions
 %%%===================================================================
 
-active_connections(Ip, Port) ->
-    {ok, IpAddr} = inet:parse_address(Ip),
-    Listener_name = {IpAddr, list_to_integer(Port)},
-    maps:get(active_connections, ranch:info(Listener_name)).
-
-nr_of_active_mqtt_connections() ->
+active_mqtt_connections() ->
     lists:foldl(
         fun
-            ({mqtt, Ip, Port, _, _, _}, Sum)    ->  {element(1,Sum) +  active_connections(Ip, Port), element(2, Sum)};  
-            ({mqtts, Ip, Port, _, _, _}, Sum)   ->  {element(1,Sum) +  active_connections(Ip, Port), element(2, Sum)}; 
-            ({mqttws, Ip, Port, _, _, _}, Sum)  ->  {element(1,Sum), element(2, Sum) + active_connections(Ip, Port)};
-            ({mqttwss, Ip, Port, _, _, _}, Sum) ->  {element(1,Sum), element(2, Sum) + active_connections(Ip, Port)};
-            (_, Sum) -> Sum
+            % Unix sockets will also be counted under "mqtt"
+            ({mqtt, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
+                {MQTT + Active, WS};
+            ({mqtts, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
+                {MQTT + Active, WS};
+            ({mqttws, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
+                {MQTT, WS + Active};
+            ({mqttwss, _, _, _, _, _, Active, _}, {MQTT, WS}) ->
+                {MQTT, WS + Active};
+            (_, Sum) ->
+                Sum
         end,
         {0, 0},
         vmq_ranch_config:listeners()
@@ -59,7 +60,6 @@ nr_of_active_mqtt_connections() ->
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-	
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
