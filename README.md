@@ -163,3 +163,6 @@ instance.
 			target="_blank"
 		/>
 	</a>
+
+### Thank you to all our contributors!
+[![contributors](https://contributors-img.web.app/image?repo=vernemq/vernemq)](https://github.com/vernemq/vernemq/graphs/contributors)
