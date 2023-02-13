@@ -19,6 +19,7 @@
          cluster_leave_dead_node_test/1,
          shared_subs_random_policy_test/1,
          shared_subs_random_policy_online_first_test/1,
+         shared_subs_random_policy_all_offline_test/1,
          shared_subs_prefer_local_policy_test/1,
          shared_subs_local_only_policy_test/1,
          cross_node_publish_subscribe/1,
@@ -100,6 +101,7 @@ all() ->
     ,cluster_leave_dead_node_test
     ,shared_subs_random_policy_test
     ,shared_subs_random_policy_online_first_test
+    ,shared_subs_random_policy_all_offline_test
     ,shared_subs_prefer_local_policy_test
     ,shared_subs_local_only_policy_test
     ,cross_node_publish_subscribe
@@ -599,7 +601,7 @@ shared_subs_random_policy_online_first_test(Config) ->
     set_shared_subs_policy(random, nodenames(Config)),
 
     [OnlineSubNode | RestNodes] = Nodes,
-    ok = create_offline_subscribers(<<"$share/share/sharedtopic">>, 10, RestNodes),
+    create_offline_subscribers(<<"$share/share/sharedtopic">>, 10, RestNodes),
     SubscriberSocketsOnline = connect_subscribers(<<"$share/share/sharedtopic">>, 1, [OnlineSubNode]),
 
     %% publish to shared topic on random node
@@ -613,6 +615,35 @@ shared_subs_random_policy_online_first_test(Config) ->
     ok = gen_tcp:send(Socket, Disconnect),
     ok = gen_tcp:close(Socket),
 
+    %% receive on subscriber sockets.
+    spawn_receivers(SubscriberSocketsOnline),
+    receive_msgs(Payloads),
+    receive_nothing(200),
+
+    %% cleanup
+    [ ok = gen_tcp:close(S) || S <- SubscriberSocketsOnline ],
+    ok.
+
+shared_subs_random_policy_all_offline_test(Config) ->
+    ensure_cluster(Config),
+    Nodes = nodes_(Config),
+    set_shared_subs_policy(random, nodenames(Config)),
+
+    OfflineClients = create_offline_subscribers(<<"$share/share/sharedtopic">>, 10, Nodes),
+
+    %% publish to shared topic on random node
+    {_, Port} = random_node(Nodes),
+    Connect = packet:gen_connect("ss-publisher",
+        [{keepalive, 60}, {clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+    Payloads = publish_to_topic(Socket, <<"sharedtopic">>, 10),
+    Disconnect = packet:gen_disconnect(),
+    ok = gen_tcp:send(Socket, Disconnect),
+    ok = gen_tcp:close(Socket),
+    timer:sleep(100),
+
+    SubscriberSocketsOnline = reconnect_clients(OfflineClients, Nodes),
     %% receive on subscriber sockets.
     spawn_receivers(SubscriberSocketsOnline),
     receive_msgs(Payloads),
@@ -736,7 +767,7 @@ convert_new_msgs_to_old_format(_Config) ->
 %%% Internal
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 create_offline_subscribers(Topic, Number, Nodes) ->
-    lists:foreach(fun(I) ->
+    lists:foldr(fun(I, Acc) ->
                     {_, Port} = random_node(Nodes),
                     ClientId = "subscriber-" ++ integer_to_list(I) ++ "-node-" ++
                         integer_to_list(Port),
@@ -753,8 +784,19 @@ create_offline_subscribers(Topic, Number, Nodes) ->
                     ok = gen_tcp:send(Socket, Disconnect),
                     ok = gen_tcp:close(Socket),
                     %% wait for the client to be offline
-                    timer:sleep(500)
-                  end, lists:seq(1,Number)).
+                    timer:sleep(500),
+                    [ClientId | Acc]
+                  end, [], lists:seq(1,Number)).
+
+reconnect_clients(Clients, Nodes) ->
+    lists:foldl(fun(ClientId, Acc) ->
+                    {_, Port} = random_node(Nodes),
+                    Connect = packet:gen_connect(ClientId,
+                        [{keepalive, 60}, {clean_session, false}]),
+                    Connack = packet:gen_connack(1, 0),
+                    {ok, Socket} = packet:do_client_connect(Connect, Connack, [{port, Port}]),
+                    [Socket | Acc]
+                end, [], Clients).
 
 connect_subscribers(Topic, Number, Nodes) ->
     [begin

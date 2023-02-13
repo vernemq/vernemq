@@ -30,10 +30,7 @@ publish(Msg, Policy, [{Group, SubscriberGroup}|Rest], Acc0) ->
     Subscribers = filter_subscribers(SubscriberGroup, Policy),
     %% Randomize subscribers once.
     RandSubscribers = [S||{_,S} <- lists:sort([{rand:uniform(), N} || N <- Subscribers])],
-    NodeGroupedSubsMap = group_by_node(RandSubscribers, #{}),
-    %% Randomize nodeGroups once.
-    RandNodeGroupedSubs = [S||{_,S} <- lists:sort([{rand:uniform(), N} || N <- maps:to_list(NodeGroupedSubsMap)])],
-    case publish_to_group(Msg, RandNodeGroupedSubs, Acc0) of
+    case publish_to_group(Msg, RandSubscribers, Acc0) of
         {ok, Acc1} ->
             publish(Msg, Policy, Rest, Acc1);
         {error, Reason} ->
@@ -42,10 +39,11 @@ publish(Msg, Policy, [{Group, SubscriberGroup}|Rest], Acc0) ->
             publish(Msg, Policy, Rest, Acc0)
     end.
 
-publish_to_group(Msg, [{Node, _Subs} = NodeGroup | Rest] = RandNodeGroupedSubs, {Local, Remote} = Acc0) ->
-    case publish_online(Msg, NodeGroup, Acc0) of
+publish_to_group(_Msg, [], _Acc0) -> {error, no_subscribers};
+publish_to_group(Msg, [{Node, _SId, _SubInfo} = Subscriber | Rest] = RandSubs, {Local, Remote} = Acc0) ->
+    case publish_online(Msg, Subscriber, Acc0) of
         {error, different_node} ->
-            case vmq_redis_queue:enqueue(Node, term_to_binary(RandNodeGroupedSubs), term_to_binary(Msg)) of
+            case vmq_redis_queue:enqueue(Node, term_to_binary(RandSubs), term_to_binary(Msg)) of
                 ok ->
                     {ok, {Local, Remote + 1}};
                 E ->
@@ -53,35 +51,24 @@ publish_to_group(Msg, [{Node, _Subs} = NodeGroup | Rest] = RandNodeGroupedSubs, 
             end;
         {ok, Acc1} ->
             {ok, Acc1};
-        NotOnlineSubscribers when length(Rest) == 0 ->
-            publish_any(Msg, NotOnlineSubscribers, Acc0);
+        _ when length(Rest) == 0 ->
+            publish_any(Msg, [Subscriber], Acc0);
         _ ->
             publish_to_group(Msg, Rest, Acc0)
     end.
 
-publish_online(Msg, {Node, Subscribers}, Acc0) when Node == node()->
-    try
-        lists:foldl(
-          fun(Subscriber, SubAcc) ->
-                  case publish_(Msg, Subscriber, online, Acc0) of
-                      {ok, Acc1} ->
-                          throw({done, Acc1});
-                      {error, offline} ->
-                          [Subscriber|SubAcc];
-                      {error, draining} ->
-                          [Subscriber|SubAcc];
-                      _ ->
-                          SubAcc
-                  end
-          end, [], Subscribers)
-    catch
-        {done, Acc2} -> {ok, Acc2}
+publish_online(Msg, {Node, SId, SubInfo}, Acc0) when Node == node()->
+    case publish_(Msg, {SId, SubInfo}, online, Acc0) of
+        {ok, _Acc1} = Res ->
+            Res;
+        _ ->
+            {error, cannot_publish}
     end;
 publish_online(_, _, _) -> {error, different_node}.
 
 publish_any(_Msg, [], _Acc) -> {error, no_subscribers};
-publish_any(Msg, [Subscriber|Subscribers], Acc0) ->
-    case publish_(Msg, Subscriber, any, Acc0) of
+publish_any(Msg, [{_Node, SId, SubInfo}|Subscribers], Acc0) ->
+    case publish_(Msg, {SId, SubInfo}, any, Acc0) of
         {ok, Acc1} ->
             {ok, Acc1};
         {error, _} ->
@@ -129,8 +116,3 @@ maybe_add_sub_id({QoS, _UnusedSubInfo}, Msg) ->
     {QoS, Msg};
 maybe_add_sub_id(QoS, Msg) ->
     {QoS, Msg}.
-
-group_by_node([], NodeGroups) -> NodeGroups;
-group_by_node([{Node, SId, SubInfo} | S], NodeGroups) ->
-    NodeGroup = maps:get(Node, NodeGroups, []),
-    group_by_node(S, maps:put(Node, [{SId, SubInfo}|NodeGroup], NodeGroups)).

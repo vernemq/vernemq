@@ -116,9 +116,9 @@ handle_info(poll_redis_main_queue, #state{shard=RedisNode, interval=Interval} = 
                         {_, _CId} = SId ->
                             {SubInfo, Msg} = binary_to_term(MsgBin),
                             vmq_reg:enqueue_msg({SId, SubInfo}, Msg);
-                        NodeGroupedSubs when is_list(NodeGroupedSubs) ->
+                        RandSubs when is_list(RandSubs) ->
                             vmq_shared_subscriptions:publish_to_group(binary_to_term(MsgBin),
-                                                                      NodeGroupedSubs,
+                                                                      RandSubs,
                                                                       {0,0});
                         UnknownMsg -> lager:error("Unknown Msg in Redis Main Queue : ~p", [UnknownMsg])
                     end
