@@ -167,7 +167,7 @@ start_node(Name, _Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_plugin,
                                                        default_schema_dir,
                                                        [VmqServerPrivDir]]),
-            {ok, StartedApps} = rpc:call(Node, application, ensure_all_started,
+            {ok, _StartedApps} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),
             %{ok, _} = rpc:call(Node, application, ensure_all_started, [vmq_swc]),
             ok = wait_until(fun() ->
