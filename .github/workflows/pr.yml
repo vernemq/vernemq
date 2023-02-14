@@ -209,10 +209,10 @@ jobs:
         run: |
           ./rebar3 do eunit, ct ||
                 (echo -e "\nContents of retry.spec\n" &&
-                cat /vernemq/_build/test/logs/retry.spec &&
+                cat _build/test/logs/retry.spec &&
                 echo -e "\nRetrying failed suites:" &&
-                echo $(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" /vernemq/_build/test/logs/retry.spec | uniq | paste -s -d, -) &&
-                ./rebar3 ct --suite=$(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" /vernemq/_build/test/logs/retry.spec | uniq | paste -s -d, -))
+                echo $(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/test/logs/retry.spec | uniq | paste -s -d, -) &&
+                ./rebar3 ct --suite=$(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/test/logs/retry.spec | uniq | paste -s -d, -))
       - name: Upload JUnit Test Report
         uses: actions/upload-artifact@v3
         if: always() # always run even if the previous step fails
