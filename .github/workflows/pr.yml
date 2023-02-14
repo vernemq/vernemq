@@ -179,7 +179,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
           export majorversion="$(cut -d '.' -f 1 <<< "${{ matrix.otp }}")"
-          brew install coreutils erlang@$majorversion openssl mosquitto pcregrep
+          brew install coreutils erlang@$majorversion openssl mosquitto pcre2
           echo "/usr/local/opt/erlang@$majorversion/bin" >> $GITHUB_PATH
       - name: Checkout code
         uses: actions/checkout@v3
