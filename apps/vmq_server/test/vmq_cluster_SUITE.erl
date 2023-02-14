@@ -510,7 +510,7 @@ cluster_leave_test(Config) ->
     %% As the clients don't reconnect (in this test), their sessions are offline
     ok =
         wait_until_converged_fold(fun(N, {AccQ, AccM}) ->
-                                     {_, _, _, Queues, Messages} = Summary = rpc:call(N, vmq_queue_sup_sup, summary, []),
+                                     {_, _, _, Queues, Messages} = rpc:call(N, vmq_queue_sup_sup, summary, []),
                                      {AccQ + Queues, AccM + Messages}
                                   end,
                                   {0, 0},
