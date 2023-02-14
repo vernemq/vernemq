@@ -166,7 +166,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt-get -qq update
-          sudo apt-get -qq install cmake mosquitto-clients
+          sudo apt-get -qq install cmake mosquitto-clients pcregrep
       - name: Configure Homebrew cache
         if: ${{ startsWith(matrix.os, 'macos') }}
         uses: actions/cache@v3
