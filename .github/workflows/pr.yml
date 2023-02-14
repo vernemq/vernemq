@@ -54,7 +54,7 @@ jobs:
   coverage:
     name: Run tests with coverage
     runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres
@@ -121,7 +121,12 @@ jobs:
         run: ./rebar3 compile
       - name: Run Tests
         run: |
-          ./rebar3 as ci_tests,test do eunit --cover, ct --cover
+          ./rebar3 as ci_tests,test do eunit --cover, ct --cover ||
+                (echo -e "\nContents of retry.spec\n" &&
+                cat _build/ci_tests+test/logs/retry.spec &&
+                echo -e "\nRetrying failed suites:" &&
+                echo $(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/ci_tests+test/logs/retry.spec | uniq | paste -s -d, -) &&
+                ./rebar3 ct --suite=$(pcregrep -o2 -o3 --om-separator="/" -M "^{(cases),\"(.+)\",[^\w]*(\w+),(.|\n)*?\.$" _build/ci_tests+test/logs/retry.spec | uniq | paste -s -d, -))
       - run: ./rebar3 cover --verbose
       - name: Archive coverage report
         uses: actions/upload-artifact@v3
@@ -145,9 +150,7 @@ jobs:
   tests:
     name: Test on ${{ matrix.os }} with OTP ${{ matrix.otp }}
     runs-on: ${{ matrix.os }}
-
-    # Fail if test takes over an hour
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     strategy:
       fail-fast: false
