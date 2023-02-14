@@ -175,7 +175,6 @@ start_node(Name, _Config, Case) ->
                                 {error, no_matching_hook} ->
                                     false;
                                 Members when is_list(Members) ->
-                                    ct:pal("CLUSTER MEMBERS: ~p~n", [Members]),
                                     case rpc:call(Node, erlang, whereis,
                                                   [vmq_server_sup]) of
                                         undefined ->
@@ -185,7 +184,6 @@ start_node(Name, _Config, Case) ->
                                     end
                             end
                     end, 60, 500),
-            ct:pal("Node: ~p, StartedApps: ~p", [Node, StartedApps]),
             {ok, Peer, Node};
         Other ->
             Other

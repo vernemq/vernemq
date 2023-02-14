@@ -49,7 +49,6 @@ init_per_testcase(Case, Config) ->
         vmq_cluster_test_utils:pmap(fun({N, Port}) ->
                                        {ok, Peer, Node} =
                                            vmq_cluster_test_utils:start_node(N, Config1, Case),
-                                        ct:pal("Peer: ~p, Node: ~p", [Peer, Node]),
                                        {ok, _} =
                                            rpc:call(Node,
                                                     vmq_server_cmd,
@@ -512,7 +511,6 @@ cluster_leave_test(Config) ->
     ok =
         wait_until_converged_fold(fun(N, {AccQ, AccM}) ->
                                      {_, _, _, Queues, Messages} = Summary = rpc:call(N, vmq_queue_sup_sup, summary, []),
-                                     ct:pal("Summary call result: ~p", [Summary]),
                                      {AccQ + Queues, AccM + Messages}
                                   end,
                                   {0, 0},
