@@ -339,7 +339,8 @@
                                                             hidden
                                                            ]}.
 
-%% @doc specifies the modules that should be evaluated when setting up the cowboy routes
+
+%% @doc specifies the modules to be enabled by the http(s) listeners. Overriding this setting is possible for specific listeners.
 {mapping, "http_modules", "vmq_server.http_modules", [
                                                       {default, "[vmq_metrics_http,vmq_http_mgmt_api, vmq_status_http, vmq_health_http]"},
                                                       {datatype, string},
@@ -981,6 +982,13 @@
                                                                      hidden
                                                                     ]}.
 
+%% @doc specifies the modules to be enabled by the http(s) listener 
+{mapping, "listener.http.$name.http_modules", "vmq_server.listeners", [
+                                                      {default, "[]"},
+                                                      {datatype, string},
+                                                      hidden
+                                                     ]}.
+
 {mapping, "listener.https.$name", "vmq_server.listeners", [
                                                           {default, { "{{http_default_ip}}", {{http_default_port}} }},
                                                           {datatype, ip},
@@ -998,7 +1006,12 @@
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}.
-
+%% @doc specifies the modules to be enabled by the http(s) listener 
+{mapping, "listener.https.$name.http_modules", "vmq_server.listeners", [
+                                                      {default, "[]"},
+                                                      {datatype, string},
+                                                      hidden
+                                                     ]}.
 
 %% @doc Set the mountpoint on the protocol level or on the listener level
 %%

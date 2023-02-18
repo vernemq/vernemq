@@ -214,11 +214,15 @@ translate_listeners(Conf) ->
 
     {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
     {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
+    {HTTPIPs, HTTPModules} = lists:unzip(extract("listener.http", "http_modules", StrVal, Conf)),
     {HTTP_SSLIPs, HTTP_SSLConfigMod} = lists:unzip(
         extract("listener.https", "config_mod", AtomVal, Conf)
     ),
     {HTTP_SSLIPs, HTTP_SSLConfigFun} = lists:unzip(
         extract("listener.https", "config_fun", AtomVal, Conf)
+    ),
+    {HTTP_SSLIPs, HTTP_SSLHTTPModules} = lists:unzip(
+        extract("listener.https", "http_modules", StrVal, Conf)
     ),
 
     % SSL
@@ -350,6 +354,7 @@ translate_listeners(Conf) ->
             HTTPNrOfAcceptors,
             HTTPConfigMod,
             HTTPConfigFun,
+            HTTPModules,
             HTTPProxyProto
         ])
     ),
@@ -435,7 +440,8 @@ translate_listeners(Conf) ->
             HTTP_SSLRequireCerts,
             HTTP_SSLVersions,
             HTTP_SSLConfigMod,
-            HTTP_SSLConfigFun
+            HTTP_SSLConfigFun,
+            HTTP_SSLHTTPModules
         ])
     ),
     DropUndef = fun(L) ->
@@ -480,6 +486,7 @@ extract(Prefix, Suffix, Val, Conf) ->
             %% http listener specific
             "config_mod",
             "config_fun",
+            "http_modules",
             %% mqtt listener specific
             "allowed_protocol_versions",
             %% other

@@ -318,18 +318,24 @@ protocol_opts(cowboy_clear, Type, Opts) when
         stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]
     });
 protocol_opts(cowboy_clear, _, Opts) ->
-    Routes =
-        case {lists:keyfind(config_mod, 1, Opts), lists:keyfind(config_fun, 1, Opts)} of
-            {{_, ConfigMod}, {_, ConfigFun}} ->
-                try
-                    apply(ConfigMod, ConfigFun, [])
-                catch
-                    E:R ->
-                        lager:error("can't setup HTTP modules due to ~p:~p", [E, R]),
-                        []
-                end;
-            _ ->
+    Apply = fun(Mod, Fun, Param) ->
+        try
+            apply(Mod, Fun, Param)
+        catch
+            E:R ->
+                lager:error("can't setup HTTP modules due to ~p:~p", [E, R]),
                 []
+        end
+    end,
+    {_, ConfigMod} = lists:keyfind(config_mod, 1, Opts),
+    {_, ConfigFun} = lists:keyfind(config_fun, 1, Opts),
+    Routes =
+        case
+            {ConfigMod, ConfigFun,
+                lists:member({ConfigFun, 1}, apply(ConfigMod, module_info, [exports]))}
+        of
+            {Mod, Fun, false} -> Apply(Mod, Fun, []);
+            {Mod, Fun, true} -> Apply(Mod, Fun, [Opts])
         end,
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),

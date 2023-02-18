@@ -13,12 +13,21 @@
 %% limitations under the License.
 
 -module(vmq_http_config).
--export([config/0]).
+-export([config/1]).
 
 -callback routes() -> [{string(), atom(), any()}].
+config(Opts) ->
+    HttpLocal = element(2, lists:keyfind(http_modules, 1, Opts)),
+    HttpLocalList = [
+        list_to_atom(string:strip(Token))
+     || Token <- string:tokens(string:trim(HttpLocal, both, "[]"), ",")
+    ],
 
-config() ->
-    HttpModules = vmq_config:get_env(http_modules),
+    HttpModules =
+        case {HttpLocalList, vmq_config:get_env(http_modules)} of
+            {[], _} -> vmq_config:get_env(http_modules);
+            {LocalModules, _} -> LocalModules
+        end,
     config(HttpModules, []).
 
 config([HttpModule | Rest], Routes) when is_atom(HttpModule) ->
