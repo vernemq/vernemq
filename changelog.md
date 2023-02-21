@@ -1,6 +1,11 @@
 
 - Add support for TLS-PSK (Pre-Shared Key) for MQTTS (TLS) listeners
 - Fix regression in handling of the Proxy protocol for WebSockets.
+- Refactor metrics count of active connections, using 3 new gauges:
+  `active_mqtt_connections`, `active_mqttws_connections` (WebSocket) and
+  `total_active_connections`. Adapt Status page. This also fixes an error,
+  where the status page would show a false connection count.
+- Add `active_conns` and `all_conns` info to `vmq-admin listener show`.
 ## VerneMQ 1.12.6.2
 
 - Add `max_ws_frame_size` setting to limit incoming WebSocket stream.
