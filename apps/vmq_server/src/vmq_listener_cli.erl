@@ -168,6 +168,10 @@ vmq_listener_start_cmd() ->
         {config_fun, [
             {longname, "config_fun"},
             {typecast, fun(F) -> list_to_existing_atom(F) end}
+        ]},
+        {http_modules, [
+            {longname, "http_modules"},
+            {typecast, fun(C) -> C end}
         ]}
     ],
     Callback =

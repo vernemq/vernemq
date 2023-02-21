@@ -1,4 +1,4 @@
-
+- Allow per-purpose HTTP endpoints (status, metrics, api) by assigning http_modules
 - Add support for TLS-PSK (Pre-Shared Key) for MQTTS (TLS) listeners
 - Fix regression in handling of the Proxy protocol for WebSockets.
 - Refactor metrics count of active connections, using 3 new gauges:
