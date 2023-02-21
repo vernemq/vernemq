@@ -1,5 +1,5 @@
 
-
+- Add support for TLS-PSK (Pre-Shared Key) for MQTTS (TLS) listeners
 - Fix regression in handling of the Proxy protocol for WebSockets.
 ## VerneMQ 1.12.6.2
 

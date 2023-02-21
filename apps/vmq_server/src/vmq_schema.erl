@@ -236,6 +236,16 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLUseIdents} = lists:unzip(
         extract("listener.ssl", "use_identity_as_username", BoolVal, Conf)
     ),
+    {SSLIPs, SSLPSKSupport} = lists:unzip(
+        extract("listener.ssl", "psk_support", BoolVal, Conf)
+    ),
+    {SSLIPs, SSLPSKFile} = lists:unzip(extract("listener.ssl", "pskfile", StrVal, Conf)),
+    {SSLIPs, SSLPSKFileSeparator} = lists:unzip(
+        extract("listener.ssl", "pskfile_separator", StrVal, Conf)
+    ),
+    {SSLIPs, SSLPSKIdentityHint} = lists:unzip(
+        extract("listener.ssl", "psk_identity_hint", StrVal, Conf)
+    ),
 
     % WSS
     {WS_SSLIPs, WS_SSLCAFiles} = lists:unzip(extract("listener.wss", "cafile", StrVal, Conf)),
@@ -361,6 +371,10 @@ translate_listeners(Conf) ->
             SSLRequireCerts,
             SSLVersions,
             SSLUseIdents,
+            SSLPSKSupport,
+            SSLPSKFile,
+            SSLPSKFileSeparator,
+            SSLPSKIdentityHint,
             SSLAllowedProto,
             SSLBufferSizes,
             SSLAllowAnonymousOverride
@@ -453,6 +467,10 @@ extract(Prefix, Suffix, Val, Conf) ->
             "require_certificate",
             "tls_version",
             "use_identity_as_username",
+            "psk_support",
+            "pskfile",
+            "pskfile_separator",
+            "psk_identity_hint",
             "buffer_sizes",
             "high_watermark",
             "low_watermark",

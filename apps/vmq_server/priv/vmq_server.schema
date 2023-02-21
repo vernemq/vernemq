@@ -1576,6 +1576,72 @@
                                                                                   hidden
                                                                                  ]}.
 
+%% @doc If listener.ssl.pskfile is enabled VerneMQ supports TLS connection based on
+%% pre-shared keys (PSK).
+%%
+%% The option can be specified either for all SSL listeners or for
+%% a specific listener.  
+%%
+%%     - listener.ssl.psk_support
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.psk_support
+{mapping, "listener.ssl.psk_support", "vmq_server.listeners", [
+                                                               {default, off},
+                                                               {datatype, flag},
+                                                               {commented, off}
+                                                              ]}.
+{mapping, "listener.ssl.$name.psk_support", "vmq_server.listeners", [
+                                                                     {datatype, flag},
+                                                                      hidden
+                                                                    ]}.
+%% @doc The PSK hint sent by the server to the client.
+%%
+%% The option can be specified either for all SSL listeners or for
+%% a specific listener.
+%%
+%%     - listener.ssl.psk_identity_hint
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.psk_identity_hint
+{mapping, "listener.ssl.psk_identity_hint", "vmq_server.listeners", [
+                                                               {default, "VMQ_PSK"},
+                                                               {datatype, string},
+                                                               {commented, "VMQ_PSK"}
+                                                              ]}.
+{mapping, "listener.ssl.$name.psk_identity_hint", "vmq_server.listeners", [
+                                                                     {datatype, string},
+                                                                      hidden
+                                                                    ]}.
+
+
+%% @doc If PSK support is enabled, the pre-shared keys must be provided as key value pairs 
+%% seperated by a seperator (by default ":"), e.g.
+%%
+%% mypskidentity:mypskkey
+%%
+%% The key is a string (not hex-encoded). The psk file is used for all listerners.   
+{mapping, "listener.ssl.pskfile", "vmq_server.listeners", [
+                                                           {default, "{{platform_etc_dir}}/vmq.psk"},
+                                                           {datatype, file}
+                                                          ]}.
+%% @doc The pre-shared keys and the psk identity are separated by a separator.
+%% By default, a colon is used.
+{mapping, "listener.ssl.pskfile_separator", "vmq_server.listeners", [
+                                                               {default, ":"},
+                                                               {datatype, string},
+                                                               {commented, ":"},
+                                                               {validators, ["separator_validator"]}
+                                                              ]}.
+
+{validator, "separator_validator", "separator must be  a 1 character string",
+ fun(String) ->
+         string:length(String) == 1
+ end}.
+
+
 {translation, "vmq_server.listeners",
  fun(Conf) ->
          vmq_schema:translate_listeners(Conf)
