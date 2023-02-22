@@ -233,6 +233,8 @@
 %% transmitted simultaneously. This includes messages currently going through handshakes
 %% and messages that are being retried. Defaults to 20. Set to 0 for no maximum. If set
 %% to 1, this will guarantee in-order delivery of messages.
+%% Note: for MQTT v5, use receive_max_client/receive_max_broker to implement 
+%% similar behaviour.
 {mapping, "max_inflight_messages", "vmq_server.max_inflight_messages", [
                                                                         {default, 20},
                                                                         {datatype, integer}
