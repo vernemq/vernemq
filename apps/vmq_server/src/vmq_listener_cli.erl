@@ -120,6 +120,18 @@ vmq_listener_start_cmd() ->
                 end
             end}
         ]},
+        {pskfile, [
+            {longname, "pskfile"},
+            {typecast, fun(FileName) ->
+                case filelib:is_file(FileName) of
+                    true -> FileName;
+                    false -> {error, {invalid_flag_value, {pskfile, FileName}}}
+                end
+            end}
+        ]},
+        {psk_support, [
+            {longname, "psk_support"}
+        ]},
         {ciphers, [
             {longname, "ciphers"},
             {typecast, fun(C) -> C end}
@@ -156,6 +168,10 @@ vmq_listener_start_cmd() ->
         {config_fun, [
             {longname, "config_fun"},
             {typecast, fun(F) -> list_to_existing_atom(F) end}
+        ]},
+        {http_modules, [
+            {longname, "http_modules"},
+            {typecast, fun(C) -> C end}
         ]}
     ],
     Callback =
@@ -320,7 +336,7 @@ vmq_listener_show_cmd() ->
         fun(_, [], []) ->
             Table =
                 lists:foldl(
-                    fun({Type, Ip, Port, Status, MP, MaxConns}, Acc) ->
+                    fun({Type, Ip, Port, Status, MP, MaxConns, ActiveConns, AllConns}, Acc) ->
                         [
                             [
                                 {type, Type},
@@ -328,7 +344,9 @@ vmq_listener_show_cmd() ->
                                 {address, Ip},
                                 {port, Port},
                                 {mountpoint, MP},
-                                {max_conns, MaxConns}
+                                {max_conns, MaxConns},
+                                {active_conns, ActiveConns},
+                                {all_conns, AllConns}
                             ]
                             | Acc
                         ]

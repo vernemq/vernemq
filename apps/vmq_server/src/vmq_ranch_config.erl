@@ -143,6 +143,7 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
         Opts,
         vmq_config:get_env(max_connections)
     ),
+    vmq_ssl_psk:init(Opts),
     NrOfAcceptors = proplists:get_value(
         nr_of_acceptors,
         Opts,
@@ -172,50 +173,33 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
     end.
 
 listeners() ->
-    lists:foldl(
-        fun
-            ({ranch_server, _, _, _}, Acc) ->
-                Acc;
-            ({{ranch_listener_sup, {Ip, Port}}, Status, supervisor, _}, Acc) ->
-                {ok, {Type, Opts}} = get_listener_config(Ip, Port),
-                MountPoint = proplists:get_value(mountpoint, Opts, ""),
-                MaxConnections = proplists:get_value(
-                    max_connections,
-                    Opts,
-                    vmq_config:get_env(max_connections)
-                ),
-                Status1 =
-                    case Status of
-                        restarting ->
-                            restarting;
-                        undefined ->
-                            stopped;
-                        Pid when is_pid(Pid) ->
-                            case
-                                lists:keyfind(
-                                    ranch_acceptors_sup, 1, supervisor:which_children(Pid)
-                                )
-                            of
-                                false ->
-                                    not_found;
-                                {_, restarting, supervisor, _} ->
-                                    restarting;
-                                {_, undefined, supervisor, _} ->
-                                    stopped;
-                                {_, AcceptorPid, supervisor, _} when is_pid(AcceptorPid) ->
-                                    running
-                            end
-                    end,
-                StrIp =
-                    case Ip of
-                        {local, FS} -> FS;
-                        _ -> inet:ntoa(Ip)
-                    end,
-                StrPort = integer_to_list(Port),
-                [{Type, StrIp, StrPort, Status1, MountPoint, MaxConnections} | Acc]
+    maps:fold(
+        fun({Ip, Port}, ConfigMap, Acc) ->
+            {ok, {Type, Opts}} = get_listener_config(Ip, Port),
+            MountPoint = proplists:get_value(mountpoint, Opts, ""),
+            MaxConnections = proplists:get_value(
+                max_connections,
+                Opts,
+                vmq_config:get_env(max_connections)
+            ),
+            ActiveConnections = maps:get(active_connections, ConfigMap),
+            % the highest number of connections seen
+            AllConnections = maps:get(all_connections, ConfigMap),
+            Status = maps:get(status, ConfigMap),
+            StrIp =
+                case Ip of
+                    {local, FS} -> {local, FS};
+                    _ -> inet:ntoa(Ip)
+                end,
+            StrPort = integer_to_list(Port),
+            [
+                {Type, StrIp, StrPort, Status, MountPoint, MaxConnections, ActiveConnections,
+                    AllConnections}
+                | Acc
+            ]
         end,
         [],
-        supervisor:which_children(ranch_sup)
+        ranch:info()
     ).
 
 get_listener_config(Addr, Port) ->
@@ -334,18 +318,24 @@ protocol_opts(cowboy_clear, Type, Opts) when
         stream_handlers => [vmq_cowboy_websocket_h, cowboy_stream_h]
     });
 protocol_opts(cowboy_clear, _, Opts) ->
-    Routes =
-        case {lists:keyfind(config_mod, 1, Opts), lists:keyfind(config_fun, 1, Opts)} of
-            {{_, ConfigMod}, {_, ConfigFun}} ->
-                try
-                    apply(ConfigMod, ConfigFun, [])
-                catch
-                    E:R ->
-                        lager:error("can't setup HTTP modules due to ~p:~p", [E, R]),
-                        []
-                end;
-            _ ->
+    Apply = fun(Mod, Fun, Param) ->
+        try
+            apply(Mod, Fun, Param)
+        catch
+            E:R ->
+                lager:error("can't setup HTTP modules due to ~p:~p", [E, R]),
                 []
+        end
+    end,
+    {_, ConfigMod} = lists:keyfind(config_mod, 1, Opts),
+    {_, ConfigFun} = lists:keyfind(config_fun, 1, Opts),
+    Routes =
+        case
+            {ConfigMod, ConfigFun,
+                lists:member({ConfigFun, 1}, apply(ConfigMod, module_info, [exports]))}
+        of
+            {Mod, Fun, false} -> Apply(Mod, Fun, []);
+            {Mod, Fun, true} -> Apply(Mod, Fun, [Opts])
         end,
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
