@@ -1,0 +1,19 @@
+{application, vmq_otel, [
+    {description, "A VerneMQ Plugin for Opentelemetry."},
+    {vsn, git},
+    {registered, []},
+    {mod, {vmq_otel_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto,
+        public_key,
+        ssl,
+        inets,
+        opentelemetry,
+        opentelemetry_api,
+        opentelemetry_exporter
+    ]},
+    {env, []},
+    {modules, []}
+]}.
