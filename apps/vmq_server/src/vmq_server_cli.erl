@@ -523,11 +523,16 @@ vmq_cluster_upgrade_cmd() ->
 
 vmq_mgmt_create_api_key_cmd() ->
     Cmd = ["vmq-admin", "api-key", "create"],
-    KeySpecs = [],
+    KeySpecs = [{'scope', []}, {'expires', []}],
     FlagSpecs = [],
-    Callback = fun(_, [], []) ->
-        ApiKey = vmq_http_mgmt_api:create_api_key(),
-        [clique_status:text([binary_to_list(ApiKey)])]
+    Callback = fun
+        Cb(_, [{'scope', Scope}, {'expires', Expires}], _) ->
+            ApiKey = vmq_auth_apikey:create_api_key(Scope, Expires),
+            [clique_status:text([binary_to_list(ApiKey)])];
+        Cb(_, [{'scope', Scope}], []) ->
+            Cb(undefined, [{'scope', Scope}, {'expires', undefined}], undefined);
+        Cb(_, _, _) ->
+            Cb(undefined, [{'scope', "mgmt"}, {'expires', undefined}], undefined)
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
@@ -538,14 +543,20 @@ vmq_mgmt_add_api_key_cmd() ->
             {typecast, fun(Key) ->
                 list_to_binary(Key)
             end}
-        ]}
+        ]},
+        {'scope', []},
+        {'expires', []}
     ],
     FlagSpecs = [],
     Callback = fun
-        (_, [{'key', Key}], _) ->
-            vmq_http_mgmt_api:add_api_key(Key),
-            [clique_status:text("Done")];
-        (_, _, _) ->
+        Cb(_, [{'key', Key}, {'scope', Scope}, {'expires', Expires}], _) ->
+            Res = vmq_auth_apikey:add_api_key(Key, Scope, Expires),
+            [clique_status:text([lists:flatten(io_lib:format("~p", [Res]))])];
+        Cb(_, [{'key', Key}, {'scope', Scope}], _) ->
+            Cb(undefined, [{'key', Key}, {'scope', Scope}, {'expires', undefined}], undefined);
+        Cb(_, [{'key', Key}], _) ->
+            Cb(undefined, [{'key', Key}, {'scope', "mgmt"}, {'expires', undefined}], undefined);
+        Cb(_, _, _) ->
             Text = clique_status:text(api_add_key_usage()),
             [clique_status:alert([Text])]
     end,
@@ -558,14 +569,17 @@ vmq_mgmt_delete_api_key_cmd() ->
             {typecast, fun(Key) ->
                 list_to_binary(Key)
             end}
-        ]}
+        ]},
+        {'scope', []}
     ],
     FlagSpecs = [],
     Callback = fun
-        (_, [{'key', Key}], _) ->
-            vmq_http_mgmt_api:delete_api_key(Key),
-            [clique_status:text("Done")];
-        (_, _, _) ->
+        Cb(_, [{'key', Key}, {'scope', Scope}], _) ->
+            Res = vmq_auth_apikey:delete_api_key(Key, Scope),
+            [clique_status:text([lists:flatten(io_lib:format("~p", [Res]))])];
+        Cb(_, [{'key', Key}], _) ->
+            Cb(undefined, [{'key', Key}, {scope, "mgmt"}], undefined);
+        Cb(_, _, _) ->
             Text = clique_status:text(api_delete_key_usage()),
             [clique_status:alert([Text])]
     end,
@@ -573,19 +587,58 @@ vmq_mgmt_delete_api_key_cmd() ->
 
 vmq_mgmt_list_api_keys_cmd() ->
     Cmd = ["vmq-admin", "api-key", "show"],
-    KeySpecs = [],
+    KeySpecs = [{'scope', []}],
     FlagSpecs = [],
-    Callback = fun(_, _, _) ->
-        Keys = vmq_http_mgmt_api:list_api_keys(),
-        KeyTable =
-            lists:foldl(
-                fun(Key, Acc) ->
-                    [[{'Key', Key}] | Acc]
+    Callback = fun
+        Cb(_, [{'scope', Scope}], _) ->
+            Keys =
+                case Scope == "all" of
+                    true -> vmq_auth_apikey:list_api_keys();
+                    _ -> vmq_auth_apikey:list_api_keys(Scope)
                 end,
-                [],
-                Keys
-            ),
-        [clique_status:table(KeyTable)]
+            KeyTable =
+                lists:foldl(
+                    fun({Key, KeyScope, Expires}, Acc) ->
+                        [
+                            [
+                                {'Key', Key},
+                                {'Scope', KeyScope},
+                                {'Expires (UTC)',
+                                    case Expires of
+                                        undefined ->
+                                            "never";
+                                        _ ->
+                                            {{Year, Month, Day}, {Hour, Minute, Second}} = calendar:gregorian_seconds_to_datetime(
+                                                Expires
+                                            ),
+                                            io_lib:format(
+                                                "~4..0w-~2..0w-~2..0w ~2..0w:~2..0w:~2..0w", [
+                                                    Year, Month, Day, Hour, Minute, Second
+                                                ]
+                                            )
+                                    end},
+                                {'has expired',
+                                    case Expires of
+                                        undefined ->
+                                            false;
+                                        _ ->
+                                            Expires <
+                                                calendar:datetime_to_gregorian_seconds(
+                                                    calendar:now_to_universal_time(
+                                                        erlang:timestamp()
+                                                    )
+                                                )
+                                    end}
+                            ]
+                            | Acc
+                        ]
+                    end,
+                    [],
+                    Keys
+                ),
+            [clique_status:table(KeyTable)];
+        Cb(_, _, _) ->
+            Cb(undefined, [{'scope', "all"}], undefined)
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
@@ -734,14 +787,20 @@ api_usage() ->
 
 api_delete_key_usage() ->
     [
-        "vmq-admin api-key delete key=<API Key>\n\n",
+        "vmq-admin api-key delete key=<API Key> scope=<SCOPE>\\n\n",
         "  Deletes an existing API Key.\n\n"
     ].
 
 api_add_key_usage() ->
     [
-        "vmq-admin api-key add key=<API Key>\n\n",
-        "  Adds an API Key.\n\n"
+        "vmq-admin api-key add key=<API Key> scope=<SCOPE> expires=<DATE>\n\n",
+        "  Adds an API Key. \n",
+        "  Scope and expires are optional. The scope allows to set an API key for different \n"
+        "  parts of VerneMQ e.g. management API (mgmt), status page (status), health endpoint \n"
+        "  (health) or metrics endpoint (metrics).\n",
+        "  expires allows to set an expiery date, the expected format is \"yyyy-mm-ddThh:mm:ss\" \n\n",
+        "  Example: \n",
+        "  vmq-admin api-key add key=abcd scope=mgmt expires=2023-02-15T08:00:00 \n\n"
     ].
 
 ensure_all_stopped(App) ->
