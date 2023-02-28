@@ -1,3 +1,4 @@
+- Update bootstrap 4.6.2 in status page and add favicon
 - vmq_passwd -c no longer overwrites existing files by default.  
 - Allow per-purpose HTTP endpoints (status, metrics, api) by assigning http_modules
 - Add support for TLS-PSK (Pre-Shared Key) for MQTTS (TLS) listeners
