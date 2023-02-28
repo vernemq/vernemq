@@ -36,6 +36,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #ifdef WIN32
 #  include <process.h>
 #	ifndef __cplusplus
@@ -112,9 +113,9 @@ void print_usage(void)
 	printf("vmq-passwd is a tool for managing password files for VerneMQ.\n\n");
 	printf("Usage: vmq-passwd [-c | -D] passwordfile username\n");
 	printf("       vmq-passwd -U passwordfile\n");
-	printf(" -c : create a new password file. This will overwrite existing files.\n");
-	printf(" -D : delete the username rather than adding/updating its password.\n");
-	printf(" -U : update a plain text password file to use hashed passwords.\n");
+	printf(" -c[f] : create a new password file. Use -cf to (f)orce overwriting existing files.\n");
+	printf(" -D    : delete the username rather than adding/updating its password.\n");
+	printf(" -U    : update a plain text password file to use hashed passwords.\n");
 }
 
 int output_new_password(FILE *fptr, const char *username, const char *password)
@@ -385,6 +386,8 @@ int main(int argc, char *argv[])
 	char *username = NULL;
 	bool create_new = false;
 	bool delete_user = false;
+	bool overwrite_existing = false;
+	bool file_exists = false;
 	FILE *fptr, *ftmp;
 	char password[MAX_BUFFER_LEN];
 	int rc;
@@ -401,7 +404,13 @@ int main(int argc, char *argv[])
 			create_new = true;
 		}else if(!strcmp(argv[1], "-D")){
 			delete_user = true;
-		}
+		}else if(!strcmp(argv[1], "-cf")){
+			create_new = true;
+			overwrite_existing = true;
+                }else{
+			print_usage();
+			return 1;
+                }
 		password_file = argv[2];
 		username = argv[3];
 	}else if(argc == 3){
@@ -418,6 +427,18 @@ int main(int argc, char *argv[])
 	}
 
 	if(create_new){
+		struct stat buffer;
+		file_exists = stat(password_file, &buffer) == 0;
+		if (!overwrite_existing) {
+           		struct stat buffer;
+           		if (file_exists) {
+				fprintf(stderr, "Error: File %s already exists. Please use -cf in case you want to overwrite the file\n", password_file);
+  		     		return 1;
+			}
+		}
+		if (file_exists) {
+			fprintf(stdout, "File already exists. PLEASE ABORT OPERATION IF YOU DO NOT INTENT TO OVERWRITE THE ALREADY EXISTING FILE!\n"); 
+		}
 		rc = get_password(password, 1024);
 		if(rc) return rc;
 		fptr = fopen(password_file, "wt");
