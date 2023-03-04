@@ -391,11 +391,13 @@ default_session_opts(Opts) ->
             {_, V1} -> [{proxy_protocol_use_cn_as_username, V1} | MaybeSSLDefaults]
         end,
     AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions, Opts, [3, 4]),
+    MaxConnectionLifeTime = proplists:get_value(max_connection_lifetime, Opts, 0),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
     BufferSizes = proplists:get_value(buffer_sizes, Opts, undefined),
     [
         {mountpoint, proplists:get_value(mountpoint, Opts, "")},
         {allowed_protocol_versions, AllowedProtocolVersions},
+        {max_connection_lifetime, MaxConnectionLifeTime},
         {allow_anonymous_override, AllowAnonymousOverride},
         {buffer_sizes, BufferSizes}
         | MaybeProxyDefaults

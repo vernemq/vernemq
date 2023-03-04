@@ -75,6 +75,8 @@ auth_on_register_test(_) ->
                       [peer(), ignored_subscriber_id(), username(), password(), true]),
     {ok, [{subscriber_id, {"override-mountpoint", <<"override-client-id">>}}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), changed_subscriber_id(), username(), password(), true]),
+    {ok, [{max_message_size, 1001}, {max_connection_lifetime, 4711}]} = vmq_plugin:all_till_ok(auth_on_register,
+        [peer(), change_modifiers_id(), username(), password(), true]),
     {ok, [{username, <<"override-username">>}]} = vmq_plugin:all_till_ok(auth_on_register,
                       [peer(), changed_username(), username(), password(), true]).
 
@@ -300,6 +302,9 @@ not_allowed_subscriber_id() ->
 
 changed_subscriber_id() ->
     {"", <<"changed-subscriber-id">>}.
+
+change_modifiers_id() ->
+    {"", <<"change-modifiers-id">>}.
 
 changed_username() ->
     {"", <<"changed-username">>}.

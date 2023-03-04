@@ -116,6 +116,18 @@ translate_listeners(Conf) ->
     {HTTP_SSLIPs, HTTP_SSLMaxConns} = lists:unzip(
         extract("listener.https", "max_connections", InfIntVal, Conf)
     ),
+    {TCPIPs, TCPMaxConnLifetime} = lists:unzip(
+        extract("listener.tcp", "max_connection_lifetime", InfIntVal, Conf)
+    ),
+    {SSLIPs, SSLMaxConnLifetime} = lists:unzip(
+        extract("listener.ssl", "max_connection_lifetime", InfIntVal, Conf)
+    ),
+    {WSIPs, WSMaxConnLifetime} = lists:unzip(
+        extract("listener.ws", "max_connection_lifetime", InfIntVal, Conf)
+    ),
+    {WS_SSLIPs, WS_SSLMaxConnLifetime} = lists:unzip(
+        extract("listener.wss", "max_connection_lifetime", InfIntVal, Conf)
+    ),
 
     {TCPIPs, TCPNrOfAcceptors} = lists:unzip(
         extract("listener.tcp", "nr_of_acceptors", InfIntVal, Conf)
@@ -321,6 +333,7 @@ translate_listeners(Conf) ->
         TCPIPs,
         MZip([
             TCPMaxConns,
+            TCPMaxConnLifetime,
             TCPNrOfAcceptors,
             TCPMountPoint,
             TCPProxyProto,
@@ -333,6 +346,7 @@ translate_listeners(Conf) ->
         WSIPs,
         MZip([
             WSMaxConns,
+            WSMaxConnLifetime,
             WSNrOfAcceptors,
             WSMountPoint,
             WSProxyProto,
@@ -369,6 +383,7 @@ translate_listeners(Conf) ->
         SSLIPs,
         MZip([
             SSLMaxConns,
+            SSLMaxConnLifetime,
             SSLNrOfAcceptors,
             SSLTLSHandshakeTimeout,
             SSLMountPoint,
@@ -395,6 +410,7 @@ translate_listeners(Conf) ->
         WS_SSLIPs,
         MZip([
             WS_SSLMaxConns,
+            WS_SSLMaxConnLifetime,
             WS_SSLNrOfAcceptors,
             WS_SSLTLSHandshakeTimeout,
             WS_SSLMountPoint,
@@ -484,7 +500,7 @@ extract_var(Prefix, Suffix, Conf) ->
     ].
 
 extract(Prefix, Suffix, Val, Conf) ->
-    Mappings = ["max_connections", "nr_of_acceptors", "mountpoint"],
+    Mappings = ["max_connections", "nr_of_acceptors", "mountpoint", "max_connection_lifetime"],
     ExcludeRootSuffixes =
         %% ssl listener specific
         [

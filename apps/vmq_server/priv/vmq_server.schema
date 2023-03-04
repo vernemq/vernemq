@@ -498,6 +498,67 @@
          false
  end}.
 
+%% @doc listener.max_connection_lifetime is an integer defining the maximum lifetime
+%% of MQTT connection in seconds. This option can be overridden on the protocol level by:
+%%
+%%     - listener.tcp.max_connection_lifetime
+%%     - listener.ssl.max_connection_lifetime
+%%     - listener.ws.max_connection_lifetime
+%%     - listener.wss.max_connection_lifetime
+%%
+%% or on the listener level by:
+%%
+%%     - listener.tcp.my_tcp_listener.max_connection_lifetime
+%%     - listener.ssl.my_ssl_listener.max_connection_lifetime
+%%     - listener.ws.my_ws_listener.max_connection_lifetime
+%%     - listener.wss.my_wss_listener.
+%%
+%% This is an implementation of MQTT security proposal:
+%% "Servers may close the Network Connection of Clients and require them to re-authenticate with new credentials."
+{mapping, "listener.max_connection_lifetime", "vmq_server.listeners", [
+                                                                  {default, 0},
+                                                                  {datatype, integer}
+                                                                 ]}.
+
+{mapping, "listener.tcp.max_connection_lifetime", "vmq_server.listeners", [
+                                                                      {datatype, [integer]},
+                                                                      hidden
+                                                                     ]}.
+
+{mapping, "listener.tcp.$name.max_connection_lifetime", "vmq_server.listeners", [
+                                                                            {datatype, [integer]},
+                                                                            hidden
+                                                                           ]}.
+
+{mapping, "listener.ssl.max_connection_lifetime", "vmq_server.listeners", [
+                                                                      {datatype, [integer]},
+                                                                      hidden
+                                                                     ]}.
+
+{mapping, "listener.ssl.$name.max_connection_lifetime", "vmq_server.listeners", [
+                                                                            {datatype, [integer]},
+                                                                            hidden
+                                                                           ]}.
+
+{mapping, "listener.ws.max_connection_lifetime", "vmq_server.listeners", [
+                                                                            {datatype, [integer]},
+                                                                            hidden
+                                                                           ]}.
+
+{mapping, "listener.ws.$name.max_connection_lifetime", "vmq_server.listeners", [
+                                                                                  {datatype, [integer]},
+                                                                                  hidden
+                                                                                 ]}.
+{mapping, "listener.wss.max_connection_lifetime", "vmq_server.listeners", [
+                                                                            {datatype, [integer]},
+                                                                            hidden
+                                                                           ]}.
+
+{mapping, "listener.wss.$name.max_connection_lifetime", "vmq_server.listeners", [
+                                                                                  {datatype, [integer]},
+                                                                                  hidden
+                                                                                 ]}.
+
 %% @doc listener.max_connections is an integer or 'infinity' defining
 %% the maximum number of concurrent connections. This option can be overridden
 %% on the protocol level by:
