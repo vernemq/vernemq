@@ -16,7 +16,7 @@
 -behaviour(vmq_http_config).
 -include("vmq_metrics.hrl").
 
--export([routes/0]).
+-export([routes/0, is_authorized/2]).
 -export([node_status/0]).
 -export([
     init/2,
@@ -47,6 +47,14 @@ content_types_provided(Req, State) ->
         Req,
         State
     }.
+
+is_authorized(Req, State) ->
+    AuthMode = vmq_http_config:auth_mode(Req, vmq_status_http),
+    case AuthMode of
+        "apikey" -> vmq_auth_apikey:is_authorized(Req, State, "status");
+        "noauth" -> {true, Req, State};
+        _ -> {error, invalid_authentication_scheme}
+    end.
 
 terminate(_Reason, _Req, _State) ->
     ok.
