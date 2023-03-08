@@ -220,7 +220,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: always() # always run even if the previous step fails
         with:
-          name: junit-test-results
+          name: junit-test-results-${{ runner.os }}-${{ matrix.otp }}
           path: "**/_build/test/logs/*/junit_report.xml"
           retention-days: 1
       - name: Release Smoke tests
@@ -252,24 +252,13 @@ jobs:
           # Stop the server
           ./_build/default/rel/vernemq/bin/vernemq stop
 
-  publish-test-results:
-    name: Publish Tests Results
-    needs: tests
-    runs-on: ubuntu-20.04
-    permissions:
-      checks: write
-    if: always()
-
+  # Publish an artifact for the event; used by publish-test-results.yaml
+  event_file:
+    name: "Event File"
+    runs-on: ubuntu-latest
     steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v3
+      - name: Upload
+        uses: actions/upload-artifact@v3
         with:
-          path: junit-test-results
-
-      - name: Publish CT Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        with:
-          check_name: CT Test Results
-          # Do not comment on PRs
-          comment_mode: off
-          junit_files: "**/_build/test/logs/*/junit_report.xml"
+          name: Event File
+          path: ${{ github.event_path }}
