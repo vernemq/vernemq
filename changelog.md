@@ -1,6 +1,14 @@
+- Fix issue [#2078](https://github.com/vernemq/vernemq/issues/2008) where the default MQTT listener fails to create in `vernemq.conf`.
+- Fix configuration problems when using Unix Domain Sockets.
+- Add support for compilation in ARM architectures (Tested on M1 Mac and Raspberry PI). Now we can use the `make rel` target to build a VerneMQ release for RaspberryPI.
+- CI Improvements:
+  - Test on the last 3 major OTP versions, following the Erlang/OTP support conventions.
+  - Test on Both Linux and OSX for each version.
+  - Add more extensive smoke test by publishing/subscribing to messages.
+- Add compatibility with [Erlang/OTP 25](https://www.erlang.org/blog/my-otp-25-highlights/).
 - Allow protection of all HTTP(s) endpoints with API keys (e.g. metrics)
 - Update bootstrap 4.6.2 in status page and add favicon
-- vmq_passwd -c no longer overwrites existing files by default.  
+- vmq_passwd -c no longer overwrites existing files by default.
 - Allow per-purpose HTTP endpoints (status, metrics, api) by assigning http_modules
 - Add support for TLS-PSK (Pre-Shared Key) for MQTTS (TLS) listeners
 - Fix regression in handling of the Proxy protocol for WebSockets.
