@@ -469,7 +469,7 @@ extract_var(Prefix, Suffix, Conf) ->
     NameSubPrefix = lists:flatten([Prefix, ".$name"]),
     [
         begin
-            Addr = parse_addr(StrAddr),
+            {ok, Addr} = parse_addr(StrAddr),
             _ = lists:flatten([Prefix, ".", Name, ".", Suffix]),
             AddrPort = {Addr, Port},
             {AddrPort, {list_to_atom(Suffix), Name}}
