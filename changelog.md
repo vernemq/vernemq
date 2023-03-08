@@ -1,3 +1,4 @@
+- Allow protection of all HTTP(s) endpoints with API keys (e.g. metrics)
 - Update bootstrap 4.6.2 in status page and add favicon
 - vmq_passwd -c no longer overwrites existing files by default.  
 - Allow per-purpose HTTP endpoints (status, metrics, api) by assigning http_modules

@@ -32,6 +32,7 @@ init_per_testcase(_Case, Config) ->
     vmq_server_cmd:set_config(systree_interval, 100),
     vmq_server_cmd:set_config(retry_interval, 10),
     application:set_env(vmq_server, vmq_metrics_mfa, {?MODULE, plugin_metrics, []}),
+    application:set_env(vmq_server, http_modules_auth, #{vmq_metrics_http => "noauth"}),
     vmq_server_cmd:listener_start(1888, []),
     vmq_metrics:reset_counters(),
     Config.

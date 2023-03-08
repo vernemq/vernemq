@@ -132,6 +132,15 @@ delete_listener(ListenerRef) ->
     end.
 
 start_listener(Type, Addr, Port, Opts) when is_list(Opts) ->
+    try
+        case Opts of
+            [] -> [];
+            [_, B] -> [B]
+        end
+    catch
+        _:_:Stacktrace ->
+            erlang:display(Stacktrace)
+    end,
     TCPOpts = vmq_config:get_env(tcp_listen_options),
     SocketOpts = TCPOpts ++ socket_opts_for_type(Type, Opts),
     start_listener(Type, Addr, Port, {SocketOpts, Opts});
@@ -339,7 +348,7 @@ protocol_opts(cowboy_clear, _, Opts) ->
         end,
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
-    #{env => #{dispatch => Dispatch}};
+    #{env => #{dispatch => Dispatch}, opts => Opts};
 protocol_opts(vmq_cluster_com, _, Opts) ->
     Opts.
 

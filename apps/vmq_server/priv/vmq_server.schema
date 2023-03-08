@@ -233,7 +233,7 @@
 %% transmitted simultaneously. This includes messages currently going through handshakes
 %% and messages that are being retried. Defaults to 20. Set to 0 for no maximum. If set
 %% to 1, this will guarantee in-order delivery of messages.
-%% Note: for MQTT v5, use receive_max_client/receive_max_broker to implement 
+%% Note: for MQTT v5, use receive_max_client/receive_max_broker to implement
 %% similar behaviour.
 {mapping, "max_inflight_messages", "vmq_server.max_inflight_messages", [
                                                                         {default, 20},
@@ -348,6 +348,7 @@
                                                       {datatype, string},
                                                       hidden
                                                      ]}.
+
 {translation, "vmq_server.http_modules",
  fun(Conf) ->
          S = cuttlefish:conf_get("http_modules", Conf),
@@ -355,6 +356,62 @@
          {ok, Term} = erl_parse:parse_term(T),
          Term
  end}.
+
+%% @doc specifies the minimal length of an API key (default: 0)
+{mapping, "min_apikey_length", "vmq_server.min_apikey_length", [{datatype, integer}, {default, 0},
+                                                                               hidden
+                                                                                ]}.
+%% @doc specifies the max duration of an API key before it expires (default: undefined)
+{mapping, "max_apikey_expiry_days", "vmq_server.max_apikey_expiry_days", [{datatype, integer}, {default, undefined},
+                                                                               hidden
+                                                                                ]}.
+
+%% @doc http_module.$module.auth.mode lets you select the authentication method for accessing the http_module.
+%% You can set this option global, or an a listener level.
+%%
+%% - listener.http.$name.http_module.$module.auth.mode
+%% - listener.https.$name.http_module.$module.auth.mode
+%%
+%% The default for vmq_http_mgmt_api is "apikey", for all others it is noauth.
+{mapping, "http_module.$name.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "noauth"},
+                                                                               hidden
+                                                                                ]}.
+{mapping, "http_module.vmq_http_mgmt_api.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "apikey"},
+                                                                               hidden
+                                                                                ]}.
+{mapping, "listener.http.$name.http_module.$module.auth.mode", "vmq_server.http_listener_modules_auth", [{datatype, string},
+                                                                               hidden
+                                                                                ]}.
+{mapping, "listener.https.$name.http_module.$module.auth.mode", "vmq_server.http_listener_modules_auth", [{datatype, string},
+                                                                               hidden
+                                                                                ]}.
+{translation,
+  "vmq_server.http_modules_auth",
+  fun(Conf) ->
+     HTTPModules = cuttlefish_variable:filter_by_prefix("http_module",Conf),
+ 	 HTTPModulesAsAtom = lists:map(fun(Element) -> list_to_atom(lists:nth(2,element(1, Element))) end, HTTPModules),
+     KnownHttpModules = [vmq_metrics_http,vmq_http_mgmt_api, vmq_status_http, vmq_health_http],%
+	 UniqueModules = lists:usort(HTTPModulesAsAtom ++ KnownHttpModules),
+     Map = lists:map(fun(Atom) -> String = "http_module."++atom_to_list(Atom)++".auth.mode", #{Atom => cuttlefish:conf_get(String, Conf, "noauth")} end, UniqueModules),
+     Ret = maps:from_list(lists:foldl(fun(Elem, Acc) -> maps:to_list(Elem) ++ Acc end, [], Map)),
+	 Ret
+	 end
+}.
+
+{translation,
+  "vmq_server.http_listener_modules_auth",
+  fun(Conf) ->
+     Candidates = cuttlefish_variable:filter_by_prefix("listener.http.",Conf) ++ cuttlefish_variable:filter_by_prefix("listener.https.",Conf),
+	 HTTPModuleListers = lists:filter(fun(Elem) -> case element(1,Elem) of X when length(X)>5 -> lists:nth(4,X) == "http_module"; _ -> false end end, Candidates),
+     MapListenerModule = lists:map(fun(Elem) -> Elem1 = element(1, Elem), {list_to_atom(lists:nth(2,Elem1)), list_to_atom(lists:nth(3,Elem1)), list_to_atom(lists:nth(5,Elem1))} end, HTTPModuleListers),
+     MapWithValue = lists:map(fun(AtomTuple) -> String = "listener."++atom_to_list(element(1,AtomTuple))++"."++atom_to_list(element(2,AtomTuple))++".http_module."++atom_to_list(element(3,AtomTuple))++".auth.mode", #{AtomTuple => cuttlefish:conf_get(String, Conf)} end, MapListenerModule),
+     Ret = maps:from_list(lists:foldl(fun(Elem, Acc) -> maps:to_list(Elem) ++ Acc end, [], MapWithValue)),
+     Ret
+	 end
+}.
+
+
+
 
 %% @doc listener.tcp.buffer_sizes is an list of three integers
 %% (sndbuf,recbuf,buffer) specifying respectively the kernel TCP send
@@ -971,7 +1028,6 @@
                                                           {datatype, ip},
                                                           {include_default, "default"}
                                                          ]}.
-
 {mapping, "listener.http.$name.config_mod", "vmq_server.listeners", [
                                                                      {default, vmq_http_config},
                                                                      {datatype, atom},
@@ -984,19 +1040,19 @@
                                                                      hidden
                                                                     ]}.
 
-%% @doc specifies the modules to be enabled by the http(s) listener 
+%% @doc specifies the modules to be enabled by the http(s) listener
 {mapping, "listener.http.$name.http_modules", "vmq_server.listeners", [
                                                       {default, "[]"},
                                                       {datatype, string},
                                                       hidden
                                                      ]}.
 
+
 {mapping, "listener.https.$name", "vmq_server.listeners", [
                                                           {default, { "{{http_default_ip}}", {{http_default_port}} }},
                                                           {datatype, ip},
                                                           hidden
                                                          ]}.
-
 {mapping, "listener.https.$name.config_mod", "vmq_server.listeners", [
                                                                      {default, vmq_http_config},
                                                                      {datatype, atom},
@@ -1008,7 +1064,7 @@
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}.
-%% @doc specifies the modules to be enabled by the http(s) listener 
+%% @doc specifies the modules to be enabled by the http(s) listener
 {mapping, "listener.https.$name.http_modules", "vmq_server.listeners", [
                                                       {default, "[]"},
                                                       {datatype, string},
@@ -1595,7 +1651,7 @@
 %% pre-shared keys (PSK).
 %%
 %% The option can be specified either for all SSL listeners or for
-%% a specific listener.  
+%% a specific listener.
 %%
 %%     - listener.ssl.psk_support
 %%
@@ -1632,12 +1688,12 @@
                                                                     ]}.
 
 
-%% @doc If PSK support is enabled, the pre-shared keys must be provided as key value pairs 
+%% @doc If PSK support is enabled, the pre-shared keys must be provided as key value pairs
 %% seperated by a seperator (by default ":"), e.g.
 %%
 %% mypskidentity:mypskkey
 %%
-%% The key is a string (not hex-encoded). The psk file is used for all listerners.   
+%% The key is a string (not hex-encoded). The psk file is used for all listerners.
 {mapping, "listener.ssl.pskfile", "vmq_server.listeners", [
                                                            {default, "{{platform_etc_dir}}/vmq.psk"},
                                                            {datatype, file}

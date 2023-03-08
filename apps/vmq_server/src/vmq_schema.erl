@@ -215,6 +215,11 @@ translate_listeners(Conf) ->
     {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
     {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
     {HTTPIPs, HTTPModules} = lists:unzip(extract("listener.http", "http_modules", StrVal, Conf)),
+    {HTTPIPs, HTTPListenerName} = lists:unzip(extract_var("listener.http", "listener_name", Conf)),
+
+    {HTTP_SSLIPs, HTTP_SSLListenerName} = lists:unzip(
+        extract_var("listener.https", "listener_name", Conf)
+    ),
     {HTTP_SSLIPs, HTTP_SSLConfigMod} = lists:unzip(
         extract("listener.https", "config_mod", AtomVal, Conf)
     ),
@@ -355,6 +360,7 @@ translate_listeners(Conf) ->
             HTTPConfigMod,
             HTTPConfigFun,
             HTTPModules,
+            HTTPListenerName,
             HTTPProxyProto
         ])
     ),
@@ -441,7 +447,8 @@ translate_listeners(Conf) ->
             HTTP_SSLVersions,
             HTTP_SSLConfigMod,
             HTTP_SSLConfigFun,
-            HTTP_SSLHTTPModules
+            HTTP_SSLHTTPModules,
+            HTTP_SSLListenerName
         ])
     ),
     DropUndef = fun(L) ->
@@ -456,6 +463,24 @@ translate_listeners(Conf) ->
         {vmqs, DropUndef(VMQS)},
         {http, DropUndef(HTTP)},
         {https, DropUndef(HTTPS)}
+    ].
+
+extract_var(Prefix, Suffix, Conf) ->
+    NameSubPrefix = lists:flatten([Prefix, ".$name"]),
+    [
+        begin
+            Addr = parse_addr(StrAddr),
+            _ = lists:flatten([Prefix, ".", Name, ".", Suffix]),
+            AddrPort = {Addr, Port},
+            {AddrPort, {list_to_atom(Suffix), Name}}
+        end
+     || {[_, _, Name], {StrAddr, Port}} <- lists:filter(
+            fun({K, _V}) ->
+                cuttlefish_variable:is_fuzzy_match(K, string:tokens(NameSubPrefix, "."))
+            end,
+            Conf
+        ),
+        not lists:member(Name, [])
     ].
 
 extract(Prefix, Suffix, Val, Conf) ->
