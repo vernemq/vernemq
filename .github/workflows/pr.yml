@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          sudo apt-get install -y cmake
+          sudo apt-get install -y libsnappy-dev
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Cache PLTs
@@ -100,7 +100,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          sudo apt-get install -y cmake
+          sudo apt-get install -y libsnappy-dev
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Install Erlang/OTP
@@ -169,7 +169,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'ubuntu') }}
         run: |
           sudo apt-get -qq update
-          sudo apt-get -qq install cmake mosquitto-clients pcregrep
+          sudo apt-get -qq install libsnappy-dev mosquitto-clients pcregrep
       - name: Configure Homebrew cache
         if: ${{ startsWith(matrix.os, 'macos') }}
         uses: actions/cache@v3
@@ -182,7 +182,7 @@ jobs:
         if: ${{ startsWith(matrix.os, 'macos') }}
         run: |
           export majorversion="$(cut -d '.' -f 1 <<< "${{ matrix.otp }}")"
-          brew install coreutils erlang@$majorversion openssl mosquitto pcre
+          brew install coreutils snappy erlang@$majorversion openssl mosquitto pcre
           echo "/usr/local/opt/erlang@$majorversion/bin" >> $GITHUB_PATH
       - name: Checkout code
         uses: actions/checkout@v3
