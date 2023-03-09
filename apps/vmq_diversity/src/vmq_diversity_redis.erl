@@ -226,6 +226,13 @@ ensure_pool(As, St) ->
                             proplists:get_value(password, DefaultConf)
                         )
                     ),
+                    User = vmq_diversity_utils:str(
+                        maps:get(
+                            <<"user">>,
+                            Options,
+                            proplists:get_value(user, DefaultConf)
+                        )
+                    ),
                     Host = vmq_diversity_utils:str(
                         maps:get(
                             <<"host">>,
@@ -251,6 +258,7 @@ ensure_pool(As, St) ->
                         [
                             {size, Size},
                             {password, Password},
+                            {user, User},
                             {host, Host},
                             {port, Port},
                             {database, Database}
