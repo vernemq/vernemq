@@ -13,10 +13,6 @@ compile:
 	$(REBAR) $(PROFILE) compile
 
 
-rpi32: PROFILE = as rpi32
-rpi32: rel
-
-
 ##
 ## Release targets
 ##
@@ -39,5 +35,5 @@ dev% :
 	cat vars/$@_vars.config > vars.generated
 	(./rebar3 as $@ release)
 
-.PHONY: all compile rpi32 rel
+.PHONY: all compile rel
 export OVERLAY_VARS

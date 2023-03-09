@@ -116,7 +116,7 @@ get_old_actor_from_state(Peer, State) ->
 actors({_Clock, Entries, _Deferred}) when is_list(Entries) ->
     [{K, Dots} || {K, Dots} <- Entries];
 actors({_Clock, Entries, _Deferred}) ->
-    lists:sort([Actor || {K, [{[{actor, Actor}], _}]} <- dict:to_list(Entries)]).
+    lists:sort([Actor || {_K, [{[{actor, Actor}], _}]} <- dict:to_list(Entries)]).
 
 %% @doc update cluster_state
 update_state(State) ->

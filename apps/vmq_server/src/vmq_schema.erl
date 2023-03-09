@@ -469,7 +469,7 @@ extract_var(Prefix, Suffix, Conf) ->
     NameSubPrefix = lists:flatten([Prefix, ".$name"]),
     [
         begin
-            Addr = parse_addr(StrAddr),
+            {ok, Addr} = parse_addr(StrAddr),
             _ = lists:flatten([Prefix, ".", Name, ".", Suffix]),
             AddrPort = {Addr, Port},
             {AddrPort, {list_to_atom(Suffix), Name}}
@@ -532,7 +532,7 @@ extract(Prefix, Suffix, Val, Conf) ->
     NameSubPrefix = lists:flatten([Prefix, ".$name"]),
     [
         begin
-            Addr = parse_addr(StrAddr),
+            {ok, Addr} = parse_addr(StrAddr),
             Prefix4 = lists:flatten([Prefix, ".", Name, ".", Suffix]),
             V1 = Val(Name, RootDefault, undefined),
             V2 = Val(Name, RootDefault, V1),
@@ -551,12 +551,12 @@ extract(Prefix, Suffix, Val, Conf) ->
     ].
 
 parse_addr(StrA) ->
-    case StrA of
-        {local, SocketFile} ->
-            {local, SocketFile};
+    case string:split(StrA, ":") of
+        ["local", DomainSocket] ->
+            {ok, {local, DomainSocket}};
         _ ->
             case inet:parse_address(StrA) of
-                {ok, Ip} -> Ip;
+                {ok, Ip} -> {ok, Ip};
                 {error, einval} -> {error, {invalid_args, [{address, StrA}]}}
             end
     end.

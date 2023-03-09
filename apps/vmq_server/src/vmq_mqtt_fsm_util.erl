@@ -124,7 +124,9 @@ peertoa({IP, Port}) ->
         {_, _, _, _} ->
             io_lib:format("~s:~p", [inet:ntoa(IP), Port]);
         {_, _, _, _, _, _, _, _} ->
-            io_lib:format("[~s]:~p", [inet:ntoa(IP), Port])
+            io_lib:format("[~s]:~p", [inet:ntoa(IP), Port]);
+        local ->
+            "local"
     end.
 
 -spec terminate_reason(any()) -> any().

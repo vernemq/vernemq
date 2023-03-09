@@ -574,7 +574,7 @@ code_change(_, _, State) ->
 %% INTERNAL
 set_peers(
     NewPeers,
-    #state{id = Id, config = Config, dotkeymap = DKM, nodeclock = LocalClock0, watermark = WM0} =
+    #state{id = Id, config = Config, dotkeymap = _DKM, nodeclock = LocalClock0, watermark = WM0} =
         State
 ) ->
     OldPeers = swc_node:ids(LocalClock0),
@@ -644,7 +644,7 @@ random_peer(Peers, FilterFun) ->
             {ok, lists:nth(rand:uniform(length(FilteredPeers)), FilteredPeers)}
     end.
 
-fix_watermark({W, R} = Watermark, Peers) ->
+fix_watermark({_W, R} = Watermark, Peers) ->
     Watermark0 =
         lists:foldl(
             fun(Peer, WMAcc0) ->

@@ -9,7 +9,7 @@
 	</a>
 <a href="https://github.com/vernemq/vernemq/releases/latest">
 <img alt="GitHub Release Date" src="https://img.shields.io/github/release-date/vernemq/vernemq"></a>
-<a href="https://github.com/vernemq/vernemq/commits/master">
+<a href="https://github.com/vernemq/vernemq/commits/main">
 <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/vernemq/vernemq"></a>
 <a href="https://twitter.com/vernemq">
 		<img
@@ -27,7 +27,7 @@ New: VerneMQ can now use Github Discussions! To join the discussion on features 
 
 Make sure to visit the new [VerneMQ Forum](https://erlangforums.com/c/erlang-platforms/vernemq-forum/82) hosted on Erlang Forums. We're happy to discuss any of your questions and ideas around VerneMQ on the Forum too!
 
-- - - 
+- - -
 
 VerneMQ is known to be deployed and used in: :us: :canada: :brazil: :mexico: :de: :fr: :switzerland: :denmark: :netherlands: :belgium: :it: :es: :romania: :portugal: :ru: :lithuania: :czech_republic: :slovakia: :austria: :poland: :norway: :sweden: :india: :jp: :indonesia: :vietnam: :kr: :south_africa: :kenya: :serbia: :croatia: :greece: :uk: :ukraine: :australia: :new_zealand: :cn: :egypt: :finland: :hungary: :israel: :singapore: :lebanon: :philippines: :pakistan: :malaysia: :tr: :taiwan: :iran: :cloud:
 
@@ -129,7 +129,7 @@ simple as:
 ```shell
 $ cd $VERNEMQ
 $ make rel
-```    
+```
 
 ### Starting VerneMQ
 
@@ -147,9 +147,9 @@ If VerneMQ is running it is possible to check the status on
 
 <img src="https://i.imgur.com/XajYjtb.png" width="75%">
 
-Note that the `$VERNEMQ/_build/default/rel/vernemq` directory is a complete, 
+Note that the `$VERNEMQ/_build/default/rel/vernemq` directory is a complete,
 self-contained instance of VerneMQ and Erlang. It is strongly suggested that you
-move this directory outside the source tree if you plan to run a production 
+move this directory outside the source tree if you plan to run a production
 instance.
 
 ### Important links

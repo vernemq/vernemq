@@ -57,9 +57,10 @@ groups() ->
          retain_wildcard_test,
          publish_empty_retained_msg_test,
          retain_compat_pre_test],
+    GroupOpts = [shuffle, parallel],
     [
-     {mqttv4, [shuffle, parallel], Tests},
-     {mqttv5, [shuffle, parallel],
+     {mqttv4, GroupOpts, Tests},
+     {mqttv5, GroupOpts,
       [
        retain_with_properties,
        retain_with_message_expiry,
