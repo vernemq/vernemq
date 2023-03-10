@@ -258,7 +258,7 @@ ensure_pool(As, St) ->
                         [
                             {size, Size},
                             {password, Password},
-                            {user, User},
+                            {username, User},
                             {host, Host},
                             {port, Port},
                             {database, Database}
