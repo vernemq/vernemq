@@ -34,8 +34,7 @@ init(Req, Opts) ->
                 ]}
         end,
     Headers = #{<<"content-type">> => <<"application/json">>},
-    {ok, JsonResp} = vmq_json:encode(Payload),
-    cowboy_req:reply(Code, Headers, JsonResp, Req),
+    cowboy_req:reply(Code, Headers, vmq_json:encode(Payload), Req),
     {ok, Req, Opts}.
 
 is_authorized(Req, State) ->

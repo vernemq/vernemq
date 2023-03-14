@@ -17,10 +17,10 @@ decode(Data) ->
 decode(Data, Opts) ->
     thoas:decode(Data, Opts).
 
--spec encode(json_term()) -> iodata().
+-spec encode(thoas:input_term()) -> iodata().
 encode(Term) ->
     encode(Term, ?DEFAULT_ENCODE_OPTS).
 
--spec encode(json_term(), map()) -> iodata().
+-spec encode(thoas:input_term(), map()) -> iodata().
 encode(Term, Opts) ->
     thoas:encode_to_iodata(Term, Opts).
