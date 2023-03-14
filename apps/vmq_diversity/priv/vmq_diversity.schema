@@ -364,6 +364,11 @@
   {default, ""},
   {commented, ""}]}.
 
+{mapping, "vmq_diversity.redis.user", "vmq_diversity.db_config.redis.user",
+ [{datatype, string},
+  {default, ""},
+  {commented, ""}]}.
+
 {mapping, "vmq_diversity.redis.database", "vmq_diversity.db_config.redis.database",
  [{datatype, integer},
   {default, 0},
