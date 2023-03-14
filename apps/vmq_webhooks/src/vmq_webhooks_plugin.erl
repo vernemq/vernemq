@@ -866,15 +866,15 @@ call_endpoint(Endpoint, EOpts, Hook, Args0) ->
             {ok, 200, RespHeaders, CRef} ->
                 case hackney:body(CRef) of
                     {ok, Body} ->
-                        case vmq_json:is_json(Body) of
-                            true ->
+                        case vmq_json:decode(Body) of
+                            {ok, JsonResponse} ->
                                 handle_response(
                                     Hook,
                                     parse_headers(RespHeaders),
-                                    vmq_json:decode(Body, [{labels, binary}, {return_maps, false}]),
+                                    JsonResponse,
                                     EOpts
                                 );
-                            false ->
+                            {error, _Reason} ->
                                 {error, received_payload_not_json}
                         end;
                     {error, _} = E ->

@@ -31,7 +31,7 @@ table() ->
 
 decode([Bin | _], St) when is_binary(Bin) ->
     try vmq_json:decode(Bin) of
-        Result0 ->
+        {ok, Result0} ->
             {Result1, NewSt} = luerl:encode(json_to_lua(Result0), St),
             {[Result1], NewSt}
     catch

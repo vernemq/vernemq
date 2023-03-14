@@ -57,9 +57,11 @@
 write(Status) ->
     case lists:reverse(prepare(Status)) of
         [PreparedOutput] ->
-            {vmq_json:encode(PreparedOutput), []};
+            {ok, JsonOutput} = vmq_json:encode(PreparedOutput),
+            {JsonOutput, []};
         PreparedOutput ->
-            {[vmq_json:encode(PreparedOutput), "\n"], []}
+            {ok, JsonOutput} = vmq_json:encode(PreparedOutput),
+            {[JsonOutput, "\n"], []}
     end.
 
 %% @doc Returns status data that's been prepared for conversion to JSON.

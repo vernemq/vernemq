@@ -38,5 +38,5 @@ simple_healthcheck_test(_) ->
                                          {config_fun, routes}]),
     application:ensure_all_started(inets),
     {ok, {_Status, _Headers, Body}} = httpc:request("http://localhost:8888/health"),
-    JsonResponse = vmq_json:decode(list_to_binary(Body), [return_maps, {labels, binary}]),
+    {ok, JsonResponse} = vmq_json:decode(list_to_binary(Body)),
     <<"OK">> = maps:get(<<"status">>, JsonResponse).

@@ -13,7 +13,7 @@
         lager,
         clique,
         poolboy,
-        jsx,
+        thoas,
         hackney
     ]},
     {env, [
