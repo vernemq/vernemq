@@ -9,7 +9,7 @@
 
 -type json_term() :: thoas:json_term().
 
--spec decode(iodata()) -> {ok, json_term()} | {any, any()}.
+-spec decode(iodata()) -> {ok, json_term()} | {error, any()}.
 decode(Data) ->
     decode(Data, ?DEFAULT_DECODE_OPTS).
 
