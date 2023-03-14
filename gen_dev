@@ -14,13 +14,17 @@ NUMBER=${NAME##dev}
 BASE=$((10000 + 50 * $NUMBER))
 MQTTPORT=$(($BASE + 3))
 MQTTWSPORT=$(($BASE + 4))
+MQTTSPORT=$(($BASE + 5))
 CLUSTERPORT=$(($BASE + 10))
 METRICSPORT=$(($BASE + 20))
+HTTPSPORT=$(($BASE + 21))
 
 
 echo "Generating $NAME - node='$NODE' mqttport=$MQTTPORT mqttwsport=$MQTTWSPORT"
 sed -e "s/@NODE@/$NODE/" \
     -e "s/@MQTTPORT@/$MQTTPORT/" \
     -e "s/@MQTTWSPORT@/$MQTTWSPORT/" \
+    -e "s/@MQTTSPORT@/$MQTTSPORT/" \
     -e "s/@CLUSTERPORT@/$CLUSTERPORT/" \
+    -e "s/@HTTPSPORT@/$HTTPSPORT/" \
     -e "s/@METRICSPORT@/$METRICSPORT/" < $TEMPLATE > $VARFILE
