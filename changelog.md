@@ -1,3 +1,4 @@
+- Make Redis username configurable in vmq_diversity.
 - Fix issue [#2078](https://github.com/vernemq/vernemq/issues/2008) where the default MQTT listener fails to create in `vernemq.conf`.
 - Fix configuration problems when using Unix Domain Sockets.
 - Add support for compilation in ARM architectures (Tested on M1 Mac and Raspberry PI). Now we can use the `make rel` target to build a VerneMQ release for RaspberryPI.
