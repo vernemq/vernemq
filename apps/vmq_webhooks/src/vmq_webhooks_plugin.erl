@@ -965,26 +965,26 @@ handle_response(Hook, Decoded, EOpts) when
     Hook =:= on_deliver
 ->
     %% this clause handles all results with modifiers in the return value.
-    case proplists:get_value(<<"result">>, Decoded) of
+    case maps:get(<<"result">>, Decoded) of
         <<"ok">> ->
-            normalize_modifiers(Hook, proplists:get_value(<<"modifiers">>, Decoded, []), EOpts);
+            normalize_modifiers(Hook, maps:get(<<"modifiers">>, Decoded, []), EOpts);
         <<"next">> ->
             next;
         Result when is_list(Result) ->
-            {decoded_error, proplists:get_value(<<"error">>, Result, unknown_error)}
+            {decoded_error, maps:get(<<"error">>, Result, unknown_error)}
     end;
 handle_response(Hook, Decoded, EOpts) when
     Hook =:= auth_on_subscribe; Hook =:= on_unsubscribe
 ->
     %% this clause handles the cases where the results are not
     %% returned as modifiers.
-    case proplists:get_value(<<"result">>, Decoded) of
+    case maps:get(<<"result">>, Decoded) of
         <<"ok">> ->
-            normalize_modifiers(Hook, proplists:get_value(<<"topics">>, Decoded, []), EOpts);
+            normalize_modifiers(Hook, maps:get(<<"topics">>, Decoded, []), EOpts);
         <<"next">> ->
             next;
         Result when is_list(Result) ->
-            {decoded_error, proplists:get_value(<<"error">>, Result, unknown_error)}
+            {decoded_error, maps:get(<<"error">>, Result, unknown_error)}
     end;
 handle_response(_Hook, _Decoded, _) ->
     next.
