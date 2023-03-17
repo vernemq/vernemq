@@ -1,3 +1,4 @@
+- Improvew HTTP/2 support for HTTPS listeners (#2117)
 - Make Redis username configurable in vmq_diversity.
 - Enable v5 protocol for WS and SSL listeners as a default.
 - Fix dev_n builds (make dev0 dev1...).
