@@ -58,8 +58,46 @@ start_link() ->
 -spec fold(subscriber_id(), topic(), fun(), any()) -> any().
 fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
     MatchedTopics = [Topic | match(MP, Topic)],
-    SubscribersList = fetchSubscribers(MatchedTopics, MP),
-    fold_(SubscriberId, SubscribersList, FoldFun, Acc).
+    case fold_(MP, MatchedTopics, []) of
+        [] ->
+            SubscribersList = fetchSubscribers(MatchedTopics, MP),
+            fold__(SubscriberId, SubscribersList, FoldFun, Acc);
+        LocalSharedSubsList -> new_fold__(SubscriberId, LocalSharedSubsList, FoldFun, Acc)
+    end.
+
+fold_(_MP, [], Acc) -> Acc;
+fold_(MP, [Topic | Rest], Acc) ->
+    Key = {MP, Topic},
+    case ets:select(vmq_shared_subs_local, [{{{Key, '$1'}}, [], ['$$']}]) of
+        [] -> fold_(MP, Rest, Acc);
+        SharedSubsWithInfo -> lists:flatten(SharedSubsWithInfo) %% TODO: Traverse rest of the topics for routing if matched
+    end.
+
+fetchSubscribers(Topics, MP) ->
+    UnwordedTopics = [vmq_topic:unword(T) || T <- Topics],
+    {ok, SubscribersList} = vmq_redis:query(redis_client, [?FCALL,
+        ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
+        0,
+        MP,
+        length(UnwordedTopics) | UnwordedTopics], ?FCALL, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS),
+    SubscribersList.
+
+fold__(_, [], _, Acc) -> Acc;
+fold__({MP, _} = SubscriberId, [ SubscriberInfoList | SubscribersList], FoldFun, Acc) ->
+    case SubscriberInfoList of
+        [NodeBinary, ClientId, QoSBinary] ->
+            SubscriberInfo = {binary_to_atom(NodeBinary), {MP, ClientId}, binary_to_term(QoSBinary)},
+            fold__(SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc));
+        [NodeBinary, Group, ClientId, QoSBinary] ->
+            SubscriberInfo = {binary_to_atom(NodeBinary), Group, {MP, ClientId}, binary_to_term(QoSBinary)},
+            fold__(SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc));
+        _ -> fold__(SubscriberId, SubscribersList, FoldFun, Acc)
+    end.
+
+new_fold__(_, [], _, Acc) -> Acc;
+new_fold__({MP, _} = SubscriberId, [{ClientId, QoS} | SubscribersList], FoldFun, Acc) ->
+            SubscriberInfo = {node(), 'custom_logic_group', {MP, ClientId}, QoS},
+            new_fold__(SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc)).
 
 add_complex_topics(Topics) ->
     Nodes = vmq_cluster:nodes(),
@@ -158,6 +196,7 @@ init([]) ->
         named_table,
         {read_concurrency, true}
     ],
+    _ = ets:new(vmq_shared_subs_local, DefaultETSOpts),
     _ = ets:new(vmq_redis_trie, [{keypos, 2} | DefaultETSOpts]),
     _ = ets:new(vmq_redis_trie_node, [{keypos, 2} | DefaultETSOpts]),
     _ = ets:new(vmq_redis_lua_scripts, DefaultETSOpts),
