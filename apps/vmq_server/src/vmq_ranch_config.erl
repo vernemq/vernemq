@@ -131,6 +131,28 @@ delete_listener(ListenerRef) ->
             Transport:cleanup(TransportOpts)
     end.
 
+start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts) ->
+    Ret =
+        case TransportMod of
+            ranch_tcp ->
+                cowboy:start_clear(
+                    Ref,
+                    TransportOptions,
+                    ProtocolOpts
+                );
+            ranch_ssl ->
+                cowboy:start_tls(
+                    Ref,
+                    TransportOptions,
+                    ProtocolOpts
+                )
+        end,
+
+    case Ret of
+        {ok, _} -> ok;
+        Error -> Error
+    end.
+
 start_listener(Type, Addr, Port, Opts) when is_list(Opts) ->
     try
         case Opts of
@@ -168,17 +190,22 @@ start_listener(Type, Addr, Port, {SocketOpts, Opts}) ->
             | transport_opts_for_type(Type, Opts)
         ]
     ),
-    case
-        ranch:start_listener(
-            Ref,
-            TransportMod,
-            TransportOptions,
-            protocol_for_type(Type),
-            ProtocolOpts
-        )
-    of
-        {ok, _} -> ok;
-        Error -> Error
+    case protocol_for_type(Type) of
+        cowboy_clear ->
+            start_listener_clear(Ref, TransportMod, TransportOptions, ProtocolOpts);
+        _ ->
+            case
+                ranch:start_listener(
+                    Ref,
+                    TransportMod,
+                    TransportOptions,
+                    protocol_for_type(Type),
+                    ProtocolOpts
+                )
+            of
+                {ok, _} -> ok;
+                Error -> Error
+            end
     end.
 
 listeners() ->
