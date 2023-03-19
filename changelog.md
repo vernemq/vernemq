@@ -1,3 +1,4 @@
+- Add support for x-forward-for (XFF) header (Websockets) (#1783)
 - Bugfix: QoS0 message shall ignore receive maximum setting (#2150)
 - Offline queues to online queue transition can (temporarily) override the max online queue size (#1663)
 - Fix processing of line endings in vmq_acl (#1897)

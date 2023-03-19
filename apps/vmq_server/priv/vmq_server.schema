@@ -921,6 +921,30 @@
                                                                         {datatype, flag},
                                                                         hidden
                                                                        ]}.
+%% @doc listener.ws.xff_support specifies if the listener accepts
+%% connections opened by a proxy server that supports the  X-Forwarded-For header.
+%% This enables to retrieve peer information such as source IP/Port.
+{mapping, "listener.ws.$name.proxy_xff_support", "vmq_server.listeners", [
+                                                                        {datatype, flag},
+                                                                        hidden
+                                                                       ]}.
+{mapping, "listener.ws.proxy_xff_support", "vmq_server.listeners", [
+                                                                  {default, off},
+                                                                  {datatype, flag},
+                                                                  hidden
+                                                                 ]}.
+%% @doc listener.ws.proxy_xff_trusted_intermediate specifies the
+%% list of proxies accepted within the X-Forwarded-For list as last proxy. The other
+%% proxies in the chain are not checked.
+{mapping, "listener.ws.$name.proxy_xff_trusted_intermediate", "vmq_server.listeners", [
+                                                                        {datatype, string},
+                                                                        hidden
+                                                                       ]}.
+{mapping, "listener.ws.proxy_xff_trusted_intermediate", "vmq_server.listeners", [
+                                                                  {default, ""},
+                                                                  {datatype, string},
+                                                                  hidden
+                                                                 ]}.
 
 %% @doc If 'listener.tcp.proxy_protocol' is enabled, you may enable
 %% 'listener.tcp.proxy_protocol_use_cn_as_username' to use the CN
