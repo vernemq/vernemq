@@ -1566,8 +1566,7 @@
                                                                              {datatype, flag},
                                                                              hidden
                                                                             ]}.
-%% @doc Configure the TLS protocol version (tlsv1, tlsv1.1, or tlsv1.2) to be
-%% @doc Configure the TLS protocol version (tlsv1, tlsv1.1, or tlsv1.2) to be
+%% @doc Configure the TLS protocol version (tlsv1, tlsv1.1, tlsv1.2 or tlsv1.3) to be
 %% used for either all configured SSL listeners or for a specific listener:
 %%
 %%     - listener.ssl.tls_version
@@ -1577,6 +1576,8 @@
 %%
 %%     - listener.ssl.my_ssl_listener.tls_version
 %%     - listener.wss.my_wss_listener.tls_version
+%%
+%% TLSv1.3 requires OTP 23 or later.
 {mapping, "listener.ssl.tls_version", "vmq_server.listeners", [
                                                                {default, 'tlsv1.2'},
                                                                {datatype, atom},

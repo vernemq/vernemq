@@ -156,6 +156,7 @@ vmq_listener_start_cmd() ->
                 ("tlsv1") -> tlsv1;
                 ("tlsv1.1") -> 'tlsv1.1';
                 ("tlsv1.2") -> 'tlsv1.2';
+                ("tlsv1.3") -> 'tlsv1.3';
                 (V) -> {error, {invalid_flag_value, {'tls-version', V}}}
             end}
         ]},
