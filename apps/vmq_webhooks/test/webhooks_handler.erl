@@ -488,7 +488,7 @@ on_auth_m5(#{properties :=
     {200, #{result => <<"ok">>,
             modifiers =>
                 #{properties => Props,
-                  reason_code => 0}}}.
+                  reason_code => sucess}}}.
 
 terminate(_Reason, _Req, _State) ->
 	ok.

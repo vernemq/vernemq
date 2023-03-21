@@ -119,7 +119,7 @@ modifiers(on_auth_m5) ->
                 {?P_AUTHENTICATION_METHOD, fun val_binary/1},
                 {?P_AUTHENTICATION_DATA, fun val_binary/1}
             ])},
-        {reason_code, fun val_int/1}
+        {reason_code, fun val_atom/1}
     ];
 modifiers(auth_on_register) ->
     [
