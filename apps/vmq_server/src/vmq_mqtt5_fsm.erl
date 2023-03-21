@@ -138,6 +138,8 @@ init(
         Opts
     ),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
+    MaxLifetime = proplists:get_value(max_connection_lifetime, Opts, 0),
+    set_maxlifetime_timer(MaxLifetime),
 
     PreAuthUser =
         case lists:keyfind(preauth, 1, Opts) of
@@ -175,7 +177,6 @@ init(
     _ = vmq_metrics:incr(?MQTT5_CONNECT_RECEIVED),
     %% the client is allowed "grace" of a half a time period
     set_keepalive_check_timer(KeepAlive),
-
     %% Flow Control
     FcReceiveMaxClient = maybe_get_receive_maximum(
         Properties,
@@ -805,6 +806,11 @@ connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
     terminate(Reason, State);
 connected(
+    disconnect_max_conn_lifetime, State
+) ->
+    lager:debug("stop due to max connection lifetime reached", []),
+    terminate(?ADMINISTRATIVE_ACTION, State);
+connected(
     check_keepalive,
     #state{
         last_time_active = Last,
@@ -1360,6 +1366,8 @@ auth_on_register(Password, Props, State) ->
             ),
             %% for efficiency reason the max_message_size isn't kept in the state
             set_max_incoming_msg_size(prop_val(max_message_size, Args, max_incoming_msg_size())),
+            set_maxlifetime_timer(prop_val(max_connection_lifetime, Args, 0)),
+
             set_max_outgoing_msg_size(prop_val(max_packet_size, Args, max_outgoing_msg_size())),
             set_request_problem_information(
                 prop_val(request_problem_info, Args, request_problem_information())
@@ -1966,6 +1974,11 @@ set_keepalive_check_timer(KeepAlive) ->
     %% This allows us to heavily reduce start and cancel timers,
     %% however we're losing precision. But that's ok for the keepalive timer.
     _ = send_after(KeepAlive * 750, check_keepalive),
+    ok.
+set_maxlifetime_timer(0) ->
+    ok;
+set_maxlifetime_timer(MaxLifetime) ->
+    _ = send_after(MaxLifetime * 1000, disconnect_max_conn_lifetime),
     ok.
 
 -spec send_after(non_neg_integer(), any()) -> reference().

@@ -128,6 +128,7 @@ modifiers(auth_on_register) ->
         {allow_subscribe, fun val_bool/1},
         {allow_unsubscribe, fun val_bool/1},
         {max_message_size, fun val_int/1},
+        {max_connection_lifetime, fun val_int/1},
         {subscriber_id, fun val_subscriber_id/1},
         {username, fun val_binary/1},
         {clean_session, fun val_bool/1},
