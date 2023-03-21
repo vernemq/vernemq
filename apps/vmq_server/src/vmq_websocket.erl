@@ -223,7 +223,7 @@ maybe_reply(Out, State) ->
     end.
 
 add_websocket_sec_header(Req) ->
-    case cowboy_req:parse_header(?SEC_WEBSOCKET_PROTOCOL, Req) of
+    case cowboy_req:parse_header(?SEC_WEBSOCKET_PROTOCOL, Req, []) of
         [] ->
             {error, unsupported_protocol};
         SubProtocols ->
