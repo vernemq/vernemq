@@ -1,4 +1,4 @@
-- Bugfix: Websocket returns error 500 and writes to log, instead of returning 426 (protocol upgrade) #1983 
+- Bugfix: Websocket returned error 500 and wrote to log, instead of returning 426 (protocol upgrade) #1983 
 - Allow to specify a maximum connection lifetime (per listener). The lifetime can be overwriten by on_register hooks.
 - Improve TLSv1.3 support (Documentation, CLI, Testsuite)
 - Improve HTTP/2 support for HTTPS listeners (#2117)
