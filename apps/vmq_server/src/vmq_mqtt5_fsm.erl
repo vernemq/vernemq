@@ -1966,7 +1966,9 @@ get_msg_id(_, undefined, #state{next_msg_id = MsgId} = State) ->
 
 -spec random_client_id() -> binary().
 random_client_id() ->
-    list_to_binary(["anon-", base64:encode_to_string(crypto:strong_rand_bytes(20))]).
+    list_to_binary([
+        "anon-", string:trim(base64:encode_to_string(crypto:strong_rand_bytes(21)), both, "+=/")
+    ]).
 
 set_keepalive_check_timer(0) ->
     ok;
