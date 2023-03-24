@@ -821,18 +821,9 @@ cross_node_publish_subscribe() ->
     [{doc, "Make sure all subscribers on a cross-node publish receive the published messages."}].
 
 cross_node_publish_subscribe(Config) ->
-    %% Skip on CI:
-    %% https://docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables
-    case os:getenv("CI") of
-        false ->
-            cross_node_publish_subscribe_(Config);
-        _Ci ->
-            {skip, "Flaky test in CI"}
-    end.
-
-cross_node_publish_subscribe_(Config) ->
     ok = ensure_cluster(Config),
     {_, Nodes} = lists:keyfind(nodes, 1, Config),
+    ct:sleep(15000),
 
     Topic = <<"cross-node-topic">>,
 
