@@ -1424,6 +1424,52 @@
                                                                    {validators, ["file-exists", "file-is-readable", "file-is-pem"]},
                                                                    hidden
                                                                   ]}.
+%% @doc Set the path to the PEM encoded key file on the protocol
+%% level or on the listener level:
+%%
+%%     - listener.ssl.keypasswd
+%%     - listener.wss.keypasswd
+%%
+%% or on the listener level:
+%%
+%%     - listener.ssl.my_ssl_listener.keypasswd
+%%     - listener.wss.my_wss_listener.keypasswd
+{mapping, "listener.ssl.keypasswd", "vmq_server.listeners", [
+                                                           {default, ""},
+                                                           {datatype, string},
+                                                           hidden
+                                                          ]}.
+{mapping, "listener.ssl.$name.keypasswd", "vmq_server.listeners", [
+                                                             {datatype, string},
+                                                             hidden
+                                                                ]}.
+{mapping, "listener.wss.keypasswd", "vmq_server.listeners", [
+                                                           {default, ""},
+                                                           {datatype, string},
+                                                           hidden
+                                                          ]}.
+{mapping, "listener.wss.$name.keypasswd", "vmq_server.listeners", [
+                                                             {datatype, string},
+                                                              hidden
+                                                              ]}.
+{mapping, "listener.vmqs.keypasswd", "vmq_server.listeners", [
+                                                            {default, ""},
+                                                            {datatype, string},
+                                                             hidden
+                                                      ]}.
+{mapping, "listener.vmqs.$name.keypasswd", "vmq_server.listeners", [
+                                                                  {datatype, string},
+                                                                   hidden
+                                                                ]}.
+{mapping, "listener.https.keypasswd", "vmq_server.listeners", [
+                                                             {default, ""},
+                                                             {datatype, string},
+                                                              hidden
+                                                            ]}.
+{mapping, "listener.https.$name.keypasswd", "vmq_server.listeners", [
+                                                                   {datatype, string},
+                                                                   hidden
+                                                                  ]}.
 %% @doc Set the list of allowed ciphers (each separated with a colon,
 %% e.g. "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"),
 %% on the protocol level or on the listener level. Reasonable defaults

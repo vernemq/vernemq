@@ -250,6 +250,7 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLECCs} = lists:unzip(extract("listener.ssl", "eccs", ECCListVal, Conf)),
     {SSLIPs, SSLCrlFiles} = lists:unzip(extract("listener.ssl", "crlfile", StrVal, Conf)),
     {SSLIPs, SSLKeyFiles} = lists:unzip(extract("listener.ssl", "keyfile", StrVal, Conf)),
+    {SSLIPs, SSLKeyPasswd} = lists:unzip(extract("listener.ssl", "keypasswd", StrVal, Conf)),
     {SSLIPs, SSLRequireCerts} = lists:unzip(
         extract("listener.ssl", "require_certificate", BoolVal, Conf)
     ),
@@ -276,6 +277,7 @@ translate_listeners(Conf) ->
     {WS_SSLIPs, WS_SSLECCs} = lists:unzip(extract("listener.wss", "eccs", ECCListVal, Conf)),
     {WS_SSLIPs, WS_SSLCrlFiles} = lists:unzip(extract("listener.wss", "crlfile", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLKeyFiles} = lists:unzip(extract("listener.wss", "keyfile", StrVal, Conf)),
+    {WS_SSLIPs, WS_SSLKeyPasswd} = lists:unzip(extract("listener.wss", "keypasswd", StrVal, Conf)),
     {WS_SSLIPs, WS_SSLRequireCerts} = lists:unzip(
         extract("listener.wss", "require_certificate", BoolVal, Conf)
     ),
@@ -296,6 +298,9 @@ translate_listeners(Conf) ->
     {VMQ_SSLIPs, VMQ_SSLECCs} = lists:unzip(extract("listener.vmqs", "eccs", ECCListVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLCrlFiles} = lists:unzip(extract("listener.vmqs", "crlfile", StrVal, Conf)),
     {VMQ_SSLIPs, VMQ_SSLKeyFiles} = lists:unzip(extract("listener.vmqs", "keyfile", StrVal, Conf)),
+    {VMQ_SSLIPs, VMQ_SSLKeyPasswd} = lists:unzip(
+        extract("listener.vmqs", "keypasswd", StrVal, Conf)
+    ),
     {VMQ_SSLIPs, VMQ_SSLRequireCerts} = lists:unzip(
         extract("listener.vmqs", "require_certificate", BoolVal, Conf)
     ),
@@ -321,6 +326,9 @@ translate_listeners(Conf) ->
     ),
     {HTTP_SSLIPs, HTTP_SSLKeyFiles} = lists:unzip(
         extract("listener.https", "keyfile", StrVal, Conf)
+    ),
+    {HTTP_SSLIPs, HTTP_SSLKeyPasswd} = lists:unzip(
+        extract("listener.https", "keypasswd", StrVal, Conf)
     ),
     {HTTP_SSLIPs, HTTP_SSLRequireCerts} = lists:unzip(
         extract("listener.https", "require_certificate", BoolVal, Conf)
@@ -394,6 +402,7 @@ translate_listeners(Conf) ->
             SSLECCs,
             SSLCrlFiles,
             SSLKeyFiles,
+            SSLKeyPasswd,
             SSLRequireCerts,
             SSLVersions,
             SSLUseIdents,
@@ -421,6 +430,7 @@ translate_listeners(Conf) ->
             WS_SSLECCs,
             WS_SSLCrlFiles,
             WS_SSLKeyFiles,
+            WS_SSLKeyPasswd,
             WS_SSLRequireCerts,
             WS_SSLVersions,
             WS_SSLUseIdents,
@@ -441,6 +451,7 @@ translate_listeners(Conf) ->
             VMQ_SSLECCs,
             VMQ_SSLCrlFiles,
             VMQ_SSLKeyFiles,
+            VMQ_SSLKeyPasswd,
             VMQ_SSLRequireCerts,
             VMQ_SSLVersions,
             VMQ_SSLBufferSizes
@@ -459,6 +470,7 @@ translate_listeners(Conf) ->
             HTTP_SSLECCs,
             HTTP_SSLCrlFiles,
             HTTP_SSLKeyFiles,
+            HTTP_SSLKeyPasswd,
             HTTP_SSLRequireCerts,
             HTTP_SSLVersions,
             HTTP_SSLConfigMod,
@@ -511,6 +523,7 @@ extract(Prefix, Suffix, Val, Conf) ->
             "eccs",
             "crlfile",
             "keyfile",
+            "keypasswd",
             "require_certificate",
             "tls_version",
             "use_identity_as_username",
