@@ -120,6 +120,10 @@ vmq_listener_start_cmd() ->
                 end
             end}
         ]},
+        {keypasswd, [
+            {longname, "keypasswd"},
+            {typecast, fun(MP) -> MP end}
+        ]},
         {pskfile, [
             {longname, "pskfile"},
             {typecast, fun(FileName) ->

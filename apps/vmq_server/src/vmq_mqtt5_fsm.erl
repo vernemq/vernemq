@@ -855,7 +855,9 @@ connected(close_timeout, State) ->
     %% As we're in the connected state, it's ok to ignore this timeout
     {State, []};
 connected(Unexpected, State) ->
-    lager:warning("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
+    lager:warning("stopped connected session for client ~p, due to unexpected frame type ~p", [
+        State#state.subscriber_id, Unexpected
+    ]),
     terminate({error, {unexpected_message, Unexpected}}, State).
 
 -spec connack_terminate(reason_code_name(), state()) -> any().
@@ -1966,7 +1968,9 @@ get_msg_id(_, undefined, #state{next_msg_id = MsgId} = State) ->
 
 -spec random_client_id() -> binary().
 random_client_id() ->
-    list_to_binary(["anon-", base64:encode_to_string(crypto:strong_rand_bytes(20))]).
+    list_to_binary([
+        "anon-", string:trim(base64:encode_to_string(crypto:strong_rand_bytes(21)), both, "+=/")
+    ]).
 
 set_keepalive_check_timer(0) ->
     ok;

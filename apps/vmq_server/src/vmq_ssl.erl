@@ -76,7 +76,8 @@ opts(certfiles, Opts) ->
     [
         {cacertfile, proplists:get_value(cafile, Opts)},
         {certfile, proplists:get_value(certfile, Opts)},
-        {keyfile, proplists:get_value(keyfile, Opts)}
+        {keyfile, proplists:get_value(keyfile, Opts)},
+        {password, proplists:get_value(keypasswd, Opts, "")}
     ];
 opts(cert, Opts) ->
     case {vmq_ssl_psk:psk_support_enabled(Opts), proplists:get_value(certfile, Opts)} of
