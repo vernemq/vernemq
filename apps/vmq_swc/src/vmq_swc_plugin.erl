@@ -36,8 +36,8 @@
 
 -define(METRIC, metadata).
 
--define(NR_OF_GROUPS, 10).
--define(SWC_GROUPS, [meta1, meta2, meta3, meta4, meta5, meta6, meta7, meta8, meta9, meta10]).
+-define(NR_OF_GROUPS, application:get_env(vmq_swc, swc_groups, 10)).
+-define(SWC_GROUPS, [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)]).
 
 plugin_start() ->
     _ = [vmq_swc:start(G) || G <- ?SWC_GROUPS],
