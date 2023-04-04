@@ -56,7 +56,7 @@ random_port() ->
 teardown() ->
     disable_all_plugins(),
     vmq_metrics:reset_counters(),
-    vmq_server:stop(),
+    vmq_server:stop(no_wait),
     vmq_swc:stop(),
     application:unload(vmq_swc),
     application:unload(vmq_server),

@@ -461,20 +461,21 @@ aborted_queue_migration_test(Config) ->
 
 cluster_leave_test(Config) ->
     ok = ensure_cluster(Config),
+    ct:sleep(10000), % the old story of making the cluster older. (to allow setup of message-carrying TCP connections between nodes)
     {_, [{_, Node, Port} | RestNodes] = Nodes} = lists:keyfind(nodes, 1, Config),
 
     {_Peers, NodeNames, _} = lists:unzip3(Nodes),
     [rpc:call(N, lager, set_loglevel, [lager_console_backend, debug]) || N <- NodeNames],
 
     Topic = "cluster/leave/topic",
-    ToMigrate = 8,
+    ToMigrate = 100,
     %% create ToMigrate sessions
     [PubSocket | _] =
         Sockets =
             [begin
                  Connect =
                      packet:gen_connect("connect-leave-" ++ integer_to_list(I),
-                                        [{clean_session, false}, {keepalive, 10}]),
+                                        [{clean_session, false}, {keepalive, 100}]),
                  Connack = packet:gen_connack(0),
                  Subscribe = packet:gen_subscribe(123, Topic, 1),
                  Suback = packet:gen_suback(123, 1),
@@ -502,12 +503,10 @@ cluster_leave_test(Config) ->
                                           500),
     %% Pick a control node for initiating the cluster leave
     [{_, CtrlNode, _} | _] = RestNodes,
-    ct:pal("Leaving control node ~p from rest nodes ~p", [CtrlNode, RestNodes]),
-    {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Node]),
-
+    {ok, _} = rpc:call(CtrlNode, vmq_server_cmd, node_leave, [Node, 1, 1]),
     %% Leaving Node will disconnect all sessions and give away all messages
-    %% The disconnected sessions are equally migrated to the rest of the nodes
-    %% As the clients don't reconnect (in this test), their sessions are offline
+    %% The disconnected queues are equally migrated to the rest of the nodes
+    %% As the clients don't reconnect (in this test), their queues are offline
     ok =
         wait_until_converged_fold(fun(N, {AccQ, AccM}) ->
                                      {_, _, _, Queues, Messages} = rpc:call(N, vmq_queue_sup_sup, summary, []),

@@ -69,6 +69,7 @@ start_user_plugin(
 
 -spec stop(_) -> 'ok'.
 stop(_State) ->
+    ok = vmq_ranch_config:stop_all_mqtt_listeners(true),
     _ = vmq_message_store:stop(),
     _ = vmq_metadata:stop(),
     ok.
