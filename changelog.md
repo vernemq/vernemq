@@ -1,3 +1,5 @@
+
+- Fix listener suspension and --kill_session flag in cluster leave.
 - Add 'keypasswd': Allows setting password for pem keyfile (#1676)
 - Bugfix:w Improve warning messages for unexpected frame type error to track origin (#1671)
 - Bugfix: Remove special chars in auto-generated client id (#1673)
