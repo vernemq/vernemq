@@ -30,6 +30,8 @@
     routes/0
 ]).
 
+-define(RPC_TIMEOUT, 5000).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Cowboy REST Handler
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -75,11 +77,10 @@ handle_command(<<"client">>, Req, State) ->
     Qs = cowboy_req:parse_qs(Req),
     SubscriberId = subscriber_from_qs(Qs),
     TopicFlag = proplists:get_value(<<"topics">>, Qs, false),
-    OnlineStatus = get_online_status(SubscriberId),
+    {OnlineStatus, Topics} = get_status_and_topics(SubscriberId),
     Reply0 =
         case TopicFlag of
             true ->
-                Topics = get_topics(SubscriberId),
                 [{<<"status">>, OnlineStatus}, {<<"topics">>, Topics}];
             _ ->
                 [{<<"status">>, OnlineStatus}]
@@ -102,33 +103,48 @@ subscriber_from_qs(Qs) ->
     ClientId = proplists:get_value(<<"client_id">>, Qs),
     {Mountpoint, ClientId}.
 
-get_online_status(SubscriberId) ->
-    QueuePid = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
-    case QueuePid of
-        not_found ->
-            <<"unknown">>;
-        _ ->
-            #{is_online := IsOnline} = vmq_queue:info(QueuePid),
-            case IsOnline of
-                true -> <<"online">>;
-                _ -> <<"offline">>
-            end
-    end.
-
-get_topics(SubscriberId) ->
+force_disconnect(SubscriberId, DoCleanup) ->
     Res = vmq_subscriber_db:read(SubscriberId),
     case Res of
         undefined ->
-            [];
-        [{_, _, []}] ->
-            [];
-        [{_, _, Topics}] ->
-            [{iolist_to_binary(vmq_topic:unword(Topic)), QoS} || {Topic, QoS} <- Topics]
+            <<"unknown">>;
+        [{Node, _, _}] ->
+            try erpc:call(Node, vmq_queue_sup_sup, get_queue_pid, [SubscriberId], ?RPC_TIMEOUT) of
+                not_found ->
+                    not_found;
+                QPid when is_pid(QPid) ->
+                    vmq_queue:force_disconnect(QPid, ?ADMINISTRATIVE_ACTION, DoCleanup)
+            catch
+                E:R -> 
+                    lager:debug("API v2 disconnect RPC failed with ~p:~p", [E, R]),
+                    {error, rpc_fail}
+            end
     end.
-
-force_disconnect(SubscriberId, DoCleanup) ->
-    QueuePid = vmq_queue_sup_sup:get_queue_pid(SubscriberId),
-    case QueuePid of
-        not_found -> not_found;
-        _ -> vmq_queue:force_disconnect(QueuePid, ?ADMINISTRATIVE_ACTION, DoCleanup)
+% {Status, Topics}
+get_status_and_topics(SubscriberId) ->
+    Res = vmq_subscriber_db:read(SubscriberId),
+    case Res of
+        undefined ->
+            {<<"unknown">>, []};
+        [{Node, _, Topics}] ->
+            try erpc:call(Node, vmq_queue_sup_sup, get_queue_pid, [SubscriberId], ?RPC_TIMEOUT) of
+                % we should not end up here, vmq_subscriber_db gave wrong Node
+                not_found ->
+                    {<<"no_queue">>, []};
+                QPid when is_pid(QPid) ->
+                    #{is_online := IsOnline} = vmq_queue:info(QPid),
+                    FlatTopics =
+                        [
+                            {iolist_to_binary(vmq_topic:unword(Topic)), QoS}
+                         || {Topic, QoS} <- Topics
+                        ],
+                    case IsOnline of
+                        true -> {<<"online">>, FlatTopics};
+                        _ -> {<<"offline">>, FlatTopics}
+                    end
+            catch
+                E:R -> 
+                    lager:debug("API v2 client status RPC failed with ~p:~p", [E, R]),
+                    {error, rpc_fail}
+            end
     end.
