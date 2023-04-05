@@ -1257,26 +1257,20 @@ subscriptions_exist(OldSubs, Topics) ->
 
 -spec del_subscriber(atom(), subscriber_id()) -> ok.
 del_subscriber(vmq_reg_redis_trie, {MP, ClientId} = _SubscriberId) ->
-    vmq_redis:query(
-        redis_client,
-        [
-            ?FCALL,
-            ?DELETE_SUBSCRIBER,
-            0,
-            MP,
-            ClientId,
-            node(),
-            os:system_time(nanosecond)
-        ],
-        ?FCALL,
-        ?DELETE_SUBSCRIBER
-    ),
     Key = {MP, '$1'},
     Value = {ClientId, '$2'},
     case ets:select(vmq_shared_subs_local, [{{{Key, Value}}, [], ['$_']}]) of
-        [] -> ok;
-        SharedSubs -> lists:foreach(fun ({DKey}) -> ets:delete(vmq_shared_subs_local, DKey) end, SharedSubs)
-    end;
+      [] -> ok;
+      SharedSubs -> lists:foreach(fun ({DKey}) -> ets:delete(vmq_shared_subs_local, DKey) end, SharedSubs)
+    end,
+    vmq_redis:query(redis_client, [?FCALL,
+                                        ?DELETE_SUBSCRIBER,
+                                        0,
+                                        MP,
+                                        ClientId,
+                                        node(),
+                                        os:system_time(nanosecond)], ?FCALL, ?DELETE_SUBSCRIBER),
+    ok;
 del_subscriber(_, SubscriberId) ->
     vmq_subscriber_db:delete(SubscriberId).
 
@@ -1300,14 +1294,23 @@ del_subscriptions(vmq_reg_redis_trie, Topics, {MP, ClientId} = _SubscriberId) ->
         ?UNSUBSCRIBE
     ),
     lists:foreach(fun([<<"$share">>,_Group | Topic]) ->
-                        Key = {MP, Topic},
-                        Value = {ClientId, '$1'},
-                        case ets:select(vmq_shared_subs_local, [{{{Key, Value}}, [], ['$_']}]) of
-                            [] -> ok;
-                            SharedSubs -> lists:foreach(fun ({DKey}) -> ets:delete(vmq_shared_subs_local, DKey) end, SharedSubs)
-                        end;
-        (_) -> ok
-                        end, Topics),
+                      Key = {MP, Topic},
+                      Value = {ClientId, '$1'},
+                      case ets:select(vmq_shared_subs_local, [{{{Key, Value}}, [], ['$_']}]) of
+                        [] -> ok;
+                        SharedSubs -> lists:foreach(fun ({DKey}) -> ets:delete(vmq_shared_subs_local, DKey) end, SharedSubs)
+                      end;
+                      (_) -> ok
+                  end, Topics),
+    SortedUnwordedTopics = [vmq_topic:unword(T) || T <- lists:usort(Topics)],
+    {ok, <<"1">>} = vmq_redis:query(redis_client, [?FCALL,
+                                              ?UNSUBSCRIBE,
+                                              0,
+                                              MP,
+                                              ClientId,
+                                              node(),
+                                              os:system_time(nanosecond),
+                                              length(SortedUnwordedTopics) | SortedUnwordedTopics], ?FCALL, ?UNSUBSCRIBE),
     ok;
 del_subscriptions(_, Topics, SubscriberId) ->
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
