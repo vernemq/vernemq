@@ -80,17 +80,23 @@ maybe_update_nodetool() ->
             Nodetool = filename:join([
                 Root, "erts-" ++ erlang:system_info(version), "bin", "nodetool"
             ]),
-            {ok, [Shebang, Comment, _, Source]} = escript:extract(Nodetool, []),
-            {ok, UpdatedScriptBin} =
-                escript:create(binary, [
-                    Shebang, Comment, {emu_args, "+fnu -proto_dist " ++ ProtoDist}, Source
-                ]),
-            try file:write_file(Nodetool, UpdatedScriptBin) of
-                ok -> ok
-            catch
-                E:R ->
-                    lager:info("Could not update nodetool due to ~p for reason ~p ~n", [E, R]),
-                    {error, R}
+            case escript:extract(Nodetool, []) of
+                {ok, [Shebang, Comment, _, Source]} ->
+                    {ok, UpdatedScriptBin} =
+                        escript:create(binary, [
+                            Shebang, Comment, {emu_args, "+fnu -proto_dist " ++ ProtoDist}, Source
+                        ]),
+                    try file:write_file(Nodetool, UpdatedScriptBin) of
+                        ok -> ok
+                    catch
+                        E:R ->
+                            lager:info("Could not write nodetool due to ~p for reason ~p ~n", [
+                                E, R
+                            ]),
+                            {error, R}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
             end;
         error ->
             ignore
