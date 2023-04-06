@@ -81,6 +81,7 @@ groups() ->
          message_size_exceeded_close,
          shared_subscription_offline,
          shared_subscription_online_first,
+         shared_subscription_does_not_honor_grouping,
          direct_plugin_exports_test
         ],
     V3Tests =
@@ -772,7 +773,8 @@ shared_subscription_offline(Cfg) ->
     SubConnectOffline = mqtt5_v4compat:gen_connect(SubOfflineClientId,
                                                    [{keepalive, 60},
                                                     {clean_session, false}], Cfg),
-    Subscription = "$share/" ++ Prefix ++ "/shared_sub_topic",
+    Topic = "shared_sub_topic_offline",
+    Subscription = "$share/" ++ Prefix ++ "/" ++ Topic,
     {ok, PubSocket} = mqtt5_v4compat:do_client_connect(PubConnect, Connack, [], Cfg),
     {ok, SubSocketOffline} = mqtt5_v4compat:do_client_connect(SubConnectOffline, Connack, [], Cfg),
     Subscribe = mqtt5_v4compat:gen_subscribe(1, Subscription, 1, Cfg),
@@ -787,7 +789,7 @@ shared_subscription_offline(Cfg) ->
 
     PubFun
         = fun(Socket, Mid) ->
-                  Publish = mqtt5_v4compat:gen_publish("shared_sub_topic", 1,
+                  Publish = mqtt5_v4compat:gen_publish(Topic, 1,
                                                        <<Mid:8, (vmq_test_utils:rand_bytes(10))/binary>>,
                                                        [{mid, Mid}], Cfg),
                   Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
@@ -820,7 +822,8 @@ shared_subscription_online_first(Cfg) ->
                                                    [{keepalive, 60},
                                                     {clean_session, false}],
                                                    Cfg),
-    Subscription = "$share/" ++ Prefix ++ "/shared_sub_topic",
+    Topic = "shared_sub_topic_online_first",
+    Subscription = "$share/" ++ Prefix ++ "/" ++ Topic,
     {ok, PubSocket} = mqtt5_v4compat:do_client_connect(PubConnect, Connack, [], Cfg),
     {ok, SubSocketOnline} = mqtt5_v4compat:do_client_connect(SubConnectOnline, Connack, [], Cfg),
     {ok, SubSocketOffline} = mqtt5_v4compat:do_client_connect(SubConnectOffline, Connack, [], Cfg),
@@ -839,7 +842,7 @@ shared_subscription_online_first(Cfg) ->
     %% now let's publish
     PubFun
         = fun(Socket, Mid) ->
-                  Publish = mqtt5_v4compat:gen_publish("shared_sub_topic", 1,
+                  Publish = mqtt5_v4compat:gen_publish(Topic, 1,
                                                        <<Mid:8, (vmq_test_utils:rand_bytes(10))/binary>>,
                                                [{mid, Mid}], Cfg),
                   Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
@@ -855,6 +858,64 @@ shared_subscription_online_first(Cfg) ->
          Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
          ok = gen_tcp:send(SubSocketOnline, Puback)
      end || {Mid, Expect} <- Published ],
+    disable_on_publish(),
+    disable_on_subscribe().
+
+shared_subscription_does_not_honor_grouping(Cfg) ->
+    enable_on_publish(),
+    enable_on_subscribe(),
+    Connack = mqtt5_v4compat:gen_connack(success, Cfg),
+    Prefix = vmq_cth:ustr(Cfg),
+    PubConnect = mqtt5_v4compat:gen_connect(Prefix ++ "shared-sub-pub", [{keepalive, 60}], Cfg),
+    SubConnectOnline1 = mqtt5_v4compat:gen_connect(Prefix ++ "shared-sub-sub-online-1",
+                                                  [{keepalive, 60},
+                                                   {clean_session, false}], Cfg),
+    SubConnectOnline2 = mqtt5_v4compat:gen_connect(Prefix ++ "shared-sub-sub-online-2",
+                                                  [{keepalive, 60},
+                                                   {clean_session, false}], Cfg),
+    Topic = "shared_sub_grouping_topic",
+    Subscription1 = "$share/" ++ Prefix ++ "-1" ++ "/" ++ Topic,
+    Subscription2 = "$share/" ++ Prefix ++ "-2" ++ "/" ++ Topic,
+    {ok, PubSocket} = mqtt5_v4compat:do_client_connect(PubConnect, Connack, [], Cfg),
+    {ok, SubSocket1} = mqtt5_v4compat:do_client_connect(SubConnectOnline1, Connack, [], Cfg),
+    {ok, SubSocket2} = mqtt5_v4compat:do_client_connect(SubConnectOnline2, Connack, [], Cfg),
+    Subscribe1 = mqtt5_v4compat:gen_subscribe(1, Subscription1, 1, Cfg),
+    Subscribe2 = mqtt5_v4compat:gen_subscribe(1, Subscription2, 1, Cfg),
+    Suback = mqtt5_v4compat:gen_suback(1, 1, Cfg),
+    ok = gen_tcp:send(SubSocket1, Subscribe1),
+    ok = mqtt5_v4compat:expect_packet(SubSocket1, "suback", Suback, Cfg),
+    ok = gen_tcp:send(SubSocket2, Subscribe2),
+    ok = mqtt5_v4compat:expect_packet(SubSocket2, "suback", Suback, Cfg),
+
+    %% now let's publish
+    PubFun
+        = fun(Socket, Mid) ->
+                  Publish = mqtt5_v4compat:gen_publish(Topic, 1,
+                                                       <<Mid:8, (vmq_test_utils:rand_bytes(10))/binary>>,
+                                               [{mid, Mid}], Cfg),
+                  Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
+                  ok = gen_tcp:send(Socket, Publish),
+                  ok = mqtt5_v4compat:expect_packet(Socket, "puback", Puback, Cfg),
+                  {Mid, Publish}
+          end,
+    Published = [PubFun(PubSocket, Mid) || Mid <- lists:seq(1,10)],
+
+    %% since all messages should end up amongst the two online subscribers
+    %% (as we internally consider them in same shared subscription group),
+    %% we can check they arrived one by one in the publish order amongst them.
+    [begin
+        Socket = case mqtt5_v4compat:expect_packet(SubSocket1, "publish", Expect, Cfg) of
+             ok ->
+               SubSocket1;
+             {error, _} ->
+               ok = mqtt5_v4compat:expect_packet(SubSocket2, "publish", Expect, Cfg),
+               SubSocket2
+        end,
+
+        Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
+        ok = gen_tcp:send(Socket, Puback)
+     end || {Mid, Expect} <- Published ],
+
     disable_on_publish(),
     disable_on_subscribe().
 

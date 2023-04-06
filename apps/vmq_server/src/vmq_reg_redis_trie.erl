@@ -62,7 +62,8 @@ fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
         [] ->
             SubscribersList = fetchSubscribers(MatchedTopics, MP),
             fold_subscriber_info(SubscriberId, SubscribersList, FoldFun, Acc);
-        LocalSharedSubsList -> fold_local_shared_subscriber_info(SubscriberId, lists:flatten(LocalSharedSubsList), FoldFun, Acc)
+        LocalSharedSubsList ->
+            fold_local_shared_subscriber_info(SubscriberId, lists:flatten(LocalSharedSubsList), FoldFun, Acc)
     end.
 
 fold_matched_topics(_MP, [], Acc) -> Acc;
