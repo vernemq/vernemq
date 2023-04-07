@@ -35,16 +35,19 @@
 ]).
 
 -define(METRIC, metadata).
-
--define(NR_OF_GROUPS, application:get_env(vmq_swc, swc_groups, 10)).
--define(SWC_GROUPS, [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)]).
+-define(INFO_KEY, {?MODULE, swc}).
+-define(NR_OF_GROUPS, (application:get_env(vmq_swc, swc_groups, 10))).
+-define(SWC_GROUPS, (persistent_term:get(?INFO_KEY))).
 
 plugin_start() ->
-    _ = [vmq_swc:start(G) || G <- ?SWC_GROUPS],
+    SWCGroups =  [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)],
+    ok = persistent_term:put(?INFO_KEY, SWCGroups),
+    _ = [vmq_swc:start(G) || G <- SWCGroups],
     ok.
 
 plugin_stop() ->
     _ = [vmq_swc:stop(G) || G <- ?SWC_GROUPS],
+    persistent_term:erase(?INFO_KEY),
     ok.
 
 group_for_key(PKey) ->
