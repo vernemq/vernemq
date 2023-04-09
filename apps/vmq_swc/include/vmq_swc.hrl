@@ -10,8 +10,8 @@
 
 -type type() :: ?DB_OBJ | ?DB_DKM | ?DB_DEFAULT.
 -type deleted() :: '$deleted'.
--type db_key()     :: binary().
--type db_value()   :: binary().
+-type db_key() :: binary().
+-type db_value() :: binary().
 -type foldfun() :: fun((db_key(), db_value(), any()) -> any()).
 -type db_op() :: {type(), db_key(), db_value() | deleted()}.
 -type opts() :: any().
@@ -27,14 +27,14 @@
 -define(DELETED, '$deleted').
 
 -record(swc_config, {
-          peer          :: atom() | binary(),
-          group         :: atom(),
-          db            :: db_name(),
-          db_backend    :: atom(),
-          store         :: atom(),
-          r_o_w_cache   :: atom(),
-          batcher       :: atom(),
-          membership    :: atom(),
-          transport     :: atom()
-         }).
+    peer :: atom() | binary(),
+    group :: atom(),
+    db :: db_name(),
+    db_backend :: atom(),
+    store :: atom(),
+    r_o_w_cache :: atom(),
+    batcher :: atom(),
+    membership :: atom(),
+    transport :: atom()
+}).
 -type config() :: #swc_config{}.

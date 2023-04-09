@@ -14,7 +14,7 @@ ts() ->
     {Mega, Sec, Micro} = os:timestamp(),
     (Mega * 1000000 + Sec) * 1000000 + Micro.
 
-timed_measurement({_,_} = Metric, Module, Function, Args) ->
+timed_measurement({_, _} = Metric, Module, Function, Args) ->
     Ts1 = vmq_util:ts(),
     Ret = apply(Module, Function, Args),
     Ts2 = vmq_util:ts(),

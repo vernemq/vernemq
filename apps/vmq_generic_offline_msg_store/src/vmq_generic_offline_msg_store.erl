@@ -5,20 +5,24 @@
 -include_lib("vmq_commons/src/vmq_types_common.hrl").
 
 %% API
--export([start_link/0,
+-export([
+    start_link/0,
     msg_store_write/2,
     msg_store_delete/1,
     msg_store_delete/2,
     msg_store_read/2,
-    msg_store_find/1]).
+    msg_store_find/1
+]).
 
 %% gen_server callbacks
--export([init/1,
+-export([
+    init/1,
     handle_call/3,
     handle_cast/2,
     handle_info/2,
     terminate/2,
-    code_change/3]).
+    code_change/3
+]).
 
 -record(state, {
     engine,
@@ -71,7 +75,12 @@ init(_) ->
     process_flag(trap_exit, true),
     case apply(EngineModule, open, [Opts]) of
         {ok, EngineState} ->
-            {ok, #state{engine=EngineState, engine_module=EngineModule, query_timeout=Timeout, options=Opts}};
+            {ok, #state{
+                engine = EngineState,
+                engine_module = EngineModule,
+                query_timeout = Timeout,
+                options = Opts
+            }};
         {error, Reason} ->
             {stop, Reason}
     end.
@@ -116,8 +125,10 @@ handle_cast(_Request, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info({'EXIT', _, _},
-            #state{engine_module=EngineModule, options=Opts}) ->
+handle_info(
+    {'EXIT', _, _},
+    #state{engine_module = EngineModule, options = Opts}
+) ->
     reconnect(EngineModule, Opts);
 handle_info(Info, State) ->
     lager:info("Unknown info: ~p", [Info]),
@@ -134,7 +145,7 @@ handle_info(Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, #state{engine=EngineState, engine_module=EngineModule}) ->
+terminate(_Reason, #state{engine = EngineState, engine_module = EngineModule}) ->
     apply(EngineModule, close, [EngineState]),
     ok.
 
@@ -155,7 +166,7 @@ code_change(_OldVsn, State, _Extra) ->
 reconnect(EngineModule, Opts) ->
     case apply(EngineModule, open, [Opts]) of
         {ok, EngineState} ->
-            {noreply, #state{engine=EngineState}};
+            {noreply, #state{engine = EngineState}};
         {error, Reason} ->
             lager:debug("Reconnection Error: ~p", [Reason]),
             timer:sleep(2000),
@@ -163,20 +174,36 @@ reconnect(EngineModule, Opts) ->
     end.
 
 safe_call(Request) ->
-    try gen_server:call(?MODULE, Request) catch Error:Reason -> {error, {Error, Reason}} end.
+    try
+        gen_server:call(?MODULE, Request)
+    catch
+        Error:Reason -> {error, {Error, Reason}}
+    end.
 
-handle_req({write, SId, Msg},
-    #state{engine=Engine, engine_module=EngineModule, query_timeout=Timeout}) ->
-    apply(EngineModule, write, [Engine, term_to_binary(SId), Msg#vmq_msg.msg_ref, term_to_binary(Msg), Timeout]);
-handle_req({delete, SId},
-    #state{engine=Engine, engine_module=EngineModule, query_timeout=Timeout}) ->
+handle_req(
+    {write, SId, Msg},
+    #state{engine = Engine, engine_module = EngineModule, query_timeout = Timeout}
+) ->
+    apply(EngineModule, write, [
+        Engine, term_to_binary(SId), Msg#vmq_msg.msg_ref, term_to_binary(Msg), Timeout
+    ]);
+handle_req(
+    {delete, SId},
+    #state{engine = Engine, engine_module = EngineModule, query_timeout = Timeout}
+) ->
     apply(EngineModule, delete, [Engine, term_to_binary(SId), Timeout]);
-handle_req({delete, SId, MsgRef},
-    #state{engine=Engine, engine_module=EngineModule, query_timeout=Timeout}) ->
+handle_req(
+    {delete, SId, MsgRef},
+    #state{engine = Engine, engine_module = EngineModule, query_timeout = Timeout}
+) ->
     apply(EngineModule, delete, [Engine, term_to_binary(SId), MsgRef, Timeout]);
-handle_req({read, SId, MsgRef},
-    #state{engine=Engine, engine_module=EngineModule, query_timeout=Timeout}) ->
+handle_req(
+    {read, SId, MsgRef},
+    #state{engine = Engine, engine_module = EngineModule, query_timeout = Timeout}
+) ->
     apply(EngineModule, read, [Engine, term_to_binary(SId), MsgRef, Timeout]);
-handle_req({find, SId},
-    #state{engine=Engine, engine_module=EngineModule, query_timeout=Timeout}) ->
+handle_req(
+    {find, SId},
+    #state{engine = Engine, engine_module = EngineModule, query_timeout = Timeout}
+) ->
     apply(EngineModule, find, [Engine, term_to_binary(SId), Timeout]).

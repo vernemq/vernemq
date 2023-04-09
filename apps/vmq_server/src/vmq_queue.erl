@@ -19,91 +19,100 @@
 -behaviour(gen_fsm).
 
 -ifdef(nowarn_gen_fsm).
--compile([{nowarn_deprecated_function,
-          [{gen_fsm,start_link,3},
-           {gen_fsm,reply,2},
-           {gen_fsm,send_event,2},
-           {gen_fsm,sync_send_event,3},
-           {gen_fsm,send_all_state_event,2},
-           {gen_fsm,sync_send_all_state_event,3},
-           {gen_fsm,send_event_after,2},
-           {gen_fsm,cancel_timer,1}]}]).
+-compile([
+    {nowarn_deprecated_function, [
+        {gen_fsm, start_link, 3},
+        {gen_fsm, reply, 2},
+        {gen_fsm, send_event, 2},
+        {gen_fsm, sync_send_event, 3},
+        {gen_fsm, send_all_state_event, 2},
+        {gen_fsm, sync_send_all_state_event, 3},
+        {gen_fsm, send_event_after, 2},
+        {gen_fsm, cancel_timer, 1}
+    ]}
+]).
 -endif.
 
 %% API functions
--export([start_link/2,
-         active/1,
-         notify/1,
-         notify_recv/1,
-         enqueue/2,
-         status/1,
-         info/1,
-         add_session/3,
-         get_sessions/1,
-         set_opts/2,
-         get_opts/1,
-         default_opts/0,
-         set_last_waiting_acks/3,
-         enqueue_many/2,
-         enqueue_many/3,
-         migrate/2,
-         cleanup/2,
-         terminate/2,
-         force_disconnect/2,
-         force_disconnect/3,
-         set_delayed_will/3,
-         init_offline_queue/1]).
+-export([
+    start_link/2,
+    active/1,
+    notify/1,
+    notify_recv/1,
+    enqueue/2,
+    status/1,
+    info/1,
+    add_session/3,
+    get_sessions/1,
+    set_opts/2,
+    get_opts/1,
+    default_opts/0,
+    set_last_waiting_acks/3,
+    enqueue_many/2,
+    enqueue_many/3,
+    migrate/2,
+    cleanup/2,
+    terminate/2,
+    force_disconnect/2,
+    force_disconnect/3,
+    set_delayed_will/3,
+    init_offline_queue/1
+]).
 
--export([online/2, online/3,
-         offline/2, offline/3,
-         wait_for_offline/2, wait_for_offline/3,
-         drain/2, drain/3]).
+-export([
+    online/2, online/3,
+    offline/2, offline/3,
+    wait_for_offline/2, wait_for_offline/3,
+    drain/2, drain/3
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_sync_event/4,
-         handle_event/3,
-         handle_info/3,
-         terminate/3,
-         code_change/4]).
-
+-export([
+    init/1,
+    handle_sync_event/4,
+    handle_event/3,
+    handle_info/3,
+    terminate/3,
+    code_change/4
+]).
 
 -record(queue, {
-          queue = queue:new(),
-          backup = queue:new(),
-          type = fifo,
-          max,
-          size = 0,
-          drop = 0
-         }).
+    queue = queue:new(),
+    backup = queue:new(),
+    type = fifo,
+    max,
+    size = 0,
+    drop = 0
+}).
 
 -record(session, {
-          pid,
-          cleanup_on_disconnect,
-          status = notify,
-          queue = #queue{},
-          started_at :: vmq_time:timestamp(),
-          queue_to_session_batch_size :: non_neg_integer()
-         }).
+    pid,
+    cleanup_on_disconnect,
+    status = notify,
+    queue = #queue{},
+    started_at :: vmq_time:timestamp(),
+    queue_to_session_batch_size :: non_neg_integer()
+}).
 
 -record(state, {
-          id,
-          offline = #queue{},
-          deliver_mode = fanout,
-          sessions = maps:new(),
-          expiry_timer :: undefined | reference(),
-          drain_time,
-          drain_over_timer,
-          drain_pending_batch :: undefined | {reference(), reference(), queue:new()},
-          max_msgs_per_drain_step,
-          waiting_call,
-          opts,
-          delayed_will :: {Delay :: non_neg_integer(),
-                           Fun :: function()} | undefined,
-          delayed_will_timer :: reference() | undefined,
-          started_at :: vmq_time:timestamp(),
-          initial_msg_id = 1 :: msg_id()
-         }).
+    id,
+    offline = #queue{},
+    deliver_mode = fanout,
+    sessions = maps:new(),
+    expiry_timer :: undefined | reference(),
+    drain_time,
+    drain_over_timer,
+    drain_pending_batch :: undefined | {reference(), reference(), queue:new()},
+    max_msgs_per_drain_step,
+    waiting_call,
+    opts,
+    delayed_will ::
+        {Delay :: non_neg_integer(), Fun :: function()}
+        | undefined,
+    delayed_will_timer :: reference() | undefined,
+    started_at :: vmq_time:timestamp(),
+    initial_msg_id = 1 :: msg_id()
+}).
 
 -type state() :: #state{}.
 
@@ -111,10 +120,10 @@
 %%% API functions
 %%%===================================================================
 
--spec start_link(SubscriberId :: subscriber_id(), Clean :: boolean()) -> {ok, Pid :: pid()} | ignore | {error, Error :: term()}.
+-spec start_link(SubscriberId :: subscriber_id(), Clean :: boolean()) ->
+    {ok, Pid :: pid()} | ignore | {error, Error :: term()}.
 start_link(SubscriberId, Clean) ->
     gen_fsm:start_link(?MODULE, [SubscriberId, Clean], []).
-
 
 active(Queue) when is_pid(Queue) ->
     gen_fsm:send_event(Queue, {change_state, active, self()}).
@@ -136,8 +145,9 @@ enqueue_many(Queue, Msgs, Opts) when is_pid(Queue), is_list(Msgs), is_map(Opts) 
     NMsgs = lists:map(fun to_internal/1, Msgs),
     gen_fsm:sync_send_event(Queue, {enqueue_many, NMsgs, Opts}, infinity).
 
--spec add_session(pid(), pid(), map()) -> {ok, #{initial_msg_id := msg_id()}} |
-                                          {error, any()}.
+-spec add_session(pid(), pid(), map()) ->
+    {ok, #{initial_msg_id := msg_id()}}
+    | {error, any()}.
 add_session(Queue, SessionPid, Opts) when is_pid(Queue) ->
     gen_fsm:sync_send_event(Queue, {add_session, SessionPid, Opts}, infinity).
 
@@ -209,28 +219,32 @@ init_offline_queue(Queue) when is_pid(Queue) ->
     gen_fsm:send_event(Queue, init_offline_queue).
 
 default_opts() ->
-    #{allow_multiple_sessions => vmq_config:get_env(allow_multiple_sessions),
-      max_online_messages => vmq_config:get_env(max_online_messages),
-      max_offline_messages => vmq_config:get_env(max_offline_messages),
-      queue_deliver_mode => vmq_config:get_env(queue_deliver_mode),
-      queue_type => vmq_config:get_env(queue_type),
-      max_drain_time => vmq_config:get_env(max_drain_time),
-      max_msgs_per_drain_step => vmq_config:get_env(max_msgs_per_drain_step),
-      is_plugin => false}.
+    #{
+        allow_multiple_sessions => vmq_config:get_env(allow_multiple_sessions),
+        max_online_messages => vmq_config:get_env(max_online_messages),
+        max_offline_messages => vmq_config:get_env(max_offline_messages),
+        queue_deliver_mode => vmq_config:get_env(queue_deliver_mode),
+        queue_type => vmq_config:get_env(queue_type),
+        max_drain_time => vmq_config:get_env(max_drain_time),
+        max_msgs_per_drain_step => vmq_config:get_env(max_msgs_per_drain_step),
+        is_plugin => false
+    }.
 
 %%%===================================================================
 %%% gen_fsm state callbacks
 %%%===================================================================
 online({change_state, NewSessionState, SessionPid}, State) ->
     {next_state, online, change_session_state(NewSessionState, SessionPid, State)};
-online({notify_recv, SessionPid}, #state{id=SId, sessions=Sessions} = State) ->
-    #session{queue=#queue{backup=Backup} = Queue} = Session = maps:get(SessionPid, Sessions),
+online({notify_recv, SessionPid}, #state{id = SId, sessions = Sessions} = State) ->
+    #session{queue = #queue{backup = Backup} = Queue} = Session = maps:get(SessionPid, Sessions),
     cleanup_queue(SId, Backup),
-    NewSessions = maps:update(SessionPid,
-                              Session#session{queue=Queue#queue{backup=queue:new()}},
-                              Sessions),
+    NewSessions = maps:update(
+        SessionPid,
+        Session#session{queue = Queue#queue{backup = queue:new()}},
+        Sessions
+    ),
     _ = vmq_metrics:incr_queue_out(queue:len(Backup)),
-    {next_state, online, State#state{sessions=NewSessions}};
+    {next_state, online, State#state{sessions = NewSessions}};
 online({enqueue, Msg}, State) ->
     _ = vmq_metrics:incr_queue_in(),
     {next_state, online, insert(Msg, State)};
@@ -238,9 +252,9 @@ online(Event, State) ->
     lager:error("got unknown event in online state ~p", [Event]),
     {next_state, online, State}.
 
-online({set_opts, SessionPid, Opts}, _From, #state{opts=OldOpts} = State) ->
+online({set_opts, SessionPid, Opts}, _From, #state{opts = OldOpts} = State) ->
     MergedOpts = maps:merge(OldOpts, Opts),
-    NewState1 = set_general_opts(MergedOpts, State#state{opts=MergedOpts}),
+    NewState1 = set_general_opts(MergedOpts, State#state{opts = MergedOpts}),
     NewState2 = set_session_opts(SessionPid, MergedOpts, NewState1),
     {reply, ok, online, NewState2};
 online({add_session, SessionPid, #{allow_multiple_sessions := true} = Opts}, _From, State0) ->
@@ -248,8 +262,9 @@ online({add_session, SessionPid, #{allow_multiple_sessions := true} = Opts}, _Fr
     RetOpts = #{initial_msg_id => State0#state.initial_msg_id},
     State1 = unset_timers(add_session_(SessionPid, Opts, State0)),
     {reply, {ok, RetOpts}, online, State1};
-online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, From, State)
-  when State#state.waiting_call == undefined ->
+online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, From, State) when
+    State#state.waiting_call == undefined
+->
     %% forbid multiple sessions per queue,
     %% we've to disconnect currently attached sessions
     %% and wait with the reply until all the sessions
@@ -257,13 +272,16 @@ online({add_session, SessionPid, #{allow_multiple_sessions := false} = Opts}, Fr
     #state{id = SubscriberId} = State,
     lager:debug("client ~p disconnected due to multiple sessions not allowed", [SubscriberId]),
     disconnect_sessions(?SESSION_TAKEN_OVER, State),
-    {next_state, state_change(add_session, online, wait_for_offline),
-     State#state{waiting_call={add_session, SessionPid, Opts, From}}};
-online({migrate, OtherQueue}, From, State)
-  when State#state.waiting_call == undefined ->
+    {next_state, state_change(add_session, online, wait_for_offline), State#state{
+        waiting_call = {add_session, SessionPid, Opts, From}
+    }};
+online({migrate, OtherQueue}, From, State) when
+    State#state.waiting_call == undefined
+->
     disconnect_sessions(?DISCONNECT_MIGRATION, State),
-    {next_state, state_change(migrate, online, wait_for_offline),
-     State#state{waiting_call={migrate, OtherQueue, From}}};
+    {next_state, state_change(migrate, online, wait_for_offline), State#state{
+        waiting_call = {migrate, OtherQueue, From}
+    }};
 online({set_last_waiting_acks, WAcks, NextMsgId}, _From, State) ->
     {reply, ok, online, handle_waiting_acks_and_msgs(WAcks, NextMsgId, State)};
 online({enqueue_many, Msgs}, _From, State) ->
@@ -271,16 +289,20 @@ online({enqueue_many, Msgs}, _From, State) ->
     {reply, ok, online, insert_many(Msgs, State)};
 online({enqueue_many, Msgs, Opts}, _From, State) ->
     enqueue_many_(Msgs, online, Opts, State);
-online({cleanup, Reason}, From, State)
-  when State#state.waiting_call == undefined ->
+online({cleanup, Reason}, From, State) when
+    State#state.waiting_call == undefined
+->
     disconnect_sessions(Reason, State),
-    {next_state, state_change(cleanup, online, wait_for_offline),
-     State#state{waiting_call={{cleanup, Reason}, From}}};
-online({terminate, Reason}, From, State)
-    when State#state.waiting_call == undefined ->
+    {next_state, state_change(cleanup, online, wait_for_offline), State#state{
+        waiting_call = {{cleanup, Reason}, From}
+    }};
+online({terminate, Reason}, From, State) when
+    State#state.waiting_call == undefined
+->
     disconnect_sessions(Reason, State),
-    {next_state, state_change(termination, online, wait_for_offline),
-        State#state{waiting_call={{terminate, Reason}, From}}};
+    {next_state, state_change(termination, online, wait_for_offline), State#state{
+        waiting_call = {{terminate, Reason}, From}
+    }};
 online(Event, _From, State) ->
     lager:error("got unknown sync event in online state ~p", [Event]),
     {reply, {error, online}, State}.
@@ -292,11 +314,13 @@ wait_for_offline(Event, State) ->
     lager:error("got unknown event in wait_for_offline state ~p", [Event]),
     {next_state, wait_for_offline, State}.
 
-
 wait_for_offline({set_last_waiting_acks, WAcks, NextMsgId}, _From, State) ->
     {reply, ok, wait_for_offline, handle_waiting_acks_and_msgs(WAcks, NextMsgId, State)};
-wait_for_offline({add_session, SessionPid, Opts}, From,
-                 #state{waiting_call={migrate, _OtherQueue, MigrationFrom}} = State) ->
+wait_for_offline(
+    {add_session, SessionPid, Opts},
+    From,
+    #state{waiting_call = {migrate, _OtherQueue, MigrationFrom}} = State
+) ->
     %% Reason for this case:
     %% ---------------------
     %% This case handles a race condition that can happen when multiple
@@ -322,10 +346,14 @@ wait_for_offline({add_session, SessionPid, Opts}, From,
     %% to the waiting migration. The 'OtherQueue' that was part of the waiting
     %% migration gets eventually stopped.
     gen_fsm:reply(MigrationFrom, ok),
-    {next_state, wait_for_offline,
-     State#state{waiting_call={add_session, SessionPid, Opts, From}}};
-wait_for_offline({add_session, NewSessionPid, NewOpts}, From,
-                #state{waiting_call={add_session, SessionPid, _Opts, AddFrom}} = State) ->
+    {next_state, wait_for_offline, State#state{
+        waiting_call = {add_session, SessionPid, Opts, From}
+    }};
+wait_for_offline(
+    {add_session, NewSessionPid, NewOpts},
+    From,
+    #state{waiting_call = {add_session, SessionPid, _Opts, AddFrom}} = State
+) ->
     %% Reason for this case:
     %% ---------------------
     %% See case above!
@@ -342,10 +370,14 @@ wait_for_offline({add_session, NewSessionPid, NewOpts}, From,
     Opts = #{initial_msg_id => State#state.initial_msg_id},
     gen_fsm:reply(AddFrom, {ok, Opts}),
     exit(SessionPid, normal),
-    {next_state, wait_for_offline,
-     State#state{waiting_call={add_session, NewSessionPid, NewOpts, From}}};
-wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
-                #state{waiting_call={{cleanup, Reason}, _CleanupFrom}} = State) ->
+    {next_state, wait_for_offline, State#state{
+        waiting_call = {add_session, NewSessionPid, NewOpts, From}
+    }};
+wait_for_offline(
+    {add_session, _NewSessionPid, _NewOpts},
+    _From,
+    #state{waiting_call = {{cleanup, Reason}, _CleanupFrom}} = State
+) ->
     %% Reason for this case:
     %% ---------------------
     %% a synchronized registration that had triggered a cleanup got
@@ -356,8 +388,11 @@ wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
     %% We forcefully terminate the add_session call, as we have to ensure that
     %% this queue is completely wiped, before we allow new sessions to join.
     {reply, {error, {cleanup, Reason}}, wait_for_offline, State};
-wait_for_offline({add_session, _NewSessionPid, _NewOpts}, _From,
-    #state{waiting_call={{terminate, Reason}, _CleanupFrom}} = State) ->
+wait_for_offline(
+    {add_session, _NewSessionPid, _NewOpts},
+    _From,
+    #state{waiting_call = {{terminate, Reason}, _CleanupFrom}} = State
+) ->
     %% Reason for this case:
     %% ---------------------
     %% a synchronized registration that had triggered a termination got
@@ -372,12 +407,18 @@ wait_for_offline(Event, _From, State) ->
     lager:error("got unknown sync event in wait_for_offline state ~p", [Event]),
     {reply, {error, wait_for_offline}, wait_for_offline, State}.
 
-drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
-                          drain_time=DrainTimeout,
-                          max_msgs_per_drain_step=DrainStepSize,
-                          waiting_call={migrate, RemoteQueue, _From}} = State) ->
+drain(
+    drain_start,
+    #state{
+        id = SId,
+        offline = #queue{queue = Q} = Queue,
+        drain_time = DrainTimeout,
+        max_msgs_per_drain_step = DrainStepSize,
+        waiting_call = {migrate, RemoteQueue, _From}
+    } = State
+) ->
     {DrainQ, NewQ} = queue_split(DrainStepSize, Q),
-    #queue{queue=DecompressedDrainQ} = decompress_queue(SId, #queue{queue=DrainQ}),
+    #queue{queue = DecompressedDrainQ} = decompress_queue(SId, #queue{queue = DrainQ}),
     case queue:to_list(DecompressedDrainQ) of
         [] ->
             %% no need to drain!
@@ -385,20 +426,24 @@ drain(drain_start, #state{id=SId, offline=#queue{queue=Q} = Queue,
             %% the extra timeout gives the chance that pending messages
             %% in the erlang mailbox could still get enqueued and
             %% therefore eventually transmitted to the remote queue
-            {next_state, drain,
-             State#state{drain_over_timer=gen_fsm:send_event_after(DrainTimeout, drain_over),
-                         offline=Queue#queue{size=0, drop=0, queue=queue:new()}}};
+            {next_state, drain, State#state{
+                drain_over_timer = gen_fsm:send_event_after(DrainTimeout, drain_over),
+                offline = Queue#queue{size = 0, drop = 0, queue = queue:new()}
+            }};
         Msgs ->
             %% remote_enqueue triggers an enqueue_many inside the remote queue
             %% but forces the traffic to go over the distinct communication link
             %% instead of the erlang distribution link.
             ExtMsgs = lists:map(fun to_external/1, Msgs),
-            {MRef, Ref} = vmq_cluster:remote_enqueue_async(node(RemoteQueue), {enqueue, RemoteQueue, ExtMsgs}, false),
-            {next_state, drain,
-             State#state{offline=Queue#queue{size=queue:len(NewQ), drop=0, queue=NewQ},
-                         drain_pending_batch={MRef, Ref, DrainQ}}}
+            {MRef, Ref} = vmq_cluster:remote_enqueue_async(
+                node(RemoteQueue), {enqueue, RemoteQueue, ExtMsgs}, false
+            ),
+            {next_state, drain, State#state{
+                offline = Queue#queue{size = queue:len(NewQ), drop = 0, queue = NewQ},
+                drain_pending_batch = {MRef, Ref, DrainQ}
+            }}
     end;
-drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
+drain({enqueue, Msg}, #state{drain_over_timer = TRef} = State) ->
     %% even in drain state it is possible that an enqueue message
     %% reaches this process, so we've to queue this message otherwise
     %% it would be lost.
@@ -406,9 +451,11 @@ drain({enqueue, Msg}, #state{drain_over_timer=TRef} =  State) ->
     gen_fsm:send_event(self(), drain_start),
     _ = vmq_metrics:incr_queue_in(),
     {next_state, drain, insert(Msg, State)};
-
-drain(drain_over, #state{waiting_call={migrate, _, From}} =
-      #state{offline=#queue{size=0}} = State) ->
+drain(
+    drain_over,
+    #state{waiting_call = {migrate, _, From}} =
+        #state{offline = #queue{size = 0}} = State
+) ->
     %% we're done with the migrate, offline queue is empty
     gen_fsm:reply(From, ok),
     {stop, normal, State};
@@ -420,12 +467,12 @@ drain(Event, State) ->
     lager:error("got unknown event in drain state ~p", [Event]),
     {next_state, drain, State}.
 
-drain({enqueue_many, Msgs}, _From, #state{drain_over_timer=TRef} =  State) ->
+drain({enqueue_many, Msgs}, _From, #state{drain_over_timer = TRef} = State) ->
     gen_fsm:cancel_timer(TRef),
     gen_fsm:send_event(self(), drain_start),
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, drain, insert_many(Msgs, State)};
-drain({enqueue_many, Msgs, Opts}, _From, #state{drain_over_timer=TRef} =  State) ->
+drain({enqueue_many, Msgs, Opts}, _From, #state{drain_over_timer = TRef} = State) ->
     gen_fsm:cancel_timer(TRef),
     gen_fsm:send_event(self(), drain_start),
     enqueue_many_(Msgs, drain, Opts, State);
@@ -433,27 +480,32 @@ drain(Event, _From, State) ->
     lager:error("got unknown sync event in drain state ~p", [Event]),
     {reply, {error, draining}, drain, State}.
 
-
-offline(init_offline_queue, #state{id=SId} = State) ->
+offline(init_offline_queue, #state{id = SId} = State) ->
     case vmq_message_store:find(SId) of
         {ok, MsgRefs} ->
             _ = vmq_metrics:incr_queue_initialized_from_storage(),
-            {next_state, offline,
-             insert_many(MsgRefs, maybe_set_expiry_timer(State))};
+            {next_state, offline, insert_many(MsgRefs, maybe_set_expiry_timer(State))};
         {error, no_matching_hook_found} ->
             % that's ok
             _ = vmq_metrics:incr_queue_initialized_from_storage(),
             {next_state, offline, maybe_set_expiry_timer(State)};
         {error, Reason} ->
-            lager:error("can't initialize queue from offline storage due to ~p, retry in 1 sec", [Reason]),
+            lager:error("can't initialize queue from offline storage due to ~p, retry in 1 sec", [
+                Reason
+            ]),
             gen_fsm:send_event_after(1000, init_offline_queue),
             {next_state, offline, State}
     end;
-offline({enqueue, Enq}, #state{id=SId} = State) ->
+offline({enqueue, Enq}, #state{id = SId} = State) ->
     case Enq of
-        #deliver{qos=QoS, msg=#vmq_msg{routing_key=Topic,
-                                       payload=Payload,
-                                       retain=Retain}} ->
+        #deliver{
+            qos = QoS,
+            msg = #vmq_msg{
+                routing_key = Topic,
+                payload = Payload,
+                retain = Retain
+            }
+        } ->
             _ = vmq_plugin:all(on_offline_message, [SId, QoS, Topic, Payload, Retain]);
         _ ->
             ignore
@@ -461,7 +513,7 @@ offline({enqueue, Enq}, #state{id=SId} = State) ->
     %% storing the message in the offline queue
     _ = vmq_metrics:incr_queue_in(),
     {next_state, offline, insert(Enq, State)};
-offline(expire_session, #state{id=SId, offline=#queue{queue=Q}} = State) ->
+offline(expire_session, #state{id = SId, offline = #queue{queue = Q}} = State) ->
     %% session has expired cleanup and go down
     vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
     vmq_reg:delete_subscriptions(SId),
@@ -480,17 +532,18 @@ offline(Event, State) ->
 offline({add_session, SessionPid, Opts}, _From, State) ->
     ReturnOpts = #{initial_msg_id => State#state.initial_msg_id},
     {reply, {ok, ReturnOpts}, state_change(add_session, offline, online),
-     unset_timers(add_session_(SessionPid, Opts, State))};
+        unset_timers(add_session_(SessionPid, Opts, State))};
 offline({migrate, OtherQueue}, From, State) ->
     gen_fsm:send_event(self(), drain_start),
-    {next_state, state_change(migrate, offline, drain),
-     State#state{waiting_call={migrate, OtherQueue, From}}};
+    {next_state, state_change(migrate, offline, drain), State#state{
+        waiting_call = {migrate, OtherQueue, From}
+    }};
 offline({enqueue_many, Msgs}, _From, State) ->
     _ = vmq_metrics:incr_queue_in(length(Msgs)),
     {reply, ok, offline, insert_many(Msgs, State)};
 offline({enqueue_many, Msgs, Opts}, _From, State) ->
     enqueue_many_(Msgs, offline, Opts, State);
-offline({cleanup, _Reason}, _From, #state{id=SId, offline=#queue{queue=Q}} = State) ->
+offline({cleanup, _Reason}, _From, #state{id = SId, offline = #queue{queue = Q}} = State) ->
     cleanup_queue(SId, Q),
     vmq_message_store:delete(SId),
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
@@ -505,15 +558,16 @@ offline(Event, _From, State) ->
 %%% gen_fsm callbacks
 %%%===================================================================
 
-
 init([SubscriberId, Clean]) ->
     Defaults = default_opts(),
-    #{max_offline_messages := MaxOfflineMsgs,
-      queue_deliver_mode := DeliverMode,
-      queue_type := QueueType,
-      max_drain_time := DrainTime,
-      max_msgs_per_drain_step := MaxMsgsPerDrainStep} = Defaults,
-    OfflineQueue = #queue{type=QueueType, max=MaxOfflineMsgs},
+    #{
+        max_offline_messages := MaxOfflineMsgs,
+        queue_deliver_mode := DeliverMode,
+        queue_type := QueueType,
+        max_drain_time := DrainTime,
+        max_msgs_per_drain_step := MaxMsgsPerDrainStep
+    } = Defaults,
+    OfflineQueue = #queue{type = QueueType, max = MaxOfflineMsgs},
     rand:seed(exsplus, os:timestamp()),
     case Clean of
         true ->
@@ -525,68 +579,108 @@ init([SubscriberId, Clean]) ->
             gen_fsm:send_event(self(), init_offline_queue)
     end,
     vmq_metrics:incr_queue_setup(),
-    {ok, offline,  #state{id=SubscriberId,
-                          offline=OfflineQueue,
-                          drain_time=DrainTime,
-                          deliver_mode=DeliverMode,
-                          max_msgs_per_drain_step=MaxMsgsPerDrainStep,
-                          opts=Defaults,
-                          started_at=vmq_time:timestamp(millisecond)
-                         }}.
+    {ok, offline, #state{
+        id = SubscriberId,
+        offline = OfflineQueue,
+        drain_time = DrainTime,
+        deliver_mode = DeliverMode,
+        max_msgs_per_drain_step = MaxMsgsPerDrainStep,
+        opts = Defaults,
+        started_at = vmq_time:timestamp(millisecond)
+    }}.
 
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
-handle_sync_event(status, _From, StateName,
-                  #state{deliver_mode=Mode, offline=#queue{size=OfflineSize},
-                         sessions=Sessions, opts=#{is_plugin := IsPlugin}} = State) ->
+handle_sync_event(
+    status,
+    _From,
+    StateName,
+    #state{
+        deliver_mode = Mode,
+        offline = #queue{size = OfflineSize},
+        sessions = Sessions,
+        opts = #{is_plugin := IsPlugin}
+    } = State
+) ->
     TotalStoredMsgs =
-    maps:fold(fun(_, #session{queue=#queue{size=Size}}, Acc) ->
-                      Acc + Size
-              end, OfflineSize, Sessions),
+        maps:fold(
+            fun(_, #session{queue = #queue{size = Size}}, Acc) ->
+                Acc + Size
+            end,
+            OfflineSize,
+            Sessions
+        ),
     {reply, {StateName, Mode, TotalStoredMsgs, maps:size(Sessions), IsPlugin}, StateName, State};
-handle_sync_event(info, _From, StateName,
-                  #state{deliver_mode=Mode,
-                         offline=#queue{size=OfflineSize},
-                         sessions=Sessions,
-                         opts=#{is_plugin := IsPlugin},
-                         started_at=StartedAt} = State) ->
+handle_sync_event(
+    info,
+    _From,
+    StateName,
+    #state{
+        deliver_mode = Mode,
+        offline = #queue{size = OfflineSize},
+        sessions = Sessions,
+        opts = #{is_plugin := IsPlugin},
+        started_at = StartedAt
+    } = State
+) ->
     {OnlineMessages, SessionInfo} =
-    maps:fold(fun(_, #session{pid=SessPid, cleanup_on_disconnect=Clean,
-                              queue=#queue{size=Size},
-                              started_at=SessionStartedAt}, {AccN, AccSess}) ->
-                      {AccN + Size, [{SessPid, Clean,SessionStartedAt}|AccSess]}
-              end, {0, []}, Sessions),
-    Info = #{is_offline => (StateName == offline),
-             is_online => (StateName /= offline),
-             statename => StateName,
-             deliver_mode => Mode,
-             offline_messages => OfflineSize,
-             online_messages => OnlineMessages,
-             num_sessions => length(SessionInfo),
-             is_plugin => IsPlugin,
-             sessions => SessionInfo,
-             started_at => StartedAt},
+        maps:fold(
+            fun(
+                _,
+                #session{
+                    pid = SessPid,
+                    cleanup_on_disconnect = Clean,
+                    queue = #queue{size = Size},
+                    started_at = SessionStartedAt
+                },
+                {AccN, AccSess}
+            ) ->
+                {AccN + Size, [{SessPid, Clean, SessionStartedAt} | AccSess]}
+            end,
+            {0, []},
+            Sessions
+        ),
+    Info = #{
+        is_offline => (StateName == offline),
+        is_online => (StateName /= offline),
+        statename => StateName,
+        deliver_mode => Mode,
+        offline_messages => OfflineSize,
+        online_messages => OnlineMessages,
+        num_sessions => length(SessionInfo),
+        is_plugin => IsPlugin,
+        sessions => SessionInfo,
+        started_at => StartedAt
+    },
     {reply, Info, StateName, State};
-
-handle_sync_event(get_sessions, _From, StateName, #state{sessions=Sessions} = State) ->
+handle_sync_event(get_sessions, _From, StateName, #state{sessions = Sessions} = State) ->
     {reply, maps:keys(Sessions), StateName, State};
-handle_sync_event(get_opts, _From, StateName, #state{opts=Opts} = State) ->
+handle_sync_event(get_opts, _From, StateName, #state{opts = Opts} = State) ->
     {reply, Opts, StateName, State};
-handle_sync_event({force_disconnect, Reason, DoCleanup}, _From, StateName,
-                  #state{id=SId, sessions=Sessions, offline=#queue{queue=OfflineQ}} = State) ->
+handle_sync_event(
+    {force_disconnect, Reason, DoCleanup},
+    _From,
+    StateName,
+    #state{id = SId, sessions = Sessions, offline = #queue{queue = OfflineQ}} = State
+) ->
     %% Forcefully disconnect all sessions and cleanup all state
     case DoCleanup of
         true ->
             vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
             vmq_reg:delete_subscriptions(SId),
             %% Collect all queues, make sure to include the backups
-            SessionQueues = [queue:join(BQ, Q) || #session{queue=#queue{queue=Q, backup=BQ}} <- maps:values(Sessions)],
+            SessionQueues = [
+                queue:join(BQ, Q)
+             || #session{queue = #queue{queue = Q, backup = BQ}} <- maps:values(Sessions)
+            ],
             lists:foreach(
-              fun(Q) ->
-                      cleanup_queue(SId, Q),
-                      _ = vmq_metrics:incr_queue_unhandled(queue:len(Q))
-              end, [OfflineQ | SessionQueues]),
+                fun(Q) ->
+                    cleanup_queue(SId, Q),
+                    _ = vmq_metrics:incr_queue_unhandled(queue:len(Q))
+                end,
+                [OfflineQ | SessionQueues]
+            ),
             vmq_message_store:delete(SId),
             {stop, normal, ok, State};
         false ->
@@ -598,55 +692,83 @@ handle_sync_event({set_delayed_will, Fun, Delay}, _From, StateName, State) ->
 handle_sync_event(Event, _From, _StateName, State) ->
     {stop, {error, {unknown_sync_event, Event}}, State}.
 
-handle_info({Ref, ok}, drain,
-            #state{id=SId,
-                   drain_pending_batch = {MRef, Ref, Batch}} = State) ->
+handle_info(
+    {Ref, ok},
+    drain,
+    #state{
+        id = SId,
+        drain_pending_batch = {MRef, Ref, Batch}
+    } = State
+) ->
     %% remote async enqueue completed successfully.
     demonitor(MRef, [flush]),
     cleanup_queue(SId, Batch),
     _ = vmq_metrics:incr_queue_out(queue:len(Batch)),
     gen_fsm:send_event(self(), drain_start),
-    {next_state, drain,
-     State#state{drain_pending_batch=undefined}};
-handle_info({Ref, {error, not_reachable}}, drain,
-            #state{drain_pending_batch={MRef, Ref, Batch},
-                   drain_time=DrainTimeout,
-                   offline=#queue{queue=Q}} = State) ->
+    {next_state, drain, State#state{drain_pending_batch = undefined}};
+handle_info(
+    {Ref, {error, not_reachable}},
+    drain,
+    #state{
+        drain_pending_batch = {MRef, Ref, Batch},
+        drain_time = DrainTimeout,
+        offline = #queue{queue = Q}
+    } = State
+) ->
     %% remote async enqueue failed, let's retry
     demonitor(MRef, [flush]),
     gen_fsm:send_event_after(DrainTimeout, drain_start),
-    {next_state, drain,
-     State#state{drain_pending_batch=undefined,
-                 offline=#queue{queue=queue:join(Batch, Q)}}};
-handle_info({Ref, {error, Reason}}, drain,
-            #state{id=SId, drain_pending_batch={MRef, Ref, Batch},
-                   offline=#queue{queue=Q},
-                   waiting_call={migrate, RemoteQueue, From}} = State) ->
+    {next_state, drain, State#state{
+        drain_pending_batch = undefined,
+        offline = #queue{queue = queue:join(Batch, Q)}
+    }};
+handle_info(
+    {Ref, {error, Reason}},
+    drain,
+    #state{
+        id = SId,
+        drain_pending_batch = {MRef, Ref, Batch},
+        offline = #queue{queue = Q},
+        waiting_call = {migrate, RemoteQueue, From}
+    } = State
+) ->
     demonitor(MRef, [flush]),
     %% remote async enqueue failed, for another reason.  this
     %% shouldn't happen, as the register_subscriber is synchronized
     %% using the vmq_reg_leader process. However this could
     %% theoretically happen in case of an inconsistent (but
     %% un-detected) cluster state.  we don't drain in this case.
-    lager:error("can't drain queue '~p' for [~p][~p] due to ~p",
-                [SId, self(), RemoteQueue, Reason]),
+    lager:error(
+        "can't drain queue '~p' for [~p][~p] due to ~p",
+        [SId, self(), RemoteQueue, Reason]
+    ),
     gen_fsm:reply(From, ok),
     %% transition to offline, and let a future session drain this queue
-    {next_state, state_change(drain_error, drain, offline),
-     State#state{waiting_call=undefined,
-                 drain_pending_batch=undefined,
-                 offline=#queue{queue=queue:join(Batch, Q)}}};
-handle_info({'DOWN', MRef, process, _, Reason}, drain,
-            #state{id=SId, drain_pending_batch={MRef, _Ref, Batch},
-                   drain_time=DrainTimeout,
-                   offline=#queue{queue=Q},
-                   waiting_call={migrate, RemoteQueue, _From}} = State) ->
-    lager:warning("drain queue '~p' for [~p][~p] remote_enqueue failed due to ~p",
-                  [SId, self(), RemoteQueue, Reason]),
+    {next_state, state_change(drain_error, drain, offline), State#state{
+        waiting_call = undefined,
+        drain_pending_batch = undefined,
+        offline = #queue{queue = queue:join(Batch, Q)}
+    }};
+handle_info(
+    {'DOWN', MRef, process, _, Reason},
+    drain,
+    #state{
+        id = SId,
+        drain_pending_batch = {MRef, _Ref, Batch},
+        drain_time = DrainTimeout,
+        offline = #queue{queue = Q},
+        waiting_call = {migrate, RemoteQueue, _From}
+    } = State
+) ->
+    lager:warning(
+        "drain queue '~p' for [~p][~p] remote_enqueue failed due to ~p",
+        [SId, self(), RemoteQueue, Reason]
+    ),
     gen_fsm:send_event_after(DrainTimeout, drain_start),
-    {next_state, drain,
-     State#state{drain_pending_batch=undefined,
-                 offline=#queue{queue=queue:join(Batch, Q)}}};
+    {next_state, drain, State#state{
+        drain_pending_batch = undefined,
+        offline = #queue{queue = queue:join(Batch, Q)}
+    }};
 handle_info({'DOWN', _MRef, process, Pid, _}, StateName, State) ->
     handle_session_down(Pid, StateName, State);
 handle_info(Info, StateName, State) ->
@@ -676,56 +798,77 @@ allowed_state(FsmState, AllowedStates) ->
     Any = lists:member(any, AllowedStates),
     Any orelse lists:member(FsmState, AllowedStates).
 
-add_session_(SessionPid, Opts, #state{id=SId, offline=Offline,
-                                      sessions=Sessions, opts=OldOpts} = State) ->
-    #{max_online_messages := MaxOnlineMessages,
-      max_offline_messages := MaxOfflineMsgs,
-      queue_deliver_mode := DeliverMode,
-      queue_type := QueueType,
-      cleanup_on_disconnect := Clean
-     } = Opts,
-    BatchSize=maps:get(queue_to_session_batch_size, Opts, 100),
+add_session_(
+    SessionPid,
+    Opts,
+    #state{
+        id = SId,
+        offline = Offline,
+        sessions = Sessions,
+        opts = OldOpts
+    } = State
+) ->
+    #{
+        max_online_messages := MaxOnlineMessages,
+        max_offline_messages := MaxOfflineMsgs,
+        queue_deliver_mode := DeliverMode,
+        queue_type := QueueType,
+        cleanup_on_disconnect := Clean
+    } = Opts,
+    BatchSize = maps:get(queue_to_session_batch_size, Opts, 100),
     NewSessions =
-    case maps:get(SessionPid, Sessions, not_found) of
-        not_found ->
-            _ = vmq_plugin:all(on_client_wakeup, [SId]),
-            monitor(process, SessionPid),
-            maps:put(SessionPid,
-                     #session{pid=SessionPid, cleanup_on_disconnect=Clean,
-                              queue=#queue{max=MaxOnlineMessages},
-                              started_at=vmq_time:timestamp(millisecond),
-                              queue_to_session_batch_size=BatchSize}, Sessions);
-        _ ->
-            Sessions
-    end,
+        case maps:get(SessionPid, Sessions, not_found) of
+            not_found ->
+                _ = vmq_plugin:all(on_client_wakeup, [SId]),
+                monitor(process, SessionPid),
+                maps:put(
+                    SessionPid,
+                    #session{
+                        pid = SessionPid,
+                        cleanup_on_disconnect = Clean,
+                        queue = #queue{max = MaxOnlineMessages},
+                        started_at = vmq_time:timestamp(millisecond),
+                        queue_to_session_batch_size = BatchSize
+                    },
+                    Sessions
+                );
+            _ ->
+                Sessions
+        end,
     vmq_message_store:delete(SId),
-    insert_from_queue(Offline#queue{type=QueueType},
-                      State#state{
-                        deliver_mode=DeliverMode,
-                        offline=Offline#queue{
-                                  max=MaxOfflineMsgs,
-                                  type=QueueType,
-                                  size=0, drop=0,
-                                  queue = queue:new()
-                                 },
-                        opts=maps:merge(OldOpts, Opts),
-                        sessions=NewSessions}).
+    insert_from_queue(
+        Offline#queue{type = QueueType},
+        State#state{
+            deliver_mode = DeliverMode,
+            offline = Offline#queue{
+                max = MaxOfflineMsgs,
+                type = QueueType,
+                size = 0,
+                drop = 0,
+                queue = queue:new()
+            },
+            opts = maps:merge(OldOpts, Opts),
+            sessions = NewSessions
+        }
+    ).
 
-del_session(SessionPid, #state{id=SId, sessions=Sessions} = State) ->
+del_session(SessionPid, #state{id = SId, sessions = Sessions} = State) ->
     NewSessions = maps:remove(SessionPid, Sessions),
     case maps:get(SessionPid, Sessions) of
-        #session{cleanup_on_disconnect=true} = Session ->
+        #session{cleanup_on_disconnect = true} = Session ->
             cleanup_session(SId, Session),
-            {State#state{sessions=NewSessions}, Session};
+            {State#state{sessions = NewSessions}, Session};
         Session ->
             %% give queue content of this session to other alive sessions
             %% or to offline queue
-            {insert_from_session(Session, State#state{sessions=NewSessions}),
-             Session}
+            {insert_from_session(Session, State#state{sessions = NewSessions}), Session}
     end.
 
-handle_session_down(SessionPid, StateName,
-                    #state{id=SId, waiting_call=WaitingCall} = State) ->
+handle_session_down(
+    SessionPid,
+    StateName,
+    #state{id = SId, waiting_call = WaitingCall} = State
+) ->
     {NewState, DeletedSession} = del_session(SessionPid, State),
     case {maps:size(NewState#state.sessions), StateName, WaitingCall} of
         {0, wait_for_offline, {add_session, NewSessionPid, Opts, From}} ->
@@ -741,8 +884,10 @@ handle_session_down(SessionPid, StateName,
                     _ = vmq_plugin:all(on_client_offline, [SId])
             end,
             {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
-             add_session_(NewSessionPid, Opts, NewState#state{waiting_call=undefined})};
-        {0, wait_for_offline, {migrate, _, From}} when DeletedSession#session.cleanup_on_disconnect ->
+                add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined})};
+        {0, wait_for_offline, {migrate, _, From}} when
+            DeletedSession#session.cleanup_on_disconnect
+        ->
             %% last session gone
             %% ... we dont need to migrate this one
             vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
@@ -761,7 +906,7 @@ handle_session_down(SessionPid, StateName,
         {0, wait_for_offline, {{cleanup, _Reason}, From}} ->
             %% Forcefully cleaned up, we have to cleanup remaining offline messages
             %% we don't cleanup subscriptions!
-            #state{offline=#queue{queue=Q}} = NewState,
+            #state{offline = #queue{queue = Q}} = NewState,
             cleanup_queue(SId, Q),
             vmq_message_store:delete(SId),
             _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
@@ -789,26 +934,41 @@ handle_session_down(SessionPid, StateName,
             %%     inside the offline queue
             _ = vmq_plugin:all(on_client_offline, [SId]),
             {next_state, state_change('DOWN', OldStateName, offline),
-             maybe_set_last_will_timer(maybe_set_expiry_timer(NewState#state{offline=compress_queue(SId, NewState#state.offline)}))};
+                maybe_set_last_will_timer(
+                    maybe_set_expiry_timer(NewState#state{
+                        offline = compress_queue(SId, NewState#state.offline)
+                    })
+                )};
         _ ->
             %% still one or more sessions online
             {next_state, StateName, NewState}
     end.
 
-handle_waiting_acks_and_msgs(WAcks, NextMsgId, #state{id=SId, sessions=Sessions, offline=Offline} = State) ->
+handle_waiting_acks_and_msgs(
+    WAcks, NextMsgId, #state{id = SId, sessions = Sessions, offline = Offline} = State
+) ->
     %% we can only handle the last waiting acks and msgs if this is
     %% the last session active for this queue.
     case maps:size(Sessions) of
         1 ->
             %% this is the last active session
             NewOfflineQueue =
-            lists:foldl(
-              fun(#deliver{msg=#vmq_msg{persisted=true} = Msg}=D, AccOffline) ->
-                      queue_insert(true, D#deliver{msg=Msg#vmq_msg{persisted=false}}, AccOffline, SId);
-                 (Msg, AccOffline) ->
-                      queue_insert(true, Msg, AccOffline, SId)
-              end, Offline, WAcks),
-            State#state{offline=NewOfflineQueue, initial_msg_id=NextMsgId};
+                lists:foldl(
+                    fun
+                        (#deliver{msg = #vmq_msg{persisted = true} = Msg} = D, AccOffline) ->
+                            queue_insert(
+                                true,
+                                D#deliver{msg = Msg#vmq_msg{persisted = false}},
+                                AccOffline,
+                                SId
+                            );
+                        (Msg, AccOffline) ->
+                            queue_insert(true, Msg, AccOffline, SId)
+                    end,
+                    Offline,
+                    WAcks
+                ),
+            State#state{offline = NewOfflineQueue, initial_msg_id = NextMsgId};
         N ->
             lager:debug("handle waiting acks for multiple sessions (~p) not possible", [N]),
             %% it doesn't make sense to keep the waiting acks around
@@ -818,67 +978,77 @@ handle_waiting_acks_and_msgs(WAcks, NextMsgId, #state{id=SId, sessions=Sessions,
             State
     end.
 
-disconnect_sessions(Reason, #state{sessions=Sessions}) ->
-    maps:fold(fun(SessionPid, #session{}, _) ->
-                      %% before the session is going to die it
-                      %% will send out LWT messages and will give
-                      %% us back the waiting acks and messages
-                      %% calling set_last_waiting_acks/2
-                      %% then the 'DOWN' message gets triggerd
-                      %% finally deleting the session
-                      vmq_mqtt_fsm_util:send(SessionPid, {disconnect, Reason}),
-                      ok
-              end, ok, Sessions).
+disconnect_sessions(Reason, #state{sessions = Sessions}) ->
+    maps:fold(
+        fun(SessionPid, #session{}, _) ->
+            %% before the session is going to die it
+            %% will send out LWT messages and will give
+            %% us back the waiting acks and messages
+            %% calling set_last_waiting_acks/2
+            %% then the 'DOWN' message gets triggerd
+            %% finally deleting the session
+            vmq_mqtt_fsm_util:send(SessionPid, {disconnect, Reason}),
+            ok
+        end,
+        ok,
+        Sessions
+    ).
 
-change_session_state(NewState, SessionPid, #state{id=SId, sessions=Sessions} = State) ->
-    #session{queue=#queue{backup=Backup} = Queue} = Session = maps:get(SessionPid, Sessions),
+change_session_state(NewState, SessionPid, #state{id = SId, sessions = Sessions} = State) ->
+    #session{queue = #queue{backup = Backup} = Queue} = Session = maps:get(SessionPid, Sessions),
     cleanup_queue(SId, Backup),
     _ = vmq_metrics:incr_queue_out(queue:len(Backup)),
-    UpdatedSession = change_session_state_(NewState, SId,
-                                           Session#session{queue=Queue#queue{backup=queue:new()}}),
+    UpdatedSession = change_session_state_(
+        NewState,
+        SId,
+        Session#session{queue = Queue#queue{backup = queue:new()}}
+    ),
     NewSessions = maps:update(SessionPid, UpdatedSession, Sessions),
-    State#state{sessions=NewSessions}.
+    State#state{sessions = NewSessions}.
 
 %% in active state
-change_session_state_(active, _SId, #session{status=active} = Session) ->
+change_session_state_(active, _SId, #session{status = active} = Session) ->
     Session;
-change_session_state_(notify, _SId, #session{status=active} = Session) ->
-    Session#session{status=notify};
-
+change_session_state_(notify, _SId, #session{status = active} = Session) ->
+    Session#session{status = notify};
 %% in passive state
-change_session_state_(notify, _SId, #session{status=passive, queue=#queue{size=0}} = Session) ->
-    Session#session{status=notify};
-change_session_state_(notify, _SId, #session{status=passive} = Session) ->
+change_session_state_(notify, _SId, #session{status = passive, queue = #queue{size = 0}} = Session) ->
+    Session#session{status = notify};
+change_session_state_(notify, _SId, #session{status = passive} = Session) ->
     send_notification(Session);
-change_session_state_(active, _SId, #session{status=passive, queue=#queue{size=0}} = Session) ->
-    Session#session{status=active};
-change_session_state_(active, SId, #session{status=passive} = Session) ->
+change_session_state_(active, _SId, #session{status = passive, queue = #queue{size = 0}} = Session) ->
+    Session#session{status = active};
+change_session_state_(active, SId, #session{status = passive} = Session) ->
     send(SId, Session);
-
 %% in notify state
-change_session_state_(active, _SId, #session{status=notify, queue=#queue{size=0}} = Session) ->
-    Session#session{status=active};
-change_session_state_(active, SId, #session{status=notify} = Session) ->
+change_session_state_(active, _SId, #session{status = notify, queue = #queue{size = 0}} = Session) ->
+    Session#session{status = active};
+change_session_state_(active, SId, #session{status = notify} = Session) ->
     send(SId, Session);
-change_session_state_(notify, _SId, #session{status=notify} = Session) ->
+change_session_state_(notify, _SId, #session{status = notify} = Session) ->
     Session.
 
-insert_from_session(#session{queue=Queue},
-                    #state{deliver_mode=fanout, sessions=Sessions} = State)
-  when Sessions == #{} ->
+insert_from_session(
+    #session{queue = Queue},
+    #state{deliver_mode = fanout, sessions = Sessions} = State
+) when
+    Sessions == #{}
+->
     %% all will go into offline queue
     insert_from_queue(Queue, State);
-insert_from_session(_, #state{deliver_mode=fanout} = State) ->
+insert_from_session(_, #state{deliver_mode = fanout} = State) ->
     %% due to fanout other sessions have already received the messages
     State;
-insert_from_session(#session{queue=Queue},
-                    #state{deliver_mode=balance} = State) ->
+insert_from_session(
+    #session{queue = Queue},
+    #state{deliver_mode = balance} = State
+) ->
     %% allow other sessions to balance the messages of the dead queue
     insert_from_queue(Queue, State).
 
-insert_from_queue(#queue{type=fifo, queue=Q, backup=BQ}, State) ->
+insert_from_queue(#queue{type = fifo, queue = Q, backup = BQ}, State) ->
     insert_from_queue(fun queue:out/1, queue:out(queue:join(BQ, Q)), State);
-insert_from_queue(#queue{type=lifo, queue=Q, backup=BQ}, State) ->
+insert_from_queue(#queue{type = lifo, queue = Q, backup = BQ}, State) ->
     insert_from_queue(fun queue:out_r/1, queue:out_r(queue:join(BQ, Q)), State).
 
 insert_from_queue(F, {{value, Msg}, Q}, State) when is_tuple(Msg) ->
@@ -889,80 +1059,103 @@ insert_from_queue(_F, {empty, _}, State) ->
     State.
 
 insert_many(MsgsOrRefs, State) ->
-    lists:foldl(fun(MsgOrRef, AccState) ->
-                        insert(MsgOrRef, AccState)
-                end, State, MsgsOrRefs).
+    lists:foldl(
+        fun(MsgOrRef, AccState) ->
+            insert(MsgOrRef, AccState)
+        end,
+        State,
+        MsgsOrRefs
+    ).
 
 %% Offline Queue
 -spec insert(deliver() | msg_ref(), state()) -> state().
-insert(#deliver{qos=0}, #state{sessions=Sessions} = State)
-  when Sessions == #{} ->
+insert(#deliver{qos = 0}, #state{sessions = Sessions} = State) when
+    Sessions == #{}
+->
     %% no session online, skip message for QoS0 Subscription
     State;
-insert(#deliver{msg=#vmq_msg{qos=0}}, #state{sessions=Sessions} = State)
-  when Sessions == #{} ->
+insert(#deliver{msg = #vmq_msg{qos = 0}}, #state{sessions = Sessions} = State) when
+    Sessions == #{}
+->
     %% no session online, skip QoS0 message for QoS1 or QoS2 Subscription
     State;
-insert(MsgOrRef, #state{id=SId, offline=Offline, sessions=Sessions} = State)
-  when Sessions == #{} ->
+insert(MsgOrRef, #state{id = SId, offline = Offline, sessions = Sessions} = State) when
+    Sessions == #{}
+->
     %% no session online, insert in offline queue
-    State#state{offline=queue_insert(true, maybe_set_expiry_ts(MsgOrRef), Offline, SId)};
-
+    State#state{offline = queue_insert(true, maybe_set_expiry_ts(MsgOrRef), Offline, SId)};
 %% Online Queue
-insert(MsgOrRef, #state{id=SId, deliver_mode=fanout, sessions=Sessions} = State) ->
-    {NewSessions, _} = session_fold(SId, fun session_insert/3, maybe_set_expiry_ts(MsgOrRef), Sessions),
-    State#state{sessions=NewSessions};
-
-insert(MsgOrRef, #state{id=SId, deliver_mode=balance, sessions=Sessions} = State) ->
+insert(MsgOrRef, #state{id = SId, deliver_mode = fanout, sessions = Sessions} = State) ->
+    {NewSessions, _} = session_fold(
+        SId, fun session_insert/3, maybe_set_expiry_ts(MsgOrRef), Sessions
+    ),
+    State#state{sessions = NewSessions};
+insert(MsgOrRef, #state{id = SId, deliver_mode = balance, sessions = Sessions} = State) ->
     Pids = maps:keys(Sessions),
     RandomPid = lists:nth(rand:uniform(maps:size(Sessions)), Pids),
     RandomSession = maps:get(RandomPid, Sessions),
     {UpdatedSession, _} = session_insert(SId, RandomSession, maybe_set_expiry_ts(MsgOrRef)),
-    State#state{sessions=maps:update(RandomPid, UpdatedSession, Sessions)}.
+    State#state{sessions = maps:update(RandomPid, UpdatedSession, Sessions)}.
 
-session_insert(SId, #session{status=active, queue=Q} = Session, MsgOrRef) ->
-    {send(SId, Session#session{queue=queue_insert(false, MsgOrRef, Q, SId)}), MsgOrRef};
-session_insert(SId, #session{status=passive, queue=Q} = Session, MsgOrRef) ->
-    {Session#session{queue=queue_insert(false, MsgOrRef, Q, SId)}, MsgOrRef};
-session_insert(SId, #session{status=notify, queue=Q} = Session, MsgOrRef) ->
-    {send_notification(Session#session{queue=queue_insert(false, MsgOrRef, Q, SId)}), MsgOrRef}.
+session_insert(SId, #session{status = active, queue = Q} = Session, MsgOrRef) ->
+    {send(SId, Session#session{queue = queue_insert(false, MsgOrRef, Q, SId)}), MsgOrRef};
+session_insert(SId, #session{status = passive, queue = Q} = Session, MsgOrRef) ->
+    {Session#session{queue = queue_insert(false, MsgOrRef, Q, SId)}, MsgOrRef};
+session_insert(SId, #session{status = notify, queue = Q} = Session, MsgOrRef) ->
+    {send_notification(Session#session{queue = queue_insert(false, MsgOrRef, Q, SId)}), MsgOrRef}.
 
 %% unlimited messages accepted
-queue_insert(Offline, MsgOrRef, #queue{max=-1, size=Size, queue=Queue} = Q, SId) ->
-    Q#queue{queue=queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size=Size + 1};
+queue_insert(Offline, MsgOrRef, #queue{max = -1, size = Size, queue = Queue} = Q, SId) ->
+    Q#queue{queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1};
 %% tail drop in case of fifo
-queue_insert(_Offline, MsgOrRef, #queue{type=fifo, max=Max, size=Size, drop=Drop} = Q, SId)
-  when Size >= Max ->
+queue_insert(
+    _Offline, MsgOrRef, #queue{type = fifo, max = Max, size = Size, drop = Drop} = Q, SId
+) when
+    Size >= Max
+->
     on_message_drop_hook(SId, MsgOrRef, queue_full),
     vmq_metrics:incr_queue_drop(),
     maybe_offline_delete(SId, MsgOrRef),
-    Q#queue{drop=Drop + 1};
+    Q#queue{drop = Drop + 1};
 %% drop oldest in case of lifo
-queue_insert(Offline, MsgOrRef, #queue{type=lifo, max=Max, size=Size, queue=Queue, drop=Drop} = Q, SId)
-  when Size >= Max ->
+queue_insert(
+    Offline,
+    MsgOrRef,
+    #queue{type = lifo, max = Max, size = Size, queue = Queue, drop = Drop} = Q,
+    SId
+) when
+    Size >= Max
+->
     {{value, OldMsgOrRef}, NewQueue} = queue:out(Queue),
     on_message_drop_hook(SId, OldMsgOrRef, queue_full),
     vmq_metrics:incr_queue_drop(),
     maybe_offline_delete(SId, OldMsgOrRef),
-    Q#queue{queue=queue:in(maybe_offline_store(Offline, SId, MsgOrRef), NewQueue), drop=Drop + 1};
-
+    Q#queue{
+        queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), NewQueue), drop = Drop + 1
+    };
 %% normal enqueue
-queue_insert(Offline, MsgOrRef, #queue{queue=Queue, size=Size} = Q, SId) ->
-    Q#queue{queue=queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size=Size + 1}.
+queue_insert(Offline, MsgOrRef, #queue{queue = Queue, size = Size} = Q, SId) ->
+    Q#queue{queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1}.
 
-send(SId, #session{pid=Pid, queue=Q,
-                  queue_to_session_batch_size = BatchSize} = Session) ->
-    Session#session{status=passive, queue=send(SId, Pid, BatchSize, Q)}.
+send(
+    SId,
+    #session{
+        pid = Pid,
+        queue = Q,
+        queue_to_session_batch_size = BatchSize
+    } = Session
+) ->
+    Session#session{status = passive, queue = send(SId, Pid, BatchSize, Q)}.
 
-send(SId, Pid, BatchSize, #queue{type=fifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
+send(SId, Pid, BatchSize, #queue{type = fifo, queue = Queue, size = Count, drop = Dropped} = Q) ->
     {Batch, NewQueue, NewCount} = prepare_msgs(SId, queue:new(), Queue, Count, BatchSize),
     Msgs = queue:to_list(Batch),
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), Msgs, Count, Dropped}),
-    Q#queue{queue=NewQueue, backup=Batch, size=NewCount, drop=0};
-send(SId, Pid, _BatchSize, #queue{type=lifo, queue=Queue, size=Count, drop=Dropped} = Q) ->
+    Q#queue{queue = NewQueue, backup = Batch, size = NewCount, drop = 0};
+send(SId, Pid, _BatchSize, #queue{type = lifo, queue = Queue, size = Count, drop = Dropped} = Q) ->
     Msgs = maybe_expire_msgs(SId, lists:reverse(queue:to_list(Queue))),
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), Msgs, Count, Dropped}),
-    Q#queue{queue=queue:new(), backup=Queue, size=0, drop=0}.
+    Q#queue{queue = queue:new(), backup = Queue, size = 0, drop = 0}.
 
 prepare_msgs(_SId, OQ, Q, QC, 0) ->
     {OQ, Q, QC};
@@ -976,7 +1169,7 @@ prepare_msgs(SId, OQ, Q, QC, N) ->
                             prepare_msgs(SId, OQ, NQ, QC - 1, N);
                         NewMsg1 ->
                             NOQ = queue:in(NewMsg1, OQ),
-                            prepare_msgs(SId, NOQ, NQ, QC - 1, N-1)
+                            prepare_msgs(SId, NOQ, NQ, QC - 1, N - 1)
                     end;
                 {error, _} ->
                     prepare_msgs(SId, OQ, NQ, QC - 1, N)
@@ -987,27 +1180,26 @@ prepare_msgs(SId, OQ, Q, QC, N) ->
 
 maybe_deref(SId, MsgRef) when is_binary(MsgRef) ->
     case vmq_message_store:read(SId, MsgRef) of
-        {ok, #vmq_msg{qos=QoS}=Msg} ->
-            {ok, #deliver{qos=QoS, msg=Msg}};
+        {ok, #vmq_msg{qos = QoS} = Msg} ->
+            {ok, #deliver{qos = QoS, msg = Msg}};
         {error, _} = E ->
             E
     end;
 maybe_deref(_, Msg) ->
     {ok, Msg}.
 
-
-send_notification(#session{pid=Pid} = Session) ->
+send_notification(#session{pid = Pid} = Session) ->
     vmq_mqtt_fsm_util:send(Pid, {mail, self(), new_data}),
-    Session#session{status=passive}.
+    Session#session{status = passive}.
 
-cleanup_session(SubscriberId, #session{queue=#queue{queue=Q, backup=BQ}}) ->
+cleanup_session(SubscriberId, #session{queue = #queue{queue = Q, backup = BQ}}) ->
     _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
     %% it's possible that the backup queue isn't cleaned up yet.
     cleanup_queue(SubscriberId, queue:join(Q, BQ)).
 
-cleanup_queue(_, {[],[]}) -> ok; %% optimization
-cleanup_queue(SId, Queue) ->
-    cleanup_queue_(SId, queue:out(Queue)).
+%% optimization
+cleanup_queue(_, {[], []}) -> ok;
+cleanup_queue(SId, Queue) -> cleanup_queue_(SId, queue:out(Queue)).
 
 cleanup_queue_(SId, {{value, #deliver{}}, NewQueue}) ->
     cleanup_queue_(SId, queue:out(NewQueue));
@@ -1016,22 +1208,26 @@ cleanup_queue_(SId, {{value, {deliver_pubrel, _}}, NewQueue}) ->
     cleanup_queue_(SId, queue:out(NewQueue));
 cleanup_queue_(SId, {{value, MsgRef}, NewQueue}) when is_binary(MsgRef) ->
     cleanup_queue_(SId, queue:out(NewQueue));
-cleanup_queue_(SId, {{value, {{qos2,_},_}}, NewQueue}) ->
+cleanup_queue_(SId, {{value, {{qos2, _}, _}}, NewQueue}) ->
     cleanup_queue_(SId, queue:out(NewQueue));
-cleanup_queue_(_, {empty, _}) -> ok.
-
+cleanup_queue_(_, {empty, _}) ->
+    ok.
 
 session_fold(SId, Fun, Acc, Map) ->
     session_fold(SId, Fun, Acc, Map, maps:keys(Map)).
 
-session_fold(SId, Fun, Acc, Map, [K|Rest]) ->
+session_fold(SId, Fun, Acc, Map, [K | Rest]) ->
     {NewV, NewAcc} = Fun(SId, maps:get(K, Map), Acc),
     session_fold(SId, Fun, NewAcc, maps:update(K, NewV, Map), Rest);
 session_fold(_, _, Acc, Map, []) ->
     {Map, Acc}.
 
-maybe_set_expiry_timer(#state{sessions=Sessions,
-                              opts=Opts}=State) when Sessions == #{} ->
+maybe_set_expiry_timer(
+    #state{
+        sessions = Sessions,
+        opts = Opts
+    } = State
+) when Sessions == #{} ->
     Duration =
         case Opts of
             #{session_expiry_interval := ExpiryInterval} ->
@@ -1040,14 +1236,15 @@ maybe_set_expiry_timer(#state{sessions=Sessions,
                 vmq_config:get_env(persistent_client_expiration, 0)
         end,
     maybe_set_expiry_timer(Duration, State);
-maybe_set_expiry_timer(State) -> State.
+maybe_set_expiry_timer(State) ->
+    State.
 
 maybe_set_expiry_timer(0, State) ->
     %% never expire
     State;
 maybe_set_expiry_timer(ExpireAfter, State) when ExpireAfter > 0 ->
     Ref = gen_fsm:send_event_after(ExpireAfter * 1000, expire_session),
-    State#state{expiry_timer=Ref}.
+    State#state{expiry_timer = Ref}.
 
 maybe_set_last_will_timer(#state{delayed_will = undefined} = State) ->
     State;
@@ -1061,152 +1258,197 @@ publish_last_will(#state{delayed_will = {_, Fun}} = State) ->
     Fun(),
     unset_will_timer(State#state{delayed_will = undefined}).
 
-maybe_offline_store(true, SubscriberId, #deliver{qos=QoS, msg=#vmq_msg{persisted=false} = Msg}=D) when QoS > 0 ->
+maybe_offline_store(
+    true, SubscriberId, #deliver{qos = QoS, msg = #vmq_msg{persisted = false} = Msg} = D
+) when QoS > 0 ->
     %% this function writes the message to the message store, in case the queue
     %% has no online session attached anymore (Offline = true)
-    PMsg = Msg#vmq_msg{persisted=true, qos=QoS},
+    PMsg = Msg#vmq_msg{persisted = true, qos = QoS},
     vmq_message_store:write(SubscriberId, PMsg),
-    D#deliver{msg=PMsg};
-maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true, dup=true}} = D) ->
+    D#deliver{msg = PMsg};
+maybe_offline_store(true, _, #deliver{msg = #vmq_msg{persisted = true, dup = true}} = D) ->
     % we can't compress a DUP message as we'd lose the message id when compressing
     D;
-maybe_offline_store(true, _, #deliver{msg=#vmq_msg{persisted=true, expiry_ts=ExpiryTs}} = D) when ExpiryTs =/= undefined ->
+maybe_offline_store(
+    true, _, #deliver{msg = #vmq_msg{persisted = true, expiry_ts = ExpiryTs}} = D
+) when ExpiryTs =/= undefined ->
     % we can't compress a message that has the expiry_ts set as we'd lose the expiry ts when compressing
     D;
-maybe_offline_store(_, _, MsgOrRef) -> MsgOrRef.
+maybe_offline_store(_, _, MsgOrRef) ->
+    MsgOrRef.
 
-maybe_offline_delete(SubscriberId, #deliver{msg=#vmq_msg{persisted=true, msg_ref=MsgRef}}) ->
+maybe_offline_delete(SubscriberId, #deliver{msg = #vmq_msg{persisted = true, msg_ref = MsgRef}}) ->
     _ = vmq_message_store:delete(SubscriberId, MsgRef),
     ok;
 maybe_offline_delete(SubscriberId, MsgRef) when is_binary(MsgRef) ->
     _ = vmq_message_store:delete(SubscriberId, MsgRef),
     ok;
-maybe_offline_delete(_, _) -> ok.
+maybe_offline_delete(_, _) ->
+    ok.
 
 unset_timers(State) ->
     S1 = unset_expiry_timer(State),
     unset_will_timer(S1).
 
-unset_will_timer(#state{delayed_will_timer=undefined} = State) -> State;
-unset_will_timer(#state{delayed_will_timer=Ref} = State) ->
+unset_will_timer(#state{delayed_will_timer = undefined} = State) ->
+    State;
+unset_will_timer(#state{delayed_will_timer = Ref} = State) ->
     gen_fsm:cancel_timer(Ref),
-    State#state{delayed_will_timer=undefined}.
+    State#state{delayed_will_timer = undefined}.
 
-unset_expiry_timer(#state{expiry_timer=undefined} = State) -> State;
-unset_expiry_timer(#state{expiry_timer=Ref} = State) ->
+unset_expiry_timer(#state{expiry_timer = undefined} = State) ->
+    State;
+unset_expiry_timer(#state{expiry_timer = Ref} = State) ->
     gen_fsm:cancel_timer(Ref),
-    State#state{expiry_timer=undefined}.
+    State#state{expiry_timer = undefined}.
 
 state_change(Msg, OldStateName, NewStateName) ->
     lager:debug("transition from ~p --> ~p because of ~p", [OldStateName, NewStateName, Msg]),
     NewStateName.
 
-set_general_opts(#{queue_deliver_mode := DeliverMode,
-                   max_offline_messages := MaxOfflineMsgs,
-                   max_msgs_per_drain_step := MaxMsgsPerDrainStep},
-                 #state{offline=Offline} = State) ->
-    State#state{offline=Offline#queue{max=MaxOfflineMsgs},
-                deliver_mode=DeliverMode,
-                max_msgs_per_drain_step=MaxMsgsPerDrainStep}.
+set_general_opts(
+    #{
+        queue_deliver_mode := DeliverMode,
+        max_offline_messages := MaxOfflineMsgs,
+        max_msgs_per_drain_step := MaxMsgsPerDrainStep
+    },
+    #state{offline = Offline} = State
+) ->
+    State#state{
+        offline = Offline#queue{max = MaxOfflineMsgs},
+        deliver_mode = DeliverMode,
+        max_msgs_per_drain_step = MaxMsgsPerDrainStep
+    }.
 
-set_session_opts(SessionPid, #{max_online_messages := MaxOnlineMsgs,
-                               queue_type := Type,
-                               cleanup_on_disconnect := Clean}, #state{sessions=Sessions} = State) ->
-    #session{queue=Queue} = Session = maps:get(SessionPid, Sessions),
-    NewSessions = maps:update(SessionPid,
-                              Session#session{
-                                cleanup_on_disconnect=Clean,
-                                queue=Queue#queue{
-                                        max=MaxOnlineMsgs,
-                                        type=Type
-                                       }
-                               }, Sessions),
-    State#state{sessions=NewSessions}.
+set_session_opts(
+    SessionPid,
+    #{
+        max_online_messages := MaxOnlineMsgs,
+        queue_type := Type,
+        cleanup_on_disconnect := Clean
+    },
+    #state{sessions = Sessions} = State
+) ->
+    #session{queue = Queue} = Session = maps:get(SessionPid, Sessions),
+    NewSessions = maps:update(
+        SessionPid,
+        Session#session{
+            cleanup_on_disconnect = Clean,
+            queue = Queue#queue{
+                max = MaxOnlineMsgs,
+                type = Type
+            }
+        },
+        Sessions
+    ),
+    State#state{sessions = NewSessions}.
 
-compress_queue(SId, #queue{queue=Q} = Queue) ->
+compress_queue(SId, #queue{queue = Q} = Queue) ->
     NewQueue = compress_queue(SId, queue:to_list(Q), []),
-    Queue#queue{queue=NewQueue}.
+    Queue#queue{queue = NewQueue}.
 
 compress_queue(_, [], Acc) ->
     queue:from_list(lists:reverse(Acc));
-compress_queue(SId, [Msg|Rest], Acc) ->
-    compress_queue(SId, Rest, [maybe_offline_store(true, SId, Msg)|Acc]).
+compress_queue(SId, [Msg | Rest], Acc) ->
+    compress_queue(SId, Rest, [maybe_offline_store(true, SId, Msg) | Acc]).
 
-decompress_queue(SId, #queue{queue=Q} = Queue) ->
+decompress_queue(SId, #queue{queue = Q} = Queue) ->
     NewQueue = decompress_queue(SId, queue:to_list(Q), []),
-    Queue#queue{queue=NewQueue}.
+    Queue#queue{queue = NewQueue}.
 
 decompress_queue(_, [], Acc) ->
     queue:from_list(lists:reverse(Acc));
-decompress_queue(SId, [MsgRef|Rest], Acc) when is_binary(MsgRef) ->
+decompress_queue(SId, [MsgRef | Rest], Acc) when is_binary(MsgRef) ->
     case vmq_message_store:read(SId, MsgRef) of
-        {ok, #vmq_msg{qos=QoS} = Msg} ->
-            decompress_queue(SId, Rest,
-                             [#deliver{qos=QoS, msg=Msg#vmq_msg{persisted=false}}|Acc]);
+        {ok, #vmq_msg{qos = QoS} = Msg} ->
+            decompress_queue(
+                SId,
+                Rest,
+                [#deliver{qos = QoS, msg = Msg#vmq_msg{persisted = false}} | Acc]
+            );
         {error, Reason} ->
-            lager:warning("can't decompress queue item with msg_ref ~p for subscriber ~p due to ~p",
-                          [MsgRef, SId, Reason]),
+            lager:warning(
+                "can't decompress queue item with msg_ref ~p for subscriber ~p due to ~p",
+                [MsgRef, SId, Reason]
+            ),
             decompress_queue(SId, Rest, Acc)
     end;
-decompress_queue(SId, [#deliver{msg=Msg} = D|Rest], Acc) ->
-    decompress_queue(SId, Rest, [D#deliver{msg=Msg#vmq_msg{persisted=false}}|Acc]);
-decompress_queue(SId, [_|Rest], Acc) ->
+decompress_queue(SId, [#deliver{msg = Msg} = D | Rest], Acc) ->
+    decompress_queue(SId, Rest, [D#deliver{msg = Msg#vmq_msg{persisted = false}} | Acc]);
+decompress_queue(SId, [_ | Rest], Acc) ->
     decompress_queue(SId, Rest, Acc).
 
 queue_split(N, Queue) ->
-    NN = case queue:len(Queue) of
-             L when L > N -> N;
-             L -> L
-         end,
+    NN =
+        case queue:len(Queue) of
+            L when L > N -> N;
+            L -> L
+        end,
     queue:split(NN, Queue).
 
-maybe_set_expiry_ts(#deliver{msg=#vmq_msg{expiry_ts={expire_after, ExpireAfter}} = Msg} = D) ->
-    D#deliver{msg=Msg#vmq_msg{expiry_ts = {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter}}};
+maybe_set_expiry_ts(#deliver{msg = #vmq_msg{expiry_ts = {expire_after, ExpireAfter}} = Msg} = D) ->
+    D#deliver{
+        msg = Msg#vmq_msg{expiry_ts = {vmq_time:timestamp(second) + ExpireAfter, ExpireAfter}}
+    };
 maybe_set_expiry_ts(Msg) ->
     Msg.
 
-on_message_drop_hook(SubscriberId, #deliver{msg=#vmq_msg{routing_key=RoutingKey, qos=QoS, payload=Payload, properties=Props}}, Reason) ->
-    vmq_plugin:all(on_message_drop, [SubscriberId, fun() -> {RoutingKey, QoS, Payload, Props} end, Reason]);
+on_message_drop_hook(
+    SubscriberId,
+    #deliver{
+        msg = #vmq_msg{routing_key = RoutingKey, qos = QoS, payload = Payload, properties = Props}
+    },
+    Reason
+) ->
+    vmq_plugin:all(on_message_drop, [
+        SubscriberId, fun() -> {RoutingKey, QoS, Payload, Props} end, Reason
+    ]);
 on_message_drop_hook(SubscriberId, MsgRef, Reason) when is_binary(MsgRef) ->
     Promise = fun() ->
-                      case vmq_message_store:read(SubscriberId, MsgRef) of
-                          {ok, #vmq_msg{routing_key=RoutingKey, qos=QoS, payload=Payload, properties=Props}} ->
-                              {RoutingKey, QoS, Payload, Props};
-                          _ ->
-                              error
-                      end
-              end,
+        case vmq_message_store:read(SubscriberId, MsgRef) of
+            {ok, #vmq_msg{
+                routing_key = RoutingKey, qos = QoS, payload = Payload, properties = Props
+            }} ->
+                {RoutingKey, QoS, Payload, Props};
+            _ ->
+                error
+        end
+    end,
     vmq_plugin:all(on_message_drop, [SubscriberId, Promise, Reason]).
 
 maybe_expire_msgs(SId, Msgs) ->
     lists:filtermap(
-      fun(Msg) ->
-              case maybe_expire_msg(SId, Msg) of
-                  expired -> false;
-                  NewMsg -> {true, NewMsg}
-              end
-      end, Msgs).
+        fun(Msg) ->
+            case maybe_expire_msg(SId, Msg) of
+                expired -> false;
+                NewMsg -> {true, NewMsg}
+            end
+        end,
+        Msgs
+    ).
 
-maybe_expire_msg(_SId, #deliver{msg=#vmq_msg{expiry_ts=undefined}} = M) ->
+maybe_expire_msg(_SId, #deliver{msg = #vmq_msg{expiry_ts = undefined}} = M) ->
     M;
-maybe_expire_msg(SId,
-                 #deliver{msg=#vmq_msg{expiry_ts={ExpiryTS, _}} = M} = D) ->
+maybe_expire_msg(
+    SId,
+    #deliver{msg = #vmq_msg{expiry_ts = {ExpiryTS, _}} = M} = D
+) ->
     case vmq_time:is_past(ExpiryTS) of
         true ->
             on_message_drop_hook(SId, D, expired),
             vmq_metrics:incr_queue_msg_expired(1),
             expired;
         Remaining ->
-            D#deliver{msg=M#vmq_msg{expiry_ts={ExpiryTS, Remaining}}}
+            D#deliver{msg = M#vmq_msg{expiry_ts = {ExpiryTS, Remaining}}}
     end;
 maybe_expire_msg(_SId, M) ->
     %%pubrels
     M.
 
 to_internal({deliver, QoS, Msg}) ->
-    #deliver{qos=QoS, msg=Msg};
+    #deliver{qos = QoS, msg = Msg};
 to_internal(Msg) ->
     Msg.
 
-to_external(#deliver{qos=QoS, msg=Msg}) ->
+to_external(#deliver{qos = QoS, msg = Msg}) ->
     {deliver, QoS, Msg}.

@@ -15,12 +15,14 @@
 -module(vmq_subscriber_db).
 -include("vmq_server.hrl").
 
--export([store/2,
-         read/1, read/2,
-         fold/2,
-         delete/1,
-         subscribe_db_events/0,
-         flushall/0]).
+-export([
+    store/2,
+    read/1, read/2,
+    fold/2,
+    delete/1,
+    subscribe_db_events/0,
+    flushall/0
+]).
 
 -import(vmq_subscriber, [check_format/1]).
 
@@ -39,11 +41,11 @@ store(SubscriberId, Subs) ->
     vmq_metrics:pretimed_measurement({?MODULE, store}, vmq_util:ts() - V1),
     ok.
 
--spec read(subscriber_id()) -> undefined |vmq_subscriber:subs().
+-spec read(subscriber_id()) -> undefined | vmq_subscriber:subs().
 read(SubscriberId) ->
     read(SubscriberId, undefined).
 
--spec read(subscriber_id(), any()) -> any() |vmq_subscriber:subs().
+-spec read(subscriber_id(), any()) -> any() | vmq_subscriber:subs().
 read(SubscriberId, Default) ->
     V1 = vmq_util:ts(),
     Result = read(?DefaultRegView, SubscriberId, Default),
@@ -51,26 +53,40 @@ read(SubscriberId, Default) ->
     Result.
 
 read(vmq_reg_redis_trie, {MP, ClientId}, Default) ->
-    case vmq_redis:query(redis_client, [?FCALL,
-                                        ?FETCH_SUBSCRIBER,
-                                        0,
-                                        MP,
-                                        ClientId], ?FCALL, ?FETCH_SUBSCRIBER) of
-        {ok, []} -> Default;
+    case
+        vmq_redis:query(
+            redis_client,
+            [
+                ?FCALL,
+                ?FETCH_SUBSCRIBER,
+                0,
+                MP,
+                ClientId
+            ],
+            ?FCALL,
+            ?FETCH_SUBSCRIBER
+        )
+    of
+        {ok, []} ->
+            Default;
         {ok, [NodeBinary, CS, TopicsWithQoSBinary]} ->
-            CleanSession = case CS of
-                               <<"1">> -> true;
-                               _ -> false
-                           end,
-            TopicsWithQoS = [{vmq_topic:word(Topic), binary_to_term(QoS)} || [Topic, QoS] <- TopicsWithQoSBinary],
+            CleanSession =
+                case CS of
+                    <<"1">> -> true;
+                    _ -> false
+                end,
+            TopicsWithQoS = [
+                {vmq_topic:word(Topic), binary_to_term(QoS)}
+             || [Topic, QoS] <- TopicsWithQoSBinary
+            ],
             check_format([{binary_to_atom(NodeBinary), CleanSession, TopicsWithQoS}]);
-        _ -> Default
+        _ ->
+            Default
     end;
 read(_, SubscriberId, Default) ->
     case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
-         undefined -> Default;
-         Subs ->
-             check_format(Subs)
+        undefined -> Default;
+        Subs -> check_format(Subs)
     end.
 
 -spec delete(subscriber_id()) -> ok.
@@ -82,24 +98,29 @@ delete(SubscriberId) ->
 
 fold(FoldFun, Acc) ->
     V1 = vmq_util:ts(),
-    Result = vmq_metadata:fold(?SUBSCRIBER_DB,
-      fun ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
-          ({SubscriberId, Subs}, AccAcc) ->
-              FoldFun({SubscriberId, check_format(Subs)}, AccAcc)
-      end, Acc),
+    Result = vmq_metadata:fold(
+        ?SUBSCRIBER_DB,
+        fun
+            ({_, ?TOMBSTONE}, AccAcc) -> AccAcc;
+            ({SubscriberId, Subs}, AccAcc) -> FoldFun({SubscriberId, check_format(Subs)}, AccAcc)
+        end,
+        Acc
+    ),
     vmq_metrics:pretimed_measurement({?MODULE, fold}, vmq_util:ts() - V1),
     Result.
 
 subscribe_db_events() ->
     vmq_metadata:subscribe(?SUBSCRIBER_DB),
     fun
-        ({deleted, ?SUBSCRIBER_DB, _, Val})
-          when (Val == ?TOMBSTONE) or (Val == undefined) ->
+        ({deleted, ?SUBSCRIBER_DB, _, Val}) when
+            (Val == ?TOMBSTONE) or (Val == undefined)
+        ->
             ignore;
         ({deleted, ?SUBSCRIBER_DB, SubscriberId, Subscriptions}) ->
             {delete, SubscriberId, check_format(Subscriptions)};
-        ({updated, ?SUBSCRIBER_DB, SubscriberId, OldVal, NewSubs})
-          when (OldVal == ?TOMBSTONE) or (OldVal == undefined) ->
+        ({updated, ?SUBSCRIBER_DB, SubscriberId, OldVal, NewSubs}) when
+            (OldVal == ?TOMBSTONE) or (OldVal == undefined)
+        ->
             {update, SubscriberId, [], check_format(NewSubs)};
         ({updated, ?SUBSCRIBER_DB, SubscriberId, OldSubs, NewSubs}) ->
             {update, SubscriberId, check_format(OldSubs), check_format(NewSubs)};

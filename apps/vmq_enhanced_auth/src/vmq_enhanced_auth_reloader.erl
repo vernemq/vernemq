@@ -21,12 +21,14 @@
 
 -export([change_config_now/0]).
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -record(state, {file, interval, timer}).
 -define(APP, vmq_enhanced_auth).
@@ -47,7 +49,6 @@ start_link() ->
 
 change_config_now() ->
     gen_server:cast(?MODULE, config_changed).
-
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -110,7 +111,7 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(reload, #state{file=File, interval=Interval} = State) ->
+handle_info(reload, #state{file = File, interval = Interval} = State) ->
     ok = vmq_enhanced_auth:load_from_file(File),
     erlang:send_after(Interval, self(), reload),
     {noreply, State}.
@@ -153,12 +154,12 @@ init_state(State) ->
     ok = vmq_enhanced_auth:init(),
     ok = vmq_enhanced_auth:load_from_file(File),
     {NewI, NewTRef} =
-    case Interval of
-        0 ->
-            {0, undefined};
-        I ->
-            IinMs = abs(I * 1000),
-            NTRef = erlang:send_after(IinMs, self(), reload),
-            {IinMs, NTRef}
-    end,
-    State#state{file=File, interval=NewI, timer=NewTRef}.
+        case Interval of
+            0 ->
+                {0, undefined};
+            I ->
+                IinMs = abs(I * 1000),
+                NTRef = erlang:send_after(IinMs, self(), reload),
+                {IinMs, NTRef}
+        end,
+    State#state{file = File, interval = NewI, timer = NewTRef}.

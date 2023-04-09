@@ -40,43 +40,47 @@
 -behaviour(on_subscribe_m5_hook).
 -behaviour(on_auth_m5_hook).
 
--export([auth_on_register/5,
-         auth_on_publish/6,
-         auth_on_subscribe/3,
-         on_register/4,
-         on_publish/6,
-         on_subscribe/3,
-         on_unsubscribe/3,
-         on_deliver/6,
-         on_offline_message/5,
-         on_client_wakeup/1,
-         on_client_offline/1,
-         on_client_gone/1,
-         on_session_expired/1,
-         on_delivery_complete/6,
-         auth_on_register_m5/6,
-         on_register_m5/4,
-         auth_on_publish_m5/7,
-         on_publish_m5/7,
-         on_deliver_m5/7,
-         auth_on_subscribe_m5/4,
-         on_subscribe_m5/4,
-         on_unsubscribe_m5/4,
-         on_auth_m5/3]).
-
+-export([
+    auth_on_register/5,
+    auth_on_publish/6,
+    auth_on_subscribe/3,
+    on_register/4,
+    on_publish/6,
+    on_subscribe/3,
+    on_unsubscribe/3,
+    on_deliver/6,
+    on_offline_message/5,
+    on_client_wakeup/1,
+    on_client_offline/1,
+    on_client_gone/1,
+    on_session_expired/1,
+    on_delivery_complete/6,
+    auth_on_register_m5/6,
+    on_register_m5/4,
+    auth_on_publish_m5/7,
+    on_publish_m5/7,
+    on_deliver_m5/7,
+    auth_on_subscribe_m5/4,
+    on_subscribe_m5/4,
+    on_unsubscribe_m5/4,
+    on_auth_m5/3
+]).
 
 %% API functions
--export([start_link/0,
-         register_hook/2
-        ]).
+-export([
+    start_link/0,
+    register_hook/2
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -record(state, {}).
 -define(TBL, vmq_diversity_hooks).
@@ -143,7 +147,7 @@ handle_call({register_hook, OwnerPid, Hook}, _From, State) ->
                 true ->
                     ok;
                 false ->
-                    ets:insert(?TBL, {HookName, [OwnerPid|ScriptOwners]})
+                    ets:insert(?TBL, {HookName, [OwnerPid | ScriptOwners]})
             end
     end,
     monitor(process, OwnerPid),
@@ -174,16 +178,20 @@ handle_cast(_Msg, State) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _, process, Pid, _}, State) ->
-    ets:foldl(fun({HookName, ScriptOwners}, _) ->
-                      ets:insert(?TBL, {HookName, lists:delete(Pid, ScriptOwners)}),
-                      case ets:lookup(?TBL, HookName) of
-                          [{_, []}] ->
-                            disable_hook(HookName),
-                            ets:delete(?TBL, HookName);
-                          _ ->
-                              ok
-                      end
-              end, ok, ?TBL),
+    ets:foldl(
+        fun({HookName, ScriptOwners}, _) ->
+            ets:insert(?TBL, {HookName, lists:delete(Pid, ScriptOwners)}),
+            case ets:lookup(?TBL, HookName) of
+                [{_, []}] ->
+                    disable_hook(HookName),
+                    ets:delete(?TBL, HookName);
+                _ ->
+                    ok
+            end
+        end,
+        ok,
+        ?TBL
+    ),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -218,37 +226,43 @@ code_change(_OldVsn, State, _Extra) ->
 auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
-    Res = all_till_ok(auth_on_register, [{addr, PPeer},
-                                         {port, Port},
-                                         {mountpoint, MP},
-                                         {client_id, ClientId},
-                                         {username, nilify(UserName)},
-                                         {password, nilify(Password)},
-                                         {clean_session, CleanSession}]),
+    Res = all_till_ok(auth_on_register, [
+        {addr, PPeer},
+        {port, Port},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {username, nilify(UserName)},
+        {password, nilify(Password)},
+        {clean_session, CleanSession}
+    ]),
     conv_res(auth_on_reg, Res).
 
 auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
-    Res = all_till_ok(auth_on_register_m5, [{addr, PPeer},
-                                            {port, Port},
-                                            {mountpoint, MP},
-                                            {client_id, ClientId},
-                                            {username, nilify(UserName)},
-                                            {password, nilify(Password)},
-                                            {clean_start, CleanStart},
-                                            {properties, conv_args_props(Props)}]),
+    Res = all_till_ok(auth_on_register_m5, [
+        {addr, PPeer},
+        {port, Port},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {username, nilify(UserName)},
+        {password, nilify(Password)},
+        {clean_start, CleanStart},
+        {properties, conv_args_props(Props)}
+    ]),
     conv_res(auth_on_reg, Res).
 
 on_register_m5(Peer, SubscriberId, Username, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all(on_register_m5, [{addr, PPeer},
-                         {port, Port},
-                         {mountpoint, MP},
-                         {client_id, ClientId},
-                         {username, nilify(Username)},
-                         {properties, conv_args_props(Props)}]).
+    all(on_register_m5, [
+        {addr, PPeer},
+        {port, Port},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {username, nilify(Username)},
+        {properties, conv_args_props(Props)}
+    ]).
 
 auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
@@ -263,13 +277,15 @@ auth_on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
             %% Found a valid cache entry which rejects this publish
             {error, not_authorized};
         no_cache ->
-            Res = all_till_ok(auth_on_publish, [{username, nilify(UserName)},
-                                                {mountpoint, MP},
-                                                {client_id, ClientId},
-                                                {qos, QoS},
-                                                {topic, unword(Topic)},
-                                                {payload, Payload},
-                                                {retain, IsRetain}]),
+            Res = all_till_ok(auth_on_publish, [
+                {username, nilify(UserName)},
+                {mountpoint, MP},
+                {client_id, ClientId},
+                {qos, QoS},
+                {topic, unword(Topic)},
+                {payload, Payload},
+                {retain, IsRetain}
+            ]),
             conv_res(auth_on_pub, Res)
     end.
 
@@ -286,54 +302,65 @@ auth_on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props)
             %% Found a valid cache entry which rejects this publish
             {error, not_authorized};
         no_cache ->
-            Res = all_till_ok(auth_on_publish_m5, [{username, nilify(UserName)},
-                                                   {mountpoint, MP},
-                                                   {client_id, ClientId},
-                                                   {qos, QoS},
-                                                   {topic, unword(Topic)},
-                                                   {payload, Payload},
-                                                   {retain, IsRetain},
-                                                   {properties, conv_args_props(Props)}]),
+            Res = all_till_ok(auth_on_publish_m5, [
+                {username, nilify(UserName)},
+                {mountpoint, MP},
+                {client_id, ClientId},
+                {qos, QoS},
+                {topic, unword(Topic)},
+                {payload, Payload},
+                {retain, IsRetain},
+                {properties, conv_args_props(Props)}
+            ]),
             conv_res(auth_on_pub, Res)
     end.
 
 on_publish_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all(on_publish_m5, [{username, nilify(UserName)},
-                        {mountpoint, MP},
-                        {client_id, ClientId},
-                        {qos, QoS},
-                        {topic, unword(Topic)},
-                        {payload, Payload},
-                        {retain, IsRetain},
-                        {properties, conv_args_props(Props)}]).
+    all(on_publish_m5, [
+        {username, nilify(UserName)},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {qos, QoS},
+        {topic, unword(Topic)},
+        {payload, Payload},
+        {retain, IsRetain},
+        {properties, conv_args_props(Props)}
+    ]).
 
 on_deliver_m5(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(on_deliver_m5, [{username, nilify(UserName)},
-                                {mountpoint, MP},
-                                {client_id, ClientId},
-                                {qos, QoS},
-                                {topic, unword(Topic)},
-                                {payload, Payload},
-                                {retain, IsRetain},
-                                {properties, conv_args_props(Props)}]).
+    all_till_ok(on_deliver_m5, [
+        {username, nilify(UserName)},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {qos, QoS},
+        {topic, unword(Topic)},
+        {payload, Payload},
+        {retain, IsRetain},
+        {properties, conv_args_props(Props)}
+    ]).
 
 auth_on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     CacheRet =
-    lists:foldl(
-      fun
-          (_, false) -> false;
-          (_, no_cache) -> no_cache;
-          ({Topic, QoS}, Acc) ->
-              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, QoS) of
-                  Mods when is_list(Mods) ->
-                      Acc ++ Mods;
-                  Ret ->
-                      Ret
-              end
-      end, [], Topics),
+        lists:foldl(
+            fun
+                (_, false) ->
+                    false;
+                (_, no_cache) ->
+                    no_cache;
+                ({Topic, QoS}, Acc) ->
+                    case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, QoS) of
+                        Mods when is_list(Mods) ->
+                            Acc ++ Mods;
+                        Ret ->
+                            Ret
+                    end
+            end,
+            [],
+            Topics
+        ),
     case CacheRet of
         true ->
             %% all provided topics match a cache entry which grants this subscribe
@@ -346,30 +373,39 @@ auth_on_subscribe(UserName, SubscriberId, Topics) ->
             %% rejects this subscribe
             {error, not_authorized};
         no_cache ->
-            Res = all_till_ok(auth_on_subscribe, [{username, nilify(UserName)},
-                                                  {mountpoint, MP},
-                                                  {client_id, ClientId},
-                                                  {topics, [[unword(T), QoS]
-                                                            || {T, QoS} <- Topics]}]),
+            Res = all_till_ok(auth_on_subscribe, [
+                {username, nilify(UserName)},
+                {mountpoint, MP},
+                {client_id, ClientId},
+                {topics, [
+                    [unword(T), QoS]
+                 || {T, QoS} <- Topics
+                ]}
+            ]),
             conv_res(auth_on_sub, Res)
     end.
 
 auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     CacheRet =
-    lists:foldl(
-      fun
-          (_, false) -> false;
-          (_, no_cache) -> no_cache;
-          ({Topic, SubInfo}, Acc) ->
-              QoS = extract_qos(SubInfo),
-              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, QoS) of
-                  Mods when is_list(Mods) ->
-                      Acc ++ Mods;
-                  Ret ->
-                      Ret
-              end
-      end, [], Topics),
+        lists:foldl(
+            fun
+                (_, false) ->
+                    false;
+                (_, no_cache) ->
+                    no_cache;
+                ({Topic, SubInfo}, Acc) ->
+                    QoS = extract_qos(SubInfo),
+                    case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, QoS) of
+                        Mods when is_list(Mods) ->
+                            Acc ++ Mods;
+                        Ret ->
+                            Ret
+                    end
+            end,
+            [],
+            Topics
+        ),
     case CacheRet of
         true ->
             %% all provided topics match a cache entry which grants this subscribe
@@ -383,45 +419,58 @@ auth_on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
             {error, not_authorized};
         no_cache ->
             Unmap = fun(SubOpts) ->
-                            vmq_diversity_utils:unmap(SubOpts)
-                    end,
-            Res = all_till_ok(auth_on_subscribe_m5, [{username, nilify(UserName)},
-                                                     {mountpoint, MP},
-                                                     {client_id, ClientId},
-                                                     {topics, [[unword(T), [QoS, Unmap(SubOpts)]]
-                                                               || {T, {QoS, SubOpts}} <- Topics]},
-                                                     {properties, conv_args_props(Props)}]),
+                vmq_diversity_utils:unmap(SubOpts)
+            end,
+            Res = all_till_ok(auth_on_subscribe_m5, [
+                {username, nilify(UserName)},
+                {mountpoint, MP},
+                {client_id, ClientId},
+                {topics, [
+                    [unword(T), [QoS, Unmap(SubOpts)]]
+                 || {T, {QoS, SubOpts}} <- Topics
+                ]},
+                {properties, conv_args_props(Props)}
+            ]),
             conv_res(auth_on_sub, Res)
     end.
 
 on_subscribe_m5(UserName, SubscriberId, Topics, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     Unmap = fun(SubOpts) ->
-                    vmq_diversity_utils:unmap(SubOpts)
-            end,
-    all(on_subscribe_m5, [{username, nilify(UserName)},
-                          {mountpoint, MP},
-                          {client_id, ClientId},
-                          {topics, [[unword(T), [QoS, Unmap(SubOpts)]]
-                                    || {T, {QoS, SubOpts}} <- Topics]},
-                          {properties, conv_args_props(Props)}]).
+        vmq_diversity_utils:unmap(SubOpts)
+    end,
+    all(on_subscribe_m5, [
+        {username, nilify(UserName)},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {topics, [
+            [unword(T), [QoS, Unmap(SubOpts)]]
+         || {T, {QoS, SubOpts}} <- Topics
+        ]},
+        {properties, conv_args_props(Props)}
+    ]).
 
 on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     CacheRet =
-    lists:foldl(
-      fun
-          (_, false) -> false;
-          (_, no_cache) -> no_cache;
-          (Topic, Acc) ->
-              %% We have to rewrite topics
-              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, 0) of
-                  Mods when is_list(Mods) ->
-                      Acc ++ [T || {T, _QoS} <- Mods];
-                  Ret ->
-                      Ret
-              end
-      end, [], Topics),
+        lists:foldl(
+            fun
+                (_, false) ->
+                    false;
+                (_, no_cache) ->
+                    no_cache;
+                (Topic, Acc) ->
+                    %% We have to rewrite topics
+                    case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, 0) of
+                        Mods when is_list(Mods) ->
+                            Acc ++ [T || {T, _QoS} <- Mods];
+                        Ret ->
+                            Ret
+                    end
+            end,
+            [],
+            Topics
+        ),
     case CacheRet of
         true ->
             ok;
@@ -433,66 +482,84 @@ on_unsubscribe_m5(UserName, SubscriberId, Topics, Props) ->
             %% rejects this subscribe
             error;
         no_cache ->
-            all_till_ok(on_unsubscribe_m5, [{username, nilify(UserName)},
-                                            {mountpoint, MP},
-                                            {client_id, ClientId},
-                                            {topics, [unword(T)
-                                                      || T <- Topics]},
-                                            {properties, conv_args_props(Props)}])
+            all_till_ok(on_unsubscribe_m5, [
+                {username, nilify(UserName)},
+                {mountpoint, MP},
+                {client_id, ClientId},
+                {topics, [
+                    unword(T)
+                 || T <- Topics
+                ]},
+                {properties, conv_args_props(Props)}
+            ])
     end.
 
 on_auth_m5(Username, SubscriberId, Props) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(on_auth_m5, [{username, nilify(Username)},
-                             {mountpoint, MP},
-                             {client_id, ClientId},
-                             {properties, conv_args_props(Props)}]).
-
+    all_till_ok(on_auth_m5, [
+        {username, nilify(Username)},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {properties, conv_args_props(Props)}
+    ]).
 
 on_register(Peer, SubscriberId, UserName, UserProperties) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all(on_register, [{addr, PPeer},
-                           {port, Port},
-                           {mountpoint, MP},
-                           {client_id, ClientId},
-                           {username, nilify(UserName)},
-                           {properties, conv_args_props(UserProperties)}]).
+    all(on_register, [
+        {addr, PPeer},
+        {port, Port},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {username, nilify(UserName)},
+        {properties, conv_args_props(UserProperties)}
+    ]).
 
 on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all(on_publish, [{username, nilify(UserName)},
-                     {mountpoint, MP},
-                     {client_id, ClientId},
-                     {qos, QoS},
-                     {topic, unword(Topic)},
-                     {payload, Payload},
-                     {retain, IsRetain}]).
+    all(on_publish, [
+        {username, nilify(UserName)},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {qos, QoS},
+        {topic, unword(Topic)},
+        {payload, Payload},
+        {retain, IsRetain}
+    ]).
 
 on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all(on_subscribe, [{username, nilify(UserName)},
-                       {mountpoint, MP},
-                       {client_id, ClientId},
-                       {topics, [[unword(T), QoS]
-                                 || {T, QoS} <- Topics]}]).
+    all(on_subscribe, [
+        {username, nilify(UserName)},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {topics, [
+            [unword(T), QoS]
+         || {T, QoS} <- Topics
+        ]}
+    ]).
 
 on_unsubscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     CacheRet =
-    lists:foldl(
-      fun
-          (_, false) -> false;
-          (_, no_cache) -> no_cache;
-          (Topic, Acc) ->
-              %% We have to rewrite topics
-              case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, 0) of
-                  Mods when is_list(Mods) ->
-                      Acc ++ [T || {T, _QoS} <- Mods];
-                  Ret ->
-                      Ret
-              end
-      end, [], Topics),
+        lists:foldl(
+            fun
+                (_, false) ->
+                    false;
+                (_, no_cache) ->
+                    no_cache;
+                (Topic, Acc) ->
+                    %% We have to rewrite topics
+                    case vmq_diversity_cache:match_subscribe_acl(MP, ClientId, Topic, 0) of
+                        Mods when is_list(Mods) ->
+                            Acc ++ [T || {T, _QoS} <- Mods];
+                        Ret ->
+                            Ret
+                    end
+            end,
+            [],
+            Topics
+        ),
     case CacheRet of
         true ->
             ok;
@@ -504,64 +571,82 @@ on_unsubscribe(UserName, SubscriberId, Topics) ->
             %% rejects this subscribe
             error;
         no_cache ->
-            all_till_ok(on_unsubscribe, [{username, nilify(UserName)},
-                                         {mountpoint, MP},
-                                         {client_id, ClientId},
-                                         {topics, [unword(T)
-                                                   || T <- Topics]}])
+            all_till_ok(on_unsubscribe, [
+                {username, nilify(UserName)},
+                {mountpoint, MP},
+                {client_id, ClientId},
+                {topics, [
+                    unword(T)
+                 || T <- Topics
+                ]}
+            ])
     end.
 
 on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all_till_ok(on_deliver, [{username, nilify(UserName)},
-                             {mountpoint, MP},
-                             {client_id, ClientId},
-                             {qos, QoS},
-                             {topic, unword(Topic)},
-                             {payload, Payload},
-                             {retain, IsRetain}]).
+    all_till_ok(on_deliver, [
+        {username, nilify(UserName)},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {qos, QoS},
+        {topic, unword(Topic)},
+        {payload, Payload},
+        {retain, IsRetain}
+    ]).
 
 on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all(on_delivery_complete, [{username, nilify(UserName)},
-                               {mountpoint, MP},
-                               {client_id, ClientId},
-                               {qos, QoS},
-                               {topic, unword(Topic)},
-                               {payload, Payload},
-                               {retain, IsRetain}]).
+    all(on_delivery_complete, [
+        {username, nilify(UserName)},
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {qos, QoS},
+        {topic, unword(Topic)},
+        {payload, Payload},
+        {retain, IsRetain}
+    ]).
 
 on_offline_message(SubscriberId, QoS, Topic, Payload, Retain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all(on_offline_message, [{mountpoint, MP},
-                             {client_id, ClientId},
-                             {qos, QoS},
-                             {topic, unword(Topic)},
-                             {payload, Payload},
-                             {retain, Retain}]).
+    all(on_offline_message, [
+        {mountpoint, MP},
+        {client_id, ClientId},
+        {qos, QoS},
+        {topic, unword(Topic)},
+        {payload, Payload},
+        {retain, Retain}
+    ]).
 
 on_client_wakeup(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    all(on_client_wakeup, [{mountpoint, MP},
-                           {client_id, ClientId}]).
+    all(on_client_wakeup, [
+        {mountpoint, MP},
+        {client_id, ClientId}
+    ]).
 
 on_client_offline(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     vmq_diversity_cache:clear_cache(MP, ClientId),
-    all(on_client_offline, [{mountpoint, MP},
-                            {client_id, ClientId}]).
+    all(on_client_offline, [
+        {mountpoint, MP},
+        {client_id, ClientId}
+    ]).
 
 on_client_gone(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     vmq_diversity_cache:clear_cache(MP, ClientId),
-    all(on_client_gone, [{mountpoint, MP},
-                         {client_id, ClientId}]).
+    all(on_client_gone, [
+        {mountpoint, MP},
+        {client_id, ClientId}
+    ]).
 
 on_session_expired(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     vmq_diversity_cache:clear_cache(MP, ClientId),
-    all(on_session_expired, [{mountpoint, MP},
-                             {client_id, ClientId}]).
+    all(on_session_expired, [
+        {mountpoint, MP},
+        {client_id, ClientId}
+    ]).
 
 %%%===================================================================
 %%% Internal functions
@@ -572,26 +657,27 @@ enable_hook(HookName) ->
 disable_hook(HookName) ->
     uncheck_exported_callback(HookName, ?MODULE:module_info(exports)).
 
-check_exported_callback(HookName, [{HookName, _Arity}|_]) ->
+check_exported_callback(HookName, [{HookName, _Arity} | _]) ->
     ok;
-check_exported_callback(HookName, [_|Exports]) ->
+check_exported_callback(HookName, [_ | Exports]) ->
     check_exported_callback(HookName, Exports);
-check_exported_callback(_, []) -> {error, no_matching_callback_found}.
+check_exported_callback(_, []) ->
+    {error, no_matching_callback_found}.
 
-uncheck_exported_callback(HookName, [{HookName, _Arity}|_]) ->
+uncheck_exported_callback(HookName, [{HookName, _Arity} | _]) ->
     ok;
-uncheck_exported_callback(HookName, [_|Exports]) ->
+uncheck_exported_callback(HookName, [_ | Exports]) ->
     uncheck_exported_callback(HookName, Exports);
-uncheck_exported_callback(_, []) -> {error, no_matching_callback_found}.
+uncheck_exported_callback(_, []) ->
+    {error, no_matching_callback_found}.
 
 all_till_ok(HookName, Args) ->
     case ets:lookup(?TBL, HookName) of
         [] -> next;
-        [{_, ScriptOwners}] ->
-            all_till_ok(lists:reverse(ScriptOwners), HookName, Args)
+        [{_, ScriptOwners}] -> all_till_ok(lists:reverse(ScriptOwners), HookName, Args)
     end.
 
-all_till_ok([Pid|Rest], HookName, Args) ->
+all_till_ok([Pid | Rest], HookName, Args) ->
     case vmq_diversity_script:call_function(Pid, HookName, Args) of
         true ->
             ok;
@@ -612,7 +698,8 @@ all_till_ok([Pid|Rest], HookName, Args) ->
         _ ->
             all_till_ok(Rest, HookName, Args)
     end;
-all_till_ok([], _, _) -> next.
+all_till_ok([], _, _) ->
+    next.
 
 all(HookName, Args) ->
     case ets:lookup(?TBL, HookName) of
@@ -622,10 +709,11 @@ all(HookName, Args) ->
             all(lists:reverse(ScriptOwners), HookName, Args)
     end.
 
-all([Pid|Rest], HookName, Args) ->
+all([Pid | Rest], HookName, Args) ->
     _ = vmq_diversity_script:call_function(Pid, HookName, Args),
     all(Rest, HookName, Args);
-all([], _, _) -> next.
+all([], _, _) ->
+    next.
 
 unword(T) ->
     iolist_to_binary(vmq_topic:unword(T)).
@@ -659,13 +747,17 @@ conv_args_props(Props) when is_list(Props) ->
 
 conv_args_prop({?P_USER_PROPERTY, UserProps}) ->
     {UPS, _} = lists:foldl(
-                 fun(P, {Res, Ctr}) ->
-                         {[{Ctr, [P]}|Res], Ctr+1}
-                 end, {[], 1}, UserProps),
+        fun(P, {Res, Ctr}) ->
+            {[{Ctr, [P]} | Res], Ctr + 1}
+        end,
+        {[], 1},
+        UserProps
+    ),
     {?P_USER_PROPERTY, lists:reverse(UPS)};
 conv_args_prop({?P_RESPONSE_TOPIC, Topic}) ->
     {?P_RESPONSE_TOPIC, unword(Topic)};
-conv_args_prop(P) -> P.
+conv_args_prop(P) ->
+    P.
 
 conv_res(auth_on_reg, {error, lua_script_returned_false}) ->
     {error, invalid_credentials};

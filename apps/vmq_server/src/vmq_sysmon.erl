@@ -17,18 +17,22 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0,
-         cpu_load_level/0]).
+-export([
+    start_link/0,
+    cpu_load_level/0
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
--record(state, {samples=queue:new()}).
+-record(state, {samples = queue:new()}).
 
 -define(SAMPLE_INTERVAL, 2000).
 -define(NR_OF_SAMPLES, 10).
@@ -51,7 +55,6 @@ cpu_load_level() ->
     [{_, Level}] = ets:lookup(?MODULE, cpu_load_level),
     Level.
 
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -68,7 +71,8 @@ cpu_load_level() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    _ = cpu_sup:util([per_cpu]), % first return value is rubbish, per the docs
+    % first return value is rubbish, per the docs
+    _ = cpu_sup:util([per_cpu]),
     _ = ets:new(?MODULE, [public, named_table, {read_concurrency, true}]),
 
     %% Add our system_monitor event handler.  We do that here because
@@ -122,18 +126,18 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(timeout, #state{samples=Samples} = State) ->
+handle_info(timeout, #state{samples = Samples} = State) ->
     CPUAvg = cpu_sample(),
     NewSamples =
-    case queue:len(Samples) of
-        L when L >= ?NR_OF_SAMPLES ->
-            queue:in(CPUAvg, queue:drop(Samples));
-        _ ->
-            queue:in(CPUAvg, Samples)
-    end,
+        case queue:len(Samples) of
+            L when L >= ?NR_OF_SAMPLES ->
+                queue:in(CPUAvg, queue:drop(Samples));
+            _ ->
+                queue:in(CPUAvg, Samples)
+        end,
     Level = calc(NewSamples),
     ets:insert(?MODULE, {cpu_load_level, Level}),
-    {noreply, State#state{samples=NewSamples}, ?SAMPLE_INTERVAL};
+    {noreply, State#state{samples = NewSamples}, ?SAMPLE_INTERVAL};
 handle_info({gen_event_EXIT, riak_core_sysmon_handler, _}, State) ->
     %% SASL will create an error message, no need for us to duplicate it.
     %%
@@ -185,7 +189,8 @@ calc(Samples) ->
         {value, Sample} when Sample >= 100 -> 3;
         {value, Sample} when Sample >= 90 -> 2;
         {value, Sample} when Sample >= 80 -> 1;
-        _ -> 0 % includes queue is empty
+        % includes queue is empty
+        _ -> 0
     end.
 
 cpu_sample() ->
@@ -196,7 +201,7 @@ cpu_sample() ->
                 [U] ->
                     %% only one cpu
                     U;
-                [_, _|_] ->
+                [_, _ | _] ->
                     %% This is a form of ad-hoc averaging, which tries to
                     %% account for the possibility that the application
                     %% loads the cores unevenly.
@@ -208,10 +213,13 @@ cpu_sample() ->
 
 calc_avg_util(Utils) ->
     case minmax(Utils) of
-        {A, B} when B-A > 50 ->
+        {A, B} when B - A > 50 ->
             %% very uneven load
-            High = [U || U <- Utils,
-                         B - U > 20],
+            High = [
+                U
+             || U <- Utils,
+                B - U > 20
+            ],
             lists:sum(High) / length(High);
         {Low, High} ->
             (High + Low) / 2
@@ -219,6 +227,9 @@ calc_avg_util(Utils) ->
 
 minmax([H | T]) ->
     lists:foldl(
-      fun(X, {Min, Max}) ->
-              {erlang:min(X, Min), erlang:max(X, Max)}
-      end, {H, H}, T).
+        fun(X, {Min, Max}) ->
+            {erlang:min(X, Min), erlang:max(X, Max)}
+        end,
+        {H, H},
+        T
+    ).

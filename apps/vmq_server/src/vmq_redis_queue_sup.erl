@@ -26,14 +26,17 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init(_) ->
-    ConnectOptionsList = vmq_schema_util:parse_list(application:get_env(vmq_server,
-                                                                        msg_queue_redis_shards_connect_options,
-                                                                        "[[
-                                                                           {host,\"127.0.0.1\"},
-                                                                           {port,6379},
-                                                                           {database,1}
-                                                                         ]]"
-                                                                       )),
+    ConnectOptionsList = vmq_schema_util:parse_list(
+        application:get_env(
+            vmq_server,
+            msg_queue_redis_shards_connect_options,
+            "[[\n"
+            "                                                                           {host,\"127.0.0.1\"},\n"
+            "                                                                           {port,6379},\n"
+            "                                                                           {database,1}\n"
+            "                                                                         ]]"
+        )
+    ),
     NumEndpoints = init_redis(ConnectOptionsList, 0),
 
     NumMainQWorkers = num_main_q_workers_per_redis_node(),
@@ -41,15 +44,18 @@ init(_) ->
         {one_for_one, 5, 5},
     ChildSpec =
         fun(RegName, Client) ->
-            {RegName,
-                {vmq_redis_queue, start_link, [RegName, Client]},
-                permanent, 5000, worker, [vmq_redis_queue]}
+            {RegName, {vmq_redis_queue, start_link, [RegName, Client]}, permanent, 5000, worker, [
+                vmq_redis_queue
+            ]}
         end,
 
     ChildSpecs =
-        [ChildSpec(
-            gen_main_queue_worker_id(N), gen_redis_client_name(N div NumMainQWorkers, ?CONSUMER))
-            || N <- lists:seq(0, NumMainQWorkers*NumEndpoints - 1)],
+        [
+            ChildSpec(
+                gen_main_queue_worker_id(N), gen_redis_client_name(N div NumMainQWorkers, ?CONSUMER)
+            )
+         || N <- lists:seq(0, NumMainQWorkers * NumEndpoints - 1)
+        ],
     {ok, {SupFlags, ChildSpecs}}.
 %%====================================================================
 %% Internal functions
@@ -66,8 +72,12 @@ init_redis([ConnectOptions | ConnectOptionsList], Id) ->
     {ok, EnqueueMsgScript} = file:read_file(LuaDir ++ "/enqueue_msg.lua"),
     {ok, PollMainQueueScript} = file:read_file(LuaDir ++ "/poll_main_queue.lua"),
 
-    {ok, <<"enqueue_msg">>} = eredis:q(ProducerRedisClient, [?FUNCTION, "LOAD", "REPLACE", EnqueueMsgScript]),
-    {ok, <<"poll_main_queue">>} = eredis:q(ConsumerRedisClient, [?FUNCTION, "LOAD", "REPLACE", PollMainQueueScript]),
+    {ok, <<"enqueue_msg">>} = eredis:q(ProducerRedisClient, [
+        ?FUNCTION, "LOAD", "REPLACE", EnqueueMsgScript
+    ]),
+    {ok, <<"poll_main_queue">>} = eredis:q(ConsumerRedisClient, [
+        ?FUNCTION, "LOAD", "REPLACE", PollMainQueueScript
+    ]),
 
     init_redis(ConnectOptionsList, Id + 1).
 

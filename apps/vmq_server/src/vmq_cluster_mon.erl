@@ -20,12 +20,14 @@
 -export([start_link/0]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -record(state, {}).
 -define(RECHECK_INTERVAL, 10000).
@@ -70,7 +72,8 @@ init([]) ->
             ets:new(?ROLLOUT, [public, set, named_table, {read_concurrency, true}]),
             %% the event handler is added after the timeout
             erlang:send_after(?RECHECK_INTERVAL, self(), recheck),
-            process_flag(trap_exit, true), %% we can unregister the event handler
+            %% we can unregister the event handler
+            process_flag(trap_exit, true),
             {ok, #state{}, 0};
         {error, Reason} ->
             {stop, Reason}
@@ -133,12 +136,15 @@ handle_info({gen_event_EXIT, vmq_cluster, _}, State) ->
     {noreply, State};
 handle_info(recheck, State) ->
     vmq_cluster:recheck(),
-    erlang:send_after(case vmq_cluster:is_ready() of
-                          true -> ?RECHECK_INTERVAL;
-                          false -> ?RECHECK_INTERVAL_NOT_READY
-                      end, self(), recheck),
+    erlang:send_after(
+        case vmq_cluster:is_ready() of
+            true -> ?RECHECK_INTERVAL;
+            false -> ?RECHECK_INTERVAL_NOT_READY
+        end,
+        self(),
+        recheck
+    ),
     {noreply, State}.
-
 
 %%--------------------------------------------------------------------
 %% @private
@@ -169,4 +175,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-

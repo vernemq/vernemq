@@ -1,4 +1,4 @@
-name: Runs tests
+name: checks format & runs tests
 
 on:
   push:
@@ -11,8 +11,23 @@ on:
   workflow_dispatch:
 
 jobs:
+  code_checks:
+    name: Check code style and quality
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2.0.0
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: 23.0
+          version-type: strict
+      - run: sudo apt-get -y install libsnappy-dev
+      - name: Check code formatting (erlfmt)
+        run: ./rebar3 fmt -c
+      - name: Run dialyzer type checker
+        run: ./rebar3 dialyzer
   coverage:
     runs-on: ubuntu-20.04
+    needs: code_checks
     services:
       postgres:
         image: postgres

@@ -18,21 +18,27 @@
 
 -behaviour(gen_server).
 %% API functions
--export([start_link/0,
-         all_queues_setup_status/0,
-         handle_new_sub_event/2]).
+-export([
+    start_link/0,
+    all_queues_setup_status/0,
+    handle_new_sub_event/2
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
--record(state, {status=init,
-                event_handler,
-                event_queue=queue:new()}).
+-record(state, {
+    status = init,
+    event_handler,
+    event_queue = queue:new()
+}).
 
 %%%===================================================================
 %%% API functions
@@ -70,12 +76,13 @@ all_queues_setup_status() ->
 init([]) ->
     Self = self(),
     spawn_link(
-      fun() ->
-              vmq_reg:fold_subscribers(fun setup_queue/3, ignore),
-              Self ! all_queues_setup
-      end),
+        fun() ->
+            vmq_reg:fold_subscribers(fun setup_queue/3, ignore),
+            Self ! all_queues_setup
+        end
+    ),
     EventHandler = vmq_reg:subscribe_subscriber_changes(),
-    {ok, #state{event_handler=EventHandler}}.
+    {ok, #state{event_handler = EventHandler}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -91,9 +98,9 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call(status, _From, #state{status=Status} = State) ->
-  Reply = Status,
-  {reply, Reply, State};
+handle_call(status, _From, #state{status = Status} = State) ->
+    Reply = Status,
+    {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -121,15 +128,23 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(all_queues_setup, #state{event_handler=Handler,
-                                     event_queue=Q} = State) ->
-    lists:foreach(fun(Event) ->
-                          handle_event(Handler, Event)
-                  end, queue:to_list(Q)),
-    {noreply, State#state{status=ready, event_queue=undefined}};
-handle_info(Event, #state{status=init, event_queue=Q} = State) ->
-    {noreply, State#state{event_queue=queue:in(Event, Q)}};
-handle_info(Event, #state{event_handler=Handler} = State) ->
+handle_info(
+    all_queues_setup,
+    #state{
+        event_handler = Handler,
+        event_queue = Q
+    } = State
+) ->
+    lists:foreach(
+        fun(Event) ->
+            handle_event(Handler, Event)
+        end,
+        queue:to_list(Q)
+    ),
+    {noreply, State#state{status = ready, event_queue = undefined}};
+handle_info(Event, #state{status = init, event_queue = Q} = State) ->
+    {noreply, State#state{event_queue = queue:in(Event, Q)}};
+handle_info(Event, #state{event_handler = Handler} = State) ->
     handle_event(Handler, Event),
     {noreply, State}.
 
@@ -223,16 +238,24 @@ handle_new_remote_subscriber(SubscriberId, QPid, [{_NewNode, true} = _Session]) 
     cleanup_queue(SubscriberId, ?REMOTE_SESSION_TAKEN_OVER, QPid).
 
 terminate_queue(SubscriberId, Reason, QPid) ->
-    vmq_reg_sync:sync({cleanup, SubscriberId},
-                       fun() ->
-                               vmq_queue:terminate(QPid, Reason)
-                       end, node(), 60000).
+    vmq_reg_sync:sync(
+        {cleanup, SubscriberId},
+        fun() ->
+            vmq_queue:terminate(QPid, Reason)
+        end,
+        node(),
+        60000
+    ).
 
 cleanup_queue(SubscriberId, Reason, QPid) ->
-    vmq_reg_sync:sync({cleanup, SubscriberId},
+    vmq_reg_sync:sync(
+        {cleanup, SubscriberId},
         fun() ->
             vmq_queue:cleanup(QPid, Reason)
-        end, node(), 60000).
+        end,
+        node(),
+        60000
+    ).
 
 is_allow_multi(QPid) ->
     case vmq_queue:get_opts(QPid) of

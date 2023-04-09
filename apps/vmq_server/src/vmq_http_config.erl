@@ -21,7 +21,7 @@ config() ->
     HttpModules = vmq_config:get_env(http_modules),
     config(HttpModules, []).
 
-config([HttpModule|Rest], Routes) when is_atom(HttpModule) ->
+config([HttpModule | Rest], Routes) when is_atom(HttpModule) ->
     try
         ModRoutes = apply(HttpModule, routes, []),
         config(Rest, Routes ++ ModRoutes)

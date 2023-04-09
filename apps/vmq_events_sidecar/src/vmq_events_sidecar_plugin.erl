@@ -18,28 +18,37 @@
 -behaviour(on_session_expired_hook).
 -behaviour(on_delivery_complete_hook).
 
--export([on_register/4,
-         on_publish/6,
-         on_subscribe/3,
-         on_unsubscribe/3,
-         on_deliver/6,
-         on_offline_message/5,
-         on_client_wakeup/1,
-         on_client_offline/1,
-         on_client_gone/1,
-         on_session_expired/1,
-         on_delivery_complete/6]).
+-export([
+    on_register/4,
+    on_publish/6,
+    on_subscribe/3,
+    on_unsubscribe/3,
+    on_deliver/6,
+    on_offline_message/5,
+    on_client_wakeup/1,
+    on_client_offline/1,
+    on_client_gone/1,
+    on_session_expired/1,
+    on_delivery_complete/6
+]).
 
 %% API
--export([start_link/0
-        ,enable_event/1
-        ,disable_event/1
-        ,all_hooks/0
-        ]).
+-export([
+    start_link/0,
+    enable_event/1,
+    disable_event/1,
+    all_hooks/0
+]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -define(SERVER, ?MODULE).
 
@@ -70,11 +79,13 @@ disable_event(HookName) when is_atom(HookName) ->
 
 -spec all_hooks() -> any().
 all_hooks() ->
-    ets:foldl(fun({HookName}, Acc) ->
-                      [{HookName}|Acc]
-              end,
-             [],
-             ?TBL).
+    ets:foldl(
+        fun({HookName}, Acc) ->
+            [{HookName} | Acc]
+        end,
+        [],
+        ?TBL
+    ).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -119,7 +130,7 @@ handle_call({enable_event, Hook}, _From, State) ->
                 ets:insert(?TBL, {Hook}),
                 ok;
             [{_}] ->
-              {error, already_registered}
+                {error, already_registered}
         end,
     {reply, Reply, State};
 handle_call({disable_event, Hook}, _From, State) ->
@@ -193,124 +204,103 @@ code_change(_OldVsn, State, _Extra) ->
 on_register(Peer, SubscriberId, UserName, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_register, {MP,
-                              ClientId,
-                              PPeer,
-                              Port,
-                              normalise(UserName),
-                              Props}}).
+    send_event({on_register, {MP, ClientId, PPeer, Port, normalise(UserName), Props}}).
 
 -spec on_publish(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> 'next'.
 on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_publish, {MP,
-                            ClientId,
-                            normalise(UserName),
-                            QoS,
-                            unword(Topic),
-                            Payload,
-                            IsRetain}}).
+    send_event(
+        {on_publish, {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain}}
+    ).
 
 -spec on_subscribe(username(), subscriber_id(), [topic()]) -> 'next'.
 on_subscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_subscribe, {MP,
-                              ClientId,
-                              normalise(UserName),
-                              [[unword(T), from_internal_qos(QoS)] || {T, QoS} <- Topics]}}).
+    send_event(
+        {on_subscribe,
+            {MP, ClientId, normalise(UserName), [
+                [unword(T), from_internal_qos(QoS)]
+             || {T, QoS} <- Topics
+            ]}}
+    ).
 
 -spec on_unsubscribe(username(), subscriber_id(), [topic()]) ->
-    'next' | 'ok' | {'ok',on_unsubscribe_hook:unsub_modifiers()}.
+    'next' | 'ok' | {'ok', on_unsubscribe_hook:unsub_modifiers()}.
 on_unsubscribe(UserName, SubscriberId, Topics) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_unsubscribe, {MP,
-                                ClientId,
-                                normalise(UserName),
-                                [unword(T) || T <- Topics]}}).
+    send_event({on_unsubscribe, {MP, ClientId, normalise(UserName), [unword(T) || T <- Topics]}}).
 
 -spec on_deliver(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
-    'next' | 'ok' | {'ok', payload()|[on_deliver_hook:msg_modifier()]}.
+    'next' | 'ok' | {'ok', payload() | [on_deliver_hook:msg_modifier()]}.
 on_deliver(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_deliver, {MP,
-                            ClientId,
-                            normalise(UserName),
-                            QoS,
-                            unword(Topic),
-                            Payload,
-                            IsRetain}}).
+    send_event(
+        {on_deliver, {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain}}
+    ).
 
--spec on_delivery_complete(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> 'next'.
+-spec on_delivery_complete(username(), subscriber_id(), qos(), topic(), payload(), flag()) ->
+    'next'.
 on_delivery_complete(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_delivery_complete, {MP,
-                                      ClientId,
-                                      normalise(UserName),
-                                      QoS,
-                                      unword(Topic),
-                                      Payload,
-                                      IsRetain}}).
+    send_event(
+        {on_delivery_complete,
+            {MP, ClientId, normalise(UserName), QoS, unword(Topic), Payload, IsRetain}}
+    ).
 
 -spec on_offline_message(subscriber_id(), qos(), topic(), payload(), flag()) -> 'next'.
 on_offline_message(SubscriberId, QoS, Topic, Payload, IsRetain) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_offline_message, {MP,
-                                    ClientId,
-                                    QoS,
-                                    unword(Topic),
-                                    Payload,
-                                    IsRetain}}).
+    send_event({on_offline_message, {MP, ClientId, QoS, unword(Topic), Payload, IsRetain}}).
 
 -spec on_client_wakeup(subscriber_id()) -> 'next'.
 on_client_wakeup(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_client_wakeup, {MP,
-                                  ClientId}}).
+    send_event({on_client_wakeup, {MP, ClientId}}).
 
 -spec on_client_offline(subscriber_id()) -> 'next'.
 on_client_offline(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_client_offline, {MP,
-                                    ClientId}}).
+    send_event({on_client_offline, {MP, ClientId}}).
 
 -spec on_client_gone(subscriber_id()) -> 'next'.
 on_client_gone(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_client_gone, {MP,
-                                ClientId}}).
+    send_event({on_client_gone, {MP, ClientId}}).
 
 -spec on_session_expired(subscriber_id()) -> 'next'.
 on_session_expired(SubscriberId) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
-    send_event({on_session_expired, {MP,
-                                    ClientId}}).
-
+    send_event({on_session_expired, {MP, ClientId}}).
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
--spec enable_hook(hook_name()) -> 'ok' | {'error','no_matching_callback_found'}.
+-spec enable_hook(hook_name()) -> 'ok' | {'error', 'no_matching_callback_found'}.
 enable_hook(HookName) ->
     check_exported_callback(HookName, ?MODULE:module_info(exports)).
 
--spec disable_hook(hook_name()) -> 'ok' | {'error','no_matching_callback_found'}.
+-spec disable_hook(hook_name()) -> 'ok' | {'error', 'no_matching_callback_found'}.
 disable_hook(HookName) ->
     uncheck_exported_callback(HookName, ?MODULE:module_info(exports)).
 
--spec check_exported_callback(hook_name(),maybe_improper_list()) -> 'ok' | {'error','no_matching_callback_found'}.
-check_exported_callback(HookName, [{HookName, _Arity}|_]) ->
+-spec check_exported_callback(hook_name(), maybe_improper_list()) ->
+    'ok' | {'error', 'no_matching_callback_found'}.
+check_exported_callback(HookName, [{HookName, _Arity} | _]) ->
     ok;
-check_exported_callback(HookName, [_|Exports]) ->
+check_exported_callback(HookName, [_ | Exports]) ->
     check_exported_callback(HookName, Exports);
-check_exported_callback(_, []) -> {error, no_matching_callback_found}.
+check_exported_callback(_, []) ->
+    {error, no_matching_callback_found}.
 
--spec uncheck_exported_callback(hook_name(),maybe_improper_list()) -> 'ok' | {'error','no_matching_callback_found'}.
-uncheck_exported_callback(HookName, [{HookName, _Arity}|_]) ->
+-spec uncheck_exported_callback(hook_name(), maybe_improper_list()) ->
+    'ok' | {'error', 'no_matching_callback_found'}.
+uncheck_exported_callback(HookName, [{HookName, _Arity} | _]) ->
     ok;
-uncheck_exported_callback(HookName, [_|Exports]) ->
+uncheck_exported_callback(HookName, [_ | Exports]) ->
     uncheck_exported_callback(HookName, Exports);
-uncheck_exported_callback(_, []) -> {error, no_matching_callback_found}.
+uncheck_exported_callback(_, []) ->
+    {error, no_matching_callback_found}.
 
 -spec send_event(tuple()) -> 'next' | 'ok'.
 send_event({HookName, EventPayload}) ->
@@ -321,28 +311,29 @@ send_event({HookName, EventPayload}) ->
             vmq_metrics:incr_sidecar_events(HookName),
             V1 = vmq_util:ts(),
             case shackle:cast(?APP, {HookName, os:system_time(), EventPayload}, undefined) of
-                {ok, _} -> ok;
+                {ok, _} ->
+                    ok;
                 {error, Reason} ->
                     lager:error("Error sending event(shackle:cast): ~p", [Reason]),
                     vmq_metrics:incr_sidecar_events_error(HookName),
                     next
             end,
             V2 = vmq_util:ts(),
-            vmq_metrics:pretimed_measurement({vmq_events_sidecar, call_latency}, V2-V1)
+            vmq_metrics:pretimed_measurement({vmq_events_sidecar, call_latency}, V2 - V1)
     end.
 
 -spec normalise(_) -> any().
 normalise(undefined) ->
-  <<>>;
+    <<>>;
 normalise(Val) ->
-  Val.
+    Val.
 
 -spec unword(topic()) -> binary().
 unword(T) ->
     iolist_to_binary(vmq_topic:unword(T)).
 
 -spec peer({inet:ip_address(), integer()}) ->
-     {'undefined' | binary(),'undefined' | integer()}.
+    {'undefined' | binary(), 'undefined' | integer()}.
 peer({Peer, Port}) when is_tuple(Peer) and is_integer(Port) ->
     case inet:ntoa(Peer) of
         {error, einval} ->
@@ -355,11 +346,14 @@ peer({Peer, Port}) when is_tuple(Peer) and is_integer(Port) ->
 subscriber_id({"", ClientId}) -> {<<>>, ClientId};
 subscriber_id({MP, ClientId}) -> {list_to_binary(MP), ClientId}.
 
--spec from_internal_qos('not_allowed' | integer() | {integer(),map()}) -> integer() | {integer(),map()}.
+-spec from_internal_qos('not_allowed' | integer() | {integer(), map()}) ->
+    integer() | {integer(), map()}.
 from_internal_qos(not_allowed) ->
     128;
 from_internal_qos(V) when is_integer(V) ->
     V;
-from_internal_qos({QoS, Opts}) when is_integer(QoS),
-                                    is_map(Opts) ->
+from_internal_qos({QoS, Opts}) when
+    is_integer(QoS),
+    is_map(Opts)
+->
     {QoS, Opts}.

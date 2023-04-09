@@ -14,8 +14,10 @@
 
 -module(vmq_ql_repl).
 
--export([start/0,
-         repl_start/0]).
+-export([
+    start/0,
+    repl_start/0
+]).
 
 -define(PROMPT, "vmql> ").
 -define(SUB_PROMPT, "> ").
@@ -24,12 +26,12 @@
 
 start() ->
     case init:get_plain_arguments() of
-        ["-vmql_eval"|As] ->
+        ["-vmql_eval" | As] ->
             user:start(),
             run_string(As);
-        [S|As] ->
+        [S | As] ->
             user:start(),
-            run_file([S|As]);
+            run_file([S | As]);
         [] ->
             user_drv:start(['tty_sl -c -e', {vmq_ql_repl, repl_start, []}])
     end.
@@ -39,7 +41,6 @@ run_file(_) ->
 
 run_string(_) ->
     io:put_chars(user, "not implemented\n").
-
 
 init_state() ->
     os:cmd(os:find_executable("epmd") ++ " -daemon"),
@@ -53,13 +54,15 @@ init_state() ->
                     %% started without -sname or -name arg
                     NodenameStr = "vmql-" ++ integer_to_list(erlang:phash2(os:timestamp())),
                     StartOpts =
-                    case length(re:split(RemoteNode, "@")) of
-                        1 -> % shortname
-                            [list_to_atom(NodenameStr), shortnames];
-                        2 -> % longname
-                            {ok, Hostname} = inet:gethostname(),
-                            [list_to_atom(NodenameStr ++ "@" ++ Hostname), longnames]
-                    end,
+                        case length(re:split(RemoteNode, "@")) of
+                            % shortname
+                            1 ->
+                                [list_to_atom(NodenameStr), shortnames];
+                            % longname
+                            2 ->
+                                {ok, Hostname} = inet:gethostname(),
+                                [list_to_atom(NodenameStr ++ "@" ++ Hostname), longnames]
+                        end,
                     {ok, _} = net_kernel:start(StartOpts);
                 _ ->
                     ok
@@ -67,7 +70,7 @@ init_state() ->
             Cookie = list_to_atom(proplists:get_value(cookie, init:get_arguments(), "vmq")),
             erlang:set_cookie(node(), Cookie),
             RemoteNodeAtom = list_to_atom(RemoteNode),
-            #state{remote_node=RemoteNodeAtom}
+            #state{remote_node = RemoteNodeAtom}
     end.
 
 repl_start() ->
@@ -84,7 +87,7 @@ start_eval(State) ->
     Self = self(),
     spawn_link(fun() -> eval_loop(Self, State) end).
 
-eval_loop(Shell, #state{remote_node=Remote} = State) ->
+eval_loop(Shell, #state{remote_node = Remote} = State) ->
     receive
         {eval_query, Shell, QueryStr} ->
             case rpc:call(Remote, vmq_ql_query_mgr, rpc_query, [Shell, QueryStr], 5000) of
@@ -96,7 +99,7 @@ eval_loop(Shell, #state{remote_node=Remote} = State) ->
             eval_loop(Shell, State)
     end.
 
-shell_eval("more\n", Eval, #state{query_pid=QueryPid} = State) when is_pid(QueryPid) ->
+shell_eval("more\n", Eval, #state{query_pid = QueryPid} = State) when is_pid(QueryPid) ->
     QueryPid ! {fetch, 1},
     query_result_loop(Eval, State);
 shell_eval("more\n", Eval, State) ->
@@ -118,10 +121,10 @@ query_result_loop(Eval, State) ->
     receive
         {query_result, QueryPid, Result} ->
             io:format(user, "~p~n", [Result]),
-            {Eval, State#state{query_pid=QueryPid}};
+            {Eval, State#state{query_pid = QueryPid}};
         end_of_result ->
             io:format(user, "end of result~n", []),
-            {Eval, State#state{query_pid=undefined}};
+            {Eval, State#state{query_pid = undefined}};
         {'EXIT', Eval, Error} ->
             io:format(user, "Eval exited, ~p~n", [Error]),
             Eval1 = start_eval(State),
@@ -141,9 +144,9 @@ server_loop(Eval, State) ->
 
 read_line(Prompt, Eval, State) ->
     Read = fun() ->
-                   Ret = read_line(Prompt),
-                   exit(Ret)
-           end,
+        Ret = read_line(Prompt),
+        exit(Ret)
+    end,
     Reader = spawn_link(Read),
     read_line_(Reader, Eval, State).
 
@@ -160,15 +163,14 @@ read_line_(Reader, Eval, _State) ->
 read_line(Prompt) ->
     case io:get_line(standard_io, Prompt) of
         {error, Error} -> {error, Error};
-        Line ->
-            {ok, Line}
+        Line -> {ok, Line}
     end.
 
 make_banner() ->
     lists:flatten([
-                   "   _   ____  _______    __  \n",
-                   "  | | / /  |/  / __ \\  / /  \n",
-                   "  | |/ / /|_/ / /_/ / / /__ \n",
-                   "  |___/_/  /_/\\___\\_\\/____/ \n",
-                   "                            \n"
-                  ]).
+        "   _   ____  _______    __  \n",
+        "  | | / /  |/  / __ \\  / /  \n",
+        "  | |/ / /|_/ / /_/ / / /__ \n",
+        "  |___/_/  /_/\\___\\_\\/____/ \n",
+        "                            \n"
+    ]).

@@ -1,16 +1,16 @@
-{application, vmq_pulse,
- [{description, "A Plugin to export valuable information about this VerneMQ node"},
-  {vsn, git},
-  {registered, []},
-  {mod, { vmq_pulse_app, []}},
-  {applications,
-   [kernel,
-    stdlib,
-    crypto,
-    public_key,
-    ssl,
-    inets
-   ]},
-  {env,[]},
-  {modules, []}
- ]}.
+{application, vmq_pulse, [
+    {description, "A Plugin to export valuable information about this VerneMQ node"},
+    {vsn, git},
+    {registered, []},
+    {mod, {vmq_pulse_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto,
+        public_key,
+        ssl,
+        inets
+    ]},
+    {env, []},
+    {modules, []}
+]}.

@@ -1,36 +1,37 @@
-{application, vmq_events_sidecar,
- [{description, "VerneMQ events sidecar webhook plugin"},
-  {vsn, git},
-  {registered, []},
-  {mod, { vmq_events_sidecar_app, []}},
-  {applications,
-   [kernel,
-    stdlib,
-    lager,
-    clique,
-    shackle
-   ]},
-  {env,[
-    {hostname, "127.0.0.1"},
-    {port, 8890},
-    {pool_size, 100},
-    {backlog_size, 4096},
-    {vmq_plugin_hooks,
-     [{vmq_events_sidecar_plugin, on_register, 4, []},
-      {vmq_events_sidecar_plugin, on_publish, 6, []},
-      {vmq_events_sidecar_plugin, on_subscribe, 3, []},
-      {vmq_events_sidecar_plugin, on_unsubscribe, 3, []},
-      {vmq_events_sidecar_plugin, on_deliver, 6, []},
-      {vmq_events_sidecar_plugin, on_offline_message, 5, []},
-      {vmq_events_sidecar_plugin, on_client_wakeup, 1, []},
-      {vmq_events_sidecar_plugin, on_client_offline, 1, []},
-      {vmq_events_sidecar_plugin, on_session_expired, 1, []},
-      {vmq_events_sidecar_plugin, on_delivery_complete, 6, []},
-      {vmq_events_sidecar_plugin, on_client_gone, 1, []}]}
-  ]},
-  {modules, []},
+{application, vmq_events_sidecar, [
+    {description, "VerneMQ events sidecar webhook plugin"},
+    {vsn, git},
+    {registered, []},
+    {mod, {vmq_events_sidecar_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        lager,
+        clique,
+        shackle
+    ]},
+    {env, [
+        {hostname, "127.0.0.1"},
+        {port, 8890},
+        {pool_size, 100},
+        {backlog_size, 4096},
+        {vmq_plugin_hooks, [
+            {vmq_events_sidecar_plugin, on_register, 4, []},
+            {vmq_events_sidecar_plugin, on_publish, 6, []},
+            {vmq_events_sidecar_plugin, on_subscribe, 3, []},
+            {vmq_events_sidecar_plugin, on_unsubscribe, 3, []},
+            {vmq_events_sidecar_plugin, on_deliver, 6, []},
+            {vmq_events_sidecar_plugin, on_offline_message, 5, []},
+            {vmq_events_sidecar_plugin, on_client_wakeup, 1, []},
+            {vmq_events_sidecar_plugin, on_client_offline, 1, []},
+            {vmq_events_sidecar_plugin, on_session_expired, 1, []},
+            {vmq_events_sidecar_plugin, on_delivery_complete, 6, []},
+            {vmq_events_sidecar_plugin, on_client_gone, 1, []}
+        ]}
+    ]},
+    {modules, []},
 
-  {maintainers, []},
-  {licenses, []},
-  {links, []}
- ]}.
+    {maintainers, []},
+    {licenses, []},
+    {links, []}
+]}.

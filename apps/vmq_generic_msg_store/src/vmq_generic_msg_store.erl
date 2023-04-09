@@ -17,49 +17,53 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1,
-         msg_store_write/2,
-         msg_store_read/2,
-         msg_store_delete/2,
-         msg_store_find/2,
-         get_engine/1,
-         refcount/1,
-         get_state/1]).
+-export([
+    start_link/1,
+    msg_store_write/2,
+    msg_store_read/2,
+    msg_store_delete/2,
+    msg_store_find/2,
+    get_engine/1,
+    refcount/1,
+    get_state/1
+]).
 
 -export([msg_store_init_queue_collector/4]).
 
--export([parse_p_idx_val_pre/1,
-         parse_p_msg_val_pre/1,
-         serialize_p_idx_val_pre/1,
-         serialize_p_msg_val_pre/1]).
+-export([
+    parse_p_idx_val_pre/1,
+    parse_p_msg_val_pre/1,
+    serialize_p_idx_val_pre/1,
+    serialize_p_msg_val_pre/1
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -record(state, {
-          engine,
-          engine_module,
-          refs = ets:new(?MODULE, [])
-         }).
-
+    engine,
+    engine_module,
+    refs = ets:new(?MODULE, [])
+}).
 
 -define(P_IDX_PRE, 0).
 -define(P_MSG_PRE, 0).
-
 
 %% Subsequent formats should always extend by adding new elements to
 %% the end of the record or tuple.
 -type p_msg_val_pre() :: {routing_key(), payload()}.
 -record(p_idx_val, {
-          ts  :: erlang:timestamp(),
-          dup :: flag(),
-          qos :: qos()
-         }).
+    ts :: erlang:timestamp(),
+    dup :: flag(),
+    qos :: qos()
+}).
 -type p_idx_val_pre() :: #p_idx_val{}.
 
 %%%===================================================================
@@ -68,7 +72,7 @@
 start_link(Id) ->
     gen_server:start_link(?MODULE, [Id], []).
 
-msg_store_write(SubscriberId, #vmq_msg{msg_ref=MsgRef} = Msg) ->
+msg_store_write(SubscriberId, #vmq_msg{msg_ref = MsgRef} = Msg) ->
     call(MsgRef, {write, SubscriberId, Msg}).
 
 msg_store_delete(SubscriberId, MsgRef) ->
@@ -77,14 +81,18 @@ msg_store_delete(SubscriberId, MsgRef) ->
 msg_store_read(SubscriberId, MsgRef) ->
     call(MsgRef, {read, SubscriberId, MsgRef}).
 
-
 %% We differentiate between queue_init and other as queue_init must
 %% not be called concurrently for the same subscriber.
-msg_store_find(SubscriberId, Type) when Type =:= queue_init;
-                                        Type =:= other ->
+msg_store_find(SubscriberId, Type) when
+    Type =:= queue_init;
+    Type =:= other
+->
     Ref = make_ref(),
-    {Pid, MRef} = spawn_monitor(?MODULE, msg_store_init_queue_collector,
-                                [self(), SubscriberId, Ref, Type]),
+    {Pid, MRef} = spawn_monitor(
+        ?MODULE,
+        msg_store_init_queue_collector,
+        [self(), SubscriberId, Ref, Type]
+    ),
     receive
         {'DOWN', MRef, process, Pid, Reason} ->
             {error, Reason};
@@ -95,12 +103,12 @@ msg_store_find(SubscriberId, Type) when Type =:= queue_init;
 
 msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, queue_init) ->
     MsgRefs =
-    case msg_store_init_from_tbl_with_instrumentation(init, SubscriberId) of
-        [] ->
-            init_from_disk_with_instrumentation(SubscriberId);
-        Res ->
-            Res
-    end,
+        case msg_store_init_from_tbl_with_instrumentation(init, SubscriberId) of
+            [] ->
+                init_from_disk_with_instrumentation(SubscriberId);
+            Res ->
+                Res
+        end,
     ParentPid ! {self(), Ref, MsgRefs};
 msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, other) ->
     MsgRefs = init_from_disk_with_instrumentation(SubscriberId),
@@ -109,7 +117,9 @@ msg_store_init_queue_collector(ParentPid, SubscriberId, Ref, other) ->
 init_from_disk_with_instrumentation(SubscriberId) ->
     V1 = vmq_util:ts(),
     MsgRefs = init_from_disk(SubscriberId),
-    vmq_metrics:pretimed_measurement({vmq_generic_message_store, init_from_disk}, vmq_util:ts() - V1),
+    vmq_metrics:pretimed_measurement(
+        {vmq_generic_message_store, init_from_disk}, vmq_util:ts() - V1
+    ),
     MsgRefs.
 
 init_from_disk(SubscriberId) ->
@@ -121,31 +131,37 @@ init_from_disk(SubscriberId) ->
 msg_store_init_from_tbl_with_instrumentation(Prefix, SubscriberId) ->
     V1 = vmq_util:ts(),
     MsgRefs = msg_store_init_from_tbl(Prefix, SubscriberId),
-    vmq_metrics:pretimed_measurement({vmq_generic_message_store, msg_store_init_from_tbl}, vmq_util:ts() - V1),
+    vmq_metrics:pretimed_measurement(
+        {vmq_generic_message_store, msg_store_init_from_tbl}, vmq_util:ts() - V1
+    ),
     MsgRefs.
 
 msg_store_init_from_tbl(Prefix, SubscriberId) ->
     MS = ets:fun2ms(
-           fun({{P, S, _TS, MsgRef}}) when P =:= Prefix, S =:= SubscriberId ->
-                   MsgRef
-           end),
+        fun({{P, S, _TS, MsgRef}}) when P =:= Prefix, S =:= SubscriberId ->
+            MsgRef
+        end
+    ),
     MSDel = ets:fun2ms(
-              fun({{P, S, _TS, _MsgRef}}) when P =:= Prefix, S =:= SubscriberId ->
-                      true
-              end),
+        fun({{P, S, _TS, _MsgRef}}) when P =:= Prefix, S =:= SubscriberId ->
+            true
+        end
+    ),
     Table = select_table(SubscriberId),
     MsgRefs = ets:select(Table, MS),
     _Deleted = ets:select_delete(Table, MSDel),
     MsgRefs.
 
-msg_store_collect(_Ref, _, []) -> ok;
-msg_store_collect(Ref, SubscriberId, [Pid|Rest]) ->
-    ok = try
-             gen_server:call(Pid, {find_for_subscriber_id, Ref, SubscriberId}, infinity)
-         catch
-             {'EXIT', {noproc, _}} ->
-                 ok
-         end,
+msg_store_collect(_Ref, _, []) ->
+    ok;
+msg_store_collect(Ref, SubscriberId, [Pid | Rest]) ->
+    ok =
+        try
+            gen_server:call(Pid, {find_for_subscriber_id, Ref, SubscriberId}, infinity)
+        catch
+            {'EXIT', {noproc, _}} ->
+                ok
+        end,
     msg_store_collect(Ref, SubscriberId, Rest).
 
 get_engine(BucketPid) ->
@@ -193,7 +209,7 @@ init([InstanceId]) ->
     case apply(EngineModule, open, [DataDir2, Opts]) of
         {ok, EngineState} ->
             self() ! {initialize_from_storage, InstanceId},
-            {ok, #state{engine=EngineState, engine_module=EngineModule}};
+            {ok, #state{engine = EngineState, engine_module = EngineModule}};
         {error, Reason} ->
             {stop, Reason}
     end.
@@ -212,14 +228,14 @@ init([InstanceId]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call(get_engine, _From, #state{engine=EngineState, engine_module=EngineModule} = State) ->
+handle_call(get_engine, _From, #state{engine = EngineState, engine_module = EngineModule} = State) ->
     {reply, {EngineModule, EngineState}, State};
 handle_call({refcount, MsgRef}, _From, State) ->
     RefCount =
-    case ets:lookup(State#state.refs, MsgRef) of
-        [] -> 0;
-        [{_, Cnt}] -> Cnt
-    end,
+        case ets:lookup(State#state.refs, MsgRef) of
+            [] -> 0;
+            [{_, Cnt}] -> Cnt
+        end,
     {reply, RefCount, State};
 handle_call(get_state, _From, State) ->
     %% when called externally, the store is always initialized, so
@@ -253,10 +269,13 @@ handle_cast(_Request, State) ->
 %%--------------------------------------------------------------------
 handle_info({initialize_from_storage, InstanceId}, State) ->
     case setup_index(State) of
-        0 -> ok;
+        0 ->
+            ok;
         N ->
-            lager:info("indexed ~p offline messages in msg store instance ~p",
-                       [N, InstanceId])
+            lager:info(
+                "indexed ~p offline messages in msg store instance ~p",
+                [N, InstanceId]
+            )
     end,
     %% Register Bucket Instance with the Bucket Registry
     vmq_generic_msg_store_sup:register_bucket_pid(InstanceId, self()),
@@ -275,7 +294,7 @@ handle_info(_Info, State) ->
 %% @spec terminate(Reason, State) -> void()
 %% @end
 %%--------------------------------------------------------------------
-terminate(_Reason, #state{engine=EngineState, engine_module=EngineModule}) ->
+terminate(_Reason, #state{engine = EngineState, engine_module = EngineModule}) ->
     apply(EngineModule, close, [EngineState]),
     ok.
 
@@ -293,25 +312,39 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-handle_req({write, {MP, _} = SubscriberId,
-            #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
-                     routing_key=RoutingKey, payload=Payload}},
-           #state{engine=EngineState, engine_module=EngineModule, refs=Refs}) ->
+handle_req(
+    {write, {MP, _} = SubscriberId, #vmq_msg{
+        msg_ref = MsgRef,
+        mountpoint = MP,
+        dup = Dup,
+        qos = QoS,
+        routing_key = RoutingKey,
+        payload = Payload
+    }},
+    #state{engine = EngineState, engine_module = EngineModule, refs = Refs}
+) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
-    IdxVal = serialize_p_idx_val_pre(#p_idx_val{ts=os:timestamp(), dup=Dup, qos=QoS}),
+    IdxVal = serialize_p_idx_val_pre(#p_idx_val{ts = os:timestamp(), dup = Dup, qos = QoS}),
     case incr_ref(Refs, MsgRef) of
         1 ->
             %% new message
             Val = serialize_p_msg_val_pre({RoutingKey, Payload}),
-            apply(EngineModule, write, [EngineState, [{put, MsgKey, Val},
-                                                      {put, IdxKey, IdxVal}]]);
+            apply(EngineModule, write, [
+                EngineState,
+                [
+                    {put, MsgKey, Val},
+                    {put, IdxKey, IdxVal}
+                ]
+            ]);
         _ ->
             %% only write the idx
             apply(EngineModule, write, [EngineState, [{put, IdxKey, IdxVal}]])
     end;
-handle_req({read, {MP, _} = SubscriberId, MsgRef},
-           #state{engine=EngineState, engine_module=EngineModule}) ->
+handle_req(
+    {read, {MP, _} = SubscriberId, MsgRef},
+    #state{engine = EngineState, engine_module = EngineModule}
+) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
     case apply(EngineModule, read, [EngineState, MsgKey]) of
@@ -319,9 +352,16 @@ handle_req({read, {MP, _} = SubscriberId, MsgRef},
             {RoutingKey, Payload} = parse_p_msg_val_pre(Val),
             case apply(EngineModule, read, [EngineState, IdxKey]) of
                 {ok, IdxVal} ->
-                    #p_idx_val{dup=Dup, qos=QoS} = parse_p_idx_val_pre(IdxVal),
-                    Msg = #vmq_msg{msg_ref=MsgRef, mountpoint=MP, dup=Dup, qos=QoS,
-                                   routing_key=RoutingKey, payload=Payload, persisted=true},
+                    #p_idx_val{dup = Dup, qos = QoS} = parse_p_idx_val_pre(IdxVal),
+                    Msg = #vmq_msg{
+                        msg_ref = MsgRef,
+                        mountpoint = MP,
+                        dup = Dup,
+                        qos = QoS,
+                        routing_key = RoutingKey,
+                        payload = Payload,
+                        persisted = true
+                    },
                     {ok, Msg};
                 not_found ->
                     {error, idx_val_not_found}
@@ -329,8 +369,10 @@ handle_req({read, {MP, _} = SubscriberId, MsgRef},
         not_found ->
             {error, not_found}
     end;
-handle_req({delete, {MP, _} = SubscriberId, MsgRef},
-           #state{refs=Refs, engine=EngineState, engine_module=EngineModule}) ->
+handle_req(
+    {delete, {MP, _} = SubscriberId, MsgRef},
+    #state{refs = Refs, engine = EngineState, engine_module = EngineModule}
+) ->
     MsgKey = sext:encode({msg, MsgRef, {MP, ''}}),
     IdxKey = sext:encode({idx, SubscriberId, MsgRef}),
     case decr_ref(Refs, MsgRef) of
@@ -338,52 +380,72 @@ handle_req({delete, {MP, _} = SubscriberId, MsgRef},
             lager:warning("delete failed ~p due to not found", [MsgRef]);
         0 ->
             %% last one to be deleted
-            apply(EngineModule, write, [EngineState, [{delete, IdxKey},
-                                                      {delete, MsgKey}]]);
+            apply(EngineModule, write, [
+                EngineState,
+                [
+                    {delete, IdxKey},
+                    {delete, MsgKey}
+                ]
+            ]);
         _ ->
             %% we have to keep the message, but can delete the idx
             apply(EngineModule, write, [EngineState, [{delete, IdxKey}]])
     end;
-handle_req({find_for_subscriber_id, TblIdxRef, SubscriberId},
-           #state{engine=EngineState, engine_module=EngineModule}) ->
+handle_req(
+    {find_for_subscriber_id, TblIdxRef, SubscriberId},
+    #state{engine = EngineState, engine_module = EngineModule}
+) ->
     FirstIdxKey = sext:encode({idx, SubscriberId, ''}),
-    apply(EngineModule, fold,
-          [EngineState,
-           fun(IdxKey, IdxVal, _Acc) ->
-                   case sext:decode(IdxKey) of
-                       {idx, SubscriberId, MsgRef} ->
-                           #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
-                           Table = select_table(SubscriberId),
-                           true = ets:insert(Table, {{TblIdxRef, SubscriberId, TS, MsgRef}});
-                       _ ->
-                           %% all message refs accumulated for this subscriber
-                           throw(finished)
-                   end
-           end, ignore, FirstIdxKey]),
+    apply(
+        EngineModule,
+        fold,
+        [
+            EngineState,
+            fun(IdxKey, IdxVal, _Acc) ->
+                case sext:decode(IdxKey) of
+                    {idx, SubscriberId, MsgRef} ->
+                        #p_idx_val{ts = TS} = parse_p_idx_val_pre(IdxVal),
+                        Table = select_table(SubscriberId),
+                        true = ets:insert(Table, {{TblIdxRef, SubscriberId, TS, MsgRef}});
+                    _ ->
+                        %% all message refs accumulated for this subscriber
+                        throw(finished)
+                end
+            end,
+            ignore,
+            FirstIdxKey
+        ]
+    ),
     ok.
 
-setup_index(#state{engine=EngineState, engine_module=EngineModule, refs=Refs}) ->
+setup_index(#state{engine = EngineState, engine_module = EngineModule, refs = Refs}) ->
     FirstIdxKey = sext:encode({idx, '', ''}),
-    apply(EngineModule, fold,
-          [EngineState,
-           fun(Key, IdxVal, N) ->
-                   case sext:decode(Key) of
-                       {idx, SubscriberId, MsgRef} ->
-                           #p_idx_val{ts=TS} = parse_p_idx_val_pre(IdxVal),
-                           Table = select_table(SubscriberId),
-                           true = ets:insert(Table, {{init, SubscriberId, TS, MsgRef}}),
-                           incr_ref(Refs, MsgRef),
-                           N + 1;
-                       _ ->
-                           throw(finished)
-                   end
-           end, 0, FirstIdxKey]).
+    apply(
+        EngineModule,
+        fold,
+        [
+            EngineState,
+            fun(Key, IdxVal, N) ->
+                case sext:decode(Key) of
+                    {idx, SubscriberId, MsgRef} ->
+                        #p_idx_val{ts = TS} = parse_p_idx_val_pre(IdxVal),
+                        Table = select_table(SubscriberId),
+                        true = ets:insert(Table, {{init, SubscriberId, TS, MsgRef}}),
+                        incr_ref(Refs, MsgRef),
+                        N + 1;
+                    _ ->
+                        throw(finished)
+                end
+            end,
+            0,
+            FirstIdxKey
+        ]
+    ).
 
 incr_ref(Refs, MsgRef) ->
     case ets:insert_new(Refs, {MsgRef, 1}) of
         true -> 1;
-        false ->
-            ets:update_counter(Refs, MsgRef, 1)
+        false -> ets:update_counter(Refs, MsgRef, 1)
     end.
 
 decr_ref(Refs, MsgRef) ->
@@ -412,27 +474,30 @@ parse_p_idx_val_pre(BinTerm) ->
     parse_p_idx_val_pre_(binary_to_term(BinTerm)).
 
 parse_p_idx_val_pre_({TS, Dup, QoS}) ->
-    #p_idx_val{ts=TS, dup=Dup, qos=QoS};
+    #p_idx_val{ts = TS, dup = Dup, qos = QoS};
 %% newer versions of the store -> downgrade
-parse_p_idx_val_pre_(T) when element(1,T) =:= p_idx_val,
-                             is_integer(element(2, T)),
-                             element(2,T) > ?P_IDX_PRE ->
+parse_p_idx_val_pre_(T) when
+    element(1, T) =:= p_idx_val,
+    is_integer(element(2, T)),
+    element(2, T) > ?P_IDX_PRE
+->
     TS = element(3, T),
     Dup = element(4, T),
     QoS = element(5, T),
-    #p_idx_val{ts=TS, dup=Dup, qos=QoS}.
+    #p_idx_val{ts = TS, dup = Dup, qos = QoS}.
 
 %% current version of the index value
 -spec serialize_p_idx_val_pre(p_idx_val_pre()) -> binary().
-serialize_p_idx_val_pre(#p_idx_val{ts=TS, dup=Dup, qos=QoS}) ->
+serialize_p_idx_val_pre(#p_idx_val{ts = TS, dup = Dup, qos = QoS}) ->
     term_to_binary({TS, Dup, QoS});
-serialize_p_idx_val_pre(T) when element(1,T) =:= p_idx_val,
-                                is_integer(element(2, T)),
-                                element(2,T) > ?P_MSG_PRE ->
+serialize_p_idx_val_pre(T) when
+    element(1, T) =:= p_idx_val,
+    is_integer(element(2, T)),
+    element(2, T) > ?P_MSG_PRE
+->
     term_to_binary(
-      {element(3, T),
-       element(4, T),
-       element(5, T)}).
+        {element(3, T), element(4, T), element(5, T)}
+    ).
 
 %% pre msg version:
 %% {routing_key, payload}
@@ -447,17 +512,20 @@ parse_p_msg_val_pre(BinTerm) ->
 parse_p_msg_val_pre_({RoutingKey, Payload}) ->
     {RoutingKey, Payload};
 %% newer version of the msg value
-parse_p_msg_val_pre_(T) when is_integer(element(1, T)),
-                             element(1,T) > ?P_MSG_PRE ->
-    {element(2, T),
-     element(3, T)}.
+parse_p_msg_val_pre_(T) when
+    is_integer(element(1, T)),
+    element(1, T) > ?P_MSG_PRE
+->
+    {element(2, T), element(3, T)}.
 
 %% current version of the msg value
 -spec serialize_p_msg_val_pre(p_msg_val_pre()) -> binary().
 serialize_p_msg_val_pre({_RoutingKey, _Payload} = T) ->
     term_to_binary(T);
-serialize_p_msg_val_pre(T) when is_integer(element(1, T)),
-                                element(1,T) > ?P_MSG_PRE ->
+serialize_p_msg_val_pre(T) when
+    is_integer(element(1, T)),
+    element(1, T) > ?P_MSG_PRE
+->
     term_to_binary(
-      {element(2, T),
-       element(3, T)}).
+        {element(2, T), element(3, T)}
+    ).

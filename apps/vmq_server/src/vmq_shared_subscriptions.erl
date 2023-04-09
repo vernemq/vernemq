@@ -19,28 +19,37 @@
 publish(Msg, Policy, SubscriberGroups, LocalMatches, RemoteMatches) ->
     publish(Msg, Policy, SubscriberGroups, {LocalMatches, RemoteMatches}).
 
-publish(_,_, undefined, Acc) -> Acc;
+publish(_, _, undefined, Acc) ->
+    Acc;
 publish(Msg, Policy, SubscriberGroups, Acc) when is_map(SubscriberGroups) ->
     publish(Msg, Policy, maps:to_list(SubscriberGroups), Acc);
-publish(_,_, [], Acc) -> Acc;
-publish(Msg, Policy, [{Group, []}|Rest], Acc) ->
-    lager:debug("can't publish to shared subscription ~p due to no subscribers, msg: ~p", [Group, Msg]),
+publish(_, _, [], Acc) ->
+    Acc;
+publish(Msg, Policy, [{Group, []} | Rest], Acc) ->
+    lager:debug("can't publish to shared subscription ~p due to no subscribers, msg: ~p", [
+        Group, Msg
+    ]),
     publish(Msg, Policy, Rest, Acc);
-publish(Msg, Policy, [{Group, SubscriberGroup}|Rest], Acc0) ->
+publish(Msg, Policy, [{Group, SubscriberGroup} | Rest], Acc0) ->
     Subscribers = filter_subscribers(SubscriberGroup, Policy),
     %% Randomize subscribers once.
-    RandSubscribers = [S||{_,S} <- lists:sort([{rand:uniform(), N} || N <- Subscribers])],
+    RandSubscribers = [S || {_, S} <- lists:sort([{rand:uniform(), N} || N <- Subscribers])],
     case publish_to_group(Msg, RandSubscribers, Acc0) of
         {ok, Acc1} ->
             publish(Msg, Policy, Rest, Acc1);
         {error, Reason} ->
-            lager:debug("can't publish to shared subscription ~p due to '~p', msg: ~p",
-                        [Group, Reason, Msg]),
+            lager:debug(
+                "can't publish to shared subscription ~p due to '~p', msg: ~p",
+                [Group, Reason, Msg]
+            ),
             publish(Msg, Policy, Rest, Acc0)
     end.
 
-publish_to_group(_Msg, [], _Acc0) -> {error, no_subscribers};
-publish_to_group(Msg, [{Node, _SId, _SubInfo} = Subscriber | Rest] = RandSubs, {Local, Remote} = Acc0) ->
+publish_to_group(_Msg, [], _Acc0) ->
+    {error, no_subscribers};
+publish_to_group(
+    Msg, [{Node, _SId, _SubInfo} = Subscriber | Rest] = RandSubs, {Local, Remote} = Acc0
+) ->
     case publish_online(Msg, Subscriber, Acc0) of
         {error, different_node} ->
             case vmq_redis_queue:enqueue(Node, term_to_binary(RandSubs), term_to_binary(Msg)) of
@@ -57,17 +66,19 @@ publish_to_group(Msg, [{Node, _SId, _SubInfo} = Subscriber | Rest] = RandSubs, {
             publish_to_group(Msg, Rest, Acc0)
     end.
 
-publish_online(Msg, {Node, SId, SubInfo}, Acc0) when Node == node()->
+publish_online(Msg, {Node, SId, SubInfo}, Acc0) when Node == node() ->
     case publish_(Msg, {SId, SubInfo}, online, Acc0) of
         {ok, _Acc1} = Res ->
             Res;
         _ ->
             {error, cannot_publish}
     end;
-publish_online(_, _, _) -> {error, different_node}.
+publish_online(_, _, _) ->
+    {error, different_node}.
 
-publish_any(_Msg, [], _Acc) -> {error, no_subscribers};
-publish_any(Msg, [{_Node, SId, SubInfo}|Subscribers], Acc0) ->
+publish_any(_Msg, [], _Acc) ->
+    {error, no_subscribers};
+publish_any(Msg, [{_Node, SId, SubInfo} | Subscribers], Acc0) ->
     case publish_(Msg, {SId, SubInfo}, any, Acc0) of
         {ok, Acc1} ->
             {ok, Acc1};
@@ -99,9 +110,13 @@ filter_subscribers(Subscribers, random) ->
 filter_subscribers(Subscribers, prefer_local) ->
     Node = node(),
     LocalSubscribers =
-        lists:filter(fun({N, _, _}) when N == Node -> true;
-                        (_) -> false
-                     end, Subscribers),
+        lists:filter(
+            fun
+                ({N, _, _}) when N == Node -> true;
+                (_) -> false
+            end,
+            Subscribers
+        ),
     case LocalSubscribers of
         [] -> Subscribers;
         _ -> LocalSubscribers

@@ -10,20 +10,31 @@
 -ifndef('EVENTSSIDECAR.V1.ONUNSUBSCRIBE_PB_H').
 -define('EVENTSSIDECAR.V1.ONUNSUBSCRIBE_PB_H', true).
 -record('eventssidecar.v1.OnUnsubscribe',
-        {timestamp = undefined  :: on_unsubscribe_pb:'google.protobuf.Timestamp'() | undefined, % = 1, optional
-         username = <<>>        :: unicode:chardata() | undefined, % = 2, optional
-         client_id = <<>>       :: unicode:chardata() | undefined, % = 3, optional
-         mountpoint = <<>>      :: unicode:chardata() | undefined, % = 4, optional
-         topics = []            :: [unicode:chardata()] | undefined % = 5, repeated
-        }).
+    % = 1, optional
+    {
+        timestamp = undefined :: on_unsubscribe_pb:'google.protobuf.Timestamp'() | undefined,
+        % = 2, optional
+        username = <<>> :: unicode:chardata() | undefined,
+        % = 3, optional
+        client_id = <<>> :: unicode:chardata() | undefined,
+        % = 4, optional
+        mountpoint = <<>> :: unicode:chardata() | undefined,
+        % = 5, repeated
+        topics = [] :: [unicode:chardata()] | undefined
+    }
+).
 -endif.
 
 -ifndef('GOOGLE.PROTOBUF.TIMESTAMP_PB_H').
 -define('GOOGLE.PROTOBUF.TIMESTAMP_PB_H', true).
 -record('google.protobuf.Timestamp',
-        {seconds = 0            :: integer() | undefined, % = 1, optional, 64 bits
-         nanos = 0              :: integer() | undefined % = 2, optional, 32 bits
-        }).
+    % = 1, optional, 64 bits
+    {
+        seconds = 0 :: integer() | undefined,
+        % = 2, optional, 32 bits
+        nanos = 0 :: integer() | undefined
+    }
+).
 -endif.
 
 -endif.

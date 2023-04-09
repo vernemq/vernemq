@@ -63,13 +63,14 @@
 -type '$msg'() :: 'eventssidecar.v1.OnRegister'() | 'google.protobuf.Timestamp'().
 -export_type(['$msg_name'/0, '$msg'/0]).
 
--record('map<string,string>',{key, value}).
+-record('map<string,string>', {key, value}).
 -spec encode_msg('$msg'()) -> binary().
 encode_msg(Msg) when tuple_size(Msg) >= 1 -> encode_msg(Msg, element(1, Msg), []).
 
 -spec encode_msg('$msg'(), '$msg_name'() | list()) -> binary().
 encode_msg(Msg, MsgName) when is_atom(MsgName) -> encode_msg(Msg, MsgName, []);
-encode_msg(Msg, Opts) when tuple_size(Msg) >= 1, is_list(Opts) -> encode_msg(Msg, element(1, Msg), Opts).
+encode_msg(Msg, Opts) when tuple_size(Msg) >= 1, is_list(Opts) ->
+    encode_msg(Msg, element(1, Msg), Opts).
 
 -spec encode_msg('$msg'(), '$msg_name'(), list()) -> binary().
 encode_msg(Msg, MsgName, Opts) ->
@@ -79,25 +80,49 @@ encode_msg(Msg, MsgName, Opts) ->
     end,
     TrUserData = proplists:get_value(user_data, Opts),
     case MsgName of
-        'eventssidecar.v1.OnRegister' -> 'encode_msg_eventssidecar.v1.OnRegister'(id(Msg, TrUserData), TrUserData);
-        'google.protobuf.Timestamp' -> 'encode_msg_google.protobuf.Timestamp'(id(Msg, TrUserData), TrUserData)
+        'eventssidecar.v1.OnRegister' ->
+            'encode_msg_eventssidecar.v1.OnRegister'(id(Msg, TrUserData), TrUserData);
+        'google.protobuf.Timestamp' ->
+            'encode_msg_google.protobuf.Timestamp'(id(Msg, TrUserData), TrUserData)
     end.
 
+'encode_msg_eventssidecar.v1.OnRegister'(Msg, TrUserData) ->
+    'encode_msg_eventssidecar.v1.OnRegister'(Msg, <<>>, TrUserData).
 
-'encode_msg_eventssidecar.v1.OnRegister'(Msg, TrUserData) -> 'encode_msg_eventssidecar.v1.OnRegister'(Msg, <<>>, TrUserData).
-
-
-'encode_msg_eventssidecar.v1.OnRegister'(#'eventssidecar.v1.OnRegister'{timestamp = F1, peer_addr = F2, peer_port = F3, username = F4, mountpoint = F5, client_id = F6, user_properties = F7}, Bin, TrUserData) ->
-    B1 = if F1 == undefined -> Bin;
+'encode_msg_eventssidecar.v1.OnRegister'(
+    #'eventssidecar.v1.OnRegister'{
+        timestamp = F1,
+        peer_addr = F2,
+        peer_port = F3,
+        username = F4,
+        mountpoint = F5,
+        client_id = F6,
+        user_properties = F7
+    },
+    Bin,
+    TrUserData
+) ->
+    B1 =
+        if
+            F1 == undefined ->
+                Bin;
             true ->
                 begin
                     TrF1 = id(F1, TrUserData),
-                    if TrF1 =:= undefined -> Bin;
-                       true -> 'e_mfield_eventssidecar.v1.OnRegister_timestamp'(TrF1, <<Bin/binary, 10>>, TrUserData)
+                    if
+                        TrF1 =:= undefined ->
+                            Bin;
+                        true ->
+                            'e_mfield_eventssidecar.v1.OnRegister_timestamp'(
+                                TrF1, <<Bin/binary, 10>>, TrUserData
+                            )
                     end
                 end
-         end,
-    B2 = if F2 == undefined -> B1;
+        end,
+    B2 =
+        if
+            F2 == undefined ->
+                B1;
             true ->
                 begin
                     TrF2 = id(F2, TrUserData),
@@ -106,17 +131,24 @@ encode_msg(Msg, MsgName, Opts) ->
                         false -> e_type_string(TrF2, <<B1/binary, 18>>, TrUserData)
                     end
                 end
-         end,
-    B3 = if F3 == undefined -> B2;
+        end,
+    B3 =
+        if
+            F3 == undefined ->
+                B2;
             true ->
                 begin
                     TrF3 = id(F3, TrUserData),
-                    if TrF3 =:= 0 -> B2;
-                       true -> e_type_int32(TrF3, <<B2/binary, 24>>, TrUserData)
+                    if
+                        TrF3 =:= 0 -> B2;
+                        true -> e_type_int32(TrF3, <<B2/binary, 24>>, TrUserData)
                     end
                 end
-         end,
-    B4 = if F4 == undefined -> B3;
+        end,
+    B4 =
+        if
+            F4 == undefined ->
+                B3;
             true ->
                 begin
                     TrF4 = id(F4, TrUserData),
@@ -125,8 +157,11 @@ encode_msg(Msg, MsgName, Opts) ->
                         false -> e_type_string(TrF4, <<B3/binary, 34>>, TrUserData)
                     end
                 end
-         end,
-    B5 = if F5 == undefined -> B4;
+        end,
+    B5 =
+        if
+            F5 == undefined ->
+                B4;
             true ->
                 begin
                     TrF5 = id(F5, TrUserData),
@@ -135,8 +170,11 @@ encode_msg(Msg, MsgName, Opts) ->
                         false -> e_type_string(TrF5, <<B4/binary, 42>>, TrUserData)
                     end
                 end
-         end,
-    B6 = if F6 == undefined -> B5;
+        end,
+    B6 =
+        if
+            F6 == undefined ->
+                B5;
             true ->
                 begin
                     TrF6 = id(F6, TrUserData),
@@ -145,35 +183,45 @@ encode_msg(Msg, MsgName, Opts) ->
                         false -> e_type_string(TrF6, <<B5/binary, 50>>, TrUserData)
                     end
                 end
-         end,
+        end,
     begin
         TrF7 = id(F7, TrUserData),
-        if TrF7 == [] -> B6;
-           true -> 'e_field_eventssidecar.v1.OnRegister_user_properties'(TrF7, B6, TrUserData)
+        if
+            TrF7 == [] -> B6;
+            true -> 'e_field_eventssidecar.v1.OnRegister_user_properties'(TrF7, B6, TrUserData)
         end
     end.
 
-'encode_msg_google.protobuf.Timestamp'(Msg, TrUserData) -> 'encode_msg_google.protobuf.Timestamp'(Msg, <<>>, TrUserData).
+'encode_msg_google.protobuf.Timestamp'(Msg, TrUserData) ->
+    'encode_msg_google.protobuf.Timestamp'(Msg, <<>>, TrUserData).
 
-
-'encode_msg_google.protobuf.Timestamp'(#'google.protobuf.Timestamp'{seconds = F1, nanos = F2}, Bin, TrUserData) ->
-    B1 = if F1 == undefined -> Bin;
+'encode_msg_google.protobuf.Timestamp'(
+    #'google.protobuf.Timestamp'{seconds = F1, nanos = F2}, Bin, TrUserData
+) ->
+    B1 =
+        if
+            F1 == undefined ->
+                Bin;
             true ->
                 begin
                     TrF1 = id(F1, TrUserData),
-                    if TrF1 =:= 0 -> Bin;
-                       true -> e_type_int64(TrF1, <<Bin/binary, 8>>, TrUserData)
+                    if
+                        TrF1 =:= 0 -> Bin;
+                        true -> e_type_int64(TrF1, <<Bin/binary, 8>>, TrUserData)
                     end
                 end
-         end,
-    if F2 == undefined -> B1;
-       true ->
-           begin
-               TrF2 = id(F2, TrUserData),
-               if TrF2 =:= 0 -> B1;
-                  true -> e_type_int32(TrF2, <<B1/binary, 16>>, TrUserData)
-               end
-           end
+        end,
+    if
+        F2 == undefined ->
+            B1;
+        true ->
+            begin
+                TrF2 = id(F2, TrUserData),
+                if
+                    TrF2 =:= 0 -> B1;
+                    true -> e_type_int32(TrF2, <<B1/binary, 16>>, TrUserData)
+                end
+            end
     end.
 
 'e_mfield_eventssidecar.v1.OnRegister_timestamp'(Msg, Bin, TrUserData) ->
@@ -188,43 +236,54 @@ encode_msg(Msg, MsgName, Opts) ->
 
 'e_field_eventssidecar.v1.OnRegister_user_properties'([Elem | Rest], Bin, TrUserData) ->
     Bin2 = <<Bin/binary, 58>>,
-    Bin3 = 'e_mfield_eventssidecar.v1.OnRegister_user_properties'('tr_encode_eventssidecar.v1.OnRegister.user_properties[x]'(Elem, TrUserData), Bin2, TrUserData),
+    Bin3 = 'e_mfield_eventssidecar.v1.OnRegister_user_properties'(
+        'tr_encode_eventssidecar.v1.OnRegister.user_properties[x]'(Elem, TrUserData),
+        Bin2,
+        TrUserData
+    ),
     'e_field_eventssidecar.v1.OnRegister_user_properties'(Rest, Bin3, TrUserData);
-'e_field_eventssidecar.v1.OnRegister_user_properties'([], Bin, _TrUserData) -> Bin.
+'e_field_eventssidecar.v1.OnRegister_user_properties'([], Bin, _TrUserData) ->
+    Bin.
 
 'encode_msg_map<string,string>'(#'map<string,string>'{key = F1, value = F2}, Bin, TrUserData) ->
-    B1 = begin TrF1 = id(F1, TrUserData), e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData) end,
-    begin TrF2 = id(F2, TrUserData), e_type_string(TrF2, <<B1/binary, 18>>, TrUserData) end.
+    B1 = begin
+        TrF1 = id(F1, TrUserData),
+        e_type_string(TrF1, <<Bin/binary, 10>>, TrUserData)
+    end,
+    begin
+        TrF2 = id(F2, TrUserData),
+        e_type_string(TrF2, <<B1/binary, 18>>, TrUserData)
+    end.
 
--compile({nowarn_unused_function,e_type_sint/3}).
+-compile({nowarn_unused_function, e_type_sint/3}).
 e_type_sint(Value, Bin, _TrUserData) when Value >= 0 -> e_varint(Value * 2, Bin);
 e_type_sint(Value, Bin, _TrUserData) -> e_varint(Value * -2 - 1, Bin).
 
--compile({nowarn_unused_function,e_type_int32/3}).
+-compile({nowarn_unused_function, e_type_int32/3}).
 e_type_int32(Value, Bin, _TrUserData) when 0 =< Value, Value =< 127 -> <<Bin/binary, Value>>;
 e_type_int32(Value, Bin, _TrUserData) ->
     <<N:64/unsigned-native>> = <<Value:64/signed-native>>,
     e_varint(N, Bin).
 
--compile({nowarn_unused_function,e_type_int64/3}).
+-compile({nowarn_unused_function, e_type_int64/3}).
 e_type_int64(Value, Bin, _TrUserData) when 0 =< Value, Value =< 127 -> <<Bin/binary, Value>>;
 e_type_int64(Value, Bin, _TrUserData) ->
     <<N:64/unsigned-native>> = <<Value:64/signed-native>>,
     e_varint(N, Bin).
 
--compile({nowarn_unused_function,e_type_bool/3}).
+-compile({nowarn_unused_function, e_type_bool/3}).
 e_type_bool(true, Bin, _TrUserData) -> <<Bin/binary, 1>>;
 e_type_bool(false, Bin, _TrUserData) -> <<Bin/binary, 0>>;
 e_type_bool(1, Bin, _TrUserData) -> <<Bin/binary, 1>>;
 e_type_bool(0, Bin, _TrUserData) -> <<Bin/binary, 0>>.
 
--compile({nowarn_unused_function,e_type_string/3}).
+-compile({nowarn_unused_function, e_type_string/3}).
 e_type_string(S, Bin, _TrUserData) ->
     Utf8 = unicode:characters_to_binary(S),
     Bin2 = e_varint(byte_size(Utf8), Bin),
     <<Bin2/binary, Utf8/binary>>.
 
--compile({nowarn_unused_function,e_type_bytes/3}).
+-compile({nowarn_unused_function, e_type_bytes/3}).
 e_type_bytes(Bytes, Bin, _TrUserData) when is_binary(Bytes) ->
     Bin2 = e_varint(byte_size(Bytes), Bin),
     <<Bin2/binary, Bytes/binary>>;
@@ -233,58 +292,60 @@ e_type_bytes(Bytes, Bin, _TrUserData) when is_list(Bytes) ->
     Bin2 = e_varint(byte_size(BytesBin), Bin),
     <<Bin2/binary, BytesBin/binary>>.
 
--compile({nowarn_unused_function,e_type_fixed32/3}).
+-compile({nowarn_unused_function, e_type_fixed32/3}).
 e_type_fixed32(Value, Bin, _TrUserData) -> <<Bin/binary, Value:32/little>>.
 
--compile({nowarn_unused_function,e_type_sfixed32/3}).
+-compile({nowarn_unused_function, e_type_sfixed32/3}).
 e_type_sfixed32(Value, Bin, _TrUserData) -> <<Bin/binary, Value:32/little-signed>>.
 
--compile({nowarn_unused_function,e_type_fixed64/3}).
+-compile({nowarn_unused_function, e_type_fixed64/3}).
 e_type_fixed64(Value, Bin, _TrUserData) -> <<Bin/binary, Value:64/little>>.
 
--compile({nowarn_unused_function,e_type_sfixed64/3}).
+-compile({nowarn_unused_function, e_type_sfixed64/3}).
 e_type_sfixed64(Value, Bin, _TrUserData) -> <<Bin/binary, Value:64/little-signed>>.
 
--compile({nowarn_unused_function,e_type_float/3}).
+-compile({nowarn_unused_function, e_type_float/3}).
 e_type_float(V, Bin, _) when is_number(V) -> <<Bin/binary, V:32/little-float>>;
 e_type_float(infinity, Bin, _) -> <<Bin/binary, 0:16, 128, 127>>;
 e_type_float('-infinity', Bin, _) -> <<Bin/binary, 0:16, 128, 255>>;
 e_type_float(nan, Bin, _) -> <<Bin/binary, 0:16, 192, 127>>.
 
--compile({nowarn_unused_function,e_type_double/3}).
+-compile({nowarn_unused_function, e_type_double/3}).
 e_type_double(V, Bin, _) when is_number(V) -> <<Bin/binary, V:64/little-float>>;
 e_type_double(infinity, Bin, _) -> <<Bin/binary, 0:48, 240, 127>>;
 e_type_double('-infinity', Bin, _) -> <<Bin/binary, 0:48, 240, 255>>;
 e_type_double(nan, Bin, _) -> <<Bin/binary, 0:48, 248, 127>>.
 
--compile({nowarn_unused_function,e_unknown_elems/2}).
+-compile({nowarn_unused_function, e_unknown_elems/2}).
 e_unknown_elems([Elem | Rest], Bin) ->
-    BinR = case Elem of
-               {varint, FNum, N} ->
-                   BinF = e_varint(FNum bsl 3, Bin),
-                   e_varint(N, BinF);
-               {length_delimited, FNum, Data} ->
-                   BinF = e_varint(FNum bsl 3 bor 2, Bin),
-                   BinL = e_varint(byte_size(Data), BinF),
-                   <<BinL/binary, Data/binary>>;
-               {group, FNum, GroupFields} ->
-                   Bin1 = e_varint(FNum bsl 3 bor 3, Bin),
-                   Bin2 = e_unknown_elems(GroupFields, Bin1),
-                   e_varint(FNum bsl 3 bor 4, Bin2);
-               {fixed32, FNum, V} ->
-                   BinF = e_varint(FNum bsl 3 bor 5, Bin),
-                   <<BinF/binary, V:32/little>>;
-               {fixed64, FNum, V} ->
-                   BinF = e_varint(FNum bsl 3 bor 1, Bin),
-                   <<BinF/binary, V:64/little>>
-           end,
+    BinR =
+        case Elem of
+            {varint, FNum, N} ->
+                BinF = e_varint(FNum bsl 3, Bin),
+                e_varint(N, BinF);
+            {length_delimited, FNum, Data} ->
+                BinF = e_varint(FNum bsl 3 bor 2, Bin),
+                BinL = e_varint(byte_size(Data), BinF),
+                <<BinL/binary, Data/binary>>;
+            {group, FNum, GroupFields} ->
+                Bin1 = e_varint(FNum bsl 3 bor 3, Bin),
+                Bin2 = e_unknown_elems(GroupFields, Bin1),
+                e_varint(FNum bsl 3 bor 4, Bin2);
+            {fixed32, FNum, V} ->
+                BinF = e_varint(FNum bsl 3 bor 5, Bin),
+                <<BinF/binary, V:32/little>>;
+            {fixed64, FNum, V} ->
+                BinF = e_varint(FNum bsl 3 bor 1, Bin),
+                <<BinF/binary, V:64/little>>
+        end,
     e_unknown_elems(Rest, BinR);
-e_unknown_elems([], Bin) -> Bin.
+e_unknown_elems([], Bin) ->
+    Bin.
 
--compile({nowarn_unused_function,e_varint/3}).
+-compile({nowarn_unused_function, e_varint/3}).
 e_varint(N, Bin, _TrUserData) -> e_varint(N, Bin).
 
--compile({nowarn_unused_function,e_varint/2}).
+-compile({nowarn_unused_function, e_varint/2}).
 e_varint(N, Bin) when N =< 127 -> <<Bin/binary, N>>;
 e_varint(N, Bin) ->
     Bin2 = <<Bin/binary, (N band 127 bor 128)>>,
@@ -303,9 +364,10 @@ string_has_chars([H | T]) ->
     end;
 string_has_chars(B) when is_binary(B), byte_size(B) =/= 0 -> true;
 string_has_chars(C) when is_integer(C) -> true;
-string_has_chars(<<>>) -> false;
-string_has_chars([]) -> false.
-
+string_has_chars(<<>>) ->
+    false;
+string_has_chars([]) ->
+    false.
 
 decode_msg(Bin, MsgName) when is_binary(Bin) -> decode_msg(Bin, MsgName, []).
 
@@ -315,199 +377,516 @@ decode_msg(Bin, MsgName, Opts) when is_binary(Bin) ->
 
 -ifdef('OTP_RELEASE').
 decode_msg_1_catch(Bin, MsgName, TrUserData) ->
-    try decode_msg_2_doit(MsgName, Bin, TrUserData)
+    try
+        decode_msg_2_doit(MsgName, Bin, TrUserData)
     catch
-        error:{gpb_error,_}=Reason:StackTrace ->
+        error:{gpb_error, _} = Reason:StackTrace ->
             erlang:raise(error, Reason, StackTrace);
-        Class:Reason:StackTrace -> error({gpb_error,{decoding_failure, {Bin, MsgName, {Class, Reason, StackTrace}}}})
+        Class:Reason:StackTrace ->
+            error({gpb_error, {decoding_failure, {Bin, MsgName, {Class, Reason, StackTrace}}}})
     end.
 -else.
 decode_msg_1_catch(Bin, MsgName, TrUserData) ->
-    try decode_msg_2_doit(MsgName, Bin, TrUserData)
+    try
+        decode_msg_2_doit(MsgName, Bin, TrUserData)
     catch
-        error:{gpb_error,_}=Reason ->
-            erlang:raise(error, Reason,
-                         erlang:get_stacktrace());
+        error:{gpb_error, _} = Reason ->
+            erlang:raise(
+                error,
+                Reason,
+                erlang:get_stacktrace()
+            );
         Class:Reason ->
             StackTrace = erlang:get_stacktrace(),
-            error({gpb_error,{decoding_failure, {Bin, MsgName, {Class, Reason, StackTrace}}}})
+            error({gpb_error, {decoding_failure, {Bin, MsgName, {Class, Reason, StackTrace}}}})
     end.
 -endif.
 
-decode_msg_2_doit('eventssidecar.v1.OnRegister', Bin, TrUserData) -> id('decode_msg_eventssidecar.v1.OnRegister'(Bin, TrUserData), TrUserData);
-decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) -> id('decode_msg_google.protobuf.Timestamp'(Bin, TrUserData), TrUserData).
-
-
+decode_msg_2_doit('eventssidecar.v1.OnRegister', Bin, TrUserData) ->
+    id('decode_msg_eventssidecar.v1.OnRegister'(Bin, TrUserData), TrUserData);
+decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) ->
+    id('decode_msg_google.protobuf.Timestamp'(Bin, TrUserData), TrUserData).
 
 'decode_msg_eventssidecar.v1.OnRegister'(Bin, TrUserData) ->
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(Bin,
-                                                     0,
-                                                     0,
-                                                     0,
-                                                     id(undefined, TrUserData),
-                                                     id(<<>>, TrUserData),
-                                                     id(0, TrUserData),
-                                                     id(<<>>, TrUserData),
-                                                     id(<<>>, TrUserData),
-                                                     id(<<>>, TrUserData),
-                                                     'tr_decode_init_default_eventssidecar.v1.OnRegister.user_properties'([], TrUserData),
-                                                     TrUserData).
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        Bin,
+        0,
+        0,
+        0,
+        id(undefined, TrUserData),
+        id(<<>>, TrUserData),
+        id(0, TrUserData),
+        id(<<>>, TrUserData),
+        id(<<>>, TrUserData),
+        id(<<>>, TrUserData),
+        'tr_decode_init_default_eventssidecar.v1.OnRegister.user_properties'([], TrUserData),
+        TrUserData
+    ).
 
-'dfp_read_field_def_eventssidecar.v1.OnRegister'(<<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    'd_field_eventssidecar.v1.OnRegister_timestamp'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'dfp_read_field_def_eventssidecar.v1.OnRegister'(<<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    'd_field_eventssidecar.v1.OnRegister_peer_addr'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'dfp_read_field_def_eventssidecar.v1.OnRegister'(<<24, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    'd_field_eventssidecar.v1.OnRegister_peer_port'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'dfp_read_field_def_eventssidecar.v1.OnRegister'(<<34, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    'd_field_eventssidecar.v1.OnRegister_username'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'dfp_read_field_def_eventssidecar.v1.OnRegister'(<<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    'd_field_eventssidecar.v1.OnRegister_mountpoint'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'dfp_read_field_def_eventssidecar.v1.OnRegister'(<<50, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    'd_field_eventssidecar.v1.OnRegister_client_id'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'dfp_read_field_def_eventssidecar.v1.OnRegister'(<<58, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    'd_field_eventssidecar.v1.OnRegister_user_properties'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'dfp_read_field_def_eventssidecar.v1.OnRegister'(<<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, R1, TrUserData) ->
-    #'eventssidecar.v1.OnRegister'{timestamp = F@_1, peer_addr = F@_2, peer_port = F@_3, username = F@_4, mountpoint = F@_5, client_id = F@_6, user_properties = 'tr_decode_repeated_finalize_eventssidecar.v1.OnRegister.user_properties'(R1, TrUserData)};
-'dfp_read_field_def_eventssidecar.v1.OnRegister'(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) -> 'dg_read_field_def_eventssidecar.v1.OnRegister'(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData).
+'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+    <<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'd_field_eventssidecar.v1.OnRegister_timestamp'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+    <<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'd_field_eventssidecar.v1.OnRegister_peer_addr'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+    <<24, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'd_field_eventssidecar.v1.OnRegister_peer_port'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+    <<34, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'd_field_eventssidecar.v1.OnRegister_username'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+    <<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'd_field_eventssidecar.v1.OnRegister_mountpoint'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+    <<50, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'd_field_eventssidecar.v1.OnRegister_client_id'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+    <<58, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'd_field_eventssidecar.v1.OnRegister_user_properties'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, R1, TrUserData
+) ->
+    #'eventssidecar.v1.OnRegister'{
+        timestamp = F@_1,
+        peer_addr = F@_2,
+        peer_port = F@_3,
+        username = F@_4,
+        mountpoint = F@_5,
+        client_id = F@_6,
+        user_properties = 'tr_decode_repeated_finalize_eventssidecar.v1.OnRegister.user_properties'(
+            R1, TrUserData
+        )
+    };
+'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+    Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'dg_read_field_def_eventssidecar.v1.OnRegister'(
+        Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    ).
 
-'dg_read_field_def_eventssidecar.v1.OnRegister'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) when N < 32 - 7 ->
-    'dg_read_field_def_eventssidecar.v1.OnRegister'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'dg_read_field_def_eventssidecar.v1.OnRegister'(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
+'dg_read_field_def_eventssidecar.v1.OnRegister'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) when N < 32 - 7 ->
+    'dg_read_field_def_eventssidecar.v1.OnRegister'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'dg_read_field_def_eventssidecar.v1.OnRegister'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
     Key = X bsl N + Acc,
     case Key of
-        10 -> 'd_field_eventssidecar.v1.OnRegister_timestamp'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-        18 -> 'd_field_eventssidecar.v1.OnRegister_peer_addr'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-        24 -> 'd_field_eventssidecar.v1.OnRegister_peer_port'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-        34 -> 'd_field_eventssidecar.v1.OnRegister_username'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-        42 -> 'd_field_eventssidecar.v1.OnRegister_mountpoint'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-        50 -> 'd_field_eventssidecar.v1.OnRegister_client_id'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-        58 -> 'd_field_eventssidecar.v1.OnRegister_user_properties'(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
+        10 ->
+            'd_field_eventssidecar.v1.OnRegister_timestamp'(
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+            );
+        18 ->
+            'd_field_eventssidecar.v1.OnRegister_peer_addr'(
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+            );
+        24 ->
+            'd_field_eventssidecar.v1.OnRegister_peer_port'(
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+            );
+        34 ->
+            'd_field_eventssidecar.v1.OnRegister_username'(
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+            );
+        42 ->
+            'd_field_eventssidecar.v1.OnRegister_mountpoint'(
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+            );
+        50 ->
+            'd_field_eventssidecar.v1.OnRegister_client_id'(
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+            );
+        58 ->
+            'd_field_eventssidecar.v1.OnRegister_user_properties'(
+                Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+            );
         _ ->
             case Key band 7 of
-                0 -> 'skip_varint_eventssidecar.v1.OnRegister'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-                1 -> 'skip_64_eventssidecar.v1.OnRegister'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-                2 -> 'skip_length_delimited_eventssidecar.v1.OnRegister'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-                3 -> 'skip_group_eventssidecar.v1.OnRegister'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-                5 -> 'skip_32_eventssidecar.v1.OnRegister'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData)
+                0 ->
+                    'skip_varint_eventssidecar.v1.OnRegister'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                    );
+                1 ->
+                    'skip_64_eventssidecar.v1.OnRegister'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                    );
+                2 ->
+                    'skip_length_delimited_eventssidecar.v1.OnRegister'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                    );
+                3 ->
+                    'skip_group_eventssidecar.v1.OnRegister'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                    );
+                5 ->
+                    'skip_32_eventssidecar.v1.OnRegister'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+                    )
             end
     end;
-'dg_read_field_def_eventssidecar.v1.OnRegister'(<<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, R1, TrUserData) ->
-    #'eventssidecar.v1.OnRegister'{timestamp = F@_1, peer_addr = F@_2, peer_port = F@_3, username = F@_4, mountpoint = F@_5, client_id = F@_6, user_properties = 'tr_decode_repeated_finalize_eventssidecar.v1.OnRegister.user_properties'(R1, TrUserData)}.
+'dg_read_field_def_eventssidecar.v1.OnRegister'(
+    <<>>, 0, 0, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, R1, TrUserData
+) ->
+    #'eventssidecar.v1.OnRegister'{
+        timestamp = F@_1,
+        peer_addr = F@_2,
+        peer_port = F@_3,
+        username = F@_4,
+        mountpoint = F@_5,
+        client_id = F@_6,
+        user_properties = 'tr_decode_repeated_finalize_eventssidecar.v1.OnRegister.user_properties'(
+            R1, TrUserData
+        )
+    }.
 
-'d_field_eventssidecar.v1.OnRegister_timestamp'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) when N < 57 ->
-    'd_field_eventssidecar.v1.OnRegister_timestamp'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'d_field_eventssidecar.v1.OnRegister_timestamp'(<<0:1, X:7, Rest/binary>>, N, Acc, F, Prev, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bs:Len/binary, Rest2/binary>> = Rest, {id('decode_msg_google.protobuf.Timestamp'(Bs, TrUserData), TrUserData), Rest2} end,
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(RestF,
-                                                     0,
-                                                     0,
-                                                     F,
-                                                     if Prev == undefined -> NewFValue;
-                                                        true -> 'merge_msg_google.protobuf.Timestamp'(Prev, NewFValue, TrUserData)
-                                                     end,
-                                                     F@_2,
-                                                     F@_3,
-                                                     F@_4,
-                                                     F@_5,
-                                                     F@_6,
-                                                     F@_7,
-                                                     TrUserData).
+'d_field_eventssidecar.v1.OnRegister_timestamp'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) when N < 57 ->
+    'd_field_eventssidecar.v1.OnRegister_timestamp'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'d_field_eventssidecar.v1.OnRegister_timestamp'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, Prev, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    {NewFValue, RestF} = begin
+        Len = X bsl N + Acc,
+        <<Bs:Len/binary, Rest2/binary>> = Rest,
+        {id('decode_msg_google.protobuf.Timestamp'(Bs, TrUserData), TrUserData), Rest2}
+    end,
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        RestF,
+        0,
+        0,
+        F,
+        if
+            Prev == undefined -> NewFValue;
+            true -> 'merge_msg_google.protobuf.Timestamp'(Prev, NewFValue, TrUserData)
+        end,
+        F@_2,
+        F@_3,
+        F@_4,
+        F@_5,
+        F@_6,
+        F@_7,
+        TrUserData
+    ).
 
-'d_field_eventssidecar.v1.OnRegister_peer_addr'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) when N < 57 ->
-    'd_field_eventssidecar.v1.OnRegister_peer_addr'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'d_field_eventssidecar.v1.OnRegister_peer_addr'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData).
+'d_field_eventssidecar.v1.OnRegister_peer_addr'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) when N < 57 ->
+    'd_field_eventssidecar.v1.OnRegister_peer_addr'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'d_field_eventssidecar.v1.OnRegister_peer_addr'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    {NewFValue, RestF} = begin
+        Len = X bsl N + Acc,
+        <<Bytes:Len/binary, Rest2/binary>> = Rest,
+        Bytes2 = binary:copy(Bytes),
+        {id(Bytes2, TrUserData), Rest2}
+    end,
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    ).
 
-'d_field_eventssidecar.v1.OnRegister_peer_port'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) when N < 57 ->
-    'd_field_eventssidecar.v1.OnRegister_peer_port'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'d_field_eventssidecar.v1.OnRegister_peer_port'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    {NewFValue, RestF} = {begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end, Rest},
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, F@_7, TrUserData).
+'d_field_eventssidecar.v1.OnRegister_peer_port'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) when N < 57 ->
+    'd_field_eventssidecar.v1.OnRegister_peer_port'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'d_field_eventssidecar.v1.OnRegister_peer_port'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    {NewFValue, RestF} = {
+        begin
+            <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>,
+            id(Res, TrUserData)
+        end,
+        Rest
+    },
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, F@_7, TrUserData
+    ).
 
-'d_field_eventssidecar.v1.OnRegister_username'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) when N < 57 ->
-    'd_field_eventssidecar.v1.OnRegister_username'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'d_field_eventssidecar.v1.OnRegister_username'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, _, F@_5, F@_6, F@_7, TrUserData) ->
-    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, F@_6, F@_7, TrUserData).
+'d_field_eventssidecar.v1.OnRegister_username'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) when N < 57 ->
+    'd_field_eventssidecar.v1.OnRegister_username'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'d_field_eventssidecar.v1.OnRegister_username'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, _, F@_5, F@_6, F@_7, TrUserData
+) ->
+    {NewFValue, RestF} = begin
+        Len = X bsl N + Acc,
+        <<Bytes:Len/binary, Rest2/binary>> = Rest,
+        Bytes2 = binary:copy(Bytes),
+        {id(Bytes2, TrUserData), Rest2}
+    end,
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, NewFValue, F@_5, F@_6, F@_7, TrUserData
+    ).
 
-'d_field_eventssidecar.v1.OnRegister_mountpoint'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) when N < 57 ->
-    'd_field_eventssidecar.v1.OnRegister_mountpoint'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'d_field_eventssidecar.v1.OnRegister_mountpoint'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, _, F@_6, F@_7, TrUserData) ->
-    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, F@_7, TrUserData).
+'d_field_eventssidecar.v1.OnRegister_mountpoint'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) when N < 57 ->
+    'd_field_eventssidecar.v1.OnRegister_mountpoint'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'d_field_eventssidecar.v1.OnRegister_mountpoint'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, _, F@_6, F@_7, TrUserData
+) ->
+    {NewFValue, RestF} = begin
+        Len = X bsl N + Acc,
+        <<Bytes:Len/binary, Rest2/binary>> = Rest,
+        Bytes2 = binary:copy(Bytes),
+        {id(Bytes2, TrUserData), Rest2}
+    end,
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, F@_7, TrUserData
+    ).
 
-'d_field_eventssidecar.v1.OnRegister_client_id'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) when N < 57 ->
-    'd_field_eventssidecar.v1.OnRegister_client_id'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'d_field_eventssidecar.v1.OnRegister_client_id'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, _, F@_7, TrUserData) ->
-    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, F@_7, TrUserData).
+'d_field_eventssidecar.v1.OnRegister_client_id'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) when N < 57 ->
+    'd_field_eventssidecar.v1.OnRegister_client_id'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'d_field_eventssidecar.v1.OnRegister_client_id'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, _, F@_7, TrUserData
+) ->
+    {NewFValue, RestF} = begin
+        Len = X bsl N + Acc,
+        <<Bytes:Len/binary, Rest2/binary>> = Rest,
+        Bytes2 = binary:copy(Bytes),
+        {id(Bytes2, TrUserData), Rest2}
+    end,
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, F@_7, TrUserData
+    ).
 
-'d_field_eventssidecar.v1.OnRegister_user_properties'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) when N < 57 ->
-    'd_field_eventssidecar.v1.OnRegister_user_properties'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'d_field_eventssidecar.v1.OnRegister_user_properties'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, Prev, TrUserData) ->
-    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bs:Len/binary, Rest2/binary>> = Rest, {id('decode_msg_map<string,string>'(Bs, TrUserData), TrUserData), Rest2} end,
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, 'tr_decode_repeated_add_elem_eventssidecar.v1.OnRegister.user_properties'(NewFValue, Prev, TrUserData), TrUserData).
+'d_field_eventssidecar.v1.OnRegister_user_properties'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) when N < 57 ->
+    'd_field_eventssidecar.v1.OnRegister_user_properties'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'d_field_eventssidecar.v1.OnRegister_user_properties'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, Prev, TrUserData
+) ->
+    {NewFValue, RestF} = begin
+        Len = X bsl N + Acc,
+        <<Bs:Len/binary, Rest2/binary>> = Rest,
+        {id('decode_msg_map<string,string>'(Bs, TrUserData), TrUserData), Rest2}
+    end,
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        RestF,
+        0,
+        0,
+        F,
+        F@_1,
+        F@_2,
+        F@_3,
+        F@_4,
+        F@_5,
+        F@_6,
+        'tr_decode_repeated_add_elem_eventssidecar.v1.OnRegister.user_properties'(
+            NewFValue, Prev, TrUserData
+        ),
+        TrUserData
+    ).
 
-'skip_varint_eventssidecar.v1.OnRegister'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) -> 'skip_varint_eventssidecar.v1.OnRegister'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'skip_varint_eventssidecar.v1.OnRegister'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData).
+'skip_varint_eventssidecar.v1.OnRegister'(
+    <<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'skip_varint_eventssidecar.v1.OnRegister'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'skip_varint_eventssidecar.v1.OnRegister'(
+    <<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    ).
 
-'skip_length_delimited_eventssidecar.v1.OnRegister'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) when N < 57 ->
-    'skip_length_delimited_eventssidecar.v1.OnRegister'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData);
-'skip_length_delimited_eventssidecar.v1.OnRegister'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
+'skip_length_delimited_eventssidecar.v1.OnRegister'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) when N < 57 ->
+    'skip_length_delimited_eventssidecar.v1.OnRegister'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    );
+'skip_length_delimited_eventssidecar.v1.OnRegister'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData).
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    ).
 
-'skip_group_eventssidecar.v1.OnRegister'(Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) ->
+'skip_group_eventssidecar.v1.OnRegister'(
+    Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
     {_, Rest} = read_group(Bin, FNum),
-    'dfp_read_field_def_eventssidecar.v1.OnRegister'(Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData).
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    ).
 
-'skip_32_eventssidecar.v1.OnRegister'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) -> 'dfp_read_field_def_eventssidecar.v1.OnRegister'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData).
+'skip_32_eventssidecar.v1.OnRegister'(
+    <<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    ).
 
-'skip_64_eventssidecar.v1.OnRegister'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData) -> 'dfp_read_field_def_eventssidecar.v1.OnRegister'(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData).
+'skip_64_eventssidecar.v1.OnRegister'(
+    <<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+) ->
+    'dfp_read_field_def_eventssidecar.v1.OnRegister'(
+        Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, TrUserData
+    ).
 
-'decode_msg_google.protobuf.Timestamp'(Bin, TrUserData) -> 'dfp_read_field_def_google.protobuf.Timestamp'(Bin, 0, 0, 0, id(0, TrUserData), id(0, TrUserData), TrUserData).
+'decode_msg_google.protobuf.Timestamp'(Bin, TrUserData) ->
+    'dfp_read_field_def_google.protobuf.Timestamp'(
+        Bin, 0, 0, 0, id(0, TrUserData), id(0, TrUserData), TrUserData
+    ).
 
-'dfp_read_field_def_google.protobuf.Timestamp'(<<8, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'd_field_google.protobuf.Timestamp_seconds'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
-'dfp_read_field_def_google.protobuf.Timestamp'(<<16, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'd_field_google.protobuf.Timestamp_nanos'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
-'dfp_read_field_def_google.protobuf.Timestamp'(<<>>, 0, 0, _, F@_1, F@_2, _) -> #'google.protobuf.Timestamp'{seconds = F@_1, nanos = F@_2};
-'dfp_read_field_def_google.protobuf.Timestamp'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dg_read_field_def_google.protobuf.Timestamp'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'dfp_read_field_def_google.protobuf.Timestamp'(
+    <<8, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData
+) ->
+    'd_field_google.protobuf.Timestamp_seconds'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+'dfp_read_field_def_google.protobuf.Timestamp'(
+    <<16, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData
+) ->
+    'd_field_google.protobuf.Timestamp_nanos'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+'dfp_read_field_def_google.protobuf.Timestamp'(<<>>, 0, 0, _, F@_1, F@_2, _) ->
+    #'google.protobuf.Timestamp'{seconds = F@_1, nanos = F@_2};
+'dfp_read_field_def_google.protobuf.Timestamp'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
+    'dg_read_field_def_google.protobuf.Timestamp'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'dg_read_field_def_google.protobuf.Timestamp'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 32 - 7 -> 'dg_read_field_def_google.protobuf.Timestamp'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
-'dg_read_field_def_google.protobuf.Timestamp'(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, TrUserData) ->
+'dg_read_field_def_google.protobuf.Timestamp'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
+) when N < 32 - 7 ->
+    'dg_read_field_def_google.protobuf.Timestamp'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData
+    );
+'dg_read_field_def_google.protobuf.Timestamp'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, TrUserData
+) ->
     Key = X bsl N + Acc,
     case Key of
-        8 -> 'd_field_google.protobuf.Timestamp_seconds'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
-        16 -> 'd_field_google.protobuf.Timestamp_nanos'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
+        8 ->
+            'd_field_google.protobuf.Timestamp_seconds'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
+        16 ->
+            'd_field_google.protobuf.Timestamp_nanos'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
         _ ->
             case Key band 7 of
-                0 -> 'skip_varint_google.protobuf.Timestamp'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
-                1 -> 'skip_64_google.protobuf.Timestamp'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
-                2 -> 'skip_length_delimited_google.protobuf.Timestamp'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
-                3 -> 'skip_group_google.protobuf.Timestamp'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
-                5 -> 'skip_32_google.protobuf.Timestamp'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData)
+                0 ->
+                    'skip_varint_google.protobuf.Timestamp'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
+                    );
+                1 ->
+                    'skip_64_google.protobuf.Timestamp'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
+                    );
+                2 ->
+                    'skip_length_delimited_google.protobuf.Timestamp'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
+                    );
+                3 ->
+                    'skip_group_google.protobuf.Timestamp'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
+                    );
+                5 ->
+                    'skip_32_google.protobuf.Timestamp'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
+                    )
             end
     end;
-'dg_read_field_def_google.protobuf.Timestamp'(<<>>, 0, 0, _, F@_1, F@_2, _) -> #'google.protobuf.Timestamp'{seconds = F@_1, nanos = F@_2}.
+'dg_read_field_def_google.protobuf.Timestamp'(<<>>, 0, 0, _, F@_1, F@_2, _) ->
+    #'google.protobuf.Timestamp'{seconds = F@_1, nanos = F@_2}.
 
-'d_field_google.protobuf.Timestamp_seconds'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> 'd_field_google.protobuf.Timestamp_seconds'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
-'d_field_google.protobuf.Timestamp_seconds'(<<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, TrUserData) ->
-    {NewFValue, RestF} = {begin <<Res:64/signed-native>> = <<(X bsl N + Acc):64/unsigned-native>>, id(Res, TrUserData) end, Rest},
+'d_field_google.protobuf.Timestamp_seconds'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
+) when N < 57 ->
+    'd_field_google.protobuf.Timestamp_seconds'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData
+    );
+'d_field_google.protobuf.Timestamp_seconds'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, TrUserData
+) ->
+    {NewFValue, RestF} = {
+        begin
+            <<Res:64/signed-native>> = <<(X bsl N + Acc):64/unsigned-native>>,
+            id(Res, TrUserData)
+        end,
+        Rest
+    },
     'dfp_read_field_def_google.protobuf.Timestamp'(RestF, 0, 0, F, NewFValue, F@_2, TrUserData).
 
-'d_field_google.protobuf.Timestamp_nanos'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> 'd_field_google.protobuf.Timestamp_nanos'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
-'d_field_google.protobuf.Timestamp_nanos'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, TrUserData) ->
-    {NewFValue, RestF} = {begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end, Rest},
+'d_field_google.protobuf.Timestamp_nanos'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
+) when N < 57 ->
+    'd_field_google.protobuf.Timestamp_nanos'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData
+    );
+'d_field_google.protobuf.Timestamp_nanos'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, TrUserData
+) ->
+    {NewFValue, RestF} = {
+        begin
+            <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>,
+            id(Res, TrUserData)
+        end,
+        Rest
+    },
     'dfp_read_field_def_google.protobuf.Timestamp'(RestF, 0, 0, F, F@_1, NewFValue, TrUserData).
 
-'skip_varint_google.protobuf.Timestamp'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'skip_varint_google.protobuf.Timestamp'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
-'skip_varint_google.protobuf.Timestamp'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dfp_read_field_def_google.protobuf.Timestamp'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'skip_varint_google.protobuf.Timestamp'(
+    <<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData
+) ->
+    'skip_varint_google.protobuf.Timestamp'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+'skip_varint_google.protobuf.Timestamp'(
+    <<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData
+) ->
+    'dfp_read_field_def_google.protobuf.Timestamp'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'skip_length_delimited_google.protobuf.Timestamp'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> 'skip_length_delimited_google.protobuf.Timestamp'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
-'skip_length_delimited_google.protobuf.Timestamp'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) ->
+'skip_length_delimited_google.protobuf.Timestamp'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
+) when N < 57 ->
+    'skip_length_delimited_google.protobuf.Timestamp'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData
+    );
+'skip_length_delimited_google.protobuf.Timestamp'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
+) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
     'dfp_read_field_def_google.protobuf.Timestamp'(Rest2, 0, 0, F, F@_1, F@_2, TrUserData).
@@ -516,49 +895,98 @@ decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) -> id('decode_ms
     {_, Rest} = read_group(Bin, FNum),
     'dfp_read_field_def_google.protobuf.Timestamp'(Rest, 0, Z2, FNum, F@_1, F@_2, TrUserData).
 
-'skip_32_google.protobuf.Timestamp'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dfp_read_field_def_google.protobuf.Timestamp'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'skip_32_google.protobuf.Timestamp'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
+    'dfp_read_field_def_google.protobuf.Timestamp'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'skip_64_google.protobuf.Timestamp'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dfp_read_field_def_google.protobuf.Timestamp'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'skip_64_google.protobuf.Timestamp'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
+    'dfp_read_field_def_google.protobuf.Timestamp'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'decode_msg_map<string,string>'(Bin, TrUserData) -> 'dfp_read_field_def_map<string,string>'(Bin, 0, 0, 0, id(<<>>, TrUserData), id(<<>>, TrUserData), TrUserData).
+'decode_msg_map<string,string>'(Bin, TrUserData) ->
+    'dfp_read_field_def_map<string,string>'(
+        Bin, 0, 0, 0, id(<<>>, TrUserData), id(<<>>, TrUserData), TrUserData
+    ).
 
-'dfp_read_field_def_map<string,string>'(<<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'd_field_map<string,string>_key'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
-'dfp_read_field_def_map<string,string>'(<<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'd_field_map<string,string>_value'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
-'dfp_read_field_def_map<string,string>'(<<>>, 0, 0, _, F@_1, F@_2, _) -> #'map<string,string>'{key = F@_1, value = F@_2};
-'dfp_read_field_def_map<string,string>'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dg_read_field_def_map<string,string>'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'dfp_read_field_def_map<string,string>'(<<10, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
+    'd_field_map<string,string>_key'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+'dfp_read_field_def_map<string,string>'(<<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
+    'd_field_map<string,string>_value'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+'dfp_read_field_def_map<string,string>'(<<>>, 0, 0, _, F@_1, F@_2, _) ->
+    #'map<string,string>'{key = F@_1, value = F@_2};
+'dfp_read_field_def_map<string,string>'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
+    'dg_read_field_def_map<string,string>'(Other, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'dg_read_field_def_map<string,string>'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 32 - 7 -> 'dg_read_field_def_map<string,string>'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
-'dg_read_field_def_map<string,string>'(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, TrUserData) ->
+'dg_read_field_def_map<string,string>'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
+) when N < 32 - 7 ->
+    'dg_read_field_def_map<string,string>'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+'dg_read_field_def_map<string,string>'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, TrUserData
+) ->
     Key = X bsl N + Acc,
     case Key of
-        10 -> 'd_field_map<string,string>_key'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
-        18 -> 'd_field_map<string,string>_value'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
+        10 ->
+            'd_field_map<string,string>_key'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
+        18 ->
+            'd_field_map<string,string>_value'(Rest, 0, 0, 0, F@_1, F@_2, TrUserData);
         _ ->
             case Key band 7 of
-                0 -> 'skip_varint_map<string,string>'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
-                1 -> 'skip_64_map<string,string>'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
-                2 -> 'skip_length_delimited_map<string,string>'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
-                3 -> 'skip_group_map<string,string>'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
-                5 -> 'skip_32_map<string,string>'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData)
+                0 ->
+                    'skip_varint_map<string,string>'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                1 ->
+                    'skip_64_map<string,string>'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                2 ->
+                    'skip_length_delimited_map<string,string>'(
+                        Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData
+                    );
+                3 ->
+                    'skip_group_map<string,string>'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData);
+                5 ->
+                    'skip_32_map<string,string>'(Rest, 0, 0, Key bsr 3, F@_1, F@_2, TrUserData)
             end
     end;
-'dg_read_field_def_map<string,string>'(<<>>, 0, 0, _, F@_1, F@_2, _) -> #'map<string,string>'{key = F@_1, value = F@_2}.
+'dg_read_field_def_map<string,string>'(<<>>, 0, 0, _, F@_1, F@_2, _) ->
+    #'map<string,string>'{key = F@_1, value = F@_2}.
 
-'d_field_map<string,string>_key'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> 'd_field_map<string,string>_key'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+'d_field_map<string,string>_key'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when
+    N < 57
+->
+    'd_field_map<string,string>_key'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
 'd_field_map<string,string>_key'(<<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, TrUserData) ->
-    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    {NewFValue, RestF} = begin
+        Len = X bsl N + Acc,
+        <<Bytes:Len/binary, Rest2/binary>> = Rest,
+        Bytes2 = binary:copy(Bytes),
+        {id(Bytes2, TrUserData), Rest2}
+    end,
     'dfp_read_field_def_map<string,string>'(RestF, 0, 0, F, NewFValue, F@_2, TrUserData).
 
-'d_field_map<string,string>_value'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> 'd_field_map<string,string>_value'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
+'d_field_map<string,string>_value'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
+) when N < 57 ->
+    'd_field_map<string,string>_value'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
 'd_field_map<string,string>_value'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, TrUserData) ->
-    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    {NewFValue, RestF} = begin
+        Len = X bsl N + Acc,
+        <<Bytes:Len/binary, Rest2/binary>> = Rest,
+        Bytes2 = binary:copy(Bytes),
+        {id(Bytes2, TrUserData), Rest2}
+    end,
     'dfp_read_field_def_map<string,string>'(RestF, 0, 0, F, F@_1, NewFValue, TrUserData).
 
-'skip_varint_map<string,string>'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'skip_varint_map<string,string>'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
-'skip_varint_map<string,string>'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dfp_read_field_def_map<string,string>'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'skip_varint_map<string,string>'(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
+    'skip_varint_map<string,string>'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData);
+'skip_varint_map<string,string>'(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
+    'dfp_read_field_def_map<string,string>'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'skip_length_delimited_map<string,string>'(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) when N < 57 -> 'skip_length_delimited_map<string,string>'(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData);
-'skip_length_delimited_map<string,string>'(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData) ->
+'skip_length_delimited_map<string,string>'(
+    <<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
+) when N < 57 ->
+    'skip_length_delimited_map<string,string>'(
+        Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, TrUserData
+    );
+'skip_length_delimited_map<string,string>'(
+    <<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, TrUserData
+) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
     'dfp_read_field_def_map<string,string>'(Rest2, 0, 0, F, F@_1, F@_2, TrUserData).
@@ -567,9 +995,11 @@ decode_msg_2_doit('google.protobuf.Timestamp', Bin, TrUserData) -> id('decode_ms
     {_, Rest} = read_group(Bin, FNum),
     'dfp_read_field_def_map<string,string>'(Rest, 0, Z2, FNum, F@_1, F@_2, TrUserData).
 
-'skip_32_map<string,string>'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dfp_read_field_def_map<string,string>'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'skip_32_map<string,string>'(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
+    'dfp_read_field_def_map<string,string>'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
-'skip_64_map<string,string>'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) -> 'dfp_read_field_def_map<string,string>'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
+'skip_64_map<string,string>'(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, TrUserData) ->
+    'dfp_read_field_def_map<string,string>'(Rest, Z1, Z2, F, F@_1, F@_2, TrUserData).
 
 read_group(Bin, FieldNum) ->
     {NumBytes, EndTagLen} = read_gr_b(Bin, 0, 0, 0, 0, FieldNum),
@@ -588,105 +1018,167 @@ read_group(Bin, FieldNum) ->
 %% (The only time the same group field number could occur would
 %% be in a nested sub message, but then it would be inside a
 %% length-delimited entry, which we skip-read by length.)
-read_gr_b(<<1:1, X:7, Tl/binary>>, N, Acc, NumBytes, TagLen, FieldNum)
-  when N < (32-7) ->
-    read_gr_b(Tl, N+7, X bsl N + Acc, NumBytes, TagLen+1, FieldNum);
-read_gr_b(<<0:1, X:7, Tl/binary>>, N, Acc, NumBytes, TagLen,
-          FieldNum) ->
+read_gr_b(<<1:1, X:7, Tl/binary>>, N, Acc, NumBytes, TagLen, FieldNum) when
+    N < (32 - 7)
+->
+    read_gr_b(Tl, N + 7, X bsl N + Acc, NumBytes, TagLen + 1, FieldNum);
+read_gr_b(
+    <<0:1, X:7, Tl/binary>>,
+    N,
+    Acc,
+    NumBytes,
+    TagLen,
+    FieldNum
+) ->
     Key = X bsl N + Acc,
     TagLen1 = TagLen + 1,
     case {Key bsr 3, Key band 7} of
-        {FieldNum, 4} -> % 4 = group_end
+        % 4 = group_end
+        {FieldNum, 4} ->
             {NumBytes, TagLen1};
-        {_, 0} -> % 0 = varint
+        % 0 = varint
+        {_, 0} ->
             read_gr_vi(Tl, 0, NumBytes + TagLen1, FieldNum);
-        {_, 1} -> % 1 = bits64
+        % 1 = bits64
+        {_, 1} ->
             <<_:64, Tl2/binary>> = Tl,
             read_gr_b(Tl2, 0, 0, NumBytes + TagLen1 + 8, 0, FieldNum);
-        {_, 2} -> % 2 = length_delimited
+        % 2 = length_delimited
+        {_, 2} ->
             read_gr_ld(Tl, 0, 0, NumBytes + TagLen1, FieldNum);
-        {_, 3} -> % 3 = group_start
+        % 3 = group_start
+        {_, 3} ->
             read_gr_b(Tl, 0, 0, NumBytes + TagLen1, 0, FieldNum);
-        {_, 4} -> % 4 = group_end
+        % 4 = group_end
+        {_, 4} ->
             read_gr_b(Tl, 0, 0, NumBytes + TagLen1, 0, FieldNum);
-        {_, 5} -> % 5 = bits32
+        % 5 = bits32
+        {_, 5} ->
             <<_:32, Tl2/binary>> = Tl,
             read_gr_b(Tl2, 0, 0, NumBytes + TagLen1 + 4, 0, FieldNum)
     end.
 
-read_gr_vi(<<1:1, _:7, Tl/binary>>, N, NumBytes, FieldNum)
-  when N < (64-7) ->
-    read_gr_vi(Tl, N+7, NumBytes+1, FieldNum);
+read_gr_vi(<<1:1, _:7, Tl/binary>>, N, NumBytes, FieldNum) when
+    N < (64 - 7)
+->
+    read_gr_vi(Tl, N + 7, NumBytes + 1, FieldNum);
 read_gr_vi(<<0:1, _:7, Tl/binary>>, _, NumBytes, FieldNum) ->
-    read_gr_b(Tl, 0, 0, NumBytes+1, 0, FieldNum).
+    read_gr_b(Tl, 0, 0, NumBytes + 1, 0, FieldNum).
 
-read_gr_ld(<<1:1, X:7, Tl/binary>>, N, Acc, NumBytes, FieldNum)
-  when N < (64-7) ->
-    read_gr_ld(Tl, N+7, X bsl N + Acc, NumBytes+1, FieldNum);
+read_gr_ld(<<1:1, X:7, Tl/binary>>, N, Acc, NumBytes, FieldNum) when
+    N < (64 - 7)
+->
+    read_gr_ld(Tl, N + 7, X bsl N + Acc, NumBytes + 1, FieldNum);
 read_gr_ld(<<0:1, X:7, Tl/binary>>, N, Acc, NumBytes, FieldNum) ->
     Len = X bsl N + Acc,
     NumBytes1 = NumBytes + 1,
     <<_:Len/binary, Tl2/binary>> = Tl,
     read_gr_b(Tl2, 0, 0, NumBytes1 + Len, 0, FieldNum).
 
-merge_msgs(Prev, New) when element(1, Prev) =:= element(1, New) -> merge_msgs(Prev, New, element(1, Prev), []).
+merge_msgs(Prev, New) when element(1, Prev) =:= element(1, New) ->
+    merge_msgs(Prev, New, element(1, Prev), []).
 
 merge_msgs(Prev, New, MsgName) when is_atom(MsgName) -> merge_msgs(Prev, New, MsgName, []);
-merge_msgs(Prev, New, Opts) when element(1, Prev) =:= element(1, New), is_list(Opts) -> merge_msgs(Prev, New, element(1, Prev), Opts).
+merge_msgs(Prev, New, Opts) when element(1, Prev) =:= element(1, New), is_list(Opts) ->
+    merge_msgs(Prev, New, element(1, Prev), Opts).
 
 merge_msgs(Prev, New, MsgName, Opts) ->
     TrUserData = proplists:get_value(user_data, Opts),
     case MsgName of
-        'eventssidecar.v1.OnRegister' -> 'merge_msg_eventssidecar.v1.OnRegister'(Prev, New, TrUserData);
-        'google.protobuf.Timestamp' -> 'merge_msg_google.protobuf.Timestamp'(Prev, New, TrUserData)
+        'eventssidecar.v1.OnRegister' ->
+            'merge_msg_eventssidecar.v1.OnRegister'(Prev, New, TrUserData);
+        'google.protobuf.Timestamp' ->
+            'merge_msg_google.protobuf.Timestamp'(Prev, New, TrUserData)
     end.
 
--compile({nowarn_unused_function,'merge_msg_eventssidecar.v1.OnRegister'/3}).
-'merge_msg_eventssidecar.v1.OnRegister'(#'eventssidecar.v1.OnRegister'{timestamp = PFtimestamp, peer_addr = PFpeer_addr, peer_port = PFpeer_port, username = PFusername, mountpoint = PFmountpoint, client_id = PFclient_id,
-                                                                       user_properties = PFuser_properties},
-                                        #'eventssidecar.v1.OnRegister'{timestamp = NFtimestamp, peer_addr = NFpeer_addr, peer_port = NFpeer_port, username = NFusername, mountpoint = NFmountpoint, client_id = NFclient_id, user_properties = NFuser_properties}, TrUserData) ->
-    #'eventssidecar.v1.OnRegister'{timestamp =
-                                       if PFtimestamp /= undefined, NFtimestamp /= undefined -> 'merge_msg_google.protobuf.Timestamp'(PFtimestamp, NFtimestamp, TrUserData);
-                                          PFtimestamp == undefined -> NFtimestamp;
-                                          NFtimestamp == undefined -> PFtimestamp
-                                       end,
-                                   peer_addr =
-                                       if NFpeer_addr =:= undefined -> PFpeer_addr;
-                                          true -> NFpeer_addr
-                                       end,
-                                   peer_port =
-                                       if NFpeer_port =:= undefined -> PFpeer_port;
-                                          true -> NFpeer_port
-                                       end,
-                                   username =
-                                       if NFusername =:= undefined -> PFusername;
-                                          true -> NFusername
-                                       end,
-                                   mountpoint =
-                                       if NFmountpoint =:= undefined -> PFmountpoint;
-                                          true -> NFmountpoint
-                                       end,
-                                   client_id =
-                                       if NFclient_id =:= undefined -> PFclient_id;
-                                          true -> NFclient_id
-                                       end,
-                                   user_properties =
-                                       if PFuser_properties /= undefined, NFuser_properties /= undefined -> 'tr_merge_eventssidecar.v1.OnRegister.user_properties'(PFuser_properties, NFuser_properties, TrUserData);
-                                          PFuser_properties == undefined -> NFuser_properties;
-                                          NFuser_properties == undefined -> PFuser_properties
-                                       end}.
+-compile({nowarn_unused_function, 'merge_msg_eventssidecar.v1.OnRegister'/3}).
+'merge_msg_eventssidecar.v1.OnRegister'(
+    #'eventssidecar.v1.OnRegister'{
+        timestamp = PFtimestamp,
+        peer_addr = PFpeer_addr,
+        peer_port = PFpeer_port,
+        username = PFusername,
+        mountpoint = PFmountpoint,
+        client_id = PFclient_id,
+        user_properties = PFuser_properties
+    },
+    #'eventssidecar.v1.OnRegister'{
+        timestamp = NFtimestamp,
+        peer_addr = NFpeer_addr,
+        peer_port = NFpeer_port,
+        username = NFusername,
+        mountpoint = NFmountpoint,
+        client_id = NFclient_id,
+        user_properties = NFuser_properties
+    },
+    TrUserData
+) ->
+    #'eventssidecar.v1.OnRegister'{
+        timestamp =
+            if
+                PFtimestamp /= undefined, NFtimestamp /= undefined ->
+                    'merge_msg_google.protobuf.Timestamp'(PFtimestamp, NFtimestamp, TrUserData);
+                PFtimestamp == undefined ->
+                    NFtimestamp;
+                NFtimestamp == undefined ->
+                    PFtimestamp
+            end,
+        peer_addr =
+            if
+                NFpeer_addr =:= undefined -> PFpeer_addr;
+                true -> NFpeer_addr
+            end,
+        peer_port =
+            if
+                NFpeer_port =:= undefined -> PFpeer_port;
+                true -> NFpeer_port
+            end,
+        username =
+            if
+                NFusername =:= undefined -> PFusername;
+                true -> NFusername
+            end,
+        mountpoint =
+            if
+                NFmountpoint =:= undefined -> PFmountpoint;
+                true -> NFmountpoint
+            end,
+        client_id =
+            if
+                NFclient_id =:= undefined -> PFclient_id;
+                true -> NFclient_id
+            end,
+        user_properties =
+            if
+                PFuser_properties /= undefined, NFuser_properties /= undefined ->
+                    'tr_merge_eventssidecar.v1.OnRegister.user_properties'(
+                        PFuser_properties, NFuser_properties, TrUserData
+                    );
+                PFuser_properties == undefined ->
+                    NFuser_properties;
+                NFuser_properties == undefined ->
+                    PFuser_properties
+            end
+    }.
 
--compile({nowarn_unused_function,'merge_msg_google.protobuf.Timestamp'/3}).
-'merge_msg_google.protobuf.Timestamp'(#'google.protobuf.Timestamp'{seconds = PFseconds, nanos = PFnanos}, #'google.protobuf.Timestamp'{seconds = NFseconds, nanos = NFnanos}, _) ->
-    #'google.protobuf.Timestamp'{seconds =
-                                     if NFseconds =:= undefined -> PFseconds;
-                                        true -> NFseconds
-                                     end,
-                                 nanos =
-                                     if NFnanos =:= undefined -> PFnanos;
-                                        true -> NFnanos
-                                     end}.
-
+-compile({nowarn_unused_function, 'merge_msg_google.protobuf.Timestamp'/3}).
+'merge_msg_google.protobuf.Timestamp'(
+    #'google.protobuf.Timestamp'{seconds = PFseconds, nanos = PFnanos},
+    #'google.protobuf.Timestamp'{seconds = NFseconds, nanos = NFnanos},
+    _
+) ->
+    #'google.protobuf.Timestamp'{
+        seconds =
+            if
+                NFseconds =:= undefined -> PFseconds;
+                true -> NFseconds
+            end,
+        nanos =
+            if
+                NFnanos =:= undefined -> PFnanos;
+                true -> NFnanos
+            end
+    }.
 
 verify_msg(Msg) when tuple_size(Msg) >= 1 -> verify_msg(Msg, element(1, Msg), []);
 verify_msg(X) -> mk_type_error(not_a_known_message, X, []).
@@ -698,63 +1190,93 @@ verify_msg(X, _Opts) -> mk_type_error(not_a_known_message, X, []).
 verify_msg(Msg, MsgName, Opts) ->
     TrUserData = proplists:get_value(user_data, Opts),
     case MsgName of
-        'eventssidecar.v1.OnRegister' -> 'v_msg_eventssidecar.v1.OnRegister'(Msg, [MsgName], TrUserData);
-        'google.protobuf.Timestamp' -> 'v_msg_google.protobuf.Timestamp'(Msg, [MsgName], TrUserData);
-        _ -> mk_type_error(not_a_known_message, Msg, [])
+        'eventssidecar.v1.OnRegister' ->
+            'v_msg_eventssidecar.v1.OnRegister'(Msg, [MsgName], TrUserData);
+        'google.protobuf.Timestamp' ->
+            'v_msg_google.protobuf.Timestamp'(Msg, [MsgName], TrUserData);
+        _ ->
+            mk_type_error(not_a_known_message, Msg, [])
     end.
 
-
--compile({nowarn_unused_function,'v_msg_eventssidecar.v1.OnRegister'/3}).
--dialyzer({nowarn_function,'v_msg_eventssidecar.v1.OnRegister'/3}).
-'v_msg_eventssidecar.v1.OnRegister'(#'eventssidecar.v1.OnRegister'{timestamp = F1, peer_addr = F2, peer_port = F3, username = F4, mountpoint = F5, client_id = F6, user_properties = F7}, Path, TrUserData) ->
-    if F1 == undefined -> ok;
-       true -> 'v_msg_google.protobuf.Timestamp'(F1, [timestamp | Path], TrUserData)
+-compile({nowarn_unused_function, 'v_msg_eventssidecar.v1.OnRegister'/3}).
+-dialyzer({nowarn_function, 'v_msg_eventssidecar.v1.OnRegister'/3}).
+'v_msg_eventssidecar.v1.OnRegister'(
+    #'eventssidecar.v1.OnRegister'{
+        timestamp = F1,
+        peer_addr = F2,
+        peer_port = F3,
+        username = F4,
+        mountpoint = F5,
+        client_id = F6,
+        user_properties = F7
+    },
+    Path,
+    TrUserData
+) ->
+    if
+        F1 == undefined -> ok;
+        true -> 'v_msg_google.protobuf.Timestamp'(F1, [timestamp | Path], TrUserData)
     end,
-    if F2 == undefined -> ok;
-       true -> v_type_string(F2, [peer_addr | Path], TrUserData)
+    if
+        F2 == undefined -> ok;
+        true -> v_type_string(F2, [peer_addr | Path], TrUserData)
     end,
-    if F3 == undefined -> ok;
-       true -> v_type_int32(F3, [peer_port | Path], TrUserData)
+    if
+        F3 == undefined -> ok;
+        true -> v_type_int32(F3, [peer_port | Path], TrUserData)
     end,
-    if F4 == undefined -> ok;
-       true -> v_type_string(F4, [username | Path], TrUserData)
+    if
+        F4 == undefined -> ok;
+        true -> v_type_string(F4, [username | Path], TrUserData)
     end,
-    if F5 == undefined -> ok;
-       true -> v_type_string(F5, [mountpoint | Path], TrUserData)
+    if
+        F5 == undefined -> ok;
+        true -> v_type_string(F5, [mountpoint | Path], TrUserData)
     end,
-    if F6 == undefined -> ok;
-       true -> v_type_string(F6, [client_id | Path], TrUserData)
+    if
+        F6 == undefined -> ok;
+        true -> v_type_string(F6, [client_id | Path], TrUserData)
     end,
     'v_map<string,string>'(F7, [user_properties | Path], TrUserData),
     ok;
-'v_msg_eventssidecar.v1.OnRegister'(X, Path, _TrUserData) -> mk_type_error({expected_msg, 'eventssidecar.v1.OnRegister'}, X, Path).
+'v_msg_eventssidecar.v1.OnRegister'(X, Path, _TrUserData) ->
+    mk_type_error({expected_msg, 'eventssidecar.v1.OnRegister'}, X, Path).
 
--compile({nowarn_unused_function,'v_msg_google.protobuf.Timestamp'/3}).
--dialyzer({nowarn_function,'v_msg_google.protobuf.Timestamp'/3}).
-'v_msg_google.protobuf.Timestamp'(#'google.protobuf.Timestamp'{seconds = F1, nanos = F2}, Path, TrUserData) ->
-    if F1 == undefined -> ok;
-       true -> v_type_int64(F1, [seconds | Path], TrUserData)
+-compile({nowarn_unused_function, 'v_msg_google.protobuf.Timestamp'/3}).
+-dialyzer({nowarn_function, 'v_msg_google.protobuf.Timestamp'/3}).
+'v_msg_google.protobuf.Timestamp'(
+    #'google.protobuf.Timestamp'{seconds = F1, nanos = F2}, Path, TrUserData
+) ->
+    if
+        F1 == undefined -> ok;
+        true -> v_type_int64(F1, [seconds | Path], TrUserData)
     end,
-    if F2 == undefined -> ok;
-       true -> v_type_int32(F2, [nanos | Path], TrUserData)
+    if
+        F2 == undefined -> ok;
+        true -> v_type_int32(F2, [nanos | Path], TrUserData)
     end,
     ok;
-'v_msg_google.protobuf.Timestamp'(X, Path, _TrUserData) -> mk_type_error({expected_msg, 'google.protobuf.Timestamp'}, X, Path).
+'v_msg_google.protobuf.Timestamp'(X, Path, _TrUserData) ->
+    mk_type_error({expected_msg, 'google.protobuf.Timestamp'}, X, Path).
 
--compile({nowarn_unused_function,v_type_int32/3}).
--dialyzer({nowarn_function,v_type_int32/3}).
+-compile({nowarn_unused_function, v_type_int32/3}).
+-dialyzer({nowarn_function, v_type_int32/3}).
 v_type_int32(N, _Path, _TrUserData) when -2147483648 =< N, N =< 2147483647 -> ok;
-v_type_int32(N, Path, _TrUserData) when is_integer(N) -> mk_type_error({value_out_of_range, int32, signed, 32}, N, Path);
-v_type_int32(X, Path, _TrUserData) -> mk_type_error({bad_integer, int32, signed, 32}, X, Path).
+v_type_int32(N, Path, _TrUserData) when is_integer(N) ->
+    mk_type_error({value_out_of_range, int32, signed, 32}, N, Path);
+v_type_int32(X, Path, _TrUserData) ->
+    mk_type_error({bad_integer, int32, signed, 32}, X, Path).
 
--compile({nowarn_unused_function,v_type_int64/3}).
--dialyzer({nowarn_function,v_type_int64/3}).
+-compile({nowarn_unused_function, v_type_int64/3}).
+-dialyzer({nowarn_function, v_type_int64/3}).
 v_type_int64(N, _Path, _TrUserData) when -9223372036854775808 =< N, N =< 9223372036854775807 -> ok;
-v_type_int64(N, Path, _TrUserData) when is_integer(N) -> mk_type_error({value_out_of_range, int64, signed, 64}, N, Path);
-v_type_int64(X, Path, _TrUserData) -> mk_type_error({bad_integer, int64, signed, 64}, X, Path).
+v_type_int64(N, Path, _TrUserData) when is_integer(N) ->
+    mk_type_error({value_out_of_range, int64, signed, 64}, N, Path);
+v_type_int64(X, Path, _TrUserData) ->
+    mk_type_error({bad_integer, int64, signed, 64}, X, Path).
 
--compile({nowarn_unused_function,v_type_string/3}).
--dialyzer({nowarn_function,v_type_string/3}).
+-compile({nowarn_unused_function, v_type_string/3}).
+-dialyzer({nowarn_function, v_type_string/3}).
 v_type_string(S, Path, _TrUserData) when is_list(S); is_binary(S) ->
     try unicode:characters_to_binary(S) of
         B when is_binary(B) -> ok;
@@ -762,118 +1284,163 @@ v_type_string(S, Path, _TrUserData) when is_list(S); is_binary(S) ->
     catch
         error:badarg -> mk_type_error(bad_unicode_string, S, Path)
     end;
-v_type_string(X, Path, _TrUserData) -> mk_type_error(bad_unicode_string, X, Path).
+v_type_string(X, Path, _TrUserData) ->
+    mk_type_error(bad_unicode_string, X, Path).
 
--compile({nowarn_unused_function,'v_map<string,string>'/3}).
--dialyzer({nowarn_function,'v_map<string,string>'/3}).
+-compile({nowarn_unused_function, 'v_map<string,string>'/3}).
+-dialyzer({nowarn_function, 'v_map<string,string>'/3}).
 'v_map<string,string>'(KVs, Path, TrUserData) when is_list(KVs) ->
-    [case X of
-         {Key, Value} ->
-             v_type_string(Key, [key | Path], TrUserData),
-             v_type_string(Value, [value | Path], TrUserData);
-         _ -> mk_type_error(invalid_key_value_tuple, X, Path)
-     end
-     || X <- KVs],
+    [
+        case X of
+            {Key, Value} ->
+                v_type_string(Key, [key | Path], TrUserData),
+                v_type_string(Value, [value | Path], TrUserData);
+            _ ->
+                mk_type_error(invalid_key_value_tuple, X, Path)
+        end
+     || X <- KVs
+    ],
     ok;
-'v_map<string,string>'(X, Path, _TrUserData) -> mk_type_error(invalid_list_of_key_value_tuples, X, Path).
+'v_map<string,string>'(X, Path, _TrUserData) ->
+    mk_type_error(invalid_list_of_key_value_tuples, X, Path).
 
--compile({nowarn_unused_function,mk_type_error/3}).
+-compile({nowarn_unused_function, mk_type_error/3}).
 -spec mk_type_error(_, _, list()) -> no_return().
 mk_type_error(Error, ValueSeen, Path) ->
     Path2 = prettify_path(Path),
     erlang:error({gpb_type_error, {Error, [{value, ValueSeen}, {path, Path2}]}}).
 
+-compile({nowarn_unused_function, prettify_path/1}).
+-dialyzer({nowarn_function, prettify_path/1}).
+prettify_path([]) ->
+    top_level;
+prettify_path(PathR) ->
+    lists:append(lists:join(".", lists:map(fun atom_to_list/1, lists:reverse(PathR)))).
 
--compile({nowarn_unused_function,prettify_path/1}).
--dialyzer({nowarn_function,prettify_path/1}).
-prettify_path([]) -> top_level;
-prettify_path(PathR) -> lists:append(lists:join(".", lists:map(fun atom_to_list/1, lists:reverse(PathR)))).
-
-
--compile({nowarn_unused_function,id/2}).
--compile({inline,id/2}).
+-compile({nowarn_unused_function, id/2}).
+-compile({inline, id/2}).
 id(X, _TrUserData) -> X.
 
--compile({nowarn_unused_function,v_ok/3}).
--compile({inline,v_ok/3}).
+-compile({nowarn_unused_function, v_ok/3}).
+-compile({inline, v_ok/3}).
 v_ok(_Value, _Path, _TrUserData) -> ok.
 
--compile({nowarn_unused_function,m_overwrite/3}).
--compile({inline,m_overwrite/3}).
+-compile({nowarn_unused_function, m_overwrite/3}).
+-compile({inline, m_overwrite/3}).
 m_overwrite(_Prev, New, _TrUserData) -> New.
 
--compile({nowarn_unused_function,cons/3}).
--compile({inline,cons/3}).
+-compile({nowarn_unused_function, cons/3}).
+-compile({inline, cons/3}).
 cons(Elem, Acc, _TrUserData) -> [Elem | Acc].
 
--compile({nowarn_unused_function,lists_reverse/2}).
--compile({inline,lists_reverse/2}).
+-compile({nowarn_unused_function, lists_reverse/2}).
+-compile({inline, lists_reverse/2}).
 'lists_reverse'(L, _TrUserData) -> lists:reverse(L).
--compile({nowarn_unused_function,'erlang_++'/3}).
--compile({inline,'erlang_++'/3}).
+-compile({nowarn_unused_function, 'erlang_++'/3}).
+-compile({inline, 'erlang_++'/3}).
 'erlang_++'(A, B, _TrUserData) -> A ++ B.
--compile({inline,'tr_encode_eventssidecar.v1.OnRegister.user_properties[x]'/2}).
-'tr_encode_eventssidecar.v1.OnRegister.user_properties[x]'(X, _) -> mt_maptuple_to_pseudomsg_r(X, 'map<string,string>').
+-compile({inline, 'tr_encode_eventssidecar.v1.OnRegister.user_properties[x]'/2}).
+'tr_encode_eventssidecar.v1.OnRegister.user_properties[x]'(X, _) ->
+    mt_maptuple_to_pseudomsg_r(X, 'map<string,string>').
 
--compile({inline,'tr_decode_init_default_eventssidecar.v1.OnRegister.user_properties'/2}).
+-compile({inline, 'tr_decode_init_default_eventssidecar.v1.OnRegister.user_properties'/2}).
 'tr_decode_init_default_eventssidecar.v1.OnRegister.user_properties'(_, _) -> mt_empty_map_r().
 
--compile({inline,'tr_merge_eventssidecar.v1.OnRegister.user_properties'/3}).
+-compile({inline, 'tr_merge_eventssidecar.v1.OnRegister.user_properties'/3}).
 'tr_merge_eventssidecar.v1.OnRegister.user_properties'(X1, X2, _) -> mt_merge_maptuples_r(X1, X2).
 
--compile({inline,'tr_decode_repeated_finalize_eventssidecar.v1.OnRegister.user_properties'/2}).
-'tr_decode_repeated_finalize_eventssidecar.v1.OnRegister.user_properties'(L, _) -> mt_finalize_items_r(L).
+-compile({inline, 'tr_decode_repeated_finalize_eventssidecar.v1.OnRegister.user_properties'/2}).
+'tr_decode_repeated_finalize_eventssidecar.v1.OnRegister.user_properties'(L, _) ->
+    mt_finalize_items_r(L).
 
--compile({inline,'tr_decode_repeated_add_elem_eventssidecar.v1.OnRegister.user_properties'/3}).
-'tr_decode_repeated_add_elem_eventssidecar.v1.OnRegister.user_properties'(Elem, L, _) -> mt_add_item_r(Elem, L).
+-compile({inline, 'tr_decode_repeated_add_elem_eventssidecar.v1.OnRegister.user_properties'/3}).
+'tr_decode_repeated_add_elem_eventssidecar.v1.OnRegister.user_properties'(Elem, L, _) ->
+    mt_add_item_r(Elem, L).
 
--compile({inline,mt_maptuple_to_pseudomsg_r/2}).
+-compile({inline, mt_maptuple_to_pseudomsg_r/2}).
 mt_maptuple_to_pseudomsg_r({K, V}, RName) -> {RName, K, V}.
 
-
--compile({inline,mt_empty_map_r/0}).
+-compile({inline, mt_empty_map_r/0}).
 mt_empty_map_r() -> [].
 
--compile({inline,mt_add_item_r/2}).
+-compile({inline, mt_add_item_r/2}).
 mt_add_item_r({_RName, K, V}, Acc) -> [{K, V} | Acc].
 
-
--compile({inline,mt_finalize_items_r/1}).
+-compile({inline, mt_finalize_items_r/1}).
 mt_finalize_items_r(Acc) -> mt_finalize_items_r_aux(lists:reverse(Acc), dict:new()).
 
 mt_finalize_items_r_aux([{K, V} | Tl], D) -> mt_finalize_items_r_aux(Tl, dict:store(K, V, D));
 mt_finalize_items_r_aux([], D) -> dict:to_list(D).
 
-
--compile({inline,mt_merge_maptuples_r/2}).
-mt_merge_maptuples_r(L1, L2) -> dict:to_list(dict:merge(fun (_Key, _V1, V2) -> V2 end, dict:from_list(L1), dict:from_list(L2))).
-
-
-
+-compile({inline, mt_merge_maptuples_r/2}).
+mt_merge_maptuples_r(L1, L2) ->
+    dict:to_list(dict:merge(fun(_Key, _V1, V2) -> V2 end, dict:from_list(L1), dict:from_list(L2))).
 
 get_msg_defs() ->
-    [{{msg, 'eventssidecar.v1.OnRegister'},
-      [#field{name = timestamp, fnum = 1, rnum = 2, type = {msg, 'google.protobuf.Timestamp'}, occurrence = optional, opts = []},
-       #field{name = peer_addr, fnum = 2, rnum = 3, type = string, occurrence = optional, opts = []},
-       #field{name = peer_port, fnum = 3, rnum = 4, type = int32, occurrence = optional, opts = []},
-       #field{name = username, fnum = 4, rnum = 5, type = string, occurrence = optional, opts = []},
-       #field{name = mountpoint, fnum = 5, rnum = 6, type = string, occurrence = optional, opts = []},
-       #field{name = client_id, fnum = 6, rnum = 7, type = string, occurrence = optional, opts = []},
-       #field{name = user_properties, fnum = 7, rnum = 8, type = {map, string, string}, occurrence = repeated, opts = []}]},
-     {{msg, 'google.protobuf.Timestamp'}, [#field{name = seconds, fnum = 1, rnum = 2, type = int64, occurrence = optional, opts = []}, #field{name = nanos, fnum = 2, rnum = 3, type = int32, occurrence = optional, opts = []}]}].
-
+    [
+        {{msg, 'eventssidecar.v1.OnRegister'}, [
+            #field{
+                name = timestamp,
+                fnum = 1,
+                rnum = 2,
+                type = {msg, 'google.protobuf.Timestamp'},
+                occurrence = optional,
+                opts = []
+            },
+            #field{
+                name = peer_addr,
+                fnum = 2,
+                rnum = 3,
+                type = string,
+                occurrence = optional,
+                opts = []
+            },
+            #field{
+                name = peer_port, fnum = 3, rnum = 4, type = int32, occurrence = optional, opts = []
+            },
+            #field{
+                name = username, fnum = 4, rnum = 5, type = string, occurrence = optional, opts = []
+            },
+            #field{
+                name = mountpoint,
+                fnum = 5,
+                rnum = 6,
+                type = string,
+                occurrence = optional,
+                opts = []
+            },
+            #field{
+                name = client_id,
+                fnum = 6,
+                rnum = 7,
+                type = string,
+                occurrence = optional,
+                opts = []
+            },
+            #field{
+                name = user_properties,
+                fnum = 7,
+                rnum = 8,
+                type = {map, string, string},
+                occurrence = repeated,
+                opts = []
+            }
+        ]},
+        {{msg, 'google.protobuf.Timestamp'}, [
+            #field{
+                name = seconds, fnum = 1, rnum = 2, type = int64, occurrence = optional, opts = []
+            },
+            #field{name = nanos, fnum = 2, rnum = 3, type = int32, occurrence = optional, opts = []}
+        ]}
+    ].
 
 get_msg_names() -> ['eventssidecar.v1.OnRegister', 'google.protobuf.Timestamp'].
 
-
 get_group_names() -> [].
-
 
 get_msg_or_group_names() -> ['eventssidecar.v1.OnRegister', 'google.protobuf.Timestamp'].
 
-
 get_enum_names() -> [].
-
 
 fetch_msg_def(MsgName) ->
     case find_msg_def(MsgName) of
@@ -881,63 +1448,79 @@ fetch_msg_def(MsgName) ->
         error -> erlang:error({no_such_msg, MsgName})
     end.
 
-
 -spec fetch_enum_def(_) -> no_return().
 fetch_enum_def(EnumName) -> erlang:error({no_such_enum, EnumName}).
 
-
 find_msg_def('eventssidecar.v1.OnRegister') ->
-    [#field{name = timestamp, fnum = 1, rnum = 2, type = {msg, 'google.protobuf.Timestamp'}, occurrence = optional, opts = []},
-     #field{name = peer_addr, fnum = 2, rnum = 3, type = string, occurrence = optional, opts = []},
-     #field{name = peer_port, fnum = 3, rnum = 4, type = int32, occurrence = optional, opts = []},
-     #field{name = username, fnum = 4, rnum = 5, type = string, occurrence = optional, opts = []},
-     #field{name = mountpoint, fnum = 5, rnum = 6, type = string, occurrence = optional, opts = []},
-     #field{name = client_id, fnum = 6, rnum = 7, type = string, occurrence = optional, opts = []},
-     #field{name = user_properties, fnum = 7, rnum = 8, type = {map, string, string}, occurrence = repeated, opts = []}];
-find_msg_def('google.protobuf.Timestamp') -> [#field{name = seconds, fnum = 1, rnum = 2, type = int64, occurrence = optional, opts = []}, #field{name = nanos, fnum = 2, rnum = 3, type = int32, occurrence = optional, opts = []}];
-find_msg_def(_) -> error.
-
+    [
+        #field{
+            name = timestamp,
+            fnum = 1,
+            rnum = 2,
+            type = {msg, 'google.protobuf.Timestamp'},
+            occurrence = optional,
+            opts = []
+        },
+        #field{
+            name = peer_addr, fnum = 2, rnum = 3, type = string, occurrence = optional, opts = []
+        },
+        #field{
+            name = peer_port, fnum = 3, rnum = 4, type = int32, occurrence = optional, opts = []
+        },
+        #field{
+            name = username, fnum = 4, rnum = 5, type = string, occurrence = optional, opts = []
+        },
+        #field{
+            name = mountpoint, fnum = 5, rnum = 6, type = string, occurrence = optional, opts = []
+        },
+        #field{
+            name = client_id, fnum = 6, rnum = 7, type = string, occurrence = optional, opts = []
+        },
+        #field{
+            name = user_properties,
+            fnum = 7,
+            rnum = 8,
+            type = {map, string, string},
+            occurrence = repeated,
+            opts = []
+        }
+    ];
+find_msg_def('google.protobuf.Timestamp') ->
+    [
+        #field{name = seconds, fnum = 1, rnum = 2, type = int64, occurrence = optional, opts = []},
+        #field{name = nanos, fnum = 2, rnum = 3, type = int32, occurrence = optional, opts = []}
+    ];
+find_msg_def(_) ->
+    error.
 
 find_enum_def(_) -> error.
-
 
 -spec enum_symbol_by_value(_, _) -> no_return().
 enum_symbol_by_value(E, V) -> erlang:error({no_enum_defs, E, V}).
 
-
 -spec enum_value_by_symbol(_, _) -> no_return().
 enum_value_by_symbol(E, V) -> erlang:error({no_enum_defs, E, V}).
 
-
-
 get_service_names() -> [].
-
 
 get_service_def(_) -> error.
 
-
 get_rpc_names(_) -> error.
-
 
 find_rpc_def(_, _) -> error.
 
-
-
 -spec fetch_rpc_def(_, _) -> no_return().
 fetch_rpc_def(ServiceName, RpcName) -> erlang:error({no_such_rpc, ServiceName, RpcName}).
-
 
 %% Convert a a fully qualified (ie with package name) service name
 %% as a binary to a service name as an atom.
 -spec fqbin_to_service_name(_) -> no_return().
 fqbin_to_service_name(X) -> error({gpb_error, {badservice, X}}).
 
-
 %% Convert a service name as an atom to a fully qualified
 %% (ie with package name) name as a binary.
 -spec service_name_to_fqbin(_) -> no_return().
 service_name_to_fqbin(X) -> error({gpb_error, {badservice, X}}).
-
 
 %% Convert a a fully qualified (ie with package name) service name
 %% and an rpc name, both as binaries to a service name and an rpc
@@ -945,42 +1528,33 @@ service_name_to_fqbin(X) -> error({gpb_error, {badservice, X}}).
 -spec fqbins_to_service_and_rpc_name(_, _) -> no_return().
 fqbins_to_service_and_rpc_name(S, R) -> error({gpb_error, {badservice_or_rpc, {S, R}}}).
 
-
 %% Convert a service name and an rpc name, both as atoms,
 %% to a fully qualified (ie with package name) service name and
 %% an rpc name as binaries.
 -spec service_and_rpc_name_to_fqbins(_, _) -> no_return().
 service_and_rpc_name_to_fqbins(S, R) -> error({gpb_error, {badservice_or_rpc, {S, R}}}).
 
-
 fqbin_to_msg_name(<<"eventssidecar.v1.OnRegister">>) -> 'eventssidecar.v1.OnRegister';
 fqbin_to_msg_name(<<"google.protobuf.Timestamp">>) -> 'google.protobuf.Timestamp';
 fqbin_to_msg_name(E) -> error({gpb_error, {badmsg, E}}).
-
 
 msg_name_to_fqbin('eventssidecar.v1.OnRegister') -> <<"eventssidecar.v1.OnRegister">>;
 msg_name_to_fqbin('google.protobuf.Timestamp') -> <<"google.protobuf.Timestamp">>;
 msg_name_to_fqbin(E) -> error({gpb_error, {badmsg, E}}).
 
-
 -spec fqbin_to_enum_name(_) -> no_return().
 fqbin_to_enum_name(E) -> error({gpb_error, {badenum, E}}).
-
 
 -spec enum_name_to_fqbin(_) -> no_return().
 enum_name_to_fqbin(E) -> error({gpb_error, {badenum, E}}).
 
-
 get_package_name() -> 'eventssidecar.v1'.
-
 
 %% Whether or not the message names
 %% are prepended with package name or not.
 uses_packages() -> true.
 
-
 source_basename() -> "on_register.proto".
-
 
 %% Retrieve all proto file names, also imported ones.
 %% The order is top-down. The first element is always the main
@@ -989,7 +1563,6 @@ source_basename() -> "on_register.proto".
 %% the basenames sans extension
 get_all_source_basenames() -> ["on_register.proto", "timestamp.proto"].
 
-
 %% Retrieve all proto file names, also imported ones.
 %% The order is top-down. The first element is always the main
 %% source file. The files are returned sans .proto extension,
@@ -997,56 +1570,45 @@ get_all_source_basenames() -> ["on_register.proto", "timestamp.proto"].
 %% functions.
 get_all_proto_names() -> ["on_register", "timestamp"].
 
-
 get_msg_containment("on_register") -> ['eventssidecar.v1.OnRegister'];
 get_msg_containment("timestamp") -> ['google.protobuf.Timestamp'];
 get_msg_containment(P) -> error({gpb_error, {badproto, P}}).
-
 
 get_pkg_containment("on_register") -> 'eventssidecar.v1';
 get_pkg_containment("timestamp") -> 'google.protobuf';
 get_pkg_containment(P) -> error({gpb_error, {badproto, P}}).
 
-
 get_service_containment("on_register") -> [];
 get_service_containment("timestamp") -> [];
 get_service_containment(P) -> error({gpb_error, {badproto, P}}).
-
 
 get_rpc_containment("on_register") -> [];
 get_rpc_containment("timestamp") -> [];
 get_rpc_containment(P) -> error({gpb_error, {badproto, P}}).
 
-
 get_enum_containment("on_register") -> [];
 get_enum_containment("timestamp") -> [];
 get_enum_containment(P) -> error({gpb_error, {badproto, P}}).
-
 
 get_proto_by_msg_name_as_fqbin(<<"google.protobuf.Timestamp">>) -> "timestamp";
 get_proto_by_msg_name_as_fqbin(<<"eventssidecar.v1.OnRegister">>) -> "on_register";
 get_proto_by_msg_name_as_fqbin(E) -> error({gpb_error, {badmsg, E}}).
 
-
 -spec get_proto_by_service_name_as_fqbin(_) -> no_return().
 get_proto_by_service_name_as_fqbin(E) -> error({gpb_error, {badservice, E}}).
 
-
 -spec get_proto_by_enum_name_as_fqbin(_) -> no_return().
 get_proto_by_enum_name_as_fqbin(E) -> error({gpb_error, {badenum, E}}).
-
 
 get_protos_by_pkg_name_as_fqbin(<<"eventssidecar.v1">>) -> ["on_register"];
 get_protos_by_pkg_name_as_fqbin(<<"google.protobuf">>) -> ["timestamp"];
 get_protos_by_pkg_name_as_fqbin(E) -> error({gpb_error, {badpkg, E}}).
 
-
-
 gpb_version_as_string() ->
     "4.19.1".
 
 gpb_version_as_list() ->
-    [4,19,1].
+    [4, 19, 1].
 
 gpb_version_source() ->
     "file".

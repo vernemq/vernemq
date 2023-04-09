@@ -10,28 +10,43 @@
 -ifndef('EVENTSSIDECAR.V1.ONSUBSCRIBE_PB_H').
 -define('EVENTSSIDECAR.V1.ONSUBSCRIBE_PB_H', true).
 -record('eventssidecar.v1.OnSubscribe',
-        {timestamp = undefined  :: on_subscribe_pb:'google.protobuf.Timestamp'() | undefined, % = 1, optional
-         client_id = <<>>       :: unicode:chardata() | undefined, % = 2, optional
-         mountpoint = <<>>      :: unicode:chardata() | undefined, % = 3, optional
-         username = <<>>        :: unicode:chardata() | undefined, % = 4, optional
-         topics = []            :: [on_subscribe_pb:'eventssidecar.v1.TopicInfo'()] | undefined % = 5, repeated
-        }).
+    % = 1, optional
+    {
+        timestamp = undefined :: on_subscribe_pb:'google.protobuf.Timestamp'() | undefined,
+        % = 2, optional
+        client_id = <<>> :: unicode:chardata() | undefined,
+        % = 3, optional
+        mountpoint = <<>> :: unicode:chardata() | undefined,
+        % = 4, optional
+        username = <<>> :: unicode:chardata() | undefined,
+        % = 5, repeated
+        topics = [] :: [on_subscribe_pb:'eventssidecar.v1.TopicInfo'()] | undefined
+    }
+).
 -endif.
 
 -ifndef('EVENTSSIDECAR.V1.TOPICINFO_PB_H').
 -define('EVENTSSIDECAR.V1.TOPICINFO_PB_H', true).
 -record('eventssidecar.v1.TopicInfo',
-        {topic = <<>>           :: unicode:chardata() | undefined, % = 1, optional
-         qos = 0                :: integer() | undefined % = 2, optional, 32 bits
-        }).
+    % = 1, optional
+    {
+        topic = <<>> :: unicode:chardata() | undefined,
+        % = 2, optional, 32 bits
+        qos = 0 :: integer() | undefined
+    }
+).
 -endif.
 
 -ifndef('GOOGLE.PROTOBUF.TIMESTAMP_PB_H').
 -define('GOOGLE.PROTOBUF.TIMESTAMP_PB_H', true).
 -record('google.protobuf.Timestamp',
-        {seconds = 0            :: integer() | undefined, % = 1, optional, 64 bits
-         nanos = 0              :: integer() | undefined % = 2, optional, 32 bits
-        }).
+    % = 1, optional, 64 bits
+    {
+        seconds = 0 :: integer() | undefined,
+        % = 2, optional, 32 bits
+        nanos = 0 :: integer() | undefined
+    }
+).
 -endif.
 
 -endif.

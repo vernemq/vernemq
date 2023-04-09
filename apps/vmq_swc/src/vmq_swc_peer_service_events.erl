@@ -23,19 +23,26 @@
 -behaviour(gen_event).
 
 %% API
--export([start_link/0,
-         add_handler/2,
-         add_sup_handler/2,
-         add_callback/1,
-         add_sup_callback/1,
-         update/1
-        ]).
+-export([
+    start_link/0,
+    add_handler/2,
+    add_sup_handler/2,
+    add_callback/1,
+    add_sup_callback/1,
+    update/1
+]).
 
 %% gen_event callbacks
--export([init/1, handle_event/2, handle_call/2,
-         handle_info/2, terminate/2, code_change/3]).
+-export([
+    init/1,
+    handle_event/2,
+    handle_call/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
--record(state, { callback }).
+-record(state, {callback}).
 
 %% ===================================================================
 %% API functions
@@ -66,7 +73,7 @@ update(LocalState) ->
 init([Fn]) ->
     {ok, LocalState} = vmq_swc_peer_service_manager:get_local_state(),
     Fn(LocalState),
-    {ok, #state { callback = Fn }}.
+    {ok, #state{callback = Fn}}.
 
 handle_event({update, LocalState}, State) ->
     (State#state.callback)(LocalState),

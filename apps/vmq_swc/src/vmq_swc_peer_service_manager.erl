@@ -26,7 +26,8 @@
 
 init() ->
     %% setup ETS table for cluster_state
-    _ = try ets:new(?TBL, [named_table, public, set, {keypos, 1}]) of
+    _ =
+        try ets:new(?TBL, [named_table, public, set, {keypos, 1}]) of
             _Res ->
                 gen_actor(),
                 maybe_load_state_from_disk(),
@@ -34,18 +35,18 @@ init() ->
         catch
             error:badarg ->
                 lager:warning("Table ~p already exists", [?TBL])
-                %%TODO rejoin logic
+            %%TODO rejoin logic
         end,
     ok.
 
 %% @doc return local node's view of cluster membership
 get_local_state() ->
-   case hd(ets:lookup(?TBL, cluster_state)) of
-       {cluster_state, State} ->
-           {ok, State};
-       _Else ->
-           {error, _Else}
-   end.
+    case hd(ets:lookup(?TBL, cluster_state)) of
+        {cluster_state, State} ->
+            {ok, State};
+        _Else ->
+            {error, _Else}
+    end.
 
 %% @doc return local node's current actor
 get_actor() ->
@@ -85,8 +86,11 @@ gen_actor() ->
     ets:insert(?TBL, {actor, Actor}).
 
 data_root() ->
-    application:get_env(vmq_swc, data_dir,
-                        "./" ++ atom_to_list(node()) ++ "/peer_service").
+    application:get_env(
+        vmq_swc,
+        data_dir,
+        "./" ++ atom_to_list(node()) ++ "/peer_service"
+    ).
 
 write_state_to_disk(State) ->
     case data_root() of
@@ -95,10 +99,14 @@ write_state_to_disk(State) ->
         Dir ->
             File = filename:join(Dir, "cluster_state"),
             ok = filelib:ensure_dir(File),
-            lager:info("writing state ~p to disk ~p",
-                       [State, riak_dt_orswot:to_binary(State)]),
-            ok = file:write_file(File,
-                                 riak_dt_orswot:to_binary(State))
+            lager:info(
+                "writing state ~p to disk ~p",
+                [State, riak_dt_orswot:to_binary(State)]
+            ),
+            ok = file:write_file(
+                File,
+                riak_dt_orswot:to_binary(State)
+            )
     end.
 
 delete_state_from_disk() ->
@@ -123,8 +131,12 @@ maybe_load_state_from_disk() ->
         Dir ->
             case filelib:is_regular(filename:join(Dir, "cluster_state")) of
                 true ->
-                    {ok, Bin} = file:read_file(filename:join(Dir,
-                                                             "cluster_state")),
+                    {ok, Bin} = file:read_file(
+                        filename:join(
+                            Dir,
+                            "cluster_state"
+                        )
+                    ),
                     {ok, State} = riak_dt_orswot:from_binary(Bin),
                     lager:info("read state from file ~p~n", [State]),
                     update_state(State);

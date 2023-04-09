@@ -1,16 +1,19 @@
-{application, vmq_ql,
- [
-  {description, "A SQL like query interface for VerneMQ"},
-  {vsn, git},
-  {registered, []},
-  {mod, { vmq_ql_app, []}},
-  {applications, [
-                  kernel,
-                  stdlib
-                 ]},
-  {env, [{table_map, [
-                      {sessions, vmq_info},  % defined in vmq_server
-                      {retain_srv, vmq_retain_info}, % defined in vmq_server
-                      {proc, vmq_ql_sys_info}
-                     ]}]}
- ]}.
+{application, vmq_ql, [
+    {description, "A SQL like query interface for VerneMQ"},
+    {vsn, git},
+    {registered, []},
+    {mod, {vmq_ql_app, []}},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {env, [
+        {table_map, [
+            % defined in vmq_server
+            {sessions, vmq_info},
+            % defined in vmq_server
+            {retain_srv, vmq_retain_info},
+            {proc, vmq_ql_sys_info}
+        ]}
+    ]}
+]}.

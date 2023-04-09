@@ -18,25 +18,31 @@
 -behaviour(gen_server).
 
 %% API functions
--export([start_link/3,
-         reload/1,
-         get_hooks/1,
-         get_num_states/1,
-         call_function/3]).
+-export([
+    start_link/3,
+    reload/1,
+    get_hooks/1,
+    get_num_states/1,
+    call_function/3
+]).
 
 %% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
--record(state, {id,
-                luastate,
-                script,
-                keep,
-                owner}).
+-record(state, {
+    id,
+    luastate,
+    script,
+    keep,
+    owner
+}).
 
 %%%===================================================================
 %%% API functions
@@ -48,7 +54,8 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec start_link(Id::list(), Script::list(), ScriptMgrPid::pid()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
+-spec start_link(Id :: list(), Script :: list(), ScriptMgrPid :: pid()) ->
+    {ok, Pid :: pid()} | ignore | {error, Error :: term()}.
 start_link(Id, Script, ScriptMgrPid) ->
     gen_server:start_link(?MODULE, [Id, Script, ScriptMgrPid], []).
 
@@ -85,15 +92,19 @@ init([Id, Script, ScriptMgrPid]) ->
     case load_script(Id, Script) of
         {ok, LuaState} ->
             KeepState =
-            case lua_keep_state(LuaState) of
-                undefined ->
-                    application:get_env(vmq_diversity, keep_state, false);
-                KS ->
-                    KS
-            end,
+                case lua_keep_state(LuaState) of
+                    undefined ->
+                        application:get_env(vmq_diversity, keep_state, false);
+                    KS ->
+                        KS
+                end,
             ScriptMgrPid ! {state_ready, self()},
-            {ok, #state{id=Id, luastate=LuaState,
-                        script=Script, keep=KeepState}};
+            {ok, #state{
+                id = Id,
+                luastate = LuaState,
+                script = Script,
+                keep = KeepState
+            }};
         {error, Reason} ->
             lager:error("can't load script ~p due to ~p", [Script, Reason]),
             %% normal stop as we don't want to exhaust the supervisor strategy
@@ -114,29 +125,28 @@ init([Id, Script, ScriptMgrPid]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call(get_hooks, _From, #state{luastate=LuaState} = State) ->
+handle_call(get_hooks, _From, #state{luastate = LuaState} = State) ->
     Hooks = lua_hooks(LuaState),
     {reply, Hooks, State};
-handle_call(get_num_states, _From, #state{luastate=LuaState, keep=Keep} = State) ->
+handle_call(get_num_states, _From, #state{luastate = LuaState, keep = Keep} = State) ->
     NumStates =
-    case lua_num_states(LuaState) of
-        undefined when Keep -> 1;
-        undefined ->
-            {ok, N} = application:get_env(vmq_diversity, nr_lua_states),
-            N;
-        N when N > 0 -> N
-    end,
+        case lua_num_states(LuaState) of
+            undefined when Keep -> 1;
+            undefined ->
+                {ok, N} = application:get_env(vmq_diversity, nr_lua_states),
+                N;
+            N when N > 0 -> N
+        end,
     {reply, NumStates, State};
-handle_call(reload, _From, #state{id=Id, script=Script} = State) ->
+handle_call(reload, _From, #state{id = Id, script = Script} = State) ->
     case load_script(Id, Script) of
         {ok, LuaState} ->
             lager:info("successfully reloaded script ~p", [Script]),
-            {reply, ok, State#state{luastate=LuaState}};
+            {reply, ok, State#state{luastate = LuaState}};
         {error, Reason} ->
             lager:error("can't reload script due to ~p, keeping old version", [Reason]),
             {reply, {error, Reason}, State}
     end.
-
 
 %%--------------------------------------------------------------------
 %% @private
@@ -163,24 +173,27 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({call_function, Ref, CallerPid, Function, Args}, State) ->
     {Reply, NewState} =
-    try luerl:call_function([hooks, Function], [Args], State#state.luastate) of
-        {[], NewLuaState} ->
-            {undefined, ch_state(NewLuaState, State)};
-        {[Val], NewLuaState} ->
-            {Val, ch_state(NewLuaState, State)}
-    catch
-        error:{lua_error, Reason, _} ->
-            lager:error("can't call function ~p with args ~p in ~p due to ~p",
-                        [Function, Args, State#state.script, Reason]),
-            {error, State};
-        E:R ->
-            lager:error("can't call function ~p with args ~p in ~p due to ~p",
-                        [Function, Args, State#state.script, {E,R}]),
-            {error, State}
-    end,
+        try luerl:call_function([hooks, Function], [Args], State#state.luastate) of
+            {[], NewLuaState} ->
+                {undefined, ch_state(NewLuaState, State)};
+            {[Val], NewLuaState} ->
+                {Val, ch_state(NewLuaState, State)}
+        catch
+            error:{lua_error, Reason, _} ->
+                lager:error(
+                    "can't call function ~p with args ~p in ~p due to ~p",
+                    [Function, Args, State#state.script, Reason]
+                ),
+                {error, State};
+            E:R ->
+                lager:error(
+                    "can't call function ~p with args ~p in ~p due to ~p",
+                    [Function, Args, State#state.script, {E, R}]
+                ),
+                {error, State}
+        end,
     CallerPid ! {call_function_response, Ref, Reply},
     {noreply, NewState}.
-
 
 %%--------------------------------------------------------------------
 %% @private
@@ -211,28 +224,28 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-ch_state(NewLuaState, #state{keep=true} = State) ->
-    State#state{luastate=luerl:gc(NewLuaState)};
-ch_state(_, #state{keep=false} = State) ->
+ch_state(NewLuaState, #state{keep = true} = State) ->
+    State#state{luastate = luerl:gc(NewLuaState)};
+ch_state(_, #state{keep = false} = State) ->
     State.
 
 load_script(Id, Script) ->
     Libs = [
-            {vmq_diversity_mysql,       <<"mysql">>},
-            {vmq_diversity_postgres,    <<"postgres">>},
-            {vmq_diversity_cockroachdb, <<"cockroachdb">>},
-            {vmq_diversity_mongo,       <<"mongodb">>},
-            {vmq_diversity_redis,       <<"redis">>},
-            {vmq_diversity_http,        <<"http">>},
-            {vmq_diversity_json,        <<"json">>},
-            {vmq_diversity_bcrypt,      <<"bcrypt">>},
-            {vmq_diversity_ets,         <<"kv">>},
-            {vmq_diversity_lager,       <<"log">>},
-            {vmq_diversity_memcached,   <<"memcached">>},
-            {vmq_diversity_cache,       <<"auth_cache">>},
-            {vmq_diversity_vmq_api,     <<"vmq_api">>},
-            {vmq_diversity_crypto,      <<"crypto">>}
-           ],
+        {vmq_diversity_mysql, <<"mysql">>},
+        {vmq_diversity_postgres, <<"postgres">>},
+        {vmq_diversity_cockroachdb, <<"cockroachdb">>},
+        {vmq_diversity_mongo, <<"mongodb">>},
+        {vmq_diversity_redis, <<"redis">>},
+        {vmq_diversity_http, <<"http">>},
+        {vmq_diversity_json, <<"json">>},
+        {vmq_diversity_bcrypt, <<"bcrypt">>},
+        {vmq_diversity_ets, <<"kv">>},
+        {vmq_diversity_lager, <<"log">>},
+        {vmq_diversity_memcached, <<"memcached">>},
+        {vmq_diversity_cache, <<"auth_cache">>},
+        {vmq_diversity_vmq_api, <<"vmq_api">>},
+        {vmq_diversity_crypto, <<"crypto">>}
+    ],
 
     {ok, ScriptsDir} = application:get_env(vmq_diversity, script_dir),
     AbsScriptDir = filename:absname(ScriptsDir),
@@ -242,10 +255,22 @@ load_script(Id, Script) ->
     {_, InitState2} = luerl:do(Do2, InitState1),
 
     LuaState =
-    lists:foldl(fun({Mod, NS}, LuaStateAcc) ->
-                        luerl:load_module([<<"package">>, <<"loaded">>,
-                                           <<"_G">>, NS], Mod, LuaStateAcc)
-                end, InitState2, Libs),
+        lists:foldl(
+            fun({Mod, NS}, LuaStateAcc) ->
+                luerl:load_module(
+                    [
+                        <<"package">>,
+                        <<"loaded">>,
+                        <<"_G">>,
+                        NS
+                    ],
+                    Mod,
+                    LuaStateAcc
+                )
+            end,
+            InitState2,
+            Libs
+        ),
 
     try luerl:dofile(Script, LuaState) of
         {_, NewLuaState} ->
@@ -260,8 +285,7 @@ load_script(Id, Script) ->
 lua_hooks(LuaState) ->
     case luerl:eval("return hooks", LuaState) of
         {ok, [nil]} -> [];
-        {ok, [Hooks]} ->
-            [Hook || {Hook, Fun} <- Hooks, is_function(Fun)]
+        {ok, [Hooks]} -> [Hook || {Hook, Fun} <- Hooks, is_function(Fun)]
     end.
 
 lua_num_states(LuaState) ->

@@ -17,20 +17,23 @@
 -behaviour(auth_on_register_m5_hook).
 -behaviour(on_config_change_hook).
 
--export([start/0,
-         stop/0,
-         init/0,
-         check/2,
-         hash/1, hash/2,
-         load_from_file/1,
-         load_from_list/1]).
--export([change_config/1,
-         auth_on_register/5,
-         auth_on_register_m5/6]).
+-export([
+    start/0,
+    stop/0,
+    init/0,
+    check/2,
+    hash/1, hash/2,
+    load_from_file/1,
+    load_from_list/1
+]).
+-export([
+    change_config/1,
+    auth_on_register/5,
+    auth_on_register_m5/6
+]).
 
 -define(TABLE, ?MODULE).
 -define(SALT_LEN, 12).
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Plugin Callbacks
@@ -76,10 +79,11 @@ load_from_file(File) ->
     case file:open(File, [read, binary]) of
         {ok, Fd} ->
             age_entries(),
-            F = fun(FF, read) -> {FF, rl(Fd)};
-                   (_, close) -> file:close(Fd)
-                end,
-            parse_passwd_line(F(F,read)),
+            F = fun
+                (FF, read) -> {FF, rl(Fd)};
+                (_, close) -> file:close(Fd)
+            end,
+            parse_passwd_line(F(F, read)),
             del_aged_entries();
         {error, _Reason} ->
             ok
@@ -88,18 +92,19 @@ load_from_file(File) ->
 load_from_list(List) ->
     age_entries(),
     put(vmq_passwd_list, List),
-    F = fun(FF, read) ->
-                case get(vmq_passwd_list) of
-                    [I|Rest] ->
-                        put(vmq_passwd_list, Rest),
-                        {FF, I};
-                    [] ->
-                        {FF, eof}
-                end;
-           (_, close) ->
-                put(vmq_passwd_list, undefined),
-                ok
-        end,
+    F = fun
+        (FF, read) ->
+            case get(vmq_passwd_list) of
+                [I | Rest] ->
+                    put(vmq_passwd_list, Rest),
+                    {FF, I};
+                [] ->
+                    {FF, eof}
+            end;
+        (_, close) ->
+            put(vmq_passwd_list, undefined),
+            ok
+    end,
     parse_passwd_line(F(F, read)),
     del_aged_entries().
 
@@ -119,25 +124,25 @@ check(User, Password) ->
     end.
 
 parse_passwd_line({F, eof}) ->
-    F(F,close),
+    F(F, close),
     ok;
 parse_passwd_line({F, <<"\n">>}) ->
-    parse_passwd_line(F(F,read));
+    parse_passwd_line(F(F, read));
 parse_passwd_line({F, Line}) ->
     [User, Rest] = re:split(Line, ":"),
     [<<>>, _, Salt, EncPasswd] = binary:split(Rest, <<"$">>, [global]),
-    L = byte_size(EncPasswd) -1,
+    L = byte_size(EncPasswd) - 1,
     EncPasswdNew =
-    case EncPasswd of
-        <<E:L/binary, "\n">> -> E;
-        _ -> EncPasswd
-    end,
+        case EncPasswd of
+            <<E:L/binary, "\n">> -> E;
+            _ -> EncPasswd
+        end,
     Item = {User, Salt, EncPasswdNew, 1},
     ets:insert(?TABLE, Item),
-    parse_passwd_line(F(F,read)).
+    parse_passwd_line(F(F, read)).
 
 age_entries() ->
-    iterate(fun(K) -> ets:update_element(?TABLE, K, {4,2}) end).
+    iterate(fun(K) -> ets:update_element(?TABLE, K, {4, 2}) end).
 
 del_aged_entries() ->
     ets:match_delete(?TABLE, {'_', '_', '_', 2}),
@@ -145,21 +150,19 @@ del_aged_entries() ->
 
 iterate(Fun) ->
     iterate(Fun, ets:first(?TABLE)).
-iterate(_, '$end_of_table') -> ok;
+iterate(_, '$end_of_table') ->
+    ok;
 iterate(Fun, K) ->
     Fun(K),
     iterate(Fun, ets:next(?TABLE, K)).
 
-
 rl({ok, Data}) -> Data;
 rl({error, Reason}) -> exit(Reason);
 rl(eof) -> eof;
-rl(Fd) ->
-    rl(file:read_line(Fd)).
+rl(Fd) -> rl(file:read_line(Fd)).
 
 ensure_binary(L) when is_list(L) -> list_to_binary(L);
 ensure_binary(B) when is_binary(B) -> B.
-
 
 hash(Password) ->
     hash(Password, crypto:strong_rand_bytes(?SALT_LEN)).

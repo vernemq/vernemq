@@ -19,29 +19,34 @@
 -behaviour(gen_event).
 
 %% gen_server callbacks
--export([init/1,
-         handle_event/2,
-         handle_call/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_event/2,
+    handle_call/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
--export([nodes/0,
-         recheck/0,
-         status/0,
-         is_ready/0,
-         if_ready/2,
-         if_ready/3,
-         netsplit_statistics/0,
-         publish/2,
-         remote_enqueue/3,
-         remote_enqueue/4,
-         remote_enqueue_async/3,
-         set_rollout/1,
-         get_rollout/0]).
+-export([
+    nodes/0,
+    recheck/0,
+    status/0,
+    is_ready/0,
+    if_ready/2,
+    if_ready/3,
+    netsplit_statistics/0,
+    publish/2,
+    remote_enqueue/3,
+    remote_enqueue/4,
+    remote_enqueue_async/3,
+    set_rollout/1,
+    get_rollout/0
+]).
 
 -define(SERVER, ?MODULE).
--define(VMQ_CLUSTER_STATUS, vmq_status). %% table is owned by vmq_cluster_mon
+%% table is owned by vmq_cluster_mon
+-define(VMQ_CLUSTER_STATUS, vmq_status).
 -define(ROLLOUT, vmq_cluster_all_queues_setup_check_rollout).
 
 -record(state, {}).
@@ -53,7 +58,8 @@
 
 recheck() ->
     case vmq_peer_service:call_event_handler(?MODULE, recheck, infinity) of
-        ok -> ok;
+        ok ->
+            ok;
         E ->
             lager:warning("error during cluster checkup due to ~p", [E]),
             E
@@ -61,13 +67,20 @@ recheck() ->
 
 -spec nodes() -> [any()].
 nodes() ->
-    [Node || [{Node, true}]
-             <- ets:match(?VMQ_CLUSTER_STATUS, '$1'), Node /= ready].
+    [
+        Node
+     || [{Node, true}] <-
+            ets:match(?VMQ_CLUSTER_STATUS, '$1'),
+        Node /= ready
+    ].
 
 status() ->
-    [{Node, Ready} || [{Node, Ready}]
-             <- ets:match(?VMQ_CLUSTER_STATUS, '$1'), Node /= ready].
-
+    [
+        {Node, Ready}
+     || [{Node, Ready}] <-
+            ets:match(?VMQ_CLUSTER_STATUS, '$1'),
+        Node /= ready
+    ].
 
 -spec is_ready() -> boolean().
 is_ready() ->
@@ -77,10 +90,12 @@ is_ready() ->
 -spec netsplit_statistics() -> {non_neg_integer(), non_neg_integer()}.
 netsplit_statistics() ->
     case catch ets:lookup(?VMQ_CLUSTER_STATUS, ready) of
-    [{ready, {_Ready, NetsplitDetectedCount, NetsplitResolvedCount}}] ->
-    {NetsplitDetectedCount, NetsplitResolvedCount};
-    {'EXIT', {badarg, _}} -> {error, vmq_status_table_down} % we don't have a vmq_status ETS table
-    end.    
+        [{ready, {_Ready, NetsplitDetectedCount, NetsplitResolvedCount}}] ->
+            {NetsplitDetectedCount, NetsplitResolvedCount};
+        % we don't have a vmq_status ETS table
+        {'EXIT', {badarg, _}} ->
+            {error, vmq_status_table_down}
+    end.
 
 -spec if_ready(_, _) -> any().
 if_ready(Fun, Args) ->
@@ -107,21 +122,25 @@ publish(Node, Msg) ->
             vmq_cluster_node:publish(Pid, Msg)
     end.
 
--spec remote_enqueue(node(), Term, BufferIfUnreachable)
-        -> ok | {error, term()}
-        when Term :: {enqueue_many, subscriber_id(), Msgs::term(), Opts::map()}
-                   | {enqueue, Queue::term(), Msgs::term()},
-             BufferIfUnreachable :: boolean().
+-spec remote_enqueue(node(), Term, BufferIfUnreachable) ->
+    ok | {error, term()}
+when
+    Term ::
+        {enqueue_many, subscriber_id(), Msgs :: term(), Opts :: map()}
+        | {enqueue, Queue :: term(), Msgs :: term()},
+    BufferIfUnreachable :: boolean().
 remote_enqueue(Node, Term, BufferIfUnreachable) ->
     Timeout = vmq_config:get_env(remote_enqueue_timeout),
     remote_enqueue(Node, Term, BufferIfUnreachable, Timeout).
 
--spec remote_enqueue(node(), Term, BufferIfUnreachable, Timeout)
-        -> ok | {error, term()}
-        when Term :: {enqueue_many, subscriber_id(), Msgs::term(), Opts::map()}
-                   | {enqueue, Queue::term(), Msgs::term()},
-             BufferIfUnreachable :: boolean(),
-             Timeout :: non_neg_integer() | infinity.
+-spec remote_enqueue(node(), Term, BufferIfUnreachable, Timeout) ->
+    ok | {error, term()}
+when
+    Term ::
+        {enqueue_many, subscriber_id(), Msgs :: term(), Opts :: map()}
+        | {enqueue, Queue :: term(), Msgs :: term()},
+    BufferIfUnreachable :: boolean(),
+    Timeout :: non_neg_integer() | infinity.
 remote_enqueue(Node, Term, BufferIfUnreachable, Timeout) ->
     case vmq_cluster_node_sup:get_cluster_node(Node) of
         {error, not_found} ->
@@ -141,10 +160,11 @@ remote_enqueue_async(Node, Term, BufferIfUnreachable) ->
 -spec set_rollout(boolean()) -> any().
 set_rollout(RolloutValue) ->
     case vmq_peer_service:call_event_handler(?MODULE, {rollout, RolloutValue}, infinity) of
-      ok -> ok;
-      E ->
-        lager:warning("error setting all_queues_setup_check rollout value ~p", [E]),
-        E
+        ok ->
+            ok;
+        E ->
+            lager:warning("error setting all_queues_setup_check rollout value ~p", [E]),
+            E
     end.
 
 -spec get_rollout() -> boolean().
@@ -206,63 +226,69 @@ check_ready() ->
 
 check_ready(Nodes) ->
     check_ready(Nodes, []),
-    ets:foldl(fun({ready, _}, _) ->
+    ets:foldl(
+        fun
+            ({ready, _}, _) ->
+                ignore;
+            ({Node, _IsReady}, _) ->
+                case lists:member(Node, Nodes) of
+                    true ->
                         ignore;
-                   ({Node, _IsReady}, _) ->
-                        case lists:member(Node, Nodes) of
-                            true ->
-                                ignore;
-                            false ->
-                                %% Node is not part of the cluster anymore
-                                lager:warning("remove supervision for node ~p", [Node]),
-                                _ = vmq_cluster_node_sup:del_cluster_node(Node),
-                                ets:delete(?VMQ_CLUSTER_STATUS, Node)
-                        end
-                end, ok, ?VMQ_CLUSTER_STATUS),
+                    false ->
+                        %% Node is not part of the cluster anymore
+                        lager:warning("remove supervision for node ~p", [Node]),
+                        _ = vmq_cluster_node_sup:del_cluster_node(Node),
+                        ets:delete(?VMQ_CLUSTER_STATUS, Node)
+                end
+        end,
+        ok,
+        ?VMQ_CLUSTER_STATUS
+    ),
     ok.
 
-check_ready([Node|Rest], Acc) ->
-    IsReady = case rpc:call(Node, erlang, whereis, [vmq_server_sup]) of
-                       Pid when is_pid(Pid) -> true;
-                       _ -> false
-                   end,
+check_ready([Node | Rest], Acc) ->
+    IsReady =
+        case rpc:call(Node, erlang, whereis, [vmq_server_sup]) of
+            Pid when is_pid(Pid) -> true;
+            _ -> false
+        end,
     ok = vmq_cluster_node_sup:ensure_cluster_node(Node),
     %% We should only say we're ready if we've established a
     %% connection to the remote node.
     Status = vmq_cluster_node_sup:node_status(Node),
     IsReady1 = IsReady andalso lists:member(Status, [up, init]),
-    IsReady2 = case get_rollout() andalso rpc:call(Node, vmq_reg_mgr, all_queues_setup_status, []) of
-                 ready -> true;
-                 false -> true;
-                 _ -> false
-               end,
+    IsReady2 =
+        case get_rollout() andalso rpc:call(Node, vmq_reg_mgr, all_queues_setup_status, []) of
+            ready -> true;
+            false -> true;
+            _ -> false
+        end,
     IsReady3 = IsReady2 andalso IsReady1,
-    check_ready(Rest, [{Node, IsReady3}|Acc]);
+    check_ready(Rest, [{Node, IsReady3} | Acc]);
 check_ready([], Acc) ->
     OldObj =
-    case ets:lookup(?VMQ_CLUSTER_STATUS, ready) of
-        [] -> {true, 0, 0};
-        [{ready, Obj}] -> Obj
-    end,
+        case ets:lookup(?VMQ_CLUSTER_STATUS, ready) of
+            [] -> {true, 0, 0};
+            [{ready, Obj}] -> Obj
+        end,
     NewObj =
-    case {all_nodes_alive(Acc), OldObj} of
-        {true, {true, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
-            % Cluster was consistent, is still consistent
-            {true, NetsplitDetectedCnt, NetsplitResolvedCnt};
-        {true, {false, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
-            % Cluster was inconsistent, netsplit resolved
-            {true, NetsplitDetectedCnt, NetsplitResolvedCnt + 1};
-        {false, {true, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
-            % Cluster was consistent, but isn't anymore
-            {false, NetsplitDetectedCnt + 1, NetsplitResolvedCnt};
-        {false, {false, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
-            % Cluster was inconsistent, is still inconsistent
-            {false, NetsplitDetectedCnt, NetsplitResolvedCnt}
-    end,
-    ets:insert(?VMQ_CLUSTER_STATUS, [{ready, NewObj}|Acc]).
+        case {all_nodes_alive(Acc), OldObj} of
+            {true, {true, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
+                % Cluster was consistent, is still consistent
+                {true, NetsplitDetectedCnt, NetsplitResolvedCnt};
+            {true, {false, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
+                % Cluster was inconsistent, netsplit resolved
+                {true, NetsplitDetectedCnt, NetsplitResolvedCnt + 1};
+            {false, {true, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
+                % Cluster was consistent, but isn't anymore
+                {false, NetsplitDetectedCnt + 1, NetsplitResolvedCnt};
+            {false, {false, NetsplitDetectedCnt, NetsplitResolvedCnt}} ->
+                % Cluster was inconsistent, is still inconsistent
+                {false, NetsplitDetectedCnt, NetsplitResolvedCnt}
+        end,
+    ets:insert(?VMQ_CLUSTER_STATUS, [{ready, NewObj} | Acc]).
 
--spec all_nodes_alive([{NodeName::atom(), IsReady::boolean()}]) -> boolean().
-all_nodes_alive([{_NodeName, _IsReady = false}|_]) -> false;
-all_nodes_alive([{_NodeName, _IsReady = true} |Rest]) ->
-    all_nodes_alive(Rest);
+-spec all_nodes_alive([{NodeName :: atom(), IsReady :: boolean()}]) -> boolean().
+all_nodes_alive([{_NodeName, _IsReady = false} | _]) -> false;
+all_nodes_alive([{_NodeName, _IsReady = true} | Rest]) -> all_nodes_alive(Rest);
 all_nodes_alive([]) -> true.

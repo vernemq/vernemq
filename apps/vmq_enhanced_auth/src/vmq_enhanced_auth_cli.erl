@@ -17,13 +17,17 @@
 
 register() ->
     ConfigKeys =
-    ["vmq_enhanced_auth.acl_file",
-     "vmq_enhanced_auth.acl_reload_interval",
-      "vmq_enhanced_auth.enable_jwt_auth",
-      "vmq_enhanced_auth.enable_acl_hooks",
-      "vmq_enhanced_auth.secret_key"],
-    [clique:register_config([Key], fun register_config_callback/3)
-     || Key <- ConfigKeys],
+        [
+            "vmq_enhanced_auth.acl_file",
+            "vmq_enhanced_auth.acl_reload_interval",
+            "vmq_enhanced_auth.enable_jwt_auth",
+            "vmq_enhanced_auth.enable_acl_hooks",
+            "vmq_enhanced_auth.secret_key"
+        ],
+    [
+        clique:register_config([Key], fun register_config_callback/3)
+     || Key <- ConfigKeys
+    ],
     ok = clique:register_config_whitelist(ConfigKeys).
 
 register_config_callback(_, _, _) ->

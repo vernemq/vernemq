@@ -1,15 +1,15 @@
-{application, vmq_proto,
- [{description, "VerneMQ Proto Module"},
-  {vsn, git},
-  {registered, []},
-  {mod, { vmq_proto, []}},
-  {applications,
-   [kernel,
-    stdlib
-   ]},
-  {modules, []},
+{application, vmq_proto, [
+    {description, "VerneMQ Proto Module"},
+    {vsn, git},
+    {registered, []},
+    {mod, {vmq_proto, []}},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {modules, []},
 
-  {maintainers, []},
-  {licenses, ["Apache 2.0"]},
-  {links, []}
- ]}.
+    {maintainers, []},
+    {licenses, ["Apache 2.0"]},
+    {links, []}
+]}.

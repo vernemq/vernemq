@@ -16,21 +16,29 @@
 -behaviour(gen_server2).
 
 %% API
--export([start_link/0,
-         fold/4,
-         add_complex_topics/1,
-         add_complex_topic/2,
-         delete_complex_topics/1,
-         delete_complex_topic/2,
-         get_complex_topics/0,
-         safe_rpc/4]).
+-export([
+    start_link/0,
+    fold/4,
+    add_complex_topics/1,
+    add_complex_topic/2,
+    delete_complex_topics/1,
+    delete_complex_topic/2,
+    get_complex_topics/0,
+    safe_rpc/4
+]).
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-         code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
--record(state, {status=init}).
+-record(state, {status = init}).
 -record(trie, {edge, node_id}).
--record(trie_node, {node_id, edge_count=0, topic}).
+-record(trie_node, {node_id, edge_count = 0, topic}).
 -record(trie_edge, {node_id, word}).
 
 %%%===================================================================
@@ -55,31 +63,43 @@ fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
 
 add_complex_topics(Topics) ->
     Nodes = vmq_cluster:nodes(),
-    Query = lists:foldl(fun(T, Acc) ->
-                                lists:foreach(fun(Node) -> safe_rpc(Node, ?MODULE, add_complex_topic, ["", T]) end, Nodes),
-                                [[?SADD, "wildcard_topics", term_to_binary(T)] | Acc]
-                        end, [], Topics),
+    Query = lists:foldl(
+        fun(T, Acc) ->
+            lists:foreach(
+                fun(Node) -> safe_rpc(Node, ?MODULE, add_complex_topic, ["", T]) end, Nodes
+            ),
+            [[?SADD, "wildcard_topics", term_to_binary(T)] | Acc]
+        end,
+        [],
+        Topics
+    ),
     vmq_redis:pipelined_query(redis_client, Query, ?ADD_COMPLEX_TOPICS_OPERATION),
     ok.
 
 add_complex_topic(MP, Topic) ->
     MPTopic = {MP, Topic},
     case ets:lookup(vmq_redis_trie_node, MPTopic) of
-        [#trie_node{topic=Topic}] ->
+        [#trie_node{topic = Topic}] ->
             ignore;
         _ ->
             %% add trie path
             _ = [trie_add_path(MP, Triple) || Triple <- vmq_topic:triples(Topic)],
             %% add last node
-            ets:insert(vmq_redis_trie_node, #trie_node{node_id=MPTopic, topic=Topic})
+            ets:insert(vmq_redis_trie_node, #trie_node{node_id = MPTopic, topic = Topic})
     end.
 
 delete_complex_topics(Topics) ->
     Nodes = vmq_cluster:nodes(),
-    Query = lists:foldl(fun(T, Acc) ->
-                                lists:foreach(fun(Node) -> safe_rpc(Node, ?MODULE, delete_complex_topic, ["", T]) end, Nodes),
-                                Acc ++ [[?SREM, "wildcard_topics", term_to_binary(T)]]
-                        end, [], Topics),
+    Query = lists:foldl(
+        fun(T, Acc) ->
+            lists:foreach(
+                fun(Node) -> safe_rpc(Node, ?MODULE, delete_complex_topic, ["", T]) end, Nodes
+            ),
+            Acc ++ [[?SREM, "wildcard_topics", term_to_binary(T)]]
+        end,
+        [],
+        Topics
+    ),
     vmq_redis:pipelined_query(redis_client, Query, ?DELETE_COMPLEX_TOPICS_OPERATION),
     ok.
 
@@ -94,9 +114,18 @@ delete_complex_topic(MP, Topic) ->
     end.
 
 get_complex_topics() ->
-    [vmq_topic:unword(T) || T <-  ets:select(vmq_redis_trie_node, [{#trie_node{node_id={"", '$1'}, topic='$1', edge_count=0}, [{'=/=', '$1', undefined}], ['$1']}])].
+    [
+        vmq_topic:unword(T)
+     || T <- ets:select(vmq_redis_trie_node, [
+            {
+                #trie_node{node_id = {"", '$1'}, topic = '$1', edge_count = 0},
+                [{'=/=', '$1', undefined}],
+                ['$1']
+            }
+        ])
+    ].
 
--spec safe_rpc(Node::node(), Mod::module(), Fun::atom(), [any()]) -> any().
+-spec safe_rpc(Node :: node(), Mod :: module(), Fun :: atom(), [any()]) -> any().
 safe_rpc(Node, Module, Fun, Args) ->
     try rpc:call(Node, Module, Fun, Args) of
         Result ->
@@ -104,7 +133,8 @@ safe_rpc(Node, Module, Fun, Args) ->
     catch
         exit:{noproc, _NoProcDetails} ->
             {badrpc, rpc_process_down};
-        Type:Reason -> {Type, Reason}
+        Type:Reason ->
+            {Type, Reason}
     end.
 
 %%%===================================================================
@@ -123,17 +153,26 @@ safe_rpc(Node, Module, Fun, Args) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    DefaultETSOpts = [public, named_table,
-                      {read_concurrency, true}],
-    _ = ets:new(vmq_redis_trie, [{keypos, 2}|DefaultETSOpts]),
-    _ = ets:new(vmq_redis_trie_node, [{keypos, 2}|DefaultETSOpts]),
+    DefaultETSOpts = [
+        public,
+        named_table,
+        {read_concurrency, true}
+    ],
+    _ = ets:new(vmq_redis_trie, [{keypos, 2} | DefaultETSOpts]),
+    _ = ets:new(vmq_redis_trie_node, [{keypos, 2} | DefaultETSOpts]),
     _ = ets:new(vmq_redis_lua_scripts, DefaultETSOpts),
-    SentinelEndpoints = vmq_schema_util:parse_list(application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")),
+    SentinelEndpoints = vmq_schema_util:parse_list(
+        application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
+    ),
     RedisDB = application:get_env(vmq_server, redis_database, 0),
-    {ok, _Pid} = eredis:start_link([{sentinel, [{endpoints, SentinelEndpoints}]}, {database, RedisDB}, {name, {local, redis_client}}]),
+    {ok, _Pid} = eredis:start_link([
+        {sentinel, [{endpoints, SentinelEndpoints}]},
+        {database, RedisDB},
+        {name, {local, redis_client}}
+    ]),
     load_redis_functions(),
     initialize_trie(),
-    {ok, #state{status=ready}}.
+    {ok, #state{status = ready}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -208,23 +247,41 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 fetchSubscribers(Topics, MP) ->
     UnwordedTopics = [vmq_topic:unword(T) || T <- Topics],
-    {ok, SubscribersList} = vmq_redis:query(redis_client, [?FCALL,
-                                   ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
-                                   0,
-                                   MP,
-                                   length(UnwordedTopics) | UnwordedTopics], ?FCALL, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS),
+    {ok, SubscribersList} = vmq_redis:query(
+        redis_client,
+        [
+            ?FCALL,
+            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
+            0,
+            MP,
+            length(UnwordedTopics)
+            | UnwordedTopics
+        ],
+        ?FCALL,
+        ?FETCH_MATCHED_TOPIC_SUBSCRIBERS
+    ),
     SubscribersList.
 
-fold_(_, [], _, Acc) -> Acc;
-fold_({MP, _} = SubscriberId, [ SubscriberInfoList | SubscribersList], FoldFun, Acc) ->
+fold_(_, [], _, Acc) ->
+    Acc;
+fold_({MP, _} = SubscriberId, [SubscriberInfoList | SubscribersList], FoldFun, Acc) ->
     case SubscriberInfoList of
         [NodeBinary, ClientId, QoSBinary] ->
-            SubscriberInfo = {binary_to_atom(NodeBinary), {MP, ClientId}, binary_to_term(QoSBinary)},
-            fold_(SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc));
+            SubscriberInfo = {
+                binary_to_atom(NodeBinary), {MP, ClientId}, binary_to_term(QoSBinary)
+            },
+            fold_(
+                SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc)
+            );
         [NodeBinary, Group, ClientId, QoSBinary] ->
-            SubscriberInfo = {binary_to_atom(NodeBinary), Group, {MP, ClientId}, binary_to_term(QoSBinary)},
-            fold_(SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc));
-        _ -> fold_(SubscriberId, SubscribersList, FoldFun, Acc)
+            SubscriberInfo = {
+                binary_to_atom(NodeBinary), Group, {MP, ClientId}, binary_to_term(QoSBinary)
+            },
+            fold_(
+                SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc)
+            );
+        _ ->
+            fold_(SubscriberId, SubscribersList, FoldFun, Acc)
     end.
 
 load_redis_functions() ->
@@ -233,21 +290,56 @@ load_redis_functions() ->
     {ok, SubscribeScript} = file:read_file(LuaDir ++ "/subscribe.lua"),
     {ok, UnsubscribeScript} = file:read_file(LuaDir ++ "/unsubscribe.lua"),
     {ok, DeleteSubscriberScript} = file:read_file(LuaDir ++ "/delete_subscriber.lua"),
-    {ok, FetchMatchedTopicSubscribersScript} = file:read_file(LuaDir ++ "/fetch_matched_topic_subscribers.lua"),
+    {ok, FetchMatchedTopicSubscribersScript} = file:read_file(
+        LuaDir ++ "/fetch_matched_topic_subscribers.lua"
+    ),
     {ok, FetchSubscriberScript} = file:read_file(LuaDir ++ "/fetch_subscriber.lua"),
 
-    {ok, <<"remap_subscriber">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", RemapSubscriberScript], ?FUNCTION_LOAD, ?REMAP_SUBSCRIBER),
-    {ok, <<"subscribe">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", SubscribeScript], ?FUNCTION_LOAD, ?SUBSCRIBE),
-    {ok, <<"unsubscribe">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", UnsubscribeScript], ?FUNCTION_LOAD, ?UNSUBSCRIBE),
-    {ok, <<"delete_subscriber">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", DeleteSubscriberScript], ?FUNCTION_LOAD, ?DELETE_SUBSCRIBER),
-    {ok, <<"fetch_matched_topic_subscribers">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", FetchMatchedTopicSubscribersScript], ?FUNCTION_LOAD, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS),
-    {ok, <<"fetch_subscriber">>} = vmq_redis:query(redis_client, [?FUNCTION, "LOAD", "REPLACE", FetchSubscriberScript], ?FUNCTION_LOAD, ?FETCH_SUBSCRIBER).
+    {ok, <<"remap_subscriber">>} = vmq_redis:query(
+        redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", RemapSubscriberScript],
+        ?FUNCTION_LOAD,
+        ?REMAP_SUBSCRIBER
+    ),
+    {ok, <<"subscribe">>} = vmq_redis:query(
+        redis_client, [?FUNCTION, "LOAD", "REPLACE", SubscribeScript], ?FUNCTION_LOAD, ?SUBSCRIBE
+    ),
+    {ok, <<"unsubscribe">>} = vmq_redis:query(
+        redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", UnsubscribeScript],
+        ?FUNCTION_LOAD,
+        ?UNSUBSCRIBE
+    ),
+    {ok, <<"delete_subscriber">>} = vmq_redis:query(
+        redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", DeleteSubscriberScript],
+        ?FUNCTION_LOAD,
+        ?DELETE_SUBSCRIBER
+    ),
+    {ok, <<"fetch_matched_topic_subscribers">>} = vmq_redis:query(
+        redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", FetchMatchedTopicSubscribersScript],
+        ?FUNCTION_LOAD,
+        ?FETCH_MATCHED_TOPIC_SUBSCRIBERS
+    ),
+    {ok, <<"fetch_subscriber">>} = vmq_redis:query(
+        redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", FetchSubscriberScript],
+        ?FUNCTION_LOAD,
+        ?FETCH_SUBSCRIBER
+    ).
 
 initialize_trie() ->
-    {ok, TopicList} = vmq_redis:query(redis_client, [?SMEMBERS, "wildcard_topics"], ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION),
-    lists:foreach(fun(T) ->
-                          Topic = binary_to_term(T),
-                          add_complex_topic("", Topic) end, TopicList),
+    {ok, TopicList} = vmq_redis:query(
+        redis_client, [?SMEMBERS, "wildcard_topics"], ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION
+    ),
+    lists:foreach(
+        fun(T) ->
+            Topic = binary_to_term(T),
+            add_complex_topic("", Topic)
+        end,
+        TopicList
+    ),
     ok.
 
 match(MP, Topic) when is_list(MP) and is_list(Topic) ->
@@ -256,33 +348,35 @@ match(MP, Topic) when is_list(MP) and is_list(Topic) ->
 
 %% [MQTT-4.7.2-1] The Server MUST NOT match Topic Filters starting with a
 %% wildcard character (# or +) with Topic Names beginning with a $ character.
-match(MP, [<<"$",_/binary>>|_] = Topic, [#trie_node{topic=[<<"#">>]}|Rest], Acc) ->
+match(MP, [<<"$", _/binary>> | _] = Topic, [#trie_node{topic = [<<"#">>]} | Rest], Acc) ->
     match(MP, Topic, Rest, Acc);
-match(MP, [<<"$",_/binary>>|_] = Topic, [#trie_node{topic=[<<"+">>|_]}|Rest], Acc) ->
+match(MP, [<<"$", _/binary>> | _] = Topic, [#trie_node{topic = [<<"+">> | _]} | Rest], Acc) ->
     match(MP, Topic, Rest, Acc);
-
-match(MP, Topic, [#trie_node{topic=Name}|Rest], Acc) when Name =/= undefined ->
+match(MP, Topic, [#trie_node{topic = Name} | Rest], Acc) when Name =/= undefined ->
     match(MP, Topic, Rest, [Name | Acc]);
-match(MP, Topic, [_|Rest], Acc) ->
+match(MP, Topic, [_ | Rest], Acc) ->
     match(MP, Topic, Rest, Acc);
-match(_, _, [], Acc) -> Acc.
+match(_, _, [], Acc) ->
+    Acc.
 
 trie_add_path(MP, {Node, Word, Child}) ->
     NodeId = {MP, Node},
-    Edge = #trie_edge{node_id=NodeId, word=Word},
+    Edge = #trie_edge{node_id = NodeId, word = Word},
     case ets:lookup(vmq_redis_trie_node, NodeId) of
-        [TrieNode = #trie_node{edge_count=Count}] ->
+        [TrieNode = #trie_node{edge_count = Count}] ->
             case ets:lookup(vmq_redis_trie, Edge) of
                 [] ->
-                    ets:insert(vmq_redis_trie_node,
-                               TrieNode#trie_node{edge_count=Count + 1}),
-                    ets:insert(vmq_redis_trie, #trie{edge=Edge, node_id=Child});
+                    ets:insert(
+                        vmq_redis_trie_node,
+                        TrieNode#trie_node{edge_count = Count + 1}
+                    ),
+                    ets:insert(vmq_redis_trie, #trie{edge = Edge, node_id = Child});
                 [_] ->
                     ok
             end;
         [] ->
-            ets:insert(vmq_redis_trie_node, #trie_node{node_id=NodeId, edge_count=1}),
-            ets:insert(vmq_redis_trie, #trie{edge=Edge, node_id=Child})
+            ets:insert(vmq_redis_trie_node, #trie_node{node_id = NodeId, edge_count = 1}),
+            ets:insert(vmq_redis_trie, #trie{edge = Edge, node_id = Child})
     end.
 
 trie_match(MP, Words) ->
@@ -291,22 +385,29 @@ trie_match(MP, Words) ->
 trie_match(MP, Node, [], ResAcc) ->
     NodeId = {MP, Node},
     ets:lookup(vmq_redis_trie_node, NodeId) ++ 'trie_match_#'(NodeId, ResAcc);
-trie_match(MP, Node, [W|Words], ResAcc) ->
+trie_match(MP, Node, [W | Words], ResAcc) ->
     NodeId = {MP, Node},
     lists:foldl(
-      fun(WArg, Acc) ->
-              case ets:lookup(vmq_redis_trie,
-                              #trie_edge{node_id=NodeId, word=WArg}) of
-                  [#trie{node_id=ChildId}] ->
-                      trie_match(MP, ChildId, Words, Acc);
-                  [] ->
-                      Acc
-              end
-      end, 'trie_match_#'(NodeId, ResAcc), [W, <<"+">>]).
+        fun(WArg, Acc) ->
+            case
+                ets:lookup(
+                    vmq_redis_trie,
+                    #trie_edge{node_id = NodeId, word = WArg}
+                )
+            of
+                [#trie{node_id = ChildId}] ->
+                    trie_match(MP, ChildId, Words, Acc);
+                [] ->
+                    Acc
+            end
+        end,
+        'trie_match_#'(NodeId, ResAcc),
+        [W, <<"+">>]
+    ).
 
 'trie_match_#'({MP, _} = NodeId, ResAcc) ->
-    case ets:lookup(vmq_redis_trie, #trie_edge{node_id=NodeId, word= <<"#">>}) of
-        [#trie{node_id=ChildId}] ->
+    case ets:lookup(vmq_redis_trie, #trie_edge{node_id = NodeId, word = <<"#">>}) of
+        [#trie{node_id = ChildId}] ->
             ets:lookup(vmq_redis_trie_node, {MP, ChildId}) ++ ResAcc;
         [] ->
             ResAcc
@@ -314,9 +415,9 @@ trie_match(MP, Node, [W|Words], ResAcc) ->
 
 trie_delete_path(_, []) ->
     ok;
-trie_delete_path(MP, [{Node, Word, _}|RestPath]) ->
+trie_delete_path(MP, [{Node, Word, _} | RestPath]) ->
     NodeId = {MP, Node},
-    Edge = #trie_edge{node_id=NodeId, word=Word},
+    Edge = #trie_edge{node_id = NodeId, word = Word},
     ets:delete(vmq_redis_trie, Edge),
     case ets:lookup(vmq_redis_trie_node, NodeId) of
         [_] ->

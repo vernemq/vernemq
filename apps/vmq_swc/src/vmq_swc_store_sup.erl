@@ -34,7 +34,7 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
--spec start_link(SwcGroup::atom()) -> {ok, Pid::pid()} | ignore | {error, Error::term()}.
+-spec start_link(SwcGroup :: atom()) -> {ok, Pid :: pid()} | ignore | {error, Error :: term()}.
 start_link(SwcGroup) ->
     start_link(SwcGroup, [{membership_strategy, auto}]).
 
@@ -57,17 +57,18 @@ start_link(SwcGroup, Opts) ->
 %% @end
 %%--------------------------------------------------------------------
 init([SwcGroup, Opts]) ->
-
     MembershipStrategy = proplists:get_value(membership_strategy, Opts, auto),
 
     PeerName = node(),
 
     DbBackend =
-    case proplists:get_value(db_backend, Opts, application:get_env(vmq_swc, db_backend, leveldb)) of
-        rocksdb -> vmq_swc_db_rocksdb;
-        leveled -> vmq_swc_db_leveled;
-        leveldb -> vmq_swc_db_leveldb
-    end,
+        case
+            proplists:get_value(db_backend, Opts, application:get_env(vmq_swc, db_backend, leveldb))
+        of
+            rocksdb -> vmq_swc_db_rocksdb;
+            leveled -> vmq_swc_db_leveled;
+            leveldb -> vmq_swc_db_leveldb
+        end,
 
     DbOpts = proplists:get_value(db_opts, Opts, []),
 
@@ -75,25 +76,36 @@ init([SwcGroup, Opts]) ->
     % this table is created by the root supervisor
     ets:insert(vmq_swc_group_config, {SwcGroup, Config}),
 
-    ExchangeSupChildSpec = #{id => {vmq_swc_exchange_sup, SwcGroup},
-                             start => {vmq_swc_exchange_sup, start_link, [Config]},
-                             type => supervisor},
+    ExchangeSupChildSpec = #{
+        id => {vmq_swc_exchange_sup, SwcGroup},
+        start => {vmq_swc_exchange_sup, start_link, [Config]},
+        type => supervisor
+    },
 
-    TransportChildSpec = #{id => {vmq_swc_edist_srv, SwcGroup},
-                           start => {vmq_swc_edist_srv, start_link, [Config]}},
+    TransportChildSpec = #{
+        id => {vmq_swc_edist_srv, SwcGroup},
+        start => {vmq_swc_edist_srv, start_link, [Config]}
+    },
 
     DBChildSpecs = vmq_swc_db:childspecs(DbBackend, Config, DbOpts),
 
-    BatcherChildSpec = #{id => {vmq_swc_store_batcher, SwcGroup},
-                         start => {vmq_swc_store_batcher, start_link, [Config]}},
+    BatcherChildSpec = #{
+        id => {vmq_swc_store_batcher, SwcGroup},
+        start => {vmq_swc_store_batcher, start_link, [Config]}
+    },
 
-    StoreChildSpec = #{id => {vmq_swc_store, SwcGroup},
-                       start => {vmq_swc_store, start_link, [Config]}},
+    StoreChildSpec = #{
+        id => {vmq_swc_store, SwcGroup},
+        start => {vmq_swc_store, start_link, [Config]}
+    },
 
-    MembershipChildSpec = #{id => {vmq_swc_group_membership, SwcGroup},
-                            start => {vmq_swc_group_membership, start_link,
-                                      [Config, MembershipStrategy, {vmq_swc_edist_srv, []}]}},
-
+    MembershipChildSpec = #{
+        id => {vmq_swc_group_membership, SwcGroup},
+        start =>
+            {vmq_swc_group_membership, start_link, [
+                Config, MembershipStrategy, {vmq_swc_edist_srv, []}
+            ]}
+    },
 
     RestartStrategy = one_for_one,
     MaxRestarts = 1000,
@@ -101,9 +113,20 @@ init([SwcGroup, Opts]) ->
 
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
 
-    {ok, {SupFlags, DBChildSpecs ++ [TransportChildSpec, ExchangeSupChildSpec, MembershipChildSpec, BatcherChildSpec, StoreChildSpec]}}.
+    {ok,
+        {SupFlags,
+            DBChildSpecs ++
+                [
+                    TransportChildSpec,
+                    ExchangeSupChildSpec,
+                    MembershipChildSpec,
+                    BatcherChildSpec,
+                    StoreChildSpec
+                ]}}.
 
-config(PeerName, SwcGroup, DbBackend, TransportMod) when is_atom(SwcGroup) and is_atom(TransportMod) ->
+config(PeerName, SwcGroup, DbBackend, TransportMod) when
+    is_atom(SwcGroup) and is_atom(TransportMod)
+->
     SwcGroupStr = atom_to_list(SwcGroup),
     DBName = list_to_atom("vmq_swc_db_" ++ SwcGroupStr),
     StoreName = list_to_atom("vmq_swc_store_" ++ SwcGroupStr),
@@ -111,13 +134,13 @@ config(PeerName, SwcGroup, DbBackend, TransportMod) when is_atom(SwcGroup) and i
     BatcherName = list_to_atom("vmq_swc_store_batcher_" ++ SwcGroupStr),
     MembershipName = list_to_atom("vmq_swc_group_membership_" ++ SwcGroupStr),
     #swc_config{
-       peer=PeerName,
-       group=SwcGroup,
-       db=DBName,
-       db_backend=DbBackend,
-       store=StoreName,
-       r_o_w_cache=CacheName,
-       batcher=BatcherName,
-       membership=MembershipName,
-       transport=TransportMod
-      }.
+        peer = PeerName,
+        group = SwcGroup,
+        db = DBName,
+        db_backend = DbBackend,
+        store = StoreName,
+        r_o_w_cache = CacheName,
+        batcher = BatcherName,
+        membership = MembershipName,
+        transport = TransportMod
+    }.

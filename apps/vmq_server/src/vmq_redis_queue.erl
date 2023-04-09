@@ -9,12 +9,14 @@
 -export([start_link/2, enqueue/3]).
 
 %% gen_server callbacks
--export([init/1,
+-export([
+    init/1,
     handle_call/3,
     handle_cast/2,
     handle_info/2,
     terminate/2,
-    code_change/3]).
+    code_change/3
+]).
 
 -record(state, {shard, interval, timer}).
 
@@ -28,20 +30,29 @@ start_link(RegName, RedisNode) ->
 enqueue(Node, SubscriberBin, MsgBin) when is_binary(SubscriberBin) and is_binary(MsgBin) ->
     RedisClient = gen_redis_producer_client(SubscriberBin),
     MainQueueKey = "mainQueue" ++ "::" ++ atom_to_list(Node),
-    case vmq_redis:query(RedisClient, [?FCALL,
-                                       ?ENQUEUE_MSG,
-                                       1,
-                                       MainQueueKey,
-                                       SubscriberBin,
-                                       MsgBin
-                                      ], ?FCALL, ?ENQUEUE_MSG) of
+    case
+        vmq_redis:query(
+            RedisClient,
+            [
+                ?FCALL,
+                ?ENQUEUE_MSG,
+                1,
+                MainQueueKey,
+                SubscriberBin,
+                MsgBin
+            ],
+            ?FCALL,
+            ?ENQUEUE_MSG
+        )
+    of
         {ok, MainQueueSize} ->
-            vmq_metrics:pretimed_measurement({redis_main_queue,
-                                              size,
-                                              [{broker_node, Node}, {redis_client, RedisClient}]},
-                                              binary_to_integer(MainQueueSize)),
+            vmq_metrics:pretimed_measurement(
+                {redis_main_queue, size, [{broker_node, Node}, {redis_client, RedisClient}]},
+                binary_to_integer(MainQueueSize)
+            ),
             ok;
-        {error, _} = Res -> Res
+        {error, _} = Res ->
+            Res
     end.
 
 %%%===================================================================
@@ -52,7 +63,7 @@ init([RedisShard]) ->
 init_state(RedisShard, State) ->
     Interval = application:get_env(vmq_server, redis_queue_sleep_interval, 0),
     NTRef = erlang:send_after(Interval, self(), poll_redis_main_queue),
-    State#state{shard=RedisShard, interval=Interval, timer=NTRef}.
+    State#state{shard = RedisShard, interval = Interval, timer = NTRef}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -95,14 +106,22 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(poll_redis_main_queue, #state{shard=RedisNode, interval=Interval} = State) ->
-    MainQueue = "mainQueue::"++ atom_to_list(node()),
-    case vmq_redis:query(RedisNode, [?FCALL,
-                              ?POLL_MAIN_QUEUE,
-                              1,
-                              MainQueue,
-                              20
-                             ], ?FCALL, ?POLL_MAIN_QUEUE) of
+handle_info(poll_redis_main_queue, #state{shard = RedisNode, interval = Interval} = State) ->
+    MainQueue = "mainQueue::" ++ atom_to_list(node()),
+    case
+        vmq_redis:query(
+            RedisNode,
+            [
+                ?FCALL,
+                ?POLL_MAIN_QUEUE,
+                1,
+                MainQueue,
+                20
+            ],
+            ?FCALL,
+            ?POLL_MAIN_QUEUE
+        )
+    of
         {ok, undefined} ->
             erlang:send_after(Interval, self(), poll_redis_main_queue);
         {ok, Msgs} ->
@@ -117,10 +136,13 @@ handle_info(poll_redis_main_queue, #state{shard=RedisNode, interval=Interval} = 
                             {SubInfo, Msg} = binary_to_term(MsgBin),
                             vmq_reg:enqueue_msg({SId, SubInfo}, Msg);
                         RandSubs when is_list(RandSubs) ->
-                            vmq_shared_subscriptions:publish_to_group(binary_to_term(MsgBin),
-                                                                      RandSubs,
-                                                                      {0,0});
-                        UnknownMsg -> lager:error("Unknown Msg in Redis Main Queue : ~p", [UnknownMsg])
+                            vmq_shared_subscriptions:publish_to_group(
+                                binary_to_term(MsgBin),
+                                RandSubs,
+                                {0, 0}
+                            );
+                        UnknownMsg ->
+                            lager:error("Unknown Msg in Redis Main Queue : ~p", [UnknownMsg])
                     end
                 end,
                 Msgs
@@ -130,7 +152,8 @@ handle_info(poll_redis_main_queue, #state{shard=RedisNode, interval=Interval} = 
             erlang:send_after(Interval, self(), poll_redis_main_queue)
     end,
     {noreply, State};
-handle_info(_Info, State) -> {noreply, State}.
+handle_info(_Info, State) ->
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% @private

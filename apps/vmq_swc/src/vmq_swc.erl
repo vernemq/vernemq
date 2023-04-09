@@ -15,29 +15,36 @@
 -module(vmq_swc).
 
 -export([start/0, start/1, stop/0]).
--export([config/1,
-         members/1,
+-export([
+    config/1,
+    members/1,
 
-         get/4,
-         put/5,
-         put_many/4,
-         delete/3,
-         delete_many/3,
-         fold/5]).
+    get/4,
+    put/5,
+    put_many/4,
+    delete/3,
+    delete_many/3,
+    fold/5
+]).
 
--export([raw_get/3,
-         raw_put/5]).
-
+-export([
+    raw_get/3,
+    raw_put/5
+]).
 
 start() ->
     vmq_swc_plugin:plugin_start().
 
 start(SwcGroup) when is_atom(SwcGroup) ->
     _ = application:ensure_all_started(vmq_swc),
-    supervisor:start_child(vmq_swc_sup,
-                           #{id => {vmq_swc_store_sup, SwcGroup},
-                             start => {vmq_swc_store_sup, start_link, [SwcGroup]},
-                             type => supervisor}).
+    supervisor:start_child(
+        vmq_swc_sup,
+        #{
+            id => {vmq_swc_store_sup, SwcGroup},
+            start => {vmq_swc_store_sup, start_link, [SwcGroup]},
+            type => supervisor
+        }
+    ).
 
 stop() ->
     application:stop(vmq_swc).
@@ -78,17 +85,21 @@ put(SwcGroup, Prefix, Key, ValueOrFun, _Opts) when not is_function(ValueOrFun) -
     Context = current_context(Config, PKey),
     vmq_swc_store:write(Config, PKey, ValueOrFun, Context).
 
-delete_many(SwcGroup, Prefix, [_Key|_] = Keys) ->
+delete_many(SwcGroup, Prefix, [_Key | _] = Keys) ->
     put_many(SwcGroup, Prefix, [{Key, '$deleted'} || Key <- Keys], []).
 
-put_many(SwcGroup, Prefix, [{_Key, _ValueOrFun}|_] = Ops, _Opts) ->
+put_many(SwcGroup, Prefix, [{_Key, _ValueOrFun} | _] = Ops, _Opts) ->
     Config = config(SwcGroup),
     WriteBatch =
-    lists:foldl(fun({Key, ValueOrFun}, Acc) ->
-                        PKey = {Prefix, Key},
-                        Context = current_context(Config, PKey),
-                        [{PKey, ValueOrFun, Context}|Acc]
-                end, [], Ops),
+        lists:foldl(
+            fun({Key, ValueOrFun}, Acc) ->
+                PKey = {Prefix, Key},
+                Context = current_context(Config, PKey),
+                [{PKey, ValueOrFun, Context} | Acc]
+            end,
+            [],
+            Ops
+        ),
     vmq_swc_store:write_batch(Config, WriteBatch).
 
 delete(SwcGroup, Prefix, Key) ->
@@ -100,12 +111,23 @@ fold(SwcGroup, Fun, Acc, Prefix, Opts) ->
     AllowPut = get_option(allow_put, Opts, true),
     Config = config(SwcGroup),
 
-    vmq_swc_store:fold_values(Config,
-      fun (_PKey, {[], _}, AccAcc) ->
-              AccAcc;
-          ({_Prefix, Key} = PKey, Existing, AccAcc) ->
-              Fun(Key, maybe_tombstone(maybe_resolve(Config, PKey, Existing, ResolveMethod, AllowPut), Default), AccAcc)
-      end, Acc, Prefix).
+    vmq_swc_store:fold_values(
+        Config,
+        fun
+            (_PKey, {[], _}, AccAcc) ->
+                AccAcc;
+            ({_Prefix, Key} = PKey, Existing, AccAcc) ->
+                Fun(
+                    Key,
+                    maybe_tombstone(
+                        maybe_resolve(Config, PKey, Existing, ResolveMethod, AllowPut), Default
+                    ),
+                    AccAcc
+                )
+        end,
+        Acc,
+        Prefix
+    ).
 
 maybe_resolve(_Config, _PKey, {[Value], _Context}, _Method, _AllowPut) ->
     Value;

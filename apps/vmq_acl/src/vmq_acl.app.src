@@ -1,19 +1,18 @@
-{application, vmq_acl,
- [
-  {description, "Simple File based ACL for VerneMQ"},
-  {vsn, git},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  clique
-                 ]},
-  {mod, { vmq_acl_app, []}},
-  {env, [
-      {file, "priv/test.acl"},
-      {interval, 10},
-      {vmq_config_enabled, true},
-      {vmq_plugin_hooks, [
+{application, vmq_acl, [
+    {description, "Simple File based ACL for VerneMQ"},
+    {vsn, git},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        clique
+    ]},
+    {mod, {vmq_acl_app, []}},
+    {env, [
+        {file, "priv/test.acl"},
+        {interval, 10},
+        {vmq_config_enabled, true},
+        {vmq_plugin_hooks, [
             {vmq_acl, change_config, 1, [internal]},
             {vmq_acl, auth_on_publish, 6, []},
             {vmq_acl, auth_on_subscribe, 3, []},
@@ -21,4 +20,4 @@
             {vmq_acl, auth_on_subscribe_m5, 4, []}
         ]}
     ]}
- ]}.
+]}.

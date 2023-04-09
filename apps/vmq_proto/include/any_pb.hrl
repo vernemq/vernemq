@@ -10,9 +10,13 @@
 -ifndef('ANY_PB_H').
 -define('ANY_PB_H', true).
 -record('Any',
-        {type_url = []          :: unicode:chardata() | undefined, % = 1, optional
-         value = <<>>           :: iodata() | undefined % = 2, optional
-        }).
+    % = 1, optional
+    {
+        type_url = [] :: unicode:chardata() | undefined,
+        % = 2, optional
+        value = <<>> :: iodata() | undefined
+    }
+).
 -endif.
 
 -endif.
