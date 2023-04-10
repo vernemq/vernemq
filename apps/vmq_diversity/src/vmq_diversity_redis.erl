@@ -255,14 +255,25 @@ ensure_pool(As, St) ->
                         )
                     ),
                     NewOptions =
-                        [
-                            {size, Size},
-                            {password, Password},
-                            {username, User},
-                            {host, Host},
-                            {port, Port},
-                            {database, Database}
-                        ],
+                        case User of
+                            [] ->
+                                [
+                                    {size, Size},
+                                    {password, Password},
+                                    {host, Host},
+                                    {port, Port},
+                                    {database, Database}
+                                ];
+                            _ ->
+                                [
+                                    {size, Size},
+                                    {password, Password},
+                                    {username, User},
+                                    {host, Host},
+                                    {port, Port},
+                                    {database, Database}
+                                ]
+                        end,
                     vmq_diversity_sup:start_all_pools(
                         [{redis, [{id, PoolId}, {opts, NewOptions}]}], []
                     ),
