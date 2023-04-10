@@ -341,7 +341,7 @@ retain_delete_usage() ->
     ],
     [
         "vmq-admin retain delete\n\n",
-        "  Delete retained MQTT messages for some or all topics.\n\n",
+        "  Delete the retained MQTT message for a topic and mountpoint.\n\n",
         "Default options:\n"
         "  --mountpoint --topic\n\n"
         "If --mountpoint is not set, the default empty mountpoint\n"
