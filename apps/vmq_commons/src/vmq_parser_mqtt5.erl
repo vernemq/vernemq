@@ -33,7 +33,7 @@
 
 %% exported for testing
 -export([
-    parse_properties/2,
+    parse_properties/3,
     enc_properties/1
 ]).
 
@@ -86,7 +86,7 @@ variable(
     %% QoS 0
     case validate_publish_topic(Topic) of
         {ok, ParsedTopic} ->
-            case parse_properties(Rest) of
+            case parse_properties(Rest, ?allowedPubProps) of
                 {ok, Properties, Payload} ->
                     #mqtt5_publish{
                         topic = ParsedTopic,
@@ -110,7 +110,7 @@ variable(
 ->
     case validate_publish_topic(Topic) of
         {ok, ParsedTopic} ->
-            case parse_properties(Rest) of
+            case parse_properties(Rest, ?allowedPubProps) of
                 {ok, Properties, Payload} ->
                     #mqtt5_publish{
                         message_id = MessageId,
@@ -140,7 +140,7 @@ variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
         properties = #{}
     };
 variable(<<?PUBACK:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
-    case parse_properties(Rest) of
+    case parse_properties(Rest, ?allowedPubackProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_puback{
                 message_id = MessageId,
@@ -163,7 +163,7 @@ variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
         properties = #{}
     };
 variable(<<?PUBREC:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
-    case parse_properties(Rest) of
+    case parse_properties(Rest, ?allowedPubrecProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_pubrec{
                 message_id = MessageId,
@@ -186,7 +186,7 @@ variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8>>) ->
         properties = #{}
     };
 variable(<<?PUBREL:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
-    case parse_properties(Rest) of
+    case parse_properties(Rest, ?allowedPubrelProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_pubrel{
                 message_id = MessageId,
@@ -209,7 +209,7 @@ variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8>>) ->
         properties = #{}
     };
 variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) ->
-    case parse_properties(Rest) of
+    case parse_properties(Rest, ?allowedPubcompProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_pubcomp{
                 message_id = MessageId,
@@ -220,7 +220,7 @@ variable(<<?PUBCOMP:4, 0:4>>, <<MessageId:16/big, ReasonCode:8, Rest/binary>>) -
             {error, Reason}
     end;
 variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Rest/binary>>) ->
-    case parse_properties(Rest) of
+    case parse_properties(Rest, ?allowedSubProps) of
         {ok, Properties, Topics} ->
             case parse_topics(Topics, ?SUBSCRIBE, []) of
                 {ok, ParsedTopics} ->
@@ -236,7 +236,7 @@ variable(<<?SUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Rest/binary>>) ->
             E
     end;
 variable(<<?SUBACK:4, 0:4>>, <<MessageId:16/big, Rest/binary>>) ->
-    case parse_properties(Rest) of
+    case parse_properties(Rest, ?allowedSubackProps) of
         {ok, Properties, RCData} ->
             case parse_acks(RCData, [], ?allowedSubackRCs) of
                 {ok, ReasonCodes} ->
@@ -252,7 +252,7 @@ variable(<<?SUBACK:4, 0:4>>, <<MessageId:16/big, Rest/binary>>) ->
             E
     end;
 variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Rest/binary>>) ->
-    case parse_properties(Rest) of
+    case parse_properties(Rest, ?allowedUnsubProps) of
         {ok, Properties, TopicData} ->
             case parse_topics(TopicData, ?UNSUBSCRIBE, []) of
                 {ok, ParsedTopics} ->
@@ -268,7 +268,7 @@ variable(<<?UNSUBSCRIBE:4, 0:2, 1:1, 0:1>>, <<MessageId:16/big, Rest/binary>>) -
             E
     end;
 variable(<<?UNSUBACK:4, 0:4>>, <<MessageId:16/big, Rest/binary>>) ->
-    case parse_properties(Rest) of
+    case parse_properties(Rest, ?allowedUnsubackProps) of
         {ok, Properties, RCData} ->
             case parse_acks(RCData, [], ?allowedUnsubackRCs) of
                 {ok, ReasonCodes} ->
@@ -290,7 +290,7 @@ variable(
         Flags:6/bitstring, CleanStart:1, 0:1, KeepAlive:16/big, Rest0/binary>>
 ) ->
     %% The properties are the last element of the variable header.
-    case parse_properties(Rest0) of
+    case parse_properties(Rest0, ?allowedConnectProps) of
         {ok, Properties, Rest1} ->
             %% Parse the payload.
             case Rest1 of
@@ -321,7 +321,7 @@ variable(
             E
     end;
 variable(<<?CONNACK:4, 0:4>>, <<0:7, SP:1, ReasonCode:8/big, Rest0/binary>>) ->
-    case parse_properties(Rest0) of
+    case parse_properties(Rest0, ?allowedConnackProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_connack{
                 session_present = SP,
@@ -340,7 +340,7 @@ variable(<<?DISCONNECT:4, 0:4>>, <<>>) ->
 variable(<<?DISCONNECT:4, 0:4>>, <<RC:8>>) ->
     #mqtt5_disconnect{reason_code = RC, properties = #{}};
 variable(<<?DISCONNECT:4, 0:4>>, <<RC:8, Rest/binary>>) ->
-    case parse_properties(Rest) of
+    case parse_properties(Rest, ?allowedDisconnectProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_disconnect{reason_code = RC, properties = Properties};
         E ->
@@ -349,7 +349,7 @@ variable(<<?DISCONNECT:4, 0:4>>, <<RC:8, Rest/binary>>) ->
 variable(<<?AUTH:4, 0:4>>, <<>>) ->
     #mqtt5_auth{reason_code = ?M5_SUCCESS, properties = #{}};
 variable(<<?AUTH:4, 0:4>>, <<RC:8, Rest/binary>>) ->
-    case parse_properties(Rest) of
+    case parse_properties(Rest, ?allowedAuthProps) of
         {ok, Properties, <<>>} ->
             #mqtt5_auth{reason_code = RC, properties = Properties};
         E ->
@@ -362,7 +362,7 @@ parse_will_properties(Rest0, <<_:2, 0:4>> = Flags) ->
     %% All will flags are zero, no last will.
     parse_username(Rest0, Flags, #{lwt => undefined});
 parse_will_properties(Rest0, <<_:2, Retain:1, QoS:2, 1:1>> = Flags) ->
-    case parse_properties(Rest0) of
+    case parse_properties(Rest0, ?allowedWillProperties) of
         {ok, WillProperties,
             <<WillTopicLen:16/big, WillTopic:WillTopicLen/binary, WillMsgLen:16/big,
                 WillMsg:WillMsgLen/binary, Rest1/binary>>} ->
@@ -924,18 +924,23 @@ gen_auth(RC, Properties) ->
         )
     ).
 
--spec parse_properties(binary()) ->
+-spec parse_properties(binary(), list()) ->
     {ok, map(), binary()}
     | {error, any()}.
-parse_properties(Data) ->
+parse_properties(Data, AllowedProps) ->
     case varint_data(Data) of
         {error, _} ->
             {error, cant_parse_properties};
         {PropertiesData, Rest} ->
-            case parse_properties(PropertiesData, #{}) of
+            case parse_properties(PropertiesData, #{}, AllowedProps) of
                 #{p_user_property := UserProps} = Props ->
-                    %% Make sure to preserve order of the user properties
-                    {ok, Props#{p_user_property => lists:reverse(UserProps)}, Rest};
+                    case lists:member(?M5P_USER_PROPERTY, AllowedProps) of
+                        true ->
+                            %% Make sure to preserve order of the user properties
+                            {ok, Props#{p_user_property => lists:reverse(UserProps)}, Rest};
+                        _ ->
+                            {error, user_properties_not_allowed}
+                    end;
                 Properties when is_map(Properties) ->
                     {ok, Properties, Rest};
                 {error, _} = E ->
@@ -943,122 +948,203 @@ parse_properties(Data) ->
             end
     end.
 
--spec parse_properties(binary(), map()) -> map() | {error, any()}.
-parse_properties(<<>>, Acc) ->
+-spec parse_properties(binary(), map(), list()) -> map() | {error, any()}.
+parse_properties(<<>>, Acc, _) ->
     Acc;
 %% Note, the property ids are specified as a varint, but in MQTT5 all
 %% indicator ids fit within one byte, so we parse it as such to keep
 %% things simple.
-parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, _Rest/binary>>, #{
-    p_payload_format_indicator := _
-}) ->
+parse_properties(
+    <<?M5P_PAYLOAD_FORMAT_INDICATOR:8, _Rest/binary>>,
+    #{
+        p_payload_format_indicator := _
+    },
+    _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) when Val == 0 ->
-    parse_properties(Rest, Acc#{p_payload_format_indicator => unspecified});
-parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc) when Val == 1 ->
-    parse_properties(Rest, Acc#{p_payload_format_indicator => utf8});
-parse_properties(<<?M5P_MESSAGE_EXPIRY_INTERVAL:8, _Rest/binary>>, #{p_message_expiry_interval := _}) ->
+parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc, AllowedProps) when
+    Val == 0
+->
+    check_property(
+        Rest,
+        Acc,
+        ?M5P_PAYLOAD_FORMAT_INDICATOR,
+        p_payload_format_indicator,
+        unspecified,
+        AllowedProps
+    );
+parse_properties(<<?M5P_PAYLOAD_FORMAT_INDICATOR:8, Val:8, Rest/binary>>, Acc, AllowedProps) when
+    Val == 1
+->
+    check_property(
+        Rest, Acc, ?M5P_PAYLOAD_FORMAT_INDICATOR, p_payload_format_indicator, utf8, AllowedProps
+    );
+parse_properties(
+    <<?M5P_MESSAGE_EXPIRY_INTERVAL:8, _Rest/binary>>,
+    #{p_message_expiry_interval := _},
+    _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_MESSAGE_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_message_expiry_interval => Val});
-parse_properties(<<?M5P_CONTENT_TYPE, _Rest/binary>>, #{p_content_type := _}) ->
+parse_properties(<<?M5P_MESSAGE_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc, AllowedProps) ->
+    check_property(
+        Rest, Acc, ?M5P_MESSAGE_EXPIRY_INTERVAL, p_message_expiry_interval, Val, AllowedProps
+    );
+parse_properties(<<?M5P_CONTENT_TYPE, _Rest/binary>>, #{p_content_type := _}, _AllowedProps) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_CONTENT_TYPE:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_content_type => Val});
-parse_properties(<<?M5P_RESPONSE_TOPIC:8, _Rest/binary>>, #{p_response_topic := _}) ->
+parse_properties(
+    <<?M5P_CONTENT_TYPE:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc, AllowedProps
+) ->
+    check_property(Rest, Acc, ?M5P_CONTENT_TYPE, p_content_type, Val, AllowedProps);
+parse_properties(<<?M5P_RESPONSE_TOPIC:8, _Rest/binary>>, #{p_response_topic := _}, _AllowedProps) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_RESPONSE_TOPIC:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_response_topic => Val});
-parse_properties(<<?M5P_CORRELATION_DATA:8, _Rest/binary>>, #{p_correlation_data := _}) ->
+parse_properties(
+    <<?M5P_RESPONSE_TOPIC:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc, AllowedProps
+) ->
+    check_property(Rest, Acc, ?M5P_RESPONSE_TOPIC, p_response_topic, Val, AllowedProps);
+parse_properties(
+    <<?M5P_CORRELATION_DATA:8, _Rest/binary>>, #{p_correlation_data := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_CORRELATION_DATA:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_correlation_data => Val});
-parse_properties(<<?M5P_SUBSCRIPTION_ID:8, Data/binary>>, Acc) ->
+parse_properties(
+    <<?M5P_CORRELATION_DATA:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc, AllowedProps
+) ->
+    check_property(Rest, Acc, ?M5P_CORRELATION_DATA, p_correlation_data, Val, AllowedProps);
+parse_properties(<<?M5P_SUBSCRIPTION_ID:8, Data/binary>>, Acc, AllowedProps) ->
     case varint(Data) of
         {VarInt, Rest} when 1 =< VarInt, VarInt =< 268435455 ->
-            NewAcc =
+            {NewAcc, NewVal} =
                 case maps:find(p_subscription_id, Acc) of
                     error ->
-                        Acc#{p_subscription_id => [VarInt]};
+                        {Acc#{p_subscription_id => [VarInt]}, [VarInt]};
                     {ok, Vals} ->
-                        Acc#{p_subscription_id => [VarInt | Vals]}
+                        {Acc#{p_subscription_id => [VarInt | Vals]}, [VarInt | Vals]}
                 end,
-            parse_properties(Rest, NewAcc);
+            check_property(
+                Rest, NewAcc, ?M5P_SUBSCRIPTION_ID, p_subscription_id, NewVal, AllowedProps
+            );
         error ->
             {error, cant_parse_properties}
     end;
-parse_properties(<<?M5P_SESSION_EXPIRY_INTERVAL:8, _Rest/binary>>, #{p_session_expiry_interval := _}) ->
+parse_properties(
+    <<?M5P_SESSION_EXPIRY_INTERVAL:8, _Rest/binary>>,
+    #{p_session_expiry_interval := _},
+    _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_session_expiry_interval => Val});
-parse_properties(<<?M5P_ASSIGNED_CLIENT_ID:8, _Rest/binary>>, #{p_assigned_client_id := _}) ->
+parse_properties(<<?M5P_SESSION_EXPIRY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc, AllowedProps) ->
+    check_property(
+        Rest, Acc, ?M5P_SESSION_EXPIRY_INTERVAL, p_session_expiry_interval, Val, AllowedProps
+    );
+parse_properties(
+    <<?M5P_ASSIGNED_CLIENT_ID:8, _Rest/binary>>, #{p_assigned_client_id := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_ASSIGNED_CLIENT_ID:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_assigned_client_id => Val});
-parse_properties(<<?M5P_SERVER_KEEP_ALIVE:8, _Rest/binary>>, #{p_server_keep_alive := _}) ->
+parse_properties(
+    <<?M5P_ASSIGNED_CLIENT_ID:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc, AllowedProps
+) ->
+    check_property(Rest, Acc, ?M5P_ASSIGNED_CLIENT_ID, p_assigned_client_id, Val, AllowedProps);
+parse_properties(
+    <<?M5P_SERVER_KEEP_ALIVE:8, _Rest/binary>>, #{p_server_keep_alive := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_SERVER_KEEP_ALIVE:8, Val:16/big, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_server_keep_alive => Val});
-parse_properties(<<?M5P_AUTHENTICATION_METHOD:8, _Rest/binary>>, #{p_authentication_method := _}) ->
+parse_properties(<<?M5P_SERVER_KEEP_ALIVE:8, Val:16/big, Rest/binary>>, Acc, AllowedProps) ->
+    check_property(Rest, Acc, ?M5P_SERVER_KEEP_ALIVE, p_server_keep_alive, Val, AllowedProps);
+parse_properties(
+    <<?M5P_AUTHENTICATION_METHOD:8, _Rest/binary>>, #{p_authentication_method := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_AUTHENTICATION_METHOD:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_authentication_method => Val});
-parse_properties(<<?M5P_AUTHENTICATION_DATA:8, _Rest/binary>>, #{p_authentication_data := _}) ->
+parse_properties(
+    <<?M5P_AUTHENTICATION_METHOD:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc, AllowedProps
+) ->
+    check_property(
+        Rest, Acc, ?M5P_AUTHENTICATION_METHOD, p_authentication_method, Val, AllowedProps
+    );
+parse_properties(
+    <<?M5P_AUTHENTICATION_DATA:8, _Rest/binary>>, #{p_authentication_data := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_AUTHENTICATION_DATA:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_authentication_data => Val});
-parse_properties(<<?M5P_REQUEST_PROBLEM_INFO:8, _Rest/binary>>, #{p_request_problem_info := _}) ->
+parse_properties(
+    <<?M5P_AUTHENTICATION_DATA:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc, AllowedProps
+) ->
+    check_property(Rest, Acc, ?M5P_AUTHENTICATION_DATA, p_authentication_data, Val, AllowedProps);
+parse_properties(
+    <<?M5P_REQUEST_PROBLEM_INFO:8, _Rest/binary>>, #{p_request_problem_info := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_REQUEST_PROBLEM_INFO:8, Val:8/big, Rest/binary>>, Acc) when
+parse_properties(<<?M5P_REQUEST_PROBLEM_INFO:8, Val:8/big, Rest/binary>>, Acc, AllowedProps) when
     Val == 0; Val == 1
 ->
-    parse_properties(Rest, Acc#{p_request_problem_info => Val == 1});
-parse_properties(<<?M5P_WILL_DELAY_INTERVAL:8, _Rest/binary>>, #{p_will_delay_interval := _}) ->
+    Flag = Val == 1,
+    check_property(
+        Rest, Acc, ?M5P_REQUEST_PROBLEM_INFO, p_request_problem_info, Flag, AllowedProps
+    );
+parse_properties(
+    <<?M5P_WILL_DELAY_INTERVAL:8, _Rest/binary>>, #{p_will_delay_interval := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_WILL_DELAY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_will_delay_interval => Val});
-parse_properties(<<?M5P_REQUEST_RESPONSE_INFO:8, _Rest/binary>>, #{p_request_response_info := _}) ->
+parse_properties(<<?M5P_WILL_DELAY_INTERVAL:8, Val:32/big, Rest/binary>>, Acc, AllowedProps) ->
+    check_property(Rest, Acc, ?M5P_WILL_DELAY_INTERVAL, p_will_delay_interval, Val, AllowedProps);
+parse_properties(
+    <<?M5P_REQUEST_RESPONSE_INFO:8, _Rest/binary>>, #{p_request_response_info := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_REQUEST_RESPONSE_INFO:8, Val:8/big, Rest/binary>>, Acc) when
+parse_properties(<<?M5P_REQUEST_RESPONSE_INFO:8, Val:8/big, Rest/binary>>, Acc, AllowedProps) when
     Val == 0; Val == 1
 ->
-    parse_properties(Rest, Acc#{p_request_response_info => Val == 1});
-parse_properties(<<?M5P_RESPONSE_INFO:8, _Rest/binary>>, #{p_response_info := _}) ->
+    Flag = Val == 1,
+    check_property(
+        Rest, Acc, ?M5P_REQUEST_RESPONSE_INFO, p_request_response_info, Flag, AllowedProps
+    );
+parse_properties(<<?M5P_RESPONSE_INFO:8, _Rest/binary>>, #{p_response_info := _}, _AllowedProps) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_RESPONSE_INFO:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_response_info => Val});
-parse_properties(<<?M5P_SERVER_REF:8, _Rest/binary>>, #{p_server_ref := _}) ->
+parse_properties(
+    <<?M5P_RESPONSE_INFO:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc, AllowedProps
+) ->
+    check_property(Rest, Acc, ?M5P_RESPONSE_INFO, p_response_info, Val, AllowedProps);
+parse_properties(<<?M5P_SERVER_REF:8, _Rest/binary>>, #{p_server_ref := _}, _AllowedProps) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_SERVER_REF:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_server_ref => Val});
-parse_properties(<<?M5P_REASON_STRING:8, _Rest/binary>>, #{p_reason_string := _}) ->
+parse_properties(<<?M5P_SERVER_REF:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc, AllowedProps) ->
+    check_property(Rest, Acc, ?M5P_SERVER_REF, p_server_ref, Val, AllowedProps);
+parse_properties(<<?M5P_REASON_STRING:8, _Rest/binary>>, #{p_reason_string := _}, _AllowedProps) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_REASON_STRING:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_reason_string => Val});
-parse_properties(<<?M5P_RECEIVE_MAX:8, _Rest/binary>>, #{p_receive_max := _}) ->
+parse_properties(
+    <<?M5P_REASON_STRING:8, Len:16/big, Val:Len/binary, Rest/binary>>, Acc, AllowedProps
+) ->
+    check_property(Rest, Acc, ?M5P_REASON_STRING, p_reason_string, Val, AllowedProps);
+parse_properties(<<?M5P_RECEIVE_MAX:8, _Rest/binary>>, #{p_receive_max := _}, _AllowedProps) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_RECEIVE_MAX:8, Val:16/big, Rest/binary>>, Acc) when Val > 0 ->
-    parse_properties(Rest, Acc#{p_receive_max => Val});
-parse_properties(<<?M5P_TOPIC_ALIAS_MAX:8, _Rest/binary>>, #{p_topic_alias_max := _}) ->
+parse_properties(<<?M5P_RECEIVE_MAX:8, Val:16/big, Rest/binary>>, Acc, AllowedProps) when Val > 0 ->
+    check_property(Rest, Acc, ?M5P_RECEIVE_MAX, p_receive_max, Val, AllowedProps);
+parse_properties(
+    <<?M5P_TOPIC_ALIAS_MAX:8, _Rest/binary>>, #{p_topic_alias_max := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_TOPIC_ALIAS_MAX:8, Val:16/big, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_topic_alias_max => Val});
-parse_properties(<<?M5P_TOPIC_ALIAS:8, _Rest/binary>>, #{p_topic_alias := _}) ->
+parse_properties(<<?M5P_TOPIC_ALIAS_MAX:8, Val:16/big, Rest/binary>>, Acc, AllowedProps) ->
+    check_property(Rest, Acc, ?M5P_TOPIC_ALIAS_MAX, p_topic_alias_max, Val, AllowedProps);
+parse_properties(<<?M5P_TOPIC_ALIAS:8, _Rest/binary>>, #{p_topic_alias := _}, _AllowedProps) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_TOPIC_ALIAS:8, Val:16/big, Rest/binary>>, Acc) ->
-    parse_properties(Rest, Acc#{p_topic_alias => Val});
-parse_properties(<<?M5P_MAXIMUM_QOS:8, _Rest/binary>>, #{p_max_qos := _}) ->
+parse_properties(<<?M5P_TOPIC_ALIAS:8, Val:16/big, Rest/binary>>, Acc, AllowedProps) ->
+    check_property(Rest, Acc, ?M5P_TOPIC_ALIAS, p_topic_alias, Val, AllowedProps);
+parse_properties(<<?M5P_MAXIMUM_QOS:8, _Rest/binary>>, #{p_max_qos := _}, _AllowedProps) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_MAXIMUM_QOS:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
-    parse_properties(Rest, Acc#{p_max_qos => Val});
-parse_properties(<<?M5P_RETAIN_AVAILABLE:8, _Rest/binary>>, #{p_retain_available := _}) ->
+parse_properties(<<?M5P_MAXIMUM_QOS:8, Val:8, Rest/binary>>, Acc, AllowedProps) when
+    Val == 0; Val == 1
+->
+    check_property(Rest, Acc, ?M5P_MAXIMUM_QOS, p_max_qos, Val, AllowedProps);
+parse_properties(
+    <<?M5P_RETAIN_AVAILABLE:8, _Rest/binary>>, #{p_retain_available := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_RETAIN_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
-    parse_properties(Rest, Acc#{p_retain_available => Val == 1});
+parse_properties(<<?M5P_RETAIN_AVAILABLE:8, Val:8, Rest/binary>>, Acc, AllowedProps) when
+    Val == 0; Val == 1
+->
+    Flag = Val == 1,
+    check_property(Rest, Acc, ?M5P_RETAIN_AVAILABLE, p_retain_available, Flag, AllowedProps);
 parse_properties(
     <<?M5P_USER_PROPERTY:8, KLen:16/big, Key:KLen/binary, VLen:16/big, Val:VLen/binary,
         Rest/binary>>,
-    Acc
+    Acc,
+    AllowedProps
 ) ->
     NewAcc =
         case maps:find(p_user_property, Acc) of
@@ -1067,29 +1153,58 @@ parse_properties(
             {ok, Vals} ->
                 Acc#{p_user_property => [{Key, Val} | Vals]}
         end,
-    parse_properties(Rest, NewAcc);
-parse_properties(<<?M5P_MAX_PACKET_SIZE:8, _Rest/binary>>, #{p_max_packet_size := _}) ->
+    parse_properties(Rest, NewAcc, AllowedProps);
+parse_properties(
+    <<?M5P_MAX_PACKET_SIZE:8, _Rest/binary>>, #{p_max_packet_size := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_MAX_PACKET_SIZE:8, Val:32/big, Rest/binary>>, Acc) when Val > 0 ->
-    parse_properties(Rest, Acc#{p_max_packet_size => Val});
-parse_properties(<<?M5P_WILDCARD_SUBS_AVAILABLE:8, _Rest/binary>>, #{p_wildcard_subs_available := _}) ->
+parse_properties(<<?M5P_MAX_PACKET_SIZE:8, Val:32/big, Rest/binary>>, Acc, AllowedProps) when
+    Val > 0
+->
+    check_property(Rest, Acc, ?M5P_MAX_PACKET_SIZE, p_max_packet_size, Val, AllowedProps);
+parse_properties(
+    <<?M5P_WILDCARD_SUBS_AVAILABLE:8, _Rest/binary>>,
+    #{p_wildcard_subs_available := _},
+    _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_WILDCARD_SUBS_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when
+parse_properties(<<?M5P_WILDCARD_SUBS_AVAILABLE:8, Val:8, Rest/binary>>, Acc, AllowedProps) when
     Val == 0; Val == 1
 ->
-    parse_properties(Rest, Acc#{p_wildcard_subs_available => Val == 1});
-parse_properties(<<?M5P_SUB_IDS_AVAILABLE:8, _Rest/binary>>, #{p_sub_ids_available := _}) ->
+    Flag = Val == 1,
+    check_property(
+        Rest, Acc, ?M5P_WILDCARD_SUBS_AVAILABLE, p_wildcard_subs_available, Flag, AllowedProps
+    );
+parse_properties(
+    <<?M5P_SUB_IDS_AVAILABLE:8, _Rest/binary>>, #{p_sub_ids_available := _}, _AllowedProps
+) ->
     {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_SUB_IDS_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when Val == 0; Val == 1 ->
-    parse_properties(Rest, Acc#{p_sub_ids_available => Val == 1});
-parse_properties(<<?M5P_SHARED_SUBS_AVAILABLE:8, _Rest/binary>>, #{p_shared_subs_available := _}) ->
-    {error, property_is_only_allowed_once};
-parse_properties(<<?M5P_SHARED_SUBS_AVAILABLE:8, Val:8, Rest/binary>>, Acc) when
+parse_properties(<<?M5P_SUB_IDS_AVAILABLE:8, Val:8, Rest/binary>>, Acc, AllowedProps) when
     Val == 0; Val == 1
 ->
-    parse_properties(Rest, Acc#{p_shared_subs_available => Val == 1});
-parse_properties(_, _) ->
+    Flag = Val == 1,
+    check_property(Rest, Acc, ?M5P_SUB_IDS_AVAILABLE, p_sub_ids_available, Flag, AllowedProps);
+parse_properties(
+    <<?M5P_SHARED_SUBS_AVAILABLE:8, _Rest/binary>>, #{p_shared_subs_available := _}, _AllowedProps
+) ->
+    {error, property_is_only_allowed_once};
+parse_properties(<<?M5P_SHARED_SUBS_AVAILABLE:8, Val:8, Rest/binary>>, Acc, AllowedProps) when
+    Val == 0; Val == 1
+->
+    Flag = Val == 1,
+    check_property(
+        Rest, Acc, ?M5P_SHARED_SUBS_AVAILABLE, p_shared_subs_available, Flag, AllowedProps
+    );
+parse_properties(_, _, _) ->
     {error, cant_parse_properties}.
+
+check_property(Rest, Acc, PropertyCode, PropertyName, Val, AllowedProps) ->
+    case lists:member(PropertyCode, AllowedProps) of
+        true ->
+            parse_properties(Rest, Acc#{PropertyName => Val}, AllowedProps);
+        _ ->
+            {error, property_not_allowed_for_frame}
+    end.
 
 %% @doc parse a varint and return the following data as well as any
 %% remaining data.
