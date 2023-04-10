@@ -63,43 +63,70 @@ fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
             SubscribersList = fetchSubscribers(MatchedTopics, MP),
             fold_subscriber_info(SubscriberId, SubscribersList, FoldFun, Acc);
         LocalSharedSubsList ->
-            fold_local_shared_subscriber_info(SubscriberId, lists:flatten(LocalSharedSubsList), FoldFun, Acc)
+            fold_local_shared_subscriber_info(
+                SubscriberId, lists:flatten(LocalSharedSubsList), FoldFun, Acc
+            )
     end.
 
-fold_matched_topics(_MP, [], Acc) -> Acc;
+fold_matched_topics(_MP, [], Acc) ->
+    Acc;
 fold_matched_topics(MP, [Topic | Rest], Acc) ->
     Key = {MP, Topic},
     case ets:select(vmq_shared_subs_local, [{{{Key, '$1'}}, [], ['$$']}]) of
-        [] -> fold_matched_topics(MP, Rest, Acc);
+        [] ->
+            fold_matched_topics(MP, Rest, Acc);
         SharedSubsWithInfo ->
             fold_matched_topics(MP, Rest, [lists:flatten(SharedSubsWithInfo) | Acc])
     end.
 
 fetchSubscribers(Topics, MP) ->
     UnwordedTopics = [vmq_topic:unword(T) || T <- Topics],
-    {ok, SubscribersList} = vmq_redis:query(redis_client, [?FCALL,
-        ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
-        0,
-        MP,
-        length(UnwordedTopics) | UnwordedTopics], ?FCALL, ?FETCH_MATCHED_TOPIC_SUBSCRIBERS),
+    {ok, SubscribersList} = vmq_redis:query(
+        redis_client,
+        [
+            ?FCALL,
+            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
+            0,
+            MP,
+            length(UnwordedTopics)
+            | UnwordedTopics
+        ],
+        ?FCALL,
+        ?FETCH_MATCHED_TOPIC_SUBSCRIBERS
+    ),
     SubscribersList.
 
-fold_subscriber_info(_, [], _, Acc) -> Acc;
-fold_subscriber_info({MP, _} = SubscriberId, [ SubscriberInfoList | Rest], FoldFun, Acc) ->
+fold_subscriber_info(_, [], _, Acc) ->
+    Acc;
+fold_subscriber_info({MP, _} = SubscriberId, [SubscriberInfoList | Rest], FoldFun, Acc) ->
     case SubscriberInfoList of
         [NodeBinary, ClientId, QoSBinary] ->
-            SubscriberInfo = {binary_to_atom(NodeBinary), {MP, ClientId}, binary_to_term(QoSBinary)},
-            fold_subscriber_info(SubscriberId, Rest, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc));
+            SubscriberInfo = {
+                binary_to_atom(NodeBinary), {MP, ClientId}, binary_to_term(QoSBinary)
+            },
+            fold_subscriber_info(
+                SubscriberId, Rest, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc)
+            );
         [NodeBinary, Group, ClientId, QoSBinary] ->
-            SubscriberInfo = {binary_to_atom(NodeBinary), Group, {MP, ClientId}, binary_to_term(QoSBinary)},
-            fold_subscriber_info(SubscriberId, Rest, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc));
-        _ -> fold_subscriber_info(SubscriberId, Rest, FoldFun, Acc)
+            SubscriberInfo = {
+                binary_to_atom(NodeBinary), Group, {MP, ClientId}, binary_to_term(QoSBinary)
+            },
+            fold_subscriber_info(
+                SubscriberId, Rest, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc)
+            );
+        _ ->
+            fold_subscriber_info(SubscriberId, Rest, FoldFun, Acc)
     end.
 
-fold_local_shared_subscriber_info(_, [], _, Acc) -> Acc;
-fold_local_shared_subscriber_info({MP, _} = SubscriberId, [{ClientId, QoS} | SubscribersList], FoldFun, Acc) ->
-            SubscriberInfo = {node(), 'constant_group', {MP, ClientId}, QoS},
-            fold_local_shared_subscriber_info(SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc)).
+fold_local_shared_subscriber_info(_, [], _, Acc) ->
+    Acc;
+fold_local_shared_subscriber_info(
+    {MP, _} = SubscriberId, [{ClientId, QoS} | SubscribersList], FoldFun, Acc
+) ->
+    SubscriberInfo = {node(), 'constant_group', {MP, ClientId}, QoS},
+    fold_local_shared_subscriber_info(
+        SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc)
+    ).
 
 add_complex_topics(Topics) ->
     Nodes = vmq_cluster:nodes(),
@@ -286,44 +313,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-fetchSubscribers(Topics, MP) ->
-    UnwordedTopics = [vmq_topic:unword(T) || T <- Topics],
-    {ok, SubscribersList} = vmq_redis:query(
-        redis_client,
-        [
-            ?FCALL,
-            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
-            0,
-            MP,
-            length(UnwordedTopics)
-            | UnwordedTopics
-        ],
-        ?FCALL,
-        ?FETCH_MATCHED_TOPIC_SUBSCRIBERS
-    ),
-    SubscribersList.
-
-fold_(_, [], _, Acc) ->
-    Acc;
-fold_({MP, _} = SubscriberId, [SubscriberInfoList | SubscribersList], FoldFun, Acc) ->
-    case SubscriberInfoList of
-        [NodeBinary, ClientId, QoSBinary] ->
-            SubscriberInfo = {
-                binary_to_atom(NodeBinary), {MP, ClientId}, binary_to_term(QoSBinary)
-            },
-            fold_(
-                SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc)
-            );
-        [NodeBinary, Group, ClientId, QoSBinary] ->
-            SubscriberInfo = {
-                binary_to_atom(NodeBinary), Group, {MP, ClientId}, binary_to_term(QoSBinary)
-            },
-            fold_(
-                SubscriberId, SubscribersList, FoldFun, FoldFun(SubscriberInfo, SubscriberId, Acc)
-            );
-        _ ->
-            fold_(SubscriberId, SubscribersList, FoldFun, Acc)
-    end.
 
 load_redis_functions() ->
     LuaDir = application:get_env(vmq_server, redis_lua_dir, "./etc/lua"),
