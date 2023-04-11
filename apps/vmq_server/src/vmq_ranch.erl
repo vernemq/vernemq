@@ -70,8 +70,10 @@ init(Ref, Parent, Transport, Opts) ->
                         {ok, BufSizes} ->
                             BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
                             setopts(MaskedSocket, [{buffer, BufSize}]),
-                            start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent)
-                        end;
+                            start_accepting_messages(
+                                MaskedSocket, FsmState, FsmMod, Transport, Parent
+                            )
+                    end;
                 [SndBuf, RecBuf, Buffer] ->
                     setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}]),
                     start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent)
