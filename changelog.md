@@ -1,4 +1,4 @@
-
+- Expose more SWC sync protocol settings in vernemq.conf (number of SWC groups & more)
 - Add `vmq-admin retain delete` command to CLI (single topic delete only).
 - Fix per mountpoint filtering of `vmq-admin retain show`.
 - Add 'keypasswd': Allows setting password for pem keyfile (#1676)
