@@ -23,13 +23,15 @@ register_cli() ->
     vmq_session_disconnect_cmd(),
     vmq_session_reauthorize_cmd(),
     vmq_retain_show_cmd(),
+    vmq_retain_delete_cmd(),
 
     clique:register_usage(["vmq-admin", "session"], session_usage()),
     clique:register_usage(["vmq-admin", "session", "show"], vmq_session_show_usage()),
     clique:register_usage(["vmq-admin", "session", "disconnect"], vmq_session_disconnect_usage()),
     clique:register_usage(["vmq-admin", "session", "reauthorize"], vmq_session_reauthorize_usage()),
     clique:register_usage(["vmq-admin", "retain"], retain_usage()),
-    clique:register_usage(["vmq-admin", "retain"], retain_show_usage()).
+    clique:register_usage(["vmq-admin", "retain", "show"], retain_show_usage()),
+    clique:register_usage(["vmq-admin", "retain", "delete"], retain_delete_usage()).
 
 vmq_retain_show_cmd() ->
     Cmd = ["vmq-admin", "retain", "show"],
@@ -41,6 +43,44 @@ vmq_retain_show_cmd() ->
         ],
     DefaultFields = ["topic", "payload"],
     Callback = vmq_ql_callback("retain_srv", DefaultFields, [{nodes, [node()]}]),
+    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
+
+vmq_retain_delete_cmd() ->
+    Cmd = ["vmq-admin", "retain", "delete"],
+    KeySpecs = [],
+    FlagSpecs = [
+        {mountpoint, [
+            {shortname, "m"},
+            {longname, "mountpoint"},
+            {typecast, fun(Mountpoint) -> Mountpoint end}
+        ]},
+
+        {topic, [
+            {shortname, "t"},
+            {longname, "topic"},
+            {typecast, fun(Topic) -> vmq_topic:word(Topic) end}
+        ]}
+    ],
+    Callback = fun
+        (_, [], Flags) ->
+            Mountpoint =
+                case proplists:get_value(mountpoint, Flags) of
+                    % no --mountpoint flag given, we take the default mountpoint
+                    undefined -> "";
+                    MP -> MP
+                end,
+            case proplists:get_value(topic, Flags) of
+                undefined ->
+                    Text = clique_status:text("No valid topic given."),
+                    [clique_status:alert([Text])];
+                Topic ->
+                    vmq_retain_srv:delete(Mountpoint, Topic),
+                    [clique_status:text("Done")]
+            end;
+        (_, _, _) ->
+            Text = clique_status:text(retain_delete_usage()),
+            [clique_status:alert([Text])]
+    end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
 
 vmq_session_list_cmd() ->
@@ -270,6 +310,7 @@ retain_usage() ->
         "  Inspect MQTT retained messages.\n\n",
         "  Sub-commands:\n",
         "    show        Show and filter running sessions\n",
+        "    delete      Delete retained message\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 
@@ -286,5 +327,24 @@ retain_show_usage() ->
         "Options\n\n"
         "  --limit=<NumberOfResults>\n"
         "      Limit the number of results returned. Defaults is 100.\n"
+        "  --mountpoint\n"
+        "      Show retained messages for mountpoint.\n"
+        "      If no mountpoint is given, the default (empty) mountpoint\n"
+        "      is assumed."
+        | Options
+    ].
+
+retain_delete_usage() ->
+    Options = [
+        io_lib:format("  --~p\n", [Item])
+     || Item <- [topic, mountpoint]
+    ],
+    [
+        "vmq-admin retain delete\n\n",
+        "  Delete the retained MQTT message for a topic and mountpoint.\n\n",
+        "Default options:\n"
+        "  --mountpoint --topic\n\n"
+        "If --mountpoint is not set, the default empty mountpoint\n"
+        "is assumed.\n\n"
         | Options
     ].
