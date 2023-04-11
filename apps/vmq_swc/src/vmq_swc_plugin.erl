@@ -40,7 +40,7 @@
 -define(SWC_GROUPS, (persistent_term:get(?INFO_KEY))).
 
 plugin_start() ->
-    SWCGroups =  [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)],
+    SWCGroups = [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)],
     ok = persistent_term:put(?INFO_KEY, {?NR_OF_GROUPS, SWCGroups}),
     _ = [vmq_swc:start(G) || G <- SWCGroups],
     ok.
