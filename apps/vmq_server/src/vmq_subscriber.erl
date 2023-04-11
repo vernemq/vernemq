@@ -162,7 +162,8 @@ check_format(Subs0) ->
 
 %% @doc convert deprecated subscription format to current format (v1). The
 %% new format was introduced in VerneMQ 0.15.1.
--spec maybe_convert_v0(any()) -> subs().
+-spec maybe_convert_v0(any()) -> X when X :: any()
+                    ; (Y) -> Y when Y :: subs().
 maybe_convert_v0([{Topic, _, _} | _] = Version0Subs) when is_list(Topic) ->
     %% Per default converted subscriptions use initially clean session=false,
     %% because we don't know better, and it will be subsequentially adjusted
@@ -294,12 +295,12 @@ subtract_test_() ->
     ].
 
 get_changes_test_() ->
-    Old = [{node_a, true, [{a, 1}, {b, 1}]}],
-    New = [{node_a, true, [{b, 1}]}],
+    Old = [{node_a, true, [{<<"a">>, 1}, {<<"b">>, 1}]}],
+    New = [{node_a, true, [{<<"b">>, 1}]}],
     ?_assertEqual(
         {
             % Removed
-            [{node_a, [{a, 1}]}],
+            [{node_a, [{<<"a">>, 1}]}],
             % Added
             []
         },
@@ -307,25 +308,25 @@ get_changes_test_() ->
     ).
 
 get_changes_2_test_() ->
-    Old = [{node_a, true, [{a, 1}]}, {node_b, true, [{b, 1}]}],
-    New = [{node_a, true, [{a, 1}]}, {node_c, true, [{c, 1}]}],
+    Old = [{node_a, true, [{<<"a">>, 1}]}, {node_b, true, [{<<"b">>, 1}]}],
+    New = [{node_a, true, [{<<"a">>, 1}]}, {node_c, true, [{<<"c">>, 1}]}],
     ?_assertEqual(
         {
             % Removed
-            [{node_b, [{b, 1}]}],
+            [{node_b, [{<<"b">>, 1}]}],
             % Added
-            [{node_c, [{c, 1}]}]
+            [{node_c, [{<<"c">>, 1}]}]
         },
         get_changes(Old, New)
     ).
 
 get_changes_3_test_() ->
-    Old = [{node_a, true, [{a, 1}]}, {node_b, true, [{b, 1}]}, {node_c, true, [{c, 1}]}],
-    New = [{node_b, true, [{b, 1}]}],
+    Old = [{node_a, true, [{<<"a">>, 1}]}, {node_b, true, [{<<"b">>, 1}]}, {node_c, true, [{<<"c">>, 1}]}],
+    New = [{node_b, true, [{<<"b">>, 1}]}],
     ?_assertEqual(
         {
             % Removed
-            [{node_a, [{a, 1}]}, {node_c, [{c, 1}]}],
+            [{node_a, [{<<"a">>, 1}]}, {node_c, [{<<"c">>, 1}]}],
             % Added
             []
         },
@@ -333,57 +334,57 @@ get_changes_3_test_() ->
     ).
 
 get_changes_4_test_() ->
-    Old = [{node_b, true, [{b, 1}]}, {node_c, true, [{c, 1}]}],
-    New = [{node_a, true, [{a, 1}]}, {node_c, true, [{c, 1}]}],
+    Old = [{node_b, true, [{<<"b">>, 1}]}, {node_c, true, [{<<"c">>, 1}]}],
+    New = [{node_a, true, [{<<"a">>, 1}]}, {node_c, true, [{<<"c">>, 1}]}],
     ?_assertEqual(
         {
             % Removed
-            [{node_b, [{b, 1}]}],
+            [{node_b, [{<<"b">>, 1}]}],
             % Added
-            [{node_a, [{a, 1}]}]
+            [{node_a, [{<<"a">>, 1}]}]
         },
         get_changes(Old, New)
     ).
 
 change_node_test_() ->
     Subs = [
-        {node_a, false, [{a, 1}, {b, 1}]},
-        {node_b, false, [{c, 2}]}
+        {node_a, false, [{<<"a">>, 1}, {<<"b">>, 1}]},
+        {node_b, false, [{<<"c">>, 2}]}
     ],
     ?_assertEqual(
-        [{node_b, false, [{a, 1}, {b, 1}, {c, 2}]}],
+        [{node_b, false, [{<<"a">>, 1}, {<<"b">>, 1}, {<<"c">>, 2}]}],
         change_node(Subs, node_a, node_b, false)
     ).
 
 change_node_all_test_() ->
     Subs = [
-        {node_a, false, [{a, 1}, {b, 1}]},
-        {node_b, false, [{b, 2}, {c, 2}]}
+        {node_a, false, [{<<"a">>, 1}, {<<"b">>, 1}]},
+        {node_b, false, [{<<"b">>, 2}, {<<"c">>, 2}]}
     ],
     ?_assertEqual(
-        {[{node_c, false, [{a, 1}, {b, 2}, {c, 2}]}], [node_a, node_b]},
+        {[{node_c, false, [{<<"a">>, 1}, {<<"b">>, 2}, {<<"c">>, 2}]}], [node_a, node_b]},
         change_node_all(Subs, node_c, false)
     ).
 
 add_subscription_test_() ->
     [
-        ?_assertEqual({[{node(), true, [{a, 1}, {b, 2}]}], true}, add(new(true), [{a, 1}, {b, 2}])),
+        ?_assertEqual({[{node(), true, [{<<"a">>, 1}, {<<"b">>, 2}]}], true}, add(new(true), [{<<"a">>, 1}, {<<"b">>, 2}])),
         ?_assertEqual(
-            {[{node(), true, [{a, 1}, {b, 2}]}], true}, add(new(true, [{a, 1}]), [{b, 2}])
+            {[{node(), true, [{<<"a">>, 1}, {<<"b">>, 2}]}], true}, add(new(true, [{<<"a">>, 1}]), [{<<"b">>, 2}])
         ),
         ?_assertEqual(
-            {[{node(), true, [{a, 1}, {b, 2}]}], true}, add(new(true, [{a, 1}, {b, 1}]), [{b, 2}])
+            {[{node(), true, [{<<"a">>, 1}, {<<"b">>, 2}]}], true}, add(new(true, [{<<"a">>, 1}, {<<"b">>, 1}]), [{<<"b">>, 2}])
         ),
         ?_assertEqual(
-            {[{node(), true, [{a, 1}, {b, 2}]}], false}, add(new(true, [{a, 1}, {b, 2}]), [{b, 2}])
+            {[{node(), true, [{<<"a">>, 1}, {<<"b">>, 2}]}], false}, add(new(true, [{<<"a">>, 1}, {<<"b">>, 2}]), [{<<"b">>, 2}])
         )
     ].
 
 remove_subscription_test_() ->
     [
-        ?_assertEqual({[{node(), true, []}], false}, remove(new(true), [a])),
-        ?_assertEqual({[{node(), true, []}], true}, remove(new(true, [{a, 1}]), [a])),
-        ?_assertEqual({[{node(), true, [{b, 2}]}], true}, remove(new(true, [{a, 1}, {b, 2}]), [a]))
+        ?_assertEqual({[{node(), true, []}], false}, remove(new(true), [<<"a">>])),
+        ?_assertEqual({[{node(), true, []}], true}, remove(new(true, [{<<"a">>, 1}]), [<<"a">>])),
+        ?_assertEqual({[{node(), true, [{<<"b">>, 2}]}], true}, remove(new(true, [{<<"a">>, 1}, {<<"b">>, 2}]), [<<"a">>]))
     ].
 
 maybe_convert_v0_test_() ->

@@ -39,7 +39,7 @@ start_link() ->
 -spec init([]) ->
     {'ok',
         {{'one_for_one', 5, 10}, [
-            {atom(), {atom(), atom(), list()}, permanent, pos_integer(), worker, [atom()]}
+            {atom(), {atom(), atom(), list()}, permanent, pos_integer(), worker | supervisor, [atom()]}
         ]}}.
 init([]) ->
     maybe_change_nodename(),
