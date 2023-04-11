@@ -1,5 +1,7 @@
-
 - Fix listener suspension and --kill_session flag in cluster leave.
+- Expose more SWC sync protocol settings in vernemq.conf (number of SWC groups & more)
+- Add `vmq-admin retain delete` command to CLI (single topic delete only).
+- Fix per mountpoint filtering of `vmq-admin retain show`.
 - Add 'keypasswd': Allows setting password for pem keyfile (#1676)
 - Bugfix:w Improve warning messages for unexpected frame type error to track origin (#1671)
 - Bugfix: Remove special chars in auto-generated client id (#1673)
