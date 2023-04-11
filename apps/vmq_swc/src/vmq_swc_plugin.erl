@@ -41,17 +41,19 @@
 
 plugin_start() ->
     SWCGroups =  [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)],
-    ok = persistent_term:put(?INFO_KEY, SWCGroups),
+    ok = persistent_term:put(?INFO_KEY, {?NR_OF_GROUPS, SWCGroups}),
     _ = [vmq_swc:start(G) || G <- SWCGroups],
     ok.
 
 plugin_stop() ->
-    _ = [vmq_swc:stop(G) || G <- ?SWC_GROUPS],
+    {_, SWCGroups} = ?SWC_GROUPS,
+    _ = [vmq_swc:stop(G) || G <- SWCGroups],
     persistent_term:erase(?INFO_KEY),
     ok.
 
 group_for_key(PKey) ->
-    lists:nth((erlang:phash2(PKey) rem ?NR_OF_GROUPS) + 1, ?SWC_GROUPS).
+    {NrOfGroups, SWCGroups} = ?SWC_GROUPS,
+    lists:nth((erlang:phash2(PKey) rem NrOfGroups) + 1, SWCGroups).
 
 cluster_join(DiscoveryNode) ->
     vmq_swc_peer_service:join(DiscoveryNode).
@@ -85,7 +87,7 @@ multi_cast([], _, _) ->
     ok.
 
 cluster_members() ->
-    [FirstGroup | _] = ?SWC_GROUPS,
+    {_, [FirstGroup | _]} = ?SWC_GROUPS,
     Config = vmq_swc:config(FirstGroup),
     vmq_swc_group_membership:get_members(Config).
 
@@ -150,6 +152,7 @@ metadata_delete(FullPrefix, Key) ->
     ).
 
 metadata_fold(FullPrefix, Fun, Acc) ->
+    {_, SWCGroups} = ?SWC_GROUPS,
     vmq_swc_metrics:timed_measurement(
         {?METRIC, fold}, lists, foldl, [
             fun(Group, AccAcc) ->
@@ -164,11 +167,12 @@ metadata_fold(FullPrefix, Fun, Acc) ->
                 )
             end,
             Acc,
-            ?SWC_GROUPS
+            SWCGroups
         ]
     ).
 
 metadata_subscribe(FullPrefix) ->
+    {_, SWCGroups} = ?SWC_GROUPS,
     ConvertFun = fun
         ({deleted, FP, Key, OldValues}) ->
             {deleted, FP, Key, extract_val(lww_resolver(OldValues))};
@@ -180,7 +184,7 @@ metadata_subscribe(FullPrefix) ->
         fun(Group) ->
             vmq_swc_store:subscribe(vmq_swc:config(Group), FullPrefix, ConvertFun)
         end,
-        ?SWC_GROUPS
+        SWCGroups
     ).
 
 lww_resolver([]) ->
