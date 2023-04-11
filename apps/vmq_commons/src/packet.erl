@@ -109,19 +109,21 @@ do_client_connect(ConnectPacket, ConnackPacket, Opts) ->
 receive_at_most_n_frames(Socket, N, QoS) ->
     receive_at_most_n_frames_(Socket, N, QoS, <<>>, []).
 
-receive_at_most_n_frames_(_Socket, 0, _QoS, _Rest, Acc) -> Acc;
+receive_at_most_n_frames_(_Socket, 0, _QoS, _Rest, Acc) ->
+    Acc;
 receive_at_most_n_frames_(Socket, N, QoS, Rest, Acc) ->
     case receive_frame(gen_tcp, Socket, 5000, Rest) of
         {ok, {mqtt_publish, Mid, _, _, _, _, _} = Frame, NewRest} ->
             case QoS of
-                0 -> ok;
+                0 ->
+                    ok;
                 1 ->
                     Puback = gen_puback(Mid),
                     ok = gen_tcp:send(Socket, Puback)
-
             end,
             receive_at_most_n_frames_(Socket, N - 1, QoS, NewRest, [Frame | Acc]);
-        E -> io:format(user, "E: ~p", [E]), Acc
+        _E ->
+            Acc
     end.
 
 receive_frame(Socket) ->
