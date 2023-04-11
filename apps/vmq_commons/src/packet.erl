@@ -4,6 +4,10 @@
     expect_packet/3,
     expect_packet/4,
     expect_packet/5,
+    receive_frame/1,
+    receive_frame/3,
+    receive_frame/4,
+    receive_at_most_n_frames/3,
     do_client_connect/3,
     gen_connect/2,
     gen_connack/0,
@@ -100,6 +104,54 @@ do_client_connect(ConnectPacket, ConnackPacket, Opts) ->
             end;
         ConnectError ->
             ConnectError
+    end.
+
+receive_at_most_n_frames(Socket, N, QoS) ->
+    receive_at_most_n_frames_(Socket, N, QoS, <<>>, []).
+
+receive_at_most_n_frames_(_Socket, 0, _QoS, _Rest, Acc) -> Acc;
+receive_at_most_n_frames_(Socket, N, QoS, Rest, Acc) ->
+    case receive_frame(gen_tcp, Socket, 5000, Rest) of
+        {ok, {mqtt_publish, Mid, _, _, _, _, _} = Frame, NewRest} ->
+            case QoS of
+                0 -> ok;
+                1 ->
+                    Puback = gen_puback(Mid),
+                    ok = gen_tcp:send(Socket, Puback)
+
+            end,
+            receive_at_most_n_frames_(Socket, N - 1, QoS, NewRest, [Frame | Acc]);
+        E -> io:format(user, "E: ~p", [E]), Acc
+    end.
+
+receive_frame(Socket) ->
+    receive_frame(gen_tcp, Socket).
+receive_frame(Transport, Socket) ->
+    receive_frame(Transport, Socket, 5000).
+receive_frame(Transport, Socket, Timeout) ->
+    receive_frame(Transport, Socket, Timeout, <<>>).
+
+receive_frame(Transport, Socket, Timeout, Incomplete) ->
+    case vmq_parser:parse(Incomplete) of
+        more ->
+            case Transport:recv(Socket, 0, Timeout) of
+                {ok, Data} ->
+                    NewData = <<Incomplete/binary, Data/binary>>,
+                    case vmq_parser:parse(NewData) of
+                        more ->
+                            receive_frame(Transport, Socket, Timeout, NewData);
+                        {error, R} ->
+                            {error, R};
+                        {Frame, Rest} ->
+                            {ok, Frame, Rest}
+                    end;
+                E ->
+                    E
+            end;
+        {error, R} ->
+            {error, R};
+        {Frame, Rest} ->
+            {ok, Frame, Rest}
     end.
 
 gen_connect(ClientId, Opts) ->
