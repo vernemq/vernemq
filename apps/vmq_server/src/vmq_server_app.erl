@@ -27,7 +27,7 @@
 start(_StartType, _StartArgs) ->
     ok = vmq_metadata:start(),
     ok = vmq_message_store:start(),
-
+    maybe_update_nodetool(),
     case vmq_server_sup:start_link() of
         {error, _} = E ->
             E;
@@ -72,3 +72,32 @@ stop(_State) ->
     _ = vmq_message_store:stop(),
     _ = vmq_metadata:stop(),
     ok.
+
+maybe_update_nodetool() ->
+    case init:get_argument(proto_dist) of
+        {ok, [[ProtoDist]]} ->
+            Root = code:root_dir(),
+            Nodetool = filename:join([
+                Root, "erts-" ++ erlang:system_info(version), "bin", "nodetool"
+            ]),
+            case escript:extract(Nodetool, []) of
+                {ok, [Shebang, Comment, _, Source]} ->
+                    {ok, UpdatedScriptBin} =
+                        escript:create(binary, [
+                            Shebang, Comment, {emu_args, "+fnu -proto_dist " ++ ProtoDist}, Source
+                        ]),
+                    try file:write_file(Nodetool, UpdatedScriptBin) of
+                        ok -> ok
+                    catch
+                        E:R ->
+                            lager:info("Could not write nodetool due to ~p for reason ~p ~n", [
+                                E, R
+                            ]),
+                            {error, R}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        error ->
+            ignore
+    end.

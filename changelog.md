@@ -1,3 +1,4 @@
+- Adapt nodetool escript to Erlang distribution protocol at boot, enabling IPv6 compat for vmq-admin.
 - Expose more SWC sync protocol settings in vernemq.conf (number of SWC groups & more)
 - Add `vmq-admin retain delete` command to CLI (single topic delete only).
 - Fix per mountpoint filtering of `vmq-admin retain show`.
