@@ -62,23 +62,22 @@ init(Ref, Parent, Transport, Opts) ->
             CfgBufSizes = proplists:get_value(buffer_sizes, Opts, undefined),
             case CfgBufSizes of
                 undefined ->
-                    {ok, BufSizes} = getopts(MaskedSocket, [sndbuf, recbuf, buffer]),
-                    BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
-                    setopts(MaskedSocket, [{buffer, BufSize}]);
+                    case getopts(MaskedSocket, [sndbuf, recbuf, buffer]) of
+                        {error, Reason} ->
+                            %% If the socket already closed we don't want to
+                            %% go through teardown, because no session was initialized
+                            lager:debug("getopts error, socket already closed: ~p", [Reason]);
+                        {ok, BufSizes} ->
+                            BufSize = lists:max([Sz || {_, Sz} <- BufSizes]),
+                            setopts(MaskedSocket, [{buffer, BufSize}]),
+                            start_accepting_messages(
+                                MaskedSocket, FsmState, FsmMod, Transport, Parent
+                            )
+                    end;
                 [SndBuf, RecBuf, Buffer] ->
-                    setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}])
-            end,
-            %% start accepting messages
-            active_once(MaskedSocket),
-            process_flag(trap_exit, true),
-            _ = vmq_metrics:incr_socket_open(),
-            loop(#st{
-                socket = MaskedSocket,
-                fsm_state = FsmState,
-                fsm_mod = FsmMod,
-                proto_tag = Transport:messages(),
-                parent = Parent
-            });
+                    setopts(MaskedSocket, [{sndbuf, SndBuf}, {recbuf, RecBuf}, {buffer, Buffer}]),
+                    start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent)
+            end;
         {error, enotconn} ->
             %% If the client already disconnected we don't want to
             %% know about it - it's not an error.
@@ -142,6 +141,18 @@ peer_info_no_proxy(Peer, Socket, Transport, Opts) ->
         _ ->
             {ok, {Peer, Opts}}
     end.
+
+start_accepting_messages(MaskedSocket, FsmState, FsmMod, Transport, Parent) ->
+    active_once(MaskedSocket),
+    process_flag(trap_exit, true),
+    _ = vmq_metrics:incr_socket_open(),
+    loop(#st{
+        socket = MaskedSocket,
+        fsm_state = FsmState,
+        fsm_mod = FsmMod,
+        proto_tag = Transport:messages(),
+        parent = Parent
+    }).
 
 mask_socket(ranch_tcp, Socket) -> Socket;
 mask_socket(vmq_ranch_proxy_protocol, Socket) -> vmq_ranch_proxy_protocol:get_csocket(Socket);
