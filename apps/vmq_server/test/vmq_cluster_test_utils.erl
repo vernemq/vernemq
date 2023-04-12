@@ -169,7 +169,7 @@ start_node(Name, _Config, Case) ->
                                                        [VmqServerPrivDir]]),
             {ok, _StartedApps} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),
-            %{ok, _} = rpc:call(Node, application, ensure_all_started, [vmq_swc]),
+            {ok, _} = rpc:call(Node, application, ensure_all_started, [vmq_swc]),
             ok = wait_until(fun() ->
                             case rpc:call(Node, vmq_plugin, only, [cluster_members, []]) of
                                 {error, no_matching_hook} ->
