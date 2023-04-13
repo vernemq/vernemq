@@ -749,7 +749,9 @@ convert_new_msgs_to_old_format(_Config) ->
       "persisted",
       "sg_policy",
       "properties",
-      "expiry_ts"
+      "expiry_ts",
+      "non_retry",
+      "non_persistence"
      },
 
     %% fail if new items were added to the #vmq_msg{} record:

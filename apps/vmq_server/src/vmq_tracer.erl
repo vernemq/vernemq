@@ -934,6 +934,23 @@ ftopics(Topics) ->
                     | Acc
                 ];
             (
+                #mqtt_subscribe_topic{
+                    topic = Topic,
+                    qos = QoS,
+                    non_persistence = NP,
+                    non_retry = NR
+                },
+                Acc
+            ) ->
+                [
+                    {
+                        "    q:~p, non_persistence:~p, non_retry:~p~n"
+                        "    t: \"~s\"~n",
+                        [QoS, NP, NR, jtopic(Topic)]
+                    }
+                    | Acc
+                ];
+            (
                 #mqtt5_subscribe_topic{
                     topic = Topic,
                     qos = QoS,

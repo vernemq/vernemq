@@ -1074,6 +1074,12 @@ insert(#deliver{qos = 0}, #state{sessions = Sessions} = State) when
 ->
     %% no session online, skip message for QoS0 Subscription
     State;
+insert(#deliver{msg = #vmq_msg{non_persistence = true}}, #state{sessions = Sessions} = State) when
+    Sessions == #{}
+->
+    %% no session online, skip message for QoS1 with non_persistence Subscription
+    _ = vmq_metrics:incr_qos1_non_persistence_message_dropped(),
+    State;
 insert(#deliver{msg = #vmq_msg{qos = 0}}, #state{sessions = Sessions} = State) when
     Sessions == #{}
 ->
@@ -1259,7 +1265,9 @@ publish_last_will(#state{delayed_will = {_, Fun}} = State) ->
     unset_will_timer(State#state{delayed_will = undefined}).
 
 maybe_offline_store(
-    true, SubscriberId, #deliver{qos = QoS, msg = #vmq_msg{persisted = false} = Msg} = D
+    true,
+    SubscriberId,
+    #deliver{qos = QoS, msg = #vmq_msg{persisted = false, non_persistence = false} = Msg} = D
 ) when QoS > 0 ->
     %% this function writes the message to the message store, in case the queue
     %% has no online session attached anymore (Offline = true)

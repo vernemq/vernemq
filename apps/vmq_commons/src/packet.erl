@@ -21,7 +21,8 @@
     gen_unsuback/1,
     gen_pingreq/0,
     gen_pingresp/0,
-    gen_disconnect/0
+    gen_disconnect/0,
+    gen_subscribe/5
 ]).
 
 expect_packet(Socket, Name, Expected) ->
@@ -132,6 +133,9 @@ gen_subscribe(MId, Topics) ->
 
 gen_subscribe(MId, Topic, Qos) ->
     vmq_parser:gen_subscribe(MId, Topic, Qos).
+
+gen_subscribe(MId, Topic, Qos, NonRetry, NonPersistence) ->
+    vmq_parser:gen_subscribe(MId, Topic, Qos, NonRetry, NonPersistence).
 
 gen_suback(Mid, Qos) ->
     vmq_parser:gen_suback(Mid, Qos).

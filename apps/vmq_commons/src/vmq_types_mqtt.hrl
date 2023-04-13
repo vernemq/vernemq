@@ -76,9 +76,18 @@
 }).
 -type mqtt_pubcomp() :: #mqtt_pubcomp{}.
 
+-record(mqtt_subscribe_topic, {
+    topic :: topic(),
+    qos :: qos(),
+    non_retry = false :: flag(),
+    non_persistence = false :: flag()
+}).
+
+-type mqtt_subscribe_topic() :: #mqtt_subscribe_topic{}.
+
 -record(mqtt_subscribe, {
     message_id :: msg_id(),
-    topics = [] :: [{topic(), qos()}]
+    topics = [] :: [mqtt_subscribe_topic() | {topic(), qos()}]
 }).
 -type mqtt_subscribe() :: #mqtt_subscribe{}.
 

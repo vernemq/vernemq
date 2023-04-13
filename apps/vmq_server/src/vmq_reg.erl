@@ -94,6 +94,7 @@ subscribe(true, SubscriberId, Topics) ->
     if_ready(fun subscribe_op/3, [?DefaultRegView, SubscriberId, Topics]).
 
 subscribe_op(vmq_reg_redis_trie, {MP, ClientId} = SubscriberId, Topics) ->
+    update_qos1_metrics(Topics),
     {NumOfTopics, UnwordedTopicsWithBinaryQoS} =
         lists:foldr(
             fun
@@ -150,7 +151,7 @@ subscribe_op(vmq_reg_redis_trie, {MP, ClientId} = SubscriberId, Topics) ->
                 ({Exists, {T, QoS}}, AccQoSTable) when is_integer(QoS) ->
                     deliver_retained(SubscriberId, T, QoS, #{}, Exists),
                     [QoS | AccQoSTable];
-                %% MQTTv5 clauses
+                %% MQTTv5 clauses and new MQTTv4 clause
                 ({_, {_, {not_allowed, _}}}, AccQoSTable) ->
                     [not_allowed | AccQoSTable];
                 ({Exists, {T, {QoS, SubOpts}}}, AccQoSTable) when
@@ -164,6 +165,7 @@ subscribe_op(vmq_reg_redis_trie, {MP, ClientId} = SubscriberId, Topics) ->
         ),
     {ok, lists:reverse(QoSTable)};
 subscribe_op(_, SubscriberId, Topics) ->
+    update_qos1_metrics(Topics),
     OldSubs = subscriptions_for_subscriber_id(SubscriberId),
     Existing = subscriptions_exist(OldSubs, Topics),
     add_subscriber(lists:usort(Topics), OldSubs, SubscriberId),
@@ -619,8 +621,10 @@ publish_fold_fun(
         QPid ->
             Msg1 = handle_rap_flag(SubInfo, Msg0),
             Msg2 = maybe_add_sub_id(SubInfo, Msg1),
+            Msg3 = handle_non_persistence(SubInfo, Msg2),
+            Msg4 = handle_retry_flag(SubInfo, Msg3),
             QoS = qos(SubInfo),
-            ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg2}),
+            ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg4}),
             Acc#publish_fold_acc{local_matches = N + 1}
     end;
 publish_fold_fun(
@@ -677,8 +681,10 @@ enqueue_msg({{_, _} = SubscriberId, SubInfo}, Msg0) ->
         QPid ->
             Msg1 = handle_rap_flag(SubInfo, Msg0),
             Msg2 = maybe_add_sub_id(SubInfo, Msg1),
+            Msg3 = handle_non_persistence(SubInfo, Msg2),
+            Msg4 = handle_retry_flag(SubInfo, Msg3),
             QoS = qos(SubInfo),
-            ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg2})
+            ok = vmq_queue:enqueue(QPid, {deliver, QoS, Msg4})
     end.
 
 maybe_set_expiry_ts(#{p_message_expiry_interval := ExpireAfter}) ->
@@ -692,6 +698,20 @@ handle_rap_flag({_QoS, #{rap := true}}, Msg) ->
 handle_rap_flag(_SubInfo, Msg) ->
     %% Default is to set the retain flag to false to be compatible with MQTTv3
     Msg#vmq_msg{retain = false}.
+
+-spec handle_retry_flag(subinfo(), msg()) -> msg().
+handle_retry_flag({_QoS, #{non_retry := NonRetry}}, Msg) ->
+    Msg#vmq_msg{non_retry = NonRetry};
+handle_retry_flag(_SubInfo, Msg) ->
+    %% Default is to set the non_retry flag to false so that default qos 1 behaviour is preserved
+    Msg#vmq_msg{non_retry = false}.
+
+-spec handle_non_persistence(subinfo(), msg()) -> msg().
+handle_non_persistence({_QoS, #{non_persistence := NonPersistence}}, Msg) ->
+    Msg#vmq_msg{non_persistence = NonPersistence};
+handle_non_persistence(_SubInfo, Msg) ->
+    %% Default is to set the non_persistence flag to false to be compatible with MQTTv3 behaviour
+    Msg#vmq_msg{non_persistence = false}.
 
 maybe_add_sub_id({_, #{sub_id := SubId}}, #vmq_msg{properties = Props} = Msg) ->
     Msg#vmq_msg{properties = Props#{p_subscription_id => [SubId]}};
@@ -1455,3 +1475,16 @@ if_ready(Fun, Args) ->
         0 ->
             {error, not_ready}
     end.
+
+update_qos1_metrics(Topics) ->
+    lists:foreach(
+        fun
+            ({_, 1}) ->
+                _ = vmq_metrics:incr_qos1_opts({false, false});
+            ({_, {1, #{non_retry := NonRetry, non_persistence := NonPersistence}}}) ->
+                _ = vmq_metrics:incr_qos1_opts({NonRetry, NonPersistence});
+            (_) ->
+                ok
+        end,
+        Topics
+    ).

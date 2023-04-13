@@ -39,6 +39,7 @@
     incr_mqtt_unsubscribe_received/0,
     incr_mqtt_pingreq_received/0,
     incr_mqtt_disconnect_received/0,
+    incr_qos1_opts/1,
 
     incr_mqtt_publish_sent/0,
     incr_mqtt_publishes_sent/1,
@@ -56,6 +57,9 @@
     incr_mqtt_error_invalid_puback/0,
     incr_mqtt_error_invalid_pubrec/0,
     incr_mqtt_error_invalid_pubcomp/0,
+
+    incr_qos1_non_retry_message_dropped/0,
+    incr_qos1_non_persistence_message_dropped/0,
 
     incr_mqtt_error_publish/0,
     incr_mqtt_error_subscribe/0,
@@ -237,6 +241,12 @@ incr_mqtt_error_subscribe() ->
 incr_mqtt_error_unsubscribe() ->
     incr_item(?MQTT4_UNSUBSCRIBE_ERROR, 1).
 
+incr_qos1_non_retry_message_dropped() ->
+    incr_item(?QOS1_NON_RETRY_DROPPED, 1).
+
+incr_qos1_non_persistence_message_dropped() ->
+    incr_item(?QOS1_NON_PERSISTENCE_DROPPED, 1).
+
 incr_sidecar_events(HookName) ->
     incr_item({?SIDECAR_EVENTS, HookName}, 1).
 
@@ -304,6 +314,9 @@ incr_redis_stale_cmd({CMD, OPERATION}) ->
 
 incr_unauth_redis_cmd({CMD, OPERATION}) ->
     incr_item({?UNAUTH_REDIS_CMD, CMD, OPERATION}, 1).
+
+incr_qos1_opts({NON_RETRY, NON_PERSISTENCE}) ->
+    incr_item({?QOS1_SUBSCRIPTION_OPTS, NON_RETRY, NON_PERSISTENCE}, 1).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -1464,6 +1477,64 @@ counter_entries_def() ->
             ?MQTT4_CLIENT_KEEPALIVE_EXPIRED,
             client_keepalive_expired,
             <<"The number of clients which failed to communicate within the keepalive time period.">>
+        ),
+        m(
+            counter,
+            [
+                {mqtt_version, "4"},
+                {non_persistence, rcn_to_str(?NON_PERSISTENCE)},
+                {non_retry, rcn_to_str(?NON_RETRY)}
+            ],
+            {?QOS1_SUBSCRIPTION_OPTS, ?NON_PERSISTENCE, ?NON_RETRY},
+            qos1_subscription_opts,
+            <<"QoS 1 opts in subscription.">>
+        ),
+        m(
+            counter,
+            [
+                {mqtt_version, "4"},
+                {non_persistence, rcn_to_str(?NON_PERSISTENCE)},
+                {non_retry, rcn_to_str(?RETRY)}
+            ],
+            {?QOS1_SUBSCRIPTION_OPTS, ?NON_PERSISTENCE, ?RETRY},
+            qos1_subscription_opts,
+            <<"QoS 1 opts in subscription.">>
+        ),
+        m(
+            counter,
+            [
+                {mqtt_version, "4"},
+                {non_persistence, rcn_to_str(?PERSISTENCE)},
+                {non_retry, rcn_to_str(?NON_RETRY)}
+            ],
+            {?QOS1_SUBSCRIPTION_OPTS, ?PERSISTENCE, ?NON_RETRY},
+            qos1_subscription_opts,
+            <<"QoS 1 opts in subscription.">>
+        ),
+        m(
+            counter,
+            [
+                {mqtt_version, "4"},
+                {non_persistence, rcn_to_str(?PERSISTENCE)},
+                {non_retry, rcn_to_str(?RETRY)}
+            ],
+            {?QOS1_SUBSCRIPTION_OPTS, ?PERSISTENCE, ?RETRY},
+            qos1_subscription_opts,
+            <<"QoS 1 opts in subscription.">>
+        ),
+        m(
+            counter,
+            [{mqtt_version, "4"}],
+            qos1_non_retry_dropped,
+            qos1_non_retry_dropped,
+            <<"QoS 1 non_retry messages dropped.">>
+        ),
+        m(
+            counter,
+            [{mqtt_version, "4"}],
+            qos1_non_persistence_dropped,
+            qos1_non_persistence_dropped,
+            <<"QoS 1 non_persistence messages dropped.">>
         ),
 
         m(
@@ -2677,7 +2748,13 @@ met2idx({?REDIS_CMD_MISS, ?DEL, ?MSG_STORE_DELETE}) -> 303;
 met2idx({?REDIS_CMD_MISS, ?FIND, ?MSG_STORE_FIND}) -> 304;
 met2idx({?REDIS_CMD, ?LPOP, ?MSG_STORE_DELETE}) -> 305;
 met2idx({?REDIS_CMD_ERROR, ?LPOP, ?MSG_STORE_DELETE}) -> 306;
-met2idx({?REDIS_CMD_MISS, ?LPOP, ?MSG_STORE_DELETE}) -> 307.
+met2idx({?REDIS_CMD_MISS, ?LPOP, ?MSG_STORE_DELETE}) -> 307;
+met2idx({?QOS1_SUBSCRIPTION_OPTS, ?NON_RETRY, ?NON_PERSISTENCE}) -> 308;
+met2idx({?QOS1_SUBSCRIPTION_OPTS, ?RETRY, ?NON_PERSISTENCE}) -> 309;
+met2idx({?QOS1_SUBSCRIPTION_OPTS, ?NON_RETRY, ?PERSISTENCE}) -> 310;
+met2idx({?QOS1_SUBSCRIPTION_OPTS, ?RETRY, ?PERSISTENCE}) -> 311;
+met2idx(?QOS1_NON_RETRY_DROPPED) -> 312;
+met2idx(?QOS1_NON_PERSISTENCE_DROPPED) -> 313.
 
 -ifdef(TEST).
 clear_stored_rates() ->

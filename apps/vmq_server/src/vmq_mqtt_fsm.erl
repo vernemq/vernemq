@@ -85,7 +85,7 @@
 }).
 
 -define(COORDINATE_REGISTRATIONS, true).
--type msg_tag() :: 'publish' | 'pubrel'.
+-type msg_tag() :: 'publish' | 'pubrel' | 'delete'.
 
 -type state() :: #state{}.
 -export_type([state/0]).
@@ -436,20 +436,27 @@ connected(
         cap_settings = CAPSettings
     } = State,
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
+    SubTopics = subtopics(Topics, ProtoVer),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
-            SubTopics = subtopics(MaybeChangedTopics, ProtoVer),
             case
-                vmq_reg:subscribe(CAPSettings#cap_settings.allow_subscribe, SubscriberId, SubTopics)
+                vmq_reg:subscribe(
+                    CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics
+                )
             of
                 {ok, _} = Res ->
-                    vmq_plugin:all(on_subscribe, [User, SubscriberId, MaybeChangedTopics]),
+                    T = lists:foldr(
+                        fun({Topic, Sub}, Acc) -> [{Topic, extract_qos(Sub)} | Acc] end,
+                        [],
+                        MaybeChangedTopics
+                    ),
+                    vmq_plugin:all(on_subscribe, [User, SubscriberId, T]),
                     Res;
                 Res ->
                     Res
             end
         end,
-    case auth_on_subscribe(User, SubscriberId, Topics, OnAuthSuccess) of
+    case auth_on_subscribe(User, SubscriberId, SubTopics, OnAuthSuccess) of
         {ok, QoSs} ->
             check_mqtt_auth_errors(QoSs),
             Frame = #mqtt_suback{message_id = MessageId, qos_table = QoSs},
@@ -515,8 +522,8 @@ connected(
         retry_queue = RetryQueue
     } = State
 ) ->
-    {RetryFrames, NewRetryQueue} = handle_retry(RetryInterval, RetryQueue, WAcks),
-    {State#state{retry_queue = NewRetryQueue}, RetryFrames};
+    {NewWaitingAcks, RetryFrames, NewRetryQueue} = handle_retry(RetryInterval, RetryQueue, WAcks),
+    {State#state{retry_queue = NewRetryQueue, waiting_acks = NewWaitingAcks}, RetryFrames};
 connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
     terminate(Reason, State);
@@ -856,9 +863,9 @@ set_sock_opts(Opts) ->
 -spec auth_on_subscribe(
     username(),
     subscriber_id(),
-    [{topic(), qos()}],
+    [{topic(), subinfo()}],
     fun(
-        (username(), subscriber_id(), [{topic(), qos()}]) ->
+        (username(), subscriber_id(), [{topic(), subinfo()}]) ->
             {ok, [qos() | not_allowed]} | {error, atom()}
     )
 ) -> {ok, [qos() | not_allowed]} | {error, atom()}.
@@ -1128,6 +1135,12 @@ handle_waiting_acks_and_msgs(State) ->
                 ({MsgId, #mqtt_pubrel{} = Frame}, Acc) ->
                     %% unacked PUBREL Frame
                     [{deliver_pubrel, {MsgId, Frame}} | Acc];
+                ({_, #vmq_msg{non_persistence = true}}, Acc) ->
+                    _ = vmq_metrics:incr_qos1_non_persistence_message_dropped(),
+                    Acc;
+                ({_, #vmq_msg{non_retry = true}}, Acc) ->
+                    _ = vmq_metrics:incr_qos1_non_retry_message_dropped(),
+                    Acc;
                 ({MsgId, #vmq_msg{qos = QoS} = Msg}, Acc) ->
                     [#deliver{qos = QoS, msg_id = MsgId, msg = Msg#vmq_msg{dup = true}} | Acc]
             end,
@@ -1213,7 +1226,8 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
         payload = Payload,
         retain = IsRetained,
         dup = IsDup,
-        qos = MsgQoS
+        qos = MsgQoS,
+        non_retry = NonRetry
     } = Msg,
     NewQoS = maybe_upgrade_qos(QoS, MsgQoS, State),
     {NewTopic, NewPayload} =
@@ -1243,14 +1257,26 @@ prepare_frame(#deliver{qos = QoS, msg_id = MsgId, msg = Msg}, State) ->
         0 ->
             {Frame, State1};
         _ ->
-            {Frame, State1#state{
-                retry_queue = set_retry(publish, OutgoingMsgId, RetryInterval, RetryQueue),
-                waiting_acks = maps:put(
-                    OutgoingMsgId,
-                    Msg#vmq_msg{qos = NewQoS},
-                    WAcks
-                )
-            }}
+            case NonRetry of
+                true ->
+                    {Frame, State1#state{
+                        retry_queue = set_retry(delete, OutgoingMsgId, RetryInterval, RetryQueue),
+                        waiting_acks = maps:put(
+                            OutgoingMsgId,
+                            Msg#vmq_msg{qos = NewQoS},
+                            WAcks
+                        )
+                    }};
+                _ ->
+                    {Frame, State1#state{
+                        retry_queue = set_retry(publish, OutgoingMsgId, RetryInterval, RetryQueue),
+                        waiting_acks = maps:put(
+                            OutgoingMsgId,
+                            Msg#vmq_msg{qos = NewQoS},
+                            WAcks
+                        )
+                    }}
+            end
     end.
 
 -spec on_deliver_hook(username(), subscriber_id(), qos(), topic(), payload(), flag()) -> any().
@@ -1428,23 +1454,28 @@ handle_retry(
     case NowDiff < Interval of
         true ->
             vmq_mqtt_fsm_util:send_after(Interval - NowDiff, retry),
-            {Acc, queue:in_r(Val, RetryQueue)};
+            {WAcks, Acc, queue:in_r(Val, RetryQueue)};
         false ->
             case get_retry_frame(MsgTag, MsgId, maps:get(MsgId, WAcks, not_found), Acc) of
                 already_acked ->
                     handle_retry(Now, Interval, queue:out(RetryQueue), WAcks, Acc);
+                delete ->
+                    _ = vmq_metrics:incr_qos1_non_retry_message_dropped(),
+                    handle_retry(
+                        Now, Interval, queue:out(RetryQueue), maps:remove(MsgId, WAcks), Acc
+                    );
                 NewAcc ->
                     NewRetryQueue = queue:in({Now, RetryId}, RetryQueue),
                     handle_retry(Now, Interval, queue:out(NewRetryQueue), WAcks, NewAcc)
             end
     end;
-handle_retry(_, Interval, {empty, Queue}, _, Acc) when length(Acc) > 0 ->
+handle_retry(_, Interval, {empty, Queue}, WAcks, Acc) when length(Acc) > 0 ->
     vmq_mqtt_fsm_util:send_after(Interval, retry),
-    {Acc, Queue};
-handle_retry(_, _, {empty, Queue}, _, Acc) ->
-    {Acc, Queue}.
+    {WAcks, Acc, Queue};
+handle_retry(_, _, {empty, Queue}, WAcks, Acc) ->
+    {WAcks, Acc, Queue}.
 
--spec get_retry_frame(_, msg_id(), msg(), list()) -> 'already_acked' | [any()].
+-spec get_retry_frame(_, msg_id(), msg(), list()) -> 'already_acked' | 'delete' | [any()].
 get_retry_frame(
     publish,
     MsgId,
@@ -1469,6 +1500,8 @@ get_retry_frame(
 get_retry_frame(pubrel, _MsgId, #mqtt_pubrel{} = Frame, Acc) ->
     _ = vmq_metrics:incr_mqtt_pubrel_sent(),
     [Frame | Acc];
+get_retry_frame(delete, _, _, _) ->
+    delete;
 get_retry_frame(_, _, _, _) ->
     %% already acked
     already_acked.
@@ -1648,7 +1681,12 @@ peertoa({_IP, _Port} = Peer) ->
 
 -spec subtopics(
     [
-        {topic(), 0 | 1 | 2}
+        #mqtt_subscribe_topic{
+            topic :: topic(),
+            qos :: 0 | 1 | 2,
+            non_retry :: 'empty' | 'false' | 'true',
+            non_persistence :: 'empty' | 'false' | 'true'
+        }
         | #mqtt5_subscribe_topic{
             topic :: topic(),
             qos :: 0 | 1 | 2,
@@ -1663,12 +1701,11 @@ subtopics(Topics, ProtoVer) when ?IS_BRIDGE(ProtoVer) ->
     %% bridge connection
     SubTopics = vmq_mqtt_fsm_util:to_vmq_subtopics(Topics, undefined),
     lists:map(
-        fun({T, QoS}) ->
-            {T,
-                {QoS, #{
-                    rap => true,
-                    no_local => true
-                }}}
+        fun
+            ({T, QoS}) when is_integer(QoS) ->
+                {T, {QoS, #{rap => true, no_local => true}}};
+            ({T, {QoS, Opts} = QoSWithOpts}) when is_tuple(QoSWithOpts) ->
+                {T, {QoS, Opts#{rap => true, no_local => true}}}
         end,
         SubTopics
     );
@@ -1682,3 +1719,7 @@ check_mqtt_auth_errors(QoSTable) ->
         _ ->
             ok
     end.
+
+extract_qos(not_allowed) -> not_allowed;
+extract_qos(QoS) when is_integer(QoS) -> QoS;
+extract_qos({QoS, _SubInfo}) -> QoS.

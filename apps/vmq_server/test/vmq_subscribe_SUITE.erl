@@ -48,6 +48,7 @@ groups() ->
         [subscribe_qos0_test,
          subscribe_qos1_test,
          subscribe_qos2_test,
+         subscribe_qos1_with_opts_test,
          suback_with_nack_test,
          subnack_test,
          unsubscribe_qos0_test,
@@ -56,6 +57,7 @@ groups() ->
          subpub_qos0_test,
          subpub_qos1_test,
          subpub_qos2_test,
+         subpub_qos1_with_opts_test,
          resubscribe_test,
          bridge_protocol_retain_as_publish_test,
          bridge_protocol_no_local_test],
@@ -308,6 +310,16 @@ subscribe_qos1_test(_) ->
     ok = packet:expect_packet(Socket, "suback", Suback),
     ok = gen_tcp:close(Socket).
 
+subscribe_qos1_with_opts_test(_) ->
+    Connect = packet:gen_connect("subscribe-qos1-with-opts-test", [{keepalive,60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(61, "qos1/test", 1, true, true),
+    Suback = packet:gen_suback(61, 1),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = gen_tcp:close(Socket).
+
 subscribe_qos2_test(_) ->
     Connect = packet:gen_connect("subscribe-qos2-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
@@ -402,6 +414,22 @@ subpub_qos1_test(_) ->
     ok = packet:expect_packet(Socket, "publish", Publish2),
     ok = gen_tcp:close(Socket).
 
+subpub_qos1_with_opts_test(_) ->
+    Connect = packet:gen_connect("subpub-qos1-with-opts-test", [{keepalive,60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(537, "subpub/qos1", 1, true, true),
+    Suback = packet:gen_suback(537, 1),
+    Publish1 = packet:gen_publish("subpub/qos1", 1, <<"message">>, [{mid, 306}]),
+    Puback1 = packet:gen_puback(306),
+    Publish2 = packet:gen_publish("subpub/qos1", 1, <<"message">>, [{mid, 1}]),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = gen_tcp:send(Socket, Publish1),
+    ok = packet:expect_packet(Socket, "puback", Puback1),
+    ok = packet:expect_packet(Socket, "publish", Publish2),
+    ok = gen_tcp:close(Socket).
+
 subpub_qos2_test(_) ->
     Connect = packet:gen_connect("subpub-qos2-test", [{keepalive,60}]),
     Connack = packet:gen_connack(0),
@@ -462,16 +490,16 @@ resubscribe_test(_) ->
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_auth_on_subscribe(_,{"", <<"subscribe-multi1-test">>},
-                       [{[<<"qos0">>,<<"test">>], 0},
-                        {[<<"qos1">>,<<"test">>], 1},
-                        {[<<"qos2">>,<<"test">>], 2}]) ->
-    {ok, [{[<<"qos0">>,<<"test">>], 0},
+                       [{[<<"qos0">>,<<"test">>], {0,_}=QoS0},
+                        {[<<"qos1">>,<<"test">>], {1,_}},
+                        {[<<"qos2">>,<<"test">>], {2,_}=QoS2}]) ->
+    {ok, [{[<<"qos0">>,<<"test">>], QoS0},
           {[<<"qos1">>,<<"test">>], not_allowed},
-          {[<<"qos2">>,<<"test">>], 2}]};
+          {[<<"qos2">>,<<"test">>], QoS2}]};
 hook_auth_on_subscribe(_,{"", <<"subscribe-multi2-test">>},
-                       [{[<<"qos0">>,<<"test">>], 0},
-                        {[<<"qos1">>,<<"test">>], 1},
-                        {[<<"qos2">>,<<"test">>], 2}]) ->
+                       [{[<<"qos0">>,<<"test">>], _},
+                        {[<<"qos1">>,<<"test">>], _},
+                        {[<<"qos2">>,<<"test">>], _}]) ->
     {error, not_allowed};
 hook_auth_on_subscribe(_,_,_) -> ok.
 

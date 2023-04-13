@@ -194,7 +194,7 @@ on_deliver_rewrite_packet_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks (as explicit as possible)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-hook_auth_on_subscribe(_, {"", <<"sub-rewrite-test">>}, [{[<<"sub">>, <<"rewrite">>, <<"me">>], 1}]) ->
+hook_auth_on_subscribe(_, {"", <<"sub-rewrite-test">>}, [{[<<"sub">>, <<"rewrite">>, <<"me">>], {1,_}}]) ->
     %% REWRITE SUBSCRIPTION .. different topic, different qos
     {ok, [{[<<"sub">>, <<"rewrite">>, <<"topic">>], 0}]};
 hook_auth_on_subscribe(_, _, _) -> ok.
