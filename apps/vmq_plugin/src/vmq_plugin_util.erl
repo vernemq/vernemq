@@ -37,6 +37,9 @@ check_modifiers(Hook, [{_, _} | _] = Modifiers) ->
             ({ModKey, ModVal}, Acc) ->
                 case lists:keyfind(ModKey, 1, AllowedModifiers) of
                     false ->
+                        lager:error("can't validate modifier ~p ~p (not an allowed modifier)", [
+                            Hook, ModKey
+                        ]),
                         error;
                     {_, ValidatorFun} ->
                         case ValidatorFun(ModVal) of
@@ -92,7 +95,8 @@ modifiers(auth_on_publish_m5) ->
                 {?P_CONTENT_TYPE, fun val_utf8/1},
                 {?P_PAYLOAD_FORMAT_INDICATOR, val_atoms_fun([utf8, undefined])},
                 {?P_RESPONSE_TOPIC, fun val_pub_topic/1},
-                {?P_CORRELATION_DATA, fun val_utf8/1}
+                {?P_CORRELATION_DATA, fun val_utf8/1},
+                {?P_WILL_DELAY_INTERVAL, fun val_int/1}
             ])}
         | modifiers(auth_on_publish)
     ];
