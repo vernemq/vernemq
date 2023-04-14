@@ -1,10 +1,12 @@
+- Allow overriding last will delay in plugins (#1998)
+- Improve error logging: Report invalid modifiers in hooks
 - Fix MQTT listener suspension and --kill_session flag in cluster leave.
 - Adapt nodetool escript to Erlang distribution protocol at boot, enabling IPv6 compat for vmq-admi
 - Expose more SWC sync protocol settings in vernemq.conf (number of SWC groups & more)
 - Add `vmq-admin retain delete` command to CLI (single topic delete only).
 - Fix per mountpoint filtering of `vmq-admin retain show`.
 - Add 'keypasswd': Allows setting password for pem keyfile (#1676)
-- Bugfix:w Improve warning messages for unexpected frame type error to track origin (#1671)
+- Bugfix: Improve warning messages for unexpected frame type error to track origin (#1671)
 - Bugfix: Remove special chars in auto-generated client id (#1673)
 - Bugfix: Websocket returned error 500 and wrote to log, instead of returning 426 (protocol upgrade) #1983 
 - Allow to specify a maximum connection lifetime (per listener). The lifetime can be overwriten by on_register hooks.
