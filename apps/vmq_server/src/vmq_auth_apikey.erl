@@ -162,7 +162,7 @@ is_valid_date_time(Year, Month, Day, Hour, Minute, Second) ->
     end.
 
 scopes() ->
-    ["status", "mgmt", "metrics", "health", "api2"].
+    ["status", "mgmt", "metrics", "health", "api2", "httppub"].
 
 time_diff_now_secs(ExpiresUTC) ->
     CurrentTime = calendar:now_to_universal_time(erlang:timestamp()),

@@ -1,3 +1,4 @@
+- New Plugin: 'vmq_http_pub', allows to ingest MQTT messages via a HTTP REST interface
 - Improve memory footprint and performance of sessions that subscribe to many topics
 - Bugfix: Use default regview as information source for status page 
 - Add support for x-forward-for (XFF) header (Websockets) (#1783)

@@ -1007,6 +1007,19 @@ direct_plugin_exports(LogName, Opts) ->
             %% - trade-consistency flag
             %% - reg_view
             %% - shared subscription policy
+            %% - user_proeprties
+
+            UserProperties = maps:get(user_property, Opts_, undefined),
+            Properties =
+                case UserProperties of
+                    [] ->
+                        #{};
+                    UserPropertyList when is_list(UserPropertyList) ->
+                        #{p_user_property => UserProperties};
+                    _ ->
+                        #{}
+                end,
+
             Msg = #vmq_msg{
                 routing_key = Topic,
                 mountpoint = maps:get(mountpoint, Opts_, Mountpoint),
@@ -1014,6 +1027,7 @@ direct_plugin_exports(LogName, Opts) ->
                 msg_ref = vmq_mqtt_fsm_util:msg_ref(),
                 qos = maps:get(qos, Opts_, 0),
                 dup = maps:get(dup, Opts_, false),
+                properties = Properties,
                 retain = maps:get(retain, Opts_, false),
                 sg_policy = maps:get(shared_subscription_policy, Opts_, SGPolicy)
             },
