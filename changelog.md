@@ -1,3 +1,4 @@
+- Improve memory footprint and performance of sessions that subscribe to many topics
 - Bugfix: Use default regview as information source for status page 
 - Add support for x-forward-for (XFF) header (Websockets) (#1783)
 - Bugfix: QoS0 message shall ignore receive maximum setting (#2150)

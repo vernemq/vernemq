@@ -137,13 +137,13 @@
 %% loaded and used, but one has to be selected as a default. The default routing is
 %% vmq_reg_trie, i.e. routing via the built-in trie data structure.
 {mapping, "default_reg_view", "vmq_server.default_reg_view", [
-                                                              {default, vmq_reg_trie},
+                                                              {default, vmq_reg_ordered_trie},
                                                               {datatype, atom},
                                                               hidden
                                                              ]}.
 %% @doc the views that are started during startup
 {mapping, "reg_views", "vmq_server.reg_views", [
-                                                {default, "[vmq_reg_trie]"},
+                                                {default, "[vmq_reg_ordered_trie]"},
                                                 {datatype, string},
                                                 hidden
                                                ]}.
@@ -1901,7 +1901,7 @@
                                                        hidden
                                                       ]}.
 {mapping, "systree_reg_view", "vmq_server.systree_reg_view", [
-                                                       {default, vmq_reg_trie},
+                                                       {default, vmq_reg_ordered_trie},
                                                        {datatype, atom},
                                                        hidden
                                                       ]}.
