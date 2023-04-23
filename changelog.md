@@ -1,3 +1,4 @@
+- QoS0 messages for offline sessions now count towards the queue_unhandeled metric (#1528,#1536)
 - Allow overriding last will delay in plugins (#1998)
 - Improve error logging: Report invalid modifiers in hooks
 - Fix MQTT listener suspension and --kill_session flag in cluster leave.
