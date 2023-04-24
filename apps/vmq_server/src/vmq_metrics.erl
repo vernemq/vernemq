@@ -1207,7 +1207,7 @@ counter_entries_def() ->
             [],
             queue_message_unhandled,
             queue_message_unhandled,
-            <<"The number of unhandled messages when connecting with clean session=true.">>
+            <<"The number of unhandled messages when connecting with clean session=true or QoS0 for offline sessions.">>
         ),
         m(
             counter,
