@@ -1485,7 +1485,7 @@ counter_entries_def() ->
                 {non_persistence, rcn_to_str(?NON_PERSISTENCE)},
                 {non_retry, rcn_to_str(?NON_RETRY)}
             ],
-            {?QOS1_SUBSCRIPTION_OPTS, ?NON_PERSISTENCE, ?NON_RETRY},
+            {?QOS1_SUBSCRIPTION_OPTS, ?NON_RETRY, ?NON_PERSISTENCE},
             qos1_subscription_opts,
             <<"QoS 1 opts in subscription.">>
         ),
@@ -1496,7 +1496,7 @@ counter_entries_def() ->
                 {non_persistence, rcn_to_str(?NON_PERSISTENCE)},
                 {non_retry, rcn_to_str(?RETRY)}
             ],
-            {?QOS1_SUBSCRIPTION_OPTS, ?NON_PERSISTENCE, ?RETRY},
+            {?QOS1_SUBSCRIPTION_OPTS, ?RETRY, ?NON_PERSISTENCE},
             qos1_subscription_opts,
             <<"QoS 1 opts in subscription.">>
         ),
@@ -1507,7 +1507,7 @@ counter_entries_def() ->
                 {non_persistence, rcn_to_str(?PERSISTENCE)},
                 {non_retry, rcn_to_str(?NON_RETRY)}
             ],
-            {?QOS1_SUBSCRIPTION_OPTS, ?PERSISTENCE, ?NON_RETRY},
+            {?QOS1_SUBSCRIPTION_OPTS, ?NON_RETRY, ?PERSISTENCE},
             qos1_subscription_opts,
             <<"QoS 1 opts in subscription.">>
         ),
@@ -1518,7 +1518,7 @@ counter_entries_def() ->
                 {non_persistence, rcn_to_str(?PERSISTENCE)},
                 {non_retry, rcn_to_str(?RETRY)}
             ],
-            {?QOS1_SUBSCRIPTION_OPTS, ?PERSISTENCE, ?RETRY},
+            {?QOS1_SUBSCRIPTION_OPTS, ?RETRY, ?PERSISTENCE},
             qos1_subscription_opts,
             <<"QoS 1 opts in subscription.">>
         ),
