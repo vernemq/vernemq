@@ -948,7 +948,7 @@ direct_plugin_exports(LogName, Opts) ->
     CAPUnsubscribe = maps:get(cap_unsubscribe, Opts, false),
     SGPolicy = maps:get(sg_policy, Opts, prefer_local),
     Mountpoint = maps:get(mountpoint, Opts, ""),
-    RegView = maps:get(reg_view, Opts, vmq_reg_trie),
+    RegView = maps:get(reg_view, Opts, vmq_config:get_env(default_reg_view, vmq_reg_trie)),
 
     CallingPid = self(),
     ClientIdDef = list_to_binary(

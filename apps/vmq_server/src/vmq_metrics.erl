@@ -1631,7 +1631,8 @@ fetch_external_metric(Mod, Fun, Default) ->
 
 -spec misc_statistics() -> [{metric_id(), any()}].
 misc_statistics() ->
-    {NrOfSubs, SMemory} = fetch_external_metric(vmq_reg_trie, stats, {0, 0}),
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    {NrOfSubs, SMemory} = fetch_external_metric(RegView, stats, {0, 0}),
     {NrOfRetain, RMemory} = fetch_external_metric(vmq_retain_srv, stats, {0, 0}),
     {NrOfMQTTConnections, NrOfMQTTWSConnections} = fetch_external_metric(
         vmq_ranch_sup, active_mqtt_connections, {0, 0}
