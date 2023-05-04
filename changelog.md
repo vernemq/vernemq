@@ -1,3 +1,4 @@
+- Bugfix: QoS0 message shall ignore receive maximum setting (#2150)
 - Offline queues to online queue transition can (temporarily) override the max online queue size (#1663)
 - Fix processing of line endings in vmq_acl (#1897)
 - QoS0 messages for offline sessions now count towards the queue_unhandeled metric (#1528,#1536)

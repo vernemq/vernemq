@@ -1785,15 +1785,27 @@ handle_waiting_msgs(#state{waiting_msgs = Msgs, queue_pid = QPid} = State) ->
 
 handle_messages([#deliver{qos = 0} = D | Rest], Frames, PubCnt, State, Waiting) ->
     {Frame, NewState} = prepare_frame(D, State),
-    handle_messages(Rest, [Frame | Frames], PubCnt, NewState, Waiting);
-handle_messages([#deliver{} = Obj | Rest], Frames, PubCnt, State, Waiting) ->
-    case fc_incr_cnt(State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages) of
-        error ->
-            % reached outgoing flow control max, queue up rest of messages
-            handle_messages(Rest, Frames, PubCnt, State, [Obj | Waiting]);
-        Cnt ->
-            {Frame, NewState} = prepare_frame(Obj, State#state{fc_send_cnt = Cnt}),
-            handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting)
+    handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting);
+handle_messages([#deliver{qos = QoS, msg = Msg} = Obj | Rest], Frames, PubCnt, State, Waiting) ->
+    NewQoS = maybe_upgrade_qos(QoS, Msg#vmq_msg.qos, State),
+    case NewQoS of
+        0 ->
+            {Frame, NewState} = prepare_frame(Obj, State),
+            handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting);
+        % only QoS1 / QoS2 count towards the receive_max_client
+        _ ->
+            case
+                fc_incr_cnt(
+                    State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages
+                )
+            of
+                error ->
+                    % reached outgoing flow control max, queue up rest of messages
+                    handle_messages(Rest, Frames, PubCnt, State, [Obj | Waiting]);
+                Cnt ->
+                    {Frame, NewState} = prepare_frame(Obj, State#state{fc_send_cnt = Cnt}),
+                    handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting)
+            end
     end;
 handle_messages(
     [{deliver_pubrel, {MsgId, #mqtt5_pubrel{} = Frame}} | Rest], Frames, PubCnt, State0, Waiting
