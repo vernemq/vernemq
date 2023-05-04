@@ -13,7 +13,7 @@
 init_per_suite(Config) ->
     S = vmq_test_utils:get_suite_rand_seed(),
     cover:start(),
-    [S, {ct_hooks, vmq_cth} |Config].
+    [S, {ct_hooks, vmq_cth} | Config].
 
 end_per_suite(_Config) ->
     _Config.
@@ -25,11 +25,11 @@ init_per_group(mqttv3, Config) ->
 init_per_group(mqttv4, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    [{protover, 4}|Config];
+    [{protover, 4} | Config];
 init_per_group(mqttv5, Config) ->
     vmq_test_utils:setup(),
     vmq_server_cmd:listener_start(1888, [{allowed_protocol_versions, "3,4,5"}]),
-    [{protover, 5}|Config].
+    [{protover, 5} | Config].
 end_per_group(_Group, _Config) ->
     vmq_server_cmd:listener_stop(1888, "127.0.0.1", false),
     vmq_test_utils:teardown(),
@@ -42,8 +42,12 @@ init_per_testcase(Case, Config) ->
     vmq_server_cmd:set_config(max_client_id_size, 100),
     vmq_server_cmd:set_config(topic_alias_max_client, 0),
     vmq_server_cmd:set_config(topic_alias_max_broker, 0),
-    case lists:member(Case, [shared_subscription_offline,
-                             shared_subscription_online_first]) of
+    case
+        lists:member(Case, [
+            shared_subscription_offline,
+            shared_subscription_online_first
+        ])
+    of
         true ->
             start_client_offline_events(Config);
         _ ->
@@ -51,8 +55,12 @@ init_per_testcase(Case, Config) ->
     end.
 
 end_per_testcase(Case, Config) ->
-    case lists:member(Case, [shared_subscription_offline,
-                             shared_subscription_online_first]) of
+    case
+        lists:member(Case, [
+            shared_subscription_offline,
+            shared_subscription_online_first
+        ])
+    of
         true ->
             stop_client_offline_events(Config);
         _ ->
@@ -61,57 +69,64 @@ end_per_testcase(Case, Config) ->
 
 all() ->
     [
-     {group, mqttv3},
-     {group, mqttv4},
-     {group, mqttv5}
+        {group, mqttv3},
+        {group, mqttv4},
+        {group, mqttv5}
     ].
 
 groups() ->
     V4V5Tests =
-        [publish_qos1_test,
-         publish_qos2_test,
-         publish_b2c_qos2_duplicate_test,
-         publish_c2b_qos2_duplicate_test,
-         publish_b2c_disconnect_qos1_test,
-         publish_b2c_disconnect_qos2_test,
-         publish_c2b_disconnect_qos2_test,
-         publish_b2c_ensure_valid_msg_ids_test,
-         pattern_matching_test,
-         drop_dollar_topic_publish,
-         message_size_exceeded_close,
-         shared_subscription_offline,
-         shared_subscription_online_first,
-         direct_plugin_exports_test
+        [
+            publish_qos1_test,
+            publish_qos2_test,
+            publish_b2c_qos2_duplicate_test,
+            publish_c2b_qos2_duplicate_test,
+            publish_b2c_disconnect_qos1_test,
+            publish_b2c_disconnect_qos2_test,
+            publish_c2b_disconnect_qos2_test,
+            publish_b2c_ensure_valid_msg_ids_test,
+            pattern_matching_test,
+            drop_dollar_topic_publish,
+            message_size_exceeded_close,
+            shared_subscription_offline,
+            shared_subscription_online_first,
+            direct_plugin_exports_test
         ],
     V3Tests =
-        [not_allowed_publish_close_qos0_mqtt_3_1,
-        not_allowed_publish_close_qos1_mqtt_3_1,
-        not_allowed_publish_close_qos2_mqtt_3_1,
-        message_size_exceeded_close
-       ],
+        [
+            not_allowed_publish_close_qos0_mqtt_3_1,
+            not_allowed_publish_close_qos1_mqtt_3_1,
+            not_allowed_publish_close_qos2_mqtt_3_1,
+            message_size_exceeded_close
+        ],
     V4Tests =
-        [not_allowed_publish_close_qos0_mqtt_3_1_1,
-        not_allowed_publish_close_qos1_mqtt_3_1_1,
-        not_allowed_publish_close_qos2_mqtt_3_1_1,
-        message_size_exceeded_close,
-        publish_c2b_retry_qos2_test,
-        publish_b2c_retry_qos1_test,
-        publish_b2c_retry_qos2_test
-        | V4V5Tests],
+        [
+            not_allowed_publish_close_qos0_mqtt_3_1_1,
+            not_allowed_publish_close_qos1_mqtt_3_1_1,
+            not_allowed_publish_close_qos2_mqtt_3_1_1,
+            shared_subscription_does_not_honor_grouping,
+            message_size_exceeded_close,
+            publish_c2b_retry_qos2_test,
+            publish_b2c_retry_qos1_test,
+            publish_b2c_retry_qos2_test
+            | V4V5Tests
+        ],
     V5Tests =
-        [not_allowed_publish_qos0_mqtt_5,
-        not_allowed_publish_qos1_mqtt_5,
-        not_allowed_publish_qos2_mqtt_5,
-        message_expiry_interval,
-        publish_c2b_topic_alias,
-        publish_b2c_topic_alias,
-        forward_properties,
-        max_packet_size
-        | V4V5Tests],
+        [
+            not_allowed_publish_qos0_mqtt_5,
+            not_allowed_publish_qos1_mqtt_5,
+            not_allowed_publish_qos2_mqtt_5,
+            message_expiry_interval,
+            publish_c2b_topic_alias,
+            publish_b2c_topic_alias,
+            forward_properties,
+            max_packet_size
+            | V4V5Tests
+        ],
     [
-     {mqttv3, [shuffle], V3Tests},
-     {mqttv4, [shuffle], V4Tests},
-     {mqttv5, [shuffle], V5Tests}
+        {mqttv3, [shuffle], V3Tests},
+        {mqttv4, [shuffle], V4Tests},
+        {mqttv5, [shuffle], V5Tests}
     ].
 
 -define(CLIENT_OFFLINE_EVENT_SRV, vmq_client_offline_event_server).
@@ -122,8 +137,13 @@ groups() ->
 publish_qos1_test(Config) ->
     Connect = mqtt5_v4compat:gen_connect("pub-qos1-test", [{keepalive, 60}], Config),
     Connack = mqtt5_v4compat:gen_connack(success, Config),
-    Publish = mqtt5_v4compat:gen_publish("pub/qos1/test", 1, <<"message">>,
-                                         [{mid, 19}], Config),
+    Publish = mqtt5_v4compat:gen_publish(
+        "pub/qos1/test",
+        1,
+        <<"message">>,
+        [{mid, 19}],
+        Config
+    ),
     Puback = mqtt5_v4compat:gen_puback(19, Config),
     {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Config),
     enable_on_publish(),
@@ -136,8 +156,13 @@ publish_qos1_test(Config) ->
 publish_qos2_test(Config) ->
     Connect = mqtt5_v4compat:gen_connect("pub-qos2-test", [{keepalive, 60}], Config),
     Connack = mqtt5_v4compat:gen_connack(success, Config),
-    Publish = mqtt5_v4compat:gen_publish("pub/qos2/test", 2, <<"message">>,
-                                 [{mid, 312}], Config),
+    Publish = mqtt5_v4compat:gen_publish(
+        "pub/qos2/test",
+        2,
+        <<"message">>,
+        [{mid, 312}],
+        Config
+    ),
     Pubrec = mqtt5_v4compat:gen_pubrec(312, Config),
     Pubrel = mqtt5_v4compat:gen_pubrel(312, Config),
     Pubcomp = mqtt5_v4compat:gen_pubcomp(312, Config),
@@ -167,8 +192,13 @@ publish_b2c_qos2_duplicate_test(Cfg) ->
     Topic = vmq_cth:utopic(Cfg),
     ConnectPub = mqtt5_v4compat:gen_connect(PubId, [], Cfg),
     Connack = mqtt5_v4compat:gen_connack(success, Cfg),
-    Publish = mqtt5_v4compat:gen_publish(Topic, 2, <<"message">>,
-                                         [{mid, 312}], Cfg),
+    Publish = mqtt5_v4compat:gen_publish(
+        Topic,
+        2,
+        <<"message">>,
+        [{mid, 312}],
+        Cfg
+    ),
     Pubrec = mqtt5_v4compat:gen_pubrec(312, Cfg),
     Pubrel = mqtt5_v4compat:gen_pubrel(312, Cfg),
     Pubcomp = mqtt5_v4compat:gen_pubcomp(312, Cfg),
@@ -179,7 +209,6 @@ publish_b2c_qos2_duplicate_test(Cfg) ->
     Suback = mqtt5_v4compat:gen_suback(3265, 2, Cfg),
     ConnectSub = mqtt5_v4compat:gen_connect(SubId, [], Cfg),
     {ok, SubSocket} = mqtt5_v4compat:do_client_connect(ConnectSub, Connack, [], Cfg),
-
 
     enable_on_publish(),
     enable_on_subscribe(),
@@ -202,7 +231,7 @@ publish_b2c_qos2_duplicate_test(Cfg) ->
     %% the duplicate.
     ExpectF =
         fun(Name, What) ->
-                mqtt5_v4compat:expect_packet(SubSocket, Name, What, Cfg)
+            mqtt5_v4compat:expect_packet(SubSocket, Name, What, Cfg)
         end,
 
     RecvPublish = mqtt5_v4compat:gen_publish(Topic, 2, <<"message">>, [{mid, 1}], Cfg),
@@ -224,10 +253,20 @@ publish_c2b_qos2_duplicate_test(Cfg) ->
     Topic = vmq_cth:utopic(Cfg),
     ConnectPub = mqtt5_v4compat:gen_connect(PubId, [], Cfg),
     Connack = mqtt5_v4compat:gen_connack(success, Cfg),
-    Publish = mqtt5_v4compat:gen_publish(Topic, 2, <<"message">>,
-                                 [{mid, 312}], Cfg),
-    PublishDup = mqtt5_v4compat:gen_publish(Topic, 2, <<"message">>,
-                                 [{mid, 312}], Cfg),
+    Publish = mqtt5_v4compat:gen_publish(
+        Topic,
+        2,
+        <<"message">>,
+        [{mid, 312}],
+        Cfg
+    ),
+    PublishDup = mqtt5_v4compat:gen_publish(
+        Topic,
+        2,
+        <<"message">>,
+        [{mid, 312}],
+        Cfg
+    ),
     Pubrec = mqtt5_v4compat:gen_pubrec(312, Cfg),
     Pubrel = mqtt5_v4compat:gen_pubrel(312, Cfg),
     Pubcomp = mqtt5_v4compat:gen_pubcomp(312, Cfg),
@@ -239,7 +278,6 @@ publish_c2b_qos2_duplicate_test(Cfg) ->
     RecvPublish = mqtt5_v4compat:gen_publish(Topic, 0, <<"message">>, [], Cfg),
     ConnectSub = mqtt5_v4compat:gen_connect(SubId, [], Cfg),
     {ok, SubSocket} = mqtt5_v4compat:do_client_connect(ConnectSub, Connack, [], Cfg),
-
 
     enable_on_publish(),
     enable_on_subscribe(),
@@ -270,20 +308,37 @@ publish_c2b_qos2_duplicate_test(Cfg) ->
 
 publish_b2c_disconnect_qos1_test(Config) ->
     ClientId = vmq_cth:ustr(Config) ++ "pub-qos1-disco-test",
-    Connect = mqtt5_v4compat:gen_connect(ClientId,
-                                         [{keepalive, 60}, {clean_session, false}], Config),
+    Connect = mqtt5_v4compat:gen_connect(
+        ClientId,
+        [{keepalive, 60}, {clean_session, false}],
+        Config
+    ),
     Connack1 = mqtt5_v4compat:gen_connack(success, Config),
     Connack2 = mqtt5_v4compat:gen_connack(true, success, Config),
     Subscribe = mqtt5_v4compat:gen_subscribe(3265, "qos1/disconnect/test", 1, Config),
     Suback = mqtt5_v4compat:gen_suback(3265, 1, Config),
-    Publish = mqtt5_v4compat:gen_publish("qos1/disconnect/test", 1,
-                                         <<"disconnect-message">>, [{mid, 1}], Config),
-    PublishDup = mqtt5_v4compat:gen_publish("qos1/disconnect/test", 1,
-                                            <<"disconnect-message">>,
-                                            [{mid, 1}, {dup, true}], Config),
+    Publish = mqtt5_v4compat:gen_publish(
+        "qos1/disconnect/test",
+        1,
+        <<"disconnect-message">>,
+        [{mid, 1}],
+        Config
+    ),
+    PublishDup = mqtt5_v4compat:gen_publish(
+        "qos1/disconnect/test",
+        1,
+        <<"disconnect-message">>,
+        [{mid, 1}, {dup, true}],
+        Config
+    ),
     Puback = mqtt5_v4compat:gen_puback(1, Config),
-    Publish2 = mqtt5_v4compat:gen_publish("qos1/outgoing", 1,
-                                  <<"outgoing-message">>, [{mid, 3266}], Config),
+    Publish2 = mqtt5_v4compat:gen_publish(
+        "qos1/outgoing",
+        1,
+        <<"outgoing-message">>,
+        [{mid, 3266}],
+        Config
+    ),
     Puback2 = packet:gen_puback(3266),
 
     enable_on_publish(),
@@ -313,22 +368,39 @@ publish_b2c_disconnect_qos1_test(Config) ->
 
 publish_b2c_disconnect_qos2_test(Config) ->
     ClientId = vmq_cth:ustr(Config) ++ "pub-b2c-qos2-disco-test",
-    Connect = mqtt5_v4compat:gen_connect(ClientId,
-                                 [{keepalive, 60}, {clean_session, false}], Config),
+    Connect = mqtt5_v4compat:gen_connect(
+        ClientId,
+        [{keepalive, 60}, {clean_session, false}],
+        Config
+    ),
     Connack1 = mqtt5_v4compat:gen_connack(success, Config),
     Connack2 = mqtt5_v4compat:gen_connack(true, success, Config),
     Subscribe = mqtt5_v4compat:gen_subscribe(3265, "qos2/disconnect/test", 2, Config),
     Suback = mqtt5_v4compat:gen_suback(3265, 2, Config),
-    Publish = mqtt5_v4compat:gen_publish("qos2/disconnect/test", 2,
-                                 <<"disconnect-message">>, [{mid, 1}], Config),
-    PublishDup = mqtt5_v4compat:gen_publish("qos2/disconnect/test", 2,
-                                    <<"disconnect-message">>,
-                                    [{mid, 1}, {dup, true}], Config),
+    Publish = mqtt5_v4compat:gen_publish(
+        "qos2/disconnect/test",
+        2,
+        <<"disconnect-message">>,
+        [{mid, 1}],
+        Config
+    ),
+    PublishDup = mqtt5_v4compat:gen_publish(
+        "qos2/disconnect/test",
+        2,
+        <<"disconnect-message">>,
+        [{mid, 1}, {dup, true}],
+        Config
+    ),
     Pubrel = mqtt5_v4compat:gen_pubrel(1, Config),
     Pubrec = mqtt5_v4compat:gen_pubrec(1, Config),
     Pubcomp = mqtt5_v4compat:gen_pubcomp(1, Config),
-    Publish2 = mqtt5_v4compat:gen_publish("qos1/outgoing", 1,
-                                  <<"outgoing-message">>, [{mid, 3266}], Config),
+    Publish2 = mqtt5_v4compat:gen_publish(
+        "qos1/outgoing",
+        1,
+        <<"outgoing-message">>,
+        [{mid, 3266}],
+        Config
+    ),
     enable_on_publish(),
     enable_on_subscribe(),
     {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack1, [], Config),
@@ -363,11 +435,18 @@ publish_b2c_retry_qos1_test(Config) ->
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(3265, "qos1/timeout/test", 1),
     Suback = packet:gen_suback(3265, 1),
-    Publish = packet:gen_publish("qos1/timeout/test", 1,
-                                 <<"timeout-message">>, [{mid, 1}]),
-    PublishDup = packet:gen_publish("qos1/timeout/test", 1,
-                                    <<"timeout-message">>,
-                                    [{mid, 1}, {dup, true}]),
+    Publish = packet:gen_publish(
+        "qos1/timeout/test",
+        1,
+        <<"timeout-message">>,
+        [{mid, 1}]
+    ),
+    PublishDup = packet:gen_publish(
+        "qos1/timeout/test",
+        1,
+        <<"timeout-message">>,
+        [{mid, 1}, {dup, true}]
+    ),
     Puback = packet:gen_puback(1),
     enable_on_publish(),
     enable_on_subscribe(),
@@ -391,11 +470,18 @@ publish_b2c_retry_qos2_test(Config) ->
     Connack = packet:gen_connack(0),
     Subscribe = packet:gen_subscribe(3265, "qos2/timeout/test", 2),
     Suback = packet:gen_suback(3265, 2),
-    Publish = packet:gen_publish("qos2/timeout/test", 2,
-                                 <<"timeout-message">>, [{mid, 1}]),
-    PublishDup = packet:gen_publish("qos2/timeout/test", 2,
-                                    <<"timeout-message">>,
-                                    [{mid, 1}, {dup, true}]),
+    Publish = packet:gen_publish(
+        "qos2/timeout/test",
+        2,
+        <<"timeout-message">>,
+        [{mid, 1}]
+    ),
+    PublishDup = packet:gen_publish(
+        "qos2/timeout/test",
+        2,
+        <<"timeout-message">>,
+        [{mid, 1}, {dup, true}]
+    ),
     Pubrec = packet:gen_pubrec(1),
     Pubrel = packet:gen_pubrel(1),
     Pubcomp = packet:gen_pubcomp(1),
@@ -422,15 +508,27 @@ publish_b2c_retry_qos2_test(Config) ->
 
 publish_c2b_disconnect_qos2_test(Config) ->
     ClientId = vmq_cth:ustr(Config) ++ "pub-c2b-qos2-disco-test",
-    Connect = mqtt5_v4compat:gen_connect(ClientId,
-                                         [{keepalive, 60}, {clean_session, false}], Config),
+    Connect = mqtt5_v4compat:gen_connect(
+        ClientId,
+        [{keepalive, 60}, {clean_session, false}],
+        Config
+    ),
     Connack1 = mqtt5_v4compat:gen_connack(success, Config),
     Connack2 = mqtt5_v4compat:gen_connack(true, success, Config),
-    Publish = mqtt5_v4compat:gen_publish("qos2/disconnect/test", 2,
-                                         <<"disconnect-message">>, [{mid, 1}], Config),
-    PublishDup = mqtt5_v4compat:gen_publish("qos2/disconnect/test", 2,
-                                            <<"disconnect-message">>,
-                                            [{mid, 1}, {dup, true}], Config),
+    Publish = mqtt5_v4compat:gen_publish(
+        "qos2/disconnect/test",
+        2,
+        <<"disconnect-message">>,
+        [{mid, 1}],
+        Config
+    ),
+    PublishDup = mqtt5_v4compat:gen_publish(
+        "qos2/disconnect/test",
+        2,
+        <<"disconnect-message">>,
+        [{mid, 1}, {dup, true}],
+        Config
+    ),
     Pubrec = mqtt5_v4compat:gen_pubrec(1, Config),
     Pubrel = mqtt5_v4compat:gen_pubrel(1, Config),
     Pubcomp = mqtt5_v4compat:gen_pubcomp(1, Config),
@@ -452,10 +550,10 @@ publish_c2b_disconnect_qos2_test(Config) ->
     {ok, Socket2} = mqtt5_v4compat:do_client_connect(Connect, Connack2, [], Config),
     ok = gen_tcp:send(Socket2, Pubrel),
     Pubcomp2 =
-    case mqtt5_v4compat:protover(Config) of
-        5 -> packetv5:gen_pubcomp(1, ?M5_PACKET_ID_NOT_FOUND, #{});
-        _ -> Pubcomp
-    end,
+        case mqtt5_v4compat:protover(Config) of
+            5 -> packetv5:gen_pubcomp(1, ?M5_PACKET_ID_NOT_FOUND, #{});
+            _ -> Pubcomp
+        end,
     ok = mqtt5_v4compat:expect_packet(Socket2, "pubcomp", Pubcomp2, Config),
     disable_on_publish(),
     ok = expect_alive(Socket2),
@@ -464,8 +562,12 @@ publish_c2b_disconnect_qos2_test(Config) ->
 publish_c2b_retry_qos2_test(_Config) ->
     Connect = packet:gen_connect("pub-c2b-qos2-timeout-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
-    Publish = packet:gen_publish("pub/qos2/test", 2,
-                                 <<"timeout-message">>, [{mid, 1926}]),
+    Publish = packet:gen_publish(
+        "pub/qos2/test",
+        2,
+        <<"timeout-message">>,
+        [{mid, 1926}]
+    ),
     Pubrec = packet:gen_pubrec(1926),
     Pubrel = packet:gen_pubrel(1926),
     Pubcomp = packet:gen_pubcomp(1926),
@@ -486,10 +588,14 @@ publish_b2c_ensure_valid_msg_ids_test(Config) ->
     enable_on_subscribe(),
     ClientId = vmq_cth:ustr(Config) ++ "-persisted",
     Topic = vmq_cth:utopic(Config) ++ "/client",
-    Connect = mqtt5_v4compat:gen_connect(ClientId,
-                                         [{keepalive, 60},
-                                          {clean_session, false}],
-                                         Config),
+    Connect = mqtt5_v4compat:gen_connect(
+        ClientId,
+        [
+            {keepalive, 60},
+            {clean_session, false}
+        ],
+        Config
+    ),
     Connack = mqtt5_v4compat:gen_connack(success, Config),
     {ok, Socket} = mqtt5_v4compat:do_client_connect(Connect, Connack, [], Config),
     %% subscribe to the offline topic
@@ -500,10 +606,14 @@ publish_b2c_ensure_valid_msg_ids_test(Config) ->
 
     %% connect publisher
     PubClientId = vmq_cth:ustr(Config) ++ "-publisher",
-    PubConnect = mqtt5_v4compat:gen_connect(PubClientId,
-                                            [{keepalive, 60},
-                                             {clean_session, true}],
-                                            Config),
+    PubConnect = mqtt5_v4compat:gen_connect(
+        PubClientId,
+        [
+            {keepalive, 60},
+            {clean_session, true}
+        ],
+        Config
+    ),
     {ok, PubSocket} = mqtt5_v4compat:do_client_connect(PubConnect, Connack, [], Config),
     Publish1 = mqtt5_v4compat:gen_publish(Topic, 2, <<"msg1">>, [{mid, 1}], Config),
     Pubrec1 = mqtt5_v4compat:gen_pubrec(1, Config),
@@ -559,7 +669,6 @@ publish_b2c_ensure_valid_msg_ids_test(Config) ->
     ok = gen_tcp:send(Socket1, Disconnect),
     ok = gen_tcp:close(Socket1).
 
-
 pattern_matching_test(Config) ->
     ok = pattern_test("#", "test/topic", Config),
     ok = pattern_test("#", "/test/topic", Config),
@@ -572,8 +681,11 @@ pattern_matching_test(Config) ->
     ok = pattern_test("/#", "/foo", Config),
     ok = pattern_test("test/topic/", "test/topic/", Config),
     ok = pattern_test("test/topic/+", "test/topic/", Config),
-    ok = pattern_test("+/+/+/+/+/+/+/+/+/+/test",
-                      "one/two/three/four/five/six/seven/eight/nine/ten/test", Config),
+    ok = pattern_test(
+        "+/+/+/+/+/+/+/+/+/+/test",
+        "one/two/three/four/five/six/seven/eight/nine/ten/test",
+        Config
+    ),
     ok = pattern_test("#", "test////a//topic", Config),
     ok = pattern_test("#", "/test////a//topic", Config),
     ok = pattern_test("foo/#", "foo//bar///baz", Config),
@@ -590,13 +702,19 @@ pattern_test(SubTopic, PubTopic, Config) ->
     case vmq_topic:contains_wildcard(CT) of
         true ->
             vmq_reg_redis_trie:add_complex_topics([CT]);
-        _ -> ok
+        _ ->
+            ok
     end,
     Connect = mqtt5_v4compat:gen_connect("pattern-sub-test", [{keepalive, 60}], Config),
     Connack = mqtt5_v4compat:gen_connack(success, Config),
     Publish = mqtt5_v4compat:gen_publish(PubTopic, 0, <<"message">>, [], Config),
-    PublishRetained = mqtt5_v4compat:gen_publish(PubTopic, 0, <<"message">>,
-                                         [{retain, true}], Config),
+    PublishRetained = mqtt5_v4compat:gen_publish(
+        PubTopic,
+        0,
+        <<"message">>,
+        [{retain, true}],
+        Config
+    ),
     Subscribe = mqtt5_v4compat:gen_subscribe(312, SubTopic, 0, Config),
     Suback = mqtt5_v4compat:gen_suback(312, 0, Config),
     Unsubscribe = mqtt5_v4compat:gen_unsubscribe(234, SubTopic, Config),
@@ -658,8 +776,10 @@ not_allowed_publish_close_qos2_mqtt_3_1(_) ->
     gen_tcp:close(Socket).
 
 not_allowed_publish_close_qos0_mqtt_3_1_1(_) ->
-    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60},
-                                                      {proto_ver, 4}]),
+    Connect = packet:gen_connect("pattern-sub-test", [
+        {keepalive, 60},
+        {proto_ver, 4}
+    ]),
     Connack = packet:gen_connack(0),
     Topic = "test/topic/not_allowed",
     Publish = packet:gen_publish(Topic, 0, <<"message">>, []),
@@ -669,8 +789,10 @@ not_allowed_publish_close_qos0_mqtt_3_1_1(_) ->
     {error, closed} = gen_tcp:recv(Socket, 0, 1000).
 
 not_allowed_publish_close_qos1_mqtt_3_1_1(_) ->
-    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60},
-                                                      {proto_ver, 4}]),
+    Connect = packet:gen_connect("pattern-sub-test", [
+        {keepalive, 60},
+        {proto_ver, 4}
+    ]),
     Connack = packet:gen_connack(0),
     Topic = "test/topic/not_allowed",
     Publish = packet:gen_publish(Topic, 1, <<"message">>, [{mid, 1}]),
@@ -680,8 +802,10 @@ not_allowed_publish_close_qos1_mqtt_3_1_1(_) ->
     {error, closed} = gen_tcp:recv(Socket, 0, 1000).
 
 not_allowed_publish_close_qos2_mqtt_3_1_1(_) ->
-    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60},
-                                                      {proto_ver, 4}]),
+    Connect = packet:gen_connect("pattern-sub-test", [
+        {keepalive, 60},
+        {proto_ver, 4}
+    ]),
     Connack = packet:gen_connack(0),
     Topic = "test/topic/not_allowed",
     Publish = packet:gen_publish(Topic, 2, <<"message">>, [{mid, 1}]),
@@ -689,7 +813,6 @@ not_allowed_publish_close_qos2_mqtt_3_1_1(_) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     gen_tcp:send(Socket, Publish),
     {error, closed} = gen_tcp:recv(Socket, 0, 1000).
-
 
 drop_dollar_topic_publish(Config) ->
     Connect = mqtt5_v4compat:gen_connect("drop-dollar-test", [{keepalive, 60}], Config),
@@ -703,8 +826,10 @@ drop_dollar_topic_publish(Config) ->
     {error, timeout} = gen_tcp:recv(Socket, 0, 1000).
 
 not_allowed_publish_qos0_mqtt_5(_) ->
-    Connect = packetv5:gen_connect("pattern-sub-test", [{keepalive, 60},
-                                                      {clean_start, true}]),
+    Connect = packetv5:gen_connect("pattern-sub-test", [
+        {keepalive, 60},
+        {clean_start, true}
+    ]),
     Connack = packetv5:gen_connack(),
     Topic = "test/topic/not_allowed",
     Publish = packetv5:gen_publish(Topic, 0, <<"message">>, [{mid, 1}]),
@@ -716,8 +841,10 @@ not_allowed_publish_qos0_mqtt_5(_) ->
     ok = gen_tcp:close(Socket).
 
 not_allowed_publish_qos1_mqtt_5(_) ->
-    Connect = packetv5:gen_connect("pattern-sub-test", [{keepalive, 60},
-                                                      {clean_start, true}]),
+    Connect = packetv5:gen_connect("pattern-sub-test", [
+        {keepalive, 60},
+        {clean_start, true}
+    ]),
     Connack = packetv5:gen_connack(),
     Topic = "test/topic/not_allowed",
     Publish = packetv5:gen_publish(Topic, 1, <<"message">>, [{mid, 1}]),
@@ -729,8 +856,10 @@ not_allowed_publish_qos1_mqtt_5(_) ->
     ok = gen_tcp:close(Socket).
 
 not_allowed_publish_qos2_mqtt_5(_) ->
-    Connect = packetv5:gen_connect("pattern-sub-test", [{keepalive, 60},
-                                                        {clean_start, true}]),
+    Connect = packetv5:gen_connect("pattern-sub-test", [
+        {keepalive, 60},
+        {clean_start, true}
+    ]),
     Connack = packetv5:gen_connack(),
     Topic = "test/topic/not_allowed",
     Publish = packetv5:gen_publish(Topic, 2, <<"message">>, [{mid, 1}]),
@@ -747,18 +876,33 @@ message_size_exceeded_close(_) ->
     vmq_metrics:reset_counters(),
     Connect = packet:gen_connect("pub-excessive-test", [{keepalive, 60}]),
     Connack = packet:gen_connack(0),
-    Publish = packet:gen_publish("pub/excessive/test", 0, vmq_test_utils:rand_bytes(1024),
-                                 [{mid, 19}]),
+    Publish = packet:gen_publish(
+        "pub/excessive/test",
+        0,
+        vmq_test_utils:rand_bytes(1024),
+        [{mid, 19}]
+    ),
     {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
     enable_on_publish(),
     ok = gen_tcp:send(Socket, Publish),
     {error, closed} = gen_tcp:recv(Socket, 0, 1000),
     true = lists:any(
-             fun({#metric_def{
-                     type = counter,
-                     name = mqtt_invalid_msg_size_error}, 1}) -> true;
-                (_) -> false
-             end,vmq_metrics:metrics(#{aggregate => false})),
+        fun
+            (
+                {
+                    #metric_def{
+                        type = counter,
+                        name = mqtt_invalid_msg_size_error
+                    },
+                    1
+                }
+            ) ->
+                true;
+            (_) ->
+                false
+        end,
+        vmq_metrics:metrics(#{aggregate => false})
+    ),
     vmq_config:set_env(max_message_size, OldLimit, false),
     disable_on_publish().
 
@@ -769,10 +913,16 @@ shared_subscription_offline(Cfg) ->
     Prefix = vmq_cth:ustr(Cfg),
     PubConnect = mqtt5_v4compat:gen_connect(Prefix ++ "single-offline-pub", [{keepalive, 60}], Cfg),
     SubOfflineClientId = Prefix ++ "single-offline-sha-sub",
-    SubConnectOffline = mqtt5_v4compat:gen_connect(SubOfflineClientId,
-                                                   [{keepalive, 60},
-                                                    {clean_session, false}], Cfg),
-    Subscription = "$share/" ++ Prefix ++ "/shared_sub_topic",
+    SubConnectOffline = mqtt5_v4compat:gen_connect(
+        SubOfflineClientId,
+        [
+            {keepalive, 60},
+            {clean_session, false}
+        ],
+        Cfg
+    ),
+    Topic = "shared_sub_topic_offline",
+    Subscription = "$share/" ++ Prefix ++ "/" ++ Topic,
     {ok, PubSocket} = mqtt5_v4compat:do_client_connect(PubConnect, Connack, [], Cfg),
     {ok, SubSocketOffline} = mqtt5_v4compat:do_client_connect(SubConnectOffline, Connack, [], Cfg),
     Subscribe = mqtt5_v4compat:gen_subscribe(1, Subscription, 1, Cfg),
@@ -785,24 +935,33 @@ shared_subscription_offline(Cfg) ->
     %% wait for the client to be offline before publishing
     wait_for_offline_event(SubOfflineClientId, 500),
 
-    PubFun
-        = fun(Socket, Mid) ->
-                  Publish = mqtt5_v4compat:gen_publish("shared_sub_topic", 1,
-                                                       <<Mid:8, (vmq_test_utils:rand_bytes(10))/binary>>,
-                                                       [{mid, Mid}], Cfg),
-                  Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
-                  ok = gen_tcp:send(Socket, Publish),
-                  ok = mqtt5_v4compat:expect_packet(Socket, "puback", Puback, Cfg),
-                  {Mid, Publish}
-          end,
-    Published = [PubFun(PubSocket, Mid) || Mid <- lists:seq(1,10)],
+    PubFun =
+        fun(Socket, Mid) ->
+            Publish = mqtt5_v4compat:gen_publish(
+                Topic,
+                1,
+                <<Mid:8, (vmq_test_utils:rand_bytes(10))/binary>>,
+                [{mid, Mid}],
+                Cfg
+            ),
+            Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
+            ok = gen_tcp:send(Socket, Publish),
+            ok = mqtt5_v4compat:expect_packet(Socket, "puback", Puback, Cfg),
+            {Mid, Publish}
+        end,
+    Published = [PubFun(PubSocket, Mid) || Mid <- lists:seq(1, 10)],
     ConnackSP = mqtt5_v4compat:gen_connack(true, success, Cfg),
-    {ok, SubSocketOffline2} = mqtt5_v4compat:do_client_connect(SubConnectOffline, ConnackSP, [], Cfg),
-    [begin
-         ok = mqtt5_v4compat:expect_packet(SubSocketOffline2, "publish", Expect, Cfg),
-         Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
-         ok = gen_tcp:send(SubSocketOffline2, Puback)
-     end || {Mid, Expect} <- Published ],
+    {ok, SubSocketOffline2} = mqtt5_v4compat:do_client_connect(
+        SubConnectOffline, ConnackSP, [], Cfg
+    ),
+    [
+        begin
+            ok = mqtt5_v4compat:expect_packet(SubSocketOffline2, "publish", Expect, Cfg),
+            Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
+            ok = gen_tcp:send(SubSocketOffline2, Puback)
+        end
+     || {Mid, Expect} <- Published
+    ],
     disable_on_publish(),
     disable_on_subscribe().
 
@@ -812,15 +971,25 @@ shared_subscription_online_first(Cfg) ->
     Connack = mqtt5_v4compat:gen_connack(success, Cfg),
     Prefix = vmq_cth:ustr(Cfg),
     PubConnect = mqtt5_v4compat:gen_connect(Prefix ++ "shared-sub-pub", [{keepalive, 60}], Cfg),
-    SubConnectOnline = mqtt5_v4compat:gen_connect(Prefix ++ "shared-sub-sub-online",
-                                                  [{keepalive, 60},
-                                                   {clean_session, false}], Cfg),
+    SubConnectOnline = mqtt5_v4compat:gen_connect(
+        Prefix ++ "shared-sub-sub-online",
+        [
+            {keepalive, 60},
+            {clean_session, false}
+        ],
+        Cfg
+    ),
     SubOfflineClientId = Prefix ++ "shared-sub-sub-offline",
-    SubConnectOffline = mqtt5_v4compat:gen_connect(SubOfflineClientId,
-                                                   [{keepalive, 60},
-                                                    {clean_session, false}],
-                                                   Cfg),
-    Subscription = "$share/" ++ Prefix ++ "/shared_sub_topic",
+    SubConnectOffline = mqtt5_v4compat:gen_connect(
+        SubOfflineClientId,
+        [
+            {keepalive, 60},
+            {clean_session, false}
+        ],
+        Cfg
+    ),
+    Topic = "shared_sub_topic_online_first",
+    Subscription = "$share/" ++ Prefix ++ "/" ++ Topic,
     {ok, PubSocket} = mqtt5_v4compat:do_client_connect(PubConnect, Connack, [], Cfg),
     {ok, SubSocketOnline} = mqtt5_v4compat:do_client_connect(SubConnectOnline, Connack, [], Cfg),
     {ok, SubSocketOffline} = mqtt5_v4compat:do_client_connect(SubConnectOffline, Connack, [], Cfg),
@@ -837,24 +1006,103 @@ shared_subscription_online_first(Cfg) ->
     wait_for_offline_event(SubOfflineClientId, 500),
 
     %% now let's publish
-    PubFun
-        = fun(Socket, Mid) ->
-                  Publish = mqtt5_v4compat:gen_publish("shared_sub_topic", 1,
-                                                       <<Mid:8, (vmq_test_utils:rand_bytes(10))/binary>>,
-                                               [{mid, Mid}], Cfg),
-                  Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
-                  ok = gen_tcp:send(Socket, Publish),
-                  ok = mqtt5_v4compat:expect_packet(Socket, "puback", Puback, Cfg),
-                  {Mid, Publish}
-          end,
-    Published = [PubFun(PubSocket, Mid) || Mid <- lists:seq(1,10)],
+    PubFun =
+        fun(Socket, Mid) ->
+            Publish = mqtt5_v4compat:gen_publish(
+                Topic,
+                1,
+                <<Mid:8, (vmq_test_utils:rand_bytes(10))/binary>>,
+                [{mid, Mid}],
+                Cfg
+            ),
+            Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
+            ok = gen_tcp:send(Socket, Publish),
+            ok = mqtt5_v4compat:expect_packet(Socket, "puback", Puback, Cfg),
+            {Mid, Publish}
+        end,
+    Published = [PubFun(PubSocket, Mid) || Mid <- lists:seq(1, 10)],
     %% since all messages should end up with the online subscriber, we
     %% can check they arrived one by one in the publish order.
-    [begin
-         ok = mqtt5_v4compat:expect_packet(SubSocketOnline, "publish", Expect, Cfg),
-         Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
-         ok = gen_tcp:send(SubSocketOnline, Puback)
-     end || {Mid, Expect} <- Published ],
+    [
+        begin
+            ok = mqtt5_v4compat:expect_packet(SubSocketOnline, "publish", Expect, Cfg),
+            Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
+            ok = gen_tcp:send(SubSocketOnline, Puback)
+        end
+     || {Mid, Expect} <- Published
+    ],
+    disable_on_publish(),
+    disable_on_subscribe().
+
+shared_subscription_does_not_honor_grouping(Cfg) ->
+    enable_on_publish(),
+    enable_on_subscribe(),
+    Connack = mqtt5_v4compat:gen_connack(success, Cfg),
+    Prefix = vmq_cth:ustr(Cfg),
+    PubConnect = mqtt5_v4compat:gen_connect(Prefix ++ "shared-sub-pub", [{keepalive, 60}], Cfg),
+    SubConnectOnline1 = mqtt5_v4compat:gen_connect(
+        Prefix ++ "shared-sub-sub-online-1",
+        [
+            {keepalive, 60},
+            {clean_session, false}
+        ],
+        Cfg
+    ),
+    SubConnectOnline2 = mqtt5_v4compat:gen_connect(
+        Prefix ++ "shared-sub-sub-online-2",
+        [
+            {keepalive, 60},
+            {clean_session, false}
+        ],
+        Cfg
+    ),
+    Topic = "shared_sub_grouping_topic",
+    Subscription1 = "$share/" ++ Prefix ++ "-1" ++ "/" ++ Topic,
+    Subscription2 = "$share/" ++ Prefix ++ "-2" ++ "/" ++ Topic,
+    {ok, PubSocket} = mqtt5_v4compat:do_client_connect(PubConnect, Connack, [], Cfg),
+    {ok, SubSocket1} = mqtt5_v4compat:do_client_connect(SubConnectOnline1, Connack, [], Cfg),
+    {ok, SubSocket2} = mqtt5_v4compat:do_client_connect(SubConnectOnline2, Connack, [], Cfg),
+    Subscribe1 = mqtt5_v4compat:gen_subscribe(1, Subscription1, 1, Cfg),
+    Subscribe2 = mqtt5_v4compat:gen_subscribe(1, Subscription2, 1, Cfg),
+    Suback = mqtt5_v4compat:gen_suback(1, 1, Cfg),
+    ok = gen_tcp:send(SubSocket1, Subscribe1),
+    ok = mqtt5_v4compat:expect_packet(SubSocket1, "suback", Suback, Cfg),
+    ok = gen_tcp:send(SubSocket2, Subscribe2),
+    ok = mqtt5_v4compat:expect_packet(SubSocket2, "suback", Suback, Cfg),
+
+    %% now let's publish
+    PubFun =
+        fun(Socket, Mid) ->
+            Publish = mqtt5_v4compat:gen_publish(
+                Topic,
+                1,
+                <<Mid:8, (vmq_test_utils:rand_bytes(10))/binary>>,
+                [{mid, Mid}],
+                Cfg
+            ),
+            Puback = mqtt5_v4compat:gen_puback(Mid, Cfg),
+            ok = gen_tcp:send(Socket, Publish),
+            ok = mqtt5_v4compat:expect_packet(Socket, "puback", Puback, Cfg),
+            Publish
+        end,
+    PublishedPackets = [PubFun(PubSocket, Mid) || Mid <- lists:seq(1, 10)],
+    Pid1 = spawn(?MODULE, receive_at_most_n_publish_frames, [self(), SubSocket1, 10, 1, Cfg]),
+    Pid2 = spawn(?MODULE, receive_at_most_n_publish_frames, [self(), SubSocket2, 10, 1, Cfg]),
+    ReceivedF1 =
+        receive
+            {Pid1, Res1} -> Res1
+        after 50000 ->
+            {error, timeout}
+        end,
+    ReceivedF2 =
+        receive
+            {Pid2, Res2} -> Res2
+        after 50000 -> {error, timeout}
+        end,
+
+    10 = length(ReceivedF1) + length(ReceivedF2),
+    compare_published_packets_payload(PublishedPackets, ReceivedF1, ReceivedF2),
+
     disable_on_publish(),
     disable_on_subscribe().
 
@@ -873,9 +1121,11 @@ message_expiry_interval(_) ->
     enable_on_message_drop(),
 
     %% set up subscriber
-    SubConnect = packetv5:gen_connect("message-expiry-sub", [{keepalive, 60},
-                                                             {clean_start, false},
-                                                             {properties, #{p_session_expiry_interval => 16#FFFFFFFF}}]),
+    SubConnect = packetv5:gen_connect("message-expiry-sub", [
+        {keepalive, 60},
+        {clean_start, false},
+        {properties, #{p_session_expiry_interval => 16#FFFFFFFF}}
+    ]),
     Connack = packetv5:gen_connack(?M5_CONNACK_ACCEPT),
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, Connack, []),
     SubTopic60s = packetv5:gen_subtopic(<<"message/expiry/60s">>, 1),
@@ -883,7 +1133,7 @@ message_expiry_interval(_) ->
     SubscribeAll = packetv5:gen_subscribe(10, [SubTopic60s, SubTopic1s], #{}),
     ok = gen_tcp:send(SubSocket, SubscribeAll),
 
-    SubAck = packetv5:gen_suback(10, [1,1], #{}),
+    SubAck = packetv5:gen_suback(10, [1, 1], #{}),
     ok = packetv5:expect_frame(SubSocket, SubAck),
     Disconnect = packetv5:gen_disconnect(),
     ok = gen_tcp:send(SubSocket, Disconnect),
@@ -895,15 +1145,23 @@ message_expiry_interval(_) ->
 
     %% Publish some messages
     Expiry60s = #{p_message_expiry_interval => 60},
-    PE60s = packetv5:gen_publish(<<"message/expiry/60s">>, 1, <<"e60s">>,
-                                 [{properties, Expiry60s}, {mid, 0}]),
+    PE60s = packetv5:gen_publish(
+        <<"message/expiry/60s">>,
+        1,
+        <<"e60s">>,
+        [{properties, Expiry60s}, {mid, 0}]
+    ),
     ok = gen_tcp:send(PubSocket, PE60s),
     Puback0 = packetv5:gen_puback(0),
     ok = packetv5:expect_frame(PubSocket, Puback0),
 
     Expiry1s = #{p_message_expiry_interval => 1},
-    PE1s = packetv5:gen_publish(<<"message/expiry/1s">>, 1, <<"e1s">>,
-                                [{properties, Expiry1s}, {mid, 1}]),
+    PE1s = packetv5:gen_publish(
+        <<"message/expiry/1s">>,
+        1,
+        <<"e1s">>,
+        [{properties, Expiry1s}, {mid, 1}]
+    ),
     ok = gen_tcp:send(PubSocket, PE1s),
     Puback1 = packetv5:gen_puback(1),
     ok = packetv5:expect_frame(PubSocket, Puback1),
@@ -919,9 +1177,11 @@ message_expiry_interval(_) ->
 
     %% receive the message with a long expiry interval
     {ok, RPE60s, <<>>} = packetv5:receive_frame(SubSocket1),
-    #mqtt5_publish{topic = [<<"message">>, <<"expiry">>, <<"60s">>],
-                   qos = 1,
-                   properties = #{p_message_expiry_interval := Remaining}} = RPE60s,
+    #mqtt5_publish{
+        topic = [<<"message">>, <<"expiry">>, <<"60s">>],
+        qos = 1,
+        properties = #{p_message_expiry_interval := Remaining}
+    } = RPE60s,
     true = Remaining < 60,
 
     %% The 1s message shouldn't arrive, but let's just block a bit to
@@ -948,7 +1208,7 @@ publish_c2b_topic_alias(_Config) ->
     SubConnect = packetv5:gen_connect("publish-c2b-topic-alias-subscriber", [{keepalive, 60}]),
     SubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{p_topic_alias_max => 3}),
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, SubConnack, []),
-    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)], #{}),
+    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic, 0)], #{}),
     ok = gen_tcp:send(SubSocket, Subscribe),
     SubAck = packetv5:gen_suback(77, [0], #{}),
     ok = packetv5:expect_frame(SubSocket, SubAck),
@@ -958,10 +1218,18 @@ publish_c2b_topic_alias(_Config) ->
     {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
 
     TA1 = #{p_topic_alias => 1},
-    TASetup = packetv5:gen_publish(Topic, 0, <<"publish alias setup">>,
-                                   [{properties, TA1}]),
-    TAPub = packetv5:gen_publish(<<>>, 0, <<"publish alias pub">>,
-                                 [{properties, TA1}]),
+    TASetup = packetv5:gen_publish(
+        Topic,
+        0,
+        <<"publish alias setup">>,
+        [{properties, TA1}]
+    ),
+    TAPub = packetv5:gen_publish(
+        <<>>,
+        0,
+        <<"publish alias pub">>,
+        [{properties, TA1}]
+    ),
 
     ok = gen_tcp:send(PubSocket, TASetup),
     ok = gen_tcp:send(PubSocket, TAPub),
@@ -988,11 +1256,13 @@ publish_b2c_topic_alias(Config) ->
     PubClientId = vmq_cth:ustr(Config) ++ "-pub",
     Topic = list_to_binary(vmq_cth:utopic(Config)),
 
-    SubConnect = packetv5:gen_connect(SubClientId,
-                                      [{keepalive, 60}, {properties, #{p_topic_alias_max => 3}}]),
+    SubConnect = packetv5:gen_connect(
+        SubClientId,
+        [{keepalive, 60}, {properties, #{p_topic_alias_max => 3}}]
+    ),
     SubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, SubConnack, []),
-    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)], #{}),
+    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic, 0)], #{}),
     ok = gen_tcp:send(SubSocket, Subscribe),
     SubAck = packetv5:gen_suback(77, [0], #{}),
     ok = packetv5:expect_frame(SubSocket, SubAck),
@@ -1009,10 +1279,18 @@ publish_b2c_topic_alias(Config) ->
 
     TA1 = #{p_topic_alias => 1},
 
-    ExpectSetupPub = packetv5:gen_publish(Topic, 0, <<"publish alias setup">>,
-                                          [{properties, TA1}]),
-    ExpectTAPub = packetv5:gen_publish(<<>>, 0, <<"publish alias pub">>,
-                                          [{properties, TA1}]),
+    ExpectSetupPub = packetv5:gen_publish(
+        Topic,
+        0,
+        <<"publish alias setup">>,
+        [{properties, TA1}]
+    ),
+    ExpectTAPub = packetv5:gen_publish(
+        <<>>,
+        0,
+        <<"publish alias pub">>,
+        [{properties, TA1}]
+    ),
 
     ok = packetv5:expect_frame(SubSocket, ExpectSetupPub),
     ok = packetv5:expect_frame(SubSocket, ExpectTAPub),
@@ -1025,7 +1303,6 @@ publish_b2c_topic_alias(Config) ->
     ok.
 
 forward_properties(_Config) ->
-
     enable_on_publish(),
     enable_on_subscribe(),
 
@@ -1035,7 +1312,7 @@ forward_properties(_Config) ->
     SubConnect = packetv5:gen_connect("property-passthrough-sub-test", [{keepalive, 60}]),
     SubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, SubConnack, []),
-    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)], #{}),
+    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic, 0)], #{}),
     ok = gen_tcp:send(SubSocket, Subscribe),
     SubAck = packetv5:gen_suback(77, [0], #{}),
     ok = packetv5:expect_frame(SubSocket, SubAck),
@@ -1043,49 +1320,60 @@ forward_properties(_Config) ->
     %% setup publisher
     Properties =
         [
-         %% A Server MUST send the Payload Format Indicator unaltered to
-         %% all subscribers receiving the Application Message
-         %% [MQTT-3.3.2-4]
-         #{p_payload_format_indicator => utf8},
-         #{p_payload_format_indicator => unspecified},
+            %% A Server MUST send the Payload Format Indicator unaltered to
+            %% all subscribers receiving the Application Message
+            %% [MQTT-3.3.2-4]
+            #{p_payload_format_indicator => utf8},
+            #{p_payload_format_indicator => unspecified},
 
-         %% The Server MUST send the Response Topic unaltered to all
-         %% subscribers receiving the Application Message
-         %% [MQTT-3.3.2-15].
-         #{p_response_topic => <<"response topic">>},
+            %% The Server MUST send the Response Topic unaltered to all
+            %% subscribers receiving the Application Message
+            %% [MQTT-3.3.2-15].
+            #{p_response_topic => <<"response topic">>},
 
-         %% The Server MUST send the Correlation Data unaltered to all
-         %% subscribers receiving the Application Message
-         %% [MQTT-3.3.2-16].
-         #{p_correlation_data => <<"correlation data">>},
+            %% The Server MUST send the Correlation Data unaltered to all
+            %% subscribers receiving the Application Message
+            %% [MQTT-3.3.2-16].
+            #{p_correlation_data => <<"correlation data">>},
 
-         %% The Server MUST send all User Properties unaltered in a
-         %% PUBLISH packet when forwarding the Application Message to
-         %% a Client [MQTT-3.3.2-17]. The Server MUST maintain the
-         %% order of User Properties when forwarding the Application
-         %% Message [MQTT-3.3.2-18].
-         #{p_user_property => [{<<"k1">>, <<"v1">>},
-                               {<<"k2">>, <<"v2">>},
-                               {<<"k3">>, <<"v3">>},
-                               {<<"k2">>, <<"v4">>}]},
+            %% The Server MUST send all User Properties unaltered in a
+            %% PUBLISH packet when forwarding the Application Message to
+            %% a Client [MQTT-3.3.2-17]. The Server MUST maintain the
+            %% order of User Properties when forwarding the Application
+            %% Message [MQTT-3.3.2-18].
+            #{
+                p_user_property => [
+                    {<<"k1">>, <<"v1">>},
+                    {<<"k2">>, <<"v2">>},
+                    {<<"k3">>, <<"v3">>},
+                    {<<"k2">>, <<"v4">>}
+                ]
+            },
 
-         %% A Server MUST send the Content Type unaltered to all
-         %% subscribers receiving the Application Message
-         %% [MQTT-3.3.2-20].
-         #{p_content_type => <<"content type">>}],
+            %% A Server MUST send the Content Type unaltered to all
+            %% subscribers receiving the Application Message
+            %% [MQTT-3.3.2-20].
+            #{p_content_type => <<"content type">>}
+        ],
 
     PubConnect = packetv5:gen_connect("property-passthrough-pub-test", [{keepalive, 60}]),
     PubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
     {ok, PubSocket} = packetv5:do_client_connect(PubConnect, PubConnack, []),
 
     lists:foreach(
-      fun(Property) ->
-              ct:pal("Testing property: ~p", [Property]),
-              Pub = packetv5:gen_publish(Topic, 0, <<"message">>,
-                                         [{properties, Property}]),
-              ok = gen_tcp:send(PubSocket, Pub),
-              ok = packetv5:expect_frame(SubSocket, Pub)
-      end, Properties),
+        fun(Property) ->
+            ct:pal("Testing property: ~p", [Property]),
+            Pub = packetv5:gen_publish(
+                Topic,
+                0,
+                <<"message">>,
+                [{properties, Property}]
+            ),
+            ok = gen_tcp:send(PubSocket, Pub),
+            ok = packetv5:expect_frame(SubSocket, Pub)
+        end,
+        Properties
+    ),
 
     disable_on_publish(),
     disable_on_subscribe().
@@ -1097,15 +1385,18 @@ max_packet_size(Config) ->
     SubClientId = vmq_cth:ustr(Config) ++ "-sub",
     PubClientId = vmq_cth:ustr(Config) ++ "-pub",
     Topic = list_to_binary(vmq_cth:utopic(Config)),
-    Pub = packetv5:gen_publish(Topic, 0, <<"publish">>, [{properties,
-                                                          #{p_user_property => [{<<"hello">>, <<"world">>}]}}]),
+    Pub = packetv5:gen_publish(Topic, 0, <<"publish">>, [
+        {properties, #{p_user_property => [{<<"hello">>, <<"world">>}]}}
+    ]),
     ReducedPub = packetv5:gen_publish(Topic, 0, <<"publish">>, []),
     TooLargePub = packetv5:gen_publish(Topic, 0, <<"large enough to be discarded publish">>, []),
-    SubConnect = packetv5:gen_connect(SubClientId,
-                                      [{keepalive, 60}, {properties, #{p_max_packet_size => iolist_size(ReducedPub)}}]),
+    SubConnect = packetv5:gen_connect(
+        SubClientId,
+        [{keepalive, 60}, {properties, #{p_max_packet_size => iolist_size(ReducedPub)}}]
+    ),
     SubConnack = packetv5:gen_connack(0, ?M5_CONNACK_ACCEPT, #{}),
     {ok, SubSocket} = packetv5:do_client_connect(SubConnect, SubConnack, []),
-    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic,0)], #{}),
+    Subscribe = packetv5:gen_subscribe(77, [packetv5:gen_subtopic(Topic, 0)], #{}),
     ok = gen_tcp:send(SubSocket, Subscribe),
     SubAck = packetv5:gen_suback(77, [0], #{}),
     ok = packetv5:expect_frame(SubSocket, SubAck),
@@ -1134,44 +1425,47 @@ max_packet_size(Config) ->
 direct_plugin_exports_test(Cfg) ->
     Topic = vmq_cth:utopic(Cfg),
     WTopic = re:split(list_to_binary(Topic), <<"/">>),
-    {RegFun0, PubFun3, {SubFun1, UnsubFun1}}
-        = vmq_reg:direct_plugin_exports(?FUNCTION_NAME),
+    {RegFun0, PubFun3, {SubFun1, UnsubFun1}} =
+        vmq_reg:direct_plugin_exports(?FUNCTION_NAME),
     ok = RegFun0(),
     {ok, [0]} = SubFun1(WTopic),
     %% this client-id generation is taken from
     %% `vmq_reg:direct_plugin_exports/1`. It would be better if that
     %% function would return the generated client-id.
     ClientId = fun(T) ->
-                       list_to_binary(
-                         base64:encode_to_string(
-                           integer_to_binary(
-                             erlang:phash2(T)
-                            )
-                          ))
-               end,
+        list_to_binary(
+            base64:encode_to_string(
+                integer_to_binary(
+                    erlang:phash2(T)
+                )
+            )
+        )
+    end,
     TestSub =
         fun(T, MustBePresent) ->
-                Subscribers = vmq_reg_trie:fold({"", ClientId(self())},
-                                                T, fun(E,_From,Acc) -> [E|Acc] end, []),
-                IsPresent = lists:member({{"", ClientId(self())}, 0}, Subscribers),
-                MustBePresent =:= IsPresent
+            Subscribers = vmq_reg_trie:fold(
+                {"", ClientId(self())},
+                T,
+                fun(E, _From, Acc) -> [E | Acc] end,
+                []
+            ),
+            IsPresent = lists:member({{"", ClientId(self())}, 0}, Subscribers),
+            MustBePresent =:= IsPresent
         end,
     vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, true) end, 100, 10),
     {ok, {1, 0}} = PubFun3(WTopic, <<"msg1">>, #{}),
     receive
         {deliver, WTopic, <<"msg1">>, 0, false, false} -> ok;
         Other -> throw({received_unexpected_msg, Other})
-    after
-        1000 ->
-            throw(didnt_receive_expected_msg_from_direct_plugin_exports)
+    after 1000 ->
+        throw(didnt_receive_expected_msg_from_direct_plugin_exports)
     end,
     ok = UnsubFun1(WTopic),
     vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, false) end, 100, 10),
     {ok, {0, 0}} = PubFun3(WTopic, <<"msg2">>, #{}),
     receive
         M -> throw({received_unexpected_msg_from_direct_plugin_exports, M})
-    after
-        100 -> ok
+    after 100 -> ok
     end.
 
 %% publish_c2b_invalid_topic_alias(Config) ->
@@ -1192,7 +1486,8 @@ hook_auth_on_publish(_, _, _, _, _, _) -> ok.
 hook_on_message_drop(_, Promise, max_packet_size_exceeded) ->
     {_QoS, _Topic, <<"large enough to be discarded publish">> = _Payload, _Props} = Promise(),
     ok;
-hook_on_message_drop({"", <<"message-expiry-sub">>}, _, expired) -> ok.
+hook_on_message_drop({"", <<"message-expiry-sub">>}, _, expired) ->
+    ok.
 
 hook_on_client_offline(SubscriberId) ->
     ?CLIENT_OFFLINE_EVENT_SRV ! {on_client_offline, SubscriberId}.
@@ -1202,40 +1497,57 @@ hook_on_client_offline(SubscriberId) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 enable_on_subscribe() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3),
+        auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3
+    ),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3,
-           [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5,
-                     convert, 4}}]).
+        auth_on_subscribe,
+        ?MODULE,
+        hook_auth_on_subscribe,
+        3,
+        [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5, convert, 4}}]
+    ).
 enable_on_publish() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_publish, ?MODULE, hook_auth_on_publish, 6),
+        auth_on_publish, ?MODULE, hook_auth_on_publish, 6
+    ),
     ok = vmq_plugin_mgr:enable_module_plugin(
-           auth_on_publish, ?MODULE, hook_auth_on_publish, 6,
-           [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5,
-                    convert, 7}}]).
+        auth_on_publish,
+        ?MODULE,
+        hook_auth_on_publish,
+        6,
+        [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5, convert, 7}}]
+    ).
 enable_on_message_drop() ->
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_message_drop, ?MODULE, hook_on_message_drop, 3).
+        on_message_drop, ?MODULE, hook_on_message_drop, 3
+    ).
 
 disable_on_subscribe() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
-           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3),
+        auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3
+    ),
     ok = vmq_plugin_mgr:disable_module_plugin(
-           auth_on_subscribe, ?MODULE, hook_auth_on_subscribe, 3,
-           [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5,
-                      convert, 4}}]).
+        auth_on_subscribe,
+        ?MODULE,
+        hook_auth_on_subscribe,
+        3,
+        [{compat, {auth_on_subscribe_m5, vmq_plugin_compat_m5, convert, 4}}]
+    ).
 disable_on_publish() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
-           auth_on_publish, ?MODULE, hook_auth_on_publish, 6),
+        auth_on_publish, ?MODULE, hook_auth_on_publish, 6
+    ),
     ok = vmq_plugin_mgr:disable_module_plugin(
-           auth_on_publish, ?MODULE, hook_auth_on_publish, 6,
-           [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5,
-                      convert, 7}}]).
+        auth_on_publish,
+        ?MODULE,
+        hook_auth_on_publish,
+        6,
+        [{compat, {auth_on_publish_m5, vmq_plugin_compat_m5, convert, 7}}]
+    ).
 disable_on_message_drop() ->
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_message_drop, ?MODULE, hook_on_message_drop, 3).
-
+        on_message_drop, ?MODULE, hook_on_message_drop, 3
+    ).
 
 helper_pub_qos1(ClientId, Mid, Publish, Config) ->
     Connect = mqtt5_v4compat:gen_connect(ClientId, [{keepalive, 60}], Config),
@@ -1279,45 +1591,89 @@ wait_for_offline_event(ClientId, Timeout) ->
         case is_list(ClientId) of
             true ->
                 list_to_binary(ClientId);
-            false -> ClientId
+            false ->
+                ClientId
         end,
     receive
         {on_client_offline, {"", ClientIdBin}} ->
             ok
-    after
-        Timeout ->
-            throw(client_not_offline)
+    after Timeout ->
+        throw(client_not_offline)
     end.
 
 start_client_offline_events(Cfg) ->
     ok = vmq_plugin_mgr:enable_module_plugin(
-           on_client_offline, ?MODULE, hook_on_client_offline, 1),
+        on_client_offline, ?MODULE, hook_on_client_offline, 1
+    ),
     TestPid = self(),
     F = fun(Fun) ->
-                receive
-                    {on_client_offline, _} = E ->
-                        TestPid ! E,
-                        Fun(Fun);
-                    {stop, Ref} ->
-                        TestPid ! {ok, Ref},
-                        ok
-                end
-        end,
+        receive
+            {on_client_offline, _} = E ->
+                TestPid ! E,
+                Fun(Fun);
+            {stop, Ref} ->
+                TestPid ! {ok, Ref},
+                ok
+        end
+    end,
     EventProc = spawn_link(fun() -> F(F) end),
     true = register(?CLIENT_OFFLINE_EVENT_SRV, EventProc),
-    [{?CLIENT_OFFLINE_EVENT_SRV, EventProc}|Cfg].
-
+    [{?CLIENT_OFFLINE_EVENT_SRV, EventProc} | Cfg].
 
 stop_client_offline_events(Cfg) ->
     ok = vmq_plugin_mgr:disable_module_plugin(
-           on_client_offline, ?MODULE, hook_on_client_offline, 1),
+        on_client_offline, ?MODULE, hook_on_client_offline, 1
+    ),
     Pid = proplists:get_value(?CLIENT_OFFLINE_EVENT_SRV, Cfg),
     Ref = make_ref(),
     Pid ! {stop, Ref},
     receive
         {ok, Ref} ->
             ok
-    after
-        1000 ->
-            throw({could_not_stop, ?CLIENT_OFFLINE_EVENT_SRV})
+    after 1000 ->
+        throw({could_not_stop, ?CLIENT_OFFLINE_EVENT_SRV})
     end.
+
+receive_at_most_n_publish_frames(Pid, Socket, N, QoS, Cfg) ->
+    Pid ! {self(), mqtt5_v4compat:receive_at_most_n_publish_frames(Socket, N, QoS, Cfg)}.
+
+compare_published_packets_payload(PublishedPackets, ReceivedF1, ReceivedF2) ->
+    PublishedPayloads = lists:map(
+        fun(P) ->
+            {#mqtt_publish{payload = Payload}, _} = vmq_parser:parse(P),
+            Payload
+        end,
+        PublishedPackets
+    ),
+
+    ReceivedPayloads1 = lists:map(
+        fun(#mqtt_publish{payload = Payload}) ->
+            Payload
+        end,
+        ReceivedF1
+    ),
+    ReceivedPayloads2 = lists:map(
+        fun(#mqtt_publish{payload = Payload}) ->
+            Payload
+        end,
+        ReceivedF2
+    ),
+
+    check_order_(PublishedPayloads, ReceivedPayloads1, ReceivedPayloads2).
+
+check_order_([], _, _) ->
+    ok;
+check_order_(ExpectedPayload = [NextPayload | Rest], Received1, Received2) ->
+    {Result1, UpdatedReceived1} = remove_first_(NextPayload, Received1),
+    {Result2, UpdatedReceived2} = remove_first_(NextPayload, Received2),
+    case {Result1, Result2} of
+        {none, none} ->
+            erlang:error({assertion_failed, {incorrect_order, ExpectedPayload}});
+        {_, _} ->
+            check_order_(Rest, UpdatedReceived1, UpdatedReceived2)
+    end.
+
+remove_first_(Payload, [Payload | Rest]) ->
+    {Payload, Rest};
+remove_first_(_, List) ->
+    {none, List}.

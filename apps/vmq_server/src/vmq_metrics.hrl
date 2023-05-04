@@ -122,6 +122,10 @@
 -define(REDIS_CMD_MISS, redis_cmd_miss).
 -define(REDIS_CMD_ERROR, redis_cmd_error).
 -define(REDIS_STALE_CMD, redis_stale_cmd).
+-define(CACHE_INSERT, cache_insert).
+-define(CACHE_DELETE, cache_delete).
+-define(CACHE_HIT, cache_hit).
+-define(CACHE_MISS, cache_miss).
 -define(UNAUTH_REDIS_CMD, unauth_redis_cmd).
 -define(METRIC_MSG_STORE_OPS_ERRORS, msg_store_ops_error).
 -define(METRIC_MSG_STORE_RETRY_EXHAUSTED, msg_store_retry_exhausted).

@@ -74,6 +74,8 @@
 -define(MSG_STORE_WRITE, msg_store_write).
 -define(MSG_STORE_DELETE, msg_store_delete).
 -define(MSG_STORE_FIND, msg_store_find).
+-define(SHARED_SUBS_ETS_TABLE, vmq_shared_subs_local).
+-define(LOCAL_SHARED_SUBS, local_shared_subs).
 
 -define(PRODUCER, "producer").
 -define(CONSUMER, "consumer").

@@ -1,21 +1,24 @@
 %% @doc compat layer to run mqtt v4 tests on v5.
 -module(mqtt5_v4compat).
 
--export([do_client_connect/4,
-         expect_packet/4,
-         gen_connect/3,
-         gen_connack/2,
-         gen_connack/3,
-         gen_subscribe/4,
-         gen_suback/3,
-         gen_unsubscribe/3,
-         gen_unsuback/2,
-         gen_publish/5,
-         gen_puback/2,
-         gen_pubrec/2,
-         gen_pubrel/2,
-         gen_pubcomp/2,
-         gen_disconnect/1]).
+-export([
+    do_client_connect/4,
+    expect_packet/4,
+    receive_at_most_n_publish_frames/4,
+    gen_connect/3,
+    gen_connack/2,
+    gen_connack/3,
+    gen_subscribe/4,
+    gen_suback/3,
+    gen_unsubscribe/3,
+    gen_unsuback/2,
+    gen_publish/5,
+    gen_puback/2,
+    gen_pubrec/2,
+    gen_pubrel/2,
+    gen_pubcomp/2,
+    gen_disconnect/1
+]).
 
 -export([protover/1]).
 
@@ -37,46 +40,63 @@ expect_packet_(4, Socket, Name, Packet) ->
 expect_packet_(5, Socket, _Name, ExpectedPacket) ->
     packetv5:expect_frame(Socket, ExpectedPacket).
 
+receive_at_most_n_publish_frames(Socket, N, QoS, Config) ->
+    receive_at_most_n_publish_frames_(protover(Config), Socket, N, QoS).
+
+receive_at_most_n_publish_frames_(4, Socket, N, QoS) ->
+    lists:reverse(packet:receive_at_most_n_publish_frames(Socket, N, QoS));
+receive_at_most_n_publish_frames_(5, _Socket, _N, _QoS) ->
+    {error, not_implemented}.
+
 gen_connect(ClientId, Opts, Config) ->
     gen_connect_(protover(Config), ClientId, Opts).
 
 gen_connect_(4, ClientId, Opts) ->
-    packet:gen_connect(ClientId, [{protover, 4}|Opts]);
+    packet:gen_connect(ClientId, [{protover, 4} | Opts]);
 gen_connect_(5, ClientId, Opts) ->
     WillMsg = proplists:get_value(will_msg, Opts),
     WillTopic = proplists:get_value(will_topic, Opts),
     case {WillMsg, WillTopic} of
         {undefined, undefined} ->
             packetv5:gen_connect(ClientId, fixup_v4_opts(Opts));
-        {WillMsg, WillTopic} when WillMsg =/= undefined,
-                                  WillTopic =/= undefined ->
+        {WillMsg, WillTopic} when
+            WillMsg =/= undefined,
+            WillTopic =/= undefined
+        ->
             WillQoS = proplists:get_value(will_qos, Opts, 0),
             WillRetain = proplists:get_value(will_retain, Opts, false),
             WillProperties = proplists:get_value(will_properties, Opts, #{}),
             LWT = #mqtt5_lwt{
-                     will_properties = WillProperties,
-                     will_retain = WillRetain,
-                     will_qos = WillQoS,
-                     will_topic = ensure_binary(WillTopic),
-                     will_msg = ensure_binary(WillMsg)},
-            packetv5:gen_connect(ClientId, [{lwt, LWT}|fixup_v4_opts(Opts)])
+                will_properties = WillProperties,
+                will_retain = WillRetain,
+                will_qos = WillQoS,
+                will_topic = ensure_binary(WillTopic),
+                will_msg = ensure_binary(WillMsg)
+            },
+            packetv5:gen_connect(ClientId, [{lwt, LWT} | fixup_v4_opts(Opts)])
     end.
 
 fixup_v4_opts(Opts) ->
     Properties = proplists:get_value(properties, Opts, #{}),
     case lists:keyfind(clean_session, 1, Opts) of
         {clean_session, false} ->
-            [{clean_start, false},
-             {properties,
-              maps:put(p_session_expiry_interval,
-                       maps:get(p_session_expiry_interval, Properties, 16#FFFFFFFF), Properties)
-             }|lists:keydelete(properties, 1, Opts)];
+            [
+                {clean_start, false},
+                {properties,
+                    maps:put(
+                        p_session_expiry_interval,
+                        maps:get(p_session_expiry_interval, Properties, 16#FFFFFFFF),
+                        Properties
+                    )}
+                | lists:keydelete(properties, 1, Opts)
+            ];
         _ ->
             % assumption clean_session=true
-            [{clean_start, true},
-             {properties,
-              maps:remove(p_session_expiry_interval, Properties)
-             }|lists:keydelete(properties, 1, Opts)]
+            [
+                {clean_start, true},
+                {properties, maps:remove(p_session_expiry_interval, Properties)}
+                | lists:keydelete(properties, 1, Opts)
+            ]
     end.
 
 gen_connack(RC, Config) ->
@@ -94,7 +114,7 @@ gen_connack_(4, SP, RC) ->
             server_unavailable -> 3;
             malformed_credentials -> 4;
             not_authorized -> 5
-    end,
+        end,
     packet:gen_connack(SP, RCv4);
 gen_connack_(5, SP, RC) ->
     RCv5 =
@@ -105,10 +125,11 @@ gen_connack_(5, SP, RC) ->
             server_unavailable -> 16#88;
             not_authorized -> 16#87
         end,
-    SPv5 = case SP of
-               true -> 1;
-               false -> 0
-           end,
+    SPv5 =
+        case SP of
+            true -> 1;
+            false -> 0
+        end,
     packetv5:gen_connack(SPv5, RCv5).
 
 gen_subscribe(Mid, Topic, QoS, Config) ->
@@ -117,13 +138,15 @@ gen_subscribe(Mid, Topic, QoS, Config) ->
 gen_subscribe_(4, Mid, Topic, QoS) ->
     packet:gen_subscribe(Mid, Topic, QoS);
 gen_subscribe_(5, Mid, Topic, QoS) ->
-    Topics = [#mqtt5_subscribe_topic{
-                 topic=Topic,
-                 qos=QoS,
-                 no_local=false,
-                 rap=false,
-                 retain_handling=send_retain
-                }],
+    Topics = [
+        #mqtt5_subscribe_topic{
+            topic = Topic,
+            qos = QoS,
+            no_local = false,
+            rap = false,
+            retain_handling = send_retain
+        }
+    ],
     packetv5:gen_subscribe(Mid, Topics, #{}).
 
 gen_suback(Mid, Exp, Config) ->
@@ -198,7 +221,8 @@ gen_disconnect(Config) ->
 
 ensure_binary(L) when is_list(L) -> list_to_binary(L);
 ensure_binary(B) when is_binary(B) -> B;
-ensure_binary(empty) -> empty. % for test purposes
+% for test purposes
+ensure_binary(empty) -> empty.
 
 protover(Config) ->
     proplists:get_value(protover, Config).

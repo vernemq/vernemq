@@ -141,6 +141,18 @@ subscribe_op(vmq_reg_redis_trie, {MP, ClientId} = SubscriberId, Topics) ->
             {ok, []} ->
                 []
         end,
+    lists:foreach(
+        fun
+            ({[<<"$share">>, _Group | Topic], QoS}) ->
+                Key = {MP, Topic},
+                Value = {ClientId, QoS},
+                ets:insert(?SHARED_SUBS_ETS_TABLE, {{Key, Value}}),
+                vmq_metrics:incr_cache_insert(?LOCAL_SHARED_SUBS);
+            (_) ->
+                ok
+        end,
+        Topics
+    ),
     Existing = subscriptions_exist(OldSubs, Topics),
     QoSTable =
         lists:foldl(
@@ -1272,6 +1284,10 @@ subscriptions_exist(OldSubs, Topics) ->
 
 -spec del_subscriber(atom(), subscriber_id()) -> ok.
 del_subscriber(vmq_reg_redis_trie, {MP, ClientId} = _SubscriberId) ->
+    Key = {MP, '$1'},
+    Value = {ClientId, '$2'},
+    ets:select_delete(?SHARED_SUBS_ETS_TABLE, [{{{Key, Value}}, [], [true]}]),
+    vmq_metrics:incr_cache_delete(?LOCAL_SHARED_SUBS),
     vmq_redis:query(
         redis_client,
         [
@@ -1285,12 +1301,25 @@ del_subscriber(vmq_reg_redis_trie, {MP, ClientId} = _SubscriberId) ->
         ],
         ?FCALL,
         ?DELETE_SUBSCRIBER
-    );
+    ),
+    ok;
 del_subscriber(_, SubscriberId) ->
     vmq_subscriber_db:delete(SubscriberId).
 
 -spec del_subscriptions(atom(), [topic()], subscriber_id()) -> ok.
 del_subscriptions(vmq_reg_redis_trie, Topics, {MP, ClientId} = _SubscriberId) ->
+    lists:foreach(
+        fun
+            ([<<"$share">>, _Group | Topic]) ->
+                Key = {MP, Topic},
+                Value = {ClientId, '$1'},
+                ets:select_delete(?SHARED_SUBS_ETS_TABLE, [{{{Key, Value}}, [], [true]}]),
+                vmq_metrics:incr_cache_delete(?LOCAL_SHARED_SUBS);
+            (_) ->
+                ok
+        end,
+        Topics
+    ),
     SortedUnwordedTopics = [vmq_topic:unword(T) || T <- lists:usort(Topics)],
     {ok, <<"1">>} = vmq_redis:query(
         redis_client,

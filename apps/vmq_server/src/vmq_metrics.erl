@@ -93,7 +93,12 @@
     incr_redis_cmd_miss/1,
     incr_redis_cmd_err/1,
     incr_redis_stale_cmd/1,
-    incr_unauth_redis_cmd/1
+    incr_unauth_redis_cmd/1,
+
+    incr_cache_insert/1,
+    incr_cache_delete/1,
+    incr_cache_hit/1,
+    incr_cache_miss/1
 ]).
 
 -export([
@@ -317,6 +322,18 @@ incr_unauth_redis_cmd({CMD, OPERATION}) ->
 
 incr_qos1_opts({NON_RETRY, NON_PERSISTENCE}) ->
     incr_item({?QOS1_SUBSCRIPTION_OPTS, NON_RETRY, NON_PERSISTENCE}, 1).
+
+incr_cache_insert(NAME) ->
+    incr_item({?CACHE_INSERT, NAME}, 1).
+
+incr_cache_delete(NAME) ->
+    incr_item({?CACHE_DELETE, NAME}, 1).
+
+incr_cache_hit(NAME) ->
+    incr_item({?CACHE_HIT, NAME}, 1).
+
+incr_cache_miss(NAME) ->
+    incr_item({?CACHE_MISS, NAME}, 1).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -1755,6 +1772,34 @@ counter_entries_def() ->
             router_matches_remote,
             router_matches_remote,
             <<"The number of matched remote subscriptions.">>
+        ),
+        m(
+            counter,
+            [{cache, rcn_to_str(?LOCAL_SHARED_SUBS)}],
+            {?CACHE_HIT, ?LOCAL_SHARED_SUBS},
+            cache_hit,
+            <<"The number of cache hit separate by cache name.">>
+        ),
+        m(
+            counter,
+            [{cache, rcn_to_str(?LOCAL_SHARED_SUBS)}],
+            {?CACHE_MISS, ?LOCAL_SHARED_SUBS},
+            cache_miss,
+            <<"The number of cache miss separate by cache name.">>
+        ),
+        m(
+            counter,
+            [{cache, rcn_to_str(?LOCAL_SHARED_SUBS)}],
+            {?CACHE_INSERT, ?LOCAL_SHARED_SUBS},
+            cache_insert,
+            <<"The number of cache insert separate by cache name.">>
+        ),
+        m(
+            counter,
+            [{cache, rcn_to_str(?LOCAL_SHARED_SUBS)}],
+            {?CACHE_DELETE, ?LOCAL_SHARED_SUBS},
+            cache_delete,
+            <<"The number of cache delete separate by cache name.">>
         )
     ].
 
@@ -2754,7 +2799,11 @@ met2idx({?QOS1_SUBSCRIPTION_OPTS, ?RETRY, ?NON_PERSISTENCE}) -> 309;
 met2idx({?QOS1_SUBSCRIPTION_OPTS, ?NON_RETRY, ?PERSISTENCE}) -> 310;
 met2idx({?QOS1_SUBSCRIPTION_OPTS, ?RETRY, ?PERSISTENCE}) -> 311;
 met2idx(?QOS1_NON_RETRY_DROPPED) -> 312;
-met2idx(?QOS1_NON_PERSISTENCE_DROPPED) -> 313.
+met2idx(?QOS1_NON_PERSISTENCE_DROPPED) -> 313;
+met2idx({?CACHE_HIT, ?LOCAL_SHARED_SUBS}) -> 314;
+met2idx({?CACHE_MISS, ?LOCAL_SHARED_SUBS}) -> 315;
+met2idx({?CACHE_INSERT, ?LOCAL_SHARED_SUBS}) -> 316;
+met2idx({?CACHE_DELETE, ?LOCAL_SHARED_SUBS}) -> 317.
 
 -ifdef(TEST).
 clear_stored_rates() ->
