@@ -21,6 +21,9 @@
          queue_fifo_offline_drop_test/1,
          queue_lifo_offline_drop_test/1,
          queue_offline_transition_test/1,
+         queue_offline_online_transition_test_std/1,
+         queue_offline_online_transition_test_ignore_max/1,
+         queue_offline_online_transition_test_ignore_max_lifo/1,
          queue_persistent_client_expiration_test/1,
          queue_force_disconnect_test/1,
          queue_force_disconnect_cleanup_test/1]).
@@ -56,6 +59,9 @@ all() ->
      queue_fifo_offline_drop_test,
      queue_lifo_offline_drop_test,
      queue_offline_transition_test,
+     queue_offline_online_transition_test_std,
+     queue_offline_online_transition_test_ignore_max,
+     queue_offline_online_transition_test_ignore_max_lifo,
      queue_persistent_client_expiration_test,
      queue_force_disconnect_test,
      queue_force_disconnect_cleanup_test
@@ -222,6 +228,82 @@ queue_offline_transition_test(_) ->
     {ok, #{session_present := true,
            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
     ok = receive_multi(QPid, 1, Msgs),
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
+
+queue_offline_online_transition_test_std(_) ->
+    Parent = self(),
+    SubscriberId = {"", <<"mock-trans-client">>},
+    application:set_env(vmq_server, override_max_online_messages, false),
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false,
+                                                        max_offline_messages => 100,
+                                                        max_online_messages => 10,
+                                                        queue_type => fifo}),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := false,
+            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, false, QueueOpts, 10),
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
+    timer:sleep(20), % give some time to plumtree
+
+    %% teardown session
+    catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
+    SessionPid1 ! {go_down_in, 1},
+    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
+
+    SessionPid2 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := true,
+            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
+    {KeptMsgs, _} = lists:split(10, Msgs),
+    ok = receive_multi(QPid, 1, KeptMsgs),
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
+
+queue_offline_online_transition_test_ignore_max(_) ->
+    Parent = self(),
+    SubscriberId = {"", <<"mock-trans-client">>},
+    application:set_env(vmq_server, override_max_online_messages, true),
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false,
+                                                       max_offline_messages => 100,
+                                                       max_online_messages => 10,
+                                                       queue_type => fifo}),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := false,
+           queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, false, QueueOpts, 10),
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
+    timer:sleep(20), % give some time to plumtree
+
+    %% teardown session
+    catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
+    SessionPid1 ! {go_down_in, 1},
+    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
+
+    SessionPid2 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := true,
+           queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
+    ok = receive_multi(QPid, 1, Msgs),
+    {ok, []} = vmq_message_store:find(SubscriberId, other).
+
+queue_offline_online_transition_test_ignore_max_lifo(_) ->
+    Parent = self(),
+    SubscriberId = {"", <<"mock-trans-client">>},
+    application:set_env(vmq_server, override_max_online_messages, true),
+    QueueOpts = maps:merge(vmq_queue:default_opts(), #{cleanup_on_disconnect => false,
+                                                        max_offline_messages => 100,
+                                                        max_online_messages => 10,
+                                                        queue_type => lifo}),
+    SessionPid1 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := false,
+            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid1, SubscriberId, false, QueueOpts, 10),
+    {ok, [1]} = vmq_reg:subscribe(false, SubscriberId, [{[<<"test">>, <<"transition">>], 1}]),
+    timer:sleep(20), % give some time to plumtree
+
+    %% teardown session
+    catch vmq_queue:set_last_waiting_acks(QPid, []), % simulate what real session does
+    SessionPid1 ! {go_down_in, 1},
+    Msgs = publish_multi(SubscriberId, [<<"test">>, <<"transition">>]), % publish 100
+
+    SessionPid2 = spawn(fun() -> mock_session(Parent) end),
+    {ok, #{session_present := true,
+            queue_pid := QPid}} = vmq_reg:register_subscriber_(SessionPid2, SubscriberId, false, QueueOpts, 10),
+    ok = receive_multi(QPid, 1, lists:reverse(Msgs)),
     {ok, []} = vmq_message_store:find(SubscriberId, other).
 
 queue_persistent_client_expiration_test(_) ->
