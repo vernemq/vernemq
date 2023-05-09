@@ -88,7 +88,8 @@
     reset_counter/2,
     counter_val/1,
     register/1,
-    get_label_info/0
+    get_label_info/0,
+    fetch_external_metric/3
 ]).
 
 %% API functions

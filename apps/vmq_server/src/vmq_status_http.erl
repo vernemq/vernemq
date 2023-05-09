@@ -95,7 +95,8 @@ node_status() ->
     TotalQueueUnhandled = counter_val(?METRIC_QUEUE_MESSAGE_UNHANDLED),
     TotalMatchesLocal = counter_val(?METRIC_ROUTER_MATCHES_LOCAL),
     TotalMatchesRemote = counter_val(?METRIC_ROUTER_MATCHES_REMOTE),
-    {NrOfSubs, _SMemory} = vmq_reg_trie:stats(),
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    {NrOfSubs, _SMemory} = vmq_metrics:fetch_external_metric(RegView, stats, {0, 0}),
     {NrOfRetain, _RMemory} = vmq_retain_srv:stats(),
     {ok, [
         {<<"num_online">>, TotalActiveMqttConnections},
