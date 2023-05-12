@@ -178,6 +178,10 @@ translate_listeners(Conf) ->
 
     {TCPIPs, TCPProxyProto} = lists:unzip(extract("listener.tcp", "proxy_protocol", BoolVal, Conf)),
     {WSIPs, WSProxyProto} = lists:unzip(extract("listener.ws", "proxy_protocol", BoolVal, Conf)),
+    {WSIPs, WSProxyXFF} = lists:unzip(extract("listener.ws", "proxy_xff_support", BoolVal, Conf)),
+    {WSIPs, WSProxyXFFTrusted} = lists:unzip(
+        extract("listener.ws", "proxy_xff_trusted_intermediate", StrVal, Conf)
+    ),
     {HTTPIPs, HTTPProxyProto} = lists:unzip(
         extract("listener.http", "proxy_protocol", BoolVal, Conf)
     ),
@@ -358,6 +362,8 @@ translate_listeners(Conf) ->
             WSNrOfAcceptors,
             WSMountPoint,
             WSProxyProto,
+            WSProxyXFF,
+            WSProxyXFFTrusted,
             WSAllowedProto
         ])
     ),
@@ -545,6 +551,8 @@ extract(Prefix, Suffix, Val, Conf) ->
             "allowed_protocol_versions",
             %% other
             "proxy_protocol",
+            "proxy_xff_support",
+            "proxy_xff_trusted_intermediate",
             "allow_anonymous_override"
         ],
 
