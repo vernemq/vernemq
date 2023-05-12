@@ -345,6 +345,17 @@ default_session_opts(Opts) ->
             false -> MaybeSSLDefaults;
             {_, V1} -> [{proxy_protocol_use_cn_as_username, V1} | MaybeSSLDefaults]
         end,
+    MaybeProxyDefaults2 =
+        case lists:keyfind(proxy_xff_trusted_intermediate, 1, Opts) of
+            false ->
+                MaybeProxyDefaults;
+            {_, V2} ->
+                [
+                    {xff_proxy, proplists:get_value(proxy_xff_support, Opts, false)},
+                    {proxy_xff_trusted_intermediate, V2}
+                    | MaybeProxyDefaults
+                ]
+        end,
     AllowedProtocolVersions = proplists:get_value(allowed_protocol_versions, Opts, [3, 4]),
     MaxConnectionLifeTime = proplists:get_value(max_connection_lifetime, Opts, 0),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
@@ -355,7 +366,7 @@ default_session_opts(Opts) ->
         {max_connection_lifetime, MaxConnectionLifeTime},
         {allow_anonymous_override, AllowAnonymousOverride},
         {buffer_sizes, BufferSizes}
-        | MaybeProxyDefaults
+        | MaybeProxyDefaults2
     ].
 
 %%%===================================================================
