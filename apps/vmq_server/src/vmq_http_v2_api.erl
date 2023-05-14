@@ -30,7 +30,7 @@
     routes/0
 ]).
 
--define(RPC_TIMEOUT, 5000).
+-define(RPC_TIMEOUT, 60000).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Cowboy REST Handler
