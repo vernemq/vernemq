@@ -115,7 +115,7 @@ force_disconnect(SubscriberId, DoCleanup) ->
                 QPid when is_pid(QPid) ->
                     vmq_queue:force_disconnect(QPid, ?ADMINISTRATIVE_ACTION, DoCleanup)
             catch
-                E:R -> 
+                E:R ->
                     lager:debug("API v2 disconnect RPC failed with ~p:~p", [E, R]),
                     {error, rpc_fail}
             end
@@ -143,7 +143,7 @@ get_status_and_topics(SubscriberId) ->
                         _ -> {<<"offline">>, FlatTopics}
                     end
             catch
-                E:R -> 
+                E:R ->
                     lager:debug("API v2 client status RPC failed with ~p:~p", [E, R]),
                     {error, rpc_fail}
             end
