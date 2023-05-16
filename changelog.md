@@ -1,3 +1,5 @@
+- Add compatibility with [Erlang/OTP 26]
+
 ## VerneMQ 1.13.0
 
 - New Plugin: 'vmq_http_pub', allows to ingest MQTT messages via a HTTP REST interface

@@ -334,7 +334,7 @@ internal_flush(#st{pending = Pending, socket = Socket} = State) ->
         0 ->
             State#st{pending = []};
         NrOfBytes ->
-            case port_cmd(Socket, Pending) of
+            case tcp_send(Socket, Pending) of
                 ok ->
                     _ = vmq_metrics:incr_bytes_sent(NrOfBytes),
                     State#st{pending = []};
@@ -361,16 +361,16 @@ internal_flush(#st{pending = Pending, socket = Socket} = State) ->
 %% Also note that the port has bounded buffers and port_command blocks
 %% when these are full. So the fact that we process the result
 %% asynchronously does not impact flow control.
-port_cmd(Socket, Data) ->
+tcp_send(Socket, Data) ->
     try
-        port_cmd_(Socket, Data),
+        tcp_send_(Socket, Data),
         ok
     catch
         error:Error ->
             {error, Error}
     end.
 
-port_cmd_({ssl, Socket}, Data) ->
+tcp_send_({ssl, Socket}, Data) ->
     case ssl:send(Socket, Data) of
         ok ->
             self() ! {inet_reply, Socket, ok},
@@ -378,8 +378,16 @@ port_cmd_({ssl, Socket}, Data) ->
         {error, Reason} ->
             erlang:error(Reason)
     end;
-port_cmd_(Socket, Data) ->
+tcp_send_(Socket, Data) ->
+    do_tcp_send(Socket, Data).
+
+-ifdef(tcp_send_erlang_port_command).
+do_tcp_send(Socket, Data) ->
     erlang:port_command(Socket, Data).
+-else.
+do_tcp_send(Socket, Data) ->
+    gen_tcp:send(Socket, Data).
+-endif.
 
 system_continue(_, _, State) ->
     loop(State).
