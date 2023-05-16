@@ -30,6 +30,7 @@ gen_salt(_, St) ->
     {ok, Salt} = bcrypt:gen_salt(),
     {[list_to_binary(Salt)], St}.
 
+-dialyzer({nowarn_function, hashpw/2}).
 hashpw([Pass, Salt], St) when is_binary(Pass) and is_binary(Salt) ->
     {ok, Hash} = bcrypt:hashpw(Pass, Salt),
     {[list_to_binary(Hash)], St}.
