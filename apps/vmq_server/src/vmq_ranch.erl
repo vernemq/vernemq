@@ -381,12 +381,12 @@ tcp_send_({ssl, Socket}, Data) ->
 tcp_send_(Socket, Data) ->
     do_tcp_send(Socket, Data).
 
--ifdef(tcp_send_erlang_port_command).
-do_tcp_send(Socket, Data) ->
-    erlang:port_command(Socket, Data).
--else.
+-if(?OTP_RELEASE >= 26).
 do_tcp_send(Socket, Data) ->
     gen_tcp:send(Socket, Data).
+-else.
+do_tcp_send(Socket, Data) ->
+    erlang:port_command(Socket, Data).
 -endif.
 
 system_continue(_, _, State) ->
