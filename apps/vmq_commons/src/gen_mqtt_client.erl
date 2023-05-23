@@ -93,7 +93,8 @@
     disconnect/1,
     call/2,
     cast/2,
-    metrics/2
+    metrics/2,
+    try_transport_connect/2
 ]).
 
 %% gen_fsm callbacks
@@ -116,7 +117,11 @@
 -define(MQTT_PROTO_MAJOR, 3).
 
 -record(queue, {
-    queue = queue:new() :: queue:queue(),
+    queue :: replayq:q(),
+    config :: replayq:config(),
+    out_waiting = 0 :: non_neg_integer(),
+    msg_ack_map,
+    batch_size :: non_neg_integer(),
     %% max queue size. 0 means disabled.
     max = 0 :: non_neg_integer(),
     size = 0 :: non_neg_integer(),
@@ -139,6 +144,7 @@
     last_will_qos :: non_neg_integer(),
     buffer = <<>> :: binary(),
     o_queue = #queue{} :: queue(),
+    pubrel_queue = #queue{} :: queue(),
     waiting_acks = maps:new() :: map(),
     unacked_msgs = maps:new() :: map(),
     ping_tref :: timer:ref() | undefined,
@@ -244,31 +250,43 @@ wrap_res({ok}, _StateName, _State) ->
 wrap_res(ok, _StateName, _State) ->
     ok.
 
+try_transport_connect(Pid, State) ->
+    #state{
+        host = Host,
+        port = Port,
+        transport = {Transport, Opts}
+    } = State,
+    case Transport:connect(Host, Port, [binary, {packet, raw} | Opts]) of
+        {ok, Sock} ->
+            %give ownership of socket to main process
+            Transport:controlling_process(Sock, Pid),
+            gen_fsm:send_event(Pid, {on_transport_connect, Sock});
+        {error, _Reason} ->
+            error_logger:error_msg("connection to ~p:~p failed due to ~p", [Host, Port, _Reason]),
+            gen_fsm:send_event_after(3000, connect)
+    end.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% State Callbacks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 connecting(connect, State) ->
-    #state{
-        host = Host,
-        port = Port,
-        transport = {Transport, Opts},
-        client = ClientId,
-        info_fun = InfoFun
-    } = State,
-    case Transport:connect(Host, Port, [binary, {packet, raw} | Opts]) of
-        {ok, Sock} ->
-            NewInfoFun = call_info_fun({connect_out, ClientId}, InfoFun),
-            NewState = State#state{sock = Sock, buffer = <<>>, info_fun = NewInfoFun},
-            send_connect(NewState),
-            active_once(Transport, Sock),
-            {next_state, waiting_for_connack, NewState};
-        {error, _Reason} ->
-            error_logger:error_msg("connection to ~p:~p failed due to ~p", [Host, Port, _Reason]),
-            gen_fsm:send_event_after(3000, connect),
-            wrap_res(connecting, on_connect_error, [server_not_found], State)
-    end;
+    spawn(gen_mqtt_client, try_transport_connect, [self(), State]),
+    {next_state, connecting, State};
 connecting(disconnect, State) ->
     {stop, normal, State};
+connecting(
+    {on_transport_connect, Sock},
+    #state{
+        transport = {Transport, _Opts},
+        client = ClientId,
+        info_fun = InfoFun
+    } = State
+) ->
+    NewInfoFun = call_info_fun({connect_out, ClientId}, InfoFun),
+    NewState = State#state{sock = Sock, buffer = <<>>, info_fun = NewInfoFun},
+    send_connect(NewState),
+    active_once(Transport, Sock),
+    {next_state, waiting_for_connack, NewState};
 connecting({publish, PubReq}, State) ->
     NewState = maybe_queue_outgoing(PubReq, State),
     {next_state, connecting, NewState};
@@ -377,11 +395,82 @@ init([Mod, Args, Opts]) ->
     LWQos = proplists:get_value(last_will_qos, Opts, 0),
     ReconnectTimeout = proplists:get_value(reconnect_timeout, Opts, undefined),
     KeepAliveInterval = proplists:get_value(keepalive_interval, Opts, 60),
+    Persistent = proplists:get_value(persistent, Opts, false),
+    QDir = proplists:get_value(queue_dir, Opts, undefined),
+    ReplayqDir =
+        case {QDir, Persistent} of
+            {undefined, true} ->
+                lager:warning(
+                    "queue_dir hasn't been configured. This will lead to problems if more than one persistent bridge instance is being used!",
+                    []
+                ),
+                "./qdata/" ++ ClientId;
+            {_, true} ->
+                B0 = string:find(QDir, "./") =:= QDir,
+                if
+                    B0 == true ->
+                        QDir;
+                    true ->
+                        "./" ++ QDir
+                end;
+            {_, false} ->
+                ok
+        end,
+    SegmentSize = proplists:get_value(segment_size, Opts, 4096),
+    BatchSize = proplists:get_value(out_batch_size, Opts, 100),
     RetryInterval = proplists:get_value(retry_interval, Opts, 10),
     ProtoVer = proplists:get_value(proto_version, Opts, ?MQTT_PROTO_MAJOR),
     InfoFun = proplists:get_value(info_fun, Opts, {fun(_, _) -> ok end, []}),
     MaxQueueSize = proplists:get_value(max_queue_size, Opts, 0),
+    QRatio0 = proplists:get_value(queue_ratio, Opts, 0),
+    QRatio1 =
+        if
+            (QRatio0 >= 0) and (QRatio0 =< 100) -> QRatio0 / 100;
+            true -> 0.0
+        end,
     {Transport, TransportOpts} = proplists:get_value(transport, Opts, {gen_tcp, []}),
+    RqConfig =
+        if
+            Persistent == true ->
+                #{
+                    dir => ReplayqDir ++ "/msgdata",
+                    seg_bytes => SegmentSize,
+                    max_total_bytes => 137000000000,
+                    sizer => fun(K) -> byte_size(term_to_binary(K)) end,
+                    marshaller => fun
+                        (K) when not is_binary(K) -> term_to_binary(K);
+                        (Bin) -> binary_to_term(Bin)
+                    end
+                };
+            true ->
+                #{
+                    mem_only => true,
+                    max_total_bytes => 8000000000,
+                    sizer => fun(K) -> byte_size(term_to_binary(K)) end
+                }
+        end,
+    PubrelQConfig =
+        if
+            Persistent == true ->
+                #{
+                    dir => ReplayqDir ++ "/pubreldata",
+                    seg_bytes => SegmentSize,
+                    max_total_bytes => 16000000000,
+                    sizer => fun(K) -> byte_size(term_to_binary(K)) end,
+                    marshaller => fun
+                        (K) when not is_binary(K) -> term_to_binary(K);
+                        (Bin) -> binary_to_term(Bin)
+                    end
+                };
+            true ->
+                #{
+                    mem_only => true,
+                    max_total_bytes => 100000000,
+                    sizer => fun(K) -> byte_size(term_to_binary(K)) end
+                }
+        end,
+    RQ = replayq:open(RqConfig),
+    PubrelQ = replayq:open(PubrelQConfig),
     State = #state{
         host = Host,
         port = Port,
@@ -402,7 +491,20 @@ init([Mod, Args, Opts]) ->
         keepalive_interval = 1000 * KeepAliveInterval,
         retry_interval = 1000 * RetryInterval,
         transport = {Transport, TransportOpts},
-        o_queue = #queue{max = MaxQueueSize},
+        o_queue = #queue{
+            max = trunc(MaxQueueSize * (1 - QRatio1)),
+            config = RqConfig,
+            queue = RQ,
+            batch_size = BatchSize,
+            size = replayq:count(RQ)
+        },
+        pubrel_queue = #queue{
+            max = trunc(MaxQueueSize * QRatio1),
+            config = PubrelQConfig,
+            queue = PubrelQ,
+            batch_size = BatchSize,
+            size = replayq:count(PubrelQ)
+        },
         info_fun = InfoFun
     },
     Res = wrap_res(connecting, init, [Args], State),
@@ -461,7 +563,7 @@ handle_frame(waiting_for_connack, #mqtt_connack{return_code = ReturnCode}, State
         ?CONNACK_ACCEPT ->
             NewInfoFun = call_info_fun({connack_in, ClientId}, InfoFun),
             State1 = resume_wacks_retry(State0),
-            State2 = maybe_publish_offline_msgs(State1),
+            State2 = maybe_publish_pubrel_msgs(State1),
             wrap_res(
                 connected, on_connect, [], start_ping_timer(State2#state{info_fun = NewInfoFun})
             );
@@ -517,6 +619,31 @@ handle_frame(connected, #mqtt_unsuback{message_id = MsgId}, State0) ->
         {error, not_found} ->
             {next_state, connected, State0}
     end;
+handle_frame(
+    connected,
+    #mqtt_puback{message_id = MessageId},
+    #state{
+        info_fun = InfoFun,
+        o_queue = #queue{out_waiting = Waiting, msg_ack_map = AckMap, queue = QQ} = Q
+    } = State0
+) when Waiting > 0 ->
+    %% qos1 flow
+    Key = {publish, MessageId},
+    lager:debug("Puback arrived: ~p", [Key]),
+    case cancel_retry_and_get(Key, State0) of
+        {ok, {#mqtt_publish{}, State1}} ->
+            NextAck = maps:get(MessageId, AckMap),
+            NewWaiting = maybe_ack_msgs(QQ, NextAck, Waiting),
+            NewQ = Q#queue{out_waiting = NewWaiting, size = replayq:count(QQ)},
+            lager:debug("Ack Msg ~p | NextAck: ~p | NewWaiting: ~p", [
+                MessageId, NextAck, NewWaiting
+            ]),
+            NewInfoFun = call_info_fun({puback_in, MessageId}, InfoFun),
+            State2 = maybe_publish_offline_msgs(State1#state{info_fun = NewInfoFun, o_queue = NewQ}),
+            {next_state, connected, State2};
+        {error, not_found} ->
+            {next_state, connected, State0}
+    end;
 handle_frame(connected, #mqtt_puback{message_id = MessageId}, State0) ->
     #state{info_fun = InfoFun} = State0,
     %% qos1 flow
@@ -525,6 +652,46 @@ handle_frame(connected, #mqtt_puback{message_id = MessageId}, State0) ->
         {ok, {#mqtt_publish{}, State1}} ->
             NewInfoFun = call_info_fun({puback_in, MessageId}, InfoFun),
             {next_state, connected, State1#state{info_fun = NewInfoFun}};
+        {error, not_found} ->
+            {next_state, connected, State0}
+    end;
+handle_frame(
+    connected,
+    #mqtt_pubrec{message_id = MessageId},
+    #state{
+        transport = {Transport, _},
+        sock = Socket,
+        info_fun = InfoFun,
+        o_queue = #queue{out_waiting = Waiting, msg_ack_map = AckMap, queue = QQ} = Q,
+        pubrel_queue = #queue{out_waiting = PubRelWaiting, queue = PubRelQQ} = PubRelQ
+    } = State0
+) when Waiting > 0 ->
+    %% qos2 flow
+    Key = {publish, MessageId},
+    lager:debug("Pubrec arrived: ~p", [Key]),
+    case cancel_retry_and_get(Key, State0) of
+        {ok, {_Publish, State1}} ->
+            NewInfoFun0 = call_info_fun({pubrec_in, MessageId}, InfoFun),
+            NextAck = maps:get(MessageId, AckMap),
+            NewWaiting = maybe_ack_msgs(QQ, NextAck, Waiting),
+            NewQ = Q#queue{out_waiting = NewWaiting, size = replayq:count(QQ)},
+            lager:debug("Ack Msg ~p | NextAck: ~p | NewWaiting: ~p", [
+                MessageId, NextAck, NewWaiting
+            ]),
+            NewKey = {pubrel, MessageId},
+            PubRelFrame = #mqtt_pubrel{message_id = MessageId},
+            {NewPubrelQQ, NewPubrelWaiting} = queue_pubrel(PubRelFrame, PubRelQQ, PubRelWaiting),
+            NewPubrelQ = PubRelQ#queue{
+                out_waiting = NewPubrelWaiting,
+                queue = NewPubrelQQ,
+                size = replayq:count(NewPubrelQQ)
+            },
+            send_frame(Transport, Socket, PubRelFrame),
+            NewInfoFun1 = call_info_fun({pubrel_out, MessageId}, NewInfoFun0),
+            State2 = maybe_publish_offline_msgs(State1#state{
+                info_fun = NewInfoFun1, o_queue = NewQ, pubrel_queue = NewPubrelQ
+            }),
+            {next_state, connected, retry(NewKey, PubRelFrame, State2)};
         {error, not_found} ->
             {next_state, connected, State0}
     end;
@@ -558,6 +725,35 @@ handle_frame(connected, #mqtt_pubrel{message_id = MessageId}, State0) ->
             send_frame(Transport, Socket, PubCompFrame),
             {next_state, connected, State2#state{info_fun = NewInfoFun1}};
         error ->
+            {next_state, connected, State0}
+    end;
+handle_frame(
+    connected,
+    #mqtt_pubcomp{message_id = MessageId},
+    #state{
+        info_fun = InfoFun,
+        pubrel_queue = #queue{out_waiting = Waiting, msg_ack_map = AckMap, queue = QQ} = PubrelQ
+    } = State0
+) when Waiting > 0 ->
+    %% qos2 flow
+    Key = {pubrel, MessageId},
+    lager:debug("Pubcomp arrived: ~p", [Key]),
+    case cancel_retry_and_get(Key, State0) of
+        {ok, {#mqtt_pubrel{}, State1}} ->
+            NextAck = maps:get(MessageId, AckMap, next),
+            {NewQQ, NewWaiting} = maybe_ack_pubrel(QQ, NextAck, Waiting),
+            NewQ = PubrelQ#queue{
+                out_waiting = NewWaiting, size = replayq:count(NewQQ), queue = NewQQ
+            },
+            lager:debug("Ack Pubrel ~p | NextAck: ~p | NewWaiting: ~p", [
+                MessageId, NextAck, NewWaiting
+            ]),
+            NewInfoFun = call_info_fun({pubcomp_in, MessageId}, InfoFun),
+            State2 = maybe_publish_pubrel_msgs(State1#state{
+                info_fun = NewInfoFun, pubrel_queue = NewQ
+            }),
+            {next_state, connected, State2};
+        {error, not_found} ->
             {next_state, connected, State0}
     end;
 handle_frame(connected, #mqtt_pubcomp{message_id = MessageId}, State0) ->
@@ -652,7 +848,8 @@ handle_sync_event({get_metrics, CR}, _From, StateName, State) ->
 handle_sync_event(Req, From, StateName, State) ->
     wrap_res(StateName, handle_call, [Req, From], State).
 
-terminate(Reason, StateName, State) ->
+terminate(Reason, StateName, #state{o_queue = #queue{queue = QQ} = _} = State) ->
+    ok = replayq:close(QQ),
     wrap_res(StateName, terminate, [Reason], State).
 
 code_change(OldVsn, StateName, State, Extra) ->
@@ -775,22 +972,121 @@ maybe_queue_outgoing(PubReq, #state{o_queue = #queue{size = Size, max = Max} = Q
     Size < Max
 ->
     State#state{o_queue = queue_outgoing(PubReq, Q)};
-maybe_queue_outgoing(_PubReq, #state{o_queue = Q} = State) ->
+maybe_queue_outgoing(PubReq, #state{o_queue = Q} = State) ->
     %% drop!
+    lager:debug("Drop from Queue MSG: ~p\n", [trunc_pubreq(PubReq)]),
     State#state{o_queue = drop(Q)}.
 
-queue_outgoing(Msg, #queue{size = Size, queue = QQ} = Q) ->
-    Q#queue{size = Size + 1, queue = queue:in(Msg, QQ)}.
+queue_outgoing(Msg, #queue{queue = QQ} = Q) ->
+    lager:debug("Add to Queue MSG: ~p\n", [trunc_pubreq(Msg)]),
+    NewQQ = replayq:append(QQ, [Msg]),
+    Q#queue{size = replayq:count(NewQQ), queue = NewQQ}.
 
-maybe_publish_offline_msgs(#state{o_queue = #queue{size = Size} = Q} = State) when Size > 0 ->
+queue_pubrel(PubRelFrame, QQ, Waiting) ->
+    lager:debug("Add to PubrelQ MSG: ~p\n", [PubRelFrame]),
+    NewQQ = replayq:append(QQ, [PubRelFrame]),
+    {NewQQ, Waiting + 1}.
+
+maybe_publish_offline_msgs(
+    #state{o_queue = #queue{size = Size, out_waiting = Waiting} = Q} = State
+) when Size > 0, Waiting < 1 ->
     publish_from_queue(Q, State);
 maybe_publish_offline_msgs(State) ->
     State.
 
-publish_from_queue(#queue{size = Size, queue = QQ} = Q, State0) when Size > 0 ->
-    {{value, PubReq}, NewQQ} = queue:out(QQ),
-    gen_fsm:send_event(self(), {publish_from_queue, PubReq}),
-    State0#state{o_queue = Q#queue{size = Size - 1, queue = NewQQ}}.
+maybe_publish_pubrel_msgs(
+    #state{pubrel_queue = #queue{size = Size, out_waiting = Waiting} = Q} = State
+) when Size > 0, Waiting < 1 ->
+    publish_from_pubrel_queue(Q, State);
+maybe_publish_pubrel_msgs(
+    #state{pubrel_queue = #queue{size = Size, out_waiting = Waiting} = _} = State
+) when Size > 0, Waiting > 0 ->
+    State;
+maybe_publish_pubrel_msgs(State) ->
+    maybe_publish_offline_msgs(State).
+
+maybe_ack_msgs(_, _, Waiting) when Waiting < 1 ->
+    0;
+maybe_ack_msgs(Queue, AckRef, Waiting) ->
+    ok = replayq:ack(Queue, AckRef),
+    lager:debug("Sent Ack: ~p", [AckRef]),
+    Waiting - 1.
+
+maybe_ack_pubrel(Q, _, Waiting) when Waiting < 1 ->
+    {Q, 0};
+maybe_ack_pubrel(Queue, next, Waiting) ->
+    {NewQ, AckRef, _} = replayq:pop(Queue, #{count_limit => 1}),
+    maybe_ack_pubrel(NewQ, AckRef, Waiting);
+maybe_ack_pubrel(Queue, AckRef, Waiting) ->
+    ok = replayq:ack(Queue, AckRef),
+    lager:debug("Sent Pubrel Ack: ~p", [AckRef]),
+    {Queue, Waiting - 1}.
+
+publish_from_queue(
+    #queue{size = Size, queue = QQ, batch_size = BatchSize0} = Q, #state{msgid = MsgID} = State0
+) when Size > 0 ->
+    lager:debug("READING BATCH"),
+    BatchSize1 = lists:min([BatchSize0, replayq:count(QQ)]),
+    MsgAckMap0 = maps:new(),
+    {NewQQ, MsgAckMap1, Waiting} = foreach_pop(QQ, BatchSize1, MsgID, MsgAckMap0, BatchSize1),
+    lager:debug("Ack Map: ~p", [MsgAckMap1]),
+    State0#state{
+        o_queue = Q#queue{
+            queue = NewQQ,
+            size = replayq:count(NewQQ),
+            out_waiting = Waiting,
+            msg_ack_map = MsgAckMap1
+        }
+    }.
+
+foreach_pop(Queue, Count, MsgID, Map, Waiting) when Count > 0 ->
+    {NewQ, AckRef, [{_, _, QoS, _, _} = Elem]} = replayq:pop(Queue, #{count_limit => 1}),
+    lager:debug("AckRef: ~p | Element: ~p | MSGID: ~p", [AckRef, trunc_pubreq(Elem), MsgID]),
+    gen_fsm:send_event(self(), {publish_from_queue, Elem}),
+    case QoS of
+        0 ->
+            ok = replayq:ack(Queue, AckRef),
+            lager:debug("Sent Ack: ~p", [AckRef]),
+            Map1 = Map,
+            Waiting1 = Waiting - 1;
+        _ ->
+            Map1 = maps:put(MsgID, AckRef, Map),
+            Waiting1 = Waiting
+    end,
+    foreach_pop(NewQ, Count - 1, '++'(MsgID), Map1, Waiting1);
+foreach_pop(Queue, _, _, Map, Waiting) ->
+    {Queue, Map, Waiting}.
+
+publish_from_pubrel_queue(#queue{size = Size, queue = QQ, batch_size = BatchSize0} = Q, State0) when
+    Size > 0
+->
+    lager:debug("READING PUBREL BATCH"),
+    BatchSize1 = lists:min([BatchSize0, replayq:count(QQ)]),
+    MsgAckMap0 = maps:new(),
+    {NewQQ, MsgAckMap1, State1} = foreach_pop_pubrel(QQ, BatchSize1, MsgAckMap0, State0),
+    lager:debug("Pubrel Ack Map: ~p", [MsgAckMap1]),
+    State1#state{
+        pubrel_queue = Q#queue{
+            queue = NewQQ,
+            size = replayq:count(NewQQ),
+            out_waiting = BatchSize1,
+            msg_ack_map = MsgAckMap1
+        }
+    }.
+
+foreach_pop_pubrel(
+    Queue, Count, Map, #state{transport = {Transport, _}, sock = Socket} = State
+) when Count > 0 ->
+    {NewQ, AckRef, [#mqtt_pubrel{message_id = MessageId} = PubRelFrame]} = replayq:pop(Queue, #{
+        count_limit => 1
+    }),
+    lager:debug("Pubrel AckRef: ~p | Element: ~p | MSGID: ~p", [AckRef, PubRelFrame, MessageId]),
+    Key = {pubrel, MessageId},
+    send_frame(Transport, Socket, PubRelFrame),
+    Map1 = maps:put(MessageId, AckRef, Map),
+    foreach_pop_pubrel(NewQ, Count - 1, Map1, retry(Key, PubRelFrame, State));
+foreach_pop_pubrel(Queue, _, Map, State) ->
+    {Queue, Map, State}.
 
 drop(#queue{drop = D} = Q) ->
     put(?PD_QDROP, D + 1),
@@ -883,6 +1179,13 @@ get_remove_unacked_msg(MessageId, #state{unacked_msgs = UnackedMsgs} = State) ->
         _ ->
             error
     end.
+
+%% truncate cutoff: 80 characters
+trunc_pubreq({_, Payload, _, _, _} = PubReq) when size(Payload) =< 80 ->
+    PubReq;
+trunc_pubreq({T, Payload, Q, R, D}) ->
+    P1 = string:substr(binary_to_list(Payload), 1, 80) ++ "...(truncated)",
+    {T, list_to_binary(P1), Q, R, D}.
 
 '++'(65535) -> 1;
 '++'(N) -> N + 1.
