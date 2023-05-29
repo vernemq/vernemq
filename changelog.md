@@ -1,3 +1,4 @@
+- Allow configuration of `max_request_line_length` for HTTP(S) listeners
 - Improve memory footprint and performance of sessions that subscribe to many topics
 - Bugfix: Use default regview as information source for status page 
 - Add support for x-forward-for (XFF) header (Websockets) (#1783)

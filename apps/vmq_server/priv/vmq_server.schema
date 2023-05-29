@@ -1130,7 +1130,12 @@
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}.
-
+%% @doc The maximum length of the HTTP request in bytes (Cowboy's max_request_line_length)
+{mapping, "listener.http.$name.max_request_line_length", "vmq_server.listeners", [
+                                                                     {default, 8000},
+                                                                     {datatype, integer},
+                                                                     hidden
+                                                                    ]}.
 %% @doc specifies the modules to be enabled by the http(s) listener
 {mapping, "listener.http.$name.http_modules", "vmq_server.listeners", [
                                                       {default, "[]"},
@@ -1149,10 +1154,14 @@
                                                                      {datatype, atom},
                                                                      hidden
                                                                     ]}.
-
 {mapping, "listener.https.$name.config_fun", "vmq_server.listeners", [
                                                                      {default, config},
                                                                      {datatype, atom},
+                                                                     hidden
+                                                                    ]}.
+{mapping, "listener.https.$name.max_request_line_length", "vmq_server.listeners", [
+                                                                     {default, 8000},
+                                                                     {datatype, integer},
                                                                      hidden
                                                                     ]}.
 %% @doc specifies the modules to be enabled by the http(s) listener
