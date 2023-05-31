@@ -71,6 +71,14 @@
 % testing
 -export([dkm/1, info/2, dump/1]).
 
+-ifdef(EUNIT).
+-define(PEERS(), []).
+-define(CHECKOLD(_OldId, _Peers), true).
+-else.
+-define(PEERS(), vmq_swc_peer_service_manager:get_actors_and_peers()).
+-define(CHECKOLD(OldId, Peers), lists:member(OldId, Peers)).
+-endif.
+
 -record(dkm, {
     latest = ets:new(?MODULE, [public]),
     latest_candidates = ets:new(?MODULE, [public]),
@@ -143,12 +151,12 @@ insert(
             [{dkm, sext:encode(Dot), Key}];
         false ->
             Res = ets:lookup(LT, Key),
-            [{_, {OldId, OldCnt}}] = Res,
-            Peers = vmq_swc_peer_service_manager:get_actors_and_peers(),
-            CheckOld = lists:member(OldId, Peers),
+            [{_, {OldId, _}}] = Res,
+            Peers = ?PEERS(),
+            CheckOld = ?CHECKOLD(OldId, Peers),
             ReplacedDots =
                 case Res of
-                    [{_, {OldId, CurrentCnt} = CurrentDot}] when CheckOld == false ->
+                    [{_, {OldId, _} = CurrentDot}] when CheckOld == false ->
                         % remove possible GC candidate
                         ets:delete(GCT, Key),
                         ets:insert(LT, {Key, Dot}),
