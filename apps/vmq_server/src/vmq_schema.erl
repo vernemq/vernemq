@@ -231,6 +231,9 @@ translate_listeners(Conf) ->
     {HTTPIPs, HTTPConfigMod} = lists:unzip(extract("listener.http", "config_mod", AtomVal, Conf)),
     {HTTPIPs, HTTPConfigFun} = lists:unzip(extract("listener.http", "config_fun", AtomVal, Conf)),
     {HTTPIPs, HTTPModules} = lists:unzip(extract("listener.http", "http_modules", StrVal, Conf)),
+    {HTTPIPs, HTTPMaxLengths} = lists:unzip(
+        extract("listener.http", "max_request_line_length", IntVal, Conf)
+    ),
     {HTTPIPs, HTTPListenerName} = lists:unzip(extract_var("listener.http", "listener_name", Conf)),
 
     {HTTP_SSLIPs, HTTP_SSLListenerName} = lists:unzip(
@@ -245,7 +248,9 @@ translate_listeners(Conf) ->
     {HTTP_SSLIPs, HTTP_SSLHTTPModules} = lists:unzip(
         extract("listener.https", "http_modules", StrVal, Conf)
     ),
-
+    {HTTP_SSLIPs, HTTP_SSLMaxLengths} = lists:unzip(
+        extract("listener.https", "max_request_line_length", IntVal, Conf)
+    ),
     % SSL
     {SSLIPs, SSLCAFiles} = lists:unzip(extract("listener.ssl", "cafile", StrVal, Conf)),
     {SSLIPs, SSLDepths} = lists:unzip(extract("listener.ssl", "depth", IntVal, Conf)),
@@ -387,6 +392,7 @@ translate_listeners(Conf) ->
             HTTPNrOfAcceptors,
             HTTPConfigMod,
             HTTPConfigFun,
+            HTTPMaxLengths,
             HTTPModules,
             HTTPListenerName,
             HTTPProxyProto
@@ -481,6 +487,7 @@ translate_listeners(Conf) ->
             HTTP_SSLVersions,
             HTTP_SSLConfigMod,
             HTTP_SSLConfigFun,
+            HTTP_SSLMaxLengths,
             HTTP_SSLHTTPModules,
             HTTP_SSLListenerName
         ])
@@ -547,6 +554,7 @@ extract(Prefix, Suffix, Val, Conf) ->
             "config_mod",
             "config_fun",
             "http_modules",
+            "max_request_line_length",
             %% mqtt listener specific
             "allowed_protocol_versions",
             %% other
