@@ -1,0 +1,124 @@
+%%-*- mode: erlang -*-
+%% ex: ft=erlang
+
+%% @doc Specifies the auth method used after the API call has been authenticated
+%%  /authorized by the endpoint. The only possible values is "on-behalf-of" and
+%%  "predefined"
+%%
+%%  If you specify "on-behalf-of" every HTTP call needs to provide a client-id,
+%%  a username and a password. Those are only used to authenticated/authorize
+%%  the request. They have no impact on any client with the same id already
+%%  connected. You should anyway consider using  dedicated users and clients for
+%%  HTTP calls.
+%%
+%%  It is possible to set the app_auth setting on each listener.
+%%
+%%  listener.https.$name$.http_modules.vmq_http_pub.app_auth
+%%  listener.http.$name$.http_modules.vmq_http_pub.app_auth
+%%
+%%  Using HTTP is not recommended.
+%%
+{mapping, "vmq_http_pub.mqtt_auth.mode", "vmq_http_pub.config", [
+                                                    {datatype, string},
+                                                    {default, "on-behalf-of"},
+                                                    {commented, "on-behalf-of"}
+                                                   ]}.
+{mapping, "vmq_http_pub.mqtt_auth.auth_plugin", "vmq_http_pub.config", [
+                                                    {datatype, string},
+                                                    {default, "mqtt"},
+                                                    {commented, "mqtt"}
+                                                   ]}.
+{mapping, "vmq_http_pub.mqtt_auth.user", "vmq_http_pub.config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "vmq_http_pub.mqtt_auth.password", "vmq_http_pub.config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "vmq_http_pub.mqtt_auth.client_id", "vmq_http_pub.config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+
+{mapping, "listener.https.$name.http_modules.vmq_http_pub.mqtt_auth.mode", "vmq_http_pub.listener_config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "listener.https.$name.http_modules.vmq_http_pub.mqtt_auth.auth_plugin", "vmq_http_pub.listener_config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "listener.https.$name.http_modules.vmq_http_pub.mqtt_auth.user", "vmq_http_pub.listener_config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "listener.https.$name.http_modules.vmq_http_pub.mqtt_auth.password", "vmq_http_pub.listener_config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "listener.https.$name.http_modules.vmq_http_pub.mqtt_auth.client_id", "vmq_http_pub.listener_config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "listener.http.$name.http_modules.vmq_http_pub.mqtt_auth.mode", "vmq_http_pub.listener_config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "listener.http.$name.http_modules.vmq_http_pub.mqtt_auth.auth_plugin", "vmq_http_pub.listener_config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "listener.http.$name.http_modules.vmq_http_pub.mqtt_auth.user", "vmq_http_pub.listener_config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "listener.http.$name.http_modules.vmq_http_pub.mqtt_auth.password", "vmq_http_pub.listener_config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+{mapping, "listener.http.$name.http_modules.vmq_http_pub.mqtt_auth.client_id", "vmq_http_pub.listener_config", [
+                                                    {datatype, string},
+                                                    hidden
+                                                   ]}.
+
+%% @doc The vmq_http_pub plugin supports mountpoints. Mountpoints can be either set on a globally
+%% or on a per-listener setting. Furthermore, the mountpoints can be overriden by auth plugins.
+%%
+{mapping, "vmq_http_pub.mountpoint", "vmq_http_pub.config", [{datatype, string},
+                                                                hidden
+                                                                ]}.
+
+{mapping, "listener.http.$name.http_modules.vmq_http_pub.mountpoint", "vmq_http_pub.listener_config", [
+                                                               {datatype, string},
+                                                                hidden
+                                                                ]}.
+{mapping, "listener.https.$name.http_modules.vmq_http_pub.mountpoint", "vmq_http_pub.listener_config", [
+                                                               {datatype, string},
+                                                                hidden
+                                                                ]}.
+{translation, "vmq_http_pub.config",
+fun(Conf) ->
+  MqttAuth = {mqttauth, cuttlefish:conf_get("vmq_http_pub.mqtt_auth.mode", Conf, undefined)},
+  MqttAuthPlugin = {mqttplugin, cuttlefish:conf_get("vmq_http_pub.mqtt_auth.auth_plugin", Conf, undefined)},
+  MqttAuthUser = {mqttauthuser, cuttlefish:conf_get("vmq_http_pub.mqtt_auth.user", Conf, undefined)},
+  MqttAuthPassword = {mqttauthpassword, cuttlefish:conf_get("vmq_http_pub.mqtt_auth.password", Conf, undefined)},
+  MqttAuthClientId = {mqttauthclientid, cuttlefish:conf_get("vmq_http_pub.mqtt_auth.client-id", Conf, undefined)},
+  MqttMountpoint = {mqttmountpoint, cuttlefish:conf_get("vmq_http_pub.mountpoint", Conf, undefined)},
+  Res = [MqttAuth, MqttAuthPlugin, MqttAuthUser, MqttAuthPassword, MqttAuthClientId, MqttMountpoint],
+  Res
+  end
+}.
+
+{translation,
+  "vmq_http_pub.listener_config",
+  fun(Conf) ->
+     Candidates = cuttlefish_variable:filter_by_prefix("listener.http.",Conf) ++ cuttlefish_variable:filter_by_prefix("listener.https.",Conf),
+	 HTTPModuleListers = lists:filter(fun(Elem) -> case element(1,Elem) of X when length(X)>5 -> lists:nth(4, X) == "http_modules" andalso lists:nth(5, X) == "vmq_http_pub"; _ -> false end end, Candidates),
+      MapListenerModule = lists:map(fun(Elem) -> Elem1 = element(1, Elem),
+      vmq_util:lists_to_atom_tuple(lists:nth(2, Elem1), lists:nth(3,Elem1), lists:nth(6,Elem1), vmq_util:nth(7, Elem1)) end, HTTPModuleListers),
+     MapWithValue = lists:map(fun(AtomTuple) -> String = "listener."++vmq_util:concat_dot(element(1,AtomTuple),element(2,AtomTuple))++".http_modules.vmq_http_pub."++vmq_util:concat_dot(element(3,AtomTuple), vmq_util:elem(4, AtomTuple)), #{AtomTuple => cuttlefish:conf_get(String, Conf)} end, MapListenerModule),
+     Ret = maps:from_list(lists:foldl(fun(Elem, Acc) -> maps:to_list(Elem) ++ Acc end, [], MapWithValue)),
+     Ret
+	 end
+ }.
