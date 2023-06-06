@@ -1,6 +1,6 @@
 - New Plugin: 'vmq_http_pub', allows to ingest MQTT messages via a HTTP REST interface
 - Allow configuration of `max_request_line_length` for HTTP(S) listeners
-- Improve memory footprint and performance of sessions that subscribe to many topics
+- Improve memory footprint and performance of sessions that subscribe to many topics (new configurable `vmq_reg_ordered_trie` module, the old `vmq_reg_trie` is kept as default)
 - Bugfix: Use default regview as information source for status page 
 - Add support for x-forward-for (XFF) header (Websockets) (#1783)
 - Bugfix: QoS0 message shall ignore receive maximum setting (#2150)
