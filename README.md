@@ -121,7 +121,7 @@ started, you need to first build VerneMQ.
 
 ### Building VerneMQ
 
-Note: VerneMQ requires Erlang/OTP 22-24 and `libsnappy-dev` installed in your system. You'll also need a C compiler for Eleveldb. (on Debian, you install `build-essential`, as an example).
+Note: VerneMQ requires Erlang/OTP 24-25 and `libsnappy-dev` installed in your system. You'll also need a C compiler for Eleveldb. (on Debian, you install `build-essential`, as an example).
 
 Assuming you have a working Erlang installation, building VerneMQ should be as
 simple as:
