@@ -2,8 +2,8 @@
 
 ## Supported Versions
 
-VerneMQ security updates will first land in the "master" branch and from there
-go into new releases. 
+VerneMQ security updates will first land in the "main" branch and from there
+go into new releases.
 Important security updates will lead to a bugfix minor release.
 
 

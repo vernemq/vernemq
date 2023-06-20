@@ -17,7 +17,7 @@
 
 -include("vmq_metrics.hrl").
 
--export([routes/0]).
+-export([routes/0, is_authorized/2]).
 -export([
     init/2,
     content_types_provided/2,
@@ -26,6 +26,14 @@
 
 routes() ->
     [{"/metrics", ?MODULE, []}].
+
+is_authorized(Req, State) ->
+    AuthMode = vmq_http_config:auth_mode(Req, vmq_metrics_http),
+    case AuthMode of
+        "apikey" -> vmq_auth_apikey:is_authorized(Req, State, "metrics");
+        "noauth" -> {true, Req, State};
+        _ -> {error, invalid_authentication_scheme}
+    end.
 
 init(Req, Opts) ->
     {cowboy_rest, Req, Opts}.

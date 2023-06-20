@@ -16,7 +16,7 @@
 -behaviour(vmq_http_config).
 -include("vmq_metrics.hrl").
 
--export([routes/0]).
+-export([routes/0, is_authorized/2]).
 -export([node_status/0]).
 -export([
     init/2,
@@ -48,6 +48,14 @@ content_types_provided(Req, State) ->
         State
     }.
 
+is_authorized(Req, State) ->
+    AuthMode = vmq_http_config:auth_mode(Req, vmq_status_http),
+    case AuthMode of
+        "apikey" -> vmq_auth_apikey:is_authorized(Req, State, "status");
+        "noauth" -> {true, Req, State};
+        _ -> {error, invalid_authentication_scheme}
+    end.
+
 terminate(_Reason, _Req, _State) ->
     ok.
 
@@ -69,12 +77,12 @@ cluster_status() ->
 
 node_status() ->
     % Total Connections
-    SocketOpen = counter_val(?METRIC_SOCKET_OPEN),
-    SocketClose = counter_val(?METRIC_SOCKET_CLOSE),
-    TotalConnections = SocketOpen - SocketClose,
+    TotalActiveMqttConnections = lists:sum(
+        tuple_to_list(vmq_ranch_sup:active_mqtt_connections())
+    ),
     % Total Online Queues
     TotalQueues = vmq_queue_sup_sup:nr_of_queues(),
-    TotalOfflineQueues = TotalQueues - TotalConnections,
+    TotalOfflineQueues = TotalQueues - TotalActiveMqttConnections,
     TotalPublishIn =
         counter_val(?MQTT4_PUBLISH_RECEIVED) +
             counter_val(?MQTT5_PUBLISH_RECEIVED),
@@ -87,10 +95,11 @@ node_status() ->
     TotalQueueUnhandled = counter_val(?METRIC_QUEUE_MESSAGE_UNHANDLED),
     TotalMatchesLocal = counter_val(?METRIC_ROUTER_MATCHES_LOCAL),
     TotalMatchesRemote = counter_val(?METRIC_ROUTER_MATCHES_REMOTE),
-    {NrOfSubs, _SMemory} = vmq_reg_trie:stats(),
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    {NrOfSubs, _SMemory} = vmq_metrics:fetch_external_metric(RegView, stats, {0, 0}),
     {NrOfRetain, _RMemory} = vmq_retain_srv:stats(),
     {ok, [
-        {<<"num_online">>, TotalConnections},
+        {<<"num_online">>, TotalActiveMqttConnections},
         {<<"num_offline">>, TotalOfflineQueues},
         {<<"msg_in">>, TotalPublishIn},
         {<<"msg_out">>, TotalPublishOut},
@@ -118,12 +127,17 @@ counter_val(C) ->
 
 listeners() ->
     lists:foldl(
-        fun({Type, Ip, Port, Status, MP, MaxConns}, Acc) ->
+        fun({Type, Ip, Port, Status, MP, MaxConns, _, _}, Acc) ->
+            Ip1 =
+                case Ip of
+                    {local, FS} -> list_to_binary(FS);
+                    Any -> list_to_binary(Any)
+                end,
             [
                 [
                     {type, Type},
                     {status, Status},
-                    {ip, list_to_binary(Ip)},
+                    {ip, Ip1},
                     {port, list_to_integer(Port)},
                     {mountpoint, MP},
                     {max_conns, MaxConns}

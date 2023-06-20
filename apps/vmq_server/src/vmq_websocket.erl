@@ -64,9 +64,19 @@ init(Req, Opts) ->
                         src_port := SrcPort
                     } ->
                         {SrcAddr, SrcPort};
-                    % WS request without proxy_protocol
+                    % WS request without proxy_protocol (might have XFF)
                     error ->
-                        cowboy_req:peer(Req0)
+                        XFF_On = proplists:get_value(proxy_xff_support, Opts, false),
+                        case XFF_On of
+                            true ->
+                                {ok, NewPeer} = vmq_proxy_xff:new_peer(
+                                    Req0,
+                                    proplists:get_value(proxy_xff_trusted_intermediate, Opts, "")
+                                ),
+                                NewPeer;
+                            _ ->
+                                cowboy_req:peer(Req0)
+                        end
                 end,
             FsmMod = proplists:get_value(fsm_mod, Opts, vmq_mqtt_pre_init),
             FsmState =
@@ -223,7 +233,7 @@ maybe_reply(Out, State) ->
     end.
 
 add_websocket_sec_header(Req) ->
-    case cowboy_req:parse_header(?SEC_WEBSOCKET_PROTOCOL, Req) of
+    case cowboy_req:parse_header(?SEC_WEBSOCKET_PROTOCOL, Req, []) of
         [] ->
             {error, unsupported_protocol};
         SubProtocols ->

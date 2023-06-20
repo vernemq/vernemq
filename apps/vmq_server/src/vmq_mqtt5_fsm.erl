@@ -138,6 +138,8 @@ init(
         Opts
     ),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts, false),
+    MaxLifetime = proplists:get_value(max_connection_lifetime, Opts, 0),
+    set_maxlifetime_timer(MaxLifetime),
 
     PreAuthUser =
         case lists:keyfind(preauth, 1, Opts) of
@@ -175,7 +177,6 @@ init(
     _ = vmq_metrics:incr(?MQTT5_CONNECT_RECEIVED),
     %% the client is allowed "grace" of a half a time period
     set_keepalive_check_timer(KeepAlive),
-
     %% Flow Control
     FcReceiveMaxClient = maybe_get_receive_maximum(
         Properties,
@@ -805,6 +806,11 @@ connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
     terminate(Reason, State);
 connected(
+    disconnect_max_conn_lifetime, State
+) ->
+    lager:debug("stop due to max connection lifetime reached", []),
+    terminate(?ADMINISTRATIVE_ACTION, State);
+connected(
     check_keepalive,
     #state{
         last_time_active = Last,
@@ -849,7 +855,9 @@ connected(close_timeout, State) ->
     %% As we're in the connected state, it's ok to ignore this timeout
     {State, []};
 connected(Unexpected, State) ->
-    lager:warning("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
+    lager:warning("stopped connected session for client ~p, due to unexpected frame type ~p", [
+        State#state.subscriber_id, Unexpected
+    ]),
     terminate({error, {unexpected_message, Unexpected}}, State).
 
 -spec connack_terminate(reason_code_name(), state()) -> any().
@@ -1360,6 +1368,8 @@ auth_on_register(Password, Props, State) ->
             ),
             %% for efficiency reason the max_message_size isn't kept in the state
             set_max_incoming_msg_size(prop_val(max_message_size, Args, max_incoming_msg_size())),
+            set_maxlifetime_timer(prop_val(max_connection_lifetime, Args, 0)),
+
             set_max_outgoing_msg_size(prop_val(max_packet_size, Args, max_outgoing_msg_size())),
             set_request_problem_information(
                 prop_val(request_problem_info, Args, request_problem_information())
@@ -1775,15 +1785,27 @@ handle_waiting_msgs(#state{waiting_msgs = Msgs, queue_pid = QPid} = State) ->
 
 handle_messages([#deliver{qos = 0} = D | Rest], Frames, PubCnt, State, Waiting) ->
     {Frame, NewState} = prepare_frame(D, State),
-    handle_messages(Rest, [Frame | Frames], PubCnt, NewState, Waiting);
-handle_messages([#deliver{} = Obj | Rest], Frames, PubCnt, State, Waiting) ->
-    case fc_incr_cnt(State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages) of
-        error ->
-            % reached outgoing flow control max, queue up rest of messages
-            handle_messages(Rest, Frames, PubCnt, State, [Obj | Waiting]);
-        Cnt ->
-            {Frame, NewState} = prepare_frame(Obj, State#state{fc_send_cnt = Cnt}),
-            handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting)
+    handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting);
+handle_messages([#deliver{qos = QoS, msg = Msg} = Obj | Rest], Frames, PubCnt, State, Waiting) ->
+    NewQoS = maybe_upgrade_qos(QoS, Msg#vmq_msg.qos, State),
+    case NewQoS of
+        0 ->
+            {Frame, NewState} = prepare_frame(Obj, State),
+            handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting);
+        % only QoS1 / QoS2 count towards the receive_max_client
+        _ ->
+            case
+                fc_incr_cnt(
+                    State#state.fc_send_cnt, State#state.fc_receive_max_client, handle_messages
+                )
+            of
+                error ->
+                    % reached outgoing flow control max, queue up rest of messages
+                    handle_messages(Rest, Frames, PubCnt, State, [Obj | Waiting]);
+                Cnt ->
+                    {Frame, NewState} = prepare_frame(Obj, State#state{fc_send_cnt = Cnt}),
+                    handle_messages(Rest, [Frame | Frames], PubCnt + 1, NewState, Waiting)
+            end
     end;
 handle_messages(
     [{deliver_pubrel, {MsgId, #mqtt5_pubrel{} = Frame}} | Rest], Frames, PubCnt, State0, Waiting
@@ -1958,7 +1980,9 @@ get_msg_id(_, undefined, #state{next_msg_id = MsgId} = State) ->
 
 -spec random_client_id() -> binary().
 random_client_id() ->
-    list_to_binary(["anon-", base64:encode_to_string(crypto:strong_rand_bytes(20))]).
+    list_to_binary([
+        "anon-", string:trim(base64:encode_to_string(crypto:strong_rand_bytes(21)), both, "+=/")
+    ]).
 
 set_keepalive_check_timer(0) ->
     ok;
@@ -1966,6 +1990,11 @@ set_keepalive_check_timer(KeepAlive) ->
     %% This allows us to heavily reduce start and cancel timers,
     %% however we're losing precision. But that's ok for the keepalive timer.
     _ = send_after(KeepAlive * 750, check_keepalive),
+    ok.
+set_maxlifetime_timer(0) ->
+    ok;
+set_maxlifetime_timer(MaxLifetime) ->
+    _ = send_after(MaxLifetime * 1000, disconnect_max_conn_lifetime),
     ok.
 
 -spec send_after(non_neg_integer(), any()) -> reference().

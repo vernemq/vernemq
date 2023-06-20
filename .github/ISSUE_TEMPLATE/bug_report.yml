@@ -1,0 +1,55 @@
+name: 🐞 Bug report
+description: Create a bug report to help us improve
+title: "[Bug]: <title>"
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a new issue, please make sure that there isn't already an open (or closed/resolved) issue
+         reporting the same problem. Please always open a new issue rather than posting to a closed one -
+         but please reference the possibly related old issue.
+
+        Please do not insert images of text, but add the text instead.
+  - type: textarea
+    attributes:
+      label: Environment
+      description: |
+        examples:
+          - **VerneMQ Version:**
+          - **OS:** Ubuntu 20.04
+          - **Erlang/OTP version (if building from source)**: 25.0
+          - **Cluster size/standalone**: 3 nodes
+      value: |
+        - VerneMQ Version:
+        - OS:
+        - Erlang/OTP version (if building from source):
+        - Cluster size/standalone:
+  - type: textarea
+    id: current-behaviour
+    attributes:
+      label: Current Behavior
+      description: Please include minimal steps to reproduce the issue, if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behaviour
+    attributes:
+      label: Expected behaviour
+      description: Please describe the expected behaviour.
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Configuration, logs, error output, etc.
+      description: Please include the [VerneMQ configuration](https://docs.vernemq.com/configuring-vernemq/introduction) (vernemq.conf) or the changes from the default and/or any logs or stacktraces that can help us troubleshoot the problem.
+      render: markdown
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/vernemq/vernemq/blob/main/CODE_OF_CONDUCT.md)
+      options:
+        - label: I agree to follow the VerneMQ's Code of Conduct
+          required: true

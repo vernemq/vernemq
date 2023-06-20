@@ -108,6 +108,8 @@ init(
         Opts
     ),
     AllowAnonymousOverride = proplists:get_value(allow_anonymous_override, Opts),
+    MaxLifetime = proplists:get_value(max_connection_lifetime, Opts, 5000),
+    set_maxlifetime_timer(MaxLifetime),
     PreAuthUser =
         case lists:keyfind(preauth, 1, Opts) of
             false -> undefined;
@@ -509,6 +511,11 @@ connected({disconnect, Reason}, State) ->
     lager:debug("stop due to disconnect", []),
     terminate(Reason, State);
 connected(
+    disconnect_max_conn_lifetime, State
+) ->
+    lager:debug("stop due to max connection lifetime reached", []),
+    terminate(?ADMINISTRATIVE_ACTION, State);
+connected(
     check_keepalive,
     #state{
         last_time_active = Last,
@@ -553,7 +560,9 @@ connected(close_timeout, State) ->
     %% As we're in the connected state, it's ok to ignore this timeout
     {State, []};
 connected(Unexpected, State) ->
-    lager:warning("stopped connected session, due to unexpected frame type ~p", [Unexpected]),
+    lager:warning("stopped connected session for client ~p, due to unexpected frame type ~p", [
+        State#state.subscriber_id, Unexpected
+    ]),
     terminate({error, unexpected_message, Unexpected}, State).
 
 connack_terminate(RC, _State) ->
@@ -818,6 +827,7 @@ auth_on_register(Password, State) ->
 
             %% for efficiency reason the max_message_size isn't kept in the state
             set_max_msg_size(prop_val(max_message_size, Args, max_msg_size())),
+            set_maxlifetime_timer(prop_val(max_connection_lifetime, Args, 0)),
 
             ChangedState = State#state{
                 subscriber_id = ?state_val(subscriber_id, Args, State),
@@ -1332,7 +1342,9 @@ get_msg_id(_, undefined, #state{next_msg_id = MsgId} = State) ->
 
 -spec random_client_id() -> binary().
 random_client_id() ->
-    list_to_binary(["anon-", base64:encode_to_string(crypto:strong_rand_bytes(20))]).
+    list_to_binary([
+        "anon-", string:trim(base64:encode_to_string(crypto:strong_rand_bytes(21)), both, "+=/")
+    ]).
 
 -spec set_keepalive_check_timer(non_neg_integer()) -> 'ok'.
 set_keepalive_check_timer(0) ->
@@ -1343,6 +1355,12 @@ set_keepalive_check_timer(KeepAlive) ->
     _ = vmq_mqtt_fsm_util:send_after(KeepAlive * 750, check_keepalive),
     ok.
 
+-spec set_maxlifetime_timer(non_neg_integer()) -> 'ok'.
+set_maxlifetime_timer(0) ->
+    ok;
+set_maxlifetime_timer(MaxLifetime) ->
+    _ = vmq_mqtt_fsm_util:send_after(MaxLifetime * 1000, disconnect_max_conn_lifetime),
+    ok.
 -spec do_throttle(session_ctrl(), state()) -> false | duration_ms().
 do_throttle(#{throttle := ThrottleMs}, _) ->
     ThrottleMs;

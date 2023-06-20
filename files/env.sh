@@ -244,7 +244,7 @@ check_user() {
 
         # This will drop privileges into the runner user
         # It exec's in a new shell and the current shell will exit
-        exec su - $RUNNER_USER -s $RUNNER_SCRIPT_DIR/$RUNNER_SCRIPT -- "$ESCAPED_ARGS"
+        exec su - $RUNNER_USER -s $RUNNER_SCRIPT_DIR/$RUNNER_SCRIPT -- $ESCAPED_ARGS
     fi
 }
 

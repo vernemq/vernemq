@@ -13,12 +13,21 @@
 %% limitations under the License.
 
 -module(vmq_http_config).
--export([config/0]).
+-export([config/1, auth_mode/2]).
 
 -callback routes() -> [{string(), atom(), any()}].
+config(Opts) ->
+    HttpLocal = element(2, lists:keyfind(http_modules, 1, Opts)),
+    HttpLocalList = [
+        list_to_atom(string:strip(Token))
+     || Token <- string:tokens(string:trim(HttpLocal, both, "[]"), ",")
+    ],
 
-config() ->
-    HttpModules = vmq_config:get_env(http_modules),
+    HttpModules =
+        case {HttpLocalList, vmq_config:get_env(http_modules)} of
+            {[], _} -> vmq_config:get_env(http_modules);
+            {LocalModules, _} -> LocalModules
+        end,
     config(HttpModules, []).
 
 config([HttpModule | Rest], Routes) when is_atom(HttpModule) ->
@@ -32,3 +41,29 @@ config([HttpModule | Rest], Routes) when is_atom(HttpModule) ->
     end;
 config([], Routes) ->
     Routes.
+
+auth_mode(Req, Module) ->
+    Reg = maps:get(ref, Req),
+    Scheme = binary_to_atom(maps:get(scheme, Req)),
+    Opts = ranch:get_protocol_options(Reg),
+    Global = maps:get(
+        Module,
+        vmq_config:get_env(vmq_server, http_modules_auth, #{}),
+        undefined
+    ),
+    ListenerName =
+        case lists:keyfind(listener_name, 1, maps:get(opts, Opts)) of
+            false -> undefined;
+            Tuple -> list_to_atom(element(2, Tuple))
+        end,
+    Local = maps:get(
+        {Scheme, ListenerName, Module},
+        vmq_config:get_env(vmq_server, http_listener_modules_auth, #{}),
+        undefined
+    ),
+
+    case {Local, Global} of
+        {undefined, undefined} -> undefined;
+        {undefined, G} -> G;
+        {L, _} -> L
+    end.

@@ -44,6 +44,7 @@ register_config_() ->
             "max_online_messages",
             "max_offline_messages",
             "queue_deliver_mode",
+            "override_max_online_messages",
             "queue_type",
             "max_message_rate",
             "max_message_size",

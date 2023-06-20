@@ -88,7 +88,8 @@
     reset_counter/2,
     counter_val/1,
     register/1,
-    get_label_info/0
+    get_label_info/0,
+    fetch_external_metric/3
 ]).
 
 %% API functions
@@ -1207,7 +1208,7 @@ counter_entries_def() ->
             [],
             queue_message_unhandled,
             queue_message_unhandled,
-            <<"The number of unhandled messages when connecting with clean session=true.">>
+            <<"The number of unhandled messages when connecting with clean session=true or QoS0 for offline sessions.">>
         ),
         m(
             counter,
@@ -1631,8 +1632,12 @@ fetch_external_metric(Mod, Fun, Default) ->
 
 -spec misc_statistics() -> [{metric_id(), any()}].
 misc_statistics() ->
-    {NrOfSubs, SMemory} = fetch_external_metric(vmq_reg_trie, stats, {0, 0}),
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    {NrOfSubs, SMemory} = fetch_external_metric(RegView, stats, {0, 0}),
     {NrOfRetain, RMemory} = fetch_external_metric(vmq_retain_srv, stats, {0, 0}),
+    {NrOfMQTTConnections, NrOfMQTTWSConnections} = fetch_external_metric(
+        vmq_ranch_sup, active_mqtt_connections, {0, 0}
+    ),
     {NetsplitDetectedCount, NetsplitResolvedCount} =
         fetch_external_metric(vmq_cluster, netsplit_statistics, {0, 0}),
     [
@@ -1642,7 +1647,10 @@ misc_statistics() ->
         {router_memory, SMemory},
         {retain_messages, NrOfRetain},
         {retain_memory, RMemory},
-        {queue_processes, fetch_external_metric(vmq_queue_sup_sup, nr_of_queues, 0)}
+        {queue_processes, fetch_external_metric(vmq_queue_sup_sup, nr_of_queues, 0)},
+        {active_mqttws_connections, NrOfMQTTWSConnections},
+        {active_mqtt_connections, NrOfMQTTConnections},
+        {total_active_connections, NrOfMQTTWSConnections + NrOfMQTTConnections}
     ].
 
 -spec misc_stats_def() -> [metric_def()].
@@ -1690,7 +1698,28 @@ misc_stats_def() ->
             retain_memory,
             <<"The number of bytes used for storing retained messages.">>
         ),
-        m(gauge, [], queue_processes, queue_processes, <<"The number of MQTT queue processes.">>)
+        m(gauge, [], queue_processes, queue_processes, <<"The number of MQTT queue processes.">>),
+        m(
+            gauge,
+            [],
+            active_mqtt_connections,
+            active_mqtt_connections,
+            <<"The number of active MQTT(S) connections.">>
+        ),
+        m(
+            gauge,
+            [],
+            active_mqttws_connections,
+            active_mqttws_connections,
+            <<"The number of active MQTT WS(S) connections.">>
+        ),
+        m(
+            gauge,
+            [],
+            total_active_connections,
+            total_active_connections,
+            <<"The total number of active MQTT and MQTTWS connections.">>
+        )
     ].
 
 -spec system_statistics() -> [{metric_id(), any()}].

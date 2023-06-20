@@ -120,6 +120,22 @@ vmq_listener_start_cmd() ->
                 end
             end}
         ]},
+        {keypasswd, [
+            {longname, "keypasswd"},
+            {typecast, fun(MP) -> MP end}
+        ]},
+        {pskfile, [
+            {longname, "pskfile"},
+            {typecast, fun(FileName) ->
+                case filelib:is_file(FileName) of
+                    true -> FileName;
+                    false -> {error, {invalid_flag_value, {pskfile, FileName}}}
+                end
+            end}
+        ]},
+        {psk_support, [
+            {longname, "psk_support"}
+        ]},
         {ciphers, [
             {longname, "ciphers"},
             {typecast, fun(C) -> C end}
@@ -144,6 +160,7 @@ vmq_listener_start_cmd() ->
                 ("tlsv1") -> tlsv1;
                 ("tlsv1.1") -> 'tlsv1.1';
                 ("tlsv1.2") -> 'tlsv1.2';
+                ("tlsv1.3") -> 'tlsv1.3';
                 (V) -> {error, {invalid_flag_value, {'tls-version', V}}}
             end}
         ]},
@@ -156,6 +173,10 @@ vmq_listener_start_cmd() ->
         {config_fun, [
             {longname, "config_fun"},
             {typecast, fun(F) -> list_to_existing_atom(F) end}
+        ]},
+        {http_modules, [
+            {longname, "http_modules"},
+            {typecast, fun(C) -> C end}
         ]}
     ],
     Callback =
@@ -320,15 +341,17 @@ vmq_listener_show_cmd() ->
         fun(_, [], []) ->
             Table =
                 lists:foldl(
-                    fun({Type, Ip, Port, Status, MP, MaxConns}, Acc) ->
+                    fun({Type, Ip, Port, Status, MP, MaxConns, ActiveConns, AllConns}, Acc) ->
                         [
                             [
                                 {type, Type},
                                 {status, Status},
-                                {ip, Ip},
+                                {address, Ip},
                                 {port, Port},
                                 {mountpoint, MP},
-                                {max_conns, MaxConns}
+                                {max_conns, MaxConns},
+                                {active_conns, ActiveConns},
+                                {all_conns, AllConns}
                             ]
                             | Acc
                         ]
@@ -356,8 +379,8 @@ parse_port(StrP) ->
 
 parse_addr(StrA) ->
     case string:split(StrA, ":") of
-        ["local", FS] ->
-            {local, FS};
+        ["local", DomainSocket] ->
+            {local, DomainSocket};
         _ ->
             case inet:parse_address(StrA) of
                 {ok, Ip} -> Ip;
