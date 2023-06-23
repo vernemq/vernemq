@@ -63,7 +63,7 @@ start_link() ->
                 ordered_set,
                 named_table,
                 {read_concurrency, true},
-                {write_concurrency, true}
+                {write_concurrency, auto}
             ]),
             ets:new(?RETAIN_UPDATE, [
                 public,
