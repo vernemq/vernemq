@@ -25,8 +25,8 @@
     pmap/2,
     wait_until/3,
     wait_until_left/2,
+    wait_until_joined/1,
     wait_until_joined/2,
-    wait_until_ready/1,
     wait_until_offline/1,
     wait_until_disconnected/2,
     wait_until_connected/2,
@@ -39,7 +39,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 get_cluster_members(Node) ->
-    rpc:call(Node, vmq_plugin, only, [cluster_members, []]).
+    rpc:call(Node, vmq_cluster_mon, nodes, []).
 
 pmap(F, L) ->
     Parent = self(),
@@ -76,6 +76,8 @@ wait_until_left(Nodes, LeavingNode) ->
                         end, Nodes))
         end, 60*2, 500).
 
+wait_until_joined(Nodes) ->
+    wait_until_joined(Nodes, Nodes).
 wait_until_joined(Nodes, ExpectedCluster) ->
     wait_until(fun() ->
                 lists:all(fun(X) -> X == true end,
@@ -84,12 +86,6 @@ wait_until_joined(Nodes, ExpectedCluster) ->
                                 lists:sort(get_cluster_members(Node))
                         end, Nodes))
         end, 60*2, 500).
-
-wait_until_ready(Nodes) ->
-    wait_until(fun() ->
-                       NodeStates = [rpc:call(N, vmq_cluster, is_ready, []) || N <- Nodes],
-                       lists:all(fun(Bool) -> Bool end, NodeStates)
-               end, 60*10, 100).
 
 wait_until_offline(Node) ->
     wait_until(fun() ->
@@ -134,23 +130,10 @@ start_node(Name, Config, Case) ->
                 redis_lua_dir,
                     VmqServerPrivDir ++ "/lua_scripts"]),
             ok = rpc:call(Node, application, load, [vmq_plugin]),
-            ok = rpc:call(Node, application, load, [plumtree]),
             ok = rpc:call(Node, application, load, [lager]),
             ok = rpc:call(Node, application, set_env, [lager,
                                                        log_root,
                                                        NodeDir]),
-            ok = rpc:call(Node, application, set_env, [plumtree,
-                                                       plumtree_data_dir,
-                                                       NodeDir]),
-            ok = rpc:call(Node, application, set_env, [plumtree,
-                                                       metadata_root,
-                                                       NodeDir ++ "/meta/"]),
-            ok = rpc:call(Node, application, set_env, [vmq_server,
-                                                       listeners,
-                                                       [{vmq, [{{{127,0,0,1},
-                                                                 random_port(Node)},
-                                                                []}]}
-                                                       ]]),
             ok = rpc:call(Node, application, set_env, [vmq_plugin,
                                                        wait_for_proc,
                                                        vmq_server_sup]),
@@ -164,9 +147,7 @@ start_node(Name, Config, Case) ->
             {ok, _} = rpc:call(Node, application, ensure_all_started,
                                [vmq_server]),
             ok = wait_until(fun() ->
-                            case rpc:call(Node, vmq_plugin, only, [cluster_members, []]) of
-                                {error, no_matching_hook} ->
-                                    false;
+                            case rpc:call(Node, vmq_cluster_mon, nodes, []) of
                                 Members when is_list(Members) ->
                                     case rpc:call(Node, erlang, whereis,
                                                   [vmq_server_sup]) of
@@ -174,7 +155,8 @@ start_node(Name, Config, Case) ->
                                             false;
                                         P when is_pid(P) ->
                                             true
-                                    end
+                                    end;
+                                _ -> false
                             end
                     end, 60, 500),
             Node;
@@ -203,19 +185,11 @@ heal_cluster(ANodes, BNodes) ->
     ok.
 
 ensure_cluster(Config) ->
-    [{Node1, _}|OtherNodes] = Nodes = proplists:get_value(nodes, Config),
-    [begin
-         {ok, _} = rpc:call(Node, vmq_server_cmd, node_join, [Node1])
-     end || {Node, _} <- OtherNodes],
+    Nodes = proplists:get_value(nodes, Config),
     {NodeNames, _} = lists:unzip(Nodes),
     Expected = lists:sort(NodeNames),
     ok = vmq_cluster_test_utils:wait_until_joined(NodeNames, Expected),
     [?assertEqual({Node, Expected}, {Node,
                                      lists:sort(vmq_cluster_test_utils:get_cluster_members(Node))})
      || Node <- NodeNames],
-    vmq_cluster_test_utils:wait_until_ready(NodeNames),
     ok.
-
-
-random_port(Node) ->
-    10000 + (erlang:phash2(Node) rem 10000).

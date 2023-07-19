@@ -1,6 +1,7 @@
 #!lua name=subscribe
 
 --[[
+Input:
 ARGV[1] = mountpoint
 ARGV[2] = clientId
 ARGV[3] = node name
@@ -13,6 +14,9 @@ ARGV[9] = qos
 .
 .
 .
+
+Output:
+{} | {Node, CS, {{Topic, QoS}, ...}} | 'stale_request' | 'unauthorized' | Error
 ]]
 
 local function addTopicForRouting(topic, MP, node, clientId, qos)
@@ -99,6 +103,7 @@ local function subscribe(_KEYS, ARGV)
         local topicsWithQoS = mergeTopics(MP, clientId, newNode, numOfNewTopicsWithQoS, ARGV, {})
         local subscriptionValue = {newNode, true, topicsWithQoS}
         redis.call('HMSET', subscriberKey, subscriptionField, cmsgpack.pack(subscriptionValue), timestampField, timestampValue)
+        redis.call('SADD', newNode, subscriberKey)
         return {}
     elseif tonumber(timestampValue) > tonumber(T) then
         local currSub = cmsgpack.unpack(S)

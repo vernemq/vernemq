@@ -109,15 +109,15 @@ get_env(App, Key, Default, IgnoreDBConfig) ->
         [] when IgnoreDBConfig == false ->
             Val =
                 case vmq_metadata:get(?DB, {node(), App, Key}) of
-                    undefined ->
-                        case vmq_metadata:get(?DB, {App, Key}) of
-                            undefined ->
-                                application:get_env(App, Key, Default);
-                            #vmq_config{val = GlobalVal} ->
-                                GlobalVal
-                        end;
                     #vmq_config{val = NodeVal} ->
-                        NodeVal
+                        NodeVal;
+                    _ ->
+                        case vmq_metadata:get(?DB, {App, Key}) of
+                            #vmq_config{val = GlobalVal} ->
+                                GlobalVal;
+                            _ ->
+                                application:get_env(App, Key, Default)
+                        end
                 end,
             %% cache val
             ets:insert(?TABLE, {{App, Key}, Val}),
@@ -153,23 +153,23 @@ get_prefixed_env(App, Key) ->
     case application:get_env(App, Key) of
         {ok, Val} ->
             case vmq_metadata:get(?DB, {node(), App, Key}) of
-                undefined ->
-                    case vmq_metadata:get(?DB, {App, Key}) of
-                        undefined ->
-                            %% we only have what is stored inside the
-                            %% application environment
-                            {env, Key, Val};
-                        #vmq_config{val = GlobalVal} ->
-                            %% we have a value stored inside the application
-                            %% environment, which is ignored, since we have
-                            %% a value that is globally configured in the db
-                            {global, Key, GlobalVal}
-                    end;
                 #vmq_config{val = NodeVal} ->
                     %% we have a value stored inside the application
                     %% environment, which is ignored, since we have a
                     %% value that is configured for this node in the db
-                    {node, Key, NodeVal}
+                    {node, Key, NodeVal};
+                _ ->
+                    case vmq_metadata:get(?DB, {App, Key}) of
+                        #vmq_config{val = GlobalVal} ->
+                            %% we have a value stored inside the application
+                            %% environment, which is ignored, since we have
+                            %% a value that is globally configured in the db
+                            {global, Key, GlobalVal};
+                        _ ->
+                            %% we only have what is stored inside the
+                            %% application environment
+                            {env, Key, Val}
+                    end
             end;
         undefined ->
             {error, not_found}
@@ -209,6 +209,8 @@ set_env(Node, App, Key, Val, true) when Node == node() ->
         case vmq_metadata:get(?DB, {Node, App, Key}) of
             undefined ->
                 #vmq_config{key = {Node, App, Key}, val = Val};
+            {error, no_matching_hook_found} ->
+                #vmq_config{key = {Node, App, Key}, val = Val};
             Config ->
                 Config#vmq_config{val = Val}
         end,
@@ -240,6 +242,8 @@ set_global_env(App, Key, Val, true) ->
     Rec =
         case vmq_metadata:get(?DB, {App, Key}) of
             undefined ->
+                #vmq_config{key = {App, Key}, val = Val};
+            {error, no_matching_hook_found} ->
                 #vmq_config{key = {App, Key}, val = Val};
             Config ->
                 Config#vmq_config{val = Val}
@@ -275,7 +279,7 @@ configure_node(Node) ->
 
 -spec configure_nodes() -> [any()].
 configure_nodes() ->
-    Nodes = vmq_cluster:nodes(),
+    Nodes = vmq_cluster_mon:nodes(),
     _ = [safe_rpc(Node, ?MODULE, configure_node, []) || Node <- Nodes].
 
 -spec init_config_items([{App :: atom(), [any()], [any()]}], [{atom(), [any()]}]) ->

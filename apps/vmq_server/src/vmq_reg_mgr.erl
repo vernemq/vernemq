@@ -74,6 +74,8 @@ all_queues_setup_status() ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
+    load_redis_functions(),
+
     Self = self(),
     spawn_link(
         fun() ->
@@ -262,3 +264,72 @@ is_allow_multi(QPid) ->
         #{allow_multiple_sessions := AllowMulti} -> AllowMulti;
         {error, _} -> error
     end.
+
+load_redis_functions() ->
+    LuaDir = application:get_env(vmq_server, redis_lua_dir, "./etc/lua"),
+    {ok, RemapSubscriberScript} = file:read_file(LuaDir ++ "/remap_subscriber.lua"),
+    {ok, SubscribeScript} = file:read_file(LuaDir ++ "/subscribe.lua"),
+    {ok, UnsubscribeScript} = file:read_file(LuaDir ++ "/unsubscribe.lua"),
+    {ok, DeleteSubscriberScript} = file:read_file(LuaDir ++ "/delete_subscriber.lua"),
+    {ok, FetchMatchedTopicSubscribersScript} = file:read_file(
+        LuaDir ++ "/fetch_matched_topic_subscribers.lua"
+    ),
+    {ok, FetchSubscriberScript} = file:read_file(LuaDir ++ "/fetch_subscriber.lua"),
+    {ok, GetLiveNodesScript} = file:read_file(LuaDir ++ "/get_live_nodes.lua"),
+    {ok, MigrateOfflineQueueScript} = file:read_file(LuaDir ++ "/migrate_offline_queue.lua"),
+    {ok, ReapSubscribersScript} = file:read_file(LuaDir ++ "/reap_subscribers.lua"),
+
+    {ok, <<"remap_subscriber">>} = vmq_redis:query(
+        vmq_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", RemapSubscriberScript],
+        ?FUNCTION_LOAD,
+        ?REMAP_SUBSCRIBER
+    ),
+    {ok, <<"subscribe">>} = vmq_redis:query(
+        vmq_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", SubscribeScript],
+        ?FUNCTION_LOAD,
+        ?SUBSCRIBE
+    ),
+    {ok, <<"unsubscribe">>} = vmq_redis:query(
+        vmq_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", UnsubscribeScript],
+        ?FUNCTION_LOAD,
+        ?UNSUBSCRIBE
+    ),
+    {ok, <<"delete_subscriber">>} = vmq_redis:query(
+        vmq_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", DeleteSubscriberScript],
+        ?FUNCTION_LOAD,
+        ?DELETE_SUBSCRIBER
+    ),
+    {ok, <<"fetch_matched_topic_subscribers">>} = vmq_redis:query(
+        vmq_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", FetchMatchedTopicSubscribersScript],
+        ?FUNCTION_LOAD,
+        ?FETCH_MATCHED_TOPIC_SUBSCRIBERS
+    ),
+    {ok, <<"fetch_subscriber">>} = vmq_redis:query(
+        vmq_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", FetchSubscriberScript],
+        ?FUNCTION_LOAD,
+        ?FETCH_SUBSCRIBER
+    ),
+    {ok, <<"get_live_nodes">>} = vmq_redis:query(
+        vmq_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", GetLiveNodesScript],
+        ?FUNCTION_LOAD,
+        ?GET_LIVE_NODES
+    ),
+    {ok, <<"migrate_offline_queue">>} = vmq_redis:query(
+        vmq_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", MigrateOfflineQueueScript],
+        ?FUNCTION_LOAD,
+        ?MIGRATE_OFFLINE_QUEUE
+    ),
+    {ok, <<"reap_subscribers">>} = vmq_redis:query(
+        vmq_redis_client,
+        [?FUNCTION, "LOAD", "REPLACE", ReapSubscribersScript],
+        ?FUNCTION_LOAD,
+        ?REAP_SUBSCRIBERS
+    ).

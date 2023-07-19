@@ -46,14 +46,14 @@ check_health_concerns() ->
                 {error, Reason} -> {true, list_to_binary(Reason)}
             end
         end,
-        [cluster_status(), listeners_status(), cluster_traffic_ready_status()]
+        [cluster_status(), listeners_status()]
     ).
 
 -spec cluster_status() -> ok | {error, Reason :: string()}.
 cluster_status() ->
     ThisNode = node(),
     try
-        case vmq_cluster:status() of
+        case vmq_cluster_mon:status() of
             [] ->
                 {error, "Unknown cluster status"};
             Status ->
@@ -86,11 +86,4 @@ listeners_status() ->
             ok;
         Listeners ->
             {error, io_lib:format("Listeners are not ready: ~p", [Listeners])}
-    end.
-
--spec cluster_traffic_ready_status() -> ok | {error, Reason :: string()}.
-cluster_traffic_ready_status() ->
-    case vmq_cluster:is_ready() of
-        true -> ok;
-        _ -> {error, "Cluster is not ready to receive traffic"}
     end.

@@ -1,35 +1,18 @@
-%% Copyright 2018 Erlio GmbH Basel Switzerland (http://erl.io)
-%%
-%% Licensed under the Apache License, Version 2.0 (the "License");
-%% you may not use this file except in compliance with the License.
-%% You may obtain a copy of the License at
-%%
-%%     http://www.apache.org/licenses/LICENSE-2.0
-%%
-%% Unless required by applicable law or agreed to in writing, software
-%% distributed under the License is distributed on an "AS IS" BASIS,
-%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%% See the License for the specific language governing permissions and
-%% limitations under the License.
-%%
--module(vmq_cluster_node_sup).
+-module(vmq_redis_reaper_sup).
 
 -behaviour(supervisor).
 
 %% API
 -export([
     start_link/0,
-    ensure_cluster_node/1,
-    get_cluster_node/1,
-    del_cluster_node/1,
-    node_status/1
+    ensure_reaper/1,
+    del_reaper/1,
+    get_reaper/1
 ]).
 
 %% Supervisor callbacks
 -export([init/1]).
 
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type, Args), {I, {I, start_link, Args}, permanent, 5000, Type, [I]}).
 %%%===================================================================
 %%% API functions
 %%%===================================================================
@@ -44,11 +27,8 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-ensure_cluster_node(Node) when Node == node() ->
-    %% cluster node not needed
-    ok;
-ensure_cluster_node(Node) ->
-    case get_cluster_node(Node) of
+ensure_reaper(Node) ->
+    case get_reaper(Node) of
         {error, not_found} ->
             {ok, _} = supervisor:start_child(?MODULE, child_spec(Node)),
             ok;
@@ -56,8 +36,8 @@ ensure_cluster_node(Node) ->
             ok
     end.
 
-del_cluster_node(Node) ->
-    ChildId = {vmq_cluster_node, Node},
+del_reaper(Node) ->
+    ChildId = {vmq_redis_reaper, Node},
     case supervisor:terminate_child(?MODULE, ChildId) of
         ok ->
             supervisor:delete_child(?MODULE, ChildId);
@@ -65,8 +45,8 @@ del_cluster_node(Node) ->
             {error, not_found}
     end.
 
-get_cluster_node(Node) ->
-    ChildId = {vmq_cluster_node, Node},
+get_reaper(Node) ->
+    ChildId = {vmq_redis_reaper, Node},
     case lists:keyfind(ChildId, 1, supervisor:which_children(?MODULE)) of
         false ->
             {error, not_found};
@@ -76,20 +56,9 @@ get_cluster_node(Node) ->
         {_, restarting, _, _} ->
             %% child is restarting
             timer:sleep(100),
-            get_cluster_node(Node);
+            get_reaper(Node);
         {_, Pid, _, _} when is_pid(Pid) ->
             {ok, Pid}
-    end.
-
--spec node_status(node()) -> init | up | down.
-node_status(Node) when Node == node() ->
-    up;
-node_status(Node) ->
-    case get_cluster_node(Node) of
-        {ok, Pid} when is_pid(Pid) ->
-            vmq_cluster_node:status(Pid);
-        _ ->
-            down
     end.
 
 %%%===================================================================
@@ -110,15 +79,12 @@ node_status(Node) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok,
-        {{one_for_one, 5, 10}, [
-            ?CHILD(vmq_cluster_mon, worker, [])
-        ]}}.
+    {ok, {{one_for_one, 5, 10}, []}}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 child_spec(Node) ->
-    {{vmq_cluster_node, Node}, {vmq_cluster_node, start_link, [Node]}, permanent, 5000, worker, [
-        vmq_cluster_node
+    {{vmq_redis_reaper, Node}, {vmq_redis_reaper, start_link, [Node]}, transient, 5000, worker, [
+        vmq_redis_reaper
     ]}.

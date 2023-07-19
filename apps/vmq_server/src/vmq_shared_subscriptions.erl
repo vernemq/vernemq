@@ -89,6 +89,7 @@ publish_any(Msg, [{_Node, SId, SubInfo} | Subscribers], Acc0) ->
 publish_(Msg0, {SubscriberId, SubInfo}, QState, {Local, Remote}) ->
     case vmq_reg:get_queue_pid(SubscriberId) of
         not_found ->
+            vmq_metrics:incr_msg_enqueue_subscriber_not_found(),
             {error, not_found};
         QPid ->
             try

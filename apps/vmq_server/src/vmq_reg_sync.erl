@@ -107,7 +107,7 @@ status(SyncKey, SyncNode) ->
     gen_server:call({?SERVER, SyncNode}, {status, SyncKey}).
 
 sync_node(SyncKey) ->
-    Nodes = vmq_cluster:nodes(),
+    Nodes = vmq_cluster_mon:nodes(),
     I = erlang:phash2(SyncKey) rem length(Nodes) + 1,
     lists:nth(I, lists:sort(Nodes)).
 

@@ -1,6 +1,7 @@
 #!lua name=fetch_matched_topic_subscribers
 
 --[[
+Input:
 ARGV[1] = mountpoint
 ARGV[2] = number of matched topics
 ARGV[3] = topic1
@@ -8,6 +9,9 @@ ARGV[4] = topic2
 .
 .
 .
+
+Output:
+Subscribers(Table) | Error
 ]]
 
 local function fetch_matched_topic_subscribers(_KEYS, ARGV)

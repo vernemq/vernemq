@@ -184,6 +184,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 gen_redis_producer_client(T) ->
-    NumRedisShards = application:get_env(vmq_server, num_redis_queue_shards, 1),
+    NumRedisShards = application:get_env(vmq_server, num_redis_main_queue_shards, 1),
     Id = erlang:phash2(T, NumRedisShards),
     list_to_atom("redis_queue_" ++ ?PRODUCER ++ "_client_" ++ integer_to_list(Id)).

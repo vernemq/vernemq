@@ -20,8 +20,7 @@
     read/1, read/2,
     fold/2,
     delete/1,
-    subscribe_db_events/0,
-    flushall/0
+    subscribe_db_events/0
 ]).
 
 -import(vmq_subscriber, [check_format/1]).
@@ -29,10 +28,6 @@
 -define(SUBSCRIBER_DB, {vmq, subscriber}).
 -define(TOMBSTONE, '$deleted').
 -define(DefaultRegView, application:get_env(vmq_server, default_reg_view, vmq_reg_redis_trie)).
-
-flushall() ->
-    eredis:q(whereis(redis_client), ["FLUSHALL"]),
-    ok.
 
 -spec store(subscriber_id(), vmq_subscriber:subs()) -> ok.
 store(SubscriberId, Subs) ->
@@ -55,7 +50,7 @@ read(SubscriberId, Default) ->
 read(vmq_reg_redis_trie, {MP, ClientId}, Default) ->
     case
         vmq_redis:query(
-            redis_client,
+            vmq_redis_client,
             [
                 ?FCALL,
                 ?FETCH_SUBSCRIBER,
@@ -85,8 +80,13 @@ read(vmq_reg_redis_trie, {MP, ClientId}, Default) ->
     end;
 read(_, SubscriberId, Default) ->
     case vmq_metadata:get(?SUBSCRIBER_DB, SubscriberId) of
-        undefined -> Default;
-        Subs -> check_format(Subs)
+        undefined ->
+            Default;
+        {error, no_matching_hook_found} ->
+            lager:debug("No matching hook found"),
+            Default;
+        Subs ->
+            check_format(Subs)
     end.
 
 -spec delete(subscriber_id()) -> ok.

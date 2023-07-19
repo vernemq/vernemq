@@ -38,7 +38,7 @@ delete_without_remap_test(_) ->
     ClientId = "CID-123",
     NodeName = <<"Node-A">>,
 
-    {ok, <<"1">>} = eredis:q(whereis(redis_client), ["FCALL",
+    {ok, <<"1">>} = eredis:q(whereis(vmq_redis_client), ["FCALL",
                                                      delete_subscriber,
                                                      0,
                                                      MP,
@@ -55,7 +55,7 @@ stale_delete_test(_) ->
     TS = os:system_time(nanosecond),
 
     remap_subscriber(MP, ClientId, NodeName, CS, TS),
-    {error, <<"ERR stale_request">>} = eredis:q(whereis(redis_client), ["FCALL",
+    {error, <<"ERR stale_request">>} = eredis:q(whereis(vmq_redis_client), ["FCALL",
                                                                         delete_subscriber,
                                                                         0,
                                                                         MP,
@@ -72,7 +72,7 @@ delete_from_different_node_test(_) ->
     CS = false,
 
     remap_subscriber(MP, ClientId, NodeName1, CS, os:system_time(nanosecond)),
-    {error,<<"ERR unauthorized">>} = eredis:q(whereis(redis_client), ["FCALL",
+    {error,<<"ERR unauthorized">>} = eredis:q(whereis(vmq_redis_client), ["FCALL",
                                                                       delete_subscriber,
                                                                       0,
                                                                       MP,
@@ -93,7 +93,7 @@ delete_subscriber_test(_) ->
     TopicsWithQoS = TopicWithQoS1 ++ TopicWithQoS2,
 
     remap_subscriber(MP, ClientId, NodeName, CS, os:system_time(nanosecond)),
-    {ok,  [NodeName,<<"1">>,[]]} = eredis:q(whereis(redis_client), ["FCALL",
+    {ok,  [NodeName,<<"1">>,[]]} = eredis:q(whereis(vmq_redis_client), ["FCALL",
                                                                     subscribe,
                                                                     0,
                                                                     MP,
@@ -101,19 +101,19 @@ delete_subscriber_test(_) ->
                                                                     NodeName,
                                                                     os:system_time(nanosecond),
                                                                     2 | TopicsWithQoS]),
-    {ok,  [NodeName, <<"1">>, [TopicWithQoS1, TopicWithQoS2]]} = eredis:q(whereis(redis_client), ["FCALL",
+    {ok,  [NodeName, <<"1">>, [TopicWithQoS1, TopicWithQoS2]]} = eredis:q(whereis(vmq_redis_client), ["FCALL",
                                                                                                   fetch_subscriber,
                                                                                                   0,
                                                                                                   MP,
                                                                                                   ClientId]),
-    {ok, <<"1">>} = eredis:q(whereis(redis_client), ["FCALL",
+    {ok, <<"1">>} = eredis:q(whereis(vmq_redis_client), ["FCALL",
                                                      delete_subscriber,
                                                      0,
                                                      MP,
                                                      ClientId,
                                                      NodeName,
                                                      os:system_time(nanosecond)]),
-    {ok,  []} = eredis:q(whereis(redis_client), ["FCALL",
+    {ok,  []} = eredis:q(whereis(vmq_redis_client), ["FCALL",
                                                  fetch_subscriber,
                                                  0,
                                                  MP,
@@ -125,7 +125,7 @@ delete_subscriber_test(_) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 remap_subscriber(MP, ClientId, NodeName, CS, TS) ->
-    {ok, _} = eredis:q(whereis(redis_client), ["FCALL",
+    {ok, _} = eredis:q(whereis(vmq_redis_client), ["FCALL",
                                                remap_subscriber,
                                                0,
                                                MP,

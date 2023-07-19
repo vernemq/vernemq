@@ -16,7 +16,6 @@
 -export([
     start/0,
     start_no_auth/0,
-    start_no_auth/1,
     stop/0
 ]).
 
@@ -30,15 +29,6 @@ start_no_auth() ->
     %application:set_env(sasl, sasl_error_logger, false),
     _ = application:ensure_all_started(vmq_server),
     ok.
-
--spec start_no_auth(node()) -> any().
-start_no_auth(ClusterNode) ->
-    maybe_start_distribution(),
-
-    _ = application:load(vmq_plugin),
-    application:set_env(vmq_plugin, wait_for_proc, vmq_server_sup),
-    _ = application:ensure_all_started(vmq_server),
-    vmq_peer_service:join(ClusterNode).
 
 -spec start() -> 'ok'.
 start() ->

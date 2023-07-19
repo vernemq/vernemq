@@ -54,7 +54,7 @@ filtering_works(_Config) ->
     {ok, CT1} = vmq_topic:validate_topic(subscribe, list_to_binary("with/wildcard/#")),
     {ok, CT2} = vmq_topic:validate_topic(subscribe, list_to_binary("with/+/wildcard")),
     vmq_reg_redis_trie:add_complex_topics([CT1, CT2]),
-    eredis:q(whereis(redis_client), ["FLUSHDB"]),
+    eredis:q(whereis(vmq_redis_client), ["FLUSHDB"]),
     {ok, SubSocket} = packet:do_client_connect(Connect, Connack, []),
     ok = gen_tcp:send(SubSocket, Subscribe),
     ok = packet:expect_packet(SubSocket, "suback", Suback),

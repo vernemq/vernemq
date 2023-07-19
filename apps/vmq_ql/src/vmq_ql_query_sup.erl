@@ -32,7 +32,7 @@
 %%%===================================================================
 
 start_query(MgrPid, QueryString, Opts) when is_pid(MgrPid) ->
-    Nodes = proplists:get_value(nodes, Opts, vmq_cluster:nodes()),
+    Nodes = proplists:get_value(nodes, Opts, vmq_cluster_mon:nodes()),
     lists:foldl(
         fun(Node, {AccRes, AccBad}) ->
             try start_query_(Node, MgrPid, QueryString) of

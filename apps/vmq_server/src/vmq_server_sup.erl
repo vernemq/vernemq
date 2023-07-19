@@ -21,6 +21,8 @@
 %% Supervisor callbacks
 -export([init/1]).
 
+-include("vmq_server.hrl").
+
 -define(MaxR, application:get_env(vmq_server, max_r, 5)).
 -define(MaxT, application:get_env(vmq_server, max_t, 10)).
 
@@ -45,35 +47,30 @@ start_link() ->
             {atom(), {atom(), atom(), list()}, permanent, pos_integer(), worker, [atom()]}
         ]}}.
 init([]) ->
-    maybe_change_nodename(),
     persistent_term:put(subscribe_trie_ready, 0),
+
+    SentinelEndpoints = vmq_schema_util:parse_list(
+        application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
+    ),
+    RedisDB = application:get_env(vmq_server, redis_sentinel_database, 0),
+
     {ok,
         {{one_for_one, 5, 10}, [
+            ?CHILD(eredis, worker, [
+                [
+                    {sentinel, [{endpoints, SentinelEndpoints}]},
+                    {database, RedisDB},
+                    {name, {local, vmq_redis_client}}
+                ]
+            ]),
             ?CHILD(vmq_config, worker, []),
             ?CHILD(vmq_metrics_sup, supervisor, []),
             ?CHILD(vmq_crl_srv, worker, []),
             ?CHILD(vmq_queue_sup_sup, supervisor, [infinity, ?MaxR, ?MaxT]),
             ?CHILD(vmq_reg_sup, supervisor, []),
             ?CHILD(vmq_redis_queue_sup, supervisor, []),
-            ?CHILD(vmq_cluster_node_sup, supervisor, []),
+            ?CHILD(vmq_redis_reaper_sup, supervisor, []),
+            ?CHILD(vmq_cluster_mon, worker, []),
             ?CHILD(vmq_sysmon, worker, []),
             ?CHILD(vmq_ranch_sup, supervisor, [])
         ]}}.
-
-maybe_change_nodename() ->
-    case vmq_peer_service:members() of
-        [Node] when Node =/= node() ->
-            lager:info("rename VerneMQ node from ~p to ~p", [Node, node()]),
-            _ = vmq_peer_service:rename_member(Node, node()),
-            vmq_reg:fold_subscribers(
-                fun(SubscriberId, Subs, _) ->
-                    {NewSubs, _} = vmq_subscriber:change_node_all(Subs, node(), false),
-                    vmq_subscriber_db:store(SubscriberId, NewSubs)
-                end,
-                ignored
-            );
-        _ ->
-            %% we ignore if the node has the same name
-            %% or if more than one node is returned (clustered)
-            ignore
-    end.

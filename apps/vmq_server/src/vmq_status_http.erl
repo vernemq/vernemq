@@ -56,7 +56,7 @@ reply(Req, State) ->
     {Output, Req, State}.
 
 cluster_status() ->
-    Nodes0 = nodes(),
+    Nodes0 = vmq_cluster_mon:nodes(),
     {Result0, _BadNodes} = rpc:multicall(Nodes0, ?MODULE, node_status, []),
     Result1 = [{R, N} || {{ok, R}, N} <- lists:zip(Result0, Nodes0)],
     {Result2, Nodes1} = lists:unzip(Result1),
@@ -103,7 +103,7 @@ node_status() ->
         {<<"matches_local">>, TotalMatchesLocal},
         {<<"matches_remote">>, TotalMatchesRemote},
         {<<"mystatus">>, [
-            [{atom_to_binary(Node, utf8), Status} || {Node, Status} <- vmq_cluster:status()]
+            [{atom_to_binary(Node, utf8), Status} || {Node, Status} <- vmq_cluster_mon:status()]
         ]},
         {<<"listeners">>, listeners()},
         {<<"version">>, version()}

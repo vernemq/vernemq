@@ -3,8 +3,6 @@
     node_start/0,
     node_stop/0,
     node_status/0,
-    node_join/1,
-    node_leave/1,
     node_upgrade/0,
     node_upgrade/1,
     set_config/2,
@@ -24,31 +22,6 @@ node_stop() ->
 
 node_status() ->
     vmq_server_cli:command(["vmq-admin", "cluster", "status"], false).
-
-node_join(DiscoveryNode) ->
-    vmq_server_cli:command(
-        [
-            "vmq-admin",
-            "cluster",
-            "join",
-            "discovery-node=" ++
-                atom_to_list(DiscoveryNode)
-        ],
-        false
-    ).
-
-node_leave(Node) ->
-    vmq_server_cli:command(
-        [
-            "vmq-admin",
-            "cluster",
-            "leave",
-            "node=" ++
-                atom_to_list(Node),
-            "--kill_sessions"
-        ],
-        false
-    ).
 
 node_upgrade() ->
     vmq_server_cli:command(["vmq-admin", "node", "upgrade", "--upgrade-now"], false).

@@ -1,8 +1,12 @@
 #!lua name=poll_main_queue
 
 --[[
+Input:
 KEYS[1] = MainQueue
 ARGV[1] = maxMessagesCount
+
+Output:
+nil | {Subscriber, Msg, TimeSpent} | Error
 ]]
 
 local function poll_main_queue(KEYS, ARGV)

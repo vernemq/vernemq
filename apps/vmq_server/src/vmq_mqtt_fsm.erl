@@ -17,6 +17,9 @@
 -include("vmq_server.hrl").
 -include("vmq_metrics.hrl").
 
+%% The pattern 'true' can never match the type 'false'
+-dialyzer({no_match, check_mqtt_auth_errors/1}).
+
 -export([
     init/3,
     data_in/2,
@@ -29,14 +32,6 @@
 -define(IS_BRIDGE(X), X =:= 131; X =:= 132).
 
 -type timestamp() :: {non_neg_integer(), non_neg_integer(), non_neg_integer()}.
-
--record(cap_settings, {
-    allow_register = false :: boolean(),
-    allow_publish = false :: boolean(),
-    allow_subscribe = false :: boolean(),
-    allow_unsubscribe = false :: boolean()
-}).
--type cap_settings() :: #cap_settings{}.
 
 -record(state, {
     %% mqtt layer requirements
@@ -74,7 +69,6 @@
     retry_interval = 20000 :: pos_integer(),
     upgrade_qos = false :: boolean(),
     reg_view = vmq_reg_trie :: atom(),
-    cap_settings = #cap_settings{} :: cap_settings(),
 
     %% flags and settings which have a non-default value if
     %% present and default value if not present.
@@ -90,7 +84,6 @@
 -type state() :: #state{}.
 -export_type([state/0]).
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
--define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
 
 init(
     Peer,
@@ -123,16 +116,6 @@ init(
     MaxMessageRate = vmq_config:get_env(max_message_rate, 0),
     UpgradeQoS = vmq_config:get_env(upgrade_outgoing_qos, false),
     RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
-    CAPRegister = vmq_config:get_env(allow_register_during_netsplit, false),
-    CAPPublish = vmq_config:get_env(allow_publish_during_netsplit, false),
-    CAPSubscribe = vmq_config:get_env(allow_subscribe_during_netsplit, false),
-    CAPUnsubscribe = vmq_config:get_env(allow_unsubscribe_during_netsplit, false),
-    CAPSettings = #cap_settings{
-        allow_register = CAPRegister,
-        allow_publish = CAPPublish,
-        allow_subscribe = CAPSubscribe,
-        allow_unsubscribe = CAPUnsubscribe
-    },
     TraceFun = vmq_config:get_env(trace_fun, undefined),
     DOpts0 = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
     DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
@@ -158,7 +141,6 @@ init(
         keep_alive = KeepAlive,
         keep_alive_tref = undefined,
         retry_interval = 1000 * RetryInterval,
-        cap_settings = CAPSettings,
         reg_view = RegView,
         def_opts = DOpts1,
         trace_fun = TraceFun
@@ -432,18 +414,13 @@ connected(
 ) ->
     #state{
         subscriber_id = SubscriberId,
-        username = User,
-        cap_settings = CAPSettings
+        username = User
     } = State,
     _ = vmq_metrics:incr_mqtt_subscribe_received(),
     SubTopics = subtopics(Topics, ProtoVer),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
-            case
-                vmq_reg:subscribe(
-                    CAPSettings#cap_settings.allow_subscribe, SubscriberId, MaybeChangedTopics
-                )
-            of
+            case vmq_reg:subscribe(SubscriberId, MaybeChangedTopics) of
                 {ok, _} = Res ->
                     T = lists:foldr(
                         fun({Topic, Sub}, Acc) -> [{Topic, extract_qos(Sub)} | Acc] end,
@@ -477,17 +454,12 @@ connected(
 connected(#mqtt_unsubscribe{message_id = MessageId, topics = Topics}, State) ->
     #state{
         subscriber_id = SubscriberId,
-        username = User,
-        cap_settings = CAPSettings
+        username = User
     } = State,
     _ = vmq_metrics:incr_mqtt_unsubscribe_received(),
     OnSuccess =
         fun(_SubscriberId, MaybeChangedTopics) ->
-            case
-                vmq_reg:unsubscribe(
-                    CAPSettings#cap_settings.allow_unsubscribe, SubscriberId, MaybeChangedTopics
-                )
-            of
+            case vmq_reg:unsubscribe(SubscriberId, MaybeChangedTopics) of
                 ok ->
                     vmq_plugin:all(on_topic_unsubscribed, [SubscriberId, MaybeChangedTopics]),
                     ok;
@@ -671,7 +643,6 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                         peer = Peer,
                         subscriber_id = SubscriberId,
                         clean_session = CleanSession,
-                        cap_settings = CAPSettings,
                         def_opts = DOpts
                     } = State1} ->
                     CoordinateRegs = maps:get(
@@ -679,7 +650,6 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
                     ),
                     case
                         vmq_reg:register_subscriber(
-                            CAPSettings#cap_settings.allow_register,
                             CoordinateRegs,
                             SubscriberId,
                             CleanSession,
@@ -731,14 +701,12 @@ check_user(#mqtt_connect{username = User, password = Password, properties = Prop
             #state{
                 peer = Peer,
                 subscriber_id = SubscriberId,
-                cap_settings = CAPSettings,
                 clean_session = CleanSession,
                 def_opts = DOpts
             } = State,
             CoordinateRegs = maps:get(coordinate_registrations, DOpts, ?COORDINATE_REGISTRATIONS),
             case
                 vmq_reg:register_subscriber(
-                    CAPSettings#cap_settings.allow_register,
                     CoordinateRegs,
                     SubscriberId,
                     CleanSession,
@@ -818,7 +786,6 @@ auth_on_register(Password, State) ->
     #state{
         clean_session = Clean,
         peer = Peer,
-        cap_settings = CAPSettings,
         subscriber_id = SubscriberId,
         username = User
     } = State,
@@ -828,14 +795,6 @@ auth_on_register(Password, State) ->
             {ok, queue_opts(State, []), State};
         {ok, Args} ->
             set_sock_opts(prop_val(tcp_opts, Args, [])),
-            ChangedCAPSettings =
-                CAPSettings#cap_settings{
-                    allow_register = ?cap_val(allow_register, Args, CAPSettings),
-                    allow_publish = ?cap_val(allow_publish, Args, CAPSettings),
-                    allow_subscribe = ?cap_val(allow_subscribe, Args, CAPSettings),
-                    allow_unsubscribe = ?cap_val(allow_unsubscribe, Args, CAPSettings)
-                },
-
             %% for efficiency reason the max_message_size isn't kept in the state
             set_max_msg_size(prop_val(max_message_size, Args, max_msg_size())),
 
@@ -848,8 +807,7 @@ auth_on_register(Password, State) ->
                 max_inflight_messages = ?state_val(max_inflight_messages, Args, State),
                 shared_subscription_policy = ?state_val(shared_subscription_policy, Args, State),
                 retry_interval = ?state_val(retry_interval, Args, State),
-                upgrade_qos = ?state_val(upgrade_qos, Args, State),
-                cap_settings = ChangedCAPSettings
+                upgrade_qos = ?state_val(upgrade_qos, Args, State)
             },
             {ok, queue_opts(ChangedState, Args), ChangedState};
         {error, Reason} ->
@@ -888,8 +846,8 @@ auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess) ->
     username(),
     subscriber_id(),
     [{topic(), qos()}],
-    fun((subscriber_id(), [{topic(), qos()}]) -> ok | {error, not_ready})
-) -> ok | {error, not_ready}.
+    fun((subscriber_id(), [{topic(), qos()}]) -> ok | {error, _})
+) -> ok | {error, _}.
 unsubscribe(User, SubscriberId, Topics, UnsubFun) ->
     TTopics =
         case vmq_plugin:all_till_ok(on_unsubscribe, [User, SubscriberId, Topics]) of
@@ -967,10 +925,10 @@ session_ctrl(Args) ->
             #{throttle => ThrottleMs}
     end.
 
--spec publish(cap_settings(), module(), username(), subscriber_id(), msg()) ->
+-spec publish(module(), username(), subscriber_id(), msg()) ->
     {ok, msg(), session_ctrl()}
     | {error, atom()}.
-publish(CAPSettings, RegView, User, {_, ClientId} = SubscriberId, Msg) ->
+publish(RegView, User, {_, ClientId} = SubscriberId, Msg) ->
     auth_on_publish(
         User,
         SubscriberId,
@@ -978,9 +936,7 @@ publish(CAPSettings, RegView, User, {_, ClientId} = SubscriberId, Msg) ->
         fun(MaybeChangedMsg, HookArgs, SessCtrl) ->
             case
                 on_publish_hook(
-                    vmq_reg:publish(
-                        CAPSettings#cap_settings.allow_publish, RegView, ClientId, MaybeChangedMsg
-                    ),
+                    vmq_reg:publish(RegView, ClientId, MaybeChangedMsg),
                     HookArgs
                 )
             of
@@ -1028,10 +984,9 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
         username = User,
         subscriber_id = SubscriberId,
         proto_ver = Proto,
-        cap_settings = CAPSettings,
         reg_view = RegView
     } = State,
-    case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
+    case publish(RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
             {[], SessCtrl};
         {error, not_allowed} when ?IS_PROTO_4(Proto) ->
@@ -1053,10 +1008,9 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         username = User,
         subscriber_id = SubscriberId,
         proto_ver = Proto,
-        cap_settings = CAPSettings,
         reg_view = RegView
     } = State,
-    case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
+    case publish(RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
             {[#mqtt_puback{message_id = MessageId}], SessCtrl};
@@ -1084,13 +1038,12 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
         username = User,
         subscriber_id = SubscriberId,
         proto_ver = Proto,
-        cap_settings = CAPSettings,
         reg_view = RegView,
         waiting_acks = WAcks
     } = State,
     case maps:get({qos2, MessageId}, WAcks, not_found) of
         not_found ->
-            case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
+            case publish(RegView, User, SubscriberId, Msg) of
                 {ok, _, SessCtrl} ->
                     Frame = #mqtt_pubrec{message_id = MessageId},
                     _ = vmq_metrics:incr_mqtt_pubrec_sent(),
@@ -1301,7 +1254,6 @@ maybe_publish_last_will(
         username = User,
         will_msg = Msg,
         reg_view = RegView,
-        cap_settings = CAPSettings,
         def_opts = DOpts
     },
     Reason
@@ -1312,7 +1264,6 @@ maybe_publish_last_will(
             HookArgs = [User, SubscriberId, QoS, Topic, Payload, IsRetain],
             _ = on_publish_hook(
                 vmq_reg:publish(
-                    CAPSettings#cap_settings.allow_publish,
                     RegView,
                     ClientId,
                     Msg

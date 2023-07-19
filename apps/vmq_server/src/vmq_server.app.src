@@ -32,10 +32,6 @@
         % no max msg size
         {max_message_size, 0},
         {upgrade_outgoing_qos, false},
-        {allow_register_during_netsplit, false},
-        {allow_publish_during_netsplit, false},
-        {allow_subscribe_during_netsplit, false},
-        {allow_unsubscribe_during_netsplit, false},
         {vmq_config_enabled, true},
         {default_reg_view, vmq_reg_trie},
         {reg_views, [vmq_reg_trie]},
@@ -64,25 +60,21 @@
         {nr_of_acceptors, 10},
         {listeners, [
             {mqtt, [
-                {{{127, 0, 0, 1}, 1889}, [
-                    {max_connections, infinity},
-                    {mountpoint, ""},
-                    {proxy_protocol, true}
-                ]}
+                % {{{127, 0, 0, 1}, 1889}, [
+                %     {max_connections, infinity},
+                %     {mountpoint, ""},
+                %     {proxy_protocol, true}
+                % ]}
             ]},
             {mqtts, []},
             {mqttws, [
-                {{{127, 0, 0, 1}, 8080}, [
-                    {max_connections, 1000},
-                    {mountpoint, ""},
-                    {proxy_protocol, true}
-                ]}
+                % {{{127, 0, 0, 1}, 8080}, [
+                %     {max_connections, 1000},
+                %     {mountpoint, ""},
+                %     {proxy_protocol, true}
+                % ]}
             ]},
             {mqttwss, []},
-
-            %% used for clustering
-            {vmq, [{{{0, 0, 0, 0}, 18884}, []}]},
-            {vmqs, []},
 
             {http, [
                 {{{127, 0, 0, 1}, 8888}, [
@@ -98,11 +90,6 @@
             vmq_status_http,
             vmq_health_http
         ]},
-        {outgoing_clustering_buffer_size, 10000},
-        {remote_enqueue_timeout, 5000},
-        {outgoing_connect_opts, []},
-        {outgoing_connect_params_module, vmq_cluster_node},
-        {outgoing_connect_timeout, 10000},
         {shared_subscription_policy, prefer_local},
         {shared_subscription_timeout_action, ignore},
 

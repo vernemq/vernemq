@@ -30,10 +30,6 @@ register_config_() ->
     ConfigKeys =
         [
             "allow_anonymous",
-            "allow_register_during_netsplit",
-            "allow_publish_during_netsplit",
-            "allow_subscribe_during_netsplit",
-            "allow_unsubscribe_during_netsplit",
             "allow_multiple_sessions",
             "queue_deliver_mode",
             "queue_type",
@@ -56,7 +52,6 @@ register_config_() ->
             "graphite_interval",
             "graphite_include_labels",
             "shared_subscription_policy",
-            "remote_enqueue_timeout",
             "topic_alias_max_client",
             "topic_alias_max_broker",
             "max_last_will_delay",

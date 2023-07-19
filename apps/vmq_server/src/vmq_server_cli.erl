@@ -26,7 +26,7 @@
 -define(RegView, application:get_env(vmq_server, default_reg_view, vmq_reg_trie)).
 
 init_registry() ->
-    F = fun() -> vmq_cluster:nodes() end,
+    F = fun() -> vmq_cluster_mon:nodes() end,
     clique:register_node_finder(F),
     clique:register([?MODULE, vmq_plugin_cli]),
     clique_writer:register("human", vmq_cli_human_writer),
@@ -59,13 +59,9 @@ register_cli() ->
     vmq_server_start_cmd(),
     vmq_server_stop_cmd(),
     vmq_server_show_cmd(),
+    vmq_server_upgrade_cmd(),
     vmq_server_metrics_cmd(),
     vmq_server_metrics_reset_cmd(),
-    vmq_all_queues_setup_check_rollout_cmd(),
-    vmq_all_queues_setup_check_rollout_status_cmd(),
-    vmq_cluster_join_cmd(),
-    vmq_cluster_leave_cmd(),
-    vmq_cluster_upgrade_cmd(),
 
     vmq_mgmt_add_api_key_cmd(),
     vmq_mgmt_create_api_key_cmd(),
@@ -77,14 +73,10 @@ register_cli() ->
 
     vmq_tracer_cli:register_cli(),
 
-    case ?RegView == vmq_reg_redis_trie of
-        true ->
-            vmq_reg_redis_trie_add_wildcard_topics_cmd(),
-            vmq_reg_redis_trie_remove_wildcard_topics_cmd(),
-            vmq_reg_redis_trie_show_wildcard_topics_cmd();
-        _ ->
-            skip_vmq_reg_redis_trie_related_cmds
-    end,
+    vmq_reg_redis_trie_add_wildcard_topics_cmd(),
+    vmq_reg_redis_trie_remove_wildcard_topics_cmd(),
+    vmq_reg_redis_trie_show_wildcard_topics_cmd(),
+
     ok.
 
 register_cli_usage() ->
@@ -95,8 +87,6 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "node", "upgrade"], upgrade_usage()),
 
     clique:register_usage(["vmq-admin", "cluster"], cluster_usage()),
-    clique:register_usage(["vmq-admin", "cluster", "join"], join_usage()),
-    clique:register_usage(["vmq-admin", "cluster", "leave"], leave_usage()),
 
     clique:register_usage(["vmq-admin", "metrics"], metrics_usage()),
     clique:register_usage(["vmq-admin", "metrics", "show"], fun metrics_show_usage/0),
@@ -105,34 +95,91 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "api-key", "delete"], api_delete_key_usage()),
     clique:register_usage(["vmq-admin", "api-key", "add"], api_add_key_usage()),
 
-    clique:register_usage(["vmq-admin", "all_queues_setup_check"], rollout_usage()),
-    clique:register_usage(["vmq-admin", "all_queues_setup_check", "set"], set_rollout_usage()),
-    clique:register_usage(["vmq-admin", "all_queues_setup_check", "show"], show_rollout_usage()),
+    clique:register_usage(["vmq-admin", "reg_redis_trie"], reg_redis_trie_usage()),
+    clique:register_usage(
+        ["vmq-admin", "reg_redis_trie", "add"], add_wildcard_topic_usage()
+    ),
+    clique:register_usage(
+        ["vmq-admin", "reg_redis_trie", "remove"], remove_wildcard_topic_usage()
+    ),
+    clique:register_usage(
+        ["vmq-admin", "reg_redis_trie", "show"], show_wildcard_topic_usage()
+    ),
 
-    case ?RegView == vmq_reg_redis_trie of
-        true ->
-            clique:register_usage(["vmq-admin", "reg_redis_trie"], reg_redis_trie_usage()),
-            clique:register_usage(
-                ["vmq-admin", "reg_redis_trie", "add"], add_wildcard_topic_usage()
-            ),
-            clique:register_usage(
-                ["vmq-admin", "reg_redis_trie", "remove"], remove_wildcard_topic_usage()
-            ),
-            clique:register_usage(
-                ["vmq-admin", "reg_redis_trie", "show"], show_wildcard_topic_usage()
-            );
-        _ ->
-            skip_vmq_reg_redis_trie_related_cmds
-    end,
     ok.
 
 vmq_server_stop_cmd() ->
     Cmd = ["vmq-admin", "node", "stop"],
-    Callback = fun(_, _, _) ->
-        _ = ensure_all_stopped(vmq_server),
-        [clique_status:text("Done")]
+    FlagSpecs = [
+        {summary_interval, [
+            {shortname, "i"},
+            {longname, "summary-interval"},
+            {typecast, fun(StrI) ->
+                case catch list_to_integer(StrI) of
+                    I when is_integer(I), I > 0 ->
+                        I * 1000;
+                    _ ->
+                        {{error, {invalid_flag_value, {'summary-interval', StrI}}}}
+                end
+            end}
+        ]},
+        {timeout, [
+            {shortname, "t"},
+            {longname, "timeout"},
+            {typecast, fun(StrI) ->
+                case catch list_to_integer(StrI) of
+                    I when is_integer(I), I > 0 ->
+                        I * 1000;
+                    _ ->
+                        {error, {invalid_flag_value, {timeout, StrI}}}
+                end
+            end}
+        ]}
+    ],
+    Callback = fun(_, _, Flags) ->
+        Interval = proplists:get_value(summary_interval, Flags, 5000),
+        Timeout = proplists:get_value(timeout, Flags, 60000),
+        %% Make sure Iterations > 0 to it will be
+        %% checked at least once if queue migration is complete.
+        Iterations = max(Timeout div Interval, 1),
+
+        %% stop all MQTT sessions on Node
+        %% Note: ensure loadbalancing will put them on other nodes
+        vmq_ranch_config:stop_all_mqtt_listeners(true),
+
+        %% At this point, client reconnect and will drain
+        %% their queues located at 'Node' migrating them to
+        %% their new node.
+        Text =
+            case wait_till_all_offline(Interval, Iterations) of
+                ok ->
+                    _ = ensure_all_stopped(vmq_server),
+                    "Done";
+                error ->
+                    "error, still online queues, check the logs, and retry!"
+            end,
+        [clique_status:text(Text)]
     end,
-    clique:register_command(Cmd, [], [], Callback).
+    clique:register_command(Cmd, [], FlagSpecs, Callback).
+
+wait_till_all_offline(_, 0) ->
+    error;
+wait_till_all_offline(Sleep, N) ->
+    case vmq_queue_sup_sup:summary() of
+        {0, 0, Drain, Offline, Msgs} ->
+            lager:info(
+                "all queues offline: ~p draining, ~p offline, ~p msgs",
+                [Drain, Offline, Msgs]
+            ),
+            ok;
+        {Online, WaitForOffline, Drain, Offline, Msgs} ->
+            lager:info(
+                "intermediate queue summary: ~p online, ~p wait_for_offline, ~p draining, ~p offline, ~p msgs",
+                [Online, WaitForOffline, Drain, Offline, Msgs]
+            ),
+            timer:sleep(Sleep),
+            wait_till_all_offline(Sleep, N - 1)
+    end.
 
 vmq_server_start_cmd() ->
     Cmd = ["vmq-admin", "node", "start"],
@@ -145,7 +192,7 @@ vmq_server_start_cmd() ->
 vmq_server_show_cmd() ->
     Cmd = ["vmq-admin", "cluster", "show"],
     Callback = fun(_, _, _) ->
-        VmqStatus = vmq_cluster:status(),
+        VmqStatus = vmq_cluster_mon:status(),
         NodeTable =
             lists:foldl(
                 fun({NodeName, IsReady}, Acc) ->
@@ -291,295 +338,7 @@ vmq_server_metrics_reset_cmd() ->
     end,
     clique:register_command(Cmd, [], [], Callback).
 
-vmq_cluster_leave_cmd() ->
-    %% is must be ensured that the leaving node has NO online session e.g. by
-    %% 1. stopping the listener via vmq-admin listener stop --kill_sessions
-    %% 2. the killed sessions will reconnect to another node (external load balancer)
-    %% 3. the reconnected sessions on the other nodes remap subscriptions and
-    Cmd = ["vmq-admin", "cluster", "leave"],
-    KeySpecs = [
-        {node, [
-            {typecast, fun(Node) ->
-                list_to_atom(Node)
-            end}
-        ]}
-    ],
-    FlagSpecs = [
-        {kill, [
-            {shortname, "k"},
-            {longname, "kill_sessions"}
-        ]},
-        {summary_interval, [
-            {shortname, "i"},
-            {longname, "summary-interval"},
-            {typecast, fun(StrI) ->
-                case catch list_to_integer(StrI) of
-                    I when is_integer(I), I > 0 ->
-                        I * 1000;
-                    _ ->
-                        {{error, {invalid_flag_value, {'summary-interval', StrI}}}}
-                end
-            end}
-        ]},
-        {timeout, [
-            {shortname, "t"},
-            {longname, "timeout"},
-            {typecast, fun(StrI) ->
-                case catch list_to_integer(StrI) of
-                    I when is_integer(I), I > 0 ->
-                        I * 1000;
-                    _ ->
-                        {error, {invalid_flag_value, {timeout, StrI}}}
-                end
-            end}
-        ]}
-    ],
-    Callback = fun
-        (_, [], _) ->
-            Text = clique_status:text("You have to provide a node"),
-            [clique_status:alert([Text])];
-        (_, [{node, Node}], Flags) ->
-            IsKill = lists:keymember(kill, 1, Flags),
-            Interval = proplists:get_value(summary_interval, Flags, 5000),
-            Timeout = proplists:get_value(timeout, Flags, 60000),
-            %% Make sure Iterations > 0 to it will be
-            %% checked at least once if queue migration is complete.
-            Iterations = max(Timeout div Interval, 1),
-            TargetNodes = vmq_peer_service:members() -- [Node],
-            Text =
-                case net_adm:ping(Node) of
-                    pang ->
-                        %% node is offline, we've to ensure sessions are
-                        %% remapped and all necessary queues exist.
-                        leave_cluster(Node),
-                        case check_cluster_consistency(TargetNodes, Timeout div 1000) of
-                            true ->
-                                vmq_reg:fix_dead_queues([Node], TargetNodes),
-                                "Done";
-                            false ->
-                                "Can't fix queues because cluster is inconsistent, retry!"
-                        end;
-                    pong when IsKill ->
-                        Caller = self(),
-                        CRef = make_ref(),
-                        LeaveFun =
-                            fun() ->
-                                %% stop all MQTT sessions on Node
-                                %% Note: ensure loadbalancing will put them on other nodes
-                                vmq_ranch_config:stop_all_mqtt_listeners(true),
-
-                                %% At this point, client reconnect and will drain
-                                %% their queues located at 'Node' migrating them to
-                                %% their new node.
-                                case wait_till_all_offline(Interval, Iterations) of
-                                    ok ->
-                                        %% There is no guarantee that all clients will
-                                        %% reconnect on time; we've to force migrate all
-                                        %% offline queues.
-                                        case ?RegView == vmq_reg_redis_trie of
-                                            true ->
-                                                skip_offline_queues_migration;
-                                            _ ->
-                                                migrate_offline_queues(
-                                                    Caller, CRef, TargetNodes, 1000
-                                                )
-                                        end,
-                                        %% node is online, we'll go the proper route
-                                        %% instead of calling leave_cluster('Node')
-                                        %% directly
-                                        _ = vmq_peer_service:leave(Node),
-                                        Caller ! {done, CRef},
-                                        init:stop();
-                                    error ->
-                                        Caller !
-                                            {stop, CRef,
-                                                "error, still online queues, check the logs, and retry!"}
-                                end
-                            end,
-                        ProcName = {?MODULE, vmq_server_migration},
-                        case global:whereis_name(ProcName) of
-                            undefined ->
-                                case check_cluster_consistency(TargetNodes, Timeout div 1000) of
-                                    true ->
-                                        Pid = spawn(Node, LeaveFun),
-                                        MRef = monitor(process, Pid),
-                                        receive_loop(CRef, MRef, Pid);
-                                    false ->
-                                        "Can't migrate queues because cluster is inconsistent, retry!"
-                                end;
-                            Pid ->
-                                io_lib:format("Migration already started! ~p", [Pid])
-                        end;
-                    pong ->
-                        %% stop accepting new connections on Node
-                        %% Note: ensure new connections get balanced to other nodes
-                        rpc:call(Node, vmq_ranch_config, stop_all_mqtt_listeners, [false]),
-                        "Done! Use -k to teardown and migrate existing sessions!"
-                end,
-            [clique_status:text(Text)]
-    end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-receive_loop(CRef, MRef, Pid) ->
-    receive
-        {msg, CRef, Msg} ->
-            io:format("~s~n", [lists:flatten(Msg)]),
-            receive_loop(CRef, MRef, Pid);
-        {stop, CRef, Msg} ->
-            Msg;
-        {done, CRef} ->
-            "Done";
-        {'DOWN', MRef, process, Pid, Reason} ->
-            "Unknown error: " ++ atom_to_list(Reason)
-    end.
-
-migrate_offline_queues(Caller, CRef, TargetNodes, MaxConcurrency) ->
-    S = vmq_reg:prepare_offline_queue_migration(TargetNodes),
-    migrate(Caller, CRef, S, MaxConcurrency).
-
-migrate(Caller, CRef, S, MaxConcurrency) ->
-    {Progress,
-        #{
-            migrated_queue_cnt := MQCnt,
-            migrated_msg_cnt := MMCnt,
-            total_queue_count := TQCnt,
-            total_msg_count := TMCnt
-        } = S1} =
-        vmq_reg:migrate_offline_queues(S, MaxConcurrency),
-    Msg = io_lib:format("Migrated ~p/~p queues and ~p/~p messages", [MQCnt, TQCnt, MMCnt, TMCnt]),
-    Caller ! {msg, CRef, Msg},
-    case Progress of
-        cont ->
-            timer:sleep(100),
-            migrate(Caller, CRef, S1, MaxConcurrency);
-        done ->
-            ok
-    end.
-
-leave_cluster(Node) ->
-    case vmq_peer_service:leave(Node) of
-        ok ->
-            "Done";
-        {error, not_present} ->
-            io_lib:format("Node ~p wasn't part of the cluster~n", [Node])
-    end.
-
-check_cluster_consistency([Node | Nodes] = All, NrOfRetries) ->
-    case rpc:call(Node, vmq_cluster, is_ready, []) of
-        true ->
-            check_cluster_consistency(Nodes, NrOfRetries);
-        false ->
-            timer:sleep(1000),
-            check_cluster_consistency(All, NrOfRetries - 1)
-    end;
-check_cluster_consistency(_, 0) ->
-    false;
-check_cluster_consistency([], _) ->
-    true.
-
-wait_till_all_offline(_, 0) ->
-    error;
-wait_till_all_offline(Sleep, N) ->
-    case vmq_queue_sup_sup:summary() of
-        {0, 0, Drain, Offline, Msgs} ->
-            lager:info(
-                "all queues offline: ~p draining, ~p offline, ~p msgs",
-                [Drain, Offline, Msgs]
-            ),
-            ok;
-        {Online, WaitForOffline, Drain, Offline, Msgs} ->
-            lager:info(
-                "intermediate queue summary: ~p online, ~p wait_for_offline, ~p draining, ~p offline, ~p msgs",
-                [Online, WaitForOffline, Drain, Offline, Msgs]
-            ),
-            timer:sleep(Sleep),
-            wait_till_all_offline(Sleep, N - 1)
-    end.
-
-vmq_all_queues_setup_check_rollout_cmd() ->
-    Cmd = ["vmq-admin", "all_queues_setup_check", "set"],
-    KeySpecs = [rollout_keyspec()],
-    FlagSpecs = [],
-    Callback =
-        fun
-            (_, [{rollout, Value}], []) ->
-                case vmq_cluster:set_rollout(Value) of
-                    ok ->
-                        [clique_status:text("Done")];
-                    {error, Reason} ->
-                        lager:warning(
-                            "can't set all_queues_setup_check rollout as ~p due to ~p",
-                            [Value, Reason]
-                        ),
-                        Text = io_lib:format(
-                            "can't set set all_queues_setup_check rollout due to '~p'", [Reason]
-                        ),
-                        [clique_status:alert([clique_status:text(Text)])]
-                end;
-            (_, _, _) ->
-                Text = clique_status:text(set_rollout_usage()),
-                [clique_status:alert([Text])]
-        end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-vmq_all_queues_setup_check_rollout_status_cmd() ->
-    Cmd = ["vmq-admin", "all_queues_setup_check", "show", "rollout"],
-    KeySpecs = [],
-    FlagSpecs = [],
-    Callback =
-        fun
-            (_, [], []) ->
-                Table = [[{value, vmq_cluster:get_rollout()}]],
-                [clique_status:table(Table)];
-            (_, _, _) ->
-                Text = clique_status:text(show_rollout_usage()),
-                [clique_status:alert([Text])]
-        end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-rollout_keyspec() ->
-    {rollout, [
-        {typecast, fun
-            (Value) when is_list(Value) ->
-                BooleanValue = list_to_atom(Value),
-                case is_boolean(BooleanValue) of
-                    true -> BooleanValue;
-                    _ -> {error, {invalid_value, Value}}
-                end;
-            (Value) ->
-                {error, {invalid_value, Value}}
-        end}
-    ]}.
-
-vmq_cluster_join_cmd() ->
-    Cmd = ["vmq-admin", "cluster", "join"],
-    KeySpecs = [
-        {'discovery-node', [
-            {typecast, fun(Node) ->
-                list_to_atom(Node)
-            end}
-        ]}
-    ],
-    FlagSpecs = [],
-    Callback = fun
-        (_, [], []) ->
-            Text = clique_status:text(
-                "You have to provide a discovery node (example discovery-node=vernemq1@127.0.0.1)"
-            ),
-            [clique_status:alert([Text])];
-        (_, [{'discovery-node', Node}], _) ->
-            case vmq_peer_service:join(Node) of
-                ok ->
-                    vmq_cluster:recheck(),
-                    [clique_status:text("Done")];
-                {error, Reason} ->
-                    Text = io_lib:format("Couldn't join cluster due to ~p~n", [Reason]),
-                    [clique_status:alert([clique_status:text(Text)])]
-            end
-    end,
-    clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
-
-vmq_cluster_upgrade_cmd() ->
+vmq_server_upgrade_cmd() ->
     Cmd = ["vmq-admin", "node", "upgrade"],
     KeySpecs = [],
     FlagSpecs = [
@@ -782,39 +541,6 @@ stop_usage() ->
         "  when the service is stopped.\n"
     ].
 
-join_usage() ->
-    [
-        "vmq-admin cluster join discovery-node=<Node>\n\n",
-        "  The discovery node will be used to find out about the \n",
-        "  nodes in the cluster.\n\n"
-    ].
-
-leave_usage() ->
-    [
-        "vmq-admin cluster leave node=<Node> [-k | --kill_sessions]\n\n",
-        "  Graceful cluster-leave and shutdown of a cluster node. \n\n",
-        "  If <Node> is already offline its cluster membership gets removed,\n",
-        "  and the queues of the subscribers that have been connected at shutdown\n",
-        "  will be recreated on other cluster nodes. This might involve\n",
-        "  the disconnecting of clients that have already reconnected.\n",
-        "  \n",
-        "  If <Node> is still online all its MQTT listeners (including websockets)\n",
-        "  are stopped and wont therefore accept new connections. Established\n",
-        "  connections aren't cancelled at this point. Use --kill_sessions to get\n",
-        "  into the second phase of the graceful shutdown.\n",
-        "  \n",
-        "   --kill_sessions, -k,\n",
-        "       terminates all open MQTT connections, and migrates the queues of\n",
-        "       the clients that used 'clean_session=false' to other cluster nodes.\n",
-        "   --summary-interval=<IntervalInSecs>, -i\n",
-        "       logs the status of an ongoing migration every <IntervalInSecs>\n",
-        "       seconds, defaults to 5 seconds.\n",
-        "   --timeout=<TimeoutInSecs>, -t\n",
-        "       stops the migration process after <TimeoutInSecs> seconds, defaults\n",
-        "       to 60 seconds. The command can be reissued in case of a timeout.",
-        "\n\n"
-    ].
-
 upgrade_usage() ->
     [
         "vmq-admin node upgrade [--upgrade-now]\n\n",
@@ -864,8 +590,6 @@ cluster_usage() ->
         "  Administrate cluster membership for this particular VerneMQ node.\n\n",
         "  Sub-commands:\n",
         "    show        Prints cluster information\n",
-        "    join        Join a cluster\n",
-        "    leave       Leave the cluster\n\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 
@@ -921,30 +645,6 @@ api_add_key_usage() ->
     [
         "vmq-admin api-key add key=<API Key>\n\n",
         "  Adds an API Key.\n\n"
-    ].
-
-rollout_usage() ->
-    [
-        "vmq-admin all_queues_setup_check <sub-command>\n\n",
-        "  Manage all_queues_setup_check rollout as part of health check.\n\n",
-        "  Sub-commands:\n",
-        "    show        Shows the rollout value\n",
-        "    set         Sets the rollout value\n\n",
-        "  Use --help after a sub-command for more details.\n"
-    ].
-
-show_rollout_usage() ->
-    [
-        "vmq-admin all_queues_setup_check show rollout\n\n",
-        "  Shows the rollout value of all_queues_setup_check.",
-        "\n\n"
-    ].
-
-set_rollout_usage() ->
-    [
-        "vmq-admin all_queues_setup_check set rollout=<true/false>\n\n",
-        "  Sets the rollout value of all_queues_setup_check.",
-        "\n\n"
     ].
 
 get_reg_redis_trie_usage_lead_line() ->

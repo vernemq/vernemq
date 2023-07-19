@@ -10,8 +10,6 @@
 
 -include("vmq_server.hrl").
 
--dialyzer([no_undefined_callbacks]).
-
 -behaviour(vmq_reg_view).
 -behaviour(gen_server2).
 
@@ -60,8 +58,10 @@ fold({MP, _} = SubscriberId, Topic, FoldFun, Acc) when is_list(Topic) ->
     MatchedTopics = [Topic | match(MP, Topic)],
     case fold_matched_topics(MP, MatchedTopics, []) of
         [] ->
-            SubscribersList = fetchSubscribers(MatchedTopics, MP),
-            fold_subscriber_info(SubscriberId, SubscribersList, FoldFun, Acc);
+            case fetchSubscribers(MatchedTopics, MP) of
+                {error, _} = Err -> Err;
+                SubscribersList -> fold_subscriber_info(SubscriberId, SubscribersList, FoldFun, Acc)
+            end;
         LocalSharedSubsList ->
             fold_local_shared_subscriber_info(
                 SubscriberId, lists:flatten(LocalSharedSubsList), FoldFun, Acc
@@ -84,20 +84,24 @@ fold_matched_topics(MP, [Topic | Rest], Acc) ->
 
 fetchSubscribers(Topics, MP) ->
     UnwordedTopics = [vmq_topic:unword(T) || T <- Topics],
-    {ok, SubscribersList} = vmq_redis:query(
-        redis_client,
-        [
+    case
+        vmq_redis:query(
+            vmq_redis_client,
+            [
+                ?FCALL,
+                ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
+                0,
+                MP,
+                length(UnwordedTopics)
+                | UnwordedTopics
+            ],
             ?FCALL,
-            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
-            0,
-            MP,
-            length(UnwordedTopics)
-            | UnwordedTopics
-        ],
-        ?FCALL,
-        ?FETCH_MATCHED_TOPIC_SUBSCRIBERS
-    ),
-    SubscribersList.
+            ?FETCH_MATCHED_TOPIC_SUBSCRIBERS
+        )
+    of
+        {ok, SubscribersList} -> SubscribersList;
+        Err -> Err
+    end.
 
 fold_subscriber_info(_, [], _, Acc) ->
     Acc;
@@ -132,7 +136,7 @@ fold_local_shared_subscriber_info(
     ).
 
 add_complex_topics(Topics) ->
-    Nodes = vmq_cluster:nodes(),
+    Nodes = vmq_cluster_mon:nodes(),
     Query = lists:foldl(
         fun(T, Acc) ->
             lists:foreach(
@@ -143,7 +147,7 @@ add_complex_topics(Topics) ->
         [],
         Topics
     ),
-    vmq_redis:pipelined_query(redis_client, Query, ?ADD_COMPLEX_TOPICS_OPERATION),
+    vmq_redis:pipelined_query(vmq_redis_client, Query, ?ADD_COMPLEX_TOPICS_OPERATION),
     ok.
 
 add_complex_topic(MP, Topic) ->
@@ -159,7 +163,7 @@ add_complex_topic(MP, Topic) ->
     end.
 
 delete_complex_topics(Topics) ->
-    Nodes = vmq_cluster:nodes(),
+    Nodes = vmq_cluster_mon:nodes(),
     Query = lists:foldl(
         fun(T, Acc) ->
             lists:foreach(
@@ -170,7 +174,7 @@ delete_complex_topics(Topics) ->
         [],
         Topics
     ),
-    vmq_redis:pipelined_query(redis_client, Query, ?DELETE_COMPLEX_TOPICS_OPERATION),
+    vmq_redis:pipelined_query(vmq_redis_client, Query, ?DELETE_COMPLEX_TOPICS_OPERATION),
     ok.
 
 delete_complex_topic(MP, Topic) ->
@@ -231,18 +235,9 @@ init([]) ->
     _ = ets:new(?SHARED_SUBS_ETS_TABLE, DefaultETSOpts),
     _ = ets:new(vmq_redis_trie, [{keypos, 2} | DefaultETSOpts]),
     _ = ets:new(vmq_redis_trie_node, [{keypos, 2} | DefaultETSOpts]),
-    _ = ets:new(vmq_redis_lua_scripts, DefaultETSOpts),
-    SentinelEndpoints = vmq_schema_util:parse_list(
-        application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
-    ),
-    RedisDB = application:get_env(vmq_server, redis_database, 0),
-    {ok, _Pid} = eredis:start_link([
-        {sentinel, [{endpoints, SentinelEndpoints}]},
-        {database, RedisDB},
-        {name, {local, redis_client}}
-    ]),
-    load_redis_functions(),
+
     initialize_trie(),
+
     {ok, #state{status = ready}}.
 
 %%--------------------------------------------------------------------
@@ -300,7 +295,7 @@ handle_info(_, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    ok = eredis:stop(whereis(redis_client)).
+    ok.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -316,55 +311,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-load_redis_functions() ->
-    LuaDir = application:get_env(vmq_server, redis_lua_dir, "./etc/lua"),
-    {ok, RemapSubscriberScript} = file:read_file(LuaDir ++ "/remap_subscriber.lua"),
-    {ok, SubscribeScript} = file:read_file(LuaDir ++ "/subscribe.lua"),
-    {ok, UnsubscribeScript} = file:read_file(LuaDir ++ "/unsubscribe.lua"),
-    {ok, DeleteSubscriberScript} = file:read_file(LuaDir ++ "/delete_subscriber.lua"),
-    {ok, FetchMatchedTopicSubscribersScript} = file:read_file(
-        LuaDir ++ "/fetch_matched_topic_subscribers.lua"
-    ),
-    {ok, FetchSubscriberScript} = file:read_file(LuaDir ++ "/fetch_subscriber.lua"),
-
-    {ok, <<"remap_subscriber">>} = vmq_redis:query(
-        redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", RemapSubscriberScript],
-        ?FUNCTION_LOAD,
-        ?REMAP_SUBSCRIBER
-    ),
-    {ok, <<"subscribe">>} = vmq_redis:query(
-        redis_client, [?FUNCTION, "LOAD", "REPLACE", SubscribeScript], ?FUNCTION_LOAD, ?SUBSCRIBE
-    ),
-    {ok, <<"unsubscribe">>} = vmq_redis:query(
-        redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", UnsubscribeScript],
-        ?FUNCTION_LOAD,
-        ?UNSUBSCRIBE
-    ),
-    {ok, <<"delete_subscriber">>} = vmq_redis:query(
-        redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", DeleteSubscriberScript],
-        ?FUNCTION_LOAD,
-        ?DELETE_SUBSCRIBER
-    ),
-    {ok, <<"fetch_matched_topic_subscribers">>} = vmq_redis:query(
-        redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", FetchMatchedTopicSubscribersScript],
-        ?FUNCTION_LOAD,
-        ?FETCH_MATCHED_TOPIC_SUBSCRIBERS
-    ),
-    {ok, <<"fetch_subscriber">>} = vmq_redis:query(
-        redis_client,
-        [?FUNCTION, "LOAD", "REPLACE", FetchSubscriberScript],
-        ?FUNCTION_LOAD,
-        ?FETCH_SUBSCRIBER
-    ).
-
 initialize_trie() ->
     {ok, TopicList} = vmq_redis:query(
-        redis_client, [?SMEMBERS, "wildcard_topics"], ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION
+        vmq_redis_client, [?SMEMBERS, "wildcard_topics"], ?SMEMBERS, ?INITIALIZE_TRIE_OPERATION
     ),
     lists:foreach(
         fun(T) ->

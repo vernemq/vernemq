@@ -50,8 +50,7 @@ all() ->
     [{group, schema}].
 
 global_substitutions() ->
-    [{["metadata_plugin"], "vmq_plumtree"},
-     {["listener", "max_connections"], "10000"},
+    [{["listener", "max_connections"], "10000"},
      {["listener", "nr_of_acceptors"], "100"}].
 
 
@@ -113,7 +112,6 @@ ssl_certs_opts_inheritance_test(_Config) ->
               end
       end,
       [
-       {"vmqs", vmqs},
        {"ssl", mqtts},
        {"wss", mqttwss},
        {"https", https}
@@ -185,7 +183,6 @@ ssl_certs_opts_override_test(_Config) ->
               end
       end,
       [
-       {"vmqs", vmqs},
        {"ssl", mqtts},
        {"wss", mqttwss},
        {"https", https}

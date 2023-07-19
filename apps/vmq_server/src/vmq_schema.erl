@@ -104,12 +104,6 @@ translate_listeners(Conf) ->
     {WS_SSLIPs, WS_SSLMaxConns} = lists:unzip(
         extract("listener.wss", "max_connections", InfIntVal, Conf)
     ),
-    {VMQIPs, VMQMaxConns} = lists:unzip(
-        extract("listener.vmq", "max_connections", InfIntVal, Conf)
-    ),
-    {VMQ_SSLIPs, VMQ_SSLMaxConns} = lists:unzip(
-        extract("listener.vmqs", "max_connections", InfIntVal, Conf)
-    ),
     {HTTPIPs, HTTPMaxConns} = lists:unzip(
         extract("listener.http", "max_connections", InfIntVal, Conf)
     ),
@@ -129,12 +123,6 @@ translate_listeners(Conf) ->
     {WS_SSLIPs, WS_SSLNrOfAcceptors} = lists:unzip(
         extract("listener.wss", "nr_of_acceptors", InfIntVal, Conf)
     ),
-    {VMQIPs, VMQNrOfAcceptors} = lists:unzip(
-        extract("listener.vmq", "nr_of_acceptors", InfIntVal, Conf)
-    ),
-    {VMQ_SSLIPs, VMQ_SSLNrOfAcceptors} = lists:unzip(
-        extract("listener.vmqs", "nr_of_acceptors", InfIntVal, Conf)
-    ),
     {HTTPIPs, HTTPNrOfAcceptors} = lists:unzip(
         extract("listener.http", "nr_of_acceptors", InfIntVal, Conf)
     ),
@@ -146,10 +134,6 @@ translate_listeners(Conf) ->
     {SSLIPs, SSLMountPoint} = lists:unzip(extract("listener.ssl", "mountpoint", MPVal, Conf)),
     {WSIPs, WSMountPoint} = lists:unzip(extract("listener.ws", "mountpoint", MPVal, Conf)),
     {WS_SSLIPs, WS_SSLMountPoint} = lists:unzip(extract("listener.wss", "mountpoint", MPVal, Conf)),
-    {VMQIPs, VMQMountPoint} = lists:unzip(extract("listener.vmq", "mountpoint", MPVal, Conf)),
-    {VMQ_SSLIPs, VMQ_SSLMountPoint} = lists:unzip(
-        extract("listener.vmqs", "mountpoint", MPVal, Conf)
-    ),
 
     {TCPIPs, TCPProxyProto} = lists:unzip(extract("listener.tcp", "proxy_protocol", BoolVal, Conf)),
     {WSIPs, WSProxyProto} = lists:unzip(extract("listener.ws", "proxy_protocol", BoolVal, Conf)),
@@ -281,14 +265,6 @@ translate_listeners(Conf) ->
             WSAllowedProto
         ])
     ),
-    VMQ = lists:zip(
-        VMQIPs,
-        MZip([
-            VMQMaxConns,
-            VMQNrOfAcceptors,
-            VMQMountPoint
-        ])
-    ),
     HTTP = lists:zip(
         HTTPIPs,
         MZip([
@@ -342,9 +318,6 @@ translate_listeners(Conf) ->
     VMQS = lists:zip(
         VMQ_SSLIPs,
         MZip([
-            VMQ_SSLMaxConns,
-            VMQ_SSLNrOfAcceptors,
-            VMQ_SSLMountPoint,
             VMQ_SSLCAFiles,
             VMQ_SSLDepths,
             VMQ_SSLCertFiles,
@@ -383,7 +356,6 @@ translate_listeners(Conf) ->
         {mqtts, DropUndef(SSL)},
         {mqttws, DropUndef(WS)},
         {mqttwss, DropUndef(WSS)},
-        {vmq, DropUndef(VMQ)},
         {vmqs, DropUndef(VMQS)},
         {http, DropUndef(HTTP)},
         {https, DropUndef(HTTPS)}

@@ -1,8 +1,12 @@
 #!lua name=fetch_subscriber
 
 --[[
+Input:
 ARGV[1] = mountpoint
 ARGV[2] = clientId
+
+Output:
+{} | {Node, CS, {{Topics,QoS}, ...}} | Error
 ]]
 
 local function fetch_subscriber(_KEYS, ARGV)

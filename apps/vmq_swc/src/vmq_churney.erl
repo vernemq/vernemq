@@ -120,7 +120,7 @@ start_session() ->
     gen_tcp:close(S2).
 
 random_node_pair() ->
-    Nodes = [N || {N, IsReady} <- vmq_cluster:status(), IsReady == true],
+    Nodes = [N || {N, IsReady} <- vmq_cluster_mon:status(), IsReady == true],
     case length(Nodes) > 0 of
         true ->
             N1 = lists:nth(rand:uniform(length(Nodes)), Nodes),

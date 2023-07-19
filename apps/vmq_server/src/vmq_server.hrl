@@ -67,6 +67,7 @@
 -define(DELETE_COMPLEX_TOPICS_OPERATION, delete_complex_topics).
 -define(ENQUEUE_MSG, enqueue_msg).
 -define(POLL_MAIN_QUEUE, poll_main_queue).
+-define(GET_LIVE_NODES, get_live_nodes).
 -define(RPUSH, rpush).
 -define(DEL, del).
 -define(FIND, find).
@@ -76,6 +77,10 @@
 -define(MSG_STORE_FIND, msg_store_find).
 -define(SHARED_SUBS_ETS_TABLE, vmq_shared_subs_local).
 -define(LOCAL_SHARED_SUBS, local_shared_subs).
+-define(MIGRATE_OFFLINE_QUEUE, migrate_offline_queue).
+-define(REAP_SUBSCRIBERS, reap_subscribers).
+-define(SCARD, scard).
+-define(ENSURE_NO_LOCAL_CLIENT, ensure_no_local_client).
 
 -define(PRODUCER, "producer").
 -define(CONSUMER, "consumer").

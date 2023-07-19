@@ -78,10 +78,6 @@
     incr_queue_in/1,
     incr_queue_out/1,
 
-    incr_cluster_bytes_sent/1,
-    incr_cluster_bytes_received/1,
-    incr_cluster_bytes_dropped/1,
-
     incr_router_matches_local/1,
     incr_router_matches_remote/1,
     pretimed_measurement/2,
@@ -98,7 +94,9 @@
     incr_cache_insert/1,
     incr_cache_delete/1,
     incr_cache_hit/1,
-    incr_cache_miss/1
+    incr_cache_miss/1,
+
+    incr_msg_enqueue_subscriber_not_found/0
 ]).
 
 -export([
@@ -284,15 +282,6 @@ incr_queue_in(N) ->
 incr_queue_out(N) ->
     incr_item(?METRIC_QUEUE_MESSAGE_OUT, N).
 
-incr_cluster_bytes_received(V) ->
-    incr_item(?METRIC_CLUSTER_BYTES_RECEIVED, V).
-
-incr_cluster_bytes_sent(V) ->
-    incr_item(?METRIC_CLUSTER_BYTES_SENT, V).
-
-incr_cluster_bytes_dropped(V) ->
-    incr_item(?METRIC_CLUSTER_BYTES_DROPPED, V).
-
 incr_router_matches_local(V) ->
     incr_item(?METRIC_ROUTER_MATCHES_LOCAL, V).
 
@@ -334,6 +323,9 @@ incr_cache_hit(NAME) ->
 
 incr_cache_miss(NAME) ->
     incr_item({?CACHE_MISS, NAME}, 1).
+
+incr_msg_enqueue_subscriber_not_found() ->
+    incr_item(msg_enqueue_subscriber_not_found, 1).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -942,7 +934,10 @@ redis_def() ->
             ?FETCH_SUBSCRIBER,
             ?FETCH_MATCHED_TOPIC_SUBSCRIBERS,
             ?ENQUEUE_MSG,
-            ?POLL_MAIN_QUEUE
+            ?POLL_MAIN_QUEUE,
+            ?GET_LIVE_NODES,
+            ?MIGRATE_OFFLINE_QUEUE,
+            ?REAP_SUBSCRIBERS
         ],
     REDIS_DEF_1 =
         [
@@ -1182,6 +1177,27 @@ redis_def() ->
                 counter,
                 [{cmd, rcn_to_str(?FIND)}, {operation, rcn_to_str(?MSG_STORE_FIND)}],
                 {?REDIS_CMD_MISS, ?FIND, ?MSG_STORE_FIND},
+                redis_cmd_miss_total,
+                <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>
+            ),
+            m(
+                counter,
+                [{cmd, rcn_to_str(?SCARD)}, {operation, rcn_to_str(?ENSURE_NO_LOCAL_CLIENT)}],
+                {?REDIS_CMD, ?SCARD, ?ENSURE_NO_LOCAL_CLIENT},
+                redis_cmd_total,
+                <<"The number of redis cmd calls.">>
+            ),
+            m(
+                counter,
+                [{cmd, rcn_to_str(?SCARD)}, {operation, rcn_to_str(?ENSURE_NO_LOCAL_CLIENT)}],
+                {?REDIS_CMD_ERROR, ?SCARD, ?ENSURE_NO_LOCAL_CLIENT},
+                redis_cmd_error_total,
+                <<"The number of times redis cmd call failed.">>
+            ),
+            m(
+                counter,
+                [{cmd, rcn_to_str(?SCARD)}, {operation, rcn_to_str(?ENSURE_NO_LOCAL_CLIENT)}],
+                {?REDIS_CMD_MISS, ?SCARD, ?ENSURE_NO_LOCAL_CLIENT},
                 redis_cmd_miss_total,
                 <<"The number of times redis cmd returned empty/undefined due to entry not exists.">>
             )
@@ -1741,27 +1757,6 @@ counter_entries_def() ->
         m(
             counter,
             [],
-            cluster_bytes_received,
-            cluster_bytes_received,
-            <<"The number of bytes received from other cluster nodes.">>
-        ),
-        m(
-            counter,
-            [],
-            cluster_bytes_sent,
-            cluster_bytes_sent,
-            <<"The number of bytes send to other cluster nodes.">>
-        ),
-        m(
-            counter,
-            [],
-            cluster_bytes_dropped,
-            cluster_bytes_dropped,
-            <<"The number of bytes dropped while sending data to other cluster nodes.">>
-        ),
-        m(
-            counter,
-            [],
             router_matches_local,
             router_matches_local,
             <<"The number of matched local subscriptions.">>
@@ -1800,6 +1795,13 @@ counter_entries_def() ->
             {?CACHE_DELETE, ?LOCAL_SHARED_SUBS},
             cache_delete,
             <<"The number of cache delete separate by cache name.">>
+        ),
+        m(
+            counter,
+            [],
+            msg_enqueue_subscriber_not_found,
+            msg_enqueue_subscriber_not_found,
+            <<"The number of times subscriber was not found when message had to be enqueued.">>
         )
     ].
 
@@ -2175,11 +2177,7 @@ fetch_external_metric(Mod, Fun, Default) ->
 misc_statistics() ->
     {NrOfSubs, SMemory} = fetch_external_metric(vmq_reg_trie, stats, {0, 0}),
     {NrOfRetain, RMemory} = fetch_external_metric(vmq_retain_srv, stats, {0, 0}),
-    {NetsplitDetectedCount, NetsplitResolvedCount} =
-        fetch_external_metric(vmq_cluster, netsplit_statistics, {0, 0}),
     [
-        {netsplit_detected, NetsplitDetectedCount},
-        {netsplit_resolved, NetsplitResolvedCount},
         {router_subscriptions, NrOfSubs},
         {router_memory, SMemory},
         {retain_messages, NrOfRetain},
@@ -2190,20 +2188,6 @@ misc_statistics() ->
 -spec misc_stats_def() -> [metric_def()].
 misc_stats_def() ->
     [
-        m(
-            counter,
-            [],
-            netsplit_detected,
-            netsplit_detected,
-            <<"The number of detected netsplits.">>
-        ),
-        m(
-            counter,
-            [],
-            netsplit_resolved,
-            netsplit_resolved,
-            <<"The number of resolved netsplits.">>
-        ),
         m(
             gauge,
             [],
@@ -2662,9 +2646,6 @@ met2idx(?METRIC_QUEUE_MESSAGE_UNHANDLED) -> 170;
 met2idx(?METRIC_QUEUE_MESSAGE_IN) -> 171;
 met2idx(?METRIC_QUEUE_MESSAGE_OUT) -> 172;
 met2idx(?METRIC_CLIENT_EXPIRED) -> 173;
-met2idx(?METRIC_CLUSTER_BYTES_RECEIVED) -> 174;
-met2idx(?METRIC_CLUSTER_BYTES_SENT) -> 175;
-met2idx(?METRIC_CLUSTER_BYTES_DROPPED) -> 176;
 met2idx(?METRIC_SOCKET_OPEN) -> 177;
 met2idx(?METRIC_SOCKET_CLOSE) -> 178;
 met2idx(?METRIC_SOCKET_ERROR) -> 179;
@@ -2803,7 +2784,32 @@ met2idx(?QOS1_NON_PERSISTENCE_DROPPED) -> 313;
 met2idx({?CACHE_HIT, ?LOCAL_SHARED_SUBS}) -> 314;
 met2idx({?CACHE_MISS, ?LOCAL_SHARED_SUBS}) -> 315;
 met2idx({?CACHE_INSERT, ?LOCAL_SHARED_SUBS}) -> 316;
-met2idx({?CACHE_DELETE, ?LOCAL_SHARED_SUBS}) -> 317.
+met2idx({?CACHE_DELETE, ?LOCAL_SHARED_SUBS}) -> 317;
+met2idx({?REDIS_CMD, ?FCALL, ?GET_LIVE_NODES}) -> 318;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?GET_LIVE_NODES}) -> 319;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?GET_LIVE_NODES}) -> 320;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?GET_LIVE_NODES}) -> 321;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?GET_LIVE_NODES}) -> 322;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?GET_LIVE_NODES}) -> 323;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?GET_LIVE_NODES}) -> 324;
+met2idx({?REDIS_CMD, ?FCALL, ?MIGRATE_OFFLINE_QUEUE}) -> 325;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?MIGRATE_OFFLINE_QUEUE}) -> 326;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?MIGRATE_OFFLINE_QUEUE}) -> 327;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?MIGRATE_OFFLINE_QUEUE}) -> 328;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?MIGRATE_OFFLINE_QUEUE}) -> 329;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?MIGRATE_OFFLINE_QUEUE}) -> 330;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?MIGRATE_OFFLINE_QUEUE}) -> 331;
+met2idx({?REDIS_CMD, ?FCALL, ?REAP_SUBSCRIBERS}) -> 332;
+met2idx({?REDIS_CMD_ERROR, ?FCALL, ?REAP_SUBSCRIBERS}) -> 333;
+met2idx({?REDIS_CMD_MISS, ?FCALL, ?REAP_SUBSCRIBERS}) -> 334;
+met2idx({?REDIS_STALE_CMD, ?FCALL, ?REAP_SUBSCRIBERS}) -> 335;
+met2idx({?UNAUTH_REDIS_CMD, ?FCALL, ?REAP_SUBSCRIBERS}) -> 336;
+met2idx({?REDIS_CMD, ?FUNCTION_LOAD, ?REAP_SUBSCRIBERS}) -> 337;
+met2idx({?REDIS_CMD_ERROR, ?FUNCTION_LOAD, ?REAP_SUBSCRIBERS}) -> 338;
+met2idx({?REDIS_CMD, ?SCARD, ?ENSURE_NO_LOCAL_CLIENT}) -> 339;
+met2idx({?REDIS_CMD_ERROR, ?SCARD, ?ENSURE_NO_LOCAL_CLIENT}) -> 340;
+met2idx({?REDIS_CMD_MISS, ?SCARD, ?ENSURE_NO_LOCAL_CLIENT}) -> 341;
+met2idx(msg_enqueue_subscriber_not_found) -> 342.
 
 -ifdef(TEST).
 clear_stored_rates() ->

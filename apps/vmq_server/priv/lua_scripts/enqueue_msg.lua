@@ -1,9 +1,13 @@
 #!lua name=enqueue_msg
 
 --[[
+Input:
 KEYS[1] = mainQueueKey
 ARGV[1] = Subscriber
 ARGV[2] = SubInfo&Msg
+
+Output:
+MainQueueSize(Number) | Error
 ]]
 
 local function enqueue_msg(KEYS, ARGV)

@@ -414,7 +414,7 @@ drain(
         offline = #queue{queue = Q} = Queue,
         drain_time = DrainTimeout,
         max_msgs_per_drain_step = DrainStepSize,
-        waiting_call = {migrate, RemoteQueue, _From}
+        waiting_call = {migrate, _RemoteQueue, _From}
     } = State
 ) ->
     {DrainQ, NewQ} = queue_split(DrainStepSize, Q),
@@ -430,17 +430,19 @@ drain(
                 drain_over_timer = gen_fsm:send_event_after(DrainTimeout, drain_over),
                 offline = Queue#queue{size = 0, drop = 0, queue = queue:new()}
             }};
-        Msgs ->
+        _Msgs ->
             %% remote_enqueue triggers an enqueue_many inside the remote queue
             %% but forces the traffic to go over the distinct communication link
             %% instead of the erlang distribution link.
-            ExtMsgs = lists:map(fun to_external/1, Msgs),
-            {MRef, Ref} = vmq_cluster:remote_enqueue_async(
-                node(RemoteQueue), {enqueue, RemoteQueue, ExtMsgs}, false
-            ),
+
+            %% TODO: Refactor drain step for fetching msgs from redis
+            % ExtMsgs = lists:map(fun to_external/1, Msgs),
+            % {MRef, Ref} = vmq_cluster:remote_enqueue_async(
+            %     node(RemoteQueue), {enqueue, RemoteQueue, ExtMsgs}, false
+            % ),
             {next_state, drain, State#state{
-                offline = Queue#queue{size = queue:len(NewQ), drop = 0, queue = NewQ},
-                drain_pending_batch = {MRef, Ref, DrainQ}
+                offline = Queue#queue{size = queue:len(NewQ), drop = 0, queue = NewQ}
+                % ,drain_pending_batch = {MRef, Ref, DrainQ}
             }}
     end;
 drain({enqueue, Msg}, #state{drain_over_timer = TRef} = State) ->
@@ -1457,6 +1459,3 @@ to_internal({deliver, QoS, Msg}) ->
     #deliver{qos = QoS, msg = Msg};
 to_internal(Msg) ->
     Msg.
-
-to_external(#deliver{qos = QoS, msg = Msg}) ->
-    {deliver, QoS, Msg}.

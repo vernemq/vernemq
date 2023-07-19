@@ -23,7 +23,6 @@ setup() ->
     application:set_env(vmq_server, systree_reg_view, vmq_reg_redis_trie),
     application:set_env(vmq_server, redis_sentinel_endpoints, "[{\"localhost\", 26379}]"),
     application:set_env(vmq_server, redis_lua_dir, PrivDir ++ "/lua_scripts"),
-    application:set_env(vmq_server, listeners, [{vmq, [{{{0,0,0,0}, random_port()}, []}]}]),
     application:set_env(vmq_server, ignore_db_config, true),
     application:load(vmq_plugin),
     application:set_env(vmq_plugin, default_schema_dir, [PrivDir]),
@@ -45,14 +44,11 @@ setup() ->
     vmq_server:start_no_auth(),
     disable_all_plugins().
 
-random_port() ->
-    10000 + (erlang:phash2(node()) rem 10000).
-
 teardown() ->
     teardown(true).
 teardown(ClearRedis) ->
     case ClearRedis of
-        true -> eredis:q(whereis(redis_client), ["FLUSHALL"]);
+        true -> eredis:q(whereis(vmq_redis_client), ["FLUSHALL"]);
         _ -> ok
     end,
     disable_all_plugins(),

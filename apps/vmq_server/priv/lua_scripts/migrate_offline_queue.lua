@@ -1,15 +1,15 @@
-#!lua name=remap_subscriber
+#!lua name=migrate_offline_queue
 
 --[[
 Input:
 ARGV[1] = mountpoint
 ARGV[2] = clientId
-ARGV[3] = node name
-ARGV[4] = clean session
+ARGV[3] = old node name
+ARGV[4] = new node name
 ARGV[5] = timestamp
 
 Output:
-{SubscriptionPresent(boolean), UpdatedSubscription({Node, CS, TopicsWithQoS}), ChangedNode(nil | node)} | 'stale_request' | Error
+nil | Node | Error
 ]]
 
 local function removeTopicsForRouting(MP, node, clientId, topicsWithQoS)
@@ -42,14 +42,14 @@ local function updateNodeForRouting(MP, clientId, topicsWithQoS, currNode, newNo
     end
 end
 
-local function remap_subscriber(_KEYS, ARGV)
+local function migrate_offline_queue(_KEYS, ARGV)
     local STALE_REQUEST='stale_request'
     local toboolean = { ["true"]=true, ["false"]=false }
 
     local MP = ARGV[1]
     local clientId = ARGV[2]
-    local newNode = ARGV[3]
-    local newCleanSession = toboolean[ARGV[4]]
+    local oldNode = ARGV[3]
+    local newNode = ARGV[4]
     local timestampValue = ARGV[5]
 
     local subscriberKey = cmsgpack.pack({MP, clientId})
@@ -60,33 +60,29 @@ local function remap_subscriber(_KEYS, ARGV)
     local S = currValues[1]
     local T = currValues[2]
     if S == nil or T == nil or S == false or T == false then
-        local subscriptionValue = {newNode, newCleanSession, {}}
-        redis.call('HMSET', subscriberKey, subscriptionField, cmsgpack.pack(subscriptionValue), timestampField, timestampValue)
-        redis.call('SADD', newNode, subscriberKey)
-        return {false, subscriptionValue, nil}
-    elseif tonumber(timestampValue) > tonumber(T) and newCleanSession == true then
-        local subscriptionValue = {newNode, true, {}}
-        redis.call('HMSET', subscriberKey, subscriptionField, cmsgpack.pack(subscriptionValue), timestampField, timestampValue)
-        local currNode, _cs, topicsWithQoS = unpack(cmsgpack.unpack(S))
-        removeTopicsForRouting(MP, currNode, clientId, topicsWithQoS)
-        if currNode ~= newNode then
-            redis.call('SMOVE', currNode, newNode, subscriberKey)
-            return {true, subscriptionValue, currNode}
-        end
-        return {true, subscriptionValue, nil}
-    elseif tonumber(timestampValue) > tonumber(T) and newCleanSession == false then
-        local currNode, _cs, topicsWithQoS = unpack(cmsgpack.unpack(S))
-        local subscriptionValue = {newNode, false, topicsWithQoS}
-        redis.call('HMSET', subscriberKey, subscriptionField, cmsgpack.pack(subscriptionValue), timestampField, timestampValue)
-        if currNode ~= newNode then
-            redis.call('SMOVE', currNode, newNode, subscriberKey)
-            updateNodeForRouting(MP, clientId, topicsWithQoS, currNode, newNode)
-            return {true, subscriptionValue, currNode}
-        end
-        return {true, subscriptionValue, nil}
+        return nil
     else
-        return redis.error_reply(STALE_REQUEST)
+        local currNode, cs, topicsWithQoS = unpack(cmsgpack.unpack(S))
+        if currNode == oldNode and cs == true and tonumber(timestampValue) > tonumber(T) then
+            -- delete this subscriber from redis
+            removeTopicsForRouting(MP, currNode, clientId, topicsWithQoS)
+            redis.call('DEL', subscriberKey)
+            redis.call('SREM', currNode, subscriberKey)
+            return nil
+        elseif currNode == oldNode and cs == false and tonumber(timestampValue) > tonumber(T) then
+            -- remap subscriber
+            local subscriptionValue = {newNode, false, topicsWithQoS}
+            redis.call('HMSET', subscriberKey, subscriptionField, cmsgpack.pack(subscriptionValue), timestampField, timestampValue)
+            updateNodeForRouting(MP, clientId, topicsWithQoS, currNode, newNode)
+            redis.call('SMOVE', currNode, newNode, subscriberKey)
+            return newNode
+        elseif currNode ~= oldNode then
+            -- subscriber reconnected to live node before migration
+            return currNode
+        else
+            return nil
+        end
     end
 end
 
-redis.register_function('remap_subscriber', remap_subscriber)
+redis.register_function('migrate_offline_queue', migrate_offline_queue)

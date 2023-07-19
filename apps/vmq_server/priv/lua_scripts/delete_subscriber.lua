@@ -1,10 +1,14 @@
 #!lua name=delete_subscriber
 
 --[[
+Input:
 ARGV[1] = mountpoint
 ARGV[2] = clientId
 ARGV[3] = node name
 ARGV[4] = timestamp
+
+Output:
+true | 'stale_request' | 'unauthorized' | Error
 ]]
 
 local function delete_subscriber(_KEYS, ARGV)
@@ -40,6 +44,7 @@ local function delete_subscriber(_KEYS, ARGV)
                 end
             end
             redis.call('DEL', subscriberKey)
+            redis.call('SREM', newNode, subscriberKey)
             return true
         end
         return redis.error_reply(UNAUTHORIZED)

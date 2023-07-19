@@ -123,10 +123,6 @@ modifiers(on_auth_m5) ->
     ];
 modifiers(auth_on_register) ->
     [
-        {allow_register, fun val_bool/1},
-        {allow_publish, fun val_bool/1},
-        {allow_subscribe, fun val_bool/1},
-        {allow_unsubscribe, fun val_bool/1},
         {max_message_size, fun val_int/1},
         {subscriber_id, fun val_subscriber_id/1},
         {username, fun val_binary/1},

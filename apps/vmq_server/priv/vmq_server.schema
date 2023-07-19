@@ -2,8 +2,23 @@
 %% ex: ft=erlang
 
 {mapping, "redis_sentinel_endpoints", "vmq_server.redis_sentinel_endpoints", [{default, "[{\"127.0.0.1\", 26379}]"}, {datatype, string}]}.
-{mapping, "redis_database", "vmq_server.redis_database", [{default, 0}, {datatype, integer}]}.
+{mapping, "redis_sentinel_database", "vmq_server.redis_sentinel_database", [{default, 0}, {datatype, integer}]}.
 {mapping, "redis_lua_dir", "vmq_server.redis_lua_dir", [{default, "./etc/lua"}, {datatype, string}]}.
+
+%% @doc This option specifies the time interval taken by the reaper process to reap the 
+%% messages/subscribers of remote node which went down from redis.
+{mapping, "redis_reaper_interval", "vmq_server.redis_reaper_interval", [{default, 100}, {datatype, integer}]}.
+
+%% @doc This option specifies the max number of subscribers/clients that reaper can reap in one redis call.
+{mapping, "redis_reaper_max_clients", "vmq_server.redis_reaper_max_clients", [{default, 20}, {datatype, integer}]}.
+
+%% @doc This option specifies the max number of messages that can be polled in one redis call 
+%% from the node's main queue.
+{mapping, "redis_main_queue_max_msgs", "vmq_server.redis_main_queue_max_msgs", [{default, 5}, {datatype, integer}]}.
+
+%% @doc This option specifies the number of redis shards used for message passing or node main queues. This number
+%% should be equal to the number of connect options.
+{mapping, "num_redis_main_queue_shards", "vmq_server.num_redis_main_queue_shards", [{default, 1}, {datatype, integer}]}.
 
 %% @doc This option specifies the list of comma separated connect options list
 %% [[{host, "localhost"}, {port, 1234}]] of redis shards used for message passing.
@@ -23,20 +38,14 @@
     "redis_queue_sleep_interval",
     "vmq_server.redis_queue_sleep_interval", [{default, 0}, {datatype, integer}]}.
 
-%% @doc Rolls out all_queues_setup_check.
+%% @doc This option specifies the interval in which the message store must retry the failed operations.
 {mapping, "message_store_retry_interval", "vmq_server.message_store_retry_interval", [{default, 2000},
                                                                                       {datatype, integer}
                                                                                      ]}.
-%% @doc Rolls out all_queues_setup_check.
+%% @doc This option specifies the maximum number of retries in case of failed operations.
 {mapping, "message_store_nr_of_retries", "vmq_server.message_store_nr_of_retries", [{default, 2},
                                                                                     {datatype, integer}
                                                                                    ]}.
-
-%% @doc Rolls out all_queues_setup_check.
-{mapping, "all_queues_setup_check_rollout", "vmq_server.all_queues_setup_check_rollout", [
-                                                                                          {default, on},
-                                                                                          {datatype, flag}
-                                                                                         ]}.
 
 %% @doc Allow anonymous users to connect, default is 'off'. !!NOTE!!
 %% Enabling this completely disables authentication of the clients and
@@ -46,30 +55,6 @@
                                                                {default, off},
                                                                {datatype, flag}
                                                               ]}.
-
-%% @doc Allow new client connections even when a VerneMQ cluster is inconsistent.
-{mapping, "allow_register_during_netsplit", "vmq_server.allow_register_during_netsplit", [
-                                                                                          {default, off},
-                                                                                          {datatype, flag}
-                                                                                         ]}.
-
-%% @doc Allow message publishs even when a VerneMQ cluster is inconsistent.
-{mapping, "allow_publish_during_netsplit", "vmq_server.allow_publish_during_netsplit", [
-                                                                                        {default, off},
-                                                                                        {datatype, flag}
-                                                                                       ]}.
-
-%% @doc Allow new subscriptions even when a VerneMQ cluster is inconsistent.
-{mapping, "allow_subscribe_during_netsplit", "vmq_server.allow_subscribe_during_netsplit", [
-                                                                                            {default, off},
-                                                                                            {datatype, flag}
-                                                                                           ]}.
-
-%% @doc Allow clients to unsubscribe when a VerneMQ cluster is inconsistent.
-{mapping, "allow_unsubscribe_during_netsplit", "vmq_server.allow_unsubscribe_during_netsplit", [
-                                                                                                {default, off},
-                                                                                                {datatype, flag}
-                                                                                               ]}.
 
 %% @doc Allows a client to logon multiple times using the same client
 %% id (non-standard behaviour!). This feature is DEPRECATED and will
@@ -354,21 +339,6 @@
                                                                       {datatype, flag}
                                                                      ]}.
 
-%% @doc specifies how many size in bytes are buffered in case the remote node
-%% is not available.
-{mapping, "outgoing_clustering_buffer_size", "vmq_server.outgoing_clustering_buffer_size", [
-                                                                                            {default, 10000},
-                                                                                            {datatype, integer},
-                                                                                            hidden
-                                                                                           ]}.
-
-%% @doc specifies the timeout for enqueing something in a queue on a remote node.
-{mapping, "remote_enqueue_timeout", "vmq_server.remote_enqueue_timeout", [
-                                                                          {default, 5000},
-                                                                          {datatype, [integer, {atom, infinity}]},
-                                                                          hidden
-                                                                         ]}.
-
 %% @doc specifies the connect timeout.
 {mapping, "mqtt_connect_timeout", "vmq_server.mqtt_connect_timeout", [
                                                             {default, 5000},
@@ -513,26 +483,6 @@
                                                                                   {datatype, [integer, {atom, infinity}]},
                                                                                   hidden
                                                                                  ]}.
-{mapping, "listener.vmq.max_connections", "vmq_server.listeners", [
-                                                                            {default, -1},
-                                                                            {datatype, [integer, {atom, infinity}]},
-                                                                            hidden
-                                                                           ]}.
-{mapping, "listener.vmq.$name.max_connections", "vmq_server.listeners", [
-                                                                                  {default, -1},
-                                                                                  {datatype, [integer, {atom, infinity}]},
-                                                                                  hidden
-                                                                                 ]}.
-{mapping, "listener.vmqs.max_connections", "vmq_server.listeners", [
-                                                                            {default, -1},
-                                                                            {datatype, [integer, {atom, infinity}]},
-                                                                            hidden
-                                                                           ]}.
-{mapping, "listener.vmqs.$name.max_connections", "vmq_server.listeners", [
-                                                                                  {default, -1},
-                                                                                  {datatype, [integer, {atom, infinity}]},
-                                                                                  hidden
-                                                                                 ]}.
 {mapping, "listener.http.max_connections", "vmq_server.listeners", [
                                                                                   {default, -1},
                                                                                   {datatype, [integer, {atom, infinity}]},
@@ -621,28 +571,6 @@
 
 {mapping, "listener.wss.$name.nr_of_acceptors", "vmq_server.listeners", [
                                                                                   {default, -1},
-                                                                                  {datatype, integer},
-                                                                                  {include_default, "default"},
-                                                                                  hidden
-                                                                                 ]}.
-{mapping, "listener.vmq.nr_of_acceptors", "vmq_server.listeners", [
-                                                                                  {default, 10},
-                                                                                  {datatype, integer},
-                                                                                  hidden
-                                                                                 ]}.
-{mapping, "listener.vmq.$name.nr_of_acceptors", "vmq_server.listeners", [
-                                                                                  {default, 10},
-                                                                                  {datatype, integer},
-                                                                                  {include_default, "default"},
-                                                                                  hidden
-                                                                                 ]}.
-{mapping, "listener.vmqs.nr_of_acceptors", "vmq_server.listeners", [
-                                                                                  {default, 10},
-                                                                                  {datatype, integer},
-                                                                                  hidden
-                                                                                 ]}.
-{mapping, "listener.vmqs.$name.nr_of_acceptors", "vmq_server.listeners", [
-                                                                                  {default, 10},
                                                                                   {datatype, integer},
                                                                                   {include_default, "default"},
                                                                                   hidden
@@ -854,23 +782,6 @@
   hidden
  ]}.
 
-%% @doc listener.vmq.clustering is the IP address and TCP port that
-%% the broker will bind to accept connections from other cluster
-%% nodes e.g:
-%% - listener.vmq.clustering = 0.0.0.0:18883
-%% This also works for SSL listeners:
-%% - listener.vmqs.clustering = 0.0.0.0:18884
-{mapping, "listener.vmq.$name", "vmq_server.listeners", [
-                                                           {default, { "{{cluster_default_ip}}", {{cluster_default_port}} }},
-                                                           {datatype, ip},
-                                                            {include_default, "clustering"}
-                                                          ]}.
-{mapping, "listener.vmqs.$name", "vmq_server.listeners", [
-                                                           {default, { "{{cluster_default_ip}}", {{cluster_default_port}} }},
-                                                           {datatype, ip},
-                                                           hidden
-                                                          ]}.
-
 %% @doc listener.http.default is the IP address and TCP port that
 %% the broker will bind to accept HTTP connections
 %% - listener.http.default = 0.0.0.0:8888
@@ -969,24 +880,6 @@
                                                                     {datatype, string},
                                                                     hidden
                                                                 ]}.
-{mapping, "listener.vmq.mountpoint", "vmq_server.listeners", [
-                                                              {datatype, string},
-                                                              hidden
-                                                             ]}.
-
-{mapping, "listener.vmq.$name.mountpoint", "vmq_server.listeners", [
-                                                                    {datatype, string},
-                                                                    hidden
-                                                                   ]}.
-{mapping, "listener.vmqs.mountpoint", "vmq_server.listeners", [
-                                                               {datatype, string},
-                                                               hidden
-                                                              ]}.
-
-{mapping, "listener.vmqs.$name.mountpoint", "vmq_server.listeners", [
-                                                                     {datatype, string},
-                                                                     hidden
-                                                                    ]}.
 
 %% @doc The cafile is used to define the path to a file containing
 %% the PEM encoded CA certificates that are trusted. Set the cafile
@@ -1805,18 +1698,6 @@
                                                                   {datatype, integer},
                                                                   hidden
                                                                  ]}.
-
-%% @doc Specifies the metadata plugin that is used for storing and replicating
-%% VerneMQ metadata objects such as MQTT subscriptions and retained messages.
-%%
-%% The default is kept at `vmq_plumtree` for compatibility with existing deployments.
-%%
-%% For new cluster deployments, the recommendation is to use 'vmq_swc' from the
-%% beginning. Note that the 2 protocols are not compatible, so clusters can't be
-%% mixed.
-{mapping, "metadata_plugin", "vmq_server.metadata_impl", [{default, {{ metadata_plugin }} },
-                                                          {datatype, {enum, [vmq_plumtree, vmq_swc]}}
-                                                         ]}.
 
 {mapping, "message_store_plugin", "vmq_server.message_store_impl", [{default, vmq_generic_msg_store},
                                                                     {datatype, atom},

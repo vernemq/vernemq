@@ -101,9 +101,6 @@
 -define(METRIC_QUEUE_MESSAGE_OUT, queue_message_out).
 %% unused/deprecated
 -define(METRIC_CLIENT_EXPIRED, client_expired).
--define(METRIC_CLUSTER_BYTES_RECEIVED, cluster_bytes_received).
--define(METRIC_CLUSTER_BYTES_SENT, cluster_bytes_sent).
--define(METRIC_CLUSTER_BYTES_DROPPED, cluster_bytes_dropped).
 -define(METRIC_SOCKET_OPEN, socket_open).
 -define(METRIC_SOCKET_CLOSE, socket_close).
 -define(METRIC_SOCKET_CLOSE_TIMEOUT, socket_close_timeout).

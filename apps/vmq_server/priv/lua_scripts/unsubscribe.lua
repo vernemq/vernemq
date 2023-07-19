@@ -1,6 +1,7 @@
 #!lua name=unsubscribe
 
 --[[
+Input:
 ARGV[1] = mountpoint
 ARGV[2] = clientId
 ARGV[3] = node name
@@ -11,6 +12,9 @@ ARGV[7] = topic2
 .
 .
 .
+
+Output:
+true | 'stale_request' | 'unauthorized' | Error
 ]]
 
 local function removeTopicForRouting(MP, node, clientId, topic, qos)

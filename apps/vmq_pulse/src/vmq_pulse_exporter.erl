@@ -196,7 +196,7 @@ create_pulse_data(ClusterId, Node) ->
                 [{App, Vsn} || {App, _, Vsn} <- application:which_applications()]
             end},
             {system_version, fun() -> erlang:system_info(system_version) end},
-            {cluster_status, fun vmq_cluster:status/0},
+            {cluster_status, fun vmq_cluster_mon:status/0},
             {uname, fun() -> os:cmd("uname -a") end}
         ],
     lists:map(fun({K, V}) -> {K, maybe_rescue(V)} end, PulseData0).
