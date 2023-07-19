@@ -67,7 +67,7 @@ msg_store_find(SubscriberId) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init(_) ->
+init([]) ->
     {ok, EngineModule} = application:get_env(vmq_generic_offline_msg_store, msg_store_engine),
     {ok, Opts} = application:get_env(vmq_generic_offline_msg_store, msg_store_opts),
     Timeout = proplists:get_value(query_timeout, Opts, 2000),
@@ -125,11 +125,8 @@ handle_cast(_Request, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(
-    {'EXIT', _, _},
-    #state{engine_module = EngineModule, options = Opts}
-) ->
-    reconnect(EngineModule, Opts);
+handle_info({'EXIT', Pid, _}, #state{engine = Engine} = State) when Engine == Pid ->
+    reconnect(State);
 handle_info(Info, State) ->
     lager:info("Unknown info: ~p", [Info]),
     {noreply, State}.
@@ -163,14 +160,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-reconnect(EngineModule, Opts) ->
+reconnect(#state{engine_module = EngineModule, options = Opts} = State) ->
     case apply(EngineModule, open, [Opts]) of
         {ok, EngineState} ->
-            {noreply, #state{engine = EngineState}};
+            {noreply, State#state{engine = EngineState}};
         {error, Reason} ->
-            lager:debug("Reconnection Error: ~p", [Reason]),
-            timer:sleep(2000),
-            reconnect(EngineModule, Opts)
+            {stop, Reason, State}
     end.
 
 safe_call(Request) ->

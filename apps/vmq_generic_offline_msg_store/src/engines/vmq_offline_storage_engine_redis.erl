@@ -26,15 +26,7 @@ open(Opts) ->
                                {timeout, proplists:get_value(connect_timeout, Opts, 5000)}]
                     },
                    {database, Database}],
-    open_(ConnectOpts).
-open_(Opts) ->
-    case eredis:start_link(Opts) of
-        {ok, _} = OkResponse -> OkResponse;
-        {error, Reason} ->
-            lager:error("Error connecting db: ~p", [Reason]),
-            timer:sleep(2000),
-            open_(Opts)
-    end.
+    eredis:start_link(ConnectOpts).
 
 write(Client, SIdB, _MsgRef, MsgB, Timeout) ->
     vmq_redis:query(Client, ["RPUSH", SIdB, MsgB], ?RPUSH, ?MSG_STORE_WRITE, Timeout).
