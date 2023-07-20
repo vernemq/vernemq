@@ -111,13 +111,15 @@
         %{graphite_prefix, ""}
 
         % Systree
-        {systree_enabled, true}
+        {systree_enabled, true},
         %{systree_interval, 20000},
         %{systree_prefix, [<<"$SYS">>, NodenameBinary]},
         %{systree_mountpoint, ""},
         %{systree_qos, 0},
         %{systree_retain, false},
         %{systree_reg_view, vmq_reg_trie},
+
+        {cache_shared_subscriptions_locally, false}
 
         % end env
     ]}

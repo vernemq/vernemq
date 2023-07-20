@@ -19,10 +19,15 @@
     cluster_dead_node_subscriber_reaper_test/1,
     cluster_dead_node_message_reaper_test/1,
     shared_subs_random_policy_test/1,
+    shared_subs_random_policy_test_with_local_caching/1,
     shared_subs_random_policy_online_first_test/1,
+    shared_subs_random_policy_online_first_test_with_local_caching/1,
     shared_subs_random_policy_all_offline_test/1,
+    shared_subs_random_policy_all_offline_test_with_local_caching/1,
     shared_subs_prefer_local_policy_test/1,
+    shared_subs_prefer_local_policy_test_with_local_caching/1,
     shared_subs_local_only_policy_test/1,
+    shared_subs_local_only_policy_test_with_local_caching/1,
     cross_node_publish_subscribe/1,
     routing_table_survives_node_restart/1
 ]).
@@ -116,11 +121,16 @@ all() ->
         cluster_dead_node_subscriber_reaper_test,
         cluster_dead_node_message_reaper_test,
         shared_subs_random_policy_test,
+        shared_subs_random_policy_test_with_local_caching,
+        shared_subs_random_policy_online_first_test,
         %% This test has been skipped because with introduction of in-mem shared subscriptions cache, the test is not valid anymore
-        %% shared_subs_random_policy_online_first_test,
+        %% shared_subs_random_policy_online_first_test_with_local_caching,
         shared_subs_random_policy_all_offline_test,
+        shared_subs_random_policy_all_offline_test_with_local_caching,
         shared_subs_prefer_local_policy_test,
+        shared_subs_prefer_local_policy_test_with_local_caching,
         shared_subs_local_only_policy_test,
+        shared_subs_local_only_policy_test_with_local_caching,
         cross_node_publish_subscribe,
         routing_table_survives_node_restart
     ].
@@ -739,10 +749,13 @@ cluster_dead_node_message_reaper_test(Config) ->
            {ToMigrate, ToMigrate},
            RestNodesWithPorts).
 
+shared_subs_prefer_local_policy_test_with_local_caching(Config) ->
+    shared_subs_prefer_local_policy_test([{cache_shared_subscriptions_locally, true} | Config]).
 shared_subs_prefer_local_policy_test(Config) ->
     ensure_cluster(Config),
     [LocalNode | OtherNodes] = _Nodes = nodes_(Config),
     set_shared_subs_policy(prefer_local, nodenames(Config)),
+    set_shared_subs_local_caching(Config),
 
     LocalSubscriberSockets = connect_subscribers(<<"$share/share/sharedtopic">>, 5, [LocalNode]),
     RemoteSubscriberSockets = connect_subscribers(<<"$share/share/sharedtopic">>, 5, OtherNodes),
@@ -771,10 +784,13 @@ shared_subs_prefer_local_policy_test(Config) ->
     [ok = gen_tcp:close(S) || S <- LocalSubscriberSockets ++ RemoteSubscriberSockets],
     ok.
 
+shared_subs_local_only_policy_test_with_local_caching(Config) ->
+    shared_subs_local_only_policy_test([{cache_shared_subscriptions_locally, true} | Config]).
 shared_subs_local_only_policy_test(Config) ->
     ensure_cluster(Config),
     [LocalNode | OtherNodes] = _Nodes = nodes_(Config),
     set_shared_subs_policy(local_only, nodenames(Config)),
+    set_shared_subs_local_caching(Config),
 
     LocalSubscriberSockets = connect_subscribers(<<"$share/share/sharedtopic">>, 5, [LocalNode]),
     RemoteSubscriberSockets = connect_subscribers(<<"$share/share/sharedtopic">>, 5, OtherNodes),
@@ -817,10 +833,14 @@ shared_subs_local_only_policy_test(Config) ->
     [ok = gen_tcp:close(S) || S <- RemoteSubscriberSockets],
     ok.
 
+shared_subs_random_policy_test_with_local_caching(Config) ->
+    shared_subs_random_policy_test([{cache_shared_subscriptions_locally, true} | Config]).
 shared_subs_random_policy_test(Config) ->
     ensure_cluster(Config),
     Nodes = nodes_(Config),
+
     set_shared_subs_policy(random, nodenames(Config)),
+    set_shared_subs_local_caching(Config),
 
     SubscriberSockets = connect_subscribers(<<"$share/share/sharedtopic">>, 10, Nodes),
 
@@ -847,10 +867,13 @@ shared_subs_random_policy_test(Config) ->
     ok.
 
 %% TODO: enable this after groups are honoured in shared subscriptions
+shared_subs_random_policy_online_first_test_with_local_caching(Config) ->
+    shared_subs_random_policy_online_first_test([{cache_shared_subscriptions_locally, true} | Config]).
 shared_subs_random_policy_online_first_test(Config) ->
     ensure_cluster(Config),
     Nodes = nodes_(Config),
     set_shared_subs_policy(random, nodenames(Config)),
+    set_shared_subs_local_caching(Config),
 
     [OnlineSubNode | RestNodes] = Nodes,
     create_offline_subscribers(<<"$share/share/sharedtopic">>, 10, RestNodes),
@@ -878,10 +901,13 @@ shared_subs_random_policy_online_first_test(Config) ->
     [ok = gen_tcp:close(S) || S <- SubscriberSocketsOnline],
     ok.
 
+shared_subs_random_policy_all_offline_test_with_local_caching(Config) ->
+    shared_subs_random_policy_all_offline_test([{cache_shared_subscriptions_locally, true} | Config]).
 shared_subs_random_policy_all_offline_test(Config) ->
     ensure_cluster(Config),
     Nodes = nodes_(Config),
     set_shared_subs_policy(random, nodenames(Config)),
+    set_shared_subs_local_caching(Config),
 
     OfflineClients = create_offline_subscribers(<<"$share/share/sharedtopic">>, 10, Nodes),
 
@@ -1087,6 +1113,19 @@ set_shared_subs_policy(Policy, Nodes) ->
     lists:foreach(
         fun(N) ->
             {ok, []} = rpc:call(N, vmq_server_cmd, set_config, [shared_subscription_policy, Policy])
+        end,
+        Nodes
+    ).
+
+set_shared_subs_local_caching(Config) ->
+    Value = case lists:keyfind(cache_shared_subscriptions_locally, 1, Config) of
+        {_, V} -> V;
+        false -> false
+    end,
+    Nodes = nodenames(Config),
+    lists:foreach(
+        fun(N) ->
+            {ok, []} = rpc:call(N, vmq_server_cmd, set_config, [cache_shared_subscriptions_locally, Value])
         end,
         Nodes
     ).

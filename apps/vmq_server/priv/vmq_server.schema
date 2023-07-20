@@ -47,6 +47,16 @@
                                                                                     {datatype, integer}
                                                                                    ]}.
 
+%% @doc This option caches the shared subscription locally, default is 'off'. !!NOTE!!
+%% Local shared subscriptions currently do not honor shared subscription groups properly.
+%% It is recommended to use shared subscription topics only for shared subscription use-cases.
+%% Do not expect broker to route msgs for same topic to both shared subscribers and normal subscribers.
+%% It will only route to shared subscribers irrespective of shared subscription groups.
+{mapping, "cache_shared_subscriptions_locally", "vmq_server.cache_shared_subscriptions_locally", [
+                                                               {default, off},
+                                                               {datatype, flag}
+                                                              ]}.
+
 %% @doc Allow anonymous users to connect, default is 'off'. !!NOTE!!
 %% Enabling this completely disables authentication of the clients and
 %% should only be used for testing/development purposes or in case

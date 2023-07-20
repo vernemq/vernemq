@@ -142,18 +142,24 @@ subscribe_op({MP, ClientId} = SubscriberId, Topics) ->
         {error, _} = ErrRes ->
             ErrRes;
         _ ->
-            lists:foreach(
-                fun
-                    ({[<<"$share">>, _Group | Topic], QoS}) ->
-                        Key = {MP, Topic},
-                        Value = {ClientId, QoS},
-                        ets:insert(?SHARED_SUBS_ETS_TABLE, {{Key, Value}}),
-                        vmq_metrics:incr_cache_insert(?LOCAL_SHARED_SUBS);
-                    (_) ->
-                        ok
-                end,
-                Topics
-            ),
+            CacheLocally = vmq_config:get_env(cache_shared_subscriptions_locally, false),
+            if
+                CacheLocally ->
+                    lists:foreach(
+                        fun
+                            ({[<<"$share">>, _Group | Topic], QoS}) ->
+                                Key = {MP, Topic},
+                                Value = {ClientId, QoS},
+                                ets:insert(?SHARED_SUBS_ETS_TABLE, {{Key, Value}}),
+                                vmq_metrics:incr_cache_insert(?LOCAL_SHARED_SUBS);
+                            (_) ->
+                                ok
+                        end,
+                        Topics
+                    );
+                true ->
+                    skip_caching
+            end,
             Existing = subscriptions_exist(OldSubs, Topics),
             QoSTable =
                 lists:foldl(

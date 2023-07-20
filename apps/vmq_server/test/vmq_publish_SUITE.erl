@@ -1034,9 +1034,13 @@ shared_subscription_online_first(Cfg) ->
     disable_on_publish(),
     disable_on_subscribe().
 
+%% This will only work in case of shared subscription local caching
 shared_subscription_does_not_honor_grouping(Cfg) ->
     enable_on_publish(),
     enable_on_subscribe(),
+
+    vmq_server_cmd:set_config(cache_shared_subscriptions_locally, true),
+
     Connack = mqtt5_v4compat:gen_connack(success, Cfg),
     Prefix = vmq_cth:ustr(Cfg),
     PubConnect = mqtt5_v4compat:gen_connect(Prefix ++ "shared-sub-pub", [{keepalive, 60}], Cfg),
