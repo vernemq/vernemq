@@ -27,7 +27,6 @@
 -ifdef(TEST).
 -export([
     auth_conf/1,
-    set_user_auth_required/1,
     config_ovr_listener/10
 ]).
 -endif.
@@ -532,28 +531,7 @@ is_authorized(Req, State) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Currently we support only authentication via "on_behalf_of", or by having a predefined
-% user. We can add further authentication schemes later.
--ifndef(TEST).
-is_user_auth_required() ->
-    true.
--endif.
-
--ifdef(TEST).
-is_user_auth_required() ->
-    case ets:whereis(test_auth_required) of
-        undefined -> false;
-        _ -> element(2, lists:nth(1, ets:lookup(test_auth_required, testauth)))
-    end.
-
-set_user_auth_required(Bool) ->
-    case ets:whereis(test_auth_required) of
-        undefined ->
-            ets:new(test_auth_required, [named_table]),
-            ets:insert(test_auth_required, {testauth, Bool});
-        _ ->
-            ets:insert(test_auth_required, {testauth, Bool})
-    end.
--endif.
+% user. Furthermore, anonymous access is supported. We can add further authentication schemes later.
 
 check_subscriber_ovr(SubscriberOvr, ClientId) ->
     NewMP = element(1, SubscriberOvr),
@@ -572,58 +550,56 @@ check_auth(
     Mountpoint,
     Payload
 ) ->
-    AuthOnRegister =
-        case is_user_auth_required() of
-            true ->
+    AllowAnonymous = vmq_config:get_env(allow_anonymous, false),
+    case AllowAnonymous of
+        false ->
+            AuthOnRegister =
                 case auth_on_register(Peer, {Mountpoint, ClientId}, User, Password) of
                     {ok} -> {ok, []};
                     {ok, Overrides} -> {ok, Overrides};
                     {error, _} -> {error, authentication_failed, []}
-                end;
-            false ->
-                {ok, []}
-        end,
+                end,
 
-    {ok, COvrMountpoint} =
-        case AuthOnRegister of
-            {ok, []} ->
-                {ok, Mountpoint};
-            {ok, Ovr} ->
-                {ok, MPPOvr, _COvrTopic, _COvrQoS, _CMessageSize} = check_overrides(
-                    Ovr, [], ClientId, Mountpoint, Topic, QoS, 0
-                ),
-                {ok, MPPOvr};
-            _ ->
-                {ok, Mountpoint}
-        end,
+            {ok, COvrMountpoint} =
+                case AuthOnRegister of
+                    {ok, []} ->
+                        {ok, Mountpoint};
+                    {ok, Ovr} ->
+                        {ok, MPPOvr, _COvrTopic, _COvrQoS, _CMessageSize} = check_overrides(
+                            Ovr, [], ClientId, Mountpoint, Topic, QoS, 0
+                        ),
+                        {ok, MPPOvr};
+                    _ ->
+                        {ok, Mountpoint}
+                end,
 
-    AuthOnPublish =
-        case AuthOnRegister of
-            {ok, _} ->
-                case is_user_auth_required() of
-                    true ->
+            AuthOnPublish =
+                case AuthOnRegister of
+                    {ok, _} ->
                         case
-                            auth_on_publish({COvrMountpoint, ClientId}, User, Topic, QoS, Payload)
+                            auth_on_publish(
+                                {COvrMountpoint, ClientId}, User, Topic, QoS, Payload
+                            )
                         of
                             {ok} -> {ok, []};
                             {ok, OverridesOnPublish} -> {ok, OverridesOnPublish};
                             {error, _} -> {error, authorization_failed, []}
                         end;
-                    false ->
-                        {ok, []}
-                end;
-            _ ->
-                {error, authentication_failed, []}
-        end,
-    case {AuthOnRegister, AuthOnPublish} of
-        {{ok, []}, {ok, []}} ->
-            {ok, [], []};
-        {{ok, OverridesRegister}, {ok, OverridesPublish}} ->
-            {ok, OverridesRegister, OverridesPublish};
-        {{error, Error, ErrorData}, _} ->
-            {error, Error, ErrorData};
-        {_, {error, Error, ErrorData}} ->
-            {error, Error, ErrorData}
+                    _ ->
+                        {error, authentication_failed, []}
+                end,
+            case {AuthOnRegister, AuthOnPublish} of
+                {{ok, []}, {ok, []}} ->
+                    {ok, [], []};
+                {{ok, OverridesRegister}, {ok, OverridesPublish}} ->
+                    {ok, OverridesRegister, OverridesPublish};
+                {{error, Error, ErrorData}, _} ->
+                    {error, Error, ErrorData};
+                {_, {error, Error, ErrorData}} ->
+                    {error, Error, ErrorData}
+            end;
+        _ ->
+            {ok, [], []}
     end.
 
 auth_on_register(Peer, SubscriberId, User, Password) ->
