@@ -1,3 +1,5 @@
+- 'vmq_http_pub': Allow anonymous access (allow_anonymous = on)
+
 ## VerneMQ 1.13.0
 
 - New Plugin: 'vmq_http_pub', allows to ingest MQTT messages via a HTTP REST interface
