@@ -1,4 +1,5 @@
-- Bugix: Persist QoS0 to disk in case of outgoing upgrade_qos (#2220)
+- Improve systemd support: Add support of systemd-notify
+- Bugfix: Persist QoS0 to disk in case of outgoing upgrade_qos (#2220)
 - 'vmq_http_api_v2': Set apikey as new default authentication method
 - Bugfix: Remove 'vmq_http_pub' from default listener group and enforce apikey as default (#2222)
 - New feature: "null" message store that disables persisting messages
