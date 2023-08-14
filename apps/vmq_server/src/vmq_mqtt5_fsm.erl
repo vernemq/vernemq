@@ -22,7 +22,8 @@
     init/3,
     data_in/2,
     msg_in/2,
-    info/2
+    info/2,
+    subscriber/1
 ]).
 
 -export([msg_ref/0]).
@@ -120,6 +121,11 @@
 -export_type([state/0]).
 -define(state_val(Key, Args, State), prop_val(Key, Args, State#state.Key)).
 -define(cap_val(Key, Args, State), prop_val(Key, Args, CAPSettings#cap_settings.Key)).
+
+subscriber({connected, State}) ->
+    State#state.subscriber_id;
+subscriber(_) ->
+    undefined.
 
 init(
     Peer,

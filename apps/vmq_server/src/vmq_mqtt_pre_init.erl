@@ -23,8 +23,12 @@
 -export([
     init/2,
     data_in/2,
-    msg_in/2
+    msg_in/2,
+    subscriber/1
 ]).
+
+subscriber(_) ->
+    undefined.
 
 -record(state, {
     peer :: peer(),
