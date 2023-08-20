@@ -49,6 +49,8 @@
         {max_offline_messages, -1},
         % balance vs fanout
         {queue_deliver_mode, fanout},
+        % subscriber retain mode immediate
+        {subscriber_retain_mode, immediate},
         % fifo vs lifo
         {queue_type, fifo},
         % never

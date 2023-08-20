@@ -1,3 +1,4 @@
+- New feature: Synchronized wait for retrained message store
 - Introduce credentials obfusication that avoid printing secrets to logs and stack traces (breaking change)
 - New feature: Support prometheus namespace
 - New feature: Add logger support, instead of lager
