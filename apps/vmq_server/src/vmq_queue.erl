@@ -44,6 +44,7 @@
     notify/1,
     notify_recv/1,
     enqueue/2,
+    front/2,
     status/1,
     info/1,
     add_session/3,
@@ -109,6 +110,7 @@
     max_msgs_per_drain_step,
     waiting_call,
     opts,
+    insert_fun = enqueue,
     delayed_will ::
         {Delay :: non_neg_integer(), Fun :: function()}
         | undefined,
@@ -139,6 +141,9 @@ notify_recv(Queue) when is_pid(Queue) ->
 
 enqueue(Queue, Msg) when is_pid(Queue) ->
     gen_fsm:send_event(Queue, {enqueue, to_internal(Msg)}).
+
+front(Queue, Msg) when is_pid(Queue) ->
+    gen_fsm:send_event(Queue, {front, to_internal(Msg)}).
 
 enqueue_many(Queue, Msgs) when is_pid(Queue) and is_list(Msgs) ->
     NMsgs = lists:map(fun to_internal/1, Msgs),
@@ -246,6 +251,12 @@ online({notify_recv, SessionPid}, #state{id = SId, sessions = Sessions} = State)
 online({enqueue, Msg}, State) ->
     _ = vmq_metrics:incr_queue_in(),
     {next_state, online, insert(Msg, State)};
+online({front, Msg}, State) ->
+    _ = vmq_metrics:incr_queue_in(),
+    State0 = State#state{insert_fun = front},
+    State1 = insert(Msg, State0),
+    State2 = State1#state{insert_fun = enqueue},
+    {next_state, online, State2};
 online(Event, State) ->
     ?LOG_ERROR("got unknown event in online state ~p", [Event]),
     {next_state, online, State}.
@@ -923,7 +934,9 @@ handle_session_down(
     end.
 
 handle_waiting_acks_and_msgs(
-    WAcks, NextMsgId, #state{id = SId, sessions = Sessions, offline = Offline} = State
+    WAcks,
+    NextMsgId,
+    #state{id = SId, sessions = Sessions, offline = Offline, insert_fun = QFun} = State
 ) ->
     %% we can only handle the last waiting acks and msgs if this is
     %% the last session active for this queue.
@@ -936,12 +949,13 @@ handle_waiting_acks_and_msgs(
                         (#deliver{msg = #vmq_msg{persisted = true} = Msg} = D, AccOffline) ->
                             queue_insert(
                                 true,
+                                QFun,
                                 D#deliver{msg = Msg#vmq_msg{persisted = false}},
                                 AccOffline,
                                 SId
                             );
                         (Msg, AccOffline) ->
-                            queue_insert(true, Msg, AccOffline, SId)
+                            queue_insert(true, QFun, Msg, AccOffline, SId)
                     end,
                     Offline,
                     WAcks
@@ -1079,45 +1093,58 @@ insert(
     %% no session online, skip QoS0 message for QoS1 or QoS2 Subscription (without QoS upgrade)
     _ = vmq_metrics:incr_queue_unhandled(1),
     State;
-insert(MsgOrRef, #state{id = SId, offline = Offline, sessions = Sessions} = State) when
+insert(
+    MsgOrRef, #state{id = SId, offline = Offline, sessions = Sessions, insert_fun = QFun} = State
+) when
     Sessions == #{}
 ->
     %% no session online, insert in offline queue
-    State#state{offline = queue_insert(true, maybe_set_expiry_ts(MsgOrRef), Offline, SId)};
+    State#state{offline = queue_insert(true, QFun, maybe_set_expiry_ts(MsgOrRef), Offline, SId)};
 %% Online Queue
-insert(MsgOrRef, #state{id = SId, deliver_mode = fanout, sessions = Sessions} = State) ->
+insert(
+    MsgOrRef,
+    #state{id = SId, deliver_mode = fanout, sessions = Sessions, insert_fun = QFun} = State
+) ->
     {NewSessions, _} = session_fold(
-        SId, fun session_insert/3, maybe_set_expiry_ts(MsgOrRef), Sessions
+        SId, QFun, fun session_insert/4, maybe_set_expiry_ts(MsgOrRef), Sessions
     ),
     State#state{sessions = NewSessions};
-insert(MsgOrRef, #state{id = SId, deliver_mode = balance, sessions = Sessions} = State) ->
+insert(
+    MsgOrRef,
+    #state{id = SId, deliver_mode = balance, sessions = Sessions, insert_fun = QFun} = State
+) ->
     Pids = maps:keys(Sessions),
     RandomPid = lists:nth(rand:uniform(maps:size(Sessions)), Pids),
     RandomSession = maps:get(RandomPid, Sessions),
-    {UpdatedSession, _} = session_insert(SId, RandomSession, maybe_set_expiry_ts(MsgOrRef)),
+    {UpdatedSession, _} = session_insert(SId, QFun, RandomSession, maybe_set_expiry_ts(MsgOrRef)),
     State#state{sessions = maps:update(RandomPid, UpdatedSession, Sessions)}.
 
-session_insert(SId, #session{status = active, queue = Q} = Session, MsgOrRef) ->
+session_insert(SId, QFun, #session{status = active, queue = Q} = Session, MsgOrRef) ->
     {
-        send(SId, Session#session{queue = queue_insert(false, MsgOrRef, Q, SId)}),
+        send(SId, Session#session{queue = queue_insert(false, QFun, MsgOrRef, Q, SId)}),
         MsgOrRef
     };
-session_insert(SId, #session{status = passive, queue = Q} = Session, MsgOrRef) ->
+session_insert(SId, QFun, #session{status = passive, queue = Q} = Session, MsgOrRef) ->
     {
-        Session#session{queue = queue_insert(false, MsgOrRef, Q, SId)},
+        Session#session{queue = queue_insert(false, QFun, MsgOrRef, Q, SId)},
         MsgOrRef
     };
-session_insert(SId, #session{status = notify, queue = Q} = Session, MsgOrRef) ->
-    {send_notification(Session#session{queue = queue_insert(false, MsgOrRef, Q, SId)}), MsgOrRef}.
+session_insert(SId, QFun, #session{status = notify, queue = Q} = Session, MsgOrRef) ->
+    {
+        send_notification(Session#session{queue = queue_insert(false, QFun, MsgOrRef, Q, SId)}),
+        MsgOrRef
+    }.
 
 %% unlimited messages accepted
-queue_insert(Offline, MsgOrRef, #queue{max = -1, size = Size, queue = Queue} = Q, SId) ->
+queue_insert(Offline, enqueue, MsgOrRef, #queue{max = -1, size = Size, queue = Queue} = Q, SId) ->
     Q#queue{queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1};
-queue_insert(Offline, MsgOrRef, #queue{ignore_max = true, size = Size, queue = Queue} = Q, SId) ->
+queue_insert(
+    Offline, enqueue, MsgOrRef, #queue{ignore_max = true, size = Size, queue = Queue} = Q, SId
+) ->
     Q#queue{queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1};
 %% tail drop in case of fifo
 queue_insert(
-    _Offline, MsgOrRef, #queue{type = fifo, max = Max, size = Size, drop = Drop} = Q, SId
+    _Offline, _QFun, MsgOrRef, #queue{type = fifo, max = Max, size = Size, drop = Drop} = Q, SId
 ) when
     Size >= Max
 ->
@@ -1128,6 +1155,7 @@ queue_insert(
 %% drop oldest in case of lifo
 queue_insert(
     Offline,
+    enqueue,
     MsgOrRef,
     #queue{type = lifo, max = Max, size = Size, queue = Queue, drop = Drop} = Q,
     SId
@@ -1142,7 +1170,11 @@ queue_insert(
         queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), NewQueue), drop = Drop + 1
     };
 %% normal enqueue
-queue_insert(Offline, MsgOrRef, #queue{queue = Queue, size = Size} = Q, SId) ->
+queue_insert(Offline, front, MsgOrRef, #queue{queue = Queue, size = Size} = Q, SId) ->
+    Q#queue{
+        queue = queue:in_r(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1
+    };
+queue_insert(Offline, enqueue, MsgOrRef, #queue{queue = Queue, size = Size} = Q, SId) ->
     Q#queue{queue = queue:in(maybe_offline_store(Offline, SId, MsgOrRef), Queue), size = Size + 1}.
 
 send(
@@ -1223,13 +1255,13 @@ cleanup_queue_(SId, {{value, {{qos2, _}, _}}, NewQueue}) ->
 cleanup_queue_(_, {empty, _}) ->
     ok.
 
-session_fold(SId, Fun, Acc, Map) ->
-    session_fold(SId, Fun, Acc, Map, maps:keys(Map)).
+session_fold(SId, QFun, Fun, Acc, Map) ->
+    session_fold(SId, QFun, Fun, Acc, Map, maps:keys(Map)).
 
-session_fold(SId, Fun, Acc, Map, [K | Rest]) ->
-    {NewV, NewAcc} = Fun(SId, maps:get(K, Map), Acc),
-    session_fold(SId, Fun, NewAcc, maps:update(K, NewV, Map), Rest);
-session_fold(_, _, Acc, Map, []) ->
+session_fold(SId, QFun, Fun, Acc, Map, [K | Rest]) ->
+    {NewV, NewAcc} = Fun(SId, QFun, maps:get(K, Map), Acc),
+    session_fold(SId, QFun, Fun, NewAcc, maps:update(K, NewV, Map), Rest);
+session_fold(_, _, _, Acc, Map, []) ->
     {Map, Acc}.
 
 maybe_set_expiry_timer(

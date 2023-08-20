@@ -28,8 +28,16 @@ end_per_suite(_Config) ->
     _Config.
 
 init_per_group(mqttv4, Config) ->
+    vmq_server_cmd:set_config(subscriber_retain_mode, immediate),
     [{protover, 4}|Config];
 init_per_group(mqttv5, Config) ->
+    vmq_server_cmd:set_config(subscriber_retain_mode, immediate),
+    [{protover, 5}|Config];
+init_per_group(mqttv4waitsync, Config) ->
+    vmq_server_cmd:set_config(subscriber_retain_mode, waitsync),
+    [{protover, 4}|Config];
+init_per_group(mqttv5waitsync, Config) ->
+    vmq_server_cmd:set_config(subscriber_retain_mode, waitsync),
     [{protover, 5}|Config].
 
 end_per_group(_Group, _Config) ->
@@ -44,7 +52,9 @@ end_per_testcase(_, Config) ->
 all() ->
     [
      {group, mqttv4},
-     {group, mqttv5}
+     {group, mqttv4waitsync},
+     {group, mqttv5},
+     {group, mqttv5waitsync}
     ].
 
 groups() ->

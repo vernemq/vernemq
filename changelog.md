@@ -1,3 +1,4 @@
+- New feature: Synchronized wait for retrained message store
 - Add option for a default rule ("*") in database Lua scripts, so that Clients can fallback to default ACLs.
 
 ## VerneMQ 2.0 Release Candidate
