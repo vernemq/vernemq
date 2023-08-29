@@ -106,7 +106,8 @@ init(Req, Opts) ->
                                         CNHeaderName = proplists:get_value(
                                             xff_cn_header, Opts, <<"x-ssl-client-cn">>
                                         ),
-                                        XFFCN = cowboy_req:header(CNHeaderName, Req),
+                                        HN = ensure_binary(CNHeaderName),
+                                        XFFCN = cowboy_req:header(HN, Req),
                                         FsmMod:init(Peer, [{preauth, XFFCN} | Opts])
                                 end;
                             true ->
@@ -270,3 +271,7 @@ select_protocol([Want | Rest], Have) ->
 
 add_socket(Socket, State) ->
     State#state{socket = Socket}.
+
+ensure_binary(L) when is_list(L) -> list_to_binary(L);
+ensure_binary(L) when is_binary(L) -> L;
+ensure_binary(undefined) -> undefined.
