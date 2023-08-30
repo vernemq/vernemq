@@ -18,6 +18,9 @@
 			target="_blank"
 		/>
 	</a>
+ <a href="https://fosstodon.org/@VerneMQ">
+ <img alt="VerneMQ on Fosstodon" src="https://img.shields.io/mastodon/follow/110683123510225618?domain=https%3A%2F%2Ffosstodon.org"></a>
+
 [![Google group : VerneMQ Users](https://img.shields.io/badge/Google%20Group-VerneMQ%20Users-blue.svg)](https://groups.google.com/forum/#!forum/vernemq-users)
 Old Docker Repo | New Docker Repo
 ------------ | -------------
