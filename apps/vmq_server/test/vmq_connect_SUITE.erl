@@ -24,6 +24,9 @@ init_per_group(mqttws, Config) ->
 init_per_group(mqttwsp, Config) ->
     Config1 = [{type, ws},{port, 1891}, {address, "127.0.0.1"}, {proxy_protocol, true}|Config],
     start_listener(Config1);
+init_per_group(mqttwsx, Config) ->
+    Config1 = [{type, wsx},{port, 1892}, {address, "127.0.0.1"}, {xff, true}|Config],
+    start_listener(Config1);
 init_per_group(mqttv4, Config) ->
     Config1 = [{type, tcp},{port, 1888}, {address, "127.0.0.1"}|Config],
     [{protover, 4}|start_listener(Config1)];
@@ -51,6 +54,7 @@ all() ->
      {group, mqtts},
      {group, mqttws},
      {group, mqttwsp}, % ws with proxy protocol
+     {group, mqttwsx}, % ws with xff headers
      {group, mqttv4},
      {group, mqttv5}
     ].
@@ -76,6 +80,9 @@ groups() ->
      {mqttws, [], [ws_protocols_list_test, ws_no_known_protocols_test] ++ Tests},
      {mqttwsp, [], [ws_proxy_protocol_v1_test, ws_proxy_protocol_v2_test,
                     ws_proxy_protocol_localcommand_v1_test, ws_proxy_protocol_localcommand_v2_test]},
+     {mqttwsx, [], [ws_xff_peer_test]},
+                    %ws_xff_trusted_intermediate_ok_test, ws_xff_trusted_intermediate_fail_test,
+                    %ws_xff_cn_as_username_test]},
      {mqttv5, [auth_on_register_change_username_test, uname_anon_username_test_m5]}
     ].
 
@@ -294,6 +301,15 @@ ws_proxy_protocol_localcommand_v2_test(Config) ->
     {ok, Socket} = packet:do_client_connect(Connect, Connack, [{proxy_info, ProxyInfo}|ConnOpts]),
     ok = close(Socket, Config).
 
+ws_xff_peer_test(Config) ->
+       % ct:pal("Config ~p~n", [Config]),
+        Connect = packet:gen_connect("ws_xff_peer_test", [{keepalive,10}]),
+        Connack = packet:gen_connack(5),
+        WSOpt  = {conn_opts, [{ws_protocols, ["mqtt"]}]},
+        ConnOpts = [WSOpt | conn_opts(Config)],
+        {ok, Socket} = packet:do_client_connect(Connect, Connack, ConnOpts),
+        ok = close(Socket, Config).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -339,7 +355,9 @@ transport(Config) ->
         {type, ws} ->
             gen_tcp;
         {type, wss} ->
-            ssl
+            ssl;
+        {type, wsx} ->
+            gen_tcp
     end.
 
 conn_opts(Config) ->
@@ -357,6 +375,8 @@ conn_opts(Config) ->
                    {cacerts, load_cacerts()}
                   ]}];
             ws ->
+                [{transport, vmq_ws_transport}, {conn_opts, []}];
+            wsx ->
                 [{transport, vmq_ws_transport}, {conn_opts, []}]
         end,
     [{port, Port},{hostname, Address},
@@ -400,6 +420,11 @@ start_listener(Config) ->
                 [];
             ws ->
                 [{websocket,true}];
+            wsx -> [{websocket, true}, 
+                    {proxy_xff_support, true},
+                    {proxy_xff_trusted_intermediate, "127.0.0.1"},
+                    {proxy_xff_use_cn_as_username, true},
+                    {proxy_xff_cn_header, "x-ssl-client-cn"}];
             wss -> [{ssl, true},
                  {nr_of_acceptors, 5},
                  {cafile, ssl_path("all-ca.crt")},
