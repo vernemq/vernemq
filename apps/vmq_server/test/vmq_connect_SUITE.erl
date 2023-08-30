@@ -25,7 +25,7 @@ init_per_group(mqttwsp, Config) ->
     Config1 = [{type, ws},{port, 1891}, {address, "127.0.0.1"}, {proxy_protocol, true}|Config],
     start_listener(Config1);
 init_per_group(mqttwsx, Config) ->
-    Config1 = [{type, wsx},{port, 1891}, {address, "127.0.0.1"}, {xff, true}|Config],
+    Config1 = [{type, wsx},{port, 1892}, {address, "127.0.0.1"}, {xff, true}|Config],
     start_listener(Config1);
 init_per_group(mqttv4, Config) ->
     Config1 = [{type, tcp},{port, 1888}, {address, "127.0.0.1"}|Config],
@@ -302,7 +302,7 @@ ws_proxy_protocol_localcommand_v2_test(Config) ->
     ok = close(Socket, Config).
 
 ws_xff_peer_test(Config) ->
-        ct:pal("Config ~p~n", [Config]),
+       % ct:pal("Config ~p~n", [Config]),
         Connect = packet:gen_connect("ws_xff_peer_test", [{keepalive,10}]),
         Connack = packet:gen_connack(5),
         WSOpt  = {conn_opts, [{ws_protocols, ["mqtt"]}]},
