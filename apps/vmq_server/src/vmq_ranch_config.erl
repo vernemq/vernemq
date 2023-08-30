@@ -352,7 +352,10 @@ default_session_opts(Opts) ->
             {_, V2} ->
                 [
                     {xff_proxy, proplists:get_value(proxy_xff_support, Opts, false)},
-                    {proxy_xff_trusted_intermediate, V2}
+                    {proxy_xff_trusted_intermediate, V2},
+                    {xff_cn_header, proplists:get_value(proxy_xff_cn_header, Opts, "")},
+                    {xff_use_cn_as_username,
+                        proplists:get_value(proxy_xff_use_cn_as_username, Opts, false)}
                     | MaybeProxyDefaults
                 ]
         end,

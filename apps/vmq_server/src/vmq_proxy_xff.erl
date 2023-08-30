@@ -55,7 +55,7 @@ check_trusted_list(LastProxy, TrustedList) ->
         true ->
             true;
         _ ->
-            lager:error("XFF proxy not in trused list!"),
+            lager:error("XFF proxy not in trusted list!"),
             false
     end.
 

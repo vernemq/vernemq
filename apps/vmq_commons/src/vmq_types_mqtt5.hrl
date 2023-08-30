@@ -52,7 +52,7 @@
 -type mqtt5_properties() :: map().
 
 -record(mqtt5_lwt, {
-    will_properties = #{} :: mqtt5_properties(),
+    will_properties = #{} :: mqtt5_will_props(),
     will_retain :: flag(),
     will_qos :: qos(),
     will_topic :: topic(),
@@ -110,7 +110,7 @@
     ?P_USER_PROPERTY_ASSOC,
     ?P_MAX_PACKET_SIZE_ASSOC
 }.
--type mqtt5_will_property() :: #{
+-type mqtt5_will_props() :: #{
     ?P_WILL_DELAY_INTERVAL_ASSOC,
     ?P_PAYLOAD_FORMAT_INDICATOR_ASSOC,
     ?P_MESSAGE_EXPIRY_INTERVAL_ASSOC,

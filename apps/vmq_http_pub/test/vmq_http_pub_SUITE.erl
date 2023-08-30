@@ -20,6 +20,7 @@
     test_mp_overload/1,
     test_payload_push_endoding/1,
     test_auth_conf_1/1,
+    test_no_auth/1,
     test_payload_push_obo/1,
     test_payload_change_mp_reg/1,
     test_payload_change_mp_pub/1,
@@ -33,8 +34,6 @@ init_per_suite(Config) ->
     {ok, StartedApps} = application:ensure_all_started(vmq_server),
     {ok, _} = application:ensure_all_started(cowboy),
 
-    vmq_server_cmd:set_config(allow_anonymous, true),
-
     application:load(vmq_plugin),
     {ok, _} = application:ensure_all_started(vmq_plugin),
     ok = vmq_plugin_mgr:enable_plugin(vmq_diversity),
@@ -42,12 +41,13 @@ init_per_suite(Config) ->
 
     application:set_env(vmq_server, http_modules_auth, #{vmq_http_pub => "noauth"}),
     application:set_env(vmq_http_pub, config, [{mqttauth, "testMode"}]),
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_config:configure_node(),
+
     vmq_server_cmd:listener_start(38908, [{http, true},
         {config_mod, vmq_http_pub},
         {config_fun, routes}]),
     application:ensure_all_started(inets),
-    vmq_http_pub:set_user_auth_required(false),
-
     {ok, _} = vmq_diversity:load_script(code:lib_dir(vmq_http_pub) ++ "/test/test_auth.lua"),
     cover:start(),
     [{started_apps, StartedApps}] ++ Config.
@@ -62,6 +62,8 @@ end_per_suite(Config) ->
     Config.
 
 init_per_testcase(_Case, Config) ->
+    vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_config:configure_node(),
     Config.
 
 end_per_testcase(_, Config) ->
@@ -69,7 +71,7 @@ end_per_testcase(_, Config) ->
 
 all() ->
     [test_payload_push, test_header_push, test_header_qos, test_header_topic, test_header_retain, test_header_user_props,
-        test_uee_push,test_uee_qos, test_payload_push_endoding, test_mp_overload, test_auth_conf_1, test_payload_push_obo,
+        test_uee_push,test_uee_qos, test_payload_push_endoding, test_mp_overload, test_auth_conf_1, test_no_auth, test_payload_push_obo,
         test_payload_change_mp_reg, test_payload_change_mp_pub, test_payload_change_qos_pub, test_payload_change_topic_pub,
         test_payload_change_mp_predef_pub, test_max_message_size] .
 
@@ -107,6 +109,11 @@ mock_request_http() ->
         sock => {{127,0,0,1},38908},
         streamid => 1,version => 'HTTP/1.1'}.
 
+allow_anon(Anon) ->
+    vmq_server_cmd:set_config(allow_anonymous, Anon),
+    vmq_config:configure_node().
+
+
 test_payload_push(_) ->
     %% we have to setup the listener here, because vmq_test_utils is overriding
     %% the default set in vmq_server.app.src
@@ -116,7 +123,7 @@ test_payload_push(_) ->
     {_, 200, _} = _Status2.
 
 test_payload_push_endoding(_) ->
-   {ok, {_Status1, _, _}} = httpc:request(post, {url() ++ "?encoding=plain", [], "application/json", json_body()}, [], []),
+    {ok, {_Status1, _, _}} = httpc:request(post, {url() ++ "?encoding=plain", [], "application/json", json_body()}, [], []),
     {_, 200, _} = _Status1,
     {ok, {_Status2, _, _}} = httpc:request(put, {url() ++ "?encoding=base64", [], "application/json", json_body()}, [], []),
     {_, 500, _} = _Status2,
@@ -214,17 +221,26 @@ test_auth_conf_1(_) ->
     application:set_env(vmq_http_pub, config, [{mqttauth, "predefined"}]),
     {ok, "predefined", _} = vmq_http_pub:auth_conf(mock_request_http()).
 
+test_no_auth(_) ->
+    allow_anon(false),
+    {ok, {_Status1, _, _}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"WrongUser">>, <<"test-client">>)}, [], []),
+    {_, 401, _} = _Status1,
+    allow_anon(true),
+    {ok, {_Status2, _, _}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"WrongUser">>, <<"test-client">>)}, [], []),
+    {_, 200, _} = _Status2.
+
+
 test_payload_push_obo(_) ->
+    allow_anon(false),
     application:set_env(vmq_http_pub, config, [{mqttauth, "on-behalf-of"}]),
-    vmq_http_pub:set_user_auth_required(true),
     {ok, {_Status1, _, _}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"WrongUser">>, <<"test-client">>)}, [], []),
     {_, 401, _} = _Status1,
     {ok, {_Status2, _, _}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"test-user">>, <<"test-client">>)}, [], []),
     {_, 200, _} = _Status2.
 
 test_payload_change_mp_reg(_) ->
+    allow_anon(false),
     application:set_env(vmq_http_pub, config, [{mqttauth, "on-behalf-of"}]),
-    vmq_http_pub:set_user_auth_required(true),
     {ok, {_Status1, _, _}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"test-user">>, <<"test-change-mountpoint">>)}, [], []),
     {_, 403, _} = _Status1,
     {ok, {_Status2, _, _}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"test-user">>, <<"test-change-mountpoint-pass">>)}, [], []),
@@ -239,35 +255,34 @@ test_payload_change_mp_reg(_) ->
 
 
 test_payload_change_mp_pub(_) ->
+    allow_anon(false),
     application:set_env(vmq_http_pub, config, [{mqttauth, "on-behalf-of"}]),
-    vmq_http_pub:set_user_auth_required(true),
     {ok, {_Status1, _, Body}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"test-user">>, <<"test-change-mountpoint-pub">>)}, [], []),
     "Published[{topic,[<<\"a\">>,<<\"b\">>,<<\"c\">>]},\n {qos,1},\n {retain,false},\n {mp,\"override-mountpoint-pub\"}]" = Body,
     {_, 200, _} = _Status1.
 
 test_payload_change_qos_pub(_) ->
+    allow_anon(false),
     application:set_env(vmq_http_pub, config, [{mqttauth, "on-behalf-of"}]),
-    vmq_http_pub:set_user_auth_required(true),
     {ok, {_Status1, _, Body}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"test-user">>, <<"test-change-qos-pub">>)}, [], []),
     "Published[{topic,[<<\"a\">>,<<\"b\">>,<<\"c\">>]},{qos,2},{retain,false},{mp,[]}]" = Body,
     {_, 200, _} = _Status1.
 
 test_payload_change_topic_pub(_) ->
-    application:set_env(vmq_http_pub, config, [{mqttauth, "on-behalf-of"}]),
-    vmq_http_pub:set_user_auth_required(true),
+    allow_anon(false),
     {ok, {_Status1, _, Body}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"test-user">>, <<"test-change-topic-pub">>)}, [], []),
     "Published[{topic,[<<\"d\">>,<<\"e\">>,<<\"f\">>]},{qos,1},{retain,false},{mp,[]}]" = Body,
     {_, 200, _} = _Status1.
 
 test_max_message_size(_) ->
+    allow_anon(false),
     application:set_env(vmq_http_pub, config, [{mqttauth, "on-behalf-of"}]),
-    vmq_http_pub:set_user_auth_required(true),
     {ok, {_Status1, _, _Body}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"test-user">>, <<"test-change-max-message-size-ovr">>)}, [], []),
     {_, 413, _} = _Status1.
 
 test_payload_change_mp_predef_pub(_) ->
+    allow_anon(false),
     application:set_env(vmq_http_pub, config,[{mqttauth, "predefined"}]),
-    vmq_http_pub:set_user_auth_required(true),
     {ok, {_Status1, _, _}} = httpc:request(post, {url(), [], "application/json", json_body_diversity(<<"test-user">>, <<"test-change-mountpoint-pub">>)}, [], []),
     {_, 401, _} = _Status1,
     application:set_env(vmq_http_pub, config,[{mqttauth, "predefined"}, {mqttauthuser, "test-user"}, {mqttauthpassword, "test-password"}, {mqttauthclientid, "test-change-mountpoint-pub"}]),

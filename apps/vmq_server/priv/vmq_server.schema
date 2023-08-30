@@ -947,6 +947,19 @@
                                                                   hidden
                                                                  ]}.
 
+{mapping, "listener.ws.$name.proxy_xff_use_cn_as_username", "vmq_server.listeners", [
+                                                                  {default, off},
+                                                                  {datatype, flag},
+                                                                  hidden
+                                                                 ]}.
+
+{mapping, "listener.ws.$name.proxy_xff_cn_header", "vmq_server.listeners", [
+                                                                  {default, "x-ssl-client-cn"},
+                                                                  {datatype, string},
+                                                                  hidden
+                                                                 ]}.
+
+
 %% @doc If 'listener.tcp.proxy_protocol' is enabled, you may enable
 %% 'listener.tcp.proxy_protocol_use_cn_as_username' to use the CN
 %% (sni_hostname) passed via the PROXY protocol instead of the MQTT
