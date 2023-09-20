@@ -95,6 +95,8 @@ function auth_on_register(reg)
                 subscribe_acl
                 )
             return true
+        else
+            return false
         end
     end
 end
