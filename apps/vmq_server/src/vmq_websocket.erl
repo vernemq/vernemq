@@ -95,7 +95,21 @@ init(Req, Opts) ->
                     _ ->
                         case proplists:get_value(proxy_protocol_use_cn_as_username, Opts, false) of
                             false ->
-                                FsmMod:init(Peer, Opts);
+                                % No proxy protocol but we still might have a x-forwarded CN
+                                RequireXFFCN = proplists:get_value(
+                                    xff_use_cn_as_username, Opts, false
+                                ),
+                                case RequireXFFCN of
+                                    false ->
+                                        FsmMod:init(Peer, Opts);
+                                    true ->
+                                        CNHeaderName = proplists:get_value(
+                                            xff_cn_header, Opts, <<"x-ssl-client-cn">>
+                                        ),
+                                        HN = ensure_binary(CNHeaderName),
+                                        XFFCN = cowboy_req:header(HN, Req),
+                                        FsmMod:init(Peer, [{preauth, XFFCN} | Opts])
+                                end;
                             true ->
                                 case ProxyInfo0 of
                                     error ->
@@ -257,3 +271,7 @@ select_protocol([Want | Rest], Have) ->
 
 add_socket(Socket, State) ->
     State#state{socket = Socket}.
+
+ensure_binary(L) when is_list(L) -> list_to_binary(L);
+ensure_binary(L) when is_binary(L) -> L;
+ensure_binary(undefined) -> undefined.
