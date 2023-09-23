@@ -824,7 +824,7 @@ maybe_call_endpoint(Endpoint, EOpts, Hook, Args) when
     case vmq_webhooks_cache:lookup(Endpoint, Hook, Args) of
         not_found ->
             case call_endpoint(Endpoint, EOpts, Hook, Args) of
-                {Modifiers, ExpiryInSecs} when is_list(Modifiers) ->
+                {Modifiers, ExpiryInSecs} when is_list(Modifiers); is_map(Modifiers) ->
                     vmq_webhooks_cache:insert(Endpoint, Hook, Args, ExpiryInSecs, Modifiers),
                     Modifiers;
                 Res ->
@@ -938,11 +938,14 @@ digits(_, Acc) ->
 ) -> any().
 handle_response(Hook, #{max_age := MaxAge}, Decoded, EOpts) when
     Hook =:= auth_on_register;
+    Hook =:= auth_on_register_m5;
     Hook =:= auth_on_publish;
-    Hook =:= auth_on_subscribe
+    Hook =:= auth_on_publish_m5;
+    Hook =:= auth_on_subscribe;
+    Hook =:= auth_on_subscribe_m5
 ->
     case handle_response(Hook, Decoded, EOpts) of
-        Res when is_list(Res) ->
+        Res when is_list(Res); is_map(Res) ->
             {Res, MaxAge};
         Res ->
             Res
