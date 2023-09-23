@@ -773,5 +773,10 @@ map_to_response_code(unknown_payload_encoding) -> 400.
 %%% Cowboy Config
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 routes() ->
-    {_, Publish, _} = vmq_reg:direct_plugin_exports(httpmqtt),
-    [{"/restmqtt/api/v1/publish", ?MODULE, [{publish_fun, Publish}]}].
+    {ok, #{
+        publish_fun := PubFun
+    }} = vmq_reg:direct_plugin_exports(vmq_http_pub, #{
+        wait_till_ready => not vmq_config:get_env(allow_publish_during_netsplit, false),
+        cap_publish => vmq_config:get_env(allow_publish_during_netsplit, false)
+    }),
+    [{"/restmqtt/api/v1/publish", ?MODULE, [{publish_fun, PubFun}]}].
