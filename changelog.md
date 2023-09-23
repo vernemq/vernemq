@@ -1,3 +1,4 @@
+- Add new command to vmq-admin to clear webhook cache (webhooks cache clear)
 - 'vmq_admin': Add commands allowing batch disconnects (vmq-admin session disconnect batch and vmq-admin session disconnect clients)
 - 'vmq_http_pub': Allow anonymous access (allow_anonymous = on)
  
