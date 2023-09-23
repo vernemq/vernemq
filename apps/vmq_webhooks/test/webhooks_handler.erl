@@ -75,11 +75,23 @@ process_cache_hook(<<"auth_on_register">>, #{username := SenderPid}) ->
     Pid = list_to_pid(binary_to_list(SenderPid)),
     Pid ! cache_auth_on_register_ok,
     {200, #{result => <<"ok">>}};
+process_cache_hook(<<"auth_on_register_m5">>, #{username := SenderPid}) ->
+    Pid = list_to_pid(binary_to_list(SenderPid)),
+    Pid ! cache_auth_on_register_m5_ok,
+    {200, #{result => <<"ok">>}};
 process_cache_hook(<<"auth_on_publish">>, #{username := SenderPid}) ->
     Pid = list_to_pid(binary_to_list(SenderPid)),
     Pid ! cache_auth_on_publish_ok,
     {200, #{result => <<"ok">>}};
+process_cache_hook(<<"auth_on_publish_m5">>, #{username := SenderPid}) ->
+    Pid = list_to_pid(binary_to_list(SenderPid)),
+    Pid ! cache_auth_on_publish_ok,
+    {200, #{result => <<"ok">>}};
 process_cache_hook(<<"auth_on_subscribe">>, #{username := SenderPid}) ->
+    Pid = list_to_pid(binary_to_list(SenderPid)),
+    Pid ! cache_auth_on_subscribe_ok,
+    {200, #{result => <<"ok">>}};
+process_cache_hook(<<"auth_on_subscribe_m5">>, #{username := SenderPid}) ->
     Pid = list_to_pid(binary_to_list(SenderPid)),
     Pid ! cache_auth_on_subscribe_ok,
     {200, #{result => <<"ok">>}}.
