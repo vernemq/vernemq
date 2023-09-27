@@ -927,6 +927,8 @@ jtopic(T) when is_list(T) ->
 ftopics(Topics) ->
     lists:foldl(
         fun
+            (Topic, Acc) when is_list(Topic) ->
+                [{"    t: \"~s\"~n", [jtopic(Topic)]} | Acc];
             ({Topic, QoS}, Acc) when is_integer(QoS), is_list(Topic) ->
                 [{"    q:~p, t: \"~s\"~n", [QoS, jtopic(Topic)]} | Acc];
             ({Topic, {QoS, SubOpts}}, Acc) ->
