@@ -330,7 +330,8 @@ protocol_opts(cowboy_clear, _, Opts) ->
         end,
     CowboyRoutes = [{'_', Routes}],
     Dispatch = cowboy_router:compile(CowboyRoutes),
-    #{env => #{dispatch => Dispatch}, opts => Opts};
+    MaxRequestLength = proplists:get_value(max_request_line_length, Opts, 8000),
+    #{env => #{dispatch => Dispatch}, max_request_line_length => MaxRequestLength, opts => Opts};
 protocol_opts(vmq_cluster_com, _, Opts) ->
     Opts.
 
