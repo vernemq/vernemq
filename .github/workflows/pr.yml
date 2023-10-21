@@ -12,12 +12,12 @@ concurrency:
 
 env:
   # Default OTP version used for current releases
-  DEFAULT_RELEASE_OTP: 23.2.1
+  DEFAULT_RELEASE_OTP: 25.3.2
 
 jobs:
   code_checks:
     name: Check code style and quality
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Install dependencies
         run: |
@@ -53,7 +53,7 @@ jobs:
 
   coverage:
     name: Run tests with coverage
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     services:
       postgres:
@@ -157,13 +157,13 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-20.04
+          - ubuntu-22.04
           # Monterrey
           - macos-12
         otp:
-          - "25.2"
+          - "26.1"
+          - "25.3"
           - "24.3"
-          - "23.3"
 
     steps:
       - name: Install dependencies (Linux)
