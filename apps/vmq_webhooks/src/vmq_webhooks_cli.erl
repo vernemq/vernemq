@@ -22,6 +22,7 @@ register_cli() ->
     status_cmd(),
     register_cmd(),
     cache_stats_cmd(),
+    cache_clear_cmd(),
     deregister_cmd().
 
 register_config() ->
@@ -76,6 +77,19 @@ cache_stats_cmd() ->
                 [clique_status:alert([Text])]
         end,
     clique:register_command(Cmd, [], FlagSpecs, Callback).
+
+cache_clear_cmd() ->
+    Cmd = ["vmq-admin", "webhooks", "cache", "clear"],
+    Callback =
+        fun
+            (_, [], []) ->
+                vmq_webhooks_cache:purge_all(),
+                [clique_status:text("Done")];
+            (_, _, _) ->
+                Text = clique_status:text(cache_usage()),
+                [clique_status:alert([Text])]
+        end,
+    clique:register_command(Cmd, [], [], Callback).
 
 status_cmd() ->
     Cmd = ["vmq-admin", "webhooks", "show"],
@@ -306,5 +320,7 @@ cache_usage() ->
         "  Manage the webhooks cache."
         "\n\n",
         "  Sub-commands:\n",
-        "    show       Show statistics about the cache\n"
+        "    show       Show statistics about the cache\n",
+        "    clear      Clears the webhook cache",
+        "\n\n"
     ].

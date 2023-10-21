@@ -80,6 +80,22 @@ vmq_listener_start_cmd() ->
                 (_) -> false
             end}
         ]},
+        {proxy_xff_trusted_intermediate, [{longname, "proxy_xff_trusted_intermediate"}]},
+        {proxy_xff_support, [
+            {longname, "proxy_xff_support"},
+            {typecast, fun
+                ("true") -> true;
+                (_) -> false
+            end}
+        ]},
+        {proxy_xff_use_cn_as_username, [
+            {longname, "proxy_xff_use_cn_as_username"},
+            {typecast, fun
+                ("true") -> true;
+                (_) -> false
+            end}
+        ]},
+        {proxy_xff_cn_header, [{longname, "proxy_xff_cn_header"}]},
         {allowed_protocol_versions, [
             {longname, "allowed_protocol_versions"},
             {typecast, fun(ProtoVers) ->
