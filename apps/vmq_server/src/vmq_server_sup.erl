@@ -53,6 +53,8 @@ init([]) ->
         application:get_env(vmq_server, redis_sentinel_endpoints, "[{\"127.0.0.1\", 26379}]")
     ),
     RedisDB = application:get_env(vmq_server, redis_sentinel_database, 0),
+    Username = application:get_env(vmq_server, redis_sentinel_username, undefined),
+    Password = application:get_env(vmq_server, redis_sentinel_password, undefined),
 
     {ok,
         {{one_for_one, 5, 10}, [
@@ -60,6 +62,8 @@ init([]) ->
                 [
                     {sentinel, [{endpoints, SentinelEndpoints}]},
                     {database, RedisDB},
+                    {username, Username},
+                    {password, Password},
                     {name, {local, vmq_redis_client}}
                 ]
             ]),

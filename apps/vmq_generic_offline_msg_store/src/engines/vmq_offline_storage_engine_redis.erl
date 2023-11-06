@@ -21,10 +21,10 @@ open(Opts) ->
     SentinelHosts = vmq_schema_util:parse_list(proplists:get_value(host, Opts, "[\"localhost\"]")),
     SentinelEndpoints = lists:foldr(fun(Host, Acc) -> [{Host, Port} | Acc]end, [], SentinelHosts),
     ConnectOpts = [{sentinel, [{endpoints, SentinelEndpoints},
-                               {username, Username},
-                               {password, Password},
                                {timeout, proplists:get_value(connect_timeout, Opts, 5000)}]
                     },
+                   {username, Username},
+                   {password, Password},
                    {database, Database}],
     eredis:start_link(ConnectOpts).
 

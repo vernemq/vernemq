@@ -37,7 +37,22 @@ init(_) ->
             "                                                                         ]]"
         )
     ),
-    NumEndpoints = init_redis(ConnectOptionsList, 0),
+    UsernamesList = vmq_schema_util:parse_list(
+        application:get_env(
+            vmq_server,
+            msg_queue_redis_shards_usernames,
+            "[undefined]"
+        )
+    ),
+    PasswordsList = vmq_schema_util:parse_list(
+        application:get_env(
+            vmq_server,
+            msg_queue_redis_shards_passwords,
+            "[undefined]"
+        )
+    ),
+
+    NumEndpoints = init_redis(ConnectOptionsList, UsernamesList, PasswordsList, 0),
 
     NumMainQWorkers = num_main_q_workers_per_redis_node(),
     SupFlags =
@@ -60,13 +75,28 @@ init(_) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-init_redis([], Id) ->
+init_redis([], [], [], Id) ->
     Id;
-init_redis([ConnectOptions | ConnectOptionsList], Id) ->
+init_redis(
+    [ConnectOptions | ConnectOptionsList],
+    [Username | UsernamesList],
+    [Password | PasswordsList],
+    Id
+) ->
     ProducerRedisClient = gen_redis_client_name(Id, ?PRODUCER),
     ConsumerRedisClient = gen_redis_client_name(Id, ?CONSUMER),
-    {ok, _pid1} = eredis:start_link([{name, {local, ProducerRedisClient}} | ConnectOptions]),
-    {ok, _pid2} = eredis:start_link([{name, {local, ConsumerRedisClient}} | ConnectOptions]),
+    {ok, _pid1} = eredis:start_link([
+        {name, {local, ProducerRedisClient}},
+        {username, Username},
+        {password, Password}
+        | ConnectOptions
+    ]),
+    {ok, _pid2} = eredis:start_link([
+        {name, {local, ConsumerRedisClient}},
+        {username, Username},
+        {password, Password}
+        | ConnectOptions
+    ]),
 
     LuaDir = application:get_env(vmq_server, redis_lua_dir, "./etc/lua"),
     {ok, EnqueueMsgScript} = file:read_file(LuaDir ++ "/enqueue_msg.lua"),
@@ -79,7 +109,7 @@ init_redis([ConnectOptions | ConnectOptionsList], Id) ->
         ?FUNCTION, "LOAD", "REPLACE", PollMainQueueScript
     ]),
 
-    init_redis(ConnectOptionsList, Id + 1).
+    init_redis(ConnectOptionsList, UsernamesList, PasswordsList, Id + 1).
 
 num_main_q_workers_per_redis_node() ->
     application:get_env(vmq_server, main_queue_workers_per_redis_shard, 1).
