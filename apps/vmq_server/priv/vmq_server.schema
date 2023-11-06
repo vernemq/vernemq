@@ -370,6 +370,12 @@
          Term
  end}.
 
+%% @doc specifies if access to http apis is allowed without api-key
+{mapping, "allow_unauthorized_http", "vmq_server.allow_unauthorized_http", [
+                                                      {default, off},
+                                                      {datatype, flag}
+                                                     ]}.
+
 %% @doc listener.tcp.buffer_sizes is an list of three integers
 %% (sndbuf,recbuf,buffer) specifying respectively the kernel TCP send
 %% buffer, the kernel TCP receive buffer and the user-level buffer

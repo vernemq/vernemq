@@ -59,6 +59,11 @@ options(Req0, State) ->
     {ok, cowboy_req:set_resp_headers(CorsHeaders, Req0), State}.
 
 is_authorized(Req, State) ->
+    case application:get_env(vmq_server, allow_unauthorized_http, false) of
+        true -> {true, Req, State};
+        _ -> is_authorized_(Req, State)
+    end.
+is_authorized_(Req, State) ->
     case cowboy_req:parse_header(<<"authorization">>, Req) of
         {basic, ApiKey, _} ->
             case lists:member(ApiKey, list_api_keys()) of
