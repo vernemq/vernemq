@@ -69,10 +69,10 @@ listener_sup_sup(Addr, Port) ->
 stop_all_mqtt_listeners(KillSessions) ->
     lists:foreach(
         fun
-            ({mqtt, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqtts, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqttws, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
-            ({mqttwss, Addr, Port, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqtt, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqtts, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqttws, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
+            ({mqttwss, Addr, Port, _, _, _, _}) -> stop_listener(Addr, Port, KillSessions);
             (_) -> ignore
         end,
         listeners()
@@ -203,7 +203,12 @@ listeners() ->
                     end,
                 StrIp = inet:ntoa(Ip),
                 StrPort = integer_to_list(Port),
-                [{Type, StrIp, StrPort, Status1, MountPoint, MaxConnections} | Acc]
+                ProxyProtocol = proplists:get_value(
+                    proxy_protocol,
+                    Opts,
+                    false
+                ),
+                [{Type, StrIp, StrPort, Status1, MountPoint, MaxConnections, ProxyProtocol} | Acc]
         end,
         [],
         supervisor:which_children(ranch_sup)

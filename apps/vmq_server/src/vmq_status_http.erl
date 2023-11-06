@@ -118,7 +118,7 @@ counter_val(C) ->
 
 listeners() ->
     lists:foldl(
-        fun({Type, Ip, Port, Status, MP, MaxConns}, Acc) ->
+        fun({Type, Ip, Port, Status, MP, MaxConns, PP}, Acc) ->
             [
                 [
                     {type, Type},
@@ -126,7 +126,8 @@ listeners() ->
                     {ip, list_to_binary(Ip)},
                     {port, list_to_integer(Port)},
                     {mountpoint, MP},
-                    {max_conns, MaxConns}
+                    {max_conns, MaxConns},
+                    {proxy_protocol, PP}
                 ]
                 | Acc
             ]
