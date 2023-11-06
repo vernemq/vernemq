@@ -147,9 +147,16 @@ subscribe_op({MP, ClientId} = SubscriberId, Topics) ->
                 CacheLocally ->
                     lists:foreach(
                         fun
-                            ({[<<"$share">>, _Group | Topic], QoS}) ->
+                            ({[<<"$share">>, _Group | Topic], QoS}) when is_integer(QoS) ->
                                 Key = {MP, Topic},
                                 Value = {ClientId, QoS},
+                                ets:insert(?SHARED_SUBS_ETS_TABLE, {{Key, Value}}),
+                                vmq_metrics:incr_cache_insert(?LOCAL_SHARED_SUBS);
+                            ({[<<"$share">>, _Group | Topic], {QoS, _Opts} = QoSWithOpts}) when
+                                is_integer(QoS)
+                            ->
+                                Key = {MP, Topic},
+                                Value = {ClientId, QoSWithOpts},
                                 ets:insert(?SHARED_SUBS_ETS_TABLE, {{Key, Value}}),
                                 vmq_metrics:incr_cache_insert(?LOCAL_SHARED_SUBS);
                             (_) ->

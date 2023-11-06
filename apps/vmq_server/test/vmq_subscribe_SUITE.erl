@@ -60,7 +60,9 @@ groups() ->
          subpub_qos1_with_opts_test,
          resubscribe_test,
          bridge_protocol_retain_as_publish_test,
-         bridge_protocol_no_local_test],
+         bridge_protocol_no_local_test,
+         shared_subs_topic_not_allowed_test_with_local_caching,
+         shared_subs_topic_not_allowed_test],
     TestsMqttV5 =
         [subscribe_no_local_test,
         subscribe_illegal_opt,
@@ -486,6 +488,31 @@ resubscribe_test(_) ->
 
     ok = gen_tcp:close(Socket).
 
+set_shared_subs_local_caching(Config) ->
+    Value = case lists:keyfind(cache_shared_subscriptions_locally, 1, Config) of
+        {_, V} -> V;
+        false -> false
+    end,
+    application:set_env(vmq_server, cache_shared_subscriptions_locally, Value).
+
+
+shared_subs_topic_not_allowed_test_with_local_caching(Config) ->
+    shared_subs_topic_not_allowed_test([{cache_shared_subscriptions_locally, true} | Config]).
+shared_subs_topic_not_allowed_test(Config) ->
+    set_shared_subs_local_caching(Config),
+
+    Connect = packet:gen_connect("shared-sub-not-allowed-test", [{keepalive,60}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(53, "$share/G1/shared-topic-not-allowed", 0),
+    Suback = packet:gen_suback(53, 128),
+    Publish = packet:gen_publish("shared-topic-not-allowed", 0, <<"message">>, []),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    ok = gen_tcp:send(Socket, Subscribe),
+    ok = packet:expect_packet(Socket, "suback", Suback),
+    ok = gen_tcp:send(Socket, Publish),
+    {error, timeout} = packet:expect_packet(Socket, "publish", Publish),
+    ok = gen_tcp:close(Socket).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Hooks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -501,6 +528,9 @@ hook_auth_on_subscribe(_,{"", <<"subscribe-multi2-test">>},
                         {[<<"qos1">>,<<"test">>], _},
                         {[<<"qos2">>,<<"test">>], _}]) ->
     {error, not_allowed};
+hook_auth_on_subscribe(_,{"", <<"shared-sub-not-allowed-test">>},
+                       [{[<<"$share">>,_,<<"shared-topic-not-allowed">>] = Topic, _}]) ->
+    {ok, [{Topic, not_allowed}]};
 hook_auth_on_subscribe(_,_,_) -> ok.
 
 hook_auth_on_publish(_, _, _, _, _, _) -> ok.
