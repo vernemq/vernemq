@@ -1,0 +1,43 @@
+{mapping, "vmq_web_ui.admin.auth", "vmq_web_ui.config", [
+                                                    {datatype, string},
+                                                    {default, "password"},
+                                                    {commented, "password"}
+                                                   ]}.
+{mapping, "vmq_web_ui.admin.user_name", "vmq_web_ui.config", [
+                                                    {datatype, string},
+                                                    {default, "admin"},
+                                                    {commented, "admin"}
+                                                   ]}.
+{mapping, "vmq_web_ui.admin.user_pwd", "vmq_web_ui.config", [
+                                                    {datatype, string},
+                                                    {default, ""},
+                                                    {commented, ""}
+                                                   ]}.
+
+{mapping, "vmq_web_ui.mgmt_api_key", "vmq_web_ui.config", [
+                                                    {datatype, string},
+                                                    {default, ""},
+                                                    {commented, ""}
+                                                   ]}.
+{mapping, "vmq_web_ui.mgmt_api_port", "vmq_web_ui.config", [
+                                                    {datatype, string},
+                                                    {default, ""},
+                                                    {commented, ""}
+                                                   ]}.
+{mapping, "vmq_web_ui.mgmt_api_scheme", "vmq_web_ui.config", [
+                                                    {datatype, string},
+                                                    {default, ""},
+                                                    {commented, ""}
+                                                   ]}.
+{translation, "vmq_web_ui.config",
+fun(Conf) ->
+  UIAdminAuth = {uiauth, cuttlefish:conf_get("vmq_web_ui.admin.auth", Conf, undefined)},
+  UIAdminUser = {uiadminuser, cuttlefish:conf_get("vmq_web_ui.admin.user_name", Conf, undefined)},
+  UIAdminPwd  = {uiadminpwd, cuttlefish:conf_get("vmq_web_ui.admin.user_pwd", Conf, undefined)},
+  UIAPIKey = {uiapikey, cuttlefish:conf_get("vmq_web_ui.mgmt_api_key", Conf, undefined)},
+  UIAPIPort = {uiapiport, cuttlefish:conf_get("vmq_web_ui.mgmt_api_port", Conf, undefined)},
+  UIAPScheme = {uiapischeme, cuttlefish:conf_get("vmq_web_ui.mgmt_api_scheme", Conf, undefined)},
+  Res = [UIAdminAuth, UIAdminUser, UIAdminPwd, UIAPIKey, UIAPIPort, UIAPScheme],
+  Res
+  end
+}.
