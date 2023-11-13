@@ -19,3 +19,6 @@ plts_base/
 docker/vernemq.tar.gz
 
 vernemq.iml
+
+.vscode/
+erlang_ls.config
