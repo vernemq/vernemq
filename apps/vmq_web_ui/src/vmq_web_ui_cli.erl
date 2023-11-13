@@ -16,6 +16,8 @@
 
 register_cli() ->
     clique:register_usage(["vmq-admin", "webui"], webui_usage()),
+    clique:register_usage(["vmq-admin", "webui", "show"], webui_show_usage()),
+    clique:register_usage(["vmq-admin", "webui", "install"], webui_install_usage()),
     show_cmd(),
     install_cmd().
 
@@ -27,9 +29,10 @@ show_cmd() ->
                 Table =
                     [
                         [
-                            {'Frontend path', code:priv_dir(vmq_web_ui)},
-                            {'Frontend version', "Preview"}
-                        ]
+                            {'Item', <<"Frontend Path">>},
+                            {'Value', code:priv_dir(vmq_web_ui) ++ "/www"}
+                        ],
+                        [{'Item', <<"Frontend Version">>}, {'Value', "Preview"}]
                     ],
                 [clique_status:table(Table)];
             (_, _, _) ->
@@ -40,12 +43,43 @@ show_cmd() ->
 
 install_cmd() ->
     Cmd = ["vmq-admin", "webui", "install"],
+    FlagSpecs = [
+        {version, [
+            {shortname, "v"},
+            {longname, "version"},
+            {typecast, fun(Version) -> Version end}
+        ]},
+        {repository, [
+            {shortname, "r"},
+            {longname, "repo"},
+            {typecast, fun(Repro) -> Repro end}
+        ]}
+    ],
     Callback =
-        fun(_, _, _) ->
-            Text = clique_status:text(webui_usage()),
-            [clique_status:alert([Text])]
+        fun(_, [], Flags) ->
+            Version = proplists:get_value(version, Flags, "v0.0.1"),
+            Rep = proplists:get_value(repository, Flags, "vernemq"),
+
+            Link =
+                "https://github.com/" ++ Rep ++ "/vmq_webadmin/releases/download/" ++ Version ++
+                    "/frontend.zip",
+            Response = httpc:request(get, {Link, []}, [], []),
+            Text =
+                case Response of
+                    {ok, {{_, 200, "OK"}, _Headers, Body}} ->
+                        ok = file:write_file("/tmp/vmq_web_ui.zip", Body),
+                        ok = file:del_dir_r(code:priv_dir(vmq_web_ui) ++ "/www"),
+                        {ok, _} = zip:extract("/tmp/vmq_web_ui.zip", [
+                            {'cwd', code:priv_dir(vmq_web_ui) ++ "/www"}
+                        ]),
+                        ["Frontend installed. Please clear browser cache and try it out..."];
+                    _ ->
+                        ["Error downloading file"]
+                end,
+            TextC = clique_status:text(Text),
+            [clique_status:alert([TextC])]
         end,
-    clique:register_command(Cmd, [], [], Callback).
+    clique:register_command(Cmd, [], FlagSpecs, Callback).
 
 webui_usage() ->
     [
@@ -54,5 +88,19 @@ webui_usage() ->
         "  Sub-commands:\n",
         "    show        Show information about web ui\n",
         "    install     Install/update frontend  \n"
+        "  Use --help after a sub-command for more details.\n"
+    ].
+
+webui_show_usage() ->
+    [
+        "vmq-admin webui shown\n",
+        "  Shows VerneMQ Web UI informatiom\n\n",
+        "  Use --help after a sub-command for more details.\n"
+    ].
+
+webui_install_usage() ->
+    [
+        "vmq-admin webui install --repro vernemq --version v0.0.1\n",
+        "  Installs a new frontend version. --repro and --version are optional.\n\n",
         "  Use --help after a sub-command for more details.\n"
     ].

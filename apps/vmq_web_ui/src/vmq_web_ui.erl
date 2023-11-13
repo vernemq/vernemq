@@ -102,7 +102,6 @@ token_valid(Token) ->
                 true ->
                     true;
                 _ ->
-                    ets:remove(webuitoken, Token),
                     false
             end;
         _ ->
@@ -112,7 +111,7 @@ token_valid(Token) ->
 
 logout(Req, _State) ->
     Token = cowboy_req:header(<<"x-token">>, Req, undefined),
-    ets:remove(webuitoken, Token).
+    ets:delete(webuitoken, Token).
 
 login(Req, State) ->
     UserName = cowboy_req:header(<<"username">>, Req, undefined),
