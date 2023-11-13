@@ -17,8 +17,7 @@
     {applications, [
         kernel,
         stdlib,
-        cowboy,
-        lager
+        cowboy
     ]},
     {mod, {vmq_web_ui, []}},
     {maintainers, []},

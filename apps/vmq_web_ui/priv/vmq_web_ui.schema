@@ -14,30 +14,43 @@
                                                     {commented, ""}
                                                    ]}.
 
-{mapping, "vmq_web_ui.mgmt_api_key", "vmq_web_ui.config", [
+{mapping, "vmq_web_ui.mgmt_api.key", "vmq_web_ui.config", [
                                                     {datatype, string},
                                                     {default, ""},
                                                     {commented, ""}
                                                    ]}.
-{mapping, "vmq_web_ui.mgmt_api_port", "vmq_web_ui.config", [
+{mapping, "vmq_web_ui.mgmt_api.port", "vmq_web_ui.config", [
                                                     {datatype, string},
                                                     {default, ""},
                                                     {commented, ""}
                                                    ]}.
-{mapping, "vmq_web_ui.mgmt_api_scheme", "vmq_web_ui.config", [
+{mapping, "vmq_web_ui.mgmt_api.scheme", "vmq_web_ui.config", [
                                                     {datatype, string},
                                                     {default, ""},
                                                     {commented, ""}
+                                                   ]}.
+{mapping, "vmq_web_ui.file_access.allow_read", "vmq_web_ui.config", [
+                                                    {datatype, flag},
+                                                    {default, off},
+                                                    {commented, off}
+                                                   ]}.
+
+{mapping, "vmq_web_ui.file_access.allow_write", "vmq_web_ui.config", [
+                                                    {datatype, flag},
+                                                    {default, off},
+                                                    {commented, off}
                                                    ]}.
 {translation, "vmq_web_ui.config",
 fun(Conf) ->
   UIAdminAuth = {uiauth, cuttlefish:conf_get("vmq_web_ui.admin.auth", Conf, undefined)},
   UIAdminUser = {uiadminuser, cuttlefish:conf_get("vmq_web_ui.admin.user_name", Conf, undefined)},
   UIAdminPwd  = {uiadminpwd, cuttlefish:conf_get("vmq_web_ui.admin.user_pwd", Conf, undefined)},
-  UIAPIKey = {uiapikey, cuttlefish:conf_get("vmq_web_ui.mgmt_api_key", Conf, undefined)},
-  UIAPIPort = {uiapiport, cuttlefish:conf_get("vmq_web_ui.mgmt_api_port", Conf, undefined)},
-  UIAPScheme = {uiapischeme, cuttlefish:conf_get("vmq_web_ui.mgmt_api_scheme", Conf, undefined)},
-  Res = [UIAdminAuth, UIAdminUser, UIAdminPwd, UIAPIKey, UIAPIPort, UIAPScheme],
+  UIAPIKey = {uiapikey, cuttlefish:conf_get("vmq_web_ui.mgmt_api.key", Conf, undefined)},
+  UIAPIPort = {uiapiport, cuttlefish:conf_get("vmq_web_ui.mgmt_api.port", Conf, undefined)},
+  UIAPScheme = {uiapischeme, cuttlefish:conf_get("vmq_web_ui.mgmt_api.scheme", Conf, undefined)},
+  AllowRead = {uifileaccessallowread, cuttlefish:conf_get("vmq_web_ui.file_access.allow_read", Conf, false)},
+  AllowWrite = {uifileaccessallowwrite, cuttlefish:conf_get("vmq_web_ui.file_access.allow_write", Conf, false)},
+  Res = [UIAdminAuth, UIAdminUser, UIAdminPwd, UIAPIKey, UIAPIPort, UIAPScheme, AllowRead, AllowWrite],
   Res
   end
 }.
