@@ -56,6 +56,7 @@ register_cli() ->
     vmq_config_cli:register_config(),
     register_cli_usage(),
     vmq_server_start_cmd(),
+    vmq_server_status_cmd(),
     vmq_server_stop_cmd(),
     vmq_server_show_cmd(),
     vmq_server_metrics_cmd(),
@@ -81,6 +82,7 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin"], fun usage/0),
     clique:register_usage(["vmq-admin", "node"], node_usage()),
     clique:register_usage(["vmq-admin", "node", "start"], start_usage()),
+    clique:register_usage(["vmq-admin", "node", "status"], status_usage()),
     clique:register_usage(["vmq-admin", "node", "stop"], stop_usage()),
     clique:register_usage(["vmq-admin", "node", "upgrade"], upgrade_usage()),
 
@@ -114,6 +116,16 @@ vmq_server_start_cmd() ->
         _ = application:ensure_all_started(vmq_server),
         [clique_status:text("Done")]
     end,
+    clique:register_command(Cmd, [], [], Callback).
+
+vmq_server_status_cmd() ->
+    Cmd = ["vmq-admin", "node", "status"],
+    Callback = fun(_, _, _) ->
+        {ok, Status} = vmq_info:node_status(),
+        Table = [[{'Status', Key}, {'Value', Value}] || {Key, Value} <- Status],
+        [clique_status:table(Table)]
+    end,
+
     clique:register_command(Cmd, [], [], Callback).
 
 vmq_server_show_cmd() ->
@@ -665,6 +677,12 @@ start_usage() ->
         "  when starting the service.\n"
     ].
 
+status_usage() ->
+    [
+        "vmq-admin node status\n\n",
+        "  Prints status information about the node\n"
+    ].
+
 stop_usage() ->
     [
         "vmq-admin node stop\n\n",
@@ -743,6 +761,7 @@ node_usage() ->
         "vmq-admin node <sub-command>\n\n",
         "  Administrate this VerneMQ node.\n\n",
         "  Sub-commands:\n",
+        "    status      Prints status information\n",
         "    start       Start the server application\n",
         "    stop        Stop the server application\n\n",
         "  Use --help after a sub-command for more details.\n"
