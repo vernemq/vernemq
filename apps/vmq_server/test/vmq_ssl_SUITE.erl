@@ -161,12 +161,12 @@ init_per_testcase(Case, Config) ->
                 {keypasswd, "VerneMQ123"},
                 {tls_version, "tlsv1.2"}]),
             {ok, _} = vmq_server_cmd:listener_start(1889, [{ssl, true},
-{nr_of_acceptors, 5},
-{cafile, ssl_path("all-ca.crt")},
-{certfile, ssl_path("server.crt")},
-{keyfile, ssl_path("server.encrypted.key")},
-{keypasswd, "VerneMQ123Wrong"},
-{tls_version, "tlsv1.2"}])
+                {nr_of_acceptors, 5},
+                {cafile, ssl_path("all-ca.crt")},
+                {certfile, ssl_path("server.crt")},
+                {keyfile, ssl_path("server.encrypted.key")},
+                {keypasswd, "VerneMQ123Wrong"},
+                {tls_version, "tlsv1.2"}])
     end,
     Config.
 
@@ -242,6 +242,7 @@ connect_psk_test(_) ->
                                {psk_identity, "psk_identity_1"},
                                {versions, ['tlsv1.2']},
                                {protocol, tls},
+                               {verify, verify_none},
                                {user_lookup_fun, {fun psk_lookup/3, #{}}},
                                {ciphers, ["PSK-AES256-GCM-SHA384"]}]),
     ok = ssl:send(SSock, Connect),
@@ -258,6 +259,7 @@ connect_psk_wrong_identity(_) ->
                                [binary, {active, false}, {packet, raw},
                                {psk_identity, "it2"},
                                {versions, ['tlsv1.2']},
+                               {verify, verify_none},
                                {protocol, tls},
                                {user_lookup_fun, {fun psk_lookup/3, #{}}},
                                {ciphers, ["PSK-AES256-GCM-SHA384"]}])).

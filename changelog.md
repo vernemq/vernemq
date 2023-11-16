@@ -1,6 +1,10 @@
+- 'vmq_admin': Add new command tls invalide-pem-cache to support easier certificate replacement
+- Add compatibility with [Erlang/OTP 26]
+- Add new command to vmq-admin to clear webhook cache (webhooks cache clear)
 - 'vmq_admin': Add commands allowing batch disconnects (vmq-admin session disconnect batch and vmq-admin session disconnect clients)
 - 'vmq_http_pub': Allow anonymous access (allow_anonymous = on)
- 
+
+
 ## VerneMQ 1.13.0
 
 - New Plugin: 'vmq_http_pub', allows to ingest MQTT messages via a HTTP REST interface

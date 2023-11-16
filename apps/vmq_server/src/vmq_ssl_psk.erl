@@ -34,7 +34,7 @@ opts(Opts) ->
             [];
         _ ->
             [
-                {psk_identity, proplists:get_value(psk_identity_hint, Opts)},
+                {psk_identity, proplists:get_value(psk_identity_hint, Opts, "VMQ")},
                 {user_lookup_fun, {fun psk_lookup/3, #{}}}
             ]
     end.

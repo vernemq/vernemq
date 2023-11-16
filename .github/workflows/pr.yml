@@ -12,18 +12,18 @@ concurrency:
 
 env:
   # Default OTP version used for current releases
-  DEFAULT_RELEASE_OTP: 23.2.1
+  DEFAULT_RELEASE_OTP: 25.3.2
 
 jobs:
   code_checks:
     name: Check code style and quality
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Install dependencies
         run: |
           sudo apt-get install -y libsnappy-dev
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Cache PLTs
         id: cache-plts
         uses: actions/cache@v3
@@ -53,7 +53,7 @@ jobs:
 
   coverage:
     name: Run tests with coverage
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     services:
       postgres:
@@ -103,7 +103,7 @@ jobs:
           sudo apt-get -qq update
           sudo apt-get -qq install libsnappy-dev pcregrep
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install Erlang/OTP
         uses: erlef/setup-beam@v1.16
         with:
@@ -157,13 +157,13 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-20.04
+          - ubuntu-22.04
           # Monterrey
           - macos-12
         otp:
-          - "25.2"
+          - "26.1"
+          - "25.3"
           - "24.3"
-          - "23.3"
 
     steps:
       - name: Install dependencies (Linux)
@@ -186,7 +186,7 @@ jobs:
           brew install coreutils snappy erlang@$majorversion openssl mosquitto pcre
           echo "/usr/local/opt/erlang@$majorversion/bin" >> $GITHUB_PATH
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Install Erlang/OTP
@@ -263,3 +263,4 @@ jobs:
         with:
           name: Event File
           path: ${{ github.event_path }}
+

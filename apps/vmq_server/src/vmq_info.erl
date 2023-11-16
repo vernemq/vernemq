@@ -16,6 +16,7 @@
 -behaviour(vmq_ql_query).
 -include("vmq_server.hrl").
 -include_lib("vmq_ql/include/vmq_ql.hrl").
+-include("vmq_metrics.hrl").
 
 -export([
     fields_config/0,
@@ -23,7 +24,62 @@
 ]).
 
 %% used by vmq_info_cli
--export([session_info_items/0]).
+-export([session_info_items/0, node_status/0]).
+
+counter_val(C) ->
+    try vmq_metrics:counter_val(C) of
+        Value -> Value
+    catch
+        _:_ -> 0
+    end.
+
+version() ->
+    case release_handler:which_releases(current) of
+        [{"vernemq", Version, _, current} | _] ->
+            list_to_binary(Version);
+        [] ->
+            [{"vernemq", Version, _, permanent} | _] = release_handler:which_releases(permanent),
+            list_to_binary(Version)
+    end.
+
+node_status() ->
+    % Total Connections
+    TotalActiveMqttConnections = lists:sum(
+        tuple_to_list(vmq_ranch_sup:active_mqtt_connections())
+    ),
+    % Total Online Queues
+    TotalQueues = vmq_queue_sup_sup:nr_of_queues(),
+    TotalOfflineQueues = TotalQueues - TotalActiveMqttConnections,
+    TotalPublishIn =
+        counter_val(?MQTT4_PUBLISH_RECEIVED) +
+            counter_val(?MQTT5_PUBLISH_RECEIVED),
+    TotalPublishOut =
+        counter_val(?MQTT4_PUBLISH_SENT) +
+            counter_val(?MQTT5_PUBLISH_SENT),
+    TotalQueueIn = counter_val(?METRIC_QUEUE_MESSAGE_IN),
+    TotalQueueOut = counter_val(?METRIC_QUEUE_MESSAGE_OUT),
+    TotalQueueDrop = counter_val(?METRIC_QUEUE_MESSAGE_DROP),
+    TotalQueueUnhandled = counter_val(?METRIC_QUEUE_MESSAGE_UNHANDLED),
+    TotalMatchesLocal = counter_val(?METRIC_ROUTER_MATCHES_LOCAL),
+    TotalMatchesRemote = counter_val(?METRIC_ROUTER_MATCHES_REMOTE),
+    RegView = vmq_config:get_env(default_reg_view, vmq_reg_trie),
+    {NrOfSubs, _SMemory} = vmq_metrics:fetch_external_metric(RegView, stats, {0, 0}),
+    {NrOfRetain, _RMemory} = vmq_retain_srv:stats(),
+    {ok, [
+        {<<"num_online">>, TotalActiveMqttConnections},
+        {<<"num_offline">>, TotalOfflineQueues},
+        {<<"msg_in">>, TotalPublishIn},
+        {<<"msg_out">>, TotalPublishOut},
+        {<<"queue_in">>, TotalQueueIn},
+        {<<"queue_out">>, TotalQueueOut},
+        {<<"queue_drop">>, TotalQueueDrop},
+        {<<"queue_unhandled">>, TotalQueueUnhandled},
+        {<<"num_subscriptions">>, NrOfSubs},
+        {<<"num_retained">>, NrOfRetain},
+        {<<"matches_local">>, TotalMatchesLocal},
+        {<<"matches_remote">>, TotalMatchesRemote},
+        {<<"version">>, version()}
+    ]}.
 
 fields_config() ->
     QueueBase = #vmq_ql_table{
