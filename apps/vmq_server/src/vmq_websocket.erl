@@ -228,12 +228,18 @@ handle_fsm_return({stop, shutdown, Out}, State) ->
     lager:debug("ws session stopped due to shutdown", []),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, State#state{fsm_state = terminated});
-handle_fsm_return({stop, Reason, Out}, State) ->
-    lager:warning("ws session stopped abnormally due to '~p'", [Reason]),
+handle_fsm_return({stop, Reason, Out}, #state{fsm_mod = FsmMod, fsm_state = FsmState} = State) ->
+    SubscriberId = apply(FsmMod, subscriber, [FsmState]),
+    lager:warning("ws session for client ~p stopped abnormally due to '~p'", [
+        SubscriberId, Reason
+    ]),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, State#state{fsm_state = terminated});
-handle_fsm_return({error, Reason, Out}, State) ->
-    lager:warning("ws session error, force terminate due to '~p'", [Reason]),
+handle_fsm_return({error, Reason, Out}, #state{fsm_mod = FsmMod, fsm_state = FsmState} = State) ->
+    SubscriberId = apply(FsmMod, subscriber, [FsmState]),
+    lager:warning("ws session error for client ~p, force terminate due to '~p'", [
+        SubscriberId, Reason
+    ]),
     self() ! {?MODULE, terminate},
     maybe_reply(Out, State#state{fsm_state = terminated}).
 

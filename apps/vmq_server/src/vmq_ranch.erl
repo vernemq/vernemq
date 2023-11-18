@@ -177,14 +177,15 @@ loop_({exit, Reason, State}) ->
     _ = internal_flush(State),
     teardown(State, Reason).
 
-teardown(#st{socket = Socket}, Reason) ->
+teardown(#st{socket = Socket, fsm_mod = FsmMod, fsm_state = FsmState}, Reason) ->
     case Reason of
         normal ->
             lager:debug("session normally stopped", []);
         shutdown ->
             lager:debug("session stopped due to shutdown", []);
         _ ->
-            lager:warning("session stopped abnormally due to '~p'", [Reason])
+            SubscriberId = apply(FsmMod, subscriber, [FsmState]),
+            lager:warning("session for ~p stopped abnormally due to '~p'", [SubscriberId, Reason])
     end,
     _ = vmq_metrics:incr_socket_close(),
     close(Socket),
