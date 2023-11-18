@@ -32,6 +32,10 @@ register_server_cli() ->
         ["vmq-admin", "listener", "restart"],
         vmq_listener_restart_usage()
     ),
+    clique:register_usage(
+        ["vmq-admin", "listener", "show"],
+        vmq_listener_show_usage()
+    ),
     vmq_listener_start_cmd(),
     vmq_listener_stop_cmd(),
     vmq_listener_delete_cmd(),
@@ -352,12 +356,28 @@ restart_listener(Addr, Port) ->
 vmq_listener_show_cmd() ->
     Cmd = ["vmq-admin", "listener", "show"],
     KeySpecs = [],
-    FlagSpecs = [],
+    FlagSpecs = [
+        {tls, [
+            {shortname, "t"},
+            {longname, "show_tls"}
+        ]},
+        {mqtt, [
+            {shortname, "m"},
+            {longname, "show_mqtt"}
+        ]}
+    ],
     Callback =
-        fun(_, [], []) ->
+        fun(_, [], Flags) ->
+            IsTLS = lists:keymember(tls, 1, Flags),
+            IsMQTT = lists:keymember(mqtt, 1, Flags),
             Table =
                 lists:foldl(
-                    fun({Type, Ip, Port, Status, MP, MaxConns, ActiveConns, AllConns}, Acc) ->
+                    fun(
+                        {Type, Ip, Port, Status, MP, MaxConns, ActiveConns, AllConns, TLS, CertFile,
+                            CAFile, KeyFile, RequireCertificate, UseIDAsUsername, PSKSupport,
+                            PSKFile, AllowedProtocolVersions, AllowAnonymousOverride},
+                        Acc
+                    ) ->
                         [
                             [
                                 {type, Type},
@@ -368,12 +388,36 @@ vmq_listener_show_cmd() ->
                                 {max_conns, MaxConns},
                                 {active_conns, ActiveConns},
                                 {all_conns, AllConns}
-                            ]
+                            ] ++
+                                case IsTLS of
+                                    true ->
+                                        [
+                                            {tls_version, TLS},
+                                            {certfile, CertFile},
+                                            {cafile, CAFile},
+                                            {keyfile, KeyFile},
+                                            {require_certificate, RequireCertificate},
+                                            {use_identity_as_username, UseIDAsUsername},
+                                            {psk_support, PSKSupport},
+                                            {pskfile, PSKFile}
+                                        ];
+                                    _ ->
+                                        []
+                                end ++
+                                case IsMQTT of
+                                    true ->
+                                        [
+                                            {allowed_protocol_versions, AllowedProtocolVersions},
+                                            {allow_anonymous_override, AllowAnonymousOverride}
+                                        ];
+                                    _ ->
+                                        []
+                                end
                             | Acc
                         ]
                     end,
                     [],
-                    vmq_ranch_config:listeners()
+                    vmq_ranch_config:listeners(with_tls_and_mqtt)
                 ),
             [clique_status:table(Table)]
         end,
@@ -473,6 +517,17 @@ vmq_listener_stop_usage() ->
         "Options\n\n",
         "  -k, --kill_sessions\n"
         "      kills all sessions accepted with this listener.\n\n"
+    ].
+
+vmq_listener_show_usage() ->
+    [
+        "vmq-admin listener show\n\n",
+        "  Shows information about listeners..\n\n",
+        "Options\n\n",
+        "  -m, --mqtt\n"
+        "      Shows additional MQTT information\n"
+        "  -t, --tls\n"
+        "      Shows additional TLS/SSL information\n\n"
     ].
 
 vmq_listener_delete_usage() ->
