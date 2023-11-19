@@ -320,10 +320,10 @@ vmq_ql_callback(Table, DefaultFields, Opts) ->
         RowTimeout = proplists:get_value(rowtimeout, Flags, "100"),
         _ = list_to_integer(Limit),
         _ = list_to_integer(RowTimeout),
-        {Fields, Where} =
+        {Fields, WhereEqual, WhereMatch} =
             case Flags of
                 [] ->
-                    {DefaultFields, []};
+                    {DefaultFields, [], []};
                 _ ->
                     lists:foldl(
                         fun
@@ -331,12 +331,21 @@ vmq_ql_callback(Table, DefaultFields, Opts) ->
                                 Acc;
                             ({rowtimeout, _}, Acc) ->
                                 Acc;
-                            ({Flag, undefined}, {AccFields, AccWhere}) ->
-                                {[atom_to_list(Flag) | AccFields], AccWhere};
-                            ({Flag, Val}, {AccFields, AccWhere}) ->
-                                {AccFields, [{atom_to_list(Flag), v(Flag, Val)} | AccWhere]}
+                            ({Flag, undefined}, {AccFields, AccWhere, AccMatch}) ->
+                                {[atom_to_list(Flag) | AccFields], AccWhere, AccMatch};
+                            ({Flag, Val}, {AccFields, AccWhere, AccMatch}) ->
+                                case string:slice(Val, 0, 1) of
+                                    "~" ->
+                                        {AccFields, AccWhere, [
+                                            {atom_to_list(Flag), v(Flag, string:slice(Val, 1))}
+                                            | AccMatch
+                                        ]};
+                                    _ ->
+                                        {AccFields, [{atom_to_list(Flag), v(Flag, Val)} | AccWhere],
+                                            AccMatch}
+                                end
                         end,
-                        {[], []},
+                        {[], [], []},
                         Flags
                     )
             end,
@@ -348,13 +357,21 @@ vmq_ql_callback(Table, DefaultFields, Opts) ->
                     string:join(Fields, ",")
             end,
         WWhere =
-            case Where of
-                [] ->
+            case {WhereEqual, WhereMatch} of
+                {[], []} ->
                     [];
                 _ ->
                     "WHERE " ++
                         lists:flatten(
-                            string:join([[W, "=", V] || {W, V} <- Where], " AND ")
+                            string:join([[W, "=", V] || {W, V} <- WhereEqual], " AND ")
+                        ) ++
+                        case {WhereEqual, WhereMatch} of
+                            {[], _A} -> [];
+                            {_A, []} -> [];
+                            _ -> " AND "
+                        end ++
+                        lists:flatten(
+                            string:join([[W, " MATCH ", V] || {W, V} <- WhereMatch], " AND ")
                         )
             end,
         QueryString =
@@ -409,6 +426,9 @@ vmq_session_show_usage() ->
         "  Show and filter information about MQTT sessions\n\n",
         "Default options:\n"
         "  --client_id --is_online --mountpoint --peer_host --peer_port --user\n\n"
+        "Filter:\n"
+        "  You can filter for any option like --client_id=test, you can also do a regex search \n"
+        "  as in --client_id=~test.*3\n\n"
         "Options\n\n"
         "  --limit=<NumberOfResults>\n"
         "      Limit the number of results returned from each node in the cluster.\n"
