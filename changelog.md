@@ -1,3 +1,4 @@
+- vmq_reg_trie': Move from genserver2 to genserver for improved memory management.
 - 'vmq_admin': Introduce regex search for session show command
 - 'vmq_admin': Extend vmq-admin listener show with  TLS and MQTT listener settings
 - Improve error reporting (include client) in logs (#2184)
@@ -7,7 +8,6 @@
 - Add new command to vmq-admin to clear webhook cache (webhooks cache clear)
 - 'vmq_admin': Add commands allowing batch disconnects (vmq-admin session disconnect batch and vmq-admin session disconnect clients)
 - 'vmq_http_pub': Allow anonymous access (allow_anonymous = on)
-
 
 ## VerneMQ 1.13.0
 
