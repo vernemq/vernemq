@@ -14,6 +14,7 @@
 
 -module(vmq_mqtt_fsm_util).
 -include("vmq_server.hrl").
+-include("vmq_metrics.hrl").
 -include_lib("vmq_commons/include/vmq_types.hrl").
 
 -export([
@@ -23,7 +24,8 @@
     plugin_receive_loop/2,
     to_vmq_subtopics/2,
     peertoa/1,
-    terminate_reason/1
+    terminate_reason/1,
+    terminate_proto_reason/1
 ]).
 
 -define(TO_SESSION, to_session_fsm).
@@ -143,4 +145,33 @@ terminate_reason(?DISCONNECT_MIGRATION) -> normal;
 terminate_reason(?NORMAL_DISCONNECT) -> normal;
 terminate_reason(?SESSION_TAKEN_OVER) -> normal;
 terminate_reason(?REMOTE_SESSION_TAKEN_OVER) -> normal;
+terminate_reason(?INVALID_PUBREC_ERROR) -> normal;
+terminate_reason(?INVALID_PUBCOMP_ERROR) -> normal;
+terminate_reason(?TCP_CLOSED) -> normal;
+terminate_reason(?EXIT_SIGNAL_RECEIVED) -> normal;
+terminate_reason(?PUBLISH_AUTH_ERROR) -> normal;
 terminate_reason(Reason) -> Reason.
+
+-spec terminate_proto_reason(any()) -> any().
+terminate_proto_reason(Reason) ->
+    case Reason of
+        ?NOT_AUTHORIZED -> ?REASON_NOT_AUTHORIZED;
+        ?NORMAL_DISCONNECT -> ?REASON_NORMAL_DISCONNECT;
+        ?SESSION_TAKEN_OVER -> ?REASON_SESSION_TAKEN_OVER;
+        ?ADMINISTRATIVE_ACTION -> ?REASON_ADMINISTRATIVE_ACTION;
+        ?DISCONNECT_KEEP_ALIVE -> ?REASON_DISCONNECT_KEEP_ALIVE;
+        ?DISCONNECT_MIGRATION -> ?REASON_DISCONNECT_MIGRATION;
+        ?BAD_AUTHENTICATION_METHOD -> ?REASON_BAD_AUTHENTICATION_METHOD;
+        ?REMOTE_SESSION_TAKEN_OVER -> ?REASON_REMOTE_SESSION_TAKEN_OVER;
+        ?CLIENT_DISCONNECT -> ?REASON_MQTT_CLIENT_DISCONNECT;
+        ?RECEIVE_MAX_EXCEEDED -> ?REASON_RECEIVE_MAX_EXCEEDED;
+        ?PROTOCOL_ERROR -> ?REASON_PROTOCOL_ERROR;
+        ?PUBLISH_AUTH_ERROR -> ?REASON_PUBLISH_AUTH_ERROR;
+        ?INVALID_PUBREC_ERROR -> ?REASON_INVALID_PUBREC_ERROR;
+        ?INVALID_PUBCOMP_ERROR -> ?REASON_INVALID_PUBCOMP_ERROR;
+        ?UNEXPECTED_FRAME_TYPE -> ?REASON_UNEXPECTED_FRAME_TYPE;
+        ?EXIT_SIGNAL_RECEIVED -> ?REASON_EXIT_SIGNAL_RECEIVED;
+        ?TCP_CLOSED -> ?REASON_TCP_CLOSED;
+        ?NORMAL -> ?REASON_NORMAL_DISCONNECT;
+        _ -> ?REASON_UNSPECIFIED
+    end.

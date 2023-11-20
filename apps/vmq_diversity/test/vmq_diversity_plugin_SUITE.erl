@@ -136,9 +136,9 @@ on_offline_message_test(_) ->
 on_client_wakeup_test(_) ->
     [next] = vmq_plugin:all(on_client_wakeup, [allowed_subscriber_id()]).
 on_client_offline_test(_) ->
-    [next] = vmq_plugin:all(on_client_offline, [allowed_subscriber_id()]).
+    [next] = vmq_plugin:all(on_client_offline, [allowed_subscriber_id(), reason()]).
 on_client_gone_test(_) ->
-    [next] = vmq_plugin:all(on_client_gone, [allowed_subscriber_id()]).
+    [next] = vmq_plugin:all(on_client_gone, [allowed_subscriber_id(), reason()]).
 on_session_expired_test(_) ->
     [next] = vmq_plugin:all(on_session_expired, [allowed_subscriber_id()]).
 
@@ -312,3 +312,4 @@ payload() -> <<"hello world">>.
 subopts() ->
     #{rap => true,
       no_local => false}.
+reason() -> normal_disconnect.

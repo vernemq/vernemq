@@ -7,4 +7,5 @@
 -define(MOUNTPOINT_BIN, <<"mountpoint">>).
 -define(TOPIC, <<"test/topic">>).
 -define(PAYLOAD, <<"hello world">>).
+-define(REASON, 'REASON_NORMAL_DISCONNECT').
 

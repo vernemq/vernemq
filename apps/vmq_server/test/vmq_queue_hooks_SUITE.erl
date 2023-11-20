@@ -17,8 +17,8 @@
 
 -export([hook_auth_on_subscribe/3,
          hook_auth_on_publish/6,
-         hook_on_client_gone/1,
-         hook_on_client_offline/1,
+         hook_on_client_gone/2,
+         hook_on_client_offline/2,
          hook_on_client_wakeup/1,
          hook_on_session_expired/1,
          hook_on_offline_message/5,
@@ -178,14 +178,14 @@ hook_on_client_wakeup({"", <<"queue-client">>}) ->
 hook_on_client_wakeup(_) ->
     ok.
 
-hook_on_client_gone({"", <<"queue-client">>}) ->
+hook_on_client_gone({"", <<"queue-client">>}, _) ->
     ets:insert(?MODULE, {on_client_gone, true});
-hook_on_client_gone(_) ->
+hook_on_client_gone(_, _) ->
     ok.
 
-hook_on_client_offline({"", <<"queue-client">>}) ->
+hook_on_client_offline({"", <<"queue-client">>}, _) ->
     ets:insert(?MODULE, {on_client_offline, true});
-hook_on_client_offline(_) ->
+hook_on_client_offline(_, _) ->
     ok.
 
 hook_on_session_expired({"", <<"queue-client">>}) ->
@@ -222,9 +222,9 @@ disable_on_publish() ->
 
 enable_queue_hooks() ->
     vmq_plugin_mgr:enable_module_plugin(
-      on_client_gone, ?MODULE, hook_on_client_gone, 1),
+      on_client_gone, ?MODULE, hook_on_client_gone, 2),
     vmq_plugin_mgr:enable_module_plugin(
-      on_client_offline, ?MODULE, hook_on_client_offline, 1),
+      on_client_offline, ?MODULE, hook_on_client_offline, 2),
     vmq_plugin_mgr:enable_module_plugin(
       on_client_wakeup, ?MODULE, hook_on_client_wakeup, 1),
     vmq_plugin_mgr:enable_module_plugin(
@@ -236,9 +236,9 @@ enable_queue_hooks() ->
 
 disable_queue_hooks() ->
     vmq_plugin_mgr:disable_module_plugin(
-      on_client_gone, ?MODULE, hook_on_client_gone, 1),
+      on_client_gone, ?MODULE, hook_on_client_gone, 2),
     vmq_plugin_mgr:disable_module_plugin(
-      on_client_offline, ?MODULE, hook_on_client_offline, 1),
+      on_client_offline, ?MODULE, hook_on_client_offline, 2),
     vmq_plugin_mgr:disable_module_plugin(
       on_client_wakeup, ?MODULE, hook_on_client_wakeup, 1),
     vmq_plugin_mgr:disable_module_plugin(

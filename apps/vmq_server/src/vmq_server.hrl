@@ -86,4 +86,11 @@
 -define(CONSUMER, "consumer").
 
 -define(REMOTE_SESSION_TAKEN_OVER, remote_session_taken_over).
+-define(INVALID_PUBREC_ERROR, invalid_pubrec_error).
+-define(INVALID_PUBCOMP_ERROR, invalid_pubcomp_error).
+-define(PUBLISH_AUTH_ERROR, publish_not_authorized_3_1_1).
+-define(TCP_CLOSED, tcp_closed).
+-define(EXIT_SIGNAL_RECEIVED, exit_signal_received).
+-define(UNEXPECTED_FRAME_TYPE, unexpected_frame_type).
+-define(NORMAL, normal).
 -endif.

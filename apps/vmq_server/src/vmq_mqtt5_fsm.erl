@@ -904,6 +904,10 @@ terminate(
                 %% MQTT errors and as such we don't tell the client
                 %% about them, we just drop the connection.
                 [];
+            ?EXIT_SIGNAL_RECEIVED ->
+                [gen_disconnect(?NORMAL_DISCONNECT, Props)];
+            ?TCP_CLOSED ->
+                [gen_disconnect(?NORMAL_DISCONNECT, Props)];
             _ ->
                 [gen_disconnect(Reason, Props)]
         end,

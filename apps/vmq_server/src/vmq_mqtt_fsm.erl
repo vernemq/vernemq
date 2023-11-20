@@ -265,7 +265,7 @@ connected(
         end,
     case Ret of
         {error, not_allowed} ->
-            terminate(publish_not_authorized_3_1_1, State);
+            terminate(?PUBLISH_AUTH_ERROR, State);
         Out when is_list(Out) ->
             case do_throttle(#{}, State) of
                 false ->
@@ -372,7 +372,7 @@ connected(#mqtt_pubrec{message_id = MessageId}, State) ->
         not_found ->
             lager:debug("stopped connected session, due to unknown qos2 pubrec ~p", [MessageId]),
             _ = vmq_metrics:incr_mqtt_error_invalid_pubrec(),
-            terminate(normal, State)
+            terminate(?INVALID_PUBREC_ERROR, State)
     end;
 connected(#mqtt_pubrel{message_id = MessageId}, State) ->
     #state{waiting_acks = WAcks} = State,
@@ -406,7 +406,7 @@ connected(#mqtt_pubcomp{message_id = MessageId}, State) ->
         not_found ->
             lager:debug("stopped connected session, due to qos2 pubrel missing ~p", [MessageId]),
             _ = vmq_metrics:incr_mqtt_error_invalid_pubcomp(),
-            terminate(normal, State)
+            terminate(?INVALID_PUBCOMP_ERROR, State)
     end;
 connected(
     #mqtt_subscribe{message_id = MessageId, topics = Topics},
@@ -485,7 +485,7 @@ connected(#mqtt_pingreq{}, State) ->
     {State, [Frame]};
 connected(#mqtt_disconnect{}, State) ->
     _ = vmq_metrics:incr_mqtt_disconnect_received(),
-    terminate(mqtt_client_disconnect, State);
+    terminate(?CLIENT_DISCONNECT, State);
 connected(
     retry,
     #state{
@@ -515,7 +515,7 @@ connected(
                 SubscriberId, UserName
             ]),
             _ = vmq_metrics:incr(?MQTT4_CLIENT_KEEPALIVE_EXPIRED),
-            terminate(normal, State);
+            terminate(?DISCONNECT_KEEP_ALIVE, State);
         false ->
             set_keepalive_check_timer(KeepAlive),
             {State, []}
@@ -556,17 +556,25 @@ queue_down_terminate(shutdown, State) ->
 queue_down_terminate(Reason, #state{queue_pid = QPid} = State) ->
     terminate({error, {queue_down, QPid, Reason}}, State).
 
-terminate(Reason, #state{clean_session = CleanSession} = State) ->
+terminate(Reason, #state{clean_session = CleanSession, queue_pid = QueuePid} = State) ->
     _ =
         case CleanSession of
             true -> ok;
             false -> handle_waiting_acks_and_msgs(State)
         end,
+
+    NewReason =
+        case Reason of
+            {error, unexpected_message, _} -> ?UNEXPECTED_FRAME_TYPE;
+            _ -> Reason
+        end,
     %% TODO: the counter update is missing the last will message
     maybe_publish_last_will(State, Reason),
+    ProtoReason = vmq_mqtt_fsm_util:terminate_proto_reason(NewReason),
+    _ = vmq_metrics:incr({?MQTT_DISONNECT, ProtoReason}),
+    vmq_queue:set_last_disconnect_reason(QueuePid, ProtoReason),
     {stop, terminate_reason(Reason), []}.
 
-terminate_reason(publish_not_authorized_3_1_1) -> normal;
 terminate_reason(Reason) -> vmq_mqtt_fsm_util:terminate_reason(Reason).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

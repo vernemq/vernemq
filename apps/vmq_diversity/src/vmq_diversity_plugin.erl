@@ -51,8 +51,8 @@
     on_deliver/6,
     on_offline_message/5,
     on_client_wakeup/1,
-    on_client_offline/1,
-    on_client_gone/1,
+    on_client_offline/2,
+    on_client_gone/2,
     on_session_expired/1,
     on_delivery_complete/6,
     auth_on_register_m5/6,
@@ -624,7 +624,7 @@ on_client_wakeup(SubscriberId) ->
         {client_id, ClientId}
     ]).
 
-on_client_offline(SubscriberId) ->
+on_client_offline(SubscriberId, _) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_client_offline, [
@@ -632,7 +632,7 @@ on_client_offline(SubscriberId) ->
         {client_id, ClientId}
     ]).
 
-on_client_gone(SubscriberId) ->
+on_client_gone(SubscriberId, _) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     vmq_diversity_cache:clear_cache(MP, ClientId),
     all(on_client_gone, [

@@ -164,13 +164,13 @@ on_client_wakeup(#'eventssidecar.v1.OnClientWakeUp'{mountpoint = ?MOUNTPOINT_BIN
     
 
 on_client_offline(#'eventssidecar.v1.OnClientOffline'{mountpoint = ?MOUNTPOINT_BIN,
-                   client_id = BinPid}) ->
+                   client_id = BinPid, reason = ?REASON}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_client_offline_ok.
     
 
 on_client_gone(#'eventssidecar.v1.OnClientGone'{mountpoint = ?MOUNTPOINT_BIN,
-                 client_id = BinPid}) ->
+                 client_id = BinPid, reason = ?REASON}) ->
     Pid = list_to_pid(binary_to_list(BinPid)),
     Pid ! on_client_gone_ok.
     

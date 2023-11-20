@@ -136,14 +136,14 @@ on_client_wakeup_test(_) ->
 on_client_offline_test(_) ->
     enable_hook(on_client_offline),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_client_offline, [{?MOUNTPOINT, Self}]),
+    [ok] = vmq_plugin:all(on_client_offline, [{?MOUNTPOINT, Self}, ?REASON]),
     ok = exp_response(on_client_offline_ok),
     disable_hook(on_client_offline).
 
 on_client_gone_test(_) ->
     enable_hook(on_client_gone),
     Self = pid_to_bin(self()),
-    [ok] = vmq_plugin:all(on_client_gone, [{?MOUNTPOINT, Self}]),
+    [ok] = vmq_plugin:all(on_client_gone, [{?MOUNTPOINT, Self}, ?REASON]),
     ok = exp_response(on_client_gone_ok),
     disable_hook(on_client_gone).
 

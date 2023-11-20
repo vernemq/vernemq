@@ -1,8 +1,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
-
-option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
+import "disconnect_reason.proto";
 
 package eventssidecar.v1;
 
@@ -10,4 +9,5 @@ message OnClientGone {
     google.protobuf.Timestamp timestamp = 1;
     string client_id = 2;
     string mountpoint = 3;
+    eventssidecar.v1.Reason reason = 4;
 }

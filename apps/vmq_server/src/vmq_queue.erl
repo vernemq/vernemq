@@ -56,7 +56,8 @@
     force_disconnect/2,
     force_disconnect/3,
     set_delayed_will/3,
-    init_offline_queue/1
+    init_offline_queue/1,
+    set_last_disconnect_reason/2
 ]).
 
 -export([
@@ -111,7 +112,8 @@
         | undefined,
     delayed_will_timer :: reference() | undefined,
     started_at :: vmq_time:timestamp(),
-    initial_msg_id = 1 :: msg_id()
+    initial_msg_id = 1 :: msg_id(),
+    last_disconnect_reason :: atom() | undefined
 }).
 
 -type state() :: #state{}.
@@ -159,6 +161,9 @@ set_opts(Queue, Opts) when is_pid(Queue) ->
 
 get_opts(Queue) when is_pid(Queue) ->
     save_sync_send_all_state_event(Queue, get_opts).
+
+set_last_disconnect_reason(Queue, Reason) when is_pid(Queue) ->
+    gen_fsm:sync_send_all_state_event(Queue, {set_last_disconnect_reason, Reason}, infinity).
 
 force_disconnect(Queue, Reason) when is_pid(Queue) ->
     force_disconnect(Queue, Reason, false).
@@ -691,6 +696,8 @@ handle_sync_event(
     end;
 handle_sync_event({set_delayed_will, Fun, Delay}, _From, StateName, State) ->
     {reply, ok, StateName, State#state{delayed_will = {Delay, Fun}}};
+handle_sync_event({set_last_disconnect_reason, Reason}, _From, StateName, State) ->
+    {reply, ok, StateName, State#state{last_disconnect_reason = Reason}};
 handle_sync_event(Event, _From, _StateName, State) ->
     {stop, {error, {unknown_sync_event, Event}}, State}.
 
@@ -869,7 +876,7 @@ del_session(SessionPid, #state{id = SId, sessions = Sessions} = State) ->
 handle_session_down(
     SessionPid,
     StateName,
-    #state{id = SId, waiting_call = WaitingCall} = State
+    #state{id = SId, waiting_call = WaitingCall, last_disconnect_reason = Reason} = State
 ) ->
     {NewState, DeletedSession} = del_session(SessionPid, State),
     case {maps:size(NewState#state.sessions), StateName, WaitingCall} of
@@ -881,9 +888,9 @@ handle_session_down(
             gen_fsm:reply(From, {ok, RetOpts}),
             case DeletedSession#session.cleanup_on_disconnect of
                 true ->
-                    _ = vmq_plugin:all(on_client_gone, [SId]);
+                    _ = vmq_plugin:all(on_client_gone, [SId, Reason]);
                 false ->
-                    _ = vmq_plugin:all(on_client_offline, [SId])
+                    _ = vmq_plugin:all(on_client_offline, [SId, Reason])
             end,
             {next_state, state_change({'DOWN', add_session}, wait_for_offline, online),
                 add_session_(NewSessionPid, Opts, NewState#state{waiting_call = undefined})};
@@ -895,7 +902,7 @@ handle_session_down(
             vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
             vmq_reg:delete_subscriptions(SId),
             vmq_message_store:delete(SId),
-            _ = vmq_plugin:all(on_client_gone, [SId]),
+            _ = vmq_plugin:all(on_client_gone, [SId, Reason]),
             gen_fsm:reply(From, ok),
             {stop, normal, NewState};
         {0, wait_for_offline, {migrate, _, _}} ->
@@ -903,7 +910,7 @@ handle_session_down(
             %% ... but we've a migrate request waiting
             %%     go into drain state
             gen_fsm:send_event(self(), drain_start),
-            _ = vmq_plugin:all(on_client_offline, [SId]),
+            _ = vmq_plugin:all(on_client_offline, [SId, Reason]),
             {next_state, state_change({'DOWN', migrate}, wait_for_offline, drain), NewState};
         {0, wait_for_offline, {{cleanup, _Reason}, From}} ->
             %% Forcefully cleaned up, we have to cleanup remaining offline messages
@@ -913,7 +920,7 @@ handle_session_down(
             vmq_message_store:delete(SId),
             _ = vmq_metrics:incr_queue_unhandled(queue:len(Q)),
             gen_fsm:reply(From, ok),
-            _ = vmq_plugin:all(on_client_gone, [SId]),
+            _ = vmq_plugin:all(on_client_gone, [SId, Reason]),
             {stop, normal, NewState};
         {0, wait_for_offline, {{terminate, _Reason}, From}} ->
             %% Terminate queue process due to remote sub
@@ -928,13 +935,13 @@ handle_session_down(
             vmq_plugin:all(on_topic_unsubscribed, [SId, all_topics]),
             vmq_reg:delete_subscriptions(SId),
             vmq_message_store:delete(SId),
-            _ = vmq_plugin:all(on_client_gone, [SId]),
+            _ = vmq_plugin:all(on_client_gone, [SId, Reason]),
             {stop, normal, NewState};
         {0, OldStateName, _} ->
             %% last session gone
             %% ... we've to stay around and store the messages
             %%     inside the offline queue
-            _ = vmq_plugin:all(on_client_offline, [SId]),
+            _ = vmq_plugin:all(on_client_offline, [SId, Reason]),
             {next_state, state_change('DOWN', OldStateName, offline),
                 maybe_set_last_will_timer(
                     maybe_set_expiry_timer(NewState#state{

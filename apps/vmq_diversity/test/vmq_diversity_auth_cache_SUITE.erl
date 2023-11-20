@@ -141,7 +141,7 @@ auth_cache_cleanup_test(_) ->
      {subscribe, SubscribeAcls}] = vmq_diversity_cache:entries(<<"">>, <<"allowed-subscriber-id">>),
     3 = length(PublishAcls),
     3 = length(SubscribeAcls),
-    vmq_plugin:all(on_client_offline, [allowed_subscriber_id()]),
+    vmq_plugin:all(on_client_offline, [allowed_subscriber_id(), reason()]),
     [] = vmq_diversity_cache:entries(<<"">>, <<"allowed-subscriber-id">>).
 
 
@@ -163,3 +163,4 @@ allowed_subscriber_id() ->
 username() -> <<"test-user">>.
 password() -> <<"test-password">>.
 payload() -> <<"hello world">>.
+reason() -> normal_disconnect.

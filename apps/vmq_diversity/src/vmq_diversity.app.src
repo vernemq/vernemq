@@ -53,8 +53,8 @@
 
             {vmq_diversity_plugin, on_offline_message, 5, []},
             {vmq_diversity_plugin, on_client_wakeup, 1, []},
-            {vmq_diversity_plugin, on_client_offline, 1, []},
-            {vmq_diversity_plugin, on_client_gone, 1, []},
+            {vmq_diversity_plugin, on_client_offline, 2, []},
+            {vmq_diversity_plugin, on_client_gone, 2, []},
             {vmq_diversity_plugin, on_session_expired, 1, []}
         ]},
         {db_config, [
