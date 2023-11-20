@@ -108,6 +108,8 @@ to_bool(List, Default) when is_list(List) ->
 to_bool(_, Default) ->
     Default.
 
+mqtt_version_to_string([]) ->
+    "";
 mqtt_version_to_string(VersionList) ->
     VersionString = lists:map(
         fun(Version) ->
