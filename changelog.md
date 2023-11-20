@@ -1,3 +1,4 @@
+- 'vmq_admin': Introduce regex search for session show command
 - 'vmq_admin': Extend vmq-admin listener show with  TLS and MQTT listener settings
 - Improve error reporting (include client) in logs (#2184)
 - 'vmq_http_pub': Allows post in netsplit situations (follows allow_publish_during_netsplit global config)
