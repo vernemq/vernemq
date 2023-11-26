@@ -326,6 +326,7 @@ case "$1" in
         PROGNAME=`echo $0 | sed 's/.*\///'`
         CMD="$NUMACTL $BINDIR/erlexec -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$RUNNER_SCRIPT \
              $CONFIG_ARGS \
+             $VERNEMQ_ERL_CONFIG $VERNEMQ_ERL_CONFIG_OVR \
             -pa $RUNNER_PATCH_DIR -- ${1+"$@"}"
         export EMU
         export ROOTDIR
