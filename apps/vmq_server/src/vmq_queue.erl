@@ -1066,10 +1066,13 @@ insert(#deliver{qos = 0}, #state{sessions = Sessions} = State) when
     %% no session online, skip message for QoS0 Subscription
     _ = vmq_metrics:incr_queue_unhandled(1),
     State;
-insert(#deliver{msg = #vmq_msg{qos = 0}}, #state{sessions = Sessions} = State) when
+insert(
+    #deliver{msg = #vmq_msg{qos = 0}},
+    #state{sessions = Sessions, opts = #{upgrade_qos := false}} = State
+) when
     Sessions == #{}
 ->
-    %% no session online, skip QoS0 message for QoS1 or QoS2 Subscription
+    %% no session online, skip QoS0 message for QoS1 or QoS2 Subscription (without QoS upgrade)
     _ = vmq_metrics:incr_queue_unhandled(1),
     State;
 insert(MsgOrRef, #state{id = SId, offline = Offline, sessions = Sessions} = State) when

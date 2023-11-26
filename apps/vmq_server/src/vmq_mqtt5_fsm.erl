@@ -1111,7 +1111,7 @@ check_user(
                     connack_terminate(?BAD_USERNAME_OR_PASSWORD, State)
             end;
         true ->
-            QueueOpts = queue_opts([], Props),
+            QueueOpts = queue_opts([], Props, State),
             SessionExpiryInterval = maps:get(session_expiry_interval, QueueOpts, 0),
             register_subscriber(
                 F,
@@ -1349,7 +1349,7 @@ auth_on_register(Password, Props, State) ->
     HookArgs = [Peer, SubscriberId, User, Password, CleanStart, Props],
     case vmq_plugin:all_till_ok(auth_on_register_m5, HookArgs) of
         ok ->
-            {ok, queue_opts([], Props), #{}, State};
+            {ok, queue_opts([], Props, State), #{}, State};
         {ok, Args0} ->
             Args = maps:to_list(Args0),
             set_sock_opts(prop_val(tcp_opts, Args, [])),
@@ -1401,7 +1401,8 @@ auth_on_register(Password, Props, State) ->
                 topic_aliases_in = ?state_val(topic_aliases_in, Args, State),
                 cap_settings = ChangedCAPSettings
             },
-            {ok, queue_opts(Args, maps:merge(Props, ChangedProps)), ChangedProps, ChangedState};
+            {ok, queue_opts(Args, maps:merge(Props, ChangedProps), ChangedState), ChangedProps,
+                ChangedState};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -2065,9 +2066,9 @@ queue_opts_from_properties(Properties) ->
         Properties
     ).
 
-queue_opts(Args, Properties) ->
+queue_opts(Args, Properties, State) ->
     PropertiesOpts = queue_opts_from_properties(Properties),
-    Opts = maps:from_list(Args),
+    Opts = maps:from_list([{upgrade_qos, State#state.upgrade_qos} | Args]),
     Opts1 = maps:merge(PropertiesOpts, Opts),
     maps:merge(vmq_queue:default_opts(), Opts1).
 
