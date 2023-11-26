@@ -359,11 +359,11 @@ vmq_listener_show_cmd() ->
     FlagSpecs = [
         {tls, [
             {shortname, "t"},
-            {longname, "show_tls"}
+            {longname, "tls"}
         ]},
         {mqtt, [
             {shortname, "m"},
-            {longname, "show_mqtt"}
+            {longname, "mqtt"}
         ]}
     ],
     Callback =
