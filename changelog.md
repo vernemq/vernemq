@@ -1,3 +1,4 @@
+- New feature: "null" message store that disables persisting messages
 - Add environment variable support for erlang configuration arguments
 - 'vmq_admin': Introduce regex search for session show command
 - 'vmq_admin': Extend vmq-admin listener show with  TLS and MQTT listener settings
