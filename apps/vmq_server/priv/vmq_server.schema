@@ -380,7 +380,7 @@
 %% - listener.http.$name.http_module.$module.auth.mode
 %% - listener.https.$name.http_module.$module.auth.mode
 %%
-%% The default for vmq_http_mgmt_api is "apikey", for all others it is noauth.
+%% The default for vmq_http_mgmt_api, vmq_http_v2 and vmq_http_pub is "apikey", for all others it is noauth.
 {mapping, "http_module.$name.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "noauth"},
                                                                                hidden
                                                                                 ]}.
@@ -388,6 +388,9 @@
                                                                                hidden
                                                                                 ]}.
 {mapping, "http_module.vmq_http_pub.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "apikey"},
+                                                                               hidden
+                                                                                ]}.
+{mapping, "http_module.vmq_http_v2_api.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "apikey"},
                                                                                hidden
                                                                                 ]}.
 {mapping, "listener.http.$name.http_module.$module.auth.mode", "vmq_server.http_listener_modules_auth", [{datatype, string},
