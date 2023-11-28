@@ -1,3 +1,4 @@
+- 'vmq_http_api_v2': Set apikey as new default authentication method
 - Bugfix: Remove 'vmq_http_pub' from default listener group and enforce apikey as default (#2222)
 - New feature: "null" message store that disables persisting messages
 - Add environment variable support for erlang configuration arguments
