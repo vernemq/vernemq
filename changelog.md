@@ -1,3 +1,4 @@
+- Bugfix: Remove 'vmq_http_pub' from default listener group and enforce apikey as default (#2222)
 - New feature: "null" message store that disables persisting messages
 - Add environment variable support for erlang configuration arguments
 - 'vmq_admin': Introduce regex search for session show command
