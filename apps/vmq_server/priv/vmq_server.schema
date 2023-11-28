@@ -352,7 +352,7 @@
 %% @doc specifies the modules to be enabled by the http(s) listeners. Overriding this setting is possible for specific listeners.
 {mapping, "http_modules", "vmq_server.http_modules", [
                                                       {default, "[vmq_metrics_http,vmq_http_mgmt_api, vmq_status_http, vmq_health_http,
-                                                                vmq_http_v2_api, vmq_http_pub]"},
+                                                                vmq_http_v2_api]"},
                                                       {datatype, string},
                                                       hidden
                                                      ]}.
@@ -385,6 +385,9 @@
                                                                                hidden
                                                                                 ]}.
 {mapping, "http_module.vmq_http_mgmt_api.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "apikey"},
+                                                                               hidden
+                                                                                ]}.
+{mapping, "http_module.vmq_http_pub.auth.mode", "vmq_server.http_modules_auth", [{datatype, string}, {default, "apikey"},
                                                                                hidden
                                                                                 ]}.
 {mapping, "listener.http.$name.http_module.$module.auth.mode", "vmq_server.http_listener_modules_auth", [{datatype, string},
