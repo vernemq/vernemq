@@ -18,6 +18,7 @@
     delete_api_key/2,
     list_api_keys/0,
     list_api_keys/1,
+    scopes/0,
     is_authorized/3
 ]).
 
