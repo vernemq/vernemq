@@ -95,6 +95,7 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "api-key"], api_usage()),
     clique:register_usage(["vmq-admin", "api-key", "delete"], api_delete_key_usage()),
     clique:register_usage(["vmq-admin", "api-key", "add"], api_add_key_usage()),
+    clique:register_usage(["vmq-admin", "api-key", "create"], api_create_key_usage()),
 
     ok.
 
@@ -816,13 +817,34 @@ api_delete_key_usage() ->
 api_add_key_usage() ->
     [
         "vmq-admin api-key add key=<API Key> scope=<SCOPE> expires=<DATE>\n\n",
-        "  Adds an API Key. \n",
+        "  Adds an API Key. \n\n",
         "  Scope and expires are optional. The scope allows to set an API key for different \n"
         "  parts of VerneMQ e.g. management API (mgmt), status page (status), health endpoint \n"
         "  (health) or metrics endpoint (metrics).\n",
         "  expires allows to set an expiery date, the expected format is \"yyyy-mm-ddThh:mm:ss\" \n\n",
         "  Example: \n",
-        "  vmq-admin api-key add key=abcd scope=mgmt expires=2023-02-15T08:00:00 \n\n"
+        "     vmq-admin api-key add key=abcd scope=mgmt expires=2023-02-15T08:00:00 \n\n",
+        "  Possible scopes:\n    "
+        | [
+            string:join(vmq_auth_apikey:scopes(), ",")
+        ]
+    ].
+
+api_create_key_usage() ->
+    [
+        "vmq-admin api-key add scope=<SCOPE> expires=<DATE>\n\n",
+        "  Creates an API Key. \n\n",
+        "  Scope and expires are optional. The scope allows to set an API key for different \n"
+        "  parts of VerneMQ e.g. management API (mgmt), status page (status), health endpoint \n"
+        "  (health) or metrics endpoint (metrics).\n",
+        "  expires allows to set an expiery date, the expected format is \"yyyy-mm-ddThh:mm:ss\" \n\n",
+        "  Example: \n",
+        "      vmq-admin api-key create scope=mgmt expires=2023-02-15T08:00:00 \n\n",
+        "  Possible scopes:\n    "
+        | [
+            string:join(vmq_auth_apikey:scopes(), ","),
+            "\n\n"
+        ]
     ].
 
 ensure_all_stopped(App) ->
