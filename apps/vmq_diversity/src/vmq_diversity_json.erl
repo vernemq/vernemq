@@ -17,7 +17,7 @@
 
 -export([install/1]).
 
--define(JSON_EMPTY_OBJECT, [{}]).
+-define(JSON_EMPTY_OBJECT, #{}).
 -define(LUA_EMPTY_TABLE, []).
 
 install(St) ->
@@ -31,9 +31,11 @@ table() ->
 
 decode([Bin | _], St) when is_binary(Bin) ->
     try vmq_json:decode(Bin) of
-        Result0 ->
+        {ok, Result0} ->
             {Result1, NewSt} = luerl:encode(json_to_lua(Result0), St),
-            {[Result1], NewSt}
+            {[Result1], NewSt};
+        {error, _Reason} ->
+            {[nil], St}
     catch
         _:_ ->
             {[nil], St}
@@ -64,6 +66,8 @@ lua_to_json_list([], Acc) ->
 
 json_to_lua(?JSON_EMPTY_OBJECT) ->
     ?LUA_EMPTY_TABLE;
+json_to_lua(Result) when is_map(Result) ->
+    json_to_lua(maps:to_list(Result));
 json_to_lua(Result) when is_list(Result) ->
     lists:map(
         fun

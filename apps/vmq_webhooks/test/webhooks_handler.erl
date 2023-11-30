@@ -41,14 +41,16 @@ init(Req, State) ->
     ?DEBUG andalso io:format(user, ">>> ~s~n", [Body]),
     case cowboy_req:path(Req) of
         <<"/">> ->
-            {Code, Resp} = process_hook(Hook, vmq_json:decode(Body, [{labels, atom}, return_maps])),
+            {ok, JsonResponse} = vmq_json:decode(Body),
+            {Code, Resp} = process_hook(Hook, JsonResponse),
             Req2 =
                 cowboy_req:reply(Code,
                                  #{<<"content-type">> => <<"text/json">>},
                                  encode(Resp), Req1),
             {ok, Req2, State};
         <<"/cache">> ->
-            {Code, Resp} = process_cache_hook(Hook, vmq_json:decode(Body, [{labels, atom}, return_maps])),
+            {ok, JsonResponse} = vmq_json:decode(Body),
+            {Code, Resp} = process_cache_hook(Hook, JsonResponse),
             Req2 =
                 cowboy_req:reply(Code,
                                  #{<<"content-type">> => <<"text/json">>,
