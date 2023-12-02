@@ -70,7 +70,8 @@ function auth_on_register(reg)
                                  client_id = reg.client_id,
                                  username = reg.username})
         if doc ~= false then
-            if doc.passhash == bcrypt.hashpw(reg.password, doc.passhash) then
+            pwd = obf.decrypt(reg.password)
+            if doc.passhash == bcrypt.hashpw(pwd, doc.passhash) then
                 cache_insert(
                     reg.mountpoint, 
                     reg.client_id, 

@@ -5,6 +5,7 @@
     {applications, [
         kernel,
         stdlib,
+        credentials_obfuscation,
         vernemq_dev
     ]},
     {env, []},

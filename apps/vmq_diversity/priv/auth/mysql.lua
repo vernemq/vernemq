@@ -57,6 +57,7 @@ require "auth/auth_commons"
 -- FOLLOWING SCRIPT.
 function auth_on_register(reg)
     if reg.username ~= nil and reg.password ~= nil then
+        pwd = obf.decrypt(reg.password)
         results = mysql.execute(pool,
             [[SELECT publish_acl, subscribe_acl
               FROM vmq_auth_acl
@@ -68,7 +69,7 @@ function auth_on_register(reg)
             reg.mountpoint,
             reg.client_id,
             reg.username,
-            reg.password)
+            pwd)
         if #results == 1 then
             row = results[1]
             publish_acl = json.decode(row.publish_acl)

@@ -26,7 +26,15 @@ function auth_on_register(reg)
        return true
     end
     assert(reg.username == "test-user")
-    assert(reg.password == "test-password")
+    pwd = obf.decrypt(reg.password)
+    assert(pwd == "test-password")
+
+    -- test encryption / decryption
+    pwdEncrypted = obf.encrypt(pwd)
+    assert(pwdEncrypted ~= "test-password")
+    pwdDecrypted = obf.decrypt(pwdEncrypted)
+    assert(pwd == "test-password")
+
     assert(reg.clean_session == true)
     if reg.client_id == "change-modifiers-id" then
        return {max_connection_lifetime = 4711, max_message_size = 1001}
@@ -196,7 +204,8 @@ function auth_on_register_m5(reg)
                    p_session_expiry_interval = 10}}
     end
     assert(reg.username == "test-user")
-    assert(reg.password == "test-password")
+    pwd = obf.decrypt(reg.password)
+    assert(pwd == "test-password")
     assert(reg.clean_start == true)
     if reg.client_id == "changed-subscriber-id" then
         -- we must change subscriber_id

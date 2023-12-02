@@ -275,13 +275,18 @@ nullify(Val) ->
 auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
+    PasswordPlain =
+        case Password of
+            {encrypted, _} -> credentials_obfuscation:decrypt(Password);
+            A -> A
+        end,
     all_till_ok(auth_on_register, [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nullify(UserName)},
-        {password, nullify(Password)},
+        {password, nullify(PasswordPlain)},
         {clean_session, CleanSession}
     ]).
 
@@ -293,13 +298,18 @@ auth_on_register(Peer, SubscriberId, UserName, Password, CleanSession) ->
 auth_on_register_m5(Peer, SubscriberId, UserName, Password, CleanStart, Props) ->
     {PPeer, Port} = peer(Peer),
     {MP, ClientId} = subscriber_id(SubscriberId),
+    PasswordPlain =
+        case Password of
+            {encrypted, _} -> credentials_obfuscation:decrypt(Password);
+            A -> A
+        end,
     all_till_ok(auth_on_register_m5, [
         {addr, PPeer},
         {port, Port},
         {mountpoint, MP},
         {client_id, ClientId},
         {username, nullify(UserName)},
-        {password, nullify(Password)},
+        {password, nullify(PasswordPlain)},
         {clean_start, CleanStart},
         {properties, Props}
     ]).

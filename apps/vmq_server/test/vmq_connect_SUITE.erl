@@ -8,6 +8,7 @@
 %% ===================================================================
 init_per_suite(Config) ->
     cover:start(),
+    application:ensure_started(credentials_obfuscation),
     vmq_test_utils:setup(),
     [{ct_hooks, vmq_cth}|Config].
 
@@ -322,8 +323,16 @@ ws_xff_peer_reject_no_user_test(Config) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 hook_empty_client_id_proto_4(_, _RandomId, _, _, _) -> ok.
 hook_uname_no_password_denied(_, {"", <<"connect-uname-test-">>}, <<"user">>, undefined, _) -> {error, invalid_credentials}.
-hook_uname_password_denied(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _) -> {error, invalid_credentials}.
-hook_uname_password_success(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, <<"password9">>, _) -> ok.
+hook_uname_password_denied(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, Password, _) -> 
+    case credentials_obfuscation:decrypt(Password) of
+        <<"password9">> -> {error, invalid_credentials};
+                     _   -> next
+    end.
+hook_uname_password_success(_, {"", <<"connect-uname-pwd-test">>}, <<"user">>, Password, _) ->
+case credentials_obfuscation:decrypt(Password) of
+    <<"password9">> -> ok;
+                 _   -> next
+end.
 hook_change_subscriber_id(_, {"", <<"change-sub-id-test">>}, _, _, _) ->
     {ok, [{subscriber_id, {"newmp", <<"changed-client-id">>}}]}.
 hook_on_register_changed_subscriber_id(_, {"newmp", <<"changed-client-id">>}, _) ->

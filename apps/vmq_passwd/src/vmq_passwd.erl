@@ -113,9 +113,15 @@ check(undefined, _) ->
 check(_, undefined) ->
     next;
 check(User, Password) ->
+    PasswordPlain =
+        case Password of
+            {encrypted, _} -> credentials_obfuscation:decrypt(Password);
+            A -> A
+        end,
+
     case ets:lookup(?TABLE, ensure_binary(User)) of
         [{_, SaltB64, EncPassword, _}] ->
-            case hash(Password, base64:decode(SaltB64)) == EncPassword of
+            case hash(PasswordPlain, base64:decode(SaltB64)) == EncPassword of
                 true -> ok;
                 false -> {error, invalid_credentials}
             end;

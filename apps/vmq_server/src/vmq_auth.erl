@@ -38,11 +38,11 @@ register_hooks() ->
     ).
 
 -spec auth_on_register(_, _, _, _, _) -> 'ok'.
-auth_on_register(SrcIp, SubscriberId, User, Password, CleanSession) ->
+auth_on_register(SrcIp, SubscriberId, User, _Password, CleanSession) ->
     ?LOG_INFO(
         "auth subscriber ~p from ~p\n"
-        "              with username ~p and password ~p, cleansession: ~p",
-        [SubscriberId, SrcIp, User, Password, CleanSession]
+        "              with username ~p, cleansession: ~p",
+        [SubscriberId, SrcIp, User, CleanSession]
     ),
     ok.
 
