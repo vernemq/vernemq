@@ -270,8 +270,8 @@
                                                                   hidden]}.
 
 %% @doc Allows a session that changes from offline to online to override the maximum
-%% online message count (max_online_messages). All offlines messages will be added 
-%% to the online queue. 
+%% online message count (max_online_messages). All offlines messages will be added
+%% to the online queue.
 {mapping, "override_max_online_messages", "vmq_server.override_max_online_messages", [{default, off},
                                                   {datatype, flag}
                                                   ]}.
@@ -2235,3 +2235,10 @@
          true;
     (Name) -> vmq_schema_util:file_is_pem_content(Name)
  end}.
+
+%% @doc Disconnect v3.1 clients in case they are not authorized to publish. This breaks the MQTT 3.1 specification
+%% and is intended for old unpatchable MQTT 3.1 client devices.
+{mapping, "disconnect_on_unauthorized_publish_v3", "vmq_server.disconnect_on_unauthorized_publish_v3", [{default, off},
+                                                                                                        {datatype, flag},
+                                                                                                        hidden
+                                                                                                       ]}.
