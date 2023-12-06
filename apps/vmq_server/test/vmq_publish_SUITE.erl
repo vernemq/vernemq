@@ -641,6 +641,41 @@ not_allowed_publish_close_qos2_mqtt_3_1(_) ->
     ok = packet:expect_packet(Socket, "pubrec", Pubrec),
     gen_tcp:close(Socket).
 
+
+not_allowed_publish_close_qos0_mqtt_3_1_forced_disconnect(_) ->
+    vmq_server_cmd:set_config(disconnect_on_unauthorized_publish_v3, true),
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 0, <<"message">>, []),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
+
+not_allowed_publish_close_qos1_mqtt_3_1_forced_disconnect(_) ->
+    vmq_server_cmd:set_config(disconnect_on_unauthorized_publish_v3, true),
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 1, <<"message">>, [{mid, 1}]),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
+
+not_allowed_publish_close_qos2_mqtt_3_1_forced_disconnect(_) ->
+    vmq_server_cmd:set_config(disconnect_on_unauthorized_publish_v3, true),
+    Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60}]),
+    Connack = packet:gen_connack(0),
+    Topic = "test/topic/not_allowed",
+    Publish = packet:gen_publish(Topic, 2, <<"message">>, [{mid, 1}]),
+    vmq_test_utils:reset_tables(),
+    {ok, Socket} = packet:do_client_connect(Connect, Connack, []),
+    gen_tcp:send(Socket, Publish),
+    {error, closed} = gen_tcp:recv(Socket, 0, 1000).
+
+
 not_allowed_publish_close_qos0_mqtt_3_1_1(_) ->
     Connect = packet:gen_connect("pattern-sub-test", [{keepalive, 60},
                                                       {proto_ver, 4}]),
