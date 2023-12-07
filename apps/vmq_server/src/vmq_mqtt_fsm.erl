@@ -66,7 +66,6 @@
     allow_anonymous = false :: boolean(),
     max_client_id_size = 100 :: non_neg_integer(),
 
-
     %% changeable by auth_on_register
     shared_subscription_policy = prefer_local :: shared_sub_policy(),
     %% 0 means unlimited
@@ -145,7 +144,9 @@ init(
         allow_subscribe = CAPSubscribe,
         allow_unsubscribe = CAPUnsubscribe
     },
-    DisconnectOnUnauthorizedPublishV3 = vmq_config:get_env(disconnect_on_unauthorized_publish_v3, false),
+    DisconnectOnUnauthorizedPublishV3 = vmq_config:get_env(
+        disconnect_on_unauthorized_publish_v3, false
+    ),
     TraceFun = vmq_config:get_env(trace_fun, undefined),
     DOpts0 = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
     DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
