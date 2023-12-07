@@ -84,6 +84,9 @@ groups() ->
                    not_allowed_publish_close_qos0_mqtt_3_1,
                    not_allowed_publish_close_qos1_mqtt_3_1,
                    not_allowed_publish_close_qos2_mqtt_3_1,
+                   not_allowed_publish_close_qos0_mqtt_3_1_forced_disconnect,
+                   not_allowed_publish_close_qos1_mqtt_3_1_forced_disconnect,
+                   not_allowed_publish_close_qos2_mqtt_3_1_forced_disconnect,
                    message_size_exceeded_close]},
      {mqttv4, [shuffle], [
                    not_allowed_publish_close_qos0_mqtt_3_1_1,
