@@ -183,6 +183,8 @@ teardown(#st{socket = Socket, fsm_mod = FsmMod, fsm_state = FsmState}, Reason) -
             lager:debug("session normally stopped", []);
         shutdown ->
             lager:debug("session stopped due to shutdown", []);
+        keep_alive_timeout ->
+            lager:debug("session stopped due to keep_alive_timeout", []);
         _ ->
             SubscriberId = apply(FsmMod, subscriber, [FsmState]),
             lager:warning("session for ~p stopped abnormally due to '~p'", [SubscriberId, Reason])
