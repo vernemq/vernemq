@@ -20,6 +20,7 @@
 %% - Forwarded (RFC 7239)
 
 -module(vmq_proxy_xff).
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([new_peer/2]).
@@ -55,7 +56,7 @@ check_trusted_list(LastProxy, TrustedList) ->
         true ->
             true;
         _ ->
-            lager:error("XFF proxy not in trusted list!"),
+            ?LOG_ERROR("XFF proxy not in trusted list!"),
             false
     end.
 

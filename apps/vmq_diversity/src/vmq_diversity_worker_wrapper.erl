@@ -18,6 +18,7 @@
 %% resource is not available and all the client processes die.
 %% @end.
 -module(vmq_diversity_worker_wrapper).
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(poolboy_worker).
 -behaviour(gen_server).
@@ -176,7 +177,7 @@ handle_info(
                 MRef = monitor(process, Pid),
                 State#state{worker = {MRef, Pid}, connected = true, reconnect_tref = undefined};
             {error, Reason} ->
-                lager:warning(
+                ?LOG_WARNING(
                     "Could not connect to ~p due to ~p",
                     [Name, Reason]
                 ),

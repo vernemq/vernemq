@@ -14,6 +14,7 @@
 %%
 -module(vmq_cluster_node).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([
@@ -215,7 +216,7 @@ handle_message(
     Msg = [<<"vmq-connect">>, <<L:32, NodeName/binary>>],
     case send(Transport, Socket, Msg) of
         ok ->
-            lager:info("successfully connected to cluster node ~p", [RemoteNode]),
+            ?LOG_INFO("successfully connected to cluster node ~p", [RemoteNode]),
             State#state{
                 socket = Socket,
                 transport = Transport,
@@ -224,7 +225,7 @@ handle_message(
                 reachable = true
             };
         {error, Reason} ->
-            lager:warning("can't initiate connect to cluster node ~p due to ~p", [
+            ?LOG_WARNING("can't initiate connect to cluster node ~p due to ~p", [
                 RemoteNode, Reason
             ]),
             close_reconnect(State)
@@ -252,7 +253,7 @@ handle_message({NetEvClosed, Socket}, #state{node = RemoteNode, socket = Socket}
     NetEvClosed == tcp_closed;
     NetEvClosed == ssl_closed
 ->
-    lager:warning(
+    ?LOG_WARNING(
         "connection to node ~p has been closed, reconnect in ~pms",
         [RemoteNode, ?RECONNECT]
     ),
@@ -263,13 +264,13 @@ handle_message(
     NetEvError == tcp_error;
     NetEvError == ssl_error
 ->
-    lager:warning(
+    ?LOG_WARNING(
         "connection to node ~p has been closed due to error ~p, reconnect in ~pms",
         [RemoteNode, Reason, ?RECONNECT]
     ),
     close_reconnect(State);
 handle_message(Msg, #state{node = Node, reachable = Reachable} = State) ->
-    lager:warning(
+    ?LOG_WARNING(
         "got unknown message ~p for node ~p (reachable ~p)",
         [Msg, Node, Reachable]
     ),
@@ -312,7 +313,7 @@ internal_flush(
                 end,
             State#state{pending = [], bytes_send = NewBytesSend};
         {error, Reason} ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't send ~p bytes to ~p due to ~p, reconnect!",
                 [iolist_size(Pending), Node, Reason]
             ),
@@ -357,13 +358,13 @@ connect_async(ParentPid, RemoteNode) ->
                             ok ->
                                 {ok, {Transport, MaskedSocket}};
                             {error, Reason} ->
-                                lager:debug("can't assign socket ownership to ~p due to ~p", [
+                                ?LOG_DEBUG("can't assign socket ownership to ~p due to ~p", [
                                     ParentPid, Reason
                                 ]),
                                 error
                         end;
                     {error, Reason} ->
-                        lager:warning("can't connect to cluster node ~p due to ~p", [
+                        ?LOG_WARNING("can't connect to cluster node ~p due to ~p", [
                             RemoteNode, Reason
                         ]),
                         error
@@ -372,7 +373,7 @@ connect_async(ParentPid, RemoteNode) ->
                 %% we don't scream.. vmq_cluster_mon screams
                 error;
             E ->
-                lager:warning("can't connect to cluster node ~p due to ~p", [RemoteNode, E]),
+                ?LOG_WARNING("can't connect to cluster node ~p due to ~p", [RemoteNode, E]),
                 error
         end,
     ParentPid ! {connect_async_done, self(), Reply}.
@@ -455,11 +456,11 @@ teardown(#state{socket = Socket, transport = Transport, async_connect_pid = Asyn
     end,
     case Reason of
         normal ->
-            lager:debug("normally stopped", []);
+            ?LOG_DEBUG("normally stopped", []);
         shutdown ->
-            lager:debug("stopped due to shutdown", []);
+            ?LOG_DEBUG("stopped due to shutdown", []);
         _ ->
-            lager:warning("stopped abnormally due to '~p'", [Reason])
+            ?LOG_WARNING("stopped abnormally due to '~p'", [Reason])
     end,
     close(Transport, Socket),
     ok.

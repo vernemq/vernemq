@@ -1,4 +1,5 @@
 -module(vmq_diversity_provider_SUITE).
+
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -75,7 +76,8 @@ integration_tests() ->
 integration_tests_that_pass_ci() ->
     [postgres_test,
      mongodb_test,
-     mongodb_auth_source_test].
+     mongodb_auth_source_test
+    ].
 
 other_tests() -> [http_test,
                   kv_test,

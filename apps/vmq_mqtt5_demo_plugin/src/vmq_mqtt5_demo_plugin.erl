@@ -1,6 +1,7 @@
 -module(vmq_mqtt5_demo_plugin).
 
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(auth_on_register_m5_hook).
 -behaviour(on_register_m5_hook).
@@ -32,7 +33,7 @@
 -define(LOG(Args0), begin
     [Hook | Args1] = Args0,
     Str = atom_to_list(Hook) ++ "(" ++ string:join(["~p" || _ <- Args1], " ") ++ ")~n",
-    lager:info(Str, Args1)
+    ?LOG_INFO(Str, Args1)
 end).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%

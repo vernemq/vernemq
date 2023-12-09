@@ -14,6 +14,7 @@
 %%%-------------------------------------------------------------------
 
 -module(vmq_diversity_cache).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
 -dialyzer(no_undefined_callbacks).
@@ -390,7 +391,7 @@ validate_acl(MP, User, ClientId, Rec0, [{<<"pattern">>, Pattern} | Rest]) when i
             {ok, Words} when Type == subscribe ->
                 Rec0#subscribe_acl{pattern = subst(MP, User, ClientId, Words, [])};
             {error, Reason} ->
-                lager:error(
+                ?LOG_ERROR(
                     "can't validate ACL topic ~p for client ~p due to ~p",
                     [Pattern, ClientId, Reason]
                 ),
@@ -398,7 +399,7 @@ validate_acl(MP, User, ClientId, Rec0, [{<<"pattern">>, Pattern} | Rest]) when i
         end,
     validate_acl(MP, User, ClientId, Rec1, Rest);
 validate_acl(MP, User, ClientId, Rec, [UnknownProp | Rest]) ->
-    lager:warning("unknown property ~p for ACL ~p", [UnknownProp, Rec]),
+    ?LOG_WARNING("unknown property ~p for ACL ~p", [UnknownProp, Rec]),
     validate_acl(MP, User, ClientId, Rec, Rest);
 validate_acl(_, _, _, Rec, []) ->
     Rec.
@@ -418,7 +419,7 @@ validate_modifiers(Type, Mods0) ->
         end,
     case Ret of
         error ->
-            lager:error("can't validate modifiers ~p for ~p ACL", [Type, Mods0]),
+            ?LOG_ERROR("can't validate modifiers ~p for ~p ACL", [Type, Mods0]),
             undefined;
         _ ->
             Ret

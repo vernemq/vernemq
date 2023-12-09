@@ -12,6 +12,7 @@
 %% limitations under the License.
 
 -module(vmq_listener_cli).
+-include_lib("kernel/include/logger.hrl").
 -export([register_server_cli/0]).
 
 register_server_cli() ->
@@ -248,7 +249,7 @@ start_listener(Type, Addr, Port, Opts) ->
             vmq_config:set_env(listeners, NewListenerConfig, false),
             [clique_status:text("Done")];
         {error, Reason} ->
-            lager:warning(
+            ?LOG_WARNING(
                 "can't start listener ~p ~p ~p ~p due to ~p",
                 [Type, Addr, Port, Opts, Reason]
             ),

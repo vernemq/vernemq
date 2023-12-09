@@ -6,8 +6,7 @@
     {applications, [
         kernel,
         stdlib,
-        sasl,
-        lager
+        sasl
     ]},
     {env, [
         {vmq_plugin_hooks, [

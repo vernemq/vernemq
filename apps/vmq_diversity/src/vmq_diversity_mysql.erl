@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_diversity_mysql).
+-include_lib("kernel/include/logger.hrl").
 -include_lib("emysql/include/emysql.hrl").
 -include_lib("luerl/include/luerl.hrl").
 
@@ -41,7 +42,7 @@ execute(As, St) ->
                     APoolId -> APoolId
                 catch
                     _:_ ->
-                        lager:error("unknown pool ~p", [BPoolId]),
+                        ?LOG_ERROR("unknown pool ~p", [BPoolId]),
                         badarg_error(unknown_pool, As, St)
                 end,
             try emysql:execute(PoolId, BQuery, Args) of
@@ -56,7 +57,7 @@ execute(As, St) ->
                     {[false], St}
             catch
                 E:R ->
-                    lager:error("can't execute query ~p due to ~p:~p", [BQuery, E, R]),
+                    ?LOG_ERROR("can't execute query ~p due to ~p:~p", [BQuery, E, R]),
                     badarg_error(execute_equery, As, St)
             end;
         _ ->

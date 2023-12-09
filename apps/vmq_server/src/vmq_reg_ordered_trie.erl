@@ -15,6 +15,7 @@
 -module(vmq_reg_ordered_trie).
 
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -dialyzer(no_undefined_callbacks).
 
@@ -251,7 +252,7 @@ handle_info(
     ),
     NrOfSubscribers = ets:info(vmq_ordered_tree_subs, size),
     persistent_term:put(subscribe_trie_ready, 1),
-    lager:info("loaded ~p subscriptions into ~p", [NrOfSubscribers, ?MODULE]),
+    ?LOG_INFO("loaded ~p subscriptions into ~p", [NrOfSubscribers, ?MODULE]),
     {noreply, State#state{status = ready, event_queue = undefined}};
 handle_info(Event, #state{status = init, event_queue = Q} = State) ->
     {noreply, State#state{event_queue = queue:in(Event, Q)}};

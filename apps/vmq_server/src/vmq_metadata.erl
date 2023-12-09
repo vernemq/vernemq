@@ -13,6 +13,7 @@
 %% limitations under the License.
 
 -module(vmq_metadata).
+-include_lib("kernel/include/logger.hrl").
 -export([
     start/0,
     stop/0,
@@ -26,7 +27,7 @@
 start() ->
     Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
     Ret = vmq_plugin_mgr:enable_system_plugin(Impl, [internal]),
-    lager:info("Try to start ~p: ~p", [Impl, Ret]),
+    ?LOG_INFO("Try to start ~p: ~p", [Impl, Ret]),
     Ret.
 
 stop() ->
@@ -42,7 +43,7 @@ stop() ->
     Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
     _ = spawn(fun() ->
         Ret = vmq_plugin_mgr:disable_plugin(Impl),
-        lager:info("Try to stop ~p: ~p", [Impl, Ret])
+        ?LOG_INFO("Try to stop ~p: ~p", [Impl, Ret])
     end),
     ok.
 

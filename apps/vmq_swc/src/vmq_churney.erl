@@ -1,6 +1,7 @@
 -module(vmq_churney).
 
 -behaviour(gen_server).
+-include_lib("kernel/include/logger.hrl").
 
 %% API
 -export([
@@ -79,7 +80,7 @@ handle_info(histogram, #state{histogram = Hist0} = State) ->
             Mid = L div 2,
             Rem = L rem 2,
             Median = lists:nth(Mid + Rem, Data1) + lists:nth(Mid + 1, Data1) / 2,
-            lager:info("Churney[~p] n: ~p min: ~p max: ~p avg: ~p median: ~p", [
+            ?LOG_INFO("Churney[~p] n: ~p min: ~p max: ~p avg: ~p median: ~p", [
                 ResType, L, Min, Max, Avg, Median
             ])
         end,

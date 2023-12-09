@@ -14,6 +14,7 @@
 %%
 -module(vmq_systree).
 -include("vmq_server.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_server).
 
@@ -184,7 +185,7 @@ handle_info(timeout, true) ->
             {noreply, false, 30000}
     end;
 handle_info(Info, State) ->
-    lager:warning("vmq_systree received unexpected message ~p~n", [Info]),
+    ?LOG_WARNING("vmq_systree received unexpected message ~p~n", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

@@ -13,6 +13,8 @@
 %% limitations under the License.
 
 -module(vmq_webhooks_cli).
+-include_lib("kernel/include/logger.hrl").
+
 -export([register_cli/0]).
 -behaviour(clique_handler).
 
@@ -159,7 +161,7 @@ register_cmd() ->
                     ok ->
                         [clique_status:text("Done")];
                     {error, Reason} ->
-                        lager:warning(
+                        ?LOG_WARNING(
                             "can't register endpoint ~p ~p due to ~p",
                             [Hook, Endpoint, Reason]
                         ),
@@ -192,7 +194,7 @@ deregister_cmd() ->
                     ok ->
                         [clique_status:text("Done")];
                     {error, Reason} ->
-                        lager:warning(
+                        ?LOG_WARNING(
                             "can't deregister endpoint ~p ~p due to ~p",
                             [Hook, Endpoint, Reason]
                         ),

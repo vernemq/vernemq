@@ -15,6 +15,8 @@
 -module(vmq_server_sup).
 
 -behaviour(supervisor).
+-include_lib("kernel/include/logger.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -60,7 +62,7 @@ init([]) ->
 maybe_change_nodename() ->
     case vmq_peer_service:members() of
         [Node] when Node =/= node() ->
-            lager:info("rename VerneMQ node from ~p to ~p", [Node, node()]),
+            ?LOG_INFO("rename VerneMQ node from ~p to ~p", [Node, node()]),
             _ = vmq_peer_service:rename_member(Node, node()),
             vmq_reg:fold_subscribers(
                 fun(SubscriberId, Subs, _) ->
