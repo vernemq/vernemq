@@ -34,6 +34,7 @@ end_per_group(_Group, _Config) ->
 init_per_testcase(Case, Config) ->
     vmq_test_utils:seed_rand(Config),
     vmq_server_cmd:set_config(allow_anonymous, true),
+    vmq_server_cmd:set_config(disconnect_on_unauthorized_publish_v3, false),
     vmq_server_cmd:set_config(retry_interval, 2),
     vmq_server_cmd:set_config(max_client_id_size, 100),
     vmq_server_cmd:set_config(topic_alias_max_client, 0),
