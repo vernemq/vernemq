@@ -65,7 +65,8 @@ register_config_() ->
             "receive_max_broker",
             "suppress_lwt_on_session_takeover",
             "coordinate_registrations",
-            "mqtt_connect_timeout"
+            "mqtt_connect_timeout",
+            "disconnect_on_unauthorized_publish_v3"
         ],
     _ = [
         clique:register_config([Key], fun register_config_callback/2)
