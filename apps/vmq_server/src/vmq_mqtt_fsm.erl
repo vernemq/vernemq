@@ -81,6 +81,9 @@
     %% present and default value if not present.
     def_opts :: map(),
 
+    %% disconnect on unauthorized publish, even for non MQTT 3.1.1 clients
+    disconnect_on_unauthorized_publish_v3 = false :: boolean(),
+
     %% TODO
     trace_fun :: undefined | any()
 }).
@@ -141,6 +144,9 @@ init(
         allow_subscribe = CAPSubscribe,
         allow_unsubscribe = CAPUnsubscribe
     },
+    DisconnectOnUnauthorizedPublishV3 = vmq_config:get_env(
+        disconnect_on_unauthorized_publish_v3, false
+    ),
     TraceFun = vmq_config:get_env(trace_fun, undefined),
     DOpts0 = set_defopt(suppress_lwt_on_session_takeover, false, #{}),
     DOpts1 = set_defopt(coordinate_registrations, ?COORDINATE_REGISTRATIONS, DOpts0),
@@ -169,6 +175,7 @@ init(
         cap_settings = CAPSettings,
         reg_view = RegView,
         def_opts = DOpts1,
+        disconnect_on_unauthorized_publish_v3 = DisconnectOnUnauthorizedPublishV3,
         trace_fun = TraceFun
     },
 
@@ -1032,13 +1039,15 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
         subscriber_id = SubscriberId,
         proto_ver = Proto,
         cap_settings = CAPSettings,
-        reg_view = RegView
+        reg_view = RegView,
+        disconnect_on_unauthorized_publish_v3 = DisconnectOnUnauthorizedPublishV3
     } = State,
     case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
             {[], SessCtrl};
-        {error, not_allowed} when ?IS_PROTO_4(Proto) ->
+        {error, not_allowed} when ?IS_PROTO_4(Proto); DisconnectOnUnauthorizedPublishV3 ->
             %% we have to close connection for 3.1.1
+            %% or if force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients, is configured
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
         {error, _Reason} ->
@@ -1057,14 +1066,16 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         subscriber_id = SubscriberId,
         proto_ver = Proto,
         cap_settings = CAPSettings,
-        reg_view = RegView
+        reg_view = RegView,
+        disconnect_on_unauthorized_publish_v3 = DisconnectOnUnauthorizedPublishV3
     } = State,
     case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
             {[#mqtt_puback{message_id = MessageId}], SessCtrl};
-        {error, not_allowed} when ?IS_PROTO_4(Proto) ->
+        {error, not_allowed} when ?IS_PROTO_4(Proto); DisconnectOnUnauthorizedPublishV3 ->
             %% we have to close connection for 3.1.1
+            %% or if force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients, is configured
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
         {error, not_allowed} ->
@@ -1089,7 +1100,8 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
         proto_ver = Proto,
         cap_settings = CAPSettings,
         reg_view = RegView,
-        waiting_acks = WAcks
+        waiting_acks = WAcks,
+        disconnect_on_unauthorized_publish_v3 = DisconnectOnUnauthorizedPublishV3
     } = State,
     case maps:get({qos2, MessageId}, WAcks, not_found) of
         not_found ->
@@ -1104,8 +1116,9 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
                         [Frame],
                         SessCtrl
                     };
-                {error, not_allowed} when ?IS_PROTO_4(Proto) ->
+                {error, not_allowed} when ?IS_PROTO_4(Proto); DisconnectOnUnauthorizedPublishV3 ->
                     %% we have to close connection for 3.1.1
+                    %% or if force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients, is configured
                     _ = vmq_metrics:incr_mqtt_error_auth_publish(),
                     {error, not_allowed};
                 {error, not_allowed} ->
