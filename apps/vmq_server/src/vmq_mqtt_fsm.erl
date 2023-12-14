@@ -1045,12 +1045,9 @@ dispatch_publish_qos0(_MessageId, Msg, State) ->
     case publish(CAPSettings, RegView, User, SubscriberId, Msg) of
         {ok, _, SessCtrl} ->
             {[], SessCtrl};
-        {error, not_allowed} when ?IS_PROTO_4(Proto) ->
+        {error, not_allowed} when ?IS_PROTO_4(Proto); DisconnectOnUnauthorizedPublishV3 ->
             %% we have to close connection for 3.1.1
-            _ = vmq_metrics:incr_mqtt_error_auth_publish(),
-            {error, not_allowed};
-        {error, not_allowed} when DisconnectOnUnauthorizedPublishV3 ->
-            %% force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients
+            %% or if force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients, is configured
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
         {error, _Reason} ->
@@ -1076,12 +1073,9 @@ dispatch_publish_qos1(MessageId, Msg, State) ->
         {ok, _, SessCtrl} ->
             _ = vmq_metrics:incr_mqtt_puback_sent(),
             {[#mqtt_puback{message_id = MessageId}], SessCtrl};
-        {error, not_allowed} when ?IS_PROTO_4(Proto) ->
+        {error, not_allowed} when ?IS_PROTO_4(Proto); DisconnectOnUnauthorizedPublishV3 ->
             %% we have to close connection for 3.1.1
-            _ = vmq_metrics:incr_mqtt_error_auth_publish(),
-            {error, not_allowed};
-        {error, not_allowed} when DisconnectOnUnauthorizedPublishV3 ->
-            %% force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients
+            %% or if force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients, is configured
             _ = vmq_metrics:incr_mqtt_error_auth_publish(),
             {error, not_allowed};
         {error, not_allowed} ->
@@ -1122,12 +1116,9 @@ dispatch_publish_qos2(MessageId, Msg, State) ->
                         [Frame],
                         SessCtrl
                     };
-                {error, not_allowed} when ?IS_PROTO_4(Proto) ->
+                {error, not_allowed} when ?IS_PROTO_4(Proto); DisconnectOnUnauthorizedPublishV3 ->
                     %% we have to close connection for 3.1.1
-                    _ = vmq_metrics:incr_mqtt_error_auth_publish(),
-                    {error, not_allowed};
-                {error, not_allowed} when DisconnectOnUnauthorizedPublishV3 ->
-                    %% force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients
+                    %% or if force disconnect on unauthorized publish, even for non MQTT 3.1.1 clients, is configured
                     _ = vmq_metrics:incr_mqtt_error_auth_publish(),
                     {error, not_allowed};
                 {error, not_allowed} ->
