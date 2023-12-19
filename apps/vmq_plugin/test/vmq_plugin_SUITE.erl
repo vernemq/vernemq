@@ -20,7 +20,6 @@ all() ->
     ].
 
 init_per_suite(Config) ->
-    %%lager:set_loglevel(lager_console_backend, debug),
     Config.
 
 init_per_testcase(_, Config) ->

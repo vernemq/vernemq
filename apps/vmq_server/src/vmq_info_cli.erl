@@ -430,7 +430,7 @@ logger_info(Logger) ->
     end.
 
 vmq_loq_show_cmd() ->
-    Cmd = ["vmq-admin", "log", "show"],
+    Cmd = ["vmq-admin", "log", "show", "config"],
     KeySpecs = [],
     FlagSpecs = [],
     Callback = fun(_, [], _) ->
@@ -592,8 +592,8 @@ log_usage() ->
         "vmq-admin log <sub-command>\n\n",
         "  Manage VerneMQ log sub-system.\n\n",
         "  Sub-commands:\n",
-        "    show        Shows logging configuration\n",
-        "    level       Set log level during runtime\n",
+        "    show config   Shows logging configuration\n",
+        "    level         Set log level during runtime\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 

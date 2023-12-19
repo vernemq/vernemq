@@ -43,7 +43,7 @@ stop() ->
     Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
     _ = spawn(fun() ->
         Ret = vmq_plugin_mgr:disable_plugin(Impl),
-        ?LOG_INFO("Try to stop ~p: ~p", [Impl, Ret])
+        ?LOG_INFO("Trying to stop ~p: ~p", [Impl, Ret])
     end),
     ok.
 
