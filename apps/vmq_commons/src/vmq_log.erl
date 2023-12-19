@@ -16,5 +16,5 @@
 -export([set_loglevel/2]).
 
 set_loglevel(Logger, Level) ->
-    ?LOG_INFO("Change log level for Logger ~p to ~p", [Logger, Level]),
+    ?LOG_INFO("Changed log level for Logger ~p to ~p", [Logger, Level]),
     logger:update_handler_config(list_to_atom(Logger), level, list_to_atom(Level)).

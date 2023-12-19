@@ -39,7 +39,6 @@ format(
         end,
     DocAfterMapping = apply_mapping_and_ordering(InitialDoc, Config),
     Json = vmq_json:encode(DocAfterMapping),
-    %  Json = FormattedMsg,
     [Json, $\n].
 
 level_to_verbosity(Level, #{verbosity_map := Mapping}) ->

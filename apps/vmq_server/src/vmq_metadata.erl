@@ -27,7 +27,7 @@
 start() ->
     Impl = application:get_env(vmq_server, metadata_impl, vmq_plumtree),
     Ret = vmq_plugin_mgr:enable_system_plugin(Impl, [internal]),
-    ?LOG_INFO("Try to start ~p: ~p", [Impl, Ret]),
+    ?LOG_INFO("Trying to start ~p: ~p", [Impl, Ret]),
     Ret.
 
 stop() ->

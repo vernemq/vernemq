@@ -28,7 +28,7 @@
 start() ->
     Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_msg_store),
     Ret = vmq_plugin_mgr:enable_system_plugin(Impl, [internal]),
-    ?LOG_INFO("Try to start ~p: ~p", [Impl, Ret]),
+    ?LOG_INFO("Trying to start ~p: ~p", [Impl, Ret]),
     Ret.
 
 stop() ->
@@ -44,7 +44,7 @@ stop() ->
     Impl = application:get_env(vmq_server, message_store_impl, vmq_generic_msg_store),
     _ = spawn(fun() ->
         Ret = vmq_plugin_mgr:disable_plugin(Impl),
-        ?LOG_INFO("Try to stop ~p: ~p", [Impl, Ret])
+        ?LOG_INFO("Trying to stop ~p: ~p", [Impl, Ret])
     end),
     ok.
 
