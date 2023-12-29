@@ -3,7 +3,7 @@
 import os
 import json
 
-os.system("license_scout -c files/license_scout.yml")
+os.system("license_scout -c files/license_scout.yml --include-sub-directories")
 
 license_json = 'vernemq-dependency-licenses.json'
 
@@ -31,7 +31,7 @@ for l in licenses['dependencies']:
     f.write("---------------------------------------\n")
     for ll in l['licenses']:
         if ll['content']:
-            f.write(ll['content'].encode('utf8'))
+            f.write(bytes(ll['content'], 'utf8').decode('utf8'))
             f.write("\n")
 
 f.close()
