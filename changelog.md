@@ -1,5 +1,6 @@
 - Improve systemd support: Add support of systemd-notify
-- Bugfix: Persist QoS0 to disk in case of outgoing upgrade_qos (#2220)
+- New feature: Allow downgrade of client stopped due to keepalive from warning to info message (logging.keepalive_as_warning = off)
+- Bugix: Persist QoS0 to disk in case of outgoing upgrade_qos (#2220)
 - 'vmq_http_api_v2': Set apikey as new default authentication method
 - Bugfix: Remove 'vmq_http_pub' from default listener group and enforce apikey as default (#2222)
 - New feature: "null" message store that disables persisting messages
@@ -13,6 +14,7 @@
 - Add new command to vmq-admin to clear webhook cache (webhooks cache clear)
 - 'vmq_admin': Add commands allowing batch disconnects (vmq-admin session disconnect batch and vmq-admin session disconnect clients)
 - 'vmq_http_pub': Allow anonymous access (allow_anonymous = on)
+- New feature: Add configuration option disconnect_on_unauthorized_publish_v3 to force disconnect on unauthorized publish even for MQTT clients before v3.1.1
 
 
 ## VerneMQ 1.13.0
