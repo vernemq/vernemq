@@ -17,6 +17,7 @@
         clique,
         jsx,
         gen_server2,
+        systemd,
         stdout_formatter
     ]},
     {mod, {vmq_server_app, []}},

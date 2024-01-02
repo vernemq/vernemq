@@ -1,3 +1,4 @@
+- Improve systemd support: Add support of systemd-notify
 - New feature: Allow downgrade of client stopped due to keepalive from warning to info message (logging.keepalive_as_warning = off)
 - Bugix: Persist QoS0 to disk in case of outgoing upgrade_qos (#2220)
 - 'vmq_http_api_v2': Set apikey as new default authentication method
