@@ -1182,7 +1182,7 @@ direct_plugin_exports_test(Cfg) ->
     vmq_cluster_test_utils:wait_until(fun() -> TestSub(WTopic, true) end, 100, 10),
     {ok, {1, 0}} = PubFun3(WTopic, <<"msg1">>, #{}),
     receive
-        {deliver, WTopic, <<"msg1">>, 0, false, false} -> ok;
+        {deliver, WTopic, <<"msg1">>, 0, false, false, _Info} -> ok;
         Other -> throw({received_unexpected_msg, Other})
     after
         1000 ->

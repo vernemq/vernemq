@@ -236,7 +236,7 @@ handle_info(
     ),
     {noreply, State};
 handle_info(
-    {deliver, Topic, Payload, _QoS, IsRetained, _IsDup},
+    {deliver, Topic, Payload, _QoS, IsRetained, _IsDup, _Info},
     #state{subs_local = Subscriptions, client_pid = ClientPid} = State
 ) ->
     %% forward matching, locally published messages to the remote broker.

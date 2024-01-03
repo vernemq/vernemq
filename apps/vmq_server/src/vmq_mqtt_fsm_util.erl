@@ -65,11 +65,15 @@ plugin_receive_loop(PluginPid, PluginMod) ->
                                 routing_key = RoutingKey,
                                 payload = Payload,
                                 retain = IsRetain,
-                                dup = IsDup
+                                dup = IsDup,
+                                mountpoint = Mountpoint,
+                                properties = PropsMap,
+                                expiry_ts = ExpiryTS
                             }
                         }
                     ) ->
-                        PluginPid ! {deliver, RoutingKey, Payload, QoS, IsRetain, IsDup};
+                        Info = {Mountpoint, PropsMap, ExpiryTS},
+                        PluginPid ! {deliver, RoutingKey, Payload, QoS, IsRetain, IsDup, Info};
                     (Msg) ->
                         lager:warning("dropped message ~p for plugin ~p", [Msg, PluginMod]),
                         ok
