@@ -408,8 +408,10 @@ pre_connect_auth(
         }} ->
             %% we're done with enhanced auth on connect.
             NewAuthData = #auth_data{method = AuthMethod},
+            SubscriberId0 = check_client_id(ConnectFrame, State),
             check_connect(
                 ConnectFrame,
+                SubscriberId0,
                 FilterProps(Res),
                 State#state{enhanced_auth = NewAuthData}
             );
@@ -755,6 +757,7 @@ connected(
             )
         end,
     _ = vmq_metrics:incr({?MQTT5_AUTH_RECEIVED, rc2rcn(RC)}),
+
     case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
         {ok, #{
             reason_code := ?SUCCESS,
@@ -973,7 +976,6 @@ terminate_reason(Reason) ->
 check_enhanced_auth(
     #mqtt5_connect{properties = #{?P_AUTHENTICATION_METHOD := AuthMethod} = Props} = Frame0,
     #state{
-        subscriber_id = SubscriberId,
         username = UserName
     } = State
 ) ->
@@ -988,14 +990,23 @@ check_enhanced_auth(
                 M
             )
         end,
-    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId, Props]) of
+    {Origin, SubscriberId0} = check_client_id(Frame0, State),
+    SubscriberId1 =
+        case Origin of
+            invalid -> <<"">>;
+            _ -> SubscriberId0
+        end,
+
+    case vmq_plugin:all_till_ok(on_auth_m5, [UserName, SubscriberId1, Props]) of
         {ok, #{
             reason_code := ?SUCCESS,
             properties :=
                 #{?P_AUTHENTICATION_METHOD := AuthMethod} = Res
         }} ->
             EnhancedAuth = #auth_data{method = AuthMethod},
-            check_connect(Frame0, FilterProps(Res), State#state{enhanced_auth = EnhancedAuth});
+            check_connect(Frame0, {Origin, SubscriberId1}, FilterProps(Res), State#state{
+                enhanced_auth = EnhancedAuth
+            });
         {ok, #{
             reason_code := ?CONTINUE_AUTHENTICATION,
             properties :=
@@ -1030,48 +1041,61 @@ check_enhanced_auth(
     end;
 check_enhanced_auth(F, State) ->
     %% No enhanced authentication
-    check_connect(F, #{}, State).
+    SubscriberId = check_client_id(F, State),
+    check_connect(F, SubscriberId, #{}, State).
 
-check_connect(#mqtt5_connect{proto_ver = Ver, clean_start = CleanStart} = F, OutProps, State) ->
+check_connect(_, {invalid, _}, _, State) ->
+    connack_terminate(?CLIENT_IDENTIFIER_NOT_VALID, State);
+check_connect(
+    #mqtt5_connect{proto_ver = Ver, clean_start = CleanStart} = F,
+    {client, SubscriberId},
+    OutProps,
+    State
+) ->
     CCleanStart = unflag(CleanStart),
-    check_client_id(F, OutProps, State#state{clean_start = CCleanStart, proto_ver = Ver}).
+    check_user(F, OutProps, State#state{
+        clean_start = CCleanStart, proto_ver = Ver, subscriber_id = SubscriberId
+    });
+check_connect(
+    #mqtt5_connect{proto_ver = Ver, clean_start = CleanStart} = F,
+    {random, SubscriberId},
+    OutProps,
+    State
+) ->
+    CCleanStart = unflag(CleanStart),
+    {_, ClientID} = SubscriberId,
+    check_user(
+        F#mqtt5_connect{client_id = ClientID},
+        OutProps#{p_assigned_client_id => ClientID},
+        State#state{clean_start = CCleanStart, proto_ver = Ver, subscriber_id = SubscriberId}
+    ).
 
 check_client_id(
     #mqtt5_connect{} = Frame,
-    OutProps,
     #state{username = {preauth, UserNameFromCert}} = State
 ) ->
     check_client_id(
         Frame#mqtt5_connect{username = UserNameFromCert},
-        OutProps,
         State#state{username = UserNameFromCert}
     );
 check_client_id(
-    #mqtt5_connect{client_id = <<>>, proto_ver = 5} = F,
-    OutProps,
+    #mqtt5_connect{client_id = <<>>, proto_ver = 5},
     State
 ) ->
     RandomClientId = random_client_id(),
     {MountPoint, _} = State#state.subscriber_id,
-    SubscriberId = {MountPoint, RandomClientId},
-    check_user(
-        F#mqtt5_connect{client_id = RandomClientId},
-        OutProps#{p_assigned_client_id => RandomClientId},
-        State#state{subscriber_id = SubscriberId}
-    );
+    {random, {MountPoint, RandomClientId}};
 check_client_id(
-    #mqtt5_connect{client_id = ClientId} = F,
-    OutProps,
+    #mqtt5_connect{client_id = ClientId},
     #state{max_client_id_size = S} = State
 ) when
     byte_size(ClientId) =< S
 ->
     {MountPoint, _} = State#state.subscriber_id,
-    SubscriberId = {MountPoint, ClientId},
-    check_user(F, OutProps, State#state{subscriber_id = SubscriberId});
-check_client_id(#mqtt5_connect{client_id = Id}, _OutProps, State) ->
+    {client, {MountPoint, ClientId}};
+check_client_id(#mqtt5_connect{client_id = Id}, _) ->
     lager:warning("invalid client id ~p", [Id]),
-    connack_terminate(?CLIENT_IDENTIFIER_NOT_VALID, State).
+    {invalid, "invalid client id"}.
 
 check_user(
     #mqtt5_connect{username = User, password = Password, properties = Props} = F,
