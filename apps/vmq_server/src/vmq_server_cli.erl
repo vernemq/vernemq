@@ -494,8 +494,7 @@ vmq_cluster_join_cmd() ->
                     vmq_cluster:recheck(),
                     [clique_status:text("Done")];
                 {error, Reason} ->
-                    Text = io_lib:format("Couldn't join cluster due to ~p~n", [Reason]),
-                    [clique_status:alert([clique_status:text(Text)])]
+                    {error, {{badrpc, Reason}, Node}}
             end
     end,
     clique:register_command(Cmd, KeySpecs, FlagSpecs, Callback).
