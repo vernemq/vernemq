@@ -31,7 +31,9 @@
     cluster_events_call_handler/3,
 
     plugin_start/0,
-    plugin_stop/0
+    plugin_stop/0,
+    summary/0,
+    history/0
 ]).
 
 -define(METRIC, metadata).
@@ -197,3 +199,33 @@ lww_resolver(TimestampedVals) ->
 
 extract_val({_Ts, Val}) -> Val;
 extract_val(undefined) -> undefined.
+
+summary() ->
+    {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
+    Node = node(),
+    NodeClocks = [
+        vmq_swc_store:node_clock_by_storename(
+            list_to_existing_atom("vmq_swc_store_" ++ atom_to_list(SwcGroup))
+        )
+     || SwcGroup <- ?SWC_GROUPS
+    ],
+    [{maps:get({Node, Actor}, NC), maps:size(NC)} || NC <- NodeClocks].
+
+% The Node is empty when all local Nodeclocks in SWCGroups are
+% 0 and we only have the local Node in the Nodeclocks.
+% In other words: history/1 returns {0,0,true}, in case
+% the node has no history.
+history() ->
+    NrOfGroups = length(?SWC_GROUPS),
+    LocalClockList = summary(),
+    {{LocalDots, Gap}, TotalClocks} =
+        lists:foldl(
+            fun(X, {{A, B}, C}) ->
+                {{N, M}, Z} = X,
+                {{A + N, B + M}, C + Z}
+            end,
+            {{0, 0}, 0},
+            LocalClockList
+        ),
+    NeverClustered = NrOfGroups == TotalClocks,
+    {LocalDots, Gap, NeverClustered}.
