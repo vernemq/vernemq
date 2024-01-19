@@ -205,7 +205,7 @@ summary() ->
     Node = node(),
     NodeClocks = [
         vmq_swc_store:node_clock_by_storename(
-            list_to_existing_atom("vmq_swc_store_" ++ atom_to_list(SwcGroup))
+            list_to_atom("vmq_swc_store_" ++ atom_to_list(SwcGroup))
         )
      || SwcGroup <- ?SWC_GROUPS
     ],
