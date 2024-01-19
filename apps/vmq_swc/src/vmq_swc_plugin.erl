@@ -30,10 +30,10 @@
     cluster_events_delete_handler/2,
     cluster_events_call_handler/3,
 
-    plugin_start/0,
+    plugin_start/0, plugin_start/1,
     plugin_stop/0,
-    summary/0,
-    history/0
+    summary/0, summary/1,
+    history/0, history/1
 ]).
 
 -define(METRIC, metadata).
@@ -51,6 +51,11 @@ plugin_stop() ->
     {_, SWCGroups} = ?SWC_GROUPS,
     _ = [vmq_swc:stop(G) || G <- SWCGroups],
     persistent_term:erase(?INFO_KEY),
+    ok.
+% for tests
+plugin_start(SWCGroups) ->
+    ok = persistent_term:put(?INFO_KEY, {length(SWCGroups), SWCGroups}),
+    _ = [vmq_swc:start(G) || G <- SWCGroups],
     ok.
 
 group_for_key(PKey) ->
@@ -201,13 +206,15 @@ extract_val({_Ts, Val}) -> Val;
 extract_val(undefined) -> undefined.
 
 summary() ->
+    summary(?SWC_GROUPS).
+summary(SWCGroups) ->
     {ok, Actor} = vmq_swc_peer_service_manager:get_actor(),
     Node = node(),
     NodeClocks = [
         vmq_swc_store:node_clock_by_storename(
-            list_to_atom("vmq_swc_store_" ++ atom_to_list(SwcGroup))
+            list_to_atom("vmq_swc_store_" ++ atom_to_list(SWCGroup))
         )
-     || SwcGroup <- ?SWC_GROUPS
+     || SWCGroup <- SWCGroups
     ],
     [{maps:get({Node, Actor}, NC), maps:size(NC)} || NC <- NodeClocks].
 
@@ -216,8 +223,11 @@ summary() ->
 % In other words: history/1 returns {0,0,true}, in case
 % the node has no history.
 history() ->
-    NrOfGroups = length(?SWC_GROUPS),
-    LocalClockList = summary(),
+    SWCGroups = [list_to_atom("meta" ++ integer_to_list(X)) || X <- lists:seq(1, ?NR_OF_GROUPS)],
+    history(SWCGroups).
+history(SWCGroups) ->
+    LocalClockList = summary(SWCGroups),
+    NrOfGroups = length(SWCGroups),
     {{LocalDots, Gap}, TotalClocks} =
         lists:foldl(
             fun(X, {{A, B}, C}) ->

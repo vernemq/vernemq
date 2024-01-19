@@ -109,8 +109,7 @@ start_node(Name, Config, Case) ->
             ok = rpc:call(Node, application, set_env, [vmq_swc, exchange_batch_size, BatchSize]),
 
             SwcGroup = proplists:get_value(swc_group, Config, local),
-
-            {ok, _} = rpc:call(Node, vmq_swc, start, [SwcGroup]),
+            ok = rpc:call(Node, vmq_swc_plugin, plugin_start, [[SwcGroup]]),
             ok = wait_until(fun() ->
                             case rpc:call(Node, vmq_swc_peer_service_manager, get_local_state, []) of
                                 {ok, _Res} -> true;

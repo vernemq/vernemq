@@ -49,7 +49,8 @@ join(_, Node, _Auto) ->
 
 attempt_join(Node) ->
     lager:info("Sent join request to: ~p~n", [Node]),
-    case vmq_swc_plugin:history() of
+    {_NrOfGroups, SwcGroups} = persistent_term:get({vmq_swc_plugin, swc}),
+    case vmq_swc_plugin:history(SwcGroups) of
         {0, 0, true} ->
             case net_kernel:connect_node(Node) of
                 false ->
