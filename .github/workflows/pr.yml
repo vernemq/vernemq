@@ -26,19 +26,19 @@ jobs:
         uses: actions/checkout@v4
       - name: Cache PLTs
         id: cache-plts
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             plts
             plts_base
           key: plts-cache-${{ runner.os }}-otp-${{env.DEFAULT_RELEASE_OTP}}-hash-${{hashFiles('rebar.lock')}}
       - name: Cache _build/default
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: _build/default
           key: _build_default-cache-${{runner.os}}-otp-${{env.DEFAULT_RELEASE_OTP}}-v2-hash-${{hashFiles('rebar.lock')}}
       - name: Cache rebar3
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/rebar3
           key: rebar3-cache-${{runner.os}}-otp-${{env.DEFAULT_RELEASE_OTP}}-v2-hash-${{hashFiles('rebar.lock')}}
@@ -109,12 +109,12 @@ jobs:
         with:
           otp-version: ${{ env.DEFAULT_RELEASE_OTP }}
       - name: Cache _build/default
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: _build/default
           key: _build_default-cache-${{runner.os}}-otp-${{env.DEFAULT_RELEASE_OTP}}-v2-hash-${{hashFiles('rebar.lock')}}
       - name: Cache rebar3
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/rebar3
           key: rebar3-cache-${{runner.os}}-otp-${{env.DEFAULT_RELEASE_OTP}}-v2-hash-${{hashFiles('rebar.lock')}}
@@ -173,7 +173,7 @@ jobs:
           sudo apt-get -qq install libsnappy-dev mosquitto-clients pcregrep
       - name: Configure Homebrew cache
         if: ${{ startsWith(matrix.os, 'macos') }}
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/Library/Caches/Homebrew/
@@ -198,12 +198,12 @@ jobs:
           otp-version: ${{ matrix.otp }}
           version-type: strict
       - name: Cache build
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: _build/default
           key: ${{ runner.os }}-build-default-${{ matrix.otp }}-v2-${{ hashFiles(format('rebar.lock')) }}
       - name: Cache rebar3
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/rebar3
           key: ${{runner.os}}-rebar3-${{matrix.otp}}-v2-${{ hashFiles(format('rebar.lock')) }}
