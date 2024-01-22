@@ -61,6 +61,7 @@ register_cli() ->
     vmq_server_show_cmd(),
     vmq_server_metrics_cmd(),
     vmq_server_metrics_reset_cmd(),
+    vmq_server_history_cmd(),
     vmq_cluster_join_cmd(),
     vmq_cluster_leave_cmd(),
     vmq_cluster_upgrade_cmd(),
@@ -84,6 +85,7 @@ register_cli_usage() ->
     clique:register_usage(["vmq-admin", "node", "status"], status_usage()),
     clique:register_usage(["vmq-admin", "node", "stop"], stop_usage()),
     clique:register_usage(["vmq-admin", "node", "upgrade"], upgrade_usage()),
+    clique:register_usage(["vmq-admin", "node", "history"], history_usage()),
 
     clique:register_usage(["vmq-admin", "cluster"], cluster_usage()),
     clique:register_usage(["vmq-admin", "cluster", "join"], join_usage()),
@@ -122,7 +124,24 @@ vmq_server_status_cmd() ->
         Table = [[{'Status', Key}, {'Value', Value}] || {Key, Value} <- Status],
         [clique_status:table(Table)]
     end,
+    clique:register_command(Cmd, [], [], Callback).
 
+vmq_server_history_cmd() -> % for scripts to check for empty state at boot
+    Cmd = ["vmq-admin", "node", "history"],
+    Callback = fun(_, _, _) ->
+        Status = case vmq_config:get_env(metadata_impl) of
+            vmq_swc ->
+                     History = vmq_swc_plugin:history(),
+                     {LocalNode, Gap, _} = History,
+                     case {LocalNode, Gap} of
+                        {0, 0} -> empty_state;
+                        _ -> existing_state
+                     end;
+        _ -> not_swc
+            end,
+        Status1 = io_lib:format("~p", [Status]),
+        [clique_status:text(Status1)]
+    end,
     clique:register_command(Cmd, [], [], Callback).
 
 vmq_server_show_cmd() ->
@@ -844,6 +863,15 @@ api_create_key_usage() ->
             string:join(vmq_auth_apikey:scopes(), ","),
             "\n\n"
         ]
+    ].
+
+history_usage() ->
+    [
+        "vmq-admin node <sub-command>\n\n",
+        "  Get info on node history.\n\n",
+        "  Sub-commands:\n",
+        "    history        Shows whether this VerneMQ node is empty (has no history)\n\n",
+        "                  or not.\n"
     ].
 
 ensure_all_stopped(App) ->
