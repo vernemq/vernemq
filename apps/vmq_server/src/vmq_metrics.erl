@@ -96,7 +96,8 @@
     incr_cache_hit/1,
     incr_cache_miss/1,
 
-    incr_msg_enqueue_subscriber_not_found/0
+    incr_msg_enqueue_subscriber_not_found/0,
+    incr_topic_counter/1
 ]).
 
 -export([
@@ -125,6 +126,7 @@
 ]).
 
 -define(TIMER_TABLE, vmq_metrics_timers).
+-define(TOPIC_LABEL_TABLE, topic_labels).
 
 -record(state, {
     info = #{}
@@ -398,9 +400,11 @@ metrics(Opts) ->
 
     {PluggableMetricDefs, PluggableMetricValues} = pluggable_metrics(),
     {HistogramMetricDefs, HistogramMetricValues} = histogram_metrics(),
+    {TopicMetricsDefs, TopicMetricsValues} = topic_metrics(),
 
-    MetricDefs = metric_defs() ++ PluggableMetricDefs ++ HistogramMetricDefs,
-    MetricValues = metric_values() ++ PluggableMetricValues ++ HistogramMetricValues,
+    MetricDefs = metric_defs() ++ PluggableMetricDefs ++ HistogramMetricDefs ++ TopicMetricsDefs,
+    MetricValues =
+        metric_values() ++ PluggableMetricValues ++ HistogramMetricValues ++ TopicMetricsValues,
 
     %% Create id->metric def map
     IdDef = lists:foldl(
@@ -518,6 +522,22 @@ histogram_metrics() ->
         Histogram
     ).
 
+topic_metric_defs() ->
+    {Defs, _} = topic_metrics(),
+    Defs.
+
+topic_metrics() ->
+    ets:foldl(
+        fun({Metric, TotalCount}, {DefsAcc, ValsAcc}) ->
+            {UniqueId, MetricName, Description, Labels} = topic_metric_name(Metric),
+            {[m(counter, Labels, UniqueId, MetricName, Description) | DefsAcc], [
+                {UniqueId, TotalCount} | ValsAcc
+            ]}
+        end,
+        {[], []},
+        ?TOPIC_LABEL_TABLE
+    ).
+
 incr_bucket_ops(V) when V =< 10 ->
     [{2, 1}, {3, 1}, {4, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, V}];
 incr_bucket_ops(V) when V =< 100 ->
@@ -549,6 +569,23 @@ incr_histogram_buckets(Metric, BucketOps) ->
             try
                 ets:insert_new(?TIMER_TABLE, {Metric, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
                 incr_histogram_buckets(Metric, BucketOps)
+            catch
+                _:_ ->
+                    lager:warning("couldn't initialize tables", [])
+            end
+    end.
+
+-spec incr_topic_counter(
+    Metric :: {topic_matches, subscribe | publish, Labels :: [{atom(), atom() | list() | binary()}]}
+) -> ok.
+incr_topic_counter(Metric) ->
+    try
+        ets:update_counter(?TOPIC_LABEL_TABLE, Metric, 1)
+    catch
+        _:_ ->
+            try
+                ets:insert_new(?TOPIC_LABEL_TABLE, {Metric, 0}),
+                incr_topic_counter(Metric)
             catch
                 _:_ ->
                     lager:warning("couldn't initialize tables", [])
@@ -592,7 +629,8 @@ get_label_info() ->
                 )
             end,
             #{},
-            metric_defs() ++ pluggable_metric_defs() ++ histogram_metric_defs()
+            metric_defs() ++ pluggable_metric_defs() ++ histogram_metric_defs() ++
+                topic_metric_defs()
         ),
     maps:to_list(LabelInfo).
 
@@ -630,6 +668,7 @@ init([]) ->
     NumEntries = length(lists:usort(Idxs)),
 
     ets:new(?TIMER_TABLE, [named_table, public, {write_concurrency, true}]),
+    ets:new(?TOPIC_LABEL_TABLE, [named_table, public, {write_concurrency, true}]),
 
     %% only alloc a new atomics array if one doesn't already exist!
     case catch persistent_term:get(?MODULE) of
@@ -2890,3 +2929,12 @@ metric_name({Metric, SubMetric}) ->
         "A histogram of the " ++ LMetric ++ " " ++ LSubMetric ++ " latency."
     ),
     {Name, Name, Description, []}.
+
+topic_metric_name({Metric, SubMetric, Labels}) ->
+    LMetric = atom_to_list(Metric),
+    LSubMetric = atom_to_list(SubMetric),
+    MetricName = list_to_atom(LSubMetric ++ "_" ++ LMetric),
+    Description = list_to_binary(
+        "The number of " ++ LSubMetric ++ " packets on ACL matched topics."
+    ),
+    {[MetricName | Labels], MetricName, Description, Labels}.

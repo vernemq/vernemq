@@ -26,7 +26,7 @@
     init/0,
     load_from_file/1,
     load_from_list/1,
-    check/4
+    check/5
 ]).
 
 -export([
@@ -57,6 +57,7 @@
 -define(USER_SUP, <<"%u">>).
 -define(CLIENT_SUP, <<"%c">>).
 -define(MOUNTPOINT_SUP, <<"%m">>).
+-define(TOPIC_LABEL_TABLE, topic_labels).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -104,7 +105,12 @@ auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], Modifiers)
         D ->
             next;
         true ->
-            case check(read, Topic, User, SubscriberId) of
+            QosValue =
+                case Qos of
+                    N when is_integer(N) -> N;
+                    {N, _} when is_integer(N) -> N
+                end,
+            case check(read, Topic, User, SubscriberId, QosValue) of
                 true ->
                     auth_on_subscribe(User, SubscriberId, Rest, [{Topic, Qos} | Modifiers]);
                 false ->
@@ -113,13 +119,13 @@ auth_on_subscribe(RegView, User, SubscriberId, [{Topic, Qos} | Rest], Modifiers)
             end
     end.
 
-auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
+auth_on_publish(User, SubscriberId, Qos, Topic, _, _) ->
     D = is_acl_auth_disabled(),
     if
         D ->
             next;
         true ->
-            case check(write, Topic, User, SubscriberId) of
+            case check(write, Topic, User, SubscriberId, Qos) of
                 true ->
                     ok;
                 false ->
@@ -130,7 +136,7 @@ auth_on_publish(User, SubscriberId, _, Topic, _, _) ->
 auth_on_subscribe_m5(_, _, []) ->
     ok;
 auth_on_subscribe_m5(User, SubscriberId, [{Topic, _Qos} | Rest]) ->
-    case check(read, Topic, User, SubscriberId) of
+    case check(read, Topic, User, SubscriberId, _Qos) of
         true ->
             auth_on_subscribe(User, SubscriberId, Rest);
         false ->
@@ -223,42 +229,65 @@ load_from_list(List) ->
     parse_acl_line(F(F, read), all),
     del_aged_entries().
 
+split_topic_label(Rest) ->
+    case binary:split(Rest, <<"label ">>) of
+        [Topic, Label] ->
+            case string:lexemes(Label, " ") of
+                [_] ->
+                    {Topic, string:trim(Label)};
+                [FirstLabel | _] ->
+                    error_logger:warning_msg("can't add multiple label values!"),
+                    {Topic, FirstLabel}
+            end;
+        _ ->
+            {Rest, <<>>}
+    end.
+
 parse_acl_line({F, <<"#", _/binary>>}, User) ->
     %% comment
     parse_acl_line(F(F, read), User);
-parse_acl_line({F, <<"topic read ", Topic/binary>>}, User) ->
-    in(read, User, Topic),
+parse_acl_line({F, <<"topic read ", Rest/binary>>}, User) ->
+    {Topic, Label} = split_topic_label(Rest),
+    in(read, User, Topic, Label),
     parse_acl_line(F(F, read), User);
-parse_acl_line({F, <<"topic write ", Topic/binary>>}, User) ->
-    in(write, User, Topic),
+parse_acl_line({F, <<"topic write ", Rest/binary>>}, User) ->
+    {Topic, Label} = split_topic_label(Rest),
+    in(write, User, Topic, Label),
     parse_acl_line(F(F, read), User);
-parse_acl_line({F, <<"topic ", Topic/binary>>}, User) ->
-    in(read, User, Topic),
-    in(write, User, Topic),
+parse_acl_line({F, <<"topic ", Rest/binary>>}, User) ->
+    {Topic, Label} = split_topic_label(Rest),
+    in(read, User, Topic, Label),
+    in(write, User, Topic, Label),
     parse_acl_line(F(F, read), User);
 parse_acl_line({F, <<"user ", User/binary>>}, _) ->
     UserLen = byte_size(User) - 1,
     <<SUser:UserLen/binary, _/binary>> = User,
     parse_acl_line(F(F, read), SUser);
-parse_acl_line({F, <<"pattern read ", Topic/binary>>}, User) ->
-    in(read, pattern, Topic),
+parse_acl_line({F, <<"pattern read ", Rest/binary>>}, User) ->
+    {Topic, Label} = split_topic_label(Rest),
+    in(read, pattern, Topic, Label),
     parse_acl_line(F(F, read), User);
-parse_acl_line({F, <<"pattern write ", Topic/binary>>}, User) ->
-    in(write, pattern, Topic),
+parse_acl_line({F, <<"pattern write ", Rest/binary>>}, User) ->
+    {Topic, Label} = split_topic_label(Rest),
+    in(write, pattern, Topic, Label),
     parse_acl_line(F(F, read), User);
-parse_acl_line({F, <<"pattern ", Topic/binary>>}, User) ->
-    in(read, pattern, Topic),
-    in(write, pattern, Topic),
+parse_acl_line({F, <<"pattern ", Rest/binary>>}, User) ->
+    {Topic, Label} = split_topic_label(Rest),
+    in(read, pattern, Topic, Label),
+    in(write, pattern, Topic, Label),
     parse_acl_line(F(F, read), User);
-parse_acl_line({F, <<"token read ", Topic/binary>>}, User) ->
-    insert_token(read, regex, string:trim(Topic)),
+parse_acl_line({F, <<"token read ", Rest/binary>>}, User) ->
+    {Topic, Label} = split_topic_label(Rest),
+    insert_token(read, regex, string:trim(Topic), Label),
     parse_acl_line(F(F, read), User);
-parse_acl_line({F, <<"token write ", Topic/binary>>}, User) ->
-    insert_token(write, regex, string:trim(Topic)),
+parse_acl_line({F, <<"token write ", Rest/binary>>}, User) ->
+    {Topic, Label} = split_topic_label(Rest),
+    insert_token(write, regex, string:trim(Topic), Label),
     parse_acl_line(F(F, read), User);
-parse_acl_line({F, <<"token ", Topic/binary>>}, User) ->
-    insert_token(read, regex, string:trim(Topic)),
-    insert_token(write, regex, string:trim(Topic)),
+parse_acl_line({F, <<"token ", Rest/binary>>}, User) ->
+    {Topic, Label} = split_topic_label(Rest),
+    insert_token(read, regex, string:trim(Topic), Label),
+    insert_token(write, regex, string:trim(Topic), Label),
     parse_acl_line(F(F, read), User);
 parse_acl_line({F, <<"\n">>}, User) ->
     parse_acl_line(F(F, read), User);
@@ -266,45 +295,81 @@ parse_acl_line({F, eof}, _User) ->
     F(F, close),
     ok.
 
-check(Type, [Word | _] = Topic, User, SubscriberId) when is_binary(Word) ->
-    case check_all_acl(Type, Topic) of
+check(Type, [Word | _] = Topic, User, SubscriberId, Qos) when is_binary(Word) ->
+    case check_all_acl(Type, Topic, Qos) of
         true ->
             true;
         false when User == all -> false;
         false ->
-            case check_user_acl(Type, User, Topic) of
+            case check_user_acl(Type, User, Topic, Qos) of
                 true ->
                     true;
                 false ->
-                    check_pattern_acl(Type, Topic, User, SubscriberId) or
-                        check_token_acl(Type, Topic, User, SubscriberId)
+                    check_pattern_acl(Type, Topic, User, SubscriberId, Qos) or
+                        check_token_acl(Type, Topic, User, SubscriberId, Qos)
             end
     end.
 
-check_all_acl(Type, TIn) ->
-    {Tbl, _} = t(Type, all, TIn),
-    iterate_until_true(Tbl, fun(T) -> match(TIn, T) end).
+check_all_acl(Type, TIn, Qos) ->
+    Tbl = t(Type, all),
+    iterate_until_true(Tbl, fun(T) ->
+        match(TIn, T, Tbl, Type, T, Qos)
+    end).
 
-check_user_acl(Type, User, TIn) ->
-    {Tbl, _} = t(Type, User, TIn),
+check_user_acl(Type, User, TIn, Qos) ->
+    Tbl = t(Type, User),
     iterate_until_true(
-        ets:match(Tbl, {{User, '$1'}, '_'}),
-        fun([T]) -> match(TIn, T) end
+        ets:match(Tbl, {{User, '$1'}, '_', '_'}),
+        fun([T]) ->
+            Key = {User, T},
+            match(TIn, T, Tbl, Type, Key, Qos)
+        end
     ).
 
-check_pattern_acl(Type, TIn, User, SubscriberId) ->
-    {Tbl, _} = t(Type, pattern, TIn),
+check_pattern_acl(Type, TIn, User, SubscriberId, Qos) ->
+    Tbl = t(Type, pattern),
     iterate_until_true(Tbl, fun(P) ->
         T = topic(User, SubscriberId, P),
-        match(TIn, T)
+        match(TIn, T, Tbl, Type, P, Qos)
     end).
 
-check_token_acl(Type, TIn, User, SubscriberId) ->
-    {Tbl, _} = t(Type, token, TIn),
+check_token_acl(Type, TIn, User, SubscriberId, Qos) ->
+    Tbl = t(Type, token),
     iterate_until_true(Tbl, fun(P) ->
         T = topic(User, SubscriberId, P),
-        match(TIn, T)
+        match(TIn, T, Tbl, Type, P, Qos)
     end).
+
+match(TIn, T, Tbl, Type, Key, Qos) ->
+    case match(TIn, T) of
+        true ->
+            case ets:lookup(Tbl, Key) of
+                [{_, _, Label}] ->
+                    check_label_and_incr_metrics(Label, Type, Qos),
+                    true;
+                _ ->
+                    true
+            end;
+        _ ->
+            false
+    end.
+
+check_label_and_incr_metrics(Label, Type, Qos) ->
+    case Label of
+        <<>> ->
+            ok;
+        _ ->
+            OperationName =
+                case Type of
+                    read -> subscribe;
+                    write -> publish
+                end,
+            _ = vmq_metrics:incr_topic_counter(
+                {topic_matches, OperationName, [
+                    {acl_matched, Label}, {qos, integer_to_list(Qos)}
+                ]}
+            )
+    end.
 
 topic(User, {MP, ClientId}, Topic) ->
     subst(list_to_binary(MP), User, ClientId, Topic, []).
@@ -332,12 +397,12 @@ subst(MP, User, ClientId, [W | Rest], Acc) ->
 subst(_, _, _, [], Acc) ->
     lists:reverse(Acc).
 
-in(Type, User, Topic) when is_binary(Topic) ->
+in(Type, User, Topic, Label) when is_binary(Topic) ->
     TopicLen = byte_size(Topic) - 1,
     <<STopic:TopicLen/binary, _/binary>> = Topic,
     case validate(STopic) of
         {ok, Words} ->
-            {Tbl, Obj} = t(Type, User, Words),
+            {Tbl, Obj} = t(Type, User, Words, Label),
             ets:insert(Tbl, Obj);
         {error, Reason} ->
             error_logger:warning_msg("can't validate ~p acl topic ~p for user ~p due to ~p", [
@@ -345,12 +410,12 @@ in(Type, User, Topic) when is_binary(Topic) ->
             ])
     end.
 
-insert_token(Type, _, Topic) when is_binary(Topic) ->
+insert_token(Type, _, Topic, Label) when is_binary(Topic) ->
     case parse_topic(Topic) of
         [] ->
             ok;
         Words ->
-            {Tbl, Obj} = t(Type, token, Words),
+            {Tbl, Obj} = t(Type, token, Words, Label),
             ets:insert(Tbl, Obj)
     end.
 
@@ -386,14 +451,23 @@ parse_tokens([Word | Words], Acc) ->
 validate(Topic) ->
     vmq_topic:validate_topic(subscribe, Topic).
 
-t(read, token, Topic) -> {vmq_enhanced_auth_acl_read_token, {Topic, 1}};
-t(write, token, Topic) -> {vmq_enhanced_auth_acl_write_token, {Topic, 1}};
-t(read, all, Topic) -> {vmq_enhanced_auth_acl_read_all, {Topic, 1}};
-t(write, all, Topic) -> {vmq_enhanced_auth_acl_write_all, {Topic, 1}};
-t(read, pattern, Topic) -> {vmq_enhanced_auth_acl_read_pattern, {Topic, 1}};
-t(write, pattern, Topic) -> {vmq_enhanced_auth_acl_write_pattern, {Topic, 1}};
-t(read, User, Topic) -> {vmq_enhanced_auth_acl_read_user, {{User, Topic}, 1}};
-t(write, User, Topic) -> {vmq_enhanced_auth_acl_write_user, {{User, Topic}, 1}}.
+t(read, token) -> vmq_enhanced_auth_acl_read_token;
+t(write, token) -> vmq_enhanced_auth_acl_write_token;
+t(read, all) -> vmq_enhanced_auth_acl_read_all;
+t(write, all) -> vmq_enhanced_auth_acl_write_all;
+t(read, pattern) -> vmq_enhanced_auth_acl_read_pattern;
+t(write, pattern) -> vmq_enhanced_auth_acl_write_pattern;
+t(read, _User) -> vmq_enhanced_auth_acl_read_user;
+t(write, _User) -> vmq_enhanced_auth_acl_write_user.
+
+t(read, token, Topic, Label) -> {vmq_enhanced_auth_acl_read_token, {Topic, 1, Label}};
+t(write, token, Topic, Label) -> {vmq_enhanced_auth_acl_write_token, {Topic, 1, Label}};
+t(read, all, Topic, Label) -> {vmq_enhanced_auth_acl_read_all, {Topic, 1, Label}};
+t(write, all, Topic, Label) -> {vmq_enhanced_auth_acl_write_all, {Topic, 1, Label}};
+t(read, pattern, Topic, Label) -> {vmq_enhanced_auth_acl_read_pattern, {Topic, 1, Label}};
+t(write, pattern, Topic, Label) -> {vmq_enhanced_auth_acl_write_pattern, {Topic, 1, Label}};
+t(read, User, Topic, Label) -> {vmq_enhanced_auth_acl_read_user, {{User, Topic}, 1, Label}};
+t(write, User, Topic, Label) -> {vmq_enhanced_auth_acl_write_user, {{User, Topic}, 1, Label}}.
 
 iterate_until_true(T, Fun) when is_atom(T) ->
     iterate_ets_until_true(T, ets:first(T), Fun);
@@ -522,12 +596,14 @@ acl_test_() ->
 
 setup() ->
     ok = application:set_env(vmq_enhanced_auth, enable_acl_hooks, true),
+    ets:new(?TOPIC_LABEL_TABLE, [named_table, public, {write_concurrency, true}]),
     insert_regex(),
     init().
 setup_vmq_reg_redis_trie() ->
     ok = application:set_env(vmq_enhanced_auth, enable_acl_hooks, true),
     ok = application:set_env(vmq_server, default_reg_view, vmq_reg_redis_trie),
     init(),
+    ets:new(?TOPIC_LABEL_TABLE, [named_table, public, {write_concurrency, true}]),
     ets:new(vmq_redis_trie_node, [{keypos, 2} | ?TABLE_OPTS]),
     ets:insert(
         vmq_redis_trie_node,
@@ -545,6 +621,7 @@ teardown(RegView) ->
     ets:delete(vmq_enhanced_auth_acl_write_all),
     ets:delete(vmq_enhanced_auth_acl_read_user),
     ets:delete(vmq_enhanced_auth_acl_write_user),
+    ets:delete(?TOPIC_LABEL_TABLE),
     application:unset_env(vmq_enhanced_auth, enable_acl_hooks),
     application:unset_env(vmq_server, default_reg_view).
 
@@ -558,36 +635,82 @@ simple_acl(_) ->
         <<"# ACL for user 'test'\n">>,
         <<"user test\n">>,
         <<"topic x/y/z/#\n">>,
+        <<"# ACL with label\n">>,
+        <<"topic read x/y/z label simple_read\n">>,
+        <<"topic write x/y/z label simple_write\n">>,
+        <<"# ACL for user 'test_user'\n">>,
+        <<"user test_user\n">>,
+        <<"topic a/b/c/# label simple_read_write\n">>,
         <<"# some patterns\n">>,
-        <<"pattern read %m/%u/%c\n">>,
-        <<"token read example/%(c, :, 3)\n">>,
-        <<"pattern write %m/%u/%c\n">>,
-        <<"token read a/b/%( u  , :, 2)/c">>,
-        <<"token read a/b/%( c  , :, 3)/+">>,
-        <<"token write write-topic/a/b/%( c  , :, 3)/+">>
+        <<"pattern read a/%m/%u/%c\n">>,
+        <<"token read example_pattern/%(c, :, 3)\n">>,
+        <<"pattern write a/%m/%u/%c\n">>,
+        <<"token read p/q/%( u  , :, 2)/r">>,
+        <<"token read p/q/%( c  , :, 3)/+">>,
+        <<"token write write-topic/p/q/%( c  , :, 3)/+">>,
+        <<"# some patterns with label\n">>,
+        <<"pattern read %m/%u/%c label pattern_read\n">>,
+        <<"token read example/%(c, :, 3) label token_read\n">>,
+        <<"pattern write %m/%u/%c label pattern_write\n">>,
+        <<"token read a/b/%( u  , :, 2)/c label token_read_u2">>,
+        <<"token read a/b/%( c  , :, 3)/+ label token_write">>,
+        <<"token write write-topic/a/b/%( c  , :, 3)/+ label token_write_c3">>,
+        <<"# ACL with wrong labels\n">>,
+        <<"token read a/b label">>,
+        <<"token write a/b label a b">>
     ],
     load_from_list(ACL),
     [
         ?_assertEqual(
-            [[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_enhanced_auth_acl_read_all, '$1')
+            [[{[<<"a">>, <<"b">>, <<"c">>], 1, <<>>}]],
+            ets:match(vmq_enhanced_auth_acl_read_all, '$1')
         ),
         ?_assertEqual(
-            [[{[<<"a">>, <<"b">>, <<"c">>], 1}]], ets:match(vmq_enhanced_auth_acl_write_all, '$1')
+            [[{[<<"a">>, <<"b">>, <<"c">>], 1, <<>>}]],
+            ets:match(vmq_enhanced_auth_acl_write_all, '$1')
         ),
         ?_assertEqual(
-            [[{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1}]],
+            [
+                [{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1, <<>>}],
+                %ACL with Label
+                [{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>]}, 1, <<"simple_read">>}],
+                [
+                    {
+                        {<<"test_user">>, [<<"a">>, <<"b">>, <<"c">>, <<"#">>]},
+                        1,
+                        <<"simple_read_write">>
+                    }
+                ]
+            ],
             ets:match(vmq_enhanced_auth_acl_read_user, '$1')
         ),
         ?_assertEqual(
-            [[{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1}]],
+            [
+                [{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>, <<"#">>]}, 1, <<>>}],
+                %ACL with Label
+                [{{<<"test">>, [<<"x">>, <<"y">>, <<"z">>]}, 1, <<"simple_write">>}],
+                [
+                    {
+                        {<<"test_user">>, [<<"a">>, <<"b">>, <<"c">>, <<"#">>]},
+                        1,
+                        <<"simple_read_write">>
+                    }
+                ]
+            ],
             ets:match(vmq_enhanced_auth_acl_write_user, '$1')
         ),
         ?_assertEqual(
-            [[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]],
+            [
+                [{[<<"%m">>, <<"%u">>, <<"%c">>], 1, <<"pattern_read">>}],
+                [{[<<"a">>, <<"%m">>, <<"%u">>, <<"%c">>], 1, <<>>}]
+            ],
             ets:match(vmq_enhanced_auth_acl_read_pattern, '$1')
         ),
         ?_assertEqual(
-            [[{[<<"%m">>, <<"%u">>, <<"%c">>], 1}]],
+            [
+                [{[<<"%m">>, <<"%u">>, <<"%c">>], 1, <<"pattern_write">>}],
+                [{[<<"a">>, <<"%m">>, <<"%u">>, <<"%c">>], 1, <<>>}]
+            ],
             ets:match(vmq_enhanced_auth_acl_write_pattern, '$1')
         ),
         %% positive auth_on_subscribe
@@ -736,6 +859,45 @@ simple_acl(_) ->
                 <<"payload">>,
                 false
             )
+        ),
+        %% ACL with Labels
+        ?_assertEqual(
+            [
+                [{[<<"example_pattern">>, {<<"c">>, <<":">>, 3}], 1, <<>>}],
+                [{[<<"example">>, {<<"c">>, <<":">>, 3}], 1, <<"token_read">>}],
+                [{[<<"p">>, <<"q">>, {<<"c">>, <<":">>, 3}, <<"+">>], 1, <<>>}],
+                [{[<<"a">>, <<"b label">>], 1, <<>>}],
+                [{[<<"a">>, <<"b">>, {<<"u">>, <<":">>, 2}, <<"c">>], 1, <<"token_read_u2">>}],
+                [{[<<"a">>, <<"b">>, {<<"c">>, <<":">>, 3}, <<"+">>], 1, <<"token_write">>}],
+                [{[<<"p">>, <<"q">>, {<<"u">>, <<":">>, 2}, <<"r">>], 1, <<>>}]
+            ],
+            ets:match(vmq_enhanced_auth_acl_read_token, '$1')
+        ),
+        ?_assertEqual(
+            [
+                [{[<<"write-topic">>, <<"p">>, <<"q">>, {<<"c">>, <<":">>, 3}, <<"+">>], 1, <<>>}],
+                [
+                    {
+                        [<<"write-topic">>, <<"a">>, <<"b">>, {<<"c">>, <<":">>, 3}, <<"+">>],
+                        1,
+                        <<"token_write_c3">>
+                    }
+                ],
+                [{[<<"a">>, <<"b">>], 1, <<"a">>}]
+            ],
+            ets:match(vmq_enhanced_auth_acl_write_token, '$1')
+        ),
+        ?_assertEqual(
+            {<<"a/b ">>, <<"ab_topic">>},
+            split_topic_label(<<"a/b label ab_topic\n">>)
+        ),
+        ?_assertEqual(
+            {<<"a/b label\n">>, <<>>},
+            split_topic_label(<<"a/b label\n">>)
+        ),
+        ?_assertEqual(
+            {<<"a/b ">>, <<"a">>},
+            split_topic_label(<<"a/b label a b\n">>)
         )
     ].
 -endif.
