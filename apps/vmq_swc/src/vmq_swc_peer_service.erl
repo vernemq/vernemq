@@ -50,20 +50,30 @@ join(_, Node, _Auto) ->
 attempt_join(Node) ->
     lager:info("Sent join request to: ~p~n", [Node]),
     {_NrOfGroups, SwcGroups} = persistent_term:get({vmq_swc_plugin, swc}),
-    case vmq_swc_plugin:history(SwcGroups) of
-        {0, 0, true} ->
-            case net_kernel:connect_node(Node) of
-                false ->
-                    lager:info("Unable to connect to ~p~n", [Node]),
-                    {error, not_reachable};
-                true ->
-                    {ok, Local} = vmq_swc_peer_service_manager:get_local_state(),
-                    attempt_join(Node, Local)
+    PreventNonEmptyJoin = application:get_env(vmq_swc, prevent_nonempty_join),
+    case PreventNonEmptyJoin of
+        true ->
+            case vmq_swc_plugin:history(SwcGroups) of
+                {0, 0, true} ->
+                    connect_node(Node);
+                _ ->
+                    lager:info("Cannot join a cluster, as local node ~p is non-empty.~n", [node()]),
+                    {error, non_empty_node}
             end;
         _ ->
-            lager:info("Cannot join a cluster, as local node ~p is non-empty.~n", [node()]),
-            {error, non_empty_node}
+            connect_node(Node)
     end.
+
+connect_node(Node) ->
+    case net_kernel:connect_node(Node) of
+        false ->
+            lager:info("Unable to connect to ~p~n", [Node]),
+            {error, not_reachable};
+        true ->
+            {ok, Local} = vmq_swc_peer_service_manager:get_local_state(),
+            attempt_join(Node, Local)
+    end.
+
 attempt_join(Node, Local) ->
     {ok, Remote} = gen_server:call({vmq_swc_peer_service_gossip, Node}, send_state),
     Merged = riak_dt_orswot:merge(Remote, Local),

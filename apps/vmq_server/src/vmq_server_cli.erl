@@ -126,18 +126,21 @@ vmq_server_status_cmd() ->
     end,
     clique:register_command(Cmd, [], [], Callback).
 
-vmq_server_history_cmd() -> % for scripts to check for empty state at boot
+% for scripts to check for empty state at boot
+vmq_server_history_cmd() ->
     Cmd = ["vmq-admin", "node", "history"],
     Callback = fun(_, _, _) ->
-        Status = case vmq_config:get_env(metadata_impl) of
-            vmq_swc ->
-                     History = vmq_swc_plugin:history(),
-                     {LocalNode, Gap, _} = History,
-                     case {LocalNode, Gap} of
+        Status =
+            case vmq_config:get_env(metadata_impl) of
+                vmq_swc ->
+                    History = vmq_swc_plugin:history(),
+                    {LocalNode, Gap, _} = History,
+                    case {LocalNode, Gap} of
                         {0, 0} -> empty_state;
                         _ -> existing_state
-                     end;
-        _ -> not_swc
+                    end;
+                _ ->
+                    not_swc
             end,
         Status1 = io_lib:format("~p", [Status]),
         [clique_status:text(Status1)]
