@@ -28,6 +28,7 @@
     shared_subs_prefer_local_policy_test_with_local_caching/1,
     shared_subs_local_only_policy_test/1,
     shared_subs_local_only_policy_test_with_local_caching/1,
+    shared_subs_random_policy_dead_node_message_reaper_test/1,
     cross_node_publish_subscribe/1,
     routing_table_survives_node_restart/1
 ]).
@@ -132,7 +133,8 @@ all() ->
         shared_subs_local_only_policy_test,
         shared_subs_local_only_policy_test_with_local_caching,
         cross_node_publish_subscribe,
-        routing_table_survives_node_restart
+        routing_table_survives_node_restart,
+        shared_subs_random_policy_dead_node_message_reaper_test
     ].
 
 % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1022,6 +1024,58 @@ cross_node_publish_subscribe(Config) ->
             Payloads ++
             Payloads
     ),
+    receive_nothing(200).
+
+shared_subs_random_policy_dead_node_message_reaper_test(Config) ->
+    ok = ensure_cluster(Config),
+    Nodes = nodenames(Config),
+
+    set_shared_subs_policy(random, Nodes),
+
+    Topic = <<"shared-subs-topic">>,
+    SharedTopic = <<"$share/group/", Topic/binary>>,
+    S1Connect = packet:gen_connect("shared-subscriber-1", [{clean_session, true}]),
+    S2Connect = packet:gen_connect("shared-subscriber-2", [{clean_session, true}]),
+    PConnect = packet:gen_connect("publisher", [{clean_session, true}]),
+    Connack = packet:gen_connack(0),
+    Subscribe = packet:gen_subscribe(123, SharedTopic, 1),
+    Suback = packet:gen_suback(123, 1),
+    
+    {_, [{DNode, DPort} | RestNodesWithPorts]} = lists:keyfind(nodes, 1, Config),
+    {ok, S1Socket} = packet:do_client_connect(S1Connect, Connack, [{port, DPort}]),
+    ok = gen_tcp:send(S1Socket, Subscribe),
+    ok = packet:expect_packet(S1Socket, "suback", Suback),
+
+    {RandomNode, RandomPort} = random_node(RestNodesWithPorts),
+    {ok, S2Socket} = packet:do_client_connect(S2Connect, Connack, [{port, RandomPort}]),
+    ok = gen_tcp:send(S2Socket, Subscribe),
+    ok = packet:expect_packet(S2Socket, "suback", Suback),
+
+    {ok, PubSocket} = packet:do_client_connect(PConnect, Connack, [{port, RandomPort}]),
+
+    {ok, RC} = eredis:start_link([{database, 1}, {reconnect_sleep, no_reconnect}]),
+
+    %% Ungracefully stop node
+    {ok, DNode} = ct_slave:stop(DNode),
+    
+    %% publish messages
+    Payloads = publish_to_topic(PubSocket, Topic, 100),
+
+    %% Verify if messages are queued in the main queue of DeadNode
+    Key = "mainQueue::" ++ atom_to_list(DNode),
+    {ok, Size} = eredis:q(RC, ["LLEN", Key]),
+    true = binary_to_integer(Size) > 0,
+    
+    %% Puback received means the published message got processed.
+    %% Since messages were processed before detecting node failure, it means the messages 
+    %% would be in main queue of dead node.
+    true = length(Nodes) == length(rpc:call(RandomNode, vmq_cluster_mon, nodes, [])),
+
+    timer:sleep(2000),
+
+    %% Make sure all messages arrives successfully
+    spawn_receivers([S2Socket]),
+    receive_msgs(Payloads),
     receive_nothing(200).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

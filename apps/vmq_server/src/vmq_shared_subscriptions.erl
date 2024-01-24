@@ -42,6 +42,7 @@ publish(Msg, Policy, [{Group, SubscriberGroup} | Rest], Acc0) ->
                 "can't publish to shared subscription ~p due to '~p', msg: ~p",
                 [Group, Reason, Msg]
             ),
+            vmq_metrics:incr_shared_subscription_group_publish_attempt_failed(),
             publish(Msg, Policy, Rest, Acc0)
     end.
 
@@ -52,11 +53,18 @@ publish_to_group(
 ) ->
     case publish_online(Msg, Subscriber, Acc0) of
         {error, different_node} ->
-            case vmq_redis_queue:enqueue(Node, term_to_binary(RandSubs), term_to_binary(Msg)) of
-                ok ->
-                    {ok, {Local, Remote + 1}};
-                E ->
-                    E
+            case vmq_cluster_mon:is_node_alive(Node) of
+                true ->
+                    case
+                        vmq_redis_queue:enqueue(Node, term_to_binary(RandSubs), term_to_binary(Msg))
+                    of
+                        ok ->
+                            {ok, {Local, Remote + 1}};
+                        E ->
+                            E
+                    end;
+                _ ->
+                    publish_to_group(Msg, Rest, Acc0)
             end;
         {ok, Acc1} ->
             {ok, Acc1};

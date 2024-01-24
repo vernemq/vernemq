@@ -97,7 +97,8 @@
     incr_cache_miss/1,
 
     incr_msg_enqueue_subscriber_not_found/0,
-    incr_topic_counter/1
+    incr_topic_counter/1,
+    incr_shared_subscription_group_publish_attempt_failed/0
 ]).
 
 -export([
@@ -328,6 +329,9 @@ incr_cache_miss(NAME) ->
 
 incr_msg_enqueue_subscriber_not_found() ->
     incr_item(msg_enqueue_subscriber_not_found, 1).
+
+incr_shared_subscription_group_publish_attempt_failed() ->
+    incr_item(shared_subscription_group_publish_attempt_failed, 1).
 
 incr(Entry) ->
     incr_item(Entry, 1).
@@ -1842,6 +1846,13 @@ counter_entries_def() ->
             msg_enqueue_subscriber_not_found,
             msg_enqueue_subscriber_not_found,
             <<"The number of times subscriber was not found when message had to be enqueued.">>
+        ),
+        m(
+            counter,
+            [],
+            shared_subscription_group_publish_attempt_failed,
+            shared_subscription_group_publish_attempt_failed,
+            <<"The number of times publish attempt failed for a shared subscription group.">>
         )
     ].
 
@@ -2900,7 +2911,8 @@ met2idx({?MQTT_DISONNECT, ?REASON_INVALID_PUBCOMP_ERROR}) -> 356;
 met2idx({?MQTT_DISONNECT, ?REASON_UNEXPECTED_FRAME_TYPE}) -> 357;
 met2idx({?MQTT_DISONNECT, ?REASON_EXIT_SIGNAL_RECEIVED}) -> 358;
 met2idx({?MQTT_DISONNECT, ?REASON_TCP_CLOSED}) -> 359;
-met2idx({?MQTT_DISONNECT, ?REASON_UNSPECIFIED}) -> 360.
+met2idx({?MQTT_DISONNECT, ?REASON_UNSPECIFIED}) -> 360;
+met2idx(shared_subscription_group_publish_attempt_failed) -> 361.
 
 -ifdef(TEST).
 clear_stored_rates() ->
