@@ -40,7 +40,7 @@ init_per_testcase(idx_compat_pre_test, Config) ->
 init_per_testcase(_Case, Config) ->
     StorageEngine = proplists:get_value(engine, Config),
     application:load(vmq_generic_msg_store),
-    application:set_env(vmq_generic_msg_store, msg_store_engine, StorageEngine),
+    application:set_env(vmq_generic_msg_store, db_backend, StorageEngine),
     application:ensure_all_started(vmq_generic_msg_store),
     Config.
 
