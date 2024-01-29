@@ -31,7 +31,7 @@ setup() ->
     %                                                  {open_retries, 30},
     %                                                  {open_retry_delay, 2000}
     %                                                 ]),
-    application:set_env(vmq_generic_msg_store, msg_store_engine, vmq_storage_engine_leveldb),
+    application:set_env(vmq_generic_msg_store, db_backend, vmq_storage_engine_leveldb),
     LogDir = "log." ++ atom_to_list(node()),
     application:load(lager),
     application:set_env(lager, handlers, [

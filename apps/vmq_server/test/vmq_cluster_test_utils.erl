@@ -154,10 +154,9 @@ start_node(Name, _Config, Case) ->
                                                                 []}]}
                                                        ]]),
             ok = rpc:call(Node, application, set_env, [vmq_generic_msg_store,
-                                                       msg_store_opts,
-                                                       [{store_dir,
-                                                         NodeDir++"/msgstore"}]
-                                                      ]),
+                                                       store_dir,
+                                                       NodeDir ++ "/msgstore"]
+                                                      ),
             ok = rpc:call(Node, application, set_env, [vmq_plugin,
                                                        wait_for_proc,
                                                        vmq_server_sup]),
