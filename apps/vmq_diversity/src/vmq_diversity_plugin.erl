@@ -45,7 +45,7 @@
     auth_on_publish/6,
     auth_on_subscribe/3,
     on_register/4,
-    on_publish/6,
+    on_publish/7,
     on_subscribe/3,
     on_unsubscribe/3,
     on_deliver/6,
@@ -515,7 +515,7 @@ on_register(Peer, SubscriberId, UserName, UserProperties) ->
         {properties, conv_args_props(UserProperties)}
     ]).
 
-on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain) ->
+on_publish(UserName, SubscriberId, QoS, Topic, Payload, IsRetain, _) ->
     {MP, ClientId} = subscriber_id(SubscriberId),
     all(on_publish, [
         {username, nilify(UserName)},
@@ -535,7 +535,7 @@ on_subscribe(UserName, SubscriberId, Topics) ->
         {client_id, ClientId},
         {topics, [
             [unword(T), QoS]
-         || {T, QoS} <- Topics
+         || {T, QoS, _} <- Topics
         ]}
     ]).
 

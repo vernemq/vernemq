@@ -1,5 +1,6 @@
 -module(vmq_diversity_plugin_SUITE).
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -export([
          %% suite/0,
          init_per_suite/1,
@@ -115,10 +116,10 @@ on_register_test(_) ->
                             [peer(), allowed_subscriber_id(), username(), #{?P_USER_PROPERTY => UserProps}]).
 on_publish_test(_) ->
     [next] = vmq_plugin:all(on_publish,
-                            [username(), allowed_subscriber_id(), 1, topic(), payload(), false]).
+                            [username(), allowed_subscriber_id(), 1, topic(), payload(), false, matched_acl()]).
 on_subscribe_test(_) ->
     [next] = vmq_plugin:all(on_subscribe,
-                            [username(), allowed_subscriber_id(), [{topic(), 1}]]).
+                            [username(), allowed_subscriber_id(), [{topic(), 1, matched_acl()}]]).
 
 on_unsubscribe_test(_) ->
     {error, plugin_chain_exhausted} = vmq_plugin:all_till_ok(on_unsubscribe,
@@ -313,3 +314,4 @@ subopts() ->
     #{rap => true,
       no_local => false}.
 reason() -> normal_disconnect.
+matched_acl() -> #matched_acl{name= <<"test-label">>, pattern= <<"test/pattern">>}.

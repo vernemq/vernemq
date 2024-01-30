@@ -420,13 +420,30 @@ connected(
     SubTopics = subtopics(Topics, ProtoVer),
     OnAuthSuccess =
         fun(_User, _SubscriberId, MaybeChangedTopics) ->
-            case vmq_reg:subscribe(SubscriberId, MaybeChangedTopics) of
+            {Subscriptions, T} =
+                case MaybeChangedTopics of
+                    [{_Topic, _SubInfo} | _] ->
+                        TopicList = lists:foldr(
+                            fun({Topic, Sub}, Acc) ->
+                                [{Topic, extract_qos(Sub), #matched_acl{}} | Acc]
+                            end,
+                            [],
+                            MaybeChangedTopics
+                        ),
+                        {MaybeChangedTopics, TopicList};
+                    [{_Topic, _SubInfo, _MatchedACL} | _] ->
+                        lists:foldr(
+                            fun({Topic, Sub, MatchedAcl}, {Acc1, Acc2}) ->
+                                {[{Topic, Sub} | Acc1], [
+                                    {Topic, extract_qos(Sub), MatchedAcl} | Acc2
+                                ]}
+                            end,
+                            {[], []},
+                            MaybeChangedTopics
+                        )
+                end,
+            case vmq_reg:subscribe(SubscriberId, Subscriptions) of
                 {ok, _} = Res ->
-                    T = lists:foldr(
-                        fun({Topic, Sub}, Acc) -> [{Topic, extract_qos(Sub)} | Acc] end,
-                        [],
-                        MaybeChangedTopics
-                    ),
                     vmq_plugin:all(on_subscribe, [User, SubscriberId, T]),
                     Res;
                 Res ->
@@ -831,8 +848,11 @@ set_sock_opts(Opts) ->
     subscriber_id(),
     [{topic(), subinfo()}],
     fun(
-        (username(), subscriber_id(), [{topic(), subinfo()}]) ->
-            {ok, [qos() | not_allowed]} | {error, atom()}
+        (
+            username(),
+            subscriber_id(),
+            [{topic(), subinfo(), matched_acl()}]
+        ) -> {ok, [qos() | not_allowed]} | {error, atom()}
     )
 ) -> {ok, [qos() | not_allowed]} | {error, atom()}.
 auth_on_subscribe(User, SubscriberId, Topics, AuthSuccess) ->
@@ -885,9 +905,12 @@ auth_on_publish(
     HookArgs = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain)],
     case vmq_plugin:all_till_ok(auth_on_publish, HookArgs) of
         ok ->
-            AuthSuccess(Msg, HookArgs, #{});
+            HookArgs1 = [User, SubscriberId, QoS, Topic, Payload, unflag(IsRetain), #matched_acl{}],
+            AuthSuccess(Msg, HookArgs1, #{});
         {ok, ChangedPayload} when is_binary(ChangedPayload) ->
-            HookArgs1 = [User, SubscriberId, QoS, Topic, ChangedPayload, unflag(IsRetain)],
+            HookArgs1 = [
+                User, SubscriberId, QoS, Topic, ChangedPayload, unflag(IsRetain), #matched_acl{}
+            ],
             AuthSuccess(Msg#vmq_msg{payload = ChangedPayload}, HookArgs1, #{});
         {ok, Args} when is_list(Args) ->
             #vmq_msg{mountpoint = MP} = Msg,
@@ -896,13 +919,15 @@ auth_on_publish(
             ChangedQoS = proplists:get_value(qos, Args, QoS),
             ChangedIsRetain = proplists:get_value(retain, Args, IsRetain),
             ChangedMountpoint = proplists:get_value(mountpoint, Args, MP),
+            MatchedAcl = proplists:get_value(matched_acl, Args, #matched_acl{}),
             HookArgs1 = [
                 User,
                 SubscriberId,
                 ChangedQoS,
                 ChangedTopic,
                 ChangedPayload,
-                ChangedIsRetain
+                ChangedIsRetain,
+                MatchedAcl
             ],
             SessCtrl = session_ctrl(Args),
             AuthSuccess(

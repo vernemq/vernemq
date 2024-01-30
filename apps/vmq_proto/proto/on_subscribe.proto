@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
+import "matched_acl.proto";
 
 option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
 
@@ -17,4 +18,5 @@ message OnSubscribe {
 message TopicInfo {
     string topic = 1;
     int32 qos = 2;
+    MatchedACL matched_acl = 3;
 }

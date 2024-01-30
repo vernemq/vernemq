@@ -8,4 +8,5 @@
 -define(TOPIC, <<"test/topic">>).
 -define(PAYLOAD, <<"hello world">>).
 -define(REASON, 'REASON_NORMAL_DISCONNECT').
-
+-define(LABEL, <<"test-label">>).
+-define(PATTERN, <<"test/pattern">>).

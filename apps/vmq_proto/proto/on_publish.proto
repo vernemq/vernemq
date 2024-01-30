@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
+import "matched_acl.proto";
 
 option go_package = "source.golabs.io/courier/apis-go/eventssidecar/v1";
 
@@ -15,4 +16,5 @@ message OnPublish {
     string topic = 6;
     bytes payload = 7;
     bool retain = 8;
+    MatchedACL matched_acl = 9;
 }

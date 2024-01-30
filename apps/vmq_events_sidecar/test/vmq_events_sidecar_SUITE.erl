@@ -1,5 +1,6 @@
 -module(vmq_events_sidecar_SUITE).
 -include_lib("vernemq_dev/include/vernemq_dev.hrl").
+-include_lib("vmq_commons/include/vmq_types.hrl").
 -include("vmq_events_sidecar_test.hrl").
 
 -export([
@@ -83,7 +84,7 @@ on_publish_test(_) ->
     enable_hook(on_publish),
     Self = pid_to_bin(self()),
     [ok] = vmq_plugin:all(on_publish,
-                           [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false]),
+                           [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, 1, ?TOPIC, ?PAYLOAD, false, #matched_acl{name = ?LABEL, pattern = ?PATTERN}]),
     ok = exp_response(on_publish_ok),
     disable_hook(on_publish).
 
@@ -91,8 +92,8 @@ on_subscribe_test(_) ->
     enable_hook(on_subscribe),
     Self = pid_to_bin(self()),
     [ok] = vmq_plugin:all(on_subscribe,
-                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1},
-                                                                       {?TOPIC, not_allowed}]]),
+                            [Self, {?MOUNTPOINT, ?ALLOWED_CLIENT_ID}, [{?TOPIC, 1, #matched_acl{name = ?LABEL, pattern = ?PATTERN}}, 
+                                                                       {?TOPIC, not_allowed, #matched_acl{}}]]),
     ok = exp_response(on_subscribe_ok),
     disable_hook(on_subscribe).
 

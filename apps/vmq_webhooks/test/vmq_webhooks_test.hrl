@@ -19,4 +19,7 @@
 -define(TOPIC, <<"test/topic">>).
 -define(PAYLOAD, <<"hello world">>).
 -define(REASON, normal_disconnect).
+-define(LABEL, <<"test-label">>).
+-define(PATTERN, <<"test/pattern">>).
+
 
